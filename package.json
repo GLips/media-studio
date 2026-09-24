@@ -25,6 +25,8 @@
     "@remotion/install-whisper-cpp": "4.0.525",
     "@remotion/media": "4.0.525",
     "@remotion/renderer": "4.0.525",
+    "p5": "2.3.3",
+    "p5.brush": "2.2.2",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "remotion": "4.0.525"

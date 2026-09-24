@@ -1,9 +1,9 @@
 // render.ts: checks, renders and reviews a project's video with Remotion's renderer.
 //
 //   The whole thing:
-//     npm run video -- projects/<p>          framing check (every frame) → the mix, mastered to −14 LUFS → video.mp4
-//                                            and video-captions.mp4 → delivery checks and review sheets → video.srt
-//                                            → out/watch.html
+//     npm run video -- projects/<p> [--plain]   framing check (every frame) → the mix, mastered to −14 LUFS →
+//                                               video.mp4, with captions (--plain adds video-plain.mp4, without) →
+//                                               delivery checks and review sheets → video.srt → out/watch.html
 //   Look at it (open the images with an image viewer or the Read tool):
 //     node scripts/render.ts projects/<p> --sheet=0.5,4,9 [--cols=3] [--w=640] [--out=out/check/a.jpg]   chosen times
 //     node scripts/render.ts projects/<p> --strip=4:5 [--step=0.1]                                       a stretch, for motion
@@ -13,15 +13,18 @@
 //                                                               Also writes out/check/timeline.json: when each scene
 //                                                               and line lands, for aiming sheets and strips.
 //     node scripts/render.ts projects/<p> --audio               just the mastered mix, out/mix.wav, to hear the levels
+//     node scripts/render.ts projects/<p> --repeatable=2,8.5    renders those times alone, in other orders and among
+//                                                               other frames, and fails if any differ. Run it on a new
+//                                                               painted style (lib/paint): its randomness must be seeded.
 import { serializeSrt } from '@remotion/captions';
 import { renderFrames, renderMedia } from '@remotion/renderer';
-import { execFileSync, spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { framesToMeasure, framingArtifactName, framingProblems, type FramingReport } from '../lib/framing-check.ts';
 import { measureLoudness } from '../lib/loudness.ts';
-import { artifactSink, openRenderSession } from '../lib/render-session.ts';
+import { artifactSink, openRenderSession, RENDER_CHROMIUM } from '../lib/render-session.ts';
 import { H, W } from '../lib/studio/frame.ts';
 import type { TimelineReport } from '../lib/studio/Video.tsx';
 
@@ -37,7 +40,7 @@ const args: Record<string, string | true> = Object.fromEntries(argv.filter((a) =
 }));
 const outDir = join(project, 'out');
 const at = (p: string) => (p.startsWith('/') ? p : join(project, p));
-const videoFor = (captions: boolean) => join(outDir, captions ? 'video-captions.mp4' : 'video.mp4');
+const videoFor = (captions: boolean) => join(outDir, captions ? 'video.mp4' : 'video-plain.mp4');
 
 const run = (cmd: string, a: string[]) => new Promise<void>((ok, bad) => {
   spawn(cmd, a, { stdio: 'inherit' }).on('close', (code) => (code ? bad(new Error(`${cmd} exited ${code}`)) : ok()));
@@ -64,7 +67,7 @@ async function checkFraming(every: number) {
   const sink = artifactSink();
   const tmp = mkdtempSync(join(tmpdir(), 'framing-'));
   const measure = (frames: number[]) => renderFrames({
-    composition, serveUrl, inputProps, outputDir: tmp, imageFormat: 'none', frames,
+    composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, inputProps, outputDir: tmp, imageFormat: 'none', frames,
     onArtifact: sink.onArtifact, onStart: () => {}, onFrameUpdate: () => {},
   });
   // Frame 0 carries the timeline, which says which frames the expectations need.
@@ -121,7 +124,7 @@ async function renderMasteredMix() {
   const composition = await compositionFor(inputProps);
   const tmp = mkdtempSync(join(tmpdir(), 'mix-'));
   const raw = join(tmp, 'raw.wav');
-  await renderMedia({ composition, serveUrl, inputProps, codec: 'wav', outputLocation: raw });
+  await renderMedia({ composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, inputProps, codec: 'wav', outputLocation: raw });
   mkdirSync(outDir, { recursive: true });
   const before = measureLoudness(raw);
   // Limiting at 4× the sample rate catches the peaks between samples too, which is what "true peak" counts.
@@ -147,7 +150,7 @@ async function renderVideo(captions: boolean) {
   let shown = -1;
   const started = Date.now();
   await renderMedia({
-    composition, serveUrl, inputProps, codec: 'h264', outputLocation: silent, muted: true,
+    composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, inputProps, codec: 'h264', outputLocation: silent, muted: true,
     crf: 18, x264Preset: 'slow', pixelFormat: 'yuv420p', imageFormat: 'jpeg', jpegQuality: 94,
     onProgress: ({ progress }) => {
       const pct = Math.floor(progress * 10) * 10;
@@ -198,12 +201,11 @@ function writeWatchPage(title: string) {
 </style>
 <main>
   <h1>${title}</h1>
-  <video id="v" src="video-captions.mp4" controls autoplay></video>
+  <video id="v" src="video.mp4" controls autoplay></video>
   <nav>
-    <a href="#" onclick="v.src='video-captions.mp4';return false">With captions</a>
-    <a href="#" onclick="v.src='video.mp4';return false">Without captions</a>
-    <a href="video.mp4" download>Download</a>
-    <a href="video-captions.mp4" download>Download with captions</a>
+    <a href="video.mp4" download>Download</a>${existsSync(videoFor(false)) ? `
+    <a href="#" onclick="v.src='video-plain.mp4';return false">Without captions</a>
+    <a href="video-plain.mp4" download>Download without captions</a>` : ''}
     <a href="video.srt" download>Captions (.srt)</a>
   </nav>
 </main>
@@ -214,13 +216,50 @@ function writeWatchPage(title: string) {
 // ---------- dispatch ----------
 
 const captions = Boolean(args.captions);
+
+/**
+ * Renders frames at `times` alone, together, reversed and among other frames, since a tab's history is what leaks
+ * into a frame that isn't a pure function of time (an unseeded random stream, drawing deferred to the next frame).
+ * GPU rounding leaves renders a few levels apart, so equal means over 50 dB PSNR.
+ */
+async function isRepeatable(times: number[]) {
+  const { fps, durationInFrames } = await compositionFor(props());
+  const frames = times.map((t) => Math.round(t * fps));
+  const bad = frames.find((f) => !(f >= 0 && f < durationInFrames));
+  if (bad !== undefined) throw new Error(`${bad / fps}s is outside the video`);
+  const near = (f: number) => [f, Math.min(durationInFrames - 1, f + 7), Math.max(0, f - 11)];
+  const runs = [frames, [...frames].reverse(), ...frames.map((f) => [f]), frames.flatMap(near).reverse()];
+  const dir = mkdtempSync(join(tmpdir(), 'repeatable-'));
+  const first = new Map<number, string>(), worst = new Map<number, number>();
+  for (const [r, run] of runs.entries()) {
+    const stills = await session.renderStills(run, { w: W });
+    for (const f of frames.filter((f) => run.includes(f))) {
+      const copy = join(dir, `${f}-${r}.jpg`);
+      copyFileSync(stills.fileFor(f), copy);
+      if (!first.has(f)) { first.set(f, copy); continue; }
+      const { stderr } = spawnSync('ffmpeg', ['-i', first.get(f)!, '-i', copy, '-lavfi', 'psnr', '-f', 'null', '-'], { encoding: 'utf8' });
+      const psnr = Number(/average:(\S+)/.exec(stderr)![1].replace('inf', 'Infinity'));
+      worst.set(f, Math.min(worst.get(f) ?? Infinity, psnr));
+    }
+    rmSync(stills.dir, { recursive: true, force: true });
+  }
+  rmSync(dir, { recursive: true, force: true });
+  let ok = true;
+  for (const f of frames) {
+    const db = worst.get(f)!;
+    ok &&= db > 50;
+    console.log(`  ${db > 50 ? '✓' : '✗'} ${(f / fps).toFixed(2)}s  ${Number.isFinite(db) ? `${db.toFixed(1)} dB at worst` : 'identical'}`);
+  }
+  console.log(ok ? 'repeatable ✓' : 'not repeatable: something in those frames depends on what the tab drew before');
+  return ok;
+}
 if (args.video) {
   const { ok, timeline } = await checkFraming(every);
   if (!ok) throw new Error('fix the framing problems above before rendering (look at a stretch with --strip=a:b)');
   const estimated = timeline.cues.filter((q) => !q.voiced).map((q) => q.id);
   if (estimated.length) throw new Error(`${estimated.join(', ')} ${estimated.length > 1 ? 'are' : 'is'} estimated, not voiced: run npm run tts before rendering the video`);
   await renderMasteredMix();
-  for (const cap of [false, true]) {
+  for (const cap of args.plain ? [true, false] : [true]) {
     await renderVideo(cap);
     await review(cap, timeline);
   }
@@ -236,6 +275,8 @@ if (args.video) {
     for (let t = a; t <= b + 1e-6; t += step) times.push(Number(t.toFixed(3)));
   } else times = String(args.sheet).split(',').map(Number);
   await sheet(times, at(typeof args.out === 'string' ? args.out : 'out/check/sheet.jpg'), { cols: Number(args.cols || (args.strip ? 5 : 3)), w: Number(args.w || (args.strip ? 384 : 640)), captions });
+} else if (args.repeatable) {
+  if (!(await isRepeatable(String(args.repeatable).split(',').map(Number)))) process.exitCode = 1;
 } else if (args.check) {
   const { ok, timeline } = await checkFraming(every);
   mkdirSync(join(outDir, 'check'), { recursive: true });

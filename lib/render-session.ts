@@ -13,11 +13,17 @@ import type { TimelineReport, VideoProps } from './studio/Video.tsx';
 
 export type RenderSession = Awaited<ReturnType<typeof openRenderSession>>;
 
+/**
+ * Every render's browser runs on the GPU. Painted layers (lib/paint) draw with WebGL, which Remotion's default
+ * software renderer makes crawl.
+ */
+export const RENDER_CHROMIUM = { gl: 'angle' } as const;
+
 export async function openRenderSession(project: string) {
   console.log(`bundling ${project}…`);
   const serveUrl = await bundle({ entryPoint: resolve('lib/studio/index.ts'), webpackOverride: projectWebpackOverride(project) });
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, ...p });
-  const compositionFor = (inputProps: VideoProps) => selectComposition({ serveUrl, id: projectSlug(project), inputProps });
+  const compositionFor = (inputProps: VideoProps) => selectComposition({ serveUrl, chromiumOptions: RENDER_CHROMIUM, id: projectSlug(project), inputProps });
 
   /** Renders chosen frames as JPEGs `w` wide; returns each frame's file. Repeats are rendered once. */
   async function renderStills(wanted: number[], { w, captions = false }: { w: number; captions?: boolean }) {
@@ -26,7 +32,7 @@ export async function openRenderSession(project: string) {
     const composition = await compositionFor(inputProps);
     const dir = mkdtempSync(join(tmpdir(), 'stills-'));
     await renderFrames({
-      composition, serveUrl, inputProps, outputDir: dir, imageFormat: 'jpeg', jpegQuality: 90, scale: w / W, frames,
+      composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, inputProps, outputDir: dir, imageFormat: 'jpeg', jpegQuality: 90, scale: w / W, frames,
       imageSequencePattern: 'f-[frame].[ext]', onStart: () => {}, onFrameUpdate: () => {},
     });
     const files = readdirSync(dir).filter((f) => /\.jpe?g$/.test(f));
@@ -41,7 +47,7 @@ export async function openRenderSession(project: string) {
     const sink = artifactSink();
     const inputProps = props();
     await renderFrames({
-      composition: await compositionFor(inputProps), serveUrl, inputProps, outputDir: mkdtempSync(join(tmpdir(), 'timeline-')),
+      composition: await compositionFor(inputProps), serveUrl, chromiumOptions: RENDER_CHROMIUM, inputProps, outputDir: mkdtempSync(join(tmpdir(), 'timeline-')),
       imageFormat: 'none', frames: [0], onArtifact: sink.onArtifact, onStart: () => {}, onFrameUpdate: () => {},
     });
     return sink.json<TimelineReport>('timeline.json');

@@ -18,11 +18,11 @@ Every frame is a pure function of time, so a change to one scene is an edit and 
 | Look | `node scripts/render.ts projects/<p> --sheet=1,5,9` | a contact sheet of chosen times; `--strip=4:5` for a stretch of motion. Open the image to check frames without rendering video |
 | Check | `node scripts/render.ts projects/<p> --check` | the framing check, plus `out/check/timeline.json` (when each scene and line lands) |
 | Mix | `node scripts/render.ts projects/<p> --audio` | `out/mix.wav`, the mastered mix on its own, to audition |
-| Make | `npm run video -- projects/<p>` | `out/mix.wav`, `out/video.mp4`, `out/video-captions.mp4`, `out/video.srt`, review sheets in `out/check/`, and `out/watch.html` |
+| Make | `npm run video -- projects/<p>` | `out/mix.wav`, `out/video.mp4` (captions burned in; `--plain` adds `out/video-plain.mp4`), `out/video.srt`, review sheets in `out/check/`, and `out/watch.html` |
 
 `npm run video` runs the framing check on every frame first and refuses to render if a highlight sits under a tag or
 the caption, runs off the frame or is cut off by its panel, if a scene's `expect` isn't met, or if any line is still
-estimated. It then masters the mix to −14 LUFS, renders both versions muted and muxes the mix in. Each MP4 must have
+estimated. It then masters the mix to −14 LUFS, renders the video muted and muxes the mix in. Each MP4 must have
 the right length and an audio stream, measure −14 ±1 LUFS and peak at −1 dBTP or lower. Each is tiled into a sheet
 to look over.
 
@@ -47,7 +47,7 @@ scene's `expect` says what must be on screen while a word is spoken:
 `Highlight`'s `name`.
 
 The skills in `.claude/skills` carry the workflow: `video-kickoff` (from the first dump to a signed-off storyboard),
-`video-motion` (the camera vocabulary and feel notes) and `remotion`. `docs/directing.md` is a short course on
+`video-motion` (the camera vocabulary and feel notes), `video-canvas` (painted and generative layers) and `remotion`. `docs/directing.md` is a short course on
 directing.
 
 ## Pieces
@@ -70,6 +70,8 @@ Scenes import everything from `lib/studio/api.ts`.
 - `lib/whisper-words.ts`, `lib/voice-words.ts`: word timings from whisper.cpp (installed on first use into
   `~/.cache/video-studio`), aligned to the script.
 - `lib/music-beats.ts`: the tempo and beats of a music track.
+- `lib/paint/`: drawn layers (p5 sketches) inside scenes, with a watercolour style ported from p5.brush. See the
+  `video-canvas` skill. `--repeatable=t1,t2` proves a drawn layer is a pure function of time.
 - `scripts/render.ts`: bundles one project (`lib/render-session.ts`) and checks, mixes, renders and reviews it.
 - `scripts/tts.ts`: Gemini TTS through OpenRouter. `--audition "line" --voices=A,B,C` compares voices.
 - `scripts/openrouter.ts`: the shared OpenRouter client, for TTS and any other model calls.
