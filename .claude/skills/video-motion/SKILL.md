@@ -26,6 +26,18 @@ seconds since the scene's start (negative while it fades in), and `s.line(id)` i
 | **Highlight / ring** | A glowing outline drawn on around the subject | `Highlight rect={screenRect(v, rect)} k={on(s.t, when)} name="…"` |
 | **Easing** | How a move speeds up and slows down | `seg(t, a, b, fn)` with `easeInOut` (camera moves, the default), `easeOut` (things arriving), `ease` (gentle) |
 
+## Time it by reads
+
+You know what happens because you wrote the code. The viewer sees it once, at full speed, for the first time.
+
+- Before animating a scene, list its **reads**, in order: each thing the viewer must understand ("typing narrows the
+  list", "to seventeen"), with a start and an end. Each needs time for the eye to find it, to understand it, and a
+  moment before the next.
+- **One read at a time.** Cause, then reaction: the click, then what changed. Never both in the same half-second.
+- **Lead the eye** to where the next read happens (the camera moves there, or it lights up first) before it happens.
+- **Fast actions, slow meanings.** Camera moves and cursor travel can be brisk; the result they reveal gets a hold.
+- If the reads don't fit, lengthen the scene (`tail`, `min`) or cut a read. Don't squeeze them.
+
 ## Anchor to speech, and lead the word
 
 - Anchor every beat to the voice: `s.line('ladder').word('no volume discount').start`, never raw seconds. Re-voicing
@@ -59,6 +71,25 @@ Look at the images yourself before reporting back.
   when every scene and line lands.
 - `--strip=a:b` shows a stretch of motion, 0.1 s apart; `--sheet=t1,t2,…` shows chosen moments. Add `--captions`.
 - `node scripts/storyboard.ts projects/<p>` rebuilds the storyboard page from the video.
+
+To judge timing, read a `--strip` like a viewer: at each frame, where are they looking, and do they understand it
+yet? Count the frames each read gets (30 = 1 s). A read that flashes by in a few frames, or shares them with another
+read, will be missed.
+
+## Tells of generated motion
+
+Check the strips against these. Each one makes a video look machine-made:
+
+- everything at one brisk speed, with events stacked and no holds;
+- moments over before the viewer has understood them;
+- **twinning**: both panels zooming in sync, a list popping in all at once, two rings drawing on together;
+- linear moves, and every part of a shot moving at once;
+- moves nothing motivates: the camera drifting to a spot the voice never mentions;
+- a highlight on every beat, so none of them stands out;
+- a setup with no payoff: a spinner nobody resolves, a click with no visible result;
+- a video that just stops, with no final read held and no end card.
+
+The existing projects each show one way to tell one story. Don't copy their structure; start from the storyboard.
 
 Camera and cursor keys must rise in time. Keys anchored to words can swap when a line is re-voiced, and the scene
 throws rather than snapping.

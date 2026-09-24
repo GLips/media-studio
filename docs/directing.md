@@ -72,6 +72,17 @@ Section cards with the voice continuing straight over them are L-cuts. Cutting s
 ## 4. Timing and pacing
 
 - **A beat** is the smallest unit of timing: one thing happening. Scenes are made of beats.
+- **A read** is one thing the viewer has to *understand*: "the price dropped", "that option is out of stock". Each read
+  needs time for the eye to find it, time to get it, and a moment before the next one starts. Small, fast or subtle
+  things take longer to read than big, central, obvious ones. Listing a scene's reads, each with a start and an end,
+  is the best way to time it.
+- **One read at a time.** When two things happen at once, the viewer sees only one of them.
+- **Fast actions, slow meanings.** A move can be quick if it's anticipated, but what it *means* needs held time. The
+  contrast between quick and held is what gives a video rhythm; one constant speed, fast or slow, makes it flat.
+- **Cause, then reaction.** Show the click, then what it did, one after the other. The reaction often matters most, so
+  give it the time.
+- **Let the reads set the length.** A scene with many reads can't be short; one whose reads have landed shouldn't be
+  padded. The last read of the video needs time to land before it ends.
 - **Anchor beats to words.** The highlight lands when the voice says "price", not at 3.2 s. With word-level timing we can anchor to the exact word.
 - **Lead and hold.** Give the viewer about 0.3–0.5 s to find the subject *before* it acts, and hold about 0.5–1 s *after* something important changes. "Let it land" / "let it breathe" means hold longer.
 - **Reading time.** On-screen text needs about 0.3 s per word plus 1 s. If the voice is talking, don't make them read a paragraph too.
@@ -94,6 +105,21 @@ Nothing real starts or stops instantly. Easing curves are how things move:
 | **Anticipation** | A small wind-up the opposite way first | A cursor pulling back slightly before a click, a card dipping before it flies up |
 | **Stagger / cascade** | Items animate one after another, 40–80 ms apart | Lists, words, grids. "Words cascade up" |
 | **Follow-through** | Parts settle at different times | A panel stops, and its contents settle a beat later |
+| **Arcs** | Living things move on curves, not straight lines | A cursor curving to its target; a thrown item |
+| **Weight** | How something starts and stops says how heavy it is | Heavy: slow to start and stop, little bounce. Light: snaps into motion, flutters to rest |
+| **Exaggeration** | Push it past natural, because subtle reads as nothing | A bigger push, a stronger pop, a longer hold |
+| **Secondary action** | Small motion that supports the main one without competing | A badge settling after a card lands |
+
+**Twinning** is the tell of motion made in code: two things moving identically and at the same time (both panels
+zooming in sync, a whole list popping at once). Offset their timing, or give one the action and the other something
+smaller.
+
+Illustrated styles add a few terms:
+
+- **Key poses:** the frames that tell the story as stills. If they don't read, the motion in between won't fix it.
+- **Boil:** hand-drawn lines that wobble slightly from drawing to drawing. It's what makes painted animation feel
+  alive rather than digital.
+- **On twos:** each drawing is held for two frames. It feels snappier and more hand-made than a new drawing every frame.
 
 Notes you'll give: **"floaty"** (the ease is too long or too gentle; tighten it), **"snappy"** (shorter, more ease-out), **"mechanical"** (linear, or everything moving in sync; add easing and stagger).
 
@@ -144,6 +170,11 @@ Use the quietest one that works. If everything gets a spotlight, nothing stands 
 - **Hook → problem → solution → proof → call to action.** It works for almost every launch or walkthrough.
 - **Show, don't tell.** If the voice says "it's instant", show the instant response. Don't put the word "instant" on screen.
 - **One idea per scene.** If a scene needs "and also", split it.
+- **Every scene has an event.** Something changes between its first frame and its last. "The page, sitting there" is
+  not a scene.
+- **Pay it off.** Whatever a scene sets up (a spinner, a question, a "watch this") gets resolved on screen.
+- **Rhyme the ending with the opening:** the same place, shot or motif, changed. The walkthrough that opens on the old
+  buy box can end on the new one in the same framing. It makes the video feel whole.
 - **Sections:** in videos longer than about 90 s, chapter cards help the viewer know where they are.
 - **End card:** what to do next, held for at least 2–3 s.
 
@@ -163,6 +194,9 @@ Good notes name **what**, **where**, and **the feeling**, and leave the fix to w
 | "Button it" | End the scene with a clear final beat |
 | "Tighten" | Cut the dead time |
 | "Too on the nose" | The picture just repeats what the voice says; show something that adds to it |
+| "I missed it" | A read went by before it landed; give it more time, or lead the eye there first |
+| "They're twinning" | Two things move in lockstep; offset them |
+| "Pay that off" | Something was set up and never resolved |
 
 ---
 

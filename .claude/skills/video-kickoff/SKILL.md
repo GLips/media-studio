@@ -40,6 +40,9 @@ scene in `projects/<p>/storyboard.md`, under the audience, source and takeaway:
 ```
 
 - **Scene** and **Lines** become the `id`s in `video.tsx` and `voiceover.json`.
+- Every scene needs an **event**: something changes between its first frame and its last. Under the table, list each
+  scene's reads (what the viewer must understand, in order). It's the timing sheet the motion pass works from.
+- Plan the whole video: something set up is paid off, and the ending rhymes with the opening where it can.
 - Write each Motion entry in the `video-motion` skill's words (push in, pull back, pan, hard cut, match cut, and so
   on), so it turns straight into code.
 - End with a **Deliberately left out** list: true things the video skips, and why. It stops them creeping back in
