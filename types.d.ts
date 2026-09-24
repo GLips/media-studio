@@ -16,6 +16,10 @@ declare module '*.m4a' {
   const src: string;
   export default src;
 }
+declare module '*.ttf' {
+  const src: string;
+  export default src;
+}
 declare module '@project' {
   const video: import('./lib/studio/timeline.ts').VideoDef;
   export default video;

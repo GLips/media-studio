@@ -6,13 +6,13 @@ import { ease, easeOut, seg } from './motion.ts';
 import type { VoiceCue } from './timeline.ts';
 
 const LEAD_IN = 0.05, HANG = 0.15;
-export const captionCueAt = (cues: readonly VoiceCue[], t: number) => cues.find((q) => t >= q.start - LEAD_IN && t < q.end + HANG);
+export const captionCueAt = (cues: readonly VoiceCue[], t: number) => cues.find((q) => t >= q.start - LEAD_IN && t < q.captionEnd + HANG);
 
 /** The caption at `t`. The framing check renders with captions on, so it measures this box. */
 export function Caption({ cues, t }: { cues: readonly VoiceCue[]; t: number }) {
   const cue = captionCueAt(cues, t);
   if (!cue) return null;
-  const k = Math.min(seg(t, cue.start - LEAD_IN, cue.start + HANG, easeOut), 1 - seg(t, cue.end, cue.end + HANG, ease));
+  const k = Math.min(seg(t, cue.start - LEAD_IN, cue.start + HANG, easeOut), 1 - seg(t, cue.captionEnd, cue.captionEnd + HANG, ease));
   return (
     <div
       data-framing="caption"

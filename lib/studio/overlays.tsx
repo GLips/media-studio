@@ -134,11 +134,13 @@ export function offscreen(view: View, toward: Point): Point {
 /**
  * A glowing ring around a screen rect that draws itself on (`k` 0..1) and fades with `alpha`. `name` is what a
  * scene's `expect` refers to it by. The rect comes from a view (`screenRect`) or a live element (`useScreenRect`);
- * null draws nothing.
+ * null draws nothing. `pad` gives way at the frame's edge, or `box`'s (a panel's view box), so a subject flush with
+ * it is ringed just inside; the rect itself never shrinks, so one off the frame still fails the framing check.
  */
-export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha = 1, name }: {
+export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha = 1, name, box = FRAME }: {
   rect: Rect | null;
   name?: string;
+  box?: Rect;
   k: number;
   color?: string;
   pad?: number;
@@ -146,7 +148,7 @@ export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha =
   alpha?: number;
 }) {
   if (!rect || k <= 0 || alpha <= 0) return null;
-  const r = inflate(rect, pad);
+  const r = padWithin(rect, pad, box);
   const perimeter = 2 * (r.w + r.h);
   return (
     <svg
@@ -169,6 +171,17 @@ export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha =
       />
     </svg>
   );
+}
+
+const FRAME: Rect = { x: 0, y: 0, w: W, h: H };
+
+/** `rect` grown by `pad`, except where that would cross `box`'s edge: there the padding stops at it. */
+function padWithin(rect: Rect, pad: number, box: Rect): Rect {
+  const grown = inflate(rect, pad);
+  const x0 = Math.max(grown.x, Math.min(rect.x, box.x)), y0 = Math.max(grown.y, Math.min(rect.y, box.y));
+  const x1 = Math.min(grown.x + grown.w, Math.max(rect.x + rect.w, box.x + box.w));
+  const y1 = Math.min(grown.y + grown.h, Math.max(rect.y + rect.h, box.y + box.h));
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
 /** Dims everything but a screen rect, to pull the eye to it; null draws nothing. */

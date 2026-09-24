@@ -43,9 +43,9 @@ script.
 - Credentials come only from environment variables the user names: read `process.env.X` in `capture.ts`, and have
   the user run `studio capture` under their secret launcher. Never write them to a file or go looking for them; if
   none are given, ask. Where the product runs locally, film a demo instance on seeded data instead, with its own
-  throwaway password (`projects/2026-09-tk-demo/storyboard.md`, Captures).
-- A sign-in form can ignore input until the app hydrates. Wait for proof it's live (the submit button enabled, an
-  input that keeps what's typed), not `networkidle` or a fixed timeout.
+  throwaway password.
+- A sign-in form ignores submits until the app hydrates, even though its fields keep what's typed. Call
+  `waitForHydration(page, submitSelector)` before filling it, not `networkidle` or a fixed timeout.
 
 ## Takes
 

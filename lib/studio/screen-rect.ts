@@ -49,19 +49,23 @@ const sameRect = (a: Rect | null, b: Rect | null) =>
  * ancestor transform applied: the rect a Highlight, Spotlight or cursor takes. Null while the element isn't in the
  * DOM. Draw what uses it in the scene's own coordinates, outside any transformed wrapper.
  *
+ * With `selector`, it's the first element matching it inside `target`: for one a component renders itself, which
+ * hands out no ref, e.g. `useScreenRect(laneRef, '[aria-label="Retry webhooks"]')`.
+ *
  * Measured after every commit; state set in a layout effect re-renders before paint, so the rect always belongs to
  * the frame on screen however frames are visited. Before layout is final (see whenLaidOut) the frame is held and
  * re-measured. Layout that shifts later without a re-render (an unsized image loading) isn't seen.
  */
-export function useScreenRect(target: RefObject<Element | null>): Rect | null {
+export function useScreenRect(target: RefObject<Element | null>, selector?: string): Rect | null {
   // Re-render, and so re-measure, on every frame, even if nothing the caller passes down changes.
   useCurrentFrame();
   const [rect, setRect] = useState<Rect | null>(null);
   const { delayRender, continueRender } = useDelayRender();
   const measure = useCallback(() => {
-    const next = target.current ? compositionRectOf(target.current) : null;
+    const el = selector ? target.current?.querySelector(selector) : target.current;
+    const next = el ? compositionRectOf(el) : null;
     setRect((prev) => (sameRect(prev, next) ? prev : next));
-  }, [target]);
+  }, [target, selector]);
 
   useLayoutEffect(() => {
     measure();

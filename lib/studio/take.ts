@@ -10,6 +10,7 @@
 // speed before the first and after the last. Two pins on one mark hold its frame.
 
 import { assertKeysInOrder, type Rect, type Shot } from './camera.ts';
+import { noteTakeFitStrain } from './take-fit-strain.ts';
 
 export type TakeFrame = { src: string; t: number; scrollY: number };
 /** [t, x, y, click]: a cursor waypoint in viewport pixels; `click` is 1 where it clicked. */
@@ -49,15 +50,24 @@ export const onTake = (take: Take, time: number, rect: Rect): Rect => ({ ...rect
 
 export type TakeFit = { take: Take; pins: readonly (readonly [scene: number, take: number])[] };
 
+// Past these the footage stops reading as someone using the site: sped-up hurry, or slow-motion drift.
+const STRAINED_FAST = 1.6, STRAINED_SLOW = 0.6;
+
 /**
  * Pins take moments to scene times: `[[s.line('a').word('spec').start, 'pick'], [b.start, 'shown']]`. A moment is a
- * mark's name or take seconds.
+ * mark's name or take seconds. Between pins faster than 1.6× or slower than 0.6×, `studio check` warns.
  */
 export function fitTake<T extends Take>(take: T, pins: readonly (readonly [number, (keyof T['marks'] & string) | number])[]): TakeFit {
   const resolved = pins.map(([scene, at]) => [scene, typeof at === 'number' ? at : take.marks[at].t] as const);
   assertKeysInOrder('fitTake', resolved);
   for (let i = 1; i < resolved.length; i++) {
     if (resolved[i][1] < resolved[i - 1][1]) throw new Error(`fitTake pin ${i} goes back in the take, to ${resolved[i][1].toFixed(2)}s`);
+    const speed = (resolved[i][1] - resolved[i - 1][1]) / (resolved[i][0] - resolved[i - 1][0]);
+    // A speed of 0 is a hold: two pins on one moment, on purpose.
+    if (speed > 0 && (speed > STRAINED_FAST || speed < STRAINED_SLOW)) {
+      const name = (at: string | number) => (typeof at === 'number' ? `${at.toFixed(2)}s` : at);
+      noteTakeFitStrain({ from: name(pins[i - 1][1]), to: name(pins[i][1]), speed: Math.round(speed * 100) / 100 });
+    }
   }
   return { take, pins: resolved };
 }

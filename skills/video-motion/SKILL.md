@@ -80,11 +80,13 @@ root>` in `video.tsx`, lay them out yourself and animate with plain Remotion (`s
   library's CSS.
 - The app's font `<link>` (Google Fonts) isn't in the bundle, so text silently falls back. Put the font files in
   the project, import them (an import is the file's URL) and load them with `@remotion/fonts` `loadFont`.
-- A component that needs the app's live data or router can't render here. Compose the pure piece inside it (tk's
-  `TicketCardCore` inside `TicketCard`). Server-only files its imports reach go in `host.json` `browserStubs`.
+- Try the real, exported component first, even a container; feed it fixture data. Server-only files its imports
+  reach go in `host.json` `browserStubs`. Fall back to a pure piece inside it only if it won't render.
 - tsc types `@host/…` as `any`, so wrong props only show on screen: `studio look` is the check.
-- To ring a composed element, give it a `ref` and pass `useScreenRect(ref)` to `Highlight`, drawn outside any
-  scaled wrapper.
+- To ring a composed element, pass `useScreenRect(ref)` to `Highlight`, drawn outside any scaled wrapper. For an
+  element a component renders itself, ref the container and add a selector: `useScreenRect(ref, '[aria-label="…"]')`.
+- Pin "now" with `defineVideo({ clock })` and `captureShots({ clock })`, so relative dates ("5 minutes ago") match
+  across captures and composed scenes and never drift between renders.
 
 ## Acting on feel notes
 

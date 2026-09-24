@@ -5,7 +5,7 @@ import { openStudioRenderSession, studioProjectArg } from '../project-arg.ts';
 export default defineCommand({
   meta: {
     name: 'check',
-    description: "The framing check: highlights and clicks under tags or the caption, off the frame or cut off by their panel, and each scene's `expect`. Prints each problem as a stretch of time, a table of when each scene and line starts and ends (for aiming `studio look`), then out/check/timeline.json, the same as JSON. Fails if there are problems.",
+    description: "The framing check: highlights and clicks under tags or the caption, off the frame or cut off by their panel, and each scene's `expect`; warns, without failing, where a fitTake plays its take faster than 1.6× or slower than 0.6×. Prints each problem as a stretch of time, a table of when each scene and line starts and ends (for aiming `studio look`), then out/check/timeline.json, the same as JSON. Fails if there are problems.",
   },
   args: {
     project: studioProjectArg,

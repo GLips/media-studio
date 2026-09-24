@@ -7,7 +7,25 @@ import { FPS, H, W } from './frame.ts';
 import { layoutVideo, totalFrames } from './timeline.ts';
 import { Video, type VideoProps } from './Video.tsx';
 
-const ProjectVideo = (props: VideoProps) => <Video video={video} {...props} />;
+/**
+ * Stops `Date` at `clock` for the whole tab. Timers, animation frames and performance.now keep real time, and
+ * Remotion's timeouts are timers. The cost: Remotion's few Date.now readings (verbose delayRender timings, media cache
+ * ages) stop too. Stopped, not ticking with the frame: that would need a global frame counter. Modules reading the
+ * clock as they load, before this runs, see real time.
+ */
+function pinBrowserDate(clock: string) {
+  const RealDate = Date, pinned = new RealDate(clock).getTime();
+  if (Number.isNaN(pinned)) throw new Error(`defineVideo: clock "${clock}" isn't a date`);
+  globalThis.Date = new Proxy(RealDate, {
+    construct: (target, args, newTarget) => Reflect.construct(target, args.length ? args : [pinned], newTarget),
+    // Date() called without `new` is now as a string.
+    apply: () => new RealDate(pinned).toString(),
+    get: (target, key) => (key === 'now' ? () => pinned : Reflect.get(target, key)),
+  });
+}
+if (video.clock !== undefined) pinBrowserDate(video.clock);
+
+const ProjectVideo =(props: VideoProps) => <Video video={video} {...props} />;
 
 export type ReplayProps = VideoProps & { order: number[] };
 

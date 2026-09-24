@@ -9,6 +9,7 @@ import { Artifact, useCurrentFrame, useDelayRender } from 'remotion';
 import { framingArtifactName, type FramingMark, type FramingReport } from '../framing-check.ts';
 import { W } from './frame.ts';
 import { whenLaidOut } from './screen-rect.ts';
+import { drainTakeFitStrains } from './take-fit-strain.ts';
 
 function measureFraming(root: HTMLElement, frame: number): FramingReport {
   const box = root.getBoundingClientRect();
@@ -38,7 +39,8 @@ function measureFraming(root: HTMLElement, frame: number): FramingReport {
       ...(layer && { scene: layer.dataset.scene, sceneT: Number(layer.dataset.sceneT) }),
     };
   });
-  return { frame, marks };
+  const scenes = [...root.querySelectorAll<HTMLElement>('[data-scene]')].map((layer) => layer.dataset.scene!);
+  return { frame, marks, takeFitStrains: drainTakeFitStrains().map((strain) => ({ ...strain, scenes })) };
 }
 
 export function FramingProbe({ root }: { root: RefObject<HTMLDivElement | null> }) {

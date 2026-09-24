@@ -6,7 +6,10 @@
 // highlight must be showing, clear, for a span of the voice: "show what you say".
 //
 // Bounding boxes, not pixels: an overlap is a problem even if the pixels happen to miss.
+//
+// Take fits are warnings, not problems: a take played too fast or slow between its pins still shows what's said.
 import { H, W } from './studio/frame.ts';
+import type { TakeFitStrain } from './studio/take-fit-strain.ts';
 
 type Rect = { x: number; y: number; w: number; h: number };
 
@@ -23,7 +26,9 @@ export type FramingMark = {
   scene?: string;
   sceneT?: number;
 };
-export type FramingReport = { frame: number; marks: FramingMark[] };
+/** A strained take fit (take-fit-strain.ts) some scene painted on the frame made, with the scenes it could be from. */
+export type FramingTakeFitStrain = TakeFitStrain & { scenes: string[] };
+export type FramingReport = { frame: number; marks: FramingMark[]; takeFitStrains: FramingTakeFitStrain[] };
 
 /** The artifact the probe emits for each frame. */
 export const framingArtifactName = (frame: number) => `framing-${frame}.json`;
@@ -100,4 +105,26 @@ export function framesToMeasure(durationInFrames: number, every: number, expecta
     for (let f = first; f <= Math.min(last, durationInFrames - 1); f++) frames.add(f);
   }
   return [...frames].sort((a, b) => a - b);
+}
+
+export type TakeFitWarning = { scene: string; warning: string };
+
+/**
+ * Each strained take fit once, by scene. A fit is seen on the frames its scene paints; one seen only in a crossfade
+ * names both scenes.
+ */
+export function takeFitWarnings(reports: readonly FramingReport[]): TakeFitWarning[] {
+  const seen = new Map<string, { strain: TakeFitStrain; solo: Set<string>; shared: Set<string> }>();
+  for (const s of reports.flatMap((r) => r.takeFitStrains)) {
+    const key = `${s.from}\n${s.to}\n${s.speed}`;
+    const entry = seen.get(key) ?? { strain: s, solo: new Set<string>(), shared: new Set<string>() };
+    seen.set(key, entry);
+    if (s.scenes.length === 1) entry.solo.add(s.scenes[0]);
+    else entry.shared.add(s.scenes.join(' / '));
+  }
+  return [...seen.values()].flatMap(({ strain: { from, to, speed }, solo, shared }) => {
+    const pace = speed > 1 ? `${speed}× its speed, so it looks sped up` : `${speed}× its speed, so it drifts in slow motion`;
+    const warning = `fitTake plays the take between ${from} and ${to} at ${pace}: pin them to words ${speed > 1 ? 'further apart' : 'closer together'}, or film it at the pace the voice needs`;
+    return [...(solo.size ? solo : shared)].map((scene) => ({ scene, warning }));
+  });
 }

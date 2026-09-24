@@ -8,7 +8,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { framesToMeasure, framingArtifactName, framingProblems, type FramingReport } from './framing-check.ts';
+import { framesToMeasure, framingArtifactName, framingProblems, takeFitWarnings, type FramingReport } from './framing-check.ts';
 import { measureLoudness } from './loudness.ts';
 import { artifactSink, RENDER_CHROMIUM, RENDER_CONCURRENCY, type RenderSession } from './render-session.ts';
 import { H, W } from './studio/frame.ts';
@@ -25,7 +25,7 @@ export type FramingCheck = { ok: boolean; timeline: TimelineReport; report: stri
 
 /**
  * Measures every `every`th frame, plus every frame a scene's `expect` covers, and reports each problem as a stretch
- * of time (see lib/framing-check.ts).
+ * of time (see lib/framing-check.ts), then warns of strained take fits, which don't fail it.
  */
 export async function checkProjectFraming(session: RenderSession, every: number): Promise<FramingCheck> {
   const { serveUrl, props, compositionFor } = session;
@@ -48,7 +48,10 @@ export async function checkProjectFraming(session: RenderSession, every: number)
 
   const reports = frames.map((f) => sink.json<FramingReport>(framingArtifactName(f)));
   const problems = framingProblems(reports, timeline.expectations, fps, every);
-  const report = problems.map((p) => `  ✗ ${p.from.toFixed(2)}–${p.to.toFixed(2)}s  ${p.scene ? `[${p.scene}] ` : ''}${p.problem}`);
+  const report = [
+    ...problems.map((p) => `  ✗ ${p.from.toFixed(2)}–${p.to.toFixed(2)}s  ${p.scene ? `[${p.scene}] ` : ''}${p.problem}`),
+    ...takeFitWarnings(reports).map((w) => `  ! [${w.scene}] ${w.warning}`),
+  ];
   const sampled = every === 1 ? 'every frame' : `one frame in ${every}${timeline.expectations.length ? ', plus the frames expectations cover' : ''}`;
   const expected = timeline.expectations.length ? `, ${timeline.expectations.length} expectation${timeline.expectations.length > 1 ? 's' : ''}` : '';
   const measured = `${frames.length} of ${composition.durationInFrames} frames: ${sampled}${expected}`;
@@ -168,7 +171,7 @@ async function renderVideo(session: RenderSession, captions: boolean) {
 }
 
 const srtFrom = (timeline: TimelineReport) =>
-  serializeSrt({ lines: timeline.cues.map((q) => [{ text: q.text, startMs: q.start * 1000, endMs: q.end * 1000, timestampMs: null, confidence: 1 }]) });
+  serializeSrt({ lines: timeline.cues.map((q) => [{ text: q.text, startMs: q.start * 1000, endMs: q.captionEnd * 1000, timestampMs: null, confidence: 1 }]) });
 
 // Checks the delivered file, not the frames: right length, has sound at delivery loudness without clipping, and a
 // tiled sheet of it to look at.

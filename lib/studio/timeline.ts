@@ -114,6 +114,11 @@ export type VideoDef = {
   xfade?: number;
   /** A music bed under the whole video, ducked under the voice. See `studio music`. */
   music?: MusicBed;
+  /**
+   * Pins what `Date` says while the video renders, e.g. '2026-09-08T12:00:00' (local time unless it names a zone), so
+   * host components that label "5 minutes ago" agree with captures made with the same `captureShots({ clock })`.
+   */
+  clock?: string;
 };
 
 export const defineVideo = (video: VideoDef): VideoDef => video;
@@ -126,7 +131,16 @@ export type LaidScene = SceneDef & {
   xfade: number;
   spans: Readonly<Record<string, { start: number; end: number; words: readonly SpokenWord[] }>>;
 };
-export type VoiceCue = { id: string; src: string | null; start: number; end: number; text: string; lufs: number | null };
+export type VoiceCue = {
+  id: string;
+  src: string | null;
+  start: number;
+  end: number;
+  /** Where its caption ends: at the next line's start if that's in the same scene, else `end`. */
+  captionEnd: number;
+  text: string;
+  lufs: number | null;
+};
 export type Timeline = { duration: number; scenes: LaidScene[]; cues: VoiceCue[] };
 
 export function layoutVideo(video: VideoDef): Timeline {
@@ -159,7 +173,11 @@ export function layoutVideo(video: VideoDef): Timeline {
       const readAfterPrevious = j > 0 && scriptOrder[scriptOrder.indexOf(id) - 1] === scene.lines[j - 1];
       if (j > 0) cursor += gaps[id] ?? (readAfterPrevious ? voiced.pauseBefore : null) ?? 0.35;
       spans[id] = { start: cursor, end: cursor + voiced.duration, words: voiced.words };
-      cues.push({ id, src: voiced.src, start: start + cursor, end: start + cursor + voiced.duration, text: voiced.text, lufs: voiced.lufs });
+      // Within a scene a caption holds through the pause until the next line starts, so a line split for pacing
+      // ("…filter, / search, / and…") doesn't flash a one-word caption on and off.
+      if (j > 0) cues[cues.length - 1].captionEnd = start + cursor;
+      const end = start + cursor + voiced.duration;
+      cues.push({ id, src: voiced.src, start: start + cursor, end, captionEnd: end, text: voiced.text, lufs: voiced.lufs });
       cursor += voiced.duration;
     });
     const dur = Math.max(cursor + tail, min);

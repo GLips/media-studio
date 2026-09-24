@@ -88,8 +88,6 @@ type Entry = StillEntry | TakeEntry;
 // Stills load and settle in parallel; takes run alone, since they're filmed in real time and a busy machine drops
 // their frames.
 const STILL_CONCURRENCY = 4;
-// Marks closer than this are closer than two spoken words usually are.
-const CLOSE_MARKS = 0.8;
 
 /**
  * @param project The project directory; shots land in `<project>/captures`.
@@ -99,18 +97,22 @@ const CLOSE_MARKS = 0.8;
  * @param prepare Runs once per device before any shot, for what a visit keeps (a preview cookie). Each shot starts
  *   from its cookies and storage in a context of its own, so what one shot does (adding to a cart) never shows in another.
  * @param devices Other devices shots can ask for by name, e.g. a phone next to the desktop.
+ * @param clock Pins what `Date` says in every page (`prepare`'s too), e.g. '2026-09-08T12:00:00' (local time unless
+ *   it names a zone), so "5 minutes ago" reads the same on every capture. Timers and animations still run.
  */
-export function captureShots({ project, viewport, scale = 2, css = '', prepare, devices = {} }: {
+export function captureShots({ project, viewport, scale = 2, css = '', prepare, devices = {}, clock }: {
   project: string;
   viewport: Size;
   scale?: number;
   css?: string;
   prepare?: (page: Page) => Promise<unknown>;
   devices?: Record<string, { viewport: Size; scale?: number; mobile?: boolean }>;
+  clock?: string;
 }) {
+  if (clock !== undefined && Number.isNaN(new Date(clock).getTime())) throw new Error(`capture: clock "${clock}" isn't a date`);
   const dir = join(project, 'captures');
   const shots: Shot[] = [];
-  const baseCss = `::-webkit-scrollbar { display: none !important; } html { scrollbar-width: none !important; } ${css}`;
+  const pages: PageSetup = { css: `::-webkit-scrollbar { display: none !important; } html { scrollbar-width: none !important; } ${css}`, clock };
   const deviceFor = (name?: string): Device => {
     if (!name) return { viewport, scale, mobile: false };
     const d = devices[name];
@@ -138,11 +140,11 @@ export function captureShots({ project, viewport, scale = 2, css = '', prepare, 
     const prepared = new Map<string, Promise<PreparedDevice>>();
     const preparedStateFor = async (device?: string) => {
       const key = device ?? '';
-      if (!prepared.has(key)) prepared.set(key, prepareDevice(browser, deviceFor(device), baseCss, prepare));
+      if (!prepared.has(key)) prepared.set(key, prepareDevice(browser, deviceFor(device), pages, prepare));
       return (await prepared.get(key)!).storageState;
     };
     const onFreshPage = async (device: string | undefined, work: (page: Page) => Promise<Entry>, name: string) => {
-      const context = await openContext(browser, deviceFor(device), baseCss, await preparedStateFor(device));
+      const context = await openContext(browser, deviceFor(device), pages, await preparedStateFor(device));
       try {
         const page = await context.newPage();
         writeEntry(dir, name, await work(page));
@@ -181,9 +183,9 @@ export function captureShots({ project, viewport, scale = 2, css = '', prepare, 
   async function openPreparedPage(url: string, { device }: { device?: string } = {}) {
     const browser = await chromium.launch();
     try {
-      const { storageState, url: preparedUrl } = await prepareDevice(browser, deviceFor(device), baseCss, prepare);
+      const { storageState, url: preparedUrl } = await prepareDevice(browser, deviceFor(device), pages, prepare);
       if (url.startsWith('/') && !preparedUrl) throw new Error(`capture: ${url} is a path, and there's no prepare step to take the site from; give a whole URL`);
-      const page = await (await openContext(browser, deviceFor(device), baseCss, storageState)).newPage();
+      const page = await (await openContext(browser, deviceFor(device), pages, storageState)).newPage();
       await page.goto(url.startsWith('/') ? new URL(url, preparedUrl).href : url, { waitUntil: 'load' });
       return { page, browser };
     } catch (error) {
@@ -198,6 +200,23 @@ export function captureShots({ project, viewport, scale = 2, css = '', prepare, 
     run,
     openPreparedPage,
   };
+}
+
+/**
+ * Waits until React has hydrated the element `selector` matches. Before then a server-rendered form takes typed text
+ * but drops the submit, so a filled field proves nothing. React-specific: it tags each node it owns with a
+ * `__reactProps$…` key, which is what its event dispatch reads handlers from.
+ */
+export async function waitForHydration(page: Page, selector: string, { timeout = 15_000 }: { timeout?: number } = {}) {
+  try {
+    await page.waitForFunction((sel) => {
+      const el = document.querySelector(sel);
+      return !!el && Object.keys(el).some((key) => key.startsWith('__reactProps$'));
+    }, selector, { timeout });
+  } catch (error) {
+    if ((error as Error).name !== 'TimeoutError') throw error;
+    throw new Error(`capture: React didn't hydrate ${selector} on ${page.url()} within ${timeout / 1000}s (is it on the page, and is the site React?)`);
+  }
 }
 
 /** A shot capture.ts makes that captures/index.ts leaves out, and why. */
@@ -227,9 +246,9 @@ type StorageState = Awaited<ReturnType<BrowserContext['storageState']>>;
 
 type PreparedDevice = { storageState?: StorageState; url?: string };
 
-async function prepareDevice(browser: Browser, device: Device, css: string, prepare?: (page: Page) => Promise<unknown>): Promise<PreparedDevice> {
+async function prepareDevice(browser: Browser, device: Device, pages: PageSetup, prepare?: (page: Page) => Promise<unknown>): Promise<PreparedDevice> {
   if (!prepare) return {};
-  const context = await openContext(browser, device, css, undefined);
+  const context = await openContext(browser, device, pages, undefined);
   try {
     const page = await context.newPage();
     await prepare(page);
@@ -239,7 +258,10 @@ async function prepareDevice(browser: Browser, device: Device, css: string, prep
   }
 }
 
-async function openContext(browser: Browser, device: Device, css: string, storageState: StorageState | undefined) {
+/** What every page a session opens starts with: its css, and its clock. */
+type PageSetup = { css: string; clock?: string };
+
+async function openContext(browser: Browser, device: Device, { css, clock }: PageSetup, storageState: StorageState | undefined) {
   const context = await browser.newContext({
     storageState,
     viewport: device.viewport,
@@ -249,6 +271,8 @@ async function openContext(browser: Browser, device: Device, css: string, storag
     ...(device.mobile && { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' }),
   });
   await context.addInitScript(injectStyle, css);
+  // Fixed, not installed: Date stops, but timers, requestAnimationFrame and animations keep real time.
+  if (clock !== undefined) await context.clock.setFixedTime(clock);
   return context;
 }
 
@@ -444,15 +468,6 @@ async function filmTake(page: Page, dir: string, name: string, device: Device, {
   });
   const markList = Object.entries(marks).map(([label, m]) => `${label} ${m.t.toFixed(1)}s`).join(', ') || 'none';
   console.error(`filmed ${name}  (${frames.length} frames over ${duration.toFixed(1)}s — Chrome sends frames only on repaint; marks: ${markList})`);
-  // fitTake stretches the take between two pinned marks to span the words they're pinned to, so marks this close
-  // play in slow motion unless their words are as close.
-  const byTime = Object.entries(marks).sort(([, a], [, b]) => a.t - b.t);
-  for (const [i, [label, m]] of byTime.entries()) {
-    const [nextLabel, next] = byTime[i + 1] ?? [];
-    if (next && next.t - m.t < CLOSE_MARKS) {
-      console.error(`capture ${name}: marks ${label} and ${nextLabel} are ${(next.t - m.t).toFixed(2)}s apart, so pinning both to words would play that stretch in slow motion. Pin one, or rec.wait() between them`);
-    }
-  }
   return {
     kind: 'take', w: width, h: height, scale: device.scale, duration: round3(duration), frames,
     marks: Object.fromEntries(Object.entries(marks).map(([k, m]) => [k, { ...m, t: round3(m.t) }])),
