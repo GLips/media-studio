@@ -36,7 +36,8 @@ cutting to it.
 ## Generating one
 
 `gen` needs `OPENROUTER_API_KEY` (`op run --env-file="$(studio home)/.env.op" -- studio music gen …`). The result is
-cached in `generated/` by prompt and model, so the same prompt costs nothing and can never give a different track.
+cached in `generated/` by prompt and model (a clip and a `--full` track of one prompt are different tracks), so the
+same prompt costs nothing and always gives the same track, whatever `--name` it's under.
 There's no seed either, so you can't nudge a result you almost like. Change the prompt and try again instead.
 `music/index.ts` records each generated track's `model` and `prompt`. Lyria is in preview, so a change in its output
 can be traced to the model id.
@@ -53,7 +54,7 @@ Write the prompt for the role. Give it the mood, tempo, instruments and structur
 
 Lyria doesn't always keep to the asked tempo. Read the BPM `gen` prints (a 100 BPM bed has come back reading 133).
 
-**Try two or three, then choose.** Each costs cents. Add them under different names
+**Try two or three, then choose.** Each costs cents. Give each a different prompt and its own name
 (`--name=bed-a`, `--name=bed-b`), fit each, and judge each in context: a bed under the actual voice in
 `studio preview`, a lead against the cut. Point the video at the one you keep. Its generation stays cached.
 
@@ -74,7 +75,8 @@ studio music fit <p> --name=lead --as=lead-60 --seconds=60   # any length, to au
 It keeps the intro, drops or repeats whole bars by jumping between downbeats whose bars sound alike, and keeps the
 outro (`lib/music-fit.ts`). Less than a bar left over comes off the head, or goes before it as silence. The original
 stays, so point the video at the fit (`music: { track: music['bed-fit'] }`, no `sourceStartSeconds`) and rerun `fit`
-after any retime. A fitted track that no longer matches the video's length fades out like any other.
+after any retime. Adding or generating a track under a name drops the fits cut from its old audio, so fit again
+after that too. A fitted track that no longer matches the video's length fades out like any other.
 
 It prints:
 

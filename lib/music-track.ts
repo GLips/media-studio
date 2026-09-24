@@ -49,7 +49,12 @@ export function addProjectMusicTrack(project: string, source: string, name: stri
   const duration = Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path]).toString());
   const { lufs } = measureLoudness(path);
   const { bpm, beats } = detectMusicBeats(decodeAudio(path, 1, ANALYSIS_RATE)[0], ANALYSIS_RATE);
-  const index = writeMusicEntry(dir, name, { file, duration: Math.round(duration * 1000) / 1000, lufs, bpm, beats, ...(generated && { generated }) });
+  // A fit cut from the audio this replaces would keep playing it: drop it, so a video still using it fails to typecheck.
+  const manifest = readMusicManifest(dir);
+  const staleFits = Object.keys(manifest).filter((n) => manifest[n].fit?.source === name);
+  for (const n of staleFits) delete manifest[n];
+  if (staleFits.length) console.error(`dropped ${staleFits.map((n) => `music.${n}`).join(', ')}, fit from the old music.${name}; fit again`);
+  const index = writeMusicManifest(dir, { ...manifest, [name]: { file, duration: Math.round(duration * 1000) / 1000, lufs, bpm, beats, ...(generated && { generated }) } });
   console.error(`${name}: ${basename(source)}, ${duration.toFixed(1)}s, ${lufs} LUFS, ${bpm} BPM, first beats ${beats.slice(0, 4).join(', ')}s`);
   return index;
 }
@@ -85,7 +90,7 @@ export function fitProjectMusicTrack(project: string, { name, as, seconds }: { n
     file, duration: Math.round(seconds * 1000) / 1000, lufs: measureLoudness(path).lufs, bpm: source.bpm, beats: plan.beats,
     fit: { source: name, spans: plan.spans, seams: plan.seams, downbeats: plan.downbeats },
   };
-  return { file: path, index: writeMusicEntry(dir, as, track), track, worstSeamDb: plan.worstSeamDb };
+  return { file: path, index: writeMusicManifest(dir, { ...readMusicManifest(dir), [as]: track }), track, worstSeamDb: plan.worstSeamDb };
 }
 
 function readMusicManifest(dir: string): Record<string, Entry> {
@@ -93,8 +98,7 @@ function readMusicManifest(dir: string): Record<string, Entry> {
   return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};
 }
 
-function writeMusicEntry(dir: string, name: string, entry: Entry): string {
-  const manifest = { ...readMusicManifest(dir), [name]: entry };
+function writeMusicManifest(dir: string, manifest: Record<string, Entry>): string {
   writeFileSync(join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2));
   const index = join(dir, 'index.ts');
   writeFileSync(index, musicModule(manifest));
