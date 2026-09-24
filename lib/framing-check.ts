@@ -116,15 +116,16 @@ export type TakeFitWarning = { scene: string; warning: string };
 export function takeFitWarnings(reports: readonly FramingReport[]): TakeFitWarning[] {
   const seen = new Map<string, { strain: TakeFitStrain; solo: Set<string>; shared: Set<string> }>();
   for (const s of reports.flatMap((r) => r.takeFitStrains)) {
-    const key = `${s.from}\n${s.to}\n${s.speed}`;
+    const key = `${s.source}\n${s.from}\n${s.to}\n${s.speed}`;
     const entry = seen.get(key) ?? { strain: s, solo: new Set<string>(), shared: new Set<string>() };
     seen.set(key, entry);
     if (s.scenes.length === 1) entry.solo.add(s.scenes[0]);
     else entry.shared.add(s.scenes.join(' / '));
   }
-  return [...seen.values()].flatMap(({ strain: { from, to, speed }, solo, shared }) => {
+  return [...seen.values()].flatMap(({ strain: { source, from, to, speed }, solo, shared }) => {
     const pace = speed > 1 ? `${speed}× its speed, so it looks sped up` : `${speed}× its speed, so it drifts in slow motion`;
-    const warning = `fitTake plays the take between ${from} and ${to} at ${pace}: pin them to words ${speed > 1 ? 'further apart' : 'closer together'}, or film it at the pace the voice needs`;
+    const redo = source === 'take' ? 'film it at the pace the voice needs' : 'block the move at the pace the voice needs and render it again';
+    const warning = `${source === 'take' ? 'fitTake' : 'previs.retime'} plays the ${source} between ${from} and ${to} at ${pace}: pin them to words ${speed > 1 ? 'further apart' : 'closer together'}, or ${redo}`;
     return [...(solo.size ? solo : shared)].map((scene) => ({ scene, warning }));
   });
 }

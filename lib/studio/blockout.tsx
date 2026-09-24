@@ -4,6 +4,8 @@
 //
 // Plain three.js drawn straight onto a canvas, once per frame, from props alone: no scene graph survives between
 // frames, so any frame renders the same whether or not the one before it did, which is what Remotion's tabs need.
+// Only the renderer outlives a frame. Materials are made afresh each frame on purpose: kept across frames, they change
+// the output's bytes with the frames a tab happened to render before, and a blockout's bytes are its cache key.
 
 import { useLayoutEffect, useRef } from 'react';
 import * as THREE from 'three';
@@ -124,7 +126,12 @@ export function Blockout({ pose, subjects, ground = '#e4e5e8', sky = '#f4f5f7' }
     for (const m of materials.values()) m.dispose();
     sun.shadow.dispose();
   });
-  useLayoutEffect(() => () => renderer.current?.dispose(), []);
+  // Scrubbing the Studio mounts a blockout per scene, and Chrome drops contexts past about 16 live ones.
+  useLayoutEffect(() => () => {
+    renderer.current?.forceContextLoss();
+    renderer.current?.dispose();
+    renderer.current = null;
+  }, []);
 
   return <canvas ref={canvas} width={W} height={H} style={{ position: 'absolute', left: 0, top: 0, width: W, height: H }} />;
 }

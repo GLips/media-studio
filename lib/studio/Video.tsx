@@ -7,10 +7,11 @@
 import { Audio } from '@remotion/media';
 import { useMemo, useRef } from 'react';
 import { AbsoluteFill, Artifact, Sequence, useCurrentFrame, useVideoConfig } from 'remotion';
-import { footage } from '@footage';
+import { footage as footageList } from '@footage';
 import { Caption } from './captions.tsx';
 import { duckSpans, levelGain, musicGainAt, musicLevels, VOICE_LUFS } from './mix.ts';
-import { previsSpan, PrevisFootagePlayer, type PrevisFootage } from './previs.tsx';
+import { previsRequestFor, previsSpan, type PrevisFootage, type PrevisRequest } from './previs.ts';
+import { PrevisFootagePlayer } from './previs.tsx';
 import { FramingProbe } from './probe.tsx';
 import { SceneContext } from './scene.tsx';
 import { layoutVideo, sceneClock, sceneTimes, scenesAt, visibleSpan, type LaidScene, type Timeline, type VideoDef } from './timeline.ts';
@@ -38,8 +39,6 @@ export type TimelineReport = {
 };
 export const TIMELINE_ARTIFACT = 'timeline.json';
 
-/** What `studio gen video` asks for a previs scene: its ScenePrevis as data, and its blockout's span (previsSpan). */
-export type PrevisRequest = { prompt: string; references: readonly string[]; audio: boolean; from: number; duration: number };
 
 function timelineReport(video: VideoDef, tl: Timeline, fps: number, durationInFrames: number): string {
   const report: TimelineReport = {
@@ -47,9 +46,8 @@ function timelineReport(video: VideoDef, tl: Timeline, fps: number, durationInFr
     fps,
     duration: tl.duration,
     durationInFrames,
-    scenes: tl.scenes.map(({ id, start, dur, note, lines, previs }) => ({
-      id, start, dur, note, lines,
-      previs: previs && { prompt: previs.prompt, references: previs.references ?? [], audio: previs.audio ?? false, ...previsSpan(tl, id) },
+    scenes: tl.scenes.map((scene) => ({
+      id: scene.id, start: scene.start, dur: scene.dur, note: scene.note, lines: scene.lines, previs: previsRequestFor(tl, scene),
     })),
     cues: tl.cues.map(({ id, start, end, captionEnd, text, src }) => ({ id, start, end, captionEnd, text, voiced: src !== null })),
     expectations: tl.scenes.flatMap((scene) => (scene.expect?.(sceneTimes(scene)) ?? []).map(({ see, during }) => ({
@@ -77,7 +75,7 @@ export function Video({ video, captions, probe, blockouts, reportTimeline = true
         const paint = painted.find((p) => p.scene === scene);
         return (
           <Sequence key={scene.id} name={scene.id} from={from} durationInFrames={Math.max(1, Math.ceil(span.end * fps) - from)} layout="none">
-            {paint && <SceneLayer scene={scene} t={t} alpha={paint.alpha} clip={blockouts ? undefined : footageFor(scene)} />}
+            {paint && <SceneLayer scene={scene} t={t} alpha={paint.alpha} footage={blockouts ? undefined : footageFor(scene)} />}
           </Sequence>
         );
       })}
@@ -117,14 +115,14 @@ function MusicBedAudio({ video, tl, fps }: { video: VideoDef; tl: Timeline; fps:
 }
 
 // Footage listed for a scene that no longer asks for previs is left unplayed, and kept, since it was paid for.
-const footageFor = (scene: LaidScene): PrevisFootage | undefined => (scene.previs ? footage[scene.id] : undefined);
+const footageFor = (scene: LaidScene): PrevisFootage | undefined => (scene.previs ? footageList[scene.id] : undefined);
 
-function SceneLayer({ scene, t, alpha, clip }: { scene: LaidScene; t: number; alpha: number; clip?: PrevisFootage }) {
+function SceneLayer({ scene, t, alpha, footage }: { scene: LaidScene; t: number; alpha: number; footage?: PrevisFootage }) {
   const clock = sceneClock(scene, t);
   return (
     <AbsoluteFill data-scene={scene.id} data-scene-t={clock.t} style={{ background: '#fff', opacity: alpha }}>
       <SceneContext.Provider value={clock}>
-        {clip ? <PrevisFootagePlayer clip={clip} previs={scene.previs!} clock={clock} /> : <SceneBody scene={scene} clock={clock} />}
+        {footage ? <PrevisFootagePlayer scene={scene} footage={footage} clock={clock} /> : <SceneBody scene={scene} clock={clock} />}
       </SceneContext.Provider>
     </AbsoluteFill>
   );

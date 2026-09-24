@@ -25,7 +25,7 @@ test('an expected highlight must be drawn and clear for its whole span; any high
 });
 
 test('a strained take fit is warned of once, by the scene painting it alone', () => {
-  const strain = { from: 'pick', to: 'shown', speed: 1.9 };
+  const strain = { source: 'take' as const, from: 'pick', to: 'shown', speed: 1.9 };
   const reports = [
     { frame: 0, marks: [], takeFitStrains: [{ ...strain, scenes: ['intro', 'photos'] }] }, // crossfading in
     { frame: 5, marks: [], takeFitStrains: [{ ...strain, scenes: ['photos'] }] },

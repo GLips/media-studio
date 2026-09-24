@@ -12,7 +12,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
-import { s3UploadConfigFromEnv, uploadForProvider } from './s3-upload.ts';
+import { uploadS3Reference } from './s3-upload.ts';
 import {
   awaitOpenRouterVideoJob, downloadOpenRouterVideo, generateOpenRouterAudio, generateOpenRouterImage, submitOpenRouterVideo,
   type OpenRouterMedia,
@@ -133,7 +133,7 @@ async function requestBody(request: PaidGenerationRequest, params: Record<string
   const part = async (ref: { path: string; bytes: Buffer; sha256: string }) => {
     const { type, mime } = referenceMedia(ref.path);
     const url = type === 'video_url'
-      ? await uploadForProvider(s3UploadConfigFromEnv(), ref.bytes, { sha256: ref.sha256, ext: extname(ref.path).slice(1).toLowerCase(), mime })
+      ? await uploadS3Reference(ref.bytes, { sha256: ref.sha256, ext: extname(ref.path).slice(1).toLowerCase(), mime })
       : `data:${mime};base64,${ref.bytes.toString('base64')}`;
     return { type, [type]: { url } };
   };

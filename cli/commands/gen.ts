@@ -6,18 +6,19 @@ import { openStudioRenderSession, studioProjectArg } from '../project-arg.ts';
 const video = defineCommand({
   meta: {
     name: 'video',
-    description: 'Render a previs scene (one with `previs` in its defineScene) into footage with Seedance 2.5: its blockout alone to generated/blockout-<scene>-<hash>.mp4, sent as the reference video with the scene\'s stills. The scene then plays the footage. Prints the blockout, then the footage. Needs OPENROUTER_API_KEY.',
+    description: 'Render a previs scene (one with `previs` in its defineScene) into footage with Seedance 2.5: its blockout alone to generated/blockout-<scene>-<hash>.mp4, sent as the reference video with the scene\'s stills. The scene then plays the footage, until this is run again. About $0.28 per second of footage. Prints the blockout, then the footage. Needs OPENROUTER_API_KEY and the STUDIO_UPLOAD_S3_* bucket settings.',
   },
   args: {
     project: studioProjectArg,
     scene: { type: 'positional', required: true, description: 'The scene\'s id' },
-    dry: { type: 'boolean', description: 'Render the blockout and print the prompt, without paying for footage' },
+    dry: { type: 'boolean', description: 'Render the blockout and print the prompt without paying, and say if the footage the scene plays is from an earlier blockout' },
   },
   async run({ args }) {
     const { renderPrevisFootage } = await import('../../lib/previs-render.ts');
     const session = await openStudioRenderSession(args.project);
-    const { blockout, footage, prompt } = await renderPrevisFootage(session, args.scene, { dry: Boolean(args.dry) });
+    const { blockout, footage, prompt, stale } = await renderPrevisFootage(session, args.scene, { dry: Boolean(args.dry) });
     if (args.dry) console.error(`prompt:\n${prompt}`);
+    if (stale) console.error(`scene ${args.scene} still plays footage of an earlier blockout: run this without --dry to render this one`);
     console.log(blockout);
     if (footage) console.log(footage);
   },

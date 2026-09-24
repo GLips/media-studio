@@ -24,9 +24,9 @@ A previs scene is an ordinary scene with `previs` in its `defineScene`, timed to
   with `seg(s.t, a, b)`. Move the camera and keep `fov` fixed. A 3D blockout gives the model real perspective and
   parallax to copy, which is why its moves don't come back as zooms. A change of `fov` does come back as a zoom.
 - **Block the set, not just the subjects.** Seedance follows the camera path, the easing and where each subject
-  stands closely, but it frames the subjects, not the blockout's empty grid: around bare subjects the shot comes back
-  tighter than blocked. Walls, a floor's edge or a backdrop (big boxes, tinted and named in the prompt) give the
-  framing something to hold to.
+  stands closely, but around bare subjects on the empty grid it frames them tighter than blocked. Walls, a window and
+  a counter (big boxes and cards, tinted and named in the prompt) hold the framing: `kitchen` in the test project
+  came back framed as blocked.
 - **Subjects can move too.** Compute them from `s.t`, like the pose.
 - **Time the move to the voice**, anchored to words like any scene (the `video-motion` skill). The footage covers the
   scene's whole time on screen, crossfades included, rounded up to whole seconds between 4 and 30. A longer scene
@@ -42,10 +42,10 @@ Done when `studio look` strips show the move landing on its words, and the user 
 - what each tint is ("the orange box is a brushed-steel espresso machine");
 - the place, the light, the lens and the look.
 
-`studio gen video` puts a preamble ahead of it that asks for a new video referencing `@Video1`, the blockout, for its
-camera, framing, timing and subjects, so don't restate the move. Describe subjects as what they are ("the orange box
-is…"), never as changing the blockout ("turn the box into…", "replace", "restyle"). Seedance reads the task type from
-the prompt, and a request that reads as an edit of `@Video1` fails, since OpenRouter can't send what an edit needs.
+`studio gen video` puts a preamble ahead of it that asks for a new video referencing `@Video1`, the blockout. Never
+word the prompt as changing the blockout ("turn the box into…", "replace", "restyle"): Seedance reads the task type
+from the prompt, and a request that reads as an edit of `@Video1` fails, since OpenRouter can't send what an edit
+needs.
 
 `previs.references` are stills of the real subjects (paths relative to the project), sent in order as `@Image1`,
 `@Image2`…, so name them in the prompt ("the machine is the one in @Image1").
@@ -64,13 +64,13 @@ the footage's. Never render without the user's explicit yes to the cost. The req
 prompt and stills: asking again for an unchanged scene costs nothing, and changing a subject, the move or the prompt
 pays again.
 
-From then on the scene plays its footage (`generated/footage.ts` lists it). Pass `blockouts: true` in the Studio's
-props panel to see the blockout again.
+From then on the scene plays its footage, even after its blockout changes, until `studio gen video` runs again.
+Pass `blockouts: true` in the Studio's props panel to see the blockout; `--dry` says when the footage is stale.
 
 ## 4. Fix timing in the edit
 
 **Timing never pays for a render.** When a re-voice moves the words, retime the footage with
 `previs.retime: (s) => [[sceneTime, blockoutTime], …]`: the moment the blockout showed at `blockoutTime` now plays
-at `sceneTime`. It works the way `fitTake` does for a take, and the same limits apply: past about 1.5× or under
-0.6×, motion reads as sped up or drifting. Only a change of content, such as a new subject, move or look, calls for
+at `sceneTime`. It works the way `fitTake` does for a take, and `studio check` warns the same way: past 1.6× or
+under 0.6×, motion reads as sped up or drifting. Only a change of content, such as a new subject, move or look, calls for
 a new render.

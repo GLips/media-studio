@@ -4,7 +4,7 @@
 import { Composition, Freeze, useCurrentFrame } from 'remotion';
 import video from '@project';
 import { FPS, H, W } from './frame.ts';
-import { previsSpan } from './previs.tsx';
+import { assertPrevisSpanFits, previsSpan } from './previs.ts';
 import { layoutVideo, totalFrames } from './timeline.ts';
 import { BlockoutSolo, Video, type BlockoutSoloProps, type VideoProps } from './Video.tsx';
 
@@ -67,16 +67,22 @@ export function Root() {
         calculateMetadata={({ props }) => ({ durationInFrames: Math.max(frames, props.order.length) })}
         defaultProps={{ captions: false, probe: false, blockouts: false, order: [0] } satisfies ReplayProps}
       />
-      <Composition
-        id={BLOCKOUT_SLUG}
-        component={ProjectBlockout}
-        width={W}
-        height={H}
-        fps={FPS}
-        durationInFrames={FPS * 4}
-        calculateMetadata={({ props }) => ({ durationInFrames: previsSpan(tl, props.scene).duration * FPS })}
-        defaultProps={{ scene: tl.scenes.find((s) => s.previs)?.id ?? tl.scenes[0].id } satisfies BlockoutSoloProps}
-      />
+      {tl.scenes.some((scene) => scene.previs) && (
+        <Composition
+          id={BLOCKOUT_SLUG}
+          component={ProjectBlockout}
+          width={W}
+          height={H}
+          fps={FPS}
+          durationInFrames={FPS * 4}
+          calculateMetadata={({ props }) => {
+            const span = previsSpan(tl, props.scene);
+            assertPrevisSpanFits(props.scene, span);
+            return { durationInFrames: span.duration * FPS };
+          }}
+          defaultProps={{ scene: tl.scenes.find((scene) => scene.previs)!.id } satisfies BlockoutSoloProps}
+        />
+      )}
     </>
   );
 }

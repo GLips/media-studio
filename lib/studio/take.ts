@@ -10,7 +10,7 @@
 // speed before the first and after the last. Two pins on one mark hold its frame.
 
 import { assertKeysInOrder, type Rect, type Shot } from './camera.ts';
-import { noteTakeFitStrain } from './take-fit-strain.ts';
+import { noteTakeFitStrain, type TakeFitStrain } from './take-fit-strain.ts';
 
 export type TakeFrame = { src: string; t: number; scrollY: number };
 /** [t, x, y, click]: a cursor waypoint in viewport pixels; `click` is 1 where it clicked. */
@@ -59,25 +59,35 @@ const STRAINED_FAST = 1.6, STRAINED_SLOW = 0.6;
  */
 export function fitTake<T extends Take>(take: T, pins: readonly (readonly [number, (keyof T['marks'] & string) | number])[]): TakeFit {
   const resolved = pins.map(([scene, at]) => [scene, typeof at === 'number' ? at : take.marks[at].t] as const);
-  assertKeysInOrder('fitTake', resolved);
-  for (let i = 1; i < resolved.length; i++) {
-    if (resolved[i][1] < resolved[i - 1][1]) throw new Error(`fitTake pin ${i} goes back in the take, to ${resolved[i][1].toFixed(2)}s`);
-    const speed = (resolved[i][1] - resolved[i - 1][1]) / (resolved[i][0] - resolved[i - 1][0]);
+  checkSourcePins('take', resolved, (i) => pins[i][1]);
+  return { take, pins: resolved };
+}
+
+/**
+ * Checks pins of a take (`fitTake`) or generated footage (`previs.retime`) to the scene, `[sceneTime, sourceTime]`:
+ * throws unless both rise, and notes stretches played too far from the source's own pace for `studio check`.
+ * `label(i)` names pin i's source moment in the warning (a mark's name), seconds if it gives none.
+ */
+export function checkSourcePins(source: TakeFitStrain['source'], pins: readonly (readonly [number, number])[], label: (i: number) => string | number = (i) => pins[i][1]) {
+  const what = source === 'take' ? 'fitTake' : 'previs.retime';
+  assertKeysInOrder(what, pins);
+  const name = (i: number) => { const at = label(i); return typeof at === 'number' ? `${at.toFixed(2)}s` : at; };
+  for (let i = 1; i < pins.length; i++) {
+    if (pins[i][1] < pins[i - 1][1]) throw new Error(`${what} pin ${i} goes back in the ${source}, to ${pins[i][1].toFixed(2)}s`);
+    const speed = (pins[i][1] - pins[i - 1][1]) / (pins[i][0] - pins[i - 1][0]);
     // A speed of 0 is a hold: two pins on one moment, on purpose.
     if (speed > 0 && (speed > STRAINED_FAST || speed < STRAINED_SLOW)) {
-      const name = (at: string | number) => (typeof at === 'number' ? `${at.toFixed(2)}s` : at);
-      noteTakeFitStrain({ from: name(pins[i - 1][1]), to: name(pins[i][1]), speed: Math.round(speed * 100) / 100 });
+      noteTakeFitStrain({ source, from: name(i - 1), to: name(i), speed: Math.round(speed * 100) / 100 });
     }
   }
-  return { take, pins: resolved };
 }
 
 /** Take time at scene time `t`. */
 export const takeTimeAt = ({ take, pins }: TakeFit, t: number): number => pinnedSourceTime(pins, t, take.duration);
 
 /**
- * Footage time at scene time `t`, for footage (a take, generated video) of `duration` seconds pinned to the scene at
- * `[scene, footage]` times: straight between pins, at the footage's own speed before the first and after the last.
+ * Source time at scene time `t`, for a source (a take, generated footage) of `duration` seconds pinned to the scene at
+ * `[scene, source]` times: straight between pins, at the source's own speed before the first and after the last.
  */
 export function pinnedSourceTime(pins: readonly (readonly [number, number])[], t: number, duration: number): number {
   const clampSource = (v: number) => Math.min(duration, Math.max(0, v));

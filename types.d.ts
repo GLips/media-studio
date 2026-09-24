@@ -40,9 +40,9 @@ declare module '*.mp4' {
   const src: string;
   export default src;
 }
-/** The project's generated/footage.ts, written by `studio gen video`, an empty list until then. */
+/** The project's generated/footage.ts, rewritten from footage.json on every bundle (lib/previs-footage.ts). */
 declare module '@footage' {
-  export const footage: Readonly<Record<string, import('./lib/studio/previs.tsx').PrevisFootage>>;
+  export const footage: Readonly<Record<string, import('./lib/studio/previs.ts').PrevisFootage>>;
 }
 /** The project folder's name, defined at bundle time by lib/project-bundle.ts. */
 declare const PROJECT_SLUG: string;

@@ -21,7 +21,7 @@ const LINK_SECONDS = 60 * 60;
 // Presigned uploads and checks are used at once.
 const REQUEST_SECONDS = 5 * 60;
 
-export function s3UploadConfigFromEnv(): S3UploadConfig {
+function s3UploadConfigFromEnv(): S3UploadConfig {
   const missing = Object.values(UPLOAD_ENV).filter((name) => !process.env[name]);
   if (missing.length) {
     throw new Error(`${missing.join(', ')} ${missing.length > 1 ? 'are' : 'is'} not set: a reference video is uploaded to our bucket for the provider to fetch. `
@@ -31,12 +31,18 @@ export function s3UploadConfigFromEnv(): S3UploadConfig {
   return { ...env, endpoint: env.endpoint.replace(/\/+$/, ''), region: process.env[UPLOAD_REGION_ENV] || 'auto' };
 }
 
-/** Uploads `bytes` as references/<sha256>.<ext> unless it's already there, and returns a link to it that expires. */
-export async function uploadForProvider(config: S3UploadConfig, bytes: Buffer, { sha256, ext, mime }: { sha256: string; ext: string; mime: string }): Promise<string> {
+/**
+ * Uploads `bytes` to the bucket the environment names, as references/<sha256>.<ext> unless it's already there, and
+ * returns a link to it that expires.
+ */
+export async function uploadS3Reference(bytes: Buffer, { sha256, ext, mime }: { sha256: string; ext: string; mime: string }): Promise<string> {
+  const config = s3UploadConfigFromEnv();
   const url = `${config.endpoint}/${config.bucket}/references/${sha256}.${ext}`;
   const now = new Date();
   const head = await fetch(presignS3Url(config, 'HEAD', url, now, REQUEST_SECONDS), { method: 'HEAD' });
-  if (head.status === 404) {
+  // S3 answers 403, not 404, for a missing object when the key can't list the bucket. Either way the upload goes
+  // ahead, and a key that can't write says so there.
+  if (head.status === 404 || head.status === 403) {
     const put = await fetch(presignS3Url(config, 'PUT', url, now, REQUEST_SECONDS), { method: 'PUT', body: new Uint8Array(bytes), headers: { 'Content-Type': mime } });
     if (!put.ok) throw new Error(`upload to ${config.bucket} ${put.status}: ${await put.text()}`);
     console.error(`uploaded references/${sha256}.${ext} (${(bytes.length / 1e6).toFixed(1)} MB)`);

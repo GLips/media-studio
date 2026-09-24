@@ -80,21 +80,30 @@ type SceneTiming = {
 
 /**
  * A scene rendered into generated footage by `studio gen video`: the scene's own render is the blockout (see
- * blockout.tsx) it sends as the reference video. Once footage exists the scene plays it instead, until content changes.
+ * blockout.tsx) it sends as the reference video. Once footage exists the scene plays it, until the next
+ * `studio gen video` replaces it; the Studio's `blockouts` prop shows the blockout again.
  */
-export type ScenePrevis = {
-  /** The finished shot: what each blockout subject becomes, by its tint, plus light, lens and look. */
+export type ScenePrevis<Id extends string = string> = {
+  /** The finished shot: what each blockout subject is, by its tint, plus light, lens and look. */
   prompt: string;
   /** Stills of the subjects, relative to the project, sent as reference images. */
   references?: readonly string[];
-  /** Generate sound with the picture. Off by default: the voice and music carry a video's sound. */
-  audio?: boolean;
-  /**
-   * Retimes the footage without paying for it again, as `fitTake` does a take: `[[sceneTime, blockoutTime], ...]`
-   * plays the moment the blockout showed at `blockoutTime` at `sceneTime`. Not with `audio`, which can't be retimed.
-   */
-  retime?(s: SceneTimes): readonly (readonly [scene: number, blockout: number])[];
-};
+} & (
+  | {
+    /** Generate sound with the picture. Off by default: the voice and music carry a video's sound. */
+    audio: true;
+    /** Footage with sound can't be retimed: the sound would stretch with it. */
+    retime?: never;
+  }
+  | {
+    audio?: false;
+    /**
+     * Retimes the footage without paying for it again, as `fitTake` does a take: `[[sceneTime, blockoutTime], ...]`
+     * plays the moment the blockout showed at `blockoutTime` at `sceneTime`.
+     */
+    retime?(s: SceneTimes<Id>): readonly (readonly [scene: number, blockout: number])[];
+  }
+);
 
 export type SceneDef = SceneTiming & {
   id: string;
@@ -117,7 +126,7 @@ export function defineScene<const L extends readonly string[] = readonly []>(
   scene: SceneTiming & {
     id: string;
     note?: string;
-    previs?: ScenePrevis;
+    previs?: ScenePrevis<L[number]>;
     lines?: L;
     render: (s: SceneClock<L[number]>) => ReactNode;
     expect?: (s: SceneTimes<L[number]>) => readonly SceneExpectation[];
