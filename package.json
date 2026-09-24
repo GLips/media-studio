@@ -3,13 +3,30 @@
   "version": "1.0.0",
   "description": "Walkthrough and explainer videos: capture, voice, compose, render.",
   "scripts": {
-    "new": "node scripts/new-project.mjs",
-    "tts": "op run --account branchlabs.1password.com --env-file=.env.op -- node scripts/tts.mjs",
-    "video": "node lib/render.mjs --video"
+    "new": "node scripts/new-project.ts",
+    "tts": "op run --account branchlabs.1password.com --env-file=.env.op -- node scripts/tts.ts",
+    "studio": "node scripts/studio.ts",
+    "video": "node scripts/render.ts --video",
+    "typecheck": "tsc -p .",
+    "test": "node --test 'lib/**/*.test.ts'"
   },
   "type": "module",
   "devDependencies": {
-    "playwright": "^1.63.0"
+    "@types/node": "26.6.1",
+    "@types/react": "19.3.0",
+    "playwright": "^1.63.0",
+    "typescript": "7.0.2"
   },
-  "private": true
+  "private": true,
+  "dependencies": {
+    "@remotion/bundler": "4.0.525",
+    "@remotion/captions": "4.0.525",
+    "@remotion/cli": "4.0.525",
+    "@remotion/install-whisper-cpp": "4.0.525",
+    "@remotion/media": "4.0.525",
+    "@remotion/renderer": "4.0.525",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "remotion": "4.0.525"
+  }
 }

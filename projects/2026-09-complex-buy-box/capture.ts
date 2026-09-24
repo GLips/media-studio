@@ -1,6 +1,6 @@
 // Photographs every state the Complex buy box video shows.
-//   node projects/2026-09-complex-buy-box/capture.mjs
-import { openCaptureSession } from '../../lib/capture.mjs';
+//   node projects/2026-09-complex-buy-box/capture.ts
+import { openCaptureSession } from '../../lib/capture.ts';
 
 const session = await openCaptureSession({ project: import.meta.dirname, viewport: { width: 1440, height: 810 } });
 const { page, snap } = session;

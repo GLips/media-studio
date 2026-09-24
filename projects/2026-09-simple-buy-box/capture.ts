@@ -1,11 +1,11 @@
 // Photographs every state the simple-buy-box walkthrough shows, from the "Flourish Commerce - Dev Theme", which carries
 // the build both buy-box arms launch from (the "[FLO] PDP buy box rebuild" theme holds an older simple arm).
-//   node projects/2026-09-simple-buy-box/capture.mjs
+//   node projects/2026-09-simple-buy-box/capture.ts
 //
 // Control is the plain product URL; the new buy box is the same URL with `view=ab-buy-box`. Products and what each
 // proves come from the theme repo's docs/demos/2026-09-18-simple-buy-box-loom.md; storyboard.md records what was
 // checked against the theme.
-import { openCaptureSession } from '../../lib/capture.mjs';
+import { openCaptureSession } from '../../lib/capture.ts';
 
 const STORE = 'https://www.painfulpleasures.com';
 const PREVIEW_THEME = '147758514230';
