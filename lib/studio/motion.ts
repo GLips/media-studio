@@ -81,22 +81,24 @@ export const off = (t: number, a: number, len = 0.4) => 1 - seg(t, a, a + len);
 
 // ---------- springs ----------
 
-// "Looks landed": within 0.5% of the way home, under a pixel for most moves. "Settled": within 0.05%, and staying there.
+// "Landed": first within 0.5% of home, as motion.dev's visualDuration. A bouncy spring is crossing home at speed then,
+// and overshoots after. "Settled": within 0.05%, and staying there.
 const SPRING_LANDED = 0.005;
 const SPRING_SETTLED = 0.0005;
 const SPRING_STIFFNESS = 100;
 
 /** Progress 0→1 (past 1 while it bounces) at `t` seconds after the spring starts. */
 export type DeadlineSpring = ((t: number) => number) & {
-  /** Seconds until it looks landed: the deadline it was asked for. */
+  /** Seconds until it first reaches its target: the deadline it was asked for. */
   landed: number;
   /** Seconds until it has finished settling and holds exactly 1. Later than `landed`, more so the bouncier it is. */
   settled: number;
 };
 
 /**
- * A spring that looks landed `duration` seconds after it starts, so it can land on a word. `bounce` 0 (no overshoot,
- * the default) to just under 1 sets its shape; how much it overshoots follows from that, not from the duration.
+ * A spring that reaches its target `duration` seconds after it starts, so it can land on a word; a bouncy one overshoots
+ * after that. `bounce` 0 (no overshoot, the default) to just under 1 sets its shape; how much it overshoots follows
+ * from that, not from the duration.
  * For moves only: fades and colour are tweens (`seg`).
  *
  *   const pop = springBy(0.5, 0.25); … scale={lerp(0.8, 1, pop(s.t - (w.start - pop.landed)))}
@@ -158,6 +160,7 @@ export function stagger(i: number, n: number, timing: StaggerTiming): number {
 
 /** Seconds after the group starts that its last item finishes, each item taking `duration`. 0 for no items. */
 export function staggerFinish(n: number, timing: StaggerTiming & { duration: number }): number {
+  if (!Number.isInteger(n) || n < 0) throw new RangeError(`staggerFinish: n must be a whole number of items, got ${n}`);
   if (n === 0) return 0;
   const { lo, hi } = staggerRankRange(n, timing.from);
   return quantiseToFrame(staggerSpread(timing, hi - lo)) + timing.duration;

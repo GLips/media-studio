@@ -27,7 +27,7 @@ the pause the read left between them; `gap` overrides it, for every line or as `
 | **Split / side by side** | Today and the new version in two panels | `SplitCompare` with `SPLIT_LEFT` / `SPLIT_RIGHT` boxes; each side's camera is `camFit(shot, rect, opts, SPLIT_LEFT)`. Put a side's rings, cursor and state changes in its `over`, which clips them to the panel so the check catches a ring cut off at the seam. Only what floats over the whole window (a native menu, a browser dialog) goes in `children` |
 | **State change** | The page changes under a still camera (a click's result) | `CaptureStates` with `[shot, at]` pairs; it dissolves between captures of the same page |
 | **Motion blur** | The smear a real camera records when something moves fast | `CaptureMotion` on fast moves only. Slow moves stay sharp |
-| **Highlight / ring** | A glowing outline drawn on around the subject | `Highlight rect={screenRect(v, rect)} k={on(s.t, when)} name="…"` |
+| **Highlight / ring** | A glowing outline drawn on around the subject | `Highlight rect={screenRect(v, rect)} k={seg(s.t, a, b, motionCurves.linear)} name="…"` |
 | **Easing** | How a move speeds up and slows down | `seg(t, a, b, curve)` with a curve token (below). The default, `motionCurves.cubic.standard`, is the camera's |
 
 ## Time it by reads
@@ -62,8 +62,9 @@ that calm, legible register. A teaser or showreel designs its own motion, and no
   doesn't read, lengthen the anticipation before it or the hold after it, not the move. Land moves on words.
 - **Raw or eased `k`**: a piece that eases `k` itself (Highlight, Tag, Text, GlassCard) says so in its doc. Give it
   `seg(…, motionCurves.linear)`, or it eases twice.
-- **Springs**: `springBy(duration, bounce)` looks landed at `duration`, so `pop(s.t - (w.start - pop.landed))` lands
-  on the word, and `pop.settled` is when its bounce dies away. Springs are for moves; fades and colour are `seg`.
+- **Springs**: `springBy(duration, bounce)` reaches its target at `duration` (a bouncy one then overshoots), so
+  `pop(s.t - (w.start - pop.landed))` lands on the word, and `pop.settled` is when its bounce dies away. Springs are
+  for moves; fades and colour are `seg`.
 - **Staggers**: `stagger(i, n, { each, max, from })` is item `i`'s start offset, on a whole frame. `max` caps the
   spread of a long list, `from` is `'center'`, `'edges'` or an index, and `{ lagRatio, duration }` sets the gap as a
   fraction of each item's move. `staggerFinish` is when the last one lands. Tag each item with
@@ -75,7 +76,7 @@ that calm, legible register. A teaser or showreel designs its own motion, and no
   re-times everything, and the words come from whisper, so they land within a couple of frames. Camera and cursor
   keys must rise in time: word-anchored keys can swap after a re-voice, and the scene throws rather than snapping.
 - **The picture leads the word.** A ring must be fully drawn as its word starts, or its `expect` fails:
-  `k={on(s.t, w.start - 0.7, 0.6)}`. A camera move lands as the word starts, not after.
+  `k={seg(s.t, w.start - 0.7, w.start - 0.1, motionCurves.linear)}`. A camera move lands as the word starts, not after.
 - Say it and show it: give the highlight a `name` and the scene an
   `expect: (s) => [{ see: 'tiers', during: s.line('ladder').word('no volume discount') }]`. The check fails if the
   named highlight isn't drawn, clear of tags and the caption, for the whole span.

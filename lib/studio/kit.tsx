@@ -159,7 +159,7 @@ export function ClickToBlur({ t, shot, frame, target, clickAt = 1.3, from = { dx
 /**
  * A frosted card with an eyebrow and a few big lines that stagger in. `k` 0..1 drives the entrance, raw: the card eases
  * its own rise. A point can be `{ text, k }` to come in on its own cue instead, e.g.
- * `on(s.t, s.line('why-b').start - 0.3)` as the voice reaches it.
+ * `seg(s.t, s.line('why-b').start - 0.3, s.line('why-b').start + 0.3, motionCurves.linear)` as the voice reaches it.
  */
 export function GlassCard({ k, eyebrow, points, accent, ink, rect = { x: (W - 1120) / 2, y: 270, w: 1120, h: 540 }, motion }: {
   k: number;
@@ -289,7 +289,7 @@ export function NativeMenu({ k, from, items, scroll = 0, rowH = 34, bottom = CAP
   );
 }
 
-/** A solid card with one centred line, faded in by `k`, eased: the last frame. */
+/** A solid card with one centred line, faded in by `k`, eased (its title eases its rise on top): the last frame. */
 export function EndCard({ k, title, bg }: { k: number; title: string; bg: string }) {
   if (k <= 0) return null;
   return (
