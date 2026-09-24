@@ -1,6 +1,6 @@
-// Films every shot the simple-buy-box walkthrough shows, from the "Flourish Commerce - Dev Theme", which carries the
+// Defines every shot the simple-buy-box walkthrough shows, from the "Flourish Commerce - Dev Theme", which carries the
 // build both buy-box arms launch from (the "[FLO] PDP buy box rebuild" theme holds an older simple arm).
-//   node projects/2026-09-simple-buy-box-story/capture.ts [--only=kw-new-browse,…]
+//   studio capture simple-buy-box-story [--only=kw-new-browse,…]   films them (it imports the default export)
 //
 // Control is the plain product URL; the new buy box is the same URL with `view=ab-buy-box`. Products and what each
 // proves come from the theme repo's docs/demos/2026-09-18-simple-buy-box-loom.md; storyboard.md records what was
@@ -445,4 +445,4 @@ shots.still('desk-sticky-new', { setup: (page) => open(page, withView(SOLICE)), 
 shots.still('phone-top', { device: 'phone', setup: (page) => open(page, withView(SOLICE)), scrollY: 0 });
 shots.still('phone-bar', { device: 'phone', setup: (page) => open(page, withView(SOLICE)), scrollY: 2000, rects: { bar: 'buy-box-sticky-atc' } });
 
-await shots.run();
+export default shots;

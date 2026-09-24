@@ -5,6 +5,8 @@ description: Remotion API references for building a new studio primitive or kit 
 
 # Remotion, as this studio uses it
 
+Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it.
+
 Scenes don't talk to Remotion directly. They call `defineScene` and the primitives in `lib/studio/api.ts`, and
 `lib/studio/Video.tsx` is the one composition. Reach into Remotion only to build something new for `lib/studio`, and
 then keep its conventions:
@@ -17,8 +19,8 @@ then keep its conventions:
 - **No `TransitionSeries`.** `scenesAt` in `lib/studio/timeline.ts` centres crossfades on the voiced cuts; a
   `TransitionSeries` would shorten the timeline instead.
 - **Audio goes through the mix.** Voice lines are levelled and the music bed ducked in `lib/studio/mix.ts`; a new
-  sound's volume is set relative to `VOICE_LUFS`, and `render.ts` masters the result. Remotion's volume is 0–1.
-  Effects are the exception: a click has no meaningful loudness, so `lib/studio/sfx.tsx` sets them by ear.
+  sound's volume is set relative to `VOICE_LUFS`, and `studio mix` and `studio render` master the result. Remotion's
+  volume is 0–1. Effects are the exception: a click has no meaningful loudness, so `lib/studio/sfx.tsx` sets them by ear.
 - **Measure for the checks.** A primitive that marks a subject, a tag or text carries `data-framing` (see
   `lib/studio/probe.tsx`), so the framing check sees it.
 

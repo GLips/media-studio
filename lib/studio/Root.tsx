@@ -1,5 +1,5 @@
 // Root.tsx: registers the one project this bundle was built for (see lib/project-bundle.ts), as a composition named
-// after its folder, plus a replay of it for `render.ts --repeatable`.
+// after its folder, plus a replay of it for `studio repeatable`.
 
 import { Composition, Freeze, useCurrentFrame } from 'remotion';
 import video from '@project';

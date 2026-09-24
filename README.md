@@ -5,26 +5,41 @@ Walkthrough and explainer videos, made in code: capture a site's states, voice a
 
 Every frame is a pure function of time, so a change to one scene is an edit and a re-render. Nothing gets reshot by hand.
 
+## Install
+
+```sh
+npm install
+npm link        # puts `studio` on your PATH, pointing at this checkout
+```
+
+`studio` is TypeScript run directly by Node 24. `studio home` prints this repo's root, from anywhere.
+
 ## The pipeline
+
+Every step is a `studio` verb. A `<project>` is a slug (`sale-only-view`), a unique part of a name, or a path.
+`studio <verb> --help` has the flags; each prints what it made on stdout and its progress on stderr.
 
 | Step | Command | Output |
 |---|---|---|
-| Start | `npm run new -- <slug> --url=… [--title=…]` | `projects/<yyyy-mm>-<slug>/`, captured and with estimated timing, so it opens in the Studio at once |
-| Capture | `node projects/<p>/capture.ts [--only=a,b]` | `captures/` plus `captures/index.ts`: the named shots. A still is a high-DPI full-page screenshot with the page positions of the elements scenes point at; a take is a screen recording of real clicks, scrolls and typing, with marks. `--only` redoes just those shots |
-| Voice | `npm run tts -- projects/<p>` | `audio/take.wav`, the whole script read in one take, cut into `audio/<line>.wav` plus `audio/manifest.ts`. Any script change re-reads the take. `--take=read.m4a` uses a recording instead, `--draft` a free macOS `say` read, and `--estimate` (with no take) times lines from their word count |
-| Music | `node scripts/music.ts projects/<p> <file> [--name=bed]` | `music/<name>.*` plus `music/index.ts`: the track with its loudness, tempo and beats. Use it with `defineVideo({ music: { track: music.bed } })` |
-| Storyboard | `node scripts/storyboard.ts projects/<p>` | `out/storyboard/index.html`: a preview on top, a card per scene with its note, a still and the audio for each line; click to play from a scene |
-| Watch | `npm run studio -- projects/<p>` | the Remotion Studio: scrub, see scenes and voice lines on the timeline, toggle `captions` in the props panel |
-| Look | `node scripts/render.ts projects/<p> --sheet=1,5,9` | a contact sheet of chosen times; `--strip=4:5` for a stretch of motion. Open the image to check frames without rendering video |
-| Check | `node scripts/render.ts projects/<p> --check` | the framing check, plus `out/check/timeline.json` (when each scene and line lands) |
-| Mix | `node scripts/render.ts projects/<p> --audio` | `out/mix.wav`, the mastered mix on its own, to audition |
-| Make | `npm run video -- projects/<p>` | `out/mix.wav`, `out/video.mp4` (captions burned in; `--plain` adds `out/video-plain.mp4`), `out/video.srt`, review sheets in `out/check/`, and `out/watch.html` |
+| Start | `studio new <slug> --url=…` | `projects/<yyyy-mm>-<slug>/`, captured and with estimated timing, so it previews at once |
+| Capture | `studio capture <project>` | `captures/` plus `captures/index.ts`: the named shots. A still is a high-DPI full-page screenshot with the page positions of the elements scenes point at; a take is a screen recording of real clicks, scrolls and typing, with marks |
+| Voice | `studio voice <project>` | `audio/take.wav`, the whole script read in one take, cut into `audio/<line>.wav` plus `audio/manifest.ts`. Any script change re-reads the take. `--read=draft` is a free macOS `say` read, `--read=estimate` times lines from their word count, `--take=<file>` uses a recording. `studio audition` compares voices on one line |
+| Music | `studio music <project> <file>` | `music/<name>.*` plus `music/index.ts`: the track with its loudness, tempo and beats. Use it with `defineVideo({ music: { track: music.bed } })` |
+| Storyboard | `studio storyboard <project>` | `out/storyboard/index.html`: a preview on top, a card per scene with its note, a still and the audio for each line |
+| Preview | `studio preview <project>` | the Remotion Studio: scrub, see scenes and voice lines on the timeline, toggle `captions` in the props panel |
+| Look | `studio look <project> --sheet=1,5,9` | a contact sheet of chosen times, or `--strip=4:5` for a stretch of motion. Open the image to check frames without rendering video |
+| Check | `studio check <project>` | the framing check, plus `out/check/timeline.json` (when each scene and line lands) |
+| Mix | `studio mix <project>` | `out/mix.wav`, the mastered mix on its own, to audition |
+| Render | `studio render <project>` | `out/mix.wav`, `out/video.mp4` (captions burned in), `out/video.srt`, review sheets in `out/check/`, and `out/watch.html` |
 
-`npm run video` runs the framing check on every frame first and refuses to render if a highlight sits under a tag or
+`studio render` runs the framing check on every frame first and refuses to render if a highlight sits under a tag or
 the caption, runs off the frame or is cut off by its panel, if a scene's `expect` isn't met, or if any line is still
 estimated. It then masters the mix to −14 LUFS, renders the video muted and muxes the mix in. Each MP4 must have
 the right length and an audio stream, measure −14 ±1 LUFS and peak at −1 dBTP or lower. Each is tiled into a sheet
 to look over.
+
+`studio repeatable <project> 2,8.5` proves a painted layer is a pure function of time; `studio sfx` re-synthesizes
+the kit's click sounds.
 
 `npm run typecheck` checks everything, including that every rect a scene points at was captured. `npm test` runs the
 tests.
@@ -46,9 +61,7 @@ scene's `expect` says what must be on screen while a word is spoken:
 `expect: (s) => [{ see: 'matches', during: s.line('combo-a').word('seventeen') }]`, where `matches` is a
 `Highlight`'s `name`.
 
-The skills in `.claude/skills` carry the workflow: `video-kickoff` (from the first dump to a signed-off storyboard),
-`video-motion` (the camera vocabulary and feel notes), `video-canvas` (painted and generative layers) and `remotion`. `docs/directing.md` is a short course on
-directing.
+`docs/directing.md` is a short course on directing.
 
 ## Pieces
 
@@ -73,22 +86,52 @@ Scenes import everything from `lib/studio/api.ts`.
   decides what's a problem.
 - `lib/studio/mix.ts`: voice levelling, and a music bed that ducks under the voice. `lib/loudness.ts` measures.
 - `lib/studio/sfx.tsx`: `<Sfx>` plays a sound at a scene time; `CursorPath` clicks sound by themselves. The sounds are
-  synthesized by `node scripts/sfx.ts`, so there's nothing to license.
+  synthesized by `studio sfx`, so there's nothing to license.
 - `lib/whisper-words.ts`, `lib/voice-words.ts`: word timings from whisper.cpp (installed on first use into
   `~/.cache/video-studio`), aligned to the script.
 - `lib/voice-take.ts`: where to cut a take into lines, and the pauses the read left between them.
 - `lib/music-beats.ts`: the tempo and beats of a music track.
 - `lib/paint/`: drawn layers (p5 sketches) inside scenes, with a watercolour style ported from p5.brush. See the
-  `video-canvas` skill. `--repeatable=t1,t2` proves a drawn layer is a pure function of time.
-- `scripts/render.ts`: bundles one project (`lib/render-session.ts`) and checks, mixes, renders and reviews it.
-- `scripts/tts.ts`: reads the script as one take (Gemini TTS through OpenRouter, `say`, or a recording) and cuts it.
-  `--audition "line" --voices=A,B,C` compares voices.
-- `scripts/openrouter.ts`: the shared OpenRouter client, for TTS and any other model calls.
+  `video-canvas` skill. `studio repeatable` proves a drawn layer is a pure function of time.
+- `cli/studio.ts`: the `studio` entry point. Each verb is `cli/commands/<verb>.ts`, parsing its arguments and calling
+  into `lib/`: `lib/render-pipeline.ts` checks, mixes, renders and reviews a bundled project
+  (`lib/render-session.ts`), `lib/voice-project.ts` reads the script as one take (Gemini TTS through
+  `lib/openrouter.ts`, `say`, or a recording) and cuts it, and `lib/studio-project.ts` resolves `<project>`.
 
-The scripts are TypeScript run directly by Node 24; Remotion bundles `lib/studio` and one project's `video.tsx`.
-Remotion is free for companies of up to three people; past that it needs a company license.
+Remotion bundles `lib/studio` and one project's `video.tsx`. Remotion is free for companies of up to three people;
+past that it needs a company license.
 
 ## Secrets
 
-`.env.op` holds 1Password references, not keys. The npm scripts run through `op run`, so `OPENROUTER_API_KEY` exists
-only inside that one process. Needs the 1Password app's CLI integration (Settings → Developer).
+Only `studio voice` needs a secret: `OPENROUTER_API_KEY`, read from the environment. `.env.op` holds 1Password
+references, not keys, so the key exists only inside the one process `op run` starts:
+
+```sh
+op run --account branchlabs.1password.com --env-file="$(studio home)/.env.op" -- studio voice <project>
+```
+
+A shell alias saves typing it. Needs the 1Password app's CLI integration (Settings → Developer).
+
+## Hosts
+
+A video can be about a product repo, its host, and compose that repo's real React components. `hosts.json`
+(committed) maps a host name to `{ "repo": "<git url>" }`; `hosts.local.json` (gitignored, optional) maps it to an
+absolute path of a working copy on this machine, used as it stands. A project opts in with `projects/<p>/host.json`
+`{ "name", "ref" }`. `studio hosts sync <p> [--install]` checks the ref out into `.hosts/<name>@<sha>` (or uses the
+working copy) and links it at `projects/<p>/host`, so a scene imports `./host/src/components/Button.tsx`. Host
+components share the studio's React; plain CSS and CSS modules load, Tailwind/PostCSS and host path aliases don't
+yet. Every capture writes `captures/provenance.json` (per shot: URL, time, studio and host commits), so a video can be
+traced to its source without keeping media.
+
+## Skills
+
+The skills (`skills/`) ship as the `video-studio` Claude Code plugin, and this repo is its own marketplace, so they work
+from any repo ("make a PR walkthrough video for this change"). Install once per machine, in Claude Code:
+
+    /plugin marketplace add ~/Programming/video-studio
+    /plugin install video-studio@video-studio
+
+A local-directory marketplace loads the plugin in place, so edits to `skills/` reach the next session. Skills find
+this repo with `studio home`. `video-kickoff` takes a video from the first dump to an approved storyboard,
+`video-capture` writes the shots, `video-motion` animates, `video-canvas` paints, and `remotion` covers new primitives.
+`docs/directing.md` is a short course on directing.

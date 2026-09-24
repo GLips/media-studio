@@ -1,12 +1,4 @@
-// tts.ts: voices a project's script as one take, and cuts it into lines.
-//
-//   npm run tts -- projects/<name>                       read the whole script with Gemini TTS on OpenRouter
-//   node scripts/tts.ts projects/<name> --draft          read it with macOS `say`: free, offline, flat. For hearing
-//                                                        the timing, and for test projects. The next paid run re-reads
-//   node scripts/tts.ts projects/<name> --take=read.m4a  use a recording of the script (a human read) as the take
-//   node scripts/tts.ts projects/<name> --estimate       with no take, time each line from its word count, with no
-//                                                        audio, so scenes can be built before the voice exists
-//   npm run tts -- --audition "Some line" --voices=Kore,Puck,Achird [--out=auditions]
+// voice-project.ts: voices a project's script as one take, and cuts it into lines. `studio voice` runs it.
 //
 // voiceover.json: { "voice": "Kore", "lines": [{ "id": "s1", "text": "…", "paragraph": true }] }
 // A line with `"paragraph": true` starts a new paragraph of the read; the rest run on from the line before. The model
@@ -23,12 +15,12 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { measureLoudness } from '../lib/loudness.ts';
-import { cutTakeIntoLines, type TakeClip } from '../lib/voice-take.ts';
-import { alignSpokenWords, estimateSpokenWords, spokenText, type SpokenWord } from '../lib/voice-words.ts';
-import { samplesFromWav, wavFromPcm, wavFromSamples } from '../lib/wav.ts';
-import { heardWords } from '../lib/whisper-words.ts';
+import { measureLoudness } from './loudness.ts';
 import { postOpenRouter } from './openrouter.ts';
+import { cutTakeIntoLines, type TakeClip } from './voice-take.ts';
+import { alignSpokenWords, estimateSpokenWords, spokenText, type SpokenWord } from './voice-words.ts';
+import { samplesFromWav, wavFromPcm, wavFromSamples } from './wav.ts';
+import { heardWords } from './whisper-words.ts';
 
 const MODEL = 'google/gemini-3.8-flash-tts';
 const DRAFT_VOICE = 'Samantha';
@@ -48,13 +40,14 @@ type TakeInfo = { source: 'tts' | 'draft' | 'recording'; hash?: string; heard?: 
 /** A manifest.json entry. `src` is relative to the project, and it, `lufs` and `pauseBefore` are null for an estimate. */
 type Voiced = { src: string | null; duration: number; text: string; words: SpokenWord[]; lufs: number | null; pauseBefore: number | null };
 
-const args = process.argv.slice(2);
-const flag = (name: string) => args.find((a) => a.startsWith(`--${name}=`))?.split('=').slice(1).join('=');
+/**
+ * How to get the take: `paid` reads it with Gemini TTS (needs OPENROUTER_API_KEY), `draft` with macOS `say` (free,
+ * flat; the next paid run re-reads it), and `estimate` times each line from its word count with no audio at all.
+ */
+export type VoiceMode = 'estimate' | 'draft' | 'paid';
 
-if (args[0] === '--audition') await audition(args[1], (flag('voices') ?? '').split(','), flag('out') || 'auditions');
-else await voiceProject(args[0], args.includes('--estimate') ? 'estimate' : args.includes('--draft') ? 'draft' : 'paid', flag('take'));
-
-async function voiceProject(project: string, mode: 'estimate' | 'draft' | 'paid', recording: string | undefined) {
+/** Voices the project and returns the path of the audio/manifest.ts it wrote. `recording` imports a human read as the take. */
+export async function voiceStudioProject(project: string, { mode, recording }: { mode: VoiceMode; recording?: string }): Promise<string> {
   const script: Script = JSON.parse(readFileSync(join(project, 'voiceover.json'), 'utf8'));
   const dir = join(project, 'audio');
   mkdirSync(dir, { recursive: true });
@@ -74,7 +67,7 @@ async function voiceProject(project: string, mode: 'estimate' | 'draft' | 'paid'
     execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', recording, '-ac', '1', '-ar', '24000', '-sample_fmt', 's16', '-map_metadata', '-1', takePath]);
     info = { source: 'recording' };
     saveInfo();
-    console.log(`imported ${recording} as the take`);
+    console.error(`imported ${recording} as the take`);
   }
   // A draft never matches the paid hash, so a paid run re-reads it.
   const current = info && (info.source === 'recording' || info.hash === paidHash || (mode !== 'paid' && info.hash === draftHash));
@@ -84,7 +77,7 @@ async function voiceProject(project: string, mode: 'estimate' | 'draft' | 'paid'
     writeFileSync(takePath, wav);
     info = { source: mode === 'draft' ? 'draft' : 'tts', hash: mode === 'draft' ? draftHash : paidHash };
     saveInfo();
-    console.log(`${mode === 'draft' ? 'drafted' : 'voiced'} the take  ${duration.toFixed(2)}s`);
+    console.error(`${mode === 'draft' ? 'drafted' : 'voiced'} the take  ${duration.toFixed(2)}s`);
   }
 
   const heard = (info!.heard ??= {});
@@ -130,15 +123,15 @@ async function voiceProject(project: string, mode: 'estimate' | 'draft' | 'paid'
 
     const pause = clip.pauseBefore === null ? '' : `  after ${clip.pauseBefore.toFixed(2)}s`;
     const unheard = words.filter((_, k) => !aligned.heard[k]).map((w) => w.text);
-    console.log(`cut ${clip.id}  ${duration.toFixed(2)}s${pause}${unheard.length ? `  (heard differently: ${unheard.join(' ')})` : ''}`);
+    console.error(`cut ${clip.id}  ${duration.toFixed(2)}s${pause}${unheard.length ? `  (heard differently: ${unheard.join(' ')})` : ''}`);
   }
   for (const clip of clips.slice(1)) {
     const problem = !clip.cutIsClear ? 'has no one clear pause' : clip.cutPause < TIGHT_PAUSE ? `pauses only ${Math.round(clip.cutPause * 1000)} ms` : null;
-    if (problem) console.log(`listen to ${clip.id}: the read ${problem} before it, so the cut may be heard. Add <short pause> before it, or move the line break`);
+    if (problem) console.error(`listen to ${clip.id}: the read ${problem} before it, so the cut may be heard. Add <short pause> before it, or move the line break`);
   }
   for (const key of Object.keys(heard)) if (!used.has(key)) delete heard[key];
   saveInfo();
-  writeManifest(dir, manifest);
+  return writeManifest(dir, manifest);
 }
 
 function estimateLines(lines: readonly { id: string; text: string }[]) {
@@ -147,7 +140,7 @@ function estimateLines(lines: readonly { id: string; text: string }[]) {
     const duration = Number((line.text.split(/[\s-]+/).length / WORDS_PER_SECOND + 0.3).toFixed(2));
     manifest[line.id] = { src: null, duration, text: line.text, words: estimateSpokenWords(line.text, duration), lufs: null, pauseBefore: null };
   }
-  console.log(`estimated ${lines.length} lines from their word counts`);
+  console.error(`estimated ${lines.length} lines from their word counts`);
   return manifest;
 }
 
@@ -155,7 +148,8 @@ function writeManifest(dir: string, manifest: Record<string, Voiced>) {
   writeFileSync(join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2));
   writeFileSync(join(dir, 'manifest.ts'), voiceModule(manifest));
   const total = Object.values(manifest).reduce((sum, line) => sum + line.duration, 0);
-  console.log(`${Object.keys(manifest).length} lines, ${total.toFixed(1)}s of voice → ${dir}`);
+  console.error(`${Object.keys(manifest).length} lines, ${total.toFixed(1)}s of voice`);
+  return join(dir, 'manifest.ts');
 }
 
 // A module rather than JSON so the video imports each WAV and the bundler serves it.
@@ -169,7 +163,7 @@ function voiceModule(manifest: Record<string, Voiced>) {
     const { src, duration, text, words, lufs, pauseBefore } = manifest[id];
     return `  ${JSON.stringify(id)}: { src: ${src ? `wav${i}` : 'null'}, duration: ${duration}, lufs: ${lufs}, pauseBefore: ${pauseBefore}, text: ${JSON.stringify(text)},\n    words: ${JSON.stringify(words)} },`;
   }).join('\n');
-  return `// Written by scripts/tts.ts. Edits here are lost on the next run.
+  return `// Written by \`studio voice\`. Edits here are lost on the next run.
 import type { Voice } from '../../../lib/studio/timeline.ts';
 ${imports}
 
@@ -179,14 +173,18 @@ ${entries}
 `;
 }
 
-async function audition(text: string, voices: string[], out: string) {
+/** Reads one line in each voice, into `out`/<voice>.wav, to compare them. Returns the files. */
+export async function auditionVoices(text: string, voices: string[], out: string): Promise<string[]> {
   mkdirSync(out, { recursive: true });
+  const files: string[] = [];
   for (const voice of voices) {
     const { wav, duration } = await speak(text, voice);
     const file = join(out, `${voice}.wav`);
     writeFileSync(file, wav);
-    console.log(`${voice}  ${duration.toFixed(2)}s → ${file}`);
+    console.error(`${voice}  ${duration.toFixed(2)}s`);
+    files.push(file);
   }
+  return files;
 }
 
 async function speak(text: string, voice: string) {

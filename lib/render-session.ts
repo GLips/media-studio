@@ -1,4 +1,4 @@
-// render-session.ts: one project bundled for rendering, and what every render script does with it. Node only.
+// render-session.ts: one project bundled for rendering, and what every render command does with it. Node only.
 //
 // Each session bundles just its own project (see project-bundle.ts), so another project's missing captures can't
 // break it.
@@ -6,10 +6,11 @@ import { bundle } from '@remotion/bundler';
 import { renderFrames, selectComposition, type OnArtifact } from '@remotion/renderer';
 import { mkdtempSync, readdirSync } from 'node:fs';
 import { availableParallelism, tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import type { VideoConfig } from 'remotion';
 import { projectSlug, projectWebpackOverride, replaySlug } from './project-bundle.ts';
 import { W } from './studio/frame.ts';
+import { STUDIO_ROOT } from './studio-project.ts';
 import type { ReplayProps } from './studio/Root.tsx';
 import type { TimelineReport, VideoProps } from './studio/Video.tsx';
 
@@ -28,8 +29,8 @@ export const RENDER_CHROMIUM = { gl: 'angle' } as const;
 export const RENDER_CONCURRENCY = Math.max(1, availableParallelism() - 1);
 
 export async function openRenderSession(project: string) {
-  console.log(`bundling ${project}…`);
-  const serveUrl = await bundle({ entryPoint: resolve('lib/studio/index.ts'), webpackOverride: projectWebpackOverride(project) });
+  console.error(`bundling ${project}…`);
+  const serveUrl = await bundle({ entryPoint: join(STUDIO_ROOT, 'lib/studio/index.ts'), webpackOverride: projectWebpackOverride(project) });
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, ...p });
   const compositionFor = (inputProps: VideoProps) => selectComposition({ serveUrl, chromiumOptions: RENDER_CHROMIUM, id: projectSlug(project), inputProps });
 

@@ -1,6 +1,6 @@
 # Directing a video: a short course
 
-Enough vocabulary and technique to direct product walkthroughs and launch videos, and to give notes an agent can act on. It isn't tied to any engine. `.claude/skills/video-motion` maps these terms to code.
+Enough vocabulary and technique to direct product walkthroughs and launch videos, and to give notes an agent can act on. It isn't tied to any engine. The `video-motion` skill (`skills/video-motion`) maps these terms to code.
 
 The one idea underneath all of it: **every frame has one job, and the viewer's eye should never have to hunt.** Almost every technique below is a way of telling the eye where to look and when.
 

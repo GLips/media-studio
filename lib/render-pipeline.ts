@@ -1,65 +1,33 @@
-// render.ts: checks, renders and reviews a project's video with Remotion's renderer.
+// render-pipeline.ts: what the render commands do with a bundled project (lib/render-session.ts): the framing check,
+// contact sheets, the mastered mix, the delivered videos and their review, and the repeatability proof.
 //
-//   The whole thing:
-//     npm run video -- projects/<p> [--plain]   framing check (every frame) → the mix, mastered to −14 LUFS →
-//                                               video.mp4, with captions (--plain adds video-plain.mp4, without) →
-//                                               delivery checks and review sheets → video.srt → out/watch.html
-//   Look at it (open the images with an image viewer or the Read tool):
-//     node scripts/render.ts projects/<p> --sheet=0.5,4,9 [--cols=3] [--w=640] [--out=out/check/a.jpg]   chosen times
-//     node scripts/render.ts projects/<p> --strip=4:5 [--step=0.1]                                       a stretch, for motion
-//     Add --captions to either to burn captions in.
-//   One step at a time:
-//     node scripts/render.ts projects/<p> --check [--every=5]   the framing check alone: highlights under tags/captions.
-//                                                               Also writes out/check/timeline.json: when each scene
-//                                                               and line lands, for aiming sheets and strips.
-//     node scripts/render.ts projects/<p> --audio               just the mastered mix, out/mix.wav, to hear the levels
-//     node scripts/render.ts projects/<p> --repeatable=2,8.5    renders those times alone, in other orders and among
-//                                                               other frames, and fails if any differ. Run it on a new
-//                                                               painted style (lib/paint): its randomness must be seeded.
+// Progress goes to stderr; each function returns what it made, for the command to print on stdout.
 import { serializeSrt } from '@remotion/captions';
 import { renderFrames, renderMedia } from '@remotion/renderer';
-import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { framesToMeasure, framingArtifactName, framingProblems, type FramingReport } from '../lib/framing-check.ts';
-import { measureLoudness } from '../lib/loudness.ts';
-import { artifactSink, openRenderSession, RENDER_CHROMIUM, RENDER_CONCURRENCY } from '../lib/render-session.ts';
-import { H, W } from '../lib/studio/frame.ts';
-import type { TimelineReport } from '../lib/studio/Video.tsx';
+import { framesToMeasure, framingArtifactName, framingProblems, type FramingReport } from './framing-check.ts';
+import { measureLoudness } from './loudness.ts';
+import { artifactSink, RENDER_CHROMIUM, RENDER_CONCURRENCY, type RenderSession } from './render-session.ts';
+import { H, W } from './studio/frame.ts';
+import type { TimelineReport } from './studio/Video.tsx';
 
-const argv = process.argv.slice(2);
-const project = argv.find((a) => !a.startsWith('--'));
-if (!project) {
-  console.error('usage: node scripts/render.ts <project dir> --video | --sheet=… | --strip=a:b | --check');
-  process.exit(1);
-}
-const args: Record<string, string | true> = Object.fromEntries(argv.filter((a) => a.startsWith('--')).map((a) => {
-  const [k, v] = a.slice(2).split('=');
-  return [k, v ?? true];
-}));
-const outDir = join(project, 'out');
-const at = (p: string) => (p.startsWith('/') ? p : join(project, p));
-const videoFor = (captions: boolean) => join(outDir, captions ? 'video.mp4' : 'video-plain.mp4');
-
-const run = (cmd: string, a: string[]) => new Promise<void>((ok, bad) => {
-  spawn(cmd, a, { stdio: 'inherit' }).on('close', (code) => (code ? bad(new Error(`${cmd} exited ${code}`)) : ok()));
-});
-
-const every = Number(args.every ?? (args.video ? 1 : 5)), step = Number(args.step ?? 0.1);
-if (!Number.isInteger(every) || every < 1) throw new Error(`--every must be a whole number of frames, at least 1, not ${args.every}`);
-if (!(step > 0 && Number.isFinite(step))) throw new Error(`--step must be a positive number of seconds, not ${args.step}`);
-
-const session = await openRenderSession(project);
-const { serveUrl, props, compositionFor } = session;
+const outDirFor = (session: RenderSession) => join(session.project, 'out');
+const videoFor = (session: RenderSession, captions: boolean) => join(outDirFor(session), captions ? 'video.mp4' : 'video-plain.mp4');
+const masterWavFor = (session: RenderSession) => join(outDirFor(session), 'mix.wav');
 
 // ---------- framing check ----------
 
+export type FramingCheck = { ok: boolean; timeline: TimelineReport; report: string[] };
+
 /**
- * Measures every `every`th frame, plus every frame a scene's `expect` covers, and prints each problem as a stretch of
- * time (see lib/framing-check.ts). `--video` measures every frame.
+ * Measures every `every`th frame, plus every frame a scene's `expect` covers, and reports each problem as a stretch
+ * of time (see lib/framing-check.ts).
  */
-async function checkFraming(every: number) {
+export async function checkProjectFraming(session: RenderSession, every: number): Promise<FramingCheck> {
+  const { serveUrl, props, compositionFor } = session;
   // Captions on, so the caption is measured where it would show: a hidden one counts as faded out and covers nothing.
   const inputProps = props({ probe: true, captions: true });
   const composition = await compositionFor(inputProps);
@@ -79,17 +47,33 @@ async function checkFraming(every: number) {
 
   const reports = frames.map((f) => sink.json<FramingReport>(framingArtifactName(f)));
   const problems = framingProblems(reports, timeline.expectations, fps, every);
-  for (const p of problems) console.log(`  ✗ ${p.from.toFixed(2)}–${p.to.toFixed(2)}s  ${p.scene ? `[${p.scene}] ` : ''}${p.problem}`);
+  const report = problems.map((p) => `  ✗ ${p.from.toFixed(2)}–${p.to.toFixed(2)}s  ${p.scene ? `[${p.scene}] ` : ''}${p.problem}`);
   const expected = timeline.expectations.length ? `, ${timeline.expectations.length} expectations` : '';
-  console.log(problems.length ? `framing: ${problems.length} problem${problems.length > 1 ? 's' : ''}` : `framing ✓ (${frames.length} frames${expected})`);
-  return { ok: problems.length === 0, timeline };
+  report.push(problems.length ? `framing: ${problems.length} problem${problems.length > 1 ? 's' : ''}` : `framing ✓ (${frames.length} frames${expected})`);
+  return { ok: problems.length === 0, timeline, report };
+}
+
+/** Writes out/check/timeline.json: when each scene and line lands, for aiming sheets and strips. */
+export function writeTimelineReport(session: RenderSession, timeline: TimelineReport): string {
+  const file = join(outDirFor(session), 'check', 'timeline.json');
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify(timeline, null, 2));
+  return file;
 }
 
 // ---------- sheets ----------
 
-/** Renders frames at chosen times, small, and tiles them into one labelled image. */
-async function sheet(times: number[], out: string, { cols = 3, w = 640, captions = false } = {}) {
-  const composition = await compositionFor(props({ captions }));
+/** Seconds from `from` to `to` inclusive, `step` (positive, or this never ends) apart: the times a strip shows. */
+export function stripTimes(from: number, to: number, step: number): number[] {
+  const times = [];
+  for (let t = from; t <= to + 1e-6; t += step) times.push(Number(t.toFixed(3)));
+  return times;
+}
+
+/** Renders frames at chosen times, small, and tiles them into one labelled image at `out`. */
+export async function renderContactSheet(session: RenderSession, times: number[], out: string, { cols, w, captions }: { cols: number; w: number; captions: boolean }) {
+  if (!times.length || times.some((t) => !Number.isFinite(t))) throw new Error('give times in seconds: --sheet=0.5,4,9 or --strip=4:5');
+  const composition = await session.compositionFor(session.props({ captions }));
   const frameOf = (t: number) => Math.min(composition.durationInFrames - 1, Math.max(0, Math.round(t * composition.fps)));
   const frames = [...new Set(times.map(frameOf))].sort((a, b) => a - b);
   const stills = await session.renderStills(frames, { w, captions });
@@ -105,27 +89,30 @@ async function sheet(times: number[], out: string, { cols = 3, w = 640, captions
   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...frames.flatMap((f) => ['-i', stills.fileFor(f)]),
     '-filter_complex', `${cells.join(';')};${stack}`, '-map', '[out]', '-frames:v', '1', '-q:v', '3', out]);
   rmSync(stills.dir, { recursive: true, force: true });
-  console.log(`${out}  (${frames.length} frames, ${cols}×${rows})`);
+  console.error(`${frames.length} frames, ${cols}×${rows}`);
+  return out;
 }
 
-// ---------- the videos ----------
+// ---------- the mix ----------
 
 // Delivery loudness, as YouTube and most players normalise to. Mastering limits 1 dB under the true-peak ceiling the
 // delivery check holds it to, because AAC encoding adds overshoot.
 const DELIVERY_LUFS = -14, DELIVERY_TRUE_PEAK = -1, MASTER_TRUE_PEAK = -2;
-const masterWav = join(outDir, 'mix.wav');
 
 /**
- * Renders the soundtrack once, uncompressed, and masters it: one gain to delivery loudness, then a limiter for the
- * peaks. Not loudnorm: when its linear mode can't reach the target it becomes an AGC, which fills in the music's ducks.
+ * Renders the soundtrack once, uncompressed, and masters it to out/mix.wav: one gain to delivery loudness, then a
+ * limiter for the peaks. Not loudnorm: when its linear mode can't reach the target it becomes an AGC, which fills in
+ * the music's ducks.
  */
-async function renderMasteredMix() {
+export async function renderMasteredMix(session: RenderSession): Promise<string> {
+  const { serveUrl, props, compositionFor } = session;
+  const masterWav = masterWavFor(session);
   const inputProps = props();
   const composition = await compositionFor(inputProps);
   const tmp = mkdtempSync(join(tmpdir(), 'mix-'));
   const raw = join(tmp, 'raw.wav');
   await renderMedia({ composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, concurrency: RENDER_CONCURRENCY, inputProps, codec: 'wav', outputLocation: raw });
-  mkdirSync(outDir, { recursive: true });
+  mkdirSync(outDirFor(session), { recursive: true });
   const before = measureLoudness(raw);
   // Limiting at 4× the sample rate catches the peaks between samples too, which is what "true peak" counts.
   const master = (gainDb: number) => execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', raw, '-af',
@@ -138,13 +125,17 @@ async function renderMasteredMix() {
   master(gain);
   const after = measureLoudness(masterWav);
   rmSync(tmp, { recursive: true, force: true });
-  console.log(`mix: ${before.lufs} LUFS, ${before.truePeak} dBTP → +${gain.toFixed(1)} dB and limited → ${after.lufs} LUFS, ${after.truePeak} dBTP → ${masterWav}`);
+  console.error(`mix: ${before.lufs} LUFS, ${before.truePeak} dBTP → +${gain.toFixed(1)} dB and limited → ${after.lufs} LUFS, ${after.truePeak} dBTP`);
+  return masterWav;
 }
 
-async function renderVideo(captions: boolean) {
+// ---------- the videos ----------
+
+async function renderVideo(session: RenderSession, captions: boolean) {
+  const { serveUrl, props, compositionFor } = session;
   const inputProps = props({ captions });
   const composition = await compositionFor(inputProps);
-  const out = videoFor(captions);
+  const out = videoFor(session, captions);
   const tmp = mkdtempSync(join(tmpdir(), 'video-'));
   const silent = join(tmp, 'silent.mp4');
   let shown = -1;
@@ -154,12 +145,12 @@ async function renderVideo(captions: boolean) {
     crf: 18, x264Preset: 'slow', pixelFormat: 'yuv420p', imageFormat: 'jpeg', jpegQuality: 94,
     onProgress: ({ progress }) => {
       const pct = Math.floor(progress * 10) * 10;
-      if (pct !== shown) { shown = pct; console.log(`  ${out}: ${pct}%`); }
+      if (pct !== shown) { shown = pct; console.error(`  ${out}: ${pct}%`); }
     },
   });
-  execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', silent, '-i', masterWav, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out]);
+  execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', silent, '-i', masterWavFor(session), '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out]);
   rmSync(tmp, { recursive: true, force: true });
-  console.log(`rendered ${out} in ${((Date.now() - started) / 1000).toFixed(0)}s`);
+  console.error(`rendered ${out} in ${((Date.now() - started) / 1000).toFixed(0)}s`);
 }
 
 const srtFrom = (timeline: TimelineReport) =>
@@ -167,8 +158,8 @@ const srtFrom = (timeline: TimelineReport) =>
 
 // Checks the delivered file, not the frames: right length, has sound at delivery loudness without clipping, and a
 // tiled sheet of it to look at.
-async function review(captions: boolean, timeline: TimelineReport) {
-  const video = videoFor(captions);
+function reviewDelivery(session: RenderSession, captions: boolean, timeline: TimelineReport) {
+  const video = videoFor(session, captions);
   const probe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', video]).toString());
   const actual = Number(probe.format.duration);
   const problems = [];
@@ -179,15 +170,15 @@ async function review(captions: boolean, timeline: TimelineReport) {
   if (truePeak > DELIVERY_TRUE_PEAK) problems.push(`peaks at ${truePeak} dBTP, over ${DELIVERY_TRUE_PEAK}`);
   if (problems.length) throw new Error(`${video} ${problems.join(' and ')}`);
 
-  const tiles = 16, out = join(outDir, 'check', captions ? 'review-captions.jpg' : 'review.jpg');
+  const tiles = 16, out = join(outDirFor(session), 'check', captions ? 'review-captions.jpg' : 'review.jpg');
   mkdirSync(dirname(out), { recursive: true });
-  await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', video, '-vf', `fps=${tiles}/${actual},scale=480:-1,tile=4x4`, '-frames:v', '1', out]);
-  console.log(`${video}: ${actual.toFixed(2)}s, ${lufs} LUFS, ${truePeak} dBTP ✓  sheet → ${out}`);
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', video, '-vf', `fps=${tiles}/${actual},scale=480:-1,tile=4x4`, '-frames:v', '1', out]);
+  console.error(`${video}: ${actual.toFixed(2)}s, ${lufs} LUFS, ${truePeak} dBTP ✓  sheet → ${out}`);
 }
 
 // A page to watch the finished videos, since file:// MP4s have no player of their own worth sharing a link to.
-function writeWatchPage(title: string) {
-  const page = join(outDir, 'watch.html');
+function writeWatchPage(session: RenderSession, title: string) {
+  const page = join(outDirFor(session), 'watch.html');
   writeFileSync(page, `<!doctype html>
 <meta charset="utf-8">
 <title>${title}</title>
@@ -203,19 +194,41 @@ function writeWatchPage(title: string) {
   <h1>${title}</h1>
   <video id="v" src="video.mp4" controls autoplay></video>
   <nav>
-    <a href="video.mp4" download>Download</a>${existsSync(videoFor(false)) ? `
+    <a href="video.mp4" download>Download</a>${existsSync(videoFor(session, false)) ? `
     <a href="#" onclick="v.src='video-plain.mp4';return false">Without captions</a>
     <a href="video-plain.mp4" download>Download without captions</a>` : ''}
     <a href="video.srt" download>Captions (.srt)</a>
   </nav>
 </main>
 `);
-  console.log(`watch → ${page}`);
+  return page;
 }
 
-// ---------- dispatch ----------
+/**
+ * The whole pipeline: the framing check on every frame, refusing to go on if it fails or a line is still estimated;
+ * the mastered mix; video.mp4 with captions (and video-plain.mp4 without, if `plain`), each checked for delivery;
+ * video.srt; and out/watch.html. Returns what it delivered.
+ */
+export async function renderDeliveredVideo(session: RenderSession, { plain }: { plain: boolean }): Promise<string[]> {
+  const { ok, timeline, report } = await checkProjectFraming(session, 1);
+  for (const line of report) console.error(line);
+  if (!ok) throw new Error('fix the framing problems above before rendering (look at a stretch with studio look <project> --strip=a:b)');
+  const estimated = timeline.cues.filter((q) => !q.voiced).map((q) => q.id);
+  if (estimated.length) throw new Error(`${estimated.join(', ')} ${estimated.length > 1 ? 'are' : 'is'} estimated, not voiced: run studio voice <project> before rendering the video`);
+  await renderMasteredMix(session);
+  // An old plain video would no longer match; the watch page offers it only if it's there.
+  if (!plain) rmSync(videoFor(session, false), { force: true });
+  const variants = plain ? [true, false] : [true];
+  for (const captions of variants) {
+    await renderVideo(session, captions);
+    reviewDelivery(session, captions, timeline);
+  }
+  const srt = join(outDirFor(session), 'video.srt');
+  writeFileSync(srt, srtFrom(timeline));
+  return [...variants.map((captions) => videoFor(session, captions)), srt, writeWatchPage(session, timeline.title)];
+}
 
-const captions = Boolean(args.captions);
+// ---------- repeatability ----------
 
 /**
  * Renders each frame at `times` fresh, in a tab of its own, then again in one tab after other frames: the rest in
@@ -223,8 +236,9 @@ const captions = Boolean(args.captions);
  * isn't a pure function of time (an unseeded random stream, drawing deferred to the next frame). GPU rounding leaves
  * renders a few levels apart, so equal means over 50 dB PSNR.
  */
-async function isRepeatable(times: number[]) {
-  const { fps, durationInFrames } = await compositionFor(props());
+export async function checkFramesRepeatable(session: RenderSession, times: number[]): Promise<{ ok: boolean; report: string[] }> {
+  if (!times.length || times.some((t) => !Number.isFinite(t))) throw new Error('give times in seconds, e.g. 2,8.5');
+  const { fps, durationInFrames } = await session.compositionFor(session.props());
   const frames = times.map((t) => Math.round(t * fps));
   const bad = frames.find((f) => !(f >= 0 && f < durationInFrames));
   if (bad !== undefined) throw new Error(`${bad / fps}s is outside the video`);
@@ -243,48 +257,11 @@ async function isRepeatable(times: number[]) {
     worst.set(f, Math.min(worst.get(f) ?? Infinity, psnr));
   }
   for (const r of [...fresh.values(), replay]) rmSync(r.dir, { recursive: true, force: true });
-  let ok = true;
-  for (const f of frames) {
+  const report = frames.map((f) => {
     const db = worst.get(f)!;
-    ok &&= db > 50;
-    console.log(`  ${db > 50 ? '✓' : '✗'} ${(f / fps).toFixed(2)}s  ${Number.isFinite(db) ? `${db.toFixed(1)} dB at worst` : 'identical'}`);
-  }
-  console.log(ok ? 'repeatable ✓' : 'not repeatable: something in those frames depends on what the tab drew before');
-  return ok;
-}
-if (args.video) {
-  const { ok, timeline } = await checkFraming(every);
-  if (!ok) throw new Error('fix the framing problems above before rendering (look at a stretch with --strip=a:b)');
-  const estimated = timeline.cues.filter((q) => !q.voiced).map((q) => q.id);
-  if (estimated.length) throw new Error(`${estimated.join(', ')} ${estimated.length > 1 ? 'are' : 'is'} estimated, not voiced: run npm run tts before rendering the video`);
-  await renderMasteredMix();
-  // An old plain video would no longer match; the watch page offers it only if it's there.
-  if (!args.plain) rmSync(videoFor(false), { force: true });
-  for (const cap of args.plain ? [true, false] : [true]) {
-    await renderVideo(cap);
-    await review(cap, timeline);
-  }
-  writeFileSync(join(outDir, 'video.srt'), srtFrom(timeline));
-  writeWatchPage(timeline.title);
-} else if (args.audio) {
-  await renderMasteredMix();
-} else if (args.sheet || args.strip) {
-  let times: number[];
-  if (args.strip) {
-    const [a, b] = String(args.strip).split(':').map(Number);
-    times = [];
-    for (let t = a; t <= b + 1e-6; t += step) times.push(Number(t.toFixed(3)));
-  } else times = String(args.sheet).split(',').map(Number);
-  if (!times.length || times.some((t) => !Number.isFinite(t))) throw new Error('give times in seconds: --sheet=0.5,4,9 or --strip=4:5');
-  await sheet(times, at(typeof args.out === 'string' ? args.out : 'out/check/sheet.jpg'), { cols: Number(args.cols || (args.strip ? 5 : 3)), w: Number(args.w || (args.strip ? 384 : 640)), captions });
-} else if (args.repeatable) {
-  if (!(await isRepeatable(String(args.repeatable).split(',').map(Number)))) process.exitCode = 1;
-} else if (args.check) {
-  const { ok, timeline } = await checkFraming(every);
-  mkdirSync(join(outDir, 'check'), { recursive: true });
-  writeFileSync(join(outDir, 'check', 'timeline.json'), JSON.stringify(timeline, null, 2));
-  if (!ok) process.exitCode = 1;
-} else {
-  console.error('nothing to do: pass --video, --audio, --sheet, --strip or --check');
-  process.exitCode = 1;
+    return `  ${db > 50 ? '✓' : '✗'} ${(f / fps).toFixed(2)}s  ${Number.isFinite(db) ? `${db.toFixed(1)} dB at worst` : 'identical'}`;
+  });
+  const ok = frames.every((f) => worst.get(f)! > 50);
+  report.push(ok ? 'repeatable ✓' : 'not repeatable: something in those frames depends on what the tab drew before');
+  return { ok, report };
 }

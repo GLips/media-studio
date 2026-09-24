@@ -2,11 +2,10 @@
   "name": "video-studio",
   "version": "1.0.0",
   "description": "Walkthrough and explainer videos: capture, voice, compose, render.",
+  "bin": {
+    "studio": "cli/studio.ts"
+  },
   "scripts": {
-    "new": "node scripts/new-project.ts",
-    "tts": "op run --account branchlabs.1password.com --env-file=.env.op -- node scripts/tts.ts",
-    "studio": "node scripts/studio.ts",
-    "video": "node scripts/render.ts --video",
     "typecheck": "tsc -p .",
     "test": "node --test 'lib/**/*.test.ts'"
   },
@@ -25,6 +24,7 @@
     "@remotion/install-whisper-cpp": "4.0.525",
     "@remotion/media": "4.0.525",
     "@remotion/renderer": "4.0.525",
+    "citty": "0.2.2",
     "p5": "2.3.3",
     "p5.brush": "2.2.2",
     "react": "19.3.0",

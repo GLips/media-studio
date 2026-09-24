@@ -1,6 +1,6 @@
-// Films every shot the Complex buy box video shows. Each shot opens its own page and gets itself to its state, so any
+// Defines every shot the Complex buy box video shows. Each shot opens its own page and gets itself to its state, so any
 // can be redone alone.
-//   node projects/2026-09-complex-buy-box/capture.ts [--only=home,…]
+//   studio capture complex-buy-box [--only=home,…]   films them (it imports the default export)
 import type { Page } from 'playwright';
 import { captureShots } from '../../lib/capture.ts';
 
@@ -12,4 +12,4 @@ const open = async (page: Page, url: string) => {
 
 shots.still('home', { setup: (page) => open(page, 'https://www.painfulpleasures.com'), height: 1600 });
 
-await shots.run();
+export default shots;

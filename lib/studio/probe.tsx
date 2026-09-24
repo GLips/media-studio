@@ -1,4 +1,4 @@
-// probe.tsx: measures what the framing check needs from a rendered frame and hands it to scripts/render.ts as an
+// probe.tsx: measures what the framing check needs from a rendered frame and hands it to lib/render-pipeline.ts as an
 // artifact. It only measures; deciding what's a problem happens in Node, where every frame's report comes together.
 //
 // Remotion screenshots a frame once no delayRender() is pending, so the probe holds one from the moment the frame

@@ -10,13 +10,16 @@
 //   const shots = captureShots({ project: import.meta.dirname, viewport: { width: 1440, height: 810 } });
 //   shots.still('pdp', { setup: (page) => page.goto(url), rects: { callout: '.note' }, height: 1600 });
 //   shots.take('open-menu', { setup: (page) => page.goto(url), perform: (rec) => rec.click('.menu', { mark: 'open' }) });
-//   await shots.run();   // writes captures/index.ts, which the project's video.tsx imports
+//   export default shots;   // `studio capture` imports it and runs the shots, writing captures/index.ts
 //
-//   node projects/<p>/capture.ts                  every shot
-//   node projects/<p>/capture.ts --only=pdp,menu  just those; the rest keep their last capture
+//   studio capture <p>                   every shot
+//   studio capture <p> --only=pdp,menu   just those; the rest keep their last capture
 import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { gitState, linkedProjectHost, type GitState, type ProjectHostSpec } from './hosts.ts';
+import { STUDIO_ROOT } from './studio-project.ts';
 
 type Size = { width: number; height: number };
 type Point = { x: number; y: number };
@@ -114,16 +117,17 @@ export function captureShots({ project, viewport, scale = 2, css = '', prepare, 
   };
   const add = (shot: Shot) => {
     if (!/^[a-z0-9][a-z0-9-]*$/.test(shot.name)) throw new Error(`capture: shot names are lowercase words joined by dashes, not "${shot.name}"`);
+    if (shot.name === 'provenance') throw new Error('capture: "provenance" names the provenance file; pick another shot name');
     if (shots.some((s) => s.name === shot.name)) throw new Error(`capture: two shots are named "${shot.name}"`);
     shots.push(shot);
   };
 
-  async function run(argv = process.argv.slice(2)) {
-    const onlyArg = argv.find((a) => a.startsWith('--only='))?.slice('--only='.length);
-    const only = onlyArg ? onlyArg.split(',') : null;
+  /** Films every shot, or just those named in `only`, and rebuilds captures/index.ts. */
+  async function run({ only }: { only?: readonly string[] } = {}) {
     const unknown = only?.filter((n) => !shots.some((s) => s.name === n)) ?? [];
     if (unknown.length) throw new Error(`capture: no shot named ${unknown.join(', ')}`);
     mkdirSync(dir, { recursive: true });
+    const madeFrom = { studio: gitState(STUDIO_ROOT), host: linkedProjectHost(project) };
 
     const browser = await chromium.launch();
     const prepared = new Map<string, Promise<StorageState | undefined>>();
@@ -135,7 +139,9 @@ export function captureShots({ project, viewport, scale = 2, css = '', prepare, 
     const onFreshPage = async (device: string | undefined, work: (page: Page) => Promise<Entry>, name: string) => {
       const context = await openContext(browser, deviceFor(device), baseCss, await preparedStateFor(device));
       try {
-        writeEntry(dir, name, await work(await context.newPage()));
+        const page = await context.newPage();
+        writeEntry(dir, name, await work(page));
+        writeShotProvenance(dir, name, { url: page.url(), capturedAt: new Date().toISOString(), ...madeFrom });
       } finally {
         await context.close();
       }
@@ -169,6 +175,27 @@ export function captureShots({ project, viewport, scale = 2, css = '', prepare, 
     take: (name: string, options: TakeOptions) => add({ name, kind: 'take', options }),
     run,
   };
+}
+
+/** What a project's capture.ts default-exports. */
+export type CaptureShots = ReturnType<typeof captureShots>;
+
+/** Films the shots the project's capture.ts defines (just `only`, if given) and returns its captures/index.ts. */
+export async function captureStudioProject(project: string, { only }: { only?: readonly string[] } = {}): Promise<string> {
+  const script = join(project, 'capture.ts');
+  const shots = (await import(pathToFileURL(script).href)).default as CaptureShots | undefined;
+  if (typeof shots?.run !== 'function') throw new Error(`${script} must end with \`export default shots;\` (the captureShots session)`);
+  await shots.run({ only });
+  return join(project, 'captures', 'index.ts');
+}
+
+/** The index can't be rebuilt: these shots have no capture of the kind capture.ts now makes. Redoing them fixes it. */
+export class ShotsNeedCapturingError extends Error {
+  readonly shots: readonly string[];
+  constructor(shots: readonly string[], message: string) {
+    super(message);
+    this.shots = shots;
+  }
 }
 
 type StorageState = Awaited<ReturnType<BrowserContext['storageState']>>;
@@ -223,7 +250,7 @@ async function snapStill(page: Page, dir: string, name: string, device: Device, 
   if (viewportOnly) await page.screenshot({ path });
   else await page.screenshot({ path, fullPage: true, clip: { x: 0, y: 0, width: device.viewport.width, height: h } });
   const extra = data ? await data(page, fromSetup) : undefined;
-  console.log(`captured ${name}  (${Object.keys(measured).join(', ') || 'no rects'})`);
+  console.error(`captured ${name}  (${Object.keys(measured).join(', ') || 'no rects'})`);
   return { kind: 'still', file, w: device.viewport.width, h, scale: device.scale, rects: measured, ...(extra !== undefined && { data: extra }) };
 }
 
@@ -387,7 +414,7 @@ async function filmTake(page: Page, dir: string, name: string, device: Device, {
     writeFileSync(join(takeDir, file), Buffer.from(f.data, 'base64'));
     return { file, t: round3(f.t - t0), scrollY: f.scrollY };
   });
-  console.log(`filmed ${name}  (${frames.length} frames over ${duration.toFixed(1)}s; marks ${Object.keys(marks).join(', ') || 'none'})`);
+  console.error(`filmed ${name}  (${frames.length} frames over ${duration.toFixed(1)}s; marks ${Object.keys(marks).join(', ') || 'none'})`);
   return {
     kind: 'take', w: width, h: height, scale: device.scale, duration: round3(duration), frames,
     marks: Object.fromEntries(Object.entries(marks).map(([k, m]) => [k, { ...m, t: round3(m.t) }])),
@@ -400,6 +427,16 @@ async function filmTake(page: Page, dir: string, name: string, device: Device, {
 
 const entryPath = (dir: string, name: string) => join(dir, `${name}.json`);
 
+// What each shot was made from, so a video can be traced back to the studio and host commits (and URL) behind it
+// without keeping the media. Per shot, since --only redoes some shots against newer commits than the rest.
+type ShotProvenance = { url: string; capturedAt: string; studio: GitState; host: (ProjectHostSpec & GitState) | null };
+const provenancePath = (dir: string) => join(dir, 'provenance.json');
+const readProvenance = (dir: string): Record<string, ShotProvenance> => (existsSync(provenancePath(dir)) ? JSON.parse(readFileSync(provenancePath(dir), 'utf8')) : {});
+
+function writeShotProvenance(dir: string, name: string, provenance: ShotProvenance) {
+  writeFileSync(provenancePath(dir), JSON.stringify({ ...readProvenance(dir), [name]: provenance }, null, 2));
+}
+
 function writeEntry(dir: string, name: string, entry: Entry) {
   writeFileSync(entryPath(dir, name), JSON.stringify(entry));
 }
@@ -410,17 +447,18 @@ const uncaptured = (dir: string, shots: readonly Shot[]) => shots.filter((s) => 
 
 function writeIndex(dir: string, shots: readonly Shot[]) {
   const missing = uncaptured(dir, shots);
-  if (missing.length) throw new Error(`capture: never captured ${missing.join(', ')}; run them with --only=${missing.join(',')}`);
-  const entries = shots.map((s) => {
-    const entry = JSON.parse(readFileSync(entryPath(dir, s.name), 'utf8')) as Entry;
-    if (entry.kind !== s.kind) throw new Error(`capture: ${s.name} was captured as a ${entry.kind}; run it with --only=${s.name}`);
-    return [s.name, entry] as const;
-  });
-  const names = new Set(shots.map((s) => s.name));
-  for (const file of readdirSync(dir)) {
-    if (file !== 'index.ts' && !names.has(file.replace(/\.(png|json)$/, ''))) rmSync(join(dir, file), { recursive: true, force: true });
+  if (missing.length) throw new ShotsNeedCapturingError(missing, `capture: never captured ${missing.join(', ')}`);
+  const entries = shots.map((s) => [s, JSON.parse(readFileSync(entryPath(dir, s.name), 'utf8')) as Entry] as const);
+  const changedKind = entries.filter(([s, entry]) => entry.kind !== s.kind);
+  if (changedKind.length) {
+    throw new ShotsNeedCapturingError(changedKind.map(([s]) => s.name), `capture: ${changedKind.map(([s, entry]) => `${s.name} was captured as a ${entry.kind}, but capture.ts makes it a ${s.kind}`).join('; ')}`);
   }
-  writeFileSync(join(dir, 'index.ts'), indexModule(entries));
+  const names = new Set(shots.map((s) => s.name));
+  writeFileSync(provenancePath(dir), JSON.stringify(Object.fromEntries(Object.entries(readProvenance(dir)).filter(([name]) => names.has(name))), null, 2));
+  for (const file of readdirSync(dir)) {
+    if (file !== 'index.ts' && file !== 'provenance.json' && !names.has(file.replace(/\.(png|json)$/, ''))) rmSync(join(dir, file), { recursive: true, force: true });
+  }
+  writeFileSync(join(dir, 'index.ts'), indexModule(entries.map(([s, entry]) => [s.name, entry] as const)));
 }
 
 // The index is a module rather than JSON so the video imports each image (the bundler hashes and serves it) and rect
@@ -443,7 +481,7 @@ function indexModule(entries: readonly (readonly [string, Entry])[]) {
       takes.push(`  ${JSON.stringify(name)}: { ${JSON.stringify(rest).slice(1, -1)}, frames: [${frameList}] as readonly TakeFrame[], mouse: ${JSON.stringify(mouse)} as readonly TakeMouse[], keys: ${JSON.stringify(keys)} as readonly number[] },`);
     }
   }
-  return `// Written by lib/capture.ts when the project's capture.ts runs. Edits here are lost on the next capture.
+  return `// Written by \`studio capture\` (lib/capture.ts). Edits here are lost on the next capture.
 import type { Shot } from '../../../lib/studio/camera.ts';
 import type { Take, TakeFrame, TakeMouse } from '../../../lib/studio/take.ts';
 ${imports.join('\n')}

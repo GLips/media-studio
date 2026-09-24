@@ -5,3 +5,7 @@ projects/*/out/
 projects/*/audio/
 .agent_cache/
 projects/*/music/
+.hosts/
+hosts.local.json
+projects/*/host
+.DS_Store

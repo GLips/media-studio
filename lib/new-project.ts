@@ -1,34 +1,29 @@
-// new-project.ts: starts a video project that opens in the Studio on its first run.
-//
-//   npm run new -- <slug> --url=https://example.com [--title="Big new thing"]
+// new-project.ts: starts a video project that opens in the Studio on its first run. `studio new` runs it.
 //
 // Writes projects/<yyyy-mm>-<slug>/ with a capture script for the URL's home page, a two-line script, and a video
-// built from the kit (a motion title and a glass-card outro). It then captures the page and estimates the lines'
-// timing, so video.tsx compiles before anything is voiced. Replace the middle with the story.
-import { execFileSync } from 'node:child_process';
+// built from the kit (a motion title and a glass-card outro). The command then captures the page and estimates the
+// lines' timing, so video.tsx compiles before anything is voiced. Replace the middle with the story.
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { STUDIO_PROJECTS_DIR } from './studio-project.ts';
 
-const argv = process.argv.slice(2);
-const slug = argv.find((a) => !a.startsWith('--'));
-const flag = (name: string) => argv.find((a) => a.startsWith(`--${name}=`))?.split('=').slice(1).join('=');
-const url = flag('url');
-if (!slug || !url) {
-  console.error('usage: npm run new -- <slug> --url=https://example.com [--title="Big new thing"]');
-  process.exit(1);
-}
-const title = flag('title') || slug.replace(/-/g, ' ').replace(/^./, (ch) => ch.toUpperCase());
-const month = new Date().toISOString().slice(0, 7);
-const dir = join('projects', `${month}-${slug}`);
-if (existsSync(dir)) {
-  console.error(`${dir} already exists`);
-  process.exit(1);
+/** Writes a new project's starting files and returns its directory. Fails if the project already exists. */
+export function scaffoldStudioProject({ slug, url, title }: { slug: string; url: string; title?: string }): string {
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) throw new Error(`the slug must be lowercase words joined by dashes, not ${slug}`);
+  const name = title || slug.replace(/-/g, ' ').replace(/^./, (ch) => ch.toUpperCase());
+  const month = new Date().toISOString().slice(0, 7);
+  const dir = join(STUDIO_PROJECTS_DIR, `${month}-${slug}`);
+  if (existsSync(dir)) throw new Error(`${dir} already exists`);
+  mkdirSync(dir, { recursive: true });
+  for (const [file, content] of Object.entries(starterFiles(slug, url, name))) writeFileSync(join(dir, file), content);
+  return dir;
 }
 
-const files: Record<string, string> = {
-  'capture.ts': `// Films every shot the ${title} video shows. Each shot opens its own page and gets itself to its state, so any
+function starterFiles(slug: string, url: string, title: string): Record<string, string> {
+  return {
+    'capture.ts': `// Defines every shot the ${title} video shows. Each shot opens its own page and gets itself to its state, so any
 // can be redone alone.
-//   node ${dir}/capture.ts [--only=home,…]
+//   studio capture ${slug} [--only=home,…]   films them (it imports the default export)
 import type { Page } from 'playwright';
 import { captureShots } from '../../lib/capture.ts';
 
@@ -45,18 +40,18 @@ shots.still('home', { setup: (page) => open(page, ${JSON.stringify(url)}), heigh
 // or, where a cut would jump, a take that films the move, e.g.
 //   shots.take('open-menu', { setup: …, perform: (rec) => rec.click('.menu', { mark: 'open', rects: { menu: '.menu' } }) });
 
-await shots.run();
+export default shots;
 `,
 
-  'voiceover.json': `${JSON.stringify({
-    voice: 'Callirrhoe',
-    lines: [
-      { id: 'intro', text: `Here's a quick look at ${title}.` },
-      { id: 'outro', text: 'That’s it. Thanks for watching.', paragraph: true },
-    ],
-  }, null, 2)}\n`,
+    'voiceover.json': `${JSON.stringify({
+      voice: 'Callirrhoe',
+      lines: [
+        { id: 'intro', text: `Here's a quick look at ${title}.` },
+        { id: 'outro', text: 'That’s it. Thanks for watching.', paragraph: true },
+      ],
+    }, null, 2)}\n`,
 
-  'video.tsx': `// The ${title} video. Scene times are seconds from each scene's start; \`s.line(id).at(f)\` is the moment a fraction
+    'video.tsx': `// The ${title} video. Scene times are seconds from each scene's start; \`s.line(id).at(f)\` is the moment a fraction
 // \`f\` of the way through a voiced line, so beats stay on their words when the voice is re-timed.
 
 import {
@@ -91,13 +86,5 @@ const outro = defineScene({
 
 export default defineVideo({ title: ${JSON.stringify(title)}, voice, scenes: [title, outro] });
 `,
-};
-
-mkdirSync(dir, { recursive: true });
-for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), content);
-execFileSync('node', [join(dir, 'capture.ts')], { stdio: 'inherit' });
-execFileSync('node', ['scripts/tts.ts', dir, '--estimate'], { stdio: 'inherit' });
-console.log(`${dir}/ is ready. Next:
-  npm run studio -- ${dir}       watch it, with estimated timing and no voice
-  npm run tts -- ${dir}          voice it
-  npm run video -- ${dir}        render it`);
+  };
+}

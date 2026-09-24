@@ -1,5 +1,5 @@
-// Films every shot the sale-only-view walkthrough shows, from the PR #333 preview theme.
-//   node projects/2026-09-sale-only-view/capture.ts [--only=partial-picked,…]
+// Defines every shot the sale-only-view walkthrough shows, from the PR #333 preview theme.
+//   studio capture sale-only-view [--only=partial-picked,…]   films them (it imports the default export)
 //
 // Product pages use the new buy box (`view=ab-buy-box`), the arm of the buy-box A/B test this feature is built on.
 // Every shot opens its own page and gets itself to its state, so any can be redone alone.
@@ -101,4 +101,4 @@ shots.still('cart', {
   rects: { item: 'line-item', checkout: '[name="checkout"]' },
 });
 
-await shots.run();
+export default shots;

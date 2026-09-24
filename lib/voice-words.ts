@@ -1,4 +1,4 @@
-// voice-words.ts: when each word of a voiced line is spoken. Pure, and shared: scripts/tts.ts aligns what whisper heard
+// voice-words.ts: when each word of a voiced line is spoken. Pure, and shared: lib/voice-project.ts aligns what whisper heard
 // to the script and stores the result in the manifest, and scenes look words up through `s.line(id).word(…)`.
 //
 // The script is the truth for *what* was said; whisper is only trusted for *when*. So there's always exactly one

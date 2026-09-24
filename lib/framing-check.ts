@@ -1,5 +1,5 @@
-// framing-check.ts: turns the probe's per-frame measurements into problems a viewer would notice. Pure; render.ts
-// renders the frames and prints what comes back.
+// framing-check.ts: turns the probe's per-frame measurements into problems a viewer would notice. Pure;
+// lib/render-pipeline.ts renders the frames and prints what comes back.
 //
 // Two kinds of rule. Every highlight or click marks something the voice is describing, so one under a tag or the
 // caption, off the frame or cut off by its panel is a problem wherever it happens. And a scene's `expect` says a named

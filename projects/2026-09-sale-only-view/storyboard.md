@@ -6,7 +6,7 @@
 **Takeaway:** a shopper who clicks a sale item lands on the options that are actually on sale.
 
 The words live in `voiceover.json`; each scene's `note` in `video.tsx` says what it shows. See it all, with stills per
-line and a playable preview, with `node scripts/storyboard.ts projects/2026-09-sale-only-view`.
+line and a playable preview, with `studio storyboard sale-only-view`.
 
 ## Deliberately left out
 

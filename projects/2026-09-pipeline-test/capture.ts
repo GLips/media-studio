@@ -1,5 +1,5 @@
-// Films every shot the pipeline test shows, from fixture/store.html, so the captures are the same on every run.
-//   node projects/2026-09-pipeline-test/capture.ts
+// Defines every shot the pipeline test shows, from fixture/store.html, so the captures are the same on every run.
+//   studio capture pipeline-test   films them (it imports the default export)
 import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 import type { Page } from 'playwright';
@@ -43,4 +43,4 @@ for (const n of [2, 3, 4]) {
 shots.still('phone-top', { device: 'phone', setup: open, scrollY: 0 });
 shots.still('phone-specs', { device: 'phone', setup: open, scrollY: 1100, rects: { bar: '.bar' } });
 
-await shots.run();
+export default shots;

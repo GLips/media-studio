@@ -1,6 +1,6 @@
 ---
 name: video-kickoff
-description: Start a new walkthrough or launch video. Use when the user starts a video project, dumps context for one, asks for story angles, or wants a storyboard or scene table.
+description: Make a walkthrough, explainer, PR, launch or marketing video, from the first context dump to an approved storyboard. Use when the user asks for a video about something (from any repo), dumps context for one, asks for story angles, or wants a storyboard or scene table.
 ---
 
 # Starting a video
@@ -9,6 +9,9 @@ Four gates, in order: **dump → angle → scene table → storyboard**. Each ga
 Nothing gets a real voice or motion polish until the storyboard is signed off. A scene table is cheap to change;
 voiced, polished motion is not.
 
+Every video lives in the studio repo, whatever repo the request came from. Read the source material where it is, then
+work in `studio home` (paths below are relative to it). Each verb explains itself: `studio <verb> --help`.
+
 ## 1. Take the dump
 
 The first message is usually messy and dictated. Pull these out of it, and ask only about what's missing:
@@ -16,19 +19,26 @@ The first message is usually messy and dictated. Pull these out of it, and ask o
 - **What's launching**, and **the one thing a viewer should take away**. If there isn't one takeaway, stop and settle it.
 - **Audience**: the client, customers or developers. That sets the vocabulary and how much gets explained.
 - **Source material**: docs, a PR, a Loom transcript, a launch-post draft, the Slack thread. Read every one of them.
+  Asked from inside a product repo, the change itself (its diff, docs and PR) is source material.
 - **Where the real UI is**: the URL, theme, or preview query (e.g. `?view=…`) for each state the story needs.
+- **Whose code it's about.** If it's a product repo's (a PR, a component), make that repo the project's host once the
+  project exists: `projects/<p>/host.json` `{ name, ref }`, with `name` a key of `hosts.json` (add it if new), then
+  `studio hosts sync <p> --install`. The host appears at `projects/<p>/host`. To show unpushed work, map the name to
+  the working copy's absolute path in `hosts.local.json`.
 - **A reference video**, if they have one for the style.
 - **Rough length.** Frames are 1920×1080.
 
 ## 2. Five angles, then one
 
 Before writing any scenes, give **5 story angles of 2–3 sentences each**. Make them different ways into the story
-(e.g. the problem first, or a number that surprises), not five wordings of one idea. Refine whichever one the user picks until they say it feels right.
+(e.g. the problem first, or a number that surprises), not five wordings of one idea. Refine whichever one the user
+picks until they say it feels right.
 
 ## 3. Scene table
 
-Start the project with `npm run new -- <slug> --url=<page> --title="…"`. Then write the chosen angle out scene by
-scene in `projects/<p>/storyboard.md`, under the audience, source and takeaway:
+Start the project with `studio new`. If the video is about a product repo's code, give it a host (the `video-capture`
+skill, Hosts). Then write the chosen angle out scene by scene in `projects/<p>/storyboard.md`, under the audience,
+source and takeaway:
 
 ```
 | #  | Scene     | On screen                              | Motion                  | Lines        |
@@ -54,35 +64,35 @@ Get the user's yes on the table before building anything.
 The storyboard is the video itself, rough, and never a separate drawing, so it can't drift from what ships.
 
 1. Write the lines into `voiceover.json`, with `"paragraph": true` on each line that starts a new beat so the read
-   pauses there, and run `node scripts/tts.ts projects/<p> --estimate`. That times each line from its word count, for
-   free.
-2. Add the states to `capture.ts` and run it, by the **Real UI only** rules below.
+   pauses there, and run `studio voice <p> --read=estimate`. That times each line from its word count, for free.
+2. Add the states to `capture.ts` with the `video-capture` skill, by the **Real UI only** rules below, and run
+   `studio capture <p>`.
 3. Build `video.tsx` as an **animatic**: one scene per table row, with the table's text as its `note`, one camera and at
    most one highlight per scene. Anchor the highlight to its word (`s.line(id).word(…)`) now, so it lands again once
    the real voice replaces the estimate. No cursor paths, blur or polish yet.
-4. Run `node scripts/storyboard.ts projects/<p>` and look at `out/storyboard/index.html` yourself. It's ready to send
-   when every scene's event and each of its listed reads shows in its stills, and nothing is off the frame or under
-   the caption.
+4. Run `studio storyboard <p>` and look at the page it writes yourself. It's ready to send when every scene's event
+   and each of its listed reads shows in its stills, and nothing is off the frame or under the caption.
 5. Send the user the page. Their notes go into the table, the lines and the animatic, and the page is rebuilt, until
    they sign off.
 
-Once signed off, voice it for real (`npm run tts -- projects/<p>` reads the whole script as one take), rebuild the storyboard to check the timing, then
-do the motion pass with the `video-motion` skill.
+Once signed off, voice it for real with `studio voice <p>`, which reads the whole script as one take. It needs
+`OPENROUTER_API_KEY` in the environment; if that isn't set, don't go looking for it: ask the user to run
+`studio voice <p>` themselves, under their secret launcher. Then rebuild the storyboard to check the timing, and do
+the motion pass with the `video-motion` skill.
 
 ## Real UI only
 
 Everything on screen is the real product. Anyone who uses it knows what it looks like, and one made-up button
 breaks it for all of them.
 
-- Capture with `capture.ts` (Playwright, through `captureShots`): a still per state, or a take where the viewer should
-  watch the click happen instead of cutting to its result. If a state can't be photographed (an
-  open native `<select>`, a `confirm()` dialog), rebuild it in DOM **from the product's own words and styles**, as
-  `ConfirmDialog` and `NativeMenu` in `lib/studio/kit.tsx` do.
+- Photograph or film it (`video-capture`), or compose the host's real components (`video-motion`, Host components).
+  If a state can't be photographed (an open native `<select>`, a `confirm()` dialog), rebuild it in DOM **from the
+  product's own words and styles**, as `ConfirmDialog` and `NativeMenu` in `lib/studio/kit.tsx` do.
 - Pull real icons and logos from the site's assets. On a Mac, an app's icon sits in its bundle:
   `sips -s format png /Applications/X.app/Contents/Resources/*.icns --out icon.png`. A coloured square standing in for
   an icon fails review.
 - **Show only what the scene needs.** Frame the one part the story is about, large, on a clean background, instead of
   the whole page. `camFit` caps at 1.6× because captures soften past that. To go bigger, capture that element at a
-  higher `deviceScaleFactor`.
+  higher `scale`.
 - Check each claim in the source doc against the live product, and note in `storyboard.md` where they disagree (see
   the "Checked against" table in `projects/2026-09-simple-buy-box-story/storyboard.md`).

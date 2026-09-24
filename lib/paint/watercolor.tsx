@@ -1,5 +1,5 @@
 // watercolor.tsx: a hand-painted look, with p5.brush washes, watercolour fills, hatching and tapered ink lines on
-// paper. Ported from ClaudeAnimationBase's core.js (MIT); .claude/skills/video-canvas/references/watercolor.md is the
+// paper. Ported from ClaudeAnimationBase's core.js (MIT); skills/video-canvas/references/watercolor.md is the
 // guide to using it.
 //
 // The line work "boils": its jitter is re-seeded BOIL times a second, so each drawing holds for two frames and

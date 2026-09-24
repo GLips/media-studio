@@ -1,5 +1,5 @@
-// Films every shot the Painted video shows.
-//   node projects/2026-09-paint-test/capture.ts [--only=home,…]
+// Defines every shot the Painted video shows.
+//   studio capture paint-test [--only=home,…]   films them (it imports the default export)
 import type { Page } from 'playwright';
 import { captureShots } from '../../lib/capture.ts';
 
@@ -15,4 +15,4 @@ shots.still('home', {
   height: 1600,
 });
 
-await shots.run();
+export default shots;

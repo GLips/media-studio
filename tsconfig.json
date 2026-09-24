@@ -9,7 +9,11 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": ["node"],
+    // Host components (projects/<p>/host, lib/hosts.ts) type against the studio's React, as they bundle against it.
+    "paths": { "react": ["./node_modules/@types/react/index.d.ts"], "react/*": ["./node_modules/@types/react/*"] }
   },
-  "include": ["lib", "scripts", "projects/*/video.tsx", "projects/*/capture.ts", "remotion.config.ts", "types.d.ts"]
+  // Deliberately no projects/*/host here: host files a scene imports are checked, under these settings, so a prop
+  // mismatch surfaces; the rest of the host (its own config, aliases, env types) is never read.
+  "include": ["lib", "cli", "projects/*/video.tsx", "projects/*/capture.ts", "remotion.config.ts", "types.d.ts"]
 }

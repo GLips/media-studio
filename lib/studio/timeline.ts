@@ -14,7 +14,7 @@ import type { MusicBed } from './mix.ts';
 import { ease } from './motion.ts';
 
 export type VoiceLine = {
-  /** An imported WAV, or null for a line timed by `tts --estimate` that has no audio yet. */
+  /** An imported WAV, or null for a line timed by `studio voice --read=estimate` that has no audio yet. */
   src: string | null;
   duration: number;
   text: string;
@@ -112,7 +112,7 @@ export type VideoDef = {
   scenes: readonly SceneDef[];
   /** Crossfade length in seconds, centred on each cut. Default 0.5. */
   xfade?: number;
-  /** A music bed under the whole video, ducked under the voice. See `scripts/music.ts`. */
+  /** A music bed under the whole video, ducked under the voice. See `studio music`. */
   music?: MusicBed;
 };
 
@@ -150,7 +150,7 @@ export function layoutVideo(video: VideoDef): Timeline {
     let cursor = lead;
     scene.lines.forEach((id, j) => {
       const voiced = video.voice[id];
-      if (!voiced) throw new Error(`scene ${scene.id}: line "${id}" isn't in audio/manifest.ts. Add it to voiceover.json and run npm run tts.`);
+      if (!voiced) throw new Error(`scene ${scene.id}: line "${id}" isn't in audio/manifest.ts. Add it to voiceover.json and run studio voice.`);
       if (!Number.isFinite(voiced.duration) || voiced.duration <= 0) throw new Error(`line "${id}" lasts ${voiced.duration}s`);
       const owner = sceneOfLine.get(id);
       if (owner) throw new Error(`scene ${scene.id}: line "${id}" is already spoken in scene ${owner}`);

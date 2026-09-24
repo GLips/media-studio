@@ -1,9 +1,11 @@
 ---
 name: video-motion
-description: Motion and camera for a video's scenes, from the shared vocabulary to lib/studio code. Use when animating an approved storyboard, or for motion feedback ("slow the zooms", "the highlight comes too late").
+description: Motion and camera for a video's scenes, from the shared vocabulary to lib/studio code, including a product repo's real components. Use when animating an approved storyboard, or for motion feedback ("slow the zooms", "the highlight comes too late").
 ---
 
 # Motion vocabulary
+
+Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it.
 
 The user and you should mean the same thing by each word. Each term below maps to `lib/studio/api.ts`, which is all a
 scene imports. `docs/directing.md` covers the fuller craft (shot sizes, eye trace, J- and L-cuts, pacing, easing feel,
@@ -54,7 +56,7 @@ You know what happens because you wrote the code. The viewer sees it once, at fu
 ## Takes: when the viewer should watch it happen
 
 A cut from one still to the next state hides the action. Where following the click matters (a carousel, a menu
-opening), film a take (`shots.take` in `capture.ts`) and put it in the scene:
+opening), film a take (the `video-capture` skill) and put it in the scene:
 
 - `fitTake(T[name], [[word.start, 'pick'], [later.start, 'shown']])` pins its marks to words. Keep the speed between
   pins near 1×; past ~1.5× a scroll or animation reads rushed, so move a pin to an earlier word or refilm slower.
@@ -64,9 +66,16 @@ opening), film a take (`shots.take` in `capture.ts`) and put it in the scene:
 - A take's frames are JPEG, so a close-up whose point is sharpness (a lightbox comparing two pages) belongs on a
   still.
 
+## Host components
+
+When the video is about a product repo's code, its real React components can be the shot instead of a capture of
+them. With the project's host synced (`studio hosts --help`), import them from `./host/…` in `video.tsx`,
+lay them out yourself and animate with plain Remotion (`spring`, `interpolate`, or `seg` on `s.t`). There's no page to
+measure, so no camera or rects: those are for captures, where the picture is a screenshot or a take.
+
 ## Acting on feel notes
 
-The user watches in the Studio (`npm run studio -- projects/<p>`) and says what feels off. Change only what the note
+The user watches in the Studio (`studio preview <p>`) and says what feels off. Change only what the note
 names:
 
 - **"Slow every zoom and pan to 0.7× of current"**: stretch each camera key's span by 1/0.7 around the word it's
@@ -82,11 +91,10 @@ names:
 
 Look at the images yourself before reporting back.
 
-- `node scripts/render.ts projects/<p> --check` runs the framing check (highlights and clicks under tags or the
-  caption, off the frame, cut off by their panel; every `expect`) and writes `out/check/timeline.json`, which says
-  when every scene and line lands.
-- `--strip=a:b` shows a stretch of motion, 0.1 s apart; `--sheet=t1,t2,…` shows chosen moments. Add `--captions`.
-- `node scripts/storyboard.ts projects/<p>` rebuilds the storyboard page from the video.
+- `studio check <p>` runs the framing check (highlights and clicks under tags or the caption, off the frame, cut off
+  by their panel; every `expect`) and writes `out/check/timeline.json`, which says when every scene and line lands.
+- `studio look <p> --strip=a:b` shows a stretch of motion; `--sheet=t1,t2,…` shows chosen moments.
+- `studio storyboard <p>` rebuilds the storyboard page from the video.
 
 To judge timing, read a `--strip` like a viewer: at each tile, where are they looking, and do they understand it
 yet? Time each read from the tiles' timestamps (a default strip's tiles are 0.1 s apart, three video frames each). A

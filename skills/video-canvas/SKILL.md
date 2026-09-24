@@ -1,9 +1,11 @@
 ---
 name: video-canvas
-description: Painted, drawn and generative layers in a video, made with p5 and p5.brush inside Remotion. Use for a painted or hand-drawn look (a watercolour opening, ink marks over a capture, a brush-wipe transition), generative backgrounds, or adding a new drawn style. Triggers include "painted", "hand-drawn", "generative", "p5".
+description: Painted, drawn and generative layers in a video, made with p5 and p5.brush inside Remotion. Use for a painted or hand-drawn look (a watercolour opening, ink marks over a capture, a brush-wipe transition), generative backgrounds, or adding a new drawn style.
 ---
 
 # Drawn layers
+
+Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it.
 
 Captures show the real product. Drawn layers add what a screenshot can't: a painted opening, a transition with
 texture, a hand-drawn loop around the thing the voice names. They're full-frame canvases that sit in a scene like any
@@ -38,8 +40,8 @@ flickers in the render.
 - **Flush deferred drawing at the end of every layer.** p5.brush holds strokes back and composites them later; left
   alone, one frame's ink turns up in the next frame the tab paints. `Watercolor` flushes for you.
 - For values that mustn't wobble (positions, sizes), use `hash(i)`, not the seeded stream.
-- **Prove it:** `node scripts/render.ts projects/<p> --repeatable=2,8.5,12` renders those times fresh and again after
-  other frames in one tab, and fails if any differ. Run it whenever a drawn layer flickers.
+- **Prove it:** `studio repeatable <p> <times>` renders chosen times fresh and again after other frames in one tab, and fails
+  if any differ. Run it whenever a drawn layer flickers.
 
 ## Layers over captures
 
@@ -68,7 +70,7 @@ A style is a whole medium with its own rules (what marks it makes, its palette, 
 2. Write `lib/paint/<style>.tsx`: a `P5Style` with `attach` and `setup`, a kit bound to `(p, t)` that seeds per
    element and flushes at the end, and a component like `Watercolor`.
 3. Write `references/<style>.md`: the medium's rules, its helpers, its quirks and its tells.
-4. Build one shot in a test project, look at a `--sheet` and a `--strip`, and pass `--repeatable`.
+4. Build one shot in a test project, look at a `--sheet` and a `--strip`, and pass `studio repeatable`.
 
 Character animation (walk cycles, acting) isn't ported; ClaudeAnimationBase's `ANIMATION_GUIDE.md`
 (github.com/JohnHeibel/ClaudeAnimationBase) is the place to start.

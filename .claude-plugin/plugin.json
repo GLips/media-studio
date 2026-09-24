@@ -1,0 +1,5 @@
+{
+  "name": "video-studio",
+  "description": "Walkthrough, explainer and launch videos made in code with the studio CLI: planning, capture, motion, drawn layers.",
+  "author": { "name": "Graham Lipsman" }
+}

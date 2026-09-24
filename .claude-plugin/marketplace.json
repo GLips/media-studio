@@ -1,0 +1,6 @@
+{
+  "name": "video-studio",
+  "description": "The video-studio repo, published as its own one-plugin marketplace.",
+  "owner": { "name": "Graham Lipsman" },
+  "plugins": [{ "name": "video-studio", "source": "./" }]
+}

@@ -1,5 +1,5 @@
 // Video.tsx: a project's video as a composition: its scenes (crossfading where they meet), its voice lines, the
-// caption, and the reports scripts/render.ts reads back.
+// caption, and the reports lib/render-pipeline.ts reads back.
 //
 // Painting is decided from composition time alone (scenesAt), exactly as the timeline lays it out. The Sequences
 // around each scene and voice line are for the Studio's timeline, where they show up by name, and for mounting.
@@ -20,7 +20,7 @@ export type VideoProps = {
   probe: boolean;
 };
 
-/** What scripts/render.ts needs about the timeline (for the .srt and reports), emitted once as an artifact. */
+/** What lib/render-pipeline.ts needs about the timeline (for the .srt and reports), emitted once as an artifact. */
 export type TimelineReport = {
   title: string;
   fps: number;

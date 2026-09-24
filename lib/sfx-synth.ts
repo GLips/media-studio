@@ -1,11 +1,12 @@
-// sfx.ts: synthesizes the kit's sound effects into lib/studio/sfx/, so they're ours to change and carry no licence.
-//
-//   node scripts/sfx.ts
+// sfx-synth.ts: synthesizes the kit's sound effects into lib/studio/sfx/, so they're ours to change and carry no
+// licence. `studio sfx` runs it.
 //
 // Each is a press and a softer release, like the real thing: a burst of filtered noise for the contact, and a couple
 // of decaying resonances for the body. The noise is seeded, so a rerun writes the same files.
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { wavFromSamples } from '../lib/wav.ts';
+import { join } from 'node:path';
+import { STUDIO_ROOT } from './studio-project.ts';
+import { wavFromSamples } from './wav.ts';
 
 const RATE = 48000;
 const PEAK_DB = -10;
@@ -35,12 +36,16 @@ function synthesize(transients: readonly Transient[], seconds: number): Int16Arr
 const mouse = (gain: number, at: number): Transient => ({
   at, gain, noiseTau: 0.0008, tones: [{ hz: 3400, tau: 0.0025, gain: 0.5 }, { hz: 1150, tau: 0.004, gain: 0.35 }],
 });
-const key = (gain: number, at: number): Transient => ({
+const keyPress = (gain: number, at: number): Transient => ({
   at, gain, noiseTau: 0.0018, tones: [{ hz: 1900, tau: 0.003, gain: 0.3 }, { hz: 620, tau: 0.007, gain: 0.55 }],
 });
 
-const dir = 'lib/studio/sfx';
-mkdirSync(dir, { recursive: true });
-writeFileSync(`${dir}/click.wav`, wavFromSamples(synthesize([mouse(1, 0), mouse(0.45, 0.07)], 0.12), RATE));
-writeFileSync(`${dir}/key.wav`, wavFromSamples(synthesize([key(1, 0), key(0.35, 0.08)], 0.14), RATE));
-console.log(`wrote ${dir}/click.wav and key.wav`);
+/** Writes the kit's click.wav and key.wav, and returns their paths. */
+export function writeKitSfx(): string[] {
+  const dir = join(STUDIO_ROOT, 'lib/studio/sfx');
+  mkdirSync(dir, { recursive: true });
+  const click = join(dir, 'click.wav'), key = join(dir, 'key.wav');
+  writeFileSync(click, wavFromSamples(synthesize([mouse(1, 0), mouse(0.45, 0.07)], 0.12), RATE));
+  writeFileSync(key, wavFromSamples(synthesize([keyPress(1, 0), keyPress(0.35, 0.08)], 0.14), RATE));
+  return [click, key];
+}

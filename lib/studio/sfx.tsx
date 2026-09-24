@@ -1,4 +1,4 @@
-// sfx.tsx: short sound effects placed at a moment in scene time. The sounds are synthesized by scripts/sfx.ts.
+// sfx.tsx: short sound effects placed at a moment in scene time. The sounds are synthesized by `studio sfx`.
 
 import { Audio } from '@remotion/media';
 import { Sequence, useCurrentFrame, useVideoConfig } from 'remotion';
