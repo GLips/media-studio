@@ -1,4 +1,4 @@
-// The sale-only-view walkthrough. See storyboard.html for the plan and voiceover.json for the words. Scene times are
+// The sale-only-view walkthrough. See storyboard.md for the plan and voiceover.json for the words. Scene times are
 // seconds from each scene's start; `s.line(id)` anchors a beat to the moment a line is spoken.
 
 import {
@@ -40,7 +40,9 @@ function CollectionClick({ t, card, from, scrollEnd, clickAt }: { t: number; car
 // ---------- 1. Title: the store rushing past, the title bottom-left ----------
 
 const title = defineScene({
-  id: 'title', lines: ['intro'], lead: 1.4, tail: 1.0,
+  id: 'title',
+  note: 'Navy title card, then a slow fade into the collection page.',
+  lines: ['intro'], lead: 1.4, tail: 1.0,
   render: (s) => (
     <MotionTitle s={s} shot={C.home} eyebrow="PAINFUL PLEASURES  ·  NEW ON SALE PAGES" title="Sale-only view"
       subtitle="Take shoppers straight to the deal they clicked." accent={SALE_RED} />
@@ -50,7 +52,9 @@ const title = defineScene({
 // ---------- 2. Today: the click, and every option at full price ----------
 
 const today = defineScene({
-  id: 'today', lines: ['problem-a', 'problem-b'], lead: 0.5, gap: 0.5, tail: 0.6,
+  id: 'today',
+  note: 'The Tattoo Machine Sale grid. The cursor clicks the InkJecta card, and the product page as it is today: five swatches, full $824.99 price.',
+  lines: ['problem-a', 'problem-b'], lead: 0.5, gap: 0.5, tail: 0.6,
   render: (s) => {
     const clickAt = 2.6, landAt = 3.0;
     const shot = C['partial-today'];
@@ -79,7 +83,9 @@ const today = defineScene({
 // ---------- 3. The fix: same click, only what's on sale ----------
 
 const fix = defineScene({
-  id: 'fix', lines: ['fix-a', 'fix-b'], lead: 0.9, gap: 0.5, tail: 0.8,
+  id: 'fix',
+  note: 'The same click lands on the filtered page; the camera pushes in on the red note while a ring traces it. The swatches drop to three.',
+  lines: ['fix-a', 'fix-b'], lead: 0.9, gap: 0.5, tail: 0.8,
   render: (s) => {
     const clickAt = 0.9, landAt = 1.2;
     const card = C.collection.rects.partialCard, target = cardTarget(card);
@@ -113,7 +119,9 @@ const fix = defineScene({
 // ---------- 4. Choosing: every pick stays on sale ----------
 
 const pick = defineScene({
-  id: 'pick', lines: ['pick'], lead: 0.6, tail: 0.5, cut: true,
+  id: 'pick',
+  note: 'The cursor clicks the second swatch; the marked-down price is highlighted.',
+  lines: ['pick'], lead: 0.6, tail: 0.5, cut: true,
   render: (s) => {
     const clickAt = 1.3;
     const from = view(C['partial-filtered'], buyBoxFocus(C['partial-filtered']));
@@ -133,7 +141,9 @@ const pick = defineScene({
 // ---------- 5. Show all: one click back to everything ----------
 
 const showAll = defineScene({
-  id: 'show-all', lines: ['show-all'], lead: 0.6, tail: 1.0, min: 4.2, cut: true,
+  id: 'show-all',
+  note: 'The cursor clicks "Show all options". The note goes and all five swatches return.',
+  lines: ['show-all'], lead: 0.6, tail: 1.0, min: 4.2, cut: true,
   render: (s) => {
     const clickAt = 1.1;
     const cam = buyBoxFocus(C['partial-filtered']);
@@ -154,7 +164,9 @@ const showAll = defineScene({
 // ---------- 6. All on sale: the calmer note ----------
 
 const allOnSale = defineScene({
-  id: 'all-on-sale', lines: ['all-on-sale'], lead: 1.0, tail: 1.4, min: 5.5,
+  id: 'all-on-sale',
+  note: 'Back on the grid, a click on Peak Matrix ("Up to 68%"). The page opens with the blue "All options are on sale." box.',
+  lines: ['all-on-sale'], lead: 1.0, tail: 1.4, min: 5.5,
   render: (s) => {
     const clickAt = 0.7, landAt = 1.0;
     const card = C.collection.rects.allOnSaleCard, target = cardTarget(card);
@@ -184,7 +196,9 @@ const allOnSale = defineScene({
 // ---------- 7. Big listings: 136 down to 3 ----------
 
 const big = defineScene({
-  id: 'big', lines: ['big'], lead: 0.5, tail: 1.6, min: 8.5,
+  id: 'big',
+  note: 'Kwadron cartridges: the full four-option picker, then the filtered view. The camera pushes in on "3 of 136".',
+  lines: ['big'], lead: 0.5, tail: 1.6, min: 8.5,
   render: (s) => {
     const swapAt = 4.5;
     const before = C['big-today'], after = C['big-filtered'];
@@ -213,7 +227,9 @@ const checkout = { shot: C.cart, frame: union(C.cart.rects.item, C.cart.rects.ch
 const closingCard = { accent: SALE_RED, ink: NAVY };
 
 const pricing = defineScene({
-  id: 'pricing', lines: ['pricing'], lead: 2.2, tail: 0.6,
+  id: 'pricing',
+  note: "A glass card over a blurred product page: each customer's own pricing.",
+  lines: ['pricing'], lead: 2.2, tail: 0.6,
   render: (s) => (
     <>
       <ClickToBlur t={s.t} {...checkout} />
@@ -224,7 +240,9 @@ const pricing = defineScene({
 });
 
 const rollout = defineScene({
-  id: 'rollout', lines: ['rollout'], lead: 0.4, tail: 3.4, cut: true,
+  id: 'rollout',
+  note: 'The rollout card, then the end card.',
+  lines: ['rollout'], lead: 0.4, tail: 3.4, cut: true,
   render: (s) => (
     <>
       <ClickToBlur t={s.t + 20} {...checkout} />

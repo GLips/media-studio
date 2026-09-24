@@ -1,11 +1,13 @@
 ---
 name: video-kickoff
-description: Start a new walkthrough or launch video, from the first context dump to an approved storyboard, before any animation. Use when the user starts a video project, dumps context for one, asks for story angles, or wants a storyboard or scene table. Triggers include "new video", "let's make a video about", "storyboard this", "give me some angles".
+description: Start a new walkthrough or launch video, from the first context dump to an approved storyboard, before any motion pass. Use when the user starts a video project, dumps context for one, asks for story angles, or wants a storyboard or scene table. Triggers include "new video", "let's make a video about", "storyboard this", "give me some angles".
 ---
 
 # Starting a video
 
-Three gates, in order: **dump → angle → storyboard**. Don't animate until the user signs off on the storyboard. It's much cheaper to change a scene table than a timeline.
+Four gates, in order: **dump → angle → scene table → storyboard**. Each gate needs the user's yes before the next.
+Nothing gets a real voice or motion polish until the storyboard is signed off. A scene table is cheap to change;
+voiced, polished motion is not.
 
 ## 1. Take the dump
 
@@ -16,35 +18,65 @@ The first message is usually messy and dictated. Pull these out of it, and ask o
 - **Source material**: docs, a PR, a Loom transcript, a launch-post draft, the Slack thread. Read every one of them.
 - **Where the real UI is**: the URL, theme, or preview query (e.g. `?view=…`) for each state the story needs.
 - **A reference video**, if they have one for the style.
-- **Aspect ratio and rough length.**
+- **Rough length.** Frames are 1920×1080.
 
 ## 2. Five angles, then one
 
-Before writing any scenes, give **5 story angles of 2–3 sentences each**. Make them different ways into the story (the problem first, the before and after, a customer's day, a number, a demo run straight through), not five wordings of one idea. Refine whichever one the user picks until they say it feels right.
+Before writing any scenes, give **5 story angles of 2–3 sentences each**. Make them different ways into the story
+(the problem first, the before and after, a customer's day, a number, a demo run straight through), not five
+wordings of one idea. Refine whichever one the user picks until they say it feels right.
 
 ## 3. Scene table
 
-Write the chosen angle out scene by scene. Scenes that carry voice take a Line column, which later becomes the ids in `voiceover.json`:
+Start the project with `npm run new -- <slug> --url=<page> --title="…"`. Then write the chosen angle out scene by
+scene in `projects/<p>/storyboard.md`, under the audience, source and takeaway:
 
 ```
-| #  | On screen                                  | Motion                      | Line        |
-|----|--------------------------------------------|-----------------------------|-------------|
-| 1  | Add To Cart button, big and centred        | cursor comes in, clicks     | intro       |
-| 2  | Page locks under the spinner               | push in on the spinner      | control-lock |
-| 3  | Same click on the new buy box              | match cut, same spot        | new-instant |
+| #  | Scene     | On screen                              | Motion                  | Lines        |
+|----|-----------|----------------------------------------|-------------------------|--------------|
+| 1  | intro     | Add To Cart button, big and centred    | cursor comes in, clicks | intro        |
+| 2  | lock      | Page locks under the spinner           | push in on the spinner  | control-lock |
+| 3  | instant   | Same click on the new buy box          | match cut, same spot    | new-instant  |
 ```
 
-Keep each **Motion** entry to words from the `video-motion` skill (push in, pull back, pan, hard cut, match cut, and so on) so it turns straight into code.
+- **Scene** and **Lines** become the `id`s in `video.tsx` and `voiceover.json`.
+- Write each Motion entry in the `video-motion` skill's words (push in, pull back, pan, hard cut, match cut, and so
+  on), so it turns straight into code.
+- End with a **Deliberately left out** list: true things the video skips, and why. It stops them creeping back in
+  during review (see `projects/2026-09-sale-only-view/storyboard.md`).
 
-## 4. Storyboard of stills
+## 4. Storyboard: an animatic you can click through
 
-Make one still per scene from the **real captures** and lay them out as `projects/<p>/storyboard.html` (see `projects/2026-09-sale-only-view/storyboard.html` for the format). Once scenes exist, `node lib/render.mjs projects/<p> --sheet=…` gives a contact sheet of real frames. Look at it yourself before showing it, then get the user's approval.
+The storyboard is the video itself, rough, and never a separate drawing, so it can't drift from what ships.
+
+1. Write the lines into `voiceover.json` and run `npm run tts -- projects/<p> --estimate`. That times each line from
+   its word count, for free.
+2. Add the states to `capture.ts` and run it.
+3. Build `video.tsx` as an **animatic**: one scene per table row, with the table's text as its `note`, one camera and at
+   most one highlight per scene. Anchor the highlight to its word (`s.line(id).word(…)`) now, so it lands again once
+   the real voice replaces the estimate. No cursor paths, blur or polish yet.
+4. Run `node scripts/storyboard.ts projects/<p>` and look at `out/storyboard/index.html` yourself. It shows a small
+   preview on top and a card per scene below, with its note, a still per line and the line's words (marked
+   *estimated* until voiced). Clicking a card plays from that scene.
+5. Send the user the page. Their notes go into the table, the lines and the animatic, and the page is rebuilt, until
+   they sign off.
+
+Once signed off, voice it for real (`npm run tts -- projects/<p>`), rebuild the storyboard to check the timing, then
+do the motion pass with the `video-motion` skill.
 
 ## Real UI only
 
-Everything on screen is the real product. Anyone who uses it knows what it looks like, and one made-up button breaks it for all of them.
+Everything on screen is the real product. Anyone who uses it knows what it looks like, and one made-up button
+breaks it for all of them.
 
-- Capture states with `capture.mjs` (Playwright). If a state can't be photographed (a native `<select>` open, a `confirm()` dialog), redraw it in the studio **from the product's own words and styles**, as `drawConfirmDialog` and `drawNativeMenu` in `lib/studio/kit.js` do.
-- Pull real icons and logos from the site's assets. On a Mac, an app's icon sits in its bundle: `sips -s format png /Applications/X.app/Contents/Resources/*.icns --out icon.png`. A coloured square standing in for an icon fails review.
-- **Show only what the scene needs.** Frame the one part the story is about, around 1.8× bigger on a clean background, instead of the whole page. `camFit` caps at 1.6× because captures soften past that. To go bigger, capture that element at a higher `deviceScaleFactor`.
-- Check each claim in the source doc against the live product, and note in the storyboard where they disagree (see the "Checked against" table in `projects/2026-09-simple-buy-box/storyboard.md`).
+- Capture states with `capture.ts` (Playwright, through `openCaptureSession`). If a state can't be photographed (an
+  open native `<select>`, a `confirm()` dialog), rebuild it in DOM **from the product's own words and styles**, as
+  `ConfirmDialog` and `NativeMenu` in `lib/studio/kit.tsx` do.
+- Pull real icons and logos from the site's assets. On a Mac, an app's icon sits in its bundle:
+  `sips -s format png /Applications/X.app/Contents/Resources/*.icns --out icon.png`. A coloured square standing in for
+  an icon fails review.
+- **Show only what the scene needs.** Frame the one part the story is about, large, on a clean background, instead of
+  the whole page. `camFit` caps at 1.6× because captures soften past that. To go bigger, capture that element at a
+  higher `deviceScaleFactor`.
+- Check each claim in the source doc against the live product, and note in `storyboard.md` where they disagree (see
+  the "Checked against" table in `projects/2026-09-simple-buy-box/storyboard.md`).

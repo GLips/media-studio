@@ -1,6 +1,6 @@
 # Port the studio to Remotion
 
-Status: phase 1 (the port) built, reviewed with Codex. Branch `remotion-port`, in the worktree `../video-studio-remotion`.
+Status: all four phases built and reviewed with Codex. Branch `remotion-port`, in the worktree `../video-studio-remotion`.
 
 ## Why
 
@@ -87,17 +87,26 @@ frame. `sale-only-view`'s reference predates the caption-aware `camFit`, so its 
   rather than a `<Freeze>` grid composition, which would mount the whole video once per cell.
 - `--video` refuses estimated lines.
 
-## Later phases (same branch)
+## After the port (same branch)
 
-1. **Word-level timing.** whisper.cpp word timestamps per voice WAV, aligned to the script's words and stored in the
-   manifest; `s.line(id).word('price')` anchors beats to words.
-2. **Audio finishing:** a music bed in `defineVideo`, ducked under the voice cues through `<Audio volume>`; a −14 LUFS
-   / −1 dBTP loudness pass; a delivery check (ebur128 loudness, true peak, audio present, length within a frame).
-3. **Motion assertions,** declared per scene and checked by the same probe run as framing.
-4. **Skills:** `video-kickoff` and `video-motion` rewritten for this API, an opinionated storyboard, and a vendored
-   subset of Remotion's own skills.
+1. **Word-level timing.** whisper.cpp 1.8.6 (medium.en, cached in `~/.cache/video-studio`) gives DTW token times,
+   merged into words and aligned to the script by edit distance (`lib/voice-words.ts`). They're stored in the
+   manifest; `s.line(id).word('price')` anchors beats to words. They land within about 2 frames of the silence edges.
+2. **Audio finishing** (`lib/studio/mix.ts`). Voice lines are levelled to −20 LUFS through `<Audio volume>`. An
+   optional music bed (`scripts/music.ts` imports a track and detects its beats) sits 8 LU under the voice and ducks
+   to 18 LU under while lines play. The mix renders once, then gets gain plus an oversampled limiter (not loudnorm,
+   whose dynamic mode fills in the ducks). The videos render muted and are muxed with that master. The delivery
+   check wants −14 ±1 LUFS and true peak ≤ −1 dBTP on each MP4.
+3. **Motion checks.** A scene's `expect` names a highlight to be drawn and clear for a word or line, on every frame of
+   it. Clicks are framing subjects, panels clip their highlights, and camera and cursor keys must rise in time.
+4. **Skills and storyboard.** `video-kickoff` gates dump → angle → scene table → storyboard.
+   `scripts/storyboard.ts` builds the storyboard page from the animatic itself. `video-motion` maps the vocabulary
+   to this API. A subset of Remotion's own skills is vendored in `.claude/skills/remotion`.
+
+Deferred: snapping cuts to music beats (the beats are detected; nothing uses them yet), and where music comes from.
 
 ## Risks still open
 
 - Fonts are the system SF Pro stack, so a render on another machine can differ.
-- Render time and memory with two full renders; measured in the port's final report.
+- Render time: `--video` on simple-buy-box takes about 7.5 min (framing check about 45 s, each MP4 about 200 s) at
+  about 880 MB of Node memory.

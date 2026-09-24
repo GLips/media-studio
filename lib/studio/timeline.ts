@@ -74,6 +74,8 @@ type SceneTiming = {
 
 export type SceneDef = SceneTiming & {
   id: string;
+  /** What the shot shows and why, in a sentence, for the storyboard. */
+  note?: string;
   lines: readonly string[];
   // Method syntax on purpose: a scene's render takes a clock narrowed to its own line ids, which a function-typed
   // property would reject as a wider parameter.
@@ -89,6 +91,7 @@ export type SceneDef = SceneTiming & {
 export function defineScene<const L extends readonly string[] = readonly []>(
   scene: SceneTiming & {
     id: string;
+    note?: string;
     lines?: L;
     render: (s: SceneClock<L[number]>) => ReactNode;
     expect?: (s: SceneTimes<L[number]>) => readonly SceneExpectation[];

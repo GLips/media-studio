@@ -25,7 +25,7 @@ export type TimelineReport = {
   title: string;
   fps: number;
   duration: number;
-  scenes: { id: string; start: number; dur: number }[];
+  scenes: { id: string; start: number; dur: number; note?: string; lines: readonly string[] }[];
   cues: { id: string; start: number; end: number; text: string; voiced: boolean }[];
   /** Each scene's `expect`, in video seconds. */
   expectations: { scene: string; see: string; start: number; end: number }[];
@@ -37,7 +37,7 @@ function timelineReport(video: VideoDef, tl: Timeline, fps: number): string {
     title: video.title,
     fps,
     duration: tl.duration,
-    scenes: tl.scenes.map(({ id, start, dur }) => ({ id, start, dur })),
+    scenes: tl.scenes.map(({ id, start, dur, note, lines }) => ({ id, start, dur, note, lines })),
     cues: tl.cues.map(({ id, start, end, text, src }) => ({ id, start, end, text, voiced: src !== null })),
     expectations: tl.scenes.flatMap((scene) => (scene.expect?.(sceneTimes(scene)) ?? []).map(({ see, during }) => ({
       scene: scene.id, see, start: scene.start + during.start, end: scene.start + during.end,

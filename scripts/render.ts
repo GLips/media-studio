@@ -13,20 +13,17 @@
 //                                                               Also writes out/check/timeline.json: when each scene
 //                                                               and line lands, for aiming sheets and strips.
 //     node scripts/render.ts projects/<p> --audio               just the mastered mix, out/mix.wav, to hear the levels
-//
-// Every run bundles just this project (see lib/project-bundle.ts), so the others' missing captures can't break it.
-import { bundle } from '@remotion/bundler';
 import { serializeSrt } from '@remotion/captions';
-import { renderFrames, renderMedia, selectComposition, type OnArtifact } from '@remotion/renderer';
+import { renderFrames, renderMedia } from '@remotion/renderer';
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { measureLoudness } from '../lib/loudness.ts';
-import { projectSlug, projectWebpackOverride } from '../lib/project-bundle.ts';
+import { dirname, join } from 'node:path';
 import { framesToMeasure, framingArtifactName, framingProblems, type FramingReport } from '../lib/framing-check.ts';
+import { measureLoudness } from '../lib/loudness.ts';
+import { artifactSink, openRenderSession } from '../lib/render-session.ts';
 import { H, W } from '../lib/studio/frame.ts';
-import type { TimelineReport, VideoProps } from '../lib/studio/Video.tsx';
+import type { TimelineReport } from '../lib/studio/Video.tsx';
 
 const argv = process.argv.slice(2);
 const project = argv.find((a) => !a.startsWith('--'));
@@ -46,23 +43,12 @@ const run = (cmd: string, a: string[]) => new Promise<void>((ok, bad) => {
   spawn(cmd, a, { stdio: 'inherit' }).on('close', (code) => (code ? bad(new Error(`${cmd} exited ${code}`)) : ok()));
 });
 
-// ---------- bundle ----------
-
 const every = Number(args.every ?? (args.video ? 1 : 5)), step = Number(args.step ?? 0.1);
 if (!Number.isInteger(every) || every < 1) throw new Error(`--every must be a whole number of frames, at least 1, not ${args.every}`);
 if (!(step > 0 && Number.isFinite(step))) throw new Error(`--step must be a positive number of seconds, not ${args.step}`);
 
-console.log(`bundling ${project}…`);
-const serveUrl = await bundle({ entryPoint: resolve('lib/studio/index.ts'), webpackOverride: projectWebpackOverride(project) });
-const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, ...p });
-const compositionFor = (inputProps: VideoProps) => selectComposition({ serveUrl, id: projectSlug(project), inputProps });
-
-/** Reads the artifacts a render emits, by name. */
-function artifactSink() {
-  const files = new Map<string, string>();
-  const onArtifact: OnArtifact = (a) => { files.set(a.filename, Buffer.from(a.content).toString('utf8')); };
-  return { onArtifact, json: <T,>(name: string): T => JSON.parse(files.get(name) ?? (() => { throw new Error(`no ${name} artifact`); })()), files };
-}
+const session = await openRenderSession(project);
+const { serveUrl, props, compositionFor } = session;
 
 // ---------- framing check ----------
 
@@ -99,17 +85,10 @@ async function checkFraming(every: number) {
 
 /** Renders frames at chosen times, small, and tiles them into one labelled image. */
 async function sheet(times: number[], out: string, { cols = 3, w = 640, captions = false } = {}) {
-  const inputProps = props({ captions });
-  const composition = await compositionFor(inputProps);
+  const composition = await compositionFor(props({ captions }));
   const frameOf = (t: number) => Math.min(composition.durationInFrames - 1, Math.max(0, Math.round(t * composition.fps)));
   const frames = [...new Set(times.map(frameOf))].sort((a, b) => a - b);
-  const tmp = mkdtempSync(join(tmpdir(), 'sheet-'));
-  await renderFrames({
-    composition, serveUrl, inputProps, outputDir: tmp, imageFormat: 'jpeg', jpegQuality: 90, scale: w / W, frames,
-    imageSequencePattern: 'f-[frame].[ext]', onStart: () => {}, onFrameUpdate: () => {},
-  });
-  const files = readdirSync(tmp).filter((f) => /\.jpe?g$/.test(f)).sort();
-  if (files.length !== frames.length) throw new Error(`rendered ${files.length} of ${frames.length} sheet frames`);
+  const stills = await session.renderStills(frames, { w, captions });
 
   // Even sizes: ffmpeg pads JPEG (4:2:0) frames to them anyway, and a mismatch fails the layout.
   const h = 2 * Math.round((w * H) / W / 2), label = 28, rows = Math.ceil(frames.length / cols);
@@ -119,9 +98,9 @@ async function sheet(times: number[], out: string, { cols = 3, w = 640, captions
   const stack = frames.length === 1 ? `[c0]copy[out]` :
     `${frames.map((_, i) => `[c${i}]`).join('')}xstack=inputs=${frames.length}:layout=${layout}:fill=0x222222[out]`;
   mkdirSync(dirname(out), { recursive: true });
-  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...files.flatMap((f) => ['-i', join(tmp, f)]),
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...frames.flatMap((f) => ['-i', stills.fileFor(f)]),
     '-filter_complex', `${cells.join(';')};${stack}`, '-map', '[out]', '-frames:v', '1', '-q:v', '3', out]);
-  rmSync(tmp, { recursive: true, force: true });
+  rmSync(stills.dir, { recursive: true, force: true });
   console.log(`${out}  (${frames.length} frames, ${cols}×${rows})`);
 }
 
