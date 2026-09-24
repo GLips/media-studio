@@ -4,11 +4,11 @@
 //   <Img src={images['title-bg'].src} style={{ objectFit: 'cover' }} />
 // Generating a name again with a new prompt or model replaces its entry; the old file stays in generated/, cached.
 //
-// Each model takes its own subset of the image API's params, and OpenRouter silently drops the rest, so the request is
-// checked against the model's own description (fetchOpenRouterImageModel) before anything is paid for.
+// Each model takes its own subset of the image API's params, and OpenRouter silently drops the rest, so a request
+// that isn't cached is checked against the model's own description (fetchOpenRouterImageModel) before it's paid for.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { extname, join, relative } from 'node:path';
 import { fetchOpenRouterImageModel, type OpenRouterImageModel } from './openrouter.ts';
 import { generatePaidMedia } from './paid-generation.ts';
 
@@ -27,32 +27,44 @@ export type GeneratedImageRequest = {
   transparent: boolean;
 };
 
+// What a video can import (types.d.ts declares these) and the image API reads as a reference.
+const IMPORTABLE_IMAGE = ['png', 'jpg', 'webp', 'svg'];
+const REFERENCE_IMAGE = ['.png', '.jpg', '.jpeg', '.webp'];
+
 type ImageEntry = { file: string; w: number; h: number; model: string; prompt: string };
 
 /** Generates the image and lists it as images[name]. Returns the image's path and the generated/images.ts it rewrote. */
 export async function generateProjectImage(project: string, request: GeneratedImageRequest): Promise<{ file: string; index: string }> {
   if (!/^[a-z][a-z0-9-]*$/.test(request.name)) throw new Error(`--name must be lowercase words joined by dashes, not ${request.name}`);
-  for (const ref of request.references) if (!existsSync(ref)) throw new Error(`no reference image at ${ref}`);
-  const params = openRouterImageParams(await fetchOpenRouterImageModel(request.model), request);
-
+  for (const ref of request.references) {
+    if (!existsSync(ref)) throw new Error(`no reference image at ${ref}`);
+    if (!REFERENCE_IMAGE.includes(extname(ref).toLowerCase())) throw new Error(`${ref}: a reference image must be one of ${REFERENCE_IMAGE.join(' ')}`);
+  }
+  const params = {
+    ...(request.aspect !== undefined && { aspect_ratio: request.aspect }),
+    ...(request.transparent && { background: 'transparent' }),
+  };
   const [file] = await generatePaidMedia(project, {
     kind: 'image', model: request.model, name: request.name, prompt: request.prompt, params,
     references: request.references.map((path) => ({ path })),
+    beforePaying: async () => checkOpenRouterImageRequest(await fetchOpenRouterImageModel(request.model), request),
   });
+  // Already paid for and cached, so a rerun lands here again rather than paying: the model needs changing.
+  const ext = extname(file).slice(1);
+  if (!IMPORTABLE_IMAGE.includes(ext)) throw new Error(`${request.model} made a .${ext} (${file}), which a video can't import; pick another --model`);
   const { w, h } = imageSize(file);
   const index = writeImageEntry(project, request.name, { file: relative(join(project, 'generated'), file), w, h, model: request.model, prompt: request.prompt });
   console.error(`images['${request.name}']: ${w}×${h}, ${request.model}`);
   return { file, index };
 }
 
-/** The request params for `model`, refusing anything the model would silently ignore. */
-export function openRouterImageParams(model: OpenRouterImageModel, { aspect, transparent, references }: Pick<GeneratedImageRequest, 'aspect' | 'transparent' | 'references'>) {
+/** Refuses a request `model` would silently ignore part of, or fail upstream. */
+function checkOpenRouterImageRequest(model: OpenRouterImageModel, { aspect, transparent, references }: GeneratedImageRequest) {
   const supported = model.supported_parameters;
   const enumValues = (param: string) => {
     const spec = supported[param];
     return spec?.type === 'enum' ? spec.values : [];
   };
-  const params: Record<string, unknown> = {};
   if (aspect !== undefined) {
     const aspects = enumValues('aspect_ratio');
     if (!aspects.includes(aspect)) {
@@ -60,26 +72,26 @@ export function openRouterImageParams(model: OpenRouterImageModel, { aspect, tra
         ? `${model.id} takes --aspect ${aspects.join(', ')}, not ${aspect}`
         : `${model.id} ignores --aspect: leave it off and frame the still with objectFit: 'cover', or pick a model that takes it`);
     }
-    params.aspect_ratio = aspect;
   }
-  if (transparent) {
-    if (!enumValues('background').includes('transparent')) throw new Error(`${model.id} can't make a transparent background; openai/gpt-image-1-mini can`);
-    params.background = 'transparent';
+  if (transparent && !enumValues('background').includes('transparent')) {
+    throw new Error(`${model.id} can't make a transparent background; openai/gpt-image-1-mini can`);
   }
-  if (references.length) {
-    if (!model.architecture.input_modalities.includes('image')) throw new Error(`${model.id} takes no reference images`);
-    const range = supported.input_references;
-    if (range?.type === 'range' && references.length > range.max) throw new Error(`${model.id} takes at most ${range.max} reference image(s), not ${references.length}`);
+  if (references.length && !model.architecture.input_modalities.includes('image')) throw new Error(`${model.id} takes no reference images`);
+  const range = supported.input_references;
+  if (range?.type === 'range' && (references.length < range.min || references.length > range.max)) {
+    throw new Error(`${model.id} takes ${range.min}–${range.max} reference images, not ${references.length}`);
   }
-  return params;
 }
 
-// An SVG's size is its viewBox: it scales to whatever box the scene gives it, so this only sets its aspect.
+// An SVG's size is its root's viewBox, else its width and height: it scales to whatever box the scene gives it, so
+// this only sets its aspect.
 function imageSize(file: string): { w: number; h: number } {
   if (file.endsWith('.svg')) {
-    const viewBox = /viewBox="\s*[\d.-]+[\s,]+[\d.-]+[\s,]+([\d.]+)[\s,]+([\d.]+)\s*"/.exec(readFileSync(file, 'utf8'));
-    if (!viewBox) throw new Error(`${file} has no viewBox to size it by`);
-    return { w: Number(viewBox[1]), h: Number(viewBox[2]) };
+    const root = /<svg\b[^>]*>/.exec(readFileSync(file, 'utf8'))?.[0] ?? '';
+    const attr = (name: string) => new RegExp(`\\s${name}=["']([^"']*)["']`).exec(root)?.[1];
+    const [w, h] = attr('viewBox')?.trim().split(/[\s,]+/).slice(2).map(Number) ?? [parseFloat(attr('width') ?? ''), parseFloat(attr('height') ?? '')];
+    if (!(w > 0 && h > 0)) throw new Error(`${file}: its <svg> has no viewBox or width and height to size it by`);
+    return { w, h };
   }
   const [w, h] = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', file], { encoding: 'utf8' }).trim().split(',').map(Number);
   return { w, h };

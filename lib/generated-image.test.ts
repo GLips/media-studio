@@ -21,17 +21,21 @@ beforeEach(() => {
   process.env.OPENROUTER_API_KEY = 'test-key';
   project = mkdtempSync(join(tmpdir(), 'generated-image-'));
   generations = [];
-  // OpenRouter at the network boundary: the model list, and an image for each generation.
+  stubOpenRouterImages();
+});
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
+
+// OpenRouter at the network boundary: the model list, and an image for each generation.
+function stubOpenRouterImages() {
   globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
     if (String(input).endsWith('/images/models')) return Response.json(MODELS);
     if (String(input).endsWith('/endpoints')) return Response.json({ endpoints: [{ provider_name: 'Recraft' }] });
     generations.push(JSON.parse(String(init?.body)));
     return Response.json({ data: [{ b64_json: PNG.toString('base64') }], usage: { cost: 0.01 } }, { headers: { 'X-Generation-Id': `gen-img-${generations.length}` } });
   }) as typeof fetch;
-});
-afterEach(() => {
-  globalThis.fetch = realFetch;
-});
+}
 
 test('an aspect ratio the model would ignore is refused before anything is paid for', async () => {
   await assert.rejects(
@@ -51,6 +55,12 @@ test('a generated image is listed by name with its size, and generating the name
   assert.equal(generations[0].aspect_ratio, '16:9');
   const provenance = JSON.parse(readFileSync(join(project, 'generated', 'provenance.json'), 'utf8'));
   assert.equal((Object.values(provenance)[0] as any).requestId, 'gen-img-1');
+
+  // Listed again from the cache without asking OpenRouter anything, even with no provider serving the model.
+  globalThis.fetch = (async () => { throw new Error('offline'); }) as unknown as typeof fetch;
+  assert.equal((await generateProjectImage(project, request)).file, file);
+  globalThis.fetch = realFetch;
+  stubOpenRouterImages();
 
   const second = await generateProjectImage(project, { ...request, prompt: 'a dawn sky' });
   assert.notEqual(second.file, file);

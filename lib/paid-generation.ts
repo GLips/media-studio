@@ -31,6 +31,8 @@ export type PaidGenerationRequest = {
   /** The rest of the request body as the endpoint takes it, e.g. `{ aspect_ratio: '16:9', duration: 5 }`. */
   params?: Record<string, unknown>;
   references?: readonly PaidGenerationReference[];
+  /** Runs only on a cache miss, just before paying: a check that throws to refuse the request. Not part of the key. */
+  beforePaying?: () => Promise<void>;
 };
 
 type GeneratedProvenance = {
@@ -64,6 +66,7 @@ export async function generatePaidMedia(project: string, request: PaidGeneration
     return made.files.map((file) => join(project, file));
   }
 
+  await request.beforePaying?.();
   let media: OpenRouterMedia;
   if (request.kind === 'image') media = await generateOpenRouterImage(await requestBody(request, params, references));
   else if (request.kind === 'audio') media = await generateOpenRouterAudio(await requestBody(request, params, references));

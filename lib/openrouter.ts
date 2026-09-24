@@ -62,7 +62,7 @@ export async function generateOpenRouterImage(body: object): Promise<OpenRouterM
 export type OpenRouterImageModel = {
   id: string;
   architecture: { input_modalities: string[] };
-  supported_parameters: Record<string, { type: 'enum'; values: string[] } | { type: 'range'; min: number; max: number }>;
+  supported_parameters: Record<string, { type: 'enum'; values: string[] } | { type: 'range'; min: number; max: number } | { type: 'boolean' }>;
 };
 
 export async function fetchOpenRouterImageModel(model: string): Promise<OpenRouterImageModel> {
