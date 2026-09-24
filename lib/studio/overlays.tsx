@@ -1,6 +1,9 @@
 // overlays.tsx: what a scene draws over its captures, in screen coordinates: cursors, highlights, spotlights, tags,
 // text, frosted glass and washes. Each takes its progress (`k`, 0..1) as a prop and holds no state.
 //
+// Each piece's doc says whether `k` is raw or eased. A piece that eases `k` itself wants raw progress,
+// `seg(…, motionCurves.linear)`: an eased `k`, from `on()` or a curve token, eases twice and lands harder.
+//
 // Highlights and tags carry data-framing, which the framing check (probe.tsx) measures: a highlight marks what the
 // voice is describing, so one under a tag or the caption, or off the frame, is a shot nobody can follow. Each piece
 // also tags itself for the motion tracks (motion-tag.ts), with its progress and, where it knows it, its camera.
@@ -53,9 +56,9 @@ export function Cursor({ at, press = 0, alpha = 1, through, motion }: { at: Poin
 }
 
 /**
- * An expanding ring where a click landed; `k` 0..1 over its life. The click point itself is a subject for the
- * framing check while the ring is fresh, so a click under the caption or outside its panel fails. `through` is the
- * view it was clicked on, if any; `n`, which click of a path it is, tells overlapping ripples apart.
+ * An expanding ring where a click landed; `k` 0..1 over its life, raw (it eases its own growth). The click point itself
+ * is a subject for the framing check while the ring is fresh, so a click under the caption or outside its panel fails.
+ * `through` is the view it was clicked on, if any; `n`, which click of a path it is, tells overlapping ripples apart.
  */
 export function ClickRipple({ at, k, color = INK, through, n, motion }: { at: Point; k: number; color?: string; through?: View; n?: number; motion?: string | false }) {
   if (k <= 0 || k >= 1) return null;
@@ -139,11 +142,12 @@ export function offscreen(view: View, toward: Point): Point {
 // ---------- emphasis ----------
 
 /**
- * A glowing ring around a screen rect that draws itself on (`k` 0..1) and fades with `alpha`. `name` is what a
- * scene's `expect` refers to it by, and its track's name unless `motion` gives another. The rect comes from a view
- * (`screenRect`) or a live element (`useScreenRect`); null draws nothing. Say `through` when the rect isn't straight
- * from `screenRect`: its view, or `screen` for one in screen coordinates that no camera moves. `pad` gives way at the frame's edge, or `box`'s (a panel's view box), so a subject flush with
- * it is ringed just inside; the rect itself never shrinks, so one off the frame still fails the framing check.
+ * A glowing ring around a screen rect that draws itself on (`k` 0..1, raw: it eases the draw) and fades with `alpha`.
+ * `name` is what a scene's `expect` refers to it by, and its track's name unless `motion` gives another. The rect comes
+ * from a view (`screenRect`) or a live element (`useScreenRect`); null draws nothing. Say `through` when the rect isn't
+ * straight from `screenRect`: its view, or `screen` for one in screen coordinates that no camera moves. `pad` gives way
+ * at the frame's edge, or `box`'s (a panel's view box), so a subject flush with it is ringed just inside; the rect
+ * itself never shrinks, so one off the frame still fails the framing check.
  */
 export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha = 1, name, box = FRAME, through, motion }: {
   rect: Rect | null;
@@ -201,7 +205,7 @@ function padWithin(rect: Rect, pad: number, box: Rect): Rect {
  */
 const throughOf = (rect: Rect, through: View | 'screen' | undefined) => (through === 'screen' ? undefined : through ?? viewOfScreenRect(rect) ?? 'unknown');
 
-/** Dims everything but a screen rect, to pull the eye to it; null draws nothing. `through` is as Highlight's. */
+/** Dims everything but a screen rect by `k`, eased; null draws nothing. `through` is as Highlight's. */
 export function Spotlight({ rect, k, pad = 16, radius = 14, dim = 0.45, through, motion }: {
   rect: Rect | null;
   k: number;
@@ -225,7 +229,7 @@ export function Spotlight({ rect, k, pad = 16, radius = 14, dim = 0.45, through,
 
 // ---------- labels and text ----------
 
-/** A small pill label, e.g. "Today" / "With sale-only view", its top-left at (x, y). */
+/** A small pill label, e.g. "Today" / "With sale-only view", its top-left at (x, y). `k` is raw: it eases its rise. */
 export function Tag({ text, x, y, k, bg = INK, fg = '#fff', size = 30, motion }: { text: string; x: number; y: number; k: number; bg?: string; fg?: string; size?: number; motion?: string | false }) {
   if (k <= 0) return null;
   const h = size * 1.9;
@@ -255,8 +259,8 @@ export function Tag({ text, x, y, k, bg = INK, fg = '#fff', size = 30, motion }:
 }
 
 /**
- * One line of text with a fade-and-rise entrance (`k` 0..1). `(x, y)` is the start of its baseline, or its middle or
- * end with `align`, so type sits on a grid the way a designer sets it.
+ * One line of text with a fade-and-rise entrance (`k` 0..1, raw: it eases the rise). `(x, y)` is the start of its
+ * baseline, or its middle or end with `align`, so type sits on a grid the way a designer sets it.
  */
 export function Text({ text, x, y, size = 64, weight = 700, color = '#fff', k = 1, align = 'left', spacing = -0.01, stagger, motion }: {
   text: string;

@@ -84,7 +84,7 @@ const outro = defineScene({
       <>
         <Capture view={view(C.home, camTop(C.home))} blur={34 * blur} />
         <Wash color="22, 40, 70" from={0.62 * blur} to={0.38 * blur} x0={0} x1={W} />
-        <GlassCard k={seg(s.t, 0.4, 1.3, motionCurves.cubic.entrance) * (1 - seg(s.t, s.dur - 2.8, s.dur - 2.1))} eyebrow="IN SHORT"
+        <GlassCard k={seg(s.t, 0.4, 1.3, motionCurves.linear) * (1 - seg(s.t, s.dur - 2.8, s.dur - 2.1))} eyebrow="IN SHORT"
           points={['The first takeaway', 'The second takeaway']} accent={ACCENT} ink={INK} />
         <EndCard k={seg(s.t, s.dur - 2.4, s.dur - 1.6)} title={${JSON.stringify(title)}} bg={INK} />
       </>
@@ -115,8 +115,8 @@ const title = defineScene({
   render: (s) => (
     <>
       <Ground />
-      <Text text="WALKTHROUGH" x={W / 2} y={H / 2 - 80} size={28} color="rgba(255, 255, 255, 0.72)" align="center" k={seg(s.t, 0.2, 0.9, motionCurves.cubic.entrance)} />
-      <Text text={${JSON.stringify(title)}} x={W / 2} y={H / 2 + 20} size={96} align="center" k={seg(s.t, 0.4, 1.2, motionCurves.cubic.entrance)} />
+      <Text text="WALKTHROUGH" x={W / 2} y={H / 2 - 80} size={28} color="rgba(255, 255, 255, 0.72)" align="center" k={seg(s.t, 0.2, 0.9, motionCurves.linear)} />
+      <Text text={${JSON.stringify(title)}} x={W / 2} y={H / 2 + 20} size={96} align="center" k={seg(s.t, 0.4, 1.2, motionCurves.linear)} />
     </>
   ),
 });
@@ -126,7 +126,7 @@ const outro = defineScene({
   render: (s) => (
     <>
       <Ground />
-      <GlassCard k={seg(s.t, 0.4, 1.3, motionCurves.cubic.entrance) * (1 - seg(s.t, s.dur - 2.8, s.dur - 2.1))} eyebrow="IN SHORT"
+      <GlassCard k={seg(s.t, 0.4, 1.3, motionCurves.linear) * (1 - seg(s.t, s.dur - 2.8, s.dur - 2.1))} eyebrow="IN SHORT"
         points={['The first takeaway', 'The second takeaway']} accent={ACCENT} ink={INK} />
       <EndCard k={seg(s.t, s.dur - 2.4, s.dur - 1.6)} title={${JSON.stringify(title)}} bg={INK} />
     </>

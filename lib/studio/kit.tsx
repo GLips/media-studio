@@ -23,7 +23,8 @@ export type SplitSide = { view: View; label?: string; labelBg?: string; alpha?: 
 
 /**
  * Before and after, side by side. Build each side's view in SPLIT_LEFT / SPLIT_RIGHT (camFit takes the box), and aim
- * each side's `over` through the same view. `k` fades the labels in; `children` draw over both panels, unclipped.
+ * each side's `over` through the same view. `k` brings the labels in, raw (Tag eases it); `children` draw over both
+ * panels, unclipped.
  */
 export function SplitCompare({ left, right, k = 1, children }: { left: SplitSide; right: SplitSide; k?: number; children?: ReactNode }) {
   return (
@@ -156,8 +157,9 @@ export function ClickToBlur({ t, shot, frame, target, clickAt = 1.3, from = { dx
 }
 
 /**
- * A frosted card with an eyebrow and a few big lines that stagger in. `k` 0..1 drives the entrance. A point can be
- * `{ text, k }` to come in on its own cue instead, e.g. `on(s.t, s.line('why-b').start - 0.3)` as the voice reaches it.
+ * A frosted card with an eyebrow and a few big lines that stagger in. `k` 0..1 drives the entrance, raw: the card eases
+ * its own rise. A point can be `{ text, k }` to come in on its own cue instead, e.g.
+ * `on(s.t, s.line('why-b').start - 0.3)` as the voice reaches it.
  */
 export function GlassCard({ k, eyebrow, points, accent, ink, rect = { x: (W - 1120) / 2, y: 270, w: 1120, h: 540 }, motion }: {
   k: number;
@@ -208,7 +210,8 @@ export function SectionCard({ t, number, of, title, bg, accent, hold = 1.3 }: { 
 
 /**
  * The browser's own confirm() box, which a screenshot can't catch because it isn't part of the page. `anchor` is the
- * screen point its top centre drops from (a real one sits under the address bar). `k` 0..1 brings it in.
+ * screen point its top centre drops from (a real one sits under the address bar). `k` 0..1 brings it in, raw: it eases
+ * its drop.
  */
 export function ConfirmDialog({ k, origin, message, anchor = { x: W / 2, y: 120 } }: { k: number; origin: string; message: string; anchor?: { x: number; y: number } }) {
   if (k <= 0) return null;
@@ -253,7 +256,8 @@ export function ConfirmDialog({ k, origin, message, anchor = { x: W / 2, y: 120 
 
 /**
  * A native <select> menu, open, which a screenshot can't catch: the page's own option names (see `data` in
- * lib/capture.ts) in a plain list dropped from screen rect `from`. `scroll` 0..1 runs the list from top to bottom.
+ * lib/capture.ts) in a plain list dropped from screen rect `from`. `k` opens it, raw: it eases its height. `scroll`
+ * 0..1 runs the list from top to bottom, as given.
  */
 export function NativeMenu({ k, from, items, scroll = 0, rowH = 34, bottom = CAPTION_FREE.h }: { k: number; from: Rect; items: readonly string[]; scroll?: number; rowH?: number; bottom?: number }) {
   if (k <= 0) return null;
@@ -285,7 +289,7 @@ export function NativeMenu({ k, from, items, scroll = 0, rowH = 34, bottom = CAP
   );
 }
 
-/** A solid card with one centred line, faded in by `k`: the last frame. */
+/** A solid card with one centred line, faded in by `k`, eased: the last frame. */
 export function EndCard({ k, title, bg }: { k: number; title: string; bg: string }) {
   if (k <= 0) return null;
   return (

@@ -39,9 +39,9 @@ export function Capture({ view, alpha = 1, blur = 0, motion }: { view: View; alp
 }
 
 /**
- * A capture moving from camera `from` to `to`, `k` 0..1 of the way, with directional motion blur: `samples` exposures
- * spread back along the last `shutter` of the path, fading as they trail, the way a real camera smears a fast pan.
- * The leading exposure is the camera the motion tracks record, named as Capture's is.
+ * A capture moving from camera `from` to `to`, `k` 0..1 of the way (eased, as the move should go), with directional
+ * motion blur: `samples` exposures spread back along the last `shutter` of the path, fading as they trail, the way a
+ * real camera smears a fast pan. The leading exposure is the camera the motion tracks record, named as Capture's is.
  */
 export function CaptureMotion({ view, from, to, k, shutter = 0.12, samples = 14, alpha = 1, motion }: {
   view: View;
@@ -76,7 +76,10 @@ export function CaptureStates({ view, t, states, fade = 0.3 }: { view: View; t: 
   );
 }
 
-/** One capture into another under the same view: a "the page updated" moment. `k` 0..1. */
+/**
+ * One capture into another under the same view: a "the page updated" moment. `k` 0..1, raw: it dissolves on its own
+ * curve.
+ */
 export function CaptureSwap({ from, to, k }: { from: View; to: View; k: number }) {
   return (
     <>
