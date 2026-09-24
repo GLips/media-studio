@@ -3,12 +3,13 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { buildMotionGraph } from './motion-graph.ts';
 import { motionChannelVelocity, type MotionSegment } from './motion-tracks.ts';
 import { checkProject } from './render-pipeline.ts';
 import { openRenderSession } from './render-session.ts';
 import { STUDIO_PROJECTS_DIR } from './studio-project.ts';
 
-const { ok, motion } = await checkProject(await openRenderSession(join(STUDIO_PROJECTS_DIR, '2026-09-motion-calibration')));
+const { ok, motion, timeline } = await checkProject(await openRenderSession(join(STUDIO_PROJECTS_DIR, '2026-09-motion-calibration')));
 const track = (id: string) => {
   const t = motion.tracks.find((x) => x.id === id);
   assert.ok(t, `no track ${id}: ${motion.tracks.map((x) => x.id).join(', ')}`);
@@ -79,4 +80,13 @@ test('tracks break where an element vanishes, at crossfades, and never join acro
   // A hard cut: `end` starts alone, the frame after `after` ends.
   const end = track('end/Same words').segments;
   assert.deepEqual([end.length, end[0].phase, end[0].start], [1, 'solo', track('after/Same words').segments.at(-1)!.end + 1]);
+});
+
+test('the graph reads a move straight through a crossfade\'s end, and a ring riding a push as growing, not moving', () => {
+  // push starts at 3s, fading in over glide until 3.25s; its ring draws on 3.2–3.5s, across that boundary.
+  const [first, last] = [3 * motion.fps, 6 * motion.fps - 1];
+  const { summary } = buildMotionGraph(motion, timeline, { first, last, space: 'screen', tracks: ['push/centre'], trailStep: 0.1, backdrop: { frame: last, href: '' } });
+  const ring = summary.slice(summary.findIndex((l) => l.startsWith('push/centre')) + 1).map((l) => l.trim().split(/\s+/)[0]);
+  assert.deepEqual(ring.filter((channel) => channel === 'draw'), ['draw'], summary.join('\n'));
+  assert.ok(ring.includes('w') && !ring.includes('x') && !ring.includes('y'), summary.join('\n'));
 });

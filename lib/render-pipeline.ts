@@ -1,14 +1,15 @@
 // render-pipeline.ts: what the render commands do with a bundled project (lib/render-session.ts): the framing check,
-// contact sheets, the mastered mix, the delivered videos and their review, and the repeatability proof.
+// contact sheets and motion graphs, the mastered mix, the delivered videos and their review, and the repeatability proof.
 //
 // Progress goes to stderr; each function returns what it made, for the command to print on stdout.
 import { serializeSrt } from '@remotion/captions';
 import { renderFrames, renderMedia } from '@remotion/renderer';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { framingArtifactName, framingProblems, takeFitWarnings, type FramingReport } from './framing-check.ts';
+import { buildMotionGraph, motionGraphBackdropFrame, type MotionGraphSpace } from './motion-graph.ts';
 import { assembleMotionTracks, formatMotionReport, motionArtifactName, type FrameMotion, type MotionTracks } from './motion-tracks.ts';
 import { measureLoudness } from './loudness.ts';
 import { artifactSink, RENDER_CHROMIUM, RENDER_CONCURRENCY, type RenderSession } from './render-session.ts';
@@ -141,6 +142,36 @@ export async function renderContactSheet(session: RenderSession, times: number[]
   rmSync(stills.dir, { recursive: true, force: true });
   console.error(`${frames.length} frames, ${cols}×${rows}`);
   return out;
+}
+
+/**
+ * Measures the motion of `at` (seconds) and draws it (see lib/motion-graph.ts) over one of its frames, as a PNG
+ * at `out` with the number summary beside it (`.txt`). Measuring here rather than reading out/check/motion.json means
+ * a graph is never of an older render. Returns the summary and both files.
+ */
+export async function renderMotionGraph(session: RenderSession, { at, tracks, space, trailStep, captions, out }: {
+  at: readonly [number, number]; tracks?: string[]; space: MotionGraphSpace; trailStep: number; captions: boolean; out: string;
+}) {
+  const { timeline, motion } = await checkProject(session, { at });
+  const { first, last } = motion.frames, frame = motionGraphBackdropFrame(motion, timeline, { first, last, tracks });
+  const stills = await session.renderStills([frame], { w: 1280, captions });
+  const href = `data:image/jpeg;base64,${readFileSync(stills.fileFor(frame)).toString('base64')}`;
+  rmSync(stills.dir, { recursive: true, force: true });
+  const graph = buildMotionGraph(motion, timeline, { first, last, space, tracks, trailStep, backdrop: { frame, href } });
+
+  const { chromium } = await import('playwright');
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: graph.width, height: graph.height }, deviceScaleFactor: 1 });
+    await page.setContent(`<!doctype html><body style="margin:0">${graph.svg}</body>`);
+    mkdirSync(dirname(out), { recursive: true });
+    await page.screenshot({ path: out, clip: { x: 0, y: 0, width: graph.width, height: graph.height } });
+  } finally {
+    await browser.close();
+  }
+  const summaryFile = out.replace(/\.[^./]+$/, '') + '.txt';
+  writeFileSync(summaryFile, `${graph.summary.join('\n')}\n`);
+  return { summary: graph.summary, files: [out, summaryFile] };
 }
 
 // ---------- the mix ----------

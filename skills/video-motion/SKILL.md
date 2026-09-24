@@ -123,7 +123,8 @@ Look at the rendered frames yourself before reporting back. Motion is judged by 
   (highlights and clicks under tags or the caption, off the frame, cut off by their panel; every `expect`) and the
   motion tracks. It writes `out/check/timeline.json` (when every scene, line and word lands, and where scenes
   crossfade) and `out/check/motion.json` (a scoped check writes `motion-<scene>.json` beside it).
-- `studio look <p> --strip=a:b` shows a stretch of motion; `--sheet=t1,t2,…` shows chosen moments.
+- `studio look <p> --strip=a:b` shows a stretch of motion; `--sheet=t1,t2,…` shows chosen moments; `--graph=a:b`
+  plots it (below).
 - `studio storyboard <p>` rebuilds the storyboard page from the video.
 
 To judge timing, read a `--strip` like a viewer: at each tile, where are they looking, and do they understand it
@@ -135,6 +136,16 @@ lands before the line starts, which of two things moves first. `motion.json` has
 opacity and reported values (a ring's `draw`, a camera's `zoom`) on every frame. It has both the screen box and the
 box in the element's owner's frame, so for a ring riding a push-in the screen box moves with the camera while the
 page box holds still.
+
+A graph shows the shape of a move that a strip only hints at, and prints the numbers it's drawn from:
+
+- **Easing**: an eased move's velocity is a bell; a linear one is a flat plateau that starts and stops dead. Trail dots
+  bunch up where something is slow.
+- **Overshoot and wind-up**: signed velocity crosses zero. A speed curve would hide this.
+- **What leads**: which element moves first, and where each move starts and lands against the voice's words.
+- **Snaps and jitter**: a jump in a single frame, or a "hold" whose velocity keeps flipping.
+
+A graph can't tell you whether a move reads. Check that on the strip, and check the feel in playback.
 
 - Library pieces tag themselves, under names they pick (`camera`, `cursor`, a Highlight's `name`, a Tag's words).
   Each takes `motion` to give it a name of yours, or `false` for no track. Tag hand-written motion with
