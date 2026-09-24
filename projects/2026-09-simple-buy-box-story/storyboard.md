@@ -2,7 +2,7 @@
 
 **Audience:** the client (Painful Pleasures / Body Art Alliance), not developers. Voiceover + captions, ~3 min.
 **Source:** `painful-pleasures-theme/docs/demos/2026-09-18-simple-buy-box-loom.md`, plus Graham's notes on the
-first two cuts (`projects/2026-09-simple-buy-box` is the cut this one reworks). Captured from the **Flourish
+first two cuts. Captured from the **Flourish
 Commerce - Dev Theme** (`147758514230`). Treatment = `?view=ab-buy-box`; control = the plain URL.
 
 ## Rules

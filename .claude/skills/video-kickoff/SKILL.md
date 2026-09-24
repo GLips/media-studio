@@ -85,4 +85,4 @@ breaks it for all of them.
   the whole page. `camFit` caps at 1.6× because captures soften past that. To go bigger, capture that element at a
   higher `deviceScaleFactor`.
 - Check each claim in the source doc against the live product, and note in `storyboard.md` where they disagree (see
-  the "Checked against" table in `projects/2026-09-simple-buy-box/storyboard.md`).
+  the "Checked against" table in `projects/2026-09-simple-buy-box-story/storyboard.md`).
