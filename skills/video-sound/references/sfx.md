@@ -10,12 +10,12 @@ Don't add these by hand; they'd play twice:
 ## Where sounds come from
 
 Every sound is synthesized from a seeded recipe in `lib/sfx/` (after Farnell's *Designing Sound*): `whoosh`, `riser`,
-`impact`, `chime`, `ding`, `pop`, `click`, `key`, `toggle`, `typing`, `scroll`, and `bed` (a quiet ambient loop).
+`impact`, `chime`, `ding`, `pop`, `click`, `key`, `toggle`, `typing` and `scroll`, each in a small room (`room`).
 Nothing to license, and a rerun writes identical files. `studio sfx list` prints every recipe's presets and parameters.
 
 1. **The kit**, already rendered: `SFX.click`, `key`, `toggleOn`, `toggleOff`, `pop`, `whoosh`, `whip`, `riser`,
    `impact`, `chime`, `success`, `ding` (`lib/studio/sfx/kit.ts`). Reach for these first.
-2. **A project's own**, when the kit's take doesn't fit the moment (a longer whoosh, a softer chime, a bed):
+2. **A project's own**, when the kit's take doesn't fit the moment (a longer whoosh, a softer chime):
 
    ```sh
    studio sfx render whoosh.soft --seed reveal --set duration=1.2,brightness=0.3 --out projects/<p>/sfx/reveal.wav
@@ -31,8 +31,8 @@ Nothing to license, and a rerun writes identical files. `studio sfx list` prints
 
    | Note | Parameter |
    |---|---|
-   | "Cut off", "stops dead" | Raise `decay` (for a chime, also `shimmer`). A riser ending sharply is by design: it lands on its end |
-   | "Hollow", "boxy" (a click or key) | Raise `brightness` for more snap, lower `decay` for less body ring |
+   | "Cut off", "stops dead", "dry" | Raise `decay`, or `room` (for a chime, also `shimmer`). For a riser, raise `tail`; `riser.cut` stops dead on its peak by design |
+   | "Hollow", "boxy" (a click or key) | Raise `brightness` for more snap; for a click, also lower `decay` for less body ring |
    | "Harsh", "thin" | Lower `brightness`, or lower `pitch` |
    | "Too long", "too slow" | Shorten `duration`, or lower `decay` |
 
@@ -44,19 +44,18 @@ To hear the options, `studio sfx showcase` renders every preset and a few varian
 
 ## Playing one
 
-`<Sfx sound at t id until volume rate>` (`lib/studio/sfx.tsx`, exported from `lib/studio/api.ts`) plays `sound` so that it
+`<Sfx sound at t id volume rate>` (`lib/studio/sfx.tsx`, exported from `lib/studio/api.ts`) plays `sound` so that it
 **lands** on `at`, in scene seconds:
 
 - **Where it lands.** Each sound knows where its event is: a click starts on `at`, a whoosh passes on it, and a riser
-  ends on it. So `at` is the event itself, not when the sound starts. Anchor it to a word or to the camera key it
+  peaks on it. So `at` is the event itself, not when the sound starts. Anchor it to a word or to the camera key it
   belongs to, never to a raw number.
 - **Takes.** The kit's sounds that repeat have several seeded takes. `id` picks one, the same every render, so give
   each event its own `id` (its index, or its name).
-- **Beds.** `until` loops the sound from `at` to `until`: a `bed` joins end to start without a seam.
 - **Mounting.** It sounds only while it's mounted. An effect in a branch the scene has left stays quiet, just as the
   picture does.
 - **Levels.** Every sound is levelled when rendered, by category, relative to the voice: clicks, keys and pops sit
-  17 LU under it, accents 8 LU under, the bed 18 LU under. So `volume` defaults to 1, and it only attenuates. Change it
+  17 LU under it, and accents 8 LU under. So `volume` defaults to 1, and it only attenuates. Change it
   by ear, per `mix.md`.
 
 ```tsx

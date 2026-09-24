@@ -21,7 +21,7 @@ test('every preset sits at its category’s loudness under the voice, and lands 
     }
   }
   const riser = renderSfx({ sound: 'riser.short' });
-  assert.equal(riser.landsAt, riser.seconds, 'a riser ends on its event');
+  assert.equal(riser.landsAt, riser.params.duration, 'a riser peaks on its event');
 });
 
 test('mutate varies within each range, repeatably, and explicit settings win over it', () => {

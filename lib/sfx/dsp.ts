@@ -80,6 +80,8 @@ export const attackDecay = (t: number, attack: number, tau: number) =>
 export const hann = (x: number) => (x <= 0 || x >= 1 ? 0 : 0.5 - 0.5 * Math.cos(2 * Math.PI * x));
 
 export const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
+/** 0 → 1 over [0, 1], flat at both ends. */
+export const smoothstep = (x: number) => { const c = clamp01(x); return c * c * (3 - 2 * c); };
 export const lerp = (a: number, b: number, x: number) => a + (b - a) * x;
 /** Interpolates on a log scale, which is how pitch and cutoff are heard. */
 export const logLerp = (a: number, b: number, x: number) => a * (b / a) ** x;
@@ -87,7 +89,7 @@ export const logLerp = (a: number, b: number, x: number) => a * (b / a) ** x;
 export const samplesFor = (seconds: number) => new Float64Array(Math.max(1, Math.round(seconds * SFX_RATE)));
 
 // Layers, as cuelume shapes its cues: a tone or a band of noise, each with its own offset and envelope. The recipes
-// below are parametric functions that emit these, plus the few sounds (whoosh, riser, bed) that need a moving filter.
+// below are parametric functions that emit these, plus the few sounds (whoosh, riser) that need a moving filter.
 
 export type ToneLayer = {
   kind: 'tone';
@@ -160,6 +162,50 @@ export function addShimmer(dry: Float64Array, { delay, feedback, wet, lowpassHz 
     out[i] += wet * echo;
   }
   return out;
+}
+
+/**
+ * A small room around a dry sound: Schroeder–Moorer reverb as Freeverb tunes it (eight damped combs into four
+ * allpasses), scaled to a small space, with the reflections set `wetDb` against the dry sound's energy. A real
+ * recording always carries its room, and without one a decaying sound reads as cut off. Extends the buffer by the
+ * room's RT60.
+ */
+export function addRoom(dry: Float64Array, wetDb: number): Float64Array {
+  const scale = (SFX_RATE / 44100) * 0.55, feedback = 0.8, damping = 0.35;
+  const combs = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617].map((d) => ({ line: new Float64Array(Math.round(d * scale)), at: 0, lp: 0 }));
+  const allpasses = [556, 441, 341, 225].map((d) => ({ line: new Float64Array(Math.round(d * scale)), at: 0 }));
+  const longest = Math.max(...combs.map((c) => c.line.length));
+  // Damping only shortens the highs, so the lows ring for the full feedback's RT60.
+  const rt60 = (-3 * longest) / SFX_RATE / Math.log10(feedback);
+  const preDelay = Math.round(0.006 * SFX_RATE);
+  const wet = new Float64Array(dry.length + preDelay + Math.ceil(rt60 * SFX_RATE));
+  for (let i = 0; i < wet.length; i++) {
+    const x = i >= preDelay && i - preDelay < dry.length ? dry[i - preDelay] : 0;
+    let sum = 0;
+    for (const c of combs) {
+      const y = c.line[c.at];
+      c.lp = y * (1 - damping) + c.lp * damping;
+      c.line[c.at] = x + c.lp * feedback;
+      c.at = (c.at + 1) % c.line.length;
+      sum += y;
+    }
+    for (const a of allpasses) {
+      const y = a.line[a.at];
+      a.line[a.at] = sum + y * 0.5;
+      a.at = (a.at + 1) % a.line.length;
+      sum = y - sum;
+    }
+    wet[i] = sum;
+  }
+  const energy = (s: Float64Array) => s.reduce((e, v) => e + v * v, 0);
+  if (energy(dry) === 0) return dry;
+  const gain = Math.sqrt(energy(dry) / energy(wet)) * 10 ** (wetDb / 20);
+  for (let i = 0; i < wet.length; i++) wet[i] = (i < dry.length ? dry[i] : 0) + wet[i] * gain;
+  // Cut where the tail has fallen 80 dB below the peak, if it gets there within the RT60; otherwise the fade ends it.
+  const floor = wet.reduce((m, v) => Math.max(m, Math.abs(v)), 0) * 1e-4;
+  let end = wet.length;
+  while (end > dry.length && Math.abs(wet[end - 1]) < floor) end--;
+  return fadeOutTail(wet.slice(0, end), 0.02);
 }
 
 /** Fades the last `seconds` to silence, so a sound never ends on a click. */

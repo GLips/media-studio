@@ -6,12 +6,12 @@
 // Parameters are all numbers with a range, so presets, overrides and mutate treat every recipe alike. Where recipes
 // share an idea they share its name: `pitch`, `brightness`, `decay`, `duration`.
 import {
-  addShimmer, fadeOutTail, lerp, logLerp, mixInto, onePole, pinkNoise, renderSfxLayers,
+  addShimmer, fadeOutTail, lerp, smoothstep, logLerp, mixInto, onePole, pinkNoise, renderSfxLayers,
   samplesFor, seededRandom, SFX_RATE, stateVariableFilter, subSeed, type SfxLayer,
 } from './dsp.ts';
 
-/** How loud a sound sits under the voice: ui for clicks and ticks, accent for whooshes and hits, bed for ambience. */
-export type SfxCategory = 'ui' | 'accent' | 'bed';
+/** How loud a sound sits under the voice: ui for clicks and ticks, accent for whooshes, hits and chimes. */
+export type SfxCategory = 'ui' | 'accent';
 
 export type SfxParamSpec = {
   min: number; max: number; doc: string;
@@ -23,17 +23,24 @@ export type SfxParamSpec = {
 
 export type SfxRender = {
   samples: Float64Array;
-  /** Seconds into the sound where the event it marks lands: 0 for a click, the pass of a whoosh, a riser's end. */
+  /** Seconds into the sound where the event it marks lands: 0 for a click, the pass of a whoosh, a riser's peak. */
   landsAt: number;
 };
+
+/**
+ * Every recipe also takes `room`: the library puts the sound in a small room after rendering it dry, so a recipe
+ * only sets how roomy it is by default.
+ */
+export const SFX_ROOM_PARAM: SfxParamSpec = { min: 0, max: 1, doc: 'How much small room is around it, from dry (0) to roomy (1)' };
 
 export type SfxRecipe<P extends Record<string, number> = Record<string, number>> = {
   doc: string;
   category: SfxCategory;
-  params: { readonly [K in keyof P]: SfxParamSpec };
-  defaults: P;
+  /** Its own parameters; `room` is every recipe's, from SFX_ROOM_PARAM. */
+  params: { readonly [K in keyof P as K extends 'room' ? never : K]: SfxParamSpec };
+  defaults: P & { room: number };
   /** Named variations: `chime.soft` is `defaults` with `presets.soft` over it. */
-  presets: Readonly<Record<string, Partial<P>>>;
+  presets: Readonly<Record<string, Partial<P & { room: number }>>>;
   render: (params: P, seed: number) => SfxRender;
 };
 
@@ -85,7 +92,7 @@ export const click = defineSfxRecipe({
   doc: 'A mouse button: a sharp snap and a small plastic body, then a quieter release',
   category: 'ui',
   params: strikeParams,
-  defaults: { pitch: 1, brightness: 0.6, decay: 1, release: 0.45, releaseAfter: 0.07 },
+  defaults: { pitch: 1, brightness: 0.6, decay: 1, release: 0.45, releaseAfter: 0.07, room: 0.3 },
   presets: { soft: { brightness: 0.3, release: 0.3, pitch: 0.85 }, crisp: { brightness: 0.9, decay: 0.7 }, trackpad: { pitch: 0.7, brightness: 0.25, release: 0, decay: 0.8 } },
   render: (p, seed) => pressAndRelease(p, seed, 0.0008, [{ hz: 3400, tau: 0.0025, gain: 0.5 }, { hz: 1150, tau: 0.004, gain: 0.35 }]),
 });
@@ -94,9 +101,20 @@ export const key = defineSfxRecipe({
   doc: 'A keyboard key: a duller contact, a lower body, and the keycap springing back',
   category: 'ui',
   params: strikeParams,
-  defaults: { pitch: 1, brightness: 0.4, decay: 1, release: 0.35, releaseAfter: 0.08 },
+  defaults: { pitch: 1, brightness: 0.4, decay: 1, release: 0.35, releaseAfter: 0.08, room: 0.3 },
   presets: { mechanical: { brightness: 0.8, pitch: 1.25, release: 0.6, releaseAfter: 0.05 }, soft: { brightness: 0.15, pitch: 0.8, release: 0.2 }, space: { pitch: 0.65, decay: 1.6, release: 0.5 } },
-  render: (p, seed) => pressAndRelease(p, seed, 0.0018, [{ hz: 1900, tau: 0.003, gain: 0.3 }, { hz: 620, tau: 0.007, gain: 0.55 }]),
+  render: (p, seed) => {
+    const random = seededRandom(subSeed(seed, 'key'));
+    // No ringing tones: a keycap is plastic on a spring over a board, all damped, so its body is bands of noise
+    // (a low thock, a mid clack) that die within a few cycles. A tone that rings reads as a hollow wood block.
+    const hit = (at: number, gain: number, shift: number): SfxLayer[] => [
+      { kind: 'noise', at, filter: 'bp', hz: 260 * p.pitch * shift * jitter(random, 0.08), q: 1.6, attack: 0.0005, tau: 0.004 * p.decay, gain: gain * 4 },
+      { kind: 'noise', at, filter: 'bp', hz: 1700 * p.pitch * shift * jitter(random, 0.08), q: 1.1, attack: 0.0003, tau: 0.0025 * p.decay, gain: gain * 2.4 },
+      { kind: 'noise', at, filter: 'hp', hz: logLerp(2500, 7000, p.brightness), q: 0.7, attack: 0.0002, tau: 0.0008, gain: gain * lerp(0.4, 1.8, p.brightness) },
+    ];
+    const layers = [...hit(0, 1, 1), ...(p.release > 0 ? hit(p.releaseAfter, p.release, 1.3) : [])];
+    return { samples: fadeOutTail(renderSfxLayers(layers, seed)), landsAt: 0 };
+  },
 });
 
 export const toggle = defineSfxRecipe({
@@ -107,7 +125,7 @@ export const toggle = defineSfxRecipe({
     step: { min: -12, max: 12, fixed: true, doc: 'Semitones from the first click to the second: up for on, down for off' },
     gap: { min: 0.01, max: 0.08, doc: 'Seconds between the two clicks' },
   },
-  defaults: { pitch: 1, brightness: 0.55, decay: 1, step: 5, gap: 0.028 },
+  defaults: { pitch: 1, brightness: 0.55, decay: 1, step: 5, gap: 0.028, room: 0.3 },
   presets: { on: { step: 5 }, off: { step: -5 }, soft: { brightness: 0.25, pitch: 0.8, gap: 0.035 } },
   render: (p, seed) => {
     const random = seededRandom(subSeed(seed, 'toggle'));
@@ -130,7 +148,7 @@ export const impact = defineSfxRecipe({
     decay: { min: 0.3, max: 3, log: true, doc: 'Scales how long the body rings' },
     weight: { min: 0, max: 1, doc: 'Level of the sub thump under the hit' },
   },
-  defaults: { pitch: 1, brightness: 0.45, decay: 1, weight: 0.7 },
+  defaults: { pitch: 1, brightness: 0.45, decay: 1, weight: 0.7, room: 0.45 },
   presets: { soft: { brightness: 0.2, weight: 0.5, decay: 0.7 }, heavy: { pitch: 0.7, weight: 1, decay: 1.8, brightness: 0.35 }, slam: { brightness: 0.85, pitch: 1.3, decay: 0.6, weight: 0.6 } },
   render: (p, seed) => {
     const random = seededRandom(subSeed(seed, 'impact'));
@@ -155,10 +173,10 @@ export const whoosh = defineSfxRecipe({
     brightness: { min: 0, max: 1, doc: 'Where the band sits, from a low rush to a hiss' },
     peakAt: { min: 0.1, max: 0.95, doc: 'Where in the sound the closest pass falls, as a fraction of its duration' },
   },
-  defaults: { duration: 0.7, speed: 0.5, brightness: 0.5, peakAt: 0.6 },
+  defaults: { duration: 0.7, speed: 0.5, brightness: 0.5, peakAt: 0.55, room: 0.3 },
   presets: {
     soft: { duration: 1, speed: 0.25, brightness: 0.3 },
-    fast: { duration: 0.4, speed: 0.8, brightness: 0.6, peakAt: 0.55 },
+    fast: { duration: 0.4, speed: 0.8, brightness: 0.6 },
     whip: { duration: 0.24, speed: 1, brightness: 0.85, peakAt: 0.4 },
     swell: { duration: 1.6, speed: 0.15, brightness: 0.4, peakAt: 0.8 },
   },
@@ -178,15 +196,17 @@ export const whoosh = defineSfxRecipe({
       const q = lerp(0.7, 2.6, p.speed * near);
       const n = noise();
       const v = band(n, hz, q).bp + 0.5 * body(n, hz * 0.45, 0.8).bp + 0.35 * p.brightness * near * air(n, 5500, 0.7).hp;
-      const edge = Math.min(1, t / 0.015, (p.duration - t) / 0.04);
-      out[i] = v * near ** 1.6 * Math.max(0, edge);
+      // The pass alone never reaches silence inside the sound, so it's tapered to nothing at both ends: the thing
+      // arrives from, and leaves into, the distance.
+      const taper = t < tp ? smoothstep(t / tp) : 1 - smoothstep((t - tp) / (p.duration - tp));
+      out[i] = v * near ** 1.6 * taper;
     }
     return { samples: out, landsAt: tp };
   },
 });
 
 export const riser = defineSfxRecipe({
-  doc: 'Tension into a reveal: a noise band and a detuned tone climbing together and swelling, ending sharply at its last sample. It lands at its end, so place it with its end on the reveal',
+  doc: 'Tension into a reveal: a noise band and a detuned tone climbing together and swelling to a peak (`landsAt`, at `duration`), then a short breath out over `tail`. Place it with its peak on the reveal',
   category: 'accent',
   params: {
     duration: { min: 0.4, max: 5, log: true, doc: 'Seconds' },
@@ -194,22 +214,26 @@ export const riser = defineSfxRecipe({
     pitch: { min: 60, max: 400, log: true, doc: 'The tone’s starting Hz' },
     sweep: { min: 0.5, max: 4, doc: 'Octaves the tone climbs' },
     tone: { min: 0, max: 1, doc: 'Mix from all air (0) to all tone (1)' },
+    tail: { min: 0, max: 1.5, fixed: true, doc: 'Seconds it takes to die away after the peak; 0 stops on it, leaving only the room' },
   },
-  defaults: { duration: 1.5, brightness: 0.6, pitch: 110, sweep: 2, tone: 0.45 },
+  defaults: { duration: 1.5, brightness: 0.6, pitch: 110, sweep: 2, tone: 0.45, tail: 0.35, room: 0.35 },
   presets: {
-    short: { duration: 0.7, sweep: 1.5 },
+    short: { duration: 0.7, sweep: 1.5, tail: 0.25 },
+    cut: { tail: 0, room: 0 },
     long: { duration: 3, sweep: 3 },
     airy: { tone: 0.08, brightness: 0.75 },
     tonal: { tone: 0.85, brightness: 0.4 },
   },
   render: (p, seed) => {
-    const out = samplesFor(p.duration);
+    const out = samplesFor(p.duration + p.tail), peak = Math.round(p.duration * SFX_RATE);
     const noise = pinkNoise(seededRandom(subSeed(seed, 'air'))), random = seededRandom(subSeed(seed, 'detune'));
     const band = stateVariableFilter(), toneFilter = stateVariableFilter();
     const detunes = [-1, 0, 1].map((k) => 2 ** ((k * 9 * jitter(random, 0.3)) / 1200));
     const phases = detunes.map(() => random() * 2 * Math.PI);
     for (let i = 0; i < out.length; i++) {
-      const x = i / out.length;
+      // After the peak the pitch holds and the level falls away, the tone faster than the air.
+      const x = Math.min(1, i / peak), after = Math.max(0, i - peak) / SFX_RATE;
+      const fall = p.tail > 0 ? Math.exp(-after / (p.tail / 6.9)) : after > 0 ? 0 : 1;
       const hz = logLerp(p.pitch, p.pitch * 2 ** p.sweep, x ** 1.4);
       let saw = 0;
       detunes.forEach((d, k) => {
@@ -218,7 +242,7 @@ export const riser = defineSfxRecipe({
       });
       const tone = toneFilter(saw / 3, hz * lerp(2, 6, x), 0.9).lp;
       const air = band(noise(), logLerp(250, logLerp(2500, 9000, p.brightness), x ** 1.2), lerp(0.8, 3.5, x)).bp;
-      out[i] = (x ** 2.2) * (lerp(1.6, 0, p.tone) * air + p.tone * 0.9 * tone);
+      out[i] = (x ** 2.2) * (lerp(1.6, 0, p.tone) * air * fall + p.tone * 0.9 * tone * fall * fall);
     }
     return { samples: fadeOutTail(out, 0.004), landsAt: p.duration };
   },
@@ -244,7 +268,7 @@ export const chime = defineSfxRecipe({
   params: {
     pitch: { min: 300, max: 2200, log: true, doc: 'Hz of the first note' },
     brightness: { min: 0, max: 1, doc: 'Level of the upper partials' },
-    decay: { min: 0.1, max: 2, log: true, doc: 'Seconds for each note to die away (60 dB)' },
+    decay: { min: 0.2, max: 4, log: true, doc: 'Seconds for each note to die away (60 dB)' },
     notes: { min: 1, max: 3, fixed: true, doc: 'How many notes (rounded)' },
     step: { min: -12, max: 12, fixed: true, doc: 'Semitones from the first note to the second' },
     step2: { min: -12, max: 12, fixed: true, doc: 'Semitones from the second note to the third' },
@@ -252,12 +276,12 @@ export const chime = defineSfxRecipe({
     shimmer: { min: 0, max: 0.5, doc: 'Level of the echo tail' },
   },
   // C6 up to G6, then an E7 if a third is asked for: the two-note "tink" of cuelume's chime.
-  defaults: { pitch: 1046.5, brightness: 0.35, decay: 0.45, notes: 2, step: 7, step2: 5, gap: 0.09, shimmer: 0.2 },
+  defaults: { pitch: 1046.5, brightness: 0.35, decay: 1.4, notes: 2, step: 7, step2: 5, gap: 0.09, shimmer: 0.2, room: 0.45 },
   presets: {
-    soft: { pitch: 784, brightness: 0.15, decay: 0.7, shimmer: 0.25 },
-    bright: { pitch: 1318.5, brightness: 0.7, decay: 0.35 },
-    success: { pitch: 880, notes: 3, step: 4, step2: 3, gap: 0.06, decay: 0.4 },
-    error: { pitch: 440, notes: 2, step: -4, gap: 0.08, brightness: 0.55, decay: 0.3, shimmer: 0.08 },
+    soft: { pitch: 784, brightness: 0.15, decay: 1.8, shimmer: 0.25 },
+    bright: { pitch: 1318.5, brightness: 0.7, decay: 1.1 },
+    success: { pitch: 880, notes: 3, step: 4, step2: 3, gap: 0.06, decay: 1.2 },
+    error: { pitch: 440, notes: 2, step: -4, gap: 0.08, brightness: 0.55, decay: 0.8, shimmer: 0.08 },
   },
   render: (p, seed) => {
     const random = seededRandom(subSeed(seed, 'chime'));
@@ -275,14 +299,14 @@ export const ding = defineSfxRecipe({
   params: {
     pitch: { min: 200, max: 3500, log: true, doc: 'Hz of the fundamental' },
     brightness: { min: 0, max: 1, doc: 'Level of the upper partials, and how hard it’s struck' },
-    decay: { min: 0.2, max: 4, log: true, doc: 'Seconds to die away (60 dB)' },
+    decay: { min: 0.3, max: 6, log: true, doc: 'Seconds to die away (60 dB)' },
     inharmonic: { min: 0, max: 1, doc: 'From harmonic partials (a tuned bar) to a free bar’s (glass, a chime tube)' },
   },
-  defaults: { pitch: 1320, brightness: 0.45, decay: 1.1, inharmonic: 0.6 },
+  defaults: { pitch: 1320, brightness: 0.45, decay: 2.2, inharmonic: 0.6, room: 0.45 },
   presets: {
     soft: { brightness: 0.2, pitch: 990 },
-    glass: { pitch: 2350, inharmonic: 1, decay: 0.8, brightness: 0.6 },
-    bell: { pitch: 520, decay: 2.8, inharmonic: 0.85, brightness: 0.55 },
+    glass: { pitch: 2350, inharmonic: 1, decay: 1.6, brightness: 0.6 },
+    bell: { pitch: 520, decay: 4.5, inharmonic: 0.85, brightness: 0.55 },
   },
   render: (p, seed) => {
     const random = seededRandom(subSeed(seed, 'ding'));
@@ -303,7 +327,7 @@ export const pop = defineSfxRecipe({
     decay: { min: 0.02, max: 0.35, log: true, doc: 'Seconds to die away (60 dB)' },
     brightness: { min: 0, max: 1, doc: 'Level of the lip click and the second partial' },
   },
-  defaults: { pitch: 520, glide: 0.6, decay: 0.07, brightness: 0.4 },
+  defaults: { pitch: 520, glide: 0.6, decay: 0.12, brightness: 0.4, room: 0.35 },
   presets: {
     soft: { brightness: 0.1, pitch: 400, decay: 0.09 },
     bubble: { pitch: 380, glide: 1.1, decay: 0.1, brightness: 0.2 },
@@ -332,14 +356,14 @@ export const typing = defineSfxRecipe({
     pitch: strikeParams.pitch,
     brightness: strikeParams.brightness,
   },
-  defaults: { duration: 2, rate: 8, jitter: 0.5, pitch: 1, brightness: 0.4 },
+  defaults: { duration: 2, rate: 8, jitter: 0.5, pitch: 1, brightness: 0.4, room: 0.3 },
   presets: { fast: { rate: 12, jitter: 0.35 }, slow: { rate: 4.5, jitter: 0.7 }, mechanical: { pitch: 1.25, brightness: 0.8 } },
   render: (p, seed) => {
     const out = samplesFor(p.duration + 0.15), random = seededRandom(subSeed(seed, 'typing'));
     let t = 0.01, left = 2 + Math.floor(random() * 6);
     for (let n = 0; t < p.duration; n++) {
       const space = left-- === 0;
-      const params = { pitch: p.pitch * (space ? 0.65 : jitter(random, 0.06)), brightness: p.brightness, decay: space ? 1.6 : 1, release: 0.3, releaseAfter: 0.06 + random() * 0.03 };
+      const params = { pitch: p.pitch * (space ? 0.65 : jitter(random, 0.06)), brightness: p.brightness, decay: space ? 1.6 : 1, release: 0.3, releaseAfter: 0.06 + random() * 0.03, room: 0 };
       mixInto(out, key.render(params, subSeed(seed, `key${n}`)).samples, t, space ? 0.9 : 0.55 + random() * 0.45);
       t += (1 / p.rate) * jitter(random, 0.6 * p.jitter) * (space ? 1.8 : 1);
       if (space) left = 2 + Math.floor(random() * 6);
@@ -358,7 +382,7 @@ export const scroll = defineSfxRecipe({
     pitch: strikeParams.pitch,
     brightness: strikeParams.brightness,
   },
-  defaults: { duration: 1, rate: 18, flick: 0.6, pitch: 1, brightness: 0.55 },
+  defaults: { duration: 1, rate: 18, flick: 0.6, pitch: 1, brightness: 0.55, room: 0.3 },
   presets: { steady: { flick: 0, rate: 10 }, flick: { flick: 1, rate: 32, duration: 0.8 } },
   render: (p, seed) => {
     const out = samplesFor(p.duration + 0.03), random = seededRandom(subSeed(seed, 'scroll'));
@@ -376,49 +400,6 @@ export const scroll = defineSfxRecipe({
   },
 });
 
-// ——— Beds ———————————————————————————————————————————————————————————————————————————————————————————————————————
-
-export const bed = defineSfxRecipe({
-  doc: 'A quiet ambient loop: room air with a soft, slowly beating drone. Its end joins its start without a seam, so `<Sfx until>` can loop it under a whole scene',
-  category: 'bed',
-  params: {
-    duration: { min: 2, max: 30, log: true, doc: 'Seconds per loop' },
-    brightness: { min: 0, max: 1, doc: 'How open the room air is' },
-    warmth: { min: 0, max: 1, doc: 'Level of the drone against the air' },
-    pitch: { min: 45, max: 220, log: true, doc: 'Hz of the drone’s root' },
-    motion: { min: 0, max: 1, doc: 'How much the air and drone swell and drift' },
-  },
-  defaults: { duration: 8, brightness: 0.35, warmth: 0.5, pitch: 98, motion: 0.4 },
-  presets: { air: { warmth: 0.05, brightness: 0.5 }, warm: { warmth: 0.85, brightness: 0.2, pitch: 73.4 }, bright: { brightness: 0.7, pitch: 146.8, warmth: 0.4 } },
-  render: (p, seed) => {
-    // Rendered one crossfade longer than asked, then the overhang is folded onto the start (equal power), so the
-    // last sample runs into the first.
-    const fold = Math.min(1, p.duration / 4), long = samplesFor(p.duration + fold);
-    const noise = pinkNoise(seededRandom(subSeed(seed, 'air'))), random = seededRandom(subSeed(seed, 'drone'));
-    const room = stateVariableFilter(), swell = onePole();
-    const cutoff = logLerp(250, 3500, p.brightness);
-    const partials = [1, 1.5, 2, 3].flatMap((ratio, i) => [-1, 1].map((side) => ({
-      hz: p.pitch * ratio + side * (0.15 + random() * 0.35), gain: 0.5 / (i + 1), phase: random() * 2 * Math.PI,
-    })));
-    const lfoHz = 0.07 + random() * 0.08, lfoPhase = random() * 2 * Math.PI, wander = seededRandom(subSeed(seed, 'wander'));
-    for (let i = 0; i < long.length; i++) {
-      const t = i / SFX_RATE;
-      const lfo = 1 + p.motion * 0.5 * Math.sin(2 * Math.PI * lfoHz * t + lfoPhase);
-      const drift = 1 + p.motion * 3 * swell(wander() * 2 - 1, 0.5);
-      const air = room(noise(), cutoff * drift, 0.6).lp;
-      let drone = 0;
-      for (const { hz, gain, phase } of partials) drone += gain * Math.sin(2 * Math.PI * hz * t + phase);
-      long[i] = (1 - 0.7 * p.warmth) * air * drift + p.warmth * 0.12 * drone * lfo;
-    }
-    const n = Math.round(p.duration * SFX_RATE), f = long.length - n, out = long.slice(0, n);
-    for (let i = 0; i < f; i++) {
-      const x = i / f;
-      out[i] = long[i] * Math.sqrt(x) + long[n + i] * Math.sqrt(1 - x);
-    }
-    return { samples: out, landsAt: 0 };
-  },
-});
-
-export const SFX_RECIPES = { click, key, toggle, impact, whoosh, riser, chime, ding, pop, typing, scroll, bed } as const satisfies Record<string, SfxRecipe<any>>;
+export const SFX_RECIPES = { click, key, toggle, impact, whoosh, riser, chime, ding, pop, typing, scroll } as const satisfies Record<string, SfxRecipe<any>>;
 export type SfxRecipeName = keyof typeof SFX_RECIPES;
 

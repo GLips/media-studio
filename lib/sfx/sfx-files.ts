@@ -5,8 +5,8 @@ import { basename, dirname, join, relative } from 'node:path';
 import { STUDIO_ROOT } from '../studio-project.ts';
 import { wavFromSamples } from '../wav.ts';
 import { SFX_RATE } from './dsp.ts';
-import { renderSfx, SFX_LOUDNESS_UNDER_VOICE, type RenderedSfx, type SfxRequest } from './library.ts';
-import { SFX_RECIPES } from './recipes.ts';
+import { renderSfx, sfxParamSpecs, SFX_LOUDNESS_UNDER_VOICE, type RenderedSfx, type SfxRequest } from './library.ts';
+import { SFX_RECIPES, type SfxRecipe } from './recipes.ts';
 
 /**
  * The kit's sounds, as `SFX.<name>` in lib/studio/sfx/kit.ts. Sounds that repeat within a scene get several seeded
@@ -89,7 +89,7 @@ export function describeSfxRecipes(): string {
   return Object.entries(SFX_RECIPES).map(([name, recipe]) => [
     `${name} (${recipe.category}, ${SFX_LOUDNESS_UNDER_VOICE[recipe.category]} LU under the voice): ${recipe.doc}`,
     `  presets: ${[name, ...Object.keys(recipe.presets).map((p) => `${name}.${p}`)].join(', ')}`,
-    ...Object.entries(recipe.params).map(([param, { min, max, doc }]) =>
+    ...Object.entries(sfxParamSpecs(recipe as unknown as SfxRecipe)).map(([param, { min, max, doc }]) =>
       `  ${param} ${min}–${max} (default ${round((recipe.defaults as Record<string, number>)[param])}): ${doc}`),
   ].join('\n')).join('\n\n');
 }
@@ -123,7 +123,7 @@ export function writeSfxShowcase(dir: string): string {
 <style>body{font:14px system-ui;margin:2em;max-width:80em}td{padding:2px 10px;vertical-align:middle}small{color:#666}</style>
 <h1>studio sfx showcase</h1>
 <p>Every recipe's presets, then two mutated variants of its defaults (<code>~variant-a</code>, <code>~variant-b</code>, mutate 0.3).
-Levels are as they'd sit in a video: ui sounds 17 LU under the voice, accents 8, the bed 18, so turn up to listen.</p>
+Levels are as they'd sit in a video: ui sounds 17 LU under the voice, accents 8, so turn up to listen.</p>
 ${sections.join('\n')}\n`);
   return index;
 }

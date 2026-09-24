@@ -27,27 +27,27 @@ import ding1 from './ding-1.wav';
 
 export const SFX = {
   /** click */
-  click: [{ src: click1, seconds: 0.108, landsAt: 0 }, { src: click2, seconds: 0.108, landsAt: 0 }, { src: click3, seconds: 0.108, landsAt: 0 }, { src: click4, seconds: 0.108, landsAt: 0 }],
+  click: [{ src: click1, seconds: 0.4074, landsAt: 0 }, { src: click2, seconds: 0.4102, landsAt: 0 }, { src: click3, seconds: 0.4243, landsAt: 0 }, { src: click4, seconds: 0.4496, landsAt: 0 }],
   /** key */
-  key: [{ src: key1, seconds: 0.1387, landsAt: 0 }, { src: key2, seconds: 0.1387, landsAt: 0 }, { src: key3, seconds: 0.1387, landsAt: 0 }, { src: key4, seconds: 0.1387, landsAt: 0 }, { src: key5, seconds: 0.1387, landsAt: 0 }, { src: key6, seconds: 0.1387, landsAt: 0 }],
+  key: [{ src: key1, seconds: 0.4743, landsAt: 0 }, { src: key2, seconds: 0.4966, landsAt: 0 }, { src: key3, seconds: 0.5013, landsAt: 0 }, { src: key4, seconds: 0.4513, landsAt: 0 }, { src: key5, seconds: 0.495, landsAt: 0 }, { src: key6, seconds: 0.4836, landsAt: 0 }],
   /** toggle.on */
-  toggleOn: [{ src: toggleOn1, seconds: 0.0798, landsAt: 0.028 }, { src: toggleOn2, seconds: 0.0798, landsAt: 0.028 }],
+  toggleOn: [{ src: toggleOn1, seconds: 0.4536, landsAt: 0.028 }, { src: toggleOn2, seconds: 0.4352, landsAt: 0.028 }],
   /** toggle.off */
-  toggleOff: [{ src: toggleOff1, seconds: 0.0798, landsAt: 0.028 }, { src: toggleOff2, seconds: 0.0798, landsAt: 0.028 }],
+  toggleOff: [{ src: toggleOff1, seconds: 0.4727, landsAt: 0.028 }, { src: toggleOff2, seconds: 0.4634, landsAt: 0.028 }],
   /** pop */
-  pop: [{ src: pop1, seconds: 0.082, landsAt: 0 }, { src: pop2, seconds: 0.082, landsAt: 0 }, { src: pop3, seconds: 0.082, landsAt: 0 }],
+  pop: [{ src: pop1, seconds: 0.5699, landsAt: 0 }, { src: pop2, seconds: 0.5699, landsAt: 0 }, { src: pop3, seconds: 0.5699, landsAt: 0 }],
   /** whoosh */
-  whoosh: [{ src: whoosh1, seconds: 0.7, landsAt: 0.42 }],
+  whoosh: [{ src: whoosh1, seconds: 1.0366, landsAt: 0.385 }],
   /** whoosh.whip */
-  whip: [{ src: whip1, seconds: 0.24, landsAt: 0.096 }],
+  whip: [{ src: whip1, seconds: 0.581, landsAt: 0.096 }],
   /** riser */
-  riser: [{ src: riser1, seconds: 1.5, landsAt: 1.5 }],
+  riser: [{ src: riser1, seconds: 2.0578, landsAt: 1.5 }],
   /** impact */
   impact: [{ src: impact1, seconds: 1.115, landsAt: 0 }],
   /** chime */
-  chime: [{ src: chime1, seconds: 1.2115, landsAt: 0 }],
+  chime: [{ src: chime1, seconds: 2.1615, landsAt: 0 }],
   /** chime.success */
-  success: [{ src: success1, seconds: 1.1915, landsAt: 0 }],
+  success: [{ src: success1, seconds: 1.9915, landsAt: 0 }],
   /** ding */
-  ding: [{ src: ding1, seconds: 1.1115, landsAt: 0 }],
+  ding: [{ src: ding1, seconds: 2.268, landsAt: 0 }],
 } as const satisfies Record<string, readonly SfxSound[]>;
