@@ -45,8 +45,8 @@ You know what happens because you wrote the code. The viewer sees it once, at fu
 - Anchor every beat to the voice: `s.line('ladder').word('no volume discount').start`, never raw seconds. Re-voicing
   re-times everything, and the words come from whisper, so they land within a couple of frames. Camera and cursor
   keys must rise in time: word-anchored keys can swap after a re-voice, and the scene throws rather than snapping.
-- **The picture leads the word.** A ring draws on over 0.8 s and reads at half-drawn, so start it 0.4 s early:
-  `k={on(s.t, w.start - 0.4)}`. A camera move lands as the word starts, not after.
+- **The picture leads the word.** A ring must be fully drawn as its word starts, or its `expect` fails:
+  `k={on(s.t, w.start - 0.7, 0.6)}`. A camera move lands as the word starts, not after.
 - Say it and show it: give the highlight a `name` and the scene an
   `expect: (s) => [{ see: 'tiers', during: s.line('ladder').word('no volume discount') }]`. The check fails if the
   named highlight isn't drawn, clear of tags and the caption, for the whole span.

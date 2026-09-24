@@ -111,9 +111,11 @@ export async function openCaptureSession({ project, viewport, scale = 2, css = '
 
       const file = `${name}.png`;
       const path = join(dir, file);
+      // A page shorter than `height` screenshots at its own height; recording `height` would stretch the image.
+      const h = viewportOnly ? size.height : Math.min(height, await target.evaluate(() => document.documentElement.scrollHeight));
       if (viewportOnly) await target.screenshot({ path });
-      else await target.screenshot({ path, fullPage: true, clip: { x: 0, y: 0, width: size.width, height } });
-      index[name] = { file, w: size.width, h: viewportOnly ? size.height : height, scale: dpr, rects: measured, ...(data !== undefined && { data }) };
+      else await target.screenshot({ path, fullPage: true, clip: { x: 0, y: 0, width: size.width, height: h } });
+      index[name] = { file, w: size.width, h, scale: dpr, rects: measured, ...(data !== undefined && { data }) };
       console.log(`captured ${name}  (${Object.keys(measured).join(', ') || 'no rects'})`);
     }
     return { page: target, snap };
