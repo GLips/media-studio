@@ -66,9 +66,10 @@ type SceneTiming = {
   lead?: number;
   /**
    * Seconds between lines. By default a scene keeps the pause the take left between them, so it plays as it was
-   * read; 0.35 for estimated lines.
+   * read; 0.35 for estimated lines. A number sets every gap; `{ 'bulk-search': 1.5 }` sets the gap before that line,
+   * for a picture that needs time the read didn't leave.
    */
-  gap?: number;
+  gap?: number | Readonly<Record<string, number>>;
   /** Seconds after the last line. Default 0.6. */
   tail?: number;
   /** The scene lasts at least this long. */
@@ -140,7 +141,9 @@ export function layoutVideo(video: VideoDef): Timeline {
     if (seen.has(scene.id)) throw new Error(`two scenes are called "${scene.id}"`);
     seen.add(scene.id);
     const { lead = 0.5, tail = 0.6, min = 0 } = scene;
-    for (const [name, value] of Object.entries({ lead, gap: scene.gap ?? 0, tail, min })) {
+    const gaps = typeof scene.gap === 'number' ? Object.fromEntries(scene.lines.slice(1).map((id) => [id, scene.gap as number])) : scene.gap ?? {};
+    for (const id of Object.keys(gaps)) if (!scene.lines.slice(1).includes(id)) throw new Error(`scene ${scene.id}: gap before "${id}", which isn't one of its lines after the first`);
+    for (const [name, value] of Object.entries({ lead, tail, min, ...Object.fromEntries(Object.entries(gaps).map(([id, g]) => [`gap before ${id}`, g])) })) {
       if (!Number.isFinite(value) || value < 0) throw new Error(`scene ${scene.id}: ${name} is ${value}`);
     }
     const spans: Record<string, { start: number; end: number; words: readonly SpokenWord[] }> = {};
@@ -154,7 +157,7 @@ export function layoutVideo(video: VideoDef): Timeline {
       sceneOfLine.set(id, scene.id);
       // The take's pause only belongs between lines that followed each other in the read.
       const readAfterPrevious = j > 0 && scriptOrder[scriptOrder.indexOf(id) - 1] === scene.lines[j - 1];
-      if (j > 0) cursor += scene.gap ?? (readAfterPrevious ? voiced.pauseBefore : null) ?? 0.35;
+      if (j > 0) cursor += gaps[id] ?? (readAfterPrevious ? voiced.pauseBefore : null) ?? 0.35;
       spans[id] = { start: cursor, end: cursor + voiced.duration, words: voiced.words };
       cues.push({ id, src: voiced.src, start: start + cursor, end: start + cursor + voiced.duration, text: voiced.text, lufs: voiced.lufs });
       cursor += voiced.duration;

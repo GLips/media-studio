@@ -275,6 +275,7 @@ if (args.video) {
     times = [];
     for (let t = a; t <= b + 1e-6; t += step) times.push(Number(t.toFixed(3)));
   } else times = String(args.sheet).split(',').map(Number);
+  if (!times.length || times.some((t) => !Number.isFinite(t))) throw new Error('give times in seconds: --sheet=0.5,4,9 or --strip=4:5');
   await sheet(times, at(typeof args.out === 'string' ? args.out : 'out/check/sheet.jpg'), { cols: Number(args.cols || (args.strip ? 5 : 3)), w: Number(args.w || (args.strip ? 384 : 640)), captions });
 } else if (args.repeatable) {
   if (!(await isRepeatable(String(args.repeatable).split(',').map(Number)))) process.exitCode = 1;

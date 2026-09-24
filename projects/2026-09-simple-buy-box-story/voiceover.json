@@ -1,0 +1,28 @@
+{
+  "voice": "Callirrhoe",
+  "lines": [
+    {"id": "intro", "text": "Here's the new product page we're testing, next to the one it replaces.", "paragraph": true},
+    {"id": "photos-a", "text": "Start with the photos. The current version shows small images stretched to fill the space, so details go soft, and fine print, like this spec sheet, blurs.", "paragraph": true},
+    {"id": "photos-b", "text": "The new one loads them at full size."},
+    {"id": "speed-a", "text": "If you want to look at different variants quickly today, every selection locks the page while it loads your selected variant.", "paragraph": true},
+    {"id": "speed-b", "text": "The new version doesn't need to load anything, so it changes the instant you click."},
+    {"id": "stock-a", "text": "While you're comparing, you want to know what's in stock. Today, sold-out colors are crossed out, so you can't see what they were, and dropdowns don't mark them at all.", "paragraph": true},
+    {"id": "stock-b", "text": "Now sold-out colors keep their color, with a dashed border, dropdowns mark them too, and you can still pick one and ask for a back-in-stock email."},
+    {"id": "clash-a", "text": "Land on a combination that isn't made, and today you just get Unavailable.", "paragraph": true},
+    {"id": "clash-b", "text": "Now it tells you, and lists what is available."},
+    {"id": "lists-a", "text": "Some products have a lot of choices, like these 174 inks. Today, that's a list of names you can't search, with no pictures.", "paragraph": true},
+    {"id": "lists-b", "text": "Now any long list gets a search: type blue, and you get seventeen, each with its bottle."},
+    {"id": "sale", "text": "Products on sale used to get a small flag that said \"Sale\" at the top of the buy box. Now each option shows its percent off.", "paragraph": true},
+    {"id": "qty-a", "text": "The quantity is now styled as an input field.", "paragraph": true},
+    {"id": "qty-b", "text": "In Clarity screen recordings, we've seen shoppers who didn't realize they could update quantity directly, and instead tapped plus over and over."},
+    {"id": "qty-c", "text": "And as the quantity goes up, the price follows the volume discounts: at five, a dollar sixty each, where today it stays at two dollars."},
+    {"id": "sticky", "text": "If you scroll down to read more, a sticky buy button appears at the bottom of the screen to bring you back to the buy box as soon as you're ready.", "paragraph": true},
+    {"id": "bulk-a", "text": "To restock several colors at once, the current version has a Multiple Items tab, which is just one long list of variants to scroll.", "paragraph": true},
+    {"id": "bulk-b", "text": "Now, the bulk order page opens a list you can filter,"},
+    {"id": "bulk-search", "text": "<short pause> search,"},
+    {"id": "bulk-images", "text": "<short pause> and preview images when they exist."},
+    {"id": "summary", "text": "Add items to your order, and an itemized summary is shown under the buy button.", "paragraph": true},
+    {"id": "reset-a", "text": "With a dozen in, there's real work at stake, and today, a big Reset button sits right above Add All to Cart; one tap wipes it all."},
+    {"id": "reset-b", "text": "Now reset is a small link that asks first."}
+  ]
+}
