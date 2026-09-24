@@ -25,3 +25,8 @@ test('a long hold ends a move, a missing sample breaks one, and nothing joins ac
   ], { fps, still });
   assert.deepEqual(moves.map((m) => [m.start, m.end, m.from, m.to]), [[0, 2, 0, 50], [12, 14, 50, 100], [102, 103, 90, 80]]);
 });
+
+test('a move running into the stretch\'s edge is marked as cut there, not as stopping', () => {
+  const [move] = findChannelMoves([{ start: 0, values: [0, 0, 10, 20, 30], cut: { start: 'stretch', end: 'stretch' } }], { fps, still });
+  assert.deepEqual([move.start, move.end, move.cut], [1, 4, { end: 'stretch' }]);
+});

@@ -11,7 +11,7 @@ export default defineCommand({
     project: studioProjectArg,
     sheet: { type: 'string', valueHint: '0.5,4,9', description: 'These times, in seconds' },
     strip: { type: 'string', valueHint: '4:5', description: 'A stretch of time, every --step seconds, for motion' },
-    graph: { type: 'string', valueHint: '4:6', description: 'A stretch of time, measured: each tracked element\'s position, velocity, size, opacity and reported values over time, voice words and crossfades marked, trails over its last frame' },
+    graph: { type: 'string', valueHint: '4:6', description: 'A stretch of time, measured: each tracked element\'s position, velocity, size, opacity and reported values over time, voice words and crossfades marked, trails over one of its frames (named in the image)' },
     tracks: { type: 'string', valueHint: 'push/centre,cursor', description: 'For --graph: these tracks (ids, or parts of them); default the ones that move most' },
     local: { type: 'boolean', description: 'For --graph: plot boxes in their owner\'s frame (a camera\'s page, a group\'s pixels), not on screen' },
     step: { type: 'string', default: '0.1', description: 'Seconds between --strip frames, or --graph trail dots' },
@@ -24,13 +24,14 @@ export default defineCommand({
     if ([args.sheet, args.strip, args.graph].filter(Boolean).length !== 1) throw new Error('give one of --sheet=0.5,4,9, --strip=4:5 or --graph=4:6');
     const step = Number(args.step);
     if (!(step > 0 && Number.isFinite(step))) throw new Error(`--step must be a positive number of seconds, not ${args.step}`);
+    const at = args.graph?.split(':').map(Number);
+    if (at && !(at.length === 2 && at.every(Number.isFinite) && at[0] < at[1])) throw new Error(`--graph is a stretch of seconds like 4:6, not ${args.graph}`);
+    if (at && args.out && !/\.(png|jpe?g)$/i.test(args.out)) throw new Error(`a --graph is an image: give --out a .png or .jpg name, not ${args.out}`);
     const { isAbsolute, join } = await import('node:path');
     const session = await openStudioRenderSession(args.project);
     const out = (fallback: string) => (args.out && isAbsolute(args.out) ? args.out : join(session.project, args.out ?? fallback));
 
-    if (args.graph) {
-      const at = args.graph.split(':').map(Number);
-      if (!(at.length === 2 && at.every(Number.isFinite) && at[0] < at[1])) throw new Error(`--graph is a stretch of seconds like 4:6, not ${args.graph}`);
+    if (at) {
       const { renderMotionGraph } = await import('../../lib/render-pipeline.ts');
       const graph = await renderMotionGraph(session, {
         at: [at[0], at[1]], tracks: args.tracks?.split(',').map((t) => t.trim()).filter(Boolean), space: args.local ? 'local' : 'screen',

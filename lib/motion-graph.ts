@@ -27,7 +27,7 @@ export type MotionGraphRequest = {
 };
 
 /** Tracks plotted when none are picked: more lines than this in one plot can't be told apart. */
-const DEFAULT_TRACK_COUNT = 6;
+const DEFAULT_TRACK_COUNT = 6; // one per PALETTE colour
 
 /** A reported value is still when it changes less than this per frame, relative to its size; a box, less than PIXEL_STILL. */
 const PIXEL_STILL = 0.05, OPACITY_STILL = 0.002, VALUE_STILL = 1e-4;
@@ -40,8 +40,15 @@ const LANDED_SHARE = 0.01;
 
 // ---------- channels ----------
 
-/** One plotted quantity of one track: a series per run of it (see trackRuns), never joined across a break. */
-type ChannelSeries = { start: number; values: (number | null)[] }[];
+/**
+ * One plotted quantity of one track: a series per run of it (see trackRuns), never joined across a break. `cut` says
+ * why a series begins or ends where it does, when that isn't the element's own doing to know: the stretch's edge, or
+ * a break in its track. A move touching a cut edge may have started before it or go on after it.
+ */
+type ChannelSeries = { start: number; values: (number | null)[]; cut?: { start?: EdgeCause; end?: EdgeCause } }[];
+
+/** Why a series begins or ends: the stretch does, or the track breaks (the element appears, vanishes, changes owner). */
+export type EdgeCause = 'stretch' | 'break';
 
 type ChannelKind = 'x' | 'y' | 'w' | 'h' | 'opacity' | 'value';
 type Channel = { key: string; kind: ChannelKind; unit: string; still: number };
@@ -108,7 +115,8 @@ function channelSeries(track: MotionTrack, channel: Channel, req: Pick<MotionGra
   return trackRuns(track, req.first, req.last).flatMap((run) => {
     const box = req.space === 'screen' ? run.screen : run.local;
     const values = channel.kind === 'value' ? run.values[channel.key] : channel.kind === 'opacity' ? run.screen.opacity : box?.[channel.kind];
-    return values ? [{ start: run.from, values }] : [];
+    const cut = { start: run.from === req.first ? 'stretch' : 'break', end: run.to === req.last ? 'stretch' : 'break' } as const;
+    return values ? [{ start: run.from, values, cut }] : [];
   });
 }
 
@@ -151,6 +159,7 @@ export function chooseGraphTracks(motion: MotionTracks, req: Pick<MotionGraphReq
     for (const p of req.tracks) {
       if (!present.some((t) => t.id === p || t.id.includes(p))) throw new Error(`no track in this stretch matches "${p}": ${present.map((t) => t.id).join(', ') || 'nothing is tracked here'}`);
     }
+    if (plotted.length > PALETTE.length) throw new Error(`${plotted.length} tracks match, and a graph tells ${PALETTE.length} apart: pick fewer (${plotted.map((t) => t.id).join(', ')})`);
     return { plotted, unplotted: [], still: [] };
   }
   const ranked = present.map((t) => ({ t, amount: motionAmount(t, req) })).sort((a, b) => b.amount - a.amount);
@@ -172,7 +181,9 @@ export function motionGraphBackdropFrame(motion: MotionTracks, timeline: Timelin
   const visible = (f: number) => runs.filter((rs) => rs.some((r) => f >= r.from && f <= r.to && r.screen.opacity[f - r.from] > 0.1)).length;
   let best = req.last, score = -1;
   for (let f = req.last; f >= req.first; f--) {
-    const s = visible(f) * 2 + (blended(f) ? 0 : 1);
+    // Outside a crossfade first: in one, the outgoing scene's elements count as visible (their opacity holds at 1)
+    // while the incoming scene covers them.
+    const s = (blended(f) ? 0 : 1000) + visible(f);
     if (s > score) [best, score] = [f, s];
   }
   return best;
@@ -204,12 +215,14 @@ export type ChannelMove = {
   windup?: { by: number; frame: number };
   /** The frame from which it stays within LANDED_SHARE of its travel from `to`; `end` is when it's still. */
   landed: number;
+  /** Set when the move touches a cut edge of its series: it may run on past it, so its start or end isn't its own. */
+  cut?: { start?: EdgeCause; end?: EdgeCause };
 };
 
 /** The moves in a channel's series, one run at a time: nothing is inferred across a break. */
 export function findChannelMoves(series: ChannelSeries, { fps, still }: { fps: number; still: number }): ChannelMove[] {
   const gap = Math.round(MOVE_GAP * fps);
-  return series.flatMap(({ start, values }) => {
+  return series.flatMap(({ start, values, cut }) => {
     // Runs of frames that changed from the frame before, split wherever a sample is missing or the pause is long.
     const moved = values.map((v, i) => i > 0 && v !== null && values[i - 1] !== null && Math.abs(v - values[i - 1]!) > still);
     const spans: [number, number][] = [];
@@ -221,6 +234,7 @@ export function findChannelMoves(series: ChannelSeries, { fps, still }: { fps: n
     });
     const velocity = motionChannelVelocity(values, fps);
     return spans.map(([a, b]): ChannelMove => {
+      const edges = { ...(a === 0 && cut?.start && { start: cut.start }), ...(b === values.length - 1 && cut?.end && { end: cut.end }) };
       const from = values[a]!, to = values[b]!, travel = to - from, dir = Math.sign(travel);
       let peak = { velocity: 0, frame: start + a }, reversals = 0, lastSign = 0;
       for (let i = a + 1; i <= b; i++) {
@@ -247,6 +261,7 @@ export function findChannelMoves(series: ChannelSeries, { fps, still }: { fps: n
       const within = (x?: { by: number; frame: number }) => (x && x.by < Math.abs(travel) && reversals <= MAX_SETTLING_REVERSALS ? x : undefined);
       return {
         start: start + a, end: start + b, from, to, peak, reversals, range: [Math.min(...inMove), Math.max(...inMove)], landed: start + landed,
+        ...(Object.keys(edges).length && { cut: edges }),
         overshoot: within(overshoot), windup: within(windup),
       };
     });
@@ -274,19 +289,36 @@ const fmt = (v: number, unit: string) => {
 };
 const signed = (v: number, unit: string) => `${v > 0 ? '+' : ''}${fmt(v, unit)}`;
 
+const CUT_START = { stretch: 'already moving where the stretch starts', break: 'moving from its first frame' };
+const CUT_END = { stretch: 'still moving where the stretch ends', break: 'still moving on its last frame' };
+
+/**
+ * One move as a line. A move cut off at an edge says so, and drops what that edge makes unknowable: at a cut end,
+ * whether it overshoots or where it lands; at the stretch's edge, the word it started or stopped on. An element
+ * appearing or vanishing mid-move did start or stop there, so its word stays.
+ */
 function describeMove(label: string, m: ChannelMove, unit: string, fps: number, words: readonly Word[]) {
   const s = (f: number) => `${(f / fps).toFixed(2)}s`;
   const rate = unit ? `${unit}/s` : '/s';
+  const [lo, hi] = [Math.min(m.from, m.to), Math.max(m.from, m.to)], dir = Math.sign(m.to - m.from);
+  // Past `to` or `from` without a reported overshoot or wind-up (too big to be one, or with no direction): a swing.
+  const pastTo = dir > 0 ? m.range[1] > hi : dir < 0 ? m.range[0] < lo : m.range[0] < lo || m.range[1] > hi;
+  const pastFrom = dir > 0 ? m.range[0] < lo : dir < 0 ? m.range[1] > hi : false;
+  const settled = !m.cut?.end;
   const parts = [
     `${label.padEnd(8)} ${s(m.start)}–${s(m.end)}  ${fmt(m.from, unit)} → ${fmt(m.to, unit)} (${signed(m.to - m.from, unit)})`,
+    ...(m.cut?.start ? [CUT_START[m.cut.start]] : []),
+    ...(m.cut?.end ? [CUT_END[m.cut.end]] : []),
     `peak ${signed(m.peak.velocity, rate)} at ${s(m.peak.frame)}`,
     ...(m.reversals ? [`reverses ${m.reversals}×`] : []),
     ...(m.windup ? [`winds up ${fmt(m.windup.by, unit)} at ${s(m.windup.frame)}`] : []),
-    ...((m.range[0] < Math.min(m.from, m.to) || m.range[1] > Math.max(m.from, m.to)) && !m.overshoot && !m.windup ? [`swings ${fmt(m.range[0], unit)}–${fmt(m.range[1], unit)}`] : []),
-    ...(m.overshoot ? [`overshoots ${fmt(m.overshoot.by, unit)} (${Math.round((100 * m.overshoot.by) / Math.abs(m.to - m.from || 1))}%) at ${s(m.overshoot.frame)}`] : []),
-    ...(m.landed < m.end ? [`within 1% by ${s(m.landed)}`] : []),
+    ...(m.overshoot && settled ? [`overshoots ${fmt(m.overshoot.by, unit)} (${Math.round((100 * m.overshoot.by) / Math.abs(m.to - m.from || 1))}%) at ${s(m.overshoot.frame)}`] : []),
+    ...((pastTo && !(m.overshoot && settled)) || (pastFrom && !m.windup) ? [`swings ${fmt(m.range[0], unit)}–${fmt(m.range[1], unit)}`] : []),
+    ...(m.landed < m.end && settled ? [`within 1% by ${s(m.landed)}`] : []),
   ];
-  return `${parts.join(', ')}${nearestWord(words, m.start / fps).replace(/^, /, '; starts ')}${nearestWord(words, m.end / fps).replace(/^, /, '; stops ')}`;
+  const startWord = m.cut?.start === 'stretch' ? '' : nearestWord(words, m.start / fps).replace(/^, /, '; starts ');
+  const stopWord = m.cut?.end === 'stretch' ? '' : nearestWord(words, m.end / fps).replace(/^, /, '; stops ');
+  return `${parts.join(', ')}${startWord}${stopWord}`;
 }
 
 // ---------- drawing ----------
@@ -323,7 +355,7 @@ export function buildMotionGraph(motion: MotionTracks, timeline: TimelineReport,
 
   // The summary, and the plots the same channels make.
   const summary = [
-    `motion ${sec(first)}–${sec(last)} (frames ${first}–${last} at ${fps} fps), ${space} boxes; ${tracks.length} track${tracks.length === 1 ? '' : 's'} plotted`,
+    `motion ${sec(first)}–${sec(last + 1)} (frames ${first}–${last} at ${fps} fps), ${space} boxes; ${tracks.length} track${tracks.length === 1 ? '' : 's'} plotted`,
   ];
   if (choice.unplotted.length) summary.push(`  not plotted, moving less (pick with --tracks): ${choice.unplotted.join(', ')}`);
   if (choice.still.length) summary.push(`  still throughout: ${choice.still.join(', ')}`);
@@ -342,7 +374,7 @@ export function buildMotionGraph(motion: MotionTracks, timeline: TimelineReport,
   const firstMoves: { id: string; channel: string; frame: number }[] = [];
   tracks.forEach((track, ti) => {
     const runs = trackRuns(track, first, last);
-    const phases = runs.flatMap((r) => r.phases).map((ph) => `${ph.phase} ${sec(ph.from)}–${sec(ph.to)}`);
+    const phases = runs.flatMap((r) => r.phases).map((ph) => `${ph.phase} ${sec(ph.from)}–${sec(ph.to + 1)}`);
     const attribution = [...new Set(runs.map((r) => r.attribution))].join('/');
     const crossfaded = phases.length > 1 || runs[0].phases[0].phase !== 'solo';
     summary.push('', `${track.id} (${PALETTE[ti % PALETTE.length][0]})${track.kind ? ` ${track.kind}` : ''}, ${attribution}${crossfaded ? `; ${phases.join(', ')}` : ''}`);
@@ -352,7 +384,8 @@ export function buildMotionGraph(motion: MotionTracks, timeline: TimelineReport,
       const series = channelSeries(track, channel, req);
       const moves = findChannelMoves(series, { fps, still: stillThreshold(channel, series) });
       if (moves.length) quiet = false;
-      const lead = moves.find((m) => channel.kind !== 'opacity' || !inCrossfade(m));
+      // A move already under way when the stretch starts can't be said to lead; one as the element appears can.
+      const lead = moves.find((m) => m.cut?.start !== 'stretch' && (channel.kind !== 'opacity' || !inCrossfade(m)));
       if (lead) firstMoves.push({ id: track.id, channel: channel.key, frame: lead.start });
       for (const m of moves) summary.push(`  ${describeMove(channel.key, m, channel.unit, fps, words)}`);
     }
@@ -399,7 +432,7 @@ export function buildMotionGraph(motion: MotionTracks, timeline: TimelineReport,
   const out: string[] = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${IMG_W}" height="${height}" font-family="Helvetica, Arial, sans-serif" font-size="13">`);
   out.push(`<rect width="${IMG_W}" height="${height}" fill="#fff"/>`);
-  out.push(text(PAD, PAD + 14, `${timeline.title}: motion ${sec(first)}–${sec(last)}, ${space} boxes`, 'font-size="18" font-weight="700" fill="#1c2733"'));
+  out.push(text(PAD, PAD + 14, `${timeline.title}: motion ${sec(first)}–${sec(last + 1)}, ${space} boxes`, 'font-size="18" font-weight="700" fill="#1c2733"'));
 
   // The backdrop, with each track's trail: a dot every trailStep seconds, so their spacing is speed.
   const scale = BACKDROP_W / W;
