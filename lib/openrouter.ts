@@ -47,10 +47,29 @@ export function postOpenRouter(path: string, body: object): Promise<Response> {
   return fetchOpenRouter(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 }
 
-// The image API's response carries no request id.
+// The image API's body carries no request id; its X-Generation-Id header does.
 export async function generateOpenRouterImage(body: object): Promise<OpenRouterMedia> {
-  const result: { data: { b64_json: string }[]; usage?: { cost?: number | null } } = await (await postOpenRouter('/images', body)).json();
-  return { outputs: result.data.map((image) => Buffer.from(image.b64_json, 'base64')), cost: result.usage?.cost ?? null, requestId: null };
+  const response = await postOpenRouter('/images', body);
+  const result: { data: { b64_json: string }[]; usage?: { cost?: number | null } } = await response.json();
+  return { outputs: result.data.map((image) => Buffer.from(image.b64_json, 'base64')), cost: result.usage?.cost ?? null, requestId: response.headers.get('x-generation-id') };
+}
+
+/**
+ * What an image model takes, as OpenRouter describes it: each request param it honours (an enum's values or a
+ * range), and whether it reads images at all. OpenRouter doesn't refuse a param the model doesn't list (muse-image
+ * took aspect_ratio 16:9 and made 3:2), so callers check against this before paying.
+ */
+export type OpenRouterImageModel = {
+  id: string;
+  architecture: { input_modalities: string[] };
+  supported_parameters: Record<string, { type: 'enum'; values: string[] } | { type: 'range'; min: number; max: number }>;
+};
+
+export async function fetchOpenRouterImageModel(model: string): Promise<OpenRouterImageModel> {
+  const { data }: { data: OpenRouterImageModel[] } = await (await fetchOpenRouter('/images/models')).json();
+  const found = data.find((m) => m.id === model);
+  if (!found) throw new Error(`OpenRouter has no image model ${model}; list them at ${API}/images/models`);
+  return found;
 }
 
 export async function submitOpenRouterVideo(body: object): Promise<OpenRouterVideoJob> {
