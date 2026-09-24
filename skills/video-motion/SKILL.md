@@ -131,4 +131,5 @@ Check the strips against these. Each one makes a video look machine-made:
 
 When a shot works and could come back (an end card, a title, a product UI rebuilt in DOM), move it into
 `lib/studio/kit.tsx` with its brand colours and words as props. The next video starts from it and changes the skin.
-For something Remotion-specific (fonts, sound effects, measuring text), see the `remotion` skill.
+For something Remotion-specific (fonts, measuring text), see the `remotion` skill. Music, sound effects and the mix
+are their own pass once the picture is locked: the `video-sound` skill.
