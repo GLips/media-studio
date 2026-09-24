@@ -81,7 +81,8 @@ Once signed off, voice it for real with `studio voice <p>`, which reads the whol
 `OPENROUTER_API_KEY` in the environment; if that isn't set, don't go looking for it: ask the user to run
 `studio voice <p>` themselves, under their secret launcher. Until then, `--read=draft` reads it free with macOS `say`,
 to time scenes against real speech. A draft voice is for timing only, never for a delivered video. Then rebuild the storyboard to check the timing, and do
-the motion pass with the `video-motion` skill.
+the motion pass with the `video-motion` skill, then the sound pass with `video-sound`. A voiceless teaser is cut to its
+music, so it needs the track before the motion pass (`video-sound`, music).
 
 ## Real UI only
 

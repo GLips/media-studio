@@ -143,5 +143,5 @@ from any repo ("make a PR walkthrough video for this change"). Install once per 
 
 A local-directory marketplace loads the plugin in place, so edits to `skills/` reach the next session. Skills find
 this repo with `studio home`. `video-kickoff` takes a video from the first dump to an approved storyboard,
-`video-capture` writes the shots, `video-motion` animates, `video-canvas` paints, and `remotion` covers new primitives.
+`video-capture` writes the shots, `video-motion` animates, `video-sound` scores it, `video-canvas` paints, and `remotion` covers new primitives.
 `docs/directing.md` is a short course on directing.

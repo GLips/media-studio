@@ -1,6 +1,6 @@
 ---
 name: remotion
-description: Remotion API references for building a new studio primitive or kit shot (audio, sound effects, images, fonts, measuring text and DOM, hand-drawn text highlights). Use when lib/studio doesn't already have what a scene needs. For animating scenes, use video-motion; for planning a video, video-kickoff.
+description: Remotion API references for building a new studio primitive or kit shot (audio, images, fonts, measuring text and DOM, hand-drawn text highlights). Use when lib/studio doesn't already have what a scene needs. For animating scenes, use video-motion; for planning a video, video-kickoff.
 ---
 
 # Remotion, as this studio uses it
@@ -21,6 +21,7 @@ then keep its conventions:
 - **Audio goes through the mix.** Voice lines are levelled and the music bed ducked in `lib/studio/mix.ts`; a new
   sound's volume is set relative to `VOICE_LUFS`, and `studio mix` and `studio render` master the result. Remotion's
   volume is 0–1. Effects are the exception: a click has no meaningful loudness, so `lib/studio/sfx.tsx` sets them by ear.
+  Choosing and placing a video's music and effects is the `video-sound` skill.
 - **Measure for the checks.** A primitive that marks a subject, a tag or text carries `data-framing` (see
   `lib/studio/probe.tsx`), so the framing check sees it.
 
@@ -32,7 +33,6 @@ this repo pins 4.0.525). Where one contradicts the rules above, the rules above 
 | File | For |
 |---|---|
 | `references/audio.md` | `<Audio>`: trimming, volume callbacks, looping, speed |
-| `references/sfx.md` | Sound effects: a click on a cursor click, a whoosh on a whip pan. Download a file into the project rather than loading a URL at render time |
 | `references/images.md` | `<Img>` and why it, not `<img>`, waits for the image to load |
 | `references/local-fonts.md` | `@remotion/fonts`: loading a font file so every machine renders the same text. The studio has no `public/`, so import the font file for its URL instead of `staticFile` |
 | `references/measuring-text.md` | Fitting text to a box before it renders |
