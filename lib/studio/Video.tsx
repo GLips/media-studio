@@ -12,14 +12,15 @@ import { Caption } from './captions.tsx';
 import { duckSpans, levelGain, musicGainAt, musicLevels, VOICE_LUFS } from './mix.ts';
 import { previsRequestFor, previsSpan, type PrevisFootage, type PrevisRequest } from './previs.ts';
 import { PrevisFootagePlayer } from './previs.tsx';
-import { FramingProbe } from './probe.tsx';
+import { unmeasuredAttrs } from './motion-tag.ts';
+import { FrameProbe } from './probe.tsx';
 import { SceneContext } from './scene.tsx';
 import { layoutVideo, sceneClock, sceneTimes, scenesAt, visibleSpan, type LaidScene, type Timeline, type VideoDef } from './timeline.ts';
 
 export type VideoProps = {
   /** Burn captions in. */
   captions: boolean;
-  /** Measure every frame for the framing check (see probe.tsx). */
+  /** Measure every frame for the framing check and motion tracks (see probe.tsx). */
   probe: boolean;
   /** Previs scenes show their blockouts, even where generated footage exists (see previs.tsx). */
   blockouts: boolean;
@@ -33,7 +34,10 @@ export type TimelineReport = {
   /** The composition's length, which can run a little past `duration` (see totalFrames). */
   durationInFrames: number;
   scenes: { id: string; start: number; dur: number; note?: string; lines: readonly string[]; previs?: PrevisRequest }[];
-  cues: { id: string; start: number; end: number; captionEnd: number; text: string; voiced: boolean }[];
+  /** Each voice line, with every word as it's spoken (spread by length over an estimated line), in video seconds. */
+  cues: { id: string; start: number; end: number; captionEnd: number; text: string; voiced: boolean; words: { text: string; start: number; end: number }[] }[];
+  /** Where one scene dissolves into the next, in video seconds; a hard cut has none. */
+  crossfades: { from: string; to: string; start: number; end: number }[];
   /** Each scene's `expect`, in video seconds. */
   expectations: { scene: string; see: string; start: number; end: number }[];
 };
@@ -49,7 +53,14 @@ function timelineReport(video: VideoDef, tl: Timeline, fps: number, durationInFr
     scenes: tl.scenes.map((scene) => ({
       id: scene.id, start: scene.start, dur: scene.dur, note: scene.note, lines: scene.lines, previs: previsRequestFor(tl, scene),
     })),
-    cues: tl.cues.map(({ id, start, end, captionEnd, text, src }) => ({ id, start, end, captionEnd, text, voiced: src !== null })),
+    cues: tl.cues.map(({ id, start, end, captionEnd, text, src }) => {
+      const scene = tl.scenes.find((sc) => id in sc.spans)!, span = scene.spans[id];
+      const words = span.words.map((w) => ({ text: w.text, start: scene.start + span.start + w.start, end: scene.start + span.start + w.end }));
+      return { id, start, end, captionEnd, text, voiced: src !== null, words };
+    }),
+    crossfades: tl.scenes.flatMap((scene, i) => (scene.xfade ? [{
+      from: tl.scenes[i - 1].id, to: scene.id, start: scene.start - scene.xfade / 2, end: scene.start + scene.xfade / 2,
+    }] : [])),
     expectations: tl.scenes.flatMap((scene) => (scene.expect?.(sceneTimes(scene)) ?? []).map(({ see, during }) => ({
       scene: scene.id, see, start: scene.start + during.start, end: scene.start + during.end,
     }))),
@@ -90,7 +101,7 @@ export function Video({ video, captions, probe, blockouts, reportTimeline = true
       {video.music && <MusicBedAudio video={video} tl={tl} fps={fps} />}
       {captions && <Caption cues={tl.cues} t={t} />}
       {reportTimeline && frame === 0 && <Artifact filename={TIMELINE_ARTIFACT} content={timelineReport(video, tl, fps, durationInFrames)} />}
-      {probe && <FramingProbe root={root} />}
+      {probe && <FrameProbe root={root} />}
     </AbsoluteFill>
   );
 }
@@ -122,7 +133,9 @@ function SceneLayer({ scene, t, alpha, footage }: { scene: LaidScene; t: number;
   return (
     <AbsoluteFill data-scene={scene.id} data-scene-t={clock.t} style={{ background: '#fff', opacity: alpha }}>
       <SceneContext.Provider value={clock}>
-        {footage ? <PrevisFootagePlayer scene={scene} footage={footage} clock={clock} /> : <SceneBody scene={scene} clock={clock} />}
+        {footage ? (
+          <AbsoluteFill {...unmeasuredAttrs('generated clip')}><PrevisFootagePlayer scene={scene} footage={footage} clock={clock} /></AbsoluteFill>
+        ) : <SceneBody scene={scene} clock={clock} />}
       </SceneContext.Provider>
     </AbsoluteFill>
   );

@@ -1,24 +1,25 @@
-// studio check: the framing check, and the timeline it measures against.
+// studio check: the framing check, the motion tracks, and the timeline both measure against.
 import { defineCommand } from 'citty';
 import { openStudioRenderSession, studioProjectArg } from '../project-arg.ts';
 
 export default defineCommand({
   meta: {
     name: 'check',
-    description: "The framing check: highlights and clicks under tags or the caption, off the frame or cut off by their panel, and each scene's `expect`; warns, without failing, where a fitTake plays its take faster than 1.6× or slower than 0.6×. Prints each problem as a stretch of time, a table of when each scene and line starts and ends (for aiming `studio look`), then out/check/timeline.json, the same as JSON. Fails if there are problems.",
+    description: "Measures every frame (or one scene's, or a stretch's) and reports: highlights and clicks under tags or the caption, off the frame or cut off by their panel, and each scene's `expect`; warnings, without failing, where a fitTake plays its take faster than 1.6× or slower than 0.6×; then how many motion tracks it recorded, what it couldn't measure, and any tracking errors. Prints a table of when each scene and line starts and ends (for aiming `studio look`), then writes out/check/timeline.json (scenes, lines, words, crossfades) and out/check/motion.json (the tracks). Fails on framing problems or tracking errors.",
   },
   args: {
     project: studioProjectArg,
-    every: { type: 'string', default: '5', description: "Measure every nth frame (plus every frame an `expect` covers); `studio render` measures all" },
+    scene: { type: 'string', description: 'Only this scene, its crossfades included' },
+    at: { type: 'string', valueHint: '12:20', description: 'Only this stretch, in seconds' },
   },
   async run({ args }) {
-    const every = Number(args.every);
-    if (!Number.isInteger(every) || every < 1) throw new Error(`--every must be a whole number of frames, at least 1, not ${args.every}`);
-    const { checkProjectFraming, formatTimelineTable, writeTimelineReport } = await import('../../lib/render-pipeline.ts');
+    const at = args.at?.split(':').map(Number);
+    if (at && !(at.length === 2 && at.every(Number.isFinite) && at[0] < at[1])) throw new Error(`--at is a stretch of seconds like 12:20, not ${args.at}`);
+    const { checkProject, formatTimelineTable, writeCheckReports } = await import('../../lib/render-pipeline.ts');
     const session = await openStudioRenderSession(args.project);
-    const { ok, timeline, report } = await checkProjectFraming(session, every);
-    for (const line of [...report, '', ...formatTimelineTable(timeline), '']) console.log(line);
-    console.log(writeTimelineReport(session, timeline));
-    if (!ok) process.exitCode = 1;
+    const check = await checkProject(session, { scene: args.scene, at: at && [at[0], at[1]] });
+    for (const line of [...check.report, '', ...formatTimelineTable(check.timeline), '']) console.log(line);
+    for (const file of writeCheckReports(session, check)) console.log(file);
+    if (!check.ok) process.exitCode = 1;
   },
 });

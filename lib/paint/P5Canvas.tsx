@@ -11,6 +11,7 @@ import p5, { type P5 } from 'p5';
 import { useLayoutEffect, useRef } from 'react';
 import { useDelayRender } from 'remotion';
 import { H, W } from '../studio/frame.ts';
+import { unmeasuredAttrs } from '../studio/motion-tag.ts';
 
 export type P5Style = {
   /** One WebGL canvas per name, per tab. */
@@ -110,5 +111,5 @@ export function P5Canvas({ style, paint, finish, multiply = false, alpha = 1 }: 
     };
   });
 
-  return <canvas ref={ref} width={W} height={H} style={{ position: 'absolute', left: 0, top: 0, width: W, height: H, opacity: alpha, pointerEvents: 'none', mixBlendMode: multiply ? 'multiply' : undefined }} />;
+  return <canvas ref={ref} width={W} height={H} {...unmeasuredAttrs('painted canvas')} style={{ position: 'absolute', left: 0, top: 0, width: W, height: H, opacity: alpha, pointerEvents: 'none', mixBlendMode: multiply ? 'multiply' : undefined }} />;
 }

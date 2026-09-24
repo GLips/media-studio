@@ -7,6 +7,7 @@ export * from './capture.tsx';
 export * from './frame.ts';
 export * from './kit.tsx';
 export * from './motion.ts';
+export { motionAttrs, useMotionTag, type MotionTag } from './motion-tag.ts';
 export * from './overlays.tsx';
 export { useScene } from './scene.tsx';
 export { useScreenRect } from './screen-rect.ts';

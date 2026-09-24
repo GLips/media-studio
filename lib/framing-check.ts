@@ -57,10 +57,10 @@ function obstruction(m: FramingMark, marks: readonly FramingMark[]): string | nu
 const label = (m: FramingMark) => (m.name === 'click' ? 'a click' : m.name ? `highlight "${m.name}"` : 'a highlight');
 
 /**
- * Problems across the measured frames, merged into stretches of time. `frames` must include every frame inside each
- * expectation's span; `every` is the spacing elsewhere, so a stretch isn't split by the frames between samples.
+ * Problems across the measured frames, merged into stretches of time. `reports` covers every frame from `first` to
+ * `last`; an expectation is checked on the frames of its span inside them.
  */
-export function framingProblems(reports: readonly FramingReport[], expectations: readonly FramingExpectation[], fps: number, every: number): FramingProblem[] {
+export function framingProblems(reports: readonly FramingReport[], expectations: readonly FramingExpectation[], fps: number, { first, last }: { first: number; last: number }): FramingProblem[] {
   const found: { frame: number; problem: string; scene?: string }[] = [];
   const byFrame = new Map(reports.map((r) => [r.frame, r.marks]));
 
@@ -73,8 +73,8 @@ export function framingProblems(reports: readonly FramingReport[], expectations:
   }
 
   for (const e of expectations) {
-    const first = Math.round(e.start * fps), last = Math.max(first, Math.round(e.end * fps) - 1);
-    for (let frame = first; frame <= last; frame++) {
+    const from = Math.round(e.start * fps), to = Math.max(from, Math.round(e.end * fps) - 1);
+    for (let frame = Math.max(from, first); frame <= Math.min(to, last); frame++) {
       const marks = byFrame.get(frame);
       if (!marks) throw new Error(`frame ${frame} wasn't measured, but "${e.see}" is expected on it`);
       const named = marks.filter((m) => m.kind === 'subject' && m.scene === e.scene && m.name === e.see);
@@ -88,23 +88,12 @@ export function framingProblems(reports: readonly FramingReport[], expectations:
   const spans: (FramingProblem & { last: number })[] = [];
   for (const f of found.sort((a, b) => a.frame - b.frame)) {
     const open = spans.findLast((s) => s.problem === f.problem && s.scene === f.scene);
-    if (open && f.frame - open.last <= every * 1.5) {
+    if (open && f.frame - open.last <= 1) {
       open.last = f.frame;
       open.to = f.frame / fps;
     } else spans.push({ from: f.frame / fps, to: f.frame / fps, problem: f.problem, scene: f.scene, last: f.frame });
   }
   return spans.map(({ last: _, ...s }) => s);
-}
-
-/** The frames to measure: every `every`th, plus every frame an expectation covers. */
-export function framesToMeasure(durationInFrames: number, every: number, expectations: readonly FramingExpectation[], fps: number): number[] {
-  const frames = new Set<number>();
-  for (let f = 0; f < durationInFrames; f += every) frames.add(f);
-  for (const e of expectations) {
-    const first = Math.round(e.start * fps), last = Math.max(first, Math.round(e.end * fps) - 1);
-    for (let f = first; f <= Math.min(last, durationInFrames - 1); f++) frames.add(f);
-  }
-  return [...frames].sort((a, b) => a - b);
 }
 
 export type TakeFitWarning = { scene: string; warning: string };

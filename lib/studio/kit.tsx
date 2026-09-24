@@ -1,12 +1,13 @@
 // kit.tsx: shots that recur across videos, built from the primitives. Each takes its colours and words as props, so
 // a project brings its own brand, and each is a pure function of its clock. Text-bearing shots keep clear of
-// CAPTION_SAFE_TOP, where burned-in captions sit.
+// CAPTION_SAFE_TOP, where burned-in captions sit. Each tags what moves in it for the motion tracks (motion-tag.ts).
 
 import type { ReactNode } from 'react';
 import { camFit, camTop, camWhole, centerOf, lerpCam, view, type Rect, type Shot, type View } from './camera.ts';
 import { Capture, CaptureMotion } from './capture.tsx';
 import { CAPTION_FREE, CAPTION_SAFE_TOP, FONT, H, W } from './frame.ts';
 import { clamp, easeInOut, easeOut, seg } from './motion.ts';
+import { motionAttrs } from './motion-tag.ts';
 import { ClipToBox, CursorPath, Glass, Tag, Text, Wash } from './overlays.tsx';
 import type { SceneClock } from './timeline.ts';
 
@@ -31,7 +32,7 @@ export function SplitCompare({ left, right, k = 1, children }: { left: SplitSide
       <div style={{ position: 'absolute', left: W / 2 - 2, top: 0, width: 4, height: H, background: '#d5d9e0' }} />
       <div style={{ position: 'absolute', left: 0, top: SPLIT_LABEL_STRIP - 2, width: W, height: 2, background: '#d5d9e0' }} />
       {[left, right].map((side, i) => (
-        <ClipToBox key={i} box={side.view.box}>
+        <ClipToBox key={i} box={side.view.box} motion={i === 0 ? 'left' : 'right'}>
           <Capture view={side.view} alpha={side.alpha ?? 1} />
           {side.over}
         </ClipToBox>
@@ -118,7 +119,7 @@ export function MotionTitle({ s, shot, eyebrow, title, subtitle, accent, wash = 
       {eyebrow && <Text text={eyebrow} x={120} y={barY - 230} size={26} weight={600} color="rgba(255,255,255,0.75)" k={inK(0.3)} spacing={0.12} />}
       <Text text={title} x={114} y={barY - 110} size={124} weight={800} k={inK(0.5)} spacing={-0.025} />
       {subtitle && <Text text={subtitle} x={120} y={barY - 35} size={42} weight={500} color="rgba(255,255,255,0.88)" k={inK(0.8)} />}
-      <div style={{ position: 'absolute', left: 120, top: barY, width: 150 * inK(1.0), height: 8, background: accent }} />
+      <div {...motionAttrs({ name: 'accent-bar', kind: 'bar', implicit: true, values: { k: inK(1.0) } })} style={{ position: 'absolute', left: 120, top: barY, width: 150 * inK(1.0), height: 8, background: accent }} />
     </>
   );
 }
@@ -170,11 +171,12 @@ export function GlassCard({ k, eyebrow, points, accent, ink, rect = { x: (W - 11
   const y0 = rect.y + (1 - easeOut(k)) * 40;
   return (
     <>
-      <Glass rect={{ ...rect, y: y0 }} alpha={clamp(k * 1.4)} tint="rgba(255,255,255,0.78)" blur={24} />
+      <Glass rect={{ ...rect, y: y0 }} alpha={clamp(k * 1.4)} tint="rgba(255,255,255,0.78)" blur={24} motion="card" />
       <Text text={eyebrow} x={rect.x + 88} y={y0 + 126} size={28} weight={700} color={accent} k={k} spacing={0.1} />
       {points.map((p, i) => (
         <Text key={i} text={typeof p === 'string' ? p : p.text} x={rect.x + 88} y={y0 + 250 + i * 104} size={60} weight={700} color={ink}
-          k={typeof p === 'string' ? clamp((k - 0.15 * (i + 1)) / 0.6) : Math.min(k, p.k)} spacing={-0.015} />
+          k={typeof p === 'string' ? clamp((k - 0.15 * (i + 1)) / 0.6) : Math.min(k, p.k)} spacing={-0.015}
+          stagger={{ group: 'points', index: i, count: points.length }} />
       ))}
     </>
   );
@@ -189,11 +191,12 @@ export function SectionCard({ t, number, of, title, bg, accent, hold = 1.3 }: { 
   const out = seg(t, hold, hold + 0.55, easeInOut);
   if (out >= 1) return null;
   return (
-    <div style={{ position: 'absolute', inset: 0, transform: `translateY(${-out * H}px)` }}>
+    <div {...motionAttrs({ name: 'section-card', kind: 'section-card', implicit: true, values: { out } })} style={{ position: 'absolute', inset: 0, transform: `translateY(${-out * H}px)` }}>
       <div style={{ position: 'absolute', inset: 0, background: bg }} />
       <Text text={`${number} / ${of}`} x={160} y={H / 2 - 70} size={34} weight={700} color={accent} k={seg(t, 0, 0.5, easeOut)} spacing={0.08} />
       <Text text={title} x={154} y={H / 2 + 50} size={112} weight={800} k={seg(t, 0.1, 0.6, easeOut)} spacing={-0.025} />
-      <div style={{ position: 'absolute', left: 160, top: H / 2 + 100, width: 150 * seg(t, 0.3, 0.8, easeOut), height: 8, background: accent }} />
+      <div {...motionAttrs({ name: 'accent-bar', kind: 'bar', implicit: true, values: { k: seg(t, 0.3, 0.8, easeOut) } })}
+        style={{ position: 'absolute', left: 160, top: H / 2 + 100, width: 150 * seg(t, 0.3, 0.8, easeOut), height: 8, background: accent }} />
     </div>
   );
 }
@@ -218,6 +221,7 @@ export function ConfirmDialog({ k, origin, message, anchor = { x: W / 2, y: 120 
     <div style={{ position: 'absolute', inset: 0, opacity: clamp(k) }}>
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.28)' }} />
       <div
+        {...motionAttrs({ name: 'dialog', kind: 'dialog', implicit: true, values: { k } })}
         style={{
           position: 'absolute',
           left: anchor.x - w / 2,
@@ -253,6 +257,7 @@ export function NativeMenu({ k, from, items, scroll = 0, rowH = 34, bottom = CAP
   const offset = scroll * Math.max(0, items.length * rowH + 12 - h);
   return (
     <div
+      {...motionAttrs({ name: 'menu', kind: 'menu', implicit: true, values: { k, scroll } })}
       style={{
         position: 'absolute',
         left: from.x,

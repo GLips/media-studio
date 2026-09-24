@@ -12,6 +12,8 @@ export type Point = { x: number; y: number };
 export type Rect = { x: number; y: number; w: number; h: number };
 export type Cam = { cx: number; cy: number; zoom: number };
 export type Shot = {
+  /** The shot's name in capture.ts, which names its camera in the motion tracks. */
+  name?: string;
   src: string;
   /** Page width and height in CSS pixels. */
   w: number;
@@ -20,6 +22,8 @@ export type Shot = {
   scale: number;
   rects: Readonly<Record<string, Rect | readonly Rect[]>>;
   data?: unknown;
+  /** Set on a take's frame (takeShot): its pixels move in ways the motion tracks can't measure. */
+  take?: true;
 };
 
 export const centerOf = (r: Rect): Point => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
@@ -131,8 +135,18 @@ export type View = { shot: Shot; cam: Cam; box: Rect };
 export const view = (shot: Shot, cam: Cam, box: Rect = FULL_FRAME): View => ({ shot, cam, box });
 /** The same camera and box over another capture of the same page: a later state of it. */
 export const viewOf = (v: View, shot: Shot): View => ({ ...v, shot });
+// The view each screen rect was aimed through, so a Highlight handed one can record the camera it moves with
+// (motion-tag.ts) without taking the view as well.
+const aimedThrough = new WeakMap<Rect, View>();
+
 /** A page rect of the view's capture, on screen. */
-export const screenRect = (v: View, r: Rect): Rect => rectToScreen(v.shot, v.cam, r, v.box);
+export function screenRect(v: View, r: Rect): Rect {
+  const rect = rectToScreen(v.shot, v.cam, r, v.box);
+  aimedThrough.set(rect, v);
+  return rect;
+}
+/** The view `screenRect` aimed this very rect through; undefined for any other rect, a copy of one included. */
+export const viewOfScreenRect = (r: Rect): View | undefined => aimedThrough.get(r);
 /** A page point of the view's capture, on screen. */
 export const screenPoint = (v: View, p: Point): Point => toScreen(v.shot, v.cam, p, v.box);
 /** A screen point, in the view's page space. */

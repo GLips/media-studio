@@ -8,7 +8,8 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { framesToMeasure, framingArtifactName, framingProblems, takeFitWarnings, type FramingReport } from './framing-check.ts';
+import { framingArtifactName, framingProblems, takeFitWarnings, type FramingReport } from './framing-check.ts';
+import { assembleMotionTracks, formatMotionReport, motionArtifactName, type FrameMotion, type MotionTracks } from './motion-tracks.ts';
 import { measureLoudness } from './loudness.ts';
 import { artifactSink, RENDER_CHROMIUM, RENDER_CONCURRENCY, type RenderSession } from './render-session.ts';
 import { H, W } from './studio/frame.ts';
@@ -19,52 +20,80 @@ const outDirFor = (session: RenderSession) => join(session.project, 'out');
 const videoFor = (session: RenderSession, captions: boolean) => join(outDirFor(session), captions ? 'video.mp4' : 'video-plain.mp4');
 const masterWavFor = (session: RenderSession) => join(outDirFor(session), 'mix.wav');
 
-// ---------- framing check ----------
+// ---------- the check ----------
 
-export type FramingCheck = { ok: boolean; timeline: TimelineReport; report: string[] };
+/** What `studio check` looks at: the whole video, one scene (with its crossfades), or a stretch of seconds. */
+export type CheckScope = { scene?: string; at?: readonly [number, number] };
+
+/** The frames a scope covers, inclusive. */
+export function checkedFrames(timeline: TimelineReport, { scene, at }: CheckScope): { first: number; last: number } {
+  const { fps, durationInFrames } = timeline;
+  let from = 0, to = durationInFrames / fps;
+  if (scene !== undefined) {
+    const s = timeline.scenes.find((x) => x.id === scene);
+    if (!s) throw new Error(`there's no scene "${scene}": ${timeline.scenes.map((x) => x.id).join(', ')}`);
+    from = timeline.crossfades.find((c) => c.to === scene)?.start ?? s.start;
+    to = timeline.crossfades.find((c) => c.from === scene)?.end ?? s.start + s.dur;
+  }
+  if (at) [from, to] = [Math.max(from, at[0]), Math.min(to, at[1])];
+  const first = Math.max(0, Math.round(from * fps)), last = Math.min(durationInFrames - 1, Math.ceil(to * fps) - 1);
+  if (last < first) throw new Error(`${from.toFixed(2)}–${to.toFixed(2)}s holds no frames of the video`);
+  return { first, last };
+}
+
+export type ProjectCheck = { ok: boolean; timeline: TimelineReport; motion: MotionTracks; report: string[] };
 
 /**
- * Measures every `every`th frame, plus every frame a scene's `expect` covers, and reports each problem as a stretch
- * of time (see lib/framing-check.ts), then warns of strained take fits, which don't fail it.
+ * Measures every frame of `scope` (the whole video by default) and reports framing problems as stretches of time (see
+ * lib/framing-check.ts), then strained take fits, which don't fail it, then what motion it tracked (see
+ * lib/motion-tracks.ts), whose instrumentation errors do.
  */
-export async function checkProjectFraming(session: RenderSession, every: number): Promise<FramingCheck> {
+export async function checkProject(session: RenderSession, scope: CheckScope = {}): Promise<ProjectCheck> {
   const { serveUrl, props, compositionFor } = session;
   // Captions on, so the caption is measured where it would show: a hidden one counts as faded out and covers nothing.
   const inputProps = props({ probe: true, captions: true });
   const composition = await compositionFor(inputProps);
   const { fps } = composition;
   const sink = artifactSink();
-  const tmp = mkdtempSync(join(tmpdir(), 'framing-'));
+  const tmp = mkdtempSync(join(tmpdir(), 'check-'));
   const measure = (frames: number[]) => renderFrames({
     composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, concurrency: RENDER_CONCURRENCY, inputProps, outputDir: tmp, imageFormat: 'none', frames,
     onArtifact: sink.onArtifact, onStart: () => {}, onFrameUpdate: () => {},
   });
-  // Frame 0 carries the timeline, which says which frames the expectations need.
+  // Frame 0 carries the timeline, which says where a scene is.
   await measure([0]);
   const timeline = sink.json<TimelineReport>('timeline.json');
-  const frames = framesToMeasure(composition.durationInFrames, every, timeline.expectations, fps);
+  const span = checkedFrames(timeline, scope);
+  const frames = Array.from({ length: span.last - span.first + 1 }, (_, i) => span.first + i);
   await measure(frames.filter((f) => f !== 0));
   rmSync(tmp, { recursive: true, force: true });
 
   const reports = frames.map((f) => sink.json<FramingReport>(framingArtifactName(f)));
-  const problems = framingProblems(reports, timeline.expectations, fps, every);
+  const problems = framingProblems(reports, timeline.expectations, fps, span);
   const report = [
     ...problems.map((p) => `  ✗ ${p.from.toFixed(2)}–${p.to.toFixed(2)}s  ${p.scene ? `[${p.scene}] ` : ''}${p.problem}`),
     ...takeFitWarnings(reports).map((w) => `  ! [${w.scene}] ${w.warning}`),
   ];
-  const sampled = every === 1 ? 'every frame' : `one frame in ${every}${timeline.expectations.length ? ', plus the frames expectations cover' : ''}`;
   const expected = timeline.expectations.length ? `, ${timeline.expectations.length} expectation${timeline.expectations.length > 1 ? 's' : ''}` : '';
-  const measured = `${frames.length} of ${composition.durationInFrames} frames: ${sampled}${expected}`;
+  const measured = `${(span.first / fps).toFixed(2)}–${((span.last + 1) / fps).toFixed(2)}s, every frame${expected}`;
   report.push(problems.length ? `framing: ${problems.length} problem${problems.length > 1 ? 's' : ''} (${measured})` : `framing ✓ (${measured})`);
-  return { ok: problems.length === 0, timeline, report };
+
+  const motion = assembleMotionTracks(frames.map((f) => sink.json<FrameMotion>(motionArtifactName(f))), { fps, ...span });
+  const motionReport = formatMotionReport(motion);
+  report.push(...motionReport.lines);
+  return { ok: problems.length === 0 && motionReport.ok, timeline, motion, report };
 }
 
-/** Writes out/check/timeline.json: when each scene and line lands, for aiming sheets and strips. */
-export function writeTimelineReport(session: RenderSession, timeline: TimelineReport): string {
-  const file = join(outDirFor(session), 'check', 'timeline.json');
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(timeline, null, 2));
-  return file;
+/**
+ * Writes out/check/timeline.json (when each scene, line and word lands, and where scenes crossfade, for aiming sheets
+ * and strips) and out/check/motion.json (the motion tracks, so reviewing them needs no render). Returns both paths.
+ */
+export function writeCheckReports(session: RenderSession, { timeline, motion }: Pick<ProjectCheck, 'timeline' | 'motion'>): string[] {
+  const dir = join(outDirFor(session), 'check');
+  mkdirSync(dir, { recursive: true });
+  const files = [[join(dir, 'timeline.json'), JSON.stringify(timeline, null, 2)], [join(dir, 'motion.json'), JSON.stringify(motion)]] as const;
+  for (const [file, content] of files) writeFileSync(file, content);
+  return files.map(([file]) => file);
 }
 
 /** Each scene with its lines under it, and when each starts and ends in video seconds, for aiming `studio look`. */
@@ -234,9 +263,11 @@ const draftVoiceWarning = (session: RenderSession) => `
  * video.srt; and out/watch.html. Returns what it delivered.
  */
 export async function renderDeliveredVideo(session: RenderSession, { plain }: { plain: boolean }): Promise<string[]> {
-  const { ok, timeline, report } = await checkProjectFraming(session, 1);
+  const check = await checkProject(session);
+  const { ok, timeline, report } = check;
   for (const line of report) console.error(line);
-  if (!ok) throw new Error('fix the framing problems above before rendering (look at a stretch with studio look <project> --strip=a:b)');
+  writeCheckReports(session, check);
+  if (!ok) throw new Error('fix the problems above before rendering (look at a stretch with studio look <project> --strip=a:b)');
   const estimated = timeline.cues.filter((q) => !q.voiced).map((q) => q.id);
   if (estimated.length) throw new Error(`${estimated.join(', ')} ${estimated.length > 1 ? 'are' : 'is'} estimated, not voiced: run studio voice <project> before rendering the video`);
   const draft = isVoicedWithDraft(session.project);
