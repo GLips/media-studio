@@ -80,6 +80,12 @@ that calm, legible register. A teaser or showreel designs its own motion, and no
 - Say it and show it: give the highlight a `name` and the scene an
   `expect: (s) => [{ see: 'tiers', during: s.line('ladder').word('no volume discount') }]`. The check fails if the
   named highlight isn't drawn, clear of tags and the caption, for the whole span.
+- Hold what must be read: when the voice names something the viewer has to read (a price, a total, a changed
+  setting), give its element a `motion` name and the scene
+  `{ hold: 'price', for: 1, during: { start: w.start, end: s.line('next').start } }`. The check fails unless it
+  stays put (within 2 px, or `within`) and visible for `for` seconds inside `during`. The failure names what moved,
+  when and by how much, with the `studio look --graph` to see it. Steady and visible isn't readable: judge size and
+  contrast by eye.
 
 ## Takes: when the viewer should watch it happen
 

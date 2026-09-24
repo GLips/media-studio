@@ -5,7 +5,7 @@ import { openStudioRenderSession, studioProjectArg } from '../project-arg.ts';
 export default defineCommand({
   meta: {
     name: 'check',
-    description: "Measures every frame (or one scene's, or a stretch's) and reports: highlights and clicks under tags or the caption, off the frame or cut off by their panel, and each scene's `expect`; warnings, without failing, where a fitTake plays its take faster than 1.6× or slower than 0.6×; then how many motion tracks it recorded, what it couldn't measure, and any tracking errors. Prints a table of when each scene and line starts and ends (for aiming `studio look`), then writes out/check/timeline.json (scenes, lines, words, crossfades) and out/check/motion.json (the tracks; a --scene or --at check writes motion-<scope>.json beside it). Fails on framing problems or tracking errors.",
+    description: "Measures every frame (or one scene's, or a stretch's) and reports: highlights and clicks under tags or the caption, off the frame or cut off by their panel, and each scene's `expect`; warnings, without failing, where a fitTake plays its take faster than 1.6× or slower than 0.6×; then how many motion tracks it recorded, what it couldn't measure, and any tracking errors; then each `expect` hold, which must stay steady and visible long enough. Prints a table of when each scene and line starts and ends (for aiming `studio look`), then writes out/check/timeline.json (scenes, lines, words, crossfades) and out/check/motion.json (the tracks; a --scene or --at check writes motion-<scope>.json beside it). Fails on framing problems, tracking errors or a hold not kept.",
   },
   args: {
     project: studioProjectArg,

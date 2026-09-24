@@ -27,9 +27,14 @@ const card = (color: string): CSSProperties => ({ position: 'absolute', width: 1
 /**
  * Good next to bad: `eased` travels 1000px with motionCurves.cubic.standard in 1s and holds; `linear` travels the same 1000px at one
  * speed, stops dead, and jitters ±3px while it "holds". Velocity: a bell against a flat plateau with a cliff at each end.
+ * Both are declared to hold for 1s after arriving: `eased` does, and `linear`'s jitter fails the check on purpose.
  */
 const glide = defineScene({
   id: 'glide', min: 3,
+  expect: () => [
+    { hold: 'eased', for: 1, during: { start: 1, end: 3 } },
+    { hold: 'linear', for: 1, during: { start: 1, end: 3 } },
+  ],
   render: (s) => {
     const eased = seg(s.t, 0.5, 1.5, motionCurves.cubic.standard), flat = seg(s.t, 0.5, 1.5, motionCurves.linear);
     const jitter = s.t > 1.5 ? 3 * Math.sin(s.t * 97) : 0;

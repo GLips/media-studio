@@ -9,7 +9,7 @@ import { checkProject } from './render-pipeline.ts';
 import { openRenderSession } from './render-session.ts';
 import { STUDIO_PROJECTS_DIR } from './studio-project.ts';
 
-const { ok, motion, timeline } = await checkProject(await openRenderSession(join(STUDIO_PROJECTS_DIR, '2026-09-motion-calibration')));
+const { ok, motion, timeline, report } = await checkProject(await openRenderSession(join(STUDIO_PROJECTS_DIR, '2026-09-motion-calibration')));
 const track = (id: string) => {
   const t = motion.tracks.find((x) => x.id === id);
   assert.ok(t, `no track ${id}: ${motion.tracks.map((x) => x.id).join(', ')}`);
@@ -19,10 +19,11 @@ const solo = (id: string): MotionSegment => track(id).segments.find((s) => s.pha
 const spread = (series: readonly (number | null)[]) => Math.max(...series.map(Number)) - Math.min(...series.map(Number));
 const speeds = (series: readonly number[]) => motionChannelVelocity(series, motion.fps).filter((v) => v !== null);
 
-test('the calibration video measures cleanly', () => {
-  assert.equal(ok, true);
+test('the calibration video measures cleanly, and fails only the hold it breaks on purpose', () => {
+  assert.equal(ok, false);
   assert.deepEqual(motion.errors, []);
   assert.deepEqual(motion.coverage.ambiguous, []);
+  assert.deepEqual(report.filter((l) => l.includes('✗')).map((l) => /expected "(\w+)" to hold/.exec(l)?.[1]), ['linear'], report.join('\n'));
 });
 
 test('an eased glide peaks mid-move; a linear one holds one speed and stops dead', () => {

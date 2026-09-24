@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { framingArtifactName, framingProblems, takeFitWarnings, type FramingReport } from './framing-check.ts';
+import { holdProblems } from './hold-check.ts';
 import { buildMotionGraph, motionGraphBackdropFrame, type MotionGraphSpace } from './motion-graph.ts';
 import { assembleMotionTracks, formatMotionReport, motionArtifactName, type FrameMotion, type MotionTracks } from './motion-tracks.ts';
 import { measureLoudness } from './loudness.ts';
@@ -71,19 +72,23 @@ export async function checkProject(session: RenderSession, scope: CheckScope = {
   rmSync(tmp, { recursive: true, force: true });
 
   const reports = frames.map((f) => sink.json<FramingReport>(framingArtifactName(f)));
-  const problems = framingProblems(reports, timeline.expectations, fps, span);
-  const report = [
-    ...problems.map((p) => `  ✗ ${p.from.toFixed(2)}–${p.to.toFixed(2)}s  ${p.scene ? `[${p.scene}] ` : ''}${p.problem}`),
-    ...takeFitWarnings(reports).map((w) => `  ! [${w.scene}] ${w.warning}`),
-  ];
-  const expected = timeline.expectations.length ? `, ${timeline.expectations.length} expectation${timeline.expectations.length > 1 ? 's' : ''}` : '';
+  const sees = timeline.expectations.filter((e) => 'see' in e), holds = timeline.expectations.filter((e) => 'hold' in e);
+  const problems = framingProblems(reports, sees, fps, span);
+  const problemLine = (p: { from: number; to: number; scene?: string; problem: string }) => `  ✗ ${p.from.toFixed(2)}–${p.to.toFixed(2)}s  ${p.scene ? `[${p.scene}] ` : ''}${p.problem}`;
+  const report = [...problems.map(problemLine), ...takeFitWarnings(reports).map((w) => `  ! [${w.scene}] ${w.warning}`)];
+  const expected = sees.length ? `, ${sees.length} expectation${sees.length > 1 ? 's' : ''}` : '';
   const measured = `${(span.first / fps).toFixed(2)}–${((span.last + 1) / fps).toFixed(2)}s, every frame${expected}`;
   report.push(problems.length ? `framing: ${problems.length} problem${problems.length > 1 ? 's' : ''} (${measured})` : `framing ✓ (${measured})`);
 
   const motion = assembleMotionTracks(frames.map((f) => sink.json<FrameMotion>(motionArtifactName(f))), { fps, ...span });
   const motionReport = formatMotionReport(motion);
   report.push(...motionReport.lines);
-  return { ok: problems.length === 0 && motionReport.ok, timeline, motion, report };
+
+  const held = holdProblems(motion, timeline, holds, basename(session.project));
+  const checked = holds.length - held.unchecked.length;
+  report.push(...held.problems.map(problemLine), ...held.unchecked.map((u) => `  – not checked: ${u}`));
+  if (holds.length) report.push(held.problems.length ? `holds: ${held.problems.length} of ${checked} not kept` : `holds ✓ (${checked} steady and visible)`);
+  return { ok: problems.length === 0 && motionReport.ok && held.problems.length === 0, timeline, motion, report };
 }
 
 /**

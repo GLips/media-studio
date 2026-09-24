@@ -56,10 +56,16 @@ export type SceneClock<Id extends string = string> = SceneTimes<Id> & {
 };
 
 /**
- * Show what you say: the highlight named `see` is drawn, fully on screen and clear of tags and the caption for all of
- * `during`, e.g. `{ see: 'matches', during: s.line('combo-a').word('seventeen') }`. The render fails otherwise.
+ * What a scene promises; `studio check` fails if it isn't kept.
+ * - `see`: the named highlight is drawn, on screen and clear of tags and the caption, for all of `during`.
+ * - `hold`: the tracked element (its motion name, or `owner/name`) is steady and visible for `for` seconds somewhere
+ *   in `during`: centre and size within `within` px (default 2), reported values within 0.5%, 95% opaque with the
+ *   next scene's dissolve counted. e.g. the price, a second before the next line:
+ *   `{ hold: 'price', for: 1, during: { start: s.line('price').word('twelve').start, end: s.line('next').start } }`
  */
-export type SceneExpectation = { see: string; during: { start: number; end: number } };
+export type SceneExpectation =
+  | { see: string; during: { start: number; end: number } }
+  | { hold: string; for: number; within?: number; during: { start: number; end: number } };
 
 type SceneTiming = {
   /** Seconds before the first line. Default 0.5. */

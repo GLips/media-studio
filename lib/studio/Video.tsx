@@ -39,8 +39,10 @@ export type TimelineReport = {
   /** Where one scene dissolves into the next, in video seconds; a hard cut has none. */
   crossfades: { from: string; to: string; start: number; end: number }[];
   /** Each scene's `expect`, in video seconds. */
-  expectations: { scene: string; see: string; start: number; end: number }[];
+  expectations: TimelineExpectation[];
 };
+/** A scene's `expect` (see SceneExpectation), its `during` in video seconds. */
+export type TimelineExpectation = { scene: string; start: number; end: number } & ({ see: string } | { hold: string; for: number; within?: number });
 export const TIMELINE_ARTIFACT = 'timeline.json';
 
 
@@ -61,8 +63,8 @@ function timelineReport(video: VideoDef, tl: Timeline, fps: number, durationInFr
     crossfades: tl.scenes.flatMap((scene, i) => (scene.xfade ? [{
       from: tl.scenes[i - 1].id, to: scene.id, start: scene.start - scene.xfade / 2, end: scene.start + scene.xfade / 2,
     }] : [])),
-    expectations: tl.scenes.flatMap((scene) => (scene.expect?.(sceneTimes(scene)) ?? []).map(({ see, during }) => ({
-      scene: scene.id, see, start: scene.start + during.start, end: scene.start + during.end,
+    expectations: tl.scenes.flatMap((scene) => (scene.expect?.(sceneTimes(scene)) ?? []).map(({ during, ...promise }) => ({
+      scene: scene.id, ...promise, start: scene.start + during.start, end: scene.start + during.end,
     }))),
   };
   return JSON.stringify(report);
