@@ -90,7 +90,7 @@ export function CursorPath({ view, t, keys, alpha = 1 }: { view: View; t: number
   const press = Math.max(0, ...clicks.map(([kt]) => 1 - Math.abs(t - kt) / CLICK_PRESS));
   return (
     <>
-      {clicks.map(([kt], i) => <Sfx key={i} src={SFX.click} at={kt} t={t} />)}
+      {clicks.map(([kt], i) => <Sfx key={i} sound={SFX.click} id={i} at={kt} t={t} />)}
       {clicks.map(([kt, p], i) => <ClickRipple key={i} at={screenPoint(view, p)} k={(t - kt) / RIPPLE_LIFE} />)}
       <Cursor at={screenPoint(view, cursorAt(t, keys))} press={clamp(press)} alpha={alpha} />
     </>
@@ -117,7 +117,7 @@ export function TakeCursor({ view, t, fit, alpha = 1 }: { view: View; t: number;
   }
   return (
     <>
-      {fit.take.keys.map((time, i) => <Sfx key={i} src={SFX.key} at={sceneTimeOf(fit, time)} t={t} volume={0.35} rate={1 + (((i * 7) % 5) - 2) * 0.04} />)}
+      {fit.take.keys.map((time, i) => <Sfx key={i} sound={SFX.key} id={i} at={sceneTimeOf(fit, time)} t={t} volume={0.7} />)}
       <CursorPath view={view} t={t} keys={keys} alpha={alpha} />
     </>
   );

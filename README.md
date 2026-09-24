@@ -40,8 +40,8 @@ the right length and an audio stream, measure −14 ±1 LUFS and peak at −1 dB
 to look over.
 
 `studio api [name]` lists what `lib/studio/api.ts` exports, read from the code, or prints one export's signature and
-doc comment. `studio repeatable <project> 2,8.5` proves a painted layer is a pure function of time; `studio sfx` re-synthesizes
-the kit's click sounds.
+doc comment. `studio repeatable <project> 2,8.5` proves a painted layer is a pure function of time; `studio sfx` renders sound
+effects from seeded recipes (`studio sfx list`; `studio sfx showcase` to listen through them all).
 
 `npm run typecheck` checks everything, including that every rect a scene points at was captured. `npm test` runs the
 tests.
@@ -87,8 +87,9 @@ Scenes import everything from `lib/studio/api.ts`.
 - `lib/studio/probe.tsx`: measures highlights, clicks, tags and the caption on each frame. `lib/framing-check.ts`
   decides what's a problem.
 - `lib/studio/mix.ts`: voice levelling, and a music bed that ducks under the voice. `lib/loudness.ts` measures.
-- `lib/studio/sfx.tsx`: `<Sfx>` plays a sound at a scene time; `CursorPath` clicks sound by themselves. The sounds are
-  synthesized by `studio sfx`, so there's nothing to license.
+- `lib/studio/sfx.tsx`: `<Sfx>` plays a sound so it lands on a scene time; `CursorPath` clicks sound by themselves.
+  `lib/sfx/` synthesizes every sound from a seeded recipe (whoosh, riser, impact, chime and more), so there's nothing
+  to license.
 - `lib/whisper-words.ts`, `lib/voice-words.ts`: word timings from whisper.cpp (installed on first use into
   `~/.cache/video-studio`), aligned to the script.
 - `lib/voice-take.ts`: where to cut a take into lines, and the pauses the read left between them.

@@ -5,54 +5,59 @@
 Don't add these by hand; they'd play twice:
 
 - **Cursor clicks.** `CursorPath` plays `SFX.click` at every key with `{ click: true }`.
-- **Takes.** `TakeCursor` plays the take's logged clicks, and `SFX.key` on every typed key, at a lower volume with a
-  slight pitch spread so a burst of typing doesn't sound machine-made.
-
-A bare `<Sfx src={SFX.click} …>` is only for a click with no cursor on screen, such as a toggle flipping in a close-up.
+- **Takes.** `TakeCursor` plays the take's logged clicks, and `SFX.key` on every typed key.
 
 ## Where sounds come from
 
-The kit has two sounds, `SFX.click` and `SFX.key`, synthesized by `lib/sfx-synth.ts`. `studio sfx` rewrites them into
-`lib/studio/sfx/`, seeded so a rerun writes the same files, and there's nothing to license. The kit has no whoosh, hit
-or ding yet. For one of those, ask the user for a file they have the rights to. Put it in `projects/<p>/sfx/` and
-import it: the render must not fetch a sound by URL.
+Every sound is synthesized from a seeded recipe in `lib/sfx/` (after Farnell's *Designing Sound*): `whoosh`, `riser`,
+`impact`, `chime`, `ding`, `pop`, `click`, `key`, `toggle`, `typing`, `scroll`, and `bed` (a quiet ambient loop).
+Nothing to license, and a rerun writes identical files. `studio sfx list` prints every recipe's presets and parameters.
+
+1. **The kit**, already rendered: `SFX.click`, `key`, `toggleOn`, `toggleOff`, `pop`, `whoosh`, `whip`, `riser`,
+   `impact`, `chime`, `success`, `ding` (`lib/studio/sfx/kit.ts`). Reach for these first.
+2. **A project's own**, when the kit's take doesn't fit the moment (a longer whoosh, a softer chime, a bed):
+
+   ```sh
+   studio sfx render whoosh.soft --seed reveal --set duration=1.2,brightness=0.3 --out projects/<p>/sfx/reveal.wav
+   ```
+
+   - `whoosh.soft` is a recipe and one of its presets, and `--set` overrides its parameters.
+   - `--mutate 0.2` varies every parameter a little, repeatably from `--seed`. Seed with the id of the event the sound
+     marks.
+   - It writes `reveal.wav` and a `reveal.ts` beside it. Import the `.ts`, and pass its default export as `sound`.
+
+   A note like "brighter" or "softer" maps to a parameter: rerender with `--set`, don't reach for `volume`.
+
+To hear the options, `studio sfx showcase` renders every preset and a few variants into `scratch/sfx-showcase/`, with an
+`index.html` to play them from. Hand the user that path.
 
 ## Playing one
 
-`<Sfx src at t volume rate>` (`lib/studio/sfx.tsx`, exported from `lib/studio/api.ts`) plays `src` when the scene
-clock reaches `at`:
+`<Sfx sound at t id until volume rate>` (`lib/studio/sfx.tsx`, exported from `lib/studio/api.ts`) plays `sound` so that it
+**lands** on `at`, in scene seconds:
 
-- `at` is in scene seconds, like everything else in `render`, so anchor it to a word or to the camera key it belongs
-  to, never to a raw number.
-- It sounds only while it's mounted. An effect in a branch the scene has left stays quiet, just as the picture does.
-- **It plays 0.2 s of the sound and cuts the rest.** That fits a click or a key but not an accent.
-- `volume` is Remotion's 0–1 gain, set by ear: effects aren't levelled or ducked (`mix.md`). The click plays at 0.5 and
-  keys at 0.35.
-
-An accent needs the same placement without the 0.2 s cut. Use `Sfx`'s own pattern in the project's `video.tsx`:
+- **Where it lands.** Each sound knows where its event is: a click starts on `at`, a whoosh passes on it, and a riser
+  ends on it. So `at` is the event itself, not when the sound starts. Anchor it to a word or to the camera key it
+  belongs to, never to a raw number.
+- **Takes.** The kit's sounds that repeat have several seeded takes. `id` picks one, the same every render, so give
+  each event its own `id` (its index, or its name).
+- **Beds.** `until` loops the sound from `at` to `until`: a `bed` joins end to start without a seam.
+- **Mounting.** It sounds only while it's mounted. An effect in a branch the scene has left stays quiet, just as the
+  picture does.
+- **Levels.** Every sound is levelled when rendered, by category, relative to the voice: clicks, keys and pops sit
+  17 LU under it, accents 8 LU under, the bed 18 LU under. So `volume` defaults to 1, and it only attenuates. Change it
+  by ear, per `mix.md`.
 
 ```tsx
-import { Audio } from '@remotion/media';
-import { Sequence, useCurrentFrame, useVideoConfig } from 'remotion';
-import whoosh from './sfx/whoosh.wav';
+import reveal from './sfx/reveal.ts';
 
-// frame − t·fps is the scene's start, whatever frame this renders on, so the sound starts exactly at scene time `at`.
-function Accent({ src, at, t, volume = 0.5 }: { src: string; at: number; t: number; volume?: number }) {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  return (
-    <Sequence from={frame + Math.round((at - t) * fps)} layout="none" name="accent">
-      <Audio src={src} volume={volume} />
-    </Sequence>
-  );
-}
-
-<Accent src={whoosh} at={s.line('reveal').start - 0.4} t={s.t} />
+<Sfx sound={SFX.riser} at={s.line('reveal').start} t={s.t} />
+<Sfx sound={reveal} at={camKeyT} t={s.t} />
 ```
 
-Don't write `from={Math.round(at * fps)}`. A scene's frames count from where its fade-in begins, not from `s.t = 0`,
-so that version plays early. And any sound stops when its scene stops painting, at the end of the crossfade into the
-next scene. An accent that has to ring across a cut belongs to the scene after it.
+A sound stops when its scene stops painting, at the end of the crossfade into the next scene. An accent that has to
+ring across a cut belongs to the scene after it. A riser starting before its scene's first frame is trimmed at its
+start.
 
 ## When to add one
 
@@ -60,7 +65,8 @@ An accent (a whoosh, hit or ding) needs a reason you can name.
 
 - **At most one every 3–5 s**, and only on a scene change, a reveal or a big camera move.
 - **Never on every cut.** When every cut has one, none of them stand out.
-- **Never under a spoken word**, except in a gap between words or lines. Check against `s.line(id).word(…)`.
-- The picture leads the sound: a whoosh starts slightly before its move lands, a hit on the frame the thing arrives.
+- **Never under a spoken word**, except in a gap between words or lines. Check against `s.line(id).word(…)`. A riser
+  is the exception: it can build under the end of a line into the reveal.
+- The picture leads the sound: land a whoosh on the move's peak speed, and a hit on the frame the thing arrives.
 
 These are working rules, not published standards; tune them by ear with the user.

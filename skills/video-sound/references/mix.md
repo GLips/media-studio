@@ -10,7 +10,8 @@ All of this already happens, so don't redo it with your own gain, `loudnorm` or 
   words. Between lines the bed sits at `bedRelativeLu` (default −8); under a line it ducks to `duckedRelativeLu`
   (default −18). The duck starts 0.25 s before a line, so the first word lands clear, and releases over 0.5 s after it.
   Gaps too short to come back up in stay ducked. With no voice lines, nothing ducks.
-- **Effects** play at their own `volume`, neither levelled nor ducked (`sfx.md`).
+- **Effects** are levelled when `studio sfx` renders them, by category, relative to the voice, then play at their
+  `volume`. They aren't ducked (`sfx.md`).
 - **Mastering.** `studio mix` and `studio render` render the soundtrack, then apply one gain to reach −14 LUFS and a
   true-peak limiter at −2 dBTP (`lib/render-pipeline.ts`). Encoding to AAC adds a little overshoot, and the extra 1 dB
   of headroom keeps the delivered file under the −1 dBTP ceiling. `studio render` then measures the delivered video

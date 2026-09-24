@@ -325,7 +325,7 @@ function TypedText({ view: v, field, text, t, keys, until }: { view: View; field
   const shown = keys.filter((at) => t >= at).length;
   return (
     <>
-      {keys.map((at, i) => <Sfx key={i} src={SFX.key} at={at} t={t} volume={0.35} rate={1 + ((i * 7) % 5 - 2) * 0.04} />)}
+      {keys.map((at, i) => <Sfx key={i} sound={SFX.key} id={i} at={at} t={t} volume={0.7} />)}
       {t < until && shown > 0 && (
         <div style={{ position: 'absolute', left: r.x + r.h * 0.45, top: r.y, height: r.h, display: 'flex', alignItems: 'center', fontFamily: FONT, fontSize: r.h * 0.42, color: '#222' }}>
           {text.slice(0, shown)}<span style={{ width: 2, height: r.h * 0.5, background: '#222', marginLeft: 2 }} />
