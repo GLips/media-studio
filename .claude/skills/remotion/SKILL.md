@@ -18,6 +18,7 @@ then keep its conventions:
   `TransitionSeries` would shorten the timeline instead.
 - **Audio goes through the mix.** Voice lines are levelled and the music bed ducked in `lib/studio/mix.ts`; a new
   sound's volume is set relative to `VOICE_LUFS`, and `render.ts` masters the result. Remotion's volume is 0–1.
+  Effects are the exception: a click has no meaningful loudness, so `lib/studio/sfx.tsx` sets them by ear.
 - **Measure for the checks.** A primitive that marks a subject, a tag or text carries `data-framing` (see
   `lib/studio/probe.tsx`), so the framing check sees it.
 

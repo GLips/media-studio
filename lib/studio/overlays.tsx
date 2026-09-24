@@ -8,6 +8,7 @@ import { useId, type CSSProperties, type ReactNode } from 'react';
 import { assertKeysInOrder, inflate, pagePoint, screenPoint, type Point, type Rect, type View } from './camera.ts';
 import { FONT, H, W } from './frame.ts';
 import { clamp, easeOut, lerp, seg } from './motion.ts';
+import { SFX, Sfx } from './sfx.tsx';
 
 const INK = '#1c365e';
 const fill: CSSProperties = { position: 'absolute', left: 0, top: 0, width: W, height: H, overflow: 'visible', pointerEvents: 'none' };
@@ -81,13 +82,14 @@ export function cursorAt(t: number, keys: readonly CursorKey[]): Point {
   return p;
 }
 
-/** A cursor moving through page-space waypoints over a view, pressing and rippling where it clicks. */
+/** A cursor moving through page-space waypoints over a view, pressing, rippling and sounding where it clicks. */
 export function CursorPath({ view, t, keys, alpha = 1 }: { view: View; t: number; keys: readonly CursorKey[]; alpha?: number }) {
   if (alpha <= 0) return null;
   const clicks = keys.filter(([, , opts]) => opts?.click);
   const press = Math.max(0, ...clicks.map(([kt]) => 1 - Math.abs(t - kt) / CLICK_PRESS));
   return (
     <>
+      {clicks.map(([kt], i) => <Sfx key={i} src={SFX.click} at={kt} t={t} />)}
       {clicks.map(([kt, p], i) => <ClickRipple key={i} at={screenPoint(view, p)} k={(t - kt) / RIPPLE_LIFE} />)}
       <Cursor at={screenPoint(view, cursorAt(t, keys))} press={clamp(press)} alpha={alpha} />
     </>

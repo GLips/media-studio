@@ -4,13 +4,15 @@
 // their words when the voice is re-timed.
 
 import {
-  Capture, CaptureStates, ConfirmDialog, CursorPath, EndCard, Highlight, MotionTitle, NativeMenu, Phone, SPLIT_LEFT,
-  SPLIT_RIGHT, SectionCard, SplitCompare, Tag, Text, W, camAt, camFit, centerOf, defineScene, defineVideo, easeOut,
-  lerpCam, linear, off, on, phoneView, screenRect, seg, union, view,
+  Capture, CaptureStates, ClipToBox, ConfirmDialog, CursorPath, EndCard, FULL_FRAME, H, Highlight, MotionTitle,
+  NativeMenu, Phone, SFX, inflate, SPLIT_LEFT, SPLIT_RIGHT, SectionCard, Sfx, SplitCompare, Tag, Text, W, camAt, camFit,
+  centerOf, defineScene, defineVideo, CAPTION_FREE, FONT, easeInOut, easeOut, lerpCam, linear, off, on, phoneView, screenPoint, screenRect,
+  seg, union, view,
   type Rect, type SceneClock, type Shot, type View,
 } from '../../lib/studio/api.ts';
 import { voice } from './audio/manifest.ts';
 import { captures as C } from './captures/index.ts';
+import { music } from './music/index.ts';
 
 const NAVY = '#1c365e';
 const SALE_RED = '#b82b2b';
@@ -55,7 +57,7 @@ const kwadronText = (g: Rect): Rect => ({ x: g.x + g.w * 0.04, y: g.y + g.h * 0.
 
 // "…so details go soft" pushes into Solice's machine; "and fine print, like this spec sheet" cuts to Kwadron's.
 const photos = defineScene({
-  id: 'photos', lines: ['photos-a', 'photos-b'], lead: OPEN + 1.2, gap: 0.6, tail: 0.8,
+  id: 'photos', lines: ['photos-a', 'photos-b'], lead: OPEN + 1.2, gap: 0.6, tail: 1.4,
   render: (s) => {
     const a = s.line('photos-a');
     let body;
@@ -81,17 +83,50 @@ const photos = defineScene({
       body = (
         <SplitCompare
           left={{ ...TODAY, view: view(control, lerpCam(wide(control, SPLIT_LEFT), close(control, SPLIT_LEFT), push), SPLIT_LEFT) }}
-          right={{ ...NEW, view: right, over: <Ring v={right} rect={kwadronText(next.rects.sheet)} k={on(s.t, s.line('photos-b').at(0.25))} color={SALE_RED} /> }} />
+          right={{ ...NEW, view: right }} />
       );
     }
     return (
       <>
         {body}
+        <PhotoWipe s={s} />
         <Section s={s} number={1} title="Looking at the product" />
       </>
     );
   },
 });
+
+// "The new one loads them at full size": the same small print from both pages, one over the other in a lightbox, with
+// a divider sweeping across that sharpens it as it passes, then settling mid-box so the halves read side by side.
+// The box is about the print's shape: a wide one would run past the new page's left edge, and the camera, kept
+// inside the capture, would slide off the print.
+const LIGHTBOX = { x: (W - 1000) / 2, y: 40, w: 1000, h: 790 };
+function PhotoWipe({ s }: { s: SceneClock }) {
+  const b = s.line('photos-b');
+  const k = seg(s.t, b.start - 0.35, b.start);
+  if (k <= 0) return null;
+  const control = C['kw-control'], next = C['kw-new'];
+  // The margin is a share of the photo rather than page pixels, since the two pages show it at different sizes.
+  const closeUp = (shot: Shot & { rects: { sheet: Rect } }) => {
+    const r = kwadronText(shot.rects.sheet);
+    return view(shot, camFit(shot, inflate(r, r.h * 0.1), { pad: 0, maxZoom: 16 }, LIGHTBOX), LIGHTBOX);
+  };
+  const { x: left, w } = LIGHTBOX;
+  const sweep = seg(s.t, b.start + 0.1, b.end + 0.4, linear);
+  // Across to the far edge, then back to the middle: the whole print is seen sharp before the halves are compared.
+  const x = left + (sweep < 0.6 ? w * easeInOut(sweep / 0.6) : w - (w / 2) * easeInOut((sweep - 0.6) / 0.4));
+  const tags = seg(s.t, b.start + 0.2, b.start + 0.5), top = LIGHTBOX.y + 20;
+  return (
+    <div style={{ position: 'absolute', inset: 0, opacity: k }}>
+      <div style={{ position: 'absolute', inset: 0, background: '#10151d' }} />
+      <Capture view={closeUp(control)} />
+      <ClipToBox box={{ ...LIGHTBOX, w: Math.max(1, x - left) }}><Capture view={closeUp(next)} /></ClipToBox>
+      <div style={{ position: 'absolute', left: x - 2, top: LIGHTBOX.y, width: 4, height: LIGHTBOX.h, background: '#fff', boxShadow: '0 0 18px rgba(0,0,0,0.5)' }} />
+      <Tag text={NEW.label} x={left - 250} y={top} k={tags} bg={NEW.labelBg} size={28} />
+      <Tag text={TODAY.label} x={left + w + 30} y={top} k={tags} bg={TODAY.labelBg} size={28} />
+    </div>
+  );
+}
 
 // The control's `body.loader-active` spinner is a pseudo-element centred in the 1440×810 capture viewport, so it has
 // no element to measure. It's drawn at twice its real 50px, so it reads in a half-width panel.
@@ -127,6 +162,7 @@ const speed = defineScene({
     const pinkL = centerOf(control.rects.swatches[1]), pinkR = centerOf(next.rects.swatches[1]);
     const targets = [pinkR, centerOf(next.rects.swatches[2]), centerOf(next.rects.pills[1]), centerOf(next.rects.swatches[0]), pinkR];
     const spin = seg(s.t, clickL + 0.05, clickL + 0.2);
+    const shown = flips.filter((at) => s.t >= at);
     return (
       <SplitCompare
         left={{ ...TODAY, view: left, over: <>
@@ -135,6 +171,7 @@ const speed = defineScene({
             keys={[[0, aside(pinkL)], [clickL - 0.1, pinkL], [clickL, pinkL, { click: true }], [clickL + 1.5, aside(pinkL, 60, 90)]]} />
           <LoaderSpin r={screenRect(spinning, CONTROL_LOADER_SHOWN)} t={s.t} alpha={spin} />
           <Ring v={spinning} rect={CONTROL_LOADER_SHOWN} k={on(s.t, clickL + 0.5)} color={NAVY} alpha={off(s.t, newTurn)} />
+          <Tally box={SPLIT_LEFT} k={on(s.t, clickR, 0.4)} count={0} label="options seen" color={NAVY} />
         </> }}
         right={{ ...NEW, view: right, over: <>
           <CaptureStates view={right} t={s.t} fade={0.08} states={[[next, 0], ...flipShots.map((shot, i) => [shot, flips[i] + 0.02] as const)]} />
@@ -144,11 +181,27 @@ const speed = defineScene({
             [flips[4] + 1.2, aside(pinkR, 60, 90)],
           ]} />
           <Ring v={right} rect={C['sol-new-pink'].rects.gallery} k={on(s.t, clickR + 0.3)} color={SALE_RED} />
+          <Tally box={SPLIT_RIGHT} k={on(s.t, clickR, 0.4)} count={shown.length} pop={shown.length ? off(s.t, shown[shown.length - 1], 0.3) : 0} label="options seen" color={SALE_RED} />
         </> }}
       />
     );
   },
 });
+
+/** A running count pinned to the top corner of a panel. `pop` 1..0 swells the number as it changes. */
+function Tally({ box, k, count, label, color, pop = 0 }: { box: Rect; k: number; count: number; label: string; color: string; pop?: number }) {
+  if (k <= 0) return null;
+  return (
+    <div style={{
+      position: 'absolute', right: W - (box.x + box.w) + 28, top: box.y + 24, opacity: k, transform: `translateY(${(1 - k) * -12}px)`,
+      display: 'flex', alignItems: 'baseline', gap: 12, padding: '10px 22px', borderRadius: 16, background: 'rgba(255,255,255,0.94)',
+      boxShadow: '0 8px 28px rgba(16,30,54,0.22)', fontFamily: FONT, color,
+    }}>
+      <span style={{ fontSize: 64, fontWeight: 800, fontVariantNumeric: 'tabular-nums', lineHeight: 1, transform: `scale(${1 + 0.3 * pop})` }}>{count}</span>
+      <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: '0.02em' }}>{label}</span>
+    </div>
+  );
+}
 
 // ---------- 2 · Choosing options ----------
 
@@ -212,12 +265,17 @@ const clash = defineScene({
   },
 });
 
-// Intenze's 174 colours.
+// Intenze's 174 colours. A count, read off the capture, follows the list from the native menu into the search, and falls to seventeen as
+// "blue" is typed, one key at a time.
+const INK_COLOURS = C['ink-control'].data.names.length;
+// What the voice says typing "blue" finds.
+const INK_BLUE_MATCHES = 17;
 const lists = defineScene({
   id: 'lists', lines: ['lists-a', 'lists-b'], lead: 0.3, gap: 0.6, tail: 1.2,
   expect: (s) => [{ see: 'matches', during: s.line('lists-b').word('seventeen') }],
   render: (s) => {
     const a = s.line('lists-a'), b = s.line('lists-b');
+    const countIn = on(s.t, a.word('174').start, 0.4);
     if (s.t < b.start - 0.2) {
       // Today's colour list is a native menu, drawn from the names the capture read off the page.
       const control = C['ink-control'];
@@ -228,25 +286,50 @@ const lists = defineScene({
           <Capture view={v} />
           <ArmTag arm={TODAY} />
           <NativeMenu k={on(s.t, open, 0.4)} from={screenRect(v, control.rects.select)} items={control.data.names} scroll={seg(s.t, open + 0.5, b.start, linear)} />
+          <Tally box={CAPTION_FREE} k={countIn} count={INK_COLOURS} label="colours" color={NAVY} />
         </>
       );
     }
     const blank = C['ink-new'], typed = C['ink-typed'];
-    const at = b.at(0.3);
+    const blue = b.word('blue');
+    const keys = [0, 1, 2, 3].map((i) => blue.start - 0.1 + i * 0.13), at = keys[3] + 0.04;
     const v = view(blank, camFit(typed, union(typed.rects.combo, typed.rects.listbox), { pad: 40, maxZoom: 1.4 }));
     const field = centerOf(blank.rects.combo);
+    const falling = seg(s.t, keys[0], at + 0.3, easeOut);
     return (
       <>
-        <CaptureStates view={v} t={s.t} states={[[blank, 0], [typed, at]]} />
+        <CaptureStates view={v} t={s.t} fade={0.15} states={[[blank, 0], [typed, at]]} />
+        <TypedText view={v} field={blank.rects.combo} text="blue" t={s.t} keys={keys} until={at + 0.15} />
         <ArmTag arm={NEW} />
-        <CursorPath view={v} t={s.t} alpha={off(s.t, at + 0.3)} keys={[[b.start, aside(field, 200, 180)], [at - 0.5, field], [at - 0.4, field, { click: true }]]} />
-        <Ring v={v} rect={typed.rects.combo} k={on(s.t, at - 0.3)} color={SALE_RED} alpha={off(s.t, b.at(0.55))} />
+        <CursorPath view={v} t={s.t} alpha={off(s.t, keys[0])} keys={[[b.start, aside(field, 200, 180)], [keys[0] - 0.45, field], [keys[0] - 0.35, field, { click: true }]]} />
+        <Ring v={v} rect={typed.rects.combo} k={on(s.t, keys[0] - 0.2)} color={SALE_RED} alpha={off(s.t, b.word('seventeen').start - 0.3)} />
         <Ring v={v} rect={typed.rects.matches} name="matches" k={on(s.t, b.word('seventeen').start - 0.7, 0.6)} color={SALE_RED} />
         <Ring v={v} rect={union(...typed.rects.options.slice(0, 5))} k={on(s.t, b.at(0.8))} color={SALE_RED} />
+        <Tally box={CAPTION_FREE} k={1} count={Math.round(INK_COLOURS + (INK_BLUE_MATCHES - INK_COLOURS) * falling)} label={falling < 1 ? 'colours' : 'match "blue"'}
+          color={falling > 0 ? SALE_RED : NAVY} pop={off(s.t, at + 0.3, 0.3) * (falling >= 1 ? 1 : 0)} />
       </>
     );
   },
 });
+
+/**
+ * Letters appearing in an empty text field as keys are struck, each with a key sound, in the field's own type. It
+ * stands in for the capture until `until`, when the capture of the typed page takes over.
+ */
+function TypedText({ view: v, field, text, t, keys, until }: { view: View; field: Rect; text: string; t: number; keys: readonly number[]; until: number }) {
+  const r = screenRect(v, field);
+  const shown = keys.filter((at) => t >= at).length;
+  return (
+    <>
+      {keys.map((at, i) => <Sfx key={i} src={SFX.key} at={at} t={t} volume={0.35} rate={1 + ((i * 7) % 5 - 2) * 0.04} />)}
+      {t < until && shown > 0 && (
+        <div style={{ position: 'absolute', left: r.x + r.h * 0.45, top: r.y, height: r.h, display: 'flex', alignItems: 'center', fontFamily: FONT, fontSize: r.h * 0.42, color: '#222' }}>
+          {text.slice(0, shown)}<span style={{ width: 2, height: r.h * 0.5, background: '#222', marginLeft: 2 }} />
+        </div>
+      )}
+    </>
+  );
+}
 
 // ---------- 3 · Pricing it ----------
 
@@ -290,13 +373,18 @@ const quantity = defineScene({
       const left = view(control, camFit(control, control.rects.stepper, { pad: 50, maxZoom: 2.6 }, SPLIT_LEFT), SPLIT_LEFT);
       const right = view(next, camFit(next, next.rects.stepper, { pad: 50, maxZoom: 2.6 }, SPLIT_RIGHT), SPLIT_RIGHT);
       // What the recordings showed: plus, over and over, on today's page.
-      const plus = centerOf(control.rects.plus), taps = [0.3, 0.42, 0.54, 0.66, 0.78].map((f) => b.at(f));
+      // Anchored to "tapped plus over and over", more taps than the words, so it reads as a habit.
+      const plus = centerOf(control.rects.plus), from = b.word('tapped').start - 0.1;
+      const taps = Array.from({ length: 7 }, (_, i) => from + i * 0.26);
+      const tapped = taps.filter((at) => s.t >= at);
       return (
         <SplitCompare
-          left={{ ...TODAY, view: left, over: (
-            <CursorPath view={left} t={s.t} alpha={seg(s.t, b.at(0.05), b.at(0.12))}
-              keys={[[b.at(0.05), aside(plus, 90, 110)], ...taps.map((at) => [at, plus, { click: true }] as const), [c.start - 0.3, aside(plus, 90, 110)]]} />
-          ) }}
+          left={{ ...TODAY, view: left, over: <>
+            <CursorPath view={left} t={s.t} alpha={seg(s.t, from - 0.6, from - 0.4)}
+              keys={[[from - 0.6, aside(plus, 90, 110)], ...taps.map((at) => [at, plus, { click: true }] as const), [c.start - 0.3, aside(plus, 90, 110)]]} />
+            {taps.map((at, i) => <PlusOne key={i} at={screenPoint(left, plus)} k={seg(s.t, at, at + 0.7, linear)} />)}
+            <Tally box={SPLIT_LEFT} k={on(s.t, from, 0.3)} count={tapped.length} pop={tapped.length ? off(s.t, tapped[tapped.length - 1], 0.25) : 0} label="taps on +" color={NAVY} />
+          </> }}
           right={{ ...NEW, view: right, over: <Ring v={right} rect={next.rects.stepper} k={on(s.t, a.at(0.25))} color={SALE_RED} alpha={off(s.t, b.start)} /> }}
         />
       );
@@ -324,6 +412,17 @@ const quantity = defineScene({
     );
   },
 });
+
+/** A "+1" floating up off a tapped button and fading. */
+function PlusOne({ at, k }: { at: { x: number; y: number }; k: number }) {
+  if (k <= 0 || k >= 1) return null;
+  return (
+    <div style={{
+      position: 'absolute', left: at.x + 18, top: at.y - 40 - 70 * easeOut(k), opacity: 1 - k * k, fontFamily: FONT,
+      fontSize: 34, fontWeight: 800, color: NAVY, textShadow: '0 2px 8px rgba(255,255,255,0.9)',
+    }}>+1</div>
+  );
+}
 
 // A desktop viewport is 16:9 like the frame, so shown whole it would run under the captions; it sits in a smaller
 // window instead, with the bottom of the screen, where the bar is, above the caption band.
@@ -424,19 +523,25 @@ const summary = defineScene({
   },
 });
 
+// "One tap wipes it all" is shown, not just said: the cursor taps today's Reset, and the dozen fall to nothing.
 const reset = defineScene({
   id: 'reset', lines: ['reset-a', 'reset-b'], lead: 0.3, gap: 0.5, tail: 1.4,
   render: (s) => {
     const a = s.line('reset-a'), b = s.line('reset-b');
-    const today = C['ink-control-bulk-typed'], fresh = C['ink-bulk-typed'];
-    const left = view(today, camFit(today, union(today.rects.reset, today.rects.addAll), { pad: 120, maxZoom: 1.3 }, SPLIT_LEFT), SPLIT_LEFT);
+    const today = C['ink-control-bulk-typed'], wiped = C['ink-control-bulk'], fresh = C['ink-bulk-typed'];
+    const left = view(today, camFit(today, today.rects.box, { pad: 40, maxZoom: 1.3 }, SPLIT_LEFT), SPLIT_LEFT);
     const right = view(fresh, camFit(fresh, union(fresh.rects.reset, fresh.rects.footer), { pad: 80, maxZoom: 1.3 }, SPLIT_RIGHT), SPLIT_RIGHT);
+    const tap = a.word('wipes').start, button = centerOf(today.rects.reset);
     const click = b.at(0.72), link = centerOf(fresh.rects.reset);
     return (
       <SplitCompare
         left={{ ...TODAY, view: left, over: <>
-          <Ring v={left} rect={today.rects.reset} k={on(s.t, a.at(0.5))} color={NAVY} />
-          <Ring v={left} rect={today.rects.addAll} k={on(s.t, a.at(0.68))} color={NAVY} alpha={off(s.t, a.at(0.85))} />
+          <Capture view={{ ...left, shot: wiped }} alpha={seg(s.t, tap + 0.05, tap + 0.2)} />
+          <Flash rect={screenRect(left, today.rects.box)} k={seg(s.t, tap + 0.05, tap + 0.7, linear)} />
+          <Ring v={left} rect={today.rects.reset} k={on(s.t, a.at(0.5))} color={NAVY} alpha={off(s.t, tap + 0.6)} />
+          <Ring v={left} rect={today.rects.addAll} k={on(s.t, a.at(0.68))} color={NAVY} alpha={off(s.t, tap - 0.3)} />
+          <CursorPath view={left} t={s.t} alpha={seg(s.t, tap - 0.9, tap - 0.7) * off(s.t, b.start)}
+            keys={[[tap - 0.9, aside(button, 140, 160)], [tap - 0.1, button], [tap, button, { click: true }], [b.start, aside(button, 90, 120)]]} />
         </> }}
         right={{ ...NEW, view: right, over: <>
           <Ring v={right} rect={fresh.rects.reset} k={on(s.t, b.at(0.3))} color={SALE_RED} alpha={off(s.t, click)} />
@@ -451,13 +556,48 @@ const reset = defineScene({
   },
 });
 
+/** A red flash over a screen rect that fades over `k` 0..1: something just went wrong there. */
+function Flash({ rect, k }: { rect: Rect; k: number }) {
+  if (k <= 0 || k >= 1) return null;
+  return <div style={{ position: 'absolute', left: rect.x, top: rect.y, width: rect.w, height: rect.h, borderRadius: 12, background: SALE_RED, opacity: 0.35 * (1 - k) }} />;
+}
+
+// The four sections again, each as the new page's answer, tiled in the order they were told; then the title.
+const RECAP: readonly { title: string; shot: Shot; rect: Rect }[] = [
+  { title: 'Photos at full size', shot: C['kw-new'], rect: kwadronText(C['kw-new'].rects.sheet) },
+  { title: 'Sold out, still pickable', shot: C['flare-oos'], rect: union(C['flare-oos'].rects.gauge, C['flare-oos'].rects.notify) },
+  { title: 'Prices follow the discounts', shot: C['tilum-new-q5'], rect: union(C['tilum-new-q5'].rects.price, C['tilum-new-q5'].rects.stepper) },
+  { title: 'Bulk orders, itemized', shot: C['ink-bulk-typed'], rect: C['ink-bulk-typed'].rects.receipt },
+];
+const TILE = { w: 820, h: 360, gapX: 60, gapY: 90, top: 70 };
+
 const end = defineScene({
-  id: 'end', min: 3,
-  render: (s) => <EndCard k={seg(s.t, 0, 0.6)} title="Simple buy box" bg={NAVY} />,
+  id: 'end', min: 6,
+  render: (s) => {
+    const card = 3.6;
+    return (
+      <>
+        <div style={{ position: 'absolute', inset: 0, background: '#eef1f6' }} />
+        {RECAP.map(({ title: label, shot, rect }, i) => {
+          const box = { x: (W - 2 * TILE.w - TILE.gapX) / 2 + (i % 2) * (TILE.w + TILE.gapX), y: TILE.top + Math.floor(i / 2) * (TILE.h + TILE.gapY), w: TILE.w, h: TILE.h };
+          const k = seg(s.t, 0.2 + i * 0.35, 0.8 + i * 0.35, easeOut);
+          return (
+            <div key={i} style={{ position: 'absolute', inset: 0, opacity: k, transform: `translateY(${(1 - k) * 40}px)` }}>
+              <div style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, borderRadius: 18, background: '#fff', boxShadow: '0 12px 40px rgba(16,30,54,0.18)' }} />
+              <Capture view={view(shot, camFit(shot, rect, { pad: 24, maxZoom: 3 }, box), box)} />
+              <Text text={`${i + 1}  ${label}`} x={box.x + 6} y={box.y + box.h + 50} size={34} weight={700} color={NAVY} k={k} />
+            </div>
+          );
+        })}
+        <EndCard k={seg(s.t, card, card + 0.6)} title="Simple buy box" bg={NAVY} />
+      </>
+    );
+  },
 });
 
 export default defineVideo({
   title: 'Simple buy box',
   voice,
+  music: { track: music.bed },
   scenes: [title, photos, speed, stock, clash, lists, sale, quantity, sticky, bulk, summary, reset, end],
 });

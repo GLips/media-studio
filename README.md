@@ -67,6 +67,8 @@ Scenes import everything from `lib/studio/api.ts`.
 - `lib/studio/probe.tsx`: measures highlights, clicks, tags and the caption on each frame. `lib/framing-check.ts`
   decides what's a problem.
 - `lib/studio/mix.ts`: voice levelling, and a music bed that ducks under the voice. `lib/loudness.ts` measures.
+- `lib/studio/sfx.tsx`: `<Sfx>` plays a sound at a scene time; `CursorPath` clicks sound by themselves. The sounds are
+  synthesized by `node scripts/sfx.ts`, so there's nothing to license.
 - `lib/whisper-words.ts`, `lib/voice-words.ts`: word timings from whisper.cpp (installed on first use into
   `~/.cache/video-studio`), aligned to the script.
 - `lib/voice-take.ts`: where to cut a take into lines, and the pauses the read left between them.
