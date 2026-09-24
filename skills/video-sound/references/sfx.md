@@ -26,7 +26,18 @@ Nothing to license, and a rerun writes identical files. `studio sfx list` prints
      marks.
    - It writes `reveal.wav` and a `reveal.ts` beside it. Import the `.ts`, and pass its default export as `sound`.
 
-   A note like "brighter" or "softer" maps to a parameter: rerender with `--set`, don't reach for `volume`.
+   Presets are starting points. A note on how a sound sounds maps to a parameter, so rerender with `--set` rather
+   than reaching for `volume`. `studio sfx list` gives each recipe's parameters and ranges; the usual mappings are:
+
+   | Note | Parameter |
+   |---|---|
+   | "Cut off", "stops dead" | Raise `decay` (for a chime, also `shimmer`). A riser ending sharply is by design: it lands on its end |
+   | "Hollow", "boxy" (a click or key) | Raise `brightness` for more snap, lower `decay` for less body ring |
+   | "Harsh", "thin" | Lower `brightness`, or lower `pitch` |
+   | "Too long", "too slow" | Shorten `duration`, or lower `decay` |
+
+   If a parameter at the end of its range still doesn't fix the note, the recipe itself needs work: tell the user
+   rather than stacking a filter on top.
 
 To hear the options, `studio sfx showcase` renders every preset and a few variants into `scratch/sfx-showcase/`, with an
 `index.html` to play them from. Hand the user that path.

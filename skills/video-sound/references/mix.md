@@ -20,9 +20,9 @@ All of this already happens, so don't redo it with your own gain, `loudnorm` or 
 Because mastering lifts the whole mix to −14 LUFS, the absolute levels before it don't matter. Only the balance
 between voice, music and effects does.
 
-With no voice, the music is still set against −20 LUFS, so the bed sits at −28 by default and mastering lifts
-everything about 14 dB. Effects set by ear then come out loud against the music. When the music is the lead, raise
-`bedRelativeLu` toward 0, as far as the track's own loudness allows.
+With no voice, music and effects are still set against −20 LUFS. A default bed sits at −28, level with the accents
+(8 LU under), so nothing sits on top. When the music is the lead, raise `bedRelativeLu` toward 0, as far as the
+track's own loudness allows, so it sits above the accents.
 
 ## Changing a level
 
