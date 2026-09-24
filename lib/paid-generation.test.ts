@@ -70,3 +70,36 @@ test('a finished video job whose download failed is picked up, not paid for agai
   assert.match(basename(file), /^orbit-[0-9a-f]{16}\.mp4$/);
   assert.deepEqual(JSON.parse(readFileSync(join(project, 'generated', 'pending.json'), 'utf8')), {});
 });
+
+test('a reference video goes to the bucket once, and the job gets a link to it instead of its bytes', async () => {
+  Object.assign(process.env, {
+    STUDIO_UPLOAD_S3_ENDPOINT: 'https://acct.r2.cloudflarestorage.com', STUDIO_UPLOAD_S3_BUCKET: 'studio',
+    STUDIO_UPLOAD_S3_ACCESS_KEY_ID: 'id', STUDIO_UPLOAD_S3_SECRET_ACCESS_KEY: 'secret',
+  });
+  const uploaded = new Set<string>();
+  globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    calls.push({ url: `${init?.method ?? 'GET'} ${url.origin}${url.pathname}`, body: typeof init?.body === 'string' ? JSON.parse(init.body) : null });
+    if (url.host === 'acct.r2.cloudflarestorage.com') {
+      if (init?.method === 'PUT') uploaded.add(url.pathname);
+      return new Response(null, { status: init?.method === 'HEAD' && !uploaded.has(url.pathname) ? 404 : 200 });
+    }
+    if (url.pathname.endsWith('/videos')) return Response.json({ id: `job-${calls.length}`, status: 'pending' });
+    if (url.pathname.includes('/content')) return new Response(new Uint8Array(MP4));
+    return Response.json({ id: url.pathname.split('/').pop(), status: 'completed', unsigned_urls: [`https://openrouter.ai/api/v1/videos/${url.pathname.split('/').pop()}/content`] });
+  }) as typeof fetch;
+  const blockout = join(project, 'blockout.mp4');
+  writeFileSync(blockout, MP4);
+
+  for (const prompt of ['a café', 'an office']) {
+    await generatePaidMedia(project, { kind: 'video', model: 'bytedance/seedance-2.5', name: 'shot', prompt, params: { duration: 5 }, references: [{ path: blockout }] });
+  }
+
+  const bucketObject = /^https:\/\/acct\.r2\.cloudflarestorage\.com\/studio\/references\/[0-9a-f]{64}\.mp4$/;
+  assert.deepEqual(calls.filter((c) => c.url.includes('r2.')).map((c) => c.url.split(' ')[0]), ['HEAD', 'PUT', 'HEAD']);
+  for (const submit of calls.filter((c) => c.url.endsWith('/videos'))) {
+    const link = new URL(submit.body.input_references[0].video_url.url);
+    assert.match(`${link.origin}${link.pathname}`, bucketObject);
+    assert.equal(link.searchParams.get('X-Amz-Expires'), '3600');
+  }
+});

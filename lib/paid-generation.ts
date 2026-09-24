@@ -7,10 +7,12 @@
 // cost. A video job's id is kept in generated/pending.json from submit to download, so a run that dies while polling
 // picks the job back up rather than paying for another.
 //
-// References go inline as base64 data URLs, which the image, video and chat APIs accept; nothing is uploaded anywhere.
+// References go inline as base64 data URLs, except a reference video: the video API takes only HTTPS for those, so
+// it's uploaded to our bucket (lib/s3-upload.ts) and sent as a link that expires.
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
+import { s3UploadConfigFromEnv, uploadForProvider } from './s3-upload.ts';
 import {
   awaitOpenRouterVideoJob, downloadOpenRouterVideo, generateOpenRouterAudio, generateOpenRouterImage, submitOpenRouterVideo,
   type OpenRouterMedia,
@@ -62,15 +64,14 @@ export async function generatePaidMedia(project: string, request: PaidGeneration
     return made.files.map((file) => join(project, file));
   }
 
-  const body = requestBody(request, params, references);
   let media: OpenRouterMedia;
-  if (request.kind === 'image') media = await generateOpenRouterImage(body);
-  else if (request.kind === 'audio') media = await generateOpenRouterAudio(body);
+  if (request.kind === 'image') media = await generateOpenRouterImage(await requestBody(request, params, references));
+  else if (request.kind === 'audio') media = await generateOpenRouterAudio(await requestBody(request, params, references));
   else {
     let jobId = readJsonRecord<string>(pendingPath)[key];
     if (jobId) console.error(`picking up video job ${jobId}`);
     else {
-      jobId = (await submitOpenRouterVideo(body)).id;
+      jobId = (await submitOpenRouterVideo(await requestBody(request, params, references))).id;
       writeJsonRecordEntry(pendingPath, key, jobId);
       console.error(`submitted video job ${jobId}`);
     }
@@ -125,14 +126,17 @@ export function paidGenerationKey(...request: unknown[]): string {
 
 // Each API takes references in its own field: the image API as input_references, the video API as frame_images for
 // pinned frames and input_references (image, video or audio) otherwise, and chat as parts of the user's message.
-function requestBody(request: PaidGenerationRequest, params: Record<string, unknown>, references: (PaidGenerationReference & { bytes: Buffer })[]) {
-  const part = (ref: { path: string; bytes: Buffer }) => {
+async function requestBody(request: PaidGenerationRequest, params: Record<string, unknown>, references: (PaidGenerationReference & { bytes: Buffer; sha256: string })[]) {
+  const part = async (ref: { path: string; bytes: Buffer; sha256: string }) => {
     const { type, mime } = referenceMedia(ref.path);
-    return { type, [type]: { url: `data:${mime};base64,${ref.bytes.toString('base64')}` } };
+    const url = type === 'video_url'
+      ? await uploadForProvider(s3UploadConfigFromEnv(), ref.bytes, { sha256: ref.sha256, ext: extname(ref.path).slice(1).toLowerCase(), mime })
+      : `data:${mime};base64,${ref.bytes.toString('base64')}`;
+    return { type, [type]: { url } };
   };
   const framed = references.filter((ref) => ref.frame);
   if (framed.length && request.kind !== 'video') throw new Error(`only a video pins frames; ${framed[0].path} has frame: ${framed[0].frame}`);
-  const guides = references.filter((ref) => !ref.frame).map(part);
+  const guides = await Promise.all(references.filter((ref) => !ref.frame).map(part));
 
   if (request.kind === 'audio') {
     return { model: request.model, modalities: ['text', 'audio'], ...params, messages: [{ role: 'user', content: [{ type: 'text', text: request.prompt }, ...guides] }] };
@@ -140,7 +144,7 @@ function requestBody(request: PaidGenerationRequest, params: Record<string, unkn
   return {
     model: request.model, prompt: request.prompt, ...params,
     ...(guides.length && { input_references: guides }),
-    ...(framed.length && { frame_images: framed.map((ref) => ({ ...part(ref), frame_type: ref.frame })) }),
+    ...(framed.length && { frame_images: await Promise.all(framed.map(async (ref) => ({ ...(await part(ref)), frame_type: ref.frame }))) }),
   };
 }
 

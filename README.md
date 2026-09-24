@@ -102,6 +102,7 @@ Scenes import everything from `lib/studio/api.ts`.
   `lib/openrouter.ts`, `say`, or a recording) and cuts it, and `lib/studio-project.ts` resolves `<project>`.
 - `lib/paid-generation.ts`: every paid image, video or music generation, cached by request hash into a project's
   `generated/` (gitignored) with each result's prompt, model, references and cost in `generated/provenance.json`.
+  `lib/previs-render.ts` is `studio gen video`: a scene's 3D blockout (`lib/studio/blockout.tsx`) rendered into footage.
 
 Remotion bundles `lib/studio` and one project's `video.tsx`. Remotion is free for companies of up to three people;
 past that it needs a company license.
@@ -109,8 +110,11 @@ past that it needs a company license.
 ## Secrets
 
 Only paid calls need a secret (`studio voice`, `studio audition`, and generation through `lib/paid-generation.ts`):
-`OPENROUTER_API_KEY`, read from the environment. `.env.op` holds 1Password
-references, not keys, so the key exists only inside the one process `op run` starts:
+`OPENROUTER_API_KEY`, read from the environment. A reference video (`studio gen video`) is also uploaded to our R2
+bucket for the provider to fetch through a link that expires (`lib/s3-upload.ts`), which needs `STUDIO_UPLOAD_S3_ENDPOINT`,
+`STUDIO_UPLOAD_S3_BUCKET`, `STUDIO_UPLOAD_S3_ACCESS_KEY_ID`, `STUDIO_UPLOAD_S3_SECRET_ACCESS_KEY` and, for a bucket
+outside R2, `STUDIO_UPLOAD_S3_REGION`. `.env.op` holds 1Password references, not keys, so the keys exist only inside
+the one process `op run` starts:
 
 ```sh
 op run --account branchlabs.1password.com --env-file="$(studio home)/.env.op" -- studio voice <project>
