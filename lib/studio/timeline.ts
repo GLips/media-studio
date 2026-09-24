@@ -22,6 +22,8 @@ export type VoiceLine = {
   words: readonly SpokenWord[];
   /** Integrated loudness as it plays in the mix; null for an estimated line. */
   lufs: number | null;
+  /** The pause the take left before this line, after the one before it in the script; null for the first or an estimate. */
+  pauseBefore: number | null;
 };
 export type Voice = Readonly<Record<string, VoiceLine>>;
 
@@ -62,7 +64,10 @@ export type SceneExpectation = { see: string; during: { start: number; end: numb
 type SceneTiming = {
   /** Seconds before the first line. Default 0.5. */
   lead?: number;
-  /** Seconds between lines. Default 0.35. */
+  /**
+   * Seconds between lines. By default a scene keeps the pause the take left between them, so it plays as it was
+   * read; 0.35 for estimated lines.
+   */
   gap?: number;
   /** Seconds after the last line. Default 0.6. */
   tail?: number;
@@ -129,12 +134,13 @@ export function layoutVideo(video: VideoDef): Timeline {
   const cues: VoiceCue[] = [];
   const seen = new Set<string>();
   const sceneOfLine = new Map<string, string>();
+  const scriptOrder = Object.keys(video.voice);
   let start = 0;
   const scenes = video.scenes.map((scene, i): LaidScene => {
     if (seen.has(scene.id)) throw new Error(`two scenes are called "${scene.id}"`);
     seen.add(scene.id);
-    const { lead = 0.5, gap = 0.35, tail = 0.6, min = 0 } = scene;
-    for (const [name, value] of Object.entries({ lead, gap, tail, min })) {
+    const { lead = 0.5, tail = 0.6, min = 0 } = scene;
+    for (const [name, value] of Object.entries({ lead, gap: scene.gap ?? 0, tail, min })) {
       if (!Number.isFinite(value) || value < 0) throw new Error(`scene ${scene.id}: ${name} is ${value}`);
     }
     const spans: Record<string, { start: number; end: number; words: readonly SpokenWord[] }> = {};
@@ -146,7 +152,9 @@ export function layoutVideo(video: VideoDef): Timeline {
       const owner = sceneOfLine.get(id);
       if (owner) throw new Error(`scene ${scene.id}: line "${id}" is already spoken in scene ${owner}`);
       sceneOfLine.set(id, scene.id);
-      if (j > 0) cursor += gap;
+      // The take's pause only belongs between lines that followed each other in the read.
+      const readAfterPrevious = j > 0 && scriptOrder[scriptOrder.indexOf(id) - 1] === scene.lines[j - 1];
+      if (j > 0) cursor += scene.gap ?? (readAfterPrevious ? voiced.pauseBefore : null) ?? 0.35;
       spans[id] = { start: cursor, end: cursor + voiced.duration, words: voiced.words };
       cues.push({ id, src: voiced.src, start: start + cursor, end: start + cursor + voiced.duration, text: voiced.text, lufs: voiced.lufs });
       cursor += voiced.duration;

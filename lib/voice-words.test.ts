@@ -6,7 +6,7 @@ const w = (text: string, start: number, end: number) => ({ text, start, end });
 
 test('script words take whisper timings through case, punctuation, mishearings and dropped words', () => {
   const heard = [w('typing', 0.1, 0.4), w('blue', 0.5, 0.7), w('narrows', 0.8, 1.1), w('it', 1.2, 1.3), w('to', 1.3, 1.4), w('17', 1.5, 2.0)];
-  const words = alignSpokenWords('Typing blue narrows these inks to seventeen.', heard, 2.4);
+  const { words } = alignSpokenWords('Typing blue narrows these inks to seventeen.', heard, 2.4);
   assert.deepEqual(words.map((x) => x.text), ['Typing', 'blue', 'narrows', 'these', 'inks', 'to', 'seventeen.']);
   assert.deepEqual(words[1], w('blue', 0.5, 0.7));
   assert.deepEqual(words[6], w('seventeen.', 1.5, 2.0));

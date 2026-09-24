@@ -11,28 +11,50 @@ export const scriptWords = (text: string) => text.split(/\s+/).filter(Boolean);
 
 // Case and punctuation don't decide a match: whisper writes "what's" where a script has "what’s", or "Show all," as "show all".
 const normalWord = (word: string) => word.toLowerCase().replace(/[’']/g, '').replace(/[^\p{L}\p{N}]+/gu, '');
+// Whisper and scripts disagree on hyphens ("end to end" heard as "End-to-end."), so words are matched piece by piece.
+const hyphenPieces = (word: string) => word.split('-').map(normalWord).filter(Boolean);
 
 /**
  * Times each script word from whisper's words. An edit-distance alignment pairs them in order; a substitution still
- * lends its timing, and a script word with no partner shares the gap between its neighbours by length.
+ * lends its timing, and a script word with no partner shares the gap between its neighbours by length. `heard` says
+ * which script words whisper heard as written.
  */
-export function alignSpokenWords(text: string, heard: readonly SpokenWord[], duration: number): SpokenWord[] {
+export function alignSpokenWords(text: string, heard: readonly SpokenWord[], duration: number): { words: SpokenWord[]; heard: boolean[] } {
   const script = scriptWords(text);
-  const a = script.map(normalWord), b = heard.map((w) => normalWord(w.text));
+  const a = script.flatMap((word, owner) => hyphenPieces(word).map((piece) => ({ piece, owner })));
+  // A heard word's time is shared among its pieces by length.
+  const b = heard.flatMap((w) => {
+    const pieces = hyphenPieces(w.text), total = pieces.reduce((sum, p) => sum + p.length, 0);
+    let at = w.start;
+    return pieces.map((piece) => {
+      const end = at + ((w.end - w.start) * piece.length) / total;
+      const out = { piece, start: at, end };
+      at = end;
+      return out;
+    });
+  });
   const n = a.length, m = b.length;
+  const same = (i: number, j: number) => a[i].piece === b[j].piece;
   const cost = Array.from({ length: n + 1 }, (_, i) => Array.from({ length: m + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)));
   for (let i = 1; i <= n; i++) {
     for (let j = 1; j <= m; j++) {
-      cost[i][j] = Math.min(cost[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1), cost[i - 1][j] + 1, cost[i][j - 1] + 1);
+      cost[i][j] = Math.min(cost[i - 1][j - 1] + (same(i - 1, j - 1) ? 0 : 1), cost[i - 1][j] + 1, cost[i][j - 1] + 1);
     }
   }
-  const partner: (SpokenWord | null)[] = new Array(n).fill(null);
+  const partner: (SpokenWord | null)[] = script.map(() => null);
+  const asWritten = script.map((word) => hyphenPieces(word).length > 0);
+  const pieceHeard = new Array(n).fill(false);
   for (let i = n, j = m; i > 0 || j > 0;) {
-    if (i > 0 && j > 0 && cost[i][j] === cost[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)) partner[--i] = heard[--j];
-    else if (i > 0 && cost[i][j] === cost[i - 1][j] + 1) i--;
+    if (i > 0 && j > 0 && cost[i][j] === cost[i - 1][j - 1] + (same(i - 1, j - 1) ? 0 : 1)) {
+      i--; j--;
+      pieceHeard[i] = same(i, j);
+      const { owner } = a[i], known = partner[owner];
+      partner[owner] = { text: script[owner], start: b[j].start, end: known?.end ?? b[j].end };
+    } else if (i > 0 && cost[i][j] === cost[i - 1][j] + 1) i--;
     else j--;
   }
-  return fillUnheard(script, partner, duration);
+  a.forEach(({ owner }, i) => { if (!pieceHeard[i]) asWritten[owner] = false; });
+  return { words: fillUnheard(script, partner, duration), heard: asWritten };
 }
 
 /** Words for a line with no audio yet, spread over its estimated duration by length. */

@@ -154,11 +154,14 @@ export function ClickToBlur({ t, shot, frame, target, clickAt = 1.3, from = { dx
   );
 }
 
-/** A frosted card with an eyebrow and a few big lines that stagger in. `k` 0..1 drives the entrance. */
+/**
+ * A frosted card with an eyebrow and a few big lines that stagger in. `k` 0..1 drives the entrance. A point can be
+ * `{ text, k }` to come in on its own cue instead, e.g. `on(s.t, s.line('why-b').start - 0.3)` as the voice reaches it.
+ */
 export function GlassCard({ k, eyebrow, points, accent, ink, rect = { x: (W - 1120) / 2, y: 270, w: 1120, h: 540 } }: {
   k: number;
   eyebrow: string;
-  points: readonly string[];
+  points: readonly (string | { text: string; k: number })[];
   accent: string;
   ink: string;
   rect?: Rect;
@@ -170,7 +173,8 @@ export function GlassCard({ k, eyebrow, points, accent, ink, rect = { x: (W - 11
       <Glass rect={{ ...rect, y: y0 }} alpha={clamp(k * 1.4)} tint="rgba(255,255,255,0.78)" blur={24} />
       <Text text={eyebrow} x={rect.x + 88} y={y0 + 126} size={28} weight={700} color={accent} k={k} spacing={0.1} />
       {points.map((p, i) => (
-        <Text key={i} text={p} x={rect.x + 88} y={y0 + 250 + i * 104} size={60} weight={700} color={ink} k={clamp((k - 0.15 * (i + 1)) / 0.6)} spacing={-0.015} />
+        <Text key={i} text={typeof p === 'string' ? p : p.text} x={rect.x + 88} y={y0 + 250 + i * 104} size={60} weight={700} color={ink}
+          k={typeof p === 'string' ? clamp((k - 0.15 * (i + 1)) / 0.6) : Math.min(k, p.k)} spacing={-0.015} />
       ))}
     </>
   );

@@ -12,7 +12,9 @@ HTML instead of zooming a screenshot until it softens. The license is free: one 
 ## What stayed
 
 - **Capture:** Playwright snaps full-page PNGs plus page-space element rects, now as a typed `captures/index.ts`.
-- **TTS:** Gemini through OpenRouter, one WAV per line, re-voiced only when the text changes; a typed `audio/manifest.ts`.
+- **TTS:** Gemini through OpenRouter; a typed `audio/manifest.ts`. The script is now read as one take and cut into
+  lines (`lib/voice-take.ts`), so pace carries across lines, and a scene's lines keep the pauses the read left between
+  them. A recording can stand in for the take.
 - **Timing model:** scene length = lead + lines + gaps + tail (or `min`). Crossfades are centred on the cut; `cut: true`
   is a hard cut. Scene code works in **seconds**.
 - **Camera model:** `{ cx, cy, zoom }` in page coordinates; zoom 1 fills the frame (or the box) with the capture's
@@ -91,7 +93,8 @@ frame. `sale-only-view`'s reference predates the caption-aware `camFit`, so its 
 
 1. **Word-level timing.** whisper.cpp 1.8.6 (medium.en, cached in `~/.cache/video-studio`) gives DTW token times,
    merged into words and aligned to the script by edit distance (`lib/voice-words.ts`). They're stored in the
-   manifest; `s.line(id).word('price')` anchors beats to words. They land within about 2 frames of the silence edges.
+   manifest; `s.line(id).word('price')` anchors beats to words. They land within about 2 frames of the silence edges
+   on a line, but drift by up to half a second over a whole take, so each clip is transcribed again after the cut.
 2. **Audio finishing** (`lib/studio/mix.ts`). Voice lines are levelled to −20 LUFS through `<Audio volume>`. An
    optional music bed (`scripts/music.ts` imports a track and detects its beats) sits 8 LU under the voice and ducks
    to 18 LU under while lines play. The mix renders once, then gets gain plus an oversampled limiter (not loudnorm,

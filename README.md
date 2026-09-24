@@ -11,7 +11,7 @@ Every frame is a pure function of time, so a change to one scene is an edit and 
 |---|---|---|
 | Start | `npm run new -- <slug> --url=… [--title=…]` | `projects/<yyyy-mm>-<slug>/`, captured and with estimated timing, so it opens in the Studio at once |
 | Capture | `node projects/<p>/capture.ts` | `captures/*.png` plus `captures/index.ts`: high-DPI full-page screenshots and the page positions of the elements scenes point at |
-| Voice | `npm run tts -- projects/<p>` | `audio/<line>.wav` plus `audio/manifest.ts`, one file per line. Only changed lines are re-voiced. `--estimate` times unvoiced lines from their word count instead |
+| Voice | `npm run tts -- projects/<p>` | `audio/take.wav`, the whole script read in one take, cut into `audio/<line>.wav` plus `audio/manifest.ts`. Any script change re-reads the take. `--take=read.m4a` uses a recording instead, `--draft` a free macOS `say` read, and `--estimate` (with no take) times lines from their word count |
 | Music | `node scripts/music.ts projects/<p> <file> [--name=bed]` | `music/<name>.*` plus `music/index.ts`: the track with its loudness, tempo and beats. Use it with `defineVideo({ music: { track: music.bed } })` |
 | Storyboard | `node scripts/storyboard.ts projects/<p>` | `out/storyboard/index.html`: a preview on top, a card per scene with its note, a still and the audio for each line; click to play from a scene |
 | Watch | `npm run studio -- projects/<p>` | the Remotion Studio: scrub, see scenes and voice lines on the timeline, toggle `captions` in the props panel |
@@ -69,11 +69,13 @@ Scenes import everything from `lib/studio/api.ts`.
 - `lib/studio/mix.ts`: voice levelling, and a music bed that ducks under the voice. `lib/loudness.ts` measures.
 - `lib/whisper-words.ts`, `lib/voice-words.ts`: word timings from whisper.cpp (installed on first use into
   `~/.cache/video-studio`), aligned to the script.
+- `lib/voice-take.ts`: where to cut a take into lines, and the pauses the read left between them.
 - `lib/music-beats.ts`: the tempo and beats of a music track.
 - `lib/paint/`: drawn layers (p5 sketches) inside scenes, with a watercolour style ported from p5.brush. See the
   `video-canvas` skill. `--repeatable=t1,t2` proves a drawn layer is a pure function of time.
 - `scripts/render.ts`: bundles one project (`lib/render-session.ts`) and checks, mixes, renders and reviews it.
-- `scripts/tts.ts`: Gemini TTS through OpenRouter. `--audition "line" --voices=A,B,C` compares voices.
+- `scripts/tts.ts`: reads the script as one take (Gemini TTS through OpenRouter, `say`, or a recording) and cuts it.
+  `--audition "line" --voices=A,B,C` compares voices.
 - `scripts/openrouter.ts`: the shared OpenRouter client, for TTS and any other model calls.
 
 The scripts are TypeScript run directly by Node 24; Remotion bundles `lib/studio` and one project's `video.tsx`.

@@ -53,8 +53,9 @@ Get the user's yes on the table before building anything.
 
 The storyboard is the video itself, rough, and never a separate drawing, so it can't drift from what ships.
 
-1. Write the lines into `voiceover.json` and run `npm run tts -- projects/<p> --estimate`. That times each line from
-   its word count, for free.
+1. Write the lines into `voiceover.json`, with `"paragraph": true` on each line that starts a new beat so the read
+   pauses there, and run `node scripts/tts.ts projects/<p> --estimate`. That times each line from its word count, for
+   free.
 2. Add the states to `capture.ts` and run it, by the **Real UI only** rules below.
 3. Build `video.tsx` as an **animatic**: one scene per table row, with the table's text as its `note`, one camera and at
    most one highlight per scene. Anchor the highlight to its word (`s.line(id).word(…)`) now, so it lands again once
@@ -65,7 +66,7 @@ The storyboard is the video itself, rough, and never a separate drawing, so it c
 5. Send the user the page. Their notes go into the table, the lines and the animatic, and the page is rebuilt, until
    they sign off.
 
-Once signed off, voice it for real (`npm run tts -- projects/<p>`), rebuild the storyboard to check the timing, then
+Once signed off, voice it for real (`npm run tts -- projects/<p>` reads the whole script as one take), rebuild the storyboard to check the timing, then
 do the motion pass with the `video-motion` skill.
 
 ## Real UI only

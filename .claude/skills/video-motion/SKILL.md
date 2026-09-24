@@ -12,7 +12,8 @@ one way to tell one story, not a structure to copy.
 
 A scene is `defineScene({ id, note, lines, lead, gap, tail, render: (s) => …, expect })`. Inside `render`, `s.t` is
 seconds since the scene's start (negative while it fades in), and `s.line(id)` is one of its lines: `.start`, `.end`,
-`.word('seventeen')` for when a word is spoken, `.at(0.4)` for a fraction of the way through.
+`.word('seventeen')` for when a word is spoken, `.at(0.4)` for a fraction of the way through. Lines in a scene keep
+the pause the read left between them; `gap` overrides it.
 
 | Term | Means | Build it with |
 |---|---|---|

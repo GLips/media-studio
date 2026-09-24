@@ -47,7 +47,7 @@ await session.close();
     voice: 'Callirrhoe',
     lines: [
       { id: 'intro', text: `Here's a quick look at ${title}.` },
-      { id: 'outro', text: 'That’s it. Thanks for watching.' },
+      { id: 'outro', text: 'That’s it. Thanks for watching.', paragraph: true },
     ],
   }, null, 2)}\n`,
 

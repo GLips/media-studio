@@ -1,26 +1,31 @@
-// tts.ts: voices a project's lines with Gemini TTS on OpenRouter.
+// tts.ts: voices a project's script as one take, and cuts it into lines.
 //
-//   npm run tts -- projects/<name>                       voice every line in voiceover.json → audio/
-//   node scripts/tts.ts projects/<name> --estimate       time unvoiced lines from their word count, with no audio,
-//                                                        so scenes can be built and rendered before the voice exists
-//   node scripts/tts.ts projects/<name> --draft          voice unvoiced lines with macOS `say`: free, offline, flat.
-//                                                        For hearing the timing, and for test projects. The next
-//                                                        paid run re-voices them
+//   npm run tts -- projects/<name>                       read the whole script with Gemini TTS on OpenRouter
+//   node scripts/tts.ts projects/<name> --draft          read it with macOS `say`: free, offline, flat. For hearing
+//                                                        the timing, and for test projects. The next paid run re-reads
+//   node scripts/tts.ts projects/<name> --take=read.m4a  use a recording of the script (a human read) as the take
+//   node scripts/tts.ts projects/<name> --estimate       with no take, time each line from its word count, with no
+//                                                        audio, so scenes can be built before the voice exists
 //   npm run tts -- --audition "Some line" --voices=Kore,Puck,Achird [--out=auditions]
 //
-// voiceover.json: { "voice": "Kore", "direction": "optional delivery note", "lines": [{ "id": "s1", "text": "…" }] }
+// voiceover.json: { "voice": "Kore", "direction": "optional delivery note",
+//                   "lines": [{ "id": "s1", "text": "…", "paragraph": true }] }
+// A line with `"paragraph": true` starts a new paragraph of the read; the rest run on from the line before.
 //
-// Each line is its own WAV, so the timeline can time scenes to the voice and captions to each line. A line is only
-// re-voiced when its text, voice or direction changes; the rest come from audio/manifest.json, since every call bills.
-// Every voiced line is also run through whisper.cpp for when each word is spoken (free, local; the first run installs
-// it). audio/manifest.ts is what the video imports.
+// The take (audio/take.wav) is one read, so pace and pitch carry across lines. Any change to the script re-reads the
+// whole take, since a spliced-in line would stand out. A recording is never replaced: each run re-cuts it, and
+// deleting audio/take.wav hands the script back to TTS. whisper.cpp hears the take (free, local; the first run
+// installs it), lib/voice-take.ts cuts it, and whisper hears each clip again for word times, since over a whole take
+// they drift. audio/manifest.ts is what the video imports.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { measureLoudness } from '../lib/loudness.ts';
+import { cutTakeIntoLines } from '../lib/voice-take.ts';
 import { alignSpokenWords, estimateSpokenWords, type SpokenWord } from '../lib/voice-words.ts';
+import { samplesFromWav, wavFromPcm, wavFromSamples } from '../lib/wav.ts';
 import { heardWords } from '../lib/whisper-words.ts';
 import { postOpenRouter } from './openrouter.ts';
 
@@ -29,68 +34,103 @@ const DRAFT_VOICE = 'Samantha';
 // Callirrhoe reads about three words a second; estimates only need to be close enough to lay scenes out.
 const WORDS_PER_SECOND = 3.0;
 
-type Script = { voice: string; direction?: string; lines: { id: string; text: string; voice?: string; direction?: string }[] };
-/** A manifest.json entry. `src` is relative to the project; null for an estimated line. */
-/** `lufs` is null for an estimated line, which has no audio to measure. */
-type Voiced = { src: string | null; duration: number; hash: string | null; text: string; words: SpokenWord[]; lufs: number | null };
+type Script = { voice: string; direction?: string; lines: { id: string; text: string; paragraph?: boolean }[] };
+/** audio/take.json: where take.wav came from, and what whisper heard in it and its clips, keyed by each WAV's hash. */
+type TakeInfo = { source: 'tts' | 'draft' | 'recording'; hash?: string; heard?: Record<string, SpokenWord[]> };
+/** A manifest.json entry. `src` is relative to the project, and it, `lufs` and `pauseBefore` are null for an estimate. */
+type Voiced = { src: string | null; duration: number; text: string; words: SpokenWord[]; lufs: number | null; pauseBefore: number | null };
 
 const args = process.argv.slice(2);
 const flag = (name: string) => args.find((a) => a.startsWith(`--${name}=`))?.split('=').slice(1).join('=');
 
 if (args[0] === '--audition') await audition(args[1], (flag('voices') ?? '').split(','), flag('out') || 'auditions');
-else await voiceProject(args[0], args.includes('--estimate') ? 'estimate' : args.includes('--draft') ? 'draft' : 'paid');
+else await voiceProject(args[0], args.includes('--estimate') ? 'estimate' : args.includes('--draft') ? 'draft' : 'paid', flag('take'));
 
-async function voiceProject(project: string, mode: 'estimate' | 'draft' | 'paid') {
+async function voiceProject(project: string, mode: 'estimate' | 'draft' | 'paid', recording: string | undefined) {
   const script: Script = JSON.parse(readFileSync(join(project, 'voiceover.json'), 'utf8'));
   const dir = join(project, 'audio');
   mkdirSync(dir, { recursive: true });
+  const takePath = join(dir, 'take.wav'), infoPath = join(dir, 'take.json');
 
-  const manifestPath = join(dir, 'manifest.json');
-  const previous: Record<string, Voiced> = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf8')) : {};
-  const manifest: Record<string, Voiced> = {};
+  const hashFor = (...key: unknown[]) => createHash('sha256').update(JSON.stringify(key)).digest('hex').slice(0, 16);
+  const readText = (paragraphBreak: string) => script.lines.map((line, i) => (i === 0 ? '' : line.paragraph ? paragraphBreak : ' ') + line.text).join('');
+  const paidHash = hashFor(MODEL, script.voice, script.direction, readText('\n\n'));
+  const draftHash = hashFor('say', DRAFT_VOICE, readText(' [[slnc 600]] '));
 
-  for (const line of script.lines) {
-    const voice = line.voice || script.voice;
-    const direction = line.direction ?? script.direction;
-    const hashFor = (...key: unknown[]) => createHash('sha256').update(JSON.stringify(key)).digest('hex').slice(0, 16);
-    const hash = hashFor(MODEL, voice, direction, line.text);
-    // A draft never matches the paid hash, so a paid run re-voices it.
-    const draftHash = hashFor('say', DRAFT_VOICE, line.text);
-    const file = `${line.id}.wav`;
-
-    const cached = previous[line.id];
-    const keep = cached?.hash === hash || (mode === 'draft' && cached?.hash === draftHash);
-    if (keep && existsSync(join(dir, file))) {
-      const wav = join(project, cached.src!);
-      manifest[line.id] = { ...cached, words: cached.words ?? await wordsFor(wav, line.text, cached.duration), lufs: cached.lufs ?? measureLoudness(wav).lufs };
-      continue;
-    }
-    if (mode === 'estimate') {
-      // No hash, so the next real run voices it.
-      const duration = Number((line.text.split(/\s+/).length / WORDS_PER_SECOND + 0.3).toFixed(2));
-      manifest[line.id] = { src: null, duration, hash: null, text: line.text, words: estimateSpokenWords(line.text, duration), lufs: null };
-      console.log(`estimated ${line.id}  ${duration.toFixed(2)}s`);
-      continue;
-    }
-
-    const { wav, duration } = mode === 'draft' ? speakDraft(line.text) : await speak(line.text, voice, direction);
-    writeFileSync(join(dir, file), wav);
-    manifest[line.id] = {
-      src: `audio/${file}`, duration, hash: mode === 'draft' ? draftHash : hash, text: line.text,
-      words: await wordsFor(join(dir, file), line.text, duration), lufs: measureLoudness(join(dir, file)).lufs,
-    };
-    console.log(`${mode === 'draft' ? 'drafted' : 'voiced'} ${line.id}  ${duration.toFixed(2)}s  "${line.text.slice(0, 60)}"`);
+  let info: TakeInfo | null = existsSync(infoPath) && existsSync(takePath) ? JSON.parse(readFileSync(infoPath, 'utf8')) : null;
+  // take.json is saved as soon as the take is, and after each transcription, so a failure later never costs a re-read
+  // or leaves it describing other audio.
+  const saveInfo = () => writeFileSync(infoPath, JSON.stringify(info, null, 2));
+  if (recording) {
+    execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', recording, '-ac', '1', '-ar', '24000', '-sample_fmt', 's16', '-map_metadata', '-1', takePath]);
+    info = { source: 'recording' };
+    saveInfo();
+    console.log(`imported ${recording} as the take`);
+  }
+  // A draft never matches the paid hash, so a paid run re-reads it.
+  const current = info && (info.source === 'recording' || info.hash === paidHash || (mode !== 'paid' && info.hash === draftHash));
+  if (!current) {
+    if (mode === 'estimate') return writeManifest(dir, estimateLines(script));
+    const { wav, duration } = mode === 'draft' ? speakDraft(readText(' [[slnc 600]] ')) : await speak(readText('\n\n'), script.voice, script.direction);
+    writeFileSync(takePath, wav);
+    info = { source: mode === 'draft' ? 'draft' : 'tts', hash: mode === 'draft' ? draftHash : paidHash };
+    saveInfo();
+    console.log(`${mode === 'draft' ? 'drafted' : 'voiced'} the take  ${duration.toFixed(2)}s`);
   }
 
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-  writeFileSync(join(dir, 'manifest.ts'), voiceModule(manifest));
-  const total = Object.values(manifest).reduce((sum, line) => sum + line.duration, 0);
-  console.log(`${script.lines.length} lines, ${total.toFixed(1)}s of voice → ${dir}`);
+  const heard = (info!.heard ??= {});
+  const used = new Set<string>();
+  const hear = async (file: string) => {
+    const key = createHash('sha256').update(readFileSync(file)).digest('hex').slice(0, 16);
+    used.add(key);
+    if (!heard[key]) {
+      heard[key] = await heardWords(file);
+      saveInfo();
+    }
+    return heard[key];
+  };
+
+  const { samples, rate } = samplesFromWav(readFileSync(takePath));
+  const clips = cutTakeIntoLines(script.lines, await hear(takePath), samples, rate);
+  for (const file of readdirSync(dir)) if (file.endsWith('.wav') && file !== 'take.wav') rmSync(join(dir, file));
+  const manifest: Record<string, Voiced> = {};
+  for (const [i, clip] of clips.entries()) {
+    const file = join(dir, `${clip.id}.wav`);
+    const part = samples.subarray(Math.round(clip.from * rate), Math.round(clip.to * rate));
+    writeFileSync(file, wavFromSamples(part, rate));
+    const duration = part.length / rate, text = script.lines[i].text;
+    const aligned = alignSpokenWords(text, await hear(file), duration);
+    const round = (x: number) => Math.round(x * 1000) / 1000;
+    const words = aligned.words.map((w) => ({ text: w.text, start: round(w.start), end: round(w.end) }));
+    manifest[clip.id] = { src: `audio/${clip.id}.wav`, duration, text, words, lufs: measureLoudness(file).lufs, pauseBefore: clip.pauseBefore };
+
+    const pause = clip.pauseBefore === null ? '' : `  after ${clip.pauseBefore.toFixed(2)}s`;
+    const unheard = words.filter((_, k) => !aligned.heard[k]).map((w) => w.text);
+    console.log(`cut ${clip.id}  ${duration.toFixed(2)}s${pause}${unheard.length ? `  (heard differently: ${unheard.join(' ')})` : ''}`);
+  }
+  for (const clip of clips.filter((c) => !c.cutIsClear)) {
+    console.log(`listen to ${clip.id}: the read has no one clear pause before it, so its cut may clip a word. Give it "paragraph": true, or move the line break`);
+  }
+  for (const key of Object.keys(heard)) if (!used.has(key)) delete heard[key];
+  saveInfo();
+  writeManifest(dir, manifest);
 }
 
-async function wordsFor(wav: string, text: string, duration: number) {
-  const round = (x: number) => Math.round(x * 1000) / 1000;
-  return alignSpokenWords(text, await heardWords(wav), duration).map((w) => ({ text: w.text, start: round(w.start), end: round(w.end) }));
+function estimateLines(script: Script) {
+  const manifest: Record<string, Voiced> = {};
+  for (const line of script.lines) {
+    const duration = Number((line.text.split(/[\s-]+/).length / WORDS_PER_SECOND + 0.3).toFixed(2));
+    manifest[line.id] = { src: null, duration, text: line.text, words: estimateSpokenWords(line.text, duration), lufs: null, pauseBefore: null };
+  }
+  console.log(`estimated ${script.lines.length} lines from their word counts`);
+  return manifest;
+}
+
+function writeManifest(dir: string, manifest: Record<string, Voiced>) {
+  writeFileSync(join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+  writeFileSync(join(dir, 'manifest.ts'), voiceModule(manifest));
+  const total = Object.values(manifest).reduce((sum, line) => sum + line.duration, 0);
+  console.log(`${Object.keys(manifest).length} lines, ${total.toFixed(1)}s of voice → ${dir}`);
 }
 
 // A module rather than JSON so the video imports each WAV and the bundler serves it.
@@ -101,8 +141,8 @@ function voiceModule(manifest: Record<string, Voiced>) {
     return src ? [`import wav${i} from './${basename(src)}';`] : [];
   }).join('\n');
   const entries = ids.map((id, i) => {
-    const { src, duration, text, words, lufs } = manifest[id];
-    return `  ${JSON.stringify(id)}: { src: ${src ? `wav${i}` : 'null'}, duration: ${duration}, lufs: ${lufs}, text: ${JSON.stringify(text)},\n    words: ${JSON.stringify(words)} },`;
+    const { src, duration, text, words, lufs, pauseBefore } = manifest[id];
+    return `  ${JSON.stringify(id)}: { src: ${src ? `wav${i}` : 'null'}, duration: ${duration}, lufs: ${lufs}, pauseBefore: ${pauseBefore}, text: ${JSON.stringify(text)},\n    words: ${JSON.stringify(words)} },`;
   }).join('\n');
   return `// Written by scripts/tts.ts. Edits here are lost on the next run.
 import type { Voice } from '../../../lib/studio/timeline.ts';
@@ -133,28 +173,13 @@ async function speak(text: string, voice: string, direction?: string) {
   return { wav: wavFromPcm(pcm, rate), duration: pcm.length / (rate * 2) };
 }
 
+// `[[slnc 600]]` in the text is say's own pause command, standing in for a paragraph break.
 function speakDraft(text: string) {
-  const out = join(mkdtempSync(join(tmpdir(), 'say-')), 'line.wav');
+  const tmp = mkdtempSync(join(tmpdir(), 'say-'));
+  const out = join(tmp, 'take.wav');
   execFileSync('say', ['-v', DRAFT_VOICE, '-o', out, '--data-format=LEI16@24000', text]);
   const wav = readFileSync(out);
-  const duration = Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', out]).toString());
-  return { wav, duration };
-}
-
-// Gemini returns headerless 16-bit mono PCM; ffmpeg and browsers both want a WAV header on it.
-function wavFromPcm(pcm: Buffer, rate: number) {
-  const header = Buffer.alloc(44);
-  header.write('RIFF', 0);
-  header.writeUInt32LE(36 + pcm.length, 4);
-  header.write('WAVEfmt ', 8);
-  header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20);
-  header.writeUInt16LE(1, 22);
-  header.writeUInt32LE(rate, 24);
-  header.writeUInt32LE(rate * 2, 28);
-  header.writeUInt16LE(2, 32);
-  header.writeUInt16LE(16, 34);
-  header.write('data', 36);
-  header.writeUInt32LE(pcm.length, 40);
-  return Buffer.concat([header, pcm]);
+  rmSync(tmp, { recursive: true, force: true });
+  const { samples, rate } = samplesFromWav(wav);
+  return { wav, duration: samples.length / rate };
 }
