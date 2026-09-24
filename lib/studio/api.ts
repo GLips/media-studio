@@ -9,3 +9,4 @@ export * from './overlays.tsx';
 export { useScene } from './scene.tsx';
 export { defineScene, defineVideo, type LineSpan, type SceneClock } from './timeline.ts';
 export * from './sfx.tsx';
+export * from './take.ts';

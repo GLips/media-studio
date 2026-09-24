@@ -9,6 +9,7 @@ import { assertKeysInOrder, inflate, pagePoint, screenPoint, type Point, type Re
 import { FONT, H, W } from './frame.ts';
 import { clamp, easeOut, lerp, seg } from './motion.ts';
 import { SFX, Sfx } from './sfx.tsx';
+import { sceneTimeOf, type TakeFit } from './take.ts';
 
 const INK = '#1c365e';
 const fill: CSSProperties = { position: 'absolute', left: 0, top: 0, width: W, height: H, overflow: 'visible', pointerEvents: 'none' };
@@ -92,6 +93,26 @@ export function CursorPath({ view, t, keys, alpha = 1 }: { view: View; t: number
       {clicks.map(([kt], i) => <Sfx key={i} src={SFX.click} at={kt} t={t} />)}
       {clicks.map(([kt, p], i) => <ClickRipple key={i} at={screenPoint(view, p)} k={(t - kt) / RIPPLE_LIFE} />)}
       <Cursor at={screenPoint(view, cursorAt(t, keys))} press={clamp(press)} alpha={alpha} />
+    </>
+  );
+}
+
+/**
+ * A take's own cursor, clicks and typed keys, replayed in scene time through its fit, over a view of the take. The
+ * take logged where the mouse went, so this is where it went, fitted to the voice with the footage.
+ */
+export function TakeCursor({ view, t, fit, alpha = 1 }: { view: View; t: number; fit: TakeFit; alpha?: number }) {
+  const keys: [number, Point, { click?: boolean }][] = [];
+  for (const [time, x, y, click] of fit.take.mouse) {
+    const at = sceneTimeOf(fit, time), last = keys[keys.length - 1];
+    // A click lands where the glide ended, and a hold maps several take moments to one scene time: one key each.
+    if (last && at <= last[0] + 1e-3) keys[keys.length - 1] = [last[0], { x, y }, { click: last[2].click || click === 1 }];
+    else keys.push([at, { x, y }, { click: click === 1 }]);
+  }
+  return (
+    <>
+      {fit.take.keys.map((time, i) => <Sfx key={i} src={SFX.key} at={sceneTimeOf(fit, time)} t={t} volume={0.35} rate={1 + (((i * 7) % 5) - 2) * 0.04} />)}
+      <CursorPath view={view} t={t} keys={keys} alpha={alpha} />
     </>
   );
 }

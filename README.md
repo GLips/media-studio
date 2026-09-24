@@ -10,7 +10,7 @@ Every frame is a pure function of time, so a change to one scene is an edit and 
 | Step | Command | Output |
 |---|---|---|
 | Start | `npm run new -- <slug> --url=… [--title=…]` | `projects/<yyyy-mm>-<slug>/`, captured and with estimated timing, so it opens in the Studio at once |
-| Capture | `node projects/<p>/capture.ts` | `captures/*.png` plus `captures/index.ts`: high-DPI full-page screenshots and the page positions of the elements scenes point at |
+| Capture | `node projects/<p>/capture.ts [--only=a,b]` | `captures/` plus `captures/index.ts`: the named shots. A still is a high-DPI full-page screenshot with the page positions of the elements scenes point at; a take is a screen recording of real clicks, scrolls and typing, with marks. `--only` redoes just those shots |
 | Voice | `npm run tts -- projects/<p>` | `audio/take.wav`, the whole script read in one take, cut into `audio/<line>.wav` plus `audio/manifest.ts`. Any script change re-reads the take. `--take=read.m4a` uses a recording instead, `--draft` a free macOS `say` read, and `--estimate` (with no take) times lines from their word count |
 | Music | `node scripts/music.ts projects/<p> <file> [--name=bed]` | `music/<name>.*` plus `music/index.ts`: the track with its loudness, tempo and beats. Use it with `defineVideo({ music: { track: music.bed } })` |
 | Storyboard | `node scripts/storyboard.ts projects/<p>` | `out/storyboard/index.html`: a preview on top, a card per scene with its note, a still and the audio for each line; click to play from a scene |
@@ -33,7 +33,7 @@ tests.
 
 ```
 projects/<yyyy-mm-name>/
-  capture.ts       Playwright steps that reach each state and snap() it (lib/capture.ts)
+  capture.ts       the named shots: stills and takes, each with its own setup (lib/capture.ts)
   voiceover.json   { voice, lines: [{ id, text }] }
   video.tsx        defineVideo({ title, voice, scenes }): each scene names its lines and renders itself
   storyboard.md    the plan: audience, takeaway, the scene table, what was checked, what's deliberately left out
@@ -54,7 +54,12 @@ directing.
 
 Scenes import everything from `lib/studio/api.ts`.
 
-- `lib/capture.ts`: screenshots and element rects, in page coordinates, written as a typed module.
+- `lib/capture.ts`: named shots, each on a fresh page so any can be redone alone. Stills are screenshots with element
+  rects in page coordinates; takes are CDP screencasts with marks (rects and times) and a mouse and key log, filmed at
+  the site's own pace.
+- `lib/studio/take.ts`: takes in a scene. `fitTake` pins marks to words, `takeShot` is the frame showing then (a Shot,
+  so cameras work on it), `onTake` moves a mark's rect by the frame's scroll. `TakeCursor` draws our cursor and click
+  sounds from the log, so a re-voice never needs a reshoot.
 - `lib/studio/timeline.ts`: `defineScene`, `defineVideo`, and the layout that times scenes to their lines and centres
   crossfades on the cuts.
 - `lib/studio/camera.ts`: a camera over captures (`camFit`, `camAt`, `lerpCam`) and views, which map page rects to the

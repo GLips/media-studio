@@ -67,11 +67,15 @@ export function camFit(shot: Shot, rect: Rect, { pad = 40, maxZoom = 1.6, dx = 0
   return clampCam(shot, { cx: x + dx - shiftX, cy: y + dy - shiftY, zoom }, box);
 }
 
-/** Keeps the view inside the capture so the box never shows past its edges. */
+/**
+ * Keeps the view inside the capture so the box never shows past its edges. A short capture (a take's viewport frame)
+ * in a tall box is zoomed in until it covers the box.
+ */
 export function clampCam(shot: Shot, cam: Cam, box: Rect = FULL_FRAME): Cam {
-  const k = scaleFor(shot, cam.zoom);
+  const zoom = Math.max(cam.zoom, (box.h / shot.h) * (shot.w / W));
+  const k = scaleFor(shot, zoom);
   const halfW = box.w / k / 2, halfH = box.h / k / 2;
-  return { ...cam, cx: clamp(cam.cx, halfW, Math.max(halfW, shot.w - halfW)), cy: clamp(cam.cy, halfH, Math.max(halfH, shot.h - halfH)) };
+  return { zoom, cx: clamp(cam.cx, halfW, Math.max(halfW, shot.w - halfW)), cy: clamp(cam.cy, halfH, Math.max(halfH, shot.h - halfH)) };
 }
 
 /** Interpolates cameras with zoom in log space, so pushes feel constant-speed. */

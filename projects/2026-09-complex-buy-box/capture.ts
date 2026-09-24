@@ -1,15 +1,15 @@
-// Photographs every state the Complex buy box video shows.
-//   node projects/2026-09-complex-buy-box/capture.ts
-import { openCaptureSession } from '../../lib/capture.ts';
+// Films every shot the Complex buy box video shows. Each shot opens its own page and gets itself to its state, so any
+// can be redone alone.
+//   node projects/2026-09-complex-buy-box/capture.ts [--only=home,…]
+import type { Page } from 'playwright';
+import { captureShots } from '../../lib/capture.ts';
 
-const session = await openCaptureSession({ project: import.meta.dirname, viewport: { width: 1440, height: 810 } });
-const { page, snap } = session;
+const shots = captureShots({ project: import.meta.dirname, viewport: { width: 1440, height: 810 } });
+const open = async (page: Page, url: string) => {
+  await page.goto(url, { waitUntil: 'load' });
+  await page.waitForTimeout(2500);
+};
 
-await page.goto("https://www.painfulpleasures.com", { waitUntil: 'load' });
-await page.waitForTimeout(2500);
-await snap('home', { height: 1600 });
+shots.still('home', { setup: (page) => open(page, 'https://www.painfulpleasures.com'), height: 1600 });
 
-// Each state the story needs: reach it, then snap it with the rects scenes will point at, e.g.
-//   await snap('detail', { rects: { button: '.buy', options: ['.option', { all: true }] }, height: 1200 });
-
-await session.close();
+await shots.run();

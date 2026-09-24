@@ -51,6 +51,19 @@ You know what happens because you wrote the code. The viewer sees it once, at fu
   `expect: (s) => [{ see: 'tiers', during: s.line('ladder').word('no volume discount') }]`. The check fails if the
   named highlight isn't drawn, clear of tags and the caption, for the whole span.
 
+## Takes: when the viewer should watch it happen
+
+A cut from one still to the next state hides the action. Where following the click matters (a carousel, a menu
+opening), film a take (`shots.take` in `capture.ts`) and put it in the scene:
+
+- `fitTake(T[name], [[word.start, 'pick'], [later.start, 'shown']])` pins its marks to words. Keep the speed between
+  pins near 1×; past ~1.5× a scroll or animation reads rushed, so move a pin to an earlier word or refilm slower.
+- `takeShot(take, tt)` is the frame showing then, and cameras work on it as on a still. Aim through
+  `onTake(take, tt, mark.rects.x)`: it follows the page's scroll.
+- Draw the cursor with `<TakeCursor view fit t />`, not `CursorPath`. It comes from the take's log, clicks included.
+- A take's frames are JPEG, so a close-up whose point is sharpness (a lightbox comparing two pages) belongs on a
+  still.
+
 ## Acting on feel notes
 
 The user watches in the Studio (`npm run studio -- projects/<p>`) and says what feels off. Change only what the note

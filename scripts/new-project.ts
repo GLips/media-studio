@@ -26,21 +26,26 @@ if (existsSync(dir)) {
 }
 
 const files: Record<string, string> = {
-  'capture.ts': `// Photographs every state the ${title} video shows.
-//   node ${dir}/capture.ts
-import { openCaptureSession } from '../../lib/capture.ts';
+  'capture.ts': `// Films every shot the ${title} video shows. Each shot opens its own page and gets itself to its state, so any
+// can be redone alone.
+//   node ${dir}/capture.ts [--only=home,…]
+import type { Page } from 'playwright';
+import { captureShots } from '../../lib/capture.ts';
 
-const session = await openCaptureSession({ project: import.meta.dirname, viewport: { width: 1440, height: 810 } });
-const { page, snap } = session;
+const shots = captureShots({ project: import.meta.dirname, viewport: { width: 1440, height: 810 } });
+const open = async (page: Page, url: string) => {
+  await page.goto(url, { waitUntil: 'load' });
+  await page.waitForTimeout(2500);
+};
 
-await page.goto(${JSON.stringify(url)}, { waitUntil: 'load' });
-await page.waitForTimeout(2500);
-await snap('home', { height: 1600 });
+shots.still('home', { setup: (page) => open(page, ${JSON.stringify(url)}), height: 1600 });
 
-// Each state the story needs: reach it, then snap it with the rects scenes will point at, e.g.
-//   await snap('detail', { rects: { button: '.buy', options: ['.option', { all: true }] }, height: 1200 });
+// Each state the story needs, as a still (setup reaches it; rects are what scenes point at), e.g.
+//   shots.still('detail', { setup: …, rects: { button: '.buy', options: ['.option', { all: true }] }, height: 1200 });
+// or, where a cut would jump, a take that films the move, e.g.
+//   shots.take('open-menu', { setup: …, perform: (rec) => rec.click('.menu', { mark: 'open', rects: { menu: '.menu' } }) });
 
-await session.close();
+await shots.run();
 `,
 
   'voiceover.json': `${JSON.stringify({

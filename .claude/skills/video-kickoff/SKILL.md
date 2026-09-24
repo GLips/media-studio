@@ -74,7 +74,8 @@ do the motion pass with the `video-motion` skill.
 Everything on screen is the real product. Anyone who uses it knows what it looks like, and one made-up button
 breaks it for all of them.
 
-- Capture states with `capture.ts` (Playwright, through `openCaptureSession`). If a state can't be photographed (an
+- Capture with `capture.ts` (Playwright, through `captureShots`): a still per state, or a take where the viewer should
+  watch the click happen instead of cutting to its result. If a state can't be photographed (an
   open native `<select>`, a `confirm()` dialog), rebuild it in DOM **from the product's own words and styles**, as
   `ConfirmDialog` and `NativeMenu` in `lib/studio/kit.tsx` do.
 - Pull real icons and logos from the site's assets. On a Mac, an app's icon sits in its bundle:

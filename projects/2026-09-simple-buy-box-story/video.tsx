@@ -7,11 +7,11 @@ import {
   Capture, CaptureStates, ClipToBox, ConfirmDialog, CursorPath, EndCard, FULL_FRAME, H, Highlight, MotionTitle,
   NativeMenu, Phone, SFX, inflate, SPLIT_LEFT, SPLIT_RIGHT, SectionCard, Sfx, SplitCompare, Tag, Text, W, camAt, camFit,
   centerOf, defineScene, defineVideo, CAPTION_FREE, FONT, easeInOut, easeOut, lerpCam, linear, off, on, phoneView, screenPoint, screenRect,
-  seg, union, view,
-  type Rect, type SceneClock, type Shot, type View,
+  seg, union, view, fitTake, onTake, takeShot, takeTimeAt, TakeCursor,
+  type Rect, type SceneClock, type Shot, type Take, type TakeMark, type View,
 } from '../../lib/studio/api.ts';
 import { voice } from './audio/manifest.ts';
-import { captures as C } from './captures/index.ts';
+import { captures as C, takes as T } from './captures/index.ts';
 import { music } from './music/index.ts';
 
 const NAVY = '#1c365e';
@@ -75,16 +75,20 @@ const photos = defineScene({
           right={{ ...NEW, view: view(next, lerpCam(wide(next, SPLIT_RIGHT), close(next, SPLIT_RIGHT), push), SPLIT_RIGHT) }} />
       );
     } else {
-      const wide = (shot: Shot & { rects: { sheet: Rect } }, box: Rect) => camFit(shot, shot.rects.sheet, { pad: 20, maxZoom: 1.2 }, box);
-      const close = (shot: Shot & { rects: { sheet: Rect } }, box: Rect) => camFit(shot, kwadronText(shot.rects.sheet), { pad: 30, maxZoom: 6 }, box);
-      const push = seg(s.t, a.at(0.7), a.at(0.95));
-      const control = C['kw-control'], next = C['kw-new'];
-      const right = view(next, lerpCam(wide(next, SPLIT_RIGHT), close(next, SPLIT_RIGHT), push), SPLIT_RIGHT);
-      body = (
-        <SplitCompare
-          left={{ ...TODAY, view: view(control, lerpCam(wide(control, SPLIT_LEFT), close(control, SPLIT_LEFT), push), SPLIT_LEFT) }}
-          right={{ ...NEW, view: right }} />
-      );
+      // Filmed: each page's thumbnail is clicked on "print" and its sheet is up by "blurs", when the camera pushes
+      // into the small print. The take between is sped up a little (about 1.4×) to fit.
+      const pushFrom = a.word('blurs').start;
+      const push = seg(s.t, pushFrom, a.end + 0.3);
+      const side = (take: Take & { marks: { pick: TakeMark; shown: TakeMark } }, box: Rect, arm: typeof TODAY) => {
+        const fit = fitTake(take, [[a.word('print').start - 0.1, 'pick'], [pushFrom, 'shown']]);
+        const tt = takeTimeAt(fit, s.t), shot = takeShot(take, tt);
+        const { pick, shown } = take.marks;
+        const wide = camFit(shot, union(onTake(take, tt, pick.rects.gallery as Rect), onTake(take, tt, pick.rects.thumb as Rect)), { pad: 20, maxZoom: 1.2 }, box);
+        const close = camFit(shot, kwadronText(onTake(take, tt, shown.rects.sheet as Rect)), { pad: 30, maxZoom: 6 }, box);
+        const v = view(shot, lerpCam(wide, close, push), box);
+        return { ...arm, view: v, over: <TakeCursor view={v} t={s.t} fit={fit} alpha={1 - push} /> };
+      };
+      body = <SplitCompare left={side(T['kw-control-browse'], SPLIT_LEFT, TODAY)} right={side(T['kw-new-browse'], SPLIT_RIGHT, NEW)} />;
     }
     return (
       <>

@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["lib", "scripts", "projects/*/video.tsx", "remotion.config.ts", "types.d.ts"]
+  "include": ["lib", "scripts", "projects/*/video.tsx", "projects/*/capture.ts", "remotion.config.ts", "types.d.ts"]
 }

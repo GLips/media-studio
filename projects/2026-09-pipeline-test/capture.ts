@@ -1,8 +1,9 @@
-// Photographs every state the pipeline test shows, from fixture/store.html, so the captures are the same on every run.
+// Films every shot the pipeline test shows, from fixture/store.html, so the captures are the same on every run.
 //   node projects/2026-09-pipeline-test/capture.ts
 import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
-import { openCaptureSession } from '../../lib/capture.ts';
+import type { Page } from 'playwright';
+import { captureShots } from '../../lib/capture.ts';
 
 const STORE = pathToFileURL(join(import.meta.dirname, 'fixture', 'store.html')).href;
 const RECTS = {
@@ -24,24 +25,22 @@ const RECTS = {
 } as const;
 const HEIGHT = 1600;
 
-const session = await openCaptureSession({ project: import.meta.dirname, viewport: { width: 1440, height: 810 } });
-const { page, snap } = session;
-await page.goto(STORE);
-const bulbs = await page.locator('#bulb option').allTextContents();
+const shots = captureShots({ project: import.meta.dirname, viewport: { width: 1440, height: 810 }, devices: { phone: { viewport: { width: 390, height: 844 } } } });
+const open = (page: Page) => page.goto(STORE);
+const clicks = (...steps: ((page: Page) => Promise<void>)[]) => async (page: Page) => {
+  await open(page);
+  for (const step of steps) await step(page);
+};
+const swatch = (n: number) => (page: Page) => page.locator('.swatch').nth(n).click();
+const plus = (page: Page) => page.locator('[name=plus]').click();
 
-await snap('page', { height: HEIGHT, rects: RECTS, data: { bulbs } });
-await page.locator('.swatch').nth(2).click();
-await snap('cobalt', { height: HEIGHT, rects: RECTS });
-await page.locator('.swatch').nth(1).click();
-await snap('sage', { height: HEIGHT, rects: RECTS });
+shots.still('page', { setup: open, height: HEIGHT, rects: RECTS, data: async (page) => ({ bulbs: await page.locator('#bulb option').allTextContents() }) });
+shots.still('cobalt', { setup: clicks(swatch(2)), height: HEIGHT, rects: RECTS });
+shots.still('sage', { setup: clicks(swatch(2), swatch(1)), height: HEIGHT, rects: RECTS });
 for (const n of [2, 3, 4]) {
-  await page.locator('[name=plus]').click();
-  await snap(`sage-q${n}`, { height: HEIGHT, rects: RECTS });
+  shots.still(`sage-q${n}`, { setup: clicks(swatch(2), swatch(1), ...Array<typeof plus>(n - 1).fill(plus)), height: HEIGHT, rects: RECTS });
 }
+shots.still('phone-top', { device: 'phone', setup: open, scrollY: 0 });
+shots.still('phone-specs', { device: 'phone', setup: open, scrollY: 1100, rects: { bar: '.bar' } });
 
-const phone = await session.openDevice({ viewport: { width: 390, height: 844 } });
-await phone.page.goto(STORE);
-await phone.snap('phone-top', { scrollY: 0 });
-await phone.snap('phone-specs', { scrollY: 1100, rects: { bar: '.bar' } });
-
-await session.close();
+await shots.run();
