@@ -5,8 +5,8 @@
 The studio doesn't find or generate music: the user supplies the track, and its licence is theirs to settle. Add it:
 
 ```
-studio music <p> path/to/track.mp3            # music.bed
-studio music <p> path/to/other.wav --name=lead # music.lead
+studio music add <p> path/to/track.mp3            # music.bed
+studio music add <p> path/to/other.wav --name=lead # music.lead
 ```
 
 That copies the file into `projects/<p>/music/`, measures its loudness, tempo and beats (`lib/music-track.ts`,
@@ -21,11 +21,38 @@ export default defineVideo({ title, voice, scenes, music: { track: music.bed, so
 A video has one music track. It plays from `sourceStartSeconds` into the track (default 0), fades in over the first
 1 s and out over the last 2.5 s, and ducks under every voice line on its own (`mix.md`). If the video outlasts the
 rest of the track, it loops back to `sourceStartSeconds` with a hard splice and no crossfade, which breaks the beat.
-Choose a track that runs longer than `sourceStartSeconds` plus the video.
+Fit the track instead (below), or choose one that runs longer than `sourceStartSeconds` plus the video.
 
-`studio music` prints the tempo it found. The tracker only looks between 60 and 180 BPM and leans toward 120, so a very
+`studio music add` prints the tempo it found. The tracker only looks between 60 and 180 BPM and leans toward 120, so a very
 slow or fast track can read at half or double time. Check the number against the user's sense of the track before
 cutting to it.
+
+## Fitting it to the video
+
+Once the picture is locked, `studio music fit <p>` cuts a track to exactly the video's length so its own ending, not
+a fade, finishes the video:
+
+```
+studio music fit <p>                          # music.bed → music['bed-fit'], the video's length
+studio music fit <p> --name=lead --as=lead-60 --seconds=60   # any length, to audition; skips the report
+```
+
+It keeps the intro, drops or repeats whole bars by jumping between downbeats whose bars sound alike, and keeps the
+outro (`lib/music-fit.ts`). Less than a bar left over comes off the head, or goes before it as silence. The original
+stays, so point the video at the fit (`music: { track: music['bed-fit'] }`, no `sourceStartSeconds`) and rerun `fit`
+after any retime. A fitted track that no longer matches the video's length fades out like any other.
+
+It prints:
+
+- **The seams**, in the fitted track's seconds, and how alike the worst one's sides are (dB per band; bars a beat
+  apart in a track typically differ by about 5). Give the user the file and the seam times to listen at.
+- **A downbeat guess**, from bass hits and chord changes. A steady four-on-the-floor can fool it; ask the user.
+- **Each cut and `expect` against the nearest downbeat**: a report only, nothing moves. To land one, nudge a `tail`
+  or the next `lead` by the offset, within the voice's read (below), then fit again, since the length changed. A new
+  length can shift every downbeat, so read the report again rather than trusting the old offsets.
+
+`music/index.ts` records each fit's `spans` of the source, its `seams` and `downbeats`; the same track and length
+always give the same fit.
 
 ## Its role
 

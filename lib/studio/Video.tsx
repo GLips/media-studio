@@ -29,6 +29,8 @@ export type TimelineReport = {
   title: string;
   fps: number;
   duration: number;
+  /** The composition's length, which can run a little past `duration` (see totalFrames). */
+  durationInFrames: number;
   scenes: { id: string; start: number; dur: number; note?: string; lines: readonly string[]; previs?: PrevisRequest }[];
   cues: { id: string; start: number; end: number; captionEnd: number; text: string; voiced: boolean }[];
   /** Each scene's `expect`, in video seconds. */
@@ -39,11 +41,12 @@ export const TIMELINE_ARTIFACT = 'timeline.json';
 /** What `studio gen video` asks for a previs scene: its ScenePrevis as data, and its blockout's span (previsSpan). */
 export type PrevisRequest = { prompt: string; references: readonly string[]; audio: boolean; from: number; duration: number };
 
-function timelineReport(video: VideoDef, tl: Timeline, fps: number): string {
+function timelineReport(video: VideoDef, tl: Timeline, fps: number, durationInFrames: number): string {
   const report: TimelineReport = {
     title: video.title,
     fps,
     duration: tl.duration,
+    durationInFrames,
     scenes: tl.scenes.map(({ id, start, dur, note, lines, previs }) => ({
       id, start, dur, note, lines,
       previs: previs && { prompt: previs.prompt, references: previs.references ?? [], audio: previs.audio ?? false, ...previsSpan(tl, id) },
@@ -60,7 +63,7 @@ function timelineReport(video: VideoDef, tl: Timeline, fps: number): string {
 // refuses a second artifact with the same name.
 export function Video({ video, captions, probe, blockouts, reportTimeline = true }: VideoProps & { video: VideoDef; reportTimeline?: boolean }) {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, durationInFrames } = useVideoConfig();
   const tl = useMemo(() => layoutVideo(video), [video]);
   const root = useRef<HTMLDivElement>(null);
   const t = frame / fps;
@@ -88,7 +91,7 @@ export function Video({ video, captions, probe, blockouts, reportTimeline = true
       )}
       {video.music && <MusicBedAudio video={video} tl={tl} fps={fps} />}
       {captions && <Caption cues={tl.cues} t={t} />}
-      {reportTimeline && frame === 0 && <Artifact filename={TIMELINE_ARTIFACT} content={timelineReport(video, tl, fps)} />}
+      {reportTimeline && frame === 0 && <Artifact filename={TIMELINE_ARTIFACT} content={timelineReport(video, tl, fps, durationInFrames)} />}
       {probe && <FramingProbe root={root} />}
     </AbsoluteFill>
   );
@@ -103,10 +106,13 @@ function MusicBedAudio({ video, tl, fps }: { video: VideoDef; tl: Timeline; fps:
     spans: duckSpans(tl.cues.map((c) => ({ start: Math.round(c.start * fps) / fps, end: Math.round(c.start * fps) / fps + (c.end - c.start) }))),
     levels: musicLevels(bed),
   }), [tl, fps, bed]);
+  // A track fitted to this video's length ends on its own ending, so it isn't faded out. After a retime it no longer
+  // fits, and fades like any other until `studio music fit` runs again.
+  const endsWithVideo = !!bed.track.fit && !bed.sourceStartSeconds && Math.abs(bed.track.duration - durationInFrames / fps) < 0.5 / fps;
   // Not in a Sequence, so the volume callback's frame is the video's frame.
   return (
     <Audio src={bed.track.src} name="music" loop loopVolumeCurveBehavior="extend" trimBefore={Math.round((bed.sourceStartSeconds ?? 0) * fps)}
-      volume={(f) => musicGainAt(f / fps, spans, levels, durationInFrames / fps)} />
+      volume={(f) => musicGainAt(f / fps, spans, levels, durationInFrames / fps, endsWithVideo)} />
   );
 }
 

@@ -1,18 +1,24 @@
-// music-track.ts: adds a music track to a project, measured for the mix and beat-tracked. `studio music` runs it.
+// music-track.ts: adds a music track to a project, measured for the mix and beat-tracked, and fits one to a length.
+// `studio music add` and `studio music fit` run it.
 //
-// Copies the track to projects/<p>/music/ and writes music/index.ts, which the video imports:
+// `add` copies the track to projects/<p>/music/ and writes music/index.ts, which the video imports:
 //   import { music } from './music/index.ts';
 //   defineVideo({ …, music: { track: music.bed } })
 // Each track carries its loudness (the mix levels it against the voice), its tempo, and its beat times in the track,
-// for placing accents or cuts on the beat by hand.
+// for placing accents or cuts on the beat by hand. `fit` cuts a new track from one of them (lib/music-fit.ts) and adds
+// it beside the original, with the spans it was cut from.
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import { measureLoudness } from './loudness.ts';
 import { detectMusicBeats } from './music-beats.ts';
+import { planMusicFit, spliceMusicSpans } from './music-fit.ts';
 import type { MusicTrack } from './studio/mix.ts';
 
 type Entry = Omit<MusicTrack, 'src'> & { file: string };
+
+// Beats are tracked, and fits planned, on mono at this rate; the fitted file keeps the source's own rate and channels.
+const ANALYSIS_RATE = 22050;
 
 /** Adds `source` to the project's music as `name`, and returns the path of the music/index.ts it rewrote. */
 export function addProjectMusicTrack(project: string, source: string, name: string): string {
@@ -27,18 +33,64 @@ export function addProjectMusicTrack(project: string, source: string, name: stri
 
   const duration = Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path]).toString());
   const { lufs } = measureLoudness(path);
-  const rate = 22050;
-  const pcm = execFileSync('ffmpeg', ['-v', 'error', '-i', path, '-ac', '1', '-ar', String(rate), '-f', 'f32le', '-'], { maxBuffer: 1 << 30 });
-  const { bpm, beats } = detectMusicBeats(new Float32Array(pcm.buffer, pcm.byteOffset, pcm.byteLength / 4), rate);
-
-  const manifestPath = join(dir, 'manifest.json');
-  const manifest: Record<string, Entry> = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf8')) : {};
-  manifest[name] = { file, duration: Math.round(duration * 1000) / 1000, lufs, bpm, beats };
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-  const index = join(dir, 'index.ts');
-  writeFileSync(index, musicModule(manifest));
+  const { bpm, beats } = detectMusicBeats(decodeAudio(path, 1, ANALYSIS_RATE)[0], ANALYSIS_RATE);
+  const index = writeMusicEntry(dir, name, { file, duration: Math.round(duration * 1000) / 1000, lufs, bpm, beats });
   console.error(`${name}: ${basename(source)}, ${duration.toFixed(1)}s, ${lufs} LUFS, ${bpm} BPM, first beats ${beats.slice(0, 4).join(', ')}s`);
   return index;
+}
+
+export type MusicFitResult = { file: string; index: string; track: Entry & { fit: NonNullable<MusicTrack['fit']> }; worstSeamDb: number };
+
+/**
+ * Cuts `music.<name>` to exactly `seconds`, ending on its own ending, and adds it as `music.<as>`, keeping the
+ * original. Deterministic: the same track and length always give the same spans.
+ */
+export function fitProjectMusicTrack(project: string, { name, as, seconds }: { name: string; as: string; seconds: number }): MusicFitResult {
+  if (!/^[a-z][a-z0-9-]*$/.test(as)) throw new Error(`--as must be lowercase words joined by dashes, not ${as}`);
+  if (as === name) throw new Error(`--as must differ from --name, so the original stays to refit from`);
+  const dir = join(project, 'music');
+  const manifest = readMusicManifest(dir), source = manifest[name];
+  if (manifest[as] && !manifest[as].fit) throw new Error(`music.${as} is a track of its own, not a fit; choose another --as`);
+  if (!source) throw new Error(`no music.${name} in ${dir}; add it with \`studio music add\``);
+  if (source.fit) throw new Error(`music.${name} is itself a fit of music.${source.fit.source}; fit from that`);
+
+  const sourcePath = join(dir, source.file);
+  const plan = planMusicFit({ samples: decodeAudio(sourcePath, 1, ANALYSIS_RATE)[0], rate: ANALYSIS_RATE, beats: source.beats, targetSeconds: seconds });
+  const [stream] = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=channels,sample_rate', '-of', 'json', sourcePath]).toString()).streams;
+  const channels = Number(stream.channels), rate = Number(stream.sample_rate);
+  const spliced = spliceMusicSpans(decodeAudio(sourcePath, channels, rate), rate, plan.spans, seconds);
+
+  const file = `${as}.wav`, path = join(dir, file);
+  const interleaved = new Float32Array(spliced[0].length * channels);
+  for (let i = 0; i < spliced[0].length; i++) for (let c = 0; c < channels; c++) interleaved[i * channels + c] = spliced[c][i];
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'f32le', '-ar', String(rate), '-ac', String(channels), '-i', '-', '-c:a', 'pcm_s16le', path], {
+    input: Buffer.from(interleaved.buffer),
+  });
+  const track = {
+    file, duration: Math.round(seconds * 1000) / 1000, lufs: measureLoudness(path).lufs, bpm: source.bpm, beats: plan.beats,
+    fit: { source: name, spans: plan.spans, seams: plan.seams, downbeats: plan.downbeats },
+  };
+  return { file: path, index: writeMusicEntry(dir, as, track), track, worstSeamDb: plan.worstSeamDb };
+}
+
+function readMusicManifest(dir: string): Record<string, Entry> {
+  const path = join(dir, 'manifest.json');
+  return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};
+}
+
+function writeMusicEntry(dir: string, name: string, entry: Entry): string {
+  const manifest = { ...readMusicManifest(dir), [name]: entry };
+  writeFileSync(join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+  const index = join(dir, 'index.ts');
+  writeFileSync(index, musicModule(manifest));
+  return index;
+}
+
+/** Each channel's samples, resampled to `rate`. */
+function decodeAudio(path: string, channels: number, rate: number): Float32Array[] {
+  const pcm = execFileSync('ffmpeg', ['-v', 'error', '-i', path, '-ac', String(channels), '-ar', String(rate), '-f', 'f32le', '-'], { maxBuffer: 1 << 30 });
+  const all = new Float32Array(pcm.buffer, pcm.byteOffset, pcm.byteLength / 4);
+  return Array.from({ length: channels }, (_, c) => Float32Array.from({ length: all.length / channels }, (_, i) => all[i * channels + c]));
 }
 
 function musicModule(tracks: Record<string, Entry>) {
@@ -56,4 +108,20 @@ export const music = {
 ${entries}
 } as const satisfies Record<string, MusicTrack>;
 `;
+}
+
+/**
+ * Each moment (a cut, an `expect`) against the fitted track's nearest downbeat, in video time: a minus means it comes
+ * before the downbeat. Only a report; nothing is moved.
+ */
+export function formatMusicFitReport(track: MusicFitResult['track'], moments: readonly { label: string; at: number }[]): string[] {
+  const beat = 60 / track.bpm;
+  const rows = moments.map(({ label, at }) => {
+    const downbeat = track.fit.downbeats.reduce((best, d) => (Math.abs(d - at) < Math.abs(best - at) ? d : best), Infinity);
+    const off = at - downbeat, signed = (x: number) => `${x >= 0 ? '+' : ''}${x.toFixed(2)}`;
+    return [label, `${at.toFixed(2)} s`, `${downbeat.toFixed(2)} s`, `${signed(off)} s (${signed(off / beat)} beats)`];
+  });
+  const table = [['moment', 'at', 'downbeat', 'off'], ...rows];
+  const widths = table[0].map((_, c) => Math.max(...table.map((r) => r[c].length)));
+  return table.map((r) => '  ' + r.map((cell, c) => cell.padEnd(widths[c])).join('   ').trimEnd());
 }

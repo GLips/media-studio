@@ -26,6 +26,20 @@ export type MusicTrack = {
   bpm: number;
   /** Beat times in the track, in seconds. */
   beats: readonly number[];
+  /** Set when `studio music fit` rebuilt the track to a video's length. */
+  fit?: MusicFit;
+};
+
+/** How a fitted track was cut from its source, so the seams can be found by ear and a refit compared against it. */
+export type MusicFit = {
+  /** The track it was cut from: music.<source>. */
+  source: string;
+  /** Stretches of the source, in its seconds, played end to end with a short crossfade at each join. */
+  spans: readonly { from: number; to: number }[];
+  /** Where each join falls in this track, in seconds: just before a downbeat. */
+  seams: readonly number[];
+  /** Beat 1 of each bar in this track, as the fit guessed it from bass hits and chord changes. */
+  downbeats: readonly number[];
 };
 
 export type MusicBed = {
@@ -64,15 +78,15 @@ export function musicLevels(bed: MusicBed): { bedDb: number; duckedDb: number } 
 
 /**
  * The music's gain at video time `t`: the bed level, dipping to the ducked level around each span (eased in dB,
- * since that's how loudness is heard), faded in at the start and out at the end.
+ * since that's how loudness is heard), faded in at the start and out at the end, unless the track ends with the video.
  */
-export function musicGainAt(t: number, spans: readonly { start: number; end: number }[], levels: { bedDb: number; duckedDb: number }, videoDuration: number): number {
+export function musicGainAt(t: number, spans: readonly { start: number; end: number }[], levels: { bedDb: number; duckedDb: number }, videoDuration: number, endsWithVideo: boolean): number {
   let duck = 0;
   for (const s of spans) {
     const into = (t - (s.start - DUCK_ATTACK)) / DUCK_ATTACK, outOf = (s.end + DUCK_RELEASE - t) / DUCK_RELEASE;
     duck = Math.max(duck, Math.min(1, into, outOf));
   }
-  const fade = Math.max(0, Math.min(1, t / MUSIC_FADE_IN, (videoDuration - t) / MUSIC_FADE_OUT));
+  const fade = Math.max(0, Math.min(1, t / MUSIC_FADE_IN, endsWithVideo ? 1 : (videoDuration - t) / MUSIC_FADE_OUT));
   return dbToGain(levels.bedDb + (levels.duckedDb - levels.bedDb) * smooth(duck)) * fade;
 }
 

@@ -15,7 +15,7 @@ Pick the part the task needs and read its reference:
 
 | Part | For | Read |
 |---|---|---|
-| **music** | Adding a track with `studio music`, using it as a bed or as the lead, and cutting to its beat | `references/music.md` |
+| **music** | Adding a track with `studio music add`, fitting it to the video with `studio music fit`, using it as a bed or as the lead, and cutting to its beat | `references/music.md` |
 | **sfx** | What already makes a sound, when an `<Sfx>` earns its place, and where sounds come from | `references/sfx.md` |
 | **mix** | What's levelled and mastered automatically, and the few levels worth changing | `references/mix.md` |
 
