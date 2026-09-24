@@ -73,15 +73,21 @@ export function fitTake<T extends Take>(take: T, pins: readonly (readonly [numbe
 }
 
 /** Take time at scene time `t`. */
-export function takeTimeAt({ take, pins }: TakeFit, t: number): number {
-  const clampTake = (v: number) => Math.min(take.duration, Math.max(0, v));
-  if (t <= pins[0][0]) return clampTake(pins[0][1] - (pins[0][0] - t));
+export const takeTimeAt = ({ take, pins }: TakeFit, t: number): number => pinnedSourceTime(pins, t, take.duration);
+
+/**
+ * Footage time at scene time `t`, for footage (a take, generated video) of `duration` seconds pinned to the scene at
+ * `[scene, footage]` times: straight between pins, at the footage's own speed before the first and after the last.
+ */
+export function pinnedSourceTime(pins: readonly (readonly [number, number])[], t: number, duration: number): number {
+  const clampSource = (v: number) => Math.min(duration, Math.max(0, v));
+  if (t <= pins[0][0]) return clampSource(pins[0][1] - (pins[0][0] - t));
   for (let i = 1; i < pins.length; i++) {
     const [s0, k0] = pins[i - 1], [s1, k1] = pins[i];
     if (t <= s1) return k0 + ((k1 - k0) * (t - s0)) / (s1 - s0);
   }
   const [sn, kn] = pins[pins.length - 1];
-  return clampTake(kn + (t - sn));
+  return clampSource(kn + (t - sn));
 }
 
 /** Where the logged cursor is at take time `time`, straight between waypoints. */

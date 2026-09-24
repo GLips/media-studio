@@ -31,7 +31,7 @@ export const RENDER_CONCURRENCY = Math.max(1, availableParallelism() - 1);
 export async function openRenderSession(project: string) {
   console.error(`bundling ${project}…`);
   const serveUrl = await bundle({ entryPoint: join(STUDIO_ROOT, 'lib/studio/index.ts'), webpackOverride: projectWebpackOverride(project) });
-  const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, ...p });
+  const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, blockouts: false, ...p });
   const compositionFor = (inputProps: VideoProps) => selectComposition({ serveUrl, chromiumOptions: RENDER_CHROMIUM, id: projectSlug(project), inputProps });
 
   async function renderJpegs(composition: VideoConfig, inputProps: Record<string, unknown>, frames: number[], w: number, concurrency = RENDER_CONCURRENCY) {

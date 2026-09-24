@@ -24,6 +24,7 @@ const studioCommand = defineCommand({
     look: () => import('./commands/look.ts').then((m) => m.default),
     check: () => import('./commands/check.ts').then((m) => m.default),
     mix: () => import('./commands/mix.ts').then((m) => m.default),
+    gen: () => import('./commands/gen.ts').then((m) => m.default),
     render: () => import('./commands/render.ts').then((m) => m.default),
     repeatable: () => import('./commands/repeatable.ts').then((m) => m.default),
     home: () => import('./commands/home.ts').then((m) => m.default),

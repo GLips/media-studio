@@ -78,10 +78,29 @@ type SceneTiming = {
   cut?: boolean;
 };
 
+/**
+ * A scene rendered into generated footage by `studio gen video`: the scene's own render is the blockout (see
+ * blockout.tsx) it sends as the reference video. Once footage exists the scene plays it instead, until content changes.
+ */
+export type ScenePrevis = {
+  /** The finished shot: what each blockout subject becomes, by its tint, plus light, lens and look. */
+  prompt: string;
+  /** Stills of the subjects, relative to the project, sent as reference images. */
+  references?: readonly string[];
+  /** Generate sound with the picture. Off by default: the voice and music carry a video's sound. */
+  audio?: boolean;
+  /**
+   * Retimes the footage without paying for it again, as `fitTake` does a take: `[[sceneTime, blockoutTime], ...]`
+   * plays the moment the blockout showed at `blockoutTime` at `sceneTime`. Not with `audio`, which can't be retimed.
+   */
+  retime?(s: SceneTimes): readonly (readonly [scene: number, blockout: number])[];
+};
+
 export type SceneDef = SceneTiming & {
   id: string;
   /** What the shot shows and why, in a sentence, for the storyboard. */
   note?: string;
+  previs?: ScenePrevis;
   lines: readonly string[];
   // Method syntax on purpose: a scene's render takes a clock narrowed to its own line ids, which a function-typed
   // property would reject as a wider parameter.
@@ -98,6 +117,7 @@ export function defineScene<const L extends readonly string[] = readonly []>(
   scene: SceneTiming & {
     id: string;
     note?: string;
+    previs?: ScenePrevis;
     lines?: L;
     render: (s: SceneClock<L[number]>) => ReactNode;
     expect?: (s: SceneTimes<L[number]>) => readonly SceneExpectation[];

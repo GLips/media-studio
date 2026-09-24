@@ -1,11 +1,12 @@
 // Root.tsx: registers the one project this bundle was built for (see lib/project-bundle.ts), as a composition named
-// after its folder, plus a replay of it for `studio repeatable`.
+// after its folder, plus a replay of it for `studio repeatable` and a previs scene's blockout alone for `studio gen video`.
 
 import { Composition, Freeze, useCurrentFrame } from 'remotion';
 import video from '@project';
 import { FPS, H, W } from './frame.ts';
+import { previsSpan } from './previs.tsx';
 import { layoutVideo, totalFrames } from './timeline.ts';
-import { Video, type VideoProps } from './Video.tsx';
+import { BlockoutSolo, Video, type BlockoutSoloProps, type VideoProps } from './Video.tsx';
 
 /**
  * Stops `Date` at `clock` for the whole tab. Timers, animation frames and performance.now keep real time, and
@@ -39,6 +40,8 @@ const ReplayVideo = ({ order, ...props }: ReplayProps) => (
   </Freeze>
 );
 
+const ProjectBlockout = (props: BlockoutSoloProps) => <BlockoutSolo video={video} {...props} />;
+
 export function Root() {
   const tl = layoutVideo(video);
   const frames = totalFrames(tl, FPS);
@@ -51,7 +54,7 @@ export function Root() {
         height={H}
         fps={FPS}
         durationInFrames={frames}
-        defaultProps={{ captions: false, probe: false } satisfies VideoProps}
+        defaultProps={{ captions: false, probe: false, blockouts: false } satisfies VideoProps}
       />
       <Composition
         id={REPLAY_SLUG}
@@ -62,7 +65,17 @@ export function Root() {
         durationInFrames={frames}
         // Never shorter than the video: a frozen frame is clamped to the composition's length.
         calculateMetadata={({ props }) => ({ durationInFrames: Math.max(frames, props.order.length) })}
-        defaultProps={{ captions: false, probe: false, order: [0] } satisfies ReplayProps}
+        defaultProps={{ captions: false, probe: false, blockouts: false, order: [0] } satisfies ReplayProps}
+      />
+      <Composition
+        id={BLOCKOUT_SLUG}
+        component={ProjectBlockout}
+        width={W}
+        height={H}
+        fps={FPS}
+        durationInFrames={FPS * 4}
+        calculateMetadata={({ props }) => ({ durationInFrames: previsSpan(tl, props.scene).duration * FPS })}
+        defaultProps={{ scene: tl.scenes.find((s) => s.previs)?.id ?? tl.scenes[0].id } satisfies BlockoutSoloProps}
       />
     </>
   );

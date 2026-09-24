@@ -4,7 +4,7 @@
 // One project per bundle on purpose: captures and audio are gitignored and imported, so a project that hasn't been
 // captured yet would break every other project's Studio and render if they shared a bundle.
 
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, dirname, join, resolve } from 'node:path';
 import { webpack, type WebpackOverrideFn } from '@remotion/bundler';
@@ -19,6 +19,14 @@ export function projectSlug(project: string) {
 export function replaySlug(project: string) {
   return `${projectSlug(project)}-replay`;
 }
+
+/** The composition that renders one previs scene's blockout alone (Video.tsx's BlockoutSolo). */
+export function blockoutSlug(project: string) {
+  return `${projectSlug(project)}-blockout`;
+}
+
+/** Where `studio gen video` lists a project's generated footage, which `@footage` imports. */
+export const footageModuleFor = (project: string) => join(resolve(project), 'generated', 'footage.ts');
 
 // Host components must share the studio's React, and Remotion pins react-dom only at /client, so a host's
 // createPortal would load a second copy. No import.meta: the Remotion CLI bundles remotion.config.ts to CommonJS.
@@ -37,13 +45,20 @@ function hostResolvePlugins(project: string) {
 export function projectWebpackOverride(project: string): WebpackOverrideFn {
   const entry = join(resolve(project), 'video.tsx');
   const hostPlugins = hostResolvePlugins(project);
+  // An empty list until `studio gen video` writes one, so the import always resolves, and an open Studio, which
+  // watches the file, picks up footage as it lands.
+  const footage = footageModuleFor(project);
+  if (!existsSync(footage)) {
+    mkdirSync(dirname(footage), { recursive: true });
+    writeFileSync(footage, '// Written by `studio gen video` from footage.json. No footage yet.\nexport const footage = {};\n');
+  }
   return (config) => ({
     ...config,
     resolve: {
       ...config.resolve,
-      alias: { ...(config.resolve?.alias as Record<string, string>), '@project': entry, 'react-dom': studioReactDom(entry) },
+      alias: { ...(config.resolve?.alias as Record<string, string>), '@project': entry, '@footage': footage, 'react-dom': studioReactDom(entry) },
       plugins: [...(config.resolve?.plugins ?? []), ...hostPlugins],
     },
-    plugins: [...(config.plugins ?? []), new webpack.DefinePlugin({ PROJECT_SLUG: JSON.stringify(projectSlug(project)), REPLAY_SLUG: JSON.stringify(replaySlug(project)) })],
+    plugins: [...(config.plugins ?? []), new webpack.DefinePlugin({ PROJECT_SLUG: JSON.stringify(projectSlug(project)), REPLAY_SLUG: JSON.stringify(replaySlug(project)), BLOCKOUT_SLUG: JSON.stringify(blockoutSlug(project)) })],
   });
 }
