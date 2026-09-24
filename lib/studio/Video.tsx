@@ -46,7 +46,9 @@ function timelineReport(video: VideoDef, tl: Timeline, fps: number): string {
   return JSON.stringify(report);
 }
 
-export function Video({ video, captions, probe }: VideoProps & { video: VideoDef }) {
+// `reportTimeline` is off in the replay composition: its Freeze can land on frame 0 more than once, and Remotion
+// refuses a second artifact with the same name.
+export function Video({ video, captions, probe, reportTimeline = true }: VideoProps & { video: VideoDef; reportTimeline?: boolean }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const tl = useMemo(() => layoutVideo(video), [video]);
@@ -76,7 +78,7 @@ export function Video({ video, captions, probe }: VideoProps & { video: VideoDef
       )}
       {video.music && <MusicBedAudio video={video} tl={tl} fps={fps} />}
       {captions && <Caption cues={tl.cues} t={t} />}
-      {frame === 0 && <Artifact filename={TIMELINE_ARTIFACT} content={timelineReport(video, tl, fps)} />}
+      {reportTimeline && frame === 0 && <Artifact filename={TIMELINE_ARTIFACT} content={timelineReport(video, tl, fps)} />}
       {probe && <FramingProbe root={root} />}
     </AbsoluteFill>
   );

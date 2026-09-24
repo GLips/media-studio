@@ -88,6 +88,8 @@ type Entry = StillEntry | TakeEntry;
 // Stills load and settle in parallel; takes run alone, since they're filmed in real time and a busy machine drops
 // their frames.
 const STILL_CONCURRENCY = 4;
+// Marks closer than this are closer than two spoken words usually are.
+const CLOSE_MARKS = 0.8;
 
 /**
  * @param project The project directory; shots land in `<project>/captures`.
@@ -122,19 +124,22 @@ export function captureShots({ project, viewport, scale = 2, css = '', prepare, 
     shots.push(shot);
   };
 
-  /** Films every shot, or just those named in `only`, and rebuilds captures/index.ts. */
-  async function run({ only }: { only?: readonly string[] } = {}) {
+  /**
+   * Films every shot, or just those named in `only`, and rebuilds captures/index.ts from every shot that has a
+   * capture of its kind. Returns the shots the index leaves out for want of one.
+   */
+  async function run({ only }: { only?: readonly string[] } = {}): Promise<UncapturedShot[]> {
     const unknown = only?.filter((n) => !shots.some((s) => s.name === n)) ?? [];
     if (unknown.length) throw new Error(`capture: no shot named ${unknown.join(', ')}`);
     mkdirSync(dir, { recursive: true });
     const madeFrom = { studio: gitState(STUDIO_ROOT), host: linkedProjectHost(project) };
 
     const browser = await chromium.launch();
-    const prepared = new Map<string, Promise<StorageState | undefined>>();
-    const preparedStateFor = (device?: string) => {
+    const prepared = new Map<string, Promise<PreparedDevice>>();
+    const preparedStateFor = async (device?: string) => {
       const key = device ?? '';
       if (!prepared.has(key)) prepared.set(key, prepareDevice(browser, deviceFor(device), baseCss, prepare));
-      return prepared.get(key)!;
+      return (await prepared.get(key)!).storageState;
     };
     const onFreshPage = async (device: string | undefined, work: (page: Page) => Promise<Entry>, name: string) => {
       const context = await openContext(browser, deviceFor(device), baseCss, await preparedStateFor(device));
@@ -160,52 +165,75 @@ export function captureShots({ project, viewport, scale = 2, css = '', prepare, 
         }, shot.name);
       }
     } catch (error) {
-      // Shots that finished have replaced their files (a take's frames among them), so the index is rebuilt whenever
-      // every shot has an entry; otherwise it would point at frames that are gone.
+      // Shots that finished have replaced their files (a take's frames among them), which the old index may name.
       await browser.close();
-      if (!uncaptured(dir, shots).length) writeIndex(dir, shots);
+      writeIndex(dir, shots);
       throw error;
     }
     await browser.close();
-    writeIndex(dir, shots);
+    return writeIndex(dir, shots);
+  }
+
+  /**
+   * Opens `url` the way a shot's page starts (after `prepare`, with the css and device), for looking at a page before
+   * writing its shots. A URL path (`/inbox`) is taken from where `prepare` left off. Close the browser when done.
+   */
+  async function openPreparedPage(url: string, { device }: { device?: string } = {}) {
+    const browser = await chromium.launch();
+    try {
+      const { storageState, url: preparedUrl } = await prepareDevice(browser, deviceFor(device), baseCss, prepare);
+      if (url.startsWith('/') && !preparedUrl) throw new Error(`capture: ${url} is a path, and there's no prepare step to take the site from; give a whole URL`);
+      const page = await (await openContext(browser, deviceFor(device), baseCss, storageState)).newPage();
+      await page.goto(url.startsWith('/') ? new URL(url, preparedUrl).href : url, { waitUntil: 'load' });
+      return { page, browser };
+    } catch (error) {
+      await browser.close();
+      throw error;
+    }
   }
 
   return {
     still: <T>(name: string, options: StillOptions<T>) => add({ name, kind: 'still', options: options as StillOptions }),
     take: (name: string, options: TakeOptions) => add({ name, kind: 'take', options }),
     run,
+    openPreparedPage,
   };
 }
+
+/** A shot capture.ts makes that captures/index.ts leaves out, and why. */
+export type UncapturedShot = { name: string; reason: string };
 
 /** What a project's capture.ts default-exports. */
 export type CaptureShots = ReturnType<typeof captureShots>;
 
-/** Films the shots the project's capture.ts defines (just `only`, if given) and returns its captures/index.ts. */
-export async function captureStudioProject(project: string, { only }: { only?: readonly string[] } = {}): Promise<string> {
+/** The captureShots session a project's capture.ts default-exports. */
+export async function importProjectCaptureShots(project: string): Promise<CaptureShots> {
   const script = join(project, 'capture.ts');
   const shots = (await import(pathToFileURL(script).href)).default as CaptureShots | undefined;
   if (typeof shots?.run !== 'function') throw new Error(`${script} must end with \`export default shots;\` (the captureShots session)`);
-  await shots.run({ only });
-  return join(project, 'captures', 'index.ts');
+  return shots;
 }
 
-/** The index can't be rebuilt: these shots have no capture of the kind capture.ts now makes. Redoing them fixes it. */
-export class ShotsNeedCapturingError extends Error {
-  readonly shots: readonly string[];
-  constructor(shots: readonly string[], message: string) {
-    super(message);
-    this.shots = shots;
-  }
+/**
+ * Films the shots the project's capture.ts defines (just `only`, if given). Returns its captures/index.ts and the
+ * shots the index leaves out.
+ */
+export async function captureStudioProject(project: string, { only }: { only?: readonly string[] } = {}) {
+  const uncaptured = await (await importProjectCaptureShots(project)).run({ only });
+  return { index: join(project, 'captures', 'index.ts'), uncaptured };
 }
 
 type StorageState = Awaited<ReturnType<BrowserContext['storageState']>>;
 
-async function prepareDevice(browser: Browser, device: Device, css: string, prepare?: (page: Page) => Promise<unknown>) {
-  if (!prepare) return undefined;
+type PreparedDevice = { storageState?: StorageState; url?: string };
+
+async function prepareDevice(browser: Browser, device: Device, css: string, prepare?: (page: Page) => Promise<unknown>): Promise<PreparedDevice> {
+  if (!prepare) return {};
   const context = await openContext(browser, device, css, undefined);
   try {
-    await prepare(await context.newPage());
-    return await context.storageState();
+    const page = await context.newPage();
+    await prepare(page);
+    return { storageState: await context.storageState(), url: page.url() };
   } finally {
     await context.close();
   }
@@ -414,7 +442,17 @@ async function filmTake(page: Page, dir: string, name: string, device: Device, {
     writeFileSync(join(takeDir, file), Buffer.from(f.data, 'base64'));
     return { file, t: round3(f.t - t0), scrollY: f.scrollY };
   });
-  console.error(`filmed ${name}  (${frames.length} frames over ${duration.toFixed(1)}s; marks ${Object.keys(marks).join(', ') || 'none'})`);
+  const markList = Object.entries(marks).map(([label, m]) => `${label} ${m.t.toFixed(1)}s`).join(', ') || 'none';
+  console.error(`filmed ${name}  (${frames.length} frames over ${duration.toFixed(1)}s — Chrome sends frames only on repaint; marks: ${markList})`);
+  // fitTake stretches the take between two pinned marks to span the words they're pinned to, so marks this close
+  // play in slow motion unless their words are as close.
+  const byTime = Object.entries(marks).sort(([, a], [, b]) => a.t - b.t);
+  for (const [i, [label, m]] of byTime.entries()) {
+    const [nextLabel, next] = byTime[i + 1] ?? [];
+    if (next && next.t - m.t < CLOSE_MARKS) {
+      console.error(`capture ${name}: marks ${label} and ${nextLabel} are ${(next.t - m.t).toFixed(2)}s apart, so pinning both to words would play that stretch in slow motion. Pin one, or rec.wait() between them`);
+    }
+  }
   return {
     kind: 'take', w: width, h: height, scale: device.scale, duration: round3(duration), frames,
     marks: Object.fromEntries(Object.entries(marks).map(([k, m]) => [k, { ...m, t: round3(m.t) }])),
@@ -441,17 +479,17 @@ function writeEntry(dir: string, name: string, entry: Entry) {
   writeFileSync(entryPath(dir, name), JSON.stringify(entry));
 }
 
-// Rebuilt from every shot's own entry, so redoing some shots keeps the rest. What no shot owns any more is deleted,
-// so a renamed shot doesn't leave its old files behind.
-const uncaptured = (dir: string, shots: readonly Shot[]) => shots.filter((s) => !existsSync(entryPath(dir, s.name))).map((s) => s.name);
-
-function writeIndex(dir: string, shots: readonly Shot[]) {
-  const missing = uncaptured(dir, shots);
-  if (missing.length) throw new ShotsNeedCapturingError(missing, `capture: never captured ${missing.join(', ')}`);
-  const entries = shots.map((s) => [s, JSON.parse(readFileSync(entryPath(dir, s.name), 'utf8')) as Entry] as const);
-  const changedKind = entries.filter(([s, entry]) => entry.kind !== s.kind);
-  if (changedKind.length) {
-    throw new ShotsNeedCapturingError(changedKind.map(([s]) => s.name), `capture: ${changedKind.map(([s, entry]) => `${s.name} was captured as a ${entry.kind}, but capture.ts makes it a ${s.kind}`).join('; ')}`);
+// Rebuilt from every shot's own entry, so redoing some shots keeps the rest. A shot without a capture of its kind is
+// left out, so a scene using it fails to compile by name. What no shot owns any more is deleted, so a renamed shot
+// doesn't leave its old files behind.
+function writeIndex(dir: string, shots: readonly Shot[]): UncapturedShot[] {
+  const uncaptured: UncapturedShot[] = [];
+  const entries: (readonly [Shot, Entry])[] = [];
+  for (const s of shots) {
+    const entry = existsSync(entryPath(dir, s.name)) ? (JSON.parse(readFileSync(entryPath(dir, s.name), 'utf8')) as Entry) : null;
+    if (!entry) uncaptured.push({ name: s.name, reason: 'never captured' });
+    else if (entry.kind !== s.kind) uncaptured.push({ name: s.name, reason: `captured as a ${entry.kind}, but capture.ts makes it a ${s.kind}` });
+    else entries.push([s, entry]);
   }
   const names = new Set(shots.map((s) => s.name));
   writeFileSync(provenancePath(dir), JSON.stringify(Object.fromEntries(Object.entries(readProvenance(dir)).filter(([name]) => names.has(name))), null, 2));
@@ -459,6 +497,7 @@ function writeIndex(dir: string, shots: readonly Shot[]) {
     if (file !== 'index.ts' && file !== 'provenance.json' && !names.has(file.replace(/\.(png|json)$/, ''))) rmSync(join(dir, file), { recursive: true, force: true });
   }
   writeFileSync(join(dir, 'index.ts'), indexModule(entries.map(([s, entry]) => [s.name, entry] as const)));
+  return uncaptured;
 }
 
 // The index is a module rather than JSON so the video imports each image (the bundler hashes and serves it) and rect

@@ -10,6 +10,10 @@ named shots with `captureShots` from `lib/capture.ts`, whose header and types ar
 them into `captures/`; `--only=a,b` redoes just those, and the rest keep their last capture.
 `projects/2026-09-simple-buy-box-story/capture.ts` is a worked example.
 
+Find selectors with `studio probe <p> <url-or-path>` (`--at=x,y` for one spot): it opens the page as the shots will,
+signed in and styled, and lists elements with rect specs and match counts. Use it instead of a throwaway Playwright
+script.
+
 ## Still or take
 
 - **Still**, the default: a high-DPI screenshot plus the page rects of what scenes point at. Cameras pan and zoom over
@@ -31,6 +35,17 @@ them into `captures/`; `--only=a,b` redoes just those, and the rest keep their l
 - `scrollY` captures just the viewport, scrolled there: the way to show a sticky bar where a visitor sees it. A
   function measures it after `setup`.
 - A rect that matches nothing throws unless it's `optional`, so a finished capture holds every rect scenes ask for.
+- Anchor a rect's `text` regex (`'^Sign in$'`), or longer text containing the words matches too.
+
+## Sites behind a sign-in
+
+- `prepare` signs in once per device, and every shot starts from its cookies.
+- Credentials come only from environment variables the user names: read `process.env.X` in `capture.ts`, and have
+  the user run `studio capture` under their secret launcher. Never write them to a file or go looking for them; if
+  none are given, ask. Where the product runs locally, film a demo instance on seeded data instead, with its own
+  throwaway password (`projects/2026-09-tk-demo/storyboard.md`, Captures).
+- A sign-in form can ignore input until the app hydrates. Wait for proof it's live (the submit button enabled, an
+  input that keeps what's typed), not `networkidle` or a fixed timeout.
 
 ## Takes
 
@@ -39,6 +54,10 @@ them into `captures/`; `--only=a,b` redoes just those, and the rest keep their l
 - `rec.moveTo`, `click`, `type` and `scrollTo` each take a `mark` that names the moment (arrival, the click, the first
   key, the scroll's start) and measures `rects` then; `rec.mark` names a moment on its own. Scenes pin marks to words.
 - Mark rects are page coordinates. The studio shifts them by each frame's scroll, so scenes aim through `onTake`.
+- Leave about a second (`rec.wait`) between marks a scene will pin to words: the stretch between two pins plays at
+  the pace of their words, so close marks play in slow motion.
+- The frame count `studio capture` prints counts repaints (Chrome sends a frame only when the page changes), not
+  quality. A low count over a still stretch is fine.
 
 ## Gotchas
 

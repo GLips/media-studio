@@ -123,7 +123,7 @@ export async function voiceStudioProject(project: string, { mode, recording }: {
 
     const pause = clip.pauseBefore === null ? '' : `  after ${clip.pauseBefore.toFixed(2)}s`;
     const unheard = words.filter((_, k) => !aligned.heard[k]).map((w) => w.text);
-    console.error(`cut ${clip.id}  ${duration.toFixed(2)}s${pause}${unheard.length ? `  (heard differently: ${unheard.join(' ')})` : ''}`);
+    console.error(`cut ${clip.id}  ${duration.toFixed(2)}s${pause}${unheard.length ? `  (misheard, timed from their neighbours: ${unheard.join(' ')})` : ''}`);
   }
   for (const clip of clips.slice(1)) {
     const problem = !clip.cutIsClear ? 'has no one clear pause' : clip.cutPause < TIGHT_PAUSE ? `pauses only ${Math.round(clip.cutPause * 1000)} ms` : null;
@@ -132,6 +132,18 @@ export async function voiceStudioProject(project: string, { mode, recording }: {
   for (const key of Object.keys(heard)) if (!used.has(key)) delete heard[key];
   saveInfo();
   return writeManifest(dir, manifest);
+}
+
+/**
+ * True when the project's voiced lines were cut from a `--read=draft` take (macOS say): fine for timing, never for
+ * delivery. take.json can outlive the take the manifest used only when the manifest is estimated, and then no line has audio.
+ */
+export function isVoicedWithDraft(project: string): boolean {
+  const manifestPath = join(project, 'audio', 'manifest.json'), infoPath = join(project, 'audio', 'take.json');
+  if (!existsSync(manifestPath) || !existsSync(infoPath)) return false;
+  const manifest: Record<string, Voiced> = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const info: TakeInfo = JSON.parse(readFileSync(infoPath, 'utf8'));
+  return info.source === 'draft' && Object.values(manifest).some((line) => line.src !== null);
 }
 
 function estimateLines(lines: readonly { id: string; text: string }[]) {

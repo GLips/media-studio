@@ -34,7 +34,7 @@ this repo pins 4.0.525). Where one contradicts the rules above, the rules above 
 | `references/audio.md` | `<Audio>`: trimming, volume callbacks, looping, speed |
 | `references/sfx.md` | Sound effects: a click on a cursor click, a whoosh on a whip pan. Download a file into the project rather than loading a URL at render time |
 | `references/images.md` | `<Img>` and why it, not `<img>`, waits for the image to load |
-| `references/local-fonts.md` | `@remotion/fonts`: loading a font file so every machine renders the same text. Today the studio uses the system SF Pro stack |
+| `references/local-fonts.md` | `@remotion/fonts`: loading a font file so every machine renders the same text. The studio has no `public/`, so import the font file for its URL instead of `staticFile` |
 | `references/measuring-text.md` | Fitting text to a box before it renders |
 | `references/measuring-dom-nodes.md` | Measuring an element's size inside a composition |
 | `references/text-highlights.md` | `@remotion/rough-notation`: hand-drawn circles, underlines and boxes. Drive `progress` from the scene clock |

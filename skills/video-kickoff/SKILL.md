@@ -20,11 +20,13 @@ The first message is usually messy and dictated. Pull these out of it, and ask o
 - **Audience**: the client, customers or developers. That sets the vocabulary and how much gets explained.
 - **Source material**: docs, a PR, a Loom transcript, a launch-post draft, the Slack thread. Read every one of them.
   Asked from inside a product repo, the change itself (its diff, docs and PR) is source material.
-- **Where the real UI is**: the URL, theme, or preview query (e.g. `?view=…`) for each state the story needs.
+- **Where the real UI is**: the URL, theme, or preview query (e.g. `?view=…`) for each state the story needs, and
+  whether it needs a sign-in (the `video-capture` skill, Sites behind a sign-in).
 - **Whose code it's about.** If it's a product repo's (a PR, a component), make that repo the project's host once the
   project exists: `projects/<p>/host.json` `{ name, ref }`, with `name` a key of `hosts.json` (add it if new), then
-  `studio hosts sync <p> --install`. The host appears at `projects/<p>/host`. To show unpushed work, map the name to
-  the working copy's absolute path in `hosts.local.json`.
+  `studio hosts sync <p> --install`. That checks out the pinned commit outside the studio and runs the host's own
+  install there, lifecycle scripts included. To show unpushed or uncommitted work, map the name to the working copy
+  in `hosts.local.json` instead: it's used as it stands, and you install its packages yourself.
 - **A reference video**, if they have one for the style.
 - **Rough length.** Frames are 1920×1080.
 
@@ -36,8 +38,8 @@ picks until they say it feels right.
 
 ## 3. Scene table
 
-Start the project with `studio new`. If the video is about a product repo's code, give it a host (the `video-capture`
-skill, Hosts). Then write the chosen angle out scene by scene in `projects/<p>/storyboard.md`, under the audience,
+Start the project with `studio new <slug>`, adding `--url` only for a public page that loads as it is. If the video is
+about a product repo's code, give it a host (step 1). Then write the chosen angle out scene by scene in `projects/<p>/storyboard.md`, under the audience,
 source and takeaway:
 
 ```
@@ -77,7 +79,8 @@ The storyboard is the video itself, rough, and never a separate drawing, so it c
 
 Once signed off, voice it for real with `studio voice <p>`, which reads the whole script as one take. It needs
 `OPENROUTER_API_KEY` in the environment; if that isn't set, don't go looking for it: ask the user to run
-`studio voice <p>` themselves, under their secret launcher. Then rebuild the storyboard to check the timing, and do
+`studio voice <p>` themselves, under their secret launcher. Until then, `--read=draft` reads it free with macOS `say`,
+to time scenes against real speech. A draft voice is for timing only, never for a delivered video. Then rebuild the storyboard to check the timing, and do
 the motion pass with the `video-motion` skill.
 
 ## Real UI only

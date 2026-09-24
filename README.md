@@ -21,16 +21,17 @@ Every step is a `studio` verb. A `<project>` is a slug (`sale-only-view`), a uni
 
 | Step | Command | Output |
 |---|---|---|
-| Start | `studio new <slug> --url=…` | `projects/<yyyy-mm>-<slug>/`, captured and with estimated timing, so it previews at once |
-| Capture | `studio capture <project>` | `captures/` plus `captures/index.ts`: the named shots. A still is a high-DPI full-page screenshot with the page positions of the elements scenes point at; a take is a screen recording of real clicks, scrolls and typing, with marks |
+| Start | `studio new <slug> [--url=…]` | `projects/<yyyy-mm>-<slug>/` with estimated timing, so it previews at once; with `--url`, that page captured as `home` and titled over |
+| Probe | `studio probe <project> <url-or-path> [--at=x,y]` | a numbered viewport screenshot of a page as `capture.ts` sees it (signed in by its `prepare`), and its interactive and landmark elements (or the one under `--at`) with selectors for rects |
+| Capture | `studio capture <project>` | `captures/` plus `captures/index.ts`: the named shots. A still is a high-DPI full-page screenshot with the page positions of the elements scenes point at; a take is a screen recording of real clicks, scrolls and typing, with marks. Shots `capture.ts` no longer makes are deleted |
 | Voice | `studio voice <project>` | `audio/take.wav`, the whole script read in one take, cut into `audio/<line>.wav` plus `audio/manifest.ts`. Any script change re-reads the take. `--read=draft` is a free macOS `say` read, `--read=estimate` times lines from their word count, `--take=<file>` uses a recording. `studio audition` compares voices on one line |
 | Music | `studio music <project> <file>` | `music/<name>.*` plus `music/index.ts`: the track with its loudness, tempo and beats. Use it with `defineVideo({ music: { track: music.bed } })` |
 | Storyboard | `studio storyboard <project>` | `out/storyboard/index.html`: a preview on top, a card per scene with its note, a still and the audio for each line |
 | Preview | `studio preview <project>` | the Remotion Studio: scrub, see scenes and voice lines on the timeline, toggle `captions` in the props panel |
 | Look | `studio look <project> --sheet=1,5,9` | a contact sheet of chosen times, or `--strip=4:5` for a stretch of motion. Open the image to check frames without rendering video |
-| Check | `studio check <project>` | the framing check, plus `out/check/timeline.json` (when each scene and line lands) |
+| Check | `studio check <project>` | the framing check, a table of when each scene and line starts and ends, and the same as `out/check/timeline.json` |
 | Mix | `studio mix <project>` | `out/mix.wav`, the mastered mix on its own, to audition |
-| Render | `studio render <project>` | `out/mix.wav`, `out/video.mp4` (captions burned in), `out/video.srt`, review sheets in `out/check/`, and `out/watch.html` |
+| Render | `studio render <project>` | `out/mix.wav`, `out/video.mp4` (captions burned in), `out/video.srt`, review sheets in `out/check/`, and `out/watch.html`. A `--read=draft` voice gets a loud warning and a DRAFT banner on the watch page |
 
 `studio render` runs the framing check on every frame first and refuses to render if a highlight sits under a tag or
 the caption, runs off the frame or is cut off by its panel, if a scene's `expect` isn't met, or if any line is still
@@ -38,7 +39,8 @@ estimated. It then masters the mix to −14 LUFS, renders the video muted and mu
 the right length and an audio stream, measure −14 ±1 LUFS and peak at −1 dBTP or lower. Each is tiled into a sheet
 to look over.
 
-`studio repeatable <project> 2,8.5` proves a painted layer is a pure function of time; `studio sfx` re-synthesizes
+`studio api [name]` lists what `lib/studio/api.ts` exports, read from the code, or prints one export's signature and
+doc comment. `studio repeatable <project> 2,8.5` proves a painted layer is a pure function of time; `studio sfx` re-synthesizes
 the kit's click sounds.
 
 `npm run typecheck` checks everything, including that every rect a scene points at was captured. `npm test` runs the
@@ -116,11 +118,16 @@ A shell alias saves typing it. Needs the 1Password app's CLI integration (Settin
 
 A video can be about a product repo, its host, and compose that repo's real React components. `hosts.json`
 (committed) maps a host name to `{ "repo": "<git url>" }`; `hosts.local.json` (gitignored, optional) maps it to an
-absolute path of a working copy on this machine, used as it stands. A project opts in with `projects/<p>/host.json`
-`{ "name", "ref" }`. `studio hosts sync <p> [--install]` checks the ref out into `.hosts/<name>@<sha>` (or uses the
-working copy) and links it at `projects/<p>/host`, so a scene imports `./host/src/components/Button.tsx`. Host
-components share the studio's React; plain CSS and CSS modules load, Tailwind/PostCSS and host path aliases don't
-yet. Every capture writes `captures/provenance.json` (per shot: URL, time, studio and host commits), so a video can be
+absolute (or `~/…`) path of a working copy on this machine, used as it stands, uncommitted changes included. A project
+opts in with `projects/<p>/host.json` `{ "name", "ref", "browserStubs"? }`. `studio hosts sync <p> [--install]`
+checks the ref out into `~/.cache/studio/hosts/<name>@<sha>` (outside the studio, so the host's own tooling never
+finds the studio's packages), or uses the working copy, and links it at `projects/<p>/host`. `--install` runs the
+host's install in a checkout, lifecycle scripts included.
+
+A scene imports `@host/<path from the host root>`. The bundle resolves host files' own tsconfig `paths` and packages,
+shares the studio's React, and replaces host files matching `browserStubs` (server-only code) with empty modules.
+tsc types `@host/…` as `any`, so `studio look` is the check. Plain CSS and CSS modules load; Tailwind/PostCSS doesn't.
+Every capture writes `captures/provenance.json` (per shot: URL, time, studio and host commits), so a video can be
 traced to its source without keeping media.
 
 ## Skills

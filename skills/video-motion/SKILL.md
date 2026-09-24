@@ -8,7 +8,7 @@ description: Motion and camera for a video's scenes, from the shared vocabulary 
 Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it.
 
 The user and you should mean the same thing by each word. Each term below maps to `lib/studio/api.ts`, which is all a
-scene imports. `docs/directing.md` covers the fuller craft (shot sizes, eye trace, J- and L-cuts, pacing, easing feel,
+scene imports; `studio api <name>` prints any function's signature and doc. `docs/directing.md` covers the fuller craft (shot sizes, eye trace, J- and L-cuts, pacing, easing feel,
 sound); read it before planning motion for a whole video. Start from the storyboard: the existing projects each show
 one way to tell one story, not a structure to copy.
 
@@ -69,9 +69,22 @@ opening), film a take (the `video-capture` skill) and put it in the scene:
 ## Host components
 
 When the video is about a product repo's code, its real React components can be the shot instead of a capture of
-them. With the project's host synced (`studio hosts --help`), import them from `./host/…` in `video.tsx`,
-lay them out yourself and animate with plain Remotion (`spring`, `interpolate`, or `seg` on `s.t`). There's no page to
-measure, so no camera or rects: those are for captures, where the picture is a screenshot or a take.
+them. With the project's host synced (the `video-kickoff` skill, step 1), import from `@host/<path from the host
+root>` in `video.tsx`, lay them out yourself and animate with plain Remotion (`spring`, `interpolate`, or `seg` on
+`s.t`). Cameras and capture rects don't apply.
+
+- Import the host's packages through it too (`@host/apps/web/node_modules/@mantine/core`), so the scene shares the
+  copy the host's files use, and with it their React contexts.
+- Render them as the app does: wrap them in the provider its root mounts, with its theme (tk: `MantineProvider` with
+  its `theme`, `cssVariablesResolver` and `forceColorScheme`), and import the app's global stylesheet and its UI
+  library's CSS.
+- The app's font `<link>` (Google Fonts) isn't in the bundle, so text silently falls back. Put the font files in
+  the project, import them (an import is the file's URL) and load them with `@remotion/fonts` `loadFont`.
+- A component that needs the app's live data or router can't render here. Compose the pure piece inside it (tk's
+  `TicketCardCore` inside `TicketCard`). Server-only files its imports reach go in `host.json` `browserStubs`.
+- tsc types `@host/…` as `any`, so wrong props only show on screen: `studio look` is the check.
+- To ring a composed element, give it a `ref` and pass `useScreenRect(ref)` to `Highlight`, drawn outside any
+  scaled wrapper.
 
 ## Acting on feel notes
 

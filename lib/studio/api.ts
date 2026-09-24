@@ -7,6 +7,7 @@ export * from './kit.tsx';
 export * from './motion.ts';
 export * from './overlays.tsx';
 export { useScene } from './scene.tsx';
+export { useScreenRect } from './screen-rect.ts';
 export { defineScene, defineVideo, type LineSpan, type SceneClock } from './timeline.ts';
 export * from './sfx.tsx';
 export * from './take.ts';

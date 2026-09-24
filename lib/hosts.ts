@@ -2,24 +2,29 @@
 //
 //   hosts.json                  committed: host name → { repo: git url }
 //   hosts.local.json            gitignored, optional: host name → a working copy on this machine (absolute, or ~/…)
-//   projects/<p>/host.json      the project opts in: { name, ref }
+//   projects/<p>/host.json      the project opts in: { name, ref, browserStubs? } (lib/project-host-spec.ts)
 //   projects/<p>/host           gitignored symlink to the resolved checkout, so a scene imports
 //                               `./host/src/components/Button.tsx` and tsc and webpack follow it like any file
 //
 // A working copy named in hosts.local.json is used as it stands (whatever is checked out, dirty or not), so a video
-// can show work in progress. Otherwise the ref is checked out from one shared partial clone, .hosts/<name>.git, into
-// a worktree per commit, .hosts/<name>@<short-sha>, which later syncs at the same commit reuse.
+// can show work in progress. Otherwise the ref is checked out from one shared partial clone, <cache>/<name>.git, into
+// a worktree per commit, <cache>/<name>@<short-sha>, which later syncs at the same commit (from any studio clone) reuse.
+// <cache> is $XDG_CACHE_HOME/studio/hosts, or ~/.cache/studio/hosts. It must sit outside the studio tree: a host's
+// own tooling (vite, tsc) walks up for node_modules and would pick up the studio's packages.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, isAbsolute, join, relative } from 'node:path';
+import { basename, isAbsolute, join } from 'node:path';
+import { projectHostLink, readProjectHostSpec, type ProjectHostSpec } from './project-host-spec.ts';
+
+export type { ProjectHostSpec };
 import { listStudioProjects, STUDIO_PROJECTS_DIR, STUDIO_ROOT } from './studio-project.ts';
 
-const HOSTS_DIR = join(STUDIO_ROOT, '.hosts');
+const XDG_CACHE_HOME = process.env.XDG_CACHE_HOME;
+const HOST_CHECKOUTS_DIR = join(XDG_CACHE_HOME && isAbsolute(XDG_CACHE_HOME) ? XDG_CACHE_HOME : join(homedir(), '.cache'), 'studio', 'hosts');
 
 type HostRepos = Record<string, { repo: string }>;
 type HostWorkingCopies = Record<string, string>;
-export type ProjectHostSpec = { name: string; ref: string };
 export type GitState = { commit: string; dirty: boolean };
 export type SyncedHost = ProjectHostSpec & GitState & { dir: string; source: 'working-copy' | 'checkout' };
 
@@ -45,17 +50,6 @@ export function gitState(dir: string): GitState {
   return { commit: git(dir, 'rev-parse', 'HEAD'), dirty: git(dir, 'status', '--porcelain') !== '' };
 }
 
-export const projectHostLink = (projectDir: string) => join(projectDir, 'host');
-
-/** The project's host.json, or null when the video isn't about a host. */
-export function readProjectHostSpec(projectDir: string): ProjectHostSpec | null {
-  const path = join(projectDir, 'host.json');
-  if (!existsSync(path)) return null;
-  const spec = readJson<ProjectHostSpec>(path);
-  if (typeof spec.name !== 'string' || typeof spec.ref !== 'string') throw new Error(`hosts: ${path} needs { "name": "<host>", "ref": "<branch, tag or commit>" }`);
-  return spec;
-}
-
 /**
  * Resolves the project's host to a directory (a working copy, or a checkout of its ref) and points projects/<p>/host
  * at it. `install` runs the host's package manager in a checkout, for components that import the host's own packages.
@@ -79,18 +73,18 @@ export function syncProjectHost(projectDir: string, { install = false } = {}): S
 }
 
 /** The host a capture was made against, from the project's link as it stands now. Null when there's no host.json. */
-export function linkedProjectHost(projectDir: string): (ProjectHostSpec & GitState) | null {
+export function linkedProjectHost(projectDir: string): (Pick<ProjectHostSpec, 'name' | 'ref'> & GitState) | null {
   const spec = readProjectHostSpec(projectDir);
   if (!spec) return null;
   const link = projectHostLink(projectDir);
   if (!existsSync(link)) throw new Error(`hosts: ${basename(projectDir)} has a host.json but no host link; run \`studio hosts sync ${basename(projectDir)}\``);
-  return { ...spec, ...gitState(realpathSync(link)) };
+  return { name: spec.name, ref: spec.ref, ...gitState(realpathSync(link)) };
 }
 
 function checkoutHostRef({ name, ref }: ProjectHostSpec) {
   const repo = readHostRepos()[name]?.repo;
   if (!repo) throw new Error(`hosts: no host named "${name}" in hosts.json or hosts.local.json`);
-  const bare = join(HOSTS_DIR, `${name}.git`);
+  const bare = join(HOST_CHECKOUTS_DIR, `${name}.git`);
   if (!existsSync(bare)) {
     console.error(`hosts: cloning ${repo}`);
     execFileSync('git', ['clone', '--bare', '--filter=blob:none', repo, bare], { stdio: ['ignore', 2, 'inherit'] });
@@ -102,10 +96,10 @@ function checkoutHostRef({ name, ref }: ProjectHostSpec) {
   }
   if (!hasCommit(bare, ref)) throw new Error(`hosts: ${name} has no branch, tag or commit "${ref}"`);
   const commit = git(bare, 'rev-parse', `${ref}^{commit}`);
-  const dir = join(HOSTS_DIR, `${name}@${commit.slice(0, 12)}`);
+  const dir = join(HOST_CHECKOUTS_DIR, `${name}@${commit.slice(0, 12)}`);
   if (!existsSync(dir)) {
     git(bare, 'worktree', 'prune');
-    git(bare, 'worktree', 'add', '--detach', dir, commit);
+    git(bare, 'worktree', 'add', '--quiet', '--detach', dir, commit);
   }
   return dir;
 }
@@ -131,14 +125,13 @@ function installHostPackages(dir: string) {
   if (result.status !== 0) throw new Error(`hosts: ${found[1].join(' ')} failed in ${dir}`);
 }
 
-// Relative, so the link reads the same from any clone of the studio. lstat, since a link to a pruned checkout is
-// dangling and existsSync would miss it.
+// lstat, since a link to a pruned checkout is dangling and existsSync would miss it.
 function linkProjectHost(projectDir: string, target: string) {
   const link = projectHostLink(projectDir);
   const existing = lstatSync(link, { throwIfNoEntry: false });
   if (existing && !existing.isSymbolicLink()) throw new Error(`hosts: ${link} is a real file or directory, not the host link; move it`);
   rmSync(link, { force: true });
-  symlinkSync(relative(dirname(link), target), link);
+  symlinkSync(target, link);
 }
 
 export type HostListing = { name: string; repo: string | null; workingCopy: string | null; projects: { slug: string; ref: string }[] };

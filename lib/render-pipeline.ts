@@ -7,11 +7,12 @@ import { renderFrames, renderMedia } from '@remotion/renderer';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { framesToMeasure, framingArtifactName, framingProblems, type FramingReport } from './framing-check.ts';
 import { measureLoudness } from './loudness.ts';
 import { artifactSink, RENDER_CHROMIUM, RENDER_CONCURRENCY, type RenderSession } from './render-session.ts';
 import { H, W } from './studio/frame.ts';
+import { isVoicedWithDraft } from './voice-project.ts';
 import type { TimelineReport } from './studio/Video.tsx';
 
 const outDirFor = (session: RenderSession) => join(session.project, 'out');
@@ -48,8 +49,10 @@ export async function checkProjectFraming(session: RenderSession, every: number)
   const reports = frames.map((f) => sink.json<FramingReport>(framingArtifactName(f)));
   const problems = framingProblems(reports, timeline.expectations, fps, every);
   const report = problems.map((p) => `  ✗ ${p.from.toFixed(2)}–${p.to.toFixed(2)}s  ${p.scene ? `[${p.scene}] ` : ''}${p.problem}`);
-  const expected = timeline.expectations.length ? `, ${timeline.expectations.length} expectations` : '';
-  report.push(problems.length ? `framing: ${problems.length} problem${problems.length > 1 ? 's' : ''}` : `framing ✓ (${frames.length} frames${expected})`);
+  const sampled = every === 1 ? 'every frame' : `one frame in ${every}${timeline.expectations.length ? ', plus the frames expectations cover' : ''}`;
+  const expected = timeline.expectations.length ? `, ${timeline.expectations.length} expectation${timeline.expectations.length > 1 ? 's' : ''}` : '';
+  const measured = `${frames.length} of ${composition.durationInFrames} frames: ${sampled}${expected}`;
+  report.push(problems.length ? `framing: ${problems.length} problem${problems.length > 1 ? 's' : ''} (${measured})` : `framing ✓ (${measured})`);
   return { ok: problems.length === 0, timeline, report };
 }
 
@@ -59,6 +62,17 @@ export function writeTimelineReport(session: RenderSession, timeline: TimelineRe
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, JSON.stringify(timeline, null, 2));
   return file;
+}
+
+/** Each scene with its lines under it, and when each starts and ends in video seconds, for aiming `studio look`. */
+export function formatTimelineTable(timeline: TimelineReport): string[] {
+  const rows = timeline.scenes.flatMap((scene) => [
+    [scene.id, scene.start, scene.start + scene.dur, ''],
+    ...timeline.cues.filter((c) => scene.lines.includes(c.id)).map((c) => [`  ${c.id}`, c.start, c.end, c.voiced ? '' : 'estimated'] as const),
+  ] as const);
+  const width = Math.max('scene / line'.length, ...rows.map(([id]) => id.length));
+  const row = (id: string, start: string, end: string, note: string) => `${id.padEnd(width)}  ${start.padStart(7)}  ${end.padStart(7)}  ${note}`.trimEnd();
+  return [row('scene / line', 'start', 'end', ''), ...rows.map(([id, start, end, note]) => row(id, start.toFixed(2), end.toFixed(2), note))];
 }
 
 // ---------- sheets ----------
@@ -177,11 +191,11 @@ function reviewDelivery(session: RenderSession, captions: boolean, timeline: Tim
 }
 
 // A page to watch the finished videos, since file:// MP4s have no player of their own worth sharing a link to.
-function writeWatchPage(session: RenderSession, title: string) {
+function writeWatchPage(session: RenderSession, title: string, draft: boolean) {
   const page = join(outDirFor(session), 'watch.html');
   writeFileSync(page, `<!doctype html>
 <meta charset="utf-8">
-<title>${title}</title>
+<title>${draft ? 'DRAFT VOICE · ' : ''}${title}</title>
 <style>
   body { margin: 0; background: #16181c; color: #ddd; font: 15px -apple-system, system-ui, sans-serif; }
   main { max-width: 1280px; margin: 0 auto; padding: 32px 24px; }
@@ -189,9 +203,11 @@ function writeWatchPage(session: RenderSession, title: string) {
   video { width: 100%; border-radius: 10px; background: #000; }
   nav { display: flex; gap: 16px; margin: 14px 0 0; }
   a { color: #8fb4ff; }
+  .draft { background: #b82b2b; color: #fff; padding: 10px 14px; border-radius: 8px; margin: 0 0 16px; font-weight: 600; }
 </style>
 <main>
-  <h1>${title}</h1>
+  <h1>${title}</h1>${draft ? `
+  <p class="draft">DRAFT VOICE: read by macOS say for timing, not the real voice.</p>` : ''}
   <video id="v" src="video.mp4" controls autoplay></video>
   <nav>
     <a href="video.mp4" download>Download</a>${existsSync(videoFor(session, false)) ? `
@@ -204,6 +220,11 @@ function writeWatchPage(session: RenderSession, title: string) {
   return page;
 }
 
+const draftVoiceWarning = (session: RenderSession) => `
+!!!! DRAFT VOICE: macOS say read this video (studio voice --read=draft). It's for timing, not for sharing.
+!!!! Voice it for real first: studio voice ${basename(session.project)}
+`;
+
 /**
  * The whole pipeline: the framing check on every frame, refusing to go on if it fails or a line is still estimated;
  * the mastered mix; video.mp4 with captions (and video-plain.mp4 without, if `plain`), each checked for delivery;
@@ -215,6 +236,8 @@ export async function renderDeliveredVideo(session: RenderSession, { plain }: { 
   if (!ok) throw new Error('fix the framing problems above before rendering (look at a stretch with studio look <project> --strip=a:b)');
   const estimated = timeline.cues.filter((q) => !q.voiced).map((q) => q.id);
   if (estimated.length) throw new Error(`${estimated.join(', ')} ${estimated.length > 1 ? 'are' : 'is'} estimated, not voiced: run studio voice <project> before rendering the video`);
+  const draft = isVoicedWithDraft(session.project);
+  if (draft) console.error(draftVoiceWarning(session));
   await renderMasteredMix(session);
   // An old plain video would no longer match; the watch page offers it only if it's there.
   if (!plain) rmSync(videoFor(session, false), { force: true });
@@ -225,7 +248,10 @@ export async function renderDeliveredVideo(session: RenderSession, { plain }: { 
   }
   const srt = join(outDirFor(session), 'video.srt');
   writeFileSync(srt, srtFrom(timeline));
-  return [...variants.map((captions) => videoFor(session, captions)), srt, writeWatchPage(session, timeline.title)];
+  const delivered = [...variants.map((captions) => videoFor(session, captions)), srt, writeWatchPage(session, timeline.title, draft)];
+  // Again at the end, where it can't scroll away under the render's progress.
+  if (draft) console.error(draftVoiceWarning(session));
+  return delivered;
 }
 
 // ---------- repeatability ----------

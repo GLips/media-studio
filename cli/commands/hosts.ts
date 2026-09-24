@@ -5,7 +5,7 @@ import { studioProjectArg } from '../project-arg.ts';
 const syncHostsCommand = defineCommand({
   meta: {
     name: 'sync',
-    description: "Check out the project's host at the ref in its host.json (or use the working copy hosts.local.json names) and link it at projects/<p>/host. Prints the host as JSON.",
+    description: "Check out the project's host at the ref in its host.json into ~/.cache/studio/hosts (or use the working copy hosts.local.json names) and link it at projects/<p>/host, which scenes import as @host/…. Prints the host as JSON.",
   },
   args: {
     project: studioProjectArg,
@@ -30,7 +30,7 @@ const listHostsCommand = defineCommand({
 export default defineCommand({
   meta: {
     name: 'hosts',
-    description: 'Product repos a video is about. hosts.json maps a name to its git repo; hosts.local.json (gitignored) maps it to a working copy on this machine; projects/<p>/host.json { name, ref } opts a project in.',
+    description: 'Product repos a video is about. hosts.json maps a name to its git repo; hosts.local.json (gitignored) maps it to a working copy on this machine; projects/<p>/host.json { name, ref, browserStubs? } opts a project in, browserStubs being globs of server-only host files the bundle empties.',
   },
   subCommands: { sync: syncHostsCommand, list: listHostsCommand },
 });

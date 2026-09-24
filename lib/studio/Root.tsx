@@ -17,7 +17,7 @@ export type ReplayProps = VideoProps & { order: number[] };
  */
 const ReplayVideo = ({ order, ...props }: ReplayProps) => (
   <Freeze frame={order[Math.min(useCurrentFrame(), order.length - 1)]}>
-    <ProjectVideo {...props} />
+    <Video video={video} {...props} reportTimeline={false} />
   </Freeze>
 );
 

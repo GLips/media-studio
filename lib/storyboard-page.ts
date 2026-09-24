@@ -10,6 +10,7 @@ import { copyFileSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSyn
 import { join } from 'node:path';
 import { openRenderSession, RENDER_CHROMIUM, RENDER_CONCURRENCY } from './render-session.ts';
 import type { TimelineReport } from './studio/Video.tsx';
+import { isVoicedWithDraft } from './voice-project.ts';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 const clock = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
@@ -58,16 +59,16 @@ export async function buildStoryboardPage(project: string): Promise<string> {
       </div>
     </section>`).join('');
 
-  writeFileSync(join(outDir, 'index.html'), storyboardHtml(timeline, cards));
+  writeFileSync(join(outDir, 'index.html'), storyboardHtml(timeline, isVoicedWithDraft(project), cards));
   rmSync(published, { recursive: true, force: true });
   renameSync(outDir, published);
   return join(published, 'index.html');
 }
 
-function storyboardHtml(timeline: TimelineReport, cards: string) {
+function storyboardHtml(timeline: TimelineReport, draft: boolean, cards: string) {
   return `<!doctype html>
 <meta charset="utf-8">
-<title>Storyboard · ${esc(timeline.title)}</title>
+<title>${draft ? 'DRAFT VOICE · ' : ''}Storyboard · ${esc(timeline.title)}</title>
 <style>
   body { margin: 0; background: #f6f7f9; color: #191919; font: 15px/1.5 -apple-system, system-ui, sans-serif; }
   header { position: sticky; top: 0; z-index: 1; background: #16181c; padding: 16px 24px; display: flex; gap: 24px; align-items: center; }
@@ -92,7 +93,7 @@ function storyboardHtml(timeline: TimelineReport, cards: string) {
   audio { width: 100%; height: 30px; margin-top: 4px; }
 </style>
 <header>
-  <div><h1>${esc(timeline.title)}</h1><p>${timeline.scenes.length} scenes · ${clock(timeline.duration)} · click a scene to play from it</p></div>
+  <div><h1>${esc(timeline.title)}</h1><p>${timeline.scenes.length} scenes · ${clock(timeline.duration)} · click a scene to play from it</p>${draft ? '<p><strong>DRAFT VOICE</strong>: read by macOS say, for timing only.</p>' : ''}</div>
   <video id="preview" src="preview.mp4" controls></video>
 </header>
 <main>${cards}</main>

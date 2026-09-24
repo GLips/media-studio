@@ -133,10 +133,11 @@ export function offscreen(view: View, toward: Point): Point {
 
 /**
  * A glowing ring around a screen rect that draws itself on (`k` 0..1) and fades with `alpha`. `name` is what a
- * scene's `expect` refers to it by.
+ * scene's `expect` refers to it by. The rect comes from a view (`screenRect`) or a live element (`useScreenRect`);
+ * null draws nothing.
  */
 export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha = 1, name }: {
-  rect: Rect;
+  rect: Rect | null;
   name?: string;
   k: number;
   color?: string;
@@ -144,7 +145,7 @@ export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha =
   radius?: number;
   alpha?: number;
 }) {
-  if (k <= 0 || alpha <= 0) return null;
+  if (!rect || k <= 0 || alpha <= 0) return null;
   const r = inflate(rect, pad);
   const perimeter = 2 * (r.w + r.h);
   return (
@@ -170,9 +171,9 @@ export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha =
   );
 }
 
-/** Dims everything but a screen rect, to pull the eye to it. */
-export function Spotlight({ rect, k, pad = 16, radius = 14, dim = 0.45 }: { rect: Rect; k: number; pad?: number; radius?: number; dim?: number }) {
-  if (k <= 0) return null;
+/** Dims everything but a screen rect, to pull the eye to it; null draws nothing. */
+export function Spotlight({ rect, k, pad = 16, radius = 14, dim = 0.45 }: { rect: Rect | null; k: number; pad?: number; radius?: number; dim?: number }) {
+  if (!rect || k <= 0) return null;
   return (
     <svg style={fill} width={W} height={H}>
       <path d={`M0,0 H${W} V${H} H0 Z ${roundRectPath(inflate(rect, pad), radius)}`} fillRule="evenodd" fill={`rgba(12, 22, 38, ${dim * k})`} />
