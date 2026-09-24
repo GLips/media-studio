@@ -6,7 +6,7 @@ import type { Pts } from 'p5';
 import {
   Capture, CaptureMotion, CaptureStates, ConfirmDialog, CursorPath, EndCard, GlassCard, Highlight, NativeMenu, Phone,
   SPLIT_LEFT, SPLIT_RIGHT, SplitCompare, Text, Wash, W, camAt, camFit, camTop, centerOf, defineScene, defineVideo,
-  easeOut, offscreen, on, phoneView, screenRect, seg, union, view, type CursorKey, type Rect,
+  offscreen, on, phoneView, screenRect, motionCurves, seg, union, view, type CursorKey, type Rect,
 } from '../../lib/studio/api.ts';
 import { PAL, Watercolor, type WatercolorKit } from '../../lib/paint/watercolor.tsx';
 import { voice } from './audio/manifest.ts';
@@ -27,7 +27,7 @@ function paintLamp(w: WatercolorKit, dur: number) {
   w.boilSeed('desk');
   w.paint(w.rectPts(-40, 760, 2000, 400, 12), { fill: PAL.clay, fillOp: 140, bleed: 0.1, tex: 0.6, ink: PAL.ink, sw: 0.6 });
   // The lamp comes on as the line starts: light is added with glow, never painted.
-  w.glow(1180, 560, 360 * seg(t, 0.4, 1.6, easeOut), '#FFC766', 0.9);
+  w.glow(1180, 560, 360 * seg(t, 0.4, 1.6, motionCurves.cubic.entrance), '#FFC766', 0.9);
   w.boilSeed('arm');
   w.paint(w.ribbon([[900, 760], [980, 480], [1120, 360]], 16, 12), { wash: INK, ink: PAL.ink, sw: 0.8 });
   w.boilSeed('shade');
@@ -198,7 +198,7 @@ const numbers = defineScene({
       <>
         <Capture view={view(C['sage-q4'], camFit(C['sage-q4'], BUY_BOX, { pad: 80 }))} blur={30 * blur} />
         <Wash color="22, 40, 70" from={0.6 * blur} to={0.36 * blur} x0={0} x1={W} />
-        <GlassCard k={seg(s.t, 0.2, 1.0, easeOut)} eyebrow="FOUR LAMPS" accent={RED} ink={INK}
+        <GlassCard k={seg(s.t, 0.2, 1.0, motionCurves.cubic.entrance)} eyebrow="FOUR LAMPS" accent={RED} ink={INK}
           points={[{ text: '4 × $1,299', k: on(s.t, line.word('four').start - 0.3, 0.6) }, { text: '= $5,196', k: on(s.t, line.word('five').start - 0.3, 0.6) }]} />
       </>
     );

@@ -2,7 +2,7 @@
 // and a caption is simply its line's text for as long as it's spoken.
 
 import { FONT } from './frame.ts';
-import { ease, easeOut, seg } from './motion.ts';
+import { motionCurves, seg } from './motion.ts';
 import type { VoiceCue } from './timeline.ts';
 
 const LEAD_IN = 0.05, HANG = 0.15;
@@ -12,7 +12,7 @@ export const captionCueAt = (cues: readonly VoiceCue[], t: number) => cues.find(
 export function Caption({ cues, t }: { cues: readonly VoiceCue[]; t: number }) {
   const cue = captionCueAt(cues, t);
   if (!cue) return null;
-  const k = Math.min(seg(t, cue.start - LEAD_IN, cue.start + HANG, easeOut), 1 - seg(t, cue.captionEnd, cue.captionEnd + HANG, ease));
+  const k = Math.min(seg(t, cue.start - LEAD_IN, cue.start + HANG, motionCurves.cubic.entrance), 1 - seg(t, cue.captionEnd, cue.captionEnd + HANG, motionCurves.dissolve));
   return (
     <div
       data-framing="caption"

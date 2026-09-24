@@ -6,7 +6,7 @@
 import {
   Capture, CaptureStates, ClipToBox, ConfirmDialog, CursorPath, EndCard, FULL_FRAME, H, Highlight, MotionTitle,
   NativeMenu, Phone, SFX, inflate, SPLIT_LEFT, SPLIT_RIGHT, SectionCard, Sfx, SplitCompare, Tag, Text, W, camAt, camFit,
-  centerOf, defineScene, defineVideo, CAPTION_FREE, FONT, easeInOut, easeOut, lerpCam, linear, off, on, phoneView, screenPoint, screenRect,
+  centerOf, defineScene, defineVideo, CAPTION_FREE, FONT, lerpCam, motionCurves, off, on, phoneView, screenPoint, screenRect,
   seg, union, view, fitTake, onTake, takeShot, takeTimeAt, TakeCursor,
   type Rect, type SceneClock, type Shot, type Take, type TakeMark, type View,
 } from '../../lib/studio/api.ts';
@@ -70,7 +70,7 @@ const photos = defineScene({
       const push = seg(s.t, a.at(0.2), a.at(0.5));
       const control = C['sol-control'], next = C['sol-new'];
       body = (
-        <SplitCompare k={seg(s.t, 1.6, 2.1, easeOut)}
+        <SplitCompare k={seg(s.t, 1.6, 2.1, motionCurves.cubic.entrance)}
           left={{ ...TODAY, view: view(control, lerpCam(wide(control, SPLIT_LEFT), close(control, SPLIT_LEFT), push), SPLIT_LEFT) }}
           right={{ ...NEW, view: view(next, lerpCam(wide(next, SPLIT_RIGHT), close(next, SPLIT_RIGHT), push), SPLIT_RIGHT) }} />
       );
@@ -116,9 +116,9 @@ function PhotoWipe({ s }: { s: SceneClock }) {
     return view(shot, camFit(shot, inflate(r, r.h * 0.1), { pad: 0, maxZoom: 16 }, LIGHTBOX), LIGHTBOX);
   };
   const { x: left, w } = LIGHTBOX;
-  const sweep = seg(s.t, b.start + 0.1, b.end + 0.4, linear);
+  const sweep = seg(s.t, b.start + 0.1, b.end + 0.4, motionCurves.linear);
   // Across to the far edge, then back to the middle: the whole print is seen sharp before the halves are compared.
-  const x = left + (sweep < 0.6 ? w * easeInOut(sweep / 0.6) : w - (w / 2) * easeInOut((sweep - 0.6) / 0.4));
+  const x = left + (sweep < 0.6 ? w * motionCurves.cubic.standard(sweep / 0.6) : w - (w / 2) * motionCurves.cubic.standard((sweep - 0.6) / 0.4));
   const tags = seg(s.t, b.start + 0.2, b.start + 0.5), top = LIGHTBOX.y + 20;
   return (
     <div style={{ position: 'absolute', inset: 0, opacity: k }}>
@@ -289,7 +289,7 @@ const lists = defineScene({
         <>
           <Capture view={v} />
           <ArmTag arm={TODAY} />
-          <NativeMenu k={on(s.t, open, 0.4)} from={screenRect(v, control.rects.select)} items={control.data.names} scroll={seg(s.t, open + 0.5, b.start, linear)} />
+          <NativeMenu k={on(s.t, open, 0.4)} from={screenRect(v, control.rects.select)} items={control.data.names} scroll={seg(s.t, open + 0.5, b.start, motionCurves.linear)} />
           <Tally box={CAPTION_FREE} k={countIn} count={INK_COLOURS} label="colours" color={NAVY} />
         </>
       );
@@ -299,7 +299,7 @@ const lists = defineScene({
     const keys = [0, 1, 2, 3].map((i) => blue.start - 0.1 + i * 0.13), at = keys[3] + 0.04;
     const v = view(blank, camFit(typed, union(typed.rects.combo, typed.rects.listbox), { pad: 40, maxZoom: 1.4 }));
     const field = centerOf(blank.rects.combo);
-    const falling = seg(s.t, keys[0], at + 0.3, easeOut);
+    const falling = seg(s.t, keys[0], at + 0.3, motionCurves.cubic.entrance);
     return (
       <>
         <CaptureStates view={v} t={s.t} fade={0.15} states={[[blank, 0], [typed, at]]} />
@@ -386,7 +386,7 @@ const quantity = defineScene({
           left={{ ...TODAY, view: left, over: <>
             <CursorPath view={left} t={s.t} alpha={seg(s.t, from - 0.6, from - 0.4)}
               keys={[[from - 0.6, aside(plus, 90, 110)], ...taps.map((at) => [at, plus, { click: true }] as const), [c.start - 0.3, aside(plus, 90, 110)]]} />
-            {taps.map((at, i) => <PlusOne key={i} at={screenPoint(left, plus)} k={seg(s.t, at, at + 0.7, linear)} />)}
+            {taps.map((at, i) => <PlusOne key={i} at={screenPoint(left, plus)} k={seg(s.t, at, at + 0.7, motionCurves.linear)} />)}
             <Tally box={SPLIT_LEFT} k={on(s.t, from, 0.3)} count={tapped.length} pop={tapped.length ? off(s.t, tapped[tapped.length - 1], 0.25) : 0} label="taps on +" color={NAVY} />
           </> }}
           right={{ ...NEW, view: right, over: <Ring v={right} rect={next.rects.stepper} k={on(s.t, a.at(0.25))} color={SALE_RED} alpha={off(s.t, b.start)} /> }}
@@ -422,7 +422,7 @@ function PlusOne({ at, k }: { at: { x: number; y: number }; k: number }) {
   if (k <= 0 || k >= 1) return null;
   return (
     <div style={{
-      position: 'absolute', left: at.x + 18, top: at.y - 40 - 70 * easeOut(k), opacity: 1 - k * k, fontFamily: FONT,
+      position: 'absolute', left: at.x + 18, top: at.y - 40 - 70 * motionCurves.cubic.entrance(k), opacity: 1 - k * k, fontFamily: FONT,
       fontSize: 34, fontWeight: 800, color: NAVY, textShadow: '0 2px 8px rgba(255,255,255,0.9)',
     }}>+1</div>
   );
@@ -440,7 +440,7 @@ const sticky = defineScene({
     const v = view(desk, camFit(desk, { x: 0, y: 0, w: desk.w, h: desk.h }, { pad: 0 }, DESK_WINDOW), DESK_WINDOW);
     const toPhone = line.at(0.62), k = seg(s.t, toPhone, toPhone + 0.5);
     const phone = phoneView(bar, { cx: W / 2 - 330, cy: 420, height: 780 });
-    const x = W / 2 + 40, rise = (d: number) => seg(s.t, toPhone + d, toPhone + d + 0.7, easeOut) * k;
+    const x = W / 2 + 40, rise = (d: number) => seg(s.t, toPhone + d, toPhone + d + 0.7, motionCurves.cubic.entrance) * k;
     return (
       <>
         <div style={{ position: 'absolute', inset: 0, background: '#e6eaf0' }} />
@@ -541,7 +541,7 @@ const reset = defineScene({
       <SplitCompare
         left={{ ...TODAY, view: left, over: <>
           <Capture view={{ ...left, shot: wiped }} alpha={seg(s.t, tap + 0.05, tap + 0.2)} />
-          <Flash rect={screenRect(left, today.rects.box)} k={seg(s.t, tap + 0.05, tap + 0.7, linear)} />
+          <Flash rect={screenRect(left, today.rects.box)} k={seg(s.t, tap + 0.05, tap + 0.7, motionCurves.linear)} />
           <Ring v={left} rect={today.rects.reset} k={on(s.t, a.at(0.5))} color={NAVY} alpha={off(s.t, tap + 0.6)} />
           <Ring v={left} rect={today.rects.addAll} k={on(s.t, a.at(0.68))} color={NAVY} alpha={off(s.t, tap - 0.3)} />
           <CursorPath view={left} t={s.t} alpha={seg(s.t, tap - 0.9, tap - 0.7) * off(s.t, b.start)}
@@ -584,7 +584,7 @@ const end = defineScene({
         <div style={{ position: 'absolute', inset: 0, background: '#eef1f6' }} />
         {RECAP.map(({ title: label, shot, rect }, i) => {
           const box = { x: (W - 2 * TILE.w - TILE.gapX) / 2 + (i % 2) * (TILE.w + TILE.gapX), y: TILE.top + Math.floor(i / 2) * (TILE.h + TILE.gapY), w: TILE.w, h: TILE.h };
-          const k = seg(s.t, 0.2 + i * 0.35, 0.8 + i * 0.35, easeOut);
+          const k = seg(s.t, 0.2 + i * 0.35, 0.8 + i * 0.35, motionCurves.cubic.entrance);
           return (
             <div key={i} style={{ position: 'absolute', inset: 0, opacity: k, transform: `translateY(${(1 - k) * 40}px)` }}>
               <div style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, borderRadius: 18, background: '#fff', boxShadow: '0 12px 40px rgba(16,30,54,0.18)' }} />

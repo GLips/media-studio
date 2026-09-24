@@ -11,7 +11,7 @@ import type { P5, P5Graphics, Pts } from 'p5';
 import * as brush from 'p5.brush';
 import { P5Canvas, type P5Style } from './P5Canvas.tsx';
 import { H, W } from '../studio/frame.ts';
-import { clamp, ease, easeOut, lerp } from '../studio/motion.ts';
+import { clamp, motionCurves, lerp } from '../studio/motion.ts';
 
 /** Drawings per second. At 30 fps each holds for two frames: animation "on twos". */
 export const BOIL = 15;
@@ -264,7 +264,7 @@ export function watercolorKit(p: P5, t: number) {
     for (let i = 0; i < n; i++) {
       boilSeed(`wipe${i}`);
       const y0 = -230 + (i * (H + 420)) / n, d = [0, 0.14, 0.06, 0.18, 0.1][i];
-      const q = k < 0.5 ? easeOut(clamp((k * 2 - d) / (1 - d))) : ease(clamp(((k - 0.5) * 2 - d) / (1 - d)));
+      const q = k < 0.5 ? motionCurves.cubic.entrance(clamp((k * 2 - d) / (1 - d))) : motionCurves.dissolve(clamp(((k - 0.5) * 2 - d) / (1 - d)));
       const x0 = k < 0.5 ? -300 : lerp(-300, W + 400, q), x1 = k < 0.5 ? lerp(-300, W + 400, q) : W + 400;
       if (x1 - x0 < 30) continue;
       const pts: [number, number][] = [], rag = (j: number) => 40 + 50 * hash(i * 31 + j) + jit(12);

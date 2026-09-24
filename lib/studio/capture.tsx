@@ -8,7 +8,7 @@
 
 import { Img } from 'remotion';
 import { lerpCam, scaleFor, type Cam, type View } from './camera.ts';
-import { clamp, ease, seg } from './motion.ts';
+import { clamp, motionCurves, seg } from './motion.ts';
 import { cameraMotionAttrs, unmeasuredAttrs } from './motion-tag.ts';
 
 /**
@@ -81,7 +81,7 @@ export function CaptureSwap({ from, to, k }: { from: View; to: View; k: number }
   return (
     <>
       <Capture view={from} />
-      <Capture view={to} alpha={ease(k)} />
+      <Capture view={to} alpha={motionCurves.dissolve(k)} />
     </>
   );
 }

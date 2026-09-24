@@ -4,7 +4,7 @@
 // a subject from a reference still, a voiced line the move is timed to, and footage retimed afterwards.
 
 import {
-  Blockout, defineScene, defineVideo, dollyMove, easeInOut, orbitMove, pushInMove, seg, type BlockoutSubject,
+  Blockout, defineScene, defineVideo, dollyMove, orbitMove, pushInMove, motionCurves, seg, type BlockoutSubject,
 } from '../../lib/studio/api.ts';
 import { voice } from './audio/manifest.ts';
 
@@ -27,7 +27,7 @@ const orbit = defineScene({
       + '35mm film look. No people.',
   },
   render: (s) => (
-    <Blockout subjects={COUNTER} pose={orbitMove({ target: [0, 1, 0], radius: 3.4, height: 1.6, fromDeg: -50, toDeg: 30 })(seg(s.t, 0, s.dur, easeInOut))} />
+    <Blockout subjects={COUNTER} pose={orbitMove({ target: [0, 1, 0], radius: 3.4, height: 1.6, fromDeg: -50, toDeg: 30 })(seg(s.t, 0, s.dur, motionCurves.cubic.standard))} />
   ),
 });
 
@@ -48,7 +48,7 @@ const pushIn = defineScene({
       + 'cylinder is a lamp with a linen shade, switched on. Warm lamplight against a dim blue room, cinematic, 35mm film look.',
   },
   render: (s) => (
-    <Blockout subjects={DESK} pose={pushInMove({ target: [0, 0.85, 0], position: [1.2, 1.7, 4.2], toDistance: 1.9 })(seg(s.t, 0, s.dur, easeInOut))} />
+    <Blockout subjects={DESK} pose={pushInMove({ target: [0, 0.85, 0], position: [1.2, 1.7, 4.2], toDistance: 1.9 })(seg(s.t, 0, s.dur, motionCurves.cubic.standard))} />
   ),
 });
 
@@ -82,7 +82,7 @@ const kitchen = defineScene({
     // where the blockout settled as it ended, without paying for another render.
     retime: (s) => [[0, 0], [s.line('kitchen').end + 0.4, s.line('kitchen').end]],
   },
-  render: (s) => <Blockout subjects={KITCHEN} pose={kitchenMove(seg(s.t, 0, s.line('kitchen').end, easeInOut))} />,
+  render: (s) => <Blockout subjects={KITCHEN} pose={kitchenMove(seg(s.t, 0, s.line('kitchen').end, motionCurves.cubic.standard))} />,
 });
 
 export default defineVideo({ title: 'Previs test', voice, scenes: [orbit, pushIn, kitchen] });

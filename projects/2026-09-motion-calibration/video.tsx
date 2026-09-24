@@ -6,7 +6,7 @@
 
 import { useRef, type CSSProperties } from 'react';
 import {
-  Capture, CursorPath, H, Highlight, Text, W, camAt, camTop, clamp, defineScene, defineVideo, easeInOut, easeOut, lerp, linear, motionAttrs, on,
+  Capture, CursorPath, H, Highlight, Text, W, camAt, camTop, clamp, defineScene, defineVideo, lerp, motionCurves, motionAttrs, on,
   screenRect, seg, useMotionTag, view, type Rect, type Shot,
 } from '../../lib/studio/api.ts';
 
@@ -25,13 +25,13 @@ const CENTRE_SQUARE: Rect = { x: 670, y: 400, w: 100, h: 100 };
 const card = (color: string): CSSProperties => ({ position: 'absolute', width: 160, height: 160, borderRadius: 24, background: color });
 
 /**
- * Good next to bad: `eased` travels 1000px with easeInOut in 1s and holds; `linear` travels the same 1000px at one
+ * Good next to bad: `eased` travels 1000px with motionCurves.cubic.standard in 1s and holds; `linear` travels the same 1000px at one
  * speed, stops dead, and jitters ±3px while it "holds". Velocity: a bell against a flat plateau with a cliff at each end.
  */
 const glide = defineScene({
   id: 'glide', min: 3,
   render: (s) => {
-    const eased = seg(s.t, 0.5, 1.5, easeInOut), flat = seg(s.t, 0.5, 1.5, linear);
+    const eased = seg(s.t, 0.5, 1.5, motionCurves.cubic.standard), flat = seg(s.t, 0.5, 1.5, motionCurves.linear);
     const jitter = s.t > 1.5 ? 3 * Math.sin(s.t * 97) : 0;
     return (
       <>
@@ -73,7 +73,7 @@ const rise = defineScene({
   render: (s) => {
     const v = view(GRID, camTop(GRID));
     return (
-      <div style={{ position: 'absolute', inset: 0, transform: `translateY(${120 * (1 - seg(s.t, 0.3, 1.3, easeOut))}px)` }}>
+      <div style={{ position: 'absolute', inset: 0, transform: `translateY(${120 * (1 - seg(s.t, 0.3, 1.3, motionCurves.cubic.entrance))}px)` }}>
         <Capture view={v} />
         <Highlight rect={screenRect(v, CENTRE_SQUARE)} k={1} name="centre" />
       </div>

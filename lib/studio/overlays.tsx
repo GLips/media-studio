@@ -9,7 +9,7 @@ import { useId, type CSSProperties, type ReactNode } from 'react';
 import type { StaggerMembership } from '../motion-tracks.ts';
 import { assertKeysInOrder, inflate, pagePoint, screenPoint, viewOfScreenRect, type Point, type Rect, type View } from './camera.ts';
 import { FONT, H, W } from './frame.ts';
-import { clamp, easeOut, lerp, seg } from './motion.ts';
+import { clamp, lerp, motionCurves, seg } from './motion.ts';
 import { pieceMotionAttrs } from './motion-tag.ts';
 import { SFX, Sfx } from './sfx.tsx';
 import { sceneTimeOf, takeMouseAt, type TakeFit } from './take.ts';
@@ -61,7 +61,7 @@ export function ClickRipple({ at, k, color = INK, through, n, motion }: { at: Po
   if (k <= 0 || k >= 1) return null;
   return (
     <svg style={{ ...fill, opacity: (1 - k) * 0.55 }} width={W} height={H}>
-      <circle cx={at.x} cy={at.y} r={10 + 44 * easeOut(k)} fill="none" stroke={color} strokeWidth={4} {...pieceMotionAttrs(motion, n === undefined ? 'click' : `click-${n}`, { kind: 'click', values: { ripple: k }, through })} />
+      <circle cx={at.x} cy={at.y} r={10 + 44 * motionCurves.cubic.entrance(k)} fill="none" stroke={color} strokeWidth={4} {...pieceMotionAttrs(motion, n === undefined ? 'click' : `click-${n}`, { kind: 'click', values: { ripple: k }, through })} />
       <rect data-framing="subject" data-name="click" data-strength={1 - k} x={at.x - 12} y={at.y - 12} width={24} height={24} fill="none" />
     </svg>
   );
@@ -177,7 +177,7 @@ export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha =
         fill="none"
         stroke={color}
         strokeWidth={5}
-        strokeDasharray={`${perimeter * easeOut(k)} ${perimeter}`}
+        strokeDasharray={`${perimeter * motionCurves.cubic.entrance(k)} ${perimeter}`}
         style={{ filter: `drop-shadow(0 0 18px ${color})` }}
       />
     </svg>
@@ -237,7 +237,7 @@ export function Tag({ text, x, y, k, bg = INK, fg = '#fff', size = 30, motion }:
       style={{
         position: 'absolute',
         left: x,
-        top: y + (1 - easeOut(k)) * 16,
+        top: y + (1 - motionCurves.cubic.entrance(k)) * 16,
         height: h,
         padding: `0 ${size * 0.65}px`,
         borderRadius: h / 2,
@@ -278,7 +278,7 @@ export function Text({ text, x, y, size = 64, weight = 700, color = '#fff', k = 
       <text
         {...pieceMotionAttrs(motion, text, { kind: 'text', values: { k }, stagger })}
         x={x}
-        y={y + (1 - easeOut(k)) * size * 0.35}
+        y={y + (1 - motionCurves.cubic.entrance(k)) * size * 0.35}
         fill={color}
         textAnchor={align === 'left' ? 'start' : align === 'center' ? 'middle' : 'end'}
         style={{ font: `${weight} ${size}px ${FONT}`, letterSpacing: `${spacing * size}px`, whiteSpace: 'pre' }}

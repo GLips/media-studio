@@ -1,19 +1,194 @@
 // motion.ts: easing and progress helpers. Everything a scene draws is a function of its clock, so these are the
-// whole vocabulary of change: `seg` turns a stretch of time into eased 0..1 progress.
+// whole vocabulary of change: `seg` turns a stretch of time into eased 0..1 progress, shaped by a curve token.
+//
+// The tokens are defaults for one register, calm and legible walkthrough UI. A teaser or showreel designs its own
+// motion, and nothing here constrains that.
+
+import { Easing, measureSpring, spring, type SpringConfig } from 'remotion';
+import { FPS } from './frame.ts';
 
 export const clamp = (v: number, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 export const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
 
 export type EaseFn = (k: number) => number;
-export const linear: EaseFn = (k) => clamp(k);
-export const ease: EaseFn = (k) => { k = clamp(k); return k * k * (3 - 2 * k); };
-export const easeOut: EaseFn = (k) => 1 - Math.pow(1 - clamp(k), 3);
-export const easeIn: EaseFn = (k) => Math.pow(clamp(k), 3);
-export const easeInOut: EaseFn = (k) => { k = clamp(k); return k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2; };
 
-/** Progress 0..1 through [a, b], eased. */
-export const seg = (t: number, a: number, b: number, fn: EaseFn = easeInOut) => fn(clamp((t - a) / (b - a)));
+/** A curve for each role a move plays: `standard` moves within the frame, `entrance` arrives, `exit` leaves. */
+export type CurveRoles = { standard: EaseFn; entrance: EaseFn; exit: EaseFn };
+
+const bezier = (x1: number, y1: number, x2: number, y2: number): EaseFn => {
+  const fn = Easing.bezier(x1, y1, x2, y2);
+  return (k) => fn(clamp(k));
+};
+
+/**
+ * Named curves, one system per register. Pick a system, then the role: `motionCurves.productive.entrance`.
+ * Systems stay whole, so a video never mixes two families' curves without saying so.
+ */
+export const motionCurves = {
+  /** IBM Carbon's productive set (@carbon/motion): brisk and unfussy, for walkthrough UI. */
+  productive: {
+    standard: bezier(0.2, 0, 0.38, 0.9),
+    entrance: bezier(0, 0, 0.38, 0.9),
+    exit: bezier(0.2, 0, 1, 0.9),
+  },
+  /** IBM Carbon's expressive set (@carbon/motion): a longer, softer landing, for reveals and moments that matter. */
+  expressive: {
+    standard: bezier(0.4, 0.14, 0.3, 1),
+    entrance: bezier(0, 0, 0.3, 1),
+    exit: bezier(0.4, 0.14, 1, 1),
+  },
+  /**
+   * Robert Penner's cubic in-out, out and in. The library's own pieces (captions, text, rings, cards) and the camera
+   * default use these, so videos already approved keep their motion. Stronger at the ends than Carbon's.
+   */
+  cubic: {
+    standard: (k) => { k = clamp(k); return k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2; },
+    entrance: (k) => 1 - Math.pow(1 - clamp(k), 3),
+    exit: (k) => Math.pow(clamp(k), 3),
+  },
+  /** Smoothstep: an even, symmetric ease for opacity, where a dissolve shouldn't be seen to accelerate. */
+  dissolve: (k) => { k = clamp(k); return k * k * (3 - 2 * k); },
+  /** Constant speed: for what the viewer reads as mechanical on purpose (a scroll, a timer, a progress bar). */
+  linear: (k) => clamp(k),
+} as const satisfies Record<string, CurveRoles | EaseFn>;
+
+/**
+ * Seconds for a move, by what it does and how far it goes, written for video: the viewer sees it once, at full
+ * speed. To make a moment read better, lengthen the anticipation before it or the hold on its result ("fast actions,
+ * slow meanings"), and leave the move itself alone. Land moves on speech (`s.line(id).word(…).start`), not on these.
+ */
+export const motionDurations = {
+  /** A press or toggle: the cursor's squeeze, a checkbox ticking. */
+  press: 0.12,
+  /** One state of a page dissolving into the next under a still camera. */
+  dissolve: 0.3,
+  /** Something leaving. Exits are quicker than entrances: the eye has already moved on. */
+  exit: 0.4,
+  /** Something arriving: a tag or a line of text (`small`), a card or panel with contents (`large`). */
+  enter: { small: 0.5, large: 0.9 },
+  /** An element travelling: a nudge within its panel (`short`), across the frame (`long`). */
+  travel: { short: 0.5, long: 1.0 },
+  /** The camera: a small reframe, a push in or pull back from the whole page to a detail. */
+  camera: { reframe: 0.5, push: 1.2 },
+} as const;
+
+/** Progress 0..1 through [a, b], eased. Camera moves use the default. */
+export const seg = (t: number, a: number, b: number, fn: EaseFn = motionCurves.cubic.standard) => fn(clamp((t - a) / (b - a)));
 /** Eased 0→1 starting at `a`: things arriving. */
 export const on = (t: number, a: number, len = 0.8) => seg(t, a, a + len);
 /** Eased 1→0 starting at `a`: things leaving. */
 export const off = (t: number, a: number, len = 0.4) => 1 - seg(t, a, a + len);
+
+// ---------- springs ----------
+
+// "Looks landed": within 0.5% of the way home, under a pixel for most moves. "Settled": within 0.05%, and staying there.
+const SPRING_LANDED = 0.005;
+const SPRING_SETTLED = 0.0005;
+const SPRING_STIFFNESS = 100;
+
+/** Progress 0→1 (past 1 while it bounces) at `t` seconds after the spring starts. */
+export type DeadlineSpring = ((t: number) => number) & {
+  /** Seconds until it looks landed: the deadline it was asked for. */
+  landed: number;
+  /** Seconds until it has finished settling and holds exactly 1. Later than `landed`, more so the bouncier it is. */
+  settled: number;
+};
+
+/**
+ * A spring that looks landed `duration` seconds after it starts, so it can land on a word. `bounce` 0 (no overshoot,
+ * the default) to just under 1 sets its shape; how much it overshoots follows from that, not from the duration.
+ * For moves only: fades and colour are tweens (`seg`).
+ *
+ *   const pop = springBy(0.5, 0.25); … scale={lerp(0.8, 1, pop(s.t - (w.start - pop.landed)))}
+ */
+export function springBy(duration: number, bounce = 0): DeadlineSpring {
+  if (!(duration > 0)) throw new RangeError(`springBy: duration must be positive, got ${duration}`);
+  if (!(bounce >= 0 && bounce < 1)) throw new RangeError(`springBy: bounce must be in [0, 1), got ${bounce}`);
+  const zeta = 1 - bounce;
+  const config: Partial<SpringConfig> = { mass: 1, stiffness: SPRING_STIFFNESS, damping: 2 * zeta * Math.sqrt(SPRING_STIFFNESS) };
+  // Remotion stretches the spring so it settles at durationInFrames. Measure where it lands on its natural clock, and
+  // stretch by what puts that on the deadline. A stiffness from (2π/d)² instead settles 40-65% late.
+  const stretch = duration / springLandedSeconds(zeta);
+  const durationInFrames = measureSpring({ fps: FPS, config, threshold: SPRING_SETTLED }) * stretch;
+  const at = (t: number) => (t <= 0 ? 0 : spring({ frame: t * FPS, fps: FPS, config, durationInFrames, durationRestThreshold: SPRING_SETTLED }));
+  return Object.assign(at, { landed: duration, settled: durationInFrames / FPS });
+}
+
+/**
+ * When a spring of damping ratio `zeta` (stiffness SPRING_STIFFNESS, mass 1) first comes within SPRING_LANDED of
+ * home, in seconds on its natural clock. This is the closed form Remotion steps through, including its use of the
+ * critically damped solution for zeta 1.
+ */
+function springLandedSeconds(zeta: number): number {
+  const w = Math.sqrt(SPRING_STIFFNESS), w1 = w * Math.sqrt(Math.max(0, 1 - zeta * zeta));
+  const gap = (t: number) => zeta < 1
+    ? Math.exp(-zeta * w * t) * (Math.cos(w1 * t) + ((zeta * w) / w1) * Math.sin(w1 * t))
+    : Math.exp(-w * t) * (1 + w * t);
+  let t = 0;
+  while (Math.abs(gap(t)) >= SPRING_LANDED) t += 1e-4;
+  return t;
+}
+
+// ---------- staggers ----------
+
+/** Where a stagger starts from: the first item, the last, the middle outward, the ends inward, or an item's index. */
+export type StaggerFrom = 'start' | 'end' | 'center' | 'edges' | number;
+
+/**
+ * `each` is seconds between neighbours' starts. Or, relative to each item's `duration`, `lagRatio` is the fraction of it
+ * the next item waits (manim's lag_ratio): 0 all together, 1 one after another. `max` caps the spread from first
+ * start to last.
+ */
+export type StaggerTiming = ({ each: number } | { lagRatio: number; duration: number }) & { max?: number; from?: StaggerFrom };
+
+/**
+ * Seconds after the group starts that item `i` of `n` starts, on a whole frame. With `max`, a long list packs its
+ * starts closer, so several items can share a frame. A component that consumes a stagger passes
+ * `stagger: { group, index: i, count: n }` to its motion tag, so the tracks see the group.
+ *
+ *   rows.map((row, i) => <Text … k={seg(s.t, at + stagger(i, rows.length, { each: 0.08, max: 0.4 }), …)} />)
+ */
+export function stagger(i: number, n: number, timing: StaggerTiming): number {
+  if (!Number.isInteger(n) || n < 1) throw new RangeError(`stagger: n must be a whole number of items, got ${n}`);
+  if (!Number.isInteger(i) || i < 0 || i >= n) throw new RangeError(`stagger: item ${i} is outside 0..${n - 1}`);
+  const { lo, hi } = staggerRankRange(n, timing.from);
+  if (hi === lo) return 0;
+  return quantiseToFrame((staggerSpread(timing, hi - lo) * (staggerRank(i, n, timing.from) - lo)) / (hi - lo));
+}
+
+/** Seconds after the group starts that its last item finishes, each item taking `duration`. 0 for no items. */
+export function staggerFinish(n: number, timing: StaggerTiming & { duration: number }): number {
+  if (n === 0) return 0;
+  const { lo, hi } = staggerRankRange(n, timing.from);
+  return quantiseToFrame(staggerSpread(timing, hi - lo)) + timing.duration;
+}
+
+const quantiseToFrame = (seconds: number) => Math.round(seconds * FPS) / FPS;
+
+const staggerSpread = (timing: StaggerTiming, ranks: number) => {
+  const each = 'each' in timing ? timing.each : timing.lagRatio * timing.duration;
+  return Math.min(each * ranks, timing.max ?? Infinity);
+};
+
+function staggerRank(i: number, n: number, from: StaggerFrom = 'start'): number {
+  const middle = (n - 1) / 2;
+  if (from === 'start') return i;
+  if (from === 'end') return n - 1 - i;
+  if (from === 'center') return Math.abs(i - middle);
+  if (from === 'edges') return middle - Math.abs(i - middle);
+  if (!Number.isInteger(from) || from < 0 || from >= n) throw new RangeError(`stagger: from ${from} is outside 0..${n - 1}`);
+  return Math.abs(i - from);
+}
+
+// The ranks' real range, not 0..n-1: from the centre of an even list the nearest pair is half a step out, and from an
+// index origin the far side can be the short one. Normalising by it makes the first mover start at 0 and the last at
+// the full spread.
+function staggerRankRange(n: number, from: StaggerFrom | undefined) {
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const r = staggerRank(i, n, from);
+    lo = Math.min(lo, r);
+    hi = Math.max(hi, r);
+  }
+  return { lo, hi };
+}

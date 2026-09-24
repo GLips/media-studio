@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
 import { camFit, camTop, camWhole, centerOf, lerpCam, view, type Rect, type Shot, type View } from './camera.ts';
 import { Capture, CaptureMotion } from './capture.tsx';
 import { CAPTION_FREE, CAPTION_SAFE_TOP, FONT, H, W } from './frame.ts';
-import { clamp, easeInOut, easeOut, seg } from './motion.ts';
+import { clamp, motionCurves, seg } from './motion.ts';
 import { motionAttrs, pieceMotionAttrs } from './motion-tag.ts';
 import { ClipToBox, CursorPath, Glass, Tag, Text, Wash } from './overlays.tsx';
 import type { SceneClock } from './timeline.ts';
@@ -106,7 +106,7 @@ export function MotionTitle({ s, shot, eyebrow, title, subtitle, accent, wash = 
   const cam = lerpCam(top, bottom, k);
   // The block hangs from the accent bar, which sits a clear gap above the caption band.
   const barY = CAPTION_SAFE_TOP - 120;
-  const inK = (at: number) => seg(s.t, at, at + 0.7, easeOut);
+  const inK = (at: number) => seg(s.t, at, at + 0.7, motionCurves.cubic.entrance);
   return (
     <>
       <Capture view={view(shot, cam)} />
@@ -170,7 +170,7 @@ export function GlassCard({ k, eyebrow, points, accent, ink, rect = { x: (W - 11
   rect?: Rect;
 }) {
   if (k <= 0) return null;
-  const y0 = rect.y + (1 - easeOut(k)) * 40;
+  const y0 = rect.y + (1 - motionCurves.cubic.entrance(k)) * 40;
   return (
     // The group is the card's own box, so its track is the card's rise; its contents are laid out in frame pixels.
     <div {...pieceMotionAttrs(motion, 'card', { kind: 'card', values: { k } })} style={{ position: 'absolute', left: rect.x, top: y0, width: rect.w, height: rect.h }}>
@@ -193,15 +193,15 @@ export function GlassCard({ k, eyebrow, points, accent, ink, rect = { x: (W - 11
  * the voice carries straight on and the card costs no time.
  */
 export function SectionCard({ t, number, of, title, bg, accent, hold = 1.3 }: { t: number; number: number; of: number; title: string; bg: string; accent: string; hold?: number }) {
-  const out = seg(t, hold, hold + 0.55, easeInOut);
+  const out = seg(t, hold, hold + 0.55, motionCurves.cubic.standard);
   if (out >= 1) return null;
   return (
     <div {...motionAttrs({ name: 'section-card', kind: 'section-card', implicit: true, values: { out } })} style={{ position: 'absolute', inset: 0, transform: `translateY(${-out * H}px)` }}>
       <div style={{ position: 'absolute', inset: 0, background: bg }} />
-      <Text text={`${number} / ${of}`} x={160} y={H / 2 - 70} size={34} weight={700} color={accent} k={seg(t, 0, 0.5, easeOut)} spacing={0.08} />
-      <Text text={title} x={154} y={H / 2 + 50} size={112} weight={800} k={seg(t, 0.1, 0.6, easeOut)} spacing={-0.025} />
-      <div {...motionAttrs({ name: 'accent-bar', kind: 'bar', implicit: true, values: { k: seg(t, 0.3, 0.8, easeOut) } })}
-        style={{ position: 'absolute', left: 160, top: H / 2 + 100, width: 150 * seg(t, 0.3, 0.8, easeOut), height: 8, background: accent }} />
+      <Text text={`${number} / ${of}`} x={160} y={H / 2 - 70} size={34} weight={700} color={accent} k={seg(t, 0, 0.5, motionCurves.cubic.entrance)} spacing={0.08} />
+      <Text text={title} x={154} y={H / 2 + 50} size={112} weight={800} k={seg(t, 0.1, 0.6, motionCurves.cubic.entrance)} spacing={-0.025} />
+      <div {...motionAttrs({ name: 'accent-bar', kind: 'bar', implicit: true, values: { k: seg(t, 0.3, 0.8, motionCurves.cubic.entrance) } })}
+        style={{ position: 'absolute', left: 160, top: H / 2 + 100, width: 150 * seg(t, 0.3, 0.8, motionCurves.cubic.entrance), height: 8, background: accent }} />
     </div>
   );
 }
@@ -230,7 +230,7 @@ export function ConfirmDialog({ k, origin, message, anchor = { x: W / 2, y: 120 
         style={{
           position: 'absolute',
           left: anchor.x - w / 2,
-          top: anchor.y + (1 - easeOut(k)) * -20,
+          top: anchor.y + (1 - motionCurves.cubic.entrance(k)) * -20,
           width: w,
           padding: pad,
           borderRadius: 16,
@@ -268,7 +268,7 @@ export function NativeMenu({ k, from, items, scroll = 0, rowH = 34, bottom = CAP
         left: from.x,
         top: y,
         width: from.w,
-        height: h * easeOut(k),
+        height: h * motionCurves.cubic.entrance(k),
         overflow: 'hidden',
         borderRadius: 10,
         background: '#fbfbfb',

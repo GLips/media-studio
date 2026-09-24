@@ -3,7 +3,7 @@
 
 import {
   CaptureSwap, Capture, ClickToBlur, CursorPath, EndCard, GlassCard, Highlight, MotionTitle, Spotlight, Tag,
-  camAt, camFit, camTop, centerOf, defineScene, defineVideo, easeOut, scaleFor, screenRect, seg, union, view,
+  camAt, camFit, camTop, centerOf, defineScene, defineVideo, scaleFor, screenRect, motionCurves, seg, union, view,
   type Cam, type Rect, type Shot,
 } from '../../lib/studio/api.ts';
 import { voice } from './audio/manifest.ts';
@@ -74,7 +74,7 @@ const today = defineScene({
             <CursorPath view={v} t={s.t} keys={[[landAt + 2.4, cursorRest(shot, focus)], ...hunt]} />
           </>
         )}
-        <Tag text="Today" x={64} y={56} k={seg(s.t, 0.2, 0.7, easeOut)} bg={NAVY} />
+        <Tag text="Today" x={64} y={56} k={seg(s.t, 0.2, 0.7, motionCurves.cubic.entrance)} bg={NAVY} />
       </>
     );
   },
@@ -110,7 +110,7 @@ const fix = defineScene({
             <Highlight rect={callout} k={seg(s.t, b.start + 0.1, b.start + 0.9)} color={SALE_RED} />
           </>
         )}
-        <Tag text="With sale-only view" x={64} y={56} k={seg(s.t, 0.1, 0.6, easeOut)} bg={SALE_RED} />
+        <Tag text="With sale-only view" x={64} y={56} k={seg(s.t, 0.1, 0.6, motionCurves.cubic.entrance)} bg={SALE_RED} />
       </>
     );
   },
@@ -187,7 +187,7 @@ const allOnSale = defineScene({
             <Highlight rect={screenRect(v, shot.rects.callout)} k={seg(s.t, landAt + 1.9, landAt + 2.7)} color={SALE_BLUE} />
           </>
         )}
-        <Tag text="Everything on sale" x={64} y={56} k={seg(s.t, 0.1, 0.6, easeOut) * (1 - seg(s.t, s.dur - 0.5, s.dur))} bg={SALE_BLUE} />
+        <Tag text="Everything on sale" x={64} y={56} k={seg(s.t, 0.1, 0.6, motionCurves.cubic.entrance) * (1 - seg(s.t, s.dur - 0.5, s.dur))} bg={SALE_BLUE} />
       </>
     );
   },
@@ -213,8 +213,8 @@ const big = defineScene({
         <Capture view={vAfter} alpha={seg(s.t, swapAt, swapAt + 0.6)} />
         <Highlight rect={screenRect(vBefore, before.rects.listbox)} k={listK} />
         <Highlight rect={screenRect(vAfter, after.rects.callout)} k={seg(s.t, swapAt + 1.1, swapAt + 1.9)} color={SALE_RED} />
-        <Tag text="136 variations" x={64} y={56} k={seg(s.t, 0.2, 0.7, easeOut) * (1 - seg(s.t, swapAt - 0.3, swapAt))} bg={NAVY} />
-        <Tag text="3 on sale" x={64} y={56} k={seg(s.t, swapAt + 0.2, swapAt + 0.7, easeOut) * (1 - seg(s.t, s.dur - 0.5, s.dur))} bg={SALE_RED} />
+        <Tag text="136 variations" x={64} y={56} k={seg(s.t, 0.2, 0.7, motionCurves.cubic.entrance) * (1 - seg(s.t, swapAt - 0.3, swapAt))} bg={NAVY} />
+        <Tag text="3 on sale" x={64} y={56} k={seg(s.t, swapAt + 0.2, swapAt + 0.7, motionCurves.cubic.entrance) * (1 - seg(s.t, s.dur - 0.5, s.dur))} bg={SALE_RED} />
       </>
     );
   },
@@ -233,7 +233,7 @@ const pricing = defineScene({
   render: (s) => (
     <>
       <ClickToBlur t={s.t} {...checkout} />
-      <GlassCard k={seg(s.t, 2.0, 2.9, easeOut)} {...closingCard} eyebrow="EVERY CUSTOMER, THEIR OWN PRICE"
+      <GlassCard k={seg(s.t, 2.0, 2.9, motionCurves.cubic.entrance)} {...closingCard} eyebrow="EVERY CUSTOMER, THEIR OWN PRICE"
         points={['Uses each customer’s pricing', 'Pro and distributor accounts', 'see only their own discounts']} />
     </>
   ),
@@ -246,7 +246,7 @@ const rollout = defineScene({
   render: (s) => (
     <>
       <ClickToBlur t={s.t + 20} {...checkout} />
-      <GlassCard k={seg(s.t, 0.3, 1.2, easeOut) * (1 - seg(s.t, s.dur - 2.8, s.dur - 2.1))} {...closingCard} eyebrow="ROLLING OUT"
+      <GlassCard k={seg(s.t, 0.3, 1.2, motionCurves.cubic.entrance) * (1 - seg(s.t, s.dur - 2.8, s.dur - 2.1))} {...closingCard} eyebrow="ROLLING OUT"
         points={['Switched on per collection', 'A/B tested with Intelligems', 'before it goes everywhere']} />
       <EndCard k={seg(s.t, s.dur - 2.4, s.dur - 1.6)} title="Sale-only view" bg={NAVY} />
     </>

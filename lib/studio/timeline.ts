@@ -11,7 +11,7 @@
 import type { ReactNode } from 'react';
 import { findSpokenPhrase, type SpokenWord } from '../voice-words.ts';
 import type { MusicBed } from './mix.ts';
-import { ease } from './motion.ts';
+import { motionCurves } from './motion.ts';
 
 export type VoiceLine = {
   /** An imported WAV, or null for a line timed by `studio voice --read=estimate` that has no audio yet. */
@@ -257,10 +257,10 @@ export function scenesAt(tl: Timeline, t: number): { scene: LaidScene; alpha: nu
   const i = Math.max(0, scenes.findIndex((s, j) => t >= s.start && (t < s.start + s.dur || j === scenes.length - 1)));
   const scene = scenes[i], prev = scenes[i - 1], next = scenes[i + 1];
   if (prev && scene.xfade && t - scene.start < scene.xfade / 2) {
-    return [{ scene: prev, alpha: 1 }, { scene, alpha: ease((t - scene.start + scene.xfade / 2) / scene.xfade) }];
+    return [{ scene: prev, alpha: 1 }, { scene, alpha: motionCurves.dissolve((t - scene.start + scene.xfade / 2) / scene.xfade) }];
   }
   if (next && next.xfade && next.start - t < next.xfade / 2) {
-    return [{ scene, alpha: 1 }, { scene: next, alpha: ease((t - next.start + next.xfade / 2) / next.xfade) }];
+    return [{ scene, alpha: 1 }, { scene: next, alpha: motionCurves.dissolve((t - next.start + next.xfade / 2) / next.xfade) }];
   }
   return [{ scene, alpha: 1 }];
 }

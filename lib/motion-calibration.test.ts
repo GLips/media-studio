@@ -27,7 +27,7 @@ test('the calibration video measures cleanly', () => {
 
 test('an eased glide peaks mid-move; a linear one holds one speed and stops dead', () => {
   const eased = speeds(solo('glide/eased').screen.x), flat = speeds(solo('glide/linear').screen.x);
-  // easeInOut's cubic peaks at 3× the average speed of 1000 px/s.
+  // The cubic in-out peaks at 3× the average speed of 1000 px/s.
   assert.ok(Math.max(...eased) > 2500, `eased peaks at ${Math.max(...eased)}`);
   assert.ok(Math.abs(Math.max(...flat) - 1000) < 40, `linear peaks at ${Math.max(...flat)}`);
   // The cliff: full speed one frame, stopped the next.
