@@ -69,6 +69,9 @@ export async function fetchOpenRouterImageModel(model: string): Promise<OpenRout
   const { data }: { data: OpenRouterImageModel[] } = await (await fetchOpenRouter('/images/models')).json();
   const found = data.find((m) => m.id === model);
   if (!found) throw new Error(`OpenRouter has no image model ${model}; list them at ${API}/images/models`);
+  // A listed model can have no provider serving it, and a request then fails upstream as a misleading 401.
+  const { endpoints }: { endpoints: unknown[] } = await (await fetchOpenRouter(`/images/models/${model}/endpoints`)).json();
+  if (!endpoints.length) throw new Error(`no provider is serving ${model} on OpenRouter right now; try again later or pick another --model`);
   return found;
 }
 

@@ -24,6 +24,7 @@ beforeEach(() => {
   // OpenRouter at the network boundary: the model list, and an image for each generation.
   globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
     if (String(input).endsWith('/images/models')) return Response.json(MODELS);
+    if (String(input).endsWith('/endpoints')) return Response.json({ endpoints: [{ provider_name: 'Recraft' }] });
     generations.push(JSON.parse(String(init?.body)));
     return Response.json({ data: [{ b64_json: PNG.toString('base64') }], usage: { cost: 0.01 } }, { headers: { 'X-Generation-Id': `gen-img-${generations.length}` } });
   }) as typeof fetch;
