@@ -3,6 +3,9 @@
 //   npm run tts -- projects/<name>                       voice every line in voiceover.json → audio/
 //   node scripts/tts.ts projects/<name> --estimate       time unvoiced lines from their word count, with no audio,
 //                                                        so scenes can be built and rendered before the voice exists
+//   node scripts/tts.ts projects/<name> --draft          voice unvoiced lines with macOS `say`: free, offline, flat.
+//                                                        For hearing the timing, and for test projects. The next
+//                                                        paid run re-voices them
 //   npm run tts -- --audition "Some line" --voices=Kore,Puck,Achird [--out=auditions]
 //
 // voiceover.json: { "voice": "Kore", "direction": "optional delivery note", "lines": [{ "id": "s1", "text": "…" }] }
@@ -12,7 +15,9 @@
 // Every voiced line is also run through whisper.cpp for when each word is spoken (free, local; the first run installs
 // it). audio/manifest.ts is what the video imports.
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { measureLoudness } from '../lib/loudness.ts';
 import { alignSpokenWords, estimateSpokenWords, type SpokenWord } from '../lib/voice-words.ts';
@@ -20,6 +25,7 @@ import { heardWords } from '../lib/whisper-words.ts';
 import { postOpenRouter } from './openrouter.ts';
 
 const MODEL = 'google/gemini-3.8-flash-tts';
+const DRAFT_VOICE = 'Samantha';
 // Callirrhoe reads about three words a second; estimates only need to be close enough to lay scenes out.
 const WORDS_PER_SECOND = 3.0;
 
@@ -32,9 +38,9 @@ const args = process.argv.slice(2);
 const flag = (name: string) => args.find((a) => a.startsWith(`--${name}=`))?.split('=').slice(1).join('=');
 
 if (args[0] === '--audition') await audition(args[1], (flag('voices') ?? '').split(','), flag('out') || 'auditions');
-else await voiceProject(args[0], args.includes('--estimate'));
+else await voiceProject(args[0], args.includes('--estimate') ? 'estimate' : args.includes('--draft') ? 'draft' : 'paid');
 
-async function voiceProject(project: string, estimate: boolean) {
+async function voiceProject(project: string, mode: 'estimate' | 'draft' | 'paid') {
   const script: Script = JSON.parse(readFileSync(join(project, 'voiceover.json'), 'utf8'));
   const dir = join(project, 'audio');
   mkdirSync(dir, { recursive: true });
@@ -46,16 +52,20 @@ async function voiceProject(project: string, estimate: boolean) {
   for (const line of script.lines) {
     const voice = line.voice || script.voice;
     const direction = line.direction ?? script.direction;
-    const hash = createHash('sha256').update(JSON.stringify([MODEL, voice, direction, line.text])).digest('hex').slice(0, 16);
+    const hashFor = (...key: unknown[]) => createHash('sha256').update(JSON.stringify(key)).digest('hex').slice(0, 16);
+    const hash = hashFor(MODEL, voice, direction, line.text);
+    // A draft never matches the paid hash, so a paid run re-voices it.
+    const draftHash = hashFor('say', DRAFT_VOICE, line.text);
     const file = `${line.id}.wav`;
 
     const cached = previous[line.id];
-    if (cached?.hash === hash && existsSync(join(dir, file))) {
+    const keep = cached?.hash === hash || (mode === 'draft' && cached?.hash === draftHash);
+    if (keep && existsSync(join(dir, file))) {
       const wav = join(project, cached.src!);
       manifest[line.id] = { ...cached, words: cached.words ?? await wordsFor(wav, line.text, cached.duration), lufs: cached.lufs ?? measureLoudness(wav).lufs };
       continue;
     }
-    if (estimate) {
+    if (mode === 'estimate') {
       // No hash, so the next real run voices it.
       const duration = Number((line.text.split(/\s+/).length / WORDS_PER_SECOND + 0.3).toFixed(2));
       manifest[line.id] = { src: null, duration, hash: null, text: line.text, words: estimateSpokenWords(line.text, duration), lufs: null };
@@ -63,10 +73,13 @@ async function voiceProject(project: string, estimate: boolean) {
       continue;
     }
 
-    const { wav, duration } = await speak(line.text, voice, direction);
+    const { wav, duration } = mode === 'draft' ? speakDraft(line.text) : await speak(line.text, voice, direction);
     writeFileSync(join(dir, file), wav);
-    manifest[line.id] = { src: `audio/${file}`, duration, hash, text: line.text, words: await wordsFor(join(dir, file), line.text, duration), lufs: measureLoudness(join(dir, file)).lufs };
-    console.log(`voiced ${line.id}  ${duration.toFixed(2)}s  "${line.text.slice(0, 60)}"`);
+    manifest[line.id] = {
+      src: `audio/${file}`, duration, hash: mode === 'draft' ? draftHash : hash, text: line.text,
+      words: await wordsFor(join(dir, file), line.text, duration), lufs: measureLoudness(join(dir, file)).lufs,
+    };
+    console.log(`${mode === 'draft' ? 'drafted' : 'voiced'} ${line.id}  ${duration.toFixed(2)}s  "${line.text.slice(0, 60)}"`);
   }
 
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
@@ -118,6 +131,14 @@ async function speak(text: string, voice: string, direction?: string) {
   const pcm = Buffer.from(await response.arrayBuffer());
   const rate = Number(/rate=(\d+)/.exec(response.headers.get('content-type') || '')?.[1] || 24000);
   return { wav: wavFromPcm(pcm, rate), duration: pcm.length / (rate * 2) };
+}
+
+function speakDraft(text: string) {
+  const out = join(mkdtempSync(join(tmpdir(), 'say-')), 'line.wav');
+  execFileSync('say', ['-v', DRAFT_VOICE, '-o', out, '--data-format=LEI16@24000', text]);
+  const wav = readFileSync(out);
+  const duration = Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', out]).toString());
+  return { wav, duration };
 }
 
 // Gemini returns headerless 16-bit mono PCM; ffmpeg and browsers both want a WAV header on it.

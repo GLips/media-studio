@@ -53,9 +53,8 @@ capture, the incoming side needs an `on="clear"` layer.
 
 ## Over captures
 
-An ink loop around a price, an underline under a phrase, an arrow: an `on="page"` layer, anchored to the word. It
-multiplies onto the page, so it reads as ink on paper and can't hide the UI beneath. See `paintInkRing` in the test
-project: a loop that overshoots where it closes, drawn on over about 0.7 s, starting 0.4 s before the word.
+An ink loop around a price, an underline under a phrase, an arrow: an `on="page"` layer, anchored to the word. See
+`paintInkRing` in the test project: a loop that overshoots where it closes, drawn on over about 0.7 s, starting 0.4 s before the word.
 
 ## Tells
 
@@ -64,7 +63,6 @@ project: a loop that overshoots where it closes, drawn on over about 0.7 s, star
 - Plain shapes, gradients or digital glows mixed into the paint.
 - Pure black or white.
 - Every element outlined at the same weight: vary `sw`, and leave backgrounds unoutlined.
-- A render that flickers where the Studio didn't: run `--repeatable`.
 
 ## Cost
 

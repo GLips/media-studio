@@ -1,13 +1,14 @@
 ---
 name: video-motion
-description: Shared camera and motion vocabulary for animating scenes, with each term mapped to lib/studio primitives, and how to act on "feel" notes. Use when animating an approved storyboard, or when the user gives motion feedback like "slow the zooms", "push in on the click", "cursor from off screen", "make the cut feel continuous", "the highlight comes too late".
+description: Motion and camera for a video's scenes, from the shared vocabulary to lib/studio code. Use when animating an approved storyboard, or for motion feedback ("slow the zooms", "the highlight comes too late").
 ---
 
 # Motion vocabulary
 
 The user and you should mean the same thing by each word. Each term below maps to `lib/studio/api.ts`, which is all a
 scene imports. `docs/directing.md` covers the fuller craft (shot sizes, eye trace, J- and L-cuts, pacing, easing feel,
-sound); read it before planning motion for a whole video.
+sound); read it before planning motion for a whole video. Start from the storyboard: the existing projects each show
+one way to tell one story, not a structure to copy.
 
 A scene is `defineScene({ id, note, lines, lead, gap, tail, render: (s) => …, expect })`. Inside `render`, `s.t` is
 seconds since the scene's start (negative while it fades in), and `s.line(id)` is one of its lines: `.start`, `.end`,
@@ -16,7 +17,7 @@ seconds since the scene's start (negative while it fades in), and `s.line(id)` i
 | Term | Means | Build it with |
 |---|---|---|
 | **Push in** | The camera moves closer until one part fills the frame | `camAt(s.t, [[a, camTop(shot)], [b, camFit(shot, shot.rects.price)]])` into `view(shot, cam)`. Zoom interpolates in log space, so the speed reads as constant |
-| **Pull back** | The reverse: out from a detail to the whole | Swap the two cameras; key times still rise |
+| **Pull back** | The reverse: out from a detail to the whole | Swap the two cameras |
 | **Pan** | The camera slides sideways or up and down, zoom unchanged | Keep one `zoom` and move the centre: `const a = camFit(shot, rect)`, `b = { ...a, cx: centerOf(next).x }`. Two `camFit`s can land at different zooms, since `maxZoom` is only a ceiling |
 | **Hard cut** | One shot ends and the next starts on the very next frame | `cut: true` on the later scene (otherwise scenes crossfade over `xfade`, centred on the cut) |
 | **Match cut** | Something lines up across two shots, so the cut reads as one move | End shot A and start shot B with the matching element at the same **screen** position (`screenRect(view, rect)`), moving the same way, then `cut: true` |
@@ -41,7 +42,8 @@ You know what happens because you wrote the code. The viewer sees it once, at fu
 ## Anchor to speech, and lead the word
 
 - Anchor every beat to the voice: `s.line('ladder').word('no volume discount').start`, never raw seconds. Re-voicing
-  re-times everything, and the words come from whisper, so they land within a couple of frames.
+  re-times everything, and the words come from whisper, so they land within a couple of frames. Camera and cursor
+  keys must rise in time: word-anchored keys can swap after a re-voice, and the scene throws rather than snapping.
 - **The picture leads the word.** A ring draws on over 0.8 s and reads at half-drawn, so start it 0.4 s early:
   `k={on(s.t, w.start - 0.4)}`. A camera move lands as the word starts, not after.
 - Say it and show it: give the highlight a `name` and the scene an
@@ -58,8 +60,8 @@ names:
 - **"Push in on the click"**: push in over ~0.5 s ending at the click key in `CursorPath`, hold through the ripple,
   then pull back. If the click changes the screen, follow the change.
 - **"Cursor comes in from off screen"**: make the first waypoint `offscreen(view, target)` instead of fading `alpha`.
-- **"This scene leaves left, so bring the next one in from the right"**: carry the direction across the cut, with the
-  same easing on both sides, so the cut reads as one camera move.
+- **"This scene leaves left, so bring the next one in from the right"**: a match cut, with the same easing on both
+  sides.
 - **"The highlight comes too late"**: move its `on()` earlier relative to its word, and add an `expect` so it stays fixed.
 
 ## Checking your work
@@ -80,19 +82,13 @@ read that flashes by in a tile or two, or shares its tiles with another read, wi
 
 Check the strips against these. Each one makes a video look machine-made:
 
-- everything at one brisk speed, with events stacked and no holds;
-- moments over before the viewer has understood them;
+- everything at one brisk speed, with no holds;
 - **twinning**: both panels zooming in sync, a list popping in all at once, two rings drawing on together;
 - linear moves, and every part of a shot moving at once;
 - moves nothing motivates: the camera drifting to a spot the voice never mentions;
 - a highlight on every beat, so none of them stands out;
 - a setup with no payoff: a spinner nobody resolves, a click with no visible result;
 - a video that just stops, with no final read held and no end card.
-
-The existing projects each show one way to tell one story. Don't copy their structure; start from the storyboard.
-
-Camera and cursor keys must rise in time. Keys anchored to words can swap when a line is re-voiced, and the scene
-throws rather than snapping.
 
 ## Every video becomes a template
 

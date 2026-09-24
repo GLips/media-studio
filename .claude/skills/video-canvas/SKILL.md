@@ -1,6 +1,6 @@
 ---
 name: video-canvas
-description: Painted, illustrated and generative looks in a video, drawn with p5 (and libraries on it, like p5.brush) inside Remotion. Use for a watercolour opening, a brush-wipe transition, hand-drawn ink marks over a real capture, generative backgrounds, or when adding a new drawn style. Triggers include "painted", "hand-drawn", "watercolour", "sketchy", "illustrated", "generative", "p5", "brush wipe", "circle it by hand".
+description: Painted, drawn and generative layers in a video, made with p5 and p5.brush inside Remotion. Use for a painted or hand-drawn look (a watercolour opening, ink marks over a capture, a brush-wipe transition), generative backgrounds, or adding a new drawn style. Triggers include "painted", "hand-drawn", "generative", "p5".
 ---
 
 # Drawn layers
@@ -18,11 +18,13 @@ motion) applies here unchanged. This skill covers what's specific to drawing.
   textures); a **kit** is that style's drawing helpers, bound to one frame. Each style has one WebGL canvas per
   browser tab, shared by its layers one at a time and copied onto each layer's own canvas.
 - `lib/paint/watercolor.tsx` is the first style: p5.brush washes, watercolour fills, hatching and tapered ink on paper.
-  Its guide is [references/watercolor.md](references/watercolor.md).
+  Read [references/watercolor.md](references/watercolor.md) before painting in watercolour.
 - In a scene: `<Watercolor t={s.t} paint={(w) => { w.paper(); w.paint(…); }} />`. Anchor to words exactly as
   elsewhere: `seg(s.t, s.line('ring').word('price').start - 0.4, …)`.
-- Renders run the browser on the GPU (`RENDER_CHROMIUM` in `lib/render-session.ts`). A dense watercolour frame costs
-  about 100 ms against 35 ms for a plain one, so drawn layers don't change how we work.
+- Renders run the browser on the GPU, so drawn layers are cheap enough to use freely.
+- Before calling `brush.*` directly, writing a style, or reading p5.brush's own docs, read
+  [references/p5-brush.md](references/p5-brush.md): where those docs are wrong for us, and what the kit doesn't wrap
+  (vector fields, dry-media fills, custom brush tips).
 
 ## The one rule: a frame is a function of its time
 
@@ -32,13 +34,12 @@ flickers in the render.
 
 - Compute everything from `t` in closed form: no counters, no `Math.random()`, no physics stepped frame by frame.
 - **Seed every random stream the library uses, per element.** Watercolour's `w.boilSeed(key)` re-seeds both p5 and
-  p5.brush from a fixed key and the boil frame. p5.brush claims to follow p5's `randomSeed` but its fills don't in
-  instance mode; that bug made fills change from render to render.
+  p5.brush from a fixed key and the boil frame (p5.brush's own docs get this wrong; see the reference below).
 - **Flush deferred drawing at the end of every layer.** p5.brush holds strokes back and composites them later; left
-  alone, one frame's ink turns up in the next frame the tab paints. `Watercolor` flushes for you; a new style must too.
+  alone, one frame's ink turns up in the next frame the tab paints. `Watercolor` flushes for you.
 - For values that mustn't wobble (positions, sizes), use `hash(i)`, not the seeded stream.
-- **Prove it:** `node scripts/render.ts projects/<p> --repeatable=2,8.5,12` renders those times alone, reversed and
-  among other frames, and fails if any differ. Run it on every new style, and whenever a drawn layer flickers.
+- **Prove it:** `node scripts/render.ts projects/<p> --repeatable=2,8.5,12` renders those times fresh and again after
+  other frames in one tab, and fails if any differ. Run it whenever a drawn layer flickers.
 
 ## Layers over captures
 
@@ -69,7 +70,5 @@ A style is a whole medium with its own rules (what marks it makes, its palette, 
 3. Write `references/<style>.md`: the medium's rules, its helpers, its quirks and its tells.
 4. Build one shot in a test project, look at a `--sheet` and a `--strip`, and pass `--repeatable`.
 
-## Where it came from
-
-The watercolour kit is ported from [ClaudeAnimationBase](https://github.com/JohnHeibel/ClaudeAnimationBase) (MIT),
-a p5.brush cartoon kit. Its `ANIMATION_GUIDE.md` is worth reading for character animation, which we haven't ported.
+Character animation (walk cycles, acting) isn't ported; ClaudeAnimationBase's `ANIMATION_GUIDE.md`
+(github.com/JohnHeibel/ClaudeAnimationBase) is the place to start.

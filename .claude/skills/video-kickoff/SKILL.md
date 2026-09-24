@@ -1,6 +1,6 @@
 ---
 name: video-kickoff
-description: Start a new walkthrough or launch video, from the first context dump to an approved storyboard, before any motion pass. Use when the user starts a video project, dumps context for one, asks for story angles, or wants a storyboard or scene table. Triggers include "new video", "let's make a video about", "storyboard this", "give me some angles".
+description: Start a new walkthrough or launch video. Use when the user starts a video project, dumps context for one, asks for story angles, or wants a storyboard or scene table.
 ---
 
 # Starting a video
@@ -23,8 +23,7 @@ The first message is usually messy and dictated. Pull these out of it, and ask o
 ## 2. Five angles, then one
 
 Before writing any scenes, give **5 story angles of 2–3 sentences each**. Make them different ways into the story
-(the problem first, the before and after, a customer's day, a number, a demo run straight through), not five
-wordings of one idea. Refine whichever one the user picks until they say it feels right.
+(e.g. the problem first, or a number that surprises), not five wordings of one idea. Refine whichever one the user picks until they say it feels right.
 
 ## 3. Scene table
 
@@ -48,19 +47,21 @@ scene in `projects/<p>/storyboard.md`, under the audience, source and takeaway:
 - End with a **Deliberately left out** list: true things the video skips, and why. It stops them creeping back in
   during review (see `projects/2026-09-sale-only-view/storyboard.md`).
 
+Get the user's yes on the table before building anything.
+
 ## 4. Storyboard: an animatic you can click through
 
 The storyboard is the video itself, rough, and never a separate drawing, so it can't drift from what ships.
 
 1. Write the lines into `voiceover.json` and run `npm run tts -- projects/<p> --estimate`. That times each line from
    its word count, for free.
-2. Add the states to `capture.ts` and run it.
+2. Add the states to `capture.ts` and run it, by the **Real UI only** rules below.
 3. Build `video.tsx` as an **animatic**: one scene per table row, with the table's text as its `note`, one camera and at
    most one highlight per scene. Anchor the highlight to its word (`s.line(id).word(…)`) now, so it lands again once
    the real voice replaces the estimate. No cursor paths, blur or polish yet.
-4. Run `node scripts/storyboard.ts projects/<p>` and look at `out/storyboard/index.html` yourself. It shows a small
-   preview on top and a card per scene below, with its note, a still per line and the line's words (marked
-   *estimated* until voiced). Clicking a card plays from that scene.
+4. Run `node scripts/storyboard.ts projects/<p>` and look at `out/storyboard/index.html` yourself. It's ready to send
+   when every scene's event and each of its listed reads shows in its stills, and nothing is off the frame or under
+   the caption.
 5. Send the user the page. Their notes go into the table, the lines and the animatic, and the page is rebuilt, until
    they sign off.
 
