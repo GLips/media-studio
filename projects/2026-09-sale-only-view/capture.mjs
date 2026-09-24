@@ -22,8 +22,9 @@ const PICKER = {
 };
 const SALE_NOTE = { callout: '.variant-sale-only', exit: '.variant-sale-only__exit' };
 
-// Klaviyo's "GET 10% OFF!" teaser pops up at random, so it would flicker between states that crossfade.
-const HIDE_POPUPS = '[class*="kl-private-reset-css"], [class*="kl-teaser"] { display: none !important; }';
+// Attentive's "GET 10% OFF!" SMS teaser (a fixed iframe) arrives at random, so it would flicker between states that
+// crossfade.
+const HIDE_POPUPS = '#attentive_overlay { display: none !important; }';
 
 const session = await openCaptureSession({ project: import.meta.dirname, viewport: { width: 1440, height: 810 }, css: HIDE_POPUPS });
 const { page, snap } = session;

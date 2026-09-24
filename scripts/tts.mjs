@@ -2,6 +2,8 @@
 //
 //   npm run tts -- projects/<name>                       voice every line in voiceover.json → audio/
 //   node scripts/tts.mjs projects/<name> --dry           only refresh audio/script.js (no API calls, no key needed)
+//   node scripts/tts.mjs projects/<name> --estimate      time unvoiced lines from their word count, with no audio,
+//                                                        so scenes can be built and rendered before the voice exists
 //   npm run tts -- --audition "Some line" --voices=Kore,Puck,Achird [--out=auditions]
 //
 // voiceover.json: { "voice": "Kore", "direction": "optional delivery note", "lines": [{ "id": "s1", "text": "…" }] }
@@ -15,14 +17,16 @@ import { pathToFileURL } from 'node:url';
 import { postOpenRouter } from './openrouter.mjs';
 
 const MODEL = 'google/gemini-3.8-flash-tts';
+// Callirrhoe reads about three words a second; estimates only need to be close enough to lay scenes out.
+const WORDS_PER_SECOND = 3.0;
 
 const args = process.argv.slice(2);
 const flag = (name) => args.find((a) => a.startsWith(`--${name}=`))?.split('=').slice(1).join('=');
 
 if (args[0] === '--audition') await audition(args[1], flag('voices').split(','), flag('out') || 'auditions');
-else await voiceProject(args[0], args.includes('--dry'));
+else await voiceProject(args[0], args.includes('--dry'), args.includes('--estimate'));
 
-async function voiceProject(project, dry) {
+async function voiceProject(project, dry, estimate) {
   const script = JSON.parse(readFileSync(join(project, 'voiceover.json'), 'utf8'));
   const dir = join(project, 'audio');
   mkdirSync(dir, { recursive: true });
@@ -42,6 +46,13 @@ async function voiceProject(project, dry) {
 
     if (previous[line.id]?.hash === hash && existsSync(join(dir, file))) {
       manifest[line.id] = previous[line.id];
+      continue;
+    }
+    if (estimate) {
+      // No hash, so the next real run voices it.
+      const duration = Number((line.text.split(/\s+/).length / WORDS_PER_SECOND + 0.3).toFixed(2));
+      manifest[line.id] = { src: null, duration, hash: null, text: line.text, estimated: true };
+      console.log(`estimated ${line.id}  ${duration.toFixed(2)}s`);
       continue;
     }
 
