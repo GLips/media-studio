@@ -7,8 +7,10 @@ import { renderFrames, selectComposition, type OnArtifact } from '@remotion/rend
 import { mkdtempSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { projectSlug, projectWebpackOverride } from './project-bundle.ts';
+import type { VideoConfig } from 'remotion';
+import { projectSlug, projectWebpackOverride, replaySlug } from './project-bundle.ts';
 import { W } from './studio/frame.ts';
+import type { ReplayProps } from './studio/Root.tsx';
 import type { TimelineReport, VideoProps } from './studio/Video.tsx';
 
 export type RenderSession = Awaited<ReturnType<typeof openRenderSession>>;
@@ -25,21 +27,33 @@ export async function openRenderSession(project: string) {
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, ...p });
   const compositionFor = (inputProps: VideoProps) => selectComposition({ serveUrl, chromiumOptions: RENDER_CHROMIUM, id: projectSlug(project), inputProps });
 
-  /** Renders chosen frames as JPEGs `w` wide; returns each frame's file. Repeats are rendered once. */
-  async function renderStills(wanted: number[], { w, captions = false }: { w: number; captions?: boolean }) {
-    const frames = [...new Set(wanted)];
-    const inputProps = props({ captions });
-    const composition = await compositionFor(inputProps);
+  async function renderJpegs(composition: VideoConfig, inputProps: Record<string, unknown>, frames: number[], w: number, concurrency: number | null = null) {
     const dir = mkdtempSync(join(tmpdir(), 'stills-'));
     await renderFrames({
       composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, inputProps, outputDir: dir, imageFormat: 'jpeg', jpegQuality: 90, scale: w / W, frames,
-      imageSequencePattern: 'f-[frame].[ext]', onStart: () => {}, onFrameUpdate: () => {},
+      concurrency, imageSequencePattern: 'f-[frame].[ext]', onStart: () => {}, onFrameUpdate: () => {},
     });
     const files = readdirSync(dir).filter((f) => /\.jpe?g$/.test(f));
     if (files.length !== frames.length) throw new Error(`rendered ${files.length} of ${frames.length} stills`);
     // renderFrames pads the frame number to the composition's length, so match by value.
     const byFrame = new Map(files.map((f) => [Number(/f-(\d+)/.exec(f)![1]), join(dir, f)]));
     return { dir, fileFor: (frame: number) => byFrame.get(frame)! };
+  }
+
+  /** Renders chosen frames as JPEGs `w` wide; returns each frame's file. Repeats are rendered once. */
+  async function renderStills(wanted: number[], { w, captions = false }: { w: number; captions?: boolean }) {
+    const inputProps = props({ captions });
+    return renderJpegs(await compositionFor(inputProps), inputProps, [...new Set(wanted)], w);
+  }
+
+  /**
+   * Renders the video's frames in `order`, one after another in a single tab, so each has the history it's given.
+   * `fileFor(i)` is the render of order[i].
+   */
+  async function renderReplay(order: number[], { w }: { w: number }) {
+    const inputProps: ReplayProps = { ...props(), order };
+    const composition = await selectComposition({ serveUrl, chromiumOptions: RENDER_CHROMIUM, id: replaySlug(project), inputProps });
+    return renderJpegs(composition, inputProps, order.map((_, i) => i), w, 1);
   }
 
   /** The timeline as the composition lays it out, from the report frame 0 emits. */
@@ -53,7 +67,7 @@ export async function openRenderSession(project: string) {
     return sink.json<TimelineReport>('timeline.json');
   }
 
-  return { project, serveUrl, props, compositionFor, renderStills, readTimeline };
+  return { project, serveUrl, props, compositionFor, renderStills, renderReplay, readTimeline };
 }
 
 /** Collects the artifacts a render emits, by name. */

@@ -22,3 +22,5 @@ declare module '@project' {
 }
 /** The project folder's name, defined at bundle time by lib/project-bundle.ts. */
 declare const PROJECT_SLUG: string;
+/** Its replay composition's id, likewise. */
+declare const REPLAY_SLUG: string;

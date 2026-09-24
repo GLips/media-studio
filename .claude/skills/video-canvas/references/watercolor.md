@@ -42,7 +42,8 @@ Brushes: the kit's `'ink'`, `'inkfine'`, `'dry'`, and p5.brush's `'2B'`, `'HB'`,
 `'cpencil'`, `'rotring'`, `'spray'`.
 
 Shapes: `w.rectPts`, `w.ellPts`, `w.through(pts)` (a smooth curve through points), `w.ribbon(path, w0, w1)` (a tapered
-outline along a path). To draw a line on, slice its points by progress: `path.slice(0, Math.round(path.length * k))`.
+outline along a path). To draw a line on, slice its points by progress, keeping at least two (a spline needs them):
+`path.slice(0, Math.max(2, Math.round(path.length * k)))`, and draw nothing while `k` is 0.
 
 ## Transitions
 

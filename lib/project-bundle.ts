@@ -11,11 +11,16 @@ export function projectSlug(project: string) {
   return basename(resolve(project));
 }
 
+/** The composition that replays chosen frames in a chosen order (Root.tsx's ReplayVideo). */
+export function replaySlug(project: string) {
+  return `${projectSlug(project)}-replay`;
+}
+
 export function projectWebpackOverride(project: string): WebpackOverrideFn {
   const entry = join(resolve(project), 'video.tsx');
   return (config) => ({
     ...config,
     resolve: { ...config.resolve, alias: { ...(config.resolve?.alias as Record<string, string>), '@project': entry } },
-    plugins: [...(config.plugins ?? []), new webpack.DefinePlugin({ PROJECT_SLUG: JSON.stringify(projectSlug(project)) })],
+    plugins: [...(config.plugins ?? []), new webpack.DefinePlugin({ PROJECT_SLUG: JSON.stringify(projectSlug(project)), REPLAY_SLUG: JSON.stringify(replaySlug(project)) })],
   });
 }

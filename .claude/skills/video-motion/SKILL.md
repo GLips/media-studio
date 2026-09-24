@@ -72,9 +72,9 @@ Look at the images yourself before reporting back.
 - `--strip=a:b` shows a stretch of motion, 0.1 s apart; `--sheet=t1,t2,…` shows chosen moments. Add `--captions`.
 - `node scripts/storyboard.ts projects/<p>` rebuilds the storyboard page from the video.
 
-To judge timing, read a `--strip` like a viewer: at each frame, where are they looking, and do they understand it
-yet? Count the frames each read gets (30 = 1 s). A read that flashes by in a few frames, or shares them with another
-read, will be missed.
+To judge timing, read a `--strip` like a viewer: at each tile, where are they looking, and do they understand it
+yet? Time each read from the tiles' timestamps (a default strip's tiles are 0.1 s apart, three video frames each). A
+read that flashes by in a tile or two, or shares its tiles with another read, will be missed.
 
 ## Tells of generated motion
 

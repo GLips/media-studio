@@ -27,25 +27,40 @@ const hosts = new Map<string, Promise<P5Host>>();
 function p5HostFor(style: P5Style): Promise<P5Host> {
   let host = hosts.get(style.name);
   if (!host) {
-    host = new Promise((resolve) => {
+    host = new Promise<P5Host>((resolve, reject) => {
       const node = document.createElement('div');
       node.style.display = 'none';
       document.body.appendChild(node);
       new p5((p) => {
         style.attach?.(p);
         p.setup = async () => {
-          p.createCanvas(W, H, p.WEBGL);
-          p.pixelDensity(1);
-          p.noLoop();
-          await style.setup?.(p);
-          resolve({ p, busy: Promise.resolve() });
+          try {
+            p.createCanvas(W, H, p.WEBGL);
+            p.pixelDensity(1);
+            p.noLoop();
+            await style.setup?.(p);
+            resolve({ p, busy: Promise.resolve() });
+          } catch (err) {
+            p.remove();
+            node.remove();
+            reject(err);
+          }
         };
         p.draw = () => {};
       }, node);
     });
+    // A failed setup is forgotten, so the next layer (after a fix in the Studio) tries again.
+    host.catch(() => hosts.delete(style.name));
     hosts.set(style.name, host);
   }
   return host;
+}
+
+/** Runs `job` once the host's earlier jobs finish, failed or not; its own failure goes to the caller only. */
+function p5HostJob(host: P5Host, job: () => Promise<void>): Promise<void> {
+  const run = host.busy.then(job);
+  host.busy = run.catch(() => {});
+  return run;
 }
 
 /**
@@ -68,26 +83,27 @@ export function P5Canvas({ style, paint, finish, multiply = false, alpha = 1 }: 
     const handle = delayRender(`painting a ${style.name} layer`);
     let live = true;
     p5HostFor(style)
-      .then((host) => {
-        // One layer at a time on the shared canvas: a crossfade paints two layers in the same frame.
-        host.busy = host.busy.then(async () => {
-          if (!live) return;
-          const { p } = host;
-          p.draw = () => {
-            p.clear();
-            p.push();
+      // One layer at a time on the shared canvas: a crossfade paints two layers in the same frame.
+      .then((host) => p5HostJob(host, async () => {
+        if (!live) return;
+        const { p } = host;
+        p.draw = () => {
+          p.clear();
+          p.push();
+          try {
             p.translate(-W / 2, -H / 2);
             paint(p);
+          } finally {
             p.pop();
-          };
-          await p.redraw();
-          const out = ref.current!.getContext('2d')!;
-          out.clearRect(0, 0, W, H);
-          out.drawImage(p.canvas, 0, 0);
-          finish?.(out);
-        });
-        return host.busy;
-      })
+          }
+        };
+        await p.redraw();
+        const out = ref.current!.getContext('2d')!;
+        // Whatever the last frame's `finish` left set (a transform, a clip, a blend) would skew this copy.
+        out.reset();
+        out.drawImage(p.canvas, 0, 0);
+        finish?.(out);
+      }))
       .then(() => continueRender(handle), cancelRender);
     return () => {
       live = false;

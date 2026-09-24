@@ -19,7 +19,7 @@
 import { serializeSrt } from '@remotion/captions';
 import { renderFrames, renderMedia } from '@remotion/renderer';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { framesToMeasure, framingArtifactName, framingProblems, type FramingReport } from '../lib/framing-check.ts';
@@ -218,32 +218,31 @@ function writeWatchPage(title: string) {
 const captions = Boolean(args.captions);
 
 /**
- * Renders frames at `times` alone, together, reversed and among other frames, since a tab's history is what leaks
- * into a frame that isn't a pure function of time (an unseeded random stream, drawing deferred to the next frame).
- * GPU rounding leaves renders a few levels apart, so equal means over 50 dB PSNR.
+ * Renders each frame at `times` fresh, in a tab of its own, then again in one tab after other frames: the rest in
+ * order, the rest reversed, and a later and an earlier neighbour. A tab's history is what leaks into a frame that
+ * isn't a pure function of time (an unseeded random stream, drawing deferred to the next frame). GPU rounding leaves
+ * renders a few levels apart, so equal means over 50 dB PSNR.
  */
 async function isRepeatable(times: number[]) {
   const { fps, durationInFrames } = await compositionFor(props());
   const frames = times.map((t) => Math.round(t * fps));
   const bad = frames.find((f) => !(f >= 0 && f < durationInFrames));
   if (bad !== undefined) throw new Error(`${bad / fps}s is outside the video`);
-  const near = (f: number) => [f, Math.min(durationInFrames - 1, f + 7), Math.max(0, f - 11)];
-  const runs = [frames, [...frames].reverse(), ...frames.map((f) => [f]), frames.flatMap(near).reverse()];
-  const dir = mkdtempSync(join(tmpdir(), 'repeatable-'));
-  const first = new Map<number, string>(), worst = new Map<number, number>();
-  for (const [r, run] of runs.entries()) {
-    const stills = await session.renderStills(run, { w: W });
-    for (const f of frames.filter((f) => run.includes(f))) {
-      const copy = join(dir, `${f}-${r}.jpg`);
-      copyFileSync(stills.fileFor(f), copy);
-      if (!first.has(f)) { first.set(f, copy); continue; }
-      const { stderr } = spawnSync('ffmpeg', ['-i', first.get(f)!, '-i', copy, '-lavfi', 'psnr', '-f', 'null', '-'], { encoding: 'utf8' });
-      const psnr = Number(/average:(\S+)/.exec(stderr)![1].replace('inf', 'Infinity'));
-      worst.set(f, Math.min(worst.get(f) ?? Infinity, psnr));
-    }
-    rmSync(stills.dir, { recursive: true, force: true });
+  const fresh = new Map<number, Awaited<ReturnType<typeof session.renderStills>>>();
+  for (const f of frames) fresh.set(f, await session.renderStills([f], { w: W }));
+  const order = [
+    ...frames, ...[...frames].reverse(),
+    ...frames.flatMap((f) => [Math.min(durationInFrames - 1, f + 7), f, Math.max(0, f - 11), f]),
+  ];
+  const replay = await session.renderReplay(order, { w: W });
+  const worst = new Map<number, number>();
+  for (const [i, f] of order.entries()) {
+    if (!fresh.has(f)) continue;
+    const { stderr } = spawnSync('ffmpeg', ['-i', fresh.get(f)!.fileFor(f), '-i', replay.fileFor(i), '-lavfi', 'psnr', '-f', 'null', '-'], { encoding: 'utf8' });
+    const psnr = Number(/average:(\S+)/.exec(stderr)![1].replace('inf', 'Infinity'));
+    worst.set(f, Math.min(worst.get(f) ?? Infinity, psnr));
   }
-  rmSync(dir, { recursive: true, force: true });
+  for (const r of [...fresh.values(), replay]) rmSync(r.dir, { recursive: true, force: true });
   let ok = true;
   for (const f of frames) {
     const db = worst.get(f)!;
@@ -259,6 +258,8 @@ if (args.video) {
   const estimated = timeline.cues.filter((q) => !q.voiced).map((q) => q.id);
   if (estimated.length) throw new Error(`${estimated.join(', ')} ${estimated.length > 1 ? 'are' : 'is'} estimated, not voiced: run npm run tts before rendering the video`);
   await renderMasteredMix();
+  // An old plain video would no longer match; the watch page offers it only if it's there.
+  if (!args.plain) rmSync(videoFor(false), { force: true });
   for (const cap of args.plain ? [true, false] : [true]) {
     await renderVideo(cap);
     await review(cap, timeline);
