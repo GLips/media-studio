@@ -88,6 +88,19 @@ root>` in `video.tsx`, lay them out yourself and animate with plain Remotion (`s
 - Pin "now" with `defineVideo({ clock })` and `captureShots({ clock })`, so relative dates ("5 minutes ago") match
   across captures and composed scenes and never drift between renders.
 
+## Generated stills
+
+A still no capture or kit shot can give (title-card art, a background, a physical product's shot, a concept icon)
+is generated with `studio gen image <p> "<prompt>" --name <name>`, never the product itself (the `video-kickoff`
+skill, Real UI only). It's paid and cached by request, so settle the prompt before re-running.
+
+- Hand it what's real: the product's own photo or capture crop as `--ref`, and brand colours as hex in the prompt.
+- Pick the model for the job: `recraft/recraft-v4.1-vector` for an icon that scales cleanly (SVG), `--transparent`
+  on a model that allows it for a cutout laid over a scene, the default for everything else.
+- It lands in `generated/images.ts`: `import { images } from './generated/images.ts'`, then `images[name].src`.
+  Models make their own sizes (3:2, 1376×768), not 1920×1080, so fill a frame with `objectFit: 'cover'`.
+- Look at it before using it: colours drift from the hex asked for, and a product shot can invent parts.
+
 ## Acting on feel notes
 
 The user watches in the Studio (`studio preview <p>`) and says what feels off. Change only what the note

@@ -95,6 +95,9 @@ breaks it for all of them.
 - Pull real icons and logos from the site's assets. On a Mac, an app's icon sits in its bundle:
   `sips -s format png /Applications/X.app/Contents/Resources/*.icns --out icon.png`. A coloured square standing in for
   an icon fails review.
+- **Generate only around the product.** A still no capture can give (title-card art, a background, a physical
+  product's shot from its real photo, a concept icon) can be generated (`video-motion`, Generated stills). Name it in
+  the table's On screen column so the user approves it with the rest.
 - **Show only what the scene needs.** Frame the one part the story is about, large, on a clean background, instead of
   the whole page. `camFit` caps at 1.6× because captures soften past that. To go bigger, capture that element at a
   higher `scale`.
