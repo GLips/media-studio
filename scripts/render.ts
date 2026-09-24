@@ -24,7 +24,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { framesToMeasure, framingArtifactName, framingProblems, type FramingReport } from '../lib/framing-check.ts';
 import { measureLoudness } from '../lib/loudness.ts';
-import { artifactSink, openRenderSession, RENDER_CHROMIUM } from '../lib/render-session.ts';
+import { artifactSink, openRenderSession, RENDER_CHROMIUM, RENDER_CONCURRENCY } from '../lib/render-session.ts';
 import { H, W } from '../lib/studio/frame.ts';
 import type { TimelineReport } from '../lib/studio/Video.tsx';
 
@@ -67,7 +67,7 @@ async function checkFraming(every: number) {
   const sink = artifactSink();
   const tmp = mkdtempSync(join(tmpdir(), 'framing-'));
   const measure = (frames: number[]) => renderFrames({
-    composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, inputProps, outputDir: tmp, imageFormat: 'none', frames,
+    composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, concurrency: RENDER_CONCURRENCY, inputProps, outputDir: tmp, imageFormat: 'none', frames,
     onArtifact: sink.onArtifact, onStart: () => {}, onFrameUpdate: () => {},
   });
   // Frame 0 carries the timeline, which says which frames the expectations need.
@@ -124,7 +124,7 @@ async function renderMasteredMix() {
   const composition = await compositionFor(inputProps);
   const tmp = mkdtempSync(join(tmpdir(), 'mix-'));
   const raw = join(tmp, 'raw.wav');
-  await renderMedia({ composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, inputProps, codec: 'wav', outputLocation: raw });
+  await renderMedia({ composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, concurrency: RENDER_CONCURRENCY, inputProps, codec: 'wav', outputLocation: raw });
   mkdirSync(outDir, { recursive: true });
   const before = measureLoudness(raw);
   // Limiting at 4× the sample rate catches the peaks between samples too, which is what "true peak" counts.
@@ -150,7 +150,7 @@ async function renderVideo(captions: boolean) {
   let shown = -1;
   const started = Date.now();
   await renderMedia({
-    composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, inputProps, codec: 'h264', outputLocation: silent, muted: true,
+    composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, concurrency: RENDER_CONCURRENCY, inputProps, codec: 'h264', outputLocation: silent, muted: true,
     crf: 18, x264Preset: 'slow', pixelFormat: 'yuv420p', imageFormat: 'jpeg', jpegQuality: 94,
     onProgress: ({ progress }) => {
       const pct = Math.floor(progress * 10) * 10;

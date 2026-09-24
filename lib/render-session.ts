@@ -5,7 +5,7 @@
 import { bundle } from '@remotion/bundler';
 import { renderFrames, selectComposition, type OnArtifact } from '@remotion/renderer';
 import { mkdtempSync, readdirSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { availableParallelism, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { VideoConfig } from 'remotion';
 import { projectSlug, projectWebpackOverride, replaySlug } from './project-bundle.ts';
@@ -21,13 +21,19 @@ export type RenderSession = Awaited<ReturnType<typeof openRenderSession>>;
  */
 export const RENDER_CHROMIUM = { gl: 'angle' } as const;
 
+/**
+ * Tabs per render. Remotion's default is half the cores; frames are screenshot-bound, so all but one core renders
+ * about 20% faster, at under 1 GB.
+ */
+export const RENDER_CONCURRENCY = Math.max(1, availableParallelism() - 1);
+
 export async function openRenderSession(project: string) {
   console.log(`bundling ${project}…`);
   const serveUrl = await bundle({ entryPoint: resolve('lib/studio/index.ts'), webpackOverride: projectWebpackOverride(project) });
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, ...p });
   const compositionFor = (inputProps: VideoProps) => selectComposition({ serveUrl, chromiumOptions: RENDER_CHROMIUM, id: projectSlug(project), inputProps });
 
-  async function renderJpegs(composition: VideoConfig, inputProps: Record<string, unknown>, frames: number[], w: number, concurrency: number | null = null) {
+  async function renderJpegs(composition: VideoConfig, inputProps: Record<string, unknown>, frames: number[], w: number, concurrency = RENDER_CONCURRENCY) {
     const dir = mkdtempSync(join(tmpdir(), 'stills-'));
     await renderFrames({
       composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, inputProps, outputDir: dir, imageFormat: 'jpeg', jpegQuality: 90, scale: w / W, frames,
@@ -61,7 +67,7 @@ export async function openRenderSession(project: string) {
     const sink = artifactSink();
     const inputProps = props();
     await renderFrames({
-      composition: await compositionFor(inputProps), serveUrl, chromiumOptions: RENDER_CHROMIUM, inputProps, outputDir: mkdtempSync(join(tmpdir(), 'timeline-')),
+      composition: await compositionFor(inputProps), serveUrl, chromiumOptions: RENDER_CHROMIUM, inputProps, outputDir: mkdtempSync(join(tmpdir(), 'timeline-')), concurrency: RENDER_CONCURRENCY,
       imageFormat: 'none', frames: [0], onArtifact: sink.onArtifact, onStart: () => {}, onFrameUpdate: () => {},
     });
     return sink.json<TimelineReport>('timeline.json');

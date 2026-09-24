@@ -9,7 +9,7 @@
 import { renderMedia } from '@remotion/renderer';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { openRenderSession, RENDER_CHROMIUM } from '../lib/render-session.ts';
+import { openRenderSession, RENDER_CHROMIUM, RENDER_CONCURRENCY } from '../lib/render-session.ts';
 
 const project = process.argv[2];
 if (!project || !existsSync(join(project, 'video.tsx'))) {
@@ -41,7 +41,7 @@ rmSync(stills.dir, { recursive: true, force: true });
 console.log('rendering the preview…');
 const inputProps = session.props({ captions: true });
 await renderMedia({
-  composition: await session.compositionFor(inputProps), serveUrl: session.serveUrl, chromiumOptions: RENDER_CHROMIUM, inputProps, codec: 'h264',
+  composition: await session.compositionFor(inputProps), serveUrl: session.serveUrl, chromiumOptions: RENDER_CHROMIUM, concurrency: RENDER_CONCURRENCY, inputProps, codec: 'h264',
   outputLocation: join(outDir, 'preview.mp4'), scale: 0.5, crf: 30, x264Preset: 'veryfast', imageFormat: 'jpeg', jpegQuality: 80,
 });
 

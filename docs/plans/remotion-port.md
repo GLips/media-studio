@@ -103,10 +103,23 @@ frame. `sale-only-view`'s reference predates the caption-aware `camFit`, so its 
    `scripts/storyboard.ts` builds the storyboard page from the animatic itself. `video-motion` maps the vocabulary
    to this API. A subset of Remotion's own skills is vendored in `.claude/skills/remotion`.
 
+5. **Painted layers** (`lib/paint`, the `video-canvas` skill). p5 sketches as layers; watercolour is the first style.
+   `--repeatable` proves a drawn frame is a function of its time, replaying frames in chosen orders in one tab.
+
 Deferred: snapping cuts to music beats (the beats are detected; nothing uses them yet), and where music comes from.
+
+## Render speed
+
+`--video` on simple-buy-box (172 s, 5,157 frames) takes 4.5 min at about 1.2 GB. Per frame, at 600 frames: seeking and
+React about 5 ms (the framing probe adds nothing measurable), the JPEG screenshot about 15 ms, and x264 `slow` a
+few ms more once pipelined. So the frame render is screenshot-bound. Rendering in all but one core's worth of tabs
+beats Remotion's half-the-cores default by about 20%.
+
+Not built: the old engine's frame cache (hash each frame's drawing, re-render only new hashes). Here it would save
+only the screenshot on unchanged frames, and it would need a DOM fingerprint that sees canvases, images and fonts
+correctly, where a miss ships a stale frame. Iteration happens in the Studio and with `--sheet`/`--strip`, so full
+renders are rare. Worth revisiting if they stop being rare.
 
 ## Risks still open
 
 - Fonts are the system SF Pro stack, so a render on another machine can differ.
-- Render time: `--video` on simple-buy-box takes about 7.5 min (framing check about 45 s, each MP4 about 200 s) at
-  about 880 MB of Node memory.
