@@ -153,9 +153,14 @@ export function captureShots({ project, viewport, scale = 2, css = '', prepare, 
           return filmTake(page, dir, shot.name, deviceFor(shot.options.device), shot.options);
         }, shot.name);
       }
-    } finally {
+    } catch (error) {
+      // Shots that finished have replaced their files (a take's frames among them), so the index is rebuilt whenever
+      // every shot has an entry; otherwise it would point at frames that are gone.
       await browser.close();
+      if (!uncaptured(dir, shots).length) writeIndex(dir, shots);
+      throw error;
     }
+    await browser.close();
     writeIndex(dir, shots);
   }
 
@@ -295,10 +300,13 @@ async function filmTake(page: Page, dir: string, name: string, device: Device, {
   await page.mouse.move(at.x, at.y);
   mouse.push([0, at.x, at.y, 0]);
 
-  const mark = async (label: string | undefined, rects: RectSpecs = {}, t = now()) => {
+  // Stamped once measuring is done, so the time is when the page looked like its rects, and an action right after
+  // the mark (a click) lands on it rather than after a measuring delay.
+  const mark = async (label: string | undefined, rects: RectSpecs = {}) => {
     if (!label) return;
     if (marks[label]) throw new Error(`capture ${name}: two marks are named "${label}"`);
-    marks[label] = { t, scrollY: await page.evaluate(() => window.scrollY), rects: await measureRects(page, name, rects, false) };
+    const scrollY = await page.evaluate(() => window.scrollY), measured = await measureRects(page, name, rects, false);
+    marks[label] = { t: now(), scrollY, rects: measured };
   };
   const locatorOf = (target: string | Locator) => (typeof target === 'string' ? page.locator(target).first() : target);
   const pointOf = async (target: Target): Promise<Point> => {
@@ -333,10 +341,9 @@ async function filmTake(page: Page, dir: string, name: string, device: Device, {
     },
     async click(target, { mark: label, rects } = {}) {
       await glide(await pointOf(target));
-      const t = now();
-      await mark(label, rects, t);
+      await mark(label, rects);
+      mouse.push([label ? marks[label].t : now(), at.x, at.y, 1]);
       await page.mouse.click(at.x, at.y);
-      mouse.push([t, at.x, at.y, 1]);
     },
     async type(text, { mark: label, rects, perKey = 0.13 } = {}) {
       await mark(label, rects);
@@ -399,18 +406,20 @@ function writeEntry(dir: string, name: string, entry: Entry) {
 
 // Rebuilt from every shot's own entry, so redoing some shots keeps the rest. What no shot owns any more is deleted,
 // so a renamed shot doesn't leave its old files behind.
+const uncaptured = (dir: string, shots: readonly Shot[]) => shots.filter((s) => !existsSync(entryPath(dir, s.name))).map((s) => s.name);
+
 function writeIndex(dir: string, shots: readonly Shot[]) {
-  const names = new Set(shots.map((s) => s.name));
-  for (const file of readdirSync(dir)) {
-    if (file !== 'index.ts' && !names.has(file.replace(/\.(png|json)$/, ''))) rmSync(join(dir, file), { recursive: true, force: true });
-  }
-  const missing = shots.filter((s) => !existsSync(entryPath(dir, s.name))).map((s) => s.name);
+  const missing = uncaptured(dir, shots);
   if (missing.length) throw new Error(`capture: never captured ${missing.join(', ')}; run them with --only=${missing.join(',')}`);
   const entries = shots.map((s) => {
     const entry = JSON.parse(readFileSync(entryPath(dir, s.name), 'utf8')) as Entry;
     if (entry.kind !== s.kind) throw new Error(`capture: ${s.name} was captured as a ${entry.kind}; run it with --only=${s.name}`);
     return [s.name, entry] as const;
   });
+  const names = new Set(shots.map((s) => s.name));
+  for (const file of readdirSync(dir)) {
+    if (file !== 'index.ts' && !names.has(file.replace(/\.(png|json)$/, ''))) rmSync(join(dir, file), { recursive: true, force: true });
+  }
   writeFileSync(join(dir, 'index.ts'), indexModule(entries));
 }
 

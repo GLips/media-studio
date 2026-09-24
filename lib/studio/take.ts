@@ -74,6 +74,17 @@ export function takeTimeAt({ take, pins }: TakeFit, t: number): number {
   return clampTake(kn + (t - sn));
 }
 
+/** Where the logged cursor is at take time `time`, straight between waypoints. */
+export function takeMouseAt(take: Take, time: number): { x: number; y: number } {
+  const { mouse } = take;
+  let i = 0;
+  while (i + 1 < mouse.length && mouse[i + 1][0] <= time) i++;
+  const [t0, x0, y0] = mouse[i], next = mouse[i + 1];
+  if (!next || next[0] === t0) return { x: x0, y: y0 };
+  const k = Math.min(1, Math.max(0, (time - t0) / (next[0] - t0)));
+  return { x: x0 + (next[1] - x0) * k, y: y0 + (next[2] - y0) * k };
+}
+
 /** Scene time when the take reaches `time`: the first, if a hold keeps it there. */
 export function sceneTimeOf({ pins }: TakeFit, time: number): number {
   if (time <= pins[0][1]) return pins[0][0] - (pins[0][1] - time);
