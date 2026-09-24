@@ -99,13 +99,16 @@ Scenes import everything from `lib/studio/api.ts`.
   into `lib/`: `lib/render-pipeline.ts` checks, mixes, renders and reviews a bundled project
   (`lib/render-session.ts`), `lib/voice-project.ts` reads the script as one take (Gemini TTS through
   `lib/openrouter.ts`, `say`, or a recording) and cuts it, and `lib/studio-project.ts` resolves `<project>`.
+- `lib/paid-generation.ts`: every paid image, video or music generation, cached by request hash into a project's
+  `generated/` (gitignored) with each result's prompt, model, references and cost in `generated/provenance.json`.
 
 Remotion bundles `lib/studio` and one project's `video.tsx`. Remotion is free for companies of up to three people;
 past that it needs a company license.
 
 ## Secrets
 
-Only `studio voice` needs a secret: `OPENROUTER_API_KEY`, read from the environment. `.env.op` holds 1Password
+Only paid calls need a secret (`studio voice`, `studio audition`, and generation through `lib/paid-generation.ts`):
+`OPENROUTER_API_KEY`, read from the environment. `.env.op` holds 1Password
 references, not keys, so the key exists only inside the one process `op run` starts:
 
 ```sh

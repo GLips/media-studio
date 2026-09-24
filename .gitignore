@@ -8,3 +8,4 @@ projects/*/music/
 hosts.local.json
 projects/*/host
 .DS_Store
+projects/*/generated/
