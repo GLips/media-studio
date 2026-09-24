@@ -10,7 +10,7 @@
 
 import type { Rect } from './studio/camera.ts';
 
-export const MOTION_TRACKS_VERSION = 1;
+export const MOTION_TRACKS_VERSION = 2;
 
 /** The artifact the probe emits for each frame. */
 export const motionArtifactName = (frame: number) => `motion-${frame}.json`;
@@ -98,6 +98,8 @@ export type MotionSegment = {
   phase: ScenePhase;
   parent: string | null;
   attribution: MotionAttribution;
+  /** On the segment, not the track: a name the library picked can pass to an element in another stagger. */
+  stagger?: StaggerMembership;
   /** Centre and size on screen, composition pixels, and effective opacity. */
   screen: Channels<number> & { opacity: number[] };
   /** Centre and size in the owner's frame (see MotionAttribution); null when attribution is unknown. */
@@ -106,7 +108,7 @@ export type MotionSegment = {
   values: Record<string, (number | null)[]>;
 };
 
-export type MotionTrack = { id: string; scene: string; name: string; kind?: string; stagger?: StaggerMembership; segments: MotionSegment[] };
+export type MotionTrack = { id: string; scene: string; name: string; kind?: string; segments: MotionSegment[] };
 
 export type FrameSpan = { first: number; last: number; count: number };
 
@@ -138,10 +140,16 @@ const sameRect = (a: Rect, b: Rect) => Math.abs(a.x - b.x) < 0.01 && Math.abs(a.
 function frameSpans<T>({ contiguous }: { contiguous: boolean }) {
   const spans = new Map<string, { of: T; span: FrameSpan }[]>();
   return {
+    /** Returns the entry `frame` joined, whose `of` is the one it opened with. */
     add(key: string, frame: number, of: T) {
-      const s = spans.get(key)?.at(-1)?.span;
-      if (s && !(contiguous && frame !== s.last + 1)) [s.first, s.last, s.count] = [Math.min(s.first, frame), Math.max(s.last, frame), s.count + 1];
-      else spans.set(key, [...(spans.get(key) ?? []), { of, span: { first: frame, last: frame, count: 1 } }]);
+      const last = spans.get(key)?.at(-1), s = last?.span;
+      if (last && s && !(contiguous && frame !== s.last + 1)) {
+        [s.first, s.last, s.count] = [Math.min(s.first, frame), Math.max(s.last, frame), s.count + 1];
+        return last;
+      }
+      const entry = { of, span: { first: frame, last: frame, count: 1 } };
+      spans.set(key, [...(spans.get(key) ?? []), entry]);
+      return entry;
     },
     list: () => [...spans.values()].flat(),
   };
@@ -163,8 +171,8 @@ function errorLog() {
 
 /**
  * The samples on one frame that can go into tracks: a camera seen through several captures merged into one, and
- * every id still claimed twice, or carrying a value that isn't a number, dropped. A name the author chose that's
- * claimed twice is an error; one the library picked is ambiguous, and noted in `ambiguous` by id and count.
+ * every id still claimed twice, or carrying a value that isn't a number, dropped. A name only authors chose that's
+ * claimed twice is an error; one the library picked for any of them is ambiguous, and noted in `ambiguous` by id and count.
  */
 function usableSamples(fm: FrameMotion, log: ReturnType<typeof errorLog>, ambiguous: (id: string, elements: number) => void): MotionSample[] {
   const byId = new Map<string, MotionSample[]>();
@@ -174,7 +182,8 @@ function usableSamples(fm: FrameMotion, log: ReturnType<typeof errorLog>, ambigu
     const [first] = group;
     const oneCamera = group.every((s) => s.camera !== undefined && s.camera === first.camera && sameRect(s.rect, first.rect));
     if (group.length > 1 && !oneCamera) {
-      if (group.every((s) => s.implicit)) ambiguous(id, group.length);
+      // One of them named by the library is enough: the author couldn't have known to avoid it.
+      if (group.some((s) => s.implicit)) ambiguous(id, group.length);
       else log.add(`${group.length} elements share this id: give each its own name`, fm.frame, id);
       continue;
     }
@@ -193,7 +202,7 @@ function usableSamples(fm: FrameMotion, log: ReturnType<typeof errorLog>, ambigu
 }
 
 const round = roundMotionValue;
-const segmentKey = (s: MotionSample) => JSON.stringify([s.phase, s.parent, s.attribution]);
+const segmentKey = (s: MotionSample) => JSON.stringify([s.phase, s.parent, s.attribution, s.stagger ?? null]);
 
 /** One segment's samples, a frame each, as channels. A value some frames didn't report is null there, and logged. */
 function segmentOf(samples: readonly MotionSample[], start: number, id: string, log: ReturnType<typeof errorLog>): MotionSegment {
@@ -206,7 +215,7 @@ function segmentOf(samples: readonly MotionSample[], start: number, id: string, 
     return null;
   })]));
   return {
-    start, end: start + samples.length - 1, phase: s.phase, parent: s.parent, attribution: s.attribution,
+    start, end: start + samples.length - 1, phase: s.phase, parent: s.parent, attribution: s.attribution, ...(s.stagger && { stagger: s.stagger }),
     screen: { ...box(samples.map((x) => x.rect)), opacity: samples.map((x) => round(x.opacity)) },
     local: s.local ? box(samples.map((x) => x.local!)) : null,
     values,
@@ -234,11 +243,13 @@ export function assembleMotionTracks(frames: readonly FrameMotion[], { fps, firs
     for (const p of fm.problems) log.add(p.problem, frame, p.id);
     for (const scene of fm.scenes) sceneCoverage(scene);
     for (const { scene, what } of fm.unmeasured) sceneCoverage(scene).unmeasured.add(what);
-    const noteAmbiguous = (id: string, elements: number) => ambiguous.add(id, frame, { id, elements });
+    const noteAmbiguous = (id: string, elements: number) => {
+      const { of } = ambiguous.add(id, frame, { id, elements });
+      of.elements = Math.max(of.elements, elements);
+    };
     for (const s of usableSamples(fm, log, noteAmbiguous)) {
       sceneCoverage(s.scene).tracks.add(s.id);
       const entry = runs.get(s.id) ?? runs.set(s.id, { first: s, runs: [] }).get(s.id)!;
-      if (JSON.stringify(s.stagger ?? null) !== JSON.stringify(entry.first.stagger ?? null)) log.add('its stagger changed: a track has one place in one stagger', frame, s.id);
       const key = segmentKey(s), run = entry.runs.at(-1);
       if (run && run.key === key && run.start + run.samples.length === frame) run.samples.push(s);
       else entry.runs.push({ start: frame, key, samples: [s] });
@@ -250,7 +261,7 @@ export function assembleMotionTracks(frames: readonly FrameMotion[], { fps, firs
     fps,
     frames: { first, last },
     tracks: [...runs].map(([id, { first: s, runs: rs }]) => ({
-      id, scene: s.scene, name: s.name, ...(s.kind && { kind: s.kind }), ...(s.stagger && { stagger: s.stagger }), segments: rs.map((r) => segmentOf(r.samples, r.start, id, log)),
+      id, scene: s.scene, name: s.name, ...(s.kind && { kind: s.kind }), segments: rs.map((r) => segmentOf(r.samples, r.start, id, log)),
     })),
     coverage: {
       scenes: [...coverage].map(([id, c]) => ({ id, tracks: c.tracks.size, unmeasured: [...c.unmeasured].sort() })),

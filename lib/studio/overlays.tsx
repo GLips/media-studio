@@ -25,11 +25,12 @@ const roundRectPath = ({ x, y, w, h }: Rect, r: number) =>
 /**
  * Draws its children in screen coordinates, clipped to `box`, the way a panel clips its capture. Overlays aimed
  * through a panel's view go inside, so the framing check sees a ring cut off by the panel's edge. It's a group in the
- * motion tracks, `panel` unless `motion` names it, so what's drawn in it is tracked under it.
+ * motion tracks, so what's drawn in it is tracked under it: named `motion`, or `picked` (`panel` by default), the name a
+ * kit piece built on it gives it.
  */
-export function ClipToBox({ box, motion, children }: { box: Rect; motion?: string | false; children: ReactNode }) {
+export function ClipToBox({ box, motion, picked = 'panel', children }: { box: Rect; motion?: string | false; picked?: string; children: ReactNode }) {
   return (
-    <div {...pieceMotionAttrs(motion, 'panel', { kind: 'panel' })}
+    <div {...pieceMotionAttrs(motion, picked, { kind: 'panel' })}
       style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, overflow: 'hidden', pointerEvents: 'none' }}>
       <div style={{ position: 'absolute', left: -box.x, top: -box.y, width: W, height: H }}>{children}</div>
     </div>

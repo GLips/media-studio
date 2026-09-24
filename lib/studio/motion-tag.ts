@@ -7,8 +7,8 @@
 //   camera they're aimed through. Every piece takes `motion`: a name of the author's, or `false` for no track.
 //
 // A tagged element inside another belongs to it: its id is `scene/owner/name`, measured in the owner's frame. Author
-// names are identity, so two sharing a frame is an error. Two sharing a name the library picked are reported
-// ambiguous and left untracked there; and since such a name can pass between elements, one ending on the frame
+// names are identity, so two sharing a frame is an error. Two sharing a name the library picked for either are
+// reported ambiguous and left untracked there; and since such a name can pass between elements, one ending on the frame
 // another starts joins them into one segment.
 
 import { useLayoutEffect, type RefObject } from 'react';
@@ -29,7 +29,7 @@ export type MotionTag = {
    * can't tell whether its screen position moves with a camera. Absent: measured in its owner's frame.
    */
   through?: View | 'unknown';
-  /** Its place in a stagger. `group` is scoped to its owner, as names are. */
+  /** Its place in a stagger. The probe scopes `group` to its owner, as it does names. */
   stagger?: StaggerMembership;
 };
 
@@ -55,12 +55,12 @@ export function motionAttrs(tag: MotionTag | false): Record<string, string> {
 }
 
 /**
- * A library piece's tag: named `motion` when the author gave one, else `picked` (text is fine: a `/` in it is
- * replaced) and marked implicit; `false` tags nothing.
+ * A library piece's tag: named `motion` when the author gave one, else `picked`, marked implicit; `false` tags
+ * nothing. Either can be text (a Highlight's `name`, a Tag's words): a `/` in it is replaced.
  */
 export function pieceMotionAttrs(motion: string | false | undefined, picked: string, tag: Omit<MotionTag, 'name' | 'implicit'>): Record<string, string> {
   if (motion === false) return {};
-  return motionAttrs({ ...tag, ...(motion === undefined ? { name: picked.replaceAll('/', '∕'), implicit: true } : { name: motion }) });
+  return motionAttrs({ ...tag, ...(motion === undefined ? { name: picked.replaceAll('/', '∕'), implicit: true } : { name: motion.replaceAll('/', '∕') }) });
 }
 
 /**

@@ -32,13 +32,10 @@ export function SplitCompare({ left, right, k = 1, children }: { left: SplitSide
       <div style={{ position: 'absolute', left: W / 2 - 2, top: 0, width: 4, height: H, background: '#d5d9e0' }} />
       <div style={{ position: 'absolute', left: 0, top: SPLIT_LABEL_STRIP - 2, width: W, height: 2, background: '#d5d9e0' }} />
       {[left, right].map((side, i) => (
-        // Full-frame, so the panel group measures its contents in screen pixels: a zero-size one couldn't.
-        <div key={i} {...pieceMotionAttrs(undefined, i === 0 ? 'left' : 'right', { kind: 'panel' })} style={{ position: 'absolute', inset: 0 }}>
-          <ClipToBox box={side.view.box} motion={false}>
-            <Capture view={side.view} alpha={side.alpha ?? 1} />
-            {side.over}
-          </ClipToBox>
-        </div>
+        <ClipToBox key={i} box={side.view.box} picked={i === 0 ? 'left' : 'right'}>
+          <Capture view={side.view} alpha={side.alpha ?? 1} />
+          {side.over}
+        </ClipToBox>
       ))}
       {children}
       {[left, right].map((side, i) =>
@@ -175,14 +172,17 @@ export function GlassCard({ k, eyebrow, points, accent, ink, rect = { x: (W - 11
   if (k <= 0) return null;
   const y0 = rect.y + (1 - easeOut(k)) * 40;
   return (
-    <div {...pieceMotionAttrs(motion, 'card', { kind: 'card', values: { k } })} style={{ position: 'absolute', inset: 0 }}>
-      <Glass rect={{ ...rect, y: y0 }} alpha={clamp(k * 1.4)} tint="rgba(255,255,255,0.78)" blur={24} />
-      <Text text={eyebrow} x={rect.x + 88} y={y0 + 126} size={28} weight={700} color={accent} k={k} spacing={0.1} />
-      {points.map((p, i) => (
-        <Text key={i} text={typeof p === 'string' ? p : p.text} x={rect.x + 88} y={y0 + 250 + i * 104} size={60} weight={700} color={ink}
-          k={typeof p === 'string' ? clamp((k - 0.15 * (i + 1)) / 0.6) : Math.min(k, p.k)} spacing={-0.015}
-          stagger={{ group: 'points', index: i, count: points.length }} />
-      ))}
+    // The group is the card's own box, so its track is the card's rise; its contents are laid out in frame pixels.
+    <div {...pieceMotionAttrs(motion, 'card', { kind: 'card', values: { k } })} style={{ position: 'absolute', left: rect.x, top: y0, width: rect.w, height: rect.h }}>
+      <div style={{ position: 'absolute', left: -rect.x, top: -y0, width: W, height: H }}>
+        <Glass rect={{ ...rect, y: y0 }} alpha={clamp(k * 1.4)} tint="rgba(255,255,255,0.78)" blur={24} />
+        <Text text={eyebrow} x={rect.x + 88} y={y0 + 126} size={28} weight={700} color={accent} k={k} spacing={0.1} />
+        {points.map((p, i) => (
+          <Text key={i} text={typeof p === 'string' ? p : p.text} x={rect.x + 88} y={y0 + 250 + i * 104} size={60} weight={700} color={ink}
+            k={typeof p === 'string' ? clamp((k - 0.15 * (i + 1)) / 0.6) : Math.min(k, p.k)} spacing={-0.015}
+            stagger={{ group: 'points', index: i, count: points.length }} />
+        ))}
+      </div>
     </div>
   );
 }
