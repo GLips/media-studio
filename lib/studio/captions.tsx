@@ -8,11 +8,8 @@ import type { VoiceCue } from './timeline.ts';
 const LEAD_IN = 0.05, HANG = 0.15;
 export const captionCueAt = (cues: readonly VoiceCue[], t: number) => cues.find((q) => t >= q.start - LEAD_IN && t < q.end + HANG);
 
-/**
- * The caption at `t`. Hidden captions still lay out (invisibly), because the framing check needs the caption's box
- * whether or not this render burns it in.
- */
-export function Caption({ cues, t, visible }: { cues: readonly VoiceCue[]; t: number; visible: boolean }) {
+/** The caption at `t`. The framing check renders with captions on, so it measures this box. */
+export function Caption({ cues, t }: { cues: readonly VoiceCue[]; t: number }) {
   const cue = captionCueAt(cues, t);
   if (!cue) return null;
   const k = Math.min(seg(t, cue.start - LEAD_IN, cue.start + HANG, easeOut), 1 - seg(t, cue.end, cue.end + HANG, ease));
@@ -33,8 +30,7 @@ export function Caption({ cues, t, visible }: { cues: readonly VoiceCue[]; t: nu
         color: '#fff',
         font: `600 40px/54px ${FONT}`,
         textAlign: 'center',
-        opacity: visible ? k : 0,
-        visibility: visible ? 'visible' : 'hidden',
+        opacity: k,
       }}
     >
       {cue.text}

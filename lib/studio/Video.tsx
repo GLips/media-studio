@@ -75,7 +75,7 @@ export function Video({ video, captions, probe }: VideoProps & { video: VideoDef
         ) : null,
       )}
       {video.music && <MusicBedAudio video={video} tl={tl} fps={fps} />}
-      <Caption cues={tl.cues} t={t} visible={captions} />
+      {captions && <Caption cues={tl.cues} t={t} />}
       {frame === 0 && <Artifact filename={TIMELINE_ARTIFACT} content={timelineReport(video, tl, fps)} />}
       {probe && <FramingProbe root={root} />}
     </AbsoluteFill>

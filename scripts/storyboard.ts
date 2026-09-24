@@ -7,7 +7,7 @@
 // its scene plays. Before the motion pass, the video is an animatic: one camera and one highlight per scene, timed
 // by `tts --estimate`, which is all a storyboard needs.
 import { renderMedia } from '@remotion/renderer';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { openRenderSession } from '../lib/render-session.ts';
 
@@ -16,20 +16,23 @@ if (!project || !existsSync(join(project, 'video.tsx'))) {
   console.error('usage: node scripts/storyboard.ts projects/<p>');
   process.exit(1);
 }
-const outDir = join(project, 'out', 'storyboard');
+// Built beside the published page and swapped in at the end, so a failed rebuild leaves the last good one in place.
+const published = join(project, 'out', 'storyboard');
+const outDir = `${published}.building`;
 rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
 
 const session = await openRenderSession(project);
 const timeline = await session.readTimeline();
 const { fps } = timeline;
+const lastFrame = (await session.compositionFor(session.props())).durationInFrames - 1;
 const voiced: Record<string, { src: string | null }> = JSON.parse(readFileSync(join(project, 'audio', 'manifest.json'), 'utf8'));
 
 // A still per line, from the middle of its words; a scene without lines gets one from its middle.
 const shots = timeline.scenes.map((scene) => {
   const cues = timeline.cues.filter((c) => scene.lines.includes(c.id));
   const moments = cues.length ? cues.map((c) => ({ line: c, t: (c.start + c.end) / 2 })) : [{ line: null, t: scene.start + scene.dur / 2 }];
-  return { scene, moments: moments.map((m) => ({ ...m, frame: Math.round(m.t * fps) })) };
+  return { scene, moments: moments.map((m) => ({ ...m, frame: Math.min(Math.round(m.t * fps), lastFrame) })) };
 });
 const stills = await session.renderStills(shots.flatMap((s) => s.moments.map((m) => m.frame)), { w: 640 });
 for (const { moments } of shots) for (const m of moments) copyFileSync(stills.fileFor(m.frame), join(outDir, `${m.frame}.jpg`));
@@ -102,4 +105,6 @@ writeFileSync(join(outDir, 'index.html'), `<!doctype html>
   });
 </script>
 `);
-console.log(`storyboard → ${join(outDir, 'index.html')}`);
+rmSync(published, { recursive: true, force: true });
+renameSync(outDir, published);
+console.log(`storyboard → ${join(published, 'index.html')}`);

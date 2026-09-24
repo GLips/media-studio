@@ -4,7 +4,7 @@
 // Highlights and tags carry data-framing, which the framing check (probe.tsx) measures: a highlight marks what the
 // voice is describing, so one under a tag or the caption, or off the frame, is a shot nobody can follow.
 
-import { useId, type CSSProperties } from 'react';
+import { useId, type CSSProperties, type ReactNode } from 'react';
 import { assertKeysInOrder, inflate, pagePoint, screenPoint, type Point, type Rect, type View } from './camera.ts';
 import { FONT, H, W } from './frame.ts';
 import { clamp, easeOut, lerp, seg } from './motion.ts';
@@ -16,6 +16,18 @@ const fill: CSSProperties = { position: 'absolute', left: 0, top: 0, width: W, h
 const roundRectPath = ({ x, y, w, h }: Rect, r: number) =>
   `M${x + r},${y} H${x + w - r} A${r},${r} 0 0 1 ${x + w},${y + r} V${y + h - r} A${r},${r} 0 0 1 ${x + w - r},${y + h} ` +
   `H${x + r} A${r},${r} 0 0 1 ${x},${y + h - r} V${y + r} A${r},${r} 0 0 1 ${x + r},${y} Z`;
+
+/**
+ * Draws its children in screen coordinates, clipped to `box`, the way a panel clips its capture. Overlays aimed
+ * through a panel's view go inside, so the framing check sees a ring cut off by the panel's edge.
+ */
+export function ClipToBox({ box, children }: { box: Rect; children: ReactNode }) {
+  return (
+    <div style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, overflow: 'hidden', pointerEvents: 'none' }}>
+      <div style={{ position: 'absolute', left: -box.x, top: -box.y, width: W, height: H }}>{children}</div>
+    </div>
+  );
+}
 
 // ---------- cursor ----------
 

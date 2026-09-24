@@ -7,7 +7,7 @@ import { camFit, camTop, camWhole, centerOf, lerpCam, view, type Rect, type Shot
 import { Capture, CaptureMotion } from './capture.tsx';
 import { CAPTION_FREE, CAPTION_SAFE_TOP, FONT, H, W } from './frame.ts';
 import { clamp, easeInOut, easeOut, seg } from './motion.ts';
-import { CursorPath, Glass, Tag, Text, Wash } from './overlays.tsx';
+import { ClipToBox, CursorPath, Glass, Tag, Text, Wash } from './overlays.tsx';
 import type { SceneClock } from './timeline.ts';
 
 // ---------- split: before and after, side by side ----------
@@ -17,11 +17,12 @@ export const SPLIT_LABEL_STRIP = 92;
 export const SPLIT_LEFT: Rect = { x: 0, y: SPLIT_LABEL_STRIP, w: W / 2 - 2, h: H - SPLIT_LABEL_STRIP };
 export const SPLIT_RIGHT: Rect = { x: W / 2 + 2, y: SPLIT_LABEL_STRIP, w: W / 2 - 2, h: H - SPLIT_LABEL_STRIP };
 
-export type SplitSide = { view: View; label?: string; labelBg?: string; alpha?: number };
+/** `over` is what's drawn on this panel (captures, rings, its cursor), clipped to it. */
+export type SplitSide = { view: View; label?: string; labelBg?: string; alpha?: number; over?: ReactNode };
 
 /**
  * Before and after, side by side. Build each side's view in SPLIT_LEFT / SPLIT_RIGHT (camFit takes the box), and aim
- * highlights and cursors through the same views. `k` fades the labels in; `children` draw over both panels.
+ * each side's `over` through the same view. `k` fades the labels in; `children` draw over both panels, unclipped.
  */
 export function SplitCompare({ left, right, k = 1, children }: { left: SplitSide; right: SplitSide; k?: number; children?: ReactNode }) {
   return (
@@ -30,7 +31,10 @@ export function SplitCompare({ left, right, k = 1, children }: { left: SplitSide
       <div style={{ position: 'absolute', left: W / 2 - 2, top: 0, width: 4, height: H, background: '#d5d9e0' }} />
       <div style={{ position: 'absolute', left: 0, top: SPLIT_LABEL_STRIP - 2, width: W, height: 2, background: '#d5d9e0' }} />
       {[left, right].map((side, i) => (
-        <Capture key={i} view={side.view} alpha={side.alpha ?? 1} />
+        <ClipToBox key={i} box={side.view.box}>
+          <Capture view={side.view} alpha={side.alpha ?? 1} />
+          {side.over}
+        </ClipToBox>
       ))}
       {children}
       {[left, right].map((side, i) =>

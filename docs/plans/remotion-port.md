@@ -79,8 +79,8 @@ frame. `sale-only-view`'s reference predates the caption-aware `camFit`, so its 
 
 - **Framing:** highlights, tags and the caption carry `data-framing`. With `probe: true`, `FramingProbe` holds a
   `delayRender` until fonts are ready, measures, and emits a per-frame JSON `<Artifact>`. Node collects them via
-  `renderFrames({ imageFormat: 'none', onArtifact })` and decides what's a problem. The caption is laid out (hidden)
-  even when captions are off, so it's still measured.
+  `renderFrames({ imageFormat: 'none', onArtifact })` and decides what's a problem. It renders with captions on, so the caption
+  is measured where it would show.
 - **Timeline report:** frame 0 emits `timeline.json` (scenes and cues), which feeds the `.srt`, the watch page and the
   length check. `--check` writes it to `out/check/`.
 - **Sheets and strips** render chosen frames small with `renderFrames({ scale })` and tile them with ffmpeg in Node,

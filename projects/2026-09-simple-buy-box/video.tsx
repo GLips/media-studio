@@ -103,17 +103,21 @@ const speed = defineScene({
     const spinning = { ...left, shot: C['sol-control-spin'] };
     const pinkL = centerOf(control.rects.swatches[1]), pinkR = centerOf(next.rects.swatches[1]);
     return (
-      <SplitCompare left={{ ...TODAY, view: left }} right={{ ...NEW, view: right }}>
-        <Capture view={spinning} alpha={seg(s.t, clickL + 0.05, clickL + 0.2)} />
-        <Capture view={{ ...right, shot: C['sol-new-pink'] }} alpha={seg(s.t, clickR + 0.02, clickR + 0.12)} />
-        <CursorPath view={left} t={s.t} alpha={off(s.t, s.line('speed-a').end)}
-          keys={[[0, { x: pinkL.x + 120, y: pinkL.y + 160 }], [clickL - 0.1, pinkL], [clickL, pinkL, { click: true }], [clickL + 1.5, { x: pinkL.x + 60, y: pinkL.y + 90 }]]} />
-        <LoaderSpin r={screenRect(spinning, CONTROL_LOADER_SHOWN)} t={s.t} alpha={seg(s.t, clickL + 0.05, clickL + 0.2) * off(s.t, newTurn)} />
-        <Ring v={spinning} rect={CONTROL_LOADER_SHOWN} k={on(s.t, clickL + 0.5)} color={NAVY} alpha={off(s.t, newTurn)} />
-        <CursorPath view={right} t={s.t} alpha={seg(s.t, newTurn - 0.8, newTurn - 0.5)}
-          keys={[[newTurn - 0.8, { x: pinkR.x + 120, y: pinkR.y + 160 }], [clickR - 0.1, pinkR], [clickR, pinkR, { click: true }], [clickR + 1.5, { x: pinkR.x + 60, y: pinkR.y + 90 }]]} />
-        <Ring v={right} rect={C['sol-new-pink'].rects.gallery} k={on(s.t, clickR + 0.3)} color={SALE_RED} />
-      </SplitCompare>
+      <SplitCompare
+        left={{ ...TODAY, view: left, over: <>
+          <Capture view={spinning} alpha={seg(s.t, clickL + 0.05, clickL + 0.2)} />
+          <CursorPath view={left} t={s.t} alpha={off(s.t, s.line('speed-a').end)}
+            keys={[[0, { x: pinkL.x + 120, y: pinkL.y + 160 }], [clickL - 0.1, pinkL], [clickL, pinkL, { click: true }], [clickL + 1.5, { x: pinkL.x + 60, y: pinkL.y + 90 }]]} />
+          <LoaderSpin r={screenRect(spinning, CONTROL_LOADER_SHOWN)} t={s.t} alpha={seg(s.t, clickL + 0.05, clickL + 0.2) * off(s.t, newTurn)} />
+          <Ring v={spinning} rect={CONTROL_LOADER_SHOWN} k={on(s.t, clickL + 0.5)} color={NAVY} alpha={off(s.t, newTurn)} />
+        </> }}
+        right={{ ...NEW, view: right, over: <>
+          <Capture view={{ ...right, shot: C['sol-new-pink'] }} alpha={seg(s.t, clickR + 0.02, clickR + 0.12)} />
+          <CursorPath view={right} t={s.t} alpha={seg(s.t, newTurn - 0.8, newTurn - 0.5)}
+            keys={[[newTurn - 0.8, { x: pinkR.x + 120, y: pinkR.y + 160 }], [clickR - 0.1, pinkR], [clickR, pinkR, { click: true }], [clickR + 1.5, { x: pinkR.x + 60, y: pinkR.y + 90 }]]} />
+          <Ring v={right} rect={C['sol-new-pink'].rects.gallery} k={on(s.t, clickR + 0.3)} color={SALE_RED} />
+        </> }}
+      />
     );
   },
 });
@@ -222,15 +226,17 @@ const sale = defineScene({
     const pill = (i: number) => centerOf(b8.rects.pills[i]);
     return (
       <>
-        <SplitCompare left={{ ...TODAY, view: left }} right={{ ...NEW, view: right }}>
-          <CaptureStates view={right} t={s.t} states={[[b8, 0], [C['ball-10'], p10], [C['ball-11'], p11]]} />
-          <Ring v={left} rect={control.rects.sale} k={on(s.t, line.at(0.05))} color={NAVY} />
-          <Ring v={right} rect={C['ball-10'].rects.price} k={on(s.t, p10 + 0.3)} color={SALE_RED} />
-          <CursorPath view={right} t={s.t} keys={[
-            [line.at(0.3), { x: pill(1).x + 100, y: pill(1).y + 140 }], [p10 - 0.1, pill(1)], [p10, pill(1), { click: true }],
-            [p11 - 0.1, pill(2)], [p11, pill(2), { click: true }], [p11 + 1, { x: pill(2).x + 60, y: pill(2).y + 120 }],
-          ]} />
-        </SplitCompare>
+        <SplitCompare
+          left={{ ...TODAY, view: left, over: <Ring v={left} rect={control.rects.sale} k={on(s.t, line.at(0.05))} color={NAVY} /> }}
+          right={{ ...NEW, view: right, over: <>
+            <CaptureStates view={right} t={s.t} states={[[b8, 0], [C['ball-10'], p10], [C['ball-11'], p11]]} />
+            <Ring v={right} rect={C['ball-10'].rects.price} k={on(s.t, p10 + 0.3)} color={SALE_RED} />
+            <CursorPath view={right} t={s.t} keys={[
+              [line.at(0.3), { x: pill(1).x + 100, y: pill(1).y + 140 }], [p10 - 0.1, pill(1)], [p10, pill(1), { click: true }],
+              [p11 - 0.1, pill(2)], [p11, pill(2), { click: true }], [p11 + 1, { x: pill(2).x + 60, y: pill(2).y + 120 }],
+            ]} />
+          </> }}
+        />
         <Section s={s} number={4} title="Sales and volume pricing" />
       </>
     );
@@ -262,9 +268,8 @@ const quantity = defineScene({
       const left = view(control, camFit(control, control.rects.stepper, { pad: 50, maxZoom: 2.6 }, SPLIT_LEFT), SPLIT_LEFT);
       const right = view(next, camFit(next, next.rects.stepper, { pad: 50, maxZoom: 2.6 }, SPLIT_RIGHT), SPLIT_RIGHT);
       return (
-        <SplitCompare left={{ ...TODAY, view: left }} right={{ ...NEW, view: right }}>
-          <Ring v={right} rect={next.rects.stepper} k={on(s.t, a.at(0.25))} color={SALE_RED} />
-        </SplitCompare>
+        <SplitCompare left={{ ...TODAY, view: left }}
+          right={{ ...NEW, view: right, over: <Ring v={right} rect={next.rects.stepper} k={on(s.t, a.at(0.25))} color={SALE_RED} /> }} />
       );
     }
     const controlQ5 = C['tilum-control-q5'], newQ5 = C['tilum-new-q5'];
@@ -273,17 +278,21 @@ const quantity = defineScene({
     const clicks = [0.2, 0.45, 0.7, 0.95].map((f) => b.start - 0.2 + f), settled = b.start + 1.1;
     const plus = centerOf(next.rects.plus);
     return (
-      <SplitCompare left={{ ...TODAY, view: left }} right={{ ...NEW, view: right }}>
-        <Capture view={{ ...left, shot: controlQ5 }} alpha={seg(s.t, settled, settled + 0.4)} />
-        <Capture view={{ ...right, shot: newQ5 }} alpha={seg(s.t, settled, settled + 0.4)} />
-        <CursorPath view={right} t={s.t} keys={[
-          [b.start - 0.4, { x: plus.x + 90, y: plus.y + 120 }], ...clicks.map((c) => [c, plus, { click: true }] as const),
-          [settled + 0.8, { x: plus.x + 120, y: plus.y + 160 }],
-        ]} />
-        <Ring v={right} rect={newQ5.rects.price} k={on(s.t, b.at(0.2))} color={SALE_RED} />
-        <Ring v={right} rect={newQ5.rects.stepper} k={on(s.t, b.at(0.05))} color={SALE_RED} alpha={off(s.t, b.at(0.2))} />
-        <Ring v={left} rect={controlQ5.rects.price} k={on(s.t, b.at(0.7))} color={NAVY} />
-      </SplitCompare>
+      <SplitCompare
+        left={{ ...TODAY, view: left, over: <>
+          <Capture view={{ ...left, shot: controlQ5 }} alpha={seg(s.t, settled, settled + 0.4)} />
+          <Ring v={left} rect={controlQ5.rects.price} k={on(s.t, b.at(0.7))} color={NAVY} />
+        </> }}
+        right={{ ...NEW, view: right, over: <>
+          <Capture view={{ ...right, shot: newQ5 }} alpha={seg(s.t, settled, settled + 0.4)} />
+          <CursorPath view={right} t={s.t} keys={[
+            [b.start - 0.4, { x: plus.x + 90, y: plus.y + 120 }], ...clicks.map((c) => [c, plus, { click: true }] as const),
+            [settled + 0.8, { x: plus.x + 120, y: plus.y + 160 }],
+          ]} />
+          <Ring v={right} rect={newQ5.rects.price} k={on(s.t, b.at(0.2))} color={SALE_RED} />
+          <Ring v={right} rect={newQ5.rects.stepper} k={on(s.t, b.at(0.05))} color={SALE_RED} alpha={off(s.t, b.at(0.2))} />
+        </> }}
+      />
     );
   },
 });
@@ -356,10 +365,14 @@ const reset = defineScene({
     const right = view(next, camFit(next, union(next.rects.reset, next.rects.footer), { pad: 80, maxZoom: 1.3 }, SPLIT_RIGHT), SPLIT_RIGHT);
     const click = c.at(0.72), link = centerOf(next.rects.reset);
     return (
-      <SplitCompare left={{ ...TODAY, view: left }} right={{ ...NEW, view: right }}>
-        <Ring v={left} rect={control.rects.reset} k={on(s.t, c.at(0.1))} color={NAVY} />
-        <Ring v={right} rect={next.rects.reset} k={on(s.t, c.at(0.5))} color={SALE_RED} alpha={off(s.t, click)} />
-        <CursorPath view={right} t={s.t} alpha={off(s.t, click + 0.2)} keys={[[c.at(0.45), { x: link.x + 120, y: link.y + 140 }], [click - 0.1, link], [click, link, { click: true }]]} />
+      <SplitCompare
+        left={{ ...TODAY, view: left, over: <Ring v={left} rect={control.rects.reset} k={on(s.t, c.at(0.1))} color={NAVY} /> }}
+        right={{ ...NEW, view: right, over: <>
+          <Ring v={right} rect={next.rects.reset} k={on(s.t, c.at(0.5))} color={SALE_RED} alpha={off(s.t, click)} />
+          <CursorPath view={right} t={s.t} alpha={off(s.t, click + 0.2)} keys={[[c.at(0.45), { x: link.x + 120, y: link.y + 140 }], [click - 0.1, link], [click, link, { click: true }]]} />
+        </> }}
+      >
+        {/* The browser draws its dialog over the whole window, not inside the page's panel. */}
         <ConfirmDialog k={on(s.t, click + 0.15, 0.35)} origin="www.painfulpleasures.com" message="Clear every quantity in this bulk order? This cannot be undone."
           anchor={{ x: SPLIT_RIGHT.x + SPLIT_RIGHT.w / 2, y: 200 }} />
       </SplitCompare>

@@ -57,7 +57,8 @@ const { serveUrl, props, compositionFor } = session;
  * time (see lib/framing-check.ts). `--video` measures every frame.
  */
 async function checkFraming(every: number) {
-  const inputProps = props({ probe: true });
+  // Captions on, so the caption is measured where it would show: a hidden one counts as faded out and covers nothing.
+  const inputProps = props({ probe: true, captions: true });
   const composition = await compositionFor(inputProps);
   const { fps } = composition;
   const sink = artifactSink();

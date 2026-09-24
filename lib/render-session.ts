@@ -19,8 +19,9 @@ export async function openRenderSession(project: string) {
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, ...p });
   const compositionFor = (inputProps: VideoProps) => selectComposition({ serveUrl, id: projectSlug(project), inputProps });
 
-  /** Renders chosen frames as JPEGs `w` wide; returns each frame's file. */
-  async function renderStills(frames: number[], { w, captions = false }: { w: number; captions?: boolean }) {
+  /** Renders chosen frames as JPEGs `w` wide; returns each frame's file. Repeats are rendered once. */
+  async function renderStills(wanted: number[], { w, captions = false }: { w: number; captions?: boolean }) {
+    const frames = [...new Set(wanted)];
     const inputProps = props({ captions });
     const composition = await compositionFor(inputProps);
     const dir = mkdtempSync(join(tmpdir(), 'stills-'));
@@ -29,7 +30,7 @@ export async function openRenderSession(project: string) {
       imageSequencePattern: 'f-[frame].[ext]', onStart: () => {}, onFrameUpdate: () => {},
     });
     const files = readdirSync(dir).filter((f) => /\.jpe?g$/.test(f));
-    if (files.length !== new Set(frames).size) throw new Error(`rendered ${files.length} of ${new Set(frames).size} stills`);
+    if (files.length !== frames.length) throw new Error(`rendered ${files.length} of ${frames.length} stills`);
     // renderFrames pads the frame number to the composition's length, so match by value.
     const byFrame = new Map(files.map((f) => [Number(/f-(\d+)/.exec(f)![1]), join(dir, f)]));
     return { dir, fileFor: (frame: number) => byFrame.get(frame)! };
