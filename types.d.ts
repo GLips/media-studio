@@ -8,6 +8,14 @@ declare module '*.wav' {
   const src: string;
   export default src;
 }
+declare module '*.mp3' {
+  const src: string;
+  export default src;
+}
+declare module '*.m4a' {
+  const src: string;
+  export default src;
+}
 declare module '@project' {
   const video: import('./lib/studio/timeline.ts').VideoDef;
   export default video;

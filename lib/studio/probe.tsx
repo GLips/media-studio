@@ -6,32 +6,35 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { Artifact, useCurrentFrame, useDelayRender } from 'remotion';
+import { framingArtifactName, type FramingMark, type FramingReport } from '../framing-check.ts';
 import { W } from './frame.ts';
-
-export type FramingMark = {
-  kind: 'subject' | 'tag' | 'caption';
-  rect: { x: number; y: number; w: number; h: number };
-  strength: number;
-  /** The scene it belongs to, and that scene's clock and opacity; none for the caption. */
-  scene?: string;
-  sceneT?: number;
-  sceneAlpha?: number;
-};
-export type FramingReport = { frame: number; marks: FramingMark[] };
-
-export const framingArtifactName = (frame: number) => `framing-${frame}.json`;
 
 function measureFraming(root: HTMLElement, frame: number): FramingReport {
   const box = root.getBoundingClientRect();
   const scale = box.width / W;
+  const toFrame = (r: { left: number; top: number; right: number; bottom: number }) =>
+    ({ x: (r.left - box.left) / scale, y: (r.top - box.top) / scale, w: (r.right - r.left) / scale, h: (r.bottom - r.top) / scale });
   const marks = [...root.querySelectorAll<HTMLElement | SVGElement>('[data-framing]')].map((el): FramingMark => {
     const r = el.getBoundingClientRect();
+    let { left, top, right, bottom } = r;
+    let opacity = 1;
+    for (let a: Element | null = el; a && a !== root.parentElement; a = a.parentElement) {
+      const style = getComputedStyle(a);
+      opacity *= Number(style.opacity);
+      if (a !== el && (style.overflow !== 'visible' || style.clipPath !== 'none')) {
+        const c = a.getBoundingClientRect();
+        [left, top, right, bottom] = [Math.max(left, c.left), Math.max(top, c.top), Math.min(right, c.right), Math.min(bottom, c.bottom)];
+      }
+    }
     const layer = el.closest<HTMLElement>('[data-scene]');
     return {
       kind: el.dataset.framing as FramingMark['kind'],
-      rect: { x: (r.left - box.left) / scale, y: (r.top - box.top) / scale, w: r.width / scale, h: r.height / scale },
-      strength: Number(el.dataset.strength),
-      ...(layer && { scene: layer.dataset.scene, sceneT: Number(layer.dataset.sceneT), sceneAlpha: Number(layer.dataset.sceneAlpha) }),
+      ...(el.dataset.name && { name: el.dataset.name }),
+      rect: toFrame(r),
+      shown: toFrame({ left, top, right: Math.max(left, right), bottom: Math.max(top, bottom) }),
+      strength: Number(el.dataset.strength ?? 1),
+      opacity,
+      ...(layer && { scene: layer.dataset.scene, sceneT: Number(layer.dataset.sceneT) }),
     };
   });
   return { frame, marks };

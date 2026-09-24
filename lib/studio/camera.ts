@@ -81,8 +81,19 @@ export const lerpCam = (a: Cam, b: Cam, k: number): Cam => ({
   zoom: Math.exp(lerp(Math.log(a.zoom), Math.log(b.zoom), k)),
 });
 
+/**
+ * Throws unless key times rise. Keys anchored to words can swap when a line is re-voiced, and an out-of-order key
+ * reads as a snap mid-shot; a cut belongs between scenes.
+ */
+export function assertKeysInOrder(what: string, keys: readonly (readonly [number, ...unknown[]])[]) {
+  for (let i = 1; i < keys.length; i++) {
+    if (!(keys[i][0] > keys[i - 1][0])) throw new Error(`${what} key ${i} at ${keys[i][0].toFixed(2)}s isn't after key ${i - 1} at ${keys[i - 1][0].toFixed(2)}s`);
+  }
+}
+
 /** Camera along keyframes [[time, cam], ...], eased between each pair. */
 export function camAt(t: number, keys: readonly (readonly [number, Cam])[]): Cam {
+  assertKeysInOrder('camAt', keys);
   if (t <= keys[0][0]) return keys[0][1];
   for (let i = 1; i < keys.length; i++) {
     if (t <= keys[i][0]) return lerpCam(keys[i - 1][1], keys[i][1], seg(t, keys[i - 1][0], keys[i][0]));

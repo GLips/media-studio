@@ -10,6 +10,7 @@
 
 import type { ReactNode } from 'react';
 import { findSpokenPhrase, type SpokenWord } from '../voice-words.ts';
+import type { MusicBed } from './mix.ts';
 import { ease } from './motion.ts';
 
 export type VoiceLine = {
@@ -19,6 +20,8 @@ export type VoiceLine = {
   text: string;
   /** Every script word, timed by whisper, or spread by length over an estimated line. */
   words: readonly SpokenWord[];
+  /** Integrated loudness as it plays in the mix; null for an estimated line. */
+  lufs: number | null;
 };
 export type Voice = Readonly<Record<string, VoiceLine>>;
 
@@ -38,13 +41,23 @@ export type LineSpan = {
   word(phrase: string, nth?: number): { start: number; end: number };
 };
 
-/** What a scene draws from: its own time and its lines. `Id` is the scene's declared line ids. */
-export type SceneClock<Id extends string = string> = {
-  /** Seconds since the scene's nominal start. Negative while fading in, past `dur` while fading out. */
-  t: number;
+/** A scene's length and where its lines fall, in scene seconds. `Id` is the scene's declared line ids. */
+export type SceneTimes<Id extends string = string> = {
   dur: number;
   line(id: Id): LineSpan;
 };
+
+/** What a scene draws from: its own time, and its times. */
+export type SceneClock<Id extends string = string> = SceneTimes<Id> & {
+  /** Seconds since the scene's nominal start. Negative while fading in, past `dur` while fading out. */
+  t: number;
+};
+
+/**
+ * Show what you say: the highlight named `see` is drawn, fully on screen and clear of tags and the caption for all of
+ * `during`, e.g. `{ see: 'matches', during: s.line('combo-a').word('seventeen') }`. The render fails otherwise.
+ */
+export type SceneExpectation = { see: string; during: { start: number; end: number } };
 
 type SceneTiming = {
   /** Seconds before the first line. Default 0.5. */
@@ -65,6 +78,7 @@ export type SceneDef = SceneTiming & {
   // Method syntax on purpose: a scene's render takes a clock narrowed to its own line ids, which a function-typed
   // property would reject as a wider parameter.
   render(s: SceneClock): ReactNode;
+  expect?(s: SceneTimes): readonly SceneExpectation[];
 };
 
 /**
@@ -73,7 +87,12 @@ export type SceneDef = SceneTiming & {
  *   defineScene({ id: 'ladder', lines: ['ladder'], lead: 0.3, render: (s) => <Ladder s={s} /> })
  */
 export function defineScene<const L extends readonly string[] = readonly []>(
-  scene: SceneTiming & { id: string; lines?: L; render: (s: SceneClock<L[number]>) => ReactNode },
+  scene: SceneTiming & {
+    id: string;
+    lines?: L;
+    render: (s: SceneClock<L[number]>) => ReactNode;
+    expect?: (s: SceneTimes<L[number]>) => readonly SceneExpectation[];
+  },
 ): SceneDef {
   return { ...scene, lines: scene.lines ?? [] } as SceneDef;
 }
@@ -84,6 +103,8 @@ export type VideoDef = {
   scenes: readonly SceneDef[];
   /** Crossfade length in seconds, centred on each cut. Default 0.5. */
   xfade?: number;
+  /** A music bed under the whole video, ducked under the voice. See `scripts/music.ts`. */
+  music?: MusicBed;
 };
 
 export const defineVideo = (video: VideoDef): VideoDef => video;
@@ -96,7 +117,7 @@ export type LaidScene = SceneDef & {
   xfade: number;
   spans: Readonly<Record<string, { start: number; end: number; words: readonly SpokenWord[] }>>;
 };
-export type VoiceCue = { id: string; src: string | null; start: number; end: number; text: string };
+export type VoiceCue = { id: string; src: string | null; start: number; end: number; text: string; lufs: number | null };
 export type Timeline = { duration: number; scenes: LaidScene[]; cues: VoiceCue[] };
 
 export function layoutVideo(video: VideoDef): Timeline {
@@ -124,7 +145,7 @@ export function layoutVideo(video: VideoDef): Timeline {
       sceneOfLine.set(id, scene.id);
       if (j > 0) cursor += gap;
       spans[id] = { start: cursor, end: cursor + voiced.duration, words: voiced.words };
-      cues.push({ id, src: voiced.src, start: start + cursor, end: start + cursor + voiced.duration, text: voiced.text });
+      cues.push({ id, src: voiced.src, start: start + cursor, end: start + cursor + voiced.duration, text: voiced.text, lufs: voiced.lufs });
       cursor += voiced.duration;
     });
     const dur = Math.max(cursor + tail, min);
@@ -145,9 +166,10 @@ export function layoutVideo(video: VideoDef): Timeline {
 export const totalFrames = (tl: Timeline, fps: number) =>
   Math.ceil(Math.max(tl.duration, ...tl.cues.map((c) => Math.round(c.start * fps) / fps + (c.end - c.start))) * fps);
 
-export function sceneClock(scene: LaidScene, t: number): SceneClock {
+export const sceneClock = (scene: LaidScene, t: number): SceneClock => ({ ...sceneTimes(scene), t: t - scene.start });
+
+export function sceneTimes(scene: LaidScene): SceneTimes {
   return {
-    t: t - scene.start,
     dur: scene.dur,
     line: (id) => {
       const span = scene.spans[id];

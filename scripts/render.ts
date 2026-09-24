@@ -1,8 +1,9 @@
 // render.ts: checks, renders and reviews a project's video with Remotion's renderer.
 //
 //   The whole thing:
-//     npm run video -- projects/<p>          framing check (every frame) → video.mp4 and video-captions.mp4 → video.srt
-//                                            → review sheets of the encoded files → out/watch.html
+//     npm run video -- projects/<p>          framing check (every frame) → the mix, mastered to −14 LUFS → video.mp4
+//                                            and video-captions.mp4 → delivery checks and review sheets → video.srt
+//                                            → out/watch.html
 //   Look at it (open the images with an image viewer or the Read tool):
 //     node scripts/render.ts projects/<p> --sheet=0.5,4,9 [--cols=3] [--w=640] [--out=out/check/a.jpg]   chosen times
 //     node scripts/render.ts projects/<p> --strip=4:5 [--step=0.1]                                       a stretch, for motion
@@ -11,6 +12,7 @@
 //     node scripts/render.ts projects/<p> --check [--every=5]   the framing check alone: highlights under tags/captions.
 //                                                               Also writes out/check/timeline.json: when each scene
 //                                                               and line lands, for aiming sheets and strips.
+//     node scripts/render.ts projects/<p> --audio               just the mastered mix, out/mix.wav, to hear the levels
 //
 // Every run bundles just this project (see lib/project-bundle.ts), so the others' missing captures can't break it.
 import { bundle } from '@remotion/bundler';
@@ -20,8 +22,10 @@ import { execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { measureLoudness } from '../lib/loudness.ts';
 import { projectSlug, projectWebpackOverride } from '../lib/project-bundle.ts';
-import type { FramingReport } from '../lib/studio/probe.tsx';
+import { framesToMeasure, framingArtifactName, framingProblems, type FramingReport } from '../lib/framing-check.ts';
+import { H, W } from '../lib/studio/frame.ts';
 import type { TimelineReport, VideoProps } from '../lib/studio/Video.tsx';
 
 const argv = process.argv.slice(2);
@@ -62,57 +66,33 @@ function artifactSink() {
 
 // ---------- framing check ----------
 
-type Rect = { x: number; y: number; w: number; h: number };
-const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-const W = 1920, H = 1080;
-
 /**
- * Every highlight marks something the voice is describing, so one hidden under a tag or caption, or cut off by the
- * frame edge, is a shot nobody can follow. Measures every `every`th frame and reports each problem as a stretch of
- * time; `--video` measures every frame. Bounding boxes, not pixels: an overlap is a problem even if the pixels
- * happen to miss.
+ * Measures every `every`th frame, plus every frame a scene's `expect` covers, and prints each problem as a stretch of
+ * time (see lib/framing-check.ts). `--video` measures every frame.
  */
 async function checkFraming(every: number) {
   const inputProps = props({ probe: true });
   const composition = await compositionFor(inputProps);
+  const { fps } = composition;
   const sink = artifactSink();
-  const frames = new Set<number>([0]);
-  for (let f = 0; f < composition.durationInFrames; f += every) frames.add(f);
   const tmp = mkdtempSync(join(tmpdir(), 'framing-'));
-  await renderFrames({
-    composition, serveUrl, inputProps, outputDir: tmp, imageFormat: 'none', frames: [...frames].sort((a, b) => a - b),
+  const measure = (frames: number[]) => renderFrames({
+    composition, serveUrl, inputProps, outputDir: tmp, imageFormat: 'none', frames,
     onArtifact: sink.onArtifact, onStart: () => {}, onFrameUpdate: () => {},
   });
+  // Frame 0 carries the timeline, which says which frames the expectations need.
+  await measure([0]);
+  const timeline = sink.json<TimelineReport>('timeline.json');
+  const frames = framesToMeasure(composition.durationInFrames, every, timeline.expectations, fps);
+  await measure(frames.filter((f) => f !== 0));
   rmSync(tmp, { recursive: true, force: true });
 
-  const { fps } = composition;
-  type Issue = { frame: number; issue: string; scene?: string; sceneT?: number; rect: string };
-  const issues: Issue[] = [];
-  for (const f of [...frames].sort((a, b) => a - b)) {
-    const { marks } = sink.json<FramingReport>(`framing-${f}.json`);
-    const strong = marks.filter((m) => m.strength >= 0.5);
-    const tags = strong.filter((m) => m.kind === 'tag'), caption = strong.find((m) => m.kind === 'caption');
-    for (const m of strong.filter((mk) => mk.kind === 'subject')) {
-      const r = m.rect;
-      const found = [
-        tags.some((tag) => overlaps(r, tag.rect)) && 'a highlight is under a tag',
-        caption && overlaps(r, caption.rect) && 'a highlight is under the caption',
-        (r.x < 0 || r.y < 0 || r.x + r.w > W || r.y + r.h > H) && 'a highlight runs off the frame',
-      ].filter((x): x is string => Boolean(x));
-      for (const issue of found) issues.push({ frame: f, issue, scene: m.scene, sceneT: m.sceneT, rect: [r.x, r.y, r.w, r.h].map(Math.round).join(',') });
-    }
-  }
-  const spans: (Issue & { to: number })[] = [];
-  for (const i of issues) {
-    const last = spans.findLast((s) => s.issue === i.issue && s.scene === i.scene);
-    if (last && i.frame - last.to <= every * 1.5) last.to = i.frame;
-    else spans.push({ ...i, to: i.frame });
-  }
-  for (const s of spans) {
-    console.log(`  ✗ ${(s.frame / fps).toFixed(1)}–${(s.to / fps).toFixed(1)}s  ${s.issue}  [scene ${s.scene} @ ${s.sceneT?.toFixed(1)}s, highlight at ${s.rect}]`);
-  }
-  console.log(spans.length ? `framing: ${spans.length} problem${spans.length > 1 ? 's' : ''}` : `framing ✓ (${frames.size} frames)`);
-  return { ok: spans.length === 0, timeline: sink.json<TimelineReport>('timeline.json') };
+  const reports = frames.map((f) => sink.json<FramingReport>(framingArtifactName(f)));
+  const problems = framingProblems(reports, timeline.expectations, fps, every);
+  for (const p of problems) console.log(`  ✗ ${p.from.toFixed(2)}–${p.to.toFixed(2)}s  ${p.scene ? `[${p.scene}] ` : ''}${p.problem}`);
+  const expected = timeline.expectations.length ? `, ${timeline.expectations.length} expectations` : '';
+  console.log(problems.length ? `framing: ${problems.length} problem${problems.length > 1 ? 's' : ''}` : `framing ✓ (${frames.length} frames${expected})`);
+  return { ok: problems.length === 0, timeline };
 }
 
 // ---------- sheets ----------
@@ -147,29 +127,63 @@ async function sheet(times: number[], out: string, { cols = 3, w = 640, captions
 
 // ---------- the videos ----------
 
+// Delivery loudness, as YouTube and most players normalise to. Mastering limits 1 dB under the true-peak ceiling the
+// delivery check holds it to, because AAC encoding adds overshoot.
+const DELIVERY_LUFS = -14, DELIVERY_TRUE_PEAK = -1, MASTER_TRUE_PEAK = -2;
+const masterWav = join(outDir, 'mix.wav');
+
+/**
+ * Renders the soundtrack once, uncompressed, and masters it: one gain to delivery loudness, then a limiter for the
+ * peaks. Not loudnorm: when its linear mode can't reach the target it becomes an AGC, which fills in the music's ducks.
+ */
+async function renderMasteredMix() {
+  const inputProps = props();
+  const composition = await compositionFor(inputProps);
+  const tmp = mkdtempSync(join(tmpdir(), 'mix-'));
+  const raw = join(tmp, 'raw.wav');
+  await renderMedia({ composition, serveUrl, inputProps, codec: 'wav', outputLocation: raw });
+  mkdirSync(outDir, { recursive: true });
+  const before = measureLoudness(raw);
+  // Limiting at 4× the sample rate catches the peaks between samples too, which is what "true peak" counts.
+  const master = (gainDb: number) => execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', raw, '-af',
+    `volume=${gainDb}dB,aresample=192000,alimiter=limit=${10 ** (MASTER_TRUE_PEAK / 20)}:attack=1:release=60:level=false:latency=true,aresample=48000`,
+    '-c:a', 'pcm_s24le', masterWav]);
+  // The limiter shaves a little loudness off the peaks it catches, so a second pass makes that back.
+  let gain = DELIVERY_LUFS - before.lufs;
+  master(gain);
+  gain += DELIVERY_LUFS - measureLoudness(masterWav).lufs;
+  master(gain);
+  const after = measureLoudness(masterWav);
+  rmSync(tmp, { recursive: true, force: true });
+  console.log(`mix: ${before.lufs} LUFS, ${before.truePeak} dBTP → +${gain.toFixed(1)} dB and limited → ${after.lufs} LUFS, ${after.truePeak} dBTP → ${masterWav}`);
+}
+
 async function renderVideo(captions: boolean) {
   const inputProps = props({ captions });
   const composition = await compositionFor(inputProps);
   const out = videoFor(captions);
-  mkdirSync(dirname(out), { recursive: true });
+  const tmp = mkdtempSync(join(tmpdir(), 'video-'));
+  const silent = join(tmp, 'silent.mp4');
   let shown = -1;
   const started = Date.now();
   await renderMedia({
-    composition, serveUrl, inputProps, codec: 'h264', outputLocation: out,
-    crf: 18, x264Preset: 'slow', pixelFormat: 'yuv420p', audioCodec: 'aac', audioBitrate: '192k',
-    imageFormat: 'jpeg', jpegQuality: 94,
+    composition, serveUrl, inputProps, codec: 'h264', outputLocation: silent, muted: true,
+    crf: 18, x264Preset: 'slow', pixelFormat: 'yuv420p', imageFormat: 'jpeg', jpegQuality: 94,
     onProgress: ({ progress }) => {
       const pct = Math.floor(progress * 10) * 10;
       if (pct !== shown) { shown = pct; console.log(`  ${out}: ${pct}%`); }
     },
   });
+  execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', silent, '-i', masterWav, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out]);
+  rmSync(tmp, { recursive: true, force: true });
   console.log(`rendered ${out} in ${((Date.now() - started) / 1000).toFixed(0)}s`);
 }
 
 const srtFrom = (timeline: TimelineReport) =>
   serializeSrt({ lines: timeline.cues.map((q) => [{ text: q.text, startMs: q.start * 1000, endMs: q.end * 1000, timestampMs: null, confidence: 1 }]) });
 
-// Checks the encoded file, not the frames: right length, has sound, and a tiled sheet of it to look at.
+// Checks the delivered file, not the frames: right length, has sound at delivery loudness without clipping, and a
+// tiled sheet of it to look at.
 async function review(captions: boolean, timeline: TimelineReport) {
   const video = videoFor(captions);
   const probe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', video]).toString());
@@ -177,12 +191,15 @@ async function review(captions: boolean, timeline: TimelineReport) {
   const problems = [];
   if (Math.abs(actual - timeline.duration) > 0.1) problems.push(`is ${actual.toFixed(2)}s, the timeline is ${timeline.duration.toFixed(2)}s`);
   if (!probe.streams.some((s: { codec_type: string }) => s.codec_type === 'audio')) problems.push('has no audio stream');
+  const { lufs, truePeak } = measureLoudness(video);
+  if (Math.abs(lufs - DELIVERY_LUFS) > 1) problems.push(`measures ${lufs} LUFS, not ${DELIVERY_LUFS} ± 1`);
+  if (truePeak > DELIVERY_TRUE_PEAK) problems.push(`peaks at ${truePeak} dBTP, over ${DELIVERY_TRUE_PEAK}`);
   if (problems.length) throw new Error(`${video} ${problems.join(' and ')}`);
 
   const tiles = 16, out = join(outDir, 'check', captions ? 'review-captions.jpg' : 'review.jpg');
   mkdirSync(dirname(out), { recursive: true });
   await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', video, '-vf', `fps=${tiles}/${actual},scale=480:-1,tile=4x4`, '-frames:v', '1', out]);
-  console.log(`${video}: ${actual.toFixed(2)}s with audio ✓  sheet → ${out}`);
+  console.log(`${video}: ${actual.toFixed(2)}s, ${lufs} LUFS, ${truePeak} dBTP ✓  sheet → ${out}`);
 }
 
 // A page to watch the finished videos, since file:// MP4s have no player of their own worth sharing a link to.
@@ -222,12 +239,15 @@ if (args.video) {
   if (!ok) throw new Error('fix the framing problems above before rendering (look at a stretch with --strip=a:b)');
   const estimated = timeline.cues.filter((q) => !q.voiced).map((q) => q.id);
   if (estimated.length) throw new Error(`${estimated.join(', ')} ${estimated.length > 1 ? 'are' : 'is'} estimated, not voiced: run npm run tts before rendering the video`);
+  await renderMasteredMix();
   for (const cap of [false, true]) {
     await renderVideo(cap);
     await review(cap, timeline);
   }
   writeFileSync(join(outDir, 'video.srt'), srtFrom(timeline));
   writeWatchPage(timeline.title);
+} else if (args.audio) {
+  await renderMasteredMix();
 } else if (args.sheet || args.strip) {
   let times: number[];
   if (args.strip) {
@@ -242,6 +262,6 @@ if (args.video) {
   writeFileSync(join(outDir, 'check', 'timeline.json'), JSON.stringify(timeline, null, 2));
   if (!ok) process.exitCode = 1;
 } else {
-  console.error('nothing to do: pass --video, --sheet, --strip or --check');
+  console.error('nothing to do: pass --video, --audio, --sheet, --strip or --check');
   process.exitCode = 1;
 }

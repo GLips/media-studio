@@ -14,6 +14,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { measureLoudness } from '../lib/loudness.ts';
 import { alignSpokenWords, estimateSpokenWords, type SpokenWord } from '../lib/voice-words.ts';
 import { heardWords } from '../lib/whisper-words.ts';
 import { postOpenRouter } from './openrouter.ts';
@@ -24,7 +25,8 @@ const WORDS_PER_SECOND = 3.0;
 
 type Script = { voice: string; direction?: string; lines: { id: string; text: string; voice?: string; direction?: string }[] };
 /** A manifest.json entry. `src` is relative to the project; null for an estimated line. */
-type Voiced = { src: string | null; duration: number; hash: string | null; text: string; words: SpokenWord[] };
+/** `lufs` is null for an estimated line, which has no audio to measure. */
+type Voiced = { src: string | null; duration: number; hash: string | null; text: string; words: SpokenWord[]; lufs: number | null };
 
 const args = process.argv.slice(2);
 const flag = (name: string) => args.find((a) => a.startsWith(`--${name}=`))?.split('=').slice(1).join('=');
@@ -49,20 +51,21 @@ async function voiceProject(project: string, estimate: boolean) {
 
     const cached = previous[line.id];
     if (cached?.hash === hash && existsSync(join(dir, file))) {
-      manifest[line.id] = { ...cached, words: cached.words ?? await wordsFor(join(project, cached.src!), line.text, cached.duration) };
+      const wav = join(project, cached.src!);
+      manifest[line.id] = { ...cached, words: cached.words ?? await wordsFor(wav, line.text, cached.duration), lufs: cached.lufs ?? measureLoudness(wav).lufs };
       continue;
     }
     if (estimate) {
       // No hash, so the next real run voices it.
       const duration = Number((line.text.split(/\s+/).length / WORDS_PER_SECOND + 0.3).toFixed(2));
-      manifest[line.id] = { src: null, duration, hash: null, text: line.text, words: estimateSpokenWords(line.text, duration) };
+      manifest[line.id] = { src: null, duration, hash: null, text: line.text, words: estimateSpokenWords(line.text, duration), lufs: null };
       console.log(`estimated ${line.id}  ${duration.toFixed(2)}s`);
       continue;
     }
 
     const { wav, duration } = await speak(line.text, voice, direction);
     writeFileSync(join(dir, file), wav);
-    manifest[line.id] = { src: `audio/${file}`, duration, hash, text: line.text, words: await wordsFor(join(dir, file), line.text, duration) };
+    manifest[line.id] = { src: `audio/${file}`, duration, hash, text: line.text, words: await wordsFor(join(dir, file), line.text, duration), lufs: measureLoudness(join(dir, file)).lufs };
     console.log(`voiced ${line.id}  ${duration.toFixed(2)}s  "${line.text.slice(0, 60)}"`);
   }
 
@@ -85,8 +88,8 @@ function voiceModule(manifest: Record<string, Voiced>) {
     return src ? [`import wav${i} from './${basename(src)}';`] : [];
   }).join('\n');
   const entries = ids.map((id, i) => {
-    const { src, duration, text, words } = manifest[id];
-    return `  ${JSON.stringify(id)}: { src: ${src ? `wav${i}` : 'null'}, duration: ${duration}, text: ${JSON.stringify(text)},\n    words: ${JSON.stringify(words)} },`;
+    const { src, duration, text, words, lufs } = manifest[id];
+    return `  ${JSON.stringify(id)}: { src: ${src ? `wav${i}` : 'null'}, duration: ${duration}, lufs: ${lufs}, text: ${JSON.stringify(text)},\n    words: ${JSON.stringify(words)} },`;
   }).join('\n');
   return `// Written by scripts/tts.ts. Edits here are lost on the next run.
 import type { Voice } from '../../../lib/studio/timeline.ts';

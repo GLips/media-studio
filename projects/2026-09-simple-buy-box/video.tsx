@@ -24,8 +24,8 @@ const ArmTag = ({ arm, k = 1 }: { arm: typeof TODAY; k?: number }) => <Tag text=
 const Section = ({ s, number, title }: { s: SceneClock; number: number; title: string }) => (
   <SectionCard t={s.t} number={number} of={SECTIONS} title={title} bg={NAVY} accent="#e8a0a0" />
 );
-const Ring = ({ v, rect, k, color, alpha }: { v: View; rect: Rect; k: number; color?: string; alpha?: number }) => (
-  <Highlight rect={screenRect(v, rect)} k={k} color={color} alpha={alpha} />
+const Ring = ({ v, rect, k, color, alpha, name }: { v: View; rect: Rect; k: number; color?: string; alpha?: number; name?: string }) => (
+  <Highlight rect={screenRect(v, rect)} k={k} color={color} alpha={alpha} name={name} />
 );
 
 // Section scenes open on a card and start their voice under it (lead < the card's hold), so the card costs no time.
@@ -154,6 +154,7 @@ const available = defineScene({
 
 const combo = defineScene({
   id: 'combo', lines: ['combo-a', 'combo-b', 'combo-c', 'combo-d'], lead: OPEN, gap: 0.6, tail: 1.6,
+  expect: (s) => [{ see: 'matches', during: s.line('combo-a').word('seventeen') }],
   render: (s) => {
     const a = s.line('combo-a'), b = s.line('combo-b'), c = s.line('combo-c'), d = s.line('combo-d');
     const blank = C['ink-new'], typed = C['ink-typed'], picked = C['ink-picked'], bulk = C['ink-bulk'], control = C['ink-control'];
@@ -167,7 +168,7 @@ const combo = defineScene({
           <CaptureStates view={v} t={s.t} states={[[blank, 0], [typed, typedAt]]} />
           <ArmTag arm={NEW} />
           <CursorPath view={v} t={s.t} alpha={off(s.t, typedAt + 0.3)} keys={[[0.8, { x: field.x + 200, y: field.y + 180 }], [typedAt - 0.5, field], [typedAt - 0.4, field, { click: true }]]} />
-          <Ring v={v} rect={typed.rects.matches} k={on(s.t, a.word('seventeen').start)} color={SALE_RED} alpha={off(s.t, b.start - 0.5)} />
+          <Ring v={v} rect={typed.rects.matches} name="matches" k={on(s.t, a.word('seventeen').start - 0.4)} color={SALE_RED} alpha={off(s.t, b.start - 0.5)} />
           <Ring v={v} rect={union(...typed.rects.options.slice(0, 5))} k={on(s.t, a.at(0.8))} alpha={off(s.t, b.start - 0.5)} />
         </>
       );
@@ -238,6 +239,7 @@ const sale = defineScene({
 
 const ladder = defineScene({
   id: 'ladder', lines: ['ladder'], lead: 0.3, tail: 0.8,
+  expect: (s) => [{ see: 'tiers', during: s.line('ladder').word('no volume discount') }],
   render: (s) => {
     const shot = C['ball-10'];
     const v = view(shot, camFit(shot, union(shot.rects.price, shot.rects.tiers), { pad: 50, maxZoom: 1.4 }));
@@ -245,7 +247,7 @@ const ladder = defineScene({
       <>
         <Capture view={v} />
         <ArmTag arm={NEW} />
-        <Ring v={v} rect={shot.rects.tiers} k={on(s.t, s.line('ladder').word('no volume discount').start)} color={SALE_RED} />
+        <Ring v={v} rect={shot.rects.tiers} name="tiers" k={on(s.t, s.line('ladder').word('no volume discount').start - 0.4)} color={SALE_RED} />
       </>
     );
   },

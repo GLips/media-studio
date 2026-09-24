@@ -5,7 +5,7 @@
 // voice is describing, so one under a tag or the caption, or off the frame, is a shot nobody can follow.
 
 import { useId, type CSSProperties } from 'react';
-import { inflate, pagePoint, screenPoint, type Point, type Rect, type View } from './camera.ts';
+import { assertKeysInOrder, inflate, pagePoint, screenPoint, type Point, type Rect, type View } from './camera.ts';
 import { FONT, H, W } from './frame.ts';
 import { clamp, easeOut, lerp, seg } from './motion.ts';
 
@@ -32,12 +32,16 @@ export function Cursor({ at, press = 0, alpha = 1 }: { at: Point; press?: number
   );
 }
 
-/** An expanding ring where a click landed; `k` 0..1 over its life. */
+/**
+ * An expanding ring where a click landed; `k` 0..1 over its life. The click point itself is a subject for the
+ * framing check while the ring is fresh, so a click under the caption or outside its panel fails.
+ */
 export function ClickRipple({ at, k, color = INK }: { at: Point; k: number; color?: string }) {
   if (k <= 0 || k >= 1) return null;
   return (
     <svg style={{ ...fill, opacity: (1 - k) * 0.55 }} width={W} height={H}>
       <circle cx={at.x} cy={at.y} r={10 + 44 * easeOut(k)} fill="none" stroke={color} strokeWidth={4} />
+      <rect data-framing="subject" data-name="click" data-strength={1 - k} x={at.x - 12} y={at.y - 12} width={24} height={24} fill="none" />
     </svg>
   );
 }
@@ -56,6 +60,7 @@ const lerpPoint = (a: Point, b: Point, k: number): Point => {
 
 /** Where the cursor is at `t` along its waypoints, in page space. Exported for motion checks. */
 export function cursorAt(t: number, keys: readonly CursorKey[]): Point {
+  assertKeysInOrder('cursor', keys);
   let p = keys[0][1];
   for (let i = 1; i < keys.length; i++) {
     if (t >= keys[i][0]) p = keys[i][1];
@@ -85,9 +90,13 @@ export function offscreen(view: View, toward: Point): Point {
 
 // ---------- emphasis ----------
 
-/** A glowing ring around a screen rect that draws itself on (`k` 0..1) and fades with `alpha`. */
-export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha = 1 }: {
+/**
+ * A glowing ring around a screen rect that draws itself on (`k` 0..1) and fades with `alpha`. `name` is what a
+ * scene's `expect` refers to it by.
+ */
+export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha = 1, name }: {
   rect: Rect;
+  name?: string;
   k: number;
   color?: string;
   pad?: number;
@@ -100,6 +109,7 @@ export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha =
   return (
     <svg
       data-framing="subject"
+      data-name={name}
       data-strength={Math.min(k, alpha)}
       style={{ position: 'absolute', left: r.x, top: r.y, overflow: 'visible', opacity: alpha, pointerEvents: 'none' }}
       width={r.w}
