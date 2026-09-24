@@ -6,8 +6,8 @@
 
 import { useRef, type CSSProperties } from 'react';
 import {
-  Capture, CursorPath, H, Highlight, Text, W, camAt, camTop, clamp, defineScene, defineVideo, lerp, motionCurves, motionAttrs, on,
-  screenRect, seg, useMotionTag, view, type Rect, type Shot,
+  Capture, CountUp, CursorPath, DrawPath, H, Highlight, Text, W, WordReveal, camAt, camTop, clamp, defineScene, defineVideo, lerp,
+  motionCurves, motionAttrs, on, screenRect, seg, useMotionTag, view, type Rect, type Shot,
 } from '../../lib/studio/api.ts';
 
 const INK = '#1c365e';
@@ -170,4 +170,22 @@ const end = defineScene({
   render: (s) => <Text text="Same words" x={W / 2} y={lerp(H / 2, H / 2 + 120, seg(s.t, 0.2, 1.2))} align="center" color={INK} />,
 });
 
-export default defineVideo({ title: 'Motion calibration', voice: {}, scenes: [glide, push, rise, counter, nested, blink, after, end] });
+/**
+ * The kit's builds, cut in hard so no crossfade breaks their tracks. `headline`'s words start 2 frames apart (60 ms on
+ * the frame grid), each rising 12px in place, never sideways; a check draws on under it; `total` counts to 1,299,
+ * easing out, lands exactly, and is declared to hold.
+ */
+const kit = defineScene({
+  id: 'kit', min: 4, cut: true,
+  expect: () => [{ hold: 'total', for: 1, during: { start: 2.7, end: 4 } }],
+  render: (s) => (
+    <>
+      <div style={{ position: 'absolute', inset: 0, background: INK }} />
+      <WordReveal t={s.t - 0.2} text="Every price, one tap away" x={260} y={220} width={1400} size={96} weight={800} align="center" motion="headline" />
+      <DrawPath d="M4 12.5l5 5L20 6.5" viewBox="0 0 24 24" box={{ x: 560, y: 480, w: 180, h: 180 }} k={seg(s.t, 1.1, 1.6, motionCurves.linear)} color="#7fd99a" width={16} motion="check" />
+      <CountUp k={seg(s.t, 1.5, 2.7, motionCurves.linear)} to={1299} format={(v) => `$${v.toLocaleString('en-US')}`} x={780} y={500} width={600} size={140} align="left" alpha={seg(s.t, 1.1, 1.5, motionCurves.dissolve)} motion="total" />
+    </>
+  ),
+});
+
+export default defineVideo({ title: 'Motion calibration', voice: {}, scenes: [glide, push, rise, counter, nested, blink, after, end, kit] });

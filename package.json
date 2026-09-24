@@ -26,6 +26,7 @@
     "@remotion/fonts": "^4.0.525",
     "@remotion/install-whisper-cpp": "4.0.525",
     "@remotion/media": "4.0.525",
+    "@remotion/paths": "4.0.525",
     "@remotion/renderer": "4.0.525",
     "citty": "0.2.2",
     "p5": "2.3.3",

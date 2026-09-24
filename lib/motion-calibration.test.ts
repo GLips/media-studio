@@ -83,6 +83,20 @@ test('tracks break where an element vanishes, at crossfades, and never join acro
   assert.deepEqual([end.length, end[0].phase, end[0].start], [1, 'solo', track('after/Same words').segments.at(-1)!.end + 1]);
 });
 
+test('a word reveal staggers its words, each rising in place; a check draws on; a count-up lands exactly and holds', () => {
+  const words = motion.tracks.filter((t) => t.id.startsWith('kit/headline/')).map((t) => t.segments[0]);
+  assert.deepEqual(words.map((w) => w.stagger?.index), [0, 1, 2, 3, 4]);
+  // Each word rises into place and never moves sideways, so the line doesn't shift as it fills in.
+  for (const w of words) assert.ok(spread(w.screen.x) === 0 && spread(w.screen.y) <= 12, `a word moves ${spread(w.screen.x)} across, ${spread(w.screen.y)} up`);
+  // 60 ms apart on the frame grid: starts 0, 1.8, 3.6, 5.4, 7.2 frames in, rounded.
+  const firstK = words.map((w) => w.values.k.findIndex((k) => Number(k) > 0));
+  assert.deepEqual(firstK.map((f) => f - firstK[0]), [0, 2, 4, 5, 7]);
+  assert.equal(solo('kit/check').values.draw.at(-1), 1);
+  const value = solo('kit/total').values.value.map(Number);
+  assert.equal(value.at(-1), 1299);
+  assert.ok(value.every((v, i) => i === 0 || v >= value[i - 1]), 'the count goes backwards');
+});
+
 test('the graph reads a move straight through a crossfade\'s end, and a ring riding a push as growing, not moving', () => {
   // push starts at 3s, fading in over glide until 3.25s; its ring draws on 3.2–3.5s, across that boundary.
   const [first, last] = [3 * motion.fps, 6 * motion.fps - 1];

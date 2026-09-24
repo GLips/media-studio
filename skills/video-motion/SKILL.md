@@ -70,6 +70,22 @@ that calm, legible register. A teaser or showreel designs its own motion, and no
   fraction of each item's move. `staggerFinish` is when the last one lands. Tag each item with
   `stagger: { group, index, count }` so the tracks see the group.
 
+## Kit recipes: words, numbers, strokes
+
+Shortcuts for moments explainers keep needing, all in `lib/studio/kit.tsx` and all raw: each eases itself. Anything
+they don't cover is built directly; a scene is any React that's a pure function of `s.t`.
+
+- **Words coming in**: `<WordReveal t={s.t - at} text x y width />` staggers words 60 ms apart (`timing.each`,
+  40–80 ms reads as one gesture), each rising 12 px (`rise`) as it fades in. The box is laid out whole from its
+  first frame, so the line never shifts. `letters` is for one short display word only. To have it finished as a
+  word is spoken, start it at `w.start - wordRevealFinish(text)`.
+- **A number counting**: `<CountUp k={seg(s.t, a, a + 1.2, motionCurves.linear)} to={1299} x y width />` eases
+  out over the span you give it (0.8–1.5 s) and lands on exactly `to`, in tabular numerals. `format` writes a currency or
+  unit. Name it (`motion="total"`) and `expect` it to hold once it lands, since a number the voice names must be read.
+- **A stroke drawing on**: `<DrawPath d k={seg(…, motionCurves.linear)} />` draws a path from its start with
+  `@remotion/paths`: an underline, an arrow, a check. `viewBox` plus `box` draws an icon's path into a rect. Draw-on only;
+  morph paths directly.
+
 ## Anchor to speech, and lead the word
 
 - Anchor every beat to the voice: `s.line('ladder').word('no volume discount').start`, never raw seconds. Re-voicing

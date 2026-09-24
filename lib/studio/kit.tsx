@@ -2,11 +2,12 @@
 // a project brings its own brand, and each is a pure function of its clock. Text-bearing shots keep clear of
 // CAPTION_SAFE_TOP, where burned-in captions sit. Each tags what moves in it for the motion tracks (motion-tag.ts).
 
-import type { ReactNode } from 'react';
+import { evolvePath } from '@remotion/paths';
+import { Fragment, type ReactNode } from 'react';
 import { camFit, camTop, camWhole, centerOf, lerpCam, view, type Rect, type Shot, type View } from './camera.ts';
 import { Capture, CaptureMotion } from './capture.tsx';
-import { CAPTION_FREE, CAPTION_SAFE_TOP, FONT, H, W } from './frame.ts';
-import { clamp, motionCurves, seg } from './motion.ts';
+import { CAPTION_FREE, CAPTION_SAFE_TOP, FONT, FULL_FRAME, H, W } from './frame.ts';
+import { clamp, lerp, motionCurves, motionDurations, seg, stagger, staggerFinish } from './motion.ts';
 import { motionAttrs, pieceMotionAttrs } from './motion-tag.ts';
 import { ClipToBox, CursorPath, Glass, Tag, Text, Wash } from './overlays.tsx';
 import type { SceneClock } from './timeline.ts';
@@ -297,5 +298,153 @@ export function EndCard({ k, title, bg }: { k: number; title: string; bg: string
       <div style={{ position: 'absolute', inset: 0, background: bg, opacity: k }} />
       <Text text={title} x={W / 2} y={H / 2 + 30} size={96} weight={800} align="center" k={k} spacing={-0.025} />
     </>
+  );
+}
+
+// ---------- builds: words, numbers and strokes that come on ----------
+
+/**
+ * How a WordReveal staggers: `each` seconds between one word's start and the next (40–80 ms reads as one gesture),
+ * `max` capping first start to last, and each word's own fade and rise taking `duration`.
+ */
+export type WordRevealTiming = { each?: number; max?: number; duration?: number };
+
+const WORD_REVEAL_TIMING = { each: 0.06, duration: motionDurations.enter.small };
+
+/** The words, each split into the pieces that come in one by one: itself, or its letters. */
+const wordRevealUnits = (text: string, letters: boolean) =>
+  text.split(/\s+/).filter(Boolean).map((word) => (letters ? Array.from(word) : [word]));
+
+/** Seconds after a WordReveal's `t` 0 that its last word has fully come in: to lead a word with it, or hold after it. */
+export function wordRevealFinish(text: string, { letters = false, timing }: { letters?: boolean; timing?: WordRevealTiming } = {}) {
+  const { each, max, duration } = { ...WORD_REVEAL_TIMING, ...timing };
+  return staggerFinish(wordRevealUnits(text, letters).flat().length, { each, max, duration });
+}
+
+/**
+ * Words that come in one after another, each rising `rise` px as it fades in, easing out. `t` is seconds since the
+ * first word starts, raw: it staggers and eases each word itself (`t={s.t - w.start}`). `letters` brings in letters
+ * instead, only for a short display word: a sentence by letters reads as a typewriter. The words wrap in a box `width`
+ * wide, top-left at (x, y), laid out whole from its first frame, so nothing shifts as they arrive. Each word is
+ * tracked inside the box's group, in a stagger.
+ */
+export function WordReveal({ t, text, x, y, width, size = 64, weight = 700, color = '#fff', align = 'left', spacing = -0.01, lineHeight = 1.15, rise = 12, letters = false, timing, motion }: {
+  t: number;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  size?: number;
+  weight?: number;
+  color?: string;
+  align?: 'left' | 'center' | 'right';
+  spacing?: number;
+  lineHeight?: number;
+  rise?: number;
+  letters?: boolean;
+  timing?: WordRevealTiming;
+  /** Its group's name in the motion tracks, its words by default. `false` tracks neither it nor its words. */
+  motion?: string | false;
+}) {
+  if (t <= 0) return null;
+  const words = wordRevealUnits(text, letters);
+  const n = words.flat().length;
+  const { each, max, duration } = { ...WORD_REVEAL_TIMING, ...timing };
+  const firsts = words.map((_, w) => words.slice(0, w).flat().length);
+  return (
+    <div
+      {...pieceMotionAttrs(motion, text, { kind: 'word-reveal', values: { k: clamp(t / wordRevealFinish(text, { letters, timing })) } })}
+      style={{ position: 'absolute', left: x, top: y, width, textAlign: align, color, font: `${weight} ${size}px/${lineHeight} ${FONT}`, letterSpacing: `${spacing * size}px` }}
+    >
+      {words.map((units, w) => (
+        <Fragment key={w}>
+          {w > 0 && ' '}
+          <span style={{ whiteSpace: 'nowrap' }}>
+            {units.map((unit, u) => {
+              const index = firsts[w] + u;
+              const p = clamp((t - stagger(index, n, { each, max })) / duration);
+              const e = motionCurves.cubic.entrance(p);
+              const tag = motion === false ? {} : pieceMotionAttrs(undefined, `${index} ${unit}`, { kind: letters ? 'letter' : 'word', values: { k: p }, stagger: { group: 'words', index, count: n } });
+              return <span key={u} {...tag} style={{ display: 'inline-block', opacity: e, transform: `translateY(${(1 - e) * rise}px)` }}>{unit}</span>;
+            })}
+          </span>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * A number counting from `from` to `to` in tabular numerals, so its digits never shift sideways. `k` is raw: it eases
+ * out, slowing into its value, so give it 0.8–1.5 s (`seg(s.t, a, a + 1.2, motionCurves.linear)`). From `k` 1 on it
+ * shows exactly `to`. `format` writes the number (a currency, a unit); by default it's grouped, with `decimals` places.
+ * It sits in a box `width` wide, top-left at (x, y), right-aligned by default so the last digit stays put. Its track
+ * reports `value`, the number shown, so a scene can `expect` it to hold once it lands.
+ */
+export function CountUp({ k, to, from = 0, x, y, width, size = 120, weight = 800, color = '#fff', align = 'right', decimals = 0, format, alpha = 1, motion }: {
+  k: number;
+  to: number;
+  from?: number;
+  x: number;
+  y: number;
+  width: number;
+  size?: number;
+  weight?: number;
+  color?: string;
+  align?: 'left' | 'center' | 'right';
+  decimals?: number;
+  format?: (value: number) => string;
+  alpha?: number;
+  /** Its name in the motion tracks, `count` by default. */
+  motion?: string | false;
+}) {
+  if (alpha <= 0) return null;
+  // Not lerp at 1: from + (to - from) can miss `to` in its last bit, and the count must land on the exact value.
+  const value = k >= 1 ? to : Number(lerp(from, to, motionCurves.cubic.entrance(k)).toFixed(decimals));
+  const text = format ? format(value) : value.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  return (
+    <div
+      {...pieceMotionAttrs(motion, 'count', { kind: 'count', values: { k, value } })}
+      style={{ position: 'absolute', left: x, top: y, width, textAlign: align, color, opacity: alpha, font: `${weight} ${size}px/1 ${FONT}`, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}
+    >
+      {text}
+    </div>
+  );
+}
+
+/**
+ * A stroke that draws itself on along SVG path `d`, from its start. `k` 0..1 is raw: it eases the draw. `d` is in
+ * `box`'s own pixels (the whole frame by default), or in `viewBox`'s units when given, to draw an icon's `0 0 24 24`
+ * path into `box`; `width` is frame pixels either way. Draw-on only: a morph between paths is built directly.
+ */
+export function DrawPath({ d, k, color = '#fff', width = 6, box = FULL_FRAME, viewBox, alpha = 1, motion }: {
+  d: string;
+  k: number;
+  color?: string;
+  width?: number;
+  box?: Rect;
+  viewBox?: string;
+  alpha?: number;
+  /** Its name in the motion tracks, `path` by default. Its track reports `draw`, the raw `k`. */
+  motion?: string | false;
+}) {
+  if (k <= 0 || alpha <= 0) return null;
+  const [, , vw, vh] = viewBox ? viewBox.trim().split(/[\s,]+/).map(Number) : [0, 0, box.w, box.h];
+  // The stroke is in viewBox units. vector-effect="non-scaling-stroke" would keep it in frame pixels, but would also
+  // move the dashes that draw it out of the path's own length.
+  const scale = Math.min(box.w / vw, box.h / vh);
+  return (
+    <svg style={{ position: 'absolute', left: box.x, top: box.y, overflow: 'visible', opacity: alpha, pointerEvents: 'none' }} width={box.w} height={box.h} viewBox={viewBox ?? `0 0 ${vw} ${vh}`}>
+      <path
+        {...pieceMotionAttrs(motion, 'path', { kind: 'path', values: { draw: k } })}
+        d={d}
+        fill="none"
+        stroke={color}
+        strokeWidth={width / scale}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        {...evolvePath(motionCurves.cubic.entrance(k), d)}
+      />
+    </svg>
   );
 }
