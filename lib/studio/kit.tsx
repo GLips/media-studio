@@ -323,10 +323,9 @@ export function wordRevealFinish(text: string, { letters = false, timing }: { le
 
 /**
  * Words that come in one after another, each rising `rise` px as it fades in, easing out. `t` is seconds since the
- * first word starts, raw: it staggers and eases each word itself (`t={s.t - w.start}`). `letters` brings in letters
- * instead, only for a short display word: a sentence by letters reads as a typewriter. The words wrap in a box `width`
- * wide, top-left at (x, y), laid out whole from its first frame, so nothing shifts as they arrive. Each word is
- * tracked inside the box's group, in a stagger.
+ * first word starts, raw: it staggers and eases each word itself. `letters` staggers letters, for one short display
+ * word only. The words wrap in a box `width` wide, top-left at (x, y), laid out whole from its first frame, so nothing
+ * shifts as they arrive.
  */
 export function WordReveal({ t, text, x, y, width, size = 64, weight = 700, color = '#fff', align = 'left', spacing = -0.01, lineHeight = 1.15, rise = 12, letters = false, timing, motion }: {
   t: number;
@@ -376,10 +375,8 @@ export function WordReveal({ t, text, x, y, width, size = 64, weight = 700, colo
 
 /**
  * A number counting from `from` to `to` in tabular numerals, so its digits never shift sideways. `k` is raw: it eases
- * out, slowing into its value, so give it 0.8–1.5 s (`seg(s.t, a, a + 1.2, motionCurves.linear)`). From `k` 1 on it
- * shows exactly `to`. `format` writes the number (a currency, a unit); by default it's grouped, with `decimals` places.
- * It sits in a box `width` wide, top-left at (x, y), right-aligned by default so the last digit stays put. Its track
- * reports `value`, the number shown, so a scene can `expect` it to hold once it lands.
+ * out, slowing into its value; give it 0.8–1.5 s. From `k` 1 on it shows exactly `to`, at `decimals` places. It sits
+ * in a box `width` wide, top-left at (x, y), right-aligned by default so the last digit stays put.
  */
 export function CountUp({ k, to, from = 0, x, y, width, size = 120, weight = 800, color = '#fff', align = 'right', decimals = 0, format, alpha = 1, motion }: {
   k: number;
@@ -393,14 +390,15 @@ export function CountUp({ k, to, from = 0, x, y, width, size = 120, weight = 800
   color?: string;
   align?: 'left' | 'center' | 'right';
   decimals?: number;
+  /** Writes the number shown (a currency, a unit). By default it's grouped, with `decimals` places. */
   format?: (value: number) => string;
   alpha?: number;
-  /** Its name in the motion tracks, `count` by default. */
+  /** Its name in the motion tracks, `count` by default. Its track reports `value`, so a scene can `expect` it to hold. */
   motion?: string | false;
 }) {
   if (alpha <= 0) return null;
-  // Not lerp at 1: from + (to - from) can miss `to` in its last bit, and the count must land on the exact value.
-  const value = k >= 1 ? to : Number(lerp(from, to, motionCurves.cubic.entrance(k)).toFixed(decimals));
+  // Not lerp at 1: from + (to - from) can miss `to` in its last bit. The `+ 0` turns a rounded -0 into 0, which prints "-0".
+  const value = Number((k >= 1 ? to : lerp(from, to, motionCurves.cubic.entrance(k))).toFixed(decimals)) + 0;
   const text = format ? format(value) : value.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   return (
     <div
@@ -429,6 +427,7 @@ export function DrawPath({ d, k, color = '#fff', width = 6, box = FULL_FRAME, vi
   motion?: string | false;
 }) {
   if (k <= 0 || alpha <= 0) return null;
+  // Drawn whole at `k` 1 without dashes: evolvePath's length can fall short of the browser's, leaving the tip undrawn.
   const [, , vw, vh] = viewBox ? viewBox.trim().split(/[\s,]+/).map(Number) : [0, 0, box.w, box.h];
   // The stroke is in viewBox units. vector-effect="non-scaling-stroke" would keep it in frame pixels, but would also
   // move the dashes that draw it out of the path's own length.
@@ -443,7 +442,7 @@ export function DrawPath({ d, k, color = '#fff', width = 6, box = FULL_FRAME, vi
         strokeWidth={width / scale}
         strokeLinecap="round"
         strokeLinejoin="round"
-        {...evolvePath(motionCurves.cubic.entrance(k), d)}
+        {...(k < 1 && evolvePath(motionCurves.cubic.entrance(k), d))}
       />
     </svg>
   );
