@@ -20,9 +20,13 @@ export const PREVIS_MODEL = 'bytedance/seedance-2.5';
 const BLOCKOUT_WIDTH = 1280;
 
 // Seedance numbers its references by kind in the order sent (@Video1, @Image1, @Image2…), and the blockout goes first.
-const PREVIS_PREAMBLE = '@Video1 is a grey 3D previs blockout of this shot. Keep its camera movement, framing and timing exactly, '
-  + 'and every subject where and as it moves there. Render it as finished footage: each grey or tinted shape becomes the real '
-  + 'subject described below, in real light and materials. None of the blockout\'s grid, flat grey primitives or empty backdrop remains.';
+// Worded as a new video that references @Video1's camera, never as changing @Video1: Seedance reads the task type from
+// the prompt, and as an edit the output must take the input's length and ratio (duration -1), which OpenRouter's
+// schema can't send.
+const PREVIS_PREAMBLE = 'Generate a new, photoreal video. Reference @Video1 for its camera movement, framing and timing, and for where each '
+  + 'subject stands and how it moves: @Video1 is a grey 3D layout sketch of this shot, where each grey or tinted shape marks a subject '
+  + 'described below. The new video shows the real subjects in a real place, in real light and materials, with none of the sketch\'s '
+  + 'grid, flat grey shapes or empty backdrop.';
 
 type FootageEntry = { file: string; from: number; duration: number };
 const footageListFor = (project: string) => join(project, 'generated', 'footage.json');
