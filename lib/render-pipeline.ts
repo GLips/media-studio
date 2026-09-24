@@ -85,9 +85,11 @@ export async function checkProject(session: RenderSession, scope: CheckScope = {
   report.push(...motionReport.lines);
 
   const held = holdProblems(motion, timeline, holds, basename(session.project));
-  const checked = holds.length - held.unchecked.length;
   report.push(...held.problems.map(problemLine), ...held.unchecked.map((u) => `  – not checked: ${u}`));
-  if (holds.length) report.push(held.problems.length ? `holds: ${held.problems.length} of ${checked} not kept` : `holds ✓ (${checked} steady and visible)`);
+  if (holds.length) {
+    report.push(held.problems.length ? `holds: ${held.problems.length} of ${held.checked} not kept`
+      : held.checked ? `holds ✓ (${held.checked} steady and visible)` : 'holds: none in the checked frames');
+  }
   return { ok: problems.length === 0 && motionReport.ok && held.problems.length === 0, timeline, motion, report };
 }
 

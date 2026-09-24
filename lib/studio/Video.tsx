@@ -63,9 +63,13 @@ function timelineReport(video: VideoDef, tl: Timeline, fps: number, durationInFr
     crossfades: tl.scenes.flatMap((scene, i) => (scene.xfade ? [{
       from: tl.scenes[i - 1].id, to: scene.id, start: scene.start - scene.xfade / 2, end: scene.start + scene.xfade / 2,
     }] : [])),
-    expectations: tl.scenes.flatMap((scene) => (scene.expect?.(sceneTimes(scene)) ?? []).map(({ during, ...promise }) => ({
-      scene: scene.id, ...promise, start: scene.start + during.start, end: scene.start + during.end,
-    }))),
+    expectations: tl.scenes.flatMap((scene) => (scene.expect?.(sceneTimes(scene)) ?? []).map(({ during, ...promise }) => {
+      // Here rather than in the check, so a bad hold fails on frame 0, not after every frame has rendered.
+      if ('hold' in promise && !(promise.for > 0 && (promise.within === undefined || promise.within >= 0))) {
+        throw new Error(`scene ${scene.id}: hold "${promise.hold}" needs a \`for\` above 0 and a \`within\` of 0 or more`);
+      }
+      return { scene: scene.id, ...promise, start: scene.start + during.start, end: scene.start + during.end };
+    })),
   };
   return JSON.stringify(report);
 }
