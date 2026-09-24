@@ -37,9 +37,9 @@ export const SFX = {
   /** pop */
   pop: [{ src: pop1, seconds: 0.5699, landsAt: 0 }, { src: pop2, seconds: 0.5699, landsAt: 0 }, { src: pop3, seconds: 0.5699, landsAt: 0 }],
   /** whoosh */
-  whoosh: [{ src: whoosh1, seconds: 1.0366, landsAt: 0.385 }],
+  whoosh: [{ src: whoosh1, seconds: 1.0838, landsAt: 0.38 }],
   /** whoosh.whip */
-  whip: [{ src: whip1, seconds: 0.581, landsAt: 0.096 }],
+  whip: [{ src: whip1, seconds: 0.596, landsAt: 0.09 }],
   /** riser */
   riser: [{ src: riser1, seconds: 2.0578, landsAt: 1.5 }],
   /** impact */

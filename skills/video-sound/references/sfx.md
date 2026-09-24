@@ -18,7 +18,7 @@ Nothing to license, and a rerun writes identical files. `studio sfx list` prints
 2. **A project's own**, when the kit's take doesn't fit the moment (a longer whoosh, a softer chime):
 
    ```sh
-   studio sfx render whoosh.soft --seed reveal --set duration=1.2,brightness=0.3 --out projects/<p>/sfx/reveal.wav
+   studio sfx render whoosh.soft --seed reveal --set recede=0.9,brightness=0.3 --out projects/<p>/sfx/reveal.wav
    ```
 
    - `whoosh.soft` is a recipe and one of its presets, and `--set` overrides its parameters.
@@ -31,10 +31,10 @@ Nothing to license, and a rerun writes identical files. `studio sfx list` prints
 
    | Note | Parameter |
    |---|---|
-   | "Cut off", "stops dead", "dry" | Raise `decay`, or `room` (for a chime, also `shimmer`). For a riser, raise `tail`; `riser.cut` stops dead on its peak by design |
+   | "Cut off", "stops dead", "dry" | Raise `decay`, or `room` (for a chime, also `shimmer`). For a whoosh, raise `recede`; for a riser, `tail`; `riser.cut` stops dead on its peak by design |
    | "Hollow", "boxy" (a click or key) | Raise `brightness` for more snap; for a click, also lower `decay` for less body ring |
    | "Harsh", "thin" | Lower `brightness`, or lower `pitch` |
-   | "Too long", "too slow" | Shorten `duration`, or lower `decay` |
+   | "Too long", "too slow" | Shorten `duration` (a whoosh's `approach` or `recede`), or lower `decay` |
 
    If a parameter at the end of its range still doesn't fix the note, the recipe itself needs work: tell the user
    rather than stacking a filter on top.

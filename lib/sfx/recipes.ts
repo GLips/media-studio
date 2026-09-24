@@ -168,26 +168,28 @@ export const whoosh = defineSfxRecipe({
   doc: "Something passing close: band-passed pink noise that swells and brightens at the closest pass (`landsAt`), with a slight Doppler fall after it. Faster moves are narrower and higher. A whip pan is `whoosh.whip`",
   category: 'accent',
   params: {
-    duration: { min: 0.12, max: 2.5, log: true, doc: 'Seconds' },
+    approach: { min: 0.05, max: 2, log: true, doc: 'Seconds from the start to the closest pass, where it lands' },
+    recede: { min: 0.1, max: 2, log: true, doc: 'Seconds it takes to die away after the pass' },
     speed: { min: 0, max: 1, doc: 'How fast the thing passes: a narrower, higher, more sudden band' },
     brightness: { min: 0, max: 1, doc: 'Where the band sits, from a low rush to a hiss' },
-    peakAt: { min: 0.1, max: 0.95, doc: 'Where in the sound the closest pass falls, as a fraction of its duration' },
   },
-  defaults: { duration: 0.7, speed: 0.5, brightness: 0.5, peakAt: 0.55, room: 0.3 },
+  defaults: { approach: 0.38, recede: 0.5, speed: 0.5, brightness: 0.5, room: 0.3 },
   presets: {
-    soft: { duration: 1, speed: 0.25, brightness: 0.3 },
-    fast: { duration: 0.4, speed: 0.8, brightness: 0.6 },
-    whip: { duration: 0.24, speed: 1, brightness: 0.85, peakAt: 0.4 },
-    swell: { duration: 1.6, speed: 0.15, brightness: 0.4, peakAt: 0.8 },
+    soft: { approach: 0.55, recede: 0.7, speed: 0.25, brightness: 0.3 },
+    fast: { approach: 0.2, recede: 0.3, speed: 0.8, brightness: 0.6 },
+    whip: { approach: 0.09, recede: 0.22, speed: 1, brightness: 0.85 },
+    swell: { approach: 1.3, recede: 1.2, speed: 0.15, brightness: 0.4 },
   },
   render: (p, seed) => {
-    const out = samplesFor(p.duration), tp = p.duration * p.peakAt;
-    const width = p.duration * lerp(0.3, 0.1, p.speed);
+    const tp = p.approach, out = samplesFor(p.approach + p.recede);
+    // How close the pass comes, on each side of it. Each side's width is a share of its own length, so a long build
+    // never has to fall away in a short recede; faster moves are more sudden.
+    const before = p.approach * lerp(0.35, 0.15, p.speed), after = p.recede * lerp(0.4, 0.2, p.speed);
     const noise = pinkNoise(seededRandom(subSeed(seed, 'air'))), turbulence = seededRandom(subSeed(seed, 'turbulence'));
     const band = stateVariableFilter(), body = stateVariableFilter(), air = stateVariableFilter(), wobble = onePole();
     const centre = logLerp(350, 2600, p.brightness) * logLerp(0.8, 1.5, p.speed);
     for (let i = 0; i < out.length; i++) {
-      const t = i / SFX_RATE, d = (t - tp) / width;
+      const t = i / SFX_RATE, d = (t - tp) / (t < tp ? before : after);
       const near = 1 / (1 + d * d);
       // Turbulence: a slow random wander of the band, so the air isn't a clean sweep.
       const drift = 1 + 0.25 * wobble(turbulence() * 2 - 1, 12);
@@ -198,7 +200,7 @@ export const whoosh = defineSfxRecipe({
       const v = band(n, hz, q).bp + 0.5 * body(n, hz * 0.45, 0.8).bp + 0.35 * p.brightness * near * air(n, 5500, 0.7).hp;
       // The pass alone never reaches silence inside the sound, so it's tapered to nothing at both ends: the thing
       // arrives from, and leaves into, the distance.
-      const taper = t < tp ? smoothstep(t / tp) : 1 - smoothstep((t - tp) / (p.duration - tp));
+      const taper = t < tp ? smoothstep(t / tp) : 1 - smoothstep((t - tp) / p.recede);
       out[i] = v * near ** 1.6 * taper;
     }
     return { samples: out, landsAt: tp };
