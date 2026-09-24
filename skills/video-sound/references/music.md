@@ -2,15 +2,21 @@
 
 ## Adding a track
 
-The studio doesn't find or generate music: the user supplies the track, and its licence is theirs to settle. Add it:
+Decide the music's role first (below), then import or generate:
+
+- **Import** when the brand has its own music or the user has licensed a track. Its licence is theirs to settle.
+- **Generate** with Lyria when there's no track or the video only needs a generic mood.
 
 ```
-studio music add <p> path/to/track.mp3            # music.bed
-studio music add <p> path/to/other.wav --name=lead # music.lead
+studio music add <p> path/to/track.mp3             # music.bed
+studio music add <p> path/to/other.wav --name=lead  # music.lead
+studio music gen <p> "<prompt>"                     # music.bed, a 30 s Lyria clip, $0.04
+studio music gen <p> "<prompt>" --name=lead --full  # a full-length track (about a minute), $0.08
 ```
 
-That copies the file into `projects/<p>/music/`, measures its loudness, tempo and beats (`lib/music-track.ts`,
-`lib/music-beats.ts`) and rewrites `music/index.ts`, which says `Edits here are lost on the next run`. Then:
+Either way, the track is copied into `projects/<p>/music/`. Its loudness, tempo and beats are measured
+(`lib/music-track.ts`, `lib/music-beats.ts`), and `music/index.ts` is rewritten. That file says `Edits here are lost
+on the next run`. Then:
 
 ```tsx
 import { music } from './music/index.ts';
@@ -27,10 +33,38 @@ Fit the track instead (below), or choose one that runs longer than `sourceStartS
 slow or fast track can read at half or double time. Check the number against the user's sense of the track before
 cutting to it.
 
+## Generating one
+
+`gen` needs `OPENROUTER_API_KEY` (`op run --env-file="$(studio home)/.env.op" -- studio music gen …`). The result is
+cached in `generated/` by prompt and model, so the same prompt costs nothing and can never give a different track.
+There's no seed either, so you can't nudge a result you almost like. Change the prompt and try again instead.
+`music/index.ts` records each generated track's `model` and `prompt`. Lyria is in preview, so a change in its output
+can be traced to the model id.
+
+Write the prompt for the role. Give it the mood, tempo, instruments and structure:
+
+- **A bed:** start with "Instrumental only, no vocals", since vocals fight the narration. Ask for a gentle intro and
+  outro with an even middle and no drops or big builds, because a bed that builds competes with the voice. Use about
+  90–110 BPM for a calm walkthrough and faster for a launch. A 30 s clip is enough, since `fit` repeats its bars to
+  any length.
+- **The lead:** structure is the point. Ask, in bars, for the builds, drops and hits the edit will cut to, e.g. "an
+  8-bar riser that drops to near silence for one bar, then a big hit into the drop". Use `--full` whenever the
+  music has to change shape, such as a build to a reveal. A 30 s clip has no room for that.
+
+Lyria doesn't always keep to the asked tempo. Read the BPM `gen` prints (a 100 BPM bed has come back reading 133).
+
+**Try two or three, then choose.** Each costs cents. Add them under different names
+(`--name=bed-a`, `--name=bed-b`), fit each, and judge each in context: a bed under the actual voice in
+`studio preview`, a lead against the cut. Point the video at the one you keep. Its generation stays cached.
+
+Don't send Lyria a frame of the video as a reference. Nobody has tested whether it helps.
+
 ## Fitting it to the video
 
 Once the picture is locked, `studio music fit <p>` cuts a track to exactly the video's length so its own ending, not
-a fade, finishes the video:
+a fade, finishes the video. A generated track always goes through it, since Lyria's lengths aren't frame-exact and a
+clip is only 30 s. Fitting a clip to a long video repeats one stretch of it many times, so have the user listen at
+the seams, or generate with `--full`:
 
 ```
 studio music fit <p>                          # music.bed → music['bed-fit'], the video's length
@@ -50,6 +84,9 @@ It prints:
 - **Each cut and `expect` against the nearest downbeat**: a report only, nothing moves. To land one, nudge a `tail`
   or the next `lead` by the offset, within the voice's read (below), then fit again, since the length changed. A new
   length can shift every downbeat, so read the report again rather than trusting the old offsets.
+
+Then run `studio check <p>`. Change a level only if something sounds wrong: the mixer already ducks under the
+voice (only where there is one) and sets loudness.
 
 `music/index.ts` records each fit's `spans` of the source, its `seams` and `downbeats`; the same track and length
 always give the same fit.

@@ -28,6 +28,8 @@ export type MusicTrack = {
   beats: readonly number[];
   /** Set when `studio music fit` rebuilt the track to a video's length. */
   fit?: MusicFit;
+  /** Set when `studio music gen` made the track. Lyria is in preview, so the model id traces a change in its output. */
+  generated?: { model: string; prompt: string };
 };
 
 /** How a fitted track was cut from its source, so the seams can be found by ear and a refit compared against it. */

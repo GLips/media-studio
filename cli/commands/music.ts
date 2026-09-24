@@ -1,4 +1,5 @@
-// studio music: adds a music track to a project, and fits one to the video's length (lib/music-track.ts).
+// studio music: adds a music track to a project, supplied or generated, and fits one to the video's length
+// (lib/music-track.ts).
 import { defineCommand } from 'citty';
 import { studioProjectArg } from '../project-arg.ts';
 
@@ -17,6 +18,24 @@ const add = defineCommand({
     const { resolveStudioProject } = await import('../../lib/studio-project.ts');
     const { addProjectMusicTrack } = await import('../../lib/music-track.ts');
     console.log(addProjectMusicTrack(resolveStudioProject(args.project), resolve(args.track), args.name));
+  },
+});
+
+const gen = defineCommand({
+  meta: {
+    name: 'gen',
+    description: "Generate a track with Lyria from a prompt (mood, tempo, instruments, structure), then add it like `add` does. A 30 s clip ($0.04) unless --full ($0.08). Cached: the same prompt costs nothing again, and a new one is a new track. Fit it with `fit` before using it. Needs OPENROUTER_API_KEY. Prints music/index.ts.",
+  },
+  args: {
+    project: studioProjectArg,
+    prompt: { type: 'positional', required: true, description: 'What to make: mood, tempo, instruments, structure' },
+    name: { type: 'string', default: 'bed', description: 'What the video calls it: music.<name>' },
+    full: { type: 'boolean', description: 'A full-length track (lyria-3-pro) rather than a 30 s clip, for music that has to go somewhere' },
+  },
+  async run({ args }) {
+    const { resolveStudioProject } = await import('../../lib/studio-project.ts');
+    const { generateProjectMusicTrack } = await import('../../lib/music-track.ts');
+    console.log(await generateProjectMusicTrack(resolveStudioProject(args.project), { prompt: args.prompt, name: args.name, full: Boolean(args.full) }));
   },
 });
 
@@ -67,6 +86,6 @@ const fit = defineCommand({
 });
 
 export default defineCommand({
-  meta: { name: 'music', description: "Music tracks for a project: `add` one, then `fit` it to the video's length." },
-  subCommands: { add, fit },
+  meta: { name: 'music', description: "Music tracks for a project: `add` one or `gen` one with Lyria, then `fit` it to the video's length." },
+  subCommands: { add, gen, fit },
 });

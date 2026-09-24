@@ -1,5 +1,5 @@
-// music-track.ts: adds a music track to a project, measured for the mix and beat-tracked, and fits one to a length.
-// `studio music add` and `studio music fit` run it.
+// music-track.ts: adds a music track to a project, supplied or generated with Lyria, measured for the mix and
+// beat-tracked, and fits one to a length. `studio music add`, `gen` and `fit` run it.
 //
 // `add` copies the track to projects/<p>/music/ and writes music/index.ts, which the video imports:
 //   import { music } from './music/index.ts';
@@ -11,6 +11,7 @@ import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import { measureLoudness } from './loudness.ts';
+import { generatePaidMedia } from './paid-generation.ts';
 import { detectMusicBeats } from './music-beats.ts';
 import { planMusicFit, spliceMusicSpans } from './music-fit.ts';
 import type { MusicTrack } from './studio/mix.ts';
@@ -20,8 +21,22 @@ type Entry = Omit<MusicTrack, 'src'> & { file: string };
 // Beats are tracked, and fits planned, on mono at this rate; the fitted file keeps the source's own rate and channels.
 const ANALYSIS_RATE = 22050;
 
+/** The Lyria models `studio music gen` uses: a 30 s clip by default, a full-length track for music that has to go somewhere. */
+export const LYRIA_CLIP_MODEL = 'google/lyria-3-clip-preview';
+export const LYRIA_PRO_MODEL = 'google/lyria-3-pro-preview';
+
+/**
+ * Generates a track with Lyria (cached like every paid generation, in generated/) and adds it as `name`, recording
+ * the model and prompt. Returns the path of the music/index.ts it rewrote.
+ */
+export async function generateProjectMusicTrack(project: string, { prompt, name, full }: { prompt: string; name: string; full: boolean }): Promise<string> {
+  const model = full ? LYRIA_PRO_MODEL : LYRIA_CLIP_MODEL;
+  const [file] = await generatePaidMedia(project, { kind: 'audio', model, name: `music-${name}`, prompt });
+  return addProjectMusicTrack(project, file, name, { model, prompt });
+}
+
 /** Adds `source` to the project's music as `name`, and returns the path of the music/index.ts it rewrote. */
-export function addProjectMusicTrack(project: string, source: string, name: string): string {
+export function addProjectMusicTrack(project: string, source: string, name: string, generated?: MusicTrack['generated']): string {
   if (!existsSync(source)) throw new Error(`no track at ${source}`);
   if (!/^[a-z][a-z0-9-]*$/.test(name)) throw new Error(`--name must be lowercase words joined by dashes, not ${name}`);
 
@@ -34,7 +49,7 @@ export function addProjectMusicTrack(project: string, source: string, name: stri
   const duration = Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path]).toString());
   const { lufs } = measureLoudness(path);
   const { bpm, beats } = detectMusicBeats(decodeAudio(path, 1, ANALYSIS_RATE)[0], ANALYSIS_RATE);
-  const index = writeMusicEntry(dir, name, { file, duration: Math.round(duration * 1000) / 1000, lufs, bpm, beats });
+  const index = writeMusicEntry(dir, name, { file, duration: Math.round(duration * 1000) / 1000, lufs, bpm, beats, ...(generated && { generated }) });
   console.error(`${name}: ${basename(source)}, ${duration.toFixed(1)}s, ${lufs} LUFS, ${bpm} BPM, first beats ${beats.slice(0, 4).join(', ')}s`);
   return index;
 }
