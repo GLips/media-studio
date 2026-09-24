@@ -9,6 +9,12 @@ export type SpokenWord = { text: string; start: number; end: number };
 
 export const scriptWords = (text: string) => text.split(/\s+/).filter(Boolean);
 
+/**
+ * A script line as it's heard and captioned: without the TTS model's inline tags (`<short pause>`, `<laugh>`…), which
+ * are performed, not said.
+ */
+export const spokenText = (text: string) => text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
 // Case and punctuation don't decide a match: whisper writes "what's" where a script has "what’s", or "Show all," as "show all".
 const normalWord = (word: string) => word.toLowerCase().replace(/[’']/g, '').replace(/[^\p{L}\p{N}]+/gu, '');
 // Whisper and scripts disagree on hyphens ("end to end" heard as "End-to-end."), so words are matched piece by piece.

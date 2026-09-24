@@ -37,3 +37,12 @@ test('a cut is flagged when a pause inside a word rivals the one between the lin
   const [, b] = cutTakeIntoLines(lines, [w('Alpha', 0.2, 1.0), w('Beta', 1.04, 1.5)], samples, RATE);
   assert.equal(b.cutIsClear, false);
 });
+
+test('short lines whose search windows overlap each keep their own speech', () => {
+  const lines = [{ id: 'a', text: 'a list you can filter,' }, { id: 'b', text: 'search,' }, { id: 'c', text: 'and preview images.' }];
+  const samples = take(5, [[0.2, 1.6], [2.2, 2.8], [3.5, 4.6]]);
+  // Whisper smeared "search," over both pauses, so every window reaches both.
+  const heard = [w('a', 0.2, 0.3), w('list', 0.3, 0.7), w('you', 0.7, 0.9), w('can', 0.9, 1.1), w('filter,', 1.2, 2.2), w('search,', 2.2, 3.4), w('and', 3.4, 3.6), w('preview', 3.6, 4.1), w('images.', 4.1, 4.6)];
+  const [a, b, c] = cutTakeIntoLines(lines, heard, samples, RATE);
+  assert.ok(a.to <= 2.2 && b.from < 2.2 && b.to > 2.8 && c.from < 3.5, `${a.to} ${b.from}–${b.to} ${c.from}`);
+});

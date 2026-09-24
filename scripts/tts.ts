@@ -8,9 +8,10 @@
 //                                                        audio, so scenes can be built before the voice exists
 //   npm run tts -- --audition "Some line" --voices=Kore,Puck,Achird [--out=auditions]
 //
-// voiceover.json: { "voice": "Kore", "direction": "optional delivery note",
-//                   "lines": [{ "id": "s1", "text": "…", "paragraph": true }] }
-// A line with `"paragraph": true` starts a new paragraph of the read; the rest run on from the line before.
+// voiceover.json: { "voice": "Kore", "lines": [{ "id": "s1", "text": "…", "paragraph": true }] }
+// A line with `"paragraph": true` starts a new paragraph of the read; the rest run on from the line before. The model
+// reads the text verbatim, so a delivery note would be spoken; direct it with its inline tags instead (`<short pause>`,
+// `<long pause>`, `<breath>`, `<laugh>`…), which captions and word times leave out.
 //
 // The take (audio/take.wav) is one read, so pace and pitch carry across lines. Any change to the script re-reads the
 // whole take, since a spliced-in line would stand out. A recording is never replaced: each run re-cuts it, and
@@ -23,8 +24,8 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { measureLoudness } from '../lib/loudness.ts';
-import { cutTakeIntoLines } from '../lib/voice-take.ts';
-import { alignSpokenWords, estimateSpokenWords, type SpokenWord } from '../lib/voice-words.ts';
+import { cutTakeIntoLines, type TakeClip } from '../lib/voice-take.ts';
+import { alignSpokenWords, estimateSpokenWords, spokenText, type SpokenWord } from '../lib/voice-words.ts';
 import { samplesFromWav, wavFromPcm, wavFromSamples } from '../lib/wav.ts';
 import { heardWords } from '../lib/whisper-words.ts';
 import { postOpenRouter } from './openrouter.ts';
@@ -33,8 +34,15 @@ const MODEL = 'google/gemini-3.8-flash-tts';
 const DRAFT_VOICE = 'Samantha';
 // Callirrhoe reads about three words a second; estimates only need to be close enough to lay scenes out.
 const WORDS_PER_SECOND = 3.0;
+// Cutting rounds before settling for the last one's cuts; the second round usually finds they didn't move.
+const MAX_CUT_ROUNDS = 4;
+// A quiet stretch shorter than this between two lines means they were read as one phrase, and the cut is audible.
+const TIGHT_PAUSE = 0.08;
+// say's own pause commands, standing in for Gemini's paragraph breaks and pause tags; its other tags are dropped.
+const SAY_PARAGRAPH = ' [[slnc 600]] ';
+const sayText = (text: string) => text.replace(/<short pause>/g, ' [[slnc 300]] ').replace(/<long pause>/g, ' [[slnc 800]] ').replace(/<[^>]*>/g, ' ');
 
-type Script = { voice: string; direction?: string; lines: { id: string; text: string; paragraph?: boolean }[] };
+type Script = { voice: string; lines: { id: string; text: string; paragraph?: boolean }[] };
 /** audio/take.json: where take.wav came from, and what whisper heard in it and its clips, keyed by each WAV's hash. */
 type TakeInfo = { source: 'tts' | 'draft' | 'recording'; hash?: string; heard?: Record<string, SpokenWord[]> };
 /** A manifest.json entry. `src` is relative to the project, and it, `lufs` and `pauseBefore` are null for an estimate. */
@@ -54,8 +62,9 @@ async function voiceProject(project: string, mode: 'estimate' | 'draft' | 'paid'
 
   const hashFor = (...key: unknown[]) => createHash('sha256').update(JSON.stringify(key)).digest('hex').slice(0, 16);
   const readText = (paragraphBreak: string) => script.lines.map((line, i) => (i === 0 ? '' : line.paragraph ? paragraphBreak : ' ') + line.text).join('');
-  const paidHash = hashFor(MODEL, script.voice, script.direction, readText('\n\n'));
-  const draftHash = hashFor('say', DRAFT_VOICE, readText(' [[slnc 600]] '));
+  const paidHash = hashFor(MODEL, script.voice, readText('\n\n'));
+  const draftHash = hashFor('say', DRAFT_VOICE, sayText(readText(SAY_PARAGRAPH)));
+  const lines = script.lines.map((line) => ({ id: line.id, text: spokenText(line.text) }));
 
   let info: TakeInfo | null = existsSync(infoPath) && existsSync(takePath) ? JSON.parse(readFileSync(infoPath, 'utf8')) : null;
   // take.json is saved as soon as the take is, and after each transcription, so a failure later never costs a re-read
@@ -70,8 +79,8 @@ async function voiceProject(project: string, mode: 'estimate' | 'draft' | 'paid'
   // A draft never matches the paid hash, so a paid run re-reads it.
   const current = info && (info.source === 'recording' || info.hash === paidHash || (mode !== 'paid' && info.hash === draftHash));
   if (!current) {
-    if (mode === 'estimate') return writeManifest(dir, estimateLines(script));
-    const { wav, duration } = mode === 'draft' ? speakDraft(readText(' [[slnc 600]] ')) : await speak(readText('\n\n'), script.voice, script.direction);
+    if (mode === 'estimate') return writeManifest(dir, estimateLines(lines));
+    const { wav, duration } = mode === 'draft' ? speakDraft(sayText(readText(SAY_PARAGRAPH))) : await speak(readText('\n\n'), script.voice);
     writeFileSync(takePath, wav);
     info = { source: mode === 'draft' ? 'draft' : 'tts', hash: mode === 'draft' ? draftHash : paidHash };
     saveInfo();
@@ -91,15 +100,30 @@ async function voiceProject(project: string, mode: 'estimate' | 'draft' | 'paid'
   };
 
   const { samples, rate } = samplesFromWav(readFileSync(takePath));
-  const clips = cutTakeIntoLines(script.lines, await hear(takePath), samples, rate);
+  const clipFile = (id: string) => join(dir, `${id}.wav`);
   for (const file of readdirSync(dir)) if (file.endsWith('.wav') && file !== 'take.wav') rmSync(join(dir, file));
+  // Whisper drifts over a whole take (by a second, at worst), but not over one clip. So each round cuts with the best
+  // word times so far and hears every clip, and the clips' words, placed back in the take, time the next round's cuts.
+  // It stops once the cuts stop moving.
+  let takeWords = await hear(takePath);
+  let clips: TakeClip[] = [];
+  const clipWords: SpokenWord[][] = [];
+  for (let round = 0; round < MAX_CUT_ROUNDS; round++) {
+    const previous = clips;
+    clips = cutTakeIntoLines(lines, takeWords, samples, rate);
+    if (clips.every((clip, i) => clip.from === previous[i]?.from && clip.to === previous[i]?.to)) break;
+    for (const [i, clip] of clips.entries()) {
+      writeFileSync(clipFile(clip.id), wavFromSamples(samples.subarray(Math.round(clip.from * rate), Math.round(clip.to * rate)), rate));
+      clipWords[i] = await hear(clipFile(clip.id));
+    }
+    takeWords = clips.flatMap((clip, i) => clipWords[i].map((w) => ({ text: w.text, start: w.start + clip.from, end: w.end + clip.from })));
+  }
+
   const manifest: Record<string, Voiced> = {};
   for (const [i, clip] of clips.entries()) {
-    const file = join(dir, `${clip.id}.wav`);
-    const part = samples.subarray(Math.round(clip.from * rate), Math.round(clip.to * rate));
-    writeFileSync(file, wavFromSamples(part, rate));
-    const duration = part.length / rate, text = script.lines[i].text;
-    const aligned = alignSpokenWords(text, await hear(file), duration);
+    const file = clipFile(clip.id), text = lines[i].text;
+    const duration = samplesFromWav(readFileSync(file)).samples.length / rate;
+    const aligned = alignSpokenWords(text, clipWords[i], duration);
     const round = (x: number) => Math.round(x * 1000) / 1000;
     const words = aligned.words.map((w) => ({ text: w.text, start: round(w.start), end: round(w.end) }));
     manifest[clip.id] = { src: `audio/${clip.id}.wav`, duration, text, words, lufs: measureLoudness(file).lufs, pauseBefore: clip.pauseBefore };
@@ -108,21 +132,22 @@ async function voiceProject(project: string, mode: 'estimate' | 'draft' | 'paid'
     const unheard = words.filter((_, k) => !aligned.heard[k]).map((w) => w.text);
     console.log(`cut ${clip.id}  ${duration.toFixed(2)}s${pause}${unheard.length ? `  (heard differently: ${unheard.join(' ')})` : ''}`);
   }
-  for (const clip of clips.filter((c) => !c.cutIsClear)) {
-    console.log(`listen to ${clip.id}: the read has no one clear pause before it, so its cut may clip a word. Give it "paragraph": true, or move the line break`);
+  for (const clip of clips.slice(1)) {
+    const problem = !clip.cutIsClear ? 'has no one clear pause' : clip.cutPause < TIGHT_PAUSE ? `pauses only ${Math.round(clip.cutPause * 1000)} ms` : null;
+    if (problem) console.log(`listen to ${clip.id}: the read ${problem} before it, so the cut may be heard. Add <short pause> before it, or move the line break`);
   }
   for (const key of Object.keys(heard)) if (!used.has(key)) delete heard[key];
   saveInfo();
   writeManifest(dir, manifest);
 }
 
-function estimateLines(script: Script) {
+function estimateLines(lines: readonly { id: string; text: string }[]) {
   const manifest: Record<string, Voiced> = {};
-  for (const line of script.lines) {
+  for (const line of lines) {
     const duration = Number((line.text.split(/[\s-]+/).length / WORDS_PER_SECOND + 0.3).toFixed(2));
     manifest[line.id] = { src: null, duration, text: line.text, words: estimateSpokenWords(line.text, duration), lufs: null, pauseBefore: null };
   }
-  console.log(`estimated ${script.lines.length} lines from their word counts`);
+  console.log(`estimated ${lines.length} lines from their word counts`);
   return manifest;
 }
 
@@ -164,16 +189,13 @@ async function audition(text: string, voices: string[], out: string) {
   }
 }
 
-async function speak(text: string, voice: string, direction?: string) {
-  // Gemini TTS takes delivery notes in the prompt itself, as a leading instruction it doesn't read aloud.
-  const input = direction ? `${direction}: ${text}` : text;
-  const response = await postOpenRouter('/audio/speech', { model: MODEL, input, voice, response_format: 'pcm' });
+async function speak(text: string, voice: string) {
+  const response = await postOpenRouter('/audio/speech', { model: MODEL, input: text, voice, response_format: 'pcm' });
   const pcm = Buffer.from(await response.arrayBuffer());
   const rate = Number(/rate=(\d+)/.exec(response.headers.get('content-type') || '')?.[1] || 24000);
   return { wav: wavFromPcm(pcm, rate), duration: pcm.length / (rate * 2) };
 }
 
-// `[[slnc 600]]` in the text is say's own pause command, standing in for a paragraph break.
 function speakDraft(text: string) {
   const tmp = mkdtempSync(join(tmpdir(), 'say-'));
   const out = join(tmp, 'take.wav');
