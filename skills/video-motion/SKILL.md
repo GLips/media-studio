@@ -117,10 +117,12 @@ names:
 
 ## Checking your work
 
-Look at the images yourself before reporting back.
+Look at the rendered frames yourself before reporting back. Motion is judged by eye; the numbers only explain it.
 
-- `studio check <p>` runs the framing check (highlights and clicks under tags or the caption, off the frame, cut off
-  by their panel; every `expect`) and writes `out/check/timeline.json`, which says when every scene and line lands.
+- `studio check <p>` measures every frame (`--scene=<id>` or `--at=a:b` for one stretch): the framing check
+  (highlights and clicks under tags or the caption, off the frame, cut off by their panel; every `expect`) and the
+  motion tracks. It writes `out/check/timeline.json` (when every scene, line and word lands, and where scenes
+  crossfade) and `out/check/motion.json`.
 - `studio look <p> --strip=a:b` shows a stretch of motion; `--sheet=t1,t2,…` shows chosen moments.
 - `studio storyboard <p>` rebuilds the storyboard page from the video.
 
@@ -128,9 +130,20 @@ To judge timing, read a `--strip` like a viewer: at each tile, where are they lo
 yet? Time each read from the tiles' timestamps (a default strip's tiles are 0.1 s apart, three video frames each). A
 read that flashes by in a tile or two, or shares its tiles with another read, will be missed.
 
+Then use the tracks to say why, with numbers: when the ring finishes drawing against its word, whether the camera
+lands before the line starts, which of two things moves first. `motion.json` has each tagged element's centre, size,
+opacity and reported values (a ring's `draw`, a camera's `zoom`) on every frame, on screen and in its owner's frame,
+so a ring riding a push-in shows the camera's motion, not its own.
+
+- Library pieces tag themselves. Tag hand-written motion with `data-motion="name"`, or `useMotionTag(ref, 'name',
+  selector)` for an element a host component renders; a tagged element inside another is measured as part of it.
+- The check fails on tracking errors (two elements under one name), and names what it can't see: a take's contents,
+  a generated clip, a painted canvas, or pieces the library couldn't tell apart until you name them.
+
 ## Tells of generated motion
 
-Check the strips against these. Each one makes a video look machine-made:
+Review guidance for walkthroughs and product explainers, not rules: a teaser or showreel may do any of these on
+purpose, and no check looks for them. When a strip looks machine-made, these are the usual reasons:
 
 - everything at one brisk speed, with no holds;
 - **twinning**: both panels zooming in sync, a list popping in all at once, two rings drawing on together;

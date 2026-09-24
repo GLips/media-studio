@@ -29,13 +29,13 @@ Every step is a `studio` verb. A `<project>` is a slug (`sale-only-view`), a uni
 | Storyboard | `studio storyboard <project>` | `out/storyboard/index.html`: a preview on top, a card per scene with its note, a still and the audio for each line |
 | Preview | `studio preview <project>` | the Remotion Studio: scrub, see scenes and voice lines on the timeline, toggle `captions` in the props panel |
 | Look | `studio look <project> --sheet=1,5,9` | a contact sheet of chosen times, or `--strip=4:5` for a stretch of motion. Open the image to check frames without rendering video |
-| Check | `studio check <project>` | the framing check, a table of when each scene and line starts and ends, and the same as `out/check/timeline.json` |
+| Check | `studio check <project>` | the framing check and the motion tracks on every frame (`--scene` or `--at=a:b` for less), a table of when each scene and line starts and ends, `out/check/timeline.json` (scenes, lines, words, crossfades) and `out/check/motion.json` (how every tagged element moved) |
 | Mix | `studio mix <project>` | `out/mix.wav`, the mastered mix on its own, to audition |
 | Render | `studio render <project>` | `out/mix.wav`, `out/video.mp4` (captions burned in), `out/video.srt`, review sheets in `out/check/`, and `out/watch.html`. A `--read=draft` voice gets a loud warning and a DRAFT banner on the watch page |
 
-`studio render` runs the framing check on every frame first and refuses to render if a highlight sits under a tag or
-the caption, runs off the frame or is cut off by its panel, if a scene's `expect` isn't met, or if any line is still
-estimated. It then masters the mix to −14 LUFS, renders the video muted and muxes the mix in. Each MP4 must have
+`studio render` runs the check first and refuses to render if a highlight sits under a tag or the caption, runs off
+the frame or is cut off by its panel, if a scene's `expect` isn't met, if the motion tracks have tracking errors, or
+if any line is still estimated. It then masters the mix to −14 LUFS, renders the video muted and muxes the mix in. Each MP4 must have
 the right length and an audio stream, measure −14 ±1 LUFS and peak at −1 dBTP or lower. Each is tiled into a sheet
 to look over.
 

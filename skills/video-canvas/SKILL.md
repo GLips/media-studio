@@ -58,8 +58,9 @@ A scene can stack them: the capture, then a `"page"` layer for the ink loop, the
 
 ## Drawn styles and the checks
 
-The framing check can't see inside a canvas. A drawn loop around a price isn't a `Highlight`, so `expect` can't check
-it. When a drawn mark carries a read, check it by eye with `--strip`, and keep it clear of the caption band yourself.
+The checks can't see inside a canvas. A drawn loop around a price isn't a `Highlight`, so `expect` can't check it,
+and the motion tracks list a painted canvas as unmeasured. When a drawn mark carries a read, check it by eye with
+`--strip`, and keep it clear of the caption band yourself.
 
 ## Adding a style
 
