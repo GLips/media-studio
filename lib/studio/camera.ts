@@ -12,8 +12,6 @@ export type Point = { x: number; y: number };
 export type Rect = { x: number; y: number; w: number; h: number };
 export type Cam = { cx: number; cy: number; zoom: number };
 export type Shot = {
-  /** The shot's name in capture.ts, which names its camera in the motion tracks. */
-  name?: string;
   src: string;
   /** Page width and height in CSS pixels. */
   w: number;
@@ -135,8 +133,8 @@ export type View = { shot: Shot; cam: Cam; box: Rect };
 export const view = (shot: Shot, cam: Cam, box: Rect = FULL_FRAME): View => ({ shot, cam, box });
 /** The same camera and box over another capture of the same page: a later state of it. */
 export const viewOf = (v: View, shot: Shot): View => ({ ...v, shot });
-// The view each screen rect was aimed through, so a Highlight handed one can record the camera it moves with
-// (motion-tag.ts) without taking the view as well.
+// The view each screen rect was aimed through, so a Highlight handed one records the camera it moves with (motion-tag.ts)
+// without taking the view as well. A rect it can't trace is attribution unknown, never guessed.
 const aimedThrough = new WeakMap<Rect, View>();
 
 /** A page rect of the view's capture, on screen. */

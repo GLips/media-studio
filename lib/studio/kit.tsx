@@ -7,7 +7,7 @@ import { camFit, camTop, camWhole, centerOf, lerpCam, view, type Rect, type Shot
 import { Capture, CaptureMotion } from './capture.tsx';
 import { CAPTION_FREE, CAPTION_SAFE_TOP, FONT, H, W } from './frame.ts';
 import { clamp, easeInOut, easeOut, seg } from './motion.ts';
-import { motionAttrs } from './motion-tag.ts';
+import { motionAttrs, pieceMotionAttrs } from './motion-tag.ts';
 import { ClipToBox, CursorPath, Glass, Tag, Text, Wash } from './overlays.tsx';
 import type { SceneClock } from './timeline.ts';
 
@@ -32,10 +32,13 @@ export function SplitCompare({ left, right, k = 1, children }: { left: SplitSide
       <div style={{ position: 'absolute', left: W / 2 - 2, top: 0, width: 4, height: H, background: '#d5d9e0' }} />
       <div style={{ position: 'absolute', left: 0, top: SPLIT_LABEL_STRIP - 2, width: W, height: 2, background: '#d5d9e0' }} />
       {[left, right].map((side, i) => (
-        <ClipToBox key={i} box={side.view.box} motion={i === 0 ? 'left' : 'right'}>
-          <Capture view={side.view} alpha={side.alpha ?? 1} />
-          {side.over}
-        </ClipToBox>
+        // Full-frame, so the panel group measures its contents in screen pixels: a zero-size one couldn't.
+        <div key={i} {...pieceMotionAttrs(undefined, i === 0 ? 'left' : 'right', { kind: 'panel' })} style={{ position: 'absolute', inset: 0 }}>
+          <ClipToBox box={side.view.box} motion={false}>
+            <Capture view={side.view} alpha={side.alpha ?? 1} />
+            {side.over}
+          </ClipToBox>
+        </div>
       ))}
       {children}
       {[left, right].map((side, i) =>
@@ -159,8 +162,10 @@ export function ClickToBlur({ t, shot, frame, target, clickAt = 1.3, from = { dx
  * A frosted card with an eyebrow and a few big lines that stagger in. `k` 0..1 drives the entrance. A point can be
  * `{ text, k }` to come in on its own cue instead, e.g. `on(s.t, s.line('why-b').start - 0.3)` as the voice reaches it.
  */
-export function GlassCard({ k, eyebrow, points, accent, ink, rect = { x: (W - 1120) / 2, y: 270, w: 1120, h: 540 } }: {
+export function GlassCard({ k, eyebrow, points, accent, ink, rect = { x: (W - 1120) / 2, y: 270, w: 1120, h: 540 }, motion }: {
   k: number;
+  /** Its group's name in the motion tracks, `card` by default: its glass and lines are tracked under it. */
+  motion?: string | false;
   eyebrow: string;
   points: readonly (string | { text: string; k: number })[];
   accent: string;
@@ -170,15 +175,15 @@ export function GlassCard({ k, eyebrow, points, accent, ink, rect = { x: (W - 11
   if (k <= 0) return null;
   const y0 = rect.y + (1 - easeOut(k)) * 40;
   return (
-    <>
-      <Glass rect={{ ...rect, y: y0 }} alpha={clamp(k * 1.4)} tint="rgba(255,255,255,0.78)" blur={24} motion="card" />
+    <div {...pieceMotionAttrs(motion, 'card', { kind: 'card', values: { k } })} style={{ position: 'absolute', inset: 0 }}>
+      <Glass rect={{ ...rect, y: y0 }} alpha={clamp(k * 1.4)} tint="rgba(255,255,255,0.78)" blur={24} />
       <Text text={eyebrow} x={rect.x + 88} y={y0 + 126} size={28} weight={700} color={accent} k={k} spacing={0.1} />
       {points.map((p, i) => (
         <Text key={i} text={typeof p === 'string' ? p : p.text} x={rect.x + 88} y={y0 + 250 + i * 104} size={60} weight={700} color={ink}
           k={typeof p === 'string' ? clamp((k - 0.15 * (i + 1)) / 0.6) : Math.min(k, p.k)} spacing={-0.015}
           stagger={{ group: 'points', index: i, count: points.length }} />
       ))}
-    </>
+    </div>
   );
 }
 

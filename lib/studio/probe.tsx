@@ -73,12 +73,18 @@ function axisAligned(el: Element) {
   return style.scale === 'none' || style.scale.split(' ').every((v) => Number(v) > 0);
 }
 
+/** Whether every ancestor of `el` up to the scene layer maps boxes onto boxes. `el`'s own transform needn't: its box is measured. */
+function ancestorsAxisAligned(el: Element, layer: Element) {
+  for (let a = el.parentElement; a && a !== layer.parentElement; a = a.parentElement) if (!axisAligned(a)) return false;
+  return true;
+}
+
 /**
  * `r` (client pixels) in `owner`'s own frame, its transforms undone: an HTML element's CSS pixels, an SVG element's
- * user units. Null where that isn't a scale and an offset: a zero-size owner, or a turn or flip anywhere from `el` up.
+ * user units. Null where that isn't a scale and an offset: a zero-size owner, or a turn or flip above `el`.
  */
 function inOwnerFrame(r: DOMRect, el: Element, owner: Element, layer: Element): Rect | null {
-  for (let a = el.parentElement; a && a !== layer.parentElement; a = a.parentElement) if (!axisAligned(a)) return null;
+  if (!ancestorsAxisAligned(el, layer)) return null;
   let sx: number, sy: number, ox: number, oy: number;
   if (owner instanceof HTMLElement) {
     const b = owner.getBoundingClientRect();
@@ -90,6 +96,17 @@ function inOwnerFrame(r: DOMRect, el: Element, owner: Element, layer: Element): 
     [sx, sy, ox, oy] = [m.a, m.d, m.e, m.f];
   } else return null;
   return { x: (r.left - ox) / sx, y: (r.top - oy) / sy, w: r.width / sx, h: r.height / sy };
+}
+
+/**
+ * A composition rect in the page space of the camera it's aimed through. The camera's box is where the Capture was
+ * laid out; where it's actually shown (`shown`) also carries any transform around it, a rise-in or a push, which
+ * mustn't pass for page motion.
+ */
+function inCameraPage(rect: Rect, { mark: { cx, cy, k, box }, shown }: { mark: CameraMark; shown: Rect }): Rect | null {
+  if (!box.w || !box.h || !shown.w || !shown.h) return null;
+  const sx = shown.w / box.w, sy = shown.h / box.h;
+  return { x: ((rect.x - shown.x) / sx - box.w / 2) / k + cx, y: ((rect.y - shown.y) / sy - box.h / 2) / k + cy, w: rect.w / sx / k, h: rect.h / sy / k };
 }
 
 function parseAttr<T>(el: Element, attr: string, problems: FrameMotion['problems'], id: string): T | undefined {
@@ -115,20 +132,26 @@ function measureMotion(root: HTMLElement, frame: number): FrameMotion {
       if (el.getClientRects().length) report.unmeasured.push({ scene, what: el.getAttribute('data-motion-unmeasured')! });
     }
 
-    // Each tagged element's id and owner first: an element aimed through a camera needs the camera's.
+    // Each tagged element's id first, and each camera's, since an element aimed through a camera is measured in it.
     const tagged = [...layer.querySelectorAll('[data-motion]')].filter((el) => el.getClientRects().length);
     const ids = new Map<Element, string>();
+    const groupOf = (el: Element) => {
+      const owner = el.parentElement?.closest('[data-motion]');
+      return owner && layer.contains(owner) ? owner : null;
+    };
     const idOf = (el: Element): string | null => {
       if (ids.has(el)) return ids.get(el)!;
       const name = el.getAttribute('data-motion')!;
-      const owner = el.parentElement?.closest('[data-motion]');
-      const ownerId = owner && layer.contains(owner) ? idOf(owner) : scene;
+      const group = groupOf(el);
+      const ownerId = group ? idOf(group) : scene;
       if (ownerId === null || !name || name.includes('/')) return null;
       const id = `${ownerId}/${name}`;
       ids.set(el, id);
       return id;
     };
-    const cameras = new Map<string, { id: string; mark: CameraMark }>();
+    // By key: every capture under one view shows the same camera, in the same place.
+    const cameras = new Map<string, { id: string; mark: CameraMark; shown: Rect; aligned: boolean }>();
+    const marks = new Map<Element, CameraMark>();
     for (const el of tagged) {
       const id = idOf(el);
       if (id === null) {
@@ -137,7 +160,9 @@ function measureMotion(root: HTMLElement, frame: number): FrameMotion {
         continue;
       }
       const mark = parseAttr<CameraMark>(el, 'data-motion-camera', report.problems, id);
-      if (mark) cameras.set(mark.key, { id, mark });
+      if (!mark) continue;
+      marks.set(el, mark);
+      cameras.set(mark.key, { id, mark, shown: toFrame(el.getBoundingClientRect()), aligned: ancestorsAxisAligned(el, layer) && axisAligned(el) });
     }
 
     for (const el of tagged) {
@@ -145,31 +170,29 @@ function measureMotion(root: HTMLElement, frame: number): FrameMotion {
       if (!id) continue;
       const r = el.getBoundingClientRect(), rect = toFrame(r);
       const through = el.getAttribute('data-motion-through');
-      const owner = el.parentElement?.closest('[data-motion]');
-      const group = owner && layer.contains(owner) ? owner : null;
+      const group = groupOf(el);
       let parent: string | null = group ? ids.get(group) ?? null : null;
       let attribution: MotionSample['attribution'], local: Rect | null;
-      if (through !== null) {
-        const camera = cameras.get(through);
-        if (camera) {
-          const { cx, cy, k, box } = camera.mark;
-          parent = camera.id;
-          attribution = 'camera';
-          local = { x: (rect.x - box.x - box.w / 2) / k + cx, y: (rect.y - box.y - box.h / 2) / k + cy, w: rect.w / k, h: rect.h / k };
-        } else [attribution, local] = ['unknown', null];
-      } else if (group) {
+      const camera = through === null ? undefined : cameras.get(through);
+      if (camera) {
+        parent = camera.id;
+        local = camera.aligned && ancestorsAxisAligned(el, layer) ? inCameraPage(rect, camera) : null;
+        attribution = local ? 'camera' : 'unknown';
+      } else if (through !== null) [attribution, local] = ['unknown', null];
+      else if (group) {
         local = inOwnerFrame(r, el, group, layer);
         attribution = local ? 'group' : 'unknown';
       } else [attribution, local] = ['scene', rect];
       const kind = el.getAttribute('data-motion-kind');
-      const mark = parseAttr<CameraMark>(el, 'data-motion-camera', [], id);
+      const mark = marks.get(el);
       const stagger = parseAttr<StaggerMembership>(el, 'data-motion-stagger', report.problems, id);
       report.samples.push({
         id, scene, name: el.getAttribute('data-motion')!, ...(kind && { kind }), ...(el.hasAttribute('data-motion-implicit') && { implicit: true as const }),
         phase, parent, attribution, rect, local,
         opacity: effectiveOpacity(el, root),
         values: parseAttr<Record<string, number>>(el, 'data-motion-values', report.problems, id) ?? {},
-        ...(stagger && { stagger }),
+        // Scoped like a name, so two cards' `points` are two staggers.
+        ...(stagger && { stagger: { ...stagger, group: `${group ? ids.get(group) : scene}/${stagger.group}` } }),
         ...(mark && { camera: mark.key }),
       });
     }

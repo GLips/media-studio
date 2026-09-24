@@ -122,7 +122,7 @@ Look at the rendered frames yourself before reporting back. Motion is judged by 
 - `studio check <p>` measures every frame (`--scene=<id>` or `--at=a:b` for one stretch): the framing check
   (highlights and clicks under tags or the caption, off the frame, cut off by their panel; every `expect`) and the
   motion tracks. It writes `out/check/timeline.json` (when every scene, line and word lands, and where scenes
-  crossfade) and `out/check/motion.json`.
+  crossfade) and `out/check/motion.json` (a scoped check writes `motion-<scene>.json` beside it).
 - `studio look <p> --strip=a:b` shows a stretch of motion; `--sheet=t1,t2,…` shows chosen moments.
 - `studio storyboard <p>` rebuilds the storyboard page from the video.
 
@@ -132,13 +132,18 @@ read that flashes by in a tile or two, or shares its tiles with another read, wi
 
 Then use the tracks to say why, with numbers: when the ring finishes drawing against its word, whether the camera
 lands before the line starts, which of two things moves first. `motion.json` has each tagged element's centre, size,
-opacity and reported values (a ring's `draw`, a camera's `zoom`) on every frame, on screen and in its owner's frame,
-so a ring riding a push-in shows the camera's motion, not its own.
+opacity and reported values (a ring's `draw`, a camera's `zoom`) on every frame. It has both the screen box and the
+box in the element's owner's frame, so for a ring riding a push-in the screen box moves with the camera while the
+page box holds still.
 
-- Library pieces tag themselves. Tag hand-written motion with `data-motion="name"`, or `useMotionTag(ref, 'name',
-  selector)` for an element a host component renders; a tagged element inside another is measured as part of it.
-- The check fails on tracking errors (two elements under one name), and names what it can't see: a take's contents,
-  a generated clip, a painted canvas, or pieces the library couldn't tell apart until you name them.
+- Library pieces tag themselves, under names they pick (`camera`, `cursor`, a Highlight's `name`, a Tag's words).
+  Each takes `motion` to give it a name of yours, or `false` for no track. Tag hand-written motion with
+  `data-motion="name"`, or `useMotionTag(ref, 'name', selector)` for an element a host component renders. A tagged
+  element inside another belongs to it, and is measured in that owner's frame.
+- A Highlight on a rect straight from `screenRect` records its camera. Otherwise pass `through`: its view, or
+  `'screen'` for a rect in screen coordinates.
+- The check fails on tracking errors (two elements under one name of yours), and names what it can't see: a take's
+  contents, a generated clip, a painted canvas, or pieces the library couldn't tell apart until you name them.
 
 ## Tells of generated motion
 

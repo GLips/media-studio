@@ -528,11 +528,11 @@ function indexModule(entries: readonly (readonly [string, Entry])[]) {
   for (const [name, entry] of entries) {
     if (entry.kind === 'still') {
       const { kind: _, file, ...rest } = entry;
-      stills.push(`  ${JSON.stringify(name)}: { name: ${JSON.stringify(name)}, src: ${src(file)}, ${JSON.stringify(rest).slice(1)},`);
+      stills.push(`  ${JSON.stringify(name)}: { src: ${src(file)}, ${JSON.stringify(rest).slice(1)},`);
     } else {
       const { kind: _, frames, mouse, keys, ...rest } = entry;
       const frameList = frames.map((f) => `{ src: ${src(`${name}/${f.file}`)}, t: ${f.t}, scrollY: ${f.scrollY} }`).join(', ');
-      takes.push(`  ${JSON.stringify(name)}: { name: ${JSON.stringify(name)}, ${JSON.stringify(rest).slice(1, -1)}, frames: [${frameList}] as readonly TakeFrame[], mouse: ${JSON.stringify(mouse)} as readonly TakeMouse[], keys: ${JSON.stringify(keys)} as readonly number[] },`);
+      takes.push(`  ${JSON.stringify(name)}: { ${JSON.stringify(rest).slice(1, -1)}, frames: [${frameList}] as readonly TakeFrame[], mouse: ${JSON.stringify(mouse)} as readonly TakeMouse[], keys: ${JSON.stringify(keys)} as readonly number[] },`);
     }
   }
   return `// Written by \`studio capture\` (lib/capture.ts). Edits here are lost on the next capture.

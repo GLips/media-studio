@@ -10,7 +10,7 @@ import type { StaggerMembership } from '../motion-tracks.ts';
 import { assertKeysInOrder, inflate, pagePoint, screenPoint, viewOfScreenRect, type Point, type Rect, type View } from './camera.ts';
 import { FONT, H, W } from './frame.ts';
 import { clamp, easeOut, lerp, seg } from './motion.ts';
-import { motionAttrs, motionNameOf } from './motion-tag.ts';
+import { pieceMotionAttrs } from './motion-tag.ts';
 import { SFX, Sfx } from './sfx.tsx';
 import { sceneTimeOf, takeMouseAt, type TakeFit } from './take.ts';
 
@@ -24,12 +24,12 @@ const roundRectPath = ({ x, y, w, h }: Rect, r: number) =>
 
 /**
  * Draws its children in screen coordinates, clipped to `box`, the way a panel clips its capture. Overlays aimed
- * through a panel's view go inside, so the framing check sees a ring cut off by the panel's edge. `motion` names the
- * panel as a group in the motion tracks, so what's drawn in it is tracked under it.
+ * through a panel's view go inside, so the framing check sees a ring cut off by the panel's edge. It's a group in the
+ * motion tracks, `panel` unless `motion` names it, so what's drawn in it is tracked under it.
  */
-export function ClipToBox({ box, motion, children }: { box: Rect; motion?: string; children: ReactNode }) {
+export function ClipToBox({ box, motion, children }: { box: Rect; motion?: string | false; children: ReactNode }) {
   return (
-    <div {...motionAttrs(motion !== undefined && { name: motion, kind: 'panel' })}
+    <div {...pieceMotionAttrs(motion, 'panel', { kind: 'panel' })}
       style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, overflow: 'hidden', pointerEvents: 'none' }}>
       <div style={{ position: 'absolute', left: -box.x, top: -box.y, width: W, height: H }}>{children}</div>
     </div>
@@ -39,11 +39,11 @@ export function ClipToBox({ box, motion, children }: { box: Rect; motion?: strin
 // ---------- cursor ----------
 
 /** A pointer at a screen point. `press` 0..1 squeezes it for a click. `through` is the view it moves over, if any. */
-export function Cursor({ at, press = 0, alpha = 1, through }: { at: Point; press?: number; alpha?: number; through?: View }) {
+export function Cursor({ at, press = 0, alpha = 1, through, motion }: { at: Point; press?: number; alpha?: number; through?: View; motion?: string | false }) {
   const s = 1.55 * (1 - 0.12 * press);
   return (
     <svg style={{ ...fill, opacity: alpha }} width={W} height={H}>
-      <g transform={`translate(${at.x} ${at.y}) scale(${s})`} {...motionAttrs({ name: 'cursor', kind: 'cursor', implicit: true, values: { press }, through })}>
+      <g transform={`translate(${at.x} ${at.y}) scale(${s})`} {...pieceMotionAttrs(motion, 'cursor', { kind: 'cursor', values: { press }, through })}>
         <path d="M0 0 L0 22 L5.5 17 L9.5 26 L13 24.5 L9 16 L16 16 Z" fill="#111" style={{ filter: 'drop-shadow(0 3px 8px rgba(0,0,0,0.35))' }} />
         <path d="M0 0 L0 22 L5.5 17 L9.5 26 L13 24.5 L9 16 L16 16 Z" fill="none" stroke="#fff" strokeWidth={1.6} strokeLinejoin="round" />
       </g>
@@ -53,14 +53,14 @@ export function Cursor({ at, press = 0, alpha = 1, through }: { at: Point; press
 
 /**
  * An expanding ring where a click landed; `k` 0..1 over its life. The click point itself is a subject for the
- * framing check while the ring is fresh, so a click under the caption or outside its panel fails. `name` tells
- * overlapping ripples apart in the motion tracks; `through` is the view it was clicked on, if any.
+ * framing check while the ring is fresh, so a click under the caption or outside its panel fails. `through` is the
+ * view it was clicked on, if any; `n`, which click of a path it is, tells overlapping ripples apart.
  */
-export function ClickRipple({ at, k, color = INK, name = 'click', through }: { at: Point; k: number; color?: string; name?: string; through?: View }) {
+export function ClickRipple({ at, k, color = INK, through, n, motion }: { at: Point; k: number; color?: string; through?: View; n?: number; motion?: string | false }) {
   if (k <= 0 || k >= 1) return null;
   return (
     <svg style={{ ...fill, opacity: (1 - k) * 0.55 }} width={W} height={H}>
-      <circle cx={at.x} cy={at.y} r={10 + 44 * easeOut(k)} fill="none" stroke={color} strokeWidth={4} {...motionAttrs({ name, kind: 'click', implicit: true, values: { ripple: k }, through })} />
+      <circle cx={at.x} cy={at.y} r={10 + 44 * easeOut(k)} fill="none" stroke={color} strokeWidth={4} {...pieceMotionAttrs(motion, n === undefined ? 'click' : `click-${n}`, { kind: 'click', values: { ripple: k }, through })} />
       <rect data-framing="subject" data-name="click" data-strength={1 - k} x={at.x - 12} y={at.y - 12} width={24} height={24} fill="none" />
     </svg>
   );
@@ -97,7 +97,7 @@ export function CursorPath({ view, t, keys, alpha = 1 }: { view: View; t: number
   return (
     <>
       {clicks.map(([kt], i) => <Sfx key={i} sound={SFX.click} id={i} at={kt} t={t} />)}
-      {clicks.map(([kt, p], i) => <ClickRipple key={i} at={screenPoint(view, p)} k={(t - kt) / RIPPLE_LIFE} name={`click:${i + 1}`} through={view} />)}
+      {clicks.map(([kt, p], i) => <ClickRipple key={i} at={screenPoint(view, p)} k={(t - kt) / RIPPLE_LIFE} n={i + 1} through={view} />)}
       <Cursor at={screenPoint(view, cursorAt(t, keys))} press={clamp(press)} alpha={alpha} through={view} />
     </>
   );
@@ -139,13 +139,16 @@ export function offscreen(view: View, toward: Point): Point {
 
 /**
  * A glowing ring around a screen rect that draws itself on (`k` 0..1) and fades with `alpha`. `name` is what a
- * scene's `expect` refers to it by. The rect comes from a view (`screenRect`) or a live element (`useScreenRect`);
- * null draws nothing. `pad` gives way at the frame's edge, or `box`'s (a panel's view box), so a subject flush with
+ * scene's `expect` refers to it by, and its track's name unless `motion` gives another. The rect comes from a view
+ * (`screenRect`) or a live element (`useScreenRect`); null draws nothing. Say `through` when the rect isn't straight
+ * from `screenRect`: its view, or `screen` for one in screen coordinates that no camera moves. `pad` gives way at the frame's edge, or `box`'s (a panel's view box), so a subject flush with
  * it is ringed just inside; the rect itself never shrinks, so one off the frame still fails the framing check.
  */
-export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha = 1, name, box = FRAME }: {
+export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha = 1, name, box = FRAME, through, motion }: {
   rect: Rect | null;
   name?: string;
+  through?: View | 'screen';
+  motion?: string | false;
   box?: Rect;
   k: number;
   color?: string;
@@ -161,12 +164,7 @@ export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha =
       data-framing="subject"
       data-name={name}
       data-strength={Math.min(k, alpha)}
-      // A rect straight from screenRect knows its camera; one from anywhere else (useScreenRect, arithmetic on a
-      // screen rect) might be moving with one, so its attribution is unknown.
-      {...motionAttrs({
-        ...(name === undefined ? { name: 'highlight', implicit: true } : { name: `highlight:${motionNameOf(name)}` }),
-        kind: 'highlight', values: { draw: k }, through: viewOfScreenRect(rect) ?? null,
-      })}
+      {...pieceMotionAttrs(motion ?? name, 'highlight', { kind: 'highlight', values: { draw: k }, through: throughOf(rect, through) })}
       style={{ position: 'absolute', left: r.x, top: r.y, overflow: 'visible', opacity: alpha, pointerEvents: 'none' }}
       width={r.w}
       height={r.h}
@@ -196,8 +194,22 @@ function padWithin(rect: Rect, pad: number, box: Rect): Rect {
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
-/** Dims everything but a screen rect, to pull the eye to it; null draws nothing. */
-export function Spotlight({ rect, k, pad = 16, radius = 14, dim = 0.45 }: { rect: Rect | null; k: number; pad?: number; radius?: number; dim?: number }) {
+/**
+ * The camera a screen rect moves with: the one it says, else the view `screenRect` aimed it through. A rect from
+ * anywhere else (useScreenRect, arithmetic on a screen rect) may be moving with a camera, so that's unknown.
+ */
+const throughOf = (rect: Rect, through: View | 'screen' | undefined) => (through === 'screen' ? undefined : through ?? viewOfScreenRect(rect) ?? 'unknown');
+
+/** Dims everything but a screen rect, to pull the eye to it; null draws nothing. `through` is as Highlight's. */
+export function Spotlight({ rect, k, pad = 16, radius = 14, dim = 0.45, through, motion }: {
+  rect: Rect | null;
+  k: number;
+  pad?: number;
+  radius?: number;
+  dim?: number;
+  through?: View | 'screen';
+  motion?: string | false;
+}) {
   if (!rect || k <= 0) return null;
   const hole = inflate(rect, pad);
   return (
@@ -205,7 +217,7 @@ export function Spotlight({ rect, k, pad = 16, radius = 14, dim = 0.45 }: { rect
       <path d={`M0,0 H${W} V${H} H0 Z ${roundRectPath(hole, radius)}`} fillRule="evenodd" fill={`rgba(12, 22, 38, ${dim * k})`} />
       {/* The dimmed area is the whole frame, so the track is the hole it leaves. */}
       <rect x={hole.x} y={hole.y} width={hole.w} height={hole.h} fill="none"
-        {...motionAttrs({ name: 'spotlight', kind: 'spotlight', implicit: true, values: { dim: dim * k }, through: viewOfScreenRect(rect) ?? null })} />
+        {...pieceMotionAttrs(motion, 'spotlight', { kind: 'spotlight', values: { dim: dim * k }, through: throughOf(rect, through) })} />
     </svg>
   );
 }
@@ -213,14 +225,14 @@ export function Spotlight({ rect, k, pad = 16, radius = 14, dim = 0.45 }: { rect
 // ---------- labels and text ----------
 
 /** A small pill label, e.g. "Today" / "With sale-only view", its top-left at (x, y). */
-export function Tag({ text, x, y, k, bg = INK, fg = '#fff', size = 30 }: { text: string; x: number; y: number; k: number; bg?: string; fg?: string; size?: number }) {
+export function Tag({ text, x, y, k, bg = INK, fg = '#fff', size = 30, motion }: { text: string; x: number; y: number; k: number; bg?: string; fg?: string; size?: number; motion?: string | false }) {
   if (k <= 0) return null;
   const h = size * 1.9;
   return (
     <div
       data-framing="tag"
       data-strength={k}
-      {...motionAttrs({ name: `tag:${motionNameOf(text)}`, kind: 'tag', implicit: true, values: { k } })}
+      {...pieceMotionAttrs(motion, text, { kind: 'tag', values: { k } })}
       style={{
         position: 'absolute',
         left: x,
@@ -245,7 +257,7 @@ export function Tag({ text, x, y, k, bg = INK, fg = '#fff', size = 30 }: { text:
  * One line of text with a fade-and-rise entrance (`k` 0..1). `(x, y)` is the start of its baseline, or its middle or
  * end with `align`, so type sits on a grid the way a designer sets it.
  */
-export function Text({ text, x, y, size = 64, weight = 700, color = '#fff', k = 1, align = 'left', spacing = -0.01, stagger }: {
+export function Text({ text, x, y, size = 64, weight = 700, color = '#fff', k = 1, align = 'left', spacing = -0.01, stagger, motion }: {
   text: string;
   x: number;
   y: number;
@@ -257,12 +269,13 @@ export function Text({ text, x, y, size = 64, weight = 700, color = '#fff', k = 
   spacing?: number;
   /** Its place among lines brought in one after another, for the motion tracks. */
   stagger?: StaggerMembership;
+  motion?: string | false;
 }) {
   if (k <= 0) return null;
   return (
     <svg style={{ ...fill, opacity: clamp(k) }} width={W} height={H}>
       <text
-        {...motionAttrs({ name: `text:${motionNameOf(text)}`, kind: 'text', implicit: true, values: { k }, stagger })}
+        {...pieceMotionAttrs(motion, text, { kind: 'text', values: { k }, stagger })}
         x={x}
         y={y + (1 - easeOut(k)) * size * 0.35}
         fill={color}
@@ -277,12 +290,12 @@ export function Text({ text, x, y, size = 64, weight = 700, color = '#fff', k = 
 
 // ---------- surfaces ----------
 
-/** Frosted glass over whatever the scene has drawn beneath it, inside a rounded rect. `motion` tracks it by that name. */
-export function Glass({ rect, radius = 28, blur = 30, tint = 'rgba(255,255,255,0.55)', alpha = 1, motion }: { rect: Rect; radius?: number; blur?: number; tint?: string; alpha?: number; motion?: string }) {
+/** Frosted glass over whatever the scene has drawn beneath it, inside a rounded rect. */
+export function Glass({ rect, radius = 28, blur = 30, tint = 'rgba(255,255,255,0.55)', alpha = 1, motion }: { rect: Rect; radius?: number; blur?: number; tint?: string; alpha?: number; motion?: string | false }) {
   if (alpha <= 0) return null;
   return (
     <div
-      {...motionAttrs(motion !== undefined && { name: motion, kind: 'glass' })}
+      {...pieceMotionAttrs(motion, 'glass', { kind: 'glass' })}
       style={{
         position: 'absolute',
         left: rect.x,

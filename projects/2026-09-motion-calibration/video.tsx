@@ -6,8 +6,8 @@
 
 import { useRef, type CSSProperties } from 'react';
 import {
-  Capture, CursorPath, H, Highlight, Text, W, camAt, clamp, defineScene, defineVideo, easeInOut, lerp, linear, motionAttrs, on, screenRect,
-  seg, useMotionTag, view, type Rect, type Shot,
+  Capture, CursorPath, H, Highlight, Text, W, camAt, camTop, clamp, defineScene, defineVideo, easeInOut, easeOut, lerp, linear, motionAttrs, on,
+  screenRect, seg, useMotionTag, view, type Rect, type Shot,
 } from '../../lib/studio/api.ts';
 
 const INK = '#1c365e';
@@ -18,7 +18,7 @@ const GRID_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="9
   const x = (i % 10) * 144 + 22, y = Math.floor(i / 10) * 150 + 25;
   return `<rect x="${x}" y="${y}" width="100" height="100" rx="12" fill="#c9d3e3"/><text x="${x + 50}" y="${y + 60}" font-size="28" text-anchor="middle" font-family="Helvetica" fill="#1c365e">${i}</text>`;
 }).join('')}<rect x="670" y="400" width="100" height="100" rx="12" fill="#b82b2b"/></svg>`;
-const GRID: Shot = { name: 'grid', src: `data:image/svg+xml,${encodeURIComponent(GRID_SVG)}`, w: 1440, h: 900, scale: 2, rects: {} };
+const GRID: Shot = { src: `data:image/svg+xml,${encodeURIComponent(GRID_SVG)}`, w: 1440, h: 900, scale: 2, rects: {} };
 // The red square, dead centre of the page.
 const CENTRE_SQUARE: Rect = { x: 670, y: 400, w: 100, h: 100 };
 
@@ -65,6 +65,23 @@ const push = defineScene({
 });
 
 /**
+ * A camera carried by its wrapper: the capture and a ring on the centre square rise 120px together into place, the
+ * camera itself still. On screen the ring rises; on the page it never moves, since the rise isn't the camera's.
+ */
+const rise = defineScene({
+  id: 'rise', min: 2,
+  render: (s) => {
+    const v = view(GRID, camTop(GRID));
+    return (
+      <div style={{ position: 'absolute', inset: 0, transform: `translateY(${120 * (1 - seg(s.t, 0.3, 1.3, easeOut))}px)` }}>
+        <Capture view={v} />
+        <Highlight rect={screenRect(v, CENTRE_SQUARE)} k={1} name="centre" />
+      </div>
+    );
+  },
+});
+
+/**
  * Motion a box can't show: a counter counts 0 → 120 (its `value` channel) and a ring draws on (`draw`) while neither
  * box moves.
  */
@@ -79,7 +96,7 @@ const counter = defineScene({
           style={{ position: 'absolute', left: 760, top: 380, width: 400, textAlign: 'center', font: `800 160px Helvetica`, color: INK, fontVariantNumeric: 'tabular-nums' }}>
           {value}
         </div>
-        <Highlight rect={{ x: 740, y: 370, w: 440, h: 220 }} k={seg(s.t, 0.3, 1.8)} name="ring" />
+        <Highlight rect={{ x: 740, y: 370, w: 440, h: 220 }} k={seg(s.t, 0.3, 1.8)} name="ring" through="screen" />
       </>
     );
   },
@@ -87,8 +104,9 @@ const counter = defineScene({
 
 /**
  * Ownership. `stage` is drawn at 2× and holds still; `dot` inside it moves 100 of the stage's own pixels, so 200 on
- * screen: its local x moves 100, its screen x 200. `tilted` is turned 20°, so its `pin` is attribution unknown. `chip`
- * is tagged by ref and selector, as an element a host component renders itself would be.
+ * screen: its local x moves 100, its screen x 200. `tilted` is turned 20°, so its `pin` is attribution unknown, and so
+ * is `turned`'s `pin`, under an SVG group turned inside it. `chip` is tagged by ref and selector, as an element a host
+ * component renders itself would be.
  */
 const nested = defineScene({
   id: 'nested', min: 2.5,
@@ -108,6 +126,13 @@ function Nested({ t }: { t: number }) {
       <div data-motion="tilted" style={{ position: 'absolute', left: 1200, top: 150, width: 400, height: 300, transform: 'rotate(20deg)', background: '#f1dfdf' }}>
         <div data-motion="pin" style={{ position: 'absolute', left: 40 + 200 * k, top: 120, width: 40, height: 40, background: '#b82b2b' }} />
       </div>
+      <svg style={{ position: 'absolute', left: 0, top: 0 }} width={W} height={H}>
+        <g data-motion="turned">
+          <g transform="rotate(20 700 500)">
+            <rect data-motion="pin" x={600 + 200 * k} y={480} width={40} height={40} fill="#b82b2b" />
+          </g>
+        </g>
+      </svg>
       <div ref={host} style={{ position: 'absolute', left: 300, top: 700 }}>
         <span className="chip" style={{ position: 'absolute', left: 600 * k, top: 0, padding: '10px 24px', borderRadius: 30, background: INK, color: '#fff', font: '600 32px Helvetica', whiteSpace: 'nowrap' }}>chip</span>
       </div>
@@ -140,4 +165,4 @@ const end = defineScene({
   render: (s) => <Text text="Same words" x={W / 2} y={lerp(H / 2, H / 2 + 120, seg(s.t, 0.2, 1.2))} align="center" color={INK} />,
 });
 
-export default defineVideo({ title: 'Motion calibration', voice: {}, scenes: [glide, push, counter, nested, blink, after, end] });
+export default defineVideo({ title: 'Motion calibration', voice: {}, scenes: [glide, push, rise, counter, nested, blink, after, end] });

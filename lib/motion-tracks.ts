@@ -15,6 +15,9 @@ export const MOTION_TRACKS_VERSION = 1;
 /** The artifact the probe emits for each frame. */
 export const motionArtifactName = (frame: number) => `motion-${frame}.json`;
 
+/** A thousandth of a pixel (or of progress) is past anything a viewer or a check can tell apart, and keeps files small. */
+export const roundMotionValue = (v: number) => Math.round(v * 1000) / 1000;
+
 /**
  * Where a scene is in its crossfades on a frame: fading in over the one before, alone, or under the next as it fades
  * in. A hard cut goes straight from one scene's `solo` to the next's.
@@ -31,12 +34,15 @@ export type ScenePhase = 'in' | 'solo' | 'out';
  */
 export type MotionAttribution = 'scene' | 'group' | 'camera' | 'unknown';
 
-/** A tagged element's place in a stagger: the `index`th of `count` things started one after another. */
+/**
+ * A tagged element's place in a stagger: the `index`th of `count` things started one after another. In a sample,
+ * `group` is scoped like an id (`scene/owner/group`), so staggers in two cards are two staggers.
+ */
 export type StaggerMembership = { group: string; index: number; count: number };
 
 /** One tagged element on one frame, as the probe measured it. Rects are composition pixels, top-left based. */
 export type MotionSample = {
-  /** `<scene>/<tagged ancestors>/<name>`: unique on its frame, stable across frames. */
+  /** `<scene>/<tagged ancestors>/<name>`: unique on its frame, stable across frames. A piece's kind isn't in it. */
   id: string;
   scene: string;
   name: string;
@@ -50,7 +56,7 @@ export type MotionSample = {
   attribution: MotionAttribution;
   /** Its box on screen. */
   rect: Rect;
-  /** Its box in its owner's frame (see MotionAttribution); the screen box when the scene owns it. Null if unknown. */
+  /** Its box in its owner's frame (see MotionAttribution): the screen box when the scene owns it, null iff unknown. */
   local: Rect | null;
   /** Its own opacity times every ancestor's, the scene's crossfade included. */
   opacity: number;
@@ -83,7 +89,7 @@ type Channels<T> = { x: T[]; y: T[]; w: T[]; h: T[] };
 /**
  * A stretch of frames where one element was on screen continuously, in one crossfade phase, under one owner. A track
  * breaks into segments wherever the element disappears and comes back, at crossfade boundaries, and where its owner
- * or attribution changes; nothing is ever interpolated across a break.
+ * or attribution changes; nothing is ever interpolated across a break. Frame `f` is at `f / fps` video seconds.
  */
 export type MotionSegment = {
   /** First and last frame, inclusive: every array below has `end - start + 1` entries, one per frame. */
@@ -92,7 +98,6 @@ export type MotionSegment = {
   phase: ScenePhase;
   parent: string | null;
   attribution: MotionAttribution;
-  stagger?: StaggerMembership;
   /** Centre and size on screen, composition pixels, and effective opacity. */
   screen: Channels<number> & { opacity: number[] };
   /** Centre and size in the owner's frame (see MotionAttribution); null when attribution is unknown. */
@@ -101,7 +106,7 @@ export type MotionSegment = {
   values: Record<string, (number | null)[]>;
 };
 
-export type MotionTrack = { id: string; scene: string; name: string; kind?: string; segments: MotionSegment[] };
+export type MotionTrack = { id: string; scene: string; name: string; kind?: string; stagger?: StaggerMembership; segments: MotionSegment[] };
 
 export type FrameSpan = { first: number; last: number; count: number };
 
@@ -109,7 +114,7 @@ export type FrameSpan = { first: number; last: number; count: number };
 export type MotionCoverage = {
   /** Every scene painted in the analysed frames, with how many tracks it has and what it shows that isn't measured. */
   scenes: { id: string; tracks: number; unmeasured: string[] }[];
-  /** Ids the library picked that several elements shared, so none of them was tracked on those frames. */
+  /** Ids the library picked that several elements shared, so none of them was tracked there: one entry per stretch. */
   ambiguous: { id: string; elements: number; frames: FrameSpan }[];
 };
 
@@ -129,34 +134,30 @@ export type MotionTracks = {
 const finiteRect = (r: Rect | null) => !r || [r.x, r.y, r.w, r.h].every(Number.isFinite);
 const sameRect = (a: Rect, b: Rect) => Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01 && Math.abs(a.w - b.w) < 0.01 && Math.abs(a.h - b.h) < 0.01;
 
-/** Errors that happen on many frames, reported once each with the frames they span. */
-function errorLog() {
-  const byKey = new Map<string, MotionInstrumentationError>();
+/** Frame spans by key, each widened as frames come in, or with `contiguous`, a new span wherever a frame is skipped. */
+function frameSpans<T>({ contiguous }: { contiguous: boolean }) {
+  const spans = new Map<string, { of: T; span: FrameSpan }[]>();
   return {
-    add(problem: string, frame?: number, id?: string) {
-      const key = `${id ?? ''}\n${problem}`;
-      const seen = byKey.get(key);
-      if (!seen) byKey.set(key, { ...(id !== undefined && { id }), problem, ...(frame !== undefined && { frames: { first: frame, last: frame, count: 1 } }) });
-      else if (frame !== undefined && seen.frames) {
-        seen.frames.first = Math.min(seen.frames.first, frame);
-        seen.frames.last = Math.max(seen.frames.last, frame);
-        seen.frames.count++;
-      }
+    add(key: string, frame: number, of: T) {
+      const s = spans.get(key)?.at(-1)?.span;
+      if (s && !(contiguous && frame !== s.last + 1)) [s.first, s.last, s.count] = [Math.min(s.first, frame), Math.max(s.last, frame), s.count + 1];
+      else spans.set(key, [...(spans.get(key) ?? []), { of, span: { first: frame, last: frame, count: 1 } }]);
     },
-    list: () => [...byKey.values()],
+    list: () => [...spans.values()].flat(),
   };
 }
 
-/** Spans of frames, by key, each widened as frames come in. */
-function frameSpans() {
-  const spans = new Map<string, FrameSpan>();
+/** Errors that happen on many frames, reported once each with the frames they span. */
+function errorLog() {
+  const spans = frameSpans<{ id?: string; problem: string }>({ contiguous: false });
+  const unframed = new Map<string, MotionInstrumentationError>();
   return {
-    add(key: string, frame: number) {
-      const s = spans.get(key);
-      if (!s) spans.set(key, { first: frame, last: frame, count: 1 });
-      else [s.first, s.last, s.count] = [Math.min(s.first, frame), Math.max(s.last, frame), s.count + 1];
+    add(problem: string, frame?: number, id?: string) {
+      const key = `${id ?? ''}\n${problem}`, of = { ...(id !== undefined && { id }), problem };
+      if (frame === undefined) unframed.set(key, of);
+      else spans.add(key, frame, of);
     },
-    entries: () => [...spans],
+    list: (): MotionInstrumentationError[] => [...unframed.values(), ...spans.list().map(({ of, span }) => ({ ...of, frames: span }))],
   };
 }
 
@@ -191,10 +192,8 @@ function usableSamples(fm: FrameMotion, log: ReturnType<typeof errorLog>, ambigu
   return usable;
 }
 
-// A thousandth of a pixel (or of progress) is past anything a viewer or a check can tell apart, and keeps the file small.
-const round = (v: number) => Math.round(v * 1000) / 1000;
-
-const segmentKey = (s: MotionSample) => JSON.stringify([s.phase, s.parent, s.attribution, s.stagger ?? null]);
+const round = roundMotionValue;
+const segmentKey = (s: MotionSample) => JSON.stringify([s.phase, s.parent, s.attribution]);
 
 /** One segment's samples, a frame each, as channels. A value some frames didn't report is null there, and logged. */
 function segmentOf(samples: readonly MotionSample[], start: number, id: string, log: ReturnType<typeof errorLog>): MotionSegment {
@@ -207,7 +206,7 @@ function segmentOf(samples: readonly MotionSample[], start: number, id: string, 
     return null;
   })]));
   return {
-    start, end: start + samples.length - 1, phase: s.phase, parent: s.parent, attribution: s.attribution, ...(s.stagger && { stagger: s.stagger }),
+    start, end: start + samples.length - 1, phase: s.phase, parent: s.parent, attribution: s.attribution,
     screen: { ...box(samples.map((x) => x.rect)), opacity: samples.map((x) => round(x.opacity)) },
     local: s.local ? box(samples.map((x) => x.local!)) : null,
     values,
@@ -219,7 +218,7 @@ function segmentOf(samples: readonly MotionSample[], start: number, id: string, 
  * inclusive; a frame between them with no report is an instrumentation error, and breaks every track through it.
  */
 export function assembleMotionTracks(frames: readonly FrameMotion[], { fps, first, last }: { fps: number; first: number; last: number }): MotionTracks {
-  const log = errorLog(), ambiguous = frameSpans(), ambiguousCount = new Map<string, number>();
+  const log = errorLog(), ambiguous = frameSpans<{ id: string; elements: number }>({ contiguous: true });
   const byFrame = new Map(frames.map((fm) => [fm.frame, fm]));
   const coverage = new Map<string, { tracks: Set<string>; unmeasured: Set<string> }>();
   const sceneCoverage = (id: string) => coverage.get(id) ?? coverage.set(id, { tracks: new Set(), unmeasured: new Set() }).get(id)!;
@@ -235,13 +234,11 @@ export function assembleMotionTracks(frames: readonly FrameMotion[], { fps, firs
     for (const p of fm.problems) log.add(p.problem, frame, p.id);
     for (const scene of fm.scenes) sceneCoverage(scene);
     for (const { scene, what } of fm.unmeasured) sceneCoverage(scene).unmeasured.add(what);
-    const noteAmbiguous = (id: string, elements: number) => {
-      ambiguous.add(id, frame);
-      ambiguousCount.set(id, Math.max(elements, ambiguousCount.get(id) ?? 0));
-    };
+    const noteAmbiguous = (id: string, elements: number) => ambiguous.add(id, frame, { id, elements });
     for (const s of usableSamples(fm, log, noteAmbiguous)) {
       sceneCoverage(s.scene).tracks.add(s.id);
       const entry = runs.get(s.id) ?? runs.set(s.id, { first: s, runs: [] }).get(s.id)!;
+      if (JSON.stringify(s.stagger ?? null) !== JSON.stringify(entry.first.stagger ?? null)) log.add('its stagger changed: a track has one place in one stagger', frame, s.id);
       const key = segmentKey(s), run = entry.runs.at(-1);
       if (run && run.key === key && run.start + run.samples.length === frame) run.samples.push(s);
       else entry.runs.push({ start: frame, key, samples: [s] });
@@ -253,11 +250,11 @@ export function assembleMotionTracks(frames: readonly FrameMotion[], { fps, firs
     fps,
     frames: { first, last },
     tracks: [...runs].map(([id, { first: s, runs: rs }]) => ({
-      id, scene: s.scene, name: s.name, ...(s.kind && { kind: s.kind }), segments: rs.map((r) => segmentOf(r.samples, r.start, id, log)),
+      id, scene: s.scene, name: s.name, ...(s.kind && { kind: s.kind }), ...(s.stagger && { stagger: s.stagger }), segments: rs.map((r) => segmentOf(r.samples, r.start, id, log)),
     })),
     coverage: {
       scenes: [...coverage].map(([id, c]) => ({ id, tracks: c.tracks.size, unmeasured: [...c.unmeasured].sort() })),
-      ambiguous: ambiguous.entries().map(([id, frames]) => ({ id, elements: ambiguousCount.get(id)!, frames })),
+      ambiguous: ambiguous.list().map(({ of, span }) => ({ ...of, frames: span })),
     },
     errors: log.list(),
   };
@@ -308,7 +305,7 @@ export function formatMotionReport(m: MotionTracks): { ok: boolean; lines: strin
   lines.push(`${summary}${m.errors.length ? `, ${m.errors.length} tracking error${m.errors.length > 1 ? 's' : ''}` : ''}`);
   if (m.tracks.length && untagged.length) lines.push(`  nothing tagged in ${list(untagged)}`);
   for (const a of m.coverage.ambiguous) {
-    lines.push(`  untracked ${at(a.frames.first)}–${at(a.frames.last)}: ${a.elements} elements share "${a.id}", a name the library picked; tell them apart (a name prop, or a data-motion group around each) to track them`);
+    lines.push(`  untracked ${at(a.frames.first)}–${at(a.frames.last)}: ${a.elements} elements share "${a.id}", a name the library picked; name them (a \`motion\` prop) or wrap each in its own data-motion group to track them`);
   }
   if (unmeasured.length) lines.push(`  unmeasured by nature: ${list(unmeasured)}`);
   return { ok: m.errors.length === 0, lines };

@@ -17,8 +17,6 @@ export type TakeFrame = { src: string; t: number; scrollY: number };
 export type TakeMouse = readonly [number, number, number, 0 | 1];
 export type TakeMark = { t: number; scrollY: number; rects: Readonly<Record<string, Rect | readonly Rect[]>> };
 export type Take = {
-  /** The take's name in capture.ts. */
-  name?: string;
   /** Viewport size in CSS pixels. */
   w: number;
   h: number;
@@ -45,7 +43,7 @@ export function takeFrameAt(take: Take, time: number): TakeFrame {
 }
 
 /** The take at `time` as a Shot, for cameras and `view()`. It carries no rects: those are the marks', via `onTake`. */
-export const takeShot = (take: Take, time: number): Shot => ({ src: takeFrameAt(take, time).src, w: take.w, h: take.h, scale: take.scale, rects: {}, take: true, ...(take.name && { name: take.name }) });
+export const takeShot = (take: Take, time: number): Shot => ({ src: takeFrameAt(take, time).src, w: take.w, h: take.h, scale: take.scale, rects: {}, take: true });
 
 /** Where page rect `rect` (from a mark) sits in the frame at take time `time`: moved by how far the page has scrolled. */
 export const onTake = (take: Take, time: number, rect: Rect): Rect => ({ ...rect, y: rect.y - takeFrameAt(take, time).scrollY });

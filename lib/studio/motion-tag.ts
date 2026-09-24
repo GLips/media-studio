@@ -1,24 +1,19 @@
 // motion-tag.ts: how an element asks to have its motion recorded. The probe (probe.tsx) measures every tagged element
-// on every frame it renders, and lib/motion-tracks.ts assembles those into tracks.
+// on every frame, and lib/motion-tracks.ts assembles the samples into tracks. A tag is DOM attributes, so only what's
+// drawn is recorded: a value computed and never rendered can't pass for motion.
 //
-// A tag is DOM attributes, so only what's rendered is recorded: a value computed and never drawn can't pass for
-// motion. Numeric helpers (camAt, seg) stay pure; whatever draws their value tags the element it draws.
+// - Hand-written motion: `data-motion="name"` on the element that moves, or `useMotionTag` for one a host renders.
+// - Library pieces tag themselves (`pieceMotionAttrs`) with a name they pick, their kind and progress values, and the
+//   camera they're aimed through. Every piece takes `motion`: a name of the author's, or `false` for no track.
 //
-// - Hand-written motion needs only `data-motion="name"` on the element that moves.
-// - An element a host component renders itself, which hands out no ref: `useMotionTag(ref, 'name', selector)`.
-// - Library pieces spread `motionAttrs({...})`, adding what they know: their kind, progress values, the camera
-//   they're drawn through, their place in a stagger.
-//
-// A tagged element inside another tagged element belongs to it: its id is nested under the owner's
-// (`scene/owner/name`), and its own motion is measured in the owner's frame. Names are identity: two elements that
-// share one on a frame are an error, and one name handed from an element to another on the very next frame joins
-// them into one track, so give each element its own name. A name a library piece picked for itself (a camera after
-// its shot, a Tag after its words) can't promise that, so two of those sharing a frame are left untracked there and
-// reported as ambiguous instead.
+// A tagged element inside another belongs to it: its id is `scene/owner/name`, measured in the owner's frame. Author
+// names are identity, so two sharing a frame is an error. Two sharing a name the library picked are reported
+// ambiguous and left untracked there; and since such a name can pass between elements, one ending on the frame
+// another starts joins them into one segment.
 
 import { useLayoutEffect, type RefObject } from 'react';
-import { scaleFor, type Cam, type Rect, type View } from './camera.ts';
-import type { StaggerMembership } from '../motion-tracks.ts';
+import { roundMotionValue, type StaggerMembership } from '../motion-tracks.ts';
+import { scaleFor, type Rect, type View } from './camera.ts';
 
 export type MotionTag = {
   /** Unique among the tagged elements of its owner. No `/`: that separates an id's levels. */
@@ -29,23 +24,22 @@ export type MotionTag = {
   implicit?: boolean;
   /** Progress or value channels to record, e.g. `{ draw: k }`. Report them on every frame the element is drawn. */
   values?: Readonly<Record<string, number>>;
-  /** The view this element is aimed through, so its own motion is measured in that camera's page space. */
-  through?: View | null;
+  /**
+   * The view it's aimed through, so its own motion is measured in that camera's page space; `unknown` for a piece that
+   * can't tell whether its screen position moves with a camera. Absent: measured in its owner's frame.
+   */
+  through?: View | 'unknown';
+  /** Its place in a stagger. `group` is scoped to its owner, as names are. */
   stagger?: StaggerMembership;
 };
 
-/** The camera a view shows, as the probe matches it: its screen box, centre and scale. */
+/** The camera a view shows, as the probe matches it: its layout box, centre and scale. */
 export type CameraMark = { key: string; cx: number; cy: number; zoom: number; k: number; box: Rect };
 
-const round = (v: number) => Math.round(v * 1000) / 1000;
-
-export function cameraMark({ shot, cam, box }: { shot: View['shot']; cam: Cam; box: Rect }): CameraMark {
+export function cameraMark({ shot, cam, box }: View): CameraMark {
   const k = scaleFor(shot, cam.zoom);
-  return { key: [box.x, box.y, box.w, box.h, cam.cx, cam.cy, k].map(round).join(','), cx: cam.cx, cy: cam.cy, zoom: cam.zoom, k, box };
+  return { key: [box.x, box.y, box.w, box.h, cam.cx, cam.cy, k].map(roundMotionValue).join(','), cx: cam.cx, cy: cam.cy, zoom: cam.zoom, k, box };
 }
-
-/** Name text for a tag from what an element says, e.g. a Text's words: `/` is replaced, since it separates levels. */
-export const motionNameOf = (text: string) => text.replaceAll('/', '∕');
 
 /** The attributes that tag an element for recording; `false` tags nothing. Spread onto the element that moves. */
 export function motionAttrs(tag: MotionTag | false): Record<string, string> {
@@ -55,20 +49,29 @@ export function motionAttrs(tag: MotionTag | false): Record<string, string> {
     ...(tag.kind && { 'data-motion-kind': tag.kind }),
     ...(tag.implicit && { 'data-motion-implicit': '' }),
     ...(tag.values && { 'data-motion-values': JSON.stringify(tag.values) }),
-    ...(tag.through && { 'data-motion-through': cameraMark(tag.through).key }),
+    ...(tag.through && { 'data-motion-through': tag.through === 'unknown' ? 'unknown' : cameraMark(tag.through).key }),
     ...(tag.stagger && { 'data-motion-stagger': JSON.stringify(tag.stagger) }),
   };
 }
 
 /**
- * Tags the element showing a view's capture as that view's camera, with its centre and zoom as values and the frame
- * that elements aimed through the view (`through`) are measured in. Named `name`, or after the view's shot.
+ * A library piece's tag: named `motion` when the author gave one, else `picked` (text is fine: a `/` in it is
+ * replaced) and marked implicit; `false` tags nothing.
  */
-export function cameraMotionAttrs(view: View, name?: string): Record<string, string> {
+export function pieceMotionAttrs(motion: string | false | undefined, picked: string, tag: Omit<MotionTag, 'name' | 'implicit'>): Record<string, string> {
+  if (motion === false) return {};
+  return motionAttrs({ ...tag, ...(motion === undefined ? { name: picked.replaceAll('/', '∕'), implicit: true } : { name: motion }) });
+}
+
+/**
+ * Tags the element showing a view's capture as that view's camera, with its centre and zoom as values and the frame
+ * that elements aimed through the view are measured in. A camera is its view, not its capture: every state of a page
+ * dissolving under one view is one camera.
+ */
+export function cameraMotionAttrs(view: View, motion?: string | false): Record<string, string> {
+  if (motion === false) return {};
   const mark = cameraMark(view);
-  const values = { cx: mark.cx, cy: mark.cy, zoom: mark.zoom };
-  const tag = name !== undefined ? { name } : { name: view.shot.name ? `camera:${view.shot.name}` : 'camera', implicit: true };
-  return { ...motionAttrs({ ...tag, kind: 'camera', values }), 'data-motion-camera': JSON.stringify(mark) };
+  return { ...pieceMotionAttrs(motion, 'camera', { kind: 'camera', values: { cx: mark.cx, cy: mark.cy, zoom: mark.zoom } }), 'data-motion-camera': JSON.stringify(mark) };
 }
 
 /**

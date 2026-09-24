@@ -36,7 +36,8 @@ export function checkedFrames(timeline: TimelineReport, { scene, at }: CheckScop
     to = timeline.crossfades.find((c) => c.from === scene)?.end ?? s.start + s.dur;
   }
   if (at) [from, to] = [Math.max(from, at[0]), Math.min(to, at[1])];
-  const first = Math.max(0, Math.round(from * fps)), last = Math.min(durationInFrames - 1, Math.ceil(to * fps) - 1);
+  // The first frame at or after `from`; the epsilon keeps a scene start that's a whole frame from rounding past it.
+  const first = Math.max(0, Math.ceil(from * fps - 1e-6)), last = Math.min(durationInFrames - 1, Math.ceil(to * fps) - 1);
   if (last < first) throw new Error(`${from.toFixed(2)}–${to.toFixed(2)}s holds no frames of the video`);
   return { first, last };
 }
@@ -86,12 +87,15 @@ export async function checkProject(session: RenderSession, scope: CheckScope = {
 
 /**
  * Writes out/check/timeline.json (when each scene, line and word lands, and where scenes crossfade, for aiming sheets
- * and strips) and out/check/motion.json (the motion tracks, so reviewing them needs no render). Returns both paths.
+ * and strips) and the motion tracks, so reviewing them needs no render: out/check/motion.json for the whole video, and
+ * a scoped check's beside it (motion-<scene>.json, motion-<from>-<to>.json), so it never replaces the whole one.
+ * Returns both paths.
  */
-export function writeCheckReports(session: RenderSession, { timeline, motion }: Pick<ProjectCheck, 'timeline' | 'motion'>): string[] {
+export function writeCheckReports(session: RenderSession, { timeline, motion }: Pick<ProjectCheck, 'timeline' | 'motion'>, { scene, at }: CheckScope = {}): string[] {
   const dir = join(outDirFor(session), 'check');
   mkdirSync(dir, { recursive: true });
-  const files = [[join(dir, 'timeline.json'), JSON.stringify(timeline, null, 2)], [join(dir, 'motion.json'), JSON.stringify(motion)]] as const;
+  const scope = [scene, at && at.join('-')].filter(Boolean).join('-');
+  const files = [[join(dir, 'timeline.json'), JSON.stringify(timeline, null, 2)], [join(dir, scope ? `motion-${scope}.json` : 'motion.json'), JSON.stringify(motion)]] as const;
   for (const [file, content] of files) writeFileSync(file, content);
   return files.map(([file]) => file);
 }

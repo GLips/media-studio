@@ -28,17 +28,17 @@ test('a track breaks where its element disappears or its scene starts fading, an
 });
 
 test('a shared id is an error when the author chose it, ambiguous when the library did, and one camera when it is one', () => {
-  const camera = (x: number) => sample('a/camera:page', 0, { implicit: true, camera: `key-${x}`, rect: { x: 0, y: 0, w: 1920, h: 1080 } });
+  const camera = (x: number) => sample('a/camera', 0, { implicit: true, camera: `key-${x}`, rect: { x: 0, y: 0, w: 1920, h: 1080 } });
   const frames = [frame(0, [
     sample('a/title', 0), sample('a/title', 300), // two hand-written tags with one name
-    sample('a/tag:Today', 0, { implicit: true }), sample('a/tag:Today', 900, { implicit: true }), // two Tags saying the same
+    sample('a/Today', 0, { implicit: true }), sample('a/Today', 900, { implicit: true }), // two Tags saying the same
     { ...camera(1), opacity: 1 }, { ...camera(1), opacity: 0.4 }, // a state dissolve: two captures, one camera
   ])];
   const m = assembleMotionTracks(frames, { fps: 30, first: 0, last: 0 });
-  assert.deepEqual(m.tracks.map((t) => t.id), ['a/camera:page']);
+  assert.deepEqual(m.tracks.map((t) => t.id), ['a/camera']);
   assert.deepEqual(m.tracks[0].segments[0].screen.opacity, [1]);
   assert.deepEqual(m.errors.map((e) => [e.id, e.problem]), [['a/title', '2 elements share this id: give each its own name']]);
-  assert.deepEqual(m.coverage.ambiguous.map((a) => [a.id, a.elements]), [['a/tag:Today', 2]]);
+  assert.deepEqual(m.coverage.ambiguous.map((a) => [a.id, a.elements]), [['a/Today', 2]]);
 });
 
 test('an unmeasured frame, a value that is not a number and a value some frames skip are tracking errors', () => {
