@@ -36,7 +36,7 @@ In film, these are measured against a person. For UI, measure them against the s
 
 **Motivated movement.** Every move should have a reason the viewer can feel: the voice named something, the cursor went there, something changed. An unmotivated move feels like the camera operator got bored. If you can't say why the camera moves, hold it still, or give it a subtle drift.
 
-**One move at a time.** Don't pan while a highlight draws on while the cursor travels. Stagger them: the camera lands, then the highlight, then the cursor. Overlapping moves read as chaos.
+**One dominant move at a time.** Each moment has one move the viewer reads, and anything else moving only supports it: the camera settling, a card's contents following the card. Don't pan while a highlight draws on while the cursor travels. The container moves first and its contents follow, overlapping it by 30–50%; secondary action (a ring, a badge) starts 100 ms or more after the main move lands. Moves competing to be read are chaos.
 
 **Speed.** Big moves (wide to close-up) need about 1–1.5 s. Small reframes need about 0.5 s. If everything feels rushed, the usual note is "slow every camera move to 0.7×".
 

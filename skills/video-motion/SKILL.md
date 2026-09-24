@@ -28,7 +28,7 @@ the pause the read left between them; `gap` overrides it, for every line or as `
 | **State change** | The page changes under a still camera (a click's result) | `CaptureStates` with `[shot, at]` pairs; it dissolves between captures of the same page |
 | **Motion blur** | The smear a real camera records when something moves fast | `CaptureMotion` on fast moves only. Slow moves stay sharp |
 | **Highlight / ring** | A glowing outline drawn on around the subject | `Highlight rect={screenRect(v, rect)} k={on(s.t, when)} name="…"` |
-| **Easing** | How a move speeds up and slows down | `seg(t, a, b, fn)` with `easeInOut` (camera moves, the default), `easeOut` (things arriving), `ease` (gentle) |
+| **Easing** | How a move speeds up and slows down | `seg(t, a, b, curve)` with a curve token (below). The default, `motionCurves.cubic.standard`, is the camera's |
 
 ## Time it by reads
 
@@ -41,6 +41,33 @@ You know what happens because you wrote the code. The viewer sees it once, at fu
 - **Lead the eye** to where the next read happens (the camera moves there, or it lights up first) before it happens.
 - **Fast actions, slow meanings.** Camera moves and cursor travel can be brisk; the result they reveal gets a hold.
 - If the reads don't fit, lengthen the scene (`tail`, `min`) or cut a read. Don't squeeze them.
+
+## Choreography
+
+- **One dominant read**, with supporting motion allowed: the camera settling, a card's contents following it. Never
+  two moves that both ask to be read.
+- **The container moves first**, and its contents follow, overlapping it by 30–50%: a card rises, and its lines start
+  when it's half to two-thirds of the way up.
+- **Secondary action waits** until 100 ms or more after the main move lands: a ring, a badge, a count.
+
+## Motion tokens for product UI
+
+In a walkthrough or product explainer, pick a token rather than inventing a curve or a number. They're defaults for
+that calm, legible register. A teaser or showreel designs its own motion, and nothing here limits it.
+
+- **Curves** (`motionCurves`): `productive` for UI moving as it does in the app, `expressive` for a reveal that
+  should be felt. Each has `standard` (moving within the frame), `entrance` and `exit`. Keep a video to one system.
+  `cubic` is the library pieces' own, `dissolve` is for opacity, and `linear` is for a scroll or a timer.
+- **Durations** (`motionDurations`): seconds by action and distance, from a `press` to a camera `push`. When a moment
+  doesn't read, lengthen the anticipation before it or the hold after it, not the move. Land moves on words.
+- **Raw or eased `k`**: a piece that eases `k` itself (Highlight, Tag, Text, GlassCard) says so in its doc. Give it
+  `seg(…, motionCurves.linear)`, or it eases twice.
+- **Springs**: `springBy(duration, bounce)` looks landed at `duration`, so `pop(s.t - (w.start - pop.landed))` lands
+  on the word, and `pop.settled` is when its bounce dies away. Springs are for moves; fades and colour are `seg`.
+- **Staggers**: `stagger(i, n, { each, max, from })` is item `i`'s start offset, on a whole frame. `max` caps the
+  spread of a long list, `from` is `'center'`, `'edges'` or an index, and `{ lagRatio, duration }` sets the gap as a
+  fraction of each item's move. `staggerFinish` is when the last one lands. Tag each item with
+  `stagger: { group, index, count }` so the tracks see the group.
 
 ## Anchor to speech, and lead the word
 

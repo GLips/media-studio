@@ -11,7 +11,7 @@ Scenes don't talk to Remotion directly. They call `defineScene` and the primitiv
 `lib/studio/Video.tsx` is the one composition. Reach into Remotion only to build something new for `lib/studio`, and
 then keep its conventions:
 
-- **Seconds, not frames.** A scene's clock `s.t` is seconds; animate with `seg`, `on`, `off` and the easings in
+- **Seconds, not frames.** A scene's clock `s.t` is seconds; animate with `seg`, `on`, `off` and the curve tokens in
   `lib/studio/motion.ts`, not `interpolate(frame, …)`. Everything stays a pure function of `s.t`, which can be
   negative or past `s.dur` during crossfades.
 - **Imports, not `staticFile()`.** Assets live in the project folder and are imported, so each project bundles on its
