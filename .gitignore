@@ -1,0 +1,5 @@
+node_modules/
+scratch/
+projects/*/captures/
+projects/*/out/
+projects/*/audio/

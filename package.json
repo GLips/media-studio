@@ -1,0 +1,15 @@
+{
+  "name": "video-studio",
+  "version": "1.0.0",
+  "description": "Walkthrough and explainer videos: capture, voice, compose, render.",
+  "scripts": {
+    "new": "node scripts/new-project.mjs",
+    "tts": "op run --account branchlabs.1password.com --env-file=.env.op -- node scripts/tts.mjs",
+    "video": "node lib/render.mjs --video"
+  },
+  "type": "module",
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  },
+  "private": true
+}

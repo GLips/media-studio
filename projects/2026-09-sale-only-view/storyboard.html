@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Storyboard · Sale-only view</title>
+<style>
+  :root { --navy: #1c365e; --red: #b82b2b; --blue: #366299; --ink: #191919; --muted: #6b6f76; --line: #e4e6ea; --bg: #f6f7f9; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 48px 32px 96px; }
+  header h1 { margin: 0 0 6px; font-size: 30px; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--muted); max-width: 760px; }
+  .meta { display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0 0; }
+  .chip { background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: 13px; color: var(--muted); }
+  .chip b { color: var(--ink); font-weight: 600; }
+
+  section.voices { margin: 36px 0 8px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 20px 24px; }
+  section.voices h2, h2.section { margin: 0 0 4px; font-size: 17px; }
+  section.voices p { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+  .voice-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+  .voice { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .voice.current { border-color: var(--navy); box-shadow: 0 0 0 1px var(--navy); }
+  .voice strong { display: block; margin-bottom: 6px; font-size: 14px; }
+  .voice strong small { color: var(--muted); font-weight: 400; }
+  .voice audio { width: 100%; height: 32px; }
+
+  h2.section { margin: 40px 0 14px; }
+  .scene { display: grid; grid-template-columns: 440px 1fr; gap: 28px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .frames { display: grid; gap: 8px; }
+  .thumb { width: 440px; aspect-ratio: 16 / 9; border-radius: 8px; background-color: #fff; background-repeat: no-repeat; border: 1px solid var(--line); position: relative; overflow: hidden; }
+  .thumb figcaption { position: absolute; left: 8px; bottom: 8px; background: rgba(25, 25, 25, 0.78); color: #fff; font-size: 12px; padding: 2px 8px; border-radius: 4px; }
+  .card { display: flex; flex-direction: column; justify-content: center; padding: 0 36px; background: var(--navy); color: #fff; }
+  .card .title { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+  .card .sub { font-size: 15px; opacity: 0.8; margin-top: 4px; }
+  .card ul { margin: 0; padding: 0; list-style: none; font-size: 17px; font-weight: 600; }
+  .card li + li { margin-top: 10px; }
+  .card li::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #e63636; margin-right: 10px; vertical-align: middle; }
+
+  .scene h3 { margin: 0; font-size: 19px; display: flex; align-items: baseline; gap: 10px; }
+  .scene h3 .n { color: var(--muted); font-weight: 500; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .scene h3 .t { margin-left: auto; color: var(--muted); font-weight: 500; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .scene .shot { margin: 8px 0 14px; color: #3b3f45; }
+  .line { border-left: 3px solid var(--navy); padding: 6px 0 6px 14px; margin: 8px 0; }
+  .line q { font-size: 16px; quotes: '“' '”'; }
+  .line .id { display: block; font-size: 12px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  .omitted { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 18px 24px; }
+  .omitted li { margin: 6px 0; color: #3b3f45; }
+  @media (max-width: 980px) { .scene { grid-template-columns: 1fr; } .thumb { width: 100%; } }
+</style>
+<script src="captures/index.js"></script>
+<script src="audio/script.js"></script>
+<script src="audio/manifest.js" onerror="window.VOICEOVER = null"></script>
+<script src="../../scratch/auditions/index.js" onerror="window.AUDITIONS = null"></script>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Sale-only view: client walkthrough</h1>
+    <p>For the Painful Pleasures team. The footage is screenshots from the PR #333 preview theme, animated with camera moves, a cursor and highlights, with a voiceover and captions added later. Scene lengths follow the voiced lines.</p>
+    <div class="meta" id="meta"></div>
+  </header>
+
+  <section class="voices">
+    <h2>Voice</h2>
+    <p>Every audition reads the same line from scene 2. The highlighted one is what <code>voiceover.json</code> uses now.</p>
+    <div class="voice-grid" id="voices"></div>
+  </section>
+
+  <h2 class="section">Scenes</h2>
+  <div id="scenes"></div>
+
+  <h2 class="section">Deliberately left out</h2>
+  <ul class="omitted">
+    <li>The mechanics of the <code>?on-sale</code> URL and Intelligems setup. They're internal, and scene 9 just says that it's tested.</li>
+    <li>Logged-in pro and distributor footage. That needs test accounts, so scene 8 states it as text instead.</li>
+    <li>The collection-card badge change, where sold-out variants no longer count toward "Up to X%". It's real, but it's a second story and would blur this one.</li>
+  </ul>
+</main>
+
+<script type="module">
+// Both come from `node scripts/tts.mjs <project> --dry`, which mirrors voiceover.json into audio/script.js.
+const VOICE = window.VOICEOVER_SCRIPT.voice;
+const LINES = Object.fromEntries(window.VOICEOVER_SCRIPT.lines.map((line) => [line.id, line.text]));
+
+// A frame is either a capture cropped to one of its rects, or a text card.
+const SCENES = [
+  { title: 'Title', frames: [{ card: { title: 'Sale-only view', sub: 'Take shoppers straight to the deal' } }],
+    shot: 'Navy title card, then a slow fade into the collection page.', lines: ['intro'] },
+  { title: 'Today', frames: [{ capture: 'collection', focus: 'partialCard', pad: 260, label: 'Click InkJecta · Up to 15%' }, { capture: 'partial-today', focus: 'picker', pad: 90, label: 'Every option, full price' }],
+    shot: 'The Tattoo Machine Sale grid. The cursor glides to the InkJecta card and clicks, and we cut to the product page as it is today. The camera pushes in on the five swatches and the full $824.99 price.', lines: ['problem-a', 'problem-b'] },
+  { title: 'The fix', frames: [{ capture: 'partial-filtered', focus: 'callout', pad: 70, label: '3 of 5 on sale' }],
+    shot: 'A small "With sale-only view" label. The same click lands on the filtered page, and the camera pushes in on the red note while a highlight ring traces it. The swatches drop to three.', lines: ['fix-a', 'fix-b'] },
+  { title: 'Choosing', frames: [{ capture: 'partial-picked', focus: 'price', pad: 60, label: '$799.99, was $824.99' }],
+    shot: 'The cursor clicks the second swatch. A crossfade to the new state, with the marked-down price highlighted.', lines: ['pick'] },
+  { title: 'Show all', frames: [{ capture: 'partial-show-all', focus: 'picker', pad: 90, label: 'All 5 back' }],
+    shot: 'The cursor clicks "Show all options". The note goes and all five swatches return.', lines: ['show-all'] },
+  { title: 'All on sale', frames: [{ capture: 'all-on-sale', focus: 'callout', pad: 90, label: 'Peak Matrix · 5 of 5' }],
+    shot: 'Back on the grid, a click on Peak Matrix ("Up to 68%"). The page opens with the blue "All options are on sale." box, highlighted.', lines: ['all-on-sale'] },
+  { title: 'Big listings', frames: [{ capture: 'big-today', focus: 'picker', pad: 40, label: '136 variations' }, { capture: 'big-filtered', focus: 'callout', pad: 90, label: '3 of 136 on sale' }],
+    shot: 'Kwadron cartridges: the full four-option picker, then a crossfade to the filtered view. The camera pushes in on "3 of 136".', lines: ['big'] },
+  { title: 'Pricing', frames: [{ card: { list: ["Uses each customer's own pricing", 'Pro and distributor accounts see their own discounts'] } }],
+    shot: 'A text card over a blurred product page.', lines: ['pricing'] },
+  { title: 'Rollout', frames: [{ card: { list: ['Switched on per collection', 'A/B tested with Intelligems before rollout'] } }],
+    shot: 'The end card.', lines: ['rollout'] },
+];
+
+// Measured from the auditions: about 2.8 words a second. Scene time adds a breath around the lines.
+const WORDS_PER_SECOND = 2.8;
+const SCENE_PADDING = 1.2;
+const estimate = (id) => LINES[id].split(/\s+/).length / WORDS_PER_SECOND;
+const voiced = (id) => window.VOICEOVER?.[id]?.duration;
+
+const THUMB_WIDTH = 440;
+function captureThumb({ capture, focus, pad, label }) {
+  const shot = window.CAPTURES[capture];
+  const rect = shot.rects[focus];
+  const r = Array.isArray(rect) ? rect[0] : rect;
+  // Grow the focus rect by `pad`, then to 16:9, then keep it inside the capture.
+  let w = r.w + pad * 2, h = r.h + pad * 2;
+  if (w / h < 16 / 9) w = h * 16 / 9; else h = w * 9 / 16;
+  w = Math.min(w, shot.w); h = w * 9 / 16;
+  const x = Math.min(Math.max(r.x + r.w / 2 - w / 2, 0), shot.w - w);
+  const y = Math.min(Math.max(r.y + r.h / 2 - h / 2, 0), shot.h - h);
+  const scale = THUMB_WIDTH / w;
+  const el = document.createElement('figure');
+  el.className = 'thumb';
+  el.style.margin = '0';
+  el.style.backgroundImage = `url(${shot.src})`;
+  el.style.backgroundSize = `${shot.w * scale}px ${shot.h * scale}px`;
+  el.style.backgroundPosition = `${-x * scale}px ${-y * scale}px`;
+  el.innerHTML = `<figcaption>${label}</figcaption>`;
+  return el;
+}
+
+function cardThumb({ title, sub, list }) {
+  const el = document.createElement('figure');
+  el.className = 'thumb card';
+  el.style.margin = '0';
+  el.innerHTML = list
+    ? `<ul>${list.map((item) => `<li>${item}</li>`).join('')}</ul>`
+    : `<div class="title">${title}</div><div class="sub">${sub}</div>`;
+  return el;
+}
+
+let total = 0;
+const scenesEl = document.getElementById('scenes');
+SCENES.forEach((scene, i) => {
+  const seconds = scene.lines.reduce((sum, id) => sum + (voiced(id) ?? estimate(id)), 0) + SCENE_PADDING;
+  const start = total;
+  total += seconds;
+
+  const el = document.createElement('article');
+  el.className = 'scene';
+  const frames = document.createElement('div');
+  frames.className = 'frames';
+  scene.frames.forEach((frame) => frames.appendChild(frame.card ? cardThumb(frame.card) : captureThumb(frame)));
+  el.appendChild(frames);
+
+  const body = document.createElement('div');
+  body.innerHTML = `
+    <h3><span class="n">${String(i + 1).padStart(2, '0')}</span>${scene.title}<span class="t">${start.toFixed(1)}s · ${seconds.toFixed(1)}s</span></h3>
+    <p class="shot">${scene.shot}</p>
+    ${scene.lines.map((id) => `<div class="line"><q>${LINES[id]}</q><span class="id">${id} · ~${(voiced(id) ?? estimate(id)).toFixed(1)}s</span></div>`).join('')}`;
+  el.appendChild(body);
+  scenesEl.appendChild(el);
+});
+
+const words = Object.values(LINES).join(' ').split(/\s+/).length;
+document.getElementById('meta').innerHTML = [
+  ['Length', `~${Math.round(total)}s`], ['Scenes', SCENES.length], ['Script', `${words} words`], ['Voice', VOICE], ['Frame', '1920×1080'],
+].map(([k, v]) => `<span class="chip">${k} <b>${v}</b></span>`).join('');
+
+const voicesEl = document.getElementById('voices');
+(window.AUDITIONS ?? []).forEach(({ voice, src, duration }) => {
+  const el = document.createElement('div');
+  el.className = `voice${voice === VOICE ? ' current' : ''}`;
+  el.innerHTML = `<strong>${voice} <small>${duration.toFixed(1)}s</small></strong><audio controls preload="metadata" src="${src}"></audio>`;
+  voicesEl.appendChild(el);
+});
+</script>
+</body>
+</html>

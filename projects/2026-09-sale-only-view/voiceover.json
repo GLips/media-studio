@@ -1,0 +1,16 @@
+{
+  "voice": "Callirrhoe",
+  "lines": [
+    { "id": "intro", "text": "Here's a new way for Painful Pleasures' sale pages to take shoppers straight to the deal." },
+    { "id": "problem-a", "text": "Today, when a shopper clicks a sale item, the product page shows every option, including the ones at full price." },
+    { "id": "problem-b", "text": "They have to hunt for the discount the card promised." },
+    { "id": "fix-a", "text": "With the sale-only view, the same click opens the page showing only the options that are on sale and in stock." },
+    { "id": "fix-b", "text": "A note right above the picker says how many that is." },
+    { "id": "pick", "text": "Whatever they choose stays on a discounted option, and the price shows the markdown." },
+    { "id": "show-all", "text": "One click brings back the full range." },
+    { "id": "all-on-sale", "text": "When everything is on sale, the page simply says so." },
+    { "id": "big", "text": "It works on the biggest listings too, like cartridges with a hundred and thirty-six variations, narrowed to the three on sale." },
+    { "id": "pricing", "text": "It uses each customer's own pricing, so pro and distributor accounts only see what's actually discounted for them." },
+    { "id": "rollout", "text": "It's switched on collection by collection, and we'll A/B test it to measure the lift before rolling it out." }
+  ]
+}
