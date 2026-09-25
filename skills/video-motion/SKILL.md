@@ -100,6 +100,10 @@ kit.tsx's `Odometer`; a bar the pieces don't cover is built directly, or as a ne
 `references/showreel-breakdown.md` is the reel it's measured against, and `references/reel-critique.md` is the
 fresh-eyes critique a cut gets before it's done.
 
+**Pacing is signed off before polish.** The first cut is an animatic: each bar a rough picture of its idea on its
+cues, on the fitted music, sent as the `studio storyboard <p>` page (`video-kickoff`, step 4). Build and polish bars
+only once the user has approved its pacing: a bar polished before then gets re-timed when the notes say it's too fast.
+
 Registers mix: a walkthrough can open on a few bars of this and close on a slammed end card, calm in between. Keep
 each stretch in one register, and change register on a cut.
 

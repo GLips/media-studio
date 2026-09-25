@@ -5,7 +5,7 @@ import { studioProjectArg } from '../project-arg.ts';
 export default defineCommand({
   meta: {
     name: 'storyboard',
-    description: 'Build out/storyboard/index.html: a preview on top, then a card per scene with its note, a still and the audio for each line; click a card to play from it. Prints the page.',
+    description: 'Build out/storyboard/index.html: a preview on top, then a card per scene with its note and stills; click a card or a still to play from it. A voiced video gets a still and the audio for each line; a video whose timeline.ts is cut to fitted music gets a still on each cue, replay and landmark, captioned where timeline.ts puts it, and a preview with the music. Prints the page.',
   },
   args: {
     project: studioProjectArg,

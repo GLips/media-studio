@@ -5,9 +5,22 @@ description: Start any video, from the first brief or context dump to an approve
 
 # Starting a video
 
-Four gates, in order: **dump → angle → scene table → storyboard**. Each gate needs the user's yes before the next.
-Nothing gets a real voice or motion polish until the storyboard is signed off. A scene table is cheap to change;
-voiced, polished motion is not.
+A video is planned the way a motion studio plans one: in rungs of rising fidelity, each settling one question
+cheaply before the next rung spends more on it. Each rung needs the user's yes before the next.
+
+| Rung | Settles | Here |
+|---|---|---|
+| **Treatment** | the idea, the tone, the takeaway | steps 1–2: the dump, then the angle |
+| **Script or beat sheet** | what happens, in order; the track, if it's cut to music | step 3: the scene table |
+| **Style frames** | the look: two to four finished stills of key moments | `stills` skill, reviewed with `studio review` |
+| **Storyboard and animatic** | pacing: rough scenes at their real timing, on the voice or music | step 4: `studio storyboard` |
+| **Blocking** | how things move: simple shapes at the real timing; 3D previs where a camera moves or a video model will be given the motion | `video-motion`; `video-gen` for previs |
+| **Polish, then sound** | the finish | `video-motion`, then `video-sound` |
+
+**Choose the path at kickoff, and say which.** The full ladder suits a piece whose pacing or look is uncertain, or
+whose later rungs are expensive (generated footage, a long reel). To try a few ideas fast, take treatment → beat sheet
+→ animatic → polish, and skip style frames and blocking. Whatever the path, nothing gets a real voice or motion polish
+before the animatic is signed off: a scene table is cheap to change, and voiced, polished motion is not.
 
 **An autonomous brief skips the gates.** When the user hands over the creative calls ("go all out", "surprise me",
 "don't check in"), make each gate's decision yourself: pick the angle, write the scene table or beat sheet as your
@@ -71,9 +84,23 @@ Get the user's yes on the table before building anything.
 
 ## 4. Storyboard: an animatic you can click through
 
-The storyboard is the video itself, rough, and never a separate drawing, so it can't drift from what ships. The steps
-below are for a voiced video; a piece with no voice skips the lines and roughs its scenes in on its timeline instead,
-on the track if it's cut to music.
+The storyboard is the video itself, rough, and never a separate drawing, so it can't drift from what ships. Each
+scene starts at the lowest rung that shows its idea (a title card, a held sketch or style frame, a still with one push
+in) and rises in place, so the same page carries the animatic, the blocking and the finished cut.
+
+**Cut to music** (the high-energy register):
+
+1. Get the track (`video-sound`, music) and cut it to the beat sheet's shape with `studio music fit <p> --bars`.
+2. Write `timeline.ts` from the beat sheet (`video-motion`, "The high-energy register"): a `beatSpan` per bar, a cue
+   for each idea that lands on a beat, named for what lands (`ink.strike2`), the replays and the final hit's landmark.
+3. Bind each scene in `video.tsx` to a rough picture of its idea, with the beat sheet's text as its `note`; put each
+   idea's arrival on its cue, so it lands on the beat.
+4. Run `studio storyboard <p>`. The preview plays with the music, and each card has a still on every cue, replay and
+   landmark, captioned where `timeline.ts` puts it (`beat 3 +4f`).
+5. Send the user the page. A pacing note changes `timeline.ts` and, where the length changes, the music's `--bars`;
+   rebuild and resend until they sign off. Only then build the bars, and polish nothing before it.
+
+**Voiced**, the animatic is `video.tsx`, rough:
 
 1. Write the lines into `voiceover.json`, with `"paragraph": true` on each line that starts a new beat so the read
    pauses there, and run `studio voice <p> --read=estimate`. That times each line from its word count, for free.
