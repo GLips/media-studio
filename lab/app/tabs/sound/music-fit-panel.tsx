@@ -33,6 +33,8 @@ function decodeMusicTrack(track: LabMusicTrack): Promise<DecodedMusic> {
       return { buffer, mono: (await offline.startRendering()).getChannelData(0) };
     })();
     decodedMusic.set(track.id, decoding);
+    // A failed fetch or decode isn't kept, so choosing the track again retries it.
+    decoding.catch(() => decodedMusic.delete(track.id));
   }
   return decoding;
 }
@@ -45,8 +47,11 @@ function fitDecodedMusic({ buffer, mono }: DecodedMusic, beats: readonly number[
     const fitted = audioBufferFromChannels(spliceMusicSpans(channels, buffer.sampleRate, plan.spans, seconds), buffer.sampleRate);
     return { plan, fitted, seconds, planMs: performance.now() - started };
   } catch (error) {
-    // The one failure worth showing: a length the track can't reach on its bar lines.
-    return { error: (error as Error).message, seconds };
+    // The failures worth showing are planMusicFit's own about the track (a length it can't reach on its bar lines, too
+    // few beats); anything else is a bug and should surface as one.
+    const message = (error as Error).message;
+    if (!/can't fit|fitting needs|is silent/.test(message)) throw error;
+    return { error: message, seconds };
   }
 }
 

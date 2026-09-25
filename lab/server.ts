@@ -39,7 +39,7 @@ export async function startStudioLab({ port }: { port: number }) {
 
   const server = createServer((req, res) => {
     try {
-      route(req, res, outdir);
+      route(req, res, outdir, port);
     } catch (error) {
       res.writeHead(500, { 'content-type': 'text/plain' }).end(error instanceof Error ? error.message : String(error));
     }
@@ -48,7 +48,10 @@ export async function startStudioLab({ port }: { port: number }) {
   return { url: `http://localhost:${port}/`, close: async () => { server.close(); await bundle.dispose(); } };
 }
 
-function route(req: IncomingMessage, res: ServerResponse, outdir: string) {
+function route(req: IncomingMessage, res: ServerResponse, outdir: string, port: number) {
+  // Any page the browser has open can send requests here, and a DNS-rebinding page can read the replies: only answer
+  // requests addressed to this machine by name.
+  if (req.headers.host !== `localhost:${port}` && req.headers.host !== `127.0.0.1:${port}`) return res.writeHead(403).end();
   const url = new URL(req.url ?? '/', 'http://lab');
   const path = decodeURIComponent(url.pathname);
   if (path === '/') return sendFile(req, res, join(LAB_DIR, 'app', 'index.html'), 'text/html');
@@ -85,6 +88,8 @@ function sendFile(req: IncomingMessage, res: ServerResponse, file: string, type:
   }
   const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
   const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+  // A tab holding offsets into a file since re-rendered shorter asks past its end.
+  if (start >= size || start > end) return res.writeHead(416, { 'content-range': `bytes */${size}` }).end();
   res.writeHead(206, { ...headers, 'content-length': end - start + 1, 'content-range': `bytes ${start}-${end}/${size}` });
   createReadStream(file, { start, end }).pipe(res);
 }

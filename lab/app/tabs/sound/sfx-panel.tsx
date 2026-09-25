@@ -63,8 +63,14 @@ export function SfxPanel() {
   }, [rendered]);
 
   const play = () => playLabSfx(rendered.floats);
-  // Every change plays the new sound, once the page has had a click: browsers won't make sound before one.
+  // Every change plays the new sound, once the page has had a click (browsers won't make sound before one); arriving
+  // on the tab doesn't.
+  const mounted = useRef(false);
   useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
     if (!navigator.userActivation.hasBeenActive) return;
     const timer = setTimeout(() => playLabSfx(rendered.floats), 180);
     return () => clearTimeout(timer);

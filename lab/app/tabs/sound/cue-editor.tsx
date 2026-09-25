@@ -10,7 +10,7 @@ import type { SfxEvent } from '../../../../lib/sfx/cue-events.ts';
 import { sfxCueOverrides, sfxCuePlays, sfxCueSound, type SfxCue, type SfxCueList, type SfxCueProblem } from '../../../../lib/sfx/cues.ts';
 import { SFX_RATE } from '../../../../lib/sfx/dsp.ts';
 import { renderSfx, type SfxRequest } from '../../../../lib/sfx/library.ts';
-import type { LabSfxCuePayload } from '../../../sfx-cue-api.ts';
+import type { LabSfxCuePayload, LabSfxCueSave } from '../../../sfx-cue-api.ts';
 import { LabSlider } from '../../ui.tsx';
 import { labAudio } from './lab-audio.ts';
 import './cue-editor.css';
@@ -338,11 +338,15 @@ export function SfxCueEditor() {
 
   const save = async () => {
     setSaveState({ kind: 'saving' });
-    const response = await fetch(sfxCueApiUrl(saved.project), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(list) });
-    const body = await response.json();
-    if (!response.ok) return setSaveState({ kind: 'error', text: body.error });
-    setSaved(body as LabSfxCuePayload);
-    setList((body as LabSfxCuePayload).list);
+    const sent = list;
+    const body: LabSfxCueSave = { revision: saved.revision, list: sent };
+    const response = await fetch(sfxCueApiUrl(saved.project), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+      .catch((error: Error) => ({ ok: false, json: async () => ({ error: `the lab server didn't answer (${error.message}): is studio lab still running?` }) }));
+    const reply = await response.json();
+    if (!response.ok) return setSaveState({ kind: 'error', text: reply.error });
+    setSaved(reply as LabSfxCuePayload);
+    // Edits made while the save was in flight stay; only an untouched list takes the saved one.
+    setList((current) => (current === sent ? (reply as LabSfxCuePayload).list : current));
     setSaveState({ kind: 'saved', text: `Saved projects/${saved.project}/sfx/cues.json and regenerated generated/sfx-cues.ts` });
   };
 

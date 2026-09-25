@@ -86,20 +86,32 @@ export type PriceHoldVerdict = {
   steady: SecondsSpan | null;
 };
 
-const hold = (p: PriceHoldParams, seconds: number): HoldExpectation =>
-  ({ scene: 'buy', hold: 'price', for: seconds, within: p.within, start: 0, end: PRICE_HOLD_SECONDS });
+const hold = (p: PriceHoldParams, span: { start: number; end: number }, seconds: number): HoldExpectation =>
+  ({ scene: 'buy', hold: 'price', for: seconds, within: p.within, ...span });
 
 /**
- * The real check on the lab's scene. The check only reports a stretch when it fails, and stops at the first long
- * enough one, so the longest stretch comes from asking it for the whole scene and reading where it says it held.
+ * The real check on the lab's scene, and the longest stretch it would accept. The check only says where it held when
+ * it fails, in words, so the stretch comes from asking it yes/no questions instead: the longest hold it passes over
+ * the whole scene (a binary search in frames), then the first span of that length it passes on its own.
  */
 export function checkPriceHold(p: PriceHoldParams): PriceHoldVerdict {
   const motion = holdLabTracks(p), none = { crossfades: [] };
-  const problem = holdProblems(motion, none, [hold(p, p.need)], 'lab').problems[0]?.problem ?? null;
-  const whole = holdProblems(motion, none, [hold(p, PRICE_HOLD_SECONDS)], 'lab').problems[0]?.problem;
-  if (!whole) return { problem, steady: { from: 0, to: PRICE_HOLD_SECONDS } };
-  const at = /at most, ([\d.]+)–([\d.]+)s/.exec(whole);
-  return { problem, steady: at ? { from: Number(at[1]), to: Number(at[2]) } : null };
+  const passes = (span: { start: number; end: number }, frames: number) =>
+    holdProblems(motion, none, [hold(p, span, frames / FPS)], 'lab').problems.length === 0;
+  const scene = { start: 0, end: PRICE_HOLD_SECONDS };
+  const problem = holdProblems(motion, none, [hold(p, scene, p.need)], 'lab').problems[0]?.problem ?? null;
+  let lo = 0, hi = PRICE_HOLD_FRAMES;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (passes(scene, mid)) lo = mid;
+    else hi = mid - 1;
+  }
+  if (lo === 0) return { problem, steady: null };
+  for (let f = 0; f + lo <= PRICE_HOLD_FRAMES; f++) {
+    const span = { start: f / FPS, end: (f + lo) / FPS };
+    if (passes(span, lo)) return { problem, steady: { from: span.start, to: span.end } };
+  }
+  throw new Error('the check passed a hold over the scene but over none of its spans');
 }
 
 const CHANNEL_WORDS: Record<string, string> = { x: 'left-right position', y: 'up-down position', width: 'width', height: 'height' };
@@ -133,6 +145,8 @@ export function explainPriceHold(v: PriceHoldVerdict, need: number): string {
   return [
     `The longest it sat still and fully visible was ${s(Number(most[1]))} (${s(Number(most[2]))} to ${s(Number(most[3]))}), short of the ${s(need)} the scene promised.`,
     before && `Before that, ${plainCause(before[2])}.`,
-    after ? `Then at ${s(Number(after[1]))}, ${plainCause(after[2])}.` : 'It was still steady when the scene ended — it just settled too late.',
+    after ? `Then at ${s(Number(after[1]))}, ${plainCause(after[2])}.`
+      : reason.includes('it runs to the end of the span') ? 'It was still steady when the scene ended — it just settled too late.'
+      : reason,
   ].filter(Boolean).join(' ');
 }
