@@ -3,6 +3,7 @@
 // with the arrow keys so the same brief can be compared model by model.
 import { useEffect, type ReactNode } from 'react';
 import type { LabGalleryItem } from '../../../manifest.ts';
+import { useLabWholeVideo } from '../../whole-video.ts';
 import { GeneratedTrackPlayer } from './track-player.tsx';
 
 /** A dollar amount at the precision that matters: $1.39, $0.04, $0.004. */
@@ -14,9 +15,14 @@ export function formatGenerationCost(usd: number) {
 export function GeneratedMediaView({ url, kind, autoPlay = false, className }: {
   url: string; kind: LabGalleryItem['kind']; autoPlay?: boolean; className?: string;
 }) {
-  if (kind === 'video') return <video className={className} src={url} muted loop playsInline autoPlay={autoPlay} controls={autoPlay} preload="metadata" />;
+  if (kind === 'video') return <GeneratedVideo url={url} autoPlay={autoPlay} className={className} />;
   if (kind === 'audio') return <GeneratedTrackPlayer url={url} />;
   return <img className={className} src={url} alt="" />;
+}
+
+function GeneratedVideo({ url, autoPlay, className }: { url: string; autoPlay: boolean; className?: string }) {
+  const src = useLabWholeVideo(url);
+  return <video className={className} src={src} muted loop playsInline autoPlay={autoPlay} controls={autoPlay} />;
 }
 
 const GENERATED_KIND_WORDS = { image: 'Image', video: 'Video clip', audio: 'Music track' } as const;
@@ -85,7 +91,7 @@ export function GeneratedMediaLightbox({ items, index, onIndex, onClose, title =
             <>
               <span className="hud">Given to the model alongside the prompt</span>
               <div className="media-refs">
-                {item.references.map((r) => (isVideoUrl(r) ? <video key={r} src={r} muted loop autoPlay playsInline /> : <img key={r} src={r} alt="" className="checker" />))}
+                {item.references.map((r) => (isVideoUrl(r) ? <GeneratedVideo key={r} url={r} autoPlay /> : <img key={r} src={r} alt="" className="checker" />))}
               </div>
             </>
           )}

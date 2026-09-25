@@ -15,6 +15,7 @@ import type { LabSfxCueSave } from '../../../local-api.ts';
 import type { LabSfxCuePayload } from '../../../manifest.ts';
 import { loadLabManifest } from '../../lab-manifest.ts';
 import { LabSlider } from '../../ui.tsx';
+import { useLabWholeVideo } from '../../whole-video.ts';
 import { labAudio } from './lab-audio.ts';
 import { sfxSoundWords, SoundForAgents } from './sound-words.tsx';
 import './cue-editor.css';
@@ -230,6 +231,7 @@ export function SfxCueEditor() {
   const [zoom, setZoom] = useState(1);
   const [saveState, setSaveState] = useState<{ kind: 'idle' | 'saving' | 'saved' | 'error'; text?: string }>({ kind: 'idle' });
   const videoRef = useRef<HTMLVideoElement>(null);
+  const videoSrc = useLabWholeVideo(saved?.video);
   const momentEnd = useRef<number | null>(null);
 
   useEffect(() => {
@@ -242,9 +244,7 @@ export function SfxCueEditor() {
     });
   }, []);
 
-  // Chrome defers loading a video in a tab that isn't showing, and one that stalls there (or behind other lab tabs'
-  // connections) can sit at 0:00 without asking again; asking again unsticks it. Once it knows its length, it opens
-  // on the first cue.
+  // Once the video knows its length, it opens on the first cue.
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !saved) return;
@@ -254,21 +254,8 @@ export function SfxCueEditor() {
     };
     if (video.readyState >= HTMLMediaElement.HAVE_METADATA) openOnFirstCue();
     else video.addEventListener('loadedmetadata', openOnFirstCue, { once: true });
-    const askAgain = () => {
-      if (document.visibilityState === 'visible' && video.readyState === HTMLMediaElement.HAVE_NOTHING) video.load();
-    };
-    let asks = 0;
-    const retry = setInterval(() => {
-      if (video.readyState > HTMLMediaElement.HAVE_NOTHING || ++asks > 5) return clearInterval(retry);
-      askAgain();
-    }, 3000);
-    document.addEventListener('visibilitychange', askAgain);
-    return () => {
-      clearInterval(retry);
-      document.removeEventListener('visibilitychange', askAgain);
-      video.removeEventListener('loadedmetadata', openOnFirstCue);
-    };
-  }, [saved]);
+    return () => video.removeEventListener('loadedmetadata', openOnFirstCue);
+  }, [saved, videoSrc]);
 
   // Render every sound the list plays up front, a few per frame, so the first play and the first click are instant.
   useEffect(() => {
@@ -387,7 +374,10 @@ export function SfxCueEditor() {
       <div className="cue-top">
         <div className="cue-video">
           {saved.video
-            ? <video ref={videoRef} src={saved.video} controls preload="metadata" playsInline />
+            ? <>
+                <video ref={videoRef} src={videoSrc} controls playsInline />
+                {!videoSrc && <p className="cue-video-loading hud">Loading the video…</p>}
+              </>
             : <p className="cue-error">This project has no rendered video (out/video.mp4) to play the cues over.</p>}
         </div>
         {selected

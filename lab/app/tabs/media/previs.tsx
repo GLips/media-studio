@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import type { LabGalleryItem } from '../../../manifest.ts';
 import { LabChoice, LabControls } from '../../ui.tsx';
+import { useLabWholeVideo } from '../../whole-video.ts';
 import { formatGenerationCost } from './lightbox.tsx';
 
 type PrevisView = 'side' | 'wipe';
@@ -36,6 +37,8 @@ export function PrevisComparison({ items, onDetail }: { items: LabGalleryItem[];
   wantsPlay.current = playing;
   const item = items.find((i) => i.id === pick) ?? items[0];
   const photos = item.references.filter((r) => r !== previsBlockoutUrl(item));
+  const blockoutSrc = useLabWholeVideo(previsBlockoutUrl(item));
+  const renderSrc = useLabWholeVideo(item.files[0]);
 
   // The render is the clock; the blockout is nudged back onto it only when it drifts, since seeking every frame stutters.
   useEffect(() => {
@@ -90,9 +93,9 @@ export function PrevisComparison({ items, onDetail }: { items: LabGalleryItem[];
           </>}
         </div>
         <div className="previs-panes" onPointerDown={wiping ? dragWipe : undefined} onPointerMove={wiping ? dragWipe : undefined}>
-          <video ref={blockout} key={`b-${item.id}`} src={previsBlockoutUrl(item)} muted loop playsInline preload="auto" />
+          <video ref={blockout} key={`b-${item.id}`} src={blockoutSrc} muted loop playsInline preload="auto" />
           <div className="previs-render" style={wiping ? { clipPath: `inset(0 0 0 ${wipe}%)` } : undefined}>
-            <video ref={render} key={`r-${item.id}`} src={item.files[0]} muted loop playsInline preload="auto"
+            <video ref={render} key={`r-${item.id}`} src={renderSrc} muted loop playsInline preload="auto"
               onLoadedMetadata={(e) => { setDuration(e.currentTarget.duration); e.currentTarget.playbackRate = speed; }} />
           </div>
           {wiping && <>
