@@ -10,8 +10,8 @@
 import type { P5, P5Graphics, Pts } from 'p5';
 import * as brush from 'p5.brush';
 import { P5Canvas, type P5Style } from './P5Canvas.tsx';
-import { H, W } from '../studio/frame.ts';
-import { clamp, motionCurves, lerp } from '../studio/motion.ts';
+import { H, W } from '#models/frame/frame.ts';
+import { clamp, motionCurves, lerp } from '#models/motion/motion.ts';
 
 /** Drawings per second. At 30 fps each holds for two frames: animation "on twos". */
 export const BOIL = 15;

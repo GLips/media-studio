@@ -1,9 +1,9 @@
 // ink-row.tsx: the stagger tab's main stage: a row of ink swatch cards entering one after another, timed by the
 // studio's own `stagger`, with a timing chart under it (a bar per card, a playhead) so the spread and its cap show.
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
-import { DISPLAY_FONT, MONO_FONT } from '../../../../lib/studio/fonts.ts';
-import { W } from '../../../../lib/studio/frame.ts';
-import { motionCurves, motionDurations, seg, stagger, staggerFinish, type StaggerFrom } from '../../../../lib/studio/motion.ts';
+import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
+import { W } from '#models/frame/frame.ts';
+import { motionCurves, motionDurations, seg, stagger, staggerFinish, type StaggerFrom } from '#models/motion/motion.ts';
 import { LAB_COLORS } from '../../ui.tsx';
 
 /** A fan deck of inks, the showcase's red-orange and cobalt among them. The row takes the first `count`. */

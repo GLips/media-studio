@@ -4,9 +4,9 @@
 // - Clicks, keys and hand-placed sounds: every `<Sfx>` leaves a mark (lib/studio/sfx.tsx) that the probe reads on each
 //   frame, so their times are exact, not rounded to a frame.
 // - Scene changes and spoken words: timeline.json.
-// - Camera moves and reveals: the motion tracks (lib/motion-tracks.ts), to the frame.
+// - Camera moves and reveals: the motion tracks (lib/models/motion/motion-tracks.ts), to the frame.
 
-import type { MotionSegment, MotionTracks } from '../motion-tracks.ts';
+import type { MotionSegment, MotionTracks } from '#models/motion/motion-tracks.ts';
 import type { TimelineReport } from '../studio/Video.tsx';
 import type { SfxRequest } from './library.ts';
 

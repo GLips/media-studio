@@ -10,7 +10,7 @@
 import p5, { type P5 } from 'p5';
 import { useLayoutEffect, useRef } from 'react';
 import { useDelayRender } from 'remotion';
-import { H, W } from '../studio/frame.ts';
+import { H, W } from '#models/frame/frame.ts';
 import { unmeasuredAttrs } from '../studio/motion-tag.ts';
 
 export type P5Style = {

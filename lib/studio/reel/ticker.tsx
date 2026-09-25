@@ -5,19 +5,19 @@
 // the bands whip in from the right, then fly off along their drift while the hero band closes onto its word.
 
 import { useId, type ReactNode } from 'react';
-import { DISPLAY_FONT } from '../fonts.ts';
-import { FPS, H, W } from '../frame.ts';
-import { motionCurves } from '../motion.ts';
-import { smearSigma } from '../motion-blur.tsx';
+import { DISPLAY_FONT } from '#models/type/faces.ts';
+import { FPS, H, W } from '#models/frame/frame.ts';
+import { motionCurves } from '#models/motion/motion.ts';
+import { smearSigma } from '#models/motion/shutter.ts';
 import { pieceMotionAttrs } from '../motion-tag.ts';
-import { hashRandom } from '../random.ts';
+import { hashRandom } from '#models/motion/random.ts';
 import { Odometer } from '../kit.tsx';
 import {
   ARCHIVO_BASELINE_EM, ARCHIVO_CAP_EM, archivoAdvance, layoutGlyphLine, layoutTickerRow, mixGlyphPose, tickerBreathAt,
   type GlyphAxes, type GlyphPose, type GlyphLineSlot, type TickerBreath, type TickerPose, type TickerSlot,
-} from './ticker-layout.ts';
+} from '#models/reel/ticker-layout.ts';
 
-export type { GlyphPose, TickerBreath, TickerPose } from './ticker-layout.ts';
+export type { GlyphPose, TickerBreath, TickerPose } from '#models/reel/ticker-layout.ts';
 
 // ---------- the reference's values ----------
 

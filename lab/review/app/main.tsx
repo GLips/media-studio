@@ -6,7 +6,7 @@ import '../../app/lab.css';
 import './review.css';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createRoot } from 'react-dom/client';
-import { formatReviewMoment, formatReviewNotesMarkdown, formatStillAxes, reviewFrameAt, reviewNoteContext, reviewNoteRenderOf, type ReviewContextSources, type ReviewNote } from '../../../lib/review-notes.ts';
+import { formatReviewMoment, formatReviewNotesMarkdown, formatStillAxes, reviewFrameAt, reviewNoteContext, reviewNoteRenderOf, type ReviewContextSources, type ReviewNote } from '#models/review/review-notes.ts';
 import type { ReviewManifest, ReviewRenderStatus } from '../server.ts';
 
 /** How often the page asks whether its render is still the one on disk. */

@@ -1,4 +1,4 @@
-// hold-check.ts: a scene's `expect: [{ hold }]` against its motion tracks (lib/motion-tracks.ts). Pure;
+// hold-check.ts: a scene's `expect: [{ hold }]` against its motion tracks (lib/models/motion/motion-tracks.ts). Pure;
 // lib/engine/render/render-pipeline.ts measures the frames and prints what comes back.
 //
 // A contract check, not a style rule: it tests only what a scene declares. It passes when the subject stays steady
@@ -7,8 +7,8 @@
 //
 // It says "steady and visible", never "readable": a still, opaque element can still be too small or too faint, and
 // only a person looking can tell.
-import { motionCurves } from './studio/motion.ts';
-import type { TimelineReport } from './studio/Video.tsx';
+import { motionCurves } from './motion.ts';
+import type { TimelineReport } from '../../studio/Video.tsx';
 import type { MotionTracks } from './motion-tracks.ts';
 
 export type HoldExpectation = { scene: string; hold: string; for: number; within?: number; start: number; end: number };

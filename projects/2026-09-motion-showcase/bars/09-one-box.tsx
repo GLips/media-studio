@@ -14,7 +14,7 @@ import { GlyphField, ShockRing } from '../../../lib/studio/reel/glyph-field.tsx'
 import { reelHudBoxPoints, reelHudToneOver, type ReelHudRead, type ReelHudSlot, type ReelHudTone } from '../../../lib/studio/reel/hud.tsx';
 import { Needle, type NeedleStrike } from '../../../lib/studio/reel/needle.tsx';
 import { GlitchFlash, RecapGrid, Shake, recapTileUnder, type GlitchHit, type RecapLayout, type RecapTile } from '../../../lib/studio/reel/recap.tsx';
-import { archivoAdvance, archivoKern } from '../../../lib/studio/reel/ticker-layout.ts';
+import { archivoAdvance, archivoKern } from '#models/reel/ticker-layout.ts';
 import { RiseWord, ScrambleText } from '../../../lib/studio/reel/type.tsx';
 import type { BoundReplay } from '../../../lib/models/timeline/bind-timeline.ts';
 import type { Bar, BarSound, ShowcaseClock, ShowcaseReplays } from '../bar.ts';

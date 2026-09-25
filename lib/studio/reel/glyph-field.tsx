@@ -6,10 +6,10 @@
 // punches on beats and can implode into a point. One canvas draws it, so hundreds of cells cost one DOM node.
 
 import { useId, useLayoutEffect, useRef } from 'react';
-import { FPS, H, W } from '../frame.ts';
-import { backOutEase, clamp, lerp, motionCurves, type EaseFn } from '../motion.ts';
+import { FPS, H, W } from '#models/frame/frame.ts';
+import { backOutEase, clamp, lerp, motionCurves, type EaseFn } from '#models/motion/motion.ts';
 import { pieceMotionAttrs, unmeasuredAttrs } from '../motion-tag.ts';
-import { hashRandom } from '../random.ts';
+import { hashRandom } from '#models/motion/random.ts';
 
 /** One frame of the reference reel (60 fps): the unit its timings were measured in. */
 const REF_F = 1 / 60;

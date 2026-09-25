@@ -229,13 +229,13 @@ const FFT_SIZE = 2048;
 /** Each beat's average spectrum, in dB per band, from its beat to the next. */
 function beatSpectra(samples: Float32Array, rate: number, beats: readonly number[]): Float64Array[] {
   const edges = Array.from({ length: BANDS + 1 }, (_, i) => Math.round((50 * (10000 / 50) ** (i / BANDS) * FFT_SIZE) / rate));
-  const window = Float64Array.from({ length: FFT_SIZE }, (_, i) => 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / FFT_SIZE));
+  const hann = Float64Array.from({ length: FFT_SIZE }, (_, i) => 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / FFT_SIZE));
   return beats.slice(0, -1).map((b, k) => {
     const from = Math.round(b * rate), to = Math.round(beats[k + 1] * rate);
     const bands = new Float64Array(BANDS);
     let frames = 0;
     for (let at = from; at + FFT_SIZE <= Math.max(to, from + FFT_SIZE) && at + FFT_SIZE <= samples.length; at += FFT_SIZE / 2) {
-      const power = powerSpectrum(samples, at, window);
+      const power = powerSpectrum(samples, at, hann);
       for (let band = 0; band < BANDS; band++) for (let bin = edges[band]; bin < Math.max(edges[band + 1], edges[band] + 1); bin++) bands[band] += power[bin];
       frames++;
     }
@@ -257,11 +257,11 @@ function barDistance(features: readonly Float64Array[], a: number, b: number): n
  * tracker doesn't know which beat is the one; this guesses, and a steady four-on-the-floor can fool it.
  */
 function downbeatPhase(samples: Float32Array, rate: number, beats: readonly number[], features: readonly Float64Array[]): number {
-  const window = Float64Array.from({ length: FFT_SIZE }, (_, i) => 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / FFT_SIZE));
+  const hann = Float64Array.from({ length: FFT_SIZE }, (_, i) => 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / FFT_SIZE));
   const bassBins = [Math.round((40 * FFT_SIZE) / rate), Math.round((200 * FFT_SIZE) / rate)];
   const bass = beats.slice(0, features.length).map((b) => {
     const at = Math.min(Math.round(b * rate), samples.length - FFT_SIZE);
-    const power = powerSpectrum(samples, Math.max(0, at), window);
+    const power = powerSpectrum(samples, Math.max(0, at), hann);
     let sum = 0;
     for (let bin = bassBins[0]; bin <= bassBins[1]; bin++) sum += power[bin];
     return 10 * Math.log10(1e-12 + sum);
@@ -280,9 +280,9 @@ function downbeatPhase(samples: Float32Array, rate: number, beats: readonly numb
   return best;
 }
 
-function powerSpectrum(samples: Float32Array, at: number, window: Float64Array): Float64Array {
+function powerSpectrum(samples: Float32Array, at: number, hann: Float64Array): Float64Array {
   const re = new Float64Array(FFT_SIZE), im = new Float64Array(FFT_SIZE);
-  for (let i = 0; i < FFT_SIZE; i++) re[i] = (samples[at + i] ?? 0) * window[i];
+  for (let i = 0; i < FFT_SIZE; i++) re[i] = (samples[at + i] ?? 0) * hann[i];
   fft(re, im);
   return Float64Array.from({ length: FFT_SIZE / 2 }, (_, i) => re[i] * re[i] + im[i] * im[i]);
 }

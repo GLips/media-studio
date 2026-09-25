@@ -13,7 +13,7 @@ A scene may render any React whose output depends only on its time, fixed inputs
 p5, video, your own components. Remotion renders frames independently, out of order and several tabs at once, so
 nothing may carry over from the frame before (no counters, no `Math.random()`, no stepped physics), and anything that
 loads (an image, a font, a model, a texture) must finish before the frame is captured (`<Img>`, `delayRender`).
-Randomness comes from `seededRandom` / `hashRandom` (`lib/studio/random.ts`).
+Randomness comes from `seededRandom` / `hashRandom` (`lib/models/motion/random.ts`).
 
 `lib/studio/api.ts` exports the studio's conveniences: the timeline, curves and springs, cameras over captures, the
 kit and reel pieces, the checks' tags. Use them where they fit, and import anything else a scene needs. `studio api

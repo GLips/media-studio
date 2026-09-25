@@ -16,7 +16,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { renderMasteredMix } from '#engine/render/render-pipeline.ts';
 import { openRenderSession } from '#engine/render/render-session.ts';
 import { sfxSeedFromId } from '../../../lib/sfx/dsp.ts';
-import { FPS } from '../../../lib/studio/frame.ts';
+import { FPS } from '#models/frame/frame.ts';
 import type { SfxSound } from '../../../lib/studio/sfx.tsx';
 import { layoutVideo, totalFrames, type VideoDef } from '../../../lib/studio/timeline.ts';
 import { timeline } from '../timeline.ts';

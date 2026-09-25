@@ -5,11 +5,11 @@
 // things happen given on that same clock.
 
 import { useId, type CSSProperties, type ReactNode } from 'react';
-import type { Point, Rect } from '../camera.ts';
-import { FPS, H, W } from '../frame.ts';
-import { backOutEase, clamp, lerp } from '../motion.ts';
+import type { Point, Rect } from '#models/camera/camera.ts';
+import { FPS, H, W } from '#models/frame/frame.ts';
+import { backOutEase, clamp, lerp } from '#models/motion/motion.ts';
 import { motionEchoAttrs, pieceMotionAttrs } from '../motion-tag.ts';
-import { hashRandom, seededRandom } from '../random.ts';
+import { hashRandom, seededRandom } from '#models/motion/random.ts';
 import { channelSplitPrimitives } from './lens.tsx';
 
 const fill: CSSProperties = { position: 'absolute', left: 0, top: 0, width: W, height: H };

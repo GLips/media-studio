@@ -5,9 +5,10 @@
 // either tier, so the structural checks and a later oxlint tier hand it the same
 // repo-relative string and reach one verdict.
 //
-// `lib-unsplit` holds today's `lib/*.ts`, `lib/sfx` and `lib/paint` until the lib
-// split slices move them into models/studio/engine. It is declared, so its files
-// are checked, not reported as unknown.
+// `lib-unsplit` holds `lib/sfx` and `lib/paint` until the lib split slices move
+// them into models/studio/engine. It is declared, so its files are checked, not
+// reported as unknown. A file directly in `lib/` or `lib/models/` is undeclared:
+// their top levels hold subfolders only.
 
 import { DECLARED_SHARED_MODULES } from './declared-shared.ts';
 
@@ -70,7 +71,8 @@ export function classifyStudioPath(path: string, shared: DeclaredShared = DECLAR
   if (top === 'lint') return { kind: 'lint' };
   if (parts.length === 1) return /\.config\.[cm]?[jt]s$/.test(top) ? { kind: 'root-config' } : { kind: 'undeclared' };
   if (top === 'lib') {
-    if (second === 'models') return { kind: 'models' };
+    if (parts.length === 2) return { kind: 'undeclared' };
+    if (second === 'models') return parts.length > 3 ? { kind: 'models' } : { kind: 'undeclared' };
     if (second === 'studio') return { kind: 'studio', barrel: path === 'lib/studio/api.ts' };
     if (second === 'engine') return { kind: 'engine' };
     return { kind: 'lib-unsplit' };

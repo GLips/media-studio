@@ -8,7 +8,7 @@
 // The take (audio/take.wav) is one read, so pace and pitch carry across lines. Any change to the script re-reads the
 // whole take, since a spliced-in line would stand out. A recording is never replaced: each run re-cuts it, and
 // deleting audio/take.wav hands the script back to TTS. whisper.cpp hears the take (free, local; the first run
-// installs it), lib/voice-take.ts cuts it, and whisper hears each clip again for word times, since over a whole take
+// installs it), lib/models/voice/voice-take.ts cuts it, and whisper hears each clip again for word times, since over a whole take
 // they drift. audio/manifest.ts is what the video imports.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -18,9 +18,9 @@ import { basename, join } from 'node:path';
 import { measureLoudness } from '../ffmpeg/loudness.ts';
 import { runFfmpeg } from '../ffmpeg/ffmpeg.ts';
 import { postOpenRouter } from '../generation/openrouter.ts';
-import { cutTakeIntoLines, type TakeClip } from '../../voice-take.ts';
-import { alignSpokenWords, estimateSpokenWords, spokenText, type SpokenWord } from '../../voice-words.ts';
-import { samplesFromWav, wavFromPcm, wavFromSamples } from '../../wav.ts';
+import { cutTakeIntoLines, type TakeClip } from '#models/voice/voice-take.ts';
+import { alignSpokenWords, estimateSpokenWords, spokenText, type SpokenWord } from '#models/voice/voice-words.ts';
+import { samplesFromWav, wavFromPcm, wavFromSamples } from '#models/audio/wav.ts';
 import { heardWords } from './whisper-words.ts';
 
 const MODEL = 'google/gemini-3.8-flash-tts';

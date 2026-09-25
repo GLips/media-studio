@@ -11,7 +11,7 @@ import {
 } from '../../../lib/studio/api.ts';
 import { ShockRing } from '../../../lib/studio/reel/glyph-field.tsx';
 import { reelHudGrounds, reelHudReadGrounds, type ReelHudGround, type ReelHudRead, type ReelHudSlot } from '../../../lib/studio/reel/hud.tsx';
-import { layoutGlyphLine } from '../../../lib/studio/reel/ticker-layout.ts';
+import { layoutGlyphLine } from '#models/reel/ticker-layout.ts';
 import { IndexLabel, RiseWord, ScrambleText, SelectionBox, SlantWord, slantMatrix, slantWordPose, type SlantEntrance } from '../../../lib/studio/reel/type.tsx';
 import type { Bar, ShowcaseClock } from '../bar.ts';
 import { Field } from '../parts.tsx';

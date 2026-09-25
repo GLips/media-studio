@@ -5,8 +5,8 @@
 // Five kinds: text cut off or overflowing its box (and a fitted headline at its floor), text or a logo under a
 // platform's UI, text that doesn't stand off the ground drawn under it, an image drawn soft from too few pixels, and a
 // crop showing an empty band of its image at an edge.
-import type { Rect } from './studio/camera.ts';
-import type { StillFitReport, StillUiZone } from './studio/still-presets.ts';
+import type { Rect } from '#models/camera/camera.ts';
+import type { StillFitReport, StillUiZone } from './still-presets.ts';
 
 /** One element's own text, as drawn. `ink` is its text's line boxes; `shown`, the part its clipping ancestors and the frame leave. */
 export type StillTextMark = {

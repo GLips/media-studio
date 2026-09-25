@@ -8,12 +8,12 @@
 // under it. The motion is a pure function of time (`needlePoseAt`), and `needleContactAt` says when each strike lands.
 
 import * as THREE from 'three';
-import { FPS, H, W } from '../frame.ts';
-import { motionCurves } from '../motion.ts';
+import { FPS, H, W } from '#models/frame/frame.ts';
+import { motionCurves } from '#models/motion/motion.ts';
 import { pieceMotionAttrs } from '../motion-tag.ts';
-import { hashRandom } from '../random.ts';
+import { hashRandom } from '#models/motion/random.ts';
 import { ThreeStage, type ThreeEnvironment, type ThreeFrame, type ThreeSample } from '../three-stage.tsx';
-import { addVec3, crossVec3, dotVec3, lengthVec3, lerpVec3, scaleVec3, subVec3, unitVec3, type Vec3 } from '../vec3.ts';
+import { addVec3, crossVec3, dotVec3, lengthVec3, lerpVec3, scaleVec3, subVec3, unitVec3, type Vec3 } from '#models/camera/vec3.ts';
 
 export type NeedleStrike = {
   /** Seconds on the piece's clock when the tip meets the surface: put it on a beat. */

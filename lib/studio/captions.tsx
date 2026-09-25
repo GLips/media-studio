@@ -1,8 +1,8 @@
 // captions.tsx: burned-in captions. Each voiced line is its own audio file, so its start and end are known exactly
 // and a caption is simply its line's text for as long as it's spoken.
 
-import { FONT } from './frame.ts';
-import { motionCurves, seg } from './motion.ts';
+import { FONT } from '#models/frame/frame.ts';
+import { motionCurves, seg } from '#models/motion/motion.ts';
 import type { VoiceCue } from './timeline.ts';
 
 const LEAD_IN = 0.05, HANG = 0.15;

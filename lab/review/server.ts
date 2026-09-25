@@ -1,6 +1,6 @@
 // review/server.ts: `studio review`, a page for pinning notes on a render or still, on the Studio Lab's stack. esbuild
 // bundles lab/review/app (rebuilding on save); this server hands out that bundle, the reviewed file and review.json,
-// the file's context read fresh from its own snapshot and the project's cue list (lib/review-notes.ts says which), and
+// the file's context read fresh from its own snapshot and the project's cue list (lib/models/review/review-notes.ts says which), and
 // takes the page's one write: its notes, to review/notes-<render>.json, which an agent reads without the paste.
 //
 // A render is re-rendered over its own path, so the path alone doesn't say what was reviewed. Each file is stamped
@@ -15,9 +15,9 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { readSfxCueList } from '../../lib/sfx/cue-module.ts';
 import { sfxCuePlays } from '../../lib/sfx/cues.ts';
-import { H, W } from '../../lib/studio/frame.ts';
-import type { MotionTracks } from '../../lib/motion-tracks.ts';
-import { REVIEW_NOTES_VERSION, reviewFrameAt, type ReviewMediaKind, type ReviewNote, type ReviewNotesFile, type ReviewRenderStamp, type ReviewScene, type ReviewSoundMarker, type ReviewStillCell, type ReviewStillCellsFile } from '../../lib/review-notes.ts';
+import { H, W } from '#models/frame/frame.ts';
+import type { MotionTracks } from '#models/motion/motion-tracks.ts';
+import { REVIEW_NOTES_VERSION, reviewFrameAt, type ReviewMediaKind, type ReviewNote, type ReviewNotesFile, type ReviewRenderStamp, type ReviewScene, type ReviewSoundMarker, type ReviewStillCell, type ReviewStillCellsFile } from '#models/review/review-notes.ts';
 import { resolveStudioProject, STUDIO_ROOT } from '../../lib/engine/project/studio-project.ts';
 import { loadRenderSnapshot, renderFileStamp } from '../../lib/engine/snapshot/render-snapshot.ts';
 import { watchLabPage } from '../../lib/engine/bundle/lab-bundle.ts';

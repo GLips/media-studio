@@ -16,8 +16,8 @@ import { projectSlug, replaySlug } from '../bundle/project-bundle.ts';
 import { bundleStudioProject } from '../bundle/studio-bundle.ts';
 import { runFfmpeg } from '../ffmpeg/ffmpeg.ts';
 import { writeRenderSnapshot, type RenderSnapshot } from '../snapshot/render-snapshot.ts';
-import type { MotionTracks } from '../../motion-tracks.ts';
-import { W } from '../../studio/frame.ts';
+import type { MotionTracks } from '#models/motion/motion-tracks.ts';
+import { W } from '#models/frame/frame.ts';
 import type { ReplayProps } from '../../studio/Root.tsx';
 import type { TimelineReport, VideoProps } from '../../studio/Video.tsx';
 

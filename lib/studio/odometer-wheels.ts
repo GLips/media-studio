@@ -3,8 +3,8 @@
 // next, and a whole turn adds 10. Places count up from the lowest one shown, so place 0 is the cents of a price with 2
 // decimals.
 
-import { FPS } from './frame.ts';
-import { clamp, lerp, motionCurves } from './motion.ts';
+import { FPS } from '#models/frame/frame.ts';
+import { clamp, lerp, motionCurves } from '#models/motion/motion.ts';
 
 const FRAME = 1 / FPS;
 // A place that comes or goes changes width over this many frames, so a fast carry never jumps the layout.

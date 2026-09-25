@@ -12,7 +12,7 @@ import { readSfxCueList } from '../lib/sfx/cue-module.ts';
 import type { SfxCueList } from '../lib/sfx/cues.ts';
 import { STUDIO_PROJECTS_DIR, STUDIO_ROOT } from '../lib/engine/project/studio-project.ts';
 import { loadRenderSnapshot } from '../lib/engine/snapshot/render-snapshot.ts';
-import type { SpokenWord } from '../lib/voice-words.ts';
+import type { SpokenWord } from '#models/voice/voice-words.ts';
 
 const SCRATCH_DIR = join(STUDIO_ROOT, 'scratch');
 const IMAGE_BAKEOFF_DIR = join(SCRATCH_DIR, 'image-bakeoff');

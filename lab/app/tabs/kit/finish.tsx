@@ -2,10 +2,10 @@
 // grain and a vignette (lib/studio/grade.tsx), and the shutter blur that smooths fast moves at 30 fps
 // (lib/studio/motion-blur.tsx).
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
-import { DISPLAY_FONT, MONO_FONT } from '../../../../lib/studio/fonts.ts';
-import { FPS, W } from '../../../../lib/studio/frame.ts';
+import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
+import { FPS, W } from '#models/frame/frame.ts';
 import { FilmGrain, Vignette } from '../../../../lib/studio/grade.tsx';
-import { motionCurves, seg } from '../../../../lib/studio/motion.ts';
+import { motionCurves, seg } from '#models/motion/motion.ts';
 import { ShutterBlur } from '../../../../lib/studio/motion-blur.tsx';
 import { LAB_COLORS, LabChoice, LabSlider } from '../../ui.tsx';
 import { defineKitPiece } from './piece.tsx';

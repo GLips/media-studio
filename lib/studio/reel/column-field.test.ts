@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { H, W } from '../frame.ts';
+import { H, W } from '#models/frame/frame.ts';
 import '../tsx-test-hooks.ts';
 import type { ColumnFieldSpec } from './column-field.tsx';
 

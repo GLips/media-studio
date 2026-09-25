@@ -1,7 +1,7 @@
 // Painful Pleasures (painfulpleasures.com): tattoo, piercing and body-jewellery supplies, since 1999. Colours and
 // faces are a snapshot of the painful-pleasures-theme repo; the logo is its icon-logo snippet, recoloured for a dark
 // ground. The voice is read off the site's copy, not a brand book.
-import type { Brand } from '../../lib/brand.ts';
+import type { Brand } from '#models/brand/brand.ts';
 
 const proximaNova = {
   family: 'Proxima Nova',

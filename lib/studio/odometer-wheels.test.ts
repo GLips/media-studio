@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { FPS } from './frame.ts';
-import { lerp, motionCurves, seg } from './motion.ts';
+import { FPS } from '#models/frame/frame.ts';
+import { lerp, motionCurves, seg } from '#models/motion/motion.ts';
 import { mechanicalWheels, odometerWheels, type OdometerMode, type OdometerWheel } from './odometer-wheels.ts';
 
 /** What the wheels read, highest place first, asserting it's a clean rest: whole rows, no smear, cells whole or gone. */

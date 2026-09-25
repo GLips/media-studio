@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { stillProblems, type StillImageMark, type StillMeasure, type StillPixels, type StillTextMark } from './still-check.ts';
-import { STILL_UI_ZONES } from './studio/still-presets.ts';
+import { STILL_UI_ZONES } from './still-presets.ts';
 
 const box = (x: number, y: number, w: number, h: number) => ({ x, y, w, h });
 const text = (t: Partial<StillTextMark> & Pick<StillTextMark, 'text' | 'ink'>): StillTextMark =>

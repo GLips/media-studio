@@ -6,10 +6,10 @@
 import { Composition, Folder, Freeze, useCurrentFrame } from 'remotion';
 import stills from '@stills';
 import video from '@video';
-import { FPS, H, W } from './frame.ts';
+import { FPS, H, W } from '#models/frame/frame.ts';
 import { assertPrevisSpanFits, previsSpan } from './previs.ts';
 import { StillProbe } from './still-probe.tsx';
-import { STILL_PRESETS, stillName, type StillProps, type StillRenderProps } from './still-presets.ts';
+import { STILL_PRESETS, stillName, type StillProps, type StillRenderProps } from '#models/still/still-presets.ts';
 import { StillPresetContext, type StillsDef } from './stills.tsx';
 import { layoutVideo, totalFrames, type VideoDef } from './timeline.ts';
 import { BlockoutSolo, Video, type BlockoutSoloProps, type VideoProps } from './Video.tsx';

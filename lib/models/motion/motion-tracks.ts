@@ -8,7 +8,7 @@
 //
 // Tags and what they register are lib/studio/motion-tag.ts.
 
-import type { Rect } from './studio/camera.ts';
+import type { Rect } from '#models/camera/camera.ts';
 
 export const MOTION_TRACKS_VERSION = 2;
 

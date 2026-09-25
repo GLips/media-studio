@@ -24,7 +24,7 @@ export default defineCommand({
     const { join } = await import('node:path');
     const { resolveStudioProjectWith } = await import('../../lib/engine/project/studio-project.ts');
     const { describeStillFits, renderProjectStills } = await import('../../lib/engine/render/render-stills.ts');
-    const { stillName } = await import('../../lib/studio/still-presets.ts');
+    const { stillName } = await import('#models/still/still-presets.ts');
     const project = resolveStudioProjectWith(args.project, 'stills.tsx');
     // A sheet shows refused stills too, so every still is kept as drawn until the sheets are laid out.
     const drawnDir = args.sheet ? mkdtempSync(join(tmpdir(), 'still-sheet-')) : undefined;

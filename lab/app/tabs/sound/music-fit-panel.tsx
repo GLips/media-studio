@@ -1,8 +1,8 @@
 // music-fit-panel.tsx: the music half of the Sound tab. It decodes a project's track in the browser and runs
-// lib/music-fit.ts on it, as `studio music fit` does (mono at 22.05 kHz to plan, the source's own channels to splice),
+// lib/models/music/music-fit.ts on it, as `studio music fit` does (mono at 22.05 kHz to plan, the source's own channels to splice),
 // then plays the fit and draws where each stretch of it came from.
 import { useEffect, useRef, useState } from 'react';
-import { planMusicFit, spliceMusicSpans, type MusicFitPlan } from '../../../../lib/music-fit.ts';
+import { planMusicFit, spliceMusicSpans, type MusicFitPlan } from '#models/music/music-fit.ts';
 import type { LabMusicTrack } from '../../../manifest.ts';
 import { loadLabManifest } from '../../lab-manifest.ts';
 import { LabBench, LabChoice, LabNote, LabSlider } from '../../ui.tsx';
@@ -196,7 +196,7 @@ export function MusicFitPanel() {
         {fit && (
           <SoundForAgents>
             <p>
-              <code>studio music fit</code> runs this same plan (lib/music-fit.ts) and writes the fitted track into the project.
+              <code>studio music fit</code> runs this same plan (lib/models/music/music-fit.ts) and writes the fitted track into the project.
               Roughest seam: <code>worstSeamDb</code> {fit.plan.worstSeamDb.toFixed(2)}, the average difference per frequency band
               between the bars either side of it. Beat 1 of the bar was guessed as source beat {fit.plan.downbeatPhase}.
             </p>

@@ -4,11 +4,11 @@
 
 import { evolvePath } from '@remotion/paths';
 import { Fragment, useId, type ReactNode } from 'react';
-import { camFit, camTop, camWhole, centerOf, lerpCam, view, type Rect, type Shot, type View } from './camera.ts';
+import { camFit, camTop, camWhole, centerOf, lerpCam, view, type Rect, type Shot, type View } from '#models/camera/camera.ts';
 import { Capture, CaptureMotion } from './capture.tsx';
-import { DISPLAY_FONT } from './fonts.ts';
-import { CAPTION_FREE, CAPTION_SAFE_TOP, FONT, FPS, FULL_FRAME, H, W } from './frame.ts';
-import { clamp, lerp, motionCurves, motionDurations, seg, stagger, staggerFinish } from './motion.ts';
+import { DISPLAY_FONT } from '#models/type/faces.ts';
+import { CAPTION_FREE, CAPTION_SAFE_TOP, FONT, FPS, FULL_FRAME, H, W } from '#models/frame/frame.ts';
+import { clamp, lerp, motionCurves, motionDurations, seg, stagger, staggerFinish } from '#models/motion/motion.ts';
 import { motionAttrs, pieceMotionAttrs } from './motion-tag.ts';
 import { odometerSinceLanding, odometerWheels, type OdometerMode, type OdometerWheel } from './odometer-wheels.ts';
 import { ClipToBox, CursorPath, Glass, Tag, Text, Wash } from './overlays.tsx';

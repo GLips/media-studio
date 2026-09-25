@@ -7,9 +7,10 @@
 
 import { createContext, useContext, useLayoutEffect, useRef, useState, type ComponentType, type CSSProperties } from 'react';
 import { Artifact, Img, useDelayRender, useVideoConfig } from 'remotion';
-import type { Rect } from './camera.ts';
-import { ARCHIVO_FACE, MONO_FONT, useStudioFontsReady, type StudioFace } from './fonts.ts';
-import { STILL_UI_ZONES, stillFitArtifactName, type StillFitReport, type StillPreset } from './still-presets.ts';
+import type { Rect } from '#models/camera/camera.ts';
+import { useStudioFontsReady } from './fonts.ts';
+import { ARCHIVO_FACE, MONO_FONT, type StudioFace } from '#models/type/faces.ts';
+import { STILL_UI_ZONES, stillFitArtifactName, type StillFitReport, type StillPreset } from '#models/still/still-presets.ts';
 
 /** What a design's variants vary: each axis (headline, image) and its values, in the order a sheet lays them out. */
 export type StillAxes = Readonly<Record<string, readonly string[]>>;
@@ -227,7 +228,7 @@ const FIT_NARROWING_GAIN = 1.15;
  * Sets `text` as large as fits `box`, up to `max` px and down to `min`, measured in the browser once the fonts are in,
  * in `face` (Archivo, or a brand's `brand.fonts.display`). On a face with a width axis it narrows first (width 100% →
  * 66%, within the axis), keeping a narrower width only when that buys about 15% more size; on one without, it shrinks.
- * Lines are balanced. A text that fits only at `min`, or not even there, fails the still check (lib/still-check.ts), so
+ * Lines are balanced. A text that fits only at `min`, or not even there, fails the still check (lib/models/still/still-check.ts), so
  * `studio still` won't write it. `name` names it there, unique within the still.
  */
 export function FitText({ name, text, box, max, min, face = ARCHIVO_FACE, align = 'end', style }: {

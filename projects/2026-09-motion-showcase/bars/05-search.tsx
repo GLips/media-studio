@@ -16,7 +16,7 @@ import { odometerWheels } from '../../../lib/studio/odometer-wheels.ts';
 import { CapturePlane, capturePlaneProjection, capturePlaneView, lerpPlanePose, type PlanePose } from '../../../lib/studio/reel/capture-plane.tsx';
 import { GlyphField, type GlyphClip, type GlyphFilterStep, type GlyphRegroup, type GlyphWave } from '../../../lib/studio/reel/glyph-field.tsx';
 import { reelHudGrounds, reelHudReadGrounds, type ReelHudGround, type ReelHudRead, type ReelHudSlot } from '../../../lib/studio/reel/hud.tsx';
-import { ARCHIVO_BASELINE_EM, ARCHIVO_CAP_EM, layoutGlyphLine } from '../../../lib/studio/reel/ticker-layout.ts';
+import { ARCHIVO_BASELINE_EM, ARCHIVO_CAP_EM, layoutGlyphLine } from '#models/reel/ticker-layout.ts';
 import type { Bar, ShowcaseClock } from '../bar.ts';
 import { captures as C } from '../captures/index.ts';
 import { SHOWCASE_HUD } from '../reel.tsx';

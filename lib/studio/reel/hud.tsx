@@ -8,10 +8,10 @@
 // busy type, or grounds wanting different inks, which no tone reads across, the scene puts a plate of a ground's colour
 // behind the part. `reelHudGrounds` and `reelHudReadGrounds` do the reading for a scene that can name its grounds.
 
-import type { Point, Rect } from '../camera.ts';
-import { FPS, H, W } from '../frame.ts';
-import { MONO_ADVANCE_EM, MONO_CAP_EM, MONO_FONT } from '../fonts.ts';
-import { clamp, motionCurves, powerOutEase } from '../motion.ts';
+import type { Point, Rect } from '#models/camera/camera.ts';
+import { FPS, H, W } from '#models/frame/frame.ts';
+import { MONO_ADVANCE_EM, MONO_CAP_EM, MONO_FONT } from '#models/type/faces.ts';
+import { clamp, motionCurves, powerOutEase } from '#models/motion/motion.ts';
 import { pieceMotionAttrs } from '../motion-tag.ts';
 import { scrambleAt } from './type.tsx';
 

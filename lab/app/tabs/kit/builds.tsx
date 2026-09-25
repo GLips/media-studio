@@ -2,10 +2,10 @@
 // with a stage that plays it on the showcase ground and the controls for its props.
 import type { ReactNode } from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
-import { DISPLAY_FONT, MONO_FONT } from '../../../../lib/studio/fonts.ts';
-import { FULL_FRAME } from '../../../../lib/studio/frame.ts';
+import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
+import { FULL_FRAME } from '#models/frame/frame.ts';
 import { DrawPath, Odometer, WordReveal, wordRevealFinish, type OdometerMode } from '../../../../lib/studio/kit.tsx';
-import { lerp, motionCurves, seg } from '../../../../lib/studio/motion.ts';
+import { lerp, motionCurves, seg } from '#models/motion/motion.ts';
 import { LAB_COLORS, LabButtons, LabChoice, LabSlider } from '../../ui.tsx';
 import { defineKitPiece, KIT_COLOR_OPTIONS, KitTextField } from './piece.tsx';
 

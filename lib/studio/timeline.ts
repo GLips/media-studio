@@ -9,9 +9,9 @@
 // the next fades in over it. Sequences only decide what's mounted.
 
 import type { ReactNode } from 'react';
-import { findSpokenPhrase, type SpokenWord } from '../voice-words.ts';
+import { findSpokenPhrase, type SpokenWord } from '#models/voice/voice-words.ts';
 import type { MusicBed } from './mix.ts';
-import { motionCurves } from './motion.ts';
+import { motionCurves } from '#models/motion/motion.ts';
 import type { SfxSound } from './sfx.tsx';
 
 export type VoiceLine = {

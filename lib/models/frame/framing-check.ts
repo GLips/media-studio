@@ -8,8 +8,8 @@
 // Bounding boxes, not pixels: an overlap is a problem even if the pixels happen to miss.
 //
 // Take fits are warnings, not problems: a take played too fast or slow between its pins still shows what's said.
-import { H, W } from './studio/frame.ts';
-import type { TakeFitStrain } from './studio/take-fit-strain.ts';
+import { H, W } from './frame.ts';
+import type { TakeFitStrain } from '../../studio/take-fit-strain.ts';
 
 type Rect = { x: number; y: number; w: number; h: number };
 

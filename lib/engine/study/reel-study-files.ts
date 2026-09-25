@@ -1,4 +1,4 @@
-// reel-study-files.ts: `studio study`, the imperative shell around lib/reel-study.ts. Decodes a reference video and
+// reel-study-files.ts: `studio study`, the imperative shell around lib/models/music/reel-study.ts. Decodes a reference video and
 // its audio with ffmpeg, measures them, and writes the study: an overview plot, per section a dense strip, a sheet,
 // the encoder's motion vectors drawn on frames and a per-frame plot, and index.md tying them together.
 //
@@ -11,7 +11,7 @@ import { tileLabelledImages } from '../ffmpeg/contact-sheet.ts';
 import {
   beatLabel, buildStudyPlot, detectStudyCuts, formatStudyIndex, measureStudyFrames, parseStudySections, sectionsFromCuts,
   studyBeatGrid, studyPalette, type StudyFrame, type StudyReport, type StudySection,
-} from '../../reel-study.ts';
+} from '#models/music/reel-study.ts';
 import { rasterizeSvgs } from '../capture/html-raster.ts';
 import { runFfmpeg, runFfprobe } from '../ffmpeg/ffmpeg.ts';
 

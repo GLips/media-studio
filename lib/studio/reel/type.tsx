@@ -7,13 +7,14 @@
 // drawn a letter at a time there, so moving a letter never reflows the word. Fast moves smear under a 1/120 s shutter.
 
 import { Fragment, useId, type CSSProperties, type ReactNode } from 'react';
-import { applyAffine, inflate, multiplyAffine, type AffineMatrix, type Point, type Rect } from '../camera.ts';
-import { DISPLAY_FONT, MONO_ADVANCE_EM, MONO_CAP_EM, MONO_FONT, useStudioFontsReady } from '../fonts.ts';
-import { FULL_FRAME, H, W } from '../frame.ts';
-import { clamp, lerp, motionCurves, powerOutEase, sineInOutEase } from '../motion.ts';
-import { REEL_SHUTTER, shutterOpensAt, shutterTravel, smearSigma } from '../motion-blur.tsx';
+import { applyAffine, inflate, multiplyAffine, type AffineMatrix, type Point, type Rect } from '#models/camera/camera.ts';
+import { useStudioFontsReady } from '../fonts.ts';
+import { DISPLAY_FONT, MONO_ADVANCE_EM, MONO_CAP_EM, MONO_FONT } from '#models/type/faces.ts';
+import { FULL_FRAME, H, W } from '#models/frame/frame.ts';
+import { clamp, lerp, motionCurves, powerOutEase, sineInOutEase } from '#models/motion/motion.ts';
+import { REEL_SHUTTER, shutterOpensAt, shutterTravel, smearSigma } from '#models/motion/shutter.ts';
 import { motionEchoAttrs, pieceMotionAttrs } from '../motion-tag.ts';
-import { hashRandom, seededRandom } from '../random.ts';
+import { hashRandom, seededRandom } from '#models/motion/random.ts';
 
 const outExpo = motionCurves.expo.entrance;
 const outQuart = powerOutEase(4);

@@ -3,9 +3,9 @@
 // rest follow it in a quick, quiet stagger. `StaggerProductDropPair` shows both halves in one composition so they
 // loop on the same clock.
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
-import { DISPLAY_FONT, MONO_FONT } from '../../../../lib/studio/fonts.ts';
-import { H, W } from '../../../../lib/studio/frame.ts';
-import { lerp, motionCurves, motionDurations, seg, stagger } from '../../../../lib/studio/motion.ts';
+import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
+import { H, W } from '#models/frame/frame.ts';
+import { lerp, motionCurves, motionDurations, seg, stagger } from '#models/motion/motion.ts';
 import { LAB_COLORS } from '../../ui.tsx';
 
 export type StaggerProductDropProps = { mode: 'everything' | 'hero'; headStart: number; each: number };

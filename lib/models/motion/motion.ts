@@ -5,7 +5,7 @@
 // motion, and nothing here constrains that.
 
 import { Easing } from 'remotion';
-import { FPS } from './frame.ts';
+import { FPS } from '#models/frame/frame.ts';
 
 export const clamp = (v: number, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 export const lerp = (a: number, b: number, k: number) => a + (b - a) * k;

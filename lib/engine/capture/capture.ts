@@ -539,7 +539,7 @@ function indexModule(entries: readonly (readonly [string, Entry])[]) {
     }
   }
   return `// Written by \`studio capture\` (lib/engine/capture/capture.ts). Edits here are lost on the next capture.
-import type { Shot } from '../../../lib/studio/camera.ts';
+import type { Shot } from '#models/camera/camera.ts';
 import type { Take, TakeFrame, TakeMouse } from '../../../lib/studio/take.ts';
 ${imports.join('\n')}
 

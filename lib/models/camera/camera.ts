@@ -5,8 +5,8 @@
 // of the view, and a zoom where 1 fits the capture's viewport width to the frame. A panel is a screen box showing a
 // capture through its own camera (half of a before/after, a phone screen); the whole frame is the default panel.
 
-import { CAPTION_FREE, FULL_FRAME, W } from './frame.ts';
-import { clamp, lerp, seg } from './motion.ts';
+import { CAPTION_FREE, FULL_FRAME, W } from '#models/frame/frame.ts';
+import { clamp, lerp, seg } from '#models/motion/motion.ts';
 
 export type Point = { x: number; y: number };
 export type Rect = { x: number; y: number; w: number; h: number };

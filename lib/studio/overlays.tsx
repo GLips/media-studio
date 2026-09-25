@@ -9,10 +9,10 @@
 // also tags itself for the motion tracks (motion-tag.ts), with its progress and, where it knows it, its camera.
 
 import { useId, type CSSProperties, type ReactNode } from 'react';
-import type { StaggerMembership } from '../motion-tracks.ts';
-import { assertKeysInOrder, inflate, pagePoint, screenPoint, viewOfScreenRect, type Point, type Rect, type View } from './camera.ts';
-import { FONT, H, W } from './frame.ts';
-import { clamp, lerp, motionCurves, seg } from './motion.ts';
+import type { StaggerMembership } from '#models/motion/motion-tracks.ts';
+import { assertKeysInOrder, inflate, pagePoint, screenPoint, viewOfScreenRect, type Point, type Rect, type View } from '#models/camera/camera.ts';
+import { FONT, H, W } from '#models/frame/frame.ts';
+import { clamp, lerp, motionCurves, seg } from '#models/motion/motion.ts';
 import { pieceMotionAttrs } from './motion-tag.ts';
 import { SFX, Sfx } from './sfx.tsx';
 import { sceneTimeOf, takeMouseAt, type TakeFit } from './take.ts';

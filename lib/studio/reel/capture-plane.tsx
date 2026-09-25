@@ -8,12 +8,12 @@
 
 import type { CSSProperties, ReactNode } from 'react';
 import { Img } from 'remotion';
-import { inflate, rectToScreen, scaleFor, toScreen, view, type Point, type Rect, type Shot, type View } from '../camera.ts';
-import { FPS, H, W } from '../frame.ts';
-import { clamp, lerp, perceptualSpring, type PerceptualSpring } from '../motion.ts';
+import { inflate, rectToScreen, scaleFor, toScreen, view, type Point, type Rect, type Shot, type View } from '#models/camera/camera.ts';
+import { FPS, H, W } from '#models/frame/frame.ts';
+import { clamp, lerp, perceptualSpring, type PerceptualSpring } from '#models/motion/motion.ts';
 import { cameraMotionAttrs, motionEchoAttrs, pieceMotionAttrs } from '../motion-tag.ts';
-import { hashRandom } from '../random.ts';
-import { crossVec3, dotVec3, unitVec3, type Vec3 } from '../vec3.ts';
+import { hashRandom } from '#models/motion/random.ts';
+import { crossVec3, dotVec3, unitVec3, type Vec3 } from '#models/camera/vec3.ts';
 
 /**
  * Where a card is and how it's turned. `x`, `y` are px from its view's box, `z` px toward the viewer. `rx` tips the top

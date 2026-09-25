@@ -4,10 +4,10 @@
 // does the work, and nothing samples pixels in JS.
 
 import { useId, type ReactElement, type ReactNode } from 'react';
-import { FPS, H, W } from '../frame.ts';
-import { motionCurves } from '../motion.ts';
+import { FPS, H, W } from '#models/frame/frame.ts';
+import { motionCurves } from '#models/motion/motion.ts';
 import { pieceMotionAttrs } from '../motion-tag.ts';
-import { hashRandom } from '../random.ts';
+import { hashRandom } from '#models/motion/random.ts';
 
 export type LensFringeTiming = {
   /** Px each of red and blue sits off green at the frame's corners, at rest. Ref ≈0.6; 0.55 keeps it sub-pixel. */

@@ -3,7 +3,7 @@
 // lab looks like the reels it explains.
 import { Player } from '@remotion/player';
 import type { ComponentType, ReactNode } from 'react';
-import { FPS, H, W } from '../../lib/studio/frame.ts';
+import { FPS, H, W } from '#models/frame/frame.ts';
 
 /** The showcase palette: its ground, ink, cream, red-orange and cobalt. */
 export const LAB_COLORS = {

@@ -12,7 +12,7 @@ import {
 } from '../../../lib/studio/api.ts';
 import { Odometer } from '../../../lib/studio/kit.tsx';
 import { reelHudGrounds, reelHudReadGrounds, type ReelHudGround } from '../../../lib/studio/reel/hud.tsx';
-import { ARCHIVO_BASELINE_EM } from '../../../lib/studio/reel/ticker-layout.ts';
+import { ARCHIVO_BASELINE_EM } from '#models/reel/ticker-layout.ts';
 import { RiseWord } from '../../../lib/studio/reel/type.tsx';
 import type { Bar, ShowcaseClock } from '../bar.ts';
 import { SHOWCASE_HUD } from '../reel.tsx';

@@ -1,4 +1,4 @@
-// project-brand.ts: the kit a project's brand.ts names, read from brands/<name>/ (see lib/brand.ts), and
+// project-brand.ts: the kit a project's brand.ts names, read from brands/<name>/ (see lib/models/brand/brand.ts), and
 // generated/brand.ts, which the bundle aliases as `@brand`. That module is rewritten on every bundle. It imports the
 // kit's brand.ts and the project's and merges them in the bundle, so an open Studio picks up an edit to either. A kit
 // whose font or logo files are missing, or an override that doesn't fit, stops the bundle.
@@ -9,7 +9,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, dirname, join, relative, resolve } from 'node:path';
-import { brandFiles, mergeProjectBrand, type Brand, type ProjectBrand } from '../../brand.ts';
+import { brandFiles, mergeProjectBrand, type Brand, type ProjectBrand } from '#models/brand/brand.ts';
 
 const brandsDirFor = (projectDir: string) => join(resolve(projectDir), '..', '..', 'brands');
 const projectBrandFileFor = (projectDir: string) => join(resolve(projectDir), 'brand.ts');

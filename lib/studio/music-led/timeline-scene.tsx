@@ -4,7 +4,7 @@
 
 import type { ReactNode } from 'react';
 import type { ResolvedSceneClock } from '../../models/timeline/timeline.ts';
-import { FPS } from '../frame.ts';
+import { FPS } from '#models/frame/frame.ts';
 import type { SceneClock, SceneDef } from '../timeline.ts';
 
 /** The scene that plays one scene of the timeline, from its cut to the next one's, with the lines the timeline placed in it. */

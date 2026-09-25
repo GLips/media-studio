@@ -9,12 +9,12 @@
 
 import * as THREE from 'three';
 import { useStudioFontsReady } from '../fonts.ts';
-import { H, W } from '../frame.ts';
+import { H, W } from '#models/frame/frame.ts';
 import { pieceMotionAttrs } from '../motion-tag.ts';
-import { clamp, lerp, motionCurves, sineInOutEase, type EaseFn } from '../motion.ts';
-import { hashRandom } from '../random.ts';
+import { clamp, lerp, motionCurves, sineInOutEase, type EaseFn } from '#models/motion/motion.ts';
+import { hashRandom } from '#models/motion/random.ts';
 import { ThreeStage, softboxEnvironment, type ThreeBloom, type ThreeEnvironment, type ThreeFrame, type ThreeLens, type ThreeSample } from '../three-stage.tsx';
-import type { Vec3 } from '../vec3.ts';
+import type { Vec3 } from '#models/camera/vec3.ts';
 
 
 /** A column: its place on the grid (i across, j down the overhead frame, a pitch apart) and its colour. */

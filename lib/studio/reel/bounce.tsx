@@ -5,11 +5,11 @@
 // physics). Its last landing can crouch and launch into `FieldSwell`, growing until its colour is the next shot's
 // ground.
 
-import { MONO_FONT } from '../fonts.ts';
-import { FPS, H, W } from '../frame.ts';
-import { clamp, lerp, motionCurves, powerOutEase } from '../motion.ts';
+import { MONO_FONT } from '#models/type/faces.ts';
+import { FPS, H, W } from '#models/frame/frame.ts';
+import { clamp, lerp, motionCurves, powerOutEase } from '#models/motion/motion.ts';
 import { pieceMotionAttrs } from '../motion-tag.ts';
-import { hashRandom } from '../random.ts';
+import { hashRandom } from '#models/motion/random.ts';
 
 // ---------- the reference's measures ----------
 

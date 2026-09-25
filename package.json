@@ -12,7 +12,8 @@
   },
   "type": "module",
   "imports": {
-    "#engine/*": "./lib/engine/*"
+    "#engine/*": "./lib/engine/*",
+    "#models/*": "./lib/models/*"
   },
   "devDependencies": {
     "@types/node": "26.6.1",

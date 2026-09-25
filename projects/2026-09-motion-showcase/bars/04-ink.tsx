@@ -10,7 +10,7 @@ import { Odometer } from '../../../lib/studio/kit.tsx';
 import { GlyphField, ShockRing, parseGlyphColor, type GlyphClip, type GlyphHit, type GlyphKey, type GlyphWave } from '../../../lib/studio/reel/glyph-field.tsx';
 import { reelHudBoxPoints, type ReelHudRead, type ReelHudSlot } from '../../../lib/studio/reel/hud.tsx';
 import { Needle, needleCoversAt, type NeedleStrike } from '../../../lib/studio/reel/needle.tsx';
-import { archivoAdvance, layoutGlyphLine } from '../../../lib/studio/reel/ticker-layout.ts';
+import { archivoAdvance, layoutGlyphLine } from '#models/reel/ticker-layout.ts';
 import type { Bar, ShowcaseClock } from '../bar.ts';
 import { INK_COUNT, INK_DOT, INK_FIELD, INK_FIELD_LAYOUT, INK_FIELD_SLOTS, INK_FIRST_STRIKE, inkFieldSlotAt, type InkCell } from '../ink-field.ts';
 import needleStrike1 from '../sfx/needle-strike-1.ts';

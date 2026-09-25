@@ -4,7 +4,7 @@
 // A note's context comes only from artifacts a project already has: the render's snapshot for the scene, the
 // video-clock sounds and what's under the point, sfx/cues.json for the cue list, and on a still, a variant sheet's
 // .cells.json for the variant under the point. A source that's missing leaves its field off the note; one that's there and holds nothing near gives an empty list.
-import type { MotionTracks } from './motion-tracks.ts';
+import type { MotionTracks } from '#models/motion/motion-tracks.ts';
 
 export const REVIEW_NOTES_VERSION = 2;
 

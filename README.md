@@ -77,23 +77,23 @@ Scenes import everything from `lib/studio/api.ts`.
   sounds from the log, so a re-voice never needs a reshoot.
 - `lib/studio/timeline.ts`: `defineScene`, `defineVideo`, and the layout that times scenes to their lines and centres
   crossfades on the cuts.
-- `lib/studio/camera.ts`: a camera over captures (`camFit`, `camAt`, `lerpCam`) and views, which map page rects to the
+- `lib/models/camera/camera.ts`: a camera over captures (`camFit`, `camAt`, `lerpCam`) and views, which map page rects to the
   frame.
 - `lib/studio/capture.tsx`, `overlays.tsx`: captures (with blur, motion blur and state changes), cursor paths with
   clicks, highlights, spotlights, tags, text, frosted glass and washes. Scene text stays above `CAPTION_SAFE_TOP`.
 - `lib/studio/kit.tsx`: whole shots built from those, taking their brand colours and words as arguments: `MotionTitle`,
   `ClickToBlur`, `SplitCompare`, `Phone`, `GlassCard`, `SectionCard`, `EndCard`, and redraws of what a screenshot
   can't hold (`ConfirmDialog`, `NativeMenu`). When a shot recurs in a second video, move it here.
-- `lib/studio/probe.tsx`: measures highlights, clicks, tags and the caption on each frame. `lib/framing-check.ts`
+- `lib/studio/probe.tsx`: measures highlights, clicks, tags and the caption on each frame. `lib/models/frame/framing-check.ts`
   decides what's a problem.
 - `lib/studio/mix.ts`: voice levelling, and a music bed that ducks under the voice. `lib/engine/ffmpeg/loudness.ts` measures.
 - `lib/studio/sfx.tsx`: `<Sfx>` plays a sound so it lands on a scene time; `CursorPath` clicks sound by themselves.
   `lib/sfx/` synthesizes every sound from a seeded recipe (whoosh, riser, impact, chime and more), so there's nothing
   to license.
-- `lib/engine/voice/whisper-words.ts`, `lib/voice-words.ts`: word timings from whisper.cpp (installed on first use into
+- `lib/engine/voice/whisper-words.ts`, `lib/models/voice/voice-words.ts`: word timings from whisper.cpp (installed on first use into
   `~/.cache/video-studio`), aligned to the script.
-- `lib/voice-take.ts`: where to cut a take into lines, and the pauses the read left between them.
-- `lib/music-beats.ts`: the tempo and beats of a music track.
+- `lib/models/voice/voice-take.ts`: where to cut a take into lines, and the pauses the read left between them.
+- `lib/models/music/music-beats.ts`: the tempo and beats of a music track.
 - `lib/paint/`: drawn layers (p5 sketches) inside scenes, with a watercolour style ported from p5.brush. See the
   `video-canvas` skill. `studio repeatable` proves a drawn layer is a pure function of time.
 - `cli/studio.ts`: the `studio` entry point. Each verb is `cli/commands/<verb>.ts`, parsing its arguments and calling

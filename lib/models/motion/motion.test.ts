@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { FPS } from './frame.ts';
+import { FPS } from '#models/frame/frame.ts';
 import { backOutEase, perceptualSpring, stagger, staggerFinish } from './motion.ts';
 
 test('a back-out overshoots by the share of its travel asked for and lands on exactly 1', () => {

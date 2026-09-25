@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { SpokenWord } from '../voice-words.ts';
+import type { SpokenWord } from '#models/voice/voice-words.ts';
 import type { SfxEvent } from './cue-events.ts';
 import { draftSfxCues, sfxCueOverrides, sfxCueSound, staleSfxCues, type SfxCueList } from './cues.ts';
 

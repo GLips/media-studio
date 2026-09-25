@@ -11,7 +11,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
-import type { MotionTracks } from '../../motion-tracks.ts';
+import type { MotionTracks } from '#models/motion/motion-tracks.ts';
 import type { TimelineReport } from '../../studio/Video.tsx';
 
 export const RENDER_SNAPSHOT_VERSION = 1;

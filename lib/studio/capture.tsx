@@ -7,8 +7,8 @@
 // dissolve) record as one camera; what changes inside a capture's pixels isn't measured.
 
 import { Img } from 'remotion';
-import { lerpCam, scaleFor, type Cam, type View } from './camera.ts';
-import { clamp, motionCurves, seg } from './motion.ts';
+import { lerpCam, scaleFor, type Cam, type View } from '#models/camera/camera.ts';
+import { clamp, motionCurves, seg } from '#models/motion/motion.ts';
 import { cameraMotionAttrs, unmeasuredAttrs } from './motion-tag.ts';
 
 /**

@@ -6,7 +6,7 @@ import { downloadWhisperModel, installWhisperCpp, transcribe } from '@remotion/i
 import { mkdtempSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { SpokenWord } from '../../voice-words.ts';
+import type { SpokenWord } from '#models/voice/voice-words.ts';
 import { runFfmpeg } from '../ffmpeg/ffmpeg.ts';
 
 const WHISPER_CPP_VERSION = '1.8.6';

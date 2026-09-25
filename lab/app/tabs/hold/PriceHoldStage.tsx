@@ -4,9 +4,9 @@
 // steady, the length the scene promised, and a playhead.
 import { useMemo } from 'react';
 import { AbsoluteFill, useCurrentFrame } from 'remotion';
-import type { HoldSteadySpan } from '../../../../lib/hold-check.ts';
-import { DISPLAY_FONT, MONO_FONT } from '../../../../lib/studio/fonts.ts';
-import { FPS } from '../../../../lib/studio/frame.ts';
+import type { HoldSteadySpan } from '#models/motion/hold-check.ts';
+import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
+import { FPS } from '#models/frame/frame.ts';
 import { LAB_COLORS } from '../../ui.tsx';
 import { PRICE_HOLD_FRAMES, PRICE_HOLD_SECONDS, PRICE_REST, priceBoxAt, type PriceBox, type PriceHoldParams } from './price-hold.ts';
 

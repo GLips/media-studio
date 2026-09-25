@@ -3,7 +3,7 @@
 
 import { useId } from 'react';
 import { useCurrentFrame } from 'remotion';
-import { H, W } from './frame.ts';
+import { H, W } from '#models/frame/frame.ts';
 
 /**
  * Monochrome grain, new every frame and the same on every render of that frame (its noise is seeded by the frame).

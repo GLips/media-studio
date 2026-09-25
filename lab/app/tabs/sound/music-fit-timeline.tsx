@@ -1,6 +1,6 @@
 // music-fit-timeline.tsx: a music fit drawn as two rows: the original track above, the fitted one below, each span
 // coloured the same in both and joined by a band, so you can see which bars were kept, dropped or played twice.
-import type { MusicFitPlan } from '../../../../lib/music-fit.ts';
+import type { MusicFitPlan } from '#models/music/music-fit.ts';
 import { LAB_COLORS } from '../../ui.tsx';
 
 const TL_W = 1200, ROW_H = 44, ORIGINAL_Y = 34, BAND_H = 100;

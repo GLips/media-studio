@@ -1,5 +1,5 @@
 // motion-tag.ts: how an element asks to have its motion recorded. The probe (probe.tsx) measures every tagged element
-// on every frame, and lib/motion-tracks.ts assembles the samples into tracks. A tag is DOM attributes, so only what's
+// on every frame, and lib/models/motion/motion-tracks.ts assembles the samples into tracks. A tag is DOM attributes, so only what's
 // drawn is recorded: a value computed and never rendered can't pass for motion.
 //
 // - Hand-written motion: `data-motion="name"` on the element that moves, or `useMotionTag` for one a host renders.
@@ -12,8 +12,8 @@
 // another starts joins them into one segment.
 
 import { useLayoutEffect, type RefObject } from 'react';
-import { roundMotionValue, type StaggerMembership } from '../motion-tracks.ts';
-import { scaleFor, type Rect, type View } from './camera.ts';
+import { roundMotionValue, type StaggerMembership } from '#models/motion/motion-tracks.ts';
+import { scaleFor, type Rect, type View } from '#models/camera/camera.ts';
 
 export type MotionTag = {
   /** Unique among the tagged elements of its owner. No `/`: that separates an id's levels. */

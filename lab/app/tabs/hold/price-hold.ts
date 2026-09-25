@@ -1,10 +1,10 @@
 // price-hold.ts: the hold tab's one source of motion. `priceBoxAt` says where the price card is on a frame; the stage
 // draws it there, and `holdLabTracks` measures the same frames into the MotionTracks a render would write, so the
 // real `holdProblems` judges exactly what's on screen. Pure.
-import { holdProblems, type HoldExpectation, type HoldSteadySpan } from '../../../../lib/hold-check.ts';
-import { roundMotionValue, type MotionTracks } from '../../../../lib/motion-tracks.ts';
-import { clamp, motionCurves } from '../../../../lib/studio/motion.ts';
-import { FPS } from '../../../../lib/studio/frame.ts';
+import { holdProblems, type HoldExpectation, type HoldSteadySpan } from '#models/motion/hold-check.ts';
+import { roundMotionValue, type MotionTracks } from '#models/motion/motion-tracks.ts';
+import { clamp, motionCurves } from '#models/motion/motion.ts';
+import { FPS } from '#models/frame/frame.ts';
 
 export type PriceHoldParams = {
   /** Seconds the card takes to slide in. */

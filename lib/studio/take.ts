@@ -9,7 +9,7 @@
 // (marks, by name) to scene times, playing between the pins at whatever speed joins them, and at the take's own
 // speed before the first and after the last. Two pins on one mark hold its frame.
 
-import { assertKeysInOrder, type Rect, type Shot } from './camera.ts';
+import { assertKeysInOrder, type Rect, type Shot } from '#models/camera/camera.ts';
 import { noteTakeFitStrain, type TakeFitStrain } from './take-fit-strain.ts';
 
 export type TakeFrame = { src: string; t: number; scrollY: number };

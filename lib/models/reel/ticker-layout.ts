@@ -1,10 +1,10 @@
 // ticker-layout.ts: lines of Archivo whose every glyph sits at its own weight and width, laid out without the DOM.
 // CSS sets a letter's axes but can't say where the next letter goes, and scaleX doesn't reflow, so a word whose
 // letters breathe needs each glyph's advance at its own axes, known before anything renders so a frame renders alone.
-// ticker-archivo.ts holds Archivo's advances and kerning at its masters; between them the font is bilinear, so the
+// archivo-metrics.ts holds Archivo's advances and kerning at its masters; between them the font is bilinear, so the
 // interpolation here is exact. Runs without a browser.
 
-import { ARCHIVO_METRICS } from './ticker-archivo.ts';
+import { ARCHIVO_METRICS } from '#models/type/archivo-metrics.ts';
 
 type AxisMetrics = {
   min: number;
@@ -16,7 +16,7 @@ type AxisMetrics = {
   stops: readonly number[];
 };
 
-/** A variable font's metrics at its masters, as ticker-archivo.py writes them; values are font units. */
+/** A variable font's metrics at its masters, as archivo-metrics.py writes them; values are font units. */
 export type VariableFontMetrics = {
   unitsPerEm: number;
   capHeight: number;
@@ -50,7 +50,7 @@ export const ARCHIVO_BASELINE_EM = (1 + (METRICS.ascender + METRICS.descender) /
 /** Archivo's advance for `char` at `axes`, in em, scaleX included. Throws for a character the table doesn't cover. */
 export function archivoAdvance(char: string, axes: GlyphAxes): number {
   const values = METRICS.advance[char];
-  if (!values) throw new Error(`Archivo's advance table has no ${JSON.stringify(char)}: add it to CHARS in lib/studio/reel/ticker-archivo.py and run it`);
+  if (!values) throw new Error(`Archivo's advance table has no ${JSON.stringify(char)}: add it to CHARS in lib/models/type/archivo-metrics.py and run it`);
   return (valueAt(values, cellOf(axes)) / EM) * (axes.scaleX ?? 1);
 }
 

@@ -8,16 +8,16 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { basename, dirname, extname, join } from 'node:path';
 import { rasterizeSvgs } from '../capture/html-raster.ts';
-import { framingArtifactName, framingProblems, takeFitWarnings, type FramingReport } from '../../framing-check.ts';
-import { holdProblems } from '../../hold-check.ts';
-import { buildMotionGraph, motionGraphBackdropFrame, type MotionGraphSpace } from '../../motion-graph.ts';
-import { assembleMotionTracks, formatMotionReport, motionArtifactName, type FrameMotion, type MotionTracks } from '../../motion-tracks.ts';
+import { framingArtifactName, framingProblems, takeFitWarnings, type FramingReport } from '#models/frame/framing-check.ts';
+import { holdProblems } from '#models/motion/hold-check.ts';
+import { buildMotionGraph, motionGraphBackdropFrame, type MotionGraphSpace } from '#models/motion/motion-graph.ts';
+import { assembleMotionTracks, formatMotionReport, motionArtifactName, type FrameMotion, type MotionTracks } from '#models/motion/motion-tracks.ts';
 import { measureLoudness } from '../ffmpeg/loudness.ts';
 import { artifactSink, DELIVERY_AUDIO_CODEC, RENDER_CHROMIUM, RENDER_CONCURRENCY, TIMELINE_REPORT_NAME, type RenderSession } from './render-session.ts';
 import { loadRenderSnapshot, writeRenderSnapshot } from '../snapshot/render-snapshot.ts';
 import { sfxEventsFrom, sfxMarkArtifactName, type SfxEvent, type SfxMark } from '../../sfx/cue-events.ts';
 import { sfxCueListReport } from '../../sfx/project-cue-list.ts';
-import { W } from '../../studio/frame.ts';
+import { W } from '#models/frame/frame.ts';
 import { isVoicedWithDraft } from '../voice/voice-project.ts';
 import type { TimelineReport } from '../../studio/Video.tsx';
 import { countVideoFrames, measureWithFfmpeg, runFfmpeg, runFfprobe } from '../ffmpeg/ffmpeg.ts';
@@ -52,8 +52,8 @@ export type ProjectCheck = { ok: boolean; timeline: TimelineReport; motion: Moti
 
 /**
  * Measures every frame of `scope` (the whole video by default) and reports framing problems as stretches of time (see
- * lib/framing-check.ts), then strained take fits, which don't fail it, then what motion it tracked (see
- * lib/motion-tracks.ts), whose instrumentation errors do.
+ * lib/models/frame/framing-check.ts), then strained take fits, which don't fail it, then what motion it tracked (see
+ * lib/models/motion/motion-tracks.ts), whose instrumentation errors do.
  */
 export async function checkProject(session: RenderSession, scope: CheckScope = {}): Promise<ProjectCheck> {
   const { serveUrl, props, compositionFor } = session;
@@ -130,7 +130,7 @@ export function formatTimelineTable(timeline: TimelineReport): string[] {
 // ---------- motion graphs ----------
 
 /**
- * Measures the motion of `at` (seconds) and draws it (see lib/motion-graph.ts) over one of its frames, as a PNG
+ * Measures the motion of `at` (seconds) and draws it (see lib/models/motion/motion-graph.ts) over one of its frames, as a PNG
  * at `out` with the number summary beside it (`.txt`). Measuring here rather than reading out/check/motion.json means
  * a graph is never of an older render. Returns the summary and both files.
  */

@@ -2,7 +2,7 @@
 // `stagger` (seconds between neighbours, a cap on the whole spread, where the ripple starts), and a side-by-side of
 // a product page entering all at once against one hero move with the rest following.
 import { useState } from 'react';
-import { stagger, type StaggerFrom } from '../../../lib/studio/motion.ts';
+import { stagger, type StaggerFrom } from '#models/motion/motion.ts';
 import { LabBench, LabButtons, LabChoice, LabControls, LabNote, LabSlider, LabStage, LabTabIntro } from '../ui.tsx';
 import { STAGGER_INKS, StaggerInkRow, staggerInkRowSeconds } from './stagger/ink-row.tsx';
 import {
@@ -89,7 +89,7 @@ export function StaggerTab() {
         </LabControls>
         <details className="stagger-agents">
           <summary>For agents</summary>
-          <p>The row is <code>stagger()</code> from <code>lib/studio/motion.ts</code>: gap between cards is <code>each</code>, longest total spread is <code>max</code>, where the ripple starts is <code>from</code> (<code>'start' | 'center' | 'edges' | 'end'</code> or a card index). Right now:</p>
+          <p>The row is <code>stagger()</code> from <code>lib/models/motion/motion.ts</code>: gap between cards is <code>each</code>, longest total spread is <code>max</code>, where the ripple starts is <code>from</code> (<code>'start' | 'center' | 'edges' | 'end'</code> or a card index). Right now:</p>
           <pre>{staggerCall}</pre>
         </details>
       </LabBench>

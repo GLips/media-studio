@@ -4,7 +4,7 @@ One folder per client, `brands/<name>/`, the only place its brand lives. Its sti
 
 ```
 brands/<name>/
-  brand.ts          colours, fonts, logos, voice: `export default { … } satisfies Brand` (lib/brand.ts)
+  brand.ts          colours, fonts, logos, voice: `export default { … } satisfies Brand` (lib/models/brand/brand.ts)
   logo-light.svg    the logo in white (or its light version), for dark grounds
   logo-dark.svg     the logo in its own colour, for light grounds
   fonts/            the font files brand.ts names. Not in git: each machine adds its own
@@ -14,7 +14,7 @@ brands/<name>/
 for itself there. Fonts and logos come with files, so a project that needs others names another kit:
 
 ```ts
-import type { ProjectBrand } from '../../lib/brand.ts';
+import type { ProjectBrand } from '../../lib/models/brand/brand.ts';
 
 export default {
   name: 'painful-pleasures',

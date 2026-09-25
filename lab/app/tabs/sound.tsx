@@ -1,5 +1,5 @@
 // sound.tsx: the lab's Sound tab: sound effects synthesised from lib/sfx's recipes and played live, a music track
-// fitted to a video's length with lib/music-fit.ts, and the cue list that places sounds in a real video.
+// fitted to a video's length with lib/models/music/music-fit.ts, and the cue list that places sounds in a real video.
 import { useEffect } from 'react';
 import { LabTabIntro } from '../ui.tsx';
 import { SfxCueEditor } from './sound/cue-editor.tsx';

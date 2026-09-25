@@ -11,7 +11,7 @@
 // scene's moment only by that scene's cue. Nothing here stretches a recording: speech keeps its take's timing, and the
 // music plays from the section's start as fitted, so a bed under a voice is trimmed, looped or re-fitted, never stretched.
 
-import { findSpokenPhrase, type SpokenWord } from '../../voice-words.ts';
+import { findSpokenPhrase, type SpokenWord } from '#models/voice/voice-words.ts';
 import { beatGrid as fitBeatGrid, steadyBeatGrid, type BeatGrid } from './beat-grid.ts';
 import { FPS } from './frame-rate.ts';
 

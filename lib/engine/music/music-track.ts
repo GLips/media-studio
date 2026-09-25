@@ -5,15 +5,15 @@
 //   import { music } from './music/index.ts';
 //   defineVideo({ …, music: { track: music.bed } })
 // Each track carries its loudness (the mix levels it against the voice), its tempo, and its beat times in the track,
-// for placing accents or cuts on the beat by hand. `fit` cuts a new track from one of them (lib/music-fit.ts) and adds
+// for placing accents or cuts on the beat by hand. `fit` cuts a new track from one of them (lib/models/music/music-fit.ts) and adds
 // it beside the original, with the spans it was cut from.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import { measureLoudness } from '../ffmpeg/loudness.ts';
 import { probeMediaSeconds, runFfmpeg, runFfprobe } from '../ffmpeg/ffmpeg.ts';
 import { generatePaidMedia } from '../generation/paid-generation.ts';
-import { detectMusicBeats } from '../../music-beats.ts';
-import { planMusicArrangement, planMusicFit, spliceMusicSpans } from '../../music-fit.ts';
+import { detectMusicBeats } from '#models/music/music-beats.ts';
+import { planMusicArrangement, planMusicFit, spliceMusicSpans } from '#models/music/music-fit.ts';
 import type { MusicTrack } from '../../studio/mix.ts';
 
 type Entry = Omit<MusicTrack, 'src'> & { file: string };

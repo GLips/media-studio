@@ -1,4 +1,4 @@
-// motion-graph.ts: the motion tracks (lib/motion-tracks.ts) of a stretch of video, drawn over time for review, with
+// motion-graph.ts: the motion tracks (lib/models/motion/motion-tracks.ts) of a stretch of video, drawn over time for review, with
 // the numbers behind them. Pure: lib/engine/render/render-pipeline.ts measures the stretch, renders the frame the trails sit on, and
 // rasterizes the SVG this returns.
 //
@@ -7,8 +7,8 @@
 // all of them, so a move can be read against what it lands on. Like the tracks, this describes and never judges.
 
 import { motionChannelVelocity, type MotionSegment, type MotionTrack, type MotionTracks } from './motion-tracks.ts';
-import { H, W } from './studio/frame.ts';
-import type { TimelineReport } from './studio/Video.tsx';
+import { H, W } from '#models/frame/frame.ts';
+import type { TimelineReport } from '../../studio/Video.tsx';
 
 /** Which box a graph plots: where the viewer sees the element, or where it is in its owner's frame. */
 export type MotionGraphSpace = 'screen' | 'local';

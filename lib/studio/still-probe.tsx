@@ -1,4 +1,4 @@
-// still-probe.tsx: measures a still for lib/still-check.ts and hands it to lib/render-stills.ts as an artifact: every
+// still-probe.tsx: measures a still for lib/models/still/still-check.ts and hands it to lib/render-stills.ts as an artifact: every
 // element's own text and every <img>, found in the DOM as drawn, so a design needs no markup of its own for the check.
 // It only measures; what's a problem is decided in Node, beside the pixels of the ground pass.
 //
@@ -6,10 +6,10 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { AbsoluteFill, Artifact, useDelayRender, useVideoConfig } from 'remotion';
-import type { StillImageMark, StillMeasure, StillTextMark } from '../still-check.ts';
-import type { Rect } from './camera.ts';
+import type { StillImageMark, StillMeasure, StillTextMark } from '#models/still/still-check.ts';
+import type { Rect } from '#models/camera/camera.ts';
 import { whenLaidOut } from './screen-rect.ts';
-import { STILL_MEASURE_ARTIFACT } from './still-presets.ts';
+import { STILL_MEASURE_ARTIFACT } from '#models/still/still-presets.ts';
 
 type ClientRect = { left: number; top: number; right: number; bottom: number };
 

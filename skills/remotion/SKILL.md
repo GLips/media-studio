@@ -11,7 +11,7 @@ Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it.
 `lib/studio` primitive can use any Remotion API inside that, keeping these conventions:
 
 - **Seconds, not frames.** A scene's clock `s.t` is seconds; animate with `seg`, `on`, `off` and the curve tokens in
-  `lib/studio/motion.ts`, not `interpolate(frame, …)`. Everything stays a pure function of `s.t`, which can be
+  `lib/models/motion/motion.ts`, not `interpolate(frame, …)`. Everything stays a pure function of `s.t`, which can be
   negative or past `s.dur` during crossfades.
 - **Imports, not `staticFile()`.** Assets live in the project folder and are imported, so each project bundles on its
   own and a missing file fails to compile.

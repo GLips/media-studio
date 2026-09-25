@@ -149,7 +149,7 @@ variants are where each one is used.
   HyperFrames' −0.03 to −0.05 em.
 - Archivo's cap height is ≈0.69 em (cap 110 is 160 px type), JetBrains Mono's ≈0.73 em.
 - Words whose letters move are set one glyph per span, placed from the font's advances (`layoutGlyphLine`,
-  `lib/studio/reel/ticker-layout.ts`), not by the browser's line layout.
+  `lib/models/reel/ticker-layout.ts`), not by the browser's line layout.
 
 ### HUD [hud]
 
@@ -430,7 +430,7 @@ reads #e9e8e6, blue on cream #4244ec); the hero is #ee4c2f with #1c0a16 type; do
 - Evidence: `05/work/{kymo_b0,flip532,ital}.png` and siblings, `05/work/{ent_1,ex_a}.jpg`, `05/work/strip60/` (whose
   labels run a frame early; see Gotchas).
 - Build: `TickerBands` (`ticker.tsx`) with `TICKER_LIGHT`, `TICKER_BOLD`, `TICKER_HOLD` and `TICKER_LOOKS` (plain,
-  stripes, oblique 11.3°, hero hold); rows laid out from Archivo's advances (`layoutGlyphLine`, `ticker-archivo.ts`),
+  stripes, oblique 11.3°, hero hold); rows laid out from Archivo's advances (`layoutGlyphLine`, `archivo-metrics.ts`),
   spans placed by translateX. At 30 fps the entry and exit need `ShutterBlur` at 0.5 with 8 samples.
 
 ### Bar 6: 06 — PARTICLES ×12 000 (f616–728) [06]

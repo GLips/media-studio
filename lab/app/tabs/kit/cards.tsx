@@ -1,9 +1,9 @@
 // cards.tsx: the Kit pieces tab's entries for lib/studio/kit.tsx's cards that need no capture: GlassCard,
 // SectionCard and EndCard. Each is shown over a stand-in scene, since in a video they always sit on top of one.
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
-import { FONT } from '../../../../lib/studio/frame.ts';
+import { FONT } from '#models/frame/frame.ts';
 import { EndCard, GlassCard, SectionCard } from '../../../../lib/studio/kit.tsx';
-import { motionCurves, seg } from '../../../../lib/studio/motion.ts';
+import { motionCurves, seg } from '#models/motion/motion.ts';
 import { LAB_COLORS, LabChoice, LabSlider } from '../../ui.tsx';
 import { defineKitPiece, KIT_COLOR_OPTIONS, KitTextField } from './piece.tsx';
 

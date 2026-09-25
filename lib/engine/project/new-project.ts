@@ -182,7 +182,7 @@ const FACE = ARCHIVO_FACE;`;
   return {
     'capture.ts': captureScript(slug, url, title, true),
     ...(brand && { 'brand.ts': `// The kit this project uses. Add colors, palette or voice here to change them for this project alone.
-import type { ProjectBrand } from '../../lib/brand.ts';
+import type { ProjectBrand } from '../../lib/models/brand/brand.ts';
 
 export default { name: '${brand}' } satisfies ProjectBrand;
 ` }),

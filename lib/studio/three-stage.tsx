@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { FPS, H, W } from './frame.ts';
+import { FPS, H, W } from '#models/frame/frame.ts';
 import { unmeasuredAttrs } from './motion-tag.ts';
 
 export type ThreeFrame = { scene: THREE.Scene; camera: THREE.PerspectiveCamera };

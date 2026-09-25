@@ -166,7 +166,7 @@ Gotchas:
   [R docs/gpu]; we render with `RENDER_CHROMIUM = { gl: 'angle' }` (`lib/engine/render/render-session.ts:23`). Blur cost ∝ radius × area
   [HF depth-of-field-blur.md]: ≤ 24 px on big surfaces; for a full-frame glow blur a ¼-size copy scaled ×4 [own].
 - **Crispness**: text snaps to whole pixels, so slow drifts stair-step: `perspective()` + `willChange: 'transform'` [R
-  docs/troubleshooting/subpixel-rendering]. Captures are 2× and "past ~1.6 text starts to soften" (`lib/studio/camera.ts`);
+  docs/troubleshooting/subpixel-rendering]. Captures are 2× and "past ~1.6 text starts to soften" (`lib/models/camera/camera.ts`);
   a plane at depth z magnifies P/(P−z), so at P = 1000 keep what the viewer reads at z ≤ ~375 px [own arithmetic].
 - **three.js determinism** (three 0.186 source): `EffectComposer.render()` with no argument hands passes a wall-clock delta.
   Render/Bokeh/UnrealBloom/Output ignore it, so `ThreeStage` is fine, but `FilmPass` accumulates time, `GlitchPass` calls
@@ -284,7 +284,7 @@ Payoff = the reference's feel per unit of build; 1–6 make it a reel, 7–11 ad
 10. **Radial burst + landing shake** on the hero hit (§2.5), and an **ink-drop intro** on CAB's `jump()` numbers with the
     dotted arc and onion-skin ghosts drawn from `t`.
 11. **Guard against "static"** [HF animation-map, motion.mdx; CAB render.mjs]: flag ≥ 1.0 s with no tracked motion (from
-    `lib/motion-tracks.ts`, beside `hold-check.ts`) and runs of bit-identical frames (tracks can't see `ThreeStage`); run
+    `lib/models/motion/motion-tracks.ts`, beside `hold-check.ts`) and runs of bit-identical frames (tracks can't see `ThreeStage`); run
     `reel-study` on our render against the reference's cut residuals and per-beat motion energy; contact sheets first.
 
 Don't port: HF's seek runtime and GSAP (map eases per §2.2); CAB's no-text and no-3D rules; `@remotion/three`,

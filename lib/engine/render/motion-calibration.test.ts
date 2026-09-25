@@ -3,8 +3,8 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { buildMotionGraph } from '../../motion-graph.ts';
-import { motionChannelVelocity, type MotionSegment } from '../../motion-tracks.ts';
+import { buildMotionGraph } from '#models/motion/motion-graph.ts';
+import { motionChannelVelocity, type MotionSegment } from '#models/motion/motion-tracks.ts';
 import { checkProject } from './render-pipeline.ts';
 import { openRenderSession } from './render-session.ts';
 import { STUDIO_PROJECTS_DIR } from '../project/studio-project.ts';

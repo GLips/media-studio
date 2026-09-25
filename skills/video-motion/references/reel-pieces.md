@@ -24,14 +24,14 @@ the image rather than a label on it, and colour comes in full-bleed fields, not 
   seconds. A piece that does something every beat also takes `spb` (seconds per beat); the author gets it from the
   video's `BeatGrid` (`lib/studio/beats.ts`). No `Math.random`, `Date`, `performance.now`, or state carried between
   frames: any frame renders the same alone. Randomness comes from `seededRandom` / `hashRandom`
-  (`lib/studio/random.ts`), seeded by a `seed` prop.
+  (`lib/models/motion/random.ts`), seeded by a `seed` prop.
 - **Everything the author would change is a prop**: words, colours, sizes, counts, where it starts from, how long each
   part takes. Default to the reference's values (from the breakdown), so the piece looks right with no tuning. Sizes
   are frame pixels in the 1920×1080 frame; say in the doc comment what share of frame height a size is.
 - **Type**: `DISPLAY_FONT` (Archivo, variable: `fontWeight` 100–900 and `fontStretch` 62–125% are continuous, so
   both can animate) and `MONO_FONT` for HUD labels and readouts (`lib/studio/fonts.ts`).
 - **Curves**: `motionCurves.expo` (`entrance` for arrivals, `exit`, `standard`) and `seg`, or `perceptualSpring(duration,
-  bounce)` for an overshoot, started `arrival` before its beat (`lib/studio/motion.ts`). Physics (a bounce, a roll) is
+  bounce)` for an overshoot, started `arrival` before its beat (`lib/models/motion/motion.ts`). Physics (a bounce, a roll) is
   written as physics, closed-form in `t`.
 - **30 fps.** The reference is often 60 fps; at 30, a fast move strobes. Smear what moves more than about 40 px a
   frame: stretch it along its velocity (computed from the position function at `t` and `t - 1/FPS`), draw fading
@@ -78,7 +78,7 @@ Look here first: a second copy of one of these drifts from the first.
 - **The HUD's ground:** `reelHudBoxPoints`, `reelHudGrounds` and `reelHudReadGrounds` read what's drawn under each
   part's box into its ink and plate (`reel/hud.tsx`), from a `groundAt(point)` a bar builds out of its pieces'
   geometry.
-- **Type:** `ARCHIVO_CAP_EM`, `ARCHIVO_BASELINE_EM` and `layoutGlyphLine` (`reel/ticker-layout.ts`); `MONO_CAP_EM`,
+- **Type:** `ARCHIVO_CAP_EM`, `ARCHIVO_BASELINE_EM` and `layoutGlyphLine` (`lib/models/reel/ticker-layout.ts`); `MONO_CAP_EM`,
   `MONO_ADVANCE_EM`, and `useStudioFontsReady` before measuring a word or painting one into a canvas (`fonts.ts`);
   `slantWordPose`, `IndexLabel`, `SelectionBox`, `scrambleAt` (`reel/type.tsx`); `ODOMETER_DIGIT_EM` (`kit.tsx`).
 - **Post and finish:** `channelSplitPrimitives` (`reel/lens.tsx`); `GlitchFlash`, `shakeOffset`, `FadeToBlack`,

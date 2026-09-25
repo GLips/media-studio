@@ -9,5 +9,5 @@ hosts.local.json
 projects/*/host
 .DS_Store
 projects/*/generated/
-# A brand kit's font files: most are licensed (lib/brand.ts).
+# A brand kit's font files: most are licensed (lib/models/brand/brand.ts).
 brands/*/fonts/

@@ -4,10 +4,10 @@
 // loop never jumps.
 import { useMemo, useState } from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
-import { DISPLAY_FONT, MONO_FONT } from '../../../../lib/studio/fonts.ts';
-import { FPS } from '../../../../lib/studio/frame.ts';
+import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
+import { FPS } from '#models/frame/frame.ts';
 import { ShutterBlur } from '../../../../lib/studio/motion-blur.tsx';
-import { clamp, lerp, perceptualSpring, type PerceptualSpring } from '../../../../lib/studio/motion.ts';
+import { clamp, lerp, perceptualSpring, type PerceptualSpring } from '#models/motion/motion.ts';
 import { LAB_COLORS, LabBench, LabChoice, LabControls, LabNote, LabSlider, LabStage } from '../../ui.tsx';
 
 type SpringsMove = 'slide' | 'pop' | 'toggle';

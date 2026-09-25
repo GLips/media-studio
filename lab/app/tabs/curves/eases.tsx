@@ -3,9 +3,9 @@
 // out and back (or in and away) so the loop never jumps.
 import { useMemo, useState } from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
-import { DISPLAY_FONT, MONO_FONT } from '../../../../lib/studio/fonts.ts';
+import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
 import { ShutterBlur } from '../../../../lib/studio/motion-blur.tsx';
-import { clamp, motionCurves, motionDurations, seg, type EaseFn } from '../../../../lib/studio/motion.ts';
+import { clamp, motionCurves, motionDurations, seg, type EaseFn } from '#models/motion/motion.ts';
 import { LAB_COLORS, LabBench, LabChoice, LabControls, LabNote, LabStage } from '../../ui.tsx';
 import { SPRINGS_LOOKS, type SpringsLook } from './springs.tsx';
 
@@ -13,7 +13,7 @@ type EasesRole = 'standard' | 'entrance' | 'exit';
 type EasesFamily = 'linear' | 'productive' | 'expressive' | 'cubic' | 'expo';
 type EasesDurationKey = 'enterSmall' | 'enterLarge' | 'travelLong' | 'cameraPush';
 
-// `plain` leads in the lab; `value` is the name agents and lib/studio/motion.ts use.
+// `plain` leads in the lab; `value` is the name agents and lib/models/motion/motion.ts use.
 const EASES_FAMILIES: readonly { value: EasesFamily; plain: string; gloss: string }[] = [
   { value: 'linear', plain: 'Linear', gloss: 'no easing: a machine' },
   { value: 'productive', plain: 'Brisk', gloss: 'calm app walkthroughs' },

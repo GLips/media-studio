@@ -15,7 +15,7 @@ export type StillPreset = keyof typeof STILL_PRESETS;
 export type StillUiZone = { name: string; rect: { x: number; y: number; w: number; h: number } };
 
 /**
- * Where each platform covers the image, which no text or logo may sit under (lib/still-check.ts). Platforms move these,
+ * Where each platform covers the image, which no text or logo may sit under (lib/models/still/still-check.ts). Platforms move these,
  * so they're data. YouTube's duration badge takes the bottom-right corner, generously, since its size varies with the
  * surface. A story's top band is Instagram's progress bar, name and close; the bottom, its reply bar and share buttons:
  * Meta asks for 250 px and 340 px left clear. OG images, squares and portraits are shown whole.
@@ -62,5 +62,5 @@ export const stillName = ({ design, preset, variant }: StillProps) => `${design}
 export type StillFitReport = { name: string; text: string; size: number; stretch: number; max: number; min: number; atFloor: boolean; overflows: boolean };
 export const stillFitArtifactName = (name: string) => `still-fit-${name}.json`;
 export const isStillFitArtifact = (filename: string) => /^still-fit-.+\.json$/.test(filename);
-/** The artifact the still probe (still-probe.tsx) emits: what lib/still-check.ts judges. */
+/** The artifact the still probe (still-probe.tsx) emits: what lib/models/still/still-check.ts judges. */
 export const STILL_MEASURE_ARTIFACT = 'still-measure.json';

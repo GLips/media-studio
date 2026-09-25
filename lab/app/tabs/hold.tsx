@@ -1,5 +1,5 @@
 // hold.tsx: the Hold check tab. A price card slides in and should sit still long enough to read; sliders shake it,
-// slow it, drift it and fade it, and the real check (lib/hold-check.ts) judges every change. Its verdict, in plain
+// slow it, drift it and fade it, and the real check (lib/models/motion/hold-check.ts) judges every change. Its verdict, in plain
 // words, heads the controls so it flips in view as a slider drags; its exact words sit under "For agents".
 import { useMemo, useState } from 'react';
 import { LabBench, LabButtons, LabChoice, LabControls, LabNote, LabSlider, LabStage, LabTabIntro } from '../ui.tsx';
