@@ -41,10 +41,10 @@ export function LabTabIntro({ number, title, what, when, bad, good }: {
 
 /**
  * A composition playing live, looped, in a bracketed frame. Its props re-render it as they change, so controls feel
- * immediate. 1920×1080 at the studio's frame rate unless a tab needs another shape.
+ * immediate. 1920×1080 at the studio's frame rate unless a tab needs another shape or rate.
  */
-export function LabStage<P extends Record<string, unknown>>({ component, inputProps, seconds, width = W, height = H, label, controls = true }: {
-  component: ComponentType<P>; inputProps: P; seconds: number; width?: number; height?: number; label?: string; controls?: boolean;
+export function LabStage<P extends Record<string, unknown>>({ component, inputProps, seconds, width = W, height = H, fps = FPS, label, controls = true }: {
+  component: ComponentType<P>; inputProps: P; seconds: number; width?: number; height?: number; fps?: number; label?: string; controls?: boolean;
 }) {
   return (
     <figure className="stage">
@@ -52,8 +52,8 @@ export function LabStage<P extends Record<string, unknown>>({ component, inputPr
       <Player
         component={component as ComponentType<Record<string, unknown>>}
         inputProps={inputProps}
-        durationInFrames={Math.max(1, Math.round(seconds * FPS))}
-        fps={FPS}
+        durationInFrames={Math.max(1, Math.round(seconds * fps))}
+        fps={fps}
         compositionWidth={width}
         compositionHeight={height}
         style={{ width: '100%', aspectRatio: `${width} / ${height}` }}
