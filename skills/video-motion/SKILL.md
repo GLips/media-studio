@@ -79,9 +79,11 @@ they don't cover is built directly; a scene is any React that's a pure function 
   40–80 ms reads as one gesture), each rising 12 px (`rise`) as it fades in. The box is laid out whole from its
   first frame, so the line never shifts. `letters` is for one short display word only. To have it finished as a
   word is spoken, start it at `w.start - wordRevealFinish(text)`, passing it the same `letters` and `timing`.
-- **A number counting**: `<CountUp k={seg(s.t, a, a + 1.2, motionCurves.linear)} to={1299} x y width />` eases
-  out over the span you give it (0.8–1.5 s) and lands on exactly `to` (at `decimals` places), in tabular numerals. `format` writes a currency or
-  unit. Name it (`motion="total"`) and `expect` it to hold once it lands, since a number the voice names must be read.
+- **A number rolling**: `<Odometer t={s.t} value={(t) => lerp(0, 1299, motionCurves.cubic.entrance(seg(t, a, a + 1.2,
+  motionCurves.linear)))} mode="direct" prefix="$" x y />` turns digit wheels to whatever `value` reads at `t` and
+  lands pin-sharp; `y` is the baseline. `direct` is the calm walkthrough roll (1.2–2.5 s); the default `mechanical`
+  blurs the ones past, for a price that snaps. Name it (`motion="total"`) and `expect` it to hold once it lands, since
+  a number the voice names must be read.
 - **A stroke drawing on**: `<DrawPath d k={seg(…, motionCurves.linear)} />` draws a path from its start with
   `@remotion/paths`: an underline, an arrow, a check. `viewBox` plus `box` draws an icon's path into a rect. Draw-on only;
   morph paths directly.

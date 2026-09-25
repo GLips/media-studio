@@ -3,14 +3,18 @@
 // CAPTION_SAFE_TOP, where burned-in captions sit. Each tags what moves in it for the motion tracks (motion-tag.ts).
 
 import { evolvePath } from '@remotion/paths';
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, useId, type ReactNode } from 'react';
 import { camFit, camTop, camWhole, centerOf, lerpCam, view, type Rect, type Shot, type View } from './camera.ts';
 import { Capture, CaptureMotion } from './capture.tsx';
-import { CAPTION_FREE, CAPTION_SAFE_TOP, FONT, FULL_FRAME, H, W } from './frame.ts';
+import { DISPLAY_FONT } from './fonts.ts';
+import { CAPTION_FREE, CAPTION_SAFE_TOP, FONT, FPS, FULL_FRAME, H, W } from './frame.ts';
 import { clamp, lerp, motionCurves, motionDurations, seg, stagger, staggerFinish } from './motion.ts';
 import { motionAttrs, pieceMotionAttrs } from './motion-tag.ts';
+import { odometerSinceLanding, odometerWheels, type OdometerMode, type OdometerWheel } from './odometer-wheels.ts';
 import { ClipToBox, CursorPath, Glass, Tag, Text, Wash } from './overlays.tsx';
 import type { SceneClock } from './timeline.ts';
+
+export type { OdometerMode } from './odometer-wheels.ts';
 
 // ---------- split: before and after, side by side ----------
 
@@ -373,37 +377,231 @@ export function WordReveal({ t, text, x, y, width, size = 64, weight = 700, colo
   );
 }
 
-/**
- * A number counting from `from` to `to` in tabular numerals, so its digits never shift sideways. `k` is raw: it eases
- * out, slowing into its value; give it 0.8–1.5 s. From `k` 1 on it shows exactly `to`, at `decimals` places. It sits
- * in a box `width` wide, top-left at (x, y), right-aligned by default so the last digit stays put.
- */
-export function CountUp({ k, to, from = 0, x, y, width, size = 120, weight = 800, color = '#fff', align = 'right', decimals = 0, format, alpha = 1, motion }: {
-  k: number;
-  to: number;
-  from?: number;
+// Archivo, in em. CSS centres its 0.878 ascent + 0.21 descent in a 1 em row, putting the baseline 0.834 down; its
+// lining digits run from 0.012 below the baseline to 0.698 above, so a 0.009 nudge down centres them on the row,
+// 0.355 either side of its middle.
+const BASELINE_EM = 0.834;
+const DIGIT_NUDGE_EM = 0.009;
+// The window reaches this far either side of the row's middle (a landed digit and a hair), plus the fade, so a fade of
+// any length misses a landed digit. A neighbour one row off starts at 0.645, where the default fade has reached nothing.
+const DIGIT_HALF_EM = 0.365;
+// A group separator's width in digit widths (Archivo's comma is 300 units to a digit's 576), so it follows the axes.
+const SEPARATOR_CH = 0.52;
+// A box smear `travel` rows long spreads like a Gaussian of σ = travel / √12. Past σ of a row a turning wheel is
+// already an even haze, so more would only cost render time.
+const SMEAR_SIGMA_PER_ROW = 1 / Math.sqrt(12);
+const SMEAR_SIGMA_MAX_ROWS = 1;
+
+export type OdometerProps = {
+  /** Seconds on the piece's clock: the time `value` is read at. */
+  t: number;
+  /**
+   * The number shown at any time on `t`'s clock, on any curve: `(t) => lerp(2, 1.6, seg(t, 1, 1.7,
+   * motionCurves.expo.entrance))`. It's also read frames either side, for the smear and cells, and across a roll.
+   * Non-negative; land it on whole units of its last place.
+   */
+  value: (t: number) => number;
+  /** The baseline's left end, centre or right end, by `align`. */
   x: number;
   y: number;
-  width: number;
+  /** Font size in px. Digits stand 0.71 of it: 430 makes them 300 px, 28% of frame height. */
   size?: number;
-  weight?: number;
-  color?: string;
   align?: 'left' | 'center' | 'right';
+  color?: string;
+  /** Archivo's weight (100–900) and width (`stretch`, 62–125 %): both continuous, so either can move with the value. */
+  weight?: number;
+  stretch?: number;
+  /** Em between characters. Digits sit in fixed cells whatever it is, so nothing shifts as they change. */
+  tracking?: number;
   decimals?: number;
-  /** Writes the number shown (a currency, a unit). By default it's grouped, with `decimals` places. */
-  format?: (value: number) => string;
+  /** Thousands separators. */
+  group?: boolean;
+  /** Characters either side that stay still while the wheels roll: `$`, `%`, `×`. */
+  prefix?: string;
+  suffix?: string;
+  /**
+   * `mechanical` (default): the ones blur past, the tens click over. `direct`: each wheel rolls straight to its new
+   * digit, the calm walkthrough roll (a mechanical 0 → 1,299 is a haze). `slot`: `spin` extra turns, locking left to
+   * right `lockStagger` seconds apart. Direct and slot lock crisply on `motionCurves.cubic.entrance`; on expo's long
+   * tail the wheels creep in.
+   */
+  mode?: OdometerMode;
+  spin?: number;
+  lockStagger?: number;
+  /**
+   * A moving wheel's smear, as a share of its travel over the last frame. 1 (default) smears all of it, so no step
+   * between frames goes unseen; 0 turns it off.
+   */
+  blur?: number;
+  /**
+   * How far past a landed digit's top and bottom the window fades out, in em, so digits roll in and out of the dark.
+   * 0.28 (default, and the most before a landed digit's neighbours show) is soft; the reference's 8–12 px feather on
+   * 300 px digits is 0.03; 0 is a hard slot.
+   */
+  fade?: number;
+  /** Scale added at the peak of a punch as the value lands: 0.06 is the reference's 1.00 → 1.06 → 1.00. 0: no punch. */
+  punch?: number;
+  /** The punch's length; the reference's is 8–10 frames. */
+  punchFrames?: number;
   alpha?: number;
   /** Its name in the motion tracks, `count` by default. Its track reports `value`, so a scene can `expect` it to hold. */
   motion?: string | false;
-}) {
+};
+
+/**
+ * A number as digit wheels rolling in a window, each digit smeared along its travel and pin-sharp once landed. Drive
+ * `value` with any curve: a walkthrough's total rolls 1.2–2.5 s in `direct` mode; a reel's price rolls 18–24 frames
+ * (`motionCurves.expo.entrance`) and punches 1.06 on the downbeat it lands on. Keep bounce off the value: it's data.
+ */
+export function Odometer({
+  t, value, x, y, size = 160, align = 'left', color = '#fff', weight = 800, stretch = 100, tracking = -0.02, decimals = 0, group = true,
+  prefix = '', suffix = '', mode = 'mechanical', spin = 2, lockStagger = 2 / FPS, blur = 1, fade = 0.28, punch = 0, punchFrames = 9,
+  alpha = 1, motion,
+}: OdometerProps) {
+  const id = `odometer-${useId().replace(/[^\w-]/g, '')}`;
   if (alpha <= 0) return null;
-  // Not lerp at 1: from + (to - from) can miss `to` in its last bit. The `+ 0` turns a rounded -0 into 0, which prints "-0".
-  const value = Number((k >= 1 ? to : lerp(from, to, motionCurves.cubic.entrance(k))).toFixed(decimals)) + 0;
-  const text = format ? format(value) : value.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  const wheels = odometerWheels(value, t, { decimals, mode, spin: Math.round(spin), lockStagger });
+  const landed = punch ? odometerSinceLanding(value, t, punchFrames / FPS, decimals) : null;
+  const scale = landed === null ? 1 : 1 + punch * punchEnvelope((landed * FPS) / punchFrames);
+  const nudge = DIGIT_NUDGE_EM * size;
+  const still = (key: string, text: string, presence = 1) => <OdometerStill key={key} text={text} presence={presence} size={size} tracking={tracking} nudge={nudge} />;
+
+  const cells: ReactNode[] = [];
+  if (prefix) cells.push(still('prefix', prefix));
+  for (let place = wheels.length - 1; place >= 0; place--) {
+    const wheel = wheels[place];
+    if (wheel.presence < 0.001) continue;
+    cells.push(<OdometerWheelCell key={place} wheel={wheel} filterId={`${id}-${place}`} size={size} tracking={tracking} nudge={nudge} blur={blur} fade={fade} />);
+    const aboveOnes = place - decimals;
+    if (group && aboveOnes > 0 && aboveOnes % 3 === 0) cells.push(still(`group-${place}`, ',', wheel.presence));
+    if (place === decimals && decimals > 0) cells.push(still('point', '.'));
+  }
+  if (suffix) cells.push(still('suffix', suffix));
+
   return (
     <div
-      {...pieceMotionAttrs(motion, 'count', { kind: 'count', values: { k, value } })}
-      style={{ position: 'absolute', left: x, top: y, width, textAlign: align, color, opacity: alpha, font: `${weight} ${size}px/1 ${FONT}`, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}
+      {...pieceMotionAttrs(motion, 'count', { kind: 'odometer', values: { value: value(t) } })}
+      style={{
+        position: 'absolute',
+        left: x,
+        top: y - (BASELINE_EM + DIGIT_NUDGE_EM) * size,
+        display: 'flex',
+        height: size,
+        transform: `translateX(${align === 'left' ? 0 : align === 'center' ? -50 : -100}%) scale(${scale})`,
+        opacity: alpha,
+        color,
+        fontFamily: DISPLAY_FONT,
+        fontSize: size,
+        lineHeight: `${size}px`,
+        fontWeight: weight,
+        fontStretch: `${stretch}%`,
+        fontVariantNumeric: 'tabular-nums',
+        whiteSpace: 'pre',
+      }}
+    >
+      {cells}
+    </div>
+  );
+}
+
+/** 0 → 1 → 0 across a punch: up in its first quarter, easing out, then settling back over the rest. */
+const punchEnvelope = (p: number) => (p < 0.25 ? 1 - (1 - p / 0.25) ** 2 : 1 - motionCurves.dissolve((p - 0.25) / 0.75));
+
+/**
+ * One wheel: a strip of digit rows one em apart behind a window, in a cell a fixed digit width. It sits at the middle
+ * of its last frame's travel, blurred vertically along it, so a step within a frame shows as a smear.
+ */
+function OdometerWheelCell({ wheel, filterId, size, tracking, nudge, blur, fade }: {
+  wheel: OdometerWheel;
+  filterId: string;
+  size: number;
+  tracking: number;
+  nudge: number;
+  blur: number;
+  fade: number;
+}) {
+  const mid = (wheel.at + wheel.was) / 2;
+  const sigmaRows = Math.min(SMEAR_SIGMA_MAX_ROWS, blur * SMEAR_SIGMA_PER_ROW * Math.abs(wheel.at - wheel.was));
+  const sigma = sigmaRows * size;
+  // Under a third of a pixel the blur can't be seen: leaving it off keeps a landed digit pin-sharp.
+  const blurred = sigma >= 0.3;
+  // A landed digit's height plus `fade` above and below it, centred on the row; shorter than the row for a hard slot.
+  const windowEm = 2 * (DIGIT_HALF_EM + fade);
+  const overhang = ((windowEm - 1) / 2) * size;
+  // Every row whose digit or smear can reach into the window.
+  const reach = windowEm / 2 + 0.5 + 3 * sigmaRows;
+  const first = Math.floor(mid - reach), last = Math.ceil(mid + reach);
+  const [lo, hi] = wheel.digitRows;
+  const rows: ReactNode[] = [];
+  for (let row = first; row <= last; row++) rows.push(<div key={row} style={{ height: size }}>{row >= lo && row <= hi ? ((row % 10) + 10) % 10 : ''}</div>);
+  return (
+    <div style={{ position: 'relative', flex: 'none', width: `calc(${wheel.presence} * (1ch + ${tracking}em))`, height: size }}>
+      <div
+        style={{
+          position: 'absolute',
+          top: -overhang,
+          left: '50%',
+          width: '1.4ch',
+          height: windowEm * size,
+          transform: `translateX(-50%) scaleX(${wheel.presence})`,
+          // Squeezed thin, a spinning wheel's haze would read as a bright rule; a place fades as it grows in.
+          opacity: wheel.presence,
+          maskImage: odometerWindowMask(fade / windowEm),
+        }}
+      >
+        {blurred && (
+          <svg width={0} height={0} style={{ position: 'absolute' }}>
+            <filter id={filterId} x="-10%" y="-10%" width="120%" height="120%" colorInterpolationFilters="sRGB">
+              <feGaussianBlur stdDeviation={`0 ${sigma}`} />
+            </filter>
+          </svg>
+        )}
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            textAlign: 'center',
+            transform: `translateY(${(first - mid) * size + overhang + nudge}px)`,
+            willChange: 'transform',
+            filter: blurred ? `url(#${filterId})` : undefined,
+          }}
+        >
+          {rows}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Opaque in the middle, fading to nothing over `share` of the window at each end. The fade eases in (alpha = s², s
+ * running 0 → 1 from the edge inward), so the sliver of a digit leaving on a slow landing is already faint.
+ */
+function odometerWindowMask(share: number): string {
+  const ramp = [0, 0.25, 0.5, 0.75, 1];
+  const top = ramp.map((s) => `rgba(0,0,0,${s * s}) ${s * share * 100}%`);
+  const bottom = ramp.map((s) => `rgba(0,0,0,${s * s}) ${100 - s * share * 100}%`).reverse();
+  return `linear-gradient(${[...top, ...bottom].join(', ')})`;
+}
+
+/**
+ * A character that doesn't roll (`$`, `.`, `,`) on the digits' baseline. A separator comes and goes with the place
+ * before it, squeezing to nothing rather than popping.
+ */
+function OdometerStill({ text, presence, size, tracking, nudge }: { text: string; presence: number; size: number; tracking: number; nudge: number }) {
+  return (
+    <div
+      style={{
+        flex: 'none',
+        height: size,
+        letterSpacing: `${tracking}em`,
+        transform: `translateY(${nudge}px)${presence < 1 ? ` scaleX(${presence})` : ''}`,
+        transformOrigin: '0 50%',
+        marginRight: presence < 1 ? `calc(${presence - 1} * ${SEPARATOR_CH}ch)` : undefined,
+        opacity: presence,
+      }}
     >
       {text}
     </div>
