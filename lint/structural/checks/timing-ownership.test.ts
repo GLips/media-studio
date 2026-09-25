@@ -20,12 +20,22 @@ test('a timing constructor imported outside timeline.ts is caught, however it is
     // Adversarial: a project helper re-exporting it under another name, and a scene importing that name.
     'projects/p/helpers.ts': "export { defineScene as scene } from '#studio';\n",
     'projects/p/bars/outro.tsx': "import { scene } from '../helpers.ts';\n",
+    // Adversarial: a kit renaming it, read off a namespace; a kit's `export * as`; a `.js` spelling; a computed import.
+    'lib/kit.ts': "export { defineScene as scene } from './studio/timeline.ts';\nexport * as S from './studio/api.ts';\n",
+    'projects/p/bars/kit.tsx': "import * as K from '../../../lib/kit.ts';\nK.scene({});\n",
+    'projects/p/bars/nested.tsx': "import { S } from '../../../lib/kit.ts';\nS.defineScene({});\n",
+    'projects/p/bars/js.tsx': "import { defineScene } from '../../../lib/studio/timeline.js';\n",
+    'projects/p/bars/computed.tsx': "const m = await import(`${'#'}studio`);\nconst { hud } = await import(`${'x'}`);\n",
     // Legal neighbour: a type-only import builds nothing.
     'projects/p/stills.tsx': "import type { defineScene } from '#studio';\n",
   });
   assert.deepEqual(caught(findings), [
+    'projects/p/bars/computed.tsx:computed import',
     'projects/p/bars/intro.tsx:beatGrid from ../../../lib/studio/api.ts',
     'projects/p/bars/intro.tsx:defineScene from ../../../lib/studio/api.ts',
+    'projects/p/bars/js.tsx:defineScene from ../../../lib/studio/timeline.js',
+    'projects/p/bars/kit.tsx:scene from ../../../lib/kit.ts',
+    'projects/p/bars/nested.tsx:defineScene from ../../../lib/kit.ts',
     'projects/p/bars/outro.tsx:scene from ../helpers.ts',
     'projects/p/helpers.ts:defineScene from #studio',
     'projects/p/video.tsx:defineScene from #studio',

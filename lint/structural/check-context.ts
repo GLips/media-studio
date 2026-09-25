@@ -34,8 +34,11 @@ export type CheckContext = {
   /**
    * Where an exported name is defined, following named re-exports, `export *` and `import … export { … }` to the
    * module that declares it. Several origins when star exports collide; none when nothing in the snapshot defines it.
+   * A namespace (`export * as ns`) comes back as its module's path with the name `'*'`.
    */
   originsOf: (path: string, name: string) => readonly { path: string; name: string }[];
+  /** Every name a module offers, its star exports' included. */
+  exportedNames: (path: string) => readonly string[];
 };
 
 /** Paths the tree governs: everything declared, except generated output and what §4 leaves ungoverned. */
@@ -77,9 +80,11 @@ export function contextFor(tree: SourceTree, declaredShared: DeclaredShared = DE
     seen.add(key);
     const declared = file.exports.find((entry) => entry.exported === name);
     if (declared) {
-      if (!declared.from || declared.from.imported === '*') return [{ path, name }];
+      if (!declared.from) return [{ path, name }];
       const next = moduleTarget(path, declared.from.specifier);
-      return next ? originsOf(next, declared.from.imported, seen) : [];
+      if (!next) return [];
+      // `export * as ns from './m'`: the name is m's namespace, reported as m with the name '*'.
+      return declared.from.imported === '*' ? [{ path: next, name: '*' }] : originsOf(next, declared.from.imported, seen);
     }
     if (name === 'default') return [];
     return file.starExports.flatMap((star) => {
@@ -87,8 +92,20 @@ export function contextFor(tree: SourceTree, declaredShared: DeclaredShared = DE
       return next ? originsOf(next, name, seen) : [];
     });
   };
+  const exportedNames = (path: string, seen = new Set<string>()): string[] => {
+    const file = byPath.get(path);
+    if (!file || seen.has(path)) return [];
+    seen.add(path);
+    const own = file.exports.map((entry) => entry.exported);
+    const starred = file.starExports.flatMap((star) => {
+      const next = moduleTarget(path, star.specifier);
+      return next ? exportedNames(next, seen).filter((name) => name !== 'default') : [];
+    });
+    return [...new Set([...own, ...starred])];
+  };
   return {
     tree,
+    exportedNames: (path) => exportedNames(path),
     positionOf: (path) => classifyStudioPath(path, declaredShared),
     edgesFrom,
     fileAt: (path) => byPath.get(path),

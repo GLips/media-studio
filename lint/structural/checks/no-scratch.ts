@@ -11,8 +11,11 @@
 import type { Finding, StructuralCheck } from '../check-context.ts';
 
 const ID = 'no-scratch';
-/** `scratch/` as a path segment: `$repo/scratch/x.sh` and `'scratch/x'` match, `my-scratch/` doesn't. */
-const SCRATCH_REFERENCE = /(?<![\w.-])scratch\//;
+/**
+ * `scratch` as a path segment: `$repo/scratch/x.sh`, `'scratch/x'`, `"$repo/scratch"` and `join(root, 'scratch')`
+ * match; `my-scratch/` and prose ("start from scratch") don't.
+ */
+const SCRATCH_REFERENCE = /(?<![\w.-])scratch\/|[/'"`]scratch(?![\w.-])/;
 
 const isExempt = (path: string) => path === '.gitignore' || path.startsWith('lint/');
 

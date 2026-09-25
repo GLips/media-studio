@@ -6,15 +6,15 @@
 // re-exporting it and a namespace import all reach the same verdict.
 //
 // A type-only import is left alone: it names the constructor's type and builds
-// nothing. A dynamic `import()` of a module offering a constructor is reported,
-// since what it takes can't be read.
+// nothing. A dynamic `import()` of a module offering a constructor is reported
+// unless it destructures names that aren't one. A computed `import(expr)` is
+// reported unless it destructures only names no constructor has.
 
 import { isTimingConstructor, TIMING_CONSTRUCTORS } from '../../policy/timing-constructors.ts';
 import { walkAst, type AstNode } from '../source-tree.ts';
 import type { Finding, StructuralCheck } from '../check-context.ts';
 
 const ID = 'timing-ownership';
-const ALL_NAMES = [...new Set(TIMING_CONSTRUCTORS.flatMap((row) => row.names))];
 
 export const timingOwnershipCheck: StructuralCheck = {
   id: ID,
@@ -23,27 +23,46 @@ export const timingOwnershipCheck: StructuralCheck = {
     for (const file of context.tree.sources) {
       const position = context.positionOf(file.path);
       if (position.kind !== 'project' || position.role === 'timeline') continue;
+      const offers = (path: string, name: string) => context.originsOf(path, name).some(isTimingConstructor);
+      const namespacesOf = (path: string, name: string) =>
+        context.originsOf(path, name).filter((origin) => origin.name === '*').map((origin) => origin.path);
       for (const edge of context.edgesFrom(file)) {
-        if (edge.target.kind !== 'module' || edge.scanned.typeOnly) continue;
-        const target = edge.target.path;
+        if (edge.scanned.typeOnly) continue;
         const report = (name: string, line: number) => findings.push({
           check: ID, path: file.path, line, key: `${name} from ${edge.scanned.specifier}`,
           message: `imports the timing constructor ${name}; a project's timing is built in its timeline.ts`,
         });
-        const offers = (name: string) => context.originsOf(target, name).some(isTimingConstructor);
+        if (edge.target.kind === 'computed') {
+          // Its module is unknown, but names it destructures can still be told apart from every constructor's.
+          const names = edge.scanned.names;
+          if (names !== '*' && !names.some((name) => TIMING_CONSTRUCTORS.some((row) => row.names.includes(name)))) continue;
+          findings.push({
+            check: ID, path: file.path, line: edge.line, key: 'computed import',
+            message: "a computed import() can't be checked for timing constructors; name the module",
+          });
+          continue;
+        }
+        if (edge.target.kind !== 'module') continue;
+        const target = edge.target.path;
+        // Every member read off a namespace is followed, whatever it's called: a kit may rename a constructor.
+        const readMembers = (namespace: string, locals: readonly string[]) => {
+          for (const { name, offset } of namespaceMembers(file.program, locals)) if (offers(namespace, name)) report(name, file.lineOf(offset));
+        };
         if (edge.scanned.names !== '*') {
-          for (const name of edge.scanned.names) if (offers(name)) report(name, edge.line);
+          for (const name of edge.scanned.names) if (offers(target, name)) report(name, edge.line);
+          for (const binding of edge.scanned.bindings) {
+            for (const namespace of namespacesOf(target, binding.imported)) readMembers(namespace, [binding.local]);
+          }
           continue;
         }
         const namespaces = edge.scanned.bindings.filter((binding) => binding.imported === '*').map((binding) => binding.local);
-        if (namespaces.length === 0) {
-          const offered = ALL_NAMES.filter(offers);
-          if (offered.length) report(offered.join(', '), edge.line);
+        if (namespaces.length) {
+          readMembers(target, namespaces);
           continue;
         }
-        for (const { name, offset } of namespaceMembers(file.program, namespaces)) {
-          if (ALL_NAMES.includes(name) && offers(name)) report(name, file.lineOf(offset));
-        }
+        // A dynamic import, a side-effect import or a project's `export *`: everything the module offers is in reach.
+        const offered = context.exportedNames(target).filter((name) => offers(target, name));
+        if (offered.length) report(offered.join(', '), edge.line);
       }
     }
     return findings;

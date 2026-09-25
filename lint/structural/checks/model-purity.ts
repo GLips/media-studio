@@ -85,6 +85,8 @@ function offenseOf(context: CheckContext, edge: ImportEdge): string | undefined 
   const target = edge.target;
   if (target.kind === 'builtin') return `the builtin ${target.name}`;
   if (target.kind === 'unresolved-alias') return `the unresolved alias ${target.specifier}`;
+  if (target.kind === 'outside') return `${target.specifier}, outside the repo`;
+  if (target.kind === 'computed') return "a computed import(), whose module can't be read";
   if (target.kind === 'package') {
     const allowed = MODEL_PACKAGE_ALLOWLIST[target.name];
     if (!allowed) return `the package ${target.name}`;
@@ -101,36 +103,58 @@ function offenseOf(context: CheckContext, edge: ImportEdge): string | undefined 
   return undefined;
 }
 
-/** References to an impure global not declared in the file: `document`, `globalThis.document`. */
+/**
+ * Reads of an impure global: `document`, `globalThis.document`, `globalThis['fetch']`, `const { fetch } = globalThis`.
+ * By name, not by scope: a model doesn't name a local after a browser global, so a parameter called `window` is
+ * reported rather than trusted to shadow every `window` in the file. A binding's own name isn't a read.
+ */
 function impureGlobalsIn(file: SourceFile): { name: string; offset: number }[] {
-  const declared = new Set<string>();
-  const collect = (node: unknown) => walkAst(node, (inner) => {
-    if (inner.type === 'Identifier') declared.add(inner.name as string);
-  });
-  walkAst(file.program, (node) => {
-    if (node.type === 'VariableDeclarator') collect(node.id);
-    if (node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression') {
-      collect(node.id);
-      collect(node.params);
-    }
-    if (node.type === 'ClassDeclaration') collect(node.id);
-    if (node.type === 'CatchClause') collect(node.param);
-  });
-  for (const scanned of file.imports) for (const binding of scanned.bindings) declared.add(binding.local);
-
+  const bindings = new Set<AstNode>();
+  const bind = (pattern: unknown) => {
+    const node = pattern as AstNode | null | undefined;
+    if (!node) return;
+    if (node.type === 'Identifier') bindings.add(node);
+    else if (node.type === 'ObjectPattern') for (const property of node.properties as AstNode[]) bind(property.type === 'Property' ? property.value : property);
+    else if (node.type === 'ArrayPattern') for (const element of node.elements as AstNode[]) bind(element);
+    else if (node.type === 'RestElement') bind(node.argument);
+    // Only the left of `w = window` binds; its default is a read.
+    else if (node.type === 'AssignmentPattern') bind(node.left);
+    else if (node.type === 'TSParameterProperty') bind(node.parameter);
+  };
+  const isImpure = (name: unknown) => typeof name === 'string' && IMPURE_GLOBALS.has(name);
   const found: { name: string; offset: number }[] = [];
-  walkAst(file.program, (node, parent) => {
-    // Types are erased: `el: HTMLElement` loads nothing.
-    if (node.type.startsWith('TS') && !node.type.endsWith('Expression')) return false;
-    if (node.type === 'MemberExpression' && !node.computed) {
-      const object = node.object as AstNode, property = node.property as AstNode;
-      if (object.type === 'Identifier' && GLOBAL_OBJECTS.has(object.name as string) && IMPURE_GLOBALS.has(property.name as string)) {
-        found.push({ name: property.name as string, offset: node.start });
+  walkAst(file.program, (node) => {
+    if (node.type === 'VariableDeclarator') {
+      bind(node.id);
+      const init = node.init as AstNode | null, id = node.id as AstNode;
+      if (init?.type === 'Identifier' && GLOBAL_OBJECTS.has(init.name as string) && id.type === 'ObjectPattern') {
+        for (const property of id.properties as AstNode[]) {
+          const key = property.key as AstNode | undefined;
+          if (key?.type === 'Identifier' && isImpure(key.name)) found.push({ name: key.name as string, offset: property.start });
+        }
       }
     }
-    if (node.type !== 'Identifier' || !IMPURE_GLOBALS.has(node.name as string) || declared.has(node.name as string)) return;
+    if (node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression') {
+      bind(node.id);
+      for (const param of node.params as AstNode[]) bind(param);
+    }
+    if (node.type === 'ClassDeclaration' || node.type === 'ClassExpression') bind(node.id);
+    if (node.type === 'CatchClause') bind(node.param);
+  });
+  walkAst(file.program, (node, parent) => {
+    // Types are erased (`el: HTMLElement` loads nothing), and an import's names are its own.
+    if ((node.type.startsWith('TS') && !node.type.endsWith('Expression')) || node.type === 'ImportDeclaration') return false;
+    if (node.type === 'MemberExpression') {
+      const object = node.object as AstNode, property = node.property as AstNode;
+      const name = node.computed ? (property.type === 'Literal' ? property.value : undefined) : property.name;
+      if (object.type === 'Identifier' && GLOBAL_OBJECTS.has(object.name as string) && isImpure(name)) {
+        found.push({ name: name as string, offset: node.start });
+      }
+    }
+    if (node.type !== 'Identifier' || !isImpure(node.name) || bindings.has(node)) return;
     if (parent?.type === 'MemberExpression' && parent.property === node && !parent.computed) return;
-    if ((parent?.type === 'Property' || parent?.type === 'PropertyDefinition' || parent?.type === 'MethodDefinition') && parent.key === node && !parent.computed) return;
+    const keyed = parent?.type === 'Property' || parent?.type === 'PropertyDefinition' || parent?.type === 'MethodDefinition';
+    if (keyed && parent.key === node && !parent.computed && !(parent.type === 'Property' && parent.shorthand && parent.value === node)) return;
     found.push({ name: node.name as string, offset: node.start });
   });
   return found;

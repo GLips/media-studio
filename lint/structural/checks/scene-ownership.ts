@@ -16,8 +16,11 @@ import type { Finding, StructuralCheck } from '../check-context.ts';
 
 const ID = 'scene-ownership';
 
-/** Roles a scene's code can reach, and so roles held to this check. */
-const SCENE_REACHABLE = new Set(['scene', 'scene-helper', 'model', 'shared', 'timeline', 'sfx']);
+/**
+ * Roles a scene's code can reach, and so roles held to this check. An unclassified file is here too: a scene already
+ * reaching one (baselined) mustn't become a silent path into another scene.
+ */
+const SCENE_REACHABLE = new Set(['scene', 'scene-helper', 'model', 'shared', 'timeline', 'sfx', 'brand', 'unclassified']);
 /** Roles any scene-reachable file may import. */
 const OPEN_TARGETS = new Set(['shared', 'timeline', 'sfx', 'media', 'generated', 'brand']);
 

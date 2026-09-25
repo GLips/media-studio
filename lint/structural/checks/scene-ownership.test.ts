@@ -7,7 +7,6 @@ test("a scene reaches only its own folder, shared modules and the timeline; noth
     'projects/p/timeline.ts': 'export const t = 0;\n',
     'projects/p/look.ts': "export const ink = '#000';\n",
     'projects/p/sfx/hit.ts': 'export default {};\n',
-    'projects/p/stray.ts': 'export const s = 1;\n',
     'projects/p/bars/ink/needle.ts': 'export const n = 1;\n',
     'projects/p/bars/ink/needle-model.ts': 'export const pose = 1;\n',
     // Legal: its own folder (a helper and a model), shared, timeline, sound.
@@ -22,6 +21,8 @@ test("a scene reaches only its own folder, shared modules and the timeline; noth
     // Adversarial: a declared shared module importing back into a scene, and a scene's helper reaching another scene.
     'projects/p/palette.ts': "import { n } from './bars/ink/needle.ts';\n",
     'projects/p/bars/finale/replay.ts': "import { x } from '../ink.tsx';\n",
+    // Adversarial: an unclassified file a scene already reaches, used as a path into another scene.
+    'projects/p/stray.ts': "import { n } from './bars/ink/needle.ts';\nexport const s = 1;\n",
     // Legal neighbour: the composition binds every scene.
     'projects/p/video.tsx': "import { a } from './bars/ink.tsx';\nimport { b } from './bars/finale.tsx';\n",
   }, { p: ['look.ts', 'palette.ts'] });
@@ -31,5 +32,6 @@ test("a scene reaches only its own folder, shared modules and the timeline; noth
     'projects/p/bars/finale.tsx:./ink/needle.ts',
     'projects/p/bars/finale/replay.ts:../ink.tsx',
     'projects/p/palette.ts:./bars/ink/needle.ts',
+    'projects/p/stray.ts:./bars/ink/needle.ts',
   ]);
 });

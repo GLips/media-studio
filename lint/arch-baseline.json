@@ -26,6 +26,7 @@
       "<p>New media is made with <code>studio gen image</code>, <code>studio gen video</code> and <code>studio music gen</code>, which record each file's model, prompt": 1
     },
     "lab/manifest.ts": {
+      "const SCRATCH_DIR = join(STUDIO_ROOT, 'scratch');": 1,
       "* Everything `studio gen` has made, read from each generated/provenance.json in projects/ and scratch/. An entry": 1,
       "/** scratch/image-bakeoff's briefs, models and per-image review, joined. Null when that folder is gone. */": 1
     },
@@ -95,6 +96,9 @@
       "./06-buy-more.tsx": 1,
       "./07-tiers.tsx": 1,
       "./08-pay-less.tsx": 1
+    },
+    "projects/2026-09-motion-showcase/reel.tsx": {
+      "./bar.ts": 1
     }
   },
   "timing-ownership": {
@@ -106,6 +110,9 @@
     },
     "projects/2026-09-motion-showcase/reel.tsx": {
       "defineScene from ../../lib/studio/api.ts": 1
+    },
+    "projects/2026-09-motion-showcase/tools/ab-hits.ts": {
+      "computed import": 1
     },
     "projects/2026-09-paint-test/video.tsx": {
       "defineScene from ../../lib/studio/api.ts": 1

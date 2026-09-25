@@ -50,7 +50,11 @@ export type ImportTarget =
   | { kind: 'module'; path: string; backed: boolean }
   | { kind: 'package'; name: string; names: readonly string[] | '*' }
   | { kind: 'builtin'; name: string }
-  | { kind: 'unresolved-alias'; specifier: string };
+  | { kind: 'unresolved-alias'; specifier: string }
+  /** An absolute path, or a relative one climbing above the repo root. */
+  | { kind: 'outside'; specifier: string }
+  /** `import(expr)` or `require(expr)` with a computed specifier: what it loads can't be read. */
+  | { kind: 'computed' };
 
 export type SourceFile = {
   /** Repo-relative, `/`-separated. */
@@ -193,10 +197,14 @@ function scanModule(module: ReturnType<typeof parseSync>['module'], program: Ast
       if (reference.type === 'TSExternalModuleReference') source = reference.expression;
       typeOnly = node.importKind === 'type';
     } else if (node.type === 'ExportNamedDeclaration' && (node.specifiers as unknown[]).length === 0) source = node.source;
-    const literal = source as AstNode | undefined;
-    if (literal?.type === 'Literal' && typeof literal.value === 'string') {
-      imports.push({ specifier: literal.value, offset: literal.start, names: destructured.get(node) ?? '*', typeOnly, bindings: [] });
-    }
+    if (source == null) return;
+    const literal = source as AstNode;
+    const names = destructured.get(node) ?? '*';
+    const quasis = literal.type === 'TemplateLiteral' && (literal.expressions as unknown[]).length === 0 ? literal.quasis as AstNode[] : undefined;
+    const text = literal.type === 'Literal' && typeof literal.value === 'string'
+      ? literal.value : (quasis?.[0]?.value as { cooked?: string } | undefined)?.cooked;
+    // A computed specifier keeps its edge, as the empty string, so a check can refuse what it can't follow.
+    imports.push({ specifier: text ?? '', offset: literal.start ?? node.start, names, typeOnly, bindings: [] });
   });
   return { imports: imports.sort((a, b) => a.offset - b.offset), exports, starExports };
 }
@@ -254,12 +262,14 @@ const BUILTINS = new Set(builtinModules);
 function resolveImportTarget(
   paths: ReadonlySet<string>, aliases: Record<string, string>, fromPath: string, specifier: string, names: readonly string[] | '*',
 ): ImportTarget {
+  if (specifier === '') return { kind: 'computed' };
+  if (specifier.startsWith('/')) return { kind: 'outside', specifier };
   if (specifier.startsWith('node:') || BUILTINS.has(specifier.split('/')[0])) return { kind: 'builtin', name: specifier };
   let modulePath: string | undefined;
   if (specifier.startsWith('#')) {
     modulePath = expandStudioAlias(specifier, aliases);
     if (modulePath === undefined) return { kind: 'unresolved-alias', specifier };
-  } else if (specifier.startsWith('.') || specifier.startsWith('/')) {
+  } else if (specifier.startsWith('.')) {
     modulePath = `${fromPath.slice(0, fromPath.lastIndexOf('/') + 1)}${specifier}`;
   }
   if (modulePath === undefined) {
@@ -268,6 +278,7 @@ function resolveImportTarget(
     return { kind: 'package', name, names: name === specifier ? names : '*' };
   }
   const canonical = normalizeRepoPath(modulePath);
+  if (canonical === '..' || canonical.startsWith('../')) return { kind: 'outside', specifier };
   const backing = backingFile(paths, canonical);
   return { kind: 'module', path: backing ?? canonical, backed: backing !== undefined };
 }
@@ -278,6 +289,14 @@ function resolveImportTarget(
  */
 function backingFile(paths: ReadonlySet<string>, modulePath: string): string | undefined {
   if (paths.has(modulePath)) return modulePath;
+  // Bundler resolution lets `./x.js` name `x.ts`, as TypeScript's own emit spelling does.
+  const js = /\.(m|c)?js(x?)$/.exec(modulePath);
+  if (js) {
+    const stem = modulePath.slice(0, js.index);
+    const swapped = [`${stem}.${js[1] ?? ''}ts${js[2]}`, ...(js[2] ? [] : [`${stem}.${js[1] ?? ''}tsx`])];
+    const found = swapped.find((candidate) => paths.has(candidate));
+    if (found) return found;
+  }
   for (const ext of SOURCE_EXTENSIONS) if (paths.has(`${modulePath}.${ext}`)) return `${modulePath}.${ext}`;
   for (const ext of SOURCE_EXTENSIONS) if (paths.has(`${modulePath}/index.${ext}`)) return `${modulePath}/index.${ext}`;
   return undefined;

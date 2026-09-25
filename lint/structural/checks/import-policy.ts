@@ -4,6 +4,9 @@
 // a `#` alias names a key package.json's `imports` has; no import climbs out of
 // the repo. Scene, model and scratch denials are checks (b), (c) and (d).
 //
+// A computed `import(expr)` isn't reported here: lab and the CLI load projects
+// that way. The checks that must follow every edge refuse it themselves.
+//
 // Negative space: the allowed side of §2's graph (a project's picture reaching
 // only `#studio`, `#models/*` and its own files) isn't held yet. Today every
 // project imports lib/studio's files directly, and the lib split slices move
@@ -26,11 +29,11 @@ export const importPolicyCheck: StructuralCheck = {
           report(`${target.specifier} matches no key in package.json's imports`);
           continue;
         }
-        if (target.kind !== 'module') continue;
-        if (target.path.startsWith('..')) {
+        if (target.kind === 'outside') {
           report('imports from outside the repo');
           continue;
         }
+        if (target.kind !== 'module') continue;
         const to = context.positionOf(target.path);
         if (from.kind === 'project' && to.kind === 'project' && to.project !== from.project) {
           report(`project ${from.project} imports project ${to.project}; shared code belongs in lib/ or brands/`);

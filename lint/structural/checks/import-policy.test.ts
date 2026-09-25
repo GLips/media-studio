@@ -11,6 +11,9 @@ test('a project importing another project is caught through an alias; an unknown
       // Adversarial: the same crossing spelled as an alias.
       "import { ink as again } from '#shared-project/look.ts';",
       "import { x } from '#nowhere';",
+      // Adversarial: an absolute path, and a relative one climbing out of the repo.
+      "import { h } from '/etc/hosts.ts';",
+      "import { u } from '../../../elsewhere/x.ts';",
       // Legal neighbour: its own file.
       "import { t } from './timeline.ts';",
     ].join('\n'),
@@ -19,6 +22,8 @@ test('a project importing another project is caught through an alias; an unknown
   assert.deepEqual(caught(findings), [
     'projects/p/video.tsx:#nowhere',
     'projects/p/video.tsx:#shared-project/look.ts',
+    'projects/p/video.tsx:../../../elsewhere/x.ts',
     'projects/p/video.tsx:../other/look.ts',
+    'projects/p/video.tsx:/etc/hosts.ts',
   ]);
 });
