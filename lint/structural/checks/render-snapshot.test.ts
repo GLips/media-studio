@@ -9,6 +9,7 @@ test('a render that skips its snapshot, or a reader past the loader, is caught, 
     // Obvious: review reading the check's timeline, and a tool rendering past the session.
     'lab/review/server.ts': "const timeline = readJson(join(project, 'out', 'check', 'timeline.json'));\n",
     'lib/engine/render/bars.ts': "import { renderMedia } from '@remotion/renderer';\n",
+    'lib/engine/render/stitch.ts': "import { renderFrames, stitchFramesToVideo } from '@remotion/renderer';\n",
     // Adversarial: a template path, the snapshot read by hand, a namespace import, and the constant through a re-export.
     'lab/manifest.ts': 'const t = readFileSync(`${project}/out/check/timeline.json`);\nconst s = `${dir}/${name}.snapshot.json`;\n',
     'lib/engine/render/sliced.ts': "import * as remotion from '@remotion/renderer';\n",
@@ -28,5 +29,6 @@ test('a render that skips its snapshot, or a reader past the loader, is caught, 
     'lab/review/server.ts:timeline.json',
     'lib/engine/render/bars.ts:renderMedia',
     'lib/engine/render/sliced.ts:renderMedia',
+    'lib/engine/render/stitch.ts:stitchFramesToVideo',
   ]);
 });

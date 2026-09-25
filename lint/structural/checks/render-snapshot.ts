@@ -4,7 +4,7 @@
 // that snapshot, never the latest check's out/check/timeline.json. Held by who
 // may name what:
 //
-// - `renderMedia` is imported only by the render session, whose renderVideo
+// - `renderMedia` and `stitchFramesToVideo` are imported only by the render session, whose renderVideo
 //   writes the snapshot, so no render path skips the writer. The previs
 //   blockout is exempt: a scene's layout sketch sent to generation, not the video.
 // - The timeline file name (a path-like string ending in `timeline.json`) is
@@ -21,6 +21,8 @@ import { walkAst, type AstNode } from '../source-tree.ts';
 import type { Finding, StructuralCheck } from '../check-context.ts';
 
 const ID = 'render-snapshot';
+/** The renderer's calls that write a video file. */
+const VIDEO_WRITERS = ['renderMedia', 'stitchFramesToVideo'];
 const RENDER_OWNERS = ['lib/engine/render/render-session.ts', 'lib/engine/render/previs-render.ts'];
 /** Where the timeline file is named, and the constant each names it by. */
 const TIMELINE_NAMES = [{ path: 'lib/studio/Video.tsx', name: 'TIMELINE_ARTIFACT' }, { path: 'lib/engine/render/render-session.ts', name: 'TIMELINE_REPORT_NAME' }];
@@ -39,8 +41,9 @@ export const renderSnapshotCheck: StructuralCheck = {
       for (const edge of context.edgesFrom(file)) {
         const { names } = edge.scanned;
         const imports = (name: string) => names === '*' || names.includes(name);
-        if (edge.target.kind === 'package' && edge.target.name === '@remotion/renderer' && imports('renderMedia') && !RENDER_OWNERS.includes(file.path)) {
-          found(edge.line, 'renderMedia', 'renders a video past the render session, so it gets no snapshot: render through session.renderVideo');
+        const writer = VIDEO_WRITERS.find(imports);
+        if (edge.target.kind === 'package' && edge.target.name === '@remotion/renderer' && writer && !RENDER_OWNERS.includes(file.path)) {
+          found(edge.line, writer, 'renders a video past the render session, so it gets no snapshot: render through session.renderVideo');
         }
         if (edge.target.kind === 'module' && !file.path.startsWith(TIMELINE_ARTIFACT_READERS) && reachesTimelineArtifact(edge.target.path, names)) {
           found(edge.line, 'timeline name', 'reaches for the timeline artifact or the check\'s timeline.json: a render\'s timeline is in its snapshot (loadRenderSnapshot)');

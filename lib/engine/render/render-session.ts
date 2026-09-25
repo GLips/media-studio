@@ -26,8 +26,8 @@ export type RenderSession = Awaited<ReturnType<typeof openRenderSession>>;
 /** What a session fills in on every render: its own bundle, composition, browser and tab count. */
 type SessionRenderOptions = 'composition' | 'serveUrl' | 'chromiumOptions' | 'inputProps' | 'concurrency';
 
-/** What renderVideo decides itself: the codec, the file, the frames and the sound. */
-type VideoRenderOptions = SessionRenderOptions | 'codec' | 'outputLocation' | 'frameRange' | 'muted' | 'audioCodec';
+/** What renderVideo decides itself: the codec, the file, the frames (every one, as its snapshot says) and the sound. */
+type VideoRenderOptions = SessionRenderOptions | 'codec' | 'outputLocation' | 'frameRange' | 'everyNthFrame' | 'muted' | 'audioCodec';
 
 /**
  * The timeline report's file name: the artifact frame 0 emits (Video.tsx's TIMELINE_ARTIFACT, which Node can't load

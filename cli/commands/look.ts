@@ -16,7 +16,7 @@ export default defineCommand({
     strip: { type: 'string', valueHint: '4:5', description: 'How does this stretch move? Seconds from:to, every --step seconds' },
     video: { type: 'string', valueHint: 'out/video.mp4', description: 'What does a render show, rather than the code? Read frames from this video (relative to the project unless absolute)' },
     against: { type: 'string', valueHint: 'out/wip/before.mp4', description: 'What did a change move? Each frame of this render (before) beside the composition\'s or --video\'s (after) and the pixels that really changed, with each frame\'s changed-pixel count; with no frames given, every frame, the sheet showing the most changed' },
-    'starts-at': { type: 'string', description: 'Where in the project does a render with no snapshot start? The project frame of --video\'s and --against\'s first frame (default 0). A render studio render made says where it starts in its snapshot' },
+    'starts-at': { type: 'string', description: 'Where in the project does a render with no snapshot start? The project frame of --video\'s and --against\'s first frame (default 0). A render with a snapshot (studio render made it) starts where its snapshot says, whatever this is' },
     motion: { type: 'boolean', description: 'Does it keep moving? Each frame\'s mean change from the one before over --frames=a:b, a --bar or the whole video, each bar\'s mean, the still runs and the beat frames; every frame\'s numbers go to a .txt' },
     still: { type: 'string', default: '3.5', description: 'For --motion: what counts as still? A mean change from the frame before under this' },
     crop: { type: 'string', valueHint: '0,120,1920,840', description: 'Only this region, x,y,w,h in the video\'s pixels: the sheet shows it, and --against and --motion measure only it (leave out a HUD whose timecode always changes)' },
@@ -60,13 +60,10 @@ export default defineCommand({
     if (givenStart !== undefined && !(Number.isInteger(givenStart) && givenStart >= 0)) throw new Error(`--starts-at is a frame number, not ${args['starts-at']}`);
     const crop = args.crop ? parseLookCrop(args.crop) : undefined;
     const { loadRenderSnapshot } = await import('../../lib/engine/snapshot/render-snapshot.ts');
-    // Where a render starts in the project: its snapshot says, and --starts-at places one without a snapshot.
+    // Where a render starts in the project: its snapshot says, and --starts-at places only one without a snapshot.
     const renderSource = (file: string) => {
       const loaded = loadRenderSnapshot(file);
-      if (loaded.kind === 'none') return { kind: 'video' as const, file, startsAt: givenStart ?? 0 };
-      const { from } = loaded.snapshot.frames;
-      if (givenStart !== undefined && givenStart !== from) throw new Error(`${file} starts at the project's frame ${from}, as its snapshot says: leave out --starts-at=${givenStart}`);
-      return { kind: 'video' as const, file, startsAt: from };
+      return { kind: 'video' as const, file, startsAt: loaded.kind === 'snapshot' ? loaded.snapshot.frames.from : givenStart ?? 0 };
     };
 
     const source = await openLookSource(args.video

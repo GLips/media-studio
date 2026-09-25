@@ -326,7 +326,8 @@ export async function renderVideoSlice(session: RenderSession, { from, end, out 
 export async function joinVideoSlices(session: RenderSession, { dir, out }: { dir: string; out: string }): Promise<string> {
   const timeline = await session.readTimeline();
   const now = JSON.stringify(timeline);
-  const slices = readdirSync(dir).filter((name) => extname(name) === '.mp4').map((name) => {
+  // Not the join itself, when it's written among its slices.
+  const slices = readdirSync(dir).filter((name) => extname(name) === '.mp4' && join(dir, name) !== out).map((name) => {
     const file = join(dir, name);
     const loaded = loadRenderSnapshot(file);
     if (loaded.kind === 'none') throw new Error(loaded.reason);
