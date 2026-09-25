@@ -90,7 +90,10 @@ in) and rises in place, so the same page carries the animatic, the blocking and 
 
 **Cut to music** (the high-energy register):
 
-1. Get the track (`video-sound`, music) and cut it to the beat sheet's shape with `studio music fit <p> --bars`.
+1. Get the track (`video-sound`, music) and cut it to the beat sheet's shape with `studio music fit <p> --bars`. To
+   plan before there's a track, put the timeline on a tempo guess (`tempoGrid(120)`): the storyboard plays silent, and
+   the track, fitted later to the same beat counts, swaps in as `recordedGrid(track)`. Guess the tempo you'll use: a
+   different one changes every beat's length, so re-check the pacing once the track is in.
 2. Write `timeline.ts` from the beat sheet (`video-motion`, "The high-energy register"): a `beatSpan` per bar, a cue
    for each idea that lands on a beat, named for what lands (`ink.strike2`), the replays and the final hit's landmark.
 3. Bind each scene in `video.tsx` to a rough picture of its idea, with the beat sheet's text as its `note`; put each

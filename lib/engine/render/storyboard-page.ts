@@ -1,11 +1,11 @@
 // storyboard-page.ts: the storyboard page for a project, made from the video itself so it can't drift from it.
 // `studio storyboard` runs it and writes out/storyboard/index.html.
 //
-// A small preview of the whole video on top; below it, a card per scene with its `note` and its stills. Clicking a
-// card plays from that scene, and the card lights up while its scene plays. A voiced video gets a still per line, with
-// the line's words and its audio. A video cut to music gets one on each moment its timeline.ts names (a cue, a replay
-// landing, a landmark), captioned in the timeline's words, so a pacing note reads back onto the line it changes; its
-// preview plays the music. Before the motion pass the video is an animatic: rough scenes at their real timing.
+// A small preview of the whole video on top, with whatever sound it has so far; below it, a card per scene with its
+// `note` and its stills. Clicking a card plays from that scene, and the card lights up while its scene plays. Each
+// voiced line gets a still, with its words and audio. A video with a timeline.ts also gets one on each moment it names
+// (a cue, a replay landing, a landmark), captioned in the timeline's words, so a pacing note reads back onto the line
+// it changes, whether it's silent, on a tempo guess or on its music. Before the motion pass the video is an animatic.
 import { copyFileSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { openRenderSession } from './render-session.ts';
@@ -31,9 +31,7 @@ export async function buildStoryboardPage(project: string): Promise<string> {
   const { fps } = timeline;
   const lastFrame = (await session.compositionFor(session.props())).durationInFrames - 1;
   const timed = await readProjectTimeline(project);
-  const shots = timed?.audio.some((placed) => placed.kind === 'music')
-    ? musicShots(timeline, timed, lastFrame)
-    : voicedShots(project, timeline, lastFrame);
+  const shots = timed ? timelineShots(project, timeline, timed, lastFrame) : voicedShots(project, timeline, lastFrame);
   const stills = await session.renderStills(shots.flatMap((s) => s.moments.map((m) => m.frame)), { w: 640 });
   for (const { moments } of shots) for (const m of moments) copyFileSync(stills.fileFor(m.frame), join(outDir, `${m.frame}.jpg`));
   rmSync(stills.dir, { recursive: true, force: true });
@@ -67,40 +65,50 @@ type StoryboardShots = { scene: TimelineReport['scenes'][number]; timing?: strin
 
 /** A still per line, from the middle of its words; a scene without lines gets one from its middle. */
 function voicedShots(project: string, timeline: TimelineReport, lastFrame: number): StoryboardShots[] {
-  const voiced: Record<string, { src: string | null }> = JSON.parse(readFileSync(join(project, 'audio', 'manifest.json'), 'utf8'));
+  const voiced = readVoiceManifest(project);
   return timeline.scenes.map((scene) => {
     const lines = timeline.cues.filter((c) => scene.lines.includes(c.id));
     const moments = lines.length ? lines.map((line) => ({ line, t: (line.start + line.end) / 2 })) : [{ line: null, t: scene.start + scene.dur / 2 }];
     return {
       scene,
-      moments: moments.map(({ line, t }) => ({
-        frame: Math.min(Math.round(t * timeline.fps), lastFrame),
-        caption: line ? `<code>${esc(line.id)}</code>${line.voiced ? '' : ' <em>estimated</em>'}<q>${esc(line.text)}</q>${
-          voiced[line.id]?.src ? `<audio controls preload="none" src="../../${voiced[line.id].src}"></audio>` : ''}` : undefined,
-      })),
+      moments: moments.map(({ line, t }) => ({ frame: Math.min(Math.round(t * timeline.fps), lastFrame), caption: line ? lineCaption(line, voiced) : undefined })),
     };
   });
 }
 
 /**
  * A still on each frame the timeline names in a scene, its moments captioned together (the scene's own first, the
- * replays landing there counted); a scene that names none gets one from its middle.
+ * replays landing there counted), and one per voiced line from the middle of its words, with its audio; a scene that
+ * names nothing gets one from its middle. Silent, on a tempo guess, on fitted music or voiced, it reads the same.
  */
-function musicShots(report: TimelineReport, timeline: Timeline, lastFrame: number): StoryboardShots[] {
+function timelineShots(project: string, report: TimelineReport, timeline: Timeline, lastFrame: number): StoryboardShots[] {
   const scenes = timelineSceneMoments(timeline);
+  // Only a timeline that places a line has recorded or estimated a voice, so only then is there a manifest to read.
+  const voiced = timeline.audio.some((placed) => placed.kind === 'voice') ? readVoiceManifest(project) : {};
+  const still = (frame: number) => Math.min(Math.round(frame), lastFrame);
   return report.scenes.map((scene) => {
     const timed = scenes.find((s) => s.id === scene.id);
     if (!timed) throw new Error(`the video's scene ${scene.id} isn't in timeline.ts: bind the video with bindTimeline`);
-    const frames = [...new Set(timed.moments.map((m) => m.frame))];
+    const named = timed.moments.filter((m) => m.kind !== 'line');
+    const lines = report.cues.filter((line) => scene.lines.includes(line.id));
+    const moments = [
+      ...[...new Set(named.map((m) => m.frame))].map((frame) => ({ frame: still(frame), caption: momentsCaption(named.filter((m) => m.frame === frame)) })),
+      ...lines.map((line) => ({ frame: still((line.start + line.end) / 2 * report.fps), caption: lineCaption(line, voiced) })),
+    ].sort((a, b) => a.frame - b.frame);
     const timing = timed.driver === 'beat'
       ? `${timed.beats} beats${timed.musicBeat !== null && timed.musicBeat !== 1 ? `, in on the music's beat ${timed.musicBeat}` : ''}`
-      : timed.driver;
-    if (!frames.length) return { scene, timing, moments: [{ frame: Math.min(Math.round((timed.from + timed.to) / 2), lastFrame) }] };
-    return {
-      scene, timing,
-      moments: frames.map((frame) => ({ frame: Math.min(frame, lastFrame), caption: momentsCaption(timed.moments.filter((m) => m.frame === frame)) })),
-    };
+      : undefined;
+    return { scene, timing, moments: moments.length ? moments : [{ frame: still((timed.from + timed.to) / 2) }] };
   });
+}
+
+type VoiceManifest = Record<string, { src: string | null }>;
+
+const readVoiceManifest = (project: string): VoiceManifest => JSON.parse(readFileSync(join(project, 'audio', 'manifest.json'), 'utf8'));
+
+function lineCaption(line: TimelineReport['cues'][number], voiced: VoiceManifest): string {
+  return `<code>${esc(line.id)}</code>${line.voiced ? '' : ' <em>estimated</em>'}<q>${esc(line.text)}</q>${
+    voiced[line.id]?.src ? `<audio controls preload="none" src="../../${voiced[line.id].src}"></audio>` : ''}`;
 }
 
 function momentsCaption(moments: readonly TimelineMoment[]): string {
