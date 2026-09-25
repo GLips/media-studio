@@ -1,12 +1,11 @@
-// The ink field bars 4 and 5 share: the 174 inks as a lattice of dots on black, and the count at its foot. Bar 4's
-// needle ripples repaint the field and its last one lands every cell back on this rest look by bar 4's last frame; bar
-// 5 picks the field up from that state on its first and filters it, the count standing where bar 4 landed it. This
-// module is the one place the handover state is written down: change it here, not in a bar.
+// The ink field bars 4 and 5 share: the 174 inks as a lattice of dots on black (the count at its foot is in
+// ink-count.ts). Bar 4's needle ripples repaint the field and its last one lands every cell back on this rest look by
+// bar 4's last frame; bar 5 picks the field up from that state on its first and filters it. This module is the one
+// place the field's handover state is written down: change it here, not in a bar.
 
-import { H, ODOMETER_DIGIT_EM, W } from '../../lib/studio/api.ts';
+import { H, W } from '#models/frame/frame.ts';
 import { glyphFieldLayout, type GlyphCell, type GlyphLayout, type GlyphShape } from '#models/reel/glyph-field.ts';
 import type { GlyphFieldProps, GlyphRest } from '#models/reel/glyph-field-frame.ts';
-import { archivoAdvance } from '#models/reel/ticker-layout.ts';
 import { inks, type Ink } from './look.ts';
 
 /** A cell of the ink field: its place in the lattice and the ink it shows. */
@@ -48,15 +47,3 @@ export const inkFieldRest = (cell: InkCell): GlyphRest => ({ ...INK_DOT, fill: c
  * At rest (no wave playing, no filter step, no punch) it draws exactly the handover frame.
  */
 export const INK_FIELD = { items: INK_FIELD_ITEMS, layout: INK_FIELD_LAYOUT, rest: inkFieldRest } satisfies Pick<GlyphFieldProps<Ink>, 'items' | 'layout' | 'rest'>;
-
-/**
- * The count at the field's foot, an Odometer in Archivo 900 at width 72: its digits 300 px tall (28% of the frame)
- * from x 96 on the baseline 952. `size` is the Odometer's size for that, `top` the digits' top, and `cell` a place's
- * width (its 1ch plus the tracking), for setting type after the digits.
- */
-export const INK_COUNT = (() => {
-  const left = 96, base = 952, weight = 900, wdth = 72, tracking = -0.02;
-  const size = 300 / ODOMETER_DIGIT_EM.height;
-  const cell = (archivoAdvance('0', { wght: weight, wdth }) + tracking) * size;
-  return { left, base, weight, wdth, tracking, size, top: base - ODOMETER_DIGIT_EM.top * size, cell };
-})();

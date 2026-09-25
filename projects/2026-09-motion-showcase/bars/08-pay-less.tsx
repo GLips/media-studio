@@ -15,99 +15,21 @@ import { reelHudGrounds, reelHudReadGrounds, type ReelHudGround } from '#models/
 import { ARCHIVO_BASELINE_EM } from '#models/reel/ticker-layout.ts';
 import { RiseWord } from '../../../lib/studio/reel/type.tsx';
 import type { Bar, ShowcaseClock } from '../bar.ts';
-import { SHOWCASE_HUD } from '../reel.tsx';
+import {
+  PAY_LESS_CENTRE as CENTRE, PAY_LESS_LABEL as LABEL, PAY_LESS_PRICE as PRICE, PAY_LESS_STAMP_AT as STAMP_AT, PAY_LESS_TYPE_BOXES,
+  PAY_LESS_WAS as WAS, PAY_LESS_WORDS as WORDS, onPoster, payLessPoster,
+} from './08-pay-less-model.ts';
+import { SHOWCASE_HUD } from '../hud.ts';
 import priceLock from '../sfx/price-lock.ts';
 import stampSlam from '../sfx/stamp-slam.ts';
 import { P } from '../look.ts';
 
 export function payLessBar(clock: ShowcaseClock<'pay-less'>): Bar {
   const FROM = clock.from, TO = clock.to;
-  /**
-   * The bar's hits, a beat or two apart so each lands and reads before the next: PAY LESS. on the music's second
-   * downbeat, and the finale's downbeat, which the stamped poster holds over.
-   */
-  const HIT = {
-    cut: clock.beat(0), land: clock.cues.lock, slash: clock.beat(3), words: clock.beat(4), stamp: clock.cues.stamp,
-    downbeat: clock.beat(8),
-  } as const;
-  const CENTRE: Point = { x: 960, y: 540 };
-
-  // ---------- the poster's camera ----------
-
-  // The lockup at scale 1: the price's digits 426 px tall (0.71 of its size) and 1206 px wide, centred on x 960; the
-  // label and the old price over its ends; PAY LESS. under it, as wide; the stamp beside the price.
-  const PRICE = { x: 357, y: 649, size: 600, stretch: 68 };
-  const LABEL = { x: 369, y: 157, size: 26 };
-  const WAS = { right: 1563, y: 187, size: 72 };
-  const WORDS = { x: 357, y: 918, cap: 200, stretch: 77 };
-  /** Where the stamp lands, lockup px: a little under the price's baseline, its disc over the 0's right edge. */
-  const STAMP_AT: Point = { x: 1768, y: 673 };
-
-  // Bar 7 whips its camera to the right, so the page comes in from the right. Its out-expo settle (2^(−10k) of the way
-  // still to go) starts WHIP.lead frames before the cut, so the cut lands it 234 px short, still streaking at 180 px a
-  // frame with $2.00 whole; the camera's glide carries it on.
-  const WHIP = { lead: 3, frames: 9, px: 2350 };
-  const whipAt = (f: number) => WHIP.px * 2 ** ((-10 * (f - (HIT.cut - WHIP.lead))) / WHIP.frames);
-  // Its smear: the travel under a half-frame shutter (180° at 30 fps) centred on the frame.
+  // The poster's lockup and camera are the bar's model (08-pay-less-model.ts), which `studio look --graph=models` reads.
+  const { hit: HIT, whipAt, posterCameraAt } = payLessPoster(clock);
+  // The whip's smear: the travel under a half-frame shutter (180° at 30 fps) centred on the frame.
   const whipSmearAt = (f: number) => smearSigma(shutterTravel(whipAt, f, 0.5));
-
-  /** How the camera frames the poster: its scale about the frame's centre, and its offset from centred, px. */
-  type Framing = { scale: number; x: number; y: number };
-
-  // The camera glides between SHOTS, each big hit knocking it the other way: it carries the whip left, pushing in
-  // faster and faster onto the lock; recoils right, pulling back and rising to make room for PAY LESS.; swings left
-  // toward the stamp, whose slam slows it to a push and pan. Linear glides: nothing slows between hits.
-  const SHOTS: readonly (Framing & { at: number; gather?: number })[] = [
-    { at: HIT.cut, scale: 0.88, x: 190, y: 140 },
-    { at: HIT.land, scale: 1.2, x: -95, y: 190, gather: 1.3 },
-    // From PAY LESS. on, the lockup nearly spans the HUD's rows: the label stays 60 px under the top one, where it
-    // can't read as a third line of it, even as the stamp's punch lifts it 20 px, so scale and y barely move.
-    { at: HIT.words, scale: 0.95, x: 130, y: 42 },
-    { at: HIT.stamp, scale: 0.975, x: -145, y: 38 },
-    { at: TO, scale: 1.01, x: -240, y: 36, gather: 1.6 },
-  ];
-
-  /** The framing on frame `f`, between the shots either side of it; a shot's scale eases in as k^gather. */
-  function framingAt(f: number): Framing {
-    const i = clamp(SHOTS.findLastIndex(({ at }) => at < f), 0, SHOTS.length - 2);
-    const from = SHOTS[i], to = SHOTS[i + 1], k = clamp((f - from.at) / (to.at - from.at), 0, 1);
-    return { scale: from.scale * (to.scale / from.scale) ** (k ** (to.gather ?? 1)), x: lerp(from.x, to.x, k), y: lerp(from.y, to.y, k) };
-  }
-
-  // The lock punches the camera in 8% about the price, falling back by e every 1.6 frames, gone after 6; the slash
-  // knocks it 2.5% about the old price, PAY LESS. 3% about the words, the stamp 4% about the stamp. The finale's
-  // downbeat lands inside the hold, so it gets a 1.2% nudge there rather than a cut.
-  const PUNCHES = [
-    { at: HIT.land, size: 0.08, tau: 1.6, frames: 6, into: { x: 960, y: 436 } },
-    { at: HIT.slash, size: 0.025, tau: 1.6, frames: 5, into: { x: 1468, y: 162 } },
-    { at: HIT.words, size: 0.03, tau: 1.6, frames: 5, into: { x: 960, y: 818 } },
-    { at: HIT.stamp, size: 0.04, tau: 1.8, frames: 6, into: STAMP_AT },
-    { at: HIT.downbeat, size: 0.012, tau: 1.8, frames: 6, into: STAMP_AT },
-  ];
-
-  // The stamp's impact shakes the poster: 6 px on the hit, 3 back, halving a frame, gone after four. Down and to the
-  // left, the way the stamp comes down.
-  const SHAKE_PX = [6, -3, 1.5, -0.75];
-  function stampShakeAt(f: number): Point {
-    const a = SHAKE_PX[Math.round(f) - HIT.stamp] ?? 0;
-    return { x: -0.45 * a, y: 0.89 * a };
-  }
-
-  type PosterCamera = { x: number; y: number; scale: number };
-
-  /** The poster's transform, screen = scale × lockup + (x, y): framed, whipped, punched and shaken. */
-  function posterCameraAt(f: number): PosterCamera {
-    const { scale: s, x: dx, y: dy } = framingAt(f), shake = stampShakeAt(f);
-    const x = CENTRE.x * (1 - s) + dx + whipAt(f) + shake.x, y = CENTRE.y * (1 - s) + dy + shake.y;
-    const hit = PUNCHES.find(({ at, frames }) => f >= at && f < at + frames);
-    if (!hit) return { x, y, scale: s };
-    // The punch holds what it's into where the camera has it, and scales about it.
-    const k = 1 + hit.size * Math.exp(-(f - hit.at) / hit.tau);
-    const fx = s * hit.into.x + x, fy = s * hit.into.y + y;
-    return { x: fx + k * (x - fx), y: fy + k * (y - fy), scale: k * s };
-  }
-
-  const onPoster = (cam: PosterCamera, p: Point): Point => ({ x: cam.scale * p.x + cam.x, y: cam.scale * p.y + cam.y });
 
   // ---------- the price ----------
 
@@ -350,10 +272,10 @@ export function payLessBar(clock: ShowcaseClock<'pay-less'>): Bar {
   // price in paper; PAY LESS. in ink. The bar keeps them off the HUD's rows, but the finale's grids can put a part over
   // any of them.
   const TYPE_BOXES: readonly (Rect & { ground: PayLessGround; from: number })[] = [
-    { ground: 'paper', from: FROM, x: LABEL.x, y: 134, w: 430, h: 28 },
-    { ground: 'paper', from: FROM, x: PRICE.x, y: 180, w: 1206, h: 510 },
+    { ground: 'paper', from: FROM, ...PAY_LESS_TYPE_BOXES.label },
+    { ground: 'paper', from: FROM, ...PAY_LESS_TYPE_BOXES.price },
     { ground: 'paper', from: WAS_START, x: WAS.right - 195, y: 132, w: 195, h: 60 },
-    { ground: 'ink', from: WORDS_RISE.from, x: WORDS.x, y: 714, w: 1206, h: 208 },
+    { ground: 'ink', from: WORDS_RISE.from, ...PAY_LESS_TYPE_BOXES.words },
   ];
 
   /** What's under each frame point on frame `f`: the stamp's disc from its fall on, the lockup's type, or the red. */

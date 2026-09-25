@@ -12,10 +12,12 @@ import type { GlyphClip, GlyphHit, GlyphKey, GlyphWave } from '#models/reel/glyp
 import { parseGlyphColor } from '#models/reel/glyph-field-frame.ts';
 import { reelHudBoxPoints, type ReelHudRead, type ReelHudSlot } from '#models/reel/hud.ts';
 import { Needle } from '../../../lib/studio/reel/needle.tsx';
-import { needleCoversAt, type NeedleStrike } from '#models/reel/needle.ts';
+import { needleCoversAt } from '#models/reel/needle.ts';
 import { archivoAdvance, layoutGlyphLine } from '#models/reel/ticker-layout.ts';
 import type { Bar, ShowcaseClock } from '../bar.ts';
-import { INK_COUNT, INK_DOT, INK_FIELD, INK_FIELD_LAYOUT, INK_FIELD_SLOTS, INK_FIRST_STRIKE, inkFieldSlotAt, type InkCell } from '../ink-field.ts';
+import { INK_COUNT } from '../ink-count.ts';
+import { INK_DOT, INK_FIELD, INK_FIELD_LAYOUT, INK_FIELD_SLOTS, INK_FIRST_STRIKE, type InkCell } from '../ink-field.ts';
+import { INK_NEEDLE_SHOT, inkCutPushAt, inkNeedleStrikes, inkRecoilAt, inkStrikeSpots } from './04-ink-model.ts';
 import needleStrike1 from '../sfx/needle-strike-1.ts';
 import needleStrike2 from '../sfx/needle-strike-2.ts';
 import needleStrike3 from '../sfx/needle-strike-3.ts';
@@ -24,9 +26,9 @@ import { P, inksByHue, type Ink } from '../look.ts';
 
 export function inkBar(clock: ShowcaseClock<'ink'>): Bar {
   const FROM = clock.from, TO = clock.to;
-  // The strikes, in beats: the first, two beats of room, then the music's downbeat and a beat each, with INKS. on its own
-  // beat before the last so its lens split never doubles a needle.
-  const HITS = [clock.beat(0), clock.cues.strike2, clock.beat(3), clock.beat(5)];
+  // Where and when the needle strikes is the bar's model (04-ink-model.ts), which `studio look --graph=models` reads.
+  const SPOTS = inkStrikeSpots(clock);
+  const HITS = SPOTS.map((s) => s.frame);
   const INKS_AT = clock.beat(4);
   const sec = (f: number) => f / FPS;
 
@@ -52,17 +54,11 @@ export function inkBar(clock: ShowcaseClock<'ink'>): Bar {
 
   type Strike = { frame: number; x: number; y: number; ring: (k: number) => string };
 
-  // Centre, left, right, centre again, on the middle rows: the body runs off the top right from each, and the tip
-  // stays above the type. The ripples take the wheel in order: the brand's red-orange (36°) out to amber, green out to
-  // teal, blue out to violet and magenta.
-  // The first steps finer because the chart's yellows (past 90°) are olive at its strengths; the second, so the teal it
-  // leaves under the third strike stands apart from that strike's blue.
-  const STRIKES: readonly Strike[] = [
-    { frame: HITS[0], ...INK_FIRST_STRIKE, ring: hueRings(36, 5) },
-    { frame: HITS[1], ...inkFieldSlotAt(3, 5), ring: hueRings(132, 6) },
-    { frame: HITS[2], ...inkFieldSlotAt(11, 5), ring: hueRings(252, 8) },
-    { frame: HITS[3], ...inkFieldSlotAt(8, 4), ring: () => '' },
-  ];
+  // The ripples take the wheel in order: the brand's red-orange (36°) out to amber, green out to teal, blue out to
+  // violet and magenta. The first steps finer because the chart's yellows (past 90°) are olive at its strengths; the
+  // second, so the teal it leaves under the third strike stands apart from that strike's blue.
+  const RINGS = [hueRings(36, 5), hueRings(132, 6), hueRings(252, 8), () => ''];
+  const STRIKES: readonly Strike[] = SPOTS.map((spot, i) => ({ ...spot, ring: RINGS[i] }));
   const LAST = STRIKES.length - 1;
   const cellOf = (s: Strike) => INK_FIELD_SLOTS.findIndex((c) => c.x === s.x && c.y === s.y);
   /** The ink strike `i` lands: its ripple's first ring, and the last one's the struck cell's own. */
@@ -73,18 +69,8 @@ export function inkBar(clock: ShowcaseClock<'ink'>): Bar {
     const [r, g, b] = parseGlyphColor(css);
     return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
   };
-  // The first strike opens the bar on bar 3's cut, with no frame to come in on: its contact frame shows the way in too.
-  const NEEDLE_STRIKES: NeedleStrike[] = STRIKES.map((s, i) => ({ at: sec(s.frame), x: s.x, y: s.y, ink: rgbOf(strikeInk(i)), streak: i === 0 }));
-
-  /**
-   * 32 px a mm: a barrel over 300 px across. Each blow drops in over two and a half frames, one streak on the frame
-   * before the contact, drives in for a frame and tears back out, gone by the fourth after. Its gunmetal is light enough
-   * for the streaks to read on the field.
-   */
-  const NEEDLE_SHOT = {
-    tilt: 52, grip: 35, scale: 32, from: 15, climb: 42, enter: 2.5 / FPS, dwell: 1 / FPS, overdrive: 1, exit: 2.5 / FPS, lean: 8,
-    samples: 16, shadow: 0.3, color: '#5a5e65', fastShutter: 0.6,
-  };
+  const NEEDLE_STRIKES = inkNeedleStrikes(SPOTS, (i) => rgbOf(strikeInk(i)));
+  const NEEDLE_SHOT = INK_NEEDLE_SHOT;
 
   // ---------- the field ----------
 
@@ -303,23 +289,9 @@ export function inkBar(clock: ShowcaseClock<'ink'>): Bar {
 
   // ---------- the bar ----------
 
-  // Over the last four frames the camera pushes in 2% about the frame's middle, easing in, and bar 5's 2.5% punch on
-  // its first frame lands the push: the field and count move into the cut rather than holding.
-  const CUT_PUSH = { frames: 4, amount: 0.02, power: 1.5 };
-  const cutPushAt = (f: number) => 1 + CUT_PUSH.amount * clamp((f - (TO - 1 - CUT_PUSH.frames)) / CUT_PUSH.frames) ** CUT_PUSH.power;
-
-  // Each blow knocks the camera left, the way the needle comes in, a frame after the contact (so the first contact stays
-  // on bar 3's point), then it springs back, gone 14 frames on: between strikes the field never stands still. Level, as
-  // a drop would push the first strike's swollen bottom row onto the HUD's beat squares.
-  const RECOIL = { px: 38, period: 12, decay: 7, frames: 14 };
-  function recoilAt(f: number): Point {
-    let d = 0;
-    for (const s of STRIKES) {
-      const k = f - s.frame - 1, end = RECOIL.frames - 1;
-      if (k >= 0 && k < end) d += RECOIL.px * Math.exp(-k / RECOIL.decay) * Math.cos((2 * Math.PI * k) / RECOIL.period) * (1 - k / end);
-    }
-    return { x: -d, y: 0 };
-  }
+  // The cut's push and each blow's recoil are the model's: the needle's place on the frame depends on both.
+  const cutPushAt = (f: number) => inkCutPushAt(TO, f);
+  const recoilAt = (f: number): Point => inkRecoilAt(SPOTS, f);
 
   // The HUD reads light over the field. Where the needle stands sharp under a part (the barrel runs off past the top
   // right's readout on three strikes), that part sits on a plate of the field's ground: one look on every strike, where

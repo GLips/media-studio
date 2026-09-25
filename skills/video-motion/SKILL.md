@@ -133,7 +133,8 @@ Every question below has one command. A tool or brief points here, never at a sc
 | What a render shows, not the code | `studio look <p> --video <mp4>`: its snapshot places a slice in the video |
 | Which frames and pixels a change moved | `studio look <p> --video <after.mp4> --against <before.mp4>` (`--crop=x,y,w,h`) |
 | Whether a stretch keeps moving | `studio look <p> --motion --bar=N` (or `--frames=a:b`) |
-| Where a tracked element goes, and how it eases | `studio look <p> --graph=a:b` (below) |
+| Where a piece is on each frame, and its clearance from the HUD, with no render | `studio look <p> --graph=models --bar=N` (or `--frames=a:b`), below |
+| Where a tracked element goes on the render, and how it eases | `studio look <p> --graph=a:b` (below) |
 | A change in motion, quickly | `studio render <p> --frames=a:b`: a silent slice, the bundle kept between runs |
 | The whole cut again from its slices | `studio render <p> --join=<folder>` |
 | What a render was made from | `<render>.snapshot.json` beside it, which `studio review` and `look --video` read |
@@ -154,6 +155,12 @@ lands before the line starts, which of two things moves first. `motion.json` has
 opacity and reported values (a ring's `draw`, a camera's `zoom`) on every frame. It has both the screen box and the
 box in the element's owner's frame, so for a ring riding a push-in the screen box moves with the camera while the
 page box holds still.
+
+Before rendering a change to a piece drawn from a model (a ball's bounce, a needle's strikes, a camera path), read
+the model. A scene's `bars/<id>-model.ts` holds the numbers its scene draws from, and exports a `definePieceTracks`
+naming each piece's place on a frame, the box it covers and what it keeps clear of. `--graph=models` prints a table per
+piece (position, values, state, clearance in px from the nearest HUD part, negative where it overlaps) and graphs it,
+in about two seconds. Give a new piece a track when you'd otherwise render to find where it is.
 
 A graph shows the shape of a move that a strip only hints at, and prints the numbers it's drawn from:
 

@@ -1,6 +1,6 @@
 // The reel's look, shared by every bar: its palette, and the 174 inks the ink bars and the finale draw from.
 
-import { seededRandom } from '../../lib/studio/api.ts';
+import { seededRandom } from '#models/motion/random.ts';
 
 export const P = {
   ground: '#0c0c0e', red: '#ee4c23', blue: '#4144f4', cream: '#f3f0e7', ink: '#140b0e',

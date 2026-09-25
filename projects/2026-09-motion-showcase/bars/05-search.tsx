@@ -21,8 +21,9 @@ import { reelHudGrounds, reelHudReadGrounds, type ReelHudGround, type ReelHudRea
 import { ARCHIVO_BASELINE_EM, ARCHIVO_CAP_EM, layoutGlyphLine } from '#models/reel/ticker-layout.ts';
 import type { Bar, ShowcaseClock } from '../bar.ts';
 import { captures as C } from '../captures/index.ts';
-import { SHOWCASE_HUD } from '../reel.tsx';
-import { INK_COUNT, INK_DOT, INK_FIELD, type InkCell } from '../ink-field.ts';
+import { SHOWCASE_HUD } from '../hud.ts';
+import { INK_COUNT } from '../ink-count.ts';
+import { INK_DOT, INK_FIELD, type InkCell } from '../ink-field.ts';
 import listSlam from '../sfx/list-slam.ts';
 import { P, isBlueInk, type Ink } from '../look.ts';
 

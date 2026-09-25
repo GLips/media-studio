@@ -10,7 +10,7 @@ import { reelHudBoxes, type ReelHudTone } from '#models/reel/hud.ts';
 import { TickerBands } from '../../../lib/studio/reel/ticker.tsx';
 import { tickerLookBeat, type TickerColors, type TickerEnter, type TickerLook } from '#models/reel/ticker.ts';
 import type { Bar, ShowcaseClock } from '../bar.ts';
-import { SHOWCASE_HUD } from '../reel.tsx';
+import { SHOWCASE_HUD } from '../hud.ts';
 import tapQty2 from '../sfx/tap-qty-2.ts';
 import whipIntoBuyMore from '../sfx/whip-into-buy-more.ts';
 import { P } from '../look.ts';

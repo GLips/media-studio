@@ -7,24 +7,8 @@ import type { ReelHudRead, ReelHudSlot } from '#models/reel/hud.ts';
 import { LensFringe } from '../../lib/studio/reel/lens.tsx';
 import { FadeToBlack } from '../../lib/studio/reel/recap.tsx';
 import type { Bar } from './bar.ts';
-import { P } from './look.ts';
+import { SHOWCASE_HUD } from './hud.ts';
 import { timeline } from './timeline.ts';
-
-/** The HUD's section labels, one per bar. */
-const SECTION_TITLES = [
-  'SQUASH & STRETCH', 'KINETIC TYPE', 'DEPTH / UI', 'INK × 174', 'FILTER', 'TYPE AS TEXTURE', '3D / DEPTH OF FIELD', 'ODOMETER',
-  'EDIT / RHYTHM',
-] as const;
-
-/** The HUD as every bar wears it, but for its tones and plates: what tools/hud-legibility.ts renders alone. */
-export const SHOWCASE_HUD = {
-  size: 20, title: 'PAINFUL PLEASURES', subtitle: 'THE NEW BUY BOX', readout: '120 BPM   30 FPS   1920×1080',
-  // The first label decodes with the rest of the HUD at boot, not on bar 1's downbeat, so the pickup's HUD is whole.
-  sections: SECTION_TITLES.map((title, i) => ({ at: timeline.scenes[i].from / FPS, title })),
-  palette: { ink: P.ink, paper: P.cream, accent: P.red },
-  beatOf: (t: number) => timeline.beatAtFrame(t * FPS),
-  duration: timeline.end / FPS,
-};
 
 /** The scene that plays `bar`: the bar and the HUD through the lens, then the grade; the reel's last frames fade out. */
 export function barScene(bar: Bar) {

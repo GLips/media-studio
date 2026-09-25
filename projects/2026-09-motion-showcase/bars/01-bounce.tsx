@@ -9,45 +9,29 @@ import {
   DISPLAY_FONT, FPS, H, REEL_SHUTTER, W, motionAttrs, motionCurves, seededRandom, shutterTravel, smearSigma,
 } from '../../../lib/studio/api.ts';
 import { BounceBall } from '../../../lib/studio/reel/bounce.tsx';
-import { bouncingBallAt, type BounceParams } from '#models/reel/bounce.ts';
+import { bouncingBallAt } from '#models/reel/bounce.ts';
 import { ARCHIVO_CAP_EM, layoutGlyphLine } from '#models/reel/ticker-layout.ts';
 import type { Bar, ShowcaseClock } from '../bar.ts';
+import {
+  BOUNCE_BALL_SIZE as BALL_SIZE, BOUNCE_GROUND_Y as GROUND_Y, BOUNCE_LANDING_BEATS as LANDING_BEATS, BOUNCE_PAD_X as PAD_X, bounceBallParams,
+} from './01-bounce-model.ts';
 import { P } from '../look.ts';
 
 export function bounceBar(clock: ShowcaseClock<'bounce'>): Bar {
   const outExpo = motionCurves.expo.entrance;
 
   const FROM = clock.from;
-  const TO = clock.to;
 
   // ---------- the layout ----------
 
   /** The words' box: every word spans it, BOX with its full stop (the drop at rest on the pad), 85% of the frame. */
   const SPAN = { left: 90, right: W - 90 };
-  const GROUND_Y = 930;
   const CAP = 560;
 
   // ---------- the drop ----------
 
-  // Landings on the pickup's hit and the bar's four beats; with no drop the loop runs back a beat, so on frame 0 the
-  // drop is 4 frames up out of a landing on beat −2 (frame −4), at the left edge. The last is the pad.
-  const LANDING_BEATS = [-1, 0, 1, 2, 3];
-  const BALL_SIZE = 340;
-  const BALL_STEP = 280;
-  /** The pad: BOX's full stop, as far right as its crouch (4.2:1, 697 px across as it leaves) stays inside the frame. */
-  const PAD_X = 1555;
-  const BALL: BounceParams = {
-    beats: LANDING_BEATS.map((n) => clock.beat(n) / FPS), spb: clock.spb, drop: false,
-    size: BALL_SIZE, height: 440, groundY: GROUND_Y, step: BALL_STEP, x: PAD_X - (LANDING_BEATS.length - 1) * BALL_STEP,
-    launch: {
-      // Frame 85 is the last of the bar: the swell covers it exactly there, not the 0.2 ms before that spb's rounding gives.
-      fill: (TO - 1) / FPS,
-      // Deeper than the piece's crouch (3.9:1, 0.139 × size), so the press reads as loading the spring at speed: from
-      // the landing's 3.4:1 it spreads about 13 px and sinks about 7 px a frame until it leaves. A deeper dent would sink
-      // its bottom into the HUD's bottom row.
-      anticipation: { squash: 4.2, dent: 0.16 * BALL_SIZE },
-    },
-  };
+  // Its bounce is the bar's model (01-bounce-model.ts), which `studio look --graph=models` reads.
+  const BALL = bounceBallParams(clock);
   /** Where the drop lands on beat `n` (beat −2's is the loop's, before the video): it holds still through a landing. */
   const landingX = (n: number) => bouncingBallAt(clock.beat(n) / FPS, BALL).x;
 

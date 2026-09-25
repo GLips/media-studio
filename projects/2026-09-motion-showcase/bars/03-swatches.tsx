@@ -15,7 +15,7 @@ import { reelHudBoxes, reelHudGrounds, reelHudReadGrounds, type ReelHudGround, t
 import { RiseWord } from '../../../lib/studio/reel/type.tsx';
 import type { Bar, ShowcaseClock } from '../bar.ts';
 import { captures as C } from '../captures/index.ts';
-import { SHOWCASE_HUD } from '../reel.tsx';
+import { SHOWCASE_HUD } from '../hud.ts';
 import tapPink from '../sfx/tap-pink.ts';
 import tapCharcoal from '../sfx/tap-charcoal.ts';
 import tapBlack from '../sfx/tap-black.ts';

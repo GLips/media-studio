@@ -23,7 +23,7 @@ import type { BoundReplay } from '../../../lib/models/timeline/bind-timeline.ts'
 import type { Bar, BarSound, ShowcaseClock, ShowcaseReplays } from '../bar.ts';
 import { INK_FIELD } from '../ink-field.ts';
 import { Field } from '../parts.tsx';
-import { SHOWCASE_HUD } from '../reel.tsx';
+import { SHOWCASE_HUD } from '../hud.ts';
 import needleFullStop from '../sfx/needle-full-stop.ts';
 import { P } from '../look.ts';
 

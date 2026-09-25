@@ -18,7 +18,7 @@ import { SlantWord } from '../../../lib/studio/reel/type-slant.tsx';
 import { slantMatrix, slantWordPose, type SlantEntrance } from '#models/reel/type.ts';
 import type { Bar, ShowcaseClock } from '../bar.ts';
 import { Field } from '../parts.tsx';
-import { SHOWCASE_HUD } from '../reel.tsx';
+import { SHOWCASE_HUD } from '../hud.ts';
 import { P, inksByHue } from '../look.ts';
 
 export function everyColorBar(clock: ShowcaseClock<'every-color'>): Bar {

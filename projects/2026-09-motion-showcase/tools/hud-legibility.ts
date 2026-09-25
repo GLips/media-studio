@@ -34,7 +34,7 @@ const RING = 6, CLEAR = 3;
 // WORD_GAP px apart.
 const GLYPH_GAP = 1, WORD_GAP = 10, STRETCH = 20;
 
-const { SHOWCASE_HUD } = await import(`${PROJECT}/reel.tsx`);
+const { SHOWCASE_HUD } = await import(`${PROJECT}/hud.ts`);
 const { showcaseBars } = await import(`${PROJECT}/video.tsx`);
 const { timeline } = await import(`${PROJECT}/timeline.ts`);
 const { REEL_HUD_SLOTS, reelHudBoxes } = await import(`${ROOT}/lib/models/reel/hud.ts`);
@@ -72,7 +72,7 @@ const show = flag('show') === undefined ? undefined : Number(flag('show'));
 // where the cut's does.
 const MASK_VIDEO = `import { FPS, defineScene, defineVideo } from '../../../../lib/studio/api.ts';
 import { ReelHud } from '../../../../lib/studio/reel/hud.tsx';
-import { SHOWCASE_HUD } from '../../reel.tsx';
+import { SHOWCASE_HUD } from '../../hud.ts';
 import { timeline } from '../../timeline.ts';
 
 const hudMask = defineScene({
@@ -88,7 +88,7 @@ const hudMask = defineScene({
 export default defineVideo({ title: 'Showcase HUD mask', voice: {}, scenes: [hudMask] });
 `;
 const MASK_INPUTS = ['lib/studio/reel/hud.tsx', 'lib/models/reel/hud.ts', 'lib/models/reel/type.ts', 'lib/studio/fonts.ts'].map((f) => join(ROOT, f))
-  .concat(['reel.tsx', 'timeline.ts'].map((f) => join(PROJECT, f)));
+  .concat(['hud.ts', 'look.ts', 'timeline.ts'].map((f) => join(PROJECT, f)));
 const stamp = createHash('sha1').update([MASK_VIDEO, ...MASK_INPUTS.map((f) => readFileSync(f))].join('\0')).digest('hex');
 const stampFile = join(MASK_DIR, 'stamp');
 
