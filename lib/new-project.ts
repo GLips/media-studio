@@ -20,7 +20,7 @@ import { STUDIO_PROJECTS_DIR, STUDIO_ROOT } from './studio-project.ts';
  */
 export function scaffoldStudioProject({ slug, url, title, stills, brand }: { slug: string; url?: string; title?: string; stills?: boolean; brand?: string }): string {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) throw new Error(`the slug must be lowercase words joined by dashes, not ${slug}`);
-  if (brand && !stills) throw new Error('--brand is for a stills project (--stills); a video names its kit in brand.json');
+  if (brand && !stills) throw new Error('--brand is for a stills project (--stills); a video names its kit in its own brand.ts');
   if (brand && !existsSync(join(STUDIO_ROOT, 'brands', brand, 'brand.ts'))) {
     const kits = readdirSync(join(STUDIO_ROOT, 'brands')).filter((d) => existsSync(join(STUDIO_ROOT, 'brands', d, 'brand.ts')));
     throw new Error(`there's no brands/${brand}/brand.ts (brands/ has ${kits.join(', ') || 'none'}; brands/README.md says how to make one)`);
@@ -174,7 +174,7 @@ const FIELD = brand.colors.accent;
 const PAPER = brand.colors.light;
 const FACE = brand.fonts.display;`
     : `// The reel's palette: near-black ground, a full-bleed orange field, cream type. A brand kit replaces these
-// (\`studio new --stills --brand <name>\`, or brand.json and \`import brand from '@brand'\`).
+// (\`studio new --stills --brand <name>\`, or a brand.ts and \`import brand from '@brand'\`).
 const GROUND = '#111114';
 const FIELD = '#E8502A';
 const PAPER = '#F4EFE6';
@@ -182,7 +182,11 @@ const FACE = ARCHIVO_FACE;`;
   const imports = ['FitText', 'StillHud', 'defineStills', 'stillDesign', 'useStillFrame', ...(url ? ['StillCard'] : []), ...(brand ? [] : ['ARCHIVO_FACE'])].sort((a, b) => a.localeCompare(b));
   return {
     'capture.ts': captureScript(slug, url, title, true),
-    ...(brand && { 'brand.json': `${JSON.stringify({ name: brand })}\n` }),
+    ...(brand && { 'brand.ts': `// The kit this project uses. Add colors, palette or voice here to change them for this project alone.
+import type { ProjectBrand } from '../../lib/brand.ts';
+
+export default { name: '${brand}' } satisfies ProjectBrand;
+` }),
     'stills.tsx': `// The ${title} stills: one design at each preset, a variant per headline. The frame splits into a ground holding the
 // headline, set as big as it fits, and a full-bleed field holding the hero: beside it on a wide frame (OG, YouTube),
 // above it on a tall one. skills/stills says how to make it good, not just fill it in.

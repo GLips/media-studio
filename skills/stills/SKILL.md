@@ -24,8 +24,9 @@ Write these down (in the chat, or at the top of `stills.tsx`) before touching co
   has none.
 - **Three to five headline candidates**, 1–5 words each, up to 3 for a thumbnail. Write them in the brand's voice
   (`brands/<name>/brand.ts` `voice`). Each becomes a variant, so you can compare them on the sheet.
-- **The brand.** If the client has a kit in `brands/`, use it (`brands/README.md`). A client the studio will make more
-  than one thing for gets a kit, made first. For a one-off with no kit, write the brand's colours as constants at the
+- **The brand.** If the client has a kit in `brands/`, use it (`brands/README.md`). A campaign's own colour or voice
+  goes in the project's `brand.ts`, not the design. A client the studio will make more than one thing for gets a kit,
+  made first. For a one-off with no kit, write the brand's colours as constants at the
   top of `stills.tsx`, put its logo file in the project and draw it with `<Img>` (a small image is checked like a logo),
   and use Archivo where the brand's face isn't available.
 

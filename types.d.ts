@@ -50,7 +50,7 @@ declare module '@stills' {
   const stills: import('./lib/studio/stills.tsx').StillsDef | null;
   export default stills;
 }
-/** The brand kit the project's brand.json names, loaded (lib/project-brand.ts). Importing it without one throws. */
+/** The brand kit the project's brand.ts names, with its overrides, loaded (lib/project-brand.ts). Importing it without one throws. */
 declare module '@brand' {
   const brand: import('./lib/studio/brand.tsx').StudioBrand;
   export default brand;

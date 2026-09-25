@@ -1,41 +1,41 @@
-// project-brand.ts: the brand a project names in brand.json, read from brands/<name>/ (see lib/brand.ts), and
-// generated/brand.ts, which the bundle aliases as `@brand`. That module is rewritten on every bundle, so a project
-// builds from brand.json alone, and a kit whose font or logo files are missing stops the bundle with a list of them.
+// project-brand.ts: the kit a project's brand.ts names, read from brands/<name>/ (see lib/brand.ts), and
+// generated/brand.ts, which the bundle aliases as `@brand`. That module is rewritten on every bundle. It imports the
+// kit's brand.ts and the project's and merges them in the bundle, so an open Studio picks up an edit to either. A kit
+// whose font or logo files are missing, or an override that doesn't fit, stops the bundle.
 //
 // Imported by lib/project-bundle.ts, so it stays free of import.meta (the Remotion CLI bundles that file to CommonJS):
-// the kit's folder is found from the project's, and its brand.ts is read with require, which Node strips of types.
+// the kit's folder is found from the project's, and both brand.ts files are read with require, which Node strips of
+// types. Require caches, so in a long-lived process these checks can see an earlier edit; the bundle checks again.
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, dirname, join, relative, resolve } from 'node:path';
-import { brandFiles, type Brand } from './brand.ts';
+import { brandFiles, mergeProjectBrand, type Brand, type ProjectBrand } from './brand.ts';
 
 const brandsDirFor = (projectDir: string) => join(resolve(projectDir), '..', '..', 'brands');
+const projectBrandFileFor = (projectDir: string) => join(resolve(projectDir), 'brand.ts');
 const projectBrandModuleFor = (projectDir: string) => join(resolve(projectDir), 'generated', 'brand.ts');
-
-/** The brand the project names in brand.json, or null when it names none. */
-export function readProjectBrandName(projectDir: string): string | null {
-  const path = join(resolve(projectDir), 'brand.json');
-  if (!existsSync(path)) return null;
-  const spec = JSON.parse(readFileSync(path, 'utf8')) as { name?: unknown };
-  if (typeof spec.name !== 'string') throw new Error(`brands: ${path} needs { "name": "<brand>" }, one of brands/: ${listBrands(projectDir).join(', ')}`);
-  return spec.name;
-}
+const requireDefault = <T>(file: string) => (createRequire(file)(file) as { default: T }).default;
 
 function listBrands(projectDir: string) {
   const dir = brandsDirFor(projectDir);
   return existsSync(dir) ? readdirSync(dir).filter((d) => existsSync(join(dir, d, 'brand.ts'))) : [];
 }
 
-export type ProjectBrand = { name: string; dir: string; brand: Brand };
+/** A project's kit, found and checked: its folder, and the kit with the project's overrides. */
+export type ResolvedProjectBrand = { name: string; dir: string; brand: Brand };
 
-/** The project's brand kit, its files checked, or null when it names none. Throws listing every missing file. */
-export function readProjectBrand(projectDir: string): ProjectBrand | null {
-  const name = readProjectBrandName(projectDir);
-  if (name === null) return null;
+/** The project's kit with its overrides, its files checked, or null when it has no brand.ts. Throws listing every missing file. */
+export function readProjectBrand(projectDir: string): ResolvedProjectBrand | null {
+  const projectFile = projectBrandFileFor(projectDir);
+  if (!existsSync(projectFile)) return null;
+  const project = requireDefault<ProjectBrand>(projectFile);
+  const name = project.name;
   const dir = join(brandsDirFor(projectDir), name);
   const file = join(dir, 'brand.ts');
-  if (!existsSync(file)) throw new Error(`brands: ${basename(resolve(projectDir))}'s brand.json names "${name}", but there's no brands/${name}/brand.ts (brands/ has ${listBrands(projectDir).join(', ') || 'none'})`);
-  const brand = (createRequire(file)(file) as { default: Brand }).default;
+  if (typeof name !== 'string' || !existsSync(file)) {
+    throw new Error(`brands: ${basename(resolve(projectDir))}'s brand.ts names ${JSON.stringify(name)}, which isn't a kit (brands/ has ${listBrands(projectDir).join(', ') || 'none'})`);
+  }
+  const brand = mergeProjectBrand(requireDefault<Brand>(file), project, name);
   const { fonts, logos } = brandFiles(brand);
   const missing = [
     ...fonts.filter((f) => !existsSync(join(dir, f))).map((f) => `  ${f}: ${[brand.fonts.display, brand.fonts.text].find((face) => face.files.some((x) => x.file === f))!.source}`),
@@ -56,8 +56,10 @@ function svgSize(path: string): { w: number; h: number } {
 }
 
 /**
- * Rewrites generated/brand.ts: the project's kit, its fonts loaded and logos sized (lib/studio/brand.tsx), or a module
- * that throws, naming the fix, when a design imports `@brand` in a project with no brand.json. Returns its path.
+ * Rewrites generated/brand.ts: the project's kit with its overrides, its fonts loaded and logos sized
+ * (lib/studio/brand.tsx), or a module that throws, naming the fix, when a design imports `@brand` in a project with no
+ * brand.ts. The kit's files are imported by name, so a project that names another kit, or a kit that names other
+ * files, needs a new bundle. Returns its path.
  */
 export function writeProjectBrandModule(projectDir: string): string {
   const path = projectBrandModuleFor(projectDir);
@@ -65,18 +67,20 @@ export function writeProjectBrandModule(projectDir: string): string {
   const from = (p: string) => JSON.stringify(relative(dirname(path), p).split('\\').join('/'));
   let module: string;
   if (!kit) {
-    const message = `${basename(resolve(projectDir))} imports @brand but has no brand.json; add { "name": "<brand>" }, one of brands/: ${listBrands(projectDir).join(', ') || 'none yet'}`;
-    module = `// Written on every bundle (lib/project-brand.ts): the project names no brand.\nthrow new Error(${JSON.stringify(message)});\n`;
+    const message = `${basename(resolve(projectDir))} imports @brand but has no brand.ts; add \`export default { name: '<brand>' } satisfies ProjectBrand\`, naming one of brands/: ${listBrands(projectDir).join(', ') || 'none yet'}`;
+    module = `// Written on every bundle (lib/project-brand.ts): the project has no brand.ts.\nthrow new Error(${JSON.stringify(message)});\n`;
   } else {
     const { fonts, logos } = brandFiles(kit.brand);
     const lines = [
-      `// Written on every bundle from brand.json (lib/project-brand.ts): brands/${kit.name}, loaded. Edits here are lost.`,
-      `import brand from ${from(join(kit.dir, 'brand.ts'))};`,
+      `// Written on every bundle from the project's brand.ts (lib/project-brand.ts): brands/${kit.name} with its overrides, loaded. Edits here are lost.`,
+      `import kit from ${from(join(kit.dir, 'brand.ts'))};`,
+      `import project from ${from(projectBrandFileFor(projectDir))};`,
+      `import { mergeProjectBrand } from ${from(join(resolve(projectDir), '..', '..', 'lib', 'brand.ts'))};`,
       `import { loadStudioBrand } from ${from(join(resolve(projectDir), '..', '..', 'lib', 'studio', 'brand.tsx'))};`,
       ...fonts.map((f, i) => `import font${i} from ${from(join(kit.dir, f))};`),
       ...logos.map((f, i) => `import logo${i} from ${from(join(kit.dir, f))};`),
       '',
-      `export default loadStudioBrand(brand, {`,
+      `export default loadStudioBrand(mergeProjectBrand(kit, project, ${JSON.stringify(kit.name)}), {`,
       ...fonts.map((f, i) => `  ${JSON.stringify(f)}: font${i},`),
       `}, {`,
       ...logos.map((f, i) => {

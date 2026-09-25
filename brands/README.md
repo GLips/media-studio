@@ -10,7 +10,20 @@ brands/<name>/
   fonts/            the font files brand.ts names. Not in git: each machine adds its own
 ```
 
-**Using one.** A project names its kit in `projects/<p>/brand.json`, `{ "name": "<name>" }`, and imports it:
+**Using one.** A project names its kit in `projects/<p>/brand.ts`, and can change the kit's colours, palette or voice
+for itself there. Fonts and logos come with files, so a project that needs others names another kit:
+
+```ts
+import type { ProjectBrand } from '../../lib/brand.ts';
+
+export default {
+  name: 'painful-pleasures',
+  colors: { accent: '#ff3b3b' },
+} satisfies ProjectBrand;
+```
+
+`tsc` checks it against the kit's type, and the bundle refuses a field or colour role that doesn't exist. Edits to it or
+to the kit show in an open Studio; naming another kit needs the Studio restarted. Then import it:
 
 ```tsx
 import brand from '@brand';
