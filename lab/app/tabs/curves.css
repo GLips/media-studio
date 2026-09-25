@@ -1,0 +1,4 @@
+/* curves.css: the Curves & springs tab's control layout. The duration presets get two columns so their seven
+   buttons wrap into rows rather than a tall stack. */
+.curves-controls .controls > :nth-child(3) { grid-column: span 2; }
+@media (max-width: 900px) { .curves-controls .controls > :nth-child(3) { grid-column: auto; } }

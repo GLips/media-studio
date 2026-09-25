@@ -1,0 +1,20 @@
+/* hold.css: the hold tab's verdict beside its controls, so a dragged slider and the verdict it flips sit together. */
+
+.hold-lab { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 20px; align-items: start; }
+
+.intro code, .hold-verdict code { font-family: var(--mono); font-size: 0.9em; }
+
+.hold-verdict { background: var(--panel); border-radius: 12px; padding: 18px 20px; border-left: 6px solid var(--pass); display: flex; flex-direction: column; gap: 14px; position: sticky; top: 16px; transition: border-color 0.15s; }
+.hold-verdict.fail { border-left-color: var(--red); }
+.hold-verdict-head { display: flex; flex-direction: column; gap: 6px; }
+.hold-verdict-word { font-size: 84px; line-height: 0.9; font-weight: 900; font-stretch: 75%; text-transform: uppercase; color: var(--pass); }
+.hold-verdict.fail .hold-verdict-word { color: var(--red); }
+.hold-verdict-body { display: flex; flex-direction: column; gap: 12px; }
+.hold-plain { margin: 0; font-size: 18px; line-height: 1.45; }
+.hold-raw { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 12px; }
+.hold-raw code { font-size: 13px; line-height: 1.5; color: var(--cream); word-break: break-word; }
+.hold-raw small { color: var(--dim); font-size: 13px; line-height: 1.4; }
+
+@media (max-width: 1000px) {
+  .hold-lab { grid-template-columns: 1fr; }
+}

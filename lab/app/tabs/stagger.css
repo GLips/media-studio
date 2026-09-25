@@ -1,0 +1,9 @@
+/* stagger.css: the stagger tab's side-by-side comparison of one product page entering two ways. */
+
+.stagger-compare { display: flex; flex-direction: column; gap: 14px; }
+.stagger-compare-head p { margin: 4px 0 0; max-width: 80ch; }
+.stagger-compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+@media (max-width: 900px) {
+  .stagger-compare-grid { grid-template-columns: 1fr; }
+}
