@@ -13,7 +13,7 @@ import { basename, extname, join } from 'node:path';
 import { measureLoudness } from './loudness.ts';
 import { generatePaidMedia } from './paid-generation.ts';
 import { detectMusicBeats } from './music-beats.ts';
-import { planMusicFit, spliceMusicSpans } from './music-fit.ts';
+import { planMusicArrangement, planMusicFit, spliceMusicSpans } from './music-fit.ts';
 import type { MusicTrack } from './studio/mix.ts';
 
 type Entry = Omit<MusicTrack, 'src'> & { file: string };
@@ -59,13 +59,20 @@ export function addProjectMusicTrack(project: string, source: string, name: stri
   return index;
 }
 
-export type MusicFitResult = { file: string; index: string; track: Entry & { fit: NonNullable<MusicTrack['fit']> }; worstSeamDb: number };
+export type MusicFitResult = { file: string; index: string; track: Entry & { fit: NonNullable<MusicTrack['fit']> }; seamDb: number[]; worstSeamDb: number };
 
 /**
- * Cuts `music.<name>` to exactly `seconds`, ending on its own ending, and adds it as `music.<as>`, keeping the
- * original. Deterministic: the same track and length always give the same spans.
+ * How a fit gets its length: cut to exactly `seconds`, the seams wherever the bars sound most alike; or played as the
+ * source's `bars` in that order (bar 1 on its first downbeat), then `tailSeconds` of silence, for a picture that needs
+ * the time in particular places.
  */
-export function fitProjectMusicTrack(project: string, { name, as, seconds }: { name: string; as: string; seconds: number }): MusicFitResult {
+export type MusicFitShape = { seconds: number } | { bars: readonly number[]; tailSeconds?: number };
+
+/**
+ * Cuts `music.<name>` to a new length, ending on its own ending, and adds it as `music.<as>`, keeping the original.
+ * Deterministic: the same track and shape always give the same spans.
+ */
+export function fitProjectMusicTrack(project: string, { name, as, shape }: { name: string; as: string; shape: MusicFitShape }): MusicFitResult {
   if (!/^[a-z][a-z0-9-]*$/.test(as)) throw new Error(`--as must be lowercase words joined by dashes, not ${as}`);
   if (as === name) throw new Error(`--as must differ from --name, so the original stays to refit from`);
   const dir = join(project, 'music');
@@ -75,7 +82,11 @@ export function fitProjectMusicTrack(project: string, { name, as, seconds }: { n
   if (source.fit) throw new Error(`music.${name} is itself a fit of music.${source.fit.source}; fit from that`);
 
   const sourcePath = join(dir, source.file);
-  const plan = planMusicFit({ samples: decodeAudio(sourcePath, 1, ANALYSIS_RATE)[0], rate: ANALYSIS_RATE, beats: source.beats, targetSeconds: seconds });
+  const analysis = { samples: decodeAudio(sourcePath, 1, ANALYSIS_RATE)[0], rate: ANALYSIS_RATE, beats: source.beats };
+  const plan = 'bars' in shape
+    ? planMusicArrangement({ ...analysis, bars: shape.bars, tailSeconds: shape.tailSeconds })
+    : { ...planMusicFit({ ...analysis, targetSeconds: shape.seconds }), seconds: shape.seconds };
+  const { seconds } = plan;
   const [stream] = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=channels,sample_rate', '-of', 'json', sourcePath]).toString()).streams;
   const channels = Number(stream.channels), rate = Number(stream.sample_rate);
   const spliced = spliceMusicSpans(decodeAudio(sourcePath, channels, rate), rate, plan.spans, seconds);
@@ -90,7 +101,7 @@ export function fitProjectMusicTrack(project: string, { name, as, seconds }: { n
     file, duration: Math.round(seconds * 1000) / 1000, lufs: measureLoudness(path).lufs, bpm: source.bpm, beats: plan.beats,
     fit: { source: name, spans: plan.spans, seams: plan.seams, downbeats: plan.downbeats },
   };
-  return { file: path, index: writeMusicManifest(dir, { ...readMusicManifest(dir), [as]: track }), track, worstSeamDb: plan.worstSeamDb };
+  return { file: path, index: writeMusicManifest(dir, { ...readMusicManifest(dir), [as]: track }), track, seamDb: plan.seamDb, worstSeamDb: plan.worstSeamDb };
 }
 
 function readMusicManifest(dir: string): Record<string, Entry> {

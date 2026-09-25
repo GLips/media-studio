@@ -42,28 +42,41 @@ const gen = defineCommand({
 const fit = defineCommand({
   meta: {
     name: 'fit',
-    description: "Cut a track to exactly the video's length, ending on its own ending: its intro, whole bars dropped or repeated by jumping between like-sounding downbeats, then its outro. Adds it beside the original as music.<as>, with the spans it was cut from. Prints the file, its seams, and each cut and `expect` against the nearest downbeat.",
+    description: "Cut a track to exactly the video's length, ending on its own ending: its intro, whole bars dropped or repeated by jumping between like-sounding downbeats, then its outro. Or play its bars in the order --bars gives, when the picture needs the time in particular places. Adds it beside the original as music.<as>, with the spans it was cut from. Prints the file, its seams, and each cut and `expect` against the nearest downbeat.",
   },
   args: {
     project: studioProjectArg,
     name: { type: 'string', default: 'bed', description: 'The track to fit: music.<name>' },
     as: { type: 'string', description: 'What the video calls the fit: music.<as>. Default <name>-fit' },
     seconds: { type: 'string', description: "Fit to this length instead of the video's, e.g. to audition a length. Skips the downbeat report" },
+    bars: {
+      type: 'string', valueHint: '1-3,3,4,8-13',
+      description: "Play the source's bars in this order instead (bar 1 starts on its first downbeat), for a picture that needs time in particular places; its length is theirs. Prints how alike each seam's sides sound. Skips the downbeat report",
+    },
+    tail: { type: 'string', valueHint: '1', description: "With --bars: seconds of silence after the track's ending, for a picture that holds past it" },
   },
   async run({ args }) {
     const { resolveStudioProject } = await import('../../lib/studio-project.ts');
     const { fitProjectMusicTrack, formatMusicFitReport } = await import('../../lib/music-track.ts');
     const as = args.as ?? `${args.name}-fit`;
+    if (args.bars !== undefined) {
+      if (args.seconds !== undefined) throw new Error('give --bars or --seconds, not both: bars set their own length');
+      const tailSeconds = Number(args.tail ?? 0);
+      if (!(tailSeconds >= 0)) throw new Error(`--tail must be seconds, 0 or more, not ${args.tail}`);
+      printFit(fitProjectMusicTrack(resolveStudioProject(args.project), { name: args.name, as, shape: { bars: parseMusicBars(args.bars), tailSeconds } }));
+      return;
+    }
+    if (args.tail !== undefined) throw new Error('--tail goes with --bars');
     if (args.seconds !== undefined) {
       const seconds = Number(args.seconds);
       if (!(seconds > 0)) throw new Error(`--seconds must be a positive number, not ${args.seconds}`);
-      printFit(fitProjectMusicTrack(resolveStudioProject(args.project), { name: args.name, as, seconds }));
+      printFit(fitProjectMusicTrack(resolveStudioProject(args.project), { name: args.name, as, shape: { seconds } }));
       return;
     }
     const { openStudioRenderSession } = await import('../project-arg.ts');
     const session = await openStudioRenderSession(args.project);
     const timeline = await session.readTimeline();
-    const result = fitProjectMusicTrack(session.project, { name: args.name, as, seconds: timeline.durationInFrames / timeline.fps });
+    const result = fitProjectMusicTrack(session.project, { name: args.name, as, shape: { seconds: timeline.durationInFrames / timeline.fps } });
     printFit(result);
     const moments = [
       ...timeline.scenes.filter((s) => s.start > 0).map((s) => ({ label: `cut to ${s.id}`, at: s.start })),
@@ -71,19 +84,31 @@ const fit = defineCommand({
     ].sort((a, b) => a.at - b.at);
     console.log(['', 'Against the downbeats (a report only: nudge a lead or tail, or leave it):', ...formatMusicFitReport(result.track, moments)].join('\n'));
 
-    function printFit({ file, index, track, worstSeamDb }: ReturnType<typeof fitProjectMusicTrack>) {
+    function printFit({ file, index, track, seamDb, worstSeamDb }: ReturnType<typeof fitProjectMusicTrack>) {
       const { fit } = track;
+      const seams = fit.seams.map((at, i) => `${at} (${Number.isNaN(seamDb[i]) ? 'unmeasured' : `${seamDb[i]} dB`})`);
       console.log([
         file,
         index,
         `music.${as}: ${track.duration} s from music.${fit.source}, ${track.lufs} LUFS`,
         `spans (source s): ${fit.spans.map((s) => `${s.from}–${s.to}`).join(', ')}`,
-        `seams (this track s): ${fit.seams.length ? `${fit.seams.join(', ')}; the worst joins bars ${worstSeamDb} dB apart per band` : 'none'}`,
+        `seams (this track s, how far apart its sides sound per band): ${seams.length ? `${seams.join(', ')}; the worst ${worstSeamDb} dB` : 'none'}`,
         `downbeats are a guess from bass hits and chord changes; confirm by ear that ${fit.downbeats[0]} s is a beat 1`,
       ].join('\n'));
     }
   },
 });
+
+/** `1-3,3,4,8-13` as the bars it lists, in order: [1, 2, 3, 3, 4, 8, 9, 10, 11, 12, 13]. */
+function parseMusicBars(list: string): number[] {
+  return list.split(',').flatMap((part) => {
+    const m = /^\s*(\d+)\s*(?:-\s*(\d+))?\s*$/.exec(part);
+    if (!m) throw new Error(`--bars is bar numbers and ranges like 1-3,3,4,8-13, not ${list}`);
+    const [from, to] = [Number(m[1]), Number(m[2] ?? m[1])];
+    if (to < from) throw new Error(`--bars range ${part.trim()} runs backwards`);
+    return Array.from({ length: to - from + 1 }, (_, i) => from + i);
+  });
+}
 
 export default defineCommand({
   meta: { name: 'music', description: "Music tracks for a project: `add` one or `gen` one with Lyria, then `fit` it to the video's length." },

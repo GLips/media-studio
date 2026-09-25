@@ -17,6 +17,11 @@ export type MusicFitPlan = {
   spans: MusicSpan[];
   /** Where each span after the first starts, in the fitted track's seconds: the seams to listen for. */
   seams: number[];
+  /**
+   * How different the bars either side of each seam sound, in dB per band averaged (typically 0.5–5). NaN where a
+   * seam sits too near the track's start or end to compare.
+   */
+  seamDb: number[];
   /** Beats and downbeats in the fitted track's seconds. */
   beats: number[];
   downbeats: number[];
@@ -41,11 +46,7 @@ const SILENCE_DB = -60;
 
 /** Plans a fit of `samples` (mono) with `beats` (seconds, from detectMusicBeats) to exactly `targetSeconds`. */
 export function planMusicFit({ samples, rate, beats, targetSeconds }: { samples: Float32Array; rate: number; beats: readonly number[]; targetSeconds: number }): MusicFitPlan {
-  const { start: soundStart, end } = audibleSpan(samples, rate);
-  const beatsIn = beats.filter((b) => b + 0.1 < end);
-  if (beatsIn.length < 3 * BEATS_PER_BAR) throw new Error(`the track has ${beatsIn.length} beats; fitting needs at least three bars`);
-  const features = beatSpectra(samples, rate, beatsIn);
-  const phase = downbeatPhase(samples, rate, beatsIn, features);
+  const { soundStart, end, beatsIn, features, phase } = analyseMusic(samples, rate, beats);
   const bar = median(beatsIn.slice(BEATS_PER_BAR).map((b, i) => b - beatsIn[i]));
   const maxHeadTrim = soundStart + bar, maxLeadIn = bar;
   const cut = (k: number) => beatsIn[k] - CUT_BEFORE_BEAT;
@@ -105,16 +106,65 @@ export function planMusicFit({ samples, rate, beats, targetSeconds }: { samples:
     from = cut(b);
   }
   spans.push({ from, to: end });
+  return placeMusicSpans(spans, beatsIn, phase, jumps.map(([a, b]) => seamDb[downbeats.indexOf(a)][downbeats.indexOf(b)]));
+}
 
+/**
+ * Plans a track that plays the source's `bars` in the order given, for a picture that needs time in particular
+ * places: `[1, 2, 3, 3, 4]` plays bar 3 twice. Bar 1 starts on the first downbeat. Consecutive bars play as one span,
+ * so each place the order breaks is a seam, and the plan says how alike its two sides sound. A run from bar 1 keeps
+ * the pickup before it, and the track's last bar keeps its outro, then `tailSeconds` of silence, for a picture that
+ * holds past the music's ending. The track's length is the arrangement's.
+ */
+export function planMusicArrangement({ samples, rate, beats, bars, tailSeconds = 0 }: {
+  samples: Float32Array; rate: number; beats: readonly number[]; bars: readonly number[]; tailSeconds?: number;
+}): MusicFitPlan & { seconds: number } {
+  const { end, beatsIn, features, phase } = analyseMusic(samples, rate, beats);
+  const downbeats = beatsIn.map((_, k) => k).filter((k) => k % BEATS_PER_BAR === phase);
+  const last = downbeats.length;
+  for (const b of bars) if (!Number.isInteger(b) || b < 1 || b > last) throw new Error(`the track's bars are 1–${last}; there's no bar ${b}`);
+  const runs: [number, number][] = [];
+  for (const b of bars) {
+    const run = runs.at(-1);
+    if (run && b === run[1] + 1) run[1] = b;
+    else runs.push([b, b]);
+  }
+  if (runs.slice(0, -1).some(([, b]) => b === last)) throw new Error(`bar ${last} is the track's ending, so it can only come last`);
+  if (tailSeconds && runs.at(-1)![1] !== last) throw new Error(`a tail of silence follows the track's ending, bar ${last}; end the bars on it`);
+  const cut = (bar: number) => beatsIn[downbeats[bar - 1]] - CUT_BEFORE_BEAT;
+  const spans = runs.map(([a, b]) => ({ from: a === 1 ? 0 : cut(a), to: b === last ? end + tailSeconds : cut(b + 1) }));
+  // A seam jumps from where the music would have gone on (the downbeat after the run) to the next run's first bar.
+  const jumpable = (k: number) => k >= CONTEXT_BEATS && k + CONTEXT_BEATS <= features.length;
+  const seamDb = runs.slice(1).map(([a], i) => {
+    const from = downbeats[runs[i][1]], to = downbeats[a - 1];
+    return jumpable(from) && jumpable(to) ? barDistance(features, from, to) : NaN;
+  });
+  const plan = placeMusicSpans(spans, beatsIn.filter((b) => b < end), phase, seamDb);
+  return { ...plan, seconds: round3(spans.reduce((sum, s) => sum + s.to - s.from, 0)) };
+}
+
+/** The analysis both plans share: where the track is audible, its beats, each beat's spectrum, and the downbeats. */
+function analyseMusic(samples: Float32Array, rate: number, beats: readonly number[]) {
+  const { start: soundStart, end } = audibleSpan(samples, rate);
+  const beatsIn = beats.filter((b) => b + 0.1 < end);
+  if (beatsIn.length < 3 * BEATS_PER_BAR) throw new Error(`the track has ${beatsIn.length} beats; fitting needs at least three bars`);
+  const features = beatSpectra(samples, rate, beatsIn);
+  return { soundStart, end, beatsIn, features, phase: downbeatPhase(samples, rate, beatsIn, features) };
+}
+
+/** A plan that plays `spans` end to end: its seams, and the source's beats and downbeats where they land in it. */
+function placeMusicSpans(spans: readonly MusicSpan[], beatsIn: readonly number[], phase: number, seamDb: readonly number[]): MusicFitPlan {
   const offsets = spans.map((_, i) => spans.slice(0, i).reduce((sum, s) => sum + s.to - s.from, 0));
   const place = (source: readonly number[]) => spans.flatMap((s, i) => source.filter((b) => b >= s.from && b < s.to).map((b) => round3(offsets[i] + b - s.from)));
+  const measured = seamDb.filter((db) => !Number.isNaN(db));
   return {
     spans: spans.map((s) => ({ from: round3(s.from), to: round3(s.to) })),
     seams: offsets.slice(1).map(round3),
+    seamDb: seamDb.map((db) => Math.round(db * 100) / 100),
     beats: place(beatsIn),
     downbeats: place(beatsIn.filter((_, k) => k % BEATS_PER_BAR === phase)),
     downbeatPhase: phase,
-    worstSeamDb: Math.round(best.step.worst * 100) / 100,
+    worstSeamDb: measured.length ? Math.round(Math.max(...measured) * 100) / 100 : 0,
   };
 }
 
