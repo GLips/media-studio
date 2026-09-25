@@ -4,7 +4,7 @@
 // The tokens are defaults for one register, calm and legible walkthrough UI. A teaser or showreel designs its own
 // motion, and nothing here constrains that.
 
-import { Easing, measureSpring, spring, type SpringConfig } from 'remotion';
+import { Easing } from 'remotion';
 import { FPS } from './frame.ts';
 
 export const clamp = (v: number, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -124,58 +124,8 @@ export const off = (t: number, a: number, len = 0.4) => 1 - seg(t, a, a + len);
 
 // ---------- springs ----------
 
-// "Landed": first within 0.5% of home, as motion.dev's visualDuration. A bouncy spring is crossing home at speed then,
-// and overshoots after. "Settled": within 0.05%, and staying there.
-const SPRING_LANDED = 0.005;
+// "Settled": within 0.05% of home, and staying there.
 const SPRING_SETTLED = 0.0005;
-const SPRING_STIFFNESS = 100;
-
-/** Progress 0→1 (past 1 while it bounces) at `t` seconds after the spring starts. */
-export type DeadlineSpring = ((t: number) => number) & {
-  /** Seconds until it first reaches its target: the deadline it was asked for. */
-  landed: number;
-  /**
-   * Seconds until it has finished settling and holds exactly 1. Later than `landed`, and steeply so as it gets bouncier:
-   * bounce 0.75 rings on for about 16× `landed`, since the decay is exponential and settling means within 0.05%.
-   */
-  settled: number;
-};
-
-/**
- * A spring that reaches its target `duration` seconds after it starts, so it can land on a word; a bouncy one overshoots
- * after that. `bounce` 0 (no overshoot, the default) to just under 1 sets its shape; how much it overshoots follows
- * from that, not from the duration.
- * For moves only: fades and colour are tweens (`seg`).
- *
- *   const pop = springBy(0.5, 0.25); … scale={lerp(0.8, 1, pop(s.t - (w.start - pop.landed)))}
- */
-export function springBy(duration: number, bounce = 0): DeadlineSpring {
-  if (!(duration > 0)) throw new RangeError(`springBy: duration must be positive, got ${duration}`);
-  if (!(bounce >= 0 && bounce < 1)) throw new RangeError(`springBy: bounce must be in [0, 1), got ${bounce}`);
-  const zeta = 1 - bounce;
-  const config: Partial<SpringConfig> = { mass: 1, stiffness: SPRING_STIFFNESS, damping: 2 * zeta * Math.sqrt(SPRING_STIFFNESS) };
-  // Remotion stretches the spring so it settles at durationInFrames. Measure where it lands on its natural clock, and
-  // stretch by what puts that on the deadline. A stiffness from (2π/d)² instead settles 40-65% late.
-  const stretch = duration / springLandedSeconds(zeta);
-  const durationInFrames = measureSpring({ fps: FPS, config, threshold: SPRING_SETTLED }) * stretch;
-  const at = (t: number) => (t <= 0 ? 0 : spring({ frame: t * FPS, fps: FPS, config, durationInFrames, durationRestThreshold: SPRING_SETTLED }));
-  return Object.assign(at, { landed: duration, settled: durationInFrames / FPS });
-}
-
-/**
- * When a spring of damping ratio `zeta` (stiffness SPRING_STIFFNESS, mass 1) first comes within SPRING_LANDED of
- * home, in seconds on its natural clock. This is the closed form Remotion steps through, including its use of the
- * critically damped solution for zeta 1.
- */
-function springLandedSeconds(zeta: number): number {
-  const w = Math.sqrt(SPRING_STIFFNESS), w1 = w * Math.sqrt(Math.max(0, 1 - zeta * zeta));
-  const gap = (t: number) => zeta < 1
-    ? Math.exp(-zeta * w * t) * (Math.cos(w1 * t) + ((zeta * w) / w1) * Math.sin(w1 * t))
-    : Math.exp(-w * t) * (1 + w * t);
-  let t = 0;
-  while (Math.abs(gap(t)) >= SPRING_LANDED) t += 1e-4;
-  return t;
-}
 
 /** Progress 0→1 (past 1 while it bounces) at `t` seconds after the spring starts. */
 export type PerceptualSpring = ((t: number) => number) & {
@@ -191,8 +141,8 @@ export type PerceptualSpring = ((t: number) => number) & {
   settled: number;
 };
 
-// "Arrived": 98% of the travel covered. Not springBy's 0.5%: a smooth spring's last half-percent is a creep the eye
-// has long stopped following, and a bounce on it lands a beat late.
+// "Arrived": 98% of the travel covered. A smooth spring's last few percent are a creep the eye has long stopped
+// following, and a bouncy one timed on its first touch of home would read a beat late.
 const SPRING_ARRIVED = 0.02;
 
 /**

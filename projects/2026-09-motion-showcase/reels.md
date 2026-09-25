@@ -92,7 +92,7 @@ items; examples are Remotion ports with the springs kept in comments (spring(200
 
 GSAP → Remotion: power1/2/3/4 = `Easing.poly(2/3/4/5)` under `Easing.out`/`inOut`, expo ≈ `Easing.exp` [own]; our
 `motionCurves.expo.entrance` is bezier(0.16, 1, 0.3, 1), `themes/bold.css`'s `--ease-standard`. Remotion's default `spring()`
-(100/10/1) is ζ = 0.5, ~16 % overshoot, HF's "Don't"; `springBy(d, bounce)` is ζ = 1 − bounce, so 0.15–0.2 is "felt, not seen".
+(100/10/1) is ζ = 0.5, ~16 % overshoot, HF's "Don't"; `perceptualSpring(d, bounce)` is ζ = 1 − bounce, so 0.15–0.2 is "felt, not seen".
 
 ### 2.3 Transitions and cuts
 - **Tiers** (`transitions/overview.md`): calm 0.5–0.8 s `sine.inOut`, 20–30 px blur held 0.3–0.5 s (blur crossfade); medium

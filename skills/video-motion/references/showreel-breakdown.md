@@ -361,7 +361,7 @@ and 10, ≈3% under the flash on beat 8, not at all on 11.
 - Build: `GlyphField` (`glyph-field.tsx`) with `GLYPH_SHAPES`, waves from `glyphWaveArrivals`, `FieldFlash` and
   `ShockRing`; `glyphFieldLayout` feeds the match cut and bar 7's implosion. [03]'s wave fits: beat 8 from its line
   + 2 f at 0.038 s a cell; beat 9 from its line − 2 f at 0.0523 s a cell; beat 10 along (1, 1)/√2 at 0.0292 s a step;
-  beat 11 from the edges at 0.019 s a cell, the turn on `springBy(0.09, 0.3)`. Flash 0.57 with τ 2.3 f; ring 2670 px/s,
+  beat 11 from the edges at 0.019 s a cell, the turn on `perceptualSpring(0.185, 0.3)`, arriving on the beat. Flash 0.57 with τ 2.3 f; ring 2670 px/s,
   22 px, 0.17, τ 4.6 f, the inner ring at 0.65× its speed. At 30 fps keep the delays continuous, give the newborn
   orange at least 1/30 s, and the flash reads 1.0, 0.42, 0.18, 0.07; the ring moves 89 px a frame.
 
