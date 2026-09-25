@@ -2,7 +2,8 @@
 // everything. `barScene` makes a bar the video's scene; `barPreview` makes a video of one bar alone, for building it without the other bars in the bundle.
 
 import { FPS, FilmGrain, Vignette, defineVideo, sceneForTimelineClock, type Rect } from '../../lib/studio/api.ts';
-import { ReelHud, type ReelHudRead, type ReelHudSlot } from '../../lib/studio/reel/hud.tsx';
+import { ReelHud } from '../../lib/studio/reel/hud.tsx';
+import type { ReelHudRead, ReelHudSlot } from '#models/reel/hud.ts';
 import { LensFringe } from '../../lib/studio/reel/lens.tsx';
 import { FadeToBlack } from '../../lib/studio/reel/recap.tsx';
 import type { Bar } from './bar.ts';

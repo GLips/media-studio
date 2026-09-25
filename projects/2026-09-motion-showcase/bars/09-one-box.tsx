@@ -11,11 +11,14 @@ import {
   type Point, type Rect,
 } from '../../../lib/studio/api.ts';
 import { GlyphField, ShockRing } from '../../../lib/studio/reel/glyph-field.tsx';
-import { reelHudBoxPoints, reelHudToneOver, type ReelHudRead, type ReelHudSlot, type ReelHudTone } from '../../../lib/studio/reel/hud.tsx';
-import { Needle, type NeedleStrike } from '../../../lib/studio/reel/needle.tsx';
-import { GlitchFlash, RecapGrid, Shake, recapTileUnder, type GlitchHit, type RecapLayout, type RecapTile } from '../../../lib/studio/reel/recap.tsx';
+import { reelHudBoxPoints, reelHudToneOver, type ReelHudRead, type ReelHudSlot, type ReelHudTone } from '#models/reel/hud.ts';
+import { Needle } from '../../../lib/studio/reel/needle.tsx';
+import type { NeedleStrike } from '#models/reel/needle.ts';
+import { GlitchFlash, RecapGrid, Shake, type RecapTile } from '../../../lib/studio/reel/recap.tsx';
+import { recapTileUnder, type GlitchHit, type RecapLayout } from '#models/reel/recap.ts';
 import { archivoAdvance, archivoKern } from '#models/reel/ticker-layout.ts';
-import { RiseWord, ScrambleText } from '../../../lib/studio/reel/type.tsx';
+import { RiseWord } from '../../../lib/studio/reel/type.tsx';
+import { ScrambleText } from '../../../lib/studio/reel/type-scramble.tsx';
 import type { BoundReplay } from '../../../lib/models/timeline/bind-timeline.ts';
 import type { Bar, BarSound, ShowcaseClock, ShowcaseReplays } from '../bar.ts';
 import { INK_FIELD } from '../ink-field.ts';

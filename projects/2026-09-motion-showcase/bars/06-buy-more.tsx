@@ -6,8 +6,9 @@
 // closing in on the cut to bar 7's black. The HUD's rows ride on two lanes of flat ground laid across the field.
 
 import { FPS, H, ShutterBlur, W, clamp, motionCurves, seg } from '../../../lib/studio/api.ts';
-import { reelHudBoxes, type ReelHudTone } from '../../../lib/studio/reel/hud.tsx';
-import { TickerBands, tickerLookBeat, type TickerColors, type TickerEnter, type TickerLook } from '../../../lib/studio/reel/ticker.tsx';
+import { reelHudBoxes, type ReelHudTone } from '#models/reel/hud.ts';
+import { TickerBands } from '../../../lib/studio/reel/ticker.tsx';
+import { tickerLookBeat, type TickerColors, type TickerEnter, type TickerLook } from '#models/reel/ticker.ts';
 import type { Bar, ShowcaseClock } from '../bar.ts';
 import { SHOWCASE_HUD } from '../reel.tsx';
 import tapQty2 from '../sfx/tap-qty-2.ts';

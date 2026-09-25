@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { basename, join, resolve } from 'node:path';
 import { spawnFfmpeg } from '#engine/ffmpeg/ffmpeg.ts';
 import type { Rect } from '../../../lib/studio/api.ts';
-import type { ReelHudSlot } from '../../../lib/studio/reel/hud.tsx';
+import type { ReelHudSlot } from '#models/reel/hud.ts';
 
 const ROOT = resolve(import.meta.dirname, '../../..');
 const PROJECT = resolve(import.meta.dirname, '..');
@@ -37,9 +37,9 @@ const GLYPH_GAP = 1, WORD_GAP = 10, STRETCH = 20;
 const { SHOWCASE_HUD } = await import(`${PROJECT}/reel.tsx`);
 const { showcaseBars } = await import(`${PROJECT}/video.tsx`);
 const { timeline } = await import(`${PROJECT}/timeline.ts`);
-const { REEL_HUD_SLOTS, reelHudBoxes } = await import(`${ROOT}/lib/studio/reel/hud.tsx`);
+const { REEL_HUD_SLOTS, reelHudBoxes } = await import(`${ROOT}/lib/models/reel/hud.ts`);
 
-const { LENS_FRINGE_SUBPIXEL_MAX, lensFringeAt } = await import(`${ROOT}/lib/studio/reel/lens.tsx`);
+const { LENS_FRINGE_SUBPIXEL_MAX, lensFringeAt } = await import(`${ROOT}/lib/models/reel/lens.ts`);
 
 type Bar = { id: string; clock: { from: number; to: number }; kicks?: readonly number[]; glitches?: readonly number[] };
 const bars: Bar[] = showcaseBars;
@@ -87,7 +87,7 @@ const hudMask = defineScene({
 
 export default defineVideo({ title: 'Showcase HUD mask', voice: {}, scenes: [hudMask] });
 `;
-const MASK_INPUTS = ['lib/studio/reel/hud.tsx', 'lib/studio/reel/type.tsx', 'lib/studio/fonts.ts'].map((f) => join(ROOT, f))
+const MASK_INPUTS = ['lib/studio/reel/hud.tsx', 'lib/models/reel/hud.ts', 'lib/models/reel/type.ts', 'lib/studio/fonts.ts'].map((f) => join(ROOT, f))
   .concat(['reel.tsx', 'timeline.ts'].map((f) => join(PROJECT, f)));
 const stamp = createHash('sha1').update([MASK_VIDEO, ...MASK_INPUTS.map((f) => readFileSync(f))].join('\0')).digest('hex');
 const stampFile = join(MASK_DIR, 'stamp');

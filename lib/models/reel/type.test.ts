@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import '../tsx-test-hooks.ts';
-
-const { CODE_GLYPHS, scrambleAt, scrambleFinish } = await import('./type.tsx');
+import { CODE_GLYPHS, scrambleAt, scrambleFinish } from './type.ts';
 
 type Timing = Parameters<typeof scrambleAt>[2];
 

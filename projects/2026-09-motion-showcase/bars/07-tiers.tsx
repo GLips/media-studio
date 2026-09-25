@@ -5,8 +5,11 @@
 
 import * as THREE from 'three';
 import { DISPLAY_FONT, FPS, H, MONO_FONT, W, clamp, lerp, motionCurves, type Point } from '../../../lib/studio/api.ts';
-import { ColumnField, columnBallAt, columnTitaniumMaterial, columnCameraAt, columnDiscCells, columnNoise, type ColumnBall, type ColumnCameraMove, type ColumnCameraPose, type ColumnCell, type ColumnFieldProps, type ColumnFieldSpec, type ColumnLabel } from '../../../lib/studio/reel/column-field.tsx';
-import { reelHudGrounds, type ReelHudTone } from '../../../lib/studio/reel/hud.tsx';
+import { ColumnField, type ColumnFieldProps } from '../../../lib/studio/reel/column-field.tsx';
+import { columnTitaniumMaterial } from '../../../lib/studio/reel/column-field-materials.ts';
+import { columnDiscCells, columnNoise, type ColumnBall, type ColumnCameraMove, type ColumnCameraPose, type ColumnCell, type ColumnFieldSpec, type ColumnLabel } from '#models/reel/column-field.ts';
+import { columnBallAt, columnCameraAt } from '#models/reel/column-field-motion.ts';
+import { reelHudGrounds, type ReelHudTone } from '#models/reel/hud.ts';
 import type { Bar, ShowcaseClock } from '../bar.ts';
 import whipIntoPayLess from '../sfx/whip-into-pay-less.ts';
 import { P } from '../look.ts';

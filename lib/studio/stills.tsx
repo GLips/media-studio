@@ -132,7 +132,7 @@ function coverPlacement(image: StillImage, box: Rect, focus: StillFocus) {
 
 /** How a StillCard is turned, in degrees: `rx` tips the top edge away, `ry` turns the right edge away, `rz` clockwise. */
 export type StillCardTilt = { rx: number; ry: number; rz: number };
-/** The reel's resting tilt for a UI card (PLANE_REST_POSE, reel/capture-plane.tsx). */
+/** The reel's resting tilt for a UI card (PLANE_REST_POSE, models/reel/capture-plane.ts). */
 export const STILL_CARD_TILT: StillCardTilt = { rx: 3, ry: -8, rz: 0 };
 
 /**

@@ -4,7 +4,8 @@
 // module is the one place the handover state is written down: change it here, not in a bar.
 
 import { H, ODOMETER_DIGIT_EM, W } from '../../lib/studio/api.ts';
-import { glyphFieldLayout, type GlyphCell, type GlyphFieldProps, type GlyphLayout, type GlyphRest, type GlyphShape } from '../../lib/studio/reel/glyph-field.tsx';
+import { glyphFieldLayout, type GlyphCell, type GlyphLayout, type GlyphShape } from '#models/reel/glyph-field.ts';
+import type { GlyphFieldProps, GlyphRest } from '#models/reel/glyph-field-frame.ts';
 import { archivoAdvance } from '#models/reel/ticker-layout.ts';
 import { inks, type Ink } from './look.ts';
 

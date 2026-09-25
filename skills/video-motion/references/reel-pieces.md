@@ -44,7 +44,7 @@ the image rather than a label on it, and colour comes in full-bleed fields, not 
 - **Cost.** A reel renders 600 frames. Keep a frame under about 2,000 DOM nodes; past that, draw into a canvas (2D in
   a `useLayoutEffect` that redraws each frame, or `ThreeStage` for 3D, `lib/studio/three-stage.tsx`).
 - **Colours into three.js** must be hex or comma `rgb()`: it reads neither `oklch()` nor CSS's space-separated
-  `rgb()`. `parseGlyphColor` (`reel/glyph-field.tsx`) turns any CSS colour into numbers first.
+  `rgb()`. `parseGlyphColor` (`lib/models/reel/glyph-field-frame.ts`) turns any CSS colour into numbers first.
 - **SVG filters** do post work on DOM and canvases alike, but Chrome has four traps:
   - It recomputes a filter result once for every step that reads it, so have each tap read the source rather than
     chaining stages.
@@ -72,18 +72,18 @@ Look here first: a second copy of one of these drifts from the first.
 - **Smear:** `ShutterBlur`, `REEL_SHUTTER`, `shutterOpensAt`, `shutterTravel`, `smearSigma` (`motion-blur.tsx`).
 - **The beat:** `steadyBeatGrid`, `wordOnBeat` (`beats.ts`).
 - **Geometry:** `Vec3` and its maths (`vec3.ts`); `AffineMatrix`, `multiplyAffine`, `applyAffine` (`camera.ts`); a
-  capture plane's projection, `capturePlaneProjection` (`reel/capture-plane.tsx`); where the needle is and what it
-  touches, `needlePoseAt`, `needleContactAt`, `needleScreenPoint` (`reel/needle.tsx`), to land a mark on its strike,
-  and `needleCoversAt`, for a HUD part judging whether the sharp needle is its ground.
+  capture plane's projection, `capturePlaneProjection` (`lib/models/reel/capture-plane.ts`); where the needle is and what it
+  touches, `needlePoseAt`, `needleContactAt`, `needleScreenPoint` (`lib/models/reel/needle.ts`), to land a mark on its
+  strike, and `needleCoversAt`, for a HUD part judging whether the sharp needle is its ground.
 - **The HUD's ground:** `reelHudBoxPoints`, `reelHudGrounds` and `reelHudReadGrounds` read what's drawn under each
-  part's box into its ink and plate (`reel/hud.tsx`), from a `groundAt(point)` a bar builds out of its pieces'
+  part's box into its ink and plate (`lib/models/reel/hud.ts`), from a `groundAt(point)` a bar builds out of its pieces'
   geometry.
 - **Type:** `ARCHIVO_CAP_EM`, `ARCHIVO_BASELINE_EM` and `layoutGlyphLine` (`lib/models/reel/ticker-layout.ts`); `MONO_CAP_EM`,
   `MONO_ADVANCE_EM`, and `useStudioFontsReady` before measuring a word or painting one into a canvas (`fonts.ts`);
-  `slantWordPose`, `IndexLabel`, `SelectionBox`, `scrambleAt` (`reel/type.tsx`); `ODOMETER_DIGIT_EM` (`kit.tsx`).
-- **Post and finish:** `channelSplitPrimitives` (`reel/lens.tsx`); `GlitchFlash`, `shakeOffset`, `FadeToBlack`,
-  `recapTileUnder` (`reel/recap.tsx`); `tickerLookBeat` (`reel/ticker.tsx`); `columnTitaniumMaterial`, a ball's
-  anodized colour by film thickness (`reel/column-field.tsx`).
+  `slantWordPose`, `scrambleAt` (`lib/models/reel/type.ts`); `IndexLabel`, `SelectionBox` (`reel/type.tsx`); `ODOMETER_DIGIT_EM` (`kit.tsx`).
+- **Post and finish:** `channelSplitPrimitives` (`reel/lens.tsx`); `GlitchFlash`, `FadeToBlack` (`reel/recap.tsx`);
+  `shakeOffset`, `recapTileUnder` (`lib/models/reel/recap.ts`); `tickerLookBeat` (`lib/models/reel/ticker.ts`); `columnTitaniumMaterial`, a ball's
+  anodized colour by film thickness (`reel/column-field-materials.ts`).
 
 ## Proving it
 

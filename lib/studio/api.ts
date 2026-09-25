@@ -18,17 +18,34 @@ export { motionAttrs, motionEchoAttrs, pieceMotionAttrs, unmeasuredAttrs, useMot
 export * from './overlays.tsx';
 export * from '#models/motion/random.ts';
 // The reel pieces: the high-energy register of music-led videos (skills/video-motion/references/reel-pieces.md).
+// Each model is re-exported by name: the helpers it exports only for its own drawing stay out of the barrel.
 export * from './reel/bounce.tsx';
+export { type BallLaunch, type BallPhase, type BallPose, type BounceParams, type BounceTiming, bouncingBallAt } from '#models/reel/bounce.ts';
+export { fieldSwellAt, type FieldSwellOptions, type SwellFrom, type SwellPose } from '#models/reel/bounce-swell.ts';
 export * from './reel/capture-plane.tsx';
+export { type CapturePlaneProjection, capturePlaneProjection, capturePlaneView, lerpPlanePose, PLANE_REST_POSE, type PlaneLift, planeLiftStart, type PlanePose } from '#models/reel/capture-plane.ts';
 export * from './reel/column-field.tsx';
+export { type ColumnBall, type ColumnBallState, type ColumnCameraMove, type ColumnCameraPose, type ColumnCameraState, type ColumnCell, columnDiscCells, columnFieldHeight, type ColumnFieldLights, columnFieldPoint, type ColumnFieldSpec, type ColumnLabel, type ColumnLight, columnNoise, type ColumnRise } from '#models/reel/column-field.ts';
+export { columnBallAt, columnCameraAt, columnFieldProject, topDownPose } from '#models/reel/column-field-motion.ts';
+export { columnTitaniumMaterial } from './reel/column-field-materials.ts';
 export * from './reel/glyph-field.tsx';
+export * from '#models/reel/glyph-field.ts';
+export * from '#models/reel/glyph-field-frame.ts';
 export * from './reel/hud.tsx';
+export { REEL_HUD_BOOT_DECODE, REEL_HUD_GLYPHS, REEL_HUD_PALETTE, REEL_HUD_SLOTS, REEL_HUD_SWAP_DECODE, reelHudBoxes, reelHudBoxPoints, type ReelHudCell, reelHudDecode, type ReelHudDecodeSchedule, type ReelHudGround, reelHudGrounds, type ReelHudLayoutProps, reelHudLitSquare, type ReelHudPalette, reelHudPlateMix, type ReelHudRead, reelHudReadGrounds, type ReelHudSection, type ReelHudSlot, reelHudTimecode, type ReelHudTone, reelHudToneOver, reelHudToneWeights } from '#models/reel/hud.ts';
 export * from './reel/lens.tsx';
+export * from '#models/reel/lens.ts';
 export * from './reel/needle.tsx';
+export { NEEDLE_RIG, needleContactAt, needleCoversAt, needleExposuresAt, needleLensHeight, type NeedleLensing, type NeedlePose, needlePoseAt, type NeedleRig, needleScreenPoint, type NeedleShot, needleShotAt, type NeedleStrike, type NeedleTake } from '#models/reel/needle.ts';
 export * from './reel/recap.tsx';
+export { type GlitchHit, type GlitchLook, type RecapExit, recapGridRects, type RecapLayout, type RecapOrder, recapPopStarts, recapTileUnder, shakeOffset } from '#models/reel/recap.ts';
 export * from './reel/ticker.tsx';
 export * from '#models/reel/ticker-layout.ts';
+export { TICKER_BOLD, TICKER_HERO_POSES, TICKER_LIGHT, TICKER_LOOKS, type TickerColors, type TickerEnter, type TickerExit, type TickerHeroPoses, type TickerKick, type TickerLook, tickerLookBeat } from '#models/reel/ticker.ts';
 export * from './reel/type.tsx';
+export * from './reel/type-slant.tsx';
+export * from './reel/type-scramble.tsx';
+export { CODE_GLYPHS, scrambleAt, scrambleFinish, type ScrambleTiming, type SlantEntrance, slantMatrix, type SlantPose, slantWordPose, type Tittle } from '#models/reel/type.ts';
 export { useScene } from './scene.tsx';
 export { useScreenRect } from './screen-rect.ts';
 export { defineScene, defineVideo, type LineSpan, type SceneClock, type ScenePrevis, type VideoSound } from './timeline.ts';

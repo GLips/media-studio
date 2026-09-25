@@ -1,9 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { steadyBeatGrid } from '../../models/timeline/beat-grid.ts';
-import '../tsx-test-hooks.ts';
-
-const { NEEDLE_RIG, needleContactAt, needlePoseAt, needleScreenPoint, needleShotAt } = await import('./needle.tsx');
+import { steadyBeatGrid } from '#models/timeline/beat-grid.ts';
+import { NEEDLE_RIG, needleContactAt, needlePoseAt, needleScreenPoint, needleShotAt } from './needle.ts';
 
 const g = steadyBeatGrid(120);
 // On the beats, the last two out by the frame's corners, where the perspective is strongest.

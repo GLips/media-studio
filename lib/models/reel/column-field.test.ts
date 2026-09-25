@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { H, W } from '#models/frame/frame.ts';
-import '../tsx-test-hooks.ts';
-import type { ColumnFieldSpec } from './column-field.tsx';
-
-const { columnBallAt, columnDiscCells, columnFieldPoint, columnFieldProject, columnNoise, topDownPose } = await import('./column-field.tsx');
+import { columnDiscCells, columnFieldPoint, columnNoise, type ColumnFieldSpec } from './column-field.ts';
+import { columnBallAt, columnFieldProject, topDownPose } from './column-field-motion.ts';
 
 // The reference's section: tiles rising into churning columns while the camera cranes down from overhead, and a ball
 // landing on three of them.

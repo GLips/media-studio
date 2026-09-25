@@ -1,9 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { steadyBeatGrid } from '../../models/timeline/beat-grid.ts';
-import '../tsx-test-hooks.ts';
-
-const { bouncingBallAt } = await import('./bounce.tsx');
+import { steadyBeatGrid } from '#models/timeline/beat-grid.ts';
+import { bouncingBallAt } from './bounce.ts';
 
 // The showcase's first bar: four landings a beat apart at 120 BPM, the last launching into the swell.
 const grid = steadyBeatGrid(120, 0.5);

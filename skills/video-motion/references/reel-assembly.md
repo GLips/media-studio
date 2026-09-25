@@ -51,7 +51,7 @@ Draw only through the bar's pure function of `f`: no state, no randomness but se
   over what the bar draws under its box: the ink's tone, and a plate where the ground under it is mixed or busy. Read
   that ground rather than guess it: `reelHudGrounds(box, groundAt)` samples the box edge to edge into each ground's
   share, and `reelHudReadGrounds(grounds, looks)` picks the ink most of the box wants, plated where the other inks'
-  grounds or busy type show (`lib/studio/reel/hud.tsx`).
+  grounds or busy type show (`lib/models/reel/hud.ts`).
 - **Sounds** the picture lands (a strike, a whip, a stamp) go in the bar's `sounds`, which play on the video's clock
   (`defineVideo({ sounds })`, `sfx.md`), never as an `<Sfx>` in `render`: the finale replays `render` in its tiles, and
   a cut would stop a whip that runs across it. The music carries the beat; a sound marks what the music can't: a slam

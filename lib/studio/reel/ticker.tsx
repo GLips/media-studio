@@ -3,105 +3,25 @@
 // bold wave runs along every row and the row reflows around it (ticker-layout.ts places each glyph at its own axes).
 // The tickers drift in mirrored pairs around a still hero band; the look changes on every beat with a damped jolt;
 // the bands whip in from the right, then fly off along their drift while the hero band closes onto its word.
+// Its poses, looks, moves and smear arithmetic are lib/models/reel/ticker.ts.
 
 import { useId, type ReactNode } from 'react';
 import { DISPLAY_FONT } from '#models/type/faces.ts';
-import { FPS, H, W } from '#models/frame/frame.ts';
+import { H, W } from '#models/frame/frame.ts';
 import { motionCurves } from '#models/motion/motion.ts';
 import { smearSigma } from '#models/motion/shutter.ts';
 import { pieceMotionAttrs } from '../motion-tag.ts';
 import { hashRandom } from '#models/motion/random.ts';
 import { Odometer } from '../kit.tsx';
 import {
-  ARCHIVO_BASELINE_EM, ARCHIVO_CAP_EM, archivoAdvance, layoutGlyphLine, layoutTickerRow, mixGlyphPose, tickerBreathAt,
-  type GlyphAxes, type GlyphPose, type GlyphLineSlot, type TickerBreath, type TickerPose, type TickerSlot,
+  ARCHIVO_BASELINE_EM, ARCHIVO_CAP_EM, layoutTickerRow, type GlyphAxes, type TickerBreath, type TickerPose, type TickerSlot,
 } from '#models/reel/ticker-layout.ts';
-
-export type { GlyphPose, TickerBreath, TickerPose } from '#models/reel/ticker-layout.ts';
-
-// ---------- the reference's values ----------
-
-// Archivo stands in for the reference's Roboto Flex–class face. These poses give "MOTION" at cap 110 px the
-// reference's spread of word widths as it breathes (326 → 698 px, 10th to 90th percentile, ink between dots), its
-// stems (0.10 → 0.31 cap) and letter gaps (3–7 → 8–10 px). The light end needs scaleX: Archivo stops at 62% wide.
-export const TICKER_LIGHT: TickerPose = { wght: 460, wdth: 62, scaleX: 0.75, tracking: -0.037, dot: 0.05 };
-export const TICKER_BOLD: TickerPose = { wght: 840, wdth: 122, scaleX: 1, tracking: -0.065, dot: 0.75 };
-
-/** The hero's own poses: it breathes between `light` and `bold`, then eases into `hold` from the look that holds it. */
-export type TickerHeroPoses = {
-  light: GlyphPose;
-  bold: GlyphPose;
-  hold: GlyphPose & { /** Seconds to settle into it. */ settle: number };
-};
-
-/**
- * The reference's hero sets looser than the tickers at its light end and a little narrower at its bold: "MOTION"
- * breathes 369 → 686 px. Held, it is 538 px on 28 px stems with its letters all but touching.
- */
-export const TICKER_HERO_POSES: TickerHeroPoses = {
-  light: { wght: 460, wdth: 62, scaleX: 0.79, tracking: 0.007 },
-  bold: { wght: 840, wdth: 118, scaleX: 1, tracking: -0.075 },
-  hold: { wght: 800, wdth: 90, scaleX: 1, tracking: -0.094, settle: 0.04 },
-};
-
-/** One beat's look. */
-export type TickerLook = {
-  /** Tickers that swap their band and type colours: the even bands (0, 2, 4, …), the odd ones, or none. */
-  stripes?: 'none' | 'even' | 'odd';
-  /** Degrees the tickers' glyphs lean, as a skew: band edges stay level and the hero stays upright. */
-  oblique?: number;
-  /** This beat's changes to the tickers' breath ends. */
-  light?: Partial<TickerPose>;
-  bold?: Partial<TickerPose>;
-  /** The hero leaves the breath for its `hold` pose, and holds it from here on. */
-  heroHold?: boolean;
-};
-
-/**
- * The reference's four beats: slam in, stripes, inverted stripes leaning 11.3°, then all plain while the hero holds.
- * Its leaning beat also sets looser at the bold end (letter gaps 13–15 px, 8–10 upright) and ~40 px narrower at the light.
- */
-export const TICKER_LOOKS: readonly TickerLook[] = [
-  {},
-  { stripes: 'even' },
-  { stripes: 'odd', oblique: 11.3, light: { scaleX: 0.68, tracking: -0.045 }, bold: { tracking: -0.034 } },
-  { heroHold: true },
-];
-
-/**
- * `ground` shows where a band is displaced and where the hero band has closed; `band` and `type` are a ticker's fill
- * and letters (a stripe swaps them) and `dot` its separators; `hero` and `heroType` are the hero band's.
- */
-export type TickerColors = { ground: string; band: string; type: string; dot: string; hero: string; heroType: string };
-const REFERENCE_COLORS: TickerColors = { ground: '#0a0a0c', band: '#3a3cf4', type: '#efece6', dot: '#ee4c2f', hero: '#ee4c2f', heroType: '#1c0a16' };
-
-/** A block jolt on every beat after the first: A·e^(−τ/decay)·cos(2π·hz·τ), odd and even bands opposite ways. */
-export type TickerKick = { px: number; hz: number; decay: number };
-/** Bands arriving from the right: the left edge is W·e^(−τ/decay), starting `lead` s before t = 0, `stagger` s later a band out from the hero. */
-export type TickerEnter = { decay: number; stagger: number; lead: number };
-/**
- * Tickers leaving along their drift on expo-in, all off `early` s before the last beat ends: the pair beside the
- * hero over `duration` s, each pair further out `step` s quicker. The hero band closes onto its centre line over
- * `collapse` s to the same moment, leaving its word in the type colour on the ground.
- */
-export type TickerExit = { duration: number; step: number; early: number; collapse: number };
-
-const REFERENCE_KICK: TickerKick = { px: 38, hz: 4.9, decay: 0.061 };
-// The reference's edges start 65 ms before the cut as read, mid-exposure; its exposure's first half is 4 ms more.
-const REFERENCE_ENTER: TickerEnter = { decay: 0.071, stagger: 0.02, lead: 0.069 };
-// The reference's bands are gone 13 ms before the beat; ours 50 ms, a 30 fps frame and a shutter, so the last frame
-// before a beat on the frame grid, open from 50 ms before it, sees only the word.
-const REFERENCE_EXIT: TickerExit = { duration: 0.24, step: 0.025, early: 0.05, collapse: 0.2 };
-const REFERENCE_BREATH: TickerBreath = { period: 0.875, lag: 0.047 };
-// The reference's hero is widest 0.46 s after the cut, and so near its widest again when it holds on beat 3.
-const REFERENCE_HERO_PHASE = 0.1049;
-
-/**
- * 180° at 30 fps: twice the reference's 60 fps smear in pixels, which our coarser frame rate needs to keep fast moves
- * from strobing. Whatever moves is drawn where it was mid-exposure and smeared along its travel, as ShutterBlur's
- * samples would average.
- */
-const SHUTTER = 1 / 60;
+import {
+  TICKER_BOLD, TICKER_BOX_TAPS, TICKER_BREATH, TICKER_COLORS, TICKER_ENTER, TICKER_EXIT, TICKER_GLYPH_BOX_EM,
+  TICKER_HERO_PHASE, TICKER_HERO_POSES, TICKER_KICK, TICKER_LIGHT, TICKER_LOOKS, TICKER_SHUTTER, tickerBlurLevel,
+  tickerBoxReach, tickerBoxSmeared, tickerExposure, tickerHeroLine, tickerLevelSigma, tickerLookBeat,
+  type TickerColors, type TickerEnter, type TickerExit, type TickerHeroPoses, type TickerKick, type TickerLook,
+} from '#models/reel/ticker.ts';
 
 // ---------- the piece ----------
 
@@ -156,9 +76,9 @@ export type TickerBandsProps = {
  */
 export function TickerBands({
   t, spb, text = 'MOTION', hero = text, count, bands = 7, cap = 110, dot = 20, colors, looks = TICKER_LOOKS,
-  breath = REFERENCE_BREATH, light = TICKER_LIGHT, bold = TICKER_BOLD, heroPoses = TICKER_HERO_POSES, drift = 231,
-  directions, kick = REFERENCE_KICK, enter = REFERENCE_ENTER, exit = REFERENCE_EXIT, seed = 'ticker', phases,
-  shutter = SHUTTER, motion,
+  breath = TICKER_BREATH, light = TICKER_LIGHT, bold = TICKER_BOLD, heroPoses = TICKER_HERO_POSES, drift = 231,
+  directions, kick = TICKER_KICK, enter = TICKER_ENTER, exit = TICKER_EXIT, seed = 'ticker', phases,
+  shutter = TICKER_SHUTTER, motion,
 }: TickerBandsProps) {
   if (!(bands % 2 === 1 && bands >= 1)) throw new Error(`TickerBands: bands must be odd, to have a middle one, not ${bands}`);
   if (t < 0) return null;
@@ -190,10 +110,10 @@ export function TickerBands({
     return x;
   };
   const directionOf = (b: number) => directions?.[b] ?? (b === middle ? 0 : Math.abs(b - middle) % 2 ? -1 : 1);
-  const phaseOf = (b: number) => phases?.[b] ?? (b === middle ? REFERENCE_HERO_PHASE : hashRandom(seed, 'band', b));
+  const phaseOf = (b: number) => phases?.[b] ?? (b === middle ? TICKER_HERO_PHASE : hashRandom(seed, 'band', b));
   const top = (b: number) => Math.round((b * H) / bands);
   const palette = Array.from({ length: bands }, (_, b): TickerColors => ({
-    ...REFERENCE_COLORS, ...(typeof colors === 'function' ? colors(b, t) : colors),
+    ...TICKER_COLORS, ...(typeof colors === 'function' ? colors(b, t) : colors),
   }));
 
   return (
@@ -230,11 +150,6 @@ export function TickerBands({
   );
 }
 
-/**
- * The beat whose look TickerBands shows at `t` (past its last look, the last holds). A look shows from the frame
- * nearest its beat, as BeatGrid.frame rounds, so every band flips on the same frame.
- */
-export const tickerLookBeat = (t: number, spb: number) => Math.floor((t + 0.5 / FPS) / spb);
 const mod1 = (x: number) => x - Math.floor(x);
 
 // ---------- one band ----------
@@ -272,14 +187,14 @@ export type TickerBandProps = {
  * one alone for a single strip across a shot.
  */
 export function TickerBand({
-  t, text, top, height, cap = 110, dot = 20, fill, color, dotColor, drift = 0, phase = 0, breath = REFERENCE_BREATH,
-  light = TICKER_LIGHT, bold = TICKER_BOLD, oblique = 0, block = () => 0, shutter = SHUTTER, motion, name = 'band',
+  t, text, top, height, cap = 110, dot = 20, fill, color, dotColor, drift = 0, phase = 0, breath = TICKER_BREATH,
+  light = TICKER_LIGHT, bold = TICKER_BOLD, oblique = 0, block = () => 0, shutter = TICKER_SHUTTER, motion, name = 'band',
 }: TickerBandProps) {
   const id = useId().replace(/[^\w-]/g, '');
   const size = cap / ARCHIVO_CAP_EM;
   const style = { unit: [...text, null], size, breath, light, bold, phase };
-  const { offset, travel } = exposure(block, t, shutter);
-  const reach = boxReach(travel);
+  const { offset, travel } = tickerExposure(block, t, shutter);
+  const reach = tickerBoxReach(travel);
   if (offset - reach >= W || offset + reach <= -W) return null;
   // The part of the band on screen, in its own coordinates, with room for a lean, a smear and the block's blur.
   const margin = Math.tan((Math.abs(oblique) * Math.PI) / 180) * cap + 24 + reach;
@@ -292,7 +207,7 @@ export function TickerBand({
   const exposed = (slot: TickerSlot, scaleX: number) => {
     const before = was?.get(slot.index);
     if (before === undefined) return { x: slot.x, level: null };
-    const level = blurLevel(smearSigma(slot.x - before) / scaleX);
+    const level = tickerBlurLevel(smearSigma(slot.x - before) / scaleX);
     if (level !== null) blurs.add(level);
     return { x: (slot.x + before) / 2, level };
   };
@@ -314,7 +229,7 @@ export function TickerBand({
         {...pieceMotionAttrs(motion, name, { kind: 'ticker-band', values: { drift: drift * t } })}
         style={{
           position: 'absolute', left: 0, top, width: W, height, overflow: 'hidden', background: fill,
-          transform: `translateX(${offset}px)`, filter: boxSmeared(travel) ? `url(#${id}-block)` : undefined,
+          transform: `translateX(${offset}px)`, filter: tickerBoxSmeared(travel) ? `url(#${id}-block)` : undefined,
         }}
       >
         <div style={{ position: 'absolute', inset: 0, transform: oblique ? `skewX(${-oblique}deg)` : undefined, transformOrigin: `0 ${baseline - cap / 2}px` }}>
@@ -323,14 +238,6 @@ export function TickerBand({
       </div>
     </>
   );
-}
-
-/** Where a moving block was mid-exposure, and how far it travelled while the shutter was open, px. */
-function exposure(block: (t: number) => number, t: number, shutter: number) {
-  const now = block(t);
-  if (shutter <= 0) return { offset: now, travel: 0 };
-  const before = block(t - shutter);
-  return { offset: (now + before) / 2, travel: Math.abs(now - before) };
 }
 
 // ---------- the hero band ----------
@@ -359,16 +266,16 @@ function HeroBand({ t, top, height, word, count, size, cap, colors, breath, pose
   tagged: boolean;
 }) {
   const id = useId().replace(/[^\w-]/g, '');
-  const { offset, travel } = exposure(block, t, shutter);
+  const { offset, travel } = tickerExposure(block, t, shutter);
   const baseline = (height + cap) / 2;
-  const lineAt = (at: number) => heroLine(at, { word, count, size, breath, poses, heldAt, phase });
+  const lineAt = (at: number) => tickerHeroLine(at, { word, count, size, breath, poses, heldAt, phase });
   const line = lineAt(t);
   const was = shutter > 0 ? lineAt(t - shutter) : null;
   const blurs = new Set<number>();
   const glyphs = line.glyphs.map((g, i) => {
     const before = was?.glyphs[i].x;
     if (before === undefined) return { ...g, level: null };
-    const level = blurLevel(smearSigma(g.x - before) / (g.axes.scaleX ?? 1));
+    const level = tickerBlurLevel(smearSigma(g.x - before) / (g.axes.scaleX ?? 1));
     if (level !== null) blurs.add(level);
     return { ...g, x: (g.x + before) / 2, level };
   });
@@ -398,7 +305,7 @@ function HeroBand({ t, top, height, word, count, size, cap, colors, breath, pose
         {...(tagged ? pieceMotionAttrs(undefined, 'hero', { kind: 'ticker-hero', values: { hold: line.held, collapse } }) : {})}
         style={{
           position: 'absolute', left: 0, top, width: W, height, transform: `translateX(${offset}px)`,
-          filter: boxSmeared(travel) ? `url(#${id}-block)` : undefined,
+          filter: tickerBoxSmeared(travel) ? `url(#${id}-block)` : undefined,
         }}
       >
         {collapse > 0 && content(colors.type, false)}
@@ -412,44 +319,6 @@ function HeroBand({ t, top, height, word, count, size, cap, colors, breath, pose
   );
 }
 
-type HeroGlyph = { char: string; axes: GlyphAxes; x: number };
-
-/** The hero's glyphs (and its number's place) at `t`, centred on the frame: the breath, eased into the hold once held. */
-function heroLine(t: number, { word, count, size, breath, poses, heldAt, phase }: {
-  word: string;
-  count?: (t: number) => number;
-  size: number;
-  breath: TickerBreath;
-  poses: TickerHeroPoses;
-  heldAt: number | null;
-  phase: number;
-}) {
-  const held = heldAt === null ? 0 : 1 - Math.exp(-Math.max(0, t - heldAt) / poses.hold.settle);
-  const poseAt = (i: number) => mixGlyphPose(mixGlyphPose(poses.light, poses.bold, tickerBreathAt(t, i, breath, phase)), poses.hold, held);
-  const chars = count ? [...word, ' '] : [...word];
-  const slots: GlyphLineSlot[] = chars.map((char, i) => {
-    const pose = poseAt(i);
-    return { char, axes: axesOf(pose), tracking: pose.tracking };
-  });
-  let countPose: GlyphPose | null = null;
-  if (count) {
-    countPose = poseAt(chars.length);
-    // The Odometer gives each digit 1ch plus its tracking, inside the wrapper that squeezes it by scaleX.
-    const digits = String(Math.max(0, Math.round(count(t)))).length;
-    slots.push({ blank: digits * (archivoAdvance('0', axesOf(countPose)) + countPose.tracking * countPose.scaleX) * size });
-  }
-  const line = layoutGlyphLine(slots, size);
-  const left = (W - line.width) / 2;
-  const glyphs: HeroGlyph[] = [];
-  chars.forEach((char, i) => {
-    const slot = slots[i];
-    if (char.trim() && 'char' in slot) glyphs.push({ char, axes: slot.axes, x: left + line.x[i] });
-  });
-  return { glyphs, held, count: countPose && { pose: countPose, x: left + line.x[chars.length] } };
-}
-
-const axesOf = ({ wght, wdth, scaleX }: GlyphPose): GlyphAxes => ({ wght, wdth, scaleX });
-
 // ---------- drawing ----------
 
 /** A glyph at its own axes, its advance box starting at `x`, sitting on `baseline`. */
@@ -457,7 +326,7 @@ function Glyph({ char, axes, x, baseline, size, color, filter }: { char: string;
   return (
     <span
       style={{
-        position: 'absolute', left: 0, top: baseline - ARCHIVO_BASELINE_EM * size, width: GLYPH_BOX_EM * size, height: size,
+        position: 'absolute', left: 0, top: baseline - ARCHIVO_BASELINE_EM * size, width: TICKER_GLYPH_BOX_EM * size, height: size,
         fontFamily: DISPLAY_FONT, fontSize: size, lineHeight: `${size}px`, fontWeight: axes.wght, fontStretch: `${axes.wdth}%`,
         fontVariationSettings: `"wght" ${axes.wght}, "wdth" ${axes.wdth}`, color, whiteSpace: 'pre',
         transform: `translateX(${x}px) scaleX(${axes.scaleX ?? 1})`, transformOrigin: '0 0', filter,
@@ -472,28 +341,12 @@ function Dot({ x, y, d, color, filter }: { x: number; y: number; d: number; colo
   return <div style={{ position: 'absolute', left: 0, top: y - d / 2, width: d, height: d, borderRadius: '50%', background: color, transform: `translateX(${x - d / 2}px)`, filter }} />;
 }
 
-// Below this a smear can't be seen and text stays crisp: the drift alone (231 px/s) smears σ 1.2 px at 1/60 s.
-const MIN_SIGMA = 1.5;
-// σ rounds to steps of √2, so glyphs moving at about the same speed share a filter.
-const blurLevel = (sigma: number) => (sigma < MIN_SIGMA ? null : Math.round(2 * Math.log2(sigma / MIN_SIGMA)));
-const levelSigma = (level: number) => MIN_SIGMA * 2 ** (level / 2);
-// Every glyph gets a box this many em wide (Archivo's widest, №, is 1.65), so one filter region fits them all.
-const GLYPH_BOX_EM = 1.8;
-
-// A band's own travel (arriving, jolting, leaving) is smeared as the box an open shutter makes: blurred copies spread
-// evenly along it, averaged. A Gaussian with the same edge ramp reaches ~0.4 of the travel further each way, and at
-// the whip's speeds turns the letters to haze where the reference's stay legible as ghosts. A power of two.
-const BOX_TAPS = 8;
-const boxSmeared = (travel: number) => smearSigma(travel) >= MIN_SIGMA;
-// How far past the band's own box its smear reaches, px: half the travel, then three σ of each copy's blur.
-const boxReach = (travel: number) => (boxSmeared(travel) ? travel / 2 + (3 * travel) / (2 * BOX_TAPS) : 0);
-
 /**
  * This band's smears: a horizontal Gaussian per blur level its glyphs and dots use, and a box for the band's own
  * `travel`. A filter region is a share of the element it's on, so each is sized for its element's box.
  */
 function BlurFilters({ id, glyphLevels, dot, size, travel }: { id: string; glyphLevels: ReadonlySet<number>; dot: number; size: number; travel: number }) {
-  const box = boxSmeared(travel);
+  const box = tickerBoxSmeared(travel);
   if (!glyphLevels.size && !box) return null;
   const gaussian = (key: string, sigma: number, boxWidth: number): ReactNode => {
     const pad = (3 * sigma + 4) / boxWidth;
@@ -505,8 +358,8 @@ function BlurFilters({ id, glyphLevels, dot, size, travel }: { id: string; glyph
   };
   return (
     <svg width={0} height={0} style={{ position: 'absolute' }}>
-      {[...glyphLevels].map((level) => gaussian(`g${level}`, levelSigma(level), GLYPH_BOX_EM * size))}
-      {dot > 0 && [...glyphLevels].map((level) => gaussian(`d${level}`, levelSigma(level), dot))}
+      {[...glyphLevels].map((level) => gaussian(`g${level}`, tickerLevelSigma(level), TICKER_GLYPH_BOX_EM * size))}
+      {dot > 0 && [...glyphLevels].map((level) => gaussian(`d${level}`, tickerLevelSigma(level), dot))}
       {box && <BoxSmear id={`${id}-block`} travel={travel} />}
     </svg>
   );
@@ -514,9 +367,9 @@ function BlurFilters({ id, glyphLevels, dot, size, travel }: { id: string; glyph
 
 /** A box smear `travel` px long, centred: each copy blurred by half the gap between copies, so they run together. */
 function BoxSmear({ id, travel }: { id: string; travel: number }) {
-  const gap = travel / BOX_TAPS;
-  const pad = (boxReach(travel) + 4) / W;
-  const taps = Array.from({ length: BOX_TAPS }, (_, i) => `tap${i}`);
+  const gap = travel / TICKER_BOX_TAPS;
+  const pad = (tickerBoxReach(travel) + 4) / W;
+  const taps = Array.from({ length: TICKER_BOX_TAPS }, (_, i) => `tap${i}`);
   // Average the copies in pairs, then pairs of pairs: arithmetic compositing is on premultiplied colour, as exposure is.
   const mixes: ReactNode[] = [];
   for (let level = taps, n = 0; level.length > 1; ) {

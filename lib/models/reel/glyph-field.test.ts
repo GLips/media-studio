@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import '../tsx-test-hooks.ts';
-
-const { glyphFieldFrame, glyphFieldLayout, glyphRegroupPlan, glyphWaveArrivals } = await import('./glyph-field.tsx');
+import { glyphFieldLayout, glyphRegroupPlan, glyphWaveArrivals } from './glyph-field.ts';
+import { glyphFieldFrame } from './glyph-field-frame.ts';
 
 const lattice = () => glyphFieldLayout(19 * 11).map((slot) => ({ ...slot, item: null }));
 const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;

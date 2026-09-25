@@ -13,9 +13,11 @@ import {
 } from '../../../lib/studio/api.ts';
 import { Odometer } from '../../../lib/studio/kit.tsx';
 import { odometerWheels } from '../../../lib/studio/odometer-wheels.ts';
-import { CapturePlane, capturePlaneProjection, capturePlaneView, lerpPlanePose, type PlanePose } from '../../../lib/studio/reel/capture-plane.tsx';
-import { GlyphField, type GlyphClip, type GlyphFilterStep, type GlyphRegroup, type GlyphWave } from '../../../lib/studio/reel/glyph-field.tsx';
-import { reelHudGrounds, reelHudReadGrounds, type ReelHudGround, type ReelHudRead, type ReelHudSlot } from '../../../lib/studio/reel/hud.tsx';
+import { CapturePlane } from '../../../lib/studio/reel/capture-plane.tsx';
+import { capturePlaneProjection, capturePlaneView, lerpPlanePose, type PlanePose } from '#models/reel/capture-plane.ts';
+import { GlyphField } from '../../../lib/studio/reel/glyph-field.tsx';
+import type { GlyphClip, GlyphFilterStep, GlyphRegroup, GlyphWave } from '#models/reel/glyph-field.ts';
+import { reelHudGrounds, reelHudReadGrounds, type ReelHudGround, type ReelHudRead, type ReelHudSlot } from '#models/reel/hud.ts';
 import { ARCHIVO_BASELINE_EM, ARCHIVO_CAP_EM, layoutGlyphLine } from '#models/reel/ticker-layout.ts';
 import type { Bar, ShowcaseClock } from '../bar.ts';
 import { captures as C } from '../captures/index.ts';

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { TimelineBinding, TimelineSceneClock } from '../../lib/models/timeline/bind-timeline.ts';
 import type { ResolvedSceneClock } from '../../lib/models/timeline/timeline.ts';
 import type { Rect, SfxSound } from '../../lib/studio/api.ts';
-import type { ReelHudRead, ReelHudSlot } from '../../lib/studio/reel/hud.tsx';
+import type { ReelHudRead, ReelHudSlot } from '#models/reel/hud.ts';
 import type { timeline } from './timeline.ts';
 
 /** The clock video.tsx hands bar `K`: its frames, its own beats, cues and moves, resolved on the reel's timeline. */

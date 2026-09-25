@@ -188,7 +188,7 @@ rule), [hud]'s numbers win.
   `hud/crops/`, `hud/{rule,theme}.tsv`. The `build/tl_build.png` that [hud] cites doesn't exist.
 - Build: `ReelHud` (`lib/studio/reel/hud.tsx`) takes the clock, the sections and `readAt(slot, t, box)`: each
   part's tone (light, dark or on-accent) and, where the ground under it is mixed or busy, a plate of that ground's
-  colour at `plateOpacity` (0.75). `reelHudGrounds` and `reelHudReadGrounds` read both from what a bar draws under the
+  colour at `plateOpacity` (0.75). `reelHudGrounds` and `reelHudReadGrounds` (`lib/models/reel/hud.ts`, with the rest below) read both from what a bar draws under the
   part's box; `reelHudToneOver` picks the tone for a colour. `REEL_HUD_BOOT_DECODE` and `REEL_HUD_SWAP_DECODE` hold
   the schedules above, and `reelHudToneWeights` and `reelHudPlateMix` mix tones and plates over sub-frame samples. At
   30 fps FF runs 00–29, the readout says 30 FPS, the decodes take 15 and 9 frames, and the squares alternate 14- and
@@ -245,17 +245,17 @@ In `lib/studio/reel/` unless noted.
 
 | Piece | File | Reference bars |
 |---|---|---|
-| `BounceBall`, `bouncingBallAt`, `BounceCallout`, `FieldSwell` | `bounce.tsx` | 1; bar 2's tittle zoom; bar 8's full stop |
-| `RiseWord`, `WeightWord`, `SelectionBox`, `SlantWord`, `ScrambleText` | `type.tsx` | 2, 8 |
+| `BounceBall`, `bouncingBallAt`, `BounceCallout`, `FieldSwell` | `bounce.tsx`, `lib/models/reel/bounce.ts`, `bounce-swell.ts` | 1; bar 2's tittle zoom; bar 8's full stop |
+| `RiseWord`, `WeightWord`, `SelectionBox`, `SlantWord`, `ScrambleText` | `type.tsx`, `type-slant.tsx`, `type-scramble.tsx`, `lib/models/reel/type.ts` | 2, 8 |
 | `GlyphField`, `FieldFlash`, `ShockRing` | `glyph-field.tsx` | 3; bar 7's implosion |
-| `ColumnField`, `columnCameraAt`, `columnBallAt` on `ThreeStage`'s accumulation | `column-field.tsx`, `lib/studio/three-stage.tsx` | 4 |
-| `TickerBands` | `ticker.tsx`, `ticker-layout.ts` | 5 |
+| `ColumnField`, `columnCameraAt`, `columnBallAt` on `ThreeStage`'s accumulation | `column-field.tsx`, `lib/models/reel/column-field-motion.ts`, `lib/studio/three-stage.tsx` | 4 |
+| `TickerBands` | `ticker.tsx`, `lib/models/reel/ticker.ts`, `ticker-layout.ts` | 5 |
 | none yet; [06] specs `particleMorph` | | 6 |
-| `RecapGrid`, `GlitchFlash`, `Shake`, `FadeToBlack` | `recap.tsx` | 7, 8 |
-| `ReelHud` | `hud.tsx` | all |
-| `LensFringe` | `lens.tsx` | the frame post |
+| `RecapGrid`, `GlitchFlash`, `Shake`, `FadeToBlack` | `recap.tsx`, `lib/models/reel/recap.ts` | 7, 8 |
+| `ReelHud` | `hud.tsx`, `lib/models/reel/hud.ts` | all |
+| `LensFringe` | `lens.tsx`, `lib/models/reel/lens.ts` | the frame post |
 | `Odometer` | `lib/studio/kit.tsx`, `lib/studio/odometer-wheels.ts` | bar 5's price roll; the showcase's |
-| `CapturePlane`, `Needle` | `capture-plane.tsx`, `needle.tsx` | none: the showcase's own |
+| `CapturePlane`, `Needle` | `capture-plane.tsx`, `needle.tsx`, `lib/models/reel/needle.ts` | none: the showcase's own |
 
 ## The bars
 
@@ -289,9 +289,9 @@ In `lib/studio/reel/` unless noted.
   f165, ×1.25 a frame from f157. It stretches 1.75:1 over f151–154 and is round by f158, its edge soft (≈0.085 r). The
   guide, diamonds and ghosts fade over f151–157, the callout over f151–156. No cut: f165's orange is bar 2's ground.
 - Evidence: `01/work/{contact1,ghosts,callouts,rings2,swell,pathbuild}.jpg`.
-- Build: `BounceBall` and `bouncingBallAt` (`bounce.tsx`, whose reference values are this bar's), `BounceCallout`,
-  `FieldSwell`. The one departure is the crouch: `bounce.tsx` runs the impact's squash straight into it, without the
-  rebound, which at 30 fps lands on a frame of its own and reads as a stutter, squash–stretch–squash. At 30 fps put
+- Build: `BounceBall` and `bouncingBallAt` (`bounce.tsx` on `lib/models/reel/bounce.ts`, whose reference values are
+  this bar's), `BounceCallout`, `FieldSwell`. The one departure is the crouch: `bounce.ts` runs the impact's squash
+  straight into it, without the rebound, which at 30 fps lands on a frame of its own and reads as a stutter, squash–stretch–squash. At 30 fps put
   each max squash on a rendered frame; the swell's last ≈5 frames grow ×1.56 each, so soften its edge (σ ≈0.035 r) or
   give it `ShutterBlur` at 0.5.
 
@@ -358,8 +358,8 @@ and 10, ≈3% under the flash on beat 8, not at all on 11.
 - **Out (f392):** a layout match: the squares become bar 4's column tops seen from overhead. +1.25% scale; splits of
   ±2 / ±1.2 / ±1 px on f392 / 394 / 396.
 - Evidence: `03/work/tiles/{morph,swirlcells,c00}.jpg`, `03/work/strip-*/`.
-- Build: `GlyphField` (`glyph-field.tsx`) with `GLYPH_SHAPES`, waves from `glyphWaveArrivals`, `FieldFlash` and
-  `ShockRing`; `glyphFieldLayout` feeds the match cut and bar 7's implosion. [03]'s wave fits: beat 8 from its line
+- Build: `GlyphField` (`glyph-field.tsx`) with `GLYPH_SHAPES`, waves from `glyphWaveArrivals` (both
+  `lib/models/reel/glyph-field.ts`), `FieldFlash` and `ShockRing`; `glyphFieldLayout` feeds the match cut and bar 7's implosion. [03]'s wave fits: beat 8 from its line
   + 2 f at 0.038 s a cell; beat 9 from its line − 2 f at 0.0523 s a cell; beat 10 along (1, 1)/√2 at 0.0292 s a step;
   beat 11 from the edges at 0.019 s a cell, the turn on `perceptualSpring(0.185, 0.3)`, arriving on the beat. Flash 0.57 with τ 2.3 f; ring 2670 px/s,
   22 px, 0.17, τ 4.6 f, the inner ring at 0.65× its speed. At 30 fps keep the delays continuous, give the newborn
@@ -429,7 +429,7 @@ reads #e9e8e6, blue on cream #4244ec); the hero is #ee4c2f with #1c0a16 type; do
 - **Out (f616):** the held word (x 691–1228, y 485–594) becomes bar 6's particles.
 - Evidence: `05/work/{kymo_b0,flip532,ital}.png` and siblings, `05/work/{ent_1,ex_a}.jpg`, `05/work/strip60/` (whose
   labels run a frame early; see Gotchas).
-- Build: `TickerBands` (`ticker.tsx`) with `TICKER_LIGHT`, `TICKER_BOLD`, `TICKER_HOLD` and `TICKER_LOOKS` (plain,
+- Build: `TickerBands` (`ticker.tsx`) with `TICKER_LIGHT`, `TICKER_BOLD`, `TICKER_HOLD` and `TICKER_LOOKS` (`ticker.ts`) (plain,
   stripes, oblique 11.3°, hero hold); rows laid out from Archivo's advances (`layoutGlyphLine`, `archivo-metrics.ts`),
   spans placed by translateX. At 30 fps the entry and exit need `ShutterBlur` at 0.5 with 8 samples.
 

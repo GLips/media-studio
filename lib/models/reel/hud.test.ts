@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { steadyBeatGrid } from '../../models/timeline/beat-grid.ts';
-import '../tsx-test-hooks.ts';
-
-const {
+import { steadyBeatGrid } from '#models/timeline/beat-grid.ts';
+import {
   REEL_HUD_BOOT_DECODE, REEL_HUD_GLYPHS, REEL_HUD_SWAP_DECODE, reelHudDecode, reelHudGrounds, reelHudLitSquare, reelHudReadGrounds, reelHudTimecode, reelHudToneWeights,
-} = await import('./hud.tsx');
+} from './hud.ts';
 
 const FPS = 30;
 

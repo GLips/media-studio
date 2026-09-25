@@ -7,9 +7,12 @@
 
 import { DISPLAY_FONT, FPS, H, W, clamp, motionAttrs, motionCurves, powerOutEase, seg, type Point, type Rect } from '../../../lib/studio/api.ts';
 import { Odometer } from '../../../lib/studio/kit.tsx';
-import { GlyphField, ShockRing, parseGlyphColor, type GlyphClip, type GlyphHit, type GlyphKey, type GlyphWave } from '../../../lib/studio/reel/glyph-field.tsx';
-import { reelHudBoxPoints, type ReelHudRead, type ReelHudSlot } from '../../../lib/studio/reel/hud.tsx';
-import { Needle, needleCoversAt, type NeedleStrike } from '../../../lib/studio/reel/needle.tsx';
+import { GlyphField, ShockRing } from '../../../lib/studio/reel/glyph-field.tsx';
+import type { GlyphClip, GlyphHit, GlyphKey, GlyphWave } from '#models/reel/glyph-field.ts';
+import { parseGlyphColor } from '#models/reel/glyph-field-frame.ts';
+import { reelHudBoxPoints, type ReelHudRead, type ReelHudSlot } from '#models/reel/hud.ts';
+import { Needle } from '../../../lib/studio/reel/needle.tsx';
+import { needleCoversAt, type NeedleStrike } from '#models/reel/needle.ts';
 import { archivoAdvance, layoutGlyphLine } from '#models/reel/ticker-layout.ts';
 import type { Bar, ShowcaseClock } from '../bar.ts';
 import { INK_COUNT, INK_DOT, INK_FIELD, INK_FIELD_LAYOUT, INK_FIELD_SLOTS, INK_FIRST_STRIKE, inkFieldSlotAt, type InkCell } from '../ink-field.ts';
