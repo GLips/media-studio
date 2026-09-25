@@ -266,7 +266,11 @@ export function sceneTimes(scene: LaidScene): SceneTimes {
  */
 export function scenesAt(tl: Timeline, t: number): { scene: LaidScene; alpha: number }[] {
   const { scenes } = tl;
-  const i = Math.max(0, scenes.findIndex((s, j) => t >= s.start && (t < s.start + s.dur || j === scenes.length - 1)));
+  // Starts are sums of durations, so one meant to fall on a frame can land a hair after it (86/30 + 2 is
+  // 4.866666666666667, frame 146 is 4.866666666666666). The epsilon gives that frame to the scene starting on it, whose
+  // Sequence is the one mounted there; the scene before would paint nothing and leave the frame blank.
+  const at = t + 1e-6;
+  const i = Math.max(0, scenes.findIndex((s, j) => at >= s.start && (at < s.start + s.dur || j === scenes.length - 1)));
   const scene = scenes[i], prev = scenes[i - 1], next = scenes[i + 1];
   if (prev && scene.xfade && t - scene.start < scene.xfade / 2) {
     return [{ scene: prev, alpha: 1 }, { scene, alpha: motionCurves.dissolve((t - scene.start + scene.xfade / 2) / scene.xfade) }];
