@@ -1,0 +1,73 @@
+/* lab.css: the Studio Lab's look, after the motion showcase: a near-black ground, cream type, red-orange and cobalt
+   accents, Archivo for display and JetBrains Mono for HUD labels. */
+
+:root {
+  --ground: #0c0c0e;
+  --panel: #16161a;
+  --line: #2a2a31;
+  --cream: #f3f0e7;
+  --dim: #8d8a83;
+  --red: #ee4c23;
+  --cobalt: #4144f4;
+  --pass: #3ccf7a;
+  --display: "Archivo", -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--cream); font: 16px/1.55 var(--display); font-stretch: 100%; }
+a { color: inherit; }
+button, input, select { font: inherit; color: inherit; }
+
+.hud { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
+
+.lab { max-width: 1320px; margin: 0 auto; padding: 32px 40px 96px; }
+
+.lab-header { display: flex; flex-direction: column; gap: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.lab-brand h1 { margin: 4px 0 6px; font-size: 56px; line-height: 1; font-weight: 900; font-stretch: 75%; letter-spacing: -0.01em; text-transform: uppercase; }
+.lab-brand p { margin: 0; color: var(--dim); max-width: 60ch; }
+.lab-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.lab-tabs a { text-decoration: none; padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px; font-weight: 600; transition: background 0.15s, border-color 0.15s; }
+.lab-tabs a:hover { border-color: var(--dim); }
+.lab-tabs a.on { background: var(--red); border-color: var(--red); color: var(--ground); }
+.lab-tabs a.on .hud { color: var(--ground); }
+
+.lab-main { padding-top: 32px; display: flex; flex-direction: column; gap: 28px; }
+
+.intro h2 { margin: 2px 0 10px; font-size: 44px; line-height: 1.02; font-weight: 900; font-stretch: 80%; text-transform: uppercase; }
+.intro .what { font-size: 19px; max-width: 72ch; margin: 0 0 18px; }
+.intro-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.intro-grid > div { background: var(--panel); border-radius: 10px; padding: 14px 16px; border-top: 3px solid var(--line); }
+.intro-grid > .bad { border-top-color: var(--red); }
+.intro-grid > .good { border-top-color: var(--pass); }
+.intro-grid p { margin: 6px 0 0; font-size: 15px; }
+
+/* A stage sits in HUD brackets, as the showcase frames its shots. */
+.stage { position: relative; margin: 0; padding: 10px; }
+.stage::before, .stage::after { content: ""; position: absolute; width: 22px; height: 22px; border: 2px solid var(--cream); pointer-events: none; }
+.stage::before { top: 0; left: 0; border-right: 0; border-bottom: 0; }
+.stage::after { bottom: 0; right: 0; border-left: 0; border-top: 0; }
+.stage figcaption { position: absolute; top: -8px; left: 34px; background: var(--ground); padding: 0 6px; }
+.stage > div { border-radius: 4px; overflow: hidden; }
+
+.controls { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 18px 24px; background: var(--panel); border-radius: 12px; padding: 18px 20px; }
+.slider, .choice { display: flex; flex-direction: column; gap: 6px; }
+.slider .row { display: flex; justify-content: space-between; align-items: baseline; font-weight: 600; }
+.slider output { color: var(--cream); }
+.slider small, .choice small { color: var(--dim); font-size: 13px; line-height: 1.4; }
+.choice > span { font-weight: 600; }
+.choice-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.choice-row button { background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 14px; }
+.choice-row button:hover { border-color: var(--dim); }
+.choice-row button.on { background: var(--cream); color: var(--ground); border-color: var(--cream); }
+
+input[type="range"] { width: 100%; accent-color: var(--red); }
+
+.note { margin: 0; color: var(--dim); font-size: 15px; max-width: 80ch; }
+.note b, .note strong { color: var(--cream); }
+
+@media (max-width: 900px) {
+  .lab { padding: 20px; }
+  .intro-grid { grid-template-columns: 1fr; }
+}

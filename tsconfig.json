@@ -13,5 +13,5 @@
   },
   // Deliberately no host files: a scene imports its host as `@host/…`, which lib/host-modules.d.ts types as `any`, so
   // tsc never reads the host (its aliases, env types and server code only type-check under its own settings).
-  "include": ["lib", "cli", "projects/*/video.tsx", "projects/*/capture.ts", "remotion.config.ts", "types.d.ts"]
+  "include": ["lib", "cli", "lab", "projects/*/video.tsx", "projects/*/capture.ts", "remotion.config.ts", "types.d.ts"]
 }
