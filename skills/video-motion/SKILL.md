@@ -152,7 +152,8 @@ skill, Real UI only). It's paid and cached by request, so settle the prompt befo
   `google/gemini-3.1-flash-image`: fastest, but it redraws products and garbles text. If the default is gone from
   OpenRouter, `openai/gpt-image-2` is its fallback (no transparent background).
 - It lands in `generated/images.ts`: `import { images } from './generated/images.ts'`, then `images[name].src`.
-  Models make their own sizes (3:2, 1376×768), not 1920×1080, so fill a frame with `objectFit: 'cover'`.
+  Pass `--aspect 16:9` for a full-frame still; it still won't be exactly 1920×1080, so fill the frame with
+  `objectFit: 'cover'`.
 - Look at it before using it: colours drift from the hex asked for, and a product shot can invent parts.
 
 ## Acting on feel notes
