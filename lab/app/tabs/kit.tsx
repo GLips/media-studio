@@ -3,7 +3,7 @@
 // another. Pieces that need a captured page (MotionTitle, ClickToBlur, Phone, SplitCompare) aren't here.
 import { useState } from 'react';
 import { LabBench, LabControls, LabNote, LabStage, LabTabIntro } from '../ui.tsx';
-import { DRAW_PATH_PIECE, WORD_REVEAL_PIECE } from './kit/builds.tsx';
+import { DRAW_PATH_PIECE, ODOMETER_PIECE, WORD_REVEAL_PIECE } from './kit/builds.tsx';
 import { END_CARD_PIECE, GLASS_CARD_PIECE, SECTION_CARD_PIECE } from './kit/cards.tsx';
 import { GRADE_PIECE, SHUTTER_BLUR_PIECE } from './kit/finish.tsx';
 import type { KitPieceProps } from './kit/piece.tsx';
@@ -12,6 +12,7 @@ import './kit.css';
 // The registry. A newly committed piece (e.g. from lib/studio/reel) is one defineKitPiece entry added here.
 const KIT_PIECES = [
   WORD_REVEAL_PIECE,
+  ODOMETER_PIECE,
   DRAW_PATH_PIECE,
   GLASS_CARD_PIECE,
   SECTION_CARD_PIECE,
@@ -33,10 +34,10 @@ export function KitTab() {
       <LabTabIntro
         number={3}
         title="Kit pieces"
-        what={<>The studio’s ready-made building blocks: words that ripple in, a number that counts up, a pen stroke, a closing card, and the finishing touches laid over a whole frame. A video’s scenes are mostly these, given its own words and colours. Pick one below and play with its settings.</>}
+        what={<>The studio’s ready-made building blocks: words that ripple in, a number that rolls into place, a pen stroke, a closing card, and the finishing touches laid over a whole frame. A video’s scenes are mostly these, given its own words and colours. Pick one below and play with its settings.</>}
         when="Every video uses a handful. Walkthroughs of an app lean on the text and cards; teasers and showreels add the grain, vignette and shutter blur."
-        bad="A piece used for everything (every line rippling in, every number counting), or settings pushed so far that the effect is all you notice: words crawling in, grain like static, a smear on something slow."
-        good="Each piece earns its moment: the one number that matters counts up, the one word that matters gets underlined, and the finishing touches are felt more than seen."
+        bad="A piece used for everything (every line rippling in, every number rolling), or settings pushed so far that the effect is all you notice: words crawling in, grain like static, a smear on something slow."
+        good="Each piece earns its moment: the one number that matters rolls in, the one word that matters gets underlined, and the finishing touches are felt more than seen."
       />
       <nav className="kit-picker" aria-label="Kit pieces">
         {KIT_PIECES.map((p) => (

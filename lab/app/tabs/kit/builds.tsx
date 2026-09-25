@@ -1,11 +1,12 @@
-// builds.tsx: the Kit pieces tab's entries for lib/studio/kit.tsx's builds: WordReveal and DrawPath, each
+// builds.tsx: the Kit pieces tab's entries for lib/studio/kit.tsx's builds: WordReveal, Odometer and DrawPath, each
 // with a stage that plays it on the showcase ground and the controls for its props.
 import type { ReactNode } from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import { DISPLAY_FONT, MONO_FONT } from '../../../../lib/studio/fonts.ts';
 import { FULL_FRAME } from '../../../../lib/studio/frame.ts';
-import { DrawPath, WordReveal, wordRevealFinish } from '../../../../lib/studio/kit.tsx';
-import { LAB_COLORS, LabChoice, LabSlider } from '../../ui.tsx';
+import { DrawPath, Odometer, WordReveal, wordRevealFinish, type OdometerMode } from '../../../../lib/studio/kit.tsx';
+import { lerp, motionCurves, seg } from '../../../../lib/studio/motion.ts';
+import { LAB_COLORS, LabButtons, LabChoice, LabSlider } from '../../ui.tsx';
 import { defineKitPiece, KIT_COLOR_OPTIONS, KitTextField } from './piece.tsx';
 
 const LEAD = 0.5; // seconds of empty stage before the piece starts, so its first frame is seen
@@ -77,6 +78,88 @@ export const WORD_REVEAL_PIECE = defineKitPiece<WordRevealStageProps>({
       <LabSlider label="Weight" value={p.weight} min={300} max={900} step={100} onChange={(weight) => set({ weight })} />
       <LabChoice label="Align" options={[{ value: 'left', label: 'Left' }, { value: 'center', label: 'Centre' }, { value: 'right', label: 'Right' }]}
         value={p.align} onChange={(align) => set({ align })} />
+    </>
+  ),
+});
+
+// ---------- Odometer ----------
+
+type OdometerFormat = 'plain' | 'dollars' | 'percent';
+type OdometerCurve = 'calm' | 'fast';
+
+type OdometerStageProps = {
+  from: number; to: number; decimals: number; format: OdometerFormat; mode: OdometerMode; spin: number;
+  duration: number; curve: OdometerCurve; punch: number; blur: number; fade: number;
+};
+
+// No bouncy curve on offer: the Odometer's value is data, and a price that overshoots says a wrong number.
+const ODOMETER_CURVES = { calm: motionCurves.cubic.entrance, fast: motionCurves.expo.entrance } as const;
+
+const ODOMETER_CAPTIONS: Record<OdometerFormat, string> = { plain: 'ORDERS TODAY', dollars: 'REVENUE THIS MONTH', percent: 'SCORE' };
+
+const odometerAffixes = (format: OdometerFormat) => ({ plain: {}, dollars: { prefix: '$' }, percent: { suffix: '%' } })[format];
+
+const odometerValue = (p: OdometerStageProps) => (t: number) => lerp(p.from, p.to, seg(t, 0, p.duration, ODOMETER_CURVES[p.curve]));
+
+function OdometerStage(p: OdometerStageProps) {
+  const t = useKitSeconds();
+  const value = odometerValue(p);
+  const { prefix = '', suffix = '' } = odometerAffixes(p.format);
+  const shown = `${prefix}${p.to.toLocaleString('en-US', { minimumFractionDigits: p.decimals, maximumFractionDigits: p.decimals })}${suffix}`;
+  return (
+    <AbsoluteFill style={{ background: LAB_COLORS.ground }}>
+      <KitHud left={`Rolling number · ${ODOMETER_MODE_WORDS[p.mode]}`} right={t >= p.duration ? `landed on ${shown}` : `rolling · ${Math.round(Math.max(0, t / p.duration) * 100)}% of the time`} />
+      <div style={{ position: 'absolute', left: 160, right: 160, top: 330, textAlign: 'center', fontFamily: MONO_FONT, fontSize: 30, letterSpacing: '0.1em', color: LAB_COLORS.red }}>{ODOMETER_CAPTIONS[p.format]}</div>
+      <Odometer t={t} value={value} x={960} y={640} size={250} align="center" color={LAB_COLORS.cream} decimals={p.decimals} prefix={prefix} suffix={suffix}
+        mode={p.mode} spin={p.spin} punch={p.punch} blur={p.blur} fade={p.fade} />
+    </AbsoluteFill>
+  );
+}
+
+const ODOMETER_MODE_WORDS: Record<OdometerMode, string> = { mechanical: 'geared', direct: 'straight there', slot: 'slot machine' };
+
+const ODOMETER_PRESETS: readonly { label: string; props: Partial<OdometerStageProps> }[] = [
+  { label: 'A total in a walkthrough', props: { from: 0, to: 1299, decimals: 0, format: 'dollars', mode: 'direct', duration: 1.8, curve: 'calm', punch: 0 } },
+  { label: 'A price in a reel', props: { from: 0, to: 48250, decimals: 0, format: 'dollars', mode: 'mechanical', duration: 0.75, curve: 'fast', punch: 0.06 } },
+  { label: 'A score, just for fun', props: { from: 0, to: 98, decimals: 0, format: 'percent', mode: 'slot', spin: 2, duration: 1.6, curve: 'calm', punch: 0 } },
+];
+
+export const ODOMETER_PIECE = defineKitPiece<OdometerStageProps>({
+  id: 'odometer',
+  name: 'Odometer',
+  title: 'Rolling number',
+  blurb: 'A number whose digits roll on wheels, like a car’s mileage counter, and land sharp on the final value.',
+  source: 'lib/studio/kit.tsx',
+  whenUsed: 'A result worth dwelling on: a price, a total, a percentage saved. The roll makes the viewer watch the number arrive.',
+  note: <>A digit blurs while its wheel turns and is pin-sharp once it stops, so a fast roll reads as motion, not as a flicker of numbers. Every digit sits in a box of the same width, so the number never wobbles sideways. How fast the value moves is up to the curve: the <b>calm</b> one eases in, the <b>fast</b> one arrives almost at once and creeps the last bit.</>,
+  defaults: { from: 0, to: 1299, decimals: 0, format: 'dollars', mode: 'direct', spin: 2, duration: 1.8, curve: 'calm', punch: 0, blur: 1, fade: 0.28 },
+  seconds: (p) => LEAD + p.duration + 0.5 + HOLD,
+  Stage: OdometerStage,
+  Controls: ({ props: p, set }) => (
+    <>
+      <LabButtons label="Start from" buttons={ODOMETER_PRESETS.map((preset) => ({ label: preset.label, onClick: () => set(preset.props) }))} />
+      <LabChoice label="How the wheels turn" options={[{ value: 'mechanical', label: 'Geared' }, { value: 'direct', label: 'Straight there' }, { value: 'slot', label: 'Slot machine' }] as const}
+        value={p.mode} onChange={(mode) => set({ mode })}
+        hint={{
+          mechanical: <>Each wheel turns only as the one to its right rolls past 9, like a real counter: the last digits blur by, the first ones click over. A big jump is all blur, which suits a quick reel. <code>mechanical</code></>,
+          direct: <>Every wheel rolls straight to its new digit, all together. The calm, readable roll for a walkthrough. <code>direct</code></>,
+          slot: <>Every wheel spins a few extra turns, then they lock one by one from the left. <code>slot</code></>,
+        }[p.mode]} />
+      {p.mode === 'slot' && <LabSlider label="Extra turns" value={p.spin} min={0} max={5} step={1} onChange={(spin) => set({ spin })} />}
+      <LabSlider label="From" value={p.from} min={0} max={10000} step={1} format={(v) => v.toLocaleString('en-US')} onChange={(from) => set({ from })} />
+      <LabSlider label="To" value={p.to} min={0} max={100000} step={1} format={(v) => v.toLocaleString('en-US')} onChange={(to) => set({ to })} />
+      <LabChoice label="Shown as" options={[{ value: 'plain', label: '1,299' }, { value: 'dollars', label: '$' }, { value: 'percent', label: '%' }] as const} value={p.format} onChange={(format) => set({ format })} />
+      <LabChoice label="Decimal places" options={[{ value: 0, label: '0' }, { value: 2, label: '2' }]} value={p.decimals} onChange={(decimals) => set({ decimals })} />
+      <LabSlider label="Rolls for" value={p.duration} min={0.3} max={3} step={0.05} format={(v) => `${v.toFixed(2)}s`} onChange={(duration) => set({ duration })}
+        hint="1.2–2.5 s in a walkthrough, so it can be read; 0.6–0.8 s in a fast reel." />
+      <LabChoice label="Speed along the way" options={[{ value: 'calm', label: 'Calm' }, { value: 'fast', label: 'Fast arrival' }] as const} value={p.curve} onChange={(curve) => set({ curve })}
+        hint={<>Nothing bouncy: a number that overshoots says the wrong number. <code>{p.curve === 'calm' ? 'motionCurves.cubic.entrance' : 'motionCurves.expo.entrance'}</code></>} />
+      <LabSlider label="Pop as it lands" value={p.punch} min={0} max={0.15} step={0.01} format={(v) => (v ? `${Math.round(v * 100)}% bigger` : 'off')} onChange={(punch) => set({ punch })}
+        hint={<>A quick swell when the number lands, for a reel's beat. 6% is plenty. <code>punch</code></>} />
+      <LabSlider label="Motion blur" value={p.blur} min={0} max={1} step={0.05} format={(v) => (v ? `${Math.round(v * 100)}%` : 'off')} onChange={(blur) => set({ blur })}
+        hint={<>Turn it off to see the digits step frame by frame instead of blurring. <code>blur</code></>} />
+      <LabSlider label="Soft edges" value={p.fade} min={0} max={0.28} step={0.01} format={(v) => (v ? v.toFixed(2) : 'hard')} onChange={(fade) => set({ fade })}
+        hint={<>How gently digits fade in and out at the top and bottom of their window. <code>fade</code></>} />
     </>
   ),
 });
