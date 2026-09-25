@@ -38,14 +38,16 @@ function BuyBoxStill({ headline, focus }: BuyBoxProps) {
     : { x: m, y: field.h + 0.9 * m, w: w - 2 * m, h: safe.y + safe.h - field.h - 1.9 * m };
   // The card fills its field inside a margin; on a story it clears the top bar, which it could run under, for the look.
   const cardTop = Math.max(field.y + 1.2 * m, safe.y + 1.2 * m);
-  const card = { x: field.x + 1.1 * m, y: cardTop, w: field.w - 2.2 * m, h: field.y + field.h - cardTop - 1.2 * m };
+  // The card runs off the right edge: the field is too small for the page's shape at a size that makes it the hero,
+  // and the bleed says there's more of it.
+  const card = { x: field.x + 1.1 * m, y: cardTop, w: field.w + 0.12 * w, h: field.y + field.h - cardTop - 1.2 * m };
   const logo = { x: column.x, y: column.y, w: column.w * 0.6, h: 4.2 * u };
   const rule = { x: column.x, y: logo.y + logo.h + 2.2 * u, w: 9 * u, h: 1.1 * u };
   const headlineBox = { x: column.x, y: rule.y + rule.h + 2.2 * u, w: column.w, h: column.y + column.h - (rule.y + rule.h + 2.2 * u) };
   return (
     <div style={{ position: 'absolute', inset: 0, background: NAVY }}>
       <div style={{ position: 'absolute', left: field.x, top: field.y, width: field.w, height: field.h, background: MAGENTA }} />
-      <StillCard image={PAGE} box={card} focus={FOCUS[focus]} lift={SWATCH} ring={NAVY} />
+      <StillCard image={PAGE} room={card} focus={FOCUS[focus]} lift={SWATCH} ring={NAVY} />
       {/* Tall, the top of the HUD is on the field, where white reads under 4.5:1 and black at 6:1 (less under the card's shadow). */}
       <StillHud ink={wide ? PAPER : { top: INK, bottom: PAPER }} left="THE NEW BUY BOX" />
       <BrandLogo brand={brand} ground={NAVY} box={logo} />

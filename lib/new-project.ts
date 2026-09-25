@@ -209,7 +209,7 @@ ${url ? `  const cardTop = Math.max(field.y, safe.y) + 1.2 * m;
     <div style={{ position: 'absolute', inset: 0, background: GROUND }}>
       <div style={{ position: 'absolute', left: field.x, top: field.y, width: field.w, height: field.h, background: FIELD }} />
 ${url
-    ? '      <StillCard image={HERO} box={card} focus={FOCUS} />\n'
+    ? '      <StillCard image={HERO} room={card} focus={FOCUS} />\n'
     : "      {/* The hero goes on the field: a capture on a StillCard, or a generated image in a CoverImage (skills/stills). */}\n"}      {/* Tall, the HUD's top is on the field: pick the ink that reads there, and the still check says if it doesn't. */}
       <StillHud ink={wide ? PAPER : { top: '#000000', bottom: PAPER }} left=${JSON.stringify(title.toUpperCase())} />
       <FitText

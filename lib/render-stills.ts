@@ -1,10 +1,11 @@
 // render-stills.ts: renders a project's stills (its stills.tsx, registered by lib/studio/Root.tsx) to
 // out/stills/<design>-<preset>-<variant>.png, checking each first (lib/still-check.ts): a still with a problem isn't
-// written, and an older file of its name is removed, so out/stills never holds a still that fails. Node only.
+// written, and an older file of its name is removed, so out/stills never holds a still that fails; a full run also
+// removes stills no design makes any more. Node only.
 import { getCompositions, openBrowser, renderStill } from '@remotion/renderer';
 import type { VideoConfig } from 'remotion';
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { artifactSink, bundleStudioProject, RENDER_CHROMIUM } from './render-session.ts';
@@ -57,6 +58,12 @@ export async function renderProjectStills(project: string, selection: StillSelec
 
     const dir = join(project, 'out', 'stills');
     mkdirSync(dir, { recursive: true });
+    // A full run also clears stills no design makes any more (a variant renamed or an axis dropped), so out/stills
+    // holds only current stills. A narrowed run can't tell, and leaves the rest alone.
+    if (!check && !selection.designs && !selection.presets && !selection.variants) {
+      const current = new Set(all.map((c) => stillName(c.defaultProps as StillProps)));
+      for (const f of readdirSync(dir)) if (/\.(png|jpg)$/.test(f) && !current.has(f.replace(/\.\w+$/, ''))) rmSync(join(dir, f));
+    }
     const draw = async (composition: VideoConfig, props: StillRenderProps, output: string, imageFormat: 'png' | 'jpeg') => {
       const sink = artifactSink();
       await renderStill({

@@ -135,19 +135,23 @@ export type StillCardTilt = { rx: number; ry: number; rz: number };
 export const STILL_CARD_TILT: StillCardTilt = { rx: 3, ry: -8, rz: 0 };
 
 /**
- * A capture as a card in space, the reel's CapturePlane held still: `image` cropped around `focus` (as CoverImage does)
- * on a rounded card at `box`, turned by `tilt`, casting a shadow on the ground. `lift` is one control (a rect in the
- * image's units) drawn again raised off the card toward the viewer, with its own shadow, and ringed in `ring` if given:
- * the tap the reel shows, frozen. Put the card on a full-bleed field, not a tint.
+ * A capture as a card in space, the reel's CapturePlane held still: `image` on a rounded card turned by `tilt`,
+ * casting a shadow on the ground. A rect `focus` is the card: the card takes its shape, as large as fits `room`, and
+ * shows only it, so no page around the subject creeps in; a point `focus` fills `room`, cropped around it. `lift` is one
+ * control (a rect in the image's units) drawn again raised toward the viewer, with its own shadow, and ringed in `ring`
+ * if given: the tap the reel shows, frozen. It grows about 6% as it rises, so it covers a sliver of what's around it:
+ * lift a control with a little space around it, and pad the rect into that space. Put the card on a full-bleed field.
  */
-export function StillCard({ image, box, focus, tilt = STILL_CARD_TILT, radius, lift, ring }: {
-  image: StillImage; box: Rect; focus: StillFocus;
+export function StillCard({ image, room, focus, tilt = STILL_CARD_TILT, radius, lift, ring }: {
+  image: StillImage; room: Rect; focus: StillFocus;
   tilt?: StillCardTilt;
   /** Corner radius in px (default 3% of the card's shorter side). */
   radius?: number;
   lift?: Rect;
   ring?: string;
 }) {
+  const fit = focus.w && focus.h ? Math.min(room.w / focus.w, room.h / focus.h) : 0;
+  const box = fit ? { x: room.x + (room.w - focus.w! * fit) / 2, y: room.y + (room.h - focus.h! * fit) / 2, w: focus.w! * fit, h: focus.h! * fit } : room;
   const { scale, left, top } = coverPlacement(image, box, focus);
   const side = Math.min(box.w, box.h);
   const r = radius ?? 0.03 * side;
@@ -165,7 +169,7 @@ export function StillCard({ image, box, focus, tilt = STILL_CARD_TILT, radius, l
         {liftBox && (
           <div style={{
             position: 'absolute', left: liftBox.x, top: liftBox.y, width: liftBox.w, height: liftBox.h, overflow: 'hidden', borderRadius: liftR,
-            transform: `translateZ(${0.08 * side}px) scale(1.18)`,
+            transform: `translateZ(${0.05 * side}px) scale(1.04)`,
             boxShadow: `0 ${0.03 * side}px ${0.06 * side}px rgba(0, 0, 0, 0.5)${ring ? `, 0 0 0 ${0.012 * side}px ${ring}` : ''}`,
           }}>
             <Img src={image.src} style={{ ...drawn, left: -lift.x * scale, top: -lift.y * scale }} />
