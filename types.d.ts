@@ -44,8 +44,8 @@ declare module '*.mp4' {
 declare module '@footage' {
   export const footage: Readonly<Record<string, import('./lib/studio/previs.ts').PrevisFootage>>;
 }
-/** The project's drafted cue list, sfx/cues.ts, or null before `studio sfx draft` (lib/project-bundle.ts). */
-declare module '@sfx-draft' {
+/** The project's generated/sfx-cues.ts, rendered from sfx/cues.json on every bundle, or null without one (lib/sfx/cue-module.ts). */
+declare module '@sfx-cues' {
   const cues: readonly import('./lib/studio/sfx.tsx').SfxCueSound[] | null;
   export default cues;
 }

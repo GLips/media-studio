@@ -9,5 +9,3 @@ hosts.local.json
 projects/*/host
 .DS_Store
 projects/*/generated/
-projects/*/sfx/cues/
-projects/*/sfx/cues.ts

@@ -205,8 +205,8 @@ function measureMotion(root: HTMLElement, frame: number): FrameMotion {
 /** Every mounted `<Sfx>`'s mark (see sfx.tsx), with the scene it's in, landing in video seconds. */
 function measureSfxMarks(root: HTMLElement, now: number): SfxMark[] {
   return [...root.querySelectorAll<HTMLElement>('[data-sfx-event]')].map((el) => {
-    const { fromNow, request, volume } = JSON.parse(el.dataset.sfxEvent!) as SfxMarkAttr;
-    return { scene: el.closest<HTMLElement>('[data-scene]')!.dataset.scene!, at: now + fromNow, request, volume };
+    const { event, fromNow, request, volume } = JSON.parse(el.dataset.sfxEvent!) as SfxMarkAttr;
+    return { event, scene: el.closest<HTMLElement>('[data-scene]')!.dataset.scene!, at: now + fromNow, request, volume };
   });
 }
 

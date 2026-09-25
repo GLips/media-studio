@@ -12,7 +12,6 @@ import type { ReactNode } from 'react';
 import { findSpokenPhrase, type SpokenWord } from '../voice-words.ts';
 import type { MusicBed } from './mix.ts';
 import { motionCurves } from './motion.ts';
-import type { SfxCueSound } from './sfx.tsx';
 
 export type VoiceLine = {
   /** An imported WAV, or null for a line timed by `studio voice --read=estimate` that has no audio yet. */
@@ -151,10 +150,11 @@ export type VideoDef = {
   /** A music bed under the whole video, ducked under the voice. See `studio music`. */
   music?: MusicBed;
   /**
-   * The video's sound effects as a cue list: the default export of the project's sfx/cues.ts, which
-   * `studio sfx draft` writes. It plays every event's sound, so the `<Sfx>` in scenes stay silent.
+   * Play the project's sound-effect cue list, sfx/cues.json, which `studio sfx draft` writes. It plays the clicks,
+   * keys, scene changes, camera moves and reveals, so the CursorPath and TakeCursor `<Sfx>` go silent; sounds a scene
+   * places itself still play from their `<Sfx>`.
    */
-  sfx?: readonly SfxCueSound[];
+  sfxCueList?: boolean;
   /**
    * Pins what `Date` says while the video renders, e.g. '2026-09-08T12:00:00' (local time unless it names a zone), so
    * host components that label "5 minutes ago" agree with captures made with the same `captureShots({ clock })`.

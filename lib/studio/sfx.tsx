@@ -1,12 +1,11 @@
 // sfx.tsx: sound effects placed on a moment in scene time, and a video's cue list played over the whole video. The
-// sounds are rendered from lib/sfx/'s recipes by `studio sfx`: the kit's into ./sfx/kit.ts, a project's own by
-// `studio sfx render`, and a cue list's by `studio sfx draft` and `studio sfx cues`.
+// sounds are rendered from lib/sfx/'s recipes: the kit's into ./sfx/kit.ts by `studio sfx kit`, a project's own by
+// `studio sfx render`, and a cue list's on every bundle (lib/sfx/cue-module.ts).
 
 import { Audio } from '@remotion/media';
 import { createContext, useContext } from 'react';
 import { Sequence, useCurrentFrame, useVideoConfig } from 'remotion';
-import type { SfxMarkAttr } from '../sfx/cue-events.ts';
-import type { SfxCuePlay } from '../sfx/cues.ts';
+import type { SfxMarkAttr, SfxMarkedEvent } from '../sfx/cue-events.ts';
 import { sfxSeedFromId } from '../sfx/dsp.ts';
 import type { SfxRequest } from '../sfx/library.ts';
 
@@ -18,13 +17,10 @@ export { SFX } from './sfx/kit.ts';
  */
 export type SfxSound = { src: string; seconds: number; landsAt: number; request: SfxRequest };
 
-/** A cue list's cue, rendered: what a project's sfx/cues.ts exports, for `defineVideo({ sfx })`. */
-export type SfxCueSound = SfxCuePlay & Omit<SfxSound, 'request'>;
+/** A cue list's cue, rendered, landing `at` video seconds: what `@sfx-cues` exports. */
+export type SfxCueSound = { id: string; at: number; volume: number } & Omit<SfxSound, 'request'>;
 
-/**
- * True while the video plays a cue list. The list has taken every `<Sfx>` event over, so they stay silent and only
- * mark where they'd land.
- */
+/** True while the video plays a cue list (`defineVideo({ sfxCueList })`), which plays the clicks and keys itself. */
 export const SfxCueListPlaying = createContext(false);
 
 /**
@@ -35,11 +31,11 @@ export const SfxCueListPlaying = createContext(false);
  * the picture does.
  *
  * It also leaves a hidden mark saying what it plays and when, which `studio check` reads as an event for
- * `studio sfx draft`. When the video plays a cue list (`defineVideo({ sfx })`), the mark is all it leaves: the list
- * plays the event's sound.
+ * `studio sfx draft`. `event` says what it marks: a library piece's `click` or `key`, which a video playing a cue list
+ * leaves to the list (the mark is all it leaves), or, by default, a sound the scene `placed`, which always plays here.
  */
-export function Sfx({ sound, at, t, id = 0, volume = 1 }: {
-  sound: SfxSound | readonly SfxSound[]; at: number; t: number; id?: string | number; volume?: number;
+export function Sfx({ sound, at, t, id = 0, volume = 1, event = 'placed' }: {
+  sound: SfxSound | readonly SfxSound[]; at: number; t: number; id?: string | number; volume?: number; event?: SfxMarkedEvent;
 }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -48,11 +44,11 @@ export function Sfx({ sound, at, t, id = 0, volume = 1 }: {
   const { src, seconds, landsAt, request } = takes[sfxSeedFromId(id) % takes.length];
   const start = at - landsAt;
   // `useCurrentFrame` is the scene Sequence's frame, so the probe, which knows the video's, turns this into video time.
-  const mark: SfxMarkAttr = { fromNow: at - t, request, volume };
+  const mark: SfxMarkAttr = { event, fromNow: at - t, request, volume };
   return (
     <>
       <span hidden data-sfx-event={JSON.stringify(mark)} />
-      {!cueList && (
+      {!(cueList && event !== 'placed') && (
         <Sequence from={frame + Math.round((start - t) * fps)} durationInFrames={Math.ceil(seconds * fps) + 1} layout="none" name="sfx">
           <Audio src={src} volume={volume} />
         </Sequence>

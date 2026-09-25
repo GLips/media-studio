@@ -9,10 +9,10 @@ export default defineCommand({
   },
   args: {
     project: studioProjectArg,
-    'sfx-draft': { type: 'boolean', description: "Play the drafted cue list (studio sfx draft) instead of the video's own effects, into out/mix-sfx-draft.wav, to hear it beside out/mix.wav" },
+    'sfx-cues': { type: 'boolean', description: "Play the project's cue list (studio sfx draft) whether or not the video does, into out/mix-sfx-cues.wav, to hear it beside out/mix.wav" },
   },
   async run({ args }) {
     const { renderMasteredMix } = await import('../../lib/render-pipeline.ts');
-    console.log(await renderMasteredMix(await openStudioRenderSession(args.project), { sfxDraft: args['sfx-draft'] }));
+    console.log(await renderMasteredMix(await openStudioRenderSession(args.project), { auditionSfxCueList: args['sfx-cues'] }));
   },
 });

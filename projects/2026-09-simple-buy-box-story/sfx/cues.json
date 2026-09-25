@@ -3,7 +3,6 @@
   "clickStyle": "soft",
   "cues": [
     {
-      "id": "reveal:title/PAINFUL PLEASURES  ·  PRODUCT PAGE A∕B TEST:1",
       "event": {
         "id": "reveal:title/PAINFUL PLEASURES  ·  PRODUCT PAGE A∕B TEST:1",
         "kind": "reveal",
@@ -34,7 +33,6 @@
       ]
     },
     {
-      "id": "reveal:title/Simple buy box:1",
       "event": {
         "id": "reveal:title/Simple buy box:1",
         "kind": "reveal",
@@ -66,7 +64,6 @@
       ]
     },
     {
-      "id": "move:title:1",
       "event": {
         "id": "move:title:1",
         "kind": "camera-move",
@@ -79,14 +76,14 @@
       },
       "draft": {
         "sound": null,
-        "why": "a small camera move"
+        "why": "an accent on a small camera move: accents go on scene changes, reveals and big camera moves"
       },
       "alternatives": [
         {
           "sound": "whoosh",
           "seed": "move:title:1",
           "set": {
-            "approach": 1.317,
+            "approach": 1.3167,
             "recede": 2
           }
         },
@@ -94,7 +91,7 @@
           "sound": "whoosh.soft",
           "seed": "move:title:1",
           "set": {
-            "approach": 1.317,
+            "approach": 1.3167,
             "recede": 2
           }
         },
@@ -102,14 +99,13 @@
           "sound": "whoosh.fast",
           "seed": "move:title:1",
           "set": {
-            "approach": 1.317,
+            "approach": 1.3167,
             "recede": 2
           }
         }
       ]
     },
     {
-      "id": "reveal:title/The new product page, and what changes for shoppers.:1",
       "event": {
         "id": "reveal:title/The new product page, and what changes for shoppers.:1",
         "kind": "reveal",
@@ -141,7 +137,6 @@
       ]
     },
     {
-      "id": "move:title:2",
       "event": {
         "id": "move:title:2",
         "kind": "camera-move",
@@ -154,57 +149,66 @@
       },
       "draft": {
         "sound": null,
-        "why": "a small camera move"
+        "why": "an accent on a small camera move: accents go on scene changes, reveals and big camera moves"
       },
       "alternatives": [
         {
           "sound": "whoosh",
           "seed": "move:title:2",
           "set": {
-            "approach": 0.217,
-            "recede": 0.217
+            "approach": 0.2167,
+            "recede": 0.2167
           }
         },
         {
           "sound": "whoosh.soft",
           "seed": "move:title:2",
           "set": {
-            "approach": 0.217,
-            "recede": 0.217
+            "approach": 0.2167,
+            "recede": 0.2167
           }
         },
         {
           "sound": "whoosh.fast",
           "seed": "move:title:2",
           "set": {
-            "approach": 0.217,
-            "recede": 0.217
+            "approach": 0.2167,
+            "recede": 0.2167
           }
         }
       ]
     },
     {
-      "id": "scene:photos",
       "event": {
         "id": "scene:photos",
         "kind": "scene",
         "scene": "photos",
         "at": 6.15,
         "index": 1,
-        "from": 5.9,
-        "to": 6.4
+        "dissolve": {
+          "from": 5.9,
+          "to": 6.4
+        }
       },
       "draft": {
         "sound": {
           "sound": "whoosh.soft",
-          "seed": "scene:photos"
+          "seed": "scene:photos",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         "why": "a scene change"
       },
       "alternatives": [
         {
           "sound": "whoosh.swell",
-          "seed": "scene:photos"
+          "seed": "scene:photos",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         {
           "sound": "riser.short",
@@ -217,7 +221,6 @@
       ]
     },
     {
-      "id": "move:photos:1",
       "event": {
         "id": "move:photos:1",
         "kind": "camera-move",
@@ -238,7 +241,7 @@
           "seed": "move:photos:1",
           "set": {
             "approach": 1.35,
-            "recede": 1.417
+            "recede": 1.4166
           }
         },
         {
@@ -246,7 +249,7 @@
           "seed": "move:photos:1",
           "set": {
             "approach": 1.35,
-            "recede": 1.417
+            "recede": 1.4166
           }
         },
         {
@@ -254,13 +257,12 @@
           "seed": "move:photos:1",
           "set": {
             "approach": 1.35,
-            "recede": 1.417
+            "recede": 1.4166
           }
         }
       ]
     },
     {
-      "id": "click:photos:1",
       "event": {
         "id": "click:photos:1",
         "kind": "click",
@@ -295,7 +297,6 @@
       ]
     },
     {
-      "id": "move:photos:2",
       "event": {
         "id": "move:photos:2",
         "kind": "camera-move",
@@ -315,7 +316,7 @@
           "sound": "whoosh",
           "seed": "move:photos:2",
           "set": {
-            "approach": 0.417,
+            "approach": 0.4167,
             "recede": 0.45
           }
         },
@@ -323,7 +324,7 @@
           "sound": "whoosh.soft",
           "seed": "move:photos:2",
           "set": {
-            "approach": 0.417,
+            "approach": 0.4167,
             "recede": 0.45
           }
         },
@@ -331,22 +332,23 @@
           "sound": "whoosh.fast",
           "seed": "move:photos:2",
           "set": {
-            "approach": 0.417,
+            "approach": 0.4167,
             "recede": 0.45
           }
         }
       ]
     },
     {
-      "id": "scene:speed",
       "event": {
         "id": "scene:speed",
         "kind": "scene",
         "scene": "speed",
         "at": 22.44,
         "index": 2,
-        "from": 22.19,
-        "to": 22.69
+        "dissolve": {
+          "from": 22.19,
+          "to": 22.69
+        }
       },
       "draft": {
         "sound": null,
@@ -355,11 +357,19 @@
       "alternatives": [
         {
           "sound": "whoosh.soft",
-          "seed": "scene:speed"
+          "seed": "scene:speed",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         {
           "sound": "whoosh.swell",
-          "seed": "scene:speed"
+          "seed": "scene:speed",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         {
           "sound": "riser.short",
@@ -372,7 +382,6 @@
       ]
     },
     {
-      "id": "click:speed:1",
       "event": {
         "id": "click:speed:1",
         "kind": "click",
@@ -407,7 +416,6 @@
       ]
     },
     {
-      "id": "reveal:speed/left/highlight:1",
       "event": {
         "id": "reveal:speed/left/highlight:1",
         "kind": "reveal",
@@ -439,7 +447,6 @@
       ]
     },
     {
-      "id": "click:speed:2",
       "event": {
         "id": "click:speed:2",
         "kind": "click",
@@ -474,7 +481,6 @@
       ]
     },
     {
-      "id": "click:speed:3",
       "event": {
         "id": "click:speed:3",
         "kind": "click",
@@ -509,7 +515,6 @@
       ]
     },
     {
-      "id": "reveal:speed/right/highlight:1",
       "event": {
         "id": "reveal:speed/right/highlight:1",
         "kind": "reveal",
@@ -541,7 +546,6 @@
       ]
     },
     {
-      "id": "click:speed:4",
       "event": {
         "id": "click:speed:4",
         "kind": "click",
@@ -576,7 +580,6 @@
       ]
     },
     {
-      "id": "click:speed:5",
       "event": {
         "id": "click:speed:5",
         "kind": "click",
@@ -611,7 +614,6 @@
       ]
     },
     {
-      "id": "click:speed:6",
       "event": {
         "id": "click:speed:6",
         "kind": "click",
@@ -646,27 +648,36 @@
       ]
     },
     {
-      "id": "scene:stock",
       "event": {
         "id": "scene:stock",
         "kind": "scene",
         "scene": "stock",
         "at": 36.07,
         "index": 3,
-        "from": 35.82,
-        "to": 36.32
+        "dissolve": {
+          "from": 35.82,
+          "to": 36.32
+        }
       },
       "draft": {
         "sound": {
           "sound": "whoosh.soft",
-          "seed": "scene:stock"
+          "seed": "scene:stock",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         "why": "a scene change"
       },
       "alternatives": [
         {
           "sound": "whoosh.swell",
-          "seed": "scene:stock"
+          "seed": "scene:stock",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         {
           "sound": "riser.short",
@@ -679,7 +690,6 @@
       ]
     },
     {
-      "id": "reveal:stock/left/highlight:1",
       "event": {
         "id": "reveal:stock/left/highlight:1",
         "kind": "reveal",
@@ -711,7 +721,6 @@
       ]
     },
     {
-      "id": "reveal:stock/right/highlight:1",
       "event": {
         "id": "reveal:stock/right/highlight:1",
         "kind": "reveal",
@@ -743,7 +752,6 @@
       ]
     },
     {
-      "id": "reveal:stock/highlight:1",
       "event": {
         "id": "reveal:stock/highlight:1",
         "kind": "reveal",
@@ -775,7 +783,6 @@
       ]
     },
     {
-      "id": "click:stock:1",
       "event": {
         "id": "click:stock:1",
         "kind": "click",
@@ -810,7 +817,6 @@
       ]
     },
     {
-      "id": "reveal:stock/right/highlight:2",
       "event": {
         "id": "reveal:stock/right/highlight:2",
         "kind": "reveal",
@@ -842,15 +848,16 @@
       ]
     },
     {
-      "id": "scene:clash",
       "event": {
         "id": "scene:clash",
         "kind": "scene",
         "scene": "clash",
         "at": 55.45,
         "index": 4,
-        "from": 55.2,
-        "to": 55.7
+        "dissolve": {
+          "from": 55.2,
+          "to": 55.7
+        }
       },
       "draft": {
         "sound": null,
@@ -859,11 +866,19 @@
       "alternatives": [
         {
           "sound": "whoosh.soft",
-          "seed": "scene:clash"
+          "seed": "scene:clash",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         {
           "sound": "whoosh.swell",
-          "seed": "scene:clash"
+          "seed": "scene:clash",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         {
           "sound": "riser.short",
@@ -876,7 +891,6 @@
       ]
     },
     {
-      "id": "reveal:clash/left/highlight:1",
       "event": {
         "id": "reveal:clash/left/highlight:1",
         "kind": "reveal",
@@ -908,7 +922,6 @@
       ]
     },
     {
-      "id": "click:clash:1",
       "event": {
         "id": "click:clash:1",
         "kind": "click",
@@ -943,7 +956,6 @@
       ]
     },
     {
-      "id": "reveal:clash/right/highlight:1",
       "event": {
         "id": "reveal:clash/right/highlight:1",
         "kind": "reveal",
@@ -975,15 +987,16 @@
       ]
     },
     {
-      "id": "scene:lists",
       "event": {
         "id": "scene:lists",
         "kind": "scene",
         "scene": "lists",
         "at": 64.47,
         "index": 5,
-        "from": 64.22,
-        "to": 64.72
+        "dissolve": {
+          "from": 64.22,
+          "to": 64.72
+        }
       },
       "draft": {
         "sound": null,
@@ -992,11 +1005,19 @@
       "alternatives": [
         {
           "sound": "whoosh.soft",
-          "seed": "scene:lists"
+          "seed": "scene:lists",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         {
           "sound": "whoosh.swell",
-          "seed": "scene:lists"
+          "seed": "scene:lists",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         {
           "sound": "riser.short",
@@ -1009,7 +1030,6 @@
       ]
     },
     {
-      "id": "click:lists:1",
       "event": {
         "id": "click:lists:1",
         "kind": "click",
@@ -1044,10 +1064,9 @@
       ]
     },
     {
-      "id": "key:lists:1",
       "event": {
-        "id": "key:lists:1",
-        "kind": "key",
+        "id": "placed:lists:1",
+        "kind": "placed",
         "scene": "lists",
         "at": 74.9,
         "request": {
@@ -1059,26 +1078,16 @@
       "draft": {
         "sound": {
           "sound": "key",
-          "seed": "key:lists:1"
+          "seed": "kit:key:1"
         },
-        "why": "typing"
+        "why": "plays from its <Sfx> in the scene"
       },
-      "alternatives": [
-        {
-          "sound": "key.soft",
-          "seed": "key:lists:1"
-        },
-        {
-          "sound": "key.mechanical",
-          "seed": "key:lists:1"
-        }
-      ]
+      "alternatives": []
     },
     {
-      "id": "key:lists:2",
       "event": {
-        "id": "key:lists:2",
-        "kind": "key",
+        "id": "placed:lists:2",
+        "kind": "placed",
         "scene": "lists",
         "at": 75.03,
         "request": {
@@ -1090,26 +1099,16 @@
       "draft": {
         "sound": {
           "sound": "key",
-          "seed": "key:lists:2"
+          "seed": "kit:key:2"
         },
-        "why": "typing"
+        "why": "plays from its <Sfx> in the scene"
       },
-      "alternatives": [
-        {
-          "sound": "key.soft",
-          "seed": "key:lists:2"
-        },
-        {
-          "sound": "key.mechanical",
-          "seed": "key:lists:2"
-        }
-      ]
+      "alternatives": []
     },
     {
-      "id": "key:lists:3",
       "event": {
-        "id": "key:lists:3",
-        "kind": "key",
+        "id": "placed:lists:3",
+        "kind": "placed",
         "scene": "lists",
         "at": 75.16,
         "request": {
@@ -1121,26 +1120,16 @@
       "draft": {
         "sound": {
           "sound": "key",
-          "seed": "key:lists:3"
+          "seed": "kit:key:3"
         },
-        "why": "typing"
+        "why": "plays from its <Sfx> in the scene"
       },
-      "alternatives": [
-        {
-          "sound": "key.soft",
-          "seed": "key:lists:3"
-        },
-        {
-          "sound": "key.mechanical",
-          "seed": "key:lists:3"
-        }
-      ]
+      "alternatives": []
     },
     {
-      "id": "key:lists:4",
       "event": {
-        "id": "key:lists:4",
-        "kind": "key",
+        "id": "placed:lists:4",
+        "kind": "placed",
         "scene": "lists",
         "at": 75.29,
         "request": {
@@ -1152,23 +1141,13 @@
       "draft": {
         "sound": {
           "sound": "key",
-          "seed": "key:lists:4"
+          "seed": "kit:key:4"
         },
-        "why": "typing"
+        "why": "plays from its <Sfx> in the scene"
       },
-      "alternatives": [
-        {
-          "sound": "key.soft",
-          "seed": "key:lists:4"
-        },
-        {
-          "sound": "key.mechanical",
-          "seed": "key:lists:4"
-        }
-      ]
+      "alternatives": []
     },
     {
-      "id": "reveal:lists/highlight:1",
       "event": {
         "id": "reveal:lists/highlight:1",
         "kind": "reveal",
@@ -1200,7 +1179,6 @@
       ]
     },
     {
-      "id": "reveal:lists/matches:1",
       "event": {
         "id": "reveal:lists/matches:1",
         "kind": "reveal",
@@ -1232,7 +1210,6 @@
       ]
     },
     {
-      "id": "reveal:lists/highlight:2",
       "event": {
         "id": "reveal:lists/highlight:2",
         "kind": "reveal",
@@ -1264,27 +1241,36 @@
       ]
     },
     {
-      "id": "scene:sale",
       "event": {
         "id": "scene:sale",
         "kind": "scene",
         "scene": "sale",
         "at": 78.94,
         "index": 6,
-        "from": 78.69,
-        "to": 79.19
+        "dissolve": {
+          "from": 78.69,
+          "to": 79.19
+        }
       },
       "draft": {
         "sound": {
           "sound": "whoosh.soft",
-          "seed": "scene:sale"
+          "seed": "scene:sale",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         "why": "a scene change"
       },
       "alternatives": [
         {
           "sound": "whoosh.swell",
-          "seed": "scene:sale"
+          "seed": "scene:sale",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         {
           "sound": "riser.short",
@@ -1297,7 +1283,6 @@
       ]
     },
     {
-      "id": "move:sale:1",
       "event": {
         "id": "move:sale:1",
         "kind": "camera-move",
@@ -1317,30 +1302,29 @@
           "sound": "whoosh",
           "seed": "move:sale:1",
           "set": {
-            "approach": 0.617,
-            "recede": 0.617
+            "approach": 0.6167,
+            "recede": 0.6167
           }
         },
         {
           "sound": "whoosh.soft",
           "seed": "move:sale:1",
           "set": {
-            "approach": 0.617,
-            "recede": 0.617
+            "approach": 0.6167,
+            "recede": 0.6167
           }
         },
         {
           "sound": "whoosh.fast",
           "seed": "move:sale:1",
           "set": {
-            "approach": 0.617,
-            "recede": 0.617
+            "approach": 0.6167,
+            "recede": 0.6167
           }
         }
       ]
     },
     {
-      "id": "reveal:sale/left/highlight:1",
       "event": {
         "id": "reveal:sale/left/highlight:1",
         "kind": "reveal",
@@ -1372,7 +1356,6 @@
       ]
     },
     {
-      "id": "move:sale:2",
       "event": {
         "id": "move:sale:2",
         "kind": "camera-move",
@@ -1392,30 +1375,29 @@
           "sound": "whoosh",
           "seed": "move:sale:2",
           "set": {
-            "approach": 0.483,
-            "recede": 0.517
+            "approach": 0.4833,
+            "recede": 0.5167
           }
         },
         {
           "sound": "whoosh.soft",
           "seed": "move:sale:2",
           "set": {
-            "approach": 0.483,
-            "recede": 0.517
+            "approach": 0.4833,
+            "recede": 0.5167
           }
         },
         {
           "sound": "whoosh.fast",
           "seed": "move:sale:2",
           "set": {
-            "approach": 0.483,
-            "recede": 0.517
+            "approach": 0.4833,
+            "recede": 0.5167
           }
         }
       ]
     },
     {
-      "id": "click:sale:1",
       "event": {
         "id": "click:sale:1",
         "kind": "click",
@@ -1450,7 +1432,6 @@
       ]
     },
     {
-      "id": "reveal:sale/right/highlight:1",
       "event": {
         "id": "reveal:sale/right/highlight:1",
         "kind": "reveal",
@@ -1482,7 +1463,6 @@
       ]
     },
     {
-      "id": "click:sale:2",
       "event": {
         "id": "click:sale:2",
         "kind": "click",
@@ -1517,15 +1497,16 @@
       ]
     },
     {
-      "id": "scene:quantity",
       "event": {
         "id": "scene:quantity",
         "kind": "scene",
         "scene": "quantity",
         "at": 88.06,
         "index": 7,
-        "from": 87.81,
-        "to": 88.31
+        "dissolve": {
+          "from": 87.81,
+          "to": 88.31
+        }
       },
       "draft": {
         "sound": null,
@@ -1534,11 +1515,19 @@
       "alternatives": [
         {
           "sound": "whoosh.soft",
-          "seed": "scene:quantity"
+          "seed": "scene:quantity",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         {
           "sound": "whoosh.swell",
-          "seed": "scene:quantity"
+          "seed": "scene:quantity",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         {
           "sound": "riser.short",
@@ -1551,7 +1540,6 @@
       ]
     },
     {
-      "id": "reveal:quantity/right/highlight:1",
       "event": {
         "id": "reveal:quantity/right/highlight:1",
         "kind": "reveal",
@@ -1583,7 +1571,6 @@
       ]
     },
     {
-      "id": "click:quantity:1",
       "event": {
         "id": "click:quantity:1",
         "kind": "click",
@@ -1618,7 +1605,6 @@
       ]
     },
     {
-      "id": "click:quantity:2",
       "event": {
         "id": "click:quantity:2",
         "kind": "click",
@@ -1653,7 +1639,6 @@
       ]
     },
     {
-      "id": "click:quantity:3",
       "event": {
         "id": "click:quantity:3",
         "kind": "click",
@@ -1688,7 +1673,6 @@
       ]
     },
     {
-      "id": "click:quantity:4",
       "event": {
         "id": "click:quantity:4",
         "kind": "click",
@@ -1723,7 +1707,6 @@
       ]
     },
     {
-      "id": "click:quantity:5",
       "event": {
         "id": "click:quantity:5",
         "kind": "click",
@@ -1758,7 +1741,6 @@
       ]
     },
     {
-      "id": "click:quantity:6",
       "event": {
         "id": "click:quantity:6",
         "kind": "click",
@@ -1793,7 +1775,6 @@
       ]
     },
     {
-      "id": "click:quantity:7",
       "event": {
         "id": "click:quantity:7",
         "kind": "click",
@@ -1828,7 +1809,6 @@
       ]
     },
     {
-      "id": "click:quantity:8",
       "event": {
         "id": "click:quantity:8",
         "kind": "click",
@@ -1863,7 +1843,6 @@
       ]
     },
     {
-      "id": "click:quantity:9",
       "event": {
         "id": "click:quantity:9",
         "kind": "click",
@@ -1898,7 +1877,6 @@
       ]
     },
     {
-      "id": "click:quantity:10",
       "event": {
         "id": "click:quantity:10",
         "kind": "click",
@@ -1933,7 +1911,6 @@
       ]
     },
     {
-      "id": "click:quantity:11",
       "event": {
         "id": "click:quantity:11",
         "kind": "click",
@@ -1968,7 +1945,6 @@
       ]
     },
     {
-      "id": "reveal:quantity/right/highlight:2",
       "event": {
         "id": "reveal:quantity/right/highlight:2",
         "kind": "reveal",
@@ -2000,7 +1976,6 @@
       ]
     },
     {
-      "id": "reveal:quantity/left/highlight:1",
       "event": {
         "id": "reveal:quantity/left/highlight:1",
         "kind": "reveal",
@@ -2032,15 +2007,16 @@
       ]
     },
     {
-      "id": "scene:sticky",
       "event": {
         "id": "scene:sticky",
         "kind": "scene",
         "scene": "sticky",
         "at": 107.57,
         "index": 8,
-        "from": 107.32,
-        "to": 107.82
+        "dissolve": {
+          "from": 107.32,
+          "to": 107.82
+        }
       },
       "draft": {
         "sound": null,
@@ -2049,11 +2025,19 @@
       "alternatives": [
         {
           "sound": "whoosh.soft",
-          "seed": "scene:sticky"
+          "seed": "scene:sticky",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         {
           "sound": "whoosh.swell",
-          "seed": "scene:sticky"
+          "seed": "scene:sticky",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         {
           "sound": "riser.short",
@@ -2066,7 +2050,6 @@
       ]
     },
     {
-      "id": "reveal:sticky/highlight:1",
       "event": {
         "id": "reveal:sticky/highlight:1",
         "kind": "reveal",
@@ -2098,7 +2081,6 @@
       ]
     },
     {
-      "id": "reveal:sticky/AND ON PHONES:1",
       "event": {
         "id": "reveal:sticky/AND ON PHONES:1",
         "kind": "reveal",
@@ -2130,7 +2112,6 @@
       ]
     },
     {
-      "id": "reveal:sticky/Sticky buy button:1",
       "event": {
         "id": "reveal:sticky/Sticky buy button:1",
         "kind": "reveal",
@@ -2162,7 +2143,6 @@
       ]
     },
     {
-      "id": "reveal:sticky/highlight:2",
       "event": {
         "id": "reveal:sticky/highlight:2",
         "kind": "reveal",
@@ -2194,27 +2174,36 @@
       ]
     },
     {
-      "id": "scene:bulk",
       "event": {
         "id": "scene:bulk",
         "kind": "scene",
         "scene": "bulk",
         "at": 115.69,
         "index": 9,
-        "from": 115.44,
-        "to": 115.94
+        "dissolve": {
+          "from": 115.44,
+          "to": 115.94
+        }
       },
       "draft": {
         "sound": {
           "sound": "whoosh.soft",
-          "seed": "scene:bulk"
+          "seed": "scene:bulk",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         "why": "a scene change"
       },
       "alternatives": [
         {
           "sound": "whoosh.swell",
-          "seed": "scene:bulk"
+          "seed": "scene:bulk",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         {
           "sound": "riser.short",
@@ -2227,7 +2216,6 @@
       ]
     },
     {
-      "id": "reveal:bulk/highlight:1",
       "event": {
         "id": "reveal:bulk/highlight:1",
         "kind": "reveal",
@@ -2259,7 +2247,6 @@
       ]
     },
     {
-      "id": "reveal:bulk/highlight:2",
       "event": {
         "id": "reveal:bulk/highlight:2",
         "kind": "reveal",
@@ -2291,7 +2278,6 @@
       ]
     },
     {
-      "id": "click:bulk:1",
       "event": {
         "id": "click:bulk:1",
         "kind": "click",
@@ -2326,7 +2312,6 @@
       ]
     },
     {
-      "id": "reveal:bulk/highlight:3",
       "event": {
         "id": "reveal:bulk/highlight:3",
         "kind": "reveal",
@@ -2358,15 +2343,16 @@
       ]
     },
     {
-      "id": "scene:summary",
       "event": {
         "id": "scene:summary",
         "kind": "scene",
         "scene": "summary",
         "at": 134.36,
         "index": 10,
-        "from": 134.11,
-        "to": 134.61
+        "dissolve": {
+          "from": 134.11,
+          "to": 134.61
+        }
       },
       "draft": {
         "sound": null,
@@ -2375,11 +2361,19 @@
       "alternatives": [
         {
           "sound": "whoosh.soft",
-          "seed": "scene:summary"
+          "seed": "scene:summary",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         {
           "sound": "whoosh.swell",
-          "seed": "scene:summary"
+          "seed": "scene:summary",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         {
           "sound": "riser.short",
@@ -2392,7 +2386,6 @@
       ]
     },
     {
-      "id": "move:summary:1",
       "event": {
         "id": "move:summary:1",
         "kind": "camera-move",
@@ -2412,30 +2405,29 @@
           "sound": "whoosh",
           "seed": "move:summary:1",
           "set": {
-            "approach": 0.483,
-            "recede": 0.483
+            "approach": 0.4833,
+            "recede": 0.4833
           }
         },
         {
           "sound": "whoosh.soft",
           "seed": "move:summary:1",
           "set": {
-            "approach": 0.483,
-            "recede": 0.483
+            "approach": 0.4833,
+            "recede": 0.4833
           }
         },
         {
           "sound": "whoosh.fast",
           "seed": "move:summary:1",
           "set": {
-            "approach": 0.483,
-            "recede": 0.483
+            "approach": 0.4833,
+            "recede": 0.4833
           }
         }
       ]
     },
     {
-      "id": "reveal:summary/highlight:1",
       "event": {
         "id": "reveal:summary/highlight:1",
         "kind": "reveal",
@@ -2467,15 +2459,16 @@
       ]
     },
     {
-      "id": "scene:reset",
       "event": {
         "id": "scene:reset",
         "kind": "scene",
         "scene": "reset",
         "at": 139.88,
         "index": 11,
-        "from": 139.63,
-        "to": 140.13
+        "dissolve": {
+          "from": 139.63,
+          "to": 140.13
+        }
       },
       "draft": {
         "sound": null,
@@ -2484,11 +2477,19 @@
       "alternatives": [
         {
           "sound": "whoosh.soft",
-          "seed": "scene:reset"
+          "seed": "scene:reset",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         {
           "sound": "whoosh.swell",
-          "seed": "scene:reset"
+          "seed": "scene:reset",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         {
           "sound": "riser.short",
@@ -2501,7 +2502,6 @@
       ]
     },
     {
-      "id": "reveal:reset/left/highlight:1",
       "event": {
         "id": "reveal:reset/left/highlight:1",
         "kind": "reveal",
@@ -2533,7 +2533,6 @@
       ]
     },
     {
-      "id": "click:reset:1",
       "event": {
         "id": "click:reset:1",
         "kind": "click",
@@ -2568,7 +2567,6 @@
       ]
     },
     {
-      "id": "reveal:reset/right/highlight:1",
       "event": {
         "id": "reveal:reset/right/highlight:1",
         "kind": "reveal",
@@ -2600,7 +2598,6 @@
       ]
     },
     {
-      "id": "click:reset:2",
       "event": {
         "id": "click:reset:2",
         "kind": "click",
@@ -2635,7 +2632,6 @@
       ]
     },
     {
-      "id": "reveal:reset/dialog:1",
       "event": {
         "id": "reveal:reset/dialog:1",
         "kind": "reveal",
@@ -2667,27 +2663,36 @@
       ]
     },
     {
-      "id": "scene:end",
       "event": {
         "id": "scene:end",
         "kind": "scene",
         "scene": "end",
         "at": 152.73,
         "index": 12,
-        "from": 152.48,
-        "to": 152.98
+        "dissolve": {
+          "from": 152.48,
+          "to": 152.98
+        }
       },
       "draft": {
         "sound": {
           "sound": "whoosh.soft",
-          "seed": "scene:end"
+          "seed": "scene:end",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         "why": "a scene change"
       },
       "alternatives": [
         {
           "sound": "whoosh.swell",
-          "seed": "scene:end"
+          "seed": "scene:end",
+          "set": {
+            "approach": 0.25,
+            "recede": 0.25
+          }
         },
         {
           "sound": "riser.short",
@@ -2700,7 +2705,6 @@
       ]
     },
     {
-      "id": "reveal:end/1  Photos at full size:1",
       "event": {
         "id": "reveal:end/1  Photos at full size:1",
         "kind": "reveal",
@@ -2732,7 +2736,6 @@
       ]
     },
     {
-      "id": "reveal:end/2  Sold out, still pickable:1",
       "event": {
         "id": "reveal:end/2  Sold out, still pickable:1",
         "kind": "reveal",
@@ -2764,7 +2767,6 @@
       ]
     },
     {
-      "id": "reveal:end/3  Prices follow the discounts:1",
       "event": {
         "id": "reveal:end/3  Prices follow the discounts:1",
         "kind": "reveal",
@@ -2796,7 +2798,6 @@
       ]
     },
     {
-      "id": "reveal:end/4  Bulk orders, itemized:1",
       "event": {
         "id": "reveal:end/4  Bulk orders, itemized:1",
         "kind": "reveal",
@@ -2828,7 +2829,6 @@
       ]
     },
     {
-      "id": "reveal:end/Simple buy box:1",
       "event": {
         "id": "reveal:end/Simple buy box:1",
         "kind": "reveal",

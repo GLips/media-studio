@@ -15,14 +15,14 @@ import { assembleMotionTracks, formatMotionReport, motionArtifactName, type Fram
 import { measureLoudness } from './loudness.ts';
 import { artifactSink, RENDER_CHROMIUM, RENDER_CONCURRENCY, type RenderSession } from './render-session.ts';
 import { sfxEventsFrom, sfxMarkArtifactName, type SfxEvent, type SfxMark } from './sfx/cue-events.ts';
-import { sfxCueOverrides, staleSfxCues } from './sfx/cues.ts';
+import { sfxCueListReport } from './sfx/project-cue-list.ts';
 import { H, W } from './studio/frame.ts';
 import { isVoicedWithDraft } from './voice-project.ts';
 import type { TimelineReport } from './studio/Video.tsx';
 
 const outDirFor = (session: RenderSession) => join(session.project, 'out');
 const videoFor = (session: RenderSession, captions: boolean) => join(outDirFor(session), captions ? 'video.mp4' : 'video-plain.mp4');
-const masterWavFor = (session: RenderSession, sfxDraft = false) => join(outDirFor(session), sfxDraft ? 'mix-sfx-draft.wav' : 'mix.wav');
+const masterWavFor = (session: RenderSession, auditionSfxCueList = false) => join(outDirFor(session), auditionSfxCueList ? 'mix-sfx-cues.wav' : 'mix.wav');
 
 // ---------- the check ----------
 
@@ -93,19 +93,10 @@ export async function checkProject(session: RenderSession, scope: CheckScope = {
       : held.checked ? `holds ✓ (${held.checked} steady and visible)` : 'holds: none in the checked frames');
   }
 
-  // The cue list the video plays: rules an edit broke are reported, and a cue whose event moved fails, since it would
-  // sound out of step.
   const sfxEvents = sfxEventsFrom({ timeline, motion, marks: frames.flatMap((f) => sink.json<SfxMark[]>(sfxMarkArtifactName(f))) });
-  let staleCues = 0;
-  if (timeline.sfx) {
-    const inSpan = { from: span.first / fps, to: (span.last + 1) / fps };
-    const stale = staleSfxCues(timeline.sfx, sfxEvents, inSpan, fps);
-    const overrides = sfxCueOverrides(timeline.sfx, timeline.cues.flatMap((c) => c.words)).filter((o) => o.at >= inSpan.from && o.at <= inSpan.to);
-    report.push(...stale.map((c) => `  ✗ ${c.at.toFixed(2)}s  sfx ${c.id}: ${c.problem}`), ...overrides.map((o) => `  ! ${o.at.toFixed(2)}s  sfx ${o.id}: ${o.problem}`));
-    report.push(`sfx: ${timeline.sfx.length} cues${stale.length ? `, ${stale.length} stale` : ''}${overrides.length ? `, ${overrides.length} overriding a rule` : ''}${stale.length || overrides.length ? '' : ' ✓'}`);
-    staleCues = stale.length;
-  }
-  return { ok: problems.length === 0 && motionReport.ok && held.problems.length === 0 && staleCues === 0, timeline, motion, sfxEvents, report };
+  const sfx = sfxCueListReport(session.project, timeline, sfxEvents, span);
+  report.push(...sfx.lines);
+  return { ok: problems.length === 0 && motionReport.ok && held.problems.length === 0 && sfx.ok, timeline, motion, sfxEvents, report };
 }
 
 /**
@@ -205,13 +196,13 @@ const DELIVERY_LUFS = -14, DELIVERY_TRUE_PEAK = -1, MASTER_TRUE_PEAK = -2;
 /**
  * Renders the soundtrack once, uncompressed, and masters it to out/mix.wav: one gain to delivery loudness, then a
  * limiter for the peaks. Not loudnorm: when its linear mode can't reach the target it becomes an AGC, which fills in
- * the music's ducks. With `sfxDraft`, the project's drafted cue list plays instead of the video's own effects, into
- * out/mix-sfx-draft.wav, to audition it beside the video's mix.
+ * the music's ducks. With `auditionSfxCueList`, the project's cue list plays whether or not the video plays it, into
+ * out/mix-sfx-cues.wav, to audition it beside the video's mix.
  */
-export async function renderMasteredMix(session: RenderSession, { sfxDraft = false }: { sfxDraft?: boolean } = {}): Promise<string> {
+export async function renderMasteredMix(session: RenderSession, { auditionSfxCueList = false }: { auditionSfxCueList?: boolean } = {}): Promise<string> {
   const { serveUrl, props, compositionFor } = session;
-  const masterWav = masterWavFor(session, sfxDraft);
-  const inputProps = props({ sfxDraft });
+  const masterWav = masterWavFor(session, auditionSfxCueList);
+  const inputProps = props({ auditionSfxCueList });
   const composition = await compositionFor(inputProps);
   const tmp = mkdtempSync(join(tmpdir(), 'mix-'));
   const raw = join(tmp, 'raw.wav');

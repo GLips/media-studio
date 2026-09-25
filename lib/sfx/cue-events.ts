@@ -13,40 +13,34 @@ import type { SfxRequest } from './library.ts';
 /** The artifact the probe emits for each frame: the `<Sfx>` marks on it. */
 export const sfxMarkArtifactName = (frame: number) => `sfx-${frame}.json`;
 
-/** One mounted `<Sfx>` on one frame: the sound it would play and when it lands, in video seconds. */
-export type SfxMark = { scene: string; at: number; request: SfxRequest; volume: number };
+/**
+ * What an `<Sfx>` marks: a `click` or `key` a library piece emits (CursorPath, TakeCursor), which a cue list plays
+ * itself, or a sound a scene `placed` by hand, which always plays from the scene.
+ */
+export type SfxMarkedEvent = 'click' | 'key' | 'placed';
+
 /** What an `<Sfx>` writes on its mark: when it lands as seconds from the frame it's on. */
-export type SfxMarkAttr = { fromNow: number; request: SfxRequest; volume: number };
+export type SfxMarkAttr = { event: SfxMarkedEvent; fromNow: number; request: SfxRequest; volume: number };
+/** One mounted `<Sfx>` on one frame, landing `at` video seconds. */
+export type SfxMark = Omit<SfxMarkAttr, 'fromNow'> & { scene: string; at: number };
 
 /**
- * - `click`, `key`: an `<Sfx>` playing a click or key (CursorPath, TakeCursor, a typed field);
- * - `placed`: any other `<Sfx>` a scene placed by hand;
- * - `scene`: the cut or the middle of the dissolve into scene `scene`;
- * - `camera-move`: a camera moving, landing on its fastest frame;
+ * An event, identified as `click:speed:3` (the third click in scene speed), `scene:stock`, `move:sale:1` or
+ * `reveal:<track>:1`, and landing `at` video seconds:
+ * - `click`, `key`, `placed`: a marked `<Sfx>` (see SfxMarkedEvent), with its own sound and volume;
+ * - `scene`: the cut into scene `scene`, or the middle of the dissolve into it (`dissolve`); `index` 1 is the change
+ *   into the second scene, so neighbours can be told apart;
+ * - `camera-move`: a camera moving from `from` to `to`, landing on its fastest frame; `big` if it travels far, fast;
  * - `reveal`: a highlight, dialog, card or free-standing text arriving (fully drawn).
  */
-export type SfxEventKind = 'click' | 'key' | 'placed' | 'scene' | 'camera-move' | 'reveal';
-
-export type SfxEvent = {
-  /** Stable across re-measures while the video keeps the same events, e.g. `click:speed:3`, `scene:stock`. */
-  id: string;
-  kind: SfxEventKind;
-  scene: string;
-  /** Video seconds where a sound marking it lands. */
-  at: number;
-  /** A camera move's or a dissolve's span, in video seconds. */
-  from?: number;
-  to?: number;
-  /** A camera move that travels far: a big push or pan, which may take an accent. */
-  big?: boolean;
-  /** A scene change's place in the video (1 is the change into the second scene), so neighbours can be told apart. */
-  index?: number;
-  /** What was revealed or moved: its motion track id. */
-  track?: string;
-  /** A marked `<Sfx>`'s own sound and volume. */
-  request?: SfxRequest;
-  volume?: number;
-};
+export type SfxEvent = { id: string; scene: string; at: number } & (
+  | { kind: SfxMarkedEvent; request: SfxRequest; volume: number }
+  | { kind: 'scene'; index: number; dissolve?: { from: number; to: number } }
+  | { kind: 'camera-move'; track: string; from: number; to: number; big: boolean }
+  | { kind: 'reveal'; track: string }
+);
+export type SfxEventKind = SfxEvent['kind'];
+type Unnumbered = SfxEvent extends infer E ? (E extends SfxEvent ? Omit<E, 'id'> : never) : never;
 
 // A camera is { cx, cy } in capture pixels and a zoom where 1 fits the capture's width to the frame. Captures are
 // 1440 wide, which turns a pan into frame widths; it's only used to tell a big move from a nudge.
@@ -66,32 +60,33 @@ const MOVE_PAUSE_FRAMES = 2;
 /** A drawn value at or over this is arrived. */
 const ARRIVED = 0.99;
 
-const markKind = (request: SfxRequest): SfxEventKind => {
-  const recipe = request.sound.split('.')[0];
-  return recipe === 'click' ? 'click' : recipe === 'key' ? 'key' : 'placed';
-};
+/** A tenth of a millisecond is past anything heard, and keeps cues.json readable. */
+export const roundSfxSeconds = (x: number) => Math.round(x * 1e4) / 1e4;
 
-/** Numbers events of a kind 1, 2, … in time order within their scene, into ids. */
-function numbered(events: Omit<SfxEvent, 'id'>[], prefix: (e: Omit<SfxEvent, 'id'>) => string): SfxEvent[] {
+/** The part of an id before its number: events sharing it are numbered 1, 2, … in time order. */
+export const sfxEventSeries = (id: string) => id.replace(/:\d+$/, '');
+
+/** Numbers events of a series 1, 2, … in time order, into ids. */
+function numbered(events: Unnumbered[], series: (e: Unnumbered) => string): SfxEvent[] {
   const counts = new Map<string, number>();
   return [...events].sort((a, b) => a.at - b.at).map((e) => {
-    const key = prefix(e), n = (counts.get(key) ?? 0) + 1;
+    const key = series(e), n = (counts.get(key) ?? 0) + 1;
     counts.set(key, n);
-    return { id: `${key}:${n}`, ...e };
+    return { id: `${key}:${n}`, ...e } as SfxEvent;
   });
 }
 
 /** Every mounted `<Sfx>`, once: the same sound landing at the same moment on many frames is one event. */
 function markEvents(marks: readonly SfxMark[]): SfxEvent[] {
   const unique = new Map<string, SfxMark>();
-  for (const m of marks) unique.set(`${m.scene}|${JSON.stringify(m.request)}|${m.at.toFixed(4)}`, m);
-  return numbered([...unique.values()].map(({ scene, at, request, volume }) => ({ kind: markKind(request), scene, at, request, volume })), (e) => `${e.kind}:${e.scene}`);
+  for (const m of marks) unique.set(`${m.scene}|${m.event}|${JSON.stringify(m.request)}|${m.at.toFixed(4)}`, m);
+  return numbered([...unique.values()].map(({ event, scene, at, request, volume }) => ({ kind: event, scene, at, request, volume })), (e) => `${e.kind}:${e.scene}`);
 }
 
 function sceneEvents(timeline: TimelineReport): SfxEvent[] {
   return timeline.scenes.slice(1).map((scene, i) => {
     const fade = timeline.crossfades.find((c) => c.to === scene.id);
-    return { id: `scene:${scene.id}`, kind: 'scene' as const, scene: scene.id, at: scene.start, index: i + 1, ...(fade && { from: fade.start, to: fade.end }) };
+    return { id: `scene:${scene.id}`, kind: 'scene' as const, scene: scene.id, at: scene.start, index: i + 1, ...(fade && { dissolve: { from: fade.start, to: fade.end } }) };
   });
 }
 
@@ -137,7 +132,8 @@ function cameraMoveEvents(motion: MotionTracks): SfxEvent[] {
   return numbered(merged.map((group) => {
     const lead = group.reduce((a, b) => (b.travel > a.travel ? b : a));
     return {
-      kind: 'camera-move' as const, scene: lead.scene, track: lead.track, big: lead.travel >= BIG_MOVE && lead.travel / ((lead.last - lead.first) / fps) >= BIG_MOVE_SPEED,
+      kind: 'camera-move' as const, scene: lead.scene, track: lead.track,
+      big: lead.travel >= BIG_MOVE && lead.travel / ((lead.last - lead.first) / fps) >= BIG_MOVE_SPEED,
       // A step is measured between two frames, so the fastest one lands halfway between them.
       at: (lead.peak - 0.5) / fps, from: Math.min(...group.map((m) => m.first)) / fps, to: Math.max(...group.map((m) => m.last)) / fps,
     };
@@ -161,14 +157,17 @@ function revealEvents(motion: MotionTracks): SfxEvent[] {
     const frame = arrival(s);
     return frame === null ? [] : [{ kind: 'reveal' as const, scene: track.scene, track: track.id, at: frame / motion.fps }];
   }));
-  return numbered(found, (e) => `reveal:${e.track}`);
+  return numbered(found, (e) => `reveal:${(e as { track: string }).track}`);
 }
 
 /** Every event the video's picture and timeline give a sound to mark, in time order. */
 export function sfxEventsFrom({ timeline, motion, marks }: { timeline: TimelineReport; motion: MotionTracks; marks: readonly SfxMark[] }): SfxEvent[] {
-  // A tenth of a millisecond is past anything heard, and keeps cues.json readable.
-  const round = (x: number | undefined) => x === undefined ? undefined : Math.round(x * 1e4) / 1e4;
   return [...markEvents(marks), ...sceneEvents(timeline), ...cameraMoveEvents(motion), ...revealEvents(motion)]
-    .map((e) => ({ ...e, at: round(e.at)!, ...(e.from !== undefined && { from: round(e.from), to: round(e.to) }) }))
+    .map((e): SfxEvent => {
+      const at = roundSfxSeconds(e.at);
+      if (e.kind === 'camera-move') return { ...e, at, from: roundSfxSeconds(e.from), to: roundSfxSeconds(e.to) };
+      if (e.kind === 'scene' && e.dissolve) return { ...e, at, dissolve: { from: roundSfxSeconds(e.dissolve.from), to: roundSfxSeconds(e.dissolve.to) } };
+      return { ...e, at };
+    })
     .sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
 }

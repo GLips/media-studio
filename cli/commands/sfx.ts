@@ -56,7 +56,7 @@ const showcase = defineCommand({
 const draft = defineCommand({
   meta: {
     name: 'draft',
-    description: "Measure the video's events (clicks, keys, placed sounds, scene changes, camera moves, reveals) with a full studio check, draft a cue for each into sfx/cues.json, and render the sounding ones into sfx/cues.ts, which the video plays with defineVideo({ sfx }). Edits in an existing cues.json are kept for events that still exist. Prints the cue list and the files.",
+    description: "Measure the video's events (clicks, keys, placed sounds, scene changes, camera moves, reveals) with a full studio check and draft a cue for each into sfx/cues.json, keeping its edits. The video plays it with defineVideo({ sfxCueList: true }); studio mix --sfx-cues auditions it first. Prints the cue list and the file.",
   },
   args: {
     project: studioProjectArg,
@@ -64,46 +64,19 @@ const draft = defineCommand({
   },
   async run({ args }) {
     const { checkProject, writeCheckReports } = await import('../../lib/render-pipeline.ts');
-    const { draftSfxCues, sfxCueOverrides, sfxCuePlays, SFX_CLICK_STYLES } = await import('../../lib/sfx/cues.ts');
-    const { formatSfxCueList, readSfxCueList, renderSfxCueList, writeSfxCueList } = await import('../../lib/sfx/cue-files.ts');
+    const { SFX_CLICK_STYLES } = await import('../../lib/sfx/cues.ts');
+    const { draftProjectSfxCueList } = await import('../../lib/sfx/project-cue-list.ts');
     const style = args['click-style'];
     if (style !== undefined && !Object.hasOwn(SFX_CLICK_STYLES, style)) throw new Error(`--click-style is one of ${Object.keys(SFX_CLICK_STYLES).join(', ')}, not ${style}`);
     const session = await openStudioRenderSession(args.project);
     const check = await checkProject(session);
     writeCheckReports(session, check);
-    const previous = readSfxCueList(session.project);
-    const words = check.timeline.cues.flatMap((c) => c.words);
-    const { list, dropped } = draftSfxCues(check.sfxEvents, words, { clickStyle: (style ?? previous?.clickStyle ?? 'soft') as keyof typeof SFX_CLICK_STYLES, previous });
-    for (const line of formatSfxCueList(list)) console.log(line);
-    for (const id of dropped) console.log(`dropped the edits to ${id}: the video no longer has its event`);
-    for (const o of sfxCueOverrides(sfxCuePlays(list), words)) console.log(`! ${o.at.toFixed(2)}s  ${o.id}: ${o.problem}`);
-    console.log(writeSfxCueList(session.project, list));
-    console.log(renderSfxCueList(session.project, list));
-  },
-});
-
-const cues = defineCommand({
-  meta: {
-    name: 'cues',
-    description: 'Render sfx/cues.json, after editing it, into sfx/cues.ts, and say which edits override a rule (against the words in out/check/timeline.json). Prints the module.',
-  },
-  args: { project: studioProjectArg },
-  async run({ args }) {
-    const { readFileSync } = await import('node:fs');
-    const { join } = await import('node:path');
-    const { resolveStudioProjectWith } = await import('../../lib/studio-project.ts');
-    const { sfxCueOverrides, sfxCuePlays } = await import('../../lib/sfx/cues.ts');
-    const { readSfxCueList, renderSfxCueList } = await import('../../lib/sfx/cue-files.ts');
-    const project = resolveStudioProjectWith(args.project, 'video.tsx');
-    const list = readSfxCueList(project);
-    if (!list) throw new Error(`${project} has no sfx/cues.json: run studio sfx draft first`);
-    const timeline = JSON.parse(readFileSync(join(project, 'out/check/timeline.json'), 'utf8')) as import('../../lib/studio/Video.tsx').TimelineReport;
-    for (const o of sfxCueOverrides(sfxCuePlays(list), timeline.cues.flatMap((c) => c.words))) console.log(`! ${o.at.toFixed(2)}s  ${o.id}: ${o.problem}`);
-    console.log(renderSfxCueList(project, list));
+    const lines = draftProjectSfxCueList(session.project, { timeline: check.timeline, events: check.sfxEvents, clickStyle: style as keyof typeof SFX_CLICK_STYLES | undefined });
+    for (const line of lines) console.log(line);
   },
 });
 
 export default defineCommand({
   meta: { name: 'sfx', description: 'Sound effects from seeded recipes: whoosh, riser, impact, chime, click and more. See `studio sfx list`.' },
-  subCommands: { list, render, kit, showcase, draft, cues },
+  subCommands: { list, render, kit, showcase, draft },
 });
