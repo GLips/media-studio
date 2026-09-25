@@ -1,0 +1,2862 @@
+{
+  "version": 1,
+  "clickStyle": "soft",
+  "cues": [
+    {
+      "id": "reveal:title/PAINFUL PLEASURES  ·  PRODUCT PAGE A∕B TEST:1",
+      "event": {
+        "id": "reveal:title/PAINFUL PLEASURES  ·  PRODUCT PAGE A∕B TEST:1",
+        "kind": "reveal",
+        "scene": "title",
+        "track": "title/PAINFUL PLEASURES  ·  PRODUCT PAGE A∕B TEST",
+        "at": 0.8667
+      },
+      "draft": {
+        "sound": {
+          "sound": "riser.short",
+          "seed": "reveal:title/PAINFUL PLEASURES  ·  PRODUCT PAGE A∕B TEST:1"
+        },
+        "why": "a reveal"
+      },
+      "alternatives": [
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:title/PAINFUL PLEASURES  ·  PRODUCT PAGE A∕B TEST:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:title/PAINFUL PLEASURES  ·  PRODUCT PAGE A∕B TEST:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:title/PAINFUL PLEASURES  ·  PRODUCT PAGE A∕B TEST:1"
+        }
+      ]
+    },
+    {
+      "id": "reveal:title/Simple buy box:1",
+      "event": {
+        "id": "reveal:title/Simple buy box:1",
+        "kind": "reveal",
+        "scene": "title",
+        "track": "title/Simple buy box",
+        "at": 1.0667
+      },
+      "draft": {
+        "sound": null,
+        "why": "0.20 s from the accent on reveal:title/PAINFUL PLEASURES  ·  PRODUCT PAGE A∕B TEST:1: at most one every 4 s"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:title/Simple buy box:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:title/Simple buy box:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:title/Simple buy box:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:title/Simple buy box:1"
+        }
+      ]
+    },
+    {
+      "id": "move:title:1",
+      "event": {
+        "id": "move:title:1",
+        "kind": "camera-move",
+        "scene": "title",
+        "track": "title/camera",
+        "big": false,
+        "at": 1.3167,
+        "from": 0,
+        "to": 5.9
+      },
+      "draft": {
+        "sound": null,
+        "why": "a small camera move"
+      },
+      "alternatives": [
+        {
+          "sound": "whoosh",
+          "seed": "move:title:1",
+          "set": {
+            "approach": 1.317,
+            "recede": 2
+          }
+        },
+        {
+          "sound": "whoosh.soft",
+          "seed": "move:title:1",
+          "set": {
+            "approach": 1.317,
+            "recede": 2
+          }
+        },
+        {
+          "sound": "whoosh.fast",
+          "seed": "move:title:1",
+          "set": {
+            "approach": 1.317,
+            "recede": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "reveal:title/The new product page, and what changes for shoppers.:1",
+      "event": {
+        "id": "reveal:title/The new product page, and what changes for shoppers.:1",
+        "kind": "reveal",
+        "scene": "title",
+        "track": "title/The new product page, and what changes for shoppers.",
+        "at": 1.3667
+      },
+      "draft": {
+        "sound": null,
+        "why": "0.50 s from the accent on reveal:title/PAINFUL PLEASURES  ·  PRODUCT PAGE A∕B TEST:1: at most one every 4 s"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:title/The new product page, and what changes for shoppers.:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:title/The new product page, and what changes for shoppers.:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:title/The new product page, and what changes for shoppers.:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:title/The new product page, and what changes for shoppers.:1"
+        }
+      ]
+    },
+    {
+      "id": "move:title:2",
+      "event": {
+        "id": "move:title:2",
+        "kind": "camera-move",
+        "scene": "title",
+        "track": "title/camera",
+        "big": false,
+        "at": 6.15,
+        "from": 5.9333,
+        "to": 6.3667
+      },
+      "draft": {
+        "sound": null,
+        "why": "a small camera move"
+      },
+      "alternatives": [
+        {
+          "sound": "whoosh",
+          "seed": "move:title:2",
+          "set": {
+            "approach": 0.217,
+            "recede": 0.217
+          }
+        },
+        {
+          "sound": "whoosh.soft",
+          "seed": "move:title:2",
+          "set": {
+            "approach": 0.217,
+            "recede": 0.217
+          }
+        },
+        {
+          "sound": "whoosh.fast",
+          "seed": "move:title:2",
+          "set": {
+            "approach": 0.217,
+            "recede": 0.217
+          }
+        }
+      ]
+    },
+    {
+      "id": "scene:photos",
+      "event": {
+        "id": "scene:photos",
+        "kind": "scene",
+        "scene": "photos",
+        "at": 6.15,
+        "index": 1,
+        "from": 5.9,
+        "to": 6.4
+      },
+      "draft": {
+        "sound": {
+          "sound": "whoosh.soft",
+          "seed": "scene:photos"
+        },
+        "why": "a scene change"
+      },
+      "alternatives": [
+        {
+          "sound": "whoosh.swell",
+          "seed": "scene:photos"
+        },
+        {
+          "sound": "riser.short",
+          "seed": "scene:photos"
+        },
+        {
+          "sound": "impact.soft",
+          "seed": "scene:photos"
+        }
+      ]
+    },
+    {
+      "id": "move:photos:1",
+      "event": {
+        "id": "move:photos:1",
+        "kind": "camera-move",
+        "scene": "photos",
+        "track": "photos/right/camera",
+        "big": true,
+        "at": 11.8167,
+        "from": 10.4667,
+        "to": 13.2333
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"images\" (11.64–12.19 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "whoosh",
+          "seed": "move:photos:1",
+          "set": {
+            "approach": 1.35,
+            "recede": 1.417
+          }
+        },
+        {
+          "sound": "whoosh.soft",
+          "seed": "move:photos:1",
+          "set": {
+            "approach": 1.35,
+            "recede": 1.417
+          }
+        },
+        {
+          "sound": "whoosh.fast",
+          "seed": "move:photos:1",
+          "set": {
+            "approach": 1.35,
+            "recede": 1.417
+          }
+        }
+      ]
+    },
+    {
+      "id": "click:photos:1",
+      "event": {
+        "id": "click:photos:1",
+        "kind": "click",
+        "scene": "photos",
+        "at": 16.2,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:1"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:photos:1"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:photos:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:photos:1"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:photos:1"
+        }
+      ]
+    },
+    {
+      "id": "move:photos:2",
+      "event": {
+        "id": "move:photos:2",
+        "kind": "camera-move",
+        "scene": "photos",
+        "track": "photos/left/camera",
+        "big": true,
+        "at": 18.3167,
+        "from": 17.9,
+        "to": 18.7667
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"blurs.\" (17.88–18.46 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "whoosh",
+          "seed": "move:photos:2",
+          "set": {
+            "approach": 0.417,
+            "recede": 0.45
+          }
+        },
+        {
+          "sound": "whoosh.soft",
+          "seed": "move:photos:2",
+          "set": {
+            "approach": 0.417,
+            "recede": 0.45
+          }
+        },
+        {
+          "sound": "whoosh.fast",
+          "seed": "move:photos:2",
+          "set": {
+            "approach": 0.417,
+            "recede": 0.45
+          }
+        }
+      ]
+    },
+    {
+      "id": "scene:speed",
+      "event": {
+        "id": "scene:speed",
+        "kind": "scene",
+        "scene": "speed",
+        "at": 22.44,
+        "index": 2,
+        "from": 22.19,
+        "to": 22.69
+      },
+      "draft": {
+        "sound": null,
+        "why": "the scene change beside scene:stock has an accent: never on every cut"
+      },
+      "alternatives": [
+        {
+          "sound": "whoosh.soft",
+          "seed": "scene:speed"
+        },
+        {
+          "sound": "whoosh.swell",
+          "seed": "scene:speed"
+        },
+        {
+          "sound": "riser.short",
+          "seed": "scene:speed"
+        },
+        {
+          "sound": "impact.soft",
+          "seed": "scene:speed"
+        }
+      ]
+    },
+    {
+      "id": "click:speed:1",
+      "event": {
+        "id": "click:speed:1",
+        "kind": "click",
+        "scene": "speed",
+        "at": 25.558,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:1"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:speed:1"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:speed:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:speed:1"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:speed:1"
+        }
+      ]
+    },
+    {
+      "id": "reveal:speed/left/highlight:1",
+      "event": {
+        "id": "reveal:speed/left/highlight:1",
+        "kind": "reveal",
+        "scene": "speed",
+        "track": "speed/left/highlight",
+        "at": 26.7667
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"locks\" (26.45–26.75 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:speed/left/highlight:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:speed/left/highlight:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:speed/left/highlight:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:speed/left/highlight:1"
+        }
+      ]
+    },
+    {
+      "id": "click:speed:2",
+      "event": {
+        "id": "click:speed:2",
+        "kind": "click",
+        "scene": "speed",
+        "at": 30.5348,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:1"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:speed:2"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:speed:2"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:speed:2"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:speed:2"
+        }
+      ]
+    },
+    {
+      "id": "click:speed:3",
+      "event": {
+        "id": "click:speed:3",
+        "kind": "click",
+        "scene": "speed",
+        "at": 31.4348,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:2"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:speed:3"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:speed:3"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:speed:3"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:speed:3"
+        }
+      ]
+    },
+    {
+      "id": "reveal:speed/right/highlight:1",
+      "event": {
+        "id": "reveal:speed/right/highlight:1",
+        "kind": "reveal",
+        "scene": "speed",
+        "track": "speed/right/highlight",
+        "at": 31.5333
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"need\" (31.15–31.36 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:speed/right/highlight:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:speed/right/highlight:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:speed/right/highlight:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:speed/right/highlight:1"
+        }
+      ]
+    },
+    {
+      "id": "click:speed:4",
+      "event": {
+        "id": "click:speed:4",
+        "kind": "click",
+        "scene": "speed",
+        "at": 31.9848,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:3"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:speed:4"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:speed:4"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:speed:4"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:speed:4"
+        }
+      ]
+    },
+    {
+      "id": "click:speed:5",
+      "event": {
+        "id": "click:speed:5",
+        "kind": "click",
+        "scene": "speed",
+        "at": 32.3848,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:4"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:speed:5"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:speed:5"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:speed:5"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:speed:5"
+        }
+      ]
+    },
+    {
+      "id": "click:speed:6",
+      "event": {
+        "id": "click:speed:6",
+        "kind": "click",
+        "scene": "speed",
+        "at": 32.7348,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:1"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:speed:6"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:speed:6"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:speed:6"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:speed:6"
+        }
+      ]
+    },
+    {
+      "id": "scene:stock",
+      "event": {
+        "id": "scene:stock",
+        "kind": "scene",
+        "scene": "stock",
+        "at": 36.07,
+        "index": 3,
+        "from": 35.82,
+        "to": 36.32
+      },
+      "draft": {
+        "sound": {
+          "sound": "whoosh.soft",
+          "seed": "scene:stock"
+        },
+        "why": "a scene change"
+      },
+      "alternatives": [
+        {
+          "sound": "whoosh.swell",
+          "seed": "scene:stock"
+        },
+        {
+          "sound": "riser.short",
+          "seed": "scene:stock"
+        },
+        {
+          "sound": "impact.soft",
+          "seed": "scene:stock"
+        }
+      ]
+    },
+    {
+      "id": "reveal:stock/left/highlight:1",
+      "event": {
+        "id": "reveal:stock/left/highlight:1",
+        "kind": "reveal",
+        "scene": "stock",
+        "track": "stock/left/highlight",
+        "at": 40.5
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"Today,\" (40.26–40.60 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:stock/left/highlight:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:stock/left/highlight:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:stock/left/highlight:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:stock/left/highlight:1"
+        }
+      ]
+    },
+    {
+      "id": "reveal:stock/right/highlight:1",
+      "event": {
+        "id": "reveal:stock/right/highlight:1",
+        "kind": "reveal",
+        "scene": "stock",
+        "track": "stock/right/highlight",
+        "at": 47.7667
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"keep\" (47.43–47.54 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:stock/right/highlight:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:stock/right/highlight:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:stock/right/highlight:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:stock/right/highlight:1"
+        }
+      ]
+    },
+    {
+      "id": "reveal:stock/highlight:1",
+      "event": {
+        "id": "reveal:stock/highlight:1",
+        "kind": "reveal",
+        "scene": "stock",
+        "track": "stock/highlight",
+        "at": 50.5
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"dropdowns\" (49.75–50.38 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:stock/highlight:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:stock/highlight:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:stock/highlight:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:stock/highlight:1"
+        }
+      ]
+    },
+    {
+      "id": "click:stock:1",
+      "event": {
+        "id": "click:stock:1",
+        "kind": "click",
+        "scene": "stock",
+        "at": 52.0272,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:1"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:stock:1"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:stock:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:stock:1"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:stock:1"
+        }
+      ]
+    },
+    {
+      "id": "reveal:stock/right/highlight:2",
+      "event": {
+        "id": "reveal:stock/right/highlight:2",
+        "kind": "reveal",
+        "scene": "stock",
+        "track": "stock/right/highlight",
+        "at": 53.2333
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"back-in-stock\" (52.94–53.57 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:stock/right/highlight:2"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:stock/right/highlight:2"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:stock/right/highlight:2"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:stock/right/highlight:2"
+        }
+      ]
+    },
+    {
+      "id": "scene:clash",
+      "event": {
+        "id": "scene:clash",
+        "kind": "scene",
+        "scene": "clash",
+        "at": 55.45,
+        "index": 4,
+        "from": 55.2,
+        "to": 55.7
+      },
+      "draft": {
+        "sound": null,
+        "why": "the scene change beside scene:stock has an accent: never on every cut"
+      },
+      "alternatives": [
+        {
+          "sound": "whoosh.soft",
+          "seed": "scene:clash"
+        },
+        {
+          "sound": "whoosh.swell",
+          "seed": "scene:clash"
+        },
+        {
+          "sound": "riser.short",
+          "seed": "scene:clash"
+        },
+        {
+          "sound": "impact.soft",
+          "seed": "scene:clash"
+        }
+      ]
+    },
+    {
+      "id": "reveal:clash/left/highlight:1",
+      "event": {
+        "id": "reveal:clash/left/highlight:1",
+        "kind": "reveal",
+        "scene": "clash",
+        "track": "clash/left/highlight",
+        "at": 59.2
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"Unavailable.\" (58.75–59.50 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:clash/left/highlight:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:clash/left/highlight:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:clash/left/highlight:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:clash/left/highlight:1"
+        }
+      ]
+    },
+    {
+      "id": "click:clash:1",
+      "event": {
+        "id": "click:clash:1",
+        "kind": "click",
+        "scene": "clash",
+        "at": 60.759,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:1"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:clash:1"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:clash:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:clash:1"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:clash:1"
+        }
+      ]
+    },
+    {
+      "id": "reveal:clash/right/highlight:1",
+      "event": {
+        "id": "reveal:clash/right/highlight:1",
+        "kind": "reveal",
+        "scene": "clash",
+        "track": "clash/right/highlight",
+        "at": 62.3
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"lists\" (61.75–62.13 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:clash/right/highlight:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:clash/right/highlight:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:clash/right/highlight:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:clash/right/highlight:1"
+        }
+      ]
+    },
+    {
+      "id": "scene:lists",
+      "event": {
+        "id": "scene:lists",
+        "kind": "scene",
+        "scene": "lists",
+        "at": 64.47,
+        "index": 5,
+        "from": 64.22,
+        "to": 64.72
+      },
+      "draft": {
+        "sound": null,
+        "why": "the scene change beside scene:sale has an accent: never on every cut"
+      },
+      "alternatives": [
+        {
+          "sound": "whoosh.soft",
+          "seed": "scene:lists"
+        },
+        {
+          "sound": "whoosh.swell",
+          "seed": "scene:lists"
+        },
+        {
+          "sound": "riser.short",
+          "seed": "scene:lists"
+        },
+        {
+          "sound": "impact.soft",
+          "seed": "scene:lists"
+        }
+      ]
+    },
+    {
+      "id": "click:lists:1",
+      "event": {
+        "id": "click:lists:1",
+        "kind": "click",
+        "scene": "lists",
+        "at": 74.55,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:1"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:lists:1"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:lists:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:lists:1"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:lists:1"
+        }
+      ]
+    },
+    {
+      "id": "key:lists:1",
+      "event": {
+        "id": "key:lists:1",
+        "kind": "key",
+        "scene": "lists",
+        "at": 74.9,
+        "request": {
+          "sound": "key",
+          "seed": "kit:key:1"
+        },
+        "volume": 0.7
+      },
+      "draft": {
+        "sound": {
+          "sound": "key",
+          "seed": "key:lists:1"
+        },
+        "why": "typing"
+      },
+      "alternatives": [
+        {
+          "sound": "key.soft",
+          "seed": "key:lists:1"
+        },
+        {
+          "sound": "key.mechanical",
+          "seed": "key:lists:1"
+        }
+      ]
+    },
+    {
+      "id": "key:lists:2",
+      "event": {
+        "id": "key:lists:2",
+        "kind": "key",
+        "scene": "lists",
+        "at": 75.03,
+        "request": {
+          "sound": "key",
+          "seed": "kit:key:2"
+        },
+        "volume": 0.7
+      },
+      "draft": {
+        "sound": {
+          "sound": "key",
+          "seed": "key:lists:2"
+        },
+        "why": "typing"
+      },
+      "alternatives": [
+        {
+          "sound": "key.soft",
+          "seed": "key:lists:2"
+        },
+        {
+          "sound": "key.mechanical",
+          "seed": "key:lists:2"
+        }
+      ]
+    },
+    {
+      "id": "key:lists:3",
+      "event": {
+        "id": "key:lists:3",
+        "kind": "key",
+        "scene": "lists",
+        "at": 75.16,
+        "request": {
+          "sound": "key",
+          "seed": "kit:key:3"
+        },
+        "volume": 0.7
+      },
+      "draft": {
+        "sound": {
+          "sound": "key",
+          "seed": "key:lists:3"
+        },
+        "why": "typing"
+      },
+      "alternatives": [
+        {
+          "sound": "key.soft",
+          "seed": "key:lists:3"
+        },
+        {
+          "sound": "key.mechanical",
+          "seed": "key:lists:3"
+        }
+      ]
+    },
+    {
+      "id": "key:lists:4",
+      "event": {
+        "id": "key:lists:4",
+        "kind": "key",
+        "scene": "lists",
+        "at": 75.29,
+        "request": {
+          "sound": "key",
+          "seed": "kit:key:4"
+        },
+        "volume": 0.7
+      },
+      "draft": {
+        "sound": {
+          "sound": "key",
+          "seed": "key:lists:4"
+        },
+        "why": "typing"
+      },
+      "alternatives": [
+        {
+          "sound": "key.soft",
+          "seed": "key:lists:4"
+        },
+        {
+          "sound": "key.mechanical",
+          "seed": "key:lists:4"
+        }
+      ]
+    },
+    {
+      "id": "reveal:lists/highlight:1",
+      "event": {
+        "id": "reveal:lists/highlight:1",
+        "kind": "reveal",
+        "scene": "lists",
+        "track": "lists/highlight",
+        "at": 75.4
+      },
+      "draft": {
+        "sound": null,
+        "why": "3.54 s from the accent on scene:sale: at most one every 4 s"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:lists/highlight:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:lists/highlight:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:lists/highlight:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:lists/highlight:1"
+        }
+      ]
+    },
+    {
+      "id": "reveal:lists/matches:1",
+      "event": {
+        "id": "reveal:lists/matches:1",
+        "kind": "reveal",
+        "scene": "lists",
+        "track": "lists/matches",
+        "at": 76
+      },
+      "draft": {
+        "sound": null,
+        "why": "2.94 s from the accent on scene:sale: at most one every 4 s"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:lists/matches:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:lists/matches:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:lists/matches:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:lists/matches:1"
+        }
+      ]
+    },
+    {
+      "id": "reveal:lists/highlight:2",
+      "event": {
+        "id": "reveal:lists/highlight:2",
+        "kind": "reveal",
+        "scene": "lists",
+        "track": "lists/highlight",
+        "at": 77.4667
+      },
+      "draft": {
+        "sound": null,
+        "why": "1.47 s from the accent on scene:sale: at most one every 4 s"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:lists/highlight:2"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:lists/highlight:2"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:lists/highlight:2"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:lists/highlight:2"
+        }
+      ]
+    },
+    {
+      "id": "scene:sale",
+      "event": {
+        "id": "scene:sale",
+        "kind": "scene",
+        "scene": "sale",
+        "at": 78.94,
+        "index": 6,
+        "from": 78.69,
+        "to": 79.19
+      },
+      "draft": {
+        "sound": {
+          "sound": "whoosh.soft",
+          "seed": "scene:sale"
+        },
+        "why": "a scene change"
+      },
+      "alternatives": [
+        {
+          "sound": "whoosh.swell",
+          "seed": "scene:sale"
+        },
+        {
+          "sound": "riser.short",
+          "seed": "scene:sale"
+        },
+        {
+          "sound": "impact.soft",
+          "seed": "scene:sale"
+        }
+      ]
+    },
+    {
+      "id": "move:sale:1",
+      "event": {
+        "id": "move:sale:1",
+        "kind": "camera-move",
+        "scene": "sale",
+        "track": "sale/left/camera",
+        "big": true,
+        "at": 81.35,
+        "from": 80.7333,
+        "to": 81.9667
+      },
+      "draft": {
+        "sound": null,
+        "why": "2.41 s from the accent on scene:sale: at most one every 4 s"
+      },
+      "alternatives": [
+        {
+          "sound": "whoosh",
+          "seed": "move:sale:1",
+          "set": {
+            "approach": 0.617,
+            "recede": 0.617
+          }
+        },
+        {
+          "sound": "whoosh.soft",
+          "seed": "move:sale:1",
+          "set": {
+            "approach": 0.617,
+            "recede": 0.617
+          }
+        },
+        {
+          "sound": "whoosh.fast",
+          "seed": "move:sale:1",
+          "set": {
+            "approach": 0.617,
+            "recede": 0.617
+          }
+        }
+      ]
+    },
+    {
+      "id": "reveal:sale/left/highlight:1",
+      "event": {
+        "id": "reveal:sale/left/highlight:1",
+        "kind": "reveal",
+        "scene": "sale",
+        "track": "sale/left/highlight",
+        "at": 82.3667
+      },
+      "draft": {
+        "sound": null,
+        "why": "3.43 s from the accent on scene:sale: at most one every 4 s"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:sale/left/highlight:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:sale/left/highlight:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:sale/left/highlight:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:sale/left/highlight:1"
+        }
+      ]
+    },
+    {
+      "id": "move:sale:2",
+      "event": {
+        "id": "move:sale:2",
+        "kind": "camera-move",
+        "scene": "sale",
+        "track": "sale/left/camera",
+        "big": true,
+        "at": 84.0833,
+        "from": 83.6,
+        "to": 84.6
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"box.\" (83.56–84.48 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "whoosh",
+          "seed": "move:sale:2",
+          "set": {
+            "approach": 0.483,
+            "recede": 0.517
+          }
+        },
+        {
+          "sound": "whoosh.soft",
+          "seed": "move:sale:2",
+          "set": {
+            "approach": 0.483,
+            "recede": 0.517
+          }
+        },
+        {
+          "sound": "whoosh.fast",
+          "seed": "move:sale:2",
+          "set": {
+            "approach": 0.483,
+            "recede": 0.517
+          }
+        }
+      ]
+    },
+    {
+      "id": "click:sale:1",
+      "event": {
+        "id": "click:sale:1",
+        "kind": "click",
+        "scene": "sale",
+        "at": 85.4716,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:1"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:sale:1"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:sale:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:sale:1"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:sale:1"
+        }
+      ]
+    },
+    {
+      "id": "reveal:sale/right/highlight:1",
+      "event": {
+        "id": "reveal:sale/right/highlight:1",
+        "kind": "reveal",
+        "scene": "sale",
+        "track": "sale/right/highlight",
+        "at": 86.4667
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"percent\" (86.19–86.70 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:sale/right/highlight:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:sale/right/highlight:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:sale/right/highlight:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:sale/right/highlight:1"
+        }
+      ]
+    },
+    {
+      "id": "click:sale:2",
+      "event": {
+        "id": "click:sale:2",
+        "kind": "click",
+        "scene": "sale",
+        "at": 86.4824,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:2"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:sale:2"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:sale:2"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:sale:2"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:sale:2"
+        }
+      ]
+    },
+    {
+      "id": "scene:quantity",
+      "event": {
+        "id": "scene:quantity",
+        "kind": "scene",
+        "scene": "quantity",
+        "at": 88.06,
+        "index": 7,
+        "from": 87.81,
+        "to": 88.31
+      },
+      "draft": {
+        "sound": null,
+        "why": "the scene change beside scene:sale has an accent: never on every cut"
+      },
+      "alternatives": [
+        {
+          "sound": "whoosh.soft",
+          "seed": "scene:quantity"
+        },
+        {
+          "sound": "whoosh.swell",
+          "seed": "scene:quantity"
+        },
+        {
+          "sound": "riser.short",
+          "seed": "scene:quantity"
+        },
+        {
+          "sound": "impact.soft",
+          "seed": "scene:quantity"
+        }
+      ]
+    },
+    {
+      "id": "reveal:quantity/right/highlight:1",
+      "event": {
+        "id": "reveal:quantity/right/highlight:1",
+        "kind": "reveal",
+        "scene": "quantity",
+        "track": "quantity/right/highlight",
+        "at": 89.7667
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"styled\" (89.52–89.91 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:quantity/right/highlight:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:quantity/right/highlight:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:quantity/right/highlight:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:quantity/right/highlight:1"
+        }
+      ]
+    },
+    {
+      "id": "click:quantity:1",
+      "event": {
+        "id": "click:quantity:1",
+        "kind": "click",
+        "scene": "quantity",
+        "at": 96.94,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:1"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:quantity:1"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:quantity:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:quantity:1"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:quantity:1"
+        }
+      ]
+    },
+    {
+      "id": "click:quantity:2",
+      "event": {
+        "id": "click:quantity:2",
+        "kind": "click",
+        "scene": "quantity",
+        "at": 97.2,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:2"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:quantity:2"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:quantity:2"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:quantity:2"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:quantity:2"
+        }
+      ]
+    },
+    {
+      "id": "click:quantity:3",
+      "event": {
+        "id": "click:quantity:3",
+        "kind": "click",
+        "scene": "quantity",
+        "at": 97.46,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:3"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:quantity:3"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:quantity:3"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:quantity:3"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:quantity:3"
+        }
+      ]
+    },
+    {
+      "id": "click:quantity:4",
+      "event": {
+        "id": "click:quantity:4",
+        "kind": "click",
+        "scene": "quantity",
+        "at": 97.72,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:4"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:quantity:4"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:quantity:4"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:quantity:4"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:quantity:4"
+        }
+      ]
+    },
+    {
+      "id": "click:quantity:5",
+      "event": {
+        "id": "click:quantity:5",
+        "kind": "click",
+        "scene": "quantity",
+        "at": 97.98,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:1"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:quantity:5"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:quantity:5"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:quantity:5"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:quantity:5"
+        }
+      ]
+    },
+    {
+      "id": "click:quantity:6",
+      "event": {
+        "id": "click:quantity:6",
+        "kind": "click",
+        "scene": "quantity",
+        "at": 98.24,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:2"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:quantity:6"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:quantity:6"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:quantity:6"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:quantity:6"
+        }
+      ]
+    },
+    {
+      "id": "click:quantity:7",
+      "event": {
+        "id": "click:quantity:7",
+        "kind": "click",
+        "scene": "quantity",
+        "at": 98.5,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:3"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:quantity:7"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:quantity:7"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:quantity:7"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:quantity:7"
+        }
+      ]
+    },
+    {
+      "id": "click:quantity:8",
+      "event": {
+        "id": "click:quantity:8",
+        "kind": "click",
+        "scene": "quantity",
+        "at": 99.12,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:1"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:quantity:8"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:quantity:8"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:quantity:8"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:quantity:8"
+        }
+      ]
+    },
+    {
+      "id": "click:quantity:9",
+      "event": {
+        "id": "click:quantity:9",
+        "kind": "click",
+        "scene": "quantity",
+        "at": 99.37,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:2"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:quantity:9"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:quantity:9"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:quantity:9"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:quantity:9"
+        }
+      ]
+    },
+    {
+      "id": "click:quantity:10",
+      "event": {
+        "id": "click:quantity:10",
+        "kind": "click",
+        "scene": "quantity",
+        "at": 99.62,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:3"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:quantity:10"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:quantity:10"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:quantity:10"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:quantity:10"
+        }
+      ]
+    },
+    {
+      "id": "click:quantity:11",
+      "event": {
+        "id": "click:quantity:11",
+        "kind": "click",
+        "scene": "quantity",
+        "at": 99.87,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:4"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:quantity:11"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:quantity:11"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:quantity:11"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:quantity:11"
+        }
+      ]
+    },
+    {
+      "id": "reveal:quantity/right/highlight:2",
+      "event": {
+        "id": "reveal:quantity/right/highlight:2",
+        "kind": "reveal",
+        "scene": "quantity",
+        "track": "quantity/right/highlight",
+        "at": 100.2
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"quantity\" (99.68–100.24 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:quantity/right/highlight:2"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:quantity/right/highlight:2"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:quantity/right/highlight:2"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:quantity/right/highlight:2"
+        }
+      ]
+    },
+    {
+      "id": "reveal:quantity/left/highlight:1",
+      "event": {
+        "id": "reveal:quantity/left/highlight:1",
+        "kind": "reveal",
+        "scene": "quantity",
+        "track": "quantity/left/highlight",
+        "at": 104.9
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"each,\" (104.41–104.69 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:quantity/left/highlight:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:quantity/left/highlight:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:quantity/left/highlight:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:quantity/left/highlight:1"
+        }
+      ]
+    },
+    {
+      "id": "scene:sticky",
+      "event": {
+        "id": "scene:sticky",
+        "kind": "scene",
+        "scene": "sticky",
+        "at": 107.57,
+        "index": 8,
+        "from": 107.32,
+        "to": 107.82
+      },
+      "draft": {
+        "sound": null,
+        "why": "the scene change beside scene:bulk has an accent: never on every cut"
+      },
+      "alternatives": [
+        {
+          "sound": "whoosh.soft",
+          "seed": "scene:sticky"
+        },
+        {
+          "sound": "whoosh.swell",
+          "seed": "scene:sticky"
+        },
+        {
+          "sound": "riser.short",
+          "seed": "scene:sticky"
+        },
+        {
+          "sound": "impact.soft",
+          "seed": "scene:sticky"
+        }
+      ]
+    },
+    {
+      "id": "reveal:sticky/highlight:1",
+      "event": {
+        "id": "reveal:sticky/highlight:1",
+        "kind": "reveal",
+        "scene": "sticky",
+        "track": "sticky/highlight",
+        "at": 110.5667
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"button\" (110.22–110.63 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:sticky/highlight:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:sticky/highlight:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:sticky/highlight:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:sticky/highlight:1"
+        }
+      ]
+    },
+    {
+      "id": "reveal:sticky/AND ON PHONES:1",
+      "event": {
+        "id": "reveal:sticky/AND ON PHONES:1",
+        "kind": "reveal",
+        "scene": "sticky",
+        "track": "sticky/AND ON PHONES",
+        "at": 112.6333
+      },
+      "draft": {
+        "sound": null,
+        "why": "3.06 s from the accent on scene:bulk: at most one every 4 s"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:sticky/AND ON PHONES:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:sticky/AND ON PHONES:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:sticky/AND ON PHONES:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:sticky/AND ON PHONES:1"
+        }
+      ]
+    },
+    {
+      "id": "reveal:sticky/Sticky buy button:1",
+      "event": {
+        "id": "reveal:sticky/Sticky buy button:1",
+        "kind": "reveal",
+        "scene": "sticky",
+        "track": "sticky/Sticky buy button",
+        "at": 112.8333
+      },
+      "draft": {
+        "sound": null,
+        "why": "2.86 s from the accent on scene:bulk: at most one every 4 s"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:sticky/Sticky buy button:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:sticky/Sticky buy button:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:sticky/Sticky buy button:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:sticky/Sticky buy button:1"
+        }
+      ]
+    },
+    {
+      "id": "reveal:sticky/highlight:2",
+      "event": {
+        "id": "reveal:sticky/highlight:2",
+        "kind": "reveal",
+        "scene": "sticky",
+        "track": "sticky/highlight",
+        "at": 113.1667
+      },
+      "draft": {
+        "sound": null,
+        "why": "2.52 s from the accent on scene:bulk: at most one every 4 s"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:sticky/highlight:2"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:sticky/highlight:2"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:sticky/highlight:2"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:sticky/highlight:2"
+        }
+      ]
+    },
+    {
+      "id": "scene:bulk",
+      "event": {
+        "id": "scene:bulk",
+        "kind": "scene",
+        "scene": "bulk",
+        "at": 115.69,
+        "index": 9,
+        "from": 115.44,
+        "to": 115.94
+      },
+      "draft": {
+        "sound": {
+          "sound": "whoosh.soft",
+          "seed": "scene:bulk"
+        },
+        "why": "a scene change"
+      },
+      "alternatives": [
+        {
+          "sound": "whoosh.swell",
+          "seed": "scene:bulk"
+        },
+        {
+          "sound": "riser.short",
+          "seed": "scene:bulk"
+        },
+        {
+          "sound": "impact.soft",
+          "seed": "scene:bulk"
+        }
+      ]
+    },
+    {
+      "id": "reveal:bulk/highlight:1",
+      "event": {
+        "id": "reveal:bulk/highlight:1",
+        "kind": "reveal",
+        "scene": "bulk",
+        "track": "bulk/highlight",
+        "at": 121.3667
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"tab,\" (120.87–121.28 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:bulk/highlight:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:bulk/highlight:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:bulk/highlight:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:bulk/highlight:1"
+        }
+      ]
+    },
+    {
+      "id": "reveal:bulk/highlight:2",
+      "event": {
+        "id": "reveal:bulk/highlight:2",
+        "kind": "reveal",
+        "scene": "bulk",
+        "track": "bulk/highlight",
+        "at": 127
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"can\" (126.69–126.79 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:bulk/highlight:2"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:bulk/highlight:2"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:bulk/highlight:2"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:bulk/highlight:2"
+        }
+      ]
+    },
+    {
+      "id": "click:bulk:1",
+      "event": {
+        "id": "click:bulk:1",
+        "kind": "click",
+        "scene": "bulk",
+        "at": 127.062,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:1"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:bulk:1"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:bulk:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:bulk:1"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:bulk:1"
+        }
+      ]
+    },
+    {
+      "id": "reveal:bulk/highlight:3",
+      "event": {
+        "id": "reveal:bulk/highlight:3",
+        "kind": "reveal",
+        "scene": "bulk",
+        "track": "bulk/highlight",
+        "at": 131.6333
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"preview\" (131.10–131.48 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:bulk/highlight:3"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:bulk/highlight:3"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:bulk/highlight:3"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:bulk/highlight:3"
+        }
+      ]
+    },
+    {
+      "id": "scene:summary",
+      "event": {
+        "id": "scene:summary",
+        "kind": "scene",
+        "scene": "summary",
+        "at": 134.36,
+        "index": 10,
+        "from": 134.11,
+        "to": 134.61
+      },
+      "draft": {
+        "sound": null,
+        "why": "the scene change beside scene:bulk has an accent: never on every cut"
+      },
+      "alternatives": [
+        {
+          "sound": "whoosh.soft",
+          "seed": "scene:summary"
+        },
+        {
+          "sound": "whoosh.swell",
+          "seed": "scene:summary"
+        },
+        {
+          "sound": "riser.short",
+          "seed": "scene:summary"
+        },
+        {
+          "sound": "impact.soft",
+          "seed": "scene:summary"
+        }
+      ]
+    },
+    {
+      "id": "move:summary:1",
+      "event": {
+        "id": "move:summary:1",
+        "kind": "camera-move",
+        "scene": "summary",
+        "track": "summary/camera",
+        "big": true,
+        "at": 136.75,
+        "from": 136.2667,
+        "to": 137.2333
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"itemized\" (136.55–137.06 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "whoosh",
+          "seed": "move:summary:1",
+          "set": {
+            "approach": 0.483,
+            "recede": 0.483
+          }
+        },
+        {
+          "sound": "whoosh.soft",
+          "seed": "move:summary:1",
+          "set": {
+            "approach": 0.483,
+            "recede": 0.483
+          }
+        },
+        {
+          "sound": "whoosh.fast",
+          "seed": "move:summary:1",
+          "set": {
+            "approach": 0.483,
+            "recede": 0.483
+          }
+        }
+      ]
+    },
+    {
+      "id": "reveal:summary/highlight:1",
+      "event": {
+        "id": "reveal:summary/highlight:1",
+        "kind": "reveal",
+        "scene": "summary",
+        "track": "summary/highlight",
+        "at": 138.2333
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"shown\" (137.69–138.00 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:summary/highlight:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:summary/highlight:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:summary/highlight:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:summary/highlight:1"
+        }
+      ]
+    },
+    {
+      "id": "scene:reset",
+      "event": {
+        "id": "scene:reset",
+        "kind": "scene",
+        "scene": "reset",
+        "at": 139.88,
+        "index": 11,
+        "from": 139.63,
+        "to": 140.13
+      },
+      "draft": {
+        "sound": null,
+        "why": "the scene change beside scene:end has an accent: never on every cut"
+      },
+      "alternatives": [
+        {
+          "sound": "whoosh.soft",
+          "seed": "scene:reset"
+        },
+        {
+          "sound": "whoosh.swell",
+          "seed": "scene:reset"
+        },
+        {
+          "sound": "riser.short",
+          "seed": "scene:reset"
+        },
+        {
+          "sound": "impact.soft",
+          "seed": "scene:reset"
+        }
+      ]
+    },
+    {
+      "id": "reveal:reset/left/highlight:1",
+      "event": {
+        "id": "reveal:reset/left/highlight:1",
+        "kind": "reveal",
+        "scene": "reset",
+        "track": "reset/left/highlight",
+        "at": 144.8
+      },
+      "draft": {
+        "sound": null,
+        "why": "under \"sits\" (144.40–144.66 s)"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:reset/left/highlight:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:reset/left/highlight:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:reset/left/highlight:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:reset/left/highlight:1"
+        }
+      ]
+    },
+    {
+      "id": "click:reset:1",
+      "event": {
+        "id": "click:reset:1",
+        "kind": "click",
+        "scene": "reset",
+        "at": 147.1,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:1"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:reset:1"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:reset:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:reset:1"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:reset:1"
+        }
+      ]
+    },
+    {
+      "id": "reveal:reset/right/highlight:1",
+      "event": {
+        "id": "reveal:reset/right/highlight:1",
+        "kind": "reveal",
+        "scene": "reset",
+        "track": "reset/right/highlight",
+        "at": 150.0333
+      },
+      "draft": {
+        "sound": null,
+        "why": "2.70 s from the accent on scene:end: at most one every 4 s"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:reset/right/highlight:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:reset/right/highlight:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:reset/right/highlight:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:reset/right/highlight:1"
+        }
+      ]
+    },
+    {
+      "id": "click:reset:2",
+      "event": {
+        "id": "click:reset:2",
+        "kind": "click",
+        "scene": "reset",
+        "at": 150.5348,
+        "request": {
+          "sound": "click",
+          "seed": "kit:click:1"
+        },
+        "volume": 1
+      },
+      "draft": {
+        "sound": {
+          "sound": "click.soft",
+          "seed": "click:reset:2"
+        },
+        "why": "click style soft"
+      },
+      "alternatives": [
+        {
+          "sound": "click.crisp",
+          "seed": "click:reset:2"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "click:reset:2"
+        },
+        {
+          "sound": "click.trackpad",
+          "seed": "click:reset:2"
+        }
+      ]
+    },
+    {
+      "id": "reveal:reset/dialog:1",
+      "event": {
+        "id": "reveal:reset/dialog:1",
+        "kind": "reveal",
+        "scene": "reset",
+        "track": "reset/dialog",
+        "at": 151
+      },
+      "draft": {
+        "sound": null,
+        "why": "1.73 s from the accent on scene:end: at most one every 4 s"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:reset/dialog:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:reset/dialog:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:reset/dialog:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:reset/dialog:1"
+        }
+      ]
+    },
+    {
+      "id": "scene:end",
+      "event": {
+        "id": "scene:end",
+        "kind": "scene",
+        "scene": "end",
+        "at": 152.73,
+        "index": 12,
+        "from": 152.48,
+        "to": 152.98
+      },
+      "draft": {
+        "sound": {
+          "sound": "whoosh.soft",
+          "seed": "scene:end"
+        },
+        "why": "a scene change"
+      },
+      "alternatives": [
+        {
+          "sound": "whoosh.swell",
+          "seed": "scene:end"
+        },
+        {
+          "sound": "riser.short",
+          "seed": "scene:end"
+        },
+        {
+          "sound": "impact.soft",
+          "seed": "scene:end"
+        }
+      ]
+    },
+    {
+      "id": "reveal:end/1  Photos at full size:1",
+      "event": {
+        "id": "reveal:end/1  Photos at full size:1",
+        "kind": "reveal",
+        "scene": "end",
+        "track": "end/1  Photos at full size",
+        "at": 153.4
+      },
+      "draft": {
+        "sound": null,
+        "why": "0.67 s from the accent on scene:end: at most one every 4 s"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:end/1  Photos at full size:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:end/1  Photos at full size:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:end/1  Photos at full size:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:end/1  Photos at full size:1"
+        }
+      ]
+    },
+    {
+      "id": "reveal:end/2  Sold out, still pickable:1",
+      "event": {
+        "id": "reveal:end/2  Sold out, still pickable:1",
+        "kind": "reveal",
+        "scene": "end",
+        "track": "end/2  Sold out, still pickable",
+        "at": 153.7667
+      },
+      "draft": {
+        "sound": null,
+        "why": "1.04 s from the accent on scene:end: at most one every 4 s"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:end/2  Sold out, still pickable:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:end/2  Sold out, still pickable:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:end/2  Sold out, still pickable:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:end/2  Sold out, still pickable:1"
+        }
+      ]
+    },
+    {
+      "id": "reveal:end/3  Prices follow the discounts:1",
+      "event": {
+        "id": "reveal:end/3  Prices follow the discounts:1",
+        "kind": "reveal",
+        "scene": "end",
+        "track": "end/3  Prices follow the discounts",
+        "at": 154.1
+      },
+      "draft": {
+        "sound": null,
+        "why": "1.37 s from the accent on scene:end: at most one every 4 s"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:end/3  Prices follow the discounts:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:end/3  Prices follow the discounts:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:end/3  Prices follow the discounts:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:end/3  Prices follow the discounts:1"
+        }
+      ]
+    },
+    {
+      "id": "reveal:end/4  Bulk orders, itemized:1",
+      "event": {
+        "id": "reveal:end/4  Bulk orders, itemized:1",
+        "kind": "reveal",
+        "scene": "end",
+        "track": "end/4  Bulk orders, itemized",
+        "at": 154.4667
+      },
+      "draft": {
+        "sound": null,
+        "why": "1.74 s from the accent on scene:end: at most one every 4 s"
+      },
+      "alternatives": [
+        {
+          "sound": "riser.short",
+          "seed": "reveal:end/4  Bulk orders, itemized:1"
+        },
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:end/4  Bulk orders, itemized:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:end/4  Bulk orders, itemized:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:end/4  Bulk orders, itemized:1"
+        }
+      ]
+    },
+    {
+      "id": "reveal:end/Simple buy box:1",
+      "event": {
+        "id": "reveal:end/Simple buy box:1",
+        "kind": "reveal",
+        "scene": "end",
+        "track": "end/Simple buy box",
+        "at": 156.8667
+      },
+      "draft": {
+        "sound": {
+          "sound": "riser.short",
+          "seed": "reveal:end/Simple buy box:1"
+        },
+        "why": "a reveal"
+      },
+      "alternatives": [
+        {
+          "sound": "ding.soft",
+          "seed": "reveal:end/Simple buy box:1"
+        },
+        {
+          "sound": "chime.soft",
+          "seed": "reveal:end/Simple buy box:1"
+        },
+        {
+          "sound": "pop.soft",
+          "seed": "reveal:end/Simple buy box:1"
+        }
+      ]
+    }
+  ]
+}

@@ -16,7 +16,7 @@ Pick the part the task needs and read its reference:
 | Part | For | Read |
 |---|---|---|
 | **music** | Importing a track with `studio music add` or generating one with Lyria (`studio music gen`), fitting it to the video with `studio music fit`, using it as a bed or as the lead, and cutting to its beat | `references/music.md` |
-| **sfx** | What already makes a sound, when an `<Sfx>` earns its place, and where sounds come from | `references/sfx.md` |
+| **sfx** | Drafting a cue list from the video's events (`studio sfx draft`) and editing it, what already makes a sound, when an accent earns its place, and where sounds come from | `references/sfx.md` |
 | **mix** | What's levelled and mastered automatically, and the few levels worth changing | `references/mix.md` |
 
 A note like "the music drowns the voice" is a mix note, not a music note. Read `mix.md` before you change any level.

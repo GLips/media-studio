@@ -38,11 +38,12 @@ export function writeSfxKit(): string[] {
   for (const [name, { sound, takes = 1 }] of Object.entries(SFX_KIT)) {
     const sounds = Array.from({ length: takes }, (_, i) => {
       const file = `${name}-${i + 1}.wav`, id = `${name}${i + 1}`;
-      const rendered = renderSfx({ sound, seed: `kit:${name}:${i + 1}` });
+      const request = { sound, seed: `kit:${name}:${i + 1}` };
+      const rendered = renderSfx(request);
       writeFileSync(join(dir, file), wavFromSamples(rendered.samples, SFX_RATE));
       written.push(join(dir, file));
       imports.push(`import ${id} from './${file}';`);
-      return `{ src: ${id}, seconds: ${round(rendered.seconds)}, landsAt: ${round(rendered.landsAt)} }`;
+      return `{ src: ${id}, seconds: ${round(rendered.seconds)}, landsAt: ${round(rendered.landsAt)}, request: ${JSON.stringify(request)} }`;
     });
     entries.push(`  /** ${sound} */\n  ${name}: [${sounds.join(', ')}],`);
   }
@@ -78,7 +79,7 @@ export function writeSfxFile(request: SfxRequest, out: string): { wav: string; m
     `// Written by \`${describeRequest(request, out)}\`. Rerun that to change it.`,
     `import src from './${basename(out)}';`,
     '',
-    `export default { src, seconds: ${round(rendered.seconds)}, landsAt: ${round(rendered.landsAt)} };`,
+    `export default { src, seconds: ${round(rendered.seconds)}, landsAt: ${round(rendered.landsAt)}, request: ${JSON.stringify(request)} };`,
     '',
   ].join('\n'));
   return { wav: out, module, rendered };

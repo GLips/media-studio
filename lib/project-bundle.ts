@@ -11,6 +11,7 @@ import { webpack, type WebpackOverrideFn } from '@remotion/bundler';
 import { HostImportPlugin, HostModuleStubPlugin, HostTsconfigPathsPlugin } from './host-module-resolution.ts';
 import { previsFootageModuleFor, writePrevisFootageModule } from './previs-footage.ts';
 import { projectHostLink, readProjectHostSpec } from './project-host-spec.ts';
+import { writeSfxDraftModule } from './sfx/cue-draft-module.ts';
 
 export function projectSlug(project: string) {
   return basename(resolve(project));
@@ -47,11 +48,12 @@ export function projectWebpackOverride(project: string): WebpackOverrideFn {
   // Written before every bundle, so the import always resolves and never names a deleted file. An open Studio
   // watches it, and picks up footage as `studio gen video` rewrites it.
   writePrevisFootageModule(project);
+  const sfxDraft = writeSfxDraftModule(project);
   return (config) => ({
     ...config,
     resolve: {
       ...config.resolve,
-      alias: { ...(config.resolve?.alias as Record<string, string>), '@project': entry, '@footage': previsFootageModuleFor(project), 'react-dom': studioReactDom(entry) },
+      alias: { ...(config.resolve?.alias as Record<string, string>), '@project': entry, '@footage': previsFootageModuleFor(project), '@sfx-draft': sfxDraft, 'react-dom': studioReactDom(entry) },
       plugins: [...(config.resolve?.plugins ?? []), ...hostPlugins],
     },
     plugins: [...(config.plugins ?? []), new webpack.DefinePlugin({ PROJECT_SLUG: JSON.stringify(projectSlug(project)), REPLAY_SLUG: JSON.stringify(replaySlug(project)), BLOCKOUT_SLUG: JSON.stringify(blockoutSlug(project)) })],

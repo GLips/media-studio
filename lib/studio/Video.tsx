@@ -8,6 +8,7 @@ import { Audio } from '@remotion/media';
 import { useMemo, useRef } from 'react';
 import { AbsoluteFill, Artifact, Sequence, useCurrentFrame, useVideoConfig } from 'remotion';
 import { footage as footageList } from '@footage';
+import sfxDraft from '@sfx-draft';
 import { Caption } from './captions.tsx';
 import { duckSpans, levelGain, musicGainAt, musicLevels, VOICE_LUFS } from './mix.ts';
 import { previsRequestFor, previsSpan, type PrevisFootage, type PrevisRequest } from './previs.ts';
@@ -15,6 +16,7 @@ import { PrevisFootagePlayer } from './previs.tsx';
 import { unmeasuredAttrs } from './motion-tag.ts';
 import { FrameProbe } from './probe.tsx';
 import { SceneContext } from './scene.tsx';
+import { SfxCueListAudio, SfxCueListPlaying, type SfxCueSound } from './sfx.tsx';
 import { layoutVideo, sceneClock, sceneTimes, scenesAt, visibleSpan, type LaidScene, type Timeline, type VideoDef } from './timeline.ts';
 
 export type VideoProps = {
@@ -24,6 +26,8 @@ export type VideoProps = {
   probe: boolean;
   /** Previs scenes show their blockouts, even where generated footage exists (see previs.tsx). */
   blockouts: boolean;
+  /** Play the project's drafted cue list (sfx/cues.ts), whether or not the video imports it, to audition it. */
+  sfxDraft?: boolean;
 };
 
 /** What lib/render-pipeline.ts needs about the timeline (for the .srt and reports), emitted once as an artifact. */
@@ -40,13 +44,15 @@ export type TimelineReport = {
   crossfades: { from: string; to: string; start: number; end: number }[];
   /** Each scene's `expect`, in video seconds. */
   expectations: TimelineExpectation[];
+  /** The sound-effect cues the video plays (see lib/sfx/cues.ts), or null without a cue list. */
+  sfx: Omit<SfxCueSound, 'src'>[] | null;
 };
 /** A scene's `expect` (see SceneExpectation), its `during` in video seconds. */
 export type TimelineExpectation = { scene: string; start: number; end: number } & ({ see: string } | { hold: string; for: number; within?: number });
 export const TIMELINE_ARTIFACT = 'timeline.json';
 
 
-function timelineReport(video: VideoDef, tl: Timeline, fps: number, durationInFrames: number): string {
+function timelineReport(video: VideoDef, tl: Timeline, fps: number, durationInFrames: number, sfx: readonly SfxCueSound[] | undefined): string {
   const report: TimelineReport = {
     title: video.title,
     fps,
@@ -70,32 +76,38 @@ function timelineReport(video: VideoDef, tl: Timeline, fps: number, durationInFr
       }
       return { scene: scene.id, ...promise, start: scene.start + during.start, end: scene.start + during.end };
     })),
+    sfx: sfx ? sfx.map(({ src: _, ...cue }) => cue) : null,
   };
   return JSON.stringify(report);
 }
 
 // `reportTimeline` is off in the replay composition: its Freeze can land on frame 0 more than once, and Remotion
 // refuses a second artifact with the same name.
-export function Video({ video, captions, probe, blockouts, reportTimeline = true }: VideoProps & { video: VideoDef; reportTimeline?: boolean }) {
+export function Video({ video, captions, probe, blockouts, sfxDraft: auditionDraft = false, reportTimeline = true }: VideoProps & { video: VideoDef; reportTimeline?: boolean }) {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
   const tl = useMemo(() => layoutVideo(video), [video]);
   const root = useRef<HTMLDivElement>(null);
   const t = frame / fps;
   const painted = scenesAt(tl, t);
+  if (auditionDraft && !sfxDraft) throw new Error('this project has no drafted cue list: run studio sfx draft first');
+  const sfx = auditionDraft ? sfxDraft! : video.sfx;
 
   return (
     <AbsoluteFill ref={root} style={{ background: '#fff', overflow: 'hidden' }}>
-      {tl.scenes.map((scene, i) => {
-        const span = visibleSpan(tl, i);
-        const from = Math.floor(span.start * fps);
-        const paint = painted.find((p) => p.scene === scene);
-        return (
-          <Sequence key={scene.id} name={scene.id} from={from} durationInFrames={Math.max(1, Math.ceil(span.end * fps) - from)} layout="none">
-            {paint && <SceneLayer scene={scene} t={t} alpha={paint.alpha} footage={blockouts ? undefined : footageFor(scene)} />}
-          </Sequence>
-        );
-      })}
+      <SfxCueListPlaying.Provider value={!!sfx}>
+        {tl.scenes.map((scene, i) => {
+          const span = visibleSpan(tl, i);
+          const from = Math.floor(span.start * fps);
+          const paint = painted.find((p) => p.scene === scene);
+          return (
+            <Sequence key={scene.id} name={scene.id} from={from} durationInFrames={Math.max(1, Math.ceil(span.end * fps) - from)} layout="none">
+              {paint && <SceneLayer scene={scene} t={t} alpha={paint.alpha} footage={blockouts ? undefined : footageFor(scene)} />}
+            </Sequence>
+          );
+        })}
+      </SfxCueListPlaying.Provider>
+      {sfx && <SfxCueListAudio cues={sfx} />}
       {tl.cues.map((cue) =>
         cue.src ? (
           // One frame of slack past the line's end, so rounding the start to a frame never clips its last samples.
@@ -106,7 +118,7 @@ export function Video({ video, captions, probe, blockouts, reportTimeline = true
       )}
       {video.music && <MusicBedAudio video={video} tl={tl} fps={fps} />}
       {captions && <Caption cues={tl.cues} t={t} />}
-      {reportTimeline && frame === 0 && <Artifact filename={TIMELINE_ARTIFACT} content={timelineReport(video, tl, fps, durationInFrames)} />}
+      {reportTimeline && frame === 0 && <Artifact filename={TIMELINE_ARTIFACT} content={timelineReport(video, tl, fps, durationInFrames, sfx)} />}
       {probe && <FrameProbe root={root} />}
     </AbsoluteFill>
   );

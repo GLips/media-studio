@@ -1,14 +1,16 @@
 // probe.tsx: measures what the checks need from a rendered frame and hands it to lib/render-pipeline.ts as artifacts:
-// the framing marks (lib/framing-check.ts) and every tagged element's motion sample (lib/motion-tracks.ts). It only
-// measures; deciding what's a problem happens in Node, where every frame's report comes together.
+// the framing marks (lib/framing-check.ts), every tagged element's motion sample (lib/motion-tracks.ts) and the
+// `<Sfx>` marks (lib/sfx/cue-events.ts). It only measures; deciding what's a problem happens in Node, where every
+// frame's report comes together.
 //
 // Remotion screenshots a frame once no delayRender() is pending, so the probe holds one from the moment the frame
 // commits until its reports are in the DOM: layout must be final (see whenLaidOut) before tags have their real widths.
 
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import { Artifact, useCurrentFrame, useDelayRender } from 'remotion';
+import { Artifact, useCurrentFrame, useDelayRender, useVideoConfig } from 'remotion';
 import { framingArtifactName, type FramingMark, type FramingReport } from '../framing-check.ts';
 import { motionArtifactName, type FrameMotion, type MotionSample, type ScenePhase, type StaggerMembership } from '../motion-tracks.ts';
+import { sfxMarkArtifactName, type SfxMark, type SfxMarkAttr } from '../sfx/cue-events.ts';
 import type { Rect } from './camera.ts';
 import { W } from './frame.ts';
 import type { CameraMark } from './motion-tag.ts';
@@ -200,12 +202,22 @@ function measureMotion(root: HTMLElement, frame: number): FrameMotion {
   return report;
 }
 
+/** Every mounted `<Sfx>`'s mark (see sfx.tsx), with the scene it's in, landing in video seconds. */
+function measureSfxMarks(root: HTMLElement, now: number): SfxMark[] {
+  return [...root.querySelectorAll<HTMLElement>('[data-sfx-event]')].map((el) => {
+    const { fromNow, request, volume } = JSON.parse(el.dataset.sfxEvent!) as SfxMarkAttr;
+    return { scene: el.closest<HTMLElement>('[data-scene]')!.dataset.scene!, at: now + fromNow, request, volume };
+  });
+}
+
 // ---------- the probe ----------
 
 export function FrameProbe({ root }: { root: RefObject<HTMLDivElement | null> }) {
+  // The video's frame: the probe sits at the composition's root, outside every scene's Sequence.
   const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
   const { delayRender, continueRender } = useDelayRender();
-  const [report, setReport] = useState<{ frame: number; framing: string; motion: string } | null>(null);
+  const [report, setReport] = useState<{ frame: number; framing: string; motion: string; sfx: string } | null>(null);
   const pending = useRef<number | null>(null);
 
   useLayoutEffect(() => {
@@ -216,7 +228,10 @@ export function FrameProbe({ root }: { root: RefObject<HTMLDivElement | null> })
     // their callbacks were queued in. Deferred a microtask because on mount the parent's ref attaches after this runs.
     Promise.resolve().then(() => whenLaidOut(root.current!)).then(() => setTimeout(() => {
       if (live) {
-        setReport({ frame, framing: JSON.stringify(measureFraming(root.current!, frame)), motion: JSON.stringify(measureMotion(root.current!, frame)) });
+        setReport({
+          frame, framing: JSON.stringify(measureFraming(root.current!, frame)), motion: JSON.stringify(measureMotion(root.current!, frame)),
+          sfx: JSON.stringify(measureSfxMarks(root.current!, frame / fps)),
+        });
       }
     }));
     return () => {
@@ -226,7 +241,7 @@ export function FrameProbe({ root }: { root: RefObject<HTMLDivElement | null> })
         pending.current = null;
       }
     };
-  }, [frame, root, delayRender, continueRender]);
+  }, [frame, fps, root, delayRender, continueRender]);
 
   useEffect(() => {
     if (report?.frame !== frame || pending.current === null) return;
@@ -238,6 +253,7 @@ export function FrameProbe({ root }: { root: RefObject<HTMLDivElement | null> })
     <>
       <Artifact filename={framingArtifactName(frame)} content={report.framing} />
       <Artifact filename={motionArtifactName(frame)} content={report.motion} />
+      <Artifact filename={sfxMarkArtifactName(frame)} content={report.sfx} />
     </>
   ) : null;
 }

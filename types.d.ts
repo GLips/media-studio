@@ -44,6 +44,11 @@ declare module '*.mp4' {
 declare module '@footage' {
   export const footage: Readonly<Record<string, import('./lib/studio/previs.ts').PrevisFootage>>;
 }
+/** The project's drafted cue list, sfx/cues.ts, or null before `studio sfx draft` (lib/project-bundle.ts). */
+declare module '@sfx-draft' {
+  const cues: readonly import('./lib/studio/sfx.tsx').SfxCueSound[] | null;
+  export default cues;
+}
 /** The project folder's name, defined at bundle time by lib/project-bundle.ts. */
 declare const PROJECT_SLUG: string;
 /** Its replay composition's id, likewise. */

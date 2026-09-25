@@ -14,13 +14,15 @@ import { buildMotionGraph, motionGraphBackdropFrame, type MotionGraphSpace } fro
 import { assembleMotionTracks, formatMotionReport, motionArtifactName, type FrameMotion, type MotionTracks } from './motion-tracks.ts';
 import { measureLoudness } from './loudness.ts';
 import { artifactSink, RENDER_CHROMIUM, RENDER_CONCURRENCY, type RenderSession } from './render-session.ts';
+import { sfxEventsFrom, sfxMarkArtifactName, type SfxEvent, type SfxMark } from './sfx/cue-events.ts';
+import { sfxCueOverrides, staleSfxCues } from './sfx/cues.ts';
 import { H, W } from './studio/frame.ts';
 import { isVoicedWithDraft } from './voice-project.ts';
 import type { TimelineReport } from './studio/Video.tsx';
 
 const outDirFor = (session: RenderSession) => join(session.project, 'out');
 const videoFor = (session: RenderSession, captions: boolean) => join(outDirFor(session), captions ? 'video.mp4' : 'video-plain.mp4');
-const masterWavFor = (session: RenderSession) => join(outDirFor(session), 'mix.wav');
+const masterWavFor = (session: RenderSession, sfxDraft = false) => join(outDirFor(session), sfxDraft ? 'mix-sfx-draft.wav' : 'mix.wav');
 
 // ---------- the check ----------
 
@@ -44,7 +46,7 @@ export function checkedFrames(timeline: TimelineReport, { scene, at }: CheckScop
   return { first, last };
 }
 
-export type ProjectCheck = { ok: boolean; timeline: TimelineReport; motion: MotionTracks; report: string[] };
+export type ProjectCheck = { ok: boolean; timeline: TimelineReport; motion: MotionTracks; sfxEvents: SfxEvent[]; report: string[] };
 
 /**
  * Measures every frame of `scope` (the whole video by default) and reports framing problems as stretches of time (see
@@ -90,7 +92,20 @@ export async function checkProject(session: RenderSession, scope: CheckScope = {
     report.push(held.problems.length ? `holds: ${held.problems.length} of ${held.checked} not kept`
       : held.checked ? `holds ✓ (${held.checked} steady and visible)` : 'holds: none in the checked frames');
   }
-  return { ok: problems.length === 0 && motionReport.ok && held.problems.length === 0, timeline, motion, report };
+
+  // The cue list the video plays: rules an edit broke are reported, and a cue whose event moved fails, since it would
+  // sound out of step.
+  const sfxEvents = sfxEventsFrom({ timeline, motion, marks: frames.flatMap((f) => sink.json<SfxMark[]>(sfxMarkArtifactName(f))) });
+  let staleCues = 0;
+  if (timeline.sfx) {
+    const inSpan = { from: span.first / fps, to: (span.last + 1) / fps };
+    const stale = staleSfxCues(timeline.sfx, sfxEvents, inSpan, fps);
+    const overrides = sfxCueOverrides(timeline.sfx, timeline.cues.flatMap((c) => c.words)).filter((o) => o.at >= inSpan.from && o.at <= inSpan.to);
+    report.push(...stale.map((c) => `  ✗ ${c.at.toFixed(2)}s  sfx ${c.id}: ${c.problem}`), ...overrides.map((o) => `  ! ${o.at.toFixed(2)}s  sfx ${o.id}: ${o.problem}`));
+    report.push(`sfx: ${timeline.sfx.length} cues${stale.length ? `, ${stale.length} stale` : ''}${overrides.length ? `, ${overrides.length} overriding a rule` : ''}${stale.length || overrides.length ? '' : ' ✓'}`);
+    staleCues = stale.length;
+  }
+  return { ok: problems.length === 0 && motionReport.ok && held.problems.length === 0 && staleCues === 0, timeline, motion, sfxEvents, report };
 }
 
 /**
@@ -190,12 +205,13 @@ const DELIVERY_LUFS = -14, DELIVERY_TRUE_PEAK = -1, MASTER_TRUE_PEAK = -2;
 /**
  * Renders the soundtrack once, uncompressed, and masters it to out/mix.wav: one gain to delivery loudness, then a
  * limiter for the peaks. Not loudnorm: when its linear mode can't reach the target it becomes an AGC, which fills in
- * the music's ducks.
+ * the music's ducks. With `sfxDraft`, the project's drafted cue list plays instead of the video's own effects, into
+ * out/mix-sfx-draft.wav, to audition it beside the video's mix.
  */
-export async function renderMasteredMix(session: RenderSession): Promise<string> {
+export async function renderMasteredMix(session: RenderSession, { sfxDraft = false }: { sfxDraft?: boolean } = {}): Promise<string> {
   const { serveUrl, props, compositionFor } = session;
-  const masterWav = masterWavFor(session);
-  const inputProps = props();
+  const masterWav = masterWavFor(session, sfxDraft);
+  const inputProps = props({ sfxDraft });
   const composition = await compositionFor(inputProps);
   const tmp = mkdtempSync(join(tmpdir(), 'mix-'));
   const raw = join(tmp, 'raw.wav');
