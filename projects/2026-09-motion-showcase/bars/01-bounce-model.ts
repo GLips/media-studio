@@ -47,7 +47,9 @@ export const bouncePieceTracks = definePieceTracks<ShowcaseClock<'bounce'>>('bou
     tracks: {
       ball: (f) => {
         const pose = bouncingBallAt(f / FPS, ball);
-        return { x: pose.x, y: pose.y, values: { w: pose.w, h: pose.h, vy: pose.vy }, state: pose.phase, box: ballBox(pose) };
+        // Once it swells it's becoming bar 2's ground, meant to cover the HUD, so it keeps clear of nothing.
+        const growing = pose.phase === 'swell' || pose.phase === 'field';
+        return { x: pose.x, y: pose.y, values: { w: pose.w, h: pose.h, vy: pose.vy }, state: pose.phase, box: growing ? undefined : ballBox(pose) };
       },
     },
     keepClear: showcaseHudBoxesAt,
