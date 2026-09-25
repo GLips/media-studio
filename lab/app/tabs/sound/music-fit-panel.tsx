@@ -4,9 +4,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { planMusicFit, spliceMusicSpans, type MusicFitPlan } from '../../../../lib/music-fit.ts';
 import type { LabMusicTrack } from '../../../server.ts';
-import { LabChoice, LabControls, LabNote, LabSlider } from '../../ui.tsx';
+import { LabBench, LabChoice, LabNote, LabSlider } from '../../ui.tsx';
 import { audioBufferFromChannels, labAudio, playLabBuffer, stopLabAudio, useLabPlayhead } from './lab-audio.ts';
 import { MUSIC_SPAN_COLORS, MusicFitTimeline } from './music-fit-timeline.tsx';
+import { SoundForAgents } from './sound-words.tsx';
 
 // lib/music-track.ts plans on mono at this rate; matching it gives the same spans the CLI would.
 const MUSIC_FIT_ANALYSIS_RATE = 22050;
@@ -115,6 +116,42 @@ export function MusicFitPanel() {
   const playOriginal = (offset = 0) => decoded && playLabBuffer('music-original', decoded.buffer, { offset });
   const playFit = (offset = 0) => fit && playLabBuffer('music-fitted', fit.fitted, { offset: Math.max(0, offset) });
 
+  const stage = (
+    <div className="fit-bench-stage">
+      <div className={`fit-stage${busy ? ' busy' : ''}`}>
+        {fit ? (
+          <MusicFitTimeline plan={fit.plan} sourceSeconds={track.duration} sourceBeats={track.beats} targetSeconds={fit.seconds}
+            originalPlayhead={originalPlayhead ?? fadePlayhead} fittedPlayhead={fittedPlayhead}
+            onSeekOriginal={playOriginal} onSeekFitted={playFit} />
+        ) : (
+          <p className="fit-message">{result && 'error' in result ? result.error : decoded ? 'Finding the seams…' : 'Decoding the song…'}</p>
+        )}
+        {busy && fit && <span className="fit-busy hud">Finding the seams…</span>}
+      </div>
+      {fit && (
+        <>
+          <div className="fit-actions">
+            <button type="button" className="sound-button primary" onClick={() => playFit()}>▶ Play the fit</button>
+            <button type="button" className="sound-button" onClick={() => playFit(fit.seconds - 8)}>▶ Its last 8 s</button>
+            <button type="button" className="sound-button" onClick={() => playOriginal()}>▶ The song as written</button>
+            {fit.seconds < track.duration && decoded && (
+              <button type="button" className="sound-button bad" onClick={() => playLabBuffer('music-fade', decoded.buffer, { offset: Math.max(0, fit.seconds - 8), fadeOutAt: fit.seconds })}>
+                ▶ The lazy way: fade out at {fit.seconds.toFixed(1)} s
+              </button>
+            )}
+            <button type="button" className="sound-button" onClick={stopLabAudio}>■ Stop</button>
+          </div>
+          <LabNote>
+            Click either row to play from that point. Colours match: each coloured stretch of the fit is the same colour
+            in the song above. White lines are the seams, tall ticks the first beat of each bar.{fit.plan.spans[0].from < 0 && ' The striped stretch at the start is silence: the music comes in a moment after the picture, rather than cut into its first bar.'} Try
+            to hear the seams: if you can't, the fit worked. Planned in {Math.round(fit.planMs)} ms, right here in the
+            browser, with the same code a render uses.
+          </LabNote>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <section className="sound-part">
       <header className="sound-part-head">
@@ -129,39 +166,17 @@ export function MusicFitPanel() {
         stumbles, and the song still ends on <b>its real ending</b>.
       </LabNote>
 
-      <LabControls>
-        <LabChoice label="Song" value={track.id} options={sources.map((t) => ({ value: t.id, label: musicTrackLabel(t, sources) }))}
-          onChange={(id) => { stopLabAudio(); setTrackId(id); setResult(undefined); }}
-          hint={`From ${track.project}. ${Math.round(track.bpm)} beats a minute, so a bar of four beats is ${(240 / track.bpm).toFixed(2)} s.`} />
-        <LabSlider label="Video length" value={draftSeconds} min={Math.max(5, Math.round(track.duration * 0.35))} max={Math.round(track.duration * 2.2)} step={0.1}
-          onChange={onDraft} format={(v) => `${v.toFixed(1)} s`}
-          hint={`The song is ${track.duration.toFixed(1)} s. Shorter cuts bars out; longer repeats some.`} />
-      </LabControls>
-
-      <div className={`fit-stage${busy ? ' busy' : ''}`}>
-        {fit ? (
-          <MusicFitTimeline plan={fit.plan} sourceSeconds={track.duration} sourceBeats={track.beats} targetSeconds={fit.seconds}
-            originalPlayhead={originalPlayhead ?? fadePlayhead} fittedPlayhead={fittedPlayhead}
-            onSeekOriginal={playOriginal} onSeekFitted={playFit} />
-        ) : (
-          <p className="fit-message">{result && 'error' in result ? result.error : decoded ? 'Finding the seams…' : 'Decoding the song…'}</p>
-        )}
-        {busy && fit && <span className="fit-busy hud">Finding the seams…</span>}
-      </div>
-
-      {fit && (
-        <>
-          <div className="fit-actions">
-            <button type="button" className="sound-button primary" onClick={() => playFit()}>▶ Play the fit</button>
-            <button type="button" className="sound-button" onClick={() => playFit(fit.seconds - 8)}>▶ Its last 8 s</button>
-            <button type="button" className="sound-button" onClick={() => playOriginal()}>▶ The song as written</button>
-            {fit.seconds < track.duration && decoded && (
-              <button type="button" className="sound-button bad" onClick={() => playLabBuffer('music-fade', decoded.buffer, { offset: Math.max(0, fit.seconds - 8), fadeOutAt: fit.seconds })}>
-                ▶ The lazy way: fade out at {fit.seconds.toFixed(1)} s
-              </button>
-            )}
-            <button type="button" className="sound-button" onClick={stopLabAudio}>■ Stop</button>
-          </div>
+      <LabBench stage={stage}>
+        <div className="controls">
+          <LabChoice label="Song" value={track.id} options={sources.map((t) => ({ value: t.id, label: musicTrackLabel(t, sources) }))}
+            onChange={(id) => { stopLabAudio(); setTrackId(id); setResult(undefined); }}
+            hint={`From ${track.project}. ${Math.round(track.bpm)} beats a minute, so a bar of four beats is ${(240 / track.bpm).toFixed(2)} s.`} />
+          <LabSlider label="Video length" value={draftSeconds} min={Math.max(5, Math.round(track.duration * 0.35))} max={Math.round(track.duration * 2.2)} step={0.1}
+            onChange={onDraft} format={(v) => `${v.toFixed(1)} s`}
+            hint={`The song is ${track.duration.toFixed(1)} s. Shorter cuts bars out; longer repeats some.`} />
+        </div>
+        {fit && fit.plan.seams.length > 0 && <MusicSeamRoughness db={fit.plan.worstSeamDb} />}
+        {fit && (
           <div className="fit-seams">
             {fit.plan.seams.length === 0 && <p className="note">No seams needed: the song fits by trimming its quiet start, or waiting a moment before it comes in.</p>}
             {fit.plan.seams.map((t, i) => {
@@ -169,25 +184,28 @@ export function MusicFitPanel() {
               return (
                 <button key={t} type="button" className="fit-seam" onClick={() => playFit(t - SEAM_LEAD_IN)}
                   style={{ borderLeftColor: MUSIC_SPAN_COLORS[(i + 1) % MUSIC_SPAN_COLORS.length] }}>
-                  <b>▶ Seam {i + 1}</b>
+                  <b>▶ Seam {i + 1} · {t.toFixed(1)} s</b>
                   <span>jumps from {from.toFixed(1)} s to {to.toFixed(1)} s in the song: {jump > 0 ? `skips ${bars(jump, track.bpm)}` : `repeats ${bars(-jump, track.bpm)}`} bars</span>
                   <small>plays from {SEAM_LEAD_IN} s before it</small>
                 </button>
               );
             })}
           </div>
-          <LabNote>
-            Click either row to play from that point. Colours match: each coloured stretch of the fit is the same colour
-            in the song above. White lines are the seams, tall ticks the first beat of each bar. The roughest seam's two
-            sides differ by <b>{fit.plan.worstSeamDb.toFixed(1)} dB</b> on average across the frequencies (lower is
-            smoother; most land between 0.5 and 5).{fit.plan.spans[0].from < 0 && ' The striped stretch at the start is silence: the music comes in a moment after the picture, rather than cut into its first bar.'} Try to hear the seams: if you can't, the fit worked.
-            Planned in {Math.round(fit.planMs)} ms, right here in the browser, with the same code a render uses.
-          </LabNote>
-        </>
-      )}
+        )}
+        {fit && (
+          <SoundForAgents>
+            <p>
+              <code>studio music fit</code> runs this same plan (lib/music-fit.ts) and writes the fitted track into the project.
+              Roughest seam: <code>worstSeamDb</code> {fit.plan.worstSeamDb.toFixed(2)}, the average difference per frequency band
+              between the bars either side of it. Beat 1 of the bar was guessed as source beat {fit.plan.downbeatPhase}.
+            </p>
+          </SoundForAgents>
+        )}
+      </LabBench>
+
       {madeEarlier.length > 0 && (
         <div className="fit-earlier">
-          <span className="hud">Made earlier with studio music fit</span>
+          <span className="hud">Fits made earlier for a real video</span>
           {madeEarlier.map((t) => (
             <button key={t.id} type="button" className="sound-button"
               onClick={() => void decodeMusicTrack(t).then((d) => playLabBuffer('music-earlier', d.buffer))}>
@@ -197,5 +215,25 @@ export function MusicFitPanel() {
         </div>
       )}
     </section>
+  );
+}
+
+/** Worst-seam differences, in dB per band, past which the meter is full, and the rough end of the usual range. */
+const SEAM_ROUGH_FULL = 8, SEAM_ROUGH_USUAL = 5;
+
+/** The roughest seam as a meter from smooth to rough, with the top of the usual range marked. */
+function MusicSeamRoughness({ db }: { db: number }) {
+  const at = Math.min(1, db / SEAM_ROUGH_FULL), usual = SEAM_ROUGH_USUAL / SEAM_ROUGH_FULL;
+  const verdict = db <= 2 ? 'Very smooth: hard to hear at all.' : db <= SEAM_ROUGH_USUAL ? 'Normal: where most fits land.' : 'Rougher than usual: have a listen to it.';
+  return (
+    <div className="fit-rough">
+      <span className="hud">How well the roughest seam matches</span>
+      <div className="fit-rough-bar">
+        <i className={db > SEAM_ROUGH_USUAL ? 'over' : undefined} style={{ width: `${at * 100}%` }} />
+        <b style={{ left: `${usual * 100}%` }} title="the rough end of the usual range" />
+      </div>
+      <div className="fit-rough-scale"><span>smooth</span><span style={{ left: `${usual * 100}%` }}>usual limit</span><span>rough</span></div>
+      <small>{verdict} It compares how the bars either side of the jump sound, pitch by pitch.</small>
+    </div>
   );
 }

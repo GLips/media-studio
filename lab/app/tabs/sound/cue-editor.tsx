@@ -7,12 +7,13 @@
 // are already in the video's audio and are never scheduled twice.
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type RefObject } from 'react';
 import type { SfxEvent } from '../../../../lib/sfx/cue-events.ts';
-import { sfxCueOverrides, sfxCuePlays, sfxCueSound, type SfxCue, type SfxCueList, type SfxCueProblem } from '../../../../lib/sfx/cues.ts';
+import { SFX_CLICK_STYLES, sfxCueOverrides, sfxCuePlays, sfxCueSound, type SfxCue, type SfxCueList, type SfxCueProblem } from '../../../../lib/sfx/cues.ts';
 import { SFX_RATE } from '../../../../lib/sfx/dsp.ts';
 import { renderSfx, type SfxRequest } from '../../../../lib/sfx/library.ts';
 import type { LabSfxCuePayload, LabSfxCueSave } from '../../../sfx-cue-api.ts';
 import { LabSlider } from '../../ui.tsx';
 import { labAudio } from './lab-audio.ts';
+import { sfxSoundWords, SoundForAgents } from './sound-words.tsx';
 import './cue-editor.css';
 
 const SFX_CUE_DEMO_PROJECT = '2026-09-simple-buy-box-story';
@@ -117,21 +118,6 @@ function useLabCueScheduler(videoRef: RefObject<HTMLVideoElement | null>, list: 
 
 const sec = (x: number) => `${x.toFixed(1)} s`;
 
-const SFX_SOUND_WORDS: Record<string, string> = {
-  click: 'a mouse click', key: 'a key press', toggle: 'a switch flipping', impact: 'a soft thud', whoosh: 'a whoosh of air sweeping past',
-  riser: 'a swell that rises into the moment', chime: 'a little chime', ding: 'a bell ding', pop: 'a bubbly pop', typing: 'a burst of typing', scroll: 'scroll-wheel ticks',
-};
-const SFX_PRESET_WORDS: Record<string, string> = {
-  soft: 'gentler', fast: 'quicker', swell: 'slower and fuller', short: 'short', crisp: 'crisp', trackpad: 'a quiet trackpad tap',
-  mechanical: 'clacky', heavy: 'heavy', slam: 'hard', whip: 'a whip pan',
-};
-/** A sound as words: its recipe, and how its preset differs ("a whoosh of air sweeping past, gentler"). */
-function sfxSoundWords(sound: SfxRequest): string {
-  const [recipe, preset] = sound.sound.split('.');
-  const how = preset && SFX_PRESET_WORDS[preset];
-  return `${SFX_SOUND_WORDS[recipe] ?? recipe}${how ? `, ${how}` : ''}`;
-}
-
 const REVEAL_KINDS = new Set(['highlight', 'dialog', 'card']);
 /** A reveal's track (`sale/left/highlight`, `title/Simple buy box`) as what appears. */
 function revealWords(track: string): string {
@@ -186,7 +172,7 @@ function sfxRuleWords(rule: string, events: ReadonlyMap<string, SfxEvent>): stri
 /** Why the draft chose what it did, as a sentence. */
 function sfxDraftWords(cue: SfxCue, list: SfxCueList, events: ReadonlyMap<string, SfxEvent>): string {
   const { why } = cue.draft;
-  if (why.startsWith('click style')) return `Every click in the video gets the same click sound (the “${list.clickStyle}” style).`;
+  if (why.startsWith('click style')) return `Every click in this video gets the same click sound (${sfxSoundWords({ sound: SFX_CLICK_STYLES[list.clickStyle] })}), so they all sound like one mouse.`;
   if (why === 'typing') return 'Typing always gets key sounds.';
   if (why.startsWith('plays from its <Sfx>')) return "The scene plays this sound itself: someone placed it by hand in the scene's code. The list only counts it, so other sounds keep clear of it.";
   if (why === 'a scene change') return 'A new scene is the best place for a big sound: it marks a turn in the story.';
@@ -249,10 +235,38 @@ export function SfxCueEditor() {
       .then((payload) => {
         setSaved(payload);
         setList(payload.list);
-        setSelectedId(payload.list.cues.find((c) => c.event.kind === 'scene' && c.draft.sound)?.event.id ?? null);
+        setSelectedId(firstLabCue(payload.list)?.event.id ?? null);
       })
       .catch((e: Error) => setLoadError(e.message));
   }, []);
+
+  // Chrome defers loading a video in a tab that isn't showing, and one that stalls there (or behind other lab tabs'
+  // connections) can sit at 0:00 without asking again; asking again unsticks it. Once it knows its length, it opens
+  // on the first cue.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !saved) return;
+    const first = firstLabCue(saved.list);
+    const openOnFirstCue = () => {
+      if (first && video.currentTime === 0) video.currentTime = first.event.at;
+    };
+    if (video.readyState >= HTMLMediaElement.HAVE_METADATA) openOnFirstCue();
+    else video.addEventListener('loadedmetadata', openOnFirstCue, { once: true });
+    const askAgain = () => {
+      if (document.visibilityState === 'visible' && video.readyState === HTMLMediaElement.HAVE_NOTHING) video.load();
+    };
+    let asks = 0;
+    const retry = setInterval(() => {
+      if (video.readyState > HTMLMediaElement.HAVE_NOTHING || ++asks > 5) return clearInterval(retry);
+      askAgain();
+    }, 3000);
+    document.addEventListener('visibilitychange', askAgain);
+    return () => {
+      clearInterval(retry);
+      document.removeEventListener('visibilitychange', askAgain);
+      video.removeEventListener('loadedmetadata', openOnFirstCue);
+    };
+  }, [saved]);
 
   // Render every sound the list plays up front, a few per frame, so the first play and the first click are instant.
   useEffect(() => {
@@ -347,58 +361,25 @@ export function SfxCueEditor() {
     setSaved(reply as LabSfxCuePayload);
     // Edits made while the save was in flight stay; only an untouched list takes the saved one.
     setList((current) => (current === sent ? (reply as LabSfxCuePayload).list : current));
-    setSaveState({ kind: 'saved', text: `Saved projects/${saved.project}/sfx/cues.json and regenerated generated/sfx-cues.ts` });
+    setSaveState({ kind: 'saved', text: 'Saved: the next render of the video plays your edits.' });
   };
 
   return (
     <section className="cue-editor">
       <header className="cue-head">
         <span className="hud">Cue editor · {saved.project}</span>
-        <h3>Every sound effect in a real video, one marker each</h3>
         <p className="note">
-          Click a marker to hear that moment: the video jumps to just before it and plays three seconds with the sound. Pick a
-          cue to swap its sound, mute it, or give a silent one a sound, then save.
+          A <b>cue</b> is one moment in the video where a sound could go: a click, a scene change, something appearing. The
+          studio drafted a sound, or a reason to stay silent, for each. Click a marker to hear that moment: the video jumps to
+          just before it and plays three seconds with the sound. Then swap its sound, mute it, or give a silent one a sound.
         </p>
       </header>
-
-      <div className="intro-grid cue-explainer">
-        <div>
-          <span className="hud">What a cue list is</span>
-          <p>
-            <code>studio sfx draft</code> watches the finished video and lists every moment a sound could go: each click, key
-            press, scene change, camera move and thing appearing. Each is a <b>cue</b>, with the sound the studio picked for
-            it, or a note on why it left it silent, plus a few other sounds that would fit.
-          </p>
-        </div>
-        <div>
-          <span className="hud">Why it drafts with rules</span>
-          <p>
-            A sound on every moment turns a walkthrough into a pinball machine. So the draft keeps big sounds (whooshes, risers,
-            hits) to scene changes, big camera moves and things appearing; at most one every 4 s; never on two cuts in a row;
-            and never on top of a spoken word. Clicks all sound, except one right after another. Break a rule here and a
-            warning says which.
-          </p>
-        </div>
-        <div className="good">
-          <span className="hud">Does re-drafting undo my edits?</span>
-          <p>
-            <b>No: re-running <code>studio sfx draft</code> keeps your hand edits</b> (sound, nudge, volume), matched by each
-            event's id. It rewrites only the draft and the alternatives, and plans the new draft around your edits. It drops an
-            edit only if that event is gone, or its numbered series (like the clicks in one scene) gained or lost events so the
-            ids shifted, and it prints what it dropped.
-          </p>
-        </div>
-      </div>
 
       <div className="cue-top">
         <div className="cue-video">
           {saved.video
-            ? <video ref={videoRef} src={saved.video} controls preload="auto" playsInline />
+            ? <video ref={videoRef} src={saved.video} controls preload="metadata" playsInline />
             : <p className="cue-error">This project has no rendered video (out/video.mp4) to play the cues over.</p>}
-          <label className="cue-toggle">
-            <input type="checkbox" checked={hearList} onChange={(e) => setHearList(e.target.checked)} />
-            Play the cue list's sounds over the video <small>(off: just voice, music and the scenes' own sounds)</small>
-          </label>
         </div>
         {selected
           ? <SfxCueDetail cue={selected} list={list} events={events} warnings={warningsById.get(selected.event.id) ?? []} onEdit={(edit) => editCue(selected.event.id, edit)} onPlayMoment={() => playMoment(selected)}
@@ -410,12 +391,10 @@ export function SfxCueEditor() {
       </div>
 
       <div className="cue-bar">
-        <div className="cue-legend">
-          {(['sounding', 'silent', 'edited', 'placed'] as const).map((s) => (
-            <span key={s} className="cue-legend-item"><i className={`cue-swatch ${s}`} />{LAB_CUE_STATE_WORDS[s]} <b>{counts.get(s)?.length ?? 0}</b></span>
-          ))}
-          <span className="cue-legend-item"><i className="cue-swatch warn" />breaks a rule <b>{warnings.length}</b></span>
-        </div>
+        <label className="cue-toggle">
+          <input type="checkbox" checked={hearList} onChange={(e) => setHearList(e.target.checked)} />
+          Play the cues' sounds <small>(off: just voice, music and the scenes' own sounds)</small>
+        </label>
         <div className="cue-zoom">
           <span className="hud">Zoom</span>
           {[1, 2, 4, 8].map((z) => <button key={z} type="button" className={z === zoom ? 'on' : undefined} onClick={() => setZoom(z)}>{z}×</button>)}
@@ -432,15 +411,23 @@ export function SfxCueEditor() {
       <SfxCueTimeline payload={saved} list={list} zoom={zoom} selectedId={selectedId} warningsById={warningsById} videoRef={videoRef}
         onHover={setHoverId} onPick={playMoment} onSeek={seekVideo} />
 
-      <p className="cue-readout">
-        {shown
-          ? <><b>{sec(shown.event.at)}</b> · {sfxEventWords(shown.event)} · <span className={`cue-state ${labCueState(shown)}`}>{labCueStateLine(shown, list)}</span></>
-          : 'Hover a marker to see what it is.'}
-      </p>
+      <div className="cue-under">
+        <p className="cue-readout">
+          {shown
+            ? <><b>{sec(shown.event.at)}</b> · {sfxEventWords(shown.event)} · <span className={`cue-state ${labCueState(shown)}`}>{labCueStateLine(shown, list)}</span></>
+            : 'Hover a marker to see what it is.'}
+        </p>
+        <div className="cue-legend">
+          {(['sounding', 'silent', 'edited', 'placed'] as const).map((s) => (
+            <span key={s} className="cue-legend-item"><i className={`cue-swatch ${s}`} />{LAB_CUE_STATE_WORDS[s]} <b>{counts.get(s)?.length ?? 0}</b></span>
+          ))}
+          <span className="cue-legend-item"><i className="cue-swatch warn" />breaks a rule <b>{warnings.length}</b></span>
+        </div>
+      </div>
 
       {warnings.length > 0 && (
         <div className="cue-warnings">
-          <span className="hud">Rules your edits break · what studio check will report</span>
+          <span className="hud">Rules your edits break</span>
           <ul>
             {warnings.map((w) => (
               <li key={`${w.id}|${w.problem}`}>
@@ -452,18 +439,60 @@ export function SfxCueEditor() {
           <p className="note">A warning doesn't stop anything: the video plays your edit. It's there so breaking a rule is a choice, not an accident.</p>
         </div>
       )}
+
+      <div className="intro-grid cue-explainer">
+        <div>
+          <span className="hud">Where the list comes from</span>
+          <p>
+            The studio watches the finished video and lists every moment a sound could go: each click, key press, scene
+            change, camera move and thing appearing. For each it picks a sound, or notes why it stayed silent, and suggests a
+            few others that would fit.
+          </p>
+        </div>
+        <div>
+          <span className="hud">Why it drafts with rules</span>
+          <p>
+            A sound on every moment turns a walkthrough into a pinball machine. So the draft keeps big sounds (whooshes, risers,
+            hits) to scene changes, big camera moves and things appearing; at most one every 4 s; never on two cuts in a row;
+            and never on top of a spoken word. Clicks all sound, except one right after another. Break a rule here and a
+            warning says which.
+          </p>
+        </div>
+        <div className="good">
+          <span className="hud">Does redrafting undo my edits?</span>
+          <p>
+            <b>No.</b> When the video changes and the studio drafts its list again, it keeps what you changed by hand (sound,
+            nudge, volume) and plans the new draft around it. An edit is lost only if its moment is gone from the video, or if
+            a scene gained or lost clicks so the studio can't tell which click was which. It says which edits it lost.
+          </p>
+        </div>
+      </div>
+      <SoundForAgents>
+        <p>
+          The list is <code>projects/{saved.project}/sfx/cues.json</code>, written by <code>studio sfx draft</code> (lib/sfx/cues.ts).
+          Save writes it and regenerates <code>generated/sfx-cues.ts</code>; the warnings are what <code>studio check</code> reports.
+        </p>
+        <p>
+          A redraft matches hand edits by event id (like <code>click:photos:3</code>). Ids in a numbered series shift when the
+          series gains or loses events, so a changed count drops that series' edits, and the CLI prints what it dropped.
+          Clicks use the list's click style, <code>{list.clickStyle}</code> (<code>{SFX_CLICK_STYLES[list.clickStyle]}</code>).
+        </p>
+      </SoundForAgents>
     </section>
   );
 }
+
+/** The cue the editor opens on: the first scene change with a sound, a moment worth hearing. */
+const firstLabCue = (list: SfxCueList) => list.cues.find((c) => c.event.kind === 'scene' && c.draft.sound);
 
 const LAB_CUE_STATE_WORDS: Record<LabCueState, string> = { sounding: 'sounds (draft)', silent: 'silent (draft)', edited: 'edited by hand', placed: "the scene's own sound" };
 
 function labCueStateLine(cue: SfxCue, list: SfxCueList): string {
   const now = sfxCueSound(cue, list.clickStyle);
   switch (labCueState(cue)) {
-    case 'placed': return `plays ${cue.event.kind === 'placed' ? cue.event.request.sound : ''} from the scene itself`;
-    case 'edited': return `edited (${labCueEditWords(cue)})${now ? `: plays ${now.sound}` : ': silent'}`;
-    case 'sounding': return `plays ${now!.sound}`;
+    case 'placed': return `the scene plays ${cue.event.kind === 'placed' ? sfxSoundWords(cue.event.request) : 'it'} itself`;
+    case 'edited': return `edited (${labCueEditWords(cue)})${now ? `: plays ${sfxSoundWords(now)}` : ': silent'}`;
+    case 'sounding': return `plays ${sfxSoundWords(now!)}`;
     case 'silent': return `silent: ${sfxDraftWords(cue, list, new Map(list.cues.map((c) => [c.event.id, c.event])))}`;
   }
 }
@@ -552,68 +581,75 @@ function SfxCueDetail({ cue, list, events, warnings, onEdit, onPlayMoment, onSte
 
   return (
     <aside className="cue-detail">
-      <div className="cue-detail-head">
-        <span className="hud">{event.kind === 'camera-move' ? 'camera move' : event.kind} · {sec(event.at)}</span>
-        <span className="cue-step">
-          <button type="button" onClick={() => onStep(-1)} aria-label="Previous cue">‹</button>
-          <button type="button" onClick={() => onStep(1)} aria-label="Next cue">›</button>
-        </span>
+      <div className="cue-detail-main">
+        <div className="cue-detail-head">
+          <span className="hud">{event.kind === 'camera-move' ? 'camera move' : event.kind} · {sec(event.at)}</span>
+          <span className="cue-step">
+            <button type="button" onClick={() => onStep(-1)} aria-label="Previous cue">‹</button>
+            <button type="button" onClick={() => onStep(1)} aria-label="Next cue">›</button>
+          </span>
+        </div>
+        <h4>{sfxEventWords(event)[0].toUpperCase() + sfxEventWords(event).slice(1)}</h4>
+        <button type="button" className="cue-moment" onClick={onPlayMoment}>▶ Play this moment</button>
+
+        <div className="cue-draft">
+          <span className="hud">The studio's draft</span>
+          <p>
+            <b>{cue.draft.sound ? `Sounds: ${sfxSoundWords(cue.draft.sound)}.` : event.kind === 'placed' ? 'Plays from the scene.' : 'Left silent.'}</b>{' '}
+            {sfxDraftWords(cue, list, events)}
+          </p>
+        </div>
+
+        {warnings.map((w) => (
+          <p key={w.problem} className="cue-warning"><b>Breaks a rule:</b> {sfxRuleWords(w.problem, events)}</p>
+        ))}
+        <SoundForAgents>
+          <p>Event <code>{event.id}</code>; the draft's reason: <code>{cue.draft.why}</code></p>
+          {now && <pre>{JSON.stringify(now)}</pre>}
+        </SoundForAgents>
       </div>
-      <h4>{sfxEventWords(event)[0].toUpperCase() + sfxEventWords(event).slice(1)}</h4>
-      <button type="button" className="cue-moment" onClick={onPlayMoment}>▶ Play this moment</button>
 
-      <div className="cue-draft">
-        <span className="hud">The studio's draft</span>
-        <p>
-          <b>{cue.draft.sound ? `Sounds: ${sfxSoundWords(cue.draft.sound)}.` : event.kind === 'placed' ? 'Plays from the scene.' : 'Left silent.'}</b>{' '}
-          {sfxDraftWords(cue, list, events)}
-        </p>
-        <code>{cue.draft.why}</code>
+      <div className="cue-detail-edit">
+        {state === 'placed' ? (
+          <p className="note">
+            This sound isn't the list's to change: the {event.scene} scene's own code plays it. It's listed so the list's big
+            sounds keep clear of it.
+            {now && <> <button type="button" className="cue-link" onClick={() => previewLabCueSound(now)}>▶ hear it</button></>}
+          </p>
+        ) : (
+          <>
+            <div className="cue-now">
+              <span className="hud">Plays now</span>
+              <p>
+                {now ? <b>{sfxSoundWords(now)}</b> : <b>Nothing: silent</b>}
+                {isCueEdited(cue) && <span className="cue-edit-tag">{labCueEditWords(cue)}</span>}
+              </p>
+            </div>
+            <ul className="cue-options">
+              {options.map((o) => {
+                const on = sameSfxRequest(o, now);
+                return (
+                  <li key={JSON.stringify(o)} className={on ? 'on' : undefined}>
+                    <button type="button" className="cue-hear" onClick={() => previewLabCueSound(o, volume)} aria-label={`Hear ${sfxSoundWords(o)}`}>▶</button>
+                    <span><b>{sfxSoundWords(o)}</b><small>{o.sound}{o === cue.draft.sound && <em>the draft's pick</em>}</small></span>
+                    <button type="button" disabled={on} onClick={() => choose(o)}>{on ? 'Playing' : now ? 'Swap to this' : 'Fill with this'}</button>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="cue-actions">
+              <button type="button" disabled={!now} onClick={mute}>Mute</button>
+              <button type="button" disabled={!isCueEdited(cue)} onClick={reset}>Reset to the draft</button>
+            </div>
+            <div className="cue-sliders">
+              <LabSlider label="Nudge" value={cue.nudge ?? 0} min={-0.5} max={0.5} step={0.01} onChange={setNudge}
+                format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(2)} s`} hint="Earlier or later than its moment." />
+              <LabSlider label="Volume" value={volume} min={0} max={2} step={0.05} onChange={setVolume}
+                format={(v) => `${Math.round(v * 100)}%`} hint="100% is the studio's level, quieter than the voice." />
+            </div>
+          </>
+        )}
       </div>
-
-      {warnings.map((w) => (
-        <p key={w.problem} className="cue-warning"><b>Breaks a rule:</b> {sfxRuleWords(w.problem, events)}</p>
-      ))}
-
-      {state === 'placed' ? (
-        <p className="note">
-          This sound isn't the list's to change: the {event.scene} scene plays it with its own <code>&lt;Sfx&gt;</code>. It's
-          listed so the list's big sounds keep clear of it.
-          {now && <> <button type="button" className="cue-link" onClick={() => previewLabCueSound(now)}>▶ hear it</button></>}
-        </p>
-      ) : (
-        <>
-          <div className="cue-now">
-            <span className="hud">Plays now</span>
-            <p>
-              {now ? <><b>{now.sound}</b>, {sfxSoundWords(now)}</> : <b>Nothing: silent</b>}
-              {isCueEdited(cue) && <span className="cue-edit-tag">{labCueEditWords(cue)}</span>}
-            </p>
-          </div>
-          <ul className="cue-options">
-            {options.map((o) => {
-              const on = sameSfxRequest(o, now);
-              return (
-                <li key={JSON.stringify(o)} className={on ? 'on' : undefined}>
-                  <button type="button" className="cue-hear" onClick={() => previewLabCueSound(o, volume)} aria-label={`Hear ${o.sound}`}>▶</button>
-                  <span><b>{o.sound}</b>{o === cue.draft.sound && <em> draft</em>}<small>{sfxSoundWords(o)}</small></span>
-                  <button type="button" disabled={on} onClick={() => choose(o)}>{on ? 'Playing' : now ? 'Swap to this' : 'Fill with this'}</button>
-                </li>
-              );
-            })}
-          </ul>
-          <div className="cue-actions">
-            <button type="button" disabled={!now} onClick={mute}>Mute</button>
-            <button type="button" disabled={!isCueEdited(cue)} onClick={reset}>Reset to the draft</button>
-          </div>
-          <div className="cue-sliders">
-            <LabSlider label="Nudge" value={cue.nudge ?? 0} min={-0.5} max={0.5} step={0.01} onChange={setNudge}
-              format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(2)} s`} hint="Move the sound earlier or later than its moment." />
-            <LabSlider label="Volume" value={volume} min={0} max={2} step={0.05} onChange={setVolume}
-              format={(v) => `${Math.round(v * 100)}%`} hint="100% is the level the studio mixes effects at under the voice." />
-          </div>
-        </>
-      )}
     </aside>
   );
 }

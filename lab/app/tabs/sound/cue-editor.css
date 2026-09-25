@@ -1,21 +1,24 @@
-/* cue-editor.css: the Sound tab's cue editor: a video with its detail panel beside it, a lane-per-kind timeline under
-   them, and the rules the edits break. Marker colours: cream sounds, hollow is silent, red-orange is edited, cobalt
+/* cue-editor.css: the Sound tab's cue editor: a video with its detail panel beside it and a lane-per-kind timeline
+   right under them, sized so marker, video and panel fit one 1440×900 screen; then the rules the edits break. Marker colours: cream sounds, hollow is silent, red-orange is edited, cobalt
    is a scene's own sound. */
 
-.cue-editor { display: flex; flex-direction: column; gap: 16px; padding-top: 28px; border-top: 1px solid var(--line); }
-.cue-head h3 { margin: 2px 0 6px; font-size: 32px; line-height: 1.05; font-weight: 900; font-stretch: 80%; text-transform: uppercase; }
+.cue-editor { display: flex; flex-direction: column; gap: 10px; }
+.cue-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
 .cue-explainer code, .cue-detail code { font-family: var(--mono); font-size: 0.85em; }
+.cue-explainer { margin-top: 12px; }
 .cue-explainer p { font-size: 14px; }
 .cue-error { color: var(--red); margin: 0; }
 .cue-saved { color: var(--pass); margin: 0; font-size: 14px; }
 
-.cue-top { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr); gap: 16px; align-items: start; }
+/* The panel takes the video's height and scrolls past it (contain: size keeps its content from growing the row). */
+.cue-top { display: grid; grid-template-columns: minmax(0, 560px) minmax(320px, 1fr); gap: 16px; }
 .cue-video video { width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 6px; display: block; }
-.cue-toggle { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 14px; cursor: pointer; }
+.cue-toggle { display: flex; gap: 8px; align-items: center; font-size: 14px; cursor: pointer; }
 .cue-toggle small { color: var(--dim); }
 .cue-toggle input { accent-color: var(--red); }
 
-.cue-detail { background: var(--panel); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.cue-detail { background: var(--panel); border-radius: 10px; padding: 12px 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 20px; align-content: start; contain: size; overflow-y: auto; }
+.cue-detail-main, .cue-detail-edit { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .cue-detail h4 { margin: 0; font-size: 19px; line-height: 1.25; }
 .cue-detail p { margin: 0; font-size: 14px; }
 .cue-detail-head { display: flex; justify-content: space-between; align-items: center; }
@@ -24,17 +27,16 @@
 .cue-moment { align-self: flex-start; background: var(--cream); color: var(--ground); border: 0; border-radius: 999px; padding: 6px 14px; font-weight: 700; cursor: pointer; }
 .cue-moment:hover { background: #fff; }
 .cue-draft, .cue-now { display: flex; flex-direction: column; gap: 4px; }
-.cue-draft code { color: var(--dim); font-size: 11px; word-break: break-word; }
 .cue-edit-tag { margin-left: 8px; font-family: var(--mono); font-size: 11px; text-transform: uppercase; color: var(--red); }
 .cue-warning { background: rgba(238, 76, 35, 0.12); border-left: 3px solid var(--red); padding: 8px 10px; border-radius: 4px; }
 .cue-link { background: none; border: 0; color: var(--cream); text-decoration: underline; cursor: pointer; padding: 0; }
 
 .cue-options { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.cue-options li { display: grid; grid-template-columns: 30px 1fr auto; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; }
+.cue-options li { display: grid; grid-template-columns: 30px 1fr auto; gap: 8px; align-items: center; padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; }
 .cue-options li.on { border-color: var(--cream); }
-.cue-options b { font-family: var(--mono); font-size: 13px; }
+.cue-options b { font-size: 14px; }
 .cue-options em { font-style: normal; font-family: var(--mono); font-size: 10px; text-transform: uppercase; color: var(--dim); margin-left: 6px; }
-.cue-options small { display: block; color: var(--dim); font-size: 12px; }
+.cue-options small { display: block; color: var(--dim); font-family: var(--mono); font-size: 11px; }
 .cue-options button, .cue-actions button { background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 13px; }
 .cue-options button:hover:not(:disabled), .cue-actions button:hover:not(:disabled) { border-color: var(--cream); }
 .cue-options button:disabled, .cue-actions button:disabled { opacity: 0.4; cursor: default; }
@@ -63,9 +65,9 @@
 .cue-swatch.placed, .cue-marker.placed { background: var(--cobalt); }
 .cue-swatch.warn { background: transparent; border-color: var(--red); border-style: dashed; }
 
-.cue-timeline { display: grid; grid-template-columns: 124px minmax(0, 1fr); background: var(--panel); border-radius: 10px; padding: 8px 0; }
+.cue-timeline { display: grid; grid-template-columns: 142px minmax(0, 1fr); background: var(--panel); border-radius: 10px; padding: 6px 0; }
 .cue-lane-labels { display: flex; flex-direction: column; font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dim); padding-left: 12px; }
-.cue-lane-labels span, .cue-row { height: 30px; display: flex; align-items: center; }
+.cue-lane-labels span, .cue-row { height: 26px; display: flex; align-items: center; }
 .cue-lane-labels span:nth-child(-n + 3), .cue-rows > .cue-row:nth-child(-n + 3) { height: 22px; }
 .cue-scroll { overflow-x: auto; padding: 0 12px 4px 8px; }
 .cue-rows { position: relative; min-width: 100%; }
@@ -76,13 +78,14 @@
 .cue-scenes span.odd { background: #1c1c23; }
 .cue-scenes span:hover { color: var(--cream); }
 .cue-words i { position: absolute; top: 7px; height: 8px; background: rgba(65, 68, 244, 0.55); border-radius: 1px; }
-.cue-marker { position: absolute; top: 5px; transform: translateX(-50%); cursor: pointer; transition: transform 0.1s, height 0.1s; }
+.cue-marker { position: absolute; top: 3px; transform: translateX(-50%); cursor: pointer; transition: transform 0.1s, height 0.1s; }
 .cue-marker:hover { transform: translateX(-50%) scaleY(1.2); z-index: 2; }
 .cue-marker.warn { outline: 2px dashed var(--red); outline-offset: 2px; }
-.cue-marker.selected { top: 1px; height: 26px; box-shadow: 0 0 0 2px var(--ground), 0 0 0 4px var(--cream); z-index: 3; }
+.cue-marker.selected { top: 0; height: 24px; box-shadow: 0 0 0 2px var(--ground), 0 0 0 4px var(--cream); z-index: 3; }
 .cue-playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--red); pointer-events: none; z-index: 4; }
 
-.cue-readout { margin: 0; min-height: 3em; font-size: 14px; color: var(--cream); }
+.cue-under { display: flex; flex-direction: column; gap: 6px; }
+.cue-readout { margin: 0; min-height: 1.6em; font-size: 14px; color: var(--cream); }
 .cue-state.silent { color: var(--dim); }
 .cue-state.edited { color: var(--red); }
 .cue-state.placed { color: #8a8cff; }
@@ -94,4 +97,5 @@
 
 @media (max-width: 900px) {
   .cue-top { grid-template-columns: 1fr; }
+  .cue-detail { contain: none; }
 }

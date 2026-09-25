@@ -15,6 +15,7 @@
 .sfx-wave canvas { display: block; width: 100%; height: auto; }
 .sfx-lands { position: absolute; top: 0; bottom: 22px; border-left: 2px solid var(--red); pointer-events: none; }
 .sfx-lands .hud { position: absolute; top: 6px; left: 6px; white-space: nowrap; color: var(--red); }
+.sfx-lands.left .hud { left: auto; right: 6px; }
 .sound-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--cream); pointer-events: none; }
 .sfx-actions, .fit-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .sfx-reset { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; justify-content: center; }
@@ -29,10 +30,31 @@
 .fit-label.cream { fill: var(--cream); }
 .fit-seek { cursor: pointer; }
 
-.fit-seams { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.fit-bench-stage { display: flex; flex-direction: column; gap: 12px; }
+.fit-seams { display: flex; flex-direction: column; gap: 8px; }
 .fit-seam { display: flex; flex-direction: column; gap: 2px; text-align: left; background: var(--panel); border: 0; border-left: 4px solid var(--line); border-radius: 8px; padding: 10px 14px; cursor: pointer; }
 .fit-seam:hover { background: var(--line); }
 .fit-seam span { font-size: 14px; }
 .fit-seam small { color: var(--dim); font-size: 12px; }
 .fit-earlier { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.sound-part .controls > .choice:first-child { grid-column: span 2; }
+
+.sound-button kbd { font: 11px var(--mono); border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; margin-left: 6px; opacity: 0.6; }
+.sfx-param-name { font-size: 11px !important; color: var(--dim) !important; background: none !important; padding: 0 !important; margin-left: 4px; }
+
+/* The meter for how well the roughest seam matches: a bar from smooth to rough, the usual range's top marked. */
+.fit-rough { display: flex; flex-direction: column; gap: 6px; background: var(--panel); border-radius: 8px; padding: 12px 14px; }
+.fit-rough-bar { position: relative; height: 10px; border-radius: 5px; background: linear-gradient(90deg, color-mix(in srgb, var(--pass) 30%, transparent), color-mix(in srgb, var(--red) 30%, transparent)); }
+.fit-rough-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; background: var(--pass); }
+.fit-rough-bar i.over { background: var(--red); }
+.fit-rough-bar b { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--cream); }
+.fit-rough-scale { position: relative; display: flex; justify-content: space-between; font: 11px var(--mono); text-transform: uppercase; color: var(--dim); height: 14px; }
+.fit-rough-scale span:nth-child(2) { position: absolute; transform: translateX(-50%); white-space: nowrap; color: var(--cream); }
+.fit-rough small { color: var(--dim); font-size: 13px; }
+
+/* "For agents": code, CLI names and raw numbers, folded away. */
+.sound-agents { color: var(--dim); font-size: 13px; }
+.sound-agents summary { cursor: pointer; font-weight: 600; }
+.sound-agents p, .sound-agents ul { margin: 8px 0; line-height: 1.5; }
+.sound-agents ul { padding-left: 18px; }
+.sound-agents pre { margin: 8px 0; white-space: pre-wrap; word-break: break-word; }
+.sound-agents code, .sound-agents pre { font-family: var(--mono); color: var(--cream); font-size: 12px; }

@@ -47,13 +47,15 @@ export function SfxWaveform({ samples, ghost, rate, landsAt, playhead }: {
       ctx.fillStyle = LAB_COLORS.line;
       ctx.fillRect(x, WAVE_H - RULER_H, 1, 6);
       ctx.fillStyle = LAB_COLORS.dim;
-      ctx.fillText(`${Number(t.toFixed(2))} s`, x + 4, WAVE_H - 6);
+      // A label that would run off the right edge sits left of its tick instead.
+      const label = `${Number(t.toFixed(2))} s`, width = ctx.measureText(label).width;
+      ctx.fillText(label, x + 4 + width > WAVE_W ? x - 4 - width : x + 4, WAVE_H - 6);
     }
   }, [samples, ghost, rate, seconds]);
   return (
     <div className="sfx-wave">
       <canvas ref={canvas} width={WAVE_W} height={WAVE_H} />
-      <div className="sfx-lands" style={{ left: `${(landsAt / seconds) * 100}%` }}>
+      <div className={`sfx-lands${landsAt / seconds > 0.6 ? ' left' : ''}`} style={{ left: `${(landsAt / seconds) * 100}%` }}>
         <span className="hud">where the hit lands · {landsAt.toFixed(2)} s</span>
       </div>
       {playhead !== null && <div className="sound-playhead" style={{ left: `${(playhead / seconds) * 100}%` }} />}
