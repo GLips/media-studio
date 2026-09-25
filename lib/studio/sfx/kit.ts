@@ -43,7 +43,7 @@ export const SFX = {
   /** riser */
   riser: [{ src: riser1, seconds: 2.1078, landsAt: 1.55, request: {"sound":"riser","seed":"kit:riser:1"} }],
   /** impact */
-  impact: [{ src: impact1, seconds: 1.165, landsAt: 0.05, request: {"sound":"impact","seed":"kit:impact:1"} }],
+  impact: [{ src: impact1, seconds: 0.6061, landsAt: 0.05, request: {"sound":"impact","seed":"kit:impact:1"} }],
   /** chime */
   chime: [{ src: chime1, seconds: 2.2115, landsAt: 0.05, request: {"sound":"chime","seed":"kit:chime:1"} }],
   /** chime.success */

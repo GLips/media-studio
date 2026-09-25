@@ -60,9 +60,11 @@ the series' edits and names them: redo those.
 ## Where sounds come from
 
 Every sound is synthesized from a seeded recipe in `lib/sfx/` (after Farnell's *Designing Sound*): `whoosh`, `riser`,
-`impact`, `chime`, `ding`, `pop`, `click`, `key`, `toggle`, `typing`, `scroll` and `buzz` (a tattoo machine; its
-`strike` preset is one needle landing at `lead`, its run-up whispered 14 dB under (`air`) so the touch bites as a hit
-(`snap`)), each in a small room (`room`).
+`impact` (a dry hit: a crack, a thwack of noise that dies in a few cycles, and a kick's body under it, `weight` its low
+end; `impact.lock` strikes twice, a bolt catching just after the hit), `chime`, `ding`, `pop`, `click`, `key`,
+`toggle`, `typing`, `scroll` and `buzz` (a tattoo machine; its `strike` preset is one needle landing at `lead`, its
+run-up whispered 14 dB under (`air`) so the touch bites as a hit (`snap`) over a kick's thud (`weight`), and `boom`
+draws that thud out into an 808's ring for a last shot that holds), each in a small room (`room`).
 Nothing to license, and a rerun writes identical files. `studio sfx list` prints every recipe's presets and parameters.
 
 1. **The kit**, already rendered: `SFX.click`, `key`, `toggleOn`, `toggleOff`, `pop`, `whoosh`, `whip`, `riser`,
@@ -89,6 +91,7 @@ Nothing to license, and a rerun writes identical files. `studio sfx list` prints
    |---|---|
    | "Cut off", "stops dead", "dry" | Raise `decay`, or `room` (for a chime, also `shimmer`). For a whoosh, raise `recede`; for a riser, `tail`; `riser.cut` stops dead on its peak by design |
    | "Hollow", "boxy" (a click or key) | Raise `brightness` for more snap; for a click, also lower `decay` for less body ring |
+   | "Weak", "no bass", "floaty" (an impact or buzz) | Raise `weight`; for an impact, also lower `room`. A last hit the picture holds on can ring on: raise a buzz's `boom` |
    | "Harsh", "thin" | Lower `brightness`, or lower `pitch` |
    | "Too long", "too slow" | Shorten `duration` (a whoosh's `approach` or `recede`), or lower `decay` |
 
@@ -113,8 +116,8 @@ plays a cue list; redraft after adding one so the list's accents keep clear of i
 - **Mounting.** It sounds only while it's mounted. An effect in a branch the scene has left stays quiet, just as the
   picture does.
 - **Levels.** Every sound is levelled when rendered, by category, relative to the voice: clicks, keys and pops sit
-  17 LU under it, and accents 8 LU under. So `volume` defaults to 1, and it only attenuates. Change it
-  by ear, per `mix.md`.
+  17 LU under it, and accents 8 LU under. So `volume` defaults to 1. Over 1 it boosts, but Remotion clips each sound
+  at full scale, so a boost goes only as far as the sound's peak leaves room for. Change it by ear, per `mix.md`.
 
 ```tsx
 import reveal from './sfx/reveal.ts';

@@ -1,9 +1,9 @@
 // mix.ts: the levels of the voice and the music bed. Pure.
 //
 // Levels are loudness, not gain: every voice line is brought to VOICE_LUFS, and music is set in LU relative to the
-// voice, so a quiet track and a hot one sit the same under the same words. The composition can only attenuate
-// (Remotion clamps anything over 1), so sources must be at least as loud as their targets; lib/render-pipeline.ts then lifts
-// the finished mix to delivery loudness in one pass.
+// voice, so a quiet track and a hot one sit the same under the same words. The composition can boost a source, but
+// Remotion clips each one at full scale, so sources must be at least as loud as their targets; lib/render-pipeline.ts
+// then lifts the finished mix to delivery loudness in one pass.
 
 /** Where every voice line sits in the mix, before mastering. Below every TTS line we've had (−11 to −16 LUFS). */
 export const VOICE_LUFS = -20;

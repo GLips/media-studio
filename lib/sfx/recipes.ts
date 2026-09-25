@@ -139,26 +139,72 @@ export const toggle = defineSfxRecipe({
   },
 });
 
+/**
+ * A kick's body, peaking at 1: a sine falling from `from` toward `to` Hz (1/e every `drop` s), held `hold`, then dying
+ * by 1/e every `tau`. Clipped by `drive` at full level, so its harmonics carry on small speakers and a limiter pulls
+ * less on it; cleaner as it dies, so a long tail stays a sub, not a low-mid drone.
+ */
+function kickBody({ from, to, drop, hold, tau, drive }: { from: number; to: number; drop: number; hold: number; tau: number; drive: number }): Float64Array {
+  const attack = 0.0015, out = samplesFor(attack + hold + tau * 6.9);
+  let phase = 0;
+  for (let i = 0; i < out.length; i++) {
+    const t = i / SFX_RATE;
+    phase += (2 * Math.PI * (to + (from - to) * Math.exp(-t / drop))) / SFX_RATE;
+    const level = t < attack ? t / attack : Math.exp(-Math.max(0, t - attack - hold) / tau);
+    const clip = drive * Math.max(level, 1e-4);
+    out[i] = (level * Math.tanh(clip * Math.sin(phase))) / Math.tanh(clip);
+  }
+  return out;
+}
+
+/** Sums sounds that start together into one buffer as long as the longest. */
+function mixed(...parts: readonly (readonly [Float64Array, number])[]): Float64Array {
+  const out = new Float64Array(Math.max(...parts.map(([s]) => s.length)));
+  for (const [samples, gain] of parts) mixInto(out, samples, 0, gain);
+  return out;
+}
+
+/**
+ * `x` through a 4th-order Butterworth lowpass at `hz`. A hit's edge over 16 kHz is barely heard, but it's where a
+ * delivery's AAC encode overshoots a mastered peak: cutting it halves how often a hit's encode peaks over −1 dBTP.
+ */
+function lowpassed(x: Float64Array, hz: number): Float64Array {
+  const first = stateVariableFilter(), second = stateVariableFilter();
+  return x.map((v) => second(first(v, hz, 0.5412).lp, hz, 1.3066).lp);
+}
+
 export const impact = defineSfxRecipe({
-  doc: 'Something landing: a low thump that drops in pitch, a burst of darker noise, and a short ring',
+  doc: 'Something landing hard, dry and punchy: a few ms of bright crack, a thwack of noise bands that die within a few cycles (no tone rings, so it never reads hollow), and a kick drum’s body under it, its pitch dropping. `impact.lock` strikes twice, a latch catching `latchAfter` after the hit',
   category: 'accent',
   params: {
-    pitch: { min: 0.5, max: 2, log: true, doc: 'Scales the thump and the ring' },
-    brightness: { min: 0, max: 1, doc: 'How much crack is in the hit' },
-    decay: { min: 0.3, max: 3, log: true, doc: 'Scales how long the body rings' },
-    weight: { min: 0, max: 1, doc: 'Level of the sub thump under the hit' },
+    pitch: { min: 0.5, max: 2, log: true, doc: 'Scales the body and the kick: a smaller or a bigger thing' },
+    brightness: { min: 0, max: 1, doc: 'How much crack is in the hit, and how high it sits' },
+    decay: { min: 0.3, max: 3, log: true, doc: 'Scales how long the body and the kick last' },
+    weight: { min: 0, max: 1, doc: 'Level of the kick under the hit: its low end' },
+    latch: { min: 0, max: 1, doc: 'Level of a second, lighter strike, higher and with no kick: a bolt catching, a lock seating. 0 strikes once' },
+    latchAfter: { min: 0.015, max: 0.08, doc: 'Seconds from the hit to its latch' },
   },
-  defaults: { pitch: 1, brightness: 0.45, decay: 1, weight: 0.7, room: 0.45 },
-  presets: { soft: { brightness: 0.2, weight: 0.5, decay: 0.7 }, heavy: { pitch: 0.7, weight: 1, decay: 1.8, brightness: 0.35 }, slam: { brightness: 0.85, pitch: 1.3, decay: 0.6, weight: 0.6 } },
+  defaults: { pitch: 1, brightness: 0.5, decay: 1, weight: 0.7, latch: 0, latchAfter: 0.03, room: 0.12 },
+  presets: {
+    soft: { brightness: 0, weight: 0.6, decay: 0.9 },
+    heavy: { pitch: 0.75, weight: 1, decay: 1.6, brightness: 0.35 },
+    slam: { pitch: 1.15, brightness: 0.85, decay: 0.75, weight: 0.85 },
+    lock: { pitch: 1, brightness: 1, decay: 0.8, weight: 0.7, latch: 1, latchAfter: 0.032, room: 0.08 },
+  },
   render: (p, seed) => {
     const random = seededRandom(subSeed(seed, 'impact'));
-    const layers: SfxLayer[] = [
-      { kind: 'tone', at: 0, hz: 120 * p.pitch, glideTo: 42 * p.pitch, glide: 0.12 * p.decay, attack: 0.001, tau: 0.16 * p.decay, gain: 1.1 * p.weight },
-      { kind: 'noise', at: 0, filter: 'lp', hz: logLerp(400, 6000, p.brightness), q: 0.8, attack: 0.0005, tau: 0.035 * p.decay, gain: 1.6 },
-      { kind: 'noise', at: 0, filter: 'bp', hz: logLerp(1500, 7000, p.brightness), q: 1.2, attack: 0.0003, tau: 0.006, gain: 1.4 * p.brightness },
-      ...[190, 430, 910].map((hz, i): SfxLayer => ({ kind: 'tone', at: 0, hz: hz * p.pitch * jitter(random, 0.04), attack: 0.001, tau: (0.09 / (i + 1)) * p.decay, gain: 0.25 / (i + 1) })),
+    const strike = (at: number, gain: number, shift: number, low: boolean): SfxLayer[] => [
+      // The crack, then the slap: a snare's few ms of noise, held long enough to fill the ear's first moments of the
+      // hit (a sub-ms tick peaks high and says little). Band-passed: the octave above adds nothing a listener needs,
+      // and it's what an AAC encode overshoots on.
+      { kind: 'noise', at, filter: 'bp', hz: logLerp(2500, 6500, p.brightness) * shift * jitter(random, 0.08), q: 0.8, attack: 0.001, tau: 0.0045, gain: gain * lerp(0.4, 1.6, p.brightness) },
+      { kind: 'noise', at, filter: 'bp', hz: logLerp(1400, 4000, p.brightness) * shift * jitter(random, 0.08), q: 0.6, attack: 0.001, tau: 0.014 * p.decay, gain: gain * lerp(0.5, 1.2, p.brightness) },
+      { kind: 'noise', at, filter: 'bp', hz: 650 * p.pitch * shift * jitter(random, 0.08), q: 1.2, attack: 0.0006, tau: 0.006 * p.decay, gain: gain * 2 },
+      ...(low ? [{ kind: 'noise', at, filter: 'bp', hz: 190 * p.pitch * shift * jitter(random, 0.08), q: 1.4, attack: 0.001, tau: 0.012 * p.decay, gain: gain * 3 } as const] : []),
     ];
-    return { samples: fadeOutTail(renderSfxLayers(layers, seed)), landsAt: 0 };
+    const layers = [...strike(0, 1, 1, true), ...(p.latch > 0 ? strike(p.latchAfter, p.latch, 1.35, false) : [])];
+    const kick = kickBody({ from: 160 * p.pitch, to: 50 * p.pitch, drop: 0.012, hold: 0.03 * p.decay, tau: 0.024 * p.decay, drive: 2 });
+    return { samples: fadeOutTail(lowpassed(mixed([renderSfxLayers(layers, seed), 1], [kick, 0.8 * p.weight]), 16000)), landsAt: 0 };
   },
 });
 
@@ -432,7 +478,7 @@ const TATTOO_BODY = { hz: 440, tau: 0.0018 };
 const TATTOO_REV_UP = 0.045;
 
 export const buzz = defineSfxRecipe({
-  doc: 'A tattoo machine: a coil machine’s armature slapping its cores `pitch` times a second, its contact spitting and its frame ringing, or `buzz.rotary`’s smoother motor hum. Already running before its event (at `air` of its level), it lands (`landsAt`) as the needles touch skin `lead` seconds in, biting with a `snap`, sags and dulls in the skin, runs on for `hold` and spins down. `buzz.strike` is one needle strike in under half a second, a whisper of the machine and then the bite',
+  doc: 'A tattoo machine: a coil machine’s armature slapping its cores `pitch` times a second, its contact spitting and its frame ringing, or `buzz.rotary`’s smoother motor hum. Already running before its event (at `air` of its level), it lands (`landsAt`) as the needles touch skin `lead` seconds in, biting with a `snap`, sags and dulls in the skin, runs on for `hold` and spins down. `buzz.strike` is one needle strike in under half a second: a whisper of the machine, then the bite over a kick’s thud, which `boom` lets ring on',
   category: 'accent',
   params: {
     pitch: { min: 60, max: 200, log: true, doc: 'Cycles a second at speed, heard as the buzz’s pitch: liners run fast (130–150), shaders slower (90–110)' },
@@ -440,26 +486,29 @@ export const buzz = defineSfxRecipe({
     brightness: { min: 0, max: 1, doc: 'How hard and bright each slap and spark is' },
     decay: { min: 0.008, max: 0.2, log: true, doc: 'Seconds the frame rings after each slap (60 dB) in the air; skin shortens it' },
     rotary: { min: 0, max: 1, fixed: true, doc: 'What drives the needles: a coil machine’s slapping armature (0) or a rotary’s motor and cam (1)' },
-    load: { min: 0, max: 1, doc: 'How hard the skin drags on the needles from the touch: the sag, the dulling and the thud. 0 runs in the air' },
+    load: { min: 0, max: 1, doc: 'How hard the skin drags on the needles from the touch: the sag and the dulling. 0 runs in the air' },
+    weight: { min: 0, max: 1, doc: 'Its low end: the coils’ hum under the slaps, and a kick’s thud as the needles touch skin' },
     lead: { min: 0.05, max: 1, log: true, doc: 'Seconds it runs before the needles touch skin, where it lands' },
     air: { min: 0, max: 1, doc: 'Its level before the touch, as a share of its level in the skin: 1 runs as loud; 0.2 whispers 14 dB under, so the touch is where it starts' },
-    snap: { min: 0, max: 1, doc: 'How hard the needles bite as they touch: a bright crack of 20–40 ms over the thud, the attack a hit needs. 0: the thud alone' },
+    snap: { min: 0, max: 1, doc: 'How hard the needles bite as they touch: a crack of 20–40 ms over the thud, the attack a hit needs. 0: the thud alone' },
+    boom: { min: 0.1, max: 3, log: true, doc: 'Seconds the thud’s low body takes to die away (60 dB): 0.3 is a kick’s thud; 1.5 is an 808’s boom, to carry a held last shot' },
     hold: { min: 0, max: 4, doc: 'Seconds it runs on in the skin after the touch' },
     spinDown: { min: 0.03, max: 0.6, log: true, doc: 'Seconds it takes to stop after the hold, its pitch and level falling' },
   },
-  defaults: { pitch: 120, duty: 0.55, brightness: 0.55, decay: 0.03, rotary: 0, load: 0.6, lead: 0.25, air: 1, snap: 0, hold: 0.8, spinDown: 0.15, room: 0.25 },
+  defaults: { pitch: 120, duty: 0.55, brightness: 0.55, decay: 0.03, rotary: 0, load: 0.6, weight: 0.25, lead: 0.25, air: 1, snap: 0, boom: 0.3, hold: 0.8, spinDown: 0.15, room: 0.25 },
   presets: {
-    liner: { pitch: 140, duty: 0.52, brightness: 0.75, decay: 0.025, load: 0.5 },
-    shader: { pitch: 100, duty: 0.6, brightness: 0.4, decay: 0.04, load: 0.75 },
+    liner: { pitch: 140, duty: 0.52, brightness: 0.75, decay: 0.025, load: 0.5, weight: 0.15 },
+    shader: { pitch: 100, duty: 0.6, brightness: 0.4, decay: 0.04, load: 0.75, weight: 0.4 },
     rotary: { rotary: 1, pitch: 115, brightness: 0.35, decay: 0.02, spinDown: 0.3 },
-    strike: { pitch: 138, duty: 0.52, brightness: 0.7, load: 0.7, lead: 0.1, air: 0.2, snap: 0.8, hold: 0.15, spinDown: 0.08, room: 0.15 },
+    strike: { pitch: 112, duty: 0.55, brightness: 0.7, load: 0.7, weight: 0.85, lead: 0.1, air: 0.2, snap: 0.8, hold: 0.15, spinDown: 0.08, room: 0.1 },
   },
   render: (p, seed) => {
     const draw = seededRandom(subSeed(seed, 'cycles')), sputter = seededRandom(subSeed(seed, 'sparks')), drift = seededRandom(subSeed(seed, 'drift'));
     const noise = whiteNoise(seededRandom(subSeed(seed, 'contacts')));
     const touch = p.lead, stop = touch + p.hold, coil = 1 - p.rotary;
-    // After the spin-down, time for the frame's last ring to die away.
-    const out = samplesFor(stop + p.spinDown + 0.02 + p.decay / 2);
+    const touched = needleTouch(p, seed);
+    // After the spin-down, time for the frame's last ring, and the touch's thud, to die away.
+    const out = samplesFor(Math.max(stop + p.spinDown + 0.02 + p.decay / 2, touch + touched.length / SFX_RATE));
     // The seed runs the same machine again: its speed moves under 1%, its frame never.
     const speed = p.pitch * jitter(draw, 0.008);
     const frame = TATTOO_FRAME_MODES.map(() => modalResonator()), body = modalResonator();
@@ -533,35 +582,37 @@ export const buzz = defineSfxRecipe({
       // same every cycle, and so a comb of harmonics rather than noise.
       const thwack = push - lastPush;
       lastPush = push;
-      // Balanced so the slap's click, crack and ring lead, as they do in a coil machine's loud, high buzz, and the
-      // hum's fundamental sits a few dB under them.
-      const machine = 0.03 * hum + 12 * thwack + 0.1 * thock + 1.3 * crack + 0.1 * ring + 0.35 * tock + 0.25 * sizzle;
+      // Balanced so the slap's click, crack and ring lead, as they do in a coil machine's loud, high buzz, and at the
+      // default weight the hum's fundamental sits a few dB under them.
+      const machine = 0.12 * p.weight * hum + 12 * thwack + 0.1 * thock + 1.3 * crack + 0.1 * ring + 0.35 * tock + 0.25 * sizzle;
       if (t < touch) {
         leadEnergy += machine * machine;
         leadSamples++;
       }
       out[i] = (t < touch ? p.air : 1) * machine;
     }
-    // The thud and the bite are levelled against the machine at speed, whatever its `air`, so they stay in scale under
-    // a quiet rotary as under a coil.
-    const running = Math.sqrt(leadEnergy / leadSamples);
-    // The needle grouping meeting skin: a small, soft thud.
-    const thud: SfxLayer[] = [
-      { kind: 'tone', at: 0, hz: 210, glideTo: 120, glide: 0.03, attack: 0.002, tau: 0.016, gain: 0.5 },
-      { kind: 'noise', at: 0, filter: 'lp', hz: 900, q: 0.7, attack: 0.0015, tau: 0.006, gain: 0.8 },
-    ];
-    mixInto(out, renderSfxLayers(thud, subSeed(seed, 'thud')), touch, 7.5 * running * p.load);
-    // The bite: the points puncturing and the needle bar jarring in its tube. Bright and short, so the touch is heard
-    // as a hit rather than a swell of the buzz.
-    const bite: SfxLayer[] = [
-      { kind: 'noise', at: 0, filter: 'bp', hz: logLerp(2800, 6000, p.brightness), q: 0.9, attack: 0.0003, tau: 0.009, gain: 1 },
-      { kind: 'noise', at: 0, filter: 'hp', hz: 7000, q: 0.7, attack: 0.0002, tau: 0.004, gain: 0.5 },
-      { kind: 'tone', at: 0, hz: 2350, attack: 0.0002, tau: 0.006, gain: 0.25 },
-    ];
-    mixInto(out, renderSfxLayers(bite, subSeed(seed, 'bite')), touch, 12 * running * p.snap);
+    // The touch is levelled against the machine at speed, whatever its `air`, so it stays in scale under a quiet
+    // rotary as under a coil.
+    mixInto(out, touched, touch, Math.sqrt(leadEnergy / leadSamples));
     return { samples: fadeOutTail(out, 0.01), landsAt: touch };
   },
 });
+
+/** The needles touching skin, from that moment, scaled for a machine running at a level of 1. */
+function needleTouch(p: { brightness: number; load: number; weight: number; snap: number; boom: number }, seed: number): Float64Array {
+  // The needle grouping meeting skin: its soft slap, and under it a kick's thud, the weight of the hand behind it.
+  const skin = renderSfxLayers([{ kind: 'noise', at: 0, filter: 'lp', hz: 900, q: 0.7, attack: 0.0015, tau: 0.006, gain: 0.8 }], subSeed(seed, 'thud'));
+  const thud = kickBody({ from: 150, to: 48, drop: 0.014, hold: 0.012, tau: p.boom / 6.9, drive: 2.5 });
+  // The bite: the points puncturing and the needle bar jarring in its tube, short so the touch is heard as a hit
+  // rather than a swell of the buzz. Its top band rises over a whole millisecond: a sharper edge that high is what an
+  // AAC encode overshoots on.
+  const bite = renderSfxLayers([
+    { kind: 'noise', at: 0, filter: 'bp', hz: logLerp(3000, 6500, p.brightness), q: 0.9, attack: 0.0008, tau: 0.009, gain: 1 },
+    { kind: 'noise', at: 0, filter: 'bp', hz: 7500, q: 1.2, attack: 0.001, tau: 0.005, gain: 0.9 },
+    { kind: 'tone', at: 0, hz: 2350, attack: 0.0006, tau: 0.006, gain: 0.25 },
+  ], subSeed(seed, 'bite'));
+  return mixed([skin, 3 * p.load], [thud, 4 * p.weight], [bite, 12 * p.snap]);
+}
 
 export const SFX_RECIPES = { click, key, toggle, impact, whoosh, riser, chime, ding, pop, typing, scroll, buzz } as const satisfies Record<string, SfxRecipe<any>>;
 export type SfxRecipeName = keyof typeof SFX_RECIPES;
