@@ -134,7 +134,10 @@ const SPRING_STIFFNESS = 100;
 export type DeadlineSpring = ((t: number) => number) & {
   /** Seconds until it first reaches its target: the deadline it was asked for. */
   landed: number;
-  /** Seconds until it has finished settling and holds exactly 1. Later than `landed`, more so the bouncier it is. */
+  /**
+   * Seconds until it has finished settling and holds exactly 1. Later than `landed`, and steeply so as it gets bouncier:
+   * bounce 0.75 rings on for about 16× `landed`, since the decay is exponential and settling means within 0.05%.
+   */
   settled: number;
 };
 

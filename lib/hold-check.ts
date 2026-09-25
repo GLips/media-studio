@@ -12,7 +12,10 @@ import type { TimelineReport } from './studio/Video.tsx';
 import type { MotionTracks } from './motion-tracks.ts';
 
 export type HoldExpectation = { scene: string; hold: string; for: number; within?: number; start: number; end: number };
-export type HoldProblem = { from: number; to: number; scene: string; problem: string };
+/** Seconds, end exclusive. */
+export type HoldSteadySpan = { from: number; to: number };
+/** `steady` is the longest stretch the subject was steady and visible, or null if it never was or wasn't measured. */
+export type HoldProblem = { from: number; to: number; scene: string; problem: string; steady: HoldSteadySpan | null };
 
 // Past these a viewer's eye is still on the move: a camera's zoom off by 0.5% shifts a 1920px frame's edges ~5px.
 const DEFAULT_WITHIN_PX = 2;
@@ -100,9 +103,9 @@ export function holdProblems(motion: MotionTracks, timeline: Pick<TimelineReport
     if (whole.to < motion.frames.first || whole.from > motion.frames.last) continue;
     const from = Math.max(whole.from, motion.frames.first), to = Math.min(whole.to, motion.frames.last);
     const partial = from !== whole.from || to !== whole.to;
-    const fail = (problem: string) => {
+    const fail = (problem: string, steady: HoldSteadySpan | null = null) => {
       if (partial) unchecked.push(`hold "${h.hold}" [${h.scene}] (${span}) isn't kept in the checked frames, and runs outside them`);
-      else problems.push({ from: h.start, to: h.end, scene: h.scene, problem: `expected "${h.hold}" to hold steady and visible for ${h.for}s (expect hold, ${span}): ${problem}` });
+      else problems.push({ from: h.start, to: h.end, scene: h.scene, problem: `expected "${h.hold}" to hold steady and visible for ${h.for}s (expect hold, ${span}): ${problem}`, steady });
     };
     if (!partial) checked++;
     if (need > whole.to - whole.from + 1) {
@@ -144,7 +147,7 @@ export function holdProblems(motion: MotionTracks, timeline: Pick<TimelineReport
       best.first > 0 && `Until ${secs(a)} ${arrival(frames[best.first - 1], frames[best.first], steadyFrom(frames.slice(best.first - 1, best.last + 1), 0, within).ends!)};`,
       best.ends ? `at ${secs(b + 1)} ${describe(best.ends)}.` : 'it runs to the end of the span.',
       review,
-    ].filter(Boolean).join(' '));
+    ].filter(Boolean).join(' '), { from: a / fps, to: (b + 1) / fps });
   }
   return { problems, unchecked, checked };
 }

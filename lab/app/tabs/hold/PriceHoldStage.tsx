@@ -4,12 +4,13 @@
 // steady, the length the scene promised, and a playhead.
 import { useMemo } from 'react';
 import { AbsoluteFill, useCurrentFrame } from 'remotion';
+import type { HoldSteadySpan } from '../../../../lib/hold-check.ts';
 import { DISPLAY_FONT, MONO_FONT } from '../../../../lib/studio/fonts.ts';
 import { FPS } from '../../../../lib/studio/frame.ts';
 import { LAB_COLORS } from '../../ui.tsx';
-import { PRICE_HOLD_FRAMES, PRICE_HOLD_SECONDS, PRICE_REST, priceBoxAt, type PriceBox, type PriceHoldParams, type SecondsSpan } from './price-hold.ts';
+import { PRICE_HOLD_FRAMES, PRICE_HOLD_SECONDS, PRICE_REST, priceBoxAt, type PriceBox, type PriceHoldParams } from './price-hold.ts';
 
-export type PriceHoldStageProps = PriceHoldParams & { steady: SecondsSpan | null; pass: boolean };
+export type PriceHoldStageProps = PriceHoldParams & { steady: HoldSteadySpan | null; pass: boolean };
 
 const PLOT = { left: 210, right: 1800, posTop: 724, posBottom: 852, opTop: 880, opBottom: 1030 };
 // The slide-in covers hundreds of pixels; a shake worth failing over is a few. The lane shows ±10px and clips the rest.

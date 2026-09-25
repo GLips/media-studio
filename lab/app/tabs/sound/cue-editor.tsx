@@ -8,7 +8,7 @@
 // are already in the video's audio and are never scheduled twice.
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type RefObject } from 'react';
 import type { SfxEvent } from '../../../../lib/sfx/cue-events.ts';
-import { SFX_CLICK_STYLES, sfxCueOverrides, sfxCuePlays, sfxCueSound, type SfxCue, type SfxCueList, type SfxCueProblem } from '../../../../lib/sfx/cues.ts';
+import { isSfxCueEdited, SFX_CLICK_STYLES, sfxCueOverrides, sfxCueOwnVolume, sfxCuePlays, sfxCueSound, type SfxCue, type SfxCueList, type SfxCueProblem } from '../../../../lib/sfx/cues.ts';
 import { SFX_RATE } from '../../../../lib/sfx/dsp.ts';
 import { renderSfx, type SfxRequest } from '../../../../lib/sfx/library.ts';
 import type { LabSfxCueSave } from '../../../local-api.ts';
@@ -187,12 +187,9 @@ function sfxDraftWords(cue: SfxCue, list: SfxCueList, events: ReadonlyMap<string
 // ——— Cue state ———————————————————————————————————————————————————————————————————————————————————————————————————————
 
 type LabCueState = 'sounding' | 'silent' | 'edited' | 'placed';
-const isCueEdited = (c: SfxCue) => c.sound !== undefined || c.nudge !== undefined || c.volume !== undefined;
-const labCueState = (c: SfxCue): LabCueState => (c.event.kind === 'placed' ? 'placed' : isCueEdited(c) ? 'edited' : c.draft.sound ? 'sounding' : 'silent');
+const labCueState = (c: SfxCue): LabCueState => (c.event.kind === 'placed' ? 'placed' : isSfxCueEdited(c) ? 'edited' : c.draft.sound ? 'sounding' : 'silent');
 const cueEditsKey = (c: SfxCue) => JSON.stringify({ s: c.sound === undefined ? 'draft' : c.sound, n: c.nudge ?? null, v: c.volume ?? null });
 const sameSfxRequest = (a: SfxRequest | null | undefined, b: SfxRequest | null | undefined) => JSON.stringify(a) === JSON.stringify(b);
-/** The volume a cue plays at unedited: a marked event's own, else full. */
-const cueOwnVolume = (c: SfxCue) => ('volume' in c.event ? c.event.volume : 1);
 
 function groupLabCues<T, K>(items: readonly T[], key: (item: T) => K): Map<K, T[]> {
   const groups = new Map<K, T[]>();
@@ -573,7 +570,7 @@ function SfxCueDetail({ cue, list, events, warnings, onEdit, onPlayMoment, onSte
   cue: SfxCue; list: SfxCueList; events: ReadonlyMap<string, SfxEvent>; warnings: readonly SfxCueProblem[];
   onEdit: (edit: (c: SfxCue) => SfxCue) => void; onPlayMoment: () => void; onStep: (dir: -1 | 1) => void;
 }) {
-  const { event } = cue, state = labCueState(cue), now = sfxCueSound(cue, list.clickStyle), own = cueOwnVolume(cue);
+  const { event } = cue, state = labCueState(cue), now = sfxCueSound(cue, list.clickStyle), own = sfxCueOwnVolume(cue);
   const volume = cue.volume ?? own;
   const options = [...(cue.draft.sound ? [cue.draft.sound] : []), ...cue.alternatives];
   const choose = (sound: SfxRequest) => onEdit(({ sound: _, ...c }) => (sameSfxRequest(sound, cue.draft.sound) ? c : { ...c, sound }));
@@ -625,7 +622,7 @@ function SfxCueDetail({ cue, list, events, warnings, onEdit, onPlayMoment, onSte
               <span className="hud">Plays now</span>
               <p>
                 {now ? <b>{sfxSoundWords(now)}</b> : <b>Nothing: silent</b>}
-                {isCueEdited(cue) && <span className="cue-edit-tag">{labCueEditWords(cue)}</span>}
+                {isSfxCueEdited(cue) && <span className="cue-edit-tag">{labCueEditWords(cue)}</span>}
               </p>
             </div>
             <ul className="cue-options">
@@ -642,7 +639,7 @@ function SfxCueDetail({ cue, list, events, warnings, onEdit, onPlayMoment, onSte
             </ul>
             <div className="cue-actions">
               <button type="button" disabled={!now} onClick={mute}>Mute</button>
-              <button type="button" disabled={!isCueEdited(cue)} onClick={reset}>Reset to the draft</button>
+              <button type="button" disabled={!isSfxCueEdited(cue)} onClick={reset}>Reset to the draft</button>
             </div>
             <div className="cue-sliders">
               <LabSlider label="Nudge" value={cue.nudge ?? 0} min={-0.5} max={0.5} step={0.01} onChange={setNudge}

@@ -1,7 +1,7 @@
 // price-hold.ts: the hold tab's one source of motion. `priceBoxAt` says where the price card is on a frame; the stage
 // draws it there, and `holdLabTracks` measures the same frames into the MotionTracks a render would write, so the
 // real `holdProblems` judges exactly what's on screen. Pure.
-import { holdProblems, type HoldExpectation } from '../../../../lib/hold-check.ts';
+import { holdProblems, type HoldExpectation, type HoldSteadySpan } from '../../../../lib/hold-check.ts';
 import { roundMotionValue, type MotionTracks } from '../../../../lib/motion-tracks.ts';
 import { clamp, motionCurves } from '../../../../lib/studio/motion.ts';
 import { FPS } from '../../../../lib/studio/frame.ts';
@@ -76,42 +76,25 @@ export function holdLabTracks(p: PriceHoldParams): MotionTracks {
   };
 }
 
-/** A span in seconds, end exclusive. */
-export type SecondsSpan = { from: number; to: number };
-
 export type PriceHoldVerdict = {
   /** The check's own words, or null when the hold is kept. */
   problem: string | null;
   /** The longest stretch it was steady and visible, or null if it never was. */
-  steady: SecondsSpan | null;
+  steady: HoldSteadySpan | null;
 };
 
-const hold = (p: PriceHoldParams, span: { start: number; end: number }, seconds: number): HoldExpectation =>
-  ({ scene: 'buy', hold: 'price', for: seconds, within: p.within, ...span });
+const hold = (p: PriceHoldParams, seconds: number): HoldExpectation =>
+  ({ scene: 'buy', hold: 'price', for: seconds, within: p.within, start: 0, end: PRICE_HOLD_SECONDS });
 
 /**
- * The real check on the lab's scene, and the longest stretch it would accept. The check only says where it held when
- * it fails, in words, so the stretch comes from asking it yes/no questions instead: the longest hold it passes over
- * the whole scene (a binary search in frames), then the first span of that length it passes on its own.
+ * The real check on the lab's scene, and the longest stretch it would accept. A failure carries its longest steady
+ * stretch, so the stretch comes from asking for a hold over the whole scene, which the card can't keep: it mounts late.
  */
 export function checkPriceHold(p: PriceHoldParams): PriceHoldVerdict {
   const motion = holdLabTracks(p), none = { crossfades: [] };
-  const passes = (span: { start: number; end: number }, frames: number) =>
-    holdProblems(motion, none, [hold(p, span, frames / FPS)], 'lab').problems.length === 0;
-  const scene = { start: 0, end: PRICE_HOLD_SECONDS };
-  const problem = holdProblems(motion, none, [hold(p, scene, p.need)], 'lab').problems[0]?.problem ?? null;
-  let lo = 0, hi = PRICE_HOLD_FRAMES;
-  while (lo < hi) {
-    const mid = Math.ceil((lo + hi) / 2);
-    if (passes(scene, mid)) lo = mid;
-    else hi = mid - 1;
-  }
-  if (lo === 0) return { problem, steady: null };
-  for (let f = 0; f + lo <= PRICE_HOLD_FRAMES; f++) {
-    const span = { start: f / FPS, end: (f + lo) / FPS };
-    if (passes(span, lo)) return { problem, steady: { from: span.start, to: span.end } };
-  }
-  throw new Error('the check passed a hold over the scene but over none of its spans');
+  const problem = holdProblems(motion, none, [hold(p, p.need)], 'lab').problems[0]?.problem ?? null;
+  const [whole] = holdProblems(motion, none, [hold(p, PRICE_HOLD_SECONDS)], 'lab').problems;
+  return { problem, steady: whole.steady };
 }
 
 const CHANNEL_WORDS: Record<string, string> = { x: 'left-right position', y: 'up-down position', width: 'width', height: 'height' };

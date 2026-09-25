@@ -12,14 +12,15 @@ test('a back-out overshoots by the share of its travel asked for and lands on ex
   assert.ok(peak(backOutEase(0)) <= 1 + 1e-12);
 });
 
-test('a deadline spring looks landed at its deadline, not before, and settles to exactly 1 later', () => {
-  for (const bounce of [0, 0.3, 0.6]) {
+test('a deadline spring looks landed at its deadline, not before, and settles to exactly 1 at `settled`', () => {
+  for (const bounce of [0, 0.3, 0.6, 0.75]) {
     const s = springBy(0.6, bounce);
     const frame = 1 / FPS;
     assert.ok(Math.abs(1 - s(0.6)) < 0.005, `bounce ${bounce}: ${s(0.6)} at the deadline`);
     assert.ok(Math.abs(1 - s(0.6 - frame)) >= 0.005, `bounce ${bounce}: landed a frame early`);
     assert.ok(s.settled > s.landed, `bounce ${bounce}: settles at ${s.settled}`);
     assert.equal(s(s.settled + frame), 1);
+    assert.notEqual(s(s.settled - frame), 1, `bounce ${bounce}: still before ${s.settled}`);
   }
 });
 

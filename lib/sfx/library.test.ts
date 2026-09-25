@@ -38,6 +38,11 @@ test('mutate varies within each range, repeatably, and explicit settings win ove
   assert.notDeepEqual(once, resolveSfxParams({ sound: 'chime.soft', seed: 'other', mutate: 1, set: { brightness: 0.9 } }).params);
 });
 
+test('a number passed as a string is refused, not coerced', () => {
+  const stringly = { brightness: '0.5' } as unknown as Record<string, number>;
+  assert.throws(() => resolveSfxParams({ sound: 'chime.soft', set: stringly }), /chime\.brightness must be a number/);
+});
+
 test('buzz.strike bites on its landing: the machine running before it stays far enough under for the touch to be an attack', () => {
   const r = renderSfx({ sound: 'buzz.strike' });
   const attacks = detectAudioAttacks(Float32Array.from(r.samples), SFX_RATE, 12);

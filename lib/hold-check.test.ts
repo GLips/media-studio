@@ -27,6 +27,7 @@ test('a hold passes on a long enough steady stretch, and a failure names what mo
   assert.deepEqual(holdProblems(m, noCrossfades, [hold({ for: 1.5, start: 0, end: 3 })], 'demo').problems, []);
   const [p] = holdProblems(m, noCrossfades, [hold({ for: 2, start: 0, end: 3 })], 'demo').problems;
   assert.match(p.problem, /for 1\.50s at most, 1\.00–2\.50s\. Until 1\.00s its x is moving \(50px in its last frame\); at 2\.50s its x moves 5px \(holds within 2px\)\./);
+  assert.deepEqual(p.steady, { from: 1, to: 2.5 });
   assert.match(p.problem, /Review: studio look demo --graph=0\.00:3\.00 --tracks=buy\/price$/);
   // A hold running past the checked frames passes if it's kept inside them, and is left unchecked if not.
   const scoped = { ...m, frames: { first: 0, last: 19 } };

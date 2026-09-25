@@ -72,7 +72,7 @@ export function mutateSfxParams(recipe: SfxRecipe, params: Readonly<Record<strin
 }
 
 export function resolveSfxParams({ sound, set = {}, seed = 0, mutate = 0 }: SfxRequest): { recipe: SfxRecipe; params: Record<string, number> } {
-  if (!(mutate >= 0 && mutate <= 1)) throw new Error(`mutate must be 0–1, not ${mutate}`);
+  if (typeof mutate !== 'number' || !(mutate >= 0 && mutate <= 1)) throw new Error(`mutate must be a number 0–1, not ${JSON.stringify(mutate)}`);
   const [name, preset, ...rest] = sound.split('.');
   const recipe = sfxRecipeNamed(name);
   if (rest.length || (preset !== undefined && !Object.hasOwn(recipe.presets, preset))) {
@@ -81,7 +81,8 @@ export function resolveSfxParams({ sound, set = {}, seed = 0, mutate = 0 }: SfxR
   for (const [param, value] of Object.entries(set)) {
     const spec = sfxParamSpecs(recipe)[param];
     if (!spec) throw new Error(`${name} has no parameter "${param}"; it has ${Object.keys(sfxParamSpecs(recipe)).join(', ')}`);
-    if (!(value >= spec.min && value <= spec.max)) throw new Error(`${name}.${param} must be ${spec.min}–${spec.max}, not ${value}`);
+    // A module or cues.json can hand over "0.5", which the range test alone would coerce and let through.
+    if (typeof value !== 'number' || !(value >= spec.min && value <= spec.max)) throw new Error(`${name}.${param} must be a number ${spec.min}–${spec.max}, not ${JSON.stringify(value)}`);
   }
   const base = { ...recipe.defaults, ...(preset ? recipe.presets[preset] : {}) } as Record<string, number>;
   const varied = mutate > 0 ? mutateSfxParams(recipe, base, sfxSeedFromId(seed), mutate) : base;

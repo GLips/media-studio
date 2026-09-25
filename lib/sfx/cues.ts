@@ -53,7 +53,10 @@ export const SFX_CUE_LIST_VERSION = 1;
 export type SfxCuePlay = { id: string; event: SfxEvent; sound: SfxRequest; at: number; volume: number; inline: boolean };
 
 const EDITS = ['sound', 'nudge', 'volume'] as const;
-const isEdited = (cue: SfxCue) => EDITS.some((k) => cue[k] !== undefined);
+/** Whether a cue carries a hand edit (`sound`, `nudge` or `volume`), which a redraft keeps. */
+export const isSfxCueEdited = (cue: SfxCue) => EDITS.some((k) => cue[k] !== undefined);
+/** The volume a cue plays at unless its `volume` is edited: a marked event's own, else full. */
+export const sfxCueOwnVolume = (cue: SfxCue) => ('volume' in cue.event ? cue.event.volume : 1);
 
 export function sfxCueSound(cue: SfxCue, clickStyle: SfxClickStyle): SfxRequest | null {
   const { event } = cue;
@@ -65,7 +68,7 @@ export function sfxCueSound(cue: SfxCue, clickStyle: SfxClickStyle): SfxRequest 
 
 function sfxCuePlay(cue: SfxCue, sound: SfxRequest): SfxCuePlay {
   const { event } = cue, inline = event.kind === 'placed';
-  const own = 'volume' in event ? event.volume : 1;
+  const own = sfxCueOwnVolume(cue);
   return { id: event.id, event, sound, at: event.at + (inline ? 0 : cue.nudge ?? 0), volume: inline ? own : cue.volume ?? own, inline };
 }
 
@@ -173,7 +176,7 @@ function seriesCounts(events: readonly SfxEvent[]): Map<string, number> {
 export function draftSfxCues(events: readonly SfxEvent[], words: readonly SpokenWord[], { clickStyle, previous }: { clickStyle: SfxClickStyle; previous?: SfxCueList | null }): { list: SfxCueList; dropped: { id: string; why: string }[] } {
   const ids = new Set(events.map((e) => e.id)), before = seriesCounts(previous?.cues.map((c) => c.event) ?? []), now = seriesCounts(events);
   const edits = new Map<string, Pick<SfxCue, (typeof EDITS)[number]>>(), dropped: { id: string; why: string }[] = [];
-  for (const cue of previous?.cues.filter(isEdited) ?? []) {
+  for (const cue of previous?.cues.filter(isSfxCueEdited) ?? []) {
     const { id } = cue.event, series = sfxEventSeries(id);
     if (!ids.has(id)) dropped.push({ id, why: 'the video no longer has its event' });
     else if (series !== id && before.get(series) !== now.get(series)) dropped.push({ id, why: `${series} has ${now.get(series)} events now, not ${before.get(series)}, so its ids have shifted` });
@@ -250,7 +253,7 @@ export function sfxCueOverrides(list: SfxCueList, words: readonly SpokenWord[]):
       }
     }
   }
-  for (const cue of list.cues.filter((c) => c.event.kind === 'placed' && isEdited(c))) {
+  for (const cue of list.cues.filter((c) => c.event.kind === 'placed' && isSfxCueEdited(c))) {
     found.push({ id: cue.event.id, at: cue.event.at, problem: 'edits do nothing to a placed sound, which plays from its <Sfx>: change that instead' });
   }
   return found.sort((a, b) => a.at - b.at);
@@ -295,6 +298,6 @@ export function formatSfxCueList(list: SfxCueList): string[] {
   return list.cues.map((cue) => {
     const sound = sfxCueSound(cue, list.clickStyle);
     const set = sound?.set && Object.keys(sound.set).length ? ` ${Object.entries(sound.set).map(([k, v]) => `${k}=${v}`).join(',')}` : '';
-    return `${cue.event.at.toFixed(2).padStart(7)}  ${cue.event.id.padEnd(38)} ${sound ? `${sound.sound}${set}` : `– ${cue.draft.why}`}${isEdited(cue) ? '  (edited)' : ''}`;
+    return `${cue.event.at.toFixed(2).padStart(7)}  ${cue.event.id.padEnd(38)} ${sound ? `${sound.sound}${set}` : `– ${cue.draft.why}`}${isSfxCueEdited(cue) ? '  (edited)' : ''}`;
   });
 }
