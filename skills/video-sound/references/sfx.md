@@ -60,7 +60,9 @@ the series' edits and names them: redo those.
 ## Where sounds come from
 
 Every sound is synthesized from a seeded recipe in `lib/sfx/` (after Farnell's *Designing Sound*): `whoosh`, `riser`,
-`impact`, `chime`, `ding`, `pop`, `click`, `key`, `toggle`, `typing` and `scroll`, each in a small room (`room`).
+`impact`, `chime`, `ding`, `pop`, `click`, `key`, `toggle`, `typing`, `scroll` and `buzz` (a tattoo machine; its
+`strike` preset is one needle landing at `lead`, its run-up whispered 14 dB under (`air`) so the touch bites as a hit
+(`snap`)), each in a small room (`room`).
 Nothing to license, and a rerun writes identical files. `studio sfx list` prints every recipe's presets and parameters.
 
 1. **The kit**, already rendered: `SFX.click`, `key`, `toggleOn`, `toggleOff`, `pop`, `whoosh`, `whip`, `riser`,
@@ -74,7 +76,11 @@ Nothing to license, and a rerun writes identical files. `studio sfx list` prints
    - `whoosh.soft` is a recipe and one of its presets, and `--set` overrides its parameters.
    - `--mutate 0.2` varies every parameter a little, repeatably from `--seed`. Seed with the id of the event the sound
      marks.
+   - `--category accent` levels it as an accent, 8 LU under the voice, when its job here is bigger than its recipe's
+     (a pop marking a music-led video's colour flood); `ui` the other way.
    - It writes `reveal.wav` and a `reveal.ts` beside it. Import the `.ts`, and pass its default export as `sound`.
+   - After a recipe or the renderer changes, `studio sfx rerender projects/<p>/sfx` rerenders every sound there from
+     the request its `.ts` records.
 
    Presets are starting points. A note on how a sound sounds maps to a parameter, so rerender with `--set` rather
    than reaching for `volume`. `studio sfx list` gives each recipe's parameters and ranges; the usual mappings are:
@@ -100,7 +106,8 @@ plays a cue list; redraft after adding one so the list's accents keep clear of i
 
 - **Where it lands.** Each sound knows where its event is: a click starts on `at`, a whoosh passes on it, and a riser
   peaks on it. So `at` is the event itself, not when the sound starts. Anchor it to a word or to the camera key it
-  belongs to, never to a raw number.
+  belongs to, never to a raw number. It lands on `at` to the sample, not to the nearest frame: every rendered sound
+  opens with 50 ms of silence, and `<Sfx>` trims the fraction of a frame it needs off that.
 - **Takes.** The kit's sounds that repeat have several seeded takes. `id` picks one, the same every render, so give
   each event its own `id` (its index, or its name).
 - **Mounting.** It sounds only while it's mounted. An effect in a branch the scene has left stays quiet, just as the
@@ -119,6 +126,23 @@ import reveal from './sfx/reveal.ts';
 A sound stops when its scene stops painting, at the end of the crossfade into the next scene. An accent that has to
 ring across a cut belongs to the scene after it. A riser starting before its scene's first frame is trimmed at its
 start. A cue list's cues play over the whole video, so none of this applies to them.
+
+**On the video's clock.** A music-led video, cut every bar, places its hits and whips on its beat grid instead:
+`defineVideo({ sounds: [{ at, sound, id, volume }] })`, with `at` in video seconds. These play over the whole video
+like a cue list's, so a whip runs up to its cut and rings on past it, and a scene drawn again elsewhere (a recap tile
+replaying an earlier bar) doesn't play them again.
+
+**Check them against the music.** For a video with `sounds` and music, `studio mix` then prints a row per sound: how
+far it lands from the music's nearest attack (a whip or riser, which swells, by its peak), and how loud it plays
+against the music there. Then the music's empty beats, where it has no attack of its own. `studio mix --check` prints
+just these, without rendering the mix: for checking a change to the sounds while a cut made from the last mix is in use.
+
+- **FLAM**: 15–100 ms off the music's attack, heard as two hits. Move the sound by its gap. If every hit flams early
+  by about the same amount, that's the picture's lead (a reel lands its picture a frame or so ahead of the music):
+  delay all the sounds by it.
+- **BURIED**: over 8 LU under the music, lost in it. Raise its `volume` if it's under 1, else lower `bedRelativeLu`.
+- **OVER**: over 3 LU above the music, sitting on top of it. Lower its `volume`, unless it's meant to ride over.
+- **An empty beat** is a place a sound can speak for the picture: a slam there has no hit to flam with.
 
 ## When to add one
 

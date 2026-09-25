@@ -29,17 +29,34 @@ const render = defineCommand({
     seed: { type: 'string', description: 'The id of the event it marks, so each event gets its own take' },
     set: { type: 'string', valueHint: 'brightness=0.8,decay=1.2', description: 'Parameters over the preset' },
     mutate: { type: 'string', valueHint: '0.2', description: 'How far (0–1) to vary every parameter, from the seed' },
+    category: { type: 'string', valueHint: 'accent', description: "Level it as ui or accent instead of its recipe's own category, when its role differs" },
   },
   async run({ args }) {
     const { resolve } = await import('node:path');
+    if (args.category !== undefined && args.category !== 'ui' && args.category !== 'accent') throw new Error(`--category is ui or accent, not "${args.category}"`);
     const { writeSfxFile } = await import('../../lib/sfx/sfx-files.ts');
     const set = Object.fromEntries((args.set ?? '').split(',').filter(Boolean).map((pair) => {
       const at = pair.indexOf('='), k = pair.slice(0, at).trim(), v = pair.slice(at + 1).trim();
       if (at < 0 || !k || !v || !Number.isFinite(Number(v))) throw new Error(`--set takes name=number pairs, not "${pair}"`);
       return [k, Number(v)];
     }));
-    const { wav, module, rendered } = writeSfxFile({ sound: args.sound, seed: args.seed, set, mutate: args.mutate ? Number(args.mutate) : undefined }, resolve(args.out));
+    const { wav, module, rendered } = writeSfxFile({ sound: args.sound, seed: args.seed, set, mutate: args.mutate ? Number(args.mutate) : undefined, category: args.category }, resolve(args.out));
     console.log(`${wav}\n${module}\n${rendered.seconds.toFixed(2)} s, lands at ${rendered.landsAt.toFixed(2)} s, ${rendered.lufs.toFixed(1)} LUFS`);
+  },
+});
+
+const rerender = defineCommand({
+  meta: {
+    name: 'rerender',
+    description: 'Rerender every sound `studio sfx render` wrote into a folder from the request each module records, after a recipe or the renderer changes. Prints the modules.',
+  },
+  args: { dir: { type: 'positional', required: true, description: "A folder of rendered sounds, e.g. a project's sfx/" } },
+  async run({ args }) {
+    const { resolve } = await import('node:path');
+    const { rerenderSfxFiles } = await import('../../lib/sfx/sfx-files.ts');
+    const modules = rerenderSfxFiles(resolve(args.dir));
+    if (!modules.length) throw new Error(`${args.dir} has no sound modules written by \`studio sfx render\``);
+    for (const module of modules) console.log(module);
   },
 });
 
@@ -78,5 +95,5 @@ const draft = defineCommand({
 
 export default defineCommand({
   meta: { name: 'sfx', description: 'Sound effects from seeded recipes: whoosh, riser, impact, chime, click and more. See `studio sfx list`.' },
-  subCommands: { list, render, kit, showcase, draft },
+  subCommands: { list, render, rerender, kit, showcase, draft },
 });

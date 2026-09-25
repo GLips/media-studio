@@ -21,8 +21,11 @@ export type SfxMarkedEvent = 'click' | 'key' | 'placed';
 
 /** What an `<Sfx>` writes on its mark: when it lands as seconds from the frame it's on. */
 export type SfxMarkAttr = { event: SfxMarkedEvent; fromNow: number; request: SfxRequest; volume: number };
-/** One mounted `<Sfx>` on one frame, landing `at` video seconds. */
-export type SfxMark = Omit<SfxMarkAttr, 'fromNow'> & { scene: string; at: number };
+/**
+ * One mounted `<Sfx>` on one frame, landing `at` video seconds, in the scene it's mounted in. A sound on the video's
+ * own clock (`VideoDef.sounds`) is in no scene: its event takes the scene it lands in.
+ */
+export type SfxMark = Omit<SfxMarkAttr, 'fromNow'> & { scene?: string; at: number };
 
 /**
  * An event, identified as `click:speed:3` (the third click in scene speed), `scene:stock`, `move:sale:1` or
@@ -77,9 +80,13 @@ function numbered(events: Unnumbered[], series: (e: Unnumbered) => string): SfxE
 }
 
 /** Every mounted `<Sfx>`, once: the same sound landing at the same moment on many frames is one event. */
-function markEvents(marks: readonly SfxMark[]): SfxEvent[] {
-  const unique = new Map<string, SfxMark>();
-  for (const m of marks) unique.set(`${m.scene}|${m.event}|${JSON.stringify(m.request)}|${m.at.toFixed(4)}`, m);
+function markEvents(marks: readonly SfxMark[], timeline: TimelineReport): SfxEvent[] {
+  const landsIn = (at: number) => (timeline.scenes.findLast((s) => s.start <= at + 1e-6) ?? timeline.scenes[0]).id;
+  const unique = new Map<string, SfxMark & { scene: string }>();
+  for (const m of marks) {
+    const scene = m.scene ?? landsIn(m.at);
+    unique.set(`${scene}|${m.event}|${JSON.stringify(m.request)}|${m.at.toFixed(4)}`, { ...m, scene });
+  }
   return numbered([...unique.values()].map(({ event, scene, at, request, volume }) => ({ kind: event, scene, at, request, volume })), (e) => `${e.kind}:${e.scene}`);
 }
 
@@ -162,7 +169,7 @@ function revealEvents(motion: MotionTracks): SfxEvent[] {
 
 /** Every event the video's picture and timeline give a sound to mark, in time order. */
 export function sfxEventsFrom({ timeline, motion, marks }: { timeline: TimelineReport; motion: MotionTracks; marks: readonly SfxMark[] }): SfxEvent[] {
-  return [...markEvents(marks), ...sceneEvents(timeline), ...cameraMoveEvents(motion), ...revealEvents(motion)]
+  return [...markEvents(marks, timeline), ...sceneEvents(timeline), ...cameraMoveEvents(motion), ...revealEvents(motion)]
     .map((e): SfxEvent => {
       const at = roundSfxSeconds(e.at);
       if (e.kind === 'camera-move') return { ...e, at, from: roundSfxSeconds(e.from), to: roundSfxSeconds(e.to) };

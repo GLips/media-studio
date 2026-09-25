@@ -12,6 +12,7 @@ import type { ReactNode } from 'react';
 import { findSpokenPhrase, type SpokenWord } from '../voice-words.ts';
 import type { MusicBed } from './mix.ts';
 import { motionCurves } from './motion.ts';
+import type { SfxSound } from './sfx.tsx';
 
 export type VoiceLine = {
   /** An imported WAV, or null for a line timed by `studio voice --read=estimate` that has no audio yet. */
@@ -156,11 +157,20 @@ export type VideoDef = {
    */
   sfxCueList?: boolean;
   /**
+   * Sounds on the video's own clock, each landing `at` video seconds: a music-led video's hits and whips, placed on
+   * its beat grid. A cut doesn't stop one, as it stops an `<Sfx>` in a scene, so a whip can run up to its cut and
+   * ring on past it.
+   */
+  sounds?: readonly VideoSound[];
+  /**
    * Pins what `Date` says while the video renders, e.g. '2026-09-08T12:00:00' (local time unless it names a zone), so
    * host components that label "5 minutes ago" agree with captures made with the same `captureShots({ clock })`.
    */
   clock?: string;
 };
+
+/** A sound in `VideoDef.sounds`. Given several takes, `id` picks one, as `<Sfx>`'s does. */
+export type VideoSound = { at: number; sound: SfxSound | readonly SfxSound[]; id?: string | number; volume?: number };
 
 export const defineVideo = (video: VideoDef): VideoDef => video;
 

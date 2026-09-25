@@ -10,13 +10,13 @@ import { AbsoluteFill, Artifact, Sequence, useCurrentFrame, useVideoConfig } fro
 import { footage as footageList } from '@footage';
 import sfxCues from '@sfx-cues';
 import { Caption } from './captions.tsx';
-import { duckSpans, levelGain, musicGainAt, musicLevels, VOICE_LUFS } from './mix.ts';
+import { levelGain, musicBedGainAt, VOICE_LUFS } from './mix.ts';
 import { previsRequestFor, previsSpan, type PrevisFootage, type PrevisRequest } from './previs.ts';
 import { PrevisFootagePlayer } from './previs.tsx';
 import { unmeasuredAttrs } from './motion-tag.ts';
 import { FrameProbe } from './probe.tsx';
 import { SceneContext } from './scene.tsx';
-import { SfxCueListAudio, SfxCueListPlaying } from './sfx.tsx';
+import { Sfx, SfxCueListAudio, SfxCueListPlaying } from './sfx.tsx';
 import { layoutVideo, sceneClock, sceneTimes, scenesAt, visibleSpan, type LaidScene, type Timeline, type VideoDef } from './timeline.ts';
 
 export type VideoProps = {
@@ -109,6 +109,7 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
         })}
       </SfxCueListPlaying.Provider>
       {playsCueList && sfxCues && <SfxCueListAudio cues={sfxCues} />}
+      {video.sounds?.map((s, i) => <Sfx key={i} sound={s.sound} at={s.at} t={t} id={s.id ?? i} volume={s.volume} />)}
       {tl.cues.map((cue) =>
         cue.src ? (
           // One frame of slack past the line's end, so rounding the start to a frame never clips its last samples.
@@ -128,21 +129,12 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
 function MusicBedAudio({ video, tl, fps }: { video: VideoDef; tl: Timeline; fps: number }) {
   const bed = video.music!;
   const { durationInFrames } = useVideoConfig();
-  // Duck around where the voice plays (its starts are rounded to frames), estimated lines included, so the Studio
-  // previews the final mix.
-  const { spans, levels } = useMemo(() => ({
-    spans: duckSpans(tl.cues.map((c) => ({ start: Math.round(c.start * fps) / fps, end: Math.round(c.start * fps) / fps + (c.end - c.start) }))),
-    levels: musicLevels(bed),
-  }), [tl, fps, bed]);
-  // A track played from its own start opens as it was written to (a music-led piece starts on its first hit), so only
-  // one started partway through fades in. A track fitted to this video's length ends on its own ending, so it isn't
-  // faded out; after a retime it no longer fits, and fades like any other until `studio music fit` runs again.
-  const endsWithVideo = !!bed.track.fit && !bed.sourceStartSeconds && Math.abs(bed.track.duration - durationInFrames / fps) < 0.5 / fps;
-  const fades = { in: !!bed.sourceStartSeconds, out: !endsWithVideo };
+  // Ducked around every line, estimated ones included, so the Studio previews the final mix.
+  const gainAt = useMemo(() => musicBedGainAt(bed, tl.cues, fps, durationInFrames / fps), [bed, tl, fps, durationInFrames]);
   // Not in a Sequence, so the volume callback's frame is the video's frame.
   return (
     <Audio src={bed.track.src} name="music" loop loopVolumeCurveBehavior="extend" trimBefore={Math.round((bed.sourceStartSeconds ?? 0) * fps)}
-      volume={(f) => musicGainAt(f / fps, spans, levels, durationInFrames / fps, fades)} />
+      volume={(f) => gainAt(f / fps)} />
   );
 }
 

@@ -27,6 +27,7 @@ export const SFX_RECIPE_WORDS: Record<SfxRecipeName, string> = {
   pop: 'A blip that bends in pitch as it dies: a bubble popping, or a drop of water.',
   typing: 'A burst of typing: keys in little words, with a space bar between them.',
   scroll: 'A scroll wheel: small ticks, steady, or a flick that rushes and then settles.',
+  buzz: 'A tattoo machine: a hard, rattling buzz that runs up to speed, drops a little lower and duller as the needles go into skin, then winds down. The “rotary” preset is a smoother motor hum.',
 };
 
 type SfxParamWords = { label: string; hint: string };
@@ -85,6 +86,18 @@ const SFX_RECIPE_PARAM_WORDS: Partial<Record<SfxRecipeName, Record<string, SfxPa
     brightness: { label: 'Click', hint: 'How much of a wet click starts it.' },
   },
   scroll: { rate: { label: 'Speed', hint: 'Ticks per second at the fastest.' } },
+  buzz: {
+    pitch: { label: 'Speed', hint: 'How many times a second the needles hammer, heard as the buzz’s pitch.' },
+    duty: { label: 'Tuning', hint: 'How long the coils pull in each stroke: near half is reedy, higher is fuller.' },
+    decay: { label: 'Ring', hint: 'How long the machine’s frame rings after each stroke.' },
+    rotary: { label: 'Coil or rotary', hint: 'A coil machine’s hammering rattle (0) or a rotary’s smooth motor hum (1).' },
+    load: { label: 'Skin', hint: 'How hard the skin drags once the needles are in: slower, duller and quieter.' },
+    lead: { label: 'Run-up', hint: 'Seconds it runs before the needles touch, which is where it lands.' },
+    air: { label: 'Run-up level', hint: 'How loud it runs before the needles touch: low, and the touch is where it starts.' },
+    snap: { label: 'Bite', hint: 'A bright crack as the needles touch, which makes the touch a hit.' },
+    hold: { label: 'Hold', hint: 'Seconds it runs on in the skin.' },
+    spinDown: { label: 'Wind-down', hint: 'Seconds it takes to stop.' },
+  },
 };
 
 export const sfxParamWords = (recipe: SfxRecipeName, param: string): SfxParamWords =>
@@ -93,12 +106,14 @@ export const sfxParamWords = (recipe: SfxRecipeName, param: string): SfxParamWor
 const SFX_SOUND_WORDS: Record<SfxRecipeName, string> = {
   click: 'a mouse click', key: 'a key press', toggle: 'a switch flipping', impact: 'a soft thud', whoosh: 'a whoosh of air sweeping past',
   riser: 'a swell that rises into the moment', chime: 'a little chime', ding: 'a bell ding', pop: 'a bubbly pop', typing: 'a burst of typing', scroll: 'scroll-wheel ticks',
+  buzz: 'a tattoo machine buzzing',
 };
 const SFX_PRESET_WORDS: Record<string, string> = {
   soft: 'gentler', fast: 'quicker', swell: 'slower and fuller', short: 'short', crisp: 'crisp', trackpad: 'a quiet trackpad tap',
   mechanical: 'clacky', heavy: 'heavy', slam: 'hard', whip: 'a whip pan', success: 'rising, for a success', error: 'falling, for an error',
   bright: 'bright', glass: 'glassy', bell: 'like a bell', bubble: 'a bubble', droplet: 'a water drop', on: 'switching on', off: 'switching off',
   space: 'the space bar', steady: 'a steady turn', flick: 'a flick', cut: 'stopping dead on its peak', long: 'long', airy: 'airy', tonal: 'musical', slow: 'slow',
+  liner: 'a fast, crisp liner', shader: 'a slower, heavier shader', rotary: 'a smooth rotary', strike: 'one quick needle strike',
 };
 
 /** A sound as words: its recipe, and how its preset differs ("a whoosh of air sweeping past, gentler"). */

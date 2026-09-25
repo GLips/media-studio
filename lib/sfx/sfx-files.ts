@@ -1,6 +1,6 @@
 // sfx-files.ts: sound recipes out to WAV files: the kit in lib/studio/sfx/, one sound for a project, and a showcase
 // folder to listen through. `studio sfx` runs these. Node only.
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import { STUDIO_ROOT } from '../studio-project.ts';
 import { wavFromSamples } from '../wav.ts';
@@ -61,9 +61,10 @@ export function writeSfxKit(): string[] {
   return [...written, kit];
 }
 
-const describeRequest = ({ sound, seed, mutate, set }: SfxRequest, out: string) =>
+const describeRequest = ({ sound, seed, mutate, set, category }: SfxRequest, out: string) =>
   [`studio sfx render ${sound}`, `--out ${relative(STUDIO_ROOT, out)}`, seed !== undefined && `--seed ${JSON.stringify(String(seed))}`, mutate && `--mutate ${mutate}`,
-    set && Object.keys(set).length && `--set ${Object.entries(set).map(([k, v]) => `${k}=${v}`).join(',')}`].filter(Boolean).join(' ');
+    set && Object.keys(set).length && `--set ${Object.entries(set).map(([k, v]) => `${k}=${v}`).join(',')}`,
+    category && `--category ${category}`].filter(Boolean).join(' ');
 
 /**
  * Writes `out` (a .wav) and a module beside it with the same name (.ts) that a video imports: its default export is
@@ -75,14 +76,31 @@ export function writeSfxFile(request: SfxRequest, out: string): { wav: string; m
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, wavFromSamples(rendered.samples, SFX_RATE));
   const module = out.replace(/\.wav$/, '.ts');
+  const sfxTypes = relative(dirname(out), join(STUDIO_ROOT, 'lib/studio/sfx.tsx'));
+  // `satisfies` checks the sound where it's written and keeps its `category` a literal: widened to a string, it
+  // wouldn't pass as an SfxSound.
   writeFileSync(module, [
     `// Written by \`${describeRequest(request, out)}\`. Rerun that to change it.`,
+    `import type { SfxSound } from '${sfxTypes.startsWith('.') ? sfxTypes : `./${sfxTypes}`}';`,
     `import src from './${basename(out)}';`,
     '',
-    `export default { src, seconds: ${round(rendered.seconds)}, landsAt: ${round(rendered.landsAt)}, request: ${JSON.stringify(request)} };`,
+    `export default { src, seconds: ${round(rendered.seconds)}, landsAt: ${round(rendered.landsAt)}, request: ${JSON.stringify(request)} } satisfies SfxSound;`,
     '',
   ].join('\n'));
   return { wav: out, module, rendered };
+}
+
+/**
+ * Rerenders every sound module `studio sfx render` wrote into `dir` from the request its last line records, so a change
+ * to a recipe or to rendering reaches the sounds a video already places. Returns the modules rewritten.
+ */
+export function rerenderSfxFiles(dir: string): string[] {
+  return readdirSync(dir).filter((file) => file.endsWith('.ts')).sort().flatMap((file) => {
+    const text = readFileSync(join(dir, file), 'utf8');
+    const request = text.match(/request: (\{.*\}) \} satisfies SfxSound;$/m)?.[1];
+    if (!text.startsWith('// Written by `studio sfx render') || !request) return [];
+    return [writeSfxFile(JSON.parse(request) as SfxRequest, join(dir, file.replace(/\.ts$/, '.wav'))).module];
+  });
 }
 
 /** Every recipe's parameters and presets, for `studio sfx list`. */

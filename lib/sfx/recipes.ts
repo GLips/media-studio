@@ -6,8 +6,8 @@
 // Parameters are all numbers with a range, so presets, overrides and mutate treat every recipe alike. Where recipes
 // share an idea they share its name: `pitch`, `brightness`, `decay`, `duration`.
 import {
-  addShimmer, fadeOutTail, lerp, smoothstep, logLerp, mixInto, onePole, pinkNoise, renderSfxLayers,
-  samplesFor, seededRandom, SFX_RATE, stateVariableFilter, subSeed, type SfxLayer,
+  addShimmer, clamp01, fadeOutTail, lerp, smoothstep, logLerp, mixInto, onePole, pinkNoise, renderSfxLayers,
+  samplesFor, seededRandom, SFX_RATE, stateVariableFilter, subSeed, whiteNoise, type SfxLayer,
 } from './dsp.ts';
 
 /** How loud a sound sits under the voice: ui for clicks and ticks, accent for whooshes, hits and chimes. */
@@ -402,6 +402,167 @@ export const scroll = defineSfxRecipe({
   },
 });
 
-export const SFX_RECIPES = { click, key, toggle, impact, whoosh, riser, chime, ding, pop, typing, scroll } as const satisfies Record<string, SfxRecipe<any>>;
+// ——— Machines: a mechanism cycling fast enough to be heard as a pitch ——————————————————————————————————————————————
+
+/**
+ * One mode of a body: a two-pole resonator ringing at `hz` and falling by 1/e every `tau` seconds, either of which
+ * may move every sample, so a body can be damped while it rings. Zeros at DC and Nyquist keep it to its ring. An
+ * impulse of 1 rings at amplitude 1.
+ */
+function modalResonator() {
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  return (x: number, hz: number, tau: number) => {
+    const w = (2 * Math.PI * hz) / SFX_RATE, r = Math.exp(-1 / (tau * SFX_RATE));
+    const y = 2 * r * Math.cos(w) * y1 - r * r * y2 + (x - x2) / 2;
+    x2 = x1;
+    x1 = x;
+    y2 = y1;
+    y1 = y;
+    return y;
+  };
+}
+
+// A coil machine's frame, cast iron or brass, as [ratio over its lowest mode, level]. A frame is no bar or plate, so
+// its modes fall at no neat ratio, and that's what makes its ring metallic rather than tuned.
+const TATTOO_FRAME_HZ = 1150;
+const TATTOO_FRAME_MODES = [[1, 1], [1.53, 0.85], [2.11, 0.75], [2.87, 0.6], [3.64, 0.5]] as const;
+// The frame's lowest bending, which the hand holding it damps to a thock under each slap.
+const TATTOO_BODY = { hz: 440, tau: 0.0018 };
+/** Seconds a machine takes to come up to speed: under the least `lead`, so it's at speed when the needles touch. */
+const TATTOO_REV_UP = 0.045;
+
+export const buzz = defineSfxRecipe({
+  doc: 'A tattoo machine: a coil machine’s armature slapping its cores `pitch` times a second, its contact spitting and its frame ringing, or `buzz.rotary`’s smoother motor hum. Already running before its event (at `air` of its level), it lands (`landsAt`) as the needles touch skin `lead` seconds in, biting with a `snap`, sags and dulls in the skin, runs on for `hold` and spins down. `buzz.strike` is one needle strike in under half a second, a whisper of the machine and then the bite',
+  category: 'accent',
+  params: {
+    pitch: { min: 60, max: 200, log: true, doc: 'Cycles a second at speed, heard as the buzz’s pitch: liners run fast (130–150), shaders slower (90–110)' },
+    duty: { min: 0.4, max: 0.7, doc: 'Share of each cycle the coils pull (the front spring on the contact screw): near half, the hum’s harmonics are odd and reedy; higher, fuller' },
+    brightness: { min: 0, max: 1, doc: 'How hard and bright each slap and spark is' },
+    decay: { min: 0.008, max: 0.2, log: true, doc: 'Seconds the frame rings after each slap (60 dB) in the air; skin shortens it' },
+    rotary: { min: 0, max: 1, fixed: true, doc: 'What drives the needles: a coil machine’s slapping armature (0) or a rotary’s motor and cam (1)' },
+    load: { min: 0, max: 1, doc: 'How hard the skin drags on the needles from the touch: the sag, the dulling and the thud. 0 runs in the air' },
+    lead: { min: 0.05, max: 1, log: true, doc: 'Seconds it runs before the needles touch skin, where it lands' },
+    air: { min: 0, max: 1, doc: 'Its level before the touch, as a share of its level in the skin: 1 runs as loud; 0.2 whispers 14 dB under, so the touch is where it starts' },
+    snap: { min: 0, max: 1, doc: 'How hard the needles bite as they touch: a bright crack of 20–40 ms over the thud, the attack a hit needs. 0: the thud alone' },
+    hold: { min: 0, max: 4, doc: 'Seconds it runs on in the skin after the touch' },
+    spinDown: { min: 0.03, max: 0.6, log: true, doc: 'Seconds it takes to stop after the hold, its pitch and level falling' },
+  },
+  defaults: { pitch: 120, duty: 0.55, brightness: 0.55, decay: 0.03, rotary: 0, load: 0.6, lead: 0.25, air: 1, snap: 0, hold: 0.8, spinDown: 0.15, room: 0.25 },
+  presets: {
+    liner: { pitch: 140, duty: 0.52, brightness: 0.75, decay: 0.025, load: 0.5 },
+    shader: { pitch: 100, duty: 0.6, brightness: 0.4, decay: 0.04, load: 0.75 },
+    rotary: { rotary: 1, pitch: 115, brightness: 0.35, decay: 0.02, spinDown: 0.3 },
+    strike: { pitch: 138, duty: 0.52, brightness: 0.7, load: 0.7, lead: 0.1, air: 0.2, snap: 0.8, hold: 0.15, spinDown: 0.08, room: 0.15 },
+  },
+  render: (p, seed) => {
+    const draw = seededRandom(subSeed(seed, 'cycles')), sputter = seededRandom(subSeed(seed, 'sparks')), drift = seededRandom(subSeed(seed, 'drift'));
+    const noise = whiteNoise(seededRandom(subSeed(seed, 'contacts')));
+    const touch = p.lead, stop = touch + p.hold, coil = 1 - p.rotary;
+    // After the spin-down, time for the frame's last ring to die away.
+    const out = samplesFor(stop + p.spinDown + 0.02 + p.decay / 2);
+    // The seed runs the same machine again: its speed moves under 1%, its frame never.
+    const speed = p.pitch * jitter(draw, 0.008);
+    const frame = TATTOO_FRAME_MODES.map(() => modalResonator()), body = modalResonator();
+    const current = onePole(), wander = onePole(), crackBand = stateVariableFilter(), tickBand = stateVariableFilter(), hiss = stateVariableFilter();
+    const tickFall = Math.exp(-1 / (0.00035 * SFX_RATE));
+    let phase = 0, cycle = 1, slapAt = 0.7, crackLevel = 0, tick = 0, spark = 0, sparkLeft = 0, force = 0, forceLeft = 0, forceLength = 1, lastPush = 0;
+    let leadEnergy = 0, leadSamples = 0;
+    for (let i = 0; i < out.length; i++) {
+      const t = i / SFX_RATE, up = clamp01(t / TATTOO_REV_UP), down = clamp01((t - stop) / p.spinDown);
+      // The skin's drag takes hold within a couple of cycles of the touch.
+      const loaded = t < touch ? 0 : p.load * (1 - Math.exp(-(t - touch) / 0.012));
+      const level = smoothstep(up) * (1 - smoothstep(down));
+      // Rising to speed, a few percent slower in skin, falling as it stops, and never quite periodic: each cycle runs
+      // a little long or short, and the speed wanders.
+      const hz = speed * cycle * lerp(0.55, 1, 1 - (1 - up) ** 2) * (1 - 0.07 * loaded) * lerp(1, 0.5, down) * (1 + 0.6 * wander(drift() * 2 - 1, 8));
+      const from = phase;
+      phase += hz / SFX_RATE;
+      const reaches = (at: number) => from < at && phase >= at;
+      if (phase >= 1) {
+        // The front spring is back on the contact screw: the circuit closes and the coils pull again.
+        phase -= 1;
+        cycle = jitter(draw, lerp(0.006, 0.011, loaded));
+        slapAt = p.duty + (1 - p.duty) * (0.3 + 0.03 * (draw() * 2 - 1));
+      }
+      // The needle bar turning at the top of its stroke ticks in its tube; skin muffles it.
+      if (reaches(p.duty / 2)) tick += level * lerp(1, 0.3, loaded) * lerp(1, 0.4, p.rotary) * jitter(draw, 0.25);
+      if (reaches(p.duty)) {
+        // The contact opens under the coils' current, and a spark spits across the gap, never the same twice.
+        spark = level * coil * (0.2 + draw()) ** 1.5;
+        sparkLeft = Math.round(SFX_RATE * lerp(0.0003, 0.0012, draw()));
+      }
+      if (reaches(slapAt)) {
+        // The armature slaps the coil cores. Skin slows it on the way, and a slower contact lasts longer: duller.
+        force = level * coil * lerp(1, 0.8, loaded) * jitter(draw, 0.12);
+        crackLevel += force;
+        forceLength = forceLeft = Math.round(SFX_RATE * lerp(0.0004, 0.00012, p.brightness) * (1 + 0.5 * loaded));
+      }
+
+      // The slap's force as a half-sine of unit area, so a harder contact is briefer and rings the higher modes more.
+      let push = 0;
+      if (forceLeft > 0) {
+        push = force * (Math.PI / (2 * forceLength)) * Math.sin((Math.PI * (forceLength - forceLeft + 0.5)) / forceLength);
+        forceLeft--;
+      }
+      const ringTau = (p.decay / 6.9) * lerp(1, 0.35, loaded);
+      let ring = 0;
+      TATTOO_FRAME_MODES.forEach(([ratio, gain], k) => { ring += gain * frame[k](push, TATTOO_FRAME_HZ * ratio, ringTau / ratio ** 0.7); });
+      // In skin, each downstroke meets it too, and that soft push reaches the frame's body with the slap.
+      const thock = body(push * (1 + 1.5 * loaded), TATTOO_BODY.hz, TATTOO_BODY.tau);
+      crackLevel *= Math.exp(-1 / (SFX_RATE * lerp(0.0009, 0.0004, p.brightness) * (1 + 0.5 * loaded)));
+      tick *= tickFall;
+      const crack = lerp(1, 0.7, loaded) * crackBand(noise() * crackLevel, logLerp(1800, 7000, p.brightness) * lerp(1, 0.6, loaded), 0.8).bp;
+      const tock = tickBand(noise() * tick, 3200, 1.5).bp;
+      let spit = 0;
+      if (sparkLeft > 0) {
+        sparkLeft--;
+        if (sputter() < 0.15) spit = spark * (sputter() * 2 - 1);
+      }
+      // A rotary has no contact to spark, but its motor's brushes hiss, pulsing with the commutator.
+      const brush = p.rotary * level * 0.03 * noise() * (0.6 + 0.4 * Math.cos(20 * Math.PI * phase));
+      const sizzle = hiss(spit + brush, logLerp(2500, 6500, p.brightness), 0.7).hp;
+      // The coils pull for `duty` of each cycle, their inductance smoothing the current, and the pull shakes the
+      // frame: the buzz's fundamental and its reedy, mostly odd, low harmonics.
+      const pull = current((phase < p.duty ? 1 : -1) - (2 * p.duty - 1), speed * 2.5);
+      // A rotary's cam drives the needles on a near sine, but they only meet skin going down, so the motor's load is
+      // lopsided and its hum carries a few falling harmonics. Its commutator whines ten times a turn.
+      const cam = Math.sin(2 * Math.PI * phase) + 0.4 * Math.sin(4 * Math.PI * phase + 0.5) + 0.2 * Math.sin(6 * Math.PI * phase + 1.1)
+        + 0.1 * Math.sin(8 * Math.PI * phase + 1.9) + 0.06 * Math.sin(20 * Math.PI * phase);
+      const hum = level * lerp(pull, 0.8 * cam, p.rotary);
+      // A small rigid body radiates the rate of change of the force on it, so the slap is heard as a click that's the
+      // same every cycle, and so a comb of harmonics rather than noise.
+      const thwack = push - lastPush;
+      lastPush = push;
+      // Balanced so the slap's click, crack and ring lead, as they do in a coil machine's loud, high buzz, and the
+      // hum's fundamental sits a few dB under them.
+      const machine = 0.03 * hum + 12 * thwack + 0.1 * thock + 1.3 * crack + 0.1 * ring + 0.35 * tock + 0.25 * sizzle;
+      if (t < touch) {
+        leadEnergy += machine * machine;
+        leadSamples++;
+      }
+      out[i] = (t < touch ? p.air : 1) * machine;
+    }
+    // The thud and the bite are levelled against the machine at speed, whatever its `air`, so they stay in scale under
+    // a quiet rotary as under a coil.
+    const running = Math.sqrt(leadEnergy / leadSamples);
+    // The needle grouping meeting skin: a small, soft thud.
+    const thud: SfxLayer[] = [
+      { kind: 'tone', at: 0, hz: 210, glideTo: 120, glide: 0.03, attack: 0.002, tau: 0.016, gain: 0.5 },
+      { kind: 'noise', at: 0, filter: 'lp', hz: 900, q: 0.7, attack: 0.0015, tau: 0.006, gain: 0.8 },
+    ];
+    mixInto(out, renderSfxLayers(thud, subSeed(seed, 'thud')), touch, 7.5 * running * p.load);
+    // The bite: the points puncturing and the needle bar jarring in its tube. Bright and short, so the touch is heard
+    // as a hit rather than a swell of the buzz.
+    const bite: SfxLayer[] = [
+      { kind: 'noise', at: 0, filter: 'bp', hz: logLerp(2800, 6000, p.brightness), q: 0.9, attack: 0.0003, tau: 0.009, gain: 1 },
+      { kind: 'noise', at: 0, filter: 'hp', hz: 7000, q: 0.7, attack: 0.0002, tau: 0.004, gain: 0.5 },
+      { kind: 'tone', at: 0, hz: 2350, attack: 0.0002, tau: 0.006, gain: 0.25 },
+    ];
+    mixInto(out, renderSfxLayers(bite, subSeed(seed, 'bite')), touch, 12 * running * p.snap);
+    return { samples: fadeOutTail(out, 0.01), landsAt: touch };
+  },
+});
+
+export const SFX_RECIPES = { click, key, toggle, impact, whoosh, riser, chime, ding, pop, typing, scroll, buzz } as const satisfies Record<string, SfxRecipe<any>>;
 export type SfxRecipeName = keyof typeof SFX_RECIPES;
 

@@ -92,6 +92,24 @@ export function musicGainAt(t: number, spans: readonly { start: number; end: num
   return dbToGain(levels.bedDb + (levels.duckedDb - levels.bedDb) * smooth(duck)) * fade;
 }
 
+/**
+ * The bed's gain at video time `t`, as the video plays it: ducked around the voice lines (each starting on the frame
+ * it's rounded to), faded in and out where the track asks for it.
+ */
+export function musicBedGainAt(bed: MusicBed, cues: readonly { start: number; end: number }[], fps: number, videoSeconds: number): (t: number) => number {
+  const spans = duckSpans(cues.map((c) => {
+    const start = Math.round(c.start * fps) / fps;
+    return { start, end: start + (c.end - c.start) };
+  }));
+  // A track played from its own start opens as it was written to (a music-led piece starts on its first hit), so only
+  // one started partway through fades in. A track fitted to this video's length ends on its own ending, so it isn't
+  // faded out; after a retime it no longer fits, and fades like any other until `studio music fit` runs again.
+  const endsWithVideo = !!bed.track.fit && !bed.sourceStartSeconds && Math.abs(bed.track.duration - videoSeconds) < 0.5 / fps;
+  const fades = { in: !!bed.sourceStartSeconds, out: !endsWithVideo };
+  const levels = musicLevels(bed);
+  return (t) => musicGainAt(t, spans, levels, videoSeconds, fades);
+}
+
 const smooth = (k: number) => {
   const x = Math.max(0, Math.min(1, k));
   return x * x * (3 - 2 * x);

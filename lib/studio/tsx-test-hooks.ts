@@ -1,7 +1,8 @@
-// Lets a node:test file load .tsx pieces: import this first, then the piece dynamically (a static import would load
-// before this module runs). Node strips types from .ts but can't read JSX, so .tsx is transpiled with esbuild (a pinned
-// dependency) as it loads. What only a bundler or a browser does at import stands in: an asset import (a face, a
-// sound) is its file URL, and @remotion/fonts' loadFont settles at once.
+// Lets a node:test file, or a command or script reading a video in Node (`studio mix`'s sound check), load .tsx:
+// import this first, then the module dynamically (a static import would load before this module runs). Node strips
+// types from .ts but can't read JSX, so .tsx is transpiled with esbuild (a pinned dependency) as it loads. What only
+// a bundler or a browser does at import stands in: an asset import (a face, a sound) is its file URL, and
+// @remotion/fonts' loadFont settles at once.
 
 import { readFileSync } from 'node:fs';
 import { registerHooks } from 'node:module';

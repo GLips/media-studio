@@ -16,6 +16,12 @@ export const SFX_LOUDNESS_UNDER_VOICE: Readonly<Record<SfxCategory, number>> = {
 const roomWetDb = (room: number) => lerp(-26, -8, room);
 /** Normalising never pushes a sample past this; a sound too peaky to reach its loudness comes out quieter instead. */
 const SFX_PEAK_CEILING_DB = -1;
+/**
+ * Silence every rendered sound opens with, counted in its `landsAt`. `<Sfx>` starts a sound on the frame after its
+ * exact start and trims the fraction of a frame between them off its front, so the sound lands on its time to the
+ * sample; the trim is under a frame, and this is over one at 24 fps, so it only ever takes silence.
+ */
+export const SFX_PRE_ROLL_SECONDS = 0.05;
 
 export type SfxRequest = {
   /** `recipe` or `recipe.preset`, e.g. `whoosh.whip`. */
@@ -26,6 +32,11 @@ export type SfxRequest = {
   seed?: string | number;
   /** 0–1: how far mutate moves each parameter across its range. */
   mutate?: number;
+  /**
+   * The loudness it's levelled to, when its role here isn't its recipe's: a pop marking a music-led video's colour flood
+   * is an accent, however small the recipe's usual job.
+   */
+  category?: SfxCategory;
 };
 
 export type RenderedSfx = {
@@ -78,14 +89,14 @@ export function resolveSfxParams({ sound, set = {}, seed = 0, mutate = 0 }: SfxR
 }
 
 /**
- * Renders a sound at 48 kHz in its room, levelled to its category's loudness. The same request always gives the same
- * samples.
+ * Renders a sound at 48 kHz in its room, levelled to its category's loudness, after SFX_PRE_ROLL_SECONDS of silence.
+ * The same request always gives the same samples.
  */
 export function renderSfx(request: SfxRequest): RenderedSfx {
   const { recipe, params } = resolveSfxParams(request);
   const { samples: dry, landsAt } = recipe.render(params, sfxSeedFromId(request.seed ?? 0));
   const samples = params.room > 0 ? addRoom(dry, roomWetDb(params.room)) : dry;
-  const target = VOICE_LUFS + SFX_LOUDNESS_UNDER_VOICE[recipe.category];
+  const target = VOICE_LUFS + SFX_LOUDNESS_UNDER_VOICE[request.category ?? recipe.category];
   const peakDb = 20 * Math.log10(samples.reduce((m, v) => Math.max(m, Math.abs(v)), 0));
   // Measured twice: the −70 LUFS gate is absolute, so scaling a long tail changes which of its blocks count.
   let gainDb = 0;
@@ -94,11 +105,14 @@ export function renderSfx(request: SfxRequest): RenderedSfx {
     gainDb = Math.min(gainDb + target - lufs, SFX_PEAK_CEILING_DB - peakDb);
   }
   const levelled = samples.map((v) => v * 10 ** (gainDb / 20));
+  const preRoll = Math.round(SFX_PRE_ROLL_SECONDS * SFX_RATE);
+  const out = new Int16Array(preRoll + levelled.length);
+  out.set(Int16Array.from(levelled, (v) => Math.round(v * 32767)), preRoll);
   return {
     sound: request.sound,
-    samples: Int16Array.from(levelled, (v) => Math.round(v * 32767)),
-    seconds: samples.length / SFX_RATE,
-    landsAt,
+    samples: out,
+    seconds: out.length / SFX_RATE,
+    landsAt: landsAt + preRoll / SFX_RATE,
     lufs: measureSfxLufs(levelled),
     params,
   };

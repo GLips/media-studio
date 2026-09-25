@@ -24,6 +24,17 @@ export type SfxCueSound = { id: string; at: number; volume: number } & Omit<SfxS
 export const SfxCueListPlaying = createContext(false);
 
 /**
+ * Where a sound whose file starts on (fractional) frame `start` plays from: the frame at or after it, with the fraction
+ * of a frame between them trimmed off its front. Every rendered sound opens with more than a frame of silence
+ * (SFX_PRE_ROLL_SECONDS), so the trim only takes silence and the sound lands on its time to the sample, not the frame.
+ */
+function sfxPlacement(start: number): { from: number; trimBefore: number } {
+  // Float noise must not tip a start that sits on a frame onto the next one.
+  const from = Math.ceil(start - 1e-6);
+  return { from, trimBefore: Math.max(0, from - start) };
+}
+
+/**
  * Plays `sound` so that its landing point falls when the scene clock `t` reaches `at`: a riser peaks on `at`, a whoosh
  * passes on it, a click starts on it. Given several takes, `id` picks one (the same one every render), so give each
  * event its own id. It works out its frame from where `t` stands now, so it needs no scene start: `frame − t·fps` is
@@ -42,15 +53,15 @@ export function Sfx({ sound, at, t, id = 0, volume = 1, event = 'placed' }: {
   const cueList = useContext(SfxCueListPlaying);
   const takes: readonly SfxSound[] = Array.isArray(sound) ? sound : [sound as SfxSound];
   const { src, seconds, landsAt, request } = takes[sfxSeedFromId(id) % takes.length];
-  const start = at - landsAt;
+  const { from, trimBefore } = sfxPlacement(frame + (at - landsAt - t) * fps);
   // `useCurrentFrame` is the scene Sequence's frame, so the probe, which knows the video's, turns this into video time.
   const mark: SfxMarkAttr = { event, fromNow: at - t, request, volume };
   return (
     <>
       <span hidden data-sfx-event={JSON.stringify(mark)} />
       {!(cueList && event !== 'placed') && (
-        <Sequence from={frame + Math.round((start - t) * fps)} durationInFrames={Math.ceil(seconds * fps) + 1} layout="none" name="sfx">
-          <Audio src={src} volume={volume} />
+        <Sequence from={from} durationInFrames={Math.ceil(seconds * fps) + 1} layout="none" name="sfx">
+          <Audio src={src} volume={volume} trimBefore={trimBefore} />
         </Sequence>
       )}
     </>
@@ -60,9 +71,12 @@ export function Sfx({ sound, at, t, id = 0, volume = 1, event = 'placed' }: {
 /** A cue list over the whole video, each cue landing on its `at` in video seconds. */
 export function SfxCueListAudio({ cues }: { cues: readonly SfxCueSound[] }) {
   const { fps } = useVideoConfig();
-  return cues.map((cue) => (
-    <Sequence key={cue.id} name={`sfx: ${cue.id}`} from={Math.round((cue.at - cue.landsAt) * fps)} durationInFrames={Math.ceil(cue.seconds * fps) + 1} layout="none">
-      <Audio src={cue.src} volume={cue.volume} />
-    </Sequence>
-  ));
+  return cues.map((cue) => {
+    const { from, trimBefore } = sfxPlacement((cue.at - cue.landsAt) * fps);
+    return (
+      <Sequence key={cue.id} name={`sfx: ${cue.id}`} from={from} durationInFrames={Math.ceil(cue.seconds * fps) + 1} layout="none">
+        <Audio src={cue.src} volume={cue.volume} trimBefore={trimBefore} />
+      </Sequence>
+    );
+  });
 }
