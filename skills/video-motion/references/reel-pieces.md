@@ -73,7 +73,8 @@ Look here first: a second copy of one of these drifts from the first.
 - **The beat:** `steadyBeatGrid`, `wordOnBeat` (`beats.ts`).
 - **Geometry:** `Vec3` and its maths (`vec3.ts`); `AffineMatrix`, `multiplyAffine`, `applyAffine` (`camera.ts`); a
   capture plane's projection, `capturePlaneProjection` (`reel/capture-plane.tsx`); where the needle is and what it
-  touches, `needlePoseAt`, `needleContactAt`, `needleScreenPoint` (`reel/needle.tsx`), to land a mark on its strike.
+  touches, `needlePoseAt`, `needleContactAt`, `needleScreenPoint` (`reel/needle.tsx`), to land a mark on its strike,
+  and `needleCoversAt`, for a HUD part judging whether the sharp needle is its ground.
 - **The HUD's ground:** `reelHudBoxPoints`, `reelHudGrounds` and `reelHudReadGrounds` read what's drawn under each
   part's box into its ink and plate (`reel/hud.tsx`), from a `groundAt(point)` a bar builds out of its pieces'
   geometry.

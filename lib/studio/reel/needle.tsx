@@ -1,7 +1,7 @@
 // needle.tsx: the reel's signature shot, a tattoo cartridge needle striking the frame itself. A 7-needle round liner,
-// wet with ink, stands out of a clear-tipped cartridge that leans back toward the lens. It strikes as a ball bounces:
-// down on the beat, springing back off the surface, lifting toward the lens on the "and" as it crosses to the next
-// point, then falling onto it.
+// wet with ink, stands out of a clear-tipped cartridge that leans back toward the lens. Each strike is one blow: in
+// from out of frame in a frame or two, smeared along its path, sharp on the contact, driven in for a frame, then
+// snapped back out the way it came. Between strikes it is out of shot, and the frame is the surface's.
 //
 // The camera looks straight down from where one surface unit is one frame pixel, so each strike lands on its own
 // pixel of the layer beneath (the ink grid). The canvas is transparent: needle, shadow and glints over whatever is
@@ -23,13 +23,17 @@ export type NeedleStrike = {
   y: number;
   /** The ink wet on its tip as it comes in: the colour the layer beneath should start its ripple from. */
   ink: string;
+  /**
+   * Its contact frame also shows the way in, a streak behind the sharp needle: for a strike that opens a shot, with no
+   * frame before it to come in on.
+   */
+  streak?: boolean;
 };
 
 /**
- * How the needle sits in the shot and moves between strikes. Lengths are mm on the cartridge, times seconds. The
- * defaults strike a 120 BPM beat (15 frames) as the reference's ball bounces: the contact frame, a spring back off
- * the surface, a lift toward the lens from the "and" (8 frames before the next strike) that crosses to the next
- * point, then a 2-frame fall.
+ * How the needle sits in the shot and strikes. Lengths are mm on the cartridge, times seconds. The defaults come in
+ * over two frames, so the frame before a contact catches it halfway, and are gone by the fourth frame after it.
+ * Strikes closer together than `enter + dwell + exit` cut the earlier one's exit short.
  */
 export type NeedleRig = {
   /** Degrees between the needle and the lens axis: 0 points straight down the lens, 90 lies flat on the surface. */
@@ -40,48 +44,33 @@ export type NeedleRig = {
   scale: number;
   /** Vertical field of view, degrees. Narrower moves the lens back and flattens the perspective. */
   fov: number;
+  /** The way it comes in from off frame and leaves, as `grip` counts it. Unset: the way its body runs. */
+  from?: number;
   /**
-   * How high each lift rises, as the share the tip's image grows by there: 0.25 is 25% bigger. It rises and falls on
-   * the line to the lens, so the tip's image stays over its point and only grows and shrinks: a strike into depth.
+   * Degrees its path rises off the surface toward the lens: 0 skims in level, steeper drops it from nearer the lens.
+   * With `from` unset, 90 − `tilt` runs it in along its own length, a stab.
    */
-  lift: number;
-  /** Seconds from the lift's start to the fall. It eases out: with the defaults, 96% of the height in 4 frames of 6. */
-  rise: number;
-  /** Seconds it falls onto the next strike, faster all the way down. */
-  fall: number;
-  /** How high it springs back off a strike before the lift, as a share of the lift's height. */
-  bounce: number;
-  /** Degrees it rocks back toward the lens at the top of a lift, as its height: the fall swings it down onto `tilt`. */
-  cock: number;
+  climb: number;
+  /** Seconds from wholly out of frame to the contact, at one speed: it lands at full tilt, never braking. */
+  enter: number;
   /** Seconds it stays in the surface after contact, driven `overdrive` mm past it a frame in. 0: the contact frame only. */
   dwell: number;
   overdrive: number;
-  /** Degrees the body leans into a fast move; it straightens as the move settles. */
+  /** Seconds from the drive to wholly out of frame, gathering speed. */
+  exit: number;
+  /** Degrees the body leans into a fast move, its grip ahead of its tip; it straightens as the move stops. */
   lean: number;
-  /** The way it comes in from off frame and leaves, as `grip` counts it. Unset: the way its body runs. */
-  from?: number;
-  /** Seconds it takes to come in to the top of the first strike's fall, and to leave after the last. */
-  enter: number;
-  /** Seconds after the last contact that it leaves frame; `false` leaves it in the surface. */
-  exit: number | false;
 };
 
-/**
- * The reference rig: gripped from the upper right, standing 58° out of the picture plane at the top of a lift and
- * swung down to 46° as it lands, leaning into the fall.
- */
+/** The reference rig: gripped from the upper right, standing 40° out of the lens axis, driven in its own frame. */
 export const NEEDLE_RIG: NeedleRig = {
-  tilt: 40, grip: 30, scale: 20, fov: 20,
-  lift: 0.25, rise: 6 / FPS, fall: 2 / FPS, bounce: 0.2, cock: 8, dwell: 0, overdrive: 0.4, lean: 4,
-  enter: 6 / FPS, exit: 2 / FPS,
+  tilt: 40, grip: 30, scale: 20, fov: 20, climb: 30, enter: 2 / FPS, dwell: 1 / FPS, overdrive: 0.6, exit: 2.5 / FPS, lean: 6,
 };
 
 // ---------- the pure part: where the tip is ----------
 
 const DEG = Math.PI / 180;
 
-const cubicIn = motionCurves.cubic.exit;
-const cubicOut = motionCurves.cubic.entrance;
 const smooth = (v: number, a: number, b: number) => motionCurves.dissolve((v - a) / (b - a));
 
 /** Where the needle is at one moment. Positions are world px: x right and y up from the frame's centre, z toward the lens. */
@@ -89,13 +78,11 @@ export type NeedlePose = {
   tip: Vec3;
   /** Unit vector from the tip up the needle toward the body. */
   axis: Vec3;
-  /** The ink on the tip, changing from `inkFrom` as `inkMix` runs 0 → 1 on the way to a strike. */
+  /** The ink on the tip: the strike's it's coming in to or has made. */
   ink: string;
-  inkFrom: string;
-  inkMix: number;
-  /** How full the drop of ink on the tip is, 0..1: spent into the surface on contact, refilled on the way to the next. */
+  /** How full the drop of ink on the tip is, 0..1: full coming in, spent into the surface on contact. */
   load: number;
-  /** Falling onto a strike, coming in or leaving: the moves too quick to shoot crisp. */
+  /** Coming in or leaving: the moves too quick to shoot crisp. */
   fast: boolean;
 };
 
@@ -110,9 +97,6 @@ export function needleScreenPoint(p: Vec3, fov = NEEDLE_RIG.fov): { x: number; y
 
 const surfacePoint = (s: NeedleStrike): Vec3 => [s.x - W / 2, H / 2 - s.y, 0];
 
-/** The point `z` px up from the surface point `p` on the line to the lens, so it's seen on `p`'s pixel. */
-const towardLens = (p: Vec3, z: number, lens: number): Vec3 => [p[0] * (1 - z / lens), p[1] * (1 - z / lens), z];
-
 // A frame's time can land a hair under the beat it's on (a frame over the fps, less a scene's start): within this
 // it has reached it, or its ripple would start a frame late.
 const CONTACT_SLACK = 1e-6;
@@ -126,95 +110,56 @@ export function needleContactAt(strikes: readonly NeedleStrike[], t: number): { 
   return found;
 }
 
-/** The needle's pose at `t`, or null while it's out of frame (before its entrance, after its exit). */
+/** The needle's pose at `t`, or null while it's out of shot: between one strike's exit and the next one's way in. */
 export function needlePoseAt(strikes: readonly NeedleStrike[], t: number, rig: Partial<NeedleRig> = {}): NeedlePose | null {
   const r = { ...NEEDLE_RIG, ...rig };
   const order = [...strikes].sort((p, q) => p.at - q.at);
-  const here = tipPath(order, t, r, needleRestAxis(r));
+  const rest = needleRestAxis(r);
+  const here = tipPath(order, t, r, rest);
   if (!here) return null;
-  // Rocked back toward the lens as high as it has lifted: a hammer's arc, swung down onto the surface by the fall.
-  const rocked = needleRestAxis({ ...r, tilt: r.tilt - r.cock * Math.min(1, Math.max(0, here.tip[2] / needleLiftTop(r))) });
-  // The lean follows the tip's velocity across its axis, a frame's quarter back.
-  const before = tipPath(order, t - LEAN_DT, r, needleRestAxis(r));
-  let axis = rocked;
+  // The lean follows the tip's velocity across its axis, a quarter frame back: so the contact frame still leans into
+  // the blow, and the drive straightens it.
+  const before = tipPath(order, t - LEAN_DT, r, rest);
+  let axis = rest;
   if (before) {
     const velocity = scaleVec3(subVec3(here.tip, before.tip), 1 / LEAN_DT);
-    const across = subVec3(velocity, scaleVec3(rocked, dotVec3(velocity, rocked)));
+    const across = subVec3(velocity, scaleVec3(rest, dotVec3(velocity, rest)));
     const speed = lengthVec3(across);
-    if (speed > 1e-6) axis = unitVec3(addVec3(rocked, scaleVec3(across, (Math.tan(r.lean * DEG) * Math.tanh(speed / LEAN_SPEED)) / speed)));
+    if (speed > 1e-6) axis = unitVec3(addVec3(rest, scaleVec3(across, (Math.tan(r.lean * DEG) * Math.tanh(speed / LEAN_SPEED)) / speed)));
   }
   return { ...here, axis };
 }
-
-/** The height a lift tops out at, world px: where the tip's image is `1 + lift` times its size on the surface. */
-const needleLiftTop = (r: NeedleRig) => (needleLensHeight(r.fov) * r.lift) / (1 + r.lift);
 
 /** The needle's axis at rest, tip to body: `tilt` off the lens, its body running toward `grip`. */
 const needleRestAxis = (r: NeedleRig): Vec3 =>
   [Math.sin(r.tilt * DEG) * Math.cos(r.grip * DEG), Math.sin(r.tilt * DEG) * Math.sin(r.grip * DEG), Math.cos(r.tilt * DEG)];
 
 const LEAN_DT = 1 / (4 * FPS);
-// Frame px a second across its axis at which the lean is three quarters of `lean`: a crossing reaches it, a drift doesn't.
+// Frame px a second across its axis at which the lean is three quarters of `lean`: a blow reaches it, a drift doesn't.
 const LEAN_SPEED = 3000;
 // The ink drop keeps this much of itself through a strike.
 const SPENT = 0.35;
-// The spring back off a strike closes on its height with this time constant: half of it a frame in, 86% by three.
-const BOUNCE_TAU = 1.5 / FPS;
-// The crossing to the next point leaves the strike gently and runs fastest just after the lift starts, so the
-// needle is never still but most of the way is covered in the air.
-const CROSS_WARP = 1.4;
-// The fall's height runs out as 1 − u^FALL_POWER: driven down from the top rather than dropped, so its one frame in
-// the air shows it well on the way, and a little faster as it lands.
-const FALL_POWER = 1.3;
+// The exit covers its path as v^EXIT_POWER: it tears out of the surface and is fastest leaving frame, so its first
+// frame smears short and its last long.
+const EXIT_POWER = 1.6;
 
 /** The tip's pose without the lean: the whole choreography. */
 function tipPath(order: readonly NeedleStrike[], t: number, r: NeedleRig, axis: Vec3): Omit<NeedlePose, 'axis'> | null {
-  if (!order.length) return null;
-  const lens = needleLensHeight(r.fov), top = needleLiftTop(r);
-  const falling = (u: number) => top * (1 - u ** FALL_POWER);
-  const first = order[0];
-  if (t < first.at - CONTACT_SLACK) {
-    const before = first.at - t, p = surfacePoint(first);
-    const held = { ink: first.ink, inkFrom: first.ink, inkMix: 1, load: 1 };
-    if (before <= r.fall) return { tip: towardLens(p, falling(1 - before / r.fall), lens), ...held, fast: true };
-    const v = 1 - (before - r.fall) / r.enter;
-    if (v <= 0) return null;
-    // In along `from` at the lift's height, braking over the point.
-    return { tip: towardLens(lerpVec3(offFrame(p, top, axis, r), p, cubicOut(v)), top, lens), ...held, fast: v < 0.75 };
+  const next = order.find((s) => s.at > t + CONTACT_SLACK);
+  if (next && next.at - t < r.enter) {
+    const p = surfacePoint(next);
+    return { tip: lerpVec3(needleOffFrame(p, axis, r), p, 1 - (next.at - t) / r.enter), ink: next.ink, load: 1, fast: true };
   }
-
-  const i = order.findLastIndex((s) => s.at <= t + CONTACT_SLACK);
-  const strike = order[i], next = order[i + 1], tau = t - strike.at, p = surfacePoint(strike);
-  const spent = { ink: strike.ink, inkFrom: strike.ink, inkMix: 1, load: SPENT };
+  const strike = order.findLast((s) => s.at <= t + CONTACT_SLACK);
+  if (!strike) return null;
+  const tau = Math.max(0, t - strike.at), p = surfacePoint(strike);
+  const driven = subVec3(p, scaleVec3(axis, overdriveDepth(Math.min(tau, r.dwell), r.overdrive * r.scale)));
+  const spent = { ink: strike.ink, load: SPENT };
   // Within the slack a frame on the dwell's last beat is still in the surface.
-  if (tau < r.dwell + CONTACT_SLACK || (!next && r.exit === false)) {
-    return { tip: subVec3(p, scaleVec3(axis, overdriveDepth(Math.min(tau, r.dwell), r.overdrive * r.scale))), ...spent, fast: false };
-  }
-  const bounced = (s: number) => r.bounce * top * (1 - Math.exp(-(s - r.dwell) / BOUNCE_TAU));
-
-  if (!next) {
-    const exit = r.exit as number;
-    if (tau < exit) return { tip: towardLens(p, bounced(tau), lens), ...spent, fast: false };
-    const v = (tau - exit) / r.enter;
-    if (v >= 1) return null;
-    // Out along `from`, gathering speed, rising to the lift's height as it goes.
-    const z = bounced(exit) + (top - bounced(exit)) * cubicOut(v);
-    return { tip: towardLens(lerpVec3(p, offFrame(p, top, axis, r), cubicIn(v)), z, lens), ...spent, fast: true };
-  }
-
-  const gap = next.at - strike.at, q = surfacePoint(next);
-  const fallAt = Math.max(r.dwell, gap - r.fall), liftAt = Math.max(r.dwell, fallAt - r.rise);
-  const k = motionCurves.dissolve(((tau - r.dwell) / (fallAt - r.dwell)) ** CROSS_WARP);
-  const z = tau >= fallAt ? falling((tau - fallAt) / (gap - fallAt))
-    : tau >= liftAt ? bounced(liftAt) + (top - bounced(liftAt)) * cubicOut((tau - liftAt) / (fallAt - liftAt))
-    : bounced(tau);
-  return {
-    tip: towardLens(lerpVec3(p, q, k), z, lens),
-    ink: next.ink, inkFrom: strike.ink, inkMix: smooth(k, 0.03, 0.25),
-    load: SPENT + (1 - SPENT) * smooth(k, 0.1, 0.6),
-    // Within the slack the fall's first frame is already falling.
-    fast: tau >= fallAt - CONTACT_SLACK,
-  };
+  if (tau < r.dwell + CONTACT_SLACK) return { tip: driven, ...spent, fast: false };
+  const v = (tau - r.dwell) / r.exit;
+  if (v >= 1) return null;
+  return { tip: lerpVec3(driven, needleOffFrame(p, axis, r), v ** EXIT_POWER), ...spent, fast: true };
 }
 
 /** Depth past the surface `tau` seconds after contact: driven to `overdrive` a frame in, then easing back as it dwells. */
@@ -223,24 +168,29 @@ function overdriveDepth(tau: number, overdrive: number) {
   return overdrive * k * Math.exp(1 - k);
 }
 
+// Past the frame's edge by this much before the needle counts as gone, so its lean can't tip an edge back in.
+const OFF_FRAME_MARGIN = 40;
+
 /**
- * The surface point out along `from` from `p` where the needle, `z` px up from it toward the lens, is wholly out of
- * frame: where it comes in from and leaves to.
+ * Where the tip comes in from and leaves to for a strike at `p`: the first point out along its path (toward `from`,
+ * rising at `climb`) at which the needle is wholly out of frame.
  */
-function offFrame(p: Vec3, z: number, axis: Vec3, r: NeedleRig): Vec3 {
-  const way = (r.from ?? r.grip) * DEG, out: Vec3 = [Math.cos(way), Math.sin(way), 0];
-  const lens = needleLensHeight(r.fov);
-  let q = p;
-  for (let d = 0; d < 20 * W; d += 20) {
-    q = addVec3(p, scaleVec3(out, d));
-    const pose = { tip: towardLens(q, z, lens), axis };
+function needleOffFrame(p: Vec3, axis: Vec3, r: NeedleRig): Vec3 {
+  const way = (r.from ?? r.grip) * DEG, rise = r.climb * DEG, lens = needleLensHeight(r.fov);
+  const out: Vec3 = [Math.cos(rise) * Math.cos(way), Math.cos(rise) * Math.sin(way), Math.sin(rise)];
+  const m = OFF_FRAME_MARGIN;
+  for (let d = 20; ; d += 20) {
+    const tip = addVec3(p, scaleVec3(out, d));
+    if (tip[2] > 0.8 * lens) throw new Error(`the needle's path reaches the lens before it leaves frame: lower its climb (${r.climb}°)`);
+    const pose = { tip, axis };
     const seen = NEEDLE_OUTLINE.some(([along, radius]) => [0, 1, 2, 3].some((j) => {
-      const s = needleScreenPoint(outlinePoint(pose, along * r.scale, radius * r.scale, (j * Math.PI) / 2), r.fov);
-      return s.x > 0 && s.x < W && s.y > 0 && s.y < H;
+      const q = outlinePoint(pose, along * r.scale, radius * r.scale, (j * Math.PI) / 2);
+      if (q[2] >= lens) return false;
+      const s = needleScreenPoint(q, r.fov);
+      return s.x > -m && s.x < W + m && s.y > -m && s.y < H + m;
     }));
-    if (!seen) break;
+    if (!seen) return tip;
   }
-  return q;
 }
 
 // ---------- the model, in mm, with the tip at the origin and the needle running up +z ----------
@@ -403,47 +353,80 @@ function needleInFrame(pose: NeedlePose, r: NeedleRig) {
   return seen / (steps + 1);
 }
 
+/**
+ * Whether frame point `p` lies on the needle's picture at `t`, for a HUD judging its ground: the outline as discs a mm
+ * apart down the axis. Only a frame that shows it sharp counts (the contact, the drive); a fast frame smears it into a
+ * veil too faint to be the ground, so it covers nothing.
+ */
+export function needleCoversAt(strikes: readonly NeedleStrike[], t: number, p: { x: number; y: number }, rig: Partial<NeedleRig> = {}): boolean {
+  const r = { ...NEEDLE_RIG, ...rig };
+  const pose = needlePoseAt(strikes, t, r);
+  if (!pose || pose.fast) return false;
+  const lens = needleLensHeight(r.fov);
+  return NEEDLE_OUTLINE.slice(1).some(([along1, out1], k) => {
+    const [along0, out0] = NEEDLE_OUTLINE[k], steps = Math.max(1, Math.ceil(along1 - along0));
+    return Array.from({ length: steps + 1 }, (_, j) => j / steps).some((u) => {
+      const centre = addVec3(pose.tip, scaleVec3(pose.axis, (along0 + (along1 - along0) * u) * r.scale));
+      const s = needleScreenPoint(centre, r.fov);
+      return Math.hypot(p.x - s.x, p.y - s.y) <= ((out0 + (out1 - out0) * u) * r.scale * lens) / (lens - centre[2]);
+    });
+  });
+}
+
 /** How the lens is set for the needle's frames; `NeedleProps` says what each does. */
 export type NeedleLensing = { rig?: Partial<NeedleRig>; shutter: number; fastShutter: number; focus: number };
 
-/** How the frame at `t` is taken: the needle's pose, how long the shutter is open, what's in focus, when each exposure is. */
-export type NeedleShot = {
-  /** Null while the needle is out of frame. */
-  pose: NeedlePose | null;
-  /** A share of a frame: `fastShutter` while the needle falls, comes in or leaves, `shutter` otherwise. */
+/** One exposure of the frame: how long its shutter is open, as a share of a frame, and when each moment of it is taken. */
+export type NeedleTake = {
   shutter: number;
-  /** Frame px from the lens to the plane that's sharp: through the point `focus` mm up the needle. */
-  focusDistance: number;
   /** When the exposure `dt` seconds into the frame (−shutter/FPS … 0) is taken. */
   exposureAt: (dt: number) => number;
+};
+
+/** How the frame at `t` is taken: the needle's pose, how long the shutter is open, what's in focus, when each exposure is. */
+export type NeedleShot = NeedleTake & {
+  /** Null while the needle is out of shot. */
+  pose: NeedlePose | null;
+  /** Frame px from the lens to the plane that's sharp: through the point `focus` mm up the needle. */
+  focusDistance: number;
+  /** On a `streak` strike's contact frame, the whole way in, drawn behind the sharp needle; otherwise null. */
+  streak: NeedleTake | null;
 };
 
 export function needleShotAt(strikes: readonly NeedleStrike[], t: number, o: NeedleLensing): NeedleShot {
   const r = { ...NEEDLE_RIG, ...o.rig };
   const pose = needlePoseAt(strikes, t, r);
   const lens = needleLensHeight(r.fov);
-  // A contact frame's shutter opens on the strike, so the needle lands sharp rather than streaking down its own axis.
-  const opens = needleContactAt(strikes, t)?.strike.at ?? -Infinity;
+  const contact = needleContactAt(strikes, t);
+  // A contact frame's shutter opens on the strike, so the needle lands sharp rather than streaking down its path.
+  const opens = contact?.strike.at ?? -Infinity;
+  // The frame after it has gone still catches the end of its exit, in the fast shutter.
+  const tail = pose ? null : needlePoseAt(strikes, t - o.fastShutter / FPS, r);
+  const seen = pose ?? tail;
   return {
     pose,
-    shutter: pose?.fast ? o.fastShutter : o.shutter,
-    focusDistance: pose ? lens - (pose.tip[2] + o.focus * r.scale * pose.axis[2]) : lens,
+    shutter: seen?.fast ? o.fastShutter : o.shutter,
+    focusDistance: seen ? lens - (seen.tip[2] + o.focus * r.scale * seen.axis[2]) : lens,
     exposureAt: (dt) => Math.max(t + dt, opens),
+    streak: contact?.strike.streak && contact.since < 0.5 / FPS ? { shutter: r.enter * FPS, exposureAt: (dt) => t + dt } : null,
   };
 }
 
 /**
  * Exposures for the frame at `t`: enough that no point of the needle's outline in view moves further between two
- * than the lens already blurs it there, so a fall smears rather than strobes. At rest, `samples`; 0 while it's out of
+ * than the lens already blurs it there, so a blow smears rather than strobes. At rest, `samples`; 0 while it's out of
  * the shot for the whole shutter, when there's nothing to draw.
  */
-export function needleExposuresAt(
-  strikes: readonly NeedleStrike[], t: number, o: NeedleLensing & { samples: number; maxSamples: number; aperture: number },
-): number {
-  const r = { ...NEEDLE_RIG, ...o.rig };
+export function needleExposuresAt(strikes: readonly NeedleStrike[], t: number, o: NeedleLensing & NeedleSampling): number {
   const shot = needleShotAt(strikes, t, o);
+  return needleTakeExposures(strikes, shot, shot.focusDistance, { ...NEEDLE_RIG, ...o.rig }, o);
+}
+
+type NeedleSampling = { samples: number; maxSamples: number; aperture: number };
+
+function needleTakeExposures(strikes: readonly NeedleStrike[], take: NeedleTake, focusDistance: number, r: NeedleRig, o: NeedleSampling): number {
   const lens = needleLensHeight(r.fov), steps = 12;
-  const poses = Array.from({ length: steps + 1 }, (_, k) => needlePoseAt(strikes, shot.exposureAt(-((steps - k) / steps) * (shot.shutter / FPS)), r));
+  const poses = Array.from({ length: steps + 1 }, (_, k) => needlePoseAt(strikes, take.exposureAt(-((steps - k) / steps) * (take.shutter / FPS)), r));
   if (poses.every((pose) => pose === null)) return 0;
   let need = 0;
   for (const [along, out] of NEEDLE_OUTLINE) {
@@ -458,7 +441,7 @@ export function needleExposuresAt(
         const s = needleScreenPoint(p, r.fov), seen = s.x > 0 && s.x < W && s.y > 0 && s.y < H;
         if (last && (seen || last.seen)) travel += Math.hypot(s.x - last.x, s.y - last.y);
         // The defocus disc's diameter, by ThreeLens's thin lens (its focal length in px is the lens height).
-        if (seen) blur = Math.min(blur, lens * o.aperture * Math.abs(1 / shot.focusDistance - 1 / (lens - p[2])));
+        if (seen) blur = Math.min(blur, lens * o.aperture * Math.abs(1 / focusDistance - 1 / (lens - p[2])));
         last = { ...s, seen };
       }
       if (travel > 0) need = Math.max(need, travel / Math.max(SHARP_STEP, blur / 2) + 1);
@@ -526,11 +509,13 @@ function clearPlasticMaterial() {
  * The frame's scene, built once and re-posed for each exposure: the needle over a surface that takes its shadow and
  * hides what's driven into it. What changes within a frame's shutter is only where the needle is and its ink.
  */
-function needleStage(r: NeedleRig, color: string, shadow: number) {
+function needleStage(r: NeedleRig, color: string, shadow: number, shift: { x: number; y: number }) {
   const lens = needleLensHeight(r.fov);
   const camera = new THREE.PerspectiveCamera(r.fov, W / H, lens * 0.02, lens * 1.5);
   camera.position.set(0, 0, lens);
   camera.lookAt(0, 0, 0);
+  // A lens shift, not a move: the picture slides whole, as the layers under it do, and draws what slides in.
+  camera.setViewOffset(W, H, -shift.x, -shift.y, W, H);
   const scene = new THREE.Scene();
 
   // The surface: depth only, drawn first, so what's driven past it is hidden; and a layer that is only shadow.
@@ -588,7 +573,7 @@ function needleStage(r: NeedleRig, color: string, shadow: number) {
     if (!pose) return frame;
     needle.position.set(...pose.tip);
     needle.quaternion.setFromUnitVectors(up, new THREE.Vector3(...pose.axis));
-    ink.color.set(pose.inkFrom).lerp(new THREE.Color(pose.ink), pose.inkMix);
+    ink.color.set(pose.ink);
     // Spent, the drop is smaller and shorter; it hangs a touch downhill, toward the surface.
     const fill = 0.45 + 0.55 * pose.load;
     down.set(0, 0, -1).applyQuaternion(needle.quaternion.clone().invert());
@@ -611,11 +596,11 @@ export type NeedleProps = Partial<NeedleRig> & {
   /** The most a fast frame takes; it takes as many as its smear needs (`needleExposuresAt`), about 0.7 ms each. */
   maxSamples?: number;
   /**
-   * How long the shutter stays open, as a share of a frame, while the needle springs back, crosses and lifts: a
-   * quarter keeps the grouping and the clear tip crisp. A contact frame's shutter opens on the strike, so it never streaks.
+   * How long the shutter stays open, as a share of a frame, on the drive: a quarter keeps the grouping and the clear
+   * tip crisp. A contact frame's shutter opens on the strike, so it never streaks.
    */
   shutter?: number;
-  /** The shutter while it falls, comes in or leaves: 0.5 smears a fall into a streak toward its point rather than a strobe. */
+  /** The shutter while it comes in or leaves: a whole frame smears each of those frames into one streak along its path. */
   fastShutter?: number;
   /**
    * The lens's opening in px. At 16 the needle and the clear tip are sharp, and the body softens toward its back end:
@@ -629,6 +614,11 @@ export type NeedleProps = Partial<NeedleRig> & {
    * for it too: pass the ground it's drawn over, or its soft edges wash out over a light one.
    */
   ground?: string;
+  /**
+   * Frame px the shot is knocked by at `t`, as a shake translates the layers under the needle: the needle's picture
+   * moves with them through its lens, so the canvas's edge never shows. Strikes stay in unshifted frame px.
+   */
+  shift?: { x: number; y: number };
   /**
    * Its name in the motion tracks (the tip's point on screen, reporting `lift`, mm above the surface; `grow`, the share
    * its image is bigger than on the surface; `tilt`, degrees off the lens axis; and `inFrame`, the share of its length
@@ -644,31 +634,33 @@ export type NeedleProps = Partial<NeedleRig> & {
  *   <Needle t={s.t} strikes={[{ at: g.at(0), x: 880, y: 590, ink: '#ee4c23' }, …]} />
  */
 export function Needle({
-  t, strikes, color = '#34353a', shadow = 0.45, samples = 32, maxSamples = 256, shutter = 0.25, fastShutter = 0.5, aperture = 16, focus = 6,
-  ground = '#0c0c0e', motion, ...rig
+  t, strikes, color = '#34353a', shadow = 0.45, samples = 32, maxSamples = 256, shutter = 0.25, fastShutter = 1, aperture = 16, focus = 6,
+  ground = '#0c0c0e', shift = { x: 0, y: 0 }, motion, ...rig
 }: NeedleProps) {
   const r = { ...NEEDLE_RIG, ...rig };
-  const lensing: NeedleLensing = { rig: r, shutter, fastShutter, focus };
-  const shot = needleShotAt(strikes, t, lensing);
+  const shot = needleShotAt(strikes, t, { rig: r, shutter, fastShutter, focus });
   const { pose } = shot;
   const tip = pose && needleScreenPoint(pose.tip, r.fov);
-  const exposures = needleExposuresAt(strikes, t, { ...lensing, samples, maxSamples, aperture });
-  // Built on the frame's first exposure and shared by the rest; the stage frees it after the frame.
-  let stage: ReturnType<typeof needleStage> | null = null;
-  const draw = ({ dt }: ThreeSample) => (stage ??= needleStage(r, color, shadow))(needlePoseAt(strikes, shot.exposureAt(dt), r));
+  // Each take is its own stage: the streak is laid down first, and the sharp contact over it.
+  const takes = [shot.streak, shot].filter((take) => take !== null).map((take) => {
+    // Built on the take's first exposure and shared by the rest; its stage frees it after the frame.
+    let stage: ReturnType<typeof needleStage> | null = null;
+    const draw = ({ dt }: ThreeSample) => (stage ??= needleStage(r, color, shadow, shift))(needlePoseAt(strikes, take.exposureAt(dt), r));
+    return { take, draw, exposures: needleTakeExposures(strikes, take, shot.focusDistance, r, { samples, maxSamples, aperture }) };
+  });
   // No bloom: the grouping's wires lie side by side, and their glints would glow together into a white smear that
   // hides them, and haze the ground around.
   return (
     <>
-      {exposures > 0 && (
-        <ThreeStage transparent backdrop={ground} environment={needleStudio(needleRestAxis(r), ground)} shadows samples={exposures} shutter={shot.shutter} softShadows={3}
-          lens={{ focus: shot.focusDistance, aperture }} draw={draw} />
-      )}
+      {takes.map(({ take, draw, exposures }) => exposures > 0 && (
+        <ThreeStage key={take === shot ? 'shot' : 'streak'} transparent backdrop={ground} environment={needleStudio(needleRestAxis(r), ground)} shadows samples={exposures}
+          shutter={take.shutter} softShadows={3} lens={{ focus: shot.focusDistance, aperture }} draw={draw} />
+      ))}
       {tip && (
         <div {...pieceMotionAttrs(motion, 'needle', { kind: 'needle', values: {
           lift: pose.tip[2] / r.scale, grow: pose.tip[2] / (needleLensHeight(r.fov) - pose.tip[2]), tilt: Math.acos(pose.axis[2]) / DEG, inFrame: needleInFrame(pose, r),
         } })}
-          style={{ position: 'absolute', left: tip.x - 3, top: tip.y - 3, width: 6, height: 6, pointerEvents: 'none' }} />
+          style={{ position: 'absolute', left: tip.x + shift.x - 3, top: tip.y + shift.y - 3, width: 6, height: 6, pointerEvents: 'none' }} />
       )}
     </>
   );

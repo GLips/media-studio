@@ -3,19 +3,19 @@ import { test } from 'node:test';
 import { steadyBeatGrid } from '../beats.ts';
 import '../tsx-test-hooks.ts';
 
-const { NEEDLE_RIG, needleContactAt, needleLensHeight, needlePoseAt, needleScreenPoint, needleShotAt } = await import('./needle.tsx');
+const { NEEDLE_RIG, needleContactAt, needlePoseAt, needleScreenPoint, needleShotAt } = await import('./needle.tsx');
 
 const g = steadyBeatGrid(120);
 // On the beats, the last two out by the frame's corners, where the perspective is strongest.
 const strikes = [
-  { at: g.at(1), x: 888, y: 588, ink: '#ee4c23' },
+  { at: g.at(1), x: 888, y: 588, ink: '#ee4c23', streak: true },
   { at: g.at(2), x: 1320, y: 348, ink: '#4144f4' },
   { at: g.at(3), x: 40, y: 1050, ink: '#ff00c2' },
   { at: g.at(4), x: 1880, y: 30, ink: '#19d36b' },
 ];
-const lensing = { shutter: 0.25, fastShutter: 0.5, focus: 6 };
+const lensing = { shutter: 0.25, fastShutter: 1, focus: 6 };
 
-test('every exposure of a contact frame sees the tip on its strike\'s pixel, and the contact names it; a frame before, it is still falling', () => {
+test('every exposure of a contact frame sees the tip on its strike\'s pixel, and the contact names it; a frame before, it is coming in', () => {
   for (const [index, s] of strikes.entries()) {
     // A scene's clock can land a hair under the beat: a frame over the fps, less the scene's start.
     for (const t of [s.at, s.at - 1e-9]) {
@@ -33,18 +33,22 @@ test('every exposure of a contact frame sees the tip on its strike\'s pixel, and
   }
 });
 
-test('between two beats it lifts from the "and" till its image is `lift` bigger, and falls in two frames at the fast shutter', () => {
-  const lens = needleLensHeight(NEEDLE_RIG.fov);
-  for (let index = 0; index < strikes.length - 1; index++) {
-    const frame = g.frame(index + 1);
-    const grow = (k: number) => {
-      const z = needlePoseAt(strikes, (frame + k) / 30)!.tip[2];
-      return z / (lens - z);
-    };
-    assert.ok(grow(7) < 0.2 * NEEDLE_RIG.lift, `strike ${index}: grown ${grow(7)} on the "and"`);
-    assert.ok(grow(11) > 0.9 * NEEDLE_RIG.lift, `strike ${index}: grown ${grow(11)} four frames on`);
-    assert.ok(Math.abs(grow(13) - NEEDLE_RIG.lift) < 1e-6, `strike ${index}: grown ${grow(13)} at the top`);
-    const fast = Array.from({ length: 15 }, (_, k) => k).filter((k) => needleShotAt(strikes, (frame + k) / 30, lensing).shutter === 0.5);
-    assert.deepEqual(fast, [13, 14], `strike ${index}`);
+test('each strike is one blow: out of shot between strikes, in and out at the fast shutter, sharp from the contact through the drive', () => {
+  const frames = (s: (typeof strikes)[number], ks: number[]) => ks.map((k) => needleShotAt(strikes, s.at + k / 30, lensing));
+  for (const [index, s] of strikes.entries()) {
+    const [early, coming, contact, drive, leaving, gone, between] = frames(s, [-3, -1, 0, 1, 3, 4, 8]);
+    assert.equal(early.pose, null, `strike ${index}: in shot three frames early`);
+    assert.equal(between.pose, null, `strike ${index}: in shot between strikes`);
+    assert.deepEqual([coming, leaving].map((f) => f.pose?.fast && f.shutter), [1, 1], `strike ${index}: coming in and leaving`);
+    assert.deepEqual([contact, drive].map((f) => !f.pose!.fast && f.shutter), [0.25, 0.25], `strike ${index}: contact and drive`);
+    // Gone, but the frame's shutter still catches the end of the exit.
+    assert.deepEqual([gone.pose, gone.shutter], [null, 1], `strike ${index}: the frame after it leaves`);
+    assert.equal(contact.streak !== null, index === 0, `strike ${index}: a streak on its contact frame`);
   }
+  // The streak takes the whole way in: its first moment has the needle wholly out of frame.
+  const streak = needleShotAt(strikes, strikes[0].at, lensing).streak!;
+  const first = needlePoseAt(strikes, streak.exposureAt((-(1 - 1e-6) * streak.shutter) / 30))!;
+  const tip = needleScreenPoint(first.tip);
+  assert.ok(tip.x > 1920 || tip.x < 0 || tip.y > 1080 || tip.y < 0, `the streak starts with the tip at ${tip.x}, ${tip.y}`);
+  assert.equal(streak.shutter, NEEDLE_RIG.enter * 30);
 });
