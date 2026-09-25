@@ -5,11 +5,11 @@ fitted with `studio music fit --bars` to a two-beat pickup, nine bars and its ow
 bar per idea; the HUD names the craft each bar shows off, as the reference reel's does. Copy runs as one sentence
 across the reel: THE NEW BUY BOX. EVERY COLOR, ONE TAP. 174 INKS, ONE SEARCH. BUY MORE, PAY LESS. ONE BOX.
 
-The beats come from the bar table in `timeline.ts`, each bar's length in beats: 4, 4, 6, 6, 4, 4, 4, 8 and 4, the 44
+The beats come from the scenes in `timeline.ts`, each bar's length in beats: 4, 4, 6, 6, 4, 4, 4, 8 and 4, the 44
 beats from bar 1's downbeat (the track's beat 0, frame 25) to the final hit (686); the finale cuts in on its first
-beat's "and". A bar times itself in beats from its own first beat (`clock.beat(n)`), and reaches another bar's moment
-by its cue (`timeline.cue('pay-less.stamp')`), so a bar made longer moves every later bar with it. Each hit is two
-frames ahead of the tracker's beat (`leadFrames`), since the tracker hears a hit ~20 ms late and the picture leads the
+beat's "and". A bar times itself in beats from its own first beat (`clock.beat(n)`), and the finale replays another
+bar's moment through the replays `timeline.ts` declares (`pay-less.stamp` on the 2×2's first frame), so a bar made
+longer moves every later bar with it. Each hit is two frames ahead of the tracker's beat (`pictureLeadFrames`), since the tracker hears a hit ~20 ms late and the picture leads the
 sound by about a frame, as the reference's does; a placed sound lands `soundLagSeconds` (35 ms) after its frame.
 `studio clock` prints every bar's frames and every beat's frame (30 fps). Frames below are video frames.
 

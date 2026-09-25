@@ -11,10 +11,15 @@ Read first: `showreel-breakdown.md` (the system section, then the reference sect
 
 ## The clock
 
-A reel project keeps its clock in one module (`timeline.ts`): the fitted track, its `BeatGrid`, and `hitFrame(n)`,
-the frame beat `n` hits on. Hits are two frames ahead of `grid.frame(n)`: the tracker hears a hit about 20 ms late,
-and the picture should lead the sound by about a frame. Everything lands on `hitFrame`: cuts, arrivals, impacts,
-section labels. Off-beats are fractions (`hitFrame(9.5)` is the "and").
+A reel project states its timing once, in `timeline.ts`: `defineTimeline` with the fitted track's grid
+(`recordedGrid(track, { steady: true })`), each bar a `beatSpan(beats, { cues, moves, cutIn })`, the finale's
+`replays`, and a landmark on the music's final hit, so a bar table that no longer ends on it throws, naming both fixes
+(`studio music fit --bars`, or change the timeline). Hits are two frames ahead of the grid's beat frame
+(`pictureLeadFrames: 2`): the tracker hears a hit about 20 ms late, and the picture should lead the sound by about a
+frame. Everything lands on a hit frame: cuts, arrivals, impacts, section labels. `video.tsx` binds each bar to its
+resolved clock, and a bar reaches only its own beats (`clock.beat(n)`, from 0 on its first beat; off-beats are
+fractions, `clock.beat(1.5)` is the "and") and its own cues (`clock.cues.stamp`). Another bar's moment is a cue in
+`timeline.ts`, and a finale gets the bars it replays handed in as replays: never an import or an absolute beat.
 
 - A cut or an instant change goes on the hit frame itself.
 - A move that has to *arrive* on a beat starts early (40–190 ms, 1–6 frames): an expo arrival does most of its travel
@@ -23,8 +28,11 @@ section labels. Off-beats are fractions (`hitFrame(9.5)` is the "and").
 
 ## A bar
 
-A bar is a module exporting a `Bar` (`id`, `note`, `from`, `to`, `render(f)`, `hudRead`): `render` takes the
-**video's** frame, so a bar can finish what the last one started and the finale can replay any bar live in a cell.
+A bar is a module exporting a function of its clock returning a `Bar` (`id`, `note`, `clock`, `render(f)`, `hudRead`):
+`render` takes the **video's** frame, so a bar can finish what the last one started and the finale can replay any bar
+live in a cell (`replay.source.render(replay.sourceFrame(f))`). A move that must keep its length when a bar before it
+grows is a start plus a duration anchored at one end, declared in the bar's `moves`; the retime runner in
+`timeline.test.ts` lengthens every bar and fails one that stretches.
 Draw only through the bar's pure function of `f`: no state, no randomness but seeded.
 
 - **Always moving.** Nothing holds still longer than about half a beat: a held word breathes, drifts or re-lights; a

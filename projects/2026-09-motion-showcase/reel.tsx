@@ -1,7 +1,7 @@
 // What every bar is drawn inside: the HUD over it, the lens over both, the grade over that, and the ending's fade over
 // everything. `barScene` makes a bar the video's scene; `barPreview` makes a video of one bar alone, for building it without the other bars in the bundle.
 
-import { FPS, FilmGrain, Vignette, defineVideo, sceneForBar, type Rect } from '../../lib/studio/api.ts';
+import { FPS, FilmGrain, Vignette, defineVideo, sceneForTimelineClock, type Rect } from '../../lib/studio/api.ts';
 import { ReelHud, type ReelHudRead, type ReelHudSlot } from '../../lib/studio/reel/hud.tsx';
 import { LensFringe } from '../../lib/studio/reel/lens.tsx';
 import { FadeToBlack } from '../../lib/studio/reel/recap.tsx';
@@ -19,7 +19,7 @@ const SECTION_TITLES = [
 export const SHOWCASE_HUD = {
   size: 20, title: 'PAINFUL PLEASURES', subtitle: 'THE NEW BUY BOX', readout: '120 BPM   30 FPS   1920×1080',
   // The first label decodes with the rest of the HUD at boot, not on bar 1's downbeat, so the pickup's HUD is whole.
-  sections: SECTION_TITLES.map((title, i) => ({ at: timeline.bars[i].from / FPS, title })),
+  sections: SECTION_TITLES.map((title, i) => ({ at: timeline.scenes[i].from / FPS, title })),
   palette: { ink: P.ink, paper: P.cream, accent: P.red },
   beatOf: (t: number) => timeline.beatAtFrame(t * FPS),
   duration: timeline.end / FPS,
@@ -39,7 +39,7 @@ export function barScene(bar: Bar) {
     if (!asked.reads.has(slot)) asked.reads.set(slot, bar.hudRead?.(slot, f, box) ?? { tone: 'light' });
     return asked.reads.get(slot)!;
   };
-  return sceneForBar(bar.clock, {
+  return sceneForTimelineClock(bar.clock, {
     note: bar.note,
     render: (s) => {
       const f = from + Math.round(s.t * FPS);

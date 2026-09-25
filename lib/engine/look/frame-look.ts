@@ -5,8 +5,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { tileLabelledImages } from '../ffmpeg/contact-sheet.ts';
-import type { BarClockTable } from '../../models/timeline/bar-timeline.ts';
-import { formatFrameMotion } from './frame-motion.ts';
+import { formatFrameMotion, type MotionClock } from './frame-motion.ts';
 import type { RenderSession } from '../render/render-session.ts';
 import { runFfmpeg, runFfprobe } from '../ffmpeg/ffmpeg.ts';
 
@@ -209,7 +208,7 @@ export async function lookAgainst(before: OpenLookSource, after: OpenLookSource,
 
 /** Measures `first`–`last` frame by frame (luma, change from the frame before), prints its summary, and writes every frame's numbers to `out`. */
 export async function lookMotion(source: OpenLookSource, first: number, last: number, { crop, still, clock, out }: {
-  crop?: LookCrop; still: number; clock?: BarClockTable; out: string;
+  crop?: LookCrop; still: number; clock?: MotionClock; out: string;
 }) {
   checkFramesIn(source, [first, last]);
   // The frame before the stretch, when the source has one, gives its first frame a change too.

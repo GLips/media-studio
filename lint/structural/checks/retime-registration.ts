@@ -1,9 +1,9 @@
 // ─── (e) Retime runner registration ───────────────────────────────────
 //
 // Every timed project (one with a timeline.ts) registers with the shared retime
-// runner: its timeline.test.ts calls `assertBarTimelineRetimes`, imported from
+// runner: its timeline.test.ts calls `assertTimelineRetimes`, imported from
 // lib/models/timeline/retime.ts, and `npm test` runs it. The runner itself holds
-// the behaviour (lengthening a bar moves what follows and keeps each move's
+// the behaviour (lengthening a scene moves what follows and keeps each move's
 // length); this check holds that no timed project skips it.
 //
 // Negative space: a voice-led project with its timing still in video.tsx has no
@@ -14,7 +14,7 @@ import { walkAst, type AstNode } from '../source-tree.ts';
 import type { Finding, StructuralCheck } from '../check-context.ts';
 
 const ID = 'retime-registration';
-export const RETIME_RUNNER = { path: 'lib/models/timeline/retime.ts', name: 'assertBarTimelineRetimes' } as const;
+export const RETIME_RUNNER = { path: 'lib/models/timeline/retime.ts', name: 'assertTimelineRetimes' } as const;
 
 export const retimeRegistrationCheck: StructuralCheck = {
   id: ID,

@@ -1,6 +1,8 @@
 // frame-motion.ts: how much a stretch of video moves, frame by frame, and where it breaks "always moving", from each
 // frame's mean luma and its mean difference from the frame before. Pure: lib/engine/look/frame-look.ts measures the numbers.
-import type { BarClockTable } from '../../models/timeline/bar-timeline.ts';
+
+/** What motion reads of `studio clock`: the bars' frames, the beats and where the fade starts. */
+export type MotionClock = { bars: readonly { n: number; from: number; to: number }[]; beats: readonly number[]; fade: { from: number } };
 
 /** A stretch's frames, each with its mean luma and its mean difference from the frame before (none for the first). */
 export type LumaMotion = { first: number; luma: number[]; diff: (number | null)[] };
@@ -14,7 +16,7 @@ const STILL_RUN_FRAMES = 7;
  * The runs of near-still frames: STILL_RUN_FRAMES or more in a row, each moving less than `still` from the one before.
  * A cut (a bar's first frame) ends a run, and nothing from the fade on counts.
  */
-export function findStillRuns({ first, diff }: LumaMotion, still: number, clock?: BarClockTable): StillRun[] {
+export function findStillRuns({ first, diff }: LumaMotion, still: number, clock?: MotionClock): StillRun[] {
   const cuts = new Set(clock?.bars.map((b) => b.from));
   const stop = Math.min(first + diff.length - 1, (clock?.fade.from ?? Infinity) - 1);
   const runs: StillRun[] = [];
@@ -38,7 +40,7 @@ const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
  * The summary `studio look --motion` prints: the stretch's mean motion, each bar's (its first frame, the cut, left out),
  * the still runs and every beat frame's luma and motion. `table` is every frame's numbers, for a file beside it.
  */
-export function formatFrameMotion(motion: LumaMotion, { still, clock }: { still: number; clock?: BarClockTable }) {
+export function formatFrameMotion(motion: LumaMotion, { still, clock }: { still: number; clock?: MotionClock }) {
   const { first, luma, diff } = motion, last = first + luma.length - 1;
   const at = (f: number) => ({ luma: luma[f - first], diff: diff[f - first] });
   const diffs = (from: number, to: number) => diff.slice(from - first, to - first + 1).filter((d): d is number => d !== null);

@@ -15,6 +15,9 @@ test('each path lands in its §4 position', () => {
     'brands/kit/brand.ts': 'brand-kit',
     'brands/kit/extra.ts': 'undeclared',
     'projects/p/timeline.ts': 'timeline',
+    'projects/p/timeline.test.ts': 'spec',
+    // Adversarial: a test named for no root module is just another project file.
+    'projects/p/parts.test.ts': 'unclassified',
     'projects/p/brand.ts': 'brand',
     'projects/p/look.ts': 'shared',
     'projects/p/bars/01-ink.tsx': 'scene 01-ink',

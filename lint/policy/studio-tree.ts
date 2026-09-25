@@ -13,6 +13,8 @@ import { DECLARED_SHARED_MODULES } from './declared-shared.ts';
 
 export type ProjectRole =
   | { role: 'timeline' | 'video' | 'stills' | 'brand' | 'capture' }
+  /** A spec beside a root module (`timeline.test.ts`): run by `node --test`, it may bind the whole project; nothing imports it. */
+  | { role: 'spec' }
   /** `bars/<id>.tsx` or `scenes/<id>.tsx`: one scene per file. */
   | { role: 'scene'; scene: string }
   /** A file in `bars/<id>/` or `scenes/<id>/`: that scene's own helper. */
@@ -84,6 +86,8 @@ function projectRole(inside: string[], shared: readonly string[]): ProjectRole {
   const [first, second] = inside;
   if (inside.length === 1) {
     if (ROOT_ROLES[first]) return { role: ROOT_ROLES[first] };
+    const spec = /^(.+)\.test\.tsx?$/.exec(first);
+    if (spec && Object.keys(ROOT_ROLES).some((root) => root.replace(/\.tsx?$/, '') === spec[1])) return { role: 'spec' };
     return shared.includes(first) ? { role: 'shared' } : { role: 'unclassified' };
   }
   if (SCENE_DIRS.has(first)) {

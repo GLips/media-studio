@@ -41,3 +41,17 @@ test('a timing constructor imported outside timeline.ts is caught, however it is
     'projects/p/video.tsx:defineScene from #studio',
   ]);
 });
+
+test('the timeline\'s constructors stay in timeline.ts, and binding it is the composition\'s', () => {
+  const findings = runCheckOnFiles('timing-ownership', {
+    ...STUDIO,
+    'lib/models/timeline/timeline.ts': 'export const defineTimeline = (s: unknown) => s; export const beatSpan = (n: number) => n;\n',
+    'lib/models/timeline/bind-timeline.ts': 'export const bindTimeline = (t: unknown, b: unknown) => [t, b];\n',
+    'projects/p/timeline.ts': "import { beatSpan, defineTimeline } from '../../lib/models/timeline/timeline.ts';\nexport const t = defineTimeline({ a: beatSpan(4) });\n",
+    // Legal: the composition binds the resolved timeline.
+    'projects/p/video.tsx': "import { bindTimeline } from '../../lib/models/timeline/bind-timeline.ts';\nimport { t } from './timeline.ts';\nbindTimeline(t, {});\n",
+    // Obvious: a scene sizing itself with a driver.
+    'projects/p/bars/intro.tsx': "import { beatSpan } from '../../../lib/models/timeline/timeline.ts';\nexport const span = beatSpan(8);\n",
+  });
+  assert.deepEqual(caught(findings), ['projects/p/bars/intro.tsx:beatSpan from ../../../lib/models/timeline/timeline.ts']);
+});

@@ -1,7 +1,14 @@
 import type { ReactNode } from 'react';
-import type { BarClock } from '../../lib/models/timeline/bar-timeline.ts';
+import type { TimelineBinding, TimelineSceneClock } from '../../lib/models/timeline/bind-timeline.ts';
+import type { ResolvedSceneClock } from '../../lib/models/timeline/timeline.ts';
 import type { Rect, SfxSound } from '../../lib/studio/api.ts';
 import type { ReelHudRead, ReelHudSlot } from '../../lib/studio/reel/hud.tsx';
+import type { timeline } from './timeline.ts';
+
+/** The clock video.tsx hands bar `K`: its frames, its own beats, cues and moves, resolved on the reel's timeline. */
+export type ShowcaseClock<K extends (typeof timeline.keys)[number]> = TimelineSceneClock<typeof timeline, K>;
+/** The bars video.tsx hands bar `K` to replay, by the names timeline.ts declares, each mapped onto `K`'s frames. */
+export type ShowcaseReplays<K extends (typeof timeline.keys)[number]> = Parameters<TimelineBinding<typeof timeline, K, Bar>>[1];
 
 /**
  * One bar of the reel: what it draws at each frame of the video. `render` takes the video's frame, not the bar's, so a
@@ -11,8 +18,8 @@ export type Bar = {
   id: string;
   /** What the bar shows, for the scene list and the per-beat note. */
   note: string;
-  /** Its bar of the timeline: its frames (`from`, and `to` where the next starts), its beats and its cues. */
-  clock: BarClock;
+  /** Its scene of the timeline: its frames (`from`, and `to` where the next starts), its beats and its cues. */
+  clock: ResolvedSceneClock;
   render: (f: number) => ReactNode;
   /**
    * How the HUD reads over a part at frame `f`, judged over `box`, where the part sits on this bar's frame: its tone

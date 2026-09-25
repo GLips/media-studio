@@ -30,7 +30,7 @@ export * from './reel/type.tsx';
 export { useScene } from './scene.tsx';
 export { useScreenRect } from './screen-rect.ts';
 export { defineScene, defineVideo, type LineSpan, type SceneClock, type ScenePrevis, type VideoSound } from './timeline.ts';
-export { sceneForBar } from './music-led/bar-scene.tsx';
+export { sceneForTimelineClock } from './music-led/timeline-scene.tsx';
 export * from './sfx.tsx';
 export { STILL_FEED_SIZES, STILL_PRESETS, type StillFitReport, type StillPreset } from './still-presets.ts';
 export { CoverImage, defineStills, FitText, STILL_CARD_TILT, StillCard, StillHud, stillDesign, useStillFrame, type StillAxes, type StillCardTilt, type StillDesign, type StillFocus, type StillImage, type StillsDef } from './stills.tsx';

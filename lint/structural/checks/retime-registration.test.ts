@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { caught, runCheckOnFiles } from '../spec-tree.ts';
 
-const RUNNER = { 'lib/models/timeline/retime.ts': 'export const assertBarTimelineRetimes = (t: unknown) => t;\n' };
+const RUNNER = { 'lib/models/timeline/retime.ts': 'export const assertTimelineRetimes = (t: unknown) => t;\n' };
 const TIMELINE = 'export const timeline = {};\n';
 
 test('a timed project that doesn\'t call the retime runner is caught, however it half-registers', () => {
   const findings = runCheckOnFiles('retime-registration', {
     ...RUNNER,
-    'lib/kit.ts': "export { assertBarTimelineRetimes as retimes } from './models/timeline/retime.ts';\n",
+    'lib/kit.ts': "export { assertTimelineRetimes as retimes } from './models/timeline/retime.ts';\n",
     // Legal: calls the runner, here through a kit's rename.
     'projects/ok/timeline.ts': TIMELINE,
     'projects/ok/timeline.test.ts': "import { retimes } from '../../lib/kit.ts';\nimport { timeline } from './timeline.ts';\nretimes(timeline);\n",
@@ -18,11 +18,11 @@ test('a timed project that doesn\'t call the retime runner is caught, however it
     'projects/bare/timeline.ts': TIMELINE,
     // Adversarial: imports the runner but never calls it; imports it type-only; calls a look-alike of its own.
     'projects/idle/timeline.ts': TIMELINE,
-    'projects/idle/timeline.test.ts': "import { assertBarTimelineRetimes } from '../../lib/models/timeline/retime.ts';\nvoid assertBarTimelineRetimes;\n",
+    'projects/idle/timeline.test.ts': "import { assertTimelineRetimes } from '../../lib/models/timeline/retime.ts';\nvoid assertTimelineRetimes;\n",
     'projects/typed/timeline.ts': TIMELINE,
-    'projects/typed/timeline.test.ts': "import type { assertBarTimelineRetimes } from '../../lib/models/timeline/retime.ts';\ndeclare const f: typeof assertBarTimelineRetimes;\nf(1);\n",
+    'projects/typed/timeline.test.ts': "import type { assertTimelineRetimes } from '../../lib/models/timeline/retime.ts';\ndeclare const f: typeof assertTimelineRetimes;\nf(1);\n",
     'projects/fake/timeline.ts': TIMELINE,
-    'projects/fake/timeline.test.ts': 'const assertBarTimelineRetimes = (t: unknown) => t;\nassertBarTimelineRetimes(1);\n',
+    'projects/fake/timeline.test.ts': 'const assertTimelineRetimes = (t: unknown) => t;\nassertTimelineRetimes(1);\n',
   });
   assert.deepEqual(caught(findings), [
     'projects/bare/timeline.ts:no timeline.test.ts',

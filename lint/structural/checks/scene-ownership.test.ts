@@ -35,3 +35,20 @@ test("a scene reaches only its own folder, shared modules and the timeline; noth
     'projects/p/stray.ts:./bars/ink/needle.ts',
   ]);
 });
+
+test('a finale replays other scenes only as the composition hands them over', () => {
+  const findings = runCheckOnFiles('scene-ownership', {
+    'lib/models/timeline/bind-timeline.ts': 'export const bindTimeline = (t: unknown, b: unknown) => [t, b];\n',
+    'projects/p/timeline.ts': 'export const t = 0;\n',
+    'projects/p/bars/ink.tsx': 'export const ink = (clock: unknown) => clock;\n',
+    // Legal: the finale takes its replays as arguments, and the composition injects them.
+    'projects/p/bars/finale.tsx': "import type { bindTimeline } from '../../../lib/models/timeline/bind-timeline.ts';\nexport const finale = (clock: unknown, replays: unknown) => [clock, replays];\n",
+    'projects/p/video.tsx': [
+      "import { bindTimeline } from '../../lib/models/timeline/bind-timeline.ts';", "import { t } from './timeline.ts';",
+      "import { ink } from './bars/ink.tsx';", "import { finale } from './bars/finale.tsx';", 'bindTimeline(t, { ink, finale });',
+    ].join('\n'),
+    // Adversarial: a shared registry of scenes the finale could read its replays from.
+    'projects/p/replayed.ts': "import { ink } from './bars/ink.tsx';\nexport const replayed = { ink };\n",
+  }, { p: ['replayed.ts'] });
+  assert.deepEqual(caught(findings), ['projects/p/replayed.ts:./bars/ink.tsx']);
+});

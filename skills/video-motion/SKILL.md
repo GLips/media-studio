@@ -83,6 +83,16 @@ adds a piece it lacks, `references/showreel-breakdown.md` is the reel it's measu
 `references/reel-critique.md` is the fresh-eyes critique a cut gets before it's done.
 `projects/2026-09-motion-showcase` is a worked example, a 20 s product ad.
 
+Its timing lives in one place, the project's `timeline.ts`: `defineTimeline` lists the scenes in order, each a
+`beatSpan` (beats on the fitted track's grid), a `fixedSpan` (seconds) or a voiced scene, never a fixed scene inside
+the music. Each scene counts its own beats from 0 and names the moments others need as cues (`ink.strike2`), and the
+finale's replays are declared there too (a source cue landing on a target cue). `video.tsx` binds each scene with
+`bindTimeline`, handing it its resolved clock (`clock.beat(n)`, `clock.cues`, `clock.moves`) and, for the finale,
+the scenes it replays: a scene never imports a sibling or counts another scene's beats. A move that must keep its
+length is a start plus a duration anchored at one end (`{ from: { at: 'end', frames: -3.75 }, to: { at: 'end',
+frames: -1 } }`), never pinned between two scenes' moments: the project's `timeline.test.ts` runs the retime runner,
+which lengthens every scene and fails a move that stretches. `studio clock <project>` prints the resolved frames.
+
 Registers mix: a walkthrough can open on a few bars of this and close on a slammed end card, calm in between. Keep
 each stretch in one register, and change register on a cut.
 
