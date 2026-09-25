@@ -56,6 +56,8 @@ source and takeaway:
 - Plan the whole video: something set up is paid off, and the ending rhymes with the opening where it can.
 - Write each Motion entry in the `video-motion` skill's words (push in, pull back, pan, hard cut, match cut, and so
   on), so it turns straight into code.
+- An ad, launch teaser, social cut or promo cut to music takes the high-energy register (`video-motion`, "The
+  high-energy register"): write it as a beat sheet, one bar per idea on the music's grid, not scenes on a voice.
 - End with a **Deliberately left out** list: true things the video skips, and why. It stops them creeping back in
   during review (see `projects/2026-09-sale-only-view/storyboard.md`).
 

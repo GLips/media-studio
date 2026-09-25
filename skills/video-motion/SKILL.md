@@ -1,6 +1,6 @@
 ---
 name: video-motion
-description: Motion and camera for a video's scenes, from the shared vocabulary to lib/studio code, including a product repo's real components. Use when animating an approved storyboard, or for motion feedback ("slow the zooms", "the highlight comes too late").
+description: Motion and camera for a video's scenes, from the shared vocabulary to lib/studio code, including a product repo's real components and the high-energy register of music-led ads, launch teasers, social cuts and promos. Use when animating an approved storyboard, or for motion feedback ("slow the zooms", "the highlight comes too late").
 ---
 
 # Motion vocabulary
@@ -53,7 +53,7 @@ You know what happens because you wrote the code. The viewer sees it once, at fu
 ## Motion tokens for product UI
 
 In a walkthrough or product explainer, pick a token rather than inventing a curve or a number. They're defaults for
-that calm, legible register. A teaser or showreel designs its own motion, and nothing here limits it.
+that calm, legible register. The high-energy register (below) designs its own motion, and nothing here limits it.
 
 - **Curves** (`motionCurves`): `productive` for UI moving as it does in the app, `expressive` for a reveal that
   should be felt. Each has `standard` (moving within the frame), `entrance` and `exit`. Keep a video to one system.
@@ -69,6 +69,18 @@ that calm, legible register. A teaser or showreel designs its own motion, and no
   spread of a long list, `from` is `'center'`, `'edges'` or an index, and `{ lagRatio, duration }` sets the gap as a
   fraction of each item's move. `staggerFinish` is when the last one lands. Tag each item with
   `stagger: { group, index, count }` so the tracks see the group.
+
+## The high-energy register: ads, teasers, promos
+
+A launch ad, teaser, social cut or product promo is usually cut to music: one idea per bar, an event on every beat,
+full-bleed colour, display type as the image, hard cuts on the hit. Build it from the pieces in `lib/studio/reel/` (a
+bounce, kinetic type, ticker bands, a glyph field, a 3D field, a capture on a tilted card, a recap grid, a HUD) and
+kit.tsx's `Odometer`. `references/reel-assembly.md` builds it bar by bar on a beat grid, `references/reel-pieces.md`
+adds a piece it lacks, and `references/showreel-breakdown.md` is the reel it's measured against.
+`projects/2026-09-motion-showcase` is a worked example, a 20 s product ad.
+
+Registers mix: a walkthrough can open on a few bars of this and close on a slammed end card, calm in between. Keep
+each stretch in one register, and change register on a cut.
 
 ## Kit recipes: words, numbers, strokes
 
@@ -215,7 +227,7 @@ A graph can't tell you whether a move reads. Check that on the strip, and check 
 
 ## Tells of generated motion
 
-Review guidance for walkthroughs and product explainers, not rules: a teaser or showreel may do any of these on
+Review guidance for walkthroughs and product explainers, not rules: the high-energy register may do any of these on
 purpose, and no check looks for them. When a strip looks machine-made, these are the usual reasons:
 
 - everything at one brisk speed, with no holds;
