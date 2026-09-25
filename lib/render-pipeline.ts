@@ -8,6 +8,8 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
+import { tileLabelledImages } from './contact-sheet.ts';
+import { rasterizeSvgs } from './svg-raster.ts';
 import { framingArtifactName, framingProblems, takeFitWarnings, type FramingReport } from './framing-check.ts';
 import { holdProblems } from './hold-check.ts';
 import { buildMotionGraph, motionGraphBackdropFrame, type MotionGraphSpace } from './motion-graph.ts';
@@ -143,15 +145,8 @@ export async function renderContactSheet(session: RenderSession, times: number[]
   const stills = await session.renderStills(frames, { w, captions });
 
   // Even sizes: ffmpeg pads JPEG (4:2:0) frames to them anyway, and a mismatch fails the layout.
-  const h = 2 * Math.round((w * H) / W / 2), label = 28, rows = Math.ceil(frames.length / cols);
-  const cells = frames.map((f, i) => `[${i}:v]scale=${w}:${h},pad=${w}:${h + label}:0:${label}:color=0x222222,` +
-    `drawtext=fontfile=/System/Library/Fonts/Helvetica.ttc:text='${(f / composition.fps).toFixed(2)}s':x=8:y=5:fontsize=18:fontcolor=0xeeeeee[c${i}]`);
-  const layout = frames.map((_, i) => `${(i % cols) * w}_${Math.floor(i / cols) * (h + label)}`).join('|');
-  const stack = frames.length === 1 ? `[c0]copy[out]` :
-    `${frames.map((_, i) => `[c${i}]`).join('')}xstack=inputs=${frames.length}:layout=${layout}:fill=0x222222[out]`;
-  mkdirSync(dirname(out), { recursive: true });
-  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...frames.flatMap((f) => ['-i', stills.fileFor(f)]),
-    '-filter_complex', `${cells.join(';')};${stack}`, '-map', '[out]', '-frames:v', '1', '-q:v', '3', out]);
+  const h = 2 * Math.round((w * H) / W / 2), rows = Math.ceil(frames.length / cols);
+  tileLabelledImages(frames.map((f) => ({ file: stills.fileFor(f), label: `${(f / composition.fps).toFixed(2)}s` })), out, { cols, w, h });
   rmSync(stills.dir, { recursive: true, force: true });
   console.error(`${frames.length} frames, ${cols}×${rows}`);
   return out;
@@ -172,16 +167,7 @@ export async function renderMotionGraph(session: RenderSession, { at, tracks, sp
   rmSync(stills.dir, { recursive: true, force: true });
   const graph = buildMotionGraph(motion, timeline, { first, last, space, tracks, trailStep, backdrop: { frame, href } });
 
-  const { chromium } = await import('playwright');
-  const browser = await chromium.launch();
-  try {
-    const page = await browser.newPage({ viewport: { width: graph.width, height: graph.height }, deviceScaleFactor: 1 });
-    await page.setContent(`<!doctype html><body style="margin:0">${graph.svg}</body>`);
-    mkdirSync(dirname(out), { recursive: true });
-    await page.screenshot({ path: out, clip: { x: 0, y: 0, width: graph.width, height: graph.height } });
-  } finally {
-    await browser.close();
-  }
+  await rasterizeSvgs([{ svg: graph.svg, width: graph.width, height: graph.height, out }]);
   const summaryFile = out.replace(/\.[^./]+$/, '') + '.txt';
   writeFileSync(summaryFile, `${graph.summary.join('\n')}\n`);
   return { summary: graph.summary, files: [out, summaryFile] };
