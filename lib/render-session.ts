@@ -28,9 +28,14 @@ export const RENDER_CHROMIUM = { gl: 'angle' } as const;
  */
 export const RENDER_CONCURRENCY = Math.max(1, availableParallelism() - 1);
 
-export async function openRenderSession(project: string) {
+/** Bundles the studio's browser entry for one project (its video, its stills or both); returns the serve URL. */
+export async function bundleStudioProject(project: string) {
   console.error(`bundling ${project}…`);
-  const serveUrl = await bundle({ entryPoint: join(STUDIO_ROOT, 'lib/studio/index.ts'), webpackOverride: projectWebpackOverride(project) });
+  return bundle({ entryPoint: join(STUDIO_ROOT, 'lib/studio/index.ts'), webpackOverride: projectWebpackOverride(project) });
+}
+
+export async function openRenderSession(project: string) {
+  const serveUrl = await bundleStudioProject(project);
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, blockouts: false, ...p });
   const compositionFor = (inputProps: VideoProps) => selectComposition({ serveUrl, chromiumOptions: RENDER_CHROMIUM, id: projectSlug(project), inputProps });
 
@@ -86,5 +91,5 @@ export function artifactSink() {
     if (content === undefined) throw new Error(`no ${name} artifact`);
     return JSON.parse(content);
   };
-  return { onArtifact, json };
+  return { onArtifact, json, names: () => [...files.keys()] };
 }

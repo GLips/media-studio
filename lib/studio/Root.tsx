@@ -1,11 +1,16 @@
-// Root.tsx: registers the one project this bundle was built for (see lib/project-bundle.ts), as a composition named
-// after its folder, plus a replay of it for `studio repeatable` and a previs scene's blockout alone for `studio gen video`.
+// Root.tsx: registers the one project this bundle was built for (see lib/project-bundle.ts). Its video is a composition
+// named after its folder, plus a replay of it for `studio repeatable` and a previs scene's blockout alone for
+// `studio gen video`. Its stills are one one-frame composition each, `still-<design>-<preset>-<variant>`, in a
+// folder per design.
 
-import { Composition, Freeze, useCurrentFrame } from 'remotion';
-import video from '@project';
+import { Composition, Folder, Freeze, useCurrentFrame } from 'remotion';
+import stills from '@stills';
+import video from '@video';
 import { FPS, H, W } from './frame.ts';
 import { assertPrevisSpanFits, previsSpan } from './previs.ts';
-import { layoutVideo, totalFrames } from './timeline.ts';
+import { STILL_PRESETS, stillName, type StillProps } from './still-presets.ts';
+import type { StillsDef } from './stills.tsx';
+import { layoutVideo, totalFrames, type VideoDef } from './timeline.ts';
 import { BlockoutSolo, Video, type BlockoutSoloProps, type VideoProps } from './Video.tsx';
 
 /**
@@ -24,9 +29,11 @@ function pinBrowserDate(clock: string) {
     get: (target, key) => (key === 'now' ? () => pinned : Reflect.get(target, key)),
   });
 }
-if (video.clock !== undefined) pinBrowserDate(video.clock);
+if (video?.clock !== undefined) pinBrowserDate(video.clock);
 
-const ProjectVideo =(props: VideoProps) => <Video video={video} {...props} />;
+// The components below render only when Root registered them, which it does only with a video.
+const projectVideo = video as VideoDef;
+const ProjectVideo = (props: VideoProps) => <Video video={projectVideo} {...props} />;
 
 export type ReplayProps = VideoProps & { order: number[] };
 
@@ -36,13 +43,37 @@ export type ReplayProps = VideoProps & { order: number[] };
  */
 const ReplayVideo = ({ order, ...props }: ReplayProps) => (
   <Freeze frame={order[Math.min(useCurrentFrame(), order.length - 1)]}>
-    <Video video={video} {...props} reportTimeline={false} />
+    <Video video={projectVideo} {...props} reportTimeline={false} />
   </Freeze>
 );
 
-const ProjectBlockout = (props: BlockoutSoloProps) => <BlockoutSolo video={video} {...props} />;
+const ProjectBlockout = (props: BlockoutSoloProps) => <BlockoutSolo video={projectVideo} {...props} />;
 
 export function Root() {
+  return (
+    <>
+      {video && <VideoCompositions video={video} />}
+      {stills && <StillCompositions stills={stills} />}
+    </>
+  );
+}
+
+function StillCompositions({ stills }: { stills: StillsDef }) {
+  const ProjectStill = ({ design, variant }: StillProps) => {
+    const { component: Design, variants } = stills.designs[design];
+    return <Design {...variants[variant]} />;
+  };
+  return Object.entries(stills.designs).map(([design, { presets, variants }]) => (
+    <Folder key={design} name={`stills-${design}`}>
+      {presets.flatMap((preset) => Object.keys(variants).map((variant) => {
+        const props: StillProps = { design, preset, variant };
+        return <Composition key={stillName(props)} id={`still-${stillName(props)}`} component={ProjectStill} {...STILL_PRESETS[preset]} fps={FPS} durationInFrames={1} defaultProps={props} />;
+      }))}
+    </Folder>
+  ));
+}
+
+function VideoCompositions({ video }: { video: VideoDef }) {
   const tl = layoutVideo(video);
   const frames = totalFrames(tl, FPS);
   return (

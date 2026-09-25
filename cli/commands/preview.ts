@@ -5,7 +5,7 @@ import { studioProjectArg } from '../project-arg.ts';
 export default defineCommand({
   meta: {
     name: 'preview',
-    description: 'Open the Remotion Studio on the project: scrub it, see scenes and voice lines on the timeline, toggle captions in the props panel. Arguments after -- go to `remotion studio` (e.g. -- --port=3001).',
+    description: 'Open the Remotion Studio on the project: scrub it, see scenes and voice lines on the timeline, toggle captions in the props panel. The project\'s stills are there too, a folder per design. Arguments after -- go to `remotion studio` (e.g. -- --port=3001).',
   },
   args: {
     project: studioProjectArg,
@@ -15,8 +15,8 @@ export default defineCommand({
     const passThrough = args._.slice(1);
     const { spawn } = await import('node:child_process');
     const { join } = await import('node:path');
-    const { resolveStudioProjectWith, STUDIO_ROOT } = await import('../../lib/studio-project.ts');
-    const project = resolveStudioProjectWith(args.project, 'video.tsx');
+    const { resolveStudioProject, STUDIO_ROOT } = await import('../../lib/studio-project.ts');
+    const project = resolveStudioProject(args.project);
     // remotion.config.ts reads PROJECT, and the Studio finds that config in its working directory.
     const remotion = join(STUDIO_ROOT, 'node_modules', '.bin', 'remotion');
     const child = spawn(remotion, ['studio', ...passThrough], { cwd: STUDIO_ROOT, stdio: 'inherit', env: { ...process.env, PROJECT: project } });
