@@ -120,7 +120,9 @@ function renderStrip(video: string, s: StudySection, fps: number, grid: ReturnTy
   try {
     const first = Math.round(s.start * fps), count = Math.max(1, Math.round((s.end - s.start) * fps));
     const filters = [...(vectors ? ['codecview=mv=pf+bf+bb'] : []), `select=not(mod(n\\,${step}))`, `scale=${w}:-2`];
-    execFileSync('ffmpeg', ['-v', 'error', ...(vectors ? ['-flags2', '+export_mvs'] : []), '-ss', (first / fps).toFixed(4), '-i', video,
+    // Seek half a frame early: a seek to first/fps rounded up (1/60 s → 0.0167) skips the first frame and labels every
+    // frame after it one early.
+    execFileSync('ffmpeg', ['-v', 'error', ...(vectors ? ['-flags2', '+export_mvs'] : []), '-ss', (Math.max(0, first - 0.5) / fps).toFixed(4), '-i', video,
       '-frames:v', String(Math.ceil(count / step)), '-vf', filters.join(','), '-fps_mode', 'vfr', '-q:v', '3', join(dir, '%04d.jpg')]);
     const files = readdirSync(dir).filter((f) => f.endsWith('.jpg')).sort();
     const h = 2 * Math.round((w * 9) / 16 / 2);
