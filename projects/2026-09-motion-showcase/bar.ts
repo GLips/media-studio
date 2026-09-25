@@ -40,7 +40,8 @@ export type Bar = {
 
 /**
  * The sound of the picture's event on video frame `at` (a needle's strike, a whip's fastest frame, a stamp's contact). It
- * lands `SOUND_LAG_SECONDS` after that frame, with the music's hits, which trail the picture. `id` is its role in the
- * bar ('needle-strike-1'), not its frame: the checks cite it, and it picks the take, so a retime changes neither.
+ * lands the timeline's `soundLagSeconds` after that frame, with the music's hits, which trail the picture. `id` is its
+ * role in the bar ('needle-strike-1'), not its frame: the checks cite it, and it picks the take, so a retime changes
+ * neither.
  */
 export type BarSound = { id: string; at: number; sound: SfxSound | readonly SfxSound[]; volume?: number };

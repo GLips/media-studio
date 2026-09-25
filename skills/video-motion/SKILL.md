@@ -209,7 +209,7 @@ Every question below has one command. A tool or brief points here, never at a sc
 | To know | Run |
 |---|---|
 | When each scene, line and word lands, and where scenes crossfade | `studio check <p>`: its table, and `out/check/timeline.json` |
-| A music-led bar's or beat's frames | `node projects/<p>/tools/bar-clock.ts` |
+| A timed project's scene, cue or beat frames | `studio clock <project>` |
 | Whether highlights, clicks and every `expect` hold | `studio check <p>` (`--scene=<id>` or `--at=a:b` for one stretch) |
 | How each tagged element moved, frame by frame | `studio check <p>`: `out/check/motion.json` (a scoped check's `motion-<scope>.json`) |
 | What frames look like | `studio look <p> --frames=a:b` (`a:b:step`, `f1,f2`), `--bar=N`, `--sheet`, `--strip` |
