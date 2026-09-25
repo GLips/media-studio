@@ -52,7 +52,7 @@ export async function startStudioLab({ port }: { port: number }) {
 }
 
 /** A file, with byte ranges: a <video> won't seek without them. */
-function sendFile(req: IncomingMessage, res: ServerResponse, file: string, type: string) {
+export function sendFile(req: IncomingMessage, res: ServerResponse, file: string, type: string) {
   const size = statSync(file).size;
   const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
   const headers = { 'content-type': type, 'accept-ranges': 'bytes', 'cache-control': 'no-store' };

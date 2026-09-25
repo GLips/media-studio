@@ -196,6 +196,10 @@ Look at the rendered frames yourself before reporting back. Motion is judged by 
 - `studio look <p> --strip=a:b` shows a stretch of motion; `--sheet=t1,t2,…` shows chosen moments; `--graph=a:b`
   plots it (below).
 - `studio storyboard <p>` rebuilds the storyboard page from the video.
+- `studio review <p | render.mp4 | still.png>` opens a page where the user pins timestamped notes on a render (or a
+  still) and copies them back as markdown. Each note names its scene, the sounds within 3 frames and the tagged
+  elements under the point, from `studio check`'s files. They're saved to `review/notes-<render>.json`, so read that
+  file instead of asking for a paste. Offer it when motion feel needs the user's eyes.
 
 To judge timing, read a `--strip` like a viewer: at each tile, where are they looking, and do they understand it
 yet? Time each read from the tiles' timestamps (a default strip's tiles are 0.1 s apart, three video frames each). A

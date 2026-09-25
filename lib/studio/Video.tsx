@@ -16,6 +16,7 @@ import { PrevisFootagePlayer } from './previs.tsx';
 import { unmeasuredAttrs } from './motion-tag.ts';
 import { FrameProbe } from './probe.tsx';
 import { SceneContext } from './scene.tsx';
+import { sfxSeedFromId } from '../sfx/dsp.ts';
 import { Sfx, SfxCueListAudio, SfxCueListPlaying } from './sfx.tsx';
 import { layoutVideo, sceneClock, sceneTimes, scenesAt, visibleSpan, type LaidScene, type Timeline, type VideoDef } from './timeline.ts';
 
@@ -46,6 +47,8 @@ export type TimelineReport = {
   expectations: TimelineExpectation[];
   /** Whether this render plays the project's cue list (see lib/sfx/cues.ts), which plays its clicks, keys and accents. */
   sfxCueList: boolean;
+  /** Each of `VideoDef.sounds`, landing `at` video seconds, with the take it plays's recipe (`impact`, `whip`…). */
+  sounds: { id: string; at: number; sound: string }[];
 };
 /** A scene's `expect` (see SceneExpectation), its `during` in video seconds. */
 export type TimelineExpectation = { scene: string; start: number; end: number } & ({ see: string } | { hold: string; for: number; within?: number });
@@ -77,6 +80,10 @@ function timelineReport(video: VideoDef, tl: Timeline, fps: number, durationInFr
       return { scene: scene.id, ...promise, start: scene.start + during.start, end: scene.start + during.end };
     })),
     sfxCueList,
+    sounds: (video.sounds ?? []).map(({ at, sound, id }, i) => {
+      const takes = Array.isArray(sound) ? sound : [sound];
+      return { id: String(id ?? i), at, sound: takes[sfxSeedFromId(id ?? i) % takes.length].request.sound };
+    }),
   };
   return JSON.stringify(report);
 }

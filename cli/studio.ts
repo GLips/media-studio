@@ -29,6 +29,7 @@ const studioCommand = defineCommand({
     repeatable: () => import('./commands/repeatable.ts').then((m) => m.default),
     study: () => import('./commands/study.ts').then((m) => m.default),
     lab: () => import('./commands/lab.ts').then((m) => m.default),
+    review: () => import('./commands/review.ts').then((m) => m.default),
     home: () => import('./commands/home.ts').then((m) => m.default),
     hosts: () => import('./commands/hosts.ts').then((m) => m.default),
     api: () => import('./commands/api.ts').then((m) => m.default),
