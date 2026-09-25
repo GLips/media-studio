@@ -137,7 +137,7 @@ export function explainPriceHold(v: PriceHoldVerdict, need: number): string {
   }
   const reason = v.problem.replace(/^.*?\): /, '').replace(/ Review: .*$/, '');
   const faint = /never gets past (\d+)% opaque/.exec(reason);
-  if (faint) return `It never became solid enough to count as seen: it tops out at ${faint[1]}% opaque, and the check wants at least 95%. Stillness doesn't matter if it's see-through.`;
+  if (faint) return `It never became solid enough to count as seen: it tops out at ${faint[1]}% solid, and the check wants at least 95%. Stillness doesn't matter if it's see-through.`;
   const most = /^it is for ([\d.]+)s at most, ([\d.]+)–([\d.]+)s\./.exec(reason);
   if (!most) return reason;
   const before = /Until ([\d.]+)s (.*?);/.exec(reason);

@@ -1,20 +1,22 @@
-/* hold.css: the hold tab's verdict beside its controls, so a dragged slider and the verdict it flips sit together. */
+/* hold.css: the hold tab's verdict at the head of its controls column, pinned there as the column scrolls so a dragged
+   slider and the verdict it flips are always on screen together; and its "For agents" disclosure. */
 
-.hold-lab { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 20px; align-items: start; }
-
-.intro code, .hold-verdict code { font-family: var(--mono); font-size: 0.9em; }
-
-.hold-verdict { background: var(--panel); border-radius: 12px; padding: 18px 20px; border-left: 6px solid var(--pass); display: flex; flex-direction: column; gap: 14px; position: sticky; top: 16px; transition: border-color 0.15s; }
+.hold-verdict { position: sticky; top: 0; z-index: 1; background: var(--panel); border-radius: 12px; padding: 14px 18px 16px; border-left: 6px solid var(--pass); display: flex; flex-direction: column; align-items: flex-start; gap: 10px; box-shadow: 0 10px 14px -6px var(--ground); transition: border-color 0.15s; }
 .hold-verdict.fail { border-left-color: var(--red); }
-.hold-verdict-head { display: flex; flex-direction: column; gap: 6px; }
-.hold-verdict-word { font-size: 84px; line-height: 0.9; font-weight: 900; font-stretch: 75%; text-transform: uppercase; color: var(--pass); }
-.hold-verdict.fail .hold-verdict-word { color: var(--red); }
-.hold-verdict-body { display: flex; flex-direction: column; gap: 12px; }
-.hold-plain { margin: 0; font-size: 18px; line-height: 1.45; }
-.hold-raw { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 12px; }
-.hold-raw code { font-size: 13px; line-height: 1.5; color: var(--cream); word-break: break-word; }
-.hold-raw small { color: var(--dim); font-size: 13px; line-height: 1.4; }
 
-@media (max-width: 1000px) {
-  .hold-lab { grid-template-columns: 1fr; }
+/* A rubber stamp; it's re-keyed on every flip, so it lands again each time the verdict changes. */
+.hold-stamp { display: inline-block; font-size: 44px; line-height: 1; font-weight: 900; font-stretch: 75%; text-transform: uppercase; letter-spacing: 0.04em; padding: 4px 14px 2px; border: 4px solid currentColor; border-radius: 6px; color: var(--pass); transform: rotate(-4deg); animation: hold-stamp-land 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+.hold-verdict.fail .hold-stamp { color: var(--red); }
+@keyframes hold-stamp-land {
+  from { transform: rotate(-12deg) scale(1.8); opacity: 0; }
+  to { transform: rotate(-4deg) scale(1); opacity: 1; }
 }
+@media (prefers-reduced-motion: reduce) { .hold-stamp { animation: none; } }
+
+/* Room for the longest reason, so the verdict doesn't change height and slide the preset buttons out from under a click. */
+.hold-plain { margin: 0; font-size: 15px; line-height: 1.45; min-height: calc(15px * 1.45 * 8); }
+
+.hold-agents { background: var(--panel); border-radius: 12px; padding: 12px 18px; font-size: 13px; }
+.hold-agents summary { cursor: pointer; font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
+.hold-agents p { margin: 12px 0 4px; color: var(--dim); line-height: 1.4; }
+.hold-agents code { display: block; font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--cream); word-break: break-word; }
