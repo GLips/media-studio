@@ -64,7 +64,7 @@ export function LensFringe({ t, children, motion, ...timing }: LensFringeTiming 
         {on && (
           <filter id={id} filterUnits="userSpaceOnUse" x={0} y={0} width={W} height={H} colorInterpolationFilters="sRGB">
             {fringe.red !== 0 || fringe.blue !== 0
-              ? lensSplitPrimitives(fringe.red, fringe.blue)
+              ? channelSplitPrimitives('SourceGraphic', fringe.red, fringe.blue)
               : fringe.radial <= LENS_FRINGE_SUBPIXEL_MAX
                 ? lensSubpixelPrimitives(fringe.radial)
                 : lensWholePixelPrimitives(fringe.radial)}
@@ -86,16 +86,23 @@ const add = (a: string, b: string, result?: string) => (
   <feComposite key={result ?? 'out'} in={a} in2={b} operator="arithmetic" k2={1} k3={1} result={result} />
 );
 
-/** Red right and blue left by whole px; green holds. */
-function lensSplitPrimitives(red: number, blue: number): ReactElement[] {
+/**
+ * Filter primitives that shift `input`'s red `red` px and its blue `blue` px sideways (whole px) while green holds,
+ * then sum them: exact over an opaque input. Each shifted channel lies over its unshifted self, since nothing shifts in
+ * from past the frame's edge: alone, red's leaves a strip with none (dark green down a red frame's left edge).
+ */
+export function channelSplitPrimitives(input: string, red: number, blue: number): ReactElement[] {
+  const shifted = (c: 'r' | 'b', dx: number) => [
+    <feColorMatrix key={`split-${c}0`} in={input} type="matrix" values={CHANNEL[c]} result={`split-${c}0`} />,
+    <feOffset key={`split-${c}1`} in={`split-${c}0`} dx={dx} result={`split-${c}1`} />,
+    <feMerge key={`split-${c}`} result={`split-${c}`}><feMergeNode in={`split-${c}0`} /><feMergeNode in={`split-${c}1`} /></feMerge>,
+  ];
   return [
-    <feColorMatrix key="r" in="SourceGraphic" type="matrix" values={CHANNEL.r} result="r" />,
-    <feOffset key="r2" in="r" dx={red} result="r2" />,
-    <feColorMatrix key="g" in="SourceGraphic" type="matrix" values={CHANNEL.g} result="g" />,
-    <feColorMatrix key="b" in="SourceGraphic" type="matrix" values={CHANNEL.b} result="b" />,
-    <feOffset key="b2" in="b" dx={blue} result="b2" />,
-    add('r2', 'g', 'rg'),
-    add('rg', 'b2'),
+    ...shifted('r', red),
+    <feColorMatrix key="split-g" in={input} type="matrix" values={CHANNEL.g} result="split-g" />,
+    ...shifted('b', blue),
+    add('split-r', 'split-g', 'split-rg'),
+    add('split-rg', 'split-b'),
   ];
 }
 

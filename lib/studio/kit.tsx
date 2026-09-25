@@ -382,6 +382,11 @@ export function WordReveal({ t, text, x, y, width, size = 64, weight = 700, colo
 // 0.355 either side of its middle.
 const BASELINE_EM = 0.834;
 const DIGIT_NUDGE_EM = 0.009;
+/**
+ * An Odometer's digits in em of its `size`: their top over the baseline, and their height (Archivo's lining digits
+ * reach 0.012 under it). A count whose digits stand 300 px tall takes `size` 300 / ODOMETER_DIGIT_EM.height.
+ */
+export const ODOMETER_DIGIT_EM = { top: 0.698, height: 0.71 } as const;
 // The window reaches this far either side of the row's middle (a landed digit and a hair), plus the fade, so a fade of
 // any length misses a landed digit. A neighbour one row off starts at 0.645, where the default fade has reached nothing.
 const DIGIT_HALF_EM = 0.365;
@@ -404,7 +409,7 @@ export type OdometerProps = {
   /** The baseline's left end, centre or right end, by `align`. */
   x: number;
   y: number;
-  /** Font size in px. Digits stand 0.71 of it: 430 makes them 300 px, 28% of frame height. */
+  /** Font size in px. Digits stand 0.71 of it (ODOMETER_DIGIT_EM): 430 makes them 300 px, 28% of frame height. */
   size?: number;
   align?: 'left' | 'center' | 'right';
   color?: string;

@@ -7,7 +7,7 @@
 
 import { useId, useLayoutEffect, useRef } from 'react';
 import { FPS, H, W } from '../frame.ts';
-import { clamp, lerp, motionCurves, type EaseFn } from '../motion.ts';
+import { backOutEase, clamp, lerp, motionCurves, type EaseFn } from '../motion.ts';
 import { pieceMotionAttrs, unmeasuredAttrs } from '../motion-tag.ts';
 import { hashRandom } from '../random.ts';
 
@@ -37,28 +37,6 @@ export const GLYPH_SHAPES = {
 
 /** The reference's colours: its ground, cream glyphs, the blue of the ring wave and the red-orange of newborns and accents. */
 export const GLYPH_FIELD_COLORS = { ground: '#101013', cream: '#eae7de', blue: '#3238eb', red: '#e64c23' } as const;
-
-/**
- * Penner's back-out, set by how far it overshoots (0.1 = 10 % past the target) rather than its constant, so a measured
- * overshoot drops straight in. The reference's morphs: a dot's birth 0.18, dot → plus 0.095, plus → X 0.11, diamond →
- * square 0.05. It peaks 1 − 2s/3(s + 1) of the way.
- */
-export function easeBackOut(overshoot: number): EaseFn {
-  // The overshoot is 4s³ / 27(s + 1)², which rises with s: bisect for s.
-  let lo = 0, hi = 60;
-  for (let i = 0; i < 60; i++) {
-    const s = (lo + hi) / 2;
-    if ((4 * s ** 3) / (27 * (s + 1) ** 2) < overshoot) lo = s;
-    else hi = s;
-  }
-  const s = (lo + hi) / 2;
-  return (k) => {
-    if (k <= 0) return 0;
-    if (k >= 1) return 1;
-    const u = k - 1;
-    return 1 + (s + 1) * u * u * u + s * u * u;
-  };
-}
 
 // ---------- colour ----------
 
@@ -150,19 +128,19 @@ export type GlyphLayout = {
 };
 
 /** A place in the lattice: `i`, `j` count pitches from its centre, the reference's cell (i, j); x, y are frame px. */
-export type GlyphSlot = { index: number; col: number; row: number; i: number; j: number; x: number; y: number };
+export type GlyphFieldSlot = { index: number; col: number; row: number; i: number; j: number; x: number; y: number };
 
 /** A cell: its place, and the item it shows (null when the field has no `items`). */
-export type GlyphCell<D> = GlyphSlot & { item: D };
+export type GlyphCell<D> = GlyphFieldSlot & { item: D };
 
 /**
  * Where `count` cells sit, row by row. Exported so a piece that cuts out of the field (the reference's cube field,
  * which match-cuts from these squares) can take the same places.
  */
-export function glyphFieldLayout(count: number, layout: GlyphLayout = {}): GlyphSlot[] {
+export function glyphFieldLayout(count: number, layout: GlyphLayout = {}): GlyphFieldSlot[] {
   const { columns = 19, pitch = 100, center = { x: W / 2, y: H / 2 }, lastRow = 'center' } = layout;
   const rows = Math.ceil(count / columns);
-  const slots: GlyphSlot[] = [];
+  const slots: GlyphFieldSlot[] = [];
   for (let index = 0; index < count; index++) {
     const row = Math.floor(index / columns), col = index % columns;
     const inRow = row === rows - 1 ? count - row * columns : columns;
@@ -198,7 +176,15 @@ export type GlyphHit = {
  * linear) from the key before. Before the first key the channel eases out of whatever the cell showed under this
  * wave, so a clip starts from any state. A value can depend on the cell; returning undefined keeps what was under.
  */
-export type GlyphKey<V, D> = { at: number; value: V | ((cell: GlyphCell<D>, hit: GlyphHit) => V | undefined); ease?: EaseFn };
+export type GlyphKey<V, D> = {
+  at: number;
+  value: V | ((cell: GlyphCell<D>, hit: GlyphHit) => V | undefined);
+  /**
+   * The reference's morphs are `backOutEase`s overshooting 0.18 (a dot's birth), 0.095 (dot → plus), 0.11 (plus → X)
+   * and 0.05 (diamond → square).
+   */
+  ease?: EaseFn;
+};
 
 /** A key for L, w and r at once: a `GLYPH_SHAPES` entry (its angle is ignored) or any of the three. */
 export type GlyphShapeKey = { at: number; value: Partial<GlyphShape>; ease?: EaseFn };
@@ -559,7 +545,7 @@ const SMEAR_GAIN = 3;
 
 // A drop swells a little before it shrinks (back-in); a return pops past full size and settles (back-out).
 const dropEase: EaseFn = (k) => { k = clamp(k); return k * k * (2.7 * k - 1.7); };
-const popEase = easeBackOut(0.12);
+const popEase = backOutEase(0.12);
 
 /** Where cell `n` is at `τ` after the filter's steps, and how much of it shows (0 dropped … 1). */
 function filterPlaceAt<D>(model: FieldModel<D>, n: number, τ: number) {

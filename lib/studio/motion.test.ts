@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { FPS } from './frame.ts';
-import { springBy, stagger, staggerFinish } from './motion.ts';
+import { backOutEase, springBy, stagger, staggerFinish } from './motion.ts';
+
+test('a back-out overshoots by the share of its travel asked for and lands on exactly 1', () => {
+  const peak = (ease: (k: number) => number) => Math.max(...Array.from({ length: 10001 }, (_, i) => ease(i / 10000)));
+  const pop = backOutEase(0.126);
+  assert.ok(Math.abs(peak(pop) - 1.126) < 1e-4, `peaks at ${peak(pop)}`);
+  assert.equal(pop(0), 0);
+  assert.equal(pop(1), 1);
+  assert.ok(peak(backOutEase(0)) <= 1 + 1e-12);
+});
 
 test('a deadline spring looks landed at its deadline, not before, and settles to exactly 1 later', () => {
   for (const bounce of [0, 0.3, 0.6]) {

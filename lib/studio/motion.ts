@@ -63,6 +63,38 @@ export const motionCurves = {
   linear: (k) => clamp(k),
 } as const satisfies Record<string, CurveRoles | EaseFn>;
 
+/** Penner's power ease-out, 1 − (1 − k)^power: 2 is his quad, 4 his quart. */
+export const powerOutEase = (power: number): EaseFn => (k) => 1 - (1 - clamp(k)) ** power;
+
+/** Penner's sine in-out, half a cosine: softer at both ends than the cubic in-out. */
+export const sineInOutEase: EaseFn = (k) => (1 - Math.cos(Math.PI * clamp(k))) / 2;
+
+/**
+ * Penner's back-out, set by how far it overshoots as a share of the travel (0.1 is 10% past the target) rather than
+ * by its constant s, so a measured overshoot drops straight in: 0.126 is s = 1.95. It peaks 1 − 2s/3(s + 1) of the
+ * way in and lands on exactly 1; 0 is a cubic ease-out.
+ */
+export function backOutEase(overshoot: number): EaseFn {
+  const s = backOutStrength(overshoot);
+  return (k) => {
+    if (k <= 0) return 0;
+    if (k >= 1) return 1;
+    const u = k - 1;
+    return 1 + (s + 1) * u * u * u + s * u * u;
+  };
+}
+
+// Back-out's peak overshoot is 4s³ / 27(s + 1)², which only rises with s, so bisection finds the s for a peak.
+function backOutStrength(overshoot: number) {
+  let lo = 0, hi = 20;
+  for (let i = 0; i < 48; i++) {
+    const s = (lo + hi) / 2;
+    if ((4 * s ** 3) / (27 * (s + 1) ** 2) < overshoot) lo = s;
+    else hi = s;
+  }
+  return lo;
+}
+
 /**
  * Seconds for a move, by what it does and how far it goes, written for video: the viewer sees it once, at full
  * speed. To make a moment read better, lengthen the anticipation before it or the hold on its result ("fast actions,

@@ -3,7 +3,9 @@ import { test } from 'node:test';
 import { steadyBeatGrid } from '../beats.ts';
 import '../tsx-test-hooks.ts';
 
-const { REEL_HUD_BOOT_DECODE, REEL_HUD_GLYPHS, REEL_HUD_SWAP_DECODE, reelHudDecode, reelHudLitSquare, reelHudTimecode, reelHudToneWeights } = await import('./hud.tsx');
+const {
+  REEL_HUD_BOOT_DECODE, REEL_HUD_GLYPHS, REEL_HUD_SWAP_DECODE, reelHudDecode, reelHudGrounds, reelHudLitSquare, reelHudReadGrounds, reelHudTimecode, reelHudToneWeights,
+} = await import('./hud.tsx');
 
 const FPS = 30;
 
@@ -52,11 +54,27 @@ test('a tone that changes on a frame flips on that frame however the scene reads
     (t: number) => t >= 10 / FPS,
   ];
   for (const dark of on10) {
-    const toneAt = (_: string, t: number) => (dark(t) ? 'dark' : 'light');
-    assert.equal(reelHudToneWeights(toneAt, 'tl', 9 / FPS, FPS).light, 1);
-    assert.equal(reelHudToneWeights(toneAt, 'tl', 10 / FPS, FPS).dark, 1);
+    const toneAt = (t: number) => (dark(t) ? 'dark' : 'light');
+    assert.equal(reelHudToneWeights(toneAt, 9 / FPS, FPS).light, 1);
+    assert.equal(reelHudToneWeights(toneAt, 10 / FPS, FPS).dark, 1);
   }
   // A flash crossing its threshold a quarter into frame 10.
-  const crossing = reelHudToneWeights((_, t) => (t >= 10.25 / FPS ? 'dark' : 'light'), 'tl', 10 / FPS, FPS);
+  const crossing = reelHudToneWeights((t) => (t >= 10.25 / FPS ? 'dark' : 'light'), 10 / FPS, FPS);
   assert.deepEqual([crossing.light, crossing.dark], [0.5, 0.5]);
+});
+
+test('a part reads in the inks most of its box wants, on a plate where the other inks\' grounds or busy type show', () => {
+  const looks = { red: { color: '#e34920' }, black: { color: '#0a0a0c' }, cream: { color: '#efe7d6' }, page: { color: '#ffffff', busy: true } };
+  const box = { x: 100, y: 50, w: 240, h: 30 };
+  // A card edge at x: left of it one ground, right of it another.
+  const split = (x: number, left: keyof typeof looks, right: keyof typeof looks) => reelHudGrounds(box, (p) => (p.x < x ? left : right));
+
+  assert.deepEqual(reelHudReadGrounds(split(400, 'red', 'black'), looks), { tone: 'on-accent' });
+  assert.deepEqual(reelHudReadGrounds(split(250, 'red', 'black'), looks), { tone: 'on-accent' }, 'paper inks read on both');
+  assert.deepEqual(reelHudReadGrounds(split(250, 'red', 'cream'), looks), { tone: 'on-accent', plate: '#e34920' });
+  assert.deepEqual(reelHudReadGrounds(split(170, 'red', 'cream'), looks), { tone: 'dark', plate: '#efe7d6' });
+  assert.deepEqual(reelHudReadGrounds(split(170, 'red', 'cream'), looks, { inkFrom: 0.8 }), { tone: 'on-accent', plate: '#e34920' });
+  assert.deepEqual(reelHudReadGrounds(split(120, 'cream', 'red'), looks), { tone: 'on-accent', plate: '#e34920' }, '8% of cream splits it');
+  assert.deepEqual(reelHudReadGrounds(split(120, 'cream', 'red'), looks, { mixed: 0.1 }), { tone: 'on-accent' });
+  assert.deepEqual(reelHudReadGrounds(split(400, 'page', 'red'), looks), { tone: 'dark', plate: '#ffffff' }, 'busy type is plated whole');
 });

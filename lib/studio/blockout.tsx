@@ -9,7 +9,8 @@
 
 import { useLayoutEffect, useRef } from 'react';
 import * as THREE from 'three';
-import type { BlockoutPose, Vec3 } from './blockout-camera.ts';
+import type { BlockoutPose } from './blockout-camera.ts';
+import type { Vec3 } from './vec3.ts';
 import { H, W } from './frame.ts';
 
 /**

@@ -7,7 +7,7 @@
 
 import { MONO_FONT } from '../fonts.ts';
 import { FPS, H, W } from '../frame.ts';
-import { clamp, lerp, motionCurves } from '../motion.ts';
+import { clamp, lerp, motionCurves, powerOutEase, sineInOutEase } from '../motion.ts';
 import { pieceMotionAttrs } from '../motion-tag.ts';
 import { hashRandom } from '../random.ts';
 
@@ -42,7 +42,7 @@ const SWELL_TIME = 17 * REF_F;
 /** The swell's default shutter: the reference's edge. */
 const SWELL_SHUTTER = 0.3;
 /** The swell's move to `to` over progress `u`: it sits 0.64 of a reference frame, then eases out (power 2.5) over 11.36. */
-const swellMove = (u: number) => 1 - (1 - clamp((u - 0.64 / 17) / (11.36 / 17))) ** 2.5;
+const swellMove = (u: number) => powerOutEase(2.5)((u - 0.64 / 17) / (11.36 / 17));
 /** Its growth, as a share of ln(final radius / start radius); fitted to the reference's scale on every frame. */
 const swellGrowth = (u: number) => 0.5 * u * (1 + u);
 
@@ -74,10 +74,9 @@ const lawStrain = (vx: number, vy: number, k: number) => strainOf(1 + k * Math.h
 /** Leaving the ground the stretch overshoots its law (1.6 against 1.4), dips under, and settles within 0.13 s. */
 const liftSpring = (τ: number) => 1 - Math.exp(-τ / 0.008) + 0.7 * Math.exp(-τ / 0.05) * Math.sin((TAU * τ) / 0.13);
 const hump = (u: number) => 1 - Math.abs(u) ** HUMP;
-const sineInOut = (k: number) => (1 - Math.cos(Math.PI * clamp(k))) / 2;
 /** The impact marks' ease-out, fitted to the reference ring's per-frame steps (5, 3, 4, 3, 3, 3, 2, 2, 2, 2, 1 px). */
-const markEase = (k: number) => 1 - (1 - clamp(k)) ** 1.5;
-const smoothstep = (k: number) => { k = clamp(k); return k * k * (3 - 2 * k); };
+const markEase = powerOutEase(1.5);
+const smoothstep = motionCurves.dissolve;
 
 // ---------- the ball ----------
 
@@ -262,9 +261,9 @@ function crouchPose(m: BounceModel, since: number): RawPose {
   const c = m.launch!.crouch!, pad = m.n - 1;
   const wobble = strainOf(1.45, 0);
   const s = since < WOBBLE_AT
-    ? mixStrain(m.squash, wobble, sineInOut(since / WOBBLE_AT))
-    : mixStrain(wobble, c.squash, sineInOut((since - WOBBLE_AT) / (CROUCH_AT - WOBBLE_AT)));
-  const dent = lerp(m.dent, c.dent, sineInOut(since / CROUCH_AT));
+    ? mixStrain(m.squash, wobble, sineInOutEase(since / WOBBLE_AT))
+    : mixStrain(wobble, c.squash, sineInOutEase((since - WOBBLE_AT) / (CROUCH_AT - WOBBLE_AT)));
+  const dent = lerp(m.dent, c.dent, sineInOutEase(since / CROUCH_AT));
   return { x: contactX(m, pad), y: m.groundY + dent - halfHeight(m.r, s), s, r: m.r, phase: 'crouch', contact: pad, since, dent, swell: 0 };
 }
 
@@ -323,7 +322,7 @@ function landingDent(m: BounceModel, i: number, t: number): number {
   const ti = contactTime(m, i), u = (t - ti) / m.half, L = m.launch;
   if (u < -1) return 0;
   if (L?.crouch && i === m.n - 1 && u > 0) {
-    const held = (at: number) => lerp(m.dent, L.crouch!.dent, sineInOut((at - ti) / CROUCH_AT));
+    const held = (at: number) => lerp(m.dent, L.crouch!.dent, sineInOutEase((at - ti) / CROUCH_AT));
     if (t < L.at) return held(t);
     // Let go from where it was held: the string springs up through level and rings down.
     const τ = t - L.at;
@@ -481,11 +480,12 @@ export type BounceCallout = {
 const SCRAMBLE_GLYPHS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789*#&%+/<>[]{}=?';
 
 /**
- * `text` decoding on as the reference's HUD does: from `since` 0 one random glyph holds the first place, from `hold`
- * the rest type on at `rate` characters a second, and each shows a new random glyph every frame until it settles `lag`
- * after it appeared. Characters not yet shown are spaces, so the line never shifts.
+ * `text` typing on as the reference's HUD decodes: its first place shows a random glyph from `since` 0, the rest type
+ * on from `hold` at `rate` characters a second, each re-rolling every frame until it settles `lag` after it appeared.
+ * Characters not yet shown are spaces, so the line never shifts. type.tsx's scrambleAt scrambles every character from
+ * the start.
  */
-function scrambleText(text: string, since: number, seed: string, { rate = 90, hold = 4 * REF_F, lag = 4 * REF_F } = {}): string {
+function typeOnScramble(text: string, since: number, seed: string, { rate = 90, hold = 4 * REF_F, lag = 4 * REF_F } = {}): string {
   const count = (s: number) => (s < 0 ? 0 : s < hold ? 1 : 2 + Math.floor((s - hold) * rate));
   const shown = count(since), settled = count(since - lag), frame = Math.floor(since * FPS);
   return [...text].map((ch, i) => {
@@ -689,7 +689,7 @@ export function BounceBall(props: BounceParams & {
         return (
           <div key={c.contact} style={{ position: 'absolute', inset: 0, opacity: alpha }}>
             <div style={{ ...type, top: tip.y - 20 - size / 2, color: accent }}>{number}</div>
-            <div style={{ ...type, top: tip.y - size / 2, color: ink, opacity: 0.9 }}>{scrambleText(c.label, since, `${seed}|${c.contact}`)}</div>
+            <div style={{ ...type, top: tip.y - size / 2, color: ink, opacity: 0.9 }}>{typeOnScramble(c.label, since, `${seed}|${c.contact}`)}</div>
           </div>
         );
       })}

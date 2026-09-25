@@ -32,6 +32,13 @@ export const union = (...rects: Rect[]): Rect => {
 /** A rect grown by `pad` on every side. */
 export const inflate = (r: Rect, pad: number): Rect => ({ x: r.x - pad, y: r.y - pad, w: r.w + pad * 2, h: r.h + pad * 2 });
 
+/** A 2D affine transform in SVG's `matrix(a b c d e f)` order: x' = a·x + c·y + e, y' = b·x + d·y + f. */
+export type AffineMatrix = [number, number, number, number, number, number];
+/** `m` after `n`: the one transform that applies `n`, then `m`. */
+export const multiplyAffine = ([a, b, c, d, e, f]: AffineMatrix, [g, h, i, j, k, l]: AffineMatrix): AffineMatrix =>
+  [a * g + c * h, b * g + d * h, a * i + c * j, b * i + d * j, a * k + c * l + e, b * k + d * l + f];
+export const applyAffine = ([a, b, c, d, e, f]: AffineMatrix, p: Point): Point => ({ x: a * p.x + c * p.y + e, y: b * p.x + d * p.y + f });
+
 /** Screen pixels per page pixel. */
 export const scaleFor = (shot: Shot, zoom: number) => (W / shot.w) * zoom;
 

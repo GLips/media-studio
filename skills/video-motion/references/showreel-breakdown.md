@@ -186,10 +186,13 @@ rule), [hud]'s numbers win.
   18 f from its downbeat (reveal 0.61·i/n, lock 0.28 + 0.72(i + 1)/n); the old one lingers a frame on f279, 504, 729.
 - Evidence: `hud/build/r_0071.png`…`r_0088.png` and `build_right_bottom_{a,b}.png`, `hud/sec/`, `hud/verify/`,
   `hud/crops/`, `hud/{rule,theme}.tsv`. The `build/tl_build.png` that [hud] cites doesn't exist.
-- Build: `ReelHud` (`lib/studio/reel/hud.tsx`) takes the clock, the sections and `toneAt(slot, t)` (light, dark or
-  on-accent per slot). `REEL_HUD_BOOT_DECODE` and `REEL_HUD_SWAP_DECODE` hold the schedules above, and
-  `reelHudToneWeights` mixes tones over sub-frame samples. At 30 fps FF runs 00–29, the readout says 30 FPS, the
-  decodes take 15 and 9 frames, and the squares alternate 14- and 15-frame beats. The showcase sets it at 20 px.
+- Build: `ReelHud` (`lib/studio/reel/hud.tsx`) takes the clock, the sections and `readAt(slot, t, box)`: each
+  part's tone (light, dark or on-accent) and, where the ground under it is mixed or busy, a plate of that ground's
+  colour at `plateOpacity` (0.75). `reelHudGrounds` and `reelHudReadGrounds` read both from what a bar draws under the
+  part's box; `reelHudToneOver` picks the tone for a colour. `REEL_HUD_BOOT_DECODE` and `REEL_HUD_SWAP_DECODE` hold
+  the schedules above, and `reelHudToneWeights` and `reelHudPlateMix` mix tones and plates over sub-frame samples. At
+  30 fps FF runs 00–29, the readout says 30 FPS, the decodes take 15 and 9 frames, and the squares alternate 14- and
+  15-frame beats. The showcase sets it at 20 px.
 
 ### Frame post
 
@@ -234,18 +237,18 @@ rule), [hud]'s numbers win.
   0.7–1.0·A, a frame near 0, then two frames of ≈−0.2·A.
 - `ShutterBlur` trails (its samples span [t − span, t]) where the reference centres: shift t by half the span to
   match. Around a `ThreeStage` every sample is a WebGL context, and Chrome drops contexts past ≈16: use the stage's
-  own `samples` and `shutter` (being added as of 2026-09-24).
+  own `samples` and `shutter`.
 
 ### Pieces
 
-Status as of 2026-09-24, in `lib/studio/reel/` unless noted. Several were still being built.
+In `lib/studio/reel/` unless noted.
 
 | Piece | File | Reference bars |
 |---|---|---|
 | `BounceBall`, `bouncingBallAt`, `BounceCallout`, `FieldSwell` | `bounce.tsx` | 1; bar 2's tittle zoom; bar 8's full stop |
 | `RiseWord`, `WeightWord`, `SelectionBox`, `SlantWord`, `ScrambleText` | `type.tsx` | 2, 8 |
 | `GlyphField`, `FieldFlash`, `ShockRing` | `glyph-field.tsx` | 3; bar 7's implosion |
-| a column field on `ThreeStage`'s accumulation | `column-field.tsx` (planned), `lib/studio/three-stage.tsx` | 4 |
+| `ColumnField`, `columnCameraAt`, `columnBallAt` on `ThreeStage`'s accumulation | `column-field.tsx`, `lib/studio/three-stage.tsx` | 4 |
 | `TickerBands` | `ticker.tsx`, `ticker-layout.ts` | 5 |
 | none yet; [06] specs `particleMorph` | | 6 |
 | `RecapGrid`, `GlitchFlash`, `Shake`, `FadeToBlack` | `recap.tsx` | 7, 8 |
@@ -481,9 +484,10 @@ an implosion. Tiles pop in fresh and keep playing; none is the previous shot sca
   f835–841: bar 3's grid collapses (extents 1388×843 → 846×511 → 162×74 px, scale 0.76 → 0.47 → 0.09, turning −13 →
   −22 → −36°, streaks 50–250 px) into a red "+" of ≈20 px. No burst lines.
 - Evidence: `07/work/{m_758,m_840,m_vortex}.jpg` and the other `m_*.jpg`, `06/work/m_recap.png`.
-- Build: `RecapGrid` (`recap.tsx`: `order` 'z' or 'antidiagonal', `backOutEase`, exits 'pop', 'crt' or 'cut'; margins
-  12 / 8, gutters 12 / 16, popping from 0.76 / 0.65), each tile a live bar; `GlitchFlash` for the sixteenths; the
-  implosion from the `GlyphField` layout, 1 − x² over 0.067 s. At 30 fps each flash gets 3–4 frames, the implosion 2.
+- Build: `RecapGrid` (`recap.tsx`: `order` 'z' or 'antidiagonal', `backOutEase` from motion.ts, exits 'pop', 'crt'
+  or 'cut'; margins 12 / 8, gutters 12 / 16, popping from 0.76 / 0.65), each tile a live bar; `GlitchFlash` for the
+  sixteenths; the implosion from the `GlyphField` layout, 1 − x² over 0.067 s. At 30 fps each flash gets 3–4
+  frames, the implosion 2.
 
 ### Bar 8: 08 — HIRE ME (f842–953) [07]
 

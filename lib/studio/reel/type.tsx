@@ -6,39 +6,17 @@
 // next word cuts in on its beat with figure and ground swapped. A word is measured once as the browser sets it and
 // drawn a letter at a time there, so moving a letter never reflows the word. Fast moves smear under a 1/120 s shutter.
 
-import { Fragment, useId, useLayoutEffect, useState, type CSSProperties, type ReactNode } from 'react';
-import { flushSync } from 'react-dom';
-import { useDelayRender } from 'remotion';
-import { inflate, type Point, type Rect } from '../camera.ts';
-import { DISPLAY_FONT, MONO_FONT } from '../fonts.ts';
+import { Fragment, useId, type CSSProperties, type ReactNode } from 'react';
+import { applyAffine, inflate, multiplyAffine, type AffineMatrix, type Point, type Rect } from '../camera.ts';
+import { DISPLAY_FONT, MONO_ADVANCE_EM, MONO_CAP_EM, MONO_FONT, useStudioFontsReady } from '../fonts.ts';
 import { FULL_FRAME, H, W } from '../frame.ts';
-import { clamp, lerp, motionCurves } from '../motion.ts';
+import { clamp, lerp, motionCurves, powerOutEase, sineInOutEase } from '../motion.ts';
+import { REEL_SHUTTER, shutterOpensAt, shutterTravel, smearSigma } from '../motion-blur.tsx';
 import { motionEchoAttrs, pieceMotionAttrs } from '../motion-tag.ts';
 import { hashRandom, seededRandom } from '../random.ts';
 
 const outExpo = motionCurves.expo.entrance;
-const outQuart = (k: number) => 1 - (1 - clamp(k)) ** 4;
-const sineInOut = (k: number) => (1 - Math.cos(Math.PI * clamp(k))) / 2;
-
-/**
- * The reference's shutter, 180° at its 60 fps: its smears are this long, so ours match it frame for frame. Our 30 fps
- * jumps twice as far between frames; 1/60 (180° at 30 fps) smears twice as long and strobes less.
- */
-export const REEL_SHUTTER = 1 / 120;
-
-// A Gaussian of σ = 0.312 L has the 10–90% edge ramp (2.563σ) of a box blur L long, which is what an open shutter
-// makes of an edge travelling L px.
-const smearSigma = (travel: number) => 0.312 * travel;
-
-/**
- * Pixels a position covers while a shutter centred on `t` is open. A move starting at `start` is drawn whole from its
- * first moment, so the shutter opens no earlier: centred on it, half the exposure would see the move not yet begun.
- */
-function travelIn(at: (t: number) => number, t: number, shutter: number, start = -Infinity) {
-  if (t < start) return 0;
-  const open = Math.max(start, t - shutter / 2);
-  return Math.abs(at(open + shutter) - at(open));
-}
+const outQuart = powerOutEase(4);
 
 // ---------- setting a word ----------
 
@@ -51,7 +29,7 @@ type Setting = { family: string; cap: number; weight: number; stretch: number; s
 type SetWord = { size: number; chars: readonly { char: string; x: number; w: number }[]; width: number };
 
 // Cap height over the em: Archivo's measures 0.686–0.688 at every weight and width; JetBrains Mono's is 730/1000.
-const capOfEm = (family: string) => (family === MONO_FONT ? 0.73 : 0.687);
+const capOfEm = (family: string) => (family === MONO_FONT ? MONO_CAP_EM : 0.687);
 
 // No ligatures: one glyph a character, so every letter has a place of its own.
 const faceStyle = ({ family, weight, stretch }: Setting, size: number): CSSProperties => ({
@@ -90,43 +68,6 @@ function measureWord(text: string, setting: Setting): SetWord {
   return word;
 }
 
-const unquote = (name: string) => name.trim().replace(/^["']|["']$/g, '');
-const faceLoaded = (name: string) => [...document.fonts].some((f) => unquote(f.family) === name && f.status === 'loaded');
-
-/**
- * Whether `family`'s first face has loaded, holding the render until it has. fonts.ts adds a face to document.fonts
- * only once it's loaded, so `document.fonts.ready` can resolve before it's there: this polls for the face itself.
- */
-function useFaceLoaded(family: string): boolean {
-  const name = unquote(family.split(',')[0]);
-  const [loaded, setLoaded] = useState(() => faceLoaded(name));
-  const { delayRender, continueRender } = useDelayRender();
-  useLayoutEffect(() => {
-    if (loaded) return;
-    if (faceLoaded(name)) {
-      setLoaded(true);
-      return;
-    }
-    const handle = delayRender(`loading ${name} to set type`);
-    let held = true;
-    const release = () => {
-      if (held) continueRender(handle);
-      held = false;
-    };
-    const poll = setInterval(() => {
-      if (!faceLoaded(name)) return;
-      clearInterval(poll);
-      flushSync(() => setLoaded(true));
-      release();
-    }, 16);
-    return () => {
-      clearInterval(poll);
-      release();
-    };
-  }, [loaded, name]);
-  return loaded;
-}
-
 const leftOf = (x: number, width: number, align: Align) => (align === 'center' ? x - width / 2 : align === 'right' ? x - width : x);
 
 const layer: CSSProperties = { position: 'absolute', left: 0, top: 0, overflow: 'visible', pointerEvents: 'none' };
@@ -137,12 +78,13 @@ const LABEL_CAP = 14;
 
 /**
  * The reference's "(01)" by a word: mono, a 14 px cap (1.3% of frame height), baseline at (x, y), in over 0.06 s. Its
- * colour is drawn as given: the reference's run from its ground's dark at 64% ("(01)") to white.
+ * colour is drawn as given: the reference's run from its ground's dark at 64% ("(01)") to white. An SVG `<text>`, for
+ * inside an `<svg>`: the pieces draw it in their own.
  */
-function IndexLabel({ text, x, y, t, color }: { text: string; x: number; y: number; t: number; color: string }) {
+export function IndexLabel({ text, x, y, t, color }: { text: string; x: number; y: number; t: number; color: string }) {
   if (t <= 0) return null;
   return (
-    <text x={x} y={y} fill={color} opacity={clamp(t / 0.06)} style={{ fontFamily: MONO_FONT, fontSize: LABEL_CAP / capOfEm(MONO_FONT), fontWeight: 400 }}>
+    <text x={x} y={y} fill={color} opacity={clamp(t / 0.06)} style={{ fontFamily: MONO_FONT, fontSize: LABEL_CAP / MONO_CAP_EM, fontWeight: 400 }}>
       {text}
     </text>
   );
@@ -210,7 +152,7 @@ export function RiseWord({
   motion?: string | false;
 }) {
   const id = useId();
-  const ready = useFaceLoaded(DISPLAY_FONT);
+  const ready = useStudioFontsReady();
   if (!ready || t < 0) return null;
   const rest: Setting = { family: DISPLAY_FONT, cap, weight, stretch, spacing };
   const wide = widerSetting(text, rest, widen);
@@ -230,14 +172,14 @@ export function RiseWord({
     const lift = (tt: number) => rise * cap * (1 - outExpo((tt - start) / duration));
     return [{
       i, turn, start, char: c.char, x: lerp(left + c.x, wideLeft + wideSet.chars[i].x, loose), dy: lift(t),
-      sigma: shutter > 0 ? smearSigma(travelIn(lift, t, shutter, start)) : 0,
+      sigma: shutter > 0 ? smearSigma(shutterTravel(lift, t, shutter, start)) : 0,
     }];
   });
   const settled = Math.max(0, count - 1) * each + duration;
 
   // The rule's tip is all that moves: a box-blurred edge is a linear ramp as long as its travel.
   const tip = (tt: number) => set.width * outExpo((tt - RULE_AT) / RULE_TIME);
-  const ruleTip = tip(t), ruleRamp = shutter > 0 ? travelIn(tip, t, shutter, RULE_AT) : 0;
+  const ruleTip = tip(t), ruleRamp = shutter > 0 ? shutterTravel(tip, t, shutter, RULE_AT) : 0;
   const ruleSolid = Math.max(0, ruleTip - ruleRamp / 2), ruleY = base + RULE_GAP * cap;
   return (
     <svg width={W} height={H} style={layer}>
@@ -321,7 +263,7 @@ export function WeightWord({
   labelColor?: string;
   motion?: string | false;
 }) {
-  const ready = useFaceLoaded(DISPLAY_FONT);
+  const ready = useStudioFontsReady();
   if (!ready || t < 0) return null;
   const landed: Setting = { family: DISPLAY_FONT, cap, weight: to, stretch: stretchTo, spacing };
   const set = measureWord(text, landed);
@@ -375,7 +317,7 @@ const lerpRect = (a: Rect, b: Rect, k: number): Rect => ({ x: lerp(a.x, b.x, k),
  */
 export function SelectionBox({
   t, to, from = FRAME_EDGES, delay = 1 / 60, duration = 0.3, color = '#3a40f0', handle = '#f2f0ee', readout = true, readoutAt = 0.11,
-  shutter = REEL_SHUTTER, motion,
+  readoutColor = '#fff', shutter = REEL_SHUTTER, motion,
 }: {
   /** Seconds since it appears on `from`. */
   t: number;
@@ -390,13 +332,15 @@ export function SelectionBox({
   /** The W × H pill, fading in under the box `readoutAt` seconds after it appears. */
   readout?: boolean;
   readoutAt?: number;
+  /** The pill's figures, on `color`: the default white is unreadable on a light box. */
+  readoutColor?: string;
   shutter?: number;
   motion?: string | false;
 }) {
   if (t < 0) return null;
   const at = (tt: number) => lerpRect(from, to, outExpo((tt - delay) / duration));
   // The shutter's open and close, never before the box starts moving.
-  const open = Math.max(delay, t - shutter / 2);
+  const open = shutterOpensAt(t, shutter, delay);
   const r = at(t), [a, b] = t < delay ? [r, r] : [at(open), at(open + shutter)];
   const line = 2;
   // A thin line smeared by a shutter is a band over its travel keeping its ink, as a box blur does.
@@ -408,7 +352,7 @@ export function SelectionBox({
   const handles = (q: Rect) => [0, 0.5, 1].flatMap((u) => [0, 0.5, 1].filter((v) => u !== 0.5 || v !== 0.5).map((v) => ({ x: q.x + u * q.w, y: q.y + v * q.h })));
   const [ha, hb] = [handles(a), handles(b)];
   const text = `${Math.round(r.w)} × ${Math.round(r.h)}`;
-  const pillW = text.length * PILL.size * 0.6 + 2 * PILL.pad;
+  const pillW = text.length * PILL.size * MONO_ADVANCE_EM + 2 * PILL.pad;
   const pill = { x: r.x + r.w / 2 - pillW / 2, y: r.y + r.h + PILL.gap, w: pillW };
   const shown = readout ? clamp((t - readoutAt) / 0.035) : 0;
   return (
@@ -427,7 +371,7 @@ export function SelectionBox({
       {shown > 0 && (
         <g opacity={shown}>
           <rect x={pill.x} y={pill.y} width={pill.w} height={PILL.h} rx={PILL.radius} fill={color} />
-          <text x={pill.x + pill.w / 2} y={pill.y + PILL.h / 2 + (capOfEm(MONO_FONT) * PILL.size) / 2} textAnchor="middle" fill="#fff"
+          <text x={pill.x + pill.w / 2} y={pill.y + PILL.h / 2 + (MONO_CAP_EM * PILL.size) / 2} textAnchor="middle" fill={readoutColor}
             style={{ fontFamily: MONO_FONT, fontSize: PILL.size, fontWeight: 500 }}>
             {text}
           </text>
@@ -452,18 +396,32 @@ const TITTLE_HEIGHT = 0.685;
 // 11 px the reference sets its "(03)" left of the i's foot.
 const SLANT_LABEL_IN = 0.036;
 
-type Matrix = [number, number, number, number, number, number];
-const multiply = ([a, b, c, d, e, f]: Matrix, [g, h, i, j, k, l]: Matrix): Matrix =>
-  [a * g + c * h, b * g + d * h, a * i + c * j, b * i + d * j, a * k + c * l + e, b * k + d * l + f];
-const apply = ([a, b, c, d, e, f]: Matrix, x: number, y: number): Point => ({ x: a * x + c * y + e, y: b * x + d * y + f });
+/** A SlantWord's pose at a moment of its entrance: its scale, turn and slant (degrees). */
+export type SlantPose = { scale: number; turn: number; slant: number };
 
-type SlantPose = { scale: number; turn: number; slant: number };
+/** A SlantWord's entrance, as its props of the same names set it. */
+export type SlantEntrance = {
+  scale: number; duration: number; turn: number; turnDuration: number; slant: number; slantFrom: number; slantDuration: number;
+};
 
-/** A word's transform about `origin`: scaled and turned (degrees), then slanted forward in screen space. */
-function slantMatrix(origin: Point, { scale, turn, slant }: SlantPose): Matrix {
+/**
+ * A SlantWord's pose `t` s into `entrance`, as it draws it. With `slantMatrix` about the word's origin, a scene can
+ * draw in step with the word, e.g. inside one of its letters.
+ */
+export const slantWordPose = (t: number, { scale, duration, turn, turnDuration, slant, slantFrom, slantDuration }: SlantEntrance): SlantPose => ({
+  scale: lerp(scale, 1, outExpo(t / duration)),
+  turn: turn * (1 - sineInOutEase(t / turnDuration)),
+  slant: lerp(slantFrom, slant, sineInOutEase((2 * t) / slantDuration - 1)),
+});
+
+/**
+ * A word's transform about `origin`: scaled and turned (degrees), then slanted forward in screen space. A SlantWord's
+ * origin is the middle of its cap box.
+ */
+export function slantMatrix(origin: Point, { scale, turn, slant }: SlantPose): AffineMatrix {
   const r = (turn * Math.PI) / 180, cos = Math.cos(r) * scale, sin = Math.sin(r) * scale;
-  const skew: Matrix = [1, 0, -Math.tan((slant * Math.PI) / 180), 1, 0, 0];
-  return multiply(multiply(multiply([1, 0, 0, 1, origin.x, origin.y], skew), [cos, sin, -sin, cos, 0, 0]), [1, 0, 0, 1, -origin.x, -origin.y]);
+  const skew: AffineMatrix = [1, 0, -Math.tan((slant * Math.PI) / 180), 1, 0, 0];
+  return multiplyAffine(multiplyAffine(multiplyAffine([1, 0, 0, 1, origin.x, origin.y], skew), [cos, sin, -sin, cos, 0, 0]), [1, 0, 0, 1, -origin.x, -origin.y]);
 }
 
 /** An i's tittle as a SlantWord draws it: centre and radius in frame px, the shape a FieldSwell grows from. */
@@ -513,7 +471,7 @@ export function SlantWord({
   motion?: string | false;
 }) {
   const id = useId();
-  const ready = useFaceLoaded(DISPLAY_FONT);
+  const ready = useStudioFontsReady();
   if (!ready || t < 0) return null;
   const setting: Setting = { family: DISPLAY_FONT, cap, weight, stretch, spacing };
   // Set dotless, so each tittle can be drawn round on top of the slant and be a zoom's anchor.
@@ -522,32 +480,28 @@ export function SlantWord({
   const base = y ?? H / 2 + cap / 2;
   const left = leftOf(x, set.width, align);
   const origin = { x: left + set.width / 2, y: base - cap / 2 };
-  const poseAt = (tt: number): SlantPose => ({
-    scale: lerp(scale, 1, outExpo(tt / duration)),
-    turn: turn * (1 - sineInOut(tt / turnDuration)),
-    slant: lerp(slantFrom, slant, sineInOut((2 * tt) / slantDuration - 1)),
-  });
+  const poseAt = (tt: number) => slantWordPose(tt, { scale, duration, turn, turnDuration, slant, slantFrom, slantDuration });
   const pose = poseAt(t), m = slantMatrix(origin, pose);
   // A zoom and a turn smear every way: the farthest-travelling corner sets one even blur, halved as the edges mostly
-  // move along themselves. The shutter opens no earlier than the entrance, as travelIn's does.
-  const open = Math.max(0, t - shutter / 2);
+  // move along themselves. The shutter opens no earlier than the entrance.
+  const open = shutterOpensAt(t, shutter, 0);
   const [m0, m1] = [slantMatrix(origin, poseAt(open)), slantMatrix(origin, poseAt(open + shutter))];
-  const corners = [[left, base - cap], [left + set.width, base - cap], [left, base], [left + set.width, base]] as const;
-  const travel = shutter > 0 ? Math.max(...corners.map(([cx, cy]) => {
-    const p = apply(m0, cx, cy), q = apply(m1, cx, cy);
+  const corners: Point[] = [{ x: left, y: base - cap }, { x: left + set.width, y: base - cap }, { x: left, y: base }, { x: left + set.width, y: base }];
+  const travel = shutter > 0 ? Math.max(...corners.map((c) => {
+    const p = applyAffine(m0, c), q = applyAffine(m1, c);
     return Math.hypot(q.x - p.x, q.y - p.y);
   })) : 0;
   const sigma = smearSigma(travel) / 2;
   const radius = (TITTLE_ACROSS / 2) * stemAt(weight) * set.size;
-  const dotsAt = (mm: Matrix, s: number) => set.chars.flatMap((c, i) => (text[i] === 'i'
-    ? [{ ...apply(mm, left + c.x + (c.w - spacing * set.size) / 2, base - TITTLE_HEIGHT * set.size), r: radius * s }]
+  const dotsAt = (mm: AffineMatrix, s: number) => set.chars.flatMap((c, i) => (text[i] === 'i'
+    ? [{ ...applyAffine(mm, { x: left + c.x + (c.w - spacing * set.size) / 2, y: base - TITTLE_HEIGHT * set.size }), r: radius * s }]
     : []));
   const dots = dotsAt(m, pose.scale).map((d) => ({ ...d, swap: tittle?.(d) }));
   const swapped = (node: ReactNode) => node != null && node !== false;
   // The label sits by the word at rest, not riding its entrance: over the ink's top, by the slanted word's foot.
   const still = slantMatrix(origin, { scale: 1, turn: 0, slant });
   const inkTop = Math.min(base - cap, ...dotsAt(still, 1).map((d) => d.y - d.r));
-  const foot = apply(still, left, base).x + SLANT_LABEL_IN * set.size;
+  const foot = applyAffine(still, { x: left, y: base }).x + SLANT_LABEL_IN * set.size;
   return (
     <>
       <svg width={W} height={H} style={layer}>
@@ -616,7 +570,7 @@ type Glitch = { split: number; slices: { y: number; h: number; dx: number }[]; g
  * The glitch `t` seconds in: its colour split in px and, re-rolled each 60 fps tick, its slices (y from the baseline)
  * and a ghost's offset. Sizes are the reference's at its 306 px cap, scaled to `cap`.
  */
-function glitchAt(t: number, hits: readonly number[], peak: number, seed: string | number, cap: number): Glitch | null {
+function wordGlitchAt(t: number, hits: readonly number[], peak: number, seed: string | number, cap: number): Glitch | null {
   const sorted = [...hits].sort((p, q) => p - q);
   const i = sorted.findLastIndex((h) => h <= t);
   if (i < 0 || (i === sorted.length - 1 && t - sorted[i] >= GLITCH.tail)) return null;
@@ -636,10 +590,11 @@ function glitchAt(t: number, hits: readonly number[], peak: number, seed: string
   return { split, slices, ghost };
 }
 
-// An RGB split over whatever is behind, in four blended passes. Per channel, a multiply by white with that channel
-// zeroed scales it by 1 − the copy's alpha; a plus-lighter then adds the copy's channel times its alpha: plain "over",
-// so a half-clear ghost lands true. Red comes from one copy, green and blue from the other.
-const SPLIT_PASSES = [
+// An RGB split over what's behind, in blended passes: lens.tsx's channelSplitPrimitives needs an opaque input. Per
+// channel, a multiply by white with that channel zeroed scales it by 1 − the copy's alpha; a plus-lighter adds the
+// copy's channel times its alpha: plain "over", so a half-clear ghost lands true. Red from one copy, green and blue
+// the other.
+const SPLIT_BLEND_PASSES = [
   { side: 1, blend: 'multiply', matrix: '0 0 0 0 0  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0' },
   { side: 1, blend: 'plus-lighter', matrix: '1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0' },
   { side: -1, blend: 'multiply', matrix: '0 0 0 0 1  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0' },
@@ -689,13 +644,13 @@ export function ScrambleText({
   const setting: Setting = mono
     ? { family: MONO_FONT, cap, weight: weight ?? 500, stretch: 100, spacing: spacing ?? 0 }
     : { family: DISPLAY_FONT, cap, weight: weight ?? 900, stretch: stretch ?? 62, spacing: spacing ?? -0.02 };
-  const ready = useFaceLoaded(setting.family);
+  const ready = useStudioFontsReady();
   if (!ready || t < 0) return null;
   const set = measureWord(text, setting);
   const base = y ?? H / 2 + cap / 2;
   const left = leftOf(x, set.width, align);
   const timing = { seed, charset, delay, each, rate };
-  const glitch = glitchAt(t, hits, split, seed, cap);
+  const glitch = wordGlitchAt(t, hits, split, seed, cap);
   const settled = !glitch && t >= scrambleFinish(text, { delay, each });
   const cursorOn = cursor && (settled || hashRandom(seed, 'cursor', Math.floor(t * 60 + 1e-6)) < 0.5);
   const face = faceStyle(setting, set.size);
@@ -739,7 +694,7 @@ export function ScrambleText({
   );
   return (
     <>
-      {SPLIT_PASSES.map((pass, n) => (
+      {SPLIT_BLEND_PASSES.map((pass, n) => (
         <svg key={n} width={W} height={H} style={{ ...layer, mixBlendMode: pass.blend }}>
           <defs>
             <filter id={`${id}-pass${n}`} colorInterpolationFilters="sRGB">
@@ -757,8 +712,8 @@ export function ScrambleText({
             ))}
           </defs>
           {/* Only the last pass carries the tag; the others are copies for the look. */}
-          <g {...(n < SPLIT_PASSES.length - 1 ? motionEchoAttrs : {})} filter={`url(#${id}-pass${n})`} fill={color} transform={`translate(${(pass.side * glitch.split) / 2} 0)`}>
-            {copies(n === SPLIT_PASSES.length - 1 ? tag : {})}
+          <g {...(n < SPLIT_BLEND_PASSES.length - 1 ? motionEchoAttrs : {})} filter={`url(#${id}-pass${n})`} fill={color} transform={`translate(${(pass.side * glitch.split) / 2} 0)`}>
+            {copies(n === SPLIT_BLEND_PASSES.length - 1 ? tag : {})}
           </g>
         </svg>
       ))}

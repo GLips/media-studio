@@ -8,12 +8,13 @@ import { useId, type ReactNode } from 'react';
 import { DISPLAY_FONT } from '../fonts.ts';
 import { FPS, H, W } from '../frame.ts';
 import { motionCurves } from '../motion.ts';
+import { smearSigma } from '../motion-blur.tsx';
 import { pieceMotionAttrs } from '../motion-tag.ts';
 import { hashRandom } from '../random.ts';
 import { Odometer } from '../kit.tsx';
 import {
   ARCHIVO_BASELINE_EM, ARCHIVO_CAP_EM, archivoAdvance, layoutGlyphLine, layoutTickerRow, mixGlyphPose, tickerBreathAt,
-  type GlyphAxes, type GlyphPose, type GlyphSlot, type TickerBreath, type TickerPose, type TickerSlot,
+  type GlyphAxes, type GlyphPose, type GlyphLineSlot, type TickerBreath, type TickerPose, type TickerSlot,
 } from './ticker-layout.ts';
 
 export type { GlyphPose, TickerBreath, TickerPose } from './ticker-layout.ts';
@@ -162,7 +163,7 @@ export function TickerBands({
   if (!(bands % 2 === 1 && bands >= 1)) throw new Error(`TickerBands: bands must be odd, to have a middle one, not ${bands}`);
   if (t < 0) return null;
   const middle = (bands - 1) / 2;
-  const beat = lookBeat(t, spb);
+  const beat = tickerLookBeat(t, spb);
   const look = looks[Math.min(beat, looks.length - 1)];
   const end = looks.length * spb - (exit ? exit.early : 0);
   const size = cap / ARCHIVO_CAP_EM;
@@ -229,8 +230,11 @@ export function TickerBands({
   );
 }
 
-// A look shows from the frame nearest its beat, as BeatGrid.frame rounds, so every band flips on the same frame.
-const lookBeat = (t: number, spb: number) => Math.floor((t + 0.5 / FPS) / spb);
+/**
+ * The beat whose look TickerBands shows at `t` (past its last look, the last holds). A look shows from the frame
+ * nearest its beat, as BeatGrid.frame rounds, so every band flips on the same frame.
+ */
+export const tickerLookBeat = (t: number, spb: number) => Math.floor((t + 0.5 / FPS) / spb);
 const mod1 = (x: number) => x - Math.floor(x);
 
 // ---------- one band ----------
@@ -423,7 +427,7 @@ function heroLine(t: number, { word, count, size, breath, poses, heldAt, phase }
   const held = heldAt === null ? 0 : 1 - Math.exp(-Math.max(0, t - heldAt) / poses.hold.settle);
   const poseAt = (i: number) => mixGlyphPose(mixGlyphPose(poses.light, poses.bold, tickerBreathAt(t, i, breath, phase)), poses.hold, held);
   const chars = count ? [...word, ' '] : [...word];
-  const slots: GlyphSlot[] = chars.map((char, i) => {
+  const slots: GlyphLineSlot[] = chars.map((char, i) => {
     const pose = poseAt(i);
     return { char, axes: axesOf(pose), tracking: pose.tracking };
   });
@@ -468,9 +472,6 @@ function Dot({ x, y, d, color, filter }: { x: number; y: number; d: number; colo
   return <div style={{ position: 'absolute', left: 0, top: y - d / 2, width: d, height: d, borderRadius: '50%', background: color, transform: `translateX(${x - d / 2}px)`, filter }} />;
 }
 
-// A Gaussian with σ = 0.312 × L has the same 10–90% edge ramp (2.563σ) as a box blur L px long: what an open shutter
-// does to an edge travelling L px.
-const smearSigma = (travel: number) => 0.312 * Math.abs(travel);
 // Below this a smear can't be seen and text stays crisp: the drift alone (231 px/s) smears σ 1.2 px at 1/60 s.
 const MIN_SIGMA = 1.5;
 // σ rounds to steps of √2, so glyphs moving at about the same speed share a filter.

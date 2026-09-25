@@ -43,12 +43,46 @@ the image rather than a label on it, and colour comes in full-bleed fields, not 
   `unmeasuredAttrs('<what>')` (`ThreeStage` does this itself).
 - **Cost.** A reel renders 600 frames. Keep a frame under about 2,000 DOM nodes; past that, draw into a canvas (2D in
   a `useLayoutEffect` that redraws each frame, or `ThreeStage` for 3D, `lib/studio/three-stage.tsx`).
+- **Colours into three.js** must be hex or comma `rgb()`: it reads neither `oklch()` nor CSS's space-separated
+  `rgb()`. `parseGlyphColor` (`reel/glyph-field.tsx`) turns any CSS colour into numbers first.
+- **SVG filters** do post work on DOM and canvases alike, but Chrome has four traps:
+  - It recomputes a filter result once for every step that reads it, so have each tap read the source rather than
+    chaining stages.
+  - `feDisplacementMap` samples nearest-neighbour, so a sub-pixel shift needs bilinear weights of your own
+    (`lens.tsx` does this).
+  - An `feImage` of an element or an SVG counts as cross-origin and switches `feDisplacementMap` off: feed it a PNG
+    data URL.
+  - A CSS `mask-image` on a subtree re-rasterises all of it, shifting edges and glyphs by up to about 140 levels.
+    To keep a region clear, draw over it instead.
+
+  A red/blue split is `channelSplitPrimitives` (`lens.tsx`).
 - **3D** is `ThreeStage`: `draw()` builds the scene and camera for this frame from scratch, and the stage disposes it.
   It averages `samples` exposures a frame, so depth of field (`lens`), motion blur (`shutter`) and soft shadows are
   real, not post passes; `bloom` applies once, to the average. A transparent stage over a light ground takes that
   ground as its `backdrop`.
 - **Doc comments** say what it draws, what each non-obvious prop does, and the reference's values. Under 60 words
   each, and why rather than what.
+
+## Before writing a helper
+
+Look here first: a second copy of one of these drifts from the first.
+
+- **Curves:** `motionCurves`, `seg`, `springBy`, `backOutEase(overshoot)`, `powerOutEase(power)`, `sineInOutEase`
+  (`motion.ts`).
+- **Smear:** `ShutterBlur`, `REEL_SHUTTER`, `shutterOpensAt`, `shutterTravel`, `smearSigma` (`motion-blur.tsx`).
+- **The beat:** `steadyBeatGrid`, `wordOnBeat` (`beats.ts`).
+- **Geometry:** `Vec3` and its maths (`vec3.ts`); `AffineMatrix`, `multiplyAffine`, `applyAffine` (`camera.ts`); a
+  capture plane's projection, `capturePlaneProjection` (`reel/capture-plane.tsx`); where the needle is and what it
+  touches, `needlePoseAt`, `needleContactAt`, `needleScreenPoint` (`reel/needle.tsx`), to land a mark on its strike.
+- **The HUD's ground:** `reelHudBoxPoints`, `reelHudGrounds` and `reelHudReadGrounds` read what's drawn under each
+  part's box into its ink and plate (`reel/hud.tsx`), from a `groundAt(point)` a bar builds out of its pieces'
+  geometry.
+- **Type:** `ARCHIVO_CAP_EM`, `ARCHIVO_BASELINE_EM` and `layoutGlyphLine` (`reel/ticker-layout.ts`); `MONO_CAP_EM`,
+  `MONO_ADVANCE_EM`, and `useStudioFontsReady` before measuring a word or painting one into a canvas (`fonts.ts`);
+  `slantWordPose`, `IndexLabel`, `SelectionBox`, `scrambleAt` (`reel/type.tsx`); `ODOMETER_DIGIT_EM` (`kit.tsx`).
+- **Post and finish:** `channelSplitPrimitives` (`reel/lens.tsx`); `GlitchFlash`, `shakeOffset`, `FadeToBlack`,
+  `recapTileUnder` (`reel/recap.tsx`); `tickerLookBeat` (`reel/ticker.tsx`); `columnTitaniumMaterial`, a ball's
+  anodized colour by film thickness (`reel/column-field.tsx`).
 
 ## Proving it
 

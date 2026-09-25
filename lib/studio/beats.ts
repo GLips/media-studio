@@ -55,6 +55,18 @@ export function steadyBeatGrid(bpm: number, first = 0): BeatGrid {
 }
 
 /**
+ * Which of `words` words, one a beat from beat 0, is on screen at `t` on the grid's clock, and seconds since its cut.
+ * A word cuts in on its beat's frame (`grid.frame`) and its clock starts there, so its first frame is its entrance's
+ * first moment even where a beat falls between frames (at 128 BPM).
+ */
+export function wordOnBeat(t: number, grid: BeatGrid, words: number) {
+  const frame = Math.round(t * FPS);
+  let n = 0;
+  while (n + 1 < words && frame >= grid.frame(n + 1)) n++;
+  return { n, t: t - grid.frame(n) / FPS };
+}
+
+/**
  * One tempo and phase through tracked beats, robust to the stretches a tracker got pulled off (which all lean the same
  * way, so a median of slopes leans with them). Every line through two beats a bar or more apart is a candidate; the
  * one the most beats sit within 25 ms of wins, refined by least squares through those beats.

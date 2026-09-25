@@ -8,11 +8,12 @@
 
 import type { CSSProperties, ReactNode } from 'react';
 import { Img } from 'remotion';
-import { inflate, rectToScreen, scaleFor, view, type Point, type Rect, type Shot, type View } from '../camera.ts';
+import { inflate, rectToScreen, scaleFor, toScreen, view, type Point, type Rect, type Shot, type View } from '../camera.ts';
 import { FPS, H, W } from '../frame.ts';
 import { clamp, lerp, springBy, type DeadlineSpring } from '../motion.ts';
 import { cameraMotionAttrs, motionEchoAttrs, pieceMotionAttrs } from '../motion-tag.ts';
 import { hashRandom } from '../random.ts';
+import { crossVec3, dotVec3, unitVec3, type Vec3 } from '../vec3.ts';
 
 /**
  * Where a card is and how it's turned. `x`, `y` are px from its view's box, `z` px toward the viewer. `rx` tips the top
@@ -127,7 +128,7 @@ export function CapturePlane(props: CapturePlaneProps) {
   const driftSeed = seed ?? `${v.shot.src}|${v.box.x}|${v.box.y}`;
   const poseAt = (at: number) => withDrift({ ...PLANE_REST_POSE, ...(typeof pose === 'function' ? pose(at) : pose) }, at, driftSeed, drift);
   const now = poseAt(t);
-  const trail = typeof pose === 'function' && shutter > 0 ? planeTrail(v.box, now, poseAt(t - 1 / FPS), lens, vanish, shutter) : null;
+  const trail = typeof pose === 'function' && shutter > 0 ? planeTrail(v, now, poseAt(t - 1 / FPS), lens, vanish, shutter) : null;
   return (
     <>
       {shadow !== false && <PlaneShadow box={v.box} pose={now} lens={lens} vanish={vanish} radius={props.radius ?? 18} light={lightDirection(props.light)} elevation={elevation} color={shadow} blur={blur} alpha={alpha} />}
@@ -146,11 +147,7 @@ export function CapturePlane(props: CapturePlaneProps) {
 
 // ---------- the card in space ----------
 
-type Vec3 = readonly [number, number, number];
-const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const along = (a: Vec3, b: Vec3, k: number): Vec3 => [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k];
-const unit = (a: Vec3): Vec3 => along([0, 0, 0], a, 1 / Math.hypot(a[0], a[1], a[2]));
-const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 
 /** A posed face in lens space (CSS axes: x right, y down, z toward the viewer): its centre and its x, y and out axes. */
 type PlaneFrame = { c: Vec3; ex: Vec3; ey: Vec3; n: Vec3 };
@@ -180,6 +177,78 @@ const project = (p: Vec3, lens: number, vp: Point): Point => {
 const eyeOf = (lens: number, vp: Point): Vec3 => [vp.x, vp.y, lens];
 const cornersOf = (box: Rect): [number, number][] => [[-box.w / 2, -box.h / 2], [box.w / 2, -box.h / 2], [box.w / 2, box.h / 2], [-box.w / 2, box.h / 2]];
 
+/** A lift's plate on the card: its centre from the card's (u, v), its size, how far it's up, and its scale. */
+type LiftedPlate = { u: number; v: number; w: number; h: number; z: number; scale: number };
+
+/**
+ * The most the card, or its lifted plate (by its own scale on top), is stretched in any direction where it's in frame,
+ * as frame px per layout px: sampled on a grid, since a push-in's nearest corner is often out of frame, and taken from
+ * the projection's local stretch, since perspective stretches a tilted card past its depth's scale toward the frame's
+ * edges. 0 when none of it is in frame.
+ */
+function framedStretch(f: PlaneFrame, box: Rect, lens: number, vanish: Point, lifted: LiftedPlate | null) {
+  const N = 16;
+  let most = 0;
+  const sample = (u: number, v: number, w: number, h: number, z: number, scale: number) => {
+    for (let i = 0; i <= N; i++) {
+      for (let j = 0; j <= N; j++) {
+        const [pu, pv] = [u + w * (i / N - 0.5), v + h * (j / N - 0.5)];
+        const s = project(pointOn(f, pu, pv, z), lens, vanish);
+        if (s.x < 0 || s.x > W || s.y < 0 || s.y > H) continue;
+        const du = project(pointOn(f, pu + 1, pv, z), lens, vanish), dv = project(pointOn(f, pu, pv + 1, z), lens, vanish);
+        most = Math.max(most, largestStretch(du.x - s.x, dv.x - s.x, du.y - s.y, dv.y - s.y) * scale);
+      }
+    }
+  };
+  sample(0, 0, box.w, box.h, 0, 1);
+  if (lifted) sample(lifted.u, lifted.v, lifted.w * lifted.scale, lifted.h * lifted.scale, lifted.z, lifted.scale);
+  return most;
+}
+
+/** The largest singular value of the Jacobian [[a, b], [c, d]]: how far it stretches in its worst direction. */
+function largestStretch(a: number, b: number, c: number, d: number) {
+  const sum = a * a + b * b + c * c + d * d, det = a * d - b * c;
+  return Math.sqrt((sum + Math.sqrt(Math.max(0, sum * sum - 4 * det * det))) / 2);
+}
+
+/** Where a card at a pose puts things, as CapturePlane draws it. */
+export type CapturePlaneProjection = {
+  /** A page point of the view's capture, `w` px off the card's face toward the viewer, in lens space (CSS axes). */
+  pageInLens: (page: Point, w?: number) => Vec3;
+  /** A lens-space point's image in frame px. */
+  lensToScreen: (q: Vec3) => Point;
+  /** A page point on the card, `w` px off its face, in frame px. */
+  pageToScreen: (page: Point, w?: number) => Point;
+  /** The card's corners in frame px, clockwise from its top left while its face is toward the lens. */
+  corners: Point[];
+  /** Whether frame point `p` falls on the card, whichever face shows. */
+  covers: (p: Point) => boolean;
+};
+
+/**
+ * The card `view` shows, at `pose` (as given: CapturePlane's seeded float, a few px, isn't in it) through `lens` and
+ * `vanish` as CapturePlane takes them: for what a scene hangs on the card or asks about it, like a flood from a swatch
+ * or the HUD's tone over it.
+ */
+export function capturePlaneProjection(view: View, pose: PlanePose, { lens = 1100, vanish = { x: W / 2, y: H / 2 } }: { lens?: number; vanish?: Point } = {}): CapturePlaneProjection {
+  const { box, shot, cam } = view;
+  const f = planeFrame(box, pose);
+  const pageInLens = (page: Point, w = 0) => {
+    const s = toScreen(shot, cam, page, box);
+    return pointOn(f, s.x - box.x - box.w / 2, s.y - box.y - box.h / 2, w);
+  };
+  const lensToScreen = (q: Vec3) => project(q, lens, vanish);
+  const corners = cornersOf(box).map(([u, v]) => lensToScreen(pointOn(f, u, v)));
+  const covers = (p: Point) => {
+    const sides = corners.map((a, i) => {
+      const b = corners[(i + 1) % corners.length];
+      return Math.sign((b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x));
+    });
+    return sides.every((s) => s >= 0) || sides.every((s) => s <= 0);
+  };
+  return { pageInLens, lensToScreen, pageToScreen: (page, w) => lensToScreen(pageInLens(page, w)), corners, covers };
+}
+
 /** The key light's direction (toward it) from its angles: left/right of the lens axis, then above it. */
 function lightDirection({ x, y }: { x: number; y: number } = { x: -25, y: 35 }): Vec3 {
   const [az, el] = [(x * Math.PI) / 180, (y * Math.PI) / 180];
@@ -207,12 +276,9 @@ function withDrift(p: PlanePose, t: number, seed: string | number, amount: numbe
  * a shutter does, not stack into copies, and blur by half their spacing so the steps melt. None under 40 px a frame
  * (the 30 fps strobe threshold), fading in over the next 40 so it never pops on.
  */
-function planeTrail(box: Rect, now: PlanePose, before: PlanePose, lens: number, vp: Point, shutter: number) {
-  const [a, b] = [planeFrame(box, now), planeFrame(box, before)];
-  const moved = Math.max(...cornersOf(box).map(([u, v]) => {
-    const [p, q] = [project(pointOn(a, u, v), lens, vp), project(pointOn(b, u, v), lens, vp)];
-    return Math.hypot(p.x - q.x, p.y - q.y);
-  }));
+function planeTrail(v: View, now: PlanePose, before: PlanePose, lens: number, vanish: Point, shutter: number) {
+  const [a, b] = [capturePlaneProjection(v, now, { lens, vanish }).corners, capturePlaneProjection(v, before, { lens, vanish }).corners];
+  const moved = Math.max(...a.map((p, i) => Math.hypot(p.x - b[i].x, p.y - b[i].y)));
   const strength = clamp((moved - 40) / 40);
   if (strength <= 0) return null;
   const n = clamp(Math.ceil((moved * shutter) / 20), 2, 12);
@@ -236,13 +302,13 @@ const sheenLineLength = (w: number, h: number) => w * Math.abs(SHEEN_DIR[0]) + h
  * degree, as HyperFrames' yaw-driven sweep), and in from off the face, held `reach` px out.
  */
 function sheenOffset(f: PlaneFrame, w: number, h: number, eye: Vec3, light: Vec3, reach: number): number {
-  const across = unit(cross(light, SHEEN_STRIP));
+  const across = unitVec3(crossVec3(light, SHEEN_STRIP));
   const len = sheenLineLength(w, h);
   const angle = (u: number) => {
     const p = pointOn(f, SHEEN_DIR[0] * u, SHEEN_DIR[1] * u);
-    const toEye = unit(along(eye, p, -1));
-    const mirrored = along(along([0, 0, 0], f.n, 2 * dot(f.n, toEye)), toEye, -1);
-    return Math.asin(clamp(dot(mirrored, across), -1, 1));
+    const toEye = unitVec3(along(eye, p, -1));
+    const mirrored = along(along([0, 0, 0], f.n, 2 * dotVec3(f.n, toEye)), toEye, -1);
+    return Math.asin(clamp(dotVec3(mirrored, across), -1, 1));
   };
   const us = Array.from({ length: 9 }, (_, i) => -len / 2 + (len * i) / 8);
   const as = us.map(angle);
@@ -275,10 +341,10 @@ function faceLight(f: PlaneFrame, box: Rect, props: ExposureProps, ss: number): 
   const light = lightDirection(props.light);
   const eye = eyeOf(lens, vanish);
   // Lambert against the card's rest: nothing at rest or turned toward the light, `shade` edge-on to it.
-  const dark = shade * clamp((light[2] - dot(f.n, light)) / light[2]);
+  const dark = shade * clamp((light[2] - dotVec3(f.n, light)) / light[2]);
   // The edge facing the light catches it, brighter as the face turns edge-on to the viewer (Fresnel).
-  const grazing = 1 - Math.abs(dot(f.n, unit(along(eye, f.c, -1))));
-  const [lx, ly] = [dot(light, f.ex), dot(light, f.ey)];
+  const grazing = 1 - Math.abs(dotVec3(f.n, unitVec3(along(eye, f.c, -1))));
+  const [lx, ly] = [dotVec3(light, f.ex), dotVec3(light, f.ey)];
   const l = Math.hypot(lx, ly) || 1;
   const [ox, oy] = [(-lx / l) * 1.5 * ss, (-ly / l) * 1.5 * ss];
   const lit = Math.min(0.9, rim * (1 + 3 * grazing));
@@ -314,7 +380,7 @@ function PlaneExposure(props: ExposureProps) {
   const { view: v, pose, at, opacity, echo = false, lens = 1100, vanish = { x: W / 2, y: H / 2 }, radius = 18, blur = 0, sheen = 0.16, sheenWidth = 0.28, back = '#1d1d21', paper = '#fff', lift, motion } = props;
   const { box, shot, cam } = v;
   const f = planeFrame(box, pose);
-  const facing = dot(along(eyeOf(lens, vanish), f.c, -1), f.n) > 0;
+  const facing = dotVec3(along(eyeOf(lens, vanish), f.c, -1), f.n) > 0;
   const up = lift ? liftHeight(lift, at) : 0;
   const plate = lift && up > 0.001 ? rectToScreen(shot, cam, inflate(lift.rect, lift.pad ?? 6), box) : null;
   const plateScale = 1 + ((lift?.scale ?? 1.08) - 1) * up;
@@ -322,12 +388,16 @@ function PlaneExposure(props: ExposureProps) {
   // Chrome rasterizes a 3D layer at its layout size, so a card the lens magnifies would be upsampled and soft. It's
   // laid out at its largest on-screen scale and shrunk back in its transform; a far card is laid out small, so it's
   // filtered down when drawn rather than aliased by the compositor.
+  const lifted: LiftedPlate | null = plate && facing
+    ? { u: plate.x - box.x + plate.w / 2 - box.w / 2, v: plate.y - box.y + plate.h / 2 - box.h / 2, w: plate.w, h: plate.h, z: plateZ, scale: plateScale }
+    : null;
   const scales = cornersOf(box).map(([u, vv]) => lensScale(pointOn(f, u, vv)[2], lens));
-  if (plate && facing) {
-    const [pu, pv] = [plate.x - box.x + plate.w / 2 - box.w / 2, plate.y - box.y + plate.h / 2 - box.h / 2];
-    scales.push(lensScale(pointOn(f, pu, pv, plateZ)[2], lens) * plateScale);
-  }
+  if (lifted) scales.push(lensScale(pointOn(f, lifted.u, lifted.v, lifted.z)[2], lens) * lifted.scale);
   const ss = clamp(Math.max(...scales), 0.2, 3);
+  // Frame px per capture px where the shown capture is most magnified in frame, recorded so a graph can show a capture
+  // too small for its closest frame: past about 1.3, its text goes soft. A parent's scale multiplies it.
+  const shown = facing ? v : typeof back === 'string' ? null : back;
+  const upscale = shown ? (scaleFor(shown.shot, shown.cam.zoom) * framedStretch(f, box, lens, vanish, lifted)) / shown.shot.scale : 0;
   const side = facing ? f : backOf(f);
   const lit = faceLight(side, box, props, ss);
   const len = sheenLineLength(box.w, box.h);
@@ -349,7 +419,7 @@ function PlaneExposure(props: ExposureProps) {
       mixBlendMode: echo ? 'plus-lighter' : undefined, pointerEvents: 'none',
     }}>
       <div
-        {...(tagged && pieceMotionAttrs(motion, 'plane', { kind: 'capture-plane', values: { ...pose, lift: up, sheen: sheenCentre / 100 } }))}
+        {...(tagged && pieceMotionAttrs(motion, 'plane', { kind: 'capture-plane', values: { ...pose, lift: up, sheen: sheenCentre / 100, upscale } }))}
         style={{
           position: 'absolute', left: box.x + (box.w * (1 - ss)) / 2, top: box.y + (box.h * (1 - ss)) / 2, width: box.w * ss, height: box.h * ss,
           transformStyle: 'preserve-3d',
@@ -411,7 +481,7 @@ function plateSheen(offset: number, box: Rect, plate: Rect, widthPx: number, pea
 function UnderLift({ plate, box, f, light, z, scale, up, lift, socket, ss }: {
   plate: Rect; box: Rect; f: PlaneFrame; light: Vec3; z: number; scale: number; up: number; lift: PlaneLift; socket: string; ss: number;
 }) {
-  const [lx, ly, lz] = [dot(light, f.ex), dot(light, f.ey), dot(light, f.n)];
+  const [lx, ly, lz] = [dotVec3(light, f.ex), dotVec3(light, f.ey), dotVec3(light, f.n)];
   // A light grazing the face would throw the shadow off the card: hold it to a steep angle and fade it instead.
   const steep = Math.max(lz, 0.25);
   const [dx, dy] = [(-z * lx) / steep, (-z * ly) / steep];

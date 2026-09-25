@@ -6,13 +6,12 @@
 // World units are metres, y is up, and subjects stand on the ground at y = 0.
 
 import { lerp } from './motion.ts';
+import { lengthVec3, lerpVec3, subVec3, type Vec3 } from './vec3.ts';
 
-export type Vec3 = readonly [number, number, number];
 /** Where the camera is, the point it looks at, and its vertical field of view in degrees. */
 export type BlockoutPose = { position: Vec3; target: Vec3; fov: number };
 export type BlockoutMove = (k: number) => BlockoutPose;
 
-const lerpVec = (a: Vec3, b: Vec3, k: number): Vec3 => [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)];
 const rad = (deg: number) => (deg * Math.PI) / 180;
 
 /**
@@ -34,13 +33,13 @@ export function orbitMove({ target, radius, height = target[1] + 0.4, fromDeg, t
  * move; keep `fov` equal and move the camera.
  */
 export function dollyMove(from: BlockoutPose, to: BlockoutPose): BlockoutMove {
-  return (k) => ({ position: lerpVec(from.position, to.position, k), target: lerpVec(from.target, to.target, k), fov: lerp(from.fov, to.fov, k) });
+  return (k) => ({ position: lerpVec3(from.position, to.position, k), target: lerpVec3(from.target, to.target, k), fov: lerp(from.fov, to.fov, k) });
 }
 
 /**
  * A push-in on `target` along the line from `position`, ending `toDistance` from it. The common case of dollyMove.
  */
 export function pushInMove({ target, position, toDistance, fov = 35 }: { target: Vec3; position: Vec3; toDistance: number; fov?: number }): BlockoutMove {
-  const d = Math.hypot(position[0] - target[0], position[1] - target[1], position[2] - target[2]);
-  return dollyMove({ position, target, fov }, { position: lerpVec(target, position, toDistance / d), target, fov });
+  const d = lengthVec3(subVec3(position, target));
+  return dollyMove({ position, target, fov }, { position: lerpVec3(target, position, toDistance / d), target, fov });
 }

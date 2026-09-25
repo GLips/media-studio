@@ -3,12 +3,15 @@
 // (the brackets grow from their corners and every text decodes), then keeps time: the squares step on the beats, the
 // rule fills, and each section's label decodes in on its downbeat. Nothing in it moves.
 //
-// It samples no pixels. Each part takes light or dark inks from `toneAt`, which the scene answers from its own layout
-// (the ground under each slot anchor), as the reference's HUD reads its scene, not auto-contrast.
+// It samples no pixels. Each part takes light or dark inks as the scene reads it (`readAt`), from its own layout over
+// the part's whole box, as the reference's HUD reads its scene, not auto-contrast. Where the ground under a part is
+// busy type, or grounds wanting different inks, which no tone reads across, the scene puts a plate of a ground's colour
+// behind the part. `reelHudGrounds` and `reelHudReadGrounds` do the reading for a scene that can name its grounds.
 
+import type { Point, Rect } from '../camera.ts';
 import { FPS, H, W } from '../frame.ts';
-import { MONO_FONT } from '../fonts.ts';
-import { clamp, motionCurves } from '../motion.ts';
+import { MONO_ADVANCE_EM, MONO_CAP_EM, MONO_FONT } from '../fonts.ts';
+import { clamp, motionCurves, powerOutEase } from '../motion.ts';
 import { pieceMotionAttrs } from '../motion-tag.ts';
 import { scrambleAt } from './type.tsx';
 
@@ -21,6 +24,9 @@ export const REEL_HUD_SLOTS: readonly ReelHudSlot[] = ['tl', 'tr', 'timecode', '
  * paper lit square, for a ground in the accent colour, where an accent square would vanish.
  */
 export type ReelHudTone = 'light' | 'dark' | 'on-accent';
+
+/** How a part reads: its tone, and the colour of a plate behind it where no one tone reads over its ground. */
+export type ReelHudRead = { tone: ReelHudTone; plate?: string };
 
 /** A section label, shown as `NN — TITLE` from `at` (seconds since boot) until the next one: one a bar in the ref. */
 export type ReelHudSection = { at: number; title: string };
@@ -59,8 +65,15 @@ export type ReelHudProps = {
   /** The top-right readout. Default `N BPM   fps FPS   1920×1080`, N from `beatOf`. */
   readout?: string;
   sections?: readonly ReelHudSection[];
-  /** Each slot's tone at `t`. Sampled 4 times across the first half of this frame, and the inks mixed by share. */
-  toneAt?: (slot: ReelHudSlot, t: number) => ReelHudTone;
+  /**
+   * How each slot's part reads at `t`, judged over `box`, the part's box (`reelHudBoxes`): a tone right at one point
+   * of a part can vanish over the rest of it. A plate goes where no tone reads, with the tone that reads on the plate
+   * (`reelHudToneOver`). Asked 4 times across the first half of this frame: the inks mix by share, and a plate fades
+   * in by the share asking for it. Light inks, no plate, if absent.
+   */
+  readAt?: (slot: ReelHudSlot, t: number, box: Rect) => ReelHudRead;
+  /** How much of what's under a plate it hides: 0.75 knocks busy type back to a trace that inks read over. */
+  plateOpacity?: number;
   palette?: ReelHudPalette;
   /**
    * Text px; every length (insets, brackets, squares, rule) scales with it from the reference's 14. Default 20 (1.85%
@@ -78,6 +91,7 @@ export type ReelHudProps = {
 };
 
 const REFERENCE_SPB = 60 / 128;
+const LIGHT_READ: ReelHudRead = { tone: 'light' };
 
 const REFERENCE_SECTIONS: readonly ReelHudSection[] = [
   'SQUASH & STRETCH', 'KINETIC TYPE', 'GENERATIVE GRID', '3D / DEPTH', 'VARIABLE FONTS', 'PARTICLES ×12 000', 'EDIT / RHYTHM', 'HIRE ME',
@@ -90,20 +104,28 @@ const REFERENCE_SECTIONS: readonly ReelHudSection[] = [
  */
 export function ReelHud({
   t, beatOf = (s) => s / REFERENCE_SPB, beatsPerBar = 4, duration = 15, fps = FPS, title = 'CLAUDE', subtitle = 'MOTION REEL 2026',
-  readout, sections = REFERENCE_SECTIONS, toneAt = () => 'light', palette = { ink: '#0a0a0c', paper: '#e8e5df', accent: '#e34920' },
+  readout, sections = REFERENCE_SECTIONS, readAt = () => LIGHT_READ, plateOpacity = 0.75, palette = REEL_HUD_PALETTE,
   size = 20, weight = 600, bootDecode = 0.5, swapDecode = 0.3, bracketDraw = 0.25, trackFade = 0.23, seed = 'hud', motion,
 }: ReelHudProps) {
   if (t < 0) return null;
   const text = { readout: readout ?? defaultReadout(beatOf, fps), title, subtitle };
-  const g = reelHudLayout({ size, ...text, sections });
-  const inks = hudInks(palette);
-  const tone = (slot: ReelHudSlot) => hudInkSet(inks, reelHudToneWeights(toneAt, slot, t, fps));
-  const tones = { tl: tone('tl'), tr: tone('tr'), timecode: tone('timecode'), beats: tone('beats'), progress: tone('progress'), section: tone('section') };
-
-  const boot = (s: string, key: string) => reelHudDecode(s, t, { duration: bootDecode, schedule: REEL_HUD_BOOT_DECODE, seed: `${seed}:${key}`, fps });
   const sectionIndex = sections.findLastIndex((s) => s.at <= t + 1e-6);
   const section = sectionIndex < 0 ? null : sections[sectionIndex];
   const label = section && sectionLabel(sectionIndex, section.title);
+  const g = reelHudLayout({ size, ...text, label, beatsPerBar });
+  const inks = hudInks(palette);
+  // The tone and the plate are read from the same samples: each is asked of the scene once.
+  const reads = new Map<string, ReelHudRead>();
+  const read = (slot: ReelHudSlot, at: number) => {
+    const key = `${slot} ${at}`;
+    if (!reads.has(key)) reads.set(key, readAt(slot, at, g.boxes[slot]));
+    return reads.get(key)!;
+  };
+  const tone = (slot: ReelHudSlot) => hudInkSet(inks, reelHudToneWeights((at) => read(slot, at).tone, t, fps));
+  const tones = { tl: tone('tl'), tr: tone('tr'), timecode: tone('timecode'), beats: tone('beats'), progress: tone('progress'), section: tone('section') };
+  const plates = hudPlates(g, (slot) => reelHudPlateMix((at) => read(slot, at).plate, t, fps), plateOpacity);
+
+  const boot = (s: string, key: string) => reelHudDecode(s, t, { duration: bootDecode, schedule: REEL_HUD_BOOT_DECODE, seed: `${seed}:${key}`, fps });
   // A section already current at boot decodes with the rest; a later one swaps in, faster.
   const labelCells = section && label && (section.at <= 0
     ? boot(label, `section${sectionIndex}`)
@@ -112,14 +134,15 @@ export function ReelHud({
   const arm = g.stroke + (g.arm - g.stroke) * motionCurves.cubic.entrance(t / bracketDraw);
   const lit = reelHudLitSquare(beatOf(t), beatsPerBar);
   const progress = clamp(t / duration);
-  const trackIn = 1 - (1 - clamp(t / trackFade)) ** 2;
+  const trackIn = powerOutEase(2)(t / trackFade);
 
   return (
     <svg
       width={W} height={H}
       style={{ position: 'absolute', inset: 0, pointerEvents: 'none', fontFamily: MONO_FONT, fontSize: size, fontWeight: weight, fontFeatureSettings: '"zero"' }}
-      {...pieceMotionAttrs(motion, 'hud', { kind: 'reel-hud', values: { progress, beat: lit, section: sectionIndex } })}
+      {...pieceMotionAttrs(motion, 'hud', { kind: 'reel-hud', values: { progress, beat: lit, section: sectionIndex, plates: plates.length } })}
     >
+      {plates.map((p) => <rect key={`${p.x} ${p.y}`} x={p.x} y={p.y} width={p.w} height={p.h} fill={p.color} fillOpacity={p.opacity} />)}
       <path d={bracketPath(g.inset, g.inset, 1, 1, arm, g.stroke)} fill={tones.tl.bracket} />
       <path d={bracketPath(W - g.inset, g.inset, -1, 1, arm, g.stroke)} fill={tones.tr.bracket} />
       <path d={bracketPath(g.inset, H - g.inset, 1, -1, arm, g.stroke)} fill={tones.timecode.bracket} />
@@ -143,11 +166,87 @@ export function ReelHud({
   );
 }
 
-/** The point each slot's tone should be judged at (the middle of its part), for a scene answering `toneAt`. */
-export function reelHudAnchors(props: Pick<ReelHudProps, 'size' | 'title' | 'subtitle' | 'readout' | 'sections'> & { beatOf?: ReelHudProps['beatOf']; fps?: number } = {}): Record<ReelHudSlot, { x: number; y: number }> {
-  const { size = 20, title = 'CLAUDE', subtitle = 'MOTION REEL 2026', sections = REFERENCE_SECTIONS, beatOf = (s: number) => s / REFERENCE_SPB, fps = FPS } = props;
-  const g = reelHudLayout({ size, title, subtitle, readout: props.readout ?? defaultReadout(beatOf, fps), sections });
-  return g.anchors;
+/** The HUD's text and geometry, as a scene or a check that works out where its parts sit is given them. */
+export type ReelHudLayoutProps = Pick<ReelHudProps, 'size' | 'title' | 'subtitle' | 'readout' | 'sections' | 'beatOf' | 'beatsPerBar' | 'fps'>;
+
+function reelHudLayoutFor(props: ReelHudLayoutProps, t: number) {
+  const { size = 20, title = 'CLAUDE', subtitle = 'MOTION REEL 2026', sections = REFERENCE_SECTIONS, beatOf = (s: number) => s / REFERENCE_SPB, beatsPerBar = 4, fps = FPS } = props;
+  const i = sections.findLastIndex((s) => s.at <= t + 1e-6);
+  const label = i < 0 ? null : sectionLabel(i, sections[i].title);
+  return reelHudLayout({ size, title, subtitle, readout: props.readout ?? defaultReadout(beatOf, fps), label, beatsPerBar });
+}
+
+/**
+ * Each part's box at `t` in frame px: its text, squares or rule, the height of a bracket's arm, and from the bracket's
+ * outer corner on the corner slots. What `readAt` is asked about, and what a plate covers, with 0.4 em to spare. The
+ * section label's is the label current at `t`.
+ */
+export function reelHudBoxes(props: ReelHudLayoutProps, t: number): Record<ReelHudSlot, Rect> {
+  return reelHudLayoutFor(props, t).boxes;
+}
+
+/**
+ * A part's box as points, edge to edge: 25 across, at its top, middle and foot. The edges count: the box's margin is
+ * the ground its ink is read against, and a card's corner over one glyph or a bracket's arm loses it.
+ */
+export const reelHudBoxPoints = (box: Rect): Point[] =>
+  [0, 0.5, 1].flatMap((v) => Array.from({ length: 25 }, (_, i) => ({ x: box.x + (i / 24) * box.w, y: box.y + v * box.h })));
+
+/**
+ * The grounds under a part's box and the share of it each covers, most first: `groundAt` names the ground under a
+ * frame point, asked at `reelHudBoxPoints`. Pass one per shutter sample to judge a smear; their counts pool.
+ */
+export function reelHudGrounds<G extends string>(box: Rect, groundAt: ((p: Point) => G) | readonly ((p: Point) => G)[]): { ground: G; share: number }[] {
+  const points = reelHudBoxPoints(box), samplers = typeof groundAt === 'function' ? [groundAt] : groundAt;
+  const seen = new Map<G, number>();
+  for (const at of samplers) {
+    for (const p of points) {
+      const ground = at(p);
+      seen.set(ground, (seen.get(ground) ?? 0) + 1);
+    }
+  }
+  const n = points.length * samplers.length;
+  return [...seen].map(([ground, count]) => ({ ground, share: count / n })).sort((a, b) => b.share - a.share);
+}
+
+/**
+ * A ground a part can sit on: its colour, the tone that reads on it where that isn't `reelHudToneOver`'s, and whether
+ * it's `busy` with type or a page's UI, which no tone reads over.
+ */
+export type ReelHudGround = { color: string; tone?: ReelHudTone; busy?: boolean };
+
+/**
+ * How a part reads over `grounds` (`reelHudGrounds`). Paper inks (light, on-accent) and ink ones (dark) each suit some
+ * grounds: the part takes the inks most of its box wants (ink ones from `inkFrom` of it), in the tone of the ground
+ * wanting them that covers most. It sits on a plate of that ground's colour where grounds wanting the other inks show
+ * through more than `mixed` of it, as no one tone reads across both, or where that ground is busy.
+ */
+export function reelHudReadGrounds<G extends string>(
+  grounds: readonly { ground: G; share: number }[],
+  looks: Record<G, ReelHudGround>,
+  { mixed = 0.05, inkFrom = 0.5, palette = REEL_HUD_PALETTE }: { mixed?: number; inkFrom?: number; palette?: ReelHudPalette } = {},
+): ReelHudRead {
+  const toneOf = (g: G) => looks[g].tone ?? reelHudToneOver(looks[g].color, palette);
+  const wantsInk = grounds.filter((g) => toneOf(g.ground) === 'dark');
+  const inkShare = wantsInk.reduce((sum, g) => sum + g.share, 0);
+  const inInk = inkShare >= inkFrom;
+  const main = (inInk ? wantsInk : grounds.filter((g) => toneOf(g.ground) !== 'dark'))[0].ground;
+  const tone = toneOf(main);
+  return looks[main].busy || (inInk ? 1 - inkShare : inkShare) > mixed ? { tone, plate: looks[main].color } : { tone };
+}
+
+/** The HUD's palette by default: the reference's paper, ink and accent. */
+export const REEL_HUD_PALETTE: ReelHudPalette = { ink: '#0a0a0c', paper: '#e8e5df', accent: '#e34920' };
+
+/**
+ * The tone whose inks read over a flat ground of `color`, such as a plate: dark inks from luma 114, midway between
+ * where the reference's HUD turns dark (130) and light again (98); paper inks below, with a paper lit square on the
+ * accent, where the accent's square would vanish.
+ */
+export function reelHudToneOver(color: string, palette: ReelHudPalette = REEL_HUD_PALETTE): ReelHudTone {
+  const [r, g, b] = hexRgb(color), [ar, ag, ab] = hexRgb(palette.accent);
+  if (0.2126 * r + 0.7152 * g + 0.0722 * b >= 114) return 'dark';
+  return Math.hypot(r - ar, g - ag, b - ab) < 48 ? 'on-accent' : 'light';
 }
 
 /** HH:MM:SS:FF of `t` seconds, FF counting frames 00 to fps − 1. */
@@ -184,15 +283,28 @@ export function reelHudDecode(text: string, since: number, { duration, schedule,
   });
 }
 
+/** Where in the frame at `t` a part's tone and plate are judged: 4 times across its first half. */
+const subframes = (t: number, fps: number, samples = 4) => Array.from({ length: samples }, (_, i) => t + (i / samples) * (0.5 / fps));
+
 /**
  * The share of each tone across the first half of the frame at `t` (4 samples), which the slot's inks are mixed by.
  * A flip between frames softens over one frame, as the reference's sub-frame blend does; a tone that changes exactly
  * on a frame (a cut) flips on that frame, whether the scene rounds or floors `t` to frames.
  */
-export function reelHudToneWeights(toneAt: (slot: ReelHudSlot, t: number) => ReelHudTone, slot: ReelHudSlot, t: number, fps: number, samples = 4): Record<ReelHudTone, number> {
+export function reelHudToneWeights(toneAt: (t: number) => ReelHudTone, t: number, fps: number): Record<ReelHudTone, number> {
   const weights: Record<ReelHudTone, number> = { light: 0, dark: 0, 'on-accent': 0 };
-  for (let i = 0; i < samples; i++) weights[toneAt(slot, t + (i / samples) * (0.5 / fps))] += 1 / samples;
+  const times = subframes(t, fps);
+  for (const at of times) weights[toneAt(at)] += 1 / times.length;
   return weights;
+}
+
+/** A part's plate across the same samples: its colour, and the share of them it's there for, which fades it in. */
+export function reelHudPlateMix(plateAt: (t: number) => string | undefined, t: number, fps: number): { color: string; share: number } | undefined {
+  const times = subframes(t, fps);
+  const seen = times.flatMap((at) => plateAt(at) ?? []);
+  if (!seen.length) return undefined;
+  const rgb = [0, 1, 2].map((c) => Math.round(seen.reduce((sum, s) => sum + hexRgb(s)[c], 0) / seen.length));
+  return { color: `#${rgb.map((v) => v.toString(16).padStart(2, '0')).join('')}`, share: seen.length / times.length };
 }
 
 // ---------- layout ----------
@@ -205,9 +317,13 @@ const REF = {
 };
 // Per em of `size`: a label's cell (JetBrains Mono's 0.6 em plus ≈0.1 em of tracking), the timecode's tighter one,
 // the glyph's own advance, and its cap height.
-const EM = { advance: 0.7, timecodeAdvance: 0.674, glyph: 0.6, cap: 0.73 };
+const EM = { advance: 0.7, timecodeAdvance: 0.674, glyph: MONO_ADVANCE_EM, cap: MONO_CAP_EM };
 
-function reelHudLayout({ size, title, subtitle, readout, sections }: { size: number; title: string; subtitle: string; readout: string; sections: readonly ReelHudSection[] }) {
+type HudLayoutInput = {
+  size: number; title: string; subtitle: string; readout: string; label: string | null; beatsPerBar: number;
+};
+
+function reelHudLayout({ size, title, subtitle, readout, label, beatsPerBar }: HudLayoutInput) {
   const k = size / REF.size;
   const whole = (v: number) => Math.max(1, Math.round(v * k));
   const inset = whole(REF.inset), arm = whole(REF.arm), stroke = whole(REF.stroke);
@@ -223,22 +339,57 @@ function reelHudLayout({ size, title, subtitle, readout, sections }: { size: num
   const timecodeX = REF.timecodeX * k;
   const square = whole(REF.square), pitch = Math.round(REF.pitch * k), squaresX = Math.round(REF.squaresX * k);
   const ruleX = Math.round(REF.ruleX * k), ruleW = Math.round(W - REF.ruleRight * k) - ruleX;
-  const longest = Math.max(0, ...sections.map((s, i) => width(sectionLabel(i, s.title))));
-  const mid = (a: number, b: number) => (a + b) / 2;
+  // Each row is a bracket's arm tall, so a part's box holds its text with room around it and a plate lines up with the corners.
+  const top = { y: inset, h: arm }, bottom = { y: H - inset - arm, h: arm };
+  const span = (x0: number, x1: number, row: { y: number; h: number }): Rect => ({ x: x0, y: row.y, w: x1 - x0, h: row.h });
 
   return {
-    inset, arm, stroke, advance, timecodeAdvance, glyph, topY, bottomY, topBaseline: baseline(topY), bottomBaseline: baseline(bottomY),
+    size, inset, arm, stroke, advance, timecodeAdvance, glyph, topY, bottomY, topBaseline: baseline(topY), bottomBaseline: baseline(bottomY),
     titleX, subtitleX, readoutX, timecodeX, labelRight: right,
     square, pitch, squaresX, squareStroke: Math.round(REF.squareStroke * k * 2) / 2, ruleX, ruleW, rule: whole(REF.rule),
-    anchors: {
-      tl: { x: mid(titleX, subtitleX + width(subtitle)), y: topY },
-      tr: { x: mid(readoutX, right), y: topY },
-      timecode: { x: REF.timecodeX * k + width('00:00:00:00', timecodeAdvance) / 2, y: bottomY },
-      beats: { x: squaresX + (3 * pitch + square) / 2, y: bottomY },
-      progress: { x: ruleX + ruleW / 2, y: bottomY },
-      section: { x: right - longest / 2, y: bottomY },
-    } satisfies Record<ReelHudSlot, { x: number; y: number }>,
+    boxes: {
+      tl: span(inset, subtitleX + width(subtitle), top),
+      tr: span(readoutX, W - inset, top),
+      timecode: span(inset, timecodeX + width('00:00:00:00', timecodeAdvance), bottom),
+      beats: span(squaresX, squaresX + (beatsPerBar - 1) * pitch + square, bottom),
+      progress: span(ruleX, ruleX + ruleW, bottom),
+      // Before the first section there's only the bracket.
+      section: span(label ? right - width(label) : W - inset - arm, W - inset, bottom),
+    } satisfies Record<ReelHudSlot, Rect>,
   };
+}
+
+type HudLayout = ReturnType<typeof reelHudLayout>;
+type HudPlate = Rect & { color: string; opacity: number };
+
+// A plate stands 0.4 em clear of its part all round, so a bracket's arms read against the plate, not its edge, and
+// half an em past the part's open ends.
+const PLATE_MARGIN_EM = 0.4, PLATE_PAD_EM = 0.5;
+const PLATE_OPEN: Record<ReelHudSlot, readonly ('left' | 'right')[]> = {
+  tl: ['right'], tr: ['left'], timecode: ['right'], beats: ['left', 'right'], progress: ['left', 'right'], section: ['left'],
+};
+
+/**
+ * The plates behind the parts that have one, padded past their open ends. Plates of one colour less than an em apart
+ * in a row join into one, so the squares and the rule beside them sit on a single run rather than two chips.
+ */
+function hudPlates(g: HudLayout, mixAt: (slot: ReelHudSlot) => { color: string; share: number } | undefined, opacity: number): HudPlate[] {
+  const margin = PLATE_MARGIN_EM * g.size, pad = PLATE_PAD_EM * g.size;
+  const plates = REEL_HUD_SLOTS.flatMap((slot): HudPlate[] => {
+    const mix = mixAt(slot);
+    if (!mix) return [];
+    const box = g.boxes[slot], open = PLATE_OPEN[slot];
+    const left = box.x - (open.includes('left') ? pad : margin), right = box.x + box.w + (open.includes('right') ? pad : margin);
+    return [{ x: left, y: box.y - margin, w: right - left, h: box.h + 2 * margin, color: mix.color, opacity: opacity * mix.share }];
+  }).sort((a, b) => a.y - b.y || a.x - b.x);
+  const joined: HudPlate[] = [];
+  for (const p of plates) {
+    const last = joined.at(-1);
+    if (last && last.y === p.y && last.color === p.color && last.opacity === p.opacity && p.x - (last.x + last.w) < 2 * pad) {
+      last.w = Math.max(last.w, p.x + p.w - last.x);
+    } else joined.push({ ...p });
+  }
+  return joined;
 }
 
 const sectionLabel = (i: number, title: string) => `${String(i + 1).padStart(2, '0')} — ${title}`;

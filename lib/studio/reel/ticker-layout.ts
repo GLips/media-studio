@@ -65,7 +65,7 @@ export function archivoKern(left: string, right: string, axes: GlyphAxes): numbe
  * `blank` px wide for something drawn there (a dot, a number, a gap). Tracking and kerning stop at a blank, and
  * tracking at a word space.
  */
-export type GlyphSlot = { char: string; axes: GlyphAxes; tracking?: number } | { blank: number };
+export type GlyphLineSlot = { char: string; axes: GlyphAxes; tracking?: number } | { blank: number };
 
 /** A laid-out line: each slot's left edge from the line's start and its own advance, and the whole line's width, px. */
 export type GlyphLine = { x: number[]; advance: number[]; width: number };
@@ -74,7 +74,7 @@ export type GlyphLine = { x: number[]; advance: number[]; width: number };
  * Lays a line of Archivo out at `size` px, each glyph at its own axes. A pair is kerned at the mean of its two
  * glyphs' axes, so a light letter beside a bold one sits as the font would set them if both met halfway.
  */
-export function layoutGlyphLine(slots: readonly GlyphSlot[], size: number): GlyphLine {
+export function layoutGlyphLine(slots: readonly GlyphLineSlot[], size: number): GlyphLine {
   const x: number[] = [], advance: number[] = [];
   let pen = 0;
   slots.forEach((slot, i) => {

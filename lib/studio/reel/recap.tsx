@@ -5,39 +5,17 @@
 // things happen given on that same clock.
 
 import { useId, type CSSProperties, type ReactNode } from 'react';
-import type { Rect } from '../camera.ts';
+import type { Point, Rect } from '../camera.ts';
 import { FPS, H, W } from '../frame.ts';
-import { clamp, lerp, type EaseFn } from '../motion.ts';
+import { backOutEase, clamp, lerp } from '../motion.ts';
 import { motionEchoAttrs, pieceMotionAttrs } from '../motion-tag.ts';
 import { hashRandom, seededRandom } from '../random.ts';
+import { channelSplitPrimitives } from './lens.tsx';
 
 const fill: CSSProperties = { position: 'absolute', left: 0, top: 0, width: W, height: H };
 // A frame's time minus a start on the frame grid can land a hair under it (17/30 − 0.5 < 2/30), which would put every
 // start a frame late. A microsecond of slack is far below a frame.
 const EPS = 1e-6;
-
-/**
- * Penner's back-out with its overshoot given as a share of the travel: 0.126 (Penner's s = 1.95) is the reference's
- * 2×2 pop, peaking 56% of the way in and landing on exactly 1 at the end; its 3×3's is 0.154. 0 is a cubic ease-out.
- */
-export function backOutEase(overshoot: number): EaseFn {
-  const s = backOutStrength(overshoot);
-  return (k) => {
-    const u = clamp(k) - 1;
-    return 1 + (s + 1) * u * u * u + s * u * u;
-  };
-}
-
-// Back-out's peak overshoot is 4s³ / 27(s + 1)², which only rises with s, so bisection finds the s for a peak.
-function backOutStrength(overshoot: number) {
-  let lo = 0, hi = 20;
-  for (let i = 0; i < 48; i++) {
-    const s = (lo + hi) / 2;
-    if ((4 * s ** 3) / (27 * (s + 1) ** 2) < overshoot) lo = s;
-    else hi = s;
-  }
-  return lo;
-}
 
 // ---------- RecapGrid ----------
 
@@ -117,24 +95,16 @@ const RECAP_EXIT_DURATION = { crt: 0.133, pop: 0.2 };
 
 type TileLook = { sx: number; sy: number; white: number; dot: boolean; pop: number; exit: number };
 
-/**
- * Earlier shots, still playing, popping into a grid from `at` (on `t`'s clock): the reference's 2×2, then 3×3. Each
- * tile scales about its centre, overshooting, smeared by its speed; the grid's size picks the reference's spacing and
- * pop. It draws `ground`, a whole shot: stop drawing it to cut away.
- *
- *   <RecapGrid t={s.t} at={beats.at(25)} tiles={shots} />
- */
-export function RecapGrid({ t, at = 0, tiles, cols, rows, margin, gutter, radius, ground = '#0c0c0e', order = 'z', spread = 0.1, pop, exit, blur = 0.3, motion }: {
-  t: number;
+/** Where a RecapGrid's tiles sit and how they pop in and leave: everything about it but what the tiles show. */
+export type RecapLayout = {
   at?: number;
-  tiles: readonly RecapTile[];
+  /** The tiles, for how many there are and how each leaves; or just how many, when none leaves its own way. */
+  tiles: number | readonly Pick<RecapTile, 'exit'>[];
   /** Default: the smallest square that holds the tiles. */
   cols?: number;
   rows?: number;
   margin?: number;
   gutter?: number;
-  radius?: number;
-  ground?: string;
   order?: RecapOrder;
   /** Seconds from the first tile's pop to the last's: 0.1 in both the reference's grids (2 f at 60 fps a tile in Z order, 1.5 f a diagonal). */
   spread?: number;
@@ -146,24 +116,18 @@ export function RecapGrid({ t, at = 0, tiles, cols, rows, margin, gutter, radius
    * for `pop`.
    */
   exit?: { at: number; style?: RecapExit; duration?: number };
-  /**
-   * A moving tile's smear, as a share of its edges' travel in a frame; 0 turns it off. 0.3 gives the reference's edge
-   * softness frame for frame (16 px on a 2×2's first frame); 0.5, a 180° shutter at 30 fps, mushes the tile's middle,
-   * which a true zoom blur would leave sharp.
-   */
-  blur?: number;
-  /** The grid's name in the motion tracks, `recap` by default; its tiles are `tile 0`… inside it. `false` tracks neither. */
-  motion?: string | false;
-}) {
-  const u = t - at;
-  if (u < -EPS) return null;
-  const c = cols ?? Math.ceil(Math.sqrt(tiles.length));
-  const r = rows ?? Math.ceil(tiles.length / c);
-  if (tiles.length > c * r) throw new RangeError(`RecapGrid: ${tiles.length} tiles don't fit a ${c}×${r} grid`);
+};
+
+// The layout worked out: each tile's rect and when it pops, and its look `v` s after the grid's start (null undrawn).
+function recapPlan({ at = 0, tiles, cols, rows, margin, gutter, order = 'z', spread = 0.1, pop, exit }: RecapLayout) {
+  const exits = typeof tiles === 'number' ? Array.from({ length: tiles }, () => undefined) : tiles.map((tile) => tile.exit);
+  const n = exits.length;
+  const c = cols ?? Math.ceil(Math.sqrt(n));
+  const r = rows ?? Math.ceil(n / c);
+  if (n > c * r) throw new RangeError(`RecapGrid: ${n} tiles don't fit a ${c}×${r} grid`);
   const look = c <= 2 ? RECAP_TWO_UP : RECAP_THREE_UP;
   const rects = recapGridRects(c, r, margin ?? look.margin, gutter ?? look.gutter);
-  const starts = recapPopStarts(tiles.length, c, r, order, spread);
-  const startRank = starts.map((s, i) => starts.filter((o, j) => o < s || (o === s && j < i)).length);
+  const starts = recapPopStarts(n, c, r, order, spread);
   const popIn = backOutEase(pop?.overshoot ?? look.overshoot);
   const popOut = backOutEase(RECAP_EXIT_SWELL);
   const from = pop?.from ?? look.from, popDuration = pop?.duration ?? look.duration;
@@ -172,7 +136,7 @@ export function RecapGrid({ t, at = 0, tiles, cols, rows, margin, gutter, radius
     if (v < starts[i] - EPS) return null;
     const k = clamp((v - starts[i]) / popDuration);
     const s = lerp(from, 1, popIn(k));
-    const style = tiles[i].exit ?? exit?.style ?? 'pop';
+    const style = exits[i] ?? exit?.style ?? 'pop';
     const exitDuration = exit?.duration ?? (style === 'crt' ? RECAP_EXIT_DURATION.crt : RECAP_EXIT_DURATION.pop);
     const sinceExit = exit && style !== 'hold' ? v - (exit.at - at) - starts[i] : -1;
     if (sinceExit < -EPS) return { sx: s, sy: s, white: 0, dot: false, pop: k, exit: 0 };
@@ -185,6 +149,57 @@ export function RecapGrid({ t, at = 0, tiles, cols, rows, margin, gutter, radius
     }
     return { ...crtLook(q, s, rects[i]), pop: k, exit: q };
   };
+  return { look, rects, starts, count: n, tileLook };
+}
+
+// The scale a tile draws its whole-frame shot at, about the shot's centre, before the tile's own pop.
+const recapShotScale = (rect: Rect) => Math.max(rect.w / W, rect.h / H);
+
+/**
+ * The tile of a RecapGrid laid out as `layout` drawn over frame point `p` at `t`, and the point of its shot it shows
+ * there: to ask a replayed shot what's under a HUD part over the grid. Null over the ground between tiles.
+ */
+export function recapTileUnder(p: Point, t: number, layout: RecapLayout): { index: number; inShot: Point } | null {
+  const u = t - (layout.at ?? 0);
+  if (u < -EPS) return null;
+  const { rects, count, tileLook } = recapPlan(layout);
+  // Last first: a later tile draws over an earlier one where an overshoot crosses the gutter.
+  for (let i = count - 1; i >= 0; i--) {
+    const look = tileLook(i, u), rect = rects[i];
+    if (!look) continue;
+    const dx = p.x - (rect.x + rect.w / 2), dy = p.y - (rect.y + rect.h / 2);
+    if (Math.abs(dx) > (look.sx * rect.w) / 2 || Math.abs(dy) > (look.sy * rect.h) / 2) continue;
+    const k = recapShotScale(rect);
+    return { index: i, inShot: { x: W / 2 + dx / (k * look.sx), y: H / 2 + dy / (k * look.sy) } };
+  }
+  return null;
+}
+
+/**
+ * Earlier shots, still playing, popping into a grid from `at` (on `t`'s clock): the reference's 2×2, then 3×3. Each
+ * tile scales about its centre, overshooting, smeared by its speed; the grid's size picks the reference's spacing and
+ * pop. It draws `ground`, a whole shot: stop drawing it to cut away.
+ *
+ *   <RecapGrid t={s.t} at={beats.at(25)} tiles={shots} />
+ */
+export function RecapGrid({ t, tiles, radius, ground = '#0c0c0e', blur = 0.3, motion, ...layout }: Omit<RecapLayout, 'tiles'> & {
+  t: number;
+  tiles: readonly RecapTile[];
+  radius?: number;
+  ground?: string;
+  /**
+   * A moving tile's smear, as a share of its edges' travel in a frame; 0 turns it off. 0.3 gives the reference's edge
+   * softness frame for frame (16 px on a 2×2's first frame); 0.5, a 180° shutter at 30 fps, mushes the tile's middle,
+   * which a true zoom blur would leave sharp.
+   */
+  blur?: number;
+  /** The grid's name in the motion tracks, `recap` by default; its tiles are `tile 0`… inside it. `false` tracks neither. */
+  motion?: string | false;
+}) {
+  const u = t - (layout.at ?? 0);
+  if (u < -EPS) return null;
+  const { look, rects, starts, tileLook } = recapPlan({ ...layout, tiles });
+  const startRank = starts.map((s, i) => starts.filter((o, j) => o < s || (o === s && j < i)).length);
 
   return (
     <div {...pieceMotionAttrs(motion, 'recap', { kind: 'recap-grid' })} style={{ ...fill, background: ground, overflow: 'hidden' }}>
@@ -204,7 +219,7 @@ export function RecapGrid({ t, at = 0, tiles, cols, rows, margin, gutter, radius
         // A box smear L px long spreads like a Gaussian of σ = L / √12; an edge moves half the size change.
         const sigma = (v: number, size: number) => (Math.abs(v) * blur * size) / (2 * FPS * Math.sqrt(12));
         const rect = rects[i];
-        const scale = Math.max(rect.w / W, rect.h / H);
+        const scale = recapShotScale(rect);
         const tag = motion === false ? {} : pieceMotionAttrs(undefined, `tile ${i}`, {
           kind: 'recap-tile', values: { pop: here.pop, exit: here.exit }, stagger: { group: 'tiles', index: startRank[i], count: tiles.length },
         });
@@ -341,18 +356,7 @@ export function GlitchFlash({ t, hits, seed = 'glitch', flashColor = '#a4a4a4', 
               <feMergeNode in="src" />
               {cuts.map((_, i) => <feMergeNode key={i} in={`cut${i}`} />)}
             </feMerge>
-            {/* Each channel alone, shifted, then summed: opaque input sums back to its own colour where nothing moved. */}
-            {split > 0 && (
-              <>
-                <feColorMatrix in="cut" type="matrix" values="1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0" />
-                <feOffset dx={split} dy={0} result="red" />
-                <feColorMatrix in="cut" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 1 0" />
-                <feOffset dx={-split} dy={0} result="blue" />
-                <feColorMatrix in="cut" type="matrix" values="0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0" result="green" />
-                <feComposite in="red" in2="green" operator="arithmetic" k2={1} k3={1} result="yellow" />
-                <feComposite in="yellow" in2="blue" operator="arithmetic" k2={1} k3={1} />
-              </>
-            )}
+            {split > 0 && channelSplitPrimitives('cut', split, -split)}
           </filter>
         </svg>
       )}

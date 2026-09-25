@@ -7,18 +7,15 @@
 // instanced mesh whose tops a vertex shader raises (scaling would stretch the bevel), darkened and tinted by their
 // neighbours.
 
-import { useLayoutEffect, useState } from 'react';
-import { flushSync } from 'react-dom';
-import { useDelayRender } from 'remotion';
 import * as THREE from 'three';
-import { areStudioFontsLoaded, studioFontsLoaded } from '../fonts.ts';
+import { useStudioFontsReady } from '../fonts.ts';
 import { H, W } from '../frame.ts';
 import { pieceMotionAttrs } from '../motion-tag.ts';
-import { clamp, lerp, motionCurves, type EaseFn } from '../motion.ts';
+import { clamp, lerp, motionCurves, sineInOutEase, type EaseFn } from '../motion.ts';
 import { hashRandom } from '../random.ts';
 import { ThreeStage, softboxEnvironment, type ThreeBloom, type ThreeEnvironment, type ThreeFrame, type ThreeLens, type ThreeSample } from '../three-stage.tsx';
+import type { Vec3 } from '../vec3.ts';
 
-export type ColumnVec3 = readonly [number, number, number];
 
 /** A column: its place on the grid (i across, j down the overhead frame, a pitch apart) and its colour. */
 export type ColumnCell = { i: number; j: number; color: string };
@@ -27,7 +24,7 @@ export type ColumnCell = { i: number; j: number; color: string };
  * An orbit camera, in pitches and degrees: `elevation` above the ground (90 looks straight down), `azimuth` round the
  * target (0 looks from +z, the bottom of the overhead frame; negative circles clockwise seen from above), vertical `fov`.
  */
-export type ColumnCameraPose = { target: ColumnVec3; distance: number; elevation: number; azimuth: number; fov: number };
+export type ColumnCameraPose = { target: Vec3; distance: number; elevation: number; azimuth: number; fov: number };
 
 /**
  * One continuous move: a crane between two poses over `crane` (seconds, on `ease`, an in-out sine), then `drift` per
@@ -67,8 +64,8 @@ export type ColumnBall = {
   contacts: readonly { at: number; cell: readonly [number, number]; squash?: number }[];
   radius?: number;
   gravity?: number;
-  enter?: { from: ColumnVec3; duration: number };
-  launch?: ColumnVec3;
+  enter?: { from: Vec3; duration: number };
+  launch?: Vec3;
   /** Seconds it stays on a top while it squashes: the reference's squash peaks 25 ms in and is gone by 70. */
   contact?: number;
   /** How far it stretches along its path at 50 pitch/s (0.12). */
@@ -98,7 +95,7 @@ export type ColumnLabel = {
   tilt?: number | 'camera';
   turn?: number | 'camera';
   /** From the centre of the column's top, pitches. */
-  offset?: ColumnVec3;
+  offset?: Vec3;
   opacity?: number;
   /** Multiplies its colours: above 1 holds a white against the tone mapping, which takes 1 down to about 0.8. */
   intensity?: number;
@@ -174,7 +171,6 @@ const REFERENCE_LIGHTS = {
 const rad = (d: number) => (d * Math.PI) / 180;
 const deg = (r: number) => (r * 180) / Math.PI;
 const focalPx = (fov: number, h: number) => h / 2 / Math.tan(rad(fov) / 2);
-const sineInOut: EaseFn = (k) => (1 - Math.cos(Math.PI * clamp(k))) / 2;
 const Y = new THREE.Vector3(0, 1, 0);
 
 // ---------- heights ----------
@@ -265,7 +261,7 @@ export function topDownPose({ pitch, fov = 27, centre = [0, 0], height = 0, fram
 export function columnCameraAt(move: ColumnCameraMove, t: number, o: { punchAt?: number; ballAt?: (t: number) => THREE.Vector3 | null } = {}): ColumnCameraState {
   const { from, to } = move;
   const [c0, c1] = move.crane;
-  const k = (move.ease ?? sineInOut)(clamp((t - c0) / Math.max(1e-6, c1 - c0)));
+  const k = (move.ease ?? sineInOutEase)(clamp((t - c0) / Math.max(1e-6, c1 - c0)));
   // The drift eases in over its first 0.3 s, so the move carries on from the crane without a kink.
   const after = Math.max(0, t - c1), ramp = after < 0.3 ? (after * after) / 0.6 : after - 0.15;
   const azimuth = lerp(from.azimuth, to.azimuth, k) + (move.drift?.azimuth ?? 0) * ramp;
@@ -282,7 +278,7 @@ export function columnCameraAt(move: ColumnCameraMove, t: number, o: { punchAt?:
   const up = right.clone().cross(forward);
 
   let pan = 0;
-  for (const p of move.pans ?? []) pan += p.deg * sineInOut((t - p.at) / p.dur);
+  for (const p of move.pans ?? []) pan += p.deg * sineInOutEase((t - p.at) / p.dur);
   if (move.follow && o.ballAt) pan += move.follow.amount * k * followPan(position, forward, o.ballAt, t - move.follow.lag);
   let whip = 0;
   if (move.whip && t > move.whip.at) {
@@ -343,7 +339,7 @@ function ballPath<C extends ColumnCell>(spec: ColumnFieldSpec<C>, ball: ColumnBa
   };
   const contacts = [...ball.contacts].sort((p, q) => p.at - q.at);
   const first = contacts[0];
-  const { from, duration } = ball.enter ?? { from: [-1, 9, -7] as ColumnVec3, duration: 0.45 };
+  const { from, duration } = ball.enter ?? { from: [-1, 9, -7] as Vec3, duration: 0.45 };
   const landing = top(first.cell, first.at);
   const flights: Flight[] = [{ ...aim(first.at - duration, landing.clone().add(new THREE.Vector3(...from)), first.at, landing), t0: -Infinity }];
   for (const [k, contact] of contacts.entries()) {
@@ -403,7 +399,7 @@ function rollAt(path: BallPath, t: number, r: number) {
 // ---------- projection ----------
 
 /** The centre of a column's top at t, `lift` pitches above it: the point to hand columnFieldProject for a mark. */
-export function columnFieldPoint<C extends ColumnCell>(spec: Pick<ColumnFieldSpec<C>, 'cells' | 'height' | 'rise' | 'seed'>, t: number, cell: readonly [number, number], lift = 0): ColumnVec3 {
+export function columnFieldPoint<C extends ColumnCell>(spec: Pick<ColumnFieldSpec<C>, 'cells' | 'height' | 'rise' | 'seed'>, t: number, cell: readonly [number, number], lift = 0): Vec3 {
   const found = cellAt(spec.cells, cell[0], cell[1]);
   return [cell[0], (found ? columnFieldHeight(spec, found, t) : 0) + lift, cell[1]];
 }
@@ -412,7 +408,7 @@ export function columnFieldPoint<C extends ColumnCell>(spec: Pick<ColumnFieldSpe
  * Where a point of the field (pitches) lands in the frame at t: px, `box` included; its depth along the view; px per
  * pitch there. Null behind the camera. For HUD marks and type that must sit on a column or the ball.
  */
-export function columnFieldProject<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: number, point: ColumnVec3 | THREE.Vector3) {
+export function columnFieldProject<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: number, point: Vec3 | THREE.Vector3) {
   const cam = fieldCamera(spec, t);
   const box = spec.box ?? FULL_BOX;
   const v = (point instanceof THREE.Vector3 ? point.clone() : new THREE.Vector3(...point)).sub(cam.position);
@@ -430,7 +426,7 @@ export function columnFieldProject<C extends ColumnCell>(spec: ColumnFieldSpec<C
  */
 export function ColumnField<C extends ColumnCell>({ t, samples = 12, shutter = 0.5, bloom, environment = softboxEnvironment, toneMapping = THREE.NeutralToneMapping, exposure, motion, ...spec }: ColumnFieldProps<C>) {
   const box = spec.box ?? FULL_BOX;
-  const fontsReady = useFontsReady(Boolean(spec.labels));
+  const fontsReady = useStudioFontsReady(Boolean(spec.labels));
   const cam = fieldCamera(spec, t);
   const ball = columnBallAt(spec, t);
   const mark = ball && columnFieldProject(spec, t, ball.position);
@@ -472,28 +468,6 @@ function lensAt<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: number, cam: 
     distance = clamp(sum / 5, 0.6 * toTarget, 1.5 * toTarget);
   }
   return { focus: distance * (1 - cam.whip * (spec.camera.whip?.defocus ?? 0.35)), aperture };
-}
-
-/** Holds the frame until the studio's faces are in: labels painted before would keep the fallback face. */
-function useFontsReady(needed: boolean) {
-  const [ready, setReady] = useState(areStudioFontsLoaded);
-  const { delayRender, continueRender } = useDelayRender();
-  useLayoutEffect(() => {
-    if (!needed || ready) return;
-    const handle = delayRender('column field labels waiting for fonts');
-    let open = true;
-    const release = () => {
-      if (open) continueRender(handle);
-      open = false;
-    };
-    studioFontsLoaded.then(() => {
-      if (!open) return;
-      flushSync(() => setReady(true));
-      release();
-    });
-    return release;
-  }, [needed, ready, delayRender, continueRender]);
-  return ready || !needed;
 }
 
 // ---------- the scene ----------
@@ -852,16 +826,17 @@ function columnDepthMaterial() {
 function ballMaterial(kind: NonNullable<ColumnBall['material']>, environment: THREE.Texture | null): THREE.Material {
   if (typeof kind === 'function') return kind(environment);
   if (kind === 'chrome') return new THREE.MeshStandardMaterial({ color: '#ffffff', metalness: 1, roughness: 0.05, envMap: environment });
-  if (kind === 'titanium') return titaniumMaterial(environment);
+  if (kind === 'titanium') return columnTitaniumMaterial(environment);
   return new THREE.MeshPhysicalMaterial({ color: '#e8461f', roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.05, envMap: environment });
 }
 
 /**
- * Anodized titanium: grey metal under a 75–105 nm oxide film, whose interference colours it blue, violet where the
- * film thins and toward the rim, where light crosses it slanting. Satin, so the overhead softbox spreads over its crown
- * rather than burning white; the clear coat keeps a hard glint. The film's slow bands show the ball's turn.
+ * Anodized titanium: grey metal under an oxide film `film` nm thick, whose interference colours it: 75–105 is blue,
+ * violet where the film thins and toward the rim, where light crosses it slanting; 25–40 bronze, 130–150 gold. Satin, so the overhead softbox
+ * spreads over its crown rather than burning white; the clear coat keeps a hard glint. The film's slow bands show the
+ * ball's turn. For another colour, pass it as a ball's `material`: `(env) => columnTitaniumMaterial(env, [a, b])`.
  */
-function titaniumMaterial(environment: THREE.Texture | null) {
+export function columnTitaniumMaterial(environment: THREE.Texture | null, film: readonly [number, number] = [75, 105]) {
   const size = 64, data = new Uint8Array(size * size * 4);
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
@@ -870,12 +845,12 @@ function titaniumMaterial(environment: THREE.Texture | null) {
       data.set([0, Math.round(clamp(k) * 255), 0, 255], 4 * (y * size + x));
     }
   }
-  const film = new THREE.DataTexture(data, size, size);
-  film.wrapS = film.wrapT = THREE.RepeatWrapping;
-  Object.assign(film, { generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, needsUpdate: true });
+  const bands = new THREE.DataTexture(data, size, size);
+  bands.wrapS = bands.wrapT = THREE.RepeatWrapping;
+  Object.assign(bands, { generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, needsUpdate: true });
   return new THREE.MeshPhysicalMaterial({
     color: new THREE.Color().setRGB(0.62, 0.58, 0.55, THREE.LinearSRGBColorSpace), metalness: 1, roughness: 0.35,
-    iridescence: 1, iridescenceIOR: 2.2, iridescenceThicknessRange: [75, 105], iridescenceThicknessMap: film,
+    iridescence: 1, iridescenceIOR: 2.2, iridescenceThicknessRange: [...film], iridescenceThicknessMap: bands,
     clearcoat: 0.5, clearcoatRoughness: 0.05, envMap: environment, envMapIntensity: 2.2,
   });
 }
