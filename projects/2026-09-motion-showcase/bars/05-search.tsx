@@ -8,7 +8,7 @@
 
 import type { ReactNode } from 'react';
 import {
-  DISPLAY_FONT, FPS, H, W, centerOf, clamp, lerp, motionCurves, motionEchoAttrs, powerOutEase, rectToScreen, seg, springBy, view,
+  DISPLAY_FONT, FPS, H, W, centerOf, clamp, lerp, motionCurves, motionEchoAttrs, powerOutEase, perceptualSpring, rectToScreen, seg, view,
   type Point, type Rect, type View,
 } from '../../../lib/studio/api.ts';
 import { Odometer } from '../../../lib/studio/kit.tsx';
@@ -467,12 +467,12 @@ const STICKY: Rect = { x: INPUT.x - 6, y: CROP.y, w: INPUT.w + 12, h: INPUT.y + 
 const STICKY_BOX = rectToScreen(SHOT, CARD_VIEW.cam, STICKY, CARD_VIEW.box);
 const STICKY_VIEW: View = view(SHOT, { cx: centerOf(STICKY).x, cy: centerOf(STICKY).y, zoom: CARD_VIEW.cam.zoom }, STICKY_BOX);
 
-// It rises over the three frames before the "and": on 318 it's 166 px off the page toward the lens and 8% larger
-// through it, overshooting to 192 px on 320 and settling at 180. Its shadow grows with it, offset and softened by its
+// It rises over the three frames before the "and": on 378 it's 176 px off the page toward the lens and 8% larger
+// through it, overshooting to 192 px on 380 and settling at 180. Its shadow grows with it, offset and softened by its
 // height.
-const LIFT = { height: 180, dur: 0.13, bounce: 0.35, shadow: 0.55 };
-const liftSpring = springBy(LIFT.dur, LIFT.bounce);
-const liftAt = (t: number) => liftSpring(t - (sec(RISE) - LIFT.dur));
+const LIFT = { height: 180, dur: 0.3, bounce: 0.35, shadow: 0.55 };
+const liftSpring = perceptualSpring(LIFT.dur, LIFT.bounce);
+const liftAt = (t: number) => liftSpring(t - (sec(RISE) - liftSpring.arrival));
 
 /** The box's card `up` of LIFT.height off the page along its normal, where its page rect lies. */
 function stickyPoseAt(card: PlanePose, up: number): PlanePose {

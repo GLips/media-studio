@@ -10,7 +10,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { Img } from 'remotion';
 import { inflate, rectToScreen, scaleFor, toScreen, view, type Point, type Rect, type Shot, type View } from '../camera.ts';
 import { FPS, H, W } from '../frame.ts';
-import { clamp, lerp, springBy, type DeadlineSpring } from '../motion.ts';
+import { clamp, lerp, perceptualSpring, type PerceptualSpring } from '../motion.ts';
 import { cameraMotionAttrs, motionEchoAttrs, pieceMotionAttrs } from '../motion-tag.ts';
 import { hashRandom } from '../random.ts';
 import { crossVec3, dotVec3, unitVec3, type Vec3 } from '../vec3.ts';
@@ -46,9 +46,9 @@ export function capturePlaneView(shot: Shot, rect: Rect, { fit = { w: 1040, h: 8
 export type PlaneLift = {
   /** A page rect of the view's capture: a swatch row, a price. */
   rect: Rect;
-  /** When it reaches full height, in the piece's seconds: put it on a beat. */
+  /** When it arrives at full height (its spring's `arrival`), in the piece's seconds: put it on a beat. */
   at: number;
-  /** When it's back down, if it drops. */
+  /** When it arrives back down, if it drops. */
   drop?: number;
   /** Px toward the viewer (64), and how much it grows as it rises (1.08; HyperFrames' pop is 80 px and 1.15). */
   height?: number;
@@ -61,9 +61,13 @@ export type PlaneLift = {
   radius?: number;
   /** The colour it leaves behind in the page: the background of the panel it sat on (the card's `paper`). */
   socket?: string;
-  /** Seconds it takes to rise (0.4) and its overshoot (`springBy`'s bounce, 0.35): a UI reaction may bounce. */
+  /**
+   * The rise's `perceptualSpring` pace (0.3) and bounce (0.35): a UI reaction may bounce. The drop is smooth, at
+   * `dropDur` (`dur`); a drop soon after `at` wants a quicker one, or it starts before the rise has arrived.
+   */
   dur?: number;
   bounce?: number;
+  dropDur?: number;
 };
 
 type PoseInput = Partial<PlanePose> | ((t: number) => Partial<PlanePose>);
@@ -358,17 +362,23 @@ function faceLight(f: PlaneFrame, box: Rect, props: ExposureProps, ss: number): 
 
 // ---------- the lift ----------
 
-const springs = new Map<string, DeadlineSpring>();
+const springs = new Map<string, PerceptualSpring>();
 const springFor = (dur: number, bounce: number) => {
   const key = `${dur}|${bounce}`;
-  if (!springs.has(key)) springs.set(key, springBy(dur, bounce));
+  if (!springs.has(key)) springs.set(key, perceptualSpring(dur, bounce));
   return springs.get(key)!;
 };
+const riseOf = ({ dur = 0.3, bounce = 0.35 }: Pick<PlaneLift, 'dur' | 'bounce'>) => springFor(dur, bounce);
+
+/** When a lift leaves the page, in the piece's seconds: its spring starts `arrival` before `at`. */
+export const planeLiftStart = (lift: Pick<PlaneLift, 'at' | 'dur' | 'bounce'>) => lift.at - riseOf(lift).arrival;
 
 /** How far the lift is up: 0 down, 1 at its height, past 1 while it overshoots. */
-function liftHeight({ at, drop, dur = 0.4, bounce = 0.35 }: PlaneLift, t: number) {
-  const up = springFor(dur, bounce)(t - (at - dur));
-  return drop === undefined ? up : up * (1 - springFor(dur, 0)(t - (drop - dur)));
+function liftHeight(lift: PlaneLift, t: number) {
+  const { at, drop, dur = 0.3, dropDur = dur } = lift;
+  const rise = riseOf(lift), fall = springFor(dropDur, 0);
+  const up = rise(t - (at - rise.arrival));
+  return drop === undefined ? up : up * (1 - fall(t - (drop - fall.arrival)));
 }
 
 // ---------- drawing ----------

@@ -9,7 +9,7 @@ import { useId, type CSSProperties, type ReactNode } from 'react';
 import {
   DISPLAY_FONT, FPS, H, REEL_SHUTTER, W, centerOf, clamp, lerp, motionAttrs, motionCurves, motionEchoAttrs, type Point, type Rect, type Shot, type Vec3, type View,
 } from '../../../lib/studio/api.ts';
-import { CapturePlane, capturePlaneProjection, capturePlaneView, type PlaneLift, type PlanePose } from '../../../lib/studio/reel/capture-plane.tsx';
+import { CapturePlane, capturePlaneProjection, capturePlaneView, planeLiftStart, type PlaneLift, type PlanePose } from '../../../lib/studio/reel/capture-plane.tsx';
 import { reelHudBoxes, reelHudGrounds, reelHudReadGrounds, type ReelHudGround, type ReelHudRead, type ReelHudTone } from '../../../lib/studio/reel/hud.tsx';
 import { RiseWord } from '../../../lib/studio/reel/type.tsx';
 import type { Bar } from '../bar.ts';
@@ -262,14 +262,14 @@ function pageUnder(card: ReturnType<typeof cardAt>, q: Point): Point {
 
 // ---------- the lift ----------
 
-// Each swatch rises off the page over the five frames before its tap and hangs over the tap, where the page swaps
+// Each swatch rises off the page over the four frames before its tap and hangs over the tap, where the page swaps
 // under it and it shows picked, then settles back as its word rises. Card px up, and scale: on screen it rises to
-// about 1.6 times its size on the page.
-const LIFT = { height: 80, scale: 1.4, dim: 0.03, pad: 4, radius: 10, socket: PANEL, dur: 0.17, bounce: 0.45 };
+// about 1.6 times its size on the page. The drop is twice the rise's pace, or it would start before the swatch arrives.
+const LIFT = { height: 80, scale: 1.4, dim: 0.03, pad: 4, radius: 10, socket: PANEL, dur: 0.3, bounce: 0.45, dropDur: 0.15 };
 const liftAt = (i: number) => (TAPS[i].frame - 1) / FPS;
 const landAt = (i: number) => (TAPS[i].frame + 6) / FPS;
 /** The tap whose swatch is lifting, up or landing at `f`: CapturePlane lifts one control at a time. */
-const liftingAt = (f: number) => TAPS.findLastIndex((_, i) => f / FPS >= liftAt(i) - LIFT.dur);
+const liftingAt = (f: number) => TAPS.findLastIndex((_, i) => f / FPS >= planeLiftStart({ ...LIFT, at: liftAt(i) }));
 
 function liftFor(f: number): PlaneLift | undefined {
   const i = liftingAt(f);
