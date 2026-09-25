@@ -13,7 +13,8 @@ sh "$T/join-bars.sh" "$CUT" > "$D/join.txt"
 studio mix --check "$P" > "$D/sound-check.txt"
 node "$T/sfx-sync.ts" > "$D/sfx-sync.txt"
 python3 "$T/attacks.py" "$P/out/mix.wav" > "$D/attacks.txt"
-python3 "$T/motion-stats.py" "$CUT" > "$D/motion.txt"
+# Only the picture between the HUD's rows (boxes at y 61–97 and 983–1019): its timecode changes every frame.
+studio look "$P" --video "$CUT" --motion --crop=0,120,1920,840 --out "$D/motion-frames.txt" > "$D/motion.txt"
 node "$T/hud-legibility.ts" "$CUT" > "$D/hud.txt"
 
 echo "cut: $CUT"

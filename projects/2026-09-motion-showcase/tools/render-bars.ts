@@ -2,7 +2,7 @@
 // out/wip/bars/), silent and without `studio render`'s framing check or mix: re-render the bars a change touched,
 // then join-bars.sh makes the WIP cut. A bar is the reel's own frame range, so it's what `studio render` draws.
 //   node projects/2026-09-motion-showcase/tools/render-bars.ts [N ...] [--out=<dir>]
-// Two renders of the same code aren't bit for bit alike: compare renders with render-diff.py, not by eye on a mean.
+// Two renders of the same code aren't bit for bit alike: compare renders with `studio look --against`, not by eye on a mean.
 import '../../../lib/studio/tsx-test-hooks.ts';
 import { renderMedia } from '@remotion/renderer';
 import { mkdirSync } from 'node:fs';

@@ -196,8 +196,10 @@ Look at the rendered frames yourself before reporting back. Motion is judged by 
   (highlights and clicks under tags or the caption, off the frame, cut off by their panel; every `expect`) and the
   motion tracks. It writes `out/check/timeline.json` (when every scene, line and word lands, and where scenes
   crossfade) and `out/check/motion.json` (a scoped check writes `motion-<scene>.json` beside it).
-- `studio look <p> --strip=a:b` shows a stretch of motion; `--sheet=t1,t2,…` shows chosen moments; `--graph=a:b`
-  plots it (below).
+- `studio look <p> --frames=a:b` (or `a:b:step`, or `f1,f2,…`) shows frames, `--strip`/`--sheet` the same in seconds;
+  `--video <mp4>` reads a render instead of the code; `--against <before.mp4>` pairs each frame with a before and
+  counts the pixels that changed; `--motion` gives a stretch's per-frame change and still runs; `--bar=N` picks a
+  music-led bar's frames; `--crop=x,y,w,h` a region. `--graph=a:b` plots tracked motion (below).
 - `studio storyboard <p>` rebuilds the storyboard page from the video.
 - `studio review <p | render.mp4 | still.png>` opens a page where the user pins timestamped notes on a render (or a
   still) and copies them back as markdown. Each note names its scene, the sounds within 3 frames and the tagged

@@ -1,5 +1,5 @@
-// bar-clock.ts: the reel's clock as JSON, for the tools that aren't TypeScript (join-bars.sh, motion-stats.py,
-// render-diff.py, attacks.py): each bar's frames as the bars export them, every beat's hit frame, the fade and the end.
+// bar-clock.ts: the reel's clock as JSON, for the tools that aren't TypeScript (join-bars.sh, attacks.py) and
+// `studio look --bar`/`--motion`: each bar's frames as the bars export them, every beat's hit frame, the fade and the end.
 // timeline.ts's bar table is the one statement of the reel's structure, so no tool writes a frame number of its own.
 //   node projects/2026-09-motion-showcase/tools/bar-clock.ts
 import '../../../lib/studio/tsx-test-hooks.ts';

@@ -8,7 +8,6 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { tileLabelledImages } from './contact-sheet.ts';
 import { rasterizeSvgs } from './svg-raster.ts';
 import { framingArtifactName, framingProblems, takeFitWarnings, type FramingReport } from './framing-check.ts';
 import { holdProblems } from './hold-check.ts';
@@ -18,7 +17,7 @@ import { measureLoudness } from './loudness.ts';
 import { artifactSink, RENDER_CHROMIUM, RENDER_CONCURRENCY, type RenderSession } from './render-session.ts';
 import { sfxEventsFrom, sfxMarkArtifactName, type SfxEvent, type SfxMark } from './sfx/cue-events.ts';
 import { sfxCueListReport } from './sfx/project-cue-list.ts';
-import { H, W } from './studio/frame.ts';
+import { W } from './studio/frame.ts';
 import { isVoicedWithDraft } from './voice-project.ts';
 import type { TimelineReport } from './studio/Video.tsx';
 
@@ -127,30 +126,7 @@ export function formatTimelineTable(timeline: TimelineReport): string[] {
   return [row('scene / line', 'start', 'end', ''), ...rows.map(([id, start, end, note]) => row(id, start.toFixed(2), end.toFixed(2), note))];
 }
 
-// ---------- sheets ----------
-
-/** Seconds from `from` to `to` inclusive, `step` (positive, or this never ends) apart: the times a strip shows. */
-export function stripTimes(from: number, to: number, step: number): number[] {
-  const times = [];
-  for (let t = from; t <= to + 1e-6; t += step) times.push(Number(t.toFixed(3)));
-  return times;
-}
-
-/** Renders frames at chosen times, small, and tiles them into one labelled image at `out`. */
-export async function renderContactSheet(session: RenderSession, times: number[], out: string, { cols, w, captions }: { cols: number; w: number; captions: boolean }) {
-  if (!times.length || times.some((t) => !Number.isFinite(t))) throw new Error('give times in seconds: --sheet=0.5,4,9 or --strip=4:5');
-  const composition = await session.compositionFor(session.props({ captions }));
-  const frameOf = (t: number) => Math.min(composition.durationInFrames - 1, Math.max(0, Math.round(t * composition.fps)));
-  const frames = [...new Set(times.map(frameOf))].sort((a, b) => a - b);
-  const stills = await session.renderStills(frames, { w, captions });
-
-  // Even sizes: ffmpeg pads JPEG (4:2:0) frames to them anyway, and a mismatch fails the layout.
-  const h = 2 * Math.round((w * H) / W / 2), rows = Math.ceil(frames.length / cols);
-  tileLabelledImages(frames.map((f) => ({ file: stills.fileFor(f), label: `${(f / composition.fps).toFixed(2)}s` })), out, { cols, w, h });
-  rmSync(stills.dir, { recursive: true, force: true });
-  console.error(`${frames.length} frames, ${cols}×${rows}`);
-  return out;
-}
+// ---------- motion graphs ----------
 
 /**
  * Measures the motion of `at` (seconds) and draws it (see lib/motion-graph.ts) over one of its frames, as a PNG

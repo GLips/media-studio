@@ -62,12 +62,12 @@ Preview your bar alone: a scratch project (`scratch/<reel>-<bar>/video.tsx`) who
 `barPreview(bar, index)` renders just your bar, inside the same HUD and grade, with its frame 0 on the bar's first
 frame. Several builders editing bars at once can't break each other's renders that way.
 
-1. `studio look scratch/<reel>-<bar> --strip=0:<seconds> --step=0.0333` renders every frame of your bar. Look at the hits: does
+1. `studio look scratch/<reel>-<bar> --frames=0:<last>` renders every frame of your bar. Look at the hits: does
    each arrival land on its hit frame, how hard does it snap, what does it smear, is anything still for more than
    half a beat?
 2. Put your strip beside the reference section's (`study-claude/NN-*/strip.jpg`, beside the reference video) and fix
    what differs in timing, scale, snap, smear and colour. The reference is the bar to clear, not a script to copy.
-3. `studio look <project> --sheet=…` at your bar's hit frames: each should be a frame worth pausing on.
+3. `studio look <project> --frames=…` at your bar's hit frames: each should be a frame worth pausing on.
 4. A capture on a `CapturePlane`: `studio look scratch/<reel>-<bar> --graph=0:<seconds> --tracks=plane` plots its
    `upscale`, frame px per capture px where the capture is most magnified in frame. Past about 1.3 the page's text
    goes soft: capture it again at a higher `scale`.
@@ -78,8 +78,9 @@ frame. Several builders editing bars at once can't break each other's renders th
 7. The motion showcase's `tools/` are the checks a whole reel reruns after each round of fixes; copy them for a new
    reel. `render-bars.ts` renders the bars a change touched, straight from the reel. `integrate.sh` joins the bars
    under the mix and measures the cut: each sound against the music, where each slam's sound lands, each beat's
-   attack, the still runs and every beat frame's luma, and the HUD's legibility on every frame. `render-diff.py`
-   tells which bars and regions a change moved.
+   attack, the still runs and every beat frame's luma, and the HUD's legibility on every frame. `studio look <project>
+   --video <after.mp4> --against <before.mp4> --bar=N --crop=…` tells which frames and regions a change moved, and
+   `--motion --bar=N` where a bar stops moving.
 
 ## Fences
 

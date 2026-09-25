@@ -90,8 +90,8 @@ Look here first: a second copy of one of these drifts from the first.
 1. Write a demo at `scratch/reel-<piece>/video.tsx` (gitignored): the piece used the way the reference uses it, on
    `steadyBeatGrid(120)`, over a few seconds, plus any variant the props promise (another colour, another word, the
    other direction). `scratch/three-test/video.tsx` shows the shape of a scratch project.
-2. Look at it: `studio look scratch/reel-<piece> --strip=a:b --step=0.0333` gives every frame of a stretch, and
-   `--sheet=…` chosen moments. Put them beside the reference's frames for the same beat, and fix what differs: when
+2. Look at it: `studio look scratch/reel-<piece> --frames=a:b` gives every frame of a stretch, and
+   `--frames=161,176,191` chosen moments. Put them beside the reference's frames for the same beat, and fix what differs: when
    it arrives against the beat, how hard it snaps, how far it overshoots, how long it smears, how the stagger runs,
    the sizes, the colour.
 3. For a tagged piece, `studio look scratch/reel-<piece> --graph=a:b` shows its tracks: one track per tagged part, no
