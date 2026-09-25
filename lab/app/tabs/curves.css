@@ -1,4 +1,13 @@
-/* curves.css: the Curves & springs tab's control layout. The duration presets get two columns so their seven
-   buttons wrap into rows rather than a tall stack. */
-.curves-controls .controls > :nth-child(3) { grid-column: span 2; }
-@media (max-width: 900px) { .curves-controls .controls > :nth-child(3) { grid-column: auto; } }
+/* curves.css: the Curves & springs tab's own pieces: the curve family picker, whose options each carry a plain
+   name, the real one and a gloss, and the collapsed "For agents" notes. */
+.curves-family { display: flex; flex-direction: column; gap: 4px; }
+.curves-family button { display: block; text-align: left; background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 14px; line-height: 1.35; }
+.curves-family button:hover { border-color: var(--dim); }
+.curves-family button code { font-family: var(--mono); font-size: 11px; color: var(--dim); background: none; padding: 0; }
+.curves-family button small { display: block; color: var(--dim); font-size: 12.5px; }
+.curves-family button.on { background: var(--cream); color: var(--ground); border-color: var(--cream); }
+.curves-family button.on code, .curves-family button.on small { color: #5b5750; }
+
+.curves-agents { color: var(--dim); font-size: 14px; }
+.curves-agents summary { cursor: pointer; font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+.curves-agents pre { background: var(--panel); border-radius: 8px; padding: 12px 14px; color: var(--cream); font: 13px/1.6 var(--mono); overflow-x: auto; }
