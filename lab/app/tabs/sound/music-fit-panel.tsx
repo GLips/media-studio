@@ -3,7 +3,8 @@
 // then plays the fit and draws where each stretch of it came from.
 import { useEffect, useRef, useState } from 'react';
 import { planMusicFit, spliceMusicSpans, type MusicFitPlan } from '../../../../lib/music-fit.ts';
-import type { LabMusicTrack } from '../../../server.ts';
+import type { LabMusicTrack } from '../../../manifest.ts';
+import { loadLabManifest } from '../../lab-manifest.ts';
 import { LabBench, LabChoice, LabNote, LabSlider } from '../../ui.tsx';
 import { audioBufferFromChannels, labAudio, playLabBuffer, stopLabAudio, useLabPlayhead } from './lab-audio.ts';
 import { MUSIC_SPAN_COLORS, MusicFitTimeline } from './music-fit-timeline.tsx';
@@ -72,7 +73,7 @@ export function MusicFitPanel() {
   const busy = !decoded || result?.seconds !== seconds;
 
   useEffect(() => {
-    void fetch('/api/music').then((r) => r.json()).then((all: LabMusicTrack[]) => {
+    void loadLabManifest().then(({ music: all }) => {
       setTracks(all);
       const sources = all.filter((t) => !t.fit);
       // The showcase's 30 s track, when it's there: the length the intro's example talks about.

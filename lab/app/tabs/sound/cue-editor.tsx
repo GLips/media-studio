@@ -1,6 +1,7 @@
 // cue-editor.tsx: the Sound tab's cue editor. It loads a project's sfx/cues.json (the sound-effect list `studio sfx
-// draft` writes) through lab/sfx-cue-api.ts, plays the rendered video with the list's sounds laid over it, and lets a
-// person swap, mute, fill, nudge and level each cue, seeing live which of the studio's rules an edit breaks.
+// draft` writes) from the lab's manifest, plays the rendered video with the list's sounds laid over it, and lets a
+// person swap, mute, fill, nudge and level each cue, seeing live which of the studio's rules an edit breaks. A local
+// lab saves through lab/local-api.ts; an exported one is read-only and offers the edited cues.json as a download.
 //
 // The demo video doesn't play its cue list (its audio is voice, music and the scenes' own placed sounds), so the list's
 // sounds are rendered here with lib/sfx itself and scheduled with Web Audio against the video's clock. Placed cues
@@ -10,13 +11,14 @@ import type { SfxEvent } from '../../../../lib/sfx/cue-events.ts';
 import { SFX_CLICK_STYLES, sfxCueOverrides, sfxCuePlays, sfxCueSound, type SfxCue, type SfxCueList, type SfxCueProblem } from '../../../../lib/sfx/cues.ts';
 import { SFX_RATE } from '../../../../lib/sfx/dsp.ts';
 import { renderSfx, type SfxRequest } from '../../../../lib/sfx/library.ts';
-import type { LabSfxCuePayload, LabSfxCueSave } from '../../../sfx-cue-api.ts';
+import type { LabSfxCueSave } from '../../../local-api.ts';
+import type { LabSfxCuePayload } from '../../../manifest.ts';
+import { loadLabManifest } from '../../lab-manifest.ts';
 import { LabSlider } from '../../ui.tsx';
 import { labAudio } from './lab-audio.ts';
 import { sfxSoundWords, SoundForAgents } from './sound-words.tsx';
 import './cue-editor.css';
 
-const SFX_CUE_DEMO_PROJECT = '2026-09-simple-buy-box-story';
 const sfxCueApiUrl = (project: string) => `/api/sfx-cues?project=${encodeURIComponent(project)}`;
 /** A moment played from a marker: this long before the cue, and this long in all. */
 const MOMENT_LEAD = 1.5;
@@ -221,6 +223,7 @@ export function SfxCueEditor() {
   const [saved, setSaved] = useState<LabSfxCuePayload | null>(null);
   const [list, setList] = useState<SfxCueList | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [writable, setWritable] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [hearList, setHearList] = useState(true);
@@ -230,14 +233,13 @@ export function SfxCueEditor() {
   const momentEnd = useRef<number | null>(null);
 
   useEffect(() => {
-    fetch(sfxCueApiUrl(SFX_CUE_DEMO_PROJECT))
-      .then(async (r) => (r.ok ? (r.json() as Promise<LabSfxCuePayload>) : Promise.reject(new Error((await r.json()).error))))
-      .then((payload) => {
-        setSaved(payload);
-        setList(payload.list);
-        setSelectedId(firstLabCue(payload.list)?.event.id ?? null);
-      })
-      .catch((e: Error) => setLoadError(e.message));
+    void loadLabManifest().then(({ sfxCues: payload, writable }) => {
+      if (!payload) return setLoadError('the demo project has no sfx/cues.json');
+      setWritable(writable);
+      setSaved(payload);
+      setList(payload.list);
+      setSelectedId(firstLabCue(payload.list)?.event.id ?? null);
+    });
   }, []);
 
   // Chrome defers loading a video in a tab that isn't showing, and one that stalls there (or behind other lab tabs'
@@ -324,7 +326,7 @@ export function SfxCueEditor() {
     };
   }, [saved]);
 
-  if (loadError) return <section className="cue-editor"><p className="cue-error">The cue editor couldn't load {SFX_CUE_DEMO_PROJECT}: {loadError}</p></section>;
+  if (loadError) return <section className="cue-editor"><p className="cue-error">The cue editor couldn't load: {loadError}</p></section>;
   if (!list || !saved) return <section className="cue-editor"><p className="note">Loading the cue list…</p></section>;
 
   const selected = list.cues.find((c) => c.event.id === selectedId) ?? null;
@@ -348,6 +350,13 @@ export function SfxCueEditor() {
     video.currentTime = Math.max(0, at - MOMENT_LEAD);
     momentEnd.current = Math.max(0, at - MOMENT_LEAD) + MOMENT_LENGTH;
     void video.play();
+  };
+
+  // A read-only lab (an exported one) has nowhere to save: the edited list goes to the person, who can hand it on.
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([`${JSON.stringify(list, null, 2)}\n`], { type: 'application/json' }));
+    Object.assign(document.createElement('a'), { href: url, download: 'cues.json' }).click();
+    URL.revokeObjectURL(url);
   };
 
   const save = async () => {
@@ -401,9 +410,13 @@ export function SfxCueEditor() {
         </div>
         <div className="cue-save">
           <span className={unsaved ? 'cue-unsaved' : 'hud'}>{unsaved ? `${unsaved} unsaved change${unsaved === 1 ? '' : 's'}` : 'No unsaved changes'}</span>
-          <button type="button" className="cue-save-button" disabled={!unsaved || saveState.kind === 'saving'} onClick={() => void save()}>
-            {saveState.kind === 'saving' ? 'Saving…' : 'Save'}
-          </button>
+          {writable
+            ? <button type="button" className="cue-save-button" disabled={!unsaved || saveState.kind === 'saving'} onClick={() => void save()}>
+                {saveState.kind === 'saving' ? 'Saving…' : 'Save'}
+              </button>
+            : <button type="button" className="cue-save-button" disabled={!unsaved} onClick={download} title="This copy of the lab is read-only: your edits stay in this page, and you can download them">
+                Download cues.json
+              </button>}
         </div>
       </div>
       {(saveState.kind === 'saved' || saveState.kind === 'error') && <p className={saveState.kind === 'saved' ? 'cue-saved' : 'cue-error'}>{saveState.text}</p>}

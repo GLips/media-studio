@@ -2,7 +2,8 @@
 // beside their 3D blockouts, the image bake-off as a brief × model grid, the music tracks, and the other stills,
 // each with its prompt and price. It only reads files already on disk; nothing here generates or calls a paid API.
 import { useEffect, useState, type ReactNode } from 'react';
-import type { LabGalleryItem, LabImageBakeoff } from '../../server.ts';
+import type { LabGalleryItem, LabImageBakeoff } from '../../manifest.ts';
+import { useLabManifest } from '../lab-manifest.ts';
 import { LabNote, LabTabIntro } from '../ui.tsx';
 import { ImageBakeoffGrid } from './media/bakeoff.tsx';
 import { formatGenerationCost, GeneratedMediaLightbox, GeneratedMediaView } from './media/lightbox.tsx';
@@ -19,12 +20,9 @@ const MUSIC_MODEL_WORDS: Record<string, string> = {
 };
 
 export function MediaTab() {
-  const [gallery, setGallery] = useState<LabGalleryItem[] | null>(null);
-  const [bakeoff, setBakeoff] = useState<LabImageBakeoff | null>(null);
-  useEffect(() => {
-    void fetch('/api/gallery').then((r) => r.json()).then(setGallery);
-    void fetch('/api/image-bakeoff').then((r) => r.json()).then(setBakeoff);
-  }, []);
+  const manifest = useLabManifest();
+  const gallery: LabGalleryItem[] | null = manifest?.gallery ?? null;
+  const bakeoff: LabImageBakeoff | null = manifest?.bakeoff ?? null;
 
   return (
     <>

@@ -2,7 +2,7 @@
 // generated piece at a time (the file large, then its model, cost, prompt and references), stepping through a set
 // with the arrow keys so the same brief can be compared model by model.
 import { useEffect, type ReactNode } from 'react';
-import type { LabGalleryItem } from '../../../server.ts';
+import type { LabGalleryItem } from '../../../manifest.ts';
 import { GeneratedTrackPlayer } from './track-player.tsx';
 
 /** A dollar amount at the precision that matters: $1.39, $0.04, $0.004. */

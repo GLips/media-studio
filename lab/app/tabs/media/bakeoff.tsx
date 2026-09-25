@@ -1,7 +1,7 @@
 // bakeoff.tsx: the image bake-off as a grid, one row per brief and one column per model, so the same ask can be
 // compared across models at a glance. The reviewer's verdicts can be hidden, to judge the pictures first.
 import { useMemo, useState } from 'react';
-import type { LabBakeoffBrief, LabBakeoffModel, LabGalleryItem, LabImageBakeoff } from '../../../server.ts';
+import type { LabBakeoffBrief, LabBakeoffModel, LabGalleryItem, LabImageBakeoff } from '../../../manifest.ts';
 import { formatGenerationCost, GeneratedMediaLightbox, MediaModal } from './lightbox.tsx';
 
 const VERDICT_WORDS = { good: 'Good', mixed: 'Mixed', bad: 'Miss' } as const;

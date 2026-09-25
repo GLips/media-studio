@@ -1,59 +1,37 @@
-// sfx-cue-api.ts: the Studio Lab's cue editor on the server. GET hands the browser a project's sfx/cues.json with
-// the spoken words its rules need; POST saves the editor's changes to it exactly as `studio sfx draft` writes it
-// (cues.json, then generated/sfx-cues.ts and its WAVs).
+// local-api.ts: the Studio Lab's only writes, served by a local `studio lab` and absent from an exported lab (whose
+// manifest says `writable: false`). Today that's one: saving the cue editor's changes to a project's sfx/cues.json
+// exactly as `studio sfx draft` writes it (cues.json, then generated/sfx-cues.ts and its WAVs).
 //
 // The browser only ever changes a cue's edits (sound, nudge, volume). A POST's cues are matched to the file's by
 // event id and only those three fields are taken, so a stale tab can't rewrite a draft or an event from under a redraft.
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { dirname, join, relative, sep } from 'node:path';
+import { dirname } from 'node:path';
 import { readSfxCueList, writeSfxCueList, writeSfxCueModule } from '../lib/sfx/cue-module.ts';
 import type { SfxCue, SfxCueList } from '../lib/sfx/cues.ts';
 import { resolveSfxParams, type SfxRequest } from '../lib/sfx/library.ts';
-import type { TimelineReport } from '../lib/studio/Video.tsx';
-import { STUDIO_PROJECTS_DIR, STUDIO_ROOT, resolveStudioProject } from '../lib/studio-project.ts';
-import type { SpokenWord } from '../lib/voice-words.ts';
-
-export type LabSfxCueScene = { id: string; start: number; end: number };
-
-/** What the editor loads: the list, the words its rules judge accents against, and the video to play it over. */
-export type LabSfxCuePayload = {
-  project: string;
-  list: SfxCueList;
-  words: SpokenWord[];
-  scenes: LabSfxCueScene[];
-  duration: number;
-  /** The rendered video's URL, or null when it hasn't been rendered. */
-  video: string | null;
-  /** A hash of cues.json as loaded: a save sends it back, and is refused if the file has changed since. */
-  revision: string;
-};
+import { STUDIO_PROJECTS_DIR, resolveStudioProject } from '../lib/studio-project.ts';
+import { labSfxCueRevision, readLabSfxCuePayload, type LabMediaRegister, type LabSfxCuePayload } from './manifest.ts';
 
 /** What the editor posts: its whole edit state, against the revision it loaded. */
 export type LabSfxCueSave = { revision: string; list: SfxCueList };
 
-const sfxCueRevision = (project: string) => createHash('sha256').update(readFileSync(join(project, 'sfx', 'cues.json'))).digest('hex').slice(0, 16);
-
 class SfxCueRequestError extends Error {}
 class SfxCueStaleError extends Error {}
 
-/** Handles /api/sfx-cues, returning false for any other path. */
-export function handleSfxCueApi(req: IncomingMessage, res: ServerResponse, url: URL): boolean {
+/** Handles the lab's write routes, returning false for any other request. */
+export function handleLabLocalApi(req: IncomingMessage, res: ServerResponse, url: URL, media: LabMediaRegister): boolean {
   if (url.pathname !== '/api/sfx-cues') return false;
   const reply = (status: number, body: unknown) => res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(body));
   const fail = (error: unknown) => reply(error instanceof SfxCueRequestError ? 400 : error instanceof SfxCueStaleError ? 409 : 500, { error: error instanceof Error ? error.message : String(error) });
   try {
-    const project = labSfxCueProject(url.searchParams.get('project') ?? '');
-    if (req.method === 'GET') {
-      reply(200, readLabSfxCuePayload(project));
-    } else if (req.method === 'POST') {
-      // A cross-site form can post text/plain without a preflight; only this page's fetch sends JSON.
-      if (!req.headers['content-type']?.startsWith('application/json')) throw new SfxCueRequestError('POST application/json');
-      readJsonBody(req).then((body) => reply(200, saveLabSfxCueEdits(project, body))).catch(fail);
-    } else {
-      reply(405, { error: 'GET or POST' });
+    if (req.method !== 'POST') {
+      reply(405, { error: 'POST only: the cue list itself comes from lab-manifest.json' });
+      return true;
     }
+    // A cross-site form can post text/plain without a preflight; only this page's fetch sends JSON.
+    if (!req.headers['content-type']?.startsWith('application/json')) throw new SfxCueRequestError('POST application/json');
+    const project = labSfxCueProject(url.searchParams.get('project') ?? '');
+    readJsonBody(req).then((body) => reply(200, saveLabSfxCueEdits(project, body, media))).catch(fail);
   } catch (error) {
     fail(error);
   }
@@ -73,29 +51,11 @@ function labSfxCueProject(name: string): string {
   return dir;
 }
 
-function readLabSfxCuePayload(project: string): LabSfxCuePayload {
-  const list = readSfxCueList(project);
-  if (!list) throw new SfxCueRequestError(`${relative(STUDIO_ROOT, project)} has no sfx/cues.json: run studio sfx draft first`);
-  const timelinePath = join(project, 'out', 'check', 'timeline.json');
-  const timeline = existsSync(timelinePath) ? (JSON.parse(readFileSync(timelinePath, 'utf8')) as TimelineReport) : null;
-  const videoPath = join(project, 'out', 'video.mp4');
-  const lastCue = Math.max(0, ...list.cues.map((c) => c.event.at));
-  return {
-    project: relative(STUDIO_PROJECTS_DIR, project),
-    list,
-    words: timeline?.cues.flatMap((c) => c.words) ?? [],
-    scenes: timeline?.scenes.map((s) => ({ id: s.id, start: s.start, end: s.start + s.dur })) ?? [],
-    duration: timeline?.duration ?? lastCue + 2,
-    revision: sfxCueRevision(project),
-    video: existsSync(videoPath) ? `/media/${relative(STUDIO_ROOT, videoPath).split(sep).map(encodeURIComponent).join('/')}` : null,
-  };
-}
-
-function saveLabSfxCueEdits(project: string, body: unknown): LabSfxCuePayload {
+function saveLabSfxCueEdits(project: string, body: unknown, media: LabMediaRegister): LabSfxCuePayload {
   const onDisk = readSfxCueList(project);
   if (!onDisk) throw new SfxCueRequestError('the project has no sfx/cues.json to save into');
   const { revision, list: posted } = (body ?? {}) as Partial<LabSfxCueSave>;
-  if (revision !== sfxCueRevision(project)) throw new SfxCueStaleError('sfx/cues.json has changed since the editor loaded it: reload to see the new version (unsaved edits here are lost)');
+  if (revision !== labSfxCueRevision(project)) throw new SfxCueStaleError('sfx/cues.json has changed since the editor loaded it: reload to see the new version (unsaved edits here are lost)');
   if (posted?.version !== 1 || !Array.isArray(posted.cues)) throw new SfxCueRequestError('expected a version 1 cue list with a cues array');
   const edits = new Map(posted.cues.map((c: Partial<SfxCue>) => [c.event?.id, c]));
   const same = edits.size === onDisk.cues.length && onDisk.cues.every((c) => edits.has(c.event.id));
@@ -112,7 +72,7 @@ function saveLabSfxCueEdits(project: string, body: unknown): LabSfxCuePayload {
   });
   writeSfxCueList(project, { ...onDisk, cues });
   writeSfxCueModule(project);
-  return readLabSfxCuePayload(project);
+  return readLabSfxCuePayload(project, media)!;
 }
 
 /** The request rebuilt from its known fields, so nothing unchecked reaches cues.json or the WAV hash. */

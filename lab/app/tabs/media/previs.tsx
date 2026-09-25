@@ -1,7 +1,7 @@
 // previs.tsx: a Seedance render beside the grey 3D blockout it was told to follow, both playing off one clock, so
 // the previs idea shows for itself: block the shot for free, then pay once for a render that keeps its camera.
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
-import type { LabGalleryItem } from '../../../server.ts';
+import type { LabGalleryItem } from '../../../manifest.ts';
 import { LabChoice, LabControls } from '../../ui.tsx';
 import { formatGenerationCost } from './lightbox.tsx';
 
