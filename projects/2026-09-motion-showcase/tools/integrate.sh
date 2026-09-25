@@ -1,15 +1,22 @@
 #!/bin/sh
-# The showcase's integration pass, once the bar renders in out/wip/bars/ are current (render-bars.ts): join them into
-# the WIP cut under the mix, run every check on it, each into out/qa/<check>.txt, and print the flags to act on. Runs
+# The showcase's integration pass: re-render the bars named (studio render --frames, into out/wip/bars/0N.mp4), join
+# every bar render into the WIP cut under the mix (studio render --join, which refuses a bar rendered on another
+# timeline), run every check on the cut, each into out/qa/<check>.txt, and print the flags to act on. Runs
 # `studio mix`, so nothing else may be mixing.
-#   sh projects/2026-09-motion-showcase/tools/integrate.sh
+#   sh projects/2026-09-motion-showcase/tools/integrate.sh [N ...]
 set -eu
 T=$(cd "$(dirname "$0")" && pwd)
 P=$(dirname "$T")
 D=$P/out/qa
 CUT=$P/out/wip/reel-cut.mp4
 mkdir -p "$D"
-sh "$T/join-bars.sh" "$CUT" > "$D/join.txt"
+CLOCK=$(node "$T/bar-clock.ts")
+for n in "$@"; do
+  span=$(echo "$CLOCK" | jq -r --argjson n "$n" '.bars[] | select(.n == $n) | "\(.from):\(.to - 1)"')
+  [ -n "$span" ] || { echo "no bar $n" >&2; exit 1; }
+  studio render "$P" --frames="$span" --out="out/wip/bars/0$n.mp4"
+done
+studio render "$P" --join=out/wip/bars --out="$CUT" > "$D/join.txt"
 studio mix --check "$P" > "$D/sound-check.txt"
 node "$T/sfx-sync.ts" > "$D/sfx-sync.txt"
 python3 "$T/attacks.py" "$P/out/mix.wav" > "$D/attacks.txt"
@@ -18,7 +25,7 @@ studio look "$P" --video "$CUT" --motion --crop=0,120,1920,840 --out "$D/motion-
 node "$T/hud-legibility.ts" "$CUT" > "$D/hud.txt"
 
 echo "cut: $CUT"
-echo "bars cut in on the music's beats (1 is its downbeat): $(node "$T/bar-clock.ts" | jq -r '[.bars[].musicBeat] | join(" ")')"
+echo "bars cut in on the music's beats (1 is its downbeat): $(echo "$CLOCK" | jq -r '[.bars[].musicBeat] | join(" ")')"
 # A flagged row starts with its sound's id (bar/role) or its frame; the legend lines name the flags too.
 LOUD='^ *[a-z0-9-]+/[a-z0-9-]+ .*(FLAM|BURIED|OVER)' SYNC='^ *[0-9]+ .*(FLAM|SILENT)'
 echo "sound: $(grep -cE "$LOUD" "$D/sound-check.txt" || true) flagged in sound-check (FLAM/BURIED/OVER)," \

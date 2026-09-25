@@ -5,10 +5,9 @@
 // words and its audio, and the scene's `note`. Clicking a card plays from that scene, and the card lights up while
 // its scene plays. Before the motion pass, the video is an animatic: one camera and one highlight per scene, timed
 // by `studio voice --read=estimate`, which is all a storyboard needs.
-import { renderMedia } from '@remotion/renderer';
 import { copyFileSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { openRenderSession, RENDER_CHROMIUM, RENDER_CONCURRENCY } from './render-session.ts';
+import { openRenderSession } from './render-session.ts';
 import type { TimelineReport } from '../../studio/Video.tsx';
 import { isVoicedWithDraft } from '../voice/voice-project.ts';
 
@@ -40,10 +39,9 @@ export async function buildStoryboardPage(project: string): Promise<string> {
   rmSync(stills.dir, { recursive: true, force: true });
 
   console.error('rendering the preview…');
-  const inputProps = session.props({ captions: true });
-  await renderMedia({
-    composition: await session.compositionFor(inputProps), serveUrl: session.serveUrl, chromiumOptions: RENDER_CHROMIUM, concurrency: RENDER_CONCURRENCY, inputProps, codec: 'h264',
-    outputLocation: join(outDir, 'preview.mp4'), scale: 0.5, crf: 30, x264Preset: 'veryfast', imageFormat: 'jpeg', jpegQuality: 80,
+  await session.renderVideo({
+    out: join(outDir, 'preview.mp4'), inputProps: session.props({ captions: true }), timeline,
+    scale: 0.5, crf: 30, x264Preset: 'veryfast', imageFormat: 'jpeg', jpegQuality: 80,
   });
 
   const cards = shots.map(({ scene, moments }, i) => `

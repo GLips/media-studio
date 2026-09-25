@@ -31,7 +31,7 @@ Every step is a `studio` verb. A `<project>` is a slug (`sale-only-view`), a uni
 | Look | `studio look <project> --sheet=1,5,9` | a contact sheet of chosen times, `--strip=4:5` for a stretch of motion, or `--graph=4:6` to plot that stretch's measured motion (position, velocity, size, opacity, reported values) against the words, with its numbers. Open the image to check frames without rendering video |
 | Check | `studio check <project>` | the framing check and the motion tracks on every frame (`--scene` or `--at=a:b` for less), a table of when each scene and line starts and ends, `out/check/timeline.json` (scenes, lines, words, crossfades) and `out/check/motion.json` (how every tagged element moved) |
 | Mix | `studio mix <project>` | `out/mix.wav`, the mastered mix on its own, to audition |
-| Render | `studio render <project>` | `out/mix.wav`, `out/video.mp4` (captions burned in), `out/video.srt`, review sheets in `out/check/`, and `out/watch.html`. A `--read=draft` voice gets a loud warning and a DRAFT banner on the watch page |
+| Render | `studio render <project>` | `out/mix.wav`, `out/video.mp4` (captions burned in), `out/video.srt`, review sheets in `out/check/`, and `out/watch.html`, each video with a `.snapshot.json` beside it (the timeline it was rendered from). `--frames=a:b` renders just those frames, silent; `--join=<folder>` joins such slices under the mix. A `--read=draft` voice gets a loud warning and a DRAFT banner on the watch page |
 
 `studio render` runs the check first and refuses to render if a highlight sits under a tag or the caption, runs off
 the frame or is cut off by its panel, if a scene's `expect` isn't met, if the motion tracks have tracking errors, or

@@ -1,9 +1,9 @@
 // review-notes.ts: the notes `studio review` pins on a render or a still, what each is about, and the markdown Graham
 // pastes back into a chat. Pure: lab/review/server.ts reads the artifacts, and the page (lab/review/app) calls these.
 //
-// A note's context comes only from artifacts a project already has: out/check/timeline.json for the scene and the
-// video-clock sounds, sfx/cues.json for the cue list, out/check/motion.json for what's under the point, and on a
-// still, a variant sheet's .cells.json for the variant under the point. A source that's missing leaves its field off the note; one that's there and holds nothing near gives an empty list.
+// A note's context comes only from artifacts a project already has: the render's snapshot for the scene, the
+// video-clock sounds and what's under the point, sfx/cues.json for the cue list, and on a still, a variant sheet's
+// .cells.json for the variant under the point. A source that's missing leaves its field off the note; one that's there and holds nothing near gives an empty list.
 import type { MotionTracks } from './motion-tracks.ts';
 
 export const REVIEW_NOTES_VERSION = 2;
@@ -62,7 +62,7 @@ export type ReviewNotesFile = {
 
 export type ReviewContextSources = {
   fps: number;
-  /** Composition pixels, which motion.json measures in. */
+  /** Composition pixels, which the motion tracks measure in. */
   frameSize: { w: number; h: number };
   scenes?: readonly ReviewScene[];
   sounds?: readonly ReviewSoundMarker[];

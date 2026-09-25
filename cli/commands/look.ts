@@ -16,7 +16,7 @@ export default defineCommand({
     strip: { type: 'string', valueHint: '4:5', description: 'How does this stretch move? Seconds from:to, every --step seconds' },
     video: { type: 'string', valueHint: 'out/video.mp4', description: 'What does a render show, rather than the code? Read frames from this video (relative to the project unless absolute)' },
     against: { type: 'string', valueHint: 'out/wip/before.mp4', description: 'What did a change move? Each frame of this render (before) beside the composition\'s or --video\'s (after) and the pixels that really changed, with each frame\'s changed-pixel count; with no frames given, every frame, the sheet showing the most changed' },
-    'starts-at': { type: 'string', default: '0', description: 'Where in the project does the video start? The project frame of --video\'s and --against\'s first frame (a bar render: its bar\'s first frame)' },
+    'starts-at': { type: 'string', description: 'Where in the project does a render with no snapshot start? The project frame of --video\'s and --against\'s first frame (default 0). A render studio render made says where it starts in its snapshot' },
     motion: { type: 'boolean', description: 'Does it keep moving? Each frame\'s mean change from the one before over --frames=a:b, a --bar or the whole video, each bar\'s mean, the still runs and the beat frames; every frame\'s numbers go to a .txt' },
     still: { type: 'string', default: '3.5', description: 'For --motion: what counts as still? A mean change from the frame before under this' },
     crop: { type: 'string', valueHint: '0,120,1920,840', description: 'Only this region, x,y,w,h in the video\'s pixels: the sheet shows it, and --against and --motion measure only it (leave out a HUD whose timecode always changes)' },
@@ -56,18 +56,27 @@ export default defineCommand({
     const project = resolveStudioProjectWith(args.project, 'video.tsx');
     const inProject = (file: string) => (isAbsolute(file) ? file : join(project, file));
     const out = inProject(args.out ?? (args.motion ? 'out/check/motion.txt' : args.against ? 'out/check/against.jpg' : 'out/check/sheet.jpg'));
-    const startsAt = Number(args['starts-at']);
-    if (!(Number.isInteger(startsAt) && startsAt >= 0)) throw new Error(`--starts-at is a frame number, not ${args['starts-at']}`);
+    const givenStart = args['starts-at'] === undefined ? undefined : Number(args['starts-at']);
+    if (givenStart !== undefined && !(Number.isInteger(givenStart) && givenStart >= 0)) throw new Error(`--starts-at is a frame number, not ${args['starts-at']}`);
     const crop = args.crop ? parseLookCrop(args.crop) : undefined;
+    const { loadRenderSnapshot } = await import('../../lib/engine/snapshot/render-snapshot.ts');
+    // Where a render starts in the project: its snapshot says, and --starts-at places one without a snapshot.
+    const renderSource = (file: string) => {
+      const loaded = loadRenderSnapshot(file);
+      if (loaded.kind === 'none') return { kind: 'video' as const, file, startsAt: givenStart ?? 0 };
+      const { from } = loaded.snapshot.frames;
+      if (givenStart !== undefined && givenStart !== from) throw new Error(`${file} starts at the project's frame ${from}, as its snapshot says: leave out --starts-at=${givenStart}`);
+      return { kind: 'video' as const, file, startsAt: from };
+    };
 
     const source = await openLookSource(args.video
-      ? { kind: 'video', file: inProject(args.video), startsAt }
+      ? renderSource(inProject(args.video))
       : { kind: 'composition', session: await openStudioRenderSession(project), captions: Boolean(args.captions) });
     const clock = args.bar || args.motion ? readProjectBarClock(project) : undefined;
-    // A render names its frames by the clock: it must be the whole reel or one bar, placed by --starts-at, on this clock.
+    // A render names its frames by the clock: it must be the whole reel or one bar, placed by its snapshot or --starts-at.
     if (clock && args.video && !(source.first === 0 && source.end === clock.end) && !clock.bars.some((b) => b.from === source.first && b.to === source.end)) {
       throw new Error(`${source.name} holds frames ${source.first}–${source.end - 1}, which is neither the whole reel (0–${clock.end - 1}) nor one bar: ` +
-        'give a bar render --starts-at=<its bar\'s first frame>, or re-render it on the current clock');
+        'render it again with studio render --frames, whose snapshot places it, or give one without a snapshot --starts-at=<its bar\'s first frame>');
     }
     const frames = (() => {
       if (args.frames) return parseLookFrames(args.frames);
@@ -100,7 +109,7 @@ export default defineCommand({
       const cols = Number(args.cols ?? (args.against ? 1 : args.strip ? 5 : 3)), w = Number(args.w ?? (args.strip ? 384 : 640));
       if (!(Number.isInteger(cols) && cols > 0 && Number.isInteger(w) && w > 0)) throw new Error('--cols and --w are positive whole numbers');
       lines = args.against
-        ? await lookAgainst(await openLookSource({ kind: 'video', file: inProject(args.against), startsAt }), source, frames, { crop, cols, w, out })
+        ? await lookAgainst(await openLookSource(renderSource(inProject(args.against))), source, frames, { crop, cols, w, out })
         : await lookFrameSheet(source, frames, { crop, cols, w, out });
     }
     for (const line of lines) console.log(line);

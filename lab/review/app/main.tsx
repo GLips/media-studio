@@ -141,7 +141,6 @@ function Review({ manifest }: { manifest: ReviewManifest }) {
   const markdown = () => formatReviewNotesMarkdown({ media: manifest.media.path, kind: manifest.media.kind, fps, notes }, { title: manifest.title, savedTo: manifest.notesPath, render: manifest.render });
   const copy = () => navigator.clipboard.writeText(markdown()).then(() => setCopied(`copied ${notes.length} note${notes.length === 1 ? '' : 's'}`), (e: Error) => setCopied(`copy failed: ${e.message}`));
 
-  const lengthOff = isVideo && manifest.durationInFrames && fileFrames && Math.abs(manifest.durationInFrames - fileFrames) > 1;
   const pinsNow = sorted.map((n, i) => ({ n, i })).filter(({ n }) => n.x !== undefined && (!isVideo || (n.frame! <= frame && frame <= (n.end ?? n.frame!))));
 
   return (
@@ -179,7 +178,7 @@ function Review({ manifest }: { manifest: ReviewManifest }) {
       )}
       {manifest.missing.map((m) => <p key={m} className="review-banner">No {m}</p>)}
       {manifest.cueListPlayed === false && <p className="review-banner">This render doesn't play sfx/cues.json: its cue-list markers show where the list would sound.</p>}
-      {lengthOff && <p className="review-banner">The render is {fileFrames} frames and the timeline {manifest.durationInFrames}: out/check is from another cut, so scene and sound fields may be off.</p>}
+      {manifest.startsAt ? <p className="review-banner">A slice: its frame 0 is the video's frame {manifest.startsAt}, and frames here count from it.</p> : null}
       {isVideo && !manifest.fps && <p className="review-banner">Not a project render: frames are counted at 30 fps.</p>}
 
       <div className="review-body">

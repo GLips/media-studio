@@ -46,3 +46,8 @@ export function spawnFfmpeg(args: readonly string[], options: SpawnOptions = {})
 export function probeMediaSeconds(file: string): number {
   return Number(runFfprobe(['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], { encoding: 'utf8' }).trim());
 }
+
+/** How many frames a video file's first video stream holds, counted packet by packet rather than taken from its header. */
+export function countVideoFrames(file: string): number {
+  return Number(runFfprobe(['-v', 'error', '-select_streams', 'v:0', '-count_packets', '-show_entries', 'stream=nb_read_packets', '-of', 'default=nw=1:nk=1', file], { encoding: 'utf8' }).trim());
+}

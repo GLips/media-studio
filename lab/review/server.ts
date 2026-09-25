@@ -1,6 +1,6 @@
 // review/server.ts: `studio review`, a page for pinning notes on a render or still, on the Studio Lab's stack. esbuild
 // bundles lab/review/app (rebuilding on save); this server hands out that bundle, the reviewed file and review.json,
-// the file's context read fresh from the artifacts its project already has (lib/review-notes.ts says which), and
+// the file's context read fresh from its own snapshot and the project's cue list (lib/review-notes.ts says which), and
 // takes the page's one write: its notes, to review/notes-<render>.json, which an agent reads without the paste.
 //
 // A render is re-rendered over its own path, so the path alone doesn't say what was reviewed. Each file is stamped
@@ -9,7 +9,6 @@
 //
 // Negative space: nothing here renders, measures or regenerates an artifact. A missing one is named in `missing`, so
 // the page can say which note fields it can't fill and the command that would.
-import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -17,10 +16,10 @@ import { basename, dirname, extname, join, relative, resolve, sep } from 'node:p
 import { readSfxCueList } from '../../lib/sfx/cue-module.ts';
 import { sfxCuePlays } from '../../lib/sfx/cues.ts';
 import { H, W } from '../../lib/studio/frame.ts';
-import type { TimelineReport } from '../../lib/studio/Video.tsx';
 import type { MotionTracks } from '../../lib/motion-tracks.ts';
 import { REVIEW_NOTES_VERSION, reviewFrameAt, type ReviewMediaKind, type ReviewNote, type ReviewNotesFile, type ReviewRenderStamp, type ReviewScene, type ReviewSoundMarker, type ReviewStillCell, type ReviewStillCellsFile } from '../../lib/review-notes.ts';
 import { resolveStudioProject, STUDIO_ROOT } from '../../lib/engine/project/studio-project.ts';
+import { loadRenderSnapshot, renderFileStamp } from '../../lib/engine/snapshot/render-snapshot.ts';
 import { watchLabPage } from '../../lib/engine/bundle/lab-bundle.ts';
 import { sendFile } from '../server.ts';
 
@@ -45,9 +44,14 @@ export type ReviewManifest = ReviewRenderStatus & {
   title: string;
   /** `url` holds `render.hash`: once the file changes it stops serving rather than hand the page the new bytes. */
   media: { url: string; path: string; kind: ReviewMediaKind };
-  /** The project's fps and frame count from its timeline; the page falls back to 30 fps and the file's length. */
+  /** The render's fps and frame count from its snapshot; the page falls back to 30 fps and the file's length. */
   fps: number | null;
   durationInFrames: number | null;
+  /**
+   * The video's frame that the render's first frame is: past 0 for a slice (`studio render --frames`). Scenes, sounds
+   * and note frames are on the render's own clock, from its first frame.
+   */
+  startsAt: number | null;
   frameSize: { w: number; h: number };
   scenes?: ReviewScene[];
   sounds?: ReviewSoundMarker[];
@@ -100,24 +104,12 @@ export function listReviewRenders(project: string): { file: string; modified: Da
   }).sort((a, b) => b.modified.getTime() - a.modified.getTime());
 }
 
-const renderStamps = new Map<string, { key: string; stamp: ReviewRenderStamp }>();
-/** The file's hash and mtime. Hashed again only when its mtime or size moves, so polling it costs a stat. */
-export function reviewRenderStamp(file: string): ReviewRenderStamp {
-  const { mtime, mtimeMs, size } = statSync(file);
-  const key = `${mtimeMs}:${size}`;
-  const cached = renderStamps.get(file);
-  if (cached?.key === key) return cached.stamp;
-  const stamp = { hash: createHash('sha256').update(readFileSync(file)).digest('hex').slice(0, 10), modified: mtime.toISOString() };
-  renderStamps.set(file, { key, stamp });
-  return stamp;
-}
-
 function reviewRenderStatus(target: ReviewTarget): ReviewRenderStatus {
   const listed = target.project ? listReviewRenders(target.project) : [];
   // A file named outside out/ and out/wip/ is still offered, so the list always holds what's on screen.
   if (target.kind === 'video' && !listed.some((r) => r.file === target.media)) listed.push({ file: target.media, modified: statSync(target.media).mtime });
   return {
-    render: reviewRenderStamp(target.media),
+    render: renderFileStamp(target.media),
     renders: listed.sort((a, b) => b.modified.getTime() - a.modified.getTime())
       .map(({ file, modified }) => ({ path: fromRoot(file), name: relative(target.project ?? dirname(file), file), modified: modified.toISOString() })),
   };
@@ -141,7 +133,7 @@ export function buildReviewManifest(target: ReviewTarget): ReviewManifest {
     ...status,
     title: basename(media),
     media: { url: `/media${extname(media).toLowerCase()}?${new URLSearchParams({ media: fromRoot(media), render: status.render.hash })}`, path: fromRoot(media), kind },
-    fps: null, durationInFrames: null, frameSize: { w: W, h: H }, missing: [], notes: saved?.notes ?? [], notesPath: fromRoot(notesFile),
+    fps: null, durationInFrames: null, startsAt: null, frameSize: { w: W, h: H }, missing: [], notes: saved?.notes ?? [], notesPath: fromRoot(notesFile),
   };
   if (kind === 'still') {
     const cells = readJson<ReviewStillCellsFile>(media.slice(0, -extname(media).length) + '.cells.json');
@@ -150,32 +142,37 @@ export function buildReviewManifest(target: ReviewTarget): ReviewManifest {
   }
   if (!project) return manifest;
 
-  const timeline = readJson<TimelineReport>(join(project, 'out', 'check', 'timeline.json'));
+  // The render's own snapshot, never out/check: that's the latest check's, and this render may be from before it.
+  const loaded = loadRenderSnapshot(media);
+  const snapshot = loaded.kind === 'snapshot' ? loaded.snapshot : undefined;
   const cueList = readSfxCueList(project);
-  const motion = readJson<MotionTracks>(join(project, 'out', 'check', 'motion.json'));
-  const check = `studio check ${basename(project)}`;
-  if (timeline) {
+  if (loaded.kind === 'none') manifest.missing.push(`timeline for this render (scenes, sounds, what's under a point): ${loaded.reason}`);
+  const fps = snapshot?.timeline.fps ?? 30;
+  // Seconds and frames of the video, moved onto the render's clock: a slice starts `from` frames in.
+  const from = snapshot?.frames.from ?? 0, end = snapshot?.frames.end ?? Infinity;
+  const shift = from / fps, holds = (at: number) => at >= shift && at < end / fps;
+  if (snapshot) {
+    const { timeline } = snapshot;
     manifest.title = timeline.title;
-    manifest.fps = timeline.fps;
-    manifest.durationInFrames = timeline.durationInFrames;
-    manifest.scenes = timeline.scenes.map(({ id, start, dur }) => {
-      const from = timeline.crossfades.find((c) => c.to === id)?.start ?? start;
-      const to = timeline.crossfades.find((c) => c.from === id)?.end ?? start + dur;
-      return { id, start: from, dur: to - from };
+    manifest.fps = fps;
+    manifest.durationInFrames = snapshot.frames.end - from;
+    manifest.startsAt = from;
+    manifest.scenes = timeline.scenes.flatMap(({ id, start, dur }) => {
+      const first = Math.max(timeline.crossfades.find((c) => c.to === id)?.start ?? start, shift);
+      const last = Math.min(timeline.crossfades.find((c) => c.from === id)?.end ?? start + dur, end / fps);
+      // Under half a frame is a scene that only touches the slice's edge.
+      return last - first > 0.5 / fps ? [{ id, start: first - shift, dur: last - first }] : [];
     });
-  } else manifest.missing.push(`out/check/timeline.json (scenes, the video's sounds): ${check}`);
-  // A timeline from before it listed sounds says nothing about them, which isn't the same as having none.
-  if (timeline && !timeline.sounds) manifest.missing.push(`the video's sounds in out/check/timeline.json, which predates them: ${check}`);
-  const fps = manifest.fps ?? 30;
-  if (timeline?.sounds || cueList) {
-    manifest.sounds = [
-      ...(timeline?.sounds ?? []).map((s) => ({ ...s, frame: reviewFrameAt(s.at, fps), source: 'video' as const })),
-      ...(cueList ? sfxCuePlays(cueList) : []).map((c) => ({ id: c.id, at: c.at, frame: reviewFrameAt(c.at, fps), sound: c.sound.sound, source: 'cue-list' as const })),
-    ].sort((a, b) => a.at - b.at);
+    if (snapshot.motion) manifest.motion = snapshot.motion;
+    else manifest.missing.push(`motion for what's under a point: only a delivered render (studio render) measures it`);
   }
-  if (cueList && timeline) manifest.cueListPlayed = timeline.sfxCueList;
-  if (motion) manifest.motion = motion;
-  else manifest.missing.push(`out/check/motion.json (what's under a point): ${check}`);
+  if (snapshot || cueList) {
+    manifest.sounds = [
+      ...(snapshot?.timeline.sounds ?? []).map((s) => ({ ...s, source: 'video' as const })),
+      ...(cueList ? sfxCuePlays(cueList) : []).map((c) => ({ id: c.id, at: c.at, sound: c.sound.sound, source: 'cue-list' as const })),
+    ].filter((s) => holds(s.at)).map((s) => ({ ...s, at: s.at - shift, frame: reviewFrameAt(s.at - shift, fps) })).sort((a, b) => a.at - b.at);
+  }
+  if (cueList && snapshot) manifest.cueListPlayed = snapshot.timeline.sfxCueList;
   return manifest;
 }
 
@@ -207,7 +204,7 @@ export async function startStudioReview({ target, port }: { target: ReviewTarget
       if (path.startsWith('/media.')) {
         const shown = targetFor(url.searchParams.get('media'));
         // The render the page loaded, or nothing: its buffered frames stay the old render's, never a splice of two.
-        if (reviewRenderStamp(shown.media).hash !== url.searchParams.get('render')) return void res.writeHead(410, { 'content-type': 'text/plain' }).end('replaced on disk since the page loaded it');
+        if (renderFileStamp(shown.media).hash !== url.searchParams.get('render')) return void res.writeHead(410, { 'content-type': 'text/plain' }).end('replaced on disk since the page loaded it');
         return sendFile(req, res, shown.media, MEDIA_TYPES[extname(shown.media).toLowerCase()].type);
       }
       if (path === '/api/notes') {

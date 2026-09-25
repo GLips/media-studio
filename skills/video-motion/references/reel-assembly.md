@@ -76,8 +76,8 @@ frame. Several builders editing bars at once can't break each other's renders th
    beat grid, and its motion-energy plot should never sit at zero. Then give it to a critic who didn't build it, with
    `reel-critique.md` as the brief.
 7. The motion showcase's `tools/` are the checks a whole reel reruns after each round of fixes; copy them for a new
-   reel. `render-bars.ts` renders the bars a change touched, straight from the reel. `integrate.sh` joins the bars
-   under the mix and measures the cut: each sound against the music, where each slam's sound lands, each beat's
+   reel. `integrate.sh 3 5` re-renders the bars a change touched (`studio render --frames`), joins every bar under the
+   mix (`studio render --join`, which refuses a bar rendered on an older timeline) and measures the cut: each sound against the music, where each slam's sound lands, each beat's
    attack, the still runs and every beat frame's luma, and the HUD's legibility on every frame. `studio look <project>
    --video <after.mp4> --against <before.mp4> --bar=N --crop=…` tells which frames and regions a change moved, and
    `--motion --bar=N` where a bar stops moving.

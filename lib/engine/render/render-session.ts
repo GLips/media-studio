@@ -2,13 +2,21 @@
 //
 // Each session bundles just its own project (see project-bundle.ts), so another project's missing captures can't
 // break it.
+//
+// renderVideo is the one way the composition reaches a video file, and it writes the render's snapshot beside it
+// (lib/engine/snapshot/render-snapshot.ts): a render made any other way would be a file nothing can say the timeline of.
+// A video joined from its slices (render-pipeline.ts's joinVideoSlices) writes one too.
+// Stills and frame files write none: they're working images a command reads, not renders anyone reviews.
 import { renderFrames, renderMedia, selectComposition, type OnArtifact, type RenderFramesOptions, type RenderMediaOptions } from '@remotion/renderer';
-import { mkdtempSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { availableParallelism, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { VideoConfig } from 'remotion';
 import { projectSlug, replaySlug } from '../bundle/project-bundle.ts';
 import { bundleStudioProject } from '../bundle/studio-bundle.ts';
+import { runFfmpeg } from '../ffmpeg/ffmpeg.ts';
+import { writeRenderSnapshot, type RenderSnapshot } from '../snapshot/render-snapshot.ts';
+import type { MotionTracks } from '../../motion-tracks.ts';
 import { W } from '../../studio/frame.ts';
 import type { ReplayProps } from '../../studio/Root.tsx';
 import type { TimelineReport, VideoProps } from '../../studio/Video.tsx';
@@ -17,6 +25,18 @@ export type RenderSession = Awaited<ReturnType<typeof openRenderSession>>;
 
 /** What a session fills in on every render: its own bundle, composition, browser and tab count. */
 type SessionRenderOptions = 'composition' | 'serveUrl' | 'chromiumOptions' | 'inputProps' | 'concurrency';
+
+/** What renderVideo decides itself: the codec, the file, the frames and the sound. */
+type VideoRenderOptions = SessionRenderOptions | 'codec' | 'outputLocation' | 'frameRange' | 'muted' | 'audioCodec';
+
+/**
+ * The timeline report's file name: the artifact frame 0 emits (Video.tsx's TIMELINE_ARTIFACT, which Node can't load
+ * from a .tsx), and the check's report in out/check/.
+ */
+export const TIMELINE_REPORT_NAME = 'timeline.json';
+
+/** The delivered soundtrack's codec: a mastered mix is muxed with it, and checked through the same encode. */
+export const DELIVERY_AUDIO_CODEC = ['-c:a', 'aac', '-b:a', '192k'] as const;
 
 /**
  * Every render's browser runs on the GPU. Painted layers (lib/paint) draw with WebGL, which Remotion's default
@@ -72,16 +92,38 @@ export async function openRenderSession(project: string) {
       composition: await compositionFor(inputProps), serveUrl, chromiumOptions: RENDER_CHROMIUM, inputProps, outputDir: mkdtempSync(join(tmpdir(), 'timeline-')), concurrency: RENDER_CONCURRENCY,
       imageFormat: 'none', frames: [0], onArtifact: sink.onArtifact, onStart: () => {}, onFrameUpdate: () => {},
     });
-    return sink.json<TimelineReport>('timeline.json');
+    return sink.json<TimelineReport>(TIMELINE_REPORT_NAME);
   }
 
-  /** The video, or a frame range of it, as one file: Remotion's own options for the codec and range. */
-  async function renderVideo(options: Omit<RenderMediaOptions, SessionRenderOptions> & { inputProps?: VideoProps }) {
-    const inputProps = options.inputProps ?? props();
+  /**
+   * The video, or `frames` of it, as an H.264 file at `out`, with its snapshot beside it. Its sound is the
+   * composition's, none (`muted`), or a `soundtrack` wav muxed in its place. The snapshot holds `timeline` (read from
+   * the composition when not given) and `motion` when the caller measured it.
+   */
+  async function renderVideo({ out, frames, muted = false, soundtrack, timeline, motion, inputProps = props(), ...options }: Omit<RenderMediaOptions, VideoRenderOptions> & {
+    out: string; frames?: RenderSnapshot['frames']; muted?: boolean; soundtrack?: string; timeline?: TimelineReport; motion?: MotionTracks; inputProps?: VideoProps;
+  }): Promise<string> {
+    const composition = await compositionFor(inputProps);
+    const tmp = soundtrack ? mkdtempSync(join(tmpdir(), 'video-')) : undefined;
     await renderMedia({
       onProgress: () => {}, ...options,
-      composition: await compositionFor(inputProps), serveUrl, chromiumOptions: RENDER_CHROMIUM, concurrency: RENDER_CONCURRENCY, inputProps,
+      composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, concurrency: RENDER_CONCURRENCY, inputProps, codec: 'h264',
+      outputLocation: tmp ? join(tmp, 'silent.mp4') : out, muted: muted || Boolean(soundtrack), ...(frames && { frameRange: [frames.from, frames.end - 1] }),
     });
+    if (tmp) {
+      runFfmpeg(['-y', '-v', 'error', '-i', join(tmp, 'silent.mp4'), '-i', soundtrack!, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', ...DELIVERY_AUDIO_CODEC, '-movflags', '+faststart', out]);
+      rmSync(tmp, { recursive: true, force: true });
+    }
+    writeRenderSnapshot(out, { frames: frames ?? { from: 0, end: composition.durationInFrames }, timeline: timeline ?? await readTimeline(), motion });
+    return out;
+  }
+
+  /** The video's sound alone, as an uncompressed wav at `out`. */
+  async function renderAudio({ out, inputProps = props() }: { out: string; inputProps?: VideoProps }): Promise<string> {
+    await renderMedia({
+      composition: await compositionFor(inputProps), serveUrl, chromiumOptions: RENDER_CHROMIUM, concurrency: RENDER_CONCURRENCY, inputProps, codec: 'wav', outputLocation: out,
+    });
+    return out;
   }
 
   /** The video's frames as image files in `outputDir`, named by Remotion's `imageSequencePattern`. */
@@ -93,7 +135,7 @@ export async function openRenderSession(project: string) {
     });
   }
 
-  return { project, serveUrl, props, compositionFor, renderStills, renderReplay, readTimeline, renderVideo, renderFrameFiles };
+  return { project, serveUrl, props, compositionFor, renderStills, renderReplay, readTimeline, renderVideo, renderAudio, renderFrameFiles };
 }
 
 /** Collects the artifacts a render emits, by name. */

@@ -10,8 +10,8 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { readSfxCueList } from '../lib/sfx/cue-module.ts';
 import type { SfxCueList } from '../lib/sfx/cues.ts';
-import type { TimelineReport } from '../lib/studio/Video.tsx';
 import { STUDIO_PROJECTS_DIR, STUDIO_ROOT } from '../lib/engine/project/studio-project.ts';
+import { loadRenderSnapshot } from '../lib/engine/snapshot/render-snapshot.ts';
 import type { SpokenWord } from '../lib/voice-words.ts';
 
 const SCRATCH_DIR = join(STUDIO_ROOT, 'scratch');
@@ -188,12 +188,16 @@ export type LabSfxCuePayload = {
 export const labSfxCueRevision = (project: string) =>
   createHash('sha256').update(readFileSync(join(project, 'sfx', 'cues.json'))).digest('hex').slice(0, 16);
 
-/** A project's cue list as the editor loads it, or null when the project has none. */
+/**
+ * A project's cue list as the editor loads it, or null when the project has none. Its words and scenes are the
+ * rendered video's, from its snapshot, so they line up with the video it plays under the list.
+ */
 export function readLabSfxCuePayload(project: string, media: LabMediaRegister): LabSfxCuePayload | null {
   const list = existsSync(project) ? readSfxCueList(project) : null;
   if (!list) return null;
-  const timelinePath = join(project, 'out', 'check', 'timeline.json');
-  const timeline = existsSync(timelinePath) ? readJson<TimelineReport>(timelinePath) : null;
+  const rendered = join(project, 'out', 'video.mp4');
+  const loaded = existsSync(rendered) ? loadRenderSnapshot(rendered) : null;
+  const timeline = loaded?.kind === 'snapshot' ? loaded.snapshot.timeline : null;
   const lastCue = Math.max(0, ...list.cues.map((c) => c.event.at));
   return {
     project: relative(STUDIO_PROJECTS_DIR, project),
@@ -201,7 +205,7 @@ export function readLabSfxCuePayload(project: string, media: LabMediaRegister): 
     words: timeline?.cues.flatMap((c) => c.words) ?? [],
     scenes: timeline?.scenes.map((s) => ({ id: s.id, start: s.start, end: s.start + s.dur })) ?? [],
     duration: timeline?.duration ?? lastCue + 2,
-    video: media(join(project, 'out', 'video.mp4')),
+    video: media(rendered),
     revision: labSfxCueRevision(project),
   };
 }

@@ -117,7 +117,7 @@ async function renderSoundtrack(dir: string, master: boolean): Promise<{ raw: st
   if (composition.durationInFrames !== frames) throw new Error(`${dir} lays out ${composition.durationInFrames} frames, not the reel's ${frames}`);
   const raw = join(dir, 'out/raw.wav');
   mkdirSync(join(dir, 'out'), { recursive: true });
-  await session.renderVideo({ inputProps, codec: 'wav', outputLocation: raw });
+  await session.renderAudio({ inputProps, out: raw });
   return { raw, mastered: master ? await renderMasteredMix(session) : undefined };
 }
 

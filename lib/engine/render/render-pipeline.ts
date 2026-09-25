@@ -3,23 +3,24 @@
 //
 // Progress goes to stderr; each function returns what it made, for the command to print on stdout.
 import { serializeSrt } from '@remotion/captions';
-import { renderFrames, renderMedia } from '@remotion/renderer';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { renderFrames } from '@remotion/renderer';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import { rasterizeSvgs } from '../capture/html-raster.ts';
 import { framingArtifactName, framingProblems, takeFitWarnings, type FramingReport } from '../../framing-check.ts';
 import { holdProblems } from '../../hold-check.ts';
 import { buildMotionGraph, motionGraphBackdropFrame, type MotionGraphSpace } from '../../motion-graph.ts';
 import { assembleMotionTracks, formatMotionReport, motionArtifactName, type FrameMotion, type MotionTracks } from '../../motion-tracks.ts';
 import { measureLoudness } from '../ffmpeg/loudness.ts';
-import { artifactSink, RENDER_CHROMIUM, RENDER_CONCURRENCY, type RenderSession } from './render-session.ts';
+import { artifactSink, DELIVERY_AUDIO_CODEC, RENDER_CHROMIUM, RENDER_CONCURRENCY, TIMELINE_REPORT_NAME, type RenderSession } from './render-session.ts';
+import { loadRenderSnapshot, writeRenderSnapshot } from '../snapshot/render-snapshot.ts';
 import { sfxEventsFrom, sfxMarkArtifactName, type SfxEvent, type SfxMark } from '../../sfx/cue-events.ts';
 import { sfxCueListReport } from '../../sfx/project-cue-list.ts';
 import { W } from '../../studio/frame.ts';
 import { isVoicedWithDraft } from '../voice/voice-project.ts';
 import type { TimelineReport } from '../../studio/Video.tsx';
-import { measureWithFfmpeg, runFfmpeg, runFfprobe } from '../ffmpeg/ffmpeg.ts';
+import { countVideoFrames, measureWithFfmpeg, runFfmpeg, runFfprobe } from '../ffmpeg/ffmpeg.ts';
 
 const outDirFor = (session: RenderSession) => join(session.project, 'out');
 const videoFor = (session: RenderSession, captions: boolean) => join(outDirFor(session), captions ? 'video.mp4' : 'video-plain.mp4');
@@ -68,7 +69,7 @@ export async function checkProject(session: RenderSession, scope: CheckScope = {
   });
   // Frame 0 carries the timeline, which says where a scene is.
   await measure([0]);
-  const timeline = sink.json<TimelineReport>('timeline.json');
+  const timeline = sink.json<TimelineReport>(TIMELINE_REPORT_NAME);
   const span = checkedFrames(timeline, scope);
   const frames = Array.from({ length: span.last - span.first + 1 }, (_, i) => span.first + i);
   await measure(frames.filter((f) => f !== 0));
@@ -102,15 +103,15 @@ export async function checkProject(session: RenderSession, scope: CheckScope = {
 
 /**
  * Writes out/check/timeline.json (when each scene, line and word lands, and where scenes crossfade, for aiming sheets
- * and strips) and the motion tracks, so reviewing them needs no render: out/check/motion.json for the whole video, and
- * a scoped check's beside it (motion-<scene>.json, motion-<from>-<to>.json), so it never replaces the whole one.
- * Returns both paths.
+ * and strips) and the motion tracks: out/check/motion.json for the whole video, and a scoped check's beside it
+ * (motion-<scene>.json, motion-<from>-<to>.json), so it never replaces the whole one. Returns both paths. They're the
+ * latest check's, for reading now; a render's own timeline and motion are in its snapshot.
  */
 export function writeCheckReports(session: RenderSession, { timeline, motion }: Pick<ProjectCheck, 'timeline' | 'motion'>, { scene, at }: CheckScope = {}): string[] {
   const dir = join(outDirFor(session), 'check');
   mkdirSync(dir, { recursive: true });
   const scope = [scene, at && at.join('-')].filter(Boolean).join('-');
-  const files = [[join(dir, 'timeline.json'), JSON.stringify(timeline, null, 2)], [join(dir, scope ? `motion-${scope}.json` : 'motion.json'), JSON.stringify(motion)]] as const;
+  const files = [[join(dir, TIMELINE_REPORT_NAME), JSON.stringify(timeline, null, 2)], [join(dir, scope ? `motion-${scope}.json` : 'motion.json'), JSON.stringify(motion)]] as const;
   for (const [file, content] of files) writeFileSync(file, content);
   return files.map(([file]) => file);
 }
@@ -154,8 +155,6 @@ export async function renderMotionGraph(session: RenderSession, { at, tracks, sp
 // Delivery loudness, as YouTube and most players normalise to. Mastering limits 1 dB under the true-peak ceiling the
 // delivery check holds it to, because AAC encoding adds overshoot.
 const DELIVERY_LUFS = -14, DELIVERY_TRUE_PEAK = -1, MASTER_TRUE_PEAK = -2;
-/** The delivered soundtrack's codec: the master is checked through the same encode the video's mux does. */
-const DELIVERY_AUDIO_CODEC = ['-c:a', 'aac', '-b:a', '192k'];
 
 /**
  * Renders the soundtrack once, uncompressed, and masters it to out/mix.wav: one gain to delivery loudness, then a
@@ -164,13 +163,9 @@ const DELIVERY_AUDIO_CODEC = ['-c:a', 'aac', '-b:a', '192k'];
  * out/mix-sfx-cues.wav, to audition it beside the video's mix.
  */
 export async function renderMasteredMix(session: RenderSession, { auditionSfxCueList = false }: { auditionSfxCueList?: boolean } = {}): Promise<string> {
-  const { serveUrl, props, compositionFor } = session;
   const masterWav = masterWavFor(session, auditionSfxCueList);
-  const inputProps = props({ auditionSfxCueList });
-  const composition = await compositionFor(inputProps);
   const tmp = mkdtempSync(join(tmpdir(), 'mix-'));
-  const raw = join(tmp, 'raw.wav');
-  await renderMedia({ composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, concurrency: RENDER_CONCURRENCY, inputProps, codec: 'wav', outputLocation: raw });
+  const raw = await session.renderAudio({ out: join(tmp, 'raw.wav'), inputProps: session.props({ auditionSfxCueList }) });
   mkdirSync(outDirFor(session), { recursive: true });
   const before = measureLoudness(raw);
   // Limiting at 4× the sample rate catches the peaks between samples too, which is what "true peak" counts.
@@ -198,25 +193,23 @@ export async function renderMasteredMix(session: RenderSession, { auditionSfxCue
 
 // ---------- the videos ----------
 
-async function renderVideo(session: RenderSession, captions: boolean) {
-  const { serveUrl, props, compositionFor } = session;
-  const inputProps = props({ captions });
-  const composition = await compositionFor(inputProps);
-  const out = videoFor(session, captions);
-  const tmp = mkdtempSync(join(tmpdir(), 'video-'));
-  const silent = join(tmp, 'silent.mp4');
+/** A render's progress on stderr, every tenth. */
+function renderProgress(out: string) {
   let shown = -1;
+  return ({ progress }: { progress: number }) => {
+    const pct = Math.floor(progress * 10) * 10;
+    if (pct !== shown) { shown = pct; console.error(`  ${out}: ${pct}%`); }
+  };
+}
+
+/** The delivered video, under the mastered mix, its snapshot carrying the check's timeline and motion. */
+async function renderVideo(session: RenderSession, captions: boolean, { timeline, motion }: Pick<ProjectCheck, 'timeline' | 'motion'>) {
+  const out = videoFor(session, captions);
   const started = Date.now();
-  await renderMedia({
-    composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, concurrency: RENDER_CONCURRENCY, inputProps, codec: 'h264', outputLocation: silent, muted: true,
-    crf: 18, x264Preset: 'slow', pixelFormat: 'yuv420p', imageFormat: 'jpeg', jpegQuality: 94,
-    onProgress: ({ progress }) => {
-      const pct = Math.floor(progress * 10) * 10;
-      if (pct !== shown) { shown = pct; console.error(`  ${out}: ${pct}%`); }
-    },
+  await session.renderVideo({
+    out, inputProps: session.props({ captions }), soundtrack: masterWavFor(session), timeline, motion,
+    crf: 18, x264Preset: 'slow', pixelFormat: 'yuv420p', imageFormat: 'jpeg', jpegQuality: 94, onProgress: renderProgress(out),
   });
-  runFfmpeg(['-y', '-v', 'error', '-i', silent, '-i', masterWavFor(session), '-map', '0:v', '-map', '1:a', '-c:v', 'copy', ...DELIVERY_AUDIO_CODEC, '-movflags', '+faststart', out]);
-  rmSync(tmp, { recursive: true, force: true });
   console.error(`rendered ${out} in ${((Date.now() - started) / 1000).toFixed(0)}s`);
 }
 
@@ -298,7 +291,7 @@ export async function renderDeliveredVideo(session: RenderSession, { plain }: { 
   if (!plain) rmSync(videoFor(session, false), { force: true });
   const variants = plain ? [true, false] : [true];
   for (const captions of variants) {
-    await renderVideo(session, captions);
+    await renderVideo(session, captions, check);
     reviewDelivery(session, captions, timeline);
   }
   const srt = join(outDirFor(session), 'video.srt');
@@ -307,6 +300,63 @@ export async function renderDeliveredVideo(session: RenderSession, { plain }: { 
   // Again at the end, where it can't scroll away under the render's progress.
   if (draft) console.error(draftVoiceWarning(session));
   return delivered;
+}
+
+// ---------- slices ----------
+
+/**
+ * Frames `from`–`end` (exclusive) of the video, silent, at `out`: to re-render just the part a change touched. No
+ * framing check and no mix; its snapshot records where in the video it starts.
+ */
+export async function renderVideoSlice(session: RenderSession, { from, end, out }: { from: number; end: number; out: string }): Promise<string> {
+  const timeline = await session.readTimeline();
+  if (!(Number.isInteger(from) && Number.isInteger(end) && from >= 0 && end > from && end <= timeline.durationInFrames)) {
+    throw new Error(`frames ${from}–${end - 1} aren't within the video's 0–${timeline.durationInFrames - 1}`);
+  }
+  mkdirSync(dirname(out), { recursive: true });
+  return session.renderVideo({ out, frames: { from, end }, muted: true, timeline, crf: 20, onProgress: renderProgress(out) });
+}
+
+/**
+ * Joins the slices in `dir` (renderVideoSlice's, one file each) into the whole video at `out`, under a fresh mastered
+ * mix, so the placed sounds play across the joins. Refuses a slice rendered on another timeline than the video's now,
+ * a gap or an overlap between slices, or a file short of the frames its snapshot says it holds: each would put every
+ * later frame off its sound.
+ */
+export async function joinVideoSlices(session: RenderSession, { dir, out }: { dir: string; out: string }): Promise<string> {
+  const timeline = await session.readTimeline();
+  const now = JSON.stringify(timeline);
+  const slices = readdirSync(dir).filter((name) => extname(name) === '.mp4').map((name) => {
+    const file = join(dir, name);
+    const loaded = loadRenderSnapshot(file);
+    if (loaded.kind === 'none') throw new Error(loaded.reason);
+    const { frames } = loaded.snapshot;
+    if (JSON.stringify(loaded.snapshot.timeline) !== now) throw new Error(`${name} (frames ${frames.from}–${frames.end - 1}) was rendered on another timeline than the video's now (a retime moves every later bar and cue): render it again`);
+    const counted = countVideoFrames(file);
+    if (counted !== frames.end - frames.from) throw new Error(`${name} holds ${counted} frames, and its snapshot says ${frames.end - frames.from}`);
+    return { file, ...frames };
+  }).sort((a, b) => a.from - b.from);
+  let reached = 0;
+  for (const s of slices) {
+    if (s.from !== reached) throw new Error(`${basename(s.file)} starts at frame ${s.from}, but the slices before it reach ${reached}: ${s.from > reached ? 'render the gap' : 'they overlap'}`);
+    reached = s.end;
+  }
+  if (reached !== timeline.durationInFrames) throw new Error(`the slices in ${dir} reach frame ${reached}, short of the video's ${timeline.durationInFrames}`);
+
+  const mix = await renderMasteredMix(session);
+  const tmp = mkdtempSync(join(tmpdir(), 'join-'));
+  const list = join(tmp, 'slices.txt');
+  writeFileSync(list, slices.map((s) => `file '${s.file.replaceAll("'", "'\\''")}'`).join('\n'));
+  mkdirSync(dirname(out), { recursive: true });
+  // The mix is padded past the picture and cut half a frame after it, so the last frame keeps its sound.
+  runFfmpeg(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-i', mix, '-map', '0:v', '-map', '1:a',
+    '-c:v', 'libx264', '-crf', '16', '-preset', 'medium', '-pix_fmt', 'yuv420p', ...DELIVERY_AUDIO_CODEC, '-af', 'apad',
+    '-t', String((timeline.durationInFrames + 0.5) / timeline.fps), '-movflags', '+faststart', out]);
+  rmSync(tmp, { recursive: true, force: true });
+  const counted = countVideoFrames(out);
+  if (counted !== timeline.durationInFrames) throw new Error(`${out} holds ${counted} frames, not the video's ${timeline.durationInFrames}`);
+  writeRenderSnapshot(out, { frames: { from: 0, end: timeline.durationInFrames }, timeline });
+  return out;
 }
 
 // ---------- repeatability ----------
