@@ -41,7 +41,7 @@ Facts are measured at `7411013` (after vid-23's `f3115a5`). vid-43 refreshes the
 ```
 lib/
   models/              Loads in plain Node, with no DOM, rendering or I/O. Subfolders only, e.g.:
-    timeline/          bar clock, cues, speech cues, landmarks, local-clock resolution
+    timeline/          defineTimeline, its drivers, cues, speech cues, landmarks, local-clock resolution
     motion/            easing, springs, motion graph
     reel/              each reel piece's model (pose, plan, layout): bouncingBallAt, needlePoseAt, reelHudBoxes …
   studio/              Render: React, Remotion, three, p5. Subfolders only, plus:
@@ -53,8 +53,8 @@ cli/                   citty commands over engine
 lab/                   server (→ engine, models) and app (→ studio, models)
 brands/<kit>/brand.ts  a brand kit
 projects/<p>/
-  timeline.ts          schedule declarations ONLY: bar table, cues, speech cues, landmarks. Imports #models/*, never #studio
-  video.tsx            composition: binds scenes to the timeline
+  timeline.ts          schedule declarations ONLY: defineTimeline's scenes, cues, landmarks, replays. Imports #models/*, never #studio
+  video.tsx            composition: bindTimeline maps each scene to its component
   stills.tsx           still designs, presets, variants
   brand.ts             the project's brand overrides
   capture.ts           shots, through #engine/capture
@@ -100,19 +100,39 @@ DENIED: project → another project · tracked file → scratch/ · shared modul
 
 ## 3. The timing contract
 
-vid-41 builds it, starting from the showcase's `timeline.ts` and `tools/bar-clock.ts`. That form is proven: its conversion rendered pixel-identical, and its retime was one table edit plus a music re-fit.
+vid-41 (41a) builds it, starting from the showcase's `timeline.ts` and `tools/bar-clock.ts`, whose conversion rendered pixel-identical. vid-41b adds the real voice driver. Settled with Graham and Codex (session `01a0da9d-8dea-75d3-97ea-70ff27429c1f`).
 
-**The timeline declares:**
-- **Music-led:** a bar table of `{ beats, cutIn? }` on the fitted track. There is no absolute-beat function, so a bar can't reach past its own start.
-- **Named cues, typed**, so a misspelt cue fails to compile. A scene reaches another scene's moment only through a cue (`ink.strike`), never another bar's beats.
-- **Voice-led:** speech cues `{ line, phrase, nth? }`, so a move meant to land on a word anchors to the word. That replaces offsets like sale-only-view's `landAt + 3.2` (14 of them in `video.tsx`).
-- **Landmarks**, checked at load against the music. The final hit at least, and at the current quantitative tolerance. A mismatch throws and names both fixes: re-fit with `studio music fit --bars`, or change the table.
+**One resolved timeline.** `defineTimeline` in `timeline.ts` lists scenes in order. Each scene has exactly one of three drivers, and only these three: a closed set, not a plug-in point.
+- **`beatSpan`**: a length in beats on a beat grid. The grid is backed by a fitted recording or is tempo-only, so rhythm doesn't need sound.
+- **`voiceSpan`**: lines plus lead, gap, tail and a minimum. The recorded speech sets the length.
+- **`fixedSpan`**: a length in seconds.
 
-**Scenes use resolved local clocks.** A scene gets its bar-local beats and its cues already resolved to frames on its own clock. Inside it, numeric animation is legal: spring durations, keyframe offsets, glyph clip keys.
+Resolution yields every scene's origin, nominal span and visible span, the audio placements, cues and landmarks. It is the one result the render, `studio clock` and the checks all read.
 
-**Moves.** A move is a start plus a duration, anchored at one end, not pinned between two bars' moments. Code alone can't tell a deliberate stretch from bar 3's old dive, so the retime runner holds this behaviourally (check (e)) and the motion skill teaches it.
+**One duration authority per scene.**
+- **Voice over a bed:** the voice sets the length. The bed is trimmed, looped or explicitly refit afterwards.
+- **A voiced line in a music scene:** placed inside its beats. If it overflows, resolution fails.
+- **Never silently:** speech is not stretched, the recording is not lengthened, and a voice scene can't push later music scenes off their beats.
+- **No `fixedSpan` inside a musical section.**
 
-`studio clock <project>` prints the resolved table as JSON for Python and shell tools, so no tool writes a frame of its own.
+**Units.**
+- `s.t` is in seconds.
+- Positions are authored in beats (music) or words (speech: `{ line, phrase, nth? }`, replacing offsets like sale-only-view's `landAt + 3.2`).
+- A frame duration is an explicit escape hatch, for two-frame flashes.
+- Frames are rounded once, at render.
+- Picture lead and sound lag are separate explicit offsets.
+
+**Cues** live under their owning scene in `timeline.ts`. Their qualified names (`ink.strike`) are inferred and typed, so a misspelt cue fails to compile. Cycles are rejected. A scene reaches another scene's moment only through a cue, never through another scene's beats or an exported `…Moments` object. Referencing a cue never changes a scene's duration.
+
+**Landmarks** are cue-to-recording constraints: the final hit at least, at the current tolerance. They stay pending until a recording is bound. A mismatch throws and names both fixes: re-fit with `studio music fit --bars`, or change the timeline.
+
+**Binding.** `bindTimeline(timeline, { ink: Ink, … })` in `video.tsx` maps exactly one component to each scene key and overrides no schedule. A finale that replays earlier scenes gets typed replay bindings, injected by `video.tsx`. The timeline declares the source cue, target cue and rate. Replay doesn't replay audio, and no scene imports a sibling.
+
+**Scenes use resolved local clocks.** A scene receives its beats, lines and cues already resolved on its own clock. A cue from another scene may land before 0 or after the scene's end. Origin, nominal cut and visible interval stay distinct, so `cutIn`, centred crossfades and a ring-out after the last beat all work. Inside a scene, numeric animation is legal: spring durations, keyframe offsets, glyph clip keys.
+
+**Moves.** A move is a start plus a duration, anchored at one end, not pinned between two scenes' moments. Code alone can't tell a deliberate stretch from bar 3's old dive, so the retime runner holds this behaviourally (check (e)) and the motion skill teaches it. `expect()` checks against resolved times. Previs retime still refuses to retime generated audio.
+
+`studio clock <project>` prints the resolved timeline as JSON for Python and shell tools, so no tool writes a frame of its own.
 
 ---
 
@@ -155,7 +175,7 @@ There is one declared tree, rooted at `.`.
 
 | Check | What it holds | Blocks |
 |---|---|---|
-| **(a) Timing ownership** | Timing constructors (bar clock, cues, speech cues, landmarks, `defineVideo`'s timing half) are imported only in `projects/<p>/timeline.ts` | yes |
+| **(a) Timing ownership** | Timing constructors (`defineTimeline`, its drivers, cues, speech cues, landmarks, replay declarations) are imported only in `projects/<p>/timeline.ts`. `bindTimeline` belongs to `video.tsx` and is not one | yes |
 | **(b) Scene ownership** | A scene's helpers live in `bars/<id>/` or `scenes/<id>/`. A declared shared module never imports back into a scene. An **unclassified helper** that a scene reaches fails the check. A project-specific `x-model.ts` may sit beside its scene; it gets both this check and (c), and isn't moved into `lib/` just to satisfy placement | yes |
 | **(c) Model purity** | A model (`lib/models/**`, and a project's `x-model.ts` and `timeline.ts`) loads in plain Node, its evaluator tests run against it, and a transitive scan finds no browser or I/O code. `timeline.ts` and models import `#models/*`, never `#studio` | yes |
 | **(d) No scratch** | No tracked text file refers to `scratch/`: code, shell, Markdown or config | yes |
@@ -233,12 +253,13 @@ A project declares one of four capabilities, and the capability-match check hold
 
 ## 9. Slices
 
-Each slice is ticket-sized and ends on an exit someone can verify. Order: vid-43 → vid-41 → the vid-38 slices and the lib split slices (in parallel, in separate worktrees) → the scaffold. The full pre-commit gate switches on with the scaffold, because by then every new project is compliant from its first commit.
+Each slice is ticket-sized and ends on an exit someone can verify. Order: vid-43 → vid-41 (then vid-41b) → the vid-38 slices and the lib split slices (in parallel, in separate worktrees) → the scaffold. The full pre-commit gate switches on with the scaffold, because by then every new project is compliant from its first commit.
 
 | Slice | Delivers | Exit |
 |---|---|---|
 | **vid-43 Groundwork** | `lint/` with the catalog machinery. The studio classifier with alias resolution before ownership, re-export edges and type-import erasure. Checks (a), (b), (c) and (d). An explicit baseline of today's violations, so existing code reports without blocking | `check:arch` runs over the whole tree and prints the baseline. Each check's spec includes an adversarial case, and a deliberate violation added to a non-baselined file fails. The test script finds `projects/**/*.test.ts` |
-| **vid-41 Timeline contract** | The bar clock, typed cues, speech cues and landmarks in `lib/models/timeline/`. Local clocks. `studio clock`. The shared retime runner, check (e). The showcase onto it, with `bar-clock.ts` deleted. The motion skill's section | The showcase renders pixel-identical before and after. The retime runner passes on a synthetic timeline with a bar lengthened, and the landmark check refuses the same edit on the real recording. The showcase leaves the baseline and blocks. Its tools read `studio clock` |
+| **vid-41 Timeline contract (41a)** | `defineTimeline` in `lib/models/timeline/`, with `beatSpan` and `fixedSpan`, owned cues, landmarks and local clocks. `bindTimeline` with replay bindings. `studio clock`. The shared retime runner, check (e), covering cue movement, move durations, replay alignment, audio placement and overlaps. A small voice adapter and a mixed fixture, proving the result fits voice. The new constructors added to check (a). The showcase onto it, with `bar-clock.ts` deleted. The motion skill's section | The showcase renders pixel-identical before and after. The retime runner passes on a synthetic or refitted timeline with a bar lengthened, and the landmark check refuses the same edit on the real recording. The showcase leaves the baseline and blocks. Its tools read `studio clock` |
+| **vid-41b Voice driver** | The real `voiceSpan`, with the adapter retired. Speech cues. sale-only-view onto them | sale-only-view's `landAt + …` offsets are gone, and its timing leaves the baseline. The mixed fixture runs on the real driver |
 | **vid-38a Frames in `studio look`** | `--frames`, `--video`, `--against` with a changed-pixel count, one decode per source, motion stats over a range or bar | Each deleted script's question (`render-diff.py`, `motion-stats.py`, the scratch sheet scripts) has a command answer, and those scripts are gone |
 | **vid-38b Reading models without a render** | `look --graph` reading a piece's exported model, plus a HUD clearance check from `reelHudBoxes` | Positions for the bounce, needle and bar 8's camera print from code with no render. Clearance reports a margin per frame |
 | **vid-38c Render slices and snapshots** | `studio render --frames=a:b` with a kept bundle. Check (f): the snapshot writer on every render path (a partial render records its frame origin) and one loader, with review and lab moved onto it. The "to know X, run Y" index | `render-bars.ts` is deleted. No reader of `out/check/timeline.json` is left for a render. A review opened on an old render reads that render's own snapshot |
@@ -247,7 +268,7 @@ Each slice is ticket-sized and ends on an exit someone can verify. Order: vid-43
 | **Lib split 3: `engine/` and containment** | `lib/engine/{render,bundle,capture,ffmpeg,…}` and the four SDK owners; the top-level `lib/*.ts` redistributed; project captures on `#engine/capture` | `sdk-containment` passes with no baseline entries, and no `.ts` file is left directly in `lib/` |
 | **Scaffold** | `studio new` for music-led, voice-led, still-only and mixed. The capability-match check. The generate-and-check test. The full pre-commit gate | The test generates each kind in a temporary workspace and passes `check:arch`, `typecheck` and its tests unrepaired. The gate goes red on a deliberate violation |
 
-**Migrating the other projects** (sale-only-view onto speech cues, the voice projects' timing into `timeline.ts`, the oversized files that remain) is not in these slices. Each project leaves the baseline in its own ticket, once the contract it needs exists.
+**Migrating the other projects** (the other voice projects' timing into `timeline.ts`, the oversized files that remain) is not in these slices. Each project leaves the baseline in its own ticket, once the contract it needs exists.
 
 ## Open questions
 
