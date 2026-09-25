@@ -11,8 +11,8 @@
 
 import { execFileSync } from 'node:child_process';
 import { builtinModules } from 'node:module';
-import { posix } from 'node:path';
 import { parseSync } from 'oxc-parser';
+import { expandStudioAlias, normalizeRepoPath } from '../policy/studio-tree.ts';
 
 export type CandidateSnapshot = { kind: 'index' } | { kind: 'commit'; rev: string };
 
@@ -24,7 +24,23 @@ export type TreeScope = (path: string) => 'governed' | 'exempt' | 'undeclared';
 
 export type AstNode = { type: string; start: number; end: number; [key: string]: unknown };
 
-export type ScannedImport = { specifier: string; offset: number; names: readonly string[] | '*'; typeOnly: boolean };
+/**
+ * One import occurrence. `names` is what it takes from the module (`default` for a default import), or `'*'` for the
+ * whole module: a namespace, a side-effect or a dynamic import. `bindings` maps each local name to what it imports.
+ */
+export type ScannedImport = {
+  specifier: string;
+  offset: number;
+  names: readonly string[] | '*';
+  typeOnly: boolean;
+  bindings: readonly { imported: string; local: string }[];
+};
+
+/**
+ * One name a module offers. `from` is set when it's re-exported (`imported` is `'*'` for `export * as ns`); a
+ * module's bare `export *` targets are listed apart, in `SourceFile.starExports`.
+ */
+export type ScannedExport = { exported: string; typeOnly: boolean; from?: { specifier: string; imported: string } };
 
 /**
  * Where a specifier lands, canonically: an alias and the relative spelling of the same file give the same `path`.
@@ -42,6 +58,8 @@ export type SourceFile = {
   text: string;
   program: AstNode;
   imports: ScannedImport[];
+  exports: ScannedExport[];
+  starExports: readonly { specifier: string; typeOnly: boolean }[];
   lineOf: (offset: number) => number;
 };
 
@@ -54,8 +72,8 @@ export type SourceTree = {
   /** Source files the scope doesn't declare: reported, never skipped silently. */
   undeclared: readonly string[];
   resolveImport: (fromPath: string, specifier: string, names: readonly string[] | '*') => ImportTarget;
-  /** A snapshot file's text, for checks over non-source files (docs, shell). */
-  readText: (path: string) => string;
+  /** Snapshot files' text, for checks over non-source files (docs, shell), read in one batch. */
+  readTexts: (paths: readonly string[]) => string[];
 };
 
 export const SOURCE_EXTENSIONS = ['ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs'] as const;
@@ -70,20 +88,22 @@ export function loadSourceTree(options: { root: string; snapshot: CandidateSnaps
   const paths = new Set(listed.split('\0').filter(Boolean));
   const objectName = (path: string) => (snapshot.kind === 'index' ? `:${path}` : `${snapshot.rev}:${path}`);
   const texts = new Map<string, string>();
-  const readText = (path: string) => {
-    if (!texts.has(path)) readBlobs(root, [path].map(objectName)).forEach((text) => texts.set(path, text));
-    return texts.get(path)!;
+  const readTexts = (wanted: readonly string[]) => {
+    const missing = wanted.filter((path) => !texts.has(path));
+    readBlobs(root, missing.map(objectName)).forEach((text, i) => texts.set(missing[i], text));
+    return wanted.map((path) => texts.get(path)!);
   };
+  const readText = (path: string) => readTexts([path])[0];
   const candidates = [...paths].filter((path) => SOURCE_RE.test(path) && !path.endsWith('.d.ts'));
   const scoped = candidates.map((path) => ({ path, verdict: scope(path) }));
   const governed = scoped.filter(({ verdict }) => verdict === 'governed').map(({ path }) => path);
-  readBlobs(root, governed.map(objectName)).forEach((text, i) => texts.set(governed[i], text));
+  readTexts(governed);
 
   const sources = governed.map((path) => parseSourceFile(path, readText(path)));
   const undeclared = scoped.filter(({ verdict }) => verdict === 'undeclared').map(({ path }) => path);
   const aliases = paths.has('package.json') ? readImportsMap(readText('package.json')) : {};
   return {
-    snapshot, paths, sources, undeclared: undeclared.sort(), readText,
+    snapshot, paths, sources, undeclared: undeclared.sort(), readTexts,
     resolveImport: (fromPath, specifier, names) => resolveImportTarget(paths, aliases, fromPath, specifier, names),
   };
 }
@@ -99,7 +119,7 @@ export function parseSourceFile(path: string, text: string): SourceFile {
     while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (lineStarts[mid] <= offset) lo = mid; else hi = mid - 1; }
     return lo + 1;
   };
-  return { path, text, program, imports: scanImports(parsed.module, program), lineOf };
+  return { path, text, program, ...scanModule(parsed.module, program), lineOf };
 }
 
 /**
@@ -108,33 +128,59 @@ export function parseSourceFile(path: string, text: string): SourceFile {
  * `export {} from`). A type-only import is kept and marked: it couples two ends without executing, which a purity
  * check must tell apart. The forms follow the enforced-architecture catalog's `import-scanning.ts`.
  */
-function scanImports(module: ReturnType<typeof parseSync>['module'], program: AstNode): ScannedImport[] {
-  const found: ScannedImport[] = [];
+function scanModule(module: ReturnType<typeof parseSync>['module'], program: AstNode) {
+  const nameOf = (name: { kind: string; name: string | null }) =>
+    name.kind === 'Name' ? name.name! : name.kind === 'Default' ? 'default' : '*';
+  const imports: ScannedImport[] = [];
+  const staticOffsets = new Set<number>();
   for (const statement of module.staticImports) {
-    const names = statement.entries.map((entry) => (entry.importName.kind === 'Name' ? entry.importName.name! : '*'));
-    found.push({
+    staticOffsets.add(statement.moduleRequest.start);
+    const names = statement.entries.map((entry) => nameOf(entry.importName));
+    imports.push({
       specifier: statement.moduleRequest.value, offset: statement.moduleRequest.start,
       names: names.length === 0 || names.includes('*') ? '*' : names,
       typeOnly: statement.entries.length > 0 && statement.entries.every((entry) => entry.isType),
+      bindings: statement.entries.map((entry) => ({ imported: nameOf(entry.importName), local: entry.localName.value })),
     });
   }
+  const exports: ScannedExport[] = [];
+  const starExports: { specifier: string; typeOnly: boolean }[] = [];
   const reexports = new Map<number, ScannedImport>();
   for (const statement of module.staticExports) {
     for (const entry of statement.entries) {
-      if (!entry.moduleRequest) continue;
-      const name = entry.importName.kind === 'Name' ? entry.importName.name! : '*';
-      const existing = reexports.get(entry.moduleRequest.start);
+      const request = entry.moduleRequest;
+      if (!request) {
+        exports.push({ exported: nameOf(entry.exportName), typeOnly: entry.isType });
+        continue;
+      }
+      const imported = nameOf(entry.importName);
+      if (entry.exportName.kind === 'None') starExports.push({ specifier: request.value, typeOnly: entry.isType });
+      else exports.push({ exported: nameOf(entry.exportName), typeOnly: entry.isType, from: { specifier: request.value, imported } });
+      // `import { x } from './a'; export { x }` arrives as a re-export of './a', whose edge the import already holds.
+      if (staticOffsets.has(request.start)) continue;
+      const existing = reexports.get(request.start);
       if (existing) {
-        existing.names = existing.names === '*' || name === '*' ? '*' : [...existing.names, name];
+        existing.names = existing.names === '*' || imported === '*' ? '*' : [...existing.names, imported];
         existing.typeOnly &&= entry.isType;
       } else {
-        reexports.set(entry.moduleRequest.start, {
-          specifier: entry.moduleRequest.value, offset: entry.moduleRequest.start, names: name === '*' ? '*' : [name], typeOnly: entry.isType,
+        reexports.set(request.start, {
+          specifier: request.value, offset: request.start, names: imported === '*' ? '*' : [imported], typeOnly: entry.isType, bindings: [],
         });
       }
     }
   }
-  found.push(...reexports.values());
+  imports.push(...reexports.values());
+  // `const { a, b } = await import('./x')` takes just `a` and `b`, which a name-level check can read.
+  const destructured = new Map<AstNode, string[]>();
+  walkAst(program, (node) => {
+    const awaited = node.type === 'VariableDeclarator' && (node.init as AstNode | null)?.type === 'AwaitExpression'
+      ? ((node.init as AstNode).argument as AstNode) : undefined;
+    const pattern = node.id as AstNode | undefined;
+    if (awaited?.type !== 'ImportExpression' || pattern?.type !== 'ObjectPattern') return;
+    const keys = (pattern.properties as AstNode[]).map((property) =>
+      property.type === 'Property' && !property.computed && (property.key as AstNode).type === 'Identifier' ? (property.key as AstNode).name as string : undefined);
+    if (keys.every((key) => key !== undefined)) destructured.set(awaited, keys);
+  });
   walkAst(program, (node) => {
     let source: unknown, typeOnly = false;
     if (node.type === 'ImportExpression') source = node.source;
@@ -149,10 +195,10 @@ function scanImports(module: ReturnType<typeof parseSync>['module'], program: As
     } else if (node.type === 'ExportNamedDeclaration' && (node.specifiers as unknown[]).length === 0) source = node.source;
     const literal = source as AstNode | undefined;
     if (literal?.type === 'Literal' && typeof literal.value === 'string') {
-      found.push({ specifier: literal.value, offset: literal.start, names: '*', typeOnly });
+      imports.push({ specifier: literal.value, offset: literal.start, names: destructured.get(node) ?? '*', typeOnly, bindings: [] });
     }
   });
-  return found.sort((a, b) => a.offset - b.offset);
+  return { imports: imports.sort((a, b) => a.offset - b.offset), exports, starExports };
 }
 
 const isRequire = (callee: AstNode) =>
@@ -211,40 +257,19 @@ function resolveImportTarget(
   if (specifier.startsWith('node:') || BUILTINS.has(specifier.split('/')[0])) return { kind: 'builtin', name: specifier };
   let modulePath: string | undefined;
   if (specifier.startsWith('#')) {
-    modulePath = expandAlias(specifier, aliases);
+    modulePath = expandStudioAlias(specifier, aliases);
     if (modulePath === undefined) return { kind: 'unresolved-alias', specifier };
   } else if (specifier.startsWith('.') || specifier.startsWith('/')) {
-    modulePath = posix.join(posix.dirname(fromPath), specifier);
+    modulePath = `${fromPath.slice(0, fromPath.lastIndexOf('/') + 1)}${specifier}`;
   }
   if (modulePath === undefined) {
     const segments = specifier.split('/');
     const name = specifier.startsWith('@') ? segments.slice(0, 2).join('/') : segments[0];
     return { kind: 'package', name, names: name === specifier ? names : '*' };
   }
-  const canonical = posix.normalize(modulePath).replace(/\/$/, '');
+  const canonical = normalizeRepoPath(modulePath);
   const backing = backingFile(paths, canonical);
   return { kind: 'module', path: backing ?? canonical, backed: backing !== undefined };
-}
-
-/**
- * Node's subpath-import rule: an exact key first, then the `*` pattern with the longest prefix. The result is
- * repo-relative and normalized, so `#studio` and `../../lib/studio/api.ts` compare equal.
- */
-export function expandAlias(specifier: string, imports: Readonly<Record<string, string>>): string | undefined {
-  let target = imports[specifier];
-  if (target === undefined) {
-    let best: { prefix: string; suffix: string; target: string } | undefined;
-    for (const [key, value] of Object.entries(imports)) {
-      const star = key.indexOf('*');
-      if (star < 0) continue;
-      const prefix = key.slice(0, star), suffix = key.slice(star + 1);
-      if (specifier.length < prefix.length + suffix.length || !specifier.startsWith(prefix) || !specifier.endsWith(suffix)) continue;
-      if (!best || prefix.length > best.prefix.length) best = { prefix, suffix, target: value };
-    }
-    if (!best) return undefined;
-    target = best.target.replaceAll('*', specifier.slice(best.prefix.length, specifier.length - best.suffix.length));
-  }
-  return posix.normalize(target);
 }
 
 /**

@@ -1,0 +1,38 @@
+// ─── (d) No scratch ───────────────────────────────────────────────────
+//
+// No tracked text file refers to `scratch/`: code, shell, Markdown or config.
+// scratch/ is a gitignored workspace, so a reference to it works on one machine
+// and nowhere else. Reads every text file in the snapshot, not just source, so
+// a shell script or a README pointing at a scratch script is caught too.
+//
+// Exempt: `.gitignore`, which is how scratch/ stays untracked, and `lint/`,
+// whose own pattern and specs have to name it. A binary file is skipped.
+
+import type { Finding, StructuralCheck } from '../check-context.ts';
+
+const ID = 'no-scratch';
+/** `scratch/` as a path segment: `$repo/scratch/x.sh` and `'scratch/x'` match, `my-scratch/` doesn't. */
+const SCRATCH_REFERENCE = /(?<![\w.-])scratch\//;
+
+const isExempt = (path: string) => path === '.gitignore' || path.startsWith('lint/');
+
+export const noScratchCheck: StructuralCheck = {
+  id: ID,
+  run(context) {
+    const paths = [...context.tree.paths].filter((path) => !isExempt(path)).sort();
+    const texts = context.tree.readTexts(paths);
+    const findings: Finding[] = [];
+    paths.forEach((path, i) => {
+      const text = texts[i];
+      if (text.includes('\0')) return;
+      text.split('\n').forEach((line, index) => {
+        if (!SCRATCH_REFERENCE.test(line)) return;
+        findings.push({
+          check: ID, path, line: index + 1, key: line.trim().slice(0, 160),
+          message: 'refers to scratch/, a gitignored workspace: move what it needs into the repo, or drop the reference',
+        });
+      });
+    });
+    return findings;
+  },
+};

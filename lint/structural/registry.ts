@@ -1,0 +1,19 @@
+// Every structural check `check:arch` runs. A check left off this list is a file nobody loads, so a spec imports this
+// list rather than the check directly: an unregistered check fails its spec.
+
+import type { StructuralCheck } from './check-context.ts';
+import { declaredTreeCheck } from './checks/declared-tree.ts';
+import { importPolicyCheck } from './checks/import-policy.ts';
+import { modelPurityCheck } from './checks/model-purity.ts';
+import { noScratchCheck } from './checks/no-scratch.ts';
+import { sceneOwnershipCheck } from './checks/scene-ownership.ts';
+import { timingOwnershipCheck } from './checks/timing-ownership.ts';
+
+export const STRUCTURAL_CHECKS: readonly StructuralCheck[] = [
+  declaredTreeCheck,
+  importPolicyCheck,
+  timingOwnershipCheck,
+  sceneOwnershipCheck,
+  modelPurityCheck,
+  noScratchCheck,
+];
