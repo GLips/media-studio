@@ -38,7 +38,7 @@ then big moves, then reveals, and within each the ones with the longest pause in
 **Hear it** before the video plays it: `studio mix <p> --sfx-cues` writes `out/mix-sfx-cues.wav` beside the video's
 own `out/mix.wav`. Hand the user both.
 
-**Edit** `cues.json`; every bundle renders it afresh. It has a `clickStyle`, which sets every click, and a cue per
+**Edit** `cues.json`; every bundle renders it afresh (restart an open `studio preview` to hear a hand edit). It has a `clickStyle`, which sets every click, and a cue per
 event with its `event`, the `draft`'s sound (or `null` and `why`), and `alternatives`. Change a cue with the fields
 at its top level, which a redraft keeps:
 

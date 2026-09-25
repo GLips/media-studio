@@ -10,7 +10,7 @@ import { dirname, join, resolve } from 'node:path';
 import type { SfxCueSound } from '../studio/sfx.tsx';
 import { wavFromSamples } from '../wav.ts';
 import { roundSfxSeconds } from './cue-events.ts';
-import { SFX_CUE_LIST_VERSION, sfxCuePlays, type SfxCueList } from './cues.ts';
+import { SFX_CLICK_STYLES, SFX_CUE_LIST_VERSION, sfxCuePlays, type SfxCueList } from './cues.ts';
 import { SFX_RATE } from './dsp.ts';
 import { renderSfx, type SfxRequest } from './library.ts';
 
@@ -24,6 +24,7 @@ export function readSfxCueList(project: string): SfxCueList | null {
   if (!existsSync(path)) return null;
   const list = JSON.parse(readFileSync(path, 'utf8')) as SfxCueList;
   if (list.version !== SFX_CUE_LIST_VERSION) throw new Error(`${path} is version ${list.version}; delete it and redraft with studio sfx draft`);
+  if (!Object.hasOwn(SFX_CLICK_STYLES, list.clickStyle)) throw new Error(`${path}: clickStyle is one of ${Object.keys(SFX_CLICK_STYLES).join(', ')}, not ${list.clickStyle}`);
   return list;
 }
 
@@ -34,7 +35,7 @@ export function writeSfxCueList(project: string, list: SfxCueList): string {
   return path;
 }
 
-/** A sound's file, named by what renders it, so a bundle renders only sounds it hasn't before. */
+/** A sound's file, named by what renders it. Renders are seeded, so the same request is the same file. */
 const sfxCueSoundFile = (sound: SfxRequest) => `${sound.sound}-${createHash('sha256').update(JSON.stringify(sound)).digest('hex').slice(0, 12)}.wav`;
 
 /**
@@ -51,7 +52,9 @@ export function writeSfxCueModule(project: string): string {
   for (const [file, sound] of files) {
     const rendered = renderSfx(sound);
     timing.set(file, { seconds: roundSfxSeconds(rendered.seconds), landsAt: roundSfxSeconds(rendered.landsAt) });
-    if (!existsSync(join(dir, file))) writeFileSync(join(dir, file), wavFromSamples(rendered.samples, SFX_RATE));
+    // Compared, not just checked for: a change to a recipe renders the same request differently.
+    const wav = wavFromSamples(rendered.samples, SFX_RATE), wavPath = join(dir, file);
+    if (!existsSync(wavPath) || !readFileSync(wavPath).equals(wav)) writeFileSync(wavPath, wav);
   }
   for (const file of readdirSync(dir)) if (!files.has(file)) rmSync(join(dir, file));
 

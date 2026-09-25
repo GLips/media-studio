@@ -2,7 +2,7 @@
 // and the check's report on it.
 import type { TimelineReport } from '../studio/Video.tsx';
 import type { SfxEvent } from './cue-events.ts';
-import { readSfxCueList, writeSfxCueList } from './cue-module.ts';
+import { readSfxCueList, writeSfxCueList, writeSfxCueModule } from './cue-module.ts';
 import { draftSfxCues, formatSfxCueList, formatSfxCueReport, sfxCueOverrides, staleSfxCues, type SfxClickStyle } from './cues.ts';
 
 const spokenWords = (timeline: TimelineReport) => timeline.cues.flatMap((c) => c.words);
@@ -24,15 +24,18 @@ export function sfxCueListReport(project: string, timeline: TimelineReport, even
 
 /**
  * Drafts sfx/cues.json from a whole-video check's events, keeping the edits in the one there. `clickStyle` defaults to
- * the list's, then soft. Returns the lines to print: the list, dropped edits, and the file.
+ * the list's, then soft. Rewrites generated/sfx-cues.ts too, so an open Studio plays the new list. Returns the lines
+ * to print: the list, dropped edits, and the file.
  */
 export function draftProjectSfxCueList(project: string, { timeline, events, clickStyle }: { timeline: TimelineReport; events: readonly SfxEvent[]; clickStyle?: SfxClickStyle }): string[] {
   const previous = readSfxCueList(project);
   const { list, dropped } = draftSfxCues(events, spokenWords(timeline), { clickStyle: clickStyle ?? previous?.clickStyle ?? 'soft', previous });
-  return [
+  const lines = [
     ...formatSfxCueList(list),
     ...dropped.map((d) => `dropped the edits to ${d.id}: ${d.why}`),
     ...sfxCueOverrides(list, spokenWords(timeline)).map((o) => `! ${o.at.toFixed(2)}s  ${o.id}: ${o.problem}`),
     writeSfxCueList(project, list),
   ];
+  writeSfxCueModule(project);
+  return lines;
 }

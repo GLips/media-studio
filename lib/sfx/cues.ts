@@ -259,13 +259,14 @@ export function sfxCueOverrides(list: SfxCueList, words: readonly SpokenWord[]):
 /**
  * Where the cue list and the video disagree: a cue whose event moved or went (a re-voice, a retime), or an event with
  * no cue at all, which would play nothing (a click added since the draft). Matched by kind and time, not id, so a
- * check of one stretch doesn't misread ids numbered across a whole scene. Judges events inside `span` only.
+ * check of one stretch doesn't misread ids numbered across a whole scene. Judges events inside `span` only. Placed
+ * sounds play whatever the list says, but are judged too: the list's accents keep clear of where it says they are.
  *
  * `partial`: the check measured only part of the video. Camera moves and reveals are measured from the first frame
  * checked, so one already under way there isn't found; those two kinds are then left unjudged.
  */
 export function staleSfxCues(list: SfxCueList, events: readonly SfxEvent[], { from, to, fps, partial }: { from: number; to: number; fps: number; partial: boolean }): SfxCueProblem[] {
-  const judged = (e: SfxEvent) => e.kind !== 'placed' && e.at >= from && e.at <= to && !(partial && (e.kind === 'camera-move' || e.kind === 'reveal'));
+  const judged = (e: SfxEvent) => e.at >= from && e.at <= to && !(partial && (e.kind === 'camera-move' || e.kind === 'reveal'));
   const matching = (e: SfxEvent, among: readonly SfxEvent[]) => among.filter((o) => o.kind === e.kind).sort((a, b) => Math.abs(a.at - e.at) - Math.abs(b.at - e.at))[0];
   const cued = list.cues.map((c) => c.event);
   const stale = cued.filter(judged).flatMap((event) => {

@@ -91,7 +91,8 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
   const t = frame / fps;
   const painted = scenesAt(tl, t);
   const playsCueList = !!video.sfxCueList || auditionSfxCueList;
-  if (playsCueList && !sfxCues) throw new Error('this project has no sfx/cues.json: run studio sfx draft first');
+  // A check measures the events a draft is made from, so it runs without a list.
+  if (playsCueList && !sfxCues && !probe) throw new Error('this project has no sfx/cues.json: run studio sfx draft first');
 
   return (
     <AbsoluteFill ref={root} style={{ background: '#fff', overflow: 'hidden' }}>
@@ -107,7 +108,7 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
           );
         })}
       </SfxCueListPlaying.Provider>
-      {playsCueList && <SfxCueListAudio cues={sfxCues!} />}
+      {playsCueList && sfxCues && <SfxCueListAudio cues={sfxCues} />}
       {tl.cues.map((cue) =>
         cue.src ? (
           // One frame of slack past the line's end, so rounding the start to a frame never clips its last samples.
