@@ -8,7 +8,8 @@ import stills from '@stills';
 import video from '@video';
 import { FPS, H, W } from './frame.ts';
 import { assertPrevisSpanFits, previsSpan } from './previs.ts';
-import { STILL_PRESETS, stillName, type StillProps } from './still-presets.ts';
+import { StillProbe } from './still-probe.tsx';
+import { STILL_PRESETS, stillName, type StillProps, type StillRenderProps } from './still-presets.ts';
 import type { StillsDef } from './stills.tsx';
 import { layoutVideo, totalFrames, type VideoDef } from './timeline.ts';
 import { BlockoutSolo, Video, type BlockoutSoloProps, type VideoProps } from './Video.tsx';
@@ -59,9 +60,9 @@ export function Root() {
 }
 
 function StillCompositions({ stills }: { stills: StillsDef }) {
-  const ProjectStill = ({ design, variant }: StillProps) => {
+  const ProjectStill = ({ design, variant, ground }: StillRenderProps) => {
     const { component: Design, variants } = stills.designs[design];
-    return <Design {...variants[variant]} />;
+    return <StillProbe ground={ground}><Design {...variants[variant]} /></StillProbe>;
   };
   return Object.entries(stills.designs).map(([design, { presets, variants }]) => (
     <Folder key={design} name={`stills-${design}`}>

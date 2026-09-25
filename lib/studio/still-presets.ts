@@ -11,8 +11,33 @@ export const STILL_PRESETS = {
 } as const;
 export type StillPreset = keyof typeof STILL_PRESETS;
 
+/** A part of a preset's frame the platform draws its own UI over, in frame px. */
+export type StillUiZone = { name: string; rect: { x: number; y: number; w: number; h: number } };
+
+/**
+ * Where each platform covers the image, which no text or logo may sit under (lib/still-check.ts). Platforms move these,
+ * so they're data. YouTube's duration badge takes the bottom-right corner, generously, since its size varies with the
+ * surface. A story's top band is Instagram's progress bar, name and close; the bottom, its reply bar and share buttons:
+ * Meta asks for 250 px and 340 px left clear. OG images, squares and portraits are shown whole.
+ */
+export const STILL_UI_ZONES: Readonly<Record<StillPreset, readonly StillUiZone[]>> = {
+  og: [],
+  youtube: [{ name: "YouTube's duration badge", rect: { x: 1024, y: 612, w: 256, h: 108 } }],
+  square: [],
+  portrait: [],
+  story: [
+    { name: "Instagram's top bar (progress, name, close)", rect: { x: 0, y: 0, w: 1080, h: 250 } },
+    { name: "Instagram's reply bar", rect: { x: 0, y: 1580, w: 1080, h: 340 } },
+  ],
+};
+
 /** Which still a composition is: what Root.tsx passes and `studio still` filters on. */
 export type StillProps = { design: string; preset: StillPreset; variant: string };
+/**
+ * How `studio still` renders one. `ground` draws every text transparent, leaving the ground under it for the contrast
+ * check to read.
+ */
+export type StillRenderProps = StillProps & { ground?: boolean };
 
 /** The file (and composition, behind `still-`) a still renders to. */
 export const stillName = ({ design, preset, variant }: StillProps) => `${design}-${preset}-${variant}`;
@@ -21,3 +46,5 @@ export const stillName = ({ design, preset, variant }: StillProps) => `${design}
 export type StillFitReport = { name: string; text: string; size: number; stretch: number; max: number; min: number; atFloor: boolean; overflows: boolean };
 export const stillFitArtifactName = (name: string) => `still-fit-${name}.json`;
 export const isStillFitArtifact = (filename: string) => /^still-fit-.+\.json$/.test(filename);
+/** The artifact the still probe (still-probe.tsx) emits: what lib/still-check.ts judges. */
+export const STILL_MEASURE_ARTIFACT = 'still-measure.json';

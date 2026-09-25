@@ -79,8 +79,8 @@ const FIT_NARROWING_GAIN = 1.15;
 /**
  * Sets `text` as large as fits `box`, up to `max` px and down to `min`, measured in the browser once the fonts are in.
  * On Archivo it narrows first (width 100% → 66%), keeping a narrower width only when that buys about 15% more size.
- * Lines are balanced. A text that fits only at `min`, or not even there, is flagged in the still's report, which
- * `studio still` prints. `name` names it there, unique within the still.
+ * Lines are balanced. A text that fits only at `min`, or not even there, fails the still check (lib/still-check.ts), so
+ * `studio still` won't write it. `name` names it there, unique within the still.
  */
 export function FitText({ name, text, box, max, min, align = 'end', style }: {
   name: string; text: string; box: Rect; max: number; min: number;
@@ -147,6 +147,8 @@ export function FitText({ name, text, box, max, min, align = 'end', style }: {
       <div
         ref={inner}
         data-still-fit={name}
+        // What the still probe waits for.
+        {...(fit?.text === text && { 'data-still-fitted': '' })}
         style={{
           fontFamily: DISPLAY_FONT, textWrap: 'balance', overflowWrap: 'normal', ...style,
           fontSize: fit ? fit.size : max, fontStretch: `${fit ? fit.stretch : 100}%`,
