@@ -25,7 +25,7 @@ function s3UploadConfigFromEnv(): S3UploadConfig {
   const missing = Object.values(UPLOAD_ENV).filter((name) => !process.env[name]);
   if (missing.length) {
     throw new Error(`${missing.join(', ')} ${missing.length > 1 ? 'are' : 'is'} not set: a reference video is uploaded to our bucket for the provider to fetch. `
-      + 'Run under your secret launcher, e.g. `op run --env-file="$(studio home)/.env.op" -- studio <verb> <project>`');
+      + 'Run under your secret launcher, e.g. `"$(studio home)/bin/studio-secrets" studio <verb> <project>`');
   }
   const env = Object.fromEntries(Object.entries(UPLOAD_ENV).map(([key, name]) => [key, process.env[name]!])) as Omit<S3UploadConfig, 'region'>;
   return { ...env, endpoint: env.endpoint.replace(/\/+$/, ''), region: process.env[UPLOAD_REGION_ENV] || 'auto' };

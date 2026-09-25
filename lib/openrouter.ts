@@ -25,7 +25,7 @@ function openRouterHeaders(): Record<string, string> {
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) {
     throw new Error('OPENROUTER_API_KEY is not set. Run this under your secret launcher so the key exists only in this process, '
-      + 'e.g. `op run --env-file="$(studio home)/.env.op" -- studio <verb> <project>`');
+      + 'e.g. `"$(studio home)/bin/studio-secrets" studio <verb> <project>`');
   }
   return { Authorization: `Bearer ${key}` };
 }
