@@ -35,13 +35,13 @@
     },
     "skills/video-motion/references/reel-assembly.md": {
       "Preview your bar alone: a scratch project (`scratch/<reel>-<bar>/video.tsx`) whose default export is the project's": 1,
-      "1. `studio look scratch/<reel>-<bar> --strip=0:<seconds> --step=0.0333` renders every frame of your bar. Look at the hits: does": 1,
+      "1. `studio look scratch/<reel>-<bar> --frames=0:<last>` renders every frame of your bar. Look at the hits: does": 1,
       "4. A capture on a `CapturePlane`: `studio look scratch/<reel>-<bar> --graph=0:<seconds> --tracks=plane` plots its": 1
     },
     "skills/video-motion/references/reel-pieces.md": {
       "1. Write a demo at `scratch/reel-<piece>/video.tsx` (gitignored): the piece used the way the reference uses it, on": 1,
       "other direction). `scratch/three-test/video.tsx` shows the shape of a scratch project.": 1,
-      "2. Look at it: `studio look scratch/reel-<piece> --strip=a:b --step=0.0333` gives every frame of a stretch, and": 1,
+      "2. Look at it: `studio look scratch/reel-<piece> --frames=a:b` gives every frame of a stretch, and": 1,
       "3. For a tagged piece, `studio look scratch/reel-<piece> --graph=a:b` shows its tracks: one track per tagged part, no": 1,
       "- Write only `lib/studio/reel/<piece>.tsx` (and its test, if earned) and `scratch/reel-<piece>/`. Read anything.": 1
     },
