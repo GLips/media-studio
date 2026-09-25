@@ -28,11 +28,11 @@ A previs scene is an ordinary scene with `previs` in its `defineScene`, timed to
   a counter (big boxes and cards, tinted and named in the prompt) hold the framing: `kitchen` in the test project
   came back framed as blocked.
 - **Subjects can move too.** Compute them from `s.t`, like the pose.
-- **Time the move to the voice**, anchored to words like any scene (the `video-motion` skill). The footage covers the
+- **Time the move to its scene's cues** (its words or beats), like any scene (the `video-motion` skill). The footage covers the
   scene's whole time on screen, crossfades included, rounded up to whole seconds between 4 and 30. A longer scene
   has to be split.
 
-Done when `studio look` strips show the move landing on its words, and the user has approved the blockout in
+Done when `studio look` strips show the move landing on its cues, and the user has approved the blockout in
 `studio preview`.
 
 ## 2. Write the prompt

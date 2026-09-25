@@ -1,7 +1,7 @@
 # video-studio
 
-Walkthrough and explainer videos, made in code: capture a site's states, voice a script, animate the captures in
-[Remotion](https://www.remotion.dev), render to MP4.
+Videos and stills made in code, in [Remotion](https://www.remotion.dev): walkthroughs over a site's captured states,
+music-led ads and teasers, drawn and 3D pieces. Voice, music, sound effects and the mix included; render to MP4.
 
 Every frame is a pure function of time, so a change to one scene is an edit and a re-render. Nothing gets reshot by hand.
 

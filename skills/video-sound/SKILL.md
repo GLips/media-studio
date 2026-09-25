@@ -8,7 +8,7 @@ description: Sound for a video as its own pass once the picture is locked, in th
 Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it.
 
 Sound is a pass of its own, after the motion pass (`video-motion`) has locked the picture. Beats and effects are
-placed against cuts and moves, so every re-voice or re-timed scene moves them too. The exception is a voiceless teaser:
+placed against cuts and moves, so every re-voice or re-timed scene moves them too. The exception is a piece cut to music:
 there the music comes first and the picture is cut to it, so choose the track before the motion pass.
 
 Pick the part the task needs and read its reference:

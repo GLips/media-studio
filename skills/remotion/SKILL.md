@@ -1,15 +1,14 @@
 ---
 name: remotion
-description: Remotion API references for building a new studio primitive or kit shot (audio, images, fonts, measuring text and DOM, hand-drawn text highlights). Use when lib/studio doesn't already have what a scene needs. For animating scenes, use video-motion; for planning a video, video-kickoff.
+description: Remotion API references and the studio's conventions for using Remotion directly, in a scene or a new studio primitive (audio, images, fonts, measuring text and DOM, hand-drawn text highlights). Use when lib/studio doesn't already have what a scene needs. For animating scenes, use video-motion; for planning a video, video-kickoff.
 ---
 
 # Remotion, as this studio uses it
 
 Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it.
 
-Scenes don't talk to Remotion directly. They call `defineScene` and the primitives in `lib/studio/api.ts`, and
-`lib/studio/Video.tsx` is the one composition. Reach into Remotion only to build something new for `lib/studio`, and
-then keep its conventions:
+`lib/studio/Video.tsx` is the one composition, and the timeline places every scene in it. A scene or a new
+`lib/studio` primitive can use any Remotion API inside that, keeping these conventions:
 
 - **Seconds, not frames.** A scene's clock `s.t` is seconds; animate with `seg`, `on`, `off` and the curve tokens in
   `lib/studio/motion.ts`, not `interpolate(frame, …)`. Everything stays a pure function of `s.t`, which can be

@@ -100,9 +100,9 @@ Decide which role the music plays before cutting anything:
 
 - **A bed under the narration.** The voice sets the timing; the music sits underneath and ducks under each line. Cut
   to its beat only where the voice leaves room: a section card, a reveal after a pause, the end card.
-- **The lead in a voiceless teaser.** The picture is cut to the music. Pass `voice: {}` to `defineVideo`. With no
-  `lines`, a scene lasts `max(lead + tail, min)` (1.1 s by default), so `min` sets its length, a whole number of bars.
-  With nothing to duck under, raise `bedRelativeLu` toward 0 (`mix.md`).
+- **The lead in a piece cut to music.** The picture is cut to the music: pass `voice: {}` to `defineVideo`, and
+  each scene's `beatSpan` in `timeline.ts` sets its length in beats (the `video-motion` skill, Timing). With nothing to
+  duck under, raise `bedRelativeLu` toward 0 (`mix.md`).
 
 ## The beat
 

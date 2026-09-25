@@ -7,12 +7,9 @@ description: Painted, drawn and generative layers in a video, made with p5 and p
 
 Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it.
 
-Captures show the real product. Drawn layers add what a screenshot can't: a painted opening, a transition with
-texture, a hand-drawn loop around the thing the voice names. They're full-frame canvases that sit in a scene like any
-other layer, so they crossfade, cut and time to words the same way.
-
-Everything the `video-motion` skill says about timing (reads, one at a time, lead the eye, the tells of generated
-motion) applies here unchanged. This skill covers what's specific to drawing.
+Drawn layers are full-frame p5 canvases in a scene: a whole painted or generative piece, a transition with texture, a
+hand-drawn loop over a capture. They sit in a scene like any other layer, so they crossfade, cut and time to cues the
+same way. Timing and reads are the `video-motion` skill's; this skill covers what's specific to drawing.
 
 ## How it works
 
@@ -21,8 +18,8 @@ motion) applies here unchanged. This skill covers what's specific to drawing.
   browser tab, shared by its layers one at a time and copied onto each layer's own canvas.
 - `lib/paint/watercolor.tsx` is the first style: p5.brush washes, watercolour fills, hatching and tapered ink on paper.
   Read [references/watercolor.md](references/watercolor.md) before painting in watercolour.
-- In a scene: `<Watercolor t={s.t} paint={(w) => { w.paper(); w.paint(…); }} />`. Anchor to words exactly as
-  elsewhere: `seg(s.t, s.line('ring').word('price').start - 0.4, …)`.
+- In a scene: `<Watercolor t={s.t} paint={(w) => { w.paper(); w.paint(…); }} />`, timed to cues exactly as
+  elsewhere.
 - Renders run the browser on the GPU, so drawn layers are cheap enough to use freely.
 - Before calling `brush.*` directly, writing a style, or reading p5.brush's own docs, read
   [references/p5-brush.md](references/p5-brush.md): where those docs are wrong for us, and what the kit doesn't wrap
@@ -30,11 +27,10 @@ motion) applies here unchanged. This skill covers what's specific to drawing.
 
 ## The one rule: a frame is a function of its time
 
-Remotion renders frames out of order, several tabs at once, and any frame alone. A layer that remembers anything
-from the frame before comes out different depending on what its tab drew last. It looks fine in the Studio and then
-flickers in the render.
+The rule is the `video-motion` skill's (What a scene can be). A canvas breaks it quietly: a layer that remembers
+anything from the frame before comes out different depending on what its tab drew last, so it looks fine in the
+Studio and then flickers in the render. With p5:
 
-- Compute everything from `t` in closed form: no counters, no `Math.random()`, no physics stepped frame by frame.
 - **Seed every random stream the library uses, per element.** Watercolour's `w.boilSeed(key)` re-seeds both p5 and
   p5.brush from a fixed key and the boil frame (p5.brush's own docs get this wrong; see the reference below).
 - **Flush deferred drawing at the end of every layer.** p5.brush holds strokes back and composites them later; left

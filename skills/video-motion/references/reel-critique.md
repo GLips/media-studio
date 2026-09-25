@@ -27,7 +27,7 @@ reference it answers, if any, with its breakdown (`showreel-breakdown.md` or the
 - **Cuts land on the grid**, the picture a frame or two ahead of the sound, and **every cut is a change of value**:
   figure and ground trade, or the scale jumps.
 - **One dominant move at a time**, and transitions are built (a match, a whip, a zoom through), not dissolved.
-- **The product is the hero** wherever it's shown: it fills the frame and reads.
+- **The subject is the hero** wherever it's shown (the product, in an ad): it fills the frame and reads.
 - **The signature moment lands**: the one thing no template has. Would someone describe it to a friend?
 - **Type is the image**: big, tight, set with care. No orphaned word, no clipped glyph, no default spacing.
 - **The HUD reads** over every ground and never fights the picture.

@@ -1,7 +1,7 @@
 {
   "name": "video-studio",
   "version": "1.0.0",
-  "description": "Walkthrough and explainer videos: capture, voice, compose, render.",
+  "description": "Videos and stills made in code: capture, voice, music, compose, render.",
   "bin": {
     "studio": "cli/studio.ts"
   },

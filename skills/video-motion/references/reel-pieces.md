@@ -102,6 +102,8 @@ Look here first: a second copy of one of these drifts from the first.
 
 ## Fences
 
+For a builder working alongside others; building alone, the whole project is yours.
+
 - Write only `lib/studio/reel/<piece>.tsx` (and its test, if earned) and `scratch/reel-<piece>/`. Read anything.
 - Don't edit `lib/studio/api.ts`, `kit.tsx`, `motion.ts`, another piece, `projects/`, `skills/`, `README.md` or `bin/`.
   If you need a shared helper that doesn't exist, write it in your piece file and name it in your report, so the

@@ -23,7 +23,7 @@ export function scaffoldStudioProject({ slug, url, title, stills, brand }: { slu
   if (brand && !stills) throw new Error('--brand is for a stills project (--stills); a video names its kit in its own brand.ts');
   if (brand && !existsSync(join(STUDIO_ROOT, 'brands', brand, 'brand.ts'))) {
     const kits = readdirSync(join(STUDIO_ROOT, 'brands')).filter((d) => existsSync(join(STUDIO_ROOT, 'brands', d, 'brand.ts')));
-    throw new Error(`there's no brands/${brand}/brand.ts (brands/ has ${kits.join(', ') || 'none'}; brands/README.md says how to make one)`);
+    throw new Error(`there's no brands/${brand}/brand.ts (brands/ has ${kits.join(', ') || 'none'}; brands/CLAUDE.md says how to make one)`);
   }
   const name = title || slug.replace(/-/g, ' ').replace(/^./, (ch) => ch.toUpperCase());
   const month = new Date().toISOString().slice(0, 7);

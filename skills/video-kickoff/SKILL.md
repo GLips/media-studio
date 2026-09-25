@@ -1,6 +1,6 @@
 ---
 name: video-kickoff
-description: Make a walkthrough, explainer, PR, launch or marketing video, from the first context dump to an approved storyboard. Use when the user asks for a video about something (from any repo), dumps context for one, asks for story angles, or wants a storyboard or scene table.
+description: Start any video, from the first brief or context dump to an approved storyboard: a walkthrough, an explainer, a PR video, a launch ad or teaser, a showreel, an abstract piece. Use when the user asks for a video (from any repo), dumps context for one, asks for story angles, or wants a storyboard or scene table.
 ---
 
 # Starting a video
@@ -9,6 +9,10 @@ Four gates, in order: **dump → angle → scene table → storyboard**. Each ga
 Nothing gets a real voice or motion polish until the storyboard is signed off. A scene table is cheap to change;
 voiced, polished motion is not.
 
+**An autonomous brief skips the gates.** When the user hands over the creative calls ("go all out", "surprise me",
+"don't check in"), make each gate's decision yourself: pick the angle, write the scene table or beat sheet as your
+plan, and build through to a render. Show the user the result, not the steps.
+
 Every video lives in the studio repo, whatever repo the request came from. Read the source material where it is, then
 work in `studio home` (paths below are relative to it). Each verb explains itself: `studio <verb> --help`.
 
@@ -16,12 +20,14 @@ work in `studio home` (paths below are relative to it). Each verb explains itsel
 
 The first message is usually messy and dictated. Pull these out of it, and ask only about what's missing:
 
-- **What's launching**, and **the one thing a viewer should take away**. If there isn't one takeaway, stop and settle it.
+- **What it's for**, and **the one thing a viewer should take away** (or, for a piece with no message, the one
+  feeling). If there isn't one, stop and settle it.
 - **Audience**: the client, customers or developers. That sets the vocabulary and how much gets explained.
 - **Source material**: docs, a PR, a Loom transcript, a launch-post draft, the Slack thread. Read every one of them.
   Asked from inside a product repo, the change itself (its diff, docs and PR) is source material.
-- **Where the real UI is**: the URL, theme, or preview query (e.g. `?view=…`) for each state the story needs, and
-  whether it needs a sign-in (the `video-capture` skill, Sites behind a sign-in).
+- **What it's cut to**: a voice, music, or neither. That picks each scene's driver (`video-motion`, Timing).
+- **What's on screen.** If it shows a real product's UI: the URL, theme, or preview query (e.g. `?view=…`) for each
+  state the story needs, and whether it needs a sign-in (the `video-capture` skill, Sites behind a sign-in).
 - **Whose code it's about.** If it's a product repo's (a PR, a component), make that repo the project's host once the
   project exists: `projects/<p>/host.json` `{ name, ref }`, with `name` a key of `hosts.json` (add it if new), then
   `studio hosts sync <p> --install`. That checks out the pinned commit outside the studio and runs the host's own
@@ -54,8 +60,8 @@ source and takeaway:
 - Every scene needs an **event**: something changes between its first frame and its last. Under the table, list each
   scene's reads (what the viewer must understand, in order). It's the timing sheet the motion pass works from.
 - Plan the whole video: something set up is paid off, and the ending rhymes with the opening where it can.
-- Write each Motion entry in the `video-motion` skill's words (push in, pull back, pan, hard cut, match cut, and so
-  on), so it turns straight into code.
+- Write each Motion entry so it turns straight into code; over captures, in the camera vocabulary (`video-motion`,
+  `references/walkthrough.md`).
 - An ad, launch teaser, social cut or promo cut to music takes the high-energy register (`video-motion`, "The
   high-energy register"): write it as a beat sheet, one bar per idea on the music's grid, not scenes on a voice.
 - End with a **Deliberately left out** list: true things the video skips, and why. It stops them creeping back in
@@ -65,7 +71,9 @@ Get the user's yes on the table before building anything.
 
 ## 4. Storyboard: an animatic you can click through
 
-The storyboard is the video itself, rough, and never a separate drawing, so it can't drift from what ships.
+The storyboard is the video itself, rough, and never a separate drawing, so it can't drift from what ships. The steps
+below are for a voiced video; a piece with no voice skips the lines and roughs its scenes in on its timeline instead,
+on the track if it's cut to music.
 
 1. Write the lines into `voiceover.json`, with `"paragraph": true` on each line that starts a new beat so the read
    pauses there, and run `studio voice <p> --read=estimate`. That times each line from its word count, for free.
@@ -88,17 +96,17 @@ music, so it needs the track before the motion pass (`video-sound`, music).
 
 ## Real UI only
 
-Everything on screen is the real product. Anyone who uses it knows what it looks like, and one made-up button
+When a video shows a product, everything of the product on screen is the real product. Anyone who uses it knows what it looks like, and one made-up button
 breaks it for all of them.
 
-- Photograph or film it (`video-capture`), or compose the host's real components (`video-motion`, Host components).
+- Photograph or film it (`video-capture`), or compose the host's real components (`video-motion`, `references/walkthrough.md`).
   If a state can't be photographed (an open native `<select>`, a `confirm()` dialog), rebuild it in DOM **from the
   product's own words and styles**, as `ConfirmDialog` and `NativeMenu` in `lib/studio/kit.tsx` do.
 - Pull real icons and logos from the site's assets. On a Mac, an app's icon sits in its bundle:
   `sips -s format png /Applications/X.app/Contents/Resources/*.icns --out icon.png`. A coloured square standing in for
   an icon fails review.
 - **Generate only around the product.** A still no capture can give (title-card art, a background, a physical
-  product's shot from its real photo, a concept icon) can be generated (`video-motion`, Generated stills). Name it in
+  product's shot from its real photo, a concept icon) can be generated (`video-motion`, `references/generated-stills.md`). Name it in
   the table's On screen column so the user approves it with the rest.
 - **Show only what the scene needs.** Frame the one part the story is about, large, on a clean background, instead of
   the whole page. `camFit` caps at 1.6× because captures soften past that. To go bigger, capture that element at a

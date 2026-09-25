@@ -43,7 +43,7 @@ Draw only through the bar's pure function of `f`: no state, no randomness but se
 - **Colour runs in an order.** The storyboard's colour script says what each colour means and when the ground
   changes; a ground that changes for no reason reads as random, however good each frame is.
 - **Every beat carries a strong frame.** No near-black or empty frame before the final fade: a dark ground always
-  holds a big figure. A product shot is the hero: push in until it fills the frame, never a small card in a field.
+  holds a big figure. The subject (a product, in an ad) is the hero: push in until it fills the frame, never a small card in a field.
 - **Transitions are built, not dissolved:** a hard cut on the hit, a zoom through a shape into its colour, a match on
   position or shape, a speed-matched whip. A dissolve is the exception.
 - **One dominant move at a time.** Secondary moves follow it by a frame or two.
@@ -91,6 +91,8 @@ frame. Several builders editing bars at once can't break each other's renders th
    `--motion --bar=N` where a bar stops moving.
 
 ## Fences
+
+For a builder working alongside others; building alone, the whole project is yours.
 
 - Write only your bar's module. Read anything.
 - Don't edit the pieces (`lib/studio/reel/`), the clock module, `video.tsx` or other bars. If a piece lacks something

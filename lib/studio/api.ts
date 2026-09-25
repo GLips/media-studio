@@ -1,4 +1,4 @@
-// api.ts: everything a project's video.tsx or stills.tsx builds from, in one import.
+// api.ts: the studio's conveniences for a project's video.tsx or stills.tsx, in one import. A scene may import anything else too.
 
 export { BrandLogo, brandLogoFor, type StudioBrand, type StudioBrandLogo } from './brand.tsx';
 export * from './blockout.tsx';
