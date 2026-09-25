@@ -7,7 +7,7 @@
 
 import { MONO_FONT } from '../fonts.ts';
 import { FPS, H, W } from '../frame.ts';
-import { clamp, lerp, motionCurves, powerOutEase, sineInOutEase } from '../motion.ts';
+import { clamp, lerp, motionCurves, powerOutEase } from '../motion.ts';
 import { pieceMotionAttrs } from '../motion-tag.ts';
 import { hashRandom } from '../random.ts';
 
@@ -30,9 +30,8 @@ const REF = {
 };
 /** How sharply a landing squashes and recovers: 1 − |u|^1.7 over the contact, u −1 at touch to 1 at lift-off. */
 const HUMP = 1.7;
-// The last landing's crouch: a one-frame partial rebound (1.45 wide), then pressed flatter and held.
-const WOBBLE_AT = 2 * REF_F;
-const CROUCH_AT = 3 * REF_F;
+/** The shortest crouch a launch waits for by default: two frames at 30 fps. */
+const CROUCH_MIN = 4 * REF_F;
 // The line rings at 6.9 Hz losing 45% a half-cycle (ζ 0.19); its first swing up is 0.6 of the dent it rebounds from.
 const RING_WD = TAU * 6.9;
 const RING_DECAY = (0.19 * RING_WD) / Math.sqrt(1 - 0.19 ** 2);
@@ -98,7 +97,10 @@ export type BallLaunch = {
   at?: number;
   /** Where the swell heads as it grows. Default the frame's centre. */
   to?: { x: number; y: number };
-  /** The crouch before it: held flatter than a landing (3.9:1) and deeper into the line (0.14 × size); false leaves at once. */
+  /**
+   * The crouch before it: the landing's squash presses on until it leaves, to flatter than a landing (3.9:1) and deeper
+   * into the line (0.14 × size); false leaves at once.
+   */
   anticipation?: false | { squash?: number; dent?: number };
   /** How far the swell's path hops up on its way (0.77 × size), and its stretch along the launch (1.75:1). */
   lift?: number;
@@ -204,7 +206,8 @@ function bounceModel(p: BounceParams): BounceModel {
     const L = p.launch, pad = ts[n - 1];
     const fill = L.fill ?? pad + spb - 1 / FPS;
     const crouch = L.anticipation === false ? null : { squash: strainOf(L.anticipation?.squash ?? 3.9, 0), dent: L.anticipation?.dent ?? 0.139 * size };
-    const at = crouch ? (L.at ?? Math.max(pad + CROUCH_AT + REF_F, fill - SWELL_TIME)) : pad + half;
+    const at = crouch ? (L.at ?? Math.max(pad + CROUCH_MIN, fill - SWELL_TIME)) : pad + half;
+    if (crouch && !(at > pad)) throw new RangeError(`bouncingBallAt: the launch leaves the ground at ${at.toFixed(3)} s, not after the last landing's squash at ${pad.toFixed(3)} s`);
     if (!(fill > at)) throw new RangeError(`bouncingBallAt: the launch fills the frame at ${fill.toFixed(3)} s, before it leaves the ground at ${at.toFixed(3)} s`);
     launch = { at, fill, to: L.to ?? { x: W / 2, y: H / 2 }, crouch, lift: L.lift ?? 0.77 * size, stretch: L.stretch ?? 1.75 };
   }
@@ -257,13 +260,17 @@ function contactPose(m: BounceModel, i: number, u: number): RawPose {
   return { x: contactX(m, i), y: m.groundY + dent - halfHeight(m.r, s), s, r: m.r, phase: 'contact', contact: i, since: u * m.half, dent, swell: 0 };
 }
 
+/** How far the pad's crouch has pressed `since` its landing's biggest squash: 0 there, 1 as it leaves the ground. */
+const crouchLoad = (m: BounceModel, since: number) => clamp(since / (m.launch!.at - contactTime(m, m.n - 1)));
+
+/**
+ * The pad's crouch: its landing's squash presses on at a steady rate, flatter and deeper, until it leaves; eased into
+ * its pose, it would read as a hold. The reference first rebounds for a 60 fps frame (1.45:1): at 30 fps that fills a
+ * frame and reads as a second bounce, so the crouch doesn't.
+ */
 function crouchPose(m: BounceModel, since: number): RawPose {
-  const c = m.launch!.crouch!, pad = m.n - 1;
-  const wobble = strainOf(1.45, 0);
-  const s = since < WOBBLE_AT
-    ? mixStrain(m.squash, wobble, sineInOutEase(since / WOBBLE_AT))
-    : mixStrain(wobble, c.squash, sineInOutEase((since - WOBBLE_AT) / (CROUCH_AT - WOBBLE_AT)));
-  const dent = lerp(m.dent, c.dent, sineInOutEase(since / CROUCH_AT));
+  const c = m.launch!.crouch!, pad = m.n - 1, k = crouchLoad(m, since);
+  const s = mixStrain(m.squash, c.squash, k), dent = lerp(m.dent, c.dent, k);
   return { x: contactX(m, pad), y: m.groundY + dent - halfHeight(m.r, s), s, r: m.r, phase: 'crouch', contact: pad, since, dent, swell: 0 };
 }
 
@@ -322,11 +329,10 @@ function landingDent(m: BounceModel, i: number, t: number): number {
   const ti = contactTime(m, i), u = (t - ti) / m.half, L = m.launch;
   if (u < -1) return 0;
   if (L?.crouch && i === m.n - 1 && u > 0) {
-    const held = (at: number) => lerp(m.dent, L.crouch!.dent, sineInOutEase((at - ti) / CROUCH_AT));
-    if (t < L.at) return held(t);
-    // Let go from where it was held: the string springs up through level and rings down.
+    if (t < L.at) return lerp(m.dent, L.crouch.dent, crouchLoad(m, t - ti));
+    // Let go from the crouch's deepest press: the string springs up through level and rings down.
     const τ = t - L.at;
-    return held(L.at) * Math.exp(-RING_DECAY * τ) * (Math.cos(RING_WD * τ) + (RING_DECAY / RING_WD) * Math.sin(RING_WD * τ));
+    return L.crouch.dent * Math.exp(-RING_DECAY * τ) * (Math.cos(RING_WD * τ) + (RING_DECAY / RING_WD) * Math.sin(RING_WD * τ));
   }
   if (u <= 1) return m.dent * hump(u);
   const τ = t - ti - m.half;
@@ -608,7 +614,7 @@ export function BounceBall(props: BounceParams & {
     const at = t - (j + 1) / 30;
     if (m.drop && at < m.drop.start) return null;
     const g = rawPoseAt(m, at);
-    // A ghost where the ball is (a held crouch) would only ring its edge.
+    // A ghost that has barely left the ball (the crouch pressing on) would only ring its edge.
     const apart = clamp((Math.hypot(g.x - pose.x, g.y - pose.y) + Math.abs(ballEllipse(g).rx - ballEllipse(pose).rx)) / 12);
     return { g, alpha: 0.15 * 0.75 ** j * apart * chrome };
   });

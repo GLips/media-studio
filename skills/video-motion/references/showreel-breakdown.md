@@ -290,8 +290,10 @@ In `lib/studio/reel/` unless noted.
   guide, diamonds and ghosts fade over f151–157, the callout over f151–156. No cut: f165's orange is bar 2's ground.
 - Evidence: `01/work/{contact1,ghosts,callouts,rings2,swell,pathbuild}.jpg`.
 - Build: `BounceBall` and `bouncingBallAt` (`bounce.tsx`, whose reference values are this bar's), `BounceCallout`,
-  `FieldSwell`. At 30 fps put each max squash on a rendered frame; the swell's last ≈5 frames grow ×1.56 each, so
-  soften its edge (σ ≈0.035 r) or give it `ShutterBlur` at 0.5.
+  `FieldSwell`. The one departure is the crouch: `bounce.tsx` runs the impact's squash straight into it, without the
+  rebound, which at 30 fps lands on a frame of its own and reads as a stutter, squash–stretch–squash. At 30 fps put
+  each max squash on a rendered frame; the swell's last ≈5 frames grow ×1.56 each, so soften its edge (σ ≈0.035 r) or
+  give it `ShutterBlur` at 0.5.
 
 ### Bar 2: 02 — KINETIC TYPE (f167–278) [02]; EVERY also [01]
 
