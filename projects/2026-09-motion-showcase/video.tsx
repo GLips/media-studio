@@ -17,8 +17,11 @@ import { SOUND_LAG_SECONDS } from './timeline.ts';
 
 /** The bars in order, exported so a check can read their cuts, kicks and sounds. */
 export const showcaseBars = [bounceBar, everyColorBar, swatchesBar, inkBar, searchBar, buyMoreBar, tiersBar, payLessBar, oneBoxBar];
-// The frame names the event, so it picks the take: a run of keys doesn't repeat one. Each lands with the music's hit.
-const sounds = showcaseBars.flatMap((bar) => (bar.sounds ?? []).map(({ at, ...sound }) => ({ ...sound, at: at / FPS + SOUND_LAG_SECONDS, id: `${bar.id}@${at}` })));
+// Each lands with the music's hit. Its id, the bar's and its role there, picks the take, so two sounds sharing one
+// would play the same take and read as one row in every check.
+const sounds = showcaseBars.flatMap((bar) => (bar.sounds ?? []).map(({ at, id, ...sound }) => ({ ...sound, at: at / FPS + SOUND_LAG_SECONDS, id: `${bar.id}/${id}` })));
+const repeatedSoundId = sounds.find((s, i) => sounds.findIndex((other) => other.id === s.id) !== i)?.id;
+if (repeatedSoundId) throw new Error(`two sounds are ${repeatedSoundId}: give each its own role in its bar`);
 
 // The music leads, 4 LU over the accents: measured at their moments, the strikes and whips sit 3–6 LU under the
 // track, heard but inside it, and the last needle rides over the final hit's tail.

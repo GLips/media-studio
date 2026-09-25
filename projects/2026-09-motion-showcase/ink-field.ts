@@ -1,7 +1,7 @@
 // The ink field bars 4 and 5 share: the 174 inks as a lattice of dots on black, and the count at its foot. Bar 4's
-// needle ripples repaint the field and its last one lands every cell back on this rest look at frame 265; bar 5 picks
-// the field up from that state at 266 and filters it, the count standing where bar 4 landed it. This module is the one
-// place the handover state is written down: change it here, not in a bar.
+// needle ripples repaint the field and its last one lands every cell back on this rest look by bar 4's last frame; bar
+// 5 picks the field up from that state on its first and filters it, the count standing where bar 4 landed it. This
+// module is the one place the handover state is written down: change it here, not in a bar.
 
 import { H, ODOMETER_DIGIT_EM, W } from '../../lib/studio/api.ts';
 import { glyphFieldLayout, type GlyphCell, type GlyphFieldProps, type GlyphLayout, type GlyphRest, type GlyphShape } from '../../lib/studio/reel/glyph-field.tsx';
@@ -31,8 +31,8 @@ export function inkFieldSlotAt(column: number, row: number) {
 }
 
 /**
- * Where bar 4's needle first strikes, on 206: bar 3's dive lands the period of the machine's .00 reading here on 205,
- * so the cut is a match on that dot.
+ * Where bar 4's needle first strikes, on its first frame: bar 3's dive lands the period of the machine's .00 reading
+ * here on its last, so the cut is a match on that dot.
  */
 export const INK_FIRST_STRIKE = inkFieldSlotAt(7, 4);
 

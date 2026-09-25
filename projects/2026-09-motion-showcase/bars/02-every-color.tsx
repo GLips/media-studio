@@ -1,7 +1,7 @@
 // Bar 2, 02 — KINETIC TYPE: a word a beat, red and black trading places at every cut. EVERY rises out of its rule
-// on bar 1's red (86). COLOR cuts to black in five inks, the only multicoloured type before bar 4, sweeping Thin to
-// Black as a cream selection closes on it (101). ONE cuts back to red, its O a hole into black (116); the camera
-// dives through it onto TAP., which decodes on the black beyond (131). Its full stop lands on the next sixteenth
+// on bar 1's red on the downbeat. On 1 COLOR cuts to black in five inks, the only multicoloured type before bar 4,
+// sweeping Thin to Black as a cream selection closes on it. On 2 ONE cuts back to red, its O a hole into black; the
+// camera dives through it onto TAP., which decodes on the black beyond on 3. Its full stop lands on the next sixteenth
 // and is tapped, red ripples ringing out. It ends on black, TAP. held, for bar 3's card. No blue: that's bar 5's.
 
 import type { CSSProperties } from 'react';
@@ -16,13 +16,15 @@ import { IndexLabel, RiseWord, ScrambleText, SelectionBox, SlantWord, slantMatri
 import type { Bar } from '../bar.ts';
 import { Field } from '../parts.tsx';
 import { SHOWCASE_HUD } from '../reel.tsx';
-import { P, barFrame, grid, hitFrame, inksByHue } from '../timeline.ts';
+import { P, barFrame, grid, barBeatFrame, inksByHue } from '../timeline.ts';
 
 const outExpo = motionCurves.expo.entrance;
 const outQuart = powerOutEase(4);
 
-/** Each word's cut: EVERY, COLOR, ONE and TAP. land on beats 4–7. */
-const CUT = { every: hitFrame(4), color: hitFrame(5), one: hitFrame(6), tap: hitFrame(7) } as const;
+/** Each word's cut: EVERY, COLOR, ONE and TAP. land on the bar's four beats. */
+const CUT = { every: barBeatFrame(2, 0), color: barBeatFrame(2, 1), one: barBeatFrame(2, 2), tap: barBeatFrame(2, 3) } as const;
+/** What the finale replays of this bar: each word's cut, and TAP.'s full stop locking a sixteenth after its own. */
+export const everyColorMoments = { every: CUT.every, color: CUT.color, one: CUT.one, tapLock: CUT.tap + 4 } as const;
 const since = (f: number, cut: number) => (f - cut) / FPS;
 
 // A word's font size is its cap height over this, as the type pieces set Archivo, so letters placed here from the
@@ -59,7 +61,7 @@ const everyWidth = (stretch: number) => centredLine('EVERY', EVERY_SET.cap, EVER
 // Advance widths run near linear along the axis, so a width's stretch is one secant step from the set one.
 const EVERY_PX_PER_STRETCH = (everyWidth(1.1 * EVERY_SET.stretch) - everyWidth(EVERY_SET.stretch)) / (0.1 * EVERY_SET.stretch);
 
-/** The landing's breath on frame `f`, fractional: 0 on the cut, 1 at its fullest on 92, back to 0 on the next cut. */
+/** The landing's breath on frame `f`, fractional: 0 on the cut, 1 at its fullest (its peak), back to 0 on the next cut. */
 const everyBreath = (f: number) =>
   f <= EVERY_BREATH.peak ? seg(f, CUT.every, EVERY_BREATH.peak, powerOutEase(2)) : 1 - seg(f, EVERY_BREATH.peak, EVERY_BREATH.end, (k) => k);
 
@@ -77,7 +79,7 @@ function Every({ t }: { t: number }) {
   );
 }
 
-// ---------- 101: COLOR ----------
+// ---------- beat 1: COLOR ----------
 
 const COLOR = { text: 'COLOR', cap: 300, stretch: 85, from: 100, to: 900, sweep: 0.3 } as const;
 const COLOR_BASE = H / 2 + COLOR.cap / 2;
@@ -91,7 +93,7 @@ const COLOR_BOX = inflate({ x: COLOR_LANDED.left, y: COLOR_BASE - COLOR.cap, w: 
 const SPECTRUM = [2, 22, 37, 57, 72].map((i) => inksByHue[i].color);
 // Once the word and its box have landed, the inks step a letter to the right on each sixteenth: the held word
 // re-lights twice before the cut, every ink in a new place.
-const RELIGHTS = [hitFrame(5.5), hitFrame(5.75)];
+const RELIGHTS = [barBeatFrame(2, 1.5), barBeatFrame(2, 1.75)];
 
 /**
  * WeightWord's sweep, Thin to Black on its out-quart over 0.3 s, each letter in its own ink. WeightWord sets its word
@@ -123,7 +125,7 @@ function Color({ t, step }: { t: number; step: number }) {
   );
 }
 
-// ---------- 116: ONE, and the dive through its O ----------
+// ---------- beat 2: ONE, and the dive through its O ----------
 
 const ONE = { text: 'ONE', cap: 420, weight: 250 } as const;
 // SlantWord's entrance, passed to it and replayed below to carry the O's hole with the word; level and still by 0.3 s.
@@ -289,7 +291,7 @@ function One({ t }: { t: number }) {
   );
 }
 
-// ---------- 131: TAP. ----------
+// ---------- beat 3: TAP. ----------
 
 const TAP = { text: 'TAP.', cap: 440, stretch: 75, spacing: -0.02 } as const;
 const TAP_BASE = H / 2 + TAP.cap / 2;

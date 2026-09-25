@@ -10,12 +10,15 @@ import { reelHudBoxes, type ReelHudTone } from '../../../lib/studio/reel/hud.tsx
 import { TickerBands, tickerLookBeat, type TickerColors, type TickerEnter, type TickerLook } from '../../../lib/studio/reel/ticker.tsx';
 import type { Bar } from '../bar.ts';
 import { SHOWCASE_HUD } from '../reel.tsx';
-import whipIn from '../sfx/whip-326.ts';
-import { P, barFrame, hitFrame } from '../timeline.ts';
+import tapQty2 from '../sfx/tap-qty-2.ts';
+import whipIntoBuyMore from '../sfx/whip-into-buy-more.ts';
+import { P, barFrame, barBeatFrame } from '../timeline.ts';
 
 const FROM = barFrame(6), TO = barFrame(7);
 /** The bar's hits: the cut, then QTY 2, 3 and 5. */
-const HITS = [0, 1, 2, 3].map((k) => hitFrame(20 + k));
+const HITS = [0, 1, 2, 3].map((n) => barBeatFrame(6, n));
+/** What the finale replays of this bar: QTY 2, and QTY 3 as red takes the bands. */
+export const buyMoreMoments = { qty2: HITS[1], qty3: HITS[2] } as const;
 
 // The piece's clock: 0 on the bar's first hit and a beat every 15 frames, so its looks flip on the hit frames.
 const SPB = (HITS[1] - HITS[0]) / FPS;
@@ -30,7 +33,7 @@ const HERO = 3;
 // frames earlier, as if it began under bar 5's last frames. On the cut the hero's edge is 7% of the frame from home
 // and the outermost bands' 17%, so they hold nine tenths of the frame, still flying, and BUY MORE reads. On the
 // reference's own timing the cut opens on a smear at the right. The exit is the reference's: the bands clear 50 ms
-// before the next downbeat, so frame 385 shows only the word.
+// before the next downbeat, so the bar's last frame shows only the word.
 const ENTER: TickerEnter = { decay: 0.071, stagger: 0.02, lead: 0.069 + 3.5 / FPS };
 
 /** One look a beat: the colour wave does the stripes, beat 2 leans, beat 3 holds the hero. */
@@ -148,6 +151,7 @@ export const buyMoreBar: Bar = {
   // Every part sits in a lane, so what's under it is the ground at that frame.
   hudRead: (_slot, f) => ({ tone: HUD_TONE_OVER[groundAt(pieceT(f))] }),
   kicks: HITS.slice(1),
-  // The bands whip in on the cut, their fastest frame.
-  sounds: [{ at: FROM, sound: whipIn }],
+  // The bands whip in on the cut, their fastest frame. The track leaves QTY 2's beat empty, so its step taps there
+  // alone, a swatch tap's kin; QTY 3 and 5 land on the track's own hits.
+  sounds: [{ id: 'whip-in', at: FROM, sound: whipIntoBuyMore }, { id: 'tap-qty-2', at: HITS[1], sound: tapQty2, volume: 1.3 }],
 };

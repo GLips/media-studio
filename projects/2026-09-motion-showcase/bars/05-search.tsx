@@ -1,10 +1,10 @@
-// Bar 5, 05 — FILTER: the search, played as the show. "blue" types into the ink field an eighth a letter, each key
-// popping the dots under it and ringing through the rest, as the count reads 174 OF 174. On the "e" the 17 blues light
-// up, the other 157 fall away and the count rolls to 17; the cursor swells into a cobalt flood that fills the frame on
-// the downbeat as the 17 pack beside the word. On the "and" (303) the camera dives through the type as the real list
-// swoops in, big from 305, and slams down on 311, leaning as bar 6's bands will. Then the page scrolls up under its
-// search box, a row every four frames into the cut, and on the "and" (318) the box lifts off toward the lens, its
-// shadow falling on the blues streaming under it.
+// Bar 5, 05 — FILTER: the search, played as the show. "blue" types into the ink field a letter a sixteenth, each key
+// popping the dots under it and ringing through the rest, as the count reads 174 OF 174. On the "e" the 17 blues flash
+// up where they stand and the rest dim; on the beat they fall away as the count rolls to 17, and on its "and" the 17
+// pack beside the word as the cursor swells into a cobalt flood that fills the frame on the downbeat. On the "and"
+// the camera dives through the type as the real list swoops in, big two frames on, and slams down on the next beat,
+// leaning as bar 6's bands will. Then the page scrolls up under its search box, a row every four frames into the cut,
+// and on the "and" the box lifts off toward the lens, its shadow falling on the blues streaming under it.
 
 import type { ReactNode } from 'react';
 import {
@@ -21,24 +21,33 @@ import type { Bar } from '../bar.ts';
 import { captures as C } from '../captures/index.ts';
 import { SHOWCASE_HUD } from '../reel.tsx';
 import { INK_COUNT, INK_DOT, INK_FIELD, type InkCell } from '../ink-field.ts';
-import listSlam from '../sfx/slam-311.ts';
-import { P, barFrame, hitFrame, isBlueInk, type Ink } from '../timeline.ts';
+import listSlam from '../sfx/list-slam.ts';
+import { P, barFrame, barBeatFrame, isBlueInk, type Ink } from '../timeline.ts';
 
 const FROM = barFrame(5), TO = barFrame(6);
-/** b, l, u, e: one an eighth from the downbeat. */
-const KEYS = [16, 16.5, 17, 17.5].map(hitFrame);
-/** The query is whole: the blues light up, the rest fall, the count rolls. */
+// The track swings its sixteenths: across it, the second and fourth of a beat land about 35 ms (0.07 beat) behind the
+// straight grid, a frame late, while its beats and "and"s sit on it. A letter on the straight grid's "a" would
+// lead the music's hit by over two frames.
+const SWING = 0.07;
+const swungSixteenth = (n: number) => barBeatFrame(5, n % 0.5 ? n + SWING : n);
+/** b, l, u, e: one a sixteenth from the downbeat, "blue" whole on its "a". */
+const KEYS = [0, 0.25, 0.5, 0.75].map(swungSixteenth);
+/** The query is whole: from the cursor, the 17 blues flash up where they stand and the rest dim. */
 const FOUND = KEYS[3];
-const DOWNBEAT = hitFrame(18);
-/** The cursor starts to swell three frames after the "e"; the frame is blue on the downbeat. */
-const FLOOD_FROM = FOUND + 3;
-/** The 17 flash up where they are for two frames, then fly to their block, the last of them landing on the downbeat. */
-const PACK_FROM = FOUND + 2;
-const DIVE = hitFrame(18.5);
+/** The next beat: the 17 pulse and the 157 fall out of the frame as the count starts down. */
+const FALL = barBeatFrame(5, 1);
+/** Its "and": the 17 fly to their block, whole on the "a". */
+const PACK_FROM = barBeatFrame(5, 1.5);
+const DOWNBEAT = barBeatFrame(5, 2);
+/** The cursor swells for five frames; the frame is blue on the downbeat. */
+const FLOOD_FROM = DOWNBEAT - 5;
+const DIVE = barBeatFrame(5, 2.5);
 /** The card comes in from past the frame's corner a frame into the dive, once the type has started to move. */
 const SWOOP_FROM = DIVE + 1;
-const LAND = hitFrame(19);
-const RISE = hitFrame(19.5);
+const LAND = barBeatFrame(5, 3);
+const RISE = barBeatFrame(5, 3.5);
+/** What the finale replays of this bar: the answer, "blue · 17 of 174" on cobalt, and the list slamming down. */
+export const searchMoments = { answer: DOWNBEAT, listLand: LAND } as const;
 const sec = (f: number) => f / FPS;
 const CENTRE: Point = { x: W / 2, y: H / 2 };
 
@@ -106,8 +115,9 @@ const OF_WORDS = ['OF', '174'].map((word) => ({
 }));
 const OF_WIDTH = OF_WORDS[0].width + OF.space * OF_SIZE + OF_WORDS[1].width;
 
-// In-out, so 174 visibly starts to turn before it runs, and each wheel is still a digit while it spins.
-const countAt = (t: number) => lerp(174, 17, seg(t * FPS, FOUND, DOWNBEAT));
+// It counts the fall away, landing with the flood. In-out, so 174 visibly starts to turn before it runs, and each
+// wheel is still a digit while it spins.
+const countAt = (t: number) => lerp(174, 17, seg(t * FPS, FALL, DOWNBEAT));
 
 /** The digits' width now: the hundreds place squeezes away as the count drops under 100. */
 function countWidth(t: number) {
@@ -163,47 +173,48 @@ const CLEAR_CLIP: GlyphClip<Ink> = {
 };
 
 /**
- * A key rings out through the dots still standing: a swell and a flash running from its letter at 150 px a frame, so
- * one ring is still crossing the field as the next key strikes.
+ * A key rings out through the dots still standing: a swell and a flash running from its letter at 270 px a frame,
+ * across the field by the next key or just after. Slower or longer, the rings of keys a sixteenth apart merge into
+ * one swell.
  */
 const RING_CLIP: GlyphClip<Ink> = {
-  scale: [{ at: 1.5 / FPS, value: 1.4, ease: outQuad }, { at: 7 / FPS, value: 1, ease: motionCurves.cubic.standard }],
-  brighten: [{ at: 1 / FPS, value: 0.3 }, { at: 6 / FPS, value: 0, ease: outQuad }],
+  scale: [{ at: 1 / FPS, value: 1.4, ease: outQuad }, { at: 3.5 / FPS, value: 1, ease: motionCurves.cubic.standard }],
+  brighten: [{ at: 0.5 / FPS, value: 0.3 }, { at: 3 / FPS, value: 0, ease: outQuad }],
 };
+const RING_SPEED = 90;
 
 const keyOrigin = (i: number): Point => {
   const box = letterBox(i);
   return { x: box.x + box.w / 2, y: WORD.base - 0.3 * WORD.size };
 };
-/** The search's answer runs out from the cursor on the "e", 300 px a frame. */
+/** The search's answer runs out from the cursor on the "e", 360 px a frame: the field has answered by the next beat. */
 const FOUND_ORIGIN: Point = { x: cursorRect(4).x, y: WORD.base - 0.3 * WORD.size };
-const FOUND_SPEED = 90;
+const FOUND_SPEED = 120;
 const foundDelay = (cell: InkCell) => Math.hypot(cell.x - FOUND_ORIGIN.x, cell.y - FOUND_ORIGIN.y) / (FOUND_SPEED * INK_FIELD.layout.pitch);
 
 const LOWER_WAVES: GlyphWave<Ink>[] = [
   ...KEYS.map((key, i): GlyphWave<Ink> => ({ start: sec(key), front: { from: keyOrigin(i) }, speed: 60, where: (cell) => clearingKey(cell) === i, clip: CLEAR_CLIP })),
-  // The "e" has no ring: its key is the purge, and the filter's drops are its answer.
+  // The "e" has no ring: the answer's front runs out from its cursor instead.
   ...KEYS.slice(0, 3).map((key, i): GlyphWave<Ink> => ({
-    start: sec(key), front: { from: keyOrigin(i) }, speed: 45, clip: RING_CLIP,
+    start: sec(key), front: { from: keyOrigin(i) }, speed: RING_SPEED, clip: RING_CLIP,
     where: (cell) => !underCount(cell) && (clearingKey(cell) < 0 || clearingKey(cell) > i),
   })),
   // The count's ground is clear on the cut: a dot between its digits would read as a decimal point.
   { start: sec(KEYS[0]), front: { delay: () => 0 }, where: underCount, clip: { opacity: [{ at: 0, value: 0 }] } },
-  // Each blue hands over to the field of the 17 as the answer's front reaches it, or as the 17 leave if that's sooner:
-  // a blue gone before its twin shows would blink.
-  {
-    start: sec(FOUND), front: { delay: (cell) => Math.min(foundDelay(cell), sec(PACK_FROM - FOUND)) }, where: isBlue,
-    clip: { opacity: [{ at: 0, value: 0 }] },
-  },
+  // Each blue hands over to its twin in the field of the 17 as the answer's front reaches it.
+  { start: sec(FOUND), front: { delay: foundDelay }, where: isBlue, clip: { opacity: [{ at: 0, value: 0 }] } },
   // The rest dim on the same front, so the 17 light up against them before they fall.
   {
     start: sec(FOUND), front: { delay: foundDelay }, where: (cell) => !isBlue(cell) && !underCount(cell),
     clip: { opacity: [{ at: 1 / FPS, value: 0.3 }] },
   },
 ];
-const LOWER_FILTER: GlyphFilterStep<Ink>[] = [{ at: sec(FOUND), keep: isBlue }];
-// Every drop is gone by the downbeat: 3 frames of scatter, so they fall a few at a time, and 5 of swell-and-shrink.
-const DROP_TIMING = { exit: 5 / FPS, spread: 3 / FPS };
+// On the next beat the rest fall out of the frame, gathering speed, into the field's lattice moved to 200 px under it:
+// each path runs all but straight down, the shortest (the lower rows) first, the last gone by the "and" as the 17 fly.
+// The blues it drops are already hidden, handed to their twins.
+const PIT = { ...INK_FIELD.layout, center: { x: W / 2, y: H / 2 + 1100 } } as const satisfies GlyphRegroup;
+const LOWER_FILTER: GlyphFilterStep<Ink>[] = [{ at: sec(FALL), keep: (cell) => !isBlue(cell), regroup: PIT }];
+const FALL_TIMING = { move: 5 / FPS, moveSpread: 2 / FPS, moveEase: inQuad };
 
 // The 17 pack right of the word in three columns at 1.8 times the dot, the results beside the query.
 const BLOCK = { columns: 3, pitch: 120, center: { x: 1660, y: H / 2 }, lastRow: 'center' } as const satisfies GlyphRegroup;
@@ -215,11 +226,11 @@ const BLOCK_SCALE = 1.8;
 const KEYLINE = { id: 'search-blues-keyline', width: 5, copies: 16, from: DOWNBEAT - 3, to: DOWNBEAT - 1 };
 const keylineOpacity = (f: number) => seg(f, KEYLINE.from, KEYLINE.to);
 
-function KeylineFilter({ f }: { f: number }) {
-  if (keylineOpacity(f) <= 0) return null;
+function KeylineFilter({ id, opacity }: { id: string; opacity: number }) {
+  if (opacity <= 0) return null;
   return (
     <svg width={0} height={0} style={{ position: 'absolute' }}>
-      <filter id={KEYLINE.id} x="-5%" y="-5%" width="110%" height="110%" colorInterpolationFilters="sRGB">
+      <filter id={id} x="-5%" y="-5%" width="110%" height="110%" colorInterpolationFilters="sRGB">
         {Array.from({ length: KEYLINE.copies }, (_, i) => {
           const a = (2 * Math.PI * i) / KEYLINE.copies;
           return <feOffset key={i} in="SourceAlpha" dx={KEYLINE.width * Math.cos(a)} dy={KEYLINE.width * Math.sin(a)} result={`copy${i}`} />;
@@ -227,7 +238,7 @@ function KeylineFilter({ f }: { f: number }) {
         <feMerge result="spread">
           {Array.from({ length: KEYLINE.copies }, (_, i) => <feMergeNode key={i} in={`copy${i}`} />)}
         </feMerge>
-        <feFlood floodColor={P.ground} floodOpacity={keylineOpacity(f)} />
+        <feFlood floodColor={P.ground} floodOpacity={opacity} />
         <feComposite in2="spread" operator="in" result="line" />
         <feMerge>
           <feMergeNode in="line" />
@@ -239,29 +250,48 @@ function KeylineFilter({ f }: { f: number }) {
 }
 
 const blueRest = (cell: InkCell) => ({ ...INK_DOT, fill: cell.item.color, opacity: 0 });
+/**
+ * Found: a blue flashes up where it stands as the front from the cursor reaches it, and holds a size up and a shade
+ * light, so the darkest read on black, while the rest fall away round it.
+ */
+const FOUND_CLIP: GlyphClip<Ink> = {
+  opacity: [{ at: 0, value: 1 }],
+  scale: [{ at: 0, value: 0.6 }, { at: 2 / FPS, value: 1.45, ease: outQuad }, { at: 8 / FPS, value: 1.25, ease: motionCurves.cubic.entrance }],
+  brighten: [{ at: 0, value: 0.7 }, { at: 6 / FPS, value: 0.2, ease: outQuad }],
+};
+/** On the next beat, as the rest start to fall, the 17 pulse once together. */
+const PULSE_CLIP: GlyphClip<Ink> = {
+  scale: [{ at: 1 / FPS, value: 1.5, ease: outQuad }, { at: 5 / FPS, value: 1.25, ease: motionCurves.cubic.standard }],
+  brighten: [{ at: 0, value: 0.5 }, { at: 4 / FPS, value: 0.2, ease: outQuad }],
+};
 const BLUE_WAVES: GlyphWave<Ink>[] = [
-  // Found: each blue in the open flashes up where it is, the front running out from the cursor.
-  {
-    start: sec(FOUND), front: { delay: foundDelay }, where: (cell) => isBlue(cell) && !underType(cell),
-    clip: {
-      opacity: [{ at: 0, value: 1 }],
-      scale: [{ at: 0, value: 0.6 }, { at: 2 / FPS, value: 1.45, ease: outQuad }, { at: 8 / FPS, value: 1.1, ease: motionCurves.cubic.entrance }],
-      brighten: [{ at: 0, value: 0.6 }, { at: 6 / FPS, value: 0, ease: outQuad }],
-    },
-  },
+  { start: sec(FOUND), front: { delay: foundDelay }, where: (cell) => isBlue(cell) && !underType(cell), clip: FOUND_CLIP },
+  { start: sec(FALL), front: { delay: () => 0 }, where: (cell) => isBlue(cell) && !underType(cell), clip: PULSE_CLIP },
   {
     start: sec(PACK_FROM), front: { delay: () => 0 }, where: isBlue,
     clip: {
-      // A blue the front hasn't reached takes over from its twin in the lower field; one under the type fades up as it
-      // flies out from behind the letters.
+      // A blue under the type fades up as it flies out from behind the letters.
       opacity: [{ at: 0, value: (cell) => (underType(cell) ? 0 : 1) }, { at: 2 / FPS, value: 1 }],
       scale: [{ at: 0.3, value: BLOCK_SCALE, ease: outExpo }],
+      brighten: [{ at: 0.3, value: 0, ease: outExpo }],
     },
   },
 ];
+
+// Twelve of the 17 stand under the letters or the count, where a flash can't be seen. They flash up over the type
+// instead, keylined against the cream, so all 17 are seen where they stand; on the "and" each shrinks away into the
+// type over two frames as its twin flies out from under it.
+const COVERED_KEYLINE = 'search-covered-keyline';
+const isCovered = (cell: InkCell) => isBlue(cell) && underType(cell);
+const COVERED_WAVES: GlyphWave<Ink>[] = [
+  { start: sec(FOUND), front: { delay: foundDelay }, where: isCovered, clip: FOUND_CLIP },
+  { start: sec(FALL), front: { delay: () => 0 }, where: isCovered, clip: PULSE_CLIP },
+  { start: sec(PACK_FROM), front: { delay: () => 0 }, where: isCovered, clip: { scale: [{ at: 2 / FPS, value: 0, ease: outQuad }] } },
+];
+const coveredShown = (f: number) => f >= FOUND && f < PACK_FROM + 2;
 const BLUE_FILTER: GlyphFilterStep<Ink>[] = [{ at: sec(PACK_FROM), keep: isBlue, regroup: BLOCK }];
 // Five frames a flight, the last leaving a frame after the first, on out-cubic rather than the default expo: it's
-// within a pixel or two of home a frame early, so the block is whole on the downbeat; expo's long tail would leave
+// within a pixel or two of home a frame early, so the block is whole on the "a"; expo's long tail would leave
 // dots still overlapping there.
 const PACK_TIMING = { move: 5 / FPS, moveSpread: 1 / FPS, moveEase: motionCurves.cubic.entrance };
 
@@ -303,8 +333,11 @@ function Flood({ f }: { f: number }) {
 
 // ---------- the camera ----------
 
-// Every key punches the camera, the downbeat hardest, decaying as the reference's do (τ 0.11 s).
-const PUNCHES: readonly (readonly [number, number])[] = [[KEYS[0], 0.025], [KEYS[1], 0.018], [KEYS[2], 0.025], [KEYS[3], 0.02], [DOWNBEAT, 0.04]];
+// Every key punches the camera, then the fall's beat lightly and the downbeat hardest, decaying as the reference's do
+// (τ 0.11 s).
+const PUNCHES: readonly (readonly [number, number])[] = [
+  [KEYS[0], 0.025], [KEYS[1], 0.018], [KEYS[2], 0.025], [KEYS[3], 0.02], [FALL, 0.015], [DOWNBEAT, 0.04],
+];
 function cameraPunch(f: number) {
   let k = 1;
   for (const [at, a] of PUNCHES) if (f >= at) k += a * Math.exp(-sec(f - at) / 0.11);
@@ -361,10 +394,10 @@ const CARD_REST: PlanePose = { x: 0, y: 0, z: 0, rx: 11, ry: -15, rz: -6.3 };
 const CARD_FAR: PlanePose = { x: 900, y: 520, z: 0, rx: 18, ry: 8, rz: -18 };
 /** How far toward the lens it swoops in from, px: the height it slams down from. */
 const DROP = 300;
-/** Frames the swoop takes to arrive: three quarters of the way on its first, so it's big from 305. */
+/** Frames the swoop takes to arrive: three quarters of the way on its first, so it's big on its second. */
 const ARRIVE = 5;
 // Penner's expo arrival, as motionCurves.expo.entrance, but not clamped below 0: the card was further out a frame
-// before it enters, so its trail smears it in on 304 rather than popping on sharp.
+// before it enters, so its trail smears it in on its first frame rather than popping on sharp.
 const swoopIn = (k: number) => (k >= 1 ? 1 : 1 - 2 ** (-10 * k));
 /** Frames it takes to turn into its lean. Any slower and its left edge sweeps over the HUD's timecode as it lands. */
 const TURN = 6;
@@ -378,7 +411,7 @@ const CARD_PUSH = { x: (CENTRE.x - PUSH_ABOUT[0]) * (1 - PUSH_KEEP), y: (CENTRE.
 
 /**
  * The slam: the card sweeps into place on an expo and turns on one a frame longer, while it falls to the ground from
- * DROP px up, accelerating, and hits on 311 at full speed. It bounces a hair back up and settles, then pushes on.
+ * DROP px up, accelerating, and hits on the beat (LAND) at full speed. It bounces a hair back up and settles, then pushes on.
  */
 function cardPose(t: number): PlanePose {
   const u = clamp((t - sec(SWOOP_FROM)) / sec(LAND - SWOOP_FROM));
@@ -504,20 +537,25 @@ function SearchCard({ f }: { f: number }) {
 
 /**
  * Everything the camera flies through: the field, the 17 and the type. The 17 fly under the type, so their smears
- * never cross the word.
+ * never cross the word; only the covered ones' flash stands over it.
  */
 function Poster({ f }: { f: number }) {
   const t = sec(f);
   if (diveZoom(f) > DIVE_GONE) return null;
   return (
     <Camera f={f}>
-      <GlyphField t={t} {...INK_FIELD} waves={LOWER_WAVES} filter={LOWER_FILTER} filterTiming={DROP_TIMING} seed="search" motion="ink field" />
+      <GlyphField t={t} {...INK_FIELD} waves={LOWER_WAVES} filter={LOWER_FILTER} filterTiming={FALL_TIMING} seed="search" motion="ink field" />
       <div style={{ position: 'absolute', inset: 0, filter: keylineOpacity(f) > 0 ? `url(#${KEYLINE.id})` : undefined }}>
         <GlyphField t={t} {...INK_FIELD} rest={blueRest} waves={BLUE_WAVES} filter={BLUE_FILTER} filterTiming={PACK_TIMING} seed="search" motion="blues" />
       </div>
       {KEYS.map((_, i) => <TypedLetter key={i} i={i} f={f} />)}
       <Cursor f={f} />
       <Count f={f} />
+      {coveredShown(f) && (
+        <div style={{ position: 'absolute', inset: 0, filter: `url(#${COVERED_KEYLINE})` }}>
+          <GlyphField t={t} {...INK_FIELD} rest={blueRest} waves={COVERED_WAVES} seed="search" motion="covered blues" />
+        </div>
+      )}
     </Camera>
   );
 }
@@ -533,7 +571,8 @@ function SearchBar({ f }: { f: number }) {
   const step = 0.5 / DIVE_SAMPLES;
   return (
     <>
-      <KeylineFilter f={f} />
+      <KeylineFilter id={KEYLINE.id} opacity={keylineOpacity(f)} />
+      <KeylineFilter id={COVERED_KEYLINE} opacity={coveredShown(f) ? 1 : 0} />
       <div style={{ position: 'absolute', inset: 0, background: P.ground }} />
       {/* Once it holds the frame the flood is the ground, out of the camera: e^(r·n²) overflows long before the bar ends. */}
       {f >= DOWNBEAT ? <Flood f={f} /> : <Camera f={f}><Flood f={f} /></Camera>}
@@ -590,7 +629,7 @@ type SearchGround = 'card' | 'cream' | 'cobalt' | 'flood';
 /**
  * What the HUD sees at each frame point on frame `f`, a sampler for each of the fly-through's samples as SearchBar
  * averages them: the card, the poster's cream (the smear of letters blown past the HUD washes the cobalt pale, luma
- * 130–220 under the title and the timecode on 304–306), or the cobalt, flooded or not.
+ * 130–220 under the title and the timecode over the swoop's first three frames), or the cobalt, flooded or not.
  */
 function searchGroundsAt(f: number): ((p: Point) => SearchGround)[] {
   const card = f >= SWOOP_FROM ? capturePlaneProjection(CARD_VIEW, cardPose(sec(f)), { lens: LENS }) : null;
@@ -627,11 +666,11 @@ function searchHudRead(slot: ReelHudSlot, f: number, box: Rect): ReelHudRead {
 
 export const searchBar: Bar = {
   id: 'search',
-  note: '"blue" types into the ink field, each key ringing through it, as the count reads 174 of 174; on the "e" the 17 blues light up and the rest fall away as the count rolls to 17, the cursor swells into a blue flood and the 17 pack beside the word; then the camera dives through the type as the real list swoops in over it and slams down huge and tilted; the list scrolls up under its search box, which lifts off toward the lens.',
+  note: '"blue" types into the ink field a letter a sixteenth, each key ringing through it, as the count reads 174 of 174; on the "e" the 17 blues flash up where they stand and the rest dim, then fall away on the next beat as the count rolls to 17; on its "and" the 17 pack beside the word as the cursor swells into a blue flood; then the camera dives through the type as the real list swoops in over it and slams down huge and tilted; the list scrolls up under its search box, which lifts off toward the lens.',
   from: FROM, to: TO,
   render: (f) => <SearchBar f={f} />,
   hudRead: searchHudRead,
   // Not a cut, but the card's slam: the lens kicks with it.
   kicks: [LAND],
-  sounds: [{ at: LAND, sound: listSlam }],
+  sounds: [{ id: 'list-slam', at: LAND, sound: listSlam }],
 };

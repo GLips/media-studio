@@ -16,14 +16,49 @@ const HIT_LEAD_FRAMES = 2;
  */
 export const SOUND_LAG_SECONDS = 0.035;
 
-/** The frame beat `n` hits on (fractions for off-beats): 26 + 15n on this track. */
-export const hitFrame = (n: number) => Math.round(grid.at(n) * FPS) - HIT_LEAD_FRAMES;
+/** The frame the track's beat `n` hits on (fractions for off-beats). Bars reach it through `barBeatFrame`. */
+const hitFrame = (n: number) => Math.round(grid.at(n) * FPS) - HIT_LEAD_FRAMES;
 /** The beat at `frame`, as a fraction, on the picture's clock: whole on each hit frame. */
 export const beatAtFrame = (frame: number) => grid.beatOf((frame + HIT_LEAD_FRAMES) / FPS);
-/** The frame bar `k` (1–9) starts on: its first beat's hit. */
-export const barFrame = (k: number) => hitFrame((k - 1) * 4);
 
+/**
+ * The reel's structure, and its one statement: each bar's length in beats, from bar 1's downbeat (the track's beat
+ * 0), and for a bar that cuts in after its first beat, by how much. A bar times its moments in beats from its own
+ * first beat, so a bar made longer here moves every later bar with it. Tools read it through tools/bar-clock.ts.
+ */
+export const BAR_TABLE: readonly { beats: number; cutIn?: number }[] = [
+  { beats: 4 }, { beats: 4 },
+  // The product's hold and the needle's first strike each get half a bar of room, and the price a whole bar: the
+  // music plays drive's bars 1–7 and 9–13 to make the 44 beats.
+  { beats: 6 }, { beats: 6 }, { beats: 4 }, { beats: 4 }, { beats: 4 }, { beats: 8 },
+  // The finale cuts in on its downbeat's "and", so bar 8's poster holds over the downbeat. Its last beat is the
+  // music's final hit; the ring-out and the hold after it run on to the video's end.
+  { beats: 4, cutIn: 0.5 },
+];
+export const BAR_COUNT = BAR_TABLE.length;
+
+/** The track's beat bar `k` (1–9) starts on. */
+export const barStartBeat = (k: number) => {
+  if (!BAR_TABLE[k - 1]) throw new Error(`no bar ${k}: the reel has bars 1–${BAR_COUNT}`);
+  return BAR_TABLE.slice(0, k - 1).reduce((sum, row) => sum + row.beats, 0);
+};
+/** The frame beat `n` of bar `k` hits on, counted from the bar's first beat: fractions for off-beats. */
+export const barBeatFrame = (k: number, n: number) => hitFrame(barStartBeat(k) + n);
+/** The frame bar `k` starts on: its first beat's hit, or where it cuts in. Bar 1 starts on the video's first frame. */
+export const barFrame = (k: number) => (k === 1 ? 0 : barBeatFrame(k, BAR_TABLE[k - 1].cutIn ?? 0));
+
+// The music is a recording, re-cut only in whole bars (`studio music fit --bars`), so a bar length changed above needs
+// the music re-fitted to match, or the reel ends over the wrong bar of it.
+const FINAL_HIT_BEAT = barStartBeat(BAR_COUNT) + BAR_TABLE[BAR_COUNT - 1].beats;
+if (Math.abs(grid.at(FINAL_HIT_BEAT) - track.fit.downbeats.at(-1)!) > 0.05) {
+  throw new Error(`the bar table ends the finale on the track's beat ${FINAL_HIT_BEAT} (${grid.at(FINAL_HIT_BEAT).toFixed(2)} s), `
+    + `but the music's final hit is at ${track.fit.downbeats.at(-1)} s: re-fit it with studio music fit --bars, or change the table`);
+}
+
+/** The video's last frame, exclusive: the fitted track ends with it, silence and all. */
 export const END_FRAME = Math.round(track.duration * FPS);
+/** The frames the whole picture fades to black over, ending a few frames before the video does. */
+export const FADE_TO_BLACK = { from: END_FRAME - 9, to: END_FRAME - 5 } as const;
 
 export const P = {
   ground: '#0c0c0e', red: '#ee4c23', blue: '#4144f4', cream: '#f3f0e7', ink: '#140b0e',

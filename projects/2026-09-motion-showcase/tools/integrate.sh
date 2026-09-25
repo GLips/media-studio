@@ -17,8 +17,9 @@ python3 "$T/motion-stats.py" "$CUT" > "$D/motion.txt"
 node "$T/hud-legibility.ts" "$CUT" > "$D/hud.txt"
 
 echo "cut: $CUT"
-# A flagged row starts with its sound's id (bar@frame) or its frame; the legend lines name the flags too.
-LOUD='^ *[a-z0-9-]+@[0-9]+ .*(FLAM|BURIED|OVER)' SYNC='^ *[0-9]+ .*(FLAM|SILENT)'
+echo "bars cut in on the music's beats (1 is its downbeat): $(node "$T/bar-clock.ts" | jq -r '[.bars[].musicBeat] | join(" ")')"
+# A flagged row starts with its sound's id (bar/role) or its frame; the legend lines name the flags too.
+LOUD='^ *[a-z0-9-]+/[a-z0-9-]+ .*(FLAM|BURIED|OVER)' SYNC='^ *[0-9]+ .*(FLAM|SILENT)'
 echo "sound: $(grep -cE "$LOUD" "$D/sound-check.txt" || true) flagged in sound-check (FLAM/BURIED/OVER)," \
   "$(grep -cE "$SYNC" "$D/sfx-sync.txt" || true) in sfx-sync (FLAM/SILENT)"
 grep -E "$LOUD" "$D/sound-check.txt" || true

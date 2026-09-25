@@ -6,7 +6,7 @@ import { ReelHud, type ReelHudRead, type ReelHudSlot } from '../../lib/studio/re
 import { LensFringe } from '../../lib/studio/reel/lens.tsx';
 import { FadeToBlack } from '../../lib/studio/reel/recap.tsx';
 import type { Bar } from './bar.ts';
-import { END_FRAME, P, SECTION_TITLES, barFrame, beatAtFrame, track } from './timeline.ts';
+import { END_FRAME, FADE_TO_BLACK, P, SECTION_TITLES, barFrame, beatAtFrame, track } from './timeline.ts';
 
 /** The HUD as every bar wears it, but for its tones and plates: what tools/hud-legibility.ts renders alone. */
 export const SHOWCASE_HUD = {
@@ -44,7 +44,7 @@ export function barScene(bar: Bar) {
           </LensFringe>
           <Vignette amount={0.12} />
           <FilmGrain amount={0.05} />
-          <FadeToBlack t={t} end={(END_FRAME - 5) / FPS} />
+          <FadeToBlack t={t} end={FADE_TO_BLACK.to / FPS} duration={(FADE_TO_BLACK.to - FADE_TO_BLACK.from) / FPS} />
         </>
       );
     },

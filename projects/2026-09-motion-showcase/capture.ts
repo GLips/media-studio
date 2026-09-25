@@ -9,7 +9,6 @@ const STORE = 'https://www.painfulpleasures.com';
 const PREVIEW_THEME = '147758514230';
 const SOLICE = `${STORE}/products/peak-solice-pro-3-wireless-machine`;
 const INK = `${STORE}/products/1-bottle-of-intenze-tattoo-ink-1oz-pick-your-color`;
-const TILUM = `${STORE}/products/18g-16g-internally-threaded-titanium-jewel-ball-top-1`;
 const withView = (url: string) => `${url}${url.includes('?') ? '&' : '?'}view=ab-buy-box`;
 const PDP_HEIGHT = 1400;
 
@@ -115,25 +114,4 @@ shots.still('ink-blue-list', {
   height: 1000,
 });
 
-// ---------- volume pricing: Tilum at 5 ----------
-
-// Its anodized colour is required, so High Polish is picked first or the price and Add to Cart stay blank.
-const openTilum = async (page: Page) => {
-  await open(page, withView(TILUM));
-  await page.locator('label.anodization-label:visible').first().click();
-  await settle(page, 1200);
-};
-const tilum = { ...BUY_BOX, pills: ['label.buy-box__pill', { all: true }], tiers: '.buy-box__tiers' } as const;
-// Bar 8 lays Tilum at 5 on a card tipped toward the lens and leans in on it: at 6×, filmed down to the tier table's
-// foot (1226), all the card shows, sharp at its near edge.
-shots.still('tilum-5-close', {
-  device: 'close-desktop',
-  setup: async (page) => {
-    await openTilum(page);
-    for (let i = 0; i < 4; i++) await page.locator(BUY_BOX.plus).first().click();
-    await settle(page, 2200);
-  },
-  rects: tilum,
-  height: 1230,
-});
 export default shots;

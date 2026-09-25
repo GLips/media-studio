@@ -1,10 +1,9 @@
 // Bar 9, 09 — EDIT / RHYTHM: the finale, an accelerando that brakes, as the reference reel's is. Four bars replay
-// live in a 2×2 on the downbeat (506), each on its own hit, then all eight in a 3×3 (521), hitting together on the
-// "and". COLOR, BUY MORE and PAY LESS. flash on the sixteenths; the ink field implodes into a red plus. Then the end
-// card builds an element a half-beat, as the reference's does a beat: ONE BOX, cut out of a grey flash (551), rises
-// cream on black over a rule, the URL decoding under it, whole by 554; on the "and" (558) PAINFUL PLEASURES rises at
-// the rule's left; on the last hit (566) the needle tattoos the full stop in the reel's red. The card pushes in the
-// whole way, fastest as the reel goes black with the music.
+// live in a 2×2 on the downbeat's "and", then all eight in a 3×3 on 1, hitting together on its "and". COLOR, BUY
+// MORE and PAY LESS. flash on 2's sixteenths, and the ink field implodes into a red plus. From 3 the end card builds
+// by half-beats, as the reference's does by beats: ONE BOX, cut out of a grey flash, rises cream on black over a rule,
+// the URL decoding under it, then PAINFUL PLEASURES; on 4, the music's last hit, the needle tattoos the full stop in
+// red. The card pushes in to the strike, then holds as the music rings out, the red dying and grain rising, to black.
 
 import type { CSSProperties } from 'react';
 import {
@@ -21,16 +20,16 @@ import type { Bar, BarSound } from '../bar.ts';
 import { INK_FIELD } from '../ink-field.ts';
 import { Field } from '../parts.tsx';
 import { SHOWCASE_HUD } from '../reel.tsx';
-import needleStop from '../sfx/needle-566.ts';
-import { END_FRAME, P, barFrame, hitFrame } from '../timeline.ts';
-import { bounceBar } from './01-bounce.tsx';
-import { everyColorBar } from './02-every-color.tsx';
-import { swatchesBar } from './03-swatches.tsx';
-import { inkBar } from './04-ink.tsx';
-import { searchBar } from './05-search.tsx';
-import { buyMoreBar } from './06-buy-more.tsx';
-import { tiersBar } from './07-tiers.tsx';
-import { payLessBar } from './08-pay-less.tsx';
+import needleFullStop from '../sfx/needle-full-stop.ts';
+import { END_FRAME, P, barFrame, barBeatFrame } from '../timeline.ts';
+import { bounceBar, bounceMoments } from './01-bounce.tsx';
+import { everyColorBar, everyColorMoments } from './02-every-color.tsx';
+import { swatchesBar, swatchesMoments } from './03-swatches.tsx';
+import { inkBar, inkMoments } from './04-ink.tsx';
+import { searchBar, searchMoments } from './05-search.tsx';
+import { buyMoreBar, buyMoreMoments } from './06-buy-more.tsx';
+import { tiersBar, tiersMoments } from './07-tiers.tsx';
+import { payLessBar, payLessMoments } from './08-pay-less.tsx';
 
 const FROM = barFrame(9), TO = END_FRAME;
 /** The last frame the reel renders, black under the reel's fade. */
@@ -38,10 +37,13 @@ const LAST = TO - 1;
 const sec = (f: number) => f / FPS;
 const outExpo = motionCurves.expo.entrance;
 
-/** The grids on beats 32 and 33, the flashes on 34's sixteenths, the card on 35, the name on its "and", the stop on the last hit. */
+/**
+ * In beats from the bar's downbeat: the grids on its "and" and on 1, the flashes on 2's sixteenths, the card on 3, the
+ * name on its "and", the stop on the last hit, 4.
+ */
 const HIT = {
-  twoUp: FROM, nineUp: hitFrame(33), flashes: [34, 34.25, 34.5].map(hitFrame), field: hitFrame(34.75),
-  card: hitFrame(35), name: hitFrame(35.5), stop: hitFrame(36),
+  twoUp: FROM, nineUp: barBeatFrame(9, 1), flashes: [2, 2.25, 2.5].map((n) => barBeatFrame(9, n)), field: barBeatFrame(9, 2.75),
+  card: barBeatFrame(9, 3), name: barBeatFrame(9, 3.5), stop: barBeatFrame(9, 4),
 } as const;
 
 const fill: CSSProperties = { position: 'absolute', left: 0, top: 0, width: W, height: H };
@@ -71,22 +73,26 @@ const GRID_GROUNDS = { light: P.ground, dark: P.ground, 'on-accent': P.ground } 
 // The reference's two grids.
 const TWO_UP: RecapLook = {
   at: HIT.twoUp, cols: 2, rows: 2,
-  // The colour script in reading order, red, the product's pink, blue, red, each tile's hit on the grid's downbeat:
-  // EVERY rising, the pink tap flooding the card's page, the blue flood, PAY LESS. landing under $1.60 on bar 8's
-  // red. Tiles with their own black ground melt into the grid's and read as litter.
-  tiles: ([[everyColorBar, 4], [swatchesBar, 9], [searchBar, 18, SEARCH_GROUNDS], [payLessBar, 30]] as const).map(([bar, beat, grounds]) => cued(bar, hitFrame(beat), HIT.twoUp, HIT.twoUp, grounds)),
+  // The colour script in reading order, red, the product's pink, blue, red, each tile's hit on the grid's first frame:
+  // EVERY rising, the pink tap flooding the card's page, the blue flood, and the −20% stamp slamming onto the poster
+  // just held. Tiles with their own black ground melt into the grid's and read as litter.
+  tiles: ([
+    [everyColorBar, everyColorMoments.every], [swatchesBar, swatchesMoments.pinkTap], [searchBar, searchMoments.answer, SEARCH_GROUNDS],
+    [payLessBar, payLessMoments.stamp],
+  ] as const).map(([bar, moment, grounds]) => cued(bar, moment, HIT.twoUp, HIT.twoUp, grounds)),
 };
 // The 3×3's tiles hit together on the "and" after it pops, a second pulse inside the beat before the sixteenths.
-const NINE_UP_AND = hitFrame(33.5);
+const NINE_UP_AND = barBeatFrame(9, 1.5);
 const NINE_UP: RecapLook = {
   at: HIT.nineUp, cols: 3, rows: 3,
   // The cut's order, so the rows run the colour script: bar 1 on its last beat's "and", ONE landing on red, TAP.
-  // tapped (its full stop locks a sixteenth after its cut, on 135), the graphite tap, a strike, the list card, QTY 2
+  // tapped (its full stop locks a sixteenth after its cut), the graphite tap, a strike, the list card, QTY 2
   // in blue, a tier's landing, the price landing on red. The bottom row crosses QTY 2's bands, BUY MORE from edge to
   // edge, which bar 6 doesn't plate; a blue plate over their cream would let the beat squares fade.
   tiles: ([
-    [bounceBar, hitFrame(3.5)], [everyColorBar, hitFrame(6)], [everyColorBar, 135], [swatchesBar, hitFrame(10)], [inkBar, hitFrame(13)],
-    [searchBar, hitFrame(19)], [buyMoreBar, hitFrame(21), GRID_GROUNDS], [tiersBar, hitFrame(27)], [payLessBar, hitFrame(29)],
+    [bounceBar, bounceMoments.launch], [everyColorBar, everyColorMoments.one], [everyColorBar, everyColorMoments.tapLock],
+    [swatchesBar, swatchesMoments.charcoalTap], [inkBar, inkMoments.strike2], [searchBar, searchMoments.listLand],
+    [buyMoreBar, buyMoreMoments.qty2, GRID_GROUNDS], [tiersBar, tiersMoments.plateau], [payLessBar, payLessMoments.lock],
   ] as const).map(([bar, moment, grounds]) => cued(bar, moment, NINE_UP_AND, HIT.nineUp, grounds)),
 };
 
@@ -161,12 +167,12 @@ function recapHudRead(look: RecapLook, slot: ReelHudSlot, f: number, box: Rect):
 // ---------- the sixteenths ----------
 
 // The copy's last words, each a bar's own frame, whole: COLOR three frames in, its weight almost Black as the
-// selection closes; BUY MORE on QTY 3 as red takes the bands; $1.60 PAY LESS. on red, pushed in furthest, the
-// poster's last four frames before bar 8 whips it off, three frames ahead of the stamp's beat.
+// selection closes; BUY MORE on QTY 3 as red takes the bands; $1.60 PAY LESS. on red, the whole poster gliding toward
+// the stamp's place, ending three frames ahead of the stamp's beat, before it falls.
 const FLASHES: readonly (Replay & { at: number })[] = [
-  { at: HIT.flashes[0], bar: everyColorBar, from: hitFrame(5) + 3 },
-  { at: HIT.flashes[1], bar: buyMoreBar, from: hitFrame(22) },
-  { at: HIT.flashes[2], bar: payLessBar, from: hitFrame(31) - 3 - (HIT.field - HIT.flashes[2]) },
+  { at: HIT.flashes[0], bar: everyColorBar, from: everyColorMoments.color + 3 },
+  { at: HIT.flashes[1], bar: buyMoreBar, from: buyMoreMoments.qty3 },
+  { at: HIT.flashes[2], bar: payLessBar, from: payLessMoments.stamp - 3 - (HIT.field - HIT.flashes[2]) },
 ];
 // Sliced the length of each flash and split, as the reference's are: red and blue about 16 px apart, 30 with the
 // lens's split on each flash's first two frames.
@@ -174,10 +180,11 @@ const FLASH_HITS: GlitchHit[] = FLASHES.map((s, i) => ({ at: sec(s.at), duration
 const flashAt = (f: number) => FLASHES.findLast((s) => f >= s.at)!;
 // The track plays only the beat and its "and" under the sixteenths, so the BUY MORE flash and the implode each get the
 // kit's click, 3–4 LU under the music where it lands. Each lands a frame after its picture, where the music's
-// sixteenth falls: on 547 that's the track's quiet hat, which a click on the frame would flam against.
+// sixteenth falls: under BUY MORE that's the track's quiet hat, which a click on the frame would flam against. Two
+// takes, so the pair doesn't repeat.
 const SIXTEENTH_CLICKS: readonly BarSound[] = [
-  { at: HIT.flashes[1] + 1, sound: SFX.click, volume: 2.1 },
-  { at: HIT.field + 1, sound: SFX.click, volume: 1.2 },
+  { id: 'click-buy-more', at: HIT.flashes[1] + 1, sound: SFX.click[0], volume: 2.1 },
+  { id: 'click-implode', at: HIT.field + 1, sound: SFX.click[1], volume: 1.2 },
 ];
 
 function Flashes({ f }: { f: number }) {
@@ -204,9 +211,10 @@ function FieldImplode({ f }: { f: number }) {
 
 /** The HUD over the bar: the grids and the flashes as their shots' bars read them, then black, but for the grey flash. */
 function oneBoxHudRead(slot: ReelHudSlot, f: number, box: Rect): ReelHudRead {
-  // The section label decodes in on the downbeat, its first cell at half strength, over bar 8's red tile popping in
-  // smeared: bare, it all but vanishes there, so it takes the grid's ground for that frame.
-  if (slot === 'section' && f === HIT.twoUp) return { tone: 'light', plate: P.ground };
+  // The section label decodes in on the cut over bar 8's tile: its first cell at half strength as the tile pops in
+  // smeared, then its letters over the stamp's ring of type. Bare, it all but vanishes on the first frame and is lost
+  // in the type after, so it takes the grid's ground through the 2×2.
+  if (slot === 'section' && f < HIT.nineUp) return { tone: 'light', plate: P.ground };
   if (f < HIT.nineUp) return recapHudRead(TWO_UP, slot, f, box);
   if (f < HIT.flashes[0]) return recapHudRead(NINE_UP, slot, f, box);
   if (f < HIT.field) {
@@ -294,10 +302,10 @@ function Word({ f }: { f: number }) {
   );
 }
 
-// The ink going in. On the hit's frame the dot lands whole, squashed 1.5:1 under the needle and in the ground's black,
-// as a red dot would vanish into the red flash; then it springs back round in red, a frame a step, its edge ragged as
-// ink bleeding into skin until it closes, while a ring of ink runs out from its edge.
-const BLOOM = { size: [1.1, 1, 1.03], ratio: [1.5, 1 / 1.15, 1.04], rough: 0.16, roughTau: 0.07 };
+// On the hit's frame the dot lands whole, squashed 1.5:1 under the needle and black, as a red dot would vanish into
+// the red flash; then it springs back round in red, a frame a step, as a ring of ink runs out. Its edge is ragged as
+// ink bleeding into skin, closing fast, then settling through the hold.
+const BLOOM = { size: [1.1, 1, 1.03], ratio: [1.5, 1 / 1.15, 1.04], rough: 0.16, roughTau: 0.07, settle: 0.05, settleTau: 0.6 };
 const INK_RING = { speed: 1800, stroke: 8, opacity: 1, tau: 0.1 };
 const BLOT = (() => {
   const rnd = seededRandom('bar-09 full stop');
@@ -317,7 +325,8 @@ function FullStop({ f }: { f: number }) {
   if (f < HIT.stop) return null;
   const k = f - HIT.stop, tau = sec(k);
   const r = STOP.r * (BLOOM.size[k] ?? 1), ratio = BLOOM.ratio[k] ?? 1, a = Math.sqrt(ratio);
-  const rough = k === 0 ? 0 : BLOOM.rough * Math.exp(-(tau - 1 / FPS) / BLOOM.roughTau);
+  const since = tau - 1 / FPS;
+  const rough = k === 0 ? 0 : BLOOM.rough * Math.exp(-since / BLOOM.roughTau) + BLOOM.settle * Math.exp(-since / BLOOM.settleTau);
   const color = k === 0 ? P.ground : P.red;
   const shape = motionAttrs({ name: 'full stop', values: { r, ratio } });
   return (
@@ -335,10 +344,13 @@ function FullStop({ f }: { f: number }) {
   );
 }
 
-// Leaning 43° in the picture, gripped from the upper right by a hand off frame and running off the edge: upright
-// over the dot, it reads as a "!". It stands 45° out of the picture plane and swoops in 20° down from the right
-// edge, under the HUD's row. A small opening keeps it sharp tip to body.
-const NEEDLE = { tilt: 45, grip: 57, scale: 11, fov: 16, lift: 0.12, from: 20, enter: 4 / FPS, aperture: 6, shutter: 0.25, fastShutter: 0.5 };
+// Bar 4's needle, leaning 40° and running off the right edge: upright over the dot, it would read as a "!". It slams
+// down from the top right over two and a half frames, one streak on the frame before the hit, drives in and tears back
+// out. A small opening keeps it sharp tip to body.
+const NEEDLE = {
+  tilt: 45, grip: 57, scale: 28, fov: 16, from: 80, climb: 15, enter: 2.5 / FPS, dwell: 1 / FPS, overdrive: 0.6, exit: 2.5 / FPS, lean: 8,
+  aperture: 6, shutter: 0.25, fastShutter: 0.6, color: '#5a5e65',
+};
 const STOP_STRIKE: readonly NeedleStrike[] = [{ at: sec(HIT.stop), x: STOP_AT.x, y: STOP_AT.y, ink: P.red }];
 
 // ---------- the sign-off ----------
@@ -354,7 +366,7 @@ const RULE = { weight: 2, color: 'rgb(243 240 231 / 0.32)', lead: 1, duration: 0
 // The name rises from its baseline on the "and", a letter every quarter frame, landed before the needle is in shot.
 const NAME = { text: 'PAINFUL PLEASURES', cap: 64, spacing: 0.01, duration: 0.3, each: 0.008, lead: 1 };
 // The URL decodes as the word rises: glyph noise on the flash's frame, cut out of the grey as the word is, locking left
-// to right over the next two and whole on the third (554), so it holds legible for a second before the fade dims it.
+// to right over the next two and whole on the third, so it reads through the card's whole hold.
 const URL_LINE = { text: 'painfulpleasures.com', cap: 32, spacing: 0.08, delay: 0.02, each: 0.004, split: 6 };
 
 function Rule({ f }: { f: number }) {
@@ -393,18 +405,22 @@ function SignOff({ f }: { f: number }) {
 
 // ---------- the push ----------
 
-// The card pushes in about the frame's middle from the flash to the end, gathering speed so the hold after the strike,
-// when nothing else moves, moves most: `linear` of it steady, the rest a square of the time. The lockup's ends travel
-// about 1 px a frame as the name rises, 2 once the ripple has settled and 2.6 as the fade starts; the reference's 2%
-// would move them half a pixel. The stop's impact punches it 1.5% more, gone in a few frames.
+// The push gathers speed so the hold after the strike still moves: `linear` of it steady, the rest a square of the
+// time. The lockup's ends travel 1 px a frame as the word lands and 3 into the fade; the reference's 2% would move them
+// half a pixel. The stop's impact punches it 1.5% more.
 const PUSH = { total: 0.09, linear: 0.25, punch: 0.015, punchTau: 0.06 };
-// The reference's closing jolt: 6 px on the hit's frame, 3 back on the next, under a pixel by the fifth (570). The
+// From the name's "and" it rushes in 3.5% more, the lockup's ends building from 2 px a frame to 6, and the strike
+// stops it dead. Until the needle slams in on the strike's last two frames, only the small name moves: the lockup's
+// own move carries those frames.
+const RUSH = { total: 0.035, linear: 0.3 };
+// The reference's closing jolt: 6 px on the hit's frame, 3 back on the next, under a pixel by the fifth. The
 // seed picks Shake's directions and rattle: this one knocks the card down and left, the way the needle drives in, and
 // swings back a clean half.
 const JOLT = { strength: 6, decay: 0.07, seed: 'stop 81' };
 const cardScaleAt = (f: number) => {
-  const u = clamp((f - HIT.card) / (LAST - HIT.card));
-  return 1 + PUSH.total * lerp(u * u, u, PUSH.linear) + (f >= HIT.stop ? PUSH.punch * Math.exp(-sec(f - HIT.stop) / PUSH.punchTau) : 0);
+  const u = clamp((f - HIT.card) / (LAST - HIT.card)), rush = clamp((f - HIT.name + 1) / (HIT.stop - HIT.name + 1));
+  return 1 + PUSH.total * lerp(u * u, u, PUSH.linear) + RUSH.total * lerp(rush * rush, rush, RUSH.linear)
+    + (f >= HIT.stop ? PUSH.punch * Math.exp(-sec(f - HIT.stop) / PUSH.punchTau) : 0);
 };
 
 // The reference's grey flash into its end card, #a4a4a4 dying as (1 − k)² over 0.133 s, but on the card's ground,
@@ -418,6 +434,36 @@ const strikeFlashAt = (f: number) => (f >= HIT.stop && f < HIT.stop + STRIKE_FLA
 // Commas: three.js reads the needle's ground too, and not CSS's space-separated rgb().
 const strikeGround = (f: number) => `rgb(${GROUND_RGB.map((c, i) => Math.round(lerp(c, RED_RGB[i], strikeFlashAt(f)))).join(', ')})`;
 
+// What the flash leaves: a red glow about the stop, dying slowly through the hold, nearly gone by the fade.
+const AFTERGLOW = { opacity: 0.3, radius: 760, tau: 0.55 };
+const afterglowAt = (f: number) => (f >= HIT.stop ? AFTERGLOW.opacity * Math.exp(-sec(f - HIT.stop) / AFTERGLOW.tau) : 0);
+// The reel's grain is an overlay, which vanishes on black, so the hold's ground takes a grain of its own: cream
+// specks from the noise's top, fresh every frame, rising as the flash falls. Under the type, so the lockup stays clean.
+const HOLD_GRAIN = { opacity: 0.08, frequency: 0.45, slope: 6, cut: 0.52, rise: 6 };
+
+function HoldGround({ f }: { f: number }) {
+  const grain = HOLD_GRAIN.opacity * clamp((f - HIT.stop) / HOLD_GRAIN.rise);
+  const glow = afterglowAt(f);
+  if (grain <= 0 && glow <= 0) return null;
+  const alpha = `${HOLD_GRAIN.slope} 0 0 0 ${-HOLD_GRAIN.slope * HOLD_GRAIN.cut}`;
+  return (
+    <svg {...motionAttrs({ name: 'hold ground', values: { grain, glow } })} width={1.5 * W} height={1.5 * H} style={{ ...layer, left: -W / 4, top: -H / 4 }}>
+      <defs>
+        <radialGradient id="bar-09-afterglow" gradientUnits="userSpaceOnUse" cx={STOP_AT.x + W / 4} cy={STOP_AT.y + H / 4} r={AFTERGLOW.radius}>
+          <stop offset={0} stopColor={P.red} stopOpacity={glow} />
+          <stop offset={1} stopColor={P.red} stopOpacity={0} />
+        </radialGradient>
+        <filter id="bar-09-grain" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency={HOLD_GRAIN.frequency} numOctaves={1} seed={f} />
+          <feColorMatrix type="matrix" values={`0 0 0 0 0.953  0 0 0 0 0.941  0 0 0 0 0.906  ${alpha}`} />
+        </filter>
+      </defs>
+      <rect width={1.5 * W} height={1.5 * H} fill="url(#bar-09-afterglow)" />
+      {grain > 0 && <rect width={1.5 * W} height={1.5 * H} filter="url(#bar-09-grain)" opacity={grain} />}
+    </svg>
+  );
+}
+
 function EndCard({ f }: { f: number }) {
   const t = sec(f);
   return (
@@ -430,6 +476,7 @@ function EndCard({ f }: { f: number }) {
           <GlitchFlash t={t} hits={[GREY_FLASH]} motion="grey flash">
             <div {...motionAttrs({ name: 'strike flash', values: { k: strikeFlashAt(f) } })}
               style={{ position: 'absolute', left: -W / 4, top: -H / 4, width: 1.5 * W, height: 1.5 * H, background: strikeGround(f) }} />
+            <HoldGround f={f} />
           </GlitchFlash>
           <Word f={f} />
           <FullStop f={f} />
@@ -446,7 +493,7 @@ function EndCard({ f }: { f: number }) {
 
 export const oneBoxBar: Bar = {
   id: 'one-box',
-  note: 'The bars replay live in a 2×2 (506) and a 3×3 (521); COLOR, BUY MORE and PAY LESS. flash on the sixteenths and the ink field implodes into a red plus; after a grey flash ONE BOX rises on black as painfulpleasures.com decodes under it (whole on 554), a rule and PAINFUL PLEASURES come in on the "and", and the needle tattoos its red full stop on the last hit (566), the card jolting as red runs back through the letters; the card pushes in to black.',
+  note: 'The bars replay live in a 2×2 and then a 3×3; COLOR, BUY MORE and PAY LESS. flash on the sixteenths and the ink field implodes into a red plus; after a grey flash ONE BOX rises on black as painfulpleasures.com decodes under it, a rule and PAINFUL PLEASURES come in on the "and", and the needle tattoos its red full stop on the last hit, the card jolting as red runs back through the letters; the card holds on its push as the red settles and grain rises, to black.',
   from: FROM, to: TO,
   render: (f) => {
     if (f < HIT.nineUp) return <Recap f={f} look={TWO_UP} name="two-up" />;
@@ -464,6 +511,6 @@ export const oneBoxBar: Bar = {
     ...SIXTEENTH_CLICKS,
     // The full stop is the reel's last word: it bites out of the track's quiet and rides 2 LU over the final hit's
     // tail, its sustain trimmed to keep under `studio mix`'s OVER.
-    { at: HIT.stop, sound: needleStop },
+    { id: 'needle-full-stop', at: HIT.stop, sound: needleFullStop },
   ],
 };

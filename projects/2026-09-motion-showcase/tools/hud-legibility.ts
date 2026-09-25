@@ -36,7 +36,7 @@ const GLYPH_GAP = 1, WORD_GAP = 10, STRETCH = 20;
 
 const { SHOWCASE_HUD } = await import(`${PROJECT}/reel.tsx`);
 const { showcaseBars } = await import(`${PROJECT}/video.tsx`);
-const { END_FRAME } = await import(`${PROJECT}/timeline.ts`);
+const { END_FRAME, FADE_TO_BLACK } = await import(`${PROJECT}/timeline.ts`);
 const { REEL_HUD_SLOTS, reelHudBoxes } = await import(`${ROOT}/lib/studio/reel/hud.tsx`);
 
 const { LENS_FRINGE_SUBPIXEL_MAX, lensFringeAt } = await import(`${ROOT}/lib/studio/reel/lens.tsx`);
@@ -44,8 +44,8 @@ const { LENS_FRINGE_SUBPIXEL_MAX, lensFringeAt } = await import(`${ROOT}/lib/stu
 type Bar = { id: string; from: number; to: number; kicks?: readonly number[]; glitches?: readonly number[] };
 const bars: Bar[] = showcaseBars;
 const barOf = (f: number) => bars.find((b) => f >= b.from && f < b.to)!;
-// The reel's fade takes the HUD down with everything from here (FadeToBlack's 0.133 s before END_FRAME − 5).
-const FADE_FROM = END_FRAME - 5 - Math.round(0.133 * FPS);
+// The reel's fade takes the HUD down with everything from here.
+const FADE_FROM = FADE_TO_BLACK.from;
 
 /** Marks a frame where the lens moves the HUD's channels whole px apart, by design: a cut's kick, a glitch's split. */
 function lensMark(f: number) {

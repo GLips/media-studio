@@ -60,7 +60,7 @@ const mark = (f: number, bar: string, what: string, soundId?: string) => {
 for (const bar of showcaseBars) {
   if (bar.from > 0) mark(bar.from, bar.id, 'cut');
   for (const f of bar.kicks ?? []) mark(f, bar.id, 'kick');
-  for (const s of bar.sounds ?? []) mark(s.at, bar.id, 'sound', `${bar.id}@${s.at}`);
+  for (const s of bar.sounds ?? []) mark(s.at, bar.id, 'sound', `${bar.id}/${s.id}`);
 }
 
 const ms = (t: number, f: number) => (Number.isNaN(t) ? '—' : `${Math.round((t - f / FPS) * 1000)}`).padStart(5);

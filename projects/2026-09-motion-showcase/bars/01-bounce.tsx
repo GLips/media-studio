@@ -1,9 +1,9 @@
 // Bar 1, 01 — SQUASH & STRETCH, and the pickup: the product's name, THE NEW BUY BOX., a word a beat, wall to wall on
-// the ground line, the reel's red ink drop bouncing across it. THE stands on frame 0 and the pickup's landing (11)
-// presses it. Each of the bar's landings sends a shock along the line that stamps the next word down over the last and
-// punches the last through: NEW (26), BUY (41), BOX (56). The fourth (71) lands on the pad after BOX as its full stop,
-// crouches, launches and swells until its red covers the frame on 85, bar 2's ground. The reel ends on ONE BOX. and
-// the same red dot.
+// the ground line, the reel's red ink drop bouncing across it. THE stands on frame 0 and the pickup's landing (beat
+// −1) presses it. Each of the bar's landings sends a shock along the line that stamps the next word down over the last
+// and punches the last through: NEW, BUY and BOX on beats 0–2. The fourth, on beat 3, lands on the pad after BOX as
+// its full stop, crouches, launches and swells until its red covers the bar's last frame, bar 2's ground. The reel
+// ends on ONE BOX. and the same red dot.
 
 import {
   DISPLAY_FONT, FPS, H, REEL_SHUTTER, W, motionAttrs, motionCurves, seededRandom, shutterTravel, smearSigma,
@@ -11,7 +11,7 @@ import {
 import { BounceBall, bouncingBallAt, type BounceParams } from '../../../lib/studio/reel/bounce.tsx';
 import { ARCHIVO_CAP_EM, layoutGlyphLine } from '../../../lib/studio/reel/ticker-layout.ts';
 import type { Bar } from '../bar.ts';
-import { P, barFrame, grid, hitFrame } from '../timeline.ts';
+import { P, barFrame, grid, barBeatFrame } from '../timeline.ts';
 
 const outExpo = motionCurves.expo.entrance;
 
@@ -32,16 +32,22 @@ const CAP = 560;
 const LANDING_BEATS = [-1, 0, 1, 2, 3];
 const BALL_SIZE = 340;
 const BALL_STEP = 280;
-/** The pad: BOX's full stop, as far right as its crouch (3.9:1, 671 px across) stays inside the frame. */
+/** The pad: BOX's full stop, as far right as its crouch (4.2:1, 697 px across as it leaves) stays inside the frame. */
 const PAD_X = 1555;
 const BALL: BounceParams = {
-  beats: LANDING_BEATS.map((n) => hitFrame(n) / FPS), spb: grid.spb, drop: false,
+  beats: LANDING_BEATS.map((n) => barBeatFrame(1, n) / FPS), spb: grid.spb, drop: false,
   size: BALL_SIZE, height: 440, groundY: GROUND_Y, step: BALL_STEP, x: PAD_X - (LANDING_BEATS.length - 1) * BALL_STEP,
-  // Frame 85 is the last of the bar: the swell covers it exactly there, not the 0.2 ms before that spb's rounding gives.
-  launch: { fill: (TO - 1) / FPS },
+  launch: {
+    // Frame 85 is the last of the bar: the swell covers it exactly there, not the 0.2 ms before that spb's rounding gives.
+    fill: (TO - 1) / FPS,
+    // Deeper than the piece's crouch (3.9:1, 0.139 × size), so the press reads as loading the spring at speed: from
+    // the landing's 3.4:1 it spreads about 13 px and sinks about 7 px a frame until it leaves. A deeper dent would sink
+    // its bottom into the HUD's bottom row.
+    anticipation: { squash: 4.2, dent: 0.16 * BALL_SIZE },
+  },
 };
 /** Where the drop lands on beat `n` (beat −2's is the loop's, before the video): it holds still through a landing. */
-const landingX = (n: number) => bouncingBallAt(hitFrame(n) / FPS, BALL).x;
+const landingX = (n: number) => bouncingBallAt(barBeatFrame(1, n) / FPS, BALL).x;
 
 // The line is the words' floor, as wide as they are; drawn a second before the video starts, so frame 0 has it whole
 // and only the dent from the landing on beat −2 still ringing in it.
@@ -135,7 +141,7 @@ const WORD_SETS = WORDS.map((word, n) => {
 function shockAt(beat: number) {
   const x = landingX(beat), next = WORD_SETS.find((set) => set.beat === beat)!;
   const nearest = Math.min(...next.mids.map((m) => Math.abs(m - x)));
-  return (mid: number) => (hitFrame(beat) - 1 + 0.05) / FPS + (Math.abs(mid - x) - nearest) / TYPE.push;
+  return (mid: number) => (barBeatFrame(1, beat) - 1 + 0.05) / FPS + (Math.abs(mid - x) - nearest) / TYPE.push;
 }
 
 type Letter = { char: string; x: number; mid: number; word: number; at: number; out: number };
@@ -150,7 +156,7 @@ const LETTERS: Letter[] = WORD_SETS.flatMap((set) => {
 // A later landing presses the letters into the line, most under it: down to a peak a frame and a half after its hit
 // and back with no overshoot, as the reference's type never overshoots. The pickup's presses THE; the pad's, BOX.
 const PRESS = { depth: 26, reach: 0.89 * BALL_SIZE, peak: 1.5 / FPS };
-const PRESSES = LANDING_BEATS.map((beat) => ({ beat, t: hitFrame(beat) / FPS, x: landingX(beat) }));
+const PRESSES = LANDING_BEATS.map((beat) => ({ beat, t: barBeatFrame(1, beat) / FPS, x: landingX(beat) }));
 function pressAt(t: number, l: Letter) {
   let y = 0;
   for (const p of PRESSES) {
@@ -212,6 +218,9 @@ function Words({ f }: { f: number }) {
 }
 
 // ---------- the bar ----------
+
+/** What the finale replays of this bar: the drop launching off its pad, on the last beat's "and". */
+export const bounceMoments = { launch: barBeatFrame(1, 3.5) } as const;
 
 export const bounceBar: Bar = {
   id: 'bounce',

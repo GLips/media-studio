@@ -8,12 +8,14 @@ import { DISPLAY_FONT, FPS, H, MONO_FONT, W, clamp, lerp, motionCurves, type Poi
 import { ColumnField, columnBallAt, columnTitaniumMaterial, columnCameraAt, columnDiscCells, columnNoise, type ColumnBall, type ColumnCameraMove, type ColumnCameraPose, type ColumnCell, type ColumnFieldProps, type ColumnFieldSpec, type ColumnLabel } from '../../../lib/studio/reel/column-field.tsx';
 import { reelHudGrounds, type ReelHudTone } from '../../../lib/studio/reel/hud.tsx';
 import type { Bar } from '../bar.ts';
-import whipIntoPage from '../sfx/whip-446.ts';
-import { P, barFrame, hitFrame } from '../timeline.ts';
+import whipIntoPayLess from '../sfx/whip-into-pay-less.ts';
+import { P, barFrame, barBeatFrame } from '../timeline.ts';
 
 const FROM = barFrame(7), TO = barFrame(8);
 /** The four landings: $2.00, $1.80, $1.60 (the bar's accent), $1.40. */
-const HITS = [24, 25, 26, 27].map(hitFrame);
+const HITS = [0, 1, 2, 3].map((n) => barBeatFrame(7, n));
+/** What the finale replays of this bar: the ball landing on the red plateau. */
+export const tiersMoments = { plateau: HITS[3] } as const;
 const HERO = 2;
 /** Seconds from the first landing, the field's clock. */
 const fieldT = (f: number) => (f - FROM) / FPS;
@@ -235,10 +237,10 @@ function subjectAt(t: number, ball: readonly [number, number] | null) {
 // Keyframes of the camera's place, each framing the cards and the ball's flight about it; it glides between them. The
 // last has no ball: it has left along the red, and the whip goes after it.
 const PLACES = ([
-  [386, [0, 0.13]], [390, [-0.1, 0.1]], [394, [-0.1, 0.1]], [398, [-0.1, 0.1]], [401, [-0.1, 0.1]], [404, [-0.1, 0.1]],
-  [408, [-0.1, 0.1]], [412, [-0.1, 0.1]], [416, [-0.1, 0.1]], [423, [-0.1, 0.1]], [431, [-0.1, 0.1]], [FROM + WHIP.at * FPS, null],
-] as const).map(([f, ball]) => {
-  const t = fieldT(f);
+  [0, [0, 0.13]], [4, [-0.1, 0.1]], [8, [-0.1, 0.1]], [12, [-0.1, 0.1]], [15, [-0.1, 0.1]], [18, [-0.1, 0.1]],
+  [22, [-0.1, 0.1]], [26, [-0.1, 0.1]], [30, [-0.1, 0.1]], [37, [-0.1, 0.1]], [45, [-0.1, 0.1]], [WHIP.at * FPS, null],
+] as const).map(([since, ball]) => {
+  const t = fieldT(FROM + since);
   return { t, pose: framedPose(aimAt(t), subjectAt(t, ball)) };
 });
 
@@ -372,5 +374,5 @@ export const tiersBar: Bar = {
   hudRead: (_slot, f, box) => ({ tone: reelHudGrounds(box, tiersToneAt(f))[0].ground }),
   kicks: [HITS[HERO]],
   // The whip passes on the cut, its fastest frame; its run-up is the camera's, its tail bar 8's page landing.
-  sounds: [{ at: TO, sound: whipIntoPage }],
+  sounds: [{ id: 'whip-out', at: TO, sound: whipIntoPayLess }],
 };
