@@ -5,7 +5,7 @@
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readProjectHostSpec } from '../engine/host/project-host-spec.ts';
-import { beatGrid, type BeatGrid } from '../studio/beats.ts';
+import { beatGrid, type BeatGrid } from '../models/timeline/beat-grid.ts';
 import { FPS } from '../studio/frame.ts';
 import { musicBedGainAt, type MusicBed } from '../studio/mix.ts';
 import type { SfxSound } from '../studio/sfx.tsx';

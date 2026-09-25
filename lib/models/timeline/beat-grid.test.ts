@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { beatGrid } from './beats.ts';
+import { beatGrid } from './beat-grid.ts';
 
 test('a steady grid sits on the real beats where the tracker was pulled off them', () => {
   // 120 BPM from 0.4 s, as a tracker reads a syncopated track: beats 2–11 pulled 80 ms early, the rest within 10 ms.

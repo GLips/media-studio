@@ -1,8 +1,8 @@
-// beats.ts: a music track's beats as a video's clock, for cutting a music-led video (a teaser, a reel) on the beat.
+// beat-grid.ts: a music track's beats as a video's clock, for cutting a music-led video (a teaser, a reel) on the beat.
 // Scene lengths and every hit inside them come from beat numbers, so the picture stays on the music when the track or
 // its fit changes.
 
-import { FPS } from './frame.ts';
+import { FPS } from './frame-rate.ts';
 
 /** Beat numbers and seconds, both ways. Beat 0 is the track's first downbeat, at `at(0)` seconds of the video. */
 export type BeatGrid = {

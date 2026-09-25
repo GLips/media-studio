@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { steadyBeatGrid } from '../beats.ts';
+import { steadyBeatGrid } from '../../models/timeline/beat-grid.ts';
 import '../tsx-test-hooks.ts';
 
 const {

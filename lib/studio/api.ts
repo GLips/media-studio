@@ -3,7 +3,7 @@
 export { BrandLogo, brandLogoFor, type StudioBrand, type StudioBrandLogo } from './brand.tsx';
 export * from './blockout.tsx';
 export * from './blockout-camera.ts';
-export * from './beats.ts';
+export * from '../models/timeline/beat-grid.ts';
 export * from './camera.ts';
 export * from './capture.tsx';
 export * from './fonts.ts';
