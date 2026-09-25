@@ -9,7 +9,7 @@ import { generateProjectImage } from './generated-image.ts';
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAIAAAASFvFNAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAEElEQVR4nGP8wwACLGAEBQATOAEGMgPs4gAAAABJRU5ErkJggg==', 'base64');
 const MODELS = {
   data: [
-    { id: 'meta/muse-image', architecture: { input_modalities: ['text', 'image'] }, supported_parameters: {} },
+    { id: 'example/fixed-frame', architecture: { input_modalities: ['text', 'image'] }, supported_parameters: {} },
     { id: 'recraft/recraft-v4.1', architecture: { input_modalities: ['text', 'image'] }, supported_parameters: { aspect_ratio: { type: 'enum', values: ['1:1', '16:9'] } } },
   ],
 };
@@ -39,8 +39,8 @@ function stubOpenRouterImages() {
 
 test('an aspect ratio the model would ignore is refused before anything is paid for', async () => {
   await assert.rejects(
-    generateProjectImage(project, { name: 'bg', prompt: 'a dusk sky', model: 'meta/muse-image', references: [], aspect: '16:9', transparent: false }),
-    /muse-image ignores --aspect/,
+    generateProjectImage(project, { name: 'bg', prompt: 'a dusk sky', model: 'example/fixed-frame', references: [], aspect: '16:9', transparent: false }),
+    /fixed-frame ignores --aspect/,
   );
   await assert.rejects(
     generateProjectImage(project, { name: 'bg', prompt: 'a dusk sky', model: 'recraft/recraft-v4.1', references: [], aspect: '21:9', transparent: false }),

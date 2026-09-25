@@ -12,8 +12,12 @@ import { extname, join, relative } from 'node:path';
 import { fetchOpenRouterImageModel, type OpenRouterImageModel } from './openrouter.ts';
 import { generatePaidMedia } from './paid-generation.ts';
 
-/** Cheap ($0.01), takes reference images, and good enough for a final still; it ignores aspect ratio and makes 3:2. */
-export const DEFAULT_IMAGE_MODEL = 'meta/muse-image';
+/**
+ * Chosen in vid-20's bake-off: good at title backgrounds, product shots from a reference, icons and legible small
+ * text, for $0.004–0.033 an image. The name is a dated variant; if OpenRouter drops it, openai/gpt-image-2 is the
+ * fallback (same price, but no transparent background).
+ */
+export const DEFAULT_IMAGE_MODEL = 'openai/gpt-image-2.5-sunburst';
 
 export type GeneratedImageRequest = {
   name: string;
@@ -74,7 +78,7 @@ function checkOpenRouterImageRequest(model: OpenRouterImageModel, { aspect, tran
     }
   }
   if (transparent && !enumValues('background').includes('transparent')) {
-    throw new Error(`${model.id} can't make a transparent background; openai/gpt-image-1-mini can`);
+    throw new Error(`${model.id} can't make a transparent background; ${DEFAULT_IMAGE_MODEL} can`);
   }
   if (references.length && !model.architecture.input_modalities.includes('image')) throw new Error(`${model.id} takes no reference images`);
   const range = supported.input_references;

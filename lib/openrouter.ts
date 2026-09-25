@@ -56,8 +56,8 @@ export async function generateOpenRouterImage(body: object): Promise<OpenRouterM
 
 /**
  * What an image model takes, as OpenRouter describes it: each request param it honours (an enum's values or a
- * range), and whether it reads images at all. OpenRouter doesn't refuse a param the model doesn't list (muse-image
- * took aspect_ratio 16:9 and made 3:2), so callers check against this before paying.
+ * range), and whether it reads images at all. OpenRouter doesn't refuse a param the model doesn't list (a model
+ * without aspect_ratio takes 16:9 and makes whatever it makes), so callers check against this before paying.
  */
 export type OpenRouterImageModel = {
   id: string;

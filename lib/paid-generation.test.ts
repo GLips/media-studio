@@ -34,7 +34,7 @@ test('a request already made costs nothing, whatever order its params come in, u
   stubOpenRouter(() => ({ data: [{ b64_json: PNG.toString('base64') }], usage: { cost: 0.04 } }));
   const still = join(project, 'still.png');
   writeFileSync(still, PNG);
-  const request = { kind: 'image', model: 'meta/muse-image', name: 'title', prompt: 'a title card', references: [{ path: still }] } as const;
+  const request = { kind: 'image', model: 'openai/gpt-image-2.5-sunburst', name: 'title', prompt: 'a title card', references: [{ path: still }] } as const;
 
   const [first] = await generatePaidMedia(project, { ...request, params: { aspect_ratio: '16:9', resolution: '2K' } });
   assert.match(basename(first), /^title-[0-9a-f]{16}\.png$/);
