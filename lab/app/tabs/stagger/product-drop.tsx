@@ -1,12 +1,15 @@
 // product-drop.tsx: the stagger tab's comparison stage: one product page entering two ways. `everything` starts
 // every piece at the same moment with its own big move; `hero` gives the product the one big move and lets the
-// rest follow it in a quick, quiet stagger.
+// rest follow it in a quick, quiet stagger. `StaggerProductDropPair` shows both halves in one composition so they
+// loop on the same clock.
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import { DISPLAY_FONT, MONO_FONT } from '../../../../lib/studio/fonts.ts';
+import { H, W } from '../../../../lib/studio/frame.ts';
 import { lerp, motionCurves, motionDurations, seg, stagger } from '../../../../lib/studio/motion.ts';
 import { LAB_COLORS } from '../../ui.tsx';
 
 export type StaggerProductDropProps = { mode: 'everything' | 'hero'; headStart: number; each: number };
+export type StaggerProductDropPairProps = Omit<StaggerProductDropProps, 'mode'>;
 
 export const STAGGER_PRODUCT_DROP_SECONDS = 4.2;
 
@@ -98,6 +101,32 @@ export function StaggerProductDrop({ mode, headStart, each }: StaggerProductDrop
         );
       })}
       </AbsoluteFill>
+    </AbsoluteFill>
+  );
+}
+
+const PAIR_GAP = 80;
+const PAIR_LABEL_BAND = 120;
+export const STAGGER_PRODUCT_DROP_PAIR_SIZE = { width: W * 2 + PAIR_GAP, height: H + PAIR_LABEL_BAND };
+
+/** Both entrances side by side, each a full 1920×1080 page under its own caption. */
+export function StaggerProductDropPair({ headStart, each }: StaggerProductDropPairProps) {
+  const halves = [
+    { mode: 'everything', caption: 'EVERYTHING AT ONCE' },
+    { mode: 'hero', caption: 'ONE HERO LEADS' },
+  ] as const;
+  return (
+    <AbsoluteFill style={{ background: LAB_COLORS.ground }}>
+      {halves.map(({ mode, caption }, i) => (
+        <div key={mode} style={{ position: 'absolute', left: i * (W + PAIR_GAP), top: 0, width: W, height: H + PAIR_LABEL_BAND }}>
+          <div style={{ fontFamily: MONO_FONT, fontSize: 48, letterSpacing: '0.08em', color: i === 0 ? LAB_COLORS.dim : LAB_COLORS.cream, height: PAIR_LABEL_BAND, display: 'flex', alignItems: 'center', paddingLeft: 90 }}>
+            {caption}
+          </div>
+          <div style={{ position: 'absolute', left: 0, top: PAIR_LABEL_BAND, width: W, height: H, borderRadius: 24, overflow: 'hidden', border: `2px solid ${LAB_COLORS.line}` }}>
+            <StaggerProductDrop mode={mode} headStart={headStart} each={each} />
+          </div>
+        </div>
+      ))}
     </AbsoluteFill>
   );
 }

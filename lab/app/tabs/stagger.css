@@ -1,9 +1,21 @@
-/* stagger.css: the stagger tab's side-by-side comparison of one product page entering two ways. */
+/* stagger.css: the stagger tab's row of numbered card buttons under the stage, its side-by-side comparison, and its
+   "For agents" disclosures. */
+
+.stagger-pick { display: flex; align-items: center; gap: 12px; margin-top: 8px; padding: 0 10px; }
+.stagger-pick .hud { white-space: nowrap; }
+.stagger-pick-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.stagger-pick-row button {
+  min-width: 30px; padding: 3px 6px; font-size: 13px; cursor: pointer; background: transparent;
+  border: 1px solid var(--line); border-bottom-width: 3px; border-radius: 5px;
+}
+.stagger-pick-row button:hover { border-top-color: var(--dim); border-left-color: var(--dim); border-right-color: var(--dim); }
+.stagger-pick-row button.on { background: var(--cream); color: var(--ground); }
 
 .stagger-compare { display: flex; flex-direction: column; gap: 14px; }
 .stagger-compare-head p { margin: 4px 0 0; max-width: 80ch; }
-.stagger-compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
-@media (max-width: 900px) {
-  .stagger-compare-grid { grid-template-columns: 1fr; }
-}
+.stagger-agents { color: var(--dim); font-size: 13px; }
+.stagger-agents summary { cursor: pointer; font-weight: 600; }
+.stagger-agents p { margin: 8px 0; line-height: 1.5; }
+.stagger-agents code, .stagger-agents pre { font-family: var(--mono); color: var(--cream); }
+.stagger-agents pre { margin: 0; padding: 8px 10px; background: var(--panel); border-radius: 6px; white-space: pre-wrap; word-break: break-word; }

@@ -43,13 +43,13 @@ export function StaggerInkRow(props: StaggerInkRowProps) {
 
   const gap = count > 12 ? 10 : 20;
   const cardW = Math.min(210, (W - 240 - gap * (count - 1)) / count);
-  const cardH = 360;
+  const cardH = 330;
   const rowW = cardW * count + gap * (count - 1);
   const roomy = cardW >= 120;
 
   return (
     <AbsoluteFill style={{ background: LAB_COLORS.ground, fontFamily: DISPLAY_FONT, color: LAB_COLORS.cream }}>
-      <div style={{ position: 'absolute', left: 120, top: 56, fontFamily: MONO_FONT, fontSize: 22, letterSpacing: '0.08em', color: LAB_COLORS.dim }}>
+      <div style={{ position: 'absolute', left: 120, top: 40, fontFamily: MONO_FONT, fontSize: 22, letterSpacing: '0.08em', color: LAB_COLORS.dim }}>
         INK LIBRARY — {count} COLOURS
       </div>
       {starts.map((start, i) => {
@@ -58,7 +58,7 @@ export function StaggerInkRow(props: StaggerInkRowProps) {
         const fade = seg(t, start, start + CARD_ENTER * 0.4, motionCurves.dissolve);
         return (
           <div key={i} style={{
-            position: 'absolute', left: (W - rowW) / 2 + i * (cardW + gap), top: 120, width: cardW, height: cardH,
+            position: 'absolute', left: (W - rowW) / 2 + i * (cardW + gap), top: 96, width: cardW, height: cardH,
             background: LAB_COLORS.panel, borderRadius: roomy ? 16 : 8, overflow: 'hidden',
             border: `1px solid ${LAB_COLORS.line}`,
             opacity: fade * (1 - leaving),
@@ -74,19 +74,26 @@ export function StaggerInkRow(props: StaggerInkRowProps) {
           </div>
         );
       })}
-      <StaggerTimingChart starts={starts} t={t} total={total} max={max} />
+      <StaggerTimingChart starts={starts} t={t} max={max} />
     </AbsoluteFill>
   );
 }
 
-/** A bar per card from its start to its finish, filling as it plays; the cap on the spread shaded behind them. */
-function StaggerTimingChart({ starts, t, total, max }: { starts: number[]; t: number; total: number; max: number | null }) {
-  const left = 120, right = W - 120, top = 640, height = 370, barsTop = top + 40;
-  const x = (s: number) => left + ((right - left) * s) / total;
+/**
+ * A bar per card from its start to its finish, filling as it plays; the cap on the spread shaded behind them. The
+ * axis ends just past the last landing, not at the loop's end, so the bars fill the chart. It stops at y≈930 because
+ * the Player's own controls cover the frame's bottom strip.
+ */
+function StaggerTimingChart({ starts, t, max }: { starts: number[]; t: number; max: number | null }) {
+  const left = 120, right = W - 120, top = 540, height = 340, barsTop = top + 30;
+  const lastFinish = Math.max(...starts) + CARD_ENTER;
+  const axisEnd = Math.ceil((lastFinish + 0.2) / 0.5) * 0.5;
+  const x = (s: number) => left + ((right - left) * s) / axisEnd;
   const rowH = Math.min(34, (top + height - barsTop) / starts.length);
   const barH = Math.max(4, rowH * 0.62);
   const lastStart = Math.max(...starts);
-  const ticks = Array.from({ length: Math.floor(total / 0.5) + 1 }, (_, i) => i * 0.5);
+  const ticks = Array.from({ length: Math.round(axisEnd / 0.5) + 1 }, (_, i) => i * 0.5);
+  const labelEvery = axisEnd > 3 ? 1 : 0.5;
   const label = { fontFamily: MONO_FONT, fontSize: 18, letterSpacing: '0.06em', color: LAB_COLORS.dim } as const;
 
   return (
@@ -99,12 +106,12 @@ function StaggerTimingChart({ starts, t, total, max }: { starts: number[]; t: nu
           position: 'absolute', left: x(GROUP_AT), top, width: Math.max(2, x(GROUP_AT + max) - x(GROUP_AT)), height,
           background: 'rgba(65, 68, 244, 0.16)', borderRight: `2px dashed ${LAB_COLORS.cobalt}`,
         }}>
-          <div style={{ ...label, position: 'absolute', left: 8, top: 8, color: '#9a9cff', whiteSpace: 'nowrap' }}>MAX {max.toFixed(2)}s</div>
+          <div style={{ ...label, position: 'absolute', left: 8, top: 8, color: '#9a9cff', whiteSpace: 'nowrap' }}>CAP {max.toFixed(2)}s</div>
         </div>
       )}
       {ticks.map((s) => (
         <div key={s} style={{ position: 'absolute', left: x(s), top: top + height, height: 10, borderLeft: `1px solid ${LAB_COLORS.line}` }}>
-          {s % 1 === 0 && <div style={{ ...label, fontSize: 16, position: 'absolute', top: 12, transform: 'translateX(-50%)' }}>{s}s</div>}
+          {s % labelEvery === 0 && <div style={{ ...label, fontSize: 16, position: 'absolute', top: 12, transform: 'translateX(-50%)' }}>{s}s</div>}
         </div>
       ))}
       {starts.map((start, i) => {
@@ -117,7 +124,7 @@ function StaggerTimingChart({ starts, t, total, max }: { starts: number[]; t: nu
           </div>
         );
       })}
-      <div style={{ position: 'absolute', left: x(t), top: top - 8, height: height + 16, borderLeft: `3px solid ${LAB_COLORS.red}` }} />
+      {t <= axisEnd && <div style={{ position: 'absolute', left: x(t), top: top - 8, height: height + 16, borderLeft: `3px solid ${LAB_COLORS.red}` }} />}
     </div>
   );
 }
