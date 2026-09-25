@@ -44,7 +44,9 @@ the image rather than a label on it, and colour comes in full-bleed fields, not 
 - **Cost.** A reel renders 600 frames. Keep a frame under about 2,000 DOM nodes; past that, draw into a canvas (2D in
   a `useLayoutEffect` that redraws each frame, or `ThreeStage` for 3D, `lib/studio/three-stage.tsx`).
 - **3D** is `ThreeStage`: `draw()` builds the scene and camera for this frame from scratch, and the stage disposes it.
-  Lens effects (`dof`, `bloom`) are props.
+  It averages `samples` exposures a frame, so depth of field (`lens`), motion blur (`shutter`) and soft shadows are
+  real, not post passes; `bloom` applies once, to the average. A transparent stage over a light ground takes that
+  ground as its `backdrop`.
 - **Doc comments** say what it draws, what each non-obvious prop does, and the reference's values. Under 60 words
   each, and why rather than what.
 

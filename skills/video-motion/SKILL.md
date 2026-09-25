@@ -76,7 +76,8 @@ A launch ad, teaser, social cut or product promo is usually cut to music: one id
 full-bleed colour, display type as the image, hard cuts on the hit. Build it from the pieces in `lib/studio/reel/` (a
 bounce, kinetic type, ticker bands, a glyph field, a 3D field, a capture on a tilted card, a recap grid, a HUD) and
 kit.tsx's `Odometer`. `references/reel-assembly.md` builds it bar by bar on a beat grid, `references/reel-pieces.md`
-adds a piece it lacks, and `references/showreel-breakdown.md` is the reel it's measured against.
+adds a piece it lacks, `references/showreel-breakdown.md` is the reel it's measured against, and
+`references/reel-critique.md` is the fresh-eyes critique a cut gets before it's done.
 `projects/2026-09-motion-showcase` is a worked example, a 20 s product ad.
 
 Registers mix: a walkthrough can open on a few bars of this and close on a slammed end card, calm in between. Keep

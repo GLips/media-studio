@@ -55,7 +55,8 @@ frame. Several builders editing bars at once can't break each other's renders th
 3. `studio look <project> --sheet=…` at your bar's hit frames: each should be a frame worth pausing on.
 4. `npx tsc --noEmit -p .` shows no errors in your files.
 5. When the whole reel is assembled: render it and run `studio study` on the render. Its cuts should land on the
-   beat grid, and its motion-energy plot should never sit at zero.
+   beat grid, and its motion-energy plot should never sit at zero. Then give it to a critic who didn't build it, with
+   `reel-critique.md` as the brief.
 
 ## Fences
 
