@@ -1,0 +1,38 @@
+/* sound.css: the Sound tab's waveform, music timeline and buttons, in the lab's palette. */
+
+.sound-part { display: flex; flex-direction: column; gap: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.sound-part-head h3 { margin: 2px 0 0; font-size: 30px; line-height: 1.05; font-weight: 900; font-stretch: 80%; text-transform: uppercase; }
+.sound-part code, .controls code { font-family: var(--mono); font-size: 0.9em; color: var(--cream); background: var(--line); padding: 0 4px; border-radius: 3px; }
+
+.sound-button { background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 8px 16px; cursor: pointer; font-weight: 600; font-size: 15px; transition: border-color 0.15s, background 0.15s; }
+.sound-button:hover:not(:disabled) { border-color: var(--dim); }
+.sound-button:disabled { opacity: 0.4; cursor: default; }
+.sound-button.primary { background: var(--red); border-color: var(--red); color: var(--ground); }
+.sound-button.bad { border-color: color-mix(in srgb, var(--red) 55%, transparent); }
+
+.sfx-stage { display: flex; flex-direction: column; gap: 12px; }
+.sfx-wave { position: relative; background: var(--panel); border-radius: 10px; padding: 12px 0 0; overflow: hidden; }
+.sfx-wave canvas { display: block; width: 100%; height: auto; }
+.sfx-lands { position: absolute; top: 0; bottom: 22px; border-left: 2px solid var(--red); pointer-events: none; }
+.sfx-lands .hud { position: absolute; top: 6px; left: 6px; white-space: nowrap; color: var(--red); }
+.sound-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--cream); pointer-events: none; }
+.sfx-actions, .fit-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.sfx-reset { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; justify-content: center; }
+.sfx-reset small { color: var(--dim); font-size: 13px; }
+
+.fit-stage { position: relative; background: var(--panel); border-radius: 10px; padding: 16px 20px; min-height: 180px; transition: opacity 0.2s; }
+.fit-stage.busy { opacity: 0.55; }
+.fit-busy { position: absolute; top: 14px; right: 20px; color: var(--cream); }
+.fit-message { margin: 60px 0; text-align: center; color: var(--dim); }
+.fit-timeline { display: block; width: 100%; height: auto; overflow: visible; }
+.fit-label { font: 13px var(--mono); letter-spacing: 0.08em; fill: var(--dim); }
+.fit-label.cream { fill: var(--cream); }
+.fit-seek { cursor: pointer; }
+
+.fit-seams { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.fit-seam { display: flex; flex-direction: column; gap: 2px; text-align: left; background: var(--panel); border: 0; border-left: 4px solid var(--line); border-radius: 8px; padding: 10px 14px; cursor: pointer; }
+.fit-seam:hover { background: var(--line); }
+.fit-seam span { font-size: 14px; }
+.fit-seam small { color: var(--dim); font-size: 12px; }
+.fit-earlier { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sound-part .controls > .choice:first-child { grid-column: span 2; }

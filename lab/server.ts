@@ -1,6 +1,6 @@
 // server.ts: the Studio Lab, a local playground with a tab per studio capability. esbuild bundles lab/app into a temp
 // folder and rebuilds on every save; this server hands out that bundle, the media the studio has already made, and
-// two listings of it. Everything interactive (curves, springs, sfx recipes, music fits, the hold check) runs in the
+// listings of it (plus the image bake-off's written review). Everything interactive (curves, springs, sfx recipes, music fits, the hold check) runs in the
 // browser from lib/ itself, so the lab can never drift from what a render does.
 //
 // Negative space: nothing here generates media or calls a paid API. The gallery only reads provenance files.
@@ -10,6 +10,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { tmpdir } from 'node:os';
 import { extname, join, relative, resolve, sep } from 'node:path';
 import { STUDIO_PROJECTS_DIR, STUDIO_ROOT } from '../lib/studio-project.ts';
+import { handleSfxCueApi } from './sfx-cue-api.ts';
 
 const LAB_DIR = join(STUDIO_ROOT, 'lab');
 const SCRATCH_DIR = join(STUDIO_ROOT, 'scratch');
@@ -53,6 +54,8 @@ function route(req: IncomingMessage, res: ServerResponse, outdir: string) {
   if (path === '/') return sendFile(req, res, join(LAB_DIR, 'app', 'index.html'), 'text/html');
   if (path === '/api/gallery') return sendJson(res, listGeneratedMedia());
   if (path === '/api/music') return sendJson(res, listMusicTracks());
+  if (path === '/api/image-bakeoff') return sendJson(res, readImageBakeoff());
+  if (handleSfxCueApi(req, res, url)) return;
   if (path.startsWith('/media/')) {
     // Only files under projects/ and scratch/, and only media: the repo's code and secrets stay off the wire.
     const file = resolve(STUDIO_ROOT, path.slice('/media/'.length));
@@ -141,4 +144,36 @@ function listMusicTracks(): LabMusicTrack[] {
       duration: t.duration, bpm: t.bpm, beats: t.beats, ...(t.fit && { fit: { source: t.fit.source, seams: t.fit.seams } }),
     }));
   });
+}
+
+const IMAGE_BAKEOFF_DIR = join(SCRATCH_DIR, 'image-bakeoff');
+
+export type LabBakeoffBrief = { id: string; label: string; aspect: string; purpose: string; good: string; prompt: string; ref: string | null };
+export type LabBakeoffModel = { short: string; id: string; name: string; price: string; rank: string; takes: string; why: string; missing: string | null };
+export type LabBakeoffCell = { tag: 'good' | 'mixed' | 'bad'; text: string; seconds: number | null; size: string | null };
+
+export type LabImageBakeoff = {
+  briefs: LabBakeoffBrief[]; models: LabBakeoffModel[];
+  /** Keyed `${brief}-${model short}`, which is also the gallery item's name. */
+  cells: Record<string, LabBakeoffCell>;
+  /** The reviewer's closing verdict, as the HTML the bake-off's own page shows. */
+  recommendation: string;
+};
+
+/** scratch/image-bakeoff's briefs, models and per-image review, joined. Null when that folder is gone. */
+function readImageBakeoff(): LabImageBakeoff | null {
+  const read = (name: string) => JSON.parse(readFileSync(join(IMAGE_BAKEOFF_DIR, name), 'utf8'));
+  if (!existsSync(join(IMAGE_BAKEOFF_DIR, 'notes.json'))) return null;
+  const sets = read('sets.json') as { sets: (Omit<LabBakeoffBrief, 'ref'> & { ref?: string })[]; models: { id: string; short: string; iconModel?: string }[] };
+  const notes = read('notes.json') as {
+    models: Record<string, Omit<LabBakeoffModel, 'short' | 'id' | 'missing'>>; missing: Record<string, string>;
+    cells: Record<string, { tag: LabBakeoffCell['tag']; text: string }>; recommendation: string;
+  };
+  const runs = read('runs.json') as Record<string, { seconds?: number; size?: string }>;
+  return {
+    briefs: sets.sets.map((s) => ({ ...s, ref: s.ref ? mediaUrl(join(IMAGE_BAKEOFF_DIR, s.ref)) : null })),
+    models: sets.models.map((m) => ({ short: m.short, id: m.id, ...notes.models[m.short], missing: notes.missing[m.short] ?? null })),
+    cells: Object.fromEntries(Object.entries(notes.cells).map(([key, c]) => [key, { ...c, seconds: runs[key]?.seconds ?? null, size: runs[key]?.size ?? null }])),
+    recommendation: notes.recommendation,
+  };
 }

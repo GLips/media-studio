@@ -1,0 +1,125 @@
+/* media.css: the Generated media tab: spend strip, previs comparison, bake-off grid, music shelf, stills and the
+   lightbox. Uses lab.css's variables. */
+
+.media-link { background: none; border: 0; padding: 0; color: var(--red); font-weight: 600; cursor: pointer; font-size: 14px; text-align: left; }
+.media-link:hover { text-decoration: underline; }
+.media-prompt { white-space: pre-wrap; font-size: 15px; line-height: 1.55; background: var(--ground); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin: 6px 0 16px; }
+/* A see-through image (a cut-out, an SVG) reads as see-through only against a checkerboard. */
+.checker { background: repeating-conic-gradient(#26262c 0 25%, #1b1b20 0 50%) 0 0 / 20px 20px; }
+
+/* Spend */
+.media-spend { display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: 12px; }
+.media-spend > div { background: var(--panel); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; }
+.media-spend strong { font-size: 34px; font-weight: 900; font-stretch: 80%; line-height: 1.1; }
+.media-spend-total { border-top: 3px solid var(--red); }
+.media-spend-total strong { font-size: 44px; color: var(--red); }
+.media-spend small { color: var(--dim); font-size: 13px; }
+.media-spend-free { grid-column: 1 / -1; margin: 0; color: var(--dim); font-size: 15px; }
+.media-spend-free b { color: var(--pass); }
+.media-spend code, .media-modal code, .bakeoff-verdict code { font-family: var(--mono); font-size: 0.88em; }
+
+/* Sections */
+.media-section { display: flex; flex-direction: column; gap: 18px; padding-top: 28px; border-top: 1px solid var(--line); }
+.media-section-head h3 { margin: 2px 0 8px; font-size: 32px; line-height: 1.05; font-weight: 900; font-stretch: 80%; text-transform: uppercase; }
+.media-section-head p { margin: 0; max-width: 80ch; font-size: 16px; }
+.media-section-head .hud { color: var(--red); }
+
+/* Previs */
+.previs { display: flex; flex-direction: column; gap: 14px; }
+.previs-side { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.previs video { display: block; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 4px; }
+.previs-wipe-stage { width: min(100%, 980px); align-self: center; }
+.previs-wipe { position: relative; cursor: ew-resize; touch-action: none; user-select: none; border-radius: 4px; overflow: hidden; }
+.previs-wipe-top { position: absolute; inset: 0; }
+.previs-wipe-bar { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--cream); box-shadow: 0 0 0 1px rgba(0,0,0,0.4); pointer-events: none; }
+.previs-wipe-bar::after { content: "⇆"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: var(--cream); color: var(--ground); display: grid; place-items: center; font-size: 18px; }
+.previs-wipe-label { position: absolute; top: 12px; background: rgba(12,12,14,0.75); color: var(--cream); padding: 3px 8px; border-radius: 4px; pointer-events: none; }
+.previs-wipe-label.left { left: 12px; }
+.previs-wipe-label.right { right: 12px; }
+.previs-transport { display: flex; align-items: center; gap: 14px; }
+.previs-transport button { min-width: 84px; background: var(--cream); color: var(--ground); border: 0; border-radius: 6px; padding: 7px 14px; font-weight: 700; cursor: pointer; }
+.previs-transport input { flex: 1; }
+.previs-transport output { min-width: 120px; text-align: right; color: var(--cream); }
+.previs-scene { display: grid; grid-template-columns: 1fr auto; gap: 20px; background: var(--panel); border-radius: 12px; padding: 16px 20px; }
+.previs-scene p { margin: 6px 0 10px; max-width: 80ch; }
+.previs-photos { display: flex; flex-direction: column; gap: 6px; }
+.previs-photos img { width: 180px; border-radius: 6px; background: #fff; }
+
+/* Bake-off */
+.bakeoff { display: flex; flex-direction: column; gap: 14px; }
+.bakeoff-bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.bakeoff-toggle { display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; }
+.bakeoff-toggle input { accent-color: var(--red); width: 16px; height: 16px; }
+.bakeoff-toggle small { color: var(--dim); font-weight: 400; }
+.bakeoff-legend { display: flex; gap: 6px; }
+.bakeoff-grid { display: grid; gap: 8px; align-items: stretch; }
+.bakeoff-corner { align-self: end; padding-bottom: 6px; }
+.bakeoff-model, .bakeoff-brief { background: var(--panel); border: 1px solid transparent; border-radius: 8px; padding: 10px 12px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
+.bakeoff-model:hover, .bakeoff-brief:hover { border-color: var(--dim); }
+.bakeoff-model b { font-size: 14px; line-height: 1.25; }
+.bakeoff-model { justify-content: space-between; }
+.bakeoff-brief small { color: var(--dim); font-size: 12.5px; line-height: 1.35; }
+.bakeoff-brief .media-link { font-size: 13px; margin-top: auto; }
+.bakeoff-cell { position: relative; padding: 0; border: 2px solid transparent; border-radius: 8px; overflow: hidden; background: #000; cursor: zoom-in; aspect-ratio: 16 / 9; align-self: center; transition: transform 0.15s, border-color 0.15s; }
+.bakeoff-cell:hover { transform: scale(1.04); z-index: 1; border-color: var(--cream); }
+.bakeoff-cell img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.bakeoff-cell.good { border-color: color-mix(in srgb, var(--pass) 70%, transparent); }
+.bakeoff-cell.mixed { border-color: color-mix(in srgb, #e0b43c 60%, transparent); }
+.bakeoff-cell.bad { border-color: color-mix(in srgb, var(--red) 80%, transparent); }
+.bakeoff-cell.empty { display: grid; place-items: center; background: var(--panel); cursor: default; }
+.bakeoff-cell .bakeoff-tag { position: absolute; left: 5px; bottom: 5px; }
+.bakeoff-cost { position: absolute; right: 5px; bottom: 5px; background: rgba(12,12,14,0.8); color: var(--cream); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+.bakeoff-tag { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 700; padding: 1px 6px; border-radius: 4px; color: var(--ground); }
+.bakeoff-tag.good { background: var(--pass); }
+.bakeoff-tag.mixed { background: #e0b43c; }
+.bakeoff-tag.bad { background: var(--red); }
+.bakeoff-note { background: var(--ground); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; }
+.bakeoff-note p { margin: 6px 0; }
+.bakeoff-note small { color: var(--dim); }
+.bakeoff-ref { width: 220px; border-radius: 6px; margin-top: 6px; }
+.bakeoff-verdict { background: var(--panel); border-radius: 10px; padding: 12px 18px; }
+.bakeoff-verdict summary { cursor: pointer; font-weight: 600; }
+.bakeoff-verdict h2 { font-size: 22px; text-transform: uppercase; font-stretch: 80%; margin: 14px 0 6px; }
+.bakeoff-verdict h3 { font-size: 17px; margin: 14px 0 4px; }
+.bakeoff-verdict p, .bakeoff-verdict li { max-width: 85ch; font-size: 15px; }
+
+/* Music */
+.media-music { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
+.media-track { background: var(--panel); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.media-track audio { width: 100%; }
+.media-track-prompt { margin: 0; font-size: 14px; color: var(--dim); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.media-card-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.media-card-row .hud { color: var(--cream); }
+
+/* Stills */
+.media-stills { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.media-card { background: var(--panel); border: 1px solid transparent; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; text-align: left; cursor: zoom-in; }
+.media-card:hover { border-color: var(--dim); }
+.media-card img { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; border-radius: 6px; }
+.media-card small { color: var(--dim); font-size: 13px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Modal and lightbox */
+.media-modal { position: fixed; inset: 0; z-index: 50; background: rgba(6,6,8,0.86); display: grid; place-items: center; padding: 32px; }
+.media-modal-panel { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 24px 26px; width: min(720px, 100%); max-height: calc(100vh - 64px); overflow: auto; }
+.media-modal-panel.wide { width: min(1400px, 100%); }
+.media-modal-panel h3 { margin: 2px 0 12px; font-size: 26px; font-weight: 900; font-stretch: 85%; line-height: 1.1; }
+.media-modal-close { position: absolute; top: 10px; right: 12px; background: none; border: 0; font-size: 28px; line-height: 1; cursor: pointer; color: var(--dim); }
+.media-modal-close:hover { color: var(--cream); }
+.media-lightbox { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr); gap: 24px; }
+.media-lightbox-view { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.media-lightbox-view img, .media-lightbox-view video { width: 100%; max-height: calc(100vh - 180px); object-fit: contain; border-radius: 8px; background-color: #000; }
+.media-lightbox-view audio { width: 100%; margin-top: 40px; }
+.media-lightbox-nav { display: flex; justify-content: center; align-items: center; gap: 14px; }
+.media-lightbox-nav button { background: var(--ground); border: 1px solid var(--line); border-radius: 6px; width: 40px; height: 32px; cursor: pointer; font-size: 16px; }
+.media-lightbox-nav button:hover { border-color: var(--cream); }
+.media-lightbox-facts dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0 0 14px; align-items: baseline; }
+.media-lightbox-facts dd { margin: 0; }
+.media-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.media-chips span { font-family: var(--mono); font-size: 12px; background: var(--ground); border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; }
+.media-refs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.media-refs img, .media-refs video { width: 180px; aspect-ratio: 16 / 9; object-fit: contain; border-radius: 6px; background-color: #000; }
+
+@media (max-width: 900px) {
+  .media-spend, .previs-side, .media-lightbox, .previs-scene { grid-template-columns: 1fr; }
+  .bakeoff-grid { overflow-x: auto; }
+}
