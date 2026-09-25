@@ -2,7 +2,7 @@
 // folder to listen through. `studio sfx` runs these. Node only.
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
-import { STUDIO_ROOT } from '../studio-project.ts';
+import { STUDIO_ROOT } from '../engine/project/studio-project.ts';
 import { wavFromSamples } from '../wav.ts';
 import { SFX_RATE } from './dsp.ts';
 import { renderSfx, sfxParamSpecs, SFX_LOUDNESS_UNDER_VOICE, type RenderedSfx, type SfxRequest } from './library.ts';

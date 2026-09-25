@@ -1,5 +1,5 @@
 // reel-study.ts: measurements of a reference video (someone else's reel, not one of ours), for studying how it's cut
-// and how it moves. Pure: lib/reel-study-files.ts decodes the video and audio and draws what this computes.
+// and how it moves. Pure: lib/engine/study/reel-study-files.ts decodes the video and audio and draws what this computes.
 //
 // Every frame is measured small (a thumbnail's worth of pixels): how much it changed from the last (motion energy),
 // whether that change is a cut, and its mean colour. The audio gives a beat grid, and every cut is placed on it.

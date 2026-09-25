@@ -1,5 +1,5 @@
 // sfx-loudness.ts: ITU BS.1770 loudness of synthesized samples, in-process so a recipe stays a pure function. It
-// matches lib/loudness.ts (ffmpeg's ebur128 with dualmono) on the same file.
+// matches lib/engine/ffmpeg/loudness.ts (ffmpeg's ebur128 with dualmono) on the same file.
 import { SFX_RATE } from './dsp.ts';
 
 // K-weighting at 48 kHz, the coefficients BS.1770 tabulates: a high shelf for the head, then a high-pass.

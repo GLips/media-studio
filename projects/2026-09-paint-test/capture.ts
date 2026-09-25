@@ -1,7 +1,6 @@
 // Defines every shot the Painted video shows.
 //   studio capture paint-test [--only=home,…]   films them (it imports the default export)
-import type { Page } from 'playwright';
-import { captureShots } from '../../lib/capture.ts';
+import { captureShots, type Page } from '#engine/capture/capture.ts';
 
 const shots = captureShots({ project: import.meta.dirname, viewport: { width: 1440, height: 810 }, css: '#_evidon_banner, #attentive_overlay { display: none !important; }' });
 const open = async (page: Page, url: string) => {

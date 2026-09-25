@@ -1,5 +1,5 @@
 // music-fit.ts: rebuilds a music track to an exact length, ending where the track ends. Pure: samples and beats in,
-// spans of the source out. `studio music fit` runs it (lib/music-track.ts).
+// spans of the source out. `studio music fit` runs it (lib/engine/music/music-track.ts).
 //
 // PyMusicLooper's `extend` generalised: the track plays from its start to its own ending, jumping between downbeats
 // whose surrounding bars sound alike (compared as per-beat spectra) to lose or repeat whole bars, so the meter

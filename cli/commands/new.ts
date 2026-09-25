@@ -15,8 +15,8 @@ export default defineCommand({
   },
   async run({ args }) {
     const { basename } = await import('node:path');
-    const { scaffoldStudioProject } = await import('../../lib/new-project.ts');
-    const { captureStudioProject } = await import('../../lib/capture.ts');
+    const { scaffoldStudioProject } = await import('../../lib/engine/project/new-project.ts');
+    const { captureStudioProject } = await import('../../lib/engine/capture/capture.ts');
     const dir = scaffoldStudioProject({ slug: args.slug, url: args.url, title: args.title, stills: args.stills, brand: args.brand });
     if (args.url) await captureStudioProject(dir);
     const name = basename(dir);
@@ -28,7 +28,7 @@ export default defineCommand({
   studio still ${name} --sheet   render every variant at each preset, with a sheet to pick from
   studio review <sheet>          show the sheet for notes`);
     } else {
-      const { voiceStudioProject } = await import('../../lib/voice-project.ts');
+      const { voiceStudioProject } = await import('../../lib/engine/voice/voice-project.ts');
       await voiceStudioProject(dir, { mode: 'estimate' });
       console.error(`Next:${shotsFirst}
   studio preview ${name}      watch it, with estimated timing and no voice

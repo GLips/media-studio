@@ -2,7 +2,7 @@
 // generated/sfx-cues.ts, which the composition imports as `@sfx-cues`, is rendered from it on every bundle, with each
 // sounding cue's WAV beside it, so a fresh clone builds from cues.json alone.
 //
-// Imported by lib/project-bundle.ts, so it stays free of the renderer and of import.meta (the Remotion CLI bundles
+// Imported by lib/engine/bundle/project-bundle.ts, so it stays free of the renderer and of import.meta (the Remotion CLI bundles
 // that file to CommonJS).
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';

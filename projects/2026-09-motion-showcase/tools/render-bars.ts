@@ -4,10 +4,9 @@
 //   node projects/2026-09-motion-showcase/tools/render-bars.ts [N ...] [--out=<dir>]
 // Two renders of the same code aren't bit for bit alike: compare renders with `studio look --against`, not by eye on a mean.
 import '../../../lib/studio/tsx-test-hooks.ts';
-import { renderMedia } from '@remotion/renderer';
 import { mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { RENDER_CHROMIUM, RENDER_CONCURRENCY, openRenderSession } from '../../../lib/render-session.ts';
+import { openRenderSession } from '#engine/render/render-session.ts';
 import type { Bar } from '../bar.ts';
 
 const PROJECT = resolve(import.meta.dirname, '..');
@@ -20,14 +19,9 @@ for (const n of picked) if (!showcaseBars[n - 1]) throw new Error(`no bar ${n}: 
 
 mkdirSync(out, { recursive: true });
 const session = await openRenderSession(PROJECT);
-const inputProps = session.props();
-const composition = await session.compositionFor(inputProps);
 for (const n of picked.length ? picked : showcaseBars.map((_, i) => i + 1)) {
   const bar = showcaseBars[n - 1];
   const file = join(out, `0${n}.mp4`);
-  await renderMedia({
-    composition, serveUrl: session.serveUrl, chromiumOptions: RENDER_CHROMIUM, concurrency: RENDER_CONCURRENCY, inputProps,
-    codec: 'h264', crf: 20, muted: true, frameRange: [bar.from, bar.to - 1], outputLocation: file, onProgress: () => {},
-  });
+  await session.renderVideo({ codec: 'h264', crf: 20, muted: true, frameRange: [bar.from, bar.to - 1], outputLocation: file });
   console.log(file);
 }

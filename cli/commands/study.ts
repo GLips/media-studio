@@ -25,7 +25,7 @@ export default defineCommand({
     if (!(stripFps > 0 && stripFps <= 60)) throw new Error(`--strip-fps is frames per second like 15, not ${args['strip-fps']}`);
     const at = args.at?.split(':').map(Number);
     if (at && !(at.length === 2 && at.every(Number.isFinite) && at[0] < at[1])) throw new Error(`--at is a stretch of seconds like 0:16, not ${args.at}`);
-    const { studyReel } = await import('../../lib/reel-study-files.ts');
+    const { studyReel } = await import('../../lib/engine/study/reel-study-files.ts');
     console.log(await studyReel(video, { at: at && [at[0], at[1]], sections: args.sections, bpm, stripFps, out: resolve(args.out ?? join(dirname(video), 'study')) }));
   },
 });

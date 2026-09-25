@@ -5,14 +5,14 @@
 //   node projects/2026-09-motion-showcase/tools/sfx-sync.ts
 // Timing only: `studio mix --check` judges the levels.
 import '../../../lib/studio/tsx-test-hooks.ts';
-import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { runFfmpeg } from '#engine/ffmpeg/ffmpeg.ts';
 
 const { default: video, showcaseBars } = await import('../video.tsx');
 const FPS = 30, RATE = 16000;
 
 function decode(inputs: string[], filter: string): Float32Array {
-  const out = execFileSync('ffmpeg', ['-v', 'error', ...inputs, '-filter_complex', filter, '-ac', '1', '-ar', String(RATE), '-f', 'f32le', '-'], { maxBuffer: 1 << 28 });
+  const out = runFfmpeg(['-v', 'error', ...inputs, '-filter_complex', filter, '-ac', '1', '-ar', String(RATE), '-f', 'f32le', '-'], { maxBuffer: 1 << 28 });
   return new Float32Array(out.buffer, out.byteOffset, out.byteLength / 4);
 }
 

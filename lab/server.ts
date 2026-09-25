@@ -4,12 +4,11 @@
 // can't drift from what a render does, and `studio lab export` (lab/export.ts) can serve the same page as static files.
 //
 // Negative space: nothing here generates media or calls a paid API.
-import * as esbuild from 'esbuild';
 import { createReadStream, existsSync, mkdtempSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { extname, join, sep } from 'node:path';
-import { LAB_APP_DIR, labBundleOptions } from './bundle.ts';
+import { LAB_APP_DIR, watchLabPage } from '../lib/engine/bundle/lab-bundle.ts';
 import { handleLabLocalApi } from './local-api.ts';
 import { buildLabManifest, LAB_MEDIA_TYPES, labMediaRegister } from './manifest.ts';
 
@@ -17,8 +16,7 @@ const BUNDLE_TYPES: Record<string, string> = { '.js': 'text/javascript', '.css':
 
 export async function startStudioLab({ port }: { port: number }) {
   const outdir = mkdtempSync(join(tmpdir(), 'studio-lab-'));
-  const bundle = await esbuild.context(labBundleOptions({ outdir, production: false }));
-  await bundle.watch();
+  const bundle = await watchLabPage({ outdir });
 
   // The media URLs the last manifest handed out: only those are served, so a file the manifest doesn't list (code,
   // secrets, anything a deploy would leave out) never goes over the wire.

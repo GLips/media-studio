@@ -1,5 +1,5 @@
 // motion-tracks.ts: how every tagged element actually moved, frame by frame, assembled from what the probe
-// (lib/studio/probe.tsx) measured on each rendered frame. Pure; lib/render-pipeline.ts renders the frames and writes
+// (lib/studio/probe.tsx) measured on each rendered frame. Pure; lib/engine/render/render-pipeline.ts renders the frames and writes
 // the result to out/check/motion.json for review (studio look) and for checks that test what a scene declares.
 //
 // It measures and never judges: nothing here says a move is too fast or too linear. What it does report as errors is

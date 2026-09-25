@@ -1,5 +1,5 @@
 // motion-graph.ts: the motion tracks (lib/motion-tracks.ts) of a stretch of video, drawn over time for review, with
-// the numbers behind them. Pure: lib/render-pipeline.ts measures the stretch, renders the frame the trails sit on, and
+// the numbers behind them. Pure: lib/engine/render/render-pipeline.ts measures the stretch, renders the frame the trails sit on, and
 // rasterizes the SVG this returns.
 //
 // Each channel gets its own plot (x and y, their signed velocities, size, opacity, each reported value), because a

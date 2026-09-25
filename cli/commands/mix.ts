@@ -15,11 +15,11 @@ export default defineCommand({
   async run({ args }) {
     const { videoSoundCheckReport } = await import('../../lib/sfx/sound-check.ts');
     if (args.check) {
-      const { resolveStudioProjectWith } = await import('../../lib/studio-project.ts');
+      const { resolveStudioProjectWith } = await import('../../lib/engine/project/studio-project.ts');
       console.log((await videoSoundCheckReport(resolveStudioProjectWith(args.project, 'video.tsx'))).join('\n'));
       return;
     }
-    const { renderMasteredMix } = await import('../../lib/render-pipeline.ts');
+    const { renderMasteredMix } = await import('../../lib/engine/render/render-pipeline.ts');
     const session = await openStudioRenderSession(args.project);
     console.log(await renderMasteredMix(session, { auditionSfxCueList: args['sfx-cues'] }));
     const report = await videoSoundCheckReport(session.project);

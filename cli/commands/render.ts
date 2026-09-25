@@ -12,7 +12,7 @@ export default defineCommand({
     plain: { type: 'boolean', description: 'Also render out/video-plain.mp4, without captions' },
   },
   async run({ args }) {
-    const { renderDeliveredVideo } = await import('../../lib/render-pipeline.ts');
+    const { renderDeliveredVideo } = await import('../../lib/engine/render/render-pipeline.ts');
     const session = await openStudioRenderSession(args.project);
     for (const file of await renderDeliveredVideo(session, { plain: Boolean(args.plain) })) console.log(file);
   },

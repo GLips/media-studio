@@ -14,7 +14,7 @@ All of this already happens, so don't redo it with your own gain, `loudnorm` or 
 - **Effects** are levelled when `studio sfx` renders them, by category, relative to the voice, then play at their
   `volume`. They aren't ducked (`sfx.md`).
 - **Mastering.** `studio mix` and `studio render` render the soundtrack, then apply one gain to reach −14 LUFS and a
-  true-peak limiter at −2 dBTP (`lib/render-pipeline.ts`). Encoding to AAC adds a little overshoot, and the extra 1 dB
+  true-peak limiter at −2 dBTP (`lib/engine/render/render-pipeline.ts`). Encoding to AAC adds a little overshoot, and the extra 1 dB
   of headroom keeps the delivered file under the −1 dBTP ceiling. `studio render` then measures the delivered video
   and fails if it isn't −14 ± 1 LUFS or peaks over −1 dBTP.
 

@@ -2,8 +2,7 @@
 // (see simple-buy-box-story's capture.ts), the product photo beside a card of instant swatches. Filmed at 3× device
 // pixels, since a story crop fills 1080 px with about 430 page px.
 //   studio capture buy-box-stills
-import type { Page } from 'playwright';
-import { captureShots } from '../../lib/capture.ts';
+import { captureShots, type Page } from '#engine/capture/capture.ts';
 
 const STORE = 'https://www.painfulpleasures.com';
 const PREVIEW_THEME = '147758514230';

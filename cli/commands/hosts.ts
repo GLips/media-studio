@@ -1,4 +1,4 @@
-// studio hosts: the product repos videos are about. See lib/hosts.ts.
+// studio hosts: the product repos videos are about. See lib/engine/host/hosts.ts.
 import { defineCommand } from 'citty';
 import { studioProjectArg } from '../project-arg.ts';
 
@@ -12,8 +12,8 @@ const syncHostsCommand = defineCommand({
     install: { type: 'boolean', default: false, description: "Also install the host's packages in the checkout, with the package manager its lockfile names" },
   },
   async run({ args }) {
-    const { syncProjectHost } = await import('../../lib/hosts.ts');
-    const { resolveStudioProject } = await import('../../lib/studio-project.ts');
+    const { syncProjectHost } = await import('../../lib/engine/host/hosts.ts');
+    const { resolveStudioProject } = await import('../../lib/engine/project/studio-project.ts');
     const synced = syncProjectHost(resolveStudioProject(args.project), { install: args.install });
     console.log(JSON.stringify(synced, null, 2));
   },
@@ -22,7 +22,7 @@ const syncHostsCommand = defineCommand({
 const listHostsCommand = defineCommand({
   meta: { name: 'list', description: 'Print every host (hosts.json, hosts.local.json) and the projects about it, as JSON.' },
   async run() {
-    const { listHosts } = await import('../../lib/hosts.ts');
+    const { listHosts } = await import('../../lib/engine/host/hosts.ts');
     console.log(JSON.stringify(listHosts(), null, 2));
   },
 });

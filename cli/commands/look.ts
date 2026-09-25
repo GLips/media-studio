@@ -40,7 +40,7 @@ export default defineCommand({
       if (!(at.length === 2 && at.every(Number.isFinite) && at[0] < at[1])) throw new Error(`--graph is a stretch of seconds like 4:6, not ${args.graph}`);
       if (args.out && !/\.(png|jpe?g)$/i.test(args.out)) throw new Error(`a --graph is an image: give --out a .png or .jpg name, not ${args.out}`);
       const session = await openStudioRenderSession(args.project);
-      const { renderMotionGraph } = await import('../../lib/render-pipeline.ts');
+      const { renderMotionGraph } = await import('../../lib/engine/render/render-pipeline.ts');
       const graph = await renderMotionGraph(session, {
         at: [at[0], at[1]], tracks: args.tracks?.split(',').map((t) => t.trim()).filter(Boolean), space: args.local ? 'local' : 'screen',
         trailStep: step, captions: Boolean(args.captions), out: args.out && isAbsolute(args.out) ? args.out : join(session.project, args.out ?? 'out/check/graph.png'),
@@ -50,9 +50,9 @@ export default defineCommand({
     }
 
     if ([args.frames, args.bar, args.sheet, args.strip].filter(Boolean).length > 1) throw new Error('choose frames one way: --frames, --bar, --sheet or --strip');
-    const { resolveStudioProjectWith } = await import('../../lib/studio-project.ts');
-    const { lookAgainst, lookFrameSheet, lookMotion, openLookSource, parseLookCrop, parseLookFrames, parseLookNumber } = await import('../../lib/frame-look.ts');
-    const { readProjectBarClock } = await import('../../lib/frame-motion.ts');
+    const { resolveStudioProjectWith } = await import('../../lib/engine/project/studio-project.ts');
+    const { lookAgainst, lookFrameSheet, lookMotion, openLookSource, parseLookCrop, parseLookFrames, parseLookNumber } = await import('../../lib/engine/look/frame-look.ts');
+    const { readProjectBarClock } = await import('../../lib/engine/look/frame-motion.ts');
     const project = resolveStudioProjectWith(args.project, 'video.tsx');
     const inProject = (file: string) => (isAbsolute(file) ? file : join(project, file));
     const out = inProject(args.out ?? (args.motion ? 'out/check/motion.txt' : args.against ? 'out/check/against.jpg' : 'out/check/sheet.jpg'));

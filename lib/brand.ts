@@ -1,7 +1,7 @@
 // brand.ts: what a client's brand kit is. A kit lives in brands/<name>/ and nowhere else: brand.ts (a Brand, typed
 // with `satisfies`), its logos beside it, and its font files in fonts/, which git ignores because most are licensed.
 // A project opts in with projects/<p>/brand.ts, a ProjectBrand naming the kit and overriding its colours, palette or
-// voice, and its stills and scenes import the result as `@brand` (lib/project-brand.ts writes that module;
+// voice, and its stills and scenes import the result as `@brand` (lib/engine/bundle/project-brand.ts writes that module;
 // lib/studio/brand.tsx loads its fonts and logos).
 //
 // A kit filled from a client's product repo is a snapshot of the repo's tokens: `snapshot` says where from and when.

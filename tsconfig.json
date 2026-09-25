@@ -11,7 +11,7 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  // Deliberately no host files: a scene imports its host as `@host/…`, which lib/host-modules.d.ts types as `any`, so
+  // Deliberately no host files: a scene imports its host as `@host/…`, which lib/engine/bundle/host-modules.d.ts types as `any`, so
   // tsc never reads the host (its aliases, env types and server code only type-check under its own settings).
   "include": ["lib", "lint", "cli", "lab", "projects/*/video.tsx", "projects/*/stills.tsx", "projects/*/capture.ts", "remotion.config.ts", "types.d.ts", "brands/*/brand.ts", "projects/*/brand.ts"]
 }

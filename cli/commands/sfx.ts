@@ -80,7 +80,7 @@ const draft = defineCommand({
     'click-style': { type: 'string', valueHint: 'soft|mechanical|pop|tick', description: "How the video's clicks sound; default the cue list's, or soft" },
   },
   async run({ args }) {
-    const { checkProject, writeCheckReports } = await import('../../lib/render-pipeline.ts');
+    const { checkProject, writeCheckReports } = await import('../../lib/engine/render/render-pipeline.ts');
     const { SFX_CLICK_STYLES } = await import('../../lib/sfx/cues.ts');
     const { draftProjectSfxCueList } = await import('../../lib/sfx/project-cue-list.ts');
     const style = args['click-style'];

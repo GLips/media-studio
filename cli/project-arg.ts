@@ -10,7 +10,7 @@ export const studioProjectArg = {
 
 /** Bundles the project a command-line argument names, which must have a video.tsx. */
 export async function openStudioRenderSession(projectArg: string) {
-  const { resolveStudioProjectWith } = await import('../lib/studio-project.ts');
-  const { openRenderSession } = await import('../lib/render-session.ts');
+  const { resolveStudioProjectWith } = await import('../lib/engine/project/studio-project.ts');
+  const { openRenderSession } = await import('../lib/engine/render/render-session.ts');
   return openRenderSession(resolveStudioProjectWith(projectArg, 'video.tsx'));
 }

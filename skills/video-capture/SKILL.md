@@ -6,7 +6,7 @@ description: Capture a site for a video by writing a project's capture.ts (still
 # Capturing
 
 Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it. `projects/<p>/capture.ts` declares
-named shots with `captureShots` from `lib/capture.ts`, whose header and types are the API. `studio capture <p>` films
+named shots with `captureShots` from `lib/engine/capture/capture.ts`, whose header and types are the API. `studio capture <p>` films
 them into `captures/`; `--only=a,b` redoes just those, and the rest keep their last capture.
 `projects/2026-09-simple-buy-box-story/capture.ts` is a worked example.
 

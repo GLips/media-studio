@@ -10,7 +10,7 @@ import { audioBufferFromChannels, labAudio, playLabBuffer, stopLabAudio, useLabP
 import { MUSIC_SPAN_COLORS, MusicFitTimeline } from './music-fit-timeline.tsx';
 import { SoundForAgents } from './sound-words.tsx';
 
-// lib/music-track.ts plans on mono at this rate; matching it gives the same spans the CLI would.
+// lib/engine/music/music-track.ts plans on mono at this rate; matching it gives the same spans the CLI would.
 const MUSIC_FIT_ANALYSIS_RATE = 22050;
 const MUSIC_FIT_DEFAULT_SECONDS = 23.4;
 /** Seconds of lead-in before a seam when you jump to hear it. */

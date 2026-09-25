@@ -1,5 +1,5 @@
 // Motion calibration: not a product video. Deliberately good and bad motion whose tracks are known in advance, so
-// lib/motion-calibration.test.ts can check the measurements (and later the graph) against them. Nothing here needs a
+// lib/engine/render/motion-calibration.test.ts can check the measurements (and later the graph) against them. Nothing here needs a
 // capture or a voice: the page is a drawn grid, and no scene has lines.
 //
 // Each scene says what its tracks must show. Change a scene and that test with it.

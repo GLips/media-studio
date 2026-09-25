@@ -11,7 +11,7 @@ import { join, relative, sep } from 'node:path';
 import { readSfxCueList } from '../lib/sfx/cue-module.ts';
 import type { SfxCueList } from '../lib/sfx/cues.ts';
 import type { TimelineReport } from '../lib/studio/Video.tsx';
-import { STUDIO_PROJECTS_DIR, STUDIO_ROOT } from '../lib/studio-project.ts';
+import { STUDIO_PROJECTS_DIR, STUDIO_ROOT } from '../lib/engine/project/studio-project.ts';
 import type { SpokenWord } from '../lib/voice-words.ts';
 
 const SCRATCH_DIR = join(STUDIO_ROOT, 'scratch');

@@ -1,4 +1,4 @@
-// voice-take.ts: where to cut one continuous read of a script (a take) into its lines. Pure; lib/voice-project.ts does the IO.
+// voice-take.ts: where to cut one continuous read of a script (a take) into its lines. Pure; lib/engine/voice/voice-project.ts does the IO.
 //
 // A take reads as one performance: pace, pitch and breath carry from line to line, which separate reads never do.
 // Whisper's word times over a whole take drift by up to half a second, so they only say roughly where each line is;

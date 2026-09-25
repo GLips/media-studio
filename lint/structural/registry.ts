@@ -7,6 +7,7 @@ import { importPolicyCheck } from './checks/import-policy.ts';
 import { modelPurityCheck } from './checks/model-purity.ts';
 import { noScratchCheck } from './checks/no-scratch.ts';
 import { sceneOwnershipCheck } from './checks/scene-ownership.ts';
+import { sdkContainmentCheck } from './checks/sdk-containment.ts';
 import { timingOwnershipCheck } from './checks/timing-ownership.ts';
 
 export const STRUCTURAL_CHECKS: readonly StructuralCheck[] = [
@@ -16,4 +17,5 @@ export const STRUCTURAL_CHECKS: readonly StructuralCheck[] = [
   sceneOwnershipCheck,
   modelPurityCheck,
   noScratchCheck,
+  sdkContainmentCheck,
 ];

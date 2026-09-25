@@ -50,7 +50,7 @@ tests.
 
 ```
 projects/<yyyy-mm-name>/
-  capture.ts       the named shots: stills and takes, each with its own setup (lib/capture.ts)
+  capture.ts       the named shots: stills and takes, each with its own setup (lib/engine/capture/capture.ts)
   voiceover.json   { voice, lines: [{ id, text }] }
   video.tsx        defineVideo({ title, voice, scenes }): each scene names its lines and renders itself
   storyboard.md    the plan: audience, takeaway, the scene table, what was checked, what's deliberately left out
@@ -69,7 +69,7 @@ scene's `expect` says what must be on screen while a word is spoken:
 
 Scenes import everything from `lib/studio/api.ts`.
 
-- `lib/capture.ts`: named shots, each on a fresh page so any can be redone alone. Stills are screenshots with element
+- `lib/engine/capture/capture.ts`: named shots, each on a fresh page so any can be redone alone. Stills are screenshots with element
   rects in page coordinates; takes are CDP screencasts with marks (rects and times) and a mouse and key log, filmed at
   the site's own pace.
 - `lib/studio/take.ts`: takes in a scene. `fitTake` pins marks to words, `takeShot` is the frame showing then (a Shot,
@@ -86,32 +86,32 @@ Scenes import everything from `lib/studio/api.ts`.
   can't hold (`ConfirmDialog`, `NativeMenu`). When a shot recurs in a second video, move it here.
 - `lib/studio/probe.tsx`: measures highlights, clicks, tags and the caption on each frame. `lib/framing-check.ts`
   decides what's a problem.
-- `lib/studio/mix.ts`: voice levelling, and a music bed that ducks under the voice. `lib/loudness.ts` measures.
+- `lib/studio/mix.ts`: voice levelling, and a music bed that ducks under the voice. `lib/engine/ffmpeg/loudness.ts` measures.
 - `lib/studio/sfx.tsx`: `<Sfx>` plays a sound so it lands on a scene time; `CursorPath` clicks sound by themselves.
   `lib/sfx/` synthesizes every sound from a seeded recipe (whoosh, riser, impact, chime and more), so there's nothing
   to license.
-- `lib/whisper-words.ts`, `lib/voice-words.ts`: word timings from whisper.cpp (installed on first use into
+- `lib/engine/voice/whisper-words.ts`, `lib/voice-words.ts`: word timings from whisper.cpp (installed on first use into
   `~/.cache/video-studio`), aligned to the script.
 - `lib/voice-take.ts`: where to cut a take into lines, and the pauses the read left between them.
 - `lib/music-beats.ts`: the tempo and beats of a music track.
 - `lib/paint/`: drawn layers (p5 sketches) inside scenes, with a watercolour style ported from p5.brush. See the
   `video-canvas` skill. `studio repeatable` proves a drawn layer is a pure function of time.
 - `cli/studio.ts`: the `studio` entry point. Each verb is `cli/commands/<verb>.ts`, parsing its arguments and calling
-  into `lib/`: `lib/render-pipeline.ts` checks, mixes, renders and reviews a bundled project
-  (`lib/render-session.ts`), `lib/voice-project.ts` reads the script as one take (Gemini TTS through
-  `lib/openrouter.ts`, `say`, or a recording) and cuts it, and `lib/studio-project.ts` resolves `<project>`.
-- `lib/paid-generation.ts`: every paid image, video or music generation, cached by request hash into a project's
+  into `lib/`: `lib/engine/render/render-pipeline.ts` checks, mixes, renders and reviews a bundled project
+  (`lib/engine/render/render-session.ts`), `lib/engine/voice/voice-project.ts` reads the script as one take (Gemini TTS through
+  `lib/engine/generation/openrouter.ts`, `say`, or a recording) and cuts it, and `lib/engine/project/studio-project.ts` resolves `<project>`.
+- `lib/engine/generation/paid-generation.ts`: every paid image, video or music generation, cached by request hash into a project's
   `generated/` (gitignored) with each result's prompt, model, references and cost in `generated/provenance.json`.
-  `lib/previs-render.ts` is `studio gen video`: a scene's 3D blockout (`lib/studio/blockout.tsx`) rendered into footage.
+  `lib/engine/render/previs-render.ts` is `studio gen video`: a scene's 3D blockout (`lib/studio/blockout.tsx`) rendered into footage.
 
 Remotion bundles `lib/studio` and one project's `video.tsx`. Remotion is free for companies of up to three people;
 past that it needs a company license.
 
 ## Secrets
 
-Only paid calls need a secret (`studio voice`, `studio audition`, and generation through `lib/paid-generation.ts`):
+Only paid calls need a secret (`studio voice`, `studio audition`, and generation through `lib/engine/generation/paid-generation.ts`):
 `OPENROUTER_API_KEY`, read from the environment. A reference video (`studio gen video`) is also uploaded to our R2
-bucket for the provider to fetch through a link that expires (`lib/s3-upload.ts`), which needs `STUDIO_UPLOAD_S3_ENDPOINT`,
+bucket for the provider to fetch through a link that expires (`lib/engine/generation/s3-upload.ts`), which needs `STUDIO_UPLOAD_S3_ENDPOINT`,
 `STUDIO_UPLOAD_S3_BUCKET`, `STUDIO_UPLOAD_S3_ACCESS_KEY_ID`, `STUDIO_UPLOAD_S3_SECRET_ACCESS_KEY` and, for a bucket
 outside R2, `STUDIO_UPLOAD_S3_REGION`. `.env.op` holds 1Password references, not keys, and `bin/studio-secrets`
 resolves them for the one command it runs:

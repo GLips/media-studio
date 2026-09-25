@@ -1,5 +1,5 @@
 // still-check.ts: what makes a still fail, judged from the still probe's measurements (lib/studio/still-probe.tsx) and
-// the pixels of its ground pass (the still drawn with every text transparent). Pure; lib/render-stills.ts renders both
+// the pixels of its ground pass (the still drawn with every text transparent). Pure; lib/engine/render/render-stills.ts renders both
 // and refuses to write a still with a problem, as `studio render` refuses a failed framing check.
 //
 // Five kinds: text cut off or overflowing its box (and a fitted headline at its floor), text or a logo under a

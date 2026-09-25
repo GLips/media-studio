@@ -2,16 +2,16 @@
 // plays them before mastering (which moves both together): how far the sound's attack lands from the music's nearest
 // one, and how loud it plays against the music there. Then the beats where the music leaves no attack, where a sound
 // can speak for the picture. `studio mix` prints it. Node only: ffmpeg decodes and measures the files.
-import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { readProjectHostSpec } from '../project-host-spec.ts';
+import { readProjectHostSpec } from '../engine/host/project-host-spec.ts';
 import { beatGrid, type BeatGrid } from '../studio/beats.ts';
 import { FPS } from '../studio/frame.ts';
 import { musicBedGainAt, type MusicBed } from '../studio/mix.ts';
 import type { SfxSound } from '../studio/sfx.tsx';
 import { layoutVideo, totalFrames, type VideoDef } from '../studio/timeline.ts';
 import { sfxSeedFromId } from './dsp.ts';
+import { runFfmpeg } from '../engine/ffmpeg/ffmpeg.ts';
 
 // Attacks are found at 16 kHz in two bands: above 1.5 kHz, where a hit's attack is sharpest, and the full band, which
 // hears a kick's boom. An attack is a jump of at least MIN_RISE_DB in either.
@@ -193,7 +193,7 @@ function emptyBeatsOf(bed: MusicBed, attacks: readonly number[], videoSeconds: n
 // ---------- measuring the files ----------
 
 function decodeAttackBands(file: string): AttackBands {
-  const pcm = execFileSync('ffmpeg', ['-v', 'error', '-i', file, '-filter_complex',
+  const pcm = runFfmpeg(['-v', 'error', '-i', file, '-filter_complex',
     `[0:a]aformat=sample_fmts=flt:sample_rates=${ANALYSIS_RATE}:channel_layouts=mono,asplit[full][h];[h]highpass=f=${ATTACK_BAND_HZ}[high];[full][high]amerge=inputs=2`,
     '-f', 'f32le', '-'], { maxBuffer: 1 << 30 });
   const both = new Float32Array(pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength));
@@ -207,10 +207,10 @@ type MomentaryLoudness = { end: number; lufs: number }[];
 
 /**
  * ebur128's momentary loudness (400 ms) every 100 ms, by the end of its window, with `padSeconds` of silence after the
- * file so windows run past its end. A mono file counts as it plays in the mix, from both speakers (lib/loudness.ts).
+ * file so windows run past its end. A mono file counts as it plays in the mix, from both speakers (lib/engine/ffmpeg/loudness.ts).
  */
 function momentaryLoudness(file: string, padSeconds: number): MomentaryLoudness {
-  const out = execFileSync('ffmpeg', ['-v', 'error', '-i', file, '-af',
+  const out = runFfmpeg(['-v', 'error', '-i', file, '-af',
     `apad=pad_dur=${padSeconds},ebur128=metadata=1:dualmono=true,ametadata=print:key=lavfi.r128.M:file=-`, '-f', 'null', '-'],
   { encoding: 'utf8', maxBuffer: 1 << 26 });
   const rows: MomentaryLoudness = [];

@@ -9,18 +9,18 @@
 // --after tries sounds before placing them: each hit's sound from <dir>/<its name>.ts where `studio sfx render --out
 // <dir>/<its name>.wav` wrote one, and its volume from <dir>/volumes.json ({ "<id>": volume }) if that names it.
 import '../../../lib/studio/tsx-test-hooks.ts';
-import { renderMedia } from '@remotion/renderer';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { renderMasteredMix } from '../../../lib/render-pipeline.ts';
-import { RENDER_CHROMIUM, RENDER_CONCURRENCY, openRenderSession } from '../../../lib/render-session.ts';
+import { renderMasteredMix } from '#engine/render/render-pipeline.ts';
+import { openRenderSession } from '#engine/render/render-session.ts';
 import { sfxSeedFromId } from '../../../lib/sfx/dsp.ts';
 import { FPS } from '../../../lib/studio/frame.ts';
 import type { SfxSound } from '../../../lib/studio/sfx.tsx';
 import { layoutVideo, totalFrames, type VideoDef } from '../../../lib/studio/timeline.ts';
 import { SOUND_LAG_SECONDS } from '../timeline.ts';
+import { measureWithFfmpeg, runFfmpeg } from '#engine/ffmpeg/ffmpeg.ts';
 
 const PROJECT = resolve(import.meta.dirname, '..');
 const STUDIO = resolve(PROJECT, '../..');
@@ -117,7 +117,7 @@ async function renderSoundtrack(dir: string, master: boolean): Promise<{ raw: st
   if (composition.durationInFrames !== frames) throw new Error(`${dir} lays out ${composition.durationInFrames} frames, not the reel's ${frames}`);
   const raw = join(dir, 'out/raw.wav');
   mkdirSync(join(dir, 'out'), { recursive: true });
-  await renderMedia({ composition, serveUrl: session.serveUrl, chromiumOptions: RENDER_CHROMIUM, concurrency: RENDER_CONCURRENCY, inputProps, codec: 'wav', outputLocation: raw, onProgress: () => {} });
+  await session.renderVideo({ inputProps, codec: 'wav', outputLocation: raw });
   return { raw, mastered: master ? await renderMasteredMix(session) : undefined };
 }
 
@@ -128,7 +128,7 @@ const mixB = await renderSoundtrack(writeSoundtrackProject('mix-after', after), 
 // ---------- measuring ----------
 
 function decode(file: string, channels: 1 | 2): Float32Array {
-  const pcm = execFileSync('ffmpeg', ['-v', 'error', '-i', file, '-ac', String(channels), '-ar', String(RATE), '-f', 'f32le', '-'], { maxBuffer: 1 << 30 });
+  const pcm = runFfmpeg(['-v', 'error', '-i', file, '-ac', String(channels), '-ar', String(RATE), '-f', 'f32le', '-'], { maxBuffer: 1 << 30 });
   return new Float32Array(pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength));
 }
 
@@ -194,7 +194,7 @@ function measureMix({ raw, mastered }: { raw: string; mastered?: string }, name:
   if (lag !== 0) throw new Error(`${name}'s master is ${lag} samples off its raw mix: the gain reduction would be misread`);
   // Encoded as the delivered video's soundtrack is (render-pipeline's DELIVERY_AUDIO_CODEC).
   const aac = mastered!.replace(/\.wav$/, '.m4a');
-  execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', mastered!, '-c:a', 'aac', '-b:a', '192k', aac]);
+  runFfmpeg(['-y', '-v', 'error', '-i', mastered!, '-c:a', 'aac', '-b:a', '192k', aac]);
   return { raw: rawSamples, master: masterSamples, gain: masterGain(rawSamples, masterSamples), low: band(masterSamples, 40, 150), aac };
 }
 const musicRaw = decode(music.raw, 1), musicLow = band(musicRaw, 40, 150);
@@ -209,13 +209,13 @@ function attacks(wav: string, hitFrames: number[]): Map<number, number> {
 /** ebur128's true peak of `file` over [from, to) seconds (the whole file if not given), in dBTP. */
 function truePeak(file: string, from?: number, to?: number): number {
   const trim = from === undefined ? '' : `atrim=start=${from}:end=${to},`;
-  const { stderr } = spawnSync('ffmpeg', ['-nostats', '-hide_banner', '-i', file, '-af', `${trim}ebur128=peak=true`, '-f', 'null', '-'], { encoding: 'utf8' });
+  const { stderr } = measureWithFfmpeg(['-nostats', '-hide_banner', '-i', file, '-af', `${trim}ebur128=peak=true`, '-f', 'null', '-']);
   return Number(/Peak:\s+(-?[\d.]+|-inf) dBFS/.exec(stderr.slice(stderr.lastIndexOf('Summary:')))?.[1]);
 }
 
 /** Where `file` peaks between samples (4× oversampled, as a true-peak meter reads it): its frame at 30 fps. */
 function truePeakFrame(file: string): number {
-  const pcm = execFileSync('ffmpeg', ['-v', 'error', '-i', file, '-af', 'aresample=192000', '-ac', '2', '-f', 'f32le', '-'], { maxBuffer: 2 ** 31 });
+  const pcm = runFfmpeg(['-v', 'error', '-i', file, '-af', 'aresample=192000', '-ac', '2', '-f', 'f32le', '-'], { maxBuffer: 2 ** 31 });
   const x = new Float32Array(pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength));
   let at = 0;
   for (let i = 1; i < x.length; i++) if (Math.abs(x[i]) > Math.abs(x[at])) at = i;
@@ -330,6 +330,6 @@ for (const h of hits) {
 }
 const all = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
 parts.reduce((at, p) => { all.set(p, at); return at + p.length; }, 0);
-execFileSync('ffmpeg', ['-y', '-v', 'error', '-f', 'f32le', '-ar', String(RATE), '-ac', '2', '-i', '-', '-c:a', 'pcm_s24le', join(AB, 'hits-ab.wav')], { input: Buffer.from(all.buffer) });
+runFfmpeg(['-y', '-v', 'error', '-f', 'f32le', '-ar', String(RATE), '-ac', '2', '-i', '-', '-c:a', 'pcm_s24le', join(AB, 'hits-ab.wav')], { input: Buffer.from(all.buffer) });
 writeFileSync(join(AB, 'hits-ab.txt'), `${lines.join('\n')}\n`);
 console.log(lines.join('\n'));

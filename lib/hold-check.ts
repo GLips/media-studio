@@ -1,5 +1,5 @@
 // hold-check.ts: a scene's `expect: [{ hold }]` against its motion tracks (lib/motion-tracks.ts). Pure;
-// lib/render-pipeline.ts measures the frames and prints what comes back.
+// lib/engine/render/render-pipeline.ts measures the frames and prints what comes back.
 //
 // A contract check, not a style rule: it tests only what a scene declares. It passes when the subject stays steady
 // (every channel within tolerance) and visible for the declared time somewhere inside the declared span, and when it

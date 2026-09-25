@@ -9,7 +9,6 @@
 //
 // Negative space: nothing here renders, measures or regenerates an artifact. A missing one is named in `missing`, so
 // the page can say which note fields it can't fill and the command that would.
-import * as esbuild from 'esbuild';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage } from 'node:http';
@@ -21,8 +20,8 @@ import { H, W } from '../../lib/studio/frame.ts';
 import type { TimelineReport } from '../../lib/studio/Video.tsx';
 import type { MotionTracks } from '../../lib/motion-tracks.ts';
 import { REVIEW_NOTES_VERSION, reviewFrameAt, type ReviewMediaKind, type ReviewNote, type ReviewNotesFile, type ReviewRenderStamp, type ReviewScene, type ReviewSoundMarker, type ReviewStillCell, type ReviewStillCellsFile } from '../../lib/review-notes.ts';
-import { resolveStudioProject, STUDIO_ROOT } from '../../lib/studio-project.ts';
-import { labBundleOptions } from '../bundle.ts';
+import { resolveStudioProject, STUDIO_ROOT } from '../../lib/engine/project/studio-project.ts';
+import { watchLabPage } from '../../lib/engine/bundle/lab-bundle.ts';
 import { sendFile } from '../server.ts';
 
 const REVIEW_APP_DIR = join(STUDIO_ROOT, 'lab', 'review', 'app');
@@ -186,8 +185,7 @@ export function buildReviewManifest(target: ReviewTarget): ReviewManifest {
  */
 export async function startStudioReview({ target, port }: { target: ReviewTarget; port: number }) {
   const outdir = mkdtempSync(join(tmpdir(), 'studio-review-'));
-  const bundle = await esbuild.context({ ...labBundleOptions({ outdir, production: false }), entryPoints: [join(REVIEW_APP_DIR, 'main.tsx')] });
-  await bundle.watch();
+  const bundle = await watchLabPage({ outdir, entry: join(REVIEW_APP_DIR, 'main.tsx') });
   const targetFor = (media: string | null): ReviewTarget => {
     if (!media) return target;
     const file = resolve(STUDIO_ROOT, media);

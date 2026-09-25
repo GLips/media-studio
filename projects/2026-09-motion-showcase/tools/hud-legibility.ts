@@ -8,10 +8,10 @@
 // that ground is on a sharp step to something ink-coloured. Both thresholds sit between the critic's failing frames
 // and the frames it calls clean.
 import '../../../lib/studio/tsx-test-hooks.ts';
-import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
+import { spawnFfmpeg } from '#engine/ffmpeg/ffmpeg.ts';
 import type { Rect } from '../../../lib/studio/api.ts';
 import type { ReelHudSlot } from '../../../lib/studio/reel/hud.tsx';
 
@@ -96,17 +96,11 @@ if (!existsSync(stampFile) || readFileSync(stampFile, 'utf8') !== stamp) {
   console.error('rendering the HUD alone for its ink mask…');
   mkdirSync(MASK_PROJECT, { recursive: true });
   writeFileSync(join(MASK_PROJECT, 'video.tsx'), MASK_VIDEO);
-  const { openRenderSession, RENDER_CHROMIUM, RENDER_CONCURRENCY } = await import(`${ROOT}/lib/render-session.ts`);
-  const { renderFrames } = await import('@remotion/renderer');
+  const { openRenderSession } = await import('#engine/render/render-session.ts');
   const session = await openRenderSession(MASK_PROJECT);
-  const inputProps = session.props();
-  const composition = await session.compositionFor(inputProps);
   rmSync(MASK_DIR, { recursive: true, force: true });
   mkdirSync(MASK_DIR, { recursive: true });
-  await renderFrames({
-    composition, serveUrl: session.serveUrl, chromiumOptions: RENDER_CHROMIUM, inputProps, outputDir: MASK_DIR, imageFormat: 'png',
-    concurrency: RENDER_CONCURRENCY, imageSequencePattern: 'f-[frame].[ext]', onStart: () => {}, onFrameUpdate: () => {},
-  });
+  await session.renderFrameFiles({ outputDir: MASK_DIR, imageFormat: 'png', imageSequencePattern: 'f-[frame].[ext]' });
   writeFileSync(stampFile, stamp);
 }
 const maskFiles = readdirSync(MASK_DIR).filter((f) => f.endsWith('.png'));
@@ -128,7 +122,7 @@ const cropFilter = `format=rgb24,split=2[a][b];[a]crop=${W}:${rows[0].h}:0:${row
  * pipe first would have it report a write error.
  */
 async function* rawFrames(ffmpegArgs: string[], frameBytes: number): AsyncGenerator<Buffer> {
-  const ff = spawn('ffmpeg', ['-v', 'error', ...ffmpegArgs], { stdio: ['ignore', 'pipe', 'inherit'] });
+  const ff = spawnFfmpeg(['-v', 'error', ...ffmpegArgs], { stdio: ['ignore', 'pipe', 'inherit'] });
   const chunks = (ff.stdout as AsyncIterable<Buffer>)[Symbol.asyncIterator]();
   let frame = Buffer.alloc(frameBytes), fill = 0;
   try {

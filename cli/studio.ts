@@ -4,7 +4,7 @@
 import { defineCommand, runCommand, runMain } from 'citty';
 import { existsSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { STUDIO_ROOT } from '../lib/studio-project.ts';
+import { STUDIO_ROOT } from '../lib/engine/project/studio-project.ts';
 
 const studioCommand = defineCommand({
   meta: {

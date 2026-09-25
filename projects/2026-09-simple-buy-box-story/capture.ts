@@ -5,8 +5,7 @@
 // Control is the plain product URL; the new buy box is the same URL with `view=ab-buy-box`. Products and what each
 // proves come from the theme repo's docs/demos/2026-09-18-simple-buy-box-loom.md; storyboard.md records what was
 // checked against the theme. Every shot opens its own page and gets itself to its state, so any can be redone alone.
-import type { Page } from 'playwright';
-import { captureShots } from '../../lib/capture.ts';
+import { captureShots, type Page } from '#engine/capture/capture.ts';
 
 const STORE = 'https://www.painfulpleasures.com';
 const PREVIEW_THEME = '147758514230';

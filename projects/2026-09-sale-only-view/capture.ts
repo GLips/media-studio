@@ -3,8 +3,7 @@
 //
 // Product pages use the new buy box (`view=ab-buy-box`), the arm of the buy-box A/B test this feature is built on.
 // Every shot opens its own page and gets itself to its state, so any can be redone alone.
-import type { Page } from 'playwright';
-import { captureShots } from '../../lib/capture.ts';
+import { captureShots, type Page } from '#engine/capture/capture.ts';
 
 const STORE = 'https://www.painfulpleasures.com';
 const PREVIEW_THEME = '157093429302';

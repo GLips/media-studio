@@ -1,8 +1,7 @@
 // The Remotion stills' shots: a composition's code in the docs (a React component that is a video) and the home page's
 // interactive demo (the Player playing a video that code drew). Filmed at 3×, since a card crops a few hundred page px.
 //   studio capture remotion-stills [--only=code,player]
-import type { Page } from 'playwright';
-import { captureShots } from '../../lib/capture.ts';
+import { captureShots, type Page } from '#engine/capture/capture.ts';
 
 const shots = captureShots({ project: import.meta.dirname, viewport: { width: 1440, height: 810 }, scale: 3 });
 const open = async (page: Page, url: string) => {

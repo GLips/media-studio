@@ -9,7 +9,7 @@ import { dirname } from 'node:path';
 import { readSfxCueList, writeSfxCueList, writeSfxCueModule } from '../lib/sfx/cue-module.ts';
 import type { SfxCue, SfxCueList } from '../lib/sfx/cues.ts';
 import { resolveSfxParams, type SfxRequest } from '../lib/sfx/library.ts';
-import { STUDIO_PROJECTS_DIR, resolveStudioProject } from '../lib/studio-project.ts';
+import { STUDIO_PROJECTS_DIR, resolveStudioProject } from '../lib/engine/project/studio-project.ts';
 import { labSfxCueRevision, readLabSfxCuePayload, type LabMediaRegister, type LabSfxCuePayload } from './manifest.ts';
 
 /** What the editor posts: its whole edit state, against the revision it loaded. */

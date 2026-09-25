@@ -101,6 +101,11 @@
       "./bar.ts": 1
     }
   },
+  "sdk-containment": {
+    "lib/studio/tsx-test-hooks.ts": {
+      "esbuild": 1
+    }
+  },
   "timing-ownership": {
     "projects/2026-09-complex-buy-box/video.tsx": {
       "defineScene from ../../lib/studio/api.ts": 1

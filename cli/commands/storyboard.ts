@@ -1,4 +1,4 @@
-// studio storyboard: the storyboard page, made from the video itself (lib/storyboard-page.ts).
+// studio storyboard: the storyboard page, made from the video itself (lib/engine/render/storyboard-page.ts).
 import { defineCommand } from 'citty';
 import { studioProjectArg } from '../project-arg.ts';
 
@@ -11,8 +11,8 @@ export default defineCommand({
     project: studioProjectArg,
   },
   async run({ args }) {
-    const { resolveStudioProjectWith } = await import('../../lib/studio-project.ts');
-    const { buildStoryboardPage } = await import('../../lib/storyboard-page.ts');
+    const { resolveStudioProjectWith } = await import('../../lib/engine/project/studio-project.ts');
+    const { buildStoryboardPage } = await import('../../lib/engine/render/storyboard-page.ts');
     console.log(await buildStoryboardPage(resolveStudioProjectWith(args.project, 'video.tsx')));
   },
 });

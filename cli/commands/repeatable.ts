@@ -12,7 +12,7 @@ export default defineCommand({
     times: { type: 'positional', required: true, description: 'Seconds, comma-separated, e.g. 2,8.5' },
   },
   async run({ args }) {
-    const { checkFramesRepeatable } = await import('../../lib/render-pipeline.ts');
+    const { checkFramesRepeatable } = await import('../../lib/engine/render/render-pipeline.ts');
     const session = await openStudioRenderSession(args.project);
     const { ok, report } = await checkFramesRepeatable(session, args.times.split(',').map(Number));
     for (const line of report) console.log(line);

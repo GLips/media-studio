@@ -40,7 +40,7 @@ declare module '*.woff2' {
   const src: string;
   export default src;
 }
-/** The project's video.tsx, or null when it has only stills (lib/project-bundle.ts). */
+/** The project's video.tsx, or null when it has only stills (lib/engine/bundle/project-bundle.ts). */
 declare module '@video' {
   const video: import('./lib/studio/timeline.ts').VideoDef | null;
   export default video;
@@ -50,7 +50,7 @@ declare module '@stills' {
   const stills: import('./lib/studio/stills.tsx').StillsDef | null;
   export default stills;
 }
-/** The brand kit the project's brand.ts names, with its overrides, loaded (lib/project-brand.ts). Importing it without one throws. */
+/** The brand kit the project's brand.ts names, with its overrides, loaded (lib/engine/bundle/project-brand.ts). Importing it without one throws. */
 declare module '@brand' {
   const brand: import('./lib/studio/brand.tsx').StudioBrand;
   export default brand;
@@ -59,7 +59,7 @@ declare module '*.mp4' {
   const src: string;
   export default src;
 }
-/** The project's generated/footage.ts, rewritten from footage.json on every bundle (lib/previs-footage.ts). */
+/** The project's generated/footage.ts, rewritten from footage.json on every bundle (lib/engine/bundle/previs-footage.ts). */
 declare module '@footage' {
   export const footage: Readonly<Record<string, import('./lib/studio/previs.ts').PrevisFootage>>;
 }
@@ -68,7 +68,7 @@ declare module '@sfx-cues' {
   const cues: readonly import('./lib/studio/sfx.tsx').SfxCueSound[] | null;
   export default cues;
 }
-/** The project folder's name, defined at bundle time by lib/project-bundle.ts. */
+/** The project folder's name, defined at bundle time by lib/engine/bundle/project-bundle.ts. */
 declare const PROJECT_SLUG: string;
 /** Its replay composition's id, likewise. */
 declare const REPLAY_SLUG: string;

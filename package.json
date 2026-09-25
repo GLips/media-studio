@@ -11,6 +11,9 @@
     "check:arch": "node lint/check-arch.ts"
   },
   "type": "module",
+  "imports": {
+    "#engine/*": "./lib/engine/*"
+  },
   "devDependencies": {
     "@types/node": "26.6.1",
     "@types/react": "19.3.0",

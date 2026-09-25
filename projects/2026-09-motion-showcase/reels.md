@@ -163,7 +163,7 @@ Gotchas:
   any wrapper between it and its 3D children, collapse every `translateZ` [HF rules/3d-camera-flight.md; registry
   motion-blur: "mix-blend-mode flattens"]. Blur, dim and blend the leaf planes; put travel blur on the stage.
 - **GPU**: blur, shadows, gradients and transforms are GPU work, and headless Chrome disables the GPU unless `--gl=angle`
-  [R docs/gpu]; we render with `RENDER_CHROMIUM = { gl: 'angle' }` (`lib/render-session.ts:23`). Blur cost ∝ radius × area
+  [R docs/gpu]; we render with `RENDER_CHROMIUM = { gl: 'angle' }` (`lib/engine/render/render-session.ts:23`). Blur cost ∝ radius × area
   [HF depth-of-field-blur.md]: ≤ 24 px on big surfaces; for a full-frame glow blur a ¼-size copy scaled ×4 [own].
 - **Crispness**: text snaps to whole pixels, so slow drifts stair-step: `perspective()` + `willChange: 'transform'` [R
   docs/troubleshooting/subpixel-rendering]. Captures are 2× and "past ~1.6 text starts to soften" (`lib/studio/camera.ts`);

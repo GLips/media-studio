@@ -2,8 +2,7 @@
 // simple-buy-box walkthrough films (see its capture.ts for what each product proves). Filmed at 3× device pixels, since
 // this piece crops single controls (a swatch row, a price) to fill the frame.
 //   studio capture motion-showcase [--only=sol,…]
-import type { Page } from 'playwright';
-import { captureShots } from '../../lib/capture.ts';
+import { captureShots, type Page } from '#engine/capture/capture.ts';
 
 const STORE = 'https://www.painfulpleasures.com';
 const PREVIEW_THEME = '147758514230';

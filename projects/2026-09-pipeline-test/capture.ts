@@ -2,8 +2,7 @@
 //   studio capture pipeline-test   films them (it imports the default export)
 import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
-import type { Page } from 'playwright';
-import { captureShots } from '../../lib/capture.ts';
+import { captureShots, type Page } from '#engine/capture/capture.ts';
 
 const STORE = pathToFileURL(join(import.meta.dirname, 'fixture', 'store.html')).href;
 const RECTS = {

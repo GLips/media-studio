@@ -15,7 +15,7 @@ studio music gen <p> "<prompt>" --name=lead --full  # a full-length track (about
 ```
 
 Either way, the track is copied into `projects/<p>/music/`. Its loudness, tempo and beats are measured
-(`lib/music-track.ts`, `lib/music-beats.ts`), and `music/index.ts` is rewritten. That file says `Edits here are lost
+(`lib/engine/music/music-track.ts`, `lib/music-beats.ts`), and `music/index.ts` is rewritten. That file says `Edits here are lost
 on the next run`. Then:
 
 ```tsx

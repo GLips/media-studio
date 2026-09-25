@@ -1,4 +1,4 @@
-// studio audition: one line in several voices, to pick a project's voice (lib/voice-project.ts).
+// studio audition: one line in several voices, to pick a project's voice (lib/engine/voice/voice-project.ts).
 import { defineCommand } from 'citty';
 
 export default defineCommand({
@@ -13,7 +13,7 @@ export default defineCommand({
   },
   async run({ args }) {
     const { resolve } = await import('node:path');
-    const { auditionVoices } = await import('../../lib/voice-project.ts');
+    const { auditionVoices } = await import('../../lib/engine/voice/voice-project.ts');
     for (const file of await auditionVoices(args.line, args.voices.split(','), resolve(args.out))) console.log(file);
   },
 });
