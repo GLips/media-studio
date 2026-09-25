@@ -134,13 +134,15 @@ function MusicBedAudio({ video, tl, fps }: { video: VideoDef; tl: Timeline; fps:
     spans: duckSpans(tl.cues.map((c) => ({ start: Math.round(c.start * fps) / fps, end: Math.round(c.start * fps) / fps + (c.end - c.start) }))),
     levels: musicLevels(bed),
   }), [tl, fps, bed]);
-  // A track fitted to this video's length ends on its own ending, so it isn't faded out. After a retime it no longer
-  // fits, and fades like any other until `studio music fit` runs again.
+  // A track played from its own start opens as it was written to (a music-led piece starts on its first hit), so only
+  // one started partway through fades in. A track fitted to this video's length ends on its own ending, so it isn't
+  // faded out; after a retime it no longer fits, and fades like any other until `studio music fit` runs again.
   const endsWithVideo = !!bed.track.fit && !bed.sourceStartSeconds && Math.abs(bed.track.duration - durationInFrames / fps) < 0.5 / fps;
+  const fades = { in: !!bed.sourceStartSeconds, out: !endsWithVideo };
   // Not in a Sequence, so the volume callback's frame is the video's frame.
   return (
     <Audio src={bed.track.src} name="music" loop loopVolumeCurveBehavior="extend" trimBefore={Math.round((bed.sourceStartSeconds ?? 0) * fps)}
-      volume={(f) => musicGainAt(f / fps, spans, levels, durationInFrames / fps, endsWithVideo)} />
+      volume={(f) => musicGainAt(f / fps, spans, levels, durationInFrames / fps, fades)} />
   );
 }
 

@@ -81,6 +81,13 @@ export function cameraMotionAttrs(view: View, motion?: string | false): Record<s
 export const unmeasuredAttrs = (what: string) => ({ 'data-motion-unmeasured': what });
 
 /**
+ * Marks a copy of a shot drawn only for its look (a motion-blur sample at another moment of the shutter). The probe
+ * skips everything inside it (tags, framing marks, sound cues), so the one copy drawn at the frame's own time speaks
+ * for the shot.
+ */
+export const motionEchoAttrs = { 'data-motion-echo': '' } as const;
+
+/**
  * Tags an element a component renders itself, which hands out no ref: the first match of `selector` inside `target`,
  * or `target` itself. Re-applied after every commit, and taken off an element it no longer matches.
  */

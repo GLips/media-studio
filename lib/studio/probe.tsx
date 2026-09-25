@@ -26,6 +26,11 @@ function frameMapper(root: HTMLElement) {
   return (r: ClientRect): Rect => ({ x: (r.left - box.left) / scale, y: (r.top - box.top) / scale, w: (r.right - r.left) / scale, h: (r.bottom - r.top) / scale });
 }
 
+/** `selector`'s matches under `root`, leaving out any inside an echo (see motionEchoAttrs). */
+function measurable<E extends Element = Element>(root: Element, selector: string): E[] {
+  return [...root.querySelectorAll<E>(selector)].filter((el) => !el.closest('[data-motion-echo]'));
+}
+
 /** Its own opacity times every ancestor's up to the root, the scene's crossfade included. */
 function effectiveOpacity(el: Element, root: HTMLElement) {
   let opacity = 1;
@@ -35,7 +40,7 @@ function effectiveOpacity(el: Element, root: HTMLElement) {
 
 function measureFraming(root: HTMLElement, frame: number): FramingReport {
   const toFrame = frameMapper(root);
-  const marks = [...root.querySelectorAll<HTMLElement | SVGElement>('[data-framing]')].map((el): FramingMark => {
+  const marks = measurable<HTMLElement | SVGElement>(root, '[data-framing]').map((el): FramingMark => {
     const r = el.getBoundingClientRect();
     let { left, top, right, bottom } = r;
     for (let a: Element | null = el.parentElement; a && a !== root.parentElement; a = a.parentElement) {
@@ -130,12 +135,12 @@ function measureMotion(root: HTMLElement, frame: number): FrameMotion {
     const scene = layer.dataset.scene!;
     // Scene layers are in scene order, and at most two are painted: the outgoing one under the incoming one.
     const phase: ScenePhase = layers.length === 1 ? 'solo' : i === 0 ? 'out' : 'in';
-    for (const el of layer.querySelectorAll('[data-motion-unmeasured]')) {
+    for (const el of measurable(layer, '[data-motion-unmeasured]')) {
       if (el.getClientRects().length) report.unmeasured.push({ scene, what: el.getAttribute('data-motion-unmeasured')! });
     }
 
     // Each tagged element's id first, and each camera's, since an element aimed through a camera is measured in it.
-    const tagged = [...layer.querySelectorAll('[data-motion]')].filter((el) => el.getClientRects().length);
+    const tagged = measurable(layer, '[data-motion]').filter((el) => el.getClientRects().length);
     const ids = new Map<Element, string>();
     const groupOf = (el: Element) => {
       const owner = el.parentElement?.closest('[data-motion]');
@@ -204,7 +209,7 @@ function measureMotion(root: HTMLElement, frame: number): FrameMotion {
 
 /** Every mounted `<Sfx>`'s mark (see sfx.tsx), with the scene it's in, landing in video seconds. */
 function measureSfxMarks(root: HTMLElement, now: number): SfxMark[] {
-  return [...root.querySelectorAll<HTMLElement>('[data-sfx-event]')].map((el) => {
+  return measurable<HTMLElement>(root, '[data-sfx-event]').map((el) => {
     const { event, fromNow, request, volume } = JSON.parse(el.dataset.sfxEvent!) as SfxMarkAttr;
     return { event, scene: el.closest<HTMLElement>('[data-scene]')!.dataset.scene!, at: now + fromNow, request, volume };
   });

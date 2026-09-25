@@ -80,15 +80,15 @@ export function musicLevels(bed: MusicBed): { bedDb: number; duckedDb: number } 
 
 /**
  * The music's gain at video time `t`: the bed level, dipping to the ducked level around each span (eased in dB,
- * since that's how loudness is heard), faded in at the start and out at the end, unless the track ends with the video.
+ * since that's how loudness is heard), faded in at the start and out at the end where `fades` asks.
  */
-export function musicGainAt(t: number, spans: readonly { start: number; end: number }[], levels: { bedDb: number; duckedDb: number }, videoDuration: number, endsWithVideo: boolean): number {
+export function musicGainAt(t: number, spans: readonly { start: number; end: number }[], levels: { bedDb: number; duckedDb: number }, videoDuration: number, fades: { in: boolean; out: boolean }): number {
   let duck = 0;
   for (const s of spans) {
     const into = (t - (s.start - DUCK_ATTACK)) / DUCK_ATTACK, outOf = (s.end + DUCK_RELEASE - t) / DUCK_RELEASE;
     duck = Math.max(duck, Math.min(1, into, outOf));
   }
-  const fade = Math.max(0, Math.min(1, t / MUSIC_FADE_IN, endsWithVideo ? 1 : (videoDuration - t) / MUSIC_FADE_OUT));
+  const fade = Math.max(0, Math.min(1, fades.in ? t / MUSIC_FADE_IN : 1, fades.out ? (videoDuration - t) / MUSIC_FADE_OUT : 1));
   return dbToGain(levels.bedDb + (levels.duckedDb - levels.bedDb) * smooth(duck)) * fade;
 }
 

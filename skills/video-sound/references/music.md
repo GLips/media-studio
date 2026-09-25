@@ -25,7 +25,8 @@ export default defineVideo({ title, voice, scenes, music: { track: music.bed, so
 ```
 
 A video has one music track. It plays from `sourceStartSeconds` into the track (default 0), fades in over the first
-1 s and out over the last 2.5 s, and ducks under every voice line on its own (`mix.md`). If the video outlasts the
+1 s if that's partway into it (from the track's own start it opens as written, so a reel's first hit lands), fades out
+over the last 2.5 s, and ducks under every voice line on its own (`mix.md`). If the video outlasts the
 rest of the track, it loops back to `sourceStartSeconds` with a hard splice and no crossfade, which breaks the beat.
 Fit the track instead (below), or choose one that runs longer than `sourceStartSeconds` plus the video.
 

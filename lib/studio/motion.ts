@@ -46,6 +46,17 @@ export const motionCurves = {
     entrance: (k) => 1 - Math.pow(1 - clamp(k), 3),
     exit: (k) => Math.pow(clamp(k), 3),
   },
+  /**
+   * Exponential (Penner's expo, exact: an arrival is 1 − 2^(−10k)): the showreel's snap. An arrival is half done a
+   * tenth of the way in and then settles for the rest, so a move lands hard on its beat and still looks finished; its
+   * standard move waits, whips through the middle and brakes. The reference reel's settles fit it within a pixel.
+   * For a teaser or reel, not walkthrough UI.
+   */
+  expo: {
+    standard: (k) => { k = clamp(k); return k === 0 || k === 1 ? k : k < 0.5 ? Math.pow(2, 20 * k - 10) / 2 : (2 - Math.pow(2, -20 * k + 10)) / 2; },
+    entrance: (k) => { k = clamp(k); return k === 1 ? 1 : 1 - Math.pow(2, -10 * k); },
+    exit: (k) => { k = clamp(k); return k === 0 ? 0 : Math.pow(2, 10 * k - 10); },
+  },
   /** Smoothstep: an even, symmetric ease for opacity, where a dissolve shouldn't be seen to accelerate. */
   dissolve: (k) => { k = clamp(k); return k * k * (3 - 2 * k); },
   /** Constant speed: for what the viewer reads as mechanical on purpose (a scroll, a timer, a progress bar). */
