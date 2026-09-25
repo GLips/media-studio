@@ -5,9 +5,10 @@ import { useCallback, useLayoutEffect, useState, type RefObject } from 'react';
 import { flushSync } from 'react-dom';
 import { useCurrentFrame, useDelayRender } from 'remotion';
 import type { Rect } from './camera.ts';
+import { areStudioFontsLoaded, studioFontsLoaded } from './fonts.ts';
 import { W } from './frame.ts';
 
-const laidOut = (el: Element) => document.fonts.status === 'loaded' && el.getBoundingClientRect().width > 0;
+const laidOut = (el: Element) => areStudioFontsLoaded() && document.fonts.status === 'loaded' && el.getBoundingClientRect().width > 0;
 
 /**
  * Resolves once fonts are loaded and `el` has a size. Remotion first renders a composition into a detached node and
@@ -15,7 +16,7 @@ const laidOut = (el: Element) => document.fonts.status === 'loaded' && el.getBou
  * when it's attached, so whatever measures must wait for this.
  */
 export function whenLaidOut(el: Element): Promise<void> {
-  return document.fonts.ready.then(() => new Promise<void>((resolve) => {
+  return Promise.all([studioFontsLoaded, document.fonts.ready]).then(() => new Promise<void>((resolve) => {
     if (laidOut(el)) return resolve();
     const observer = new ResizeObserver(() => {
       if (el.getBoundingClientRect().width === 0) return;

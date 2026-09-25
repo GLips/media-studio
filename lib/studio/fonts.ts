@@ -9,8 +9,19 @@ import jetbrainsMono from './fonts/JetBrainsMono.ttf';
 import { FONT } from './frame.ts';
 
 // Loaded once per page, at import: loadFont holds the render until the face is ready.
-loadFont({ family: 'Archivo', url: archivo, weight: '100 900', stretch: '62% 125%', format: 'truetype' });
-loadFont({ family: 'JetBrains Mono', url: jetbrainsMono, weight: '100 800', format: 'truetype' });
+const loads = [
+  loadFont({ family: 'Archivo', url: archivo, weight: '100 900', stretch: '62% 125%', format: 'truetype' }),
+  loadFont({ family: 'JetBrains Mono', url: jetbrainsMono, weight: '100 800', format: 'truetype' }),
+];
+
+let fontsSettled = false;
+/**
+ * Settles when both faces are in `document.fonts`. `document.fonts.ready` can settle before that: loadFont adds a
+ * face only once it has loaded, so text measured in the meantime has the fallback face's widths.
+ */
+export const studioFontsLoaded: Promise<void> = Promise.all(loads).then(() => { fontsSettled = true; });
+/** Whether `studioFontsLoaded` has settled, for a check that can't wait. */
+export const areStudioFontsLoaded = () => fontsSettled;
 
 /** Heavy display type. Set `fontStretch` (62–125%) and `fontWeight` (100–900) freely: both are continuous. */
 export const DISPLAY_FONT = `"Archivo", ${FONT}`;

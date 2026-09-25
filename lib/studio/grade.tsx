@@ -7,7 +7,8 @@ import { H, W } from './frame.ts';
 
 /**
  * Monochrome grain, new every frame and the same on every render of that frame (its noise is seeded by the frame).
- * `amount` 0..1 is its strength: 0.06–0.1 reads as film on a colour field; past 0.15 it's a look.
+ * `amount` 0..1 is its strength: 0.06–0.1 reads as film on a colour field; past 0.15 it's a look. It's an overlay, so
+ * it shows on mid-tones and all but vanishes on near-black, as a reel's grain should.
  */
 export function FilmGrain({ amount = 0.08, scale = 0.9 }: { amount?: number; scale?: number }) {
   const frame = useCurrentFrame();
