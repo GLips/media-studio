@@ -1,12 +1,22 @@
 // main.tsx: the `studio review` page. Graham plays a render, pins notes on its frames (a click for a moment and a
 // point, a drag along the scrubber for a range, a sound's marker for that sound), and copies them as markdown for a
 // chat. Every change saves to the project's review/notes-<render>.json. A still takes the same pins, without time.
+// The header names the render on screen by its hash and offers the others; a banner says when it's replaced on disk.
 import '../../app/lab.css';
 import './review.css';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createRoot } from 'react-dom/client';
-import { formatReviewMoment, formatReviewNotesMarkdown, reviewFrameAt, reviewNoteContext, type ReviewContextSources, type ReviewNote } from '../../../lib/review-notes.ts';
-import type { ReviewManifest } from '../server.ts';
+import { formatReviewMoment, formatReviewNotesMarkdown, reviewFrameAt, reviewNoteContext, reviewNoteRenderOf, type ReviewContextSources, type ReviewNote } from '../../../lib/review-notes.ts';
+import type { ReviewManifest, ReviewRenderStatus } from '../server.ts';
+
+/** How often the page asks whether its render is still the one on disk. */
+const REVIEW_RENDER_POLL_MS = 2000;
+
+/** The render the page is on, from `?media=`; the server's own target when absent. */
+const reviewMediaParam = () => new URLSearchParams(location.search).get('media');
+const withMedia = (path: string, media = reviewMediaParam()) => (media ? `${path}?${new URLSearchParams({ media })}` : path);
+/** `Sep 25 08:55:12`, local time: enough to tell two renders of a day apart. */
+const renderTime = (iso: string) => new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
 type Draft = Omit<ReviewNote, 'id' | 'context'>;
 
@@ -14,7 +24,7 @@ function ReviewPage() {
   const [manifest, setManifest] = useState<ReviewManifest | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
-    fetch('/review.json').then((r) => (r.ok ? r.json() : r.text().then((t) => Promise.reject(new Error(t))))).then(setManifest, (e: Error) => setError(e.message));
+    fetch(withMedia('/review.json')).then((r) => (r.ok ? r.json() : r.text().then((t) => Promise.reject(new Error(t))))).then(setManifest, (e: Error) => setError(e.message));
   }, []);
   if (error) return <main className="review"><p className="review-banner">{error}</p></main>;
   if (!manifest) return <main className="review"><p className="hud">loading…</p></main>;
@@ -35,6 +45,19 @@ function Review({ manifest }: { manifest: ReviewManifest }) {
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const [saveState, setSaveState] = useState(`notes in ${manifest.notesPath}`);
   const [copied, setCopied] = useState('');
+  const [disk, setDisk] = useState<ReviewRenderStatus | { error: string }>(manifest);
+
+  useEffect(() => {
+    const check = () => fetch(withMedia('/api/render'))
+      .then((r) => (r.ok ? r.json() : r.text().then((t) => Promise.reject(new Error(t)))))
+      .then(setDisk, (e: Error) => setDisk({ error: e.message }));
+    const timer = setInterval(check, REVIEW_RENDER_POLL_MS);
+    window.addEventListener('focus', check);
+    return () => { clearInterval(timer); window.removeEventListener('focus', check); };
+  }, []);
+  const replaced = 'error' in disk ? null : disk.render.hash !== manifest.render.hash ? disk.render : null;
+  const renders = 'error' in disk ? manifest.renders : disk.renders;
+  const newer = renders[0] && renders[0].path !== manifest.media.path && renders[0].modified > manifest.render.modified ? renders[0] : null;
 
   const sources: ReviewContextSources = useMemo(() => ({
     fps, frameSize: manifest.frameSize, scenes: manifest.scenes, sounds: manifest.sounds, motion: manifest.motion,
@@ -73,7 +96,7 @@ function Review({ manifest }: { manifest: ReviewManifest }) {
     if (loaded.current) return void (loaded.current = false);
     setSaveState('saving…');
     const body = JSON.stringify({ notes, fps: isVideo ? fps : undefined });
-    saving.current = saving.current.then(() => fetch('/api/notes', { method: 'POST', headers: { 'content-type': 'application/json' }, body })
+    saving.current = saving.current.then(() => fetch(withMedia('/api/notes'), { method: 'POST', headers: { 'content-type': 'application/json' }, body })
       .then((r) => r.json())
       .then((r: { savedTo?: string; error?: string }) => setSaveState(r.error ? `not saved: ${r.error}` : `saved to ${r.savedTo}`))
       .catch((e: Error) => setSaveState(`not saved: ${e.message}`)));
@@ -81,7 +104,8 @@ function Review({ manifest }: { manifest: ReviewManifest }) {
 
   const commitDraft = () => {
     if (!draft || !draft.text.trim()) return;
-    setNotes((all) => [...all, { ...draft, text: draft.text.trim(), id: crypto.randomUUID(), context: reviewNoteContext(draft, sources) }]);
+    // Stamped with the render the page loaded, even once it's replaced: that's the one the note is about.
+    setNotes((all) => [...all, { ...draft, text: draft.text.trim(), id: crypto.randomUUID(), render: manifest.render.hash, context: reviewNoteContext(draft, sources) }]);
     setDraft(null);
   };
 
@@ -114,7 +138,7 @@ function Review({ manifest }: { manifest: ReviewManifest }) {
     setDraft((d) => (d ? { ...d, cue: id, ...(d.end === undefined && { frame: at }) } : { frame: at, cue: id, text: '' }));
   };
 
-  const markdown = () => formatReviewNotesMarkdown({ media: manifest.media.path, kind: manifest.media.kind, fps, notes }, { title: manifest.title, savedTo: manifest.notesPath });
+  const markdown = () => formatReviewNotesMarkdown({ media: manifest.media.path, kind: manifest.media.kind, fps, notes }, { title: manifest.title, savedTo: manifest.notesPath, render: manifest.render });
   const copy = () => navigator.clipboard.writeText(markdown()).then(() => setCopied(`copied ${notes.length} note${notes.length === 1 ? '' : 's'}`), (e: Error) => setCopied(`copy failed: ${e.message}`));
 
   const lengthOff = isVideo && manifest.durationInFrames && fileFrames && Math.abs(manifest.durationInFrames - fileFrames) > 1;
@@ -126,12 +150,33 @@ function Review({ manifest }: { manifest: ReviewManifest }) {
         <div>
           <span className="hud">studio review · {manifest.media.path}</span>
           <h1>{manifest.title}</h1>
+          <div className="review-render">
+            <span className="hud">render <b>{manifest.render.hash}</b> · modified {renderTime(manifest.render.modified)}</span>
+            {renders.length > 1 && (
+              <select value={manifest.media.path} onChange={(e) => { location.search = new URLSearchParams({ media: e.target.value }).toString(); }}>
+                {renders.map((r, i) => <option key={r.path} value={r.path}>{r.name} · {renderTime(r.modified)}{i === 0 ? ' · newest' : ''}</option>)}
+              </select>
+            )}
+          </div>
         </div>
         <div className="review-actions">
           <span className="hud">{copied || saveState}</span>
           <button className="review-primary" onClick={copy} disabled={!notes.length}>Copy notes</button>
         </div>
       </header>
+      {replaced && (
+        <p className="review-banner review-replaced">
+          <span><b>{manifest.media.path} was replaced on disk</b> (render {replaced.hash}, {renderTime(replaced.modified)}). You're reviewing render {manifest.render.hash} from {renderTime(manifest.render.modified)}, and new notes are stamped with it.</span>
+          <button className="review-primary" onClick={() => location.reload()}>Load the new render</button>
+        </p>
+      )}
+      {'error' in disk && <p className="review-banner review-replaced">Can't read {manifest.media.path} on disk: {disk.error}</p>}
+      {newer && !replaced && (
+        <p className="review-banner">
+          <span>A newer render is on disk: {newer.name}, {renderTime(newer.modified)}.</span>{' '}
+          <button onClick={() => { location.search = new URLSearchParams({ media: newer.path }).toString(); }}>Open it</button>
+        </p>
+      )}
       {manifest.missing.map((m) => <p key={m} className="review-banner">No {m}</p>)}
       {manifest.cueListPlayed === false && <p className="review-banner">This render doesn't play sfx/cues.json: its cue-list markers show where the list would sound.</p>}
       {lengthOff && <p className="review-banner">The render is {fileFrames} frames and the timeline {manifest.durationInFrames}: out/check is from another cut, so scene and sound fields may be off.</p>}
@@ -174,11 +219,13 @@ function Review({ manifest }: { manifest: ReviewManifest }) {
           <ol className="review-notes">
             {sorted.map((n, i) => {
               const active = isVideo && n.frame! <= frame && frame <= (n.end ?? n.frame!);
+              const on = reviewNoteRenderOf(n, manifest.render);
               return (
                 <li key={n.id} className={active ? 'on' : ''} onClick={() => { if (n.frame !== undefined) { pause(); seek(n.frame); } }}>
                   <div className="review-note-head">
                     <span className="review-num">{i + 1}</span>
                     <span className="hud">{noteWhen(n, fps)}</span>
+                    {on !== 'this' && <span className="review-other-render" title="This note may not be about the render on screen">{on === 'other' ? `render ${n.render}` : 'render unknown'}</span>}
                     <span className="review-note-tools">
                       <button onClick={(e) => { e.stopPropagation(); setEditing({ id: n.id, text: n.text }); }}>Edit</button>
                       <button onClick={(e) => { e.stopPropagation(); setNotes((all) => all.filter((m) => m.id !== n.id)); }}>Delete</button>

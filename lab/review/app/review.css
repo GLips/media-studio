@@ -10,6 +10,9 @@
 .review-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
 .review-header h1 { margin: 2px 0 0; font-size: 30px; line-height: 1.05; font-weight: 900; font-stretch: 80%; text-transform: uppercase; }
 .review-actions { display: flex; align-items: center; gap: 14px; }
+.review-render { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.review-render b { color: var(--cream); font-weight: 700; }
+.review select { background: var(--panel); color: var(--cream); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font: 12px var(--mono); }
 .review-banner { margin: 0 0 10px; padding: 8px 12px; border-radius: 6px; background: #2a1a12; border-left: 3px solid var(--red); font-size: 14px; }
 
 .review-body { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 22px; align-items: start; }
@@ -38,6 +41,8 @@
 .review .review-sound.on, .review .review-sound:hover { background: var(--cream); transform: scaleY(1.2); }
 
 .review-side { display: flex; flex-direction: column; gap: 14px; max-height: calc(100vh - 140px); overflow: auto; }
+.review-replaced { display: flex; align-items: center; justify-content: space-between; gap: 14px; background: #4a1410; font-size: 15px; }
+.review-other-render { font: 10px var(--mono); color: var(--ground); background: #d7b33a; border-radius: 3px; padding: 1px 5px; }
 .review-hint { margin: 0; color: var(--dim); font-size: 14px; }
 .review-composer { display: flex; flex-direction: column; gap: 8px; background: var(--panel); border: 1px solid var(--cobalt); border-radius: 8px; padding: 12px; }
 .review textarea { min-height: 70px; resize: vertical; background: var(--ground); border: 1px solid var(--line); border-radius: 6px; padding: 8px; font: 15px/1.4 var(--display); color: var(--cream); }

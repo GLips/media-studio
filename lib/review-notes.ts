@@ -6,7 +6,7 @@
 // that's missing leaves its field off the note; one that's there and holds nothing near gives an empty list.
 import type { MotionTracks } from './motion-tracks.ts';
 
-export const REVIEW_NOTES_VERSION = 1;
+export const REVIEW_NOTES_VERSION = 2;
 
 /** How close, in frames, a sound must land to a note for the note to name it. */
 export const REVIEW_SOUND_REACH_FRAMES = 3;
@@ -28,10 +28,17 @@ export type ReviewNoteContext = {
 };
 
 /**
+ * Which render a file is: a re-render to the same path keeps the path and changes the hash. `hash` is the first 10
+ * hex digits of the file's SHA-256, `modified` its mtime as ISO.
+ */
+export type ReviewRenderStamp = { hash: string; modified: string };
+
+/**
  * One note. `frame` (and `end`, for a range) is absent on a still; `x`/`y` (0–1 across the frame) are absent on a
  * range marked without a point or a note aimed at a sound marker. `cue` is the sound marker it was aimed at.
+ * `render` is the hash of the render it was written on; a note without one can't say which render it's about.
  */
-export type ReviewNote = { id: string; frame?: number; end?: number; x?: number; y?: number; cue?: string; text: string; context: ReviewNoteContext };
+export type ReviewNote = { id: string; frame?: number; end?: number; x?: number; y?: number; cue?: string; render?: string; text: string; context: ReviewNoteContext };
 
 /** review/notes-<render>.json in the project, which an agent reads without the paste. */
 export type ReviewNotesFile = {
@@ -102,10 +109,22 @@ export function formatReviewMoment(frame: number, fps: number): string {
   return `f${frame} (${m}:${(seconds - m * 60).toFixed(2).padStart(5, '0')})`;
 }
 
-/** The notes as markdown for a chat: one numbered item per note in time order, its context as sub-bullets. */
-export function formatReviewNotesMarkdown(file: Pick<ReviewNotesFile, 'media' | 'kind' | 'fps' | 'notes'>, { title, savedTo }: { title?: string; savedTo?: string }): string {
+/** Whether a note is about `render`: written on it, on another render, or on one it didn't record. */
+export function reviewNoteRenderOf(note: Pick<ReviewNote, 'render'>, render: ReviewRenderStamp): 'this' | 'other' | 'unrecorded' {
+  return note.render === undefined ? 'unrecorded' : note.render === render.hash ? 'this' : 'other';
+}
+
+/**
+ * The notes as markdown for a chat: one numbered item per note in time order, its context as sub-bullets. Given the
+ * render on screen, the head names it and a note from any other render says so.
+ */
+export function formatReviewNotesMarkdown(file: Pick<ReviewNotesFile, 'media' | 'kind' | 'fps' | 'notes'>, { title, savedTo, render }: { title?: string; savedTo?: string; render?: ReviewRenderStamp }): string {
   const fps = file.fps ?? 30;
-  const head = [`## Review notes${title ? `: ${title}` : ''}`, [`\`${file.media}\``, file.kind === 'video' && `${fps} fps`, savedTo && `saved to \`${savedTo}\``].filter(Boolean).join(' · '), ''];
+  const head = [
+    `## Review notes${title ? `: ${title}` : ''}`,
+    [`\`${file.media}\``, render && `render \`${render.hash}\` modified ${render.modified}`, file.kind === 'video' && `${fps} fps`, savedTo && `saved to \`${savedTo}\``].filter(Boolean).join(' · '),
+    '',
+  ];
   const notes = [...file.notes].sort((a, b) => (a.frame ?? 0) - (b.frame ?? 0));
   const items = notes.map((note, i) => {
     const when = note.frame === undefined ? ''
@@ -115,6 +134,7 @@ export function formatReviewNotesMarkdown(file: Pick<ReviewNotesFile, 'media' | 
     const lead = [when && `**${when}**`, where].filter(Boolean).join(' ');
     const { scenes, sounds, elements } = note.context;
     const sub = [
+      render && { this: '', other: `written on render \`${note.render}\`, not this one`, unrecorded: 'render not recorded' }[reviewNoteRenderOf(note, render)],
       scenes?.length && `scene: ${scenes.join(' → ')}`,
       sounds?.length && `sound: ${sounds.map((s) => `${s.sound} \`${s.id}\` at f${s.frame}${s.targeted ? ' (aimed at)' : ''}`).join('; ')}`,
       elements?.length && `under the point: ${elements.map((e) => `\`${e.id}\`${e.kind ? ` (${e.kind})` : ''}`).join(' inside ')}`,

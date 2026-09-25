@@ -45,23 +45,27 @@ test('a note aimed at a sound names it even out of reach; a range spans scenes; 
   assert.deepEqual(reviewNoteContext({ frame: 60, x: 0.4, y: 0.4 }, { fps: 30, frameSize: sources.frameSize }), {});
 });
 
-test('the markdown lists notes in time order with their frame, timecode, point and context', () => {
+test('the markdown lists notes in time order with their frame, timecode, point and context, and says which were on another render', () => {
   const md = formatReviewNotesMarkdown({
     media: 'projects/x/out/video.mp4', kind: 'video', fps: 30,
     notes: [
-      { id: 'b', frame: 80, text: 'whip lands late', cue: 'buy@80', context: { sounds: [{ id: 'buy@80', sound: 'whoosh.whip', frame: 80, targeted: true }] } },
-      { id: 'a', frame: 60, x: 0.4, y: 0.4, text: 'price pops\ntoo early', context: { scenes: ['buy'], elements: [{ id: 'buy/card/price', kind: 'odometer' }] } },
+      { id: 'c', frame: 85, text: 'hold is short', context: {} },
+      { id: 'b', frame: 80, render: '0441aaaaaa', text: 'whip lands late', cue: 'buy@80', context: { sounds: [{ id: 'buy@80', sound: 'whoosh.whip', frame: 80, targeted: true }] } },
+      { id: 'a', frame: 60, x: 0.4, y: 0.4, render: '0855bbbbbb', text: 'price pops\ntoo early', context: { scenes: ['buy'], elements: [{ id: 'buy/card/price', kind: 'odometer' }] } },
     ],
-  }, { title: 'X', savedTo: 'projects/x/review/notes-video.json' });
+  }, { title: 'X', savedTo: 'projects/x/review/notes-video.json', render: { hash: '0855bbbbbb', modified: '2026-09-25T15:55:00.000Z' } });
   assert.equal(md, [
     '## Review notes: X',
-    '`projects/x/out/video.mp4` · 30 fps · saved to `projects/x/review/notes-video.json`',
+    '`projects/x/out/video.mp4` · render `0855bbbbbb` modified 2026-09-25T15:55:00.000Z · 30 fps · saved to `projects/x/review/notes-video.json`',
     '',
     '1. **f60 (0:02.00)** at (0.40, 0.40): price pops too early',
     '   - scene: buy',
     '   - under the point: `buy/card/price` (odometer)',
     '2. **f80 (0:02.67)**: whip lands late',
+    '   - written on render `0441aaaaaa`, not this one',
     '   - sound: whoosh.whip `buy@80` at f80 (aimed at)',
+    '3. **f85 (0:02.83)**: hold is short',
+    '   - render not recorded',
     '',
   ].join('\n'));
 });
