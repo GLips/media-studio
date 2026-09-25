@@ -35,7 +35,7 @@ test('a perceptual spring is the mass-spring Apple and kvin.me define, and holds
       x += v * dt;
       if (i % 5000 === 0) assert.ok(Math.abs(s(i * dt) - x) < 1e-3, `bounce ${bounce} at ${i * dt}s: ${s(i * dt)} vs ${x}`);
     }
-    assert.ok(s.landed < s.settled);
+    assert.ok(Math.abs(s(s.arrival) - 0.98) < 1e-3 && s.arrival < s.settled, `bounce ${bounce}: arrives at ${s(s.arrival)}`);
     assert.equal(s(s.settled), 1);
   }
 });

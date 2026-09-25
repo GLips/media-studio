@@ -181,17 +181,28 @@ function springLandedSeconds(zeta: number): number {
 export type PerceptualSpring = ((t: number) => number) & {
   /** The perceptual duration it was asked for: the period it swings at, whatever its bounce. */
   duration: number;
-  /** Seconds until it first comes within 0.5% of its target. Earlier as it gets bouncier, since it arrives at speed. */
-  landed: number;
+  /**
+   * Seconds until it first covers 98% of its travel: where it reads as arriving, so the moment that goes on a beat or
+   * word, and where the move's hit sound starts. A bouncy spring is then all but reaching home at speed, its impact;
+   * a smooth one is almost still, at 0.93× `duration`. Earlier as it gets bouncier.
+   */
+  arrival: number;
   /** Seconds until it has finished settling and holds exactly 1. */
   settled: number;
 };
+
+// "Arrived": 98% of the travel covered. Not springBy's 0.5%: a smooth spring's last half-percent is a creep the eye
+// has long stopped following, and a bounce on it lands a beat late.
+const SPRING_ARRIVED = 0.02;
 
 /**
  * A spring timed by how it feels rather than by when it arrives: Apple's spring(duration:bounce:), as kvin.me's
  * "Effortless UI spring animations" writes it out. Stiffness is (2π/duration)² and the damping ratio 1 − bounce, so
  * `duration` is the period of its swing and every bounce moves at the same pace; a bouncier one only overshoots more.
- * Where the move must land on a word or beat, use `springBy`, whose `duration` is that deadline instead.
+ * To land a move on a beat, start it `arrival` seconds before the beat:
+ *
+ *   const pop = perceptualSpring(0.4, 0.3); … scale={lerp(0.8, 1, pop(t - (beat - pop.arrival)))}
+ *
  * Apple's negative bounce (overdamped, slower than smooth) is left out: bounce 0 is already the calmest a move needs.
  */
 export function perceptualSpring(duration: number, bounce = 0): PerceptualSpring {
@@ -205,14 +216,14 @@ export function perceptualSpring(duration: number, bounce = 0): PerceptualSpring
   // Past `horizon` the gap's envelope is under the settled threshold, so the last step still outside it is the last.
   const step = duration / 2e4;
   const horizon = zeta < 1 ? Math.log(1 / (Math.sqrt(1 - zeta * zeta) * SPRING_SETTLED)) / (zeta * w) : (12 / w);
-  let landed = NaN, settled = 0;
+  let arrival = NaN, settled = 0;
   for (let t = 0; t <= horizon; t += step) {
-    const g = Math.abs(gap(t));
-    if (Number.isNaN(landed) && g < SPRING_LANDED) landed = t;
-    if (g >= SPRING_SETTLED) settled = t + step;
+    const g = gap(t);
+    if (Number.isNaN(arrival) && g <= SPRING_ARRIVED) arrival = t;
+    if (Math.abs(g) >= SPRING_SETTLED) settled = t + step;
   }
   const at = (t: number) => (t <= 0 ? 0 : t >= settled ? 1 : 1 - gap(t));
-  return Object.assign(at, { duration, landed, settled });
+  return Object.assign(at, { duration, arrival, settled });
 }
 
 // ---------- staggers ----------

@@ -62,9 +62,12 @@ that calm, legible register. The high-energy register (below) designs its own mo
   doesn't read, lengthen the anticipation before it or the hold after it, not the move. Land moves on words.
 - **Raw or eased `k`**: a piece that eases `k` itself (Highlight, Tag, Text, GlassCard) says so in its doc. Give it
   `seg(…, motionCurves.linear)`, or it eases twice.
-- **Springs**: `springBy(duration, bounce)` reaches its target at `duration` (a bouncy one then overshoots), so
-  `pop(s.t - (w.start - pop.landed))` lands on the word, and `pop.settled` is when its bounce dies away. Springs are
-  for moves; fades and colour are `seg`.
+- **Springs**: `perceptualSpring(duration, bounce)`. `duration` is its pace, the same feel at every bounce (0.2–0.4 s
+  for a reel's lift, 0.5 s for UI), and `bounce` only sets the overshoot (0.15 felt, 0.3 seen). **On a beat or word,
+  the beat goes on its `arrival`, and so does the move's hit sound**: start it `arrival` early,
+  `pop(t - (beat - pop.arrival))`. `arrival` is when it has covered 98% of the way, so a bouncy spring reaches home
+  on the beat and overshoots after it. `settled` is when it stops moving. Springs are for moves; fades and colour are
+  `seg`.
 - **Staggers**: `stagger(i, n, { each, max, from })` is item `i`'s start offset, on a whole frame. `max` caps the
   spread of a long list, `from` is `'center'`, `'edges'` or an index, and `{ lagRatio, duration }` sets the gap as a
   fraction of each item's move. `staggerFinish` is when the last one lands. Tag each item with

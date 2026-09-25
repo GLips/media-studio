@@ -1,17 +1,17 @@
-// springs.tsx: the Curves & springs tab's spring bench. The studio's two spring models side by side, on the same move
-// and the same four bounces: `springBy`, whose duration is a deadline it arrives on, and `perceptualSpring` (Apple's
-// spring(duration:bounce:)), whose duration is the pace of its swing. Each row goes out and comes back on its spring,
-// so the loop never jumps; a beat light flashes at the deadline so "lands on the beat" can be seen.
+// springs.tsx: the Curves & springs tab's spring bench. The studio's spring, `perceptualSpring` (Apple's
+// spring(duration:bounce:)), at four bounces on one move, timed three ways against a beat light: arriving on it (the
+// studio's rule), settling on it, or all starting together. Each row goes out and comes back on its spring, so the
+// loop never jumps.
 import { useMemo, useState } from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import { DISPLAY_FONT, MONO_FONT } from '../../../../lib/studio/fonts.ts';
 import { FPS } from '../../../../lib/studio/frame.ts';
 import { ShutterBlur } from '../../../../lib/studio/motion-blur.tsx';
-import { clamp, lerp, perceptualSpring, springBy } from '../../../../lib/studio/motion.ts';
+import { clamp, lerp, perceptualSpring, type PerceptualSpring } from '../../../../lib/studio/motion.ts';
 import { LAB_COLORS, LabBench, LabChoice, LabControls, LabNote, LabSlider, LabStage } from '../../ui.tsx';
 
 type SpringsMove = 'slide' | 'pop' | 'toggle';
-type SpringsModel = 'deadline' | 'perceptual';
+type SpringsTiming = 'arrival' | 'duration' | 'together';
 export type SpringsLook = 'video' | 'videoBlur' | 'screen';
 
 // Apple's named springs are these bounces (smooth, snappy, bouncy); 0.5 is past where a UI spring usually goes.
@@ -28,6 +28,12 @@ const SPRINGS_MOVES: readonly { value: SpringsMove; label: string }[] = [
   { value: 'toggle', label: 'Flip a switch' },
 ];
 
+const SPRINGS_TIMINGS: readonly { value: SpringsTiming; label: string; why: string }[] = [
+  { value: 'arrival', label: 'Arrive on the beat', why: 'Each row starts early by its own arrival, so all four get there as the light flashes. This is the studio’s rule for a move on a beat or a word.' },
+  { value: 'duration', label: 'Settle on the beat', why: 'Each row starts a full duration before the beat, so it has stopped moving by the light. Watch the bouncy rows: they hit and overshoot well before it, so the beat reads late.' },
+  { value: 'together', label: 'Start together', why: 'All four start at once, to show the pace is the same at every bounce: the bouncier the row, the sooner it gets there and the further it overshoots.' },
+];
+
 export const SPRINGS_LOOKS: readonly { value: SpringsLook; label: string; fps: number }[] = [
   { value: 'videoBlur', label: 'Video, blurred', fps: FPS },
   { value: 'video', label: 'Video, sharp', fps: FPS },
@@ -37,80 +43,72 @@ export const SPRINGS_LOOKS: readonly { value: SpringsLook; label: string; fps: n
 const WATCH_SPEEDS = [{ value: 1, label: 'Real speed' }, { value: 2, label: '½ speed' }, { value: 4, label: '¼ speed' }] as const;
 
 const STAGE_W = 1600;
-const STAGE_H = 940;
-const COL_X = [40, 820];
-const COL_W = 740;
-const ROW_TOP = 210;
-const ROW_H = 176;
-const LEAD = 0.4; // seconds at rest before it goes, so the start is seen from still
+const STAGE_H = 900;
+const LABEL_W = 360;
+const LANE_X = 400;
+const LANE_W = 1160;
+const ROW_TOP = 150;
+const ROW_H = 180;
+const BEAT = 1.4; // seconds into the loop of the outbound beat: room for a 1 s spring to start early and still be seen from rest
 // How long each way gets before the loop turns it round: long enough for the bounciest row to have nearly settled.
-const HALF_MIN = 1.1;
+const HALF_MIN = 1.2;
 const HALF_MAX = 2.4;
-const SLIDE_TRAVEL = 420;
-const CARD_W = 170;
-const CARD_H = 96;
-const COL_COLORS: Record<SpringsModel, string> = { deadline: '#8f91ff', perceptual: LAB_COLORS.red };
+const SLIDE_TRAVEL = 700;
+const CARD_W = 200;
+const CARD_H = 104;
+const SPRING_COLOR = LAB_COLORS.red;
 
-type SpringsStageProps = { move: SpringsMove; duration: number; look: SpringsLook; slow: number };
+type SpringsStageProps = { move: SpringsMove; duration: number; timing: SpringsTiming; look: SpringsLook; slow: number };
 
-function springsRows(duration: number) {
-  return SPRINGS_LADDER.map((r) => ({ ...r, deadline: springBy(duration, r.bounce), perceptual: perceptualSpring(duration, r.bounce) }));
-}
+const springsRows = (duration: number) => SPRINGS_LADDER.map((r) => ({ ...r, spring: perceptualSpring(duration, r.bounce) }));
 
 const springsHalf = (duration: number) =>
-  clamp(Math.max(...springsRows(duration).flatMap((r) => [r.deadline.settled, r.perceptual.settled])), HALF_MIN, HALF_MAX);
+  clamp(Math.max(...springsRows(duration).map((r) => r.spring.settled)), HALF_MIN, HALF_MAX);
 
-export const springsLoopSeconds = (duration: number) => LEAD + 2 * springsHalf(duration);
+export const springsLoopSeconds = (duration: number) => BEAT + 2 * springsHalf(duration);
 
-function SpringsStage({ move, duration, look, slow }: SpringsStageProps) {
+// How long before the beat a row starts: its arrival, its whole duration, or all at a shared start before the beat.
+const springsLeadIn = (spring: PerceptualSpring, timing: SpringsTiming) =>
+  timing === 'arrival' ? spring.arrival : timing === 'duration' ? spring.duration : spring.duration * 0.6;
+
+function SpringsStage({ move, duration, timing, look, slow }: SpringsStageProps) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const t = frame / fps / slow;
   const rows = useMemo(() => springsRows(duration), [duration]);
   const half = springsHalf(duration);
-  // Out on the spring from LEAD, back on the same spring from LEAD + half. A spring is linear, so the return is its
-  // own curve subtracted, and a row still wobbling when it turns round carries that wobble smoothly into the return.
-  const there = (s: (t: number) => number, t: number) => s(t - LEAD) - s(t - LEAD - half);
-  const beats = [LEAD + duration, LEAD + half + duration];
-  const beatGlow = Math.max(...beats.map((b) => clamp(1 - Math.abs(t - b) * fps / 3)));
+  const beats = [BEAT, BEAT + half];
+  // Out on the spring before the first beat, back on the same spring before the second. A spring is linear, so the
+  // return is its own curve subtracted, and a row still wobbling as it turns round carries that into the return.
+  const there = (s: PerceptualSpring, t: number) => {
+    const lead = springsLeadIn(s, timing);
+    return s(t - (beats[0] - lead)) - s(t - (beats[1] - lead));
+  };
+  const beatGlow = timing === 'together' ? 0 : Math.max(...beats.map((b) => clamp(1 - (Math.abs(t - b) * fps) / (3 * slow))));
 
   const scene = (t: number) => (
     <AbsoluteFill style={{ background: LAB_COLORS.ground, color: LAB_COLORS.cream, fontFamily: DISPLAY_FONT }}>
-      {(['deadline', 'perceptual'] as const).map((model, c) => {
-        const x0 = COL_X[c];
-        const color = COL_COLORS[model];
+      <div style={{ position: 'absolute', left: 40, top: 36 }}>
+        <div style={{ fontSize: 50, fontWeight: 900, fontStretch: '78%', textTransform: 'uppercase', lineHeight: 1 }}>One pace, four bounces</div>
+        <div style={{ marginTop: 10, fontFamily: MONO_FONT, fontSize: 22, letterSpacing: '0.04em', color: LAB_COLORS.dim }}>perceptualSpring({duration.toFixed(2)}, bounce)</div>
+      </div>
+      {rows.map((row, r) => {
+        const p = there(row.spring, t);
+        const y0 = ROW_TOP + r * ROW_H;
         return (
-          <div key={model} style={{ position: 'absolute', left: x0, top: 0, width: COL_W, height: STAGE_H }}>
-            <div style={{ position: 'absolute', left: 0, top: 36, right: 0 }}>
-              <div style={{ fontSize: 50, fontWeight: 900, fontStretch: '78%', textTransform: 'uppercase', color, lineHeight: 1 }}>
-                {model === 'deadline' ? 'Deadline' : 'Perceptual'}
-              </div>
-              <div style={{ marginTop: 10, fontFamily: MONO_FONT, fontSize: 22, letterSpacing: '0.04em', color: LAB_COLORS.dim }}>
-                {model === 'deadline' ? `springBy(${duration.toFixed(2)}, bounce)` : `perceptualSpring(${duration.toFixed(2)}, bounce)`}
-              </div>
-              <div style={{ marginTop: 6, fontSize: 25, color: LAB_COLORS.cream, opacity: 0.85 }}>
-                {model === 'deadline' ? 'Arrives exactly on the beat, whatever the bounce' : 'Swings at the same pace, whatever the bounce'}
+          <div key={row.name} style={{ position: 'absolute', left: 0, top: y0, width: STAGE_W, height: ROW_H }}>
+            <div style={{ position: 'absolute', left: 40, top: 44, width: LABEL_W - 40 }}>
+              <div style={{ fontSize: 40, fontWeight: 900, fontStretch: '78%', textTransform: 'uppercase', lineHeight: 1 }}>{row.name}</div>
+              <div style={{ marginTop: 10, fontFamily: MONO_FONT, fontSize: 19, letterSpacing: '0.04em', color: LAB_COLORS.dim, textTransform: 'uppercase' }}>
+                bounce {row.bounce} · arrives {row.spring.arrival.toFixed(2)}s
               </div>
             </div>
-            {rows.map((row, r) => {
-              const s = row[model];
-              const p = there(s, t);
-              const y0 = ROW_TOP + r * ROW_H;
-              return (
-                <div key={row.name} style={{ position: 'absolute', left: 0, top: y0, width: COL_W, height: ROW_H }}>
-                  <div style={{ position: 'absolute', left: 0, right: 0, top: 18, display: 'flex', justifyContent: 'space-between', fontFamily: MONO_FONT, fontSize: 20, letterSpacing: '0.05em', textTransform: 'uppercase', color: LAB_COLORS.dim }}>
-                    <span><span style={{ color: LAB_COLORS.cream }}>{row.name}</span> · bounce {row.bounce}</span>
-                    <span>there {s.landed.toFixed(2)}s · still {s.settled.toFixed(1)}s</span>
-                  </div>
-                  <div style={{ position: 'absolute', left: 0, right: 0, top: 54, height: 1, background: LAB_COLORS.line }} />
-                  <SpringsMover move={move} p={p} color={color} />
-                </div>
-              );
-            })}
+            <div style={{ position: 'absolute', left: LANE_X, top: 18, width: LANE_W, height: ROW_H - 36, borderRadius: 14, background: LAB_COLORS.panel }}>
+              <SpringsMover move={move} p={p} color={SPRING_COLOR} />
+            </div>
           </div>
         );
       })}
-      <div style={{ position: 'absolute', left: COL_X[1] - 40, top: 40, bottom: 40, width: 2, background: LAB_COLORS.line }} />
     </AbsoluteFill>
   );
 
@@ -118,36 +116,38 @@ function SpringsStage({ move, duration, look, slow }: SpringsStageProps) {
     <AbsoluteFill>
       {look === 'videoBlur' ? <ShutterBlur t={t} render={scene} /> : scene(t)}
       {/* The beat light sits outside the blur: it's a readout, not a thing that moves. */}
-      <div style={{ position: 'absolute', right: 40, top: 40, display: 'flex', alignItems: 'center', gap: 14, fontFamily: MONO_FONT, fontSize: 20, letterSpacing: '0.08em', color: LAB_COLORS.dim }}>
-        <span>BEAT</span>
-        <div style={{ width: 30, height: 30, borderRadius: 15, border: `2px solid ${LAB_COLORS.cream}`, background: LAB_COLORS.cream, opacity: 0.2 + 0.8 * beatGlow, boxShadow: `0 0 ${30 * beatGlow}px ${LAB_COLORS.cream}` }} />
-      </div>
-      {slow > 1 && <div style={{ position: 'absolute', right: 40, bottom: 20, fontFamily: MONO_FONT, fontSize: 20, letterSpacing: '0.08em', color: LAB_COLORS.dim }}>{slow}× SLOWER</div>}
+      {timing !== 'together' && (
+        <div style={{ position: 'absolute', right: 40, top: 44, display: 'flex', alignItems: 'center', gap: 14, fontFamily: MONO_FONT, fontSize: 22, letterSpacing: '0.08em', color: LAB_COLORS.dim }}>
+          <span>BEAT</span>
+          <div style={{ width: 40, height: 40, borderRadius: 20, border: `2px solid ${LAB_COLORS.cream}`, background: LAB_COLORS.cream, opacity: 0.15 + 0.85 * beatGlow, boxShadow: `0 0 ${36 * beatGlow}px ${LAB_COLORS.cream}` }} />
+        </div>
+      )}
+      {slow > 1 && <div style={{ position: 'absolute', right: 40, bottom: 16, fontFamily: MONO_FONT, fontSize: 20, letterSpacing: '0.08em', color: LAB_COLORS.dim }}>{slow}× SLOWER</div>}
     </AbsoluteFill>
   );
 }
 
 /** One row's moving thing at progress `p` (0 at rest, 1 there, past 1 while it overshoots). */
 function SpringsMover({ move, p, color }: { move: SpringsMove; p: number; color: string }) {
-  const laneTop = 72;
+  const laneTop = 20;
   if (move === 'slide') {
     return (
       <>
-        <div style={{ position: 'absolute', left: 40 + SLIDE_TRAVEL, top: laneTop, width: CARD_W, height: CARD_H, borderRadius: 16, border: `2px dashed ${color}`, opacity: 0.35 }} />
-        <SpringsCard x={40 + p * SLIDE_TRAVEL} y={laneTop} color={color} />
+        <div style={{ position: 'absolute', left: 60 + SLIDE_TRAVEL, top: laneTop, width: CARD_W, height: CARD_H, borderRadius: 16, border: `2px dashed ${color}`, opacity: 0.35 }} />
+        <SpringsCard x={60 + p * SLIDE_TRAVEL} y={laneTop} color={color} />
       </>
     );
   }
   if (move === 'pop') {
     const scale = lerp(0.2, 1, p);
     return (
-      <div style={{ position: 'absolute', left: (COL_W - CARD_W) / 2, top: laneTop, transform: `scale(${Math.max(0, scale)})`, opacity: clamp(p * 4) }}>
+      <div style={{ position: 'absolute', left: (LANE_W - CARD_W) / 2, top: laneTop, transform: `scale(${Math.max(0, scale)})`, opacity: clamp(p * 4) }}>
         <SpringsCard x={0} y={0} color={color} />
       </div>
     );
   }
-  const trackW = 190, trackH = 92, knob = 76, pad = (trackH - knob) / 2;
-  const left = (COL_W - trackW) / 2;
+  const trackW = 200, trackH = 104, knob = 86, pad = (trackH - knob) / 2;
+  const left = (LANE_W - trackW) / 2;
   return (
     <div style={{ position: 'absolute', left, top: laneTop, width: trackW, height: trackH, borderRadius: trackH / 2, background: LAB_COLORS.line, overflow: 'visible' }}>
       <div style={{ position: 'absolute', inset: 0, borderRadius: trackH / 2, background: color, opacity: clamp(p) }} />
@@ -171,6 +171,7 @@ function SpringsCard({ x, y, color }: { x: number; y: number; color: string }) {
 export function CurvesSpringsBench() {
   const [move, setMove] = useState<SpringsMove>('slide');
   const [duration, setDuration] = useState(0.5);
+  const [timing, setTiming] = useState<SpringsTiming>('arrival');
   const [look, setLook] = useState<SpringsLook>('videoBlur');
   const [slow, setSlow] = useState<number>(1);
   const fps = SPRINGS_LOOKS.find((l) => l.value === look)!.fps;
@@ -180,14 +181,14 @@ export function CurvesSpringsBench() {
       <LabBench
         stage={
           <LabStage
-            key={`${look}`}
+            key={look}
             component={SpringsStage}
-            inputProps={{ move, duration, look, slow }}
+            inputProps={{ move, duration, timing, look, slow }}
             seconds={springsLoopSeconds(duration) * slow}
             width={STAGE_W}
             height={STAGE_H}
             fps={fps}
-            label="TWO WAYS TO TIME A SPRING"
+            label="ONE SPRING, FOUR BOUNCES, ONE BEAT"
           />
         }
       >
@@ -201,8 +202,9 @@ export function CurvesSpringsBench() {
             step={0.05}
             format={(v) => `${v.toFixed(2)}s`}
             onChange={setDuration}
-            hint={<>The same number means two things. <b>Deadline</b>: the moment it gets there, so it can land on a beat (the light flashes then). <b>Perceptual</b>: how long one swing takes, so every bounce feels as quick. Apple’s default is 0.5s.</>}
+            hint="How long one swing takes: the spring’s pace. It stays the same at every bounce, so a bouncier spring only overshoots more. Apple’s default is 0.5s; a reel’s quick lifts are 0.2–0.4s."
           />
+          <LabChoice label="Timing" options={SPRINGS_TIMINGS} value={timing} onChange={setTiming} hint={SPRINGS_TIMINGS.find((o) => o.value === timing)!.why} />
           <LabChoice
             label="Seen as"
             options={SPRINGS_LOOKS}
@@ -218,13 +220,17 @@ export function CurvesSpringsBench() {
         </LabControls>
       </LabBench>
       <LabNote>
-        <b>What to look for:</b> down the left, the rows all arrive together on the beat, so the bouncier ones have to move slower to do it; the “very bouncy” one drifts lazily and rings on. Down the right, every row swings at the same pace and a bouncier one only overshoots more. So a bouncy one arrives well before the beat and a smooth one a little after it: the beat is no longer where it lands.
+        <b>The rule for a move on a beat:</b> the beat, and the move’s hit sound, go where the spring <b>arrives</b>: the moment it has covered 98% of the way. For a bouncy spring that is when it reaches its spot at speed, just before it overshoots; for a smooth one, when it has all but stopped. So a spring starts its <code>arrival</code> early, and the bouncier it is, the later it can start.
       </LabNote>
       <details className="curves-agents">
         <summary>For agents</summary>
         <pre>{[
-          ...SPRINGS_LADDER.map((r) => `springBy(${duration}, ${r.bounce})${' '.repeat(Math.max(1, 6 - String(r.bounce).length))}// there ${springBy(duration, r.bounce).landed.toFixed(2)}s, still ${springBy(duration, r.bounce).settled.toFixed(2)}s`),
-          ...SPRINGS_LADDER.map((r) => `perceptualSpring(${duration}, ${r.bounce})${' '.repeat(Math.max(1, 6 - String(r.bounce).length))}// there ${perceptualSpring(duration, r.bounce).landed.toFixed(2)}s, still ${perceptualSpring(duration, r.bounce).settled.toFixed(2)}s`),
+          `const s = perceptualSpring(${duration}, bounce);`,
+          `s(t - (beat - s.arrival))  // arrives on the beat; its hit sound starts at the beat too`,
+          ...SPRINGS_LADDER.map((r) => {
+            const s = perceptualSpring(duration, r.bounce);
+            return `// bounce ${r.bounce.toFixed(2)}: arrival ${s.arrival.toFixed(3)}s, settled ${s.settled.toFixed(2)}s`;
+          }),
         ].join('\n')}</pre>
       </details>
     </>

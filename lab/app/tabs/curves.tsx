@@ -1,5 +1,5 @@
 // curves.tsx: the lab's Curves & springs tab: the studio's easing curves racing the same move (curves/eases.tsx),
-// then its two spring models side by side on the same moves and bounces (curves/springs.tsx).
+// then its spring at four bounces landing on one beat (curves/springs.tsx).
 import { LabTabIntro } from '../ui.tsx';
 import { CurvesEasesBench } from './curves/eases.tsx';
 import { CurvesSpringsBench } from './curves/springs.tsx';
@@ -18,7 +18,7 @@ export function CurvesTab() {
       />
       <h3 className="curves-section"><span className="hud">A</span> Easing curves</h3>
       <CurvesEasesBench />
-      <h3 className="curves-section"><span className="hud">B</span> Springs: arrive on the beat, or keep the same feel?</h3>
+      <h3 className="curves-section"><span className="hud">B</span> Springs: one pace at every bounce, landing on the beat</h3>
       <CurvesSpringsBench />
     </>
   );

@@ -30,8 +30,8 @@ the image rather than a label on it, and colour comes in full-bleed fields, not 
   are frame pixels in the 1920×1080 frame; say in the doc comment what share of frame height a size is.
 - **Type**: `DISPLAY_FONT` (Archivo, variable: `fontWeight` 100–900 and `fontStretch` 62–125% are continuous, so
   both can animate) and `MONO_FONT` for HUD labels and readouts (`lib/studio/fonts.ts`).
-- **Curves**: `motionCurves.expo` (`entrance` for arrivals, `exit`, `standard`) and `seg`, or `springBy(duration,
-  bounce)` for an overshoot that must still land on its beat (`lib/studio/motion.ts`). Physics (a bounce, a roll) is
+- **Curves**: `motionCurves.expo` (`entrance` for arrivals, `exit`, `standard`) and `seg`, or `perceptualSpring(duration,
+  bounce)` for an overshoot, started `arrival` before its beat (`lib/studio/motion.ts`). Physics (a bounce, a roll) is
   written as physics, closed-form in `t`.
 - **30 fps.** The reference is often 60 fps; at 30, a fast move strobes. Smear what moves more than about 40 px a
   frame: stretch it along its velocity (computed from the position function at `t` and `t - 1/FPS`), draw fading
@@ -67,7 +67,7 @@ the image rather than a label on it, and colour comes in full-bleed fields, not 
 
 Look here first: a second copy of one of these drifts from the first.
 
-- **Curves:** `motionCurves`, `seg`, `springBy`, `backOutEase(overshoot)`, `powerOutEase(power)`, `sineInOutEase`
+- **Curves:** `motionCurves`, `seg`, `perceptualSpring`, `backOutEase(overshoot)`, `powerOutEase(power)`, `sineInOutEase`
   (`motion.ts`).
 - **Smear:** `ShutterBlur`, `REEL_SHUTTER`, `shutterOpensAt`, `shutterTravel`, `smearSigma` (`motion-blur.tsx`).
 - **The beat:** `steadyBeatGrid`, `wordOnBeat` (`beats.ts`).
