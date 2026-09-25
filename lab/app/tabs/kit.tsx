@@ -3,7 +3,7 @@
 // another. Pieces that need a captured page (MotionTitle, ClickToBlur, Phone, SplitCompare) aren't here.
 import { useState } from 'react';
 import { LabBench, LabControls, LabNote, LabStage, LabTabIntro } from '../ui.tsx';
-import { COUNT_UP_PIECE, DRAW_PATH_PIECE, WORD_REVEAL_PIECE } from './kit/builds.tsx';
+import { DRAW_PATH_PIECE, WORD_REVEAL_PIECE } from './kit/builds.tsx';
 import { END_CARD_PIECE, GLASS_CARD_PIECE, SECTION_CARD_PIECE } from './kit/cards.tsx';
 import { GRADE_PIECE, SHUTTER_BLUR_PIECE } from './kit/finish.tsx';
 import type { KitPieceProps } from './kit/piece.tsx';
@@ -12,7 +12,6 @@ import './kit.css';
 // The registry. A newly committed piece (e.g. from lib/studio/reel) is one defineKitPiece entry added here.
 const KIT_PIECES = [
   WORD_REVEAL_PIECE,
-  COUNT_UP_PIECE,
   DRAW_PATH_PIECE,
   GLASS_CARD_PIECE,
   SECTION_CARD_PIECE,

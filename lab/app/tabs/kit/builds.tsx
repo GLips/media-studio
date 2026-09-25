@@ -1,10 +1,10 @@
-// builds.tsx: the Kit pieces tab's entries for lib/studio/kit.tsx's builds: WordReveal, CountUp and DrawPath, each
+// builds.tsx: the Kit pieces tab's entries for lib/studio/kit.tsx's builds: WordReveal and DrawPath, each
 // with a stage that plays it on the showcase ground and the controls for its props.
 import type { ReactNode } from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import { DISPLAY_FONT, MONO_FONT } from '../../../../lib/studio/fonts.ts';
 import { FULL_FRAME } from '../../../../lib/studio/frame.ts';
-import { CountUp, DrawPath, WordReveal, wordRevealFinish } from '../../../../lib/studio/kit.tsx';
+import { DrawPath, WordReveal, wordRevealFinish } from '../../../../lib/studio/kit.tsx';
 import { LAB_COLORS, LabChoice, LabSlider } from '../../ui.tsx';
 import { defineKitPiece, KIT_COLOR_OPTIONS, KitTextField } from './piece.tsx';
 
@@ -77,59 +77,6 @@ export const WORD_REVEAL_PIECE = defineKitPiece<WordRevealStageProps>({
       <LabSlider label="Weight" value={p.weight} min={300} max={900} step={100} onChange={(weight) => set({ weight })} />
       <LabChoice label="Align" options={[{ value: 'left', label: 'Left' }, { value: 'center', label: 'Centre' }, { value: 'right', label: 'Right' }]}
         value={p.align} onChange={(align) => set({ align })} />
-    </>
-  ),
-});
-
-// ---------- CountUp ----------
-
-type CountUpFormat = 'plain' | 'dollars' | 'euros' | 'percent';
-
-type CountUpStageProps = { from: number; to: number; decimals: number; format: CountUpFormat; duration: number };
-
-const countUpFormatter = (format: CountUpFormat, decimals: number) => {
-  const grouped = (v: number) => v.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-  return {
-    plain: undefined,
-    dollars: (v: number) => `$${grouped(v)}`,
-    euros: (v: number) => `€${grouped(v)}`,
-    percent: (v: number) => `${grouped(v)}%`,
-  }[format];
-};
-
-function CountUpStage(p: CountUpStageProps) {
-  const t = useKitSeconds();
-  const k = Math.max(0, t / p.duration);
-  return (
-    <AbsoluteFill style={{ background: LAB_COLORS.ground }}>
-      <KitHud left="Counting number" right={k >= 1 ? 'landed exactly on its value' : `counting · ${Math.round(Math.min(1, k) * 100)}% of the time`} />
-      <div style={{ position: 'absolute', left: 160, right: 160, top: 330, textAlign: 'center', fontFamily: MONO_FONT, fontSize: 30, letterSpacing: '0.1em', color: LAB_COLORS.red }}>REVENUE THIS MONTH</div>
-      <CountUp k={k} from={p.from} to={p.to} decimals={p.decimals} format={countUpFormatter(p.format, p.decimals)}
-        x={160} y={420} width={1600} size={220} align="center" color={LAB_COLORS.cream} />
-    </AbsoluteFill>
-  );
-}
-
-export const COUNT_UP_PIECE = defineKitPiece<CountUpStageProps>({
-  id: 'count-up',
-  name: 'CountUp',
-  title: 'Counting number',
-  blurb: 'A number that counts up and slows into its final value.',
-  source: 'lib/studio/kit.tsx',
-  whenUsed: 'A result worth dwelling on: a price, a total, a percentage saved. Counting makes the viewer watch the number arrive.',
-  note: <>Every digit is the same width, so the number never wobbles sideways as it counts. It slows down at the end so the eye can read the final value, and lands on it exactly. Like “Words one by one” it uses the system font, by design.</>,
-  defaults: { from: 0, to: 48250, decimals: 0, format: 'dollars', duration: 1.2 },
-  seconds: (p) => LEAD + p.duration + HOLD,
-  Stage: CountUpStage,
-  Controls: ({ props: p, set }) => (
-    <>
-      <LabSlider label="From" value={p.from} min={0} max={10000} step={50} onChange={(from) => set({ from })} />
-      <LabSlider label="To" value={p.to} min={0} max={100000} step={50} onChange={(to) => set({ to })} />
-      <LabChoice label="Decimal places" options={[{ value: 0, label: '0' }, { value: 1, label: '1' }, { value: 2, label: '2' }]} value={p.decimals} onChange={(decimals) => set({ decimals })} />
-      <LabChoice label="Shown as" options={[{ value: 'plain', label: '48,250' }, { value: 'dollars', label: '$' }, { value: 'euros', label: '€' }, { value: 'percent', label: '%' }]}
-        value={p.format} onChange={(format) => set({ format })} />
-      <LabSlider label="Counts for" value={p.duration} min={0.3} max={3} step={0.1} format={(v) => `${v.toFixed(1)}s`} onChange={(duration) => set({ duration })}
-        hint="0.8–1.5 s feels right. Shorter is a blur; longer and the viewer waits on it." />
     </>
   ),
 });
