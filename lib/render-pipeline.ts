@@ -178,6 +178,8 @@ export async function renderMotionGraph(session: RenderSession, { at, tracks, sp
 // Delivery loudness, as YouTube and most players normalise to. Mastering limits 1 dB under the true-peak ceiling the
 // delivery check holds it to, because AAC encoding adds overshoot.
 const DELIVERY_LUFS = -14, DELIVERY_TRUE_PEAK = -1, MASTER_TRUE_PEAK = -2;
+/** The delivered soundtrack's codec: the master is checked through the same encode the video's mux does. */
+const DELIVERY_AUDIO_CODEC = ['-c:a', 'aac', '-b:a', '192k'];
 
 /**
  * Renders the soundtrack once, uncompressed, and masters it to out/mix.wav: one gain to delivery loudness, then a
@@ -196,17 +198,25 @@ export async function renderMasteredMix(session: RenderSession, { auditionSfxCue
   mkdirSync(outDirFor(session), { recursive: true });
   const before = measureLoudness(raw);
   // Limiting at 4× the sample rate catches the peaks between samples too, which is what "true peak" counts.
-  const master = (gainDb: number) => execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', raw, '-af',
-    `volume=${gainDb}dB,aresample=192000,alimiter=limit=${10 ** (MASTER_TRUE_PEAK / 20)}:attack=1:release=60:level=false:latency=true,aresample=48000`,
+  const master = (gainDb: number, ceilingDb: number) => execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', raw, '-af',
+    `volume=${gainDb}dB,aresample=192000,alimiter=limit=${10 ** (ceilingDb / 20)}:attack=1:release=60:level=false:latency=true,aresample=48000`,
     '-c:a', 'pcm_s24le', masterWav]);
-  // The limiter shaves a little loudness off the peaks it catches, so a second pass makes that back.
-  let gain = DELIVERY_LUFS - before.lufs;
-  master(gain);
-  gain += DELIVERY_LUFS - measureLoudness(masterWav).lufs;
-  master(gain);
+  const encoded = join(tmp, 'encoded.m4a');
+  let gain = DELIVERY_LUFS - before.lufs, ceiling = MASTER_TRUE_PEAK, encodedPeak = Infinity;
+  // AAC overshoots sharp transients by more than MASTER_TRUE_PEAK's 1 dB allows (a tattoo needle's bite came out 2.3 dB
+  // over its master), so the ceiling comes down by what the encoded master still peaks over delivery's.
+  for (let pass = 0; pass < 4 && encodedPeak > DELIVERY_TRUE_PEAK; pass++) {
+    if (pass > 0) ceiling -= encodedPeak - DELIVERY_TRUE_PEAK + 0.2;
+    // The limiter shaves a little loudness off the peaks it catches, so a second pass makes that back.
+    master(gain, ceiling);
+    gain += DELIVERY_LUFS - measureLoudness(masterWav).lufs;
+    master(gain, ceiling);
+    execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', masterWav, ...DELIVERY_AUDIO_CODEC, encoded]);
+    encodedPeak = measureLoudness(encoded).truePeak;
+  }
   const after = measureLoudness(masterWav);
   rmSync(tmp, { recursive: true, force: true });
-  console.error(`mix: ${before.lufs} LUFS, ${before.truePeak} dBTP → +${gain.toFixed(1)} dB and limited → ${after.lufs} LUFS, ${after.truePeak} dBTP`);
+  console.error(`mix: ${before.lufs} LUFS, ${before.truePeak} dBTP → +${gain.toFixed(1)} dB and limited at ${ceiling.toFixed(1)} → ${after.lufs} LUFS, ${after.truePeak} dBTP (${encodedPeak} encoded)`);
   return masterWav;
 }
 
@@ -229,7 +239,7 @@ async function renderVideo(session: RenderSession, captions: boolean) {
       if (pct !== shown) { shown = pct; console.error(`  ${out}: ${pct}%`); }
     },
   });
-  execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', silent, '-i', masterWavFor(session), '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out]);
+  execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', silent, '-i', masterWavFor(session), '-map', '0:v', '-map', '1:a', '-c:v', 'copy', ...DELIVERY_AUDIO_CODEC, '-movflags', '+faststart', out]);
   rmSync(tmp, { recursive: true, force: true });
   console.error(`rendered ${out} in ${((Date.now() - started) / 1000).toFixed(0)}s`);
 }
