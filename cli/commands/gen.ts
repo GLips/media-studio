@@ -27,7 +27,7 @@ const video = defineCommand({
 const image = defineCommand({
   meta: {
     name: 'image',
-    description: "Generate a still no capture can give (title-card art, a background, a product shot, an icon) and list it in generated/images.ts: `import { images } from './generated/images.ts'`, then images['<name>'].src, .w, .h. Default model openai/gpt-image-2.5-sunburst ($0.004–0.033, takes references, --aspect and --transparent). Refuses a flag the model would ignore. A project with a brand kit (brand.json) has its voice and palette added to the prompt. Needs OPENROUTER_API_KEY. Prints the image, then images.ts.",
+    description: "Generate a still no capture can give (title-card art, a background, a product shot, an icon) and list it in generated/images.ts: `import { images } from './generated/images.ts'`, then images['<name>'].src, .w, .h. Default model openai/gpt-image-2.5-sunburst ($0.004–0.033, takes references, --aspect and --transparent). Refuses a flag the model would ignore. Needs OPENROUTER_API_KEY. Prints the image, then images.ts.",
   },
   args: {
     project: studioProjectArg,

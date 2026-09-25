@@ -6,8 +6,8 @@
 // A kit filled from a client's product repo is a snapshot of the repo's tokens: `snapshot` says where from and when.
 // It is never linked to the repo. Refresh it by reading the repo again.
 //
-// brand.ts is data only (`import type` alone): Node reads it to check files and prompt `studio gen image`, and the
-// Remotion CLI's CommonJS bundle of remotion.config.ts reads it too.
+// brand.ts is data only (`import type` alone): Node reads it to check the kit's files, from the Remotion CLI's
+// CommonJS bundle of remotion.config.ts too.
 
 /** A face's font files, each by its path in the kit and the weights and style it covers. */
 export type BrandFontFile = { file: string; weight: string; style?: 'normal' | 'italic' };
@@ -44,10 +44,7 @@ export type Brand = {
   fonts: { display: BrandFace; text: BrandFace };
   /** The logo in a light and a dark version, each one colour, its file an SVG in the kit. BrandLogo picks by the ground. */
   logos: { light: BrandLogoFile; dark: BrandLogoFile };
-  /**
-   * A few lines on how the brand talks and what it shows, for whoever writes copy and for image prompts (`studio gen
-   * image` adds it). Not enforced.
-   */
+  /** A few lines on how the brand talks and what it shows, for whoever writes its copy. Not enforced. */
   voice: string;
   snapshot: { from: string; on: string };
 };
@@ -61,8 +58,3 @@ export function brandFiles(brand: Brand): { fonts: string[]; logos: string[] } {
   return { fonts, logos: [brand.logos.light.file, brand.logos.dark.file] };
 }
 
-/** The kit as a paragraph an image prompt can end with. */
-export function brandPromptLines(brand: Brand): string {
-  const { primary, secondary, accent, dark, light } = brand.colors;
-  return `Brand: ${brand.name}. ${brand.voice.trim()} Palette: primary ${primary}, secondary ${secondary}, accent ${accent}, dark ${dark}, light ${light}.`;
-}

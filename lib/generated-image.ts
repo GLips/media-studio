@@ -3,17 +3,14 @@
 //   import { images } from './generated/images.ts';
 //   <Img src={images['title-bg'].src} style={{ objectFit: 'cover' }} />
 // Generating a name again with a new prompt or model replaces its entry; the old file stays in generated/, cached.
-// A project with a brand kit (brand.json) has the kit's voice and palette added to every prompt.
 //
 // Each model takes its own subset of the image API's params, and OpenRouter silently drops the rest, so a request
 // that isn't cached is checked against the model's own description (fetchOpenRouterImageModel) before it's paid for.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
-import { brandPromptLines } from './brand.ts';
 import { fetchOpenRouterImageModel, type OpenRouterImageModel } from './openrouter.ts';
 import { generatePaidMedia } from './paid-generation.ts';
-import { readProjectBrandData } from './project-brand.ts';
 
 /**
  * Chosen in vid-20's bake-off: good at title backgrounds, product shots from a reference, icons and legible small
@@ -51,11 +48,8 @@ export async function generateProjectImage(project: string, request: GeneratedIm
     ...(request.aspect !== undefined && { aspect_ratio: request.aspect }),
     ...(request.transparent && { background: 'transparent' }),
   };
-  // Only the kit's words and colours: a machine without its fonts can still prompt with it.
-  const kit = readProjectBrandData(project);
-  const prompt = kit ? `${request.prompt}\n\n${brandPromptLines(kit.brand)}` : request.prompt;
   const [file] = await generatePaidMedia(project, {
-    kind: 'image', model: request.model, name: request.name, prompt, params,
+    kind: 'image', model: request.model, name: request.name, prompt: request.prompt, params,
     references: request.references.map((path) => ({ path })),
     beforePaying: async () => checkOpenRouterImageRequest(await fetchOpenRouterImageModel(request.model), request),
   });
@@ -63,7 +57,7 @@ export async function generateProjectImage(project: string, request: GeneratedIm
   const ext = extname(file).slice(1);
   if (!IMPORTABLE_IMAGE.includes(ext)) throw new Error(`${request.model} made a .${ext} (${file}), which a video can't import; pick another --model`);
   const { w, h } = imageSize(file);
-  const index = writeImageEntry(project, request.name, { file: relative(join(project, 'generated'), file), w, h, model: request.model, prompt });
+  const index = writeImageEntry(project, request.name, { file: relative(join(project, 'generated'), file), w, h, model: request.model, prompt: request.prompt });
   console.error(`images['${request.name}']: ${w}×${h}, ${request.model}`);
   return { file, index };
 }

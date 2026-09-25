@@ -28,28 +28,21 @@ function listBrands(projectDir: string) {
 
 export type ProjectBrand = { name: string; dir: string; brand: Brand };
 
-/** The project's brand kit as brand.ts has it, or null when it names none. Its files may be missing: readProjectBrand checks. */
-export function readProjectBrandData(projectDir: string): ProjectBrand | null {
+/** The project's brand kit, its files checked, or null when it names none. Throws listing every missing file. */
+export function readProjectBrand(projectDir: string): ProjectBrand | null {
   const name = readProjectBrandName(projectDir);
   if (name === null) return null;
   const dir = join(brandsDirFor(projectDir), name);
   const file = join(dir, 'brand.ts');
   if (!existsSync(file)) throw new Error(`brands: ${basename(resolve(projectDir))}'s brand.json names "${name}", but there's no brands/${name}/brand.ts (brands/ has ${listBrands(projectDir).join(', ') || 'none'})`);
-  return { name, dir, brand: (createRequire(file)(file) as { default: Brand }).default };
-}
-
-/** The project's brand kit, its files checked, or null when it names none. Throws listing every missing file. */
-export function readProjectBrand(projectDir: string): ProjectBrand | null {
-  const kit = readProjectBrandData(projectDir);
-  if (!kit) return null;
-  const { name, dir, brand } = kit;
+  const brand = (createRequire(file)(file) as { default: Brand }).default;
   const { fonts, logos } = brandFiles(brand);
   const missing = [
     ...fonts.filter((f) => !existsSync(join(dir, f))).map((f) => `  ${f}: ${[brand.fonts.display, brand.fonts.text].find((face) => face.files.some((x) => x.file === f))!.source}`),
     ...logos.filter((f) => !existsSync(join(dir, f))).map((f) => `  ${f}`),
   ];
   if (missing.length) throw new Error(`brands: ${name} is missing files in brands/${name}/ (fonts/ isn't in git, so each machine adds its own):\n${missing.join('\n')}`);
-  return kit;
+  return { name, dir, brand };
 }
 
 /** An SVG's own size, from its width and height, or its viewBox. */

@@ -24,8 +24,7 @@ import { BrandLogo, FitText } from '../../lib/studio/api.ts';
 
 Reach for the colour roles (`primary`, `secondary`, `accent`, `dark`, `light`) before `palette`. A design built on
 roles works for any kit. `brand.fonts.text.family` goes in a `fontFamily`. BrandLogo picks whichever logo stands off
-the ground more. A project with a kit gets its voice and palette added to every `studio gen image` prompt.
-`projects/2026-09-buy-box-stills` is the worked example.
+the ground more. `projects/2026-09-buy-box-stills` is the worked example.
 
 **Missing fonts.** If a kit's font or logo file is missing, the bundle stops and lists each file with the face's
 `source`, which says where to get it.
@@ -39,5 +38,5 @@ When it goes stale, read the repo again.
 Set `stretch` on a face only if the font has a width axis. FitText narrows only within that range, and a face without
 one just shrinks.
 
-Write the voice as two or three plain sentences: who the brand talks to, how it sounds, and what its images show. It
-isn't enforced.
+Write the voice as two or three plain sentences for whoever writes the brand's copy: who it talks to, how it sounds,
+and what its images show. It isn't enforced.
