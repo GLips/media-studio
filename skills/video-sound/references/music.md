@@ -35,7 +35,7 @@ cutting to it.
 
 ## Generating one
 
-`gen` needs `OPENROUTER_API_KEY` (`op run --env-file="$(studio home)/.env.op" -- studio music gen …`). The result is
+`gen` needs `OPENROUTER_API_KEY` (`"$(studio home)/bin/studio-secrets" studio music gen …`). The result is
 cached in `generated/` by prompt and model (a clip and a `--full` track of one prompt are different tracks), so the
 same prompt costs nothing and always gives the same track, whatever `--name` it's under.
 There's no seed either, so you can't nudge a result you almost like. Change the prompt and try again instead.

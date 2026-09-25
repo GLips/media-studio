@@ -113,14 +113,17 @@ Only paid calls need a secret (`studio voice`, `studio audition`, and generation
 `OPENROUTER_API_KEY`, read from the environment. A reference video (`studio gen video`) is also uploaded to our R2
 bucket for the provider to fetch through a link that expires (`lib/s3-upload.ts`), which needs `STUDIO_UPLOAD_S3_ENDPOINT`,
 `STUDIO_UPLOAD_S3_BUCKET`, `STUDIO_UPLOAD_S3_ACCESS_KEY_ID`, `STUDIO_UPLOAD_S3_SECRET_ACCESS_KEY` and, for a bucket
-outside R2, `STUDIO_UPLOAD_S3_REGION`. `.env.op` holds 1Password references, not keys, so the keys exist only inside
-the one process `op run` starts:
+outside R2, `STUDIO_UPLOAD_S3_REGION`. `.env.op` holds 1Password references, not keys, and `bin/studio-secrets`
+resolves them for the one command it runs:
 
 ```sh
-op run --account branchlabs.1password.com --env-file="$(studio home)/.env.op" -- studio voice <project>
+"$(studio home)/bin/studio-secrets" studio voice <project>
 ```
 
-A shell alias saves typing it. Needs the 1Password app's CLI integration (Settings → Developer).
+It reads a 1Password service account's token (read-only on the `video-studio` vault) from the macOS keychain, hands it
+to `op` alone and strips it before the command starts, so neither a shell nor the command's environment carries it.
+Code running as your user can still read the keychain item, so the account's read-only, one-vault scope is the real
+limit. `scratch/op-service-account-setup.sh` creates the account and the keychain item.
 
 ## Hosts
 

@@ -56,7 +56,7 @@ sound can't be retimed.
 
 ```sh
 studio gen video <project> <scene> --dry     # renders the blockout and prints the full prompt, free
-op run --account branchlabs.1password.com --env-file="$(studio home)/.env.op" -- studio gen video <project> <scene>
+"$(studio home)/bin/studio-secrets" studio gen video <project> <scene>
 ```
 
 A render costs **$0.28 per second** at 720p ($1.39 for a 5 s shot): Seedance bills the blockout's seconds as well as
