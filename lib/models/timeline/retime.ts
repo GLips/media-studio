@@ -1,15 +1,19 @@
 // retime.ts: the one retime runner every timed project's timeline.test.ts calls (check (e) holds the registration).
 //
-// A retime is lengthening one scene: a beat scene by a beat, a fixed or voiced one by a second. On a synthetic grid
-// (re-fitted to the edited timeline, as `studio music fit --bars` would), everything after the scene moves by exactly
-// what was added and nothing before it moves: scenes, cues, replays, the music's placement and the project's own
-// placements (its sounds, kicks). Every move keeps its length and no scenes overlap. On the unchanged recording, the
-// landmarks refuse a longer beat scene and accept a longer scene outside the music. A move pinned between two scenes'
-// moments is what this catches: code alone can't tell it from a deliberate stretch, but a retime changes its length.
+// A retime is lengthening one scene: a beat scene by a beat, a fixed one by a second, and a voiced one by re-recording
+// its first line a second slower to its first word. On a synthetic grid (re-fitted to the edited timeline, as `studio
+// music fit --bars` would), everything after the scene moves by exactly what was added and nothing before it moves:
+// scenes, cues, replays, the music's and the voice's placements and the project's own (its sounds, kicks). Inside a
+// re-recorded scene, every word moves by the second and the first line's start holds, so a speech cue moves with its
+// word and a cue in seconds stays put. Every move keeps its length and no scenes overlap. On the unchanged recording,
+// the landmarks refuse a longer beat scene and accept a longer scene outside the music. A move pinned between two
+// scenes' moments, or between a word and an offset, is what this catches: code alone can't tell it from a deliberate
+// stretch, but a retime changes its length.
 
 import { FPS } from './frame-rate.ts';
 import {
-  defineTimeline, recordedGrid, tempoGrid, type FittedTrack, type SceneMoment, type SceneSpan, type Timeline, type TimelineSpec,
+  defineTimeline, recordedGrid, tempoGrid, type FittedTrack, type SceneMoment, type SceneSpan, type SpeechCue, type Timeline,
+  type TimelineSpec, type TimelineVoice,
 } from './timeline.ts';
 
 /** A project's own event on the video's frame, owned by one scene: a sound's frame, a kick. */
@@ -30,20 +34,28 @@ export function assertTimelineRetimes(
   // and a scene lengthened by a beat moves what follows by exactly that.
   const framesPerBeat = 4 * Math.round((FPS * timeline.spb) / 4);
   const firstMusicScene = keys.findIndex((key) => spec.scenes[key].driver === 'beat');
-  const before = synthetic(spec, spec.scenes, framesPerBeat);
+  const voice: TimelineVoice = spec.voice ?? {};
+  const before = synthetic(spec, spec.scenes, voice, framesPerBeat);
   const placedBefore = placements && new Map(placements(before).map((p) => [`${p.scene}/${p.id}`, p.frame]));
 
   for (let k = 0; k < keys.length; k++) {
     const key = keys[k];
     const span = spec.scenes[key];
-    const added = span.driver === 'beat' ? framesPerBeat : FPS;
-    const edited = { ...spec.scenes, [key]: span.driver === 'beat' ? { ...span, beats: span.beats + 1 } : { ...span, seconds: span.seconds + 1 } };
-    const fail = (what: string) => failures.push(`${key} ${span.driver === 'beat' ? 'a beat' : 'a second'} longer: ${what}`);
-    const after = synthetic(spec, edited, framesPerBeat);
+    const edited = span.driver === 'beat' ? { ...spec.scenes, [key]: { ...span, beats: span.beats + 1 } }
+      : span.driver === 'fixed' ? { ...spec.scenes, [key]: { ...span, seconds: span.seconds + 1 } } : spec.scenes;
+    const reread = span.driver === 'voice' ? span.lines[0] : undefined;
+    const editedVoice = reread === undefined ? voice : { ...voice, [reread]: slowerToFirstWord(voice[reread]) };
+    const fail = (what: string) => failures.push(`${key} ${span.driver === 'beat' ? 'a beat longer' : span.driver === 'fixed' ? 'a second longer' : `with ${reread} re-read a second slower`}: ${what}`);
+    const after = synthetic(spec, edited, editedVoice, framesPerBeat);
+    // A re-read lengthens its scene by the second, unless its `min` holds it.
+    const added = span.driver === 'beat' ? framesPerBeat : span.driver === 'fixed' ? FPS : after.scenes[k].end - before.scenes[k].end;
     const shiftOf = (i: number, anchoredAtEnd = false) => (i > k || (i === k && anchoredAtEnd) ? added : 0);
+    // Inside the re-read scene, a word moves by the second, and so does every line after the re-read one.
+    const spokenShift = (i: number, line: string, onWord: boolean) => (i === k && reread !== undefined && (onWord || line !== reread) ? FPS : shiftOf(i));
     const cueShift = (qualified: string) => {
-      const dot = qualified.lastIndexOf('.'), scene = qualified.slice(0, dot);
-      return shiftOf(keys.indexOf(scene), anchoredAtEnd(spec.scenes[scene].cues ?? {}, qualified.slice(dot + 1)));
+      const dot = qualified.lastIndexOf('.'), scene = qualified.slice(0, dot), i = keys.indexOf(scene);
+      const cues = spec.scenes[scene].cues ?? {}, name = qualified.slice(dot + 1), spoken = speechAnchor(cues, name);
+      return spoken ? spokenShift(i, spoken.line, spoken.phrase !== undefined) : shiftOf(i, anchoredAtEnd(cues, name));
     };
 
     before.scenes.forEach((scene, i) => {
@@ -71,7 +83,14 @@ export function assertTimelineRetimes(
         fail(`replay ${replay.target}.${replay.name} slips: ${replay.fromCue} on ${replay.toCue} moves ${moved.from - replay.from} and ${moved.to - replay.to} frames`);
       }
     });
-    const musicShift = (after.audio[0]?.atSeconds ?? 0) - (before.audio[0]?.atSeconds ?? 0);
+    before.audio.forEach((placed, a) => {
+      const moved = after.audio[a];
+      if (placed.kind !== 'voice' || moved.kind !== 'voice') return;
+      const expected = spokenShift(keys.indexOf(placed.scene), placed.line, false);
+      if (moved.frame - placed.frame !== expected) fail(`line ${placed.line} moves ${moved.frame - placed.frame} frames, not ${expected}`);
+    });
+    const musicAt = (timeline: Timeline) => timeline.audio.find((placed) => placed.kind === 'music')?.atSeconds ?? 0;
+    const musicShift = musicAt(after) - musicAt(before);
     const musicExpected = firstMusicScene >= 0 && k < firstMusicScene ? added / FPS : 0;
     if (Math.abs(musicShift - musicExpected) > 1e-9) fail(`the music moves ${musicShift.toFixed(3)} s, not ${musicExpected.toFixed(3)} s`);
     if (after.end < after.scenes.at(-1)!.end) fail(`the video ends on frame ${after.end}, before its last scene does`);
@@ -86,10 +105,10 @@ export function assertTimelineRetimes(
       }
     }
 
-    if (spec.grid.kind === 'recorded') {
+    if (spec.grid?.kind === 'recorded') {
       let refusal: string | undefined;
       try {
-        defineTimeline({ ...spec, scenes: edited });
+        defineTimeline({ ...spec, scenes: edited, voice: editedVoice });
       } catch (error) {
         refusal = error instanceof Error ? error.message : String(error);
       }
@@ -104,12 +123,26 @@ export function assertTimelineRetimes(
   if (failures.length) throw new Error(`the timeline doesn't retime:\n${failures.join('\n')}`);
 }
 
+/** The speech cue a cue sits on, directly or `after` a chain of cues, if any: it moves with its word. */
+function speechAnchor(cues: Readonly<Record<string, SceneMoment>>, name: string): SpeechCue | undefined {
+  const moment = cues[name];
+  if (typeof moment !== 'object') return undefined;
+  if ('line' in moment) return moment;
+  return 'after' in moment ? speechAnchor(cues, moment.after) : undefined;
+}
+
+/** A line re-read with a second more before its first word: its start holds, and every word moves by the second. */
+function slowerToFirstWord(take: TimelineVoice[string]): TimelineVoice[string] {
+  return { ...take, duration: take.duration + 1, words: take.words.map((word) => ({ ...word, start: word.start + 1, end: word.end + 1 })) };
+}
+
 /** Whether a cue is its scene's end, or `after` a chain of cues that is: it rides with the end when its scene grows. */
 function anchoredAtEnd(cues: Readonly<Record<string, SceneMoment>>, name: string): boolean {
   const moment = cues[name];
   if (moment === 'end') return true;
   if (typeof moment !== 'object') return false;
-  return 'after' in moment ? anchoredAtEnd(cues, moment.after) : moment.at === 'end';
+  if ('after' in moment) return anchoredAtEnd(cues, moment.after);
+  return 'at' in moment && moment.at === 'end';
 }
 
 /**
@@ -117,10 +150,11 @@ function anchoredAtEnd(cues: Readonly<Record<string, SceneMoment>>, name: string
  * first downbeat where the real one is, a downbeat every four beats, each landmark's downbeat on its beat, and the
  * ring-out after the final hit as long as the recording's.
  */
-function synthetic(spec: TimelineSpec, scenes: Readonly<Record<string, SceneSpan>>, framesPerBeat: number): Timeline {
+function synthetic(spec: TimelineSpec, scenes: Readonly<Record<string, SceneSpan>>, voice: TimelineVoice, framesPerBeat: number): Timeline {
+  if (!spec.grid) return defineTimeline({ ...spec, scenes, voice });
   const spb = framesPerBeat / FPS;
   const first = Math.round(spec.grid.beats.at(0) * FPS) / FPS;
-  const onTempo = defineTimeline({ ...spec, scenes, grid: tempoGrid(60 / spb, { firstBeat: first }) });
+  const onTempo = defineTimeline({ ...spec, scenes, voice, grid: tempoGrid(60 / spb, { firstBeat: first }) });
   if (spec.grid.kind === 'tempo') return onTempo;
   const { track } = spec.grid;
   const final = Math.max(...onTempo.landmarks.filter((mark) => mark.downbeat < 0).map((mark) => mark.beat));
@@ -130,5 +164,5 @@ function synthetic(spec: TimelineSpec, scenes: Readonly<Record<string, SceneSpan
   const duration = first + final * spb + tail;
   const beats = Array.from({ length: Math.ceil((duration - first) / spb) + 1 }, (_, i) => first + i * spb);
   const fitted: FittedTrack = { bpm: 60 / spb, beats, duration, fit: { downbeats: downbeatBeats.map((beat) => first + beat * spb) } };
-  return defineTimeline({ ...spec, scenes, grid: recordedGrid(fitted, { steady: spec.grid.steady }) });
+  return defineTimeline({ ...spec, scenes, voice, grid: recordedGrid(fitted, { steady: spec.grid.steady }) });
 }

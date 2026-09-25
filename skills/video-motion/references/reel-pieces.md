@@ -96,8 +96,7 @@ Look here first: a second copy of one of these drifts from the first.
    the sizes, the colour.
 3. For a tagged piece, `studio look scratch/reel-<piece> --graph=a:b` shows its tracks: one track per tagged part, no
    jitter, values that run where they should.
-4. `npx tsc --noEmit -p .` shows no errors in your files. (`projects/sale-only-view` has known errors that aren't
-   yours.)
+4. `npx tsc --noEmit -p .` shows no errors.
 5. A test only if the piece has pure logic whose failure would be silent (the odometer's digit positions, a grid's
    filtering order), beside it as `<piece>.test.ts`, through the exported functions.
 

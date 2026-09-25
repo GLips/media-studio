@@ -51,24 +51,43 @@ test('the retime runner passes a move anchored at one end and fails one pinned b
 
 // A voiced intro, the music, a fixed end card: the speech sets the intro's length and the music starts after it, so a
 // longer read moves the section whole, every beat scene still on its beat.
-const voice = { hello: { duration: 1.1 }, name: { duration: 0.8 } };
+const words = (...timed: [string, number, number][]) => timed.map(([text, start, end]) => ({ text, start, end }));
+const voice = {
+  hello: { duration: 1.1, pauseBefore: null, words: words(['Hello', 0.1, 0.5], ['there', 0.55, 1]) },
+  name: { duration: 0.8, pauseBefore: 0.35, words: words(["I'm", 0.05, 0.3], ['Ada', 0.35, 0.75]) },
+  tagline: { duration: 1.2, pauseBefore: 0.4, words: words(['One', 0, 0.3], ['box', 0.35, 0.9]) },
+};
 const mixed = {
-  intro: voiceSpan(voice, ['hello', 'name'], { cues: { named: 1.95 } }),
+  intro: voiceSpan(['hello', 'name'], { cues: { named: { line: 'name', phrase: 'ada' }, wave: 0.2 } }),
   a: beatSpan(4, { cues: { hit: 2 } }),
-  b: beatSpan(4, { cues: { stop: 'end' } }),
+  b: beatSpan(4, { lines: { tagline: 1 }, cues: { box: { line: 'tagline', phrase: 'box' }, stop: 'end' } }),
   card: fixedSpan(2),
 };
+const mixedLandmarks = [{ name: 'the final hit', cue: 'b.stop', downbeat: -1 }] as const;
 
 test('a voiced intro sets its own length and carries the music with it; a scene inside the music is refused', () => {
-  const timeline = defineTimeline({ ...base, scenes: mixed, landmarks: [{ name: 'the final hit', cue: 'b.stop', downbeat: -1 }] });
-  // 0.5 lead, 1.1 + 0.35 + 0.8 of speech, 0.6 tail: 3.35 s, so the music plays from there.
-  assert.deepEqual(timeline.audio.map((placed) => placed.atSeconds), [3.35]);
+  const timeline = defineTimeline({ ...base, voice, scenes: mixed, landmarks: mixedLandmarks });
+  // 0.5 lead, 1.1 + the take's 0.35 pause + 0.8 of speech, 0.6 tail: 3.35 s, so the music plays from there.
+  assert.deepEqual(timeline.audio.map((placed) => (placed.kind === 'music' ? placed.atSeconds : placed.frame)), [3.35, 15, 59, 191]);
   assert.deepEqual(timeline.scenes.map((scene) => [scene.from, scene.to]), [[0, 101], [101, 174], [174, 234], [234, 294]]);
+  // "Ada", 0.35 s into the line at 1.95 s; "box", 0.35 s into the tagline on b's beat 1 (the section's 5th), at 6.35 s.
+  assert.deepEqual([timeline.cue('intro.named'), timeline.cue('b.box')], [69, 201]);
   assert.equal(timeline.cue('a.hit'), timeline.scene('a').beat(2));
   assertTimelineRetimes(timeline);
   const inside = { a: mixed.a, card: mixed.card, b: mixed.b };
-  assert.throws(() => defineTimeline({ ...base, scenes: inside, landmarks: [{ name: 'the final hit', cue: 'b.stop', downbeat: -1 }] }),
-    /scene card \(fixedSpan\) sits inside the musical section/);
+  assert.throws(() => defineTimeline({ ...base, voice, scenes: inside, landmarks: mixedLandmarks }), /scene card \(fixedSpan\) sits inside the musical section/);
+});
+
+test('speech cues move with their words when a line is re-read; a move from an offset to a word, or a line past its beats, is refused', () => {
+  const pinned = { ...mixed, intro: voiceSpan(['hello', 'name'], { cues: { wave: 0.2 }, moves: { reach: { from: { after: 'wave' }, to: { line: 'name', phrase: 'ada' } } } }) };
+  assert.throws(() => assertTimelineRetimes(defineTimeline({ ...base, voice, scenes: pinned, landmarks: mixedLandmarks })),
+    /intro with hello re-read a second slower: move intro\.reach runs 93 frames, not 63/);
+  const late = { ...mixed, b: beatSpan(4, { lines: { tagline: 2.5 }, cues: { stop: 'end' } }) };
+  assert.throws(() => defineTimeline({ ...base, voice, scenes: late, landmarks: mixedLandmarks }), /line tagline \(1\.20 s from beat 2\.5\) runs 0\.45 s past scene b's last beat/);
+  const misheard = { ...mixed, intro: voiceSpan(['hello', 'name'], { cues: { named: { line: 'name', phrase: 'Eve' } } }) };
+  assert.throws(() => defineTimeline({ ...base, voice, scenes: misheard, landmarks: mixedLandmarks }), /speech cue intro\.named on line name: "Eve" isn't in "I'm Ada"/);
+  // @ts-expect-error: a speech cue names one of its own scene's lines.
+  voiceSpan(['hello'], { cues: { named: { line: 'name' } } });
 });
 
 test('bindTimeline hands a replaying scene the scenes it replays, mapped by the timeline\'s cues', () => {

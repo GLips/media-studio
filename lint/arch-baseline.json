@@ -50,9 +50,6 @@
     "projects/2026-09-previs-test/video.tsx": {
       "defineScene from ../../lib/studio/api.ts": 1
     },
-    "projects/2026-09-sale-only-view/video.tsx": {
-      "defineScene from ../../lib/studio/api.ts": 1
-    },
     "projects/2026-09-simple-buy-box-story/video.tsx": {
       "defineScene from ../../lib/studio/api.ts": 1
     }

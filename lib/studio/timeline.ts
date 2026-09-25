@@ -122,6 +122,11 @@ export type SceneDef = SceneTiming & {
   // property would reject as a wider parameter.
   render(s: SceneClock): ReactNode;
   expect?(s: SceneTimes): readonly SceneExpectation[];
+  /**
+   * A scene bound to a resolved timeline (sceneForTimelineClock): its length, the crossfade into it and each line's
+   * start, in seconds from its start, as the timeline resolved them. Its lead, gap, tail, min and cut aren't read.
+   */
+  resolved?: { dur: number; xfade: number; lines: Readonly<Record<string, number>> };
 };
 
 /**
@@ -222,7 +227,11 @@ export function layoutVideo(video: VideoDef): Timeline {
       sceneOfLine.set(id, scene.id);
       // The take's pause only belongs between lines that followed each other in the read.
       const readAfterPrevious = j > 0 && scriptOrder[scriptOrder.indexOf(id) - 1] === scene.lines[j - 1];
-      if (j > 0) cursor += gaps[id] ?? (readAfterPrevious ? voiced.pauseBefore : null) ?? 0.35;
+      if (scene.resolved) {
+        const at = scene.resolved.lines[id];
+        if (at === undefined) throw new Error(`scene ${scene.id}: its timeline places no line "${id}"`);
+        cursor = at;
+      } else if (j > 0) cursor += gaps[id] ?? (readAfterPrevious ? voiced.pauseBefore : null) ?? 0.35;
       spans[id] = { start: cursor, end: cursor + voiced.duration, words: voiced.words };
       // Within a scene a caption holds through the pause until the next line starts, so a line split for pacing
       // ("…filter, / search, / and…") doesn't flash a one-word caption on and off.
@@ -231,8 +240,8 @@ export function layoutVideo(video: VideoDef): Timeline {
       cues.push({ id, src: voiced.src, start: start + cursor, end, captionEnd: end, text: voiced.text, lufs: voiced.lufs });
       cursor += voiced.duration;
     });
-    const dur = Math.max(cursor + tail, min);
-    const laid = { ...scene, start, dur, spans, xfade: scene.cut || i === 0 ? 0 : xfade };
+    const dur = scene.resolved ? scene.resolved.dur : Math.max(cursor + tail, min);
+    const laid = { ...scene, start, dur, spans, xfade: i === 0 ? 0 : scene.resolved ? scene.resolved.xfade : scene.cut ? 0 : xfade };
     start += dur;
     return laid;
   });

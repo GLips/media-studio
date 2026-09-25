@@ -117,7 +117,12 @@ they don't cover is built directly; a scene is any React that's a pure function 
 ## Anchor to speech, and lead the word
 
 - Anchor every beat to the voice: `s.line('ladder').word('no volume discount').start`, never raw seconds. Re-voicing
-  re-times everything, and the words come from whisper, so they land within a couple of frames. Camera and cursor
+  re-times everything, and the words come from whisper, so they land within a couple of frames. A project with a
+  `timeline.ts` states it there instead: each scene is a `voiceSpan(['fix-a', 'fix-b'], { lead, gap, tail, min })`
+  whose words are its cues (`note: { line: 'fix-b' }`, `onlyOnSale: { line: 'fix-a', phrase: 'showing only' }`, `nth`
+  for a later one), and `sceneForTimelineClock` binds each in `video.tsx`, where `sceneCueSeconds(clock)` reads them
+  in `s.t`'s seconds. Its retime runner re-reads each scene's first line a second slower and fails a cue or move that
+  doesn't follow its word. `projects/2026-09-sale-only-view` is the worked example. Camera and cursor
   keys must rise in time: word-anchored keys can swap after a re-voice, and the scene throws rather than snapping.
 - **The picture leads the word.** A ring must be fully drawn as its word starts, or its `expect` fails:
   `k={seg(s.t, w.start - 0.7, w.start - 0.1, motionCurves.linear)}`. A camera move lands as the word starts, not after.
