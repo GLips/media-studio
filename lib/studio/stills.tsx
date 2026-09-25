@@ -2,7 +2,8 @@
 // component that reads the frame's size from useStillFrame and lays itself out from it, so one design renders at every
 // preset. Stills read the frame from useVideoConfig, never W/H (frame.ts), which are the video's.
 //
-// Root.tsx registers one composition per design × preset × variant; `studio still` renders them (lib/render-stills.ts).
+// Root.tsx registers one composition per design × preset × variant; `studio still` renders them (lib/render-stills.ts),
+// and `studio still --sheet` lays a design's variants out by their axes (lib/still-sheet.ts).
 
 import { useLayoutEffect, useRef, useState, type ComponentType, type CSSProperties } from 'react';
 import { Artifact, Img, useDelayRender, useVideoConfig } from 'remotion';
@@ -10,27 +11,63 @@ import type { Rect } from './camera.ts';
 import { DISPLAY_FONT, useStudioFontsReady } from './fonts.ts';
 import { stillFitArtifactName, type StillFitReport, type StillPreset } from './still-presets.ts';
 
-/** One design: its component, the presets it renders at, and its named variants (copy, images), each the component's props. */
-export type StillDesign<P> = {
+/** What a design's variants vary: each axis (headline, image) and its values, in the order a sheet lays them out. */
+export type StillAxes = Readonly<Record<string, readonly string[]>>;
+export type StillAxisValues<A extends StillAxes> = { [K in keyof A]: A[K][number] };
+
+/**
+ * One design: its component, the presets it renders at, and its variant axes. Every combination of the axes' values is
+ * a variant, and `props` gives the component's props for one.
+ */
+export type StillDesign<P, A extends StillAxes> = {
   component: ComponentType<P>;
   presets: readonly StillPreset[];
-  variants: Readonly<Record<string, P>>;
+  axes: A;
+  props: (values: StillAxisValues<A>) => P;
 };
-// `any`: a def holds designs of different props, and each was checked against its own component by defineStills.
-export type StillsDef = { designs: Readonly<Record<string, StillDesign<any>>> };
+
+/** A variant, resolved: where it sits on each axis and the props it renders with. */
+export type StillVariant = { axes: Readonly<Record<string, string>>; props: object };
+/** A design as Root.tsx registers it, its variants keyed by name (their axis values joined by `-`, in axis order). */
+export type ResolvedStillDesign = { component: ComponentType<any>; presets: readonly StillPreset[]; axes: StillAxes; variants: Readonly<Record<string, StillVariant>> };
+export type StillsDef = { designs: Readonly<Record<string, ResolvedStillDesign>> };
 
 const STILL_NAME = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
-/** A project's stills.tsx default-exports this. Names become file and composition names, so they're kebab-case. */
-export function defineStills<D extends Record<string, unknown>>(designs: { [K in keyof D]: StillDesign<D[K]> }): StillsDef {
-  for (const [name, design] of Object.entries(designs as StillsDef['designs'])) {
+/**
+ * Types one design for defineStills: `props` gets each axis's values as literals. The design's name is its key there.
+ *   stillDesign({ component: Card, presets: ['og'], axes: { headline: ['short', 'long'] }, props: ({ headline }) => …})
+ */
+export function stillDesign<P, const A extends StillAxes>(design: StillDesign<P, A>): StillDesign<P, A> {
+  return design;
+}
+
+/**
+ * A project's stills.tsx default-exports this, each design made by stillDesign. Names become file and composition
+ * names, so they're kebab-case. `any`: each design's `props` takes its own axes' values, which no one type admits.
+ */
+export function defineStills(designs: Readonly<Record<string, StillDesign<any, any>>>): StillsDef {
+  const resolved: Record<string, ResolvedStillDesign> = {};
+  for (const [name, { component, presets, axes, props }] of Object.entries(designs) as [string, StillDesign<object, StillAxes>][]) {
     if (!STILL_NAME.test(name)) throw new Error(`defineStills: design "${name}" isn't kebab-case`);
-    if (!design.presets.length) throw new Error(`defineStills: design "${name}" has no presets`);
-    const variants = Object.keys(design.variants);
-    if (!variants.length) throw new Error(`defineStills: design "${name}" has no variants`);
-    for (const v of variants) if (!STILL_NAME.test(v)) throw new Error(`defineStills: ${name}'s variant "${v}" isn't kebab-case`);
+    if (!presets.length) throw new Error(`defineStills: design "${name}" has no presets`);
+    const axisNames = Object.keys(axes);
+    if (!axisNames.length) throw new Error(`defineStills: design "${name}" has no axes (one with a single value makes one variant)`);
+    for (const axis of axisNames) {
+      if (!axes[axis].length) throw new Error(`defineStills: ${name}'s axis "${axis}" has no values`);
+      for (const v of axes[axis]) if (!STILL_NAME.test(v)) throw new Error(`defineStills: ${name}'s ${axis} "${v}" isn't kebab-case`);
+    }
+    const combinations = axisNames.reduce<StillAxisValues<StillAxes>[]>((acc, axis) => acc.flatMap((c) => axes[axis].map((v) => ({ ...c, [axis]: v }))), [{}]);
+    const variants: Record<string, StillVariant> = {};
+    for (const values of combinations) {
+      const variant = axisNames.map((a) => values[a]).join('-');
+      // Joined values can collide: `a-b` × `c` and `a` × `b-c`.
+      if (variants[variant]) throw new Error(`defineStills: ${name} has two variants named "${variant}"; rename a value`);
+      variants[variant] = { axes: values, props: props(values) };
+    }
+    resolved[name] = { component, presets, axes, variants };
   }
-  return { designs };
+  return { designs: resolved };
 }
 
 /**

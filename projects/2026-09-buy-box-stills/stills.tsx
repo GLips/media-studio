@@ -1,9 +1,10 @@
 // The new buy box's share images: an OG image, a YouTube thumbnail and the IG sizes, from one design. The captured
 // Solice page (the machine beside the buy box's swatches) fills a panel; the copy sits beside it on a wide frame and
-// under it on a tall one. Three copy lengths prove the headline fits at every size.
-//   studio still buy-box-stills [--preset=og,youtube] [--variant=short]
+// under it on a tall one. Three copy lengths prove the headline fits at every size; two crops pick between the machine
+// beside the card and the card alone.
+//   studio still buy-box-stills [--preset=og,youtube] [--variant=short-whole] [--sheet]
 
-import { CoverImage, DISPLAY_FONT, FitText, MONO_FONT, defineStills, useStillFrame, union } from '../../lib/studio/api.ts';
+import { CoverImage, DISPLAY_FONT, FitText, MONO_FONT, defineStills, stillDesign, useStillFrame, union } from '../../lib/studio/api.ts';
 import { captures as C } from './captures/index.ts';
 
 const GROUND = '#0d0d0f';
@@ -12,11 +13,16 @@ const PAGE = C.solice;
 // The machine's body and the card's title, price and swatches, with a margin: what every crop keeps whole.
 const PAD = 24;
 const CORE = union({ x: PAGE.rects.gallery.x + 190, y: PAGE.rects.gallery.y + 40, w: 1, h: 1 }, PAGE.rects.title, PAGE.rects.card);
-const SUBJECT = { x: CORE.x - PAD, y: CORE.y - PAD, w: CORE.w + 2 * PAD, h: CORE.h + 2 * PAD };
+const padded = (r: { x: number; y: number; w: number; h: number }) => ({ x: r.x - PAD, y: r.y - PAD, w: r.w + 2 * PAD, h: r.h + 2 * PAD });
+const CROPS = {
+  whole: padded(CORE),
+  // The title, price and swatches, larger: what changes as you tap.
+  card: padded(union(PAGE.rects.title, PAGE.rects.card)),
+};
 
-type BuyBoxCopy = { eyebrow: string; headline: string; cta: string };
+type BuyBoxCopy = { eyebrow: string; headline: string; cta: string; crop: keyof typeof CROPS };
 
-function BuyBoxCard({ eyebrow, headline, cta }: BuyBoxCopy) {
+function BuyBoxCard({ eyebrow, headline, cta, crop }: BuyBoxCopy) {
   const { w, h, u, wide } = useStillFrame();
   const m = 6 * u;
   // Wide: the page fills the right 56%. Tall: it fills the top, leaving the copy at least 45% of the width in height.
@@ -26,7 +32,7 @@ function BuyBoxCard({ eyebrow, headline, cta }: BuyBoxCopy) {
   const headlineBox = { x: column.x, y: column.y + label * 2.6, w: column.w, h: column.h - label * 2.6 - label * 3 };
   return (
     <div style={{ position: 'absolute', inset: 0, background: GROUND }}>
-      <CoverImage image={PAGE} box={panel} focus={SUBJECT} />
+      <CoverImage image={PAGE} box={panel} focus={CROPS[crop]} />
       <div style={{ position: 'absolute', background: RED, ...(wide ? { left: panel.x, top: 0, width: 0.8 * u, height: h } : { left: 0, top: panel.h, width: w, height: 0.8 * u }) }} />
       <div style={{ position: 'absolute', left: column.x, top: column.y, fontFamily: MONO_FONT, fontSize: label, fontWeight: 600, letterSpacing: '0.12em', color: RED }}>{eyebrow}</div>
       <FitText
@@ -39,16 +45,17 @@ function BuyBoxCard({ eyebrow, headline, cta }: BuyBoxCopy) {
   );
 }
 
-const PAINFUL_PLEASURES = { eyebrow: 'PAINFUL PLEASURES · NEW BUY BOX', cta: 'painfulpleasures.com' };
+const HEADLINES = {
+  short: 'Instant swatches.',
+  long: 'Tap a colour and the whole page changes with it',
+  huge: 'Every colour, battery and bundle on one card, priced as you tap, with nothing reloading under your thumb while you choose',
+};
 
 export default defineStills({
-  'buy-box': {
+  'buy-box': stillDesign({
     component: BuyBoxCard,
     presets: ['og', 'youtube', 'square', 'portrait', 'story'],
-    variants: {
-      short: { ...PAINFUL_PLEASURES, headline: 'Instant swatches.' },
-      long: { ...PAINFUL_PLEASURES, headline: 'Tap a colour and the whole page changes with it' },
-      huge: { ...PAINFUL_PLEASURES, headline: 'Every colour, battery and bundle on one card, priced as you tap, with nothing reloading under your thumb while you choose' },
-    },
-  },
+    axes: { headline: ['short', 'long', 'huge'], crop: ['whole', 'card'] },
+    props: ({ headline, crop }) => ({ eyebrow: 'PAINFUL PLEASURES · NEW BUY BOX', cta: 'painfulpleasures.com', headline: HEADLINES[headline], crop }),
+  }),
 });

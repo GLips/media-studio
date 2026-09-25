@@ -62,12 +62,12 @@ export function Root() {
 function StillCompositions({ stills }: { stills: StillsDef }) {
   const ProjectStill = ({ design, variant, ground }: StillRenderProps) => {
     const { component: Design, variants } = stills.designs[design];
-    return <StillProbe ground={ground}><Design {...variants[variant]} /></StillProbe>;
+    return <StillProbe ground={ground}><Design {...variants[variant].props} /></StillProbe>;
   };
   return Object.entries(stills.designs).map(([design, { presets, variants }]) => (
     <Folder key={design} name={`stills-${design}`}>
-      {presets.flatMap((preset) => Object.keys(variants).map((variant) => {
-        const props: StillProps = { design, preset, variant };
+      {presets.flatMap((preset) => Object.entries(variants).map(([variant, { axes }]) => {
+        const props: StillProps = { design, preset, variant, axes };
         return <Composition key={stillName(props)} id={`still-${stillName(props)}`} component={ProjectStill} {...STILL_PRESETS[preset]} fps={FPS} durationInFrames={1} defaultProps={props} />;
       }))}
     </Folder>

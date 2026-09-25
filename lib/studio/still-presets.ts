@@ -31,8 +31,24 @@ export const STILL_UI_ZONES: Readonly<Record<StillPreset, readonly StillUiZone[]
   ],
 };
 
-/** Which still a composition is: what Root.tsx passes and `studio still` filters on. */
-export type StillProps = { design: string; preset: StillPreset; variant: string };
+/**
+ * The sizes each preset is seen at in a feed, which `studio still --sheet` shows every variant at, 1:1. YouTube's
+ * sidebar and search thumbnail, and its home grid's; a social image about 300 px wide, as a link card or a post in a
+ * phone's feed shows it.
+ */
+export const STILL_FEED_SIZES: Readonly<Record<StillPreset, readonly { name: string; w: number; h: number }[]>> = {
+  og: [{ name: 'link card', w: 300, h: 158 }],
+  youtube: [{ name: 'sidebar', w: 168, h: 94 }, { name: 'home', w: 320, h: 180 }],
+  square: [{ name: 'feed', w: 300, h: 300 }],
+  portrait: [{ name: 'feed', w: 300, h: 375 }],
+  story: [{ name: 'feed', w: 300, h: 534 }],
+};
+
+/**
+ * Which still a composition is: what Root.tsx passes and `studio still` filters on. `axes` is where the variant sits on
+ * each of its design's axes, in axis order; `variant` is those values joined by `-`.
+ */
+export type StillProps = { design: string; preset: StillPreset; variant: string; axes: Readonly<Record<string, string>> };
 /**
  * How `studio still` renders one. `ground` draws every text transparent, leaving the ground under it for the contrast
  * check to read.

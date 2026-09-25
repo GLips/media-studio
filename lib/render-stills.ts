@@ -14,8 +14,11 @@ import { isStillFitArtifact, STILL_MEASURE_ARTIFACT, STILL_UI_ZONES, stillName, 
 /** Which stills to render: each list keeps the stills whose design, preset or variant is in it; absent keeps all. */
 export type StillSelection = { designs?: readonly string[]; presets?: readonly string[]; variants?: readonly string[] };
 
-/** One still, checked. `file` is where it was written: absent when it failed, or when only checking. */
-export type RenderedStill = { file?: string; still: StillProps; fits: StillFitReport[]; problems: StillProblem[] };
+/**
+ * One still, checked. `file` is where it was written: absent when it failed, or when only checking. `drawn` is the
+ * still as drawn, pass or fail, when the caller asked to keep it (`drawnDir`).
+ */
+export type RenderedStill = { file?: string; drawn?: string; still: StillProps; fits: StillFitReport[]; problems: StillProblem[] };
 
 function decodeRgb(file: string, w: number, h: number): StillPixels {
   const rgb = execFileSync('ffmpeg', ['-loglevel', 'error', '-i', file, '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], { maxBuffer: w * h * 3 + 1024 });
@@ -25,9 +28,9 @@ function decodeRgb(file: string, w: number, h: number): StillPixels {
 
 /**
  * Renders and checks the chosen stills. `check` writes none, only reporting; otherwise each still that passes is
- * written in `format`.
+ * written in `format`. `drawnDir` keeps every still as drawn there, failures too, for a sheet (lib/still-sheet.ts).
  */
-export async function renderProjectStills(project: string, selection: StillSelection, { format, check }: { format: 'png' | 'jpeg'; check: boolean }): Promise<RenderedStill[]> {
+export async function renderProjectStills(project: string, selection: StillSelection, { format, check, drawnDir }: { format: 'png' | 'jpeg'; check: boolean; drawnDir?: string }): Promise<RenderedStill[]> {
   const serveUrl = await bundleStudioProject(project);
   const browser = await openBrowser('chrome', { chromiumOptions: RENDER_CHROMIUM });
   const tmp = mkdtempSync(join(tmpdir(), 'stills-'));
@@ -58,7 +61,7 @@ export async function renderProjectStills(project: string, selection: StillSelec
     for (const composition of chosen) {
       const still = composition.defaultProps as StillProps;
       const name = stillName(still), ext = format === 'jpeg' ? 'jpg' : 'png';
-      const drawn = join(tmp, `${name}.${ext}`), groundFile = join(tmp, `${name}-ground.png`);
+      const drawn = join(drawnDir ?? tmp, `${name}.${ext}`), groundFile = join(tmp, `${name}-ground.png`);
       const sink = await draw(composition, still, drawn, format);
       await draw(composition, { ...still, ground: true }, groundFile, 'png');
       const fits = sink.names().filter(isStillFitArtifact).map((n) => sink.json<StillFitReport>(n));
@@ -67,14 +70,15 @@ export async function renderProjectStills(project: string, selection: StillSelec
         ground: decodeRgb(groundFile, composition.width, composition.height), zones: STILL_UI_ZONES[still.preset],
       });
       const file = join(dir, `${name}.${ext}`);
+      const kept = { ...(drawnDir && { drawn }), still, fits, problems };
       if (check) {
-        checked.push({ still, fits, problems });
+        checked.push(kept);
       } else if (problems.length) {
         rmSync(file, { force: true });
-        checked.push({ still, fits, problems });
+        checked.push(kept);
       } else {
         copyFileSync(drawn, file);
-        checked.push({ file, still, fits, problems });
+        checked.push({ file, ...kept });
       }
     }
     return checked;

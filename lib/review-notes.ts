@@ -2,8 +2,8 @@
 // pastes back into a chat. Pure: lab/review/server.ts reads the artifacts, and the page (lab/review/app) calls these.
 //
 // A note's context comes only from artifacts a project already has: out/check/timeline.json for the scene and the
-// video-clock sounds, sfx/cues.json for the cue list, out/check/motion.json for what's under the point. A source
-// that's missing leaves its field off the note; one that's there and holds nothing near gives an empty list.
+// video-clock sounds, sfx/cues.json for the cue list, out/check/motion.json for what's under the point, and on a
+// still, a variant sheet's .cells.json for the variant under the point. A source that's missing leaves its field off the note; one that's there and holds nothing near gives an empty list.
 import type { MotionTracks } from './motion-tracks.ts';
 
 export const REVIEW_NOTES_VERSION = 2;
@@ -19,8 +19,17 @@ export type ReviewSoundMarker = { id: string; at: number; frame: number; sound: 
 /** A scene's visible span, its crossfades included, so a note in a dissolve names both scenes. */
 export type ReviewScene = { id: string; start: number; dur: number };
 
+/**
+ * One cell of a variant sheet (`studio still --sheet`), from the `.cells.json` beside it: the variant, where it sits on
+ * each axis, and whether the still check refused it. `rect` is 0–1 across the sheet.
+ */
+export type ReviewStillCell = { variant: string; axes: Readonly<Record<string, string>>; refused: boolean; rect: { x: number; y: number; w: number; h: number } };
+export type ReviewStillCellsFile = { version: 1; cells: ReviewStillCell[] };
+
 /** What a note says about its moment. Each field is absent when its source artifact is. */
 export type ReviewNoteContext = {
+  /** On a variant sheet, the cell under the point. */
+  cell?: { variant: string; axes: Readonly<Record<string, string>>; refused: boolean };
   scenes?: string[];
   sounds?: { id: string; sound: string; frame: number; targeted?: true }[];
   /** The motion-tagged elements under the point, smallest first. */
@@ -58,13 +67,19 @@ export type ReviewContextSources = {
   scenes?: readonly ReviewScene[];
   sounds?: readonly ReviewSoundMarker[];
   motion?: MotionTracks;
+  cells?: readonly ReviewStillCell[];
 };
 
 /** The frame a moment in video seconds shows. The epsilon keeps a sound placed on a frame from rounding to the one before. */
 export const reviewFrameAt = (seconds: number, fps: number) => Math.floor(seconds * fps + 1e-6);
 
 export function reviewNoteContext(note: Pick<ReviewNote, 'frame' | 'end' | 'x' | 'y' | 'cue'>, sources: ReviewContextSources): ReviewNoteContext {
-  if (note.frame === undefined) return {};
+  if (note.frame === undefined) {
+    const { x, y } = note;
+    const hit = x === undefined || y === undefined ? undefined
+      : sources.cells?.find(({ rect: r }) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
+    return hit ? { cell: { variant: hit.variant, axes: hit.axes, refused: hit.refused } } : {};
+  }
   const first = note.frame, last = note.end ?? note.frame, { fps } = sources;
   const context: ReviewNoteContext = {};
   if (sources.scenes) {
@@ -103,6 +118,9 @@ export function reviewElementsUnder(motion: MotionTracks, frame: number, px: num
   return hits.sort((a, b) => a.area - b.area).slice(0, 3).map(({ id, kind }) => (kind ? { id, kind } : { id }));
 }
 
+/** `headline short, crop card`: a variant by its place on each axis. */
+export const formatStillAxes = (axes: Readonly<Record<string, string>>) => Object.entries(axes).map(([a, v]) => `${a} ${v}`).join(', ');
+
 /** `f304 (0:10.13)`: the frame, then minutes, seconds and hundredths, so a timecode reads as video time. */
 export function formatReviewMoment(frame: number, fps: number): string {
   const seconds = frame / fps, m = Math.floor(seconds / 60);
@@ -132,9 +150,10 @@ export function formatReviewNotesMarkdown(file: Pick<ReviewNotesFile, 'media' | 
       : formatReviewMoment(note.frame, fps);
     const where = note.x !== undefined && note.y !== undefined ? `at (${note.x.toFixed(2)}, ${note.y.toFixed(2)})` : '';
     const lead = [when && `**${when}**`, where].filter(Boolean).join(' ');
-    const { scenes, sounds, elements } = note.context;
+    const { cell, scenes, sounds, elements } = note.context;
     const sub = [
       render && { this: '', other: `written on render \`${note.render}\`, not this one`, unrecorded: 'render not recorded' }[reviewNoteRenderOf(note, render)],
+      cell && `variant: \`${cell.variant}\` (${formatStillAxes(cell.axes)})${cell.refused ? ', refused by the still check' : ''}`,
       scenes?.length && `scene: ${scenes.join(' → ')}`,
       sounds?.length && `sound: ${sounds.map((s) => `${s.sound} \`${s.id}\` at f${s.frame}${s.targeted ? ' (aimed at)' : ''}`).join('; ')}`,
       elements?.length && `under the point: ${elements.map((e) => `\`${e.id}\`${e.kind ? ` (${e.kind})` : ''}`).join(' inside ')}`,

@@ -20,7 +20,7 @@ import { sfxCuePlays } from '../../lib/sfx/cues.ts';
 import { H, W } from '../../lib/studio/frame.ts';
 import type { TimelineReport } from '../../lib/studio/Video.tsx';
 import type { MotionTracks } from '../../lib/motion-tracks.ts';
-import { REVIEW_NOTES_VERSION, reviewFrameAt, type ReviewMediaKind, type ReviewNote, type ReviewNotesFile, type ReviewRenderStamp, type ReviewScene, type ReviewSoundMarker } from '../../lib/review-notes.ts';
+import { REVIEW_NOTES_VERSION, reviewFrameAt, type ReviewMediaKind, type ReviewNote, type ReviewNotesFile, type ReviewRenderStamp, type ReviewScene, type ReviewSoundMarker, type ReviewStillCell, type ReviewStillCellsFile } from '../../lib/review-notes.ts';
 import { resolveStudioProject, STUDIO_ROOT } from '../../lib/studio-project.ts';
 import { labBundleOptions } from '../bundle.ts';
 import { sendFile } from '../server.ts';
@@ -55,6 +55,8 @@ export type ReviewManifest = ReviewRenderStatus & {
   /** False when the cue list's markers are there but this render doesn't play it. */
   cueListPlayed?: boolean;
   motion?: MotionTracks;
+  /** On a variant sheet (`studio still --sheet`), its cells, from the .cells.json beside it. */
+  cells?: ReviewStillCell[];
   /** Each artifact a note field needs that isn't there, with how to make it. */
   missing: string[];
   notes: ReviewNote[];
@@ -122,9 +124,9 @@ function reviewRenderStatus(target: ReviewTarget): ReviewRenderStatus {
   };
 }
 
-/** The nearest folder above a file with a video.tsx: a studio project. */
+/** The nearest folder above a file with a video.tsx or a stills.tsx: a studio project. */
 function projectHolding(file: string): string | null {
-  for (let dir = dirname(file); dirname(dir) !== dir; dir = dirname(dir)) if (existsSync(join(dir, 'video.tsx'))) return dir;
+  for (let dir = dirname(file); dirname(dir) !== dir; dir = dirname(dir)) if (existsSync(join(dir, 'video.tsx')) || existsSync(join(dir, 'stills.tsx'))) return dir;
   return null;
 }
 
@@ -142,7 +144,12 @@ export function buildReviewManifest(target: ReviewTarget): ReviewManifest {
     media: { url: `/media${extname(media).toLowerCase()}?${new URLSearchParams({ media: fromRoot(media), render: status.render.hash })}`, path: fromRoot(media), kind },
     fps: null, durationInFrames: null, frameSize: { w: W, h: H }, missing: [], notes: saved?.notes ?? [], notesPath: fromRoot(notesFile),
   };
-  if (!project || kind === 'still') return manifest;
+  if (kind === 'still') {
+    const cells = readJson<ReviewStillCellsFile>(media.slice(0, -extname(media).length) + '.cells.json');
+    if (cells) manifest.cells = cells.cells;
+    return manifest;
+  }
+  if (!project) return manifest;
 
   const timeline = readJson<TimelineReport>(join(project, 'out', 'check', 'timeline.json'));
   const cueList = readSfxCueList(project);
@@ -254,11 +261,14 @@ function checkedNote(posted: unknown): ReviewNote {
   };
 }
 
-/** The context's three lists, each dropped unless it's the shape formatReviewNotesMarkdown reads. */
+/** The context's cell and three lists, refused unless they're the shape formatReviewNotesMarkdown reads. */
 function checkedContext(posted: unknown, id: string): ReviewNote['context'] {
   if (posted === undefined) return {};
   if (typeof posted !== 'object' || posted === null) throw new Error(`note ${id}: context must be an object`);
-  const { scenes, sounds, elements } = posted as Record<string, unknown>;
+  const { cell, scenes, sounds, elements } = posted as Record<string, unknown>;
+  const c = cell as Record<string, unknown> | undefined;
+  if (c !== undefined && !(typeof c === 'object' && c !== null && typeof c.variant === 'string' && typeof c.refused === 'boolean'
+    && typeof c.axes === 'object' && c.axes !== null && Object.values(c.axes).every((v) => typeof v === 'string'))) throw new Error(`note ${id}: context.cell isn't a variant, its axes and refused`);
   const listOf = (v: unknown, ok: (item: Record<string, unknown>) => boolean) => v === undefined || (Array.isArray(v) && v.every((i) => typeof i === 'object' && i !== null && ok(i)));
   if (!(scenes === undefined || (Array.isArray(scenes) && scenes.every((s) => typeof s === 'string')))
     || !listOf(sounds, (s) => typeof s.id === 'string' && typeof s.sound === 'string' && typeof s.frame === 'number')

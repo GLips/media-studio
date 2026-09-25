@@ -6,7 +6,7 @@ import '../../app/lab.css';
 import './review.css';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createRoot } from 'react-dom/client';
-import { formatReviewMoment, formatReviewNotesMarkdown, reviewFrameAt, reviewNoteContext, reviewNoteRenderOf, type ReviewContextSources, type ReviewNote } from '../../../lib/review-notes.ts';
+import { formatReviewMoment, formatReviewNotesMarkdown, formatStillAxes, reviewFrameAt, reviewNoteContext, reviewNoteRenderOf, type ReviewContextSources, type ReviewNote } from '../../../lib/review-notes.ts';
 import type { ReviewManifest, ReviewRenderStatus } from '../server.ts';
 
 /** How often the page asks whether its render is still the one on disk. */
@@ -60,7 +60,7 @@ function Review({ manifest }: { manifest: ReviewManifest }) {
   const newer = renders[0] && renders[0].path !== manifest.media.path && renders[0].modified > manifest.render.modified ? renders[0] : null;
 
   const sources: ReviewContextSources = useMemo(() => ({
-    fps, frameSize: manifest.frameSize, scenes: manifest.scenes, sounds: manifest.sounds, motion: manifest.motion,
+    fps, frameSize: manifest.frameSize, scenes: manifest.scenes, sounds: manifest.sounds, motion: manifest.motion, cells: manifest.cells,
   }), [manifest, fps]);
   const sorted = useMemo(() => [...notes].sort((a, b) => (a.frame ?? 0) - (b.frame ?? 0)), [notes]);
 
@@ -256,9 +256,10 @@ function noteWhen(n: Pick<ReviewNote, 'frame' | 'end' | 'x' | 'y'>, fps: number)
 }
 
 function ContextLines({ context }: { context: ReviewNote['context'] }) {
-  const { scenes, sounds, elements } = context;
+  const { cell, scenes, sounds, elements } = context;
   return (
     <dl className="review-context">
+      {cell && <><dt>variant</dt><dd>{cell.variant} ({formatStillAxes(cell.axes)}){cell.refused ? ' · refused' : ''}</dd></>}
       {!!scenes?.length && <><dt>scene</dt><dd>{scenes.join(' → ')}</dd></>}
       {!!sounds?.length && <><dt>sound</dt><dd>{sounds.map((s) => `${s.sound} ${s.id} f${s.frame}${s.targeted ? ' ◀' : ''}`).join(' · ')}</dd></>}
       {!!elements?.length && <><dt>under</dt><dd>{elements.map((e) => `${e.id}${e.kind ? ` (${e.kind})` : ''}`).join(' ⊂ ')}</dd></>}

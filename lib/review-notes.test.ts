@@ -69,3 +69,16 @@ test('the markdown lists notes in time order with their frame, timecode, point a
     '',
   ].join('\n'));
 });
+
+test('a note on a variant sheet names the variant under its point, and whether the still check refused it', () => {
+  const rect = (x: number) => ({ x, y: 0.1, w: 0.4, h: 0.8 });
+  const cells = [
+    { variant: 'short-card', axes: { headline: 'short', crop: 'card' }, refused: false, rect: rect(0.05) },
+    { variant: 'long-card', axes: { headline: 'long', crop: 'card' }, refused: true, rect: rect(0.5) },
+  ];
+  const context = reviewNoteContext({ x: 0.7, y: 0.5 }, { fps: 30, frameSize: { w: 1, h: 1 }, cells });
+  assert.deepEqual(context, { cell: { variant: 'long-card', axes: { headline: 'long', crop: 'card' }, refused: true } });
+  assert.deepEqual(reviewNoteContext({ x: 0.47, y: 0.5 }, { fps: 30, frameSize: { w: 1, h: 1 }, cells }), {});
+  const md = formatReviewNotesMarkdown({ media: 'projects/x/out/still-sheets/card-og.png', kind: 'still', notes: [{ id: 'a', x: 0.7, y: 0.5, text: 'this one', context }] }, {});
+  assert.match(md, /variant: `long-card` \(headline long, crop card\), refused by the still check/);
+});
