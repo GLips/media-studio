@@ -41,13 +41,15 @@ const isScannable = (position: StudioPosition) =>
 
 const isModel = (position: StudioPosition) =>
   position.kind === 'models' || (position.kind === 'project' && (position.role === 'model' || position.role === 'timeline'));
+/** A model's spec is its evaluator, run by `node --test`: it may use node:test and fixtures, and isn't loaded as a model. */
+const isSpec = (path: string) => /\.test\.tsx?$/.test(path);
 
 export const modelPurityCheck: StructuralCheck = {
   id: ID,
   run(context) {
     const findings: Finding[] = [];
     for (const file of context.tree.sources) {
-      if (!isModel(context.positionOf(file.path))) continue;
+      if (isSpec(file.path) || !isModel(context.positionOf(file.path))) continue;
       const reported = new Set<string>();
       const report = (first: ImportEdge | undefined, chain: readonly string[], offense: string, line: number) => {
         const key = first ? `${first.scanned.specifier} → ${offense}` : offense;

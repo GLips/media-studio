@@ -16,15 +16,15 @@ import { IndexLabel, RiseWord, ScrambleText, SelectionBox, SlantWord, slantMatri
 import type { Bar } from '../bar.ts';
 import { Field } from '../parts.tsx';
 import { SHOWCASE_HUD } from '../reel.tsx';
-import { P, barFrame, grid, barBeatFrame, inksByHue } from '../timeline.ts';
+import { P, inksByHue } from '../look.ts';
+import { timeline } from '../timeline.ts';
 
+const clock = timeline.bar('every-color');
 const outExpo = motionCurves.expo.entrance;
 const outQuart = powerOutEase(4);
 
 /** Each word's cut: EVERY, COLOR, ONE and TAP. land on the bar's four beats. */
-const CUT = { every: barBeatFrame(2, 0), color: barBeatFrame(2, 1), one: barBeatFrame(2, 2), tap: barBeatFrame(2, 3) } as const;
-/** What the finale replays of this bar: each word's cut, and TAP.'s full stop locking a sixteenth after its own. */
-export const everyColorMoments = { every: CUT.every, color: CUT.color, one: CUT.one, tapLock: CUT.tap + 4 } as const;
+const CUT = { every: clock.cues.every, color: clock.cues.color, one: clock.cues.one, tap: clock.beat(3) } as const;
 const since = (f: number, cut: number) => (f - cut) / FPS;
 
 // A word's font size is its cap height over this, as the type pieces set Archivo, so letters placed here from the
@@ -93,7 +93,7 @@ const COLOR_BOX = inflate({ x: COLOR_LANDED.left, y: COLOR_BASE - COLOR.cap, w: 
 const SPECTRUM = [2, 22, 37, 57, 72].map((i) => inksByHue[i].color);
 // Once the word and its box have landed, the inks step a letter to the right on each sixteenth: the held word
 // re-lights twice before the cut, every ink in a new place.
-const RELIGHTS = [barBeatFrame(2, 1.5), barBeatFrame(2, 1.75)];
+const RELIGHTS = [clock.beat(1.5), clock.beat(1.75)];
 
 /**
  * WeightWord's sweep, Thin to Black on its out-quart over 0.3 s, each letter in its own ink. WeightWord sets its word
@@ -297,7 +297,7 @@ const TAP = { text: 'TAP.', cap: 440, stretch: 75, spacing: -0.02 } as const;
 const TAP_BASE = H / 2 + TAP.cap / 2;
 const TAP_LINE = centredLine(TAP.text, TAP.cap, 900, TAP.stretch, TAP.spacing);
 /** The glitch hits, on the beat's first three sixteenths. */
-const SIXTEENTHS = [0, 1, 2].map((n) => (n * grid.spb) / 4);
+const SIXTEENTHS = [0, 1, 2].map((n) => (n * timeline.spb) / 4);
 // The letters lock a touch faster than ScrambleText's 0.05 s apart, so the full stop lands on the second sixteenth's
 // hit. That's the tap: red rings out from the stop, the sentence's last mark, behind the word.
 const TAP_DECODE = { delay: 0.03, each: (SIXTEENTHS[1] - 0.03) / (TAP.text.length - 1) };
@@ -330,7 +330,7 @@ function Tap({ t }: { t: number }) {
 export const everyColorBar: Bar = {
   id: 'every-color',
   note: 'One word a beat, red and black trading places: EVERY rises on red and swells wider as it lands, COLOR in five inks on black under a cream selection, ONE on red with its O a hole into black, the camera dives through it onto TAP., which decodes on black and is tapped at its full stop, red ripples ringing out.',
-  from: barFrame(2), to: barFrame(3),
+  clock,
   render: (f) => {
     if (f < CUT.color) return <Every t={since(f, CUT.every)} />;
     if (f < CUT.one) return <Color t={since(f, CUT.color)} step={RELIGHTS.filter((r) => f >= r).length} />;

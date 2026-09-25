@@ -18,19 +18,19 @@ import type { Bar } from '../bar.ts';
 import { SHOWCASE_HUD } from '../reel.tsx';
 import priceLock from '../sfx/price-lock.ts';
 import stampSlam from '../sfx/stamp-slam.ts';
-import { P, barFrame, barBeatFrame } from '../timeline.ts';
+import { P } from '../look.ts';
+import { timeline } from '../timeline.ts';
 
-const FROM = barFrame(8), TO = barFrame(9);
+const clock = timeline.bar('pay-less');
+const FROM = clock.from, TO = clock.to;
 /**
  * The bar's hits, a beat or two apart so each lands and reads before the next: PAY LESS. on the music's second
  * downbeat, and the finale's downbeat, which the stamped poster holds over.
  */
 const HIT = {
-  cut: barBeatFrame(8, 0), land: barBeatFrame(8, 2), slash: barBeatFrame(8, 3), words: barBeatFrame(8, 4), stamp: barBeatFrame(8, 6),
-  downbeat: barBeatFrame(8, 8),
+  cut: clock.beat(0), land: clock.cues.lock, slash: clock.beat(3), words: clock.beat(4), stamp: clock.cues.stamp,
+  downbeat: clock.beat(8),
 } as const;
-/** What the finale replays of this bar: the price locking on $1.60, and the stamp slamming onto the poster. */
-export const payLessMoments = { lock: HIT.land, stamp: HIT.stamp } as const;
 const CENTRE: Point = { x: 960, y: 540 };
 
 // ---------- the poster's camera ----------
@@ -371,7 +371,7 @@ function payLessGroundsAt(f: number): (p: Point) => PayLessGround {
 export const payLessBar: Bar = {
   id: 'pay-less',
   note: 'The price whips in on red as $2.00 and glides on as the camera pushes in; it counts down and slams onto $1.60 two beats in with a punch-in, the old price is slashed a beat later, and PAY LESS. rises on the music\'s second downbeat as the camera swings toward the stamp; two beats on a −20% stamp drops out of the lens and slams onto the poster beside the price, and the camera pushes in and pans toward it over the finale\'s downbeat, to the cut on its "and".',
-  from: FROM, to: TO,
+  clock,
   render: (f) => (
     <>
       <div style={{ position: 'absolute', inset: 0, background: P.red }} />

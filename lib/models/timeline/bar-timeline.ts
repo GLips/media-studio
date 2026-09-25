@@ -36,9 +36,10 @@ export type MoveSpan<Id extends string = string> = { from: MoveEnd<Id>; to: Move
 
 /**
  * A beat of the table that must fall on a downbeat of the fit (`downbeat`: from 0, or negative from the last), within
- * `LANDMARK_TOLERANCE_SECONDS`. Every table names the last downbeat, the music's final hit.
+ * `LANDMARK_TOLERANCE_SECONDS`: a bar's beat, or `'end'`, the beat after its last. Every table names the last downbeat,
+ * the music's final hit, which is usually the last bar's end.
  */
-export type Landmark<Id extends string = string> = { name: string; bar: Id; beat: number; downbeat: number };
+export type Landmark<Id extends string = string> = { name: string; bar: Id; beat: number | 'end'; downbeat: number };
 
 export type BarTable<Id extends string = string> = readonly BarRow<Id>[];
 export type CueTable<Id extends string> = { readonly [K in Id]?: Readonly<Record<string, BarMoment>> };
@@ -127,7 +128,7 @@ export function defineBarTimeline<const Id extends string, const Cues extends Cu
     if (k < 0) throw new Error(`no bar ${id}: the table has ${table.map((row) => row.id).join(', ')}`);
     return k;
   };
-  checkLandmarks(spec, grid, (id, beat) => startBeats[indexOf(id)] + beat);
+  checkLandmarks(spec, grid, (id, beat) => startBeats[indexOf(id)] + (beat === 'end' ? table[indexOf(id)].beats : beat));
 
   const end = Math.round(track.duration * FPS);
   const froms = table.map((row, k) => (k === 0 ? 0 : hitFrame(startBeats[k] + (row.cutIn ?? 0))));
@@ -192,7 +193,7 @@ function checkTable(table: BarTable) {
 
 // The music is a recording, re-cut only in whole bars (`studio music fit --bars`), so a bar length changed in the table
 // needs the music re-fitted to match, or the video ends over the wrong bar of it.
-function checkLandmarks(spec: BarTimelineSpec<string, CueTable<string>, MoveTable<string>>, grid: BeatGrid, beatOf: (bar: string, beat: number) => number) {
+function checkLandmarks(spec: BarTimelineSpec<string, CueTable<string>, MoveTable<string>>, grid: BeatGrid, beatOf: (bar: string, beat: number | 'end') => number) {
   const downbeats = spec.track.fit.downbeats;
   const onFinalHit = spec.landmarks.some((mark) => mark.downbeat === -1 || mark.downbeat === downbeats.length - 1);
   if (!onFinalHit) throw new Error('no landmark names the music\'s final hit (downbeat -1): add one, so a table that outruns the music fails');
@@ -205,4 +206,25 @@ function checkLandmarks(spec: BarTimelineSpec<string, CueTable<string>, MoveTabl
         + `(${grid.at(beat).toFixed(2)} s), but the music's is at ${at} s: re-fit it with studio music fit --bars, or change the table`);
     }
   }
+}
+
+/**
+ * The resolved timeline as `studio clock` prints it, for tools that don't import TypeScript: each bar's frames, length
+ * and the music's beat it cuts in on, every beat's frame, each cue's, the fade and the end. `to` and `end` are exclusive.
+ */
+export type BarClockTable = {
+  fps: number;
+  end: number;
+  fade: { from: number; to: number };
+  beats: number[];
+  bars: { n: number; id: string; from: number; to: number; beats: number; musicBeat: number }[];
+  cues: Record<string, number>;
+};
+
+export function barClockTable(timeline: BarTimeline): BarClockTable {
+  return {
+    fps: timeline.fps, end: timeline.end, fade: timeline.fade, beats: [...timeline.beatFrames],
+    bars: timeline.bars.map((bar, k) => ({ n: bar.n, id: bar.id, from: bar.from, to: bar.to, beats: bar.beats, musicBeat: timeline.musicBeats[k] })),
+    cues: Object.fromEntries(timeline.bars.flatMap((bar) => Object.entries(bar.cues as Record<string, number>).map(([name, frame]) => [`${bar.id}.${name}`, frame]))),
+  };
 }

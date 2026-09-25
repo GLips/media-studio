@@ -17,15 +17,15 @@ import needleStrike1 from '../sfx/needle-strike-1.ts';
 import needleStrike2 from '../sfx/needle-strike-2.ts';
 import needleStrike3 from '../sfx/needle-strike-3.ts';
 import needleStrike4 from '../sfx/needle-strike-4.ts';
-import { P, barFrame, barBeatFrame, inksByHue, type Ink } from '../timeline.ts';
+import { P, inksByHue, type Ink } from '../look.ts';
+import { timeline } from '../timeline.ts';
 
-const FROM = barFrame(4), TO = barFrame(5);
+const clock = timeline.bar('ink');
+const FROM = clock.from, TO = clock.to;
 // The strikes, in beats: the first, two beats of room, then the music's downbeat and a beat each, with INKS. on its own
 // beat before the last so its lens split never doubles a needle.
-const HITS = [0, 2, 3, 5].map((n) => barBeatFrame(4, n));
-const INKS_AT = barBeatFrame(4, 4);
-/** What the finale replays of this bar: the second strike. */
-export const inkMoments = { strike2: HITS[1] } as const;
+const HITS = [clock.beat(0), clock.cues.strike2, clock.beat(3), clock.beat(5)];
+const INKS_AT = clock.beat(4);
 const sec = (f: number) => f / FPS;
 
 const outQuad = powerOutEase(2);
@@ -127,7 +127,7 @@ const OPEN = { speed: 26, burst: 4.2, scale: ringingScale({ amp: 1, peak: 1 / FP
 // The splash rebounds on the next beat, as a drop's does: a second ring swells out from the struck dot through the
 // inked field, its crest catching the light, so the field is still rolling as the second strike comes in.
 const REBOUND = {
-  frame: barBeatFrame(4, 1), speed: 24,
+  frame: clock.beat(1), speed: 24,
   clip: { scale: ringingScale({ amp: 0.8, peak: 2 / FPS, period: 0.25, decay: 0.25, end: 0.6 }), brighten: glint(0.35, 0.3) },
 };
 
@@ -365,7 +365,7 @@ function InkBar({ f }: { f: number }) {
 export const inkBar: Bar = {
   id: 'ink',
   note: 'The signature: a tattoo needle strikes the dark ink field, the first strike with two beats to land and rebound, the rest a beat apart; every strike ripples ink through it, one ink per ring, as the count answers each strike and locks on 174 as INKS. slams; the last ripple lands every cell on its own ink.',
-  from: FROM, to: TO,
+  clock,
   render: (f) => <InkBar f={f} />,
   hudRead: inkHudRead,
   // INKS.'s slam: the lens kicks and splits with it.

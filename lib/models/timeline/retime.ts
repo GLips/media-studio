@@ -63,7 +63,8 @@ function syntheticFit(spec: BarTimelineSpec, table: BarTimelineSpec['bars'], fra
     const k = table.findIndex((row) => row.id === id);
     return table.slice(0, k).reduce((sum, row) => sum + row.beats, 0);
   };
-  const landmarkBeat = (mark: BarTimelineSpec['landmarks'][number]) => startOf(mark.bar) + mark.beat;
+  const landmarkBeat = (mark: BarTimelineSpec['landmarks'][number]) =>
+    startOf(mark.bar) + (mark.beat === 'end' ? table.find((row) => row.id === mark.bar)!.beats : mark.beat);
   const final = Math.max(...spec.landmarks.filter((mark) => mark.downbeat < 0).map(landmarkBeat));
   const downbeatBeats = Array.from({ length: Math.ceil(final / 4) }, (_, i) => i * 4).concat(final);
   for (const mark of spec.landmarks) downbeatBeats[mark.downbeat < 0 ? downbeatBeats.length + mark.downbeat : mark.downbeat] = landmarkBeat(mark);

@@ -10,7 +10,7 @@ P=$(dirname "$T")
 D=$P/out/qa
 CUT=$P/out/wip/reel-cut.mp4
 mkdir -p "$D"
-CLOCK=$(node "$T/bar-clock.ts")
+CLOCK=$(studio clock "$P")
 for n in "$@"; do
   span=$(echo "$CLOCK" | jq -r --argjson n "$n" '.bars[] | select(.n == $n) | "\(.from):\(.to - 1)"')
   [ -n "$span" ] || { echo "no bar $n" >&2; exit 1; }

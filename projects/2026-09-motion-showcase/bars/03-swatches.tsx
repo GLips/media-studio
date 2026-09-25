@@ -19,12 +19,14 @@ import tapPink from '../sfx/tap-pink.ts';
 import tapCharcoal from '../sfx/tap-charcoal.ts';
 import tapBlack from '../sfx/tap-black.ts';
 import { INK_FIRST_STRIKE } from '../ink-field.ts';
-import { P, barFrame, barBeatFrame } from '../timeline.ts';
+import { P } from '../look.ts';
+import { timeline } from '../timeline.ts';
 
+const clock = timeline.bar('swatches');
 const outExpo = motionCurves.expo.entrance;
 
-const FROM = barFrame(3);
-const TO = barFrame(4);
+const FROM = clock.from;
+const TO = clock.to;
 const LENS = 1100;
 const VANISH: Point = { x: W / 2, y: H / 2 };
 
@@ -69,13 +71,11 @@ type World = { shot: Shot; ground: string; hud: ReelHudTone; machineHud: ReelHud
 // the panel's lower half and, lifted, stays 38 px or more inside the card through the orbit.
 const WORLDS: readonly World[] = [
   { shot: C.sol, ground: P.ground, hud: 'light', machineHud: 'light' },
-  { shot: C['sol-pink-word'], ground: P.magenta, hud: 'on-accent', machineHud: 'dark', tap: { frame: barBeatFrame(3, 1), swatch: 1, color: P.magenta, word: 'PINK', stretch: 110, cap: 140 } },
-  { shot: C['sol-grey-word'], ground: P.graphite, hud: 'light', machineHud: 'light', tap: { frame: barBeatFrame(3, 2), swatch: 2, color: P.graphite, word: 'CHARCOAL', stretch: 62, cap: 112 } },
-  { shot: C['sol-black-word'], ground: P.black, hud: 'light', machineHud: 'light', tap: { frame: barBeatFrame(3, 3), swatch: 0, color: P.black, word: 'BLACK', stretch: 80, cap: 140 } },
+  { shot: C['sol-pink-word'], ground: P.magenta, hud: 'on-accent', machineHud: 'dark', tap: { frame: clock.cues.pinkTap, swatch: 1, color: P.magenta, word: 'PINK', stretch: 110, cap: 140 } },
+  { shot: C['sol-grey-word'], ground: P.graphite, hud: 'light', machineHud: 'light', tap: { frame: clock.cues.charcoalTap, swatch: 2, color: P.graphite, word: 'CHARCOAL', stretch: 62, cap: 112 } },
+  { shot: C['sol-black-word'], ground: P.black, hud: 'light', machineHud: 'light', tap: { frame: clock.beat(3), swatch: 0, color: P.black, word: 'BLACK', stretch: 80, cap: 140 } },
 ];
 const TAPS = WORLDS.flatMap((w) => (w.tap ? [w.tap] : []));
-/** What the finale replays of this bar: the pink tap flooding the page, and the charcoal tap. */
-export const swatchesMoments = { pinkTap: TAPS[0].frame, charcoalTap: TAPS[1].frame } as const;
 /** The world whose page is on the card at `f`: each tap swaps it on its own frame. */
 const worldAt = (f: number) => TAPS.filter((tap) => f >= tap.frame).length;
 
@@ -124,7 +124,7 @@ function cardFramingAt(f: number): Framing {
 const DOT: Point = { x: 331.7, y: 363.5 };
 // The whip's zoom lands in its first third, before the one frame it shows opens its shutter: that frame's smear is
 // the pan's streak, where the push's radial smear about a machine at the middle reads as the focus going.
-const WHIP = { from: barBeatFrame(3, 3.5) - 1.75, zoomed: barBeatFrame(3, 3.5) - 1.25, to: barBeatFrame(3, 3.5) - 0.25 };
+const WHIP = { from: clock.beat(3.5) - 1.75, zoomed: clock.beat(3.5) - 1.25, to: clock.beat(3.5) - 0.25 };
 // From the whip on, the card is cut wider: its crop runs on left over the gallery's white to the photo's edge, so the
 // close-up has page all round the machine. The whip's smear hides the cut, and the close-up never shows the card's
 // edges.
@@ -142,12 +142,12 @@ const HOLD = {
 } as const;
 // On the downbeat the camera surges in 5%, half of it by that beat's frame, and glides that much slower after, so it
 // meets the dive where it would have.
-const PUSH = { at: barBeatFrame(3, 4) - 0.5, by: Math.log(1.05), frames: 5 };
+const PUSH = { at: clock.beat(4) - 0.5, by: Math.log(1.05), frames: 5 };
 // The dive takes 2.75 frames, landing on the bar's last: it enters square at 5.4×, zooming 2.5% a frame (its log's
 // rate) as its dot drifts up and left (frame px a frame), and lands the dot on the strike at 35×, where the voltage
 // box and band fill the frame, the dot is 38 px across, and the HUD's rows fall on plain ground.
 const DIVE = {
-  from: barFrame(4) - 3.75, to: barFrame(4) - 1, zoom: { from: 5.4, to: 35 }, creep: 0.025, on: { from: { x: 962, y: 546 }, to: INK_FIRST_STRIKE },
+  ...clock.moves.dive, zoom: { from: 5.4, to: 35 }, creep: 0.025, on: { from: { x: 962, y: 546 }, to: INK_FIRST_STRIKE },
   drift: { x: -4, y: -2 }, rate: 1,
 };
 
@@ -414,7 +414,7 @@ const POWER = { x: 344.9, y: 386.1, r: 2.3, gap: 0.7 };
 // The display sleeps from the whip, backlit at 40%: any dimmer, the slide before the downbeat reads as a still. On
 // the downbeat it wakes: the backlight comes on past full, washing the glass white and glowing onto the face plate
 // (page px of blur), then settles over four frames as the voltage counts up over five.
-const WAKE = { at: barBeatFrame(3, 4), standby: 0.4, flare: 0.6, glow: 3, settle: 4, count: 5 };
+const WAKE = { at: clock.beat(4), standby: 0.4, flare: 0.6, glow: 3, settle: 4, count: 5 };
 type ScreenState = { lit: number; flare: number; count: number };
 /** The display at `f`: how lit its backlight is, how far past full, and how far its readings have counted up. */
 function screenAt(f: number): ScreenState {
@@ -488,7 +488,7 @@ const CardScreen = ({ f }: { f: number }) => <OnCardSvg f={f} rect={GLASS}><Scre
 // On the downbeat a glint of the key light crosses the machine's body, left to right: a soft band of white leaning
 // with the light (upper left), page px from its middle to each edge, swelling and fading as it crosses. White over the
 // page leaves it white, so only the machine and its screen take it.
-const GLINT = { at: barBeatFrame(3, 4) - 0.5, frames: 10, half: 30, lean: 25, peak: 0.4 };
+const GLINT = { at: clock.beat(4) - 0.5, frames: 10, half: 30, lean: 25, peak: 0.4 };
 
 function MachineGlint({ f }: { f: number }) {
   const id = `machine-glint-${useId().replace(/[^\w-]/g, '')}`;
@@ -766,7 +766,7 @@ const TAP_SOUNDS = [
 export const swatchesBar: Bar = {
   id: 'swatches',
   note: 'The Solice page lands on a tilted card over black, the machine photo two-thirds of the frame tall beside its name, price and swatches; each beat taps a swatch, the page swaps so the machine turns pink, charcoal, black, the colour floods the ground behind the card and holds for the beat, and its name (PINK, CHARCOAL, BLACK) rises huge under the swatches; then the camera whips onto the black machine and glides round it big in slow motion for two beats, sliding it to the middle and turning it square as it pushes in; on the music\'s downbeat its sleeping display flares awake, the voltage counting up to 7.5 as a glint sweeps its body and the camera surges in; then it dives into the display, drawn sharp, and lands on its ".00", where bar 4\'s needle strikes.',
-  from: FROM, to: TO,
+  clock,
   render: (f) => <SwatchesBar f={f} />,
   hudRead: (_slot, f, box) => swatchesHudRead(f, box),
   kicks: TAPS.map((tap) => tap.frame),

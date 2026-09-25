@@ -52,7 +52,7 @@ export default defineCommand({
     if ([args.frames, args.bar, args.sheet, args.strip].filter(Boolean).length > 1) throw new Error('choose frames one way: --frames, --bar, --sheet or --strip');
     const { resolveStudioProjectWith } = await import('../../lib/engine/project/studio-project.ts');
     const { lookAgainst, lookFrameSheet, lookMotion, openLookSource, parseLookCrop, parseLookFrames, parseLookNumber } = await import('../../lib/engine/look/frame-look.ts');
-    const { readProjectBarClock } = await import('../../lib/engine/look/frame-motion.ts');
+    const { readProjectClock } = await import('../../lib/engine/timeline/project-clock.ts');
     const project = resolveStudioProjectWith(args.project, 'video.tsx');
     const inProject = (file: string) => (isAbsolute(file) ? file : join(project, file));
     const out = inProject(args.out ?? (args.motion ? 'out/check/motion.txt' : args.against ? 'out/check/against.jpg' : 'out/check/sheet.jpg'));
@@ -69,7 +69,7 @@ export default defineCommand({
     const source = await openLookSource(args.video
       ? renderSource(inProject(args.video))
       : { kind: 'composition', session: await openStudioRenderSession(project), captions: Boolean(args.captions) });
-    const clock = args.bar || args.motion ? readProjectBarClock(project) : undefined;
+    const clock = args.bar || args.motion ? await readProjectClock(project) : undefined;
     // A render names its frames by the clock: it must be the whole reel or one bar, placed by its snapshot or --starts-at.
     if (clock && args.video && !(source.first === 0 && source.end === clock.end) && !clock.bars.some((b) => b.from === source.first && b.to === source.end)) {
       throw new Error(`${source.name} holds frames ${source.first}–${source.end - 1}, which is neither the whole reel (0–${clock.end - 1}) nor one bar: ` +
@@ -78,7 +78,7 @@ export default defineCommand({
     const frames = (() => {
       if (args.frames) return parseLookFrames(args.frames);
       if (args.bar) {
-        if (!clock) throw new Error(`${project} has no bar clock (tools/bar-clock.ts): give --frames`);
+        if (!clock) throw new Error(`${project} has no bar clock (a timeline.ts): give --frames`);
         const bar = clock.bars.find((b) => b.n === Number(args.bar));
         if (!bar) throw new Error(`there's no bar ${args.bar}: bars are ${clock.bars.map((b) => b.n).join(', ')}`);
         return Array.from({ length: bar.to - bar.from }, (_, i) => bar.from + i);

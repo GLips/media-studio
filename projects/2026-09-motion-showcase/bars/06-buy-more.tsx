@@ -12,13 +12,13 @@ import type { Bar } from '../bar.ts';
 import { SHOWCASE_HUD } from '../reel.tsx';
 import tapQty2 from '../sfx/tap-qty-2.ts';
 import whipIntoBuyMore from '../sfx/whip-into-buy-more.ts';
-import { P, barFrame, barBeatFrame } from '../timeline.ts';
+import { P } from '../look.ts';
+import { timeline } from '../timeline.ts';
 
-const FROM = barFrame(6), TO = barFrame(7);
+const clock = timeline.bar('buy-more');
+const FROM = clock.from, TO = clock.to;
 /** The bar's hits: the cut, then QTY 2, 3 and 5. */
-const HITS = [0, 1, 2, 3].map((n) => barBeatFrame(6, n));
-/** What the finale replays of this bar: QTY 2, and QTY 3 as red takes the bands. */
-export const buyMoreMoments = { qty2: HITS[1], qty3: HITS[2] } as const;
+const HITS = [clock.beat(0), clock.cues.qty2, clock.cues.qty3, clock.beat(3)];
 
 // The piece's clock: 0 on the bar's first hit and a beat every 15 frames, so its looks flip on the hit frames.
 const SPB = (HITS[1] - HITS[0]) / FPS;
@@ -118,7 +118,7 @@ const HUD_TONE_OVER: Record<ReturnType<typeof groundAt>, ReelHudTone> = { [P.blu
 export const buyMoreBar: Bar = {
   id: 'buy-more',
   note: 'BUY MORE in tilted ticker bands that slam in and breathe; the hero QTY rolls 1, 2, 3, 5 onto the beats while red takes the bands a pair a beat from the hero out; the camera pushes into QTY 5, rolling level, as the bands fly off, and QTY 5 fills the frame on red.',
-  from: FROM, to: TO,
+  clock,
   render: (f) => {
     const t = pieceT(f);
     const bands = (

@@ -22,6 +22,7 @@ const studioCommand = defineCommand({
     storyboard: () => import('./commands/storyboard.ts').then((m) => m.default),
     preview: () => import('./commands/preview.ts').then((m) => m.default),
     look: () => import('./commands/look.ts').then((m) => m.default),
+    clock: () => import('./commands/clock.ts').then((m) => m.default),
     still: () => import('./commands/still.ts').then((m) => m.default),
     check: () => import('./commands/check.ts').then((m) => m.default),
     mix: () => import('./commands/mix.ts').then((m) => m.default),

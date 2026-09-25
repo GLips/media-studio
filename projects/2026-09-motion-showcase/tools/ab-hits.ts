@@ -19,7 +19,7 @@ import { sfxSeedFromId } from '../../../lib/sfx/dsp.ts';
 import { FPS } from '../../../lib/studio/frame.ts';
 import type { SfxSound } from '../../../lib/studio/sfx.tsx';
 import { layoutVideo, totalFrames, type VideoDef } from '../../../lib/studio/timeline.ts';
-import { SOUND_LAG_SECONDS } from '../timeline.ts';
+import { timeline } from '../timeline.ts';
 import { measureWithFfmpeg, runFfmpeg } from '#engine/ffmpeg/ffmpeg.ts';
 
 const PROJECT = resolve(import.meta.dirname, '..');
@@ -72,7 +72,8 @@ const after = await Promise.all(placed.map(async (p): Promise<Placed> => {
   if (!afterDir || !savedFor(p)) return p;
   const module = join(resolve(afterDir), basename(p.file).replace(/\.wav$/, '.ts'));
   if (!existsSync(module)) return { ...p, volume: afterVolumes[p.id] ?? p.volume };
-  const { src, ...take }: SfxSound = (await import(pathToFileURL(module).href)).default;
+  const { default: sound }: { default: SfxSound } = await import(pathToFileURL(module).href);
+  const { src, ...take } = sound;
   return { ...p, file: fileURLToPath(src), take, volume: afterVolumes[p.id] ?? p.volume };
 }));
 const hits = placed.flatMap((p, i) => (savedFor(p) ? [{ id: p.id, at: p.at, a: before[i], b: after[i] }] : [])).sort((x, y) => x.at - y.at);
@@ -284,8 +285,8 @@ function inMix(mix: Mix, at: number) {
   };
 }
 
-/** The picture's frame a sound lands with: it plays `SOUND_LAG_SECONDS` after it. */
-const frameOf = (at: number) => Math.round((at - SOUND_LAG_SECONDS) * FPS);
+/** The picture's frame a sound lands with: it plays the timeline's sound lag after it. */
+const frameOf = (at: number) => Math.round((at - timeline.soundLagSeconds) * FPS);
 const prominenceA = attacks(mixA.mastered!, hits.map((h) => frameOf(h.at))), prominenceB = attacks(mixB.mastered!, hits.map((h) => frameOf(h.at)));
 
 // ---------- the table and the A/B file ----------

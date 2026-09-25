@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { caught, runCheckOnFiles } from '../spec-tree.ts';
+
+const RUNNER = { 'lib/models/timeline/retime.ts': 'export const assertBarTimelineRetimes = (t: unknown) => t;\n' };
+const TIMELINE = 'export const timeline = {};\n';
+
+test('a timed project that doesn\'t call the retime runner is caught, however it half-registers', () => {
+  const findings = runCheckOnFiles('retime-registration', {
+    ...RUNNER,
+    'lib/kit.ts': "export { assertBarTimelineRetimes as retimes } from './models/timeline/retime.ts';\n",
+    // Legal: calls the runner, here through a kit's rename.
+    'projects/ok/timeline.ts': TIMELINE,
+    'projects/ok/timeline.test.ts': "import { retimes } from '../../lib/kit.ts';\nimport { timeline } from './timeline.ts';\nretimes(timeline);\n",
+    // Legal: no timeline.ts, so nothing timed to register.
+    'projects/voice/video.tsx': 'export default {};\n',
+    // Obvious: no test at all.
+    'projects/bare/timeline.ts': TIMELINE,
+    // Adversarial: imports the runner but never calls it; imports it type-only; calls a look-alike of its own.
+    'projects/idle/timeline.ts': TIMELINE,
+    'projects/idle/timeline.test.ts': "import { assertBarTimelineRetimes } from '../../lib/models/timeline/retime.ts';\nvoid assertBarTimelineRetimes;\n",
+    'projects/typed/timeline.ts': TIMELINE,
+    'projects/typed/timeline.test.ts': "import type { assertBarTimelineRetimes } from '../../lib/models/timeline/retime.ts';\ndeclare const f: typeof assertBarTimelineRetimes;\nf(1);\n",
+    'projects/fake/timeline.ts': TIMELINE,
+    'projects/fake/timeline.test.ts': 'const assertBarTimelineRetimes = (t: unknown) => t;\nassertBarTimelineRetimes(1);\n',
+  });
+  assert.deepEqual(caught(findings), [
+    'projects/bare/timeline.ts:no timeline.test.ts',
+    'projects/fake/timeline.ts:runner not called',
+    'projects/idle/timeline.ts:runner not called',
+    'projects/typed/timeline.ts:runner not called',
+  ]);
+});

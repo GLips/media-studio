@@ -21,17 +21,11 @@ import { INK_FIELD } from '../ink-field.ts';
 import { Field } from '../parts.tsx';
 import { SHOWCASE_HUD } from '../reel.tsx';
 import needleFullStop from '../sfx/needle-full-stop.ts';
-import { END_FRAME, P, barFrame, barBeatFrame } from '../timeline.ts';
-import { bounceBar, bounceMoments } from './01-bounce.tsx';
-import { everyColorBar, everyColorMoments } from './02-every-color.tsx';
-import { swatchesBar, swatchesMoments } from './03-swatches.tsx';
-import { inkBar, inkMoments } from './04-ink.tsx';
-import { searchBar, searchMoments } from './05-search.tsx';
-import { buyMoreBar, buyMoreMoments } from './06-buy-more.tsx';
-import { tiersBar, tiersMoments } from './07-tiers.tsx';
-import { payLessBar, payLessMoments } from './08-pay-less.tsx';
+import { P } from '../look.ts';
+import { timeline } from '../timeline.ts';
 
-const FROM = barFrame(9), TO = END_FRAME;
+const clock = timeline.bar('one-box');
+const FROM = clock.from, TO = clock.to;
 /** The last frame the reel renders, black under the reel's fade. */
 const LAST = TO - 1;
 const sec = (f: number) => f / FPS;
@@ -42,8 +36,8 @@ const outExpo = motionCurves.expo.entrance;
  * name on its "and", the stop on the last hit, 4.
  */
 const HIT = {
-  twoUp: FROM, nineUp: barBeatFrame(9, 1), flashes: [2, 2.25, 2.5].map((n) => barBeatFrame(9, n)), field: barBeatFrame(9, 2.75),
-  card: barBeatFrame(9, 3), name: barBeatFrame(9, 3.5), stop: barBeatFrame(9, 4),
+  twoUp: FROM, nineUp: clock.beat(1), flashes: [2, 2.25, 2.5].map((n) => clock.beat(n)), field: clock.beat(2.75),
+  card: clock.beat(3), name: clock.beat(3.5), stop: clock.beat(4),
 } as const;
 
 const fill: CSSProperties = { position: 'absolute', left: 0, top: 0, width: W, height: H };
@@ -55,13 +49,20 @@ const layer: CSSProperties = { position: 'absolute', left: 0, top: 0, overflow: 
  * An earlier bar replayed in a tile or a flash: `from` is the bar's frame shown on the tile's first. `grounds` plates
  * the HUD over a shot that is type from edge to edge, which its bar doesn't plate: its ground's colour for each tone.
  */
-type Replay = { bar: Bar; from: number; grounds?: Partial<Record<ReelHudTone, string>> };
+type Replay = { bar: ReplayedBarId; from: number; grounds?: Partial<Record<ReelHudTone, string>> };
+
+type ReplayedBarId = 'bounce' | 'every-color' | 'swatches' | 'ink' | 'search' | 'buy-more' | 'tiers' | 'pay-less';
+/**
+ * The bars the finale replays, handed in by the composition: a scene doesn't import another's code, and reaches its
+ * moments through the timeline's cues.
+ */
+export type FinaleReplays = Readonly<Record<ReplayedBarId, Bar>>;
 
 /** Replays popping into a grid on frame `at`, at RecapGrid's spacing and pop for its size. */
 type RecapLook = { at: number; cols: number; rows: number; tiles: readonly Replay[] };
 
 /** A replay cued so the bar's frame `moment` plays on `frame`, when the replay opens on `at`. */
-const cued = (bar: Bar, moment: number, frame: number, at: number, grounds?: Replay['grounds']): Replay => ({ bar, from: moment - (frame - at), grounds });
+const cued = (bar: ReplayedBarId, moment: number, frame: number, at: number, grounds?: Replay['grounds']): Replay => ({ bar, from: moment - (frame - at), grounds });
 
 // Bar 5 plates only its HUD's words, but in its tile the beats and the rule cross the list's rows: plates in the
 // list card's white. Over the flood they read bare, and a blue plate there would split the rule's read from the next
@@ -77,12 +78,12 @@ const TWO_UP: RecapLook = {
   // EVERY rising, the pink tap flooding the card's page, the blue flood, and the −20% stamp slamming onto the poster
   // just held. Tiles with their own black ground melt into the grid's and read as litter.
   tiles: ([
-    [everyColorBar, everyColorMoments.every], [swatchesBar, swatchesMoments.pinkTap], [searchBar, searchMoments.answer, SEARCH_GROUNDS],
-    [payLessBar, payLessMoments.stamp],
+    ['every-color', timeline.cue('every-color.every')], ['swatches', timeline.cue('swatches.pinkTap')],
+    ['search', timeline.cue('search.answer'), SEARCH_GROUNDS], ['pay-less', timeline.cue('pay-less.stamp')],
   ] as const).map(([bar, moment, grounds]) => cued(bar, moment, HIT.twoUp, HIT.twoUp, grounds)),
 };
 // The 3×3's tiles hit together on the "and" after it pops, a second pulse inside the beat before the sixteenths.
-const NINE_UP_AND = barBeatFrame(9, 1.5);
+const NINE_UP_AND = clock.beat(1.5);
 const NINE_UP: RecapLook = {
   at: HIT.nineUp, cols: 3, rows: 3,
   // The cut's order, so the rows run the colour script: bar 1 on its last beat's "and", ONE landing on red, TAP.
@@ -90,9 +91,11 @@ const NINE_UP: RecapLook = {
   // in blue, a tier's landing, the price landing on red. The bottom row crosses QTY 2's bands, BUY MORE from edge to
   // edge, which bar 6 doesn't plate; a blue plate over their cream would let the beat squares fade.
   tiles: ([
-    [bounceBar, bounceMoments.launch], [everyColorBar, everyColorMoments.one], [everyColorBar, everyColorMoments.tapLock],
-    [swatchesBar, swatchesMoments.charcoalTap], [inkBar, inkMoments.strike2], [searchBar, searchMoments.listLand],
-    [buyMoreBar, buyMoreMoments.qty2, GRID_GROUNDS], [tiersBar, tiersMoments.plateau], [payLessBar, payLessMoments.lock],
+    ['bounce', timeline.cue('bounce.launch')], ['every-color', timeline.cue('every-color.one')],
+    ['every-color', timeline.cue('every-color.tapLock')], ['swatches', timeline.cue('swatches.charcoalTap')],
+    ['ink', timeline.cue('ink.strike2')], ['search', timeline.cue('search.listLand')],
+    ['buy-more', timeline.cue('buy-more.qty2'), GRID_GROUNDS], ['tiers', timeline.cue('tiers.plateau')],
+    ['pay-less', timeline.cue('pay-less.lock')],
   ] as const).map(([bar, moment, grounds]) => cued(bar, moment, NINE_UP_AND, HIT.nineUp, grounds)),
 };
 
@@ -105,8 +108,8 @@ const recapLayout = (look: RecapLook): RecapLayout => ({ at: sec(look.at), tiles
 // The reference's arrivals: the frame sliced for two frames; the lens splits it, HUD and all (`glitches`).
 const ARRIVAL: Omit<GlitchHit, 'at'> = { duration: 0.05, split: 0, slices: 6, shift: 70 };
 
-function Recap({ f, look, name }: { f: number; look: RecapLook; name: string }) {
-  const tiles = look.tiles.map((r): RecapTile => ({ from: sec(r.from), shot: (t) => r.bar.render(Math.round(t * FPS)) }));
+function Recap({ f, look, name, bars }: { f: number; look: RecapLook; name: string; bars: FinaleReplays }) {
+  const tiles = look.tiles.map((r): RecapTile => ({ from: sec(r.from), shot: (t) => bars[r.bar].render(Math.round(t * FPS)) }));
   return (
     <GlitchFlash t={sec(f)} hits={[{ at: sec(look.at), ...ARRIVAL }]} seed={`bar-09 ${name}`} motion={`${name} arrival`}>
       <RecapGrid t={sec(f)} {...recapLayout(look)} tiles={tiles} ground={P.ground} motion={name} />
@@ -118,8 +121,8 @@ function Recap({ f, look, name }: { f: number; look: RecapLook; name: string }) 
  * A replay's read of a part at the bar's frame `frame`, asked of its bar about `box` on that bar's own frame. A plate
  * from the replay's `grounds` takes the tone that reads on it.
  */
-function replayHudRead(replay: Replay, frame: number, slot: ReelHudSlot, box: Rect): ReelHudRead {
-  const read = replay.bar.hudRead?.(slot, frame, box) ?? { tone: 'light' };
+function replayHudRead(bars: FinaleReplays, replay: Replay, frame: number, slot: ReelHudSlot, box: Rect): ReelHudRead {
+  const read = bars[replay.bar].hudRead?.(slot, frame, box) ?? { tone: 'light' };
   const plate = !read.plate && replay.grounds?.[read.tone];
   return plate ? { tone: reelHudToneOver(plate, SHOWCASE_HUD.palette), plate } : read;
 }
@@ -151,11 +154,11 @@ function recapTilesUnder(look: RecapLook, box: Rect, f: number) {
  * shot. Across tiles, or off a tile's edge onto the grid's ground, the reads must agree (light inks with a paper
  * square suit a red and a dark ground alike); where they don't, the part sits on a plate of the grid's ground.
  */
-function recapHudRead(look: RecapLook, slot: ReelHudSlot, f: number, box: Rect): ReelHudRead {
+function recapHudRead(bars: FinaleReplays, look: RecapLook, slot: ReelHudSlot, f: number, box: Rect): ReelHudRead {
   const tiles = recapTilesUnder(look, box, f);
   const onGround = 1 - tiles.reduce((sum, u) => sum + u.share, 0) > 1e-9;
   const reads = [
-    ...tiles.map((u) => replayHudRead(u.replay, Math.round(u.replay.from + f - look.at), slot, u.inShot)),
+    ...tiles.map((u) => replayHudRead(bars, u.replay, Math.round(u.replay.from + f - look.at), slot, u.inShot)),
     ...(onGround ? [{ tone: 'light' as const }] : []),
   ];
   const [first] = reads;
@@ -170,9 +173,9 @@ function recapHudRead(look: RecapLook, slot: ReelHudSlot, f: number, box: Rect):
 // selection closes; BUY MORE on QTY 3 as red takes the bands; $1.60 PAY LESS. on red, the whole poster gliding toward
 // the stamp's place, ending three frames ahead of the stamp's beat, before it falls.
 const FLASHES: readonly (Replay & { at: number })[] = [
-  { at: HIT.flashes[0], bar: everyColorBar, from: everyColorMoments.color + 3 },
-  { at: HIT.flashes[1], bar: buyMoreBar, from: buyMoreMoments.qty3 },
-  { at: HIT.flashes[2], bar: payLessBar, from: payLessMoments.stamp - 3 - (HIT.field - HIT.flashes[2]) },
+  { at: HIT.flashes[0], bar: 'every-color', from: timeline.cue('every-color.color') + 3 },
+  { at: HIT.flashes[1], bar: 'buy-more', from: timeline.cue('buy-more.qty3') },
+  { at: HIT.flashes[2], bar: 'pay-less', from: timeline.cue('pay-less.stamp') - 3 - (HIT.field - HIT.flashes[2]) },
 ];
 // Sliced the length of each flash and split, as the reference's are: red and blue about 16 px apart, 30 with the
 // lens's split on each flash's first two frames.
@@ -187,11 +190,11 @@ const SIXTEENTH_CLICKS: readonly BarSound[] = [
   { id: 'click-implode', at: HIT.field + 1, sound: SFX.click[1], volume: 1.2 },
 ];
 
-function Flashes({ f }: { f: number }) {
+function Flashes({ f, bars }: { f: number; bars: FinaleReplays }) {
   const shot = flashAt(f);
   return (
     <GlitchFlash t={sec(f)} hits={FLASH_HITS} seed="bar-09 flashes" motion="flashes">
-      <div {...motionEchoAttrs} style={fill}>{shot.bar.render(shot.from + f - shot.at)}</div>
+      <div {...motionEchoAttrs} style={fill}>{bars[shot.bar].render(shot.from + f - shot.at)}</div>
     </GlitchFlash>
   );
 }
@@ -210,16 +213,16 @@ function FieldImplode({ f }: { f: number }) {
 }
 
 /** The HUD over the bar: the grids and the flashes as their shots' bars read them, then black, but for the grey flash. */
-function oneBoxHudRead(slot: ReelHudSlot, f: number, box: Rect): ReelHudRead {
+function oneBoxHudRead(bars: FinaleReplays, slot: ReelHudSlot, f: number, box: Rect): ReelHudRead {
   // The section label decodes in on the cut over bar 8's tile: its first cell at half strength as the tile pops in
   // smeared, then its letters over the stamp's ring of type. Bare, it all but vanishes on the first frame and is lost
   // in the type after, so it takes the grid's ground through the 2×2.
   if (slot === 'section' && f < HIT.nineUp) return { tone: 'light', plate: P.ground };
-  if (f < HIT.nineUp) return recapHudRead(TWO_UP, slot, f, box);
-  if (f < HIT.flashes[0]) return recapHudRead(NINE_UP, slot, f, box);
+  if (f < HIT.nineUp) return recapHudRead(bars, TWO_UP, slot, f, box);
+  if (f < HIT.flashes[0]) return recapHudRead(bars, NINE_UP, slot, f, box);
   if (f < HIT.field) {
     const shot = flashAt(f);
-    return replayHudRead(shot, shot.from + f - shot.at, slot, box);
+    return replayHudRead(bars, shot, shot.from + f - shot.at, slot, box);
   }
   // The grey flash's first frame is the one light ground; the strike's red flash takes the paper square.
   return { tone: f === HIT.card ? 'dark' : f === HIT.stop ? 'on-accent' : 'light' };
@@ -491,18 +494,19 @@ function EndCard({ f }: { f: number }) {
 
 // ---------- the bar ----------
 
-export const oneBoxBar: Bar = {
+/** The finale, replaying `bars`. */
+export const oneBoxBar = (bars: FinaleReplays): Bar => ({
   id: 'one-box',
   note: 'The bars replay live in a 2×2 and then a 3×3; COLOR, BUY MORE and PAY LESS. flash on the sixteenths and the ink field implodes into a red plus; after a grey flash ONE BOX rises on black as painfulpleasures.com decodes under it, a rule and PAINFUL PLEASURES come in on the "and", and the needle tattoos its red full stop on the last hit, the card jolting as red runs back through the letters; the card holds on its push as the red settles and grain rises, to black.',
-  from: FROM, to: TO,
+  clock,
   render: (f) => {
-    if (f < HIT.nineUp) return <Recap f={f} look={TWO_UP} name="two-up" />;
-    if (f < HIT.flashes[0]) return <Recap f={f} look={NINE_UP} name="nine-up" />;
-    if (f < HIT.field) return <Flashes f={f} />;
+    if (f < HIT.nineUp) return <Recap f={f} look={TWO_UP} name="two-up" bars={bars} />;
+    if (f < HIT.flashes[0]) return <Recap f={f} look={NINE_UP} name="nine-up" bars={bars} />;
+    if (f < HIT.field) return <Flashes f={f} bars={bars} />;
     if (f < HIT.card) return <FieldImplode f={f} />;
     return <EndCard f={f} />;
   },
-  hudRead: oneBoxHudRead,
+  hudRead: (slot, f, box) => oneBoxHudRead(bars, slot, f, box),
   kicks: [HIT.nineUp, ...HIT.flashes, HIT.field, HIT.card],
   // No split on the stop: the lens's would double the needle on its frame and the URL, already decoded, on the next
   // two. The flash, the jolt and the red running back carry the hit.
@@ -513,4 +517,4 @@ export const oneBoxBar: Bar = {
     // tail, its sustain trimmed to keep under `studio mix`'s OVER.
     { id: 'needle-full-stop', at: HIT.stop, sound: needleFullStop },
   ],
-};
+});

@@ -9,13 +9,13 @@ import { ColumnField, columnBallAt, columnTitaniumMaterial, columnCameraAt, colu
 import { reelHudGrounds, type ReelHudTone } from '../../../lib/studio/reel/hud.tsx';
 import type { Bar } from '../bar.ts';
 import whipIntoPayLess from '../sfx/whip-into-pay-less.ts';
-import { P, barFrame, barBeatFrame } from '../timeline.ts';
+import { P } from '../look.ts';
+import { timeline } from '../timeline.ts';
 
-const FROM = barFrame(7), TO = barFrame(8);
+const clock = timeline.bar('tiers');
+const FROM = clock.from, TO = clock.to;
 /** The four landings: $2.00, $1.80, $1.60 (the bar's accent), $1.40. */
-const HITS = [0, 1, 2, 3].map((n) => barBeatFrame(7, n));
-/** What the finale replays of this bar: the ball landing on the red plateau. */
-export const tiersMoments = { plateau: HITS[3] } as const;
+const HITS = [clock.beat(0), clock.beat(1), clock.beat(2), clock.cues.plateau];
 const HERO = 2;
 /** Seconds from the first landing, the field's clock. */
 const fieldT = (f: number) => (f - FROM) / FPS;
@@ -368,7 +368,7 @@ function tiersToneAt(f: number): (p: Point) => ReelHudTone {
 export const tiersBar: Bar = {
   id: 'tiers',
   note: 'An anodized titanium ball hops down four tiers of columns, cream at $2.00 to red at $1.40, a tier a beat, the focus racking with it, as the camera cranes from overhead to a low three-quarter view, then whips right along the red after it.',
-  from: FROM, to: TO,
+  clock,
   render: (f) => <ColumnField {...fieldAt(f)} />,
   // The tone most of a part's box shows: no plates, as the stage's lit faces and shadows are broad and flat.
   hudRead: (_slot, f, box) => ({ tone: reelHudGrounds(box, tiersToneAt(f))[0].ground }),

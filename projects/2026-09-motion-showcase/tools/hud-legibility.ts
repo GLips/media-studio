@@ -36,21 +36,21 @@ const GLYPH_GAP = 1, WORD_GAP = 10, STRETCH = 20;
 
 const { SHOWCASE_HUD } = await import(`${PROJECT}/reel.tsx`);
 const { showcaseBars } = await import(`${PROJECT}/video.tsx`);
-const { END_FRAME, FADE_TO_BLACK } = await import(`${PROJECT}/timeline.ts`);
+const { timeline } = await import(`${PROJECT}/timeline.ts`);
 const { REEL_HUD_SLOTS, reelHudBoxes } = await import(`${ROOT}/lib/studio/reel/hud.tsx`);
 
 const { LENS_FRINGE_SUBPIXEL_MAX, lensFringeAt } = await import(`${ROOT}/lib/studio/reel/lens.tsx`);
 
-type Bar = { id: string; from: number; to: number; kicks?: readonly number[]; glitches?: readonly number[] };
+type Bar = { id: string; clock: { from: number; to: number }; kicks?: readonly number[]; glitches?: readonly number[] };
 const bars: Bar[] = showcaseBars;
-const barOf = (f: number) => bars.find((b) => f >= b.from && f < b.to)!;
+const barOf = (f: number) => bars.find((b) => f >= b.clock.from && f < b.clock.to)!;
 // The reel's fade takes the HUD down with everything from here.
-const FADE_FROM = FADE_TO_BLACK.from;
+const FADE_FROM = timeline.fade.from;
 
 /** Marks a frame where the lens moves the HUD's channels whole px apart, by design: a cut's kick, a glitch's split. */
 function lensMark(f: number) {
   const bar = barOf(f);
-  const kicks = [...(bar.from > 0 ? [bar.from] : []), ...(bar.kicks ?? [])].map((k) => k / FPS);
+  const kicks = [...(bar.clock.from > 0 ? [bar.clock.from] : []), ...(bar.kicks ?? [])].map((k) => k / FPS);
   const fringe = lensFringeAt(f / FPS, { kicks, splits: (bar.glitches ?? []).map((g) => g / FPS) });
   return fringe.red || fringe.blue ? ' (split)' : fringe.radial > LENS_FRINGE_SUBPIXEL_MAX ? ' (kick)' : '';
 }
@@ -62,8 +62,8 @@ const flag = (name: string) => args.find((a) => a.startsWith(`--${name}=`))?.spl
 const input = args.find((a) => !a.startsWith('--'));
 if (!input) throw new Error('usage: node projects/2026-09-motion-showcase/tools/hud-legibility.ts <mp4> [--from=N] [--frames=a-b] [--show=N]');
 const barFile = /bars\/0?(\d)\.mp4$/.exec(input);
-const from = Number(flag('from') ?? (barFile ? bars[Number(barFile[1]) - 1].from : 0));
-const [lo, hi] = (flag('frames') ?? `0-${END_FRAME - 1}`).split('-').map(Number);
+const from = Number(flag('from') ?? (barFile ? bars[Number(barFile[1]) - 1].clock.from : 0));
+const [lo, hi] = (flag('frames') ?? `0-${timeline.end - 1}`).split('-').map(Number);
 const show = flag('show') === undefined ? undefined : Number(flag('show'));
 
 // ---------- the mask ----------
@@ -73,10 +73,10 @@ const show = flag('show') === undefined ? undefined : Number(flag('show'));
 const MASK_VIDEO = `import { FPS, defineScene, defineVideo } from '../../../../lib/studio/api.ts';
 import { ReelHud } from '../../../../lib/studio/reel/hud.tsx';
 import { SHOWCASE_HUD } from '../../reel.tsx';
-import { END_FRAME } from '../../timeline.ts';
+import { timeline } from '../../timeline.ts';
 
 const hudMask = defineScene({
-  id: 'hud-mask', note: 'The showcase HUD, paper on black', min: END_FRAME / FPS, lead: 0, tail: 0, cut: true,
+  id: 'hud-mask', note: 'The showcase HUD, paper on black', min: timeline.end / FPS, lead: 0, tail: 0, cut: true,
   render: (s) => (
     <>
       <div style={{ position: 'absolute', inset: 0, background: '#000' }} />
@@ -286,7 +286,7 @@ let judged = 0, k = 0;
 for await (const rgb of cutFrames) {
   const f = from + k++;
   const { value: mask, done } = await masks.next();
-  if (done || f >= END_FRAME) break;
+  if (done || f >= timeline.end) break;
   if (f < lo || f > hi) continue;
   const words = measureFrame(rgb, mask, f);
   if (f === show) {
@@ -319,7 +319,7 @@ if (!failures.length) console.log('every part legible on every frame');
 for (const bar of bars) {
   const mine = failures.filter((x) => barOf(x.f) === bar);
   if (!mine.length) continue;
-  console.log(`\n${bar.id} (${bar.from}–${bar.to - 1}): ${new Set(mine.map((x) => x.f)).size} frames`);
+  console.log(`\n${bar.id} (${bar.clock.from}–${bar.clock.to - 1}): ${new Set(mine.map((x) => x.f)).size} frames`);
   for (const slot of REEL_HUD_SLOTS as ReelHudSlot[]) {
     for (const why of ['VANISH', 'BUSY']) {
       const fs = mine.filter((x) => x.word.slot === slot && x.why === why).map((x) => x.f);

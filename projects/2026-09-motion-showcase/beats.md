@@ -2,7 +2,7 @@
 
 The cut as built, beat by beat. Frames are video frames at 30 fps (seconds = frame / 30). Each bar's beats come from
 the bar table in `timeline.ts` (4, 4, 6, 6, 4, 4, 4, 8 and 4 beats), every hit two frames ahead of the music;
-`node tools/bar-clock.ts` prints each beat's frame. `storyboard.md` is the plan and its colour script; this is what's
+`studio clock` prints each beat's frame. `storyboard.md` is the plan and its colour script; this is what's
 on screen.
 
 ## Pickup and bar 1 · 0–85 · 01 — SQUASH & STRETCH

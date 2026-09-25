@@ -11,6 +11,8 @@ test('a model reaching render, I/O or browser code is caught through any chain; 
       "import { Vector3 } from 'three';", "import type { Clock } from '#studio';",
       'export const ease = (k: number, el?: HTMLElement) => k * 2;', 'export const v = new Vector3();',
     ].join('\n'),
+    // Legal neighbour: a model's spec, its evaluator under node --test.
+    'lib/models/motion/ease.test.ts': "import { test } from 'node:test';\nimport { ease } from './ease.ts';\ntest('e', () => ease(1));\n",
     // Adversarial: a global read as a parameter's default, beside a parameter that shares a global's name.
     'lib/models/motion/size.ts': 'export const size = (w = window) => w;\nexport const env = (process: number) => process;\n',
     // Obvious: a render package.

@@ -2,7 +2,7 @@
 
 import type { CSSProperties, ReactNode } from 'react';
 import { DISPLAY_FONT, MONO_FONT, W } from '../../lib/studio/api.ts';
-import { P } from './timeline.ts';
+import { P } from './look.ts';
 
 export const Field = ({ color }: { color: string }) => <div style={{ position: 'absolute', inset: 0, background: color }} />;
 

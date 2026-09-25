@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { BarClock } from '../../lib/models/timeline/bar-timeline.ts';
 import type { Rect, SfxSound } from '../../lib/studio/api.ts';
 import type { ReelHudRead, ReelHudSlot } from '../../lib/studio/reel/hud.tsx';
 
@@ -10,9 +11,8 @@ export type Bar = {
   id: string;
   /** What the bar shows, for the scene list and the per-beat note. */
   note: string;
-  /** Its first frame, and the frame the next bar starts on. */
-  from: number;
-  to: number;
+  /** Its bar of the timeline: its frames (`from`, and `to` where the next starts), its beats and its cues. */
+  clock: BarClock;
   render: (f: number) => ReactNode;
   /**
    * How the HUD reads over a part at frame `f`, judged over `box`, where the part sits on this bar's frame: its tone

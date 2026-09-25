@@ -22,32 +22,32 @@ import { captures as C } from '../captures/index.ts';
 import { SHOWCASE_HUD } from '../reel.tsx';
 import { INK_COUNT, INK_DOT, INK_FIELD, type InkCell } from '../ink-field.ts';
 import listSlam from '../sfx/list-slam.ts';
-import { P, barFrame, barBeatFrame, isBlueInk, type Ink } from '../timeline.ts';
+import { P, isBlueInk, type Ink } from '../look.ts';
+import { timeline } from '../timeline.ts';
 
-const FROM = barFrame(5), TO = barFrame(6);
+const clock = timeline.bar('search');
+const FROM = clock.from, TO = clock.to;
 // The track swings its sixteenths: across it, the second and fourth of a beat land about 35 ms (0.07 beat) behind the
 // straight grid, a frame late, while its beats and "and"s sit on it. A letter on the straight grid's "a" would
 // lead the music's hit by over two frames.
 const SWING = 0.07;
-const swungSixteenth = (n: number) => barBeatFrame(5, n % 0.5 ? n + SWING : n);
+const swungSixteenth = (n: number) => clock.beat(n % 0.5 ? n + SWING : n);
 /** b, l, u, e: one a sixteenth from the downbeat, "blue" whole on its "a". */
 const KEYS = [0, 0.25, 0.5, 0.75].map(swungSixteenth);
 /** The query is whole: from the cursor, the 17 blues flash up where they stand and the rest dim. */
 const FOUND = KEYS[3];
 /** The next beat: the 17 pulse and the 157 fall out of the frame as the count starts down. */
-const FALL = barBeatFrame(5, 1);
+const FALL = clock.beat(1);
 /** Its "and": the 17 fly to their block, whole on the "a". */
-const PACK_FROM = barBeatFrame(5, 1.5);
-const DOWNBEAT = barBeatFrame(5, 2);
+const PACK_FROM = clock.beat(1.5);
+const DOWNBEAT = clock.cues.answer;
 /** The cursor swells for five frames; the frame is blue on the downbeat. */
 const FLOOD_FROM = DOWNBEAT - 5;
-const DIVE = barBeatFrame(5, 2.5);
+const DIVE = clock.beat(2.5);
 /** The card comes in from past the frame's corner a frame into the dive, once the type has started to move. */
 const SWOOP_FROM = DIVE + 1;
-const LAND = barBeatFrame(5, 3);
-const RISE = barBeatFrame(5, 3.5);
-/** What the finale replays of this bar: the answer, "blue · 17 of 174" on cobalt, and the list slamming down. */
-export const searchMoments = { answer: DOWNBEAT, listLand: LAND } as const;
+const LAND = clock.cues.listLand;
+const RISE = clock.beat(3.5);
 const sec = (f: number) => f / FPS;
 const CENTRE: Point = { x: W / 2, y: H / 2 };
 
@@ -667,7 +667,7 @@ function searchHudRead(slot: ReelHudSlot, f: number, box: Rect): ReelHudRead {
 export const searchBar: Bar = {
   id: 'search',
   note: '"blue" types into the ink field a letter a sixteenth, each key ringing through it, as the count reads 174 of 174; on the "e" the 17 blues flash up where they stand and the rest dim, then fall away on the next beat as the count rolls to 17; on its "and" the 17 pack beside the word as the cursor swells into a blue flood; then the camera dives through the type as the real list swoops in over it and slams down huge and tilted; the list scrolls up under its search box, which lifts off toward the lens.',
-  from: FROM, to: TO,
+  clock,
   render: (f) => <SearchBar f={f} />,
   hudRead: searchHudRead,
   // Not a cut, but the card's slam: the lens kicks with it.

@@ -6,7 +6,7 @@
 import { H, ODOMETER_DIGIT_EM, W } from '../../lib/studio/api.ts';
 import { glyphFieldLayout, type GlyphCell, type GlyphFieldProps, type GlyphLayout, type GlyphRest, type GlyphShape } from '../../lib/studio/reel/glyph-field.tsx';
 import { archivoAdvance } from '../../lib/studio/reel/ticker-layout.ts';
-import { inks, type Ink } from './timeline.ts';
+import { inks, type Ink } from './look.ts';
 
 /** A cell of the ink field: its place in the lattice and the ink it shows. */
 export type InkCell = GlyphCell<Ink>;
