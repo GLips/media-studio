@@ -1,5 +1,6 @@
 // api.ts: everything a project's video.tsx or stills.tsx builds from, in one import.
 
+export { BrandLogo, brandLogoFor, type StudioBrand, type StudioBrandLogo } from './brand.tsx';
 export * from './blockout.tsx';
 export * from './blockout-camera.ts';
 export * from './beats.ts';

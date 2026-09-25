@@ -156,7 +156,8 @@ export function stillProblems({ measure, fits, ground, zones }: { measure: Still
     // The bundle renames files to hashes, so an image goes by where it's drawn.
     const name = `the image at ${px(img.shown.x)}, ${px(img.shown.y)} (${img.src.split('/').at(-1)})`;
     const scale = Math.max(img.rect.w / img.natural.w, img.rect.h / img.natural.h);
-    if (scale > STILL_UPSCALE_MAX) add('upscaled', `${name} is drawn at ${scale.toFixed(1)}× its pixels (${img.natural.w}×${img.natural.h} shown ${px(img.rect.w)} wide), so it's soft: crop less of it, or capture or generate it bigger`);
+    // An SVG (a logo) draws sharp at any size.
+    if (!/\.svg$/i.test(img.src) && scale > STILL_UPSCALE_MAX) add('upscaled', `${name} is drawn at ${scale.toFixed(1)}× its pixels (${img.natural.w}×${img.natural.h} shown ${px(img.rect.w)} wide), so it's soft: crop less of it, or capture or generate it bigger`);
 
     if (area(img.shown) < MARK_SHARE_MAX * frame.w * frame.h) {
       for (const z of zones) {

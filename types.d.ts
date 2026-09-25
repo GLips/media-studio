@@ -32,6 +32,14 @@ declare module '*.ttf' {
   const src: string;
   export default src;
 }
+declare module '*.otf' {
+  const src: string;
+  export default src;
+}
+declare module '*.woff2' {
+  const src: string;
+  export default src;
+}
 /** The project's video.tsx, or null when it has only stills (lib/project-bundle.ts). */
 declare module '@video' {
   const video: import('./lib/studio/timeline.ts').VideoDef | null;
@@ -41,6 +49,11 @@ declare module '@video' {
 declare module '@stills' {
   const stills: import('./lib/studio/stills.tsx').StillsDef | null;
   export default stills;
+}
+/** The brand kit the project's brand.json names, loaded (lib/project-brand.ts). Importing it without one throws. */
+declare module '@brand' {
+  const brand: import('./lib/studio/brand.tsx').StudioBrand;
+  export default brand;
 }
 declare module '*.mp4' {
   const src: string;

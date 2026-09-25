@@ -8,7 +8,7 @@
 import { useLayoutEffect, useRef, useState, type ComponentType, type CSSProperties } from 'react';
 import { Artifact, Img, useDelayRender, useVideoConfig } from 'remotion';
 import type { Rect } from './camera.ts';
-import { DISPLAY_FONT, useStudioFontsReady } from './fonts.ts';
+import { ARCHIVO_FACE, useStudioFontsReady, type StudioFace } from './fonts.ts';
 import { stillFitArtifactName, type StillFitReport, type StillPreset } from './still-presets.ts';
 
 /** What a design's variants vary: each axis (headline, image) and its values, in the order a sheet lays them out. */
@@ -107,24 +107,26 @@ export function CoverImage({ image, box, focus, style }: { image: StillImage; bo
 
 // ---------- fitted type ----------
 
-/** Archivo's widths FitText tries, widest first. It narrows before it shrinks. */
+/** The widths FitText tries, widest first, on a face with a width axis. It narrows before it shrinks. */
 const FIT_STRETCHES = [100, 88, 76, 66];
 /** A narrower width is kept only when it sets the text at least this much larger than the widest width that fits. */
 const FIT_NARROWING_GAIN = 1.15;
 
 
 /**
- * Sets `text` as large as fits `box`, up to `max` px and down to `min`, measured in the browser once the fonts are in.
- * On Archivo it narrows first (width 100% → 66%), keeping a narrower width only when that buys about 15% more size.
+ * Sets `text` as large as fits `box`, up to `max` px and down to `min`, measured in the browser once the fonts are in,
+ * in `face` (Archivo, or a brand's `brand.fonts.display`). On a face with a width axis it narrows first (width 100% →
+ * 66%, within the axis), keeping a narrower width only when that buys about 15% more size; on one without, it shrinks.
  * Lines are balanced. A text that fits only at `min`, or not even there, fails the still check (lib/still-check.ts), so
  * `studio still` won't write it. `name` names it there, unique within the still.
  */
-export function FitText({ name, text, box, max, min, align = 'end', style }: {
+export function FitText({ name, text, box, max, min, face = ARCHIVO_FACE, align = 'end', style }: {
   name: string; text: string; box: Rect; max: number; min: number;
+  face?: StudioFace;
   /** Where the lines sit in the box when they're shorter than it. */
   align?: 'start' | 'center' | 'end';
-  /** Type other than size and width: weight, colour, line height, tracking. The family defaults to Archivo. */
-  style?: CSSProperties;
+  /** Type other than face, size and width: weight, colour, line height, tracking. */
+  style?: Omit<CSSProperties, 'fontFamily' | 'fontSize' | 'fontStretch'>;
 }) {
   const ready = useStudioFontsReady();
   const outer = useRef<HTMLDivElement>(null), inner = useRef<HTMLDivElement>(null);
@@ -138,7 +140,7 @@ export function FitText({ name, text, box, max, min, align = 'end', style }: {
       if (pending.current !== null) continueRender(pending.current);
       pending.current = null;
     };
-  }, [name, text, box.w, box.h, max, min, delayRender, continueRender]);
+  }, [name, text, box.w, box.h, max, min, face.family, face.stretch?.[0], face.stretch?.[1], delayRender, continueRender]);
 
   useLayoutEffect(() => {
     if (!ready) return;
@@ -159,18 +161,22 @@ export function FitText({ name, text, box, max, min, align = 'end', style }: {
       }
       return { stretch, size: Math.max(min, Math.floor(lo * 4) / 4), fits: true };
     };
-    const fitting = FIT_STRETCHES.map(largest).filter((t) => t.fits);
+    const [lo, hi] = face.stretch ?? [100, 100];
+    const inAxis = FIT_STRETCHES.filter((s) => s >= lo && s <= hi);
+    // An axis that holds none of them: its width nearest 100%.
+    const stretches = inAxis.length ? inAxis : [Math.min(hi, Math.max(lo, 100))];
+    const fitting = stretches.map(largest).filter((t) => t.fits);
     // The widest width that fits, unless a narrower one sets it 15% larger (the widest of those); with none fitting,
     // the narrowest at the floor.
     const base = fitting[0];
     const best = base
       ? (fitting.find((t) => t.size >= base.size * FIT_NARROWING_GAIN) ?? base)
-      : { stretch: FIT_STRETCHES.at(-1)!, size: min, fits: false };
+      : { stretch: stretches.at(-1)!, size: min, fits: false };
     // Set here as well as by the render: when the fit equals React's last values, React writes nothing, and the DOM
     // would keep the last size tried.
     fits(best.size, best.stretch);
     setFit({ name, text, size: best.size, stretch: best.stretch, max, min, atFloor: best.size <= min, overflows: !best.fits });
-  }, [ready, name, text, box.w, box.h, max, min]);
+  }, [ready, name, text, box.w, box.h, max, min, face.family, face.stretch?.[0], face.stretch?.[1]]);
 
   useLayoutEffect(() => {
     if (!fit || fit.text !== text || pending.current === null) return;
@@ -187,7 +193,7 @@ export function FitText({ name, text, box, max, min, align = 'end', style }: {
         // What the still probe waits for.
         {...(fit?.text === text && { 'data-still-fitted': '' })}
         style={{
-          fontFamily: DISPLAY_FONT, textWrap: 'balance', overflowWrap: 'normal', ...style,
+          textWrap: 'balance', overflowWrap: 'normal', ...style, fontFamily: face.family,
           fontSize: fit ? fit.size : max, fontStretch: `${fit ? fit.stretch : 100}%`,
         }}
       >

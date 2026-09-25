@@ -1,6 +1,6 @@
 // project-bundle.ts: points a Remotion bundle at one project. The browser entry (lib/studio/Root.tsx) imports
 // `@video` and `@stills`, which this aliases to the project's video.tsx and stills.tsx, or to a null module for the one
-// it doesn't have.
+// it doesn't have. A project's designs import its brand kit as `@brand` (lib/project-brand.ts).
 //
 // One project per bundle on purpose: captures and audio are gitignored and imported, so a project that hasn't been
 // captured yet would break every other project's Studio and render if they shared a bundle.
@@ -11,6 +11,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { webpack, type WebpackOverrideFn } from '@remotion/bundler';
 import { HostImportPlugin, HostModuleStubPlugin, HostTsconfigPathsPlugin } from './host-module-resolution.ts';
 import { previsFootageModuleFor, writePrevisFootageModule } from './previs-footage.ts';
+import { writeProjectBrandModule } from './project-brand.ts';
 import { projectHostLink, readProjectHostSpec } from './project-host-spec.ts';
 import { writeSfxCueModule } from './sfx/cue-module.ts';
 
@@ -68,11 +69,12 @@ export function projectWebpackOverride(project: string): WebpackOverrideFn {
   // watches it, and picks up footage as `studio gen video` rewrites it.
   writePrevisFootageModule(project);
   const sfxCues = writeSfxCueModule(project);
+  const brand = writeProjectBrandModule(project);
   return (config) => ({
     ...config,
     resolve: {
       ...config.resolve,
-      alias: { ...(config.resolve?.alias as Record<string, string>), '@video': video, '@stills': stills, '@footage': previsFootageModuleFor(project), '@sfx-cues': sfxCues, 'react-dom': studioReactDom(join(dir, 'generated')) },
+      alias: { ...(config.resolve?.alias as Record<string, string>), '@video': video, '@stills': stills, '@footage': previsFootageModuleFor(project), '@sfx-cues': sfxCues, '@brand': brand, 'react-dom': studioReactDom(join(dir, 'generated')) },
       plugins: [...(config.resolve?.plugins ?? []), ...hostPlugins],
     },
     plugins: [...(config.plugins ?? []), new webpack.DefinePlugin({ PROJECT_SLUG: JSON.stringify(projectSlug(project)), REPLAY_SLUG: JSON.stringify(replaySlug(project)), BLOCKOUT_SLUG: JSON.stringify(blockoutSlug(project)) })],
