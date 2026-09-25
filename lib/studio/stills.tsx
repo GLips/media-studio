@@ -5,11 +5,11 @@
 // Root.tsx registers one composition per design × preset × variant; `studio still` renders them (lib/render-stills.ts),
 // and `studio still --sheet` lays a design's variants out by their axes (lib/still-sheet.ts).
 
-import { useLayoutEffect, useRef, useState, type ComponentType, type CSSProperties } from 'react';
+import { createContext, useContext, useLayoutEffect, useRef, useState, type ComponentType, type CSSProperties } from 'react';
 import { Artifact, Img, useDelayRender, useVideoConfig } from 'remotion';
 import type { Rect } from './camera.ts';
-import { ARCHIVO_FACE, useStudioFontsReady, type StudioFace } from './fonts.ts';
-import { stillFitArtifactName, type StillFitReport, type StillPreset } from './still-presets.ts';
+import { ARCHIVO_FACE, MONO_FONT, useStudioFontsReady, type StudioFace } from './fonts.ts';
+import { STILL_UI_ZONES, stillFitArtifactName, type StillFitReport, type StillPreset } from './still-presets.ts';
 
 /** What a design's variants vary: each axis (headline, image) and its values, in the order a sheet lays them out. */
 export type StillAxes = Readonly<Record<string, readonly string[]>>;
@@ -70,14 +70,27 @@ export function defineStills(designs: Readonly<Record<string, StillDesign<any, a
   return { designs: resolved };
 }
 
+/** Which preset a still renders at; Root.tsx provides it around each still. */
+export const StillPresetContext = createContext<StillPreset | null>(null);
+
 /**
  * The frame a design lays out in. `u` is 1% of the shorter side, the unit for type and margins, so a design keeps its
  * proportions at every preset. `wide` is a landscape frame (OG, YouTube), where text sits beside the subject rather
- * than under it; a square frame is not wide.
+ * than under it; a square frame is not wide. `safe` is the frame less the platform's full-width bars (a story's top
+ * and reply bars): text and logos go inside it, pictures may run under the bars. `zones` is every UI zone, corners
+ * too (YouTube's duration badge), for a design to keep text out of.
  */
 export function useStillFrame() {
   const { width: w, height: h } = useVideoConfig();
-  return { w, h, u: Math.min(w, h) / 100, wide: w > h * 1.25 };
+  const preset = useContext(StillPresetContext);
+  if (!preset) throw new Error('useStillFrame is for a still: render it through defineStills');
+  const zones = STILL_UI_ZONES[preset];
+  let top = 0, bottom = h;
+  for (const { rect } of zones.filter((z) => z.rect.w >= w)) {
+    if (rect.y <= 0) top = Math.max(top, rect.y + rect.h);
+    else bottom = Math.min(bottom, rect.y);
+  }
+  return { w, h, u: Math.min(w, h) / 100, wide: w > h * 1.25, preset, zones, safe: { x: 0, y: top, w, h: bottom - top } };
 }
 
 // ---------- images ----------
@@ -90,7 +103,20 @@ export type StillImage = { src: string; w: number; h: number };
  * that spot as near the box's centre as the image's edges allow. A rect is the subject: the image scales so the whole
  * subject fits the box, and never below covering it.
  */
-export function CoverImage({ image, box, focus, style }: { image: StillImage; box: Rect; focus: { x: number; y: number; w?: number; h?: number }; style?: CSSProperties }) {
+export function CoverImage({ image, box, focus, style }: { image: StillImage; box: Rect; focus: StillFocus; style?: CSSProperties }) {
+  const { scale, left, top } = coverPlacement(image, box, focus);
+  return (
+    <div style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, overflow: 'hidden', ...style }}>
+      <Img src={image.src} style={{ position: 'absolute', left, top, width: image.w * scale, height: image.h * scale, maxWidth: 'none' }} />
+    </div>
+  );
+}
+
+/** A point, or a rect (the subject), in the image's own units. */
+export type StillFocus = { x: number; y: number; w?: number; h?: number };
+
+/** Where CoverImage draws `image` in `box`: its scale, and its top-left from the box's. */
+function coverPlacement(image: StillImage, box: Rect, focus: StillFocus) {
   const cover = Math.max(box.w / image.w, box.h / image.h);
   const subject = focus.w && focus.h ? Math.min(box.w / focus.w, box.h / focus.h) : 0;
   const scale = Math.max(cover, subject);
@@ -98,10 +124,90 @@ export function CoverImage({ image, box, focus, style }: { image: StillImage; bo
   // Centre the focus, then pull back so no edge of the box shows past the image.
   const left = Math.min(0, Math.max(box.w - image.w * scale, box.w / 2 - cx * scale));
   const top = Math.min(0, Math.max(box.h - image.h * scale, box.h / 2 - cy * scale));
+  return { scale, left, top };
+}
+
+// ---------- the reel's vocabulary, still ----------
+
+/** How a StillCard is turned, in degrees: `rx` tips the top edge away, `ry` turns the right edge away, `rz` clockwise. */
+export type StillCardTilt = { rx: number; ry: number; rz: number };
+/** The reel's resting tilt for a UI card (PLANE_REST_POSE, reel/capture-plane.tsx). */
+export const STILL_CARD_TILT: StillCardTilt = { rx: 3, ry: -8, rz: 0 };
+
+/**
+ * A capture as a card in space, the reel's CapturePlane held still: `image` cropped around `focus` (as CoverImage does)
+ * on a rounded card at `box`, turned by `tilt`, casting a shadow on the ground. `lift` is one control (a rect in the
+ * image's units) drawn again raised off the card toward the viewer, with its own shadow, and ringed in `ring` if given:
+ * the tap the reel shows, frozen. Put the card on a full-bleed field, not a tint.
+ */
+export function StillCard({ image, box, focus, tilt = STILL_CARD_TILT, radius, lift, ring }: {
+  image: StillImage; box: Rect; focus: StillFocus;
+  tilt?: StillCardTilt;
+  /** Corner radius in px (default 3% of the card's shorter side). */
+  radius?: number;
+  lift?: Rect;
+  ring?: string;
+}) {
+  const { scale, left, top } = coverPlacement(image, box, focus);
+  const side = Math.min(box.w, box.h);
+  const r = radius ?? 0.03 * side;
+  const drawn = { position: 'absolute', left, top, width: image.w * scale, height: image.h * scale, maxWidth: 'none' } as const;
+  const liftBox = lift && { x: left + lift.x * scale, y: top + lift.y * scale, w: lift.w * scale, h: lift.h * scale };
+  const liftR = liftBox && 0.12 * Math.min(liftBox.w, liftBox.h);
   return (
-    <div style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, overflow: 'hidden', ...style }}>
-      <Img src={image.src} style={{ position: 'absolute', left, top, width: image.w * scale, height: image.h * scale, maxWidth: 'none' }} />
+    // Perspective on the parent, preserve-3d on the card: the lift is a sibling of the clipped face, since overflow
+    // hidden flattens its children onto the card.
+    <div style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, perspective: 4 * Math.max(box.w, box.h) }}>
+      <div style={{ position: 'absolute', inset: 0, transformStyle: 'preserve-3d', transform: `rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg) rotateZ(${tilt.rz}deg)` }}>
+        <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: r, boxShadow: `0 ${0.05 * side}px ${0.12 * side}px rgba(0, 0, 0, 0.45), 0 ${0.01 * side}px ${0.02 * side}px rgba(0, 0, 0, 0.3)` }}>
+          <Img src={image.src} style={drawn} />
+        </div>
+        {liftBox && (
+          <div style={{
+            position: 'absolute', left: liftBox.x, top: liftBox.y, width: liftBox.w, height: liftBox.h, overflow: 'hidden', borderRadius: liftR,
+            transform: `translateZ(${0.08 * side}px) scale(1.18)`,
+            boxShadow: `0 ${0.03 * side}px ${0.06 * side}px rgba(0, 0, 0, 0.5)${ring ? `, 0 0 0 ${0.012 * side}px ${ring}` : ''}`,
+          }}>
+            <Img src={image.src} style={{ ...drawn, left: -lift.x * scale, top: -lift.y * scale }} />
+          </div>
+        )}
+      </div>
     </div>
+  );
+}
+
+/**
+ * The reel HUD's chrome held still: corner brackets inset from the frame, and a mono label beside each top bracket.
+ * Labels go at the top only, since YouTube's badge takes the bottom right. It frames a still as a
+ * frame of the reel; leave it off a still that isn't one.
+ */
+export function StillHud({ ink, left, right }: {
+  /** One ink, or one for the top (brackets and labels) and one for the bottom brackets, on a frame split top and bottom. */
+  ink: string | { top: string; bottom: string };
+  left?: string;
+  right?: string;
+}) {
+  const { w, h, u, safe } = useStillFrame();
+  const inks = typeof ink === 'string' ? { top: ink, bottom: ink } : ink;
+  // Inset from the safe area's edges: a story's brackets sit inside its bars.
+  const at = { x: 3.5 * u, top: safe.y + 3.5 * u, bottom: h - safe.y - safe.h + 3.5 * u };
+  const arm = 3 * u, weight = Math.max(2, 0.28 * u), size = 1.7 * u;
+  const corner = (x: number, y: number, sx: 1 | -1, sy: 1 | -1) => {
+    const line = `${weight}px solid ${sy > 0 ? inks.top : inks.bottom}`;
+    return (
+      <div key={`${sx}${sy}`} style={{
+        position: 'absolute', left: sx > 0 ? x : x - arm, top: sy > 0 ? y : y - arm, width: arm, height: arm, boxSizing: 'border-box',
+        [sy > 0 ? 'borderTop' : 'borderBottom']: line, [sx > 0 ? 'borderLeft' : 'borderRight']: line,
+      }} />
+    );
+  };
+  const label = { position: 'absolute', top: at.top + arm * 0.35, fontFamily: MONO_FONT, fontSize: size, fontWeight: 600, letterSpacing: '0.08em', lineHeight: 1, color: inks.top, whiteSpace: 'nowrap' } as const;
+  return (
+    <>
+      {corner(at.x, at.top, 1, 1)}{corner(w - at.x, at.top, -1, 1)}{corner(at.x, h - at.bottom, 1, -1)}{corner(w - at.x, h - at.bottom, -1, -1)}
+      {left && <div style={{ ...label, left: at.x + arm * 1.3 }}>{left}</div>}
+      {right && <div style={{ ...label, right: at.x + arm * 1.3 }}>{right}</div>}
+    </>
   );
 }
 

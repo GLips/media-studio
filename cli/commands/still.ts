@@ -7,7 +7,7 @@ const list = (value: string | undefined) => value?.split(',').map((v) => v.trim(
 export default defineCommand({
   meta: {
     name: 'still',
-    description: "Render the project's stills (its stills.tsx: defineStills designs, each at its presets og 1200×630, youtube 1280×720, square 1080×1080, portrait 1080×1350, story 1080×1920, once per variant) to out/stills/<design>-<preset>-<variant>.png. Checks each first and refuses to write one with a problem (removing an older file of its name): text cut off, overflowing its box or fitted at its floor; text or a logo under YouTube's duration badge or a story's top and bottom bars; text under 4.5:1 against its ground (3:1 at display sizes); an image drawn at over 1.5× its pixels; a crop showing an empty band of its image. Prints each file written; on stderr, each FitText's size and every problem. Exits 1 if any still fails. --sheet also lays each design's variants out at each preset, by the design's axes, in out/still-sheets/<design>-<preset>.png: every variant with a row under it at the sizes a feed shows it (YouTube's 168×94 and 320×180, a social image about 300 px wide), refused ones framed red with their problems. Open one with `studio review <file>`, where a note names the variant under it.",
+    description: "Render the project's stills (its stills.tsx: defineStills designs, each at its presets og 1200×630, youtube 1280×720, square 1080×1080, portrait 1080×1350, story 1080×1920, once per variant) to out/stills/<design>-<preset>-<variant>.png. Checks each first and refuses to write one with a problem (removing an older file of its name): text cut off, overflowing its box or fitted at its floor; text or a logo under YouTube's duration badge or a story's top and bottom bars; text under 4.5:1 against its ground (3:1 at display sizes); an image drawn at over 1.5× its pixels; a crop showing an empty band of its image. Warns of a variant axis whose values look alike at a preset at feed size (a crop the frame can't show). Prints each file written; on stderr, each FitText's size and every problem. Exits 1 if any still fails. --sheet also lays each design's variants out at each preset, by the design's axes, in out/still-sheets/<design>-<preset>.png: every variant with a row under it at the sizes a feed shows it (YouTube's 168×94 and 320×180, a social image about 300 px wide), refused ones framed red with their problems, and a look-alike axis flagged. Open one with `studio review <file>`, where a note names the variant under it.",
   },
   args: {
     project: studioProjectArg,
@@ -40,6 +40,8 @@ export default defineCommand({
         ? `still check: ${failed.length} of ${stills.length} failed${args.check ? '' : ', not written'}: ${failed.map((s) => stillName(s.still)).join(', ')}`
         : `still check ✓ (${stills.length} still${stills.length > 1 ? 's' : ''})`);
       if (failed.length) process.exitCode = 1;
+      const { describeLookAlikeAxis, stillAxesThatLookAlike } = await import('../../lib/still-sheet.ts');
+      for (const alike of stillAxesThatLookAlike(stills)) console.error(`⚠ ${describeLookAlikeAxis(alike)}`);
       if (drawnDir) {
         const { renderStillSheets } = await import('../../lib/still-sheet.ts');
         for (const sheet of await renderStillSheets(stills, { outDir: join(project, 'out', 'still-sheets'), workDir: drawnDir, project })) console.log(sheet);

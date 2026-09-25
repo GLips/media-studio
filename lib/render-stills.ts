@@ -16,9 +16,17 @@ export type StillSelection = { designs?: readonly string[]; presets?: readonly s
 
 /**
  * One still, checked. `file` is where it was written: absent when it failed, or when only checking. `drawn` is the
- * still as drawn, pass or fail, when the caller asked to keep it (`drawnDir`).
+ * still as drawn, pass or fail, when the caller asked to keep it (`drawnDir`). `look` is the still as drawn at
+ * STILL_LOOK_SIZE, grey, which says whether two variants look alike (lib/still-sheet.ts).
  */
-export type RenderedStill = { file?: string; drawn?: string; still: StillProps; fits: StillFitReport[]; problems: StillProblem[] };
+export type RenderedStill = { file?: string; drawn?: string; still: StillProps; fits: StillFitReport[]; problems: StillProblem[]; look: Uint8Array };
+
+/** The side of a still's `look`, in px: about the size a feed shows it, where a difference has to show. */
+export const STILL_LOOK_SIZE = 64;
+
+function decodeLook(file: string): Uint8Array {
+  return execFileSync('ffmpeg', ['-loglevel', 'error', '-i', file, '-vf', `scale=${STILL_LOOK_SIZE}:${STILL_LOOK_SIZE}:flags=area,format=gray`, '-f', 'rawvideo', '-']);
+}
 
 function decodeRgb(file: string, w: number, h: number): StillPixels {
   const rgb = execFileSync('ffmpeg', ['-loglevel', 'error', '-i', file, '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], { maxBuffer: w * h * 3 + 1024 });
@@ -70,7 +78,7 @@ export async function renderProjectStills(project: string, selection: StillSelec
         ground: decodeRgb(groundFile, composition.width, composition.height), zones: STILL_UI_ZONES[still.preset],
       });
       const file = join(dir, `${name}.${ext}`);
-      const kept = { ...(drawnDir && { drawn }), still, fits, problems };
+      const kept = { ...(drawnDir && { drawn }), still, fits, problems, look: decodeLook(drawn) };
       if (check) {
         checked.push(kept);
       } else if (problems.length) {

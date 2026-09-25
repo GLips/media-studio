@@ -1,0 +1,132 @@
+---
+name: stills
+description: Make a still image for a product or a video, such as an OG/link-preview image, a YouTube thumbnail, an Instagram square, portrait or story, or a digital poster, from the brief to a checked, reviewed PNG at every size. Use when asked for any of these, or for notes on one ("the headline's too small", "try another crop").
+---
+
+# Making a still
+
+Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it. Each verb explains itself:
+`studio <verb> --help`. `projects/2026-09-buy-box-stills` is the worked example. Read its `stills.tsx` and its sheets
+in `out/still-sheets/` before designing, and copy from them.
+
+A still is made in six steps: **brief → image → design → sheet → check → review**. The tools take care of sizes, fitted
+type and the checks. Your job is to make the still *good*, and the whole of "Designing it" below is about that.
+
+## 1. Brief
+
+Write these down (in the chat, or at the top of `stills.tsx`) before touching code:
+
+- **What it's for, and the one thing it says.** An OG image sells the page behind the link. A thumbnail sells the
+  click on a video. It says one thing, and the headline is that thing.
+- **Where it shows**, which sets the presets: `og` 1200×630 (link cards in Slack, X, iMessage, LinkedIn), `youtube`
+  1280×720, and Instagram's `square` 1080², `portrait` 1080×1350 and `story` 1080×1920. Render only the ones asked for.
+- **The subject**, one of them: the product, the UI's key control, a face or a big number. A still with two subjects
+  has none.
+- **Three to five headline candidates**, 1–5 words each, up to 3 for a thumbnail. Write them in the brand's voice
+  (`brands/<name>/brand.ts` `voice`). Each becomes a variant, so you can compare them on the sheet.
+- **The brand.** If the client has a kit in `brands/`, use it (`brands/README.md`). If they need one, make it first.
+
+## 2. Start the project and get the image
+
+`studio new <slug> --stills [--url <page>] [--brand <kit>] [--title "<headline>"]` starts `projects/<yyyy-mm>-<slug>/`
+with a `capture.ts` and a starter `stills.tsx`: one design, og and youtube, a headline axis. With `--url` it captures
+the page as `home` at 3× and puts it on a tilted card. An existing video project gets a `stills.tsx` beside its
+`video.tsx` instead; copy the starter's shape.
+
+The hero image comes from one of two places:
+
+- **A capture of the real thing** (the `video-capture` skill): the product page, the UI's control. Name the rects the
+  design will crop to (`rects: { photo: '.product img', card: '.buy-box' }`). A capture is the truth, so it's the
+  first choice for a product or UI. Film at `scale: 3`, since a story crop fills 1080 px with a few hundred page px.
+- **`studio gen image`** for what no capture gives: a scene, an object, texture, a background. Generate at the widest
+  aspect the presets need (`--aspect 16:9` for og and youtube), or one image per orientation (`16:9` and `9:16`).
+  Ask in the prompt for a **quiet region where the type goes** ("the subject on the right third, the left
+  two-fifths plain dark ground"). `--transparent` gives a cutout to stand on a field, and `--ref` sends the capture so
+  the product keeps its likeness. A project with a kit adds the kit's voice and palette to the prompt itself.
+  `images['<name>']` from `./generated/images.ts` is a `StillImage` like a capture.
+
+An image is refused if it's drawn at more than 1.5× its pixels. Capture or generate it big enough; don't crop in hard.
+
+## 3. Designing it
+
+**The failure mode is a plain template:** a flat split with an eyebrow, headline and CTA stacked small on one side
+and a screenshot trailing off the other, with a white band where the page ran out. It passes every check and
+nobody looks at it. The studio's register is its motion reels (`projects/2026-09-motion-showcase`, frames in
+`skills/video-motion/references/showreel-breakdown.md`), and a still is one of their frames held still:
+
+- **Type is the image.** The headline is set as large as the frame allows: `FitText` with `max` at 20–30 `u` and
+  `min` at about 6 `u`, heavy (800–900), tight leading (0.9), and often uppercase. When the headline fills its box,
+  the copy is the right length. A headline that sits small in a big box needs a higher `max` or a shorter line.
+- **Colour comes in full-bleed fields, not tints.** Use two or three flat fields that meet at hard edges: the brand's
+  primary as the ground and a loud field for the hero. The loud colour can be the product's own (the buy box uses the
+  magenta swatch) or the brand's accent. Use no gradients, no vignettes and no translucent panels over photos.
+- **The subject is the hero,** big, and whole where it matters. Put a capture on a `StillCard`, tilted like the reel's
+  cards, casting a shadow onto its field, with the control that matters lifted off it and ringed (`lift`, `ring`). A
+  cutout product stands on a field at 60–80% of the frame's height. Crop around the subject with `focus`, never
+  around the page.
+- **Use few elements.** Hero, headline, and a mark (the logo, or `StillHud`'s brackets and one mono label). Add a
+  price, a big number or a lifted swatch only if it *is* the message. Cut the CTA and URL: an OG card already shows
+  the domain, and a thumbnail has no room for one.
+- **Swap figure and ground for contrast.** Light type goes on a dark ground and dark type on a light field. Where a
+  colour doesn't reach 4.5:1 for small text, change the ink, not the field (the buy box's HUD is black over magenta).
+
+The pieces, all from `lib/studio/api.ts`:
+
+| Piece | What it does |
+| --- | --- |
+| `useStillFrame()` | `w`, `h`, `u` (1% of the shorter side, the unit for every size), `wide` (landscape: text beside the hero, not under it), `safe` (the frame less a story's top and reply bars: text and logos go inside it; pictures may run under the bars), `zones` (every UI zone, with YouTube's badge) |
+| `FitText` | a headline as large as fits its box, narrowing first on a face with a width axis. `face={brand.fonts.display}` or Archivo by default |
+| `StillCard` | a capture on a tilted, shadowed card, cropped around `focus`, with `lift` and `ring` for one raised control |
+| `CoverImage` | an image filling a box flat, cropped around `focus` (a point, or a rect the crop keeps whole) |
+| `StillHud` | the reel's corner brackets and a mono label at the top; `ink` can differ top and bottom on a split frame |
+| `BrandLogo` | the kit's logo that stands off the ground, as large as fits its box |
+| `union`, `inflate` | build a focus rect from a capture's rects |
+
+**One design serves every preset.** Lay it out from `useStillFrame`: a `wide` branch (the copy column on the left 40–46%
+and the field on the right) and a tall one (the field on top, and two lines of copy in the bottom of `safe`). Size
+everything in `u`. Don't write a design per preset.
+
+## 4. At feed size
+
+People see a still small: the sheet's feed row shows each variant 1:1 at the sizes a feed serves it (YouTube's
+168×94 sidebar and 320×180 home, and a link card or post about 300 px wide). It has to work there:
+
+- **Few words:** 1–3 on a thumbnail, up to 5 on an OG image. The headline must still read at 168 px wide.
+- **One subject, big:** the product, a face or a single number. Detail inside a UI card won't read; its shape and
+  colour will.
+- **High contrast between the fields and between type and ground.** A thumbnail next to twenty others needs a loud
+  colour and a dark/light split.
+- **YouTube's duration badge** covers the bottom-right corner, so keep text out of it (the check refuses it).
+
+## 5. Variants and the sheet
+
+`stillDesign({ component, presets, axes: { headline: [...], crop: [...] }, props })` makes a variant of every
+combination of the axes' values, named by those values (`short-page`). Use axes for real choices, such as the
+headline, the hero's crop, or the field's colour, with two or three values each.
+
+`studio still <p> --sheet` renders every variant and writes `out/still-sheets/<design>-<preset>.png`: the first axis
+across, the rest down, each variant with its feed row. The still check frames refused variants in red with their
+problems. An axis whose values **look alike at feed size** at a preset is flagged on the sheet and in the output (⚠).
+That usually means a crop the frame can't show, for example two foci that both fit a short, wide field. Fix it by
+making the values differ at that size (a tighter focus), or drop the axis. Read each sheet yourself before showing
+anyone. Pick the variant that reads best at feed size, not at full size.
+
+## 6. Check, then review
+
+`studio still <p>` renders each still twice (as drawn, then with its text transparent) and writes only those that
+pass to `out/stills/<design>-<preset>-<variant>.png`. `--check` only reports. It refuses a still for:
+
+- **Clipped or overflowing text, or a `FitText` at its floor.** The copy is too long for the box: shorten it, or give
+  it a bigger box.
+- **Text or a logo under a platform's UI.** Lay out inside `safe`, and keep clear of YouTube's badge.
+- **Contrast** under 4.5:1 (3:1 at display sizes), measured against the pixels actually under the text: change the
+  ink or move the text onto a flatter field.
+- **An image drawn at over 1.5× its pixels**: capture at a higher scale, or generate bigger.
+- **An empty band of an image at an edge**, where the crop shows page with nothing on it: tighten `focus`.
+
+`--preset` and `--variant` narrow a run. Then show Graham the sheet or the picked stills with
+`studio review <file>`. His notes on a sheet name the variant under each one. Give him the file paths and say which
+variant you'd pick and why.
+
+Before calling it done, have a fresh-context subagent read the finished stills at feed size and at full size, given
+only the brief, and ask it what the still says and what it would cut.

@@ -48,6 +48,47 @@ export function layoutStillSheets(stills: readonly RenderedStill[]): StillSheet[
   });
 }
 
+/**
+ * Two looks whose grey levels differ by less than this on average look alike at feed size. A crop that moves the image
+ * a few px differs by about 2.5; a changed headline, by 15 or more.
+ */
+const LOOK_ALIKE_MEAN = 4;
+
+const lookDistance = (a: Uint8Array, b: Uint8Array) => {
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += Math.abs(a[i] - b[i]);
+  return sum / a.length;
+};
+
+/** An axis whose values all look alike at a preset: choosing along it there changes nothing anyone would see. */
+export type LookAlikeStillAxis = { design: string; preset: StillPreset; axis: string; values: string[] };
+
+/**
+ * The axes that change nothing a feed would show, per design and preset: those where, holding every other axis still,
+ * each value's still looks like each other's (their `look`s). An axis with one value, or rendered at one value only,
+ * isn't a choice and isn't reported.
+ */
+export function stillAxesThatLookAlike(stills: readonly RenderedStill[]): LookAlikeStillAxis[] {
+  const found: LookAlikeStillAxis[] = [];
+  for (const sheet of layoutStillSheets(stills)) {
+    const group = sheet.rows.flatMap((r) => r.cells).filter((c) => c !== null);
+    for (const axis of [sheet.columnAxis, ...sheet.rowAxes]) {
+      const others = (s: RenderedStill) => Object.entries(s.still.axes).filter(([a]) => a !== axis).map(([, v]) => v).join('\n');
+      const byOthers = new Map<string, RenderedStill[]>();
+      for (const s of group) byOthers.set(others(s), [...(byOthers.get(others(s)) ?? []), s]);
+      const choices = [...byOthers.values()].filter((g) => g.length > 1);
+      if (!choices.length) continue;
+      const alike = choices.every((g) => g.every((a, i) => g.slice(i + 1).every((b) => lookDistance(a.look, b.look) < LOOK_ALIKE_MEAN)));
+      if (alike) found.push({ design: sheet.design, preset: sheet.preset, axis, values: [...new Set(group.map((s) => s.still.axes[axis]))] });
+    }
+  }
+  return found;
+}
+
+/** A look-alike axis, said as `studio still` and the sheet say it. */
+export const describeLookAlikeAxis = ({ design, preset, axis, values }: LookAlikeStillAxis) =>
+  `${design} at ${preset}: ${axis} changes nothing at feed size (${values.join(', ')} look alike): make them differ at this frame's size, or drop the axis`;
+
 const run = promisify(execFile);
 const even = (n: number) => 2 * Math.round(n / 2);
 const escapeHtml = (text: string) => text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -58,6 +99,7 @@ const escapeHtml = (text: string) => text.replace(/[&<>"]/g, (c) => ({ '&': '&am
  */
 export async function renderStillSheets(stills: readonly RenderedStill[], { outDir, workDir, project }: { outDir: string; workDir: string; project: string }): Promise<string[]> {
   const sheets = layoutStillSheets(stills);
+  const lookAlike = stillAxesThatLookAlike(stills);
   // The feed sizes scaled as a platform serves them, lanczos, not by the browser drawing the sheet.
   await Promise.all(stills.flatMap((s) => STILL_FEED_SIZES[s.still.preset].map((f) =>
     run('ffmpeg', ['-y', '-loglevel', 'error', '-i', s.drawn!, '-vf', `scale=${f.w}:${f.h}:flags=lanczos`, feedFile(workDir, s, f)]))));
@@ -69,7 +111,7 @@ export async function renderStillSheets(stills: readonly RenderedStill[], { outD
     mkdirSync(outDir, { recursive: true });
     for (const sheet of sheets) {
       const html = join(workDir, `sheet-${sheet.design}-${sheet.preset}.html`);
-      writeFileSync(html, stillSheetHtml(sheet, workDir, project));
+      writeFileSync(html, stillSheetHtml(sheet, workDir, project, lookAlike.filter((l) => l.design === sheet.design && l.preset === sheet.preset)));
       const page = await browser.newPage({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1 });
       await page.goto(`file://${html}`);
       await page.evaluate(() => document.fonts.ready);
@@ -103,7 +145,7 @@ export async function renderStillSheets(stills: readonly RenderedStill[], { outD
 const feedFile = (workDir: string, s: RenderedStill, f: { w: number; h: number }) => join(workDir, `${basename(s.drawn!).replace(/\.\w+$/, '')}-feed-${f.w}x${f.h}.png`);
 
 /** The sheet as a page: files are named relative to `workDir`, where the page is written. */
-function stillSheetHtml(sheet: StillSheet, workDir: string, project: string): string {
+function stillSheetHtml(sheet: StillSheet, workDir: string, project: string, lookAlike: readonly LookAlikeStillAxis[]): string {
   const { width, height } = STILL_PRESETS[sheet.preset];
   const scale = Math.min(SHEET_STILL_BOX.w / width, SHEET_STILL_BOX.h / height);
   const shown = { w: even(width * scale), h: even(height * scale) };
@@ -131,6 +173,7 @@ function stillSheetHtml(sheet: StillSheet, workDir: string, project: string): st
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     body { margin: 0; padding: 24px; background: #161618; color: #e8e8ea; font: 14px/1.35 -apple-system, system-ui, sans-serif; width: max-content; }
     h1 { font-size: 20px; margin: 0 0 4px; } .sub { color: #9a9aa2; margin-bottom: 20px; }
+    .alike { color: #ffc400; font-weight: 600; margin: -8px 0 20px; }
     .grid { display: grid; grid-template-columns: ${hasRowHeads ? 'max-content ' : ''}repeat(${sheet.columns.length}, ${cellWidth + 26}px); gap: 16px; align-items: start; }
     .head { font-weight: 600; color: #c9c9d0; } .head span { color: #8a8a92; font-weight: 400; }
     .rowhead { writing-mode: vertical-rl; transform: rotate(180deg); align-self: center; }
@@ -147,6 +190,7 @@ function stillSheetHtml(sheet: StillSheet, workDir: string, project: string): st
   </style></head><body>
     <h1>${escapeHtml(sheet.design)} · ${sheet.preset} ${width}×${height}</h1>
     <div class="sub">${[sheet.columnAxis, ...sheet.rowAxes].join(' × ')} · ${refusedCount ? `${refusedCount} refused by the still check` : 'every variant passes the still check'} · feed row at 1:1${STILL_UI_ZONES[sheet.preset].length ? ` · dashed: ${STILL_UI_ZONES[sheet.preset].map((z) => escapeHtml(z.name)).join(', ')}` : ''}</div>
+    ${lookAlike.map((l) => `<div class="alike">⚠ ${escapeHtml(l.axis)} changes nothing here: ${l.values.map(escapeHtml).join(', ')} look alike at feed size</div>`).join('')}
     <div class="grid">
       ${hasRowHeads ? '<div></div>' : ''}${sheet.columns.map((c) => `<div class="head"><span>${escapeHtml(sheet.columnAxis)}</span> ${escapeHtml(c)}</div>`).join('')}
       ${sheet.rows.map((row) => `${hasRowHeads ? `<div class="head rowhead">${escapeHtml(formatStillAxes(row.values))}</div>` : ''}${row.cells.map(cell).join('')}`).join('')}
