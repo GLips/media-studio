@@ -60,9 +60,37 @@ export function LabStage<P extends Record<string, unknown>>({ component, inputPr
         controls={controls}
         loop
         autoPlay
+        // Remotion mutes an autoplaying Player anyway, and warns about it; the lab's stages are silent.
+        initiallyMuted
         acknowledgeRemotionLicense
       />
     </figure>
+  );
+}
+
+/**
+ * A stage with its controls beside it. The stage stays pinned while the controls scroll, so whatever a slider moves
+ * is on screen as it moves. Below 1100px wide the controls drop under the stage.
+ */
+export function LabBench({ stage, children }: { stage: ReactNode; children: ReactNode }) {
+  return (
+    <div className="bench">
+      <div className="bench-stage">{stage}</div>
+      <div className="bench-controls">{children}</div>
+    </div>
+  );
+}
+
+/** A row of one-shot buttons, such as presets that set several controls at once. Nothing stays selected. */
+export function LabButtons({ label, buttons, hint }: { label: string; buttons: readonly { label: string; onClick: () => void }[]; hint?: ReactNode }) {
+  return (
+    <div className="choice">
+      <span>{label}</span>
+      <div className="choice-row">
+        {buttons.map((b) => <button key={b.label} type="button" onClick={b.onClick}>{b.label}</button>)}
+      </div>
+      {hint && <small>{hint}</small>}
+    </div>
   );
 }
 

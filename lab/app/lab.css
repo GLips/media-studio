@@ -67,6 +67,17 @@ input[type="range"] { width: 100%; accent-color: var(--red); }
 .note { margin: 0; color: var(--dim); font-size: 15px; max-width: 80ch; }
 .note b, .note strong { color: var(--cream); }
 
+/* A stage pinned beside its controls: the controls column scrolls on its own when it's taller than the window. */
+.bench { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+.bench-stage { position: sticky; top: 12px; }
+.bench-controls { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.bench-controls .controls { grid-template-columns: 1fr; }
+
+@media (max-width: 1100px) {
+  .bench { grid-template-columns: 1fr; }
+  .bench-controls { position: static; max-height: none; }
+}
+
 @media (max-width: 900px) {
   .lab { padding: 20px; }
   .intro-grid { grid-template-columns: 1fr; }
