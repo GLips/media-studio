@@ -1,7 +1,7 @@
 // media.tsx: the Generated media tab, a gallery of everything `studio gen` has made so far: the previs video tests
 // beside their 3D blockouts, the image bake-off as a brief × model grid, the music tracks, and the other stills,
 // each with its prompt and price. It only reads files already on disk; nothing here generates or calls a paid API.
-import { useEffect, useState, type ReactNode, type SyntheticEvent } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { LabGalleryItem, LabImageBakeoff } from '../../server.ts';
 import { LabNote, LabTabIntro } from '../ui.tsx';
 import { ImageBakeoffGrid } from './media/bakeoff.tsx';
@@ -58,7 +58,7 @@ function MediaGallery({ gallery, bakeoff }: { gallery: LabGalleryItem[]; bakeoff
 
   return (
     <>
-      <MediaSpend gallery={gallery} />
+      <MediaSpend shown={shown} />
 
       {previs.length > 0 && (
         <section className="media-section">
@@ -115,6 +115,8 @@ function MediaGallery({ gallery, bakeoff }: { gallery: LabGalleryItem[]; bakeoff
         </section>
       )}
 
+      <MediaForAgents gallery={gallery} bakeoff={bakeoff} />
+
       {detail && <GeneratedMediaLightbox items={detail.items} index={detail.index} onIndex={(index) => setDetail({ ...detail, index })} onClose={() => setDetail(null)} />}
     </>
   );
@@ -130,41 +132,57 @@ function MediaSectionHead({ tag, title, children }: { tag: string; title: string
   );
 }
 
-/** The running total across every provenance file, smoke tests included, since that money was spent too. */
-function MediaSpend({ gallery }: { gallery: LabGalleryItem[] }) {
+/** What's been spent on the pieces shown on this page. */
+function MediaSpend({ shown }: { shown: LabGalleryItem[] }) {
   const kinds = [
     { kind: 'video', label: 'video clips' }, { kind: 'image', label: 'images' }, { kind: 'audio', label: 'music tracks' },
   ] as const;
-  const sum = (items: LabGalleryItem[]) => items.reduce((s, i) => s + (i.cost ?? 0), 0);
-  const hidden = gallery.filter((i) => SMOKE_TEST_FOLDERS.has(i.where)).length;
   return (
     <div className="media-spend">
       <div className="media-spend-total">
         <span className="hud">Spent so far</span>
-        <strong>{formatGenerationCost(sum(gallery))}</strong>
-        <small>{gallery.length} pieces{hidden ? `, including ${hidden} smoke tests not shown here` : ''}</small>
+        <strong>{formatGenerationCost(sumGenerationCost(shown))}</strong>
+        <small>{shown.length} pieces, all shown below</small>
       </div>
       {kinds.map(({ kind, label }) => {
-        const items = gallery.filter((i) => i.kind === kind);
+        const items = shown.filter((i) => i.kind === kind);
         return (
           <div key={kind} className="media-spend-part">
             <span className="hud">{items.length} {label}</span>
-            <strong>{formatGenerationCost(sum(items))}</strong>
+            <strong>{formatGenerationCost(sumGenerationCost(items))}</strong>
           </div>
         );
       })}
-      <p className="media-spend-free"><b>This tab costs nothing.</b> Making new media is a separate, deliberate step (<code>studio gen</code>) that the lab can't take.</p>
+      <p className="media-spend-free"><b>This tab costs nothing.</b> Making new media is a separate, deliberate step that the lab can't take.</p>
     </div>
   );
 }
 
-function MusicShelf({ tracks, onDetail }: { tracks: LabGalleryItem[]; onDetail: (item: LabGalleryItem) => void }) {
-  // One track at a time: a play anywhere on the shelf pauses the rest. 'play' doesn't bubble, so listen in capture.
-  const pauseOthers = (e: SyntheticEvent<HTMLDivElement>) => {
-    for (const a of e.currentTarget.querySelectorAll('audio')) if (a !== e.target) a.pause();
-  };
+const sumGenerationCost = (items: LabGalleryItem[]) => items.reduce((s, i) => s + (i.cost ?? 0), 0);
+
+/** Where everything on the page comes from, and what the page leaves out, for someone working on the studio. */
+function MediaForAgents({ gallery, bakeoff }: { gallery: LabGalleryItem[]; bakeoff: LabImageBakeoff | null }) {
+  const smoke = gallery.filter((i) => SMOKE_TEST_FOLDERS.has(i.where));
+  const folders = [...new Set(gallery.map((i) => i.where))].sort();
   return (
-    <div className="media-music" onPlayCapture={pauseOthers}>
+    <details className="media-agents">
+      <summary className="hud">For agents</summary>
+      <p>New media is made with <code>studio gen image</code>, <code>studio gen video</code> and <code>studio music gen</code>, which record each file's model, prompt, settings and cost in its folder's <code>generated/provenance.json</code>. This tab reads every one under <code>projects/</code> and <code>scratch/</code>.</p>
+      <p>Folders read: {folders.map((f, i) => <span key={f}>{i ? ', ' : ''}<code>{f}</code></span>)}.</p>
+      {smoke.length > 0 && (
+        <p>Left out of the page and its totals: {smoke.length} runs that tested the gen command itself ({formatGenerationCost(sumGenerationCost(smoke))}, in {[...new Set(smoke.map((i) => i.where))].map((f, i) => <span key={f}>{i ? ' and ' : ''}<code>{f}</code></span>)}).</p>
+      )}
+      {bakeoff?.models.filter((m) => m.missing).map((m) => (
+        <p key={m.short}>Bake-off model not tried, <code>{m.id}</code>: {m.missing}</p>
+      ))}
+      {bakeoff && <p>The bake-off's briefs, models and verdicts come from <code>{BAKEOFF_FOLDER}/sets.json</code> and <code>notes.json</code>.</p>}
+    </details>
+  );
+}
+
+function MusicShelf({ tracks, onDetail }: { tracks: LabGalleryItem[]; onDetail: (item: LabGalleryItem) => void }) {
+  return (
+    <div className="media-music">
       {tracks.map((t) => (
         <article key={t.id} className="media-track">
           <div className="media-card-row">

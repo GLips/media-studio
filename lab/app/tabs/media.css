@@ -18,6 +18,11 @@
 .media-spend-free b { color: var(--pass); }
 .media-spend code, .media-modal code, .bakeoff-verdict code { font-family: var(--mono); font-size: 0.88em; }
 
+.media-agents { color: var(--dim); font-size: 14px; padding-top: 20px; border-top: 1px solid var(--line); }
+.media-agents summary { cursor: pointer; }
+.media-agents p { margin: 8px 0; max-width: 100ch; }
+.media-agents code { font-family: var(--mono); font-size: 0.9em; color: var(--cream); }
+
 /* Sections */
 .media-section { display: flex; flex-direction: column; gap: 18px; padding-top: 28px; border-top: 1px solid var(--line); }
 .media-section-head h3 { margin: 2px 0 8px; font-size: 32px; line-height: 1.05; font-weight: 900; font-stretch: 80%; text-transform: uppercase; }
@@ -26,11 +31,13 @@
 
 /* Previs */
 .previs { display: flex; flex-direction: column; gap: 14px; }
-.previs-side { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .previs video { display: block; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 4px; }
-.previs-wipe-stage { width: min(100%, 980px); align-self: center; }
-.previs-wipe { position: relative; cursor: ew-resize; touch-action: none; user-select: none; border-radius: 4px; overflow: hidden; }
-.previs-wipe-top { position: absolute; inset: 0; }
+.previs-captions { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 6px; }
+.previs-view.wipe .previs-captions { grid-template-columns: 1fr; text-align: center; }
+.previs-panes { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+/* Wipe stacks both clips in one cell as wide as a side-by-side pane, so the section's height doesn't change. */
+.previs-view.wipe .previs-panes { grid-template-columns: 1fr; width: calc(50% - 8px); margin: 0 auto; cursor: ew-resize; touch-action: none; user-select: none; border-radius: 4px; overflow: hidden; }
+.previs-view.wipe .previs-panes > * { grid-area: 1 / 1; }
 .previs-wipe-bar { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--cream); box-shadow: 0 0 0 1px rgba(0,0,0,0.4); pointer-events: none; }
 .previs-wipe-bar::after { content: "⇆"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: var(--cream); color: var(--ground); display: grid; place-items: center; font-size: 18px; }
 .previs-wipe-label { position: absolute; top: 12px; background: rgba(12,12,14,0.75); color: var(--cream); padding: 3px 8px; border-radius: 4px; pointer-events: none; }
@@ -78,7 +85,9 @@
 .bakeoff-note small { color: var(--dim); }
 .bakeoff-ref { width: 220px; border-radius: 6px; margin-top: 6px; }
 .bakeoff-verdict { background: var(--panel); border-radius: 10px; padding: 12px 18px; }
-.bakeoff-verdict summary { cursor: pointer; font-weight: 600; }
+.bakeoff-verdict { border-left: 3px solid var(--pass); }
+.bakeoff-verdict-lead { margin: 4px 0 10px; font-size: 18px; max-width: 85ch; }
+.bakeoff-verdict summary { cursor: pointer; font-weight: 600; color: var(--dim); }
 .bakeoff-verdict h2 { font-size: 22px; text-transform: uppercase; font-stretch: 80%; margin: 14px 0 6px; }
 .bakeoff-verdict h3 { font-size: 17px; margin: 14px 0 4px; }
 .bakeoff-verdict p, .bakeoff-verdict li { max-width: 85ch; font-size: 15px; }
@@ -86,7 +95,14 @@
 /* Music */
 .media-music { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
 .media-track { background: var(--panel); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
-.media-track audio { width: 100%; }
+.track-player { display: flex; align-items: center; gap: 10px; }
+.track-player-toggle { flex: none; width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--cream); color: var(--ground); font-size: 13px; font-weight: 700; cursor: pointer; display: grid; place-items: center; }
+.track-player-toggle:hover { background: var(--red); color: var(--cream); }
+.track-player-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--line); cursor: pointer; touch-action: none; position: relative; }
+/* A taller invisible hit area: a 6px bar is hard to click. */
+.track-player-bar::before { content: ""; position: absolute; inset: -8px 0; }
+.track-player-bar > div { height: 100%; border-radius: 3px; background: var(--red); }
+.track-player .hud { flex: none; min-width: 84px; text-align: right; color: var(--cream); }
 .media-track-prompt { margin: 0; font-size: 14px; color: var(--dim); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .media-card-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .media-card-row .hud { color: var(--cream); }
@@ -108,7 +124,7 @@
 .media-lightbox { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr); gap: 24px; }
 .media-lightbox-view { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .media-lightbox-view img, .media-lightbox-view video { width: 100%; max-height: calc(100vh - 180px); object-fit: contain; border-radius: 8px; background-color: #000; }
-.media-lightbox-view audio { width: 100%; margin-top: 40px; }
+.media-lightbox-view .track-player { margin-top: 40px; }
 .media-lightbox-nav { display: flex; justify-content: center; align-items: center; gap: 14px; }
 .media-lightbox-nav button { background: var(--ground); border: 1px solid var(--line); border-radius: 6px; width: 40px; height: 32px; cursor: pointer; font-size: 16px; }
 .media-lightbox-nav button:hover { border-color: var(--cream); }
@@ -120,6 +136,6 @@
 .media-refs img, .media-refs video { width: 180px; aspect-ratio: 16 / 9; object-fit: contain; border-radius: 6px; background-color: #000; }
 
 @media (max-width: 900px) {
-  .media-spend, .previs-side, .media-lightbox, .previs-scene { grid-template-columns: 1fr; }
+  .media-spend, .media-lightbox, .previs-scene { grid-template-columns: 1fr; }
   .bakeoff-grid { overflow-x: auto; }
 }

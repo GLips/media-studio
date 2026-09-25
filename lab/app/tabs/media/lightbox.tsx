@@ -3,20 +3,23 @@
 // with the arrow keys so the same brief can be compared model by model.
 import { useEffect, type ReactNode } from 'react';
 import type { LabGalleryItem } from '../../../server.ts';
+import { GeneratedTrackPlayer } from './track-player.tsx';
 
 /** A dollar amount at the precision that matters: $1.39, $0.04, $0.004. */
 export function formatGenerationCost(usd: number) {
   return usd >= 1 ? `$${usd.toFixed(2)}` : `$${usd.toFixed(3).replace(/0$/, '')}`;
 }
 
-/** A generated file as its kind plays: a still, a muted looping clip, or an audio player. */
+/** A generated file as its kind plays: a still, a muted looping clip, or a track player. */
 export function GeneratedMediaView({ url, kind, autoPlay = false, className }: {
   url: string; kind: LabGalleryItem['kind']; autoPlay?: boolean; className?: string;
 }) {
   if (kind === 'video') return <video className={className} src={url} muted loop playsInline autoPlay={autoPlay} controls={autoPlay} preload="metadata" />;
-  if (kind === 'audio') return <audio className={className} src={url} controls preload="metadata" />;
+  if (kind === 'audio') return <GeneratedTrackPlayer url={url} />;
   return <img className={className} src={url} alt="" />;
 }
+
+const GENERATED_KIND_WORDS = { image: 'Image', video: 'Video clip', audio: 'Music track' } as const;
 
 const isVideoUrl = (url: string) => /\.(mp4|webm)$/i.test(url);
 
@@ -67,7 +70,7 @@ export function GeneratedMediaLightbox({ items, index, onIndex, onClose, title =
           )}
         </div>
         <aside className="media-lightbox-facts">
-          <span className="hud">{item.where}</span>
+          <span className="hud">{GENERATED_KIND_WORDS[item.kind]}</span>
           <h3>{title(item)}</h3>
           <dl>
             <dt className="hud">Model</dt><dd><code>{item.model}</code></dd>

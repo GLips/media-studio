@@ -17,8 +17,9 @@ const previsSceneText = (prompt: string) => prompt.split('\n\n').slice(1).join('
 /** The blockout is the reference that's a video; any other reference is a photo of a real subject. */
 export const previsBlockoutUrl = (item: LabGalleryItem) => item.references.find((r) => /\.(mp4|webm)$/i.test(r));
 
-// play() rejects whenever a pause (ours, or the browser saving power in a hidden tab) interrupts it. That's not an
-// error here: the render's pause event already flips the button back to Play.
+// play() rejects whenever a pause interrupts it, which is expected here. `playing` is what the viewer asked for, not
+// the element's state: Chrome pauses an autoplay-attribute video while it's scrolled offscreen, and mirroring that
+// pause left the clips stopped once they scrolled into view. So play() is called from code, never autoPlay.
 const playPrevisVideo = (v: HTMLVideoElement) => void v.play().catch(() => {});
 
 export function PrevisComparison({ items, onDetail }: { items: LabGalleryItem[]; onDetail: (item: LabGalleryItem) => void }) {
@@ -31,6 +32,8 @@ export function PrevisComparison({ items, onDetail }: { items: LabGalleryItem[];
   const [wipe, setWipe] = useState(50);
   const render = useRef<HTMLVideoElement>(null);
   const blockout = useRef<HTMLVideoElement>(null);
+  const wantsPlay = useRef(playing);
+  wantsPlay.current = playing;
   const item = items.find((i) => i.id === pick) ?? items[0];
   const photos = item.references.filter((r) => r !== previsBlockoutUrl(item));
 
@@ -41,6 +44,8 @@ export function PrevisComparison({ items, onDetail }: { items: LabGalleryItem[];
       const m = render.current;
       const f = blockout.current;
       if (m && f) {
+        // Chrome pauses muted video in a background tab and doesn't always resume it, so hold it to what was asked.
+        if (wantsPlay.current && m.paused && !document.hidden) playPrevisVideo(m);
         if (Math.abs(f.currentTime - m.currentTime) > 0.08) f.currentTime = Math.min(m.currentTime, f.duration || m.currentTime);
         if (m.paused && !f.paused) f.pause();
         if (!m.paused && f.paused) playPrevisVideo(f);
@@ -54,13 +59,11 @@ export function PrevisComparison({ items, onDetail }: { items: LabGalleryItem[];
 
   useEffect(() => {
     for (const v of [render.current, blockout.current]) if (v) v.playbackRate = speed;
-  }, [speed, pick, view]);
+  }, [speed, pick]);
 
   useEffect(() => {
-    const m = render.current;
-    if (m && playing) playPrevisVideo(m);
-    if (m && !playing) m.pause();
-  }, [playing, pick, view]);
+    if (!playing) render.current?.pause();
+  }, [playing]);
 
   const seek = (t: number) => {
     for (const v of [render.current, blockout.current]) if (v) v.currentTime = t;
@@ -74,32 +77,31 @@ export function PrevisComparison({ items, onDetail }: { items: LabGalleryItem[];
     setWipe(Math.min(100, Math.max(0, ((e.clientX - box.left) / box.width) * 100)));
   };
 
-  const blockoutVideo = <video ref={blockout} key={`b-${item.id}`} src={previsBlockoutUrl(item)} muted loop playsInline preload="auto" />;
-  const renderVideo = (
-    <video ref={render} key={`r-${item.id}`} src={item.files[0]} muted loop playsInline autoPlay={playing} preload="auto"
-      onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
-      onLoadedMetadata={(e) => { setDuration(e.currentTarget.duration); e.currentTarget.playbackRate = speed; }} />
-  );
-
+  // Both videos stay mounted in the same places in either view, so switching views keeps their time and play state
+  // and the section keeps its height: Wipe stacks the two in one pane the size of a side-by-side one.
+  const wiping = view === 'wipe';
   return (
     <div className="previs">
-      {view === 'side' ? (
-        <div className="previs-side">
-          <figure className="stage"><figcaption className="hud">1 · The blockout · free, drawn in code</figcaption>{blockoutVideo}</figure>
-          <figure className="stage"><figcaption className="hud">2 · The render · {item.cost === null ? '' : formatGenerationCost(item.cost)} from Seedance</figcaption>{renderVideo}</figure>
+      <div className={`previs-view ${view}`}>
+        <div className="previs-captions hud">
+          {wiping ? <span>Drag across the picture: blockout on the left of the line, render on the right</span> : <>
+            <span>1 · The blockout · free, drawn in code</span>
+            <span>2 · The render · {item.cost === null ? '' : formatGenerationCost(item.cost)} from Seedance</span>
+          </>}
         </div>
-      ) : (
-        <figure className="stage previs-wipe-stage">
-          <figcaption className="hud">Drag across the picture</figcaption>
-          <div className="previs-wipe" onPointerDown={dragWipe} onPointerMove={dragWipe}>
-            {blockoutVideo}
-            <div className="previs-wipe-top" style={{ clipPath: `inset(0 0 0 ${wipe}%)` }}>{renderVideo}</div>
+        <div className="previs-panes" onPointerDown={wiping ? dragWipe : undefined} onPointerMove={wiping ? dragWipe : undefined}>
+          <video ref={blockout} key={`b-${item.id}`} src={previsBlockoutUrl(item)} muted loop playsInline preload="auto" />
+          <div className="previs-render" style={wiping ? { clipPath: `inset(0 0 0 ${wipe}%)` } : undefined}>
+            <video ref={render} key={`r-${item.id}`} src={item.files[0]} muted loop playsInline preload="auto"
+              onLoadedMetadata={(e) => { setDuration(e.currentTarget.duration); e.currentTarget.playbackRate = speed; }} />
+          </div>
+          {wiping && <>
             <div className="previs-wipe-bar" style={{ left: `${wipe}%` }} />
             <span className="hud previs-wipe-label left">Blockout</span>
             <span className="hud previs-wipe-label right">Render</span>
-          </div>
-        </figure>
-      )}
+          </>}
+        </div>
+      </div>
 
       <div className="previs-transport">
         <button type="button" onClick={() => setPlaying(!playing)}>{playing ? 'Pause' : 'Play'}</button>

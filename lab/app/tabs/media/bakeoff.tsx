@@ -1,6 +1,6 @@
 // bakeoff.tsx: the image bake-off as a grid, one row per brief and one column per model, so the same ask can be
 // compared across models at a glance. The reviewer's verdicts can be hidden, to judge the pictures first.
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { LabBakeoffBrief, LabBakeoffModel, LabGalleryItem, LabImageBakeoff } from '../../../server.ts';
 import { formatGenerationCost, GeneratedMediaLightbox, MediaModal } from './lightbox.tsx';
 
@@ -49,15 +49,9 @@ export function ImageBakeoffGrid({ bakeoff, items }: { bakeoff: LabImageBakeoff;
         ))}
       </div>
 
-      {missing.map((m) => (
-        <p key={m.short} className="note">A seventh model, <b>{m.name}</b>, was on the list but couldn't be tried: {m.missing}</p>
-      ))}
+      {missing.length > 0 && <p className="note">A seventh model wasn't available to try.</p>}
 
-      <details className="bakeoff-verdict">
-        <summary>Read the reviewer's recommendation: which model the studio now uses, and when to reach for the others</summary>
-        {/* notes.json is the bake-off's own write-up in this repo, so its HTML is trusted as written. */}
-        <div dangerouslySetInnerHTML={{ __html: bakeoff.recommendation }} />
-      </details>
+      <BakeoffRecommendation html={bakeoff.recommendation} />
 
       {open?.kind === 'cell' && (
         <GeneratedMediaLightbox items={row(open.brief)} index={open.index} onIndex={(index) => setOpen({ ...open, index })} onClose={() => setOpen(null)}
@@ -94,6 +88,32 @@ export function ImageBakeoffGrid({ bakeoff, items }: { bakeoff: LabImageBakeoff;
           <p><b>Accepts.</b> {open.model.takes}</p>
         </MediaModal>
       )}
+    </div>
+  );
+}
+
+/**
+ * The reviewer's pick up front (its opening paragraph's first two sentences: the model, then why) and the rest of the
+ * write-up behind a disclosure. notes.json is the bake-off's own write-up in this repo, so its HTML is trusted.
+ */
+function BakeoffRecommendation({ html }: { html: string }) {
+  const { lead, rest } = useMemo(() => {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    doc.querySelector('h2')?.remove();
+    const first = doc.querySelector('p')!;
+    const [, head = first.innerHTML, tail = ''] = /^(.*?<\/b>.*?\.)\s+(.*)$/s.exec(first.innerHTML) ?? [];
+    first.innerHTML = tail;
+    if (!tail) first.remove();
+    return { lead: head, rest: doc.body.innerHTML };
+  }, [html]);
+  return (
+    <div className="bakeoff-verdict">
+      <span className="hud">The reviewer's pick · the model the studio now uses by default</span>
+      <p className="bakeoff-verdict-lead" dangerouslySetInnerHTML={{ __html: lead }} />
+      <details>
+        <summary>The rest of the write-up: the catches, and when to reach for the other models</summary>
+        <div dangerouslySetInnerHTML={{ __html: rest }} />
+      </details>
     </div>
   );
 }
