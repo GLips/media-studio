@@ -51,7 +51,7 @@ export default defineCommand({
 
     if ([args.frames, args.bar, args.sheet, args.strip].filter(Boolean).length > 1) throw new Error('choose frames one way: --frames, --bar, --sheet or --strip');
     const { resolveStudioProjectWith } = await import('../../lib/studio-project.ts');
-    const { lookAgainst, lookFrameSheet, lookMotion, openLookSource, parseLookCrop, parseLookFrames } = await import('../../lib/frame-look.ts');
+    const { lookAgainst, lookFrameSheet, lookMotion, openLookSource, parseLookCrop, parseLookFrames, parseLookNumber } = await import('../../lib/frame-look.ts');
     const { readProjectBarClock } = await import('../../lib/frame-motion.ts');
     const project = resolveStudioProjectWith(args.project, 'video.tsx');
     const inProject = (file: string) => (isAbsolute(file) ? file : join(project, file));
@@ -64,6 +64,11 @@ export default defineCommand({
       ? { kind: 'video', file: inProject(args.video), startsAt }
       : { kind: 'composition', session: await openStudioRenderSession(project), captions: Boolean(args.captions) });
     const clock = args.bar || args.motion ? readProjectBarClock(project) : undefined;
+    // A render names its frames by the clock: it must be the whole reel or one bar, placed by --starts-at, on this clock.
+    if (clock && args.video && !(source.first === 0 && source.end === clock.end) && !clock.bars.some((b) => b.from === source.first && b.to === source.end)) {
+      throw new Error(`${source.name} holds frames ${source.first}–${source.end - 1}, which is neither the whole reel (0–${clock.end - 1}) nor one bar: ` +
+        'give a bar render --starts-at=<its bar\'s first frame>, or re-render it on the current clock');
+    }
     const frames = (() => {
       if (args.frames) return parseLookFrames(args.frames);
       if (args.bar) {
@@ -73,9 +78,9 @@ export default defineCommand({
         return Array.from({ length: bar.to - bar.from }, (_, i) => bar.from + i);
       }
       const frameAt = (t: number) => Math.round(t * source.fps);
-      if (args.sheet) return [...new Set(args.sheet.split(',').map((t) => frameAt(Number(t))))].sort((a, b) => a - b);
+      if (args.sheet) return [...new Set(args.sheet.split(',').map((t) => frameAt(parseLookNumber(t))))].sort((a, b) => a - b);
       if (args.strip) {
-        const [from, to] = args.strip.split(':').map(Number);
+        const [from, to] = args.strip.split(':').map(parseLookNumber);
         if (!(Number.isFinite(from) && from < to)) throw new Error(`--strip is a stretch of seconds like 4:5, not ${args.strip}`);
         return [...new Set(Array.from({ length: Math.floor((to - from) / step + 1e-6) + 1 }, (_, i) => frameAt(from + i * step)))];
       }

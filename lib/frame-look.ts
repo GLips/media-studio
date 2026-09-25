@@ -14,6 +14,9 @@ export type LookSource =
   /** A render; its first frame is the project's frame `startsAt` (0 for a whole video, a bar's first for a bar alone). */
   | { kind: 'video'; file: string; startsAt: number };
 
+/** How ffmpeg reads a source's chosen frames in order: its input args, the filter chain after it, and any rendered stills' dir. */
+type LookInput = { args: string[]; chain: string; dir?: string };
+
 /** A region of the frame, in the source's pixels. */
 export type LookCrop = { x: number; y: number; w: number; h: number };
 
@@ -36,12 +39,15 @@ const PAIRING_RATE = 30;
 /** Frames: `200:210` (inclusive), `200:260:5` (every 5th) or `161,176,191`. */
 export function parseLookFrames(spec: string): number[] {
   const range = spec.split(':');
-  const frames = range.length > 1 ? stepFrames(range.map(Number)) : spec.split(',').map(Number);
+  const frames = range.length > 1 ? stepFrames(range.map(parseLookNumber)) : spec.split(',').map(parseLookNumber);
   if (!frames.length || !frames.every((f) => Number.isInteger(f) && f >= 0)) {
     throw new Error(`frames are whole numbers, like 200:210, 200:260:5 or 161,176,191, not ${spec}`);
   }
   return [...new Set(frames)].sort((a, b) => a - b);
 }
+
+/** A number from a comma or colon list; an empty item is NaN, where Number('') would quietly make it 0. */
+export const parseLookNumber = (item: string) => (item.trim() ? Number(item) : NaN);
 
 function stepFrames([from, to, step = 1, ...rest]: number[]): number[] {
   if (rest.length || !(step >= 1 && from <= to)) return [NaN];
@@ -66,7 +72,7 @@ export async function openLookSource(source: LookSource) {
     return {
       name: 'composition', fps: composition.fps, width: composition.width, height: composition.height, first: 0, end: composition.durationInFrames,
       /** Renders `frames` `w` wide; the ffmpeg input that reads them in order. */
-      async input(frames: number[], w: number) {
+      async input(frames: number[], w: number): Promise<LookInput> {
         const stills = await session.renderStills(frames, { w, captions });
         // Numbered in order for image2's sequence pattern: ffmpeg builds without glob support are common.
         frames.forEach((f, i) => renameSync(stills.fileFor(f), join(stills.dir, `${String(i).padStart(5, '0')}.jpg`)));
@@ -80,8 +86,8 @@ export async function openLookSource(source: LookSource) {
   const [num, den] = rate.split('/').map(Number);
   return {
     name: basename(file), fps: num / den, width: Number(width), height: Number(height), first: startsAt, end: startsAt + Number(count),
-    async input(frames: number[]) {
-      return { args: ['-i', file], chain: `select=${selectFrames(frames.map((f) => f - startsAt))},settb=1/${PAIRING_RATE},setpts=N`, dir: undefined };
+    async input(frames: number[]): Promise<LookInput> {
+      return { args: ['-i', file], chain: `select=${selectFrames(frames.map((f) => f - startsAt))},settb=1/${PAIRING_RATE},setpts=N` };
     },
   };
 }
@@ -130,17 +136,27 @@ export async function lookFrameSheet(source: OpenLookSource, frames: number[], {
   checkFramesIn(source, frames);
   if (frames.length > MAX_SHEET_TILES) throw new Error(`${frames.length} frames is too many for one sheet (${MAX_SHEET_TILES} at most): step through them, like --frames=a:b:5`);
   const region = crop ?? { w: source.width, h: source.height }, h = evenHeight(w, region);
-  const work = mkdtempSync(join(tmpdir(), 'look-'));
-  const input = await source.input(frames, crop ? source.width : w);
-  try {
+  await withLookWork(async (work, inputFor) => {
+    const input = await inputFor(source, frames, crop ? source.width : w);
     runFfmpeg([input], `[0:v]${input.chain},${cropFilter(crop)}scale=${w}:${h}[t]`, [imagesOut('t', join(work, 't'))]);
     const files = readImages(join(work, 't'), frames);
     tileLabelledImages(frames.map((f, i) => ({ file: files[i], label: frameLabel(f, source.fps) })), out, { cols, w, h });
-  } finally {
-    rmSync(work, { recursive: true, force: true });
-    if (input.dir) rmSync(input.dir, { recursive: true, force: true });
-  }
+  });
   return [`${source.name}: ${frames.length} frames, ${cols}×${Math.ceil(frames.length / cols)}`, out];
+}
+
+/** Runs `look` with a work dir and a way to open sources' inputs; removes the dir and every rendered input however it ends. */
+async function withLookWork<T>(look: (work: string, inputFor: (source: OpenLookSource, frames: number[], w: number) => Promise<LookInput>) => Promise<T>) {
+  const work = mkdtempSync(join(tmpdir(), 'look-')), rendered: string[] = [];
+  try {
+    return await look(work, async (source, frames, w) => {
+      const input = await source.input(frames, w);
+      if (input.dir) rendered.push(input.dir);
+      return input;
+    });
+  } finally {
+    for (const dir of [work, ...rendered]) rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -157,9 +173,9 @@ export async function lookAgainst(before: OpenLookSource, after: OpenLookSource,
     throw new Error(`${before.name} is ${before.width}×${before.height} and ${after.name} ${after.width}×${after.height}: compare renders of one size`);
   }
   const region = crop ?? { x: 0, y: 0, w: after.width, h: after.height }, h = evenHeight(w, region), pixels = region.w * region.h;
-  const work = mkdtempSync(join(tmpdir(), 'look-')), stats = join(work, 'changed.txt');
-  const inputs = [await before.input(frames, after.width), await after.input(frames, after.width)];
-  try {
+  return withLookWork(async (work, inputFor) => {
+    const stats = join(work, 'changed.txt');
+    const inputs = [await inputFor(before, frames, after.width), await inputFor(after, frames, after.width)];
     const each = (i: number, name: string) => `[${i}:v]${inputs[i].chain},${cropFilter(crop)}split[${name}][${name}d];[${name}]scale=${w}:${h}[${name}t];[${name}d]format=gray[${name}g]`;
     const graph = `${each(0, 'a')};${each(1, 'b')};[ag][bg]blend=all_mode=difference:shortest=1,lut=y='gt(val,${CHANGED_LUMA_STEP})*255',` +
       `signalstats,metadata=print:file='${stats}',scale=${w}:${h}[mt]`;
@@ -187,10 +203,7 @@ export async function lookAgainst(before: OpenLookSource, after: OpenLookSource,
       ...(shown.length < rows.length ? [`the sheet shows the ${shown.length} most changed of ${rows.length} frames`] : []),
       out, countsFile,
     ];
-  } finally {
-    rmSync(work, { recursive: true, force: true });
-    for (const i of inputs) if (i.dir) rmSync(i.dir, { recursive: true, force: true });
-  }
+  });
 }
 
 /** Measures `first`–`last` frame by frame (luma, change from the frame before), prints its summary, and writes every frame's numbers to `out`. */
@@ -200,9 +213,9 @@ export async function lookMotion(source: OpenLookSource, first: number, last: nu
   checkFramesIn(source, [first, last]);
   // The frame before the stretch, when the source has one, gives its first frame a change too.
   const from = Math.max(source.first, first - 1), frames = Array.from({ length: last - from + 1 }, (_, i) => from + i);
-  const work = mkdtempSync(join(tmpdir(), 'look-')), lumaFile = join(work, 'luma.txt'), diffFile = join(work, 'diff.txt');
-  const input = await source.input(frames, source.width);
-  try {
+  return withLookWork(async (work, inputFor) => {
+    const lumaFile = join(work, 'luma.txt'), diffFile = join(work, 'diff.txt');
+    const input = await inputFor(source, frames, source.width);
     // tblend's frame k is the difference between frames k and k+1: it's credited to k+1, and the first frame has none.
     runFfmpeg([input], `[0:v]${input.chain},${cropFilter(crop)}signalstats,metadata=print:file='${lumaFile}',` +
       `tblend=all_mode=difference,signalstats,metadata=print:file='${diffFile}'[o]`, [['-map', '[o]', '-f', 'null', '-']]);
@@ -213,8 +226,5 @@ export async function lookMotion(source: OpenLookSource, first: number, last: nu
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, `${table.join('\n')}\n`);
     return [`${source.name}${crop ? `, region ${crop.w}×${crop.h} at ${crop.x},${crop.y}` : ''}`, ...summary, '', out];
-  } finally {
-    rmSync(work, { recursive: true, force: true });
-    if (input.dir) rmSync(input.dir, { recursive: true, force: true });
-  }
+  });
 }
