@@ -85,7 +85,7 @@ function capturedVideo(title: string) {
 
 import {
   Capture, EndCard, GlassCard, MotionTitle, Wash, W, camTop, defineScene, defineVideo, motionCurves, seg, view,
-} from '../../lib/studio/api.ts';
+} from '#studio';
 import { voice } from './audio/manifest.ts';
 import { captures as C } from './captures/index.ts';
 
@@ -124,7 +124,7 @@ function uncapturedVideo(title: string) {
 // \`f\` of the way through a voiced line, so beats stay on their words when the voice is re-timed.
 // Nothing here uses a capture yet: once capture.ts films the site, import { captures as C } from './captures/index.ts'.
 
-import { EndCard, GlassCard, H, Text, W, defineScene, defineVideo, motionCurves, seg } from '../../lib/studio/api.ts';
+import { EndCard, GlassCard, H, Text, W, defineScene, defineVideo, motionCurves, seg } from '#studio';
 import { voice } from './audio/manifest.ts';
 
 const INK = '#1c365e';
@@ -191,7 +191,7 @@ export default { name: '${brand}' } satisfies ProjectBrand;
 // above it on a tall one. skills/stills says how to make it good, not just fill it in.
 //   studio still ${slug} [--preset=og,youtube] [--sheet] [--check]
 ${brand ? "\nimport brand from '@brand';" : ''}
-import { ${imports.join(', ')} } from '../../lib/studio/api.ts';
+import { ${imports.join(', ')} } from '#studio';
 ${url ? "import { captures as C } from './captures/index.ts';\n" : ''}
 ${colours}
 ${hero}

@@ -9,7 +9,7 @@
 import { copyFileSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { openRenderSession } from './render-session.ts';
-import type { TimelineReport } from '../../studio/Video.tsx';
+import type { TimelineReport } from '../../studio/composition/Video.tsx';
 import { timelineSceneMoments, type TimelineMoment } from '../../models/timeline/scene-moments.ts';
 import type { Timeline } from '../../models/timeline/timeline.ts';
 import { readProjectTimeline } from '../timeline/project-clock.ts';

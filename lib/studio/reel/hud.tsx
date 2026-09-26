@@ -11,7 +11,7 @@
 import { FPS, H, W } from '#models/frame/frame.ts';
 import { MONO_FONT } from '#models/type/faces.ts';
 import { clamp, motionCurves, powerOutEase } from '#models/motion/motion.ts';
-import { pieceMotionAttrs } from '../motion-tag.ts';
+import { pieceMotionAttrs } from '../probe/motion-tag.ts';
 import {
   bracketPath, defaultReadout, hudInks, hudInkSet, hudPlates, LIGHT_READ, REEL_HUD_BOOT_DECODE, REEL_HUD_PALETTE, REEL_HUD_SWAP_DECODE,
   reelHudDecode, reelHudLayout, reelHudLitSquare, reelHudPlateMix, reelHudTimecode, reelHudToneWeights, REFERENCE_SECTIONS, REFERENCE_SPB,

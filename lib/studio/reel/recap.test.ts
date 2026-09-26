@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import '../tsx-test-hooks.ts';
+import '../../engine/bundle/tsx-test-hooks.ts';
 
 const { RecapGrid } = await import('./recap.tsx');
 

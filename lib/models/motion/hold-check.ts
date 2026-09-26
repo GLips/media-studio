@@ -8,7 +8,7 @@
 // It says "steady and visible", never "readable": a still, opaque element can still be too small or too faint, and
 // only a person looking can tell.
 import { motionCurves } from './motion.ts';
-import type { TimelineReport } from '../../studio/Video.tsx';
+import type { TimelineReport } from '../../studio/composition/Video.tsx';
 import type { MotionTracks } from './motion-tracks.ts';
 
 export type HoldExpectation = { scene: string; hold: string; for: number; within?: number; start: number; end: number };

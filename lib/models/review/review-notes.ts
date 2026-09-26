@@ -97,7 +97,7 @@ export function reviewNoteContext(note: Pick<ReviewNote, 'frame' | 'end' | 'x' |
   const first = note.frame, last = note.end ?? note.frame, { fps } = sources;
   const context: ReviewNoteContext = {};
   if (sources.scenes) {
-    // As lib/studio/timeline.ts's scenesAt paints: frame f shows a scene from the first f with f/fps + 1e-6 past its start.
+    // As lib/studio/composition/timeline.ts's scenesAt paints: frame f shows a scene from the first f with f/fps + 1e-6 past its start.
     const firstShowing = (t: number) => Math.ceil((t - 1e-6) * fps);
     context.scenes = sources.scenes
       .filter((s) => firstShowing(s.start) <= last && firstShowing(s.start + s.dur) > first)

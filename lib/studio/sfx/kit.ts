@@ -1,5 +1,5 @@
 // kit.ts: written by `studio sfx kit` from lib/sfx/sfx-files.ts. Change the kit there and rerun, rather than editing this.
-import type { SfxSound } from '../sfx.tsx';
+import type { SfxSound } from './sfx.tsx';
 import click1 from './click-1.wav';
 import click2 from './click-2.wav';
 import click3 from './click-3.wav';

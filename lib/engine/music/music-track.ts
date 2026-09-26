@@ -14,7 +14,7 @@ import { probeMediaSeconds, runFfmpeg, runFfprobe } from '../ffmpeg/ffmpeg.ts';
 import { generatePaidMedia } from '../generation/paid-generation.ts';
 import { detectMusicBeats } from '#models/music/music-beats.ts';
 import { planMusicArrangement, planMusicFit, spliceMusicSpans } from '#models/music/music-fit.ts';
-import type { MusicTrack } from '../../studio/mix.ts';
+import type { MusicTrack } from '../../studio/mix/mix.ts';
 
 type Entry = Omit<MusicTrack, 'src'> & { file: string };
 
@@ -131,7 +131,7 @@ function musicModule(tracks: Record<string, Entry>) {
     return `  ${JSON.stringify(n)}: { src: track${i}, ${JSON.stringify(rest).slice(1)},`;
   }).join('\n');
   return `// Written by \`studio music\`. Edits here are lost on the next run.
-import type { MusicTrack } from '../../../lib/studio/mix.ts';
+import type { MusicTrack } from '#studio/mix/mix.ts';
 ${imports}
 
 export const music = {

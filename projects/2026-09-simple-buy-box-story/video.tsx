@@ -9,7 +9,7 @@ import {
   centerOf, defineScene, defineVideo, CAPTION_FREE, FONT, lerpCam, motionCurves, off, on, phoneView, screenPoint, screenRect,
   seg, union, view, fitTake, onTake, takeShot, takeTimeAt, TakeCursor,
   type Rect, type SceneClock, type Shot, type Take, type TakeMark, type View,
-} from '../../lib/studio/api.ts';
+} from '#studio';
 import { voice } from './audio/manifest.ts';
 import { captures as C, takes as T } from './captures/index.ts';
 import { music } from './music/index.ts';

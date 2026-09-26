@@ -11,7 +11,7 @@ import { Img } from 'remotion';
 import { inflate, rectToScreen, scaleFor, type Point, type Rect, type View } from '#models/camera/camera.ts';
 import { FPS, H, W } from '#models/frame/frame.ts';
 import { clamp } from '#models/motion/motion.ts';
-import { cameraMotionAttrs, motionEchoAttrs, pieceMotionAttrs } from '../motion-tag.ts';
+import { cameraMotionAttrs, motionEchoAttrs, pieceMotionAttrs } from '../probe/motion-tag.ts';
 import { dotVec3, type Vec3 } from '#models/camera/vec3.ts';
 import {
   along, backOf, cornersOf, eyeOf, faceLight, framedStretch, lensScale, liftHeight, lightDirection, planeFrame, planeTrail, plateSheen, pointOn,

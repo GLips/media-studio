@@ -1,6 +1,6 @@
 // camera.ts: cameras over captures, as pure math.
 //
-// A Shot is one capture from lib/capture.ts: a high-DPI screenshot plus the page-space rects of the elements scenes
+// A Shot is one capture from lib/engine/capture/capture.ts: a high-DPI screenshot plus the page-space rects of the elements scenes
 // point at. Page coordinates are the capture's CSS pixels. A camera is { cx, cy, zoom }: the page point at the centre
 // of the view, and a zoom where 1 fits the capture's viewport width to the frame. A panel is a screen box showing a
 // capture through its own camera (half of a before/after, a phone screen); the whole frame is the default panel.

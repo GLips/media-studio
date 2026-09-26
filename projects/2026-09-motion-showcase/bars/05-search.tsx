@@ -10,12 +10,12 @@ import type { ReactNode } from 'react';
 import {
   DISPLAY_FONT, FPS, H, W, centerOf, clamp, lerp, motionCurves, motionEchoAttrs, powerOutEase, perceptualSpring, rectToScreen, seg, view,
   type Point, type Rect, type View,
-} from '../../../lib/studio/api.ts';
-import { Odometer } from '../../../lib/studio/kit.tsx';
-import { odometerWheels } from '../../../lib/studio/odometer-wheels.ts';
-import { CapturePlane } from '../../../lib/studio/reel/capture-plane.tsx';
+} from '#studio';
+import { Odometer } from '#studio/kit/kit.tsx';
+import { odometerWheels } from '#studio/kit/odometer-wheels.ts';
+import { CapturePlane } from '#studio/reel/capture-plane.tsx';
 import { capturePlaneProjection, capturePlaneView, lerpPlanePose, type PlanePose } from '#models/reel/capture-plane.ts';
-import { GlyphField } from '../../../lib/studio/reel/glyph-field.tsx';
+import { GlyphField } from '#studio/reel/glyph-field.tsx';
 import type { GlyphClip, GlyphFilterStep, GlyphRegroup, GlyphWave } from '#models/reel/glyph-field.ts';
 import { reelHudGrounds, reelHudReadGrounds, type ReelHudGround, type ReelHudRead, type ReelHudSlot } from '#models/reel/hud.ts';
 import { ARCHIVO_BASELINE_EM, ARCHIVO_CAP_EM, layoutGlyphLine } from '#models/reel/ticker-layout.ts';

@@ -1,4 +1,4 @@
-// probe.tsx: measures what the checks need from a rendered frame and hands it to lib/render-pipeline.ts as artifacts:
+// probe.tsx: measures what the checks need from a rendered frame and hands it to lib/engine/render/render-pipeline.ts as artifacts:
 // the framing marks (lib/models/frame/framing-check.ts), every tagged element's motion sample (lib/models/motion/motion-tracks.ts) and the
 // `<Sfx>` marks (lib/sfx/cue-events.ts). It only measures; deciding what's a problem happens in Node, where every
 // frame's report comes together.
@@ -10,7 +10,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 're
 import { Artifact, useCurrentFrame, useDelayRender, useVideoConfig } from 'remotion';
 import { framingArtifactName, type FramingMark, type FramingReport } from '#models/frame/framing-check.ts';
 import { motionArtifactName, type FrameMotion, type MotionSample, type ScenePhase, type StaggerMembership } from '#models/motion/motion-tracks.ts';
-import { sfxMarkArtifactName, type SfxMark, type SfxMarkAttr } from '../sfx/cue-events.ts';
+import { sfxMarkArtifactName, type SfxMark, type SfxMarkAttr } from '../../sfx/cue-events.ts';
 import type { Rect } from '#models/camera/camera.ts';
 import { W } from '#models/frame/frame.ts';
 import type { CameraMark } from './motion-tag.ts';

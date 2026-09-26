@@ -7,7 +7,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import type { SfxCueSound } from '../studio/sfx.tsx';
+import type { SfxCueSound } from '../studio/sfx/sfx.tsx';
 import { wavFromSamples } from '#models/audio/wav.ts';
 import { roundSfxSeconds } from './cue-events.ts';
 import { SFX_CLICK_STYLES, SFX_CUE_LIST_VERSION, sfxCuePlays, type SfxCueList } from './cues.ts';

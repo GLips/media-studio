@@ -5,7 +5,7 @@ import { useCallback, useLayoutEffect, useState, type RefObject } from 'react';
 import { flushSync } from 'react-dom';
 import { useCurrentFrame, useDelayRender } from 'remotion';
 import type { Rect } from '#models/camera/camera.ts';
-import { areStudioFontsLoaded, whenStudioFontsLoaded } from './fonts.ts';
+import { areStudioFontsLoaded, whenStudioFontsLoaded } from '../fonts/fonts.ts';
 import { W } from '#models/frame/frame.ts';
 
 const laidOut = (el: Element) => areStudioFontsLoaded() && document.fonts.status === 'loaded' && el.getBoundingClientRect().width > 0;

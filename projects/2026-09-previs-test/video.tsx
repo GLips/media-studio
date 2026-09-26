@@ -5,7 +5,7 @@
 
 import {
   Blockout, defineScene, defineVideo, dollyMove, orbitMove, pushInMove, motionCurves, seg, type BlockoutSubject,
-} from '../../lib/studio/api.ts';
+} from '#studio';
 import { voice } from './audio/manifest.ts';
 
 // A café counter still life. Each subject has its own tint, and the prompt names it by that tint.

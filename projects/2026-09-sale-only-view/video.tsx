@@ -7,7 +7,7 @@ import {
   CaptureSwap, Capture, ClickToBlur, CursorPath, EndCard, GlassCard, Highlight, MotionTitle, Spotlight, Tag,
   camAt, camFit, camTop, centerOf, defineVideo, scaleFor, sceneCueSeconds, sceneForTimelineClock, screenRect, motionCurves,
   seg, union, view, type Cam, type Rect, type Shot,
-} from '../../lib/studio/api.ts';
+} from '#studio';
 import { voice } from './audio/manifest.ts';
 import { captures as C } from './captures/index.ts';
 import { timeline } from './timeline.ts';

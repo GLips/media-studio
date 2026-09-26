@@ -12,7 +12,7 @@ import type { Point } from '#models/camera/camera.ts';
 import { clamp } from '#models/motion/motion.ts';
 import { GLYPH_FIELD_COLORS } from '#models/reel/glyph-field.ts';
 import { glyphFieldFrame, parseGlyphColor, type GlyphDraw, type GlyphFieldFrame, type GlyphFieldProps, type GlyphSample } from '#models/reel/glyph-field-frame.ts';
-import { pieceMotionAttrs, unmeasuredAttrs } from '../motion-tag.ts';
+import { pieceMotionAttrs, unmeasuredAttrs } from '../probe/motion-tag.ts';
 
 /** One frame of the reference reel (60 fps): the unit its timings were measured in. */
 const REF_F = 1 / 60;

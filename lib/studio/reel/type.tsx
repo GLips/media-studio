@@ -10,12 +10,12 @@
 
 import { useId } from 'react';
 import { inflate, type Rect } from '#models/camera/camera.ts';
-import { useStudioFontsReady } from '../fonts.ts';
+import { useStudioFontsReady } from '../fonts/fonts.ts';
 import { DISPLAY_FONT, MONO_ADVANCE_EM, MONO_CAP_EM, MONO_FONT } from '#models/type/faces.ts';
 import { H, W } from '#models/frame/frame.ts';
 import { clamp, lerp, motionCurves, powerOutEase } from '#models/motion/motion.ts';
 import { REEL_SHUTTER, shutterOpensAt, shutterTravel, smearSigma } from '#models/motion/shutter.ts';
-import { pieceMotionAttrs } from '../motion-tag.ts';
+import { pieceMotionAttrs } from '../probe/motion-tag.ts';
 import { FRAME_EDGES, labelAt, leftOf, lerpRect, type Align, type Setting } from '#models/reel/type.ts';
 import { faceStyle, layer, measureWord, widerSetting } from './type-measure.ts';
 

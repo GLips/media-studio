@@ -1,4 +1,4 @@
-// take.ts: takes (recordings of the site from lib/capture.ts) as pure math: which frame shows when, where a page rect
+// take.ts: takes (recordings of the site from lib/engine/capture/capture.ts) as pure math: which frame shows when, where a page rect
 // sits in it, and how the take's time is fitted to the scene's.
 //
 // A take's frame is a viewport-sized Shot, so cameras, Capture, highlights and the framing check work on it as on a
@@ -10,7 +10,7 @@
 // speed before the first and after the last. Two pins on one mark hold its frame.
 
 import { assertKeysInOrder, type Rect, type Shot } from '#models/camera/camera.ts';
-import { noteTakeFitStrain, type TakeFitStrain } from './take-fit-strain.ts';
+import { noteTakeFitStrain, type TakeFitStrain } from '../probe/take-fit-strain.ts';
 
 export type TakeFrame = { src: string; t: number; scrollY: number };
 /** [t, x, y, click]: a cursor waypoint in viewport pixels; `click` is 1 where it clicked. */

@@ -8,7 +8,7 @@ import { useId, type CSSProperties, type ReactNode } from 'react';
 import type { Rect } from '#models/camera/camera.ts';
 import { FPS, H, W } from '#models/frame/frame.ts';
 import { clamp } from '#models/motion/motion.ts';
-import { motionEchoAttrs, pieceMotionAttrs } from '../motion-tag.ts';
+import { motionEchoAttrs, pieceMotionAttrs } from '../probe/motion-tag.ts';
 import { hashRandom } from '#models/motion/random.ts';
 import {
   GLITCH_LOOK, RECAP_EPS, glitchCuts, recapPlan, recapShotScale, shakeOffset, type GlitchHit, type GlitchLook, type RecapExit, type RecapLayout, type RecapTileLook,

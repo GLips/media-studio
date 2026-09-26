@@ -21,7 +21,8 @@ export type Finding = {
   message: string;
 };
 
-export type StructuralCheck = { id: string; run: (context: CheckContext) => Finding[] };
+/** An advisory check reports on every run and never blocks, so it has no baseline. */
+export type StructuralCheck = { id: string; advisory?: true; run: (context: CheckContext) => Finding[] };
 
 export type ImportEdge = { from: SourceFile; scanned: ScannedImport; target: ImportTarget; line: number };
 

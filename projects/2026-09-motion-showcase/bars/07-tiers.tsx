@@ -4,9 +4,9 @@
 // overhead to a low three-quarter view; then the ball leaves along the red and the camera whips after it into bar 8.
 
 import * as THREE from 'three';
-import { DISPLAY_FONT, FPS, H, MONO_FONT, W, clamp, lerp, motionCurves, type Point } from '../../../lib/studio/api.ts';
-import { ColumnField, type ColumnFieldProps } from '../../../lib/studio/reel/column-field.tsx';
-import { columnTitaniumMaterial } from '../../../lib/studio/reel/column-field-materials.ts';
+import { DISPLAY_FONT, FPS, H, MONO_FONT, W, clamp, lerp, motionCurves, type Point } from '#studio';
+import { ColumnField, type ColumnFieldProps } from '#studio/reel/column-field.tsx';
+import { columnTitaniumMaterial } from '#studio/reel/column-field-materials.ts';
 import { columnDiscCells, columnNoise, type ColumnBall, type ColumnCameraMove, type ColumnCameraPose, type ColumnCell, type ColumnFieldSpec, type ColumnLabel } from '#models/reel/column-field.ts';
 import { columnBallAt, columnCameraAt } from '#models/reel/column-field-motion.ts';
 import { reelHudGrounds, type ReelHudTone } from '#models/reel/hud.ts';

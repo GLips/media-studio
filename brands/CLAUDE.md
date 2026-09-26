@@ -27,7 +27,7 @@ to the kit show in an open Studio; naming another kit needs the Studio restarted
 
 ```tsx
 import brand from '@brand';
-import { BrandLogo, FitText } from '../../lib/studio/api.ts';
+import { BrandLogo, FitText } from '#studio';
 
 <div style={{ background: brand.colors.primary }}>
   <BrandLogo brand={brand} ground={brand.colors.primary} box={logoBox} />

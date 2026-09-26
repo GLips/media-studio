@@ -1,5 +1,5 @@
 // Video.tsx: a project's video as a composition: its scenes (crossfading where they meet), its voice lines, the
-// caption, and the reports lib/render-pipeline.ts reads back.
+// caption, and the reports lib/engine/render/render-pipeline.ts reads back.
 //
 // Painting is decided from composition time alone (scenesAt), exactly as the timeline lays it out. The Sequences
 // around each scene and voice line are for the Studio's timeline, where they show up by name, and for mounting.
@@ -10,14 +10,14 @@ import { AbsoluteFill, Artifact, Sequence, useCurrentFrame, useVideoConfig } fro
 import { footage as footageList } from '@footage';
 import sfxCues from '@sfx-cues';
 import { Caption } from './captions.tsx';
-import { levelGain, musicBedGainAt, VOICE_LUFS } from './mix.ts';
-import { previsRequestFor, previsSpan, type PrevisFootage, type PrevisRequest } from './previs.ts';
-import { PrevisFootagePlayer } from './previs.tsx';
-import { unmeasuredAttrs } from './motion-tag.ts';
-import { FrameProbe } from './probe.tsx';
+import { levelGain, musicBedGainAt, VOICE_LUFS } from '../mix/mix.ts';
+import { previsRequestFor, previsSpan, type PrevisFootage, type PrevisRequest } from '../previs/previs.ts';
+import { PrevisFootagePlayer } from '../previs/previs.tsx';
+import { unmeasuredAttrs } from '../probe/motion-tag.ts';
+import { FrameProbe } from '../probe/probe.tsx';
 import { SceneContext } from './scene.tsx';
-import { sfxSeedFromId } from '../sfx/dsp.ts';
-import { Sfx, SfxCueListAudio, SfxCueListPlaying } from './sfx.tsx';
+import { sfxSeedFromId } from '../../sfx/dsp.ts';
+import { Sfx, SfxCueListAudio, SfxCueListPlaying } from '../sfx/sfx.tsx';
 import { layoutVideo, sceneClock, sceneTimes, scenesAt, visibleSpan, type LaidScene, type Timeline, type VideoDef } from './timeline.ts';
 
 export type VideoProps = {
@@ -31,7 +31,7 @@ export type VideoProps = {
   auditionSfxCueList?: boolean;
 };
 
-/** What lib/render-pipeline.ts needs about the timeline (for the .srt and reports), emitted once as an artifact. */
+/** What lib/engine/render/render-pipeline.ts needs about the timeline (for the .srt and reports), emitted once as an artifact. */
 export type TimelineReport = {
   title: string;
   fps: number;

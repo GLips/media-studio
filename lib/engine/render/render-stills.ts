@@ -1,4 +1,4 @@
-// render-stills.ts: renders a project's stills (its stills.tsx, registered by lib/studio/Root.tsx) to
+// render-stills.ts: renders a project's stills (its stills.tsx, registered by lib/studio/composition/Root.tsx) to
 // out/stills/<design>-<preset>-<variant>.png, checking each first (lib/models/still/still-check.ts): a still with a problem isn't
 // written, and an older file of its name is removed, so out/stills never holds a still that fails; a full run also
 // removes stills no design makes any more. Node only.

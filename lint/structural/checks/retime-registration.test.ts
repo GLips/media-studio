@@ -8,10 +8,10 @@ const TIMELINE = 'export const timeline = {};\n';
 test('a timed project that doesn\'t call the retime runner is caught, however it half-registers', () => {
   const findings = runCheckOnFiles('retime-registration', {
     ...RUNNER,
-    'lib/studio/kit.ts': "export { assertTimelineRetimes as retimes } from '../models/timeline/retime.ts';\n",
+    'lib/studio/kit/kit.ts': "export { assertTimelineRetimes as retimes } from '../../models/timeline/retime.ts';\n",
     // Legal: calls the runner, here through a kit's rename.
     'projects/ok/timeline.ts': TIMELINE,
-    'projects/ok/timeline.test.ts': "import { retimes } from '../../lib/studio/kit.ts';\nimport { timeline } from './timeline.ts';\nretimes(timeline);\n",
+    'projects/ok/timeline.test.ts': "import { retimes } from '../../lib/studio/kit/kit.ts';\nimport { timeline } from './timeline.ts';\nretimes(timeline);\n",
     // Legal: no timeline.ts, so nothing timed to register.
     'projects/voice/video.tsx': 'export default {};\n',
     // Obvious: no test at all.

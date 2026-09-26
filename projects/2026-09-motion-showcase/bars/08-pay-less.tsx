@@ -9,11 +9,11 @@ import { useId } from 'react';
 import {
   DISPLAY_FONT, FPS, MONO_FONT, W, clamp, lerp, motionAttrs, motionCurves, motionEchoAttrs, shutterTravel, smearSigma,
   type Point, type Rect,
-} from '../../../lib/studio/api.ts';
-import { Odometer } from '../../../lib/studio/kit.tsx';
+} from '#studio';
+import { Odometer } from '#studio/kit/kit.tsx';
 import { reelHudGrounds, reelHudReadGrounds, type ReelHudGround } from '#models/reel/hud.ts';
 import { ARCHIVO_BASELINE_EM } from '#models/reel/ticker-layout.ts';
-import { RiseWord } from '../../../lib/studio/reel/type.tsx';
+import { RiseWord } from '#studio/reel/type.tsx';
 import type { Bar, ShowcaseClock } from '../bar.ts';
 import {
   PAY_LESS_CENTRE as CENTRE, PAY_LESS_LABEL as LABEL, PAY_LESS_PRICE as PRICE, PAY_LESS_STAMP_AT as STAMP_AT, PAY_LESS_TYPE_BOXES,

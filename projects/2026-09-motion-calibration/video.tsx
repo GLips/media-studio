@@ -8,7 +8,7 @@ import { useRef, type CSSProperties } from 'react';
 import {
   Capture, CursorPath, DrawPath, H, Highlight, Odometer, Text, W, WordReveal, camAt, camTop, clamp, defineScene, defineVideo, lerp,
   motionCurves, motionAttrs, on, screenRect, seg, useMotionTag, view, type Rect, type Shot,
-} from '../../lib/studio/api.ts';
+} from '#studio';
 
 const INK = '#1c365e';
 

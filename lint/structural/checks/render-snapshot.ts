@@ -25,7 +25,7 @@ const ID = 'render-snapshot';
 const VIDEO_WRITERS = ['renderMedia', 'stitchFramesToVideo'];
 const RENDER_OWNERS = ['lib/engine/render/render-session.ts', 'lib/engine/render/previs-render.ts'];
 /** Where the timeline file is named, and the constant each names it by. */
-const TIMELINE_NAMES = [{ path: 'lib/studio/Video.tsx', name: 'TIMELINE_ARTIFACT' }, { path: 'lib/engine/render/render-session.ts', name: 'TIMELINE_REPORT_NAME' }];
+const TIMELINE_NAMES = [{ path: 'lib/studio/composition/Video.tsx', name: 'TIMELINE_ARTIFACT' }, { path: 'lib/engine/render/render-session.ts', name: 'TIMELINE_REPORT_NAME' }];
 const TIMELINE_ARTIFACT_READERS = 'lib/engine/render/';
 const SNAPSHOT_OWNER = 'lib/engine/snapshot/';
 

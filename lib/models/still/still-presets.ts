@@ -1,5 +1,5 @@
 // still-presets.ts: the sizes stills render at and the names they render under, shared by the browser (stills.tsx,
-// Root.tsx) and Node (lib/render-stills.ts), which can't load .tsx.
+// Root.tsx) and Node (lib/engine/render/render-stills.ts), which can't load .tsx.
 
 /** The sizes a still renders at, by the place it's posted. Print sizes are out of scope (vid-28). */
 export const STILL_PRESETS = {

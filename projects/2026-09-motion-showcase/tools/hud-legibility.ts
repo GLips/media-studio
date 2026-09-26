@@ -7,12 +7,12 @@
 // from the median ground 3–6 px around it (a beat square passes on colour too); word by word, it's BUSY when 12% of
 // that ground is on a sharp step to something ink-coloured. Both thresholds sit between the critic's failing frames
 // and the frames it calls clean.
-import '../../../lib/studio/tsx-test-hooks.ts';
+import '#engine/bundle/tsx-test-hooks.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { spawnFfmpeg } from '#engine/ffmpeg/ffmpeg.ts';
-import type { Rect } from '../../../lib/studio/api.ts';
+import type { Rect } from '#studio';
 import type { ReelHudSlot } from '#models/reel/hud.ts';
 
 const ROOT = resolve(import.meta.dirname, '../../..');
@@ -70,8 +70,8 @@ const show = flag('show') === undefined ? undefined : Number(flag('show'));
 
 // The showcase's HUD alone, paper on black, over every frame of the reel. No lens and no grain, so each ink pixel sits
 // where the cut's does.
-const MASK_VIDEO = `import { FPS, defineScene, defineVideo } from '../../../../lib/studio/api.ts';
-import { ReelHud } from '../../../../lib/studio/reel/hud.tsx';
+const MASK_VIDEO = `import { FPS, defineScene, defineVideo } from '#studio';
+import { ReelHud } from '#studio/reel/hud.tsx';
 import { SHOWCASE_HUD } from '../../hud.ts';
 import { timeline } from '../../timeline.ts';
 
@@ -87,7 +87,7 @@ const hudMask = defineScene({
 
 export default defineVideo({ title: 'Showcase HUD mask', voice: {}, scenes: [hudMask] });
 `;
-const MASK_INPUTS = ['lib/studio/reel/hud.tsx', 'lib/models/reel/hud.ts', 'lib/models/reel/type.ts', 'lib/studio/fonts.ts'].map((f) => join(ROOT, f))
+const MASK_INPUTS = ['lib/studio/reel/hud.tsx', 'lib/models/reel/hud.ts', 'lib/models/reel/type.ts', 'lib/studio/fonts/fonts.ts'].map((f) => join(ROOT, f))
   .concat(['hud.ts', 'look.ts', 'timeline.ts'].map((f) => join(PROJECT, f)));
 const stamp = createHash('sha1').update([MASK_VIDEO, ...MASK_INPUTS.map((f) => readFileSync(f))].join('\0')).digest('hex');
 const stampFile = join(MASK_DIR, 'stamp');

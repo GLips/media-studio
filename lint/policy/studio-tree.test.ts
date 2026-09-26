@@ -10,9 +10,11 @@ test('each path lands in its §4 position', () => {
     'lib/studio/reel/hud.tsx': 'studio',
     'lib/engine/render/run.ts': 'engine',
     'lib/sfx/cues.ts': 'lib-unsplit',
-    // Adversarial: lib/ and lib/models/ hold subfolders only, so a module directly in either is placed nowhere.
+    // Adversarial: lib/, lib/models/ and lib/studio/ (but for its barrel) hold subfolders only, so a module directly
+    // in one is placed nowhere.
     'lib/music-fit.ts': 'undeclared',
     'lib/models/music-fit.ts': 'undeclared',
+    'lib/studio/kit.tsx': 'undeclared',
     'lab/review/app/main.tsx': 'lab-app',
     'lab/review/server.ts': 'lab-server',
     'brands/kit/brand.ts': 'brand-kit',

@@ -2,10 +2,10 @@
 // when, and each hit's split, slices and ghost, are models/reel/type.ts's.
 
 import { useId } from 'react';
-import { useStudioFontsReady } from '../fonts.ts';
+import { useStudioFontsReady } from '../fonts/fonts.ts';
 import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
 import { H, W } from '#models/frame/frame.ts';
-import { motionEchoAttrs, pieceMotionAttrs } from '../motion-tag.ts';
+import { motionEchoAttrs, pieceMotionAttrs } from '../probe/motion-tag.ts';
 import { hashRandom } from '#models/motion/random.ts';
 import { labelAt, leftOf, scrambleAt, scrambleFinish, wordGlitchAt, type Align, type Setting } from '#models/reel/type.ts';
 import { faceStyle, layer, measureWord } from './type-measure.ts';

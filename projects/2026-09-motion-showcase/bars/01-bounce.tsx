@@ -7,8 +7,8 @@
 
 import {
   DISPLAY_FONT, FPS, H, REEL_SHUTTER, W, motionAttrs, motionCurves, seededRandom, shutterTravel, smearSigma,
-} from '../../../lib/studio/api.ts';
-import { BounceBall } from '../../../lib/studio/reel/bounce.tsx';
+} from '#studio';
+import { BounceBall } from '#studio/reel/bounce.tsx';
 import { bouncingBallAt } from '#models/reel/bounce.ts';
 import { ARCHIVO_CAP_EM, layoutGlyphLine } from '#models/reel/ticker-layout.ts';
 import type { Bar, ShowcaseClock } from '../bar.ts';

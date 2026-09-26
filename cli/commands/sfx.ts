@@ -25,7 +25,7 @@ const render = defineCommand({
   },
   args: {
     sound: { type: 'positional', required: true, description: 'recipe or recipe.preset, e.g. whoosh.whip' },
-    out: { type: 'string', required: true, valueHint: 'projects/<p>/sfx/reveal.wav', description: 'The .wav to write' },
+    out: { type: 'string', required: true, valueHint: 'projects/<p>/sfx/reveal.wav', description: 'The .wav to write, inside the studio' },
     seed: { type: 'string', description: 'The id of the event it marks, so each event gets its own take' },
     set: { type: 'string', valueHint: 'brightness=0.8,decay=1.2', description: 'Parameters over the preset' },
     mutate: { type: 'string', valueHint: '0.2', description: 'How far (0–1) to vary every parameter, from the seed' },

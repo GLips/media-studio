@@ -12,7 +12,7 @@ import {
   ballEllipse, bounceModel, contactTime, contactX, groundDents, guidePath, launchSwell, markEase, rawPoseAt, shutterCentres,
   typeOnScramble, type BounceParams,
 } from '#models/reel/bounce.ts';
-import { pieceMotionAttrs } from '../motion-tag.ts';
+import { pieceMotionAttrs } from '../probe/motion-tag.ts';
 
 // ---------- the swell ----------
 

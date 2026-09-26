@@ -7,7 +7,7 @@ test('every export of lib/studio/api.ts resolves to its declaration, signature a
   const exports = readStudioApiExports();
   assert.deepEqual(exports.filter((e) => e.file === '?' || !e.signatures.length).map((e) => e.name), []);
   const fit = findStudioApiExport(exports, 'fitTake');
-  assert.equal(fit.file, 'lib/studio/take.ts');
+  assert.equal(fit.file, 'lib/studio/capture/take.ts');
   assert.match(fit.signatures[0], /^function fitTake<T extends Take>\(take: T, pins:/);
   assert.match(fit.doc, /^Pins take moments to scene times/);
 });

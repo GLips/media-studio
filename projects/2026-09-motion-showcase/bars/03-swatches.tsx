@@ -8,11 +8,11 @@
 import { useId, type CSSProperties, type ReactNode } from 'react';
 import {
   DISPLAY_FONT, FPS, H, REEL_SHUTTER, W, centerOf, clamp, lerp, motionAttrs, motionCurves, motionEchoAttrs, type Point, type Rect, type Shot, type Vec3, type View,
-} from '../../../lib/studio/api.ts';
-import { CapturePlane } from '../../../lib/studio/reel/capture-plane.tsx';
+} from '#studio';
+import { CapturePlane } from '#studio/reel/capture-plane.tsx';
 import { capturePlaneProjection, capturePlaneView, planeLiftStart, type PlaneLift, type PlanePose } from '#models/reel/capture-plane.ts';
 import { reelHudBoxes, reelHudGrounds, reelHudReadGrounds, type ReelHudGround, type ReelHudRead, type ReelHudTone } from '#models/reel/hud.ts';
-import { RiseWord } from '../../../lib/studio/reel/type.tsx';
+import { RiseWord } from '#studio/reel/type.tsx';
 import type { Bar, ShowcaseClock } from '../bar.ts';
 import { captures as C } from '../captures/index.ts';
 import { SHOWCASE_HUD } from '../hud.ts';

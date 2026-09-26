@@ -5,13 +5,13 @@
 // (174), INKS. slamming beside the count, and the fourth. The ripples run the colour wheel from the brand's red-orange
 // to magenta; the last lands every cell on its own ink, the field bar 5 opens on.
 
-import { DISPLAY_FONT, FPS, H, W, clamp, motionAttrs, motionCurves, powerOutEase, seg, type Point, type Rect } from '../../../lib/studio/api.ts';
-import { Odometer } from '../../../lib/studio/kit.tsx';
-import { GlyphField, ShockRing } from '../../../lib/studio/reel/glyph-field.tsx';
+import { DISPLAY_FONT, FPS, H, W, clamp, motionAttrs, motionCurves, powerOutEase, seg, type Point, type Rect } from '#studio';
+import { Odometer } from '#studio/kit/kit.tsx';
+import { GlyphField, ShockRing } from '#studio/reel/glyph-field.tsx';
 import type { GlyphClip, GlyphHit, GlyphKey, GlyphWave } from '#models/reel/glyph-field.ts';
 import { parseGlyphColor } from '#models/reel/glyph-field-frame.ts';
 import { reelHudBoxPoints, type ReelHudRead, type ReelHudSlot } from '#models/reel/hud.ts';
-import { Needle } from '../../../lib/studio/reel/needle.tsx';
+import { Needle } from '#studio/reel/needle.tsx';
 import { needleCoversAt } from '#models/reel/needle.ts';
 import { archivoAdvance, layoutGlyphLine } from '#models/reel/ticker-layout.ts';
 import type { Bar, ShowcaseClock } from '../bar.ts';

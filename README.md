@@ -67,27 +67,28 @@ scene's `expect` says what must be on screen while a word is spoken:
 
 ## Pieces
 
-Scenes import everything from `lib/studio/api.ts`.
+Scenes import the studio's conveniences from `#studio` (`lib/studio/api.ts`), and anything else in `lib/studio/` as
+`#studio/<folder>/<file>`; never by relative path. `lib/studio/` holds domain folders only, besides `api.ts`.
 
 - `lib/engine/capture/capture.ts`: named shots, each on a fresh page so any can be redone alone. Stills are screenshots with element
   rects in page coordinates; takes are CDP screencasts with marks (rects and times) and a mouse and key log, filmed at
   the site's own pace.
-- `lib/studio/take.ts`: takes in a scene. `fitTake` pins marks to words, `takeShot` is the frame showing then (a Shot,
+- `lib/studio/capture/take.ts`: takes in a scene. `fitTake` pins marks to words, `takeShot` is the frame showing then (a Shot,
   so cameras work on it), `onTake` moves a mark's rect by the frame's scroll. `TakeCursor` draws our cursor and click
   sounds from the log, so a re-voice never needs a reshoot.
-- `lib/studio/timeline.ts`: `defineScene`, `defineVideo`, and the layout that times scenes to their lines and centres
+- `lib/studio/composition/timeline.ts`: `defineScene`, `defineVideo`, and the layout that times scenes to their lines and centres
   crossfades on the cuts.
 - `lib/models/camera/camera.ts`: a camera over captures (`camFit`, `camAt`, `lerpCam`) and views, which map page rects to the
   frame.
-- `lib/studio/capture.tsx`, `overlays.tsx`: captures (with blur, motion blur and state changes), cursor paths with
+- `lib/studio/capture/capture.tsx`, `overlays.tsx`: captures (with blur, motion blur and state changes), cursor paths with
   clicks, highlights, spotlights, tags, text, frosted glass and washes. Scene text stays above `CAPTION_SAFE_TOP`.
-- `lib/studio/kit.tsx`: whole shots built from those, taking their brand colours and words as arguments: `MotionTitle`,
+- `lib/studio/kit/kit.tsx`: whole shots built from those, taking their brand colours and words as arguments: `MotionTitle`,
   `ClickToBlur`, `SplitCompare`, `Phone`, `GlassCard`, `SectionCard`, `EndCard`, and redraws of what a screenshot
   can't hold (`ConfirmDialog`, `NativeMenu`). When a shot recurs in a second video, move it here.
-- `lib/studio/probe.tsx`: measures highlights, clicks, tags and the caption on each frame. `lib/models/frame/framing-check.ts`
+- `lib/studio/probe/probe.tsx`: measures highlights, clicks, tags and the caption on each frame. `lib/models/frame/framing-check.ts`
   decides what's a problem.
-- `lib/studio/mix.ts`: voice levelling, and a music bed that ducks under the voice. `lib/engine/ffmpeg/loudness.ts` measures.
-- `lib/studio/sfx.tsx`: `<Sfx>` plays a sound so it lands on a scene time; `CursorPath` clicks sound by themselves.
+- `lib/studio/mix/mix.ts`: voice levelling, and a music bed that ducks under the voice. `lib/engine/ffmpeg/loudness.ts` measures.
+- `lib/studio/sfx/sfx.tsx`: `<Sfx>` plays a sound so it lands on a scene time; `CursorPath` clicks sound by themselves.
   `lib/sfx/` synthesizes every sound from a seeded recipe (whoosh, riser, impact, chime and more), so there's nothing
   to license.
 - `lib/engine/voice/whisper-words.ts`, `lib/models/voice/voice-words.ts`: word timings from whisper.cpp (installed on first use into
@@ -102,7 +103,7 @@ Scenes import everything from `lib/studio/api.ts`.
   `lib/engine/generation/openrouter.ts`, `say`, or a recording) and cuts it, and `lib/engine/project/studio-project.ts` resolves `<project>`.
 - `lib/engine/generation/paid-generation.ts`: every paid image, video or music generation, cached by request hash into a project's
   `generated/` (gitignored) with each result's prompt, model, references and cost in `generated/provenance.json`.
-  `lib/engine/render/previs-render.ts` is `studio gen video`: a scene's 3D blockout (`lib/studio/blockout.tsx`) rendered into footage.
+  `lib/engine/render/previs-render.ts` is `studio gen video`: a scene's 3D blockout (`lib/studio/previs/blockout.tsx`) rendered into footage.
 
 Remotion bundles `lib/studio` and one project's `video.tsx`. Remotion is free for companies of up to three people;
 past that it needs a company license.

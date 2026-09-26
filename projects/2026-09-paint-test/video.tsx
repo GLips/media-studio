@@ -2,7 +2,7 @@
 // around the price, anchored to its word.
 
 import type { Pts } from 'p5';
-import { Capture, EndCard, camFit, defineScene, defineVideo, screenRect, seg, view, type Rect } from '../../lib/studio/api.ts';
+import { Capture, EndCard, camFit, defineScene, defineVideo, screenRect, seg, view, type Rect } from '#studio';
 import { PAL, Watercolor, hash, type WatercolorKit } from '../../lib/paint/watercolor.tsx';
 import { voice } from './audio/manifest.ts';
 import { captures as C } from './captures/index.ts';

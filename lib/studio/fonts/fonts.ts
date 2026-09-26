@@ -7,14 +7,14 @@ import { loadFont } from '@remotion/fonts';
 import { useLayoutEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useDelayRender } from 'remotion';
-import archivo from './fonts/Archivo.ttf';
-import jetbrainsMono from './fonts/JetBrainsMono.ttf';
+import archivo from './Archivo.ttf';
+import jetbrainsMono from './JetBrainsMono.ttf';
 
 /** A font file for loadStudioFaces: loadFont's fields, the URL a bundle import. */
 export type StudioFontFile = { family: string; url: string; weight: string; style?: 'normal' | 'italic'; stretch?: string };
 
 // Loaded once per page, at import: loadFont holds the render until each face is ready. A brand kit's faces join as
-// its module loads (lib/studio/brand.tsx), which is before anything renders.
+// its module loads (lib/studio/brand/brand.tsx), which is before anything renders.
 const loads: Promise<unknown>[] = [];
 let settledLoads = 0;
 

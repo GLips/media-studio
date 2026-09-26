@@ -248,13 +248,13 @@ In `lib/studio/reel/` unless noted.
 | `BounceBall`, `bouncingBallAt`, `BounceCallout`, `FieldSwell` | `bounce.tsx`, `lib/models/reel/bounce.ts`, `bounce-swell.ts` | 1; bar 2's tittle zoom; bar 8's full stop |
 | `RiseWord`, `WeightWord`, `SelectionBox`, `SlantWord`, `ScrambleText` | `type.tsx`, `type-slant.tsx`, `type-scramble.tsx`, `lib/models/reel/type.ts` | 2, 8 |
 | `GlyphField`, `FieldFlash`, `ShockRing` | `glyph-field.tsx` | 3; bar 7's implosion |
-| `ColumnField`, `columnCameraAt`, `columnBallAt` on `ThreeStage`'s accumulation | `column-field.tsx`, `lib/models/reel/column-field-motion.ts`, `lib/studio/three-stage.tsx` | 4 |
+| `ColumnField`, `columnCameraAt`, `columnBallAt` on `ThreeStage`'s accumulation | `column-field.tsx`, `lib/models/reel/column-field-motion.ts`, `lib/studio/film/three-stage.tsx` | 4 |
 | `TickerBands` | `ticker.tsx`, `lib/models/reel/ticker.ts`, `ticker-layout.ts` | 5 |
 | none yet; [06] specs `particleMorph` | | 6 |
 | `RecapGrid`, `GlitchFlash`, `Shake`, `FadeToBlack` | `recap.tsx`, `lib/models/reel/recap.ts` | 7, 8 |
 | `ReelHud` | `hud.tsx`, `lib/models/reel/hud.ts` | all |
 | `LensFringe` | `lens.tsx`, `lib/models/reel/lens.ts` | the frame post |
-| `Odometer` | `lib/studio/kit.tsx`, `lib/studio/odometer-wheels.ts` | bar 5's price roll; the showcase's |
+| `Odometer` | `lib/studio/kit/kit.tsx`, `lib/studio/kit/odometer-wheels.ts` | bar 5's price roll; the showcase's |
 | `CapturePlane`, `Needle` | `capture-plane.tsx`, `needle.tsx`, `lib/models/reel/needle.ts` | none: the showcase's own |
 
 ## The bars

@@ -10,9 +10,9 @@
 import * as THREE from 'three';
 import { H, W } from '#models/frame/frame.ts';
 import { motionCurves } from '#models/motion/motion.ts';
-import { pieceMotionAttrs } from '../motion-tag.ts';
+import { pieceMotionAttrs } from '../probe/motion-tag.ts';
 import { hashRandom } from '#models/motion/random.ts';
-import { ThreeStage, type ThreeEnvironment, type ThreeFrame, type ThreeSample } from '../three-stage.tsx';
+import { ThreeStage, type ThreeEnvironment, type ThreeFrame, type ThreeSample } from '../film/three-stage.tsx';
 import type { Vec3 } from '#models/camera/vec3.ts';
 import {
   NEEDLE_RIG, needleInFrame, needleLensHeight, needlePoseAt, needleRestAxis, needleScreenPoint, needleShotAt, needleTakeExposures,

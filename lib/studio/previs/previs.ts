@@ -1,12 +1,12 @@
 // previs.ts: a previs scene's rules as pure data, shared by the composition (Video.tsx, previs.tsx) and by
-// `studio gen video` (lib/previs-render.ts): the model and its limits, where a scene's blockout render starts and how
+// `studio gen video` (lib/engine/render/previs-render.ts): the model and its limits, where a scene's blockout render starts and how
 // long it runs, and what the command asks for.
 //
 // The footage covers the scene's whole time on screen, crossfades included, so it starts at the scene time the
 // blockout render started (`from`, negative when the scene fades in). Retiming maps scene time to blockout time, and
 // footage time is blockout time less `from`.
 
-import { visibleSpan, type LaidScene, type Timeline } from './timeline.ts';
+import { visibleSpan, type LaidScene, type Timeline } from '../composition/timeline.ts';
 
 export const PREVIS_MODEL = 'bytedance/seedance-2.5';
 /** The whole seconds Seedance 2.5 renders: a request is the scene's time on screen, rounded up into these. */

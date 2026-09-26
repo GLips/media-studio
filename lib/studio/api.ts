@@ -1,21 +1,22 @@
-// api.ts: the studio's conveniences for a project's video.tsx or stills.tsx, in one import. A scene may import anything else too.
+// api.ts: the studio's conveniences for a project's video.tsx or stills.tsx, in one import: `#studio`. A scene may import
+// anything else in lib/studio too, as `#studio/<folder>/<file>`.
 
-export { BrandLogo, brandLogoFor, type StudioBrand, type StudioBrandLogo } from './brand.tsx';
-export * from './blockout.tsx';
-export * from './blockout-camera.ts';
+export { BrandLogo, brandLogoFor, type StudioBrand, type StudioBrandLogo } from './brand/brand.tsx';
+export * from './previs/blockout.tsx';
+export * from './previs/blockout-camera.ts';
 export * from '../models/timeline/beat-grid.ts';
 export * from '#models/camera/camera.ts';
-export * from './capture.tsx';
-export * from './fonts.ts';
+export * from './capture/capture.tsx';
+export * from './fonts/fonts.ts';
 export * from '#models/type/faces.ts';
 export * from '#models/frame/frame.ts';
-export * from './grade.tsx';
-export * from './kit.tsx';
+export * from './film/grade.tsx';
+export * from './kit/kit.tsx';
 export * from '#models/motion/motion.ts';
-export * from './motion-blur.tsx';
+export * from './film/motion-blur.tsx';
 export * from '#models/motion/shutter.ts';
-export { motionAttrs, motionEchoAttrs, pieceMotionAttrs, unmeasuredAttrs, useMotionTag, type MotionTag } from './motion-tag.ts';
-export * from './overlays.tsx';
+export { motionAttrs, motionEchoAttrs, pieceMotionAttrs, unmeasuredAttrs, useMotionTag, type MotionTag } from './probe/motion-tag.ts';
+export * from './kit/overlays.tsx';
 export * from '#models/motion/random.ts';
 // The reel pieces: the high-energy register of music-led videos (skills/video-motion/references/reel-pieces.md).
 // Each model is re-exported by name: the helpers it exports only for its own drawing stay out of the barrel.
@@ -46,13 +47,13 @@ export * from './reel/type.tsx';
 export * from './reel/type-slant.tsx';
 export * from './reel/type-scramble.tsx';
 export { CODE_GLYPHS, scrambleAt, scrambleFinish, type ScrambleTiming, type SlantEntrance, slantMatrix, type SlantPose, slantWordPose, type Tittle } from '#models/reel/type.ts';
-export { useScene } from './scene.tsx';
-export { useScreenRect } from './screen-rect.ts';
-export { defineScene, defineVideo, type LineSpan, type SceneClock, type ScenePrevis, type VideoSound } from './timeline.ts';
-export { sceneCueSeconds, sceneForTimelineClock } from './music-led/timeline-scene.tsx';
-export * from './sfx.tsx';
+export { useScene } from './composition/scene.tsx';
+export { useScreenRect } from './probe/screen-rect.ts';
+export { defineScene, defineVideo, type LineSpan, type SceneClock, type ScenePrevis, type VideoSound } from './composition/timeline.ts';
+export { sceneCueSeconds, sceneForTimelineClock } from './composition/timeline-scene.tsx';
+export * from './sfx/sfx.tsx';
 export { STILL_FEED_SIZES, STILL_PRESETS, type StillFitReport, type StillPreset } from '#models/still/still-presets.ts';
-export { CoverImage, defineStills, FitText, STILL_CARD_TILT, StillCard, StillHud, stillDesign, useStillFrame, type StillAxes, type StillCardTilt, type StillDesign, type StillFocus, type StillImage, type StillsDef } from './stills.tsx';
-export * from './take.ts';
-export * from './three-stage.tsx';
+export { CoverImage, defineStills, FitText, STILL_CARD_TILT, StillCard, StillHud, stillDesign, useStillFrame, type StillAxes, type StillCardTilt, type StillDesign, type StillFocus, type StillImage, type StillsDef } from './stills/stills.tsx';
+export * from './capture/take.ts';
+export * from './film/three-stage.tsx';
 export * from '#models/camera/vec3.ts';

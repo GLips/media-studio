@@ -1,4 +1,4 @@
-// faces.ts: the studio's faces by name and metric, which layout reads without loading a font. lib/studio/fonts.ts
+// faces.ts: the studio's faces by name and metric, which layout reads without loading a font. lib/studio/fonts/fonts.ts
 // loads the files themselves.
 
 import { FONT } from '#models/frame/frame.ts';

@@ -177,7 +177,7 @@ function voiceModule(manifest: Record<string, Voiced>) {
     return `  ${JSON.stringify(id)}: { src: ${src ? `wav${i}` : 'null'}, duration: ${duration}, lufs: ${lufs}, pauseBefore: ${pauseBefore}, text: ${JSON.stringify(text)},\n    words: ${JSON.stringify(words)} },`;
   }).join('\n');
   return `// Written by \`studio voice\`. Edits here are lost on the next run.
-import type { Voice } from '../../../lib/studio/timeline.ts';
+import type { Voice } from '#studio/composition/timeline.ts';
 ${imports}
 
 export const voice = {

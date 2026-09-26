@@ -19,7 +19,7 @@ import { sfxEventsFrom, sfxMarkArtifactName, type SfxEvent, type SfxMark } from 
 import { sfxCueListReport } from '../../sfx/project-cue-list.ts';
 import { W } from '#models/frame/frame.ts';
 import { isVoicedWithDraft } from '../voice/voice-project.ts';
-import type { TimelineReport } from '../../studio/Video.tsx';
+import type { TimelineReport } from '../../studio/composition/Video.tsx';
 import { countVideoFrames, measureWithFfmpeg, runFfmpeg, runFfprobe } from '../ffmpeg/ffmpeg.ts';
 
 const outDirFor = (session: RenderSession) => join(session.project, 'out');

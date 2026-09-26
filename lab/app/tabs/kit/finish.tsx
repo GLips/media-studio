@@ -1,12 +1,12 @@
 // finish.tsx: the Kit pieces tab's entries for the reel foundations that finish a frame rather than add to it: film
-// grain and a vignette (lib/studio/grade.tsx), and the shutter blur that smooths fast moves at 30 fps
-// (lib/studio/motion-blur.tsx).
+// grain and a vignette (lib/studio/film/grade.tsx), and the shutter blur that smooths fast moves at 30 fps
+// (lib/studio/film/motion-blur.tsx).
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
 import { FPS, W } from '#models/frame/frame.ts';
-import { FilmGrain, Vignette } from '../../../../lib/studio/grade.tsx';
+import { FilmGrain, Vignette } from '../../../../lib/studio/film/grade.tsx';
 import { motionCurves, seg } from '#models/motion/motion.ts';
-import { ShutterBlur } from '../../../../lib/studio/motion-blur.tsx';
+import { ShutterBlur } from '../../../../lib/studio/film/motion-blur.tsx';
 import { LAB_COLORS, LabChoice, LabSlider } from '../../ui.tsx';
 import { defineKitPiece } from './piece.tsx';
 
@@ -61,7 +61,7 @@ export const GRADE_PIECE = defineKitPiece<GradeStageProps>({
   name: 'FilmGrain + Vignette',
   title: 'Film grain & dark corners',
   blurb: 'A fine flicker of film grain and darkened corners, laid over the whole frame.',
-  source: 'lib/studio/grade.tsx',
+  source: 'lib/studio/film/grade.tsx',
   whenUsed: 'Teasers and showreels, over every frame: grain makes flat colour look filmed rather than drawn (and hides the stripes a smooth gradient can show), and a vignette holds the eye in the middle.',
   note: <>Grain is fine by nature and this stage is shrunk to fit the page: press the player’s full-screen button to see it at size. Around 0.06–0.1 reads as film; past 0.15 it becomes a look of its own. Grain barely shows on near-black, by design.</>,
   defaults: { grain: 0.1, grainScale: 0.9, vignette: 0.45, inner: 0.5, compare: 'split' },
@@ -149,7 +149,7 @@ export const SHUTTER_BLUR_PIECE = defineKitPiece<ShutterStageProps>({
   name: 'ShutterBlur',
   title: 'Motion blur',
   blurb: 'Smears fast movement a little, like a real camera, so it glides instead of jumping.',
-  source: 'lib/studio/motion-blur.tsx',
+  source: 'lib/studio/film/motion-blur.tsx',
   whenUsed: 'Anything that whips across the screen in a reel: a card flung in, a fast camera pan, type slamming into place.',
   note: <>
     <b>Why fast motion strobes:</b> a video is 30 still pictures a second. If something crosses the screen in a third of a second, it only appears in about ten of them, a hand-width apart each time, and your eye sees it hop between spots instead of moving.

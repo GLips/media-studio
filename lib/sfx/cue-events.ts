@@ -1,13 +1,13 @@
 // cue-events.ts: the moments in a rendered video a sound effect can mark, found from what `studio check` measured.
 // Pure; lib/sfx/cues.ts drafts sounds onto them.
 //
-// - Clicks, keys and hand-placed sounds: every `<Sfx>` leaves a mark (lib/studio/sfx.tsx) that the probe reads on each
+// - Clicks, keys and hand-placed sounds: every `<Sfx>` leaves a mark (lib/studio/sfx/sfx.tsx) that the probe reads on each
 //   frame, so their times are exact, not rounded to a frame.
 // - Scene changes and spoken words: timeline.json.
 // - Camera moves and reveals: the motion tracks (lib/models/motion/motion-tracks.ts), to the frame.
 
 import type { MotionSegment, MotionTracks } from '#models/motion/motion-tracks.ts';
-import type { TimelineReport } from '../studio/Video.tsx';
+import type { TimelineReport } from '../studio/composition/Video.tsx';
 import type { SfxRequest } from './library.ts';
 
 /** The artifact the probe emits for each frame: the `<Sfx>` marks on it. */

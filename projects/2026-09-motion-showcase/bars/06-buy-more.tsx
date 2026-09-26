@@ -5,9 +5,9 @@
 // rolling level with it, as the bands fly off and the hero closes onto its word: a display-size QTY 5 on red, still
 // closing in on the cut to bar 7's black. The HUD's rows ride on two lanes of flat ground laid across the field.
 
-import { FPS, H, ShutterBlur, W, clamp, motionCurves, seg } from '../../../lib/studio/api.ts';
+import { FPS, H, ShutterBlur, W, clamp, motionCurves, seg } from '#studio';
 import { reelHudBoxes, type ReelHudTone } from '#models/reel/hud.ts';
-import { TickerBands } from '../../../lib/studio/reel/ticker.tsx';
+import { TickerBands } from '#studio/reel/ticker.tsx';
 import { tickerLookBeat, type TickerColors, type TickerEnter, type TickerLook } from '#models/reel/ticker.ts';
 import type { Bar, ShowcaseClock } from '../bar.ts';
 import { SHOWCASE_HUD } from '../hud.ts';

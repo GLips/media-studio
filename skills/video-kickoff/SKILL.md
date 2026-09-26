@@ -131,7 +131,7 @@ breaks it for all of them.
 
 - Photograph or film it (`video-capture`), or compose the host's real components (`video-motion`, `references/walkthrough.md`).
   If a state can't be photographed (an open native `<select>`, a `confirm()` dialog), rebuild it in DOM **from the
-  product's own words and styles**, as `ConfirmDialog` and `NativeMenu` in `lib/studio/kit.tsx` do.
+  product's own words and styles**, as `ConfirmDialog` and `NativeMenu` in `lib/studio/kit/kit.tsx` do.
 - Pull real icons and logos from the site's assets. On a Mac, an app's icon sits in its bundle:
   `sips -s format png /Applications/X.app/Contents/Resources/*.icns --out icon.png`. A coloured square standing in for
   an icon fails review.

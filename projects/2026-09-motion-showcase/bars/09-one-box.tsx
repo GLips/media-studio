@@ -9,16 +9,16 @@ import type { CSSProperties } from 'react';
 import {
   FPS, H, REEL_SHUTTER, SFX, W, clamp, lerp, motionAttrs, motionCurves, motionEchoAttrs, seededRandom, shutterTravel,
   type Point, type Rect,
-} from '../../../lib/studio/api.ts';
-import { GlyphField, ShockRing } from '../../../lib/studio/reel/glyph-field.tsx';
+} from '#studio';
+import { GlyphField, ShockRing } from '#studio/reel/glyph-field.tsx';
 import { reelHudBoxPoints, reelHudToneOver, type ReelHudRead, type ReelHudSlot, type ReelHudTone } from '#models/reel/hud.ts';
-import { Needle } from '../../../lib/studio/reel/needle.tsx';
+import { Needle } from '#studio/reel/needle.tsx';
 import type { NeedleStrike } from '#models/reel/needle.ts';
-import { GlitchFlash, RecapGrid, Shake, type RecapTile } from '../../../lib/studio/reel/recap.tsx';
+import { GlitchFlash, RecapGrid, Shake, type RecapTile } from '#studio/reel/recap.tsx';
 import { recapTileUnder, type GlitchHit, type RecapLayout } from '#models/reel/recap.ts';
 import { archivoAdvance, archivoKern } from '#models/reel/ticker-layout.ts';
-import { RiseWord } from '../../../lib/studio/reel/type.tsx';
-import { ScrambleText } from '../../../lib/studio/reel/type-scramble.tsx';
+import { RiseWord } from '#studio/reel/type.tsx';
+import { ScrambleText } from '#studio/reel/type-scramble.tsx';
 import type { BoundReplay } from '../../../lib/models/timeline/bind-timeline.ts';
 import type { Bar, BarSound, ShowcaseClock, ShowcaseReplays } from '../bar.ts';
 import { INK_FIELD } from '../ink-field.ts';

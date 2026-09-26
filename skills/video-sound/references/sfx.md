@@ -103,7 +103,7 @@ To hear the options, `studio sfx showcase` renders every preset and a few varian
 
 ## Playing one
 
-For a moment the draft can't find, `<Sfx sound at t id volume>` (`lib/studio/sfx.tsx`, exported from
+For a moment the draft can't find, `<Sfx sound at t id volume>` (`lib/studio/sfx/sfx.tsx`, exported from
 `lib/studio/api.ts`) plays `sound` so that it **lands** on `at`, in scene seconds. It plays whether or not the video
 plays a cue list; redraft after adding one so the list's accents keep clear of it.
 

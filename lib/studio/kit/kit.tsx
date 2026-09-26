@@ -5,14 +5,14 @@
 import { evolvePath } from '@remotion/paths';
 import { Fragment, useId, type ReactNode } from 'react';
 import { camFit, camTop, camWhole, centerOf, lerpCam, view, type Rect, type Shot, type View } from '#models/camera/camera.ts';
-import { Capture, CaptureMotion } from './capture.tsx';
+import { Capture, CaptureMotion } from '../capture/capture.tsx';
 import { DISPLAY_FONT } from '#models/type/faces.ts';
 import { CAPTION_FREE, CAPTION_SAFE_TOP, FONT, FPS, FULL_FRAME, H, W } from '#models/frame/frame.ts';
 import { clamp, lerp, motionCurves, motionDurations, seg, stagger, staggerFinish } from '#models/motion/motion.ts';
-import { motionAttrs, pieceMotionAttrs } from './motion-tag.ts';
+import { motionAttrs, pieceMotionAttrs } from '../probe/motion-tag.ts';
 import { odometerSinceLanding, odometerWheels, type OdometerMode, type OdometerWheel } from './odometer-wheels.ts';
 import { ClipToBox, CursorPath, Glass, Tag, Text, Wash } from './overlays.tsx';
-import type { SceneClock } from './timeline.ts';
+import type { SceneClock } from '../composition/timeline.ts';
 
 export type { OdometerMode } from './odometer-wheels.ts';
 
@@ -56,7 +56,7 @@ export function SplitCompare({ left, right, k = 1, children }: { left: SplitSide
 const BEZEL = 14;
 
 /**
- * The view of a viewport capture (see `scrollY` in lib/capture.ts) on a phone screen centred at (cx, cy). `height`
+ * The view of a viewport capture (see `scrollY` in lib/engine/capture/capture.ts) on a phone screen centred at (cx, cy). `height`
  * is the whole device in frame pixels. Pass it to <Phone>, and aim highlights through it.
  */
 export function phoneView(shot: Shot, { cx = W / 2, cy = H / 2 + 10, height = 980 }: { cx?: number; cy?: number; height?: number } = {}): View {
@@ -261,7 +261,7 @@ export function ConfirmDialog({ k, origin, message, anchor = { x: W / 2, y: 120 
 
 /**
  * A native <select> menu, open, which a screenshot can't catch: the page's own option names (see `data` in
- * lib/capture.ts) in a plain list dropped from screen rect `from`. `k` opens it, raw: it eases its height. `scroll`
+ * lib/engine/capture/capture.ts) in a plain list dropped from screen rect `from`. `k` opens it, raw: it eases its height. `scroll`
  * 0..1 runs the list from top to bottom, as given.
  */
 export function NativeMenu({ k, from, items, scroll = 0, rowH = 34, bottom = CAPTION_FREE.h }: { k: number; from: Rect; items: readonly string[]; scroll?: number; rowH?: number; bottom?: number }) {

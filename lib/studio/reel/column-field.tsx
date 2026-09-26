@@ -8,11 +8,11 @@
 // shader raises (scaling would stretch the bevel), darkened and tinted by their neighbours (column-field-materials.ts).
 
 import * as THREE from 'three';
-import { useStudioFontsReady } from '../fonts.ts';
+import { useStudioFontsReady } from '../fonts/fonts.ts';
 import { H, W } from '#models/frame/frame.ts';
-import { pieceMotionAttrs } from '../motion-tag.ts';
+import { pieceMotionAttrs } from '../probe/motion-tag.ts';
 import { clamp } from '#models/motion/motion.ts';
-import { ThreeStage, softboxEnvironment, type ThreeBloom, type ThreeEnvironment, type ThreeFrame, type ThreeLens, type ThreeSample } from '../three-stage.tsx';
+import { ThreeStage, softboxEnvironment, type ThreeBloom, type ThreeEnvironment, type ThreeFrame, type ThreeLens, type ThreeSample } from '../film/three-stage.tsx';
 import { columnFieldHeight, columnFieldPoint, type ColumnCameraState, type ColumnCell, type ColumnFieldLights, type ColumnFieldSpec, type ColumnLabel, type ColumnLight } from '#models/reel/column-field.ts';
 import { columnBallAt, columnFieldProject, fieldCamera } from '#models/reel/column-field-motion.ts';
 import { ballMaterial, columnDepthMaterial, columnGeometry, columnMaterial, columnTopology, floorMaterial, type BallShadowUniforms } from './column-field-materials.ts';

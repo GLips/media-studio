@@ -3,10 +3,10 @@ import { test } from 'node:test';
 import { caught, runCheckOnFiles } from '../spec-tree.ts';
 
 const STUDIO = {
-  'package.json': JSON.stringify({ imports: { '#studio': './lib/studio/api.ts' } }),
-  'lib/studio/timeline.ts': 'export const defineScene = (s: unknown) => s; export const defineVideo = (v: unknown) => v;\n',
+  'package.json': JSON.stringify({ imports: { '#studio': './lib/studio/api.ts', '#studio/*': './lib/studio/*' } }),
+  'lib/studio/composition/timeline.ts': 'export const defineScene = (s: unknown) => s; export const defineVideo = (v: unknown) => v;\n',
   'lib/models/timeline/beat-grid.ts': 'export const beatGrid = () => 0;\n',
-  'lib/studio/api.ts': "export * from '../models/timeline/beat-grid.ts';\nexport { defineScene, defineVideo } from './timeline.ts';\n",
+  'lib/studio/api.ts': "export * from '../models/timeline/beat-grid.ts';\nexport { defineScene, defineVideo } from './composition/timeline.ts';\n",
 };
 
 test('a timing constructor imported outside timeline.ts is caught, however it is spelled', () => {
@@ -21,10 +21,10 @@ test('a timing constructor imported outside timeline.ts is caught, however it is
     'projects/p/helpers.ts': "export { defineScene as scene } from '#studio';\n",
     'projects/p/bars/outro.tsx': "import { scene } from '../helpers.ts';\n",
     // Adversarial: a kit renaming it, read off a namespace; a kit's `export * as`; a `.js` spelling; a computed import.
-    'lib/studio/kit.ts': "export { defineScene as scene } from './timeline.ts';\nexport * as S from './api.ts';\n",
-    'projects/p/bars/kit.tsx': "import * as K from '../../../lib/studio/kit.ts';\nK.scene({});\n",
-    'projects/p/bars/nested.tsx': "import { S } from '../../../lib/studio/kit.ts';\nS.defineScene({});\n",
-    'projects/p/bars/js.tsx': "import { defineScene } from '../../../lib/studio/timeline.js';\n",
+    'lib/studio/kit/kit.ts': "export { defineScene as scene } from '../composition/timeline.ts';\nexport * as S from '../api.ts';\n",
+    'projects/p/bars/kit.tsx': "import * as K from '#studio/kit/kit.ts';\nK.scene({});\n",
+    'projects/p/bars/nested.tsx': "import { S } from '../../../lib/studio/kit/kit.ts';\nS.defineScene({});\n",
+    'projects/p/bars/js.tsx': "import { defineScene } from '../../../lib/studio/composition/timeline.js';\n",
     'projects/p/bars/computed.tsx': "const m = await import(`${'#'}studio`);\nconst { hud } = await import(`${'x'}`);\n",
     // Legal neighbour: a type-only import builds nothing.
     'projects/p/stills.tsx': "import type { defineScene } from '#studio';\n",
@@ -33,9 +33,9 @@ test('a timing constructor imported outside timeline.ts is caught, however it is
     'projects/p/bars/computed.tsx:computed import',
     'projects/p/bars/intro.tsx:beatGrid from ../../../lib/studio/api.ts',
     'projects/p/bars/intro.tsx:defineScene from ../../../lib/studio/api.ts',
-    'projects/p/bars/js.tsx:defineScene from ../../../lib/studio/timeline.js',
-    'projects/p/bars/kit.tsx:scene from ../../../lib/studio/kit.ts',
-    'projects/p/bars/nested.tsx:defineScene from ../../../lib/studio/kit.ts',
+    'projects/p/bars/js.tsx:defineScene from ../../../lib/studio/composition/timeline.js',
+    'projects/p/bars/kit.tsx:scene from #studio/kit/kit.ts',
+    'projects/p/bars/nested.tsx:defineScene from ../../../lib/studio/kit/kit.ts',
     'projects/p/bars/outro.tsx:scene from ../helpers.ts',
     'projects/p/helpers.ts:defineScene from #studio',
     'projects/p/video.tsx:defineScene from #studio',

@@ -3,7 +3,7 @@
 // is drawn inside in reel.tsx, the beat sheet in storyboard.md.
 
 import { bindTimeline } from '../../lib/models/timeline/bind-timeline.ts';
-import { FPS, defineVideo } from '../../lib/studio/api.ts';
+import { FPS, defineVideo } from '#studio';
 import type { Bar } from './bar.ts';
 import { bounceBar } from './bars/01-bounce.tsx';
 import { everyColorBar } from './bars/02-every-color.tsx';

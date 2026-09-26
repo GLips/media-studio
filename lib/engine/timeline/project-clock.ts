@@ -11,7 +11,7 @@ export async function readProjectTimeline(project: string): Promise<Timeline | u
   const file = join(project, 'timeline.ts');
   if (!existsSync(file)) return undefined;
   // The timeline reads its fitted track from music/index.ts, which imports the audio: the hooks load that as a URL.
-  await import('../../studio/tsx-test-hooks.ts');
+  await import('../bundle/tsx-test-hooks.ts');
   const { timeline } = (await import(pathToFileURL(file).href)) as { timeline?: Timeline };
   if (!timeline?.scenes) throw new Error(`${file} exports no \`timeline\` made with defineTimeline`);
   return timeline;

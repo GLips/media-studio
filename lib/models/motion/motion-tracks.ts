@@ -1,12 +1,12 @@
 // motion-tracks.ts: how every tagged element actually moved, frame by frame, assembled from what the probe
-// (lib/studio/probe.tsx) measured on each rendered frame. Pure; lib/engine/render/render-pipeline.ts renders the frames and writes
+// (lib/studio/probe/probe.tsx) measured on each rendered frame. Pure; lib/engine/render/render-pipeline.ts renders the frames and writes
 // the result to out/check/motion.json for review (studio look) and for checks that test what a scene declares.
 //
 // It measures and never judges: nothing here says a move is too fast or too linear. What it does report as errors is
 // its own instrumentation going wrong (two elements sharing an id, a frame missing, a value that isn't a number),
 // since a track built on those would mislead whatever reads it.
 //
-// Tags and what they register are lib/studio/motion-tag.ts.
+// Tags and what they register are lib/studio/probe/motion-tag.ts.
 
 import type { Rect } from '#models/camera/camera.ts';
 
@@ -48,7 +48,7 @@ export type MotionSample = {
   name: string;
   /** What library piece drew it (`camera`, `highlight`, `cursor`…); none for a hand-written tag. */
   kind?: string;
-  /** The library picked its name, not the author (see lib/studio/motion-tag.ts). */
+  /** The library picked its name, not the author (see lib/studio/probe/motion-tag.ts). */
   implicit?: true;
   phase: ScenePhase;
   /** The id of the group or camera it belongs to; null when the scene owns it. */

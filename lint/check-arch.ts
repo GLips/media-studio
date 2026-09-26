@@ -2,7 +2,7 @@
 //
 // Runs every structural check over one candidate snapshot and compares the
 // findings to lint/arch-baseline.json. Exits 1 on a new finding, a stale
-// baseline entry or a crashed check.
+// baseline entry or a crashed check. Advisory checks print and never block.
 //
 //   npm run check:arch                        the index: what the next commit holds
 //   npm run check:arch -- --rev main          a committed tree
@@ -27,10 +27,11 @@ const snapshot = values.rev ? { kind: 'commit' as const, rev: values.rev } : { k
 const context = createCheckContext(root, snapshot);
 
 const findings: Finding[] = [];
+const advisories: Finding[] = [];
 const crashed: string[] = [];
 for (const check of STRUCTURAL_CHECKS) {
   try {
-    findings.push(...check.run(context));
+    (check.advisory ? advisories : findings).push(...check.run(context));
   } catch (error) {
     crashed.push(`${check.id}: ${error instanceof Error ? error.stack : String(error)}`);
   }
@@ -49,7 +50,7 @@ const where = snapshot.kind === 'index' ? 'the index' : `commit ${snapshot.rev}`
 console.log(`check:arch over ${where}: ${context.tree.sources.length} source files, ${context.tree.paths.size} tracked files\n`);
 
 console.log('Baseline (reports, doesn\'t block):');
-for (const check of STRUCTURAL_CHECKS) {
+for (const check of STRUCTURAL_CHECKS.filter((candidate) => !candidate.advisory)) {
   const ours = baselined.filter((finding) => finding.check === check.id);
   const perFile = new Map<string, number>();
   for (const finding of ours) perFile.set(finding.path, (perFile.get(finding.path) ?? 0) + 1);
@@ -60,6 +61,10 @@ for (const check of STRUCTURAL_CHECKS) {
   }
 }
 
+if (advisories.length) {
+  console.log('\nAdvisory (reports, never blocks):');
+  for (const finding of advisories) console.log(`  ${finding.path}  [${finding.check}] ${finding.message}`);
+}
 if (fresh.length) {
   console.log(`\nNew (blocks), ${fresh.length}:`);
   for (const finding of fresh) console.log(`  ${finding.path}:${finding.line}  [${finding.check}] ${finding.message}`);

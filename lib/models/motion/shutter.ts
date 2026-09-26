@@ -1,5 +1,5 @@
 // shutter.ts: a 30 fps shutter's length and the smear a move makes while it's open, for a piece's model to size its
-// blur. lib/studio/motion-blur.tsx draws it.
+// blur. lib/studio/film/motion-blur.tsx draws it.
 
 /**
  * The reference reel's shutter, 180° at its 60 fps: its smears are this long, so ours match it frame for frame. Our

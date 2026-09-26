@@ -5,7 +5,7 @@
 //   studio still buy-box-stills [--preset=og,youtube] [--variant=one-box-page] [--sheet]
 
 import brand from '@brand';
-import { BrandLogo, FitText, StillCard, StillHud, defineStills, stillDesign, union, useStillFrame } from '../../lib/studio/api.ts';
+import { BrandLogo, FitText, StillCard, StillHud, defineStills, stillDesign, union, useStillFrame } from '#studio';
 import { captures as C } from './captures/index.ts';
 
 const PAGE = C.solice;

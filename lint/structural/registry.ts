@@ -3,6 +3,7 @@
 
 import type { StructuralCheck } from './check-context.ts';
 import { declaredTreeCheck } from './checks/declared-tree.ts';
+import { folderWidthCheck } from './checks/folder-width.ts';
 import { importPolicyCheck } from './checks/import-policy.ts';
 import { modelPurityCheck } from './checks/model-purity.ts';
 import { noScratchCheck } from './checks/no-scratch.ts';
@@ -22,4 +23,5 @@ export const STRUCTURAL_CHECKS: readonly StructuralCheck[] = [
   sdkContainmentCheck,
   renderSnapshotCheck,
   retimeRegistrationCheck,
+  folderWidthCheck,
 ];

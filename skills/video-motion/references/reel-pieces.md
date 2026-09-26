@@ -22,27 +22,27 @@ the image rather than a label on it, and colour comes in full-bleed fields, not 
 
 - **A pure function of time.** Take `t`, seconds since the piece starts (negative before it), and when it happens in
   seconds. A piece that does something every beat also takes `spb` (seconds per beat); the author gets it from the
-  video's `BeatGrid` (`lib/studio/beats.ts`). No `Math.random`, `Date`, `performance.now`, or state carried between
+  video's `BeatGrid` (`lib/models/timeline/beat-grid.ts`). No `Math.random`, `Date`, `performance.now`, or state carried between
   frames: any frame renders the same alone. Randomness comes from `seededRandom` / `hashRandom`
   (`lib/models/motion/random.ts`), seeded by a `seed` prop.
 - **Everything the author would change is a prop**: words, colours, sizes, counts, where it starts from, how long each
   part takes. Default to the reference's values (from the breakdown), so the piece looks right with no tuning. Sizes
   are frame pixels in the 1920×1080 frame; say in the doc comment what share of frame height a size is.
 - **Type**: `DISPLAY_FONT` (Archivo, variable: `fontWeight` 100–900 and `fontStretch` 62–125% are continuous, so
-  both can animate) and `MONO_FONT` for HUD labels and readouts (`lib/studio/fonts.ts`).
+  both can animate) and `MONO_FONT` for HUD labels and readouts (`lib/studio/fonts/fonts.ts`).
 - **Curves**: `motionCurves.expo` (`entrance` for arrivals, `exit`, `standard`) and `seg`, or `perceptualSpring(duration,
   bounce)` for an overshoot, started `arrival` before its beat (`lib/models/motion/motion.ts`). Physics (a bounce, a roll) is
   written as physics, closed-form in `t`.
 - **30 fps.** The reference is often 60 fps; at 30, a fast move strobes. Smear what moves more than about 40 px a
   frame: stretch it along its velocity (computed from the position function at `t` and `t - 1/FPS`), draw fading
   ghosts behind it, or blur it along its path (an SVG `feGaussianBlur` with `stdDeviation="x 0"`). A whole shot can
-  use `ShutterBlur` (`lib/studio/motion-blur.tsx`), at `samples` times the cost.
+  use `ShutterBlur` (`lib/studio/film/motion-blur.tsx`), at `samples` times the cost.
 - **Motion tags.** The moving element carries `pieceMotionAttrs(motion, '<picked name>', { kind: '<piece>', values:
-  { … } })` (`lib/studio/motion-tag.ts`), with a `motion?: string | false` prop. A piece of hundreds of parts tags
+  { … } })` (`lib/studio/probe/motion-tag.ts`), with a `motion?: string | false` prop. A piece of hundreds of parts tags
   the whole and reports its progress as a value; it doesn't tag each cell. A canvas the probe can't see into carries
   `unmeasuredAttrs('<what>')` (`ThreeStage` does this itself).
 - **Cost.** A reel renders 600 frames. Keep a frame under about 2,000 DOM nodes; past that, draw into a canvas (2D in
-  a `useLayoutEffect` that redraws each frame, or `ThreeStage` for 3D, `lib/studio/three-stage.tsx`).
+  a `useLayoutEffect` that redraws each frame, or `ThreeStage` for 3D, `lib/studio/film/three-stage.tsx`).
 - **Colours into three.js** must be hex or comma `rgb()`: it reads neither `oklch()` nor CSS's space-separated
   `rgb()`. `parseGlyphColor` (`lib/models/reel/glyph-field-frame.ts`) turns any CSS colour into numbers first.
 - **SVG filters** do post work on DOM and canvases alike, but Chrome has four traps:

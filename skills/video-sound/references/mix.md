@@ -4,7 +4,7 @@
 
 All of this already happens, so don't redo it with your own gain, `loudnorm` or compressor:
 
-- **Voice.** Every line is levelled to −20 LUFS (`VOICE_LUFS`, `lib/studio/mix.ts`). A line quieter than that throws:
+- **Voice.** Every line is levelled to −20 LUFS (`VOICE_LUFS`, `lib/studio/mix/mix.ts`). A line quieter than that throws:
   the composition can boost it, but Remotion clips each source at full scale, and a voice's peaks sit close to it.
   Re-read it rather than boosting it.
 - **Music.** Levels are set in LU relative to the voice, so a quiet track and a hot one sit the same under the same

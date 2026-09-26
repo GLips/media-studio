@@ -19,8 +19,8 @@ import { writeRenderSnapshot, type RenderSnapshot } from '../snapshot/render-sna
 import { readProjectClock } from '../timeline/project-clock.ts';
 import type { MotionTracks } from '#models/motion/motion-tracks.ts';
 import { W } from '#models/frame/frame.ts';
-import type { ReplayProps } from '../../studio/Root.tsx';
-import type { TimelineReport, VideoProps } from '../../studio/Video.tsx';
+import type { ReplayProps } from '../../studio/composition/Root.tsx';
+import type { TimelineReport, VideoProps } from '../../studio/composition/Video.tsx';
 
 export type RenderSession = Awaited<ReturnType<typeof openRenderSession>>;
 

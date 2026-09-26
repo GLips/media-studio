@@ -29,29 +29,24 @@
       "To hear the options, `studio sfx showcase` renders every preset and a few variants into `scratch/sfx-showcase/`, with an": 1
     }
   },
-  "sdk-containment": {
-    "lib/studio/tsx-test-hooks.ts": {
-      "esbuild": 1
-    }
-  },
   "timing-ownership": {
     "projects/2026-09-complex-buy-box/video.tsx": {
-      "defineScene from ../../lib/studio/api.ts": 1
+      "defineScene from #studio": 1
     },
     "projects/2026-09-motion-calibration/video.tsx": {
-      "defineScene from ../../lib/studio/api.ts": 1
+      "defineScene from #studio": 1
     },
     "projects/2026-09-paint-test/video.tsx": {
-      "defineScene from ../../lib/studio/api.ts": 1
+      "defineScene from #studio": 1
     },
     "projects/2026-09-pipeline-test/video.tsx": {
-      "defineScene from ../../lib/studio/api.ts": 1
+      "defineScene from #studio": 1
     },
     "projects/2026-09-previs-test/video.tsx": {
-      "defineScene from ../../lib/studio/api.ts": 1
+      "defineScene from #studio": 1
     },
     "projects/2026-09-simple-buy-box-story/video.tsx": {
-      "defineScene from ../../lib/studio/api.ts": 1
+      "defineScene from #studio": 1
     }
   }
 }

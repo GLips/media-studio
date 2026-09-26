@@ -1,7 +1,7 @@
 // library.ts: asking for a sound by name. `chime.soft` is a recipe's preset; overrides set parameters on top of it, and
 // mutate nudges them for repeatable variety (sfxr's and ZzFX's scheme). The result is levelled to its category's
 // loudness under the voice, not to a peak, so a whoosh and a ding sit alike under the same words. Pure.
-import { VOICE_LUFS } from '../studio/mix.ts';
+import { VOICE_LUFS } from '../studio/mix/mix.ts';
 import { addRoom, lerp, SFX_RATE, seededRandom, sfxSeedFromId, subSeed } from './dsp.ts';
 import { SFX_RECIPES, SFX_ROOM_PARAM, type SfxCategory, type SfxParamSpec, type SfxRecipe, type SfxRecipeName } from './recipes.ts';
 import { measureSfxLufs } from './sfx-loudness.ts';

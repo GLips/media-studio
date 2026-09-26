@@ -13,9 +13,9 @@ import type { StaggerMembership } from '#models/motion/motion-tracks.ts';
 import { assertKeysInOrder, inflate, pagePoint, screenPoint, viewOfScreenRect, type Point, type Rect, type View } from '#models/camera/camera.ts';
 import { FONT, H, W } from '#models/frame/frame.ts';
 import { clamp, lerp, motionCurves, seg } from '#models/motion/motion.ts';
-import { pieceMotionAttrs } from './motion-tag.ts';
-import { SFX, Sfx } from './sfx.tsx';
-import { sceneTimeOf, takeMouseAt, type TakeFit } from './take.ts';
+import { pieceMotionAttrs } from '../probe/motion-tag.ts';
+import { SFX, Sfx } from '../sfx/sfx.tsx';
+import { sceneTimeOf, takeMouseAt, type TakeFit } from '../capture/take.ts';
 
 const INK = '#1c365e';
 const fill: CSSProperties = { position: 'absolute', left: 0, top: 0, width: W, height: H, overflow: 'visible', pointerEvents: 'none' };

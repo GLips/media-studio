@@ -4,7 +4,7 @@
 // music there and no placed sound).
 //   node projects/2026-09-motion-showcase/tools/sfx-sync.ts
 // Timing only: `studio mix --check` judges the levels.
-import '../../../lib/studio/tsx-test-hooks.ts';
+import '#engine/bundle/tsx-test-hooks.ts';
 import { fileURLToPath } from 'node:url';
 import { runFfmpeg } from '#engine/ffmpeg/ffmpeg.ts';
 

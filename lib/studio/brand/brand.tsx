@@ -1,14 +1,14 @@
 // brand.tsx: a brand kit (lib/models/brand/brand.ts) in the browser, as a project imports it: `import brand from '@brand'`. Its
 // faces load through the studio's fonts gate, so FitText and the still probe wait for them, and its logos are sized
-// for BrandLogo. generated/brand.ts (lib/project-brand.ts) calls loadStudioBrand with the kit's bundled files.
+// for BrandLogo. generated/brand.ts (lib/engine/bundle/project-brand.ts) calls loadStudioBrand with the kit's bundled files.
 
 import { Img } from 'remotion';
 import type { Brand, BrandFace } from '#models/brand/brand.ts';
 import { contrastRatio } from '#models/still/still-check.ts';
 import type { Rect } from '#models/camera/camera.ts';
-import { loadStudioFaces } from './fonts.ts';
+import { loadStudioFaces } from '../fonts/fonts.ts';
 import { type StudioFace } from '#models/type/faces.ts';
-import type { StillImage } from './stills.tsx';
+import type { StillImage } from '../stills/stills.tsx';
 
 export type StudioBrandLogo = StillImage & { color: string };
 

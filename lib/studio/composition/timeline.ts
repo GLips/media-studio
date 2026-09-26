@@ -10,9 +10,9 @@
 
 import type { ReactNode } from 'react';
 import { findSpokenPhrase, type SpokenWord } from '#models/voice/voice-words.ts';
-import type { MusicBed } from './mix.ts';
+import type { MusicBed } from '../mix/mix.ts';
 import { motionCurves } from '#models/motion/motion.ts';
-import type { SfxSound } from './sfx.tsx';
+import type { SfxSound } from '../sfx/sfx.tsx';
 
 export type VoiceLine = {
   /** An imported WAV, or null for a line timed by `studio voice --read=estimate` that has no audio yet. */

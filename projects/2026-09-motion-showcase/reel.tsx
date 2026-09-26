@@ -1,11 +1,11 @@
 // What every bar is drawn inside: the HUD over it, the lens over both, the grade over that, and the ending's fade over
 // everything. `barScene` makes a bar the video's scene; `barPreview` makes a video of one bar alone, for building it without the other bars in the bundle.
 
-import { FPS, FilmGrain, Vignette, defineVideo, sceneForTimelineClock, type Rect } from '../../lib/studio/api.ts';
-import { ReelHud } from '../../lib/studio/reel/hud.tsx';
+import { FPS, FilmGrain, Vignette, defineVideo, sceneForTimelineClock, type Rect } from '#studio';
+import { ReelHud } from '#studio/reel/hud.tsx';
 import type { ReelHudRead, ReelHudSlot } from '#models/reel/hud.ts';
-import { LensFringe } from '../../lib/studio/reel/lens.tsx';
-import { FadeToBlack } from '../../lib/studio/reel/recap.tsx';
+import { LensFringe } from '#studio/reel/lens.tsx';
+import { FadeToBlack } from '#studio/reel/recap.tsx';
 import type { Bar } from './bar.ts';
 import { SHOWCASE_HUD } from './hud.ts';
 import { timeline } from './timeline.ts';

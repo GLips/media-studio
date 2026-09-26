@@ -6,5 +6,5 @@ import { projectWebpackOverride } from './lib/engine/bundle/project-bundle.ts';
 const project = process.env.PROJECT;
 if (!project) throw new Error('PROJECT is not set: open the Studio with studio preview <project>');
 
-Config.setEntryPoint('./lib/studio/index.ts');
+Config.setEntryPoint('./lib/studio/composition/index.ts');
 Config.overrideWebpackConfig(projectWebpackOverride(project));

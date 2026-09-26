@@ -1,4 +1,4 @@
-// project-bundle.ts: points a Remotion bundle at one project. The browser entry (lib/studio/Root.tsx) imports
+// project-bundle.ts: points a Remotion bundle at one project. The browser entry (lib/studio/composition/Root.tsx) imports
 // `@video` and `@stills`, which this aliases to the project's video.tsx and stills.tsx, or to a null module for the one
 // it doesn't have. A project's designs import its brand kit as `@brand` (lib/engine/bundle/project-brand.ts).
 //

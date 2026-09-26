@@ -8,7 +8,7 @@
 //   node projects/2026-09-motion-showcase/tools/ab-hits.ts [--after=<dir>]
 // --after tries sounds before placing them: each hit's sound from <dir>/<its name>.ts where `studio sfx render --out
 // <dir>/<its name>.wav` wrote one, and its volume from <dir>/volumes.json ({ "<id>": volume }) if that names it.
-import '../../../lib/studio/tsx-test-hooks.ts';
+import '#engine/bundle/tsx-test-hooks.ts';
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
@@ -17,13 +17,12 @@ import { renderMasteredMix } from '#engine/render/render-pipeline.ts';
 import { openRenderSession } from '#engine/render/render-session.ts';
 import { sfxSeedFromId } from '../../../lib/sfx/dsp.ts';
 import { FPS } from '#models/frame/frame.ts';
-import type { SfxSound } from '../../../lib/studio/sfx.tsx';
-import { layoutVideo, totalFrames, type VideoDef } from '../../../lib/studio/timeline.ts';
+import type { SfxSound } from '#studio/sfx/sfx.tsx';
+import { layoutVideo, totalFrames, type VideoDef } from '#studio/composition/timeline.ts';
 import { timeline } from '../timeline.ts';
 import { measureWithFfmpeg, runFfmpeg } from '#engine/ffmpeg/ffmpeg.ts';
 
 const PROJECT = resolve(import.meta.dirname, '..');
-const STUDIO = resolve(PROJECT, '../..');
 const AB = join(PROJECT, 'out/ab'), BEFORE = join(AB, 'before');
 const RATE = 48000;
 const HIT_RECIPES = new Set(['impact', 'buzz']);
@@ -92,7 +91,7 @@ function writeSoundtrackProject(name: string, sounds: readonly Placed[]): string
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'video.tsx'), [
     `// Written by tools/ab-hits.ts on each run: the showcase's soundtrack alone, ${name}. Edits here are lost.`,
-    `import { defineScene, defineVideo } from '${from(join(STUDIO, 'lib/studio/api.ts'))}';`,
+    "import { defineScene, defineVideo } from '#studio';",
     `import music from '${from(fileURLToPath(music))}';`,
     ...files.map((f, i) => `import s${i} from '${from(f)}';`),
     '',

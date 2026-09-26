@@ -1,7 +1,7 @@
 // Stand-ins the storyboard frames are drawn with, until each bar is rebuilt on the reel pieces.
 
 import type { CSSProperties, ReactNode } from 'react';
-import { DISPLAY_FONT, MONO_FONT, W } from '../../lib/studio/api.ts';
+import { DISPLAY_FONT, MONO_FONT, W } from '#studio';
 import { P } from './look.ts';
 
 export const Field = ({ color }: { color: string }) => <div style={{ position: 'absolute', inset: 0, background: color }} />;

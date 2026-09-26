@@ -3,11 +3,11 @@
 
 import { Fragment, useId, type ReactNode } from 'react';
 import { applyAffine, type AffineMatrix, type Point } from '#models/camera/camera.ts';
-import { useStudioFontsReady } from '../fonts.ts';
+import { useStudioFontsReady } from '../fonts/fonts.ts';
 import { DISPLAY_FONT } from '#models/type/faces.ts';
 import { H, W } from '#models/frame/frame.ts';
 import { REEL_SHUTTER, shutterOpensAt, smearSigma } from '#models/motion/shutter.ts';
-import { pieceMotionAttrs } from '../motion-tag.ts';
+import { pieceMotionAttrs } from '../probe/motion-tag.ts';
 import {
   labelAt, leftOf, SLANT_LABEL_IN, slantMatrix, slantWordPose, stemAt, TITTLE_ACROSS, TITTLE_HEIGHT, type Align, type Setting, type Tittle,
 } from '#models/reel/type.ts';

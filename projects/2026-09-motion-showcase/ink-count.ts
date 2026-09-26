@@ -1,7 +1,7 @@
 // The count at the foot of the ink field (ink-field.ts), where bar 4 lands it and bar 5 picks it up. Apart from the
 // field because it's set on the studio's Odometer, so the field's layout stays a model a scene model can read.
 
-import { ODOMETER_DIGIT_EM } from '../../lib/studio/api.ts';
+import { ODOMETER_DIGIT_EM } from '#studio';
 import { archivoAdvance } from '#models/reel/ticker-layout.ts';
 
 /**

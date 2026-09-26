@@ -110,7 +110,7 @@ each stretch in one register, and change register on a cut.
 ## Kit and generated stills
 
 - **Words coming in, a number rolling, a stroke drawing on**: `WordReveal`, `Odometer` and `DrawPath` in
-  `lib/studio/kit.tsx`. Read [references/kit-recipes.md](references/kit-recipes.md) before using one.
+  `lib/studio/kit/kit.tsx`. Read [references/kit-recipes.md](references/kit-recipes.md) before using one.
 - **A still nothing drawn or captured gives** (title-card art, a background, a physical product's shot, a concept
   icon) is generated, paid, with `studio gen image`: read [references/generated-stills.md](references/generated-stills.md)
   first. A product's UI is never generated (the `video-kickoff` skill, Real UI only).
@@ -187,7 +187,7 @@ A graph can't tell you whether a move reads. Check that on the strip, and check 
 ## Every video becomes a template
 
 When a shot works and could come back (an end card, a title, a product UI rebuilt in DOM), move it into
-`lib/studio/kit.tsx` with its brand colours and words as props. The next video starts from it and changes the skin.
+`lib/studio/kit/kit.tsx` with its brand colours and words as props. The next video starts from it and changes the skin.
 For something Remotion-specific (fonts, measuring text), see the `remotion` skill. A painted or generative layer is the
 `video-canvas` skill. A shot of the real world (a product in use, a place, people) can be generated footage, blocked
 in 3D and rendered once: the `video-gen` skill. Music, sound effects and the mix are their own pass once the picture

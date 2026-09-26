@@ -10,9 +10,9 @@ import { DISPLAY_FONT } from '#models/type/faces.ts';
 import { H, W } from '#models/frame/frame.ts';
 import { motionCurves } from '#models/motion/motion.ts';
 import { smearSigma } from '#models/motion/shutter.ts';
-import { pieceMotionAttrs } from '../motion-tag.ts';
+import { pieceMotionAttrs } from '../probe/motion-tag.ts';
 import { hashRandom } from '#models/motion/random.ts';
-import { Odometer } from '../kit.tsx';
+import { Odometer } from '../kit/kit.tsx';
 import {
   ARCHIVO_BASELINE_EM, ARCHIVO_CAP_EM, layoutTickerRow, type GlyphAxes, type TickerBreath, type TickerPose, type TickerSlot,
 } from '#models/reel/ticker-layout.ts';

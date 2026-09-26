@@ -1,6 +1,6 @@
 // previs-render.ts: `studio gen video`. Renders one previs scene's blockout alone (Video.tsx's BlockoutSolo), sends it
 // to Seedance as the reference video with the scene's stills, and lists what comes back in generated/footage.json
-// (lib/engine/bundle/previs-footage.ts), so the scene plays it in place of its blockout (lib/studio/previs.tsx).
+// (lib/engine/bundle/previs-footage.ts), so the scene plays it in place of its blockout (lib/studio/previs/previs.tsx).
 //
 // The blockout is the whole request's content: re-rendering an unchanged scene makes the same MP4 and so the same
 // cache key (lib/engine/generation/paid-generation.ts), while a changed subject, move or prompt pays for a new render. Timing never
@@ -14,7 +14,7 @@ import { generatePaidMedia } from '../generation/paid-generation.ts';
 import { readPrevisFootageList, writePrevisFootageEntry } from '../bundle/previs-footage.ts';
 import { blockoutSlug } from '../bundle/project-bundle.ts';
 import { RENDER_CHROMIUM, RENDER_CONCURRENCY, type RenderSession } from './render-session.ts';
-import { assertPrevisSpanFits, PREVIS_MODEL, PREVIS_WIDTH } from '../../studio/previs.ts';
+import { assertPrevisSpanFits, PREVIS_MODEL, PREVIS_WIDTH } from '../../studio/previs/previs.ts';
 import { probeMediaSeconds } from '../ffmpeg/ffmpeg.ts';
 
 // Seedance numbers its references by kind in the order sent (@Video1, @Image1, @Image2…), and the blockout goes first.

@@ -7,9 +7,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readProjectHostSpec } from '../engine/host/project-host-spec.ts';
 import { beatGrid, type BeatGrid } from '../models/timeline/beat-grid.ts';
 import { FPS } from '#models/frame/frame.ts';
-import { musicBedGainAt, type MusicBed } from '../studio/mix.ts';
-import type { SfxSound } from '../studio/sfx.tsx';
-import { layoutVideo, totalFrames, type VideoDef } from '../studio/timeline.ts';
+import { musicBedGainAt, type MusicBed } from '../studio/mix/mix.ts';
+import type { SfxSound } from '../studio/sfx/sfx.tsx';
+import { layoutVideo, totalFrames, type VideoDef } from '../studio/composition/timeline.ts';
 import { sfxSeedFromId } from './dsp.ts';
 import { runFfmpeg } from '../engine/ffmpeg/ffmpeg.ts';
 
@@ -306,7 +306,7 @@ export async function videoSoundCheckReport(project: string): Promise<string[]> 
   // and goes unchecked.
   if (readProjectHostSpec(project)) return [];
   // Transpiles .tsx as it loads, and imports a sound or a track as its file URL.
-  await import('../studio/tsx-test-hooks.ts');
+  await import('../engine/bundle/tsx-test-hooks.ts');
   const video: VideoDef = (await import(pathToFileURL(join(project, 'video.tsx')).href)).default;
   const check = checkVideoSoundsAgainstMusic(video);
   return check ? formatVideoSoundCheck(check) : [];

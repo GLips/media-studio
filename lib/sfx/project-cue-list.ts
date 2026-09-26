@@ -1,6 +1,6 @@
 // project-cue-list.ts: a project's cue list against what `studio check` measured: drafting it (`studio sfx draft`),
 // and the check's report on it.
-import type { TimelineReport } from '../studio/Video.tsx';
+import type { TimelineReport } from '../studio/composition/Video.tsx';
 import type { SfxEvent } from './cue-events.ts';
 import { readSfxCueList, writeSfxCueList, writeSfxCueModule } from './cue-module.ts';
 import { draftSfxCues, formatSfxCueList, formatSfxCueReport, sfxCueOverrides, staleSfxCues, type SfxClickStyle } from './cues.ts';

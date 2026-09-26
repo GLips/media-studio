@@ -8,13 +8,13 @@ import type { CSSProperties } from 'react';
 import {
   DISPLAY_FONT, FPS, H, ShutterBlur, W, applyAffine, clamp, inflate, lerp, motionCurves, multiplyAffine, powerOutEase, seg, sineInOutEase,
   type AffineMatrix, type Point, type Rect,
-} from '../../../lib/studio/api.ts';
-import { ShockRing } from '../../../lib/studio/reel/glyph-field.tsx';
+} from '#studio';
+import { ShockRing } from '#studio/reel/glyph-field.tsx';
 import { reelHudGrounds, reelHudReadGrounds, type ReelHudGround, type ReelHudRead, type ReelHudSlot } from '#models/reel/hud.ts';
 import { layoutGlyphLine } from '#models/reel/ticker-layout.ts';
-import { IndexLabel, RiseWord, SelectionBox } from '../../../lib/studio/reel/type.tsx';
-import { ScrambleText } from '../../../lib/studio/reel/type-scramble.tsx';
-import { SlantWord } from '../../../lib/studio/reel/type-slant.tsx';
+import { IndexLabel, RiseWord, SelectionBox } from '#studio/reel/type.tsx';
+import { ScrambleText } from '#studio/reel/type-scramble.tsx';
+import { SlantWord } from '#studio/reel/type-slant.tsx';
 import { slantMatrix, slantWordPose, type SlantEntrance } from '#models/reel/type.ts';
 import type { Bar, ShowcaseClock } from '../bar.ts';
 import { Field } from '../parts.tsx';

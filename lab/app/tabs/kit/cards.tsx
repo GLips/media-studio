@@ -1,8 +1,8 @@
-// cards.tsx: the Kit pieces tab's entries for lib/studio/kit.tsx's cards that need no capture: GlassCard,
+// cards.tsx: the Kit pieces tab's entries for lib/studio/kit/kit.tsx's cards that need no capture: GlassCard,
 // SectionCard and EndCard. Each is shown over a stand-in scene, since in a video they always sit on top of one.
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import { FONT } from '#models/frame/frame.ts';
-import { EndCard, GlassCard, SectionCard } from '../../../../lib/studio/kit.tsx';
+import { EndCard, GlassCard, SectionCard } from '../../../../lib/studio/kit/kit.tsx';
 import { motionCurves, seg } from '#models/motion/motion.ts';
 import { LAB_COLORS, LabChoice, LabSlider } from '../../ui.tsx';
 import { defineKitPiece, KIT_COLOR_OPTIONS, KitTextField } from './piece.tsx';
@@ -64,7 +64,7 @@ export const GLASS_CARD_PIECE = defineKitPiece<GlassCardStageProps>({
   name: 'GlassCard',
   title: 'Frosted summary card',
   blurb: 'A frosted card whose few big lines come in one by one.',
-  source: 'lib/studio/kit.tsx',
+  source: 'lib/studio/kit/kit.tsx',
   whenUsed: 'The closing summary of a walkthrough: “In short”, then two or three lines, over the blurred product.',
   note: <>The glass needs something blurred and tinted behind it, which in a video is the page the viewer just watched. Keep it to three short lines: it holds while the voice reads them.</>,
   defaults: { eyebrow: 'IN SHORT', line1: 'One price per customer', line2: 'Set once, applied everywhere', line3: 'Live for every store today', accent: LAB_COLORS.red, duration: 0.9 },
@@ -102,7 +102,7 @@ export const SECTION_CARD_PIECE = defineKitPiece<SectionCardStageProps>({
   name: 'SectionCard',
   title: 'Chapter card',
   blurb: 'A full-screen chapter title that slides away to reveal the next part.',
-  source: 'lib/studio/kit.tsx',
+  source: 'lib/studio/kit/kit.tsx',
   whenUsed: 'Longer walkthroughs split into parts: “3 / 6 · Finding a colour”, so the viewer knows where they are and how much is left.',
   note: <>The voice starts the next part while the card is still up, so the chapter title costs no extra time. Here the “scene underneath” is a stand-in page.</>,
   defaults: { number: 3, of: 6, title: 'Finding a colour', bg: LAB_COLORS.ink, accent: LAB_COLORS.red, hold: 1.3 },
@@ -140,7 +140,7 @@ export const END_CARD_PIECE = defineKitPiece<EndCardStageProps>({
   name: 'EndCard',
   title: 'End card',
   blurb: 'The last frame: a solid colour with one centred line.',
-  source: 'lib/studio/kit.tsx',
+  source: 'lib/studio/kit/kit.tsx',
   whenUsed: 'The very end of a walkthrough: the feature’s name, held for a moment so the video doesn’t just stop.',
   defaults: { title: 'Simple buy box', bg: LAB_COLORS.ink, duration: 0.6 },
   seconds: (p) => LEAD + p.duration + HOLD,

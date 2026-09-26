@@ -5,7 +5,7 @@
 
 import type { ReactNode } from 'react';
 import { FPS } from '#models/frame/frame.ts';
-import { motionEchoAttrs } from './motion-tag.ts';
+import { motionEchoAttrs } from '../probe/motion-tag.ts';
 
 /**
  * `render(t)` drawn at `samples` times spread over the `shutter` (a fraction of a frame: 0.5 is film's 180°) ending at

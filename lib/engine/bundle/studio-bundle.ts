@@ -89,7 +89,7 @@ export async function bundleStudioProject(project: string): Promise<string> {
     };
   };
   mkdirSync(home, { recursive: true });
-  const serveUrl = await bundle({ entryPoint: join(STUDIO_ROOT, 'lib/studio/index.ts'), webpackOverride: recording, outDir: join(home, dir) });
+  const serveUrl = await bundle({ entryPoint: join(STUDIO_ROOT, 'lib/studio/composition/index.ts'), webpackOverride: recording, outDir: join(home, dir) });
   if (!recorded) throw new Error('webpack finished without reporting what it read, so the bundle can\'t be kept');
   // Webpack judges node_modules by package version, not file by file, so an install is judged by the lockfile.
   const inputs = [...recorded.files, join(STUDIO_ROOT, 'package-lock.json')].filter((path) => existsSync(path) && statSync(path).isFile()).map((path) => {

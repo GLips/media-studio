@@ -2,13 +2,13 @@
 // component that reads the frame's size from useStillFrame and lays itself out from it, so one design renders at every
 // preset. Stills read the frame from useVideoConfig, never W/H (frame.ts), which are the video's.
 //
-// Root.tsx registers one composition per design × preset × variant; `studio still` renders them (lib/render-stills.ts),
-// and `studio still --sheet` lays a design's variants out by their axes (lib/still-sheet.ts).
+// Root.tsx registers one composition per design × preset × variant; `studio still` renders them (lib/engine/render/render-stills.ts),
+// and `studio still --sheet` lays a design's variants out by their axes (lib/engine/stills/still-sheet.ts).
 
 import { createContext, useContext, useLayoutEffect, useRef, useState, type ComponentType, type CSSProperties } from 'react';
 import { Artifact, Img, useDelayRender, useVideoConfig } from 'remotion';
 import type { Rect } from '#models/camera/camera.ts';
-import { useStudioFontsReady } from './fonts.ts';
+import { useStudioFontsReady } from '../fonts/fonts.ts';
 import { ARCHIVO_FACE, MONO_FONT, type StudioFace } from '#models/type/faces.ts';
 import { STILL_UI_ZONES, stillFitArtifactName, type StillFitReport, type StillPreset } from '#models/still/still-presets.ts';
 

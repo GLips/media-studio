@@ -50,7 +50,7 @@ export function writeSfxKit(): string[] {
   const kit = join(dir, 'kit.ts');
   writeFileSync(kit, [
     '// kit.ts: written by `studio sfx kit` from lib/sfx/sfx-files.ts. Change the kit there and rerun, rather than editing this.',
-    "import type { SfxSound } from '../sfx.tsx';",
+    "import type { SfxSound } from './sfx.tsx';",
     ...imports,
     '',
     'export const SFX = {',
@@ -72,16 +72,17 @@ const describeRequest = ({ sound, seed, mutate, set, category }: SfxRequest, out
  */
 export function writeSfxFile(request: SfxRequest, out: string): { wav: string; module: string; rendered: RenderedSfx } {
   if (!out.endsWith('.wav')) throw new Error(`--out must be a .wav file, not ${out}`);
+  // Its module imports `#studio`, which resolves only under the studio's package.json.
+  if (relative(STUDIO_ROOT, out).startsWith('..')) throw new Error(`--out must be inside the studio (${STUDIO_ROOT}), not ${out}`);
   const rendered = renderSfx(request);
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, wavFromSamples(rendered.samples, SFX_RATE));
   const module = out.replace(/\.wav$/, '.ts');
-  const sfxTypes = relative(dirname(out), join(STUDIO_ROOT, 'lib/studio/sfx.tsx'));
   // `satisfies` checks the sound where it's written and keeps its `category` a literal: widened to a string, it
   // wouldn't pass as an SfxSound.
   writeFileSync(module, [
     `// Written by \`${describeRequest(request, out)}\`. Rerun that to change it.`,
-    `import type { SfxSound } from '${sfxTypes.startsWith('.') ? sfxTypes : `./${sfxTypes}`}';`,
+    "import type { SfxSound } from '#studio/sfx/sfx.tsx';",
     `import src from './${basename(out)}';`,
     '',
     `export default { src, seconds: ${round(rendered.seconds)}, landsAt: ${round(rendered.landsAt)}, request: ${JSON.stringify(request)} } satisfies SfxSound;`,

@@ -7,7 +7,7 @@ description: Remotion API references and the studio's conventions for using Remo
 
 Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it.
 
-`lib/studio/Video.tsx` is the one composition, and the timeline places every scene in it. A scene or a new
+`lib/studio/composition/Video.tsx` is the one composition, and the timeline places every scene in it. A scene or a new
 `lib/studio` primitive can use any Remotion API inside that, keeping these conventions:
 
 - **Seconds, not frames.** A scene's clock `s.t` is seconds; animate with `seg`, `on`, `off` and the curve tokens in
@@ -15,14 +15,14 @@ Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it.
   negative or past `s.dur` during crossfades.
 - **Imports, not `staticFile()`.** Assets live in the project folder and are imported, so each project bundles on its
   own and a missing file fails to compile.
-- **No `TransitionSeries`.** `scenesAt` in `lib/studio/timeline.ts` centres crossfades on the voiced cuts; a
+- **No `TransitionSeries`.** `scenesAt` in `lib/studio/composition/timeline.ts` centres crossfades on the voiced cuts; a
   `TransitionSeries` would shorten the timeline instead.
-- **Audio goes through the mix.** Voice lines are levelled and the music bed ducked in `lib/studio/mix.ts`; a new
+- **Audio goes through the mix.** Voice lines are levelled and the music bed ducked in `lib/studio/mix/mix.ts`; a new
   sound's volume is set relative to `VOICE_LUFS`, and `studio mix` and `studio render` master the result. Remotion's
   volume is 0–1. Effects are levelled by category when `studio sfx` renders them (`lib/sfx/`).
   Choosing and placing a video's music and effects is the `video-sound` skill.
 - **Measure for the checks.** A primitive that marks a subject, a tag or text carries `data-framing` (see
-  `lib/studio/probe.tsx`), so the framing check sees it.
+  `lib/studio/probe/probe.tsx`), so the framing check sees it.
 
 ## References
 

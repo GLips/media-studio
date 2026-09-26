@@ -3,7 +3,7 @@
 
 import {
   Capture, EndCard, GlassCard, MotionTitle, Wash, W, camTop, defineScene, defineVideo, motionCurves, seg, view,
-} from '../../lib/studio/api.ts';
+} from '#studio';
 import { voice } from './audio/manifest.ts';
 import { captures as C } from './captures/index.ts';
 

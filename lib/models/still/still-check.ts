@@ -1,4 +1,4 @@
-// still-check.ts: what makes a still fail, judged from the still probe's measurements (lib/studio/still-probe.tsx) and
+// still-check.ts: what makes a still fail, judged from the still probe's measurements (lib/studio/stills/still-probe.tsx) and
 // the pixels of its ground pass (the still drawn with every text transparent). Pure; lib/engine/render/render-stills.ts renders both
 // and refuses to write a still with a problem, as `studio render` refuses a failed framing check.
 //

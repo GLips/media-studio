@@ -1,4 +1,4 @@
-// Root.tsx: registers the one project this bundle was built for (see lib/project-bundle.ts). Its video is a composition
+// Root.tsx: registers the one project this bundle was built for (see lib/engine/bundle/project-bundle.ts). Its video is a composition
 // named after its folder, plus a replay of it for `studio repeatable` and a previs scene's blockout alone for
 // `studio gen video`. Its stills are one one-frame composition each, `still-<design>-<preset>-<variant>`, in a
 // folder per design.
@@ -7,10 +7,10 @@ import { Composition, Folder, Freeze, useCurrentFrame } from 'remotion';
 import stills from '@stills';
 import video from '@video';
 import { FPS, H, W } from '#models/frame/frame.ts';
-import { assertPrevisSpanFits, previsSpan } from './previs.ts';
-import { StillProbe } from './still-probe.tsx';
+import { assertPrevisSpanFits, previsSpan } from '../previs/previs.ts';
+import { StillProbe } from '../stills/still-probe.tsx';
 import { STILL_PRESETS, stillName, type StillProps, type StillRenderProps } from '#models/still/still-presets.ts';
-import { StillPresetContext, type StillsDef } from './stills.tsx';
+import { StillPresetContext, type StillsDef } from '../stills/stills.tsx';
 import { layoutVideo, totalFrames, type VideoDef } from './timeline.ts';
 import { BlockoutSolo, Video, type BlockoutSoloProps, type VideoProps } from './Video.tsx';
 

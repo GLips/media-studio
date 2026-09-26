@@ -1,20 +1,22 @@
 // ─── Import policy: the §2 denials no studio check owns ───────────────
 //
-// A project never imports another project; lib/studio never reaches lib/engine;
-// a `#` alias names a key package.json's `imports` has; no import climbs out of
-// the repo. Scene, model and scratch denials are checks (b), (c) and (d).
+// A project never imports another project, and reaches lib/studio only through
+// `#studio`; lib/studio never reaches lib/engine, except from a spec, which runs
+// in Node and is never bundled; a `#` alias names a key package.json's `imports`
+// has; no import climbs out of the repo. Scene, model and scratch denials are
+// checks (b), (c) and (d).
 //
 // A computed `import(expr)` isn't reported here: lab and the CLI load projects
 // that way. The checks that must follow every edge refuse it themselves.
 //
-// Negative space: the allowed side of §2's graph (a project's picture reaching
-// only `#studio`, `#models/*` and its own files) isn't held yet. Today every
-// project imports lib/studio's files directly, and the lib split slices move
-// them; each slice's exit tightens this table.
+// Negative space: the rest of §2's allowed side (a project's picture reaching
+// only `#studio`, `#models/*` and its own files) isn't held yet: projects still
+// import lib/models and lib/paint by relative path.
 
 import type { Finding, StructuralCheck } from '../check-context.ts';
 
 const ID = 'import-policy';
+const SPEC_FILE = /\.test\.tsx?$/;
 
 export const importPolicyCheck: StructuralCheck = {
   id: ID,
@@ -38,7 +40,10 @@ export const importPolicyCheck: StructuralCheck = {
         if (from.kind === 'project' && to.kind === 'project' && to.project !== from.project) {
           report(`project ${from.project} imports project ${to.project}; shared code belongs in lib/ or brands/`);
         }
-        if (from.kind === 'studio' && to.kind === 'engine') report('lib/studio renders in the browser; lib/engine is Node');
+        if (from.kind === 'project' && to.kind === 'studio' && edge.scanned.specifier.startsWith('.')) {
+          report('a project reaches lib/studio through #studio or #studio/*, never a relative path');
+        }
+        if (from.kind === 'studio' && to.kind === 'engine' && !SPEC_FILE.test(file.path)) report('lib/studio renders in the browser; lib/engine is Node');
       }
     }
     return findings;

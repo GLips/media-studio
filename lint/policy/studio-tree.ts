@@ -7,8 +7,9 @@
 //
 // `lib-unsplit` holds `lib/sfx` and `lib/paint` until the lib split slices move
 // them into models/studio/engine. It is declared, so its files are checked, not
-// reported as unknown. A file directly in `lib/` or `lib/models/` is undeclared:
-// their top levels hold subfolders only.
+// reported as unknown. A file directly in `lib/` or `lib/models/`, or in
+// `lib/studio/` other than its barrel api.ts, is undeclared: their top levels
+// hold subfolders only.
 
 import { DECLARED_SHARED_MODULES } from './declared-shared.ts';
 
@@ -73,7 +74,10 @@ export function classifyStudioPath(path: string, shared: DeclaredShared = DECLAR
   if (top === 'lib') {
     if (parts.length === 2) return { kind: 'undeclared' };
     if (second === 'models') return parts.length > 3 ? { kind: 'models' } : { kind: 'undeclared' };
-    if (second === 'studio') return { kind: 'studio', barrel: path === 'lib/studio/api.ts' };
+    if (second === 'studio') {
+      if (path === 'lib/studio/api.ts') return { kind: 'studio', barrel: true };
+      return parts.length > 3 ? { kind: 'studio', barrel: false } : { kind: 'undeclared' };
+    }
     if (second === 'engine') return { kind: 'engine' };
     return { kind: 'lib-unsplit' };
   }

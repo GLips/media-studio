@@ -1,10 +1,10 @@
-// builds.tsx: the Kit pieces tab's entries for lib/studio/kit.tsx's builds: WordReveal, Odometer and DrawPath, each
+// builds.tsx: the Kit pieces tab's entries for lib/studio/kit/kit.tsx's builds: WordReveal, Odometer and DrawPath, each
 // with a stage that plays it on the showcase ground and the controls for its props.
 import type { ReactNode } from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
 import { FULL_FRAME } from '#models/frame/frame.ts';
-import { DrawPath, Odometer, WordReveal, wordRevealFinish, type OdometerMode } from '../../../../lib/studio/kit.tsx';
+import { DrawPath, Odometer, WordReveal, wordRevealFinish, type OdometerMode } from '../../../../lib/studio/kit/kit.tsx';
 import { lerp, motionCurves, seg } from '#models/motion/motion.ts';
 import { LAB_COLORS, LabButtons, LabChoice, LabSlider } from '../../ui.tsx';
 import { defineKitPiece, KIT_COLOR_OPTIONS, KitTextField } from './piece.tsx';
@@ -57,7 +57,7 @@ export const WORD_REVEAL_PIECE = defineKitPiece<WordRevealStageProps>({
   name: 'WordReveal',
   title: 'Words one by one',
   blurb: 'Words that come in one after another.',
-  source: 'lib/studio/kit.tsx',
+  source: 'lib/studio/kit/kit.tsx',
   whenUsed: 'A headline or a key line of the voice-over, so the words arrive as they’re read rather than all at once.',
   note: <>It uses the system font on purpose: it’s a walkthrough piece, and there the words should look like the product’s own screens. Letter by letter is for one short word; on a sentence it takes too long.</>,
   defaults: { text: 'Every order ships the same day', size: 110, weight: 800, letters: false, each: 0.08, maxSlider: WORD_MAX_TOP, duration: 0.45, rise: 24, align: 'left' },
@@ -129,7 +129,7 @@ export const ODOMETER_PIECE = defineKitPiece<OdometerStageProps>({
   name: 'Odometer',
   title: 'Rolling number',
   blurb: 'A number whose digits roll on wheels, like a car’s mileage counter, and land sharp on the final value.',
-  source: 'lib/studio/kit.tsx',
+  source: 'lib/studio/kit/kit.tsx',
   whenUsed: 'A result worth dwelling on: a price, a total, a percentage saved. The roll makes the viewer watch the number arrive.',
   note: <>A digit blurs while its wheel turns and is pin-sharp once it stops, so a fast roll reads as motion, not as a flicker of numbers. Every digit sits in a box of the same width, so the number never wobbles sideways. How fast the value moves is up to the curve: the <b>calm</b> one eases in, the <b>fast</b> one arrives almost at once and creeps the last bit.</>,
   defaults: { from: 0, to: 1299, decimals: 0, format: 'dollars', mode: 'direct', spin: 2, duration: 1.8, curve: 'calm', punch: 0, blur: 1, fade: 0.28 },
@@ -226,7 +226,7 @@ export const DRAW_PATH_PIECE = defineKitPiece<DrawPathStageProps>({
   name: 'DrawPath',
   title: 'Pen stroke',
   blurb: 'A line that draws itself on, as if by a pen.',
-  source: 'lib/studio/kit.tsx',
+  source: 'lib/studio/kit/kit.tsx',
   whenUsed: 'Pointing at something: ticking off a step, underlining the word that matters, circling a price, an arrow to where to click.',
   note: <>The pen starts fast and slows as it finishes, like a real hand. Thickness is in screen pixels, so the checkmark (drawn in its own little 100×100 box, like an icon) is as thick as the rest.</>,
   defaults: { preset: 'underline', width: 14, color: LAB_COLORS.red, duration: 0.8 },

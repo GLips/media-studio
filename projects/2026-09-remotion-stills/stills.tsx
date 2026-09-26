@@ -13,7 +13,7 @@
 //   studio still remotion-stills [--preset=og,youtube] [--variant=react-frame] [--sheet]
 
 import { Img } from 'remotion';
-import { FitText, StillCard, defineStills, stillDesign, useStillFrame } from '../../lib/studio/api.ts';
+import { FitText, StillCard, defineStills, stillDesign, useStillFrame } from '#studio';
 import logoWhite from './assets/remotion-white.png';
 import { captures as C } from './captures/index.ts';
 

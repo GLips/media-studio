@@ -57,7 +57,7 @@ function svgSize(path: string): { w: number; h: number } {
 
 /**
  * Rewrites generated/brand.ts: the project's kit with its overrides, its fonts loaded and logos sized
- * (lib/studio/brand.tsx), or a module that throws, naming the fix, when a design imports `@brand` in a project with no
+ * (lib/studio/brand/brand.tsx), or a module that throws, naming the fix, when a design imports `@brand` in a project with no
  * brand.ts. The kit's files are imported by name, so a project that names another kit, or a kit that names other
  * files, needs a new bundle. Returns its path.
  */
@@ -75,8 +75,8 @@ export function writeProjectBrandModule(projectDir: string): string {
       `// Written on every bundle from the project's brand.ts (lib/engine/bundle/project-brand.ts): brands/${kit.name} with its overrides, loaded. Edits here are lost.`,
       `import kit from ${from(join(kit.dir, 'brand.ts'))};`,
       `import project from ${from(projectBrandFileFor(projectDir))};`,
-      `import { mergeProjectBrand } from ${from(join(resolve(projectDir), '..', '..', 'lib', 'brand.ts'))};`,
-      `import { loadStudioBrand } from ${from(join(resolve(projectDir), '..', '..', 'lib', 'studio', 'brand.tsx'))};`,
+      `import { mergeProjectBrand } from '#models/brand/brand.ts';`,
+      `import { loadStudioBrand } from '#studio/brand/brand.tsx';`,
       ...fonts.map((f, i) => `import font${i} from ${from(join(kit.dir, f))};`),
       ...logos.map((f, i) => `import logo${i} from ${from(join(kit.dir, f))};`),
       '',
