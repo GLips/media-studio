@@ -17,7 +17,8 @@ import { readSfxCueList } from '../../lib/sfx/cue-module.ts';
 import { sfxCuePlays } from '../../lib/sfx/cues.ts';
 import { H, W } from '#models/frame/frame.ts';
 import type { MotionTracks } from '#models/motion/motion-tracks.ts';
-import { REVIEW_NOTES_VERSION, reviewFrameAt, type ReviewMediaKind, type ReviewNote, type ReviewNotesFile, type ReviewRenderStamp, type ReviewScene, type ReviewSoundMarker, type ReviewStillCell, type ReviewStillCellsFile } from '#models/review/review-notes.ts';
+import { reviewTimingOf, type ReviewTiming } from '#models/review/review-moment.ts';
+import { placeReviewNotes, REVIEW_NOTES_VERSION, reviewFrameAt, type ReviewMediaKind, type ReviewNote, type ReviewNotesFile, type ReviewRenderStamp, type ReviewScene, type ReviewSoundMarker, type ReviewStillCell, type ReviewStillCellsFile } from '#models/review/review-notes.ts';
 import { resolveStudioProject, STUDIO_ROOT } from '../../lib/engine/project/studio-project.ts';
 import { loadRenderSnapshot, renderFileStamp } from '../../lib/engine/snapshot/render-snapshot.ts';
 import { watchLabPage } from '../../lib/engine/bundle/lab-bundle.ts';
@@ -58,6 +59,8 @@ export type ReviewManifest = ReviewRenderStatus & {
   /** False when the cue list's markers are there but this render doesn't play it. */
   cueListPlayed?: boolean;
   motion?: MotionTracks;
+  /** The render's scenes, beats, cues and words, from its snapshot: where a note's moment is read and placed. */
+  timing?: ReviewTiming;
   /** On a variant sheet (`studio still --sheet`), its cells, from the .cells.json beside it. */
   cells?: ReviewStillCell[];
   /** Each artifact a note field needs that isn't there, with how to make it. */
@@ -163,6 +166,9 @@ export function buildReviewManifest(target: ReviewTarget): ReviewManifest {
       // Under half a frame is a scene that only touches the slice's edge.
       return last - first > 0.5 / fps ? [{ id, start: first - shift, dur: last - first }] : [];
     });
+    manifest.timing = reviewTimingOf({
+      fps, startsAt: from, scenes: timeline.scenes, lines: timeline.cues, clock: snapshot.clock,
+    });
     if (snapshot.motion) manifest.motion = snapshot.motion;
     else manifest.missing.push(`motion for what's under a point: only a delivered render (studio render) measures it`);
   }
@@ -173,6 +179,12 @@ export function buildReviewManifest(target: ReviewTarget): ReviewManifest {
     ].filter((s) => holds(s.at)).map((s) => ({ ...s, at: s.at - shift, frame: reviewFrameAt(s.at - shift, fps) })).sort((a, b) => a.at - b.at);
   }
   if (cueList && snapshot) manifest.cueListPlayed = snapshot.timeline.sfxCueList;
+  if (manifest.timing && manifest.durationInFrames !== null) {
+    manifest.notes = placeReviewNotes(manifest.notes, {
+      render: status.render, durationInFrames: manifest.durationInFrames,
+      sources: { fps, frameSize: manifest.frameSize, scenes: manifest.scenes, sounds: manifest.sounds, motion: manifest.motion, timing: manifest.timing },
+    });
+  }
   return manifest;
 }
 
@@ -252,15 +264,26 @@ function checkedNote(posted: unknown): ReviewNote {
   }
   return {
     id: n.id, ...number('frame', 0, Infinity), ...number('end', 0, Infinity), ...number('x', 0, 1), ...number('y', 0, 1),
-    ...(typeof n.cue === 'string' && { cue: n.cue }), ...(typeof n.render === 'string' && { render: n.render }), text: n.text, context: checkedContext(n.context, n.id),
+    ...(typeof n.cue === 'string' && { cue: n.cue }), ...(typeof n.render === 'string' && { render: n.render }),
+    ...(typeof n.movedFrom === 'object' && n.movedFrom !== null && checkedMovedFrom(n.movedFrom, n.id)), ...(typeof n.unplaced === 'string' && { unplaced: n.unplaced }),
+    text: n.text, context: checkedContext(n.context, n.id),
   };
+}
+
+function checkedMovedFrom(posted: object, id: string): Pick<ReviewNote, 'movedFrom'> {
+  const { render, frame } = posted as Record<string, unknown>;
+  if (typeof render !== 'string' || typeof frame !== 'number') throw new Error(`note ${id}: movedFrom needs the render and frame it was written on`);
+  return { movedFrom: { render, frame } };
 }
 
 /** The context's cell and three lists, refused unless they're the shape formatReviewNotesMarkdown reads. */
 function checkedContext(posted: unknown, id: string): ReviewNote['context'] {
   if (posted === undefined) return {};
   if (typeof posted !== 'object' || posted === null) throw new Error(`note ${id}: context must be an object`);
-  const { cell, scenes, sounds, elements } = posted as Record<string, unknown>;
+  const { cell, scenes, sounds, elements, moment } = posted as Record<string, unknown>;
+  const m = moment as Record<string, unknown> | undefined;
+  if (m !== undefined && !(typeof m === 'object' && m !== null && typeof m.scene === 'string' && typeof m.frames === 'number'
+    && ['beat', 'word', 'scene'].includes(m.kind as string))) throw new Error(`note ${id}: context.moment isn't a scene, an anchor and frames past it`);
   const c = cell as Record<string, unknown> | undefined;
   if (c !== undefined && !(typeof c === 'object' && c !== null && typeof c.variant === 'string' && typeof c.refused === 'boolean'
     && typeof c.axes === 'object' && c.axes !== null && Object.values(c.axes).every((v) => typeof v === 'string'))) throw new Error(`note ${id}: context.cell isn't a variant, its axes and refused`);

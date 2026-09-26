@@ -142,8 +142,10 @@ Every question below has one command. A tool or brief points here, never at a sc
 
 `studio check` rewrites `out/check/` every run, so it's for what the code does now. A render's timeline is in its own
 snapshot. `studio review` has the user pin notes on a render (or a still) and copy them back as markdown; each names
-its scene, the sounds within 3 frames and the tagged elements under the point, from the render's snapshot. They're
-saved to `review/notes-<render>.json`, so read that file instead of asking for a paste. Offer it when motion feel
+its moment (bar and beat, a named cue near it, or line and word), then its scene, the sounds within 3 frames and the
+tagged elements under the point, from the render's snapshot. After a retime, a note from the earlier render moves to
+its moment's frame on the new one and says where it came from, or says its moment is gone. Reply by the moment, not
+the frame. They're saved to `review/notes-<render>.json`, so read that file instead of asking for a paste. Offer it when motion feel
 needs the user's eyes. `studio storyboard <p>` rebuilds the storyboard page from the video.
 
 To judge timing, read a `--strip` like a viewer: at each tile, where are they looking, and do they understand it

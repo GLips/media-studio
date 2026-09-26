@@ -16,6 +16,7 @@ import { projectSlug, replaySlug } from '../bundle/project-bundle.ts';
 import { bundleStudioProject } from '../bundle/studio-bundle.ts';
 import { runFfmpeg } from '../ffmpeg/ffmpeg.ts';
 import { writeRenderSnapshot, type RenderSnapshot } from '../snapshot/render-snapshot.ts';
+import { readProjectClock } from '../timeline/project-clock.ts';
 import type { MotionTracks } from '#models/motion/motion-tracks.ts';
 import { W } from '#models/frame/frame.ts';
 import type { ReplayProps } from '../../studio/Root.tsx';
@@ -52,6 +53,8 @@ export const RENDER_CONCURRENCY = Math.max(1, availableParallelism() - 1);
 
 export async function openRenderSession(project: string) {
   const serveUrl = await bundleStudioProject(project);
+  // Read with the bundle, so every snapshot the session writes holds the clock its renders were made on.
+  const clock = (await readProjectClock(project)) ?? null;
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, blockouts: false, ...p });
   const compositionFor = (inputProps: VideoProps) => selectComposition({ serveUrl, chromiumOptions: RENDER_CHROMIUM, id: projectSlug(project), inputProps });
 
@@ -114,7 +117,7 @@ export async function openRenderSession(project: string) {
       runFfmpeg(['-y', '-v', 'error', '-i', join(tmp, 'silent.mp4'), '-i', soundtrack!, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', ...DELIVERY_AUDIO_CODEC, '-movflags', '+faststart', out]);
       rmSync(tmp, { recursive: true, force: true });
     }
-    writeRenderSnapshot(out, { frames: frames ?? { from: 0, end: composition.durationInFrames }, timeline: timeline ?? await readTimeline(), motion });
+    writeRenderSnapshot(out, { frames: frames ?? { from: 0, end: composition.durationInFrames }, timeline: timeline ?? await readTimeline(), clock, motion });
     return out;
   }
 
@@ -135,7 +138,7 @@ export async function openRenderSession(project: string) {
     });
   }
 
-  return { project, serveUrl, props, compositionFor, renderStills, renderReplay, readTimeline, renderVideo, renderAudio, renderFrameFiles };
+  return { project, serveUrl, clock, props, compositionFor, renderStills, renderReplay, readTimeline, renderVideo, renderAudio, renderFrameFiles };
 }
 
 /** Collects the artifacts a render emits, by name. */

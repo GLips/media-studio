@@ -181,6 +181,8 @@ export type ResolvedSceneClock<Key extends string = string, Cue extends string =
   spb: number;
   /** The frame its own beat `n` hits on, counted from its first beat; throws outside the frames it plays. */
   beat(n: number): number;
+  /** Each of its beats' hit frames, from beat 0, a pickup before its cut included; none off the grid. */
+  beatFrames: readonly number[];
   /** The lines it plays, in order: each one's first frame and its length in seconds. */
   lines: readonly { id: string; frame: number; duration: number }[];
   cues: Readonly<Record<Cue, number>>;
@@ -374,6 +376,7 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
       id: keys[k], n: k + 1, driver: span.driver, origin: origins[k], from: cuts[k], to: nexts[k], end: ends[k],
       visible: { from: Math.round(cuts[k] - halfFade(k)), to: Math.round(nexts[k] + halfFade(k + 1)) }, crossfade: span.crossfade ?? 0,
       beats: span.driver === 'beat' ? span.beats : 0, spb: grid?.spb ?? 0, beat, cues, moves, cue,
+      beatFrames: span.driver === 'beat' ? Array.from({ length: span.beats }, (_, n) => beatFrame(startBeat[k] + n)) : [],
       lines: placedLines[k].map(({ id, seconds, take }) => ({ id, frame: speechFrame(k, seconds), duration: take.duration })),
     } as unknown as ResolvedSceneClock<keyof Scenes & string>;
   });
@@ -500,7 +503,10 @@ export type TimelineClockTable = {
   end: number;
   fade: { from: number; to: number };
   beats: number[];
-  bars: { n: number; id: string; driver: SceneSpan['driver']; origin: number; from: number; to: number; visible: { from: number; to: number }; beats: number; musicBeat: number | null }[];
+  bars: {
+    n: number; id: string; driver: SceneSpan['driver']; origin: number; from: number; to: number; visible: { from: number; to: number };
+    beats: number; beatFrames: number[]; musicBeat: number | null;
+  }[];
   cues: Record<string, number>;
   replays: ResolvedReplay[];
   landmarks: Timeline['landmarks'][number][];
@@ -512,7 +518,7 @@ export function timelineClockTable(timeline: Timeline): TimelineClockTable {
     fps: timeline.fps, end: timeline.end, fade: timeline.fade, beats: [...timeline.beatFrames],
     bars: timeline.scenes.map((scene, k) => ({
       n: scene.n, id: scene.id, driver: scene.driver, origin: scene.origin, from: scene.from, to: scene.to, visible: scene.visible,
-      beats: scene.beats, musicBeat: timeline.musicBeats[k],
+      beats: scene.beats, beatFrames: [...scene.beatFrames], musicBeat: timeline.musicBeats[k],
     })),
     cues: Object.fromEntries(timeline.scenes.flatMap((scene) => Object.entries(scene.cues as Record<string, number>).map(([name, frame]) => [`${scene.id}.${name}`, frame]))),
     replays: [...timeline.replays], landmarks: [...timeline.landmarks],

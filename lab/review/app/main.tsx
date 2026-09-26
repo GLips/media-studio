@@ -2,10 +2,12 @@
 // point, a drag along the scrubber for a range, a sound's marker for that sound), and copies them as markdown for a
 // chat. Every change saves to the project's review/notes-<render>.json. A still takes the same pins, without time.
 // The header names the render on screen by its hash and offers the others; a banner says when it's replaced on disk.
+// A note written on an earlier render arrives already moved to its moment here (the server places it), and says so.
 import '../../app/lab.css';
 import './review.css';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createRoot } from 'react-dom/client';
+import { formatReviewMomentPlace } from '#models/review/review-moment.ts';
 import { formatReviewMoment, formatReviewNotesMarkdown, formatStillAxes, reviewFrameAt, reviewNoteContext, reviewNoteRenderOf, type ReviewContextSources, type ReviewNote } from '#models/review/review-notes.ts';
 import type { ReviewManifest, ReviewRenderStatus } from '../server.ts';
 
@@ -60,7 +62,7 @@ function Review({ manifest }: { manifest: ReviewManifest }) {
   const newer = renders[0] && renders[0].path !== manifest.media.path && renders[0].modified > manifest.render.modified ? renders[0] : null;
 
   const sources: ReviewContextSources = useMemo(() => ({
-    fps, frameSize: manifest.frameSize, scenes: manifest.scenes, sounds: manifest.sounds, motion: manifest.motion, cells: manifest.cells,
+    fps, frameSize: manifest.frameSize, scenes: manifest.scenes, sounds: manifest.sounds, motion: manifest.motion, cells: manifest.cells, timing: manifest.timing,
   }), [manifest, fps]);
   const sorted = useMemo(() => [...notes].sort((a, b) => (a.frame ?? 0) - (b.frame ?? 0)), [notes]);
 
@@ -224,7 +226,8 @@ function Review({ manifest }: { manifest: ReviewManifest }) {
                   <div className="review-note-head">
                     <span className="review-num">{i + 1}</span>
                     <span className="hud">{noteWhen(n, fps)}</span>
-                    {on !== 'this' && <span className="review-other-render" title="This note may not be about the render on screen">{on === 'other' ? `render ${n.render}` : 'render unknown'}</span>}
+                    {on !== 'this' && <span className="review-other-render" title={n.unplaced ? `Its moment isn't in this render: ${n.unplaced}` : 'This note may not be about the render on screen'}>{on === 'other' ? `render ${n.render}${n.unplaced ? ', moment gone' : ''}` : 'render unknown'}</span>}
+                    {n.movedFrom && <span className="review-moved" title={`Written on render ${n.movedFrom.render} at f${n.movedFrom.frame}, and moved to its moment here`}>moved from f{n.movedFrom.frame}</span>}
                     <span className="review-note-tools">
                       <button onClick={(e) => { e.stopPropagation(); setEditing({ id: n.id, text: n.text }); }}>Edit</button>
                       <button onClick={(e) => { e.stopPropagation(); setNotes((all) => all.filter((m) => m.id !== n.id)); }}>Delete</button>
@@ -255,9 +258,10 @@ function noteWhen(n: Pick<ReviewNote, 'frame' | 'end' | 'x' | 'y'>, fps: number)
 }
 
 function ContextLines({ context }: { context: ReviewNote['context'] }) {
-  const { cell, scenes, sounds, elements } = context;
+  const { cell, scenes, sounds, elements, moment } = context;
   return (
     <dl className="review-context">
+      {moment && <><dt>moment</dt><dd>{formatReviewMomentPlace(moment)}</dd></>}
       {cell && <><dt>variant</dt><dd>{cell.variant} ({formatStillAxes(cell.axes)}){cell.refused ? ' · refused' : ''}</dd></>}
       {!!scenes?.length && <><dt>scene</dt><dd>{scenes.join(' → ')}</dd></>}
       {!!sounds?.length && <><dt>sound</dt><dd>{sounds.map((s) => `${s.sound} ${s.id} f${s.frame}${s.targeted ? ' ◀' : ''}`).join(' · ')}</dd></>}

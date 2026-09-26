@@ -356,7 +356,7 @@ export async function joinVideoSlices(session: RenderSession, { dir, out }: { di
   rmSync(tmp, { recursive: true, force: true });
   const counted = countVideoFrames(out);
   if (counted !== timeline.durationInFrames) throw new Error(`${out} holds ${counted} frames, not the video's ${timeline.durationInFrames}`);
-  writeRenderSnapshot(out, { frames: { from: 0, end: timeline.durationInFrames }, timeline });
+  writeRenderSnapshot(out, { frames: { from: 0, end: timeline.durationInFrames }, timeline, clock: session.clock });
   return out;
 }
 

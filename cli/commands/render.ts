@@ -6,7 +6,7 @@ import { openStudioRenderSession, studioProjectArg } from '../project-arg.ts';
 export default defineCommand({
   meta: {
     name: 'render',
-    description: 'Framing check on every frame (refuses to render on a problem or an estimated line) → the mix, mastered to −14 LUFS → out/video.mp4 with captions, checked for length, audio and loudness → out/video.srt, review sheets in out/check/, out/watch.html. With --frames, only those frames, silent and unchecked, to re-render what a change touched; --join puts the slices in a folder back together under the mix. Every video it writes has <name>.snapshot.json beside it: the timeline it was rendered from and the frames it holds, which studio review and studio look --video read. The bundle is kept between runs until a file it was built from changes. Prints what it delivered.',
+    description: 'Framing check on every frame (refuses to render on a problem or an estimated line) → the mix, mastered to −14 LUFS → out/video.mp4 with captions, checked for length, audio and loudness → out/video.srt, review sheets in out/check/, out/watch.html. With --frames, only those frames, silent and unchecked, to re-render what a change touched; --join puts the slices in a folder back together under the mix. Every video it writes has <name>.snapshot.json beside it: the timeline it was rendered from, a timed project\'s clock (bars, beats, cues) and the frames it holds, which studio review and studio look --video read. The bundle is kept between runs until a file it was built from changes. Prints what it delivered.',
   },
   args: {
     project: studioProjectArg,

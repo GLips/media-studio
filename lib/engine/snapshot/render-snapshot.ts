@@ -1,7 +1,7 @@
 // render-snapshot.ts: what a render was made from, written beside it, and the one loader that reads it back. Node only.
 //
 // Every video render writes <name>.snapshot.json beside <name>.mp4: the timeline the composition laid out when it
-// rendered, the composition frames the file holds (a slice starts past 0), and on a delivered render the motion its
+// rendered, a timed project's resolved clock (its bars, beats and cues), the composition frames the file holds (a slice starts past 0), and on a delivered render the motion its
 // check measured. The snapshot names the render by a hash of its bytes, so a file re-rendered without one, or copied
 // over, reads as having none rather than as the older render's.
 //
@@ -12,9 +12,10 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import type { MotionTracks } from '#models/motion/motion-tracks.ts';
+import type { TimelineClockTable } from '#models/timeline/timeline.ts';
 import type { TimelineReport } from '../../studio/Video.tsx';
 
-export const RENDER_SNAPSHOT_VERSION = 1;
+export const RENDER_SNAPSHOT_VERSION = 2;
 
 /** Which bytes a file is: `hash` is the first 10 hex digits of its SHA-256, `modified` its mtime as ISO. */
 export type RenderFileStamp = { hash: string; modified: string };
@@ -27,6 +28,11 @@ export type RenderSnapshot = {
   frames: { from: number; end: number };
   made: string;
   timeline: TimelineReport;
+  /**
+   * The project's resolved timeline as `studio clock` prints it, read when the render's session bundled the project,
+   * or null for a project with no timeline.ts. A review note finds its bar and beat on it.
+   */
+  clock: TimelineClockTable | null;
   /** Every tracked element's motion, when the render path measured it (a delivered render's check does). */
   motion?: MotionTracks;
 };
@@ -54,14 +60,14 @@ export function renderFileStamp(file: string): RenderFileStamp {
 }
 
 /** Writes `render`'s snapshot beside it, bound to its bytes as they are now. Call once the file is final. */
-export function writeRenderSnapshot(render: string, made: { frames: RenderSnapshot['frames']; timeline: TimelineReport; motion?: MotionTracks }): string {
-  const { frames, timeline, motion } = made;
+export function writeRenderSnapshot(render: string, made: { frames: RenderSnapshot['frames']; timeline: TimelineReport; clock: TimelineClockTable | null; motion?: MotionTracks }): string {
+  const { frames, timeline, clock, motion } = made;
   if (!(frames.from >= 0 && frames.end > frames.from && frames.end <= timeline.durationInFrames)) {
     throw new Error(`${basename(render)}: frames ${frames.from}–${frames.end - 1} aren't within the composition's 0–${timeline.durationInFrames - 1}`);
   }
   const snapshot: RenderSnapshot = {
     version: RENDER_SNAPSHOT_VERSION, render: { file: basename(render), hash: renderFileStamp(render).hash }, frames,
-    made: new Date().toISOString(), timeline, ...(motion && { motion }),
+    made: new Date().toISOString(), timeline, clock, ...(motion && { motion }),
   };
   const path = renderSnapshotPath(render);
   writeFileSync(path, JSON.stringify(snapshot));
