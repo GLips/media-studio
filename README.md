@@ -1,4 +1,4 @@
-# video-studio
+# media-studio
 
 Videos and stills made in code, in [Remotion](https://www.remotion.dev): walkthroughs over a site's captured states,
 music-led ads and teasers, drawn and 3D pieces. Voice, music, sound effects and the mix included; render to MP4.
@@ -100,7 +100,7 @@ Scenes import the studio's conveniences from `#studio` (`lib/studio/api.ts`), an
   `lib/sfx/` synthesizes every sound from a seeded recipe (whoosh, riser, impact, chime and more), so there's nothing
   to license.
 - `lib/engine/voice/whisper-words.ts`, `lib/models/voice/voice-words.ts`: word timings from whisper.cpp (installed on first use into
-  `~/.cache/video-studio`), aligned to the script.
+  `~/.cache/media-studio`), aligned to the script.
 - `lib/models/voice/voice-take.ts`: where to cut a take into lines, and the pauses the read left between them.
 - `lib/models/music/music-beats.ts`: the tempo and beats of a music track.
 - `lib/paint/`: drawn layers (p5 sketches) inside scenes, with a watercolour style ported from p5.brush. See the
@@ -152,11 +152,11 @@ traced to its source without keeping media.
 
 ## Skills
 
-The skills (`skills/`) ship as the `video-studio` Claude Code plugin, and this repo is its own marketplace, so they work
+The skills (`skills/`) ship as the `media-studio` Claude Code plugin, and this repo is its own marketplace, so they work
 from any repo ("make a PR walkthrough video for this change"). Install once per machine, in Claude Code:
 
-    /plugin marketplace add ~/Programming/video-studio
-    /plugin install video-studio@video-studio
+    /plugin marketplace add ~/Programming/media-studio
+    /plugin install media-studio@media-studio
 
 A local-directory marketplace loads the plugin in place, so edits to `skills/` reach the next session. Skills find
 this repo with `studio home`. `video-kickoff` takes a video from the first dump to an approved storyboard,

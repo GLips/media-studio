@@ -1,5 +1,5 @@
 {
-  "name": "video-studio",
+  "name": "media-studio",
   "version": "1.0.0",
   "description": "Videos and stills made in code: capture, voice, music, compose, render.",
   "bin": {

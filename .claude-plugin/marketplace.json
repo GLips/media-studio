@@ -1,6 +1,6 @@
 {
-  "name": "video-studio",
-  "description": "The video-studio repo, published as its own one-plugin marketplace.",
+  "name": "media-studio",
+  "description": "The media-studio repo, published as its own one-plugin marketplace.",
   "owner": { "name": "Graham Lipsman" },
-  "plugins": [{ "name": "video-studio", "source": "./" }]
+  "plugins": [{ "name": "media-studio", "source": "./" }]
 }

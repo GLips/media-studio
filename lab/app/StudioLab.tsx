@@ -30,7 +30,7 @@ export function StudioLab() {
     <div className="lab">
       <header className="lab-header">
         <div className="lab-brand">
-          <span className="hud">VIDEO STUDIO</span>
+          <span className="hud">MEDIA STUDIO</span>
           <h1>Studio Lab</h1>
           <p>Every lever the studio pulls when it makes a video, one tab each. Drag things. Nothing here costs money.</p>
         </div>

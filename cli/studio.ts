@@ -9,7 +9,7 @@ import { STUDIO_ROOT } from '../lib/engine/project/studio-project.ts';
 const studioCommand = defineCommand({
   meta: {
     name: 'studio',
-    description: 'Walkthrough and explainer videos: capture, voice, compose, render. `studio <verb> --help` for each.',
+    description: 'Videos and stills made in code: capture, voice, music, compose, render. `studio <verb> --help` for each.',
   },
   subCommands: {
     new: () => import('./commands/new.ts').then((m) => m.default),
