@@ -5,10 +5,10 @@
 // sit and when they move, at the real timing; nothing is styled.
 
 import { AbsoluteFill } from 'remotion';
-import { H, W } from '#models/frame/frame.ts';
 import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
 import { flatPoseAt, type FlatKey, type FlatPose, type FlatView } from './flat-blockout-pose.ts';
 import { motionAttrs } from '../probe/motion-tag.ts';
+import { useVideoFormat } from '../composition/video-format.ts';
 
 /** `box` is any shape or panel, `type` a line of words set at its box's height, `image` a slot for a picture or footage. */
 export type FlatPieceKind = 'box' | 'type' | 'image';
@@ -30,20 +30,21 @@ const GROUND = '#eceef1';
 const GRID = '#d9dce1';
 const GREY = '#b9bcc2';
 const INK = '#3b3f46';
-const STILL_VIEW: FlatView = { cx: W / 2, cy: H / 2, zoom: 1 };
 
 /**
  * The scene's pieces on `frame` of the clock their keys are on, drawn in order (the last on top), through `view`. A
- * timed scene's is its own clock's (`blockingScene`); a scene timed in seconds passes `s.t * FPS`.
+ * timed scene's is its own clock's (`blockingScene`); a scene timed in seconds passes `s.t * fps`. With no view, it holds
+ * the frame's centre at zoom 1.
  */
 export function FlatBlockout({ pieces, view, frame }: { pieces: readonly FlatPiece[]; view?: FlatViewMoves; frame: number }) {
-  const { cx, cy, zoom } = flatPoseAt(view?.rest ?? STILL_VIEW, view?.keys ?? [], frame);
+  const { width, height } = useVideoFormat();
+  const { cx, cy, zoom } = flatPoseAt(view?.rest ?? { cx: width / 2, cy: height / 2, zoom: 1 }, view?.keys ?? [], frame);
   return (
     <AbsoluteFill style={{ background: GROUND, overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', left: 0, top: 0, transformOrigin: '0 0', transform: `translate(${W / 2}px, ${H / 2}px) scale(${zoom}) translate(${-cx}px, ${-cy}px)` }}>
+      <div style={{ position: 'absolute', left: 0, top: 0, transformOrigin: '0 0', transform: `translate(${width / 2}px, ${height / 2}px) scale(${zoom}) translate(${-cx}px, ${-cy}px)` }}>
         {/* The grid moves with the view, as a 3D blockout's ground does, so a push or pan reads as one. */}
         <div style={{
-          position: 'absolute', left: -W, top: -H, width: 3 * W, height: 3 * H,
+          position: 'absolute', left: -width, top: -height, width: 3 * width, height: 3 * height,
           backgroundImage: `linear-gradient(${GRID} 2px, transparent 2px), linear-gradient(90deg, ${GRID} 2px, transparent 2px)`,
           backgroundSize: '120px 120px',
         }} />

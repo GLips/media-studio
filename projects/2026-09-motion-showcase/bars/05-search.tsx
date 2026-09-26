@@ -8,7 +8,7 @@
 
 import type { ReactNode } from 'react';
 import {
-  DISPLAY_FONT, FPS, H, W, centerOf, clamp, lerp, motionCurves, motionEchoAttrs, powerOutEase, perceptualSpring, rectToScreen, seg, view,
+  DISPLAY_FONT, centerOf, clamp, lerp, motionCurves, motionEchoAttrs, powerOutEase, perceptualSpring, rectToScreen, seg, view,
   type Point, type Rect, type View,
 } from '#studio';
 import { Odometer } from '#studio/kit/kit.tsx';
@@ -26,8 +26,10 @@ import { INK_COUNT } from '../ink-count.ts';
 import { INK_DOT, INK_FIELD, type InkCell } from '../ink-field.ts';
 import listSlam from '../sfx/list-slam.ts';
 import { P, isBlueInk, type Ink } from '../look.ts';
+import { SHOWCASE_FORMAT } from '../timeline.ts';
 
 export function searchBar(clock: ShowcaseClock<'search'>): Bar {
+  const { fps } = clock;
   const FROM = clock.from, TO = clock.to;
   // The track swings its sixteenths: across it, the second and fourth of a beat land about 35 ms (0.07 beat) behind the
   // straight grid, a frame late, while its beats and "and"s sit on it. A letter on the straight grid's "a" would
@@ -50,8 +52,8 @@ export function searchBar(clock: ShowcaseClock<'search'>): Bar {
   const SWOOP_FROM = DIVE + 1;
   const LAND = clock.cues.listLand;
   const RISE = clock.beat(3.5);
-  const sec = (f: number) => f / FPS;
-  const CENTRE: Point = { x: W / 2, y: H / 2 };
+  const sec = (f: number) => f / fps;
+  const CENTRE: Point = { x: SHOWCASE_FORMAT.width / 2, y: SHOWCASE_FORMAT.height / 2 };
 
   const outExpo = motionCurves.expo.entrance;
   const outQuad = powerOutEase(2);
@@ -119,11 +121,11 @@ export function searchBar(clock: ShowcaseClock<'search'>): Bar {
 
   // It counts the fall away, landing with the flood. In-out, so 174 visibly starts to turn before it runs, and each
   // wheel is still a digit while it spins.
-  const countAt = (t: number) => lerp(174, 17, seg(t * FPS, FALL, DOWNBEAT));
+  const countAt = (t: number) => lerp(174, 17, seg(t * fps, FALL, DOWNBEAT));
 
   /** The digits' width now: the hundreds place squeezes away as the count drops under 100. */
   function countWidth(t: number) {
-    const wheels = odometerWheels(countAt, t, { decimals: 0, mode: 'direct', spin: 2, lockStagger: 2 / FPS });
+    const wheels = odometerWheels(countAt, t, { decimals: 0, mode: 'direct', spin: 2, lockStagger: 2 / fps, fps });
     return wheels.reduce((sum, w) => sum + w.presence, 0) * INK_COUNT.cell;
   }
 
@@ -170,8 +172,8 @@ export function searchBar(clock: ShowcaseClock<'search'>): Bar {
 
   /** A cleared dot swells a touch, flashes, and is gone in four frames. */
   const CLEAR_CLIP: GlyphClip<Ink> = {
-    scale: [{ at: 1 / FPS, value: 1.3, ease: outQuad }, { at: 4 / FPS, value: 0, ease: inQuad }],
-    brighten: [{ at: 0, value: 0.45 }, { at: 3 / FPS, value: 0 }],
+    scale: [{ at: 1 / fps, value: 1.3, ease: outQuad }, { at: 4 / fps, value: 0, ease: inQuad }],
+    brighten: [{ at: 0, value: 0.45 }, { at: 3 / fps, value: 0 }],
   };
 
   /**
@@ -180,8 +182,8 @@ export function searchBar(clock: ShowcaseClock<'search'>): Bar {
    * one swell.
    */
   const RING_CLIP: GlyphClip<Ink> = {
-    scale: [{ at: 1 / FPS, value: 1.4, ease: outQuad }, { at: 3.5 / FPS, value: 1, ease: motionCurves.cubic.standard }],
-    brighten: [{ at: 0.5 / FPS, value: 0.3 }, { at: 3 / FPS, value: 0, ease: outQuad }],
+    scale: [{ at: 1 / fps, value: 1.4, ease: outQuad }, { at: 3.5 / fps, value: 1, ease: motionCurves.cubic.standard }],
+    brighten: [{ at: 0.5 / fps, value: 0.3 }, { at: 3 / fps, value: 0, ease: outQuad }],
   };
   const RING_SPEED = 90;
 
@@ -208,18 +210,18 @@ export function searchBar(clock: ShowcaseClock<'search'>): Bar {
     // The rest dim on the same front, so the 17 light up against them before they fall.
     {
       start: sec(FOUND), front: { delay: foundDelay }, where: (cell) => !isBlue(cell) && !underCount(cell),
-      clip: { opacity: [{ at: 1 / FPS, value: 0.3 }] },
+      clip: { opacity: [{ at: 1 / fps, value: 0.3 }] },
     },
   ];
   // On the next beat the rest fall out of the frame, gathering speed, into the field's lattice moved to 200 px under it:
   // each path runs all but straight down, the shortest (the lower rows) first, the last gone by the "and" as the 17 fly.
   // The blues it drops are already hidden, handed to their twins.
-  const PIT = { ...INK_FIELD.layout, center: { x: W / 2, y: H / 2 + 1100 } } as const satisfies GlyphRegroup;
+  const PIT = { ...INK_FIELD.layout, center: { x: SHOWCASE_FORMAT.width / 2, y: SHOWCASE_FORMAT.height / 2 + 1100 } } as const satisfies GlyphRegroup;
   const LOWER_FILTER: GlyphFilterStep<Ink>[] = [{ at: sec(FALL), keep: (cell) => !isBlue(cell), regroup: PIT }];
-  const FALL_TIMING = { move: 5 / FPS, moveSpread: 2 / FPS, moveEase: inQuad };
+  const FALL_TIMING = { move: 5 / fps, moveSpread: 2 / fps, moveEase: inQuad };
 
   // The 17 pack right of the word in three columns at 1.8 times the dot, the results beside the query.
-  const BLOCK = { columns: 3, pitch: 120, center: { x: 1660, y: H / 2 }, lastRow: 'center' } as const satisfies GlyphRegroup;
+  const BLOCK = { columns: 3, pitch: 120, center: { x: 1660, y: SHOWCASE_FORMAT.height / 2 }, lastRow: 'center' } as const satisfies GlyphRegroup;
   const BLOCK_SCALE = 1.8;
 
   // A black keyline round each of the 17, so the blues nearest cobalt read on the flood as well as the light ones do.
@@ -258,13 +260,13 @@ export function searchBar(clock: ShowcaseClock<'search'>): Bar {
    */
   const FOUND_CLIP: GlyphClip<Ink> = {
     opacity: [{ at: 0, value: 1 }],
-    scale: [{ at: 0, value: 0.6 }, { at: 2 / FPS, value: 1.45, ease: outQuad }, { at: 8 / FPS, value: 1.25, ease: motionCurves.cubic.entrance }],
-    brighten: [{ at: 0, value: 0.7 }, { at: 6 / FPS, value: 0.2, ease: outQuad }],
+    scale: [{ at: 0, value: 0.6 }, { at: 2 / fps, value: 1.45, ease: outQuad }, { at: 8 / fps, value: 1.25, ease: motionCurves.cubic.entrance }],
+    brighten: [{ at: 0, value: 0.7 }, { at: 6 / fps, value: 0.2, ease: outQuad }],
   };
   /** On the next beat, as the rest start to fall, the 17 pulse once together. */
   const PULSE_CLIP: GlyphClip<Ink> = {
-    scale: [{ at: 1 / FPS, value: 1.5, ease: outQuad }, { at: 5 / FPS, value: 1.25, ease: motionCurves.cubic.standard }],
-    brighten: [{ at: 0, value: 0.5 }, { at: 4 / FPS, value: 0.2, ease: outQuad }],
+    scale: [{ at: 1 / fps, value: 1.5, ease: outQuad }, { at: 5 / fps, value: 1.25, ease: motionCurves.cubic.standard }],
+    brighten: [{ at: 0, value: 0.5 }, { at: 4 / fps, value: 0.2, ease: outQuad }],
   };
   const BLUE_WAVES: GlyphWave<Ink>[] = [
     { start: sec(FOUND), front: { delay: foundDelay }, where: (cell) => isBlue(cell) && !underType(cell), clip: FOUND_CLIP },
@@ -273,7 +275,7 @@ export function searchBar(clock: ShowcaseClock<'search'>): Bar {
       start: sec(PACK_FROM), front: { delay: () => 0 }, where: isBlue,
       clip: {
         // A blue under the type fades up as it flies out from behind the letters.
-        opacity: [{ at: 0, value: (cell) => (underType(cell) ? 0 : 1) }, { at: 2 / FPS, value: 1 }],
+        opacity: [{ at: 0, value: (cell) => (underType(cell) ? 0 : 1) }, { at: 2 / fps, value: 1 }],
         scale: [{ at: 0.3, value: BLOCK_SCALE, ease: outExpo }],
         brighten: [{ at: 0.3, value: 0, ease: outExpo }],
       },
@@ -288,14 +290,14 @@ export function searchBar(clock: ShowcaseClock<'search'>): Bar {
   const COVERED_WAVES: GlyphWave<Ink>[] = [
     { start: sec(FOUND), front: { delay: foundDelay }, where: isCovered, clip: FOUND_CLIP },
     { start: sec(FALL), front: { delay: () => 0 }, where: isCovered, clip: PULSE_CLIP },
-    { start: sec(PACK_FROM), front: { delay: () => 0 }, where: isCovered, clip: { scale: [{ at: 2 / FPS, value: 0, ease: outQuad }] } },
+    { start: sec(PACK_FROM), front: { delay: () => 0 }, where: isCovered, clip: { scale: [{ at: 2 / fps, value: 0, ease: outQuad }] } },
   ];
   const coveredShown = (f: number) => f >= FOUND && f < PACK_FROM + 2;
   const BLUE_FILTER: GlyphFilterStep<Ink>[] = [{ at: sec(PACK_FROM), keep: isBlue, regroup: BLOCK }];
   // Five frames a flight, the last leaving a frame after the first, on out-cubic rather than the default expo: it's
   // within a pixel or two of home a frame early, so the block is whole on the "a"; expo's long tail would leave
   // dots still overlapping there.
-  const PACK_TIMING = { move: 5 / FPS, moveSpread: 1 / FPS, moveEase: motionCurves.cubic.entrance };
+  const PACK_TIMING = { move: 5 / fps, moveSpread: 1 / fps, moveEase: motionCurves.cubic.entrance };
 
   // ---------- the flood ----------
 
@@ -308,7 +310,7 @@ export function searchBar(clock: ShowcaseClock<'search'>): Bar {
     if (f < FLOOD_FROM) return null;
     const c0 = cursorRect(4);
     const [hw0, hh0] = [c0.w / 2, c0.h / 2];
-    const cover = Math.max((W / 2 + FLOOD_MARGIN) / hw0, (H / 2 + FLOOD_MARGIN) / hh0);
+    const cover = Math.max((SHOWCASE_FORMAT.width / 2 + FLOOD_MARGIN) / hw0, (SHOWCASE_FORMAT.height / 2 + FLOOD_MARGIN) / hh0);
     const u = (f - FLOOD_FROM) / FLOOD_FRAMES;
     const size = (k: number) => cover ** clamp(k);
     const pull = inQuad(u);
@@ -324,8 +326,8 @@ export function searchBar(clock: ShowcaseClock<'search'>): Bar {
     // Gaussian σ from the travel: a box smear of length L spreads like σ = L/√12; kept a pixel at least.
     const [sx, sy] = [Math.max(0.5, r.blurX / Math.sqrt(12)), Math.max(0.5, r.blurY / Math.sqrt(12))];
     return (
-      <svg width={W} height={H} style={{ position: 'absolute', left: 0, top: 0, overflow: 'visible' }}>
-        <filter id="search-flood-smear" filterUnits="userSpaceOnUse" x={-W} y={-H} width={3 * W} height={3 * H}>
+      <svg width={SHOWCASE_FORMAT.width} height={SHOWCASE_FORMAT.height} style={{ position: 'absolute', left: 0, top: 0, overflow: 'visible' }}>
+        <filter id="search-flood-smear" filterUnits="userSpaceOnUse" x={-SHOWCASE_FORMAT.width} y={-SHOWCASE_FORMAT.height} width={3 * SHOWCASE_FORMAT.width} height={3 * SHOWCASE_FORMAT.height}>
           <feGaussianBlur stdDeviation={`${sx} ${sy}`} />
         </filter>
         <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={P.blue} filter="url(#search-flood-smear)" />
@@ -381,7 +383,7 @@ export function searchBar(clock: ShowcaseClock<'search'>): Bar {
   /** Frame px a page px at the card's rest depth: the row names' caps are 53 px as it lands, 55 by the bar's end. */
   const CARD_ZOOM = 6.55;
   const LENS = 2250;
-  const CARD_VIEW = capturePlaneView(SHOT, CROP, { fit: { w: CROP.w * CARD_ZOOM, h: CROP.h * CARD_ZOOM }, centre: { x: 2000, y: 862 } });
+  const CARD_VIEW = capturePlaneView(SHOT, CROP, SHOWCASE_FORMAT, { fit: { w: CROP.w * CARD_ZOOM, h: CROP.h * CARD_ZOOM }, centre: { x: 2000, y: 862 } });
   // The search box itself, measured on the capture's pixels.
   const INPUT: Rect = { x: 814.6, y: 482, w: 536.4, h: 52.5 };
 
@@ -466,8 +468,8 @@ export function searchBar(clock: ShowcaseClock<'search'>): Bar {
   // The page's top to the box's foot, the box and its margins, over the scrolling page in the same plane: the rows pass
   // under its lower edge. Its top edge is the card's, so no row shows above it.
   const STICKY: Rect = { x: INPUT.x - 6, y: CROP.y, w: INPUT.w + 12, h: INPUT.y + INPUT.h + 6 - CROP.y };
-  const STICKY_BOX = rectToScreen(SHOT, CARD_VIEW.cam, STICKY, CARD_VIEW.box);
-  const STICKY_VIEW: View = view(SHOT, { cx: centerOf(STICKY).x, cy: centerOf(STICKY).y, zoom: CARD_VIEW.cam.zoom }, STICKY_BOX);
+  const STICKY_BOX = rectToScreen(CARD_VIEW, STICKY);
+  const STICKY_VIEW: View = view(SHOT, { cx: centerOf(STICKY).x, cy: centerOf(STICKY).y, zoom: CARD_VIEW.cam.zoom }, SHOWCASE_FORMAT, STICKY_BOX);
 
   // It rises over the three frames before the "and": on frame 52 it's 176 px off the page toward the lens and 8% larger
   // through it, overshooting to 192 px on 54 and settling at 180. Its shadow grows with it, offset and softened by its

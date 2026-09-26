@@ -1,6 +1,6 @@
 // stills.tsx: a project's still images (OG images, thumbnails, social posts) as one-frame compositions. A design is a
 // component that reads the frame's size from useStillFrame and lays itself out from it, so one design renders at every
-// preset. Stills read the frame from useVideoConfig, never W/H (frame.ts), which are the video's.
+// preset; a kit piece that reads useVideoFormat fits the still's frame too.
 //
 // Root.tsx registers one composition per design × preset × variant; `studio still` renders them (lib/engine/render/render-stills.ts),
 // and `studio still --sheet` lays a design's variants out by their axes (lib/engine/stills/still-sheet.ts).

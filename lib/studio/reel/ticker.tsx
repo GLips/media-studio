@@ -7,9 +7,9 @@
 
 import { useId, type ReactNode } from 'react';
 import { DISPLAY_FONT } from '#models/type/faces.ts';
-import { H, W } from '#models/frame/frame.ts';
 import { motionCurves } from '#models/motion/motion.ts';
 import { smearSigma } from '#models/motion/shutter.ts';
+import { useVideoFormat } from '../composition/video-format.ts';
 import { pieceMotionAttrs } from '../probe/motion-tag.ts';
 import { hashRandom } from '#models/motion/random.ts';
 import { Odometer } from '../kit/kit.tsx';
@@ -80,10 +80,11 @@ export function TickerBands({
   directions, kick = TICKER_KICK, enter = TICKER_ENTER, exit = TICKER_EXIT, seed = 'ticker', phases,
   shutter = TICKER_SHUTTER, motion,
 }: TickerBandsProps) {
+  const { fps, width, height } = useVideoFormat();
   if (!(bands % 2 === 1 && bands >= 1)) throw new Error(`TickerBands: bands must be odd, to have a middle one, not ${bands}`);
   if (t < 0) return null;
   const middle = (bands - 1) / 2;
-  const beat = tickerLookBeat(t, spb);
+  const beat = tickerLookBeat(t, spb, fps);
   const look = looks[Math.min(beat, looks.length - 1)];
   const end = looks.length * spb - (exit ? exit.early : 0);
   const size = cap / ARCHIVO_CAP_EM;
@@ -97,7 +98,7 @@ export function TickerBands({
     let x = 0;
     if (enter) {
       const start = -enter.lead + d * enter.stagger;
-      x += at < start ? W : W * Math.exp(-(at - start) / enter.decay);
+      x += at < start ? width : width * Math.exp(-(at - start) / enter.decay);
     }
     if (kick && beat >= 1 && beat < looks.length) {
       const tau = Math.max(0, at - beat * spb);
@@ -105,13 +106,13 @@ export function TickerBands({
     }
     if (exit && b !== middle) {
       const duration = Math.max(0.05, exit.duration - (d - 1) * exit.step);
-      x += directionOf(b) * W * motionCurves.expo.exit((at - (end - duration)) / duration);
+      x += directionOf(b) * width * motionCurves.expo.exit((at - (end - duration)) / duration);
     }
     return x;
   };
   const directionOf = (b: number) => directions?.[b] ?? (b === middle ? 0 : Math.abs(b - middle) % 2 ? -1 : 1);
   const phaseOf = (b: number) => phases?.[b] ?? (b === middle ? TICKER_HERO_PHASE : hashRandom(seed, 'band', b));
-  const top = (b: number) => Math.round((b * H) / bands);
+  const top = (b: number) => Math.round((b * height) / bands);
   const palette = Array.from({ length: bands }, (_, b): TickerColors => ({
     ...TICKER_COLORS, ...(typeof colors === 'function' ? colors(b, t) : colors),
   }));
@@ -122,7 +123,7 @@ export function TickerBands({
       style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}
     >
       {palette.map((c, b) => (
-        <div key={`ground-${b}`} style={{ position: 'absolute', left: 0, top: top(b), width: W, height: top(b + 1) - top(b), background: c.ground }} />
+        <div key={`ground-${b}`} style={{ position: 'absolute', left: 0, top: top(b), width, height: top(b + 1) - top(b), background: c.ground }} />
       ))}
       {palette.map((c, b) => {
         const band = { top: top(b), height: top(b + 1) - top(b) };
@@ -191,16 +192,17 @@ export function TickerBand({
   light = TICKER_LIGHT, bold = TICKER_BOLD, oblique = 0, block = () => 0, shutter = TICKER_SHUTTER, motion, name = 'band',
 }: TickerBandProps) {
   const id = useId().replace(/[^\w-]/g, '');
+  const { width } = useVideoFormat();
   const size = cap / ARCHIVO_CAP_EM;
   const style = { unit: [...text, null], size, breath, light, bold, phase };
   const { offset, travel } = tickerExposure(block, t, shutter);
   const reach = tickerBoxReach(travel);
-  if (offset - reach >= W || offset + reach <= -W) return null;
+  if (offset - reach >= width || offset + reach <= -width) return null;
   // The part of the band on screen, in its own coordinates, with room for a lean, a smear and the block's blur.
   const margin = Math.tan((Math.abs(oblique) * Math.PI) / 180) * cap + 24 + reach;
-  const span = { from: Math.max(0, -offset) - margin, to: Math.min(W, W - offset) + margin, centre: W / 2, anchor: W };
+  const span = { from: Math.max(0, -offset) - margin, to: Math.min(width, width - offset) + margin, centre: width / 2, anchor: width };
   const row = layoutTickerRow(t, style, { offset: drift * t, ...span });
-  const was = shutter > 0 ? new Map(layoutTickerRow(t - shutter, style, { offset: drift * (t - shutter), ...span, from: span.from - W / 4, to: span.to + W / 4 }).map((s) => [s.index, s.x])) : null;
+  const was = shutter > 0 ? new Map(layoutTickerRow(t - shutter, style, { offset: drift * (t - shutter), ...span, from: span.from - width / 4, to: span.to + width / 4 }).map((s) => [s.index, s.x])) : null;
   const baseline = (height + cap) / 2;
   const blurs = new Set<number>();
   // Where a slot was mid-exposure, and the level of the smear its travel leaves (null when that's too little to see).
@@ -228,7 +230,7 @@ export function TickerBand({
       <div
         {...pieceMotionAttrs(motion, name, { kind: 'ticker-band', values: { drift: drift * t } })}
         style={{
-          position: 'absolute', left: 0, top, width: W, height, overflow: 'hidden', background: fill,
+          position: 'absolute', left: 0, top, width, height, overflow: 'hidden', background: fill,
           transform: `translateX(${offset}px)`, filter: tickerBoxSmeared(travel) ? `url(#${id}-block)` : undefined,
         }}
       >
@@ -266,9 +268,10 @@ function HeroBand({ t, top, height, word, count, size, cap, colors, breath, pose
   tagged: boolean;
 }) {
   const id = useId().replace(/[^\w-]/g, '');
+  const frame = useVideoFormat();
   const { offset, travel } = tickerExposure(block, t, shutter);
   const baseline = (height + cap) / 2;
-  const lineAt = (at: number) => tickerHeroLine(at, { word, count, size, breath, poses, heldAt, phase });
+  const lineAt = (at: number) => tickerHeroLine(at, { word, count, size, breath, poses, heldAt, phase, frame });
   const line = lineAt(t);
   const was = shutter > 0 ? lineAt(t - shutter) : null;
   const blurs = new Set<number>();
@@ -304,7 +307,7 @@ function HeroBand({ t, top, height, word, count, size, cap, colors, breath, pose
       <div
         {...(tagged ? pieceMotionAttrs(undefined, 'hero', { kind: 'ticker-hero', values: { hold: line.held, collapse } }) : {})}
         style={{
-          position: 'absolute', left: 0, top, width: W, height, transform: `translateX(${offset}px)`,
+          position: 'absolute', left: 0, top, width: frame.width, height, transform: `translateX(${offset}px)`,
           filter: tickerBoxSmeared(travel) ? `url(#${id}-block)` : undefined,
         }}
       >
@@ -367,8 +370,9 @@ function BlurFilters({ id, glyphLevels, dot, size, travel }: { id: string; glyph
 
 /** A box smear `travel` px long, centred: each copy blurred by half the gap between copies, so they run together. */
 function BoxSmear({ id, travel }: { id: string; travel: number }) {
+  const { width } = useVideoFormat();
   const gap = travel / TICKER_BOX_TAPS;
-  const pad = (tickerBoxReach(travel) + 4) / W;
+  const pad = (tickerBoxReach(travel) + 4) / width;
   const taps = Array.from({ length: TICKER_BOX_TAPS }, (_, i) => `tap${i}`);
   // Average the copies in pairs, then pairs of pairs: arithmetic compositing is on premultiplied colour, as exposure is.
   const mixes: ReactNode[] = [];

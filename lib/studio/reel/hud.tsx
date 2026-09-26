@@ -8,9 +8,9 @@
 // busy type, or grounds wanting different inks, which no tone reads across, the scene puts a plate of a ground's colour
 // behind the part. `reelHudGrounds` and `reelHudReadGrounds` do the reading for a scene that can name its grounds.
 
-import { FPS, H, W } from '#models/frame/frame.ts';
 import { MONO_FONT } from '#models/type/faces.ts';
 import { clamp, motionCurves, powerOutEase } from '#models/motion/motion.ts';
+import { useVideoFormat } from '../composition/video-format.ts';
 import { pieceMotionAttrs } from '../probe/motion-tag.ts';
 import {
   bracketPath, defaultReadout, hudInks, hudInkSet, hudPlates, LIGHT_READ, REEL_HUD_BOOT_DECODE, REEL_HUD_PALETTE, REEL_HUD_SWAP_DECODE,
@@ -50,16 +50,17 @@ export type ReelHudProps = ReelHudLayoutProps & {
  * 68%) so the HUD reads at 1080p.
  */
 export function ReelHud({
-  t, beatOf = (s) => s / REFERENCE_SPB, beatsPerBar = 4, duration = 15, fps = FPS, title = 'CLAUDE', subtitle = 'MOTION REEL 2026',
+  t, beatOf = (s) => s / REFERENCE_SPB, beatsPerBar = 4, duration = 15, title = 'CLAUDE', subtitle = 'MOTION REEL 2026',
   readout, sections = REFERENCE_SECTIONS, readAt = () => LIGHT_READ, plateOpacity = 0.75, palette = REEL_HUD_PALETTE,
   size = 20, weight = 600, bootDecode = 0.5, swapDecode = 0.3, bracketDraw = 0.25, trackFade = 0.23, seed = 'hud', motion,
 }: ReelHudProps) {
+  const format = useVideoFormat(), { fps, width, height } = format;
   if (t < 0) return null;
-  const text = { readout: readout ?? defaultReadout(beatOf, fps), title, subtitle };
+  const text = { readout: readout ?? defaultReadout(beatOf, format), title, subtitle };
   const sectionIndex = sections.findLastIndex((s) => s.at <= t + 1e-6);
   const section = sectionIndex < 0 ? null : sections[sectionIndex];
   const label = section && sectionLabel(sectionIndex, section.title);
-  const g = reelHudLayout({ size, ...text, label, beatsPerBar });
+  const g = reelHudLayout({ size, ...text, label, beatsPerBar, frame: format });
   const inks = hudInks(palette);
   // The tone and the plate are read from the same samples: each is asked of the scene once.
   const reads = new Map<string, ReelHudRead>();
@@ -85,15 +86,15 @@ export function ReelHud({
 
   return (
     <svg
-      width={W} height={H}
+      width={width} height={height}
       style={{ position: 'absolute', inset: 0, pointerEvents: 'none', fontFamily: MONO_FONT, fontSize: size, fontWeight: weight, fontFeatureSettings: '"zero"' }}
       {...pieceMotionAttrs(motion, 'hud', { kind: 'reel-hud', values: { progress, beat: lit, section: sectionIndex, plates: plates.length } })}
     >
       {plates.map((p) => <rect key={`${p.x} ${p.y}`} x={p.x} y={p.y} width={p.w} height={p.h} fill={p.color} fillOpacity={p.opacity} />)}
       <path d={bracketPath(g.inset, g.inset, 1, 1, arm, g.stroke)} fill={tones.tl.bracket} />
-      <path d={bracketPath(W - g.inset, g.inset, -1, 1, arm, g.stroke)} fill={tones.tr.bracket} />
-      <path d={bracketPath(g.inset, H - g.inset, 1, -1, arm, g.stroke)} fill={tones.timecode.bracket} />
-      <path d={bracketPath(W - g.inset, H - g.inset, -1, -1, arm, g.stroke)} fill={tones.section.bracket} />
+      <path d={bracketPath(width - g.inset, g.inset, -1, 1, arm, g.stroke)} fill={tones.tr.bracket} />
+      <path d={bracketPath(g.inset, height - g.inset, 1, -1, arm, g.stroke)} fill={tones.timecode.bracket} />
+      <path d={bracketPath(width - g.inset, height - g.inset, -1, -1, arm, g.stroke)} fill={tones.section.bracket} />
 
       <HudCells cells={boot(title, 'title')} x={g.titleX} advance={g.advance} y={g.topBaseline} fill={tones.tl.primary} />
       <HudCells cells={boot(subtitle, 'subtitle')} x={g.subtitleX} advance={g.advance} y={g.topBaseline} fill={tones.tl.secondary} />

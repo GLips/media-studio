@@ -5,7 +5,7 @@
 // (a musical loop, not decaying physics). Its last landing can crouch and launch into the swell (bounce-swell.ts),
 // growing until its colour is the next shot's ground.
 
-import { FPS, H, W } from '#models/frame/frame.ts';
+import type { VideoFormat } from '#models/frame/frame.ts';
 import { clamp, lerp, powerOutEase } from '#models/motion/motion.ts';
 import { hashRandom } from '#models/motion/random.ts';
 import {
@@ -123,6 +123,7 @@ export type BallPose = {
 };
 
 export type BounceModel = {
+  format: VideoFormat;
   ts: readonly number[];
   n: number;
   x: number;
@@ -141,7 +142,8 @@ export type BounceModel = {
   launch: { at: number; fill: number; to: { x: number; y: number }; crouch: { squash: Strain; dent: number } | null; lift: number; stretch: number } | null;
 };
 
-export function bounceModel(p: BounceParams): BounceModel {
+/** The ball's model in a video of `format`: the frame it's laid out in, and its frame rate. */
+export function bounceModel(p: BounceParams, format: VideoFormat): BounceModel {
   const ts = 'beats' in p ? [...p.beats] : Array.from({ length: p.count }, (_, i) => p.first + i * p.spb);
   if (!ts.length) throw new RangeError('bouncingBallAt: give at least one beat');
   const n = ts.length, size = p.size ?? REF.size, r = size / 2, half = (p.contact ?? REF.contact) / 2;
@@ -152,7 +154,7 @@ export function bounceModel(p: BounceParams): BounceModel {
   const spb = p.spb ?? (gaps.length ? [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length / 2)] : 0.5);
   const g = p.gravity ?? (8 * (p.height ?? REF.height)) / (spb - 2 * half) ** 2;
   const step = p.step ?? REF.step, groundY = p.groundY ?? REF.groundY, k = p.stretchPerSpeed ?? REF.stretchPerSpeed;
-  const x = p.x ?? W / 2 - ((n - 1) * step) / 2;
+  const x = p.x ?? format.width / 2 - ((n - 1) * step) / 2;
 
   let drop: BounceModel['drop'] = null;
   if (p.drop !== false) {
@@ -167,16 +169,16 @@ export function bounceModel(p: BounceParams): BounceModel {
   let launch: BounceModel['launch'] = null;
   if (p.launch) {
     const L = p.launch, pad = ts[n - 1];
-    const fill = L.fill ?? pad + spb - 1 / FPS;
+    const fill = L.fill ?? pad + spb - 1 / format.fps;
     const crouch = L.anticipation === false ? null : { squash: strainOf(L.anticipation?.squash ?? 3.9, 0), dent: L.anticipation?.dent ?? 0.139 * size };
     const at = crouch ? (L.at ?? Math.max(pad + CROUCH_MIN, fill - SWELL_TIME)) : pad + half;
     if (crouch && !(at > pad)) throw new RangeError(`bouncingBallAt: the launch leaves the ground at ${at.toFixed(3)} s, not after the last landing's squash at ${pad.toFixed(3)} s`);
     if (!(fill > at)) throw new RangeError(`bouncingBallAt: the launch fills the frame at ${fill.toFixed(3)} s, before it leaves the ground at ${at.toFixed(3)} s`);
-    launch = { at, fill, to: L.to ?? { x: W / 2, y: H / 2 }, crouch, lift: L.lift ?? 0.77 * size, stretch: L.stretch ?? 1.75 };
+    launch = { at, fill, to: L.to ?? { x: format.width / 2, y: format.height / 2 }, crouch, lift: L.lift ?? 0.77 * size, stretch: L.stretch ?? 1.75 };
   }
 
   return {
-    ts, n, x, step, groundY, r, half, g, k, spb, drop, launch,
+    format, ts, n, x, step, groundY, r, half, g, k, spb, drop, launch,
     squash: strainOf(p.squash ?? REF.squash, 0),
     dent: p.dent ?? (12 / REF.size) * size,
     before: gaps[0] ?? spb,
@@ -244,7 +246,7 @@ export function launchSwell(m: BounceModel) {
   const shape = shapeOfStrain(from.s);
   return {
     at: L.at,
-    options: { from: { x: from.x, y: from.y, r: m.r, aspect: shape.aspect, angle: shape.angle * DEG }, to: L.to, lift: L.lift, stretch: L.stretch, duration: L.fill - L.at },
+    options: { format: m.format, from: { x: from.x, y: from.y, r: m.r, aspect: shape.aspect, angle: shape.angle * DEG }, to: L.to, lift: L.lift, stretch: L.stretch, duration: L.fill - L.at },
   };
 }
 
@@ -274,8 +276,8 @@ export function rawPoseAt(m: BounceModel, t: number): RawPose {
  * form from the beats, so any frame, a ghost, a match cut or a camera can ask for any moment. Each landing's biggest
  * squash (3.4:1) falls exactly on its beat; the flight between is a parabola under one gravity.
  */
-export function bouncingBallAt(t: number, params: BounceParams): BallPose {
-  const m = bounceModel(params), p = rawPoseAt(m, t), dt = 1e-3;
+export function bouncingBallAt(t: number, params: BounceParams, format: VideoFormat): BallPose {
+  const m = bounceModel(params, format), p = rawPoseAt(m, t), dt = 1e-3;
   const before = rawPoseAt(m, t - dt), after = rawPoseAt(m, t + dt);
   const { aspect, angle } = shapeOfStrain(p.s), sq = Math.sqrt(aspect);
   return {
@@ -321,13 +323,13 @@ const SCRAMBLE_GLYPHS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789*#&%+/<>[]{}=?';
 
 /**
  * `text` typing on as the reference's HUD decodes: its first place shows a random glyph from `since` 0, the rest type
- * on from `hold` at `rate` characters a second, each re-rolling every frame until it settles `lag` after it appeared.
- * Characters not yet shown are spaces, so the line never shifts. type.ts's scrambleAt scrambles every character from
- * the start.
+ * on from `hold` at `rate` characters a second, each re-rolling every frame (at `fps`) until it settles `lag` after it
+ * appeared. Characters not yet shown are spaces, so the line never shifts. type.ts's scrambleAt scrambles every
+ * character from the start.
  */
-export function typeOnScramble(text: string, since: number, seed: string, { rate = 90, hold = 4 * REF_F, lag = 4 * REF_F } = {}): string {
+export function typeOnScramble(text: string, since: number, seed: string, { fps, rate = 90, hold = 4 * REF_F, lag = 4 * REF_F }: { fps: number; rate?: number; hold?: number; lag?: number }): string {
   const count = (s: number) => (s < 0 ? 0 : s < hold ? 1 : 2 + Math.floor((s - hold) * rate));
-  const shown = count(since), settled = count(since - lag), frame = Math.floor(since * FPS);
+  const shown = count(since), settled = count(since - lag), frame = Math.floor(since * fps);
   return [...text].map((ch, i) => {
     if (i >= shown) return ' ';
     if (i < settled || ch === ' ') return ch;

@@ -1,7 +1,7 @@
 // ticker.ts: TickerBands' model: the reference's poses, looks and moves, the hero's line, and the smear arithmetic.
 // ticker-layout.ts lays the glyphs out; lib/studio/reel/ticker.tsx draws them.
 
-import { FPS, W } from '#models/frame/frame.ts';
+import type { FrameSize } from '#models/frame/frame.ts';
 import { smearSigma } from '#models/motion/shutter.ts';
 import {
   archivoAdvance, layoutGlyphLine, mixGlyphPose, tickerBreathAt,
@@ -66,7 +66,7 @@ export const TICKER_COLORS: TickerColors = { ground: '#0a0a0c', band: '#3a3cf4',
 
 /** A block jolt on every beat after the first: A·e^(−τ/decay)·cos(2π·hz·τ), odd and even bands opposite ways. */
 export type TickerKick = { px: number; hz: number; decay: number };
-/** Bands arriving from the right: the left edge is W·e^(−τ/decay), starting `lead` s before t = 0, `stagger` s later a band out from the hero. */
+/** Bands arriving from the right: the left edge is width·e^(−τ/decay), starting `lead` s before t = 0, `stagger` s later a band out from the hero. */
 export type TickerEnter = { decay: number; stagger: number; lead: number };
 /**
  * Tickers leaving along their drift on expo-in, all off `early` s before the last beat ends: the pair beside the
@@ -93,10 +93,10 @@ export const TICKER_HERO_PHASE = 0.1049;
 export const TICKER_SHUTTER = 1 / 60;
 
 /**
- * The beat whose look TickerBands shows at `t` (past its last look, the last holds). A look shows from the frame
- * nearest its beat, as BeatGrid.frame rounds, so every band flips on the same frame.
+ * The beat whose look TickerBands shows at `t` (past its last look, the last holds). A look shows from the frame (at
+ * `fps`) nearest its beat, as BeatGrid.frame rounds, so every band flips on the same frame.
  */
-export const tickerLookBeat = (t: number, spb: number) => Math.floor((t + 0.5 / FPS) / spb);
+export const tickerLookBeat = (t: number, spb: number, fps: number) => Math.floor((t + 0.5 / fps) / spb);
 
 /** Where a moving block was mid-exposure, and how far it travelled while the shutter was open, px. */
 export function tickerExposure(block: (t: number) => number, t: number, shutter: number) {
@@ -111,7 +111,7 @@ export function tickerExposure(block: (t: number) => number, t: number, shutter:
 type HeroGlyph = { char: string; axes: GlyphAxes; x: number };
 
 /** The hero's glyphs (and its number's place) at `t`, centred on the frame: the breath, eased into the hold once held. */
-export function tickerHeroLine(t: number, { word, count, size, breath, poses, heldAt, phase }: {
+export function tickerHeroLine(t: number, { word, count, size, breath, poses, heldAt, phase, frame }: {
   word: string;
   count?: (t: number) => number;
   size: number;
@@ -119,6 +119,7 @@ export function tickerHeroLine(t: number, { word, count, size, breath, poses, he
   poses: TickerHeroPoses;
   heldAt: number | null;
   phase: number;
+  frame: FrameSize;
 }) {
   const held = heldAt === null ? 0 : 1 - Math.exp(-Math.max(0, t - heldAt) / poses.hold.settle);
   const poseAt = (i: number) => mixGlyphPose(mixGlyphPose(poses.light, poses.bold, tickerBreathAt(t, i, breath, phase)), poses.hold, held);
@@ -135,7 +136,7 @@ export function tickerHeroLine(t: number, { word, count, size, breath, poses, he
     slots.push({ blank: digits * (archivoAdvance('0', axesOf(countPose)) + countPose.tracking * countPose.scaleX) * size });
   }
   const line = layoutGlyphLine(slots, size);
-  const left = (W - line.width) / 2;
+  const left = (frame.width - line.width) / 2;
   const glyphs: HeroGlyph[] = [];
   chars.forEach((char, i) => {
     const slot = slots[i];

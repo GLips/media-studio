@@ -67,7 +67,8 @@ studio gen video <project> <scene> --dry     # renders the blockout and prints t
 ```
 
 A render costs **$0.28 per second** at 720p ($1.39 for a 5 s shot): Seedance bills the blockout's seconds as well as
-the footage's. Never render without the user's explicit yes to the cost. The request is cached by its blockout,
+the footage's. The shot takes the video's shape (16:9, 9:16, 1:1, 4:3, 3:4 or 21:9); a video of any other shape
+can't have one. Never render without the user's explicit yes to the cost. The request is cached by its blockout,
 prompt and stills: asking again for an unchanged scene costs nothing, and changing a subject, the move or the prompt
 pays again.
 

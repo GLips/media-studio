@@ -3,7 +3,10 @@
 // lab looks like the reels it explains.
 import { Player } from '@remotion/player';
 import type { ComponentType, ReactNode } from 'react';
-import { FPS, H, W } from '#models/frame/frame.ts';
+import type { VideoFormat } from '#models/frame/frame.ts';
+
+/** The lab's one frame: every stage plays at it unless a tab needs another shape or rate. */
+export const LAB_FORMAT: VideoFormat = { fps: 30, width: 1920, height: 1080 };
 
 /** The showcase palette: its ground, ink, cream, red-orange and cobalt. */
 export const LAB_COLORS = {
@@ -41,9 +44,9 @@ export function LabTabIntro({ number, title, what, when, bad, good }: {
 
 /**
  * A composition playing live, looped, in a bracketed frame. Its props re-render it as they change, so controls feel
- * immediate. 1920×1080 at the studio's frame rate unless a tab needs another shape or rate.
+ * immediate. LAB_FORMAT unless a tab needs another shape or rate.
  */
-export function LabStage<P extends Record<string, unknown>>({ component, inputProps, seconds, width = W, height = H, fps = FPS, label, controls = true }: {
+export function LabStage<P extends Record<string, unknown>>({ component, inputProps, seconds, width = LAB_FORMAT.width, height = LAB_FORMAT.height, fps = LAB_FORMAT.fps, label, controls = true }: {
   component: ComponentType<P>; inputProps: P; seconds: number; width?: number; height?: number; fps?: number; label?: string; controls?: boolean;
 }) {
   return (

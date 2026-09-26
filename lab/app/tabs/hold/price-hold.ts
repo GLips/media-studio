@@ -4,7 +4,7 @@
 import { holdProblems, type HoldExpectation, type HoldSteadySpan } from '#models/motion/hold-check.ts';
 import { roundMotionValue, type MotionTracks } from '#models/motion/motion-tracks.ts';
 import { clamp, motionCurves } from '#models/motion/motion.ts';
-import { FPS } from '#models/frame/frame.ts';
+import { LAB_FORMAT } from '../../ui.tsx';
 
 export type PriceHoldParams = {
   /** Seconds the card takes to slide in. */
@@ -24,7 +24,7 @@ export type PriceHoldParams = {
 };
 
 export const PRICE_HOLD_SECONDS = 5;
-export const PRICE_HOLD_FRAMES = PRICE_HOLD_SECONDS * FPS;
+export const PRICE_HOLD_FRAMES = PRICE_HOLD_SECONDS * LAB_FORMAT.fps;
 /** The card mounts here, so the frames before it are frames it "isn't drawn" on. */
 export const PRICE_ARRIVES_AT = 0.3;
 export const PRICE_REST = { x: 960, y: 330, w: 760, h: 300 };
@@ -35,7 +35,7 @@ export type PriceBox = { x: number; y: number; w: number; h: number; opacity: nu
 
 /** The card's centre, size and opacity on frame `f`, or null before it mounts. */
 export function priceBoxAt(f: number, p: PriceHoldParams): PriceBox | null {
-  const t = f / FPS;
+  const t = f / LAB_FORMAT.fps;
   if (t < PRICE_ARRIVES_AT) return null;
   const since = t - PRICE_ARRIVES_AT;
   const landed = motionCurves.cubic.entrance(since / p.entrance);
@@ -62,7 +62,7 @@ export function holdLabTracks(p: PriceHoldParams): MotionTracks {
   const drawn = boxes.slice(start) as PriceBox[];
   const col = (k: keyof PriceBox) => drawn.map((b) => b[k]);
   return {
-    version: 2, fps: FPS, frames: { first: 0, last: PRICE_HOLD_FRAMES - 1 },
+    version: 2, fps: LAB_FORMAT.fps, frames: { first: 0, last: PRICE_HOLD_FRAMES - 1 },
     tracks: [{
       id: 'buy/price', scene: 'buy', name: 'price',
       segments: [{

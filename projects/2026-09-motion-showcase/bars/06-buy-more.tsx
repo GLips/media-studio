@@ -5,7 +5,7 @@
 // rolling level with it, as the bands fly off and the hero closes onto its word: a display-size QTY 5 on red, still
 // closing in on the cut to bar 7's black. The HUD's rows ride on two lanes of flat ground laid across the field.
 
-import { FPS, H, ShutterBlur, W, clamp, motionCurves, seg } from '#studio';
+import { ShutterBlur, clamp, motionCurves, seg } from '#studio';
 import type { ReelHudTone } from '#models/reel/hud.ts';
 import { TickerBands } from '#studio/reel/ticker.tsx';
 import { tickerLookBeat, type TickerColors, type TickerEnter, type TickerLook } from '#models/reel/ticker.ts';
@@ -14,15 +14,17 @@ import { showcaseHudBoxesIn } from '../hud.ts';
 import tapQty2 from '../sfx/tap-qty-2.ts';
 import whipIntoBuyMore from '../sfx/whip-into-buy-more.ts';
 import { P } from '../look.ts';
+import { SHOWCASE_FORMAT } from '../timeline.ts';
 
 export function buyMoreBar(clock: ShowcaseClock<'buy-more'>): Bar {
+  const { fps } = clock;
   const FROM = clock.from, TO = clock.to;
   /** The bar's hits: the cut, then QTY 2, 3 and 5. */
   const HITS = [clock.beat(0), clock.cues.qty2, clock.cues.qty3, clock.beat(3)];
 
   // The piece's clock: 0 on the bar's first hit and a beat every 15 frames, so its looks flip on the hit frames.
-  const SPB = (HITS[1] - HITS[0]) / FPS;
-  const pieceT = (f: number) => (f - FROM) / FPS;
+  const SPB = (HITS[1] - HITS[0]) / fps;
+  const pieceT = (f: number) => (f - FROM) / fps;
 
   /** TickerBands' middle band of its seven. */
   const HERO = 3;
@@ -34,7 +36,7 @@ export function buyMoreBar(clock: ShowcaseClock<'buy-more'>): Bar {
   // and the outermost bands' 17%, so they hold nine tenths of the frame, still flying, and BUY MORE reads. On the
   // reference's own timing the cut opens on a smear at the right. The exit is the reference's: the bands clear 50 ms
   // before the next downbeat, so the bar's last frame shows only the word.
-  const ENTER: TickerEnter = { decay: 0.071, stagger: 0.02, lead: 0.069 + 3.5 / FPS };
+  const ENTER: TickerEnter = { decay: 0.071, stagger: 0.02, lead: 0.069 + 3.5 / fps };
 
   /** One look a beat: the colour wave does the stripes, beat 2 leans, beat 3 holds the hero. */
   const LOOKS: readonly TickerLook[] = [
@@ -45,14 +47,14 @@ export function buyMoreBar(clock: ShowcaseClock<'buy-more'>): Bar {
   ];
 
   /** The beat whose look shows at `t`, by the piece's own rule, so the colours flip on the frame its looks do. */
-  const beatAt = (t: number) => clamp(tickerLookBeat(t, SPB), 0, LOOKS.length - 1);
+  const beatAt = (t: number) => clamp(tickerLookBeat(t, SPB, fps), 0, LOOKS.length - 1);
 
   // ---------- the quantity ----------
 
   // Each roll lands on its hit frame: the wheel flicks over the frames just before it, so the new digit reads a frame
   // early and shows sharp on the hit. 3 → 5 turns two rows, so it starts earlier.
   const ROLLS = [{ beat: 1, by: 1, frames: 3 }, { beat: 2, by: 1, frames: 3 }, { beat: 3, by: 2, frames: 5 }];
-  const quantityAt = (t: number) => ROLLS.reduce((q, r) => q + r.by * seg(t, r.beat * SPB - r.frames / FPS, r.beat * SPB, motionCurves.cubic.entrance), 1);
+  const quantityAt = (t: number) => ROLLS.reduce((q, r) => q + r.by * seg(t, r.beat * SPB - r.frames / fps, r.beat * SPB, motionCurves.cubic.entrance), 1);
 
   // ---------- colour ----------
 
@@ -88,7 +90,7 @@ export function buyMoreBar(clock: ShowcaseClock<'buy-more'>): Bar {
   /** The least scale at which a frame-sized layer turned `deg` about its centre still covers the frame. */
   function coverScale(deg: number) {
     const r = (Math.abs(deg) * Math.PI) / 180;
-    return Math.cos(r) + (W / H) * Math.sin(r);
+    return Math.cos(r) + (SHOWCASE_FORMAT.width / SHOWCASE_FORMAT.height) * Math.sin(r);
   }
 
   /** The camera at frame `f`, fractional for the shutter's samples: the field's roll, and its scale about the word. */
@@ -130,9 +132,9 @@ export function buyMoreBar(clock: ShowcaseClock<'buy-more'>): Bar {
       // The piece smears its own motion; the shutter's samples add only the camera's, each the same frame from where
       // the camera was.
       const shot = (at: number) => {
-        const { roll, scale } = cameraAt(at * FPS);
+        const { roll, scale } = cameraAt(at * fps);
         return (
-          <div style={{ position: 'absolute', inset: 0, transform: `rotate(${roll}deg) scale(${scale})`, transformOrigin: `${W / 2}px ${H / 2}px` }}>
+          <div style={{ position: 'absolute', inset: 0, transform: `rotate(${roll}deg) scale(${scale})`, transformOrigin: `${SHOWCASE_FORMAT.width / 2}px ${SHOWCASE_FORMAT.height / 2}px` }}>
             {bands}
           </div>
         );
@@ -141,9 +143,9 @@ export function buyMoreBar(clock: ShowcaseClock<'buy-more'>): Bar {
       // field rather than mask it out, since a CSS mask re-rasterises the bands' edges and glyphs.
       return (
         <>
-          <ShutterBlur t={f / FPS} shutter={0.5} samples={8} moving={f > PUSH.from && f <= PUSH.to} render={shot} />
+          <ShutterBlur t={f / fps} shutter={0.5} samples={8} moving={f > PUSH.from && f <= PUSH.to} render={shot} />
           {LANES.map((l) => (
-            <div key={l.top} style={{ position: 'absolute', left: 0, top: l.top, width: W, height: l.bottom - l.top, background: groundAt(t) }} />
+            <div key={l.top} style={{ position: 'absolute', left: 0, top: l.top, width: SHOWCASE_FORMAT.width, height: l.bottom - l.top, background: groundAt(t) }} />
           ))}
         </>
       );

@@ -2,12 +2,10 @@
 // field lands in the frame through that camera.
 
 import { Matrix4, Quaternion, Vector3 } from 'three';
-import { H, W } from '#models/frame/frame.ts';
+import { fullFrameRect, type FrameSize } from '#models/frame/frame.ts';
 import { clamp, lerp, sineInOutEase } from '#models/motion/motion.ts';
 import type { Vec3 } from '#models/camera/vec3.ts';
 import { columnFieldPoint, type ColumnBall, type ColumnBallState, type ColumnCameraMove, type ColumnCameraPose, type ColumnCameraState, type ColumnCell, type ColumnFieldSpec } from './column-field.ts';
-
-const FULL_BOX = { x: 0, y: 0, w: W, h: H };
 
 const rad = (d: number) => (d * Math.PI) / 180;
 const deg = (r: number) => (r * 180) / Math.PI;
@@ -17,10 +15,11 @@ const Y = new Vector3(0, 1, 0);
 // ---------- camera ----------
 
 /**
- * Straight down on the field with one pitch `pitch` px across at the tops' `height`: the first frame of a match cut
- * from a 2D grid drawn at that pitch (the reference's steps from 100 to 101.25). `centre` is the cell under the centre.
+ * Straight down on the field with one pitch `pitch` px across at the tops' `height`, in a box `frameHeight` px tall
+ * (the field's `box`, or the frame): the first frame of a match cut from a 2D grid drawn at that pitch (the
+ * reference's steps from 100 to 101.25). `centre` is the cell under the centre.
  */
-export function topDownPose({ pitch, fov = 27, centre = [0, 0], height = 0, frameHeight = H }: { pitch: number; fov?: number; centre?: readonly [number, number]; height?: number; frameHeight?: number }): ColumnCameraPose {
+export function topDownPose({ pitch, fov = 27, centre = [0, 0], height = 0, frameHeight }: { pitch: number; fov?: number; centre?: readonly [number, number]; height?: number; frameHeight: number }): ColumnCameraPose {
   return { target: [centre[0], height, centre[1]], distance: focalPx(fov, frameHeight) / pitch, elevation: 90, azimuth: 0, fov };
 }
 
@@ -170,12 +169,12 @@ function rollAt(path: BallPath, t: number, r: number) {
 
 
 /**
- * Where a point of the field (pitches) lands in the frame at t: px, `box` included; its depth along the view; px per
- * pitch there. Null behind the camera. For HUD marks and type that must sit on a column or the ball.
+ * Where a point of the field (pitches) lands in a frame `frameSize` big at t: px, `box` included; its depth along the
+ * view; px per pitch there. Null behind the camera. For HUD marks and type that must sit on a column or the ball.
  */
-export function columnFieldProject<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: number, point: Vec3 | Vector3) {
+export function columnFieldProject<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: number, point: Vec3 | Vector3, frameSize: FrameSize) {
   const cam = fieldCamera(spec, t);
-  const box = spec.box ?? FULL_BOX;
+  const box = spec.box ?? fullFrameRect(frameSize);
   const v = (point instanceof Vector3 ? point.clone() : new Vector3(...point)).sub(cam.position);
   const depth = v.dot(cam.forward);
   if (depth <= 0.1) return null;

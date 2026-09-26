@@ -3,10 +3,10 @@
 // bar 4's last frame; bar 5 picks the field up from that state on its first and filters it. This module is the one
 // place the field's handover state is written down: change it here, not in a bar.
 
-import { H, W } from '#models/frame/frame.ts';
 import { glyphFieldLayout, type GlyphCell, type GlyphLayout, type GlyphShape } from '#models/reel/glyph-field.ts';
 import type { GlyphFieldProps, GlyphRest } from '#models/reel/glyph-field-frame.ts';
 import { inks, type Ink } from './look.ts';
+import { SHOWCASE_FORMAT } from './timeline.ts';
 
 /** A cell of the ink field: its place in the lattice and the ink it shows. */
 export type InkCell = GlyphCell<Ink>;
@@ -16,13 +16,13 @@ export type InkCell = GlyphCell<Ink>;
  * centred under the rows above. The pitch keeps the top and bottom rows' dots about 25 px clear of the HUD's text
  * (y 79 and 1004), so it stays legible over the field.
  */
-export const INK_FIELD_LAYOUT = { columns: 18, pitch: 90, center: { x: W / 2, y: H / 2 }, lastRow: 'center' } as const satisfies GlyphLayout;
+export const INK_FIELD_LAYOUT = { columns: 18, pitch: 90, center: { x: SHOWCASE_FORMAT.width / 2, y: SHOWCASE_FORMAT.height / 2 }, lastRow: 'center' } as const satisfies GlyphLayout;
 
 /** Cell i shows inks[i], the timeline's seeded shuffle, so every ink sits somewhere and neighbours differ. */
 export const INK_FIELD_ITEMS: readonly Ink[] = inks;
 
 /** Every cell's place, in the order of `INK_FIELD_ITEMS`: where a strike lands, or where a cell starts from. */
-export const INK_FIELD_SLOTS = glyphFieldLayout(INK_FIELD_ITEMS.length, INK_FIELD_LAYOUT);
+export const INK_FIELD_SLOTS = glyphFieldLayout(INK_FIELD_ITEMS.length, SHOWCASE_FORMAT, INK_FIELD_LAYOUT);
 
 /** The centre of the cell at `column`, `row` (from 0, top left) of a full row: where to aim a strike. */
 export function inkFieldSlotAt(column: number, row: number) {

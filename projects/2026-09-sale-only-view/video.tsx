@@ -6,7 +6,7 @@ import { bindTimeline, type TimelineSceneClock } from '#models/timeline/bind-tim
 import {
   CaptureSwap, Capture, ClickToBlur, CursorPath, EndCard, GlassCard, Highlight, MotionTitle, Spotlight, Tag,
   camAt, camFit, camTop, centerOf, defineVideo, scaleFor, sceneCueSeconds, sceneForTimelineClock, screenRect, motionCurves,
-  seg, union, view, type Cam, type Rect, type Shot,
+  seg, union, useVideoFormat, view, type Cam, type FrameSize, type Rect, type Shot,
 } from '#studio';
 import { voice } from './audio/manifest.ts';
 import { captures as C } from './captures/index.ts';
@@ -19,25 +19,25 @@ const SALE_RED = '#b82b2b';
 const SALE_BLUE = '#366299';
 
 // Where the cursor rests when it enters a page: lower-middle, out of the way of what it's about to point at.
-const cursorRest = (shot: Shot, cam: Cam) => {
-  const k = scaleFor(shot, cam.zoom);
+const cursorRest = (shot: Shot, cam: Cam, frame: FrameSize) => {
+  const k = scaleFor(shot, cam.zoom, frame);
   return { x: cam.cx - 120 / k, y: cam.cy + 300 / k };
 };
 
 type ProductPage = typeof C['partial-today'] | typeof C['partial-filtered'] | typeof C['partial-picked'] | typeof C['all-on-sale'];
-const buyBoxFocus = (shot: ProductPage) => camFit(shot, union(shot.rects.price, shot.rects.picker), { pad: 70, maxZoom: 1.55 });
+const buyBoxFocus = (shot: ProductPage, frame: FrameSize) => camFit(shot, union(shot.rects.price, shot.rects.picker), frame, { pad: 70, maxZoom: 1.55 });
 const cardTarget = (r: Rect) => ({ x: r.x + r.w * 0.55, y: r.y + r.h * 0.5 });
 
 /** The collection page scrolling to a card, and the cursor arriving to click it. */
 function CollectionClick({ t, card, from, scrollEnd, clickAt }: { t: number; card: Rect; from: number; scrollEnd: number; clickAt: number }) {
-  const shot = C.collection;
-  const cardCam = camFit(shot, card, { pad: 260, maxZoom: 1.2 });
-  const v = view(shot, camAt(t, [[from, camTop(shot)], [scrollEnd, cardCam]]));
+  const shot = C.collection, frame = useVideoFormat();
+  const cardCam = camFit(shot, card, frame, { pad: 260, maxZoom: 1.2 });
+  const v = view(shot, camAt(t, [[from, camTop(shot, frame)], [scrollEnd, cardCam]]), frame);
   const target = cardTarget(card);
   return (
     <>
       <Capture view={v} />
-      {t < clickAt + 0.45 && <CursorPath view={v} t={t} keys={[[scrollEnd - 0.6, cursorRest(shot, cardCam)], [clickAt - 0.1, target], [clickAt, target, { click: true }]]} />}
+      {t < clickAt + 0.45 && <CursorPath view={v} t={t} keys={[[scrollEnd - 0.6, cursorRest(shot, cardCam, frame)], [clickAt - 0.1, target], [clickAt, target, { click: true }]]} />}
     </>
   );
 }
@@ -57,11 +57,12 @@ const title = (clock: Clock<'title'>) => sceneForTimelineClock(clock, {
 const today = (clock: Clock<'today'>) => sceneForTimelineClock(clock, {
   note: 'The Tattoo Machine Sale grid. The cursor clicks the InkJecta card, and the product page as it is today: five swatches, full $824.99 price.',
   render: (s) => {
+    const frame = useVideoFormat();
     const at = sceneCueSeconds(clock);
     const clickAt = at.click, landAt = clickAt + 0.4;
     const shot = C['partial-today'];
-    const focus = buyBoxFocus(shot);
-    const v = view(shot, camAt(s.t, [[landAt + 0.4, camTop(shot)], [landAt + 2.4, focus]]));
+    const focus = buyBoxFocus(shot, frame);
+    const v = view(shot, camAt(s.t, [[landAt + 0.4, camTop(shot, frame)], [landAt + 2.4, focus]]), frame);
     // "They have to hunt": the cursor wanders the swatches looking for a markdown.
     const hunt = shot.rects.swatches.map((r, i) => [at.hunt + 0.2 + i * 0.6, centerOf(r)] as const);
     return (
@@ -72,7 +73,7 @@ const today = (clock: Clock<'today'>) => sceneForTimelineClock(clock, {
             <Capture view={v} alpha={seg(s.t, landAt, landAt + 0.4)} />
             <Highlight rect={screenRect(v, shot.rects.picker)} k={seg(s.t, at.fullPrice, at.fullPrice + 0.8)} alpha={1 - seg(s.t, at.hunt - 0.2, at.hunt + 0.3)} />
             <Highlight rect={screenRect(v, shot.rects.price)} k={seg(s.t, at.fullPrice + 1.0, at.fullPrice + 1.8)} color={SALE_RED} />
-            <CursorPath view={v} t={s.t} keys={[[landAt + 2.4, cursorRest(shot, focus)], ...hunt]} />
+            <CursorPath view={v} t={s.t} keys={[[landAt + 2.4, cursorRest(shot, focus, frame)], ...hunt]} />
           </>
         )}
         <Tag text="Today" x={64} y={56} k={seg(s.t, 0.2, 0.7, motionCurves.cubic.entrance)} bg={NAVY} />
@@ -86,12 +87,13 @@ const today = (clock: Clock<'today'>) => sceneForTimelineClock(clock, {
 const fix = (clock: Clock<'fix'>) => sceneForTimelineClock(clock, {
   note: 'The same click lands on the filtered page; the camera pushes in on the red note while a ring traces it. The swatches drop to three.',
   render: (s) => {
+    const frame = useVideoFormat();
     const at = sceneCueSeconds(clock);
     const clickAt = at.click, landAt = clickAt + 0.3;
     const card = C.collection.rects.partialCard, target = cardTarget(card);
-    const collection = view(C.collection, camFit(C.collection, card, { pad: 260, maxZoom: 1.2 }));
+    const collection = view(C.collection, camFit(C.collection, card, frame, { pad: 260, maxZoom: 1.2 }), frame);
     const shot = C['partial-filtered'];
-    const v = view(shot, camAt(s.t, [[landAt + 0.4, camTop(shot)], [landAt + 2.4, buyBoxFocus(shot)]]));
+    const v = view(shot, camAt(s.t, [[landAt + 0.4, camTop(shot, frame)], [landAt + 2.4, buyBoxFocus(shot, frame)]]), frame);
     const callout = screenRect(v, shot.rects.callout);
     return (
       <>
@@ -120,14 +122,15 @@ const fix = (clock: Clock<'fix'>) => sceneForTimelineClock(clock, {
 const pick = (clock: Clock<'pick'>) => sceneForTimelineClock(clock, {
   note: 'The cursor clicks the second swatch; the marked-down price is highlighted.',
   render: (s) => {
+    const frame = useVideoFormat();
     const clickAt = sceneCueSeconds(clock).choose;
-    const from = view(C['partial-filtered'], buyBoxFocus(C['partial-filtered']));
+    const from = view(C['partial-filtered'], buyBoxFocus(C['partial-filtered'], frame), frame);
     const to = { ...from, shot: C['partial-picked'] };
     const target = centerOf(C['partial-filtered'].rects.swatches[1]);
     return (
       <>
         <CaptureSwap from={from} to={to} k={seg(s.t, clickAt + 0.1, clickAt + 0.45)} />
-        <CursorPath view={to} t={s.t} keys={[[0, cursorRest(to.shot, to.cam)], [clickAt - 0.1, target], [clickAt, target, { click: true }], [clickAt + 1.2, { x: target.x + 30, y: target.y + 60 }]]} />
+        <CursorPath view={to} t={s.t} keys={[[0, cursorRest(to.shot, to.cam, frame)], [clickAt - 0.1, target], [clickAt, target, { click: true }], [clickAt + 1.2, { x: target.x + 30, y: target.y + 60 }]]} />
         <Highlight rect={screenRect(to, C['partial-picked'].rects.price)} k={seg(s.t, clickAt + 0.7, clickAt + 1.5)} color={SALE_RED} />
         <Tag text="With sale-only view" x={64} y={56} k={1} bg={SALE_RED} />
       </>
@@ -140,9 +143,10 @@ const pick = (clock: Clock<'pick'>) => sceneForTimelineClock(clock, {
 const showAll = (clock: Clock<'show-all'>) => sceneForTimelineClock(clock, {
   note: 'The cursor clicks "Show all options". The note goes and all five swatches return.',
   render: (s) => {
+    const frame = useVideoFormat();
     const clickAt = sceneCueSeconds(clock).click;
-    const cam = buyBoxFocus(C['partial-filtered']);
-    const from = view(C['partial-picked'], cam), to = view(C['partial-show-all'], cam);
+    const cam = buyBoxFocus(C['partial-filtered'], frame);
+    const from = view(C['partial-picked'], cam, frame), to = view(C['partial-show-all'], cam, frame);
     const exit = centerOf(C['partial-picked'].rects.exit);
     const priceTarget = centerOf(C['partial-picked'].rects.swatches[1]);
     return (
@@ -161,12 +165,13 @@ const showAll = (clock: Clock<'show-all'>) => sceneForTimelineClock(clock, {
 const allOnSale = (clock: Clock<'all-on-sale'>) => sceneForTimelineClock(clock, {
   note: 'Back on the grid, a click on Peak Matrix ("Up to 68%"). The page opens with the blue "All options are on sale." box.',
   render: (s) => {
+    const frame = useVideoFormat();
     const at = sceneCueSeconds(clock);
     const landAt = at.land, clickAt = landAt - 0.3;
     const card = C.collection.rects.allOnSaleCard, target = cardTarget(card);
-    const collection = view(C.collection, camAt(s.t, [[0, camFit(C.collection, card, { pad: 320, maxZoom: 1.1 })], [0.6, camFit(C.collection, card, { pad: 260, maxZoom: 1.2 })]]));
+    const collection = view(C.collection, camAt(s.t, [[0, camFit(C.collection, card, frame, { pad: 320, maxZoom: 1.1 })], [0.6, camFit(C.collection, card, frame, { pad: 260, maxZoom: 1.2 })]]), frame);
     const shot = C['all-on-sale'];
-    const v = view(shot, camAt(s.t, [[landAt + 0.3, camTop(shot)], [landAt + 1.8, buyBoxFocus(shot)]]));
+    const v = view(shot, camAt(s.t, [[landAt + 0.3, camTop(shot, frame)], [landAt + 1.8, buyBoxFocus(shot, frame)]]), frame);
     return (
       <>
         {s.t < landAt + 0.4 && (
@@ -192,13 +197,14 @@ const allOnSale = (clock: Clock<'all-on-sale'>) => sceneForTimelineClock(clock, 
 const big = (clock: Clock<'big'>) => sceneForTimelineClock(clock, {
   note: 'Kwadron cartridges: the full four-option picker, then the filtered view. The camera pushes in on "3 of 136".',
   render: (s) => {
+    const frame = useVideoFormat();
     const at = sceneCueSeconds(clock);
     const swapAt = at.narrowed;
     const before = C['big-today'], after = C['big-filtered'];
-    const beforeCam = camFit(before, union(before.rects.price, before.rects.listbox), { pad: 50, maxZoom: 1.3 });
-    const afterCam = camFit(after, union(after.rects.price, after.rects.listbox), { pad: 70, maxZoom: 1.45 });
+    const beforeCam = camFit(before, union(before.rects.price, before.rects.listbox), frame, { pad: 50, maxZoom: 1.3 });
+    const afterCam = camFit(after, union(after.rects.price, after.rects.listbox), frame, { pad: 70, maxZoom: 1.45 });
     const cam = camAt(s.t, [[0, { ...beforeCam, zoom: beforeCam.zoom * 0.92 }], [2.0, beforeCam], [swapAt, beforeCam], [swapAt + 1.0, afterCam]]);
-    const vBefore = view(before, cam), vAfter = view(after, cam);
+    const vBefore = view(before, cam, frame), vAfter = view(after, cam, frame);
     const listK = seg(s.t, at.listings, at.listings + 0.8) * (1 - seg(s.t, swapAt - 0.3, swapAt));
     return (
       <>

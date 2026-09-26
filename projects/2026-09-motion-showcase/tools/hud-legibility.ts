@@ -20,7 +20,6 @@ const PROJECT = resolve(import.meta.dirname, '..');
 // The mask renders from a project of its own, since a render session bundles a project's video.tsx.
 const MASK_PROJECT = join(PROJECT, 'out/hud-mask');
 const MASK_DIR = join(MASK_PROJECT, 'mask');
-const W = 1920, FPS = 30;
 
 const VANISH_DL = 40, BUSY_SHARE = 0.12, BUSY_RING = 400;
 // A ground pixel is on a step when one EDGE_REACH px away differs by half the ink's contrast, and at least EDGE_MIN.
@@ -36,10 +35,11 @@ const GLYPH_GAP = 1, WORD_GAP = 10, STRETCH = 20;
 
 const { SHOWCASE_HUD } = await import(`${PROJECT}/hud.ts`);
 const { showcaseBars } = await import(`${PROJECT}/video.tsx`);
-const { timeline } = await import(`${PROJECT}/timeline.ts`);
+const { SHOWCASE_FORMAT, timeline } = await import(`${PROJECT}/timeline.ts`);
+const W: number = SHOWCASE_FORMAT.width, FPS: number = timeline.fps;
 const { REEL_HUD_SLOTS, reelHudBoxes } = await import(`${ROOT}/lib/models/reel/hud.ts`);
 
-const { LENS_FRINGE_SUBPIXEL_MAX, lensFringeAt } = await import(`${ROOT}/lib/models/reel/lens.ts`);
+const { lensFringeAt, lensFringeSubpixelMax } = await import(`${ROOT}/lib/models/reel/lens.ts`);
 
 // Each bar where the video plays it, its kicks and glitches moved from its own clock onto the video's frames.
 type Bar = { id: string; scene: { from: number; to: number }; kicks: readonly number[]; glitches: readonly number[] };
@@ -55,8 +55,8 @@ const FADE_FROM = timeline.fade.from;
 function lensMark(f: number) {
   const bar = barOf(f);
   const kicks = [...(bar.scene.from > 0 ? [bar.scene.from] : []), ...bar.kicks].map((k) => k / FPS);
-  const fringe = lensFringeAt(f / FPS, { kicks, splits: bar.glitches.map((g) => g / FPS) });
-  return fringe.red || fringe.blue ? ' (split)' : fringe.radial > LENS_FRINGE_SUBPIXEL_MAX ? ' (kick)' : '';
+  const fringe = lensFringeAt(f / FPS, FPS, { kicks, splits: bar.glitches.map((g) => g / FPS) });
+  return fringe.red || fringe.blue ? ' (split)' : fringe.radial > lensFringeSubpixelMax(SHOWCASE_FORMAT) ? ' (kick)' : '';
 }
 
 // ---------- arguments ----------
@@ -74,22 +74,22 @@ const show = flag('show') === undefined ? undefined : Number(flag('show'));
 
 // The showcase's HUD alone, paper on black, over every frame of the reel. No lens and no grain, so each ink pixel sits
 // where the cut's does.
-const MASK_VIDEO = `import { FPS, defineScene, defineVideo } from '#studio';
+const MASK_VIDEO = `import { defineScene, defineVideo } from '#studio';
 import { ReelHud } from '#studio/reel/hud.tsx';
 import { SHOWCASE_HUD } from '../../hud.ts';
-import { timeline } from '../../timeline.ts';
+import { SHOWCASE_FORMAT, timeline } from '../../timeline.ts';
 
 const hudMask = defineScene({
-  id: 'hud-mask', note: 'The showcase HUD, paper on black', min: timeline.end / FPS, lead: 0, tail: 0, cut: true,
+  id: 'hud-mask', note: 'The showcase HUD, paper on black', min: timeline.end / timeline.fps, lead: 0, tail: 0, cut: true,
   render: (s) => (
     <>
       <div style={{ position: 'absolute', inset: 0, background: '#000' }} />
-      <ReelHud t={Math.round(s.t * FPS) / FPS} {...SHOWCASE_HUD} />
+      <ReelHud t={Math.round(s.t * timeline.fps) / timeline.fps} {...SHOWCASE_HUD} />
     </>
   ),
 });
 
-export default defineVideo({ title: 'Showcase HUD mask', voice: {}, scenes: [hudMask] });
+export default defineVideo({ title: 'Showcase HUD mask', voice: {}, scenes: [hudMask], format: SHOWCASE_FORMAT });
 `;
 const MASK_INPUTS = ['lib/studio/reel/hud.tsx', 'lib/models/reel/hud.ts', 'lib/models/reel/type.ts', 'lib/studio/fonts/fonts.ts'].map((f) => join(ROOT, f))
   .concat(['hud.ts', 'look.ts', 'timeline.ts'].map((f) => join(PROJECT, f)));
@@ -114,7 +114,7 @@ const digits = /f-(\d+)\.png/.exec(maskFiles[0])![1].length;
 
 // Each row of parts, cut out of every frame with room for the ground around it; the two are stacked into one band.
 // Cropped as RGB: ffmpeg rounds an odd crop offset to even on 4:2:0 video, which would set the band a row off the mask's.
-const rowBoxes = reelHudBoxes(SHOWCASE_HUD, 0) as Record<ReelHudSlot, Rect>;
+const rowBoxes = reelHudBoxes(SHOWCASE_HUD, 0, SHOWCASE_FORMAT) as Record<ReelHudSlot, Rect>;
 const PAD = 10;
 const rows = [rowBoxes.tl, rowBoxes.timecode].map((b) => ({ y: Math.round(b.y) - PAD, h: Math.round(b.h) + 2 * PAD }));
 const BAND_H = rows[0].h + rows[1].h;
@@ -177,7 +177,7 @@ function prepare(rgb: Buffer, mask: Buffer) {
 /** Every word of every part on one frame. */
 function measureFrame(rgb: Buffer, mask: Buffer, f: number): Word[] {
   const { luma, near } = prepare(rgb, mask);
-  const boxes = reelHudBoxes(SHOWCASE_HUD, f / FPS) as Record<ReelHudSlot, Rect>;
+  const boxes = reelHudBoxes(SHOWCASE_HUD, f / FPS, SHOWCASE_FORMAT) as Record<ReelHudSlot, Rect>;
   const words: Word[] = [];
   for (const slot of REEL_HUD_SLOTS as ReelHudSlot[]) {
     const b = boxes[slot];

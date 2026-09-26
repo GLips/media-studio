@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { FPS } from '#models/frame/frame.ts';
 import { backOutEase, perceptualSpring, stagger, staggerFinish } from './motion.ts';
+
+const FPS = 30;
 
 test('a back-out overshoots by the share of its travel asked for and lands on exactly 1', () => {
   const peak = (ease: (k: number) => number) => Math.max(...Array.from({ length: 10001 }, (_, i) => ease(i / 10000)));
@@ -29,18 +30,18 @@ test('a perceptual spring is the mass-spring Apple and kvin.me define, and holds
 });
 
 test('a capped stagger spreads starts over the cap on whole frames, and its finish is the last start plus the move', () => {
-  const starts = Array.from({ length: 20 }, (_, i) => stagger(i, 20, { each: 0.08, max: 0.4 }));
+  const starts = Array.from({ length: 20 }, (_, i) => stagger(i, 20, { each: 0.08, max: 0.4, fps: FPS }));
   assert.equal(starts[0], 0);
   assert.equal(starts[19], 0.4);
   for (const t of starts) assert.ok(Math.abs(t * FPS - Math.round(t * FPS)) < 1e-9, `${t} is between frames`);
   assert.ok(new Set(starts).size < 20, 'a long capped list shares frames');
-  assert.equal(staggerFinish(20, { each: 0.08, max: 0.4, duration: 0.5 }), 0.9);
-  assert.equal(staggerFinish(0, { each: 0.08, duration: 0.5 }), 0);
-  assert.equal(stagger(0, 1, { each: 0.08, max: 0.4 }), 0);
+  assert.equal(staggerFinish(20, { each: 0.08, max: 0.4, duration: 0.5, fps: FPS }), 0.9);
+  assert.equal(staggerFinish(0, { each: 0.08, duration: 0.5, fps: FPS }), 0);
+  assert.equal(stagger(0, 1, { each: 0.08, max: 0.4, fps: FPS }), 0);
 });
 
 test('a stagger from the centre, the edges or an index starts its first mover at 0 and its last at the full spread', () => {
-  const from = (n: number, f: 'center' | 'edges' | number) => Array.from({ length: n }, (_, i) => stagger(i, n, { lagRatio: 0.5, duration: 0.4, from: f }));
+  const from = (n: number, f: 'center' | 'edges' | number) => Array.from({ length: n }, (_, i) => stagger(i, n, { lagRatio: 0.5, duration: 0.4, from: f, fps: FPS }));
   assert.deepEqual(from(4, 'center'), [0.2, 0, 0, 0.2]);
   assert.deepEqual(from(5, 'edges'), [0, 0.2, 0.4, 0.2, 0]);
   assert.deepEqual(from(5, 3), [0.6, 0.4, 0.2, 0, 0.2]);

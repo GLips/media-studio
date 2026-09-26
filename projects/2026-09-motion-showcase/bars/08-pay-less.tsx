@@ -7,7 +7,7 @@
 
 import { useId } from 'react';
 import {
-  DISPLAY_FONT, FPS, MONO_FONT, W, clamp, lerp, motionAttrs, motionCurves, motionEchoAttrs, shutterTravel, smearSigma,
+  DISPLAY_FONT, MONO_FONT, clamp, lerp, motionAttrs, motionCurves, motionEchoAttrs, shutterTravel, smearSigma,
   type Point, type Rect,
 } from '#studio';
 import { Odometer } from '#studio/kit/kit.tsx';
@@ -23,8 +23,10 @@ import { SHOWCASE_HUD } from '../hud.ts';
 import priceLock from '../sfx/price-lock.ts';
 import stampSlam from '../sfx/stamp-slam.ts';
 import { P } from '../look.ts';
+import { SHOWCASE_FORMAT } from '../timeline.ts';
 
 export function payLessBar(clock: ShowcaseClock<'pay-less'>): Bar {
+  const { fps } = clock;
   const FROM = clock.from, TO = clock.to;
   // The poster's lockup and camera are the bar's model (08-pay-less-model.ts), which `studio look --graph=models` reads.
   const { hit: HIT, whipAt, posterCameraAt } = payLessPoster(clock);
@@ -39,14 +41,14 @@ export function payLessBar(clock: ShowcaseClock<'pay-less'>): Bar {
   const ROLL = { from: HIT.land - 11, blur: 0.3 };
   const ROLL_ROWS = [0, 0.5, 1, 1, 1.5, 2, 2, 2.5, 3, 3.5, 4];
   function rollAt(t: number) {
-    const k = clamp(t * FPS - ROLL.from, 0, ROLL_ROWS.length - 1), i = Math.min(Math.floor(k), ROLL_ROWS.length - 2);
+    const k = clamp(t * fps - ROLL.from, 0, ROLL_ROWS.length - 1), i = Math.min(Math.floor(k), ROLL_ROWS.length - 2);
     return lerp(ROLL_ROWS[i], ROLL_ROWS[i + 1], k - i) / ROLL_ROWS[ROLL_ROWS.length - 1];
   }
   const priceAt = (t: number) => lerp(2, 1.6, rollAt(t));
 
   /** The mono label over the price. Its quantity rolls up 1 → 5 on the price's own roll: buy more, pay less. */
   function QtyLabel({ f }: { f: number }) {
-    const qty = lerp(1, 5, rollAt(f / FPS));
+    const qty = lerp(1, 5, rollAt(f / fps));
     const { x, y, size } = LABEL;
     return (
       <div style={{ position: 'absolute', left: x, top: y - 0.86 * size, display: 'flex', font: `600 ${size}px/1 ${MONO_FONT}`, letterSpacing: '0.12em', color: P.cream, whiteSpace: 'pre' }}>
@@ -69,15 +71,15 @@ export function payLessBar(clock: ShowcaseClock<'pay-less'>): Bar {
 
   /** The old price, slashed: "$2.00", small, rising out of a line at its baseline, with an ink rule drawn across it. */
   function WasPrice({ f }: { f: number }) {
-    const t = (f - WAS_START) / FPS;
+    const t = (f - WAS_START) / fps;
     if (t <= 0) return null;
     const { right, y, size } = WAS;
     // The line box's top, which puts the baseline on `y`; the mask's edge, 0.92 em down it, is just under the $'s tail.
     const top = y - ARCHIVO_BASELINE_EM * size;
-    const slash = motionCurves.expo.entrance((f - SLASH.start) / FPS / SLASH.time);
+    const slash = motionCurves.expo.entrance((f - SLASH.start) / fps / SLASH.time);
     const knock = f >= HIT.slash ? SLASH.knock * Math.exp(-(f - HIT.slash) / SLASH.tau) : 0;
     return (
-      <div style={{ position: 'absolute', right: W - right, top: top + knock, height: 0.92 * size, overflow: 'hidden', font: `800 ${size}px/1 ${DISPLAY_FONT}`, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', color: P.cream, whiteSpace: 'pre' }}>
+      <div style={{ position: 'absolute', right: SHOWCASE_FORMAT.width - right, top: top + knock, height: 0.92 * size, overflow: 'hidden', font: `800 ${size}px/1 ${DISPLAY_FONT}`, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', color: P.cream, whiteSpace: 'pre' }}>
         <div {...motionAttrs({ name: 'was', values: { slash, knock } })} style={{ position: 'relative', height: size }}>
           {[...'$2.00'].map((c, i) => {
             const k = motionCurves.expo.entrance((t - i * WAS_EACH) / WAS_RISE);
@@ -113,9 +115,9 @@ export function payLessBar(clock: ShowcaseClock<'pay-less'>): Bar {
             style={{ position: 'absolute', inset: 0, transformOrigin: '0 0', transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.scale})` }}>
             <QtyLabel f={f} />
             <WasPrice f={f} />
-            <Odometer t={f / FPS} value={priceAt} x={PRICE.x} y={PRICE.y} size={PRICE.size} color={P.cream} weight={900} stretch={PRICE.stretch}
+            <Odometer t={f / fps} value={priceAt} x={PRICE.x} y={PRICE.y} size={PRICE.size} color={P.cream} weight={900} stretch={PRICE.stretch}
               decimals={1} prefix="$" suffix="0" mode="mechanical" blur={ROLL.blur} fade={0.03} motion="price" />
-            <RiseWord t={(f - WORDS_RISE.from) / FPS} text="PAY LESS." x={WORDS.x} y={WORDS.y} cap={WORDS.cap} align="left" color={P.ink}
+            <RiseWord t={(f - WORDS_RISE.from) / fps} text="PAY LESS." x={WORDS.x} y={WORDS.y} cap={WORDS.cap} align="left" color={P.ink}
               stretch={WORDS.stretch} duration={WORDS_RISE.duration} each={WORDS_RISE.each} motion="pay-less" />
           </div>
         </div>
@@ -150,7 +152,7 @@ export function payLessBar(clock: ShowcaseClock<'pay-less'>): Bar {
     const turn = TURN + FALL.turn * u;
     return {
       lift: FALL.height * u, du: FALL.du * u, dv: FALL.dv * u, turn,
-      ringTurn: h > 0 ? turn : TURN - (SPIN * (f - HIT.stamp)) / FPS,
+      ringTurn: h > 0 ? turn : TURN - (SPIN * (f - HIT.stamp)) / fps,
       blur: FALL.blur * u, alpha: 1 - (1 - FALL.alpha) * h ** 1.2,
     };
   }

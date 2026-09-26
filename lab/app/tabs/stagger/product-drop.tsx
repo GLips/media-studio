@@ -4,9 +4,8 @@
 // loop on the same clock.
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
-import { H, W } from '#models/frame/frame.ts';
 import { lerp, motionCurves, motionDurations, seg, stagger } from '#models/motion/motion.ts';
-import { LAB_COLORS } from '../../ui.tsx';
+import { LAB_COLORS, LAB_FORMAT } from '../../ui.tsx';
 
 export type StaggerProductDropProps = { mode: 'everything' | 'hero'; headStart: number; each: number };
 export type StaggerProductDropPairProps = Omit<StaggerProductDropProps, 'mode'>;
@@ -35,7 +34,7 @@ export function StaggerProductDrop({ mode, headStart, each }: StaggerProductDrop
 
   // Supporting pieces, nearest the hero first: the button under it, the nav above, then the tiles left to right.
   const supportCount = TILES.length + 2;
-  const supportStart = (i: number) => together ? START : START + headStart + stagger(i, supportCount, { each });
+  const supportStart = (i: number) => together ? START : START + headStart + stagger(i, supportCount, { each, fps });
 
   const heroK = seg(t, START, START + motionDurations.enter.large, motionCurves.expressive.entrance);
   const hero = {
@@ -107,7 +106,7 @@ export function StaggerProductDrop({ mode, headStart, each }: StaggerProductDrop
 
 const PAIR_GAP = 80;
 const PAIR_LABEL_BAND = 120;
-export const STAGGER_PRODUCT_DROP_PAIR_SIZE = { width: W * 2 + PAIR_GAP, height: H + PAIR_LABEL_BAND };
+export const STAGGER_PRODUCT_DROP_PAIR_SIZE = { width: LAB_FORMAT.width * 2 + PAIR_GAP, height: LAB_FORMAT.height + PAIR_LABEL_BAND };
 
 /** Both entrances side by side, each a full 1920×1080 page under its own caption. */
 export function StaggerProductDropPair({ headStart, each }: StaggerProductDropPairProps) {
@@ -118,11 +117,11 @@ export function StaggerProductDropPair({ headStart, each }: StaggerProductDropPa
   return (
     <AbsoluteFill style={{ background: LAB_COLORS.ground }}>
       {halves.map(({ mode, caption }, i) => (
-        <div key={mode} style={{ position: 'absolute', left: i * (W + PAIR_GAP), top: 0, width: W, height: H + PAIR_LABEL_BAND }}>
+        <div key={mode} style={{ position: 'absolute', left: i * (LAB_FORMAT.width + PAIR_GAP), top: 0, width: LAB_FORMAT.width, height: LAB_FORMAT.height + PAIR_LABEL_BAND }}>
           <div style={{ fontFamily: MONO_FONT, fontSize: 48, letterSpacing: '0.08em', color: i === 0 ? LAB_COLORS.dim : LAB_COLORS.cream, height: PAIR_LABEL_BAND, display: 'flex', alignItems: 'center', paddingLeft: 90 }}>
             {caption}
           </div>
-          <div style={{ position: 'absolute', left: 0, top: PAIR_LABEL_BAND, width: W, height: H, borderRadius: 24, overflow: 'hidden', border: `2px solid ${LAB_COLORS.line}` }}>
+          <div style={{ position: 'absolute', left: 0, top: PAIR_LABEL_BAND, width: LAB_FORMAT.width, height: LAB_FORMAT.height, borderRadius: 24, overflow: 'hidden', border: `2px solid ${LAB_COLORS.line}` }}>
             <StaggerProductDrop mode={mode} headStart={headStart} each={each} />
           </div>
         </div>

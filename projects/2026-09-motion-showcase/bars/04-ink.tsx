@@ -5,7 +5,7 @@
 // (174), INKS. slamming beside the count, and the fourth. The ripples run the colour wheel from the brand's red-orange
 // to magenta; the last lands every cell on its own ink, the field bar 5 opens on.
 
-import { DISPLAY_FONT, FPS, H, W, clamp, motionAttrs, motionCurves, powerOutEase, seg, type Point, type Rect } from '#studio';
+import { DISPLAY_FONT, clamp, motionAttrs, motionCurves, powerOutEase, seg, type Point, type Rect } from '#studio';
 import { Odometer } from '#studio/kit/kit.tsx';
 import { GlyphField, ShockRing } from '#studio/reel/glyph-field.tsx';
 import type { GlyphClip, GlyphHit, GlyphKey, GlyphWave } from '#models/reel/glyph-field.ts';
@@ -17,20 +17,22 @@ import { archivoAdvance, layoutGlyphLine } from '#models/reel/ticker-layout.ts';
 import type { Bar, ShowcaseClock } from '../bar.ts';
 import { INK_COUNT } from '../ink-count.ts';
 import { INK_DOT, INK_FIELD, INK_FIELD_LAYOUT, INK_FIELD_SLOTS, INK_FIRST_STRIKE, type InkCell } from '../ink-field.ts';
-import { INK_NEEDLE_SHOT, inkCutPushAt, inkNeedleStrikes, inkRecoilAt, inkStrikeSpots } from './04-ink-model.ts';
+import { INK_NEEDLE_RIG, INK_NEEDLE_SHOT, inkCutPushAt, inkNeedleStrikes, inkRecoilAt, inkStrikeSpots } from './04-ink-model.ts';
 import needleStrike1 from '../sfx/needle-strike-1.ts';
 import needleStrike2 from '../sfx/needle-strike-2.ts';
 import needleStrike3 from '../sfx/needle-strike-3.ts';
 import needleStrike4 from '../sfx/needle-strike-4.ts';
 import { P, inksByHue, type Ink } from '../look.ts';
+import { SHOWCASE_FORMAT } from '../timeline.ts';
 
 export function inkBar(clock: ShowcaseClock<'ink'>): Bar {
+  const { fps } = clock;
   const FROM = clock.from, TO = clock.to;
   // Where and when the needle strikes is the bar's model (04-ink-model.ts), which `studio look --graph=models` reads.
   const SPOTS = inkStrikeSpots(clock);
   const HITS = SPOTS.map((s) => s.frame);
   const INKS_AT = clock.beat(4);
-  const sec = (f: number) => f / FPS;
+  const sec = (f: number) => f / fps;
 
   const outQuad = powerOutEase(2);
   const outCubic = motionCurves.cubic.entrance;
@@ -93,30 +95,30 @@ export function inkBar(clock: ShowcaseClock<'ink'>): Bar {
 
   /** A crest catching the light: the dot's ink lifts `amount` toward white as the front reaches it, settled by `fade` s. */
   function glint(amount: number, fade: number): GlyphKey<number, Ink>[] {
-    return [{ at: 1 / FPS, value: amount, ease: outQuad }, { at: fade, value: 0, ease: outQuad }];
+    return [{ at: 1 / fps, value: amount, ease: outQuad }, { at: fade, value: 0, ease: outQuad }];
   }
 
   /** A front's clip: the cell takes its new ink at full strength, grows to an ink dot in a frame and rings down. */
   function splash(ink: (cell: InkCell, hit: GlyphHit) => string, { scale, brighten }: Pick<GlyphClip<Ink>, 'scale' | 'brighten'>): GlyphClip<Ink> {
-    return { fill: [{ at: 0, value: ink }], shape: [{ at: 1 / FPS, value: INK_DOT }], scale, brighten };
+    return { fill: [{ at: 0, value: ink }], shape: [{ at: 1 / fps, value: INK_DOT }], scale, brighten };
   }
 
   // The middle ripples run 27 pitches a second, the reference's reveal; the last runs 45, so the cell farthest from its
   // strike (9.9 pitches) takes its own ink over half a beat before the hand-over, catching the light as it does, and
   // rings on until SETTLE.
-  const RIPPLE = { speed: 27, burst: 1.5, scale: ringingScale({ amp: 0.6, peak: 1 / FPS, period: 0.2, decay: 0.25, end: 0.5 }) };
+  const RIPPLE = { speed: 27, burst: 1.5, scale: ringingScale({ amp: 0.6, peak: 1 / fps, period: 0.2, decay: 0.25, end: 0.5 }) };
   const RESOLVE = {
-    speed: 45, burst: 1.5, scale: ringingScale({ amp: 0.6, peak: 1 / FPS, period: 0.2, decay: 0.25, end: 0.45 }), brighten: glint(0.3, 0.25),
+    speed: 45, burst: 1.5, scale: ringingScale({ amp: 0.6, peak: 1 / fps, period: 0.2, decay: 0.25, end: 0.45 }), brighten: glint(0.3, 0.25),
   };
   // The first strike opens the bar, so it bursts: 4.2 pitches of dots inked on its frame, swelling to twice their size
   // into one splash 750 px across. With two beats to land, its front rolls out at the reference's reveal pace, over a
   // quarter second, and the field rings slower and longer, till the rebound.
-  const OPEN = { speed: 26, burst: 4.2, scale: ringingScale({ amp: 1, peak: 1 / FPS, period: 0.3, decay: 0.4, end: 1 }) };
+  const OPEN = { speed: 26, burst: 4.2, scale: ringingScale({ amp: 1, peak: 1 / fps, period: 0.3, decay: 0.4, end: 1 }) };
   // The splash rebounds on the next beat, as a drop's does: a second ring swells out from the struck dot through the
   // inked field, its crest catching the light, so the field is still rolling as the second strike comes in.
   const REBOUND = {
     frame: clock.beat(1), speed: 24,
-    clip: { scale: ringingScale({ amp: 0.8, peak: 2 / FPS, period: 0.25, decay: 0.25, end: 0.6 }), brighten: glint(0.35, 0.3) },
+    clip: { scale: ringingScale({ amp: 0.8, peak: 2 / fps, period: 0.25, decay: 0.25, end: 0.6 }), brighten: glint(0.35, 0.3) },
   };
 
   // Each front leaves the needle already `burst` pitches out, so the struck dot and its neighbours are inked on the
@@ -132,7 +134,7 @@ export function inkBar(clock: ShowcaseClock<'ink'>): Bar {
   const SETTLE = { frames: 3 };
   const SETTLE_WAVE: GlyphWave<Ink> = {
     start: sec(TO - 1 - SETTLE.frames), front: { delay: () => 0 },
-    clip: { scale: [{ at: SETTLE.frames / FPS, value: 1, ease: motionCurves.dissolve }] },
+    clip: { scale: [{ at: SETTLE.frames / fps, value: 1, ease: motionCurves.dissolve }] },
   };
 
   // Each strike's shock ring leaves a little ahead of the contact, so on the strike's frame it already circles the tip
@@ -144,7 +146,7 @@ export function inkBar(clock: ShowcaseClock<'ink'>): Bar {
   // the field hides the dot and an ellipse stands in for it.
   const SQUASH = { ratio: [1.5, 1 / 1.2, 1.06], size: [1.35, 1, 0.85] };
   const SQUASH_WAVES: GlyphWave<Ink>[] = STRIKES.map((s) => {
-    const back = (SQUASH.ratio.length - 0.5) / FPS;
+    const back = (SQUASH.ratio.length - 0.5) / fps;
     return {
       start: sec(s.frame), front: { delay: () => 0 }, where: (cell) => cell.index === cellOf(s),
       clip: { opacity: [{ at: 0, value: 0 }, { at: back, value: 0 }, { at: back + 1e-3, value: 1 }] },
@@ -154,7 +156,7 @@ export function inkBar(clock: ShowcaseClock<'ink'>): Bar {
   function StruckDots({ f }: { f: number }) {
     const r = (INK_DOT.L * INK_FIELD_LAYOUT.pitch) / 2;
     return (
-      <svg width={W} height={H} style={{ position: 'absolute', left: 0, top: 0 }}>
+      <svg width={SHOWCASE_FORMAT.width} height={SHOWCASE_FORMAT.height} style={{ position: 'absolute', left: 0, top: 0 }}>
         {STRIKES.map((s, i) => {
           const k = f - s.frame;
           if (k < 0 || k >= SQUASH.ratio.length) return null;
@@ -174,8 +176,8 @@ export function inkBar(clock: ShowcaseClock<'ink'>): Bar {
   function punchAt(frame: number, f: number, amount = PUNCH.amount) {
     const k = f - frame;
     if (k < 0 || k >= PUNCH.frames) return 0;
-    const tail = Math.exp(-PUNCH.frames / FPS / PUNCH.tau);
-    return (amount * (Math.exp(-k / FPS / PUNCH.tau) - tail)) / (1 - tail);
+    const tail = Math.exp(-PUNCH.frames / fps / PUNCH.tau);
+    return (amount * (Math.exp(-k / fps / PUNCH.tau) - tail)) / (1 - tail);
   }
 
   // As the needle comes in the field draws in toward the point, as skin dimples under a needle, so the punch springs it
@@ -221,7 +223,7 @@ export function inkBar(clock: ShowcaseClock<'ink'>): Bar {
   // INKS. lands on the field, so its slam rings the ink out from the word's middle as a strike's ripple does, with a
   // glint on the crest.
   const INKS_SPOT = { x: (WORD.left + WORD.right) / 2, y: (INK_COUNT.top + INK_COUNT.base) / 2 };
-  const INKS_SWELL = { speed: RIPPLE.speed, clip: { scale: ringingScale({ amp: 0.8, peak: 1 / FPS, period: 0.2, decay: 0.18, end: 0.5 }), brighten: glint(0.3, 0.25) } };
+  const INKS_SWELL = { speed: RIPPLE.speed, clip: { scale: ringingScale({ amp: 0.8, peak: 1 / fps, period: 0.2, decay: 0.18, end: 0.5 }), brighten: glint(0.3, 0.25) } };
 
   // The swells that carry no ink: the splash's rebound and INKS.'s landing. Each punches the field about its origin as a
   // strike does and rings its dots in the inks the strikes left; the next strike's ripple takes the ringing over.
@@ -264,7 +266,7 @@ export function inkBar(clock: ShowcaseClock<'ink'>): Bar {
     const weight = landed ? 1 : 1 / SLAM.exposures;
     const face = { fontFamily: DISPLAY_FONT, fontSize: INK_COUNT.size, fontWeight: INK_COUNT.weight, fontStretch: `${INK_COUNT.wdth}%` };
     return (
-      <svg width={W} height={H} style={{ position: 'absolute', left: 0, top: 0, overflow: 'visible', isolation: 'isolate' }}
+      <svg width={SHOWCASE_FORMAT.width} height={SHOWCASE_FORMAT.height} style={{ position: 'absolute', left: 0, top: 0, overflow: 'visible', isolation: 'isolate' }}
         {...motionAttrs({ name: 'inks', values: { scale: landed ? 1 : 1 + (SLAM.from.x - 1) * slamLeft(f) } })}>
         {exposures.map((e) => {
           const left = landed ? 0 : slamLeft(e);
@@ -298,7 +300,7 @@ export function inkBar(clock: ShowcaseClock<'ink'>): Bar {
   // the barrel's grey would want dark ink over half the box and light over the rest.
   function inkHudRead(_slot: ReelHudSlot, f: number, box: Rect): ReelHudRead {
     const shift = recoilAt(f);
-    const onNeedle = reelHudBoxPoints(box).some((p) => needleCoversAt(NEEDLE_STRIKES, sec(f), { x: p.x - shift.x, y: p.y - shift.y }, NEEDLE_SHOT));
+    const onNeedle = reelHudBoxPoints(box).some((p) => needleCoversAt(NEEDLE_STRIKES, sec(f), { x: p.x - shift.x, y: p.y - shift.y }, INK_NEEDLE_RIG));
     return onNeedle ? { tone: 'light', plate: P.ground } : { tone: 'light' };
   }
 

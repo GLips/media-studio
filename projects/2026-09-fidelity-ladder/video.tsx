@@ -2,7 +2,7 @@
 // built. Raising one is changing its binding here; timeline.ts stays as it is.
 
 import { bindTimeline, type TimelineSceneClock } from '#models/timeline/bind-timeline.ts';
-import { blockingScene, defineVideo, type FlatPiece, motionCurves, sceneCueSeconds, sceneForTimelineClock, seg, Text, W } from '#studio';
+import { blockingScene, defineVideo, type FlatPiece, motionCurves, sceneCueSeconds, sceneForTimelineClock, seg, Text, useVideoFormat } from '#studio';
 import { timeline } from './timeline.ts';
 
 type Clock<K extends keyof typeof timeline.spec.scenes & string> = TimelineSceneClock<typeof timeline, K>;
@@ -64,13 +64,13 @@ const price = (clock: Clock<'price'>) => sceneForTimelineClock(clock, {
   note: 'The price lands, the old one is struck through, and the sale price takes its place.',
   rung: 'final',
   render: (s) => {
-    const at = sceneCueSeconds(clock);
+    const at = sceneCueSeconds(clock), { width } = useVideoFormat();
     const strike = seg(s.t, at.strike, at.strike + 0.4, motionCurves.expressive.entrance);
     return (
       <div style={{ position: 'absolute', inset: 0, background: '#f4f1ea' }}>
-        <Text text="$824.99" x={W / 2} y={480} size={150} weight={800} color="#1c365e" align="center" k={seg(s.t, at.land, at.land + 0.6)} />
-        <div style={{ position: 'absolute', left: W / 2 - 330, top: 425, width: 660 * strike, height: 14, background: SALE_RED }} />
-        <Text text="$659.99" x={W / 2} y={700} size={170} weight={800} color={SALE_RED} align="center" k={seg(s.t, at.strike + 0.3, at.strike + 0.9)} />
+        <Text text="$824.99" x={width / 2} y={480} size={150} weight={800} color="#1c365e" align="center" k={seg(s.t, at.land, at.land + 0.6)} />
+        <div style={{ position: 'absolute', left: width / 2 - 330, top: 425, width: 660 * strike, height: 14, background: SALE_RED }} />
+        <Text text="$659.99" x={width / 2} y={700} size={170} weight={800} color={SALE_RED} align="center" k={seg(s.t, at.strike + 0.3, at.strike + 0.9)} />
       </div>
     );
   },

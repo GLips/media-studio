@@ -5,8 +5,8 @@ import { Fragment, useId, type ReactNode } from 'react';
 import { applyAffine, type AffineMatrix, type Point } from '#models/camera/camera.ts';
 import { useStudioFontsReady } from '../fonts/fonts.ts';
 import { DISPLAY_FONT } from '#models/type/faces.ts';
-import { H, W } from '#models/frame/frame.ts';
 import { REEL_SHUTTER, shutterOpensAt, smearSigma } from '#models/motion/shutter.ts';
+import { useVideoFormat } from '../composition/video-format.ts';
 import { pieceMotionAttrs } from '../probe/motion-tag.ts';
 import {
   labelAt, leftOf, SLANT_LABEL_IN, slantMatrix, slantWordPose, stemAt, TITTLE_ACROSS, TITTLE_HEIGHT, type Align, type Setting, type Tittle,
@@ -20,7 +20,7 @@ import { IndexLabel } from './type.tsx';
  * from the longest duration on. Defaults: caps 420 px (39% of frame height), Archivo 200.
  */
 export function SlantWord({
-  t, text, x = W / 2, y, cap = 420, color = '#464bf5', align = 'center', weight = 200, stretch = 100, spacing = 0,
+  t, text, x: givenX, y, cap = 420, color = '#464bf5', align = 'center', weight = 200, stretch = 100, spacing = 0,
   scale = 1.5, duration = 0.3, turn = -18, turnDuration = 0.12, slant = 15.5, slantFrom = 13, slantDuration = 0.17,
   label, labelColor = color, tittle, shutter = REEL_SHUTTER, motion,
 }: {
@@ -59,12 +59,13 @@ export function SlantWord({
 }) {
   const id = useId();
   const ready = useStudioFontsReady();
+  const { width, height } = useVideoFormat(), x = givenX ?? width / 2;
   if (!ready || t < 0) return null;
   const setting: Setting = { family: DISPLAY_FONT, cap, weight, stretch, spacing };
   // Set dotless, so each tittle can be drawn round on top of the slant and be a zoom's anchor.
   const shown = text.replaceAll('i', 'ı');
   const set = measureWord(shown, setting);
-  const base = y ?? H / 2 + cap / 2;
+  const base = y ?? height / 2 + cap / 2;
   const left = leftOf(x, set.width, align);
   const origin = { x: left + set.width / 2, y: base - cap / 2 };
   const poseAt = (tt: number) => slantWordPose(tt, { scale, duration, turn, turnDuration, slant, slantFrom, slantDuration });
@@ -91,7 +92,7 @@ export function SlantWord({
   const foot = applyAffine(still, { x: left, y: base }).x + SLANT_LABEL_IN * set.size;
   return (
     <>
-      <svg width={W} height={H} style={layer}>
+      <svg width={width} height={height} style={layer}>
         {sigma > 0.25 && (
           <filter id={`${id}-smear`} x="-20%" y="-20%" width="140%" height="140%" colorInterpolationFilters="sRGB">
             <feGaussianBlur stdDeviation={sigma} />

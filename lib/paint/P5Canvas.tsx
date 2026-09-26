@@ -10,23 +10,25 @@
 import p5, { type P5 } from 'p5';
 import { useLayoutEffect, useRef } from 'react';
 import { useDelayRender } from 'remotion';
-import { H, W } from '#models/frame/frame.ts';
+import type { FrameSize } from '#models/frame/frame.ts';
+import { useVideoFormat } from '#studio/composition/video-format.ts';
 import { unmeasuredAttrs } from '#studio/probe/motion-tag.ts';
 
 export type P5Style = {
-  /** One WebGL canvas per name, per tab. */
+  /** One WebGL canvas per name and frame size, per tab. */
   name: string;
   /** Runs before p5's setup, e.g. `brush.instance(p)`. */
   attach?(p: P5): void;
-  /** Runs once the canvas exists: brushes, textures. */
+  /** Runs once the canvas exists, the frame's size (`p.width` × `p.height`): brushes, textures. */
   setup?(p: P5): void | Promise<void>;
 };
 
 type P5Host = { p: P5; busy: Promise<void> };
 const hosts = new Map<string, Promise<P5Host>>();
 
-function p5HostFor(style: P5Style): Promise<P5Host> {
-  let host = hosts.get(style.name);
+function p5HostFor(style: P5Style, { width, height }: FrameSize): Promise<P5Host> {
+  const key = `${style.name} ${width}×${height}`;
+  let host = hosts.get(key);
   if (!host) {
     host = new Promise<P5Host>((resolve, reject) => {
       const node = document.createElement('div');
@@ -36,7 +38,7 @@ function p5HostFor(style: P5Style): Promise<P5Host> {
         style.attach?.(p);
         p.setup = async () => {
           try {
-            p.createCanvas(W, H, p.WEBGL);
+            p.createCanvas(width, height, p.WEBGL);
             p.pixelDensity(1);
             p.noLoop();
             await style.setup?.(p);
@@ -51,8 +53,8 @@ function p5HostFor(style: P5Style): Promise<P5Host> {
       }, node);
     });
     // A failed setup is forgotten, so the next layer (after a fix in the Studio) tries again.
-    host.catch(() => hosts.delete(style.name));
-    hosts.set(style.name, host);
+    host.catch(() => hosts.delete(key));
+    hosts.set(key, host);
   }
   return host;
 }
@@ -65,8 +67,9 @@ function p5HostJob(host: P5Host, job: () => Promise<void>): Promise<void> {
 }
 
 /**
- * A full-frame layer painted by `paint`, in frame pixels with the origin top left. It redraws on every render, so
- * `paint` must depend only on what the parent passes it (the scene's `t`, word anchors), never on earlier frames.
+ * A full-frame layer painted by `paint`, in frame pixels with the origin top left (the frame is `p.width` ×
+ * `p.height`). It redraws on every render, so `paint` must depend only on what the parent passes it (the scene's `t`,
+ * word anchors), never on earlier frames.
  * `finish` does 2D work on the copied frame (grain, lettering); `multiply` blends the layer onto what's beneath.
  */
 export function P5Canvas({ style, paint, finish, multiply = false, alpha = 1 }: {
@@ -78,12 +81,13 @@ export function P5Canvas({ style, paint, finish, multiply = false, alpha = 1 }: 
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const { delayRender, continueRender, cancelRender } = useDelayRender();
+  const { width, height } = useVideoFormat();
 
   // No dependency list on purpose: `paint` is a new closure on every render and always needs drawing.
   useLayoutEffect(() => {
     const handle = delayRender(`painting a ${style.name} layer`);
     let live = true;
-    p5HostFor(style)
+    p5HostFor(style, { width, height })
       // One layer at a time on the shared canvas: a crossfade paints two layers in the same frame.
       .then((host) => p5HostJob(host, async () => {
         if (!live) return;
@@ -92,7 +96,7 @@ export function P5Canvas({ style, paint, finish, multiply = false, alpha = 1 }: 
           p.clear();
           p.push();
           try {
-            p.translate(-W / 2, -H / 2);
+            p.translate(-width / 2, -height / 2);
             paint(p);
           } finally {
             p.pop();
@@ -111,5 +115,5 @@ export function P5Canvas({ style, paint, finish, multiply = false, alpha = 1 }: 
     };
   });
 
-  return <canvas ref={ref} width={W} height={H} {...unmeasuredAttrs('painted canvas')} style={{ position: 'absolute', left: 0, top: 0, width: W, height: H, opacity: alpha, pointerEvents: 'none', mixBlendMode: multiply ? 'multiply' : undefined }} />;
+  return <canvas ref={ref} width={width} height={height} {...unmeasuredAttrs('painted canvas')} style={{ position: 'absolute', left: 0, top: 0, width, height, opacity: alpha, pointerEvents: 'none', mixBlendMode: multiply ? 'multiply' : undefined }} />;
 }

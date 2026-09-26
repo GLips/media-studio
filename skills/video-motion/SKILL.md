@@ -48,6 +48,11 @@ project's `timeline.test.ts` runs the retime runner, which lengthens every scene
 `studio clock <project>` prints the resolved frames on the video, each scene at its origin. Worked examples: `projects/2026-09-sale-only-view` (voice) and
 `projects/2026-09-motion-showcase` (music).
 
+**The frame.** `defineVideo({ format })` picks the frame rate and size, 30 fps at 1920×1080 by default: `{ width: 1080,
+height: 1920 }` for a vertical cut. A timed video's rate is its timeline's, `defineTimeline({ fps })`. A scene reads
+the frame with `useVideoFormat()` and hands it to what needs it (`camFit(shot, rect, frame)`, `view(shot, cam,
+frame)`); a project laying out outside a scene declares its format once and reads that constant.
+
 ## Time it by reads
 
 You know what happens because you wrote the code. The viewer sees it once, at full speed, for the first time.
@@ -85,7 +90,7 @@ You know what happens because you wrote the code. The viewer sees it once, at fu
   `pop(t - (beat - pop.arrival))`. `arrival` is when it has covered 98% of the way, so a bouncy spring reaches home
   on the beat and overshoots after it. `settled` is when it stops moving. Springs are for moves; fades and colour are
   `seg`.
-- **Staggers**: `stagger(i, n, { each, max, from })` is item `i`'s start offset, on a whole frame. `max` caps the
+- **Staggers**: `stagger(i, n, { each, max, from, fps })` is item `i`'s start offset, on a whole frame of `fps`. `max` caps the
   spread of a long list, `from` is `'center'`, `'edges'` or an index, and `{ lagRatio, duration }` sets the gap as a
   fraction of each item's move. `staggerFinish` is when the last one lands. Tag each item with
   `stagger: { group, index, count }` so the tracks see the group.
@@ -120,7 +125,7 @@ scene is
 `image` a crossed slot), each named and tinted, resting at a `pose` in frame pixels and moved by `keys` on the frames
 of the scene's own clock, `{ at: clock.cues.land, to: { y: 380 }, over: 9 }`, a `view` pushing or panning over them.
 It declares `rung: 'blocking'`, so the animatic and `studio review` show it as blocking; the fidelity-ladder project's
-`layout` is one. A scene timed in seconds draws `<FlatBlockout pieces frame={s.t * FPS} />` itself and declares `rung: 'blocking'` in its `defineScene`. Get the moves
+`layout` is one. A scene timed in seconds draws `<FlatBlockout pieces frame={s.t * fps} />` itself and declares `rung: 'blocking'` in its `defineScene`. Get the moves
 approved in review, then build the scene over the same cues and rhythm.
 
 ## Kit and generated stills

@@ -3,7 +3,7 @@
 // a product page entering all at once against one hero move with the rest following.
 import { useState } from 'react';
 import { stagger, type StaggerFrom } from '#models/motion/motion.ts';
-import { LabBench, LabButtons, LabChoice, LabControls, LabNote, LabSlider, LabStage, LabTabIntro } from '../ui.tsx';
+import { LAB_FORMAT, LabBench, LabButtons, LabChoice, LabControls, LabNote, LabSlider, LabStage, LabTabIntro } from '../ui.tsx';
 import { STAGGER_INKS, StaggerInkRow, staggerInkRowSeconds } from './stagger/ink-row.tsx';
 import {
   STAGGER_PRODUCT_DROP_PAIR_SIZE, STAGGER_PRODUCT_DROP_SECONDS, StaggerProductDropPair,
@@ -40,8 +40,8 @@ export function StaggerTab() {
   const pickedCard = Math.min(picked, count);
   const from: StaggerFrom = origin === 'pick' ? pickedCard - 1 : origin;
   const rowProps = { count, each, max, from };
-  const uncapped = stagger(count - 1, count, { each, from: 'start' });
-  const staggerCall = `stagger(i, ${count}, { each: ${each}${max === null ? '' : `, max: ${max}`}, from: ${typeof from === 'number' ? from : `'${from}'`} })`;
+  const uncapped = stagger(count - 1, count, { each, from: 'start', fps: LAB_FORMAT.fps });
+  const staggerCall = `stagger(i, ${count}, { each: ${each}${max === null ? '' : `, max: ${max}`}, from: ${typeof from === 'number' ? from : `'${from}'`}, fps })`;
 
   return (
     <>
@@ -114,7 +114,7 @@ export function StaggerTab() {
           </LabControls>
           <details className="stagger-agents">
             <summary>For agents</summary>
-            <p>Followers start at <code>headStart + stagger(i, 8, {'{'} each {'}'})</code>, with the gap as <code>each</code>. The hero uses <code>motionDurations.enter.large</code> on <code>motionCurves.expressive.entrance</code>; followers use <code>enter.small</code> on <code>productive.entrance</code>.</p>
+            <p>Followers start at <code>headStart + stagger(i, 8, {'{'} each, fps {'}'})</code>, with the gap as <code>each</code>. The hero uses <code>motionDurations.enter.large</code> on <code>motionCurves.expressive.entrance</code>; followers use <code>enter.small</code> on <code>productive.entrance</code>.</p>
           </details>
         </LabBench>
       </section>

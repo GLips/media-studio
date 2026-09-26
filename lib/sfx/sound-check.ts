@@ -6,10 +6,9 @@ import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readProjectHostSpec } from '#engine/host/project-host-spec.ts';
 import { beatGrid, type BeatGrid } from '#models/timeline/beat-grid.ts';
-import { FPS } from '#models/frame/frame.ts';
 import { musicBedGainAt, type MusicBed } from '#studio/mix/mix.ts';
 import type { SfxSound } from '#studio/sfx/sfx.tsx';
-import { layoutVideo, totalFrames, type VideoDef } from '#studio/composition/timeline.ts';
+import { layoutVideo, totalFrames, videoFormatOf, type VideoDef } from '#studio/composition/timeline.ts';
 import { sfxSeedFromId } from './dsp.ts';
 import { runFfmpeg } from '#engine/ffmpeg/ffmpeg.ts';
 
@@ -79,7 +78,8 @@ export type EmptyBeats = {
   empty: { beat: number; at: number }[];
 };
 
-export type VideoSoundCheck = { sounds: SoundAgainstMusic[]; emptyBeats: EmptyBeats | null };
+/** `fps` is the video's frame rate, which the report's frame column counts in. */
+export type VideoSoundCheck = { fps: number; sounds: SoundAgainstMusic[]; emptyBeats: EmptyBeats | null };
 
 type LevelEnvelope = { db: Float32Array; floorDb: number };
 
@@ -243,11 +243,12 @@ function trackSecondsAt(bed: MusicBed, t: number): number {
 export function checkVideoSoundsAgainstMusic(video: VideoDef): VideoSoundCheck | null {
   const bed = video.music, sounds = video.sounds ?? [];
   if (!bed || !sounds.length) return null;
-  const tl = layoutVideo(video), videoSeconds = totalFrames(tl, FPS) / FPS;
+  const { fps } = videoFormatOf(video);
+  const tl = layoutVideo(video), videoSeconds = totalFrames(tl, fps) / fps;
   const musicFile = fileURLToPath(bed.track.src);
   const musicAttacks = musicAttackTimes(decodeAttackBands(musicFile));
   const musicLoudness = momentaryLoudness(musicFile, 0);
-  const gainAt = musicBedGainAt(bed, tl.cues, FPS, videoSeconds), gainDbAt = (t: number) => 20 * Math.log10(gainAt(t));
+  const gainAt = musicBedGainAt(bed, tl.cues, fps, videoSeconds), gainDbAt = (t: number) => 20 * Math.log10(gainAt(t));
   const measured = new Map<string, { bands: AttackBands; loudness: MomentaryLoudness }>();
   const measure = (file: string) => {
     if (!measured.has(file)) measured.set(file, { bands: decodeAttackBands(file), loudness: momentaryLoudness(file, 0.5) });
@@ -268,11 +269,11 @@ export function checkVideoSoundsAgainstMusic(video: VideoDef): VideoSoundCheck |
     const lu = musicLufs > SILENT_LUFS && Number.isFinite(soundLufs) ? soundLufs - musicLufs : null;
     return { id: String(id), at: sound.at, lands: landing.lands, gapMs, soundLufs, musicLufs, lu, flags: soundCheckFlags(landing.lands, gapMs, lu) };
   });
-  return { sounds: checked, emptyBeats: bed.track.beats.length ? emptyBeatsOf(bed, musicAttacks, videoSeconds) : null };
+  return { fps, sounds: checked, emptyBeats: bed.track.beats.length ? emptyBeatsOf(bed, musicAttacks, videoSeconds) : null };
 }
 
 /** The report `studio mix` prints: a key to the columns, a row per sound, then the music's empty beats. */
-export function formatVideoSoundCheck({ sounds, emptyBeats }: VideoSoundCheck): string[] {
+export function formatVideoSoundCheck({ fps, sounds, emptyBeats }: VideoSoundCheck): string[] {
   const fixed = (x: number | null, digits: number, signed = false) =>
     x === null || !Number.isFinite(x) ? '—' : `${signed && x > 0 ? '+' : ''}${x.toFixed(digits)}`;
   // The id, then right-aligned numbers, then the flags.
@@ -285,7 +286,7 @@ export function formatVideoSoundCheck({ sounds, emptyBeats }: VideoSoundCheck): 
     `  FLAM: ${FLAM_MS.min}–${FLAM_MS.max} ms off the music's attack, heard as two hits · BURIED: over ${-BURIED_LU} LU under · OVER: over ${OVER_LU} LU above`,
     row(['id', 'frame', 'at s', 'lands', 'gap ms', 'sound', 'music', 'LU', 'flags']),
     ...sounds.map((s) => row([
-      s.id, String(Math.round(s.at * FPS)), s.at.toFixed(2), s.lands, fixed(s.gapMs, 0, true), fixed(s.soundLufs, 1), fixed(s.musicLufs, 1), fixed(s.lu, 1, true), s.flags.join(' '),
+      s.id, String(Math.round(s.at * fps)), s.at.toFixed(2), s.lands, fixed(s.gapMs, 0, true), fixed(s.soundLufs, 1), fixed(s.musicLufs, 1), fixed(s.lu, 1, true), s.flags.join(' '),
     ])),
   ];
   if (!emptyBeats) return lines;

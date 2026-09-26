@@ -10,7 +10,6 @@
 import type { P5, P5Graphics, Pts } from 'p5';
 import * as brush from 'p5.brush';
 import { P5Canvas, type P5Style } from './P5Canvas.tsx';
-import { H, W } from '#models/frame/frame.ts';
 import { clamp, motionCurves, lerp } from '#models/motion/motion.ts';
 
 /** Drawings per second. At 30 fps each holds for two frames: animation "on twos". */
@@ -26,14 +25,16 @@ export const PAL = {
 /** A stable value in [0, 1) for `i`: star positions, tuft heights, anything that mustn't boil. */
 export const hash = (i: number) => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 
-// Built once per tab, in setup.
-// Paper and glow are p5 buffers because p5's WebGL image() won't take a plain canvas; grain is composited in 2D.
-type Textures = { paper: P5Graphics; grain: HTMLCanvasElement; glow: P5Graphics };
-let textures: Textures | null = null;
+// Built once per canvas, in setup, at its size. Paper and glow are p5 buffers because p5's WebGL image() won't take a
+// plain canvas; grain is composited in 2D, onto the layer's own canvas, so it's kept by that canvas's size.
+type Textures = { paper: P5Graphics; glow: P5Graphics };
+const texturesOf = new WeakMap<P5, Textures>();
+const grains = new Map<string, HTMLCanvasElement>();
 
 function lcg(seed: number) { let s = seed; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
 
 function makePaper(p: P5): P5Graphics {
+  const { width: W, height: H } = p;
   const g0 = p.createGraphics(W, H);
   g0.pixelDensity(1);
   const c = g0.drawingContext, rnd = lcg(11);
@@ -59,7 +60,7 @@ function makePaper(p: P5): P5Graphics {
 }
 
 /** Grain and a warm vignette, multiplied over the frame so the pigment sits in the paper. */
-function makeGrain(): HTMLCanvasElement {
+function makeGrain(W: number, H: number): HTMLCanvasElement {
   const cv = Object.assign(document.createElement('canvas'), { width: W, height: H });
   const c = cv.getContext('2d')!, rnd = lcg(5), id = c.createImageData(W, H), d = id.data;
   for (let i = 0; i < d.length; i += 4) {
@@ -93,14 +94,16 @@ export const WATERCOLOR: P5Style = {
     brush.add('ink', { type: 'default', weight: 5, scatter: 0.25, sharpness: 0.8, grain: 40, opacity: 235, spacing: 0.2, pressure: [1.15, 0.75], rotate: 'natural', noise: 0.15 });
     brush.add('inkfine', { type: 'default', weight: 2.6, scatter: 0.15, sharpness: 0.85, grain: 40, opacity: 230, spacing: 0.2, pressure: [1.1, 0.8], rotate: 'natural', noise: 0.1 });
     brush.add('dry', { type: 'default', weight: 14, scatter: 3, sharpness: 0.3, grain: 6, opacity: 90, spacing: 0.6, pressure: [1, 0.6], rotate: 'natural', noise: 0.4 });
-    textures = { paper: makePaper(p), grain: makeGrain(), glow: makeGlow(p) };
+    texturesOf.set(p, { paper: makePaper(p), glow: makeGlow(p) });
   },
 };
 
 function multiplyGrain(out: CanvasRenderingContext2D) {
+  const { width, height } = out.canvas, key = `${width}×${height}`;
+  if (!grains.has(key)) grains.set(key, makeGrain(width, height));
   out.save();
   out.globalCompositeOperation = 'multiply';
-  out.drawImage(textures!.grain, 0, 0);
+  out.drawImage(grains.get(key)!, 0, 0);
   out.restore();
 }
 
@@ -125,6 +128,8 @@ export type PaintOptions = {
 
 /** The watercolour kit, bound to one frame: `t` is the scene's time. */
 export function watercolorKit(p: P5, t: number) {
+  const { width: W, height: H } = p;
+  const textures = texturesOf.get(p)!;
   const boilN = Math.floor(t * BOIL + 1e-6);
 
   /** Restarts the jitter stream from a key that's the same every frame. Call before each separate element. */
@@ -211,7 +216,7 @@ export function watercolorKit(p: P5, t: number) {
     p.push();
     p.blendMode(p.ADD);
     p.tint((n >> 16) & 255, (n >> 8) & 255, n & 255, 150 * clamp(a));
-    p.image(textures!.glow, x - rr, y - rr, 2 * rr, 2 * rr);
+    p.image(textures.glow, x - rr, y - rr, 2 * rr, 2 * rr);
     p.noTint();
     p.blendMode(p.BLEND);
     p.pop();
@@ -219,7 +224,7 @@ export function watercolorKit(p: P5, t: number) {
 
   /** The paper, as the first thing a full-frame painting lays down. Overlay layers skip it and stay clear. */
   function paper() {
-    p.image(textures!.paper, 0, 0);
+    p.image(textures.paper, 0, 0);
   }
 
   /** A smooth curve through the points (Catmull-Rom), `n` samples per span. */

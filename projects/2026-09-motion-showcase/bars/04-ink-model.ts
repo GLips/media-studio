@@ -1,13 +1,13 @@
 // Bar 4's model: where and when the needle strikes, how it's shot, and how each blow knocks the camera. Bar 4 draws
 // the needle from these, and `studio look --graph=models` reads the tip's place on the frame from them.
 
-import { FPS, H, W } from '#models/frame/frame.ts';
 import { clamp } from '#models/motion/motion.ts';
 import { definePieceTracks } from '#models/motion/piece-tracks.ts';
-import { needlePoseAt, needleScreenPoint, type NeedleStrike } from '#models/reel/needle.ts';
+import { needlePoseAt, needleRig, needleScreenPoint, type NeedleStrike } from '#models/reel/needle.ts';
 import type { ShowcaseClock } from '../bar.ts';
 import { showcaseHudBoxesIn } from '../hud.ts';
 import { INK_FIRST_STRIKE, inkFieldSlotAt } from '../ink-field.ts';
+import { SHOWCASE_FORMAT } from '../timeline.ts';
 
 export type InkStrikeSpot = { frame: number; x: number; y: number };
 
@@ -30,7 +30,7 @@ export function inkStrikeSpots(clock: ShowcaseClock<'ink'>): readonly InkStrikeS
  * on: its contact frame shows the way in too.
  */
 export const inkNeedleStrikes = (spots: readonly InkStrikeSpot[], inkOf: (i: number) => string): NeedleStrike[] =>
-  spots.map((s, i) => ({ at: s.frame / FPS, x: s.x, y: s.y, ink: inkOf(i), streak: i === 0 }));
+  spots.map((s, i) => ({ at: s.frame / SHOWCASE_FORMAT.fps, x: s.x, y: s.y, ink: inkOf(i), streak: i === 0 }));
 
 /**
  * 32 px a mm: a barrel over 300 px across. Each blow drops in over two and a half frames, one streak on the frame
@@ -38,9 +38,11 @@ export const inkNeedleStrikes = (spots: readonly InkStrikeSpot[], inkOf: (i: num
  * for the streaks to read on the field.
  */
 export const INK_NEEDLE_SHOT = {
-  tilt: 52, grip: 35, scale: 32, from: 15, climb: 42, enter: 2.5 / FPS, dwell: 1 / FPS, overdrive: 1, exit: 2.5 / FPS, lean: 8,
+  tilt: 52, grip: 35, scale: 32, from: 15, climb: 42, enter: 2.5 / SHOWCASE_FORMAT.fps, dwell: 1 / SHOWCASE_FORMAT.fps, overdrive: 1, exit: 2.5 / SHOWCASE_FORMAT.fps, lean: 8,
   samples: 16, shadow: 0.3, color: '#5a5e65', fastShutter: 0.6,
 };
+/** The shot's rig on the showcase's frame: what the model poses the needle with. */
+export const INK_NEEDLE_RIG = needleRig({ ...INK_NEEDLE_SHOT, format: SHOWCASE_FORMAT });
 
 // Each blow knocks the camera left, the way the needle comes in, a frame after the contact (so the first contact stays
 // on bar 3's point), then it springs back, gone 14 frames on: between strikes the field never stands still. Level, as
@@ -71,11 +73,11 @@ export const inkPieceTracks = definePieceTracks<ShowcaseClock<'ink'>>('ink', (cl
     tracks: {
       // The tip where the frame shows it: seen through the lens, knocked by the recoil, scaled by the cut's push.
       needle: (f) => {
-        const pose = needlePoseAt(strikes, f / FPS, INK_NEEDLE_SHOT);
+        const pose = needlePoseAt(strikes, f / clock.fps, INK_NEEDLE_RIG);
         if (!pose) return null;
-        const seen = needleScreenPoint(pose.tip), recoil = inkRecoilAt(spots, f), push = inkCutPushAt(clock.to, f);
+        const seen = needleScreenPoint(pose.tip, INK_NEEDLE_RIG), recoil = inkRecoilAt(spots, f), push = inkCutPushAt(clock.to, f);
         return {
-          x: W / 2 + (seen.x + recoil.x - W / 2) * push, y: H / 2 + (seen.y + recoil.y - H / 2) * push,
+          x: SHOWCASE_FORMAT.width / 2 + (seen.x + recoil.x - SHOWCASE_FORMAT.width / 2) * push, y: SHOWCASE_FORMAT.height / 2 + (seen.y + recoil.y - SHOWCASE_FORMAT.height / 2) * push,
           values: { height: pose.tip[2], recoil: recoil.x }, state: pose.fast ? 'fast' : 'sharp',
         };
       },

@@ -6,8 +6,8 @@
 
 import { useRef, type CSSProperties } from 'react';
 import {
-  Capture, CursorPath, DrawPath, H, Highlight, Odometer, Text, W, WordReveal, camAt, camTop, clamp, defineScene, defineVideo, lerp,
-  motionCurves, motionAttrs, on, screenRect, seg, useMotionTag, view, type Rect, type Shot,
+  Capture, CursorPath, DrawPath, Highlight, Odometer, Text, WordReveal, camAt, camTop, clamp, defineScene, defineVideo, lerp,
+  motionCurves, motionAttrs, on, screenRect, seg, useMotionTag, useVideoFormat, view, type Rect, type Shot,
 } from '#studio';
 
 const INK = '#1c365e';
@@ -57,8 +57,9 @@ const glide = defineScene({
 const push = defineScene({
   id: 'push', min: 3,
   render: (s) => {
+    const frame = useVideoFormat();
     const wide = { cx: GRID.w / 2, cy: GRID.h / 2, zoom: 1 };
-    const v = view(GRID, camAt(s.t, [[0.5, wide], [2, { ...wide, zoom: 2.4 }]]));
+    const v = view(GRID, camAt(s.t, [[0.5, wide], [2, { ...wide, zoom: 2.4 }]]), frame);
     return (
       <>
         <Capture view={v} />
@@ -76,7 +77,8 @@ const push = defineScene({
 const rise = defineScene({
   id: 'rise', min: 2,
   render: (s) => {
-    const v = view(GRID, camTop(GRID));
+    const frame = useVideoFormat();
+    const v = view(GRID, camTop(GRID, frame), frame);
     return (
       <div style={{ position: 'absolute', inset: 0, transform: `translateY(${120 * (1 - seg(s.t, 0.3, 1.3, motionCurves.cubic.entrance))}px)` }}>
         <Capture view={v} />
@@ -121,7 +123,7 @@ const nested = defineScene({
 function Nested({ t }: { t: number }) {
   const host = useRef<HTMLDivElement>(null);
   useMotionTag(host, 'chip', '.chip');
-  const k = seg(t, 0.3, 1.3);
+  const k = seg(t, 0.3, 1.3), { width, height } = useVideoFormat();
   return (
     <>
       <div style={{ position: 'absolute', inset: 0, background: '#eef1f6' }} />
@@ -131,7 +133,7 @@ function Nested({ t }: { t: number }) {
       <div data-motion="tilted" style={{ position: 'absolute', left: 1200, top: 150, width: 400, height: 300, transform: 'rotate(20deg)', background: '#f1dfdf' }}>
         <div data-motion="pin" style={{ position: 'absolute', left: 40 + 200 * k, top: 120, width: 40, height: 40, background: '#b82b2b' }} />
       </div>
-      <svg style={{ position: 'absolute', left: 0, top: 0 }} width={W} height={H}>
+      <svg style={{ position: 'absolute', left: 0, top: 0 }} width={width} height={height}>
         <g data-motion="turned">
           <g transform="rotate(20 700 500)">
             <rect data-motion="pin" x={600 + 200 * k} y={480} width={40} height={40} fill="#b82b2b" />
@@ -162,12 +164,18 @@ const blink = defineScene({
 
 const after = defineScene({
   id: 'after', min: 2,
-  render: (s) => <Text text="Same words" x={W / 2} y={H / 2 - 100 * seg(s.t, 0, 1.5)} align="center" color={INK} k={on(s.t, -0.3, 0.6)} />,
+  render: (s) => {
+    const { width, height } = useVideoFormat();
+    return <Text text="Same words" x={width / 2} y={height / 2 - 100 * seg(s.t, 0, 1.5)} align="center" color={INK} k={on(s.t, -0.3, 0.6)} />;
+  },
 });
 
 const end = defineScene({
   id: 'end', min: 1.5, cut: true,
-  render: (s) => <Text text="Same words" x={W / 2} y={lerp(H / 2, H / 2 + 120, seg(s.t, 0.2, 1.2))} align="center" color={INK} />,
+  render: (s) => {
+    const { width, height } = useVideoFormat();
+    return <Text text="Same words" x={width / 2} y={lerp(height / 2, height / 2 + 120, seg(s.t, 0.2, 1.2))} align="center" color={INK} />;
+  },
 });
 
 /**

@@ -14,7 +14,7 @@ import { generatePaidMedia } from '../generation/paid-generation.ts';
 import { readPrevisFootageList, writePrevisFootageEntry } from '../bundle/previs-footage.ts';
 import { blockoutSlug } from '../bundle/project-bundle.ts';
 import { RENDER_CHROMIUM, RENDER_CONCURRENCY, type RenderSession } from './render-session.ts';
-import { assertPrevisSpanFits, PREVIS_MODEL, PREVIS_WIDTH } from '#studio/previs/previs.ts';
+import { assertPrevisSpanFits, PREVIS_MODEL, PREVIS_SHORT_SIDE, previsAspectRatio } from '#studio/previs/previs.ts';
 import { probeMediaSeconds } from '../ffmpeg/ffmpeg.ts';
 
 // Seedance numbers its references by kind in the order sent (@Video1, @Image1, @Image2…), and the blockout goes first.
@@ -48,6 +48,8 @@ export async function renderPrevisFootage(session: RenderSession, sceneId: strin
   assertPrevisSpanFits(sceneId, previs);
   for (const ref of previs.references) if (!existsSync(join(project, ref))) throw new Error(`scene ${sceneId}: reference ${ref} isn't in the project`);
 
+  // Checked before the blockout renders, so a video Seedance can't match stops before any work.
+  const aspect = previsAspectRatio(timeline);
   const blockout = await renderBlockout(session, sceneId);
   const prompt = `${PREVIS_PREAMBLES[previs.blockout]}\n\n${previs.prompt}`;
   const playing = readPrevisFootageList(project)[sceneId];
@@ -56,7 +58,7 @@ export async function renderPrevisFootage(session: RenderSession, sceneId: strin
 
   const [footage] = await generatePaidMedia(project, {
     kind: 'video', model: PREVIS_MODEL, name: sceneId, prompt,
-    params: { duration: previs.duration, resolution: '720p', aspect_ratio: '16:9', generate_audio: previs.audio },
+    params: { duration: previs.duration, resolution: '720p', aspect_ratio: aspect, generate_audio: previs.audio },
     references: [{ path: blockout }, ...previs.references.map((ref) => ({ path: join(project, ref) }))],
   });
   writePrevisFootageEntry(project, sceneId, {
@@ -73,7 +75,7 @@ async function renderBlockout(session: RenderSession, sceneId: string): Promise<
   console.error(`rendering scene ${sceneId}'s blockout, ${composition.durationInFrames / composition.fps}s…`);
   await renderMedia({
     composition, serveUrl: session.serveUrl, chromiumOptions: RENDER_CHROMIUM, concurrency: RENDER_CONCURRENCY, inputProps,
-    codec: 'h264', muted: true, crf: 20, pixelFormat: 'yuv420p', scale: PREVIS_WIDTH / composition.width, outputLocation: rendered,
+    codec: 'h264', muted: true, crf: 20, pixelFormat: 'yuv420p', scale: PREVIS_SHORT_SIDE / Math.min(composition.width, composition.height), outputLocation: rendered,
   });
   // Named by its bytes, so each footage's blockout stays beside it for comparison.
   const hash = createHash('sha256').update(readFileSync(rendered)).digest('hex').slice(0, 12);

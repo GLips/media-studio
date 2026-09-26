@@ -11,14 +11,15 @@ import * as THREE from 'three';
 import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { FPS, H, W } from '#models/frame/frame.ts';
+import { fullFrameRect } from '#models/frame/frame.ts';
+import { useVideoFormat } from '../composition/video-format.ts';
 import { unmeasuredAttrs } from '../probe/motion-tag.ts';
 
 export type ThreeFrame = { scene: THREE.Scene; camera: THREE.PerspectiveCamera };
 
 /** One exposure of a frame, as `draw` receives it. */
 export type ThreeSample = {
-  /** Seconds from the frame's time to this exposure: 0 for the last, back to −shutter/FPS. Build the scene at t + dt. */
+  /** Seconds from the frame's time to this exposure: 0 for the last, back to −shutter/fps. Build the scene at t + dt. */
   dt: number;
   /** This exposure's place among the frame's `count`. */
   index: number;
@@ -30,7 +31,7 @@ export type ThreeSample = {
 /**
  * A thin lens. `focus` is the distance along the view in scene units that's sharp; `aperture` the lens's opening in
  * scene units. A point at distance d blurs to a disc f·aperture·|1/focus − 1/d| px across, f being the focal length in
- * px ((H/2)/tan(fov/2)), in front of the focus as behind it.
+ * px ((h/2)/tan(fov/2), h the stage's height), in front of the focus as behind it.
  */
 export type ThreeLens = { focus: number; aperture: number };
 /** Bloom: linear light above `threshold` glows (1 is white before tone mapping), `strength` 0.3–1.5, `radius` 0..1. */
@@ -44,7 +45,7 @@ export type ThreeEnvironment = { key: string; scene: () => THREE.Scene; blur?: n
 /** Draws `draw()`'s scene through its camera over the whole frame (or `box`), averaging `samples` exposures. */
 export function ThreeStage({
   draw, samples = 1, shutter = 0.5, lens, softShadows = 0, bloom, transparent = false, backdrop = '#000000',
-  box = { x: 0, y: 0, w: W, h: H }, shadows = false, environment = false, toneMapping = THREE.ACESFilmicToneMapping, exposure = 1,
+  box: given, shadows = false, environment = false, toneMapping = THREE.ACESFilmicToneMapping, exposure = 1,
 }: {
   draw: (sample: ThreeSample) => ThreeFrame;
   /**
@@ -71,6 +72,8 @@ export function ThreeStage({
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const gl = useRef<StageGl | null>(null);
+  const { fps, ...size } = useVideoFormat();
+  const box = given ?? fullFrameRect(size);
 
   useLayoutEffect(() => {
     gl.current ??= createStageGl(canvas.current!, transparent);
@@ -93,7 +96,7 @@ export function ThreeStage({
     renderer.clear(true, false, false);
 
     for (const [index, e] of exposures.entries()) {
-      const { scene, camera } = draw({ dt: -(1 - e.time) * (shutter / FPS), index, count, environment: room });
+      const { scene, camera } = draw({ dt: -(1 - e.time) * (shutter / fps), index, count, environment: room });
       if (room && !scene.environment) scene.environment = room;
       camera.aspect = box.w / box.h;
       camera.updateProjectionMatrix();

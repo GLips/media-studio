@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { framingProblems, takeFitWarnings, type FramingMark } from './framing-check.ts';
 
+const FRAME_SIZE = { width: 1920, height: 1080 };
+
 const box = (x: number, y: number, w: number, h: number) => ({ x, y, w, h });
 const mark = (m: Partial<FramingMark> & Pick<FramingMark, 'kind' | 'rect'>): FramingMark =>
   ({ shown: m.rect, strength: 1, opacity: 1, scene: 'combo', ...m });
@@ -16,7 +18,7 @@ test('an expected highlight must be drawn and clear for its whole span; any high
     { frame: 12, marks: [caption, matches(880)] },      // slid under the caption
     { frame: 20, marks: [mark({ kind: 'subject', rect: box(900, 300, 200, 80), shown: box(900, 300, 60, 80) })] },
   ].map((r) => ({ ...r, takeFitStrains: [] }));
-  assert.deepEqual(framingProblems(reports, expectations, fps, { first: 10, last: 20 }).map((p) => [p.from, p.problem]), [
+  assert.deepEqual(framingProblems(reports, expectations, fps, FRAME_SIZE, { first: 10, last: 20 }).map((p) => [p.from, p.problem]), [
     [1, 'expected highlight "matches" isn\'t drawn (expect, 1.00–1.30s)'],
     [1.2, 'highlight "matches" is under the caption'],
     [1.2, 'expected highlight "matches" is under the caption (expect, 1.00–1.30s)'],

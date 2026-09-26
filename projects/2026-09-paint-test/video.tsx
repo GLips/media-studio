@@ -2,7 +2,7 @@
 // around the price, anchored to its word.
 
 import type { Pts } from 'p5';
-import { Capture, EndCard, camFit, defineScene, defineVideo, screenRect, seg, view, type Rect } from '#studio';
+import { Capture, EndCard, camFit, defineScene, defineVideo, screenRect, seg, useVideoFormat, view, type Rect } from '#studio';
 import { PAL, Watercolor, hash, type WatercolorKit } from '#paint/watercolor.tsx';
 import { voice } from './audio/manifest.ts';
 import { captures as C } from './captures/index.ts';
@@ -57,7 +57,8 @@ const ring = defineScene({
   id: 'ring', note: 'The painted wipe clears onto the real product page, and an ink ring circles the price as the voice says it.',
   lines: ['ring'], lead: 0.5, tail: 1.2, cut: true,
   render: (s) => {
-    const shot = C.home, v = view(shot, camFit(shot, shot.rects.price, { pad: 300, maxZoom: 1.4 }));
+    const frame = useVideoFormat();
+    const shot = C.home, v = view(shot, camFit(shot, shot.rects.price, frame, { pad: 300, maxZoom: 1.4 }), frame);
     const price = s.line('ring').word('price').start;
     return (
       <>

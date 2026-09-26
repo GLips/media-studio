@@ -18,7 +18,6 @@ import { artifactSink, DELIVERY_AUDIO_CODEC, RENDER_CHROMIUM, RENDER_CONCURRENCY
 import { loadRenderSnapshot, writeRenderSnapshot } from '../snapshot/render-snapshot.ts';
 import { sfxEventsFrom, sfxMarkArtifactName, type SfxEvent, type SfxMark } from '#sfx/cue-events.ts';
 import { sfxCueListReport } from '#sfx/project-cue-list.ts';
-import { W } from '#models/frame/frame.ts';
 import { isVoicedWithDraft } from '../voice/voice-project.ts';
 import type { TimelineReport } from '#studio/composition/Video.tsx';
 import { countVideoFrames, measureWithFfmpeg, runFfmpeg, runFfprobe } from '../ffmpeg/ffmpeg.ts';
@@ -78,7 +77,7 @@ export async function checkProject(session: RenderSession, scope: CheckScope = {
 
   const reports = frames.map((f) => sink.json<FramingReport>(framingArtifactName(f)));
   const sees = timeline.expectations.filter((e) => 'see' in e), holds = timeline.expectations.filter((e) => 'hold' in e);
-  const problems = framingProblems(reports, sees, fps, span);
+  const problems = framingProblems(reports, sees, fps, timeline, span);
   const problemLine = (p: { from: number; to: number; scene?: string; problem: string }) => `  ✗ ${p.from.toFixed(2)}–${p.to.toFixed(2)}s  ${p.scene ? `[${p.scene}] ` : ''}${p.problem}`;
   const report = [...problems.map(problemLine), ...takeFitWarnings(reports).map((w) => `  ! [${w.scene}] ${w.warning}`)];
   const expected = sees.length ? `, ${sees.length} expectation${sees.length > 1 ? 's' : ''}` : '';
@@ -251,7 +250,8 @@ function reviewDelivery(session: RenderSession, captions: boolean, timeline: Tim
 
   const tiles = 16, out = join(outDirFor(session), 'check', captions ? 'review-captions.jpg' : 'review.jpg');
   mkdirSync(dirname(out), { recursive: true });
-  runFfmpeg(['-y', '-loglevel', 'error', '-i', video, '-vf', `fps=${tiles}/${actual},scale=480:-1,tile=4x4`, '-frames:v', '1', out]);
+  // Each tile fits a 480 px square, so a vertical video's sheet is no taller than a landscape one's is wide.
+  runFfmpeg(['-y', '-loglevel', 'error', '-i', video, '-vf', `fps=${tiles}/${actual},scale=480:480:force_original_aspect_ratio=decrease:force_divisible_by=2,tile=4x4`, '-frames:v', '1', out]);
   console.error(`${video}: ${actual.toFixed(2)}s, ${sound} ✓  sheet → ${out}`);
 }
 
@@ -423,12 +423,12 @@ export async function checkFramesRepeatable(session: RenderSession, times: numbe
   const bad = frames.find((f) => !(f >= 0 && f < durationInFrames));
   if (bad !== undefined) throw new Error(`${bad / fps}s is outside the video`);
   const fresh = new Map<number, Awaited<ReturnType<typeof session.renderStills>>>();
-  for (const f of frames) fresh.set(f, await session.renderStills([f], { w: W }));
+  for (const f of frames) fresh.set(f, await session.renderStills([f]));
   const order = [
     ...frames, ...[...frames].reverse(),
     ...frames.flatMap((f) => [Math.min(durationInFrames - 1, f + 7), f, Math.max(0, f - 11), f]),
   ];
-  const replay = await session.renderReplay(order, { w: W });
+  const replay = await session.renderReplay(order);
   const worst = new Map<number, number>();
   for (const [i, f] of order.entries()) {
     if (!fresh.has(f)) continue;

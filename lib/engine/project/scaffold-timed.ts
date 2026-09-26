@@ -134,8 +134,8 @@ const binderName = (scene: StarterScene) => `${scene.id}${scene.folder === 'bars
 
 function sceneModule(scene: StarterScene) {
   return `// ${scene.folder === 'bars' ? 'Bar' : 'Scene'} ${scene.id}. ${scene.note} Blocked: flat pieces moving on its cues, at the real
-// timing. Block what the scene shows, then build it to final; that changes this binding only, never timeline.ts. Its
-// helpers go in ${scene.folder}/${scene.id}/.
+// timing, placed in px of the default 1920×1080 frame. Block what the scene shows, then build it to final; that changes
+// this binding only, never timeline.ts. Its helpers go in ${scene.folder}/${scene.id}/.
 import type { TimelineSceneClock } from '#models/timeline/bind-timeline.ts';
 import { blockingScene } from '#studio';
 import type { timeline } from '../timeline.ts';

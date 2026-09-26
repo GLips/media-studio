@@ -3,7 +3,7 @@
 // inks and plates a frame mixes. Runs without a browser; reel/hud.tsx draws it.
 
 import type { Point, Rect } from '#models/camera/camera.ts';
-import { FPS, H, W } from '#models/frame/frame.ts';
+import type { FrameSize, VideoFormat } from '#models/frame/frame.ts';
 import { MONO_ADVANCE_EM, MONO_CAP_EM } from '#models/type/faces.ts';
 import { scrambleAt } from './type.ts';
 
@@ -47,11 +47,9 @@ export type ReelHudLayoutProps = {
    */
   beatOf?: (t: number) => number;
   beatsPerBar?: number;
-  /** The timecode's frame rate: FF runs 00 to fps − 1. */
-  fps?: number;
   title?: string;
   subtitle?: string;
-  /** The top-right readout. Default `N BPM   fps FPS   1920×1080`, N from `beatOf`. */
+  /** The top-right readout. Default `N BPM   fps FPS   width×height`, N from `beatOf` and the rest the video's format. */
   readout?: string;
   sections?: readonly ReelHudSection[];
   /**
@@ -68,20 +66,20 @@ export const REFERENCE_SECTIONS: readonly ReelHudSection[] = [
   'SQUASH & STRETCH', 'KINETIC TYPE', 'GENERATIVE GRID', '3D / DEPTH', 'VARIABLE FONTS', 'PARTICLES ×12 000', 'EDIT / RHYTHM', 'HIRE ME',
 ].map((title, k) => ({ at: 4 * k * REFERENCE_SPB, title }));
 
-function reelHudLayoutFor(props: ReelHudLayoutProps, t: number) {
-  const { size = 20, title = 'CLAUDE', subtitle = 'MOTION REEL 2026', sections = REFERENCE_SECTIONS, beatOf = (s: number) => s / REFERENCE_SPB, beatsPerBar = 4, fps = FPS } = props;
+function reelHudLayoutFor(props: ReelHudLayoutProps, t: number, format: VideoFormat) {
+  const { size = 20, title = 'CLAUDE', subtitle = 'MOTION REEL 2026', sections = REFERENCE_SECTIONS, beatOf = (s: number) => s / REFERENCE_SPB, beatsPerBar = 4 } = props;
   const i = sections.findLastIndex((s) => s.at <= t + 1e-6);
   const label = i < 0 ? null : sectionLabel(i, sections[i].title);
-  return reelHudLayout({ size, title, subtitle, readout: props.readout ?? defaultReadout(beatOf, fps), label, beatsPerBar });
+  return reelHudLayout({ size, title, subtitle, readout: props.readout ?? defaultReadout(beatOf, format), label, beatsPerBar, frame: format });
 }
 
 /**
- * Each part's box at `t` in frame px: its text, squares or rule, the height of a bracket's arm, and from the bracket's
- * outer corner on the corner slots. What `readAt` is asked about, and what a plate covers, with 0.4 em to spare. The
- * section label's is the label current at `t`.
+ * Each part's box at `t` in px of a frame of `format`: its text, squares or rule, the height of a bracket's arm, and
+ * from the bracket's outer corner on the corner slots. What `readAt` is asked about, and what a plate covers, with 0.4
+ * em to spare. The section label's is the label current at `t`.
  */
-export function reelHudBoxes(props: ReelHudLayoutProps, t: number): Record<ReelHudSlot, Rect> {
-  return reelHudLayoutFor(props, t).boxes;
+export function reelHudBoxes(props: ReelHudLayoutProps, t: number, format: VideoFormat): Record<ReelHudSlot, Rect> {
+  return reelHudLayoutFor(props, t, format).boxes;
 }
 
 /**
@@ -208,7 +206,8 @@ export function reelHudPlateMix(plateAt: (t: number) => string | undefined, t: n
 
 // ---------- layout ----------
 
-// The reference's geometry at its 14 px text, in px of the 1920×1080 frame; `size` scales all of it.
+// The reference's geometry at its 14 px text, in px of its 1920×1080 frame, measured in from the frame's edges; `size`
+// scales all of it.
 const REF = {
   size: 14, inset: 43, arm: 25, stroke: 2, topY: 55, bottomUp: 53.5,
   textX: 84, subtitleGap: 24, timecodeX: 85, right: 84,
@@ -219,27 +218,27 @@ const REF = {
 const EM = { advance: 0.7, timecodeAdvance: 0.674, glyph: MONO_ADVANCE_EM, cap: MONO_CAP_EM };
 
 type HudLayoutInput = {
-  size: number; title: string; subtitle: string; readout: string; label: string | null; beatsPerBar: number;
+  size: number; title: string; subtitle: string; readout: string; label: string | null; beatsPerBar: number; frame: FrameSize;
 };
 
-export function reelHudLayout({ size, title, subtitle, readout, label, beatsPerBar }: HudLayoutInput) {
+export function reelHudLayout({ size, title, subtitle, readout, label, beatsPerBar, frame }: HudLayoutInput) {
   const k = size / REF.size;
   const whole = (v: number) => Math.max(1, Math.round(v * k));
   const inset = whole(REF.inset), arm = whole(REF.arm), stroke = whole(REF.stroke);
   const advance = EM.advance * size, timecodeAdvance = EM.timecodeAdvance * size, glyph = EM.glyph * size;
-  const topY = REF.topY * k, bottomY = H - REF.bottomUp * k;
+  const topY = REF.topY * k, bottomY = frame.height - REF.bottomUp * k;
   const baseline = (y: number) => y + (EM.cap * size) / 2;
   const width = (s: string, adv = advance) => ([...s].length - 1) * adv + glyph;
-  const right = W - REF.right * k;
+  const right = frame.width - REF.right * k;
 
   const titleX = REF.textX * k;
   const subtitleX = titleX + [...title].length * advance + REF.subtitleGap * k;
   const readoutX = right - width(readout);
   const timecodeX = REF.timecodeX * k;
   const square = whole(REF.square), pitch = Math.round(REF.pitch * k), squaresX = Math.round(REF.squaresX * k);
-  const ruleX = Math.round(REF.ruleX * k), ruleW = Math.round(W - REF.ruleRight * k) - ruleX;
+  const ruleX = Math.round(REF.ruleX * k), ruleW = Math.round(frame.width - REF.ruleRight * k) - ruleX;
   // Each row is a bracket's arm tall, so a part's box holds its text with room around it and a plate lines up with the corners.
-  const top = { y: inset, h: arm }, bottom = { y: H - inset - arm, h: arm };
+  const top = { y: inset, h: arm }, bottom = { y: frame.height - inset - arm, h: arm };
   const span = (x0: number, x1: number, row: { y: number; h: number }): Rect => ({ x: x0, y: row.y, w: x1 - x0, h: row.h });
 
   return {
@@ -248,12 +247,12 @@ export function reelHudLayout({ size, title, subtitle, readout, label, beatsPerB
     square, pitch, squaresX, squareStroke: Math.round(REF.squareStroke * k * 2) / 2, ruleX, ruleW, rule: whole(REF.rule),
     boxes: {
       tl: span(inset, subtitleX + width(subtitle), top),
-      tr: span(readoutX, W - inset, top),
+      tr: span(readoutX, frame.width - inset, top),
       timecode: span(inset, timecodeX + width('00:00:00:00', timecodeAdvance), bottom),
       beats: span(squaresX, squaresX + (beatsPerBar - 1) * pitch + square, bottom),
       progress: span(ruleX, ruleX + ruleW, bottom),
       // Before the first section there's only the bracket.
-      section: span(label ? right - width(label) : W - inset - arm, W - inset, bottom),
+      section: span(label ? right - width(label) : frame.width - inset - arm, frame.width - inset, bottom),
     } satisfies Record<ReelHudSlot, Rect>,
   };
 }
@@ -293,7 +292,8 @@ export function hudPlates(g: HudLayout, mixAt: (slot: ReelHudSlot) => { color: s
 
 export const sectionLabel = (i: number, title: string) => `${String(i + 1).padStart(2, '0')} — ${title}`;
 
-export const defaultReadout = (beatOf: (t: number) => number, fps: number) => `${Math.round((60 * (beatOf(8) - beatOf(0))) / 8)} BPM   ${fps} FPS   1920×1080`;
+export const defaultReadout = (beatOf: (t: number) => number, { fps, width, height }: VideoFormat) =>
+  `${Math.round((60 * (beatOf(8) - beatOf(0))) / 8)} BPM   ${fps} FPS   ${width}×${height}`;
 
 /** An L from its outer corner (x, y), arms running `dx`, `dy` (±1), `arm` px long including the stroke. */
 export function bracketPath(x: number, y: number, dx: number, dy: number, arm: number, stroke: number) {

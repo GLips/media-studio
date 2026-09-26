@@ -12,6 +12,9 @@ declare module 'p5' {
     ADD: string;
     BLEND: string;
     canvas: HTMLCanvasElement;
+    /** The canvas's size, in the pixels createCanvas was given. */
+    width: number;
+    height: number;
     setup?: () => void | Promise<void>;
     draw?: () => void;
     createCanvas(w: number, h: number, mode: 'webgl'): void;

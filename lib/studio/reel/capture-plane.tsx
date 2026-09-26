@@ -8,9 +8,10 @@
 
 import type { CSSProperties, ReactNode } from 'react';
 import { Img } from 'remotion';
-import { inflate, rectToScreen, scaleFor, type Point, type Rect, type View } from '#models/camera/camera.ts';
-import { FPS, H, W } from '#models/frame/frame.ts';
+import { centerOf, inflate, rectToScreen, viewScale, type Point, type Rect, type View } from '#models/camera/camera.ts';
+import { fullFrameRect } from '#models/frame/frame.ts';
 import { clamp } from '#models/motion/motion.ts';
+import { useVideoFormat } from '../composition/video-format.ts';
 import { cameraMotionAttrs, motionEchoAttrs, pieceMotionAttrs } from '../probe/motion-tag.ts';
 import { dotVec3, type Vec3 } from '#models/camera/vec3.ts';
 import {
@@ -75,12 +76,13 @@ export type CapturePlaneProps = {
  *     lift={{ rect: union(...shot.rects.swatches), at: grid.at(3) }} />
  */
 export function CapturePlane(props: CapturePlaneProps) {
-  const { t, view: v, pose = {}, lens = 1100, vanish = { x: W / 2, y: H / 2 }, drift = 1, seed, shutter = 1, shadow = 'rgba(0, 0, 0, 0.6)', elevation = 44, blur = 0, alpha = 1 } = props;
+  const { t, view: v, pose = {}, lens = 1100, vanish = centerOf(fullFrameRect(v.frameSize)), drift = 1, seed, shutter = 1, shadow = 'rgba(0, 0, 0, 0.6)', elevation = 44, blur = 0, alpha = 1 } = props;
+  const { fps } = useVideoFormat();
   if (alpha <= 0) return null;
   const driftSeed = seed ?? `${v.shot.src}|${v.box.x}|${v.box.y}`;
   const poseAt = (at: number) => withDrift({ ...PLANE_REST_POSE, ...(typeof pose === 'function' ? pose(at) : pose) }, at, driftSeed, drift);
   const now = poseAt(t);
-  const trail = typeof pose === 'function' && shutter > 0 ? planeTrail(v, now, poseAt(t - 1 / FPS), lens, vanish, shutter) : null;
+  const trail = typeof pose === 'function' && shutter > 0 ? planeTrail(v, now, poseAt(t - 1 / fps), lens, vanish, shutter) : null;
   return (
     <>
       {shadow !== false && <PlaneShadow box={v.box} pose={now} lens={lens} vanish={vanish} radius={props.radius ?? 18} light={lightDirection(props.light)} elevation={elevation} color={shadow} blur={blur} alpha={alpha} />}
@@ -88,7 +90,7 @@ export function CapturePlane(props: CapturePlaneProps) {
         // Isolated, so the exposures add up among themselves and the sum lies over the ground as one layer.
         <div {...motionEchoAttrs} style={{ position: 'absolute', inset: 0, isolation: 'isolate', pointerEvents: 'none' }}>
           {trail.exposures.map(({ ago, share }) => (
-            <PlaneExposure key={ago} {...props} pose={poseAt(t - ago / FPS)} at={t - ago / FPS} opacity={alpha * share} blur={Math.hypot(blur, trail.soften)} echo />
+            <PlaneExposure key={ago} {...props} pose={poseAt(t - ago / fps)} at={t - ago / fps} opacity={alpha * share} blur={Math.hypot(blur, trail.soften)} echo />
           ))}
         </div>
       )}
@@ -103,12 +105,12 @@ type ExposureProps = Omit<CapturePlaneProps, 'pose'> & { pose: PlanePose; at: nu
 
 /** One exposure of the card: its lens root, the card at `pose`, whichever face is toward the viewer, and the lift. */
 function PlaneExposure(props: ExposureProps) {
-  const { view: v, pose, at, opacity, echo = false, lens = 1100, vanish = { x: W / 2, y: H / 2 }, radius = 18, blur = 0, sheen = 0.16, sheenWidth = 0.28, back = '#1d1d21', paper = '#fff', lift, motion } = props;
-  const { box, shot, cam } = v;
+  const { view: v, pose, at, opacity, echo = false, lens = 1100, vanish = centerOf(fullFrameRect(v.frameSize)), radius = 18, blur = 0, sheen = 0.16, sheenWidth = 0.28, back = '#1d1d21', paper = '#fff', lift, motion } = props;
+  const { box } = v;
   const f = planeFrame(box, pose);
   const facing = dotVec3(along(eyeOf(lens, vanish), f.c, -1), f.n) > 0;
   const up = lift ? liftHeight(lift, at) : 0;
-  const plate = lift && up > 0.001 ? rectToScreen(shot, cam, inflate(lift.rect, lift.pad ?? 6), box) : null;
+  const plate = lift && up > 0.001 ? rectToScreen(v, inflate(lift.rect, lift.pad ?? 6)) : null;
   const plateScale = 1 + ((lift?.scale ?? 1.08) - 1) * up;
   const plateZ = (lift?.height ?? 64) * up;
   // Chrome rasterizes a 3D layer at its layout size, so a card the lens magnifies would be upsampled and soft. It's
@@ -123,9 +125,9 @@ function PlaneExposure(props: ExposureProps) {
   // Frame px per capture px where the shown capture is most magnified in frame, recorded so a graph can show a capture
   // too small for its closest frame: past about 1.3, its text goes soft. A parent's scale multiplies it.
   const shown = facing ? v : typeof back === 'string' ? null : back;
-  const upscale = shown ? (scaleFor(shown.shot, shown.cam.zoom) * framedStretch(f, box, lens, vanish, lifted)) / shown.shot.scale : 0;
+  const upscale = shown ? (viewScale(shown) * framedStretch(f, box, lens, vanish, lifted, v.frameSize)) / shown.shot.scale : 0;
   const side = facing ? f : backOf(f);
-  const lit = faceLight(side, box, props, ss);
+  const lit = faceLight(side, box, props, ss, v.frameSize);
   const len = sheenLineLength(box.w, box.h);
   const sheenCentre = ((lit.sheen + len / 2) / len) * 100;
   const tagged = !echo && motion !== false;
@@ -182,8 +184,8 @@ function PlaneExposure(props: ExposureProps) {
 }
 
 /** The view's crop laid out at `ss` times its on-screen size, as Capture lays it out at 1. */
-function CaptureCrop({ view: { shot, cam, box }, ss, blur = 0 }: { view: View; ss: number; blur?: number }) {
-  const k = scaleFor(shot, cam.zoom) * ss;
+function CaptureCrop({ view, ss, blur = 0 }: { view: View; ss: number; blur?: number }) {
+  const { shot, cam, box } = view, k = viewScale(view) * ss;
   return (
     <Img src={shot.src} style={{
       position: 'absolute', left: (box.w * ss) / 2 - cam.cx * k, top: (box.h * ss) / 2 - cam.cy * k, width: shot.w * k, height: shot.h * k, maxWidth: 'none',

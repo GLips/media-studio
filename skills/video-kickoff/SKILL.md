@@ -46,7 +46,8 @@ The first message is usually messy and dictated. Pull these out of it, and ask o
   install there, lifecycle scripts included. To show unpushed or uncommitted work, map the name to the working copy
   in `hosts.local.json` instead: it's used as it stands, and you install its packages yourself.
 - **A reference video**, if they have one for the style.
-- **Rough length.** Frames are 1920×1080.
+- **Rough length, and the frame.** Frames are 1920×1080 at 30 fps unless the video asks for another shape (a vertical
+  cut, a square) or rate: `defineVideo({ format })`.
 
 ## 2. Five angles, then one
 

@@ -12,17 +12,16 @@ import { framingArtifactName, type FramingMark, type FramingReport } from '#mode
 import { motionArtifactName, type FrameMotion, type MotionSample, type ScenePhase, type StaggerMembership } from '#models/motion/motion-tracks.ts';
 import { sfxMarkArtifactName, type SfxMark, type SfxMarkAttr } from '#sfx/cue-events.ts';
 import type { Rect } from '#models/camera/camera.ts';
-import { W } from '#models/frame/frame.ts';
 import type { CameraMark } from './motion-tag.ts';
 import { whenLaidOut } from './screen-rect.ts';
 import { drainTakeFitStrains } from './take-fit-strain.ts';
 
 type ClientRect = { left: number; top: number; right: number; bottom: number };
 
-/** Client pixels (the Studio preview is scaled) to composition pixels, against the root's box. */
-function frameMapper(root: HTMLElement) {
+/** Client pixels (the Studio preview is scaled) to composition pixels, against the root's box, `width` wide. */
+function frameMapper(root: HTMLElement, width: number) {
   const box = root.getBoundingClientRect();
-  const scale = box.width / W;
+  const scale = box.width / width;
   return (r: ClientRect): Rect => ({ x: (r.left - box.left) / scale, y: (r.top - box.top) / scale, w: (r.right - r.left) / scale, h: (r.bottom - r.top) / scale });
 }
 
@@ -38,8 +37,8 @@ function effectiveOpacity(el: Element, root: HTMLElement) {
   return opacity;
 }
 
-function measureFraming(root: HTMLElement, frame: number): FramingReport {
-  const toFrame = frameMapper(root);
+function measureFraming(root: HTMLElement, frame: number, width: number): FramingReport {
+  const toFrame = frameMapper(root, width);
   const marks = measurable<HTMLElement | SVGElement>(root, '[data-framing]').map((el): FramingMark => {
     const r = el.getBoundingClientRect();
     let { left, top, right, bottom } = r;
@@ -127,8 +126,8 @@ function parseAttr<T>(el: Element, attr: string, problems: FrameMotion['problems
   }
 }
 
-function measureMotion(root: HTMLElement, frame: number): FrameMotion {
-  const toFrame = frameMapper(root);
+function measureMotion(root: HTMLElement, frame: number, width: number): FrameMotion {
+  const toFrame = frameMapper(root, width);
   const layers = [...root.querySelectorAll<HTMLElement>('[data-scene]')];
   const report: FrameMotion = { frame, scenes: layers.map((l) => l.dataset.scene!), samples: [], unmeasured: [], problems: [] };
   layers.forEach((layer, i) => {
@@ -220,7 +219,7 @@ function measureSfxMarks(root: HTMLElement, now: number): SfxMark[] {
 export function FrameProbe({ root }: { root: RefObject<HTMLDivElement | null> }) {
   // The video's frame: the probe sits at the composition's root, outside every scene's Sequence.
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, width } = useVideoConfig();
   const { delayRender, continueRender } = useDelayRender();
   const [report, setReport] = useState<{ frame: number; framing: string; motion: string; sfx: string } | null>(null);
   const pending = useRef<number | null>(null);
@@ -234,7 +233,7 @@ export function FrameProbe({ root }: { root: RefObject<HTMLDivElement | null> })
     Promise.resolve().then(() => whenLaidOut(root.current!)).then(() => setTimeout(() => {
       if (live) {
         setReport({
-          frame, framing: JSON.stringify(measureFraming(root.current!, frame)), motion: JSON.stringify(measureMotion(root.current!, frame)),
+          frame, framing: JSON.stringify(measureFraming(root.current!, frame, width)), motion: JSON.stringify(measureMotion(root.current!, frame, width)),
           sfx: JSON.stringify(measureSfxMarks(root.current!, frame / fps)),
         });
       }
@@ -246,7 +245,7 @@ export function FrameProbe({ root }: { root: RefObject<HTMLDivElement | null> })
         pending.current = null;
       }
     };
-  }, [frame, fps, root, delayRender, continueRender]);
+  }, [frame, fps, width, root, delayRender, continueRender]);
 
   useEffect(() => {
     if (report?.frame !== frame || pending.current === null) return;

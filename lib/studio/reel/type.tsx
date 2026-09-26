@@ -12,11 +12,11 @@ import { useId } from 'react';
 import { inflate, type Rect } from '#models/camera/camera.ts';
 import { useStudioFontsReady } from '../fonts/fonts.ts';
 import { DISPLAY_FONT, MONO_ADVANCE_EM, MONO_CAP_EM, MONO_FONT } from '#models/type/faces.ts';
-import { H, W } from '#models/frame/frame.ts';
 import { clamp, lerp, motionCurves, powerOutEase } from '#models/motion/motion.ts';
 import { REEL_SHUTTER, shutterOpensAt, shutterTravel, smearSigma } from '#models/motion/shutter.ts';
+import { useVideoFormat } from '../composition/video-format.ts';
 import { pieceMotionAttrs } from '../probe/motion-tag.ts';
-import { FRAME_EDGES, labelAt, leftOf, lerpRect, type Align, type Setting } from '#models/reel/type.ts';
+import { frameEdgesRect, labelAt, leftOf, lerpRect, type Align, type Setting } from '#models/reel/type.ts';
 import { faceStyle, layer, measureWord, widerSetting } from './type-measure.ts';
 
 const outExpo = motionCurves.expo.entrance;
@@ -56,7 +56,7 @@ const RULE_TIME = 0.33;
  * (letters − 1) × each + duration on. Defaults: caps 318 px (29% of frame height), Archivo Black at width 91.3.
  */
 export function RiseWord({
-  t, text, x = W / 2, y, cap = 318, color = '#15090c', align = 'center', weight = 900, stretch = 91.3, spacing = -0.02,
+  t, text, x: givenX, y, cap = 318, color = '#15090c', align = 'center', weight = 900, stretch = 91.3, spacing = -0.02,
   duration = 0.4, each = 0.025, rise = 1.045, widen = 0.07, rule = false, label, labelColor = color, shutter = REEL_SHUTTER, motion,
 }: {
   /** Seconds since the first letter starts. */
@@ -89,11 +89,12 @@ export function RiseWord({
 }) {
   const id = useId();
   const ready = useStudioFontsReady();
+  const { width, height } = useVideoFormat(), x = givenX ?? width / 2;
   if (!ready || t < 0) return null;
   const rest: Setting = { family: DISPLAY_FONT, cap, weight, stretch, spacing };
   const wide = widerSetting(text, rest, widen);
   const [set, wideSet] = [measureWord(text, rest), measureWord(text, wide)];
-  const base = y ?? H / 2 + cap / 2;
+  const base = y ?? height / 2 + cap / 2;
   const left = leftOf(x, set.width, align), wideLeft = leftOf(x, wideSet.width, align);
   // Both layouts are measured once; between them each letter's place and its glyph's width move together.
   const loose = 1 - outExpo(t / duration);
@@ -118,10 +119,10 @@ export function RiseWord({
   const ruleTip = tip(t), ruleRamp = shutter > 0 ? shutterTravel(tip, t, shutter, RULE_AT) : 0;
   const ruleSolid = Math.max(0, ruleTip - ruleRamp / 2), ruleY = base + RULE_GAP * cap;
   return (
-    <svg width={W} height={H} style={layer}>
+    <svg width={width} height={height} style={layer}>
       <defs>
         <clipPath id={`${id}-mask`}>
-          <rect x={-W} y={-H} width={3 * W} height={H + base + RISE_MASK * cap} />
+          <rect x={-width} y={-height} width={3 * width} height={height + base + RISE_MASK * cap} />
         </clipPath>
         {letters.map((c) => c.sigma > 0.25 && (
           <filter key={c.i} id={`${id}-smear${c.i}`} x="-5%" y="-60%" width="110%" height="220%" colorInterpolationFilters="sRGB">
@@ -173,7 +174,7 @@ export type WordSelection = { pad?: number; from?: Rect; delay?: number; duratio
  * landed word. Still from `duration` on, and its selection from 0.32 s. Defaults: caps 264 px (24% of frame height).
  */
 export function WeightWord({
-  t, text, x = W / 2, y, cap = 264, color = '#e84a20', align = 'center', from = 100, to = 900, stretch = 85, stretchTo = stretch,
+  t, text, x: givenX, y, cap = 264, color = '#e84a20', align = 'center', from = 100, to = 900, stretch = 85, stretchTo = stretch,
   spacing = 0, duration = 0.3, select = false, label, labelColor = color, motion,
 }: {
   /** Seconds since the morph starts. */
@@ -200,10 +201,11 @@ export function WeightWord({
   motion?: string | false;
 }) {
   const ready = useStudioFontsReady();
+  const { width, height } = useVideoFormat(), x = givenX ?? width / 2;
   if (!ready || t < 0) return null;
   const landed: Setting = { family: DISPLAY_FONT, cap, weight: to, stretch: stretchTo, spacing };
   const set = measureWord(text, landed);
-  const base = y ?? H / 2 + cap / 2;
+  const base = y ?? height / 2 + cap / 2;
   // Out-quart, not out-expo: Archivo's stems thicken faster toward Black, and on this curve they grow as the
   // reference's F does, near linear for eight frames and then easing.
   const k = outQuart(t / duration);
@@ -215,7 +217,7 @@ export function WeightWord({
   const frame = selection && inflate(box, selection.pad ?? 0.13 * cap);
   return (
     <>
-      <svg width={W} height={H} style={layer}>
+      <svg width={width} height={height} style={layer}>
         <text
           {...pieceMotionAttrs(motion, text, { kind: 'weight-word', values: { weight: setting.weight, stretch: setting.stretch } })}
           x={anchorX}
@@ -247,7 +249,7 @@ const PILL = { h: 30, gap: 19, size: 15, pad: 17, radius: 4 };
  * `delay` + `duration` on. Defaults, the reference's: from the frame's edges, 2 px #3a40f0 lines, 0.3 s.
  */
 export function SelectionBox({
-  t, to, from = FRAME_EDGES, delay = 1 / 60, duration = 0.3, color = '#3a40f0', handle = '#f2f0ee', readout = true, readoutAt = 0.11,
+  t, to, from: givenFrom, delay = 1 / 60, duration = 0.3, color = '#3a40f0', handle = '#f2f0ee', readout = true, readoutAt = 0.11,
   readoutColor = '#fff', shutter = REEL_SHUTTER, motion,
 }: {
   /** Seconds since it appears on `from`. */
@@ -268,6 +270,7 @@ export function SelectionBox({
   shutter?: number;
   motion?: string | false;
 }) {
+  const { width, height } = useVideoFormat(), from = givenFrom ?? frameEdgesRect({ width, height });
   if (t < 0) return null;
   const at = (tt: number) => lerpRect(from, to, outExpo((tt - delay) / duration));
   // The shutter's open and close, never before the box starts moving.
@@ -287,7 +290,7 @@ export function SelectionBox({
   const pill = { x: r.x + r.w / 2 - pillW / 2, y: r.y + r.h + PILL.gap, w: pillW };
   const shown = readout ? clamp((t - readoutAt) / 0.035) : 0;
   return (
-    <svg width={W} height={H} style={layer}>
+    <svg width={width} height={height} style={layer}>
       <rect {...pieceMotionAttrs(motion, 'selection', { kind: 'selection-box', values: { k: outExpo((t - delay) / duration) } })} x={r.x} y={r.y} width={r.w} height={r.h} fill="none" />
       {edges.map((e, i) => (
         <rect key={i} fill={color} opacity={e.alpha}

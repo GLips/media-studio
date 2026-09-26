@@ -7,7 +7,7 @@
 
 import { useId, type CSSProperties, type ReactNode } from 'react';
 import {
-  DISPLAY_FONT, FPS, H, REEL_SHUTTER, W, centerOf, clamp, lerp, motionAttrs, motionCurves, motionEchoAttrs, type Point, type Rect, type Shot, type Vec3, type View,
+  DISPLAY_FONT, REEL_SHUTTER, centerOf, clamp, lerp, motionAttrs, motionCurves, motionEchoAttrs, type Point, type Rect, type Shot, type Vec3, type View,
 } from '#studio';
 import { CapturePlane } from '#studio/reel/capture-plane.tsx';
 import { capturePlaneProjection, capturePlaneView, planeLiftStart, type PlaneLift, type PlanePose } from '#models/reel/capture-plane.ts';
@@ -21,14 +21,16 @@ import tapCharcoal from '../sfx/tap-charcoal.ts';
 import tapBlack from '../sfx/tap-black.ts';
 import { INK_FIRST_STRIKE } from '../ink-field.ts';
 import { P } from '../look.ts';
+import { SHOWCASE_FORMAT } from '../timeline.ts';
 
 export function swatchesBar(clock: ShowcaseClock<'swatches'>): Bar {
+  const { fps } = clock;
   const outExpo = motionCurves.expo.entrance;
 
   const FROM = clock.from;
   const TO = clock.to;
   const LENS = 1100;
-  const VANISH: Point = { x: W / 2, y: H / 2 };
+  const VANISH: Point = { x: SHOWCASE_FORMAT.width / 2, y: SHOWCASE_FORMAT.height / 2 };
 
   // ---------- the page ----------
 
@@ -54,7 +56,7 @@ export function swatchesBar(clock: ShowcaseClock<'swatches'>): Bar {
   /** A crop of the page as the card at CARD_SCALE, centred at rest: the view of each page, and how the card lays out. */
   type CardCrop = { crop: Rect; middle: Point; view: (shot: Shot) => View; layout: View };
   function cardCropOf(crop: Rect): CardCrop {
-    const view = (shot: Shot) => capturePlaneView(shot, crop, { fit: { w: crop.w * CARD_SCALE, h: crop.h * CARD_SCALE }, centre: VANISH });
+    const view = (shot: Shot) => capturePlaneView(shot, crop, SHOWCASE_FORMAT, { fit: { w: crop.w * CARD_SCALE, h: crop.h * CARD_SCALE }, centre: VANISH });
     return { crop, middle: centerOf(crop), view, layout: view(C['sol-black-word']) };
   }
   const CARD = cardCropOf(CROP);
@@ -266,10 +268,10 @@ export function swatchesBar(clock: ShowcaseClock<'swatches'>): Bar {
   // under it and it shows picked, then settles back as its word rises. Card px up, and scale: on screen it rises to
   // about 1.6 times its size on the page. The drop is twice the rise's pace, or it would start before the swatch arrives.
   const LIFT = { height: 80, scale: 1.4, dim: 0.03, pad: 4, radius: 10, socket: PANEL, dur: 0.3, bounce: 0.45, dropDur: 0.15 };
-  const liftAt = (i: number) => (TAPS[i].frame - 1) / FPS;
-  const landAt = (i: number) => (TAPS[i].frame + 6) / FPS;
+  const liftAt = (i: number) => (TAPS[i].frame - 1) / fps;
+  const landAt = (i: number) => (TAPS[i].frame + 6) / fps;
   /** The tap whose swatch is lifting, up or landing at `f`: CapturePlane lifts one control at a time. */
-  const liftingAt = (f: number) => TAPS.findLastIndex((_, i) => f / FPS >= planeLiftStart({ ...LIFT, at: liftAt(i) }));
+  const liftingAt = (f: number) => TAPS.findLastIndex((_, i) => f / fps >= planeLiftStart({ ...LIFT, at: liftAt(i) }));
 
   function liftFor(f: number): PlaneLift | undefined {
     const i = liftingAt(f);
@@ -287,7 +289,7 @@ export function swatchesBar(clock: ShowcaseClock<'swatches'>): Bar {
   const floodOrigin = (i: number) => cardPoint(centerOf(SWATCHES[TAPS[i].swatch]), floodStart(i), LIFT.height);
   const FLOOD_REACH = TAPS.map((_, i) => {
     const o = floodOrigin(i);
-    return Math.max(...[[0, 0], [W, 0], [W, H], [0, H]].map(([x, y]) => Math.hypot(x - o.x, y - o.y))) + 60;
+    return Math.max(...[[0, 0], [SHOWCASE_FORMAT.width, 0], [SHOWCASE_FORMAT.width, SHOWCASE_FORMAT.height], [0, SHOWCASE_FORMAT.height]].map(([x, y]) => Math.hypot(x - o.x, y - o.y))) + 60;
   });
   const floodRadius = (i: number, f: number) => FLOOD_REACH[i] * outExpo((f - floodStart(i)) / FLOOD_FRAMES);
   const flooded = (i: number, f: number) => floodRadius(i, f) >= FLOOD_REACH[i] - 1;
@@ -301,7 +303,7 @@ export function swatchesBar(clock: ShowcaseClock<'swatches'>): Bar {
     const r = floodRadius(i, f);
     // The edge travels this far while the reel's shutter is open, but no more than a fifth of the radius, the reference's
     // zoom-through at its fastest: on the flood's first frame the full smear would blur the disc into a cloud.
-    const smear = Math.max(8, Math.min(0.2 * r, r - floodRadius(i, f - REEL_SHUTTER * FPS)));
+    const smear = Math.max(8, Math.min(0.2 * r, r - floodRadius(i, f - REEL_SHUTTER * fps)));
     const o = floodOrigin(i);
     return `radial-gradient(circle at ${o.x.toFixed(1)}px ${o.y.toFixed(1)}px, #000 ${Math.max(0, r - smear / 2).toFixed(1)}px, transparent ${(r + smear / 2).toFixed(1)}px)`;
   }
@@ -368,7 +370,7 @@ export function swatchesBar(clock: ShowcaseClock<'swatches'>): Bar {
 
   function ColourWord({ i, f }: { i: number; f: number }) {
     const tap = TAPS[i];
-    const t = (f - wordStart(i)) / FPS;
+    const t = (f - wordStart(i)) / fps;
     if (t < 0 || f > WHIP.from) return null;
     const word = (unit: number, color: string, motion?: string) => (
       <RiseWord t={t} text={tap.word} x={0} y={0} cap={tap.cap * unit} color={color} stretch={tap.stretch} {...WORD_RISE} motion={motion ?? false} />
@@ -542,7 +544,7 @@ export function swatchesBar(clock: ShowcaseClock<'swatches'>): Bar {
   function DiveScreen({ f }: { f: number }) {
     const { shutter, exposures } = SCREEN_SMEAR;
     return (
-      <svg width={W} height={H} style={{ position: 'absolute', left: 0, top: 0, isolation: 'isolate', pointerEvents: 'none' }}
+      <svg width={SHOWCASE_FORMAT.width} height={SHOWCASE_FORMAT.height} style={{ position: 'absolute', left: 0, top: 0, isolation: 'isolate', pointerEvents: 'none' }}
         {...motionAttrs({ name: 'dive screen', values: { zoom: framingAt(f).zoom } })}>
         <AveragedExposures exposures={rampedShutter(f, shutter, exposures)} render={(t) => {
           const card = cardAt(t);
@@ -572,8 +574,8 @@ export function swatchesBar(clock: ShowcaseClock<'swatches'>): Bar {
   // of the rows, so the ripples on it never reach them.
   const RIPPLE_HUD_CLEAR = { gap: 6, fade: 48 };
   const HUD_PART_BOXES = Object.values(showcaseHudBoxesIn('swatches'));
-  const HUD_ROW_TOP_FOOT = Math.max(...HUD_PART_BOXES.filter((b) => b.y < H / 2).map((b) => b.y + b.h));
-  const HUD_ROW_BOTTOM_HEAD = Math.min(...HUD_PART_BOXES.filter((b) => b.y > H / 2).map((b) => b.y));
+  const HUD_ROW_TOP_FOOT = Math.max(...HUD_PART_BOXES.filter((b) => b.y < SHOWCASE_FORMAT.height / 2).map((b) => b.y + b.h));
+  const HUD_ROW_BOTTOM_HEAD = Math.min(...HUD_PART_BOXES.filter((b) => b.y > SHOWCASE_FORMAT.height / 2).map((b) => b.y));
   /** A mask's gradient stops down the frame (y, colour) that hide the off-card ripples on the HUD's rows. */
   const RIPPLE_HUD_STOPS: readonly (readonly [number, string])[] = [
     [HUD_ROW_TOP_FOOT + RIPPLE_HUD_CLEAR.gap, '#000'], [HUD_ROW_TOP_FOOT + RIPPLE_HUD_CLEAR.gap + RIPPLE_HUD_CLEAR.fade, '#fff'],
@@ -583,7 +585,7 @@ export function swatchesBar(clock: ShowcaseClock<'swatches'>): Bar {
   function TapRing({ i, f }: { i: number; f: number }) {
     const id = `tap-ring-${useId().replace(/[^\w-]/g, '')}`;
     const tap = TAPS[i];
-    const rings = RIPPLES.map((ring, n) => ({ ...ring, n, age: (f - (tap.frame - ring.lead)) / FPS })).filter(({ age, life }) => age >= 0 && age <= life);
+    const rings = RIPPLES.map((ring, n) => ({ ...ring, n, age: (f - (tap.frame - ring.lead)) / fps })).filter(({ age, life }) => age >= 0 && age <= life);
     // The black tap's rings would still be fading over the machine's close-up: the whip ends them.
     if (!rings.length || f > WHIP.from) return null;
     const c = centerOf(SWATCHES[tap.swatch]);
@@ -605,15 +607,15 @@ export function swatchesBar(clock: ShowcaseClock<'swatches'>): Bar {
       </g>
     );
     return (
-      <svg width={W} height={H} style={{ position: 'absolute', left: 0, top: 0, overflow: 'visible', pointerEvents: 'none' }}>
+      <svg width={SHOWCASE_FORMAT.width} height={SHOWCASE_FORMAT.height} style={{ position: 'absolute', left: 0, top: 0, overflow: 'visible', pointerEvents: 'none' }}>
         <defs>
           <clipPath id={`${id}-on`}><path d={`M${edge.join('L')}Z`} /></clipPath>
-          <clipPath id={`${id}-off`}><path d={`M0 0H${W}V${H}H0Z M${edge.join('L')}Z`} clipRule="evenodd" /></clipPath>
-          <linearGradient id={`${id}-rows`} gradientUnits="userSpaceOnUse" x1={0} y1={0} x2={0} y2={H}>
-            {RIPPLE_HUD_STOPS.map(([y, color]) => <stop key={y} offset={y / H} stopColor={color} />)}
+          <clipPath id={`${id}-off`}><path d={`M0 0H${SHOWCASE_FORMAT.width}V${SHOWCASE_FORMAT.height}H0Z M${edge.join('L')}Z`} clipRule="evenodd" /></clipPath>
+          <linearGradient id={`${id}-rows`} gradientUnits="userSpaceOnUse" x1={0} y1={0} x2={0} y2={SHOWCASE_FORMAT.height}>
+            {RIPPLE_HUD_STOPS.map(([y, color]) => <stop key={y} offset={y / SHOWCASE_FORMAT.height} stopColor={color} />)}
           </linearGradient>
-          <mask id={`${id}-clear`} maskUnits="userSpaceOnUse" x={0} y={0} width={W} height={H}>
-            <rect width={W} height={H} fill={`url(#${id}-rows)`} />
+          <mask id={`${id}-clear`} maskUnits="userSpaceOnUse" x={0} y={0} width={SHOWCASE_FORMAT.width} height={SHOWCASE_FORMAT.height}>
+            <rect width={SHOWCASE_FORMAT.width} height={SHOWCASE_FORMAT.height} fill={`url(#${id}-rows)`} />
           </mask>
         </defs>
         {ringsIn(tap.color, `${id}-on`, true)}
@@ -631,7 +633,7 @@ export function swatchesBar(clock: ShowcaseClock<'swatches'>): Bar {
       <>
         <Grounds f={f} />
         <CapturePlane
-          t={f / FPS} view={cardCropAt(f).view(WORLDS[w].shot)} pose={(t) => cardPose(t * FPS)} lens={LENS} vanish={VANISH}
+          t={f / fps} view={cardCropAt(f).view(WORLDS[w].shot)} pose={(t) => cardPose(t * fps)} lens={LENS} vanish={VANISH}
           light={{ x: -30, y: 38 }} elevation={70} shadow="rgba(0, 0, 0, 0.55)" sheen={0.1} rim={0.12} shade={0.05}
           drift={0} lift={liftFor(f)} shutter={0} motion="buy-box"
         />
@@ -652,7 +654,7 @@ export function swatchesBar(clock: ShowcaseClock<'swatches'>): Bar {
     // frame. CapturePlane's own trail is off for the same reason, and lies under the sharp card anyway.
     most: 12,
   };
-  const FRAME_PROBES: Point[] = [VANISH, { x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }];
+  const FRAME_PROBES: Point[] = [VANISH, { x: 0, y: 0 }, { x: SHOWCASE_FORMAT.width, y: 0 }, { x: SHOWCASE_FORMAT.width, y: SHOWCASE_FORMAT.height }, { x: 0, y: SHOWCASE_FORMAT.height }];
 
   /**
    * How the page under the frame moves from frame `a` to frame `b`: under its middle, how far its corners stray from

@@ -2,7 +2,7 @@
 // ScrambleText's decode and glitch schedule. Runs without a browser; the drawing measures and draws in reel/type*.tsx.
 
 import { inflate, multiplyAffine, type AffineMatrix, type Point, type Rect } from '#models/camera/camera.ts';
-import { FULL_FRAME } from '#models/frame/frame.ts';
+import { fullFrameRect, type FrameSize } from '#models/frame/frame.ts';
 import { clamp, lerp, motionCurves, sineInOutEase } from '#models/motion/motion.ts';
 import { hashRandom, seededRandom } from '#models/motion/random.ts';
 
@@ -26,7 +26,7 @@ export const labelAt = (box: Point) => ({ x: box.x + 6, y: box.y - 26 });
 // ---------- SelectionBox ----------
 
 /** The reference's start: the video frame's own edges, just inside so the lines and handles show. */
-export const FRAME_EDGES = inflate(FULL_FRAME, -10);
+export const frameEdgesRect = (size: FrameSize) => inflate(fullFrameRect(size), -10);
 
 export const lerpRect = (a: Rect, b: Rect, k: number): Rect => ({ x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k), w: lerp(a.w, b.w, k), h: lerp(a.h, b.h, k) });
 

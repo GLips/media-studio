@@ -8,14 +8,14 @@
 // under it. The motion is a pure function of time (`needlePoseAt` in #models/reel/needle.ts), drawn here.
 
 import * as THREE from 'three';
-import { H, W } from '#models/frame/frame.ts';
 import { motionCurves } from '#models/motion/motion.ts';
+import { useVideoFormat } from '../composition/video-format.ts';
 import { pieceMotionAttrs } from '../probe/motion-tag.ts';
 import { hashRandom } from '#models/motion/random.ts';
 import { ThreeStage, type ThreeEnvironment, type ThreeFrame, type ThreeSample } from '../film/three-stage.tsx';
 import type { Vec3 } from '#models/camera/vec3.ts';
 import {
-  NEEDLE_RIG, needleInFrame, needleLensHeight, needlePoseAt, needleRestAxis, needleScreenPoint, needleShotAt, needleTakeExposures,
+  needleInFrame, needleLensHeight, needlePoseAt, needleRestAxis, needleRig, needleScreenPoint, needleShotAt, needleTakeExposures,
   type NeedlePose, type NeedleRig, type NeedleStrike,
 } from '#models/reel/needle.ts';
 import { BODY_BARREL, BODY_FRONT, CLEAR_TIP, needleLine, sampled, SOLDER, type Profile } from '#models/reel/needle-cartridge.ts';
@@ -146,18 +146,18 @@ function clearPlasticMaterial() {
  * hides what's driven into it. What changes within a frame's shutter is only where the needle is and its ink.
  */
 function needleStage(r: NeedleRig, color: string, shadow: number, shift: { x: number; y: number }) {
-  const lens = needleLensHeight(r.fov);
-  const camera = new THREE.PerspectiveCamera(r.fov, W / H, lens * 0.02, lens * 1.5);
+  const { width, height } = r.format, lens = needleLensHeight(r);
+  const camera = new THREE.PerspectiveCamera(r.fov, width / height, lens * 0.02, lens * 1.5);
   camera.position.set(0, 0, lens);
   camera.lookAt(0, 0, 0);
   // A lens shift, not a move: the picture slides whole, as the layers under it do, and draws what slides in.
-  camera.setViewOffset(W, H, -shift.x, -shift.y, W, H);
+  camera.setViewOffset(width, height, -shift.x, -shift.y, width, height);
   const scene = new THREE.Scene();
 
   // The surface: depth only, drawn first, so what's driven past it is hidden; and a layer that is only shadow.
-  const occluder = new THREE.Mesh(new THREE.PlaneGeometry(W * 4, H * 4), new THREE.MeshBasicMaterial({ colorWrite: false }));
+  const occluder = new THREE.Mesh(new THREE.PlaneGeometry(width * 4, height * 4), new THREE.MeshBasicMaterial({ colorWrite: false }));
   occluder.renderOrder = -1;
-  const catcher = new THREE.Mesh(new THREE.PlaneGeometry(W * 4, H * 4), new THREE.ShadowMaterial({ opacity: shadow }));
+  const catcher = new THREE.Mesh(new THREE.PlaneGeometry(width * 4, height * 4), new THREE.ShadowMaterial({ opacity: shadow }));
   catcher.receiveShadow = true;
   scene.add(occluder, catcher);
 
@@ -219,7 +219,7 @@ function needleStage(r: NeedleRig, color: string, shadow: number, shift: { x: nu
   };
 }
 
-export type NeedleProps = Partial<NeedleRig> & {
+export type NeedleProps = Partial<Omit<NeedleRig, 'format'>> & {
   /** Seconds on the piece's clock, the one `strikes` are timed on. */
   t: number;
   strikes: readonly NeedleStrike[];
@@ -273,10 +273,10 @@ export function Needle({
   t, strikes, color = '#34353a', shadow = 0.45, samples = 32, maxSamples = 256, shutter = 0.25, fastShutter = 1, aperture = 16, focus = 6,
   ground = '#0c0c0e', shift = { x: 0, y: 0 }, motion, ...rig
 }: NeedleProps) {
-  const r = { ...NEEDLE_RIG, ...rig };
+  const r = needleRig({ ...rig, format: useVideoFormat() });
   const shot = needleShotAt(strikes, t, { rig: r, shutter, fastShutter, focus });
   const { pose } = shot;
-  const tip = pose && needleScreenPoint(pose.tip, r.fov);
+  const tip = pose && needleScreenPoint(pose.tip, r);
   // Each take is its own stage: the streak is laid down first, and the sharp contact over it.
   const takes = [shot.streak, shot].filter((take) => take !== null).map((take) => {
     // Built on the take's first exposure and shared by the rest; its stage frees it after the frame.
@@ -294,7 +294,7 @@ export function Needle({
       ))}
       {tip && (
         <div {...pieceMotionAttrs(motion, 'needle', { kind: 'needle', values: {
-          lift: pose.tip[2] / r.scale, grow: pose.tip[2] / (needleLensHeight(r.fov) - pose.tip[2]), tilt: Math.acos(pose.axis[2]) / DEG, inFrame: needleInFrame(pose, r),
+          lift: pose.tip[2] / r.scale, grow: pose.tip[2] / (needleLensHeight(r) - pose.tip[2]), tilt: Math.acos(pose.axis[2]) / DEG, inFrame: needleInFrame(pose, r),
         } })}
           style={{ position: 'absolute', left: tip.x + shift.x - 3, top: tip.y + shift.y - 3, width: 6, height: 6, pointerEvents: 'none' }} />
       )}

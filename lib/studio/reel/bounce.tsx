@@ -4,7 +4,6 @@
 // growing until its colour is the next shot's ground.
 
 import { MONO_FONT } from '#models/type/faces.ts';
-import { FPS, H, W } from '#models/frame/frame.ts';
 import { clamp, motionCurves } from '#models/motion/motion.ts';
 import { DEG, REF_F, shapeOfStrain, smoothstep } from '#models/reel/bounce-shape.ts';
 import { SWELL_TIME, fieldSwellAt, swellCentres, type FieldSwellOptions, type SwellPose } from '#models/reel/bounce-swell.ts';
@@ -12,6 +11,7 @@ import {
   ballEllipse, bounceModel, contactTime, contactX, groundDents, guidePath, launchSwell, markEase, rawPoseAt, shutterCentres,
   typeOnScramble, type BounceParams,
 } from '#models/reel/bounce.ts';
+import { useVideoFormat } from '../composition/video-format.ts';
 import { pieceMotionAttrs } from '../probe/motion-tag.ts';
 
 // ---------- the swell ----------
@@ -55,14 +55,15 @@ function SwellDisc({ pose, centres = [pose], color, tag }: { pose: SwellPose; ce
  * a zoom-through that matches on colour, so the next shot starts on that ground. Give `k` (0..1), or `t` seconds over
  * `duration`. Nothing draws before it starts; draw the circle yourself until then.
  */
-export function FieldSwell({ color, motion, from, to, lift, stretch, shutter, ...clock }: Omit<FieldSwellOptions, 'duration'> & {
+export function FieldSwell({ color, motion, from, to, lift, stretch, shutter, ...clock }: Omit<FieldSwellOptions, 'duration' | 'format'> & {
   color: string;
   /** Its name in the motion tracks, `swell` by default; the track reports `k`. */
   motion?: string | false;
 } & ({ k: number; duration?: number; t?: never } | { t: number; duration?: number; k?: never })) {
+  const format = useVideoFormat();
   const duration = clock.duration ?? SWELL_TIME, k = clock.k ?? clock.t! / duration;
   if (k < 0) return null;
-  const opts = { from, to, lift, stretch, shutter, duration };
+  const opts = { format, from, to, lift, stretch, shutter, duration };
   const tag = pieceMotionAttrs(motion, 'swell', { kind: 'field-swell', values: { k: clamp(k) } });
   return <SwellDisc pose={fieldSwellAt(k, opts)} centres={swellCentres(k, opts)} color={color} tag={tag} />;
 }
@@ -102,7 +103,7 @@ export function BounceBall(props: BounceParams & {
   /** When the line starts drawing from its centre out: a beat before the first landing by default. */
   inAt?: number;
   guide?: boolean;
-  /** Onion-skin ghosts, one a frame back each (the reference's 1/30 s): 3. 0 for none. */
+  /** Onion-skin ghosts, one a frame back each (the reference's 1/30 s at 30 fps): 3. 0 for none. */
   ghosts?: number;
   /** The diamond, sparks and ground ring at each landing. */
   marks?: boolean;
@@ -115,7 +116,8 @@ export function BounceBall(props: BounceParams & {
 }) {
   const { t, color = '#ef4c22', background = '#0c0c0e', ink = '#f3f0e7', callouts = [], guide = true, ghosts = 3, marks = true, shutter = 0.5, seed = 'bounce', motion } = props;
   const accent = props.accent ?? color;
-  const m = bounceModel(props), D = 2 * m.r, pose = rawPoseAt(m, t), L = m.launch;
+  const format = useVideoFormat(), { fps, width, height } = format;
+  const m = bounceModel(props, format), D = 2 * m.r, pose = rawPoseAt(m, t), L = m.launch;
   // One track from drop to field: the landing it's on, its width over height, and the swell's progress.
   const ballTag = (aspect: number, swell: number) =>
     pieceMotionAttrs(motion, 'ball', { kind: 'bounce', values: { contact: pose.contact, aspect: Number(aspect.toFixed(3)), swell } });
@@ -132,22 +134,22 @@ export function BounceBall(props: BounceParams & {
   const shown = (i: number) => i >= 0 && i < m.n && tm >= contactTime(m, i);
 
   // The ground line and its ruler, on a 40 px lattice centred on the frame.
-  const reach = Math.max(600, Math.ceil((Math.max(...m.ts.map((_, i) => Math.abs(contactX(m, i) - W / 2))) + 280) / 40) * 40);
-  const span = props.line ?? { from: W / 2 - reach, to: W / 2 + reach };
+  const reach = Math.max(600, Math.ceil((Math.max(...m.ts.map((_, i) => Math.abs(contactX(m, i) - width / 2))) + 280) / 40) * 40);
+  const span = props.line ?? { from: width / 2 - reach, to: width / 2 + reach };
   const mid = (span.from + span.to) / 2, drawn = ((span.to - span.from) / 2) * motionCurves.expo.entrance((t - inAt) / 0.43);
   const dents = groundDents(m, t), sigma2 = 2 * (0.89 * D) ** 2;
   const lineY = (x: number) => m.groundY + dents.reduce((y, d) => y + d.depth * Math.exp(-((x - d.x) ** 2) / sigma2), 0);
   const lineXs: number[] = [];
   if (drawn > 0.5) { for (let x = mid - drawn; x < mid + drawn; x += 6) lineXs.push(x); lineXs.push(mid + drawn); }
   const ticks: { x: number; major: boolean }[] = [];
-  for (let x = W / 2 + Math.ceil((mid - drawn - W / 2) / 40) * 40; x <= mid + drawn; x += 40) ticks.push({ x, major: Math.abs((x - W / 2) % 200) < 1e-6 });
+  for (let x = width / 2 + Math.ceil((mid - drawn - width / 2) / 40) * 40; x <= mid + drawn; x += 40) ticks.push({ x, major: Math.abs((x - width / 2) % 200) < 1e-6 });
 
   // The ball, its centre sampled across the shutter and summed (plus-lighter in an isolated group sums coverage exactly).
   const drawBall = pose.phase !== 'waiting' && pose.phase !== 'swell';
-  const centres = drawBall ? shutterCentres(m, t, shutter / FPS) : [];
+  const centres = drawBall ? shutterCentres(m, t, shutter / fps) : [];
 
   const ghostPoses = Array.from({ length: ghosts }, (_, j) => {
-    const at = t - (j + 1) / 30;
+    const at = t - (j + 1) / fps;
     if (m.drop && at < m.drop.start) return null;
     const g = rawPoseAt(m, at);
     // A ghost that has barely left the ball (the crouch pressing on) would only ring its edge.
@@ -173,7 +175,7 @@ export function BounceBall(props: BounceParams & {
   return (
     <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
       {background && <div style={{ position: 'absolute', inset: 0, background }} />}
-      <svg width={W} height={H} style={{ position: 'absolute', inset: 0, overflow: 'visible' }}>
+      <svg width={width} height={height} style={{ position: 'absolute', inset: 0, overflow: 'visible' }}>
         {ticks.map(({ x, major }) => (
           <line key={x} x1={x} x2={x} y1={m.groundY + 8} y2={m.groundY + (major ? 20 : 16)} stroke={ink} strokeWidth={1.5} opacity={0.24} />
         ))}
@@ -226,12 +228,12 @@ export function BounceBall(props: BounceParams & {
       {liveCallouts.map((c) => {
         const { since, alpha, s, tip } = calloutState(c), size = 15;
         const number = c.number ?? String(c.contact + 1).padStart(2, '0');
-        const place = s > 0 ? { left: tip.x + 10 } : { right: W - (tip.x - 10) };
+        const place = s > 0 ? { left: tip.x + 10 } : { right: width - (tip.x - 10) };
         const type = { position: 'absolute', ...place, font: `500 ${size}px/1 ${MONO_FONT}`, letterSpacing: '0.1em', whiteSpace: 'pre', textAlign: s > 0 ? 'left' : 'right' } as const;
         return (
           <div key={c.contact} style={{ position: 'absolute', inset: 0, opacity: alpha }}>
             <div style={{ ...type, top: tip.y - 20 - size / 2, color: accent }}>{number}</div>
-            <div style={{ ...type, top: tip.y - size / 2, color: ink, opacity: 0.9 }}>{typeOnScramble(c.label, since, `${seed}|${c.contact}`)}</div>
+            <div style={{ ...type, top: tip.y - size / 2, color: ink, opacity: 0.9 }}>{typeOnScramble(c.label, since, `${seed}|${c.contact}`, { fps })}</div>
           </div>
         );
       })}

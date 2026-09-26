@@ -9,7 +9,8 @@
 
 import * as THREE from 'three';
 import { useStudioFontsReady } from '../fonts/fonts.ts';
-import { H, W } from '#models/frame/frame.ts';
+import { fullFrameRect } from '#models/frame/frame.ts';
+import { useVideoFormat } from '../composition/video-format.ts';
 import { pieceMotionAttrs } from '../probe/motion-tag.ts';
 import { clamp } from '#models/motion/motion.ts';
 import { ThreeStage, softboxEnvironment, type ThreeBloom, type ThreeEnvironment, type ThreeFrame, type ThreeLens, type ThreeSample } from '../film/three-stage.tsx';
@@ -31,7 +32,6 @@ export type ColumnFieldProps<C extends ColumnCell = ColumnCell> = ColumnFieldSpe
   motion?: string | false;
 };
 
-const FULL_BOX = { x: 0, y: 0, w: W, h: H };
 const REFERENCE_FOG = { color: '#120d16', near: 0, far: 7 };
 const REFERENCE_LIGHTS = {
   key: { azimuth: -135, elevation: 25, color: '#fffaf6', intensity: 1.5, softness: 4 },
@@ -50,11 +50,11 @@ const Y = new THREE.Vector3(0, 1, 0);
  * (crane and whip progress as values) with the ball inside it as `ball` (its squash).
  */
 export function ColumnField<C extends ColumnCell>({ t, samples = 12, shutter = 0.5, bloom, environment = softboxEnvironment, toneMapping = THREE.NeutralToneMapping, exposure, motion, ...spec }: ColumnFieldProps<C>) {
-  const box = spec.box ?? FULL_BOX;
+  const format = useVideoFormat(), box = spec.box ?? fullFrameRect(format);
   const fontsReady = useStudioFontsReady(Boolean(spec.labels));
   const cam = fieldCamera(spec, t);
   const ball = columnBallAt(spec, t);
-  const mark = ball && columnFieldProject(spec, t, ball.position);
+  const mark = ball && columnFieldProject(spec, t, ball.position, format);
   const whip = spec.camera.whip;
   const key = fieldLights(spec).key;
   // Built on a frame's first exposure and shared by the rest; a new render is a new frame.
@@ -211,7 +211,8 @@ function buildColumnField<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: num
   const labels = fontsReady ? (spec.labels?.(t) ?? []).map((label) => ({ label, mesh: labelMesh(label) })) : [];
   for (const { mesh } of labels) scene.add(mesh);
 
-  const camera = new THREE.PerspectiveCamera(27, W / H, 0.1, 600);
+  // ThreeStage sets the aspect to its box's before each exposure.
+  const camera = new THREE.PerspectiveCamera(27, 1, 0.1, 600);
   return { scene, camera, fog, heights, neighbourHeights, neighbours: topology.neighbours, heightAttr, neighbourAttr, key, rim, pool, ball, ballShadow, labels };
 }
 

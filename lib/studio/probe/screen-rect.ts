@@ -6,7 +6,7 @@ import { flushSync } from 'react-dom';
 import { useCurrentFrame, useDelayRender } from 'remotion';
 import type { Rect } from '#models/camera/camera.ts';
 import { areStudioFontsLoaded, whenStudioFontsLoaded } from '../fonts/fonts.ts';
-import { W } from '#models/frame/frame.ts';
+import { useVideoFormat } from '../composition/video-format.ts';
 
 const laidOut = (el: Element) => areStudioFontsLoaded() && document.fonts.status === 'loaded' && el.getBoundingClientRect().width > 0;
 
@@ -33,12 +33,12 @@ const sceneLayerOf = (el: Element) => {
   return layer;
 };
 
-/** An element's bounding box in composition pixels, against the scene layer it's drawn in; null before layout. */
-function compositionRectOf(el: Element): Rect | null {
+/** An element's bounding box in composition pixels, the frame `width` wide, against its scene layer; null before layout. */
+function compositionRectOf(el: Element, width: number): Rect | null {
   // The scene layer is the full frame, so its on-screen box carries both the Studio preview's scale and its origin.
   const box = sceneLayerOf(el).getBoundingClientRect(), r = el.getBoundingClientRect();
   if (box.width === 0) return null;
-  const scale = box.width / W;
+  const scale = box.width / width;
   return { x: (r.left - box.left) / scale, y: (r.top - box.top) / scale, w: r.width / scale, h: r.height / scale };
 }
 
@@ -46,7 +46,7 @@ const sameRect = (a: Rect | null, b: Rect | null) =>
   a === b || (!!a && !!b && Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01 && Math.abs(a.w - b.w) < 0.01 && Math.abs(a.h - b.h) < 0.01);
 
 /**
- * Where `target` is on screen this frame, in composition pixels (1920×1080) whatever the preview's zoom, with every
+ * Where `target` is on screen this frame, in composition pixels (the video's frame size) whatever the preview's zoom, with every
  * ancestor transform applied: the rect a Highlight, Spotlight or cursor takes. Null while the element isn't in the
  * DOM. Draw what uses it in the scene's own coordinates, outside any transformed wrapper.
  *
@@ -60,13 +60,14 @@ const sameRect = (a: Rect | null, b: Rect | null) =>
 export function useScreenRect(target: RefObject<Element | null>, selector?: string): Rect | null {
   // Re-render, and so re-measure, on every frame, even if nothing the caller passes down changes.
   useCurrentFrame();
+  const { width } = useVideoFormat();
   const [rect, setRect] = useState<Rect | null>(null);
   const { delayRender, continueRender } = useDelayRender();
   const measure = useCallback(() => {
     const el = selector ? target.current?.querySelector(selector) : target.current;
-    const next = el ? compositionRectOf(el) : null;
+    const next = el ? compositionRectOf(el, width) : null;
     setRect((prev) => (sameRect(prev, next) ? prev : next));
-  }, [target, selector]);
+  }, [target, selector, width]);
 
   useLayoutEffect(() => {
     measure();

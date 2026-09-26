@@ -6,8 +6,7 @@ import { useMemo } from 'react';
 import { AbsoluteFill, useCurrentFrame } from 'remotion';
 import type { HoldSteadySpan } from '#models/motion/hold-check.ts';
 import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
-import { FPS } from '#models/frame/frame.ts';
-import { LAB_COLORS } from '../../ui.tsx';
+import { LAB_COLORS, LAB_FORMAT } from '../../ui.tsx';
 import { PRICE_HOLD_FRAMES, PRICE_HOLD_SECONDS, PRICE_REST, priceBoxAt, type PriceBox, type PriceHoldParams } from './price-hold.ts';
 
 export type PriceHoldStageProps = PriceHoldParams & { steady: HoldSteadySpan | null; pass: boolean };
@@ -87,12 +86,12 @@ export function PriceHoldStage(props: PriceHoldStageProps) {
   const { steady, pass, need, within } = props;
   const boxes = useMemo(() => Array.from({ length: PRICE_HOLD_FRAMES }, (_, f) => priceBoxAt(f, props)), [props]);
   const box = boxes[frame];
-  const t = frame / FPS;
+  const t = frame / LAB_FORMAT.fps;
   const inSteady = steady !== null && t >= steady.from && t < steady.to;
   const verdictColor = pass ? LAB_COLORS.pass : LAB_COLORS.red;
 
   const path = (value: (b: PriceBox) => number) =>
-    boxes.map((b, f) => (b ? `${boxes[f - 1] ? 'L' : 'M'}${tx(f / FPS).toFixed(1)},${value(b).toFixed(1)}` : '')).join('');
+    boxes.map((b, f) => (b ? `${boxes[f - 1] ? 'L' : 'M'}${tx(f / LAB_FORMAT.fps).toFixed(1)},${value(b).toFixed(1)}` : '')).join('');
   // The promised length, laid from where the steady stretch starts: it fits inside the band when the hold is kept.
   const needFrom = steady?.from ?? 0, needTo = Math.min(PRICE_HOLD_SECONDS, needFrom + need);
 

@@ -11,14 +11,16 @@
 import { useId, type CSSProperties, type ReactNode } from 'react';
 import type { StaggerMembership } from '#models/motion/motion-tracks.ts';
 import { assertKeysInOrder, inflate, pagePoint, screenPoint, viewOfScreenRect, type Point, type Rect, type View } from '#models/camera/camera.ts';
-import { FONT, H, W } from '#models/frame/frame.ts';
+import { FONT, fullFrameRect, type FrameSize } from '#models/frame/frame.ts';
 import { clamp, lerp, motionCurves, seg } from '#models/motion/motion.ts';
 import { pieceMotionAttrs } from '../probe/motion-tag.ts';
 import { SFX, Sfx } from '../sfx/sfx.tsx';
 import { sceneTimeOf, takeMouseAt, type TakeFit } from '../capture/take.ts';
+import { useVideoFormat } from '../composition/video-format.ts';
 
 const INK = '#1c365e';
-const fill: CSSProperties = { position: 'absolute', left: 0, top: 0, width: W, height: H, overflow: 'visible', pointerEvents: 'none' };
+/** An SVG layer over the whole frame. */
+const frameFill = ({ width, height }: FrameSize): CSSProperties => ({ position: 'absolute', left: 0, top: 0, width, height, overflow: 'visible', pointerEvents: 'none' });
 
 /** An SVG rounded-rect path, for shapes a plain <rect> can't make (cut-outs). */
 const roundRectPath = ({ x, y, w, h }: Rect, r: number) =>
@@ -32,10 +34,11 @@ const roundRectPath = ({ x, y, w, h }: Rect, r: number) =>
  * kit piece built on it gives it.
  */
 export function ClipToBox({ box, motion, picked = 'panel', children }: { box: Rect; motion?: string | false; picked?: string; children: ReactNode }) {
+  const { width, height } = useVideoFormat();
   return (
     <div {...pieceMotionAttrs(motion, picked, { kind: 'panel' })}
       style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, overflow: 'hidden', pointerEvents: 'none' }}>
-      <div style={{ position: 'absolute', left: -box.x, top: -box.y, width: W, height: H }}>{children}</div>
+      <div style={{ position: 'absolute', left: -box.x, top: -box.y, width, height }}>{children}</div>
     </div>
   );
 }
@@ -44,9 +47,10 @@ export function ClipToBox({ box, motion, picked = 'panel', children }: { box: Re
 
 /** A pointer at a screen point. `press` 0..1 squeezes it for a click. `through` is the view it moves over, if any. */
 export function Cursor({ at, press = 0, alpha = 1, through, motion }: { at: Point; press?: number; alpha?: number; through?: View; motion?: string | false }) {
+  const frame = useVideoFormat();
   const s = 1.55 * (1 - 0.12 * press);
   return (
-    <svg style={{ ...fill, opacity: alpha }} width={W} height={H}>
+    <svg style={{ ...frameFill(frame), opacity: alpha }} width={frame.width} height={frame.height}>
       <g transform={`translate(${at.x} ${at.y}) scale(${s})`} {...pieceMotionAttrs(motion, 'cursor', { kind: 'cursor', values: { press }, through })}>
         <path d="M0 0 L0 22 L5.5 17 L9.5 26 L13 24.5 L9 16 L16 16 Z" fill="#111" style={{ filter: 'drop-shadow(0 3px 8px rgba(0,0,0,0.35))' }} />
         <path d="M0 0 L0 22 L5.5 17 L9.5 26 L13 24.5 L9 16 L16 16 Z" fill="none" stroke="#fff" strokeWidth={1.6} strokeLinejoin="round" />
@@ -61,9 +65,10 @@ export function Cursor({ at, press = 0, alpha = 1, through, motion }: { at: Poin
  * `through` is the view it was clicked on, if any; `n`, which click of a path it is, tells overlapping ripples apart.
  */
 export function ClickRipple({ at, k, color = INK, through, n, motion }: { at: Point; k: number; color?: string; through?: View; n?: number; motion?: string | false }) {
+  const frame = useVideoFormat();
   if (k <= 0 || k >= 1) return null;
   return (
-    <svg style={{ ...fill, opacity: (1 - k) * 0.55 }} width={W} height={H}>
+    <svg style={{ ...frameFill(frame), opacity: (1 - k) * 0.55 }} width={frame.width} height={frame.height}>
       <circle cx={at.x} cy={at.y} r={10 + 44 * motionCurves.cubic.entrance(k)} fill="none" stroke={color} strokeWidth={4} {...pieceMotionAttrs(motion, n === undefined ? 'click' : `click-${n}`, { kind: 'click', values: { ripple: k }, through })} />
       <rect data-framing="subject" data-name="click" data-strength={1 - k} x={at.x - 12} y={at.y - 12} width={24} height={24} fill="none" />
     </svg>
@@ -149,7 +154,7 @@ export function offscreen(view: View, toward: Point): Point {
  * at the frame's edge, or `box`'s (a panel's view box), so a subject flush with it is ringed just inside; the rect
  * itself never shrinks, so one off the frame still fails the framing check.
  */
-export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha = 1, name, box = FRAME, through, motion }: {
+export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha = 1, name, box, through, motion }: {
   rect: Rect | null;
   name?: string;
   through?: View | 'screen';
@@ -161,8 +166,9 @@ export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha =
   radius?: number;
   alpha?: number;
 }) {
+  const frame = fullFrameRect(useVideoFormat());
   if (!rect || k <= 0 || alpha <= 0) return null;
-  const r = padWithin(rect, pad, box);
+  const r = padWithin(rect, pad, box ?? frame);
   const perimeter = 2 * (r.w + r.h);
   return (
     <svg
@@ -187,8 +193,6 @@ export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha =
     </svg>
   );
 }
-
-const FRAME: Rect = { x: 0, y: 0, w: W, h: H };
 
 /** `rect` grown by `pad`, except where that would cross `box`'s edge: there the padding stops at it. */
 function padWithin(rect: Rect, pad: number, box: Rect): Rect {
@@ -215,11 +219,12 @@ export function Spotlight({ rect, k, pad = 16, radius = 14, dim = 0.45, through,
   through?: View | 'screen';
   motion?: string | false;
 }) {
+  const frame = useVideoFormat();
   if (!rect || k <= 0) return null;
   const hole = inflate(rect, pad);
   return (
-    <svg style={fill} width={W} height={H}>
-      <path d={`M0,0 H${W} V${H} H0 Z ${roundRectPath(hole, radius)}`} fillRule="evenodd" fill={`rgba(12, 22, 38, ${dim * k})`} />
+    <svg style={frameFill(frame)} width={frame.width} height={frame.height}>
+      <path d={`M0,0 H${frame.width} V${frame.height} H0 Z ${roundRectPath(hole, radius)}`} fillRule="evenodd" fill={`rgba(12, 22, 38, ${dim * k})`} />
       {/* The dimmed area is the whole frame, so the track is the hole it leaves. */}
       <rect x={hole.x} y={hole.y} width={hole.w} height={hole.h} fill="none"
         {...pieceMotionAttrs(motion, 'spotlight', { kind: 'spotlight', values: { dim: dim * k }, through: throughOf(rect, through) })} />
@@ -276,9 +281,10 @@ export function Text({ text, x, y, size = 64, weight = 700, color = '#fff', k = 
   stagger?: StaggerMembership;
   motion?: string | false;
 }) {
+  const frame = useVideoFormat();
   if (k <= 0) return null;
   return (
-    <svg style={{ ...fill, opacity: clamp(k) }} width={W} height={H}>
+    <svg style={{ ...frameFill(frame), opacity: clamp(k) }} width={frame.width} height={frame.height}>
       <text
         {...pieceMotionAttrs(motion, text, { kind: 'text', values: { k }, stagger })}
         x={x}
@@ -318,17 +324,18 @@ export function Glass({ rect, radius = 28, blur = 30, tint = 'rgba(255,255,255,0
 }
 
 /** A gradient wash across the frame from (x0, y0) to (x1, y1), for text over footage. `color` is "r, g, b". */
-export function Wash({ color, from, to, x0 = 0, y0 = 0, x1 = W, y1 = 0 }: { color: string; from: number; to: number; x0?: number; y0?: number; x1?: number; y1?: number }) {
+export function Wash({ color, from, to, x0 = 0, y0 = 0, x1, y1 = 0 }: { color: string; from: number; to: number; x0?: number; y0?: number; x1?: number; y1?: number }) {
   const id = useId();
+  const frame = useVideoFormat();
   return (
-    <svg style={fill} width={W} height={H}>
+    <svg style={frameFill(frame)} width={frame.width} height={frame.height}>
       <defs>
-        <linearGradient id={id} gradientUnits="userSpaceOnUse" x1={x0} y1={y0} x2={x1} y2={y1}>
+        <linearGradient id={id} gradientUnits="userSpaceOnUse" x1={x0} y1={y0} x2={x1 ?? frame.width} y2={y1}>
           <stop offset={0} stopColor={`rgb(${color})`} stopOpacity={from} />
           <stop offset={1} stopColor={`rgb(${color})`} stopOpacity={to} />
         </linearGradient>
       </defs>
-      <rect width={W} height={H} fill={`url(#${id})`} />
+      <rect width={frame.width} height={frame.height} fill={`url(#${id})`} />
     </svg>
   );
 }

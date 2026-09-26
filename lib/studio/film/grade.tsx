@@ -3,7 +3,7 @@
 
 import { useId } from 'react';
 import { useCurrentFrame } from 'remotion';
-import { H, W } from '#models/frame/frame.ts';
+import { useVideoFormat } from '../composition/video-format.ts';
 
 /**
  * Monochrome grain, new every frame and the same on every render of that frame (its noise is seeded by the frame).
@@ -13,14 +13,15 @@ import { H, W } from '#models/frame/frame.ts';
 export function FilmGrain({ amount = 0.08, scale = 0.9 }: { amount?: number; scale?: number }) {
   const frame = useCurrentFrame();
   const id = useId();
+  const { width, height } = useVideoFormat();
   if (amount <= 0) return null;
   return (
-    <svg style={{ position: 'absolute', inset: 0, pointerEvents: 'none', mixBlendMode: 'overlay', opacity: amount * 4 }} width={W} height={H}>
+    <svg style={{ position: 'absolute', inset: 0, pointerEvents: 'none', mixBlendMode: 'overlay', opacity: amount * 4 }} width={width} height={height}>
       <filter id={id} x="0" y="0" width="100%" height="100%">
         <feTurbulence type="fractalNoise" baseFrequency={scale} numOctaves={2} seed={frame % 997} stitchTiles="stitch" />
         <feColorMatrix type="saturate" values="0" />
       </filter>
-      <rect width={W} height={H} filter={`url(#${id})`} />
+      <rect width={width} height={height} filter={`url(#${id})`} />
     </svg>
   );
 }

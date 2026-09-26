@@ -13,7 +13,7 @@
 
 import { findSpokenPhrase, type SpokenWord } from '#models/voice/voice-words.ts';
 import { beatGrid as fitBeatGrid, steadyBeatGrid, type BeatGrid } from './beat-grid.ts';
-import { FPS } from './frame-rate.ts';
+import { DEFAULT_VIDEO_FORMAT } from '#models/frame/frame.ts';
 import { timelineSceneMoments, type TimelineMoment } from './scene-moments.ts';
 
 // ---------- the grid ----------
@@ -134,6 +134,8 @@ export type Landmark<Cue extends string = string> = { name: string; cue: Cue; do
 export type ReplayTable<Scenes> = { readonly [K in keyof Scenes]?: Readonly<Record<string, ReplaySpec<CueName<Scenes>>>> };
 
 export type TimelineSpec<Scenes extends Readonly<Record<string, SceneSpan>> = Readonly<Record<string, SceneSpan>>, Replays extends ReplayTable<Scenes> = ReplayTable<Scenes>> = {
+  /** The frame rate every instant rounds to, and the video plays at. Default 30. */
+  fps?: number;
   /** The musical section's beats. A timeline with no beat scene has none. */
   grid?: TimelineGrid;
   /** Frames a beat's cut or hit comes before the grid's beat: the tracker hears a hit late, and a picture on the beat leads its sound. Default 0. */
@@ -181,6 +183,8 @@ type SceneFacts<Key extends string> = {
   beats: number;
   /** Seconds per beat on the section's grid; 0 with no grid. */
   spb: number;
+  /** The timeline's frame rate: every frame here is one of these. */
+  fps: number;
 };
 
 /**
@@ -260,6 +264,8 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
     voice?: NoInfer<TimelineSpec<Scenes>['voice']>;
   },
 ): Timeline<Scenes, Replays> {
+  const fps = spec.fps ?? DEFAULT_VIDEO_FORMAT.fps;
+  if (!(Number.isInteger(fps) && fps > 0)) throw new Error(`the timeline's fps is ${fps}: give it a whole number of frames a second`);
   const keys = Object.keys(spec.scenes) as (keyof Scenes & string)[];
   const spans = keys.map((key) => spec.scenes[key] as SceneSpan);
   if (!keys.length) throw new Error('the timeline has no scenes');
@@ -298,8 +304,8 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
   const sectionStart = musical.length ? nonMusicalBefore(musical[0]) : 0;
   const startBeat = spans.map((_, k) => spans.slice(musical[0] ?? 0, k).reduce((sum, span) => sum + (span.driver === 'beat' ? span.beats : 0), 0));
   const gridSeconds = (beat: number) => sectionStart + grid!.at(beat);
-  const beatFrame = (beat: number) => Math.round(gridSeconds(beat) * FPS) - lead;
-  const plainFrame = (seconds: number) => Math.round(seconds * FPS);
+  const beatFrame = (beat: number) => Math.round(gridSeconds(beat) * fps) - lead;
+  const plainFrame = (seconds: number) => Math.round(seconds * fps);
   const lastBeat = musical.length ? startBeat[musical.at(-1)!] + (spans[musical.at(-1)!] as BeatSpan).beats : 0;
   const sectionEnd = musical.length ? gridSeconds(lastBeat) : 0;
   const after = (k: number) => musical.length > 0 && k > musical.at(-1)!;
@@ -317,7 +323,7 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
   });
   const nexts = cuts.map((_, k) => cuts[k + 1] ?? end);
   for (let k = 1; k < cuts.length; k++) if (cuts[k] <= cuts[k - 1]) throw new Error(`scene ${keys[k]} cuts in on frame ${cuts[k]}, not after ${keys[k - 1]}'s ${cuts[k - 1]}`);
-  const halfFade = (k: number) => (spans[k]?.crossfade ?? 0) * FPS / 2;
+  const halfFade = (k: number) => (spans[k]?.crossfade ?? 0) * fps / 2;
 
   // Each scene's lines on the video: a voice scene's as laid out, a beat scene's from their beats, which they must fit
   // inside. Speech is sound, so it takes no picture lead.
@@ -385,7 +391,7 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
   const placed = spans.map((span, k): ResolvedScene<keyof Scenes & string> => ({
     id: keys[k], n: k + 1, driver: span.driver, origin: origins[k], from: cuts[k], to: nexts[k], end: ends[k],
     visible: { from: Math.round(cuts[k] - halfFade(k)), to: Math.round(nexts[k] + halfFade(k + 1)) }, crossfade: span.crossfade ?? 0,
-    beats: span.driver === 'beat' ? span.beats : 0, spb: grid?.spb ?? 0,
+    beats: span.driver === 'beat' ? span.beats : 0, spb: grid?.spb ?? 0, fps,
     cues: Object.fromEntries(Object.keys(span.cues ?? {}).map((name) => [name, ownCue(k, name)])),
     moves: Object.fromEntries(Object.entries(span.moves ?? {}).map(([name, move]) => [name, { from: refFrame(k, move.from), to: refFrame(k, move.to) }])),
     beatFrames: span.driver === 'beat' ? Array.from({ length: span.beats }, (_, n) => beatFrame(startBeat[k] + n)) : [],
@@ -450,7 +456,7 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
 
   const beatAtFrame = (frame: number) => {
     if (!grid) throw new Error('the timeline has no grid, so no beats');
-    return grid.beatOf((frame + lead) / FPS - sectionStart);
+    return grid.beatOf((frame + lead) / fps - sectionStart);
   };
   const beatFrames: number[] = [];
   if (musical.length) {
@@ -465,12 +471,12 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
   const downbeatFrames = downbeats.map(beatFrame).filter((frame) => beatFrames.includes(frame));
 
   return {
-    spec, fps: FPS, spb: grid?.spb ?? 0, soundLagSeconds: spec.soundLagSeconds ?? 0, keys,
+    spec, fps, spb: grid?.spb ?? 0, soundLagSeconds: spec.soundLagSeconds ?? 0, keys,
     scenes: placed, scene: (key) => placed[indexOf(key)] as never, clock: (key) => clocks[indexOf(key)] as never, cue: (name) => cue(name), replays,
     audio: [
       ...(spec.grid?.kind === 'recorded' && musical.length ? [{ kind: 'music' as const, track: spec.grid.track, atSeconds: sectionStart }] : []),
       ...placed.flatMap((scene) => scene.lines.map(({ id, frame, duration }) => ({
-        kind: 'voice' as const, line: id, scene: scene.id, frame, atSeconds: frame / FPS, duration,
+        kind: 'voice' as const, line: id, scene: scene.id, frame, atSeconds: frame / fps, duration,
       }))),
     ],
     landmarks, end, fade: { from: end + (spec.fade?.from ?? 0), to: end + (spec.fade?.to ?? 0) }, beatAtFrame, beatFrames, downbeatFrames,

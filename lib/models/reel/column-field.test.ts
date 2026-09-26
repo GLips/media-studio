@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { H, W } from '#models/frame/frame.ts';
 import { columnDiscCells, columnFieldPoint, columnNoise, type ColumnFieldSpec } from './column-field.ts';
 import { columnBallAt, columnFieldProject, topDownPose } from './column-field-motion.ts';
+
+const W = 1920, H = 1080;
 
 // The reference's section: tiles rising into churning columns while the camera cranes down from overhead, and a ball
 // landing on three of them.
@@ -11,7 +12,7 @@ const spec: ColumnFieldSpec = {
   height: columnNoise({ seed: 7 }),
   rise: { at: 0.2, duration: 0.25 },
   camera: {
-    from: topDownPose({ pitch: 101.25, height: 0.12 }),
+    from: topDownPose({ pitch: 101.25, height: 0.12, frameHeight: H }),
     to: { target: [0.6, 1.6, 0.4], distance: 15, elevation: 37, azimuth: -30, fov: 27 },
     crane: [0.1, 0.667],
   },
@@ -20,7 +21,7 @@ const spec: ColumnFieldSpec = {
 
 test('looks straight down on the tiles at the 2D grid pitch it cuts from', () => {
   for (const [i, j] of [[0, 0], [1, 0], [-3, 2], [5, -4]] as const) {
-    const at = columnFieldProject(spec, 0, columnFieldPoint(spec, 0, [i, j]))!;
+    const at = columnFieldProject(spec, 0, columnFieldPoint(spec, 0, [i, j]), { width: W, height: H })!;
     assert.ok(Math.abs(at.x - (W / 2 + 101.25 * i)) < 1e-6 && Math.abs(at.y - (H / 2 + 101.25 * j)) < 1e-6, `tile ${i},${j} sits on the grid`);
   }
 });

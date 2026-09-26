@@ -6,7 +6,7 @@
 
 import { Audio } from '@remotion/media';
 import { useMemo, useRef } from 'react';
-import { AbsoluteFill, Artifact, Sequence, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Artifact, Sequence, useCurrentFrame, useVideoConfig, type VideoConfig } from 'remotion';
 import { footage as footageList } from '@footage';
 import sfxCues from '@sfx-cues';
 import { Caption } from './captions.tsx';
@@ -36,6 +36,8 @@ export type VideoProps = {
 export type TimelineReport = {
   title: string;
   fps: number;
+  width: number;
+  height: number;
   duration: number;
   /** The composition's length, which can run a little past `duration` (see totalFrames). */
   durationInFrames: number;
@@ -57,10 +59,12 @@ export type TimelineExpectation = { scene: string; start: number; end: number } 
 export const TIMELINE_ARTIFACT = 'timeline.json';
 
 
-function timelineReport(video: VideoDef, tl: Timeline, fps: number, durationInFrames: number, sfxCueList: boolean): string {
+function timelineReport(video: VideoDef, tl: Timeline, { fps, width, height, durationInFrames }: VideoConfig, sfxCueList: boolean): string {
   const report: TimelineReport = {
     title: video.title,
     fps,
+    width,
+    height,
     duration: tl.duration,
     durationInFrames,
     scenes: tl.scenes.map((scene) => ({
@@ -94,7 +98,7 @@ function timelineReport(video: VideoDef, tl: Timeline, fps: number, durationInFr
 // refuses a second artifact with the same name.
 export function Video({ video, captions, probe, blockouts, auditionSfxCueList = false, reportTimeline = true }: VideoProps & { video: VideoDef; reportTimeline?: boolean }) {
   const frame = useCurrentFrame();
-  const { fps, durationInFrames } = useVideoConfig();
+  const config = useVideoConfig(), { fps } = config;
   const tl = useMemo(() => layoutVideo(video), [video]);
   const root = useRef<HTMLDivElement>(null);
   const t = frame / fps;
@@ -129,7 +133,7 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
       )}
       {video.music && <MusicBedAudio video={video} tl={tl} fps={fps} />}
       {captions && <Caption cues={tl.cues} t={t} />}
-      {reportTimeline && frame === 0 && <Artifact filename={TIMELINE_ARTIFACT} content={timelineReport(video, tl, fps, durationInFrames, playsCueList)} />}
+      {reportTimeline && frame === 0 && <Artifact filename={TIMELINE_ARTIFACT} content={timelineReport(video, tl, config, playsCueList)} />}
       {probe && <FrameProbe root={root} />}
     </AbsoluteFill>
   );

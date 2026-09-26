@@ -4,7 +4,7 @@
 // overhead to a low three-quarter view; then the ball leaves along the red and the camera whips after it into bar 8.
 
 import * as THREE from 'three';
-import { DISPLAY_FONT, FPS, H, MONO_FONT, W, clamp, lerp, motionCurves, type Point } from '#studio';
+import { DISPLAY_FONT, MONO_FONT, clamp, lerp, motionCurves, type Point } from '#studio';
 import { ColumnField, type ColumnFieldProps } from '#studio/reel/column-field.tsx';
 import { columnTitaniumMaterial } from '#studio/reel/column-field-materials.ts';
 import { columnDiscCells, columnNoise, type ColumnBall, type ColumnCameraMove, type ColumnCameraPose, type ColumnCell, type ColumnFieldSpec, type ColumnLabel } from '#models/reel/column-field.ts';
@@ -13,14 +13,16 @@ import { reelHudGrounds, type ReelHudTone } from '#models/reel/hud.ts';
 import type { Bar, ShowcaseClock } from '../bar.ts';
 import whipIntoPayLess from '../sfx/whip-into-pay-less.ts';
 import { P } from '../look.ts';
+import { SHOWCASE_FORMAT } from '../timeline.ts';
 
 export function tiersBar(clock: ShowcaseClock<'tiers'>): Bar {
+  const { fps } = clock;
   const FROM = clock.from, TO = clock.to;
   /** The four landings: $2.00, $1.80, $1.60 (the bar's accent), $1.40. */
   const HITS = [clock.beat(0), clock.beat(1), clock.beat(2), clock.cues.plateau];
   const HERO = 2;
   /** Seconds from the first landing, the field's clock. */
-  const fieldT = (f: number) => (f - FROM) / FPS;
+  const fieldT = (f: number) => (f - FROM) / fps;
   const HIT_T = HITS.map(fieldT);
   const rad = (d: number) => (d * Math.PI) / 180;
   const cubicInOut = motionCurves.cubic.standard;
@@ -190,9 +192,9 @@ export function tiersBar(clock: ShowcaseClock<'tiers'>): Bar {
     const forward = new THREE.Vector3(-Math.sin(a) * Math.cos(e), -Math.sin(e), -Math.cos(a) * Math.cos(e));
     const right = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a));
     const up = right.clone().cross(forward);
-    const focal = H / 2 / Math.tan(rad(aim.fov) / 2);
-    const [x0, x1] = [(FRAMED.x0 - W / 2) / focal, (FRAMED.x1 - W / 2) / focal];
-    const [y0, y1] = [(H / 2 - FRAMED.y1) / focal, (H / 2 - FRAMED.y0) / focal];
+    const focal = SHOWCASE_FORMAT.height / 2 / Math.tan(rad(aim.fov) / 2);
+    const [x0, x1] = [(FRAMED.x0 - SHOWCASE_FORMAT.width / 2) / focal, (FRAMED.x1 - SHOWCASE_FORMAT.width / 2) / focal];
+    const [y0, y1] = [(SHOWCASE_FORMAT.height / 2 - FRAMED.y1) / focal, (SHOWCASE_FORMAT.height / 2 - FRAMED.y0) / focal];
     // A point is inside when its offset over its depth is, which is linear in the camera's place along each axis: the
     // tightest place that holds every point is closed-form.
     let [left, rightmost, bottom, top] = [Infinity, Infinity, Infinity, Infinity];
@@ -227,7 +229,7 @@ export function tiersBar(clock: ShowcaseClock<'tiers'>): Bar {
       if (k < 3) for (const side of [-1, 1]) points.push(new THREE.Vector3(tierX(k) + side * (1 + HALF), TIERS[k].height, BACK - HALF));
     }
     if (!ball) return points;
-    for (let s = t + ball[0]; s <= t + ball[1] + 1e-6; s += 1 / (2 * FPS)) {
+    for (let s = t + ball[0]; s <= t + ball[1] + 1e-6; s += 1 / (2 * fps)) {
       const at = columnBallAt(BALL_STAGE, s)!;
       for (const axis of [[1, 0, 0], [0, 1, 0], [0, 0, 1]] as const) {
         for (const sign of [-1, 1]) points.push(at.position.clone().addScaledVector(new THREE.Vector3(...axis), sign * at.radius));
@@ -240,7 +242,7 @@ export function tiersBar(clock: ShowcaseClock<'tiers'>): Bar {
   // last has no ball: it has left along the red, and the whip goes after it.
   const PLACES = ([
     [0, [0, 0.13]], [4, [-0.1, 0.1]], [8, [-0.1, 0.1]], [12, [-0.1, 0.1]], [15, [-0.1, 0.1]], [18, [-0.1, 0.1]],
-    [22, [-0.1, 0.1]], [26, [-0.1, 0.1]], [30, [-0.1, 0.1]], [37, [-0.1, 0.1]], [45, [-0.1, 0.1]], [WHIP.at * FPS, null],
+    [22, [-0.1, 0.1]], [26, [-0.1, 0.1]], [30, [-0.1, 0.1]], [37, [-0.1, 0.1]], [45, [-0.1, 0.1]], [WHIP.at * fps, null],
   ] as const).map(([since, ball]) => {
     const t = fieldT(FROM + since);
     return { t, pose: framedPose(aimAt(t), subjectAt(t, ball)) };
@@ -278,7 +280,7 @@ export function tiersBar(clock: ShowcaseClock<'tiers'>): Bar {
   // ColumnCameraMove cranes between two poses only, so each frame hands it last frame's pose and this one's: its
   // exposures smear along the path.
   function frameMove(t: number): ColumnCameraMove {
-    const dt = 1 / FPS;
+    const dt = 1 / fps;
     return { from: poseAt(t - dt), to: poseAt(t), crane: [t - dt, t], ease: (u) => u, punches: PUNCHES, punchDecay: 0.06, whip: WHIP };
   }
 
@@ -339,7 +341,7 @@ export function tiersBar(clock: ShowcaseClock<'tiers'>): Bar {
     const spec = fieldAt(f);
     const t = spec.t;
     const cam = columnCameraAt(spec.camera, t);
-    const focal = H / 2 / Math.tan(rad(cam.fov) / 2);
+    const focal = SHOWCASE_FORMAT.height / 2 / Math.tan(rad(cam.fov) / 2);
     const cards = [...TIERS.keys()].map((k) => {
       const card = cardFrame(k, t);
       const centre = card.hinge.clone().addScaledVector(card.up, card.h / 2);
@@ -347,7 +349,7 @@ export function tiersBar(clock: ShowcaseClock<'tiers'>): Bar {
     });
     const ball = columnBallAt(spec, t);
     return ({ x, y }) => {
-      const ray = new THREE.Ray(cam.position, cam.forward.clone().addScaledVector(cam.right, (x - W / 2) / focal).addScaledVector(cam.up, (H / 2 - y) / focal).normalize());
+      const ray = new THREE.Ray(cam.position, cam.forward.clone().addScaledVector(cam.right, (x - SHOWCASE_FORMAT.width / 2) / focal).addScaledVector(cam.up, (SHOWCASE_FORMAT.height / 2 - y) / focal).normalize());
       let best = { at: Infinity, tone: 'light' as ReelHudTone };
       const offer = (point: THREE.Vector3 | null, tone: ReelHudTone) => {
         const at = point ? point.distanceTo(cam.position) : Infinity;

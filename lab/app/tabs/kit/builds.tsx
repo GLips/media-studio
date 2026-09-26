@@ -3,10 +3,9 @@
 import type { ReactNode } from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
-import { FULL_FRAME } from '#models/frame/frame.ts';
 import { DrawPath, Odometer, WordReveal, wordRevealFinish, type OdometerMode } from '#studio/kit/kit.tsx';
 import { lerp, motionCurves, seg } from '#models/motion/motion.ts';
-import { LAB_COLORS, LabButtons, LabChoice, LabSlider } from '../../ui.tsx';
+import { LAB_COLORS, LAB_FORMAT, LabButtons, LabChoice, LabSlider } from '../../ui.tsx';
 import { defineKitPiece, KIT_COLOR_OPTIONS, KitTextField } from './piece.tsx';
 
 const LEAD = 0.5; // seconds of empty stage before the piece starts, so its first frame is seen
@@ -41,8 +40,9 @@ const wordTiming = (p: WordRevealStageProps) => ({ each: p.each, duration: p.dur
 
 function WordRevealStage(p: WordRevealStageProps) {
   const t = useKitSeconds();
+  const { fps } = useVideoConfig();
   const timing = wordTiming(p);
-  const finish = wordRevealFinish(p.text, { letters: p.letters, timing });
+  const finish = wordRevealFinish(p.text, { fps, letters: p.letters, timing });
   return (
     <AbsoluteFill style={{ background: LAB_COLORS.ground }}>
       <KitHud left={`Words one by one · ${p.letters ? 'letter by letter' : 'word by word'}`} right={`all in by ${finish.toFixed(2)}s · now ${Math.max(0, t).toFixed(2)}s in`} />
@@ -61,7 +61,7 @@ export const WORD_REVEAL_PIECE = defineKitPiece<WordRevealStageProps>({
   whenUsed: 'A headline or a key line of the voice-over, so the words arrive as they’re read rather than all at once.',
   note: <>It uses the system font on purpose: it’s a walkthrough piece, and there the words should look like the product’s own screens. Letter by letter is for one short word; on a sentence it takes too long.</>,
   defaults: { text: 'Every order ships the same day', size: 110, weight: 800, letters: false, each: 0.08, maxSlider: WORD_MAX_TOP, duration: 0.45, rise: 24, align: 'left' },
-  seconds: (p) => LEAD + wordRevealFinish(p.text, { letters: p.letters, timing: wordTiming(p) }) + HOLD,
+  seconds: (p) => LEAD + wordRevealFinish(p.text, { fps: LAB_FORMAT.fps, letters: p.letters, timing: wordTiming(p) }) + HOLD,
   Stage: WordRevealStage,
   Controls: ({ props: p, set }) => (
     <>
@@ -216,7 +216,7 @@ function DrawPathStage(p: DrawPathStageProps) {
     <AbsoluteFill style={{ background: LAB_COLORS.ground }}>
       <KitHud left={`Pen stroke · ${preset.label}`} right={k >= 1 ? 'drawn' : `drawing · ${Math.round(Math.min(1, k) * 100)}% of the time`} />
       {preset.behind()}
-      <DrawPath d={preset.d} k={k} color={p.color} width={p.width} box={preset.box ?? FULL_FRAME} viewBox={preset.viewBox} />
+      <DrawPath d={preset.d} k={k} color={p.color} width={p.width} box={preset.box} viewBox={preset.viewBox} />
     </AbsoluteFill>
   );
 }

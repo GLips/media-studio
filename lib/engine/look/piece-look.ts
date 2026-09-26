@@ -8,6 +8,7 @@ import { rasterizeSvgs } from '#engine/capture/html-raster.ts';
 import { readProjectTimeline } from '#engine/timeline/project-clock.ts';
 import { buildPieceGraph } from '#models/motion/piece-graph.ts';
 import { formatPieceTables, isPieceTracksDefinition, samplePieceTracks, type PieceTracksDefinition } from '#models/motion/piece-tracks.ts';
+import { videoFormatOf, type VideoDef } from '#studio/composition/timeline.ts';
 
 const SCENE_DIRS = ['bars', 'scenes'];
 const MODEL_FILE = /-model\.ts$/;
@@ -55,8 +56,10 @@ export async function lookPieceModels(project: string, { frames, tracks, out }: 
   const shown = scenes.find(({ scene }) => sampled.some((p) => p.scene === scene.id));
   const keepClear = shown?.pieces.keepClear;
   const keepClearAt = keepClear && ((f: number) => keepClear(f - shown.scene.origin));
+  // The map draws the video's frame, which its video.tsx sets; readProjectTimeline's hooks let it load here.
+  const video: VideoDef = (await import(pathToFileURL(join(project, 'video.tsx')).href)).default;
   const graph = buildPieceGraph(sampled, {
-    frames, beatFrames: timeline.beatFrames, keepClearAt,
+    frames, beatFrames: timeline.beatFrames, keepClearAt, frameSize: videoFormatOf(video),
     title: `${relative(process.cwd(), project) || project}: ${sampled.map((p) => p.id).join(', ')}`,
   });
   await rasterizeSvgs([{ svg: graph.svg, width: graph.width, height: graph.height, out }]);

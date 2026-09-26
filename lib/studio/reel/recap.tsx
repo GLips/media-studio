@@ -6,8 +6,9 @@
 
 import { useId, type CSSProperties, type ReactNode } from 'react';
 import type { Rect } from '#models/camera/camera.ts';
-import { FPS, H, W } from '#models/frame/frame.ts';
+import type { FrameSize } from '#models/frame/frame.ts';
 import { clamp } from '#models/motion/motion.ts';
+import { useVideoFormat } from '../composition/video-format.ts';
 import { motionEchoAttrs, pieceMotionAttrs } from '../probe/motion-tag.ts';
 import { hashRandom } from '#models/motion/random.ts';
 import {
@@ -15,22 +16,22 @@ import {
 } from '#models/reel/recap.ts';
 import { channelSplitPrimitives } from './lens.tsx';
 
-const fill: CSSProperties = { position: 'absolute', left: 0, top: 0, width: W, height: H };
+const frameFill = ({ width, height }: FrameSize): CSSProperties => ({ position: 'absolute', left: 0, top: 0, width, height });
 
 // ---------- RecapGrid ----------
 
 /** What a tile tells its shot. */
 export type RecapTileView = {
   /**
-   * The scale the tile draws its 1920×1080 shot at (0.49 in a 2×2, 0.33 in a 3×3). A canvas in the shot can render
-   * at W × scale and be scaled back up, rather than render a whole frame to be shown a third of the size.
+   * The scale the tile draws its whole-frame shot at (0.49 in a 2×2, 0.33 in a 3×3). A canvas in the shot can render
+   * at the frame's width × scale and be scaled back up, rather than render a whole frame to be shown a third of the size.
    */
   scale: number;
 };
 
 export type RecapTile = {
   /**
-   * Draws the whole 1920×1080 shot, ground included, at the shot's own time `t`: an earlier bar's component at its own
+   * Draws the whole frame's shot, ground included, at the shot's own time `t`: an earlier bar's component at its own
    * clock, so the replay plays live. It's drawn as an echo (motionEchoAttrs): its tags, framing marks and sound cues
    * counted where the shot first played, so the replay doesn't count them twice.
    */
@@ -62,9 +63,10 @@ export function RecapGrid({ t, tiles, radius, ground = '#0c0c0e', blur = 0.3, mo
   /** The grid's name in the motion tracks, `recap` by default; its tiles are `tile 0`… inside it. `false` tracks neither. */
   motion?: string | false;
 }) {
+  const format = useVideoFormat(), fill = frameFill(format);
   const u = t - (layout.at ?? 0);
   if (u < -RECAP_EPS) return null;
-  const { look, rects, starts, tileLook } = recapPlan({ ...layout, tiles });
+  const { look, rects, starts, tileLook } = recapPlan({ ...layout, tiles }, format);
   const startRank = starts.map((s, i) => starts.filter((o, j) => o < s || (o === s && j < i)).length);
 
   return (
@@ -83,15 +85,15 @@ export function RecapGrid({ t, tiles, radius, ground = '#0c0c0e', blur = 0.3, mo
         };
         const vx = speed('sx'), vy = speed('sy');
         // A box smear L px long spreads like a Gaussian of σ = L / √12; an edge moves half the size change.
-        const sigma = (v: number, size: number) => (Math.abs(v) * blur * size) / (2 * FPS * Math.sqrt(12));
+        const sigma = (v: number, size: number) => (Math.abs(v) * blur * size) / (2 * format.fps * Math.sqrt(12));
         const rect = rects[i];
-        const scale = recapShotScale(rect);
+        const scale = recapShotScale(rect, format);
         const tag = motion === false ? {} : pieceMotionAttrs(undefined, `tile ${i}`, {
           kind: 'recap-tile', values: { pop: here.pop, exit: here.exit }, stagger: { group: 'tiles', index: startRank[i], count: tiles.length },
         });
         return (
           <RecapTileFrame key={i} rect={rect} look={here} smear={[sigma(vx, rect.w), sigma(vy, rect.h)]} radius={radius ?? look.radius} tag={tag}>
-            <div {...motionEchoAttrs} style={{ ...fill, left: (rect.w - W * scale) / 2, top: (rect.h - H * scale) / 2, transform: `scale(${scale})`, transformOrigin: '0 0' }}>
+            <div {...motionEchoAttrs} style={{ ...fill, left: (rect.w - format.width * scale) / 2, top: (rect.h - format.height * scale) / 2, transform: `scale(${scale})`, transformOrigin: '0 0' }}>
               {tile.shot((tile.from ?? 0) + u, { scale })}
             </div>
           </RecapTileFrame>
@@ -161,19 +163,20 @@ export function GlitchFlash({ t, hits, seed = 'glitch', flashColor = '#a4a4a4', 
   motion?: string | false;
 } & Partial<GlitchLook>) {
   const id = useId();
+  const format = useVideoFormat(), fill = frameFill(format);
   const all = hits.map((h, index) => ({ ...GLITCH_LOOK, ...look, ...(typeof h === 'number' ? { at: h } : h), index }));
   const live = all.findLast((h) => t > h.at - RECAP_EPS && t < h.at + h.duration - RECAP_EPS);
   const lit = all.findLast((h) => h.flash > 0 && t > h.at - RECAP_EPS && t < h.at + flashDuration - RECAP_EPS);
   const flash = lit ? lit.flash * (1 - clamp((t - lit.at) / flashDuration)) ** 2 : 0;
-  const frame = live ? Math.round((t - live.at) * FPS) : 0;
-  const cuts = live ? glitchCuts(seed, live.index, frame, live) : [];
+  const frame = live ? Math.round((t - live.at) * format.fps) : 0;
+  const cuts = live ? glitchCuts(seed, live.index, frame, live, format) : [];
   const split = live ? Math.round(live.split * (0.85 + 0.3 * hashRandom(seed, live.index, frame, 'split'))) : 0;
   const filtered = !!live && (split > 0 || cuts.length > 0 || live.invert);
   return (
     <>
       {filtered && (
         <svg width={0} height={0} style={{ position: 'absolute' }}>
-          <filter id={id} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" x={0} y={0} width={W} height={H} colorInterpolationFilters="sRGB">
+          <filter id={id} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" x={0} y={0} width={format.width} height={format.height} colorInterpolationFilters="sRGB">
             <feColorMatrix in="SourceGraphic" type="matrix" values={live.invert ? INVERT_MATRIX : IDENTITY_MATRIX} result="src" />
             {cuts.map((cut, i) => <feOffset key={i} in="src" dx={cut.dx} dy={0} x={cut.x} y={cut.y} width={cut.w} height={cut.h} result={`cut${i}`} />)}
             <feMerge result="cut">
@@ -212,6 +215,7 @@ export function Shake({ t, at, strength = 3, decay = 0.1, seed = 'jolt', childre
   /** Its name in the motion tracks, `shake` by default: its track is the offset, and what it wraps is measured inside it. */
   motion?: string | false;
 }) {
+  const fill = frameFill(useVideoFormat());
   const { x, y } = shakeOffset(t - at, strength, decay, seed);
   return (
     <div {...pieceMotionAttrs(motion, 'shake', { kind: 'shake', values: { x, y } })} style={{ ...fill, transform: x || y ? `translate(${x}px, ${y}px)` : undefined }}>
@@ -234,6 +238,7 @@ export function FadeToBlack({ t, end, duration = 0.133, motion }: {
   /** Its name in the motion tracks, `fade` by default; it reports `k`, 0..1 through the fade. */
   motion?: string | false;
 }) {
+  const fill = frameFill(useVideoFormat());
   const k = clamp(1 - (end - t) / duration);
   if (k <= 0) return null;
   return <div {...pieceMotionAttrs(motion, 'fade', { kind: 'fade-to-black', values: { k } })} style={{ ...fill, background: '#000', opacity: k * k, pointerEvents: 'none' }} />;

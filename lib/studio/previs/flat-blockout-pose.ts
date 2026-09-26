@@ -6,10 +6,13 @@
 
 import { lerp, motionCurves, seg, type EaseFn } from '#models/motion/motion.ts';
 
-/** A piece's box on the 1920×1080 frame, top-left and size in px, with its opacity, scale and turn about its centre. */
+/** A piece's box on the frame, top-left and size in the video's px, with its opacity, scale and turn about its centre. */
 export type FlatPose = { x: number; y: number; w: number; h: number; opacity: number; scale: number; rotateDeg: number };
 
-/** The frame's view: the point of the frame at its centre, and a zoom about it. `{ cx: 960, cy: 540, zoom: 1 }` is still. */
+/**
+ * The frame's view: the point of the frame at its centre, and a zoom about it. The frame's own centre at zoom 1 is
+ * still: `{ cx: 960, cy: 540, zoom: 1 }` at 1920×1080.
+ */
 export type FlatView = { cx: number; cy: number; zoom: number };
 
 /** A move to `to`, starting on frame `at` of the scene's clock and taking `over` frames (default 12). Channels it doesn't name hold. */

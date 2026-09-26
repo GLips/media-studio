@@ -60,7 +60,7 @@ projects/<yyyy-mm-name>/
   timeline.ts      the timing, stated once: each scene's driver (beats, seconds or its voiced lines) and its cues
   timeline.test.ts registers the timeline with the retime runner
   scenes/, bars/   a file per scene (bars/ for one on the beat), its helpers in a folder of its name
-  video.tsx        defineVideo({ title, voice, scenes: bindTimeline(timeline, { … }) })
+  video.tsx        defineVideo({ title, format, voice, scenes: bindTimeline(timeline, { … }) }), format its fps and size
   stills.tsx       defineStills({ … }): each design, its presets and variants
   storyboard.md    the plan: audience, takeaway, the scene table, what was checked, what's deliberately left out
   captures/, audio/, music/, out/   generated, gitignored
@@ -90,7 +90,7 @@ Scenes import the studio's conveniences from `#studio` (`lib/studio/api.ts`), an
 - `lib/models/camera/camera.ts`: a camera over captures (`camFit`, `camAt`, `lerpCam`) and views, which map page rects to the
   frame.
 - `lib/studio/capture/capture.tsx`, `overlays.tsx`: captures (with blur, motion blur and state changes), cursor paths with
-  clicks, highlights, spotlights, tags, text, frosted glass and washes. Scene text stays above `CAPTION_SAFE_TOP`.
+  clicks, highlights, spotlights, tags, text, frosted glass and washes. Scene text stays above `captionSafeArea(frame).top`.
 - `lib/studio/kit/kit.tsx`: whole shots built from those, taking their brand colours and words as arguments: `MotionTitle`,
   `ClickToBlur`, `SplitCompare`, `Phone`, `GlassCard`, `SectionCard`, `EndCard`, and redraws of what a screenshot
   can't hold (`ConfirmDialog`, `NativeMenu`). When a shot recurs in a second video, move it here.

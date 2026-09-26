@@ -5,8 +5,8 @@
 import type { Pts } from 'p5';
 import {
   Capture, CaptureMotion, CaptureStates, ConfirmDialog, CursorPath, EndCard, GlassCard, Highlight, NativeMenu, Phone,
-  SPLIT_LEFT, SPLIT_RIGHT, SplitCompare, Text, Wash, W, camAt, camFit, camTop, centerOf, defineScene, defineVideo,
-  offscreen, on, phoneView, screenRect, motionCurves, seg, union, view, type CursorKey, type Rect,
+  SplitCompare, Text, Wash, camAt, camFit, camTop, centerOf, defineScene, defineVideo, offscreen, on, phoneView,
+  screenRect, motionCurves, seg, splitLeftRect, splitRightRect, union, useVideoFormat, view, type CursorKey, type Rect,
 } from '#studio';
 import { PAL, Watercolor, type WatercolorKit } from '#paint/watercolor.tsx';
 import { voice } from './audio/manifest.ts';
@@ -54,15 +54,16 @@ const pan = defineScene({
   id: 'pan', note: 'Motion-blurred travel down the tall page to the specs, then a push in on one row.',
   lines: ['pan'], lead: 0.4, tail: 0.8, cut: true,
   render: (s) => {
+    const frame = useVideoFormat();
     const line = s.line('pan');
-    const top = camTop(PAGE), specs = camFit(PAGE, PAGE.rects.specs, { pad: 60 }), row = camFit(PAGE, SPEC_ROW, { pad: 220 });
+    const top = camTop(PAGE, frame), specs = camFit(PAGE, PAGE.rects.specs, frame, { pad: 60 }), row = camFit(PAGE, SPEC_ROW, frame, { pad: 220 });
     const travel = [line.word('travels').start, line.word('specifications').start] as const;
     const cam = camAt(s.t, [[travel[1], specs], [line.word('pushes').start, specs], [line.word('row').start, row]]);
-    const v = view(PAGE, cam);
+    const v = view(PAGE, cam, frame);
     return (
       <>
         {s.t < travel[1]
-          ? <CaptureMotion view={view(PAGE, top)} from={top} to={specs} k={seg(s.t, ...travel)} />
+          ? <CaptureMotion view={view(PAGE, top, frame)} from={top} to={specs} k={seg(s.t, ...travel)} />
           : <Capture view={v} />}
         <Highlight rect={screenRect(v, SPEC_ROW)} k={on(s.t, line.word('row').start - 0.7, 0.6)} name="row" />
         {s.t < WIPE / 2 && <Watercolor t={s.t} on="clear" paint={(w) => w.brushWipe(0.5 + seg(s.t, 0, WIPE / 2) * 0.5)} />}
@@ -76,8 +77,9 @@ const price = defineScene({
   id: 'price', note: 'Push in on the price, ringed as it is said.',
   lines: ['price'], lead: 0.5, tail: 0.7,
   render: (s) => {
+    const frame = useVideoFormat();
     const said = s.line('price').word('twelve ninety nine');
-    const v = view(PAGE, camAt(s.t, [[0, camFit(PAGE, BUY_BOX, { pad: 120 })], [said.start - 0.2, camFit(PAGE, PAGE.rects.price, { pad: 160 })]]));
+    const v = view(PAGE, camAt(s.t, [[0, camFit(PAGE, BUY_BOX, frame, { pad: 120 })], [said.start - 0.2, camFit(PAGE, PAGE.rects.price, frame, { pad: 160 })]]), frame);
     return (
       <>
         <Capture view={v} />
@@ -92,8 +94,9 @@ const stock = defineScene({
   id: 'stock', note: 'The cursor picks cobalt (out of stock), then sage, then clicks plus three times until shipping is free.',
   lines: ['stock-a', 'stock-b'], lead: 0.5, tail: 1.0,
   render: (s) => {
+    const frame = useVideoFormat();
     const a = s.line('stock-a'), b = s.line('stock-b');
-    const v = view(PAGE, camFit(PAGE, BUY_BOX, { pad: 80 }));
+    const v = view(PAGE, camFit(PAGE, BUY_BOX, frame, { pad: 80 }), frame);
     const { swatches, plus } = PAGE.rects;
     const cobalt = a.word('cobalt').start, sage = b.word('sage').start, three = b.word('three').start;
     const clicks = [three, three + 0.4, three + 0.8];
@@ -122,10 +125,11 @@ const split = defineScene({
   id: 'split', note: 'Cobalt and sage side by side; each ring is clipped to its panel, while the bulb menu and the clear dialog float over both.',
   lines: ['split'], lead: 0.6, tail: 1.2,
   render: (s) => {
+    const frame = useVideoFormat();
     const line = s.line('split');
-    const left = view(C.cobalt, camFit(C.cobalt, union(C.cobalt.rects.swatches[0], C.cobalt.rects.stock), { pad: 60 }, SPLIT_LEFT), SPLIT_LEFT);
+    const left = view(C.cobalt, camFit(C.cobalt, union(C.cobalt.rects.swatches[0], C.cobalt.rects.stock), frame, { pad: 60 }, splitLeftRect(frame)), frame, splitLeftRect(frame));
     const rightShot = C['sage-q3'];
-    const right = view(rightShot, camFit(rightShot, union(rightShot.rects.select, rightShot.rects.note, rightShot.rects.clear), { pad: 60 }, SPLIT_RIGHT), SPLIT_RIGHT);
+    const right = view(rightShot, camFit(rightShot, union(rightShot.rects.select, rightShot.rects.note, rightShot.rects.clear), frame, { pad: 60 }, splitRightRect(frame)), frame, splitRightRect(frame));
     const menu = line.word('menu').start, dialog = line.word('dialog').start;
     const menuK = on(s.t, menu - 0.2, 0.3) * (1 - seg(s.t, dialog - 0.6, dialog - 0.4));
     return (
@@ -158,7 +162,8 @@ const ink = defineScene({
   id: 'ink', note: 'A hand-drawn ink loop circles the price on the real page as it is named.',
   lines: ['ink'], lead: 0.5, tail: 0.9,
   render: (s) => {
-    const v = view(PAGE, camFit(PAGE, PAGE.rects.now, { pad: 300, maxZoom: 1.4 }));
+    const frame = useVideoFormat();
+    const v = view(PAGE, camFit(PAGE, PAGE.rects.now, frame, { pad: 300, maxZoom: 1.4 }), frame);
     const named = s.line('ink').word('price').start;
     return (
       <>
@@ -173,8 +178,9 @@ const phone = defineScene({
   id: 'phone', note: 'The page on a phone scrolls to the specs; the sticky bar stays pinned and is ringed.',
   lines: ['phone'], lead: 0.5, tail: 0.9,
   render: (s) => {
+    const frame = useVideoFormat();
     const line = s.line('phone');
-    const top = phoneView(C['phone-top'], { cy: 420, height: 760 }), specs = { ...top, shot: C['phone-specs'] };
+    const top = phoneView(C['phone-top'], frame, { cy: 420, height: 760 }), specs = { ...top, shot: C['phone-specs'] };
     const scrolled = seg(s.t, line.word('price').start - 0.6, line.word('price').start - 0.1);
     return (
       <>
@@ -192,12 +198,13 @@ const numbers = defineScene({
   id: 'numbers', note: 'The page blurs behind a glass card whose two points arrive with their words.',
   lines: ['numbers'], lead: 0.6, tail: 1.2,
   render: (s) => {
+    const frame = useVideoFormat();
     const line = s.line('numbers');
     const blur = seg(s.t, 0, 0.8);
     return (
       <>
-        <Capture view={view(C['sage-q4'], camFit(C['sage-q4'], BUY_BOX, { pad: 80 }))} blur={30 * blur} />
-        <Wash color="22, 40, 70" from={0.6 * blur} to={0.36 * blur} x0={0} x1={W} />
+        <Capture view={view(C['sage-q4'], camFit(C['sage-q4'], BUY_BOX, frame, { pad: 80 }), frame)} blur={30 * blur} />
+        <Wash color="22, 40, 70" from={0.6 * blur} to={0.36 * blur} x0={0} />
         <GlassCard k={seg(s.t, 0.2, 1.0, motionCurves.cubic.entrance)} eyebrow="FOUR LAMPS" accent={RED} ink={INK}
           points={[{ text: '4 × $1,299', k: on(s.t, line.word('four').start - 0.3, 0.6) }, { text: '= $5,196', k: on(s.t, line.word('five').start - 0.3, 0.6) }]} />
       </>

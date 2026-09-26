@@ -1,7 +1,7 @@
 // glyph-field-frame.ts: everything GlyphField draws at a time, as data: colours read and mixed, wave clips played on
 // each cell, the filter's drops and moves, the punch, the collapse and the motion smear. A pure function of its props.
 
-import { FPS, H, W } from '#models/frame/frame.ts';
+import type { FrameSize, VideoFormat } from '#models/frame/frame.ts';
 import type { Point } from '#models/camera/camera.ts';
 import { backOutEase, clamp, lerp, motionCurves, type EaseFn } from '#models/motion/motion.ts';
 import { hashRandom } from '#models/motion/random.ts';
@@ -189,11 +189,11 @@ function restState(rest: GlyphRest): CellState {
   return { ...GLYPH_SHAPES.dot, ...shape, fill: parseGlyphColor(fill), scale, opacity, brighten };
 }
 
-function buildModel<D>(props: GlyphFieldProps<D>): FieldModel<D> {
+function buildModel<D>(props: GlyphFieldProps<D>, size: FrameSize): FieldModel<D> {
   const { items, layout = {}, rest, waves = [], filter = [], filterTiming = {}, punch, implode, shutter = 0.5, seed = 'glyph-field' } = props;
-  const pitch = layout.pitch ?? 100, center = layout.center ?? { x: W / 2, y: H / 2 };
+  const pitch = layout.pitch ?? 100, center = layout.center ?? { x: size.width / 2, y: size.height / 2 };
   const count = items ? items.length : (layout.columns ?? 19) * (layout.rows ?? 11);
-  const cells = glyphFieldLayout(count, layout).map((slot) => ({ ...slot, item: (items ? items[slot.index] : null) as D }));
+  const cells = glyphFieldLayout(count, size, layout).map((slot) => ({ ...slot, item: (items ? items[slot.index] : null) as D }));
   const restOf = typeof rest === 'function' ? rest : () => rest ?? {};
   const timing: Required<GlyphFilterTiming> = { exit: 0.26, enter: 0.3, spread: 0.2, move: 0.5, moveSpread: 0.12, moveEase: motionCurves.expo.entrance, ...filterTiming };
 
@@ -209,7 +209,7 @@ function buildModel<D>(props: GlyphFieldProps<D>): FieldModel<D> {
     const kept = cells.filter((_, n) => keep[n]).map((c) => c.index);
     if (step.regroup) {
       const block = step.regroup === true ? {} : step.regroup;
-      const slots = glyphFieldLayout(kept.length, { pitch, center, columns: Math.max(1, Math.round(Math.sqrt(kept.length * 1.8))), ...block });
+      const slots = glyphFieldLayout(kept.length, size, { pitch, center, columns: Math.max(1, Math.round(Math.sqrt(kept.length * 1.8))), ...block });
       const plan = cachedRegroupPlan(kept.map((n) => ({ x: prevX[n], y: prevY[n] })), slots, timing.moveSpread);
       kept.forEach((n, q) => { tx[n] = slots[plan.slot[q]].x; ty[n] = slots[plan.slot[q]].y; moveDelay[n] = plan.delay[q]; });
     } else {
@@ -306,11 +306,11 @@ export type GlyphFieldFrame = {
   values: { wave: number; kept: number; move: number; implode: number; punch: number };
 };
 
-/** Everything `GlyphField` draws at `props.t`, as data: a pure function of its props. */
-export function glyphFieldFrame<D>(props: GlyphFieldProps<D>): GlyphFieldFrame {
-  const model = buildModel(props);
+/** Everything `GlyphField` draws at `props.t` in a video of `format`, as data: a pure function of the two. */
+export function glyphFieldFrame<D>(props: GlyphFieldProps<D>, format: VideoFormat): GlyphFieldFrame {
+  const model = buildModel(props, format);
   const { t } = props, { cells, pitch, implode, center } = model;
-  const shutter = model.shutter / FPS;
+  const shutter = model.shutter / format.fps;
 
   // The punch is read at t for every sample: it lands hard, as a cut would, and smearing its jump would double-expose
   // the grid (the reference's one such frame is a capture artefact).

@@ -18,7 +18,6 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { readSfxCueList } from '#sfx/cue-module.ts';
 import { sfxCuePlays } from '#sfx/cues.ts';
-import { H, W } from '#models/frame/frame.ts';
 import type { MotionTracks } from '#models/motion/motion-tracks.ts';
 import { reviewTimingOf, type ReviewTiming } from '#models/review/review-moment.ts';
 import { reviewStoryboardOf, reviewTimingMarksOf, type ReviewStoryboardCard, type ReviewTimingMarks } from '#models/review/review-storyboard.ts';
@@ -58,7 +57,11 @@ export type ReviewManifest = ReviewRenderStatus & {
    * and note frames are on the render's own clock, from its first frame.
    */
   startsAt: number | null;
-  frameSize: { w: number; h: number };
+  /**
+   * The render's frame in composition pixels, from its snapshot. Null without one, which leaves no motion to look under
+   * a point in.
+   */
+  frameSize: { w: number; h: number } | null;
   scenes?: ReviewScene[];
   sounds?: ReviewSoundMarker[];
   /** False when the cue list's markers are there but this render doesn't play it. */
@@ -145,7 +148,7 @@ export function buildReviewManifest(target: ReviewTarget): ReviewManifest {
     ...status,
     title: basename(media),
     media: { url: `/media${extname(media).toLowerCase()}?${new URLSearchParams({ media: fromRoot(media), render: status.render.hash })}`, path: fromRoot(media), kind },
-    fps: null, durationInFrames: null, startsAt: null, frameSize: { w: W, h: H }, missing: [], notes: saved?.notes ?? [], notesPath: fromRoot(notesFile),
+    fps: null, durationInFrames: null, startsAt: null, frameSize: null, missing: [], notes: saved?.notes ?? [], notesPath: fromRoot(notesFile),
   };
   if (kind === 'still') {
     const cells = readJson<ReviewStillCellsFile>(media.slice(0, -extname(media).length) + '.cells.json');
@@ -169,6 +172,7 @@ export function buildReviewManifest(target: ReviewTarget): ReviewManifest {
     manifest.fps = fps;
     manifest.durationInFrames = snapshot.frames.end - from;
     manifest.startsAt = from;
+    manifest.frameSize = { w: timeline.width, h: timeline.height };
     manifest.scenes = timeline.scenes.flatMap(({ id, start, dur, rung }) => {
       const first = Math.max(timeline.crossfades.find((c) => c.to === id)?.start ?? start, shift);
       const last = Math.min(timeline.crossfades.find((c) => c.from === id)?.end ?? start + dur, end / fps);

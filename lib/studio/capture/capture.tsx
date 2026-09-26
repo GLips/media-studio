@@ -7,7 +7,7 @@
 // dissolve) record as one camera; what changes inside a capture's pixels isn't measured.
 
 import { Img } from 'remotion';
-import { lerpCam, scaleFor, type Cam, type View } from '#models/camera/camera.ts';
+import { lerpCam, viewScale, type Cam, type View } from '#models/camera/camera.ts';
 import { clamp, motionCurves, seg } from '#models/motion/motion.ts';
 import { cameraMotionAttrs, unmeasuredAttrs } from '../probe/motion-tag.ts';
 
@@ -18,7 +18,7 @@ import { cameraMotionAttrs, unmeasuredAttrs } from '../probe/motion-tag.ts';
 export function Capture({ view, alpha = 1, blur = 0, motion }: { view: View; alpha?: number; blur?: number; motion?: string | false }) {
   if (alpha <= 0) return null;
   const { shot, cam, box } = view;
-  const k = scaleFor(shot, cam.zoom);
+  const k = viewScale(view);
   return (
     <div {...cameraMotionAttrs(view, motion)} {...(shot.take && unmeasuredAttrs('take contents'))}
       style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, overflow: 'hidden', opacity: alpha }}>

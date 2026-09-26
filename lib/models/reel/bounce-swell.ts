@@ -1,7 +1,7 @@
 // bounce-swell.ts: a circle growing until its colour covers the frame, as a pure function of its progress; the
 // bouncing ball launches into it, and any circle (a swatch, an i's tittle) can.
 
-import { FPS, H, W } from '#models/frame/frame.ts';
+import type { FrameSize, VideoFormat } from '#models/frame/frame.ts';
 import { clamp, lerp, powerOutEase } from '#models/motion/motion.ts';
 import { DEG, REF_F, scaleStrain, shapeOfStrain, smoothstep, strainOf } from './bounce-shape.ts';
 
@@ -18,6 +18,8 @@ const swellGrowth = (u: number) => 0.5 * u * (1 + u);
 export type SwellFrom = { x: number; y: number; r: number; aspect?: number; angle?: number };
 
 export type FieldSwellOptions = {
+  /** The video's: the frame it covers, and the frame rate its shutter is a share of. */
+  format: VideoFormat;
   from: SwellFrom;
   /** Where it heads as it grows: the frame's centre by default. */
   to?: { x: number; y: number };
@@ -48,16 +50,16 @@ export type SwellPose = {
   covered: boolean;
 };
 
-/** Pixels from (x, y) to the frame's farthest corner. */
-const farthestCorner = (x: number, y: number) => Math.hypot(Math.max(x, W - x), Math.max(y, H - y));
+/** Pixels from (x, y) to the farthest corner of a frame `size` big. */
+const farthestCorner = (x: number, y: number, { width, height }: FrameSize) => Math.hypot(Math.max(x, width - x), Math.max(y, height - y));
 
 /**
  * The swell at progress `k` (0 start, 1 covered): a circle hopping to `to` on an ease-out while its radius grows
  * exponentially, ever faster (the reference's ×1.25 per 60 fps frame at the end), so the edge whips past the corners.
  * ln r runs 0.5k + 0.5k² of the way to 1.15× the reach to the farthest corner.
  */
-export function fieldSwellAt(k: number, { from, to = { x: W / 2, y: H / 2 }, lift = 0, stretch = 1.75, duration = SWELL_TIME, shutter = SWELL_SHUTTER }: FieldSwellOptions): SwellPose {
-  const u = clamp(k), grow = Math.log((1.15 * farthestCorner(to.x, to.y) + 2) / from.r);
+export function fieldSwellAt(k: number, { format, from, to = { x: format.width / 2, y: format.height / 2 }, lift = 0, stretch = 1.75, duration = SWELL_TIME, shutter = SWELL_SHUTTER }: FieldSwellOptions): SwellPose {
+  const u = clamp(k), grow = Math.log((1.15 * farthestCorner(to.x, to.y, format) + 2) / from.r);
   const r = from.r * Math.exp(grow * swellGrowth(u));
   const e = swellMove(u);
   const x = lerp(from.x, to.x, e), y = lerp(from.y, to.y, e) - lift * 4 * e * (1 - e);
@@ -68,14 +70,14 @@ export function fieldSwellAt(k: number, { from, to = { x: W / 2, y: H / 2 }, lif
   // A squashed start (a crouch) springs round within the swell's first frame.
   const start = scaleStrain(strainOf(from.aspect ?? 1, (from.angle ?? 0) / DEG), 1 - smoothstep(u / 0.07));
   const { aspect, angle } = shapeOfStrain({ x: along.x + start.x, y: along.y + start.y });
-  const soft = Math.max(1, (r * grow * (0.5 + u) * shutter) / (duration * FPS));
-  const covered = k >= 1 || r / Math.sqrt(aspect) - soft / 2 >= farthestCorner(x, y);
+  const soft = Math.max(1, (r * grow * (0.5 + u) * shutter) / (duration * format.fps));
+  const covered = k >= 1 || r / Math.sqrt(aspect) - soft / 2 >= farthestCorner(x, y, format);
   return { x, y, r, aspect, angle: angle * DEG, soft, covered };
 }
 
 /** Where the swell's centre passes while the shutter is open around `k`, `k`'s own in the middle. */
 export function swellCentres(k: number, opts: FieldSwellOptions & { duration: number }): { x: number; y: number }[] {
-  const span = (opts.shutter ?? SWELL_SHUTTER) / FPS / opts.duration;
+  const span = (opts.shutter ?? SWELL_SHUTTER) / opts.format.fps / opts.duration;
   return smearSamples((j) => fieldSwellAt(k + span * (j - 0.5), opts), 3, 15);
 }
 

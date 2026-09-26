@@ -5,10 +5,9 @@
 import { useMemo, useState } from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
-import { FPS } from '#models/frame/frame.ts';
 import { ShutterBlur } from '#studio/film/motion-blur.tsx';
 import { clamp, lerp, perceptualSpring, type PerceptualSpring } from '#models/motion/motion.ts';
-import { LAB_COLORS, LabBench, LabChoice, LabControls, LabNote, LabSlider, LabStage } from '../../ui.tsx';
+import { LAB_COLORS, LAB_FORMAT, LabBench, LabChoice, LabControls, LabNote, LabSlider, LabStage } from '../../ui.tsx';
 
 type SpringsMove = 'slide' | 'pop' | 'toggle';
 type SpringsTiming = 'arrival' | 'duration' | 'together';
@@ -35,8 +34,8 @@ const SPRINGS_TIMINGS: readonly { value: SpringsTiming; label: string; why: stri
 ];
 
 export const SPRINGS_LOOKS: readonly { value: SpringsLook; label: string; fps: number }[] = [
-  { value: 'videoBlur', label: 'Video, blurred', fps: FPS },
-  { value: 'video', label: 'Video, sharp', fps: FPS },
+  { value: 'videoBlur', label: 'Video, blurred', fps: LAB_FORMAT.fps },
+  { value: 'video', label: 'Video, sharp', fps: LAB_FORMAT.fps },
   { value: 'screen', label: 'Screen, 60 fps', fps: 60 },
 ];
 

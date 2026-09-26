@@ -7,7 +7,7 @@
 
 import type { CSSProperties } from 'react';
 import {
-  FPS, H, REEL_SHUTTER, SFX, W, clamp, lerp, motionAttrs, motionCurves, motionEchoAttrs, seededRandom, shutterTravel,
+  REEL_SHUTTER, SFX, clamp, lerp, motionAttrs, motionCurves, motionEchoAttrs, seededRandom, shutterTravel,
   type Point, type Rect,
 } from '#studio';
 import { GlyphField, ShockRing } from '#studio/reel/glyph-field.tsx';
@@ -26,13 +26,15 @@ import { Field } from '../parts.tsx';
 import { SHOWCASE_HUD } from '../hud.ts';
 import needleFullStop from '../sfx/needle-full-stop.ts';
 import { P } from '../look.ts';
+import { SHOWCASE_FORMAT } from '../timeline.ts';
 
 /** The finale, replaying the bars before it as the timeline cues them. */
 export function oneBoxBar(clock: ShowcaseClock<'one-box'>, replays: ShowcaseReplays<'one-box'>): Bar {
+  const { fps } = clock;
   const FROM = clock.from, TO = clock.to;
   /** The last frame the reel renders, black under the reel's fade. */
   const LAST = TO - 1;
-  const sec = (f: number) => f / FPS;
+  const sec = (f: number) => f / fps;
   const outExpo = motionCurves.expo.entrance;
 
   /** The bar's cues (timeline.ts): the grids, the flashes on 2's sixteenths, the field, the card, the name and the stop. */
@@ -42,7 +44,7 @@ export function oneBoxBar(clock: ShowcaseClock<'one-box'>, replays: ShowcaseRepl
     card: cues.card, name: cues.name, stop: cues.stop,
   } as const;
 
-  const fill: CSSProperties = { position: 'absolute', left: 0, top: 0, width: W, height: H };
+  const fill: CSSProperties = { position: 'absolute', left: 0, top: 0, width: SHOWCASE_FORMAT.width, height: SHOWCASE_FORMAT.height };
   const layer: CSSProperties = { position: 'absolute', left: 0, top: 0, overflow: 'visible', pointerEvents: 'none' };
 
   // ---------- the recap ----------
@@ -99,7 +101,7 @@ export function oneBoxBar(clock: ShowcaseClock<'one-box'>, replays: ShowcaseRepl
   const ARRIVAL: Omit<GlitchHit, 'at'> = { duration: 0.05, split: 0, slices: 6, shift: 70 };
 
   function Recap({ f, look, name }: { f: number; look: RecapLook; name: string }) {
-    const tiles = look.tiles.map(({ replay }): RecapTile => ({ from: sec(replay.sourceFrame(look.at)), shot: (t) => replay.source.render(Math.round(t * FPS)) }));
+    const tiles = look.tiles.map(({ replay }): RecapTile => ({ from: sec(replay.sourceFrame(look.at)), shot: (t) => replay.source.render(Math.round(t * fps)) }));
     return (
       <GlitchFlash t={sec(f)} hits={[{ at: sec(look.at), ...ARRIVAL }]} seed={`bar-09 ${name}`} motion={`${name} arrival`}>
         <RecapGrid t={sec(f)} {...recapLayout(look)} tiles={tiles} ground={P.ground} motion={name} />
@@ -125,7 +127,7 @@ export function oneBoxBar(clock: ShowcaseClock<'one-box'>, replays: ShowcaseRepl
     const layout = recapLayout(look), points = reelHudBoxPoints(box), step = box.w / 24;
     const byTile = new Map<number, { p: Point; inShot: Point }[]>();
     for (const p of points) {
-      const under = recapTileUnder(p, sec(f), layout);
+      const under = recapTileUnder(p, sec(f), layout, SHOWCASE_FORMAT);
       if (under) byTile.set(under.index, [...(byTile.get(under.index) ?? []), { p, inShot: under.inShot }]);
     }
     return [...byTile].flatMap(([index, hits]) => {
@@ -196,7 +198,7 @@ export function oneBoxBar(clock: ShowcaseClock<'one-box'>, replays: ShowcaseRepl
     return (
       <>
         <Field color={P.ground} />
-        <GlyphField t={sec(f)} {...INK_FIELD} implode={{ start: sec(HIT.field), duration: IMPLODE.frames / FPS, marker: IMPLODE.marker }} motion="ink field" />
+        <GlyphField t={sec(f)} {...INK_FIELD} implode={{ start: sec(HIT.field), duration: IMPLODE.frames / fps, marker: IMPLODE.marker }} motion="ink field" />
       </>
     );
   }
@@ -239,7 +241,7 @@ export function oneBoxBar(clock: ShowcaseClock<'one-box'>, replays: ShowcaseRepl
   // The full stop is the reel's red drop, round, not the face's square point: 0.3 cap across on the baseline, 0.035 cap
   // past the X's advance (its side bearing adds a little), and centred with the word as one lockup.
   const STOP = { r: 0.15 * CARD.cap, gap: 0.035 * CARD.cap };
-  const CARD_LEFT = (W - (CARD_LINE.width + STOP.gap + 2 * STOP.r)) / 2;
+  const CARD_LEFT = (SHOWCASE_FORMAT.width - (CARD_LINE.width + STOP.gap + 2 * STOP.r)) / 2;
   const STOP_AT: Point = { x: CARD_LEFT + CARD_LINE.width + STOP.gap + STOP.r, y: CARD.base - STOP.r };
 
   // The rise: the reference's 46 ms stagger tightened to 35 so the X has landed before the needle strikes. It started
@@ -249,7 +251,7 @@ export function oneBoxBar(clock: ShowcaseClock<'one-box'>, replays: ShowcaseRepl
   // The strike's ripple runs back from the dot at `speed` px/s, a letter a frame. Letters hop, less the farther out,
   // highest `peak` s after the front passes, and flush red on its frame, fading over two. Whole letters, in steps:
   // slicing across letters reads as a fault; a smooth flush pinks the word, fighting the dot.
-  const RIPPLE = { speed: 8000, lift: 0.1 * CARD.cap, liftReach: 1000, peak: 1 / FPS, flush: [1, 0.35, 0.1] };
+  const RIPPLE = { speed: 8000, lift: 0.1 * CARD.cap, liftReach: 1000, peak: 1 / fps, flush: [1, 0.35, 0.1] };
   const CREAM_RGB = [243, 240, 231], RED_RGB = [238, 76, 35];
   const inkFlush = (k: number) => `rgb(${CREAM_RGB.map((c, i) => Math.round(lerp(c, RED_RGB[i], k))).join(' ')})`;
 
@@ -265,7 +267,7 @@ export function oneBoxBar(clock: ShowcaseClock<'one-box'>, replays: ShowcaseRepl
     if (since < -1e-6) return { lift: 0, flush: 0 };
     const k = Math.max(0, since) / RIPPLE.peak;
     // The first frame at or after the front's arrival is the letter's red one.
-    const arrived = f - (HIT.stop + Math.ceil((d / RIPPLE.speed) * FPS - 1e-6));
+    const arrived = f - (HIT.stop + Math.ceil((d / RIPPLE.speed) * fps - 1e-6));
     return { lift: RIPPLE.lift * Math.exp(-d / RIPPLE.liftReach) * k * Math.exp(1 - k), flush: RIPPLE.flush[arrived] ?? 0 };
   }
 
@@ -317,7 +319,7 @@ export function oneBoxBar(clock: ShowcaseClock<'one-box'>, replays: ShowcaseRepl
     if (f < HIT.stop) return null;
     const k = f - HIT.stop, tau = sec(k);
     const r = STOP.r * (BLOOM.size[k] ?? 1), ratio = BLOOM.ratio[k] ?? 1, a = Math.sqrt(ratio);
-    const since = tau - 1 / FPS;
+    const since = tau - 1 / fps;
     const rough = k === 0 ? 0 : BLOOM.rough * Math.exp(-since / BLOOM.roughTau) + BLOOM.settle * Math.exp(-since / BLOOM.settleTau);
     const color = k === 0 ? P.ground : P.red;
     const shape = motionAttrs({ name: 'full stop', values: { r, ratio } });
@@ -325,7 +327,7 @@ export function oneBoxBar(clock: ShowcaseClock<'one-box'>, replays: ShowcaseRepl
       <>
         {/* It leaves the dot's edge on the hit: its clock starts as far back as the dot is wide. */}
         <ShockRing t={tau} at={-STOP.r / INK_RING.speed} origin={STOP_AT} {...INK_RING} color={P.red} motion="ink ring" />
-        <svg width={W} height={H} style={layer}>
+        <svg width={SHOWCASE_FORMAT.width} height={SHOWCASE_FORMAT.height} style={layer}>
           <g transform={`translate(${STOP_AT.x} ${STOP_AT.y}) scale(${a} ${1 / a}) translate(${-STOP_AT.x} ${-STOP_AT.y})`}>
             {rough > 0.002
               ? <path {...shape} d={blotPath(STOP_AT, r, rough)} fill={color} />
@@ -340,7 +342,7 @@ export function oneBoxBar(clock: ShowcaseClock<'one-box'>, replays: ShowcaseRepl
   // down from the top right over two and a half frames, one streak on the frame before the hit, drives in and tears back
   // out. A small opening keeps it sharp tip to body.
   const NEEDLE = {
-    tilt: 45, grip: 57, scale: 28, fov: 16, from: 80, climb: 15, enter: 2.5 / FPS, dwell: 1 / FPS, overdrive: 0.6, exit: 2.5 / FPS, lean: 8,
+    tilt: 45, grip: 57, scale: 28, fov: 16, from: 80, climb: 15, enter: 2.5 / fps, dwell: 1 / fps, overdrive: 0.6, exit: 2.5 / fps, lean: 8,
     aperture: 6, shutter: 0.25, fastShutter: 0.6, color: '#5a5e65',
   };
   const STOP_STRIKE: readonly NeedleStrike[] = [{ at: sec(HIT.stop), x: STOP_AT.x, y: STOP_AT.y, ink: P.red }];
@@ -369,7 +371,7 @@ export function oneBoxBar(clock: ShowcaseClock<'one-box'>, replays: ShowcaseRepl
     const at = tip(t), ramp = shutterTravel(tip, t, REEL_SHUTTER, 0), solid = Math.max(0, at - ramp / 2);
     const y = CARD.base + ROW.rule - RULE.weight / 2;
     return (
-      <svg width={W} height={H} style={layer}>
+      <svg width={SHOWCASE_FORMAT.width} height={SHOWCASE_FORMAT.height} style={layer}>
         <defs>
           <linearGradient id="bar-09-rule-tip">
             <stop offset={0} stopColor={RULE.color} />
@@ -439,9 +441,9 @@ export function oneBoxBar(clock: ShowcaseClock<'one-box'>, replays: ShowcaseRepl
     if (grain <= 0 && glow <= 0) return null;
     const alpha = `${HOLD_GRAIN.slope} 0 0 0 ${-HOLD_GRAIN.slope * HOLD_GRAIN.cut}`;
     return (
-      <svg {...motionAttrs({ name: 'hold ground', values: { grain, glow } })} width={1.5 * W} height={1.5 * H} style={{ ...layer, left: -W / 4, top: -H / 4 }}>
+      <svg {...motionAttrs({ name: 'hold ground', values: { grain, glow } })} width={1.5 * SHOWCASE_FORMAT.width} height={1.5 * SHOWCASE_FORMAT.height} style={{ ...layer, left: -SHOWCASE_FORMAT.width / 4, top: -SHOWCASE_FORMAT.height / 4 }}>
         <defs>
-          <radialGradient id="bar-09-afterglow" gradientUnits="userSpaceOnUse" cx={STOP_AT.x + W / 4} cy={STOP_AT.y + H / 4} r={AFTERGLOW.radius}>
+          <radialGradient id="bar-09-afterglow" gradientUnits="userSpaceOnUse" cx={STOP_AT.x + SHOWCASE_FORMAT.width / 4} cy={STOP_AT.y + SHOWCASE_FORMAT.height / 4} r={AFTERGLOW.radius}>
             <stop offset={0} stopColor={P.red} stopOpacity={glow} />
             <stop offset={1} stopColor={P.red} stopOpacity={0} />
           </radialGradient>
@@ -450,8 +452,8 @@ export function oneBoxBar(clock: ShowcaseClock<'one-box'>, replays: ShowcaseRepl
             <feColorMatrix type="matrix" values={`0 0 0 0 0.953  0 0 0 0 0.941  0 0 0 0 0.906  ${alpha}`} />
           </filter>
         </defs>
-        <rect width={1.5 * W} height={1.5 * H} fill="url(#bar-09-afterglow)" />
-        {grain > 0 && <rect width={1.5 * W} height={1.5 * H} filter="url(#bar-09-grain)" opacity={grain} />}
+        <rect width={1.5 * SHOWCASE_FORMAT.width} height={1.5 * SHOWCASE_FORMAT.height} fill="url(#bar-09-afterglow)" />
+        {grain > 0 && <rect width={1.5 * SHOWCASE_FORMAT.width} height={1.5 * SHOWCASE_FORMAT.height} filter="url(#bar-09-grain)" opacity={grain} />}
       </svg>
     );
   }
@@ -461,13 +463,13 @@ export function oneBoxBar(clock: ShowcaseClock<'one-box'>, replays: ShowcaseRepl
     return (
       <>
         <Field color={P.ground} />
-        <div style={{ ...fill, transform: `scale(${cardScaleAt(f)})`, transformOrigin: `${W / 2}px ${H / 2}px` }}>
+        <div style={{ ...fill, transform: `scale(${cardScaleAt(f)})`, transformOrigin: `${SHOWCASE_FORMAT.width / 2}px ${SHOWCASE_FORMAT.height / 2}px` }}>
           <Shake t={t} at={sec(HIT.stop)} {...JOLT} motion="jolt">
             {/* Looks redundant over the Field: the transforms make this its own stacking context, and the URL's colour
                 split blends with what's under it here. Without a ground of its own the split goes teal. */}
             <GlitchFlash t={t} hits={[GREY_FLASH]} motion="grey flash">
               <div {...motionAttrs({ name: 'strike flash', values: { k: strikeFlashAt(f) } })}
-                style={{ position: 'absolute', left: -W / 4, top: -H / 4, width: 1.5 * W, height: 1.5 * H, background: strikeGround(f) }} />
+                style={{ position: 'absolute', left: -SHOWCASE_FORMAT.width / 4, top: -SHOWCASE_FORMAT.height / 4, width: 1.5 * SHOWCASE_FORMAT.width, height: 1.5 * SHOWCASE_FORMAT.height, background: strikeGround(f) }} />
               <HoldGround f={f} />
             </GlitchFlash>
             <Word f={f} />

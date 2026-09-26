@@ -4,15 +4,20 @@
 // their words when the voice is re-timed.
 
 import {
-  Capture, CaptureStates, ClipToBox, ConfirmDialog, CursorPath, EndCard, FULL_FRAME, H, Highlight, MotionTitle,
-  NativeMenu, Phone, SFX, inflate, SPLIT_LEFT, SPLIT_RIGHT, SectionCard, Sfx, SplitCompare, Tag, Text, W, camAt, camFit,
-  centerOf, defineScene, defineVideo, CAPTION_FREE, FONT, lerpCam, motionCurves, off, on, phoneView, screenPoint, screenRect,
-  seg, union, view, fitTake, onTake, takeShot, takeTimeAt, TakeCursor,
-  type Rect, type SceneClock, type Shot, type Take, type TakeMark, type View,
+  Capture, CaptureStates, ClipToBox, ConfirmDialog, CursorPath, EndCard, Highlight, MotionTitle, NativeMenu, Phone, SFX,
+  inflate, SectionCard, Sfx, SplitCompare, Tag, Text, camAt, camFit, captionFreeRect, centerOf, defineScene, defineVideo,
+  FONT, lerpCam, motionCurves, off, on, phoneView, screenPoint, screenRect, seg, splitLeftRect, splitRightRect, union, view,
+  fitTake, onTake, takeShot, takeTimeAt, TakeCursor,
+  type Rect, type SceneClock, type Shot, type Take, type TakeMark, type VideoFormat, type View,
 } from '#studio';
 import { voice } from './audio/manifest.ts';
 import { captures as C, takes as T } from './captures/index.ts';
 import { music } from './music/index.ts';
+
+/** The video's frame: the layout below (the lightbox, the desk window, the split's panels) is placed in it. */
+export const STORY_FORMAT: VideoFormat = { fps: 30, width: 1920, height: 1080 };
+const LEFT_PANEL = splitLeftRect(STORY_FORMAT), RIGHT_PANEL = splitRightRect(STORY_FORMAT);
+const CAPTION_FREE_RECT = captionFreeRect(STORY_FORMAT);
 
 const NAVY = '#1c365e';
 const SALE_RED = '#b82b2b';
@@ -62,17 +67,17 @@ const photos = defineScene({
     const a = s.line('photos-a');
     let body;
     if (s.t < a.at(0.6)) {
-      const wide = (shot: Shot & { rects: { gallery: Rect } }, box: Rect) => camFit(shot, shot.rects.gallery, { pad: 20, maxZoom: 1.2 }, box);
+      const wide = (shot: Shot & { rects: { gallery: Rect } }, box: Rect) => camFit(shot, shot.rects.gallery, STORY_FORMAT, { pad: 20, maxZoom: 1.2 }, box);
       const close = (shot: Shot & { rects: { gallery: Rect } }, box: Rect) => {
         const g = shot.rects.gallery;
-        return camFit(shot, { x: g.x + g.w * 0.3, y: g.y + g.h * 0.1, w: g.w * 0.4, h: g.h * 0.28 }, { pad: 0, maxZoom: 3.2 }, box);
+        return camFit(shot, { x: g.x + g.w * 0.3, y: g.y + g.h * 0.1, w: g.w * 0.4, h: g.h * 0.28 }, STORY_FORMAT, { pad: 0, maxZoom: 3.2 }, box);
       };
       const push = seg(s.t, a.at(0.2), a.at(0.5));
       const control = C['sol-control'], next = C['sol-new'];
       body = (
         <SplitCompare k={seg(s.t, 1.6, 2.1, motionCurves.cubic.entrance)}
-          left={{ ...TODAY, view: view(control, lerpCam(wide(control, SPLIT_LEFT), close(control, SPLIT_LEFT), push), SPLIT_LEFT) }}
-          right={{ ...NEW, view: view(next, lerpCam(wide(next, SPLIT_RIGHT), close(next, SPLIT_RIGHT), push), SPLIT_RIGHT) }} />
+          left={{ ...TODAY, view: view(control, lerpCam(wide(control, LEFT_PANEL), close(control, LEFT_PANEL), push), STORY_FORMAT, LEFT_PANEL) }}
+          right={{ ...NEW, view: view(next, lerpCam(wide(next, RIGHT_PANEL), close(next, RIGHT_PANEL), push), STORY_FORMAT, RIGHT_PANEL) }} />
       );
     } else {
       // Filmed: each page's thumbnail is clicked on "print" and its sheet is up by "blurs", when the camera pushes
@@ -83,12 +88,12 @@ const photos = defineScene({
         const fit = fitTake(take, [[a.word('print').start - 0.1, 'pick'], [pushFrom, 'shown']]);
         const tt = takeTimeAt(fit, s.t), shot = takeShot(take, tt);
         const { pick, shown } = take.marks;
-        const wide = camFit(shot, union(onTake(take, tt, pick.rects.gallery as Rect), onTake(take, tt, pick.rects.thumb as Rect)), { pad: 20, maxZoom: 1.2 }, box);
-        const close = camFit(shot, kwadronText(onTake(take, tt, shown.rects.sheet as Rect)), { pad: 30, maxZoom: 6 }, box);
-        const v = view(shot, lerpCam(wide, close, push), box);
+        const wide = camFit(shot, union(onTake(take, tt, pick.rects.gallery as Rect), onTake(take, tt, pick.rects.thumb as Rect)), STORY_FORMAT, { pad: 20, maxZoom: 1.2 }, box);
+        const close = camFit(shot, kwadronText(onTake(take, tt, shown.rects.sheet as Rect)), STORY_FORMAT, { pad: 30, maxZoom: 6 }, box);
+        const v = view(shot, lerpCam(wide, close, push), STORY_FORMAT, box);
         return { ...arm, view: v, over: <TakeCursor view={v} t={s.t} fit={fit} alpha={1 - push} /> };
       };
-      body = <SplitCompare left={side(T['kw-control-browse'], SPLIT_LEFT, TODAY)} right={side(T['kw-new-browse'], SPLIT_RIGHT, NEW)} />;
+      body = <SplitCompare left={side(T['kw-control-browse'], LEFT_PANEL, TODAY)} right={side(T['kw-new-browse'], RIGHT_PANEL, NEW)} />;
     }
     return (
       <>
@@ -104,7 +109,7 @@ const photos = defineScene({
 // a divider sweeping across that sharpens it as it passes, then settling mid-box so the halves read side by side.
 // The box is about the print's shape: a wide one would run past the new page's left edge, and the camera, kept
 // inside the capture, would slide off the print.
-const LIGHTBOX = { x: (W - 1000) / 2, y: 40, w: 1000, h: 790 };
+const LIGHTBOX = { x: (STORY_FORMAT.width - 1000) / 2, y: 40, w: 1000, h: 790 };
 function PhotoWipe({ s }: { s: SceneClock }) {
   const b = s.line('photos-b');
   const k = seg(s.t, b.start - 0.35, b.start);
@@ -113,7 +118,7 @@ function PhotoWipe({ s }: { s: SceneClock }) {
   // The margin is a share of the photo rather than page pixels, since the two pages show it at different sizes.
   const closeUp = (shot: Shot & { rects: { sheet: Rect } }) => {
     const r = kwadronText(shot.rects.sheet);
-    return view(shot, camFit(shot, inflate(r, r.h * 0.1), { pad: 0, maxZoom: 16 }, LIGHTBOX), LIGHTBOX);
+    return view(shot, camFit(shot, inflate(r, r.h * 0.1), STORY_FORMAT, { pad: 0, maxZoom: 16 }, LIGHTBOX), STORY_FORMAT, LIGHTBOX);
   };
   const { x: left, w } = LIGHTBOX;
   const sweep = seg(s.t, b.start + 0.1, b.end + 0.4, motionCurves.linear);
@@ -156,8 +161,8 @@ const speed = defineScene({
   id: 'speed', lines: ['speed-a', 'speed-b'], lead: 0.4, gap: 1.2, tail: 2.2,
   render: (s) => {
     const control = C['sol-control'], next = C['sol-new'];
-    const left = view(control, camFit(control, union(control.rects.gallery, control.rects.swatches[2], control.rects.stepper), { pad: 20, maxZoom: 1 }, SPLIT_LEFT), SPLIT_LEFT);
-    const right = view(next, camFit(next, union(next.rects.gallery, next.rects.swatches[2], next.rects.addToCart), { pad: 20, maxZoom: 1 }, SPLIT_RIGHT), SPLIT_RIGHT);
+    const left = view(control, camFit(control, union(control.rects.gallery, control.rects.swatches[2], control.rects.stepper), STORY_FORMAT, { pad: 20, maxZoom: 1 }, LEFT_PANEL), STORY_FORMAT, LEFT_PANEL);
+    const right = view(next, camFit(next, union(next.rects.gallery, next.rects.swatches[2], next.rects.addToCart), STORY_FORMAT, { pad: 20, maxZoom: 1 }, RIGHT_PANEL), STORY_FORMAT, RIGHT_PANEL);
     const clickL = s.line('speed-a').at(0.45), clickR = s.line('speed-b').at(0.12), newTurn = s.line('speed-b').start;
     const spinning = { ...left, shot: C['sol-control-spin'] };
     // Flipping through options, faster as it goes: click… click click click. It keeps spinning on the left meanwhile.
@@ -175,7 +180,7 @@ const speed = defineScene({
             keys={[[0, aside(pinkL)], [clickL - 0.1, pinkL], [clickL, pinkL, { click: true }], [clickL + 1.5, aside(pinkL, 60, 90)]]} />
           <LoaderSpin r={screenRect(spinning, CONTROL_LOADER_SHOWN)} t={s.t} alpha={spin} />
           <Ring v={spinning} rect={CONTROL_LOADER_SHOWN} k={on(s.t, clickL + 0.5)} color={NAVY} alpha={off(s.t, newTurn)} />
-          <Tally box={SPLIT_LEFT} k={on(s.t, clickR, 0.4)} count={0} label="options seen" color={NAVY} />
+          <Tally box={LEFT_PANEL} k={on(s.t, clickR, 0.4)} count={0} label="options seen" color={NAVY} />
         </> }}
         right={{ ...NEW, view: right, over: <>
           <CaptureStates view={right} t={s.t} fade={0.08} states={[[next, 0], ...flipShots.map((shot, i) => [shot, flips[i] + 0.02] as const)]} />
@@ -185,7 +190,7 @@ const speed = defineScene({
             [flips[4] + 1.2, aside(pinkR, 60, 90)],
           ]} />
           <Ring v={right} rect={C['sol-new-pink'].rects.gallery} k={on(s.t, clickR + 0.3)} color={SALE_RED} />
-          <Tally box={SPLIT_RIGHT} k={on(s.t, clickR, 0.4)} count={shown.length} pop={shown.length ? off(s.t, shown[shown.length - 1], 0.3) : 0} label="options seen" color={SALE_RED} />
+          <Tally box={RIGHT_PANEL} k={on(s.t, clickR, 0.4)} count={shown.length} pop={shown.length ? off(s.t, shown[shown.length - 1], 0.3) : 0} label="options seen" color={SALE_RED} />
         </> }}
       />
     );
@@ -197,7 +202,7 @@ function Tally({ box, k, count, label, color, pop = 0 }: { box: Rect; k: number;
   if (k <= 0) return null;
   return (
     <div style={{
-      position: 'absolute', right: W - (box.x + box.w) + 28, top: box.y + 24, opacity: k, transform: `translateY(${(1 - k) * -12}px)`,
+      position: 'absolute', right: STORY_FORMAT.width - (box.x + box.w) + 28, top: box.y + 24, opacity: k, transform: `translateY(${(1 - k) * -12}px)`,
       display: 'flex', alignItems: 'baseline', gap: 12, padding: '10px 22px', borderRadius: 16, background: 'rgba(255,255,255,0.94)',
       boxShadow: '0 8px 28px rgba(16,30,54,0.22)', fontFamily: FONT, color,
     }}>
@@ -217,8 +222,8 @@ const stock = defineScene({
     const control = C['flare-control'], fresh = C['flare-new'], oos = C['flare-oos'];
     const gaugeL = control.data.gauge, gaugeR = fresh.data.gauge;
     const oosRow = gaugeR.findIndex((name) => name.includes('out of stock'));
-    const left = view(control, camFit(control, union(control.rects.price, withMenuRoom(control.rects.gauge, gaugeL.length)), { pad: 30, maxZoom: 1.3 }, SPLIT_LEFT), SPLIT_LEFT);
-    const right = view(fresh, camFit(fresh, union(fresh.rects.price, withMenuRoom(fresh.rects.gauge, gaugeR.length)), { pad: 30, maxZoom: 1.3 }, SPLIT_RIGHT), SPLIT_RIGHT);
+    const left = view(control, camFit(control, union(control.rects.price, withMenuRoom(control.rects.gauge, gaugeL.length)), STORY_FORMAT, { pad: 30, maxZoom: 1.3 }, LEFT_PANEL), STORY_FORMAT, LEFT_PANEL);
+    const right = view(fresh, camFit(fresh, union(fresh.rects.price, withMenuRoom(fresh.rects.gauge, gaugeR.length)), STORY_FORMAT, { pad: 30, maxZoom: 1.3 }, RIGHT_PANEL), STORY_FORMAT, RIGHT_PANEL);
     const pickOos = b.at(0.74), menuAt = b.at(0.4), menuShut = pickOos - 0.5;
     const fromR = screenRect(right, fresh.rects.gauge);
     const amber = centerOf(fresh.rects.amber);
@@ -252,8 +257,8 @@ const clash = defineScene({
   render: (s) => {
     const a = s.line('clash-a'), b = s.line('clash-b');
     const control = C['flare-control-clash'], alt = C['flare-25'], shown = C['flare-clash'];
-    const left = view(control, camFit(control, union(control.rects.price, control.rects.addToCart), { pad: 30, maxZoom: 1.3 }, SPLIT_LEFT), SPLIT_LEFT);
-    const right = view(alt, camFit(shown, union(shown.rects.price, shown.rects.note), { pad: 30, maxZoom: 1.3 }, SPLIT_RIGHT), SPLIT_RIGHT);
+    const left = view(control, camFit(control, union(control.rects.price, control.rects.addToCart), STORY_FORMAT, { pad: 30, maxZoom: 1.3 }, LEFT_PANEL), STORY_FORMAT, LEFT_PANEL);
+    const right = view(alt, camFit(shown, union(shown.rects.price, shown.rects.note), STORY_FORMAT, { pad: 30, maxZoom: 1.3 }, RIGHT_PANEL), STORY_FORMAT, RIGHT_PANEL);
     const pick = b.at(0.1), cobalt = centerOf(alt.rects.cobalt);
     return (
       <SplitCompare
@@ -283,21 +288,21 @@ const lists = defineScene({
     if (s.t < b.start - 0.2) {
       // Today's colour list is a native menu, drawn from the names the capture read off the page.
       const control = C['ink-control'];
-      const v = view(control, camFit(control, union(control.rects.price, withMenuRoom(control.rects.select, 12)), { pad: 30, maxZoom: 1.3 }));
+      const v = view(control, camFit(control, union(control.rects.price, withMenuRoom(control.rects.select, 12)), STORY_FORMAT, { pad: 30, maxZoom: 1.3 }), STORY_FORMAT);
       const open = a.at(0.5);
       return (
         <>
           <Capture view={v} />
           <ArmTag arm={TODAY} />
           <NativeMenu k={on(s.t, open, 0.4)} from={screenRect(v, control.rects.select)} items={control.data.names} scroll={seg(s.t, open + 0.5, b.start, motionCurves.linear)} />
-          <Tally box={CAPTION_FREE} k={countIn} count={INK_COLOURS} label="colours" color={NAVY} />
+          <Tally box={CAPTION_FREE_RECT} k={countIn} count={INK_COLOURS} label="colours" color={NAVY} />
         </>
       );
     }
     const blank = C['ink-new'], typed = C['ink-typed'];
     const blue = b.word('blue');
     const keys = [0, 1, 2, 3].map((i) => blue.start - 0.1 + i * 0.13), at = keys[3] + 0.04;
-    const v = view(blank, camFit(typed, union(typed.rects.combo, typed.rects.listbox), { pad: 40, maxZoom: 1.4 }));
+    const v = view(blank, camFit(typed, union(typed.rects.combo, typed.rects.listbox), STORY_FORMAT, { pad: 40, maxZoom: 1.4 }), STORY_FORMAT);
     const field = centerOf(blank.rects.combo);
     const falling = seg(s.t, keys[0], at + 0.3, motionCurves.cubic.entrance);
     return (
@@ -309,7 +314,7 @@ const lists = defineScene({
         <Ring v={v} rect={typed.rects.combo} k={on(s.t, keys[0] - 0.2)} color={SALE_RED} alpha={off(s.t, b.word('seventeen').start - 0.3)} />
         <Ring v={v} rect={typed.rects.matches} name="matches" k={on(s.t, b.word('seventeen').start - 0.7, 0.6)} color={SALE_RED} />
         <Ring v={v} rect={union(...typed.rects.options.slice(0, 5))} k={on(s.t, b.at(0.8))} color={SALE_RED} />
-        <Tally box={CAPTION_FREE} k={1} count={Math.round(INK_COLOURS + (INK_BLUE_MATCHES - INK_COLOURS) * falling)} label={falling < 1 ? 'colours' : 'match "blue"'}
+        <Tally box={CAPTION_FREE_RECT} k={1} count={Math.round(INK_COLOURS + (INK_BLUE_MATCHES - INK_COLOURS) * falling)} label={falling < 1 ? 'colours' : 'match "blue"'}
           color={falling > 0 ? SALE_RED : NAVY} pop={off(s.t, at + 0.3, 0.3) * (falling >= 1 ? 1 : 0)} />
       </>
     );
@@ -343,10 +348,10 @@ const sale = defineScene({
     const line = s.line('sale');
     const control = C['ball-control'], b8 = C['ball-8'];
     // The Sale flag is small, so Today eases in on it while the voice names it, holds, and eases back out.
-    const wide = camFit(control, union(control.rects.sale, control.rects.price), { pad: 60, maxZoom: 1.4 }, SPLIT_LEFT);
-    const flag = camFit(control, control.rects.sale, { pad: 120, maxZoom: 2.2 }, SPLIT_LEFT);
-    const left = view(control, camAt(s.t, [[line.at(0.12), wide], [line.at(0.3), flag], [line.at(0.52), flag], [line.at(0.66), wide]]), SPLIT_LEFT);
-    const right = view(b8, camFit(b8, union(b8.rects.price, ...b8.rects.pills), { pad: 40, maxZoom: 1.4 }, SPLIT_RIGHT), SPLIT_RIGHT);
+    const wide = camFit(control, union(control.rects.sale, control.rects.price), STORY_FORMAT, { pad: 60, maxZoom: 1.4 }, LEFT_PANEL);
+    const flag = camFit(control, control.rects.sale, STORY_FORMAT, { pad: 120, maxZoom: 2.2 }, LEFT_PANEL);
+    const left = view(control, camAt(s.t, [[line.at(0.12), wide], [line.at(0.3), flag], [line.at(0.52), flag], [line.at(0.66), wide]]), STORY_FORMAT, LEFT_PANEL);
+    const right = view(b8, camFit(b8, union(b8.rects.price, ...b8.rects.pills), STORY_FORMAT, { pad: 40, maxZoom: 1.4 }, RIGHT_PANEL), STORY_FORMAT, RIGHT_PANEL);
     const p10 = line.at(0.78), p11 = line.at(0.92);
     const pill = (i: number) => centerOf(b8.rects.pills[i]);
     return (
@@ -374,8 +379,8 @@ const quantity = defineScene({
     const a = s.line('qty-a'), b = s.line('qty-b'), c = s.line('qty-c');
     const control = C['tilum-control'], next = C['tilum-new'];
     if (s.t < c.start - 0.2) {
-      const left = view(control, camFit(control, control.rects.stepper, { pad: 50, maxZoom: 2.6 }, SPLIT_LEFT), SPLIT_LEFT);
-      const right = view(next, camFit(next, next.rects.stepper, { pad: 50, maxZoom: 2.6 }, SPLIT_RIGHT), SPLIT_RIGHT);
+      const left = view(control, camFit(control, control.rects.stepper, STORY_FORMAT, { pad: 50, maxZoom: 2.6 }, LEFT_PANEL), STORY_FORMAT, LEFT_PANEL);
+      const right = view(next, camFit(next, next.rects.stepper, STORY_FORMAT, { pad: 50, maxZoom: 2.6 }, RIGHT_PANEL), STORY_FORMAT, RIGHT_PANEL);
       // What the recordings showed: plus, over and over, on today's page.
       // Anchored to "tapped plus over and over", more taps than the words, so it reads as a habit.
       const plus = centerOf(control.rects.plus), from = b.word('tapped').start - 0.1;
@@ -387,15 +392,15 @@ const quantity = defineScene({
             <CursorPath view={left} t={s.t} alpha={seg(s.t, from - 0.6, from - 0.4)}
               keys={[[from - 0.6, aside(plus, 90, 110)], ...taps.map((at) => [at, plus, { click: true }] as const), [c.start - 0.3, aside(plus, 90, 110)]]} />
             {taps.map((at, i) => <PlusOne key={i} at={screenPoint(left, plus)} k={seg(s.t, at, at + 0.7, motionCurves.linear)} />)}
-            <Tally box={SPLIT_LEFT} k={on(s.t, from, 0.3)} count={tapped.length} pop={tapped.length ? off(s.t, tapped[tapped.length - 1], 0.25) : 0} label="taps on +" color={NAVY} />
+            <Tally box={LEFT_PANEL} k={on(s.t, from, 0.3)} count={tapped.length} pop={tapped.length ? off(s.t, tapped[tapped.length - 1], 0.25) : 0} label="taps on +" color={NAVY} />
           </> }}
           right={{ ...NEW, view: right, over: <Ring v={right} rect={next.rects.stepper} k={on(s.t, a.at(0.25))} color={SALE_RED} alpha={off(s.t, b.start)} /> }}
         />
       );
     }
     const controlQ5 = C['tilum-control-q5'], newQ5 = C['tilum-new-q5'];
-    const left = view(control, camFit(controlQ5, union(controlQ5.rects.price, controlQ5.rects.stepper), { pad: 30, maxZoom: 1.3 }, SPLIT_LEFT), SPLIT_LEFT);
-    const right = view(next, camFit(newQ5, union(newQ5.rects.price, newQ5.rects.stepper), { pad: 30, maxZoom: 1.3 }, SPLIT_RIGHT), SPLIT_RIGHT);
+    const left = view(control, camFit(controlQ5, union(controlQ5.rects.price, controlQ5.rects.stepper), STORY_FORMAT, { pad: 30, maxZoom: 1.3 }, LEFT_PANEL), STORY_FORMAT, LEFT_PANEL);
+    const right = view(next, camFit(newQ5, union(newQ5.rects.price, newQ5.rects.stepper), STORY_FORMAT, { pad: 30, maxZoom: 1.3 }, RIGHT_PANEL), STORY_FORMAT, RIGHT_PANEL);
     const clicks = [0.2, 0.45, 0.7, 0.95].map((f) => c.start - 0.2 + f), settled = c.start + 1.1;
     const plus = centerOf(next.rects.plus);
     return (
@@ -430,17 +435,17 @@ function PlusOne({ at, k }: { at: { x: number; y: number }; k: number }) {
 
 // A desktop viewport is 16:9 like the frame, so shown whole it would run under the captions; it sits in a smaller
 // window instead, with the bottom of the screen, where the bar is, above the caption band.
-const DESK_WINDOW = { x: (W - 1400) / 2, y: 30, w: 1400, h: 787.5 };
+const DESK_WINDOW = { x: (STORY_FORMAT.width - 1400) / 2, y: 30, w: 1400, h: 787.5 };
 
 const sticky = defineScene({
   id: 'sticky', lines: ['sticky'], lead: 0.3, tail: 1.2,
   render: (s) => {
     const line = s.line('sticky');
     const desk = C['desk-sticky-new'], bar = C['phone-bar'];
-    const v = view(desk, camFit(desk, { x: 0, y: 0, w: desk.w, h: desk.h }, { pad: 0 }, DESK_WINDOW), DESK_WINDOW);
+    const v = view(desk, camFit(desk, { x: 0, y: 0, w: desk.w, h: desk.h }, STORY_FORMAT, { pad: 0 }, DESK_WINDOW), STORY_FORMAT, DESK_WINDOW);
     const toPhone = line.at(0.62), k = seg(s.t, toPhone, toPhone + 0.5);
-    const phone = phoneView(bar, { cx: W / 2 - 330, cy: 420, height: 780 });
-    const x = W / 2 + 40, rise = (d: number) => seg(s.t, toPhone + d, toPhone + d + 0.7, motionCurves.cubic.entrance) * k;
+    const phone = phoneView(bar, STORY_FORMAT, { cx: STORY_FORMAT.width / 2 - 330, cy: 420, height: 780 });
+    const x = STORY_FORMAT.width / 2 + 40, rise = (d: number) => seg(s.t, toPhone + d, toPhone + d + 0.7, motionCurves.cubic.entrance) * k;
     return (
       <>
         <div style={{ position: 'absolute', inset: 0, background: '#e6eaf0' }} />
@@ -474,7 +479,7 @@ const bulk = defineScene({
       // The tab runs taller than the frame, so its first screenful stands in for it.
       const shot = C['ink-control-bulk'];
       const head = { ...shot.rects.box, h: Math.min(shot.rects.box.h, 560) };
-      const v = view(shot, camFit(shot, head, { pad: 30, maxZoom: 1.2 }));
+      const v = view(shot, camFit(shot, head, STORY_FORMAT, { pad: 30, maxZoom: 1.2 }), STORY_FORMAT);
       return (
         <>
           <Capture view={v} />
@@ -486,8 +491,8 @@ const bulk = defineScene({
     }
     const ink = C['ink-bulk'], tilum = C['tilum-bulk'];
     const filterAt = b.at(0.8), searchAt = s.line('bulk-search').start - 0.1, imagesAt = s.line('bulk-images').start - 0.1;
-    const inkView = view(ink, camFit(ink, union(ink.rects.back, ...ink.rects.lines.slice(0, 3)), { pad: 30, maxZoom: 1.3 }));
-    const tilumView = view(tilum, camFit(tilum, union(tilum.rects.facets, tilum.rects.filter, ...tilum.rects.lines.slice(0, 2)), { pad: 30, maxZoom: 1.3 }));
+    const inkView = view(ink, camFit(ink, union(ink.rects.back, ...ink.rects.lines.slice(0, 3)), STORY_FORMAT, { pad: 30, maxZoom: 1.3 }), STORY_FORMAT);
+    const tilumView = view(tilum, camFit(tilum, union(tilum.rects.facets, tilum.rects.filter, ...tilum.rects.lines.slice(0, 2)), STORY_FORMAT, { pad: 30, maxZoom: 1.3 }), STORY_FORMAT);
     const facetClick = filterAt + 0.3, facet = centerOf(tilum.rects.facet);
     const tilumK = seg(s.t, filterAt - 0.5, filterAt - 0.25) * (1 - seg(s.t, imagesAt - 0.3, imagesAt - 0.05));
     return (
@@ -514,9 +519,9 @@ const summary = defineScene({
   render: (s) => {
     const line = s.line('summary'), shot = C['ink-bulk-typed'];
     const first = shot.data.typed[0];
-    const rows = camFit(shot, union(...shot.rects.lines.slice(first, first + 4)), { pad: 30, maxZoom: 1.3 });
-    const receipt = camFit(shot, union(shot.rects.footer, shot.rects.receipt), { pad: 30, maxZoom: 1.3 });
-    const v = view(shot, camAt(s.t, [[line.at(0.35), rows], [line.at(0.6), receipt]]));
+    const rows = camFit(shot, union(...shot.rects.lines.slice(first, first + 4)), STORY_FORMAT, { pad: 30, maxZoom: 1.3 });
+    const receipt = camFit(shot, union(shot.rects.footer, shot.rects.receipt), STORY_FORMAT, { pad: 30, maxZoom: 1.3 });
+    const v = view(shot, camAt(s.t, [[line.at(0.35), rows], [line.at(0.6), receipt]]), STORY_FORMAT);
     return (
       <>
         <Capture view={v} />
@@ -533,8 +538,8 @@ const reset = defineScene({
   render: (s) => {
     const a = s.line('reset-a'), b = s.line('reset-b');
     const today = C['ink-control-bulk-typed'], wiped = C['ink-control-bulk'], fresh = C['ink-bulk-typed'];
-    const left = view(today, camFit(today, today.rects.box, { pad: 40, maxZoom: 1.3 }, SPLIT_LEFT), SPLIT_LEFT);
-    const right = view(fresh, camFit(fresh, union(fresh.rects.reset, fresh.rects.footer), { pad: 80, maxZoom: 1.3 }, SPLIT_RIGHT), SPLIT_RIGHT);
+    const left = view(today, camFit(today, today.rects.box, STORY_FORMAT, { pad: 40, maxZoom: 1.3 }, LEFT_PANEL), STORY_FORMAT, LEFT_PANEL);
+    const right = view(fresh, camFit(fresh, union(fresh.rects.reset, fresh.rects.footer), STORY_FORMAT, { pad: 80, maxZoom: 1.3 }, RIGHT_PANEL), STORY_FORMAT, RIGHT_PANEL);
     const tap = a.word('wipes').start, button = centerOf(today.rects.reset);
     const click = b.at(0.72), link = centerOf(fresh.rects.reset);
     return (
@@ -554,7 +559,7 @@ const reset = defineScene({
       >
         {/* The browser draws its dialog over the whole window, not inside the page's panel. */}
         <ConfirmDialog k={on(s.t, click + 0.15, 0.35)} origin="www.painfulpleasures.com" message="Clear every quantity in this bulk order? This cannot be undone."
-          anchor={{ x: SPLIT_RIGHT.x + SPLIT_RIGHT.w / 2, y: 200 }} />
+          anchor={{ x: RIGHT_PANEL.x + RIGHT_PANEL.w / 2, y: 200 }} />
       </SplitCompare>
     );
   },
@@ -583,12 +588,12 @@ const end = defineScene({
       <>
         <div style={{ position: 'absolute', inset: 0, background: '#eef1f6' }} />
         {RECAP.map(({ title: label, shot, rect }, i) => {
-          const box = { x: (W - 2 * TILE.w - TILE.gapX) / 2 + (i % 2) * (TILE.w + TILE.gapX), y: TILE.top + Math.floor(i / 2) * (TILE.h + TILE.gapY), w: TILE.w, h: TILE.h };
+          const box = { x: (STORY_FORMAT.width - 2 * TILE.w - TILE.gapX) / 2 + (i % 2) * (TILE.w + TILE.gapX), y: TILE.top + Math.floor(i / 2) * (TILE.h + TILE.gapY), w: TILE.w, h: TILE.h };
           const k = seg(s.t, 0.2 + i * 0.35, 0.8 + i * 0.35, motionCurves.cubic.entrance);
           return (
             <div key={i} style={{ position: 'absolute', inset: 0, opacity: k, transform: `translateY(${(1 - k) * 40}px)` }}>
               <div style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, borderRadius: 18, background: '#fff', boxShadow: '0 12px 40px rgba(16,30,54,0.18)' }} />
-              <Capture view={view(shot, camFit(shot, rect, { pad: 24, maxZoom: 3 }, box), box)} />
+              <Capture view={view(shot, camFit(shot, rect, STORY_FORMAT, { pad: 24, maxZoom: 3 }, box), STORY_FORMAT, box)} />
               <Text text={`${i + 1}  ${label}`} x={box.x + 6} y={box.y + box.h + 50} size={34} weight={700} color={NAVY} k={k} />
             </div>
           );
@@ -601,6 +606,7 @@ const end = defineScene({
 
 export default defineVideo({
   title: 'Simple buy box',
+  format: STORY_FORMAT,
   voice,
   music: { track: music.bed },
   scenes: [title, photos, speed, stock, clash, lists, sale, quantity, sticky, bulk, summary, reset, end],

@@ -3,22 +3,22 @@
 // The frame is the video's: the HUD counts the whole reel and the fade ends it. The bar inside draws on its own
 // clock's frames, the video's less its origin.
 
-import { FPS, FilmGrain, Vignette, defineVideo, sceneForTimelineClock, type Rect } from '#studio';
+import { FilmGrain, Vignette, defineVideo, sceneForTimelineClock, type Rect } from '#studio';
 import { ReelHud } from '#studio/reel/hud.tsx';
 import type { ReelHudRead, ReelHudSlot } from '#models/reel/hud.ts';
 import { LensFringe } from '#studio/reel/lens.tsx';
 import { FadeToBlack } from '#studio/reel/recap.tsx';
 import type { PlacedBar } from './bar.ts';
 import { SHOWCASE_HUD } from './hud.ts';
-import { timeline } from './timeline.ts';
+import { SHOWCASE_FORMAT, timeline } from './timeline.ts';
 
 /** The scene that plays `bar` where `scene` places it: the bar and the HUD through the lens, then the grade; the reel's last frames fade out. */
 export function barScene({ bar, scene }: PlacedBar) {
-  const { from, origin } = scene;
-  const kicks = [...(from > 0 ? [from] : []), ...(bar.kicks ?? []).map((f) => origin + f)].map((f) => f / FPS);
-  const splits = (bar.glitches ?? []).map((f) => (origin + f) / FPS);
+  const { from, origin, fps } = scene;
+  const kicks = [...(from > 0 ? [from] : []), ...(bar.kicks ?? []).map((f) => origin + f)].map((f) => f / fps);
+  const splits = (bar.glitches ?? []).map((f) => (origin + f) / fps);
   // ReelHud asks in seconds, 4 times within the frame; a bar answers per video frame, so it's asked once a frame.
-  const frameOf = (t: number) => Math.floor(t * FPS + 1e-6);
+  const frameOf = (t: number) => Math.floor(t * fps + 1e-6);
   let asked = { f: NaN, reads: new Map<ReelHudSlot, ReelHudRead>() };
   const readAt = (slot: ReelHudSlot, t: number, box: Rect): ReelHudRead => {
     const f = frameOf(t);
@@ -31,8 +31,8 @@ export function barScene({ bar, scene }: PlacedBar) {
   return sceneForTimelineClock(bar.clock, {
     note: bar.note, rung: 'final',
     render: (s) => {
-      const f = from + Math.round(s.t * FPS);
-      const t = f / FPS;
+      const f = from + Math.round(s.t * fps);
+      const t = f / fps;
       return (
         <>
           <LensFringe t={t} kicks={kicks} splits={splits}>
@@ -41,7 +41,7 @@ export function barScene({ bar, scene }: PlacedBar) {
           </LensFringe>
           <Vignette amount={0.12} />
           <FilmGrain amount={0.05} />
-          <FadeToBlack t={t} end={timeline.fade.to / FPS} duration={(timeline.fade.to - timeline.fade.from) / FPS} />
+          <FadeToBlack t={t} end={timeline.fade.to / fps} duration={(timeline.fade.to - timeline.fade.from) / fps} />
         </>
       );
     },
@@ -53,5 +53,5 @@ export function barScene({ bar, scene }: PlacedBar) {
  * the reel will, while other bars are mid-edit. Its frame 0 is the bar's first frame; its music is silent.
  */
 export function barPreview(placed: PlacedBar) {
-  return defineVideo({ title: `Showcase bar ${placed.scene.n}: ${placed.bar.id}`, voice: {}, scenes: [barScene(placed)] });
+  return defineVideo({ title: `Showcase bar ${placed.scene.n}: ${placed.bar.id}`, format: SHOWCASE_FORMAT, voice: {}, scenes: [barScene(placed)] });
 }

@@ -11,7 +11,7 @@ import { useLayoutEffect, useRef } from 'react';
 import * as THREE from 'three';
 import type { BlockoutPose } from './blockout-camera.ts';
 import type { Vec3 } from '#models/camera/vec3.ts';
-import { H, W } from '#models/frame/frame.ts';
+import { useVideoFormat } from '../composition/video-format.ts';
 
 /**
  * `figure` is a person stand-in (body and head), `card` a flat panel such as a phone, screen or sign (give it a small
@@ -78,13 +78,14 @@ export function Blockout({ pose, subjects, ground = '#e4e5e8', sky = '#f4f5f7' }
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const renderer = useRef<THREE.WebGLRenderer>(null);
+  const { width, height } = useVideoFormat();
 
   useLayoutEffect(() => {
     // preserveDrawingBuffer: Remotion screenshots the page after this effect, and a cleared buffer would come out blank.
     renderer.current ??= new THREE.WebGLRenderer({ canvas: canvas.current!, antialias: true, preserveDrawingBuffer: true });
     const gl = renderer.current;
     gl.setPixelRatio(1);
-    gl.setSize(W, H, false);
+    gl.setSize(width, height, false);
     gl.shadowMap.enabled = true;
     gl.shadowMap.type = THREE.PCFShadowMap;
 
@@ -114,7 +115,7 @@ export function Blockout({ pose, subjects, ground = '#e4e5e8', sky = '#f4f5f7' }
     };
     for (const subject of subjects) scene.add(subjectMesh(subject, material));
 
-    const camera = new THREE.PerspectiveCamera(pose.fov, W / H, 0.05, 400);
+    const camera = new THREE.PerspectiveCamera(pose.fov, width / height, 0.05, 400);
     camera.position.set(...pose.position);
     camera.lookAt(...pose.target);
     gl.render(scene, camera);
@@ -134,5 +135,5 @@ export function Blockout({ pose, subjects, ground = '#e4e5e8', sky = '#f4f5f7' }
     renderer.current = null;
   }, []);
 
-  return <canvas ref={canvas} width={W} height={H} style={{ position: 'absolute', left: 0, top: 0, width: W, height: H }} />;
+  return <canvas ref={canvas} width={width} height={height} style={{ position: 'absolute', left: 0, top: 0, width, height }} />;
 }

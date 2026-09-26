@@ -5,7 +5,6 @@
 // motion, and nothing here constrains that.
 
 import { Easing } from 'remotion';
-import { FPS } from '#models/frame/frame.ts';
 
 export const clamp = (v: number, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 export const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
@@ -184,23 +183,23 @@ export type StaggerFrom = 'start' | 'end' | 'center' | 'edges' | number;
 /**
  * `each` is seconds between neighbours' starts. Or, relative to each item's `duration`, `lagRatio` is the fraction of it
  * the next item waits (manim's lag_ratio): 0 all together, 1 one after another. `max` caps the spread from first
- * start to last.
+ * start to last. `fps` is the video's frame rate, whose frames the starts land on.
  */
-export type StaggerTiming = ({ each: number } | { lagRatio: number; duration: number }) & { max?: number; from?: StaggerFrom };
+export type StaggerTiming = ({ each: number } | { lagRatio: number; duration: number }) & { max?: number; from?: StaggerFrom; fps: number };
 
 /**
  * Seconds after the group starts that item `i` of `n` starts, on a whole frame. With `max`, a long list packs its
  * starts closer, so several items can share a frame. A component that consumes a stagger passes
  * `stagger: { group, index: i, count: n }` to its motion tag, so the tracks see the group.
  *
- *   rows.map((row, i) => <Text … k={seg(s.t, at + stagger(i, rows.length, { each: 0.08, max: 0.4 }), …)} />)
+ *   rows.map((row, i) => <Text … k={seg(s.t, at + stagger(i, rows.length, { each: 0.08, max: 0.4, fps }), …)} />)
  */
 export function stagger(i: number, n: number, timing: StaggerTiming): number {
   if (!Number.isInteger(n) || n < 1) throw new RangeError(`stagger: n must be a whole number of items, got ${n}`);
   if (!Number.isInteger(i) || i < 0 || i >= n) throw new RangeError(`stagger: item ${i} is outside 0..${n - 1}`);
   const { lo, hi } = staggerRankRange(n, timing.from);
   if (hi === lo) return 0;
-  return quantiseToFrame((staggerSpread(timing, hi - lo) * (staggerRank(i, n, timing.from) - lo)) / (hi - lo));
+  return quantiseToFrame(timing.fps, (staggerSpread(timing, hi - lo) * (staggerRank(i, n, timing.from) - lo)) / (hi - lo));
 }
 
 /** Seconds after the group starts that its last item finishes, each item taking `duration`. 0 for no items. */
@@ -208,10 +207,10 @@ export function staggerFinish(n: number, timing: StaggerTiming & { duration: num
   if (!Number.isInteger(n) || n < 0) throw new RangeError(`staggerFinish: n must be a whole number of items, got ${n}`);
   if (n === 0) return 0;
   const { lo, hi } = staggerRankRange(n, timing.from);
-  return quantiseToFrame(staggerSpread(timing, hi - lo)) + timing.duration;
+  return quantiseToFrame(timing.fps, staggerSpread(timing, hi - lo)) + timing.duration;
 }
 
-const quantiseToFrame = (seconds: number) => Math.round(seconds * FPS) / FPS;
+const quantiseToFrame = (fps: number, seconds: number) => Math.round(seconds * fps) / fps;
 
 const staggerSpread = (timing: StaggerTiming, ranks: number) => {
   const each = 'each' in timing ? timing.each : timing.lagRatio * timing.duration;

@@ -8,7 +8,7 @@
 // Bounding boxes, not pixels: an overlap is a problem even if the pixels happen to miss.
 //
 // Take fits are warnings, not problems: a take played too fast or slow between its pins still shows what's said.
-import { H, W } from './frame.ts';
+import type { FrameSize } from './frame.ts';
 import type { TakeFitStrain } from '#studio/probe/take-fit-strain.ts';
 
 type Rect = { x: number; y: number; w: number; h: number };
@@ -43,13 +43,13 @@ const clipped = (m: FramingMark) =>
   m.shown.x - m.rect.x > CLIP_SLACK || m.shown.y - m.rect.y > CLIP_SLACK ||
   m.rect.x + m.rect.w - (m.shown.x + m.shown.w) > CLIP_SLACK || m.rect.y + m.rect.h - (m.shown.y + m.shown.h) > CLIP_SLACK;
 
-/** Why a subject can't be seen clearly in this frame, if it can't. */
-function obstruction(m: FramingMark, marks: readonly FramingMark[]): string | null {
+/** Why a subject can't be seen clearly in this frame, `frameSize` big, if it can't. */
+function obstruction(m: FramingMark, marks: readonly FramingMark[], { width, height }: FrameSize): string | null {
   const visible = (o: FramingMark) => o.strength >= 0.5 && o.opacity >= 0.5;
   if (marks.some((o) => o.kind === 'tag' && visible(o) && overlaps(m.rect, o.rect))) return 'is under a tag';
   if (marks.some((o) => o.kind === 'caption' && visible(o) && overlaps(m.rect, o.rect))) return 'is under the caption';
   const r = m.rect;
-  if (r.x < 0 || r.y < 0 || r.x + r.w > W || r.y + r.h > H) return 'runs off the frame';
+  if (r.x < 0 || r.y < 0 || r.x + r.w > width || r.y + r.h > height) return 'runs off the frame';
   if (clipped(m)) return 'is cut off by its panel';
   return null;
 }
@@ -57,17 +57,19 @@ function obstruction(m: FramingMark, marks: readonly FramingMark[]): string | nu
 const label = (m: FramingMark) => (m.name === 'click' ? 'a click' : m.name ? `highlight "${m.name}"` : 'a highlight');
 
 /**
- * Problems across the measured frames, merged into stretches of time. `reports` covers every frame from `first` to
- * `last`; an expectation is checked on the frames of its span inside them.
+ * Problems across the measured frames of a video at `fps`, `frameSize` big, merged into stretches of time. `reports`
+ * covers every frame from `first` to `last`; an expectation is checked on the frames of its span inside them.
  */
-export function framingProblems(reports: readonly FramingReport[], expectations: readonly FramingExpectation[], fps: number, { first, last }: { first: number; last: number }): FramingProblem[] {
+export function framingProblems(
+  reports: readonly FramingReport[], expectations: readonly FramingExpectation[], fps: number, frameSize: FrameSize, { first, last }: { first: number; last: number },
+): FramingProblem[] {
   const found: { frame: number; problem: string; scene?: string }[] = [];
   const byFrame = new Map(reports.map((r) => [r.frame, r.marks]));
 
   for (const { frame, marks } of reports) {
     for (const m of marks) {
       if (m.kind !== 'subject' || m.strength < 0.5 || m.opacity < 0.5) continue;
-      const why = obstruction(m, marks);
+      const why = obstruction(m, marks, frameSize);
       if (why) found.push({ frame, scene: m.scene, problem: `${label(m)} ${why}` });
     }
   }
@@ -80,7 +82,7 @@ export function framingProblems(reports: readonly FramingReport[], expectations:
       const named = marks.filter((m) => m.kind === 'subject' && m.scene === e.scene && m.name === e.see);
       if (named.length > 1) throw new Error(`scene ${e.scene} draws two highlights named "${e.see}"`);
       const m = named[0];
-      const why = !m ? 'isn\'t drawn' : m.strength < 0.5 ? 'is still drawing on, or fading' : m.opacity < 0.5 ? 'is faded out' : obstruction(m, marks);
+      const why = !m ? 'isn\'t drawn' : m.strength < 0.5 ? 'is still drawing on, or fading' : m.opacity < 0.5 ? 'is faded out' : obstruction(m, marks, frameSize);
       if (why) found.push({ frame, scene: e.scene, problem: `expected highlight "${e.see}" ${why} (expect, ${e.start.toFixed(2)}–${e.end.toFixed(2)}s)` });
     }
   }

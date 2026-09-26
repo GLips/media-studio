@@ -3,7 +3,7 @@
 // is drawn inside in reel.tsx, the beat sheet in storyboard.md.
 
 import { bindTimeline } from '#models/timeline/bind-timeline.ts';
-import { FPS, defineVideo } from '#studio';
+import { defineVideo } from '#studio';
 import type { Bar, PlacedBar } from './bar.ts';
 import { bounceBar } from './bars/01-bounce.tsx';
 import { everyColorBar } from './bars/02-every-color.tsx';
@@ -15,7 +15,7 @@ import { tiersBar } from './bars/07-tiers.tsx';
 import { payLessBar } from './bars/08-pay-less.tsx';
 import { oneBoxBar } from './bars/09-one-box.tsx';
 import { barScene } from './reel.tsx';
-import { timeline, track } from './timeline.ts';
+import { SHOWCASE_FORMAT, timeline, track } from './timeline.ts';
 
 /**
  * Each bar on its clock from `on` (the reel's timeline, or the retime runner's re-fitted one); the finale gets the eight
@@ -32,7 +32,7 @@ export const showcaseBars = placeShowcaseBars(timeline);
 // Each lands with the music's hit, on the video's clock. Its id, the bar's and its role there, picks the take, so two
 // sounds sharing one would play the same take and read as one row in every check.
 const sounds = showcaseBars.flatMap(({ bar, scene }) => (bar.sounds ?? []).map(({ at, id, ...sound }) => ({
-  ...sound, at: (scene.origin + at) / FPS + timeline.soundLagSeconds, id: `${bar.id}/${id}`,
+  ...sound, at: (scene.origin + at) / timeline.fps + timeline.soundLagSeconds, id: `${bar.id}/${id}`,
 })));
 const repeatedSoundId = sounds.find((s, i) => sounds.findIndex((other) => other.id === s.id) !== i)?.id;
 if (repeatedSoundId) throw new Error(`two sounds are ${repeatedSoundId}: give each its own role in its bar`);
@@ -40,5 +40,5 @@ if (repeatedSoundId) throw new Error(`two sounds are ${repeatedSoundId}: give ea
 // The music leads, 4 LU over the accents: measured at their moments, the strikes and whips sit 3–6 LU under the
 // track, heard but inside it, and the last needle rides over the final hit's tail.
 export default defineVideo({
-  title: 'Painful Pleasures: the new buy box', voice: {}, scenes: showcaseBars.map(barScene), music: { track, bedRelativeLu: -4 }, sounds,
+  title: 'Painful Pleasures: the new buy box', format: SHOWCASE_FORMAT, voice: {}, scenes: showcaseBars.map(barScene), music: { track, bedRelativeLu: -4 }, sounds,
 });

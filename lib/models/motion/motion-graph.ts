@@ -7,7 +7,6 @@
 // all of them, so a move can be read against what it lands on. Like the tracks, this describes and never judges.
 
 import { motionChannelVelocity, type MotionSegment, type MotionTrack, type MotionTracks } from './motion-tracks.ts';
-import { H, W } from '#models/frame/frame.ts';
 import type { TimelineReport } from '#studio/composition/Video.tsx';
 
 /** Which box a graph plots: where the viewer sees the element, or where it is in its owner's frame. */
@@ -423,6 +422,7 @@ export function buildMotionGraph(motion: MotionTracks, timeline: TimelineReport,
   if (!plots.length) summary.push('', 'nothing moves in this stretch: no plots');
 
   // Layout: the backdrop and legend, then the mark lane, then the plots, then the time axis.
+  const { width: W, height: H } = timeline;
   const backdropH = Math.round((BACKDROP_W * H) / W);
   const top = PAD + 30, plotsTop = top + backdropH + PAD + MARK_LANE;
   const height = plotsTop + plots.length * (PLOT_H + PLOT_GAP) + 30;

@@ -13,7 +13,7 @@
 
 import { useLayoutEffect, type RefObject } from 'react';
 import { roundMotionValue, type StaggerMembership } from '#models/motion/motion-tracks.ts';
-import { scaleFor, type Rect, type View } from '#models/camera/camera.ts';
+import { viewScale, type Rect, type View } from '#models/camera/camera.ts';
 
 export type MotionTag = {
   /** Unique among the tagged elements of its owner. No `/`: that separates an id's levels. */
@@ -36,8 +36,8 @@ export type MotionTag = {
 /** The camera a view shows, as the probe matches it: its layout box, centre and scale. */
 export type CameraMark = { key: string; cx: number; cy: number; zoom: number; k: number; box: Rect };
 
-export function cameraMark({ shot, cam, box }: View): CameraMark {
-  const k = scaleFor(shot, cam.zoom);
+export function cameraMark(v: View): CameraMark {
+  const { cam, box } = v, k = viewScale(v);
   return { key: [box.x, box.y, box.w, box.h, cam.cx, cam.cy, k].map(roundMotionValue).join(','), cx: cam.cx, cy: cam.cy, zoom: cam.zoom, k, box };
 }
 

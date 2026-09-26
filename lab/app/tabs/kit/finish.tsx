@@ -3,11 +3,10 @@
 // (lib/studio/film/motion-blur.tsx).
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
-import { FPS, W } from '#models/frame/frame.ts';
 import { FilmGrain, Vignette } from '#studio/film/grade.tsx';
 import { motionCurves, seg } from '#models/motion/motion.ts';
 import { ShutterBlur } from '#studio/film/motion-blur.tsx';
-import { LAB_COLORS, LabChoice, LabSlider } from '../../ui.tsx';
+import { LAB_COLORS, LAB_FORMAT, LabChoice, LabSlider } from '../../ui.tsx';
 import { defineKitPiece } from './piece.tsx';
 
 const HUD = { fontFamily: MONO_FONT, fontSize: 22, letterSpacing: '0.08em', textTransform: 'uppercase' } as const;
@@ -48,8 +47,8 @@ function GradeStage(p: GradeStageProps) {
   return (
     <AbsoluteFill>
       <GradeSampleShot />
-      <AbsoluteFill style={{ clipPath: `inset(0 0 0 ${W / 2}px)` }}>{graded}</AbsoluteFill>
-      <div style={{ position: 'absolute', left: W / 2 - 2, top: 0, width: 4, height: '100%', background: LAB_COLORS.cream, opacity: 0.8 }} />
+      <AbsoluteFill style={{ clipPath: `inset(0 0 0 ${LAB_FORMAT.width / 2}px)` }}>{graded}</AbsoluteFill>
+      <div style={{ position: 'absolute', left: LAB_FORMAT.width / 2 - 2, top: 0, width: 4, height: '100%', background: LAB_COLORS.cream, opacity: 0.8 }} />
       <div style={{ ...HUD, position: 'absolute', left: 60, top: 50, color: LAB_COLORS.cream }}>Without</div>
       <div style={{ ...HUD, position: 'absolute', right: 60, top: 50, color: LAB_COLORS.cream }}>With grain + vignette</div>
     </AbsoluteFill>
@@ -91,7 +90,7 @@ const LANE_H = 470;
 const LANE_TOPS = [50, 560];
 const PUCK = 230;
 const PUCK_X0 = 120;
-const PUCK_X1 = W - 120 - PUCK;
+const PUCK_X1 = LAB_FORMAT.width - 120 - PUCK;
 
 const shutterLoopSeconds = (crossing: number) => SHUTTER_LEAD + 2 * (crossing + SHUTTER_PAUSE);
 
@@ -117,8 +116,8 @@ function ShutterStage(p: ShutterStageProps) {
   const frame = useCurrentFrame();
   // Slowed down, each 30 fps frame is held `slow` times over, so its jumps are seen rather than smoothed away.
   const videoFrame = Math.floor(frame / p.slow);
-  const t = videoFrame / FPS;
-  const framesSoFar = Array.from({ length: videoFrame + 1 }, (_, f) => shutterPuckX(f / FPS, p.crossing) + PUCK / 2);
+  const t = videoFrame / LAB_FORMAT.fps;
+  const framesSoFar = Array.from({ length: videoFrame + 1 }, (_, f) => shutterPuckX(f / LAB_FORMAT.fps, p.crossing) + PUCK / 2);
   const lanes = [
     { label: '30 frames a second · no motion blur', blurred: false },
     { label: `30 frames a second · shutter ${Math.round(p.shutter * 360)}° · ${p.samples} copies blended`, blurred: true },
@@ -126,13 +125,13 @@ function ShutterStage(p: ShutterStageProps) {
   return (
     <AbsoluteFill style={{ background: LAB_COLORS.ground }}>
       {lanes.map((lane, i) => (
-        <div key={i} style={{ position: 'absolute', left: 0, top: LANE_TOPS[i], width: W, height: LANE_H, overflow: 'hidden' }}>
+        <div key={i} style={{ position: 'absolute', left: 0, top: LANE_TOPS[i], width: LAB_FORMAT.width, height: LANE_H, overflow: 'hidden' }}>
           {lane.blurred
             ? <ShutterBlur t={t} shutter={p.shutter} samples={p.samples} render={(at) => <ShutterLane t={at} crossing={p.crossing} />} />
             : <ShutterLane t={t} crossing={p.crossing} />}
           <div style={{ ...HUD, position: 'absolute', left: 40, top: 28, color: lane.blurred ? LAB_COLORS.red : LAB_COLORS.dim }}>{lane.label}</div>
           {/* A tick where the card was on each frame so far: wide gaps are the jumps the eye sees as strobing. */}
-          <svg style={{ position: 'absolute', left: 0, bottom: 20 }} width={W} height={24}>
+          <svg style={{ position: 'absolute', left: 0, bottom: 20 }} width={LAB_FORMAT.width} height={24}>
             {framesSoFar.map((x, f) => <line key={f} x1={x} x2={x} y1={0} y2={20} stroke={lane.blurred ? LAB_COLORS.red : LAB_COLORS.cream} strokeWidth={3} opacity={0.5} />)}
           </svg>
         </div>

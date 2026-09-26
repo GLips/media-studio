@@ -6,12 +6,12 @@
 import { Composition, Folder, Freeze, useCurrentFrame } from 'remotion';
 import stills from '@stills';
 import video from '@video';
-import { FPS, H, W } from '#models/frame/frame.ts';
+import { DEFAULT_VIDEO_FORMAT } from '#models/frame/frame.ts';
 import { assertPrevisSpanFits, previsSpan } from '../previs/previs.ts';
 import { StillProbe } from '../stills/still-probe.tsx';
 import { STILL_PRESETS, stillName, type StillProps, type StillRenderProps } from '#models/still/still-presets.ts';
 import { StillPresetContext, type StillsDef } from '../stills/stills.tsx';
-import { layoutVideo, totalFrames, type VideoDef } from './timeline.ts';
+import { layoutVideo, totalFrames, videoFormatOf, type VideoDef } from './timeline.ts';
 import { BlockoutSolo, Video, type BlockoutSoloProps, type VideoProps } from './Video.tsx';
 
 /**
@@ -68,7 +68,7 @@ function StillCompositions({ stills }: { stills: StillsDef }) {
     <Folder key={design} name={`stills-${design}`}>
       {presets.flatMap((preset) => Object.entries(variants).map(([variant, { axes }]) => {
         const props: StillProps = { design, preset, variant, axes };
-        return <Composition key={stillName(props)} id={`still-${stillName(props)}`} component={ProjectStill} {...STILL_PRESETS[preset]} fps={FPS} durationInFrames={1} defaultProps={props} />;
+        return <Composition key={stillName(props)} id={`still-${stillName(props)}`} component={ProjectStill} {...STILL_PRESETS[preset]} fps={DEFAULT_VIDEO_FORMAT.fps} durationInFrames={1} defaultProps={props} />;
       }))}
     </Folder>
   ));
@@ -76,24 +76,25 @@ function StillCompositions({ stills }: { stills: StillsDef }) {
 
 function VideoCompositions({ video }: { video: VideoDef }) {
   const tl = layoutVideo(video);
-  const frames = totalFrames(tl, FPS);
+  const { fps, width, height } = videoFormatOf(video);
+  const frames = totalFrames(tl, fps);
   return (
     <>
       <Composition
         id={PROJECT_SLUG}
         component={ProjectVideo}
-        width={W}
-        height={H}
-        fps={FPS}
+        width={width}
+        height={height}
+        fps={fps}
         durationInFrames={frames}
         defaultProps={{ captions: false, probe: false, blockouts: false } satisfies VideoProps}
       />
       <Composition
         id={REPLAY_SLUG}
         component={ReplayVideo}
-        width={W}
-        height={H}
-        fps={FPS}
+        width={width}
+        height={height}
+        fps={fps}
         durationInFrames={frames}
         // Never shorter than the video: a frozen frame is clamped to the composition's length.
         calculateMetadata={({ props }) => ({ durationInFrames: Math.max(frames, props.order.length) })}
@@ -103,14 +104,14 @@ function VideoCompositions({ video }: { video: VideoDef }) {
         <Composition
           id={BLOCKOUT_SLUG}
           component={ProjectBlockout}
-          width={W}
-          height={H}
-          fps={FPS}
-          durationInFrames={FPS * 4}
+          width={width}
+          height={height}
+          fps={fps}
+          durationInFrames={fps * 4}
           calculateMetadata={({ props }) => {
             const span = previsSpan(tl, props.scene);
             assertPrevisSpanFits(props.scene, span);
-            return { durationInFrames: span.duration * FPS };
+            return { durationInFrames: span.duration * fps };
           }}
           defaultProps={{ scene: tl.scenes.find((scene) => scene.previs)!.id } satisfies BlockoutSoloProps}
         />

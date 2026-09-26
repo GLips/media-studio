@@ -51,7 +51,7 @@ Sources, cited in brackets: [01]…[07] are `study-claude/NN-*/breakdown.md`; [h
 - [index]'s tracked grid (127.6 BPM from 0.461 s) lags: 1.9 f at bar 1, ≈4.6 f by bar 8, 0.088 f a beat. [01]'s
   phase (0.9167 s, f55) and [02]'s "0.3 f a beat" drift are also off; [hud]'s grid holds to the frame.
 - Build: `steadyBeatGrid(128, 0.9)` and per-frame state from `Math.floor(grid.beatOf(t))`. `grid.frame(n)` rounds;
-  `Math.ceil(grid.at(n) * FPS)` is the reference's rule. On a tracked song, put the hit 30–40 ms ahead of the audible
+  `Math.ceil(grid.at(n) * fps)` is the reference's rule. On a tracked song, put the hit 30–40 ms ahead of the audible
   onset and allow for the tracker's own lag: the showcase uses `grid.frame(n) − 2` at 30 fps (`reel-assembly.md`).
 
 ### Cut grammar

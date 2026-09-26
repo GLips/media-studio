@@ -6,7 +6,7 @@
 
 import type { CSSProperties } from 'react';
 import {
-  DISPLAY_FONT, FPS, H, ShutterBlur, W, applyAffine, clamp, inflate, lerp, motionCurves, multiplyAffine, powerOutEase, seg, sineInOutEase,
+  DISPLAY_FONT, ShutterBlur, applyAffine, clamp, inflate, lerp, motionCurves, multiplyAffine, powerOutEase, seg, sineInOutEase,
   type AffineMatrix, type Point, type Rect,
 } from '#studio';
 import { ShockRing } from '#studio/reel/glyph-field.tsx';
@@ -20,14 +20,16 @@ import type { Bar, ShowcaseClock } from '../bar.ts';
 import { Field } from '../parts.tsx';
 import { SHOWCASE_HUD } from '../hud.ts';
 import { P, inksByHue } from '../look.ts';
+import { SHOWCASE_FORMAT } from '../timeline.ts';
 
 export function everyColorBar(clock: ShowcaseClock<'every-color'>): Bar {
+  const { fps } = clock;
   const outExpo = motionCurves.expo.entrance;
   const outQuart = powerOutEase(4);
 
   /** Each word's cut: EVERY, COLOR, ONE and TAP. land on the bar's four beats. */
   const CUT = { every: clock.cues.every, color: clock.cues.color, one: clock.cues.one, tap: clock.beat(3) } as const;
-  const since = (f: number, cut: number) => (f - cut) / FPS;
+  const since = (f: number, cut: number) => (f - cut) / fps;
 
   // A word's font size is its cap height over this, as the type pieces set Archivo, so letters placed here from the
   // font's advances land where the pieces draw them.
@@ -43,7 +45,7 @@ export function everyColorBar(clock: ShowcaseClock<'every-color'>): Bar {
   function centredLine(text: string, cap: number, wght: number, wdth: number, tracking = 0) {
     const size = cap / CAP_EM;
     const line = layoutGlyphLine([...text].map((char) => ({ char, axes: { wght, wdth }, tracking })), size);
-    const left = W / 2 - line.width / 2;
+    const left = SHOWCASE_FORMAT.width / 2 - line.width / 2;
     return { size, left, width: line.width, x: line.x.map((x) => left + x), advance: line.advance };
   }
 
@@ -51,7 +53,7 @@ export function everyColorBar(clock: ShowcaseClock<'every-color'>): Bar {
 
   // Two and a half frames ahead, so the cut's frame already shows E and V risen: a word still under its mask on the hit
   // reads as an empty red frame, and the reference's E is past a quarter up on its beat.
-  const EVERY_LEAD = 2.5 / FPS;
+  const EVERY_LEAD = 2.5 / fps;
   /** RiseWord's defaults, the reference's EVERY: set here to be measured. */
   const EVERY_SET = { cap: 318, weight: 900, stretch: 91.3, spacing: -0.02 } as const;
 
@@ -68,7 +70,7 @@ export function everyColorBar(clock: ShowcaseClock<'every-color'>): Bar {
     f <= EVERY_BREATH.peak ? seg(f, CUT.every, EVERY_BREATH.peak, powerOutEase(2)) : 1 - seg(f, EVERY_BREATH.peak, EVERY_BREATH.end, (k) => k);
 
   function Every({ t }: { t: number }) {
-    const breath = everyBreath(CUT.every + t * FPS);
+    const breath = everyBreath(CUT.every + t * fps);
     const stretch = EVERY_SET.stretch + (EVERY_BREATH.widen * everyWidth(EVERY_SET.stretch) * breath) / EVERY_PX_PER_STRETCH;
     // RiseWord's own widen only relaxes, wide to set, so it's off and the word is set at each frame's width.
     return (
@@ -84,7 +86,7 @@ export function everyColorBar(clock: ShowcaseClock<'every-color'>): Bar {
   // ---------- beat 1: COLOR ----------
 
   const COLOR = { text: 'COLOR', cap: 300, stretch: 85, from: 100, to: 900, sweep: 0.3 } as const;
-  const COLOR_BASE = H / 2 + COLOR.cap / 2;
+  const COLOR_BASE = SHOWCASE_FORMAT.height / 2 + COLOR.cap / 2;
   const colorLine = (weight: number) => centredLine(COLOR.text, COLOR.cap, weight, COLOR.stretch);
   const COLOR_LANDED = colorLine(COLOR.to);
   /** The selection's rest: the landed word's cap box with 0.13 cap round it, as WeightWord pads its own. */
@@ -107,7 +109,7 @@ export function everyColorBar(clock: ShowcaseClock<'every-color'>): Bar {
     const face: CSSProperties = { fontFamily: DISPLAY_FONT, fontSize: line.size, fontWeight: weight, fontStretch: `${COLOR.stretch}%`, fontVariantLigatures: 'none' };
     const n = SPECTRUM.length;
     return (
-      <svg width={W} height={H} style={LAYER}>
+      <svg width={SHOWCASE_FORMAT.width} height={SHOWCASE_FORMAT.height} style={LAYER}>
         {[...COLOR.text].map((char, i) => <text key={i} x={line.x[i]} y={COLOR_BASE} fill={SPECTRUM[(((i - step) % n) + n) % n]} style={face}>{char}</text>)}
       </svg>
     );
@@ -119,7 +121,7 @@ export function everyColorBar(clock: ShowcaseClock<'every-color'>): Bar {
         <Field color={P.ground} />
         <InkWord t={t} step={step} />
         {/* The label where WeightWord sets its own over a selection. */}
-        <svg width={W} height={H} style={LAYER}>
+        <svg width={SHOWCASE_FORMAT.width} height={SHOWCASE_FORMAT.height} style={LAYER}>
           <IndexLabel text="(02)" x={COLOR_BOX.x + 6} y={COLOR_BOX.y - 23} t={t - 0.1} color={CREAM_70} />
         </svg>
         <SelectionBox t={t} to={COLOR_BOX} color={P.cream} handle={P.red} readoutColor={P.ink} />
@@ -132,7 +134,7 @@ export function everyColorBar(clock: ShowcaseClock<'every-color'>): Bar {
   const ONE = { text: 'ONE', cap: 420, weight: 250 } as const;
   // SlantWord's entrance, passed to it and replayed below to carry the O's hole with the word; level and still by 0.3 s.
   const ONE_IN = { scale: 1.5, duration: 0.3, turn: -18, turnDuration: 0.12, slant: 15.5, slantFrom: 13, slantDuration: 0.17 } as const satisfies SlantEntrance;
-  const ONE_BASE = H / 2 + ONE.cap / 2;
+  const ONE_BASE = SHOWCASE_FORMAT.height / 2 + ONE.cap / 2;
   const ONE_LINE = centredLine(ONE.text, ONE.cap, ONE.weight, 100);
 
   // Archivo's O, N and E at weight 250 and width 100, from fontTools' instancer, in font units (y up) from each letter's
@@ -151,7 +153,7 @@ export function everyColorBar(clock: ShowcaseClock<'every-color'>): Bar {
    * The matrix SlantWord draws ONE with `t` s into its entrance, about the middle of its cap box. SlantWord has no hook
    * for drawing inside a letter, so the O's hole replays its pose.
    */
-  const onePose = (t: number) => slantMatrix({ x: W / 2, y: ONE_BASE - ONE.cap / 2 }, slantWordPose(t, ONE_IN));
+  const onePose = (t: number) => slantMatrix({ x: SHOWCASE_FORMAT.width / 2, y: ONE_BASE - ONE.cap / 2 }, slantWordPose(t, ONE_IN));
 
   /** The O's hole at rest, in frame px: where the dive aims. */
   const HOLE = applyAffine(onePose(ONE_IN.duration), { x: ONE_LINE.x[0] + O_CENTRE.x * ONE_UNIT, y: ONE_BASE - O_CENTRE.y * ONE_UNIT });
@@ -160,7 +162,7 @@ export function everyColorBar(clock: ShowcaseClock<'every-color'>): Bar {
   function OHole({ t }: { t: number }) {
     const m = onePose(t);
     return (
-      <svg width={W} height={H} style={LAYER}>
+      <svg width={SHOWCASE_FORMAT.width} height={SHOWCASE_FORMAT.height} style={LAYER}>
         <path d={O_COUNTER} fill={P.ground} stroke={P.ground} strokeWidth={O_RING} strokeLinejoin="round"
           transform={`matrix(${m.join(' ')}) translate(${ONE_LINE.x[0]} ${ONE_BASE}) scale(${ONE_UNIT} ${-ONE_UNIT})`} />
       </svg>
@@ -175,7 +177,7 @@ export function everyColorBar(clock: ShowcaseClock<'every-color'>): Bar {
   function diveAt(f: number) {
     const u = clamp((f - DIVE.from) / (DIVE.to - DIVE.from));
     const s = DIVE.scale ** (u ** DIVE.bite), pan = sineInOutEase(u);
-    const x = lerp(HOLE.x, W / 2, pan), y = lerp(HOLE.y, H / 2, pan);
+    const x = lerp(HOLE.x, SHOWCASE_FORMAT.width / 2, pan), y = lerp(HOLE.y, SHOWCASE_FORMAT.height / 2, pan);
     return { u, s, dx: x - s * HOLE.x, dy: y - s * HOLE.y };
   }
 
@@ -253,7 +255,7 @@ export function everyColorBar(clock: ShowcaseClock<'every-color'>): Bar {
   const ONE_LABEL_FADE = 0.2;
 
   function OneShot({ t }: { t: number }) {
-    const word = Math.max(0, t), dive = diveAt(CUT.one + t * FPS);
+    const word = Math.max(0, t), dive = diveAt(CUT.one + t * fps);
     return (
       <div style={{ position: 'absolute', inset: 0, transformOrigin: '0 0', transform: `translate(${dive.dx}px, ${dive.dy}px) scale(${dive.s})` }}>
         <Field color={P.red} />
@@ -274,21 +276,21 @@ export function everyColorBar(clock: ShowcaseClock<'every-color'>): Bar {
 
   /** ONE's shot `t` s in, as a matrix: SlantWord's pose inside the dive's push. */
   function oneShotMatrix(t: number): AffineMatrix {
-    const dive = diveAt(CUT.one + t * FPS);
+    const dive = diveAt(CUT.one + t * fps);
     return multiplyAffine([dive.s, 0, 0, dive.s, dive.dx, dive.dy], onePose(Math.max(0, t)));
   }
 
   function One({ t }: { t: number }) {
     // Enough samples that nothing steps more than ONE_SAMPLE_STEP: 10 while ONE sits, 32 as the dive flings the ring
     // hundreds of px within one shutter. On the cut's frame half the samples fall before the cut, all on the first pose.
-    const span = ONE_SHUTTER / FPS, [a, b] = [oneShotMatrix(t - span / 2), oneShotMatrix(t + span / 2)];
+    const span = ONE_SHUTTER / fps, [a, b] = [oneShotMatrix(t - span / 2), oneShotMatrix(t + span / 2)];
     const travel = Math.max(...ONE_CORNERS.map((p) => Math.hypot(applyAffine(a, p).x - applyAffine(b, p).x, applyAffine(a, p).y - applyAffine(b, p).y)));
     const samples = Math.round(clamp((travel / ONE_SAMPLE_STEP) * (t < span / 2 ? 2 : 1), 10, 32));
     // The dive's pan starts ahead of its push, sliding the shot's own red off the frame's left edge for a few frames.
     return (
       <>
         <Field color={P.red} />
-        <ShutterBlur t={t + ONE_SHUTTER / FPS / 2} shutter={ONE_SHUTTER} samples={samples} render={(ts) => <OneShot t={ts} />} />
+        <ShutterBlur t={t + ONE_SHUTTER / fps / 2} shutter={ONE_SHUTTER} samples={samples} render={(ts) => <OneShot t={ts} />} />
       </>
     );
   }
@@ -296,7 +298,7 @@ export function everyColorBar(clock: ShowcaseClock<'every-color'>): Bar {
   // ---------- beat 3: TAP. ----------
 
   const TAP = { text: 'TAP.', cap: 440, stretch: 75, spacing: -0.02 } as const;
-  const TAP_BASE = H / 2 + TAP.cap / 2;
+  const TAP_BASE = SHOWCASE_FORMAT.height / 2 + TAP.cap / 2;
   const TAP_LINE = centredLine(TAP.text, TAP.cap, 900, TAP.stretch, TAP.spacing);
   /** The glitch hits, on the beat's first three sixteenths. */
   const SIXTEENTHS = [0, 1, 2].map((n) => (n * clock.spb) / 4);

@@ -3,7 +3,7 @@
 // `t`, seconds on the author's clock.
 
 import type { Point, Rect } from '#models/camera/camera.ts';
-import { FPS, H, W } from '#models/frame/frame.ts';
+import type { FrameSize, VideoFormat } from '#models/frame/frame.ts';
 import { backOutEase, clamp, lerp } from '#models/motion/motion.ts';
 import { seededRandom } from '#models/motion/random.ts';
 
@@ -26,19 +26,19 @@ export type RecapOrder = 'z' | 'antidiagonal' | 'centre' | readonly number[];
  */
 export type RecapExit = 'pop' | 'crt' | 'cut' | 'hold';
 
-/** Where the tiles sit: a `cols` × `rows` grid over the frame, `margin` in from its edges and `gutter` apart, row by row. */
-export function recapGridRects(cols: number, rows: number, margin: number, gutter: number): Rect[] {
-  const w = (W - 2 * margin - (cols - 1) * gutter) / cols;
-  const h = (H - 2 * margin - (rows - 1) * gutter) / rows;
+/** Where the tiles sit: a `cols` × `rows` grid over a frame `size` big, `margin` in from its edges and `gutter` apart, row by row. */
+export function recapGridRects(cols: number, rows: number, margin: number, gutter: number, { width, height }: FrameSize): Rect[] {
+  const w = (width - 2 * margin - (cols - 1) * gutter) / cols;
+  const h = (height - 2 * margin - (rows - 1) * gutter) / rows;
   return Array.from({ length: cols * rows }, (_, i) => ({ x: margin + (i % cols) * (w + gutter), y: margin + Math.floor(i / cols) * (h + gutter), w, h }));
 }
 
 /**
  * Seconds after the grid's start that each of `n` tiles pops, row by row in a `cols` × `rows` grid: `spread` from the
- * first to the last, in even steps between ranks, on whole frames (so a 3×3's five diagonals over 0.1 s land on
- * frames 0, 1, 2, 2, 3). The same times stagger the exit.
+ * first to the last, in even steps between ranks, on whole frames at `fps` (so a 3×3's five diagonals over 0.1 s land
+ * on frames 0, 1, 2, 2, 3 at 30). The same times stagger the exit.
  */
-export function recapPopStarts(n: number, cols: number, rows: number, order: RecapOrder, spread: number): number[] {
+export function recapPopStarts(n: number, cols: number, rows: number, order: RecapOrder, spread: number, fps: number): number[] {
   if (typeof order !== 'string' && order.length !== n) throw new RangeError(`RecapGrid: ${order.length} ranks for ${n} tiles`);
   const ranks = Array.from({ length: n }, (_, i) => {
     const col = i % cols, row = Math.floor(i / cols);
@@ -51,7 +51,7 @@ export function recapPopStarts(n: number, cols: number, rows: number, order: Rec
   const key = (r: number) => Math.round(r * 1e6);
   const steps = [...new Set(ranks.map(key))].sort((a, b) => a - b);
   const each = steps.length > 1 ? spread / (steps.length - 1) : 0;
-  return ranks.map((r) => Math.round(steps.indexOf(key(r)) * each * FPS) / FPS);
+  return ranks.map((r) => Math.round(steps.indexOf(key(r)) * each * fps) / fps);
 }
 
 // The reference's two grids. A 2×2 of 942×522 tiles, 12 px (1.1% H) in from the edges and apart, 12 px corners, pops
@@ -91,16 +91,17 @@ export type RecapLayout = {
   exit?: { at: number; style?: RecapExit; duration?: number };
 };
 
-// The layout worked out: each tile's rect and when it pops, and its look `v` s after the grid's start (null undrawn).
-export function recapPlan({ at = 0, tiles, cols, rows, margin, gutter, order = 'z', spread = 0.1, pop, exit }: RecapLayout) {
+// The layout worked out in a video of `format`: each tile's rect and when it pops, and its look `v` s after the grid's
+// start (null undrawn).
+export function recapPlan({ at = 0, tiles, cols, rows, margin, gutter, order = 'z', spread = 0.1, pop, exit }: RecapLayout, format: VideoFormat) {
   const exits = typeof tiles === 'number' ? Array.from({ length: tiles }, () => undefined) : tiles.map((tile) => tile.exit);
   const n = exits.length;
   const c = cols ?? Math.ceil(Math.sqrt(n));
   const r = rows ?? Math.ceil(n / c);
   if (n > c * r) throw new RangeError(`RecapGrid: ${n} tiles don't fit a ${c}×${r} grid`);
   const look = c <= 2 ? RECAP_TWO_UP : RECAP_THREE_UP;
-  const rects = recapGridRects(c, r, margin ?? look.margin, gutter ?? look.gutter);
-  const starts = recapPopStarts(n, c, r, order, spread);
+  const rects = recapGridRects(c, r, margin ?? look.margin, gutter ?? look.gutter, format);
+  const starts = recapPopStarts(n, c, r, order, spread, format.fps);
   const popIn = backOutEase(pop?.overshoot ?? look.overshoot);
   const popOut = backOutEase(RECAP_EXIT_SWELL);
   const from = pop?.from ?? look.from, popDuration = pop?.duration ?? look.duration;
@@ -126,24 +127,25 @@ export function recapPlan({ at = 0, tiles, cols, rows, margin, gutter, order = '
 }
 
 // The scale a tile draws its whole-frame shot at, about the shot's centre, before the tile's own pop.
-export const recapShotScale = (rect: Rect) => Math.max(rect.w / W, rect.h / H);
+export const recapShotScale = (rect: Rect, { width, height }: FrameSize) => Math.max(rect.w / width, rect.h / height);
 
 /**
- * The tile of a RecapGrid laid out as `layout` drawn over frame point `p` at `t`, and the point of its shot it shows
- * there: to ask a replayed shot what's under a HUD part over the grid. Null over the ground between tiles.
+ * The tile of a RecapGrid laid out as `layout` in a video of `format` drawn over frame point `p` at `t`, and the point
+ * of its shot it shows there: to ask a replayed shot what's under a HUD part over the grid. Null over the ground
+ * between tiles.
  */
-export function recapTileUnder(p: Point, t: number, layout: RecapLayout): { index: number; inShot: Point } | null {
+export function recapTileUnder(p: Point, t: number, layout: RecapLayout, format: VideoFormat): { index: number; inShot: Point } | null {
   const u = t - (layout.at ?? 0);
   if (u < -RECAP_EPS) return null;
-  const { rects, count, tileLook } = recapPlan(layout);
+  const { rects, count, tileLook } = recapPlan(layout, format);
   // Last first: a later tile draws over an earlier one where an overshoot crosses the gutter.
   for (let i = count - 1; i >= 0; i--) {
     const look = tileLook(i, u), rect = rects[i];
     if (!look) continue;
     const dx = p.x - (rect.x + rect.w / 2), dy = p.y - (rect.y + rect.h / 2);
     if (Math.abs(dx) > (look.sx * rect.w) / 2 || Math.abs(dy) > (look.sy * rect.h) / 2) continue;
-    const k = recapShotScale(rect);
-    return { index: i, inShot: { x: W / 2 + dx / (k * look.sx), y: H / 2 + dy / (k * look.sy) } };
+    const k = recapShotScale(rect, format);
+    return { index: i, inShot: { x: format.width / 2 + dx / (k * look.sx), y: format.height / 2 + dy / (k * look.sy) } };
   }
   return null;
 }
@@ -195,15 +197,15 @@ export const GLITCH_LOOK: GlitchLook = { duration: 0.117, split: 13, shift: 100,
 
 // One frame's cuts: bands across the frame and shorter blocks, mostly thin, each shifted sideways by up to `shift`, a
 // few far further (the fragments the reference throws hundreds of px). Whole pixels, so nothing resamples soft.
-export function glitchCuts(seed: number | string, hit: number, frame: number, { slices, shift }: GlitchLook) {
+export function glitchCuts(seed: number | string, hit: number, frame: number, { slices, shift }: GlitchLook, { width, height }: FrameSize) {
   if (slices <= 0 || shift <= 0) return [];
   const rnd = seededRandom(`${seed}|${hit}|${frame}`);
   return Array.from({ length: slices }, () => {
     const h = Math.round(4 + 76 * rnd() ** 2);
-    const y = Math.round(rnd() * (H - h));
+    const y = Math.round(rnd() * (height - h));
     const block = rnd() < 0.3;
-    const w = block ? Math.round(160 + 480 * rnd()) : W;
-    const x = block ? Math.round(rnd() * (W - w)) : 0;
+    const w = block ? Math.round(160 + 480 * rnd()) : width;
+    const x = block ? Math.round(rnd() * (width - w)) : 0;
     const reach = rnd() < 0.15 ? 2 + 2 * rnd() : 0.1 + 0.9 * rnd();
     return { x, y, w, h, dx: Math.round((rnd() < 0.5 ? -1 : 1) * shift * reach) };
   });

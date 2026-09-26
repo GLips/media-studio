@@ -7,11 +7,12 @@
 // The numbers behind each frame come from lib/models/reel/glyph-field.ts and glyph-field-frame.ts; this file paints them.
 
 import { useId, useLayoutEffect, useRef } from 'react';
-import { FPS, H, W } from '#models/frame/frame.ts';
+import type { FrameSize } from '#models/frame/frame.ts';
 import type { Point } from '#models/camera/camera.ts';
 import { clamp } from '#models/motion/motion.ts';
 import { GLYPH_FIELD_COLORS } from '#models/reel/glyph-field.ts';
 import { glyphFieldFrame, parseGlyphColor, type GlyphDraw, type GlyphFieldFrame, type GlyphFieldProps, type GlyphSample } from '#models/reel/glyph-field-frame.ts';
+import { useVideoFormat } from '../composition/video-format.ts';
 import { pieceMotionAttrs, unmeasuredAttrs } from '../probe/motion-tag.ts';
 
 /** One frame of the reference reel (60 fps): the unit its timings were measured in. */
@@ -29,11 +30,11 @@ function traceGlyph(ctx: CanvasRenderingContext2D, g: GlyphDraw, s: GlyphSample)
   ctx.roundRect(-w / 2, -L / 2, w, L, r);
 }
 
-function paintGlyphFrame(ctx: CanvasRenderingContext2D, frame: GlyphFieldFrame) {
+function paintGlyphFrame(ctx: CanvasRenderingContext2D, frame: GlyphFieldFrame, { width, height }: FrameSize) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
-  ctx.clearRect(0, 0, W, H);
+  ctx.clearRect(0, 0, width, height);
   for (const g of [...frame.cells, ...(frame.marker ? [frame.marker] : [])]) {
     ctx.fillStyle = g.fill;
     // A smear's samples add ('lighter'), each at its share of the glyph (see SMEAR_GAIN). Each is its own path, or
@@ -58,14 +59,15 @@ function paintGlyphFrame(ctx: CanvasRenderingContext2D, frame: GlyphFieldFrame) 
  */
 export function GlyphField<D = null>(props: GlyphFieldProps<D>) {
   const canvas = useRef<HTMLCanvasElement>(null);
-  const frame = glyphFieldFrame(props);
+  const format = useVideoFormat(), { width, height } = format;
+  const frame = glyphFieldFrame(props, format);
   useLayoutEffect(() => {
-    paintGlyphFrame(canvas.current!.getContext('2d')!, frame);
+    paintGlyphFrame(canvas.current!.getContext('2d')!, frame, format);
   });
   const { box, values } = frame;
   return (
     <>
-      <canvas ref={canvas} width={W} height={H} {...unmeasuredAttrs('glyph field cells')} style={{ position: 'absolute', left: 0, top: 0, width: W, height: H }} />
+      <canvas ref={canvas} width={width} height={height} {...unmeasuredAttrs('glyph field cells')} style={{ position: 'absolute', left: 0, top: 0, width, height }} />
       <div {...pieceMotionAttrs(props.motion, 'glyph-field', { kind: 'glyph-field', values })} style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, pointerEvents: 'none' }} />
     </>
   );
@@ -101,7 +103,7 @@ export function FieldFlash({ t, at = 0, peak = 0.57, tau = 2.3 * REF_F, falloff 
  * The reference's: 2575 px/s, 22 px (2 % of frame height), 0.45, 0.068 s. At 30 fps it jumps 86 px a frame, so a trail
  * fades back over a `shutter` of travel; the band stays crisp.
  */
-export function ShockRing({ t, at = 0, origin = { x: W / 2, y: H / 2 }, speed = 2575, stroke = 22, opacity = 0.45, tau = 0.0675, color = GLYPH_FIELD_COLORS.cream, shutter = 0.5, motion }: {
+export function ShockRing({ t, at = 0, origin: givenOrigin, speed = 2575, stroke = 22, opacity = 0.45, tau = 0.0675, color = GLYPH_FIELD_COLORS.cream, shutter = 0.5, motion }: {
   t: number;
   at?: number;
   origin?: Point;
@@ -114,16 +116,17 @@ export function ShockRing({ t, at = 0, origin = { x: W / 2, y: H / 2 }, speed = 
   motion?: string | false;
 }) {
   const id = `shock-ring-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const { fps, width, height } = useVideoFormat(), origin = givenOrigin ?? { x: width / 2, y: height / 2 };
   const u = t - at;
   const alpha = u < 0 ? 0 : opacity * Math.exp(-u / tau);
   if (alpha < 0.004) return null;
   const head = speed * u, outer = head + stroke / 2, band = Math.max(0, head - stroke / 2);
-  const inner = Math.max(0, band - Math.min(head, (speed * shutter) / FPS));
+  const inner = Math.max(0, band - Math.min(head, (speed * shutter) / fps));
   const [r, g, b] = parseGlyphColor(color);
   const stop = (radius: number, a: number) => <stop offset={clamp(radius / outer)} stopColor={`rgb(${r} ${g} ${b})`} stopOpacity={a} />;
   const trail = band - inner > 0.5;
   return (
-    <svg width={W} height={H} style={{ position: 'absolute', left: 0, top: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+    <svg width={width} height={height} style={{ position: 'absolute', left: 0, top: 0, overflow: 'hidden', pointerEvents: 'none' }}>
       {trail && (
         <defs>
           <radialGradient id={id} gradientUnits="userSpaceOnUse" cx={origin.x} cy={origin.y} r={outer}>

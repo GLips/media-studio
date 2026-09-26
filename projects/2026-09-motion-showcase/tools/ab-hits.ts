@@ -16,9 +16,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { renderMasteredMix } from '#engine/render/render-pipeline.ts';
 import { openRenderSession } from '#engine/render/render-session.ts';
 import { sfxSeedFromId } from '#sfx/dsp.ts';
-import { FPS } from '#models/frame/frame.ts';
 import type { SfxSound } from '#studio/sfx/sfx.tsx';
-import { layoutVideo, totalFrames, type VideoDef } from '#studio/composition/timeline.ts';
+import { layoutVideo, totalFrames, type VideoDef, videoFormatOf } from '#studio/composition/timeline.ts';
 import { timeline } from '../timeline.ts';
 import { measureWithFfmpeg, runFfmpeg } from '#engine/ffmpeg/ffmpeg.ts';
 
@@ -35,7 +34,7 @@ type SavedHit = { id: string; file: string; volume: number } & Omit<SfxSound, 's
 
 const args = process.argv.slice(2);
 const video: VideoDef = (await import('../video.tsx')).default;
-const frames = totalFrames(layoutVideo(video), FPS);
+const frames = totalFrames(layoutVideo(video), timeline.fps);
 const placed: Placed[] = (video.sounds ?? []).map((s, i) => {
   const takes: readonly SfxSound[] = Array.isArray(s.sound) ? s.sound : [s.sound as SfxSound];
   const { src, ...take } = takes[sfxSeedFromId(s.id ?? i) % takes.length];
@@ -96,9 +95,9 @@ function writeSoundtrackProject(name: string, sounds: readonly Placed[]): string
     ...files.map((f, i) => `import s${i} from '${from(f)}';`),
     '',
     'export default defineVideo({',
-    `  title: 'ab-hits ${name}', voice: {},`,
+    `  title: 'ab-hits ${name}', voice: {}, format: ${JSON.stringify(videoFormatOf(video))},`,
     // Half a frame short, so the layout's ceil lands on the reel's frame count, where the music bed's gain depends on it.
-    `  scenes: [defineScene({ id: 'soundtrack', min: ${(frames - 0.5) / FPS}, lead: 0, tail: 0, render: () => null })],`,
+    `  scenes: [defineScene({ id: 'soundtrack', min: ${(frames - 0.5) / timeline.fps}, lead: 0, tail: 0, render: () => null })],`,
     `  music: { ...${JSON.stringify(bedOptions)}, track: { ...${JSON.stringify(track)}, src: music } },`,
     '  sounds: [',
     ...sounds.map((s) => `    { at: ${s.at}, id: ${JSON.stringify(s.id)}, volume: ${s.volume}, sound: { src: s${files.indexOf(s.file)}, ${JSON.stringify(s.take).slice(1, -1)} } },`),
@@ -219,7 +218,7 @@ function truePeakFrame(file: string): number {
   const x = new Float32Array(pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength));
   let at = 0;
   for (let i = 1; i < x.length; i++) if (Math.abs(x[i]) > Math.abs(x[at])) at = i;
-  return Math.floor((at / 2 / 192000) * FPS);
+  return Math.floor((at / 2 / 192000) * timeline.fps);
 }
 
 /** Its spectrum's flatness over [lo, hi] Hz (1 for noise, near 0 for a few tones), from one Hann-windowed FFT. */
@@ -285,7 +284,7 @@ function inMix(mix: Mix, at: number) {
 }
 
 /** The picture's frame a sound lands with: it plays the timeline's sound lag after it. */
-const frameOf = (at: number) => Math.round((at - timeline.soundLagSeconds) * FPS);
+const frameOf = (at: number) => Math.round((at - timeline.soundLagSeconds) * timeline.fps);
 const prominenceA = attacks(mixA.mastered!, hits.map((h) => frameOf(h.at))), prominenceB = attacks(mixB.mastered!, hits.map((h) => frameOf(h.at)));
 
 // ---------- the table and the A/B file ----------

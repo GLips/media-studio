@@ -75,8 +75,8 @@ export type ReviewNotesFile = {
 
 export type ReviewContextSources = {
   fps: number;
-  /** Composition pixels, which the motion tracks measure in. */
-  frameSize: { w: number; h: number };
+  /** The frame in composition pixels, which the motion tracks measure in; null where there's no snapshot to say. */
+  frameSize: { w: number; h: number } | null;
   scenes?: readonly ReviewScene[];
   sounds?: readonly ReviewSoundMarker[];
   motion?: MotionTracks;
@@ -114,7 +114,7 @@ export function reviewNoteContext(note: Pick<ReviewNote, 'frame' | 'end' | 'x' |
     const moment = reviewMomentAt(first + sources.timing.startsAt, sources.timing);
     if (moment) context.moment = moment;
   }
-  if (sources.motion && note.x !== undefined && note.y !== undefined) {
+  if (sources.motion && sources.frameSize && note.x !== undefined && note.y !== undefined) {
     context.elements = reviewElementsUnder(sources.motion, first, note.x * sources.frameSize.w, note.y * sources.frameSize.h, sources.frameSize);
   }
   return context;

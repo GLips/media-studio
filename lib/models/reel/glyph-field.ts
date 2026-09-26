@@ -2,7 +2,7 @@
 // Every glyph is two perpendicular rounded bars (length L, width w, corner r, turned θ), so the reference's
 // in-betweens come from lerping four numbers. glyph-field-frame.ts turns these into a frame's draws.
 
-import { H, W } from '#models/frame/frame.ts';
+import type { FrameSize } from '#models/frame/frame.ts';
 import type { Point } from '#models/camera/camera.ts';
 import type { EaseFn } from '#models/motion/motion.ts';
 import { hashRandom } from '#models/motion/random.ts';
@@ -54,11 +54,11 @@ export type GlyphFieldSlot = { index: number; col: number; row: number; i: numbe
 export type GlyphCell<D> = GlyphFieldSlot & { item: D };
 
 /**
- * Where `count` cells sit, row by row. Exported so a piece that cuts out of the field (the reference's cube field,
- * which match-cuts from these squares) can take the same places.
+ * Where `count` cells sit, row by row, on a frame `size` big. Exported so a piece that cuts out of the field (the
+ * reference's cube field, which match-cuts from these squares) can take the same places.
  */
-export function glyphFieldLayout(count: number, layout: GlyphLayout = {}): GlyphFieldSlot[] {
-  const { columns = 19, pitch = 100, center = { x: W / 2, y: H / 2 }, lastRow = 'center' } = layout;
+export function glyphFieldLayout(count: number, size: FrameSize, layout: GlyphLayout = {}): GlyphFieldSlot[] {
+  const { columns = 19, pitch = 100, center = { x: size.width / 2, y: size.height / 2 }, lastRow = 'center' } = layout;
   const rows = Math.ceil(count / columns);
   const slots: GlyphFieldSlot[] = [];
   for (let index = 0; index < count; index++) {
@@ -152,7 +152,7 @@ export type GlyphWave<D> = {
  * When `wave`'s front reaches each cell (seconds, Infinity where `where` leaves it out) and how far it travelled
  * there, in pitches. Fronts run over the cells' home places, not where a regroup has moved them.
  */
-export function glyphWaveArrivals<D>(wave: GlyphWave<D>, cells: readonly GlyphCell<D>[], { pitch = 100, center = { x: W / 2, y: H / 2 }, seed = 'glyph-field', index = 0 }: { pitch?: number; center?: Point; seed?: number | string; index?: number } = {}): { at: number[]; distance: number[] } {
+export function glyphWaveArrivals<D>(wave: GlyphWave<D>, cells: readonly GlyphCell<D>[], { pitch = 100, center, seed = 'glyph-field', index = 0 }: { pitch?: number; center: Point; seed?: number | string; index?: number }): { at: number[]; distance: number[] } {
   const speed = wave.perCell ? 1 / wave.perCell : (wave.speed ?? 20);
   const front = wave.front ?? {};
   const inWave = cells.map((cell) => wave.where?.(cell) ?? true);

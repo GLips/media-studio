@@ -1,18 +1,20 @@
 // kit.tsx: shots that recur across videos, built from the primitives. Each takes its colours and words as props, so
-// a project brings its own brand, and each is a pure function of its clock. Text-bearing shots keep clear of
-// CAPTION_SAFE_TOP, where burned-in captions sit. Each tags what moves in it for the motion tracks (motion-tag.ts).
+// a project brings its own brand, and each is a pure function of its clock. Each fits the video's frame
+// (useVideoFormat), and text-bearing shots keep above captionSafeArea's top, where burned-in captions sit. Each tags
+// what moves in it for the motion tracks (motion-tag.ts).
 
 import { evolvePath } from '@remotion/paths';
 import { Fragment, useId, type ReactNode } from 'react';
 import { camFit, camTop, camWhole, centerOf, lerpCam, view, type Rect, type Shot, type View } from '#models/camera/camera.ts';
 import { Capture, CaptureMotion } from '../capture/capture.tsx';
 import { DISPLAY_FONT } from '#models/type/faces.ts';
-import { CAPTION_FREE, CAPTION_SAFE_TOP, FONT, FPS, FULL_FRAME, H, W } from '#models/frame/frame.ts';
+import { captionFreeRect, captionSafeArea, FONT, fullFrameRect, type FrameSize } from '#models/frame/frame.ts';
 import { clamp, lerp, motionCurves, motionDurations, seg, stagger, staggerFinish } from '#models/motion/motion.ts';
 import { motionAttrs, pieceMotionAttrs } from '../probe/motion-tag.ts';
 import { odometerSinceLanding, odometerWheels, type OdometerMode, type OdometerWheel } from './odometer-wheels.ts';
 import { ClipToBox, CursorPath, Glass, Tag, Text, Wash } from './overlays.tsx';
 import type { SceneClock } from '../composition/timeline.ts';
+import { useVideoFormat } from '../composition/video-format.ts';
 
 export type { OdometerMode } from './odometer-wheels.ts';
 
@@ -20,23 +22,26 @@ export type { OdometerMode } from './odometer-wheels.ts';
 
 // The labels live in their own strip above the panels, so a label can never cover the page it names.
 export const SPLIT_LABEL_STRIP = 92;
-export const SPLIT_LEFT: Rect = { x: 0, y: SPLIT_LABEL_STRIP, w: W / 2 - 2, h: H - SPLIT_LABEL_STRIP };
-export const SPLIT_RIGHT: Rect = { x: W / 2 + 2, y: SPLIT_LABEL_STRIP, w: W / 2 - 2, h: H - SPLIT_LABEL_STRIP };
+/** A split's left panel on a frame this size, below the label strip. */
+export const splitLeftRect = ({ width, height }: FrameSize): Rect => ({ x: 0, y: SPLIT_LABEL_STRIP, w: width / 2 - 2, h: height - SPLIT_LABEL_STRIP });
+/** A split's right panel on a frame this size, below the label strip. */
+export const splitRightRect = ({ width, height }: FrameSize): Rect => ({ x: width / 2 + 2, y: SPLIT_LABEL_STRIP, w: width / 2 - 2, h: height - SPLIT_LABEL_STRIP });
 
 /** `over` is what's drawn on this panel (captures, rings, its cursor), clipped to it. */
 export type SplitSide = { view: View; label?: string; labelBg?: string; alpha?: number; over?: ReactNode };
 
 /**
- * Before and after, side by side. Build each side's view in SPLIT_LEFT / SPLIT_RIGHT (camFit takes the box), and aim
+ * Before and after, side by side. Build each side's view in splitLeftRect / splitRightRect (camFit takes the box), and aim
  * each side's `over` through the same view. `k` brings the labels in, raw (Tag eases it); `children` draw over both
  * panels, unclipped.
  */
 export function SplitCompare({ left, right, k = 1, children }: { left: SplitSide; right: SplitSide; k?: number; children?: ReactNode }) {
+  const { width, height } = useVideoFormat();
   return (
     <>
-      <div style={{ position: 'absolute', left: 0, top: 0, width: W, height: SPLIT_LABEL_STRIP, background: '#eef1f5' }} />
-      <div style={{ position: 'absolute', left: W / 2 - 2, top: 0, width: 4, height: H, background: '#d5d9e0' }} />
-      <div style={{ position: 'absolute', left: 0, top: SPLIT_LABEL_STRIP - 2, width: W, height: 2, background: '#d5d9e0' }} />
+      <div style={{ position: 'absolute', left: 0, top: 0, width, height: SPLIT_LABEL_STRIP, background: '#eef1f5' }} />
+      <div style={{ position: 'absolute', left: width / 2 - 2, top: 0, width: 4, height, background: '#d5d9e0' }} />
+      <div style={{ position: 'absolute', left: 0, top: SPLIT_LABEL_STRIP - 2, width, height: 2, background: '#d5d9e0' }} />
       {[left, right].map((side, i) => (
         <ClipToBox key={i} box={side.view.box} picked={i === 0 ? 'left' : 'right'}>
           <Capture view={side.view} alpha={side.alpha ?? 1} />
@@ -57,16 +62,17 @@ const BEZEL = 14;
 
 /**
  * The view of a viewport capture (see `scrollY` in lib/engine/capture/capture.ts) on a phone screen centred at (cx, cy). `height`
- * is the whole device in frame pixels. Pass it to <Phone>, and aim highlights through it.
+ * is the whole device in frame pixels, on a frame `frameSize` big. Pass it to <Phone>, and aim highlights through it.
  */
-export function phoneView(shot: Shot, { cx = W / 2, cy = H / 2 + 10, height = 980 }: { cx?: number; cy?: number; height?: number } = {}): View {
+export function phoneView(shot: Shot, frameSize: FrameSize, { cx = frameSize.width / 2, cy = frameSize.height / 2 + 10, height = 980 }: { cx?: number; cy?: number; height?: number } = {}): View {
   const h = height - BEZEL * 2, w = h * (shot.w / shot.h);
   const box = { x: cx - w / 2, y: cy - h / 2, w, h };
-  return view(shot, camWhole(shot, box), box);
+  return view(shot, camWhole(shot, box, frameSize), frameSize, box);
 }
 
 /** A phone showing a phoneView. */
 export function Phone({ view: v, alpha = 1 }: { view: View; alpha?: number }) {
+  const { width, height } = useVideoFormat();
   if (alpha <= 0) return null;
   const { box } = v;
   return (
@@ -83,7 +89,7 @@ export function Phone({ view: v, alpha = 1 }: { view: View; alpha?: number }) {
           boxShadow: '0 24px 70px rgba(10, 20, 40, 0.35)',
         }}
       />
-      <div style={{ position: 'absolute', inset: 0, clipPath: `inset(${box.y}px ${W - box.x - box.w}px ${H - box.y - box.h}px ${box.x}px round 50px)` }}>
+      <div style={{ position: 'absolute', inset: 0, clipPath: `inset(${box.y}px ${width - box.x - box.w}px ${height - box.y - box.h}px ${box.x}px round 50px)` }}>
         <Capture view={v} />
       </div>
     </div>
@@ -106,28 +112,39 @@ export function MotionTitle({ s, shot, eyebrow, title, subtitle, accent, wash = 
   accent: string;
   wash?: string;
 }) {
-  const top = camTop(shot);
+  const size = useVideoFormat();
+  const top = camTop(shot, size);
   const bottom = { ...top, cy: shot.h - top.cy };
   const k = s.t / (s.dur + 0.5);
   const cam = lerpCam(top, bottom, k);
   // The block hangs from the accent bar, which sits a clear gap above the caption band.
-  const barY = CAPTION_SAFE_TOP - 120;
+  const barY = captionSafeArea(size).top - 120;
   const inK = (at: number) => seg(s.t, at, at + 0.7, motionCurves.cubic.entrance);
   return (
     <>
-      <Capture view={view(shot, cam)} />
-      {/* The smear fades out toward the top right: this gradient is the canvas line from (0, H) to (0.75W, 0),
-          restated on CSS's gradient line, which for 53.13° runs 2184px through the frame's centre. */}
-      <div style={{ position: 'absolute', inset: 0, maskImage: 'linear-gradient(53.13deg, #000 0%, rgba(0,0,0,0.85) 37.09%, transparent 82.42%)' }}>
-        <CaptureMotion view={view(shot, cam)} from={lerpCam(top, bottom, k - 0.05)} to={cam} k={1} shutter={1} samples={48} />
+      <Capture view={view(shot, cam, size)} />
+      <div style={{ position: 'absolute', inset: 0, maskImage: motionTitleSmearMask(size) }}>
+        <CaptureMotion view={view(shot, cam, size)} from={lerpCam(top, bottom, k - 0.05)} to={cam} k={1} shutter={1} samples={48} />
       </div>
-      <Wash color={wash} from={0.9} to={0.3} x0={0} y0={H} x1={W * 0.95} y1={0} />
+      <Wash color={wash} from={0.9} to={0.3} x0={0} y0={size.height} x1={size.width * 0.95} y1={0} />
       {eyebrow && <Text text={eyebrow} x={120} y={barY - 230} size={26} weight={600} color="rgba(255,255,255,0.75)" k={inK(0.3)} spacing={0.12} />}
       <Text text={title} x={114} y={barY - 110} size={124} weight={800} k={inK(0.5)} spacing={-0.025} />
       {subtitle && <Text text={subtitle} x={120} y={barY - 35} size={42} weight={500} color="rgba(255,255,255,0.88)" k={inK(0.8)} />}
       <div {...motionAttrs({ name: 'accent-bar', kind: 'bar', implicit: true, values: { k: inK(1.0) } })} style={{ position: 'absolute', left: 120, top: barY, width: 150 * inK(1.0), height: 8, background: accent }} />
     </>
   );
+}
+
+/**
+ * The smear's fade toward the top right: the canvas line from the bottom-left corner to (0.75 × width, 0), opaque to
+ * 0.85 at 45% of it and clear at its end, restated on CSS's gradient line, which runs through the frame's centre (at
+ * 1920×1080, 53.13° and 2184 px long). Rounded to hundredths, as CSS reads them.
+ */
+function motionTitleSmearMask({ width, height }: FrameSize): string {
+  const dx = 0.75 * width, angle = Math.atan2(dx, height);
+  const cssLength = width * Math.sin(angle) + height * Math.cos(angle), share = Math.hypot(dx, height) / cssLength;
+  const pct = (k: number) => `${(100 * k * share).toFixed(2)}%`;
+  return `linear-gradient(${((angle * 180) / Math.PI).toFixed(2)}deg, #000 0%, rgba(0,0,0,0.85) ${pct(0.45)}, transparent ${pct(1)})`;
 }
 
 /**
@@ -146,9 +163,10 @@ export function ClickToBlur({ t, shot, frame, target, clickAt = 1.3, from = { dx
   wash?: string;
   push?: number;
 }) {
-  const start = camFit(shot, frame, { pad: 80, maxZoom: 1.25 });
+  const size = useVideoFormat();
+  const start = camFit(shot, frame, size, { pad: 80, maxZoom: 1.25 });
   const cam = lerpCam(start, { ...start, zoom: start.zoom * push }, seg(t, 0, 18));
-  const v = view(shot, cam);
+  const v = view(shot, cam, size);
   const k = seg(t, clickAt + 0.3, clickAt + 1.4);
   const p = centerOf(target);
   return (
@@ -166,7 +184,7 @@ export function ClickToBlur({ t, shot, frame, target, clickAt = 1.3, from = { dx
  * its own rise. A point can be `{ text, k }` to come in on its own cue instead, e.g.
  * `seg(s.t, s.line('why-b').start - 0.3, s.line('why-b').start + 0.3, motionCurves.linear)` as the voice reaches it.
  */
-export function GlassCard({ k, eyebrow, points, accent, ink, rect = { x: (W - 1120) / 2, y: 270, w: 1120, h: 540 }, motion }: {
+export function GlassCard({ k, eyebrow, points, accent, ink, rect: given, motion }: {
   k: number;
   /** Its group's name in the motion tracks, `card` by default: its glass and lines are tracked under it. */
   motion?: string | false;
@@ -174,14 +192,17 @@ export function GlassCard({ k, eyebrow, points, accent, ink, rect = { x: (W - 11
   points: readonly (string | { text: string; k: number })[];
   accent: string;
   ink: string;
+  /** The card's box; by default 1120 × 540, centred across the frame at y 270. */
   rect?: Rect;
 }) {
+  const { width, height } = useVideoFormat();
   if (k <= 0) return null;
+  const rect = given ?? { x: (width - 1120) / 2, y: 270, w: 1120, h: 540 };
   const y0 = rect.y + (1 - motionCurves.cubic.entrance(k)) * 40;
   return (
     // The group is the card's own box, so its track is the card's rise; its contents are laid out in frame pixels.
     <div {...pieceMotionAttrs(motion, 'card', { kind: 'card', values: { k } })} style={{ position: 'absolute', left: rect.x, top: y0, width: rect.w, height: rect.h }}>
-      <div style={{ position: 'absolute', left: -rect.x, top: -y0, width: W, height: H }}>
+      <div style={{ position: 'absolute', left: -rect.x, top: -y0, width, height }}>
         <Glass rect={{ ...rect, y: y0 }} alpha={clamp(k * 1.4)} tint="rgba(255,255,255,0.78)" blur={24} />
         <Text text={eyebrow} x={rect.x + 88} y={y0 + 126} size={28} weight={700} color={accent} k={k} spacing={0.1} />
         {points.map((p, i) => (
@@ -200,15 +221,16 @@ export function GlassCard({ k, eyebrow, points, accent, ink, rect = { x: (W - 11
  * the voice carries straight on and the card costs no time.
  */
 export function SectionCard({ t, number, of, title, bg, accent, hold = 1.3 }: { t: number; number: number; of: number; title: string; bg: string; accent: string; hold?: number }) {
+  const { height } = useVideoFormat();
   const out = seg(t, hold, hold + 0.55, motionCurves.cubic.standard);
   if (out >= 1) return null;
   return (
-    <div {...motionAttrs({ name: 'section-card', kind: 'section-card', implicit: true, values: { out } })} style={{ position: 'absolute', inset: 0, transform: `translateY(${-out * H}px)` }}>
+    <div {...motionAttrs({ name: 'section-card', kind: 'section-card', implicit: true, values: { out } })} style={{ position: 'absolute', inset: 0, transform: `translateY(${-out * height}px)` }}>
       <div style={{ position: 'absolute', inset: 0, background: bg }} />
-      <Text text={`${number} / ${of}`} x={160} y={H / 2 - 70} size={34} weight={700} color={accent} k={seg(t, 0, 0.5, motionCurves.cubic.entrance)} spacing={0.08} />
-      <Text text={title} x={154} y={H / 2 + 50} size={112} weight={800} k={seg(t, 0.1, 0.6, motionCurves.cubic.entrance)} spacing={-0.025} />
+      <Text text={`${number} / ${of}`} x={160} y={height / 2 - 70} size={34} weight={700} color={accent} k={seg(t, 0, 0.5, motionCurves.cubic.entrance)} spacing={0.08} />
+      <Text text={title} x={154} y={height / 2 + 50} size={112} weight={800} k={seg(t, 0.1, 0.6, motionCurves.cubic.entrance)} spacing={-0.025} />
       <div {...motionAttrs({ name: 'accent-bar', kind: 'bar', implicit: true, values: { k: seg(t, 0.3, 0.8, motionCurves.cubic.entrance) } })}
-        style={{ position: 'absolute', left: 160, top: H / 2 + 100, width: 150 * seg(t, 0.3, 0.8, motionCurves.cubic.entrance), height: 8, background: accent }} />
+        style={{ position: 'absolute', left: 160, top: height / 2 + 100, width: 150 * seg(t, 0.3, 0.8, motionCurves.cubic.entrance), height: 8, background: accent }} />
     </div>
   );
 }
@@ -218,8 +240,10 @@ export function SectionCard({ t, number, of, title, bg, accent, hold = 1.3 }: { 
  * screen point its top centre drops from (a real one sits under the address bar). `k` 0..1 brings it in, raw: it eases
  * its drop.
  */
-export function ConfirmDialog({ k, origin, message, anchor = { x: W / 2, y: 120 } }: { k: number; origin: string; message: string; anchor?: { x: number; y: number } }) {
+export function ConfirmDialog({ k, origin, message, anchor: given }: { k: number; origin: string; message: string; anchor?: { x: number; y: number } }) {
+  const { width } = useVideoFormat();
   if (k <= 0) return null;
+  const anchor = given ?? { x: width / 2, y: 120 };
   const w = 640, pad = 34;
   const button = (primary: boolean) => ({
     height: 52,
@@ -264,8 +288,10 @@ export function ConfirmDialog({ k, origin, message, anchor = { x: W / 2, y: 120 
  * lib/engine/capture/capture.ts) in a plain list dropped from screen rect `from`. `k` opens it, raw: it eases its height. `scroll`
  * 0..1 runs the list from top to bottom, as given.
  */
-export function NativeMenu({ k, from, items, scroll = 0, rowH = 34, bottom = CAPTION_FREE.h }: { k: number; from: Rect; items: readonly string[]; scroll?: number; rowH?: number; bottom?: number }) {
+export function NativeMenu({ k, from, items, scroll = 0, rowH = 34, bottom: given }: { k: number; from: Rect; items: readonly string[]; scroll?: number; rowH?: number; bottom?: number }) {
+  const size = useVideoFormat();
   if (k <= 0) return null;
+  const bottom = given ?? captionFreeRect(size).h;
   const y = from.y + from.h + 4;
   const h = Math.min(bottom - y, items.length * rowH + 12);
   const offset = scroll * Math.max(0, items.length * rowH + 12 - h);
@@ -296,11 +322,12 @@ export function NativeMenu({ k, from, items, scroll = 0, rowH = 34, bottom = CAP
 
 /** A solid card with one centred line, faded in by `k`, eased (its title eases its rise on top): the last frame. */
 export function EndCard({ k, title, bg }: { k: number; title: string; bg: string }) {
+  const { width, height } = useVideoFormat();
   if (k <= 0) return null;
   return (
     <>
       <div style={{ position: 'absolute', inset: 0, background: bg, opacity: k }} />
-      <Text text={title} x={W / 2} y={H / 2 + 30} size={96} weight={800} align="center" k={k} spacing={-0.025} />
+      <Text text={title} x={width / 2} y={height / 2 + 30} size={96} weight={800} align="center" k={k} spacing={-0.025} />
     </>
   );
 }
@@ -319,10 +346,13 @@ const WORD_REVEAL_TIMING = { each: 0.06, duration: motionDurations.enter.small }
 const wordRevealUnits = (text: string, letters: boolean) =>
   text.split(/\s+/).filter(Boolean).map((word) => (letters ? Array.from(word) : [word]));
 
-/** Seconds after a WordReveal's `t` 0 that its last word has fully come in: to lead a word with it, or hold after it. */
-export function wordRevealFinish(text: string, { letters = false, timing }: { letters?: boolean; timing?: WordRevealTiming } = {}) {
+/**
+ * Seconds after a WordReveal's `t` 0 that its last word has fully come in, at the video's `fps`: to lead a word with it,
+ * or hold after it.
+ */
+export function wordRevealFinish(text: string, { fps, letters = false, timing }: { fps: number; letters?: boolean; timing?: WordRevealTiming }) {
   const { each, max, duration } = { ...WORD_REVEAL_TIMING, ...timing };
-  return staggerFinish(wordRevealUnits(text, letters).flat().length, { each, max, duration });
+  return staggerFinish(wordRevealUnits(text, letters).flat().length, { each, max, duration, fps });
 }
 
 /**
@@ -349,6 +379,7 @@ export function WordReveal({ t, text, x, y, width, size = 64, weight = 700, colo
   /** Its group's name in the motion tracks, its words by default. `false` tracks neither it nor its words. */
   motion?: string | false;
 }) {
+  const { fps } = useVideoFormat();
   if (t <= 0) return null;
   const words = wordRevealUnits(text, letters);
   const n = words.flat().length;
@@ -356,7 +387,7 @@ export function WordReveal({ t, text, x, y, width, size = 64, weight = 700, colo
   const firsts = words.map((_, w) => words.slice(0, w).flat().length);
   return (
     <div
-      {...pieceMotionAttrs(motion, text, { kind: 'word-reveal', values: { k: clamp(t / wordRevealFinish(text, { letters, timing })) } })}
+      {...pieceMotionAttrs(motion, text, { kind: 'word-reveal', values: { k: clamp(t / wordRevealFinish(text, { fps, letters, timing })) } })}
       style={{ position: 'absolute', left: x, top: y, width, textAlign: align, color, font: `${weight} ${size}px/${lineHeight} ${FONT}`, letterSpacing: `${spacing * size}px` }}
     >
       {words.map((units, w) => (
@@ -365,7 +396,7 @@ export function WordReveal({ t, text, x, y, width, size = 64, weight = 700, colo
           <span style={{ whiteSpace: 'nowrap' }}>
             {units.map((unit, u) => {
               const index = firsts[w] + u;
-              const p = clamp((t - stagger(index, n, { each, max })) / duration);
+              const p = clamp((t - stagger(index, n, { each, max, fps })) / duration);
               const e = motionCurves.cubic.entrance(p);
               const tag = motion === false ? {} : pieceMotionAttrs(undefined, `${index} ${unit}`, { kind: letters ? 'letter' : 'word', values: { k: p }, stagger: { group: 'words', index, count: n } });
               return <span key={u} {...tag} style={{ display: 'inline-block', opacity: e, transform: `translateY(${(1 - e) * rise}px)` }}>{unit}</span>;
@@ -460,14 +491,15 @@ export type OdometerProps = {
  */
 export function Odometer({
   t, value, x, y, size = 160, align = 'left', color = '#fff', weight = 800, stretch = 100, tracking = -0.02, decimals = 0, group = true,
-  prefix = '', suffix = '', mode = 'mechanical', spin = 2, lockStagger = 2 / FPS, blur = 1, fade = 0.28, punch = 0, punchFrames = 9,
+  prefix = '', suffix = '', mode = 'mechanical', spin = 2, lockStagger, blur = 1, fade = 0.28, punch = 0, punchFrames = 9,
   alpha = 1, motion,
 }: OdometerProps) {
   const id = `odometer-${useId().replace(/[^\w-]/g, '')}`;
+  const { fps } = useVideoFormat();
   if (alpha <= 0) return null;
-  const wheels = odometerWheels(value, t, { decimals, mode, spin: Math.round(spin), lockStagger });
-  const landed = punch ? odometerSinceLanding(value, t, punchFrames / FPS, decimals) : null;
-  const scale = landed === null ? 1 : 1 + punch * punchEnvelope((landed * FPS) / punchFrames);
+  const wheels = odometerWheels(value, t, { decimals, mode, spin: Math.round(spin), lockStagger: lockStagger ?? 2 / fps, fps });
+  const landed = punch ? odometerSinceLanding(value, t, punchFrames / fps, decimals, fps) : null;
+  const scale = landed === null ? 1 : 1 + punch * punchEnvelope((landed * fps) / punchFrames);
   const nudge = DIGIT_NUDGE_EM * size;
   const still = (key: string, text: string, presence = 1) => <OdometerStill key={key} text={text} presence={presence} size={size} tracking={tracking} nudge={nudge} />;
 
@@ -618,7 +650,7 @@ function OdometerStill({ text, presence, size, tracking, nudge }: { text: string
  * `box`'s own pixels (the whole frame by default), or in `viewBox`'s units when given, to draw an icon's `0 0 24 24`
  * path into `box`; `width` is frame pixels either way. Draw-on only: a morph between paths is built directly.
  */
-export function DrawPath({ d, k, color = '#fff', width = 6, box = FULL_FRAME, viewBox, alpha = 1, motion }: {
+export function DrawPath({ d, k, color = '#fff', width = 6, box: given, viewBox, alpha = 1, motion }: {
   d: string;
   k: number;
   color?: string;
@@ -629,6 +661,7 @@ export function DrawPath({ d, k, color = '#fff', width = 6, box = FULL_FRAME, vi
   /** Its name in the motion tracks, `path` by default. Its track reports `draw`, the raw `k`. */
   motion?: string | false;
 }) {
+  const box = given ?? fullFrameRect(useVideoFormat());
   if (k <= 0 || alpha <= 0) return null;
   // Drawn whole at `k` 1 without dashes: evolvePath's length can fall short of the browser's, leaving the tip undrawn.
   const [, , vw, vh] = viewBox ? viewBox.trim().split(/[\s,]+/).map(Number) : [0, 0, box.w, box.h];

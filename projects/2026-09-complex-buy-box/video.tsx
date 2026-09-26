@@ -2,7 +2,7 @@
 // `f` of the way through a voiced line, so beats stay on their words when the voice is re-timed.
 
 import {
-  Capture, EndCard, GlassCard, MotionTitle, Wash, W, camTop, defineScene, defineVideo, motionCurves, seg, view,
+  Capture, EndCard, GlassCard, MotionTitle, Wash, camTop, defineScene, defineVideo, motionCurves, seg, useVideoFormat, view,
 } from '#studio';
 import { voice } from './audio/manifest.ts';
 import { captures as C } from './captures/index.ts';
@@ -18,11 +18,12 @@ const title = defineScene({
 const outro = defineScene({
   id: 'outro', lines: ['outro'], lead: 0.6, tail: 3.4,
   render: (s) => {
+    const frame = useVideoFormat();
     const blur = seg(s.t, 0, 1.0);
     return (
       <>
-        <Capture view={view(C.home, camTop(C.home))} blur={34 * blur} />
-        <Wash color="22, 40, 70" from={0.62 * blur} to={0.38 * blur} x0={0} x1={W} />
+        <Capture view={view(C.home, camTop(C.home, frame), frame)} blur={34 * blur} />
+        <Wash color="22, 40, 70" from={0.62 * blur} to={0.38 * blur} x0={0} />
         <GlassCard k={seg(s.t, 0.4, 1.3, motionCurves.cubic.entrance) * (1 - seg(s.t, s.dur - 2.8, s.dur - 2.1))} eyebrow="IN SHORT"
           points={['The first takeaway', 'The second takeaway']} accent={ACCENT} ink={INK} />
         <EndCard k={seg(s.t, s.dur - 2.4, s.dur - 1.6)} title="Complex buy box" bg={INK} />

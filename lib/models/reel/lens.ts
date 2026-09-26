@@ -1,7 +1,7 @@
 // lens.ts: the frame post's chromatic aberration as numbers: how far the colour channels sit apart at `t`, at rest,
 // on a cut's kick and on a glitch's split. LensFringe (studio/reel/lens.tsx) draws it.
 
-import { FPS, H, W } from '#models/frame/frame.ts';
+import type { FrameSize } from '#models/frame/frame.ts';
 import { motionCurves } from '#models/motion/motion.ts';
 import { hashRandom } from '#models/motion/random.ts';
 
@@ -22,8 +22,11 @@ export type LensFringeTiming = {
 
 export type LensFringeState = { radial: number; red: number; blue: number };
 
-/** The fringe at `t`: `radial` px at the corners, and the split's red and blue shifts in whole px (red +, blue −). */
-export function lensFringeAt(t: number, timing: LensFringeTiming = {}): LensFringeState {
+/**
+ * The fringe at `t` in a video at `fps`: `radial` px at the corners, and the split's red and blue shifts in whole px
+ * (red +, blue −).
+ */
+export function lensFringeAt(t: number, fps: number, timing: LensFringeTiming = {}): LensFringeState {
   const { radial = 0.55, kicks = [], kick = 2.5, kickDecay = 1 / 6, splits = [], split = 7, splitFor = 0.05, seed = 'lens' } = timing;
   let px = radial;
   for (const at of kicks) {
@@ -33,13 +36,13 @@ export function lensFringeAt(t: number, timing: LensFringeTiming = {}): LensFrin
   }
   const glitch = splits.find((at) => t - at > -1e-6 && t - at < splitFor);
   if (glitch === undefined || split === 0) return { radial: px, red: 0, blue: 0 };
-  const frame = Math.floor(t * FPS + 1e-6);
+  const frame = Math.floor(t * fps + 1e-6);
   const wander = (channel: string) => 0.7 + 0.6 * hashRandom(seed, glitch, frame, channel);
   return { radial: px, red: Math.round(split * wander('red')), blue: -Math.round(split * wander('blue')) };
 }
 
 /**
- * The widest `radial` drawn sub-pixel, with bilinear weights like a lens. Wider fringes (a kick's first frames) and a
- * split's frames, which drop the radial fringe under the split, move each channel in whole px.
+ * The widest `radial` drawn sub-pixel on a frame this size, with bilinear weights like a lens. Wider fringes (a kick's
+ * first frames) and a split's frames, which drop the radial fringe under the split, move each channel in whole px.
  */
-export const LENS_FRINGE_SUBPIXEL_MAX = Math.hypot(W / 2, H / 2) / W;
+export const lensFringeSubpixelMax = ({ width, height }: FrameSize) => Math.hypot(width / 2, height / 2) / width;

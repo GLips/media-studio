@@ -6,7 +6,7 @@
 // ends on ONE BOX. and the same red dot.
 
 import {
-  DISPLAY_FONT, FPS, H, REEL_SHUTTER, W, motionAttrs, motionCurves, seededRandom, shutterTravel, smearSigma,
+  DISPLAY_FONT, REEL_SHUTTER, motionAttrs, motionCurves, seededRandom, shutterTravel, smearSigma,
 } from '#studio';
 import { BounceBall } from '#studio/reel/bounce.tsx';
 import { bouncingBallAt } from '#models/reel/bounce.ts';
@@ -16,8 +16,10 @@ import {
   BOUNCE_BALL_SIZE as BALL_SIZE, BOUNCE_GROUND_Y as GROUND_Y, BOUNCE_LANDING_BEATS as LANDING_BEATS, BOUNCE_PAD_X as PAD_X, bounceBallParams,
 } from './01-bounce-model.ts';
 import { P } from '../look.ts';
+import { SHOWCASE_FORMAT } from '../timeline.ts';
 
 export function bounceBar(clock: ShowcaseClock<'bounce'>): Bar {
+  const { fps } = clock;
   const outExpo = motionCurves.expo.entrance;
 
   const FROM = clock.from;
@@ -25,7 +27,7 @@ export function bounceBar(clock: ShowcaseClock<'bounce'>): Bar {
   // ---------- the layout ----------
 
   /** The words' box: every word spans it, BOX with its full stop (the drop at rest on the pad), 85% of the frame. */
-  const SPAN = { left: 90, right: W - 90 };
+  const SPAN = { left: 90, right: SHOWCASE_FORMAT.width - 90 };
   const CAP = 560;
 
   // ---------- the drop ----------
@@ -33,12 +35,12 @@ export function bounceBar(clock: ShowcaseClock<'bounce'>): Bar {
   // Its bounce is the bar's model (01-bounce-model.ts), which `studio look --graph=models` reads.
   const BALL = bounceBallParams(clock);
   /** Where the drop lands on beat `n` (beat −2's is the loop's, before the bar's cut): it holds still through a landing. */
-  const landingX = (n: number) => bouncingBallAt(clock.beat(n) / FPS, BALL).x;
+  const landingX = (n: number) => bouncingBallAt(clock.beat(n) / fps, BALL, SHOWCASE_FORMAT).x;
 
   // The line is the words' floor, as wide as they are; drawn a second before the bar's cut (the video's start), so its
   // first frame has it whole and only the dent from the landing on beat −2 still ringing in it.
   const LINE = { from: SPAN.left, to: SPAN.right };
-  const LINE_IN = FROM / FPS - 1;
+  const LINE_IN = FROM / fps - 1;
 
   // ---------- the dot lattice ----------
 
@@ -49,8 +51,8 @@ export function bounceBar(clock: ShowcaseClock<'bounce'>): Bar {
   const LATTICE = (() => {
     const rnd = seededRandom('bar-01 lattice');
     const dots: { x: number; y: number; on: number; luma: number }[] = [];
-    for (let y = LATTICE_PITCH; y < H; y += LATTICE_PITCH) {
-      for (let x = LATTICE_PITCH; x < W; x += LATTICE_PITCH) {
+    for (let y = LATTICE_PITCH; y < SHOWCASE_FORMAT.height; y += LATTICE_PITCH) {
+      for (let x = LATTICE_PITCH; x < SHOWCASE_FORMAT.width; x += LATTICE_PITCH) {
         dots.push({ x, y, on: LATTICE_REVEAL.from + rnd() * (LATTICE_REVEAL.to - LATTICE_REVEAL.from), luma: 12 + Math.floor(rnd() * 16) });
       }
     }
@@ -67,7 +69,7 @@ export function bounceBar(clock: ShowcaseClock<'bounce'>): Bar {
       levels.set(d.luma, level);
     }
     return (
-      <svg width={W} height={H} style={{ position: 'absolute', inset: 0 }}>
+      <svg width={SHOWCASE_FORMAT.width} height={SHOWCASE_FORMAT.height} style={{ position: 'absolute', inset: 0 }}>
         {[...levels].map(([luma, dots]) => <path key={luma} d={dots.join('')} fill={`rgb(${luma},${luma},${luma + 2})`} />)}
       </svg>
     );
@@ -127,7 +129,7 @@ export function bounceBar(clock: ShowcaseClock<'bounce'>): Bar {
   function shockAt(beat: number) {
     const x = landingX(beat), next = WORD_SETS.find((set) => set.beat === beat)!;
     const nearest = Math.min(...next.mids.map((m) => Math.abs(m - x)));
-    return (mid: number) => (clock.beat(beat) - 1 + 0.05) / FPS + (Math.abs(mid - x) - nearest) / TYPE.push;
+    return (mid: number) => (clock.beat(beat) - 1 + 0.05) / fps + (Math.abs(mid - x) - nearest) / TYPE.push;
   }
 
   type Letter = { char: string; x: number; mid: number; word: number; at: number; out: number };
@@ -141,8 +143,8 @@ export function bounceBar(clock: ShowcaseClock<'bounce'>): Bar {
 
   // A later landing presses the letters into the line, most under it: down to a peak a frame and a half after its hit
   // and back with no overshoot, as the reference's type never overshoots. The pickup's presses THE; the pad's, BOX.
-  const PRESS = { depth: 26, reach: 0.89 * BALL_SIZE, peak: 1.5 / FPS };
-  const PRESSES = LANDING_BEATS.map((beat) => ({ beat, t: clock.beat(beat) / FPS, x: landingX(beat) }));
+  const PRESS = { depth: 26, reach: 0.89 * BALL_SIZE, peak: 1.5 / fps };
+  const PRESSES = LANDING_BEATS.map((beat) => ({ beat, t: clock.beat(beat) / fps, x: landingX(beat) }));
   function pressAt(t: number, l: Letter) {
     let y = 0;
     for (const p of PRESSES) {
@@ -160,7 +162,7 @@ export function bounceBar(clock: ShowcaseClock<'bounce'>): Bar {
   const letterSmear = (t: number, l: Letter) => smearSigma(shutterTravel((tt) => letterY(tt, l), t, REEL_SHUTTER, l.at));
 
   function Words({ f }: { f: number }) {
-    const t = f / FPS;
+    const t = f / fps;
     const shown = LETTERS
       .map((l) => ({ ...l, y: letterY(t, l), id: `${l.word}-${Math.round(l.x)}` }))
       .filter((l) => t >= l.at && l.y - CAP < GROUND_Y)
@@ -174,10 +176,10 @@ export function bounceBar(clock: ShowcaseClock<'bounce'>): Bar {
       </text>
     );
     return (
-      <svg width={W} height={H} style={{ position: 'absolute', inset: 0, overflow: 'visible' }}>
+      <svg width={SHOWCASE_FORMAT.width} height={SHOWCASE_FORMAT.height} style={{ position: 'absolute', inset: 0, overflow: 'visible' }}>
         <defs>
           <clipPath id="bar01-ground">
-            <rect x={0} y={-H} width={W} height={H + GROUND_Y} />
+            <rect x={0} y={-SHOWCASE_FORMAT.height} width={SHOWCASE_FORMAT.width} height={SHOWCASE_FORMAT.height + GROUND_Y} />
           </clipPath>
           {shown.map((l) => l.sigma > 0.25 && (
             <filter key={l.id} id={`bar01-smear-${l.id}`} x="-10%" y="-40%" width="120%" height="180%" colorInterpolationFilters="sRGB">
@@ -210,7 +212,7 @@ export function bounceBar(clock: ShowcaseClock<'bounce'>): Bar {
     note: 'THE NEW BUY BOX., a word a beat wall to wall on the ground line, the red drop bouncing across it: each landing\'s shock stamps the next word down over the last and punches the last through the line; the fourth lands as BOX\'s full stop, crouches, launches and swells into a full red frame by its last.',
     clock,
     render: (f) => {
-      const drop = { t: f / FPS, ...BALL, background: null, line: LINE, inAt: LINE_IN, shutter: 0.25, seed: 'bar-01' };
+      const drop = { t: f / fps, ...BALL, background: null, line: LINE, inAt: LINE_IN, shutter: 0.25, seed: 'bar-01' };
       return (
         <>
           <div style={{ position: 'absolute', inset: 0, background: P.ground }} />

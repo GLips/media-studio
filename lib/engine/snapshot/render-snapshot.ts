@@ -15,7 +15,7 @@ import type { MotionTracks } from '#models/motion/motion-tracks.ts';
 import type { TimelineClockTable } from '#models/timeline/timeline.ts';
 import type { TimelineReport } from '#studio/composition/Video.tsx';
 
-export const RENDER_SNAPSHOT_VERSION = 3;
+export const RENDER_SNAPSHOT_VERSION = 4;
 
 /** Which bytes a file is: `hash` is the first 10 hex digits of its SHA-256, `modified` its mtime as ISO. */
 export type RenderFileStamp = { hash: string; modified: string };

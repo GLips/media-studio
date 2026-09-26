@@ -2,8 +2,8 @@
 // its axes in lens space and their projection, the key light's shade, sheen and rim, the hold drift, the shutter's
 // exposures and the lift's spring. Runs without a browser.
 
-import { inflate, scaleFor, toScreen, view, type Point, type Rect, type Shot, type View } from '#models/camera/camera.ts';
-import { H, W } from '#models/frame/frame.ts';
+import { centerOf, inflate, scaleFor, screenPoint, view, type Point, type Rect, type Shot, type View } from '#models/camera/camera.ts';
+import { fullFrameRect, type FrameSize } from '#models/frame/frame.ts';
 import { clamp, lerp, perceptualSpring, type PerceptualSpring } from '#models/motion/motion.ts';
 import { hashRandom } from '#models/motion/random.ts';
 import { crossVec3, dotVec3, unitVec3, type Vec3 } from '#models/camera/vec3.ts';
@@ -25,14 +25,14 @@ export function lerpPlanePose(a: Partial<PlanePose>, b: Partial<PlanePose>, k: n
 
 /**
  * The view that shows page `rect` (grown by `pad` page px) filling a card as large as fits in `fit`, centred on
- * `centre`. Text stays crisp while the card's page zoom times its lens magnification stays under the capture's
- * pixels: about 2.2 for a 3× capture of a 1440 px page.
+ * `centre` (the frame's by default). Text stays crisp while the card's page zoom times its lens magnification stays
+ * under the capture's pixels: about 2.2 for a 3× capture of a 1440 px page.
  */
-export function capturePlaneView(shot: Shot, rect: Rect, { fit = { w: 1040, h: 800 }, centre = { x: W / 2, y: H / 2 }, pad = 0 }: { fit?: { w: number; h: number }; centre?: Point; pad?: number } = {}): View {
+export function capturePlaneView(shot: Shot, rect: Rect, frameSize: FrameSize, { fit = { w: 1040, h: 800 }, centre = centerOf(fullFrameRect(frameSize)), pad = 0 }: { fit?: { w: number; h: number }; centre?: Point; pad?: number } = {}): View {
   const r = inflate(rect, pad);
   const k = Math.min(fit.w / r.w, fit.h / r.h);
   const [w, h] = [r.w * k, r.h * k];
-  return view(shot, { cx: r.x + r.w / 2, cy: r.y + r.h / 2, zoom: k / scaleFor(shot, 1) }, { x: centre.x - w / 2, y: centre.y - h / 2, w, h });
+  return view(shot, { cx: r.x + r.w / 2, cy: r.y + r.h / 2, zoom: k / scaleFor(shot, 1, frameSize) }, frameSize, { x: centre.x - w / 2, y: centre.y - h / 2, w, h });
 }
 
 /** One control raised out of the page: the same crop's `rect` drawn again above the card, casting its own shadow. */
@@ -104,7 +104,7 @@ export type LiftedPlate = { u: number; v: number; w: number; h: number; z: numbe
  * the projection's local stretch, since perspective stretches a tilted card past its depth's scale toward the frame's
  * edges. 0 when none of it is in frame.
  */
-export function framedStretch(f: PlaneFrame, box: Rect, lens: number, vanish: Point, lifted: LiftedPlate | null) {
+export function framedStretch(f: PlaneFrame, box: Rect, lens: number, vanish: Point, lifted: LiftedPlate | null, { width, height }: FrameSize) {
   const N = 16;
   let most = 0;
   const sample = (u: number, v: number, w: number, h: number, z: number, scale: number) => {
@@ -112,7 +112,7 @@ export function framedStretch(f: PlaneFrame, box: Rect, lens: number, vanish: Po
       for (let j = 0; j <= N; j++) {
         const [pu, pv] = [u + w * (i / N - 0.5), v + h * (j / N - 0.5)];
         const s = project(pointOn(f, pu, pv, z), lens, vanish);
-        if (s.x < 0 || s.x > W || s.y < 0 || s.y > H) continue;
+        if (s.x < 0 || s.x > width || s.y < 0 || s.y > height) continue;
         const du = project(pointOn(f, pu + 1, pv, z), lens, vanish), dv = project(pointOn(f, pu, pv + 1, z), lens, vanish);
         most = Math.max(most, largestStretch(du.x - s.x, dv.x - s.x, du.y - s.y, dv.y - s.y) * scale);
       }
@@ -148,11 +148,11 @@ export type CapturePlaneProjection = {
  * `vanish` as CapturePlane takes them: for what a scene hangs on the card or asks about it, like a flood from a swatch
  * or the HUD's tone over it.
  */
-export function capturePlaneProjection(view: View, pose: PlanePose, { lens = 1100, vanish = { x: W / 2, y: H / 2 } }: { lens?: number; vanish?: Point } = {}): CapturePlaneProjection {
-  const { box, shot, cam } = view;
+export function capturePlaneProjection(view: View, pose: PlanePose, { lens = 1100, vanish = centerOf(fullFrameRect(view.frameSize)) }: { lens?: number; vanish?: Point } = {}): CapturePlaneProjection {
+  const { box } = view;
   const f = planeFrame(box, pose);
   const pageInLens = (page: Point, w = 0) => {
-    const s = toScreen(shot, cam, page, box);
+    const s = screenPoint(view, page);
     return pointOn(f, s.x - box.x - box.w / 2, s.y - box.y - box.h / 2, w);
   };
   const lensToScreen = (q: Vec3) => project(q, lens, vanish);
@@ -263,8 +263,8 @@ export type FaceLight = { shade: number; sheen: number; rim: string };
 /** The card's lens and light settings a face's light reads, with CapturePlane's defaults. */
 export type FaceLightSettings = { lens?: number; vanish?: Point; light?: { x: number; y: number }; shade?: number; rim?: number; sheenWidth?: number };
 
-export function faceLight(f: PlaneFrame, box: Rect, props: FaceLightSettings, ss: number): FaceLight {
-  const { lens = 1100, vanish = { x: W / 2, y: H / 2 }, shade = 0.2, rim = 0.14, sheenWidth = 0.28 } = props;
+export function faceLight(f: PlaneFrame, box: Rect, props: FaceLightSettings, ss: number, frameSize: FrameSize): FaceLight {
+  const { lens = 1100, vanish = centerOf(fullFrameRect(frameSize)), shade = 0.2, rim = 0.14, sheenWidth = 0.28 } = props;
   const len = sheenLineLength(box.w, box.h);
   const light = lightDirection(props.light);
   const eye = eyeOf(lens, vanish);

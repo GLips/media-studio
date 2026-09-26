@@ -2,13 +2,18 @@
 // bars before it, and the music's final hit. Every frame a bar, a sound or a tool cuts on is resolved from here;
 // `studio clock` prints it.
 
+import type { VideoFormat } from '#models/frame/frame.ts';
 import { beatSpan, defineTimeline, recordedGrid } from '#models/timeline/timeline.ts';
 import { music } from './music/index.ts';
+
+/** The reel's frame rate and size: what every bar is laid out in, and the HUD's readout names. */
+export const SHOWCASE_FORMAT = { fps: 30, width: 1920, height: 1080 } satisfies VideoFormat;
 
 /** The fitted track the timeline is cut to, and the video's music. */
 export const track = music['drive-fit'];
 
 export const timeline = defineTimeline({
+  fps: SHOWCASE_FORMAT.fps,
   grid: recordedGrid(track, { steady: true }),
   // The tracker hears a hit about 20 ms late, and the picture should lead the sound by about a frame, as the reference
   // reel's does (by 40 ms), so a beat's cut or hit is two frames before the tracker's beat frame.

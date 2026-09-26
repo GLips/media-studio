@@ -4,7 +4,7 @@
 import { useId } from 'react';
 import { useStudioFontsReady } from '../fonts/fonts.ts';
 import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
-import { H, W } from '#models/frame/frame.ts';
+import { useVideoFormat } from '../composition/video-format.ts';
 import { motionEchoAttrs, pieceMotionAttrs } from '../probe/motion-tag.ts';
 import { hashRandom } from '#models/motion/random.ts';
 import { labelAt, leftOf, scrambleAt, scrambleFinish, wordGlitchAt, type Align, type Setting } from '#models/reel/type.ts';
@@ -28,7 +28,7 @@ const SPLIT_BLEND_PASSES = [
  * letter's place. Still once all letters lock and 0.09 s past the last hit. Defaults: caps 306 px (28% of frame height).
  */
 export function ScrambleText({
-  t, text, x = W / 2, y, cap = 306, color = '#f3f0e7', align = 'center', mono = false, weight, stretch, spacing,
+  t, text, x: givenX, y, cap = 306, color = '#f3f0e7', align = 'center', mono = false, weight, stretch, spacing,
   seed = text, charset, delay, each, rate, hits = [], split = 13, cursor, label, labelColor = color, motion,
 }: {
   /** Seconds since the scramble starts. */
@@ -66,9 +66,10 @@ export function ScrambleText({
     ? { family: MONO_FONT, cap, weight: weight ?? 500, stretch: 100, spacing: spacing ?? 0 }
     : { family: DISPLAY_FONT, cap, weight: weight ?? 900, stretch: stretch ?? 62, spacing: spacing ?? -0.02 };
   const ready = useStudioFontsReady();
+  const { fps, width, height } = useVideoFormat(), x = givenX ?? width / 2;
   if (!ready || t < 0) return null;
   const set = measureWord(text, setting);
-  const base = y ?? H / 2 + cap / 2;
+  const base = y ?? height / 2 + cap / 2;
   const left = leftOf(x, set.width, align);
   const timing = { seed, charset, delay, each, rate };
   const glitch = wordGlitchAt(t, hits, split, seed, cap);
@@ -95,7 +96,7 @@ export function ScrambleText({
   });
   if (!glitch) {
     return (
-      <svg width={W} height={H} style={layer}>
+      <svg width={width} height={height} style={layer}>
         <g {...tag} fill={color}>{drawAt(t)}</g>
       </svg>
     );
@@ -104,7 +105,7 @@ export function ScrambleText({
   // The ghost is the frame before, as a video's echo is.
   const copies = (main: Record<string, string>) => (
     <>
-      {glitch.ghost && <g {...motionEchoAttrs} opacity={0.5} transform={`translate(${glitch.ghost.x} ${glitch.ghost.y})`}>{drawAt(t - 1 / 30)}</g>}
+      {glitch.ghost && <g {...motionEchoAttrs} opacity={0.5} transform={`translate(${glitch.ghost.x} ${glitch.ghost.y})`}>{drawAt(t - 1 / fps)}</g>}
       <g {...main} clipPath={bands.length ? `url(#${id}-rest)` : undefined}>{drawAt(t)}</g>
       {bands.map((s, i) => (
         <g key={i} {...motionEchoAttrs} clipPath={`url(#${id}-band${i})`}>
@@ -116,19 +117,19 @@ export function ScrambleText({
   return (
     <>
       {SPLIT_BLEND_PASSES.map((pass, n) => (
-        <svg key={n} width={W} height={H} style={{ ...layer, mixBlendMode: pass.blend }}>
+        <svg key={n} width={width} height={height} style={{ ...layer, mixBlendMode: pass.blend }}>
           <defs>
             <filter id={`${id}-pass${n}`} colorInterpolationFilters="sRGB">
               <feColorMatrix values={pass.matrix} />
             </filter>
             {n === 0 && bands.length > 0 && (
               <clipPath id={`${id}-rest`}>
-                <path clipRule="evenodd" d={`M${-W} ${-H}H${2 * W}V${2 * H}H${-W}Z${bands.map((s) => `M${-W} ${base + s.y}H${2 * W}v${s.h}H${-W}Z`).join('')}`} />
+                <path clipRule="evenodd" d={`M${-width} ${-height}H${2 * width}V${2 * height}H${-width}Z${bands.map((s) => `M${-width} ${base + s.y}H${2 * width}v${s.h}H${-width}Z`).join('')}`} />
               </clipPath>
             )}
             {n === 0 && bands.map((s, i) => (
               <clipPath key={i} id={`${id}-band${i}`}>
-                <rect x={-W} y={base + s.y} width={3 * W} height={s.h} />
+                <rect x={-width} y={base + s.y} width={3 * width} height={s.h} />
               </clipPath>
             ))}
           </defs>

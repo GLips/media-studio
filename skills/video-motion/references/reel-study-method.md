@@ -42,8 +42,8 @@ A beat is one idea on screen, usually one or two beats of the music. For each:
   enters and leaves (per letter, per word, mask, slide, blur), with frame counts.
 - **HUD and chrome**: every corner mark, label, counter, timecode and rule: its text, size, position, and whether and
   how it animates.
-- **How we'd build it here**: this studio renders 1920×1080 at 30 fps in Remotion, every frame a pure function of
-  time. Say which of React/CSS (`lib/studio`), three.js drawn per frame (see `lib/studio/previs/blockout.tsx` for the pattern)
+- **How we'd build it here**: this studio renders each video at its own format (1920×1080 at 30 fps unless it names
+  another) in Remotion, every frame a pure function of time. Say which of React/CSS (`lib/studio`), three.js drawn per frame (see `lib/studio/previs/blockout.tsx` for the pattern)
   or p5 (`lib/paint`, the `video-canvas` skill) fits, and name the reusable piece it implies with its parameters, not
   a one-off. Note anything a 30 fps render must do differently from a 60 fps source.
 

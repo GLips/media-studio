@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { FPS } from '#models/frame/frame.ts';
 import { lerp, motionCurves, seg } from '#models/motion/motion.ts';
 import { mechanicalWheels, odometerWheels, type OdometerMode, type OdometerWheel } from './odometer-wheels.ts';
+
+const FPS = 30;
 
 /** What the wheels read, highest place first, asserting it's a clean rest: whole rows, no smear, cells whole or gone. */
 function restingReading(wheels: OdometerWheel[]): string {
@@ -23,7 +24,7 @@ test('the wheels rest on exactly the digits either side of a roll, and hold stil
   ];
   for (const { from, to, decimals, mode, before, after } of cases) {
     const value = (t: number) => lerp(from, to, seg(t, 1, 1.7, motionCurves.expo.entrance));
-    const turning = { decimals, mode, spin: 2, lockStagger: 2 / FPS };
+    const turning = { decimals, mode, spin: 2, lockStagger: 2 / FPS, fps: FPS };
     // Three frames out, a place about to come or go is within reach of the smoothing that moves its cell.
     assert.equal(restingReading(odometerWheels(value, 1 - 3 / FPS, turning)), before, `${mode} ${from} → ${to}, before`);
     assert.equal(restingReading(odometerWheels(value, 1.7 + 3 / FPS, turning)), after, `${mode} ${from} → ${to}, after`);

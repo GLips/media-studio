@@ -1,10 +1,10 @@
-// motion-blur.tsx: a shutter for 30 fps. A fast move sampled once per frame strobes (the eye sees it jump); a real
+// motion-blur.tsx: a shutter for the video's frame rate. A fast move sampled once per frame strobes (the eye sees it jump); a real
 // camera smears it along its path while the shutter is open. ShutterBlur renders a shot at several moments inside the
 // frame's open shutter and averages them. For one element, lib/models/motion/shutter.ts sizes a Gaussian from its
 // travel instead.
 
 import type { ReactNode } from 'react';
-import { FPS } from '#models/frame/frame.ts';
+import { useVideoFormat } from '../composition/video-format.ts';
 import { motionEchoAttrs } from '../probe/motion-tag.ts';
 
 /**
@@ -21,8 +21,9 @@ export function ShutterBlur({ t, render, shutter = 0.5, samples = 8, moving = tr
   /** False where nothing moves this frame, to skip the extra renders. */
   moving?: boolean;
 }) {
+  const { fps } = useVideoFormat();
   if (!moving || samples <= 1 || shutter <= 0) return <>{render(t)}</>;
-  const span = shutter / FPS;
+  const span = shutter / fps;
   // Each later layer at 1/(i+1) over the ones before leaves every sample an equal share: a running average.
   return (
     <>

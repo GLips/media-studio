@@ -3,7 +3,7 @@
 // marked. Pure: lib/engine/look/piece-look.ts rasterizes the SVG this returns.
 
 import type { Rect } from '#models/camera/camera.ts';
-import { H, W } from '#models/frame/frame.ts';
+import type { FrameSize } from '#models/frame/frame.ts';
 import type { SampledPiece } from './piece-tracks.ts';
 
 const WIDTH = 1280, PAD = 24, MAP_SCALE = 0.5, PANEL_H = 120, PANEL_GAP = 34, LABEL_W = 150;
@@ -73,13 +73,14 @@ function drawPanel(panel: Panel, top: number, frames: readonly number[], beatFra
 
 /**
  * The graph of `pieces` over `frames`: the frame map (each path, the kept-clear boxes on the first frame, a boxed
- * piece's box on its tightest frame) over one panel per channel. `keepClearAt` is what the pieces keep clear of.
+ * piece's box on its tightest frame) over one panel per channel. `frameSize` is the video's, which the map draws;
+ * `keepClearAt` is what the pieces keep clear of.
  */
 export function buildPieceGraph(pieces: readonly SampledPiece[], {
-  frames, beatFrames, title, keepClearAt,
-}: { frames: readonly number[]; beatFrames: readonly number[]; title: string; keepClearAt?: (frame: number) => Readonly<Record<string, Rect>> }) {
+  frames, beatFrames, title, frameSize, keepClearAt,
+}: { frames: readonly number[]; beatFrames: readonly number[]; title: string; frameSize: FrameSize; keepClearAt?: (frame: number) => Readonly<Record<string, Rect>> }) {
   const colors = new Map(pieces.map((p, i) => [p.id, PALETTE[i % PALETTE.length]]));
-  const mapTop = PAD + 40, mapW = W * MAP_SCALE, mapH = H * MAP_SCALE;
+  const mapTop = PAD + 40, mapW = frameSize.width * MAP_SCALE, mapH = frameSize.height * MAP_SCALE;
   const map: string[] = [`<rect x="0" y="0" width="${mapW}" height="${mapH}" fill="${GROUND}" stroke="#34343a"/>`];
   for (const box of Object.values(keepClearAt?.(frames[0]) ?? {})) map.push(rect(box, MAP_SCALE, `fill="#ffffff14" stroke="${DIM}"`));
   for (const piece of pieces) {

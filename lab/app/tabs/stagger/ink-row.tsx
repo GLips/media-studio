@@ -2,9 +2,8 @@
 // studio's own `stagger`, with a timing chart under it (a bar per card, a playhead) so the spread and its cap show.
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
-import { W } from '#models/frame/frame.ts';
 import { motionCurves, motionDurations, seg, stagger, staggerFinish, type StaggerFrom } from '#models/motion/motion.ts';
-import { LAB_COLORS } from '../../ui.tsx';
+import { LAB_COLORS, LAB_FORMAT } from '../../ui.tsx';
 
 /** A fan deck of inks, the showcase's red-orange and cobalt among them. The row takes the first `count`. */
 export const STAGGER_INKS = [
@@ -28,7 +27,7 @@ const EXIT = motionDurations.exit;
 
 /** How long one loop runs: the group's entrance, a hold on the finished row, a quick exit, a beat of empty frame. */
 export function staggerInkRowSeconds({ count, each, max, from }: StaggerInkRowProps) {
-  return GROUP_AT + staggerFinish(count, { each, max: max ?? undefined, from, duration: CARD_ENTER }) + HOLD + EXIT + 0.3;
+  return GROUP_AT + staggerFinish(count, { each, max: max ?? undefined, from, duration: CARD_ENTER, fps: LAB_FORMAT.fps }) + HOLD + EXIT + 0.3;
 }
 
 export function StaggerInkRow(props: StaggerInkRowProps) {
@@ -36,13 +35,13 @@ export function StaggerInkRow(props: StaggerInkRowProps) {
   const { fps, durationInFrames } = useVideoConfig();
   const t = useCurrentFrame() / fps;
   const total = durationInFrames / fps;
-  const timing = { each, max: max ?? undefined, from };
+  const timing = { each, max: max ?? undefined, from, fps };
   const starts = Array.from({ length: count }, (_, i) => GROUP_AT + stagger(i, count, timing));
   const exitAt = total - 0.3 - EXIT;
   const leaving = seg(t, exitAt, exitAt + EXIT, motionCurves.productive.exit);
 
   const gap = count > 12 ? 10 : 20;
-  const cardW = Math.min(210, (W - 240 - gap * (count - 1)) / count);
+  const cardW = Math.min(210, (LAB_FORMAT.width - 240 - gap * (count - 1)) / count);
   const cardH = 330;
   const rowW = cardW * count + gap * (count - 1);
   const roomy = cardW >= 120;
@@ -58,7 +57,7 @@ export function StaggerInkRow(props: StaggerInkRowProps) {
         const fade = seg(t, start, start + CARD_ENTER * 0.4, motionCurves.dissolve);
         return (
           <div key={i} style={{
-            position: 'absolute', left: (W - rowW) / 2 + i * (cardW + gap), top: 96, width: cardW, height: cardH,
+            position: 'absolute', left: (LAB_FORMAT.width - rowW) / 2 + i * (cardW + gap), top: 96, width: cardW, height: cardH,
             background: LAB_COLORS.panel, borderRadius: roomy ? 16 : 8, overflow: 'hidden',
             border: `1px solid ${LAB_COLORS.line}`,
             opacity: fade * (1 - leaving),
@@ -85,7 +84,7 @@ export function StaggerInkRow(props: StaggerInkRowProps) {
  * the Player's own controls cover the frame's bottom strip.
  */
 function StaggerTimingChart({ starts, t, max }: { starts: number[]; t: number; max: number | null }) {
-  const left = 120, right = W - 120, top = 540, height = 340, barsTop = top + 30;
+  const left = 120, right = LAB_FORMAT.width - 120, top = 540, height = 340, barsTop = top + 30;
   const lastFinish = Math.max(...starts) + CARD_ENTER;
   const axisEnd = Math.ceil((lastFinish + 0.2) / 0.5) * 0.5;
   const x = (s: number) => left + ((right - left) * s) / axisEnd;

@@ -10,7 +10,6 @@
 // scenes' moments, or between a word and an offset, is what this catches: code alone can't tell it from a deliberate
 // stretch, but a retime changes its length.
 
-import { FPS } from './frame-rate.ts';
 import {
   defineTimeline, recordedGrid, tempoGrid, type FittedTrack, type SceneMoment, type SceneSpan, type SpeechCue, type Timeline,
   type TimelineSpec, type TimelineVoice,
@@ -32,10 +31,11 @@ export function assertTimelineRetimes(
   const failures: string[] = [];
   // A tempo near the grid's with a whole number of frames a sixteenth, so every quarter-beat moment sits on a frame
   // and a scene lengthened by a beat moves what follows by exactly that.
-  const framesPerBeat = 4 * Math.round((FPS * timeline.spb) / 4);
+  const { fps } = timeline;
+  const framesPerBeat = 4 * Math.round((fps * timeline.spb) / 4);
   const firstMusicScene = keys.findIndex((key) => spec.scenes[key].driver === 'beat');
   const voice: TimelineVoice = spec.voice ?? {};
-  const before = synthetic(spec, spec.scenes, voice, framesPerBeat);
+  const before = synthetic(spec, spec.scenes, voice, framesPerBeat, fps);
   const placedBefore = placements && new Map(placements(before).map((p) => [`${p.scene}/${p.id}`, p.frame]));
 
   for (let k = 0; k < keys.length; k++) {
@@ -46,12 +46,12 @@ export function assertTimelineRetimes(
     const reread = span.driver === 'voice' ? span.lines[0] : undefined;
     const editedVoice = reread === undefined ? voice : { ...voice, [reread]: slowerToFirstWord(voice[reread]) };
     const fail = (what: string) => failures.push(`${key} ${span.driver === 'beat' ? 'a beat longer' : span.driver === 'fixed' ? 'a second longer' : `with ${reread} re-read a second slower`}: ${what}`);
-    const after = synthetic(spec, edited, editedVoice, framesPerBeat);
+    const after = synthetic(spec, edited, editedVoice, framesPerBeat, fps);
     // A re-read lengthens its scene by the second, unless its `min` holds it.
-    const added = span.driver === 'beat' ? framesPerBeat : span.driver === 'fixed' ? FPS : after.scenes[k].end - before.scenes[k].end;
+    const added = span.driver === 'beat' ? framesPerBeat : span.driver === 'fixed' ? fps : after.scenes[k].end - before.scenes[k].end;
     const shiftOf = (i: number, anchoredAtEnd = false) => (i > k || (i === k && anchoredAtEnd) ? added : 0);
     // Inside the re-read scene, a word moves by the second, and so does every line after the re-read one.
-    const spokenShift = (i: number, line: string, onWord: boolean) => (i === k && reread !== undefined && (onWord || line !== reread) ? FPS : shiftOf(i));
+    const spokenShift = (i: number, line: string, onWord: boolean) => (i === k && reread !== undefined && (onWord || line !== reread) ? fps : shiftOf(i));
     const cueShift = (qualified: string) => {
       const dot = qualified.lastIndexOf('.'), scene = qualified.slice(0, dot), i = keys.indexOf(scene);
       const cues = spec.scenes[scene].cues ?? {}, name = qualified.slice(dot + 1), spoken = speechAnchor(cues, name);
@@ -93,7 +93,7 @@ export function assertTimelineRetimes(
     if (spec.grid?.kind === 'recorded') {
       const musicAt = (timeline: Timeline) => timeline.audio.find((placed) => placed.kind === 'music')?.atSeconds ?? 0;
       const musicShift = musicAt(after) - musicAt(before);
-      const musicExpected = firstMusicScene >= 0 && k < firstMusicScene ? added / FPS : 0;
+      const musicExpected = firstMusicScene >= 0 && k < firstMusicScene ? added / fps : 0;
       if (Math.abs(musicShift - musicExpected) > 1e-9) fail(`the music moves ${musicShift.toFixed(3)} s, not ${musicExpected.toFixed(3)} s`);
     }
     if (after.end < after.scenes.at(-1)!.end) fail(`the video ends on frame ${after.end}, before its last scene does`);
@@ -153,10 +153,10 @@ function anchoredAtEnd(cues: Readonly<Record<string, SceneMoment>>, name: string
  * first downbeat where the real one is, a downbeat every four beats, each landmark's downbeat on its beat, and the
  * ring-out after the final hit as long as the recording's.
  */
-function synthetic(spec: TimelineSpec, scenes: Readonly<Record<string, SceneSpan>>, voice: TimelineVoice, framesPerBeat: number): Timeline {
+function synthetic(spec: TimelineSpec, scenes: Readonly<Record<string, SceneSpan>>, voice: TimelineVoice, framesPerBeat: number, fps: number): Timeline {
   if (!spec.grid) return defineTimeline({ ...spec, scenes, voice });
-  const spb = framesPerBeat / FPS;
-  const first = Math.round(spec.grid.beats.at(0) * FPS) / FPS;
+  const spb = framesPerBeat / fps;
+  const first = Math.round(spec.grid.beats.at(0) * fps) / fps;
   const onTempo = defineTimeline({ ...spec, scenes, voice, grid: tempoGrid(60 / spb, { firstBeat: first }) });
   if (spec.grid.kind === 'tempo') return onTempo;
   const { track } = spec.grid;

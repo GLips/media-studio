@@ -2,8 +2,6 @@
 // Scene lengths and every hit inside them come from beat numbers, so the picture stays on the music when the track or
 // its fit changes.
 
-import { FPS } from './frame-rate.ts';
-
 /** Beat numbers and seconds, both ways. Beat 0 is the track's first downbeat, at `at(0)` seconds of the video. */
 export type BeatGrid = {
   bpm: number;
@@ -11,8 +9,8 @@ export type BeatGrid = {
   spb: number;
   /** Seconds into the video that beat `n` falls (fractions for off-beats: 2.5 is the "and" after beat 2). */
   at(n: number): number;
-  /** The frame beat `n` lands on: cut here, so the cut is never a frame late. */
-  frame(n: number): number;
+  /** The frame beat `n` lands on at `fps`: cut here, so the cut is never a frame late. */
+  frame(n: number, fps: number): number;
   /** The beat at `t` seconds, as a fraction. */
   beatOf(t: number): number;
 };
@@ -45,25 +43,13 @@ export function beatGrid(track: { bpm: number; beats: readonly number[]; fit?: {
     for (let i = 0; i + 1 < beats.length; i++) if (t < beats[i + 1]) return i + (t - beats[i]) / (beats[i + 1] - beats[i]);
     return beats.length - 1 + (t - beats[beats.length - 1]) / spb;
   };
-  return { bpm: track.bpm, spb, at, frame: (n) => Math.round(at(n) * FPS), beatOf };
+  return { bpm: track.bpm, spb, at, frame: (n, fps) => Math.round(at(n) * fps), beatOf };
 }
 
 /** A grid at a fixed tempo with beat 0 at `first` seconds: for building before the track exists. */
 export function steadyBeatGrid(bpm: number, first = 0): BeatGrid {
   const spb = 60 / bpm;
-  return { bpm, spb, at: (n) => first + n * spb, frame: (n) => Math.round((first + n * spb) * FPS), beatOf: (t) => (t - first) / spb };
-}
-
-/**
- * Which of `words` words, one a beat from beat 0, is on screen at `t` on the grid's clock, and seconds since its cut.
- * A word cuts in on its beat's frame (`grid.frame`) and its clock starts there, so its first frame is its entrance's
- * first moment even where a beat falls between frames (at 128 BPM).
- */
-export function wordOnBeat(t: number, grid: BeatGrid, words: number) {
-  const frame = Math.round(t * FPS);
-  let n = 0;
-  while (n + 1 < words && frame >= grid.frame(n + 1)) n++;
-  return { n, t: t - grid.frame(n) / FPS };
+  return { bpm, spb, at: (n) => first + n * spb, frame: (n, fps) => Math.round((first + n * spb) * fps), beatOf: (t) => (t - first) / spb };
 }
 
 /**

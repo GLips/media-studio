@@ -3,7 +3,6 @@
 // it to final changes its binding in video.tsx, never timeline.ts.
 
 import type { ResolvedSceneClock } from '#models/timeline/timeline.ts';
-import { FPS } from '#models/frame/frame.ts';
 import type { SceneDef, ScenePrevis } from '../composition/timeline.ts';
 import { sceneForTimelineClock } from '../composition/timeline-scene.tsx';
 import { FlatBlockout, type FlatPiece, type FlatViewMoves } from './flat-blockout.tsx';
@@ -19,6 +18,6 @@ export function blockingScene(
   { note, pieces, view, previs }: { note: string; pieces: readonly FlatPiece[]; view?: FlatViewMoves; previs?: FlatPrevis },
 ): SceneDef {
   // `s.t` counts seconds from the cut, which is frame `clock.from` of the scene's own clock.
-  const scene = sceneForTimelineClock(clock, { note, rung: 'blocking', render: (s) => <FlatBlockout pieces={pieces} view={view} frame={clock.from + s.t * FPS} /> });
+  const scene = sceneForTimelineClock(clock, { note, rung: 'blocking', render: (s) => <FlatBlockout pieces={pieces} view={view} frame={clock.from + s.t * clock.fps} /> });
   return previs ? { ...scene, previs: { ...previs, blockout: '2d' } as ScenePrevis } : scene;
 }

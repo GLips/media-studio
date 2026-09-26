@@ -9,6 +9,7 @@
 // the next fades in over it. Sequences only decide what's mounted.
 
 import type { ReactNode } from 'react';
+import { DEFAULT_VIDEO_FORMAT, type VideoFormat } from '#models/frame/frame.ts';
 import { findSpokenPhrase, type SpokenWord } from '#models/voice/voice-words.ts';
 import type { MusicBed } from '../mix/mix.ts';
 import { motionCurves } from '#models/motion/motion.ts';
@@ -132,9 +133,10 @@ export type SceneDef = SceneTiming & {
   expect?(s: SceneTimes): readonly SceneExpectation[];
   /**
    * A scene bound to a resolved timeline (sceneForTimelineClock): its length, the crossfade into it and each line's
-   * start, in seconds from its start, as the timeline resolved them. Its lead, gap, tail, min and cut aren't read.
+   * start, in seconds from its start, as the timeline resolved them at its `fps`. Its lead, gap, tail, min and cut
+   * aren't read.
    */
-  resolved?: { dur: number; xfade: number; lines: Readonly<Record<string, number>> };
+  resolved?: { dur: number; xfade: number; lines: Readonly<Record<string, number>>; fps: number };
 };
 
 /**
@@ -158,6 +160,12 @@ export function defineScene<const L extends readonly string[] = readonly []>(
 
 export type VideoDef = {
   title: string;
+  /**
+   * Its frame rate and size, each defaulting to 30 fps at 1920×1080: `{ fps: 60 }` for a fast reel, `{ width: 1080,
+   * height: 1920 }` for a vertical cut. A timed video plays at its timeline's fps (`defineTimeline({ fps })`); a rate
+   * named here must agree with it.
+   */
+  format?: Partial<VideoFormat>;
   voice: Voice;
   scenes: readonly SceneDef[];
   /** Crossfade length in seconds, centred on each cut. Default 0.5. */
@@ -187,6 +195,23 @@ export type VideoDef = {
 export type VideoSound = { at: number; sound: SfxSound | readonly SfxSound[]; id?: string | number; volume?: number };
 
 export const defineVideo = (video: VideoDef): VideoDef => video;
+
+/** The format the video renders at: what it names, its timeline's fps, and the defaults for the rest. */
+export function videoFormatOf(video: VideoDef): VideoFormat {
+  const rates = [...new Set(video.scenes.flatMap((scene) => (scene.resolved ? [scene.resolved.fps] : [])))];
+  if (rates.length > 1) throw new Error(`the video's scenes are bound to timelines at ${rates.join(' and ')} fps: bind them to one timeline`);
+  const [timed] = rates, named = video.format?.fps;
+  if (timed !== undefined && named !== undefined && named !== timed) {
+    throw new Error(`the video names ${named} fps, but its timeline resolves at ${timed}: set the rate on defineTimeline({ fps }) alone`);
+  }
+  const format = { ...DEFAULT_VIDEO_FORMAT, ...video.format, fps: timed ?? named ?? DEFAULT_VIDEO_FORMAT.fps };
+  for (const [key, value] of Object.entries(format)) {
+    if (!(Number.isInteger(value) && value > 0)) throw new Error(`the video's ${key} is ${value}: give it a whole number above 0`);
+  }
+  // H.264's 4:2:0 frames are whole 2×2 blocks.
+  if (format.width % 2 || format.height % 2) throw new Error(`the video is ${format.width}×${format.height}: H.264 needs an even width and height`);
+  return format;
+}
 
 export type LaidScene = SceneDef & {
   /** Nominal start, in seconds: where its narration layout begins. */
