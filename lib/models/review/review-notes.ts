@@ -134,11 +134,11 @@ export function placeReviewNotes(notes: readonly ReviewNote[], { render, duratio
     const placed = placeReviewMoment(moment, sources.timing);
     const frame = 'frame' in placed ? placed.frame - sources.timing.startsAt : undefined;
     if (frame === undefined || frame < 0 || frame >= durationInFrames) {
-      return { ...rest, unplaced: 'gone' in placed ? placed.gone : `its frame here, ${placed.frame}, is outside this render's frames` };
+      return { ...rest, unplaced: 'gone' in placed ? placed.gone : `it falls on f${frame}, outside this render's 0–${durationInFrames - 1}` };
     }
     const shift = frame - note.frame;
     const moved: ReviewNote = {
-      ...rest, frame, ...(note.end !== undefined && { end: note.end + shift }), render: render.hash,
+      ...rest, frame, ...(note.end !== undefined && { end: Math.min(note.end + shift, durationInFrames - 1) }), render: render.hash,
       ...(shift !== 0 && { movedFrom: note.movedFrom ?? { render: note.render!, frame: note.frame } }),
     };
     return { ...moved, context: { ...reviewNoteContext(moved, sources), moment } };
@@ -194,7 +194,7 @@ export function formatReviewNotesMarkdown(file: Pick<ReviewNotesFile, 'media' | 
       : formatReviewMoment(note.frame, fps);
     const where = note.x !== undefined && note.y !== undefined ? `at (${note.x.toFixed(2)}, ${note.y.toFixed(2)})` : '';
     const { cell, scenes, sounds, elements, moment } = note.context;
-    const at = [when, note.movedFrom && `here (f${note.movedFrom.frame} on render \`${note.movedFrom.render}\`)`].filter(Boolean).join(' ');
+    const at = [when, note.movedFrom && !note.unplaced && `here (f${note.movedFrom.frame} on render \`${note.movedFrom.render}\`)`].filter(Boolean).join(' ');
     const lead = [moment ? `**${formatReviewMomentPlace(moment)}**, ${at}` : when && `**${when}**`, where].filter(Boolean).join(' ');
     const sub = [
       render && { this: '', other: `written on render \`${note.render}\`, not this one${note.unplaced ? `, and its moment isn't here: ${note.unplaced}` : ''}`, unrecorded: 'render not recorded' }[reviewNoteRenderOf(note, render)],
