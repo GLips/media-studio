@@ -129,7 +129,7 @@ resolves them for the one command it runs:
 "$(studio home)/bin/studio-secrets" studio voice <project>
 ```
 
-It reads a 1Password service account's token (read-only on the `video-studio` vault) from the macOS keychain, hands it
+It reads a 1Password service account's token (read-only on the `media-studio` vault) from the macOS keychain, hands it
 to `op` alone and strips it before the command starts, so neither a shell nor the command's environment carries it.
 Code running as your user can still read the keychain item, so the account's read-only, one-vault scope is the real
 limit. `scratch/op-service-account-setup.sh` creates the account and the keychain item.
