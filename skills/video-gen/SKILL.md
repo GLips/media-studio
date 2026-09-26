@@ -1,21 +1,27 @@
 ---
 name: video-gen
-description: Generated footage for a scene, made the film previs way: block the shot in 3D, get the blockout approved, then pay for one Seedance render with `studio gen video`. Use when a scene needs footage no capture or kit shot can give (a product in use, a place, people), or for notes on generated footage.
+description: Generated footage for a scene, made the film previs way: block the shot in 3D (or flat, for a 2D shot), get the blockout approved, then pay for one Seedance render with `studio gen video`. Use when a scene needs footage no capture or kit shot can give (a product in use, a place, people), or for notes on generated footage.
 ---
 
 # Previs
 
 Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it.
 
-Generated footage is made the way film **previs** is: block the shot in 3D, get it approved, then pay for one render.
+Generated footage is made the way film **previs** is: block the shot, get it approved, then pay for one render.
 The blockout is the draft. Every decision (subjects, where they stand, the camera move, how long it runs) is made and
 approved there, where changes are free. The render only dresses it. There are no cheap-model video drafts: they look
 bad and don't predict what Seedance does.
 
 ## 1. Block it
 
-A previs scene is an ordinary scene with `previs` in its `defineScene`, timed to the voice like any other. Its
-`render` draws a `<Blockout pose subjects />`. `projects/2026-09-previs-test/video.tsx` has one scene per move.
+Block a shot whenever a video model will take its motion: the blockout is the only way to tell the model when things
+move. A previs scene is an ordinary scene with `previs: { blockout, prompt }`, timed to the voice like any other.
+Its `render` draws the blockout: `<Blockout pose subjects />` in 3D (`blockout: '3d'`) for a camera moving through
+a place, with the parallax the model copies; `projects/2026-09-previs-test/video.tsx` has one scene per move. A flat
+shot (a layout assembling, type and panels moving) is blocked in 2D: a timed scene's
+`blockingScene(clock, { note, pieces, previs: { prompt } })` (`video-motion`, "Blocking a flat scene"), which sets
+`blockout: '2d'`; the fidelity-ladder project's `layout` is one. The prompt names each flat piece by its tint or its
+label. The rest of this section is the 3D blockout's.
 
 - **Subjects** are grey primitives (`BlockoutSubject`: box, sphere, cylinder, cone, `figure` for a person, `card` for a
   phone, screen or sign), sized in metres, standing on the ground at y = 0. Give each one its own muted tint. The
@@ -42,7 +48,8 @@ Done when `studio look` strips show the move landing on its cues, and the user h
 - what each tint is ("the orange box is a brushed-steel espresso machine");
 - the place, the light, the lens and the look.
 
-`studio gen video` puts a preamble ahead of it that asks for a new video referencing `@Video1`, the blockout. Never
+`studio gen video` puts a preamble ahead of it, worded for a 3D or a 2D blockout, that asks for a new video
+referencing `@Video1`, the blockout. Never
 word the prompt as changing the blockout ("turn the box into…", "replace", "restyle"): Seedance reads the task type
 from the prompt, and a request that reads as an edit of `@Video1` fails, since OpenRouter can't send what an edit
 needs.

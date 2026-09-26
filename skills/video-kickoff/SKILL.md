@@ -14,7 +14,7 @@ cheaply before the next rung spends more on it. Each rung needs the user's yes b
 | **Script or beat sheet** | what happens, in order; the track, if it's cut to music | step 3: the scene table |
 | **Style frames** | the look: two to four finished stills of key moments | `stills` skill, reviewed with `studio review` |
 | **Storyboard and animatic** | pacing: rough scenes at their real timing, on the voice or music | step 4: `studio render --animatic`, then `studio review` |
-| **Blocking** | how things move: simple shapes at the real timing; 3D previs where a camera moves or a video model will be given the motion | `video-motion`; `video-gen` for previs |
+| **Blocking** | how things move: simple shapes at the real timing, flat (`blockingScene`) for a 2D scene, 3D where a camera moves through space | `video-motion`; `video-gen` when a video model will take the motion |
 | **Polish, then sound** | the finish | `video-motion`, then `video-sound` |
 
 **Choose the path at kickoff, and say which.** The full ladder suits a piece whose pacing or look is uncertain, or
@@ -96,7 +96,10 @@ A timed scene starts as one of two studio scenes, bound in `video.tsx` until it'
   holds a sketch or style frame (an image in `refs/`) with at most one push or slide, over a timeline move or the
   whole scene.
 
-Each binding declares its **rung** (`card`, `board`, `blocking`, `final`): these two set theirs, and a built scene
+A scene whose motion is the open question rises next to **blocking**: `(clock) => blockingScene(clock, { note, pieces })`,
+labelled flat boxes, type and image slots moving on the clock's cues (`video-motion`, "Blocking a flat scene").
+
+Each binding declares its **rung** (`card`, `board`, `blocking`, `final`): these three set theirs, and a built scene
 says `rung: 'blocking'` or `'final'` in its `sceneForTimelineClock` or `defineScene`. The rung goes into the render's
 snapshot, so `studio review` shows it on each scene of the scrubber, on each storyboard card and in each note. Raise a
 scene by changing its binding; `timeline.ts` doesn't change.

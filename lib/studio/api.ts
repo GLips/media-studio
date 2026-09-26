@@ -4,6 +4,8 @@
 export { BrandLogo, brandLogoFor, type StudioBrand, type StudioBrandLogo } from './brand/brand.tsx';
 export * from './previs/blockout.tsx';
 export * from './previs/blockout-camera.ts';
+export { FlatBlockout, type FlatPiece, type FlatPieceKind, type FlatViewMoves } from './previs/flat-blockout.tsx';
+export type { FlatKey, FlatPose, FlatView } from './previs/flat-blockout-pose.ts';
 export * from '../models/timeline/beat-grid.ts';
 export * from '#models/camera/camera.ts';
 export * from './capture/capture.tsx';
@@ -53,7 +55,7 @@ export { defineScene, defineVideo, type LineSpan, type SceneClock, type ScenePre
 export { sceneCueSeconds, sceneForTimelineClock } from './composition/timeline-scene.tsx';
 export type { SceneRung } from '#models/timeline/scene-rung.ts';
 export { BoardFrame, type BoardMove } from './ladder/board-frame.tsx';
-export { boardFrameScene, titleCardScene } from './ladder/ladder-scenes.tsx';
+export { blockingScene, boardFrameScene, titleCardScene } from './ladder/ladder-scenes.tsx';
 export { TitleCard, type TitleCardCue } from './ladder/title-card.tsx';
 export * from './sfx/sfx.tsx';
 export { STILL_FEED_SIZES, STILL_PRESETS, type StillFitReport, type StillPreset } from '#models/still/still-presets.ts';

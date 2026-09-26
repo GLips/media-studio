@@ -18,7 +18,7 @@ export const PREVIS_WIDTH = 1280;
 export type PrevisFootage = { src: string; from: number; duration: number };
 
 /** What `studio gen video` asks for a previs scene, read from the timeline report. */
-export type PrevisRequest = { prompt: string; references: readonly string[]; audio: boolean; from: number; duration: number };
+export type PrevisRequest = { blockout: '3d' | '2d'; prompt: string; references: readonly string[]; audio: boolean; from: number; duration: number };
 
 /**
  * Where a scene's blockout render starts, in scene seconds, and how many whole seconds it runs. Not checked against
@@ -37,5 +37,5 @@ export function assertPrevisSpanFits(sceneId: string, span: { duration: number }
 
 export function previsRequestFor(tl: Timeline, scene: LaidScene): PrevisRequest | undefined {
   const { previs } = scene;
-  return previs && { prompt: previs.prompt, references: previs.references ?? [], audio: previs.audio ?? false, ...previsSpan(tl, scene.id) };
+  return previs && { blockout: previs.blockout, prompt: previs.prompt, references: previs.references ?? [], audio: previs.audio ?? false, ...previsSpan(tl, scene.id) };
 }

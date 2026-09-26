@@ -88,10 +88,15 @@ type SceneTiming = {
 
 /**
  * A scene rendered into generated footage by `studio gen video`: the scene's own render is the blockout (see
- * blockout.tsx) it sends as the reference video. Once footage exists the scene plays it, until the next
- * `studio gen video` replaces it; the Studio's `blockouts` prop shows the blockout again.
+ * blockout.tsx, flat-blockout.tsx) it sends as the reference video. Once footage exists the scene plays it, until the
+ * next `studio gen video` replaces it; the Studio's `blockouts` prop shows the blockout again.
  */
 export type ScenePrevis<Id extends string = string> = {
+  /**
+   * Which blockout the render draws, so the request tells the model what it's looking at: `3d`, grey primitives under
+   * a moving camera (`<Blockout>`), or `2d`, labelled flat pieces (`<FlatBlockout>`).
+   */
+  blockout: '3d' | '2d';
   /** The finished shot: what each blockout subject is, by its tint, plus light, lens and look. */
   prompt: string;
   /** Stills of the subjects, relative to the project, sent as reference images. */

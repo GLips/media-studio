@@ -21,6 +21,7 @@ const orbit = defineScene({
   id: 'orbit', note: 'An 80° orbit around the counter, the machine turning from three-quarter to profile.',
   min: 5, lead: 0, tail: 0,
   previs: {
+    blockout: '3d',
     prompt: 'A small independent café in the morning. The long stone-grey block is a pale oak and concrete counter; the orange '
       + 'box is a brushed-steel espresso machine with copper accents; the small white cylinder is a ceramic espresso cup on a saucer; '
       + 'the green cone in its pot is a potted olive tree. Warm window light from the left, soft shadows, shallow depth of field, '
@@ -43,6 +44,7 @@ const pushIn = defineScene({
   id: 'push-in', note: 'A slow push from a wide of the desk to over the seated figure\'s shoulder onto the laptop.',
   min: 5, lead: 0, tail: 0, cut: true,
   previs: {
+    blockout: '3d',
     prompt: 'A home office in the evening. The brown block is a walnut desk; the blue-grey panel and slab are an open silver laptop '
       + 'whose screen glows with a spreadsheet; the tan figure is a woman in a knit sweater seated with her back to us, typing; the pale '
       + 'cylinder is a lamp with a linen shade, switched on. Warm lamplight against a dim blue room, cinematic, 35mm film look.',
@@ -73,6 +75,7 @@ const kitchen = defineScene({
   id: 'kitchen', note: 'The café\'s machine at home: a truck along a kitchen counter that settles on it as the line ends.',
   lines: ['kitchen'], lead: 0.8, tail: 0.8, min: 5, cut: true,
   previs: {
+    blockout: '3d',
     prompt: 'A calm home kitchen early in the morning. The espresso machine (the orange box) is the one in @Image1. The long grey '
       + 'block is a matte grey stone counter; the small white cylinder is a ceramic espresso cup; the green ball in its pot is a small '
       + 'potted herb; the cream walls are warm plaster; the pale blue panel is a window with soft morning daylight coming through. '

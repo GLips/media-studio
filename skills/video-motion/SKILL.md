@@ -102,13 +102,25 @@ fresh-eyes critique a cut gets before it's done.
 
 **Pacing is signed off before polish.** The first cut is an animatic: each bar a title card (`titleCardScene`) or a
 board frame (`boardFrameScene`) on its cues, on the fitted music, rendered with `studio render <p> --animatic` and sent as the `studio review <p>` page
-(`video-kickoff`, step 4). Building a bar replaces that binding with its own `sceneForTimelineClock`, declaring
-`rung: 'blocking'` while it's placed and moving, then `rung: 'final'`; studio review shows each scene's rung on its
+(`video-kickoff`, step 4). A bar whose motion is still the open question is blocked next (`blockingScene`, below);
+building it replaces that binding with its own `sceneForTimelineClock`, declaring `rung: 'final'`; studio review shows each scene's rung on its
 scrubber, its storyboard and its notes. Build and polish bars
 only once the user has approved its pacing: a bar polished before then gets re-timed when the notes say it's too fast.
 
 Registers mix: a walkthrough can open on a few bars of this and close on a slammed end card, calm in between. Keep
 each stretch in one register, and change register on a cut.
+
+## Blocking a flat scene
+
+Block a scene before building it when **the motion's rhythm is the open question** (what moves on which cue, how
+long each move takes, whether the scene breathes), or when **a video model will take the motion** (`video-gen`).
+Otherwise build it straight from its card or board. A blocked scene is
+`(clock) => blockingScene(clock, { note, pieces, view })`: `FlatPiece`s (`box`, `type` set at its box's height,
+`image` a crossed slot), each named and tinted, resting at a `pose` in frame pixels and moved by `keys` on the frames
+of the scene's own clock, `{ at: clock.cues.land, to: { y: 380 }, over: 9 }`, a `view` pushing or panning over them.
+It declares `rung: 'blocking'`, so the animatic and `studio review` show it as blocking; the fidelity-ladder project's
+`layout` is one. A scene timed in seconds draws `<FlatBlockout pieces frame={s.t * FPS} />` itself and declares `rung: 'blocking'` in its `defineScene`. Get the moves
+approved in review, then build the scene over the same cues and rhythm.
 
 ## Kit and generated stills
 
@@ -193,5 +205,5 @@ When a shot works and could come back (an end card, a title, a product UI rebuil
 `lib/studio/kit/kit.tsx` with its brand colours and words as props. The next video starts from it and changes the skin.
 For something Remotion-specific (fonts, measuring text), see the `remotion` skill. A painted or generative layer is the
 `video-canvas` skill. A shot of the real world (a product in use, a place, people) can be generated footage, blocked
-in 3D and rendered once: the `video-gen` skill. Music, sound effects and the mix are their own pass once the picture
+in 3D (or flat, for a 2D shot) and rendered once: the `video-gen` skill. Music, sound effects and the mix are their own pass once the picture
 is locked: the `video-sound` skill.
