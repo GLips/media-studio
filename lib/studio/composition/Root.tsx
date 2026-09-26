@@ -34,7 +34,13 @@ if (video?.clock !== undefined) pinBrowserDate(video.clock);
 
 // The components below render only when Root registered them, which it does only with a video.
 const projectVideo = video as VideoDef;
-const ProjectVideo = (props: VideoProps) => <Video video={projectVideo} {...props} />;
+const ProjectVideo = (props: VideoProps & CompositionRenderSettings) => <Video video={projectVideo} {...props} />;
+
+/**
+ * How Node renders a composition rather than what it draws, carried in its defaultProps because selectComposition
+ * hands those back; the components ignore it. lib/engine/render/render-session.ts's workersFor reads it.
+ */
+export type CompositionRenderSettings = { renderWorkers?: number };
 
 export type ReplayProps = VideoProps & { order: number[] };
 
@@ -42,13 +48,13 @@ export type ReplayProps = VideoProps & { order: number[] };
  * Frame i shows the video's frame order[i] (the last one past the end). Rendered in one tab, that gives each frame a
  * chosen history, which renderFrames can't (it sorts the frames it's asked for).
  */
-const ReplayVideo = ({ order, ...props }: ReplayProps) => (
+const ReplayVideo = ({ order, ...props }: ReplayProps & CompositionRenderSettings) => (
   <Freeze frame={order[Math.min(useCurrentFrame(), order.length - 1)]}>
     <Video video={projectVideo} {...props} reportTimeline={false} />
   </Freeze>
 );
 
-const ProjectBlockout = (props: BlockoutSoloProps) => <BlockoutSolo video={projectVideo} {...props} />;
+const ProjectBlockout = (props: BlockoutSoloProps & CompositionRenderSettings) => <BlockoutSolo video={projectVideo} {...props} />;
 
 export function Root() {
   return (
@@ -78,6 +84,7 @@ function VideoCompositions({ video }: { video: VideoDef }) {
   const tl = layoutVideo(video);
   const { fps, width, height } = videoFormatOf(video);
   const frames = totalFrames(tl, fps);
+  const settings: CompositionRenderSettings = video.renderWorkers === undefined ? {} : { renderWorkers: video.renderWorkers };
   return (
     <>
       <Composition
@@ -87,7 +94,7 @@ function VideoCompositions({ video }: { video: VideoDef }) {
         height={height}
         fps={fps}
         durationInFrames={frames}
-        defaultProps={{ captions: false, probe: false, blockouts: false } satisfies VideoProps}
+        defaultProps={{ captions: false, probe: false, blockouts: false, ...settings } satisfies VideoProps & CompositionRenderSettings}
       />
       <Composition
         id={REPLAY_SLUG}
@@ -98,7 +105,7 @@ function VideoCompositions({ video }: { video: VideoDef }) {
         durationInFrames={frames}
         // Never shorter than the video: a frozen frame is clamped to the composition's length.
         calculateMetadata={({ props }) => ({ durationInFrames: Math.max(frames, props.order.length) })}
-        defaultProps={{ captions: false, probe: false, blockouts: false, order: [0] } satisfies ReplayProps}
+        defaultProps={{ captions: false, probe: false, blockouts: false, order: [0], ...settings } satisfies ReplayProps & CompositionRenderSettings}
       />
       {tl.scenes.some((scene) => scene.previs) && (
         <Composition
@@ -113,7 +120,7 @@ function VideoCompositions({ video }: { video: VideoDef }) {
             assertPrevisSpanFits(props.scene, span);
             return { durationInFrames: span.duration * fps };
           }}
-          defaultProps={{ scene: tl.scenes.find((scene) => scene.previs)!.id } satisfies BlockoutSoloProps}
+          defaultProps={{ scene: tl.scenes.find((scene) => scene.previs)!.id, ...settings } satisfies BlockoutSoloProps & CompositionRenderSettings}
         />
       )}
     </>

@@ -1,15 +1,16 @@
 // studio render: the whole pipeline, from framing check to a delivered video.mp4; the animatic, as the video plays
 // now, for studio review; or a slice of the video, and the slices joined back into one.
 import { defineCommand } from 'citty';
-import { openStudioRenderSession, studioProjectArg } from '../project-arg.ts';
+import { openStudioRenderSession, renderWorkersArg, studioProjectArg } from '../project-arg.ts';
 
 export default defineCommand({
   meta: {
     name: 'render',
-    description: 'Framing check on every frame (refuses to render on a problem or an estimated line) → the mix, mastered to −14 LUFS → out/video.mp4 with captions, checked for length, audio and loudness → out/video.srt, review sheets in out/check/, out/watch.html. A silent project (project.ts) skips the mix, mastering and loudness check and writes no .srt: its videos must have no audio track. A mix that renders silent in any other project fails. A transparent video (defineVideo({ format: { transparent: true } }), in a silent project) delivers out/video.webm (VP9 with alpha, for Chrome and Firefox) and out/video-hevc.mov (HEVC with alpha through macOS VideoToolbox, for Safari) instead of video.mp4, each checked for an alpha plane the page shows through, and a watch page that plays it over a checkerboard or a colour. With --animatic, the whole video as it plays now (any sound it has, captions on) with no framing check, mix or refusal of an estimated line, to out/wip/animatic.mp4 or --out: the render studio review approves the blocking and each scene built since on. With --frames, only those frames, silent and unchecked, to re-render what a change touched; --join puts the slices in a folder back together under the mix. Every video it writes has <name>.snapshot.json beside it: the timeline it was rendered from, a timed project\'s clock (bars, beats, cues) and the frames it holds, which studio review and studio look --video read. The bundle is kept between runs until a file it was built from changes. Prints what it delivered.',
+    description: 'Refuses an estimated line → out/video.mp4 with captions, the framing check measuring every frame as it renders (nothing is delivered on a problem) → the mix, mastered to −14 LUFS, muxed under it → checked for length, audio and loudness → out/video.srt, review sheets in out/check/, out/watch.html, and each pass\'s time with the workers and GL backend it had. A silent project (project.ts) skips the mix, mastering and loudness check and writes no .srt: its videos must have no audio track. A mix that renders silent in any other project fails. A transparent video (defineVideo({ format: { transparent: true } }), in a silent project) delivers out/video.webm (VP9 with alpha, for Chrome and Firefox) and out/video-hevc.mov (HEVC with alpha through macOS VideoToolbox, for Safari) instead of video.mp4, each checked for an alpha plane the page shows through, and a watch page that plays it over a checkerboard or a colour. With --animatic, the whole video as it plays now (any sound it has, captions on) with no framing check, mix or refusal of an estimated line, to out/wip/animatic.mp4 or --out: the render studio review approves the blocking and each scene built since on. With --frames, only those frames, silent and unchecked, to re-render what a change touched; --join puts the slices in a folder back together under the mix. Every video it writes has <name>.snapshot.json beside it: the timeline it was rendered from, a timed project\'s clock (bars, beats, cues) and the frames it holds, which studio review and studio look --video read. The bundle is kept between runs until a file it was built from changes. Renders run at low priority in 3 tabs unless --workers or the video\'s renderWorkers says, and a render whose browser has only software GL fails. Prints what it delivered.',
   },
   args: {
     project: studioProjectArg,
+    workers: renderWorkersArg,
     plain: { type: 'boolean', description: 'Also render out/video-plain.mp4, without captions' },
     animatic: { type: 'boolean', description: 'Render the video as it plays now, unchecked and unmixed, to out/wip/animatic.mp4 or --out, for studio review' },
     frames: { type: 'string', valueHint: '120:239', description: 'Render only these frames (inclusive), silent, with no framing check or mix, to out/wip/frames-<a>-<b>.mp4 or --out' },
@@ -26,7 +27,7 @@ export default defineCommand({
       throw new Error(`--frames is a first and last frame like 120:239, not ${args.frames}`);
     }
     const pipeline = await import('#engine/render/render-pipeline.ts');
-    const session = await openStudioRenderSession(args.project);
+    const session = await openStudioRenderSession(args.project, { workers: args.workers });
     const inProject = (file: string) => (isAbsolute(file) ? file : join(session.project, file));
     if (range) {
       const [from, last] = range;

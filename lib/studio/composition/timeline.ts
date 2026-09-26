@@ -166,6 +166,11 @@ export type VideoDef = {
    * (`defineTimeline({ fps })`); a rate named here must agree with it.
    */
   format?: Partial<VideoFormat>;
+  /**
+   * How many tabs render it at once, in place of the default, 3; a command's --workers overrides it. Fewer for heavy
+   * WebGL scenes: the tabs share one GPU, and Chrome drops the oldest WebGL contexts past about 16.
+   */
+  renderWorkers?: number;
   voice: Voice;
   scenes: readonly SceneDef[];
   /** Crossfade length in seconds, centred on each cut. Default 0.5. */

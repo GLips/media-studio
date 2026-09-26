@@ -13,7 +13,8 @@ import { basename, join, relative } from 'node:path';
 import { generatePaidMedia } from '../generation/paid-generation.ts';
 import { readPrevisFootageList, writePrevisFootageEntry } from '../bundle/previs-footage.ts';
 import { blockoutSlug } from '../bundle/project-bundle.ts';
-import { RENDER_CHROMIUM, RENDER_CONCURRENCY, type RenderSession } from './render-session.ts';
+import { RENDER_CHROMIUM } from './render-browser.ts';
+import type { RenderSession } from './render-session.ts';
 import { assertPrevisSpanFits, PREVIS_MODEL, PREVIS_SHORT_SIDE, previsAspectRatio } from '#studio/previs/previs.ts';
 import { probeMediaSeconds } from '../ffmpeg/ffmpeg.ts';
 
@@ -69,13 +70,17 @@ export async function renderPrevisFootage(session: RenderSession, sceneId: strin
 
 async function renderBlockout(session: RenderSession, sceneId: string): Promise<string> {
   const inputProps = { scene: sceneId };
-  const composition = await selectComposition({ serveUrl: session.serveUrl, chromiumOptions: RENDER_CHROMIUM, id: blockoutSlug(session.project), inputProps });
   const tmp = mkdtempSync(join(tmpdir(), 'blockout-'));
   const rendered = join(tmp, 'blockout.mp4');
-  console.error(`rendering scene ${sceneId}'s blockout, ${composition.durationInFrames / composition.fps}s…`);
-  await renderMedia({
-    composition, serveUrl: session.serveUrl, chromiumOptions: RENDER_CHROMIUM, concurrency: RENDER_CONCURRENCY, inputProps,
-    codec: 'h264', muted: true, crf: 20, pixelFormat: 'yuv420p', scale: PREVIS_SHORT_SIDE / Math.min(composition.width, composition.height), outputLocation: rendered,
+  await session.inBrowser('blockout', async (browser) => {
+    const composition = await selectComposition({ serveUrl: session.serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, id: blockoutSlug(session.project), inputProps });
+    const concurrency = session.workersFor(composition);
+    console.error(`rendering scene ${sceneId}'s blockout, ${composition.durationInFrames / composition.fps}s…`);
+    await renderMedia({
+      composition, serveUrl: session.serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, concurrency, inputProps,
+      codec: 'h264', muted: true, crf: 20, pixelFormat: 'yuv420p', scale: PREVIS_SHORT_SIDE / Math.min(composition.width, composition.height), outputLocation: rendered,
+    });
+    return { result: undefined, workers: concurrency };
   });
   // Named by its bytes, so each footage's blockout stays beside it for comparison.
   const hash = createHash('sha256').update(readFileSync(rendered)).digest('hex').slice(0, 12);

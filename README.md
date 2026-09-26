@@ -32,9 +32,12 @@ Every step is a `studio` verb. A `<project>` is a slug (`sale-only-view`), a uni
 | Mix | `studio mix <project>` | `out/mix.wav`, the mastered mix on its own, to audition |
 | Render | `studio render <project>` | `out/mix.wav`, `out/video.mp4` (captions burned in), `out/video.srt`, review sheets in `out/check/`, and `out/watch.html`, each video with a `.snapshot.json` beside it (the timeline it was rendered from). `--animatic` renders the video as it plays now, unchecked and unmixed, to `out/wip/animatic.mp4`, for approving it in `studio review` before it's voiced or finished; `--frames=a:b` renders just those frames, silent; `--join=<folder>` joins such slices under the mix. A `--read=draft` voice gets a loud warning and a DRAFT banner on the watch page. A transparent video (`format: { transparent: true }`, silent) delivers `out/video.webm` (VP9 with alpha, Chrome and Firefox) and `out/video-hevc.mov` (HEVC with alpha via macOS VideoToolbox, Safari) in place of the MP4, and its watch page plays it over a checkerboard or a colour |
 
-`studio render` runs the check first and refuses to render if a highlight sits under a tag or the caption, runs off
-the frame or is cut off by its panel, if a scene's `expect` isn't met, if the motion tracks have tracking errors, or
-if any line is still estimated. It then masters the mix to −14 LUFS, renders the video muted and muxes the mix in. Each MP4 must have
+`studio render` refuses to render if any line is still estimated. It renders the captioned video with the check
+measuring each frame as it's drawn, and delivers nothing if a highlight sits under a tag or the caption, runs off
+the frame or is cut off by its panel, if a scene's `expect` isn't met, or if the motion tracks have tracking errors.
+It then masters the mix to −14 LUFS and muxes it in under the muted video. Renders run at low priority in 3 tabs
+(`--workers` or a video's `renderWorkers` changes that), fail if their browser has only software GL, and end
+with each pass's time, the workers and the GL backend. Each MP4 must have
 the right length and an audio stream, measure −14 ±1 LUFS and peak at −1 dBTP or lower. A `silent` project (no voice,
 music or sound) has no mix, mastering or loudness check and no `.srt`: each MP4 must have no audio track instead. A mix
 that renders silent in any other project fails. Each is tiled into a sheet to look over.

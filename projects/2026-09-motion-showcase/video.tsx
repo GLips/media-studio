@@ -41,4 +41,7 @@ if (repeatedSoundId) throw new Error(`two sounds are ${repeatedSoundId}: give ea
 // track, heard but inside it, and the last needle rides over the final hit's tail.
 export default defineVideo({
   title: 'Painful Pleasures: the new buy box', format: SHOWCASE_FORMAT, voice: {}, scenes: showcaseBars.map(barScene), music: { track, bedRelativeLu: -4 }, sounds,
+  // TAP.'s glitch frames depend on what their tab drew before, and 9 tabs deal the frames out so each comes out as it
+  // does drawn fresh; fewer draw some of them wrong (vid-73, which removes this).
+  renderWorkers: 9,
 });

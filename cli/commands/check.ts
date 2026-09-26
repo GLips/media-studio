@@ -1,6 +1,6 @@
 // studio check: the framing check, the motion tracks, and the timeline both measure against.
 import { defineCommand } from 'citty';
-import { openStudioRenderSession, studioProjectArg } from '../project-arg.ts';
+import { openStudioRenderSession, renderWorkersArg, studioProjectArg } from '../project-arg.ts';
 
 export default defineCommand({
   meta: {
@@ -9,6 +9,7 @@ export default defineCommand({
   },
   args: {
     project: studioProjectArg,
+    workers: renderWorkersArg,
     scene: { type: 'string', description: 'Only this scene, its crossfades included' },
     at: { type: 'string', valueHint: '12:20', description: 'Only this stretch, in seconds' },
   },
@@ -16,11 +17,13 @@ export default defineCommand({
     const at = args.at?.split(':').map(Number);
     if (at && !(at.length === 2 && at.every(Number.isFinite) && at[0] < at[1])) throw new Error(`--at is a stretch of seconds like 12:20, not ${args.at}`);
     const { checkProject, formatTimelineTable, writeCheckReports } = await import('#engine/render/render-pipeline.ts');
-    const session = await openStudioRenderSession(args.project);
+    const { formatRenderPasses } = await import('#engine/render/render-session.ts');
+    const session = await openStudioRenderSession(args.project, { workers: args.workers });
     const scope = { scene: args.scene, at: at && ([at[0], at[1]] as const) };
     const check = await checkProject(session, scope);
     for (const line of [...check.report, '', ...formatTimelineTable(check.timeline), '']) console.log(line);
     for (const file of writeCheckReports(session, check, scope)) console.log(file);
+    for (const line of formatRenderPasses(session)) console.error(line);
     if (!check.ok) process.exitCode = 1;
   },
 });

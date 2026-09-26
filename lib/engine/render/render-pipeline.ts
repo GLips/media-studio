@@ -5,7 +5,6 @@
 //
 // Progress goes to stderr; each function returns what it made, for the command to print on stdout.
 import { serializeSrt } from '@remotion/captions';
-import { renderFrames } from '@remotion/renderer';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, extname, join } from 'node:path';
@@ -15,12 +14,14 @@ import { holdProblems } from '#models/motion/hold-check.ts';
 import { buildMotionGraph, motionGraphBackdropFrame, type MotionGraphSpace } from '#models/motion/motion-graph.ts';
 import { assembleMotionTracks, formatMotionReport, motionArtifactName, type FrameMotion, type MotionTracks } from '#models/motion/motion-tracks.ts';
 import { measureLoudness } from '../ffmpeg/loudness.ts';
-import { artifactSink, DELIVERY_AUDIO_CODEC, RENDER_CHROMIUM, RENDER_CONCURRENCY, TIMELINE_REPORT_NAME, type RenderSession } from './render-session.ts';
+import { artifactSink, DELIVERY_AUDIO_CODEC, formatRenderPasses, TIMELINE_REPORT_NAME, type RenderSession } from './render-session.ts';
 import { loadRenderSnapshot, renderSnapshotPath, writeRenderSnapshot } from '../snapshot/render-snapshot.ts';
 import { sfxEventsFrom, sfxMarkArtifactName, type SfxEvent, type SfxMark } from '#sfx/cue-events.ts';
 import { sfxCueListReport } from '#sfx/project-cue-list.ts';
+import { readSfxCueList } from '#sfx/cue-module.ts';
 import { isVoicedWithDraft } from '../voice/voice-project.ts';
-import type { TimelineReport } from '#studio/composition/Video.tsx';
+import type { OnArtifact } from '@remotion/renderer';
+import type { TimelineReport, VideoProps } from '#studio/composition/Video.tsx';
 import { countVideoFrames, measureWithFfmpeg, runFfmpeg, runFfprobe } from '../ffmpeg/ffmpeg.ts';
 
 const outDirFor = (session: RenderSession) => join(session.project, 'out');
@@ -61,25 +62,24 @@ export type ProjectCheck = { ok: boolean; timeline: TimelineReport; motion: Moti
  * lib/models/motion/motion-tracks.ts), whose instrumentation errors do.
  */
 export async function checkProject(session: RenderSession, scope: CheckScope = {}): Promise<ProjectCheck> {
-  const { serveUrl, props, compositionFor } = session;
-  // Captions on, so the caption is measured where it would show: a hidden one counts as faded out and covers nothing.
-  const inputProps = props({ probe: true, captions: true });
-  const composition = await compositionFor(inputProps);
-  const { fps } = composition;
+  const inputProps = checkedProps(session);
   const sink = artifactSink();
-  const tmp = mkdtempSync(join(tmpdir(), 'check-'));
-  const measure = (frames: number[]) => renderFrames({
-    composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, concurrency: RENDER_CONCURRENCY, inputProps, outputDir: tmp, imageFormat: 'none', frames,
-    onArtifact: sink.onArtifact, onStart: () => {}, onFrameUpdate: () => {},
-  });
   // Frame 0 carries the timeline, which says where a scene is.
-  await measure([0]);
+  await session.measureFrames('check frame 0', [0], inputProps, sink.onArtifact);
   const timeline = sink.json<TimelineReport>(TIMELINE_REPORT_NAME);
   const span = checkedFrames(timeline, scope);
-  const frames = Array.from({ length: span.last - span.first + 1 }, (_, i) => span.first + i);
-  await measure(frames.filter((f) => f !== 0));
-  rmSync(tmp, { recursive: true, force: true });
+  const frames = Array.from({ length: span.last - span.first + 1 }, (_, i) => span.first + i).filter((f) => f !== 0);
+  if (frames.length) await session.measureFrames('check', frames, inputProps, sink.onArtifact);
+  return judgeCheckedFrames(session, sink, timeline, span);
+}
 
+/** Captions on, so the caption is measured where it would show: a hidden one counts as faded out and covers nothing. */
+const checkedProps = (session: RenderSession) => session.props({ probe: true, captions: true });
+
+/** The check of frames `span`, from what a render with checkedProps' probe emitted into `sink`. */
+function judgeCheckedFrames(session: RenderSession, sink: ReturnType<typeof artifactSink>, timeline: TimelineReport, span: { first: number; last: number }): ProjectCheck {
+  const { fps } = timeline;
+  const frames = Array.from({ length: span.last - span.first + 1 }, (_, i) => span.first + i);
   const reports = frames.map((f) => sink.json<FramingReport>(framingArtifactName(f)));
   const sees = timeline.expectations.filter((e) => 'see' in e), holds = timeline.expectations.filter((e) => 'hold' in e);
   const problems = framingProblems(reports, sees, fps, timeline, span);
@@ -170,15 +170,24 @@ const DELIVERY_LUFS = -14, DELIVERY_TRUE_PEAK = -1, MASTER_TRUE_PEAK = -2;
  */
 export async function renderMasteredMix(session: RenderSession, { auditionSfxCueList = false }: { auditionSfxCueList?: boolean } = {}): Promise<string> {
   if (session.silent) throw new Error(`${basename(session.project)} is silent (project.ts): it plays no voice, music or sound, so it has no mix`);
-  const masterWav = masterWavFor(session, auditionSfxCueList);
   const tmp = mkdtempSync(join(tmpdir(), 'mix-'));
-  const raw = await session.renderAudio({ out: join(tmp, 'raw.wav'), inputProps: session.props({ auditionSfxCueList }) });
+  try {
+    const raw = await session.renderAudio({ out: join(tmp, 'raw.wav'), inputProps: session.props({ auditionSfxCueList }) });
+    return masterMix(session, raw, masterWavFor(session, auditionSfxCueList));
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+/** Masters `raw`, the video's sound as rendered, to `masterWav` (see renderMasteredMix). */
+function masterMix(session: RenderSession, raw: string, masterWav: string): string {
+  const mastering = performance.now();
   mkdirSync(outDirFor(session), { recursive: true });
   const before = measureLoudness(raw);
   if (before.lufs === -Infinity) {
-    rmSync(tmp, { recursive: true, force: true });
     throw new Error("the mix renders silent: a voice, music or sound the video plays didn't sound. A video with no sound at all declares `capability: 'silent'` in project.ts");
   }
+  const tmp = mkdtempSync(join(tmpdir(), 'mastering-'));
   // Limiting at 4× the sample rate catches the peaks between samples too, which is what "true peak" counts.
   const master = (gainDb: number, ceilingDb: number) => runFfmpeg(['-y', '-v', 'error', '-i', raw, '-af',
     `volume=${gainDb}dB,aresample=192000,alimiter=limit=${10 ** (ceilingDb / 20)}:attack=1:release=60:level=false:latency=true,aresample=48000`,
@@ -199,6 +208,7 @@ export async function renderMasteredMix(session: RenderSession, { auditionSfxCue
   const after = measureLoudness(masterWav);
   rmSync(tmp, { recursive: true, force: true });
   console.error(`mix: ${before.lufs} LUFS, ${before.truePeak} dBTP → +${gain.toFixed(1)} dB and limited at ${ceiling.toFixed(1)} → ${after.lufs} LUFS, ${after.truePeak} dBTP (${encodedPeak} encoded)`);
+  session.passes.push({ pass: 'mastering', seconds: (performance.now() - mastering) / 1000 });
   return masterWav;
 }
 
@@ -214,18 +224,18 @@ function renderProgress(out: string) {
 }
 
 /**
- * The delivered video, under the mastered mix, its snapshot carrying the check's timeline and motion. A silent one
- * keeps the composition's own sound, which is none, so Remotion writes no audio track: a sound playing in it after
- * all shows up as a track its review refuses.
+ * A delivered video, under the mastered mix (see renderDeliveredVideo). A silent one keeps the composition's own
+ * sound, which is none, so Remotion writes no audio track: a sound playing in it after all shows up as a track its
+ * review refuses. `approve` is session.renderVideo's; the soundtrack is the mix it names.
  */
-async function renderVideo(session: RenderSession, captions: boolean, { timeline, motion }: Pick<ProjectCheck, 'timeline' | 'motion'>) {
-  const out = videoFor(session, captions);
-  const started = Date.now();
+async function renderDeliveryVideo(session: RenderSession, { out, inputProps, timeline, separateSound = false, onArtifact, approve }: {
+  out: string; inputProps: VideoProps; timeline: TimelineReport; separateSound?: boolean; onArtifact?: OnArtifact;
+  approve: (rendered: { sound?: string }) => Promise<{ soundtrack?: string; motion: MotionTracks }>;
+}) {
   await session.renderVideo({
-    out, inputProps: session.props({ captions }), soundtrack: session.silent ? undefined : masterWavFor(session), timeline, motion,
+    out, inputProps, muted: !session.silent && !separateSound, separateSound, timeline, approve, ...(onArtifact && { onArtifact }),
     crf: 18, x264Preset: 'slow', pixelFormat: 'yuv420p', imageFormat: 'jpeg', jpegQuality: 94, onProgress: renderProgress(out),
   });
-  console.error(`rendered ${out} in ${((Date.now() - started) / 1000).toFixed(0)}s`);
 }
 
 const srtFrom = (timeline: TimelineReport) =>
@@ -372,52 +382,74 @@ const draftVoiceWarning = (session: RenderSession) => `
 `;
 
 /**
- * The whole pipeline: the framing check on every frame, refusing to go on if it fails or a line is still estimated;
- * the mastered mix; video.mp4 with captions (and video-plain.mp4 without, if `plain`), each checked for delivery;
- * video.srt; and out/watch.html. A silent project has no mix and no .srt; a transparent one delivers as
- * renderTransparentDelivery says. Returns what it delivered.
+ * The whole pipeline: refusing a line that's still estimated; video.mp4 with captions, whose frames the framing check
+ * measures as they're drawn, delivered only if it passes; the mastered mix under it; video-plain.mp4 without
+ * captions, if `plain`; each checked for delivery; video.srt; out/watch.html; and where the time went. A silent
+ * project has no mix and no .srt; a transparent one delivers as renderTransparentDelivery says. Returns what it
+ * delivered.
+ *
+ * The check rides on the captioned render rather than running first, so every frame is drawn once, not twice: a
+ * failing check costs a render's encode more than it would alone, and `studio check` is still the quick way to one.
  */
 export async function renderDeliveredVideo(session: RenderSession, { plain }: { plain: boolean }): Promise<string[]> {
-  const check = await checkProject(session);
-  const { ok, timeline, report } = check;
-  for (const line of report) console.error(line);
-  writeCheckReports(session, check);
-  if (!ok) throw new Error('fix the problems above before rendering (look at a stretch with studio look <project> --strip=a:b)');
+  const timeline = await session.readTimeline();
   const estimated = timeline.cues.filter((q) => !q.voiced).map((q) => q.id);
   if (estimated.length) throw new Error(`${estimated.join(', ')} ${estimated.length > 1 ? 'are' : 'is'} estimated, not voiced: run studio voice <project> before rendering the video`);
   const draft = isVoicedWithDraft(session.project);
   if (draft) console.error(draftVoiceWarning(session));
-  if (timeline.transparent) return renderTransparentDelivery(session, check, { plain });
-  if (session.silent) {
-    // An old mix would read as this video's.
-    rmSync(masterWavFor(session), { force: true });
-    console.error('silent (project.ts): no voice, music or sound, so no mix, mastering or loudness review; the video has no audio track');
-  } else {
-    await renderMasteredMix(session);
-  }
+  if (timeline.transparent) return renderTransparentDelivery(session, timeline, { plain });
   // An old plain video would no longer match; the watch page offers it only if it's there.
   if (!plain) removeRender(videoFor(session, false));
   for (const old of Object.values(transparentVideosFor(session))) removeRender(old);
-  const variants = plain ? [true, false] : [true];
-  for (const captions of variants) {
-    await renderVideo(session, captions, check);
-    reviewDelivery(session, captions, timeline);
+
+  // The probe lets a video that plays its cue list render without one (a check measures the events it's drafted
+  // from), so the refusal the unprobed composition makes is made here.
+  if (timeline.sfxCueList && !readSfxCueList(session.project)) throw new Error('this project has no sfx/cues.json: run studio sfx draft first');
+
+  const sink = artifactSink();
+  let delivery: { soundtrack?: string; motion: MotionTracks } | undefined;
+  await renderDeliveryVideo(session, {
+    out: videoFor(session, true), inputProps: checkedProps(session), timeline, separateSound: !session.silent, onArtifact: sink.onArtifact,
+    approve: async ({ sound }) => {
+      delivery = { soundtrack: deliveredSoundtrack(session, sound), motion: approveCheckedRender(session, sink, timeline).motion };
+      return delivery;
+    },
+  });
+  await session.timed('video.mp4 review', () => reviewDelivery(session, true, timeline));
+  if (plain) {
+    await renderDeliveryVideo(session, { out: videoFor(session, false), inputProps: session.props(), timeline, approve: async () => delivery! });
+    await session.timed('video-plain.mp4 review', () => reviewDelivery(session, false, timeline));
   }
   // A silent video speaks no lines, so it has no captions.
   const srt = join(outDirFor(session), 'video.srt');
   if (session.silent) rmSync(srt, { force: true });
   else writeFileSync(srt, srtFrom(timeline));
+  const variants = plain ? [true, false] : [true];
   const delivered = [...variants.map((captions) => videoFor(session, captions)), ...(session.silent ? [] : [srt]), writeWatchPage(session, timeline.title, draft)];
+  for (const line of formatRenderPasses(session)) console.error(line);
   // Again at the end, where it can't scroll away under the render's progress.
   if (draft) console.error(draftVoiceWarning(session));
   return delivered;
 }
 
 /**
- * A transparent video's delivery: video.webm and video-hevc.mov, each checked for its alpha, and the watch page. It's
- * silent, so it has no mix, no .srt and no plain cut, and the project must say so, since a sound it plays would be lost.
+ * The framing check of a delivery render, from the artifacts its probe emitted into `sink`: printed, written to
+ * out/check/, and refused on a problem.
  */
-async function renderTransparentDelivery(session: RenderSession, check: ProjectCheck, { plain }: { plain: boolean }): Promise<string[]> {
+function approveCheckedRender(session: RenderSession, sink: ReturnType<typeof artifactSink>, timeline: TimelineReport): ProjectCheck {
+  const check = judgeCheckedFrames(session, sink, timeline, checkedFrames(timeline, {}));
+  for (const line of check.report) console.error(line);
+  writeCheckReports(session, check);
+  if (!check.ok) throw new Error('fix the problems above before rendering (look at a stretch with studio look <project> --strip=a:b)');
+  return check;
+}
+
+/**
+ * A transparent video's delivery: video.webm and video-hevc.mov, whose frames the framing check measures as they're
+ * drawn, each checked for its alpha, and the watch page. It's silent, so it has no mix, no .srt and no plain cut, and
+ * the project must say so, since a sound it plays would be lost.
+ */
+async function renderTransparentDelivery(session: RenderSession, timeline: TimelineReport, { plain }: { plain: boolean }): Promise<string[]> {
   const name = basename(session.project);
   if (!session.silent) throw new Error(`${name} is transparent (its format), and a transparent video delivers with no sound: declare \`capability: 'silent'\` in project.ts`);
   if (plain) throw new Error(`${name} is transparent and silent, so it has no captions to leave out: drop --plain`);
@@ -425,13 +457,24 @@ async function renderTransparentDelivery(session: RenderSession, check: ProjectC
   for (const old of [videoFor(session, true), videoFor(session, false)]) removeRender(old);
   for (const old of [masterWavFor(session), join(outDirFor(session), 'video.srt'), join(outDirFor(session), 'check', 'review.jpg')]) rmSync(old, { force: true });
   const { webm, mov } = transparentVideosFor(session);
-  const started = Date.now();
+  const sink = artifactSink();
   await session.renderTransparentVideo({
-    webm, mov, inputProps: session.props({ captions: true }), timeline: check.timeline, motion: check.motion, onProgress: renderProgress(webm),
+    webm, mov, inputProps: checkedProps(session), timeline, onArtifact: sink.onArtifact, onProgress: renderProgress(webm),
+    approve: async () => ({ motion: approveCheckedRender(session, sink, timeline).motion }),
   });
-  console.error(`rendered ${webm} and ${mov} in ${((Date.now() - started) / 1000).toFixed(0)}s`);
-  reviewTransparentDelivery(session, check.timeline);
-  return [webm, mov, writeTransparentWatchPage(session, check.timeline.title)];
+  await session.timed('review', () => reviewTransparentDelivery(session, timeline));
+  const delivered = [webm, mov, writeTransparentWatchPage(session, timeline.title)];
+  for (const line of formatRenderPasses(session)) console.error(line);
+  return delivered;
+}
+
+/** The delivered videos' soundtrack: `sound`, the captioned render's, mastered to out/mix.wav, or none for a silent project. */
+function deliveredSoundtrack(session: RenderSession, sound: string | undefined): string | undefined {
+  if (!session.silent) return masterMix(session, sound!, masterWavFor(session));
+  // An old mix would read as this video's.
+  rmSync(masterWavFor(session), { force: true });
+  console.error('silent (project.ts): no voice, music or sound, so no mix, mastering or loudness review; the video has no audio track');
+  return undefined;
 }
 
 // ---------- the animatic ----------
