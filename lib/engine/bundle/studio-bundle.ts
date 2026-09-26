@@ -10,6 +10,11 @@
 // point at, the host link, the bundle code itself) webpack never records, so it's fingerprinted apart. Each bundle goes to a folder of its own and `current.json` is swapped in whole, so a
 // render still serving the previous bundle, or a second bundle of the same project at once, never reads a half-written
 // one.
+//
+// Webpack's own persistent cache is off. Remotion keys it on the whole config, entry and aliases by absolute path, so
+// every worktree and project wrote another ~240 MB to the shared node_modules/.cache/webpack and nothing pruned it. It
+// only helps a bundle after an edit (1.5 s rather than 3.3 s for fidelity-ladder); an unchanged project reuses the
+// kept bundle here without webpack at all.
 import { bundle, type WebpackOverrideFn } from '@remotion/bundler';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -20,9 +25,9 @@ import { projectWebpackOverride } from './project-bundle.ts';
 const KEPT_BUNDLES_DIR = join(STUDIO_ROOT, 'node_modules', '.cache', 'studio-bundle');
 /**
  * Bundles kept per project: the three newest, and any younger than an hour, which a render started earlier may still
- * be serving.
+ * be serving, but never more than eight, so a burst of edits can't pile up ~40 MB bundles for the hour.
  */
-const KEPT_BUNDLES = 3, KEPT_BUNDLE_MS = 60 * 60 * 1000;
+const KEPT_BUNDLES = 3, KEPT_BUNDLE_MS = 60 * 60 * 1000, KEPT_BUNDLES_MAX = 8;
 /** The Node-side modules that shape a bundle's webpack config. */
 const BUNDLE_CONFIG_MODULES = ['lib/engine/bundle', 'lib/engine/host'].flatMap((dir) =>
   readdirSync(join(STUDIO_ROOT, dir)).filter((name) => name.endsWith('.ts')).map((name) => join(STUDIO_ROOT, dir, name)))
@@ -89,7 +94,7 @@ export async function bundleStudioProject(project: string): Promise<string> {
     };
   };
   mkdirSync(home, { recursive: true });
-  const serveUrl = await bundle({ entryPoint: join(STUDIO_ROOT, 'lib/studio/composition/index.ts'), webpackOverride: recording, outDir: join(home, dir) });
+  const serveUrl = await bundle({ entryPoint: join(STUDIO_ROOT, 'lib/studio/composition/index.ts'), webpackOverride: recording, outDir: join(home, dir), enableCaching: false });
   if (!recorded) throw new Error('webpack finished without reporting what it read, so the bundle can\'t be kept');
   // Webpack judges node_modules by package version, not file by file, so an install is judged by the lockfile.
   const inputs = [...recorded.files, join(STUDIO_ROOT, 'package-lock.json')].filter((path) => existsSync(path) && statSync(path).isFile()).map((path) => {
@@ -104,19 +109,25 @@ export async function bundleStudioProject(project: string): Promise<string> {
   } else console.error('a file changed while bundling, so this bundle serves this run only');
   const others = readdirSync(home).filter((name) => /^\d+-\d+$/.test(name) && name !== dir)
     .map((name) => ({ name, finished: statSync(join(home, name)).mtimeMs })).sort((a, b) => b.finished - a.finished);
-  for (const old of others.slice(KEPT_BUNDLES - 1).filter((o) => Date.now() - o.finished > KEPT_BUNDLE_MS)) {
+  const stale = others.filter((o, i) => i >= KEPT_BUNDLES_MAX - 1 || (i >= KEPT_BUNDLES - 1 && Date.now() - o.finished > KEPT_BUNDLE_MS));
+  for (const old of stale) {
     rmSync(join(home, old.name), { recursive: true, force: true });
   }
   forgetGoneProjects();
   return serveUrl;
 }
 
-/** Drops the bundles of projects that are gone, such as a tool's or a test's temporary project. */
+/**
+ * Drops the bundles of projects that are gone, such as a removed worktree's or a test's temporary project, so the cache
+ * holds at most KEPT_BUNDLES_MAX bundles per project that still exists.
+ */
 function forgetGoneProjects() {
   for (const name of readdirSync(KEPT_BUNDLES_DIR)) {
-    const current = join(KEPT_BUNDLES_DIR, name, 'current.json');
-    if (existsSync(current) && !existsSync((JSON.parse(readFileSync(current, 'utf8')) as KeptBundle).project)) {
-      rmSync(join(KEPT_BUNDLES_DIR, name), { recursive: true, force: true });
-    }
+    const home = join(KEPT_BUNDLES_DIR, name), current = join(home, 'current.json');
+    // A home with no kept bundle (each one failed or went stale while bundling, or one is starting) is judged by age.
+    const gone = existsSync(current)
+      ? !existsSync((JSON.parse(readFileSync(current, 'utf8')) as KeptBundle).project)
+      : Date.now() - statSync(home).mtimeMs > KEPT_BUNDLE_MS;
+    if (gone) rmSync(home, { recursive: true, force: true });
   }
 }

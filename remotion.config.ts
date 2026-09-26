@@ -7,4 +7,6 @@ const project = process.env.PROJECT;
 if (!project) throw new Error('PROJECT is not set: open the Studio with studio preview <project>');
 
 Config.setEntryPoint('./lib/studio/composition/index.ts');
+// Off for the reason studio-bundle.ts gives: webpack's cache is keyed per worktree path and never pruned.
+Config.setCachingEnabled(false);
 Config.overrideWebpackConfig(projectWebpackOverride(project));
