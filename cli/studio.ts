@@ -5,6 +5,7 @@ import { defineCommand, runCommand, runMain } from 'citty';
 import { existsSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { STUDIO_ROOT } from '#engine/project/studio-project.ts';
+import { studioTempRoot } from '#engine/temp/studio-temp.ts';
 
 const studioCommand = defineCommand({
   meta: {
@@ -38,6 +39,8 @@ const studioCommand = defineCommand({
 });
 
 warnIfInAnotherStudio();
+// Made up front, not on first use, so every command sweeps what a crashed or killed one left in the temp dir.
+studioTempRoot();
 
 // An agent in a second checkout (a worktree, a clone) would otherwise run this checkout's code on this checkout's
 // projects and wonder why its edits change nothing.

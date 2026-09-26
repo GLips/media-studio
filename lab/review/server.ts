@@ -12,9 +12,8 @@
 //
 // Negative space: nothing here renders the composition, measures or regenerates an artifact. A missing one is named
 // in `missing`, so the page can say which note fields it can't fill and the command that would.
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage } from 'node:http';
-import { tmpdir } from 'node:os';
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { readSfxCueList } from '#sfx/cue-module.ts';
 import { sfxCuePlays } from '#sfx/cues.ts';
@@ -25,6 +24,7 @@ import { placeReviewNotes, REVIEW_NOTES_VERSION, reviewFrameAt, type ReviewMedia
 import { resolveStudioProject, STUDIO_ROOT } from '#engine/project/studio-project.ts';
 import { loadRenderSnapshot, renderFileStamp } from '#engine/snapshot/render-snapshot.ts';
 import { watchLabPage } from '#engine/bundle/lab-bundle.ts';
+import { studioTempRoot } from '#engine/temp/studio-temp.ts';
 import { runFfmpegAsync } from '#engine/ffmpeg/ffmpeg.ts';
 import { sendFile } from '../server.ts';
 
@@ -208,7 +208,9 @@ export function buildReviewManifest(target: ReviewTarget): ReviewManifest {
  * and a path that isn't the target or one of its project's renders is refused.
  */
 export async function startStudioReview({ target, port }: { target: ReviewTarget; port: number }) {
-  const outdir = mkdtempSync(join(tmpdir(), 'studio-review-'));
+  // Lives as long as the server: the temp root goes when the process ends, however it's stopped.
+  const outdir = join(studioTempRoot(), 'review');
+  mkdirSync(outdir);
   const stills = reviewStillCutter(join(outdir, 'stills'));
   const bundle = await watchLabPage({ outdir, entry: join(REVIEW_APP_DIR, 'main.tsx') });
   const targetFor = (media: string | null): ReviewTarget => {

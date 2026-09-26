@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { runFixtureGit } from '#engine/git/fixture-git.ts';
+import { withStudioTemp } from '#engine/temp/studio-temp.ts';
 import { caught, runCheckOnFiles } from './spec-tree.ts';
 
-/** A committed repo standing in for the one a hook runs in, and what a leak would change in it. */
-function parentRepo() {
-  const root = mkdtempSync(join(tmpdir(), 'hook-parent-'));
+/** A committed repo at `root` standing in for the one a hook runs in, and what a leak would change in it. */
+function parentRepo(root: string) {
+  mkdirSync(root);
   runFixtureGit(root, ['init', '-q']);
   writeFileSync(join(root, 'kept.ts'), 'export const kept = 1;\n');
   runFixtureGit(root, ['add', '-A']);
@@ -38,8 +38,9 @@ function asInHookOf<T>(root: string, body: () => T): T {
 }
 
 test('under a hook, a fixture repo stays its own: the repo being committed keeps its branch, index and config', () => {
-  const control = parentRepo(), parent = parentRepo(), fixture = mkdtempSync(join(tmpdir(), 'hook-fixture-'));
-  try {
+  withStudioTemp('hook-spec', (dir) => {
+    const control = parentRepo(join(dir, 'control')), parent = parentRepo(join(dir, 'parent')), fixture = join(dir, 'fixture');
+    mkdirSync(fixture);
     // The environment is a real hook's: a plain git call in the fixture writes to the parent.
     const before = control.state();
     asInHookOf(control.root, () => execFileSync('git', ['config', 'user.name', 'spec'], { cwd: fixture }));
@@ -60,7 +61,5 @@ test('under a hook, a fixture repo stays its own: the repo being committed keeps
     assert.deepEqual(parent.state(), untouched);
     // The check read the fixture's index, not the parent's.
     assert.deepEqual(caught(findings), ['projects/p/video.tsx:beatSpan from ../../lib/models/timeline/timeline.ts']);
-  } finally {
-    for (const dir of [control.root, parent.root, fixture]) rmSync(dir, { recursive: true, force: true });
-  }
+  });
 });

@@ -4,8 +4,7 @@
 //
 // Rerunnable: the output directory is cleared and rewritten, so a study always matches its video and sections.
 
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { rmSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { tileLabelledImages } from '../ffmpeg/contact-sheet.ts';
 import {
@@ -14,6 +13,7 @@ import {
 } from '#models/music/reel-study.ts';
 import { rasterizeSvgs } from '../capture/html-raster.ts';
 import { runFfmpeg, runFfprobe } from '../ffmpeg/ffmpeg.ts';
+import { withStudioTemp } from '../temp/studio-temp.ts';
 
 // Measured small: enough pixels for energy, cuts and colour, few enough to hold a whole reel in memory.
 const MEASURE_W = 96, MEASURE_H = 54;
@@ -116,8 +116,7 @@ function loudnessPerFrame(samples: Float32Array, fps: number, count: number): nu
  * vectors are drawn on the frames (ffmpeg codecview): where things move, and which way, without an optical-flow pass.
  */
 function renderStrip(video: string, s: StudySection, fps: number, grid: ReturnType<typeof studyBeatGrid>, { step, w, cols, vectors = false }: { step: number; w: number; cols: number; vectors?: boolean }, out: string) {
-  const dir = mkdtempSync(join(tmpdir(), 'reel-study-'));
-  try {
+  withStudioTemp('reel-study', (dir) => {
     const first = Math.round(s.start * fps), count = Math.max(1, Math.round((s.end - s.start) * fps));
     const filters = [...(vectors ? ['codecview=mv=pf+bf+bb'] : []), `select=not(mod(n\\,${step}))`, `scale=${w}:-2`];
     // Seek half a frame early: a seek to first/fps rounded up (1/60 s → 0.0167) skips the first frame and labels every
@@ -130,7 +129,5 @@ function renderStrip(video: string, s: StudySection, fps: number, grid: ReturnTy
       const t = (first + k * step) / fps;
       return { file: join(dir, file), label: `${t.toFixed(3)}s  ${beatLabel(grid, t)}` };
     }), out, { cols, w, h });
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  });
 }

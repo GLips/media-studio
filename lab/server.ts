@@ -4,18 +4,20 @@
 // can't drift from what a render does, and `studio lab export` (lab/export.ts) can serve the same page as static files.
 //
 // Negative space: nothing here generates media or calls a paid API.
-import { createReadStream, existsSync, mkdtempSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { tmpdir } from 'node:os';
 import { extname, join, sep } from 'node:path';
 import { LAB_APP_DIR, watchLabPage } from '#engine/bundle/lab-bundle.ts';
+import { studioTempRoot } from '#engine/temp/studio-temp.ts';
 import { handleLabLocalApi } from './local-api.ts';
 import { buildLabManifest, LAB_MEDIA_TYPES, labMediaRegister } from './manifest.ts';
 
 const BUNDLE_TYPES: Record<string, string> = { '.js': 'text/javascript', '.css': 'text/css', '.ttf': 'font/ttf', '.map': 'application/json', ...LAB_MEDIA_TYPES };
 
 export async function startStudioLab({ port }: { port: number }) {
-  const outdir = mkdtempSync(join(tmpdir(), 'studio-lab-'));
+  // Lives as long as the server: the temp root goes when the process ends, however it's stopped.
+  const outdir = join(studioTempRoot(), 'lab');
+  mkdirSync(outdir);
   const bundle = await watchLabPage({ outdir });
 
   // The media URLs the last manifest handed out: only those are served, so a file the manifest doesn't list (code,

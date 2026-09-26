@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { isolatedGitEnv, runFixtureGit } from '#engine/git/fixture-git.ts';
+import { studioTempRoot } from '#engine/temp/studio-temp.ts';
 import { loadSourceTree, type TreeScope } from './source-tree.ts';
 
-const root = mkdtempSync(join(tmpdir(), 'source-tree-'));
-after(() => rmSync(root, { recursive: true, force: true }));
+const root = join(studioTempRoot(), 'source-tree');
+mkdirSync(root);
 const git = (...args: string[]) => runFixtureGit(root, args);
 const write = (path: string, text: string) => {
   mkdirSync(dirname(join(root, path)), { recursive: true });

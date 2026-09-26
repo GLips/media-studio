@@ -12,8 +12,7 @@
 // they drift. audio/manifest.ts is what the video imports.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { measureAudibleLoudness } from '../ffmpeg/loudness.ts';
 import { runFfmpeg } from '../ffmpeg/ffmpeg.ts';
@@ -22,6 +21,7 @@ import { cutTakeIntoLines, type TakeClip } from '#models/voice/voice-take.ts';
 import { alignSpokenWords, estimateSpokenWords, spokenText, type SpokenWord } from '#models/voice/voice-words.ts';
 import { samplesFromWav, wavFromPcm, wavFromSamples } from '#models/audio/wav.ts';
 import { heardWords } from './whisper-words.ts';
+import { withStudioTemp } from '../temp/studio-temp.ts';
 
 const MODEL = 'google/gemini-3.8-flash-tts';
 const DRAFT_VOICE = 'Samantha';
@@ -208,11 +208,11 @@ async function speak(text: string, voice: string) {
 }
 
 function speakDraft(text: string) {
-  const tmp = mkdtempSync(join(tmpdir(), 'say-'));
-  const out = join(tmp, 'take.wav');
-  execFileSync('say', ['-v', DRAFT_VOICE, '-o', out, '--data-format=LEI16@24000', text]);
-  const wav = readFileSync(out);
-  rmSync(tmp, { recursive: true, force: true });
+  const wav = withStudioTemp('say', (tmp) => {
+    const out = join(tmp, 'take.wav');
+    execFileSync('say', ['-v', DRAFT_VOICE, '-o', out, '--data-format=LEI16@24000', text]);
+    return readFileSync(out);
+  });
   const { samples, rate } = samplesFromWav(wav);
   return { wav, duration: samples.length / rate };
 }

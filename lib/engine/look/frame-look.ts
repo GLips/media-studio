@@ -1,11 +1,11 @@
 // frame-look.ts: `studio look`'s frames, from the composition or a rendered video: a labelled sheet of chosen frames,
 // before/after pairs against another render with a count of the pixels that really changed, and a stretch's motion.
 // Each source is decoded once per command: one ffmpeg pass selects every frame the command needs, however many.
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { tileLabelledImages } from '../ffmpeg/contact-sheet.ts';
 import { formatFrameMotion, type MotionClock } from './frame-motion.ts';
+import { withStudioTemp } from '../temp/studio-temp.ts';
 import type { RenderSession } from '../render/render-session.ts';
 import { runFfmpeg, runFfprobe } from '../ffmpeg/ffmpeg.ts';
 
@@ -15,7 +15,7 @@ export type LookSource =
   | { kind: 'video'; file: string; startsAt: number };
 
 /** How ffmpeg reads a source's chosen frames in order: its input args, the filter chain after it, and any rendered stills' dir. */
-type LookInput = { args: string[]; chain: string; dir?: string };
+type LookInput = { args: string[]; chain: string };
 
 /** A region of the frame, in the source's pixels. */
 export type LookCrop = { x: number; y: number; w: number; h: number };
@@ -71,12 +71,12 @@ export async function openLookSource(source: LookSource) {
     const composition = await session.compositionFor(props);
     return {
       name: 'composition', fps: composition.fps, width: composition.width, height: composition.height, first: 0, end: composition.durationInFrames,
-      /** Renders `frames` `w` wide; the ffmpeg input that reads them in order. */
-      async input(frames: number[], w: number): Promise<LookInput> {
-        const stills = await session.renderStills(frames, { w, captions });
+      /** Renders `frames` `w` wide into `dir`; the ffmpeg input that reads them in order. */
+      async input(frames: number[], w: number, dir: string): Promise<LookInput> {
+        const stills = await session.renderStills(dir, frames, { w, captions });
         // Numbered in order for image2's sequence pattern: ffmpeg builds without glob support are common.
-        frames.forEach((f, i) => renameSync(stills.fileFor(f), join(stills.dir, `${String(i).padStart(5, '0')}.jpg`)));
-        return { args: ['-framerate', String(PAIRING_RATE), '-i', join(stills.dir, '%05d.jpg')], chain: `settb=1/${PAIRING_RATE},setpts=N`, dir: stills.dir };
+        frames.forEach((f, i) => renameSync(stills.fileFor(f), join(dir, `${String(i).padStart(5, '0')}.jpg`)));
+        return { args: ['-framerate', String(PAIRING_RATE), '-i', join(dir, '%05d.jpg')], chain: `settb=1/${PAIRING_RATE},setpts=N` };
       },
     };
   }
@@ -145,18 +145,12 @@ export async function lookFrameSheet(source: OpenLookSource, frames: number[], {
   return [`${source.name}: ${frames.length} frames, ${cols}×${Math.ceil(frames.length / cols)}`, out];
 }
 
-/** Runs `look` with a work dir and a way to open sources' inputs; removes the dir and every rendered input however it ends. */
-async function withLookWork<T>(look: (work: string, inputFor: (source: OpenLookSource, frames: number[], w: number) => Promise<LookInput>) => Promise<T>) {
-  const work = mkdtempSync(join(tmpdir(), 'look-')), rendered: string[] = [];
-  try {
-    return await look(work, async (source, frames, w) => {
-      const input = await source.input(frames, w);
-      if (input.dir) rendered.push(input.dir);
-      return input;
-    });
-  } finally {
-    for (const dir of [work, ...rendered]) rmSync(dir, { recursive: true, force: true });
-  }
+/** Runs `look` in a temp work dir, with a way to open sources' inputs, each rendering into a folder of its own there. */
+function withLookWork<T>(look: (work: string, inputFor: (source: OpenLookSource, frames: number[], w: number) => Promise<LookInput>) => Promise<T>) {
+  return withStudioTemp('look', (work) => {
+    let inputs = 0;
+    return look(work, (source, frames, w) => source.input(frames, w, join(work, `input-${inputs++}`)));
+  });
 }
 
 /**

@@ -12,8 +12,8 @@
 // Every render runs in a browser of its own whose GL backend is checked (render-browser.ts), on the session's
 // workers, and is timed: `passes` holds each pass's seconds, for a command to report where its time went.
 import { renderFrames, renderMedia, selectComposition, type HeadlessBrowser, type OnArtifact, type RenderFramesOptions, type RenderMediaOptions } from '@remotion/renderer';
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
-import { availableParallelism, getPriority, setPriority, tmpdir } from 'node:os';
+import { copyFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { availableParallelism, getPriority, setPriority } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import type { VideoConfig } from 'remotion';
 import { projectSlug, replaySlug } from '../bundle/project-bundle.ts';
@@ -21,6 +21,7 @@ import { readProjectCapability } from '../project/studio-project.ts';
 import { bundleStudioProject } from '../bundle/studio-bundle.ts';
 import { runFfmpeg, runFfmpegAsync } from '../ffmpeg/ffmpeg.ts';
 import { writeRenderSnapshot, type RenderSnapshot } from '../snapshot/render-snapshot.ts';
+import { withStudioTemp } from '../temp/studio-temp.ts';
 import { readProjectClock } from '../timeline/project-clock.ts';
 import { inRenderBrowser, RENDER_CHROMIUM } from './render-browser.ts';
 import type { MotionTracks } from '#models/motion/motion-tracks.ts';
@@ -101,8 +102,8 @@ export async function openRenderSession(project: string, { workers }: { workers?
     return result;
   }
 
-  async function renderJpegs(composition: VideoConfig, inputProps: Record<string, unknown>, frames: number[], browser: HeadlessBrowser, { w = composition.width, concurrency = workersFor(composition) } = {}) {
-    const dir = mkdtempSync(join(tmpdir(), 'stills-'));
+  async function renderJpegs(dir: string, composition: VideoConfig, inputProps: Record<string, unknown>, frames: number[], browser: HeadlessBrowser, { w = composition.width, concurrency = workersFor(composition) } = {}) {
+    mkdirSync(dir, { recursive: true });
     await renderFrames({
       composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, inputProps, outputDir: dir, imageFormat: 'jpeg', jpegQuality: 90, scale: w / composition.width, frames,
       concurrency, imageSequencePattern: 'f-[frame].[ext]', onStart: () => {}, onFrameUpdate: () => {},
@@ -111,24 +112,27 @@ export async function openRenderSession(project: string, { workers }: { workers?
     if (files.length !== frames.length) throw new Error(`rendered ${files.length} of ${frames.length} stills`);
     // renderFrames pads the frame number to the composition's length, so match by value.
     const byFrame = new Map(files.map((f) => [Number(/f-(\d+)/.exec(f)![1]), join(dir, f)]));
-    return { result: { dir, fileFor: (frame: number) => byFrame.get(frame)! }, workers: concurrency };
-  }
-
-  /** Renders chosen frames as JPEGs `w` wide (the video's own width unless given); returns each frame's file. Repeats are rendered once. */
-  function renderStills(wanted: number[], { w, captions = false }: { w?: number; captions?: boolean } = {}) {
-    const inputProps = props({ captions });
-    return inBrowser('stills', async (browser) => renderJpegs(await compositionFor(inputProps, browser), inputProps, [...new Set(wanted)], browser, { w }));
+    return { result: { fileFor: (frame: number) => byFrame.get(frame)! }, workers: concurrency };
   }
 
   /**
-   * Renders the video's frames in `order`, one after another in a single tab, so each has the history it's given.
-   * `fileFor(i)` is the render of order[i].
+   * Renders chosen frames as JPEGs `w` wide (the video's own width unless given) into `dir`, a new or empty folder the
+   * caller owns; returns each frame's file. Repeats are rendered once.
    */
-  function renderReplay(order: number[]) {
+  function renderStills(dir: string, wanted: number[], { w, captions = false }: { w?: number; captions?: boolean } = {}) {
+    const inputProps = props({ captions });
+    return inBrowser('stills', async (browser) => renderJpegs(dir, await compositionFor(inputProps, browser), inputProps, [...new Set(wanted)], browser, { w }));
+  }
+
+  /**
+   * Renders the video's frames in `order`, one after another in a single tab, so each has the history it's given, into
+   * `dir`, a new or empty folder the caller owns. `fileFor(i)` is the render of order[i].
+   */
+  function renderReplay(dir: string, order: number[]) {
     const inputProps: ReplayProps = { ...props(), order };
     return inBrowser('replay', async (browser) => {
       const composition = await selectComposition({ serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, id: replaySlug(project), inputProps });
-      return renderJpegs(composition, inputProps, order.map((_, i) => i), browser, { concurrency: 1 });
+      return renderJpegs(dir, composition, inputProps, order.map((_, i) => i), browser, { concurrency: 1 });
     });
   }
 
@@ -139,12 +143,10 @@ export async function openRenderSession(project: string, { workers }: { workers?
   function measureFrames(pass: string, frames: number[], inputProps: VideoProps, onArtifact: OnArtifact) {
     return inBrowser(pass, async (browser) => {
       const composition = await compositionFor(inputProps, browser), concurrency = Math.min(workersFor(composition), frames.length);
-      const outputDir = mkdtempSync(join(tmpdir(), 'measure-'));
-      await renderFrames({
+      await withStudioTemp('measure', (outputDir) => renderFrames({
         composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, inputProps, outputDir, concurrency,
         imageFormat: 'none', frames, onArtifact, onStart: () => {}, onFrameUpdate: () => {},
-      });
-      rmSync(outputDir, { recursive: true, force: true });
+      }));
       return { result: composition, workers: concurrency };
     });
   }
@@ -171,8 +173,7 @@ export async function openRenderSession(project: string, { workers }: { workers?
   }): Promise<string> {
     const name = basename(out);
     mkdirSync(dirname(out), { recursive: true });
-    const tmp = mkdtempSync(join(tmpdir(), 'video-'));
-    try {
+    return withStudioTemp('video', async (tmp) => {
       const picture = join(tmp, name), sound = separateSound ? join(tmp, 'sound.wav') : undefined;
       const started = performance.now();
       let framesDrawn: number | undefined, concurrency = 0;
@@ -203,9 +204,7 @@ export async function openRenderSession(project: string, { workers }: { workers?
       }
       writeRenderSnapshot(out, { frames: frames ?? { from: 0, end: composition.durationInFrames }, timeline: timeline ?? await readTimeline(), clock, motion });
       return out;
-    } finally {
-      rmSync(tmp, { recursive: true, force: true });
-    }
+    });
   }
 
   /**
@@ -218,9 +217,8 @@ export async function openRenderSession(project: string, { workers }: { workers?
     webm: string; mov: string; timeline: TimelineReport; inputProps?: VideoProps; onArtifact?: OnArtifact;
     approve?: () => Promise<{ motion?: MotionTracks }>; onProgress?: (p: { progress: number }) => void;
   }): Promise<string[]> {
-    const tmp = mkdtempSync(join(tmpdir(), 'alpha-'));
     // A second of 1080p PNGs is about 100 MB, so they go even when the render or an encode fails.
-    try {
+    await withStudioTemp('alpha', async (tmp) => {
       const { fps, durationInFrames } = await inBrowser(`${basename(webm)} frames`, async (browser) => {
         const composition = await compositionFor(inputProps, browser), concurrency = workersFor(composition);
         await renderFrames({
@@ -246,9 +244,7 @@ export async function openRenderSession(project: string, { workers }: { workers?
           '-tag:v', 'hvc1', '-movflags', '+faststart', mov]),
       ]));
       for (const out of [webm, mov]) writeRenderSnapshot(out, { frames: { from: 0, end: durationInFrames }, timeline, clock, motion });
-    } finally {
-      rmSync(tmp, { recursive: true, force: true });
-    }
+    });
     return [webm, mov];
   }
 

@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { lookAgainst, lookMotion, openLookSource } from './frame-look.ts';
 import { findStillRuns } from './frame-motion.ts';
 import { runFfmpeg } from '../ffmpeg/ffmpeg.ts';
+import { studioTempRoot } from '../temp/studio-temp.ts';
 
 // Six black frames, losslessly encoded; `after` draws a white 10×10 box on its frame 3 only.
-const dir = mkdtempSync(join(tmpdir(), 'frame-look-test-'));
+const dir = join(studioTempRoot(), 'frame-look-test');
+mkdirSync(dir);
 const video = (name: string, box: string) => {
   const file = join(dir, name);
   runFfmpeg(['-v', 'error', '-f', 'lavfi', '-i', 'color=black:s=64x36:r=30', '-frames:v', '6', '-vf', `format=yuv420p${box}`,

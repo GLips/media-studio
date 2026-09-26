@@ -5,8 +5,7 @@
 //
 // Progress goes to stderr; each function returns what it made, for the command to print on stdout.
 import { serializeSrt } from '@remotion/captions';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { rasterizeSvgs } from '../capture/html-raster.ts';
 import { framingArtifactName, framingProblems, takeFitWarnings, type FramingReport } from '#models/frame/framing-check.ts';
@@ -14,6 +13,7 @@ import { holdProblems } from '#models/motion/hold-check.ts';
 import { buildMotionGraph, motionGraphBackdropFrame, type MotionGraphSpace } from '#models/motion/motion-graph.ts';
 import { assembleMotionTracks, formatMotionReport, motionArtifactName, type FrameMotion, type MotionTracks } from '#models/motion/motion-tracks.ts';
 import { measureLoudness } from '../ffmpeg/loudness.ts';
+import { withStudioTemp } from '../temp/studio-temp.ts';
 import { artifactSink, DELIVERY_AUDIO_CODEC, formatRenderPasses, TIMELINE_REPORT_NAME, type RenderSession } from './render-session.ts';
 import { loadRenderSnapshot, renderSnapshotPath, writeRenderSnapshot } from '../snapshot/render-snapshot.ts';
 import { sfxEventsFrom, sfxMarkArtifactName, type SfxEvent, type SfxMark } from '#sfx/cue-events.ts';
@@ -144,9 +144,10 @@ export async function renderMotionGraph(session: RenderSession, { at, tracks, sp
 }) {
   const { timeline, motion } = await checkProject(session, { at });
   const { first, last } = motion.frames, frame = motionGraphBackdropFrame(motion, timeline, { first, last, tracks });
-  const stills = await session.renderStills([frame], { w: 1280, captions });
-  const href = `data:image/jpeg;base64,${readFileSync(stills.fileFor(frame)).toString('base64')}`;
-  rmSync(stills.dir, { recursive: true, force: true });
+  const href = await withStudioTemp('graph-backdrop', async (dir) => {
+    const stills = await session.renderStills(dir, [frame], { w: 1280, captions });
+    return `data:image/jpeg;base64,${readFileSync(stills.fileFor(frame)).toString('base64')}`;
+  });
   const graph = buildMotionGraph(motion, timeline, { first, last, space, tracks, trailStep, backdrop: { frame, href } });
 
   await rasterizeSvgs([{ svg: graph.svg, width: graph.width, height: graph.height, out }]);
@@ -170,13 +171,10 @@ const DELIVERY_LUFS = -14, DELIVERY_TRUE_PEAK = -1, MASTER_TRUE_PEAK = -2;
  */
 export async function renderMasteredMix(session: RenderSession, { auditionSfxCueList = false }: { auditionSfxCueList?: boolean } = {}): Promise<string> {
   if (session.silent) throw new Error(`${basename(session.project)} is silent (project.ts): it plays no voice, music or sound, so it has no mix`);
-  const tmp = mkdtempSync(join(tmpdir(), 'mix-'));
-  try {
+  return withStudioTemp('mix', async (tmp) => {
     const raw = await session.renderAudio({ out: join(tmp, 'raw.wav'), inputProps: session.props({ auditionSfxCueList }) });
     return masterMix(session, raw, masterWavFor(session, auditionSfxCueList));
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
-  }
+  });
 }
 
 /** Masters `raw`, the video's sound as rendered, to `masterWav` (see renderMasteredMix). */
@@ -187,29 +185,29 @@ function masterMix(session: RenderSession, raw: string, masterWav: string): stri
   if (before.lufs === -Infinity) {
     throw new Error("the mix renders silent: a voice, music or sound the video plays didn't sound. A video with no sound at all declares `capability: 'silent'` in project.ts");
   }
-  const tmp = mkdtempSync(join(tmpdir(), 'mastering-'));
-  // Limiting at 4× the sample rate catches the peaks between samples too, which is what "true peak" counts.
-  const master = (gainDb: number, ceilingDb: number) => runFfmpeg(['-y', '-v', 'error', '-i', raw, '-af',
-    `volume=${gainDb}dB,aresample=192000,alimiter=limit=${10 ** (ceilingDb / 20)}:attack=1:release=60:level=false:latency=true,aresample=48000`,
-    '-c:a', 'pcm_s24le', masterWav]);
-  const encoded = join(tmp, 'encoded.m4a');
-  let gain = DELIVERY_LUFS - before.lufs, ceiling = MASTER_TRUE_PEAK, encodedPeak = Infinity;
-  // AAC overshoots sharp transients by more than MASTER_TRUE_PEAK's 1 dB allows (a tattoo needle's bite came out 2.3 dB
-  // over its master), so the ceiling comes down by what the encoded master still peaks over delivery's.
-  for (let pass = 0; pass < 4 && encodedPeak > DELIVERY_TRUE_PEAK; pass++) {
-    if (pass > 0) ceiling -= encodedPeak - DELIVERY_TRUE_PEAK + 0.2;
-    // The limiter shaves a little loudness off the peaks it catches, so a second pass makes that back.
-    master(gain, ceiling);
-    gain += DELIVERY_LUFS - measureLoudness(masterWav).lufs;
-    master(gain, ceiling);
-    runFfmpeg(['-y', '-v', 'error', '-i', masterWav, ...DELIVERY_AUDIO_CODEC, encoded]);
-    encodedPeak = measureLoudness(encoded).truePeak;
-  }
-  const after = measureLoudness(masterWav);
-  rmSync(tmp, { recursive: true, force: true });
-  console.error(`mix: ${before.lufs} LUFS, ${before.truePeak} dBTP → +${gain.toFixed(1)} dB and limited at ${ceiling.toFixed(1)} → ${after.lufs} LUFS, ${after.truePeak} dBTP (${encodedPeak} encoded)`);
-  session.passes.push({ pass: 'mastering', seconds: (performance.now() - mastering) / 1000 });
-  return masterWav;
+  return withStudioTemp('mastering', (tmp) => {
+    // Limiting at 4× the sample rate catches the peaks between samples too, which is what "true peak" counts.
+    const master = (gainDb: number, ceilingDb: number) => runFfmpeg(['-y', '-v', 'error', '-i', raw, '-af',
+      `volume=${gainDb}dB,aresample=192000,alimiter=limit=${10 ** (ceilingDb / 20)}:attack=1:release=60:level=false:latency=true,aresample=48000`,
+      '-c:a', 'pcm_s24le', masterWav]);
+    const encoded = join(tmp, 'encoded.m4a');
+    let gain = DELIVERY_LUFS - before.lufs, ceiling = MASTER_TRUE_PEAK, encodedPeak = Infinity;
+    // AAC overshoots sharp transients by more than MASTER_TRUE_PEAK's 1 dB allows (a tattoo needle's bite came out 2.3 dB
+    // over its master), so the ceiling comes down by what the encoded master still peaks over delivery's.
+    for (let pass = 0; pass < 4 && encodedPeak > DELIVERY_TRUE_PEAK; pass++) {
+      if (pass > 0) ceiling -= encodedPeak - DELIVERY_TRUE_PEAK + 0.2;
+      // The limiter shaves a little loudness off the peaks it catches, so a second pass makes that back.
+      master(gain, ceiling);
+      gain += DELIVERY_LUFS - measureLoudness(masterWav).lufs;
+      master(gain, ceiling);
+      runFfmpeg(['-y', '-v', 'error', '-i', masterWav, ...DELIVERY_AUDIO_CODEC, encoded]);
+      encodedPeak = measureLoudness(encoded).truePeak;
+    }
+    const after = measureLoudness(masterWav);
+    console.error(`mix: ${before.lufs} LUFS, ${before.truePeak} dBTP → +${gain.toFixed(1)} dB and limited at ${ceiling.toFixed(1)} → ${after.lufs} LUFS, ${after.truePeak} dBTP (${encodedPeak} encoded)`);
+    session.passes.push({ pass: 'mastering', seconds: (performance.now() - mastering) / 1000 });
+    return masterWav;
+  });
 }
 
 // ---------- the videos ----------
@@ -539,16 +537,16 @@ export async function joinVideoSlices(session: RenderSession, { dir, out }: { di
   if (reached !== timeline.durationInFrames) throw new Error(`the slices in ${dir} reach frame ${reached}, short of the video's ${timeline.durationInFrames}`);
 
   const mix = session.silent ? undefined : await renderMasteredMix(session);
-  const tmp = mkdtempSync(join(tmpdir(), 'join-'));
-  const list = join(tmp, 'slices.txt');
-  writeFileSync(list, slices.map((s) => `file '${s.file.replaceAll("'", "'\\''")}'`).join('\n'));
   mkdirSync(dirname(out), { recursive: true });
-  // The mix is padded past the picture and cut half a frame after it, so the last frame keeps its sound.
-  const sound = mix ? ['-i', mix, '-map', '0:v', '-map', '1:a', ...DELIVERY_AUDIO_CODEC, '-af', 'apad'] : ['-map', '0:v'];
-  runFfmpeg(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, ...sound,
-    '-c:v', 'libx264', '-crf', '16', '-preset', 'medium', '-pix_fmt', 'yuv420p',
-    '-t', String((timeline.durationInFrames + 0.5) / timeline.fps), '-movflags', '+faststart', out]);
-  rmSync(tmp, { recursive: true, force: true });
+  withStudioTemp('join', (tmp) => {
+    const list = join(tmp, 'slices.txt');
+    writeFileSync(list, slices.map((s) => `file '${s.file.replaceAll("'", "'\\''")}'`).join('\n'));
+    // The mix is padded past the picture and cut half a frame after it, so the last frame keeps its sound.
+    const sound = mix ? ['-i', mix, '-map', '0:v', '-map', '1:a', ...DELIVERY_AUDIO_CODEC, '-af', 'apad'] : ['-map', '0:v'];
+    runFfmpeg(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, ...sound,
+      '-c:v', 'libx264', '-crf', '16', '-preset', 'medium', '-pix_fmt', 'yuv420p',
+      '-t', String((timeline.durationInFrames + 0.5) / timeline.fps), '-movflags', '+faststart', out]);
+  });
   const counted = countVideoFrames(out);
   if (counted !== timeline.durationInFrames) throw new Error(`${out} holds ${counted} frames, not the video's ${timeline.durationInFrames}`);
   writeRenderSnapshot(out, { frames: { from: 0, end: timeline.durationInFrames }, timeline, clock: session.clock });
@@ -569,21 +567,23 @@ export async function checkFramesRepeatable(session: RenderSession, times: numbe
   const frames = times.map((t) => Math.round(t * fps));
   const bad = frames.find((f) => !(f >= 0 && f < durationInFrames));
   if (bad !== undefined) throw new Error(`${bad / fps}s is outside the video`);
-  const fresh = new Map<number, Awaited<ReturnType<typeof session.renderStills>>>();
-  for (const f of frames) fresh.set(f, await session.renderStills([f]));
-  const order = [
-    ...frames, ...[...frames].reverse(),
-    ...frames.flatMap((f) => [Math.min(durationInFrames - 1, f + 7), f, Math.max(0, f - 11), f]),
-  ];
-  const replay = await session.renderReplay(order);
-  const worst = new Map<number, number>();
-  for (const [i, f] of order.entries()) {
-    if (!fresh.has(f)) continue;
-    const { stderr } = measureWithFfmpeg(['-i', fresh.get(f)!.fileFor(f), '-i', replay.fileFor(i), '-lavfi', 'psnr', '-f', 'null', '-']);
-    const psnr = Number(/average:(\S+)/.exec(stderr)![1].replace('inf', 'Infinity'));
-    worst.set(f, Math.min(worst.get(f) ?? Infinity, psnr));
-  }
-  for (const r of [...fresh.values(), replay]) rmSync(r.dir, { recursive: true, force: true });
+  const worst = await withStudioTemp('repeatable', async (dir) => {
+    const fresh = new Map<number, Awaited<ReturnType<typeof session.renderStills>>>();
+    for (const [i, f] of frames.entries()) fresh.set(f, await session.renderStills(join(dir, `fresh-${i}`), [f]));
+    const order = [
+      ...frames, ...[...frames].reverse(),
+      ...frames.flatMap((f) => [Math.min(durationInFrames - 1, f + 7), f, Math.max(0, f - 11), f]),
+    ];
+    const replay = await session.renderReplay(join(dir, 'replay'), order);
+    const worst = new Map<number, number>();
+    for (const [i, f] of order.entries()) {
+      if (!fresh.has(f)) continue;
+      const { stderr } = measureWithFfmpeg(['-i', fresh.get(f)!.fileFor(f), '-i', replay.fileFor(i), '-lavfi', 'psnr', '-f', 'null', '-']);
+      const psnr = Number(/average:(\S+)/.exec(stderr)![1].replace('inf', 'Infinity'));
+      worst.set(f, Math.min(worst.get(f) ?? Infinity, psnr));
+    }
+    return worst;
+  });
   const report = frames.map((f) => {
     const db = worst.get(f)!;
     return `  ${db > 50 ? '✓' : '✗'} ${(f / fps).toFixed(2)}s  ${Number.isFinite(db) ? `${db.toFixed(1)} dB at worst` : 'identical'}`;

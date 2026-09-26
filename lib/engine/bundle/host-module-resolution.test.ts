@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { studioTempRoot } from '../temp/studio-temp.ts';
 import { matchTsconfigPathAlias, readTsconfigPathAliases, resolveHostImport } from './host-module-resolution.ts';
 
 test('a host tsconfig alias resolves through JSONC and extends, longest prefix first', () => {
-  const root = mkdtempSync(join(tmpdir(), 'host-tsconfig-'));
+  const root = join(studioTempRoot(), 'host-tsconfig');
   mkdirSync(join(root, 'apps/web'), { recursive: true });
   writeFileSync(join(root, 'tsconfig.base.json'), `{
     // shared by every package

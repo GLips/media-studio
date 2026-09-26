@@ -12,6 +12,7 @@ import { renderSnapshotCheck } from './checks/render-snapshot.ts';
 import { retimeRegistrationCheck } from './checks/retime-registration.ts';
 import { sceneOwnershipCheck } from './checks/scene-ownership.ts';
 import { sdkContainmentCheck } from './checks/sdk-containment.ts';
+import { studioTempCheck } from './checks/studio-temp.ts';
 import { timingOwnershipCheck } from './checks/timing-ownership.ts';
 
 export const STRUCTURAL_CHECKS: readonly StructuralCheck[] = [
@@ -22,6 +23,7 @@ export const STRUCTURAL_CHECKS: readonly StructuralCheck[] = [
   modelPurityCheck,
   noScratchCheck,
   sdkContainmentCheck,
+  studioTempCheck,
   renderSnapshotCheck,
   retimeRegistrationCheck,
   capabilityMatchCheck,

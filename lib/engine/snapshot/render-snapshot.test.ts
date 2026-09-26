@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import type { TimelineReport } from '#studio/composition/Video.tsx';
+import { withStudioTemp } from '../temp/studio-temp.ts';
 import { loadRenderSnapshot, writeRenderSnapshot } from './render-snapshot.ts';
 
 const timeline = (title: string): TimelineReport => ({
@@ -11,8 +11,7 @@ const timeline = (title: string): TimelineReport => ({
 });
 
 test('a render reads back the timeline it was made with, and a file replaced without a snapshot reads as having none', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'render-snapshot-'));
-  try {
+  withStudioTemp('render-snapshot', (dir) => {
     const render = join(dir, '03.mp4');
     writeFileSync(render, 'bar three, as first rendered');
     writeRenderSnapshot(render, { frames: { from: 120, end: 240 }, timeline: timeline('before the retime'), clock: null });
@@ -25,7 +24,5 @@ test('a render reads back the timeline it was made with, and a file replaced wit
     const replaced = loadRenderSnapshot(render);
     assert.equal(replaced.kind, 'none');
     assert.match(replaced.kind === 'none' ? replaced.reason : '', /made without one/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  });
 });

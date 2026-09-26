@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
+import { studioTempRoot } from '../temp/studio-temp.ts';
 import { generateProjectImage } from './generated-image.ts';
 
 // A 3×2 PNG.
@@ -14,12 +14,13 @@ const MODELS = {
   ],
 };
 let generations: any[] = [];
-let project = '';
+let project = '', projects = 0;
 
 const realFetch = globalThis.fetch;
 beforeEach(() => {
   process.env.OPENROUTER_API_KEY = 'test-key';
-  project = mkdtempSync(join(tmpdir(), 'generated-image-'));
+  project = join(studioTempRoot(), `generated-image-${++projects}`);
+  mkdirSync(project);
   generations = [];
   stubOpenRouterImages();
 });

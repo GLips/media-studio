@@ -19,16 +19,13 @@ export default defineCommand({
     sheet: { type: 'boolean', description: 'Also write a sheet of the variants per design and preset, with each at feed size, to pick between them' },
   },
   async run({ args }) {
-    const { mkdtempSync, rmSync } = await import('node:fs');
-    const { tmpdir } = await import('node:os');
     const { join } = await import('node:path');
     const { resolveStudioProjectWith } = await import('#engine/project/studio-project.ts');
     const { describeStillFits, renderProjectStills } = await import('#engine/render/render-stills.ts');
+    const { withStudioTemp } = await import('#engine/temp/studio-temp.ts');
     const { stillName } = await import('#models/still/still-presets.ts');
     const project = resolveStudioProjectWith(args.project, 'stills.tsx');
-    // A sheet shows refused stills too, so every still is kept as drawn until the sheets are laid out.
-    const drawnDir = args.sheet ? mkdtempSync(join(tmpdir(), 'still-sheet-')) : undefined;
-    try {
+    const renderStills = async (drawnDir?: string) => {
       const stills = await renderProjectStills(project, { designs: list(args.design), presets: list(args.preset), variants: list(args.variant) }, { format: args.jpg ? 'jpeg' : 'png', check: Boolean(args.check), drawnDir });
       for (const still of stills) {
         for (const line of describeStillFits(still)) console.error(line);
@@ -46,8 +43,8 @@ export default defineCommand({
         const { renderStillSheets } = await import('#engine/stills/still-sheet.ts');
         for (const sheet of await renderStillSheets(stills, { outDir: join(project, 'out', 'still-sheets'), workDir: drawnDir, project })) console.log(sheet);
       }
-    } finally {
-      if (drawnDir) rmSync(drawnDir, { recursive: true, force: true });
-    }
+    };
+    // A sheet shows refused stills too, so every still is kept as drawn until the sheets are laid out.
+    await (args.sheet ? withStudioTemp('still-sheet', renderStills) : renderStills());
   },
 });

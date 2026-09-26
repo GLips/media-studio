@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { studioTempRoot } from '../temp/studio-temp.ts';
 import { readProjectBrand, writeProjectBrandModule } from './project-brand.ts';
 
+let projects = 0;
+
 function acmeProject() {
-  const root = mkdtempSync(join(tmpdir(), 'brand-'));
+  const root = join(studioTempRoot(), `brand-${++projects}`);
   const project = join(root, 'projects', 'p'), kit = join(root, 'brands', 'acme');
   mkdirSync(project, { recursive: true });
   mkdirSync(join(kit, 'fonts'), { recursive: true });

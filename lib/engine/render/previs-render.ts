@@ -7,8 +7,7 @@
 // should: it's fixed afterwards with the scene's `previs.retime`.
 import { renderMedia, selectComposition } from '@remotion/renderer';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, renameSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { generatePaidMedia } from '../generation/paid-generation.ts';
 import { readPrevisFootageList, writePrevisFootageEntry } from '../bundle/previs-footage.ts';
@@ -17,6 +16,7 @@ import { RENDER_CHROMIUM } from './render-browser.ts';
 import type { RenderSession } from './render-session.ts';
 import { assertPrevisSpanFits, PREVIS_MODEL, PREVIS_SHORT_SIDE, previsAspectRatio } from '#studio/previs/previs.ts';
 import { probeMediaSeconds } from '../ffmpeg/ffmpeg.ts';
+import { withStudioTemp } from '../temp/studio-temp.ts';
 
 // Seedance numbers its references by kind in the order sent (@Video1, @Image1, @Image2…), and the blockout goes first.
 // Worded as a new video that references @Video1's camera, never as changing @Video1: Seedance reads the task type from
@@ -70,27 +70,27 @@ export async function renderPrevisFootage(session: RenderSession, sceneId: strin
 
 async function renderBlockout(session: RenderSession, sceneId: string): Promise<string> {
   const inputProps = { scene: sceneId };
-  const tmp = mkdtempSync(join(tmpdir(), 'blockout-'));
-  const rendered = join(tmp, 'blockout.mp4');
-  await session.inBrowser('blockout', async (browser) => {
-    const composition = await selectComposition({ serveUrl: session.serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, id: blockoutSlug(session.project), inputProps });
-    const concurrency = session.workersFor(composition);
-    console.error(`rendering scene ${sceneId}'s blockout, ${composition.durationInFrames / composition.fps}s…`);
-    await renderMedia({
-      composition, serveUrl: session.serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, concurrency, inputProps,
-      codec: 'h264', muted: true, crf: 20, pixelFormat: 'yuv420p', scale: PREVIS_SHORT_SIDE / Math.min(composition.width, composition.height), outputLocation: rendered,
+  return withStudioTemp('blockout', async (tmp) => {
+    const rendered = join(tmp, 'blockout.mp4');
+    await session.inBrowser('blockout', async (browser) => {
+      const composition = await selectComposition({ serveUrl: session.serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, id: blockoutSlug(session.project), inputProps });
+      const concurrency = session.workersFor(composition);
+      console.error(`rendering scene ${sceneId}'s blockout, ${composition.durationInFrames / composition.fps}s…`);
+      await renderMedia({
+        composition, serveUrl: session.serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, concurrency, inputProps,
+        codec: 'h264', muted: true, crf: 20, pixelFormat: 'yuv420p', scale: PREVIS_SHORT_SIDE / Math.min(composition.width, composition.height), outputLocation: rendered,
+      });
+      return { result: undefined, workers: concurrency };
     });
-    return { result: undefined, workers: concurrency };
+    // Named by its bytes, so each footage's blockout stays beside it for comparison.
+    const hash = createHash('sha256').update(readFileSync(rendered)).digest('hex').slice(0, 12);
+    const dir = join(session.project, 'generated');
+    mkdirSync(dir, { recursive: true });
+    const kept = join(dir, `blockout-${sceneId}-${hash}.mp4`);
+    renameSync(rendered, kept);
+    console.error(`blockout ${kept}`);
+    return kept;
   });
-  // Named by its bytes, so each footage's blockout stays beside it for comparison.
-  const hash = createHash('sha256').update(readFileSync(rendered)).digest('hex').slice(0, 12);
-  const dir = join(session.project, 'generated');
-  mkdirSync(dir, { recursive: true });
-  const kept = join(dir, `blockout-${sceneId}-${hash}.mp4`);
-  renameSync(rendered, kept);
-  rmSync(tmp, { recursive: true, force: true });
-  console.error(`blockout ${kept}`);
-  return kept;
 }
 
 function mediaSeconds(file: string): number {

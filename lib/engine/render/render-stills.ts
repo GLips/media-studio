@@ -4,8 +4,7 @@
 // removes stills no design makes any more. Node only.
 import { getCompositions, renderStill } from '@remotion/renderer';
 import type { VideoConfig } from 'remotion';
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { copyFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { bundleStudioProject } from '../bundle/studio-bundle.ts';
 import { inRenderBrowser, RENDER_CHROMIUM } from './render-browser.ts';
@@ -13,6 +12,7 @@ import { artifactSink } from './render-session.ts';
 import { stillProblems, type StillMeasure, type StillPixels, type StillProblem } from '#models/still/still-check.ts';
 import { isStillFitArtifact, STILL_MEASURE_ARTIFACT, STILL_UI_ZONES, stillName, type StillFitReport, type StillProps, type StillRenderProps } from '#models/still/still-presets.ts';
 import { runFfmpeg } from '../ffmpeg/ffmpeg.ts';
+import { withStudioTemp } from '../temp/studio-temp.ts';
 
 /** Which stills to render: each list keeps the stills whose design, preset or variant is in it; absent keeps all. */
 export type StillSelection = { designs?: readonly string[]; presets?: readonly string[]; variants?: readonly string[] };
@@ -43,8 +43,7 @@ function decodeRgb(file: string, w: number, h: number): StillPixels {
  */
 export async function renderProjectStills(project: string, selection: StillSelection, { format, check, drawnDir }: { format: 'png' | 'jpeg'; check: boolean; drawnDir?: string }): Promise<RenderedStill[]> {
   const serveUrl = await bundleStudioProject(project);
-  const tmp = mkdtempSync(join(tmpdir(), 'stills-'));
-  try {
+  return withStudioTemp('stills', async (tmp) => {
     const { result } = await inRenderBrowser(async (browser) => {
       const all = (await getCompositions(serveUrl, { puppeteerInstance: browser, chromiumOptions: RENDER_CHROMIUM })).filter((c) => c.id.startsWith('still-'));
       if (!all.length) throw new Error(`${project} has no stills.tsx, or it defines no stills`);
@@ -101,9 +100,7 @@ export async function renderProjectStills(project: string, selection: StillSelec
       return checked;
     });
     return result;
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
-  }
+  });
 }
 
 /** One line per fitted text: the size and width it settled on. Its floor and overflow are problems (stillProblems). */

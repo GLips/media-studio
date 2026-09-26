@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
+import { studioTempRoot } from '../temp/studio-temp.ts';
 import { generatePaidMedia } from './paid-generation.ts';
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
 const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypisom')]);
 let calls: { url: string; body: any }[] = [];
-let project = '';
+let project = '', projects = 0;
 
 // OpenRouter at the network boundary: each test answers requests by URL.
 function stubOpenRouter(answer: (url: string) => object | Buffer) {
@@ -23,7 +23,8 @@ function stubOpenRouter(answer: (url: string) => object | Buffer) {
 const realFetch = globalThis.fetch;
 beforeEach(() => {
   process.env.OPENROUTER_API_KEY = 'test-key';
-  project = mkdtempSync(join(tmpdir(), 'paid-generation-'));
+  project = join(studioTempRoot(), `paid-generation-${++projects}`);
+  mkdirSync(project);
   calls = [];
 });
 afterEach(() => {

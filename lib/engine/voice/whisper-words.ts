@@ -3,11 +3,11 @@
 // whisper.cpp and its model live outside the repo, in ~/.cache/media-studio, so worktrees share one ~1.5 GB model
 // and one build. The first call installs both.
 import { downloadWhisperModel, installWhisperCpp, transcribe } from '@remotion/install-whisper-cpp';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { SpokenWord } from '#models/voice/voice-words.ts';
 import { runFfmpeg } from '../ffmpeg/ffmpeg.ts';
+import { withStudioTemp } from '../temp/studio-temp.ts';
 
 const WHISPER_CPP_VERSION = '1.8.6';
 // On our TTS lines, medium.en's DTW word times land within about two frames of the pauses ffmpeg's silencedetect
@@ -23,14 +23,14 @@ const ensureWhisper = () => (ready ??= installWhisperCpp({ to: WHISPER_DIR, vers
 export async function heardWords(wavPath: string): Promise<SpokenWord[]> {
   await ensureWhisper();
   // whisper.cpp only reads 16 kHz mono.
-  const tmp = mkdtempSync(join(tmpdir(), 'whisper-'));
-  const input = join(tmp, 'line.wav');
-  runFfmpeg(['-v', 'error', '-y', '-i', wavPath, '-ar', '16000', '-ac', '1', input]);
-  const { transcription } = await transcribe({
-    inputPath: input, whisperPath: WHISPER_DIR, whisperCppVersion: WHISPER_CPP_VERSION, model: WHISPER_MODEL,
-    tokenLevelTimestamps: true, printOutput: false,
+  const { transcription } = await withStudioTemp('whisper', (tmp) => {
+    const input = join(tmp, 'line.wav');
+    runFfmpeg(['-v', 'error', '-y', '-i', wavPath, '-ar', '16000', '-ac', '1', input]);
+    return transcribe({
+      inputPath: input, whisperPath: WHISPER_DIR, whisperCppVersion: WHISPER_CPP_VERSION, model: WHISPER_MODEL,
+      tokenLevelTimestamps: true, printOutput: false,
+    });
   });
-  rmSync(tmp, { recursive: true, force: true });
 
   // Tokens are word pieces: one starting with a space begins a word, the rest (and punctuation) continue it. Bracketed
   // tokens like [_BEG_] are markers, not speech. A token's DTW time is when it's spoken; its offsets are coarser.
