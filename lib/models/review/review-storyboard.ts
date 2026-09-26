@@ -57,8 +57,8 @@ export function reviewStoryboardOf({ fps, frames, scenes, lines, clock }: Review
   });
 
   return scenes.flatMap((scene, i) => {
+    // A scene bound outside timeline.ts has no bar: it's placed by the report, and names no moments.
     const bar = clock?.bars.find((b) => b.id === scene.id);
-    if (clock && !bar) throw new Error(`the video's scene ${scene.id} isn't in timeline.ts: bind the video with bindTimeline`);
     const from = onRender(bar ? bar.from : frameOf(scene.start)), to = onRender(bar ? bar.to : frameOf(scene.start + scene.dur));
     if (to <= 0 || from >= length) return [];
     const named = (bar?.moments ?? []).filter((m) => m.kind !== 'line');

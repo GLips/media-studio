@@ -341,7 +341,7 @@ function Scrubber({ manifest, fps, total, frame, notes, draft, onSeek, onRange, 
           setLive(null);
           if (p?.range) { const f = frameAt(e); onRange(Math.min(p.from, f), Math.max(p.from, f)); }
         }}>
-        {manifest.scenes?.slice(1).map((s) => <span key={s.id} className="review-cut" style={{ left: pct(s.start * fps) }} />)}
+        {manifest.storyboard?.slice(1).map((card) => <span key={card.id} className="review-cut" style={{ left: pct(card.from) }} />)}
         {range && <span className="review-range" style={{ left: pct(range[0]), width: pct(range[1] - range[0] + 1) }} />}
         {notes.filter((n) => n.frame !== undefined).map((n, i) => (
           <span key={n.id} className="review-note-mark" style={{ left: pct(n.frame!), width: n.end !== undefined ? pct(n.end - n.frame! + 1) : undefined }} title={`${i + 1}. ${n.text}`} />
@@ -405,7 +405,7 @@ function Storyboard({ cards, manifest, fps, frame, notes, onSeek }: {
             {card.note && <p className="review-card-note">{card.note}</p>}
             <div className="review-stills">
               {card.stills.map((still) => (
-                <figure key={still.frame} onClick={() => onSeek(still.frame)} className={frame === still.frame ? 'on' : ''}>
+                <figure key={`${still.frame}:${still.line?.id ?? 'named'}`} onClick={() => onSeek(still.frame)} className={frame === still.frame ? 'on' : ''}>
                   <img src={stillUrl(still.frame)} loading="lazy" alt="" />
                   <figcaption>
                     <span className="hud">f{still.frame}</span>

@@ -236,7 +236,8 @@ export async function startStudioReview({ target, port }: { target: ReviewTarget
         const hash = renderFileStamp(shown.media).hash, frame = Number(url.searchParams.get('frame')), fps = Number(url.searchParams.get('fps'));
         if (hash !== url.searchParams.get('render')) return void res.writeHead(410, { 'content-type': 'text/plain' }).end('replaced on disk since the page loaded it');
         if (!(Number.isInteger(frame) && frame >= 0 && fps > 0)) return reply(400, { error: 'a still needs a whole frame and the fps' });
-        stills.cut(shown.media, hash, frame, fps).then((file) => sendFile(req, res, file, 'image/jpeg'), (error: Error) => res.writeHead(500, { 'content-type': 'text/plain' }).end(error.message));
+        stills.cut(shown.media, hash, frame, fps).then((file) => sendFile(req, res, file, 'image/jpeg'))
+          .catch((error: Error) => { if (!res.headersSent) res.writeHead(500, { 'content-type': 'text/plain' }).end(error.message); });
         return;
       }
       if (path === '/api/notes') {
@@ -272,7 +273,11 @@ function reviewStillCutter(dir: string) {
       mkdirSync(dirname(file), { recursive: true });
       // Sought to the frame's middle, as the page seeks, so the decoder can't land on its neighbour.
       const made = runFfmpegAsync(['-v', 'error', '-y', '-ss', ((frame + 0.5) / fps).toFixed(4), '-i', media, '-frames:v', '1', '-vf', 'scale=640:-2', '-q:v', '4', file])
-        .then(() => file);
+        .then(() => {
+          // Sought past the file's end, ffmpeg can exit cleanly having written nothing.
+          if (!existsSync(file)) throw new Error(`frame ${frame} is past the end of ${basename(media)}`);
+          return file;
+        });
       made.catch(() => cuts.delete(file));
       cuts.set(file, made);
       return made;
