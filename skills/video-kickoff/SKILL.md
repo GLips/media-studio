@@ -13,13 +13,12 @@ cheaply before the next rung spends more on it. Each rung needs the user's yes b
 | **Treatment** | the idea, the tone, the takeaway | steps 1–2: the dump, then the angle |
 | **Script or beat sheet** | what happens, in order; the track, if it's cut to music | step 3: the scene table |
 | **Style frames** | the look: two to four finished stills of key moments | `stills` skill, reviewed with `studio review` |
-| **Storyboard and animatic** | pacing: rough scenes at their real timing, on the voice or music | step 4: `studio render --animatic`, then `studio review` |
-| **Blocking** | how things move: simple shapes at the real timing, flat (`blockingScene`) for a 2D scene, 3D where a camera moves through space | `video-motion`; `video-gen` when a video model will take the motion |
+| **Animatic (blocking)** | pacing and how things move: every scene blocked in simple shapes at its real timing, on the voice or music; flat (`blockingScene`) for a 2D scene, 3D where a camera moves through space | step 4: `studio render --animatic`, then `studio review`; `video-gen` when a video model will take the motion |
 | **Polish, then sound** | the finish | `video-motion`, then `video-sound` |
 
 **Choose the path at kickoff, and say which.** The full ladder suits a piece whose pacing or look is uncertain, or
 whose later rungs are expensive (generated footage, a long reel). To try a few ideas fast, take treatment → beat sheet
-→ animatic → polish, and skip style frames and blocking. Whatever the path, nothing gets a real voice or motion polish
+→ animatic → polish, and skip style frames. Whatever the path, nothing gets a real voice or motion polish
 before the animatic is signed off: a scene table is cheap to change, and voiced, polished motion is not.
 
 **An autonomous brief skips the gates.** When the user hands over the creative calls ("go all out", "surprise me",
@@ -58,8 +57,8 @@ picks until they say it feels right.
 ## 3. Scene table
 
 Start the project with `studio new <slug> --capability <voice-led|music-led|mixed>`, adding `--url` only for a public
-page that loads as it is. Every scene starts as a title card, so `studio render <p> --animatic` and `studio review <p>`
-show the storyboard as it plays before anything is drawn. If the video is about a product repo's code, give it a host
+page that loads as it is. Every scene starts blocked, a few flat pieces moving on its cues, so `studio render <p> --animatic`
+and `studio review <p>` show the storyboard as it plays before anything is built. If the video is about a product repo's code, give it a host
 (step 1). Then write the chosen angle out scene by scene in `projects/<p>/storyboard.md`, under the audience,
 source and takeaway:
 
@@ -86,25 +85,19 @@ Get the user's yes on the table before building anything.
 
 ## 4. Storyboard: an animatic you can click through
 
-The storyboard is the video itself, rough, and never a separate drawing, so it can't drift from what ships. Each
-scene starts at the lowest rung that shows its idea (a title card, a held sketch or style frame, a still with one push
-in) and rises in place, so the same page carries the animatic, the blocking and the finished cut.
+The storyboard is the video itself, blocked, and never a separate drawing, so it can't drift from what ships. Every
+scene starts as **blocking** and rises in place to final, so the same page carries the animatic and the finished cut.
+Blocking is cheap: block what each scene actually shows, with its real pieces moving on its real cues, rather than a
+placeholder that stands for it.
 
-A timed scene starts as one of two studio scenes, bound in `video.tsx` until it's built:
+- **A flat scene**: `(clock) => blockingScene(clock, { note, pieces, view })`, labelled flat boxes, type and image
+  slots moving on the clock's cues, with an optional push or pan (`video-motion`, "Blocking a flat scene").
+- **A scene a camera moves through**: a 3D blockout (`Blockout`, `video-gen`), bound with `rung: 'blocking'`.
 
-- **Title card**: `(clock) => titleCardScene(clock, { note })` puts the scene's id and note on a plain ground and
-  lights each cue and line as it lands, over a strip with the playhead. The cheapest rung: timing with no picture.
-- **Board frame**: `(clock) => boardFrameScene(clock, { note, src, caption, move: { push: 1.1 }, over: 'push' })`
-  holds a sketch or style frame (an image in `refs/`) with at most one push or slide, over a timeline move or the
-  whole scene.
-
-A scene whose motion is the open question rises next to **blocking**: `(clock) => blockingScene(clock, { note, pieces })`,
-labelled flat boxes, type and image slots moving on the clock's cues (`video-motion`, "Blocking a flat scene").
-
-Each binding declares its **rung** (`card`, `board`, `blocking`, `final`): these three set theirs, and a built scene
-says `rung: 'blocking'` or `'final'` in its `sceneForTimelineClock` or `defineScene`. The rung goes into the render's
-snapshot, so `studio review` shows it on each scene of the scrubber, on each storyboard card and in each note. Raise a
-scene by changing its binding; `timeline.ts` doesn't change.
+Each binding declares its **rung**, `blocking` or `final`: `blockingScene` sets its own, and a built scene says
+`rung: 'final'` in its `sceneForTimelineClock` or `defineScene`. The rung goes into the render's snapshot, so
+`studio review` shows it on each scene of the scrubber, on each storyboard card and in each note. Raise a scene by
+changing its binding; `timeline.ts` doesn't change.
 
 **Cut to music** (the high-energy register):
 
@@ -114,9 +107,8 @@ scene by changing its binding; `timeline.ts` doesn't change.
    different one changes every beat's length, so re-check the pacing once the track is in.
 2. Write `timeline.ts` from the beat sheet (`video-motion`, "The high-energy register"): a `beatSpan` per bar, a cue
    for each idea that lands on a beat, named for what lands (`ink.strike2`), the replays and the final hit's landmark.
-3. Bind each scene in `video.tsx` to a title card or a board frame, with the beat sheet's text as its `note`, and
-   raise a scene to blocking where the idea needs motion to read; put each idea's arrival on its cue, so it lands on
-   the beat.
+3. Block each bar in its file, with the beat sheet's text as its `note`: its pieces moving as the idea does, each
+   idea's arrival on its cue, so it lands on the beat.
 4. Run `studio render <p> --animatic`, then `studio review <p>`. The animatic plays with the music; the scrubber marks
    the cuts, beats and every cue, replay and landmark; the storyboard under it has a card per scene with a still on
    each, captioned where `timeline.ts` puts it (`beat 3 +4f`).
@@ -131,7 +123,8 @@ scene by changing its binding; `timeline.ts` doesn't change.
 2. Add the states to `capture.ts` with the `video-capture` skill, by the **Real UI only** rules below, and run
    `studio capture <p>`.
 3. Build `video.tsx` as an **animatic**: one scene per table row, with the table's text as its `note`, one camera and at
-   most one highlight per scene. Anchor the highlight to its word (`s.line(id).word(…)`) now, so it lands again once
+   most one highlight per scene, over the captures, declared `rung: 'blocking'`; a scene with no capture yet is a
+   `blockingScene`. Anchor the highlight to its word (`s.line(id).word(…)`) now, so it lands again once
    the real voice replaces the estimate. No cursor paths, blur or polish yet.
 4. Run `studio render <p> --animatic`, then `studio review <p>`, and look at its storyboard yourself: a card per scene
    with a still per line. It's ready to send when every scene's event and each of its listed reads shows in its

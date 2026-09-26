@@ -100,21 +100,22 @@ kit.tsx's `Odometer`; a bar the pieces don't cover is built directly, or as a ne
 `references/showreel-breakdown.md` is the reel it's measured against, and `references/reel-critique.md` is the
 fresh-eyes critique a cut gets before it's done.
 
-**Pacing is signed off before polish.** The first cut is an animatic: each bar a title card (`titleCardScene`) or a
-board frame (`boardFrameScene`) on its cues, on the fitted music, rendered with `studio render <p> --animatic` and sent as the `studio review <p>` page
-(`video-kickoff`, step 4). A bar whose motion is still the open question is blocked next (`blockingScene`, below);
-building it replaces that binding with its own `sceneForTimelineClock`, declaring `rung: 'final'`; studio review shows each scene's rung on its
-scrubber, its storyboard and its notes. Build and polish bars
-only once the user has approved its pacing: a bar polished before then gets re-timed when the notes say it's too fast.
+**Pacing is signed off before polish.** The first cut is an animatic: each bar blocked (`blockingScene`, below) on its
+cues, on the fitted music, rendered with `studio render <p> --animatic` and sent as the `studio review <p>` page
+(`video-kickoff`, step 4). Building a bar replaces that binding with its own `sceneForTimelineClock`, declaring
+`rung: 'final'`; studio review shows each scene's rung on its scrubber, its storyboard and its notes. Build and polish
+bars only once the user has approved the pacing: a bar polished before then gets re-timed when the notes say it's too
+fast.
 
 Registers mix: a walkthrough can open on a few bars of this and close on a slammed end card, calm in between. Keep
 each stretch in one register, and change register on a cut.
 
 ## Blocking a flat scene
 
-Block a scene before building it when **the motion's rhythm is the open question** (what moves on which cue, how
-long each move takes, whether the scene breathes), or when **a video model will take the motion** (`video-gen`).
-Otherwise build it straight from its card or board. A blocked scene is
+Every scene starts blocked: what moves on which cue, how long each move takes, whether the scene breathes, settled at
+the real timing before anything is styled, and the reference a video model takes when one will (`video-gen`). Block
+what the scene really shows, its own pieces moving as they will, never a placeholder standing in for it. A blocked
+scene is
 `(clock) => blockingScene(clock, { note, pieces, view })`: `FlatPiece`s (`box`, `type` set at its box's height,
 `image` a crossed slot), each named and tinted, resting at a `pose` in frame pixels and moved by `keys` on the frames
 of the scene's own clock, `{ at: clock.cues.land, to: { y: 380 }, over: 9 }`, a `view` pushing or panning over them.

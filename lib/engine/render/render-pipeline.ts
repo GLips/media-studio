@@ -307,7 +307,7 @@ export async function renderDeliveredVideo(session: RenderSession, { plain }: { 
 /**
  * The whole video at `out` as it plays now, for `studio review`: whatever sound the composition has (none, a tempo
  * guess's silence, a draft voice, the fitted music), captions on, with no framing check, no mix and no refusal of an
- * estimated line, so a video on title cards and board frames can be approved before it's voiced or finished.
+ * estimated line, so a video of blocked scenes can be approved before it's voiced or finished.
  */
 export async function renderAnimatic(session: RenderSession, { out }: { out: string }): Promise<string> {
   mkdirSync(dirname(out), { recursive: true });

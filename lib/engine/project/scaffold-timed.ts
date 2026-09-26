@@ -1,6 +1,6 @@
 // scaffold-timed.ts: a timed project's starting files, for new-project.ts: its timing in timeline.ts, registered
-// with the retime runner by timeline.test.ts, and one file per scene, each bound in video.tsx as a title card
-// (lib/studio/ladder), so the project renders and reviews before anything is drawn.
+// with the retime runner by timeline.test.ts, and one file per scene, each blocked in flat pieces moving on its own
+// cues (blockingScene), so the project renders and reviews as an animatic before anything is drawn.
 //
 // Music-led, the scenes are bars on a steady tempo, the last one's end the music's final hit (a landmark, pending
 // until a fitted track replaces the tempo). Voice-led, they are voiced lines from voiceover.json, each with a
@@ -10,21 +10,38 @@ import type { ProjectCapability } from '#models/project/capability.ts';
 
 type TimedCapability = Exclude<ProjectCapability, 'still-only'>;
 
-/** One scene as scaffolded: where its file goes, its driver as timeline.ts states it, and its title card's note. */
-type StarterScene = { id: string; folder: 'bars' | 'scenes'; span: string; note: string };
+/**
+ * One scene as scaffolded: where its file goes, its driver as timeline.ts states it, its note, and its blocking's
+ * pieces as source, each keyed to a cue of `span`.
+ */
+type StarterScene = { id: string; folder: 'bars' | 'scenes'; span: string; note: string; pieces: string };
 
 const BARS: readonly StarterScene[] = [
-  { id: 'hook', folder: 'bars', span: 'beatSpan(4, { cues: { hit: 0 } })', note: 'The hook: one image, hitting on the downbeat.' },
-  { id: 'turn', folder: 'bars', span: 'beatSpan(4, { cues: { reveal: 2 } })', note: 'The turn: what changes, revealed on beat 2.' },
-  { id: 'payoff', folder: 'bars', span: "beatSpan(4, { cues: { stop: 'end' } })", note: "The payoff: the name, held to the music's final hit." },
+  {
+    id: 'hook', folder: 'bars', span: 'beatSpan(4, { cues: { hit: 0 } })', note: 'The hook: one image, hitting on the downbeat.',
+    pieces: `{ kind: 'image', name: 'hook image', pose: { x: 360, y: 150, w: 1200, h: 675, opacity: 0, scale: 1.2 }, keys: [{ at: clock.cues.hit, to: { opacity: 1, scale: 1 }, over: 5 }] },`,
+  },
+  {
+    id: 'turn', folder: 'bars', span: 'beatSpan(4, { cues: { reveal: 2 } })', note: 'The turn: what changes, revealed on beat 2.',
+    pieces: `{ kind: 'box', name: 'before', pose: { x: 360, y: 240, w: 1200, h: 600 }, keys: [{ at: clock.cues.reveal, to: { x: -1300 }, over: 8 }] },
+    { kind: 'box', name: 'after', color: '#9fb0c9', pose: { x: 1960, y: 240, w: 1200, h: 600 }, keys: [{ at: clock.cues.reveal, to: { x: 360 }, over: 8 }] },`,
+  },
+  {
+    id: 'payoff', folder: 'bars', span: "beatSpan(4, { cues: { stop: 'end' } })", note: "The payoff: the name, held to the music's final hit.",
+    pieces: `{ kind: 'type', name: 'name', text: 'The name', pose: { x: 560, y: 470, w: 800, h: 140, opacity: 0, scale: 0.8 }, keys: [{ at: clock.beat(0), to: { opacity: 1, scale: 1 }, over: 6 }] },`,
+  },
 ];
 const VOICED_OPEN: StarterScene = {
   id: 'title', folder: 'scenes', note: 'The title, as the intro line names what this is.',
   span: "voiceSpan(['intro'], { lead: 1.4, tail: 1.0, cues: { look: { line: 'intro', phrase: 'quick look' } } })",
+  pieces: `{ kind: 'image', name: 'the product', pose: { x: 960, y: 160, w: 840, h: 640, opacity: 0 }, keys: [{ at: 0, to: { opacity: 1 }, over: 15 }] },
+    { kind: 'type', name: 'title', text: 'The title', pose: { x: 140, y: 420, w: 700, h: 120, opacity: 0 }, keys: [{ at: clock.cues.look, to: { opacity: 1, y: 400 }, over: 10 }] },`,
 };
 const VOICED_CLOSE: StarterScene = {
   id: 'outro', folder: 'scenes', note: 'The takeaways, then the end card as the thanks is said.',
   span: "voiceSpan(['outro'], { lead: 0.6, tail: 3.4, crossfade: 0.5, cues: { thanks: { line: 'outro', phrase: 'thanks' } } })",
+  pieces: `{ kind: 'box', name: 'takeaways', pose: { x: 360, y: 200, w: 1200, h: 560 } },
+    { kind: 'box', name: 'end card', color: '#9fb0c9', pose: { x: 0, y: 0, w: 1920, h: 1080, opacity: 0 }, keys: [{ at: clock.cues.thanks, to: { opacity: 1 }, over: 12 }] },`,
 };
 
 const SCENES: Record<TimedCapability, readonly StarterScene[]> = {
@@ -95,14 +112,19 @@ test('the video retimes: a longer scene moves every later one and its cues, and 
 const binderName = (scene: StarterScene) => `${scene.id}${scene.folder === 'bars' ? 'Bar' : 'Scene'}`;
 
 function sceneModule(scene: StarterScene) {
-  return `// ${scene.folder === 'bars' ? 'Bar' : 'Scene'} ${scene.id}. ${scene.note} A title card until it's drawn: raising it to a board frame,
-// blocking or final changes this binding only, never timeline.ts. Its helpers go in ${scene.folder}/${scene.id}/.
+  return `// ${scene.folder === 'bars' ? 'Bar' : 'Scene'} ${scene.id}. ${scene.note} Blocked: flat pieces moving on its cues, at the real
+// timing. Block what the scene shows, then build it to final; that changes this binding only, never timeline.ts. Its
+// helpers go in ${scene.folder}/${scene.id}/.
 import type { TimelineSceneClock } from '#models/timeline/bind-timeline.ts';
-import { titleCardScene } from '#studio';
+import { blockingScene } from '#studio';
 import type { timeline } from '../timeline.ts';
 
-export const ${binderName(scene)} = (clock: TimelineSceneClock<typeof timeline, '${scene.id}'>) =>
-  titleCardScene(clock, { note: ${JSON.stringify(scene.note)} });
+export const ${binderName(scene)} = (clock: TimelineSceneClock<typeof timeline, '${scene.id}'>) => blockingScene(clock, {
+  note: ${JSON.stringify(scene.note)},
+  pieces: [
+    ${scene.pieces}
+  ],
+});
 `;
 }
 

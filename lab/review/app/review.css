@@ -32,10 +32,8 @@
 .review-scenes span { position: absolute; top: 0; height: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 2px 5px;
   font: 11px var(--mono); color: var(--dim); background: #1c1c21; border-left: 1px solid var(--line); }
 .review-scenes span.odd { background: #222228; }
-/* A scene's rung on the fidelity ladder, dimmest at card: how far each scene is from finished, read along the strip. */
+/* A scene's rung: which scenes are still blocked and which are finished, read along the strip. */
 .review-rung { margin-right: 5px; padding: 0 4px; border-radius: 2px; font-weight: 600; text-transform: uppercase; color: #16161a; }
-.review-rung.card { background: #8a8f98; }
-.review-rung.board { background: #d7b33a; }
 .review-rung.blocking { background: #6f8ff0; }
 .review-rung.final { background: var(--pass); }
 .review-timing { position: relative; height: 18px; }

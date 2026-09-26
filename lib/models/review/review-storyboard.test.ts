@@ -10,12 +10,12 @@ const clock = timelineClockTable(defineTimeline({
 }));
 const scenes = [
   { id: 'bounce', start: 0, dur: 2, lines: [] },
-  { id: 'price', start: 2, dur: 2, note: 'the price rolls down', rung: 'board' as const, lines: [] },
+  { id: 'price', start: 2, dur: 2, note: 'the price rolls down', rung: 'blocking' as const, lines: [] },
 ];
 
 test('a card per scene carries its rung and note, with a still on each cue captioned in timeline.ts\'s words; a slice keeps what it holds', () => {
   const whole = reviewStoryboardOf({ fps: 30, frames: { from: 0, end: 120 }, scenes, lines: [], clock });
-  assert.deepEqual(whole.map((c) => [c.id, c.rung, c.from, c.to, c.timing]), [['bounce', undefined, 0, 60, '4 beats'], ['price', 'board', 60, 120, '4 beats']]);
+  assert.deepEqual(whole.map((c) => [c.id, c.rung, c.from, c.to, c.timing]), [['bounce', undefined, 0, 60, '4 beats'], ['price', 'blocking', 60, 120, '4 beats']]);
   assert.deepEqual(whole[1].stills, [{ frame: 75, moments: [{ kind: 'cue', name: 'clack', frame: 75, at: 'beat 1' }] }]);
   // `bounce` names nothing, so it gets a still from its middle.
   assert.deepEqual(whole[0].stills, [{ frame: 30, moments: [] }]);

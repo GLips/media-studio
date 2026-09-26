@@ -1,14 +1,34 @@
-// The fidelity ladder's demo: each scene bound at its rung. `open` is still a title card, `sketch` a board frame and
-// `layout` blocked; `price` is built. Raising one is changing its binding here; timeline.ts stays as it is.
+// The fidelity ladder's demo: each scene bound at its rung. `open`, `collection` and `layout` are blocked; `price` is
+// built. Raising one is changing its binding here; timeline.ts stays as it is.
 
 import { bindTimeline, type TimelineSceneClock } from '#models/timeline/bind-timeline.ts';
-import { blockingScene, boardFrameScene, defineVideo, type FlatPiece, motionCurves, sceneCueSeconds, sceneForTimelineClock, seg, Text, titleCardScene, W } from '#studio';
-import sketch from './refs/buy-box-sketch.svg';
+import { blockingScene, defineVideo, type FlatPiece, motionCurves, sceneCueSeconds, sceneForTimelineClock, seg, Text, W } from '#studio';
 import { timeline } from './timeline.ts';
 
 type Clock<K extends keyof typeof timeline.spec.scenes & string> = TimelineSceneClock<typeof timeline, K>;
 
 const SALE_RED = '#b82b2b';
+
+const open = (clock: Clock<'open'>) => blockingScene(clock, {
+  note: 'The sale price, and only the swatches on sale, straight from the collection page.',
+  pieces: [
+    { kind: 'type', name: 'title', text: 'Sale-only view', pose: { x: 160, y: 380, w: 900, h: 130, opacity: 0 }, keys: [{ at: clock.cues.name, to: { opacity: 1, y: 360 }, over: 10 }] },
+    { kind: 'type', name: 'promise', text: 'Straight to the deal they clicked', color: '#6d737d', pose: { x: 166, y: 540, w: 900, h: 56, opacity: 0 }, keys: [{ at: clock.cues.promise, to: { opacity: 1 }, over: 10 }] },
+  ],
+});
+
+// The collection grid; the view pushes toward the sale card, which is clicked.
+const CARD = { w: 360, h: 420 };
+const cardAt = (i: number) => ({ x: 180 + (i % 4) * 400, y: 120 + Math.floor(i / 4) * 470 });
+const collection = (clock: Clock<'collection'>) => blockingScene(clock, {
+  note: 'The collection page, pushing in on the sale card as it is clicked.',
+  view: { keys: [{ at: clock.moves.push.from, to: { cx: 580 + CARD.w / 2, cy: 120 + CARD.h / 2, zoom: 1.6 }, over: clock.moves.push.to - clock.moves.push.from }] },
+  pieces: [
+    ...Array.from({ length: 8 }, (_, i): FlatPiece => (i === 1
+      ? { kind: 'image', name: 'sale card', color: SALE_RED, pose: { ...cardAt(i), ...CARD }, keys: [{ at: clock.cues.click, to: { scale: 0.94 }, over: 3 }, { at: clock.cues.click + 3, to: { scale: 1 }, over: 4 }] }
+      : { kind: 'image', name: `card ${i + 1}`, pose: { ...cardAt(i), ...CARD } })),
+  ],
+});
 
 // Six swatches pop in on `swatches`; on `filter` the three not on sale go and the sale ones close up, then the price lands.
 const SWATCH_TINTS = ['#9fa7b3', '#b3a79f', '#a3b39f', '#b39fae', '#9fb0b3', '#b3ad9f'];
@@ -60,8 +80,8 @@ export default defineVideo({
   title: 'The fidelity ladder',
   voice: {},
   scenes: bindTimeline(timeline, {
-    open: (clock) => titleCardScene(clock, { note: 'The sale price, and only the swatches on sale, straight from the collection page.' }),
-    sketch: (clock) => boardFrameScene(clock, { note: 'The buy box as sketched.', src: sketch, caption: 'Only the sale swatches, at the sale price', move: { push: 1.12 }, over: 'push' }),
+    open,
+    collection,
     layout,
     price,
   }),
