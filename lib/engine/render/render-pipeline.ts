@@ -1,6 +1,7 @@
 // render-pipeline.ts: what the render commands do with a bundled project (lib/engine/render/render-session.ts): the framing check,
 // contact sheets and motion graphs, the mastered mix, the delivered videos and their review, and the repeatability proof.
-// A silent project (project.ts's capability) has no mix: its videos deliver with no audio track.
+// A silent project (project.ts's capability) has no mix: its videos deliver with no audio track. A transparent one
+// (VideoFormat.transparent) delivers as WebM and HEVC with alpha instead of MP4.
 //
 // Progress goes to stderr; each function returns what it made, for the command to print on stdout.
 import { serializeSrt } from '@remotion/captions';
@@ -15,7 +16,7 @@ import { buildMotionGraph, motionGraphBackdropFrame, type MotionGraphSpace } fro
 import { assembleMotionTracks, formatMotionReport, motionArtifactName, type FrameMotion, type MotionTracks } from '#models/motion/motion-tracks.ts';
 import { measureLoudness } from '../ffmpeg/loudness.ts';
 import { artifactSink, DELIVERY_AUDIO_CODEC, RENDER_CHROMIUM, RENDER_CONCURRENCY, TIMELINE_REPORT_NAME, type RenderSession } from './render-session.ts';
-import { loadRenderSnapshot, writeRenderSnapshot } from '../snapshot/render-snapshot.ts';
+import { loadRenderSnapshot, renderSnapshotPath, writeRenderSnapshot } from '../snapshot/render-snapshot.ts';
 import { sfxEventsFrom, sfxMarkArtifactName, type SfxEvent, type SfxMark } from '#sfx/cue-events.ts';
 import { sfxCueListReport } from '#sfx/project-cue-list.ts';
 import { isVoicedWithDraft } from '../voice/voice-project.ts';
@@ -24,6 +25,10 @@ import { countVideoFrames, measureWithFfmpeg, runFfmpeg, runFfprobe } from '../f
 
 const outDirFor = (session: RenderSession) => join(session.project, 'out');
 const videoFor = (session: RenderSession, captions: boolean) => join(outDirFor(session), captions ? 'video.mp4' : 'video-plain.mp4');
+// Named apart, not video.webm and video.mov, so each has a snapshot of its own (render-snapshot.ts names it by basename).
+const transparentVideosFor = (session: RenderSession) => ({ webm: join(outDirFor(session), 'video.webm'), mov: join(outDirFor(session), 'video-hevc.mov') });
+/** Removes a render that no longer matches the project, and its snapshot. */
+const removeRender = (video: string) => { for (const file of [video, renderSnapshotPath(video)]) rmSync(file, { force: true }); };
 const masterWavFor = (session: RenderSession, auditionSfxCueList = false) => join(outDirFor(session), auditionSfxCueList ? 'mix-sfx-cues.wav' : 'mix.wav');
 
 // ---------- the check ----------
@@ -255,6 +260,40 @@ function reviewDelivery(session: RenderSession, captions: boolean, timeline: Tim
   console.error(`${video}: ${actual.toFixed(2)}s, ${sound} ✓  sheet → ${out}`);
 }
 
+/**
+ * Checks a transparent video's files: right length, no audio track, and an alpha plane that lets the page through
+ * somewhere and shows something somewhere, decoded from each file (the VP9 through libvpx, since ffmpeg's own decoder
+ * drops its alpha). Then a tiled sheet of the WebM over a checkerboard, so the transparency shows in it.
+ */
+function reviewTransparentDelivery(session: RenderSession, timeline: TimelineReport) {
+  const { webm, mov } = transparentVideosFor(session);
+  const lines = [webm, mov].map((video) => {
+    const decoder = video === webm ? ['-c:v', 'libvpx-vp9'] : [];
+    const probe = JSON.parse(runFfprobe(['-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', video]).toString());
+    const actual = Number(probe.format.duration);
+    const problems = [];
+    if (Math.abs(actual - timeline.duration) > 0.1) problems.push(`is ${actual.toFixed(2)}s, the timeline is ${timeline.duration.toFixed(2)}s`);
+    if (probe.streams.some((s: { codec_type: string }) => s.codec_type === 'audio')) problems.push('has an audio stream, though a transparent video is silent');
+    const { stderr, status } = measureWithFfmpeg([...decoder, '-i', video, '-vf', 'alphaextract,signalstats,metadata=print', '-f', 'null', '-']);
+    const levels = (key: string) => [...stderr.matchAll(new RegExp(`signalstats\\.${key}=(\\d+)`, 'g'))].map((m) => Number(m[1]));
+    const [least, most] = [Math.min(...levels('YMIN')), Math.max(...levels('YMAX'))];
+    if (status !== 0 || !Number.isFinite(least)) problems.push('has no alpha plane ffmpeg can decode');
+    else if (least === 255) problems.push('is opaque in every frame: something paints the whole frame, so the page never shows through');
+    else if (most === 0) problems.push('is transparent in every frame: it shows nothing');
+    if (problems.length) throw new Error(`${video} ${problems.join(' and ')}`);
+    return `${video}: ${actual.toFixed(2)}s, alpha ${least}–${most}, no audio track ✓`;
+  });
+
+  const tiles = 16, out = join(outDirFor(session), 'check', 'review-captions.jpg');
+  mkdirSync(dirname(out), { recursive: true });
+  const checker = `geq=lum='if(mod(floor(X/32)+floor(Y/32),2),204,255)':cb=128:cr=128:a=255`;
+  runFfmpeg(['-y', '-loglevel', 'error', '-c:v', 'libvpx-vp9', '-i', webm, '-filter_complex',
+    `fps=${tiles}/${timeline.duration},format=yuva420p,split[fg][bg];[bg]${checker}[checker];[checker][fg]overlay,scale=480:480:force_original_aspect_ratio=decrease:force_divisible_by=2,tile=4x4`,
+    '-frames:v', '1', out]);
+  for (const line of lines) console.error(line);
+  console.error(`  sheet → ${out}`);
+}
+
 // A page to watch the finished videos, since file:// MP4s have no player of their own worth sharing a link to.
 function writeWatchPage(session: RenderSession, title: string, draft: boolean) {
   const page = join(outDirFor(session), 'watch.html');
@@ -286,6 +325,47 @@ ${session.silent ? '' : `    <a href="video.srt" download>Captions (.srt)</a>
   return page;
 }
 
+/**
+ * A transparent video's page: the video over a checkerboard, or over a colour to try it on. Safari takes the HEVC,
+ * typed video/quicktime so Chrome, which plays HEVC but not its alpha, passes it by for the WebM.
+ */
+function writeTransparentWatchPage(session: RenderSession, title: string) {
+  const page = join(outDirFor(session), 'watch.html');
+  const { webm, mov } = transparentVideosFor(session);
+  const grounds = [['Checkerboard', 'checker'], ['Coral', '#ff6f59'], ['Navy', '#1d2b53'], ['White', '#fff'], ['Black', '#000']];
+  writeFileSync(page, `<!doctype html>
+<meta charset="utf-8">
+<title>${title}</title>
+<style>
+  body { margin: 0; background: #16181c; color: #ddd; font: 15px -apple-system, system-ui, sans-serif; }
+  main { max-width: 1280px; margin: 0 auto; padding: 32px 24px; }
+  h1 { font-size: 22px; margin: 0 0 16px; }
+  #stage { border-radius: 10px; overflow: hidden; line-height: 0; }
+  #stage.checker { background: repeating-conic-gradient(#ccc 0 25%, #fff 0 50%) 0 0 / 32px 32px; }
+  video { width: 100%; }
+  nav { display: flex; flex-wrap: wrap; gap: 16px; margin: 14px 0 0; }
+  a { color: #8fb4ff; }
+</style>
+<main>
+  <h1>${title}</h1>
+  <div id="stage" class="checker">
+    <video id="v" controls autoplay loop muted playsinline>
+      <source src="${basename(mov)}" type="video/quicktime">
+      <source src="${basename(webm)}" type="video/webm">
+    </video>
+  </div>
+  <p>A transparent video: it plays over the page behind it. <span id="playing"></span></p>
+  <nav>
+${grounds.map(([name, ground]) => `    <a href="#" onclick="stage.className='${ground === 'checker' ? 'checker' : ''}';stage.style.background='${ground === 'checker' ? '' : ground}';return false">${name}</a>`).join('\n')}
+    <a href="${basename(webm)}" download>Download WebM (Chrome, Firefox)</a>
+    <a href="${basename(mov)}" download>Download HEVC .mov (Safari)</a>
+  </nav>
+</main>
+<script>v.addEventListener('loadedmetadata', () => { playing.textContent = 'Playing ' + v.currentSrc.split('/').pop() + '.'; });</script>
+`);
+  return page;
+}
+
 const draftVoiceWarning = (session: RenderSession) => `
 !!!! DRAFT VOICE: macOS say read this video (studio voice --read=draft). It's for timing, not for sharing.
 !!!! Voice it for real first: studio voice ${basename(session.project)}
@@ -294,7 +374,8 @@ const draftVoiceWarning = (session: RenderSession) => `
 /**
  * The whole pipeline: the framing check on every frame, refusing to go on if it fails or a line is still estimated;
  * the mastered mix; video.mp4 with captions (and video-plain.mp4 without, if `plain`), each checked for delivery;
- * video.srt; and out/watch.html. A silent project has no mix and no .srt. Returns what it delivered.
+ * video.srt; and out/watch.html. A silent project has no mix and no .srt; a transparent one delivers as
+ * renderTransparentDelivery says. Returns what it delivered.
  */
 export async function renderDeliveredVideo(session: RenderSession, { plain }: { plain: boolean }): Promise<string[]> {
   const check = await checkProject(session);
@@ -306,6 +387,7 @@ export async function renderDeliveredVideo(session: RenderSession, { plain }: { 
   if (estimated.length) throw new Error(`${estimated.join(', ')} ${estimated.length > 1 ? 'are' : 'is'} estimated, not voiced: run studio voice <project> before rendering the video`);
   const draft = isVoicedWithDraft(session.project);
   if (draft) console.error(draftVoiceWarning(session));
+  if (timeline.transparent) return renderTransparentDelivery(session, check, { plain });
   if (session.silent) {
     // An old mix would read as this video's.
     rmSync(masterWavFor(session), { force: true });
@@ -314,7 +396,8 @@ export async function renderDeliveredVideo(session: RenderSession, { plain }: { 
     await renderMasteredMix(session);
   }
   // An old plain video would no longer match; the watch page offers it only if it's there.
-  if (!plain) rmSync(videoFor(session, false), { force: true });
+  if (!plain) removeRender(videoFor(session, false));
+  for (const old of Object.values(transparentVideosFor(session))) removeRender(old);
   const variants = plain ? [true, false] : [true];
   for (const captions of variants) {
     await renderVideo(session, captions, check);
@@ -328,6 +411,27 @@ export async function renderDeliveredVideo(session: RenderSession, { plain }: { 
   // Again at the end, where it can't scroll away under the render's progress.
   if (draft) console.error(draftVoiceWarning(session));
   return delivered;
+}
+
+/**
+ * A transparent video's delivery: video.webm and video-hevc.mov, each checked for its alpha, and the watch page. It's
+ * silent, so it has no mix, no .srt and no plain cut, and the project must say so, since a sound it plays would be lost.
+ */
+async function renderTransparentDelivery(session: RenderSession, check: ProjectCheck, { plain }: { plain: boolean }): Promise<string[]> {
+  const name = basename(session.project);
+  if (!session.silent) throw new Error(`${name} is transparent (its format), and a transparent video delivers with no sound: declare \`capability: 'silent'\` in project.ts`);
+  if (plain) throw new Error(`${name} is transparent and silent, so it has no captions to leave out: drop --plain`);
+  // Files of an opaque render would read as this one's.
+  for (const old of [videoFor(session, true), videoFor(session, false)]) removeRender(old);
+  for (const old of [masterWavFor(session), join(outDirFor(session), 'video.srt'), join(outDirFor(session), 'check', 'review.jpg')]) rmSync(old, { force: true });
+  const { webm, mov } = transparentVideosFor(session);
+  const started = Date.now();
+  await session.renderTransparentVideo({
+    webm, mov, inputProps: session.props({ captions: true }), timeline: check.timeline, motion: check.motion, onProgress: renderProgress(webm),
+  });
+  console.error(`rendered ${webm} and ${mov} in ${((Date.now() - started) / 1000).toFixed(0)}s`);
+  reviewTransparentDelivery(session, check.timeline);
+  return [webm, mov, writeTransparentWatchPage(session, check.timeline.title)];
 }
 
 // ---------- the animatic ----------

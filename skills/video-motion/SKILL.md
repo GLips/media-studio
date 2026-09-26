@@ -51,7 +51,9 @@ project's `timeline.test.ts` runs the retime runner, which lengthens every scene
 **The frame.** `defineVideo({ format })` picks the frame rate and size, 30 fps at 1920×1080 by default: `{ width: 1080,
 height: 1920 }` for a vertical cut. A timed video's rate is its timeline's, `defineTimeline({ fps })`. A scene reads
 the frame with `useVideoFormat()` and hands it to what needs it (`camFit(shot, rect, frame)`, `view(shot, cam,
-frame)`); a project laying out outside a scene declares its format once and reads that constant.
+frame)`); a project laying out outside a scene declares its format once and reads that constant. `{ transparent: true }`
+paints nothing behind the scenes (blocking included), so a scene draws only what sits on the page; `useVideoFormat()`
+says so, for a piece that would otherwise paint a backdrop.
 
 ## Time it by reads
 

@@ -6,7 +6,7 @@ import type { ComponentType, ReactNode } from 'react';
 import type { VideoFormat } from '#models/frame/frame.ts';
 
 /** The lab's one frame: every stage plays at it unless a tab needs another shape or rate. */
-export const LAB_FORMAT: VideoFormat = { fps: 30, width: 1920, height: 1080 };
+export const LAB_FORMAT: VideoFormat = { fps: 30, width: 1920, height: 1080, transparent: false };
 
 /** The showcase palette: its ground, ink, cream, red-orange and cobalt. */
 export const LAB_COLORS = {

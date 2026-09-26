@@ -5,7 +5,7 @@ import { bouncingBallAt } from './bounce.ts';
 
 // The showcase's first bar: four landings a beat apart at 120 BPM, the last launching into the swell.
 const grid = steadyBeatGrid(120, 0.5);
-const FORMAT = { fps: 30, width: 1920, height: 1080 };
+const FORMAT = { fps: 30, width: 1920, height: 1080, transparent: false };
 const bar = { beats: [0, 1, 2, 3].map((n) => grid.at(n)), spb: grid.spb, launch: {} };
 
 test('lands on each beat at its biggest squash, resting on the line it dents', () => {

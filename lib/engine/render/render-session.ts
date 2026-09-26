@@ -3,8 +3,9 @@
 // Each session bundles just its own project (see project-bundle.ts), so another project's missing captures can't
 // break it.
 //
-// renderVideo is the one way the composition reaches a video file, and it writes the render's snapshot beside it
-// (lib/engine/snapshot/render-snapshot.ts): a render made any other way would be a file nothing can say the timeline of.
+// renderVideo (renderTransparentVideo, for a transparent format) is the one way the composition reaches a video file,
+// and it writes the render's snapshot beside it (lib/engine/snapshot/render-snapshot.ts): a render made any other way
+// would be a file nothing can say the timeline of.
 // A video joined from its slices (render-pipeline.ts's joinVideoSlices) writes one too.
 // Stills and frame files write none: they're working images a command reads, not renders anyone reviews.
 import { renderFrames, renderMedia, selectComposition, type OnArtifact, type RenderFramesOptions, type RenderMediaOptions } from '@remotion/renderer';
@@ -15,7 +16,7 @@ import type { VideoConfig } from 'remotion';
 import { projectSlug, replaySlug } from '../bundle/project-bundle.ts';
 import { readProjectCapability } from '../project/studio-project.ts';
 import { bundleStudioProject } from '../bundle/studio-bundle.ts';
-import { runFfmpeg } from '../ffmpeg/ffmpeg.ts';
+import { runFfmpeg, runFfmpegAsync } from '../ffmpeg/ffmpeg.ts';
 import { writeRenderSnapshot, type RenderSnapshot } from '../snapshot/render-snapshot.ts';
 import { readProjectClock } from '../timeline/project-clock.ts';
 import type { MotionTracks } from '#models/motion/motion-tracks.ts';
@@ -123,6 +124,44 @@ export async function openRenderSession(project: string) {
     return out;
   }
 
+  /**
+   * A transparent video (VideoFormat.transparent) with its alpha, silent, each file with its snapshot: frames as PNGs,
+   * which Remotion screenshots without the page's background, encoded to VP9 in WebM at `webm` for Chrome and Firefox,
+   * and to HEVC with alpha through VideoToolbox (macOS only) at `mov` for Safari, which plays no VP9 alpha.
+   */
+  async function renderTransparentVideo({ webm, mov, timeline, motion, inputProps = props(), onProgress }: {
+    webm: string; mov: string; timeline: TimelineReport; motion?: MotionTracks; inputProps?: VideoProps; onProgress?: (p: { progress: number }) => void;
+  }): Promise<string[]> {
+    const composition = await compositionFor(inputProps);
+    const { fps, durationInFrames } = composition;
+    const tmp = mkdtempSync(join(tmpdir(), 'alpha-'));
+    // A second of 1080p PNGs is about 100 MB, so they go even when the render or an encode fails.
+    try {
+      await renderFrames({
+        composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, concurrency: RENDER_CONCURRENCY, inputProps, outputDir: tmp, imageFormat: 'png',
+        imageSequencePattern: 'f-[frame].[ext]', onStart: () => {}, onFrameUpdate: (rendered) => onProgress?.({ progress: rendered / durationInFrames }),
+      });
+      // Remotion pads the frame numbers, so the glob's order is the video's.
+      const frames = ['-y', '-v', 'error', '-framerate', String(fps), '-pattern_type', 'glob', '-i', join(tmp, 'f-*.png')];
+      // Tagged on the frames, which is what the encoders read: -color_primaries and the like are overridden by them. An
+      // untagged HEVC's colours shift in AVFoundation, Safari's decoder.
+      const bt709 = 'setparams=color_primaries=bt709:color_trc=bt709';
+      await Promise.all([
+        runFfmpegAsync([...frames, '-vf', `scale=out_color_matrix=bt709,format=yuva420p,${bt709}:colorspace=bt709`, '-c:v', 'libvpx-vp9', '-crf', '18',
+          '-b:v', '0', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '2', webm]),
+        // hvc1, not hev1, or Safari won't play it. Chromium's PNGs are straight alpha, but AVFoundation reads HEVC's as
+        // premultiplied (a translucent colour brighter than its alpha comes out white), so it's premultiplied here, and
+        // VP9's isn't. VideoToolbox converts to YUV itself, so the matrix is an encoder option.
+        runFfmpegAsync([...frames, '-vf', `format=bgra,premultiply=inplace=1,${bt709}`, '-c:v', 'hevc_videotoolbox', '-pix_fmt', 'bgra', '-colorspace', 'bt709', '-q:v', '70', '-alpha_quality', '0.9',
+          '-tag:v', 'hvc1', '-movflags', '+faststart', mov]),
+      ]);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+    for (const out of [webm, mov]) writeRenderSnapshot(out, { frames: { from: 0, end: durationInFrames }, timeline, clock, motion });
+    return [webm, mov];
+  }
+
   /** The video's sound alone, as an uncompressed wav at `out`. */
   async function renderAudio({ out, inputProps = props() }: { out: string; inputProps?: VideoProps }): Promise<string> {
     await renderMedia({
@@ -140,7 +179,7 @@ export async function openRenderSession(project: string) {
     });
   }
 
-  return { project, serveUrl, clock, silent, props, compositionFor, renderStills, renderReplay, readTimeline, renderVideo, renderAudio, renderFrameFiles };
+  return { project, serveUrl, clock, silent, props, compositionFor, renderStills, renderReplay, readTimeline, renderVideo, renderTransparentVideo, renderAudio, renderFrameFiles };
 }
 
 /** Collects the artifacts a render emits, by name. */

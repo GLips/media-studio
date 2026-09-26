@@ -162,8 +162,8 @@ export type VideoDef = {
   title: string;
   /**
    * Its frame rate and size, each defaulting to 30 fps at 1920×1080: `{ fps: 60 }` for a fast reel, `{ width: 1080,
-   * height: 1920 }` for a vertical cut. A timed video plays at its timeline's fps (`defineTimeline({ fps })`); a rate
-   * named here must agree with it.
+   * height: 1920 }` for a vertical cut, `{ transparent: true }` for an overlay. A timed video plays at its timeline's fps
+   * (`defineTimeline({ fps })`); a rate named here must agree with it.
    */
   format?: Partial<VideoFormat>;
   voice: Voice;
@@ -205,11 +205,12 @@ export function videoFormatOf(video: VideoDef): VideoFormat {
     throw new Error(`the video names ${named} fps, but its timeline resolves at ${timed}: set the rate on defineTimeline({ fps }) alone`);
   }
   const format = { ...DEFAULT_VIDEO_FORMAT, ...video.format, fps: timed ?? named ?? DEFAULT_VIDEO_FORMAT.fps };
-  for (const [key, value] of Object.entries(format)) {
+  for (const key of ['fps', 'width', 'height'] as const) {
+    const value = format[key];
     if (!(Number.isInteger(value) && value > 0)) throw new Error(`the video's ${key} is ${value}: give it a whole number above 0`);
   }
-  // H.264's 4:2:0 frames are whole 2×2 blocks.
-  if (format.width % 2 || format.height % 2) throw new Error(`the video is ${format.width}×${format.height}: H.264 needs an even width and height`);
+  // H.264's, VP9's and HEVC's 4:2:0 frames are whole 2×2 blocks.
+  if (format.width % 2 || format.height % 2) throw new Error(`the video is ${format.width}×${format.height}: it needs an even width and height`);
   return format;
 }
 

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { steadyBeatGrid } from '#models/timeline/beat-grid.ts';
 import { needleContactAt, needlePoseAt, needleRig, needleScreenPoint, needleShotAt } from './needle.ts';
 
-const rig = needleRig({ format: { fps: 30, width: 1920, height: 1080 } });
+const rig = needleRig({ format: { fps: 30, width: 1920, height: 1080, transparent: false } });
 
 const g = steadyBeatGrid(120);
 // On the beats, the last two out by the frame's corners, where the perspective is strongest.

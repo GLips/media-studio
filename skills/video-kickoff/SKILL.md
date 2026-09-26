@@ -47,7 +47,9 @@ The first message is usually messy and dictated. Pull these out of it, and ask o
   in `hosts.local.json` instead: it's used as it stands, and you install its packages yourself.
 - **A reference video**, if they have one for the style.
 - **Rough length, and the frame.** Frames are 1920×1080 at 30 fps unless the video asks for another shape (a vertical
-  cut, a square) or rate: `defineVideo({ format })`.
+  cut, a square) or rate: `defineVideo({ format })`. An overlay, lower-third or hero animation that sits on a page's
+  own background is `format: { transparent: true }` in a `--capability silent` project; it delivers as WebM and HEVC
+  with alpha.
 
 ## 2. Five angles, then one
 

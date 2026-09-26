@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { glyphFieldLayout, glyphRegroupPlan, glyphWaveArrivals } from './glyph-field.ts';
 import { glyphFieldFrame } from './glyph-field-frame.ts';
 
-const FORMAT = { fps: 30, width: 1920, height: 1080 };
+const FORMAT = { fps: 30, width: 1920, height: 1080, transparent: false };
 const CENTER = { x: FORMAT.width / 2, y: FORMAT.height / 2 };
 
 const lattice = () => glyphFieldLayout(19 * 11, FORMAT).map((slot) => ({ ...slot, item: null }));

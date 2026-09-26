@@ -7,7 +7,7 @@ import { beatSpan, defineTimeline, recordedGrid } from '#models/timeline/timelin
 import { music } from './music/index.ts';
 
 /** The reel's frame rate and size: what every bar is laid out in, and the HUD's readout names. */
-export const SHOWCASE_FORMAT = { fps: 30, width: 1920, height: 1080 } satisfies VideoFormat;
+export const SHOWCASE_FORMAT = { fps: 30, width: 1920, height: 1080, transparent: false } satisfies VideoFormat;
 
 /** The fitted track the timeline is cut to, and the video's music. */
 export const track = music['drive-fit'];

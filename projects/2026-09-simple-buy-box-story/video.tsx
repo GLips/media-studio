@@ -15,7 +15,7 @@ import { captures as C, takes as T } from './captures/index.ts';
 import { music } from './music/index.ts';
 
 /** The video's frame: the layout below (the lightbox, the desk window, the split's panels) is placed in it. */
-export const STORY_FORMAT: VideoFormat = { fps: 30, width: 1920, height: 1080 };
+export const STORY_FORMAT: VideoFormat = { fps: 30, width: 1920, height: 1080, transparent: false };
 const LEFT_PANEL = splitLeftRect(STORY_FORMAT), RIGHT_PANEL = splitRightRect(STORY_FORMAT);
 const CAPTION_FREE_RECT = captionFreeRect(STORY_FORMAT);
 

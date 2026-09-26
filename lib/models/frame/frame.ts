@@ -3,14 +3,23 @@
 import type { Rect } from '#models/camera/camera.ts';
 
 /**
- * A video's frame rate and frame size. `defineVideo({ format })` sets it, a timed video's rate coming from its
- * timeline (`defineTimeline({ fps })`); every composition, piece and render reads it from there.
+ * A video's frame rate, frame size and whether it's transparent. `defineVideo({ format })` sets it, a timed video's
+ * rate coming from its timeline (`defineTimeline({ fps })`); every composition, piece and render reads it from there.
  */
-export type VideoFormat = { fps: number; width: number; height: number };
+export type VideoFormat = {
+  fps: number;
+  width: number;
+  height: number;
+  /**
+   * Nothing paints behind the scenes, and the video delivers with an alpha channel (WebM and HEVC .mov, not MP4), for
+   * an overlay, lower-third or hero animation that sits on a page's own background.
+   */
+  transparent: boolean;
+};
 export type FrameSize = Pick<VideoFormat, 'width' | 'height'>;
 
-/** 30 fps at 1920×1080: what a video is when it names no format. */
-export const DEFAULT_VIDEO_FORMAT: VideoFormat = { fps: 30, width: 1920, height: 1080 };
+/** 30 fps at 1920×1080, opaque: what a video is when it names no format. */
+export const DEFAULT_VIDEO_FORMAT: VideoFormat = { fps: 30, width: 1920, height: 1080, transparent: false };
 
 export const FONT = '-apple-system, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif';
 

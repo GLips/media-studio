@@ -7,7 +7,7 @@ import type { TimelineReport } from '#studio/composition/Video.tsx';
 import { loadRenderSnapshot, writeRenderSnapshot } from './render-snapshot.ts';
 
 const timeline = (title: string): TimelineReport => ({
-  title, fps: 30, width: 1920, height: 1080, duration: 10, durationInFrames: 300, scenes: [], cues: [], crossfades: [], expectations: [], sfxCueList: false, sounds: [],
+  title, fps: 30, width: 1920, height: 1080, transparent: false, duration: 10, durationInFrames: 300, scenes: [], cues: [], crossfades: [], expectations: [], sfxCueList: false, sounds: [],
 });
 
 test('a render reads back the timeline it was made with, and a file replaced without a snapshot reads as having none', () => {

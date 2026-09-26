@@ -2,7 +2,8 @@
 // blockout (blockout.tsx), a reference video `studio gen video` can send. Flat boxes, placeholder type and crossed
 // image slots stand in for a scene's pieces, each labelled with its name, on a gridded ground; they move on the frames
 // of the scene's clock (flat-blockout-pose.ts), and the view can push or pan across them. What's settled here is where things
-// sit and when they move, at the real timing; nothing is styled.
+// sit and when they move, at the real timing; nothing is styled. A transparent video's blockout has no ground or grid,
+// so its pieces are blocked over the page they'll sit on.
 
 import { AbsoluteFill } from 'remotion';
 import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
@@ -37,17 +38,17 @@ const INK = '#3b3f46';
  * the frame's centre at zoom 1.
  */
 export function FlatBlockout({ pieces, view, frame }: { pieces: readonly FlatPiece[]; view?: FlatViewMoves; frame: number }) {
-  const { width, height } = useVideoFormat();
+  const { width, height, transparent } = useVideoFormat();
   const { cx, cy, zoom } = flatPoseAt(view?.rest ?? { cx: width / 2, cy: height / 2, zoom: 1 }, view?.keys ?? [], frame);
   return (
-    <AbsoluteFill style={{ background: GROUND, overflow: 'hidden' }}>
+    <AbsoluteFill style={{ background: transparent ? undefined : GROUND, overflow: 'hidden' }}>
       <div style={{ position: 'absolute', left: 0, top: 0, transformOrigin: '0 0', transform: `translate(${width / 2}px, ${height / 2}px) scale(${zoom}) translate(${-cx}px, ${-cy}px)` }}>
         {/* The grid moves with the view, as a 3D blockout's ground does, so a push or pan reads as one. */}
-        <div style={{
+        {!transparent && <div style={{
           position: 'absolute', left: -width, top: -height, width: 3 * width, height: 3 * height,
           backgroundImage: `linear-gradient(${GRID} 2px, transparent 2px), linear-gradient(90deg, ${GRID} 2px, transparent 2px)`,
           backgroundSize: '120px 120px',
-        }} />
+        }} />}
         {pieces.map((piece) => <FlatPieceAt key={piece.name} piece={piece} frame={frame} />)}
       </div>
     </AbsoluteFill>
