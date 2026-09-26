@@ -1,5 +1,6 @@
 // render-pipeline.ts: what the render commands do with a bundled project (lib/engine/render/render-session.ts): the framing check,
 // contact sheets and motion graphs, the mastered mix, the delivered videos and their review, and the repeatability proof.
+// A silent project (project.ts's capability) has no mix: its videos deliver with no audio track.
 //
 // Progress goes to stderr; each function returns what it made, for the command to print on stdout.
 import { serializeSrt } from '@remotion/captions';
@@ -160,14 +161,20 @@ const DELIVERY_LUFS = -14, DELIVERY_TRUE_PEAK = -1, MASTER_TRUE_PEAK = -2;
  * Renders the soundtrack once, uncompressed, and masters it to out/mix.wav: one gain to delivery loudness, then a
  * limiter for the peaks. Not loudnorm: when its linear mode can't reach the target it becomes an AGC, which fills in
  * the music's ducks. With `auditionSfxCueList`, the project's cue list plays whether or not the video plays it, into
- * out/mix-sfx-cues.wav, to audition it beside the video's mix.
+ * out/mix-sfx-cues.wav, to audition it beside the video's mix. Refuses a silent project, which has no mix, and fails
+ * on a mix that renders silent, since a voice, music or sound it plays didn't sound.
  */
 export async function renderMasteredMix(session: RenderSession, { auditionSfxCueList = false }: { auditionSfxCueList?: boolean } = {}): Promise<string> {
+  if (session.silent) throw new Error(`${basename(session.project)} is silent (project.ts): it plays no voice, music or sound, so it has no mix`);
   const masterWav = masterWavFor(session, auditionSfxCueList);
   const tmp = mkdtempSync(join(tmpdir(), 'mix-'));
   const raw = await session.renderAudio({ out: join(tmp, 'raw.wav'), inputProps: session.props({ auditionSfxCueList }) });
   mkdirSync(outDirFor(session), { recursive: true });
   const before = measureLoudness(raw);
+  if (before.lufs === -Infinity) {
+    rmSync(tmp, { recursive: true, force: true });
+    throw new Error("the mix renders silent: a voice, music or sound the video plays didn't sound. A video with no sound at all declares `capability: 'silent'` in project.ts");
+  }
   // Limiting at 4× the sample rate catches the peaks between samples too, which is what "true peak" counts.
   const master = (gainDb: number, ceilingDb: number) => runFfmpeg(['-y', '-v', 'error', '-i', raw, '-af',
     `volume=${gainDb}dB,aresample=192000,alimiter=limit=${10 ** (ceilingDb / 20)}:attack=1:release=60:level=false:latency=true,aresample=48000`,
@@ -202,12 +209,16 @@ function renderProgress(out: string) {
   };
 }
 
-/** The delivered video, under the mastered mix, its snapshot carrying the check's timeline and motion. */
+/**
+ * The delivered video, under the mastered mix, its snapshot carrying the check's timeline and motion. A silent one
+ * keeps the composition's own sound, which is none, so Remotion writes no audio track: a sound playing in it after
+ * all shows up as a track its review refuses.
+ */
 async function renderVideo(session: RenderSession, captions: boolean, { timeline, motion }: Pick<ProjectCheck, 'timeline' | 'motion'>) {
   const out = videoFor(session, captions);
   const started = Date.now();
   await session.renderVideo({
-    out, inputProps: session.props({ captions }), soundtrack: masterWavFor(session), timeline, motion,
+    out, inputProps: session.props({ captions }), soundtrack: session.silent ? undefined : masterWavFor(session), timeline, motion,
     crf: 18, x264Preset: 'slow', pixelFormat: 'yuv420p', imageFormat: 'jpeg', jpegQuality: 94, onProgress: renderProgress(out),
   });
   console.error(`rendered ${out} in ${((Date.now() - started) / 1000).toFixed(0)}s`);
@@ -216,24 +227,32 @@ async function renderVideo(session: RenderSession, captions: boolean, { timeline
 const srtFrom = (timeline: TimelineReport) =>
   serializeSrt({ lines: timeline.cues.map((q) => [{ text: q.text, startMs: q.start * 1000, endMs: q.captionEnd * 1000, timestampMs: null, confidence: 1 }]) });
 
-// Checks the delivered file, not the frames: right length, has sound at delivery loudness without clipping, and a
-// tiled sheet of it to look at.
+// Checks the delivered file, not the frames: right length, has sound at delivery loudness without clipping (a
+// silent project's has no audio track at all), and a tiled sheet of it to look at.
 function reviewDelivery(session: RenderSession, captions: boolean, timeline: TimelineReport) {
   const video = videoFor(session, captions);
   const probe = JSON.parse(runFfprobe(['-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', video]).toString());
   const actual = Number(probe.format.duration);
+  const hasAudio = probe.streams.some((s: { codec_type: string }) => s.codec_type === 'audio');
   const problems = [];
   if (Math.abs(actual - timeline.duration) > 0.1) problems.push(`is ${actual.toFixed(2)}s, the timeline is ${timeline.duration.toFixed(2)}s`);
-  if (!probe.streams.some((s: { codec_type: string }) => s.codec_type === 'audio')) problems.push('has no audio stream');
-  const { lufs, truePeak } = measureLoudness(video);
-  if (Math.abs(lufs - DELIVERY_LUFS) > 1) problems.push(`measures ${lufs} LUFS, not ${DELIVERY_LUFS} ± 1`);
-  if (truePeak > DELIVERY_TRUE_PEAK) problems.push(`peaks at ${truePeak} dBTP, over ${DELIVERY_TRUE_PEAK}`);
+  let sound = 'no audio track';
+  if (session.silent) {
+    if (hasAudio) problems.push('has an audio stream, though project.ts declares it silent: a voice, music or sound plays in it');
+  } else if (!hasAudio) {
+    problems.push('has no audio stream');
+  } else {
+    const { lufs, truePeak } = measureLoudness(video);
+    if (Math.abs(lufs - DELIVERY_LUFS) > 1) problems.push(`measures ${lufs} LUFS, not ${DELIVERY_LUFS} ± 1`);
+    if (truePeak > DELIVERY_TRUE_PEAK) problems.push(`peaks at ${truePeak} dBTP, over ${DELIVERY_TRUE_PEAK}`);
+    sound = `${lufs} LUFS, ${truePeak} dBTP`;
+  }
   if (problems.length) throw new Error(`${video} ${problems.join(' and ')}`);
 
   const tiles = 16, out = join(outDirFor(session), 'check', captions ? 'review-captions.jpg' : 'review.jpg');
   mkdirSync(dirname(out), { recursive: true });
   runFfmpeg(['-y', '-loglevel', 'error', '-i', video, '-vf', `fps=${tiles}/${actual},scale=480:-1,tile=4x4`, '-frames:v', '1', out]);
-  console.error(`${video}: ${actual.toFixed(2)}s, ${lufs} LUFS, ${truePeak} dBTP ✓  sheet → ${out}`);
+  console.error(`${video}: ${actual.toFixed(2)}s, ${sound} ✓  sheet → ${out}`);
 }
 
 // A page to watch the finished videos, since file:// MP4s have no player of their own worth sharing a link to.
@@ -254,13 +273,14 @@ function writeWatchPage(session: RenderSession, title: string, draft: boolean) {
 <main>
   <h1>${title}</h1>${draft ? `
   <p class="draft">DRAFT VOICE: read by macOS say for timing, not the real voice.</p>` : ''}
-  <video id="v" src="video.mp4" controls autoplay></video>
+  <video id="v" src="video.mp4" controls autoplay${session.silent ? ' muted' : ''}></video>${session.silent ? `
+  <p>A silent video: it has no sound.</p>` : ''}
   <nav>
     <a href="video.mp4" download>Download</a>${existsSync(videoFor(session, false)) ? `
     <a href="#" onclick="v.src='video-plain.mp4';return false">Without captions</a>
     <a href="video-plain.mp4" download>Download without captions</a>` : ''}
-    <a href="video.srt" download>Captions (.srt)</a>
-  </nav>
+${session.silent ? '' : `    <a href="video.srt" download>Captions (.srt)</a>
+`}  </nav>
 </main>
 `);
   return page;
@@ -274,7 +294,7 @@ const draftVoiceWarning = (session: RenderSession) => `
 /**
  * The whole pipeline: the framing check on every frame, refusing to go on if it fails or a line is still estimated;
  * the mastered mix; video.mp4 with captions (and video-plain.mp4 without, if `plain`), each checked for delivery;
- * video.srt; and out/watch.html. Returns what it delivered.
+ * video.srt; and out/watch.html. A silent project has no mix and no .srt. Returns what it delivered.
  */
 export async function renderDeliveredVideo(session: RenderSession, { plain }: { plain: boolean }): Promise<string[]> {
   const check = await checkProject(session);
@@ -286,7 +306,13 @@ export async function renderDeliveredVideo(session: RenderSession, { plain }: { 
   if (estimated.length) throw new Error(`${estimated.join(', ')} ${estimated.length > 1 ? 'are' : 'is'} estimated, not voiced: run studio voice <project> before rendering the video`);
   const draft = isVoicedWithDraft(session.project);
   if (draft) console.error(draftVoiceWarning(session));
-  await renderMasteredMix(session);
+  if (session.silent) {
+    // An old mix would read as this video's.
+    rmSync(masterWavFor(session), { force: true });
+    console.error('silent (project.ts): no voice, music or sound, so no mix, mastering or loudness review; the video has no audio track');
+  } else {
+    await renderMasteredMix(session);
+  }
   // An old plain video would no longer match; the watch page offers it only if it's there.
   if (!plain) rmSync(videoFor(session, false), { force: true });
   const variants = plain ? [true, false] : [true];
@@ -294,9 +320,11 @@ export async function renderDeliveredVideo(session: RenderSession, { plain }: { 
     await renderVideo(session, captions, check);
     reviewDelivery(session, captions, timeline);
   }
+  // A silent video speaks no lines, so it has no captions.
   const srt = join(outDirFor(session), 'video.srt');
-  writeFileSync(srt, srtFrom(timeline));
-  const delivered = [...variants.map((captions) => videoFor(session, captions)), srt, writeWatchPage(session, timeline.title, draft)];
+  if (session.silent) rmSync(srt, { force: true });
+  else writeFileSync(srt, srtFrom(timeline));
+  const delivered = [...variants.map((captions) => videoFor(session, captions)), ...(session.silent ? [] : [srt]), writeWatchPage(session, timeline.title, draft)];
   // Again at the end, where it can't scroll away under the render's progress.
   if (draft) console.error(draftVoiceWarning(session));
   return delivered;
@@ -335,7 +363,7 @@ export async function renderVideoSlice(session: RenderSession, { from, end, out 
 
 /**
  * Joins the slices in `dir` (renderVideoSlice's, one file each) into the whole video at `out`, under a fresh mastered
- * mix, so the placed sounds play across the joins. Refuses a slice rendered on another timeline than the video's now,
+ * mix, so the placed sounds play across the joins (a silent project's has no sound). Refuses a slice rendered on another timeline than the video's now,
  * a gap or an overlap between slices, or a file short of the frames its snapshot says it holds: each would put every
  * later frame off its sound.
  */
@@ -360,14 +388,15 @@ export async function joinVideoSlices(session: RenderSession, { dir, out }: { di
   }
   if (reached !== timeline.durationInFrames) throw new Error(`the slices in ${dir} reach frame ${reached}, short of the video's ${timeline.durationInFrames}`);
 
-  const mix = await renderMasteredMix(session);
+  const mix = session.silent ? undefined : await renderMasteredMix(session);
   const tmp = mkdtempSync(join(tmpdir(), 'join-'));
   const list = join(tmp, 'slices.txt');
   writeFileSync(list, slices.map((s) => `file '${s.file.replaceAll("'", "'\\''")}'`).join('\n'));
   mkdirSync(dirname(out), { recursive: true });
   // The mix is padded past the picture and cut half a frame after it, so the last frame keeps its sound.
-  runFfmpeg(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-i', mix, '-map', '0:v', '-map', '1:a',
-    '-c:v', 'libx264', '-crf', '16', '-preset', 'medium', '-pix_fmt', 'yuv420p', ...DELIVERY_AUDIO_CODEC, '-af', 'apad',
+  const sound = mix ? ['-i', mix, '-map', '0:v', '-map', '1:a', ...DELIVERY_AUDIO_CODEC, '-af', 'apad'] : ['-map', '0:v'];
+  runFfmpeg(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, ...sound,
+    '-c:v', 'libx264', '-crf', '16', '-preset', 'medium', '-pix_fmt', 'yuv420p',
     '-t', String((timeline.durationInFrames + 0.5) / timeline.fps), '-movflags', '+faststart', out]);
   rmSync(tmp, { recursive: true, force: true });
   const counted = countVideoFrames(out);

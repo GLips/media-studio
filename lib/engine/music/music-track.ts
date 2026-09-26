@@ -9,7 +9,7 @@
 // it beside the original, with the spans it was cut from.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
-import { measureLoudness } from '../ffmpeg/loudness.ts';
+import { measureAudibleLoudness } from '../ffmpeg/loudness.ts';
 import { probeMediaSeconds, runFfmpeg, runFfprobe } from '../ffmpeg/ffmpeg.ts';
 import { generatePaidMedia } from '../generation/paid-generation.ts';
 import { detectMusicBeats } from '#models/music/music-beats.ts';
@@ -47,7 +47,7 @@ export function addProjectMusicTrack(project: string, source: string, name: stri
   copyFileSync(source, path);
 
   const duration = probeMediaSeconds(path);
-  const { lufs } = measureLoudness(path);
+  const { lufs } = measureAudibleLoudness(path);
   const { bpm, beats } = detectMusicBeats(decodeAudio(path, 1, ANALYSIS_RATE)[0], ANALYSIS_RATE);
   // A fit cut from the audio this replaces would keep playing it: drop it, so a video still using it fails to typecheck.
   const manifest = readMusicManifest(dir);
@@ -98,7 +98,7 @@ export function fitProjectMusicTrack(project: string, { name, as, shape }: { nam
     input: Buffer.from(interleaved.buffer),
   });
   const track = {
-    file, duration: Math.round(seconds * 1000) / 1000, lufs: measureLoudness(path).lufs, bpm: source.bpm, beats: plan.beats,
+    file, duration: Math.round(seconds * 1000) / 1000, lufs: measureAudibleLoudness(path).lufs, bpm: source.bpm, beats: plan.beats,
     fit: { source: name, spans: plan.spans, seams: plan.seams, downbeats: plan.downbeats },
   };
   return { file: path, index: writeMusicManifest(dir, { ...readMusicManifest(dir), [as]: track }), track, seamDb: plan.seamDb, worstSeamDb: plan.worstSeamDb };

@@ -3,7 +3,7 @@
 //
 // Writes projects/<yyyy-mm>-<slug>/ with a project.ts declaring the capability and a capture script, which films the
 // URL as `home` if given one and otherwise starts empty, for a site that needs a sign-in or a server first. A timed
-// project (music-led, voice-led, mixed) gets its timing in timeline.ts, its retime test and a scene file per scene,
+// project (music-led, voice-led, mixed, silent) gets its timing in timeline.ts, its retime test and a scene file per scene,
 // each blocked in flat pieces on its cues (scaffold-timed.ts). A still-only one gets a stills.tsx registering one design (scaffold-stills.ts).
 //
 // Negative space: it writes no render snapshot and no timing report. Every render writes its own snapshot beside it,
@@ -48,6 +48,7 @@ const CAPABILITY_NOTES: Record<ProjectCapability, string> = {
   'voice-led': 'its scenes laid on the voiced lines',
   'still-only': 'stills alone, no video',
   mixed: 'voiced scenes around a section cut to the music',
+  silent: 'scenes of fixed length, with no voice, music or sound',
 };
 
 function projectDeclaration(title: string, capability: ProjectCapability) {

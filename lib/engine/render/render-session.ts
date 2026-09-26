@@ -13,6 +13,7 @@ import { availableParallelism, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { VideoConfig } from 'remotion';
 import { projectSlug, replaySlug } from '../bundle/project-bundle.ts';
+import { readProjectCapability } from '../project/studio-project.ts';
 import { bundleStudioProject } from '../bundle/studio-bundle.ts';
 import { runFfmpeg } from '../ffmpeg/ffmpeg.ts';
 import { writeRenderSnapshot, type RenderSnapshot } from '../snapshot/render-snapshot.ts';
@@ -55,6 +56,8 @@ export async function openRenderSession(project: string) {
   const serveUrl = await bundleStudioProject(project);
   // Read with the bundle, so every snapshot the session writes holds the clock its renders were made on.
   const clock = (await readProjectClock(project)) ?? null;
+  // A silent video delivers with no mix and no audio track (render-pipeline.ts).
+  const silent = (await readProjectCapability(project)) === 'silent';
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, blockouts: false, ...p });
   const compositionFor = (inputProps: VideoProps) => selectComposition({ serveUrl, chromiumOptions: RENDER_CHROMIUM, id: projectSlug(project), inputProps });
 
@@ -138,7 +141,7 @@ export async function openRenderSession(project: string) {
     });
   }
 
-  return { project, serveUrl, clock, props, compositionFor, renderStills, renderReplay, readTimeline, renderVideo, renderAudio, renderFrameFiles };
+  return { project, serveUrl, clock, silent, props, compositionFor, renderStills, renderReplay, readTimeline, renderVideo, renderAudio, renderFrameFiles };
 }
 
 /** Collects the artifacts a render emits, by name. */

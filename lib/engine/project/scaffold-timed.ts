@@ -4,7 +4,8 @@
 //
 // Music-led, the scenes are bars on a steady tempo, the last one's end the music's final hit (a landmark, pending
 // until a fitted track replaces the tempo). Voice-led, they are voiced lines from voiceover.json, each with a
-// speech cue. Mixed, a section of bars sits between a voiced opening and a voiced close.
+// speech cue. Mixed, a section of bars sits between a voiced opening and a voiced close. Silent, they are fixed
+// spans in seconds, and the video plays no sound at all.
 
 import type { ProjectCapability } from '#models/project/capability.ts';
 
@@ -44,10 +45,28 @@ const VOICED_CLOSE: StarterScene = {
     { kind: 'box', name: 'end card', color: '#9fb0c9', pose: { x: 0, y: 0, w: 1920, h: 1080, opacity: 0 }, keys: [{ at: clock.cues.thanks, to: { opacity: 1 }, over: 12 }] },`,
 };
 
+const FIXED: readonly StarterScene[] = [
+  {
+    id: 'open', folder: 'scenes', span: 'fixedSpan(3, { cues: { name: 0.4, promise: 1.4 } })', note: 'The open: the name, then what it promises.',
+    pieces: `{ kind: 'type', name: 'name', text: 'The name', pose: { x: 160, y: 380, w: 900, h: 130, opacity: 0 }, keys: [{ at: clock.cues.name, to: { opacity: 1, y: 360 }, over: 10 }] },
+    { kind: 'type', name: 'promise', text: 'What it does for you', color: '#6d737d', pose: { x: 166, y: 540, w: 900, h: 56, opacity: 0 }, keys: [{ at: clock.cues.promise, to: { opacity: 1 }, over: 10 }] },`,
+  },
+  {
+    id: 'show', folder: 'scenes', span: 'fixedSpan(4, { crossfade: 0.5, cues: { reveal: 1.5 } })', note: 'The show: the product, then what changes, revealed.',
+    pieces: `{ kind: 'image', name: 'before', pose: { x: 360, y: 240, w: 1200, h: 600 }, keys: [{ at: clock.cues.reveal, to: { x: -1300 }, over: 8 }] },
+    { kind: 'image', name: 'after', color: '#9fb0c9', pose: { x: 1960, y: 240, w: 1200, h: 600 }, keys: [{ at: clock.cues.reveal, to: { x: 360 }, over: 8 }] },`,
+  },
+  {
+    id: 'close', folder: 'scenes', span: 'fixedSpan(3, { crossfade: 0.5, cues: { card: 0.8 } })', note: 'The close: the end card.',
+    pieces: `{ kind: 'box', name: 'end card', color: '#9fb0c9', pose: { x: 0, y: 0, w: 1920, h: 1080, opacity: 0 }, keys: [{ at: clock.cues.card, to: { opacity: 1 }, over: 12 }] },`,
+  },
+];
+
 const SCENES: Record<TimedCapability, readonly StarterScene[]> = {
   'music-led': BARS,
   'voice-led': [VOICED_OPEN, VOICED_CLOSE],
   mixed: [VOICED_OPEN, ...BARS, VOICED_CLOSE],
+  silent: FIXED,
 };
 
 const LANDMARK = "  // The music's final hit ends the last bar: pending on a tempo grid, checked against a fitted track.\n  landmarks: [{ name: 'the final hit', cue: 'payoff.stop', downbeat: -1 }],\n";
@@ -55,7 +74,7 @@ const LANDMARK = "  // The music's final hit ends the last bar: pending on a tem
 export function timedStarterFiles(slug: string, title: string, capability: TimedCapability): Record<string, string> {
   const scenes = SCENES[capability];
   const music = scenes.some((scene) => scene.folder === 'bars');
-  const voice = scenes.some((scene) => scene.folder === 'scenes');
+  const voice = scenes.some((scene) => scene.span.startsWith('voiceSpan'));
   const files: Record<string, string> = {
     'timeline.ts': timelineModule(slug, title, scenes, { music, voice }),
     'timeline.test.ts': retimeTest(voice),
@@ -75,10 +94,12 @@ export function timedStarterFiles(slug: string, title: string, capability: Timed
 }
 
 function timelineModule(slug: string, title: string, scenes: readonly StarterScene[], { music, voice }: { music: boolean; voice: boolean }) {
-  const constructors = ['defineTimeline', ...(music ? ['beatSpan', 'tempoGrid'] : []), ...(voice ? ['voiceSpan'] : [])].sort();
+  const fixed = scenes.some((scene) => scene.span.startsWith('fixedSpan'));
+  const constructors = ['defineTimeline', ...(music ? ['beatSpan', 'tempoGrid'] : []), ...(voice ? ['voiceSpan'] : []), ...(fixed ? ['fixedSpan'] : [])].sort();
   const about = [
     music && "Until there's a track the bars run on a steady tempo: `studio music add` (or `gen`),\n// then `studio music fit --bars`, gives one to cut to, and `recordedGrid(music['<name>'])` from its music/index.ts\n// replaces tempoGrid.",
     voice && 'The voiced scenes last as their lines were read (voiceover.json, `studio voice`), so a re-read line\n// re-times its scene, every later one and each speech cue on its words.',
+    fixed && 'Each scene lasts the seconds it states. The video plays no voice, music or sound, and delivers\n// with no audio track: project.ts declares it silent.',
   ].filter(Boolean).join('\n// ');
   return `// The ${title} video's timing, stated once: each scene's driver and the cues its picture moves on. \`studio clock ${slug}\`
 // prints it. ${about}

@@ -15,7 +15,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { measureLoudness } from '../ffmpeg/loudness.ts';
+import { measureAudibleLoudness } from '../ffmpeg/loudness.ts';
 import { runFfmpeg } from '../ffmpeg/ffmpeg.ts';
 import { postOpenRouter } from '../generation/openrouter.ts';
 import { cutTakeIntoLines, type TakeClip } from '#models/voice/voice-take.ts';
@@ -120,7 +120,7 @@ export async function voiceStudioProject(project: string, { mode, recording }: {
     const aligned = alignSpokenWords(text, clipWords[i], duration);
     const round = (x: number) => Math.round(x * 1000) / 1000;
     const words = aligned.words.map((w) => ({ text: w.text, start: round(w.start), end: round(w.end) }));
-    manifest[clip.id] = { src: `audio/${clip.id}.wav`, duration, text, words, lufs: measureLoudness(file).lufs, pauseBefore: clip.pauseBefore };
+    manifest[clip.id] = { src: `audio/${clip.id}.wav`, duration, text, words, lufs: measureAudibleLoudness(file).lufs, pauseBefore: clip.pauseBefore };
 
     const pause = clip.pauseBefore === null ? '' : `  after ${clip.pauseBefore.toFixed(2)}s`;
     const unheard = words.filter((_, k) => !aligned.heard[k]).map((w) => w.text);

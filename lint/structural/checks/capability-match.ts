@@ -3,13 +3,15 @@
 // A project declares its capability in project.ts (lib/models/project/
 // capability.ts), and that declaration is held to what the project binds: its
 // timeline's grid (music) and voice (voice), read off the defineTimeline call,
-// and its stills.tsx's defineStills (stills). A timeline counts only when
+// and its stills.tsx's defineStills (stills). A bound timeline with neither
+// grid nor voice is silent. A timeline counts only when
 // video.tsx binds it with bindTimeline, and a video.tsx without a timeline.ts
 // still times its scenes itself, so it fits no capability.
 //
 // Negative space: what a part holds isn't judged here (a beat scene's cues, a
 // still's presets); the timeline throws at load and the retime runner and
-// still check hold those.
+// still check hold those. Nor is a silent video's quiet: a scene can place a
+// sound anywhere, so its delivered file's review holds that it has no audio.
 
 import { capabilityOfParts, PROJECT_CAPABILITIES, type ProjectCapability, type ProjectPart } from '#models/project/capability.ts';
 import type { AstNode, SourceFile } from '../source-tree.ts';
@@ -46,6 +48,7 @@ function matchProject(context: CheckContext, { project, timeline, video, stills 
   const report = (file: SourceFile, line: number, key: string, message: string) => findings.push({ check: ID, path: file.path, line, key, message });
 
   const parts: ProjectPart[] = [];
+  let timed = false;
   if (timeline) {
     const [call] = callsTo(context, timeline, DEFINE_TIMELINE);
     const spec = call && unwrap((call.arguments as AstNode[])[0]);
@@ -56,6 +59,8 @@ function matchProject(context: CheckContext, { project, timeline, video, stills 
     }
     if (!video || !callsTo(context, video, BIND_TIMELINE).length) {
       report(timeline, 1, 'timeline unbound', 'no video.tsx binds this timeline with bindTimeline, so no picture plays on it');
+    } else {
+      timed = true;
     }
   } else if (video) {
     report(video, 1, 'video without timeline', 'times its scenes itself: state them in a timeline.ts and bind them with bindTimeline');
@@ -65,7 +70,7 @@ function matchProject(context: CheckContext, { project, timeline, video, stills 
     else report(stills, 1, 'stills unregistered', 'registers no designs with defineStills');
   }
 
-  const found = capabilityOfParts(parts);
+  const found = capabilityOfParts(parts, { timed });
   const binds = parts.length ? parts.join(' and ') : 'no music, voice or stills';
   if (!project) {
     report(composition, 1, 'no project.ts', found

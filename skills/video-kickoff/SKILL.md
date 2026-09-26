@@ -56,7 +56,8 @@ picks until they say it feels right.
 
 ## 3. Scene table
 
-Start the project with `studio new <slug> --capability <voice-led|music-led|mixed>`, adding `--url` only for a public
+Start the project with `studio new <slug> --capability <voice-led|music-led|mixed|silent>` (silent: fixed-length
+scenes with no voice, music or sound, delivered with no audio track), adding `--url` only for a public
 page that loads as it is. Every scene starts blocked, a few flat pieces moving on its cues, so `studio render <p> --animatic`
 and `studio review <p>` show the storyboard as it plays before anything is built. If the video is about a product repo's code, give it a host
 (step 1). Then write the chosen angle out scene by scene in `projects/<p>/storyboard.md`, under the audience,

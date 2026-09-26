@@ -4,6 +4,8 @@
 // STUDIO_ROOT rather than the working directory.
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import type { ProjectCapability, ProjectDeclaration } from '#models/project/capability.ts';
 
 export const STUDIO_ROOT = resolve(import.meta.dirname, '../../..');
 export const STUDIO_PROJECTS_DIR = join(STUDIO_ROOT, 'projects');
@@ -36,4 +38,15 @@ export function resolveStudioProjectWith(arg: string, file: string): string {
   const dir = resolveStudioProject(arg);
   if (!existsSync(join(dir, file))) throw new Error(`${basename(dir)} has no ${file}`);
   return dir;
+}
+
+/**
+ * What the project's project.ts declares it is (check:arch holds that to what it binds), or undefined for an older
+ * project with none.
+ */
+export async function readProjectCapability(project: string): Promise<ProjectCapability | undefined> {
+  const file = join(project, 'project.ts');
+  if (!existsSync(file)) return undefined;
+  const { default: declaration } = (await import(pathToFileURL(file).href)) as { default: ProjectDeclaration };
+  return declaration.capability;
 }

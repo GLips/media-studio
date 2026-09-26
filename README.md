@@ -21,7 +21,7 @@ Every step is a `studio` verb. A `<project>` is a slug (`sale-only-view`), a uni
 
 | Step | Command | Output |
 |---|---|---|
-| Start | `studio new <slug> --capability=<music-led\|voice-led\|mixed\|still-only> [--url=…]` | `projects/<yyyy-mm>-<slug>/` that passes `check:arch`, the typecheck and its tests from its first commit: a `project.ts` declaring the capability, and a `timeline.ts` with its retime test and a scene file per scene, each blocked in flat pieces moving on its cues (lines' timing estimated), or a starter `stills.tsx`; with `--url`, that page captured as `home` |
+| Start | `studio new <slug> --capability=<music-led\|voice-led\|mixed\|silent\|still-only> [--url=…]` | `projects/<yyyy-mm>-<slug>/` that passes `check:arch`, the typecheck and its tests from its first commit: a `project.ts` declaring the capability, and a `timeline.ts` with its retime test and a scene file per scene, each blocked in flat pieces moving on its cues (lines' timing estimated), or a starter `stills.tsx`; with `--url`, that page captured as `home` |
 | Probe | `studio probe <project> <url-or-path> [--at=x,y]` | a numbered viewport screenshot of a page as `capture.ts` sees it (signed in by its `prepare`), and its interactive and landmark elements (or the one under `--at`) with selectors for rects |
 | Capture | `studio capture <project>` | `captures/` plus `captures/index.ts`: the named shots. A still is a high-DPI full-page screenshot with the page positions of the elements scenes point at; a take is a screen recording of real clicks, scrolls and typing, with marks. Shots `capture.ts` no longer makes are deleted |
 | Voice | `studio voice <project>` | `audio/take.wav`, the whole script read in one take, cut into `audio/<line>.wav` plus `audio/manifest.ts`. Any script change re-reads the take. `--read=draft` is a free macOS `say` read, `--read=estimate` times lines from their word count, `--take=<file>` uses a recording. `studio audition` compares voices on one line |
@@ -35,8 +35,9 @@ Every step is a `studio` verb. A `<project>` is a slug (`sale-only-view`), a uni
 `studio render` runs the check first and refuses to render if a highlight sits under a tag or the caption, runs off
 the frame or is cut off by its panel, if a scene's `expect` isn't met, if the motion tracks have tracking errors, or
 if any line is still estimated. It then masters the mix to −14 LUFS, renders the video muted and muxes the mix in. Each MP4 must have
-the right length and an audio stream, measure −14 ±1 LUFS and peak at −1 dBTP or lower. Each is tiled into a sheet
-to look over.
+the right length and an audio stream, measure −14 ±1 LUFS and peak at −1 dBTP or lower. A `silent` project (no voice,
+music or sound) has no mix, mastering or loudness check and no `.srt`: each MP4 must have no audio track instead. A mix
+that renders silent in any other project fails. Each is tiled into a sheet to look over.
 
 `studio api [name]` lists what `lib/studio/api.ts` exports, read from the code, or prints one export's signature and
 doc comment. `studio repeatable <project> 2,8.5` proves a painted layer is a pure function of time; `studio sfx` renders sound
@@ -53,7 +54,7 @@ holds, leaving out project compositions and retime tests, which need the project
 
 ```
 projects/<yyyy-mm-name>/
-  project.ts       its capability: music-led, voice-led, still-only or mixed (lib/models/project/capability.ts)
+  project.ts       its capability: music-led, voice-led, mixed, silent or still-only (lib/models/project/capability.ts)
   capture.ts       the named shots: stills and takes, each with its own setup (lib/engine/capture/capture.ts)
   voiceover.json   { voice, lines: [{ id, text }] }
   timeline.ts      the timing, stated once: each scene's driver (beats, seconds or its voiced lines) and its cues

@@ -3,9 +3,10 @@
 //
 // A project's parts: music, when its timeline.ts cuts scenes to a beat grid; voice, when its timeline.ts lays scenes
 // on recorded lines; stills, when its stills.tsx registers designs. One part names its capability; two or more make
-// it mixed. A music bed under a voice is sound, not a part: the voice still sets the timing.
+// it mixed. A music bed under a voice is sound, not a part: the voice still sets the timing. A timeline with neither
+// is a silent video on fixed spans: it plays no voice, music or sound at all, and delivers with no audio track.
 
-export const PROJECT_CAPABILITIES = ['music-led', 'voice-led', 'still-only', 'mixed'] as const;
+export const PROJECT_CAPABILITIES = ['music-led', 'voice-led', 'still-only', 'mixed', 'silent'] as const;
 export type ProjectCapability = (typeof PROJECT_CAPABILITIES)[number];
 
 /** A project's project.ts: `export default { capability: 'voice-led' } satisfies ProjectDeclaration;` */
@@ -15,9 +16,13 @@ export type ProjectPart = 'music' | 'voice' | 'stills';
 
 const SINGLE_PART: Record<ProjectPart, ProjectCapability> = { music: 'music-led', voice: 'voice-led', stills: 'still-only' };
 
-/** The capability a project's parts make, or undefined for none (a silent video on fixed spans). */
-export function capabilityOfParts(parts: readonly ProjectPart[]): ProjectCapability | undefined {
+/**
+ * The capability a project's parts make: `silent` for a timeline with no part (`timed`), undefined for no timeline
+ * and no part.
+ */
+export function capabilityOfParts(parts: readonly ProjectPart[], { timed }: { timed: boolean }): ProjectCapability | undefined {
   const distinct = [...new Set(parts)];
   if (distinct.length > 1) return 'mixed';
-  return distinct.length ? SINGLE_PART[distinct[0]] : undefined;
+  if (distinct.length) return SINGLE_PART[distinct[0]];
+  return timed ? 'silent' : undefined;
 }

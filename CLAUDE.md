@@ -11,7 +11,7 @@
   import as `#studio`. `lib/sfx/` and `lib/paint/` are still to be split into them. An import into a `lib/<folder>` from
   outside it uses its alias (`#models/*`, `#studio/*`, `#engine/*`, `#sfx/*`, `#paint/*`), never a relative path;
   `node lint/rewrite-lib-imports.ts` rewrites any that slip in.
-- Start a project with `studio new <slug> --capability <music-led|voice-led|mixed|still-only>`. It passes every check
+- Start a project with `studio new <slug> --capability <music-led|voice-led|mixed|silent|still-only>`. It passes every check
   from its first commit; a new project isn't baselined, so a violation in it blocks.
 - A project: `project.ts` (its capability, held to what it binds), `timeline.ts`, `timeline.test.ts` (the retime
   runner), a file per scene in `scenes/` or `bars/` with its helpers in a folder of its name, `video.tsx`, `stills.tsx`.

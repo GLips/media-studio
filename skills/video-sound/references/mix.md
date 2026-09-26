@@ -16,7 +16,9 @@ All of this already happens, so don't redo it with your own gain, `loudnorm` or 
 - **Mastering.** `studio mix` and `studio render` render the soundtrack, then apply one gain to reach −14 LUFS and a
   true-peak limiter at −2 dBTP (`lib/engine/render/render-pipeline.ts`). Encoding to AAC adds a little overshoot, and the extra 1 dB
   of headroom keeps the delivered file under the −1 dBTP ceiling. `studio render` then measures the delivered video
-  and fails if it isn't −14 ± 1 LUFS or peaks over −1 dBTP.
+  and fails if it isn't −14 ± 1 LUFS or peaks over −1 dBTP. A mix that renders silent fails before mastering: something
+  that should sound didn't. A video meant to have no sound at all declares `capability: 'silent'` in `project.ts`; it
+  has no mix, and its delivered video has no audio track.
 
 Because mastering lifts the whole mix to −14 LUFS, the absolute levels before it don't matter. Only the balance
 between voice, music and effects does.
