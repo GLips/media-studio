@@ -363,9 +363,12 @@ export async function renderVideoSlice(session: RenderSession, { from, end, out 
 
 /**
  * Joins the slices in `dir` (renderVideoSlice's, one file each) into the whole video at `out`, under a fresh mastered
- * mix, so the placed sounds play across the joins (a silent project's has no sound). Refuses a slice rendered on another timeline than the video's now,
+ * mix, so the placed sounds play across the joins. Refuses a slice rendered on another timeline than the video's now,
  * a gap or an overlap between slices, or a file short of the frames its snapshot says it holds: each would put every
  * later frame off its sound.
+ *
+ * Negative space: a silent project's join has no sound and doesn't check that none plays, since its slices are
+ * muted; the delivered render's review is what refuses a sound in a silent project.
  */
 export async function joinVideoSlices(session: RenderSession, { dir, out }: { dir: string; out: string }): Promise<string> {
   const timeline = await session.readTimeline();
