@@ -89,10 +89,13 @@ export function assertTimelineRetimes(
       const expected = spokenShift(keys.indexOf(placed.scene), placed.line, false);
       if (moved.frame - placed.frame !== expected) fail(`line ${placed.line} moves ${moved.frame - placed.frame} frames, not ${expected}`);
     });
-    const musicAt = (timeline: Timeline) => timeline.audio.find((placed) => placed.kind === 'music')?.atSeconds ?? 0;
-    const musicShift = musicAt(after) - musicAt(before);
-    const musicExpected = firstMusicScene >= 0 && k < firstMusicScene ? added / FPS : 0;
-    if (Math.abs(musicShift - musicExpected) > 1e-9) fail(`the music moves ${musicShift.toFixed(3)} s, not ${musicExpected.toFixed(3)} s`);
+    // A tempo-only grid places no recording, so there's no music to move: its beats move with their scenes, held above.
+    if (spec.grid?.kind === 'recorded') {
+      const musicAt = (timeline: Timeline) => timeline.audio.find((placed) => placed.kind === 'music')?.atSeconds ?? 0;
+      const musicShift = musicAt(after) - musicAt(before);
+      const musicExpected = firstMusicScene >= 0 && k < firstMusicScene ? added / FPS : 0;
+      if (Math.abs(musicShift - musicExpected) > 1e-9) fail(`the music moves ${musicShift.toFixed(3)} s, not ${musicExpected.toFixed(3)} s`);
+    }
     if (after.end < after.scenes.at(-1)!.end) fail(`the video ends on frame ${after.end}, before its last scene does`);
 
     if (placedBefore) {

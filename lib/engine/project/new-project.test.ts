@@ -16,11 +16,14 @@ const run = promisify(execFile);
 
 /**
  * Runs a command in the workspace at `cwd`, returning its exit code, its stdout, and everything it printed. It runs
- * cut off from the studio's repository, so a check:arch there reads the workspace's index, never the one committing.
+ * cut off from the studio's repository, so a check:arch there reads the workspace's index, never the one committing,
+ * and from this test run: a `node --test` that inherits NODE_TEST_CONTEXT reports to a parent runner and exits 0
+ * whatever fails.
  */
 async function outcome(cwd: string, command: string, args: readonly string[]) {
+  const { NODE_TEST_CONTEXT: _, ...env } = isolatedGitEnv();
   try {
-    const { stdout, stderr } = await run(command, args, { cwd, env: isolatedGitEnv(), maxBuffer: 16 << 20 });
+    const { stdout, stderr } = await run(command, args, { cwd, env, maxBuffer: 16 << 20 });
     return { code: 0, stdout, output: stdout + stderr };
   } catch (error) {
     const failed = error as { code?: number; stdout?: string; stderr?: string };
@@ -31,12 +34,17 @@ async function outcome(cwd: string, command: string, args: readonly string[]) {
 /** A copy of the studio as the index holds it, as its own git repo, sharing this checkout's node_modules. */
 function indexWorkspace(): string {
   const workspace = mkdtempSync(join(tmpdir(), 'studio-new-'));
-  // The studio's own index, read in this process's git environment: under the gate, the one being committed.
-  execFileSync('git', ['checkout-index', '--all', `--prefix=${workspace}/`], { cwd: STUDIO_ROOT });
-  symlinkSync(realpathSync(join(STUDIO_ROOT, 'node_modules')), join(workspace, 'node_modules'));
-  runFixtureGit(workspace, ['init', '-q']);
-  appendFileSync(join(workspace, '.git/info/exclude'), 'node_modules\n');
-  return workspace;
+  try {
+    // The studio's own index, read in this process's git environment: under the gate, the one being committed.
+    execFileSync('git', ['checkout-index', '--all', `--prefix=${workspace}/`], { cwd: STUDIO_ROOT });
+    symlinkSync(realpathSync(join(STUDIO_ROOT, 'node_modules')), join(workspace, 'node_modules'));
+    runFixtureGit(workspace, ['init', '-q']);
+    appendFileSync(join(workspace, '.git/info/exclude'), 'node_modules\n');
+    return workspace;
+  } catch (error) {
+    rmSync(workspace, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 async function scaffold(workspace: string, capability: ProjectCapability) {
@@ -71,6 +79,9 @@ describe('studio new', { concurrency: true }, () => {
         if (specs.length) {
           const tests = await outcome(workspace, process.execPath, ['--test', ...specs]);
           assert.equal(tests.code, 0, tests.output);
+          // Its own report, not a parent runner's: tests ran, and none failed.
+          assert.match(tests.output, /ℹ pass [1-9]/, tests.output);
+          assert.match(tests.output, /ℹ fail 0/, tests.output);
         }
       } finally {
         rmSync(workspace, { recursive: true, force: true });
