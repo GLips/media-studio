@@ -7,8 +7,11 @@
 // with a hash of its bytes: the media URL carries it and stops serving once the file changes, the page polls
 // /api/render to warn when it has, and each note records the hash it was written on.
 //
-// Negative space: nothing here renders, measures or regenerates an artifact. A missing one is named in `missing`, so
-// the page can say which note fields it can't fill and the command that would.
+// The storyboard view's stills are the reviewed render's own frames, cut from the file with ffmpeg as the page asks
+// for them and kept per render hash, so a card shows exactly what the render shows.
+//
+// Negative space: nothing here renders the composition, measures or regenerates an artifact. A missing one is named
+// in `missing`, so the page can say which note fields it can't fill and the command that would.
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -18,10 +21,12 @@ import { sfxCuePlays } from '../../lib/sfx/cues.ts';
 import { H, W } from '#models/frame/frame.ts';
 import type { MotionTracks } from '#models/motion/motion-tracks.ts';
 import { reviewTimingOf, type ReviewTiming } from '#models/review/review-moment.ts';
+import { reviewStoryboardOf, reviewTimingMarksOf, type ReviewStoryboardCard, type ReviewTimingMarks } from '#models/review/review-storyboard.ts';
 import { placeReviewNotes, REVIEW_NOTES_VERSION, reviewFrameAt, type ReviewMediaKind, type ReviewNote, type ReviewNotesFile, type ReviewRenderStamp, type ReviewScene, type ReviewSoundMarker, type ReviewStillCell, type ReviewStillCellsFile } from '#models/review/review-notes.ts';
 import { resolveStudioProject, STUDIO_ROOT } from '../../lib/engine/project/studio-project.ts';
 import { loadRenderSnapshot, renderFileStamp } from '../../lib/engine/snapshot/render-snapshot.ts';
 import { watchLabPage } from '../../lib/engine/bundle/lab-bundle.ts';
+import { runFfmpegAsync } from '../../lib/engine/ffmpeg/ffmpeg.ts';
 import { sendFile } from '../server.ts';
 
 const REVIEW_APP_DIR = join(STUDIO_ROOT, 'lab', 'review', 'app');
@@ -61,6 +66,10 @@ export type ReviewManifest = ReviewRenderStatus & {
   motion?: MotionTracks;
   /** The render's scenes, beats, cues and words, from its snapshot: where a note's moment is read and placed. */
   timing?: ReviewTiming;
+  /** A card per scene with its stills, from the snapshot. */
+  storyboard?: ReviewStoryboardCard[];
+  /** The beats, cues, replays and landmarks the scrubber marks, from the snapshot's clock. */
+  marks?: ReviewTimingMarks;
   /** On a variant sheet (`studio still --sheet`), its cells, from the .cells.json beside it. */
   cells?: ReviewStillCell[];
   /** Each artifact a note field needs that isn't there, with how to make it. */
@@ -95,7 +104,7 @@ function reviewTargetOf(media: string): ReviewTarget {
 
 /**
  * A project's renders, newest first: the video files directly in out/ and out/wip/. Negative space: deeper folders
- * (out/wip/bars, out/reel, out/storyboard) hold pieces and passes of a cut, not the cut, so they're not offered.
+ * (out/wip/bars, out/reel) hold pieces and passes of a cut, not the cut, so they're not offered.
  */
 export function listReviewRenders(project: string): { file: string; modified: Date }[] {
   return ['out', join('out', 'wip')].flatMap((folder) => {
@@ -169,6 +178,8 @@ export function buildReviewManifest(target: ReviewTarget): ReviewManifest {
     manifest.timing = reviewTimingOf({
       fps, startsAt: from, scenes: timeline.scenes, lines: timeline.cues, clock: snapshot.clock,
     });
+    manifest.storyboard = reviewStoryboardOf({ fps, frames: snapshot.frames, scenes: timeline.scenes, lines: timeline.cues, clock: snapshot.clock });
+    manifest.marks = reviewTimingMarksOf({ frames: snapshot.frames, clock: snapshot.clock });
     if (snapshot.motion) manifest.motion = snapshot.motion;
     else manifest.missing.push(`motion for what's under a point: only a delivered render (studio render) measures it`);
   }
@@ -194,6 +205,7 @@ export function buildReviewManifest(target: ReviewTarget): ReviewManifest {
  */
 export async function startStudioReview({ target, port }: { target: ReviewTarget; port: number }) {
   const outdir = mkdtempSync(join(tmpdir(), 'studio-review-'));
+  const stills = reviewStillCutter(join(outdir, 'stills'));
   const bundle = await watchLabPage({ outdir, entry: join(REVIEW_APP_DIR, 'main.tsx') });
   const targetFor = (media: string | null): ReviewTarget => {
     if (!media) return target;
@@ -219,6 +231,14 @@ export async function startStudioReview({ target, port }: { target: ReviewTarget
         if (renderFileStamp(shown.media).hash !== url.searchParams.get('render')) return void res.writeHead(410, { 'content-type': 'text/plain' }).end('replaced on disk since the page loaded it');
         return sendFile(req, res, shown.media, MEDIA_TYPES[extname(shown.media).toLowerCase()].type);
       }
+      if (path === '/still.jpg') {
+        const shown = targetFor(url.searchParams.get('media'));
+        const hash = renderFileStamp(shown.media).hash, frame = Number(url.searchParams.get('frame')), fps = Number(url.searchParams.get('fps'));
+        if (hash !== url.searchParams.get('render')) return void res.writeHead(410, { 'content-type': 'text/plain' }).end('replaced on disk since the page loaded it');
+        if (!(Number.isInteger(frame) && frame >= 0 && fps > 0)) return reply(400, { error: 'a still needs a whole frame and the fps' });
+        stills.cut(shown.media, hash, frame, fps).then((file) => sendFile(req, res, file, 'image/jpeg'), (error: Error) => res.writeHead(500, { 'content-type': 'text/plain' }).end(error.message));
+        return;
+      }
       if (path === '/api/notes') {
         // A cross-site form can post text/plain without a preflight; only this page's fetch sends JSON.
         if (req.method !== 'POST' || !req.headers['content-type']?.startsWith('application/json')) return reply(405, { error: 'POST application/json' });
@@ -236,6 +256,28 @@ export async function startStudioReview({ target, port }: { target: ReviewTarget
   });
   await new Promise<void>((done, fail) => server.once('error', fail).listen(port, '127.0.0.1', done));
   return { url: `http://localhost:${port}/`, close: async () => { server.close(); await bundle.dispose(); } };
+}
+
+/**
+ * Cuts a render's frame to a 640 px JPEG, once per render and frame: the page asks for a card's stills as they scroll
+ * into view, and two asks for one frame share a cut.
+ */
+function reviewStillCutter(dir: string) {
+  const cuts = new Map<string, Promise<string>>();
+  return {
+    cut(media: string, hash: string, frame: number, fps: number): Promise<string> {
+      const file = join(dir, hash, `${frame}.jpg`);
+      const known = cuts.get(file);
+      if (known) return known;
+      mkdirSync(dirname(file), { recursive: true });
+      // Sought to the frame's middle, as the page seeks, so the decoder can't land on its neighbour.
+      const made = runFfmpegAsync(['-v', 'error', '-y', '-ss', ((frame + 0.5) / fps).toFixed(4), '-i', media, '-frames:v', '1', '-vf', 'scale=640:-2', '-q:v', '4', file])
+        .then(() => file);
+      made.catch(() => cuts.delete(file));
+      cuts.set(file, made);
+      return made;
+    },
+  };
 }
 
 function saveReviewNotes(target: ReviewTarget, body: unknown): { savedTo: string; saved: string } {

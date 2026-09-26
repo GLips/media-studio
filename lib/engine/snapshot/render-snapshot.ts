@@ -1,7 +1,7 @@
 // render-snapshot.ts: what a render was made from, written beside it, and the one loader that reads it back. Node only.
 //
 // Every video render writes <name>.snapshot.json beside <name>.mp4: the timeline the composition laid out when it
-// rendered, a timed project's resolved clock (its bars, beats and cues), the composition frames the file holds (a slice starts past 0), and on a delivered render the motion its
+// rendered, a timed project's resolved clock (its bars, beats, downbeats, cues and named moments), the composition frames the file holds (a slice starts past 0), and on a delivered render the motion its
 // check measured. The snapshot names the render by a hash of its bytes, so a file re-rendered without one, or copied
 // over, reads as having none rather than as the older render's.
 //
@@ -15,7 +15,7 @@ import type { MotionTracks } from '#models/motion/motion-tracks.ts';
 import type { TimelineClockTable } from '#models/timeline/timeline.ts';
 import type { TimelineReport } from '../../studio/composition/Video.tsx';
 
-export const RENDER_SNAPSHOT_VERSION = 2;
+export const RENDER_SNAPSHOT_VERSION = 3;
 
 /** Which bytes a file is: `hash` is the first 10 hex digits of its SHA-256, `modified` its mtime as ISO. */
 export type RenderFileStamp = { hash: string; modified: string };

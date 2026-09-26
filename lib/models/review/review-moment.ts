@@ -8,7 +8,11 @@
 // the scene's cut. A named cue within reach rides along and places the note ahead of its anchor: a cue keeps its name
 // when its scene's beats are re-cut, and a beat number doesn't.
 //
+// A moment also names its scene's rung on the fidelity ladder as it was on that render, so a note on the animatic
+// still reads as one after the scene has risen.
+//
 // Negative space: a moment is one instant. A range note places its first frame and keeps its length.
+import type { SceneRung } from '#models/timeline/scene-rung.ts';
 import type { TimelineClockTable } from '#models/timeline/timeline.ts';
 
 /** How close, in frames, a cue must land to a note for the note's moment to name it. */
@@ -18,8 +22,11 @@ export const REVIEW_CUE_REACH_FRAMES = 3;
 export type ReviewTiming = {
   /** The composition frame the render's first frame is: past 0 on a slice. */
   startsAt: number;
-  /** Each scene from its cut to the next; `bar` is its place in a timed project's timeline, `beats` its beats' frames. */
-  scenes: readonly { id: string; bar: number | null; from: number; to: number; beats: readonly number[] }[];
+  /**
+   * Each scene from its cut to the next; `bar` is its place in a timed project's timeline, `beats` its beats' frames,
+   * `rung` where its binding declares one.
+   */
+  scenes: readonly { id: string; bar: number | null; from: number; to: number; beats: readonly number[]; rung?: SceneRung }[];
   /** A timed project's cues by qualified name (`pay-less.stamp`). */
   cues: Readonly<Record<string, number>>;
   /** Each voiced line, with the frame each word starts on. */
@@ -30,7 +37,7 @@ export type ReviewTiming = {
  * A note's moment. `frames` counts on from the anchor; `beat` is counted from the scene's beat 0, as the timeline's
  * cues are, and `word` from the line's first word, 0. `bar` is the scene's place when the render had a clock.
  */
-export type ReviewMoment = { scene: string; bar?: number; cue?: { name: string; frames: number } } & (
+export type ReviewMoment = { scene: string; bar?: number; rung?: SceneRung; cue?: { name: string; frames: number } } & (
   | { kind: 'beat'; beat: number; frames: number }
   | { kind: 'word'; line: string; word: number; text: string; frames: number }
   | { kind: 'scene'; frames: number }
@@ -43,7 +50,7 @@ export type ReviewMomentPlacement = { frame: number } | { gone: string };
 export type ReviewTimingSources = {
   fps: number;
   startsAt: number;
-  scenes: readonly { id: string; start: number; dur: number }[];
+  scenes: readonly { id: string; start: number; dur: number; rung?: SceneRung }[];
   lines: readonly { id: string; start: number; end: number; words: readonly { text: string; start: number }[] }[];
   clock: TimelineClockTable | null;
 };
@@ -52,9 +59,11 @@ export type ReviewTimingSources = {
 export function reviewTimingOf({ fps, startsAt, scenes, lines, clock }: ReviewTimingSources): ReviewTiming {
   // As scenesAt paints: frame f shows a scene from the first f with f/fps + 1e-6 past its start.
   const frameOf = (seconds: number) => Math.ceil((seconds - 1e-6) * fps);
+  // The rung is the composition's, which the timeline report holds; a clock knows only the timeline.ts side of a scene.
+  const rungOf = (id: string) => { const rung = scenes.find((s) => s.id === id)?.rung; return rung ? { rung } : {}; };
   const placed = clock
-    ? clock.bars.map((b) => ({ id: b.id, bar: b.n, from: b.from, to: b.to, beats: b.beatFrames }))
-    : scenes.map((s) => ({ id: s.id, bar: null, from: frameOf(s.start), to: frameOf(s.start + s.dur), beats: [] }));
+    ? clock.bars.map((b) => ({ id: b.id, bar: b.n, from: b.from, to: b.to, beats: b.beatFrames, ...rungOf(b.id) }))
+    : scenes.map((s) => ({ id: s.id, bar: null, from: frameOf(s.start), to: frameOf(s.start + s.dur), beats: [], ...rungOf(s.id) }));
   return {
     startsAt, scenes: placed, cues: clock?.cues ?? {},
     lines: lines.filter((l) => l.words.length).map((l) => {
@@ -74,7 +83,7 @@ export function reviewMomentAt(frame: number, timing: ReviewTiming): ReviewMomen
   const nearest = Object.entries(timing.cues)
     .filter(([, at]) => Math.abs(at - frame) <= REVIEW_CUE_REACH_FRAMES)
     .sort(([, a], [, b]) => Math.abs(a - frame) - Math.abs(b - frame))[0];
-  const base = { scene: scene.id, ...(scene.bar !== null && { bar: scene.bar }), ...(nearest && { cue: { name: nearest[0], frames: frame - nearest[1] } }) };
+  const base = { scene: scene.id, ...(scene.bar !== null && { bar: scene.bar }), ...(scene.rung && { rung: scene.rung }), ...(nearest && { cue: { name: nearest[0], frames: frame - nearest[1] } }) };
   const line = timing.lines.find((l) => l.from <= frame && frame < l.to);
   const word = line ? line.words.findLastIndex((w) => w.from <= frame) : -1;
   if (line && word >= 0) return { ...base, kind: 'word', line: line.id, word, text: line.words[word].text, frames: frame - line.words[word].from };
@@ -91,7 +100,7 @@ export function placeReviewMoment(moment: ReviewMoment, timing: ReviewTiming): R
   if (!scene) return { gone: `scene ${moment.scene} isn't in this render` };
   if (moment.kind === 'beat') {
     const at = scene.beats[moment.beat];
-    return at === undefined ? { gone: `${sceneName(moment.scene, scene.bar)} has ${scene.beats.length} beats now, not beat ${moment.beat + 1}` } : { frame: at + moment.frames };
+    return at === undefined ? { gone: `${sceneName(moment.scene, scene.bar)} has beats 0–${scene.beats.length - 1} now, not beat ${moment.beat}` } : { frame: at + moment.frames };
   }
   if (moment.kind === 'word') {
     const line = timing.lines.find((l) => l.id === moment.line);
@@ -107,11 +116,15 @@ export function placeReviewMoment(moment: ReviewMoment, timing: ReviewTiming): R
 const sceneName = (id: string, bar: number | null | undefined) => (bar ? `bar ${bar} (${id})` : `scene ${id}`);
 const past = (frames: number) => (frames ? ` +${frames}f` : '');
 
-/** `bar 8 · beat 7 · pay-less.stamp`: the moment as a person counts it, beats and words from 1. */
+/**
+ * `bar 8 · blocking · beat 3 +4f · pay-less.stamp`: the scene, its rung, then the moment in timeline.ts's words, so a
+ * beat is counted from the scene's beat 0 as its cues are and can be pasted into one. Words count from 1, as read.
+ */
 export function formatReviewMomentPlace(moment: ReviewMoment): string {
-  const where = moment.kind === 'beat' ? `${moment.bar ? `bar ${moment.bar}` : moment.scene} · beat ${moment.beat + 1}${past(moment.frames)}`
-    : moment.kind === 'word' ? `${sceneName(moment.scene, moment.bar)} · line ${moment.line} · word ${moment.word + 1} "${moment.text}"${past(moment.frames)}`
-    : `${sceneName(moment.scene, moment.bar)}${past(moment.frames)}`;
+  const rung = moment.rung ? ` · ${moment.rung}` : '';
+  const where = moment.kind === 'beat' ? `${moment.bar ? `bar ${moment.bar}` : moment.scene}${rung} · beat ${moment.beat}${past(moment.frames)}`
+    : moment.kind === 'word' ? `${sceneName(moment.scene, moment.bar)}${rung} · line ${moment.line} · word ${moment.word + 1} "${moment.text}"${past(moment.frames)}`
+    : `${sceneName(moment.scene, moment.bar)}${rung}${past(moment.frames)}`;
   const cue = moment.cue && `${moment.cue.name}${moment.cue.frames > 0 ? ` +${moment.cue.frames}f` : moment.cue.frames < 0 ? ` ${moment.cue.frames}f` : ''}`;
   return cue ? `${where} · ${cue}` : where;
 }

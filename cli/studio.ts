@@ -19,7 +19,6 @@ const studioCommand = defineCommand({
     audition: () => import('./commands/audition.ts').then((m) => m.default),
     music: () => import('./commands/music.ts').then((m) => m.default),
     sfx: () => import('./commands/sfx.ts').then((m) => m.default),
-    storyboard: () => import('./commands/storyboard.ts').then((m) => m.default),
     preview: () => import('./commands/preview.ts').then((m) => m.default),
     look: () => import('./commands/look.ts').then((m) => m.default),
     clock: () => import('./commands/clock.ts').then((m) => m.default),

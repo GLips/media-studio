@@ -1,6 +1,6 @@
 // project-clock.ts: a timed project's resolved timeline, loaded in Node from its timeline.ts (whose `timeline`
 // export is defineTimeline's). `studio clock` prints it, `studio look` cuts its bars and beats from it, and
-// `studio storyboard` plays a music-led one as its animatic, so no tool keeps a frame list of its own.
+// every render's snapshot holds it for `studio review`, so no tool keeps a frame list of its own.
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';

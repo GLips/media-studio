@@ -24,8 +24,10 @@ export function barScene(bar: Bar) {
     if (!asked.reads.has(slot)) asked.reads.set(slot, bar.hudRead?.(slot, f, box) ?? { tone: 'light' });
     return asked.reads.get(slot)!;
   };
+  // Every bar is past pacing sign-off and in polish, so the reel declares them final together; a bar sent back to be
+  // rebuilt would say `blocking` here until it's done.
   return sceneForTimelineClock(bar.clock, {
-    note: bar.note,
+    note: bar.note, rung: 'final',
     render: (s) => {
       const f = from + Math.round(s.t * FPS);
       const t = f / FPS;

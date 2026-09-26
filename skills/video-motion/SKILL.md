@@ -101,10 +101,10 @@ kit.tsx's `Odometer`; a bar the pieces don't cover is built directly, or as a ne
 fresh-eyes critique a cut gets before it's done.
 
 **Pacing is signed off before polish.** The first cut is an animatic: each bar a title card (`titleCardScene`) or a
-board frame (`boardFrameScene`) on its cues, on the fitted music, sent as the `studio storyboard <p>` page
+board frame (`boardFrameScene`) on its cues, on the fitted music, rendered with `studio render <p> --animatic` and sent as the `studio review <p>` page
 (`video-kickoff`, step 4). Building a bar replaces that binding with its own `sceneForTimelineClock`, declaring
-`rung: 'blocking'` while it's placed and moving, then `rung: 'final'`; studio review and the storyboard show each
-scene's rung. Build and polish bars
+`rung: 'blocking'` while it's placed and moving, then `rung: 'final'`; studio review shows each scene's rung on its
+scrubber, its storyboard and its notes. Build and polish bars
 only once the user has approved its pacing: a bar polished before then gets re-timed when the notes say it's too fast.
 
 Registers mix: a walkthrough can open on a few bars of this and close on a slammed end card, calm in between. Keep
@@ -145,11 +145,11 @@ Every question below has one command. A tool or brief points here, never at a sc
 
 `studio check` rewrites `out/check/` every run, so it's for what the code does now. A render's timeline is in its own
 snapshot. `studio review` has the user pin notes on a render (or a still) and copy them back as markdown; each names
-its moment (bar and beat, a named cue near it, or line and word), then its scene, the sounds within 3 frames and the
+its moment (bar, rung and beat in timeline.ts's counting, a named cue near it, or line and word), then its scene, the sounds within 3 frames and the
 tagged elements under the point, from the render's snapshot. After a retime, a note from the earlier render moves to
 its moment's frame on the new one and says where it came from, or says its moment is gone. Reply by the moment, not
 the frame. They're saved to `review/notes-<render>.json`, so read that file instead of asking for a paste. Offer it when motion feel
-needs the user's eyes. `studio storyboard <p>` rebuilds the storyboard page from the video.
+needs the user's eyes: the same page approves every rung, the animatic (`studio render <p> --animatic`) through the cut.
 
 To judge timing, read a `--strip` like a viewer: at each tile, where are they looking, and do they understand it
 yet? Time each read from the tiles' timestamps (a default strip's tiles are 0.1 s apart, three video frames each). A

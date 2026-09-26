@@ -302,6 +302,22 @@ export async function renderDeliveredVideo(session: RenderSession, { plain }: { 
   return delivered;
 }
 
+// ---------- the animatic ----------
+
+/**
+ * The whole video at `out` as it plays now, for `studio review`: whatever sound the composition has (none, a tempo
+ * guess's silence, a draft voice, the fitted music), captions on, with no framing check, no mix and no refusal of an
+ * estimated line, so a video on title cards and board frames can be approved before it's voiced or finished.
+ */
+export async function renderAnimatic(session: RenderSession, { out }: { out: string }): Promise<string> {
+  mkdirSync(dirname(out), { recursive: true });
+  const rendered = await session.renderVideo({
+    out, inputProps: session.props({ captions: true }), crf: 26, x264Preset: 'veryfast', imageFormat: 'jpeg', jpegQuality: 85, onProgress: renderProgress(out),
+  });
+  if (isVoicedWithDraft(session.project)) console.error(draftVoiceWarning(session));
+  return rendered;
+}
+
 // ---------- slices ----------
 
 /**

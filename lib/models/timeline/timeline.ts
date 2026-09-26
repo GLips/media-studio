@@ -14,6 +14,7 @@
 import { findSpokenPhrase, type SpokenWord } from '#models/voice/voice-words.ts';
 import { beatGrid as fitBeatGrid, steadyBeatGrid, type BeatGrid } from './beat-grid.ts';
 import { FPS } from './frame-rate.ts';
+import { timelineSceneMoments, type TimelineMoment } from './scene-moments.ts';
 
 // ---------- the grid ----------
 
@@ -226,6 +227,8 @@ export type Timeline<Scenes extends AnyScenes = AnyScenes, Replays extends Repla
   beatAtFrame(frame: number): number;
   /** Every beat's hit frame inside the video, pickup beats included. */
   beatFrames: readonly number[];
+  /** The fitted recording's downbeats that are among `beatFrames`; none on a tempo-only grid, which has no bars of its own. */
+  downbeatFrames: readonly number[];
   /** Which beat of the music's own bar each beat scene cuts in on, 1 being its downbeat; null off the section. */
   musicBeats: readonly (number | null)[];
 };
@@ -423,6 +426,7 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
     const on = downbeats.filter((d) => d <= beat + 0.1).at(-1);
     return on === undefined ? null : Math.round((beat - on + 1) * 4) / 4;
   };
+  const downbeatFrames = downbeats.map(beatFrame).filter((frame) => beatFrames.includes(frame));
 
   return {
     spec, fps: FPS, spb: grid?.spb ?? 0, soundLagSeconds: spec.soundLagSeconds ?? 0, keys,
@@ -433,7 +437,7 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
         kind: 'voice' as const, line: id, scene: clock.id, frame, atSeconds: frame / FPS, duration,
       }))),
     ],
-    landmarks, end, fade: { from: end + (spec.fade?.from ?? 0), to: end + (spec.fade?.to ?? 0) }, beatAtFrame, beatFrames,
+    landmarks, end, fade: { from: end + (spec.fade?.from ?? 0), to: end + (spec.fade?.to ?? 0) }, beatAtFrame, beatFrames, downbeatFrames,
     musicBeats: spans.map((span, k) => (span.driver === 'beat' ? musicBeatOf(startBeat[k] + (span.cutIn ?? 0)) : null)),
   };
 }
@@ -503,9 +507,13 @@ export type TimelineClockTable = {
   end: number;
   fade: { from: number; to: number };
   beats: number[];
+  /** The music's downbeats among `beats`: none on a tempo-only grid. */
+  downbeats: number[];
   bars: {
     n: number; id: string; driver: SceneSpan['driver']; origin: number; from: number; to: number; visible: { from: number; to: number };
     beats: number; beatFrames: number[]; musicBeat: number | null;
+    /** Its cues, the replays landing in it, its landmarks and its lines, in frame order and timeline.ts's words. */
+    moments: TimelineMoment[];
   }[];
   cues: Record<string, number>;
   replays: ResolvedReplay[];
@@ -514,11 +522,12 @@ export type TimelineClockTable = {
 };
 
 export function timelineClockTable(timeline: Timeline): TimelineClockTable {
+  const moments = timelineSceneMoments(timeline);
   return {
-    fps: timeline.fps, end: timeline.end, fade: timeline.fade, beats: [...timeline.beatFrames],
+    fps: timeline.fps, end: timeline.end, fade: timeline.fade, beats: [...timeline.beatFrames], downbeats: [...timeline.downbeatFrames],
     bars: timeline.scenes.map((scene, k) => ({
       n: scene.n, id: scene.id, driver: scene.driver, origin: scene.origin, from: scene.from, to: scene.to, visible: scene.visible,
-      beats: scene.beats, beatFrames: [...scene.beatFrames], musicBeat: timeline.musicBeats[k],
+      beats: scene.beats, beatFrames: [...scene.beatFrames], musicBeat: timeline.musicBeats[k], moments: [...moments[k].moments],
     })),
     cues: Object.fromEntries(timeline.scenes.flatMap((scene) => Object.entries(scene.cues as Record<string, number>).map(([name, frame]) => [`${scene.id}.${name}`, frame]))),
     replays: [...timeline.replays], landmarks: [...timeline.landmarks],

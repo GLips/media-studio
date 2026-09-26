@@ -10,7 +10,8 @@ const timingOf = (swatchBeats: number, priceBeats = 4): ReviewTiming => {
     grid: tempoGrid(120),
     scenes: { bounce: beatSpan(4), swatches: beatSpan(swatchBeats), price: beatSpan(priceBeats, { cues: { clack: 1 } }) },
   });
-  return reviewTimingOf({ fps: 30, startsAt: 0, scenes: [], lines: [], clock: timelineClockTable(timeline) });
+  // Only `price` declares a rung; the timeline report's start and length are the clock's business here.
+  return reviewTimingOf({ fps: 30, startsAt: 0, scenes: [{ id: 'price', start: 0, dur: 0, rung: 'blocking' }], lines: [], clock: timelineClockTable(timeline) });
 };
 const before = timingOf(4), after = timingOf(6);
 const render = { hash: 'round5', modified: '2026-09-25T12:00:00Z' };
@@ -18,8 +19,8 @@ const sources = (timing: ReviewTiming) => ({ fps: 30, frameSize: { w: 1000, h: 5
 const written = (frame: number, text: string, extra: Partial<ReviewNote> = {}): ReviewNote =>
   ({ id: text, frame, render: 'round4', text, ...extra, context: reviewNoteContext({ frame }, sources(before)) });
 
-test('a note written before a retime moves to its bar and beat on the new render, and the markdown gives the moment first', () => {
-  // f152: two frames past bar 3's beat 2. f136: a frame past `clack`, which places it ahead of its beat.
+test('a note written before a retime moves to its bar and beat on the new render, and the markdown gives its rung and moment first', () => {
+  // f152: two frames past bar 3's beat 2 (from 0). f136: a frame past `clack`, which places it ahead of its beat.
   const notes = [written(152, 'the price lands soft', { end: 155, x: 0.4, y: 0.6 }), written(136, 'clack is late')];
   assert.equal(notes[0].context.moment?.kind, 'beat');
   const placed = placeReviewNotes(notes, { render, durationInFrames: 400, sources: sources(after) });
@@ -28,14 +29,14 @@ test('a note written before a retime moves to its bar and beat on the new render
     [166, undefined, undefined, 'round5', { render: 'round4', frame: 136 }],
   ]);
   const markdown = formatReviewNotesMarkdown({ media: 'out/video.mp4', kind: 'video', fps: 30, notes: placed }, { render });
-  assert.match(markdown, /1\. \*\*bar 3 · beat 2 \+1f · price\.clack \+1f\*\*, f166 \(0:05\.53\) here \(f136 on render `round4`\): clack is late/);
-  assert.match(markdown, /2\. \*\*bar 3 · beat 3 \+2f\*\*, f182 \(0:06\.07\)–f185 \(0:06\.17\) here \(f152 on render `round4`\) at \(0\.40, 0\.60\): the price lands soft/);
+  assert.match(markdown, /1\. \*\*bar 3 · blocking · beat 1 \+1f · price\.clack \+1f\*\*, f166 \(0:05\.53\) here \(f136 on render `round4`\): clack is late/);
+  assert.match(markdown, /2\. \*\*bar 3 · blocking · beat 2 \+2f\*\*, f182 \(0:06\.07\)–f185 \(0:06\.17\) here \(f152 on render `round4`\) at \(0\.40, 0\.60\): the price lands soft/);
 });
 
 test('a note whose beat the new render no longer has stays on its frame and says why', () => {
   const [kept] = placeReviewNotes([written(160, 'hold the last beat')], { render, durationInFrames: 400, sources: sources(timingOf(4, 2)) });
-  assert.deepEqual([kept.frame, kept.render, kept.unplaced], [160, 'round4', 'bar 3 (price) has 2 beats now, not beat 3']);
-  assert.match(formatReviewNotesMarkdown({ media: 'out/video.mp4', kind: 'video', fps: 30, notes: [kept] }, { render }), /its moment isn't here: bar 3 \(price\) has 2 beats now/);
+  assert.deepEqual([kept.frame, kept.render, kept.unplaced], [160, 'round4', 'bar 3 (price) has beats 0–1 now, not beat 2']);
+  assert.match(formatReviewNotesMarkdown({ media: 'out/video.mp4', kind: 'video', fps: 30, notes: [kept] }, { render }), /its moment isn't here: bar 3 \(price\) has beats 0–1 now/);
 });
 
 test('a note on a spoken word follows the word when the line is re-read with a word more ahead of it', () => {

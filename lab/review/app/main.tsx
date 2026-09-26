@@ -3,12 +3,16 @@
 // chat. Every change saves to the project's review/notes-<render>.json. A still takes the same pins, without time.
 // The header names the render on screen by its hash and offers the others; a banner says when it's replaced on disk.
 // A note written on an earlier render arrives already moved to its moment here (the server places it), and says so.
+// The scrubber carries the render's timing (cuts, beats with the music's downbeats heavier, each cue, replay and
+// landmark), and the storyboard under it a card per scene with its rung, note and stills; a still or a mark seeks.
 import '../../app/lab.css';
 import './review.css';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { formatReviewMomentPlace } from '#models/review/review-moment.ts';
 import { formatReviewMoment, formatReviewNotesMarkdown, formatStillAxes, reviewFrameAt, reviewNoteContext, reviewNoteRenderOf, type ReviewContextSources, type ReviewNote } from '#models/review/review-notes.ts';
+import type { ReviewStoryboardCard } from '#models/review/review-storyboard.ts';
+import type { TimelineMoment } from '#models/timeline/scene-moments.ts';
 import type { ReviewManifest, ReviewRenderStatus } from '../server.ts';
 
 /** How often the page asks whether its render is still the one on disk. */
@@ -152,6 +156,7 @@ function Review({ manifest }: { manifest: ReviewManifest }) {
           <span className="hud">studio review · {manifest.media.path}</span>
           <h1>{manifest.title}</h1>
           <div className="review-render">
+            {manifest.storyboard && <a className="hud" href="#storyboard">storyboard ↓</a>}
             <span className="hud">render <b>{manifest.render.hash}</b> · modified {renderTime(manifest.render.modified)}</span>
             {renders.length > 1 && (
               <select value={manifest.media.path} onChange={(e) => { location.search = new URLSearchParams({ media: e.target.value }).toString(); }}>
@@ -208,6 +213,9 @@ function Review({ manifest }: { manifest: ReviewManifest }) {
                 onSeek={(f) => { pause(); seek(f); }} onRange={(first, last) => { pause(); setDraft((d) => ({ ...d, text: d?.text ?? '', frame: first, end: last })); }}
                 onSound={aimAtSound} />
             </>
+          )}
+          {manifest.storyboard && (
+            <Storyboard cards={manifest.storyboard} manifest={manifest} fps={fps} frame={frame} notes={sorted} onSeek={(f) => { pause(); seek(f); }} />
           )}
         </section>
 
@@ -315,6 +323,7 @@ function Scrubber({ manifest, fps, total, frame, notes, draft, onSeek, onRange, 
           </span>
         ))}
       </div>
+      {manifest.marks && <TimingMarks marks={manifest.marks} fps={fps} pct={pct} onSeek={onSeek} />}
       <div ref={track} className="review-track"
         onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); const f = frameAt(e); press.current = { from: f, range: false }; onSeek(f); }}
         onPointerMove={(e) => {
@@ -332,6 +341,7 @@ function Scrubber({ manifest, fps, total, frame, notes, draft, onSeek, onRange, 
           setLive(null);
           if (p?.range) { const f = frameAt(e); onRange(Math.min(p.from, f), Math.max(p.from, f)); }
         }}>
+        {manifest.scenes?.slice(1).map((s) => <span key={s.id} className="review-cut" style={{ left: pct(s.start * fps) }} />)}
         {range && <span className="review-range" style={{ left: pct(range[0]), width: pct(range[1] - range[0] + 1) }} />}
         {notes.filter((n) => n.frame !== undefined).map((n, i) => (
           <span key={n.id} className="review-note-mark" style={{ left: pct(n.frame!), width: n.end !== undefined ? pct(n.end - n.frame! + 1) : undefined }} title={`${i + 1}. ${n.text}`} />
@@ -348,6 +358,82 @@ function Scrubber({ manifest, fps, total, frame, notes, draft, onSeek, onRange, 
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Each beat as a tick, the music's downbeats taller, and each cue, replay and landmark as a pin above them, titled in
+ * timeline.ts's words. A pin seeks to its frame.
+ */
+function TimingMarks({ marks, fps, pct, onSeek }: { marks: NonNullable<ReviewManifest['marks']>; fps: number; pct: (f: number) => string; onSeek: (f: number) => void }) {
+  return (
+    <div className="review-timing">
+      {marks.beats.map((b) => <span key={b.frame} className={`review-beat${b.down ? ' down' : ''}`} style={{ left: pct(b.frame + 0.5) }} />)}
+      {marks.moments.map((m) => (
+        <button key={`${m.kind}:${m.scene}.${m.name}`} className={`review-moment-mark ${m.kind}`} style={{ left: pct(m.frame + 0.5) }}
+          title={`${m.kind} ${momentName(m)} · ${m.at} · ${formatReviewMoment(m.frame, fps)}`} onClick={() => onSeek(m.frame)} />
+      ))}
+    </div>
+  );
+}
+
+/** A cue by its qualified name, as the timeline and a note's moment write it; a replay or landmark by its own. */
+const momentName = (m: TimelineMoment & { scene: string }) => (m.kind === 'cue' ? `${m.scene}.${m.name}` : m.name);
+
+/**
+ * A card per scene: its number, id, rung, time and timing, its note, the review notes inside it, and its stills,
+ * each captioned with what the timeline names on that frame or the line spoken there. The card on screen lights up.
+ */
+function Storyboard({ cards, manifest, fps, frame, notes, onSeek }: {
+  cards: ReviewStoryboardCard[]; manifest: ReviewManifest; fps: number; frame: number; notes: ReviewNote[]; onSeek: (f: number) => void;
+}) {
+  const stillUrl = (f: number) => `/still.jpg?${new URLSearchParams({ media: manifest.media.path, render: manifest.render.hash, frame: String(f), fps: String(fps) })}`;
+  return (
+    <section id="storyboard" className="review-storyboard">
+      <h2 className="hud">storyboard · {cards.length} scenes · click a still to go to it</h2>
+      {cards.map((card) => {
+        const inside = notes.map((n, i) => ({ n, i })).filter(({ n }) => n.frame !== undefined && n.frame >= card.from && n.frame < card.to);
+        return (
+          <article key={card.id} className={`review-card${frame >= card.from && frame < card.to ? ' on' : ''}`}>
+            <header onClick={() => onSeek(Math.max(card.from, 0))}>
+              <span className="review-card-n">{card.n}</span>
+              <b>{card.id}</b>
+              {card.rung && <b className={`review-rung ${card.rung}`}>{card.rung}</b>}
+              {inside.map(({ n, i }) => <span key={n.id} className="review-num" title={n.text}>{i + 1}</span>)}
+              <span className="hud review-card-time">{formatReviewMoment(Math.max(card.from, 0), fps)} · {((card.to - card.from) / fps).toFixed(1)}s{card.timing ? ` · ${card.timing}` : ''}</span>
+            </header>
+            {card.note && <p className="review-card-note">{card.note}</p>}
+            <div className="review-stills">
+              {card.stills.map((still) => (
+                <figure key={still.frame} onClick={() => onSeek(still.frame)} className={frame === still.frame ? 'on' : ''}>
+                  <img src={stillUrl(still.frame)} loading="lazy" alt="" />
+                  <figcaption>
+                    <span className="hud">f{still.frame}</span>
+                    <StillMoments moments={still.moments} scene={card.id} />
+                    {still.line && <span className="review-still-line"><code>{still.line.id}</code>{still.line.voiced ? '' : <em> estimated</em>}<q>{still.line.text}</q></span>}
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          </article>
+        );
+      })}
+    </section>
+  );
+}
+
+/** The frame's named moments, the scene's own first (landmark, then cue), and the replays landing there counted. */
+function StillMoments({ moments, scene }: { moments: readonly TimelineMoment[]; scene: string }) {
+  const rank = { landmark: 0, cue: 1, line: 2, replay: 3 };
+  const own = moments.filter((m) => m.kind !== 'replay').sort((a, b) => rank[a.kind] - rank[b.kind]);
+  const replays = moments.filter((m) => m.kind === 'replay');
+  return (
+    <>
+      {own.map((m) => <span key={`${m.kind}:${m.name}`} className="review-still-moment"><i className={m.kind}>{m.kind}</i> <b>{momentName({ ...m, scene })}</b> <code>{m.at}</code></span>)}
+      {replays.length > 0 && (
+        <span className="review-still-moment"><i className="replay">{replays.length === 1 ? 'replay' : `${replays.length} replays`}</i> <code>{replays.map((m) => m.at.split(' on ')[0]).join(', ')}</code></span>
+      )}
+    </>
   );
 }
 

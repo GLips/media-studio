@@ -13,7 +13,7 @@ cheaply before the next rung spends more on it. Each rung needs the user's yes b
 | **Treatment** | the idea, the tone, the takeaway | steps 1–2: the dump, then the angle |
 | **Script or beat sheet** | what happens, in order; the track, if it's cut to music | step 3: the scene table |
 | **Style frames** | the look: two to four finished stills of key moments | `stills` skill, reviewed with `studio review` |
-| **Storyboard and animatic** | pacing: rough scenes at their real timing, on the voice or music | step 4: `studio storyboard` |
+| **Storyboard and animatic** | pacing: rough scenes at their real timing, on the voice or music | step 4: `studio render --animatic`, then `studio review` |
 | **Blocking** | how things move: simple shapes at the real timing; 3D previs where a camera moves or a video model will be given the motion | `video-motion`; `video-gen` for previs |
 | **Polish, then sound** | the finish | `video-motion`, then `video-sound` |
 
@@ -98,13 +98,13 @@ A timed scene starts as one of two studio scenes, bound in `video.tsx` until it'
 
 Each binding declares its **rung** (`card`, `board`, `blocking`, `final`): these two set theirs, and a built scene
 says `rung: 'blocking'` or `'final'` in its `sceneForTimelineClock` or `defineScene`. The rung goes into the render's
-snapshot, so `studio review` shows it on each scene of the scrubber and `studio storyboard` on each card. Raise a
+snapshot, so `studio review` shows it on each scene of the scrubber, on each storyboard card and in each note. Raise a
 scene by changing its binding; `timeline.ts` doesn't change.
 
 **Cut to music** (the high-energy register):
 
 1. Get the track (`video-sound`, music) and cut it to the beat sheet's shape with `studio music fit <p> --bars`. To
-   plan before there's a track, put the timeline on a tempo guess (`tempoGrid(120)`): the storyboard plays silent, and
+   plan before there's a track, put the timeline on a tempo guess (`tempoGrid(120)`): the animatic plays silent, and
    the track, fitted later to the same beat counts, swaps in as `recordedGrid(track)`. Guess the tempo you'll use: a
    different one changes every beat's length, so re-check the pacing once the track is in.
 2. Write `timeline.ts` from the beat sheet (`video-motion`, "The high-energy register"): a `beatSpan` per bar, a cue
@@ -112,10 +112,12 @@ scene by changing its binding; `timeline.ts` doesn't change.
 3. Bind each scene in `video.tsx` to a title card or a board frame, with the beat sheet's text as its `note`, and
    raise a scene to blocking where the idea needs motion to read; put each idea's arrival on its cue, so it lands on
    the beat.
-4. Run `studio storyboard <p>`. The preview plays with the music, and each card has a still on every cue, replay and
-   landmark, captioned where `timeline.ts` puts it (`beat 3 +4f`).
-5. Send the user the page. A pacing note changes `timeline.ts` and, where the length changes, the music's `--bars`;
-   rebuild and resend until they sign off. Only then build the bars, and polish nothing before it.
+4. Run `studio render <p> --animatic`, then `studio review <p>`. The animatic plays with the music; the scrubber marks
+   the cuts, beats and every cue, replay and landmark; the storyboard under it has a card per scene with a still on
+   each, captioned where `timeline.ts` puts it (`beat 3 +4f`).
+5. Send the user the review page. Their notes name each scene's rung and the cue or beat they're on, in `timeline.ts`'s
+   words. A pacing note changes `timeline.ts` and, where the length changes, the music's `--bars`; render the
+   animatic again (the page offers the new render, and moves each note to its moment on it) until they sign off. Only then build the bars, and polish nothing before it.
 
 **Voiced**, the animatic is `video.tsx`, rough:
 
@@ -126,15 +128,16 @@ scene by changing its binding; `timeline.ts` doesn't change.
 3. Build `video.tsx` as an **animatic**: one scene per table row, with the table's text as its `note`, one camera and at
    most one highlight per scene. Anchor the highlight to its word (`s.line(id).word(…)`) now, so it lands again once
    the real voice replaces the estimate. No cursor paths, blur or polish yet.
-4. Run `studio storyboard <p>` and look at the page it writes yourself. It's ready to send when every scene's event
-   and each of its listed reads shows in its stills, and nothing is off the frame or under the caption.
-5. Send the user the page. Their notes go into the table, the lines and the animatic, and the page is rebuilt, until
-   they sign off.
+4. Run `studio render <p> --animatic`, then `studio review <p>`, and look at its storyboard yourself: a card per scene
+   with a still per line. It's ready to send when every scene's event and each of its listed reads shows in its
+   stills, and nothing is off the frame or under the caption.
+5. Send the user the review page. Their notes go into the table, the lines and the animatic, and the animatic is
+   rendered again, until they sign off.
 
 Once signed off, voice it for real with `studio voice <p>`, which reads the whole script as one take. It needs
 `OPENROUTER_API_KEY` in the environment; if that isn't set, don't go looking for it: ask the user to run
 `studio voice <p>` themselves, under their secret launcher. Until then, `--read=draft` reads it free with macOS `say`,
-to time scenes against real speech. A draft voice is for timing only, never for a delivered video. Then rebuild the storyboard to check the timing, and do
+to time scenes against real speech. A draft voice is for timing only, never for a delivered video. Then render the animatic again to check the timing, and do
 the motion pass with the `video-motion` skill, then the sound pass with `video-sound`. A voiceless teaser is cut to its
 music, so it needs the track before the motion pass (`video-sound`, music).
 

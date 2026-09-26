@@ -1,6 +1,7 @@
 // scene-moments.ts: each scene of a resolved timeline with the moments named in it: its cues, the replays landing in
-// it, the landmarks tied to the music and its voiced lines, each on its frame and in timeline.ts's own words. The
-// storyboard takes a music-led video's stills on them, so a pacing note reads straight back onto the line it changes.
+// it, the landmarks tied to the music and its voiced lines, each on its frame and in timeline.ts's own words. The clock
+// table carries them into a render's snapshot, and studio review's storyboard takes a music-led video's stills on them,
+// so a pacing note reads straight back onto the line it changes.
 
 import type { SceneMoment, SceneSpan, Timeline } from './timeline.ts';
 

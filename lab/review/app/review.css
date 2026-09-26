@@ -1,5 +1,6 @@
 /* review.css: the `studio review` page, in the Studio Lab's palette (lab.css): the frame large on the left, the
-   note being written and the notes on the right, the scrubber with its scenes, notes and sounds under the frame. */
+   note being written and the notes on the right, the scrubber with its scenes, timing, notes and sounds under the
+   frame, and the storyboard's cards under that. */
 
 .review { max-width: 1600px; margin: 0 auto; padding: 20px 28px 64px; }
 .review button { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px; cursor: pointer; font-weight: 600; }
@@ -37,6 +38,15 @@
 .review-rung.board { background: #d7b33a; }
 .review-rung.blocking { background: #6f8ff0; }
 .review-rung.final { background: var(--pass); }
+.review-timing { position: relative; height: 18px; }
+.review-beat { position: absolute; bottom: 0; width: 1px; height: 5px; background: var(--dim); opacity: 0.6; pointer-events: none; }
+.review-beat.down { height: 10px; width: 2px; margin-left: -0.5px; background: var(--cream); opacity: 0.9; }
+.review .review-moment-mark { position: absolute; top: 0; width: 8px; height: 8px; margin-left: -4px; padding: 0; border: 0; border-radius: 50%; }
+.review .review-moment-mark.cue { background: #d7b33a; }
+.review .review-moment-mark.replay { background: #4fb3c8; border-radius: 1px; }
+.review .review-moment-mark.landmark { background: var(--red); transform: rotate(45deg); border-radius: 1px; }
+.review .review-moment-mark:hover { background: var(--cream); }
+.review-cut { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--dim); opacity: 0.7; pointer-events: none; }
 .review-track { position: relative; height: 34px; background: var(--panel); border-radius: 3px; cursor: pointer; touch-action: none; }
 .review-range { position: absolute; top: 0; bottom: 0; background: #4144f455; border: 1px solid var(--cobalt); pointer-events: none; }
 .review-note-mark { position: absolute; top: 6px; height: 8px; min-width: 3px; background: var(--red); border-radius: 2px; pointer-events: none; }
@@ -67,3 +77,24 @@
 .review-context { display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; margin: 4px 0 0; font: 11px/1.45 var(--mono); color: var(--dim); }
 .review-context dt { text-transform: uppercase; letter-spacing: 0.06em; }
 .review-context dd { margin: 0; color: var(--cream); overflow-wrap: anywhere; }
+
+.review-storyboard { margin-top: 28px; display: flex; flex-direction: column; gap: 12px; scroll-margin-top: 12px; }
+.review-storyboard h2 { margin: 0; font-size: 11px; }
+.review-card { background: var(--panel); border: 1px solid transparent; border-radius: 8px; padding: 12px 14px; }
+.review-card.on { border-color: var(--cream); }
+.review-card header { display: flex; align-items: baseline; gap: 8px; cursor: pointer; }
+.review-card header b { font-size: 16px; }
+.review-card header .review-rung { font-size: 11px; }
+.review-card-n { font: 12px var(--mono); color: var(--dim); }
+.review-card-time { margin-left: auto; text-transform: none; }
+.review-card-note { margin: 4px 0 0; color: var(--dim); font-size: 14px; }
+.review-stills { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-top: 10px; }
+.review-stills figure { margin: 0; cursor: pointer; }
+.review-stills img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; border-radius: 4px; background: #000; border: 1px solid var(--line); }
+.review-stills figure.on img, .review-stills figure:hover img { border-color: var(--cream); }
+.review-stills figcaption { display: flex; flex-direction: column; gap: 1px; margin-top: 4px; font-size: 12px; }
+.review-still-moment code, .review-still-line code { font: 11px var(--mono); color: var(--dim); }
+.review-still-moment i { font: normal 600 10px var(--mono); text-transform: uppercase; letter-spacing: 0.04em; }
+.review-still-moment i.cue { color: #d7b33a; } .review-still-moment i.replay { color: #4fb3c8; } .review-still-moment i.landmark { color: var(--red); }
+.review-still-line em { font: normal 10px var(--mono); color: var(--red); }
+.review-still-line q { display: block; }

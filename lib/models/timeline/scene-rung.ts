@@ -1,6 +1,6 @@
 // scene-rung.ts: how far up the fidelity ladder (skills/video-kickoff) a scene is. A scene starts low and rises in
 // place, so one composition is the animatic, the blocking and the finished cut; its binding declares the rung, and the
-// render's snapshot carries it for studio review and studio storyboard.
+// render's snapshot carries it for studio review, whose scrubber, storyboard and notes name it.
 
 /**
  * - `card`: a title card, the scene's id, note and cues on a plain ground (TitleCard).
