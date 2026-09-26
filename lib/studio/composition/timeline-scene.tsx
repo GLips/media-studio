@@ -5,13 +5,14 @@
 import type { ReactNode } from 'react';
 import type { ResolvedSceneClock } from '../../models/timeline/timeline.ts';
 import { FPS } from '#models/frame/frame.ts';
+import type { SceneRung } from '#models/timeline/scene-rung.ts';
 import type { SceneClock, SceneDef } from './timeline.ts';
 
 /** The scene that plays one scene of the timeline, from its cut to the next one's, with the lines the timeline placed in it. */
-export function sceneForTimelineClock(clock: ResolvedSceneClock, { note, render }: { note?: string; render: (s: SceneClock) => ReactNode }): SceneDef {
+export function sceneForTimelineClock(clock: ResolvedSceneClock, { note, rung, render }: { note?: string; rung?: SceneRung; render: (s: SceneClock) => ReactNode }): SceneDef {
   const seconds = (frame: number) => (frame - clock.from) / FPS;
   return {
-    id: clock.id, note, render, lines: clock.lines.map((line) => line.id),
+    id: clock.id, note, rung, render, lines: clock.lines.map((line) => line.id),
     resolved: { dur: seconds(clock.to), xfade: clock.crossfade, lines: Object.fromEntries(clock.lines.map((line) => [line.id, seconds(line.frame)])) },
   };
 }

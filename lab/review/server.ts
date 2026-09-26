@@ -160,11 +160,11 @@ export function buildReviewManifest(target: ReviewTarget): ReviewManifest {
     manifest.fps = fps;
     manifest.durationInFrames = snapshot.frames.end - from;
     manifest.startsAt = from;
-    manifest.scenes = timeline.scenes.flatMap(({ id, start, dur }) => {
+    manifest.scenes = timeline.scenes.flatMap(({ id, start, dur, rung }) => {
       const first = Math.max(timeline.crossfades.find((c) => c.to === id)?.start ?? start, shift);
       const last = Math.min(timeline.crossfades.find((c) => c.from === id)?.end ?? start + dur, end / fps);
       // Under half a frame is a scene that only touches the slice's edge.
-      return last - first > 0.5 / fps ? [{ id, start: first - shift, dur: last - first }] : [];
+      return last - first > 0.5 / fps ? [{ id, start: first - shift, dur: last - first, ...(rung && { rung }) }] : [];
     });
     manifest.timing = reviewTimingOf({
       fps, startsAt: from, scenes: timeline.scenes, lines: timeline.cues, clock: snapshot.clock,

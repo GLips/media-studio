@@ -31,6 +31,12 @@
 .review-scenes span { position: absolute; top: 0; height: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 2px 5px;
   font: 11px var(--mono); color: var(--dim); background: #1c1c21; border-left: 1px solid var(--line); }
 .review-scenes span.odd { background: #222228; }
+/* A scene's rung on the fidelity ladder, dimmest at card: how far each scene is from finished, read along the strip. */
+.review-rung { margin-right: 5px; padding: 0 4px; border-radius: 2px; font-weight: 600; text-transform: uppercase; color: #16161a; }
+.review-rung.card { background: #8a8f98; }
+.review-rung.board { background: #d7b33a; }
+.review-rung.blocking { background: #6f8ff0; }
+.review-rung.final { background: var(--pass); }
 .review-track { position: relative; height: 34px; background: var(--panel); border-radius: 3px; cursor: pointer; touch-action: none; }
 .review-range { position: absolute; top: 0; bottom: 0; background: #4144f455; border: 1px solid var(--cobalt); pointer-events: none; }
 .review-note-mark { position: absolute; top: 6px; height: 8px; min-width: 3px; background: var(--red); border-radius: 2px; pointer-events: none; }

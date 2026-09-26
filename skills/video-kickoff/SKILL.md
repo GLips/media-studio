@@ -88,6 +88,19 @@ The storyboard is the video itself, rough, and never a separate drawing, so it c
 scene starts at the lowest rung that shows its idea (a title card, a held sketch or style frame, a still with one push
 in) and rises in place, so the same page carries the animatic, the blocking and the finished cut.
 
+A timed scene starts as one of two studio scenes, bound in `video.tsx` until it's built:
+
+- **Title card**: `(clock) => titleCardScene(clock, { note })` puts the scene's id and note on a plain ground and
+  lights each cue and line as it lands, over a strip with the playhead. The cheapest rung: timing with no picture.
+- **Board frame**: `(clock) => boardFrameScene(clock, { note, src, caption, move: { push: 1.1 }, over: 'push' })`
+  holds a sketch or style frame (an image in `refs/`) with at most one push or slide, over a timeline move or the
+  whole scene.
+
+Each binding declares its **rung** (`card`, `board`, `blocking`, `final`): these two set theirs, and a built scene
+says `rung: 'blocking'` or `'final'` in its `sceneForTimelineClock` or `defineScene`. The rung goes into the render's
+snapshot, so `studio review` shows it on each scene of the scrubber and `studio storyboard` on each card. Raise a
+scene by changing its binding; `timeline.ts` doesn't change.
+
 **Cut to music** (the high-energy register):
 
 1. Get the track (`video-sound`, music) and cut it to the beat sheet's shape with `studio music fit <p> --bars`. To
@@ -96,8 +109,9 @@ in) and rises in place, so the same page carries the animatic, the blocking and 
    different one changes every beat's length, so re-check the pacing once the track is in.
 2. Write `timeline.ts` from the beat sheet (`video-motion`, "The high-energy register"): a `beatSpan` per bar, a cue
    for each idea that lands on a beat, named for what lands (`ink.strike2`), the replays and the final hit's landmark.
-3. Bind each scene in `video.tsx` to a rough picture of its idea, with the beat sheet's text as its `note`; put each
-   idea's arrival on its cue, so it lands on the beat.
+3. Bind each scene in `video.tsx` to a title card or a board frame, with the beat sheet's text as its `note`, and
+   raise a scene to blocking where the idea needs motion to read; put each idea's arrival on its cue, so it lands on
+   the beat.
 4. Run `studio storyboard <p>`. The preview plays with the music, and each card has a still on every cue, replay and
    landmark, captioned where `timeline.ts` puts it (`beat 3 +4f`).
 5. Send the user the page. A pacing note changes `timeline.ts` and, where the length changes, the music's `--bars`;

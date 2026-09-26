@@ -44,7 +44,7 @@ export async function buildStoryboardPage(project: string): Promise<string> {
 
   const cards = shots.map(({ scene, timing, moments }, i) => `
     <section class="scene" data-start="${scene.start}" data-end="${scene.start + scene.dur}">
-      <h2><span class="n">${i + 1}</span> ${esc(scene.id)} <span class="t">${clock(scene.start)} · ${scene.dur.toFixed(1)}s${timing ? ` · ${esc(timing)}` : ''}</span></h2>
+      <h2><span class="n">${i + 1}</span> ${esc(scene.id)}${scene.rung ? ` <span class="rung ${scene.rung}">${scene.rung}</span>` : ''} <span class="t">${clock(scene.start)} · ${scene.dur.toFixed(1)}s${timing ? ` · ${esc(timing)}` : ''}</span></h2>
       ${scene.note ? `<p class="note">${esc(scene.note)}</p>` : ''}
       <div class="shots">${moments.map((m) => `
         <figure data-t="${m.frame / fps}">
@@ -151,6 +151,8 @@ function storyboardHtml(timeline: TimelineReport, draft: boolean, cards: string)
   .moment { display: block; }
   .moment b { font-weight: 600; }
   .cue, .replay, .landmark, .line { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  .rung { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 4px; color: #fff; }
+  .rung.card { background: #6b6f76; } .rung.board { background: #b8860b; } .rung.blocking { background: #3f5fc8; } .rung.final { background: #2e7d32; }
   .cue { color: #b8860b; } .replay { color: #1f7a8c; } .landmark { color: #c0392b; } .line { color: #2e7d32; }
 </style>
 <header>

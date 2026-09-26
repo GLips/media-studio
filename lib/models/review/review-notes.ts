@@ -9,6 +9,7 @@
 // A note written on another render moves to its moment's frame on this one (placeReviewNotes), so a retime doesn't
 // leave it on a frame that now shows something else. review-moment.ts says what a moment is.
 import type { MotionTracks } from '#models/motion/motion-tracks.ts';
+import type { SceneRung } from '#models/timeline/scene-rung.ts';
 import { formatReviewMomentPlace, placeReviewMoment, reviewMomentAt, type ReviewMoment, type ReviewTiming } from './review-moment.ts';
 
 export const REVIEW_NOTES_VERSION = 3;
@@ -22,7 +23,7 @@ export type ReviewMediaKind = 'video' | 'still';
 export type ReviewSoundMarker = { id: string; at: number; frame: number; sound: string; source: 'video' | 'cue-list' };
 
 /** A scene's visible span, its crossfades included, so a note in a dissolve names both scenes. */
-export type ReviewScene = { id: string; start: number; dur: number };
+export type ReviewScene = { id: string; start: number; dur: number; rung?: SceneRung };
 
 /**
  * One cell of a variant sheet (`studio still --sheet`), from the `.cells.json` beside it: the variant, where it sits on

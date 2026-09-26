@@ -15,6 +15,7 @@ import { previsRequestFor, previsSpan, type PrevisFootage, type PrevisRequest } 
 import { PrevisFootagePlayer } from '../previs/previs.tsx';
 import { unmeasuredAttrs } from '../probe/motion-tag.ts';
 import { FrameProbe } from '../probe/probe.tsx';
+import type { SceneRung } from '#models/timeline/scene-rung.ts';
 import { SceneContext } from './scene.tsx';
 import { sfxSeedFromId } from '../../sfx/dsp.ts';
 import { Sfx, SfxCueListAudio, SfxCueListPlaying } from '../sfx/sfx.tsx';
@@ -38,7 +39,8 @@ export type TimelineReport = {
   duration: number;
   /** The composition's length, which can run a little past `duration` (see totalFrames). */
   durationInFrames: number;
-  scenes: { id: string; start: number; dur: number; note?: string; lines: readonly string[]; previs?: PrevisRequest }[];
+  /** `rung` only where the scene's binding declares one. */
+  scenes: { id: string; start: number; dur: number; note?: string; rung?: SceneRung; lines: readonly string[]; previs?: PrevisRequest }[];
   /** Each voice line, with every word as it's spoken (spread by length over an estimated line), in video seconds. */
   cues: { id: string; start: number; end: number; captionEnd: number; text: string; voiced: boolean; words: { text: string; start: number; end: number }[] }[];
   /** Where one scene dissolves into the next, in video seconds; a hard cut has none. */
@@ -62,7 +64,7 @@ function timelineReport(video: VideoDef, tl: Timeline, fps: number, durationInFr
     duration: tl.duration,
     durationInFrames,
     scenes: tl.scenes.map((scene) => ({
-      id: scene.id, start: scene.start, dur: scene.dur, note: scene.note, lines: scene.lines, previs: previsRequestFor(tl, scene),
+      id: scene.id, start: scene.start, dur: scene.dur, note: scene.note, rung: scene.rung, lines: scene.lines, previs: previsRequestFor(tl, scene),
     })),
     cues: tl.cues.map(({ id, start, end, captionEnd, text, src }) => {
       const scene = tl.scenes.find((sc) => id in sc.spans)!, span = scene.spans[id];

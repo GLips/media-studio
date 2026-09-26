@@ -310,7 +310,9 @@ function Scrubber({ manifest, fps, total, frame, notes, draft, onSeek, onRange, 
     <div className="review-scrubber">
       <div className="review-scenes">
         {manifest.scenes?.map((s, i) => (
-          <span key={s.id} className={i % 2 ? 'odd' : ''} style={{ left: pct(s.start * fps), width: pct(s.dur * fps) }} title={s.id}>{s.id}</span>
+          <span key={s.id} className={i % 2 ? 'odd' : ''} style={{ left: pct(s.start * fps), width: pct(s.dur * fps) }} title={s.rung ? `${s.id}: ${s.rung}` : s.id}>
+            {s.rung && <b className={`review-rung ${s.rung}`}>{s.rung}</b>}{s.id}
+          </span>
         ))}
       </div>
       <div ref={track} className="review-track"

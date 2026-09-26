@@ -12,6 +12,7 @@ import type { ReactNode } from 'react';
 import { findSpokenPhrase, type SpokenWord } from '#models/voice/voice-words.ts';
 import type { MusicBed } from '../mix/mix.ts';
 import { motionCurves } from '#models/motion/motion.ts';
+import type { SceneRung } from '#models/timeline/scene-rung.ts';
 import type { SfxSound } from '../sfx/sfx.tsx';
 
 export type VoiceLine = {
@@ -116,6 +117,8 @@ export type SceneDef = SceneTiming & {
   id: string;
   /** What the shot shows and why, in a sentence, for the storyboard. */
   note?: string;
+  /** How far up the fidelity ladder it is. Undeclared, the snapshot and review name no rung for it rather than guess one. */
+  rung?: SceneRung;
   previs?: ScenePrevis;
   lines: readonly string[];
   // Method syntax on purpose: a scene's render takes a clock narrowed to its own line ids, which a function-typed
@@ -138,6 +141,7 @@ export function defineScene<const L extends readonly string[] = readonly []>(
   scene: SceneTiming & {
     id: string;
     note?: string;
+    rung?: SceneRung;
     previs?: ScenePrevis<L[number]>;
     lines?: L;
     render: (s: SceneClock<L[number]>) => ReactNode;
