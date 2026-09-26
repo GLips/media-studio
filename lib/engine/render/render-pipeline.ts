@@ -498,9 +498,12 @@ export async function checkFramesRepeatable(session: RenderSession, times: numbe
   const worst = await withStudioTemp('repeatable', async (dir) => {
     const fresh = new Map<number, Awaited<ReturnType<typeof session.renderStills>>>();
     for (const [i, f] of frames.entries()) fresh.set(f, await session.renderStills(join(dir, `fresh-${i}`), [f]));
+    // A render's tabs each draw every Nth frame, N its worker count, so each time also comes after runs of those.
+    const runUpTo = (f: number, every: number) => [3, 2, 1].map((k) => f - k * every).filter((g) => g >= 0);
     const order = [
       ...frames, ...[...frames].reverse(),
       ...frames.flatMap((f) => [Math.min(durationInFrames - 1, f + 7), f, Math.max(0, f - 11), f]),
+      ...frames.flatMap((f) => [1, 2, 3].flatMap((every) => [...runUpTo(f, every), f])),
     ];
     const replay = await session.renderReplay(join(dir, 'replay'), order);
     const worst = new Map<number, number>();
