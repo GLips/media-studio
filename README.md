@@ -21,7 +21,7 @@ Every step is a `studio` verb. A `<project>` is a slug (`sale-only-view`), a uni
 
 | Step | Command | Output |
 |---|---|---|
-| Start | `studio new <slug> [--url=…]` | `projects/<yyyy-mm>-<slug>/` with estimated timing, so it previews at once; with `--url`, that page captured as `home` and titled over |
+| Start | `studio new <slug> --capability=<music-led\|voice-led\|mixed\|still-only> [--url=…]` | `projects/<yyyy-mm>-<slug>/` that passes `check:arch`, the typecheck and its tests from its first commit: a `project.ts` declaring the capability, and a `timeline.ts` with its retime test and a title card per scene (lines' timing estimated), or a starter `stills.tsx`; with `--url`, that page captured as `home` |
 | Probe | `studio probe <project> <url-or-path> [--at=x,y]` | a numbered viewport screenshot of a page as `capture.ts` sees it (signed in by its `prepare`), and its interactive and landmark elements (or the one under `--at`) with selectors for rects |
 | Capture | `studio capture <project>` | `captures/` plus `captures/index.ts`: the named shots. A still is a high-DPI full-page screenshot with the page positions of the elements scenes point at; a take is a screen recording of real clicks, scrolls and typing, with marks. Shots `capture.ts` no longer makes are deleted |
 | Voice | `studio voice <project>` | `audio/take.wav`, the whole script read in one take, cut into `audio/<line>.wav` plus `audio/manifest.ts`. Any script change re-reads the take. `--read=draft` is a free macOS `say` read, `--read=estimate` times lines from their word count, `--take=<file>` uses a recording. `studio audition` compares voices on one line |
@@ -43,15 +43,24 @@ doc comment. `studio repeatable <project> 2,8.5` proves a painted layer is a pur
 effects from seeded recipes (`studio sfx list`; `studio sfx showcase` to listen through them all).
 
 `npm run typecheck` checks everything, including that every rect a scene points at was captured. `npm test` runs the
-tests.
+tests. `npm run check:arch` holds the architecture (where timing is built, what a scene may import, a project's declared
+capability against what it binds) over what the next commit holds; today's older violations sit in
+`lint/arch-baseline.json` and a new one blocks. The pre-commit gate (`.githooks/pre-commit`, switched on by
+`npm install`) runs `check:arch`, then `typecheck:gate` and `test:gate`: the typecheck and tests of what a clean clone
+holds, leaving out project compositions and retime tests, which need the projects' gitignored recordings.
 
 ## A project
 
 ```
 projects/<yyyy-mm-name>/
+  project.ts       its capability: music-led, voice-led, still-only or mixed (lib/models/project/capability.ts)
   capture.ts       the named shots: stills and takes, each with its own setup (lib/engine/capture/capture.ts)
   voiceover.json   { voice, lines: [{ id, text }] }
-  video.tsx        defineVideo({ title, voice, scenes }): each scene names its lines and renders itself
+  timeline.ts      the timing, stated once: each scene's driver (beats, seconds or its voiced lines) and its cues
+  timeline.test.ts registers the timeline with the retime runner
+  scenes/, bars/   a file per scene (bars/ for one on the beat), its helpers in a folder of its name
+  video.tsx        defineVideo({ title, voice, scenes: bindTimeline(timeline, { … }) })
+  stills.tsx       defineStills({ … }): each design, its presets and variants
   storyboard.md    the plan: audience, takeaway, the scene table, what was checked, what's deliberately left out
   captures/, audio/, music/, out/   generated, gitignored
 ```

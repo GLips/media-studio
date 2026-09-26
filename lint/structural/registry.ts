@@ -2,6 +2,7 @@
 // list rather than the check directly: an unregistered check fails its spec.
 
 import type { StructuralCheck } from './check-context.ts';
+import { capabilityMatchCheck } from './checks/capability-match.ts';
 import { declaredTreeCheck } from './checks/declared-tree.ts';
 import { folderWidthCheck } from './checks/folder-width.ts';
 import { importPolicyCheck } from './checks/import-policy.ts';
@@ -23,5 +24,6 @@ export const STRUCTURAL_CHECKS: readonly StructuralCheck[] = [
   sdkContainmentCheck,
   renderSnapshotCheck,
   retimeRegistrationCheck,
+  capabilityMatchCheck,
   folderWidthCheck,
 ];

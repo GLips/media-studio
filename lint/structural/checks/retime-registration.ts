@@ -10,8 +10,7 @@
 // timeline.ts, so isn't held here; check (a) reports its defineScene until its
 // timing moves into a timeline.ts, and then this check applies.
 
-import { walkAst, type AstNode } from '../source-tree.ts';
-import type { Finding, StructuralCheck } from '../check-context.ts';
+import { callsTo, type Finding, type StructuralCheck } from '../check-context.ts';
 
 const ID = 'retime-registration';
 export const RETIME_RUNNER = { path: 'lib/models/timeline/retime.ts', name: 'assertTimelineRetimes' } as const;
@@ -30,27 +29,10 @@ export const retimeRegistrationCheck: StructuralCheck = {
         report('no timeline.test.ts', `a timed project registers with the retime runner: add ${testPath} calling ${RETIME_RUNNER.name}(timeline)`);
         continue;
       }
-      // The runner's local names, through any re-export or rename, from runtime imports only.
-      const locals = context.edgesFrom(test).flatMap((edge) => {
-        if (edge.scanned.typeOnly || edge.target.kind !== 'module') return [];
-        const target = edge.target.path;
-        return edge.scanned.bindings
-          .filter((binding) => context.originsOf(target, binding.imported).some((o) => o.path === RETIME_RUNNER.path && o.name === RETIME_RUNNER.name))
-          .map((binding) => binding.local);
-      });
-      if (!locals.length || !callsAny(test.program, locals)) {
+      if (!callsTo(context, test, RETIME_RUNNER).length) {
         report('runner not called', `${testPath} doesn't call ${RETIME_RUNNER.name} from ${RETIME_RUNNER.path}, so no retime is checked`);
       }
     }
     return findings;
   },
 };
-
-function callsAny(program: AstNode, locals: readonly string[]) {
-  let called = false;
-  walkAst(program, (node) => {
-    const callee = node.callee as AstNode | undefined;
-    if (node.type === 'CallExpression' && callee?.type === 'Identifier' && locals.includes(callee.name as string)) called = true;
-  });
-  return called;
-}

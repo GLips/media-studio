@@ -1,4 +1,33 @@
 {
+  "capability-match": {
+    "projects/2026-09-complex-buy-box/video.tsx": {
+      "no project.ts": 1,
+      "video without timeline": 1
+    },
+    "projects/2026-09-fidelity-ladder/video.tsx": {
+      "no project.ts": 1
+    },
+    "projects/2026-09-motion-calibration/video.tsx": {
+      "no project.ts": 1,
+      "video without timeline": 1
+    },
+    "projects/2026-09-paint-test/video.tsx": {
+      "no project.ts": 1,
+      "video without timeline": 1
+    },
+    "projects/2026-09-pipeline-test/video.tsx": {
+      "no project.ts": 1,
+      "video without timeline": 1
+    },
+    "projects/2026-09-previs-test/video.tsx": {
+      "no project.ts": 1,
+      "video without timeline": 1
+    },
+    "projects/2026-09-simple-buy-box-story/video.tsx": {
+      "no project.ts": 1,
+      "video without timeline": 1
+    }
+  },
   "no-scratch": {
     "bin/studio-secrets": {
       "echo \"Set up the 1Password service account with: $repo/scratch/op-service-account-setup.sh\" >&2": 1

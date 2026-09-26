@@ -1,0 +1,124 @@
+// scaffold-timed.ts: a timed project's starting files, for new-project.ts: its timing in timeline.ts, registered
+// with the retime runner by timeline.test.ts, and one file per scene, each bound in video.tsx as a title card
+// (lib/studio/ladder), so the project renders and reviews before anything is drawn.
+//
+// Music-led, the scenes are bars on a steady tempo, the last one's end the music's final hit (a landmark, pending
+// until a fitted track replaces the tempo). Voice-led, they are voiced lines from voiceover.json, each with a
+// speech cue. Mixed, a section of bars sits between a voiced opening and a voiced close.
+
+import type { ProjectCapability } from '#models/project/capability.ts';
+
+type TimedCapability = Exclude<ProjectCapability, 'still-only'>;
+
+/** One scene as scaffolded: where its file goes, its driver as timeline.ts states it, and its title card's note. */
+type StarterScene = { id: string; folder: 'bars' | 'scenes'; span: string; note: string };
+
+const BARS: readonly StarterScene[] = [
+  { id: 'hook', folder: 'bars', span: 'beatSpan(4, { cues: { hit: 0 } })', note: 'The hook: one image, hitting on the downbeat.' },
+  { id: 'turn', folder: 'bars', span: 'beatSpan(4, { cues: { reveal: 2 } })', note: 'The turn: what changes, revealed on beat 2.' },
+  { id: 'payoff', folder: 'bars', span: "beatSpan(4, { cues: { stop: 'end' } })", note: "The payoff: the name, held to the music's final hit." },
+];
+const VOICED_OPEN: StarterScene = {
+  id: 'title', folder: 'scenes', note: 'The title, as the intro line names what this is.',
+  span: "voiceSpan(['intro'], { lead: 1.4, tail: 1.0, cues: { look: { line: 'intro', phrase: 'quick look' } } })",
+};
+const VOICED_CLOSE: StarterScene = {
+  id: 'outro', folder: 'scenes', note: 'The takeaways, then the end card as the thanks is said.',
+  span: "voiceSpan(['outro'], { lead: 0.6, tail: 3.4, crossfade: 0.5, cues: { thanks: { line: 'outro', phrase: 'thanks' } } })",
+};
+
+const SCENES: Record<TimedCapability, readonly StarterScene[]> = {
+  'music-led': BARS,
+  'voice-led': [VOICED_OPEN, VOICED_CLOSE],
+  mixed: [VOICED_OPEN, ...BARS, VOICED_CLOSE],
+};
+
+const LANDMARK = "  // The music's final hit ends the last bar: pending on a tempo grid, checked against a fitted track.\n  landmarks: [{ name: 'the final hit', cue: 'payoff.stop', downbeat: -1 }],\n";
+
+export function timedStarterFiles(slug: string, title: string, capability: TimedCapability): Record<string, string> {
+  const scenes = SCENES[capability];
+  const music = scenes.some((scene) => scene.folder === 'bars');
+  const voice = scenes.some((scene) => scene.folder === 'scenes');
+  const files: Record<string, string> = {
+    'timeline.ts': timelineModule(slug, title, scenes, { music, voice }),
+    'timeline.test.ts': retimeTest(voice),
+    'video.tsx': videoModule(title, scenes, { music, voice }),
+  };
+  for (const scene of scenes) files[`${scene.folder}/${scene.id}.tsx`] = sceneModule(scene);
+  if (voice) {
+    files['voiceover.json'] = `${JSON.stringify({
+      voice: 'Callirrhoe',
+      lines: [
+        { id: 'intro', text: `Here's a quick look at ${title}.` },
+        { id: 'outro', text: 'That’s it. Thanks for watching.', paragraph: true },
+      ],
+    }, null, 2)}\n`;
+  }
+  return files;
+}
+
+function timelineModule(slug: string, title: string, scenes: readonly StarterScene[], { music, voice }: { music: boolean; voice: boolean }) {
+  const constructors = ['defineTimeline', ...(music ? ['beatSpan', 'tempoGrid'] : []), ...(voice ? ['voiceSpan'] : [])].sort();
+  const about = [
+    music && "Until there's a track the bars run on a steady tempo: `studio music add` (or `gen`),\n// then `studio music fit --bars`, gives one to cut to, and `recordedGrid(music['<name>'])` from its music/index.ts\n// replaces tempoGrid.",
+    voice && 'The voiced scenes last as their lines were read (voiceover.json, `studio voice`), so a re-read line\n// re-times its scene, every later one and each speech cue on its words.',
+  ].filter(Boolean).join('\n// ');
+  return `// The ${title} video's timing, stated once: each scene's driver and the cues its picture moves on. \`studio clock ${slug}\`
+// prints it. ${about}
+
+import { ${constructors.join(', ')} } from '#models/timeline/timeline.ts';
+${voice ? "import { voice } from './audio/manifest.ts';\n" : ''}
+export const timeline = defineTimeline({
+${music ? '  grid: tempoGrid(120),\n' : ''}${voice ? '  voice,\n' : ''}  scenes: {
+${scenes.map((scene) => `    ${scene.id}: ${scene.span},`).join('\n')}
+  },
+${music ? LANDMARK : ''}});
+`;
+}
+
+function retimeTest(voice: boolean) {
+  const load = voice
+    ? `// The timeline reads the voice from audio/manifest.ts, which imports the WAVs once they're read: the hooks load those as URLs.
+await import('#engine/bundle/tsx-test-hooks.ts');
+const { timeline } = await import('./timeline.ts');`
+    : "import { timeline } from './timeline.ts';";
+  return `import { test } from 'node:test';
+import { assertTimelineRetimes } from '#models/timeline/retime.ts';
+${load}
+
+test('the video retimes: a longer scene moves every later one and its cues, and nothing before', () => {
+  assertTimelineRetimes(timeline);
+});
+`;
+}
+
+const binderName = (scene: StarterScene) => `${scene.id}${scene.folder === 'bars' ? 'Bar' : 'Scene'}`;
+
+function sceneModule(scene: StarterScene) {
+  return `// ${scene.folder === 'bars' ? 'Bar' : 'Scene'} ${scene.id}. ${scene.note} A title card until it's drawn: raising it to a board frame,
+// blocking or final changes this binding only, never timeline.ts. Its helpers go in ${scene.folder}/${scene.id}/.
+import type { TimelineSceneClock } from '#models/timeline/bind-timeline.ts';
+import { titleCardScene } from '#studio';
+import type { timeline } from '../timeline.ts';
+
+export const ${binderName(scene)} = (clock: TimelineSceneClock<typeof timeline, '${scene.id}'>) =>
+  titleCardScene(clock, { note: ${JSON.stringify(scene.note)} });
+`;
+}
+
+function videoModule(title: string, scenes: readonly StarterScene[], { music, voice }: { music: boolean; voice: boolean }) {
+  const soundNote = music ? "\n// Once a fitted track replaces the tempo grid, it plays as `music: { track }` here." : '';
+  return `// The ${title} video: each scene bound to its clock on timeline.ts, drawn in its own file.${soundNote}
+
+import { bindTimeline } from '#models/timeline/bind-timeline.ts';
+import { defineVideo } from '#studio';
+${voice ? "import { voice } from './audio/manifest.ts';\n" : ''}${scenes.map((scene) => `import { ${binderName(scene)} } from './${scene.folder}/${scene.id}.tsx';`).join('\n')}
+import { timeline } from './timeline.ts';
+
+export default defineVideo({
+  title: ${JSON.stringify(title)},
+  voice${voice ? '' : ': {}'},
+  scenes: bindTimeline(timeline, { ${scenes.map((scene) => `${scene.id}: ${binderName(scene)}`).join(', ')} }),
+});
+`;
+}

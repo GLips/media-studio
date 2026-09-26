@@ -7,7 +7,7 @@
 
 import { classifyStudioPath, type DeclaredShared, type StudioPosition } from '../policy/studio-tree.ts';
 import { DECLARED_SHARED_MODULES } from '../policy/declared-shared.ts';
-import { loadSourceTree, type CandidateSnapshot, type ImportTarget, type ScannedImport, type SourceFile, type SourceTree } from './source-tree.ts';
+import { loadSourceTree, walkAst, type AstNode, type CandidateSnapshot, type ImportTarget, type ScannedImport, type SourceFile, type SourceTree } from './source-tree.ts';
 
 export type Finding = {
   check: string;
@@ -42,6 +42,26 @@ export type CheckContext = {
   exportedNames: (path: string) => readonly string[];
 };
 
+/**
+ * Every call in `file` to the function `origin` defines, by whatever local name a runtime import gives it (through any
+ * re-export or rename). A type-only import binds nothing callable, and a local look-alike isn't the function.
+ */
+export function callsTo(context: CheckContext, file: SourceFile, origin: { path: string; name: string }): AstNode[] {
+  const locals = context.edgesFrom(file).flatMap((edge) => {
+    if (edge.scanned.typeOnly || edge.target.kind !== 'module') return [];
+    const target = edge.target.path;
+    return edge.scanned.bindings
+      .filter((binding) => context.originsOf(target, binding.imported).some((o) => o.path === origin.path && o.name === origin.name))
+      .map((binding) => binding.local);
+  });
+  const calls: AstNode[] = [];
+  walkAst(file.program, (node) => {
+    const callee = node.callee as AstNode | undefined;
+    if (node.type === 'CallExpression' && callee?.type === 'Identifier' && locals.includes(callee.name as string)) calls.push(node);
+  });
+  return calls;
+}
+
 /** Paths the tree governs: everything declared, except generated output and what §4 leaves ungoverned. */
 export function studioScope(path: string): 'governed' | 'exempt' | 'undeclared' {
   const position = classifyStudioPath(path);
@@ -51,8 +71,9 @@ export function studioScope(path: string): 'governed' | 'exempt' | 'undeclared' 
   return 'governed';
 }
 
+/** The studio's own snapshot, read in this process's git environment: under a hook, the index being committed. */
 export function createCheckContext(root: string, snapshot: CandidateSnapshot): CheckContext {
-  return contextFor(loadSourceTree({ root, snapshot, scope: studioScope }));
+  return contextFor(loadSourceTree({ root, snapshot, scope: studioScope, gitEnv: process.env }));
 }
 
 export function contextFor(tree: SourceTree, declaredShared: DeclaredShared = DECLARED_SHARED_MODULES): CheckContext {

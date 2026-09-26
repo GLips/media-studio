@@ -83,9 +83,13 @@ export type SourceTree = {
 export const SOURCE_EXTENSIONS = ['ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs'] as const;
 const SOURCE_RE = new RegExp(`\\.(${SOURCE_EXTENSIONS.join('|')})$`);
 
-export function loadSourceTree(options: { root: string; snapshot: CandidateSnapshot; scope: TreeScope }): SourceTree {
-  const { root, snapshot, scope } = options;
-  const git = (args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 1 << 30 });
+/**
+ * `gitEnv` is the environment git runs in: the process's own for the repository git is committing (a hook's
+ * GIT_INDEX_FILE is the index the commit holds), isolatedGitEnv() for any other.
+ */
+export function loadSourceTree(options: { root: string; snapshot: CandidateSnapshot; scope: TreeScope; gitEnv: NodeJS.ProcessEnv }): SourceTree {
+  const { root, snapshot, scope, gitEnv } = options;
+  const git = (args: string[]) => execFileSync('git', args, { cwd: root, env: gitEnv, encoding: 'utf8', maxBuffer: 1 << 30 });
   const listed = snapshot.kind === 'index'
     ? git(['ls-files', '--cached', '-z'])
     : git(['ls-tree', '-r', '-z', '--name-only', snapshot.rev]);
@@ -94,7 +98,7 @@ export function loadSourceTree(options: { root: string; snapshot: CandidateSnaps
   const texts = new Map<string, string>();
   const readTexts = (wanted: readonly string[]) => {
     const missing = wanted.filter((path) => !texts.has(path));
-    readBlobs(root, missing.map(objectName)).forEach((text, i) => texts.set(missing[i], text));
+    readBlobs(root, gitEnv, missing.map(objectName)).forEach((text, i) => texts.set(missing[i], text));
     return wanted.map((path) => texts.get(path)!);
   };
   const readText = (path: string) => readTexts([path])[0];
@@ -229,9 +233,9 @@ export function walkAst(node: unknown, visit: (node: AstNode, parent: AstNode | 
 }
 
 /** Many blobs in one `git cat-file --batch`, in order. Sizes are bytes, so the output is sliced as a Buffer. */
-function readBlobs(root: string, objectNames: readonly string[]): string[] {
+function readBlobs(root: string, gitEnv: NodeJS.ProcessEnv, objectNames: readonly string[]): string[] {
   if (objectNames.length === 0) return [];
-  const out = execFileSync('git', ['cat-file', '--batch'], { cwd: root, input: objectNames.join('\n') + '\n', maxBuffer: 1 << 30 });
+  const out = execFileSync('git', ['cat-file', '--batch'], { cwd: root, env: gitEnv, input: objectNames.join('\n') + '\n', maxBuffer: 1 << 30 });
   const texts: string[] = [];
   let at = 0;
   for (const name of objectNames) {

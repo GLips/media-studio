@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, test } from 'node:test';
+import { isolatedGitEnv, runFixtureGit } from '../../lib/engine/git/fixture-git.ts';
 import { loadSourceTree, type TreeScope } from './source-tree.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'source-tree-'));
 after(() => rmSync(root, { recursive: true, force: true }));
-const git = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8' });
+const git = (...args: string[]) => runFixtureGit(root, args);
 const write = (path: string, text: string) => {
   mkdirSync(dirname(join(root, path)), { recursive: true });
   writeFileSync(join(root, path), text);
@@ -36,7 +36,7 @@ git('commit', '-qm', 'base');
 const scope: TreeScope = (path) => (path.startsWith('odd/') ? 'undeclared' : 'governed');
 
 test('an alias and the relative spelling of one file resolve to the same canonical path, and a re-export keeps its edge', () => {
-  const tree = loadSourceTree({ root, snapshot: { kind: 'index' }, scope });
+  const tree = loadSourceTree({ root, snapshot: { kind: 'index' }, scope, gitEnv: isolatedGitEnv() });
   const video = tree.sources.find((file) => file.path === 'projects/p/video.tsx')!;
   const targets = video.imports.map((i) => tree.resolveImport(video.path, i.specifier, i.names));
   assert.deepEqual(targets, [
@@ -51,7 +51,7 @@ test('an alias and the relative spelling of one file resolve to the same canonic
 });
 
 test('a file outside the declared tree is reported, not dropped', () => {
-  const tree = loadSourceTree({ root, snapshot: { kind: 'index' }, scope });
+  const tree = loadSourceTree({ root, snapshot: { kind: 'index' }, scope, gitEnv: isolatedGitEnv() });
   assert.deepEqual(tree.undeclared, ['odd/stray.ts']);
   assert.ok(!tree.sources.some((file) => file.path === 'odd/stray.ts'));
 });
@@ -59,13 +59,13 @@ test('a file outside the declared tree is reported, not dropped', () => {
 test('the index snapshot reads staged content, never the working tree', () => {
   write('lib/studio/api.ts', "import 'fs';\n");
   write('lib/studio/untracked.ts', 'export {};\n');
-  const tree = loadSourceTree({ root, snapshot: { kind: 'index' }, scope });
+  const tree = loadSourceTree({ root, snapshot: { kind: 'index' }, scope, gitEnv: isolatedGitEnv() });
   assert.equal(tree.sources.find((file) => file.path === 'lib/studio/api.ts')!.text, 'export const a = 1;\n');
   assert.ok(!tree.paths.has('lib/studio/untracked.ts'));
 
   git('add', 'lib/studio/api.ts');
-  const staged = loadSourceTree({ root, snapshot: { kind: 'index' }, scope });
+  const staged = loadSourceTree({ root, snapshot: { kind: 'index' }, scope, gitEnv: isolatedGitEnv() });
   assert.equal(staged.sources.find((file) => file.path === 'lib/studio/api.ts')!.imports[0].specifier, 'fs');
-  const committed = loadSourceTree({ root, snapshot: { kind: 'commit', rev: 'HEAD' }, scope });
+  const committed = loadSourceTree({ root, snapshot: { kind: 'commit', rev: 'HEAD' }, scope, gitEnv: isolatedGitEnv() });
   assert.equal(committed.sources.find((file) => file.path === 'lib/studio/api.ts')!.imports.length, 0);
 });

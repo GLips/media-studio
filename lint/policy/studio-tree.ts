@@ -14,7 +14,8 @@
 import { DECLARED_SHARED_MODULES } from './declared-shared.ts';
 
 export type ProjectRole =
-  | { role: 'timeline' | 'video' | 'stills' | 'brand' | 'capture' }
+  /** `project.ts` declares the project's capability (lib/models/project/capability.ts). */
+  | { role: 'timeline' | 'video' | 'stills' | 'brand' | 'capture' | 'project' }
   /** A spec beside a root module (`timeline.test.ts`): run by `node --test`, it may bind the whole project; nothing imports it. */
   | { role: 'spec' }
   /** `bars/<id>.tsx` or `scenes/<id>.tsx`: one scene per file. */
@@ -50,8 +51,8 @@ export type StudioPosition =
   | { kind: 'ungoverned' }
   | { kind: 'undeclared' };
 
-const ROOT_ROLES: Record<string, 'timeline' | 'video' | 'stills' | 'brand' | 'capture'> = {
-  'timeline.ts': 'timeline', 'video.tsx': 'video', 'stills.tsx': 'stills', 'brand.ts': 'brand', 'capture.ts': 'capture',
+const ROOT_ROLES: Record<string, 'timeline' | 'video' | 'stills' | 'brand' | 'capture' | 'project'> = {
+  'timeline.ts': 'timeline', 'video.tsx': 'video', 'stills.tsx': 'stills', 'brand.ts': 'brand', 'capture.ts': 'capture', 'project.ts': 'project',
 };
 const SUBDIR_ROLES: Record<string, 'sfx' | 'tools' | 'review' | 'media' | 'generated'> = {
   sfx: 'sfx', tools: 'tools', review: 'review', generated: 'generated', out: 'generated',

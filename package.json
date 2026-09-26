@@ -7,8 +7,11 @@
   },
   "scripts": {
     "typecheck": "tsc -p .",
+    "typecheck:gate": "tsc -p tsconfig.gate.json",
     "test": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts' 'projects/**/*.test.ts'",
-    "check:arch": "node lint/check-arch.ts"
+    "test:gate": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts'",
+    "check:arch": "node lint/check-arch.ts",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "type": "module",
   "imports": {

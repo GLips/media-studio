@@ -57,8 +57,10 @@ picks until they say it feels right.
 
 ## 3. Scene table
 
-Start the project with `studio new <slug>`, adding `--url` only for a public page that loads as it is. If the video is
-about a product repo's code, give it a host (step 1). Then write the chosen angle out scene by scene in `projects/<p>/storyboard.md`, under the audience,
+Start the project with `studio new <slug> --capability <voice-led|music-led|mixed>`, adding `--url` only for a public
+page that loads as it is. Every scene starts as a title card, so `studio render <p> --animatic` and `studio review <p>`
+show the storyboard as it plays before anything is drawn. If the video is about a product repo's code, give it a host
+(step 1). Then write the chosen angle out scene by scene in `projects/<p>/storyboard.md`, under the audience,
 source and takeaway:
 
 ```

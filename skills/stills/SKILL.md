@@ -32,10 +32,11 @@ Write these down (in the chat, or at the top of `stills.tsx`) before touching co
 
 ## 2. Start the project and get the image
 
-`studio new <slug> --stills [--url <page>] [--brand <kit>] [--title "<headline>"]` starts `projects/<yyyy-mm>-<slug>/`
-with a `capture.ts` and a starter `stills.tsx`: one design, og and youtube, a headline axis. With `--url` it captures
-the page as `home` at 3× and puts it on a tilted card. An existing video project gets a `stills.tsx` beside its
-`video.tsx` instead; copy the starter's shape.
+`studio new <slug> --capability still-only [--url <page>] [--brand <kit>] [--title "<headline>"]` starts
+`projects/<yyyy-mm>-<slug>/` with a `project.ts`, a `capture.ts` and a starter `stills.tsx`: one design, og and
+youtube, a headline axis. With `--url` it captures the page as `home` at 3× and puts it on a tilted card. An existing
+video project gets a `stills.tsx` beside its `video.tsx` instead (copy the starter's shape), and its `project.ts`
+becomes `mixed`: check:arch holds the declared capability to what the project binds.
 
 The hero image comes from one of two places:
 
