@@ -43,17 +43,18 @@ export async function lookPieceModels(project: string, { frames, tracks, out }: 
   }
   const scenes = definitions.map((d) => {
     if (!timeline.keys.includes(d.scene)) throw new Error(`piece tracks for scene ${d.scene}, which timeline.ts doesn't have: its scenes are ${timeline.keys.join(', ')}`);
-    const clock = timeline.scene(d.scene);
-    return { clock, pieces: d.bind(clock) };
+    return { scene: timeline.scene(d.scene), pieces: d.bind(timeline.clock(d.scene)) };
   });
   const sampled = samplePieceTracks(scenes, frames, tracks);
   if (!sampled.length) {
-    const all = scenes.flatMap(({ clock, pieces }) => Object.keys(pieces.tracks).map((name) => `${clock.id}/${name} (${clock.from}–${clock.to - 1})`));
+    const all = scenes.flatMap(({ scene, pieces }) => Object.keys(pieces.tracks).map((name) => `${scene.id}/${name} (${scene.from}–${scene.to - 1})`));
     throw new Error(`no piece track plays frames ${frames[0]}–${frames.at(-1)}${tracks?.length ? ` matching ${tracks.join(', ')}` : ''}: there are ${all.join(', ')}`);
   }
 
   const table = formatPieceTables(sampled, (f) => timeline.beatAtFrame(f));
-  const keepClearAt = scenes.find(({ clock }) => sampled.some((p) => p.scene === clock.id))?.pieces.keepClear;
+  const shown = scenes.find(({ scene }) => sampled.some((p) => p.scene === scene.id));
+  const keepClear = shown?.pieces.keepClear;
+  const keepClearAt = keepClear && ((f: number) => keepClear(f - shown.scene.origin));
   const graph = buildPieceGraph(sampled, {
     frames, beatFrames: timeline.beatFrames, keepClearAt,
     title: `${relative(process.cwd(), project) || project}: ${sampled.map((p) => p.id).join(', ')}`,

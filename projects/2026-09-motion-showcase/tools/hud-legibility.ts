@@ -41,17 +41,21 @@ const { REEL_HUD_SLOTS, reelHudBoxes } = await import(`${ROOT}/lib/models/reel/h
 
 const { LENS_FRINGE_SUBPIXEL_MAX, lensFringeAt } = await import(`${ROOT}/lib/models/reel/lens.ts`);
 
-type Bar = { id: string; clock: { from: number; to: number }; kicks?: readonly number[]; glitches?: readonly number[] };
-const bars: Bar[] = showcaseBars;
-const barOf = (f: number) => bars.find((b) => f >= b.clock.from && f < b.clock.to)!;
+// Each bar where the video plays it, its kicks and glitches moved from its own clock onto the video's frames.
+type Bar = { id: string; scene: { from: number; to: number }; kicks: readonly number[]; glitches: readonly number[] };
+type PlacedBar = { bar: { id: string; kicks?: readonly number[]; glitches?: readonly number[] }; scene: { origin: number; from: number; to: number } };
+const bars: Bar[] = (showcaseBars as PlacedBar[]).map(({ bar, scene }) => ({
+  id: bar.id, scene, kicks: (bar.kicks ?? []).map((f) => scene.origin + f), glitches: (bar.glitches ?? []).map((f) => scene.origin + f),
+}));
+const barOf = (f: number) => bars.find((b) => f >= b.scene.from && f < b.scene.to)!;
 // The reel's fade takes the HUD down with everything from here.
 const FADE_FROM = timeline.fade.from;
 
 /** Marks a frame where the lens moves the HUD's channels whole px apart, by design: a cut's kick, a glitch's split. */
 function lensMark(f: number) {
   const bar = barOf(f);
-  const kicks = [...(bar.clock.from > 0 ? [bar.clock.from] : []), ...(bar.kicks ?? [])].map((k) => k / FPS);
-  const fringe = lensFringeAt(f / FPS, { kicks, splits: (bar.glitches ?? []).map((g) => g / FPS) });
+  const kicks = [...(bar.scene.from > 0 ? [bar.scene.from] : []), ...bar.kicks].map((k) => k / FPS);
+  const fringe = lensFringeAt(f / FPS, { kicks, splits: bar.glitches.map((g) => g / FPS) });
   return fringe.red || fringe.blue ? ' (split)' : fringe.radial > LENS_FRINGE_SUBPIXEL_MAX ? ' (kick)' : '';
 }
 
@@ -62,7 +66,7 @@ const flag = (name: string) => args.find((a) => a.startsWith(`--${name}=`))?.spl
 const input = args.find((a) => !a.startsWith('--'));
 if (!input) throw new Error('usage: node projects/2026-09-motion-showcase/tools/hud-legibility.ts <mp4> [--from=N] [--frames=a-b] [--show=N]');
 const barFile = /bars\/0?(\d)\.mp4$/.exec(input);
-const from = Number(flag('from') ?? (barFile ? bars[Number(barFile[1]) - 1].clock.from : 0));
+const from = Number(flag('from') ?? (barFile ? bars[Number(barFile[1]) - 1].scene.from : 0));
 const [lo, hi] = (flag('frames') ?? `0-${timeline.end - 1}`).split('-').map(Number);
 const show = flag('show') === undefined ? undefined : Number(flag('show'));
 
@@ -319,7 +323,7 @@ if (!failures.length) console.log('every part legible on every frame');
 for (const bar of bars) {
   const mine = failures.filter((x) => barOf(x.f) === bar);
   if (!mine.length) continue;
-  console.log(`\n${bar.id} (${bar.clock.from}–${bar.clock.to - 1}): ${new Set(mine.map((x) => x.f)).size} frames`);
+  console.log(`\n${bar.id} (${bar.scene.from}–${bar.scene.to - 1}): ${new Set(mine.map((x) => x.f)).size} frames`);
   for (const slot of REEL_HUD_SLOTS as ReelHudSlot[]) {
     for (const why of ['VANISH', 'BUSY']) {
       const fs = mine.filter((x) => x.word.slot === slot && x.why === why).map((x) => x.f);

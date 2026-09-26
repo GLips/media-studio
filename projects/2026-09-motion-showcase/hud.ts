@@ -22,5 +22,8 @@ export const SHOWCASE_HUD = {
   duration: timeline.end / FPS,
 };
 
-/** Each HUD part's box on video frame `f`: what a scene model's pieces keep clear of. */
-export const showcaseHudBoxesAt = (f: number) => reelHudBoxes(SHOWCASE_HUD, f / FPS);
+/**
+ * Each HUD part's box while bar `id` plays: what the bar lays its picture out around and its model's pieces keep clear
+ * of. Only the section label changes over the reel, and through a bar it's that bar's.
+ */
+export const showcaseHudBoxesIn = (id: (typeof timeline.keys)[number]) => reelHudBoxes(SHOWCASE_HUD, SHOWCASE_HUD.sections[timeline.keys.indexOf(id)].at);

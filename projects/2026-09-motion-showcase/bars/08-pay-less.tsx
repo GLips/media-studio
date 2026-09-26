@@ -144,7 +144,7 @@ export function payLessBar(clock: ShowcaseClock<'pay-less'>): Bar {
 
   type StampPose = { lift: number; du: number; dv: number; turn: number; ringTurn: number; blur: number; alpha: number };
 
-  /** The stamp at video frame `f` (fractional within a shutter): how far it still has to fall, as `h` 1 → 0. */
+  /** The stamp at frame `f` (fractional within a shutter): how far it still has to fall, as `h` 1 → 0. */
   function stampPoseAt(f: number): StampPose {
     const h = Math.max(0, (HIT.stamp - f) / FALL.frames), u = h ** FALL.ease;
     const turn = TURN + FALL.turn * u;

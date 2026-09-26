@@ -469,8 +469,8 @@ export function searchBar(clock: ShowcaseClock<'search'>): Bar {
   const STICKY_BOX = rectToScreen(SHOT, CARD_VIEW.cam, STICKY, CARD_VIEW.box);
   const STICKY_VIEW: View = view(SHOT, { cx: centerOf(STICKY).x, cy: centerOf(STICKY).y, zoom: CARD_VIEW.cam.zoom }, STICKY_BOX);
 
-  // It rises over the three frames before the "and": on 378 it's 176 px off the page toward the lens and 8% larger
-  // through it, overshooting to 192 px on 380 and settling at 180. Its shadow grows with it, offset and softened by its
+  // It rises over the three frames before the "and": on frame 52 it's 176 px off the page toward the lens and 8% larger
+  // through it, overshooting to 192 px on 54 and settling at 180. Its shadow grows with it, offset and softened by its
   // height.
   const LIFT = { height: 180, dur: 0.3, bounce: 0.35, shadow: 0.55 };
   const liftSpring = perceptualSpring(LIFT.dur, LIFT.bounce);

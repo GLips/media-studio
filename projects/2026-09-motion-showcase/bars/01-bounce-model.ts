@@ -5,7 +5,7 @@ import { FPS } from '#models/frame/frame.ts';
 import { definePieceTracks } from '#models/motion/piece-tracks.ts';
 import { bouncingBallAt, type BallPose, type BounceParams } from '#models/reel/bounce.ts';
 import type { ShowcaseClock } from '../bar.ts';
-import { showcaseHudBoxesAt } from '../hud.ts';
+import { showcaseHudBoxesIn } from '../hud.ts';
 
 /** The words' floor, which the drop lands on. */
 export const BOUNCE_GROUND_Y = 930;
@@ -24,7 +24,7 @@ export function bounceBallParams(clock: ShowcaseClock<'bounce'>): BounceParams {
     beats: BOUNCE_LANDING_BEATS.map((n) => clock.beat(n) / FPS), spb: clock.spb, drop: false,
     size: BOUNCE_BALL_SIZE, height: 440, groundY: BOUNCE_GROUND_Y, step: BALL_STEP, x: BOUNCE_PAD_X - (BOUNCE_LANDING_BEATS.length - 1) * BALL_STEP,
     launch: {
-      // Frame 85 is the last of the bar: the swell covers it exactly there, not the 0.2 ms before that spb's rounding gives.
+      // The swell covers the bar's last frame exactly there, not the 0.2 ms before that spb's rounding gives.
       fill: (clock.to - 1) / FPS,
       // Deeper than the piece's crouch (3.9:1, 0.139 × size), so the press reads as loading the spring at speed: from
       // the landing's 3.4:1 it spreads about 13 px and sinks about 7 px a frame until it leaves. A deeper dent would sink
@@ -52,6 +52,6 @@ export const bouncePieceTracks = definePieceTracks<ShowcaseClock<'bounce'>>('bou
         return { x: pose.x, y: pose.y, values: { w: pose.w, h: pose.h, vy: pose.vy }, state: pose.phase, box: growing ? undefined : ballBox(pose) };
       },
     },
-    keepClear: showcaseHudBoxesAt,
+    keepClear: () => showcaseHudBoxesIn('bounce'),
   };
 });

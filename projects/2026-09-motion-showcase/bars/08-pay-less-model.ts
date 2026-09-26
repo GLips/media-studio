@@ -6,7 +6,7 @@ import type { Point, Rect } from '#models/camera/camera.ts';
 import { clamp, lerp } from '#models/motion/motion.ts';
 import { definePieceTracks } from '#models/motion/piece-tracks.ts';
 import type { ShowcaseClock } from '../bar.ts';
-import { showcaseHudBoxesAt } from '../hud.ts';
+import { showcaseHudBoxesIn } from '../hud.ts';
 
 export const PAY_LESS_CENTRE: Point = { x: 960, y: 540 };
 
@@ -126,6 +126,6 @@ export const payLessPieceTracks = definePieceTracks<ShowcaseClock<'pay-less'>>('
       // PAY LESS. once it has risen, on its beat.
       words: typeTrack(PAY_LESS_TYPE_BOXES.words, hit.words),
     },
-    keepClear: showcaseHudBoxesAt,
+    keepClear: () => showcaseHudBoxesIn('pay-less'),
   };
 });

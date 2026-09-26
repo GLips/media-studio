@@ -32,20 +32,20 @@ export function bounceBar(clock: ShowcaseClock<'bounce'>): Bar {
 
   // Its bounce is the bar's model (01-bounce-model.ts), which `studio look --graph=models` reads.
   const BALL = bounceBallParams(clock);
-  /** Where the drop lands on beat `n` (beat −2's is the loop's, before the video): it holds still through a landing. */
+  /** Where the drop lands on beat `n` (beat −2's is the loop's, before the bar's cut): it holds still through a landing. */
   const landingX = (n: number) => bouncingBallAt(clock.beat(n) / FPS, BALL).x;
 
-  // The line is the words' floor, as wide as they are; drawn a second before the video starts, so frame 0 has it whole
-  // and only the dent from the landing on beat −2 still ringing in it.
+  // The line is the words' floor, as wide as they are; drawn a second before the bar's cut (the video's start), so its
+  // first frame has it whole and only the dent from the landing on beat −2 still ringing in it.
   const LINE = { from: SPAN.left, to: SPAN.right };
-  const LINE_IN = -1;
+  const LINE_IN = FROM / FPS - 1;
 
   // ---------- the dot lattice ----------
 
   // The reference's ground: a 40 px lattice centred on the frame, each dot 2 px, luma 12–27 on the 12 of the ground,
   // switching on at random over the pickup and the bar's first beat.
   const LATTICE_PITCH = 40;
-  const LATTICE_REVEAL = { from: -3, to: 34 };
+  const LATTICE_REVEAL = { from: FROM - 3, to: FROM + 34 };
   const LATTICE = (() => {
     const rnd = seededRandom('bar-01 lattice');
     const dots: { x: number; y: number; on: number; luma: number }[] = [];
@@ -207,7 +207,7 @@ export function bounceBar(clock: ShowcaseClock<'bounce'>): Bar {
 
   return {
     id: 'bounce',
-    note: 'THE NEW BUY BOX., a word a beat wall to wall on the ground line, the red drop bouncing across it: each landing\'s shock stamps the next word down over the last and punches the last through the line; the fourth lands as BOX\'s full stop, crouches, launches and swells into a full red frame by 85.',
+    note: 'THE NEW BUY BOX., a word a beat wall to wall on the ground line, the red drop bouncing across it: each landing\'s shock stamps the next word down over the last and punches the last through the line; the fourth lands as BOX\'s full stop, crouches, launches and swells into a full red frame by its last.',
     clock,
     render: (f) => {
       const drop = { t: f / FPS, ...BALL, background: null, line: LINE, inAt: LINE_IN, shutter: 0.25, seed: 'bar-01' };

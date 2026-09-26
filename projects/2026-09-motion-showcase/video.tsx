@@ -4,7 +4,7 @@
 
 import { bindTimeline } from '../../lib/models/timeline/bind-timeline.ts';
 import { FPS, defineVideo } from '#studio';
-import type { Bar } from './bar.ts';
+import type { Bar, PlacedBar } from './bar.ts';
 import { bounceBar } from './bars/01-bounce.tsx';
 import { everyColorBar } from './bars/02-every-color.tsx';
 import { swatchesBar } from './bars/03-swatches.tsx';
@@ -25,11 +25,15 @@ export const bindShowcaseBars = (on: typeof timeline) => bindTimeline<typeof tim
   bounce: bounceBar, 'every-color': everyColorBar, swatches: swatchesBar, ink: inkBar, search: searchBar, 'buy-more': buyMoreBar,
   tiers: tiersBar, 'pay-less': payLessBar, 'one-box': oneBoxBar,
 });
-/** The bars in order, exported so a check can read their cuts, kicks and sounds. */
-export const showcaseBars = bindShowcaseBars(timeline);
-// Each lands with the music's hit. Its id, the bar's and its role there, picks the take, so two sounds sharing one
-// would play the same take and read as one row in every check.
-const sounds = showcaseBars.flatMap((bar) => (bar.sounds ?? []).map(({ at, id, ...sound }) => ({ ...sound, at: at / FPS + timeline.soundLagSeconds, id: `${bar.id}/${id}` })));
+/** Each bar with its scene of `on`, where the video places it, in order. */
+export const placeShowcaseBars = (on: typeof timeline): PlacedBar[] => bindShowcaseBars(on).map((bar, k) => ({ bar, scene: on.scenes[k] }));
+/** The bars in order with their places, exported so a check can read their cuts, kicks and sounds. */
+export const showcaseBars = placeShowcaseBars(timeline);
+// Each lands with the music's hit, on the video's clock. Its id, the bar's and its role there, picks the take, so two
+// sounds sharing one would play the same take and read as one row in every check.
+const sounds = showcaseBars.flatMap(({ bar, scene }) => (bar.sounds ?? []).map(({ at, id, ...sound }) => ({
+  ...sound, at: (scene.origin + at) / FPS + timeline.soundLagSeconds, id: `${bar.id}/${id}`,
+})));
 const repeatedSoundId = sounds.find((s, i) => sounds.findIndex((other) => other.id === s.id) !== i)?.id;
 if (repeatedSoundId) throw new Error(`two sounds are ${repeatedSoundId}: give each its own role in its bar`);
 

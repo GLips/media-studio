@@ -153,46 +153,63 @@ export type TimelineSpec<Scenes extends Readonly<Record<string, SceneSpan>> = Re
 /** How far a landmark may sit from its downbeat: a steady grid against the tracker's downbeats, which wander. */
 export const LANDMARK_TOLERANCE_SECONDS = 0.05;
 
-declare const resolvedClock: unique symbol;
-
-/**
- * One scene resolved, on its own clock, in video frames (each instant rounded once, then the picture lead taken off a
- * musical one). Only `defineTimeline` makes one.
- */
-export type ResolvedSceneClock<Key extends string = string, Cue extends string = string, Move extends string = string, AnyCue extends string = string> = {
-  readonly [resolvedClock]: true;
-  id: Key;
-  /** Its place in the timeline, from 1. */
-  n: number;
-  driver: SceneSpan['driver'];
-  /** Its origin: its beat 0, or where a non-musical scene starts. */
-  origin: number;
+/** A scene's frames, counted from the video's first frame (`ResolvedScene`) or from the scene's origin (`ResolvedSceneClock`). */
+type SceneFrames<Cue extends string, Move extends string> = {
   /** Its cut (the video's first frame for the first scene), and the next scene's cut, or the video's end. */
   from: number;
   to: number;
   /** The frames it is on screen: its cut to the next, widened by a crossfade either side. */
   visible: { from: number; to: number };
-  /** Seconds the cut into it crossfades over, centred on the cut; 0 for a hard cut. */
-  crossfade: number;
   /** Its nominal end: the last beat's boundary, or its origin plus its length. */
   end: number;
-  /** Its length in beats (a beat scene), or 0. */
-  beats: number;
-  /** Seconds per beat on the section's grid; 0 with no grid. */
-  spb: number;
-  /** The frame its own beat `n` hits on, counted from its first beat; throws outside the frames it plays. */
-  beat(n: number): number;
   /** Each of its beats' hit frames, from beat 0, a pickup before its cut included; none off the grid. */
   beatFrames: readonly number[];
   /** The lines it plays, in order: each one's first frame and its length in seconds. */
   lines: readonly { id: string; frame: number; duration: number }[];
   cues: Readonly<Record<Cue, number>>;
   moves: Readonly<Record<Move, { from: number; to: number }>>;
-  /** Another scene's moment: may land before this scene's cut or after its end. */
-  cue(name: AnyCue): number;
 };
 
-/** A replay resolved: on the target's frame `to`, the source's frame `from` plays, and `rate` source frames a frame after. */
+type SceneFacts<Key extends string> = {
+  id: Key;
+  /** Its place in the timeline, from 1. */
+  n: number;
+  driver: SceneSpan['driver'];
+  /** Seconds the cut into it crossfades over, centred on the cut; 0 for a hard cut. */
+  crossfade: number;
+  /** Its length in beats (a beat scene), or 0. */
+  beats: number;
+  /** Seconds per beat on the section's grid; 0 with no grid. */
+  spb: number;
+};
+
+/**
+ * One scene placed on the video, in video frames (each instant rounded once, then the picture lead taken off a musical
+ * one): what `studio clock`, the checks and the tools read. The scene's own code gets its `ResolvedSceneClock` instead.
+ */
+export type ResolvedScene<Key extends string = string, Cue extends string = string, Move extends string = string> = SceneFacts<Key> & SceneFrames<Cue, Move> & {
+  /** Its origin, its clock's frame 0: its beat 0, or where a non-musical scene starts. */
+  origin: number;
+};
+
+declare const resolvedClock: unique symbol;
+
+/**
+ * The clock a scene's code draws on: its frames counted from its origin (its beat 0, or where a non-musical scene
+ * starts), so nothing in it depends on where the video places the scene. Its cut is frame 0, but later for a scene
+ * that cuts in after its first beat, and earlier (negative) for a first scene with a pickup. Only `defineTimeline`
+ * makes one.
+ */
+export type ResolvedSceneClock<Key extends string = string, Cue extends string = string, Move extends string = string, AnyCue extends string = string> =
+  SceneFacts<Key> & SceneFrames<Cue, Move> & {
+    readonly [resolvedClock]: true;
+    /** The frame its own beat `n` hits on, counted from its first beat; throws outside the frames it plays. */
+    beat(n: number): number;
+    /** Another scene's moment, on this scene's frames: may land before its cut or after its end. */
+    cue(name: AnyCue): number;
+  };
+
+/** A replay resolved: on video frame `to`, the source's video frame `from` plays, and `rate` source frames a frame after. */
 export type ResolvedReplay = { name: string; target: string; source: string; fromCue: string; toCue: string; from: number; to: number; rate: number };
 
 type AnyScenes = Readonly<Record<string, SceneSpan>>;
@@ -213,8 +230,11 @@ export type Timeline<Scenes extends AnyScenes = AnyScenes, Replays extends Repla
   soundLagSeconds: number;
   /** Scene keys in order. */
   keys: readonly (keyof Scenes & string)[];
-  scenes: readonly ResolvedSceneClock<keyof Scenes & string>[];
-  scene<K extends keyof Scenes & string>(key: K): ResolvedSceneClock<K, CueNamesOf<Scenes[K]>, MoveNamesOf<Scenes[K]>, CueName<Scenes>>;
+  /** Each scene where the video places it, in video frames. */
+  scenes: readonly ResolvedScene<keyof Scenes & string>[];
+  scene<K extends keyof Scenes & string>(key: K): ResolvedScene<K, CueNamesOf<Scenes[K]>, MoveNamesOf<Scenes[K]>>;
+  /** The clock scene `key`'s code draws on, in frames from its origin. */
+  clock<K extends keyof Scenes & string>(key: K): ResolvedSceneClock<K, CueNamesOf<Scenes[K]>, MoveNamesOf<Scenes[K]>, CueName<Scenes>>;
   cue(name: CueName<Scenes>): number;
   replays: readonly ResolvedReplay[];
   audio: readonly TimelineAudio[];
@@ -362,25 +382,41 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
   const refFrame = (k: number, ref: MomentRef) =>
     (typeof ref === 'object' && 'cue' in ref ? cue(ref.cue) + (ref.frames ?? 0) : ownMoment(k, ref, []));
 
-  const clocks = spans.map((span, k) => {
+  const placed = spans.map((span, k): ResolvedScene<keyof Scenes & string> => ({
+    id: keys[k], n: k + 1, driver: span.driver, origin: origins[k], from: cuts[k], to: nexts[k], end: ends[k],
+    visible: { from: Math.round(cuts[k] - halfFade(k)), to: Math.round(nexts[k] + halfFade(k + 1)) }, crossfade: span.crossfade ?? 0,
+    beats: span.driver === 'beat' ? span.beats : 0, spb: grid?.spb ?? 0,
+    cues: Object.fromEntries(Object.keys(span.cues ?? {}).map((name) => [name, ownCue(k, name)])),
+    moves: Object.fromEntries(Object.entries(span.moves ?? {}).map(([name, move]) => [name, { from: refFrame(k, move.from), to: refFrame(k, move.to) }])),
+    beatFrames: span.driver === 'beat' ? Array.from({ length: span.beats }, (_, n) => beatFrame(startBeat[k] + n)) : [],
+    lines: placedLines[k].map(({ id, seconds, take }) => ({ id, frame: speechFrame(k, seconds), duration: take.duration })),
+  }));
+
+  // Each scene's clock: its placement with every frame taken from its origin, rounded instants and all, so a frame
+  // on the clock is exactly the video's frame less the origin.
+  const clocks = placed.map((scene, k) => {
+    const span = spans[k], local = (frame: number) => frame - scene.origin;
     const beat = (n: number) => {
       if (span.driver !== 'beat') throw new Error(`scene ${keys[k]} is a ${span.driver}Span: it has no beats`);
       const frame = beatFrame(startBeat[k] + n);
       // The first scene's pickup beats may fall before the video starts: no other scene's beats are there.
       if ((k > 0 && frame < cuts[k]) || frame > nexts[k]) {
-        throw new Error(`scene ${keys[k]}'s beat ${n} (frame ${frame}) is outside the scene (frames ${cuts[k]}–${nexts[k]}): `
+        throw new Error(`scene ${keys[k]}'s beat ${n} (frame ${local(frame)}) is outside the scene (frames ${local(cuts[k])}–${local(nexts[k])}): `
           + 'reach another scene\'s moment through its cue');
       }
-      return frame;
+      return local(frame);
     };
-    const cues = Object.fromEntries(Object.keys(span.cues ?? {}).map((name) => [name, ownCue(k, name)]));
-    const moves = Object.fromEntries(Object.entries(span.moves ?? {}).map(([name, move]) => [name, { from: refFrame(k, move.from), to: refFrame(k, move.to) }]));
+    const { origin: _, ...facts } = scene;
     return {
-      id: keys[k], n: k + 1, driver: span.driver, origin: origins[k], from: cuts[k], to: nexts[k], end: ends[k],
-      visible: { from: Math.round(cuts[k] - halfFade(k)), to: Math.round(nexts[k] + halfFade(k + 1)) }, crossfade: span.crossfade ?? 0,
-      beats: span.driver === 'beat' ? span.beats : 0, spb: grid?.spb ?? 0, beat, cues, moves, cue,
-      beatFrames: span.driver === 'beat' ? Array.from({ length: span.beats }, (_, n) => beatFrame(startBeat[k] + n)) : [],
-      lines: placedLines[k].map(({ id, seconds, take }) => ({ id, frame: speechFrame(k, seconds), duration: take.duration })),
+      ...facts, from: local(scene.from), to: local(scene.to), end: local(scene.end),
+      visible: { from: local(scene.visible.from), to: local(scene.visible.to) },
+      cues: Object.fromEntries(Object.entries(scene.cues).map(([name, frame]) => [name, local(frame as number)])),
+      moves: Object.fromEntries(Object.entries(scene.moves).map(([name, move]) => {
+        const { from, to } = move as { from: number; to: number };
+        return [name, { from: local(from), to: local(to) }];
+      })),
+      beatFrames: scene.beatFrames.map(local), lines: scene.lines.map((line) => ({ ...line, frame: local(line.frame) })),
+      beat, cue: (name: string) => local(cue(name)),
     } as unknown as ResolvedSceneClock<keyof Scenes & string>;
   });
 
@@ -430,11 +466,11 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
 
   return {
     spec, fps: FPS, spb: grid?.spb ?? 0, soundLagSeconds: spec.soundLagSeconds ?? 0, keys,
-    scenes: clocks, scene: (key) => clocks[indexOf(key)] as never, cue: (name) => cue(name), replays,
+    scenes: placed, scene: (key) => placed[indexOf(key)] as never, clock: (key) => clocks[indexOf(key)] as never, cue: (name) => cue(name), replays,
     audio: [
       ...(spec.grid?.kind === 'recorded' && musical.length ? [{ kind: 'music' as const, track: spec.grid.track, atSeconds: sectionStart }] : []),
-      ...clocks.flatMap((clock) => clock.lines.map(({ id, frame, duration }) => ({
-        kind: 'voice' as const, line: id, scene: clock.id, frame, atSeconds: frame / FPS, duration,
+      ...placed.flatMap((scene) => scene.lines.map(({ id, frame, duration }) => ({
+        kind: 'voice' as const, line: id, scene: scene.id, frame, atSeconds: frame / FPS, duration,
       }))),
     ],
     landmarks, end, fade: { from: end + (spec.fade?.from ?? 0), to: end + (spec.fade?.to ?? 0) }, beatAtFrame, beatFrames, downbeatFrames,

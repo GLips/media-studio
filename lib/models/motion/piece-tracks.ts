@@ -7,7 +7,7 @@
 // negative overlaps by that much (the shallower way out).
 
 import type { Rect } from '#models/camera/camera.ts';
-import type { ResolvedSceneClock } from '#models/timeline/timeline.ts';
+import type { ResolvedScene, ResolvedSceneClock } from '#models/timeline/timeline.ts';
 
 /**
  * A piece on one frame: its point in frame px, any other number its model gives (a scale, a squash), a word for its
@@ -15,12 +15,12 @@ import type { ResolvedSceneClock } from '#models/timeline/timeline.ts';
  */
 export type PieceSample = { x: number; y: number; values?: Readonly<Record<string, number>>; state?: string; box?: Rect };
 
-/** The piece on video frame `f`, or null while it's out of shot. */
+/** The piece on its scene's frame `f` (from the scene's origin, as its clock counts), or null while it's out of shot. */
 export type PieceTrack = (f: number) => PieceSample | null;
 
 export type ScenePieces = {
   tracks: Readonly<Record<string, PieceTrack>>;
-  /** What a piece's box keeps clear of on frame `f`, by name: a HUD's parts. */
+  /** What a piece's box keeps clear of on its scene's frame `f`, by name: a HUD's parts. */
   keepClear?: (f: number) => Readonly<Record<string, Rect>>;
 };
 
@@ -54,7 +54,7 @@ export function pieceClearance(box: Rect, keepClear: Readonly<Record<string, Rec
   return best;
 }
 
-/** One piece over the frames asked: its id (`scene/name`), and each frame's sample and clearance. */
+/** One piece over the video frames asked: its id (`scene/name`), and each frame's sample and clearance. */
 export type SampledPiece = {
   id: string;
   scene: string;
@@ -62,25 +62,26 @@ export type SampledPiece = {
 };
 
 /**
- * Each piece of `scenes` over `frames`, where its scene plays them (a model can answer outside its bar, but its scene
- * doesn't draw it there). `pick` keeps pieces whose id contains one of its parts; none keeps all.
+ * Each piece of `scenes` over the video's `frames`, where its scene plays them (a model can answer outside its bar,
+ * but its scene doesn't draw it there), each asked on its scene's own frame. `pick` keeps pieces whose id contains one
+ * of its parts; none keeps all.
  */
 export function samplePieceTracks(
-  scenes: readonly { clock: Pick<ResolvedSceneClock, 'id' | 'from' | 'to'>; pieces: ScenePieces }[],
+  scenes: readonly { scene: Pick<ResolvedScene, 'id' | 'origin' | 'from' | 'to'>; pieces: ScenePieces }[],
   frames: readonly number[],
   pick?: readonly string[],
 ): SampledPiece[] {
-  return scenes.flatMap(({ clock, pieces }) => {
-    const own = frames.filter((f) => f >= clock.from && f < clock.to);
+  return scenes.flatMap(({ scene, pieces }) => {
+    const own = frames.filter((f) => f >= scene.from && f < scene.to);
     if (!own.length) return [];
     return Object.entries(pieces.tracks)
-      .map(([name, track]) => ({ id: `${clock.id}/${name}`, track }))
+      .map(([name, track]) => ({ id: `${scene.id}/${name}`, track }))
       .filter(({ id }) => !pick?.length || pick.some((part) => id.includes(part)))
       .map(({ id, track }) => ({
-        id, scene: clock.id,
+        id, scene: scene.id,
         rows: own.map((frame) => {
-          const sample = track(frame);
-          const clearance = sample?.box && pieces.keepClear ? pieceClearance(sample.box, pieces.keepClear(frame)) : null;
+          const sample = track(frame - scene.origin);
+          const clearance = sample?.box && pieces.keepClear ? pieceClearance(sample.box, pieces.keepClear(frame - scene.origin)) : null;
           return { frame, sample, clearance };
         }),
       }));

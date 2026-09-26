@@ -55,7 +55,7 @@ export function everyColorBar(clock: ShowcaseClock<'every-color'>): Bar {
   /** RiseWord's defaults, the reference's EVERY: set here to be measured. */
   const EVERY_SET = { cap: 318, weight: 900, stretch: 91.3, spacing: -0.02 } as const;
 
-  // On landing the lockup breathes: the word 6% wider on Archivo's width axis and all of it 4% larger, fullest on 92 as
+  // On landing the lockup breathes: the word 6% wider on Archivo's width axis and all of it 4% larger, fullest on frame 6 as
   // the last letter settles, then relaxing at a steady rate into the cut, so no frame holds. Width and scale move
   // together: a push-in under a narrowing word would cancel it across the frame.
   const EVERY_BREATH = { widen: 0.06, scale: 0.04, peak: CUT.every + 6, end: CUT.color };

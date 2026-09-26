@@ -6,11 +6,11 @@
 // closing in on the cut to bar 7's black. The HUD's rows ride on two lanes of flat ground laid across the field.
 
 import { FPS, H, ShutterBlur, W, clamp, motionCurves, seg } from '#studio';
-import { reelHudBoxes, type ReelHudTone } from '#models/reel/hud.ts';
+import type { ReelHudTone } from '#models/reel/hud.ts';
 import { TickerBands } from '#studio/reel/ticker.tsx';
 import { tickerLookBeat, type TickerColors, type TickerEnter, type TickerLook } from '#models/reel/ticker.ts';
 import type { Bar, ShowcaseClock } from '../bar.ts';
-import { SHOWCASE_HUD } from '../hud.ts';
+import { showcaseHudBoxesIn } from '../hud.ts';
 import tapQty2 from '../sfx/tap-qty-2.ts';
 import whipIntoBuyMore from '../sfx/whip-into-buy-more.ts';
 import { P } from '../look.ts';
@@ -106,7 +106,7 @@ export function buyMoreBar(clock: ShowcaseClock<'buy-more'>): Bar {
   const LANE_SPARE = 12;
   // Hard-edged, like the bands: clipping the field short of both rows would letterbox it, framing beat 2's red in blue,
   // and a fade would haze the cream and red bands into the blue.
-  const LANES = [...new Map(Object.values(reelHudBoxes(SHOWCASE_HUD, FROM / FPS)).map((box) => [box.y, box])).values()].map((row) => ({
+  const LANES = [...new Map(Object.values(showcaseHudBoxesIn('buy-more')).map((box) => [box.y, box])).values()].map((row) => ({
     top: Math.round(row.y - LANE_SPARE), bottom: Math.round(row.y + row.h + LANE_SPARE),
   }));
 

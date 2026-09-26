@@ -9,7 +9,7 @@ const pieces: ScenePieces = {
   tracks: { box: (f) => (f > 12 ? null : { x: 20 * f + 50, y: 25, box: { x: 20 * f, y: 0, w: 100, h: 50 } }) },
   keepClear: () => hud,
 };
-const scene = { clock: { id: 'slide', from: 0, to: 14 }, pieces };
+const scene = { scene: { id: 'slide', origin: 0, from: 0, to: 14 }, pieces };
 
 test('clearance is the gap to the nearest kept-clear part, negative once the box overlaps it', () => {
   const [piece] = samplePieceTracks([scene], [0, 10, 12, 13]);
@@ -18,8 +18,11 @@ test('clearance is the gap to the nearest kept-clear part, negative once the box
   assert.ok(table.includes('tightest: frame 12, -40.0 px into tr'), table.join('\n'));
 });
 
-test('a piece is sampled only on the frames its scene plays', () => {
+test('a piece is sampled only on the frames its scene plays, each asked on its scene\'s own frame', () => {
   const [piece] = samplePieceTracks([scene], [12, 13, 14, 15]);
   assert.deepEqual(piece.rows.map((r) => r.frame), [12, 13]);
   assert.deepEqual(samplePieceTracks([scene], [20, 21]), []);
+  // Placed later on the video, the same scene answers on its own frames.
+  const later = { scene: { id: 'slide', origin: 100, from: 100, to: 114 }, pieces };
+  assert.deepEqual(samplePieceTracks([later], [110, 112, 113])[0].rows.map((r) => r.clearance?.margin ?? null), [0, -40, null]);
 });

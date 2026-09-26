@@ -235,13 +235,18 @@ function buildModel<D>(props: GlyphFieldProps<D>): FieldModel<D> {
   return { cells, pitch, center, rest: cells.map((c) => restState(restOf(c))), waves: planned, steps, timing, punch, implode: implodeModel, shutter };
 }
 
+// A front timed to reach a cell on a frame reaches it on that frame, however the sum of its start, distance and speed
+// rounds: the same field drawn later in a video has other rounding.
+const ARRIVAL_SLACK = 1e-9;
+const hasArrived = (t: number, at: number) => t >= at - ARRIVAL_SLACK;
+
 function waveStateAt<D>(model: FieldModel<D>, n: number, t: number): CellState {
   const cell = model.cells[n];
   let state = model.rest[n];
   for (const wave of model.waves) {
     const at = wave.at[n];
-    if (!(t >= at)) continue;
-    state = playClip(state, wave.clip, cell, { since: t - at, distance: wave.distance[n], wave: wave.index });
+    if (!hasArrived(t, at)) continue;
+    state = playClip(state, wave.clip, cell, { since: Math.max(0, t - at), distance: wave.distance[n], wave: wave.index });
   }
   return state;
 }
@@ -377,7 +382,7 @@ export function glyphFieldFrame<D>(props: GlyphFieldProps<D>): GlyphFieldFrame {
   const b = scaleAbout({ x: Math.max(...xs) + pitch / 2, y: Math.max(...ys) + pitch / 2 });
   const wave = model.waves.reduce((sum, w) => {
     const reached = w.at.filter((at) => at !== Infinity);
-    return sum + (reached.length ? reached.filter((at) => t >= at).length / reached.length : 0);
+    return sum + (reached.length ? reached.filter((at) => hasArrived(t, at)).length / reached.length : 0);
   }, 0);
 
   return {

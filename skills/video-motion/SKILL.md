@@ -40,12 +40,12 @@ scenes in order, each with one driver that sets its length:
 
 A fixed scene never sits inside the music. Each scene counts its own time from 0 and names the moments others need as
 cues (`ink.strike2`); another scene's moment is a cue, never an import or an absolute time. `video.tsx` binds each
-scene with `bindTimeline`, handing it its resolved clock (`clock.beat(n)`, `clock.cues`, `clock.moves`); a voice
+scene with `bindTimeline`, handing it its resolved clock in frames from the scene's beat 0 (`clock.beat(n)`, `clock.cues`, `clock.moves`); a voice
 scene turns its clock into a scene with `sceneForTimelineClock`, and `sceneCueSeconds(clock)` reads its cues in
 `s.t`'s seconds. A finale's replays are declared in the timeline and handed in. A move that must keep its length is a start plus a duration anchored at one end (`{ from:
 { at: 'end', frames: -3.75 }, to: { at: 'end', frames: -1 } }`), never pinned between two scenes' moments: the
 project's `timeline.test.ts` runs the retime runner, which lengthens every scene and fails a move that stretches.
-`studio clock <project>` prints the resolved frames. Worked examples: `projects/2026-09-sale-only-view` (voice) and
+`studio clock <project>` prints the resolved frames on the video, each scene at its origin. Worked examples: `projects/2026-09-sale-only-view` (voice) and
 `projects/2026-09-motion-showcase` (music).
 
 ## Time it by reads

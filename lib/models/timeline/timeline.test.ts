@@ -15,15 +15,18 @@ const scenes = {
 };
 const landmarks = [{ name: 'the final hit', cue: 'b.stop', downbeat: -1 }] as const;
 
-test('a timeline resolves to frames, each scene reaching only its own beats', () => {
+test('a timeline places each scene on the video, and gives it a clock from its own origin that reaches only its own beats', () => {
   const timeline = defineTimeline({ ...base, scenes, landmarks });
   const [a, b] = timeline.scenes;
-  assert.deepEqual([a.from, a.to, b.origin, b.from, b.to, timeline.end], [0, 81, 73, 81, 165, 165]);
-  assert.equal(a.beat(1), 28);
+  assert.deepEqual([a.origin, a.from, a.to, b.origin, b.from, b.to, timeline.end], [13, 0, 81, 73, 81, 165, 165]);
   assert.equal(timeline.cue('a.hit'), 43);
-  assert.equal(timeline.scene('b').cues.late, 91);
+  assert.equal(b.cues.late, 91);
   assert.deepEqual(timeline.musicBeats, [1, 1.5]);
-  assert.throws(() => b.beat(-1), /outside the scene.*through its cue/);
+  // On its clock, a scene's frames are the video's less its origin: a's pickup plays before its frame 0, and b cuts in
+  // half a beat after its own.
+  const [clockA, clockB] = [timeline.clock('a'), timeline.clock('b')];
+  assert.deepEqual([clockA.from, clockA.beat(1), clockA.cues.hit, clockB.from, clockB.to, clockB.cues.late, clockB.cue('a.hit')], [-13, 15, 30, 8, 92, 18, -30]);
+  assert.throws(() => clockB.beat(-1), /outside the scene.*through its cue/);
   assert.deepEqual(timeline.audio.map((placed) => placed.atSeconds), [0]);
 });
 
@@ -72,7 +75,7 @@ test('a voiced intro sets its own length and carries the music with it; a scene 
   assert.deepEqual(timeline.scenes.map((scene) => [scene.from, scene.to]), [[0, 101], [101, 174], [174, 234], [234, 294]]);
   // "Ada", 0.35 s into the line at 1.95 s; "box", 0.35 s into the tagline on b's beat 1 (the section's 5th), at 6.35 s.
   assert.deepEqual([timeline.cue('intro.named'), timeline.cue('b.box')], [69, 201]);
-  assert.equal(timeline.cue('a.hit'), timeline.scene('a').beat(2));
+  assert.equal(timeline.cue('a.hit'), timeline.scene('a').origin + timeline.clock('a').beat(2));
   assertTimelineRetimes(timeline);
   const inside = { a: mixed.a, card: mixed.card, b: mixed.b };
   assert.throws(() => defineTimeline({ ...base, voice, scenes: inside, landmarks: mixedLandmarks }), /scene card \(fixedSpan\) sits inside the musical section/);
@@ -100,6 +103,6 @@ test('bindTimeline hands a replaying scene the scenes it replays, mapped by the 
     b: (clock, replays): Shown => ({ id: clock.id, shows: (f) => replays.hitAgain.source.shows(replays.hitAgain.sourceFrame(f)) }),
   });
   assert.equal(a.id, 'a');
-  assert.equal(b.shows(timeline.cue('b.late')), `a@${timeline.cue('a.hit')}`);
+  assert.equal(b.shows(timeline.clock('b').cues.late), `a@${timeline.clock('a').cues.hit}`);
   assert.throws(() => bindTimeline(timeline, { a: () => 0 } as never), /missing b/);
 });

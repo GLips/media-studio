@@ -11,11 +11,11 @@ import {
 } from '#studio';
 import { CapturePlane } from '#studio/reel/capture-plane.tsx';
 import { capturePlaneProjection, capturePlaneView, planeLiftStart, type PlaneLift, type PlanePose } from '#models/reel/capture-plane.ts';
-import { reelHudBoxes, reelHudGrounds, reelHudReadGrounds, type ReelHudGround, type ReelHudRead, type ReelHudTone } from '#models/reel/hud.ts';
+import { reelHudGrounds, reelHudReadGrounds, type ReelHudGround, type ReelHudRead, type ReelHudTone } from '#models/reel/hud.ts';
 import { RiseWord } from '#studio/reel/type.tsx';
 import type { Bar, ShowcaseClock } from '../bar.ts';
 import { captures as C } from '../captures/index.ts';
-import { SHOWCASE_HUD } from '../hud.ts';
+import { SHOWCASE_HUD, showcaseHudBoxesIn } from '../hud.ts';
 import tapPink from '../sfx/tap-pink.ts';
 import tapCharcoal from '../sfx/tap-charcoal.ts';
 import tapBlack from '../sfx/tap-black.ts';
@@ -571,7 +571,7 @@ export function swatchesBar(clock: ShowcaseClock<'swatches'>): Bar {
   // short of the rows: clear for `gap` frame px past the rows' boxes, whole `fade` px further in. The card stays clear
   // of the rows, so the ripples on it never reach them.
   const RIPPLE_HUD_CLEAR = { gap: 6, fade: 48 };
-  const HUD_PART_BOXES = Object.values(reelHudBoxes(SHOWCASE_HUD, FROM / FPS));
+  const HUD_PART_BOXES = Object.values(showcaseHudBoxesIn('swatches'));
   const HUD_ROW_TOP_FOOT = Math.max(...HUD_PART_BOXES.filter((b) => b.y < H / 2).map((b) => b.y + b.h));
   const HUD_ROW_BOTTOM_HEAD = Math.min(...HUD_PART_BOXES.filter((b) => b.y > H / 2).map((b) => b.y));
   /** A mask's gradient stops down the frame (y, colour) that hide the off-card ripples on the HUD's rows. */

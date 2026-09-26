@@ -29,8 +29,9 @@ fractions, `clock.beat(1.5)` is the "and") and its own cues (`clock.cues.stamp`)
 ## A bar
 
 A bar is a module exporting a function of its clock returning a `Bar` (`id`, `note`, `clock`, `render(f)`, `hudRead`):
-`render` takes the **video's** frame, so a bar can finish what the last one started and the finale can replay any bar
-live in a cell (`replay.source.render(replay.sourceFrame(f))`). A move that must keep its length when a bar before it
+`render`, `hudRead`, `kicks`, `glitches` and each sound's `at` take the bar's own frame, 0 on its beat 0 (negative
+before it, for a bar that starts on a pickup), and `reel.tsx` and `video.tsx` add the bar's origin on the video. The
+finale replays any bar live in a cell (`replay.source.render(replay.sourceFrame(f))`). A move that must keep its length when a bar before it
 grows is a start plus a duration anchored at one end, declared in the bar's `moves`; the retime runner in
 `timeline.test.ts` lengthens every bar and fails one that stretches.
 Draw only through the bar's pure function of `f`: no state, no randomness but seeded.
@@ -52,8 +53,8 @@ Draw only through the bar's pure function of `f`: no state, no randomness but se
   that ground rather than guess it: `reelHudGrounds(box, groundAt)` samples the box edge to edge into each ground's
   share, and `reelHudReadGrounds(grounds, looks)` picks the ink most of the box wants, plated where the other inks'
   grounds or busy type show (`lib/models/reel/hud.ts`).
-- **Sounds** the picture lands (a strike, a whip, a stamp) go in the bar's `sounds`, which play on the video's clock
-  (`defineVideo({ sounds })`, `sfx.md`), never as an `<Sfx>` in `render`: the finale replays `render` in its tiles, and
+- **Sounds** the picture lands (a strike, a whip, a stamp) go in the bar's `sounds`, on its clock; `video.tsx` places them on the
+  video (`defineVideo({ sounds })`, `sfx.md`), never as an `<Sfx>` in `render`: the finale replays `render` in its tiles, and
   a cut would stop a whip that runs across it. The music carries the beat; a sound marks what the music can't: a slam
   on a beat the track leaves empty, or a hit of its own.
   - **A sound lands with the music, not the picture.** The music's hits trail their frames by the picture's lead
@@ -67,8 +68,8 @@ Draw only through the bar's pure function of `f`: no state, no randomness but se
 ## Proving it
 
 Preview your bar alone: a scratch project (`scratch/<reel>-<bar>/video.tsx`) whose default export is the project's
-`barPreview(bar, index)` renders just your bar, inside the same HUD and grade, with its frame 0 on the bar's first
-frame. Several builders editing bars at once can't break each other's renders that way.
+`barPreview(showcaseBars[n - 1])` (the bar with its place on the reel) renders just your bar, inside the same HUD and
+grade, with its frame 0 on the bar's first frame. Several builders editing bars at once can't break each other's renders that way.
 
 1. `studio look scratch/<reel>-<bar> --frames=0:<last>` renders every frame of your bar. Look at the hits: does
    each arrival land on its hit frame, how hard does it snap, what does it smear, is anything still for more than

@@ -6,7 +6,7 @@ import { clamp } from '#models/motion/motion.ts';
 import { definePieceTracks } from '#models/motion/piece-tracks.ts';
 import { needlePoseAt, needleScreenPoint, type NeedleStrike } from '#models/reel/needle.ts';
 import type { ShowcaseClock } from '../bar.ts';
-import { showcaseHudBoxesAt } from '../hud.ts';
+import { showcaseHudBoxesIn } from '../hud.ts';
 import { INK_FIRST_STRIKE, inkFieldSlotAt } from '../ink-field.ts';
 
 export type InkStrikeSpot = { frame: number; x: number; y: number };
@@ -80,6 +80,6 @@ export const inkPieceTracks = definePieceTracks<ShowcaseClock<'ink'>>('ink', (cl
         };
       },
     },
-    keepClear: showcaseHudBoxesAt,
+    keepClear: () => showcaseHudBoxesIn('ink'),
   };
 });
