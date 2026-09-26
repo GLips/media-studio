@@ -8,7 +8,7 @@
 
 import { motionChannelVelocity, type MotionSegment, type MotionTrack, type MotionTracks } from './motion-tracks.ts';
 import { H, W } from '#models/frame/frame.ts';
-import type { TimelineReport } from '../../studio/composition/Video.tsx';
+import type { TimelineReport } from '#studio/composition/Video.tsx';
 
 /** Which box a graph plots: where the viewer sees the element, or where it is in its owner's frame. */
 export type MotionGraphSpace = 'screen' | 'local';

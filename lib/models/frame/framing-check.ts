@@ -9,7 +9,7 @@
 //
 // Take fits are warnings, not problems: a take played too fast or slow between its pins still shows what's said.
 import { H, W } from './frame.ts';
-import type { TakeFitStrain } from '../../studio/probe/take-fit-strain.ts';
+import type { TakeFitStrain } from '#studio/probe/take-fit-strain.ts';
 
 type Rect = { x: number; y: number; w: number; h: number };
 

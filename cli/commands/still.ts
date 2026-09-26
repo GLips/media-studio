@@ -22,8 +22,8 @@ export default defineCommand({
     const { mkdtempSync, rmSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');
     const { join } = await import('node:path');
-    const { resolveStudioProjectWith } = await import('../../lib/engine/project/studio-project.ts');
-    const { describeStillFits, renderProjectStills } = await import('../../lib/engine/render/render-stills.ts');
+    const { resolveStudioProjectWith } = await import('#engine/project/studio-project.ts');
+    const { describeStillFits, renderProjectStills } = await import('#engine/render/render-stills.ts');
     const { stillName } = await import('#models/still/still-presets.ts');
     const project = resolveStudioProjectWith(args.project, 'stills.tsx');
     // A sheet shows refused stills too, so every still is kept as drawn until the sheets are laid out.
@@ -40,10 +40,10 @@ export default defineCommand({
         ? `still check: ${failed.length} of ${stills.length} failed${args.check ? '' : ', not written'}: ${failed.map((s) => stillName(s.still)).join(', ')}`
         : `still check ✓ (${stills.length} still${stills.length > 1 ? 's' : ''})`);
       if (failed.length) process.exitCode = 1;
-      const { describeLookAlikeAxis, stillAxesThatLookAlike } = await import('../../lib/engine/stills/still-sheet.ts');
+      const { describeLookAlikeAxis, stillAxesThatLookAlike } = await import('#engine/stills/still-sheet.ts');
       for (const alike of stillAxesThatLookAlike(stills)) console.error(`⚠ ${describeLookAlikeAxis(alike)}`);
       if (drawnDir) {
-        const { renderStillSheets } = await import('../../lib/engine/stills/still-sheet.ts');
+        const { renderStillSheets } = await import('#engine/stills/still-sheet.ts');
         for (const sheet of await renderStillSheets(stills, { outDir: join(project, 'out', 'still-sheets'), workDir: drawnDir, project })) console.log(sheet);
       }
     } finally {

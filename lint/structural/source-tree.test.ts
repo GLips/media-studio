@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, test } from 'node:test';
-import { isolatedGitEnv, runFixtureGit } from '../../lib/engine/git/fixture-git.ts';
+import { isolatedGitEnv, runFixtureGit } from '#engine/git/fixture-git.ts';
 import { loadSourceTree, type TreeScope } from './source-tree.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'source-tree-'));

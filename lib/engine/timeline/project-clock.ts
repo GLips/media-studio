@@ -4,7 +4,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { timelineClockTable, type Timeline, type TimelineClockTable } from '../../models/timeline/timeline.ts';
+import { timelineClockTable, type Timeline, type TimelineClockTable } from '#models/timeline/timeline.ts';
 
 /** The project's resolved timeline, or undefined for a project with no timeline.ts. Throws where it and its music disagree. */
 export async function readProjectTimeline(project: string): Promise<Timeline | undefined> {

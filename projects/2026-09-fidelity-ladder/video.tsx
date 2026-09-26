@@ -1,7 +1,7 @@
 // The fidelity ladder's demo: each scene bound at its rung. `open` is still a title card, `sketch` a board frame and
 // `layout` blocked; `price` is built. Raising one is changing its binding here; timeline.ts stays as it is.
 
-import { bindTimeline, type TimelineSceneClock } from '../../lib/models/timeline/bind-timeline.ts';
+import { bindTimeline, type TimelineSceneClock } from '#models/timeline/bind-timeline.ts';
 import { blockingScene, boardFrameScene, defineVideo, type FlatPiece, motionCurves, sceneCueSeconds, sceneForTimelineClock, seg, Text, titleCardScene, W } from '#studio';
 import sketch from './refs/buy-box-sketch.svg';
 import { timeline } from './timeline.ts';

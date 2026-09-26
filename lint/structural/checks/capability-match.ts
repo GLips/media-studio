@@ -11,7 +11,7 @@
 // still's presets); the timeline throws at load and the retime runner and
 // still check hold those.
 
-import { capabilityOfParts, PROJECT_CAPABILITIES, type ProjectCapability, type ProjectPart } from '../../../lib/models/project/capability.ts';
+import { capabilityOfParts, PROJECT_CAPABILITIES, type ProjectCapability, type ProjectPart } from '#models/project/capability.ts';
 import type { AstNode, SourceFile } from '../source-tree.ts';
 import { callsTo, type CheckContext, type Finding, type StructuralCheck } from '../check-context.ts';
 

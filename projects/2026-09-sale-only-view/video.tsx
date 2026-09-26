@@ -2,7 +2,7 @@
 // each scene plays and the words its picture moves on. Scene times are seconds from each scene's start, and a moment
 // that lands on a word is that word's cue (`at.hunt`), so a re-recorded line moves it.
 
-import { bindTimeline, type TimelineSceneClock } from '../../lib/models/timeline/bind-timeline.ts';
+import { bindTimeline, type TimelineSceneClock } from '#models/timeline/bind-timeline.ts';
 import {
   CaptureSwap, Capture, ClickToBlur, CursorPath, EndCard, GlassCard, Highlight, MotionTitle, Spotlight, Tag,
   camAt, camFit, camTop, centerOf, defineVideo, scaleFor, sceneCueSeconds, sceneForTimelineClock, screenRect, motionCurves,

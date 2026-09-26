@@ -2,7 +2,7 @@
 // board frame pushing into a sketch, `layout` blocked in flat pieces, `price` built. Each rises in place, and none of
 // this timing moves when it does.
 
-import { defineTimeline, fixedSpan } from '../../lib/models/timeline/timeline.ts';
+import { defineTimeline, fixedSpan } from '#models/timeline/timeline.ts';
 
 const XFADE = 0.5;
 

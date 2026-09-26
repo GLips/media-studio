@@ -39,10 +39,10 @@ export default defineCommand({
       if ([args.sheet, args.strip, args.video, args.against, args.motion, args.local].some(Boolean)) throw new Error('--graph=models reads the scene models over --bar=N or --frames=a:b: give it no video, times or --motion');
       if (Boolean(args.frames) === Boolean(args.bar)) throw new Error('--graph=models reads a stretch: give it --bar=N or --frames=a:b');
       if (args.out && !/\.png$/i.test(args.out)) throw new Error(`a --graph is an image: give --out a .png name, not ${args.out}`);
-      const { resolveStudioProjectWith } = await import('../../lib/engine/project/studio-project.ts');
-      const { parseLookFrames } = await import('../../lib/engine/look/frame-look.ts');
-      const { readProjectClock } = await import('../../lib/engine/timeline/project-clock.ts');
-      const { lookPieceModels } = await import('../../lib/engine/look/piece-look.ts');
+      const { resolveStudioProjectWith } = await import('#engine/project/studio-project.ts');
+      const { parseLookFrames } = await import('#engine/look/frame-look.ts');
+      const { readProjectClock } = await import('#engine/timeline/project-clock.ts');
+      const { lookPieceModels } = await import('#engine/look/piece-look.ts');
       const project = resolveStudioProjectWith(args.project, 'timeline.ts');
       const frames = await (async () => {
         if (args.frames) return parseLookFrames(args.frames);
@@ -65,7 +65,7 @@ export default defineCommand({
       if (!(at.length === 2 && at.every(Number.isFinite) && at[0] < at[1])) throw new Error(`--graph is a stretch of seconds like 4:6, not ${args.graph}`);
       if (args.out && !/\.(png|jpe?g)$/i.test(args.out)) throw new Error(`a --graph is an image: give --out a .png or .jpg name, not ${args.out}`);
       const session = await openStudioRenderSession(args.project);
-      const { renderMotionGraph } = await import('../../lib/engine/render/render-pipeline.ts');
+      const { renderMotionGraph } = await import('#engine/render/render-pipeline.ts');
       const graph = await renderMotionGraph(session, {
         at: [at[0], at[1]], tracks: args.tracks?.split(',').map((t) => t.trim()).filter(Boolean), space: args.local ? 'local' : 'screen',
         trailStep: step, captions: Boolean(args.captions), out: args.out && isAbsolute(args.out) ? args.out : join(session.project, args.out ?? 'out/check/graph.png'),
@@ -75,16 +75,16 @@ export default defineCommand({
     }
 
     if ([args.frames, args.bar, args.sheet, args.strip].filter(Boolean).length > 1) throw new Error('choose frames one way: --frames, --bar, --sheet or --strip');
-    const { resolveStudioProjectWith } = await import('../../lib/engine/project/studio-project.ts');
-    const { lookAgainst, lookFrameSheet, lookMotion, openLookSource, parseLookCrop, parseLookFrames, parseLookNumber } = await import('../../lib/engine/look/frame-look.ts');
-    const { readProjectClock } = await import('../../lib/engine/timeline/project-clock.ts');
+    const { resolveStudioProjectWith } = await import('#engine/project/studio-project.ts');
+    const { lookAgainst, lookFrameSheet, lookMotion, openLookSource, parseLookCrop, parseLookFrames, parseLookNumber } = await import('#engine/look/frame-look.ts');
+    const { readProjectClock } = await import('#engine/timeline/project-clock.ts');
     const project = resolveStudioProjectWith(args.project, 'video.tsx');
     const inProject = (file: string) => (isAbsolute(file) ? file : join(project, file));
     const out = inProject(args.out ?? (args.motion ? 'out/check/motion.txt' : args.against ? 'out/check/against.jpg' : 'out/check/sheet.jpg'));
     const givenStart = args['starts-at'] === undefined ? undefined : Number(args['starts-at']);
     if (givenStart !== undefined && !(Number.isInteger(givenStart) && givenStart >= 0)) throw new Error(`--starts-at is a frame number, not ${args['starts-at']}`);
     const crop = args.crop ? parseLookCrop(args.crop) : undefined;
-    const { loadRenderSnapshot } = await import('../../lib/engine/snapshot/render-snapshot.ts');
+    const { loadRenderSnapshot } = await import('#engine/snapshot/render-snapshot.ts');
     // Where a render starts in the project: its snapshot says, and --starts-at places only one without a snapshot.
     const renderSource = (file: string) => {
       const loaded = loadRenderSnapshot(file);

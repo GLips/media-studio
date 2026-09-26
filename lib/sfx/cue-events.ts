@@ -7,7 +7,7 @@
 // - Camera moves and reveals: the motion tracks (lib/models/motion/motion-tracks.ts), to the frame.
 
 import type { MotionSegment, MotionTracks } from '#models/motion/motion-tracks.ts';
-import type { TimelineReport } from '../studio/composition/Video.tsx';
+import type { TimelineReport } from '#studio/composition/Video.tsx';
 import type { SfxRequest } from './library.ts';
 
 /** The artifact the probe emits for each frame: the `<Sfx>` marks on it. */

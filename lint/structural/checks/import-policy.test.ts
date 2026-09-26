@@ -45,12 +45,36 @@ test('a project reaches lib/studio only through #studio, and lib/studio reaches 
     ].join('\n'),
     // A studio module reaching the engine; its spec, run in Node, may.
     'lib/studio/kit/hooks.tsx': "import '#engine/bundle/tsx-test-hooks.ts';\n",
-    'lib/studio/kit/kit.test.ts': "import '../../engine/bundle/tsx-test-hooks.ts';\n",
+    'lib/studio/kit/kit.test.ts': "import '#engine/bundle/tsx-test-hooks.ts';\n",
   });
   assert.deepEqual(caught(findings), [
     'lib/studio/kit/hooks.tsx:#engine/bundle/tsx-test-hooks.ts',
     'projects/p/video.tsx:../../lib/studio/api.ts',
     'projects/p/video.tsx:../../lib/studio/kit/kit.tsx',
     'projects/p/video.tsx:../../lib/studio/kit/kit.tsx',
+  ]);
+});
+
+test('an import into a lib folder from outside it uses the alias; a relative path within the folder stays legal', () => {
+  const findings = runCheckOnFiles('import-policy', {
+    'package.json': JSON.stringify({ imports: { '#models/*': './lib/models/*', '#sfx/*': './lib/sfx/*' } }),
+    'lib/models/timeline/grid.ts': 'export const grid = 1;\n',
+    'lib/models/timeline/cue.ts': "import { grid } from './grid.ts';\nimport { g } from '../timeline/grid.ts';\n",
+    'lib/sfx/library.ts': 'export const library = 1;\n',
+    'lib/engine/render/render.ts': [
+      "import { grid } from '../../models/timeline/grid.ts';",
+      // Adversarial: a dynamic import and a re-export make the same crossing.
+      "export { library } from '../../sfx/library.ts';",
+      "const lazy = () => import('../../sfx/library.ts');",
+      "import { grid as aliased } from '#models/timeline/grid.ts';",
+    ].join('\n'),
+    // A root file one level above lib crosses too, however short its path.
+    'remotion.config.ts': "import { grid } from './lib/models/timeline/grid.ts';\n",
+  });
+  assert.deepEqual(caught(findings), [
+    'lib/engine/render/render.ts:../../models/timeline/grid.ts',
+    'lib/engine/render/render.ts:../../sfx/library.ts',
+    'lib/engine/render/render.ts:../../sfx/library.ts',
+    'remotion.config.ts:./lib/models/timeline/grid.ts',
   ]);
 });

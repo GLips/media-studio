@@ -17,7 +17,7 @@ import { unmeasuredAttrs } from '../probe/motion-tag.ts';
 import { FrameProbe } from '../probe/probe.tsx';
 import type { SceneRung } from '#models/timeline/scene-rung.ts';
 import { SceneContext } from './scene.tsx';
-import { sfxSeedFromId } from '../../sfx/dsp.ts';
+import { sfxSeedFromId } from '#sfx/dsp.ts';
 import { Sfx, SfxCueListAudio, SfxCueListPlaying } from '../sfx/sfx.tsx';
 import { layoutVideo, sceneClock, sceneTimes, scenesAt, visibleSpan, type LaidScene, type Timeline, type VideoDef } from './timeline.ts';
 

@@ -16,14 +16,14 @@ export default defineCommand({
   },
   async run({ args }) {
     const { basename } = await import('node:path');
-    const { scaffoldStudioProject } = await import('../../lib/engine/project/new-project.ts');
-    const { captureStudioProject } = await import('../../lib/engine/capture/capture.ts');
+    const { scaffoldStudioProject } = await import('#engine/project/new-project.ts');
+    const { captureStudioProject } = await import('#engine/capture/capture.ts');
     const { capability } = args;
     const dir = scaffoldStudioProject({ slug: args.slug, capability, url: args.url, title: args.title, brand: args.brand });
     if (args.url) await captureStudioProject(dir);
     const voiced = capability === 'voice-led' || capability === 'mixed';
     if (voiced) {
-      const { voiceStudioProject } = await import('../../lib/engine/voice/voice-project.ts');
+      const { voiceStudioProject } = await import('#engine/voice/voice-project.ts');
       await voiceStudioProject(dir, { mode: 'estimate' });
     }
     const name = basename(dir);

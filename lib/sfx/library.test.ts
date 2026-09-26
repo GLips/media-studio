@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { VOICE_LUFS } from '../studio/mix/mix.ts';
+import { VOICE_LUFS } from '#studio/mix/mix.ts';
 import { SFX_RATE } from './dsp.ts';
 import { renderSfx, resolveSfxParams, SFX_LOUDNESS_UNDER_VOICE, SFX_PRE_ROLL_SECONDS } from './library.ts';
 import { SFX_RECIPES } from './recipes.ts';

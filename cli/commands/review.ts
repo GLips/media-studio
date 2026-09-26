@@ -14,7 +14,7 @@ export default defineCommand({
   },
   async run({ args }) {
     const { listReviewRenders, resolveReviewTarget, startStudioReview } = await import('../../lab/review/server.ts');
-    const { renderFileStamp } = await import('../../lib/engine/snapshot/render-snapshot.ts');
+    const { renderFileStamp } = await import('#engine/snapshot/render-snapshot.ts');
     const target = resolveReviewTarget(args.target);
     const { url } = await startStudioReview({ target, port: Number(args.port) });
     const { hash, modified } = renderFileStamp(target.media);

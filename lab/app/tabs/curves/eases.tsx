@@ -4,7 +4,7 @@
 import { useMemo, useState } from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
-import { ShutterBlur } from '../../../../lib/studio/film/motion-blur.tsx';
+import { ShutterBlur } from '#studio/film/motion-blur.tsx';
 import { clamp, motionCurves, motionDurations, seg, type EaseFn } from '#models/motion/motion.ts';
 import { LAB_COLORS, LabBench, LabChoice, LabControls, LabNote, LabStage } from '../../ui.tsx';
 import { SPRINGS_LOOKS, type SpringsLook } from './springs.tsx';

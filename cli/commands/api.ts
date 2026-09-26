@@ -10,7 +10,7 @@ export default defineCommand({
     name: { type: 'positional', required: false, description: 'An export, e.g. fitTake' },
   },
   async run({ args }) {
-    const { findStudioApiExport, formatStudioApiExport, formatStudioApiIndex, readStudioApiExports } = await import('../../lib/engine/project/studio-api-reference.ts');
+    const { findStudioApiExport, formatStudioApiExport, formatStudioApiIndex, readStudioApiExports } = await import('#engine/project/studio-api-reference.ts');
     const exports = readStudioApiExports();
     console.log(args.name ? formatStudioApiExport(findStudioApiExport(exports, args.name)) : formatStudioApiIndex(exports));
   },

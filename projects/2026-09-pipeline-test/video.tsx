@@ -8,7 +8,7 @@ import {
   SPLIT_LEFT, SPLIT_RIGHT, SplitCompare, Text, Wash, W, camAt, camFit, camTop, centerOf, defineScene, defineVideo,
   offscreen, on, phoneView, screenRect, motionCurves, seg, union, view, type CursorKey, type Rect,
 } from '#studio';
-import { PAL, Watercolor, type WatercolorKit } from '../../lib/paint/watercolor.tsx';
+import { PAL, Watercolor, type WatercolorKit } from '#paint/watercolor.tsx';
 import { voice } from './audio/manifest.ts';
 import { captures as C } from './captures/index.ts';
 import { music } from './music/index.ts';

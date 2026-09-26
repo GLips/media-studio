@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
 import { FPS } from '#models/frame/frame.ts';
-import { ShutterBlur } from '../../../../lib/studio/film/motion-blur.tsx';
+import { ShutterBlur } from '#studio/film/motion-blur.tsx';
 import { clamp, lerp, perceptualSpring, type PerceptualSpring } from '#models/motion/motion.ts';
 import { LAB_COLORS, LabBench, LabChoice, LabControls, LabNote, LabSlider, LabStage } from '../../ui.tsx';
 

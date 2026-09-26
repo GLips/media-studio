@@ -17,6 +17,8 @@
   "imports": {
     "#engine/*": "./lib/engine/*",
     "#models/*": "./lib/models/*",
+    "#paint/*": "./lib/paint/*",
+    "#sfx/*": "./lib/sfx/*",
     "#studio": "./lib/studio/api.ts",
     "#studio/*": "./lib/studio/*"
   },

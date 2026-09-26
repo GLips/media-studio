@@ -7,9 +7,9 @@
 // seams land on the same samples, and about half the size, which brings a long music fit under Pages' per-file limit.
 import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { buildLabPage, LAB_APP_DIR } from '../lib/engine/bundle/lab-bundle.ts';
+import { buildLabPage, LAB_APP_DIR } from '#engine/bundle/lab-bundle.ts';
 import { buildLabManifest, type LabMediaFilter } from './manifest.ts';
-import { runFfmpeg } from '../lib/engine/ffmpeg/ffmpeg.ts';
+import { runFfmpeg } from '#engine/ffmpeg/ffmpeg.ts';
 
 /** Cloudflare Pages refuses any single file bigger than this. */
 const PAGES_FILE_LIMIT = 25 * 1024 * 1024;

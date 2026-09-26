@@ -13,7 +13,7 @@ import { HostImportPlugin, HostModuleStubPlugin, HostTsconfigPathsPlugin } from 
 import { previsFootageModuleFor, writePrevisFootageModule } from './previs-footage.ts';
 import { writeProjectBrandModule } from './project-brand.ts';
 import { projectHostLink, readProjectHostSpec } from '../host/project-host-spec.ts';
-import { writeSfxCueModule } from '../../sfx/cue-module.ts';
+import { writeSfxCueModule } from '#sfx/cue-module.ts';
 
 export function projectSlug(project: string) {
   return basename(resolve(project));

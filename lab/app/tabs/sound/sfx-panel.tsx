@@ -1,9 +1,9 @@
 // sfx-panel.tsx: the sound effects half of the Sound tab. It calls lib/sfx's renderSfx in the browser, exactly as a
 // render does, plays the samples through Web Audio and draws them.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { SFX_RATE } from '../../../../lib/sfx/dsp.ts';
-import { renderSfx, sfxParamSpecs, sfxRecipeNamed, SFX_LOUDNESS_UNDER_VOICE, type SfxRequest } from '../../../../lib/sfx/library.ts';
-import { SFX_RECIPES, type SfxParamSpec, type SfxRecipeName } from '../../../../lib/sfx/recipes.ts';
+import { SFX_RATE } from '#sfx/dsp.ts';
+import { renderSfx, sfxParamSpecs, sfxRecipeNamed, SFX_LOUDNESS_UNDER_VOICE, type SfxRequest } from '#sfx/library.ts';
+import { SFX_RECIPES, type SfxParamSpec, type SfxRecipeName } from '#sfx/recipes.ts';
 import { LabBench, LabChoice, LabNote, LabSlider } from '../../ui.tsx';
 import { audioBufferFromChannels, playLabBuffer, useLabPlayhead } from './lab-audio.ts';
 import { SfxWaveform } from './sfx-waveform.tsx';

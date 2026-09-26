@@ -1,5 +1,5 @@
 import { test } from 'node:test';
-import { assertTimelineRetimes } from '../../lib/models/timeline/retime.ts';
+import { assertTimelineRetimes } from '#models/timeline/retime.ts';
 
 // The timeline reads the voice from audio/manifest.ts, which imports the WAVs: the hooks load those as URLs.
 await import('#engine/bundle/tsx-test-hooks.ts');

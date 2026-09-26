@@ -5,9 +5,9 @@
 import { Audio } from '@remotion/media';
 import { createContext, useContext } from 'react';
 import { Sequence, useCurrentFrame, useVideoConfig } from 'remotion';
-import type { SfxMarkAttr, SfxMarkedEvent } from '../../sfx/cue-events.ts';
-import { sfxSeedFromId } from '../../sfx/dsp.ts';
-import type { SfxRequest } from '../../sfx/library.ts';
+import type { SfxMarkAttr, SfxMarkedEvent } from '#sfx/cue-events.ts';
+import { sfxSeedFromId } from '#sfx/dsp.ts';
+import type { SfxRequest } from '#sfx/library.ts';
 
 export { SFX } from './kit.ts';
 

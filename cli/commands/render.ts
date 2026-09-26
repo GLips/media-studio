@@ -25,7 +25,7 @@ export default defineCommand({
     if (range && !(range.length === 2 && range.every(Number.isInteger) && range[0] >= 0 && range[1] >= range[0])) {
       throw new Error(`--frames is a first and last frame like 120:239, not ${args.frames}`);
     }
-    const pipeline = await import('../../lib/engine/render/render-pipeline.ts');
+    const pipeline = await import('#engine/render/render-pipeline.ts');
     const session = await openStudioRenderSession(args.project);
     const inProject = (file: string) => (isAbsolute(file) ? file : join(session.project, file));
     if (range) {

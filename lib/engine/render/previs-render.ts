@@ -14,7 +14,7 @@ import { generatePaidMedia } from '../generation/paid-generation.ts';
 import { readPrevisFootageList, writePrevisFootageEntry } from '../bundle/previs-footage.ts';
 import { blockoutSlug } from '../bundle/project-bundle.ts';
 import { RENDER_CHROMIUM, RENDER_CONCURRENCY, type RenderSession } from './render-session.ts';
-import { assertPrevisSpanFits, PREVIS_MODEL, PREVIS_WIDTH } from '../../studio/previs/previs.ts';
+import { assertPrevisSpanFits, PREVIS_MODEL, PREVIS_WIDTH } from '#studio/previs/previs.ts';
 import { probeMediaSeconds } from '../ffmpeg/ffmpeg.ts';
 
 // Seedance numbers its references by kind in the order sent (@Video1, @Image1, @Image2…), and the blockout goes first.

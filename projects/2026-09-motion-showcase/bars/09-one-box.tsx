@@ -19,7 +19,7 @@ import { recapTileUnder, type GlitchHit, type RecapLayout } from '#models/reel/r
 import { archivoAdvance, archivoKern } from '#models/reel/ticker-layout.ts';
 import { RiseWord } from '#studio/reel/type.tsx';
 import { ScrambleText } from '#studio/reel/type-scramble.tsx';
-import type { BoundReplay } from '../../../lib/models/timeline/bind-timeline.ts';
+import type { BoundReplay } from '#models/timeline/bind-timeline.ts';
 import type { Bar, BarSound, ShowcaseClock, ShowcaseReplays } from '../bar.ts';
 import { INK_FIELD } from '../ink-field.ts';
 import { Field } from '../parts.tsx';

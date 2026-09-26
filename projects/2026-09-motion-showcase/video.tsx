@@ -2,7 +2,7 @@
 // the HUD by the craft it shows off. The bars live in bars/, the timing in timeline.ts, the palette in look.ts, the frame every bar
 // is drawn inside in reel.tsx, the beat sheet in storyboard.md.
 
-import { bindTimeline } from '../../lib/models/timeline/bind-timeline.ts';
+import { bindTimeline } from '#models/timeline/bind-timeline.ts';
 import { FPS, defineVideo } from '#studio';
 import type { Bar, PlacedBar } from './bar.ts';
 import { bounceBar } from './bars/01-bounce.tsx';

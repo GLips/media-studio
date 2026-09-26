@@ -4,9 +4,9 @@
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
 import { FPS, W } from '#models/frame/frame.ts';
-import { FilmGrain, Vignette } from '../../../../lib/studio/film/grade.tsx';
+import { FilmGrain, Vignette } from '#studio/film/grade.tsx';
 import { motionCurves, seg } from '#models/motion/motion.ts';
-import { ShutterBlur } from '../../../../lib/studio/film/motion-blur.tsx';
+import { ShutterBlur } from '#studio/film/motion-blur.tsx';
 import { LAB_COLORS, LabChoice, LabSlider } from '../../ui.tsx';
 import { defineKitPiece } from './piece.tsx';
 

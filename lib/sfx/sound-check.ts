@@ -4,14 +4,14 @@
 // can speak for the picture. `studio mix` prints it. Node only: ffmpeg decodes and measures the files.
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { readProjectHostSpec } from '../engine/host/project-host-spec.ts';
-import { beatGrid, type BeatGrid } from '../models/timeline/beat-grid.ts';
+import { readProjectHostSpec } from '#engine/host/project-host-spec.ts';
+import { beatGrid, type BeatGrid } from '#models/timeline/beat-grid.ts';
 import { FPS } from '#models/frame/frame.ts';
-import { musicBedGainAt, type MusicBed } from '../studio/mix/mix.ts';
-import type { SfxSound } from '../studio/sfx/sfx.tsx';
-import { layoutVideo, totalFrames, type VideoDef } from '../studio/composition/timeline.ts';
+import { musicBedGainAt, type MusicBed } from '#studio/mix/mix.ts';
+import type { SfxSound } from '#studio/sfx/sfx.tsx';
+import { layoutVideo, totalFrames, type VideoDef } from '#studio/composition/timeline.ts';
 import { sfxSeedFromId } from './dsp.ts';
-import { runFfmpeg } from '../engine/ffmpeg/ffmpeg.ts';
+import { runFfmpeg } from '#engine/ffmpeg/ffmpeg.ts';
 
 // Attacks are found at 16 kHz in two bands: above 1.5 kHz, where a hit's attack is sharpest, and the full band, which
 // hears a kick's boom. An attack is a jump of at least MIN_RISE_DB in either.
@@ -306,7 +306,7 @@ export async function videoSoundCheckReport(project: string): Promise<string[]> 
   // and goes unchecked.
   if (readProjectHostSpec(project)) return [];
   // Transpiles .tsx as it loads, and imports a sound or a track as its file URL.
-  await import('../engine/bundle/tsx-test-hooks.ts');
+  await import('#engine/bundle/tsx-test-hooks.ts');
   const video: VideoDef = (await import(pathToFileURL(join(project, 'video.tsx')).href)).default;
   const check = checkVideoSoundsAgainstMusic(video);
   return check ? formatVideoSoundCheck(check) : [];

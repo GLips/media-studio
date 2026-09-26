@@ -7,10 +7,10 @@
 // sounds are rendered here with lib/sfx itself and scheduled with Web Audio against the video's clock. Placed cues
 // are already in the video's audio and are never scheduled twice.
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type RefObject } from 'react';
-import type { SfxEvent } from '../../../../lib/sfx/cue-events.ts';
-import { isSfxCueEdited, SFX_CLICK_STYLES, sfxCueOverrides, sfxCueOwnVolume, sfxCuePlays, sfxCueSound, type SfxCue, type SfxCueList, type SfxCueProblem } from '../../../../lib/sfx/cues.ts';
-import { SFX_RATE } from '../../../../lib/sfx/dsp.ts';
-import { renderSfx, type SfxRequest } from '../../../../lib/sfx/library.ts';
+import type { SfxEvent } from '#sfx/cue-events.ts';
+import { isSfxCueEdited, SFX_CLICK_STYLES, sfxCueOverrides, sfxCueOwnVolume, sfxCuePlays, sfxCueSound, type SfxCue, type SfxCueList, type SfxCueProblem } from '#sfx/cues.ts';
+import { SFX_RATE } from '#sfx/dsp.ts';
+import { renderSfx, type SfxRequest } from '#sfx/library.ts';
 import type { LabSfxCueSave } from '../../../local-api.ts';
 import type { LabSfxCuePayload } from '../../../manifest.ts';
 import { loadLabManifest } from '../../lab-manifest.ts';

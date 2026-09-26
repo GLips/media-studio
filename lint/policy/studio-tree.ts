@@ -144,3 +144,31 @@ export function normalizeRepoPath(path: string): string {
   }
   return out.join('/');
 }
+
+/**
+ * The `lib/<folder>` a relative import from `fromPath` climbs into, or undefined when it stays in its own tree. Such an
+ * import must use the folder's `#` alias: a relative path is short only between neighbours, and an alias survives a
+ * move on either end.
+ */
+export function libFolderCrossedTo(fromPath: string, targetPath: string): string | undefined {
+  const folder = (path: string) => (path.startsWith('lib/') ? path.split('/')[1] : undefined);
+  const to = folder(targetPath);
+  return to !== undefined && to !== folder(fromPath) ? to : undefined;
+}
+
+/**
+ * The inverse of expandStudioAlias: the `#` spelling of a repo path, an exact key first, then the `*` pattern with the
+ * longest prefix. Undefined when no key covers the path.
+ */
+export function aliasForRepoPath(path: string, imports: Readonly<Record<string, string>>): string | undefined {
+  let best: { prefix: string; key: string } | undefined;
+  for (const [key, value] of Object.entries(imports)) {
+    const target = normalizeRepoPath(value);
+    if (target === path) return key;
+    const star = target.indexOf('*');
+    if (star < 0 || target.slice(star + 1) !== '') continue;
+    const prefix = target.slice(0, star);
+    if (path.startsWith(prefix) && (!best || prefix.length > best.prefix.length)) best = { prefix, key };
+  }
+  return best && best.key.replace('*', path.slice(best.prefix.length));
+}

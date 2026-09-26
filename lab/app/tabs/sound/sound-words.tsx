@@ -1,8 +1,8 @@
 // sound-words.tsx: the Sound tab's plain words for lib/sfx. The recipes document themselves for agents (semitones,
 // partials, Hz); these say the same for someone who has never touched a synth, and the tab shows the real names beside.
 import type { ReactNode } from 'react';
-import type { SfxRequest } from '../../../../lib/sfx/library.ts';
-import type { SfxRecipeName } from '../../../../lib/sfx/recipes.ts';
+import type { SfxRequest } from '#sfx/library.ts';
+import type { SfxRecipeName } from '#sfx/recipes.ts';
 
 /** Code, CLI names and raw numbers, folded away under the plain words. */
 export function SoundForAgents({ children }: { children: ReactNode }) {

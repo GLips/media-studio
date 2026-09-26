@@ -2,7 +2,7 @@
 // bars before it, and the music's final hit. Every frame a bar, a sound or a tool cuts on is resolved from here;
 // `studio clock` prints it.
 
-import { beatSpan, defineTimeline, recordedGrid } from '../../lib/models/timeline/timeline.ts';
+import { beatSpan, defineTimeline, recordedGrid } from '#models/timeline/timeline.ts';
 import { music } from './music/index.ts';
 
 /** The fitted track the timeline is cut to, and the video's music. */

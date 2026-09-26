@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import type { TimelineReport } from '../../studio/composition/Video.tsx';
+import type { TimelineReport } from '#studio/composition/Video.tsx';
 import { loadRenderSnapshot, writeRenderSnapshot } from './render-snapshot.ts';
 
 const timeline = (title: string): TimelineReport => ({

@@ -8,7 +8,7 @@ import { createReadStream, existsSync, mkdtempSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { extname, join, sep } from 'node:path';
-import { LAB_APP_DIR, watchLabPage } from '../lib/engine/bundle/lab-bundle.ts';
+import { LAB_APP_DIR, watchLabPage } from '#engine/bundle/lab-bundle.ts';
 import { handleLabLocalApi } from './local-api.ts';
 import { buildLabManifest, LAB_MEDIA_TYPES, labMediaRegister } from './manifest.ts';
 

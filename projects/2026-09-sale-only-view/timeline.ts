@@ -1,7 +1,7 @@
 // The walkthrough's timing, stated once: each scene's lines as recorded, and the words its picture moves on. A
 // re-recorded line re-times its scene, every later one and each cue on its words; `studio clock` prints it.
 
-import { defineTimeline, voiceSpan } from '../../lib/models/timeline/timeline.ts';
+import { defineTimeline, voiceSpan } from '#models/timeline/timeline.ts';
 import { voice } from './audio/manifest.ts';
 
 // Seconds each crossfade takes, centred on its cut. The clicks from one page to the next cut hard instead.

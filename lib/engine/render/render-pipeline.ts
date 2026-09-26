@@ -15,11 +15,11 @@ import { assembleMotionTracks, formatMotionReport, motionArtifactName, type Fram
 import { measureLoudness } from '../ffmpeg/loudness.ts';
 import { artifactSink, DELIVERY_AUDIO_CODEC, RENDER_CHROMIUM, RENDER_CONCURRENCY, TIMELINE_REPORT_NAME, type RenderSession } from './render-session.ts';
 import { loadRenderSnapshot, writeRenderSnapshot } from '../snapshot/render-snapshot.ts';
-import { sfxEventsFrom, sfxMarkArtifactName, type SfxEvent, type SfxMark } from '../../sfx/cue-events.ts';
-import { sfxCueListReport } from '../../sfx/project-cue-list.ts';
+import { sfxEventsFrom, sfxMarkArtifactName, type SfxEvent, type SfxMark } from '#sfx/cue-events.ts';
+import { sfxCueListReport } from '#sfx/project-cue-list.ts';
 import { W } from '#models/frame/frame.ts';
 import { isVoicedWithDraft } from '../voice/voice-project.ts';
-import type { TimelineReport } from '../../studio/composition/Video.tsx';
+import type { TimelineReport } from '#studio/composition/Video.tsx';
 import { countVideoFrames, measureWithFfmpeg, runFfmpeg, runFfprobe } from '../ffmpeg/ffmpeg.ts';
 
 const outDirFor = (session: RenderSession) => join(session.project, 'out');

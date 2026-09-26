@@ -16,17 +16,17 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync
 import { createServer, type IncomingMessage } from 'node:http';
 import { tmpdir } from 'node:os';
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path';
-import { readSfxCueList } from '../../lib/sfx/cue-module.ts';
-import { sfxCuePlays } from '../../lib/sfx/cues.ts';
+import { readSfxCueList } from '#sfx/cue-module.ts';
+import { sfxCuePlays } from '#sfx/cues.ts';
 import { H, W } from '#models/frame/frame.ts';
 import type { MotionTracks } from '#models/motion/motion-tracks.ts';
 import { reviewTimingOf, type ReviewTiming } from '#models/review/review-moment.ts';
 import { reviewStoryboardOf, reviewTimingMarksOf, type ReviewStoryboardCard, type ReviewTimingMarks } from '#models/review/review-storyboard.ts';
 import { placeReviewNotes, REVIEW_NOTES_VERSION, reviewFrameAt, type ReviewMediaKind, type ReviewNote, type ReviewNotesFile, type ReviewRenderStamp, type ReviewScene, type ReviewSoundMarker, type ReviewStillCell, type ReviewStillCellsFile } from '#models/review/review-notes.ts';
-import { resolveStudioProject, STUDIO_ROOT } from '../../lib/engine/project/studio-project.ts';
-import { loadRenderSnapshot, renderFileStamp } from '../../lib/engine/snapshot/render-snapshot.ts';
-import { watchLabPage } from '../../lib/engine/bundle/lab-bundle.ts';
-import { runFfmpegAsync } from '../../lib/engine/ffmpeg/ffmpeg.ts';
+import { resolveStudioProject, STUDIO_ROOT } from '#engine/project/studio-project.ts';
+import { loadRenderSnapshot, renderFileStamp } from '#engine/snapshot/render-snapshot.ts';
+import { watchLabPage } from '#engine/bundle/lab-bundle.ts';
+import { runFfmpegAsync } from '#engine/ffmpeg/ffmpeg.ts';
 import { sendFile } from '../server.ts';
 
 const REVIEW_APP_DIR = join(STUDIO_ROOT, 'lab', 'review', 'app');

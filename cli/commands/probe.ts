@@ -19,8 +19,8 @@ export default defineCommand({
     if (at && (at.length !== 2 || at.some((n) => !Number.isFinite(n)))) throw new Error(`--at must be x,y in viewport pixels, not ${args.at}`);
     const wait = Number(args.wait);
     if (!(wait >= 0)) throw new Error(`--wait must be seconds, not ${args.wait}`);
-    const { resolveStudioProjectWith } = await import('../../lib/engine/project/studio-project.ts');
-    const { formatPageProbe, probeProjectPage } = await import('../../lib/engine/capture/page-probe.ts');
+    const { resolveStudioProjectWith } = await import('#engine/project/studio-project.ts');
+    const { formatPageProbe, probeProjectPage } = await import('#engine/capture/page-probe.ts');
     const project = resolveStudioProjectWith(args.project, 'capture.ts');
     const probe = await probeProjectPage(project, args.target, { at: at && { x: at[0], y: at[1] }, device: args.device, wait });
     console.log(probe.screenshot);

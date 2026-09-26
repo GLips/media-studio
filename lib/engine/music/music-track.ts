@@ -14,7 +14,7 @@ import { probeMediaSeconds, runFfmpeg, runFfprobe } from '../ffmpeg/ffmpeg.ts';
 import { generatePaidMedia } from '../generation/paid-generation.ts';
 import { detectMusicBeats } from '#models/music/music-beats.ts';
 import { planMusicArrangement, planMusicFit, spliceMusicSpans } from '#models/music/music-fit.ts';
-import type { MusicTrack } from '../../studio/mix/mix.ts';
+import type { MusicTrack } from '#studio/mix/mix.ts';
 
 type Entry = Omit<MusicTrack, 'src'> & { file: string };
 

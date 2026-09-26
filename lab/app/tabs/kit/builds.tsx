@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import { DISPLAY_FONT, MONO_FONT } from '#models/type/faces.ts';
 import { FULL_FRAME } from '#models/frame/frame.ts';
-import { DrawPath, Odometer, WordReveal, wordRevealFinish, type OdometerMode } from '../../../../lib/studio/kit/kit.tsx';
+import { DrawPath, Odometer, WordReveal, wordRevealFinish, type OdometerMode } from '#studio/kit/kit.tsx';
 import { lerp, motionCurves, seg } from '#models/motion/motion.ts';
 import { LAB_COLORS, LabButtons, LabChoice, LabSlider } from '../../ui.tsx';
 import { defineKitPiece, KIT_COLOR_OPTIONS, KitTextField } from './piece.tsx';

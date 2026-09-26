@@ -10,7 +10,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 're
 import { Artifact, useCurrentFrame, useDelayRender, useVideoConfig } from 'remotion';
 import { framingArtifactName, type FramingMark, type FramingReport } from '#models/frame/framing-check.ts';
 import { motionArtifactName, type FrameMotion, type MotionSample, type ScenePhase, type StaggerMembership } from '#models/motion/motion-tracks.ts';
-import { sfxMarkArtifactName, type SfxMark, type SfxMarkAttr } from '../../sfx/cue-events.ts';
+import { sfxMarkArtifactName, type SfxMark, type SfxMarkAttr } from '#sfx/cue-events.ts';
 import type { Rect } from '#models/camera/camera.ts';
 import { W } from '#models/frame/frame.ts';
 import type { CameraMark } from './motion-tag.ts';

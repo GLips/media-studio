@@ -14,7 +14,7 @@ const video = defineCommand({
     dry: { type: 'boolean', description: 'Render the blockout and print the prompt without paying, and say if the footage the scene plays is from an earlier blockout' },
   },
   async run({ args }) {
-    const { renderPrevisFootage } = await import('../../lib/engine/render/previs-render.ts');
+    const { renderPrevisFootage } = await import('#engine/render/previs-render.ts');
     const session = await openStudioRenderSession(args.project);
     const { blockout, footage, prompt, stale } = await renderPrevisFootage(session, args.scene, { dry: Boolean(args.dry) });
     if (args.dry) console.error(`prompt:\n${prompt}`);
@@ -40,8 +40,8 @@ const image = defineCommand({
   },
   async run({ args }) {
     const { resolve } = await import('node:path');
-    const { resolveStudioProject } = await import('../../lib/engine/project/studio-project.ts');
-    const { generateProjectImage, DEFAULT_IMAGE_MODEL } = await import('../../lib/engine/generation/generated-image.ts');
+    const { resolveStudioProject } = await import('#engine/project/studio-project.ts');
+    const { generateProjectImage, DEFAULT_IMAGE_MODEL } = await import('#engine/generation/generated-image.ts');
     const { file, index } = await generateProjectImage(resolveStudioProject(args.project), {
       name: args.name, prompt: args.prompt, model: args.model ?? DEFAULT_IMAGE_MODEL,
       references: (args.ref?.split(',') ?? []).map((ref) => resolve(ref)), aspect: args.aspect, transparent: Boolean(args.transparent),

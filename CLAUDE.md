@@ -8,7 +8,9 @@
   commit on any failure.
 - `lib/` has three positions: `lib/models/` (pure, loads in plain Node), `lib/studio/` (renders in the browser) and
   `lib/engine/` (Node-side machinery). Each holds domain subfolders only, plus `lib/studio/api.ts`, which projects
-  import as `#studio`. `lib/sfx/` and `lib/paint/` are still to be split into them.
+  import as `#studio`. `lib/sfx/` and `lib/paint/` are still to be split into them. An import into a `lib/<folder>` from
+  outside it uses its alias (`#models/*`, `#studio/*`, `#engine/*`, `#sfx/*`, `#paint/*`), never a relative path;
+  `node lint/rewrite-lib-imports.ts` rewrites any that slip in.
 - Start a project with `studio new <slug> --capability <music-led|voice-led|mixed|still-only>`. It passes every check
   from its first commit; a new project isn't baselined, so a violation in it blocks.
 - A project: `project.ts` (its capability, held to what it binds), `timeline.ts`, `timeline.test.ts` (the retime

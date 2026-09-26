@@ -6,10 +6,10 @@
 // event id and only those three fields are taken, so a stale tab can't rewrite a draft or an event from under a redraft.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { dirname } from 'node:path';
-import { readSfxCueList, writeSfxCueList, writeSfxCueModule } from '../lib/sfx/cue-module.ts';
-import type { SfxCue, SfxCueList } from '../lib/sfx/cues.ts';
-import { resolveSfxParams, type SfxRequest } from '../lib/sfx/library.ts';
-import { STUDIO_PROJECTS_DIR, resolveStudioProject } from '../lib/engine/project/studio-project.ts';
+import { readSfxCueList, writeSfxCueList, writeSfxCueModule } from '#sfx/cue-module.ts';
+import type { SfxCue, SfxCueList } from '#sfx/cues.ts';
+import { resolveSfxParams, type SfxRequest } from '#sfx/library.ts';
+import { STUDIO_PROJECTS_DIR, resolveStudioProject } from '#engine/project/studio-project.ts';
 import { labSfxCueRevision, readLabSfxCuePayload, type LabMediaRegister, type LabSfxCuePayload } from './manifest.ts';
 
 /** What the editor posts: its whole edit state, against the revision it loaded. */

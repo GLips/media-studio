@@ -13,7 +13,7 @@ export default defineCommand({
   },
   async run({ args }) {
     const { resolve } = await import('node:path');
-    const { auditionVoices } = await import('../../lib/engine/voice/voice-project.ts');
+    const { auditionVoices } = await import('#engine/voice/voice-project.ts');
     for (const file of await auditionVoices(args.line, args.voices.split(','), resolve(args.out))) console.log(file);
   },
 });

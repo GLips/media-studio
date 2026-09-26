@@ -4,7 +4,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { isolatedGitEnv, runFixtureGit } from '../../lib/engine/git/fixture-git.ts';
+import { isolatedGitEnv, runFixtureGit } from '#engine/git/fixture-git.ts';
 import type { DeclaredShared } from '../policy/studio-tree.ts';
 import { contextFor, studioScope, type Finding } from './check-context.ts';
 import { STRUCTURAL_CHECKS } from './registry.ts';

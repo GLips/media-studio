@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { runFixtureGit } from '../../lib/engine/git/fixture-git.ts';
+import { runFixtureGit } from '#engine/git/fixture-git.ts';
 import { caught, runCheckOnFiles } from './spec-tree.ts';
 
 /** A committed repo standing in for the one a hook runs in, and what a leak would change in it. */

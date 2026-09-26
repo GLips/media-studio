@@ -6,7 +6,7 @@ export * from './previs/blockout.tsx';
 export * from './previs/blockout-camera.ts';
 export { FlatBlockout, type FlatPiece, type FlatPieceKind, type FlatViewMoves } from './previs/flat-blockout.tsx';
 export type { FlatKey, FlatPose, FlatView } from './previs/flat-blockout-pose.ts';
-export * from '../models/timeline/beat-grid.ts';
+export * from '#models/timeline/beat-grid.ts';
 export * from '#models/camera/camera.ts';
 export * from './capture/capture.tsx';
 export * from './fonts/fonts.ts';

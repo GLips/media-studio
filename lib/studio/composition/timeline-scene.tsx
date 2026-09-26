@@ -3,7 +3,7 @@
 // restating any of its timing.
 
 import type { ReactNode } from 'react';
-import type { ResolvedSceneClock } from '../../models/timeline/timeline.ts';
+import type { ResolvedSceneClock } from '#models/timeline/timeline.ts';
 import { FPS } from '#models/frame/frame.ts';
 import type { SceneRung } from '#models/timeline/scene-rung.ts';
 import type { SceneClock, SceneDef } from './timeline.ts';

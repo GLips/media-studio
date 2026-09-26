@@ -13,7 +13,7 @@ import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import type { MotionTracks } from '#models/motion/motion-tracks.ts';
 import type { TimelineClockTable } from '#models/timeline/timeline.ts';
-import type { TimelineReport } from '../../studio/composition/Video.tsx';
+import type { TimelineReport } from '#studio/composition/Video.tsx';
 
 export const RENDER_SNAPSHOT_VERSION = 3;
 

@@ -8,10 +8,10 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
-import { readSfxCueList } from '../lib/sfx/cue-module.ts';
-import type { SfxCueList } from '../lib/sfx/cues.ts';
-import { STUDIO_PROJECTS_DIR, STUDIO_ROOT } from '../lib/engine/project/studio-project.ts';
-import { loadRenderSnapshot } from '../lib/engine/snapshot/render-snapshot.ts';
+import { readSfxCueList } from '#sfx/cue-module.ts';
+import type { SfxCueList } from '#sfx/cues.ts';
+import { STUDIO_PROJECTS_DIR, STUDIO_ROOT } from '#engine/project/studio-project.ts';
+import { loadRenderSnapshot } from '#engine/snapshot/render-snapshot.ts';
 import type { SpokenWord } from '#models/voice/voice-words.ts';
 
 const SCRATCH_DIR = join(STUDIO_ROOT, 'scratch');

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import type { TimelineBinding, TimelineSceneClock } from '../../lib/models/timeline/bind-timeline.ts';
-import type { ResolvedScene, ResolvedSceneClock } from '../../lib/models/timeline/timeline.ts';
+import type { TimelineBinding, TimelineSceneClock } from '#models/timeline/bind-timeline.ts';
+import type { ResolvedScene, ResolvedSceneClock } from '#models/timeline/timeline.ts';
 import type { Rect, SfxSound } from '#studio';
 import type { ReelHudRead, ReelHudSlot } from '#models/reel/hud.ts';
 import type { timeline } from './timeline.ts';
