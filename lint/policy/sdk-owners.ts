@@ -15,4 +15,5 @@ export const SDK_OWNERS: readonly SdkOwner[] = [
   { sdk: '@remotion/renderer', owner: 'lib/engine/render/', packages: ['@remotion/renderer'] },
   { sdk: '@remotion/bundler', owner: 'lib/engine/bundle/', packages: ['@remotion/bundler'] },
   { sdk: 'esbuild', owner: 'lib/engine/bundle/', packages: ['esbuild'] },
+  { sdk: 'vite', owner: 'lib/engine/web/', packages: ['vite'] },
 ];

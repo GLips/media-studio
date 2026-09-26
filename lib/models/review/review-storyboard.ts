@@ -1,5 +1,5 @@
 // review-storyboard.ts: the storyboard `studio review` shows beside a render, and the timing marks on its scrubber,
-// both read from the render's own snapshot. Pure: lab/review/server.ts hands it the snapshot, the page draws it, and
+// both read from the render's own snapshot. Pure: lib/engine/review hands it the snapshot, the app draws it, and
 // the stills are that render's frames, so a card shows what was rendered at the rung each scene was on.
 //
 // A card per scene with its note, its rung and its stills. A timed video (one with a clock) gets a still on each frame

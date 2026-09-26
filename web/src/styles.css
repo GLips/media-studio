@@ -1,0 +1,19 @@
+/*
+ * Mantine's layered build: every rule sits in `@layer mantine`, and StyleX's atomic rules are unlayered, so a StyleX
+ * rule always beats Mantine's component CSS without `!important` or stylesheet order. Keep this the app's single
+ * stylesheet, which StyleX's production CSS is appended to.
+ */
+@import "@mantine/core/styles.layer.css";
+
+/* The studio's own faces (lib/studio/fonts), the ones its renders set, so the app reads in the showcase's type. */
+@font-face {
+  font-family: "Archivo";
+  src: url("../../lib/studio/fonts/Archivo.ttf") format("truetype");
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../../lib/studio/fonts/JetBrainsMono.ttf") format("truetype");
+  font-weight: 100 800;
+}

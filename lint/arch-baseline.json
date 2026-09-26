@@ -29,21 +29,8 @@
     "bin/studio-secrets": {
       "echo \"Set up the 1Password service account with: $repo/scratch/op-service-account-setup.sh\" >&2": 1
     },
-    "cli/commands/lab.ts": {
-      "exclude: { type: 'string', description: 'With --export: comma-separated globs of media to leave out, by path from the repo root (e.g. \"scratch/**,**/*.wav\")' },": 1
-    },
     "cli/commands/sfx.ts": {
       "args: { out: { type: 'positional', required: false, default: 'scratch/sfx-showcase', description: 'The folder to write' } },": 1
-    },
-    "lab/app/tabs/media.tsx": {
-      "const BAKEOFF_FOLDER = 'scratch/image-bakeoff';": 1,
-      "const SMOKE_TEST_FOLDERS = new Set(['scratch/gen-smoke', 'scratch/vid-22-default']);": 1,
-      "<p>New media is made with <code>studio gen image</code>, <code>studio gen video</code> and <code>studio music gen</code>, which record each file's model, prompt": 1
-    },
-    "lab/manifest.ts": {
-      "const SCRATCH_DIR = join(STUDIO_ROOT, 'scratch');": 1,
-      "* Everything `studio gen` has made, read from each generated/provenance.json in projects/ and scratch/. An entry": 1,
-      "/** scratch/image-bakeoff's briefs, models and per-image review, joined. Null when that folder is gone. */": 1
     },
     "README.md": {
       "limit. `scratch/op-service-account-setup.sh` creates the account and the keychain item.": 1

@@ -3,7 +3,9 @@
 // A project never imports another project; an import into a `lib/<folder>` from
 // outside it uses the folder's `#` alias, never a relative path
 // (lint/rewrite-lib-imports.ts rewrites them); lib/studio never reaches
-// lib/engine, except from a spec, which runs in Node and is never bundled; a `#`
+// lib/engine, except from a spec, which runs in Node and is never bundled; the web
+// app's client code never reaches lib/engine (only a `.server` module in
+// web/src/infrastructure/ may), and nothing in lib/ imports the web app; a `#`
 // alias names a key package.json's `imports` has; no import climbs out of the
 // repo. Scene, model and scratch denials are checks (b), (c) and (d).
 //
@@ -14,11 +16,12 @@
 // only `#studio`, `#models/*` and its own files) isn't held yet: a project may
 // still import `#paint/*`, `#sfx/*` and `#studio/*` behind the barrel.
 
-import { libFolderCrossedTo } from '../../policy/studio-tree.ts';
+import { libFolderCrossedTo, type StudioPosition } from '../../policy/studio-tree.ts';
 import type { Finding, StructuralCheck } from '../check-context.ts';
 
 const ID = 'import-policy';
 const SPEC_FILE = /\.test\.tsx?$/;
+const LIB_KINDS = new Set<StudioPosition['kind']>(['models', 'studio', 'engine', 'lib-unsplit']);
 
 export const importPolicyCheck: StructuralCheck = {
   id: ID,
@@ -45,6 +48,10 @@ export const importPolicyCheck: StructuralCheck = {
         const crossed = edge.scanned.specifier.startsWith('.') ? libFolderCrossedTo(file.path, target.path) : undefined;
         if (crossed !== undefined) report(`reaches lib/${crossed} by a relative path; import it through its # alias`);
         if (from.kind === 'studio' && to.kind === 'engine' && !SPEC_FILE.test(file.path)) report('lib/studio renders in the browser; lib/engine is Node');
+        if (from.kind === 'web-client' && to.kind === 'engine') {
+          report('web client code may land in a browser chunk; reach lib/engine through web/src/infrastructure/studio-engine.server.ts');
+        }
+        if (LIB_KINDS.has(from.kind) && (to.kind === 'web-client' || to.kind === 'web-server')) report('lib/ is the studio the web app is built on; it never imports web/');
       }
     }
     return findings;

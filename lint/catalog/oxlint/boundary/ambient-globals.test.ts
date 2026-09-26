@@ -1,0 +1,462 @@
+import { describeRule } from "../lib/rule-spec.ts";
+import { ambientGlobalsRule } from "./ambient-globals.ts";
+
+// Rooted in `web/src`: the tree has a browser bundle, so `import.meta.env`, `fetch` and
+// `localStorage` all have a real subject there, and it declares three env modules —
+// `env.server`, `env.public` (the client one: Start refuses a `.client` module on the server)
+// and `env`.
+const SERVICE = "/repo/web/src/features/billing/service/charge.ts";
+
+describeRule("boundary/ambient-globals", ambientGlobalsRule, {
+  obvious: [
+    {
+      name: "the plain env read the rule's header names",
+      filename: SERVICE,
+      code: `const key = process.env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "the same read from a UI component, where the value also ships to the browser",
+      filename: "/repo/web/src/features/billing/ui/panel.tsx",
+      code: `export const Panel = () => process.env.PUBLIC_URL;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "a bare fetch, which no import rule in this tag can see",
+      filename: SERVICE,
+      code: `export const load = () => fetch("/api/invoices");`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "browser storage reached directly rather than through its wrapper",
+      filename: SERVICE,
+      code: `export const token = localStorage.getItem("session");`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+  ],
+
+  adversarial: [
+    {
+      name: "a computed lookup, which bundlers also fail to inline",
+      filename: SERVICE,
+      code: `const key = process["env"].STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "reaching process off the global object puts a member expression where the identifier was",
+      filename: SERVICE,
+      code: `const key = globalThis.process.env.STRIPE_KEY;\nconst other = globalThis["process"].env.API_URL;`,
+      errors: [
+        { messageId: "ambientGlobalOutsideOwner" },
+        { messageId: "ambientGlobalOutsideOwner" },
+      ],
+    },
+    {
+      name: "destructuring under an alias hides both the binding name and the property read",
+      filename: SERVICE,
+      code: `const { env: config } = process;\nexport const key = config.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "the bundler-specific env form is a MetaProperty, an entirely different node shape",
+      filename: SERVICE,
+      code: `const url = import.meta.env.VITE_PUBLIC_URL;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "importing the binding sidesteps every check written against the global",
+      filename: SERVICE,
+      code: `import { env as nodeEnv } from "node:process";\nexport const key = nodeEnv.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      // The SECOND row of `alsoImportedFrom`, and the reason it is a list rather than one name.
+      // Node resolves `process` and `node:process` to the same module, so a fence carrying only
+      // the prefixed spelling is off for the shorter one — which is the one older code writes.
+      name: "the unprefixed spelling of the same module, which resolves to it and is a separate row",
+      filename: SERVICE,
+      code: `import { env } from "process";\nexport const key = env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      // The capability is the OUTER key. The binding the destructure introduces is a property of
+      // `env` rather than an export of the module, so a walk that starts from the bound name and
+      // asks for its own property finds one the module never handed over, and reports nothing.
+      name: "a nested destructure, where the only name bound is one level below the capability",
+      filename: SERVICE,
+      code: `const { env: { STRIPE_KEY } } = require("node:process");\nexport const key = STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "a namespace import renames the global but not the read",
+      filename: SERVICE,
+      code: `import * as process from "node:process";\nexport const key = process.env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "the default export of node:process IS the process object, and it arrives as a named specifier",
+      filename: SERVICE,
+      code: `import { default as proc } from "node:process";\nexport const key = proc.env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "a re-export launders the capability downstream while this file itself reads nothing",
+      filename: SERVICE,
+      code: `export { env } from "node:process";`,
+      errors: [{ messageId: "ambientGlobalReExported" }],
+    },
+    {
+      name: "re-exporting the module's default hands on the object the capability hangs off",
+      filename: SERVICE,
+      code: `export { default as proc } from "node:process";`,
+      errors: [{ messageId: "ambientGlobalReExported" }],
+    },
+    {
+      name: "a star re-export republishes the capability without naming it",
+      filename: SERVICE,
+      code: `export * from "node:process";`,
+      errors: [{ messageId: "ambientGlobalReExported" }],
+    },
+    {
+      name: "the CommonJS spelling, which no import visitor sees",
+      filename: SERVICE,
+      code: `const process = require("node:process");\nexport const key = process.env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "destructuring the require result skips the member read entirely",
+      filename: SERVICE,
+      code: `const { env } = require("node:process");\nexport const key = env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "the dynamic-import spelling of the same destructure, which the require arm alone misses",
+      filename: SERVICE,
+      code: `const { env } = await import("node:process");\nexport const key = env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "loading and reading in one expression, which binds no name for a scope lookup to find",
+      filename: SERVICE,
+      code: `export const key = (await import("node:process")).env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "the CommonJS spelling of the same one-expression read",
+      filename: SERVICE,
+      code: `export const key = require("node:process").env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "the TypeScript import-equals form, which reaches no ImportDeclaration",
+      filename: SERVICE,
+      code: `import proc = require("node:process");\nexport const key = proc.env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "a TypeScript cast wedged between the load and the read",
+      filename: SERVICE,
+      code: `export const key = (require("node:process") as never).env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "a stack of TypeScript wrappers, each of which is transparent on its own",
+      filename: SERVICE,
+      code: `export const key = ((require("node:process")! as never) satisfies never).env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "an old-style type assertion, the one wrapper JSX syntax cannot spell",
+      filename: SERVICE,
+      code: `export const key = (<never>require("node:process")).env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "an optional chain off the host, which wraps the read in a node of its own",
+      filename: SERVICE,
+      code: `export const key = globalThis?.process.env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "a quoted key in the destructure, which is not a computed one",
+      filename: SERVICE,
+      code: `const { "env": e } = require("node:process");\nexport const key = e.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "a cast on the binding side rather than the read side",
+      filename: SERVICE,
+      code: `const proc = require("node:process") as never;\nexport const key = proc.env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "the loader's own ambient declaration, which declares it rather than rebinding it",
+      filename: SERVICE,
+      code: `declare function require(id: string): { env: Record<string, string> };\nexport const key = require("node:process").env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "the ambient loader spelled as a var, which is how @types/node declares it",
+      filename: SERVICE,
+      code: `declare var require: (id: string) => { env: Record<string, string> };\nexport const key = require("node:process").env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "a cast inside the await rather than around it",
+      filename: SERVICE,
+      code: `export const key = (await (import("node:process") as never)).env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "a rest element beside the capability, which names no key of its own",
+      filename: SERVICE,
+      code: `const { env, ...rest } = require("node:process");\nexport const key = [env.STRIPE_KEY, rest];`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "a backtick specifier, which is what a string-literal fence teaches people to write",
+      filename: SERVICE,
+      code: `const { env } = require(\`node:process\`);\nexport const key = env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "the host spellings of a bare global, which a name-only pattern misses",
+      filename: SERVICE,
+      code: `export const load = () => window.fetch("/api/a");\nexport const also = () => self["fetch"]("/api/b");`,
+      errors: [
+        { messageId: "ambientGlobalOutsideOwner" },
+        { messageId: "ambientGlobalOutsideOwner" },
+      ],
+    },
+    {
+      // The four spellings that decide who owns `fetch`. A fence matching the callee NAME gets
+      // these two backwards — silent here, and reporting on the two legal cases below — which is
+      // why the reference walk is the owner and there is no second fetch rule.
+      //
+      // A component file, because that is where a request is most often written and the header
+      // claims this rule covers it. The message is asserted rather than the id: it IS the fix
+      // instruction, it names the module this tree owns the capability in, and it carries the
+      // caching clause that a `.tsx`-only ban would otherwise be the only thing saying.
+      name: "the computed and cast host spellings, in a component file, which a callee-name match cannot reach",
+      filename: "/repo/web/src/features/billing/ui/panel.tsx",
+      code: `export const Panel = () => globalThis["fetch"]("/api/a");\nexport const Other = () => (globalThis as never).fetch("/api/b");`,
+      errors: [
+        {
+          message:
+            "Only #web/infrastructure/api-client reads `fetch`. Base URL, auth headers, timeout and error decoding are decided once at the client; a bare fetch decides them again, differently, and usually omits the last one. Two callers that ask for the same data through the client also make one request and share one cache entry. Import it from there instead of reading the global here.",
+        },
+        { messageId: "ambientGlobalOutsideOwner" },
+      ],
+    },
+    {
+      name: "destructuring a bare global off its host introduces a local binding that reads nothing new",
+      filename: SERVICE,
+      code: `const { localStorage } = window;\nexport const token = localStorage.getItem("session");`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "TypeScript syntax wedges a node between the global and its property",
+      filename: SERVICE,
+      code: `const key = (process as never).env.STRIPE_KEY;\nconst token = (window as never).localStorage.getItem("session");`,
+      errors: [
+        { messageId: "ambientGlobalOutsideOwner" },
+        { messageId: "ambientGlobalOutsideOwner" },
+      ],
+    },
+    {
+      name: "a declared environment resolves the globals out of the unresolved-reference list, where a rule reading only that list goes silent",
+      filename: SERVICE,
+      languageOptions: { env: { browser: true, node: true } },
+      code: `export const key = process.env.STRIPE_KEY;\nexport const load = () => fetch("/api/invoices");`,
+      errors: [
+        { messageId: "ambientGlobalOutsideOwner" },
+        { messageId: "ambientGlobalOutsideOwner" },
+      ],
+    },
+    {
+      name: "a file one segment away from the owning module is not the owning module",
+      filename: "/repo/web/src/features/billing/env.ts",
+      code: `export const key = process.env.STRIPE_KEY;`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+    {
+      name: "a name that merely starts like the API client does not inherit its exemption",
+      filename: "/repo/web/src/infrastructure/api-client-legacy.ts",
+      code: `export const load = () => fetch("/api/invoices");`,
+      errors: [{ messageId: "ambientGlobalOutsideOwner" }],
+    },
+  ],
+
+  legal: [
+    {
+      name: "a module that is not the capability's, however it is loaded",
+      filename: SERVICE,
+      code: `import path = require("node:path");\nconst { join } = require("node:path");\nexport const p = [path.sep, join("a", "b"), require("node:path").resolve("c")];`,
+    },
+    {
+      name: "a local binding named require is not the module loader",
+      filename: SERVICE,
+      code: `export function boot(require: (id: string) => { env: Record<string, string> }) {\n  const { env } = require("node:process");\n  return env.STRIPE_KEY;\n}`,
+    },
+    {
+      name: "an import-equals that aliases a local namespace loads no module at all",
+      filename: SERVICE,
+      code: `declare namespace NS { const env: Record<string, string>; }\nimport alias = NS;\nexport const key = alias.env.STRIPE_KEY;`,
+    },
+    {
+      name: "an env module, which is the point of the rule",
+      filename: "/repo/web/src/env.ts",
+      code: `export const env = { stripeKey: process.env.STRIPE_KEY ?? "", publicUrl: import.meta.env.VITE_PUBLIC_URL ?? "" };`,
+    },
+    {
+      // EVERY module the tree declares as an env module owns the read, not just
+      // the first one. A project on the split option validates in two files, and
+      // a rule naming one of them reports the other for doing its job — a
+      // finding whose only fix is to stop validating.
+      name: "the server env module on the split option",
+      filename: "/repo/web/src/env.server.ts",
+      code: `export const serverEnv = { stripeKey: process.env.STRIPE_KEY ?? "" };`,
+    },
+    {
+      name: "the client env module on the split option",
+      filename: "/repo/web/src/env.public.ts",
+      code: `export const clientEnv = { publicUrl: import.meta.env.VITE_PUBLIC_URL ?? "" };`,
+    },
+    {
+      // The core tree's ONE env module, spelled `env.ts` and mapped `env-server` because a
+      // combined module still carries the secrets. Pairs with the adversarial case above: same
+      // capability, same read, and which file owns it comes from that tree's `envModules` alone.
+      name: "the single env module in the tree that declares only one",
+      filename: "/repo/web/src/env.ts",
+      code: `export const env = { databaseUrl: process.env.DATABASE_URL ?? "" };`,
+    },
+    {
+      name: "the API client is where fetch is configured",
+      filename: "/repo/web/src/infrastructure/api-client.ts",
+      code: `export const apiFetch = (path: string) => fetch(\`/api\${path}\`, { credentials: "include" });`,
+    },
+    {
+      name: "the storage wrapper is where the throwing cases are handled",
+      filename: "/repo/web/src/infrastructure/browser-storage.ts",
+      code: `export const readToken = () => window.localStorage.getItem("session");`,
+    },
+    {
+      name: "reading the validated config the env module exports",
+      filename: SERVICE,
+      code: `import { env } from "#web/env";\nexport const charge = () => env.stripeKey;`,
+    },
+    {
+      name: "calling the project's own wrapper rather than the global",
+      filename: SERVICE,
+      code: `import { apiFetch } from "#web/infrastructure/api-client";\nexport const load = () => apiFetch("/invoices");`,
+    },
+    {
+      name: "a fetch method on somebody else's client is a different API",
+      filename: SERVICE,
+      code: `import { client } from "#web/infrastructure/api-client";\nexport const load = () => client.fetch("/invoices");`,
+    },
+    {
+      // A CALL to a local binding spelled `fetch` — the ordinary way a hook's return value and a
+      // caller-supplied function arrive. A fence matching the callee NAME reports both and sends
+      // the reader to the API client for a function that is already not the global; this is the
+      // half of the fetch subject that decided which rule owns it.
+      //
+      // What this pins is not a guard but the CHOICE of primitive: swap
+      // `ambientGlobalReferences` for a walk over Identifier nodes — the natural way to write
+      // this rule — and both bindings here report.
+      name: "a local binding named fetch shadows the global rather than reading it",
+      filename: "/repo/web/src/features/billing/ui/panel.tsx",
+      code: `const fetch = createFetcher();\nexport const Panel = () => fetch("/api/invoices");\nexport function Row({ fetch }: { fetch: (path: string) => void }) {\n  return fetch("/api/rows");\n}`,
+    },
+    {
+      name: "a property, a key and a type member are references to nothing",
+      filename: SERVICE,
+      code: `interface Transport { fetch: (path: string) => Promise<Response>; localStorage: string }\nconst transport = { fetch: undefined, localStorage: "memory" };\nexport const kind = transport.localStorage;`,
+    },
+    {
+      name: "an unrelated object with an env property",
+      filename: SERVICE,
+      code: `const deployTarget = { env: "production" };\nexport const label = deployTarget.env;`,
+    },
+    {
+      name: "destructuring env off something that is not process",
+      filename: SERVICE,
+      code: `const deployTarget = { env: "production" };\nconst { env: targetEnv } = deployTarget;\nexport const label = targetEnv;`,
+    },
+    {
+      name: "a different property of process is not an environment read",
+      filename: SERVICE,
+      code: `export const runtimeVersion = process["version"];`,
+    },
+    {
+      name: "a different property of import.meta is not an environment read",
+      filename: SERVICE,
+      code: `export const here = import.meta.url;`,
+    },
+    {
+      name: "node:process has exports that are not env",
+      filename: SERVICE,
+      code: `import { cwd } from "node:process";\nexport const here = cwd();`,
+    },
+    {
+      name: "re-exporting and requiring the exports that are not env",
+      filename: SERVICE,
+      code: `export { cwd } from "node:process";\nconst { argv } = require("node:process");\nexport const args = argv;`,
+    },
+    {
+      name: "a type-only import of env is erased and reads nothing",
+      filename: SERVICE,
+      code: `import type { env } from "node:process";\nexport type Env = typeof env;`,
+    },
+    // The four spellings below are one invariant — a type-only specifier reads nothing — in the
+    // four node shapes that can carry it. Each pins a separate guard; with any one of them missing
+    // its guard could be deleted with the suite green, which is how three of the four got here.
+    // The value specifier alongside `type env` is load-bearing in the two inline cases: with
+    // `type env` alone they are indistinguishable from the declaration-level case above, because
+    // the whole declaration would then be type-only and the outer guard would answer first.
+    {
+      name: "an inline type specifier is erased, and the declaration-level guard does not cover it",
+      filename: SERVICE,
+      code: `import { type env, cwd } from "node:process";\nexport const here = cwd();\nexport type Env = typeof env;`,
+    },
+    {
+      name: "an inline type specifier in a re-export hands on no runtime capability",
+      filename: SERVICE,
+      code: `export { type env, cwd } from "node:process";`,
+    },
+    {
+      name: "a declaration-level type re-export hands on no runtime capability",
+      filename: SERVICE,
+      code: `export type { env } from "node:process";`,
+    },
+    {
+      name: "a type-only star re-export republishes no runtime capability",
+      filename: SERVICE,
+      code: `export type * from "node:process";`,
+    },
+    {
+      // NEGATIVE SPACE, stated as a case so it cannot be mistaken for coverage. `alsoImportedFrom`
+      // is an enumerable list matched exactly, so a wrapper package that re-publishes the same
+      // `env` under its own name reaches the capability and reports nothing. The alternative is a
+      // pattern, which is the knob this catalog's posture rules out — the fix is another row.
+      name: "a module not on the list, which reaches the same capability under its own name",
+      filename: SERVICE,
+      code: `import { env } from "std-env";\nexport const key = env.STRIPE_KEY;`,
+    },
+    {
+      name: "a global nobody listed is a global this rule takes no stance on",
+      filename: SERVICE,
+      code: `export const id = crypto.randomUUID();\nexport const draft = sessionStorage.getItem("draft");`,
+    },
+    {
+      name: "a test may read the environment it is setting up",
+      filename: "/repo/web/src/features/billing/service/charge.test.ts",
+      code: `const key = process.env.STRIPE_KEY;\nexport const load = () => fetch("/api/invoices");`,
+    },
+    {
+      name: "what the build reads is a different question from what a running app believes",
+      filename: "/repo/web/vite.config.ts",
+      code: `export default { define: { mode: process.env.NODE_ENV } };`,
+    },
+  ],
+});

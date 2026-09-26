@@ -23,6 +23,7 @@ import { runFfmpeg, runFfmpegAsync } from '../ffmpeg/ffmpeg.ts';
 import { writeRenderSnapshot, type RenderSnapshot } from '../snapshot/render-snapshot.ts';
 import { withStudioTemp } from '../temp/studio-temp.ts';
 import { readProjectClock } from '../timeline/project-clock.ts';
+import { renderVoiceOf } from '../voice/voice-project.ts';
 import { inRenderBrowser, RENDER_CHROMIUM } from './render-browser.ts';
 import type { MotionTracks } from '#models/motion/motion-tracks.ts';
 import type { CompositionRenderSettings, ReplayProps } from '#studio/composition/Root.tsx';
@@ -202,7 +203,7 @@ export async function openRenderSession(project: string, { workers }: { workers?
       } else {
         copyFileSync(picture, out);
       }
-      writeRenderSnapshot(out, { frames: frames ?? { from: 0, end: composition.durationInFrames }, timeline: timeline ?? await readTimeline(), clock, motion });
+      writeRenderSnapshot(out, { frames: frames ?? { from: 0, end: composition.durationInFrames }, timeline: timeline ?? await readTimeline(), clock, voice: renderVoiceOf(project), motion });
       return out;
     });
   }
@@ -243,7 +244,7 @@ export async function openRenderSession(project: string, { workers }: { workers?
         runFfmpegAsync([...frames, '-vf', `format=bgra,premultiply=inplace=1,${bt709}`, '-c:v', 'hevc_videotoolbox', '-pix_fmt', 'bgra', '-colorspace', 'bt709', '-q:v', '70', '-alpha_quality', '0.9',
           '-tag:v', 'hvc1', '-movflags', '+faststart', mov]),
       ]));
-      for (const out of [webm, mov]) writeRenderSnapshot(out, { frames: { from: 0, end: durationInFrames }, timeline, clock, motion });
+      for (const out of [webm, mov]) writeRenderSnapshot(out, { frames: { from: 0, end: durationInFrames }, timeline, clock, voice: renderVoiceOf(project), motion });
     });
     return [webm, mov];
   }

@@ -1,9 +1,10 @@
 // render-snapshot.ts: what a render was made from, written beside it, and the one loader that reads it back. Node only.
 //
-// Every video render writes <name>.snapshot.json beside <name>.mp4 (or .webm, or .mov): the timeline the composition laid out when it
-// rendered, a timed project's resolved clock (its bars, beats, downbeats, cues and named moments), the composition frames the file holds (a slice starts past 0), and on a delivered render the motion its
-// check measured. The snapshot names the render by a hash of its bytes, so a file re-rendered without one, or copied
-// over, reads as having none rather than as the older render's.
+// Every video render writes <name>.snapshot.json beside <name>.mp4 (or .webm, or .mov): the timeline the composition
+// laid out when it rendered, a timed project's resolved clock (its bars, beats, downbeats, cues and named moments), the
+// composition frames the file holds (a slice starts past 0), whose voice it speaks in, and on a delivered render the
+// motion its check measured. The snapshot names the render by a hash of its bytes, so a file re-rendered without one,
+// or copied over, reads as having none rather than as the older render's.
 //
 // A reader of a render (review, the lab, `studio look --video`) goes through loadRenderSnapshot, never the project's
 // out/check/timeline.json: that is `studio check`'s latest report, rewritten by every check, and says nothing about
@@ -13,9 +14,10 @@ import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import type { MotionTracks } from '#models/motion/motion-tracks.ts';
 import type { TimelineClockTable } from '#models/timeline/timeline.ts';
+import type { RenderVoice } from '#models/voice/render-voice.ts';
 import type { TimelineReport } from '#studio/composition/Video.tsx';
 
-export const RENDER_SNAPSHOT_VERSION = 5;
+export const RENDER_SNAPSHOT_VERSION = 6;
 
 /** Which bytes a file is: `hash` is the first 10 hex digits of its SHA-256, `modified` its mtime as ISO. */
 export type RenderFileStamp = { hash: string; modified: string };
@@ -33,6 +35,8 @@ export type RenderSnapshot = {
    * or null for a project with no timeline.ts. A review note finds its bar and beat on it.
    */
   clock: TimelineClockTable | null;
+  /** Whose voice it speaks in, as the project's audio was when it rendered: a review raises a banner on `draft`. */
+  voice: RenderVoice;
   /** Every tracked element's motion, when the render path measured it (a delivered render's check does). */
   motion?: MotionTracks;
 };
@@ -60,14 +64,14 @@ export function renderFileStamp(file: string): RenderFileStamp {
 }
 
 /** Writes `render`'s snapshot beside it, bound to its bytes as they are now. Call once the file is final. */
-export function writeRenderSnapshot(render: string, made: { frames: RenderSnapshot['frames']; timeline: TimelineReport; clock: TimelineClockTable | null; motion?: MotionTracks }): string {
-  const { frames, timeline, clock, motion } = made;
+export function writeRenderSnapshot(render: string, made: Pick<RenderSnapshot, 'frames' | 'timeline' | 'clock' | 'voice' | 'motion'>): string {
+  const { frames, timeline, clock, voice, motion } = made;
   if (!(frames.from >= 0 && frames.end > frames.from && frames.end <= timeline.durationInFrames)) {
     throw new Error(`${basename(render)}: frames ${frames.from}–${frames.end - 1} aren't within the composition's 0–${timeline.durationInFrames - 1}`);
   }
   const snapshot: RenderSnapshot = {
     version: RENDER_SNAPSHOT_VERSION, render: { file: basename(render), hash: renderFileStamp(render).hash }, frames,
-    made: new Date().toISOString(), timeline, clock, ...(motion && { motion }),
+    made: new Date().toISOString(), timeline, clock, voice, ...(motion && { motion }),
   };
   const path = renderSnapshotPath(render);
   writeFileSync(path, JSON.stringify(snapshot));

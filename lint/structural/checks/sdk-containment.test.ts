@@ -9,8 +9,8 @@ test('a contained SDK reached outside its owner is caught, however it is spelled
     'cli/commands/cut.ts': "import { execFileSync } from 'node:child_process';\nexecFileSync('ffmpeg', ['-i', 'a.mp4']);\n",
     // Adversarial: a type-only import, a dynamic import, a subpath, a binary behind a variable, a path to it, and a
     // shell line through a member call.
-    'lab/types.ts': "import type { Page } from 'playwright';\n",
-    'lab/server.ts': "const { renderMedia } = await import('@remotion/renderer');\nimport { transform } from 'esbuild/lib/main.js';\n",
+    'cli/commands/types.ts': "import type { Page } from 'playwright';\n",
+    'cli/commands/serve.ts': "const { renderMedia } = await import('@remotion/renderer');\nimport { transform } from 'esbuild/lib/main.js';\nconst { createServer } = await import('vite');\n",
     'projects/p/tools/probe.ts': "const BIN = `ffprobe`;\nconst other = '/opt/homebrew/bin/ffmpeg';\ncp.execSync(`ffmpeg -i ${file} out.wav`);\n",
     // Adversarial: a command line through a promisified exec, a shell: true spawn and sh -c.
     'projects/p/tools/shell.ts': [
@@ -21,15 +21,18 @@ test('a contained SDK reached outside its owner is caught, however it is spelled
     // Legal neighbours: each owner, and prose that merely mentions ffmpeg.
     'lib/engine/capture/capture.ts': "import { chromium } from 'playwright';\n",
     'lib/engine/ffmpeg/ffmpeg.ts': "import { spawn } from 'node:child_process';\nspawn('ffmpeg', []);\n",
-    'lib/engine/bundle/lab-bundle.ts': "import { build } from 'esbuild';\nimport { bundle } from '@remotion/bundler';\n",
+    'lib/engine/bundle/bundle.ts': "import { build } from 'esbuild';\nimport { bundle } from '@remotion/bundler';\n",
+    'lib/engine/web/studio-app-server.ts': "import { createServer } from 'vite';\n",
+    'web/vite.config.ts': "import { defineConfig } from 'vite';\n",
     'lib/engine/render/render.ts': "import { renderMedia } from '@remotion/renderer';\n",
     'lib/engine/look/look.ts': "throw new Error('ffmpeg failed');\n// runs ffmpeg\n",
   });
   assert.deepEqual(caught(findings), [
     'cli/commands/cut.ts:ffmpeg',
-    'lab/server.ts:@remotion/renderer',
-    'lab/server.ts:esbuild',
-    'lab/types.ts:playwright',
+    'cli/commands/serve.ts:@remotion/renderer',
+    'cli/commands/serve.ts:esbuild',
+    'cli/commands/serve.ts:vite',
+    'cli/commands/types.ts:playwright',
     'projects/p/capture.ts:playwright',
     'projects/p/tools/probe.ts:/opt/homebrew/bin/ffmpeg',
     'projects/p/tools/probe.ts:ffmpeg',

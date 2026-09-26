@@ -47,6 +47,6 @@ export function resolveStudioProjectWith(arg: string, file: string): string {
 export async function readProjectCapability(project: string): Promise<ProjectCapability | undefined> {
   const file = join(project, 'project.ts');
   if (!existsSync(file)) return undefined;
-  const { default: declaration } = (await import(pathToFileURL(file).href)) as { default: ProjectDeclaration };
+  const { default: declaration } = (await import(/* @vite-ignore */ pathToFileURL(file).href)) as { default: ProjectDeclaration };
   return declaration.capability;
 }

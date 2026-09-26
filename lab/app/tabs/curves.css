@@ -1,6 +1,0 @@
-/* curves.css: the Curves & springs tab's own pieces: its two section heads and the collapsed "For agents" notes. */
-.curves-section { margin: 12px 0 -8px; font-size: 30px; font-weight: 900; font-stretch: 80%; text-transform: uppercase; display: flex; align-items: baseline; gap: 12px; }
-
-.curves-agents { color: var(--dim); font-size: 14px; }
-.curves-agents summary { cursor: pointer; font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
-.curves-agents pre { background: var(--panel); border-radius: 8px; padding: 12px 14px; color: var(--cream); font: 13px/1.6 var(--mono); overflow-x: auto; }

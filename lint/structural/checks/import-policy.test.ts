@@ -78,3 +78,31 @@ test('an import into a lib folder from outside it uses the alias; a relative pat
     'remotion.config.ts:./lib/models/timeline/grid.ts',
   ]);
 });
+
+test('web client code reaches lib/engine only through a .server door in infrastructure/, and lib/ never imports web/', () => {
+  const findings = runCheckOnFiles('import-policy', {
+    'package.json': JSON.stringify({ imports: { '#engine/*': './lib/engine/*', '#web/*': './web/src/*' } }),
+    'lib/engine/review/review-artifact.ts': 'export const readReviewArtifact = 1;\n',
+    'web/src/infrastructure/studio-engine.server.ts': "export { readReviewArtifact } from '#engine/review/review-artifact.ts';\n",
+    'web/src/features/review/ui/review-screen.tsx': [
+      "import { readReviewArtifact } from '#engine/review/review-artifact.ts';",
+      // Adversarial: the same reach spelled relatively, and a type-only one, which still names the module.
+      "import { readReviewArtifact as again } from '../../../../../lib/engine/review/review-artifact.ts';",
+      "import type { readReviewArtifact as T } from '#engine/review/review-artifact.ts';",
+      // Legal neighbour: the door.
+      "import { readReviewArtifact as door } from '#web/infrastructure/studio-engine.server.ts';",
+    ].join('\n'),
+    // Adversarial: `.server` outside infrastructure/ is not a door.
+    'web/src/features/review/controllers/review-queries.server.ts': "import { readReviewArtifact } from '#engine/review/review-artifact.ts';\n",
+    'lib/engine/web/serve.ts': "import { door } from '#web/infrastructure/studio-engine.server.ts';\n",
+  });
+  assert.deepEqual(caught(findings), [
+    'lib/engine/web/serve.ts:#web/infrastructure/studio-engine.server.ts',
+    'web/src/features/review/controllers/review-queries.server.ts:#engine/review/review-artifact.ts',
+    'web/src/features/review/ui/review-screen.tsx:#engine/review/review-artifact.ts',
+    'web/src/features/review/ui/review-screen.tsx:#engine/review/review-artifact.ts',
+    // Twice: a client reaching the engine, and a lib folder reached by a relative path.
+    'web/src/features/review/ui/review-screen.tsx:../../../../../lib/engine/review/review-artifact.ts',
+    'web/src/features/review/ui/review-screen.tsx:../../../../../lib/engine/review/review-artifact.ts',
+  ]);
+});

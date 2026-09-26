@@ -10,6 +10,7 @@
 // follow, which keeps prose like 'ffmpeg failed' out.
 
 import { SDK_OWNERS, type SdkOwner } from '../../policy/sdk-owners.ts';
+import { classifyStudioPath } from '../../policy/studio-tree.ts';
 import { walkAst, type AstNode } from '../source-tree.ts';
 import type { Finding, StructuralCheck } from '../check-context.ts';
 
@@ -25,6 +26,8 @@ export const sdkContainmentCheck: StructuralCheck = {
   run(context) {
     const findings: Finding[] = [];
     for (const file of context.tree.sources) {
+      // A tool's config configures that tool by importing it (web/vite.config.ts's defineConfig); it runs nothing.
+      if (classifyStudioPath(file.path).kind === 'root-config') continue;
       const outside = (row: SdkOwner) => !file.path.startsWith(row.owner);
       for (const edge of context.edgesFrom(file)) {
         if (edge.target.kind !== 'package') continue;

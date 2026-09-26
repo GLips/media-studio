@@ -8,9 +8,14 @@
   "scripts": {
     "typecheck": "tsc -p .",
     "typecheck:gate": "tsc -p tsconfig.gate.json",
+    "typecheck:web": "tsc -p web/tsconfig.json --noEmit",
+    "typecheck:lint": "sh -c 'rc=0; for program in oxlint structural policy; do tsc --noEmit -p lint/catalog/$program || rc=1; done; exit $rc'",
     "test": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts' 'projects/**/*.test.ts'",
     "test:gate": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts'",
+    "test:lint": "node --test 'lint/catalog/**/*.test.ts'",
     "check:arch": "node lint/check-arch.ts",
+    "check:structural": "node lint/catalog/structural/check-structure.ts",
+    "lint": "oxlint web/src",
     "prepare": "git config core.hooksPath .githooks"
   },
   "type": "module",
@@ -20,19 +25,35 @@
     "#paint/*": "./lib/paint/*",
     "#sfx/*": "./lib/sfx/*",
     "#studio": "./lib/studio/api.ts",
-    "#studio/*": "./lib/studio/*"
+    "#studio/*": "./lib/studio/*",
+    "#web/*": "./web/src/*"
   },
   "devDependencies": {
+    "@oxlint/plugins": "1.80.0",
+    "@stylexjs/unplugin": "0.19.0",
+    "@tanstack/router-cli": "1.167.32",
     "@types/node": "26.6.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/three": "0.186.0",
+    "@vitejs/plugin-react": "6.1.0",
+    "eslint-plugin-sonarjs": "4.2.0",
     "oxc-parser": "^0.150.0",
+    "oxc-resolver": "11.24.2",
+    "oxlint": "1.80.0",
+    "oxlint-tsgolint": "7.0.2002",
     "playwright": "^1.63.0",
-    "typescript": "7.0.2"
+    "postcss": "8.5.26",
+    "postcss-preset-mantine": "1.18.0",
+    "postcss-simple-vars": "7.0.1",
+    "typescript": "7.0.2",
+    "unplugin": "2.3.11",
+    "vite": "8.2.2"
   },
   "private": true,
   "dependencies": {
+    "@mantine/core": "9.5.2",
+    "@mantine/hooks": "9.5.2",
     "@remotion/bundler": "4.0.525",
     "@remotion/captions": "4.0.525",
     "@remotion/cli": "4.0.525",
@@ -42,13 +63,31 @@
     "@remotion/paths": "4.0.525",
     "@remotion/player": "4.0.525",
     "@remotion/renderer": "4.0.525",
+    "@stylexjs/stylex": "0.19.0",
+    "@tanstack/react-form": "1.33.5",
+    "@tanstack/react-hotkeys": "0.10.0",
+    "@tanstack/react-query": "5.103.1",
+    "@tanstack/react-router": "1.170.31",
+    "@tanstack/react-start": "1.168.48",
     "citty": "0.2.2",
+    "effect": "4.0.0-rc.111",
     "esbuild": "0.28.1",
+    "lucide-react": "1.41.0",
     "p5": "2.3.3",
     "p5.brush": "2.2.2",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "remotion": "4.0.525",
     "three": "0.186.0"
+  },
+  "overrides": {
+    "@tanstack/router-plugin": {
+      "unplugin": "3.4.0"
+    },
+    "eslint-plugin-sonarjs": {
+      "ts-api-utils": {
+        "typescript": "6.0.3"
+      }
+    }
   }
 }

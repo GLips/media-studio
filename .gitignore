@@ -11,3 +11,4 @@ projects/*/host
 projects/*/generated/
 # A brand kit's font files: most are licensed (lib/models/brand/brand.ts).
 brands/*/fonts/
+web/dist/

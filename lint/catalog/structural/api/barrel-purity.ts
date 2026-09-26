@@ -1,0 +1,554 @@
+// ─── api/barrel-purity ────────────────────────────────────────────────
+//
+// Makes sure: No client-safe barrel in domains/*/index.ts or features/*/index.ts
+// reaches a server-only package through its re-exports. A client component or a
+// route file can import any barrel, and you do not first read the chain below it.
+// When a chain does reach one, the finding at commit time names the barrel to
+// change, not the last package in a build log.
+//
+// This check does not use the resolved import graph. Graph resolution discards
+// bare package specifiers as "not a boundary question", and bare package names
+// are the subject of this check. It reads the two modules under the graph
+// instead — scanDeclaredImports for the extraction, context.resolveModule for
+// the resolution — rather than a second answer to either. Do not resolve a hop here: a suffix list
+// against the disk cannot substitute `./target.js` for `target.ts`, and a hop it
+// cannot follow ends the trace and reports the barrel clean.
+//
+// TYPE-ONLY imports are dropped here, and that is a position rather than a
+// limit: a type import makes no runtime code and cannot put a package in a
+// client bundle. The scanner reports them, marked, because the import graph
+// needs them; this check filters them out. A mixed re-export
+// (export { type Foo, bar } from "…") stays, because bar is a runtime dependency.
+//
+// ── The server-function boundary: a stated approximation ─────────────────────
+//
+// The trace stops at a module that crosses the framework's server-function
+// boundary, because the compiler cuts the chain there. Deciding whether a given
+// module crosses it is a question about SYNTAX — which name an import bound,
+// whether the call reaches that binding or a shadow — and this check answers it
+// by reading text. What follows is that approximation and its contract. The
+// approximation is a CHOICE, not a limit: `import-scanning.ts` parses, so the
+// binding is there for a check willing to spend it. Read the contract as what
+// holds while none has.
+//
+// IN — recognised as a boundary. A named import of one of the boundary's calls
+// from the boundary's module, read as `imported as local` so the alias direction
+// is not guessable, plus a call of that local name in the body, plus no
+// binding-shaped occurrence of that name anywhere else in the file. A namespace
+// import counts, as `NS.createServerFn`.
+//
+// OUT — deliberately not recognised, and OUT MEANS THE TRACE CONTINUES. Every
+// omission here is an over-report: a chain the framework would have cut, reported
+// as a blocking error. That is the safe direction and it is chosen. A boundary
+// reached through a local re-export is out. A file that imports the boundary for
+// real and also mentions the name in a binding-shaped position — `{ createServerFn }`
+// in an object literal, the name passed as an argument — reads as having rebound
+// it and is out. A rest binding is out, and `rebindsName` says why.
+//
+// NEVER — the direction that would be a false NEGATIVE, a server-only package in
+// the client bundle behind a green run. No spelling is accepted as a boundary
+// without an import of the boundary's own module, and that half is not
+// approximated at all: it is `scanDeclaredImports`, the same parse the import
+// graph runs on. Text that merely LOOKS like an import — in a string, in JSX
+// text, in a comment — is not in the parser's answer and cannot fabricate a
+// boundary. `rebindsName` is one-sided for the same reason: any doubt about which
+// binding runs resolves to "not a boundary", never to "boundary".
+//
+// WHY IT STAYS AN APPROXIMATION. `placement/no-plain-export-in-server-fn-module`
+// reads the same syntax EXACTLY, with a real AST: it decides bridge-ness from the
+// initializer's call chain, and it reports four of the six shadow fixtures below
+// on its own. It does NOT report `impostor` or `sconce`, whose exports ARE
+// bridge-shaped chains over a name that is not the framework's — the two cases
+// where the binding, not the shape, is the whole question. So it cannot be the
+// only owner, and neither can it be replaced by this: its subject is one file and
+// the consumer of this answer is a cross-file trace the oxlint tier cannot run.
+// The two are jointly actionable — that rule says "make this export a bridge or
+// move it", this one says "move the export to the server barrel or put it behind
+// a server function", and following either never violates the other.
+//
+// So this is a second, deliberately WEAKER reading of a question another rule
+// owns exactly. Treat further OUT-clause bypasses of it as the known
+// approximation this paragraph names, not as bugs to patch one spelling at a
+// time. What is NOT dispositioned that way is a NEVER-clause bypass, and the
+// split between the two halves is what makes them different kinds of finding:
+// the module half is a parse and admits no spelling, the name half is text and
+// admits many. A bypass of the name half moves the file OUT — an over-report. A
+// bypass of the module half would be a false negative, and the module half has no
+// hand-written reader to bypass.
+//
+// Folding the name half into the parse is the obvious next move and is not taken
+// here: `entries[].localName` gives the binding exactly, and what stands in the
+// way is a rewrite of the four regexes below rather than any dependency
+// question. Until someone does it, the contract above is what holds, and the
+// direction of its failure is why that is tolerable.
+//
+// ──────────────────────────────────────────────────────────────────────
+
+import { extname } from "node:path";
+import { SOURCE_EXTENSIONS, subdividedDirs } from "../../policy/layout.ts";
+import { scanDeclaredImports } from "../import-scanning.ts";
+import {
+  blankComments,
+  collectTreeFiles,
+  lineNumberAt,
+  lineStartOffsets,
+  readFile,
+  toProjectPath,
+  type Finding,
+  type StructuralCheck,
+  type TreeContext,
+} from "../check-context.ts";
+
+/**
+ * Every specifier the file imports AT RUNTIME.
+ *
+ * The scan is the tier's shared one — see `import-scanning.ts`. Both narrowings
+ * are local, and both are this check's position rather than the scanner's:
+ *
+ * The type-only DROP is what makes this a question about a bundle. An erased
+ * import reaches no bundler and can carry no package into one. The import graph
+ * keeps those same edges, because coupling survives erasure — one scan, two
+ * checks, opposite readings, and neither has to re-extract to get its own.
+ *
+ * The collapse to a SET is because this check asks whether a package is
+ * reachable and never how many times or from which line.
+ */
+function runtimeSpecifiers(absolute: string, source: string): string[] {
+  const scanned = scanDeclaredImports({ path: absolute, source });
+  return [
+    ...new Set(scanned.filter((entry) => !entry.typeOnly).map((entry) => entry.specifier)),
+  ];
+}
+
+/**
+ * The FILE the next hop of a trace is in, or undefined when there is no file to
+ * open — a package, an asset, a path out of the tree, or a specifier nothing on
+ * disk backs.
+ *
+ * The resolution itself is the tier's shared one, `context.resolveModule`. Only
+ * the collapse to "a file or nothing" is local, and it is what makes this check
+ * different from the import graph over the same resolver: the graph keeps an
+ * edge whose target no file backs, because a position is still a position, while
+ * a trace has nothing to read there and stops.
+ *
+ * Aliased specifiers are followed as well as relative ones. They are the same
+ * edge written differently, and following only relative ones ends the trace at
+ * the first `@/shared/…` hop and reports the barrel clean.
+ */
+function traceableFile(
+  context: TreeContext,
+  fromFile: string,
+  specifier: string,
+): string | undefined {
+  const target = context.resolveModule(fromFile, specifier);
+  return target?.resolved === true ? target.absolute : undefined;
+}
+
+/**
+ * True when `specifier` reaches a package that cannot be in a client bundle.
+ *
+ * The `node:` arm is not configurable and does not belong in the list: a Node
+ * builtin in a barrel every client component may import is server-only by
+ * construction, not by a project's opinion about its dependencies. Everything
+ * else is compared as the entry or a subpath of it, so `drizzle-orm/pg-core` is
+ * `drizzle-orm` and no entry has to anticipate the subpaths a package ships —
+ * and an entry may itself be a subpath, which is how `@tk/core/server` is
+ * server-only while the package root, which is vocabulary, is not.
+ */
+export function isServerOnlySpecifier(specifier: string, serverOnlyPackages: string[]): boolean {
+  if (specifier.startsWith("node:")) return true;
+  return serverOnlyPackages.some((name) => specifier === name || specifier.startsWith(`${name}/`));
+}
+
+/**
+ * True when this module actually crosses the server-function boundary: it binds
+ * one of the boundary's calls by importing it FROM the boundary module, and it
+ * calls that binding.
+ *
+ * One question about one binding, not two questions about a file. Two separate
+ * questions — "is the module imported anywhere" and "does the call name appear"
+ * — is a word test with an extra step: each word can be satisfied without the
+ * binding the other names, and either one alone is enough to fabricate a
+ * boundary the file never crossed. See `boundaryBindingsIn`.
+ *
+ * `source` is comment-blanked, so neither half can be satisfied by prose.
+ */
+function crossesServerFnBoundary(
+  source: string,
+  boundary: { module: string; calls: string[] },
+  runtimeImports: readonly string[],
+): boolean {
+  // THE GATE, and the reason the NEVER clause is a claim rather than a hope.
+  // `runtimeImports` comes from `scanDeclaredImports` — a real parser — so a module this file does not actually import cannot be fabricated
+  // by text that merely looks like an import. An import statement can be spelled
+  // in text a hand reader cannot tell from code — quoted inside a string, or as
+  // JSX TEXT inside a `<span>`, where masking string literals does nothing
+  // because the fabrication is not in a string at all. Masking each container as
+  // it turns up is the loop this gate ends: the parser already knows which
+  // specifiers are real, and no spelling of an import gets into its answer
+  // without being one.
+  //
+  // What the text reading below still owns is the NAME — which local the clause
+  // bound, and whether the call reaches it — because the scan returns specifiers
+  // and no bindings. That question is only ever asked about a module the file
+  // provably imports.
+  if (!runtimeImports.includes(boundary.module)) return false;
+
+  // Validated as identifiers by `assertGoverningConfig`, which is what makes
+  // interpolating a call name into a matcher sound. The MODULE is compared as a
+  // plain string rather than matched, so it needs no escaping and no validation
+  // beyond being nonempty.
+  //
+  // The two halves read DIFFERENT texts, and the asymmetry is the contract's
+  // NEVER clause in code. Both halves that could ACCEPT a boundary — the import
+  // and the call — read literal-masked text, because a quoted string is not code:
+  // an `'import { createServerFn } from "@tanstack/react-start"'` sitting in a
+  // string, beside a local function aliased to that name, fabricates a boundary
+  // the file never crossed, which is a false negative and the one direction this
+  // check may not have. `rebindsName` reads the RAW body instead, because there a
+  // false match REFUSES a boundary — a string that merely looks like a
+  // declaration costs an over-report, and over-reports are the chosen direction.
+  const masked = maskLiteralContents(source);
+  const maskedBody = masked.replace(IMPORT_CLAUSE, "");
+  const rawBody = source.replace(IMPORT_CLAUSE, "");
+  return boundaryBindingsIn(source, masked, boundary).some(
+    (local) =>
+      !rebindsName(rawBody, local) && new RegExp(String.raw`\b${local}\s*\(`).test(maskedBody),
+  );
+}
+
+/**
+ * `source` with the CONTENTS of every string and template literal replaced by
+ * spaces, offsets and length preserved so a match here indexes the original.
+ *
+ * The quotes themselves stay, so an import's specifier is still a matchable
+ * `"…"` — the caller reads its text back out of the unmasked source over the same
+ * range. Escapes are honoured, or a `"\\""` would end the literal early and
+ * unmask the code after it.
+ *
+ * NEGATIVE SPACE: regex literals are not masked. Telling `/x/` from division
+ * needs a parse, and this masker is text, so it is not guessed. A regex CAN hold
+ * an import statement — `/import \{ x \} from "y"/` — and this masker does not
+ * stop it. What stops it is the scan gate in `crossesServerFnBoundary`, which is
+ * upstream of every container question: text in a regex is not in
+ * `scanDeclaredImports`'s answer, so there is no module for the clause to be read
+ * against. That is why this function does not have to enumerate containers, and
+ * why the next container someone finds is not a new hole.
+ */
+function maskLiteralContents(source: string): string {
+  const out = source.split("");
+  let index = 0;
+  while (index < source.length) {
+    const quote = source[index];
+    if (quote !== '"' && quote !== "'" && quote !== "`") {
+      index += 1;
+      continue;
+    }
+    let cursor = index + 1;
+    while (cursor < source.length && source[cursor] !== quote) {
+      // A newline ends an unterminated single- or double-quoted literal rather
+      // than running to the end of the file and masking everything below it.
+      if (quote !== "`" && source[cursor] === "\n") break;
+      if (source[cursor] === "\\") cursor += 1;
+      cursor += 1;
+    }
+    for (let at = index + 1; at < cursor && at < source.length; at += 1) {
+      if (out[at] !== "\n") out[at] = " ";
+    }
+    index = cursor + 1;
+  }
+  return out.join("");
+}
+
+/**
+ * True when `body` declares `local` itself — so a call of that name might be the
+ * file's own binding rather than the imported one.
+ *
+ * Scope is approximated here, and not because it has to be: the tier parses
+ * (`import-scanning.ts`), so `rebindsName` COULD be a scope walk and is not
+ * one. While it is not, the approximation is deliberately one-sided: ANY local declaration or parameter of the name makes
+ * the file not-a-boundary, which keeps the trace going. A shadow this does not
+ * see is the expensive direction: the shadowed call reads as the imported one,
+ * the file counts as a boundary, and a reachable `postgres` finding is
+ * suppressed. That is why every spelling that binds a name is in
+ * `BINDING_FORMS`, down to a shadow written as a bare parameter
+ * (`function settleWith(createServerFn: …)`) or as an unparenthesized arrow
+ * parameter (`createServerFn => …`).
+ *
+ * Being one-sided is what makes it sound without a parser: the cost of a false
+ * positive here is a chain that gets traced and possibly reported, which is the
+ * over-report this check already names in its header. The cost of a false
+ * negative is a server-only package in the client bundle and a green run.
+ *
+ * NEGATIVE SPACE: passing the binding as an ARGUMENT (`register(createServerFn)`)
+ * reads as a parameter position to this and takes the file out of the boundary,
+ * for the same one-sided reason.
+ */
+function rebindsName(body: string, local: string): boolean {
+  // A namespace binding is spelled `RS\.createServerFn` here, and a member
+  // expression is never a declaration — only the namespace object could be
+  // rebound, and it is checked as its own name.
+  const [head] = local.split("\\.");
+  return BINDING_FORMS.some((form) => new RegExp(form(head)).test(body));
+}
+
+/**
+ * The spellings that BIND a name, as regex sources over a comment-blanked,
+ * import-stripped body.
+ *
+ * A list rather than one alternation because each entry earns its place
+ * separately: every entry here has a fixture that goes red when only that entry
+ * is deleted. Two are the ones a shorter list misses — an unparenthesized arrow
+ * parameter (`createServerFn => …`) matches no paren and no comma, and a
+ * destructured parameter matches neither.
+ *
+ * NEGATIVE SPACE: a rest binding (`...createServerFn`) is deliberately absent. A
+ * rest element is always an array or an object, so the shadow it creates can
+ * never be spelled `createServerFn(...)` — the call form this check looks for.
+ * An entry for it could not be revert-probed, and an unprobeable entry is the
+ * thing this catalog exists to keep out.
+ *
+ * Every entry is deliberately loose. A false match takes the file out of the
+ * boundary and the trace continues — the over-report this check names in its
+ * header — while a miss is a server-only package in the client bundle behind a
+ * green run.
+ */
+const BINDING_FORMS: ((name: string) => string)[] = [
+  // function f, const f, let f, var f, class f
+  (name) => String.raw`\b(?:function|const|let|var|class)\s+${name}\b`,
+  // (f), (f: T), (a, f), (f = x) — a parenthesized parameter
+  (name) => String.raw`[(,]\s*${name}\s*[:,)=]`,
+  // f => … — the arrow parameter with no parentheses at all
+  (name) => String.raw`\b${name}\s*=>`,
+  // { f }, [ f ] — a destructured binding position, SHORTHAND only. A `:` AFTER
+  // the name is deliberately not accepted: in a pattern, `{ f: g }` binds `g` and
+  // not `f`, and in an object literal `{ f: "x" }` binds nothing at all. Accepting
+  // it would let an ordinary object literal that merely mentions the name take a
+  // real boundary file out of the boundary, and report a legal one.
+  (name) => String.raw`[{[]\s*${name}\s*[},\]]`,
+  // { k: f } — the RENAMED destructuring, where the name sits AFTER the colon and
+  // is the one thing bound. The entry above reads the key position and this one
+  // reads the value position, which is why both exist and why neither is the
+  // other's superset: `{ createServerFn: "x" }` binds nothing and must not match,
+  // `{ bridge: createServerFn }` binds the shadow and must — without this entry
+  // that shadowed call reads as the boundary's own.
+  (name) => String.raw`:\s*${name}\s*[},\]=]`,
+];
+
+/**
+ * Every local name in `source` that is bound to one of the boundary's calls by an
+ * import FROM the boundary module — under the name the file gave it.
+ *
+ * The import and the call have to be the same binding, and asking the two
+ * questions separately is not the same claim: a bare
+ * `import "@tanstack/react-start"` beside an unrelated local `createServerFn`
+ * answers both of them yes while binding nothing of the boundary's, and a check
+ * that accepts that pair suppresses a reachable `postgres` finding. A
+ * side-effect import binds nothing, so it contributes no name here.
+ *
+ * A namespace import is read too — `import * as RS` makes the boundary
+ * `RS.createServerFn` — because a file that imports the module that way and calls
+ * through it has crossed exactly the same boundary.
+ *
+ * This reads the import CLAUSE only. Whether the name it binds is the one
+ * actually called is `rebindsName`'s question, and the two together are what
+ * make this a claim about a binding rather than about two words.
+ *
+ * NEGATIVE SPACE: a binding that arrives through a LOCAL re-export
+ * (`export { createServerFn } from "@tanstack/react-start"` in a sibling, then
+ * imported from there) is not recognised. The trace continues past that module,
+ * so the check can report a chain the framework would have cut — a false blocking
+ * error, which is the cost of the narrow reading and the reason to widen this
+ * before widening anything else here.
+ */
+function boundaryBindingsIn(
+  source: string,
+  masked: string,
+  boundary: { module: string; calls: string[] },
+): string[] {
+  const locals: string[] = [];
+  // Matched against the MASKED text so a quoted import statement is not one, then
+  // read back out of `source` over the identical range — masking preserves every
+  // offset, and the specifier is the one string this needs the contents of.
+  for (const match of masked.matchAll(IMPORT_CLAUSE)) {
+    const clause = match[1] ?? "";
+    const declaration = source.slice(match.index, match.index + match[0].length);
+    if (SPECIFIER_TEXT.exec(declaration)?.[1] !== boundary.module) continue;
+
+    const namespace = /\*\s+as\s+([A-Za-z_$][\w$]*)/.exec(clause);
+    if (namespace !== null) {
+      for (const call of boundary.calls) locals.push(`${namespace[1]}\\.${call}`);
+    }
+
+    // Split the braces into entries and read each as `imported as local`, rather
+    // than searching the whole clause for the call's name. Searching finds the
+    // name on EITHER side of an `as`, so `import { unrelatedExport as
+    // createServerFn }` reads as importing the boundary and stops the trace at a
+    // boundary the file never crossed — an alias of that shape is the cheapest
+    // way to buy silence. Which side the name sits on is the whole question.
+    for (const entry of (NAMED_IMPORT_LIST.exec(clause)?.[1] ?? "").split(",")) {
+      const named = NAMED_IMPORT_ENTRY.exec(entry.trim());
+      if (named === null) continue;
+      const [, imported = "", local] = named;
+      if (boundary.calls.includes(imported)) locals.push(local ?? imported);
+    }
+  }
+  return locals;
+}
+
+/** The braces of an import clause: group 1 is the comma-separated entry list. */
+const NAMED_IMPORT_LIST = /\{([^}]*)\}/;
+
+/** One entry of that list: group 1 is the EXPORTED name, group 2 the local alias. */
+const NAMED_IMPORT_ENTRY = /^([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?$/;
+
+/**
+ * One import declaration: group 1 is the clause, group 2 is the specifier.
+ *
+ * A side-effect import (`import "x"`) has no `from` and deliberately does not
+ * match — it binds no name, so there is nothing for the call test to be about.
+ */
+const IMPORT_CLAUSE = /import\s+([^;]*?)\s+from\s+["']([^"']*)["']/g;
+
+/** The specifier of one import declaration, read from UNMASKED text: group 1 is the module. */
+const SPECIFIER_TEXT = /from\s+["']([^"']+)["']\s*;?\s*$/;
+
+export const barrelPurityCheck: StructuralCheck = {
+  id: "api/barrel-purity",
+  scope: "tree",
+
+  run(context) {
+    const { config, vocabulary } = context;
+    const { serverOnlyPackages, maxTraceDepth, serverFnBoundary } =
+      config.checks["api/barrel-purity"];
+    const findings: Finding[] = [];
+
+    // Which directories hold barrels, and what a barrel is called, are the
+    // tree's vocabulary rather than this check's config: a barrel list beside
+    // the rule is the same fact twice, and the stale copy traces nothing while
+    // reporting clean.
+    for (const barrelDir of subdividedDirs(vocabulary)) {
+      // Features re-export server-function references from their controllers, so
+      // the short-circuit is what keeps this check usable there. Domains never
+      // define server functions, so tracing a domain barrel must not stop at a
+      // module that merely mentions the marker.
+      const shortCircuitApplies = barrelDir === vocabulary.featuresDir;
+
+      // The CLIENT barrel only. The server barrel is server-only by
+      // construction, so a server-only import through it is the file working.
+      for (const barrelFilename of SOURCE_EXTENSIONS.map(
+        (extension) => `${vocabulary.clientBarrelModule}.${extension}`,
+      )) {
+        for (const barrel of collectTreeFiles(context, `*/${barrelFilename}`, { under: barrelDir })) {
+          const file = toProjectPath(config, barrel);
+          // The tree's own server barrel, not the client one with `.server`
+          // spliced in. Mangling the string means a tree that renames either
+          // barrel gets a message prescribing a file it does not have, which is
+          // an ownership message naming a module nobody can create.
+          const serverBarrel = `${vocabulary.serverBarrelModule}${extname(barrelFilename)}`;
+
+          const report = (line: number | undefined, message: string) =>
+            findings.push({ severity: "error", file, line, message });
+
+          // Per barrel, and it is cycle detection rather than the depth cap that
+          // makes the recursion terminate: two modules re-exporting each other
+          // otherwise recurse until the cap, which then reports a truncated chain
+          // on a barrel that is clean.
+          const visited = new Set([barrel]);
+
+          const trace = (
+            absolute: string,
+            chain: string[],
+            depth: number,
+            originLine: number | undefined,
+          ): void => {
+            const raw = readFile(absolute);
+
+            // Blanked, not stripped, so the offset of a specifier still maps to
+            // its real line — and so a commented-out import cannot claim the line
+            // of the live one below it.
+            const source = blankComments(raw);
+
+            // Read once and used twice: the boundary gate asks whether the
+            // framework module is among these, and the trace below walks them.
+            // One extraction, so the question "what does this file import" has
+            // the same answer for both.
+            const imported = runtimeSpecifiers(absolute, raw);
+
+            if (
+              shortCircuitApplies &&
+              depth > 0 &&
+              crossesServerFnBoundary(source, serverFnBoundary, imported)
+            ) {
+              return;
+            }
+
+            const lineStarts = lineStartOffsets(source);
+
+            for (const specifier of imported) {
+              const line =
+                depth === 0 ? lineOfSpecifier(source, lineStarts, specifier) : originLine;
+
+              if (isServerOnlySpecifier(specifier, serverOnlyPackages)) {
+                report(
+                  line,
+                  `Transitively pulls in the server-only package "${specifier}".\n` +
+                    `Chain: ${[...chain, specifier].join(" → ")}\n` +
+                    `Every client component and route may import this barrel, so the whole chain\n` +
+                    `lands in the client bundle and the build breaks. Move the server-only export\n` +
+                    `to the sibling ${serverBarrel}, or put it behind a server function.\n` +
+                    `The package list is \`serverOnlyPackages\` in the project's architecture config.`,
+                );
+                continue;
+              }
+
+              const target = traceableFile(context, absolute, specifier);
+              if (target === undefined || visited.has(target)) continue;
+
+              if (depth + 1 > maxTraceDepth) {
+                // Reported rather than dropped: a silently truncated chain reads
+                // as a clean barrel, which is the same failure this whole tier
+                // exists to make impossible.
+                report(
+                  line,
+                  `Trace stopped at the depth limit of ${maxTraceDepth} hops, so what lies below\n` +
+                    `"${specifier}" is UNKNOWN — this is not a clean result.\n` +
+                    `Chain: ${[...chain, toProjectPath(config, target)].join(" → ")}\n` +
+                    `Either shorten the chain between the barrel and its leaves, or raise\n` +
+                    `\`maxTraceDepth\` in the project's architecture config and re-run.`,
+                );
+                continue;
+              }
+
+              visited.add(target);
+              trace(target, [...chain, toProjectPath(config, target)], depth + 1, line);
+            }
+          };
+
+          trace(barrel, [file], 0, undefined);
+        }
+      }
+    }
+
+    return findings;
+  },
+};
+
+/**
+ * The line a specifier is written on, or undefined when the literal is absent —
+ * the reader returns the COOKED path, so a specifier spelled with a unicode
+ * escape matches no text in the file. A finding against the barrel with no line
+ * is still actionable; a wrong line on a blocking check is not.
+ */
+function lineOfSpecifier(
+  source: string,
+  lineStarts: number[],
+  specifier: string,
+): number | undefined {
+  for (const quote of ['"', "'"]) {
+    // indexOf, not a regex — a specifier can hold regex metacharacters.
+    const at = source.indexOf(`${quote}${specifier}${quote}`);
+    if (at !== -1) return lineNumberAt(lineStarts, at);
+  }
+  return undefined;
+}

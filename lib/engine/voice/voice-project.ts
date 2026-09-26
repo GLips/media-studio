@@ -17,6 +17,7 @@ import { basename, join } from 'node:path';
 import { measureAudibleLoudness } from '../ffmpeg/loudness.ts';
 import { runFfmpeg } from '../ffmpeg/ffmpeg.ts';
 import { postOpenRouter } from '../generation/openrouter.ts';
+import type { RenderVoice } from '#models/voice/render-voice.ts';
 import { cutTakeIntoLines, type TakeClip } from '#models/voice/voice-take.ts';
 import { alignSpokenWords, estimateSpokenWords, spokenText, type SpokenWord } from '#models/voice/voice-words.ts';
 import { samplesFromWav, wavFromPcm, wavFromSamples } from '#models/audio/wav.ts';
@@ -136,15 +137,17 @@ export async function voiceStudioProject(project: string, { mode, recording }: {
 }
 
 /**
- * True when the project's voiced lines were cut from a `--read=draft` take (macOS say): fine for timing, never for
- * delivery. take.json can outlive the take the manifest used only when the manifest is estimated, and then no line has audio.
+ * Whose voice the project's lines are in: `draft` when they were cut from a `--read=draft` take (macOS say, fine for
+ * timing, never for delivery), `final` for a real take, null when no line has audio yet. take.json can outlive the
+ * take the manifest used only when the manifest is estimated, and then no line has audio.
  */
-export function isVoicedWithDraft(project: string): boolean {
+export function renderVoiceOf(project: string): RenderVoice {
   const manifestPath = join(project, 'audio', 'manifest.json'), infoPath = join(project, 'audio', 'take.json');
-  if (!existsSync(manifestPath) || !existsSync(infoPath)) return false;
+  if (!existsSync(manifestPath) || !existsSync(infoPath)) return null;
   const manifest: Record<string, Voiced> = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  if (!Object.values(manifest).some((line) => line.src !== null)) return null;
   const info: TakeInfo = JSON.parse(readFileSync(infoPath, 'utf8'));
-  return info.source === 'draft' && Object.values(manifest).some((line) => line.src !== null);
+  return info.source === 'draft' ? 'draft' : 'final';
 }
 
 function estimateLines(lines: readonly { id: string; text: string }[]) {

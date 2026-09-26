@@ -40,12 +40,16 @@ export type StudioPosition =
   | { kind: 'engine' }
   | { kind: 'lib-unsplit' }
   | { kind: 'cli' }
-  | { kind: 'lab-server' | 'lab-app' }
+  /**
+   * The web app (web/). `web-server` is a `.server` module in web/src/infrastructure/, the app's one door into
+   * lib/engine; everything else in web/ is `web-client`, since TanStack Start may put it in a browser chunk.
+   */
+  | { kind: 'web-server' | 'web-client' }
   | { kind: 'brand-kit'; kit: string }
   | ({ kind: 'project'; project: string } & ProjectRole)
   /** The checks themselves. Their fixtures name every violation on purpose. */
   | { kind: 'lint' }
-  /** Root tool config (`remotion.config.ts`). */
+  /** Tool config: `remotion.config.ts` at the root, `web/vite.config.ts` beside the app. */
   | { kind: 'root-config' }
   /** Deliberately ungoverned (§4): `scratch/`, `node_modules/`, `skills/`. */
   | { kind: 'ungoverned' }
@@ -61,6 +65,8 @@ const SUBDIR_ROLES: Record<string, 'sfx' | 'tools' | 'review' | 'media' | 'gener
 const SCENE_DIRS = new Set(['bars', 'scenes']);
 const SOURCE_FILE = /^(.+)\.(ts|tsx)$/;
 const MODEL_FILE = /^(.+)-model\.ts$/;
+const TOOL_CONFIG = /\.config\.[cm]?[jt]s$/;
+const WEB_SERVER_MODULE = /^web\/src\/infrastructure\/.+\.server\.tsx?$/;
 
 /** Project directory name → paths inside the project that are declared shared modules. */
 export type DeclaredShared = Readonly<Record<string, readonly string[]>>;
@@ -71,7 +77,7 @@ export function classifyStudioPath(path: string, shared: DeclaredShared = DECLAR
   const [top, second] = parts;
   if (top === 'scratch' || top === 'node_modules' || top === 'skills') return { kind: 'ungoverned' };
   if (top === 'lint') return { kind: 'lint' };
-  if (parts.length === 1) return /\.config\.[cm]?[jt]s$/.test(top) ? { kind: 'root-config' } : { kind: 'undeclared' };
+  if (parts.length === 1) return TOOL_CONFIG.test(top) ? { kind: 'root-config' } : { kind: 'undeclared' };
   if (top === 'lib') {
     if (parts.length === 2) return { kind: 'undeclared' };
     if (second === 'models') return parts.length > 3 ? { kind: 'models' } : { kind: 'undeclared' };
@@ -83,7 +89,10 @@ export function classifyStudioPath(path: string, shared: DeclaredShared = DECLAR
     return { kind: 'lib-unsplit' };
   }
   if (top === 'cli') return { kind: 'cli' };
-  if (top === 'lab') return second === 'app' || (second === 'review' && parts[2] === 'app') ? { kind: 'lab-app' } : { kind: 'lab-server' };
+  if (top === 'web') {
+    if (parts.length === 2 && TOOL_CONFIG.test(second)) return { kind: 'root-config' };
+    return WEB_SERVER_MODULE.test(path) ? { kind: 'web-server' } : { kind: 'web-client' };
+  }
   if (top === 'brands') return parts.length === 3 && parts[2] === 'brand.ts' ? { kind: 'brand-kit', kit: second } : { kind: 'undeclared' };
   if (top === 'projects' && parts.length > 2) return { kind: 'project', project: second, ...projectRole(parts.slice(2), shared[second] ?? []) };
   return { kind: 'undeclared' };

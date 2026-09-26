@@ -19,7 +19,7 @@ import { loadRenderSnapshot, renderSnapshotPath, writeRenderSnapshot } from '../
 import { sfxEventsFrom, sfxMarkArtifactName, type SfxEvent, type SfxMark } from '#sfx/cue-events.ts';
 import { sfxCueListReport } from '#sfx/project-cue-list.ts';
 import { readSfxCueList } from '#sfx/cue-module.ts';
-import { isVoicedWithDraft } from '../voice/voice-project.ts';
+import { renderVoiceOf } from '../voice/voice-project.ts';
 import type { OnArtifact } from '@remotion/renderer';
 import type { TimelineReport, VideoProps } from '#studio/composition/Video.tsx';
 import { countVideoFrames, measureWithFfmpeg, runFfmpeg, runFfprobe } from '../ffmpeg/ffmpeg.ts';
@@ -302,78 +302,6 @@ function reviewTransparentDelivery(session: RenderSession, timeline: TimelineRep
   console.error(`  sheet → ${out}`);
 }
 
-// A page to watch the finished videos, since file:// MP4s have no player of their own worth sharing a link to.
-function writeWatchPage(session: RenderSession, title: string, draft: boolean) {
-  const page = join(outDirFor(session), 'watch.html');
-  writeFileSync(page, `<!doctype html>
-<meta charset="utf-8">
-<title>${draft ? 'DRAFT VOICE · ' : ''}${title}</title>
-<style>
-  body { margin: 0; background: #16181c; color: #ddd; font: 15px -apple-system, system-ui, sans-serif; }
-  main { max-width: 1280px; margin: 0 auto; padding: 32px 24px; }
-  h1 { font-size: 22px; margin: 0 0 16px; }
-  video { width: 100%; border-radius: 10px; background: #000; }
-  nav { display: flex; gap: 16px; margin: 14px 0 0; }
-  a { color: #8fb4ff; }
-  .draft { background: #b82b2b; color: #fff; padding: 10px 14px; border-radius: 8px; margin: 0 0 16px; font-weight: 600; }
-</style>
-<main>
-  <h1>${title}</h1>${draft ? `
-  <p class="draft">DRAFT VOICE: read by macOS say for timing, not the real voice.</p>` : ''}
-  <video id="v" src="video.mp4" controls autoplay${session.silent ? ' muted' : ''}></video>${session.silent ? `
-  <p>A silent video: it has no sound.</p>` : ''}
-  <nav>
-    <a href="video.mp4" download>Download</a>${existsSync(videoFor(session, false)) ? `
-    <a href="#" onclick="v.src='video-plain.mp4';return false">Without captions</a>
-    <a href="video-plain.mp4" download>Download without captions</a>` : ''}
-${session.silent ? '' : `    <a href="video.srt" download>Captions (.srt)</a>
-`}  </nav>
-</main>
-`);
-  return page;
-}
-
-/**
- * A transparent video's page: the video over a checkerboard, or over a colour to try it on. Safari takes the HEVC,
- * typed video/quicktime so Chrome, which plays HEVC but not its alpha, passes it by for the WebM.
- */
-function writeTransparentWatchPage(session: RenderSession, title: string) {
-  const page = join(outDirFor(session), 'watch.html');
-  const { webm, mov } = transparentVideosFor(session);
-  const grounds = [['Checkerboard', 'checker'], ['Coral', '#ff6f59'], ['Navy', '#1d2b53'], ['White', '#fff'], ['Black', '#000']];
-  writeFileSync(page, `<!doctype html>
-<meta charset="utf-8">
-<title>${title}</title>
-<style>
-  body { margin: 0; background: #16181c; color: #ddd; font: 15px -apple-system, system-ui, sans-serif; }
-  main { max-width: 1280px; margin: 0 auto; padding: 32px 24px; }
-  h1 { font-size: 22px; margin: 0 0 16px; }
-  #stage { border-radius: 10px; overflow: hidden; line-height: 0; }
-  #stage.checker { background: repeating-conic-gradient(#ccc 0 25%, #fff 0 50%) 0 0 / 32px 32px; }
-  video { width: 100%; }
-  nav { display: flex; flex-wrap: wrap; gap: 16px; margin: 14px 0 0; }
-  a { color: #8fb4ff; }
-</style>
-<main>
-  <h1>${title}</h1>
-  <div id="stage" class="checker">
-    <video id="v" controls autoplay loop muted playsinline>
-      <source src="${basename(mov)}" type="video/quicktime">
-      <source src="${basename(webm)}" type="video/webm">
-    </video>
-  </div>
-  <p>A transparent video: it plays over the page behind it. <span id="playing"></span></p>
-  <nav>
-${grounds.map(([name, ground]) => `    <a href="#" onclick="stage.className='${ground === 'checker' ? 'checker' : ''}';stage.style.background='${ground === 'checker' ? '' : ground}';return false">${name}</a>`).join('\n')}
-    <a href="${basename(webm)}" download>Download WebM (Chrome, Firefox)</a>
-    <a href="${basename(mov)}" download>Download HEVC .mov (Safari)</a>
-  </nav>
-</main>
-<script>v.addEventListener('loadedmetadata', () => { playing.textContent = 'Playing ' + v.currentSrc.split('/').pop() + '.'; });</script>
-`);
-  return page;
-}
-
 const draftVoiceWarning = (session: RenderSession) => `
 !!!! DRAFT VOICE: macOS say read this video (studio voice --read=draft). It's for timing, not for sharing.
 !!!! Voice it for real first: studio voice ${basename(session.project)}
@@ -382,7 +310,7 @@ const draftVoiceWarning = (session: RenderSession) => `
 /**
  * The whole pipeline: refusing a line that's still estimated; video.mp4 with captions, whose frames the framing check
  * measures as they're drawn, delivered only if it passes; the mastered mix under it; video-plain.mp4 without
- * captions, if `plain`; each checked for delivery; video.srt; out/watch.html; and where the time went. A silent
+ * captions, if `plain`; each checked for delivery; video.srt; and where the time went. A silent
  * project has no mix and no .srt; a transparent one delivers as renderTransparentDelivery says. Returns what it
  * delivered.
  *
@@ -393,10 +321,10 @@ export async function renderDeliveredVideo(session: RenderSession, { plain }: { 
   const timeline = await session.readTimeline();
   const estimated = timeline.cues.filter((q) => !q.voiced).map((q) => q.id);
   if (estimated.length) throw new Error(`${estimated.join(', ')} ${estimated.length > 1 ? 'are' : 'is'} estimated, not voiced: run studio voice <project> before rendering the video`);
-  const draft = isVoicedWithDraft(session.project);
+  const draft = renderVoiceOf(session.project) === 'draft';
   if (draft) console.error(draftVoiceWarning(session));
   if (timeline.transparent) return renderTransparentDelivery(session, timeline, { plain });
-  // An old plain video would no longer match; the watch page offers it only if it's there.
+  // An old plain video would no longer match the captioned one beside it.
   if (!plain) removeRender(videoFor(session, false));
   for (const old of Object.values(transparentVideosFor(session))) removeRender(old);
 
@@ -423,7 +351,7 @@ export async function renderDeliveredVideo(session: RenderSession, { plain }: { 
   if (session.silent) rmSync(srt, { force: true });
   else writeFileSync(srt, srtFrom(timeline));
   const variants = plain ? [true, false] : [true];
-  const delivered = [...variants.map((captions) => videoFor(session, captions)), ...(session.silent ? [] : [srt]), writeWatchPage(session, timeline.title, draft)];
+  const delivered = [...variants.map((captions) => videoFor(session, captions)), ...(session.silent ? [] : [srt])];
   for (const line of formatRenderPasses(session)) console.error(line);
   // Again at the end, where it can't scroll away under the render's progress.
   if (draft) console.error(draftVoiceWarning(session));
@@ -444,7 +372,7 @@ function approveCheckedRender(session: RenderSession, sink: ReturnType<typeof ar
 
 /**
  * A transparent video's delivery: video.webm and video-hevc.mov, whose frames the framing check measures as they're
- * drawn, each checked for its alpha, and the watch page. It's silent, so it has no mix, no .srt and no plain cut, and
+ * drawn, each checked for its alpha. It's silent, so it has no mix, no .srt and no plain cut, and
  * the project must say so, since a sound it plays would be lost.
  */
 async function renderTransparentDelivery(session: RenderSession, timeline: TimelineReport, { plain }: { plain: boolean }): Promise<string[]> {
@@ -461,7 +389,7 @@ async function renderTransparentDelivery(session: RenderSession, timeline: Timel
     approve: async () => ({ motion: approveCheckedRender(session, sink, timeline).motion }),
   });
   await session.timed('review', () => reviewTransparentDelivery(session, timeline));
-  const delivered = [webm, mov, writeTransparentWatchPage(session, timeline.title)];
+  const delivered = [webm, mov];
   for (const line of formatRenderPasses(session)) console.error(line);
   return delivered;
 }
@@ -487,7 +415,7 @@ export async function renderAnimatic(session: RenderSession, { out }: { out: str
   const rendered = await session.renderVideo({
     out, inputProps: session.props({ captions: true }), crf: 26, x264Preset: 'veryfast', imageFormat: 'jpeg', jpegQuality: 85, onProgress: renderProgress(out),
   });
-  if (isVoicedWithDraft(session.project)) console.error(draftVoiceWarning(session));
+  if (renderVoiceOf(session.project) === 'draft') console.error(draftVoiceWarning(session));
   return rendered;
 }
 
@@ -549,7 +477,7 @@ export async function joinVideoSlices(session: RenderSession, { dir, out }: { di
   });
   const counted = countVideoFrames(out);
   if (counted !== timeline.durationInFrames) throw new Error(`${out} holds ${counted} frames, not the video's ${timeline.durationInFrames}`);
-  writeRenderSnapshot(out, { frames: { from: 0, end: timeline.durationInFrames }, timeline, clock: session.clock });
+  writeRenderSnapshot(out, { frames: { from: 0, end: timeline.durationInFrames }, timeline, clock: session.clock, voice: renderVoiceOf(session.project) });
   return out;
 }
 

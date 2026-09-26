@@ -1,0 +1,18 @@
+// The app's program. Its compiler options are the repo's (../tsconfig.json), not tk2's stricter set: the app pulls in
+// lib/models, lib/studio and lib/sfx, which are checked under whatever program imports them.
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "types": ["node", "vite/client"]
+  },
+  "include": ["src", "vite.config.ts", "../types.d.ts"]
+}

@@ -1,5 +1,5 @@
 // review-notes.ts: the notes `studio review` pins on a render or a still, what each is about, and the markdown Graham
-// pastes back into a chat. Pure: lab/review/server.ts reads the artifacts, and the page (lab/review/app) calls these.
+// pastes back into a chat. Pure: lib/engine/review reads the artifacts, and the app's review screen calls these.
 //
 // A note's context comes only from artifacts a project already has: the render's snapshot for the scene, the
 // moment, the video-clock sounds and what's under the point, sfx/cues.json for the cue list, and on a still, a
