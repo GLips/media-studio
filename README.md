@@ -1,14 +1,47 @@
 # media-studio
 
-Videos and stills made in code, in [Remotion](https://www.remotion.dev): walkthroughs over a site's captured states,
-music-led ads and teasers, drawn and 3D pieces. Voice, music, sound effects and the mix included; render to MP4.
+Videos and stills made in code by your coding agent: walkthroughs of a site, music-led ads and teasers, OG images and
+thumbnails. Voice, music, sound effects and the mix included. Built on [Remotion](https://www.remotion.dev).
 
-Every frame is a pure function of time, so a change to one scene is an edit and a re-render. Nothing gets reshot by hand.
+![Reviewing a render: pin a note on a frame, and it knows the scene and the sound under it](docs/images/review.png)
 
-## Install
+## Getting started
+
+You don't have to learn much of this yourself. Clone it, add the plugin, and tell your agent to set it up. It runs on
+a Mac, with Node 24 and ffmpeg.
+
+1. Clone it somewhere it can stay:
+
+   ```sh
+   git clone https://github.com/GLips/media-studio.git
+   ```
+
+2. Add the skills to Claude Code (once per machine):
+
+   ```
+   /plugin marketplace add <path to your clone>
+   /plugin install media-studio@media-studio
+   ```
+
+3. Tell your agent: *"Set up media-studio at `<path to your clone>`. Its README has the steps."* Then ask it for a
+   video: *"make a 30-second teaser for our new pricing page"*.
+
+Voice, generated music, images and footage need an [OpenRouter](https://openrouter.ai) key ([Secrets](#secrets)).
+Without one you can still capture, animate, add sound effects, use a draft voice, render and review.
+
+| | |
+|---|---|
+| ![The stills sheet: every variant of an OG image at full size and as a link card, each checked](docs/images/stills-sheet.png) | ![Studio Lab: every motion and sound lever, live](docs/images/lab-curves.png) |
+
+---
+
+*The rest of this page is for your agent.*
+
+## Setting it up
 
 You need Node 24, git, `ffmpeg` on your PATH and a GPU Chrome can use (a render refuses software GL). It's built on
 macOS: the draft voice (`say`), the Safari alpha video (VideoToolbox) and `bin/studio-secrets` (the keychain) need it.
+From the clone:
 
 ```sh
 npm install
@@ -17,7 +50,9 @@ studio workspace init     # makes work/, where everything you make lives
 studio new launch-teaser --capability=music-led
 ```
 
-`studio` is TypeScript run directly by Node 24. `studio home` prints this repo's root, from anywhere.
+`studio` is TypeScript run directly by Node 24. `studio home` prints this repo's root, from anywhere. Ask your user
+whether they want paid generation, and if so set the keys in Secrets below. Offer to push `work/` to a private
+remote of theirs (`git -C work remote add origin <url>`).
 
 ## Your work
 
@@ -30,10 +65,12 @@ work/projects/<yyyy-mm-name>/   a video or a set of stills (studio new)
 work/brands/<name>/             a client's brand kit: colours, fonts, logos, voice (docs/brand-kits.md)
 work/hosts.json                 product repos a video can compose components from (Hosts, below)
 work/arch-baseline.json         check:arch's baseline for your files
+work/.env.op                    optional: 1Password references for the keys (Secrets, below)
 ```
 
-Its commits run their own gate (`.githooks-workspace/pre-commit`): `check:arch --scope workspace`, the full typecheck
-and your projects' tests.
+Everything a command makes (captures, voice, music, generated media, renders) lands in its project's folder and is
+ignored by `work/`'s git; only what you write is committed. Its commits run their own gate
+(`.githooks-workspace/pre-commit`): `check:arch --scope workspace`, the full typecheck and your projects' tests.
 
 ## The pipeline
 
