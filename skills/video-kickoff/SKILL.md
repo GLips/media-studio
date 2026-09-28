@@ -26,7 +26,9 @@ before the animatic is signed off: a scene table is cheap to change, and voiced,
 plan, and build through to a render. Show the user the result, not the steps.
 
 Every video lives in the studio repo, whatever repo the request came from. Read the source material where it is, then
-work in `studio home` (paths below are relative to it). Each verb explains itself: `studio <verb> --help`.
+work in `studio home` (paths below are relative to it). Each verb explains itself: `studio <verb> --help`;
+`references/studio-map.md` is the overview of every verb, a project's files and the studio's pieces. No `studio` on
+the PATH, or no `work/` in it: the `studio-setup` skill installs it first.
 
 ## 1. Take the dump
 

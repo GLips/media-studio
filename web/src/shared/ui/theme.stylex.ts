@@ -17,22 +17,18 @@ export const colors = stylex.defineVars({
   cream: '#f3f0e7',
   /** Secondary type: readouts, hints, captions. */
   dim: '#8d8a83',
-  /** The studio's accent: the playhead, a note, the active tab, the primary action. */
+  /** The studio's accent: the playhead, a note, the primary action. */
   accent: '#ee4c23',
   /** The second accent: what's being written, a draft note's pin and range. */
   cobalt: '#4144f4',
-  /** A check that passes, the scene rung that's final, and a sound the video plays. */
+  /** A check that passes, and the scene rung that's final. */
   pass: '#3ccf7a',
   /** The scene rung that's still blocking. */
   blocking: '#6f8ff0',
-  /** A named cue on the timing strip, and a sound from the cue list rather than the video. */
+  /** A named cue on the timing strip. */
   cue: '#d7b33a',
   /** A replay on the timing strip. */
   replay: '#4fb3c8',
-  /** A music fit's stretches of song, after accent, cobalt and pass: enough hues that neighbours never match. */
-  musicSpanGold: '#e8b53c',
-  musicSpanViolet: '#c55bd6',
-  musicSpanTeal: '#3cc6d0',
   /** The dark ground under a frame: letterboxing, a still loading. */
   screen: '#000000',
   /** A warning that isn't a failure: a replaced render, a stale note, a draft voice. */
@@ -46,14 +42,6 @@ export const colors = stylex.defineVars({
   proofNavy: '#1d2b53',
   proofWhite: '#ffffff',
   proofBlack: '#000000',
-  /** The lighter squares of the dark checkerboard a generated still sits on, so a cut-out reads as see-through. */
-  mediaCheckerLight: '#26262c',
-  /** Its darker squares. */
-  mediaCheckerDark: '#1b1b20',
-  /** The white under a reference photo, whose product may be cut out on a transparent ground. */
-  photoGround: '#ffffff',
-  /** A picked card's ground, the panel warmed toward the accent that edges it. */
-  pickedPanel: '#211512',
 });
 
 export const fonts = stylex.defineVars({
@@ -69,8 +57,6 @@ export const typography = stylex.defineVars({
   body: '0.875rem',
   lede: '1.1875rem',
   section: '1.25rem',
-  /** A part's heading inside a lab tab, under the tab's title. */
-  partTitle: '1.875rem',
   title: '2.75rem',
   brand: '3.5rem',
 });
@@ -86,12 +72,9 @@ export const spacing = stylex.defineVars({
   pageMaxWidth: '1320px',
   /** The review screen's notes column. */
   sideWidth: '380px',
-  /** The lab's controls column beside its stage. */
-  benchWidth: '340px',
 });
 
 export const radius = stylex.defineVars({
   surface: '10px',
-  control: '6px',
   pill: '999px',
 });

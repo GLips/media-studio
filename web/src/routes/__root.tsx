@@ -2,7 +2,6 @@ import { ColorSchemeScript, MantineProvider, mantineHtmlProps } from '@mantine/c
 import type { QueryClient } from '@tanstack/react-query';
 import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
-import { isViteDevServer } from '#web/env.public.ts';
 import { mantineTheme, themeVariables } from '#web/shared/ui/mantine-theme.ts';
 import appCss from '../styles.css?url';
 
@@ -21,6 +20,7 @@ export const Route = createRootRouteWithContext<RootRouteContext>()({
 /**
  * StyleX's Vite plugin injects its dev tags through `transformIndexHtml`, which Start never runs: it renders the
  * document from this route. The `/@id/` prefix sends the runtime through Vite's pipeline so `import.meta.hot` lives.
+ * Always rendered: the app only ever runs on Vite's dev server (lib/engine/web).
  */
 function StylexDevAssets() {
   return (
@@ -37,7 +37,7 @@ function RootDocument({ children }: { children: ReactNode }) {
       <head>
         <ColorSchemeScript forceColorScheme="dark" />
         <HeadContent />
-        {isViteDevServer && <StylexDevAssets />}
+        <StylexDevAssets />
       </head>
       <body>
         <MantineProvider theme={mantineTheme} cssVariablesResolver={themeVariables} forceColorScheme="dark">

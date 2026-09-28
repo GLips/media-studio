@@ -11,10 +11,10 @@ test('a render that skips its snapshot, or a reader past the loader, is caught, 
     'lib/engine/render/bars.ts': "import { renderMedia } from '@remotion/renderer';\n",
     'lib/engine/render/stitch.ts': "import { renderFrames, stitchFramesToVideo } from '@remotion/renderer';\n",
     // Adversarial: a template path, the snapshot read by hand, a namespace import, and the constant through a re-export.
-    'lib/engine/lab/lab-catalog.ts': 'const t = readFileSync(`${project}/out/check/timeline.json`);\nconst s = `${dir}/${name}.snapshot.json`;\n',
+    'lib/engine/music/music-catalog.ts': 'const t = readFileSync(`${project}/out/check/timeline.json`);\nconst s = `${dir}/${name}.snapshot.json`;\n',
     'lib/engine/render/sliced.ts': "import * as remotion from '@remotion/renderer';\n",
     'cli/commands/aim.ts': "import { REPORT } from '../../lib/engine/render/reports.ts';\n",
-    'web/src/features/lab/ui/aim.tsx': "import { TIMELINE_ARTIFACT } from '../../../../../lib/studio/composition/Video.tsx';\n",
+    'web/src/features/review/ui/aim.tsx': "import { TIMELINE_ARTIFACT } from '../../../../../lib/studio/composition/Video.tsx';\n",
     // Legal neighbours: the owners, prose naming the file, and the renderer's other entry points.
     'lib/engine/render/render-session.ts': "import { renderMedia } from '@remotion/renderer';\nexport const TIMELINE_REPORT_NAME = 'timeline.json';\n",
     'lib/engine/render/pipeline.ts': "import { renderFrames } from '@remotion/renderer';\nimport { TIMELINE_REPORT_NAME } from './render-session.ts';\n",
@@ -23,12 +23,12 @@ test('a render that skips its snapshot, or a reader past the loader, is caught, 
   });
   assert.deepEqual(caught(findings), [
     'cli/commands/aim.ts:timeline name',
-    'lib/engine/lab/lab-catalog.ts:.snapshot.json',
-    'lib/engine/lab/lab-catalog.ts:/out/check/timeline.json',
+    'lib/engine/music/music-catalog.ts:.snapshot.json',
+    'lib/engine/music/music-catalog.ts:/out/check/timeline.json',
     'lib/engine/render/bars.ts:renderMedia',
     'lib/engine/render/sliced.ts:renderMedia',
     'lib/engine/render/stitch.ts:stitchFramesToVideo',
     'lib/engine/review/review-target.ts:timeline.json',
-    'web/src/features/lab/ui/aim.tsx:timeline name',
+    'web/src/features/review/ui/aim.tsx:timeline name',
   ]);
 });

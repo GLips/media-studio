@@ -4,7 +4,7 @@
 // loads in plain Node with no browser or I/O code behind it. From each model,
 // every runtime import is followed transitively through first-party code, and a
 // chain is refused where it reaches render or Node-side code (lib/studio, which
-// `#studio` is; lib/engine; cli; lab; a scene), a package beyond the allowlist, a
+// `#studio` is; lib/engine; cli; a scene), a package beyond the allowlist, a
 // builtin, or a browser or I/O global.
 //
 // An `import type` is erased and isn't followed: flagging it would force types

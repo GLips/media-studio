@@ -2,7 +2,6 @@ node_modules/
 scratch/
 .agent_cache/
 .DS_Store
-web/dist/
 # Your own projects, brand kits and hosts: a git repository of its own that `studio workspace init` makes
 # (lib/engine/project/studio-workspace.ts).
 /work/

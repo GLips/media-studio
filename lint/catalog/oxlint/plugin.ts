@@ -4,7 +4,6 @@ import { barrelDirectionRule } from "./api/barrel-direction.ts";
 import { clientServerInfraRule } from "./boundary/client-server-infra.ts";
 import { dbIsolationRule } from "./boundary/db-isolation.ts";
 import { importPolicyRule } from "./boundary/import-policy.ts";
-import { deprecatedPathsRule } from "./placement/deprecated-paths.ts";
 import { hookCountRule } from "./react/hook-count.ts";
 import { noLongCommentsRule } from "./health/no-long-comments.ts";
 import { noArbitraryClassValuesRule } from "./style/no-arbitrary-class-values.ts";
@@ -93,7 +92,6 @@ export default definePlugin({
     "no-service-option": noServiceOptionRule,
     "no-silent-error-swallow": noSilentErrorSwallowRule,
     "no-sql-type-parameter": noSqlTypeParameterRule,
-    "deprecated-paths": deprecatedPathsRule,
     "no-deprecated-input-validator": noDeprecatedInputValidatorRule,
     "no-plain-export-in-server-fn-module": noPlainExportInServerFnModuleRule,
     "no-raw-result": noRawResultRule,

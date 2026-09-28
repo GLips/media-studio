@@ -10,11 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as LabRouteImport } from './routes/lab'
-import { Route as LabCatalogDotjsonRouteImport } from './routes/lab-catalog[.]json'
 import { Route as ApiStudioRouteImport } from './routes/api.studio'
-import { Route as LabIndexRouteImport } from './routes/lab.index'
-import { Route as LabTabRouteImport } from './routes/lab.$tab'
 import { Route as MediaProjectRouteImport } from './routes/media.$project'
 import { Route as ReviewStillsProjectRouteImport } from './routes/review-stills.$project'
 import { Route as ProjectsProjectIndexRouteImport } from './routes/projects.$project.index'
@@ -25,31 +21,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LabRoute = LabRouteImport.update({
-  id: '/lab',
-  path: '/lab',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LabCatalogDotjsonRoute = LabCatalogDotjsonRouteImport.update({
-  id: '/lab-catalog.json',
-  path: '/lab-catalog.json',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiStudioRoute = ApiStudioRouteImport.update({
   id: '/api/studio',
   path: '/api/studio',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LabIndexRoute = LabIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => LabRoute,
-} as any)
-const LabTabRoute = LabTabRouteImport.update({
-  id: '/$tab',
-  path: '/$tab',
-  getParentRoute: () => LabRoute,
-} as any).lazy(() => import('./routes/lab.$tab.lazy').then((d) => d.Route))
 const MediaProjectRoute = MediaProjectRouteImport.update({
   id: '/media/$project',
   path: '/media/$project',
@@ -74,37 +50,26 @@ const ProjectsProjectArtifactsSplatRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/lab': typeof LabRouteWithChildren
-  '/lab-catalog.json': typeof LabCatalogDotjsonRoute
   '/api/studio': typeof ApiStudioRoute
-  '/lab/$tab': typeof LabTabRoute
   '/media/$project': typeof MediaProjectRoute
   '/review-stills/$project': typeof ReviewStillsProjectRoute
-  '/lab/': typeof LabIndexRoute
   '/projects/$project/': typeof ProjectsProjectIndexRoute
   '/projects/$project/artifacts/$': typeof ProjectsProjectArtifactsSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/lab-catalog.json': typeof LabCatalogDotjsonRoute
   '/api/studio': typeof ApiStudioRoute
-  '/lab/$tab': typeof LabTabRoute
   '/media/$project': typeof MediaProjectRoute
   '/review-stills/$project': typeof ReviewStillsProjectRoute
-  '/lab': typeof LabIndexRoute
   '/projects/$project': typeof ProjectsProjectIndexRoute
   '/projects/$project/artifacts/$': typeof ProjectsProjectArtifactsSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/lab': typeof LabRouteWithChildren
-  '/lab-catalog.json': typeof LabCatalogDotjsonRoute
   '/api/studio': typeof ApiStudioRoute
-  '/lab/$tab': typeof LabTabRoute
   '/media/$project': typeof MediaProjectRoute
   '/review-stills/$project': typeof ReviewStillsProjectRoute
-  '/lab/': typeof LabIndexRoute
   '/projects/$project/': typeof ProjectsProjectIndexRoute
   '/projects/$project/artifacts/$': typeof ProjectsProjectArtifactsSplatRoute
 }
@@ -112,44 +77,31 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/lab'
-    | '/lab-catalog.json'
     | '/api/studio'
-    | '/lab/$tab'
     | '/media/$project'
     | '/review-stills/$project'
-    | '/lab/'
     | '/projects/$project/'
     | '/projects/$project/artifacts/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/lab-catalog.json'
     | '/api/studio'
-    | '/lab/$tab'
     | '/media/$project'
     | '/review-stills/$project'
-    | '/lab'
     | '/projects/$project'
     | '/projects/$project/artifacts/$'
   id:
     | '__root__'
     | '/'
-    | '/lab'
-    | '/lab-catalog.json'
     | '/api/studio'
-    | '/lab/$tab'
     | '/media/$project'
     | '/review-stills/$project'
-    | '/lab/'
     | '/projects/$project/'
     | '/projects/$project/artifacts/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  LabRoute: typeof LabRouteWithChildren
-  LabCatalogDotjsonRoute: typeof LabCatalogDotjsonRoute
   ApiStudioRoute: typeof ApiStudioRoute
   MediaProjectRoute: typeof MediaProjectRoute
   ReviewStillsProjectRoute: typeof ReviewStillsProjectRoute
@@ -166,40 +118,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/lab': {
-      id: '/lab'
-      path: '/lab'
-      fullPath: '/lab'
-      preLoaderRoute: typeof LabRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/lab-catalog.json': {
-      id: '/lab-catalog.json'
-      path: '/lab-catalog.json'
-      fullPath: '/lab-catalog.json'
-      preLoaderRoute: typeof LabCatalogDotjsonRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/studio': {
       id: '/api/studio'
       path: '/api/studio'
       fullPath: '/api/studio'
       preLoaderRoute: typeof ApiStudioRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/lab/': {
-      id: '/lab/'
-      path: '/'
-      fullPath: '/lab/'
-      preLoaderRoute: typeof LabIndexRouteImport
-      parentRoute: typeof LabRoute
-    }
-    '/lab/$tab': {
-      id: '/lab/$tab'
-      path: '/$tab'
-      fullPath: '/lab/$tab'
-      preLoaderRoute: typeof LabTabRouteImport
-      parentRoute: typeof LabRoute
     }
     '/media/$project': {
       id: '/media/$project'
@@ -232,22 +156,8 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface LabRouteChildren {
-  LabTabRoute: typeof LabTabRoute
-  LabIndexRoute: typeof LabIndexRoute
-}
-
-const LabRouteChildren: LabRouteChildren = {
-  LabTabRoute: LabTabRoute,
-  LabIndexRoute: LabIndexRoute,
-}
-
-const LabRouteWithChildren = LabRoute._addFileChildren(LabRouteChildren)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  LabRoute: LabRouteWithChildren,
-  LabCatalogDotjsonRoute: LabCatalogDotjsonRoute,
   ApiStudioRoute: ApiStudioRoute,
   MediaProjectRoute: MediaProjectRoute,
   ReviewStillsProjectRoute: ReviewStillsProjectRoute,

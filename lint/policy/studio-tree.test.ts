@@ -16,7 +16,7 @@ test('each path lands in its §4 position', () => {
     'lib/models/music-fit.ts': 'undeclared',
     'lib/studio/kit.tsx': 'undeclared',
     'web/src/infrastructure/studio-engine.server.ts': 'web-server',
-    'web/src/routes/lab.tsx': 'web-client',
+    'web/src/routes/api.studio.ts': 'web-client',
     'web/vite.config.ts': 'root-config',
     // Adversarial: `.server` names a server module only in infrastructure/, the app's one door into lib/engine.
     'web/src/features/review/controllers/review-queries.server.ts': 'web-client',

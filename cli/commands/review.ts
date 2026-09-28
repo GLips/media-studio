@@ -9,7 +9,7 @@ export default defineCommand({
   },
   args: {
     target: { type: 'positional', required: true, description: 'A project, or a render or still inside one (.mp4, .webm, .mov, .png, .jpg, .webp)' },
-    port: { type: 'string', default: '4317', description: 'Port the studio app is on, or is served on (shared with studio lab)' },
+    port: { type: 'string', default: '4317', description: 'Port the studio app is on, or is served on' },
     open: { type: 'boolean', default: true, description: 'Open it in the browser (--no-open to just serve)' },
   },
   async run({ args }) {

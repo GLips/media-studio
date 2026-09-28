@@ -92,7 +92,6 @@ decide which rules ship.
 | External SDK integrations | `boundary/sdk-containment` |
 | Public barrels | `naming/barrel-discoverability` |
 | Co-located tests | `naming/test-file-mirror`, and `testing/no-module-mocking` once agents write most of them — expect a migration there, not a lint fix |
-| A path this project has already moved away from | `placement/deprecated-paths` |
 | Standing docs agents read on every task | `health/doc-budgets` — word ceilings that ratchet down, so the docs enforcement leans on stay short enough to be read |
 | Agents writing most of the code | The `types/` assertion trio — `require-safety-comment`, `no-chained-type-assertions`, `no-widen-then-assert` — plus `types/no-type-argument-assertion`, the spelling of the same claim (`api.get<User>(url)`) that all three miss because it never writes `as`. Taking a subset leaves the hole the others close; the trio spans both tiers |
 | Effect | Every `effect/` rule. Adopt `@effect/language-service` first; the `effect/` overview explains why that is step zero and these are only what it leaves on the table |
@@ -131,10 +130,9 @@ instead, are named in [enforcement-implementation.md](../enforcement-implementat
 for where things live and what they are called, so declaring the trees is the whole adaptation of the
 oxlint tier. The exception, `testing/no-module-mocking`, reads no layout at all.
 
-Two rules hold a hand-written list in their own source, and neither is a knob:
+One rule holds a hand-written list in its own source, and it isn't a knob:
 `boundary/client-server-infra`'s two client-safe modules — widened by editing the rule, deliberately,
-so config cannot — and `placement/deprecated-paths`'s moved-away-from patterns, which are that rule's
-whole subject. Nothing else in either tier holds a list of paths.
+so config cannot. Nothing else in either tier holds a list of paths.
 
 Structural checks are **copied, not adapted**: adopting one means writing config, never
 reimplementing an algorithm. Typed shapes and defaults for the checks that take config are in

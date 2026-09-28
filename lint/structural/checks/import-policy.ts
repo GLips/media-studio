@@ -10,7 +10,7 @@
 // repo; nothing outside work/ imports into it, since work/ is your own
 // repository and a clean clone has none. Scene, model and scratch denials are checks (b), (c) and (d).
 //
-// A computed `import(expr)` isn't reported here: lab and the CLI load projects
+// A computed `import(expr)` isn't reported here: the CLI loads projects
 // that way. The checks that must follow every edge refuse it themselves.
 //
 // Negative space: the rest of §2's allowed side (a project's picture reaching

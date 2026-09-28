@@ -5,7 +5,7 @@ import { projectMediaTypeOf, ProjectMediaNotFound, renderFileStamp, resolveProje
 /**
  * A project's media file, `?path=<path in the project>`: in the query, since Vite's dev server keeps a URL ending in a
  * media extension for itself. With `?render=<hash>` it serves those bytes or nothing: once the file is replaced a
- * review's buffered frames stay the old render's, never a splice of two. The review and the lab both play from here.
+ * review's buffered frames stay the old render's, never a splice of two.
  */
 export const respondWithProjectMedia = createServerOnlyFn((request: Request, project: string): Response => {
   const query = new URL(request.url).searchParams;
@@ -22,7 +22,7 @@ export const respondWithProjectMedia = createServerOnlyFn((request: Request, pro
 });
 
 /**
- * Which checkout this server is: `studio review` and `studio lab` open a server already on their port only when it
- * answers with their own repo root, so a second worktree never talks to the first one's files.
+ * Which checkout this server is: `studio review` opens a server already on its port only when it answers with
+ * its own repo root, so a second worktree never talks to the first one's files.
  */
 export const respondWithStudioCheckout = createServerOnlyFn((): Response => Response.json({ app: 'studio', root: STUDIO_ROOT }));

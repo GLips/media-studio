@@ -10,8 +10,6 @@ export { renderFileStamp } from '#engine/snapshot/render-snapshot.ts';
 export { listProjectsWithArtifacts } from '#engine/review/project-artifacts.ts';
 export { projectMediaTypeOf, ProjectMediaNotFound, resolveProjectMedia } from '#engine/review/project-media.ts';
 export { readReviewArtifact, readReviewArtifactStatus, saveReviewNotes } from '#engine/review/review-artifact.ts';
-export { buildLabCatalog } from '#engine/lab/lab-catalog.ts';
-export { LabSfxCueRequestError, LabSfxCueStaleError, saveLabSfxCueEdits } from '#engine/lab/lab-sfx-cue-save.ts';
 
 /** The server's storyboard stills, cut on demand and kept for its life: removed with its process's temp root. */
 export const reviewStills = createReviewStillCutter(join(studioTempRoot(), 'review-stills'));

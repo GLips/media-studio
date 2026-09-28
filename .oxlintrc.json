@@ -83,7 +83,6 @@
         "arch/no-sql-type-parameter": "error",
         "arch/no-long-comments": "error",
         "arch/no-vacant-symbol-names": "error",
-        "arch/deprecated-paths": "error",
         "arch/no-deprecated-input-validator": "error",
         "arch/no-plain-export-in-server-fn-module": "error",
         "arch/no-raw-result": "error",

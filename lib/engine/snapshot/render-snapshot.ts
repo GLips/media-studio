@@ -6,7 +6,7 @@
 // motion its check measured. The snapshot names the render by a hash of its bytes, so a file re-rendered without one,
 // or copied over, reads as having none rather than as the older render's.
 //
-// A reader of a render (review, the lab, `studio look --video`) goes through loadRenderSnapshot, never the project's
+// A reader of a render (review, `studio look --video`) goes through loadRenderSnapshot, never the project's
 // out/check/timeline.json: that is `studio check`'s latest report, rewritten by every check, and says nothing about
 // a render made before it.
 import { createHash } from 'node:crypto';

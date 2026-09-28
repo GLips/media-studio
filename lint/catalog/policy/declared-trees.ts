@@ -181,7 +181,7 @@ export type ValidatedTrees = readonly DeclaredTree[] & {
  * edit a rule.
  */
 export const DECLARED_TREES: ValidatedTrees = declareTrees([
-  // The studio's web app: lab and review. lib/, cli/ and work/projects/ are governed by the studio's own
+  // The studio's web app: review. lib/, cli/ and work/projects/ are governed by the studio's own
   // tier (lint/check-arch.ts), not by this catalog.
   {
     root: "web/src",

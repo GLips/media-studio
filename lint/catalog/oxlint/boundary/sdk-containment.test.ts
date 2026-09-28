@@ -54,7 +54,7 @@ describeRule("boundary/sdk-containment", sdkContainmentRule, {
     {
       name: "a re-export hands the engine on under the feature's own name",
       filename: FEATURE_CONTROLLER,
-      code: `export { buildLabCatalog } from "#engine/lab/lab-catalog.ts";`,
+      code: `export { readReviewArtifact } from "#engine/review/review-artifact.ts";`,
       errors: [{ messageId: "rawSdkOutsideOwner" }],
     },
     {
