@@ -45,8 +45,8 @@ scene turns its clock into a scene with `sceneForTimelineClock`, and `sceneCueSe
 `s.t`'s seconds. A finale's replays are declared in the timeline and handed in. A move that must keep its length is a start plus a duration anchored at one end (`{ from:
 { at: 'end', frames: -3.75 }, to: { at: 'end', frames: -1 } }`), never pinned between two scenes' moments: the
 project's `timeline.test.ts` runs the retime runner, which lengthens every scene and fails a move that stretches.
-`studio clock <project>` prints the resolved frames on the video, each scene at its origin. Worked examples: `projects/2026-09-sale-only-view` (voice) and
-`projects/2026-09-motion-showcase` (music).
+`studio clock <project>` prints the resolved frames on the video, each scene at its origin. `studio new <slug> --capability voice-led`
+(or `music-led`, `mixed`) writes a timeline of each kind that already passes the retime test; start from it.
 
 **The frame.** `defineVideo({ format })` picks the frame rate and size, 30 fps at 1920×1080 by default: `{ width: 1080,
 height: 1920 }` for a vertical cut. A timed video's rate is its timeline's, `defineTimeline({ fps })`. A scene reads
@@ -126,8 +126,22 @@ scene is
 `(clock) => blockingScene(clock, { note, pieces, view })`: `FlatPiece`s (`box`, `type` set at its box's height,
 `image` a crossed slot), each named and tinted, resting at a `pose` in frame pixels and moved by `keys` on the frames
 of the scene's own clock, `{ at: clock.cues.land, to: { y: 380 }, over: 9 }`, a `view` pushing or panning over them.
-It declares `rung: 'blocking'`, so the animatic and `studio review` show it as blocking; the fidelity-ladder project's
-`layout` is one. A scene timed in seconds draws `<FlatBlockout pieces frame={s.t * fps} />` itself and declares `rung: 'blocking'` in its `defineScene`. Get the moves
+It declares `rung: 'blocking'`, so the animatic and `studio review` show it as blocking; every scene `studio new`
+writes starts as one. A few pieces moving on cues, a view pushing in:
+
+```tsx
+const layout = (clock: Clock<'layout'>) => blockingScene(clock, {
+  note: 'The buy box assembles: the photo and title, then the price.',
+  view: { keys: [{ at: clock.moves.settle.from, to: { cx: 1010, zoom: 1.06 }, over: clock.moves.settle.to - clock.moves.settle.from }] },
+  pieces: [
+    { kind: 'image', name: 'photo', color: '#a9b1bc', pose: { x: 160, y: 180, w: 700, h: 720, opacity: 0 }, keys: [{ at: clock.cues.photo, to: { opacity: 1 } }] },
+    { kind: 'type', name: 'title', text: 'Linen shirt', pose: { x: 960, y: 240, w: 700, h: 80, opacity: 0 }, keys: [{ at: clock.cues.title, to: { opacity: 1, y: 220 } }] },
+    { kind: 'type', name: 'price', text: '$59.99', color: '#b82b2b', pose: { x: 960, y: 620, w: 500, h: 110, opacity: 0 }, keys: [{ at: clock.cues.price, to: { opacity: 1, y: 580 }, over: 9 }] },
+  ],
+});
+```
+
+A scene timed in seconds draws `<FlatBlockout pieces frame={s.t * fps} />` itself and declares `rung: 'blocking'` in its `defineScene`. Get the moves
 approved in review, then build the scene over the same cues and rhythm.
 
 ## Kit and generated stills

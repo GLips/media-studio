@@ -1,12 +1,12 @@
 // lab-catalog.ts: everything the lab shows that isn't code, as one JSON document: the generated-media gallery, the
-// music tracks and the demo cue list, plus the media files they point at. The app serves it fresh on each request;
+// music tracks and every project's cue list, plus the media files they point at. The app serves it fresh on each request;
 // `studio lab --export` writes it once and copies exactly the files it lists, so what a deploy includes is decided
 // here and nowhere else.
 //
 // Every file is a project's. Served, its URL is the app's one media door (`/media/<project>?path=…`), shared with the
 // review screen; exported, it's `/media/<project>/<path>`, where the export copies it.
 //
-// Negative space: nothing outside projects/ is read. The scratch workspace is gitignored, so what it holds exists on one machine,
+// Negative space: nothing outside work/projects/ is read. The scratch workspace is gitignored, so what it holds exists on one machine,
 // and third-party reference footage (the reel in .agent_cache/) is never a project's, so an export can't carry it.
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -15,9 +15,6 @@ import { readSfxCueList } from '#sfx/cue-module.ts';
 import { STUDIO_PROJECTS_DIR } from '#engine/project/studio-project.ts';
 import { loadRenderSnapshot } from '#engine/snapshot/render-snapshot.ts';
 import type { LabCatalog, LabGalleryItem, LabMusicTrack, LabSfxCuePayload } from '#models/lab/lab-catalog.ts';
-
-/** The project the cue editor opens: the one `studio sfx draft` was tuned on. */
-export const LAB_SFX_CUE_DEMO_PROJECT = '2026-09-simple-buy-box-story';
 
 /** Registers a media file and returns its URL, or null when it's missing. */
 export type LabMediaRegister = (file: string) => string | null;
@@ -33,12 +30,12 @@ export function buildLabCatalog({ exported }: { exported: boolean }) {
     exported,
     gallery: listLabGeneratedMedia(media),
     music: listLabMusicTracks(media),
-    sfxCues: readLabSfxCuePayload(join(STUDIO_PROJECTS_DIR, LAB_SFX_CUE_DEMO_PROJECT), media),
+    sfxCues: subdirs(STUDIO_PROJECTS_DIR).flatMap((folder) => readLabSfxCuePayload(folder, media) ?? []),
   };
   return { catalog, files };
 }
 
-function labMediaRegister(files: Map<string, string>, exported: boolean): LabMediaRegister {
+export function labMediaRegister(files: Map<string, string>, exported: boolean): LabMediaRegister {
   return (file) => {
     const [project, ...path] = relative(STUDIO_PROJECTS_DIR, file).split(sep);
     if (!existsSync(file) || project === '..') return null;
@@ -102,7 +99,7 @@ function listLabMusicTracks(media: LabMediaRegister): LabMusicTrack[] {
   });
 }
 
-// ---------- the cue list ----------
+// ---------- the cue lists ----------
 
 export const labSfxCueRevision = (project: string) =>
   createHash('sha256').update(readFileSync(join(project, 'sfx', 'cues.json'))).digest('hex').slice(0, 16);

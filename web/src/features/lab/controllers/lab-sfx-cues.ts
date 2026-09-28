@@ -16,7 +16,7 @@ type ModelLabSfxCueEdit<T extends LabSfxCueEdit> = T;
 export type DecodedLabSfxCueEdit = ModelLabSfxCueEdit<typeof LabSfxCueEditSchema.Type>;
 
 /**
- * Saves the demo cue list's edits, as `studio sfx draft` writes a list. A refusal comes back as a value, so the editor
+ * Saves a project's cue-list edits, as `studio sfx draft` writes a list. A refusal comes back as a value, so the editor
  * can say why (a stale tab reloads; a bad edit is named) rather than fail its whole screen.
  */
 export const submitLabSfxCueEdits = createServerFn({ method: 'POST' })

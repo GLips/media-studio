@@ -1,9 +1,8 @@
 import * as stylex from '@stylexjs/stylex';
 
 /**
- * The token source: the only module allowed a raw visual value, everything else names a token. The studio's look is
- * the motion showcase's (projects/2026-09-motion-showcase): a near-black ground, cream type, red-orange and cobalt,
- * Archivo for display and JetBrains Mono for readouts. `.stylex.ts` is a StyleX compiler requirement: the file may
+ * The token source: the only module allowed a raw visual value, everything else names a token. The studio's look: a
+ * near-black ground, cream type, red-orange and cobalt, Archivo for display and JetBrains Mono for readouts. `.stylex.ts` is a StyleX compiler requirement: the file may
  * export nothing but `defineVars`.
  */
 

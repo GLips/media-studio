@@ -1,6 +1,6 @@
-// brand.ts: what a client's brand kit is. A kit lives in brands/<name>/ and nowhere else: brand.ts (a Brand, typed
+// brand.ts: what a client's brand kit is. A kit lives in work/brands/<name>/ and nowhere else: brand.ts (a Brand, typed
 // with `satisfies`), its logos beside it, and its font files in fonts/, which git ignores because most are licensed.
-// A project opts in with projects/<p>/brand.ts, a ProjectBrand naming the kit and overriding its colours, palette or
+// A project opts in with <project>/brand.ts, a ProjectBrand naming the kit and overriding its colours, palette or
 // voice, and its stills and scenes import the result as `@brand` (lib/engine/bundle/project-brand.ts writes that module;
 // lib/studio/brand/brand.tsx loads its fonts and logos).
 //
@@ -61,7 +61,7 @@ export function brandFiles(brand: Brand): { fonts: string[]; logos: string[] } {
 
 
 /**
- * A project's brand.ts: the kit it uses, by its folder in brands/, and what it changes for this project. Fonts and logos
+ * A project's brand.ts: the kit it uses, by its folder in work/brands/, and what it changes for this project. Fonts and logos
  * carry files, so a project that needs others names another kit.
  */
 export type ProjectBrand = {

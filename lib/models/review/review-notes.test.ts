@@ -47,16 +47,16 @@ test('a note aimed at a sound names it even out of reach; a range spans scenes; 
 
 test('the markdown lists notes in time order with their frame, timecode, point and context, and says which were on another render', () => {
   const md = formatReviewNotesMarkdown({
-    media: 'projects/x/out/video.mp4', kind: 'video', fps: 30,
+    media: 'work/projects/x/out/video.mp4', kind: 'video', fps: 30,
     notes: [
       { id: 'c', frame: 85, text: 'hold is short', context: {} },
       { id: 'b', frame: 80, render: '0441aaaaaa', text: 'whip lands late', cue: 'buy@80', context: { sounds: [{ id: 'buy@80', sound: 'whoosh.whip', frame: 80, targeted: true }] } },
       { id: 'a', frame: 60, x: 0.4, y: 0.4, render: '0855bbbbbb', text: 'price pops\ntoo early', context: { scenes: ['buy'], elements: [{ id: 'buy/card/price', kind: 'odometer' }] } },
     ],
-  }, { title: 'X', savedTo: 'projects/x/review/notes-video.json', render: { hash: '0855bbbbbb', modified: '2026-09-25T15:55:00.000Z' } });
+  }, { title: 'X', savedTo: 'work/projects/x/review/notes-video.json', render: { hash: '0855bbbbbb', modified: '2026-09-25T15:55:00.000Z' } });
   assert.equal(md, [
     '## Review notes: X',
-    '`projects/x/out/video.mp4` · render `0855bbbbbb` modified 2026-09-25T15:55:00.000Z · 30 fps · saved to `projects/x/review/notes-video.json`',
+    '`work/projects/x/out/video.mp4` · render `0855bbbbbb` modified 2026-09-25T15:55:00.000Z · 30 fps · saved to `work/projects/x/review/notes-video.json`',
     '',
     '1. **f60 (0:02.00)** at (0.40, 0.40): price pops too early',
     '   - scene: buy',
@@ -79,6 +79,6 @@ test('a note on a variant sheet names the variant under its point, and whether t
   const context = reviewNoteContext({ x: 0.7, y: 0.5 }, { fps: 30, frameSize: { w: 1, h: 1 }, cells });
   assert.deepEqual(context, { cell: { variant: 'long-card', axes: { headline: 'long', crop: 'card' }, refused: true } });
   assert.deepEqual(reviewNoteContext({ x: 0.47, y: 0.5 }, { fps: 30, frameSize: { w: 1, h: 1 }, cells }), {});
-  const md = formatReviewNotesMarkdown({ media: 'projects/x/out/still-sheets/card-og.png', kind: 'still', notes: [{ id: 'a', x: 0.7, y: 0.5, text: 'this one', context }] }, {});
+  const md = formatReviewNotesMarkdown({ media: 'work/projects/x/out/still-sheets/card-og.png', kind: 'still', notes: [{ id: 'a', x: 0.7, y: 0.5, text: 'this one', context }] }, {});
   assert.match(md, /variant: `long-card` \(headline long, crop card\), refused by the still check/);
 });

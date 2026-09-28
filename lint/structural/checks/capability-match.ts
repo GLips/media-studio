@@ -14,6 +14,7 @@
 // sound anywhere, so its delivered file's review holds that it has no audio.
 
 import { capabilityOfParts, PROJECT_CAPABILITIES, type ProjectCapability, type ProjectPart } from '#models/project/capability.ts';
+import { declaredProperty, propertyKeyName, unwrapExpression } from '../project-declaration.ts';
 import type { AstNode, SourceFile } from '../source-tree.ts';
 import { callsTo, type CheckContext, type Finding, type StructuralCheck } from '../check-context.ts';
 
@@ -51,7 +52,7 @@ function matchProject(context: CheckContext, { project, timeline, video, stills 
   let timed = false;
   if (timeline) {
     const [call] = callsTo(context, timeline, DEFINE_TIMELINE);
-    const spec = call && unwrap((call.arguments as AstNode[])[0]);
+    const spec = call && unwrapExpression((call.arguments as AstNode[])[0]);
     if (spec?.type !== 'ObjectExpression') {
       report(timeline, 1, 'timeline unreadable', 'states no defineTimeline({ … }) whose grid and voice can be read');
     } else {
@@ -88,26 +89,10 @@ function matchProject(context: CheckContext, { project, timeline, video, stills 
 }
 
 function declaredCapability(file: SourceFile): ProjectCapability | undefined {
-  const exported = (file.program.body as AstNode[]).find((node) => node.type === 'ExportDefaultDeclaration');
-  const object = exported && unwrap(exported.declaration as AstNode);
-  if (object?.type !== 'ObjectExpression') return undefined;
-  const property = (object.properties as AstNode[]).find((p) => p.type === 'Property' && keyName(p) === 'capability');
-  const value = property && unwrap(property.value as AstNode);
+  const value = declaredProperty(file, 'capability');
   return value?.type === 'Literal' && PROJECT_CAPABILITIES.includes(value.value as ProjectCapability) ? value.value as ProjectCapability : undefined;
 }
 
-/** `x satisfies T`, `x as T` and `(x)` are x. */
-function unwrap(node: AstNode | undefined): AstNode | undefined {
-  while (node && ['TSSatisfiesExpression', 'TSAsExpression', 'ParenthesizedExpression'].includes(node.type)) node = node.expression as AstNode;
-  return node;
-}
-
 function propertyNames(object: AstNode): string[] {
-  return (object.properties as AstNode[]).flatMap((p) => (p.type === 'Property' ? [keyName(p)].filter((k): k is string => k !== undefined) : []));
-}
-
-function keyName(property: AstNode): string | undefined {
-  const key = property.key as AstNode;
-  if (property.computed) return key.type === 'Literal' && typeof key.value === 'string' ? key.value : undefined;
-  return key.type === 'Identifier' ? key.name as string : key.type === 'Literal' ? String(key.value) : undefined;
+  return (object.properties as AstNode[]).flatMap((p) => (p.type === 'Property' ? [propertyKeyName(p)].filter((k): k is string => k !== undefined) : []));
 }

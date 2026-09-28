@@ -5,9 +5,9 @@
 import { readSfxCueList, writeSfxCueList, writeSfxCueModule } from '#sfx/cue-module.ts';
 import type { SfxCue } from '#sfx/cues.ts';
 import { resolveSfxParams, type SfxRequest } from '#sfx/library.ts';
-import { projectFolderNamed } from '#engine/review/project-media.ts';
+import { ProjectMediaNotFound, projectFolderNamed } from '#engine/review/project-media.ts';
 import type { LabSfxCueEdit, LabSfxCuePayload } from '#models/lab/lab-catalog.ts';
-import { buildLabCatalog, LAB_SFX_CUE_DEMO_PROJECT, labSfxCueRevision } from './lab-catalog.ts';
+import { labMediaRegister, labSfxCueRevision, readLabSfxCuePayload } from './lab-catalog.ts';
 
 /** The edit is refused as asked: the web layer answers 400. */
 export class LabSfxCueRequestError extends Error {}
@@ -15,11 +15,10 @@ export class LabSfxCueRequestError extends Error {}
 export class LabSfxCueStaleError extends Error {}
 
 export function saveLabSfxCueEdits(project: string, { revision, edits }: { revision: string; edits: readonly LabSfxCueEdit[] }): LabSfxCuePayload {
-  // The editor only ever opens the demo project, so nothing else is written through it.
-  if (project !== LAB_SFX_CUE_DEMO_PROJECT) throw new LabSfxCueRequestError(`${project} isn't the lab's cue-list project`);
-  const dir = projectFolderNamed(project);
+  const dir = labSfxCueProjectFolder(project);
   const onDisk = readSfxCueList(dir);
-  if (!onDisk) throw new LabSfxCueRequestError('the project has no sfx/cues.json to save into');
+  // Only a list `studio sfx draft` wrote is saved into: the editor never starts one.
+  if (!onDisk) throw new LabSfxCueRequestError(`${project} has no sfx/cues.json to save into`);
   if (revision !== labSfxCueRevision(dir)) throw new LabSfxCueStaleError('sfx/cues.json has changed since the editor loaded it: reload to see the new version (unsaved edits here are lost)');
   const byId = new Map(edits.map((e) => [e.id, e]));
   const same = byId.size === onDisk.cues.length && onDisk.cues.every((c) => byId.has(c.event.id));
@@ -36,7 +35,17 @@ export function saveLabSfxCueEdits(project: string, { revision, edits }: { revis
   });
   writeSfxCueList(dir, { ...onDisk, cues });
   writeSfxCueModule(dir);
-  return buildLabCatalog({ exported: false }).catalog.sfxCues!;
+  return readLabSfxCuePayload(dir, labMediaRegister(new Map(), false))!;
+}
+
+/** The project's folder, a posted name that isn't a project being the editor's mistake (400), not the server's. */
+function labSfxCueProjectFolder(project: string): string {
+  try {
+    return projectFolderNamed(project);
+  } catch (error) {
+    if (error instanceof ProjectMediaNotFound) throw new LabSfxCueRequestError(error.message);
+    throw error;
+  }
 }
 
 /** A request lib/sfx can render: its parameters are checked by the library itself. */

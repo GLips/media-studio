@@ -5,10 +5,46 @@ description: Capture a site for a video by writing a project's capture.ts (still
 
 # Capturing
 
-Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it. `projects/<p>/capture.ts` declares
+Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it. `work/projects/<p>/capture.ts` declares
 named shots with `captureShots` from `lib/engine/capture/capture.ts`, whose header and types are the API. `studio capture <p>` films
-them into `captures/`; `--only=a,b` redoes just those, and the rest keep their last capture.
-`projects/2026-09-simple-buy-box-story/capture.ts` is a worked example.
+them into `captures/`; `--only=a,b` redoes just those, and the rest keep their last capture. The shape a real one
+settles into:
+
+```ts
+import { captureShots, type Page } from '#engine/capture/capture.ts';
+
+const PDP = 'https://shop.example.com/products/widget';
+// A chat teaser that arrives at random would flicker between states that crossfade.
+const HIDE_POPUPS = '#chat-teaser { display: none !important; }';
+const BOX = { price: '.price', stepper: '.buy-box quantity-input', plus: '.buy-box button[name="plus"]' } as const;
+
+const shots = captureShots({
+  project: import.meta.dirname,
+  viewport: { width: 1440, height: 810 },
+  css: HIDE_POPUPS,
+  prepare: async (page) => { /* once per device, kept by every shot: sign in, accept the cookie banner */ },
+  devices: { phone: { viewport: { width: 390, height: 844 } } },
+});
+
+const open = async (page: Page, url: string) => {
+  await page.goto(url, { waitUntil: 'load' });
+  await page.waitForTimeout(3000);
+};
+
+shots.still('box', { setup: (page) => open(page, PDP), rects: BOX, height: 1400 });
+// Each state is its clicks from a fresh page, so it can be redone alone.
+shots.still('box-three', {
+  setup: async (page) => { await open(page, PDP); for (let i = 0; i < 2; i++) await page.locator(BOX.plus).click(); },
+  rects: BOX,
+  height: 1400,
+});
+shots.take('step-up', { setup: (page) => open(page, PDP), perform: (rec) => rec.click(BOX.plus, { mark: 'plus' }) });
+
+export default shots;
+```
+
+Name the rect maps once and share them between shots, and write a comment on each workaround saying what it hides
+or waits for and why.
 
 Find selectors with `studio probe <p> <url-or-path>` (`--at=x,y` for one spot): it opens the page as the shots will,
 signed in and styled, and lists elements with rect specs and match counts. Use it instead of a throwaway Playwright

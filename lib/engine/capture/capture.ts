@@ -19,7 +19,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { gitState, linkedProjectHost, type GitState, type ProjectHostSpec } from '../host/hosts.ts';
-import { STUDIO_ROOT } from '../project/studio-project.ts';
+import { STUDIO_ROOT, STUDIO_WORKSPACE_DIR } from '../project/studio-project.ts';
+import { isStudioWorkspaceRepo } from '../project/studio-workspace.ts';
 
 // A shot's setup is handed playwright's Page. Projects take the type from here, so playwright keeps one importer.
 export type { Page };
@@ -137,7 +138,8 @@ export function captureShots({ project, viewport, scale = 2, css = '', prepare, 
     const unknown = only?.filter((n) => !shots.some((s) => s.name === n)) ?? [];
     if (unknown.length) throw new Error(`capture: no shot named ${unknown.join(', ')}`);
     mkdirSync(dir, { recursive: true });
-    const madeFrom = { studio: gitState(STUDIO_ROOT), host: linkedProjectHost(project) };
+    // The studio's code and the workspace's (the project's own files) are two repositories, so each gets its state.
+    const madeFrom = { studio: gitState(STUDIO_ROOT), workspace: isStudioWorkspaceRepo() ? gitState(STUDIO_WORKSPACE_DIR) : null, host: linkedProjectHost(project) };
 
     const browser = await chromium.launch();
     const prepared = new Map<string, Promise<PreparedDevice>>();
@@ -485,7 +487,7 @@ const entryPath = (dir: string, name: string) => join(dir, `${name}.json`);
 
 // What each shot was made from, so a video can be traced back to the studio and host commits (and URL) behind it
 // without keeping the media. Per shot, since --only redoes some shots against newer commits than the rest.
-type ShotProvenance = { url: string; capturedAt: string; studio: GitState; host: (ProjectHostSpec & GitState) | null };
+type ShotProvenance = { url: string; capturedAt: string; studio: GitState; workspace: GitState | null; host: (ProjectHostSpec & GitState) | null };
 const provenancePath = (dir: string) => join(dir, 'provenance.json');
 const readProvenance = (dir: string): Record<string, ShotProvenance> => (existsSync(provenancePath(dir)) ? JSON.parse(readFileSync(provenancePath(dir), 'utf8')) : {});
 

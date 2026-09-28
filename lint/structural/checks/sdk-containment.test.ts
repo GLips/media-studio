@@ -5,15 +5,15 @@ import { caught, runCheckOnFiles } from '../spec-tree.ts';
 test('a contained SDK reached outside its owner is caught, however it is spelled', () => {
   const findings = runCheckOnFiles('sdk-containment', {
     // Obvious: a project's capture importing playwright, and the CLI spawning ffmpeg.
-    'projects/p/capture.ts': "import { chromium } from 'playwright';\n",
+    'work/projects/p/capture.ts': "import { chromium } from 'playwright';\n",
     'cli/commands/cut.ts': "import { execFileSync } from 'node:child_process';\nexecFileSync('ffmpeg', ['-i', 'a.mp4']);\n",
     // Adversarial: a type-only import, a dynamic import, a subpath, a binary behind a variable, a path to it, and a
     // shell line through a member call.
     'cli/commands/types.ts': "import type { Page } from 'playwright';\n",
     'cli/commands/serve.ts': "const { renderMedia } = await import('@remotion/renderer');\nimport { transform } from 'esbuild/lib/main.js';\nconst { createServer } = await import('vite');\n",
-    'projects/p/tools/probe.ts': "const BIN = `ffprobe`;\nconst other = '/opt/homebrew/bin/ffmpeg';\ncp.execSync(`ffmpeg -i ${file} out.wav`);\n",
+    'work/projects/p/tools/probe.ts': "const BIN = `ffprobe`;\nconst other = '/opt/homebrew/bin/ffmpeg';\ncp.execSync(`ffmpeg -i ${file} out.wav`);\n",
     // Adversarial: a command line through a promisified exec, a shell: true spawn and sh -c.
-    'projects/p/tools/shell.ts': [
+    'work/projects/p/tools/shell.ts': [
       "run('ffprobe -v error a.mp4');",
       "spawn('ffmpeg -i a.mp4 b.wav', { shell: true });",
       "execFileSync('sh', ['-c', `${dir}/ffmpeg -y -i ${x} out.wav`]);",
@@ -33,11 +33,11 @@ test('a contained SDK reached outside its owner is caught, however it is spelled
     'cli/commands/serve.ts:esbuild',
     'cli/commands/serve.ts:vite',
     'cli/commands/types.ts:playwright',
-    'projects/p/capture.ts:playwright',
-    'projects/p/tools/probe.ts:/opt/homebrew/bin/ffmpeg',
-    'projects/p/tools/probe.ts:ffmpeg',
-    'projects/p/tools/probe.ts:ffprobe',
-    'projects/p/tools/shell.ts:ffmpeg',
-    'projects/p/tools/shell.ts:ffprobe',
+    'work/projects/p/capture.ts:playwright',
+    'work/projects/p/tools/probe.ts:/opt/homebrew/bin/ffmpeg',
+    'work/projects/p/tools/probe.ts:ffmpeg',
+    'work/projects/p/tools/probe.ts:ffprobe',
+    'work/projects/p/tools/shell.ts:ffmpeg',
+    'work/projects/p/tools/shell.ts:ffprobe',
   ]);
 });

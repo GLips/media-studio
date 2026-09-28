@@ -10,7 +10,15 @@ export const PROJECT_CAPABILITIES = ['music-led', 'voice-led', 'still-only', 'mi
 export type ProjectCapability = (typeof PROJECT_CAPABILITIES)[number];
 
 /** A project's project.ts: `export default { capability: 'voice-led' } satisfies ProjectDeclaration;` */
-export type ProjectDeclaration = { capability: ProjectCapability };
+export type ProjectDeclaration = {
+  capability: ProjectCapability;
+  /**
+   * The project's shared modules, as paths inside it (`['look.ts', 'hud/hud.ts']`), written out as literals for
+   * check:arch to read: files every scene may import (a palette, a HUD), held to never importing back into a scene.
+   * A scene's own file or a root module can't be declared shared.
+   */
+  shared?: readonly string[];
+};
 
 export type ProjectPart = 'music' | 'voice' | 'stills';
 

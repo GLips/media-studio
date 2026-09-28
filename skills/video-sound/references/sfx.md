@@ -20,7 +20,7 @@ An `<Sfx>` a scene placed itself always plays from the scene.
 studio sfx draft <p> [--click-style soft|mechanical|pop|tick]
 ```
 
-It runs a full `studio check` to find the events and drafts a cue for each into `projects/<p>/sfx/cues.json`. It
+It runs a full `studio check` to find the events and drafts a cue for each into `work/projects/<p>/sfx/cues.json`. It
 prints one line per cue: its time, its event, and its sound or why it's silent. The events are:
 
 | Event | From | Draft |
@@ -72,7 +72,7 @@ Nothing to license, and a rerun writes identical files. `studio sfx list` prints
 2. **A project's own**, when the kit's take doesn't fit the moment (a longer whoosh, a softer chime):
 
    ```sh
-   studio sfx render whoosh.soft --seed reveal --set recede=0.9,brightness=0.3 --out projects/<p>/sfx/reveal.wav
+   studio sfx render whoosh.soft --seed reveal --set recede=0.9,brightness=0.3 --out work/projects/<p>/sfx/reveal.wav
    ```
 
    - `whoosh.soft` is a recipe and one of its presets, and `--set` overrides its parameters.
@@ -81,7 +81,7 @@ Nothing to license, and a rerun writes identical files. `studio sfx list` prints
    - `--category accent` levels it as an accent, 8 LU under the voice, when its job here is bigger than its recipe's
      (a pop marking a music-led video's colour flood); `ui` the other way.
    - It writes `reveal.wav` and a `reveal.ts` beside it. Import the `.ts`, and pass its default export as `sound`.
-   - After a recipe or the renderer changes, `studio sfx rerender projects/<p>/sfx` rerenders every sound there from
+   - After a recipe or the renderer changes, `studio sfx rerender work/projects/<p>/sfx` rerenders every sound there from
      the request its `.ts` records.
 
    Presets are starting points. A note on how a sound sounds maps to a parameter, so rerender with `--set` rather

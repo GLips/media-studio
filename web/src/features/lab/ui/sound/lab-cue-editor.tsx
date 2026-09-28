@@ -30,7 +30,7 @@ type LabCueEditorProps = {
 };
 
 /**
- * The demo project's sfx/cues.json (the list `studio sfx draft` writes) over its rendered video: the list's sounds play
+ * A project's sfx/cues.json (the list `studio sfx draft` writes) over its rendered video: the list's sounds play
  * with it, and each cue can be swapped, muted, filled, nudged and levelled, seeing live which of the studio's rules an
  * edit breaks.
  */

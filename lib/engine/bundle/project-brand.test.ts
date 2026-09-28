@@ -9,7 +9,7 @@ let projects = 0;
 
 function acmeProject() {
   const root = join(studioTempRoot(), `brand-${++projects}`);
-  const project = join(root, 'projects', 'p'), kit = join(root, 'brands', 'acme');
+  const project = join(root, 'work', 'projects', 'p'), kit = join(root, 'work', 'brands', 'acme');
   mkdirSync(project, { recursive: true });
   mkdirSync(join(kit, 'fonts'), { recursive: true });
   const face = { family: 'Acme Sans', fallback: 'sans-serif', files: [{ file: 'fonts/AcmeSans-Bold.otf', weight: '700' }], source: 'the Acme brand portal' };
@@ -27,7 +27,7 @@ test("a project's kit stops the bundle naming each missing file, and once they'r
   const { project, kit, setProject } = acmeProject();
   setProject({ name: 'acme' });
   assert.throws(() => writeProjectBrandModule(project), {
-    message: 'brands: acme is missing files in brands/acme/ (fonts/ isn\'t in git, so each machine adds its own):\n  fonts/AcmeSans-Bold.otf: the Acme brand portal\n  logo-dark.svg',
+    message: 'brands: acme is missing files in work/brands/acme/ (fonts/ isn\'t in git, so each machine adds its own):\n  fonts/AcmeSans-Bold.otf: the Acme brand portal\n  logo-dark.svg',
   });
 
   writeFileSync(join(kit, 'fonts', 'AcmeSans-Bold.otf'), '');

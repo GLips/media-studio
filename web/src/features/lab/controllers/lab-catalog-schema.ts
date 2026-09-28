@@ -34,7 +34,7 @@ const LabCatalogSchema = Schema.Struct({
     id: Schema.String, project: Schema.String, name: Schema.String, url: Schema.String, duration: Schema.Number, bpm: Schema.Number,
     beats: array(Schema.Number), fit: Schema.optionalKey(Schema.Struct({ source: Schema.String, seams: array(Schema.Number) })),
   })),
-  sfxCues: Schema.NullOr(Schema.Struct({
+  sfxCues: array(Schema.Struct({
     project: Schema.String,
     list: Schema.Struct({ version: Schema.Literal(1), clickStyle: Schema.Literals(['soft', 'mechanical', 'pop', 'tick']), cues: array(SfxCueSchema) }),
     words: array(Schema.Struct({ text: Schema.String, start: Schema.Number, end: Schema.Number })),

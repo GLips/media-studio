@@ -7,21 +7,42 @@ Every frame is a pure function of time, so a change to one scene is an edit and 
 
 ## Install
 
+You need Node 24, git, `ffmpeg` on your PATH and a GPU Chrome can use (a render refuses software GL). It's built on
+macOS: the draft voice (`say`), the Safari alpha video (VideoToolbox) and `bin/studio-secrets` (the keychain) need it.
+
 ```sh
 npm install
-npm link        # puts `studio` on your PATH, pointing at this checkout
+npm link                  # puts `studio` on your PATH, pointing at this checkout
+studio workspace init     # makes work/, where everything you make lives
+studio new launch-teaser --capability=music-led
 ```
 
 `studio` is TypeScript run directly by Node 24. `studio home` prints this repo's root, from anywhere.
 
+## Your work
+
+This repo is the studio; what you make with it lives in `work/`, which the studio's git ignores. `studio workspace
+init` makes it a git repository of its own, so your projects, brand kits and client names stay out of the studio's
+history. Add a remote and push it wherever you like, private or not; pull the studio's updates without touching it.
+
+```
+work/projects/<yyyy-mm-name>/   a video or a set of stills (studio new)
+work/brands/<name>/             a client's brand kit: colours, fonts, logos, voice (docs/brand-kits.md)
+work/hosts.json                 product repos a video can compose components from (Hosts, below)
+work/arch-baseline.json         check:arch's baseline for your files
+```
+
+Its commits run their own gate (`.githooks-workspace/pre-commit`): `check:arch --scope workspace`, the full typecheck
+and your projects' tests.
+
 ## The pipeline
 
-Every step is a `studio` verb. A `<project>` is a slug (`sale-only-view`), a unique part of a name, or a path.
+Every step is a `studio` verb. A `<project>` is a slug (`launch-teaser`), a unique part of a name, or a path.
 `studio <verb> --help` has the flags; each prints what it made on stdout and its progress on stderr.
 
 | Step | Command | Output |
 |---|---|---|
-| Start | `studio new <slug> --capability=<music-led\|voice-led\|mixed\|silent\|still-only> [--url=…]` | `projects/<yyyy-mm>-<slug>/` that passes `check:arch`, the typecheck and its tests from its first commit: a `project.ts` declaring the capability, and a `timeline.ts` with its retime test and a scene file per scene, each blocked in flat pieces moving on its cues (lines' timing estimated), or a starter `stills.tsx`; with `--url`, that page captured as `home` |
+| Start | `studio new <slug> --capability=<music-led\|voice-led\|mixed\|silent\|still-only> [--url=…]` | `work/projects/<yyyy-mm>-<slug>/` that passes `check:arch`, the typecheck and its tests from its first commit: a `project.ts` declaring the capability, and a `timeline.ts` with its retime test and a scene file per scene, each blocked in flat pieces moving on its cues (lines' timing estimated), or a starter `stills.tsx`; with `--url`, that page captured as `home` |
 | Probe | `studio probe <project> <url-or-path> [--at=x,y]` | a numbered viewport screenshot of a page as `capture.ts` sees it (signed in by its `prepare`), and its interactive and landmark elements (or the one under `--at`) with selectors for rects |
 | Capture | `studio capture <project>` | `captures/` plus `captures/index.ts`: the named shots. A still is a high-DPI full-page screenshot with the page positions of the elements scenes point at; a take is a screen recording of real clicks, scrolls and typing, with marks. Shots `capture.ts` no longer makes are deleted |
 | Voice | `studio voice <project>` | `audio/take.wav`, the whole script read in one take, cut into `audio/<line>.wav` plus `audio/manifest.ts`. Any script change re-reads the take. `--read=draft` is a free macOS `say` read, `--read=estimate` times lines from their word count, `--take=<file>` uses a recording. `studio audition` compares voices on one line |
@@ -50,16 +71,17 @@ effects from seeded recipes (`studio sfx list`; `studio sfx showcase` to listen 
 
 `npm run typecheck` checks everything, including that every rect a scene points at was captured. `npm test` runs the
 tests. `npm run check:arch` holds the architecture (where timing is built, what a scene may import, a project's declared
-capability against what it binds) over what the next commit holds; today's older violations sit in
-`lint/arch-baseline.json` and a new one blocks. The pre-commit gate (`.githooks/pre-commit`, switched on by
-`npm install`) runs `check:arch`, then `typecheck:gate` and `test:gate`: the typecheck and tests of what a clean clone
-holds, leaving out project compositions and retime tests, which need the projects' gitignored recordings.
+capability against what it binds, the modules its scenes may share) over what the next commit holds; older
+violations sit in `lint/arch-baseline.json` (the studio's) and `work/arch-baseline.json` (yours), and a new one
+blocks. The pre-commit gate (`.githooks/pre-commit`, switched on by `npm install`) runs `check:arch`, then
+`typecheck:gate` and `test:gate`: the typecheck and tests of what a clean clone holds, which has no `work/`. Your workspace's commits run the rest (Your work, above).
 
 ## A project
 
 ```
-projects/<yyyy-mm-name>/
-  project.ts       its capability: music-led, voice-led, mixed, silent or still-only (lib/models/project/capability.ts)
+work/projects/<yyyy-mm-name>/
+  project.ts       its capability: music-led, voice-led, mixed, silent or still-only (lib/models/project/capability.ts),
+                   and the modules its scenes may share
   capture.ts       the named shots: stills and takes, each with its own setup (lib/engine/capture/capture.ts)
   voiceover.json   { voice, lines: [{ id, text }] }
   timeline.ts      the timing, stated once: each scene's driver (beats, seconds or its voiced lines) and its cues
@@ -128,35 +150,36 @@ past that it needs a company license.
 ## Secrets
 
 Only paid calls need a secret (`studio voice`, `studio audition`, and generation through `lib/engine/generation/paid-generation.ts`):
-`OPENROUTER_API_KEY`, read from the environment. A reference video (`studio gen video`) is also uploaded to our R2
-bucket for the provider to fetch through a link that expires (`lib/engine/generation/s3-upload.ts`), which needs `STUDIO_UPLOAD_S3_ENDPOINT`,
-`STUDIO_UPLOAD_S3_BUCKET`, `STUDIO_UPLOAD_S3_ACCESS_KEY_ID`, `STUDIO_UPLOAD_S3_SECRET_ACCESS_KEY` and, for a bucket
-outside R2, `STUDIO_UPLOAD_S3_REGION`. `.env.op` holds 1Password references, not keys, and `bin/studio-secrets`
-resolves them for the one command it runs:
+`OPENROUTER_API_KEY`, read from the environment. A reference video (`studio gen video`) is also uploaded to an
+S3-compatible bucket (R2, say) for the provider to fetch through a link that expires
+(`lib/engine/generation/s3-upload.ts`), which needs `STUDIO_UPLOAD_S3_ENDPOINT`, `STUDIO_UPLOAD_S3_BUCKET`,
+`STUDIO_UPLOAD_S3_ACCESS_KEY_ID`, `STUDIO_UPLOAD_S3_SECRET_ACCESS_KEY` and, for a bucket outside R2,
+`STUDIO_UPLOAD_S3_REGION`. With 1Password, `work/.env.op` holds references to them, not keys, one per line
+(`OPENROUTER_API_KEY=op://<vault>/<item>/<field>`), and `bin/studio-secrets` resolves them for the one command it runs:
 
 ```sh
 "$(studio home)/bin/studio-secrets" studio voice <project>
 ```
 
-It reads a 1Password service account's token (read-only on the `media-studio` vault) from the macOS keychain, hands it
+It reads a 1Password service account's token (read-only on the vault the references name) from the macOS keychain, hands it
 to `op` alone and strips it before the command starts, so neither a shell nor the command's environment carries it.
 Code running as your user can still read the keychain item, so the account's read-only, one-vault scope is the real
-limit. `scratch/op-service-account-setup.sh` creates the account and the keychain item.
+limit. Without 1Password, set the variables in your environment yourself.
 
 ## Hosts
 
-A video can be about a product repo, its host, and compose that repo's real React components. `hosts.json`
-(committed) maps a host name to `{ "repo": "<git url>" }`; `hosts.local.json` (gitignored, optional) maps it to an
-absolute (or `~/…`) path of a working copy on this machine, used as it stands, uncommitted changes included. A project
-opts in with `projects/<p>/host.json` `{ "name", "ref", "browserStubs"? }`. `studio hosts sync <p> [--install]`
+A video can be about a product repo, its host, and compose that repo's real React components. `work/hosts.json`
+(committed in your workspace) maps a host name to `{ "repo": "<git url>" }`; `work/hosts.local.json` (gitignored,
+optional) maps it to an absolute (or `~/…`) path of a working copy on this machine, used as it stands, uncommitted changes included. A project
+opts in with `work/projects/<p>/host.json` `{ "name", "ref", "browserStubs"? }`. `studio hosts sync <p> [--install]`
 checks the ref out into `~/.cache/studio/hosts/<name>@<sha>` (outside the studio, so the host's own tooling never
-finds the studio's packages), or uses the working copy, and links it at `projects/<p>/host`. `--install` runs the
+finds the studio's packages), or uses the working copy, and links it at `work/projects/<p>/host`. `--install` runs the
 host's install in a checkout, lifecycle scripts included.
 
 A scene imports `@host/<path from the host root>`. The bundle resolves host files' own tsconfig `paths` and packages,
 shares the studio's React, and replaces host files matching `browserStubs` (server-only code) with empty modules.
 tsc types `@host/…` as `any`, so `studio look` is the check. Plain CSS and CSS modules load; Tailwind/PostCSS doesn't.
-Every capture writes `captures/provenance.json` (per shot: URL, time, studio and host commits), so a video can be
+Every capture writes `captures/provenance.json` (per shot: URL, time, and the studio's, workspace's and host's commits), so a video can be
 traced to its source without keeping media.
 
 ## Skills
@@ -164,10 +187,14 @@ traced to its source without keeping media.
 The skills (`skills/`) ship as the `media-studio` Claude Code plugin, and this repo is its own marketplace, so they work
 from any repo ("make a PR walkthrough video for this change"). Install once per machine, in Claude Code:
 
-    /plugin marketplace add ~/Programming/media-studio
+    /plugin marketplace add <path to this checkout>
     /plugin install media-studio@media-studio
 
 A local-directory marketplace loads the plugin in place, so edits to `skills/` reach the next session. Skills find
 this repo with `studio home`. `video-kickoff` takes a video from the first dump to an approved storyboard,
 `video-capture` writes the shots, `video-motion` animates, `video-sound` scores it, `video-canvas` paints, `stills` makes OG images, thumbnails and social images, and `remotion` covers new primitives.
 `docs/directing.md` is a short course on directing.
+
+## License
+
+MIT (`LICENSE`).

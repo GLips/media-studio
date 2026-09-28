@@ -1,0 +1,31 @@
+#!/bin/sh
+# The workspace's pre-commit gate (work/ is its own repository; lib/engine/project/studio-workspace.ts points its
+# core.hooksPath here): check:arch over the index this commit holds, read against the studio's own index, then the full
+# typecheck and the workspace projects' tests. Each runs on its own, so one failure doesn't hide the next.
+#
+# Git runs this in work/ with GIT_DIR and GIT_INDEX_FILE possibly relative to it. check:arch reads the studio from
+# its root, so both are made absolute first: it reads the workspace in this environment and the studio without it.
+
+GIT_DIR=$(git rev-parse --absolute-git-dir) && export GIT_DIR
+case "${GIT_INDEX_FILE:-}" in
+  '') ;;
+  /*) ;;
+  *) GIT_INDEX_FILE="$(pwd)/$GIT_INDEX_FILE"; export GIT_INDEX_FILE ;;
+esac
+cd "$(dirname "$0")/.." || exit 1
+
+failed=''
+npm run -s check:arch -- --scope workspace || failed="$failed check:arch"
+
+# A test's throwaway repo must never see the hook's git environment, or its git commands land in the workspace.
+for name in $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$name"; done
+
+npm run -s typecheck || failed="$failed typecheck"
+log=$(mktemp)
+npm run -s test:workspace > "$log" 2>&1 || { tail -n 60 "$log"; failed="$failed test"; }
+rm -f "$log"
+
+if [ -n "$failed" ]; then
+  echo "workspace pre-commit gate: failed$failed. Fix it and commit again." >&2
+  exit 1
+fi

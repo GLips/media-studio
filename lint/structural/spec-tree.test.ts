@@ -55,11 +55,11 @@ test('under a hook, a fixture repo stays its own: the repo being committed keeps
       runFixtureGit(fixture, ['-c', 'user.email=spec@example.com', 'commit', '-q', '-m', 'base']);
       return runCheckOnFiles('timing-ownership', {
         'lib/models/timeline/timeline.ts': 'export const beatSpan = (n: number) => n;\n',
-        'projects/p/video.tsx': "import { beatSpan } from '../../lib/models/timeline/timeline.ts';\nbeatSpan(1);\n",
+        'work/projects/p/video.tsx': "import { beatSpan } from '../../../lib/models/timeline/timeline.ts';\nbeatSpan(1);\n",
       });
     });
     assert.deepEqual(parent.state(), untouched);
     // The check read the fixture's index, not the parent's.
-    assert.deepEqual(caught(findings), ['projects/p/video.tsx:beatSpan from ../../lib/models/timeline/timeline.ts']);
+    assert.deepEqual(caught(findings), ['work/projects/p/video.tsx:beatSpan from ../../../lib/models/timeline/timeline.ts']);
   });
 });

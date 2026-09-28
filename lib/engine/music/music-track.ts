@@ -1,7 +1,7 @@
 // music-track.ts: adds a music track to a project, supplied or generated with Lyria, measured for the mix and
 // beat-tracked, and fits one to a length. `studio music add`, `gen` and `fit` run it.
 //
-// `add` copies the track to projects/<p>/music/ and writes music/index.ts, which the video imports:
+// `add` copies the track to <project>/music/ and writes music/index.ts, which the video imports:
 //   import { music } from './music/index.ts';
 //   defineVideo({ …, music: { track: music.bed } })
 // Each track carries its loudness (the mix levels it against the voice), its tempo, and its beat times in the track,

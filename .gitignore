@@ -1,14 +1,8 @@
 node_modules/
 scratch/
-projects/*/captures/
-projects/*/out/
-projects/*/audio/
 .agent_cache/
-projects/*/music/
-hosts.local.json
-projects/*/host
 .DS_Store
-projects/*/generated/
-# A brand kit's font files: most are licensed (lib/models/brand/brand.ts).
-brands/*/fonts/
 web/dist/
+# Your own projects, brand kits and hosts: a git repository of its own that `studio workspace init` makes
+# (lib/engine/project/studio-workspace.ts).
+/work/

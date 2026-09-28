@@ -12,8 +12,8 @@ export type LabCatalog = {
   exported: boolean;
   gallery: LabGalleryItem[];
   music: LabMusicTrack[];
-  /** The demo cue list, or null when its project has none (or the deploy left its video out). */
-  sfxCues: LabSfxCuePayload | null;
+  /** Every project's cue list, one per project with an sfx/cues.json; empty when none has drafted one. */
+  sfxCues: LabSfxCuePayload[];
 };
 
 type GeneratedMediaKind = 'image' | 'video' | 'audio';

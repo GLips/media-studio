@@ -8,14 +8,22 @@ import { pathToFileURL } from 'node:url';
 import type { ProjectCapability, ProjectDeclaration } from '#models/project/capability.ts';
 
 export const STUDIO_ROOT = resolve(import.meta.dirname, '../../..');
-export const STUDIO_PROJECTS_DIR = join(STUDIO_ROOT, 'projects');
+/**
+ * Your own work: projects, brand kits and hosts.json, in a git repository of its own that the studio's repository
+ * ignores (lib/engine/project/studio-workspace.ts). A fresh clone has none until `studio workspace init`.
+ */
+export const STUDIO_WORKSPACE_DIR = join(STUDIO_ROOT, 'work');
+export const STUDIO_PROJECTS_DIR = join(STUDIO_WORKSPACE_DIR, 'projects');
+export const STUDIO_BRANDS_DIR = join(STUDIO_WORKSPACE_DIR, 'brands');
 
+/** The project folders' names; none in a workspace with no projects yet. */
 export function listStudioProjects(): string[] {
+  if (!existsSync(STUDIO_PROJECTS_DIR)) return [];
   return readdirSync(STUDIO_PROJECTS_DIR, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();
 }
 
 /**
- * The absolute directory a project argument names, tried in order: a folder in projects/ by its full name, by its
+ * The absolute directory a project argument names, tried in order: a folder in work/projects/ by its full name, by its
  * slug (the name after the `yyyy-mm-` prefix), by a unique part of its name, and last a path from the working directory.
  */
 export function resolveStudioProject(arg: string): string {
@@ -30,7 +38,7 @@ export function resolveStudioProject(arg: string): string {
   const listed = (list: string[]) => list.map((n) => `\n  ${n}`).join('');
   throw new Error(matches.length
     ? `"${arg}" matches more than one project:${listed(matches)}`
-    : `no project matches "${arg}", and it isn't a folder. The projects are:${listed(names)}`);
+    : `no project matches "${arg}", and it isn't a folder. ${names.length ? `The projects are:${listed(names)}` : 'There are no projects in work/projects/ yet: `studio new` starts one'}`);
 }
 
 /** Like resolveStudioProject, but the project must have `file` (e.g. video.tsx) to be of use to the command. */

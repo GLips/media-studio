@@ -10,24 +10,24 @@ test('a timed project that doesn\'t call the retime runner is caught, however it
     ...RUNNER,
     'lib/studio/kit/kit.ts': "export { assertTimelineRetimes as retimes } from '../../models/timeline/retime.ts';\n",
     // Legal: calls the runner, here through a kit's rename.
-    'projects/ok/timeline.ts': TIMELINE,
-    'projects/ok/timeline.test.ts': "import { retimes } from '../../lib/studio/kit/kit.ts';\nimport { timeline } from './timeline.ts';\nretimes(timeline);\n",
+    'work/projects/ok/timeline.ts': TIMELINE,
+    'work/projects/ok/timeline.test.ts': "import { retimes } from '../../../lib/studio/kit/kit.ts';\nimport { timeline } from './timeline.ts';\nretimes(timeline);\n",
     // Legal: no timeline.ts, so nothing timed to register.
-    'projects/voice/video.tsx': 'export default {};\n',
+    'work/projects/voice/video.tsx': 'export default {};\n',
     // Obvious: no test at all.
-    'projects/bare/timeline.ts': TIMELINE,
+    'work/projects/bare/timeline.ts': TIMELINE,
     // Adversarial: imports the runner but never calls it; imports it type-only; calls a look-alike of its own.
-    'projects/idle/timeline.ts': TIMELINE,
-    'projects/idle/timeline.test.ts': "import { assertTimelineRetimes } from '../../lib/models/timeline/retime.ts';\nvoid assertTimelineRetimes;\n",
-    'projects/typed/timeline.ts': TIMELINE,
-    'projects/typed/timeline.test.ts': "import type { assertTimelineRetimes } from '../../lib/models/timeline/retime.ts';\ndeclare const f: typeof assertTimelineRetimes;\nf(1);\n",
-    'projects/fake/timeline.ts': TIMELINE,
-    'projects/fake/timeline.test.ts': 'const assertTimelineRetimes = (t: unknown) => t;\nassertTimelineRetimes(1);\n',
+    'work/projects/idle/timeline.ts': TIMELINE,
+    'work/projects/idle/timeline.test.ts': "import { assertTimelineRetimes } from '../../../lib/models/timeline/retime.ts';\nvoid assertTimelineRetimes;\n",
+    'work/projects/typed/timeline.ts': TIMELINE,
+    'work/projects/typed/timeline.test.ts': "import type { assertTimelineRetimes } from '../../../lib/models/timeline/retime.ts';\ndeclare const f: typeof assertTimelineRetimes;\nf(1);\n",
+    'work/projects/fake/timeline.ts': TIMELINE,
+    'work/projects/fake/timeline.test.ts': 'const assertTimelineRetimes = (t: unknown) => t;\nassertTimelineRetimes(1);\n',
   });
   assert.deepEqual(caught(findings), [
-    'projects/bare/timeline.ts:no timeline.test.ts',
-    'projects/fake/timeline.ts:runner not called',
-    'projects/idle/timeline.ts:runner not called',
-    'projects/typed/timeline.ts:runner not called',
+    'work/projects/bare/timeline.ts:no timeline.test.ts',
+    'work/projects/fake/timeline.ts:runner not called',
+    'work/projects/idle/timeline.ts:runner not called',
+    'work/projects/typed/timeline.ts:runner not called',
   ]);
 });

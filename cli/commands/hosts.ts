@@ -5,7 +5,7 @@ import { studioProjectArg } from '../project-arg.ts';
 const syncHostsCommand = defineCommand({
   meta: {
     name: 'sync',
-    description: "Check out the project's host at the ref in its host.json into ~/.cache/studio/hosts (or use the working copy hosts.local.json names) and link it at projects/<p>/host, which scenes import as @host/…. Prints the host as JSON.",
+    description: "Check out the project's host at the ref in its host.json into ~/.cache/studio/hosts (or use the working copy hosts.local.json names) and link it at <project>/host, which scenes import as @host/…. Prints the host as JSON.",
   },
   args: {
     project: studioProjectArg,
@@ -20,7 +20,7 @@ const syncHostsCommand = defineCommand({
 });
 
 const listHostsCommand = defineCommand({
-  meta: { name: 'list', description: 'Print every host (hosts.json, hosts.local.json) and the projects about it, as JSON.' },
+  meta: { name: 'list', description: 'Print every host (work/hosts.json, work/hosts.local.json) and the projects about it, as JSON.' },
   async run() {
     const { listHosts } = await import('#engine/host/hosts.ts');
     console.log(JSON.stringify(listHosts(), null, 2));
@@ -30,7 +30,7 @@ const listHostsCommand = defineCommand({
 export default defineCommand({
   meta: {
     name: 'hosts',
-    description: 'Product repos a video is about. hosts.json maps a name to its git repo; hosts.local.json (gitignored) maps it to a working copy on this machine; projects/<p>/host.json { name, ref, browserStubs? } opts a project in, browserStubs being globs of server-only host files the bundle empties.',
+    description: 'Product repos a video is about. work/hosts.json maps a name to its git repo; work/hosts.local.json (gitignored) maps it to a working copy on this machine; <project>/host.json { name, ref, browserStubs? } opts a project in, browserStubs being globs of server-only host files the bundle empties.',
   },
   subCommands: { sync: syncHostsCommand, list: listHostsCommand },
 });

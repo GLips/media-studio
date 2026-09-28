@@ -14,7 +14,7 @@ const FOCUS = { x: 0, y: 0, w: HERO.w, h: Math.min(HERO.h, 0.6 * HERO.w) };
 `
     : '';
   const colours = brand
-    ? `// The kit's roles (brands/${brand}/brand.ts): its primary as the ground, its accent as the field.
+    ? `// The kit's roles (work/brands/${brand}/brand.ts): its primary as the ground, its accent as the field.
 const GROUND = brand.colors.primary;
 const FIELD = brand.colors.accent;
 const PAPER = brand.colors.light;

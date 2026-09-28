@@ -41,10 +41,10 @@ The first message is usually messy and dictated. Pull these out of it, and ask o
 - **What's on screen.** If it shows a real product's UI: the URL, theme, or preview query (e.g. `?view=…`) for each
   state the story needs, and whether it needs a sign-in (the `video-capture` skill, Sites behind a sign-in).
 - **Whose code it's about.** If it's a product repo's (a PR, a component), make that repo the project's host once the
-  project exists: `projects/<p>/host.json` `{ name, ref }`, with `name` a key of `hosts.json` (add it if new), then
+  project exists: `work/projects/<p>/host.json` `{ name, ref }`, with `name` a key of `work/hosts.json` (add it if new), then
   `studio hosts sync <p> --install`. That checks out the pinned commit outside the studio and runs the host's own
   install there, lifecycle scripts included. To show unpushed or uncommitted work, map the name to the working copy
-  in `hosts.local.json` instead: it's used as it stands, and you install its packages yourself.
+  in `work/hosts.local.json` instead: it's used as it stands, and you install its packages yourself.
 - **A reference video**, if they have one for the style.
 - **Rough length, and the frame.** Frames are 1920×1080 at 30 fps unless the video asks for another shape (a vertical
   cut, a square) or rate: `defineVideo({ format })`. An overlay, lower-third or hero animation that sits on a page's
@@ -63,7 +63,7 @@ Start the project with `studio new <slug> --capability <voice-led|music-led|mixe
 scenes with no voice, music or sound, delivered with no audio track), adding `--url` only for a public
 page that loads as it is. Every scene starts blocked, a few flat pieces moving on its cues, so `studio render <p> --animatic`
 and `studio review <p>` show the storyboard as it plays before anything is built. If the video is about a product repo's code, give it a host
-(step 1). Then write the chosen angle out scene by scene in `projects/<p>/storyboard.md`, under the audience,
+(step 1). Then write the chosen angle out scene by scene in `work/projects/<p>/storyboard.md`, under the audience,
 source and takeaway:
 
 ```
@@ -83,7 +83,15 @@ source and takeaway:
 - An ad, launch teaser, social cut or promo cut to music takes the high-energy register (`video-motion`, "The
   high-energy register"): write it as a beat sheet, one bar per idea on the music's grid, not scenes on a voice.
 - End with a **Deliberately left out** list: true things the video skips, and why. It stops them creeping back in
-  during review (see `projects/2026-09-sale-only-view/storyboard.md`).
+  during review. One line each, the reason included:
+
+  ```
+  ## Deliberately left out
+
+  - The URL parameter and A/B test setup. They're internal; the rollout scene just says it's tested.
+  - Logged-in pro pricing. That needs test accounts, so the pricing scene states it as text instead.
+  - The badge change on collection cards. It's real, but it's a second story and would blur this one.
+  ```
 
 Get the user's yes on the table before building anything.
 
@@ -160,5 +168,14 @@ breaks it for all of them.
 - **Show only what the scene needs.** Frame the one part the story is about, large, on a clean background, instead of
   the whole page. `camFit` caps at 1.6× because captures soften past that. To go bigger, capture that element at a
   higher `scale`.
-- Check each claim in the source doc against the live product, and note in `storyboard.md` where they disagree (see
-  the "Checked against" table in `projects/2026-09-simple-buy-box-story/storyboard.md`).
+- Check each claim in the source doc against the live product, and note in `storyboard.md` where they disagree, in a
+  dated table of what the product really shows:
+
+  ```
+  ## Checked against the dev theme, <yyyy-mm-dd>
+
+  | Claim | Dev theme shows |
+  |---|---|
+  | Spinner on every option change | `body.loader-active` while the control refetches the page |
+  | Out of stock, swatches | Control: a blank box with a slash, colour hidden. New: colour kept, dashed border |
+  ```

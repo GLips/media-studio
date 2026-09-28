@@ -4,27 +4,27 @@ import { caught, runCheckOnFiles } from '../spec-tree.ts';
 
 test('a project importing another project is caught through an alias; an unknown alias is refused', () => {
   const findings = runCheckOnFiles('import-policy', {
-    'package.json': JSON.stringify({ imports: { '#shared-project/*': './projects/other/*' } }),
-    'projects/other/look.ts': 'export const ink = 1;\n',
-    'projects/p/video.tsx': [
+    'package.json': JSON.stringify({ imports: { '#shared-project/*': './work/projects/other/*' } }),
+    'work/projects/other/look.ts': 'export const ink = 1;\n',
+    'work/projects/p/video.tsx': [
       "import { ink } from '../other/look.ts';",
       // Adversarial: the same crossing spelled as an alias.
       "import { ink as again } from '#shared-project/look.ts';",
       "import { x } from '#nowhere';",
       // Adversarial: an absolute path, and a relative one climbing out of the repo.
       "import { h } from '/etc/hosts.ts';",
-      "import { u } from '../../../elsewhere/x.ts';",
+      "import { u } from '../../../../elsewhere/x.ts';",
       // Legal neighbour: its own file.
       "import { t } from './timeline.ts';",
     ].join('\n'),
-    'projects/p/timeline.ts': 'export const t = 0;\n',
+    'work/projects/p/timeline.ts': 'export const t = 0;\n',
   });
   assert.deepEqual(caught(findings), [
-    'projects/p/video.tsx:#nowhere',
-    'projects/p/video.tsx:#shared-project/look.ts',
-    'projects/p/video.tsx:../../../elsewhere/x.ts',
-    'projects/p/video.tsx:../other/look.ts',
-    'projects/p/video.tsx:/etc/hosts.ts',
+    'work/projects/p/video.tsx:#nowhere',
+    'work/projects/p/video.tsx:#shared-project/look.ts',
+    'work/projects/p/video.tsx:../../../../elsewhere/x.ts',
+    'work/projects/p/video.tsx:../other/look.ts',
+    'work/projects/p/video.tsx:/etc/hosts.ts',
   ]);
 });
 
@@ -34,11 +34,11 @@ test('a project reaches lib/studio only through #studio, and lib/studio reaches 
     'lib/studio/api.ts': "export * from './kit/kit.tsx';\n",
     'lib/studio/kit/kit.tsx': 'export const Card = 1;\n',
     'lib/engine/bundle/tsx-test-hooks.ts': 'export {};\n',
-    'projects/p/video.tsx': [
-      "import { Card } from '../../lib/studio/api.ts';",
+    'work/projects/p/video.tsx': [
+      "import { Card } from '../../../lib/studio/api.ts';",
       // Adversarial: a relative path to a module behind the barrel, and a type-only one.
-      "import { Card as again } from '../../lib/studio/kit/kit.tsx';",
-      "import type { Card as T } from '../../lib/studio/kit/kit.tsx';",
+      "import { Card as again } from '../../../lib/studio/kit/kit.tsx';",
+      "import type { Card as T } from '../../../lib/studio/kit/kit.tsx';",
       // Legal neighbours: the barrel alias and the folder alias.
       "import { Card as a } from '#studio';",
       "import { Card as b } from '#studio/kit/kit.tsx';",
@@ -49,9 +49,9 @@ test('a project reaches lib/studio only through #studio, and lib/studio reaches 
   });
   assert.deepEqual(caught(findings), [
     'lib/studio/kit/hooks.tsx:#engine/bundle/tsx-test-hooks.ts',
-    'projects/p/video.tsx:../../lib/studio/api.ts',
-    'projects/p/video.tsx:../../lib/studio/kit/kit.tsx',
-    'projects/p/video.tsx:../../lib/studio/kit/kit.tsx',
+    'work/projects/p/video.tsx:../../../lib/studio/api.ts',
+    'work/projects/p/video.tsx:../../../lib/studio/kit/kit.tsx',
+    'work/projects/p/video.tsx:../../../lib/studio/kit/kit.tsx',
   ]);
 });
 
@@ -104,5 +104,25 @@ test('web client code reaches lib/engine only through a .server door in infrastr
     // Twice: a client reaching the engine, and a lib folder reached by a relative path.
     'web/src/features/review/ui/review-screen.tsx:../../../../../lib/engine/review/review-artifact.ts',
     'web/src/features/review/ui/review-screen.tsx:../../../../../lib/engine/review/review-artifact.ts',
+  ]);
+});
+
+test('nothing outside work/ imports into it, whether or not the workspace is there to back the path', () => {
+  const findings = runCheckOnFiles('import-policy', {
+    'package.json': JSON.stringify({ imports: { '#models/*': './lib/models/*' } }),
+    'work/projects/p/look.ts': 'export const ink = 1;\n',
+    'lib/models/look/look.ts': [
+      "import { ink } from '../../../work/projects/p/look.ts';",
+      // Adversarial: a path the snapshot doesn't hold, as in a clean clone.
+      "import { gone } from '../../../work/projects/q/gone.ts';",
+    ].join('\n'),
+    'cli/commands/x.ts': "import { ink } from '../../work/projects/p/look.ts';\n",
+    // Legal neighbour: a project reaching the studio.
+    'work/projects/p/video.tsx': "import { a } from '#models/look/look.ts';\n",
+  });
+  assert.deepEqual(caught(findings), [
+    'cli/commands/x.ts:../../work/projects/p/look.ts',
+    'lib/models/look/look.ts:../../../work/projects/p/look.ts',
+    'lib/models/look/look.ts:../../../work/projects/q/gone.ts',
   ]);
 });

@@ -26,7 +26,7 @@ test('a model reaching render, I/O or browser code is caught through any chain; 
       'const os = require(`os`);', 'const m = await import(name);',
     ].join('\n'),
     // A project's timeline is a model too.
-    'projects/p/timeline.ts': "import { Scene } from '../../lib/studio/api.ts';\nexport const t = Scene;\n",
+    'work/projects/p/timeline.ts': "import { Scene } from '../../../lib/studio/api.ts';\nexport const t = Scene;\n",
   });
   assert.deepEqual(findings.map((finding) => `${finding.path}: ${finding.message}`).sort(), [
     'lib/models/motion/size.ts: a model reaches the global process',
@@ -37,6 +37,6 @@ test('a model reaching render, I/O or browser code is caught through any chain; 
     'lib/models/reel/needle.ts: a model reaches the builtin os',
     'lib/models/reel/needle.ts: a model reaches the global document',
     'lib/models/timeline/cues.ts: a model reaches the package react',
-    'projects/p/timeline.ts: a model reaches studio code (lib/studio/api.ts)',
+    'work/projects/p/timeline.ts: a model reaches studio code (lib/studio/api.ts)',
   ]);
 });

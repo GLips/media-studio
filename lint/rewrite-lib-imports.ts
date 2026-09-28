@@ -10,18 +10,22 @@
 //   node lint/rewrite-lib-imports.ts --check   list what would change; exit 1 if anything would
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { aliasForRepoPath, expandStudioAlias, libFolderCrossedTo, normalizeRepoPath } from './policy/studio-tree.ts';
+import { isolatedGitEnv } from '#engine/git/fixture-git.ts';
+import { aliasForRepoPath, expandStudioAlias, libFolderCrossedTo, normalizeRepoPath, STUDIO_WORKSPACE_MOUNT } from './policy/studio-tree.ts';
 import { parseSourceFile, SOURCE_EXTENSIONS } from './structural/source-tree.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const check = process.argv.includes('--check');
 const imports = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { imports: Record<string, string> }).imports;
 const SOURCE_RE = new RegExp(`\\.(${SOURCE_EXTENSIONS.join('|')})$`);
+// The studio's tracked files and the workspace's, which is a repository of its own at work/ when there is one.
+const trackedIn = (mount: string) => execFileSync('git', ['ls-files', '-z'], { cwd: join(root, mount), env: isolatedGitEnv(), encoding: 'utf8' })
+  .split('\0').filter(Boolean).map((path) => (mount ? `${mount}/${path}` : path));
 // Fixtures under a check's tests spell violations on purpose, but inside strings, which the parser never reads as imports.
-const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' }).split('\0')
+const tracked = [...trackedIn(''), ...(existsSync(join(root, STUDIO_WORKSPACE_MOUNT, '.git')) ? trackedIn(STUDIO_WORKSPACE_MOUNT) : [])]
   .filter((path) => SOURCE_RE.test(path) && !/^(node_modules|scratch|skills)\//.test(path));
 
 let changed = 0;

@@ -7,7 +7,8 @@
 // app's client code never reaches lib/engine (only a `.server` module in
 // web/src/infrastructure/ may), and nothing in lib/ imports the web app; a `#`
 // alias names a key package.json's `imports` has; no import climbs out of the
-// repo. Scene, model and scratch denials are checks (b), (c) and (d).
+// repo; nothing outside work/ imports into it, since work/ is your own
+// repository and a clean clone has none. Scene, model and scratch denials are checks (b), (c) and (d).
 //
 // A computed `import(expr)` isn't reported here: lab and the CLI load projects
 // that way. The checks that must follow every edge refuse it themselves.
@@ -16,11 +17,12 @@
 // only `#studio`, `#models/*` and its own files) isn't held yet: a project may
 // still import `#paint/*`, `#sfx/*` and `#studio/*` behind the barrel.
 
-import { libFolderCrossedTo, type StudioPosition } from '../../policy/studio-tree.ts';
+import { libFolderCrossedTo, STUDIO_WORKSPACE_MOUNT, type StudioPosition } from '../../policy/studio-tree.ts';
 import type { Finding, StructuralCheck } from '../check-context.ts';
 
 const ID = 'import-policy';
 const SPEC_FILE = /\.test\.tsx?$/;
+const isInStudioWorkspace = (path: string) => path.startsWith(`${STUDIO_WORKSPACE_MOUNT}/`);
 const LIB_KINDS = new Set<StudioPosition['kind']>(['models', 'studio', 'engine', 'lib-unsplit']);
 
 export const importPolicyCheck: StructuralCheck = {
@@ -41,9 +43,14 @@ export const importPolicyCheck: StructuralCheck = {
           continue;
         }
         if (target.kind !== 'module') continue;
+        // Unbacked too: in public scope work/ isn't in the snapshot, and that's exactly when such an import breaks.
+        if (!isInStudioWorkspace(file.path) && isInStudioWorkspace(target.path)) {
+          report('reaches into work/, your own repository, which a clean clone of the studio doesn\'t have');
+          continue;
+        }
         const to = context.positionOf(target.path);
         if (from.kind === 'project' && to.kind === 'project' && to.project !== from.project) {
-          report(`project ${from.project} imports project ${to.project}; shared code belongs in lib/ or brands/`);
+          report(`project ${from.project} imports project ${to.project}; shared code belongs in lib/ or a brand kit (work/brands/)`);
         }
         const crossed = edge.scanned.specifier.startsWith('.') ? libFolderCrossedTo(file.path, target.path) : undefined;
         if (crossed !== undefined) report(`reaches lib/${crossed} by a relative path; import it through its # alias`);

@@ -38,5 +38,5 @@ this repo pins 4.0.525). Where one contradicts the rules above, the rules above 
 | `references/measuring-dom-nodes.md` | Measuring an element's size inside a composition |
 | `references/text-highlights.md` | `@remotion/rough-notation`: hand-drawn circles, underlines and boxes. Drive `progress` from the scene clock |
 
-Anything else: the Remotion docs (context7 `/remotion-dev/remotion`), or the upstream repo in
-`.agent_cache/resources/remotion-dev/skills`.
+Anything else: the Remotion docs (context7 `/remotion-dev/remotion`), or Remotion's own agent skills,
+`github.com/remotion-dev/skills`.

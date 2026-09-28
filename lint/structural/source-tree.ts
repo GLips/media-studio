@@ -8,6 +8,10 @@
 // Import targets resolve against that snapshot too. Gitignored generated inputs
 // (`captures/index.ts`, `music/index.ts`) aren't in it: their edges stay, as a
 // canonical path with `backed: false`, so a check still classifies them by path.
+//
+// A tree can be read from several repositories, each mounted at a folder of one
+// path space (the workspace at `work/` beside the studio's root), so a project's
+// `#studio` resolves to the studio's file and every check sees one tree.
 
 import { execFileSync } from 'node:child_process';
 import { builtinModules } from 'node:module';
@@ -67,8 +71,15 @@ export type SourceFile = {
   lineOf: (offset: number) => number;
 };
 
+/**
+ * One repository's snapshot and where it sits in the tree's path space: `mount` is `''` for the root repository,
+ * whose package.json names the aliases, or a folder (`work`) that prefixes every path the repository lists.
+ * `gitEnv` is the environment git runs in: the process's own for the repository git is committing (a hook's
+ * GIT_INDEX_FILE is the index the commit holds), isolatedGitEnv() for any other.
+ */
+export type MountedSnapshot = { root: string; mount: string; snapshot: CandidateSnapshot; gitEnv: NodeJS.ProcessEnv };
+
 export type SourceTree = {
-  snapshot: CandidateSnapshot;
   /** Every path in the snapshot, any extension. */
   paths: ReadonlySet<string>;
   /** Parsed source files the scope governs. */
@@ -83,23 +94,35 @@ export type SourceTree = {
 export const SOURCE_EXTENSIONS = ['ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs'] as const;
 const SOURCE_RE = new RegExp(`\\.(${SOURCE_EXTENSIONS.join('|')})$`);
 
-/**
- * `gitEnv` is the environment git runs in: the process's own for the repository git is committing (a hook's
- * GIT_INDEX_FILE is the index the commit holds), isolatedGitEnv() for any other.
- */
-export function loadSourceTree(options: { root: string; snapshot: CandidateSnapshot; scope: TreeScope; gitEnv: NodeJS.ProcessEnv }): SourceTree {
-  const { root, snapshot, scope, gitEnv } = options;
-  const git = (args: string[]) => execFileSync('git', args, { cwd: root, env: gitEnv, encoding: 'utf8', maxBuffer: 1 << 30 });
-  const listed = snapshot.kind === 'index'
-    ? git(['ls-files', '--cached', '-z'])
-    : git(['ls-tree', '-r', '-z', '--name-only', snapshot.rev]);
-  const paths = new Set(listed.split('\0').filter(Boolean));
-  const objectName = (path: string) => (snapshot.kind === 'index' ? `:${path}` : `${snapshot.rev}:${path}`);
+/** Every mounted repository's snapshot, read as one tree. Two repositories listing one path is refused. */
+export function loadSourceTree(options: { repos: readonly MountedSnapshot[]; scope: TreeScope }): SourceTree {
+  const { repos, scope } = options;
+  const owner = new Map<string, { repo: MountedSnapshot; objectName: string }>();
+  for (const repo of repos) {
+    const git = (args: string[]) => execFileSync('git', args, { cwd: repo.root, env: repo.gitEnv, encoding: 'utf8', maxBuffer: 1 << 30 });
+    const listed = repo.snapshot.kind === 'index'
+      ? git(['ls-files', '--cached', '-z'])
+      : git(['ls-tree', '-r', '-z', '--name-only', repo.snapshot.rev]);
+    for (const own of listed.split('\0').filter(Boolean)) {
+      const path = repo.mount ? `${repo.mount}/${own}` : own;
+      const mountedThere = repos.find((other) => other !== repo && other.mount && path.startsWith(`${other.mount}/`));
+      if (mountedThere) throw new Error(`${repo.root} tracks ${own}, inside ${mountedThere.root}, a repository of its own: untrack it (git rm --cached)`);
+      owner.set(path, { repo, objectName: repo.snapshot.kind === 'index' ? `:${own}` : `${repo.snapshot.rev}:${own}` });
+    }
+  }
+  const paths: ReadonlySet<string> = new Set(owner.keys());
   const texts = new Map<string, string>();
   const readTexts = (wanted: readonly string[]) => {
     const missing = wanted.filter((path) => !texts.has(path));
-    readBlobs(root, gitEnv, missing.map(objectName)).forEach((text, i) => texts.set(missing[i], text));
-    return wanted.map((path) => texts.get(path)!);
+    for (const repo of repos) {
+      const ours = missing.filter((path) => owner.get(path)?.repo === repo);
+      readBlobs(repo.root, repo.gitEnv, ours.map((path) => owner.get(path)!.objectName)).forEach((text, i) => texts.set(ours[i], text));
+    }
+    return wanted.map((path) => {
+      const text = texts.get(path);
+      if (text === undefined) throw new Error(`${path} isn't in the snapshot`);
+      return text;
+    });
   };
   const readText = (path: string) => readTexts([path])[0];
   const candidates = [...paths].filter((path) => SOURCE_RE.test(path) && !path.endsWith('.d.ts'));
@@ -109,9 +132,11 @@ export function loadSourceTree(options: { root: string; snapshot: CandidateSnaps
 
   const sources = governed.map((path) => parseSourceFile(path, readText(path)));
   const undeclared = scoped.filter(({ verdict }) => verdict === 'undeclared').map(({ path }) => path);
-  const aliases = paths.has('package.json') ? readImportsMap(readText('package.json')) : {};
+  // The aliases are the root repository's: a mounted one has no package.json of its own, so Node resolves its `#`
+  // imports through the root's too.
+  const aliases = owner.get('package.json')?.repo.mount === '' ? readImportsMap(readText('package.json')) : {};
   return {
-    snapshot, paths, sources, undeclared: undeclared.sort(), readTexts,
+    paths, sources, undeclared: undeclared.sort(), readTexts,
     resolveImport: (fromPath, specifier, names) => resolveImportTarget(paths, aliases, fromPath, specifier, names),
   };
 }

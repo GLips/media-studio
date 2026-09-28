@@ -9,7 +9,8 @@
 //
 // Type-only imports count: they still couple two scenes' code. Edges to another
 // project are import-policy's; the composition (`video.tsx`) may import every
-// scene and isn't held here.
+// scene and isn't held here. A `shared` entry in project.ts that declares
+// nothing (not a literal path, or outside the project) is reported here too.
 
 import type { ProjectRole } from '../../policy/studio-tree.ts';
 import type { Finding, StructuralCheck } from '../check-context.ts';
@@ -29,7 +30,7 @@ const sceneOf = (role: ProjectRole) => ('scene' in role ? role.scene : undefined
 export const sceneOwnershipCheck: StructuralCheck = {
   id: ID,
   run(context) {
-    const findings: Finding[] = [];
+    const findings: Finding[] = context.sharedDeclarationProblems.map((problem) => ({ check: ID, ...problem }));
     for (const file of context.tree.sources) {
       const from = context.positionOf(file.path);
       if (from.kind !== 'project' || !SCENE_REACHABLE.has(from.role)) continue;
@@ -42,7 +43,7 @@ export const sceneOwnershipCheck: StructuralCheck = {
         let message: string;
         if (to.role === 'unclassified') {
           message = `reaches ${edge.target.path}, which is neither this scene's helper nor a declared shared module: `
-            + `move it into the scene's folder, or declare it in lint/policy/declared-shared.ts`;
+            + `move it into the scene's folder, or list it in its project.ts's shared`;
         } else if (theirs !== undefined) {
           message = own !== undefined
             ? `scene ${own} imports scene ${theirs}'s code; reach its moments through the timeline's cues`

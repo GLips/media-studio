@@ -13,6 +13,7 @@ const studioCommand = defineCommand({
     description: 'Videos and stills made in code: capture, voice, music, compose, render. `studio <verb> --help` for each.',
   },
   subCommands: {
+    workspace: () => import('./commands/workspace.ts').then((m) => m.default),
     new: () => import('./commands/new.ts').then((m) => m.default),
     capture: () => import('./commands/capture.ts').then((m) => m.default),
     probe: () => import('./commands/probe.ts').then((m) => m.default),

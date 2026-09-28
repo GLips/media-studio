@@ -1,6 +1,5 @@
 // lab-format.ts: the frame and palette the lab's compositions play in. They're Remotion compositions like a video's
-// scenes, so they take the showcase's colours as values (projects/2026-09-motion-showcase), as a scene does, rather
-// than the app's theme tokens.
+// scenes, so they take the studio palette's colours as values, as a scene does, rather than the app's theme tokens.
 import type { VideoFormat } from '#models/frame/frame.ts';
 
 /** The lab's one frame: every stage plays at it unless a tab needs another shape or rate. */

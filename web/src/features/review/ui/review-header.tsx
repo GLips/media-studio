@@ -31,7 +31,7 @@ export function ReviewHeader({ artifact, artifacts, notes, saveState }: ReviewHe
   const [copied, setCopied] = useState('');
   const copyNotes = () => {
     const markdown = formatReviewNotesMarkdown(
-      { media: `projects/${artifact.project}/${artifact.path}`, kind: artifact.kind, fps: artifact.fps ?? 30, notes: [...notes] },
+      { media: `work/projects/${artifact.project}/${artifact.path}`, kind: artifact.kind, fps: artifact.fps ?? 30, notes: [...notes] },
       { title: artifact.title, savedTo: artifact.notesPath, render: artifact.render },
     );
     navigator.clipboard.writeText(markdown).then(

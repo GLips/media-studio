@@ -13,7 +13,7 @@
 //
 // Webpack's own persistent cache is off. Remotion keys it on the whole config, entry and aliases by absolute path, so
 // every worktree and project wrote another ~240 MB to the shared node_modules/.cache/webpack and nothing pruned it. It
-// only helps a bundle after an edit (1.5 s rather than 3.3 s for fidelity-ladder); an unchanged project reuses the
+// only helps a bundle after an edit (1.5 s rather than 3.3 s for a scene-heavy video); an unchanged project reuses the
 // kept bundle here without webpack at all.
 import { bundle, type WebpackOverrideFn } from '@remotion/bundler';
 import { createHash } from 'node:crypto';

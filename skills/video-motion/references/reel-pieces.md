@@ -7,8 +7,8 @@ a social cut, a product promo, the punchy open of a walkthrough) with its own wo
 is the shared brief for building one, whether you're the only builder or one of several working in parallel.
 
 Read first: `skills/video-motion/references/showreel-breakdown.md` (the system section, then the beats your piece
-comes from). When the breakdown names a section, its frames are in the study beside the reference video
-(`study-claude/NN-*/strip.jpg`, `sheet.jpg`, `vectors.jpg`, `plot.png`); pull a full-resolution frame with
+comes from). With the reference video to hand, `studio study <video>` writes each section's strip, sheet, motion
+vectors and energy plot beside it; pull a full-resolution frame with
 `ffmpeg -v error -ss <s> -i <video> -frames:v 1 -q:v 2 <file>.jpg`.
 
 ## The register
@@ -91,7 +91,8 @@ Look here first: a second copy of one of these drifts from the first.
 
 1. Write a demo at `scratch/reel-<piece>/video.tsx` (gitignored): the piece used the way the reference uses it, on
    `steadyBeatGrid(120)`, over a few seconds, plus any variant the props promise (another colour, another word, the
-   other direction). `scratch/three-test/video.tsx` shows the shape of a scratch project.
+   other direction). A scratch project is just a `video.tsx` whose default export is a `defineVideo`; `studio look`
+   takes its folder as the project.
 2. Look at it: `studio look scratch/reel-<piece> --frames=a:b` gives every frame of a stretch, and
    `--frames=161,176,191` chosen moments. Put them beside the reference's frames for the same beat, and fix what differs: when
    it arrives against the beat, how hard it snaps, how far it overshoots, how long it smears, how the stagger runs,
@@ -107,7 +108,7 @@ Look here first: a second copy of one of these drifts from the first.
 For a builder working alongside others; building alone, the whole project is yours.
 
 - Write only `lib/studio/reel/<piece>.tsx` (and its test, if earned) and `scratch/reel-<piece>/`. Read anything.
-- Don't edit `lib/studio/api.ts`, `kit.tsx`, `motion.ts`, another piece, `projects/`, `skills/`, `README.md` or `bin/`.
+- Don't edit `lib/studio/api.ts`, `kit.tsx`, `motion.ts`, another piece, `work/`, `skills/`, `README.md` or `bin/`.
   If you need a shared helper that doesn't exist, write it in your piece file and name it in your report, so the
   orchestrator can lift it.
 - No paid calls (`studio gen`, `studio music gen`), no `git add`, no commits.

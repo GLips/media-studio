@@ -17,11 +17,35 @@ bad and don't predict what Seedance does.
 Block a shot whenever a video model will take its motion: the blockout is the only way to tell the model when things
 move. A previs scene is an ordinary scene with `previs: { blockout, prompt }`, timed to the voice like any other.
 Its `render` draws the blockout: `<Blockout pose subjects />` in 3D (`blockout: '3d'`) for a camera moving through
-a place, with the parallax the model copies; `projects/2026-09-previs-test/video.tsx` has one scene per move. A flat
-shot (a layout assembling, type and panels moving) is blocked in 2D: a timed scene's
+a place, with the parallax the model copies:
+
+```tsx
+// A café counter. Each subject has its own tint, and the prompt names it by that tint.
+const COUNTER: BlockoutSubject[] = [
+  { shape: 'box', at: [0, 0, 0], size: [2.4, 0.9, 0.7], color: '#9a8f86' },
+  { shape: 'box', at: [-0.35, 0.9, -0.05], size: [0.45, 0.5, 0.4], color: '#c9956b' },
+  { shape: 'cylinder', at: [0.25, 0.9, 0.12], size: [0.09, 0.1, 0.09], color: '#e8e4dc' },
+];
+
+const orbit = defineScene({
+  id: 'orbit', note: 'An 80° orbit around the counter, the machine turning from three-quarter to profile.',
+  min: 5, lead: 0, tail: 0,
+  previs: {
+    blockout: '3d',
+    prompt: 'A small café in the morning. The long stone-grey block is a pale oak and concrete counter; the orange box '
+      + 'is a brushed-steel espresso machine; the small white cylinder is a ceramic cup on a saucer. Warm window light '
+      + 'from the left, shallow depth of field, 35mm film look. No people.',
+  },
+  render: (s) => (
+    <Blockout subjects={COUNTER} pose={orbitMove({ target: [0, 1, 0], radius: 3.4, height: 1.6, fromDeg: -50, toDeg: 30 })(seg(s.t, 0, s.dur, motionCurves.cubic.standard))} />
+  ),
+});
+```
+
+A flat shot (a layout assembling, type and panels moving) is blocked in 2D: a timed scene's
 `blockingScene(clock, { note, pieces, previs: { prompt } })` (`video-motion`, "Blocking a flat scene"), which sets
-`blockout: '2d'`; the fidelity-ladder project's `layout` is one. The prompt names each flat piece by its tint or its
-label. The rest of this section is the 3D blockout's.
+`blockout: '2d'`. The prompt names each flat piece by its tint or its label. The rest of this section is the 3D
+blockout's.
 
 - **Subjects** are grey primitives (`BlockoutSubject`: box, sphere, cylinder, cone, `figure` for a person, `card` for a
   phone, screen or sign), sized in metres, standing on the ground at y = 0. Give each one its own muted tint. The
@@ -31,8 +55,8 @@ label. The rest of this section is the 3D blockout's.
   parallax to copy, which is why its moves don't come back as zooms. A change of `fov` does come back as a zoom.
 - **Block the set, not just the subjects.** Seedance follows the camera path, the easing and where each subject
   stands closely, but around bare subjects on the empty grid it frames them tighter than blocked. Walls, a window and
-  a counter (big boxes and cards, tinted and named in the prompt) hold the framing: `kitchen` in the test project
-  came back framed as blocked.
+  a counter (big boxes and cards, tinted and named in the prompt) hold the framing: a kitchen blocked with its walls, window
+  and counter came back framed as blocked.
 - **Subjects can move too.** Compute them from `s.t`, like the pose.
 - **Time the move to its scene's cues** (its words or beats), like any scene (the `video-motion` skill). The footage covers the
   scene's whole time on screen, crossfades included, rounded up to whole seconds between 4 and 30. A longer scene

@@ -1,16 +1,14 @@
 # The reference showreel, broken down
 
-A frame-by-frame reading of the Opus 5.5 showreel (the first 15.9 s of `source.mp4`), for building a reel or a reel
-piece here: the system it runs on, then its eight bars, each with how we'd build it with `lib/studio`. Read the system
-first, then the bars your piece comes from. It merges the studies in the video folder,
-`.agent_cache/videos/after-opus-5-5-it-actually-hurts-to-look-at-anything-gpt-6-a/`, where each study has a
-`strip.jpg` contact sheet and a `work/` folder of crops, 60 fps strips and tables.
+A frame-by-frame reading of the Opus 5.5 showreel (the first 15.9 s of the reference video, `source.mp4` below), for
+building a reel or a reel piece here: the system it runs on, then its eight bars, each with how we'd build it with
+`lib/studio`. Read the system first, then the bars your piece comes from. The video isn't in the repo; with a copy to
+hand, `studio study` makes the same kind of strips, sheets and plots this reading was measured from.
 
-Sources, cited in brackets: [01]…[07] are `study-claude/NN-*/breakdown.md`; [hud] is `study-claude/hud/breakdown.md`
-(the last study, whose clock corrects the rest); [index] is `study-claude/index.md`; [gpt] is `study-gpt/breakdown.md`;
-[reels] is the repo's `projects/2026-09-motion-showcase/reels.md`, whose §0 predates the studies and is superseded.
-[here] marks checks made against `source.mp4` for this file. Evidence paths are relative to the video folder, with
-`NN/` short for `study-claude/NN-*/`. Where sources disagree, the later, frame-measured one wins, and the text says so.
+Sources, cited in brackets: [01]…[07] are frame studies of each section, [hud] a study of the HUD (the last study,
+whose clock corrects the rest), [index] a first pass over the whole reel, [gpt] a second model's reading, and [reels]
+an earlier set of reel notes, superseded where the studies disagree. [here] marks checks made against `source.mp4`
+for this file. Where sources disagree, the later, frame-measured one wins, and the text says so.
 
 ## Where things are
 
@@ -52,7 +50,7 @@ Sources, cited in brackets: [01]…[07] are `study-claude/NN-*/breakdown.md`; [h
   phase (0.9167 s, f55) and [02]'s "0.3 f a beat" drift are also off; [hud]'s grid holds to the frame.
 - Build: `steadyBeatGrid(128, 0.9)` and per-frame state from `Math.floor(grid.beatOf(t))`. `grid.frame(n)` rounds;
   `Math.ceil(grid.at(n) * fps)` is the reference's rule. On a tracked song, put the hit 30–40 ms ahead of the audible
-  onset and allow for the tracker's own lag: the showcase uses `grid.frame(n) − 2` at 30 fps (`reel-assembly.md`).
+  onset and allow for the tracker's own lag: at 30 fps, `grid.frame(n) − 2` (`reel-assembly.md`).
 
 ### Cut grammar
 
@@ -184,15 +182,13 @@ rule), [hud]'s numbers win.
 - **Running:** t is reel time from f54. The timecode reads `HH:MM:SS:FF`, FF in 60ths (last live read 14:57, on
   f951). The lit square is floor(t/0.46875) mod 4. The fill grows 1122·t/15 px (74.8 px/s). Each label decodes over
   18 f from its downbeat (reveal 0.61·i/n, lock 0.28 + 0.72(i + 1)/n); the old one lingers a frame on f279, 504, 729.
-- Evidence: `hud/build/r_0071.png`…`r_0088.png` and `build_right_bottom_{a,b}.png`, `hud/sec/`, `hud/verify/`,
-  `hud/crops/`, `hud/{rule,theme}.tsv`. The `build/tl_build.png` that [hud] cites doesn't exist.
 - Build: `ReelHud` (`lib/studio/reel/hud.tsx`) takes the clock, the sections and `readAt(slot, t, box)`: each
   part's tone (light, dark or on-accent) and, where the ground under it is mixed or busy, a plate of that ground's
   colour at `plateOpacity` (0.75). `reelHudGrounds` and `reelHudReadGrounds` (`lib/models/reel/hud.ts`, with the rest below) read both from what a bar draws under the
   part's box; `reelHudToneOver` picks the tone for a colour. `REEL_HUD_BOOT_DECODE` and `REEL_HUD_SWAP_DECODE` hold
   the schedules above, and `reelHudToneWeights` and `reelHudPlateMix` mix tones and plates over sub-frame samples. At
   30 fps FF runs 00–29, the readout says 30 FPS, the decodes take 15 and 9 frames, and the squares alternate 14- and
-  15-frame beats. The showcase sets it at 20 px.
+  15-frame beats. Its type `size` defaults to 20 px.
 
 ### Frame post
 
@@ -254,8 +250,8 @@ In `lib/studio/reel/` unless noted.
 | `RecapGrid`, `GlitchFlash`, `Shake`, `FadeToBlack` | `recap.tsx`, `lib/models/reel/recap.ts` | 7, 8 |
 | `ReelHud` | `hud.tsx`, `lib/models/reel/hud.ts` | all |
 | `LensFringe` | `lens.tsx`, `lib/models/reel/lens.ts` | the frame post |
-| `Odometer` | `lib/studio/kit/kit.tsx`, `lib/studio/kit/odometer-wheels.ts` | bar 5's price roll; the showcase's |
-| `CapturePlane`, `Needle` | `capture-plane.tsx`, `needle.tsx`, `lib/models/reel/needle.ts` | none: the showcase's own |
+| `Odometer` | `lib/studio/kit/kit.tsx`, `lib/studio/kit/odometer-wheels.ts` | bar 5's price roll |
+| `CapturePlane`, `Needle` | `capture-plane.tsx`, `needle.tsx`, `lib/models/reel/needle.ts` | none: a reel over captures |
 
 ## The bars
 
@@ -288,7 +284,6 @@ In `lib/studio/reel/` unless noted.
 - **Swell out:** the ball grows ×1.10 (f149), 2.31 (f155), 8.41 (f161, 944 px), 15.7 (f164) and fills the frame on
   f165, ×1.25 a frame from f157. It stretches 1.75:1 over f151–154 and is round by f158, its edge soft (≈0.085 r). The
   guide, diamonds and ghosts fade over f151–157, the callout over f151–156. No cut: f165's orange is bar 2's ground.
-- Evidence: `01/work/{contact1,ghosts,callouts,rings2,swell,pathbuild}.jpg`.
 - Build: `BounceBall` and `bouncingBallAt` (`bounce.tsx` on `lib/models/reel/bounce.ts`, whose reference values are
   this bar's), `BounceCallout`, `FieldSwell`. The one departure is the crouch: `bounce.ts` runs the impact's squash
   straight into it, without the rebound, which at 30 fps lands on a frame of its own and reads as a stutter, squash–stretch–squash. At 30 fps put
@@ -325,8 +320,6 @@ One word a beat, each with its own mechanism and ground. Above each word's box s
   14 11 10 9 8 px (×0.85 a frame, 0 by f270), 10–60 px slices shifted ±10–40 px, ghosts on f251–252, 255, 261, 265.
 - **Out, a CRT collapse:** scaleY 0.98 / 0.80 / 0.55 as luma climbs 149→218; a 6 px line on f274–275, 1804 px wide on
   f276, 54 px with a glow dot on f277; a dot on f278 (10 px [02], 14 px [03]); cut on f279 with a −4 px split.
-- Evidence: `02/work/crops/{every-build-a,frame-box-early,frame-pill,is-in,is-cut,code-bg,crt-off}.png`,
-  `01/work/every.jpg`, `02/work/strip60/`.
 - Build: `RiseWord`; `WeightWord` inside `SelectionBox`; `SlantWord` (its tittle a separate circle) into
   `FieldSwell`; `ScrambleText` with glitch `hits`. Unresolved: `RiseWord` ships width 92%, where [02] read EVERY as
   Archivo at 125%; match the ink span (x 203–1738 at cap 318) before trusting either. At 30 fps keep the stagger
@@ -357,7 +350,6 @@ and 10, ≈3% under the flash on beat 8, not at all on 11.
   62→72. 11% red, 5% blue; colour trails shape by 5 f. The centre cell reads 45° on f383, 48° on f386, back by f390.
 - **Out (f392):** a layout match: the squares become bar 4's column tops seen from overhead. +1.25% scale; splits of
   ±2 / ±1.2 / ±1 px on f392 / 394 / 396.
-- Evidence: `03/work/tiles/{morph,swirlcells,c00}.jpg`, `03/work/strip-*/`.
 - Build: `GlyphField` (`glyph-field.tsx`) with `GLYPH_SHAPES`, waves from `glyphWaveArrivals` (both
   `lib/models/reel/glyph-field.ts`), `FieldFlash` and `ShockRing`; `glyphFieldLayout` feeds the match cut and bar 7's implosion. [03]'s wave fits: beat 8 from its line
   + 2 f at 0.038 s a cell; beat 9 from its line − 2 f at 0.0523 s a cell; beat 10 along (1, 1)/√2 at 0.0292 s a step;
@@ -390,8 +382,6 @@ into 3D while an orange ball bounces across the tops, one bounce a beat, then le
 - **Light:** a soft key from the upper left, tops : lit : shaded faces ≈1 : 0.85 : 0.45 in linear light (#9e9792,
   #918a82, #6a625d), violet bleed #2d1f53, fog #120d16 over ground #0c0604; the pool reads in bands of 58–70, 118–123,
   154–177, 174–187, 189–201, 189–192, 166–173, 136–138 luma. DOF: edges 3 / 4–6 / ≈4 px, aperture ≈0.17 pitch.
-- Evidence: `04/work/{t_rise_392,t_drop_410,t_shadow_444,dof465,z436_ball,t_exit_484,z_ca}.jpg`,
-  `04/work/{flow_cum,lattice}.tsv`, `04/work/ball_*.tsv`, `04/work/strips60/`.
 - Build: `column-field.tsx` (planned) on `ThreeStage`: an `InstancedMesh` of `RoundedBoxGeometry(0.64, 1, 0.64, 3,
   0.1)` with a per-instance height attribute, heights `rise·(0.6 + 2.4·noise(i·0.35, j·0.35, t·0.8))`, each rising
   from f404 + r/42. Ball squash s 0.13 / 0.26 / 0.27, peaking 25 ms after contact and gone by 70 ms. A crane-orbit
@@ -427,8 +417,6 @@ reads #e9e8e6, blue on cream #4244ec); the hero is #ee4c2f with #1c0a16 type; do
   549, 891, 1445 px), ±2 at ×1.715 over 12.9 f from f602.8, ±3 at ×1.85 over 11.3 f from f604.4, all clearing on
   f615.7. The hero band closes on the word (152 px to f608, then 148, 148, 140, 132, 112, 80, 16, 0) over #f2eee6.
 - **Out (f616):** the held word (x 691–1228, y 485–594) becomes bar 6's particles.
-- Evidence: `05/work/{kymo_b0,flip532,ital}.png` and siblings, `05/work/{ent_1,ex_a}.jpg`, `05/work/strip60/` (whose
-  labels run a frame early; see Gotchas).
 - Build: `TickerBands` (`ticker.tsx`) with `TICKER_LIGHT`, `TICKER_BOLD`, `TICKER_HOLD` and `TICKER_LOOKS` (`ticker.ts`) (plain,
   stripes, oblique 11.3°, hero hold); rows laid out from Archivo's advances (`layoutGlyphLine`, `archivo-metrics.ts`),
   spans placed by translateX. At 30 fps the entry and exit need `ShutterBlur` at 0.5 with 8 samples.
@@ -453,8 +441,6 @@ The held word dissolves into points that become a sphere, a trefoil knot and a g
 - **Out:** a white flash, luma 39, 77, 127, 176, 227 over f725–729.
 - **Look:** point sprites 5 px in front, 3.4 px behind; the camera 5.1 radii back, FOV 40°; normal blending (mean
   (201, 66, 35) over the red); no bloom, no depth of field; streaks 0.4–0.5 of a frame's step.
-- Evidence: `06/work/{z_word618_2x,z_trefoil_views,m_pop645,m_morph1,m_warp}.png`,
-  `06/work/{z_sphere654,z_galaxy708}.jpg`, `06/work/s60/`.
 - Build: no piece yet. [06] specs `particleMorph` as `ThreeStage` points: shapes from `glyphMask`, `fibonacciSphere`,
   `trefoil`, `spiralGalaxy`; position `lerp(A, B, easeInOutCubic(u)) + swell·sin(πu)·curl`, swell 0.06 H; colour
   `smoothstep(0.3, 0.6, u + 0.1(1 − targetY))`; landing scale 1 + 0.065·0.85^(60Δt); streaks 0.45/60 s long; fog for
@@ -485,7 +471,6 @@ an implosion. Tiles pop in fresh and keep playing; none is the previous shot sca
   the cubes inverted on f821–827 (#d2d5d1, split 24–30 px); the knot on f828–834 (split 17–26 px); the implosion on
   f835–841: bar 3's grid collapses (extents 1388×843 → 846×511 → 162×74 px, scale 0.76 → 0.47 → 0.09, turning −13 →
   −22 → −36°, streaks 50–250 px) into a red "+" of ≈20 px. No burst lines.
-- Evidence: `07/work/{m_758,m_840,m_vortex}.jpg` and the other `m_*.jpg`, `06/work/m_recap.png`.
 - Build: `RecapGrid` (`recap.tsx`: `order` 'z' or 'antidiagonal', `backOutEase` from motion.ts, exits 'pop', 'crt'
   or 'cut'; margins 12 / 8, gutters 12 / 16, popping from 0.76 / 0.65), each tile a live bar; `GlitchFlash` for the
   sixteenths; the implosion from the `GlyphField` layout, 1 − x² over 0.067 s. At 30 fps each flash gets 3–4
@@ -512,9 +497,8 @@ an implosion. Tiles pop in fresh and keep playing; none is the previous shot sca
   the tagline ends at 1637. Bloom: +15 luma within 40 px of the title.
 - **Music:** an accent at 15.00–15.08 s (+4 dB), then −16 / −27 / −35 / −53 / −67 dB; black and silence land within
   3 f of each other.
-- Evidence: `07/work/{c_title,c_dot,c_dotzoom}.jpg` and the other `c_*.jpg`, `07/work/outro.txt`.
 - Build: `RiseWord` (cap 220, 900 at width 125, −0.03 em, 0.7 s, 46 ms apart); the rule on `seg` over 0.5 s;
-  `ScrambleText` in mono over 0.4 s; the stop from `bouncingBallAt`'s physics (in the showcase the needle strikes it);
+  `ScrambleText` in mono over 0.4 s; the stop from `bouncingBallAt`'s physics (or a `Needle` striking it);
   `Shake`; `FadeToBlack`. Bloom as a CSS drop-shadow (0 0 30 px at 15%); the italic needs Archivo Italic. At 30 fps
   the fall moves 134–142 px a frame, the stagger rounds to 0, 1, 3, 4, 6, 7 frames, and the fade takes 4 frames.
 

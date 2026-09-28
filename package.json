@@ -2,6 +2,7 @@
   "name": "media-studio",
   "version": "1.0.0",
   "description": "Videos and stills made in code: capture, voice, music, compose, render.",
+  "license": "MIT",
   "bin": {
     "studio": "cli/studio.ts"
   },
@@ -10,8 +11,9 @@
     "typecheck:gate": "tsc -p tsconfig.gate.json",
     "typecheck:web": "tsc -p web/tsconfig.json --noEmit",
     "typecheck:lint": "sh -c 'rc=0; for program in oxlint structural policy; do tsc --noEmit -p lint/catalog/$program || rc=1; done; exit $rc'",
-    "test": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts' 'projects/**/*.test.ts'",
+    "test": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts' 'work/projects/**/*.test.ts'",
     "test:gate": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts'",
+    "test:workspace": "node --test 'work/projects/**/*.test.ts'",
     "test:lint": "node --test 'lint/catalog/**/*.test.ts'",
     "check:arch": "node lint/check-arch.ts",
     "check:structural": "node lint/catalog/structural/check-structure.ts",

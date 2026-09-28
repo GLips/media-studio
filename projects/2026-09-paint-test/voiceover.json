@@ -1,8 +1,0 @@
-{
-  "voice": "Callirrhoe",
-  "lines": [
-    { "id": "intro", "text": "This opening is painted in watercolour, fresh on every frame, and the ink lines boil like hand-drawn animation." },
-    { "id": "ring", "text": "The same brush can mark up a real page, circling the price by hand." },
-    { "id": "outro", "text": "Painted layers, inside the same video." }
-  ]
-}

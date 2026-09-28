@@ -13,7 +13,7 @@ import type { ReviewStoryboardCard, ReviewTimingMarks } from './review-storyboar
  */
 export type ProjectArtifact = { path: string; kind: 'video' | 'still'; modified: string; pair?: string };
 
-/** A project folder under projects/ with what it has made, for the app's front page. */
+/** A project folder under work/projects/ with what it has made, for the app's front page. */
 export type ProjectListing = { project: string; artifacts: ProjectArtifact[] };
 
 /** `<stem>.webm` ↔ `<stem>-hevc.mov`, the two files studio render writes for a transparent video. */

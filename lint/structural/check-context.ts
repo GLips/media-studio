@@ -5,9 +5,13 @@
 // specifier themselves, so an alias and a relative spelling can't reach two
 // verdicts.
 
-import { classifyStudioPath, type DeclaredShared, type StudioPosition } from '../policy/studio-tree.ts';
-import { DECLARED_SHARED_MODULES } from '../policy/declared-shared.ts';
-import { loadSourceTree, walkAst, type AstNode, type CandidateSnapshot, type ImportTarget, type ScannedImport, type SourceFile, type SourceTree } from './source-tree.ts';
+import { execFileSync } from 'node:child_process';
+import { existsSync, realpathSync } from 'node:fs';
+import { join } from 'node:path';
+import { isolatedGitEnv } from '#engine/git/fixture-git.ts';
+import { classifyStudioPath, STUDIO_WORKSPACE_MOUNT, type StudioPosition } from '../policy/studio-tree.ts';
+import { readDeclaredShared, type DeclarationProblem } from './project-declaration.ts';
+import { loadSourceTree, walkAst, type AstNode, type CandidateSnapshot, type ImportTarget, type MountedSnapshot, type ScannedImport, type SourceFile, type SourceTree } from './source-tree.ts';
 
 export type Finding = {
   check: string;
@@ -28,7 +32,10 @@ export type ImportEdge = { from: SourceFile; scanned: ScannedImport; target: Imp
 
 export type CheckContext = {
   tree: SourceTree;
+  /** Where a path sits, each project's `shared` (its project.ts) applied: every check reads one classification. */
   positionOf: (path: string) => StudioPosition;
+  /** `shared` entries a project.ts writes that declare nothing, which scene ownership reports. */
+  sharedDeclarationProblems: readonly DeclarationProblem[];
   /** Every import edge of a governed file, in source order. */
   edgesFrom: (file: SourceFile) => readonly ImportEdge[];
   fileAt: (path: string) => SourceFile | undefined;
@@ -62,21 +69,59 @@ export function callsTo(context: CheckContext, file: SourceFile, origin: { path:
   return calls;
 }
 
-/** Paths the tree governs: everything declared, except generated output and what §4 leaves ungoverned. */
+/**
+ * Paths the tree governs: everything declared, except generated output and what §4 leaves ungoverned. Read before any
+ * project.ts is, so with no shared modules: `shared` only tells a governed file's role, never whether it's governed.
+ */
 export function studioScope(path: string): 'governed' | 'exempt' | 'undeclared' {
-  const position = classifyStudioPath(path);
+  const position = classifyStudioPath(path, {});
   if (position.kind === 'undeclared') return 'undeclared';
   if (position.kind === 'ungoverned' || position.kind === 'lint') return 'exempt';
   if (position.kind === 'project' && position.role === 'generated') return 'exempt';
   return 'governed';
 }
 
-/** The studio's own snapshot, read in this process's git environment: under a hook, the index being committed. */
-export function createCheckContext(root: string, snapshot: CandidateSnapshot): CheckContext {
-  return contextFor(loadSourceTree({ root, snapshot, scope: studioScope, gitEnv: process.env }));
+/**
+ * What check:arch reads. `public` is the studio's snapshot alone, as a clean clone holds it, in this process's git
+ * environment. `workspace` adds work/'s index, mounted at `work/`: this process's environment is the workspace's
+ * (its hook's), and the studio's index is read with none of it.
+ */
+export type CheckTarget = { scope: 'public'; snapshot: CandidateSnapshot } | { scope: 'workspace' };
+
+export function createCheckContext(root: string, target: CheckTarget): CheckContext {
+  if (target.scope === 'public') {
+    const tree = loadSourceTree({ repos: [{ root, mount: '', snapshot: target.snapshot, gitEnv: process.env }], scope: studioScope });
+    // `work` itself is the workspace added as a gitlink.
+    const tracked = [...tree.paths].find((path) => path === STUDIO_WORKSPACE_MOUNT || path.startsWith(`${STUDIO_WORKSPACE_MOUNT}/`));
+    if (tracked) throw new Error(`the studio tracks ${tracked}, in work/, which is your workspace's repository: untrack it (git rm --cached)`);
+    return contextFor(tree);
+  }
+  const workspace: MountedSnapshot = { root: join(root, STUDIO_WORKSPACE_MOUNT), mount: STUDIO_WORKSPACE_MOUNT, snapshot: { kind: 'index' }, gitEnv: process.env };
+  assertOwnWorkspaceRepository(workspace);
+  const studio: MountedSnapshot = { root, mount: '', snapshot: { kind: 'index' }, gitEnv: isolatedGitEnv() };
+  return contextFor(loadSourceTree({ repos: [studio, workspace], scope: studioScope }));
 }
 
-export function contextFor(tree: SourceTree, declaredShared: DeclaredShared = DECLARED_SHARED_MODULES): CheckContext {
+/**
+ * work/ must be a repository of its own, and the one this process's git environment names: a folder inside the
+ * studio's repository, or a hook's GIT_DIR pointing elsewhere, would read the wrong index as the workspace's.
+ */
+function assertOwnWorkspaceRepository({ root, gitEnv }: MountedSnapshot): void {
+  const revParse = (env: NodeJS.ProcessEnv, what: string) =>
+    realpathSync(execFileSync('git', ['rev-parse', what], { cwd: root, env, encoding: 'utf8' }).trim());
+  if (!existsSync(root) || revParse(isolatedGitEnv(), '--show-toplevel') !== realpathSync(root)) {
+    throw new Error(`${root} isn't a repository of its own: run \`studio workspace init\``);
+  }
+  const own = revParse(isolatedGitEnv(), '--absolute-git-dir'), read = revParse(gitEnv, '--absolute-git-dir');
+  if (read !== own) throw new Error(`git reads ${read} for ${root}, not its own ${own}: this process's GIT_DIR names another repository`);
+}
+
+export function contextFor(tree: SourceTree): CheckContext {
+  const declarations = tree.sources.flatMap((file) => {
+    const position = classifyStudioPath(file.path, {});
+    return position.kind === 'project' && position.role === 'project' ? [{ project: position.project, file }] : [];
+  });
+  const { shared: declaredShared, problems: sharedDeclarationProblems } = readDeclaredShared(declarations);
   const byPath = new Map(tree.sources.map((file) => [file.path, file]));
   const edges = new Map<SourceFile, ImportEdge[]>();
   const edgesFrom = (file: SourceFile) => {
@@ -129,6 +174,7 @@ export function contextFor(tree: SourceTree, declaredShared: DeclaredShared = DE
     tree,
     exportedNames: (path) => exportedNames(path),
     positionOf: (path) => classifyStudioPath(path, declaredShared),
+    sharedDeclarationProblems,
     edgesFrom,
     fileAt: (path) => byPath.get(path),
     originsOf: (path, name) => originsOf(path, name),

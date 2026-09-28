@@ -10,8 +10,11 @@
 // reported as unknown. A file directly in `lib/` or `lib/models/`, or in
 // `lib/studio/` other than its barrel api.ts, is undeclared: their top levels
 // hold subfolders only.
-
-import { DECLARED_SHARED_MODULES } from './declared-shared.ts';
+//
+// Your own projects and brand kits sit in work/, a repository of its own that
+// check:arch mounts at `work/` in one path space with the studio's. Only
+// `work/projects/<p>/…` and `work/brands/<kit>/brand.ts` are positions there:
+// `work/` is never stripped, so a `work/lib/x.ts` is undeclared, not lib.
 
 export type ProjectRole =
   /** `project.ts` declares the project's capability (lib/models/project/capability.ts). */
@@ -24,7 +27,7 @@ export type ProjectRole =
   | { role: 'scene-helper'; scene: string }
   /** A project-specific `x-model.ts`, in its scene's folder or beside its scene file. */
   | { role: 'model'; scene: string }
-  /** Listed in `declared-shared.ts`: scenes may import it; it never imports back into one. */
+  /** Listed in its project.ts's `shared` (ProjectDeclaration): scenes may import it; it never imports back into one. */
   | { role: 'shared' }
   | { role: 'sfx' | 'tools' | 'review' }
   /** Ingested or recorded input the picture reads: captures, music, voice audio, fixtures, reference media. */
@@ -68,11 +71,17 @@ const MODEL_FILE = /^(.+)-model\.ts$/;
 const TOOL_CONFIG = /\.config\.[cm]?[jt]s$/;
 const WEB_SERVER_MODULE = /^web\/src\/infrastructure\/.+\.server\.tsx?$/;
 
-/** Project directory name → paths inside the project that are declared shared modules. */
+/** Where the workspace repository is mounted in check:arch's one path space: the folder it is in the checkout. */
+export const STUDIO_WORKSPACE_MOUNT = 'work';
+
+/**
+ * Project directory name → paths inside the project that are declared shared modules, as each project.ts's `shared`
+ * lists them (check-context.ts reads them off the snapshot).
+ */
 export type DeclaredShared = Readonly<Record<string, readonly string[]>>;
 
-/** The position of a repo-relative, `/`-separated path. */
-export function classifyStudioPath(path: string, shared: DeclaredShared = DECLARED_SHARED_MODULES): StudioPosition {
+/** The position of a `/`-separated path in check:arch's path space: the studio's own, and the workspace's under `work/`. */
+export function classifyStudioPath(path: string, shared: DeclaredShared): StudioPosition {
   const parts = path.split('/');
   const [top, second] = parts;
   if (top === 'scratch' || top === 'node_modules' || top === 'skills') return { kind: 'ungoverned' };
@@ -93,8 +102,11 @@ export function classifyStudioPath(path: string, shared: DeclaredShared = DECLAR
     if (parts.length === 2 && TOOL_CONFIG.test(second)) return { kind: 'root-config' };
     return WEB_SERVER_MODULE.test(path) ? { kind: 'web-server' } : { kind: 'web-client' };
   }
-  if (top === 'brands') return parts.length === 3 && parts[2] === 'brand.ts' ? { kind: 'brand-kit', kit: second } : { kind: 'undeclared' };
-  if (top === 'projects' && parts.length > 2) return { kind: 'project', project: second, ...projectRole(parts.slice(2), shared[second] ?? []) };
+  if (top === STUDIO_WORKSPACE_MOUNT) {
+    const [, , name, ...inside] = parts;
+    if (second === 'brands' && inside.length === 1 && inside[0] === 'brand.ts') return { kind: 'brand-kit', kit: name };
+    if (second === 'projects' && inside.length) return { kind: 'project', project: name, ...projectRole(inside, shared[name] ?? []) };
+  }
   return { kind: 'undeclared' };
 }
 

@@ -1,7 +1,7 @@
 // new-project.ts: starts a project that passes check:arch, typecheck and its tests from its first commit, of any
 // capability (lib/models/project/capability.ts). `studio new` runs it; new-project.test.ts proves each kind.
 //
-// Writes projects/<yyyy-mm>-<slug>/ with a project.ts declaring the capability and a capture script, which films the
+// Writes work/projects/<yyyy-mm>-<slug>/ with a project.ts declaring the capability and a capture script, which films the
 // URL as `home` if given one and otherwise starts empty, for a site that needs a sign-in or a server first. A timed
 // project (music-led, voice-led, mixed, silent) gets its timing in timeline.ts, its retime test and a scene file per scene,
 // each blocked in flat pieces on its cues (scaffold-timed.ts). A still-only one gets a stills.tsx registering one design (scaffold-stills.ts).
@@ -13,7 +13,8 @@ import { dirname, join } from 'node:path';
 import { PROJECT_CAPABILITIES, type ProjectCapability } from '#models/project/capability.ts';
 import { stillsStarterFiles } from './scaffold-stills.ts';
 import { timedStarterFiles } from './scaffold-timed.ts';
-import { STUDIO_PROJECTS_DIR, STUDIO_ROOT } from './studio-project.ts';
+import { STUDIO_BRANDS_DIR, STUDIO_PROJECTS_DIR } from './studio-project.ts';
+import { assertStudioWorkspace } from './studio-workspace.ts';
 
 export type NewStudioProject = { slug: string; capability: ProjectCapability; url?: string; title?: string; brand?: string };
 
@@ -22,9 +23,10 @@ export function scaffoldStudioProject({ slug, capability, url, title, brand }: N
   if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) throw new Error(`the slug must be lowercase words joined by dashes, not ${slug}`);
   if (!PROJECT_CAPABILITIES.includes(capability)) throw new Error(`the capability is one of ${PROJECT_CAPABILITIES.join(', ')}, not ${capability}`);
   if (brand && capability !== 'still-only') throw new Error('--brand is for a still-only project; a video names its kit in its own brand.ts');
-  if (brand && !existsSync(join(STUDIO_ROOT, 'brands', brand, 'brand.ts'))) {
-    const kits = readdirSync(join(STUDIO_ROOT, 'brands')).filter((d) => existsSync(join(STUDIO_ROOT, 'brands', d, 'brand.ts')));
-    throw new Error(`there's no brands/${brand}/brand.ts (brands/ has ${kits.join(', ') || 'none'}; brands/CLAUDE.md says how to make one)`);
+  assertStudioWorkspace();
+  if (brand && !existsSync(join(STUDIO_BRANDS_DIR, brand, 'brand.ts'))) {
+    const kits = existsSync(STUDIO_BRANDS_DIR) ? readdirSync(STUDIO_BRANDS_DIR).filter((d) => existsSync(join(STUDIO_BRANDS_DIR, d, 'brand.ts'))) : [];
+    throw new Error(`there's no work/brands/${brand}/brand.ts (${kits.length ? `the kits are ${kits.join(', ')}` : 'there are no kits yet'}; docs/brand-kits.md says how to make one)`);
   }
   const name = title || slug.replace(/-/g, ' ').replace(/^./, (ch) => ch.toUpperCase());
   const month = new Date().toISOString().slice(0, 7);

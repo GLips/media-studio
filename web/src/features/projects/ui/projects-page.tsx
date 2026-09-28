@@ -21,6 +21,7 @@ export function ProjectsPage() {
     <Stack gap="lg" {...stylex.props(styles.page)}>
       <StudioHeader />
       <Stack gap="xs">
+        {projects.length === 0 && <Text size="sm" c="dimmed">No projects in work/projects/ yet: <code>studio new</code> starts one.</Text>}
         {projects.map(({ project, artifacts }) => (
           <Paper key={project} withBorder {...stylex.props(styles.row)}>
             <Group justify="space-between">

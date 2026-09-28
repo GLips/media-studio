@@ -18,7 +18,7 @@ test('a lib/ folder with more than 15 source files directly in it is reported; s
     ...modules('lib/engine/render', 10),
     ...modules('lib/engine/render/slices', 10),
     // Outside lib/, width is a project's own business.
-    ...modules('projects/p/tools', 20),
+    ...modules('work/projects/p/tools', 20),
   });
   assert.deepEqual(caught(findings), ['lib/models/reel:width']);
 });

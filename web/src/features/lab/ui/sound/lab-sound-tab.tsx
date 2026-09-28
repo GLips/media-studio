@@ -1,19 +1,13 @@
-import { Stack, Text } from '@mantine/core';
-import * as stylex from '@stylexjs/stylex';
+import { Stack } from '@mantine/core';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { labCatalogQueryOptions } from '#web/features/lab/controllers/lab-catalog-query.ts';
-import { colors } from '#web/shared/ui/theme.stylex.ts';
 import { LabTabIntro } from '../lab-tab-intro.tsx';
 import { stopLabAudio } from './lab-audio.ts';
-import { LabCueEditor } from './lab-cue-editor.tsx';
+import { LabCueLists } from './lab-cue-lists.tsx';
 import { LabMusicFitPanel } from './lab-music-fit-panel.tsx';
 import { LabSfxPanel } from './lab-sfx-panel.tsx';
 import { LabSoundPart } from './lab-sound-part.tsx';
-
-const styles = stylex.create({
-  error: { color: colors.accent },
-});
 
 /**
  * The lab's Sound tab: sound effects synthesised from lib/sfx's recipes and played live, a music track fitted to a
@@ -36,9 +30,7 @@ export function LabSoundTab() {
       <LabSfxPanel />
       <LabMusicFitPanel tracks={catalog.music} />
       <LabSoundPart kicker="03 — The cue list" title="Every sound in a real video">
-        {catalog.sfxCues
-          ? <LabCueEditor payload={catalog.sfxCues} exported={catalog.exported} />
-          : <Text {...stylex.props(styles.error)}>The cue editor couldn't load: the demo project has no sfx/cues.json</Text>}
+        <LabCueLists payloads={catalog.sfxCues} exported={catalog.exported} />
       </LabSoundPart>
     </Stack>
   );

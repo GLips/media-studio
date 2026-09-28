@@ -1,9 +1,9 @@
 // hosts.ts: a video can be about a product repo, its host, and compose that repo's real React components.
 //
-//   hosts.json                  committed: host name → { repo: git url }
-//   hosts.local.json            gitignored, optional: host name → a working copy on this machine (absolute, or ~/…)
-//   projects/<p>/host.json      the project opts in: { name, ref, browserStubs? } (lib/engine/host/project-host-spec.ts)
-//   projects/<p>/host           gitignored symlink to the resolved checkout, so a scene imports
+//   work/hosts.json             committed in the workspace, optional: host name → { repo: git url }
+//   work/hosts.local.json       gitignored, optional: host name → a working copy on this machine (absolute, or ~/…)
+//   <project>/host.json         the project opts in: { name, ref, browserStubs? } (lib/engine/host/project-host-spec.ts)
+//   <project>/host              gitignored symlink to the resolved checkout, so a scene imports
 //                               `./host/src/components/Button.tsx` and tsc and webpack follow it like any file
 //
 // A working copy named in hosts.local.json is used as it stands (whatever is checked out, dirty or not), so a video
@@ -18,7 +18,7 @@ import { basename, isAbsolute, join } from 'node:path';
 import { projectHostLink, readProjectHostSpec, type ProjectHostSpec } from './project-host-spec.ts';
 
 export type { ProjectHostSpec };
-import { listStudioProjects, STUDIO_PROJECTS_DIR, STUDIO_ROOT } from '../project/studio-project.ts';
+import { listStudioProjects, STUDIO_PROJECTS_DIR, STUDIO_WORKSPACE_DIR } from '../project/studio-project.ts';
 
 const XDG_CACHE_HOME = process.env.XDG_CACHE_HOME;
 const HOST_CHECKOUTS_DIR = join(XDG_CACHE_HOME && isAbsolute(XDG_CACHE_HOME) ? XDG_CACHE_HOME : join(homedir(), '.cache'), 'studio', 'hosts');
@@ -29,8 +29,9 @@ export type GitState = { commit: string; dirty: boolean };
 export type SyncedHost = ProjectHostSpec & GitState & { dir: string; source: 'working-copy' | 'checkout' };
 
 const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;
-const readHostRepos = () => readJson<HostRepos>(join(STUDIO_ROOT, 'hosts.json'));
-const hostWorkingCopiesPath = join(STUDIO_ROOT, 'hosts.local.json');
+const hostReposPath = join(STUDIO_WORKSPACE_DIR, 'hosts.json');
+const readHostRepos = (): HostRepos => (existsSync(hostReposPath) ? readJson<HostRepos>(hostReposPath) : {});
+const hostWorkingCopiesPath = join(STUDIO_WORKSPACE_DIR, 'hosts.local.json');
 
 function readHostWorkingCopies(): HostWorkingCopies {
   if (!existsSync(hostWorkingCopiesPath)) return {};
@@ -51,7 +52,7 @@ export function gitState(dir: string): GitState {
 }
 
 /**
- * Resolves the project's host to a directory (a working copy, or a checkout of its ref) and points projects/<p>/host
+ * Resolves the project's host to a directory (a working copy, or a checkout of its ref) and points <project>/host
  * at it. `install` runs the host's package manager in a checkout, for components that import the host's own packages.
  */
 export function syncProjectHost(projectDir: string, { install = false } = {}): SyncedHost {
@@ -83,7 +84,7 @@ export function linkedProjectHost(projectDir: string): (Pick<ProjectHostSpec, 'n
 
 function checkoutHostRef({ name, ref }: ProjectHostSpec) {
   const repo = readHostRepos()[name]?.repo;
-  if (!repo) throw new Error(`hosts: no host named "${name}" in hosts.json or hosts.local.json`);
+  if (!repo) throw new Error(`hosts: no host named "${name}" in work/hosts.json or work/hosts.local.json`);
   const bare = join(HOST_CHECKOUTS_DIR, `${name}.git`);
   if (!existsSync(bare)) {
     console.error(`hosts: cloning ${repo}`);

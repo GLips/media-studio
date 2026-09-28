@@ -1,7 +1,6 @@
 {
-  // The pre-commit gate's typecheck: what a clean clone holds. A project's composition (video.tsx, stills.tsx) and its
-  // timeline import recordings and captures, which are gitignored, so `npm run typecheck` covers those in a checkout
-  // that has them, and `studio new`'s test types each kind of project as scaffolded.
+  // The pre-commit gate's typecheck: what a clean clone holds, so none of work/, which is another repository.
+  // Its own gate (.githooks-workspace/pre-commit) runs `npm run typecheck`, which includes it.
   "extends": "./tsconfig.json",
-  "include": ["lib", "lint", "cli", "lab", "remotion.config.ts", "types.d.ts", "brands/*/brand.ts", "projects/*/brand.ts", "projects/*/project.ts", "projects/*/capture.ts"]
+  "include": ["lib", "lint", "cli", "remotion.config.ts", "types.d.ts"]
 }

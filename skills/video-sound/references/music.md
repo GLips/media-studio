@@ -14,7 +14,7 @@ studio music gen <p> "<prompt>"                     # music.bed, a 30 s Lyria cl
 studio music gen <p> "<prompt>" --name=lead --full  # a full-length track (about a minute), $0.08
 ```
 
-Either way, the track is copied into `projects/<p>/music/`. Its loudness, tempo and beats are measured
+Either way, the track is copied into `work/projects/<p>/music/`. Its loudness, tempo and beats are measured
 (`lib/engine/music/music-track.ts`, `lib/models/music/music-beats.ts`), and `music/index.ts` is rewritten. That file says `Edits here are lost
 on the next run`. Then:
 

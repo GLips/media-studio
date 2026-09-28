@@ -1,7 +1,7 @@
 # Watercolour
 
 Hand-painted: flat washes and bleeding watercolour fills, charcoal hatching, tapered ink lines that boil, on warm
-paper with grain. `lib/paint/watercolor.tsx`; the working example is `projects/2026-09-paint-test/video.tsx`.
+paper with grain. `lib/paint/watercolor.tsx`.
 
 ```tsx
 <Watercolor t={s.t} paint={(w) => {
@@ -53,8 +53,30 @@ capture, the incoming side needs an `on="clear"` layer.
 
 ## Over captures
 
-An ink loop around a price, an underline under a phrase, an arrow: an `on="page"` layer, anchored to the word. See
-`paintInkRing` in the test project: a loop that overshoots where it closes, drawn on over about 0.7 s, starting 0.4 s before the word.
+An ink loop around a price, an underline under a phrase, an arrow: an `on="page"` layer, anchored to the word. A
+loop that overshoots where it closes, drawn on over about 0.7 s, starting 0.4 s before the word, with the wipe's
+second half clearing onto the capture:
+
+```tsx
+/** An ink loop drawn by hand around a rect, overshooting where it closes. `k` 0..1 draws it on. */
+function paintInkRing(w: WatercolorKit, r: Rect, k: number) {
+  if (k <= 0) return;
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2, rx = r.w / 2 + 40, ry = r.h / 2 + 30;
+  const loop: Pts = Array.from({ length: 30 }, (_, i) => {
+    const a = -2.4 + (i / 29) * (Math.PI * 2 + 0.5), grow = 1 + 0.08 * (i / 29);
+    return [cx + Math.cos(a) * rx * grow, cy + Math.sin(a) * ry * grow] as const;
+  });
+  w.boilSeed('ring');
+  w.inkLine(loop.slice(0, Math.max(2, Math.round(loop.length * k))), 1.6, '#b82b2b', 'ink', 0.6);
+}
+
+// In the scene: v is the capture's view, `price` the spoken word's start.
+<>
+  <Capture view={v} />
+  <Watercolor t={s.t} on="page" paint={(w) => paintInkRing(w, screenRect(v, shot.rects.price), seg(s.t, price - 0.4, price + 0.3))} />
+  {s.t < WIPE / 2 && <Watercolor t={s.t} on="clear" paint={(w) => w.brushWipe(0.5 + seg(s.t, 0, WIPE / 2) * 0.5)} />}
+</>
+```
 
 ## Tells
 

@@ -1,11 +1,11 @@
-// project-brand.ts: the kit a project's brand.ts names, read from brands/<name>/ (see lib/models/brand/brand.ts), and
+// project-brand.ts: the kit a project's brand.ts names, read from work/brands/<name>/ (see lib/models/brand/brand.ts), and
 // generated/brand.ts, which the bundle aliases as `@brand`. That module is rewritten on every bundle. It imports the
 // kit's brand.ts and the project's and merges them in the bundle, so an open Studio picks up an edit to either. A kit
 // whose font or logo files are missing, or an override that doesn't fit, stops the bundle.
 //
-// Imported by lib/engine/bundle/project-bundle.ts, so it stays free of import.meta (the Remotion CLI bundles that file to CommonJS):
-// the kit's folder is found from the project's, and both brand.ts files are read with require, which Node strips of
-// types. Require caches, so in a long-lived process these checks can see an earlier edit; the bundle checks again.
+// Imported by lib/engine/bundle/project-bundle.ts, so it stays free of import.meta (the Remotion CLI bundles that file to
+// CommonJS): the kit's folder is found from the project's (work/projects/<p> → work/brands), and both brand.ts files
+// are read with require, which Node strips of types. Require caches, so in a long-lived process these checks can see an earlier edit; the bundle checks again.
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, dirname, join, relative, resolve } from 'node:path';
@@ -33,7 +33,7 @@ export function readProjectBrand(projectDir: string): ResolvedProjectBrand | nul
   const dir = join(brandsDirFor(projectDir), name);
   const file = join(dir, 'brand.ts');
   if (typeof name !== 'string' || !existsSync(file)) {
-    throw new Error(`brands: ${basename(resolve(projectDir))}'s brand.ts names ${JSON.stringify(name)}, which isn't a kit (brands/ has ${listBrands(projectDir).join(', ') || 'none'})`);
+    throw new Error(`brands: ${basename(resolve(projectDir))}'s brand.ts names ${JSON.stringify(name)}, which isn't a kit (work/brands/ has ${listBrands(projectDir).join(', ') || 'none'})`);
   }
   const brand = mergeProjectBrand(requireDefault<Brand>(file), project, name);
   const { fonts, logos } = brandFiles(brand);
@@ -41,7 +41,7 @@ export function readProjectBrand(projectDir: string): ResolvedProjectBrand | nul
     ...fonts.filter((f) => !existsSync(join(dir, f))).map((f) => `  ${f}: ${[brand.fonts.display, brand.fonts.text].find((face) => face.files.some((x) => x.file === f))!.source}`),
     ...logos.filter((f) => !existsSync(join(dir, f))).map((f) => `  ${f}`),
   ];
-  if (missing.length) throw new Error(`brands: ${name} is missing files in brands/${name}/ (fonts/ isn't in git, so each machine adds its own):\n${missing.join('\n')}`);
+  if (missing.length) throw new Error(`brands: ${name} is missing files in work/brands/${name}/ (fonts/ isn't in git, so each machine adds its own):\n${missing.join('\n')}`);
   return { name, dir, brand };
 }
 
@@ -67,12 +67,12 @@ export function writeProjectBrandModule(projectDir: string): string {
   const from = (p: string) => JSON.stringify(relative(dirname(path), p).split('\\').join('/'));
   let module: string;
   if (!kit) {
-    const message = `${basename(resolve(projectDir))} imports @brand but has no brand.ts; add \`export default { name: '<brand>' } satisfies ProjectBrand\`, naming one of brands/: ${listBrands(projectDir).join(', ') || 'none yet'}`;
+    const message = `${basename(resolve(projectDir))} imports @brand but has no brand.ts; add \`export default { name: '<brand>' } satisfies ProjectBrand\`, naming one of work/brands/: ${listBrands(projectDir).join(', ') || 'none yet'}`;
     module = `// Written on every bundle (lib/engine/bundle/project-brand.ts): the project has no brand.ts.\nthrow new Error(${JSON.stringify(message)});\n`;
   } else {
     const { fonts, logos } = brandFiles(kit.brand);
     const lines = [
-      `// Written on every bundle from the project's brand.ts (lib/engine/bundle/project-brand.ts): brands/${kit.name} with its overrides, loaded. Edits here are lost.`,
+      `// Written on every bundle from the project's brand.ts (lib/engine/bundle/project-brand.ts): work/brands/${kit.name} with its overrides, loaded. Edits here are lost.`,
       `import kit from ${from(join(kit.dir, 'brand.ts'))};`,
       `import project from ${from(projectBrandFileFor(projectDir))};`,
       `import { mergeProjectBrand } from '#models/brand/brand.ts';`,

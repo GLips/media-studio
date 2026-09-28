@@ -1,5 +1,6 @@
 {
   "name": "media-studio",
   "description": "Videos and stills made in code with the studio CLI: planning, capture, motion, sound, drawn layers, OG images and thumbnails.",
-  "author": { "name": "Graham Lipsman" }
+  "author": { "name": "Graham Lipsman" },
+  "license": "MIT"
 }
