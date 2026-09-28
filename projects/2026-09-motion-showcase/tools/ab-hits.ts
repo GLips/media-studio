@@ -15,7 +15,7 @@ import { basename, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { renderMasteredMix } from '#engine/render/render-pipeline.ts';
 import { openRenderSession } from '#engine/render/render-session.ts';
-import { sfxSeedFromId } from '#sfx/dsp.ts';
+import { randomSeedFromKey } from '#models/motion/random.ts';
 import type { SfxSound } from '#studio/sfx/sfx.tsx';
 import { layoutVideo, totalFrames, type VideoDef, videoFormatOf } from '#studio/composition/timeline.ts';
 import { timeline } from '../timeline.ts';
@@ -37,7 +37,7 @@ const video: VideoDef = (await import('../video.tsx')).default;
 const frames = totalFrames(layoutVideo(video), timeline.fps);
 const placed: Placed[] = (video.sounds ?? []).map((s, i) => {
   const takes: readonly SfxSound[] = Array.isArray(s.sound) ? s.sound : [s.sound as SfxSound];
-  const { src, ...take } = takes[sfxSeedFromId(s.id ?? i) % takes.length];
+  const { src, ...take } = takes[randomSeedFromKey(s.id ?? i) % takes.length];
   return { id: String(s.id ?? i), at: s.at, volume: s.volume ?? 1, file: fileURLToPath(src), take };
 });
 const isHit = (p: Placed) => HIT_RECIPES.has(p.take.request.sound.split('.')[0]);

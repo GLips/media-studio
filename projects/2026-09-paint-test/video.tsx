@@ -2,8 +2,8 @@
 // around the price, anchored to its word.
 
 import type { Pts } from 'p5';
-import { Capture, EndCard, camFit, defineScene, defineVideo, screenRect, seg, useVideoFormat, view, type Rect } from '#studio';
-import { PAL, Watercolor, hash, type WatercolorKit } from '#paint/watercolor.tsx';
+import { Capture, EndCard, camFit, hashRandom, defineScene, defineVideo, screenRect, seg, useVideoFormat, view, type Rect } from '#studio';
+import { PAL, Watercolor, type WatercolorKit } from '#paint/watercolor.tsx';
 import { voice } from './audio/manifest.ts';
 import { captures as C } from './captures/index.ts';
 
@@ -25,7 +25,7 @@ function paintLandscape(w: WatercolorKit, dur: number) {
     });
   }
   // A path that draws itself on, as a line of ink, with a ribbon at its head.
-  const path = w.through(Array.from({ length: 14 }, (_, i) => [180 + i * 115, 520 + Math.sin(i * 0.9) * 90 + hash(i) * 30] as const));
+  const path = w.through(Array.from({ length: 14 }, (_, i) => [180 + i * 115, 520 + Math.sin(i * 0.9) * 90 + hashRandom('path', i) * 30] as const));
   const drawn = path.slice(0, Math.max(2, Math.round(path.length * seg(t, 0.8, 3.2))));
   w.boilSeed('path');
   w.inkLine(drawn, 1.4, PAL.ink, 'ink');

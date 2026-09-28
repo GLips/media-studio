@@ -6,7 +6,7 @@ import { Audio } from '@remotion/media';
 import { createContext, useContext } from 'react';
 import { Sequence, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { SfxMarkAttr, SfxMarkedEvent } from '#sfx/cue-events.ts';
-import { sfxSeedFromId } from '#sfx/dsp.ts';
+import { randomSeedFromKey } from '#models/motion/random.ts';
 import type { SfxRequest } from '#sfx/library.ts';
 
 export { SFX } from './kit.ts';
@@ -52,7 +52,7 @@ export function Sfx({ sound, at, t, id = 0, volume = 1, event = 'placed' }: {
   const { fps } = useVideoConfig();
   const cueList = useContext(SfxCueListPlaying);
   const takes: readonly SfxSound[] = Array.isArray(sound) ? sound : [sound as SfxSound];
-  const { src, seconds, landsAt, request } = takes[sfxSeedFromId(id) % takes.length];
+  const { src, seconds, landsAt, request } = takes[randomSeedFromKey(id) % takes.length];
   const { from, trimBefore } = sfxPlacement(frame + (at - landsAt - t) * fps);
   // `useCurrentFrame` is the scene Sequence's frame, so the probe, which knows the video's, turns this into video time.
   const mark: SfxMarkAttr = { event, fromNow: at - t, request, volume };

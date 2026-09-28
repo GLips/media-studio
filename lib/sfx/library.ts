@@ -2,7 +2,8 @@
 // mutate nudges them for repeatable variety (sfxr's and ZzFX's scheme). The result is levelled to its category's
 // loudness under the voice, not to a peak, so a whoosh and a ding sit alike under the same words. Pure.
 import { VOICE_LUFS } from '#studio/mix/mix.ts';
-import { addRoom, lerp, SFX_RATE, seededRandom, sfxSeedFromId, subSeed } from './dsp.ts';
+import { addRoom, lerp, SFX_RATE, subSeed } from './dsp.ts';
+import { randomSeedFromKey, seededRandom } from '#models/motion/random.ts';
 import { SFX_RECIPES, SFX_ROOM_PARAM, type SfxCategory, type SfxParamSpec, type SfxRecipe, type SfxRecipeName } from './recipes.ts';
 import { measureSfxLufs } from './sfx-loudness.ts';
 
@@ -85,7 +86,7 @@ export function resolveSfxParams({ sound, set = {}, seed = 0, mutate = 0 }: SfxR
     if (typeof value !== 'number' || !(value >= spec.min && value <= spec.max)) throw new Error(`${name}.${param} must be a number ${spec.min}–${spec.max}, not ${JSON.stringify(value)}`);
   }
   const base = { ...recipe.defaults, ...(preset ? recipe.presets[preset] : {}) } as Record<string, number>;
-  const varied = mutate > 0 ? mutateSfxParams(recipe, base, sfxSeedFromId(seed), mutate) : base;
+  const varied = mutate > 0 ? mutateSfxParams(recipe, base, randomSeedFromKey(seed), mutate) : base;
   return { recipe, params: { ...varied, ...set } };
 }
 
@@ -95,7 +96,7 @@ export function resolveSfxParams({ sound, set = {}, seed = 0, mutate = 0 }: SfxR
  */
 export function renderSfx(request: SfxRequest): RenderedSfx {
   const { recipe, params } = resolveSfxParams(request);
-  const { samples: dry, landsAt } = recipe.render(params, sfxSeedFromId(request.seed ?? 0));
+  const { samples: dry, landsAt } = recipe.render(params, randomSeedFromKey(request.seed ?? 0));
   const samples = params.room > 0 ? addRoom(dry, roomWetDb(params.room)) : dry;
   const target = VOICE_LUFS + SFX_LOUDNESS_UNDER_VOICE[request.category ?? recipe.category];
   const peakDb = 20 * Math.log10(samples.reduce((m, v) => Math.max(m, Math.abs(v)), 0));

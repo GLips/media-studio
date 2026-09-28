@@ -9,7 +9,7 @@ import { beatGrid, type BeatGrid } from '#models/timeline/beat-grid.ts';
 import { musicBedGainAt, type MusicBed } from '#studio/mix/mix.ts';
 import type { SfxSound } from '#studio/sfx/sfx.tsx';
 import { layoutVideo, totalFrames, videoFormatOf, type VideoDef } from '#studio/composition/timeline.ts';
-import { sfxSeedFromId } from './dsp.ts';
+import { randomSeedFromKey } from '#models/motion/random.ts';
 import { runFfmpeg } from '#engine/ffmpeg/ffmpeg.ts';
 
 // Attacks are found at 16 kHz in two bands: above 1.5 kHz, where a hit's attack is sharpest, and the full band, which
@@ -258,7 +258,7 @@ export function checkVideoSoundsAgainstMusic(video: VideoDef): VideoSoundCheck |
   const checked = sounds.map((sound, i): SoundAgainstMusic => {
     const id = sound.id ?? i;
     const takes: readonly SfxSound[] = Array.isArray(sound.sound) ? sound.sound : [sound.sound as SfxSound];
-    const take = takes[sfxSeedFromId(id) % takes.length];
+    const take = takes[randomSeedFromKey(id) % takes.length];
     const { bands, loudness } = measure(fileURLToPath(take.src));
     const landing = soundLanding(bands, take.landsAt);
     const landsInTrack = trackSecondsAt(bed, sound.at - take.landsAt + landing.t);

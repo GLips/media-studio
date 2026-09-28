@@ -5,10 +5,8 @@
 //
 // Parameters are all numbers with a range, so presets, overrides and mutate treat every recipe alike. Where recipes
 // share an idea they share its name: `pitch`, `brightness`, `decay`, `duration`.
-import {
-  addShimmer, clamp01, fadeOutTail, lerp, smoothstep, logLerp, mixInto, onePole, pinkNoise, renderSfxLayers,
-  samplesFor, seededRandom, SFX_RATE, stateVariableFilter, subSeed, whiteNoise, type SfxLayer,
-} from './dsp.ts';
+import { addShimmer, clamp01, fadeOutTail, lerp, smoothstep, logLerp, mixInto, onePole, pinkNoise, renderSfxLayers, samplesFor, SFX_RATE, stateVariableFilter, subSeed, whiteNoise, type SfxLayer } from './dsp.ts';
+import { seededRandom } from '#models/motion/random.ts';
 
 /** How loud a sound sits under the voice: ui for clicks and ticks, accent for whooshes, hits and chimes. */
 export type SfxCategory = 'ui' | 'accent';

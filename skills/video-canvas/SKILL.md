@@ -35,7 +35,7 @@ Studio and then flickers in the render. With p5:
   p5.brush from a fixed key and the boil frame (p5.brush's own docs get this wrong; see the reference below).
 - **Flush deferred drawing at the end of every layer.** p5.brush holds strokes back and composites them later; left
   alone, one frame's ink turns up in the next frame the tab paints. `Watercolor` flushes for you.
-- For values that mustn't wobble (positions, sizes), use `hash(i)`, not the seeded stream.
+- For values that mustn't wobble (positions, sizes), use `hashRandom(key, i)` (`#studio`), not the seeded stream.
 - **Prove it:** `studio repeatable <p> <times>` renders chosen times fresh and again after other frames in one tab, and fails
   if any differ. Run it whenever a drawn layer flickers.
 

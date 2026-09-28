@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { seededRandom } from './dsp.ts';
+import { seededRandom } from '#models/motion/random.ts';
 import { detectAudioAttacks } from './sound-check.ts';
 
 test('finds each click over a noise bed within 4 ms of where it starts, and nothing in the bed', () => {

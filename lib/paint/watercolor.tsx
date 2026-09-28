@@ -11,6 +11,7 @@ import type { P5, P5Graphics, Pts } from 'p5';
 import * as brush from 'p5.brush';
 import { P5Canvas, type P5Style } from './P5Canvas.tsx';
 import { clamp, motionCurves, lerp } from '#models/motion/motion.ts';
+import { hashRandom } from '#models/motion/random.ts';
 
 /** Drawings per second. At 30 fps each holds for two frames: animation "on twos". */
 export const BOIL = 15;
@@ -22,8 +23,6 @@ export const PAL = {
   teal: '#3A9C98', violet: '#7B5CA8', cream: '#FFF5E2', sky: '#8EC3E6',
 } as const;
 
-/** A stable value in [0, 1) for `i`: star positions, tuft heights, anything that mustn't boil. */
-export const hash = (i: number) => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 
 // Built once per canvas, in setup, at its size. Paper and glow are p5 buffers because p5's WebGL image() won't take a
 // plain canvas; grain is composited in 2D, onto the layer's own canvas, so it's kept by that canvas's size.
@@ -272,7 +271,7 @@ export function watercolorKit(p: P5, t: number) {
       const q = k < 0.5 ? motionCurves.cubic.entrance(clamp((k * 2 - d) / (1 - d))) : motionCurves.dissolve(clamp(((k - 0.5) * 2 - d) / (1 - d)));
       const x0 = k < 0.5 ? -300 : lerp(-300, W + 400, q), x1 = k < 0.5 ? lerp(-300, W + 400, q) : W + 400;
       if (x1 - x0 < 30) continue;
-      const pts: [number, number][] = [], rag = (j: number) => 40 + 50 * hash(i * 31 + j) + jit(12);
+      const pts: [number, number][] = [], rag = (j: number) => 40 + 50 * hashRandom('rag', i, j) + jit(12);
       for (let j = 0; j <= 8; j++) pts.push([lerp(x0, x1, j / 8), y0 + Math.sin(j * 0.9 + i) * 14 + jit(5)]);
       for (let j = 1; j < 9; j++) pts.push([x1 + rag(j) - 40, y0 + (bh * j) / 9]);
       for (let j = 8; j >= 0; j--) pts.push([lerp(x0, x1, j / 8), y0 + bh + Math.sin(j * 0.8 + i * 2) * 14 + jit(5)]);

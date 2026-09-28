@@ -1,31 +1,13 @@
-// dsp.ts: the small toolkit the sound recipes are built from: a seeded PRNG, pink noise, a state-variable filter,
-// envelopes, layers and a feedback-delay tail. Pure: no clock and no Math.random, so a seed always gives the same
-// samples.
+// dsp.ts: the small toolkit the sound recipes are built from: pink noise, a state-variable filter, envelopes, layers
+// and a feedback-delay tail, drawing on the studio's seeded random (lib/models/motion/random.ts). Pure: no clock and no
+// Math.random, so a seed always gives the same samples.
+
+import { randomSeedFromKey, seededRandom } from '#models/motion/random.ts';
 
 export const SFX_RATE = 48000;
 
-/** Hashes an event id (or any string) to a 32-bit seed, so a sound can be seeded from what it marks. */
-export function sfxSeedFromId(id: string | number): number {
-  if (typeof id === 'number') return id >>> 0;
-  let h = 0x811c9dc5;
-  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193);
-  return h >>> 0;
-}
-
-/** mulberry32: uniform in [0, 1). */
-export function seededRandom(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /** A fresh seed derived from `seed` and a label, so each part of a sound draws from its own stream. */
-export const subSeed = (seed: number, label: string) => sfxSeedFromId(`${seed}:${label}`);
+export const subSeed = (seed: number, label: string) => randomSeedFromKey(`${seed}:${label}`);
 
 export const whiteNoise = (random: () => number) => () => random() * 2 - 1;
 
