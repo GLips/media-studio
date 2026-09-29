@@ -4,7 +4,9 @@
 // checkFramesRepeatable on. The flat grey around the pixel is what a lossy capture would round the difference into.
 
 import { useLayoutEffect } from 'react';
-import { defineScene, defineVideo } from '#studio';
+import { defineVideo, sceneForTimelineClock } from '#studio';
+import { bindTimeline } from '#lib/timing/timeline/models/bind-timeline.ts';
+import { defineTimeline, fixedSpan } from '#lib/timing/timeline/models/timeline.ts';
 
 // Deliberately module state: a tab's first draw is the one that differs.
 let tabHasDrawn = false;
@@ -20,6 +22,9 @@ function FirstDrawDiffers() {
   );
 }
 
-const grey = defineScene({ id: 'grey', min: 2, render: () => <FirstDrawDiffers /> });
+const timeline = defineTimeline({ scenes: { grey: fixedSpan(2) } });
 
-export default defineVideo({ title: 'Repeatability check', format: { width: 320, height: 180 }, voice: {}, scenes: [grey] });
+export default defineVideo({
+  title: 'Repeatability check', format: { width: 320, height: 180 }, timeline, voice: {},
+  scenes: bindTimeline(timeline, { grey: (clock) => sceneForTimelineClock(clock, { render: () => <FirstDrawDiffers /> }) }),
+});

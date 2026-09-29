@@ -27,9 +27,9 @@ const COUNTER: BlockoutSubject[] = [
   { shape: 'cylinder', at: [0.25, 0.9, 0.12], size: [0.09, 0.1, 0.09], color: '#e8e4dc' },
 ];
 
-const orbit = defineScene({
-  id: 'orbit', note: 'An 80° orbit around the counter, the machine turning from three-quarter to profile.',
-  min: 5, lead: 0, tail: 0,
+// timeline.ts: `orbit: fixedSpan(5)`
+const orbit = (clock: TimelineSceneClock<typeof timeline, 'orbit'>) => sceneForTimelineClock(clock, {
+  note: 'An 80° orbit around the counter, the machine turning from three-quarter to profile.',
   previs: {
     blockout: '3d',
     prompt: 'A small café in the morning. The long stone-grey block is a pale oak and concrete counter; the orange box '

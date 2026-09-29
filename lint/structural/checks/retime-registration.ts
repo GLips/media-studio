@@ -5,10 +5,6 @@
 // lib/timing/timeline/models/retime.ts, and `npm test` runs it. The runner itself holds
 // the behaviour (lengthening a scene moves what follows and keeps each move's
 // length); this check holds that no timed project skips it.
-//
-// Negative space: a voice-led project with its timing still in video.tsx has no
-// timeline.ts, so isn't held here; check (a) reports its defineScene until its
-// timing moves into a timeline.ts, and then this check applies.
 
 import { callsTo, type Finding, type StructuralCheck } from '../check-context.ts';
 

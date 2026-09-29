@@ -4,15 +4,14 @@
 // every import (through `#studio`, re-exports and namespaces) back to these
 // origins, so a constructor can't reach a scene by being re-exported under
 // another path. A timeline declares its cues, landmarks and replays inside
-// `defineTimeline`, so it and its drivers and grids are the whole list; the
-// legacy `defineScene` and beat grid stay until no project times with them.
+// `defineTimeline`, so it and its drivers and grids are the whole list, with
+// the bare beat grid a scene could otherwise count its own beats on.
 //
 // Negative space: `defineVideo` isn't listed; it binds scenes, the render half.
 // Nor are `bindTimeline` and `sceneForTimelineClock`: they take clocks only
 // defineTimeline makes, so they bind pictures to timing without stating any.
 
 export const TIMING_CONSTRUCTORS: readonly { path: string; names: readonly string[] }[] = [
-  { path: 'lib/picture/composition/studio/timeline.ts', names: ['defineScene'] },
   { path: 'lib/timing/timeline/models/beat-grid.ts', names: ['beatGrid', 'steadyBeatGrid'] },
   { path: 'lib/timing/timeline/models/timeline.ts', names: ['defineTimeline', 'beatSpan', 'fixedSpan', 'voiceSpan', 'recordedGrid', 'tempoGrid'] },
 ];

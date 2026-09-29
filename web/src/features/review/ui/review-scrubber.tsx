@@ -65,7 +65,7 @@ export function ReviewScrubber({ artifact, fps, playback, notes, draft, onRange,
       <Box {...stylex.props(styles.row, styles.scenes)}>
         {artifact.scenes?.map((s, i) => (
           <Text key={s.id} component="span" size="xs" title={s.rung ? `${s.id}: ${s.rung}` : s.id}
-            {...stylex.props(styles.scene, i % 2 === 1 && styles.oddScene, styles.span(pct(s.start * fps), pct(s.dur * fps)))}>
+            {...stylex.props(styles.scene, i % 2 === 1 && styles.oddScene, styles.span(pct(s.from), pct(s.to - s.from)))}>
             {s.rung && <ReviewSceneRung rung={s.rung} />}{s.id}
           </Text>
         ))}

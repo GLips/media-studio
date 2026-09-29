@@ -6,7 +6,7 @@ import { openStudioRenderSession, studioProjectArg } from '../project-arg.ts';
 const video = defineCommand({
   meta: {
     name: 'video',
-    description: 'Render a previs scene (one with `previs` in its defineScene) into footage with Seedance 2.5: its blockout alone to generated/blockout-<scene>-<hash>.mp4, sent as the reference video with the scene\'s stills. The scene then plays the footage, until this is run again. About $0.28 per second of footage. Prints the blockout, then the footage. Needs OPENROUTER_API_KEY and the STUDIO_UPLOAD_S3_* bucket settings.',
+    description: 'Render a previs scene (one whose binding declares `previs`) into footage with Seedance 2.5: its blockout alone to generated/blockout-<scene>-<hash>.mp4, sent as the reference video with the scene\'s stills. The scene then plays the footage, until this is run again. About $0.28 per second of footage. Prints the blockout, then the footage. Needs OPENROUTER_API_KEY and the STUDIO_UPLOAD_S3_* bucket settings.',
   },
   args: {
     project: studioProjectArg,

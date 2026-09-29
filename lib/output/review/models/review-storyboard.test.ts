@@ -9,8 +9,8 @@ const clock = timelineClockTable(defineTimeline({
   scenes: { bounce: beatSpan(4), price: beatSpan(4, { cues: { clack: 1 } }) },
 }));
 const scenes = [
-  { id: 'bounce', start: 0, dur: 2, lines: [] },
-  { id: 'price', start: 2, dur: 2, note: 'the price rolls down', rung: 'blocking' as const, lines: [] },
+  { id: 'bounce', from: 0, to: 60, lines: [] },
+  { id: 'price', from: 60, to: 120, note: 'the price rolls down', rung: 'blocking' as const, lines: [] },
 ];
 
 test('a card per scene carries its rung and note, with a still on each cue captioned in timeline.ts\'s words; a slice keeps what it holds', () => {

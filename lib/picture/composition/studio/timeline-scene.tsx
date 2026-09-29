@@ -1,20 +1,11 @@
-// timeline-scene.tsx: a timed video's scenes, bound to its resolved timeline. A scene takes its length, the crossfade
-// into it and its voiced lines' starts from its resolved clock, so a composition binds pictures to the timeline without
-// restating any of its timing.
+// timeline-scene.tsx: a timed video's scenes, bound to its resolved timeline. A scene takes its id from its clock and
+// everything else about its timing from the timeline, so a composition binds pictures to it without restating any.
 
-import type { ReactNode } from 'react';
 import type { ResolvedSceneClock } from '#lib/timing/timeline/models/timeline.ts';
-import type { SceneRung } from '#lib/timing/timeline/models/scene-rung.ts';
-import type { SceneClock, SceneDef } from './timeline.ts';
+import type { SceneDef } from './timeline.ts';
 
 /** The scene that plays one scene of the timeline, from its cut to the next one's, with the lines the timeline placed in it. */
-export function sceneForTimelineClock(clock: ResolvedSceneClock, { note, rung, render }: { note?: string; rung?: SceneRung; render: (s: SceneClock) => ReactNode }): SceneDef {
-  const seconds = (frame: number) => (frame - clock.from) / clock.fps;
-  return {
-    id: clock.id, note, rung, render, lines: clock.lines.map((line) => line.id),
-    resolved: { dur: seconds(clock.to), xfade: clock.crossfade, lines: Object.fromEntries(clock.lines.map((line) => [line.id, seconds(line.frame)])), fps: clock.fps },
-  };
-}
+export const sceneForTimelineClock = (clock: ResolvedSceneClock, scene: Omit<SceneDef, 'id'>): SceneDef => ({ ...scene, id: clock.id });
 
 /** A scene's own cues in seconds of its `s.t`, for a scene drawn in seconds: `seg(s.t, at.land, at.land + 0.4)`. */
 export function sceneCueSeconds<Cue extends string>(clock: ResolvedSceneClock<string, Cue>): Readonly<Record<Cue, number>> {

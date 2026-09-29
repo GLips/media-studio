@@ -50,20 +50,22 @@ export type ReviewMomentPlacement = { frame: number } | { gone: string };
 export type ReviewTimingSources = {
   fps: number;
   startsAt: number;
-  scenes: readonly { id: string; start: number; dur: number; rung?: SceneRung }[];
+  /** Each scene's cut and the next one's, in composition frames. */
+  scenes: readonly { id: string; from: number; to: number; rung?: SceneRung }[];
   lines: readonly { id: string; start: number; end: number; words: readonly { text: string; start: number }[] }[];
   clock: TimelineClockTable | null;
 };
 
 /** A render's timing: a timed project's from its clock, any other's scenes from its timeline report. */
 export function reviewTimingOf({ fps, startsAt, scenes, lines, clock }: ReviewTimingSources): ReviewTiming {
-  // As scenesAt paints: frame f shows a scene from the first f with f/fps + 1e-6 past its start.
+  // A moment in seconds shows from the first frame at or after it. A line starts on a frame, which seconds hold a hair
+  // either side of, so the epsilon keeps that frame.
   const frameOf = (seconds: number) => Math.ceil((seconds - 1e-6) * fps);
   // The rung is the composition's, which the timeline report holds; a clock knows only the timeline.ts side of a scene.
   const rungOf = (id: string) => { const rung = scenes.find((s) => s.id === id)?.rung; return rung ? { rung } : {}; };
   const placed = clock
     ? clock.bars.map((b) => ({ id: b.id, bar: b.n, from: b.from, to: b.to, beats: b.beatFrames, ...rungOf(b.id) }))
-    : scenes.map((s) => ({ id: s.id, bar: null, from: frameOf(s.start), to: frameOf(s.start + s.dur), beats: [], ...rungOf(s.id) }));
+    : scenes.map((s) => ({ id: s.id, bar: null, from: s.from, to: s.to, beats: [], ...rungOf(s.id) }));
   return {
     startsAt, scenes: placed, cues: clock?.cues ?? {},
     lines: lines.filter((l) => l.words.length).map((l) => {

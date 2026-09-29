@@ -15,7 +15,7 @@ studio primitive in a feature's `studio/` folder can use any Remotion API inside
   negative or past `s.dur` during crossfades.
 - **Imports, not `staticFile()`.** Assets live in the project folder and are imported, so each project bundles on its
   own and a missing file fails to compile.
-- **No `TransitionSeries`.** `scenesAt` in `lib/picture/composition/studio/timeline.ts` centres crossfades on the voiced cuts; a
+- **No `TransitionSeries`.** `scenesAtFrame` in `lib/timing/timeline/models/video-layout.ts` centres crossfades on the cuts; a
   `TransitionSeries` would shorten the timeline instead.
 - **Audio goes through the mix.** Voice lines are levelled and the music bed ducked in `lib/timing/sound/models/mix.ts`; a new
   sound's volume is set relative to `VOICE_LUFS`, and `studio mix` and `studio render` master the result. Remotion's

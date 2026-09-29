@@ -82,8 +82,11 @@ path.
 - `lib/footage/capture/studio/take.ts`: takes in a scene. `fitTake` pins marks to words, `takeShot` is the frame showing then (a Shot,
   so cameras work on it), `onTake` moves a mark's rect by the frame's scroll. `TakeCursor` draws our cursor and click
   sounds from the log, so a re-voice never needs a reshoot.
-- `lib/picture/composition/studio/timeline.ts`: `defineScene`, `defineVideo`, and the layout that times scenes to their lines and centres
-  crossfades on the cuts.
+- `lib/timing/timeline/models/timeline.ts`: `defineTimeline` and its drivers (`voiceSpan`, `beatSpan`, `fixedSpan`), the one
+  schedule, in frames. `video-layout.ts` beside it places each scene and voice line on the video and decides which
+  scenes a frame paints, centring crossfades on the cuts.
+- `lib/picture/composition/studio/timeline.ts`: `defineVideo`, which pairs the scenes bound with `bindTimeline` with
+  where the timeline placed them.
 - `lib/picture/camera/models/camera.ts`: a camera over captures (`camFit`, `camAt`, `lerpCam`) and views, which map page rects to the
   frame.
 - `lib/footage/capture/studio/capture.tsx`, `lib/picture/kit/studio/overlays.tsx`: captures (with blur, motion blur and state changes), cursor paths with

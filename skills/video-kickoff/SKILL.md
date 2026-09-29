@@ -109,7 +109,7 @@ placeholder that stands for it.
 - **A scene a camera moves through**: a 3D blockout (`Blockout`, `video-gen`), bound with `rung: 'blocking'`.
 
 Each binding declares its **rung**, `blocking` or `final`: `blockingScene` sets its own, and a built scene says
-`rung: 'final'` in its `sceneForTimelineClock` or `defineScene`. The rung goes into the render's snapshot, so
+`rung: 'final'` in its `sceneForTimelineClock`. The rung goes into the render's snapshot, so
 `studio review` shows it on each scene of the scrubber, on each storyboard card and in each note. Raise a scene by
 changing its binding; `timeline.ts` doesn't change.
 
@@ -132,7 +132,7 @@ changing its binding; `timeline.ts` doesn't change.
 
 **Voiced**, the animatic is `video.tsx`, rough:
 
-1. Write the lines into `voiceover.json`, with `"paragraph": true` on each line that starts a new beat so the read
+1. Write the lines by `references/voiceover-lines.md` into `voiceover.json`, with `"paragraph": true` on each line that starts a new beat so the read
    pauses there, and run `studio voice <p> --read=estimate`. That times each line from its word count, for free.
 2. Add the states to `capture.ts` with the `video-capture` skill, by the **Real UI only** rules below, and run
    `studio capture <p>`.

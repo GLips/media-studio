@@ -41,7 +41,8 @@ export type ReviewStoryboardSources = {
   fps: number;
   /** The composition frames the render holds, `end` exclusive. */
   frames: { from: number; end: number };
-  scenes: readonly { id: string; start: number; dur: number; note?: string; rung?: SceneRung; lines: readonly string[] }[];
+  /** Each scene's cut and the next one's, in composition frames. */
+  scenes: readonly { id: string; from: number; to: number; note?: string; rung?: SceneRung; lines: readonly string[] }[];
   lines: readonly { id: string; start: number; end: number; text: string; voiced: boolean }[];
   clock: TimelineClockTable | null;
 };
@@ -50,16 +51,14 @@ export function reviewStoryboardOf({ fps, frames, scenes, lines, clock }: Review
   const onRender = (frame: number) => Math.round(frame) - frames.from;
   const length = frames.end - frames.from;
   const held = (frame: number) => frame >= 0 && frame < length;
-  // As scenesAt paints: frame f shows a scene from the first f with f/fps + 1e-6 past its start.
-  const frameOf = (seconds: number) => Math.ceil((seconds - 1e-6) * fps);
   const lineStill = (line: ReviewStoryboardSources['lines'][number]): ReviewStoryboardStill => ({
     frame: onRender((line.start + line.end) / 2 * fps), moments: [], line: { id: line.id, text: line.text, voiced: line.voiced },
   });
 
   return scenes.flatMap((scene, i) => {
-    // A scene bound outside timeline.ts has no bar: it's placed by the report, and names no moments.
+    // A video whose timeline isn't its project's timeline.ts has no clock: its scenes name no moments.
     const bar = clock?.bars.find((b) => b.id === scene.id);
-    const from = onRender(bar ? bar.from : frameOf(scene.start)), to = onRender(bar ? bar.to : frameOf(scene.start + scene.dur));
+    const from = onRender(scene.from), to = onRender(scene.to);
     if (to <= 0 || from >= length) return [];
     const named = (bar?.moments ?? []).filter((m) => m.kind !== 'line');
     const stills = [

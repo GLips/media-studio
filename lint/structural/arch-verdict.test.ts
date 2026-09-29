@@ -20,22 +20,22 @@ test('the workspace scope judges what work/ has staged, through the studio\'s ba
     writeFiles(root, {
       '.gitignore': '/work/\n',
       'package.json': JSON.stringify({ imports: { '#studio': './lib/api.ts', '#lib/*': './lib/*' } }),
-      'lib/picture/composition/studio/timeline.ts': 'export const defineScene = (s: unknown) => s;\n',
-      'lib/api.ts': "export { defineScene } from '#lib/picture/composition/studio/timeline.ts';\n",
+      'lib/timing/timeline/models/timeline.ts': 'export const fixedSpan = (s: number) => s;\n',
+      'lib/api.ts': "export { fixedSpan } from '#lib/timing/timeline/models/timeline.ts';\n",
     });
     runFixtureGit(root, ['add', '-A']);
 
     const workspace = join(root, 'work');
     mkdirSync(workspace);
     runFixtureGit(workspace, ['init', '-q']);
-    writeFiles(workspace, { 'arch-baseline.json': '{}\n', 'projects/p/video.tsx': "import { defineScene } from '#studio';\n" });
+    writeFiles(workspace, { 'arch-baseline.json': '{}\n', 'projects/p/video.tsx': "import { fixedSpan } from '#studio';\n" });
     runFixtureGit(workspace, ['add', '-A']);
     // Unstaged: the fix, and a baseline excusing the violation. Neither is what the commit holds.
-    const excused = JSON.stringify({ 'timing-ownership': { 'work/projects/p/video.tsx': { 'defineScene from #studio': 1 } } });
+    const excused = JSON.stringify({ 'timing-ownership': { 'work/projects/p/video.tsx': { 'fixedSpan from #studio': 1 } } });
     writeFiles(workspace, { 'arch-baseline.json': excused, 'projects/p/video.tsx': 'export {};\n' });
 
     const timing = () => caught(judgeArchitecture(root, { scope: 'workspace' }).fresh.filter((finding) => finding.check === 'timing-ownership'));
-    assert.deepEqual(timing(), ['work/projects/p/video.tsx:defineScene from #studio']);
+    assert.deepEqual(timing(), ['work/projects/p/video.tsx:fixedSpan from #studio']);
     runFixtureGit(workspace, ['add', 'arch-baseline.json']);
     assert.deepEqual(timing(), []);
   });

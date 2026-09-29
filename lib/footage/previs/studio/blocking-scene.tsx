@@ -17,7 +17,9 @@ export function blockingScene(
   clock: ResolvedSceneClock,
   { note, pieces, view, previs }: { note: string; pieces: readonly FlatPiece[]; view?: FlatViewMoves; previs?: FlatPrevis },
 ): SceneDef {
-  // `s.t` counts seconds from the cut, which is frame `clock.from` of the scene's own clock.
-  const scene = sceneForTimelineClock(clock, { note, rung: 'blocking', render: (s) => <FlatBlockout pieces={pieces} view={view} frame={clock.from + s.t * clock.fps} /> });
-  return previs ? { ...scene, previs: { ...previs, blockout: '2d' } as ScenePrevis } : scene;
+  return sceneForTimelineClock(clock, {
+    note, rung: 'blocking', ...(previs && { previs: { ...previs, blockout: '2d' } as ScenePrevis }),
+    // `s.t` counts seconds from the cut, which is frame `clock.from` of the scene's own clock.
+    render: (s) => <FlatBlockout pieces={pieces} view={view} frame={clock.from + s.t * clock.fps} />,
+  });
 }

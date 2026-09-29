@@ -1,8 +1,8 @@
-// scene.tsx: the scene clock, for components nested inside a scene. A scene's own render gets the clock directly
-// (typed to its lines); reusable pieces further down read it here.
+// scene.tsx: the scene clock, for components nested inside a scene. A scene's own render gets the clock directly;
+// reusable pieces further down read it here.
 
 import { createContext, useContext } from 'react';
-import type { SceneClock } from './timeline.ts';
+import type { SceneClock } from '#lib/timing/timeline/models/video-layout.ts';
 
 export const SceneContext = createContext<SceneClock | null>(null);
 

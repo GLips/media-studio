@@ -7,9 +7,11 @@
 
 import { useRef, type CSSProperties } from 'react';
 import {
-  Capture, CursorPath, DrawPath, Highlight, Odometer, Text, WordReveal, camAt, camTop, clamp, defineScene, defineVideo, lerp,
-  motionCurves, motionAttrs, on, screenRect, seg, useMotionTag, useVideoFormat, view, type Rect, type Shot,
+  Capture, CursorPath, DrawPath, Highlight, Odometer, Text, WordReveal, camAt, camTop, clamp, defineVideo, lerp,
+  motionCurves, motionAttrs, on, sceneForTimelineClock, screenRect, seg, useMotionTag, useVideoFormat, view, type Rect, type Shot,
 } from '#studio';
+import { bindTimeline } from '#lib/timing/timeline/models/bind-timeline.ts';
+import { defineTimeline, fixedSpan, type ResolvedSceneClock } from '#lib/timing/timeline/models/timeline.ts';
 
 const INK = '#1c365e';
 
@@ -30,8 +32,7 @@ const card = (color: string): CSSProperties => ({ position: 'absolute', width: 1
  * speed, stops dead, and jitters ±3px while it "holds". Velocity: a bell against a flat plateau with a cliff at each end.
  * Both are declared to hold for 1s after arriving: `eased` does, and `linear`'s jitter fails the check on purpose.
  */
-const glide = defineScene({
-  id: 'glide', min: 3,
+const glide = (clock: ResolvedSceneClock) => sceneForTimelineClock(clock, {
   expect: () => [
     { hold: 'eased', for: 1, during: { start: 1, end: 3 } },
     { hold: 'linear', for: 1, during: { start: 1, end: 3 } },
@@ -55,8 +56,7 @@ const glide = defineScene({
  * never moves; its size shrinks a little, since the ring's padding is screen pixels. The cursor crosses the page
  * meanwhile: its own (page) motion is only its path, the camera's push excluded.
  */
-const push = defineScene({
-  id: 'push', min: 3,
+const push = (clock: ResolvedSceneClock) => sceneForTimelineClock(clock, {
   render: (s) => {
     const frame = useVideoFormat();
     const wide = { cx: GRID.w / 2, cy: GRID.h / 2, zoom: 1 };
@@ -75,8 +75,7 @@ const push = defineScene({
  * A camera carried by its wrapper: the capture and a ring on the centre square rise 120px together into place, the
  * camera itself still. On screen the ring rises; on the page it never moves, since the rise isn't the camera's.
  */
-const rise = defineScene({
-  id: 'rise', min: 2,
+const rise = (clock: ResolvedSceneClock) => sceneForTimelineClock(clock, {
   render: (s) => {
     const frame = useVideoFormat();
     const v = view(GRID, camTop(GRID, frame), frame);
@@ -93,8 +92,7 @@ const rise = defineScene({
  * Motion a box can't show: a counter counts 0 → 120 (its `value` channel) and a ring draws on (`draw`) while neither
  * box moves.
  */
-const counter = defineScene({
-  id: 'counter', min: 2.5,
+const counter = (clock: ResolvedSceneClock) => sceneForTimelineClock(clock, {
   render: (s) => {
     const value = Math.round(120 * seg(s.t, 0.3, 1.8));
     return (
@@ -116,8 +114,7 @@ const counter = defineScene({
  * is `turned`'s `pin`, under an SVG group turned inside it. `chip` is tagged by ref and selector, as an element a host
  * component renders itself would be.
  */
-const nested = defineScene({
-  id: 'nested', min: 2.5,
+const nested = (clock: ResolvedSceneClock) => sceneForTimelineClock(clock, {
   render: (s) => <Nested t={s.t} />,
 });
 
@@ -153,8 +150,7 @@ function Nested({ t }: { t: number }) {
  * into `after`, so every track breaks where the fade starts; `after` ends in a hard cut to `end`. `end`'s title is
  * the same words as `after`'s, and stays two tracks, one per scene.
  */
-const blink = defineScene({
-  id: 'blink', min: 2,
+const blink = (clock: ResolvedSceneClock) => sceneForTimelineClock(clock, {
   render: (s) => (
     <>
       <div style={{ position: 'absolute', inset: 0, background: '#eef1f6' }} />
@@ -163,16 +159,14 @@ const blink = defineScene({
   ),
 });
 
-const after = defineScene({
-  id: 'after', min: 2,
+const after = (clock: ResolvedSceneClock) => sceneForTimelineClock(clock, {
   render: (s) => {
     const { width, height } = useVideoFormat();
     return <Text text="Same words" x={width / 2} y={height / 2 - 100 * seg(s.t, 0, 1.5)} align="center" color={INK} k={on(s.t, -0.3, 0.6)} />;
   },
 });
 
-const end = defineScene({
-  id: 'end', min: 1.5, cut: true,
+const end = (clock: ResolvedSceneClock) => sceneForTimelineClock(clock, {
   render: (s) => {
     const { width, height } = useVideoFormat();
     return <Text text="Same words" x={width / 2} y={lerp(height / 2, height / 2 + 120, seg(s.t, 0.2, 1.2))} align="center" color={INK} />;
@@ -184,8 +178,7 @@ const end = defineScene({
  * the frame grid), each rising 12px in place, never sideways; a check draws on under it; `total` rolls to 1,299,
  * easing out, lands exactly, and is declared to hold.
  */
-const kit = defineScene({
-  id: 'kit', min: 4, cut: true,
+const kit = (clock: ResolvedSceneClock) => sceneForTimelineClock(clock, {
   expect: () => [{ hold: 'total', for: 1, during: { start: 2.7, end: 4 } }],
   render: (s) => (
     <>
@@ -197,4 +190,15 @@ const kit = defineScene({
   ),
 });
 
-export default defineVideo({ title: 'Motion calibration', voice: {}, scenes: [glide, push, rise, counter, nested, blink, after, end, kit] });
+// Each scene dissolves into the next over half a second, but for the hard cuts into `end` and `kit`.
+const fade = { crossfade: 0.5 };
+const timeline = defineTimeline({
+  scenes: {
+    glide: fixedSpan(3), push: fixedSpan(3, fade), rise: fixedSpan(2, fade), counter: fixedSpan(2.5, fade), nested: fixedSpan(2.5, fade),
+    blink: fixedSpan(2, fade), after: fixedSpan(2, fade), end: fixedSpan(1.5), kit: fixedSpan(4),
+  },
+});
+
+export default defineVideo({
+  title: 'Motion calibration', timeline, voice: {}, scenes: bindTimeline(timeline, { glide, push, rise, counter, nested, blink, after, end, kit }),
+});

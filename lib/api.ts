@@ -52,7 +52,8 @@ export { CODE_GLYPHS, scrambleAt, scrambleFinish, type ScrambleTiming, type Slan
 export { useScene } from '#lib/picture/composition/studio/scene.tsx';
 export { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
 export { useScreenRect } from '#lib/output/look/studio/screen-rect.ts';
-export { defineScene, defineVideo, videoFormatOf, type LineSpan, type SceneClock, type ScenePrevis, type VideoSound } from '#lib/picture/composition/studio/timeline.ts';
+export { defineVideo, videoFormatOf, type ScenePrevis, type VideoSound } from '#lib/picture/composition/studio/timeline.ts';
+export type { LineSpan, SceneClock } from '#lib/timing/timeline/models/video-layout.ts';
 export { sceneCueSeconds, sceneForTimelineClock } from '#lib/picture/composition/studio/timeline-scene.tsx';
 export type { SceneRung } from '#lib/timing/timeline/models/scene-rung.ts';
 export { blockingScene } from '#lib/footage/previs/studio/blocking-scene.tsx';

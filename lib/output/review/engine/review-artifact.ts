@@ -62,11 +62,9 @@ export function readReviewArtifact(project: string, path: string): ReviewArtifac
       title: timeline.title, fps, durationInFrames: snapshot.frames.end - from, startsAt: from,
       frameSize: { w: timeline.width, h: timeline.height }, transparent: timeline.transparent, voice: snapshot.voice,
     });
-    artifact.scenes = timeline.scenes.flatMap(({ id, start, dur, rung }) => {
-      const first = Math.max(timeline.crossfades.find((c) => c.to === id)?.start ?? start, shift);
-      const last = Math.min(timeline.crossfades.find((c) => c.from === id)?.end ?? start + dur, end / fps);
-      // Under half a frame is a scene that only touches the slice's edge.
-      return last - first > 0.5 / fps ? [{ id, start: first - shift, dur: last - first, ...(rung && { rung }) }] : [];
+    artifact.scenes = timeline.scenes.flatMap(({ id, visible, rung }) => {
+      const first = Math.max(visible.from, from), last = Math.min(visible.to, end);
+      return last > first ? [{ id, from: first - from, to: last - from, ...(rung && { rung }) }] : [];
     });
     artifact.timing = reviewTimingOf({ fps, startsAt: from, scenes: timeline.scenes, lines: timeline.cues, clock: snapshot.clock });
     artifact.storyboard = reviewStoryboardOf({ fps, frames: snapshot.frames, scenes: timeline.scenes, lines: timeline.cues, clock: snapshot.clock });

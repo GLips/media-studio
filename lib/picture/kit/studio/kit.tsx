@@ -13,7 +13,7 @@ import { clamp, lerp, motionCurves, motionDurations, seg, stagger, staggerFinish
 import { motionAttrs, pieceMotionAttrs } from '#lib/output/look/studio/motion-tag.ts';
 import { odometerSinceLanding, odometerWheels, type OdometerMode, type OdometerWheel } from './odometer-wheels.ts';
 import { ClipToBox, CursorPath, Glass, Tag, Text, Wash } from './overlays.tsx';
-import type { SceneClock } from '#lib/picture/composition/studio/timeline.ts';
+import type { SceneClock } from '#lib/timing/timeline/models/video-layout.ts';
 import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
 
 export type { OdometerMode } from './odometer-wheels.ts';

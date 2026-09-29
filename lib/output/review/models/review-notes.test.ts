@@ -18,7 +18,7 @@ const motion: MotionTracks = {
 };
 const sources: ReviewContextSources = {
   fps: 30, frameSize: { w: 1000, h: 500 },
-  scenes: [{ id: 'intro', start: 0, dur: 2 }, { id: 'buy', start: 2, dur: 2 }],
+  scenes: [{ id: 'intro', from: 0, to: 60 }, { id: 'buy', from: 60, to: 120 }],
   sounds: [
     { id: 'buy@63', at: 63 / 30, frame: 63, sound: 'impact', source: 'video' },
     { id: 'buy@80', at: 80 / 30, frame: 80, sound: 'whoosh.whip', source: 'video' },
@@ -38,10 +38,6 @@ test('a note aimed at a sound names it even out of reach; a range spans scenes; 
   const aimed = reviewNoteContext({ frame: 20, cue: 'buy@80' }, sources);
   assert.deepEqual(aimed.sounds, [{ id: 'buy@80', sound: 'whoosh.whip', frame: 80, targeted: true }]);
   assert.deepEqual(reviewNoteContext({ frame: 50, end: 70 }, sources).scenes, ['intro', 'buy']);
-  // A scene starting at 2.01 s first paints on frame 61, as scenesAt does: frame 60 is still the intro's.
-  const offFrame = { ...sources, scenes: [{ id: 'intro', start: 0, dur: 2.01 }, { id: 'buy', start: 2.01, dur: 2 }] };
-  assert.deepEqual(reviewNoteContext({ frame: 60 }, offFrame).scenes, ['intro']);
-  assert.deepEqual(reviewNoteContext({ frame: 61 }, offFrame).scenes, ['buy']);
   assert.deepEqual(reviewNoteContext({ frame: 60, x: 0.4, y: 0.4 }, { fps: 30, frameSize: sources.frameSize }), {});
 });
 

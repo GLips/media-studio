@@ -3,7 +3,7 @@
 
 import { captionSafeArea, FONT } from '#lib/picture/frame/models/frame.ts';
 import { motionCurves, seg } from '#lib/picture/motion/models/motion.ts';
-import type { VoiceCue } from './timeline.ts';
+import type { VoiceCue } from '#lib/timing/timeline/models/video-layout.ts';
 import { useVideoFormat } from './video-format.ts';
 
 const LEAD_IN = 0.05, HANG = 0.15;

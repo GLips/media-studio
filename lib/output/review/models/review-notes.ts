@@ -22,8 +22,8 @@ export type ReviewMediaKind = 'video' | 'still';
 /** A sound the render plays, as a marker under the scrubber: from `defineVideo({ sounds })` or the cue list. */
 export type ReviewSoundMarker = { id: string; at: number; frame: number; sound: string; source: 'video' | 'cue-list' };
 
-/** A scene's visible span, its crossfades included, so a note in a dissolve names both scenes. */
-export type ReviewScene = { id: string; start: number; dur: number; rung?: SceneRung };
+/** A scene's visible frames on the render, its crossfades included (`to` exclusive), so a note in a dissolve names both scenes. */
+export type ReviewScene = { id: string; from: number; to: number; rung?: SceneRung };
 
 /**
  * One cell of a variant sheet (`studio still --sheet`), from the `.cells.json` beside it: the variant, where it sits on
@@ -98,11 +98,7 @@ export function reviewNoteContext(note: Pick<ReviewNote, 'frame' | 'end' | 'x' |
   const first = note.frame, last = note.end ?? note.frame, { fps } = sources;
   const context: ReviewNoteContext = {};
   if (sources.scenes) {
-    // As lib/picture/composition/studio/timeline.ts's scenesAt paints: frame f shows a scene from the first f with f/fps + 1e-6 past its start.
-    const firstShowing = (t: number) => Math.ceil((t - 1e-6) * fps);
-    context.scenes = sources.scenes
-      .filter((s) => firstShowing(s.start) <= last && firstShowing(s.start + s.dur) > first)
-      .map((s) => s.id);
+    context.scenes = sources.scenes.filter((s) => s.from <= last && s.to > first).map((s) => s.id);
   }
   if (sources.sounds) {
     const reach = REVIEW_SOUND_REACH_FRAMES;

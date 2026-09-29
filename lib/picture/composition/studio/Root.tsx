@@ -11,7 +11,7 @@ import { assertPrevisSpanFits, previsSpan } from '#lib/footage/previs/studio/pre
 import { StillProbe } from '#lib/output/stills/studio/still-probe.tsx';
 import { STILL_PRESETS, stillName, type StillProps, type StillRenderProps } from '#lib/output/stills/models/still-presets.ts';
 import { StillPresetContext, type StillsDef } from '#lib/output/stills/studio/stills.tsx';
-import { layoutVideo, totalFrames, videoFormatOf, type VideoDef } from './timeline.ts';
+import { laidVideoOf, videoFormatOf, type VideoDef } from './timeline.ts';
 import { BlockoutSolo, Video, type BlockoutSoloProps, type VideoProps } from './Video.tsx';
 
 /**
@@ -81,9 +81,9 @@ function StillCompositions({ stills }: { stills: StillsDef }) {
 }
 
 function VideoCompositions({ video }: { video: VideoDef }) {
-  const tl = layoutVideo(video);
+  const tl = laidVideoOf(video);
   const { fps, width, height } = videoFormatOf(video);
-  const frames = totalFrames(tl, fps);
+  const { frames } = tl;
   const settings: CompositionRenderSettings = video.renderWorkers === undefined ? {} : { renderWorkers: video.renderWorkers };
   return (
     <>

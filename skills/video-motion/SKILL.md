@@ -141,7 +141,7 @@ const layout = (clock: Clock<'layout'>) => blockingScene(clock, {
 });
 ```
 
-A scene timed in seconds draws `<FlatBlockout pieces frame={s.t * fps} />` itself and declares `rung: 'blocking'` in its `defineScene`. Get the moves
+A scene timed in seconds draws `<FlatBlockout pieces frame={s.t * fps} />` itself and declares `rung: 'blocking'` in its `sceneForTimelineClock`. Get the moves
 approved in review, then build the scene over the same cues and rhythm.
 
 ## Kit and generated stills

@@ -11,7 +11,8 @@
 // scene's moment only by that scene's cue. Nothing here stretches a recording: speech keeps its take's timing, and the
 // music plays from the section's start as fitted, so a bed under a voice is trimmed, looped or re-fitted, never stretched.
 
-import { findSpokenPhrase, type SpokenWord } from '#lib/timing/voice/models/voice-words.ts';
+import { findSpokenPhrase } from '#lib/timing/voice/models/voice-words.ts';
+import type { VoiceTake } from '#lib/timing/voice/models/voice-manifest.ts';
 import { beatGrid as fitBeatGrid, steadyBeatGrid, type BeatGrid } from './beat-grid.ts';
 import { DEFAULT_VIDEO_FORMAT } from '#lib/picture/frame/models/frame.ts';
 import { timelineSceneMoments, type TimelineMoment } from './scene-moments.ts';
@@ -38,10 +39,7 @@ export const tempoGrid = (bpm: number, { firstBeat = 0 } = {}): TimelineGrid => 
 
 // ---------- the voice ----------
 
-/** A recorded line as `studio voice` writes it to audio/manifest.ts: its length, its words from its start, and the take's pause before it. */
-export type VoiceTake = { duration: number; words: readonly SpokenWord[]; pauseBefore: number | null };
-
-/** A project's recorded lines by id, in script order: a manifest's `voice`. */
+/** A project's recorded lines by id, in script order: a manifest's `voice`, as far as the timeline reads it. */
 export type TimelineVoice = Readonly<Record<string, VoiceTake>>;
 
 /**
@@ -314,17 +312,6 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
   const startSeconds = spans.map((_, k) => (after(k) ? sectionEnd + nonMusicalBefore(k) - nonMusicalBefore(musical[0]) : nonMusicalBefore(k)));
   const origins = spans.map((span, k) => (span.driver === 'beat' ? beatFrame(startBeat[k]) : secondsFrame(k, startSeconds[k])));
   const ends = spans.map((span, k) => (span.driver === 'beat' ? beatFrame(startBeat[k] + span.beats) : secondsFrame(k, startSeconds[k] + secondsOf(k))));
-  const recordingEnd = spec.grid?.kind === 'recorded' && musical.length ? plainFrame(sectionStart + spec.grid.track.duration) : 0;
-  const end = Math.max(ends.at(-1)!, recordingEnd);
-  const cuts = spans.map((span, k) => {
-    if (k === 0) return 0;
-    if (k === musical[0]) return plainFrame(sectionStart);
-    return span.driver === 'beat' ? beatFrame(startBeat[k] + (span.cutIn ?? 0)) : origins[k];
-  });
-  const nexts = cuts.map((_, k) => cuts[k + 1] ?? end);
-  for (let k = 1; k < cuts.length; k++) if (cuts[k] <= cuts[k - 1]) throw new Error(`scene ${keys[k]} cuts in on frame ${cuts[k]}, not after ${keys[k - 1]}'s ${cuts[k - 1]}`);
-  const halfFade = (k: number) => (spans[k]?.crossfade ?? 0) * fps / 2;
-
   // Each scene's lines on the video: a voice scene's as laid out, a beat scene's from their beats, which they must fit
   // inside. Speech is sound, so it takes no picture lead.
   const placedLines = spans.map((span, k) => {
@@ -342,6 +329,19 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
     });
   });
   const speechFrame = (k: number, seconds: number) => (spans[k].driver === 'beat' ? plainFrame(seconds) : secondsFrame(k, seconds));
+  const recordingEnd = spec.grid?.kind === 'recorded' && musical.length ? plainFrame(sectionStart + spec.grid.track.duration) : 0;
+  // The video runs until its last word has sounded, so a line read past its scene's length still has a picture under it.
+  const spokenEnd = Math.max(0, ...placedLines.flatMap((lines, k) => lines.map(({ seconds, take }) => Math.ceil(speechFrame(k, seconds) + take.duration * fps))));
+  const end = Math.max(ends.at(-1)!, recordingEnd, spokenEnd);
+  const cuts = spans.map((span, k) => {
+    if (k === 0) return 0;
+    if (k === musical[0]) return plainFrame(sectionStart);
+    return span.driver === 'beat' ? beatFrame(startBeat[k] + (span.cutIn ?? 0)) : origins[k];
+  });
+  const nexts = cuts.map((_, k) => cuts[k + 1] ?? end);
+  for (let k = 1; k < cuts.length; k++) if (cuts[k] <= cuts[k - 1]) throw new Error(`scene ${keys[k]} cuts in on frame ${cuts[k]}, not after ${keys[k - 1]}'s ${cuts[k - 1]}`);
+  const halfFade = (k: number) => (spans[k]?.crossfade ?? 0) * fps / 2;
+
   const spokenAt = (k: number, cue: SpeechCue, name: string) => {
     const line = placedLines[k].find((placed) => placed.id === cue.line);
     if (!line) throw new Error(`speech cue ${name}: scene ${keys[k]} doesn't speak line ${cue.line}`);
@@ -390,7 +390,7 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
 
   const placed = spans.map((span, k): ResolvedScene<keyof Scenes & string> => ({
     id: keys[k], n: k + 1, driver: span.driver, origin: origins[k], from: cuts[k], to: nexts[k], end: ends[k],
-    visible: { from: Math.round(cuts[k] - halfFade(k)), to: Math.round(nexts[k] + halfFade(k + 1)) }, crossfade: span.crossfade ?? 0,
+    visible: { from: Math.floor(cuts[k] - halfFade(k)), to: Math.ceil(nexts[k] + halfFade(k + 1)) }, crossfade: span.crossfade ?? 0,
     beats: span.driver === 'beat' ? span.beats : 0, spb: grid?.spb ?? 0, fps,
     cues: Object.fromEntries(Object.keys(span.cues ?? {}).map((name) => [name, ownCue(k, name)])),
     moves: Object.fromEntries(Object.entries(span.moves ?? {}).map(([name, move]) => [name, { from: refFrame(k, move.from), to: refFrame(k, move.to) }])),

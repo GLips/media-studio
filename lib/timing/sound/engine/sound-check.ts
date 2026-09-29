@@ -8,7 +8,7 @@ import { readProjectHostSpec } from '#lib/platform/host/engine/project-host-spec
 import { beatGrid, type BeatGrid } from '#lib/timing/timeline/models/beat-grid.ts';
 import { musicBedGainAt, type MusicBed } from '../models/mix.ts';
 import type { SfxSound } from '../studio/sfx.tsx';
-import { layoutVideo, totalFrames, videoFormatOf, type VideoDef } from '#lib/picture/composition/studio/timeline.ts';
+import { laidVideoOf, videoFormatOf, type VideoDef } from '#lib/picture/composition/studio/timeline.ts';
 import { randomSeedFromKey } from '#lib/picture/motion/models/random.ts';
 import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
 
@@ -244,7 +244,7 @@ export function checkVideoSoundsAgainstMusic(video: VideoDef): VideoSoundCheck |
   const bed = video.music, sounds = video.sounds ?? [];
   if (!bed || !sounds.length) return null;
   const { fps } = videoFormatOf(video);
-  const tl = layoutVideo(video), videoSeconds = totalFrames(tl, fps) / fps;
+  const tl = laidVideoOf(video), videoSeconds = tl.frames / fps;
   const musicFile = fileURLToPath(bed.track.src);
   const musicAttacks = musicAttackTimes(decodeAttackBands(musicFile));
   const musicLoudness = momentaryLoudness(musicFile, 0);

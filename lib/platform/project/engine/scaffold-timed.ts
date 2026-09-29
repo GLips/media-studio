@@ -160,6 +160,7 @@ import { timeline } from './timeline.ts';
 
 export default defineVideo({
   title: ${JSON.stringify(title)},
+  timeline,
   voice${voice ? '' : ': {}'},
   scenes: bindTimeline(timeline, { ${scenes.map((scene) => `${scene.id}: ${binderName(scene)}`).join(', ')} }),
 });

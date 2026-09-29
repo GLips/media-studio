@@ -7,7 +7,7 @@
 // footage time is blockout time less `from`.
 
 import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
-import { visibleSpan, type LaidScene, type Timeline } from '#lib/picture/composition/studio/timeline.ts';
+import type { LaidScene, LaidVideo } from '#lib/picture/composition/studio/timeline.ts';
 
 export const PREVIS_MODEL = 'bytedance/seedance-2.5';
 /** The whole seconds Seedance 2.5 renders: a request is the scene's time on screen, rounded up into these. */
@@ -37,18 +37,18 @@ export type PrevisRequest = { blockout: '3d' | '2d'; prompt: string; references:
  * Where a scene's blockout render starts, in scene seconds, and how many whole seconds it runs. Not checked against
  * PREVIS_SECONDS.max: a scene that outgrew it still plays the footage it has (assertPrevisSpanFits guards a render).
  */
-export function previsSpan(tl: Timeline, sceneId: string): { from: number; duration: number } {
-  const i = tl.scenes.findIndex((scene) => scene.id === sceneId);
-  if (i < 0) throw new Error(`no scene "${sceneId}"; the scenes are ${tl.scenes.map((scene) => scene.id).join(', ')}`);
-  const scene = tl.scenes[i], span = visibleSpan(tl, i);
-  return { from: span.start - scene.start, duration: Math.max(PREVIS_SECONDS.min, Math.ceil(span.end - span.start - 1e-6)) };
+export function previsSpan(tl: LaidVideo, sceneId: string): { from: number; duration: number } {
+  const scene = tl.scenes.find((s) => s.id === sceneId);
+  if (!scene) throw new Error(`no scene "${sceneId}"; the scenes are ${tl.scenes.map((s) => s.id).join(', ')}`);
+  const { visible } = scene;
+  return { from: (visible.from - scene.from) / tl.fps, duration: Math.max(PREVIS_SECONDS.min, Math.ceil((visible.to - visible.from) / tl.fps)) };
 }
 
 export function assertPrevisSpanFits(sceneId: string, span: { duration: number }) {
   if (span.duration > PREVIS_SECONDS.max) throw new Error(`scene ${sceneId} is on screen over ${PREVIS_SECONDS.max}s, longer than a generated shot can run: split it`);
 }
 
-export function previsRequestFor(tl: Timeline, scene: LaidScene): PrevisRequest | undefined {
+export function previsRequestFor(tl: LaidVideo, scene: LaidScene): PrevisRequest | undefined {
   const { previs } = scene;
   return previs && { blockout: previs.blockout, prompt: previs.prompt, references: previs.references ?? [], audio: previs.audio ?? false, ...previsSpan(tl, scene.id) };
 }

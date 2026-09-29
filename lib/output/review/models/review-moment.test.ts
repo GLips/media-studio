@@ -11,7 +11,7 @@ const timingOf = (swatchBeats: number, priceBeats = 4): ReviewTiming => {
     scenes: { bounce: beatSpan(4), swatches: beatSpan(swatchBeats), price: beatSpan(priceBeats, { cues: { clack: 1 } }) },
   });
   // Only `price` declares a rung; the timeline report's start and length are the clock's business here.
-  return reviewTimingOf({ fps: 30, startsAt: 0, scenes: [{ id: 'price', start: 0, dur: 0, rung: 'blocking' }], lines: [], clock: timelineClockTable(timeline) });
+  return reviewTimingOf({ fps: 30, startsAt: 0, scenes: [{ id: 'price', from: 0, to: 0, rung: 'blocking' }], lines: [], clock: timelineClockTable(timeline) });
 };
 const before = timingOf(4), after = timingOf(6);
 const render = { hash: 'round5', modified: '2026-09-25T12:00:00Z' };
@@ -41,7 +41,7 @@ test('a note whose beat the new render no longer has stays on its frame and says
 
 test('a note on a spoken word follows the word when the line is re-read with a word more ahead of it', () => {
   const lineTiming = (words: string[]) => reviewTimingOf({
-    fps: 30, startsAt: 0, clock: null, scenes: [{ id: 'intro', start: 0, dur: 5 }],
+    fps: 30, startsAt: 0, clock: null, scenes: [{ id: 'intro', from: 0, to: 150 }],
     lines: [{ id: 'hook', start: 1, end: 1 + words.length * 0.5, words: words.map((text, i) => ({ text, start: 1 + i * 0.5 })) }],
   });
   const note: ReviewNote = { id: 'n', frame: 61, render: 'round4', text: 'lean on "for"', context: reviewNoteContext({ frame: 61 }, sources(lineTiming(['one', 'price', 'for', 'all']))) };
