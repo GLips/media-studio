@@ -49,7 +49,7 @@ Brush Pose (size and opacity overridden), or simulated pressure (taper at both e
 
 ## The probe set
 
-`photoshopProbes()`, 129 probes, 335 cells in about 60 s. Each is a plain round, or a sampled tip the run defines
+`photoshopProbes()`, 192 probes, 335 cells on 9 sheets in about a minute. Each is a plain round, or a sampled tip the run defines
 (`studio-probe-tip`: a half-circle with a hard and a soft side, 112 px once Photoshop trims it), with one thing changed:
 
 - single stamps of computed tips across hardness and diameter, an ellipse, and the sampled tip at sizes, angle,
@@ -60,7 +60,15 @@ Brush Pose (size and opacity overridden), or simulated pressure (taper at both e
   and off, with a depth ladder, lower flow, scale and invert, and brightness and contrast;
 - a dual brush under each of its eight modes, the secondary's dabs apart and overlapping;
 - wet edges; pressure on size, opacity and flow; Fade on each;
-- size jitter, scatter and noise, painted several times each since they're random by design.
+- size jitter, scatter and noise, painted several times each since they're random by design;
+- vid-97's inputs painted alone beside what combines them, so a combine reads pixel for pixel off two captures: a
+  soft 240 px stamp alone and under each texture mode, a dual's primary and secondary alone and combined under each
+  mode, more hardnesses and diameters; and probes where two stages meet (texture, dual, wet edges, opacity), which
+  show their order.
+
+**Brush Pose pressure scales size and opacity both**, whatever the brush's own dynamics say: a pose at 0.5 paints
+half the diameter at half the opacity. The `pressure …` probes and a pack's reference lines at 0.25 and 0.5 are read
+that way.
 
 A run also paints a sample of probes (`PHOTOSHOP_REPEAT_SAMPLE`, one of each kind) twice more on sheets of their own,
 at the same places, and compares them. Everything but the random scatter probe has come back identical to the bit,

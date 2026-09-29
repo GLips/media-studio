@@ -176,6 +176,35 @@ export function photoshopProbes(): PhotoshopProbe[] {
   add('fade opacity 40', 'opacity faded over 40 stamps', base(round(64, 100, 10), { transfer: { opacity: pressure('fade', { fadeSteps: 40 }), flow: pressure('off') } }), [mark('line')]);
   add('fade flow 40', 'flow faded over 40 stamps', base(round(64, 100, 10), { transfer: { opacity: pressure('off'), flow: pressure('fade', { fadeSteps: 40 }) } }), [mark('line')]);
 
+  // vid-97's second round: inputs painted alone beside what combines them, so a combine reads pixel for pixel off two
+  // captures, with no model of either input in between.
+  for (const hardness of [10, 40, 60, 90, 95]) add(`tip computed h${hardness}`, `a computed round tip's alpha profile at hardness ${hardness}%`, base(round(128, hardness)), [mark('stamp')]);
+  for (const diameter of [32, 256]) for (const hardness of [0, 50, 90]) add(`tip computed d${diameter} h${hardness}`, `how the hardness ${hardness}% profile scales with diameter (${diameter} px)`, base(round(diameter, hardness)), [mark('stamp')]);
+  for (const diameter of [1, 2, 5, 10, 32]) add(`tip computed d${diameter} h100`, `a hard tip's antialiased edge at ${diameter} px`, base(round(diameter)), [mark('stamp')]);
+  const SOFT = round(240, 0);
+  add('tip computed d240 h0', 'the soft stamp the texture curves are read against: coverage by radius', base(SOFT), [mark('stamp')]);
+  const ramp = (mode: (typeof PHOTOSHOP_TEXTURE_MODES)[number], depth: number, extra: Partial<NonNullable<PhotoshopBrushSettings['texture']>> = {}) => ({ mode, depth, scale: 100, eachTip: false, invert: false, brightness: 0, contrast: 0, ...extra });
+  for (const mode of PHOTOSHOP_TEXTURE_MODES) {
+    for (const depth of [100, 50]) add(`texture ${mode} d${depth} soft`, `${mode} at depth ${depth}% on a soft stamp: the transfer curve over coverage (radius) and ramp value (x)`, base(SOFT, { texture: ramp(mode, depth) }), [mark('stamp')]);
+  }
+  for (const mode of ['height', 'linearHeight'] as const) for (const depth of [25, 75]) add(`texture ${mode} d${depth} soft`, `${mode} at depth ${depth}%: how depth enters the height modes`, base(SOFT, { texture: ramp(mode, depth) }), [mark('stamp')]);
+  for (const [brightness, contrast] of [[-50, 0], [0, -50], [0, 100], [30, -30]] as const) {
+    add(`texture multiply brightness ${brightness} contrast ${contrast}`, "texture brightness and contrast at their extremes: how they remap the pattern's values", base(round(96, 100, 5), { texture: ramp('multiply', 100, { brightness, contrast }) }), [mark('line')]);
+  }
+  const DUAL_PRIMARY = round(160, 0), DUAL_SECONDARY = round(48, 0, 150);
+  add('dual base primary', "the dual probes' primary painted alone", base(DUAL_PRIMARY), [mark('line')]);
+  add('dual base secondary', "the dual probes' secondary painted alone, as a primary", base(DUAL_SECONDARY), [mark('line')]);
+  for (const mode of PHOTOSHOP_DUAL_MODES) add(`dual ${mode} soft`, `${mode} over a soft primary and a soft secondary: the combine over both coverages, against the two painted alone`, base(DUAL_PRIMARY, { dual: { tip: DUAL_SECONDARY, mode } }), [mark('line')]);
+  // Which stage comes first, read off where two of them meet.
+  add('order texture wet', 'canvas texture with wet edges: which applies first', base(round(128, 50, 5), { wetEdges: true, texture: ramp('multiply', 100) }), [mark('line')]);
+  add('order texture each tip wet', 'Texture Each Tip with wet edges', base(round(128, 50, 5), { flow: 25, wetEdges: true, texture: ramp('subtract', 50, { eachTip: true }) }), [mark('line')]);
+  add('order dual wet', 'the dual with wet edges', base(round(96, 100, 5), { wetEdges: true, dual: { tip: round(32, 0, 150), mode: 'multiply' } }), [mark('line')]);
+  add('order dual texture', 'the dual with canvas texture (subtract): texture on the primary before the dual, or on the combined coverage', base(round(96, 100, 5), { texture: ramp('subtract', 100), dual: { tip: round(32, 0, 25), mode: 'multiply' } }), [mark('line')]);
+  add('order dual texture each tip', 'the dual with Texture Each Tip (subtract, depth 50)', base(round(96, 100, 5), { texture: ramp('subtract', 50, { eachTip: true }), dual: { tip: round(32, 0, 25), mode: 'multiply' } }), [mark('line')]);
+  add('order texture opacity', 'canvas texture (subtract) at opacity 50%: texture before or after the opacity', base(round(96, 100, 5), { opacity: 50, texture: ramp('subtract', 100) }), [mark('line')]);
+  add('order wet opacity', 'wet edges at opacity 50%: wet edges before or after the opacity', base(round(128, 50, 5), { opacity: 50, wetEdges: true }), [mark('line'), mark('twoCross')]);
+  add('order dual opacity', 'the dual (colorBurn) at opacity 50%', base(DUAL_PRIMARY, { opacity: 50, dual: { tip: DUAL_SECONDARY, mode: 'colorBurn' } }), [mark('line')]);
+
   // Randomness, captured several times over to compare by statistics.
   add('random size jitter 50', "size jitter 50%: the jitter's distribution", base(round(48, 100, 25), { jitter: { size: 50, scatter: 0, bothAxes: false } }), [mark('line')], 4);
   add('random scatter 100', 'scatter 100% on both axes: the scatter distribution', base(round(24, 100, 50), { jitter: { size: 0, scatter: 100, bothAxes: true } }), [mark('line')], 4);
