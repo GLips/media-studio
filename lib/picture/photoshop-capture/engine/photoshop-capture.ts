@@ -1,4 +1,4 @@
-// photoshop-capture.ts: `studio photoshop probes` and `studio photoshop references`, which have Photoshop 2026 paint
+// photoshop-capture.ts: `npm run photoshop -- probes` and `npm run photoshop -- references`, which have Photoshop 2026 paint
 // the probes and a pack's brushes and write what it painted, with a manifest (vid-100). Photoshop is driven by
 // lib/platform/photoshop/engine/photoshop-app.ts, which owns it for the run and puts Graham's settings back after;
 // the painting itself is photoshop-capture.jsxinc, one script per sheet of the plan (models/photoshop-capture-plan.ts).

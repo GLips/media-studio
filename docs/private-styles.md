@@ -9,7 +9,7 @@ work/styles/<name>/
   style.ts     the style: `export default { … } satisfies StampPaintStyle` (lib/picture/stamp-paint/models/style.ts)
   <name>.md    how to paint in this style; guidance about the pack's brushes stays here, private
   fidelity.ts  a note per brush on how and why it differs from its Procreate preview
-  fidelity-grades.json  each brush's score and grade (close, rough, off), written by studio brushes sheet
+  fidelity-grades.json  each brush's score and grade (close, rough, off), written by npm run brushes:sheet
   brushes/     each pack's imported assets, in brushes/<pack>/ (studio brushes import). Not in git: each machine imports its own copy
 ```
 
@@ -61,11 +61,11 @@ brushes/<pack>/
                round-<hardness>.png for Photoshop's computed round tips
   grains/      each brush's grain (a Photoshop texture's pattern), likewise
   previews/    each brush's own Procreate preview, to judge a render against (Photoshop files carry none)
-  fidelity/    the brush fidelity sheet, once drawn (studio brushes sheet)
-  reference/   Photoshop's own renders of the pack's brushes (studio photoshop references, docs/photoshop-capture.md)
+  fidelity/    the brush fidelity sheet, once drawn (npm run brushes:sheet)
+  reference/   Photoshop's own renders of the pack's brushes (npm run photoshop -- references, docs/photoshop-capture.md)
   papers/      each .procreate canvas in the zip, as Procreate shows it, and its tooth as <paper>.grain.png
   manifest.json
-  procreate-sources.json  each brush's Procreate settings as read, for studio brushes fit
+  procreate-sources.json  each brush's Procreate settings as read, for npm run brushes:fit
   photoshop-sources.json  each Photoshop preset as read, and the .abr or .tpl it came from
 ```
 
@@ -83,7 +83,7 @@ archive's hash, the previews, the zip's `.swatches` palettes, the papers (each w
 every setting that was approximated or dropped (`support`); the import prints a line per brush of those. Copy colours
 into `palette` and a paper into `paper` (`image` for its photograph, `grain` for its tooth) in style.ts.
 
-**Judging the brushes.** `studio brushes sheet --style <name> --pack <pack>` paints each brush with the studio's GPU
+**Judging the brushes.** `npm run brushes:sheet -- --style <name> --pack <pack>` paints each brush with the studio's GPU
 renderer along the stroke Procreate drew its preview with (one stamp, for a brush Procreate previews that way), at the
 diameter whose thickness matches the preview's, and sets it beside that preview. A brush without a preview (every
 Photoshop brush) is measured instead against its `reference/` capture along the same stroke, the row's left column
@@ -120,15 +120,15 @@ Re-draw after changing how a brush is painted or read, and re-read the notes of 
 
 **Fitting the importer.** Where Procreate's meaning isn't known (how big a grain's tile is, how wide and dark a wet
 rim, how far each glaze mode builds within its stroke, how flow and depth curve), the importer reads a setting by a
-constant of its `ProcreateReading`, checked in as `lib/picture/stamp-paint/models/procreate-reading.ts`. `studio
-brushes fit --packs watercolor/vvds` fits every constant at once against every previewed brush of the packs given, by
+constant of its `ProcreateReading`, checked in as `lib/picture/stamp-paint/models/procreate-reading.ts`. `npm run
+brushes:fit -- --packs watercolor/vvds` fits every constant at once against every previewed brush of the packs given, by
 the sheet's summed score, with each brush that ends up further off than it started counted again. It's deterministic,
 takes a few minutes, and writes the file; re-import the packs and re-draw their sheets after. The constants are the
 same for every brush of every pack: a brush is never tuned alone, so what fits one pack's previews holds for the next.
 Photoshop's importer reads the settings Photoshop doesn't define numerically (how far 100% scatter strays, how dark a
 wet edge gathers, how a texture's brightness and contrast act) by its own `PhotoshopReading`,
 `lib/picture/stamp-paint/models/photoshop-reading.ts`: first guesses until it's fitted against Photoshop's renders,
-which `studio photoshop probes` and `studio photoshop references` capture by script (docs/photoshop-capture.md).
+which `npm run photoshop -- probes` and `npm run photoshop -- references` capture by script (docs/photoshop-capture.md).
 
 **Same pixels.** A painting draws on the GPU through WebGPU, in half floats, and GPUs round floats differently, so
 what's promised depends on where it renders:

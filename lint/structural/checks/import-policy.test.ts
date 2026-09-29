@@ -118,11 +118,15 @@ test('nothing outside work/ imports into it, whether or not the workspace is the
       "import { gone } from '../../../../work/projects/q/gone.ts';",
     ].join('\n'),
     'cli/commands/x.ts': "import { ink } from '../../work/projects/p/look.ts';\n",
+    'harness/x.ts': "import { ink } from '../work/projects/p/look.ts';\n",
+    // Legal neighbour: harness wiring over lib, as cli's is.
+    'harness/y.ts': "import { a } from '#lib/picture/look/models/look.ts';\n",
     // Legal neighbour: a project reaching the studio.
     'work/projects/p/video.tsx': "import { a } from '#lib/picture/look/models/look.ts';\n",
   });
   assert.deepEqual(caught(findings), [
     'cli/commands/x.ts:../../work/projects/p/look.ts',
+    'harness/x.ts:../work/projects/p/look.ts',
     'lib/picture/look/models/look.ts:../../../../work/projects/p/look.ts',
     'lib/picture/look/models/look.ts:../../../../work/projects/q/gone.ts',
   ]);

@@ -109,7 +109,7 @@ export function buildWebDriverAgent({ udid, team, bundleId }: { udid: string; te
  */
 export async function ensureWebDriverAgent(udid: string, log: (line: string) => void = () => {}): Promise<void> {
   if (await webDriverAgentReady(WEBDRIVERAGENT_URL)) return;
-  if (!existsSync(WDA_DERIVED)) throw new Error('ios device: the WebDriverAgent runner isn\'t built; run `studio brushes capture --setup --team <id>` first');
+  if (!existsSync(WDA_DERIVED)) throw new Error('ios device: the WebDriverAgent runner isn\'t built; run `npm run procreate -- capture --setup --team <id>` first');
   const detached = (command: string, args: string[], logName: string) => {
     const out = openSync(join(WEBDRIVERAGENT_HOME, logName), 'a');
     spawn(command, args, { detached: true, stdio: ['ignore', out, out] }).unref();

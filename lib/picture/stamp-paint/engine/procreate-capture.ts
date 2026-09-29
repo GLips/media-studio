@@ -1,4 +1,4 @@
-// procreate-capture.ts: `studio brushes capture`, which has Procreate on the iPad paint every probe and brings its
+// procreate-capture.ts: `npm run procreate -- capture`, which has Procreate on the iPad paint every probe and brings its
 // layers back full size (vid-96). It writes the probe set and, if Procreate lacks it, imports it; then per canvas of
 // the plan (models/procreate-capture-plan.ts) it imports the template, paints each probe on its own named layer
 // through procreate-app-driver.ts, exports every layer once, and pulls the PNGs over USB into the run's folder with a

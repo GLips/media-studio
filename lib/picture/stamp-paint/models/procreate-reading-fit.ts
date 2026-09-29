@@ -1,4 +1,4 @@
-// procreate-reading-fit.ts: the search `studio brushes fit` runs over a ProcreateReading (procreate-brush.ts), apart
+// procreate-reading-fit.ts: the search `npm run brushes:fit` runs over a ProcreateReading (procreate-brush.ts), apart
 // from how a reading is scored (lib/picture/stamp-paint/engine/stamp-brush-fit.ts paints every brush and sums the
 // sheet's scores). Coordinate descent: each constant in turn tries a step either way and keeps the better, and a
 // constant whose steps both lose halves its step, until every step is fine. Constants and candidates go in a fixed

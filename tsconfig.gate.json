@@ -2,5 +2,5 @@
   // The pre-commit gate's typecheck: what a clean clone holds, so none of work/, which is another repository.
   // Its own gate (.githooks-workspace/pre-commit) runs `npm run typecheck`, which includes it.
   "extends": "./tsconfig.json",
-  "include": ["lib", "lint", "cli", "remotion.config.ts", "types.d.ts"]
+  "include": ["lib", "lint", "cli", "harness", "remotion.config.ts", "types.d.ts"]
 }

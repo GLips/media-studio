@@ -34,7 +34,7 @@ export const PROCREATE_SOURCES = 'procreate-sources.json', PHOTOSHOP_SOURCES = '
 
 /**
  * What an importer writes into a pack's folder, of either app, and all an import replaces. The rest stays: a sheet's
- * fidelity/, a pack's Photoshop reference/ captures (studio photoshop references), anything else put beside them.
+ * fidelity/, a pack's Photoshop reference/ captures (npm run photoshop -- references), anything else put beside them.
  */
 const STAMP_PACK_IMPORTED = ['tips', 'grains', 'previews', 'papers', STAMP_PAINT_PACK_MANIFEST, PROCREATE_SOURCES, PHOTOSHOP_SOURCES];
 

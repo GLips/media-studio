@@ -21,7 +21,7 @@ import { PROCREATE_READING } from './procreate-reading.ts';
 
 /**
  * The constants that turn Procreate's settings into the studio's, where Procreate's meaning isn't known and is fitted
- * (`studio brushes fit`). Each is a scale or a curve on one reading, the same for every brush of every pack.
+ * (`npm run brushes:fit`). Each is a scale or a curve on one reading, the same for every brush of every pack.
  */
 export type ProcreateReading = {
   /** Procreate's full pencil taper, read as this share of the stroke's length. */

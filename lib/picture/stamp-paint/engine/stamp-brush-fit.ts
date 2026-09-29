@@ -1,4 +1,4 @@
-// stamp-brush-fit.ts: `studio brushes fit`. Fits the importer's ProcreateReading (models/procreate-brush.ts), the
+// stamp-brush-fit.ts: `npm run brushes:fit`. Fits the importer's ProcreateReading (models/procreate-brush.ts), the
 // constants shared by every Procreate brush, against every brush of the packs it's given at once: each candidate
 // reading reads each brush's own settings again (the pack's procreate-sources.json), paints it as the brush fidelity
 // sheet does, and sums the sheet's scores (models/procreate-reading-fit.ts searches). It writes the fitted reading
@@ -47,7 +47,7 @@ export type StampBrushFitResult = {
 /** procreate-reading.ts's text for `reading`. */
 function readingModule(reading: ProcreateReading, packs: readonly StampBrushFitPack[]): string {
   const lines = Object.entries(reading).map(([key, value]) => `  ${key}: ${value},`);
-  return `// procreate-reading.ts: the fitted ProcreateReading (procreate-brush.ts), written by \`studio brushes fit\`
+  return `// procreate-reading.ts: the fitted ProcreateReading (procreate-brush.ts), written by \`npm run brushes:fit\`
 // (lib/picture/stamp-paint/engine/stamp-brush-fit.ts) against ${packs.map(({ style, pack }) => `${style}/${pack}`).join(', ')}. Edit by fitting again, not by hand:
 // each value was chosen with the others, against every brush the fit was given.
 import type { ProcreateReading } from './procreate-brush.ts';

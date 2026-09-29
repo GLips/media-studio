@@ -18,6 +18,10 @@
     "check:arch": "node lint/check-arch.ts",
     "check:structural": "node lint/catalog/structural/check-structure.ts",
     "lint": "oxlint web/src",
+    "photoshop": "node harness/photoshop.ts",
+    "procreate": "node harness/procreate.ts",
+    "brushes:sheet": "node harness/brush-fidelity.ts sheet",
+    "brushes:fit": "node harness/brush-fidelity.ts fit",
     "prepare": "git config core.hooksPath .githooks"
   },
   "type": "module",

@@ -1,4 +1,4 @@
-// stamp-brush-sheet.ts: `studio brushes sheet`, the brush fidelity sheet. Each brush of an imported pack is painted by
+// stamp-brush-sheet.ts: `npm run brushes:sheet`, the brush fidelity sheet. Each brush of an imported pack is painted by
 // the studio's GPU renderer along the stroke its Procreate preview was drawn with, beside its target, at the diameter
 // whose thickness matches the target's, and the two are measured alike (procreate-preview-stroke.ts). The target is
 // the brush's Procreate preview, or without one its Photoshop reference along the same stroke

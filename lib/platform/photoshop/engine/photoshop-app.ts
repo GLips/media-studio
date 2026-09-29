@@ -10,7 +10,7 @@
 // a different preset than the flat list says; it cost Graham four presets once).
 //
 // A run that dies before its restore leaves its snapshot marked pending; restorePendingPhotoshopSettings puts it back
-// (`studio photoshop restore`), and nothing starts Photoshop while one is pending.
+// (`npm run photoshop -- restore`), and nothing starts Photoshop while one is pending.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -174,7 +174,7 @@ export async function withOwnedPhotoshop<T>(run: string, step: (session: Photosh
   if (!existsSync(PHOTOSHOP_APP)) throw new Error(`photoshop: no Photoshop 2026 at ${PHOTOSHOP_APP}`);
   if (photoshopIsRunning()) throw new Error("photoshop: Photoshop is open. It's Graham's: save and quit it, and the run launches its own and puts his settings back after");
   const pending = pendingPhotoshopSettingsBackups();
-  if (pending.length) throw new Error(`photoshop: a run's settings snapshot was never restored (${pending.join(', ')}); run \`studio photoshop restore\` first`);
+  if (pending.length) throw new Error(`photoshop: a run's settings snapshot was never restored (${pending.join(', ')}); run \`npm run photoshop -- restore\` first`);
   const backup = snapshotPhotoshopSettings(run);
   log(`photoshop: settings snapshot in ${backup}`);
   let result: T;
@@ -209,7 +209,7 @@ export function checkPhotoshop(): PhotoshopCheck {
     else lines.push(`· no ${file} yet: Photoshop writes it on quit, and the restore removes it again`);
   }
   const pending = pendingPhotoshopSettingsBackups();
-  if (pending.length) fail(`a settings snapshot was never restored: ${pending.join(', ')}; run \`studio photoshop restore\``);
+  if (pending.length) fail(`a settings snapshot was never restored: ${pending.join(', ')}; run \`npm run photoshop -- restore\``);
   if (photoshopIsRunning()) {
     let documents = '?';
     try {

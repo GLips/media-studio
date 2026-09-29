@@ -1,16 +1,16 @@
 # Capturing Photoshop's renders
 
 The stamp renderer's constants are guesses until something paints the same brush and the studio measures the gap.
-Photoshop can paint by script, so on the Mac it's that reference: `studio photoshop` launches its own Photoshop 2026
+Photoshop can paint by script, so on the Mac it's that reference: `npm run photoshop` (harness/photoshop.ts) launches its own Photoshop 2026
 in the background, paints probes or a pack's brushes onto 16-bit transparent sheets, saves them as lossless PNG and
 quits, unattended. Its code is `lib/picture/photoshop-capture/` (what to paint, where, and reading it back) over
 `lib/platform/photoshop/engine/` (driving Photoshop, and putting its settings back).
 
 ```sh
-studio photoshop check                     # could a capture start now? changes nothing
-studio photoshop probes                    # the probe set, about a minute
-studio photoshop references "<pack>.abr" --style watercolor --pack <pack>
-studio photoshop restore                   # put settings back after a run that was killed
+npm run photoshop -- check                 # could a capture start now? changes nothing
+npm run photoshop -- probes                # the probe set, about a minute
+npm run photoshop -- references "<pack>.abr" --style watercolor --pack <pack>
+npm run photoshop -- restore               # put settings back after a run that was killed
 ```
 
 ## Graham's Photoshop comes back as it was
@@ -22,7 +22,7 @@ MRUBrushes.psp, Patterns.psp, tool presets, prefs) and the `Adobe Photoshop 2026
 `displayDialogs` to NO before anything else, closes its own documents unsaved, and quits. Then it rewrites every file
 that changed, with its old timestamps, removes any new ones, checks every hash and writes `restored.json`. Photoshop
 writes its settings when it quits, which is why the restore comes after the quit, never before. A run that's killed
-leaves its snapshot pending: `studio photoshop restore` puts it back, and until then no run starts.
+leaves its snapshot pending: `npm run photoshop -- restore` puts it back, and until then no run starts.
 
 Everything goes through ExtendScript (`osascript … do javascript`) and Action Manager descriptors: no UI clicks, no
 accessibility permission.
@@ -70,7 +70,7 @@ Runs land in `work/styles/<style>/brushes/photoshop-probes/<run>/`, out of git l
 
 ## A pack's references
 
-`studio photoshop references` loads the `.abr` into Photoshop as the whole brush list, then paints every preset:
+`npm run photoshop -- references` loads the `.abr` into Photoshop as the whole brush list, then paints every preset:
 
 - one stamp at pressure 1;
 - a straight stroke at pressures 0.25, 0.5 and 1;
@@ -83,7 +83,7 @@ whatever the tool had, so the run paints them at 100 px and says so. Photoshop s
 so a preset whose name repeats an earlier one's isn't captured; the manifest lists them. A pack takes 0.2 to 0.4 s a
 cell, with the time spent on big brushes.
 
-`studio brushes import` leaves `reference/` be, so capture before or after importing. `studio brushes sheet` measures
+`studio brushes import` leaves `reference/` be, so capture before or after importing. `npm run brushes:sheet` measures
 each brush of the pack that has no Procreate preview against its S-curve here (docs/private-styles.md).
 
 ## Gotchas

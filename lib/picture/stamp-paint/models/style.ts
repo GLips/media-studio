@@ -31,7 +31,7 @@ export type StampBrushSupportNote = { level: 'approximated' | 'unsupported' | 'i
  */
 export type StampPaintStyleFidelity = Readonly<Record<string, Readonly<Record<string, string>>>>;
 
-/** A style's fidelity-grades.json, which `studio brushes sheet` writes beside its fidelity.ts. */
+/** A style's fidelity-grades.json, which `npm run brushes:sheet` writes beside its fidelity.ts. */
 export const STAMP_PAINT_FIDELITY_GRADES = 'fidelity-grades.json';
 
 /**

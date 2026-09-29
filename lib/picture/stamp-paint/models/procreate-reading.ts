@@ -1,4 +1,4 @@
-// procreate-reading.ts: the fitted ProcreateReading (procreate-brush.ts), written by `studio brushes fit`
+// procreate-reading.ts: the fitted ProcreateReading (procreate-brush.ts), written by `npm run brushes:fit`
 // (lib/picture/stamp-paint/engine/stamp-brush-fit.ts) against watercolor/vvds. Edit by fitting again, not by hand:
 // each value was chosen with the others, against every brush the fit was given.
 import type { ProcreateReading } from './procreate-brush.ts';

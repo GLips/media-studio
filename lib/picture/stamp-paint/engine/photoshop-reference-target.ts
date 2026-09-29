@@ -1,4 +1,4 @@
-// photoshop-reference-target.ts: a pack's Photoshop reference captures (`studio photoshop references`, vid-100, in
+// photoshop-reference-target.ts: a pack's Photoshop reference captures (`npm run photoshop -- references`, vid-100, in
 // brushes/<pack>/reference/) as what the brush fidelity sheet measures a brush against where the pack has no
 // Procreate preview. The reference's S-curve mark is Photoshop painting the brush along the preview's stroke, scaled to
 // its cell, so the cell cropped to the preview's frame and downsized to its size is measured as a preview is: its

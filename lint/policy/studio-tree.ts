@@ -46,6 +46,11 @@ export type StudioPosition =
   | { kind: 'studio'; barrel: true }
   | { kind: 'cli' }
   /**
+   * `harness/`: entry points for the brush-fidelity rigs (Photoshop and Procreate captures, the fidelity sheet and
+   * fit), run by node or npm rather than `studio`, which is for authoring. Wiring only, with cli's import rights.
+   */
+  | { kind: 'harness' }
+  /**
    * The web app (web/). `web-server` is a `.server` module in web/src/infrastructure/, the app's one door into
    * lib's engine code; everything else in web/ is `web-client`, since TanStack Start may put it in a browser chunk.
    */
@@ -104,6 +109,7 @@ export function classifyStudioPath(path: string, shared: DeclaredShared): Studio
     return { kind: role, feature: `${area}/${feature}` };
   }
   if (top === 'cli') return { kind: 'cli' };
+  if (top === 'harness') return { kind: 'harness' };
   if (top === 'web') {
     if (parts.length === 2 && TOOL_CONFIG.test(second)) return { kind: 'root-config' };
     return WEB_SERVER_MODULE.test(path) ? { kind: 'web-server' } : { kind: 'web-client' };

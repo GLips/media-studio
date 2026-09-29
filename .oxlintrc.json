@@ -1,5 +1,5 @@
 // The web app's lint: tk2's catalog (lint/catalog/, vendored whole) plus oxlint's built-ins, as tk2 enables them.
-// `npm run lint` runs it over web/src, the one tree lint/catalog/policy/declared-trees.ts declares. lib/, cli/ and
+// `npm run lint` runs it over web/src, the one tree lint/catalog/policy/declared-trees.ts declares. lib/, cli/, harness/ and
 // work/projects/ answer to the studio's own tier (npm run check:arch) instead.
 //
 // Suppressing one line: `// oxlint-disable-next-line arch/<rule>`, with the reason beside it.

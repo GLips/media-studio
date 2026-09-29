@@ -1,13 +1,19 @@
-// studio photoshop: Photoshop 2026's own renders of brushes, captured by script as ground truth for the stamp
-// renderer (lib/picture/photoshop-capture/engine/photoshop-capture.ts; docs/photoshop-capture.md).
+// node harness/photoshop.ts <check|probes|references|restore> (npm run photoshop -- <verb>): Photoshop 2026's own
+// renders of brushes, captured by script as ground truth for the stamp renderer
+// (lib/picture/photoshop-capture/engine/photoshop-capture.ts; docs/photoshop-capture.md).
 import { defineCommand } from 'citty';
+import { join, relative, resolve } from 'node:path';
+import { capturePhotoshopProbes, capturePhotoshopReferences } from '#lib/picture/photoshop-capture/engine/photoshop-capture.ts';
+import { PHOTOSHOP_REPEAT_SAMPLE } from '#lib/picture/photoshop-capture/models/photoshop-probes.ts';
+import { checkPhotoshop, restorePendingPhotoshopSettings } from '#lib/platform/photoshop/engine/photoshop-app.ts';
+import { STUDIO_ROOT, STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
+import { runHarnessCommand } from './run-harness-command.ts';
 
 const listArg = (value: string | undefined) => value?.split(',').map((s) => s.trim()).filter(Boolean);
 
 const checkCommand = defineCommand({
   meta: { name: 'check', description: "Say whether a capture could start now: Photoshop installed, not open (it's Graham's), and no settings snapshot waiting to be restored. Changes nothing." },
-  async run() {
-    const { checkPhotoshop } = await import('#lib/platform/photoshop/engine/photoshop-app.ts');
+  run() {
     const { ok, lines } = checkPhotoshop();
     for (const line of lines) console.log(line);
     if (!ok) process.exitCode = 1;
@@ -25,10 +31,6 @@ const probesCommand = defineCommand({
     repeat: { type: 'string', valueHint: 'tip computed h50', description: 'Probes painted twice more, to measure repeatability; "none" for no repeat check. Defaults to one probe of each kind' },
   },
   async run({ args }) {
-    const { join, relative } = await import('node:path');
-    const { STUDIO_ROOT, STUDIO_STYLES_DIR } = await import('#lib/platform/project/engine/studio-project.ts');
-    const { capturePhotoshopProbes } = await import('#lib/picture/photoshop-capture/engine/photoshop-capture.ts');
-    const { PHOTOSHOP_REPEAT_SAMPLE } = await import('#lib/picture/photoshop-capture/models/photoshop-probes.ts');
     const only = listArg(args.only);
     const repeat = args.repeat === 'none' ? [] : listArg(args.repeat) ?? PHOTOSHOP_REPEAT_SAMPLE.filter((name) => !only || only.includes(name));
     const { dir, manifest } = await capturePhotoshopProbes({ dir: join(STUDIO_STYLES_DIR, args.style, 'brushes', 'photoshop-probes'), only, repeat, log: (line) => console.error(line) });
@@ -54,9 +56,6 @@ const referencesCommand = defineCommand({
     brush: { type: 'string', valueHint: 'Watercolor Wash', description: 'Only these brushes, by their names in the .abr (comma-separated)' },
   },
   async run({ args }) {
-    const { relative, resolve } = await import('node:path');
-    const { STUDIO_ROOT, STUDIO_STYLES_DIR } = await import('#lib/platform/project/engine/studio-project.ts');
-    const { capturePhotoshopReferences } = await import('#lib/picture/photoshop-capture/engine/photoshop-capture.ts');
     const { dir, manifest } = await capturePhotoshopReferences({ abr: resolve(args.abr), stylesDir: STUDIO_STYLES_DIR, style: args.style, pack: args.pack, only: listArg(args.brush), log: (line) => console.error(line) });
     for (const [key, { preset }] of Object.entries(manifest.items)) {
       const size = { own: `${preset!.diameter} px`, capped: `${preset!.nativeDiameter} px, painted at ${preset!.diameter}`, unsized: `no size of its own, painted at ${preset!.diameter} px` }[preset!.sizing];
@@ -70,15 +69,14 @@ const referencesCommand = defineCommand({
 
 const restoreCommand = defineCommand({
   meta: { name: 'restore', description: "Put Photoshop's settings back from a run's snapshot that was never restored (a run that crashed or was killed). Photoshop must be quit." },
-  async run() {
-    const { restorePendingPhotoshopSettings } = await import('#lib/platform/photoshop/engine/photoshop-app.ts');
+  run() {
     const restored = restorePendingPhotoshopSettings();
     if (!restored.length) console.log('photoshop restore: no snapshot is waiting');
     for (const r of restored) console.log(`photoshop restore: ${r.backup}: ${r.files} files checked, rewritten ${r.rewritten.join(', ') || 'none'}, removed ${r.removed.join(', ') || 'none'}`);
   },
 });
 
-export default defineCommand({
+await runHarnessCommand(defineCommand({
   meta: { name: 'photoshop', description: "Photoshop 2026's own renders of probes and pack brushes, captured by script, leaving Graham's Photoshop as it was" },
   subCommands: { check: checkCommand, probes: probesCommand, references: referencesCommand, restore: restoreCommand },
-});
+}));

@@ -18,6 +18,8 @@ test('each path lands in its §4 position', () => {
     'lib/picture/kit/kit.tsx': 'undeclared',
     'lib/picture/kit/helpers/x.ts': 'undeclared',
     'lib/helpers/strings/models/x.ts': 'undeclared',
+    'cli/commands/brushes.ts': 'cli',
+    'harness/photoshop.ts': 'harness',
     'web/src/infrastructure/studio-engine.server.ts': 'web-server',
     'web/src/routes/api.studio.ts': 'web-client',
     'web/vite.config.ts': 'root-config',

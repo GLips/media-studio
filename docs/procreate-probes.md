@@ -4,7 +4,7 @@ Nothing published says how Procreate paints: how a grain blend combines with a s
 rendering modes build within a stroke, how wide and dark a wet edge is. So the studio measures it. `studio brushes
 probes` writes a brush set of probes (`lib/picture/stamp-paint/models/procreate-probes.ts`), each a plain round brush
 with one setting changed. Procreate's render of each probe is the readout. Once one comes back full size, the probes
-go through the brush fidelity sheet and `studio brushes fit` like any other pack, so the importer's constants are
+go through the brush fidelity sheet and `npm run brushes:fit` like any other pack, so the importer's constants are
 fitted to them as well as to a bought pack's previews.
 
 Most probes preview as a single stamp. The tip ramps from no paint at its left to full paint at its right, and the
@@ -15,7 +15,7 @@ pressure, taper, and how stamps turn.
 ## Writing the set
 
 ```sh
-studio brushes probes --archive ~/Downloads/E13434.zip --brush "Smooth Ink Pen" --out studio-probes.brushset
+npm run procreate -- probes --archive ~/Downloads/E13434.zip --brush "Smooth Ink Pen" --out studio-probes.brushset
 ```
 
 Each probe's `Brush.archive` is the template brush's, with the probe's settings written over it. That way it holds every
@@ -38,7 +38,7 @@ So the probes need a full-size render from Procreate: each one painted on a canv
 ## Capturing on the iPad (parked, vid-96)
 
 The reference target moved to scripted Photoshop on the Mac, so this rig is parked. It's kept for Procreate packs
-later. `studio brushes capture --archive <pack>` drives Procreate on a USB-connected 12.9-inch iPad in landscape. It
+later. `npm run procreate -- capture --archive <pack>` drives Procreate on a USB-connected 12.9-inch iPad in landscape. It
 lays the probes out as named layers on 4096² canvases (`models/procreate-capture-plan.ts`), paints them with synthetic
 finger touches, exports every layer at once (Share › PNG Files), and pulls the PNGs and a `manifest.json` into
 `work/styles/<style>/brushes/procreate-captures/<run>/`.
@@ -47,7 +47,7 @@ One-time setup on the Mac:
 
 1. `uv tool install pymobiledevice3` (USB file transfer into Procreate's shared folder).
 2. Xcode, the iPad trusted, Developer Mode on and Auto-Lock off.
-3. `studio brushes capture --setup --team <id>` builds and signs WebDriverAgent. A Personal Team's profile lasts a
+3. `npm run procreate -- capture --setup --team <id>` builds and signs WebDriverAgent. A Personal Team's profile lasts a
    week, so rebuild when the runner stops launching. Trust the developer certificate on the iPad once.
 4. Point Procreate's Save to Files at On My iPad › Procreate once by hand. The picker remembers it.
 

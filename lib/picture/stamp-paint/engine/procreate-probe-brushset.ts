@@ -1,4 +1,4 @@
-// procreate-probe-brushset.ts: `studio brushes probes`, which writes the probe brushes (models/procreate-probes.ts)
+// procreate-probe-brushset.ts: `npm run procreate -- probes`, which writes the probe brushes (models/procreate-probes.ts)
 // as a .brushset Procreate imports. Each probe's Brush.archive is a real Procreate brush's, the template, with the
 // probe's settings written over it: an archive rebuilt from nothing might lack a key or class Procreate expects, and a
 // template carries every one. Each setting keeps the type the template stores it as (a bool stays a bool, a 4-byte
@@ -58,7 +58,7 @@ function probeArchive(template: Uint8Array, name: string, settings: ProcreatePro
   const root = archive.$objects[archive.$top.root.uid] as Record<string, PlistValue>;
   for (const [key, value] of Object.entries(settings)) {
     const was = root[key];
-    if (was === undefined) throw new Error(`brushes probes: the template brush has no ${key}; pick one that does`);
+    if (was === undefined) throw new Error(`procreate probes: the template brush has no ${key}; pick one that does`);
     root[key] = typeof was === 'boolean' ? Boolean(value)
         : was instanceof PlistReal ? new PlistReal(Number(value), was.bytes)
           : typeof was === 'number' ? Math.round(Number(value)) : new PlistReal(Number(value));
@@ -89,7 +89,7 @@ ${folders.map((f) => `\t\t<string>${f}</string>`).join('\n')}
 function openTemplate(archive: string): ZipArchive {
   if (archive.endsWith('.brushset')) return openZipFile(archive);
   const outer = openZipFile(archive), brushset = outer.names.find((name) => name.endsWith('.brushset'));
-  if (!brushset) throw new Error(`brushes probes: ${archive} holds no .brushset`);
+  if (!brushset) throw new Error(`procreate probes: ${archive} holds no .brushset`);
   const inner = openZipBytes(brushset, outer.read(brushset));
   outer.close();
   return inner;
@@ -113,11 +113,11 @@ export function writeProcreateProbeBrushset({ archive, brush, out, probes }: { a
   }));
   const folderNamed = (name: string) => {
     const folder = folders.get(name);
-    if (!folder) throw new Error(`brushes probes: ${archive} has no brush named ${JSON.stringify(name)}`);
+    if (!folder) throw new Error(`procreate probes: ${archive} has no brush named ${JSON.stringify(name)}`);
     return folder;
   };
   const templateFolder = folderNamed(brush);
-  if (pack.names.includes(`${templateFolder}/Sub01/Brush.archive`)) throw new Error(`brushes probes: ${brush} is a dual brush; pick a single one as the template`);
+  if (pack.names.includes(`${templateFolder}/Sub01/Brush.archive`)) throw new Error(`procreate probes: ${brush} is a dual brush; pick a single one as the template`);
   const template = new Uint8Array(pack.read(`${templateFolder}/Brush.archive`));
 
   const images = new Map<string, Buffer>();
