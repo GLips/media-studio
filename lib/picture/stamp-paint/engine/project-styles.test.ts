@@ -15,7 +15,9 @@ function washProject(styles: readonly string[]) {
   mkdirSync(style, { recursive: true });
   writeFileSync(join(project, 'project.ts'), `export default ${JSON.stringify({ capability: 'silent', styles })};\n`);
   const packs = { vvds: { source: 'VVDS Watercolor Studio, from Creative Market' }, grain: { source: 'Grain Pack, from the Grain shop' } };
-  writeFileSync(join(style, 'style.ts'), `export default ${JSON.stringify({ packs, palette: { sky: '#88aacc' } })};\n`);
+  const brushes = { wash: { pack: 'vvds', brush: 'Wet Wash' }, tooth: { pack: 'grain', brush: 'Tooth' } };
+  const style_ = { packs, brushes, palette: { sky: '#88aacc' }, paper: { color: '#f4efe4' } };
+  writeFileSync(join(style, 'style.ts'), `export default ${JSON.stringify(style_)};\n`);
   const importPack = (pack: string, manifest: object, files: readonly string[]) => {
     mkdirSync(join(style, 'brushes', pack), { recursive: true });
     for (const file of files) {
@@ -29,20 +31,21 @@ function washProject(styles: readonly string[]) {
 
 test('a named style stops the bundle until each pack is imported, whole, at the version the studio reads', () => {
   const { project, importPack } = washProject(['wash']);
-  importPack('vvds', { version: STAMP_PAINT_ASSETS_VERSION, files: ['tips/wash-01.png', 'grains/paper.png'] }, ['tips/wash-01.png']);
+  importPack('vvds', { version: STAMP_PAINT_ASSETS_VERSION, files: ['tips/wash-01.png', 'grains/paper.png'], brushes: {} }, ['tips/wash-01.png']);
   assert.throws(() => assertProjectStylesReady(project), {
     message: 'styles: wash can\'t paint until its packs are imported in work/styles/wash/ (brushes/ isn\'t in git, so each machine imports its own; docs/private-styles.md):\n'
       + '  brushes/vvds/grains/paper.png: VVDS Watercolor Studio, from Creative Market\n'
-      + '  brushes/grain/manifest.json: Grain Pack, from the Grain shop',
+      + '  brushes/grain/manifest.json: Grain Pack, from the Grain shop\n'
+      + '  brushes.wash: vvds has no brush "Wet Wash"; import it again from VVDS Watercolor Studio, from Creative Market',
   });
 
-  importPack('vvds', { version: STAMP_PAINT_ASSETS_VERSION, files: ['tips/wash-01.png', 'grains/paper.png'] }, ['grains/paper.png']);
-  importPack('grain', { version: STAMP_PAINT_ASSETS_VERSION - 1, files: [] }, []);
+  importPack('vvds', { version: STAMP_PAINT_ASSETS_VERSION, files: ['tips/wash-01.png', 'grains/paper.png'], brushes: { 'Wet Wash': {} } }, ['grains/paper.png']);
+  importPack('grain', { version: STAMP_PAINT_ASSETS_VERSION - 1, files: [], brushes: {} }, []);
   assert.throws(() => assertProjectStylesReady(project), {
     message: /  brushes\/grain\/: imported as version 0, and the studio reads version 1; import it again from Grain Pack, from the Grain shop$/,
   });
 
-  importPack('grain', { version: STAMP_PAINT_ASSETS_VERSION, files: [] }, []);
+  importPack('grain', { version: STAMP_PAINT_ASSETS_VERSION, files: [], brushes: { Tooth: {} } }, []);
   assertProjectStylesReady(project);
 });
 

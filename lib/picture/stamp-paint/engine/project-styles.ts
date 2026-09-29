@@ -22,15 +22,24 @@ function listStyles(projectDir: string) {
 
 /** What's wrong with one style's imported packs on this machine, a line each; none when it can paint. */
 function styleAssetProblems(dir: string, style: StampPaintStyle): string[] {
-  return Object.entries(style.packs).flatMap(([pack, { source }]) => {
+  const manifests = new Map<string, StampPaintPackManifest>();
+  const packProblems = Object.entries(style.packs).flatMap(([pack, { source }]) => {
     const manifestFile = join(dir, 'brushes', pack, STAMP_PAINT_PACK_MANIFEST);
     if (!existsSync(manifestFile)) return [`  brushes/${pack}/${STAMP_PAINT_PACK_MANIFEST}: ${source}`];
     const manifest = JSON.parse(readFileSync(manifestFile, 'utf8')) as StampPaintPackManifest;
     if (manifest.version !== STAMP_PAINT_ASSETS_VERSION) {
       return [`  brushes/${pack}/: imported as version ${manifest.version}, and the studio reads version ${STAMP_PAINT_ASSETS_VERSION}; import it again from ${source}`];
     }
+    manifests.set(pack, manifest);
     return manifest.files.filter((file) => !existsSync(join(dir, 'brushes', pack, file))).map((file) => `  brushes/${pack}/${file}: ${source}`);
   });
+  // A pack that isn't imported is reported above; its brushes can't be looked for until it is.
+  const brushProblems = Object.entries(style.brushes).flatMap(([name, { pack, brush }]) => {
+    if (!style.packs[pack]) return [`  brushes.${name}: names the pack ${pack}, which isn't in packs`];
+    const manifest = manifests.get(pack);
+    return manifest && !manifest.brushes[brush] ? [`  brushes.${name}: ${pack} has no brush ${JSON.stringify(brush)}; import it again from ${style.packs[pack].source}`] : [];
+  });
+  return [...packProblems, ...brushProblems];
 }
 
 /** Throws, naming every style problem at once, unless each style the project names can paint on this machine. */
