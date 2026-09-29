@@ -19,7 +19,6 @@ export const PROCREATE_READING_RANGES: Readonly<Record<keyof ProcreateReading, P
   wetRim: { min: 0.1, max: 3, step: { times: 2, finest: 1.1 } },
   grainTile: { min: 0.25, max: 12, step: { times: 2, finest: 1.1 } },
   grainBrightness: { min: -1, max: 1, step: { plus: 0.4, finest: 0.05 } },
-  grainContrast: { min: 1, max: 8, step: { times: 2, finest: 1.1 } },
   grainDepthCurve: { min: 0.2, max: 4, step: { times: 2, finest: 1.1 } },
   glazeFlowCurve: { min: 0.2, max: 4, step: { times: 2, finest: 1.1 } },
   blendingFlowCurve: { min: 0.2, max: 4, step: { times: 2, finest: 1.1 } },

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { normalizePhotoshopBrush, type PhotoshopReading } from './photoshop-brush.ts';
+import { PHOTOSHOP_POOLING } from '#lib/picture/stamp-reference/models/stamp-reference-blend.ts';
 import type { PhotoshopDescriptor } from './photoshop-descriptor.ts';
 import { normalizeProcreateBrush, type ProcreateReading } from './procreate-brush.ts';
 
@@ -12,12 +13,11 @@ const control = (bVTy: number, jitter: number, minimum = 0): PhotoshopDescriptor
 
 /** Readings of plain scales, so the two sources' settings meet on their meanings, not on whatever the fits chose. */
 const procreateReading: ProcreateReading = {
-  taperShare: 0.5, edgeWidth: 0.05, rimSharpness: 16, wetRim: 1, grainTile: 2, grainBrightness: 0.5, grainContrast: 3, grainDepthCurve: 1, glazeFlowCurve: 1,
+  taperShare: 0.5, edgeWidth: 0.05, rimSharpness: 16, wetRim: 1, grainTile: 2, grainBrightness: 0.5, grainDepthCurve: 1, glazeFlowCurve: 1,
   blendingFlowCurve: 1, dualScale: 1, spacingPower: 1, lateralJitterScale: 1, lateralJitterPower: 1, glazeBuildLight: 1, glazeBuildUniform: 1, glazeBuildIntense: 1, glazeBuildHeavy: 1,
 };
 const photoshopReading: PhotoshopReading = {
-  scatterSpan: 0.5, angleJitterSpan: Math.PI, hueJitterShare: 0.5, grainBrightness: 0.5, grainContrast: 3, grainDepthCurve: 1,
-  wetEdgeWidth: 0.05, wetEdgeRim: 0.3, wetEdgeSharpness: 16, wetEdgeBody: 0.5, dualScale: 1,
+  scatterSpan: 0.5, angleJitterSpan: Math.PI, hueJitterShare: 0.5, dualScale: 1,
 };
 
 test('a Procreate brush and a Photoshop preset that paint alike normalize to the same StampBrush', () => {
@@ -26,7 +26,7 @@ test('a Procreate brush and a Photoshop preset that paint alike normalize to the
       maxSize: 1, blendMode: 0, renderingRecursiveMixing: true, dynamicsGlazedFlow: 0.64, plotSpacing: 0.1, shapeRoundness: 0.5, shapeRotation: 1, shapeScatter: 0.5,
       shapeCount: 3 / 16, shapeCountJitter: 0.5, shapeFlipXJitter: true, dynamicsJitterSize: 0.3, dynamicsJitterOpacity: 0.2, dynamicsPressureSize: 0.75,
       dynamicsPressureOpacity: 0.25, dynamicsPressureOpacityTransfer: 0.5, textureScale: 1.5, textureApplication: 0, textureMovement: 1, grainDepth: 0.8, grainBlendMode: 1,
-      textureBrightness: 0.2, textureContrast: 0.5, dynamicsJitterHue: 0.1, dynamicsJitterSaturation: 0.3, dynamicsJitterLightness: 0.25, dynamicsJitterDarkness: 0.25,
+      textureBrightness: 40 / 255, textureContrast: 0.5, dynamicsJitterHue: 0.1, dynamicsJitterSaturation: 0.3, dynamicsJitterLightness: 0.25, dynamicsJitterDarkness: 0.25,
       dualBlendMode: 1,
     },
     tip: asset('tips/round.png'), grain: asset('grains/paper.png'),
@@ -53,7 +53,11 @@ test('a Procreate brush and a Photoshop preset that paint alike normalize to the
     preset, tip: asset('tips/round.png'), dualTip: asset('tips/dual.png'), pattern: { image: asset('grains/paper.png'), width: 300 },
   }, photoshopReading);
 
-  assert.deepEqual(photoshop.brush, procreate.brush);
+  // Photoshop steps by each stamp's own size and its short side (its roundness is 0.5), where Procreate spreads its
+  // steps along the stroke, and holds flow in 255ths.
+  assert.deepEqual(photoshop.brush, {
+    ...procreate.brush, stepping: 'eachStamp', spacing: procreate.brush.spacing * 0.5, flow: 163 / 255, dual: { ...procreate.brush.dual!, stepping: 'eachStamp' },
+  });
   assert.equal(photoshop.brush.scatter.count, 3);
 });
 
@@ -68,8 +72,27 @@ test("a Mixer Brush preset carries its wet mixing, noted as not yet painted, and
   }, photoshopReading);
   assert.deepEqual(brush.wetMix, { load: 0.4, wetness: 0.8, mix: 0.6, sampleAllLayers: true });
   assert.equal(brush.grain, undefined);
-  assert.equal(brush.flow, 0.25);
-  assert.equal(brush.wetEdge?.rim, 0.3);
+  // Wet edges pool the built coverage; they no longer thin the flow.
+  assert.equal(brush.flow, 128 / 255);
+  assert.deepEqual(brush.pooling, PHOTOSHOP_POOLING);
+  assert.equal(brush.wetEdge, undefined);
+  assert.ok(brush.tip.span! > 1, "a soft computed tip's image reaches past its diameter");
   const unsupported = support.filter((note) => note.level === 'unsupported').map((note) => note.setting);
   assert.deepEqual(unsupported, ['toolOptions.wetness, dryness, mix, sampleAllLayers', 'Txtr']);
+});
+
+test('a texture reads as Photoshop sets it: its mode, its depth in 255ths, its brightness in 255ths and its contrast', () => {
+  const { brush, support } = normalizePhotoshopBrush('Overlay', {
+    preset: {
+      _class: 'brushPreset', Brsh: { _class: 'computedBrush', Dmtr: px(100), Hrdn: pct(100), Spcn: pct(1), Intr: true },
+      useTexture: true, Txtr: { _class: 'Ptrn', 'Nm  ': 'Paper', Idnt: 'paper' }, textureBlendMode: { _enum: 'BlnM', value: 'Ovrl' },
+      textureDepth: pct(33), textureBrightness: long(-51), textureContrast: long(-50), textureScale: pct(100), TxtC: false,
+    },
+    tip: asset('tips/round-100-100.png'), pattern: { image: asset('grains/paper.png'), width: 256 },
+  }, photoshopReading);
+  assert.deepEqual(
+    { blend: brush.grain?.blend, depth: brush.grain?.depth, brightness: brush.grain?.brightness, contrast: brush.grain?.contrast, spacing: brush.spacing },
+    { blend: 'overlay', depth: 84 / 255, brightness: -0.2, contrast: -0.5, spacing: 0.01 },
+  );
+  assert.deepEqual(support.filter((note) => note.setting.startsWith('texture')).map((note) => note.level), ['approximated'], 'only the texture scale is approximated');
 });

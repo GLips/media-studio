@@ -5,13 +5,14 @@
 // images and the file it came from, which a fit reads again with other constants. Photoshop files carry no rendered
 // previews, so the manifest's previews stay empty: Photoshop's own renders come from the capture rig (vid-100).
 //
-// A computed tip (and a bristle or erodible one, read as round) is drawn at its hardness and shared by every brush of
-// that hardness, as tips/round-<hardness>.png; a sampled tip is written once per file and flip, as the first brush
+// A computed tip (and a bristle or erodible one, read as round) is drawn by Photoshop's profile at its hardness and
+// diameter, over the span its soft edge reaches, and shared by every brush alike, as tips/round-<hardness>-<diameter>.png; a sampled tip is written once per file and flip, as the first brush
 // that uses it names it; a pattern likewise, once per polarity.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { normalizePhotoshopBrush, photoshopPatternNegated, photoshopRoundTip, photoshopTipImage, type PhotoshopBrushSource } from '../models/photoshop-brush.ts';
+import { normalizePhotoshopBrush, photoshopPatternNegated, photoshopSampleWithBorder, photoshopTipImage, type PhotoshopBrushSource } from '../models/photoshop-brush.ts';
+import { drawPhotoshopComputedTip } from '../models/photoshop-computed-tip.ts';
 import { photoshopFlag, photoshopNumber, photoshopObject, type PhotoshopDescriptor } from '../models/photoshop-descriptor.ts';
 import type { StampBrush, StampBrushAsset } from '../models/stamp-brush.ts';
 import { STAMP_PAINT_ASSETS_VERSION, STAMP_PAINT_PACK_MANIFEST, type StampBrushSupportNote, type StampPaintPackManifest } from '../models/style.ts';
@@ -26,8 +27,6 @@ export type PhotoshopPackSources = Record<string, PhotoshopBrushSource & { file:
 
 export type ImportedPhotoshopPack = { dir: string; manifest: StampPaintPackManifest; skipped: readonly string[]; files: Record<string, string> };
 
-/** Pixels across a drawn round tip. */
-const ROUND_TIP_SIZE = 256;
 
 /** Whether a file inside a pack's zip is a Photoshop brush file, and not macOS's resource-fork shadow of one. */
 export const isPhotoshopBrushFile = (name: string) => /\.(abr|tpl)$/i.test(name) && !name.split('/').some((part) => part === '__MACOSX' || part.startsWith('._'));
@@ -77,16 +76,24 @@ function writePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, 
   };
 
   for (const { name: fileName, file } of brushFiles) {
+    /** A sampled tip's own size, which its centre is read from, keyed as the source keys it; nothing for a computed tip. */
+    const sampleSize = (key: 'tipSample' | 'dualTipSample', tip: PhotoshopDescriptor | undefined) => {
+      const image = tip && photoshopTipImage(tip), sample = image?.kind === 'sampled' ? file.tips.get(image.id) : undefined;
+      return sample ? { [key]: { width: sample.width, height: sample.height } } : {};
+    };
     const tipAsset = (tip: PhotoshopDescriptor | undefined, slug: string): StampBrushAsset | undefined => {
       if (!tip) return undefined;
       const image = photoshopTipImage(tip);
       if (image.kind === 'round') {
-        const hardness = Math.round(image.hardness * 100);
-        return writeOnce(`round|${hardness}`, 'tips', `round-${hardness}`, (out) => writeStampPackGray({ width: ROUND_TIP_SIZE, height: ROUND_TIP_SIZE, pixels: photoshopRoundTip(image.hardness, ROUND_TIP_SIZE) }, STAMP_PACK_TIP_MAX, out));
+        const hardness = Math.round(image.hardness * 100), key = `${hardness}-${stampPackSlug(String(image.diameter))}`;
+        return writeOnce(`round|${key}`, 'tips', `round-${key}`, (out) => {
+          const { size, pixels } = drawPhotoshopComputedTip(image.diameter, image.hardness, image.span, STAMP_PACK_TIP_MAX);
+          writeStampPackGray({ width: size, height: size, pixels }, STAMP_PACK_TIP_MAX, out);
+        });
       }
       const sample = file.tips.get(image.id);
       if (!sample) return undefined;
-      return writeOnce(`${fileName}|${image.id}|${image.flipX}|${image.flipY}`, 'tips', slug, (out) => writeStampPackGray(sample, STAMP_PACK_TIP_MAX, out, { negate: true, flipX: image.flipX, flipY: image.flipY }));
+      return writeOnce(`${fileName}|${image.id}|${image.flipX}|${image.flipY}`, 'tips', slug, (out) => writeStampPackGray(photoshopSampleWithBorder(sample), STAMP_PACK_TIP_MAX, out, { negate: true, flipX: image.flipX, flipY: image.flipY }));
     };
 
     for (const { descriptor: preset, group } of file.presets) {
@@ -97,10 +104,12 @@ function writePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, 
       const slug = stampPackSlug(name) || `brush-${Object.keys(brushes).length + 1}`;
 
       const tip = photoshopObject(preset, 'Brsh'), dual = photoshopObject(preset, 'dualBrush');
+      const dualTip = photoshopFlag(dual, 'useDualBrush') ? photoshopObject(dual, 'Brsh') : undefined;
       const source: PhotoshopBrushSource = {
         preset,
         tip: tipAsset(tip, slug),
-        ...(photoshopFlag(dual, 'useDualBrush') && { dualTip: tipAsset(photoshopObject(dual, 'Brsh'), `${slug}.dual`) }),
+        ...sampleSize('tipSample', tip),
+        ...(dualTip && { dualTip: tipAsset(dualTip, `${slug}.dual`), ...sampleSize('dualTipSample', dualTip) }),
       };
       if (!source.tip) {
         support[name] = [{ level: 'unsupported', setting: 'Brsh.sampledData', detail: `the tip is a sample ${fileName} doesn't hold; not imported` }];

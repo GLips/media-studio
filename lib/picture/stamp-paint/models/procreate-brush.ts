@@ -36,8 +36,6 @@ export type ProcreateReading = {
   grainTile: number;
   /** A grain's brightness at textureBrightness 1: how far it raises the grain's paint. */
   grainBrightness: number;
-  /** How far full textureContrast (1) stretches a grain about its mean; -1 flattens it whatever this is. */
-  grainContrast: number;
   /** A grain's depth is grainDepth to this power: above 1, a shallow grain cuts in less. */
   grainDepthCurve: number;
   /** A glaze's stamp flow is dynamicsGlazedFlow to this power. */
@@ -101,8 +99,6 @@ const blendName = (mode: number) => `${mode} (${PROCREATE_BLEND_NAMES[mode] ?? '
 
 /** A stamp's lateral jitter in diameters for Procreate's plotJitter. */
 const lateralJitter = (plotJitter: number, reading: ProcreateReading) => reading.lateralJitterScale * plotJitter ** reading.lateralJitterPower;
-/** textureContrast (-1..1) as a stretch about the grain's mean: -1 flat, 0 as drawn, 1 the reading's full stretch. */
-const grainStretch = (contrast: number, reading: ProcreateReading) => (contrast > 0 ? 1 + (reading.grainContrast - 1) * contrast : 1 + contrast);
 
 const IDENTITY_CURVE = ['{0.000000, 0.000000}', '{1.000000, 1.000000}'];
 
@@ -172,7 +168,7 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
     const grainBlend = GRAIN_BLENDS[num('grainBlendMode')];
     grain = {
       image: source.grain, scale: num('textureScale') * reading.grainTile, mode: num('textureApplication') === 1 ? 'texturized' : 'rolling', depth: num('grainDepth') ** reading.grainDepthCurve,
-      blend: grainBlend ?? 'multiply', brightness: num('textureBrightness') * reading.grainBrightness * (procreateGrainNegated(s) ? 1 : -1), stretch: grainStretch(num('textureContrast'), reading), offsetJitter: on('textureOffsetJitter') ? 1 : 0,
+      blend: grainBlend ?? 'multiply', brightness: num('textureBrightness') * reading.grainBrightness * (procreateGrainNegated(s) ? 1 : -1), contrast: num('textureContrast'), offsetJitter: on('textureOffsetJitter') ? 1 : 0,
       zoom: num('textureZoom'), movement: num('textureMovement'), rotation: num('textureRotation'),
     };
     note('approximated', 'textureScale, textureApplication', `grain read as ${grain.mode}, its tile ${grain.scale.toFixed(2)} stamp diameters across`);
@@ -180,7 +176,7 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
       ? `${blendName(num('grainBlendMode'))} read as ${grainBlend}, set against the pack's previews: Procreate doesn't document how grain modes number`
       : `${blendName(num('grainBlendMode'))} has no studio reading; read as multiply`);
     // Brightness lightens the image as drawn, before Procreate inverts it: on an inverted grain it takes paint away.
-    whenSet('approximated', ['textureBrightness', 'textureContrast'], "the grain's brightness and contrast, read about its own mean and fitted on the sheet");
+    whenSet('approximated', ['textureBrightness', 'textureContrast'], "the grain's brightness, fitted on the sheet, and its contrast, read as Photoshop's about mid-grey");
     whenSet('unsupported', ['grainDepthJitter', 'grainDepthMinimum'], 'grain depth varying stamp to stamp');
   } else if (typeof s.bundledGrainPath === 'string') {
     note('unsupported', 'bundledGrainPath', `the grain is Procreate's own ${s.bundledGrainPath}, which the pack doesn't hold`);
@@ -197,6 +193,7 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
     tip: { image: source.tip, roundness: Math.min(1, Math.max(0.01, Number(s.shapeRoundness ?? 1))) },
     ...(grain && { grain }),
     spacing: Math.max(spacing, STAMP_MIN_SPACING),
+    stepping: 'spread',
     jitter: { lateral: lateralJitter(num('plotJitter'), reading), size: num('dynamicsJitterSize'), opacity: num('dynamicsJitterOpacity'), flow: num('dynamicsWetnessJitter') },
     // shapeCount stores Procreate's 1–16 stamps as sixteenths.
     scatter: { count: Math.max(1, Math.round(num('shapeCount') * 16)), countJitter: num('shapeCountJitter'), radius: 0 },

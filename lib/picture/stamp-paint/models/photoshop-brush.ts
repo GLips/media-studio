@@ -14,9 +14,10 @@
 // jitter are `unsupported`; the Mixer Brush's settings are carried in `wetMix` and noted `unsupported` until vid-90.
 
 import { photoshopEnum, photoshopFlag, photoshopNumber, photoshopObject, type PhotoshopDescriptor } from './photoshop-descriptor.ts';
+import { PHOTOSHOP_POOLING } from '#lib/picture/stamp-reference/models/stamp-reference-blend.ts';
+import { PHOTOSHOP_PIXEL_TIP_DIAMETER, photoshopComputedTipSpan } from './photoshop-computed-tip.ts';
 import { PHOTOSHOP_READING } from './photoshop-reading.ts';
-import type { StampBlend, StampBrush, StampBrushAsset, StampBrushColorDynamics, StampBrushLayer, StampBrushWetMix, StampDualBlend, StampGrainBlend } from './stamp-brush.ts';
-import { STAMP_MIN_SPACING } from './stamp-placement.ts';
+import type { StampBlend, StampBrush, StampBrushAsset, StampBrushColorDynamics, StampBrushLayer, StampBrushTip, StampBrushWetMix, StampDualBlend, StampGrainBlend } from './stamp-brush.ts';
 import type { StampBrushSupportNote } from './style.ts';
 
 /**
@@ -30,33 +31,27 @@ export type PhotoshopReading = {
   angleJitterSpan: number;
   /** The share of the colour wheel a stamp's hue strays by at 100% hue jitter. */
   hueJitterShare: number;
-  /** How far a texture's brightness of 100 raises the grain's paint (StampBrushGrain's brightness). */
-  grainBrightness: number;
-  /** How far a texture's contrast of 100 stretches the grain about its mean; -50 flattens it whatever this is. */
-  grainContrast: number;
-  /** A texture's depth is textureDepth (0..1) to this power. */
-  grainDepthCurve: number;
-  /** A wet edge's rim width (a fraction of the stamp's radius), how dark it gathers and how steeply it rises. */
-  wetEdgeWidth: number;
-  wetEdgeRim: number;
-  wetEdgeSharpness: number;
-  /** The share of its flow a wet-edged brush lays inside its rim: Photoshop's wet edges pale the body. */
-  wetEdgeBody: number;
   /** A dual's stamps are this times the ratio of the dual tip's diameter to the main tip's. */
   dualScale: number;
 };
 
-/** A Photoshop tip as an image: a sampled one by its id in the file, or a round one drawn to its hardness (0..1). */
-export type PhotoshopTipImage = { kind: 'sampled'; id: string; flipX: boolean; flipY: boolean } | { kind: 'round'; hardness: number };
+/**
+ * A Photoshop tip as an image: a sampled one by its id in the file, or a computed round one drawn at its hardness
+ * (0..1) and diameter (px) over `span` diameters (photoshop-computed-tip.ts).
+ */
+export type PhotoshopTipImage = { kind: 'sampled'; id: string; flipX: boolean; flipY: boolean } | { kind: 'round'; hardness: number; diameter: number; span: number };
 
 /**
  * One preset and where its images landed among the pack's assets: its tip's and its dual's (none when the file lacks
- * the sample the preset names), and its texture's pattern with the pattern's width in pixels.
+ * the sample the preset names) with a sampled tip's own size in pixels, and its texture's pattern with the pattern's
+ * width in pixels.
  */
 export type PhotoshopBrushSource = {
   preset: PhotoshopDescriptor;
   tip?: StampBrushAsset;
+  tipSample?: PhotoshopSampleSize;
   dualTip?: StampBrushAsset;
+  dualTipSample?: PhotoshopSampleSize;
   pattern?: { image: StampBrushAsset; width: number };
 };
 
@@ -73,7 +68,7 @@ const blendName = (mode: string | undefined) => `${mode} (${PHOTOSHOP_BLEND_NAME
 const BRUSH_BLENDS: Readonly<Record<string, StampBlend>> = { Nrml: 'normal', Mltp: 'multiply', Scrn: 'screen', Ovrl: 'overlay', Drkn: 'darken', Lghn: 'lighten', CBrn: 'colorBurn' };
 /** Every mode Texture offers. */
 const GRAIN_BLENDS: Readonly<Record<string, StampGrainBlend>> = {
-  Mltp: 'multiply', Sbtr: 'subtract', Drkn: 'darken', Ovrl: 'multiply', CDdg: 'colorDodge', CBrn: 'colorBurn', linearBurn: 'linearBurn', hardMix: 'hardMix',
+  Mltp: 'multiply', Sbtr: 'subtract', Drkn: 'darken', Ovrl: 'overlay', CDdg: 'colorDodge', CBrn: 'colorBurn', linearBurn: 'linearBurn', hardMix: 'hardMix',
   linearHeight: 'linearHeight', Hght: 'height',
 };
 /** Every mode Dual Brush offers. */
@@ -88,24 +83,47 @@ const CONTROL_NAMES = ['off', 'fade', 'pen pressure', 'pen tilt', 'stylus wheel'
 /** A tip's descriptor as an image to write: sampled, else round (a computed tip, or a bristle or erodible one read as round). */
 export function photoshopTipImage(tip: PhotoshopDescriptor): PhotoshopTipImage {
   if (tip._class === 'sampledBrush') return { kind: 'sampled', id: String(tip.sampledData ?? ''), flipX: photoshopFlag(tip, 'flipX'), flipY: photoshopFlag(tip, 'flipY') };
-  const hardness = tip._class === 'dTips' ? photoshopNumber(tip, 'dtipsHardness', 100) : photoshopNumber(tip, 'Hrdn', 100);
-  return { kind: 'round', hardness: Math.round(hardness) / 100 };
+  const hardness = Math.round(tip._class === 'dTips' ? photoshopNumber(tip, 'dtipsHardness', 100) : photoshopNumber(tip, 'Hrdn', 100)) / 100;
+  const diameter = photoshopNumber(tip, 'Dmtr', 100);
+  return { kind: 'round', hardness, diameter, span: photoshopComputedTipSpan(diameter, hardness) };
+}
+
+export type PhotoshopSampleSize = { width: number; height: number };
+
+/**
+ * A sample is stored with a blank texel around it (PHOTOSHOP_SAMPLE_BORDER): Photoshop reads past a sample's edge as
+ * blank, where a GPU sampler clamped to the edge would repeat it, painting a half pixel too much on each side.
+ */
+export const PHOTOSHOP_SAMPLE_BORDER = 1;
+
+/** `sample` (0 where it lays no paint) inside its blank border. */
+export function photoshopSampleWithBorder(sample: { width: number; height: number; pixels: Uint8Array }) {
+  const b = PHOTOSHOP_SAMPLE_BORDER, width = sample.width + 2 * b, height = sample.height + 2 * b, pixels = new Uint8Array(width * height);
+  for (let y = 0; y < sample.height; y++) pixels.set(sample.pixels.subarray(y * sample.width, (y + 1) * sample.width), (y + b) * width + b);
+  return { width, height, pixels };
 }
 
 /**
- * A round tip at `hardness`, `size` pixels square, dark is paint: solid out to `hardness` of its radius, then easing
- * to nothing at the rim on a half cosine, the shape of Photoshop's soft round within a few percent.
+ * Photoshop centres a sample on its middle texel, floor(size / 2), mirrored with the sample when it's flipped: as a
+ * share of the stored image, border included.
  */
-export function photoshopRoundTip(hardness: number, size: number): Uint8Array {
-  const out = new Uint8Array(size * size), half = size / 2, feather = Math.max(1 - hardness, 1 / half);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const r = Math.hypot(x + 0.5 - half, y + 0.5 - half) / half;
-      const t = Math.min(1, Math.max(0, (r - (1 - feather)) / feather));
-      out[y * size + x] = Math.round(255 * (1 - (0.5 + 0.5 * Math.cos(Math.PI * t))));
-    }
+const sampleCenter = (size: number, flip: boolean) => {
+  const center = (Math.floor(size / 2) + 0.5 + PHOTOSHOP_SAMPLE_BORDER) / (size + 2 * PHOTOSHOP_SAMPLE_BORDER);
+  return flip ? 1 - center : center;
+};
+
+/** A tip as the studio reads it: its image, roundness, a sample's centre, and a computed tip's span past its diameter. */
+function tipOf(tip: PhotoshopDescriptor, image: StampBrushAsset, sample: PhotoshopSampleSize | undefined, prefix: string, note: Note): StampBrushTip {
+  const drawn = photoshopTipImage(tip);
+  const roundness = Math.min(1, Math.max(0.01, photoshopNumber(tip, 'Rndn', 100) / 100));
+  // The border widens the image past the diameter; a sample that isn't square takes its span from its width.
+  if (drawn.kind === 'sampled') {
+    return sample
+      ? { image, roundness, span: (sample.width + 2 * PHOTOSHOP_SAMPLE_BORDER) / sample.width, center: [sampleCenter(sample.width, drawn.flipX), sampleCenter(sample.height, drawn.flipY)] }
+      : { image, roundness };
   }
-  return out;
+  if (drawn.diameter <= PHOTOSHOP_PIXEL_TIP_DIAMETER) note('approximated', `${prefix}Brsh.Dmtr`, `a ${drawn.diameter} px computed tip, which Photoshop draws in whole pixels, read by its profile`);
+  return { image, roundness, span: drawn.span };
 }
 
 /** Photoshop's samples and patterns are lighter where more paint goes, so each is negated, a pattern unless inverted. */
@@ -146,12 +164,15 @@ function scatterOf(d: PhotoshopDescriptor | undefined, prefix: string, on: boole
   };
 }
 
-/** A tip's spacing in diameters, and its note when Photoshop's spacing is off (a stamp per pointer event). */
+/**
+ * A tip's spacing in diameters, and its note when Photoshop's spacing is off (a stamp per pointer event). Stepped
+ * as Photoshop steps (`eachStamp`), so no step is under a pixel, however small the spacing.
+ */
 function spacingOf(tip: PhotoshopDescriptor, prefix: string, note: Note) {
-  const spacing = photoshopNumber(tip, 'Spcn', 25) / 100;
-  if (!photoshopFlag(tip, 'Intr')) note('approximated', `${prefix}Brsh.Intr`, `spacing off stamps once per pointer event; read as its ${Math.round(spacing * 100)}% spacing`);
-  if (spacing < STAMP_MIN_SPACING) note('approximated', `${prefix}Brsh.Spcn`, `${Math.round(spacing * 100)}% stamps closer than the studio's closest spacing, ${STAMP_MIN_SPACING}`);
-  return Math.max(spacing, STAMP_MIN_SPACING);
+  // Photoshop steps by its percentage of the tip's short side: a squashed tip's stamps close up with its roundness.
+  const spacing = (photoshopNumber(tip, 'Spcn', 25) / 100) * Math.min(1, Math.max(0.01, photoshopNumber(tip, 'Rndn', 100) / 100));
+  if (!photoshopFlag(tip, 'Intr')) note('approximated', `${prefix}Brsh.Intr`, `spacing off stamps once per pointer event; read as its ${photoshopNumber(tip, 'Spcn', 25)}% spacing`);
+  return spacing;
 }
 
 const NO_TAPER = { start: 0, end: 0, size: 1, opacity: 1, shape: 0, pressure: 0 };
@@ -199,23 +220,22 @@ function readMainLayer(source: PhotoshopBrushSource, notes: StampBrushSupportNot
       const mode = photoshopEnum(p, 'textureBlendMode'), blend = GRAIN_BLENDS[mode ?? ''];
       const eachTip = photoshopFlag(p, 'TxtC');
       const diameter = photoshopNumber(tip, 'Dmtr', 100);
-      const brightness = photoshopNumber(p, 'textureBrightness') / 100, contrast = photoshopNumber(p, 'textureContrast') / 100;
       grain = {
         image: source.pattern.image,
         scale: (source.pattern.width * photoshopNumber(p, 'textureScale', 100)) / 100 / diameter,
         mode: eachTip ? 'rolling' : 'texturized',
-        depth: (photoshopNumber(p, 'textureDepth', 100) / 100) ** reading.grainDepthCurve,
+        // Photoshop holds depth in 255ths.
+        depth: Math.round((photoshopNumber(p, 'textureDepth', 100) / 100) * 255) / 255,
         blend: blend ?? 'multiply',
-        brightness: brightness * reading.grainBrightness * (photoshopPatternNegated(p) ? 1 : -1),
-        stretch: contrast > 0 ? 1 + (reading.grainContrast - 1) * contrast : 1 + 2 * contrast,
+        // Brightness is in 255ths; both apply after invert, which the stored image already holds.
+        brightness: photoshopNumber(p, 'textureBrightness') / 255,
+        contrast: photoshopNumber(p, 'textureContrast') / 100,
         offsetJitter: 0,
         // Each tip is textured where it lands, the pattern still fixed to the canvas: it neither moves, grows nor turns with the stamp.
         zoom: 0, movement: 1, rotation: 0,
       };
       note('approximated', 'textureScale', `the pattern tiles ${grain.scale.toFixed(2)} diameters across at the preset's ${diameter} px; Photoshop keeps it that many pixels at any size`);
       if (!blend) note('unsupported', 'textureBlendMode', `${blendName(mode)} has no studio reading; read as multiply`);
-      else if (mode === 'Ovrl') note('approximated', 'textureBlendMode', 'overlay read as multiply');
-      if (brightness || contrast) note('approximated', 'textureBrightness, textureContrast', "the pattern's brightness and contrast, read about its own mean");
       const depthJitter = dynamic(photoshopObject(p, 'textureDepthDynamics'));
       if (eachTip && (depthJitter.jitter > 0 || depthJitter.control !== CONTROL_OFF)) note('unsupported', 'textureDepthDynamics, minimumDepth', 'texture depth varying stamp to stamp');
       if (photoshopFlag(p, 'protectTexture')) note('inapplicable', 'protectTexture', "protect texture lays one brush's pattern on every brush in Photoshop; each studio brush keeps its own");
@@ -223,9 +243,9 @@ function readMainLayer(source: PhotoshopBrushSource, notes: StampBrushSupportNot
   }
 
   const tool = photoshopObject(p, 'toolOptions');
-  const toolFlow = tool && tool.flow !== undefined ? photoshopNumber(tool, 'flow', 100) / 100 : 1;
+  // Photoshop paints a tool's flow in 255ths: 25% lays 64/255.
+  const toolFlow = tool && tool.flow !== undefined ? Math.round((photoshopNumber(tool, 'flow', 100) / 100) * 255) / 255 : 1;
   const wet = photoshopFlag(p, 'Wtdg');
-  if (wet) note('approximated', 'Wtdg', `wet edges read as a rim ${reading.wetEdgeWidth.toFixed(3)} of the radius wide over a body at ${Math.round(reading.wetEdgeBody * 100)}% of its flow`);
   if (photoshopFlag(p, 'Nose')) note('unsupported', 'Nose', "noise on the tip's soft edge");
   if (photoshopFlag(p, 'Rpt ')) note('inapplicable', 'Rpt ', 'build-up keeps painting while the pen rests: an authored stroke never rests');
   if (photoshopFlag(p, 'useBrushPose')) {
@@ -235,9 +255,10 @@ function readMainLayer(source: PhotoshopBrushSource, notes: StampBrushSupportNot
   }
 
   return {
-    tip: { image: source.tip!, roundness: Math.min(1, Math.max(0.01, photoshopNumber(tip, 'Rndn', 100) / 100)) },
+    tip: tipOf(tip, source.tip!, source.tipSample, '', note),
     ...(grain && { grain }),
     spacing: spacingOf(tip, '', note),
+    stepping: 'eachStamp',
     jitter: { lateral, size: size.jitter, opacity: opacity.jitter, flow: flow.jitter },
     scatter,
     rotation: { angle: degrees(photoshopNumber(tip, 'Angl')), follow, jitter: angle.jitter * reading.angleJitterSpan, randomStart: false },
@@ -245,11 +266,10 @@ function readMainLayer(source: PhotoshopBrushSource, notes: StampBrushSupportNot
     blur: { amount: 0, jitter: 0 },
     taper: NO_TAPER,
     falloff: 0,
-    flow: toolFlow * (wet ? reading.wetEdgeBody : 1),
+    flow: toolFlow,
     pressure: { size: sizePressure, opacity: opacityPressure, flow: flowPressure },
-    // Flow lays each stamp over the ones before, up to the deposit's opacity: Photoshop's stroke caps at opacity, not at a stamp.
     accumulation: 'build',
-    ...(wet && { wetEdge: { width: reading.wetEdgeWidth, rim: reading.wetEdgeRim, sharpness: reading.wetEdgeSharpness } }),
+    ...(wet && { pooling: PHOTOSHOP_POOLING }),
   };
 }
 
@@ -262,8 +282,9 @@ function readDualLayer(source: PhotoshopBrushSource, notes: StampBrushSupportNot
   const scale = (photoshopNumber(tip, 'Dmtr', 100) / photoshopNumber(photoshopObject(p, 'Brsh'), 'Dmtr', 100)) * reading.dualScale;
   if (photoshopFlag(dual, 'Flip')) note('approximated', 'dualBrush.Flip', "the dual's flip read as each of its stamps flipped across its width at random");
   return {
-    tip: { image: source.dualTip!, roundness: Math.min(1, Math.max(0.01, photoshopNumber(tip, 'Rndn', 100) / 100)) },
+    tip: tipOf(tip, source.dualTip!, source.dualTipSample, 'dualBrush.', note),
     spacing: spacingOf(tip, 'dualBrush.', note),
+    stepping: 'eachStamp',
     jitter: { lateral, size: 0, opacity: 0, flow: 0 },
     scatter,
     rotation: { angle: degrees(photoshopNumber(tip, 'Angl')), follow: 0, jitter: 0, randomStart: false },
@@ -271,6 +292,7 @@ function readDualLayer(source: PhotoshopBrushSource, notes: StampBrushSupportNot
     blur: { amount: 0, jitter: 0 },
     taper: NO_TAPER,
     falloff: 0,
+    // The secondary builds as its own stroke at full flow, whatever the tool's.
     flow: 1,
     pressure: { size: 0, opacity: 0, flow: 0 },
     accumulation: 'build',

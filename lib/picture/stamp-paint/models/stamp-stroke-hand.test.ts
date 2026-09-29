@@ -51,6 +51,7 @@ const brush: StampBrush = {
   name: 'Round', blend: 'normal', accumulation: 'glaze',
   tip: { image: { style: 's', pack: 'p', file: 'tip.png' }, roundness: 1 },
   spacing: 0.1,
+  stepping: 'spread',
   jitter: { lateral: 0, size: 0, opacity: 0, flow: 0 },
   scatter: { count: 1, countJitter: 0, radius: 0 },
   rotation: { angle: 0, follow: 0, jitter: 0, randomStart: false },

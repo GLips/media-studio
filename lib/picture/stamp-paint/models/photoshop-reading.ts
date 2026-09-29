@@ -7,12 +7,5 @@ export const PHOTOSHOP_READING: PhotoshopReading = {
   scatterSpan: 0.5,
   angleJitterSpan: Math.PI,
   hueJitterShare: 0.5,
-  grainBrightness: 0.5,
-  grainContrast: 2.5,
-  grainDepthCurve: 1,
-  wetEdgeWidth: 0.06,
-  wetEdgeRim: 0.3,
-  wetEdgeSharpness: 16,
-  wetEdgeBody: 0.5,
   dualScale: 1,
 };

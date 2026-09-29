@@ -11,9 +11,8 @@
 // under it while its thin edges stay soft; `glaze` multiplies at its opacity, so what's under it shows through tinted,
 // as a transparent wash does.
 //
-// Negative space: a `pigment` material mixes as a `flat` one until vid-83. This module doesn't choose the colour
-// space: it mixes whatever the renderer hands it, gamma-encoded sRGB by default or linear light
-// (StampPaintRendererModel's compositing, in stamp-paint-renderer.ts).
+// Negative space: a `pigment` material mixes as a `flat` one until vid-83. Colours are mixed as written, gamma-encoded
+// sRGB, as Photoshop mixes with RGB blend gamma off (vid-97): nothing here decodes them to linear light.
 
 import type { StampBlend } from '../models/stamp-brush.ts';
 import type { PaintMaterial } from '../models/stamp-paint-recipe.ts';

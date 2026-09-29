@@ -22,6 +22,7 @@
     "procreate": "node harness/procreate.ts",
     "brushes:sheet": "node harness/brush-fidelity.ts sheet",
     "brushes:fit": "node harness/brush-fidelity.ts fit",
+    "stamp:reference": "node harness/stamp-reference.ts",
     "prepare": "git config core.hooksPath .githooks"
   },
   "type": "module",

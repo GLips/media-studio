@@ -10,6 +10,7 @@ const brush: StampBrush = {
   accumulation: 'glaze',
   tip: { image: { style: 'wash', pack: 'vvds', file: 'tips/wash.png' }, roundness: 1 },
   spacing: 0.2,
+  stepping: 'spread',
   jitter: { lateral: 0, size: 0, opacity: 0, flow: 0 },
   scatter: { count: 1, countJitter: 0, radius: 0 },
   rotation: { angle: 0, follow: 1, jitter: 0, randomStart: false },

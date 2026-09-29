@@ -25,8 +25,13 @@ export type PlacedStamp = {
   y: number;
   diameter: number;
   rotation: number;
-  /** The share of the brush's paint this stamp lays down, 0..1: flow after taper, pressure, falloff and jitter. */
+  /** The share of the brush's paint this stamp lays down, 0..1: its flow after pressure and jitter. */
   alpha: number;
+  /**
+   * How far its paint may build, 0..1: its opacity after taper, pressure, falloff and jitter. A `build` brush builds
+   * toward it; a `glaze` lays alpha × opacity.
+   */
+  opacity: number;
   /** Whether it's mirrored across its width (x) and its length (y). */
   flipX: boolean;
   flipY: boolean;
@@ -106,8 +111,8 @@ function segmentHeadings(path: readonly StampStrokePoint[]): number[] {
 }
 
 /**
- * Stamps along a polyline, the whole stroke's worth, seeded by `seed`. Steps are the brush's spacing or a little less,
- * spread evenly so a stamp lands on each end and a short stroke tapers at both.
+ * Stamps along a polyline, the whole stroke's worth, seeded by `seed`, stepped as the brush's `stepping` says: spread
+ * evenly so a stamp lands on each end and a short stroke tapers at both, or each stamp's own spacing from the start.
  */
 export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: StampPlacementBrush, diameter: number, seed: string): PlacedStamp[] {
   const lengths = [0];
@@ -115,21 +120,18 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
   const length = lengths.at(-1)!;
   const reveal = revealAlong(path, lengths);
   const headings = segmentHeadings(path);
-  const steps = length > 0 ? Math.ceil(length / (Math.max(brush.spacing, STAMP_MIN_SPACING) * diameter)) : 0;
   const count = Math.max(1, Math.round(brush.scatter.count));
   const startTurn = depositTurn(brush, seed);
-  const stamps: PlacedStamp[] = [];
-  let segment = 0;
-  for (let i = 0; i <= steps; i++) {
-    const along = steps ? i / steps : 0, arc = along * length;
+  const { taper } = brush;
+  /** Where on the path `arc` falls, and what the stroke is doing there, before any stamp's randomness. */
+  const at = (arc: number) => {
+    const along = length > 0 ? arc / length : 0;
+    let segment = 0;
     while (segment < path.length - 2 && lengths[segment + 1] < arc) segment++;
     const a = path[segment], b = path[Math.min(segment + 1, path.length - 1)];
     const span = lengths[Math.min(segment + 1, path.length - 1)] - lengths[segment];
     const k = span > 0 ? (arc - lengths[segment]) / span : 0;
-    const heading = headings[Math.min(segment, headings.length - 1)] ?? 0;
-    const lifted = b.lift === true && k > 0 && k < 1;
     const pressure = a.pressure === undefined && b.pressure === undefined ? undefined : lerp(a.pressure ?? 1, b.pressure ?? 1, k);
-    const { taper } = brush;
     const linear = Math.min(
       taper.start > 0 ? Math.min(1, along / taper.start) : 1,
       taper.end > 0 ? Math.min(1, (1 - along) / taper.end) : 1,
@@ -137,6 +139,24 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
     const ramp = 1 - (1 - linear) ** (1 + 3 * taper.shape);
     // Within a taper, the taper stands in for the stroke's pressure as far as its pressure link says.
     const through = lerp(1 - taper.pressure, 1, ramp);
+    const size = diameter * lerp(taper.size, 1, ramp) * pressured(pressure, brush.pressure.size * through);
+    return { arc, along, segment, k, a, b, pressure, ramp, through, size, heading: headings[Math.min(segment, headings.length - 1)] ?? 0, lifted: b.lift === true && k > 0 && k < 1 };
+  };
+  const places: ReturnType<typeof at>[] = [];
+  if (brush.stepping === 'spread') {
+    const steps = length > 0 ? Math.ceil(length / (Math.max(brush.spacing, STAMP_MIN_SPACING) * diameter)) : 0;
+    for (let i = 0; i <= steps; i++) places.push(at(steps ? (i / steps) * length : 0));
+  } else {
+    // Each step is the spacing of the stamp it leaves, at that stamp's size before its random loss. A step landing on
+    // the end paints nothing there: steps summed in floating point fall a hair short of it, hence the tolerance.
+    for (let arc = 0, first = true; first || arc < length - 1e-6; first = false) {
+      const place = at(arc);
+      places.push(place);
+      arc += Math.max(1, brush.spacing * place.size);
+    }
+  }
+  const stamps: PlacedStamp[] = [];
+  places.forEach(({ arc, along, segment, k, a, b, pressure, ramp, through, size, heading, lifted }, i) => {
     const fade = (1 - brush.falloff) ** (arc / diameter / FALLOFF_SPAN);
     // Count jitter keeps a step's first stamps, from the step's own stream, so it never moves the stamps it keeps.
     const kept = brush.scatter.countJitter > 0 ? Math.max(1, Math.round(count * (1 - brush.scatter.countJitter * seededRandom(`${seed}|${i}|count`)()))) : count;
@@ -152,10 +172,10 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
       stamps.push({
         x: lerp(a.x, b.x, k) - Math.sin(heading) * lateral + Math.cos(scatterTurn) * scatterReach,
         y: lerp(a.y, b.y, k) + Math.cos(heading) * lateral + Math.sin(scatterTurn) * scatterReach,
-        diameter: diameter * lerp(taper.size, 1, ramp) * pressured(pressure, brush.pressure.size * through) * (1 - sizeLoss),
+        diameter: size * (1 - sizeLoss),
         rotation: brush.rotation.angle + brush.rotation.follow * heading + turn + startTurn,
-        alpha: brush.flow * lerp(taper.opacity, 1, ramp) * pressured(pressure, brush.pressure.opacity * through) * pressured(pressure, brush.pressure.flow * through)
-          * fade * (1 - opacityLoss) * (1 - later.flowLoss * brush.jitter.flow),
+        alpha: brush.flow * pressured(pressure, brush.pressure.flow * through) * (1 - later.flowLoss * brush.jitter.flow),
+        opacity: lerp(taper.opacity, 1, ramp) * pressured(pressure, brush.pressure.opacity * through) * fade * (1 - opacityLoss),
         flipX: brush.flip.x && later.flipX,
         flipY: brush.flip.y && later.flipY,
         blur: brush.blur.amount * (1 - later.blurLoss * brush.blur.jitter),
@@ -164,7 +184,7 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
         reveal: reveal(segment, k, along),
       });
     }
-  }
+  });
   return stamps;
 }
 
@@ -193,8 +213,8 @@ export function placeAuthoredStamps(at: readonly StampPlacement[], brush: StampP
       y: placement.y,
       diameter: (placement.diameter ?? diameter) * pressured(placement.pressure, brush.pressure.size) * (1 - sizeLoss),
       rotation: brush.rotation.angle + (placement.rotation ?? 0) + turn + startTurn,
-      alpha: brush.flow * pressured(placement.pressure, brush.pressure.opacity) * pressured(placement.pressure, brush.pressure.flow) * (1 - opacityLoss)
-        * (1 - later.flowLoss * brush.jitter.flow),
+      alpha: brush.flow * pressured(placement.pressure, brush.pressure.flow) * (1 - later.flowLoss * brush.jitter.flow),
+      opacity: pressured(placement.pressure, brush.pressure.opacity) * (1 - opacityLoss),
       flipX: brush.flip.x && later.flipX,
       flipY: brush.flip.y && later.flipY,
       blur: brush.blur.amount * (1 - later.blurLoss * brush.blur.jitter),

@@ -57,7 +57,7 @@ test('importing an .abr writes the same pack layout a Procreate pack imports to,
     assert.equal(readFileSync(join(packDir, 'reference/manifest.json'), 'utf8'), '{}');
     assert.deepEqual(JSON.parse(readFileSync(join(packDir, 'manifest.json'), 'utf8')), JSON.parse(JSON.stringify(manifest)) as StampPaintPackManifest);
     assert.deepEqual(Object.keys(manifest.brushes), ['Chalk', 'Chalk (Wet)']);
-    assert.deepEqual(manifest.files, ['grains/stripes.png', 'tips/chalk.png', 'tips/round-0.png']);
+    assert.deepEqual(manifest.files, ['grains/stripes.png', 'tips/chalk.png', 'tips/round-0-30.png']);
     for (const file of manifest.files) assert.ok(existsSync(join(packDir, file)), file);
     assert.deepEqual(manifest.previews, {});
     assert.deepEqual(manifest.diameters, { Chalk: 48, 'Chalk (Wet)': 30 });

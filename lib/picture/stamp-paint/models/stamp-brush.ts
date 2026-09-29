@@ -14,17 +14,28 @@ export type StampBrushAsset = { style: string; pack: string; file: string };
 export type StampBlend = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'colorBurn';
 
 /**
- * How a grain's paint g combines with a stamp's coverage a, each 0..1, before `depth` mixes the result back toward a.
- * The separable modes are their layer formulas, the stamp as base (`subtract` a − g, `linearBurn` a + g − 1, `divide`
- * a / g, `hardMix` all or nothing where a + g reaches 1). `height` treats the grain as a relief the paint fills from
- * its deepest point up to a, with a crisp waterline; `linearHeight` fills it the same way with a soft one.
+ * How a grain's paint v cuts a coverage a (each 0..1, v 1 keeps paint) at depth d, as Photoshop's texture modes do,
+ * identified from its captures (vid-97; stamp-reference-blend.ts has them): `multiply` a(1 − d(1 − v)), `subtract`
+ * a − v mixed in by d, `linearBurn` a − d(1 − v), `darken` min(a, 1 − d(1 − v)), `overlay` a as base, `colorDodge` and `colorBurn`
+ * with v scaled by depth, `hardMix` 4a + 3dv − 3, and `height` and `linearHeight` the grain as a relief 12da deep.
+ * `lighten` and `divide` are no Photoshop mode: their layer formulas, mixed back toward a by depth.
  */
-export type StampGrainBlend = 'multiply' | 'subtract' | 'linearBurn' | 'colorDodge' | 'colorBurn' | 'darken' | 'lighten' | 'divide' | 'hardMix' | 'height' | 'linearHeight';
+export type StampGrainBlend = 'multiply' | 'subtract' | 'linearBurn' | 'colorDodge' | 'colorBurn' | 'darken' | 'lighten' | 'overlay' | 'divide' | 'hardMix' | 'height' | 'linearHeight';
 
 export type StampBrushTip = {
   image: StampBrushAsset;
   /** Height over width of the stamp, (0, 1]: 1 keeps the image's own proportions, less squashes it across the stroke. */
   roundness: number;
+  /**
+   * The image's width over the stamp's diameter, 1 when left out. More when the tip's soft edge reaches past its
+   * diameter, as a Photoshop computed tip's does; spacing and size still go by the diameter.
+   */
+  span?: number;
+  /**
+   * The point of the image, as shares of its width and height, that lands on the stamp's place: its middle when left
+   * out. Photoshop centres a sample on its middle texel, which in an even width is half a texel past the middle.
+   */
+  center?: readonly [number, number];
 };
 
 export type StampBrushGrain = {
@@ -40,11 +51,12 @@ export type StampBrushGrain = {
   depth: number;
   blend: StampGrainBlend;
   /**
-   * The grain's paint is stretched about its own mean by `stretch` (0 flat, 1 as drawn, more is harder) and then raised
-   * by `brightness` (-1..1), before it combines with the stamp.
+   * The grain's paint is raised by `brightness` (-1..1) and pushed from mid-grey by `contrast` (-1..1, 0 as drawn), as
+   * Photoshop adjusts a pattern: below 0 it flattens toward mid-grey by (1 + contrast) and then brightens; above 0 it
+   * brightens and then steepens by 1 / (1 − contrast), all but a threshold at 1.
    */
   brightness: number;
-  stretch: number;
+  contrast: number;
   /** How far each deposit shifts the grain, at random, as a share of its tile: 0 lays every stroke on the same patch. */
   offsetJitter: number;
   /**
@@ -56,6 +68,13 @@ export type StampBrushGrain = {
   movement: number;
   rotation: number;
 };
+
+/**
+ * Wet edges as Photoshop paints them, on the built coverage c before the stroke's opacity: 2·peak·c up to half
+ * coverage, then easing down to `body` at full, so paint reads darkest where it thins, along its outline, and a
+ * stroke laid over itself never passes `peak`.
+ */
+export type StampBrushPooling = { peak: number; body: number };
 
 /**
  * Pigment a wet glaze gathers at the rim of its own deposit as it dries, `width` in from the outline as a fraction of
@@ -78,6 +97,12 @@ export type StampBrushStamping = {
   grain?: StampBrushGrain;
   /** Distance between stamps along a stroke. Below about 0.05, stamps pile up faster than they read. */
   spacing: number;
+  /**
+   * How steps are measured. `spread`: in the deposit's diameter, evened out so a stamp lands on each end. `eachStamp`:
+   * each step is the spacing of the stamp it leaves, at that stamp's own size (never under a pixel), from a stamp on
+   * the first point to the last whole step before the end, as Photoshop steps: a thinning stroke's stamps close up.
+   */
+  stepping: 'spread' | 'eachStamp';
   /**
    * Each stamp's random variation, 0..1: sideways offset (in diameters), size and opacity lost, and `flow` lost (as a
    * wetter or drier stamp lays less paint, independently of opacity).
@@ -134,8 +159,9 @@ export type StampBrushColorDynamics = {
 export type StampBrushLayer = StampBrushStamping & {
   /**
    * How a stroke's own stamps combine. `glaze`: where they overlap each other they darken only as far as `glazeBuild`
-   * lets them, so the stroke reaches at most a stamp's full paint, and only a later stroke builds on it. `build`: each
-   * stamp lays over the ones before, so overlaps darken within the stroke without limit.
+   * lets them, so the stroke reaches at most a stamp's full paint, and only a later stroke builds on it. `build`, as
+   * Photoshop builds: each stamp lays its flow over the ones before, toward its own opacity, and never lowers what's
+   * there, so overlaps darken up to the highest opacity a stamp brought.
    */
   accumulation: 'glaze' | 'build';
   /**
@@ -144,14 +170,16 @@ export type StampBrushLayer = StampBrushStamping & {
    */
   glazeBuild?: number;
   wetEdge?: StampBrushWetEdge;
+  pooling?: StampBrushPooling;
   burntEdge?: StampBrushBurntEdge;
 };
 
 /**
- * How a dual brush's coverage combines with the main brush's. Beyond the deposit blends: `difference`, `linearBurn`,
- * `colorDodge` and `hardMix` as their layer modes; `linearHeight` treats the dual as a relief the main stamps' paint
- * fills, as a linear-height grain does, and shapes the main coverage before its grain; every other blend combines with
- * the grained coverage.
+ * How a dual brush's coverage s combines with the main brush's grained coverage p. Photoshop's modes, identified from
+ * its captures (vid-97), are its texture formulas at full depth with s as the pattern (`multiply`, `darken`,
+ * `overlay`, `colorBurn`, `linearBurn`, `colorDodge`, `hardMix`), and `linearHeight` an overlay of p by 1 − s: each
+ * paints nothing where p has none. `normal`, `screen`, `lighten` and `difference` are their layer formulas, held to
+ * where p has paint.
  */
 export type StampDualBlend = StampBlend | 'difference' | 'linearHeight' | 'linearBurn' | 'colorDodge' | 'hardMix';
 

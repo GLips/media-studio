@@ -6,7 +6,6 @@
 // comes as a URL, a preview's under /files/ and a reference's as a data URL.
 
 import type { StampBrush } from '../models/stamp-brush.ts';
-import type { StampPaintRendererModel } from '../models/stamp-paint-renderer-model.ts';
 import { measureStrokeCoverage, PROCREATE_PREVIEW_SIZE, procreatePreviewPainting, type StrokeCoverageProfile, type StrokeFidelityGrade } from '../models/procreate-preview-stroke.ts';
 import { createStampPaintRenderer } from './stamp-paint-renderer.ts';
 
@@ -42,10 +41,10 @@ async function measureStrokeTarget(src: string): Promise<StrokeCoverageProfile |
   return measureStrokeCoverage(await targetCoverage(src), W, H);
 }
 
-/** `brush` as Procreate previews it, at `diameter`, drawn under `model`: its measure, and the painting as a PNG data URL when asked for. */
-async function paintOnProcreatePreviewStroke(brush: StampBrush, diameter: number, shows: 'stroke' | 'stamp', withPng: boolean, model: StampPaintRendererModel): Promise<{ png?: string; profile: StrokeCoverageProfile | null }> {
+/** `brush` as Procreate previews it, at `diameter`: its measure, and the painting as a PNG data URL when asked for. */
+async function paintOnProcreatePreviewStroke(brush: StampBrush, diameter: number, shows: 'stroke' | 'stamp', withPng: boolean): Promise<{ png?: string; profile: StrokeCoverageProfile | null }> {
   const canvas = Object.assign(document.createElement('canvas'), { width: W, height: H });
-  const renderer = await createStampPaintRenderer(canvas, procreatePreviewPainting(brush, diameter, shows), { color: '#ffffff' }, W, H, ({ style, pack, file }) => `/files/${style}/brushes/${pack}/${file}`, model);
+  const renderer = await createStampPaintRenderer(canvas, procreatePreviewPainting(brush, diameter, shows), { color: '#ffffff' }, W, H, ({ style, pack, file }) => `/files/${style}/brushes/${pack}/${file}`);
   try {
     await renderer.draw(0);
     return { ...(withPng && { png: canvas.toDataURL('image/png') }), profile: measureStrokeCoverage(paintedCoverage(canvas), W, H) };
