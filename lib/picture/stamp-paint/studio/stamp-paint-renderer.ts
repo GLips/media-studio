@@ -8,10 +8,10 @@
 //      and the resolve takes its stroke from the densest stamp toward the build held under the cap, as far as its
 //      glazeBuild says. A brush with colour dynamics also lays each stamp's tint, weighted by coverage, into two targets.
 //   2. compute passes blur the mask, when the brush has wet or burnt edges: the rim is where the mask stands above it.
-//   3. one compute pass resolves the coverage (texturized grain, the dual combined by its blend, the wet rim, the
-//      paper's tooth, protected regions, the clipping pass, the deposit's opacity), lays it onto its group's layer
-//      through the compositor (stamp-paint-compositor.ts), burns its burnt rim into the paint there, and adds it to
-//      the clip when its pass is unclipped.
+//   3. one compute pass resolves the coverage (texturized grain, unless the model cuts it into each stamp in step 1;
+//      the dual combined by its blend, the wet rim, the paper's tooth, protected regions, the clipping pass, the
+//      deposit's opacity), lays it onto its group's layer through the compositor (stamp-paint-compositor.ts), burns
+//      its burnt rim into the paint there, and adds it to the clip when its pass is unclipped.
 //   4. a compute pass lays each finished group onto the painting, and a render pass writes the painting to the canvas.
 //
 // A grain's stretch is about its own mean paint (its smallest mip), so a contrasty grain keeps its overall tone and
@@ -96,7 +96,7 @@ fn grained(a: f32, g: f32, depth: f32, blend: i32) -> f32 {
 // its zoom says, and carried along the canvas as far as its movement says. At movement 1 and constant size it lies
 // still on the canvas; as size or direction changes it slides, which is a rolling grain's streak.
 const STAMP_WGSL = /* wgsl */ `
-struct StampDraw { resolution: vec2f, roundness: f32, rolling: u32, grain: Grain, diameter: f32, zoom: f32, movement: f32, hull: array<vec4f, ${STAMP_TIP_HULL_SIDES / 2}> }
+struct StampDraw { resolution: vec2f, roundness: f32, grained: u32, grain: Grain, diameter: f32, zoom: f32, movement: f32, hull: array<vec4f, ${STAMP_TIP_HULL_SIDES / 2}> }
 @group(0) @binding(0) var<uniform> u: StampDraw;
 @group(0) @binding(1) var tip: texture_2d<f32>;
 @group(0) @binding(2) var grain: texture_2d<f32>;
@@ -122,12 +122,16 @@ fn turned(v: vec2f, angle: f32) -> vec2f {
   let grainUv = turned(local, -more.z) / size + u.movement * stamp.xy / u.grain.place.xy + u.grain.place.zw;
   return Corner(vec4f(at.x, -at.y, 0.0, 1.0), uv, more.x, more.y * ${BLUR_LEVELS.toFixed(1)}, grainUv, tint);
 }
-// A stamp's paint (x) and its cap (y): the paint without its tip, how far a glaze's stroke may build there.
+// A stamp's paint (x) and its cap (y): the paint without its tip, how far a glaze's stroke may build there. \`grained\`
+// says whose grain cuts each stamp: none (0), a rolling one, carried by the stamp (1), or a texturized one, fixed to
+// the canvas at the place the resolve would read it (2).
 fn covered(corner: Corner) -> vec2f {
   let tipped = 1.0 - textureSampleBias(tip, linearClamp, corner.tipUv, corner.blur).r;
   var coverage = vec2f(tipped, 1.0);
-  if (u.rolling == 1u) {
-    let g = grainPaint(1.0 - textureSample(grain, tile, corner.grainUv).r, grainMean(grain, tile), u.grain.shape.z, u.grain.shape.w);
+  if (u.grained != 0u) {
+    let raw = select(textureSample(grain, tile, corner.grainUv).r,
+      textureSampleLevel(grain, tile, corner.position.xy / u.grain.place.xy + u.grain.place.zw, u.grain.shape.y).r, u.grained == 2u);
+    let g = grainPaint(1.0 - raw, grainMean(grain, tile), u.grain.shape.z, u.grain.shape.w);
     coverage = vec2f(grained(tipped, g, u.grain.shape.x, u.grain.blend), grained(1.0, g, u.grain.shape.x, u.grain.blend));
   }
   return coverage * corner.alpha;
@@ -644,6 +648,15 @@ async function rendererOnDevice(
   /** The mip level a grain `texture` tiled `tileW` pixels across reads: texels per pixel, as a fragment's derivatives would say. */
   const grainLod = (texture: StampPaintImage, tileW: number) => Math.max(0, Math.log2(texture.width / tileW));
 
+  const hasTexturizedGrain = (layer?: StampBrushLayer) => !!layer?.grain && layer.grain.mode === 'texturized' && layer.grain.depth > 0;
+  /** Whether each of `layer`'s stamps is cut by its texturized grain as it's drawn, before they build. */
+  const grainPerStamp = (layer: StampBrushLayer) => hasTexturizedGrain(layer) && model.texturizedGrain === 'perStamp';
+  /** A texturized grain's tile (a share of the deposit's `diameter` across), offset and mip level, written as a Grain at `at`. */
+  const texturizedGrainAt = (floats: Float32Array, ints: Int32Array, at: number, grain: NonNullable<StampBrushLayer['grain']>, offset: readonly [number, number], diameter: number) => {
+    const texture = image(grain.image), size = grain.scale * diameter;
+    writeGrain(floats, ints, at, grain, [size, size * (texture.height / texture.width)], offset, grainLod(texture, size));
+  };
+
   function drawStamps(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loaded: LoadedDeposit, count: number, dualCount: number, box: Box) {
     const tinted = loaded.tint !== null;
     const pass = encoder.beginRenderPass({
@@ -656,20 +669,24 @@ async function rendererOnDevice(
       const pipeline = stampPipelines[layer.accumulation][tinted ? 'tinted' : 'plain'][channel];
       const { grain } = layer;
       const rolling = grain?.mode === 'rolling' && grain.depth > 0;
+      const texturized = grainPerStamp(layer);
       const diameter = deposit.diameter * (channel === 1 ? deposit.brush.dual!.scale : 1);
+      const offset = deposit.grainOffset[channel === 0 ? 'main' : 'dual'];
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, bindGroup(pipeline, [
         slot((floats, ints, words) => {
           floats.set([width, height, layer.tip.roundness]);
-          words[3] = rolling ? 1 : 0;
+          words[3] = rolling ? 1 : texturized ? 2 : 0;
           if (rolling) {
             const texture = image(grain.image), size = grain.scale * diameter;
-            writeGrain(floats, ints, 4, grain, [size, size * (texture.height / texture.width)], deposit.grainOffset[channel === 0 ? 'main' : 'dual'], 0);
+            writeGrain(floats, ints, 4, grain, [size, size * (texture.height / texture.width)], offset, 0);
             floats.set([diameter, grain.zoom, grain.movement], 16);
           }
+          // Tiled as the resolve tiles it, by the deposit's diameter, so only the order changes.
+          if (texturized) texturizedGrainAt(floats, ints, 4, grain!, offset, deposit.diameter);
           floats.set(hull, 20);
         }),
-        image(layer.tip.image).view, rolling ? image(grain.image).view : targets.blank.view, linearClamp, tile,
+        image(layer.tip.image).view, rolling || texturized ? image(grain!.image).view : targets.blank.view, linearClamp, tile,
       ]));
       pass.setVertexBuffer(0, stampBuffer, first * STAMP_FLOATS * 4);
       pass.setVertexBuffer(1, channel === 0 && tinted ? tintBuffer : noTintBuffer, channel === 0 && tinted ? loaded.tint! * TINT_FLOATS * 4 : 0);
@@ -735,12 +752,10 @@ async function rendererOnDevice(
 
   function resolveDeposit(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loaded: LoadedDeposit, clipped: boolean, blurred: boolean, box: Box) {
     const { brush } = deposit;
-    const texturized = (layer?: StampBrushLayer) => !!layer?.grain && layer.grain.mode === 'texturized' && layer.grain.depth > 0;
-    /** A texturized grain's tile (a share of the stamp's diameter across) and offset, written as a Grain at `at`. */
+    /** Whether the resolve cuts `layer`'s texturized grain into the built-up coverage (the stamps haven't). */
+    const texturized = (layer?: StampBrushLayer) => hasTexturizedGrain(layer) && model.texturizedGrain === 'afterBuild';
     const grainAt = (floats: Float32Array, ints: Int32Array, at: number, layer: StampBrushLayer | undefined, offset: readonly [number, number]) => {
-      if (!texturized(layer)) return;
-      const grain = layer!.grain!, texture = image(grain.image), size = grain.scale * deposit.diameter;
-      writeGrain(floats, ints, at, grain, [size, size * (texture.height / texture.width)], offset, grainLod(texture, size));
+      if (texturized(layer)) texturizedGrainAt(floats, ints, at, layer!.grain!, offset, deposit.diameter);
     };
     const edgesOf = (layer?: StampBrushLayer) => (blurred && layer
       ? [layer.wetEdge?.rim ?? 0, layer.wetEdge?.sharpness ?? 0, layer.burntEdge?.strength ?? 0, layer.burntEdge?.sharpness ?? 0] : [0, 0, 0, 0]);

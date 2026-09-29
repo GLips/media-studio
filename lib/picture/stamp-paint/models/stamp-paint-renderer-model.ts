@@ -8,6 +8,12 @@ export type StampPaintRendererModel = {
    * `linear` in linear light, each colour decoded before it mixes and the painting encoded as it's shown.
    */
   compositing: 'srgb' | 'linear';
+  /**
+   * When a texturized grain (fixed to the canvas) cuts into the paint: `afterBuild`, into the stroke's coverage once
+   * its stamps have built up; `perStamp`, into each stamp before it builds, so overlapping stamps deepen the grain's
+   * shallows. A rolling grain moves with its stamp, so it always cuts each stamp.
+   */
+  texturizedGrain: 'afterBuild' | 'perStamp';
 };
 
-export const STAMP_PAINT_RENDERER_MODEL: StampPaintRendererModel = { compositing: 'srgb' };
+export const STAMP_PAINT_RENDERER_MODEL: StampPaintRendererModel = { compositing: 'srgb', texturizedGrain: 'afterBuild' };

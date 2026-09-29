@@ -41,6 +41,7 @@ const sheetBrushesCommand = defineCommand({
     brush: { type: 'string', valueHint: 'Dry Brush', description: 'Only these brushes, by their names in the pack (comma-separated)' },
     out: { type: 'string', description: 'Write here instead, to keep a sheet from before a change' },
     compositing: { type: 'string', valueHint: 'linear', description: "Mix paint in 'srgb' (the renderer's default) or 'linear' light, to set a capture of Procreate against both; a sheet under anything but the default needs --out" },
+    'texturized-grain': { type: 'string', valueHint: 'perStamp', description: "Cut a texturized grain into the stroke 'afterBuild' (the renderer's default) or into each stamp 'perStamp', before the stamps build; a sheet under anything but the default needs --out" },
   },
   async run({ args }) {
     const { relative, resolve } = await import('node:path');
@@ -51,7 +52,9 @@ const sheetBrushesCommand = defineCommand({
     const only = args.brush?.split(',').map((name) => name.trim()).filter(Boolean);
     const compositing = args.compositing ?? STAMP_PAINT_RENDERER_MODEL.compositing;
     if (compositing !== 'srgb' && compositing !== 'linear') throw new Error(`brushes sheet: --compositing is srgb or linear, not ${JSON.stringify(compositing)}`);
-    const model: StampPaintRendererModel = { ...STAMP_PAINT_RENDERER_MODEL, compositing };
+    const texturizedGrain = args['texturized-grain'] ?? STAMP_PAINT_RENDERER_MODEL.texturizedGrain;
+    if (texturizedGrain !== 'afterBuild' && texturizedGrain !== 'perStamp') throw new Error(`brushes sheet: --texturized-grain is afterBuild or perStamp, not ${JSON.stringify(texturizedGrain)}`);
+    const model: StampPaintRendererModel = { ...STAMP_PAINT_RENDERER_MODEL, compositing, texturizedGrain };
     // The pack's own fidelity/ and the style's grades hold the default model's sheet: a trial goes elsewhere.
     if (!args.out && JSON.stringify(model) !== JSON.stringify(STAMP_PAINT_RENDERER_MODEL)) throw new Error('brushes sheet: a sheet under a model other than the default needs --out');
     const { dir, sheet, entries, scores } = await writeStampBrushSheet({ stylesDir: STUDIO_STYLES_DIR, style: args.style, pack: args.pack, out: args.out && resolve(args.out), only, model });
