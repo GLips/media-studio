@@ -17,7 +17,7 @@ export type FrameTimeSpread = { median: number; p90: number; max: number };
 export type FrameProfileReport = {
   frames: { from: number; end: number };
   size: { width: number; height: number };
-  gl: string;
+  gpu: string;
   /** Per label, its time in each frame (summed over what offered it, e.g. two paintings in a crossfade). */
   drawn: { label: string; frames: number; spread: FrameTimeSpread }[];
   /** A label ending "load": each one's time, from mount to ready, not per frame. */
@@ -73,7 +73,7 @@ export async function profileFrames(session: RenderSession, { from, end }: { fro
   const isLoad = (label: string) => label.endsWith(' load');
   return {
     frames: { from, end }, size: { width: composition.width, height: composition.height },
-    gl: session.passes.findLast((p) => p.gl)!.gl!,
+    gpu: session.passes.findLast((p) => p.gpu)!.gpu!,
     drawn: labels.filter((l) => !isLoad(l)).map((label) => {
       const perFrame = new Map<number, number>();
       for (const e of entries) if (e.label === label) perFrame.set(e.frame, (perFrame.get(e.frame) ?? 0) + e.ms);
@@ -86,9 +86,9 @@ export async function profileFrames(session: RenderSession, { from, end }: { fro
 
 export function formatFrameProfile(report: FrameProfileReport): string[] {
   const ms = (n: number) => `${n.toFixed(1)} ms`;
-  const { frames, size, gl } = report;
+  const { frames, size, gpu } = report;
   return [
-    `frames ${frames.from}–${frames.end - 1} at ${size.width}×${size.height}, GL ${gl}`,
+    `frames ${frames.from}–${frames.end - 1} at ${size.width}×${size.height}, GPU ${gpu}`,
     'drawing, per frame, waited for on the GPU (1 tab, no screenshot):',
     ...(report.drawn.length ? report.drawn.map(({ label, frames: n, spread: s }) => `  ${label}: median ${ms(s.median)}, p90 ${ms(s.p90)}, max ${ms(s.max)} over ${n} frames`) : ['  nothing in these frames offers its work to be timed']),
     ...report.loads.map(({ label, ms: times }) => `  ${label}: ${times.map(ms).join(', ')}`),

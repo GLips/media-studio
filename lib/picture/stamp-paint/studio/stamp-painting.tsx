@@ -1,6 +1,6 @@
 // stamp-painting.tsx: a stamp painting in a scene. It holds the frame until every image the painting uses is on the
-// GPU, then draws the painting as it stands at the scene's time (stamp-paint-renderer.ts), and gives its WebGL context
-// back when it unmounts.
+// GPU, then draws the painting as it stands at the scene's time (stamp-paint-renderer.ts, WebGPU), and destroys its GPU
+// device when it unmounts. A frame is drawn as it renders and never waited for: the screenshot waits for the GPU.
 //
 // Compile the recipe once, where the scene is defined, not while it renders: a painting that is a new object each
 // frame is loaded afresh each frame.
@@ -38,7 +38,8 @@ export function StampPainting({ painting, paper, t, width, height, box: given }:
   const { delayRender, continueRender, cancelRender } = useDelayRender();
   const profile = useFrameProfile();
 
-  // Each renderer gets a canvas of its own, made here: one whose context was given back can't be drawn on again.
+  // Each renderer gets a canvas of its own, made here and removed with it, so a renderer still loading when its
+  // painting changes never shares a canvas with the next.
   useLayoutEffect(() => {
     const handle = delayRender('loading the stamp painting\'s images onto the GPU');
     let open = true, live = true, made: StampPaintRenderer | null = null;
@@ -70,11 +71,14 @@ export function StampPainting({ painting, paper, t, width, height, box: given }:
     if (!renderer) return;
     const drawn = profile?.('stamp paint');
     renderer.draw(t);
-    if (drawn) {
-      renderer.finish();
+    if (!drawn) return;
+    // Profiling alone holds the frame until the GPU is done, to time the drawing rather than its queueing.
+    const handle = delayRender('timing the stamp painting on the GPU');
+    renderer.finish().then(() => {
       drawn();
-    }
-  }, [renderer, t, profile]);
+      continueRender(handle);
+    }, cancelRender);
+  }, [renderer, t, profile, delayRender, continueRender, cancelRender]);
 
   return <div ref={holder} {...unmeasuredAttrs('stamp painting')} style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h }} />;
 }

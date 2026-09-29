@@ -5,7 +5,7 @@ import { openStudioRenderSession, renderWorkersArg, studioProjectArg } from '../
 export default defineCommand({
   meta: {
     name: 'profile',
-    description: "Renders a span of frames three times and says where each frame's time goes: the drawing code that offers its work to be timed (a stamp painting's draw, waited for on the GPU, and its load), in one tab with no screenshot; then each frame's whole render as JPEGs, steady state, in one tab and in the render's tabs. Prints the GL backend it ran on.",
+    description: "Renders a span of frames three times and says where each frame's time goes: the drawing code that offers its work to be timed (a stamp painting's draw, waited for on the GPU, and its load), in one tab with no screenshot; then each frame's whole render as JPEGs, steady state, in one tab and in the render's tabs. Prints the GPU backends it ran on (WebGL's renderer and WebGPU's adapter).",
   },
   args: {
     project: studioProjectArg,

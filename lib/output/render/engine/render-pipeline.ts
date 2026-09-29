@@ -453,14 +453,14 @@ export async function joinVideoSlices(session: RenderSession, { dir, out }: { di
     if (loaded.kind === 'none') throw new Error(loaded.reason);
     const { frames } = loaded.snapshot;
     if (JSON.stringify(loaded.snapshot.timeline) !== now) throw new Error(`${name} (frames ${frames.from}–${frames.end - 1}) was rendered on another timeline than the video's now (a retime moves every later bar and cue): render it again`);
-    const { gl } = loaded.snapshot;
+    const { gpu } = loaded.snapshot;
     const counted = countVideoFrames(file);
     if (counted !== frames.end - frames.from) throw new Error(`${name} holds ${counted} frames, and its snapshot says ${frames.end - frames.from}`);
-    return { file, gl, ...frames };
+    return { file, gpu, ...frames };
   }).sort((a, b) => a.from - b.from);
   // Each GPU rounds a painted frame its own way, so slices from two would show a seam where they meet.
-  const gls = [...new Set(slices.map((s) => s.gl))];
-  if (gls.length > 1) throw new Error(`the slices in ${dir} were drawn on ${gls.length} GPUs (${gls.join('; ')}): render them all on one machine`);
+  const gpus = [...new Set(slices.map((s) => s.gpu))];
+  if (gpus.length > 1) throw new Error(`the slices in ${dir} were drawn on ${gpus.length} GPUs (${gpus.join('; ')}): render them all on one machine`);
   let reached = 0;
   for (const s of slices) {
     if (s.from !== reached) throw new Error(`${basename(s.file)} starts at frame ${s.from}, but the slices before it reach ${reached}: ${s.from > reached ? 'render the gap' : 'they overlap'}`);
@@ -481,7 +481,7 @@ export async function joinVideoSlices(session: RenderSession, { dir, out }: { di
   });
   const counted = countVideoFrames(out);
   if (counted !== timeline.durationInFrames) throw new Error(`${out} holds ${counted} frames, not the video's ${timeline.durationInFrames}`);
-  writeRenderSnapshot(out, { frames: { from: 0, end: timeline.durationInFrames }, timeline, clock: session.clock, voice: renderVoiceOf(session.project), gl: gls[0] });
+  writeRenderSnapshot(out, { frames: { from: 0, end: timeline.durationInFrames }, timeline, clock: session.clock, voice: renderVoiceOf(session.project), gpu: gpus[0] });
   return out;
 }
 

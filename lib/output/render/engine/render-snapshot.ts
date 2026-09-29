@@ -17,7 +17,7 @@ import type { TimelineClockTable } from '#lib/timing/timeline/models/timeline.ts
 import type { RenderVoice } from '#lib/timing/voice/models/render-voice.ts';
 import type { TimelineReport } from '#lib/picture/composition/studio/Video.tsx';
 
-export const RENDER_SNAPSHOT_VERSION = 7;
+export const RENDER_SNAPSHOT_VERSION = 8;
 
 /** Which bytes a file is: `hash` is the first 10 hex digits of its SHA-256, `modified` its mtime as ISO. */
 export type RenderFileStamp = { hash: string; modified: string };
@@ -38,10 +38,10 @@ export type RenderSnapshot = {
   /** Whose voice it speaks in, as the project's audio was when it rendered: a review raises a banner on `draft`. */
   voice: RenderVoice;
   /**
-   * The GL renderer its frames were drawn on, as WebGL names it. Another GPU rounds a painted frame differently, so
-   * slices from two are refused a join (docs/private-styles.md).
+   * The GPU its frames were drawn on: WebGL's renderer and WebGPU's adapter, as render-browser.ts names them. Another
+   * GPU rounds a painted frame differently, so slices from two are refused a join (docs/private-styles.md).
    */
-  gl: string;
+  gpu: string;
   /** Every tracked element's motion, when the render path measured it (a delivered render's check does). */
   motion?: MotionTracks;
 };
@@ -69,14 +69,14 @@ export function renderFileStamp(file: string): RenderFileStamp {
 }
 
 /** Writes `render`'s snapshot beside it, bound to its bytes as they are now. Call once the file is final. */
-export function writeRenderSnapshot(render: string, made: Pick<RenderSnapshot, 'frames' | 'timeline' | 'clock' | 'voice' | 'gl' | 'motion'>): string {
-  const { frames, timeline, clock, voice, gl, motion } = made;
+export function writeRenderSnapshot(render: string, made: Pick<RenderSnapshot, 'frames' | 'timeline' | 'clock' | 'voice' | 'gpu' | 'motion'>): string {
+  const { frames, timeline, clock, voice, gpu, motion } = made;
   if (!(frames.from >= 0 && frames.end > frames.from && frames.end <= timeline.durationInFrames)) {
     throw new Error(`${basename(render)}: frames ${frames.from}–${frames.end - 1} aren't within the composition's 0–${timeline.durationInFrames - 1}`);
   }
   const snapshot: RenderSnapshot = {
     version: RENDER_SNAPSHOT_VERSION, render: { file: basename(render), hash: renderFileStamp(render).hash }, frames,
-    made: new Date().toISOString(), timeline, clock, voice, gl, ...(motion && { motion }),
+    made: new Date().toISOString(), timeline, clock, voice, gpu, ...(motion && { motion }),
   };
   const path = renderSnapshotPath(render);
   writeFileSync(path, JSON.stringify(snapshot));

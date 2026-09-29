@@ -104,7 +104,7 @@ export const PACKAGE_OWNERS: PackageOwnership[] = [
   {
     package: "@remotion/renderer",
     owners: [],
-    why: "NOTHING in the web app renders a composition itself. The engine owns the renderer's browser, its worker count and its GL check; the app reaches a render through #web/infrastructure/studio-engine.server.ts.",
+    why: "NOTHING in the web app renders a composition itself. The engine owns the renderer's browser, its worker count and its GPU check; the app reaches a render through #web/infrastructure/studio-engine.server.ts.",
   },
   {
     package: "@remotion/bundler",

@@ -14,7 +14,7 @@ test('a render reads back the timeline it was made with, and a file replaced wit
   withStudioTemp('render-snapshot', (dir) => {
     const render = join(dir, '03.mp4');
     writeFileSync(render, 'bar three, as first rendered');
-    writeRenderSnapshot(render, { frames: { from: 120, end: 240 }, timeline: timeline('before the retime'), clock: null, voice: null, gl: 'ANGLE (Apple M1 Max)' });
+    writeRenderSnapshot(render, { frames: { from: 120, end: 240 }, timeline: timeline('before the retime'), clock: null, voice: null, gpu: 'ANGLE (Apple M1 Max); WebGPU apple metal-3' });
 
     const loaded = loadRenderSnapshot(render);
     assert.equal(loaded.kind, 'snapshot');

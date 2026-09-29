@@ -91,20 +91,29 @@ export default {
 doesn't read as the brush and the note says what's missing. The sheet shows each label on its row and lists the brushes
 without one. Re-draw and re-judge after changing how a brush is painted or read.
 
-**Same pixels.** A painting draws on the GPU in half floats, and GPUs round floats differently, so what's promised
-depends on where it renders:
+**Same pixels.** A painting draws on the GPU through WebGPU, in half floats, and GPUs round floats differently, so
+what's promised depends on where it renders:
 
 - On one machine (one GPU, driver and Chrome) a frame is the same bytes however it's reached: cold, after other frames,
   or with other tabs drawing beside it. `studio repeatable` checks all three, and a painting must report "identical",
   not merely above its PSNR threshold. Anything less is a bug in the drawing, not rounding.
 - Across machines, never compare pixels. The same recipe can differ by a level or two where stamps overlap, which
   reads the same but fails a byte or snapshot comparison. Judge by eye (the fidelity sheet, `--strip`).
-- A video's slices render on one machine. Each render snapshot records the GL renderer it drew on (`gl`), and
-  `studio render --join` refuses slices from more than one.
+- A video's slices render on one machine. Each render snapshot records the GPU it drew on (`gpu`: WebGL's renderer
+  and WebGPU's adapter), and `studio render --join` refuses slices from more than one.
+
+A renderer's first draw or two of a painting round a few pixels a level off from every later one, and how many draws
+it takes varies from run to run. So before its first frame the renderer draws the whole painting until two draws in a
+row give the same pixels, and throws those draws away; one that never settles fails the render.
+
+A render's browser must have a hardware WebGPU adapter as well as hardware GL, and a render fails without one
+(lib/output/render/engine/render-browser.ts). WebGPU exists only in a secure context: Remotion's `http://localhost`
+page is one, `about:blank` isn't. The renderer needs the adapter's `texture-formats-tier2` feature (its compute passes
+read and write half-float targets in place).
 
 **Speed.** `studio profile <project> --frames a:b` times each frame's painting on the GPU and its whole render. The
-watercolor landscape (84 deposits, 1.5M stamps, 1920×1080) paints in about 107 ms a frame on an M1 Max (ANGLE on
-Metal) and renders in about 124 ms, so the painting dominates and capture is the rest. Its cost follows the stamps'
+watercolor landscape (84 deposits, 1.5M stamps, 1920×1080) paints in about 104 ms a frame on an M1 Max (WebGPU on
+Metal) and renders in about 119 ms in one tab and 100 ms in two, so the painting dominates and capture is the rest. Its cost follows the stamps'
 area: a denser brush spacing or bigger stamps cost in proportion.
 
 **Missing brushes.** Before each bundle, every style the project names is checked. It stops the bundle, listing each

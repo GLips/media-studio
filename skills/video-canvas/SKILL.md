@@ -1,6 +1,6 @@
 ---
 name: video-canvas
-description: Painted, drawn and generative layers in a video, chiefly stamp painting (StampPainting, drawn on the GPU in a private painting style). Use for a painted or hand-drawn look (a painted opening, an illustration painted in as the voice speaks, ink marks over a capture) or generative backgrounds, to find the styles you can paint in and what a drawn layer must obey.
+description: Painted, drawn and generative layers in a video, chiefly stamp painting (StampPainting, drawn on the GPU with WebGPU in a private painting style). Use for a painted or hand-drawn look (a painted opening, an illustration painted in as the voice speaks, ink marks over a capture) or generative backgrounds, to find the styles you can paint in and what a drawn layer must obey.
 ---
 
 # Drawn layers
@@ -45,7 +45,8 @@ Everything is from `#studio`.
   `stampSmoothRegion(points)` turns a few control points into a smooth silhouette; `stampFillBrush(brush)` untapers a
   brush for filling.
 - `compileStampPaintRecipe(recipe)` once, at scene definition, never in render: a new painting each frame reloads it.
-- Render `<StampPainting painting={painting} paper={style.paper} t={s.t} />` in a scene. `t` is the scene's time, which
+- Render `<StampPainting painting={painting} paper={style.paper} t={s.t} />` in a scene. It draws with WebGPU, which
+  the render browser and `studio preview`'s Chrome have; a browser without it fails loudly rather than drawing blank. `t` is the scene's time, which
   `appliedAt` counts on, so the painting paints itself in; hold a deposit's `appliedAt` to a cue from `timeline.ts`
   (`sceneCueSeconds(clock)`) to paint an element in on a word.
 

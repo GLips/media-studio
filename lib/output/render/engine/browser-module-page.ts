@@ -1,7 +1,8 @@
 // browser-module-page.ts: runs a browser module of the studio's (a `studio` file that sets functions on globalThis)
 // in the render browser, outside any Remotion bundle, for a tool that needs the browser's GPU or canvas but not a
 // composition: the brush fidelity sheet. The module is bundled with esbuild, served beside a folder of the caller's
-// files over loopback HTTP (so images reach WebGL untainted), and each call evaluates one of its functions.
+// files over loopback HTTP (a secure context, which WebGPU needs, and images untainted), and each call evaluates one
+// of its functions.
 //
 // Negative space: no React and no delayRender; a function that waits returns a promise, which the call awaits.
 

@@ -9,7 +9,7 @@
 // A video joined from its slices (render-pipeline.ts's joinVideoSlices) writes one too.
 // Stills and frame files write none: they're working images a command reads, not renders anyone reviews.
 //
-// Every render runs in a browser of its own whose GL backend is checked (render-browser.ts), on the session's
+// Every render runs in a browser of its own whose GPU backends (WebGL and WebGPU) are checked (render-browser.ts), on the session's
 // workers, and is timed: `passes` holds each pass's seconds, for a command to report where its time went.
 import { renderFrames, renderMedia, selectComposition, type HeadlessBrowser, type OnArtifact, type RenderFramesOptions, type RenderMediaOptions } from '@remotion/renderer';
 import { copyFileSync, mkdirSync, readdirSync } from 'node:fs';
@@ -59,8 +59,8 @@ export const DEFAULT_RENDER_WORKERS = Math.min(3, Math.max(1, availableParalleli
  */
 const RENDER_NICENESS = 10;
 
-/** One timed pass of a command's renders: `workers` and `gl` where it rendered frames. */
-export type RenderPass = { pass: string; seconds: number; workers?: number; gl?: string };
+/** One timed pass of a command's renders: `workers` and `gpu` where it rendered frames. */
+export type RenderPass = { pass: string; seconds: number; workers?: number; gpu?: string };
 
 /** `workers` overrides the video's `renderWorkers` and DEFAULT_RENDER_WORKERS, as a command's --workers does. */
 export async function openRenderSession(project: string, { workers }: { workers?: number } = {}) {
@@ -95,11 +95,11 @@ export async function openRenderSession(project: string, { workers }: { workers?
     return result;
   }
 
-  /** Renders in a browser of its own (see render-browser.ts), recording the pass with the GL backend it had. */
+  /** Renders in a browser of its own (see render-browser.ts), recording the pass with the GPU backends it had. */
   async function inBrowser<T>(pass: string, render: (browser: HeadlessBrowser) => Promise<{ result: T; workers?: number }>): Promise<T> {
     const started = performance.now();
-    const { result: { result, workers: used }, gl } = await inRenderBrowser(render);
-    passes.push({ pass, seconds: (performance.now() - started) / 1000, workers: used, gl });
+    const { result: { result, workers: used }, gpu } = await inRenderBrowser(render);
+    passes.push({ pass, seconds: (performance.now() - started) / 1000, workers: used, gpu });
     return result;
   }
 
@@ -184,7 +184,7 @@ export async function openRenderSession(project: string, { workers }: { workers?
       const picture = join(tmp, name), sound = separateSound ? join(tmp, 'sound.wav') : undefined;
       const started = performance.now();
       let framesDrawn: number | undefined, concurrency = 0;
-      const { result: composition, gl } = await inRenderBrowser(async (browser) => {
+      const { result: composition, gpu } = await inRenderBrowser(async (browser) => {
         const composition = await compositionFor(inputProps, browser);
         concurrency = workersFor(composition);
         const count = frames ? frames.end - frames.from : composition.durationInFrames;
@@ -202,14 +202,14 @@ export async function openRenderSession(project: string, { workers }: { workers?
       // Encoding runs beside the frames; what's left of it once they're all drawn is the encode's own time.
       const ended = performance.now();
       framesDrawn ??= ended;
-      passes.push({ pass: `${name} frames`, seconds: (framesDrawn - started) / 1000, workers: concurrency, gl }, { pass: `${name} encode`, seconds: (ended - framesDrawn) / 1000 });
+      passes.push({ pass: `${name} frames`, seconds: (framesDrawn - started) / 1000, workers: concurrency, gpu }, { pass: `${name} encode`, seconds: (ended - framesDrawn) / 1000 });
       const { soundtrack, motion } = (await approve?.({ sound })) ?? {};
       if (soundtrack) {
         await timed(`${name} mux`, () => runFfmpeg(['-y', '-v', 'error', '-i', picture, '-i', soundtrack, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', ...DELIVERY_AUDIO_CODEC, '-movflags', '+faststart', out]));
       } else {
         copyFileSync(picture, out);
       }
-      writeRenderSnapshot(out, { frames: frames ?? { from: 0, end: composition.durationInFrames }, timeline: timeline ?? await readTimeline(), clock, voice: renderVoiceOf(project), gl, motion });
+      writeRenderSnapshot(out, { frames: frames ?? { from: 0, end: composition.durationInFrames }, timeline: timeline ?? await readTimeline(), clock, voice: renderVoiceOf(project), gpu, motion });
       return out;
     });
   }
@@ -236,7 +236,7 @@ export async function openRenderSession(project: string, { workers }: { workers?
         return { result: composition, workers: concurrency };
       });
       // The pass inBrowser just recorded holds the GL the frames were drawn on.
-      const gl = passes.at(-1)!.gl!;
+      const gpu = passes.at(-1)!.gpu!;
       const { motion } = (await approve?.()) ?? {};
       // Remotion pads the frame numbers, so the glob's order is the video's.
       const frames = ['-y', '-v', 'error', '-framerate', String(fps), '-pattern_type', 'glob', '-i', join(tmp, 'f-*.png')];
@@ -252,7 +252,7 @@ export async function openRenderSession(project: string, { workers }: { workers?
         runFfmpegAsync([...frames, '-vf', `format=bgra,premultiply=inplace=1,${bt709}`, '-c:v', 'hevc_videotoolbox', '-pix_fmt', 'bgra', '-colorspace', 'bt709', '-q:v', '70', '-alpha_quality', '0.9',
           '-tag:v', 'hvc1', '-movflags', '+faststart', mov]),
       ]));
-      for (const out of [webm, mov]) writeRenderSnapshot(out, { frames: { from: 0, end: durationInFrames }, timeline, clock, voice: renderVoiceOf(project), gl, motion });
+      for (const out of [webm, mov]) writeRenderSnapshot(out, { frames: { from: 0, end: durationInFrames }, timeline, clock, voice: renderVoiceOf(project), gpu, motion });
     });
     return [webm, mov];
   }
@@ -299,18 +299,18 @@ export function artifactSink() {
 }
 
 /**
- * The session's passes as a table, with the workers and GL backend its renders had: where a command's time went. A
+ * The session's passes as a table, with the workers and GPU backends its renders had: where a command's time went. A
  * render's pass includes opening its browser. The wall-clock runs from the session's opening, so it also holds what
  * no pass times (judging a check, writing reports).
  */
 export function formatRenderPasses({ passes, opened }: Pick<RenderSession, 'passes' | 'opened'>): string[] {
   const width = Math.max(...passes.map((p) => p.pass.length));
-  const gl = [...new Set(passes.flatMap((p) => (p.gl ? [p.gl] : [])))];
+  const gpu = [...new Set(passes.flatMap((p) => (p.gpu ? [p.gpu] : [])))];
   const total = passes.reduce((sum, p) => sum + p.seconds, 0);
   const row = (pass: string, seconds: number, workers?: number) =>
     `  ${pass.padEnd(width)}  ${seconds.toFixed(1).padStart(6)}s${workers ? `  ${workers} worker${workers > 1 ? 's' : ''}` : ''}`;
   return [
-    `timing, GL ${gl.join('; ') || 'unused'}:`,
+    `timing, GPU ${gpu.join('; ') || 'unused'}:`,
     ...passes.map((p) => row(p.pass, p.seconds, p.workers)),
     row('passes', total),
     row('wall-clock', (performance.now() - opened) / 1000),
