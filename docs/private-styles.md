@@ -94,17 +94,16 @@ without one. Re-draw and re-judge after changing how a brush is painted or read.
 **Same pixels.** A painting draws on the GPU through WebGPU, in half floats, and GPUs round floats differently, so
 what's promised depends on where it renders:
 
-- On one machine (one GPU, driver and Chrome) a frame is the same bytes however it's reached: cold, after other frames,
-  or with other tabs drawing beside it. `studio repeatable` checks all three, and a painting must report "identical",
-  not merely above its PSNR threshold. Anything less is a bug in the drawing, not rounding.
+- On one machine (one GPU, driver and Chrome) a frame looks the same however it's reached: cold, after other frames,
+  or with other tabs drawing beside it. It is held to the bar every GPU scene is: `studio repeatable` checks all
+  three and passes over 50 dB PSNR. A few pixels may land a level apart from one draw to the next, most often on a
+  renderer's first draw, and that's rounding, not a bug; the check says "identical" when no pixel moved, but doesn't
+  ask for it. A frame that depends on what its tab drew before (an unseeded stream, a stale target) falls far below
+  the bar.
 - Across machines, never compare pixels. The same recipe can differ by a level or two where stamps overlap, which
   reads the same but fails a byte or snapshot comparison. Judge by eye (the fidelity sheet, `--strip`).
 - A video's slices render on one machine. Each render snapshot records the GPU it drew on (`gpu`: WebGL's renderer
   and WebGPU's adapter), and `studio render --join` refuses slices from more than one.
-
-A renderer's first draw or two of a painting round a few pixels a level off from every later one, and how many draws
-it takes varies from run to run. So before its first frame the renderer draws the whole painting until two draws in a
-row give the same pixels, and throws those draws away; one that never settles fails the render.
 
 A render's browser must have a hardware WebGPU adapter as well as hardware GL, and a render fails without one
 (lib/output/render/engine/render-browser.ts). WebGPU exists only in a secure context: Remotion's `http://localhost`

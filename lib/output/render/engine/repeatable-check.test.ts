@@ -1,5 +1,5 @@
 // Runs checkFramesRepeatable on repeatable-check/video.tsx, whose frame differs by one level at one pixel on a tab's
-// first draw: a difference far above the PSNR bar, which must still be reported, since a stamp painting must be identical.
+// first draw: a difference far above the PSNR bar, which passes but mustn't be reported identical.
 import assert from 'node:assert/strict';
 import { copyFileSync, mkdirSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';

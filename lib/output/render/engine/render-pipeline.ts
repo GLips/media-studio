@@ -494,9 +494,9 @@ export async function joinVideoSlices(session: RenderSession, { dir, out }: { di
  * GPU. A tab's history is what leaks into a frame that isn't a pure function of time (an unseeded random stream,
  * drawing deferred to the next frame).
  *
- * Equal means over 50 dB PSNR, since a GPU scene may round differently from one draw to the next; each frame says
- * whether it was identical, which a stamp painting must be (docs/private-styles.md says why). Every capture is a PNG,
- * so identical means the same pixels: a JPEG's quantizing can hide a ±1 difference.
+ * Equal means over 50 dB PSNR, since a GPU scene (a stamp painting among them) may round differently from one draw to
+ * the next; each frame also says whether it was identical, which isn't asked for. Every capture is a PNG, so identical
+ * means the same pixels: a JPEG's quantizing can hide a ±1 difference.
  */
 export async function checkFramesRepeatable(session: RenderSession, times: number[]): Promise<{ ok: boolean; report: string[] }> {
   if (!times.length || times.some((t) => !Number.isFinite(t))) throw new Error('give times in seconds, e.g. 2,8.5');

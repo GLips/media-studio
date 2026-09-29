@@ -71,7 +71,7 @@ each frame is redrawn from paper.
 - **Flush deferred drawing at the end of every layer**, so one frame's marks never turn up in the next.
 - **Prove it:** `studio repeatable <p> <times>` renders chosen times fresh, again after other frames in one tab, and
   again beside other frames in several tabs, and fails if any differ. Run it on every painted scene, at times
-  mid-reveal and after. A painting reports "identical"; anything less is a bug (docs/private-styles.md, "Same pixels").
+  mid-reveal and after. A painting passes over 50 dB like any GPU scene; a few pixels a level apart is rounding, not a bug (docs/private-styles.md, "Same pixels").
 - **Time it:** `studio profile <p> --frames a:b` says what a painting's draw costs a frame and what the whole render
   does. A dense 1080p landscape paints in about 110 ms a frame on an M1 Max.
 

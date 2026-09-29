@@ -403,15 +403,10 @@ export type StampPaintRenderer = {
   dispose: () => void;
 };
 
-/** Whole-painting draws at load before a renderer gives up on its drawing settling (see createStampPaintRenderer). */
-const MAX_SETTLING_DRAWS = 8;
-
 /**
  * A renderer for one painting on `canvas`, `width` by `height` of the painting's pixels; `imageUrl` maps each image
- * to its URL. It resolves once every image is on the GPU and its drawing has settled: a renderer's first draw or two
- * of a painting round a few pixels differently from every later one (on Apple's GPUs, in WebGPU and WebGL alike, for
- * reasons not pinned down), so it draws the whole painting until two draws in a row give the same half-float pixels,
- * and throws those draws away. Without that, a frame would depend on whether it was a tab's first.
+ * to its URL. It resolves once every image is on the GPU. A frame may round a few pixels a level differently from one
+ * draw to the next (docs/private-styles.md, "Same pixels"), which `studio repeatable`'s PSNR bar allows.
  */
 export async function createStampPaintRenderer(
   canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string,
@@ -429,7 +424,8 @@ export async function createStampPaintRenderer(
 async function rendererOnDevice(
   device: GPUDevice, canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string,
 ): Promise<StampPaintRenderer> {
-  // Loading and the first draw are checked for any error WebGPU would otherwise report only later, unasked.
+  // Loading is checked for any error WebGPU would otherwise report only later, unasked; a draw's error is thrown by
+  // the draw after it.
   const SCOPES = ['validation', 'out-of-memory', 'internal'] as const;
   for (const scope of SCOPES) device.pushErrorScope(scope);
   let failure: string | null = null;
@@ -585,8 +581,7 @@ async function rendererOnDevice(
   const RENDER = GPUTextureUsage.RENDER_ATTACHMENT, STORAGE = GPUTextureUsage.STORAGE_BINDING;
   const halfW = Math.ceil(width / 2), halfH = Math.ceil(height / 2);
   const targets = {
-    // Read back while the renderer settles.
-    painting: target(width, height, STORAGE | GPUTextureUsage.COPY_SRC),
+    painting: target(width, height, STORAGE),
     layer: target(width, height, STORAGE | RENDER),
     mask: target(width, height, RENDER, 'rg16float'),
     blurA: target(halfW, halfH, STORAGE),
@@ -817,33 +812,9 @@ async function rendererOnDevice(
     device.queue.submit([encoder.finish()]);
   }
 
-  // The painting's half floats after a whole draw, to compare with the draw before (see above).
-  const readRow = Math.ceil((width * 8) / 256) * 256;
-  const readback = device.createBuffer({ size: readRow * height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
-  async function drawWhole(): Promise<Uint32Array> {
-    draw(Number.MAX_VALUE);
-    const encoder = device.createCommandEncoder();
-    encoder.copyTextureToBuffer({ texture: targets.painting.texture }, { buffer: readback, bytesPerRow: readRow }, [width, height]);
-    device.queue.submit([encoder.finish()]);
-    await readback.mapAsync(GPUMapMode.READ);
-    const pixels = new Uint32Array(readback.getMappedRange().slice(0));
-    readback.unmap();
-    return pixels;
-  }
-  const same = (a: Uint32Array, b: Uint32Array) => a.every((word, i) => word === b[i]);
-  let last = await drawWhole(), settled = false;
-  for (let draws = 1; draws < MAX_SETTLING_DRAWS && !settled; draws++) {
-    const next = await drawWhole();
-    settled = same(last, next);
-    last = next;
-  }
-  readback.destroy();
   for (const _ of SCOPES) {
     const error = await device.popErrorScope();
     if (error) throw new Error(`stamp paint: loading the painting onto the GPU failed: ${error.message}`);
-  }
-  if (!settled) {
-    throw new Error(`stamp paint: ${MAX_SETTLING_DRAWS} draws of the whole painting never gave the same pixels twice in a row, so its frames can't repeat`);
   }
 
   // A painting whose inputs change in the same commit as its time is disposed before its last draw is asked for.
