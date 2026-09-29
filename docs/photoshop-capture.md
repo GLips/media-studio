@@ -44,8 +44,9 @@ accessibility permission.
 ## What a run writes
 
 Sheets are 4096², cut into cells whose sizes and origins are multiples of 256, the period of the probe texture, so a
-texture fixed to the canvas has the same phase in every cell and a cell compares with its repeat. `manifest.json`
-holds:
+texture fixed to the canvas has the same phase in every cell and a cell compares with its repeat. Each sheet is saved
+as it's painted and `manifest.json` once the last is, before Photoshop quits, so a Photoshop that hangs on quit loses
+only the cleanup, never the capture. `manifest.json` holds:
 
 - the Photoshop version, and its colour settings: RGB blend gamma off means paint mixes on gamma-encoded values, and
   dither on means 8-bit dithering (the sheets are 16-bit, so they have none);
@@ -63,7 +64,7 @@ Brush Pose (size and opacity overridden), or simulated pressure (taper at both e
 
 ## The probe set
 
-`photoshopProbes()`, 192 probes, 335 cells on 9 sheets in about a minute. Each is a plain round, or a sampled tip the run defines
+`photoshopProbes()`, 201 probes, 344 cells on 10 sheets in about a minute. Each is a plain round, or a sampled tip the run defines
 (`studio-probe-tip`: a half-circle with a hard and a soft side, 112 px once Photoshop trims it), with one thing changed:
 
 - single stamps of computed tips across hardness and diameter, an ellipse, and the sampled tip at sizes, angle,
@@ -77,7 +78,8 @@ Brush Pose (size and opacity overridden), or simulated pressure (taper at both e
 - size jitter, scatter and noise, painted several times each since they're random by design;
 - vid-97's inputs painted alone beside what combines them, so a combine reads pixel for pixel off two captures: a
   soft 240 px stamp alone and under each texture mode, a dual's primary and secondary alone and combined under each
-  mode, more hardnesses and diameters; and probes where two stages meet (texture, dual, wet edges, opacity), which
+  mode, and again over a primary spaced a diameter apart, so the combine reads across primary coverage 0..1, more
+  hardnesses and diameters; and probes where two stages meet (texture, dual, wet edges, opacity), which
   show their order.
 
 **Brush Pose pressure scales size and opacity both**, whatever the brush's own dynamics say: a pose at 0.5 paints

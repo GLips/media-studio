@@ -40,7 +40,7 @@ const probesCommand = defineCommand({
     const untrue = Object.entries(manifest.items).filter(([, item]) => item.mismatches).map(([key]) => key);
     if (untrue.length) console.log(`photoshop probes: ${untrue.length} probes didn't take as asked (their mismatches are in the manifest): ${untrue.join(', ')}`);
     const cells = manifest.sheets.reduce((n, s) => n + s.cells.length, 0);
-    console.log(`photoshop probes: ${relative(STUDIO_ROOT, dir)}: ${Object.keys(manifest.items).length} probes, ${cells} cells on ${manifest.sheets.length} sheets in ${manifest.seconds.total.toFixed(1)} s (${manifest.seconds.perCapture.toFixed(2)} s a cell, Photoshop's launch and quit included); Photoshop ${manifest.photoshop.version}, blending ${manifest.photoshop.blending}`);
+    console.log(`photoshop probes: ${relative(STUDIO_ROOT, dir)}: ${Object.keys(manifest.items).length} probes, ${cells} cells on ${manifest.sheets.length} sheets in ${manifest.seconds.total.toFixed(1)} s (${manifest.seconds.perCapture.toFixed(2)} s a cell, Photoshop's launch included); Photoshop ${manifest.photoshop.version}, blending ${manifest.photoshop.blending}`);
   },
 });
 
@@ -63,7 +63,7 @@ const referencesCommand = defineCommand({
     }
     if (manifest.repeatedNames) console.log(`photoshop references: not captured, repeating an earlier preset's name: ${manifest.repeatedNames.join(', ')}`);
     const cells = manifest.sheets.reduce((n, s) => n + s.cells.length, 0);
-    console.log(`photoshop references: ${relative(STUDIO_ROOT, dir)}: ${Object.keys(manifest.items).length} brushes, ${cells} cells on ${manifest.sheets.length} sheets in ${manifest.seconds.total.toFixed(1)} s (${manifest.seconds.perCapture.toFixed(2)} s a cell, Photoshop's launch and quit included)`);
+    console.log(`photoshop references: ${relative(STUDIO_ROOT, dir)}: ${Object.keys(manifest.items).length} brushes, ${cells} cells on ${manifest.sheets.length} sheets in ${manifest.seconds.total.toFixed(1)} s (${manifest.seconds.perCapture.toFixed(2)} s a cell, Photoshop's launch included)`);
   },
 });
 

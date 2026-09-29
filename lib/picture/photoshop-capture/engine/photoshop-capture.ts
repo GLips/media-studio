@@ -102,30 +102,31 @@ export async function capturePhotoshopProbes({ dir: root, only, repeat = [], log
   const cells = sheets.reduce((n, s) => n + s.cells.length, 0);
   log(`photoshop: ${probes.filter((p) => !only || only.includes(p.name)).length} probes, ${cells} cells on ${sheets.length} sheets into ${dir}`);
 
-  const { result, restore } = await withOwnedPhotoshop(`probes-${run}`, ({ version }) => {
+  // The manifest is written before the quit, beside the sheets already saved: a Photoshop that hangs on quit then
+  // costs only the cleanup, not the capture.
+  const { result: manifest, restore } = await withOwnedPhotoshop(`probes-${run}`, ({ version }) => {
     const assets = captureScript<{ colorSettings: Record<string, unknown> }>('defineProbeAssets', { rampFile, tipFile, rampName: PHOTOSHOP_PROBE_RAMP.name, tipName: PHOTOSHOP_PROBE_TIP.name });
     const items = Object.fromEntries(probes.map((p) => [p.name, { reads: p.reads, settings: p.settings }]));
     const painted = paintSheets(dir, sheets, items, { rampName: PHOTOSHOP_PROBE_RAMP.name, tipName: PHOTOSHOP_PROBE_TIP.name }, log);
-    return { version, colorSettings: assets.colorSettings, items, ...painted };
+    const finished = new Date(), total = (finished.getTime() - started.getTime()) / 1000;
+    const manifest: PhotoshopCaptureManifest = {
+      run, kind: 'probes', startedAt: started.toISOString(), finishedAt: finished.toISOString(),
+      seconds: { total, paint: painted.paintMs / 1000, perCapture: total / cells },
+      photoshop: { version, colorSettings: assets.colorSettings, blending: blending(assets.colorSettings) },
+      document: PHOTOSHOP_CAPTURE_DOCUMENT,
+      assets: { ramp: { ...PHOTOSHOP_PROBE_RAMP, file: basename(rampFile) }, tip: { ...PHOTOSHOP_PROBE_TIP, file: basename(tipFile) } },
+      items: Object.fromEntries(Object.entries(painted.applied).map(([key, applied]) => {
+        const mismatches = photoshopSettingsMismatches(items[key].settings, applied);
+        for (const line of mismatches) log(`photoshop: ${key} didn't take as asked: ${line}`);
+        return [key, { ...items[key], applied, ...(mismatches.length ? { mismatches } : {}) }];
+      })),
+      sheets: painted.sheets,
+      notCaptured: PHOTOSHOP_NOT_CAPTURED,
+      ...(repeat.length ? { repeatability: measureRepeats(dir, painted.sheets) } : {}),
+    };
+    writeFileSync(join(dir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+    return manifest;
   }, log);
-
-  const finished = new Date(), total = (finished.getTime() - started.getTime()) / 1000;
-  const manifest: PhotoshopCaptureManifest = {
-    run, kind: 'probes', startedAt: started.toISOString(), finishedAt: finished.toISOString(),
-    seconds: { total, paint: result.paintMs / 1000, perCapture: total / cells },
-    photoshop: { version: result.version, colorSettings: result.colorSettings, blending: blending(result.colorSettings) },
-    document: PHOTOSHOP_CAPTURE_DOCUMENT,
-    assets: { ramp: { ...PHOTOSHOP_PROBE_RAMP, file: basename(rampFile) }, tip: { ...PHOTOSHOP_PROBE_TIP, file: basename(tipFile) } },
-    items: Object.fromEntries(Object.entries(result.applied).map(([key, applied]) => {
-      const mismatches = photoshopSettingsMismatches(result.items[key].settings, applied);
-      for (const line of mismatches) log(`photoshop: ${key} didn't take as asked: ${line}`);
-      return [key, { ...result.items[key], applied, ...(mismatches.length ? { mismatches } : {}) }];
-    })),
-    sheets: result.sheets,
-    notCaptured: PHOTOSHOP_NOT_CAPTURED,
-    ...(repeat.length ? { repeatability: measureRepeats(dir, result.sheets) } : {}),
-  };
-  writeFileSync(join(dir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   return { dir, manifest, restore };
 }
 
@@ -137,9 +138,8 @@ export async function capturePhotoshopReferences({ abr, stylesDir, style, pack, 
   const dir = join(stylesDir, style, 'brushes', pack, 'reference');
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
-  let cells = 0;
 
-  const { result, restore } = await withOwnedPhotoshop(`references-${run}`, ({ version }) => {
+  const { result: manifest, restore } = await withOwnedPhotoshop(`references-${run}`, ({ version }) => {
     const loaded = captureScript<{ loadMs: number; colorSettings: Record<string, unknown>; presets: { name: string; tipClass: string; diameter: number | null }[]; repeated: string[] }>('loadPackPresets', { abr });
     log(`photoshop: ${basename(abr)} loaded in ${loaded.loadMs} ms: ${loaded.presets.length} presets${loaded.repeated.length ? `, and ${loaded.repeated.length} repeating a name before them (not captured)` : ''}`);
     if (!loaded.presets.length) throw new Error(`photoshop: ${abr} holds no brush presets`);
@@ -147,24 +147,25 @@ export async function capturePhotoshopReferences({ abr, stylesDir, style, pack, 
     if (missing.length) throw new Error(`photoshop: ${basename(abr)} has no brush named ${missing.map((m) => JSON.stringify(m)).join(', ')}`);
     const brushes = loaded.presets.filter((p) => !only || only.includes(p.name)).map((p) => ({ key: p.name, preset: { name: p.name, nativeDiameter: p.diameter, ...photoshopReferenceSize(p.diameter) } }));
     const sheets = planPhotoshopReferenceCapture(brushes.map((b) => ({ key: b.key, diameter: b.preset.diameter })));
-    cells = sheets.reduce((n, s) => n + s.cells.length, 0);
+    const cells = sheets.reduce((n, s) => n + s.cells.length, 0);
     log(`photoshop: ${brushes.length} brushes, ${cells} cells on ${sheets.length} sheets into ${dir}`);
     const items = Object.fromEntries(brushes.map((b) => [b.key, { preset: b.preset }]));
-    return { version, colorSettings: loaded.colorSettings, items, repeated: loaded.repeated, ...paintSheets(dir, sheets, items, {}, log) };
+    const painted = paintSheets(dir, sheets, items, {}, log);
+    // Written before the quit, as for the probes.
+    const finished = new Date(), total = (finished.getTime() - started.getTime()) / 1000;
+    const manifest: PhotoshopCaptureManifest = {
+      run, kind: 'references', startedAt: started.toISOString(), finishedAt: finished.toISOString(),
+      seconds: { total, paint: painted.paintMs / 1000, perCapture: total / cells },
+      photoshop: { version, colorSettings: loaded.colorSettings, blending: blending(loaded.colorSettings) },
+      document: PHOTOSHOP_CAPTURE_DOCUMENT,
+      source: { abr: basename(abr), pack, style },
+      items: Object.fromEntries(Object.entries(painted.applied).map(([key, applied]) => [key, { ...items[key], applied }])),
+      sheets: painted.sheets,
+      notCaptured: PHOTOSHOP_NOT_CAPTURED,
+      ...(loaded.repeated.length ? { repeatedNames: loaded.repeated } : {}),
+    };
+    writeFileSync(join(dir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+    return manifest;
   }, log);
-
-  const finished = new Date(), total = (finished.getTime() - started.getTime()) / 1000;
-  const manifest: PhotoshopCaptureManifest = {
-    run, kind: 'references', startedAt: started.toISOString(), finishedAt: finished.toISOString(),
-    seconds: { total, paint: result.paintMs / 1000, perCapture: total / cells },
-    photoshop: { version: result.version, colorSettings: result.colorSettings, blending: blending(result.colorSettings) },
-    document: PHOTOSHOP_CAPTURE_DOCUMENT,
-    source: { abr: basename(abr), pack, style },
-    items: Object.fromEntries(Object.entries(result.applied).map(([key, applied]) => [key, { ...result.items[key], applied }])),
-    sheets: result.sheets,
-    notCaptured: PHOTOSHOP_NOT_CAPTURED,
-    ...(result.repeated.length ? { repeatedNames: result.repeated } : {}),
-  };
-  writeFileSync(join(dir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   return { dir, manifest, restore };
 }

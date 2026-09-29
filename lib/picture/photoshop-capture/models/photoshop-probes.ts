@@ -195,6 +195,11 @@ export function photoshopProbes(): PhotoshopProbe[] {
   add('dual base primary', "the dual probes' primary painted alone", base(DUAL_PRIMARY), [mark('line')]);
   add('dual base secondary', "the dual probes' secondary painted alone, as a primary", base(DUAL_SECONDARY), [mark('line')]);
   for (const mode of PHOTOSHOP_DUAL_MODES) add(`dual ${mode} soft`, `${mode} over a soft primary and a soft secondary: the combine over both coverages, against the two painted alone`, base(DUAL_PRIMARY, { dual: { tip: DUAL_SECONDARY, mode } }), [mark('line')]);
+  // A soft primary spaced a diameter apart ranges its coverage from nothing to full along the line, against a
+  // secondary on another period, so the combine reads over its whole domain, not only at full primary coverage.
+  const SPACED_PRIMARY = round(160, 0, 100);
+  add('dual base primary spaced', "the spaced dual probes' primary painted alone", base(SPACED_PRIMARY), [mark('line')]);
+  for (const mode of PHOTOSHOP_DUAL_MODES) add(`dual ${mode} spaced`, `${mode} over a primary whose coverage ranges 0..1: the combine inside the primary`, base(SPACED_PRIMARY, { dual: { tip: DUAL_SECONDARY, mode } }), [mark('line')]);
   // Which stage comes first, read off where two of them meet.
   add('order texture wet', 'canvas texture with wet edges: which applies first', base(round(128, 50, 5), { wetEdges: true, texture: ramp('multiply', 100) }), [mark('line')]);
   add('order texture each tip wet', 'Texture Each Tip with wet edges', base(round(128, 50, 5), { flow: 25, wetEdges: true, texture: ramp('subtract', 50, { eachTip: true }) }), [mark('line')]);

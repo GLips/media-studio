@@ -172,6 +172,7 @@ export type PhotoshopCaptureManifest = {
   run: string;
   kind: 'probes' | 'references';
   startedAt: string;
+  /** When the last sheet was saved: the manifest is written then, before Photoshop quits. */
   finishedAt: string;
   seconds: { total: number; paint: number; perCapture: number };
   photoshop: {
