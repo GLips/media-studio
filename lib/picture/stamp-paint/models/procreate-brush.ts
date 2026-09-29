@@ -47,6 +47,13 @@ export type ProcreateReading = {
   /** A dual's stamps are this times the ratio of the dual's largest size to the main brush's. */
   dualScale: number;
   /**
+   * Stamp spacing, in diameters, is plotSpacing to this power: Freya Lupen's converter reads it as its square root
+   * (0.5), and Dry Brush's preview shows its stamps a sixteenth of a diameter apart at 0.004.
+   */
+  spacingPower: number;
+  /** A stamp's lateral jitter, in diameters, is this times plotJitter's square root (Freya Lupen's converter: a half). */
+  lateralJitterScale: number;
+  /**
    * How far each glaze mode's stamps build within the stroke (StampBrushLayer's glazeBuild), by its transfer flags:
    * light (neither), uniform (modulated), intense (max) and heavy (both). The names are the Handbook's; which flags
    * make which mode is inferred.
@@ -110,8 +117,11 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
     if (set.length) note(level, set.join(', '), detail);
   };
 
-  const plotSpacing = num('plotSpacing');
-  if (plotSpacing < STAMP_MIN_SPACING) note('approximated', 'plotSpacing', `${plotSpacing.toFixed(3)} stamps all but continuously; placed at the studio's closest spacing, ${STAMP_MIN_SPACING}`);
+  const spacing = num('plotSpacing') ** reading.spacingPower;
+  note('approximated', 'plotSpacing', spacing < STAMP_MIN_SPACING
+    ? `stamps all but continuously; placed at the studio's closest spacing, ${STAMP_MIN_SPACING}`
+    : `read as stamps ${spacing.toFixed(3)} of a diameter apart`);
+  if (num('plotJitter')) note('approximated', 'plotJitter', `read as each stamp moved across the stroke by up to ${(reading.lateralJitterScale * Math.sqrt(num('plotJitter'))).toFixed(2)} of a diameter`);
   const shapeScatter = num('shapeScatter');
   if (shapeScatter) note('approximated', 'shapeScatter', `${shapeScatter.toFixed(2)} read as each stamp turned at random by up to ±${Math.round(shapeScatter * 90)}°`);
   const taperStart = num('pencilTaperStartLength'), taperEnd = num('pencilTaperEndLength');
@@ -180,8 +190,8 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
   return {
     tip: { image: source.tip, roundness: Math.min(1, Math.max(0.01, Number(s.shapeRoundness ?? 1))) },
     ...(grain && { grain }),
-    spacing: Math.max(plotSpacing, STAMP_MIN_SPACING),
-    jitter: { lateral: num('plotJitter'), size: num('dynamicsJitterSize'), opacity: num('dynamicsJitterOpacity'), flow: num('dynamicsWetnessJitter') },
+    spacing: Math.max(spacing, STAMP_MIN_SPACING),
+    jitter: { lateral: reading.lateralJitterScale * Math.sqrt(num('plotJitter')), size: num('dynamicsJitterSize'), opacity: num('dynamicsJitterOpacity'), flow: num('dynamicsWetnessJitter') },
     // shapeCount stores Procreate's 1–16 stamps as sixteenths.
     scatter: { count: Math.max(1, Math.round(num('shapeCount') * 16)), countJitter: num('shapeCountJitter'), radius: 0 },
     rotation: { angle: num('shapeAngle'), follow: Math.min(1, Math.max(-1, num('shapeRotation'))), jitter: (shapeScatter * Math.PI) / 2, randomStart: on('shapeRandomise') },

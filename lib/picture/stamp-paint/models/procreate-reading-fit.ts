@@ -24,6 +24,8 @@ export const PROCREATE_READING_RANGES: Readonly<Record<keyof ProcreateReading, P
   glazeFlowCurve: { min: 0.2, max: 4, step: { times: 2, finest: 1.1 } },
   blendingFlowCurve: { min: 0.2, max: 4, step: { times: 2, finest: 1.1 } },
   dualScale: { min: 0.25, max: 4, step: { times: 2, finest: 1.1 } },
+  spacingPower: { min: 0.25, max: 1, step: { plus: 0.15, finest: 0.02 } },
+  lateralJitterScale: { min: 0.05, max: 2, step: { times: 2, finest: 1.1 } },
   glazeBuildLight: { min: 0, max: 1, step: { plus: 0.5, finest: 0.06 } },
   glazeBuildUniform: { min: 0, max: 1, step: { plus: 0.5, finest: 0.06 } },
   glazeBuildIntense: { min: 0, max: 1, step: { plus: 0.5, finest: 0.06 } },

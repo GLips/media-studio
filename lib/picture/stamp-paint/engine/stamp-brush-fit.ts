@@ -16,7 +16,7 @@ import { PROCREATE_READING } from '../models/procreate-reading.ts';
 import { fitProcreateReading, type ProcreateReadingFitStep } from '../models/procreate-reading-fit.ts';
 import { STAMP_PAINT_PACK_MANIFEST, type StampPaintPackManifest } from '../models/style.ts';
 import { PROCREATE_SOURCES, type ProcreatePackSources } from './import-procreate-pack.ts';
-import { packFile, paintAtPreviewThickness, withStampBrushSheetPage } from './stamp-brush-sheet.ts';
+import { packFile, paintAtPreviewThickness, withStampBrushSheetPage, type StampBrushSheetEntry } from './stamp-brush-sheet.ts';
 
 const READING_FILE = fileURLToPath(new URL('../models/procreate-reading.ts', import.meta.url));
 
@@ -24,10 +24,12 @@ const READING_FILE = fileURLToPath(new URL('../models/procreate-reading.ts', imp
 const NOTHING_PAINTED = 2;
 
 /**
- * What each point a brush loses against its score under the starting reading costs the fit, beyond the loss itself:
- * a shared constant that makes some brushes closer by making another further off has to win by this much more.
+ * What each point a brush loses against its baseline costs the fit, beyond the loss itself: a shared constant that
+ * makes some brushes closer by making another further off has to win by this much more. The baseline is its score on
+ * the pack's last drawn sheet (fidelity/report.json), so a change to the model can't quietly give back what the sheet
+ * showed; a brush the sheet hasn't scored is held to its score under the starting reading.
  */
-const REGRESSION_WEIGHT = 1;
+const REGRESSION_WEIGHT = 3;
 
 export type StampBrushFitPack = { style: string; pack: string };
 
@@ -68,9 +70,12 @@ export async function fitStampBrushReading({ stylesDir, packs, keys, write, log 
     if (!existsSync(sourcesFile)) throw new Error(`brushes fit: ${style}/${pack} has no ${PROCREATE_SOURCES}; import it again with studio brushes import`);
     const manifest = JSON.parse(readFileSync(join(dir, STAMP_PAINT_PACK_MANIFEST), 'utf8')) as StampPaintPackManifest;
     const sources = JSON.parse(readFileSync(sourcesFile, 'utf8')) as ProcreatePackSources;
+    const reportFile = join(dir, 'fidelity', 'report.json');
+    const report = existsSync(reportFile) ? JSON.parse(readFileSync(reportFile, 'utf8')) as { entries: StampBrushSheetEntry[] } : null;
+    const sheetScores: Record<string, number | undefined> = Object.fromEntries((report?.entries ?? []).map((e) => [e.brush, e.comparison?.score]));
     return Object.entries(sources).flatMap(([name, source]) => {
       const preview = manifest.previews[name];
-      return preview ? [{ style, pack, name, source, preview: packFile(style, pack, preview.image), shows: preview.shows }] : [];
+      return preview ? [{ style, pack, name, source, preview: packFile(style, pack, preview.image), shows: preview.shows, sheet: sheetScores[name] }] : [];
     });
   });
 
@@ -100,8 +105,9 @@ export async function fitStampBrushReading({ stylesDir, packs, keys, write, log 
       return each;
     };
     const before = await scoresOf(PROCREATE_READING);
+    const baseline = brushes.map((b, i) => b.sheet ?? before[i]);
     const total = async (reading: ProcreateReading) => (await scoresOf(reading))
-      .reduce((sum, score, i) => sum + score + REGRESSION_WEIGHT * Math.max(0, score - before[i]), 0);
+      .reduce((sum, score, i) => sum + score + REGRESSION_WEIGHT * Math.max(0, score - baseline[i]), 0);
 
     log(`brushes fit: ${brushes.length} brushes from ${packs.map(({ style, pack }) => `${style}/${pack}`).join(', ')}, total ${before.reduce((a, b) => a + b, 0).toFixed(3)}`);
     const fit = await fitProcreateReading(PROCREATE_READING, total, {
