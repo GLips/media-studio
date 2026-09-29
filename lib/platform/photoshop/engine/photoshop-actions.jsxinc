@@ -1,0 +1,139 @@
+// photoshop-actions.jsxinc: the ExtendScript every studio script runs inside Photoshop, loaded by photoshop-app.ts
+// ahead of the script itself. ExtendScript is ES3: no JSON, no let, no arrow functions, no Array.prototype.map.
+//
+// Warning: every DOM error otherwise raises a modal alert on Graham's screen, which blocks each later AppleEvent until
+// someone clicks it, so dialogs are off before anything else runs, and every executeAction passes DialogModes.NO.
+app.displayDialogs = DialogModes.NO;
+
+var S = stringIDToTypeID, C = charIDToTypeID;
+function tid2s(t) { var s = typeIDToStringID(t); return s ? s : typeIDToCharID(t); }
+
+// An ActionDescriptor as a plain object, for reading back what Photoshop actually applied.
+function descToObj(d) {
+  var o = {};
+  for (var i = 0; i < d.count; i++) { var k = d.getKey(i); o[tid2s(k)] = valToObj(d, k, d.getType(k)); }
+  return o;
+}
+function listToArr(l) {
+  var a = [];
+  for (var i = 0; i < l.count; i++) a.push(valToObj(l, i, l.getType(i)));
+  return a;
+}
+function valToObj(d, k, t) {
+  switch (t) {
+    case DescValueType.BOOLEANTYPE: return d.getBoolean(k);
+    case DescValueType.INTEGERTYPE: return d.getInteger(k);
+    case DescValueType.DOUBLETYPE: return d.getDouble(k);
+    case DescValueType.UNITDOUBLE: return { value: d.getUnitDoubleValue(k), unit: tid2s(d.getUnitDoubleType(k)) };
+    case DescValueType.STRINGTYPE: return d.getString(k);
+    case DescValueType.ENUMERATEDTYPE: return tid2s(d.getEnumerationValue(k));
+    case DescValueType.OBJECTTYPE: var o = descToObj(d.getObjectValue(k)); o._class = tid2s(d.getObjectType(k)); return o;
+    case DescValueType.LISTTYPE: return listToArr(d.getList(k));
+    case DescValueType.CLASSTYPE: return "class " + tid2s(d.getClass(k));
+    case DescValueType.REFERENCETYPE: return "reference";
+    case DescValueType.RAWTYPE: return "raw " + d.getData(k).length + " bytes";
+    case DescValueType.ALIASTYPE: return d.getPath(k).fsName;
+    default: return "unknown type " + t;
+  }
+}
+function toJSON(v) {
+  if (v === null || v === undefined) return "null";
+  if (typeof v === "string") return '"' + v.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t") + '"';
+  if (typeof v === "number") return isFinite(v) ? String(v) : "null";
+  if (typeof v !== "object") return String(v);
+  var parts = [];
+  if (v instanceof Array) { for (var i = 0; i < v.length; i++) parts.push(toJSON(v[i])); return "[" + parts.join(",") + "]"; }
+  for (var k in v) if (v.hasOwnProperty(k)) parts.push(toJSON(k) + ":" + toJSON(v[k]));
+  return "{" + parts.join(",") + "}";
+}
+// Node wrote the file with JSON.stringify, so evaluating it as an expression is JSON.parse.
+function readJSON(path) { var f = File(path); f.encoding = "UTF-8"; f.open("r"); var s = f.read(); f.close(); return eval("(" + s + ")"); }
+function writeText(path, s) { var f = File(path); f.encoding = "UTF-8"; f.lineFeed = "Unix"; f.open("w"); f.write(s); f.close(); }
+
+function appRef(prop) {
+  var r = new ActionReference();
+  if (prop) r.putProperty(C("Prpr"), S(prop));
+  r.putEnumerated(C("capp"), C("Ordn"), C("Trgt"));
+  return r;
+}
+// Warning: not named colorSettings. A global function of that name fails the whole script as "Illegal Argument, line 0".
+function readColorSettings() { return descToObj(executeActionGet(appRef("colorSettings")).getObjectValue(S("colorSettings"))); }
+
+// presetManager's lists, in Photoshop's order: brushes first, patterns fifth.
+var PRESET_BRUSHES = 0, PRESET_PATTERNS = 4;
+function presetNames(which) {
+  var l = executeActionGet(appRef("presetManager")).getList(S("presetManager")).getObjectValue(which).getList(C("Nm  ")), n = [];
+  for (var i = 0; i < l.count; i++) n.push(l.getString(i));
+  return n;
+}
+
+function selectTool(name) {
+  var d = new ActionDescriptor(), r = new ActionReference();
+  r.putClass(S(name)); d.putReference(C("null"), r);
+  executeAction(C("slct"), d, DialogModes.NO);
+}
+function getToolOptions() { return executeActionGet(appRef("currentToolOptions")).getObjectValue(S("currentToolOptions")); }
+function setToolOptions(opts) {
+  var d = new ActionDescriptor(), r = new ActionReference();
+  r.putClass(S("paintbrushTool")); d.putReference(C("null"), r);
+  d.putObject(C("T   "), C("null"), opts);
+  executeAction(C("setd"), d, DialogModes.NO);
+}
+// The brush tip is set as the Brsh object inside the whole tool options, with its class (computedBrush,
+// sampledBrush). Warning: never through `set` on the Brsh target, which quietly turns any sampled tip, a built-in
+// one too, into a soft computed round.
+function setBrushTip(opts, tip, cls) { opts.putObject(C("Brsh"), S(cls), tip); }
+function selectBrushPresetByName(name) {
+  var d = new ActionDescriptor(), r = new ActionReference();
+  r.putName(C("Brsh"), name); d.putReference(C("null"), r);
+  executeAction(C("slct"), d, DialogModes.NO);
+}
+// Loads an .abr's presets (and its patterns): appended to Photoshop's list, or in place of it. Presets are selected by
+// name, never by index: an index resolves to a different preset than the flat list presetNames reads, for selecting
+// as for deleting (which once cost Graham four presets).
+function loadBrushes(path, append) {
+  var d = new ActionDescriptor(), r = new ActionReference();
+  r.putProperty(C("Prpr"), C("Brsh")); r.putEnumerated(C("capp"), C("Ordn"), C("Trgt"));
+  d.putReference(C("null"), r); d.putPath(C("T   "), File(path)); d.putBoolean(C("Appe"), append);
+  executeAction(C("setd"), d, DialogModes.NO);
+}
+// Defines a brush preset (class "Brsh") or a pattern ("Ptrn") from the whole of the active document.
+function defineFromDocument(doc, cls, name) {
+  doc.selection.selectAll();
+  var d = new ActionDescriptor(), r = new ActionReference(); r.putClass(C(cls)); d.putReference(C("null"), r);
+  var u = new ActionReference(); u.putProperty(C("Prpr"), C("fsel")); u.putEnumerated(C("Dcmn"), C("Ordn"), C("Trgt"));
+  d.putReference(C("Usng"), u); d.putString(C("Nm  "), name);
+  executeAction(C("Mk  "), d, DialogModes.NO);
+}
+
+function rgbColor(rgb) { var c = new SolidColor(); c.rgb.red = rgb[0]; c.rgb.green = rgb[1]; c.rgb.blue = rgb[2]; return c; }
+
+// A transparent 16-bit RGB document at 72 dpi, so a point is a pixel: 8-bit dithers alpha by up to 11 levels
+// between identical runs, 16-bit is bit-identical.
+function newCaptureDocument(w, h, name) {
+  var doc = app.documents.add(UnitValue(w, "px"), UnitValue(h, "px"), 72, name, NewDocumentMode.RGB, DocumentFill.TRANSPARENT);
+  doc.bitsPerChannel = BitsPerChannelType.SIXTEEN;
+  return doc;
+}
+
+// Strokes a work path through pts ([[x,y],...] in pixels) with the brush tool; one point is a single stamp.
+function strokePolyline(doc, pts, simulatePressure) {
+  var info = [];
+  for (var i = 0; i < pts.length; i++) {
+    var p = new PathPointInfo();
+    p.kind = PointKind.CORNERPOINT;
+    p.anchor = p.leftDirection = p.rightDirection = [pts[i][0], pts[i][1]];
+    info.push(p);
+  }
+  var sp = new SubPathInfo();
+  sp.operation = ShapeOperation.SHAPEADD; sp.closed = false; sp.entireSubPath = info;
+  var path = doc.pathItems.add("studio-stroke", [sp]);
+  path.strokePath(ToolType.BRUSH, !!simulatePressure);
+  path.remove();
+}
+
+// Saves the merged document as a lossless PNG, alpha kept, as a copy so the document stays open and unsaved.
+function savePNG(doc, path) {
+  var o = new PNGSaveOptions(); o.compression = 1; o.interlaced = false;
+  doc.saveAs(File(path), o, true, Extension.LOWERCASE);
+}

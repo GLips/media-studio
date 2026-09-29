@@ -1,0 +1,202 @@
+// photoshop-capture.jsxinc: the capture rig's side inside Photoshop (vid-100), run after
+// lib/platform/photoshop/engine/photoshop-actions.jsxinc by photoshop-capture.ts. Each entry point takes the global
+// JOB and returns JSON text.
+//
+// Every setting a probe doesn't vary is set explicitly to its plain value, never left as whatever the tool held, so a
+// probe's capture depends on its settings alone. Dynamics keys are charIDs (szVr, opVr, prVr, brVr, bVTy, fStp):
+// Photoshop silently ignores the same keys written as stringIDs.
+
+// bVTy: what drives a dynamic.
+var CONTROL = { off: 0, fade: 1, penPressure: 2 };
+function variation(control, jitter) {
+  var v = new ActionDescriptor();
+  v.putInteger(C("bVTy"), control ? CONTROL[control.control] : 0);
+  v.putInteger(C("fStp"), control ? control.fadeSteps : 25);
+  v.putUnitDouble(S("jitter"), C("#Prc"), jitter || 0);
+  v.putUnitDouble(S("minimum"), C("#Prc"), control ? control.minimum : 0);
+  return v;
+}
+
+function tipDescriptor(tip, sampledTip) {
+  var t = tip.kind === "sampled" ? sampledTip : new ActionDescriptor();
+  t.putUnitDouble(C("Dmtr"), C("#Pxl"), tip.diameter);
+  if (tip.kind === "computed") t.putUnitDouble(C("Hrdn"), C("#Prc"), tip.hardness);
+  t.putUnitDouble(C("Angl"), C("#Ang"), tip.angle);
+  t.putUnitDouble(C("Rndn"), C("#Prc"), tip.roundness);
+  t.putUnitDouble(C("Spcn"), C("#Prc"), tip.spacing);
+  t.putBoolean(S("interfaceIconFrameDimmed"), true);
+  t.putBoolean(S("flipX"), tip.flipX);
+  t.putBoolean(S("flipY"), tip.flipY);
+  return t;
+}
+var TIP_CLASS = { computed: "computedBrush", sampled: "sampledBrush" };
+
+// The sampled probe tip's descriptor, as Photoshop holds it once defined (its sampledData names the bitmap).
+function probeTip(name) {
+  selectBrushPresetByName(name);
+  return getToolOptions().getObjectValue(C("Brsh"));
+}
+
+function setPose(opts, pressure) {
+  var on = pressure !== undefined && pressure !== null;
+  opts.putBoolean(S("useBrushPose"), on);
+  opts.putBoolean(S("usePressureOverridesSize"), on);
+  opts.putBoolean(S("usePressureOverridesOpacity"), on);
+  if (on) opts.putUnitDouble(S("brushPosePressure"), C("#Prc"), pressure * 100);
+}
+
+// Tool state no probe varies: normal mode, no smoothing, no colour dynamics, no build-up, no tilt.
+function plainToolOptions(opts) {
+  opts.putEnumerated(S("mode"), S("blendMode"), S("normal"));
+  opts.putBoolean(S("smoothing"), false);
+  opts.putBoolean(S("useColorDynamics"), false);
+  opts.putBoolean(S("repeat"), false);
+  opts.putBoolean(S("flipX"), false);
+  opts.putBoolean(S("flipY"), false);
+  opts.putBoolean(S("brushProjection"), false);
+  setPose(opts, null);
+}
+
+function applyProbeSettings(s, sampledTip, rampName) {
+  var o = getToolOptions();
+  setBrushTip(o, tipDescriptor(s.tip, sampledTip), TIP_CLASS[s.tip.kind]);
+  plainToolOptions(o);
+  o.putInteger(C("Opct"), s.opacity);
+  o.putInteger(S("flow"), s.flow);
+
+  o.putBoolean(S("useTipDynamics"), !!(s.size || (s.jitter && s.jitter.size)));
+  o.putObject(C("szVr"), C("brVr"), variation(s.size, s.jitter ? s.jitter.size : 0));
+  o.putUnitDouble(S("minimumDiameter"), C("#Prc"), s.size ? s.size.minimum : 0);
+  o.putObject(S("angleDynamics"), C("brVr"), variation(null, 0));
+  o.putObject(S("roundnessDynamics"), C("brVr"), variation(null, 0));
+
+  o.putBoolean(S("usePaintDynamics"), !!s.transfer);
+  o.putObject(C("opVr"), C("brVr"), variation(s.transfer ? s.transfer.opacity : null, 0));
+  o.putObject(C("prVr"), C("brVr"), variation(s.transfer ? s.transfer.flow : null, 0));
+
+  var scatter = s.jitter ? s.jitter.scatter : 0;
+  o.putBoolean(S("useScatter"), scatter > 0);
+  o.putBoolean(S("bothAxes"), s.jitter ? s.jitter.bothAxes : false);
+  o.putInteger(S("count"), 1);
+  o.putObject(S("scatterDynamics"), C("brVr"), variation(null, scatter));
+  o.putObject(S("countDynamics"), C("brVr"), variation(null, 0));
+
+  o.putBoolean(S("useTexture"), !!s.texture);
+  if (s.texture) {
+    var pat = new ActionDescriptor(); pat.putString(C("Nm  "), rampName);
+    o.putObject(S("texture"), S("pattern"), pat);
+    o.putUnitDouble(S("textureScale"), C("#Prc"), s.texture.scale);
+    o.putBoolean(S("invertTexture"), s.texture.invert);
+    o.putInteger(S("textureBrightness"), s.texture.brightness);
+    o.putInteger(S("textureContrast"), s.texture.contrast);
+    o.putEnumerated(S("textureBlendMode"), S("blendMode"), S(s.texture.mode));
+    o.putUnitDouble(S("textureDepth"), C("#Prc"), s.texture.depth);
+    o.putBoolean(S("textClickPoint"), s.texture.eachTip);
+    o.putUnitDouble(S("minimumDepth"), C("#Prc"), 0);
+    o.putObject(S("textureDepthDynamics"), C("brVr"), variation(null, 0));
+  }
+
+  var db = new ActionDescriptor();
+  db.putBoolean(S("useDualBrush"), !!s.dual);
+  if (s.dual) {
+    db.putBoolean(S("flip"), false);
+    db.putObject(C("Brsh"), S("computedBrush"), tipDescriptor(s.dual.tip, null));
+    db.putEnumerated(S("blendMode"), S("blendMode"), S(s.dual.mode));
+    db.putBoolean(S("useScatter"), false);
+    db.putBoolean(S("bothAxes"), false);
+    db.putInteger(S("count"), 1);
+    db.putObject(S("countDynamics"), C("brVr"), variation(null, 0));
+    db.putObject(S("scatterDynamics"), C("brVr"), variation(null, 0));
+  }
+  o.putObject(S("dualBrush"), S("dualBrush"), db);
+
+  o.putBoolean(S("wetEdges"), s.wetEdges);
+  o.putBoolean(S("noise"), s.noise);
+  setToolOptions(o);
+}
+
+function currentDiameter() { return getToolOptions().getObjectValue(C("Brsh")).getUnitDoubleValue(C("Dmtr")); }
+function setDiameter(diameter) {
+  var o = getToolOptions(), tip = o.getObjectValue(C("Brsh"));
+  tip.putUnitDouble(C("Dmtr"), C("#Pxl"), diameter);
+  setBrushTip(o, tip, typeIDToStringID(o.getObjectType(C("Brsh"))));
+  setToolOptions(o);
+}
+
+// A pack brush: the tool reset to plain first, so a preset that carries no tool settings (opacity, flow, mode) paints
+// at 100%, and one that does sets its own. A preset saved without a size keeps the size the tool has, so the planned
+// size is set before it's selected: Photoshop scales its dual tip along, as it does for a person. A preset too big for
+// a reference is resized after, which leaves its dual tip and texture at their own sizes.
+function applyPreset(p) {
+  var o = getToolOptions();
+  plainToolOptions(o);
+  o.putInteger(C("Opct"), 100);
+  o.putInteger(S("flow"), 100);
+  setToolOptions(o);
+  setDiameter(p.diameter);
+  selectBrushPresetByName(p.name);
+  if (currentDiameter() !== p.diameter) setDiameter(p.diameter);
+}
+
+// Paints one sheet (JOB.sheet) and saves it as JOB.file. JOB.items holds each cell item's probe settings or preset.
+function paintSheet() {
+  var t0 = new Date().getTime(), applied = {}, sampledTip = null;
+  selectTool("paintbrushTool");
+  if (JOB.tipName) sampledTip = probeTip(JOB.tipName);
+  var doc = newCaptureDocument(JOB.sheet.width, JOB.sheet.height, JOB.sheet.name);
+  try {
+    var current = null, pose;
+    for (var i = 0; i < JOB.sheet.cells.length; i++) {
+      var cell = JOB.sheet.cells[i], item = JOB.items[cell.item];
+      if (cell.item !== current) {
+        if (item.settings) applyProbeSettings(item.settings, sampledTip, JOB.rampName);
+        else applyPreset(item.preset);
+        applied[cell.item] = descToObj(getToolOptions());
+        current = cell.item; pose = undefined;
+      }
+      var want = cell.pressure === undefined ? null : cell.pressure;
+      if (want !== pose) { var o = getToolOptions(); setPose(o, want); setToolOptions(o); pose = want; }
+      if (cell.groundBox) {
+        var g = cell.groundBox;
+        doc.selection.select([[g.x, g.y], [g.x + g.width, g.y], [g.x + g.width, g.y + g.height], [g.x, g.y + g.height]]);
+        doc.selection.fill(rgbColor(JOB.grounds[cell.ground]));
+        doc.selection.deselect();
+      }
+      app.foregroundColor = rgbColor(cell.color);
+      for (var k = 0; k < cell.strokes.length; k++) strokePolyline(doc, cell.strokes[k], !!cell.simulatePressure);
+    }
+    var paintMs = new Date().getTime() - t0;
+    savePNG(doc, JOB.file);
+  } finally { doc.close(SaveOptions.DONOTSAVECHANGES); }
+  return toJSON({ applied: applied, paintMs: paintMs, totalMs: new Date().getTime() - t0 });
+}
+
+// Defines the probe run's ramp pattern and sampled tip from the PNGs the rig wrote, each from a document of its own.
+function defineProbeAssets() {
+  var ramp = app.open(File(JOB.rampFile));
+  try { defineFromDocument(ramp, "Ptrn", JOB.rampName); } finally { ramp.close(SaveOptions.DONOTSAVECHANGES); }
+  var tip = app.open(File(JOB.tipFile));
+  try { defineFromDocument(tip, "Brsh", JOB.tipName); } finally { tip.close(SaveOptions.DONOTSAVECHANGES); }
+  return toJSON({ colorSettings: readColorSettings(), patterns: presetNames(PRESET_PATTERNS).length, brushes: presetNames(PRESET_BRUSHES).length });
+}
+
+// Loads JOB.abr in place of Photoshop's brush list (the run owns Photoshop and puts its settings back after), so every
+// name in the list is the pack's, and reads each preset: its tip, and the size it carries, if any. A preset saved
+// without a size keeps the tool's, so each is selected from two sizes: one that comes back unchanged from both carries
+// none. A name the pack repeats can only be selected once, by name, so the repeats are listed, not read.
+function loadPackPresets() {
+  var t0 = new Date().getTime();
+  loadBrushes(JOB.abr, false);
+  var loadMs = new Date().getTime() - t0, names = presetNames(PRESET_BRUSHES), presets = [], repeated = [], seen = {};
+  selectTool("paintbrushTool");
+  for (var i = 0; i < names.length; i++) {
+    if (seen[names[i]]) { repeated.push(names[i]); continue; }
+    seen[names[i]] = true;
+    setDiameter(77);
+    selectBrushPresetByName(names[i]);
+    var first = currentDiameter(), own = first;
+    if (first === 77) { setDiameter(150); selectBrushPresetByName(names[i]); if (currentDiameter() === 150) own = null; }
+    presets.push({ name: names[i], tipClass: typeIDToStringID(getToolOptions().getObjectType(C("Brsh"))), diameter: own });
+  }
+  return toJSON({ loadMs: loadMs, colorSettings: readColorSettings(), presets: presets, repeated: repeated });
+}

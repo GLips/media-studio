@@ -72,7 +72,8 @@ shading and ~30% texture clipped to it, blooms stamped inside), then lines. Sepa
 elements, which is what keeps objects from showing through each other.
 
 Look at what you paint: `studio look` gives a sheet of chosen frames, mid-reveal and finished; compare the brushes
-against the pack's `previews/`. What the renderer doesn't do yet is ticketed: varied washes, pooled and lost edges and bleeding (vid-81),
+against the pack's `previews/`, or for a Photoshop pack its `reference/`, Photoshop's own strokes, which
+`studio photoshop references` captures (docs/photoshop-capture.md). What the renderer doesn't do yet is ticketed: varied washes, pooled and lost edges and bleeding (vid-81),
 granulation, pigment mixing and true glazing (vid-83), the brush settings the importer drops (vid-84). Don't fake those
 by stacking deposits: overlapping deposits build into dark blotches.
 

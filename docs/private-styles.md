@@ -122,7 +122,8 @@ takes a few minutes, and writes the file; re-import the packs and re-draw their 
 same for every brush of every pack: a brush is never tuned alone, so what fits one pack's previews holds for the next.
 Photoshop's importer reads the settings Photoshop doesn't define numerically (how far 100% scatter strays, how dark a
 wet edge gathers, how a texture's brightness and contrast act) by its own `PhotoshopReading`,
-`lib/picture/stamp-paint/models/photoshop-reading.ts`: first guesses until it's fitted against Photoshop's renders.
+`lib/picture/stamp-paint/models/photoshop-reading.ts`: first guesses until it's fitted against Photoshop's renders,
+which `studio photoshop probes` and `studio photoshop references` capture by script (docs/photoshop-capture.md).
 
 **Same pixels.** A painting draws on the GPU through WebGPU, in half floats, and GPUs round floats differently, so
 what's promised depends on where it renders:
