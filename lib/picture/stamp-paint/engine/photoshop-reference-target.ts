@@ -1,0 +1,34 @@
+// photoshop-reference-target.ts: a pack's Photoshop reference captures (`studio photoshop references`, vid-100, in
+// brushes/<pack>/reference/) as what the brush fidelity sheet measures a brush against where the pack has no
+// Procreate preview. The reference's S-curve mark is Photoshop painting the brush along the preview's stroke, scaled to
+// its cell, so the cell cropped to the preview's frame and downsized to its size is measured as a preview is: its
+// alpha is the brush's coverage.
+
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
+import type { PhotoshopBox, PhotoshopCaptureManifest } from '#lib/picture/photoshop-capture/models/photoshop-capture-plan.ts';
+import { PROCREATE_PREVIEW_SIZE } from '../models/procreate-preview-stroke.ts';
+
+/** The folder of a pack's Photoshop reference captures, which an import leaves be. */
+export const PHOTOSHOP_REFERENCE_DIR = 'reference';
+
+/** Where a brush's S-curve sits among a pack's reference sheets. */
+export type PhotoshopReferenceStroke = { sheet: string; box: PhotoshopBox };
+
+/** Each captured brush's S-curve in `packDir`'s reference/, by preset name; empty without a reference run. */
+export function readPhotoshopReferenceStrokes(packDir: string): Map<string, PhotoshopReferenceStroke> {
+  const dir = join(packDir, PHOTOSHOP_REFERENCE_DIR), manifestFile = join(dir, 'manifest.json');
+  if (!existsSync(manifestFile)) return new Map();
+  const manifest = JSON.parse(readFileSync(manifestFile, 'utf8')) as PhotoshopCaptureManifest;
+  return new Map(manifest.sheets.flatMap((sheet) => sheet.cells.filter((cell) => cell.mark === 'sCurve').map((cell) => [cell.item, { sheet: join(dir, sheet.file), box: cell.box }] as const)));
+}
+
+/** A brush's S-curve cropped to the preview's frame at its size, as a PNG data URL of black ink on transparency. */
+export function photoshopReferenceStrokePng({ sheet, box }: PhotoshopReferenceStroke): string {
+  const { width: W, height: H } = PROCREATE_PREVIEW_SIZE;
+  // The mark scales the preview's path by the box's width over the preview's, centred on the box's middle.
+  const height = Math.round((box.width * H) / W), y = Math.round(box.y + (box.height - height) / 2);
+  const png = runFfmpeg(['-nostdin', '-v', 'error', '-i', sheet, '-vf', `crop=${box.width}:${height}:${box.x}:${y},scale=${W}:${H}:flags=area,format=rgba`, '-frames:v', '1', '-c:v', 'png', '-f', 'image2pipe', 'pipe:1'], { maxBuffer: W * H * 4 + 65536 });
+  return `data:image/png;base64,${png.toString('base64')}`;
+}

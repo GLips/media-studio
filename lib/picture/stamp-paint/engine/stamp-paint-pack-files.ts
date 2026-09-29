@@ -1,12 +1,13 @@
 // stamp-paint-pack-files.ts: what every brush importer (import-procreate-pack.ts, import-photoshop-pack.ts) does to
-// write a pack into work/styles/<style>/brushes/<pack>/: check the names, stage the new folder and swap it in only once
-// it's whole, write brush images as downsized grey PNGs, and hash the archive it came from.
+// write a pack into work/styles/<style>/brushes/<pack>/: check the names, stage what it writes and swap that in only
+// once it's whole, leaving the rest of the folder be, write brush images as downsized grey PNGs, and hash the archive it came from.
 
 import { createHash } from 'node:crypto';
-import { closeSync, existsSync, openSync, readSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
+import { STAMP_PAINT_PACK_MANIFEST } from '../models/style.ts';
 
 /** Longest side of each stored image, in pixels: tips stamp at a few hundred, grains tile, papers span a frame. */
 export const STAMP_PACK_TIP_MAX = 512, STAMP_PACK_GRAIN_MAX = 1024, STAMP_PACK_PAPER_MAX = 2560;
@@ -28,20 +29,35 @@ export function fitWithin(width: number, height: number, max: number) {
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
 
+/** Each brush's source settings as read, which a fit reads again with other constants: a Procreate pack's, a Photoshop pack's. */
+export const PROCREATE_SOURCES = 'procreate-sources.json', PHOTOSHOP_SOURCES = 'photoshop-sources.json';
+
 /**
- * Runs `write` into a staging folder beside the pack's, and swaps it in only once `write` returns, so an import that
- * fails leaves the previous one whole. Refuses an archive kept inside the pack's folder, which the swap would delete.
+ * What an importer writes into a pack's folder, of either app, and all an import replaces. The rest stays: a sheet's
+ * fidelity/, a pack's Photoshop reference/ captures (studio photoshop references), anything else put beside them.
+ */
+const STAMP_PACK_IMPORTED = ['tips', 'grains', 'previews', 'papers', STAMP_PAINT_PACK_MANIFEST, PROCREATE_SOURCES, PHOTOSHOP_SOURCES];
+
+/**
+ * Runs `write` into a staging folder beside the pack's, and swaps what it wrote in only once `write` returns, so an
+ * import that fails leaves the previous one whole. Every entry of STAMP_PACK_IMPORTED goes, even one this import
+ * didn't write (a Procreate pack's previews/ when a Photoshop file is imported over it). Refuses an archive kept among
+ * those entries, which the swap would delete.
  */
 export function replaceStampPaintPack<T>({ archive, stylesDir, style, pack }: ImportStampPaintPackOptions, write: (staging: string) => T): T & { dir: string } {
   if (!existsSync(archive)) throw new Error(`brushes import: ${archive} doesn't exist`);
   if (!/^[a-z0-9][a-z0-9-]*$/.test(pack) || !/^[a-z0-9][a-z0-9-]*$/.test(style)) throw new Error('brushes import: --style and --pack are lowercase names: letters, digits and dashes');
   const dir = join(stylesDir, style, 'brushes', pack), staging = join(stylesDir, style, 'brushes', `.${pack}.importing`);
-  if (resolve(archive).startsWith(`${resolve(dir)}${sep}`)) throw new Error(`brushes import: ${archive} is inside ${dir}, which an import replaces; keep the pack elsewhere`);
+  const replaced = (entry: string) => resolve(archive) === resolve(dir, entry) || resolve(archive).startsWith(`${resolve(dir, entry)}${sep}`);
+  if (STAMP_PACK_IMPORTED.some(replaced)) throw new Error(`brushes import: ${archive} is inside ${dir}, among what an import replaces; keep the pack elsewhere`);
   rmSync(staging, { recursive: true, force: true });
   try {
     const written = write(staging);
-    rmSync(dir, { recursive: true, force: true });
-    renameSync(staging, dir);
+    const unknown = readdirSync(staging).filter((entry) => !STAMP_PACK_IMPORTED.includes(entry));
+    if (unknown.length) throw new Error(`brushes import: wrote ${unknown.join(', ')}, which STAMP_PACK_IMPORTED doesn't list, so a later import wouldn't replace it`);
+    mkdirSync(dir, { recursive: true });
+    for (const entry of STAMP_PACK_IMPORTED) rmSync(join(dir, entry), { recursive: true, force: true });
+    for (const entry of readdirSync(staging)) renameSync(join(staging, entry), join(dir, entry));
     return { dir, ...written };
   } finally {
     rmSync(staging, { recursive: true, force: true });

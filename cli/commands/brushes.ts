@@ -26,7 +26,7 @@ const importBrushesCommand = defineCommand({
     const counts = [`${Object.keys(manifest.brushes).length} brushes`, `${Object.keys(manifest.palettes).length} palettes`, `${Object.keys(manifest.papers).length} papers`];
     console.error(`brushes: imported ${counts.join(', ')} into ${relative(STUDIO_ROOT, dir)}/; every note is in its manifest.json`);
     if (skipped.length) console.error(`brushes: not imported, their tips not being in the pack: ${skipped.join(', ')}`);
-    if (app === 'photoshop') console.error("brushes: a Photoshop pack carries no previews; the sheet paints its brushes without one to score against");
+    if (app === 'photoshop') console.error('brushes: a Photoshop pack carries no previews; the sheet scores its brushes against its reference/ captures (studio photoshop references), where it has them');
     if (!existsSync(join(STUDIO_STYLES_DIR, args.style, 'style.ts'))) console.error(`brushes: work/styles/${args.style}/ has no style.ts yet; docs/private-styles.md says what goes in it`);
   },
 });
@@ -59,9 +59,9 @@ const sheetBrushesCommand = defineCommand({
     // The pack's own fidelity/ and the style's grades hold the default model's sheet: a trial goes elsewhere.
     if (!args.out && JSON.stringify(model) !== JSON.stringify(STAMP_PAINT_RENDERER_MODEL)) throw new Error('brushes sheet: a sheet under a model other than the default needs --out');
     const { dir, sheet, entries, scores } = await writeStampBrushSheet({ stylesDir: STUDIO_STYLES_DIR, style: args.style, pack: args.pack, out: args.out && resolve(args.out), only, model });
-    for (const { brush, diameter, comparison, grade } of entries) {
-      const measured = comparison ? `score ${comparison.score.toFixed(3)}, map off ${Math.round(comparison.mapError * 100)}%, density ${comparison.density.toFixed(2)}` : 'no preview';
-      console.log(`${brush}: ${grade ?? 'ungraded'} (d ${diameter}, ${measured})`);
+    for (const { brush, diameter, comparison, grade, target } of entries) {
+      const measured = comparison ? `score ${comparison.score.toFixed(3)}, map off ${Math.round(comparison.mapError * 100)}%, density ${comparison.density.toFixed(2)}` : 'nothing to measure against';
+      console.log(`${brush}: ${grade ?? 'ungraded'} (d ${diameter}, ${target ? `against its ${target}, ` : ''}${measured})`);
     }
     const scored = entries.filter((e) => e.comparison);
     console.error(`brushes sheet: ${relative(STUDIO_ROOT, sheet)}, with a row per brush in ${relative(STUDIO_ROOT, dir)}/rows/ and report.json; total score ${scored.reduce((sum, e) => sum + e.comparison!.score, 0).toFixed(3)} over ${scored.length} brushes`);

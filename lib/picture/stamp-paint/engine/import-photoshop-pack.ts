@@ -17,12 +17,11 @@ import type { StampBrush, StampBrushAsset } from '../models/stamp-brush.ts';
 import { STAMP_PAINT_ASSETS_VERSION, STAMP_PAINT_PACK_MANIFEST, type StampBrushSupportNote, type StampPaintPackManifest } from '../models/style.ts';
 import { displayName, readPhotoshopAbr, readPhotoshopTpl, type PhotoshopBrushFile } from './photoshop-abr.ts';
 import {
-  replaceStampPaintPack, sha256OfFile, stampPackSlug, STAMP_PACK_GRAIN_MAX, STAMP_PACK_TIP_MAX, writeStampPackGray, type ImportStampPaintPackOptions,
+  PHOTOSHOP_SOURCES, replaceStampPaintPack, sha256OfFile, stampPackSlug, STAMP_PACK_GRAIN_MAX, STAMP_PACK_TIP_MAX, writeStampPackGray, type ImportStampPaintPackOptions,
 } from './stamp-paint-pack-files.ts';
 import { openZipFile } from './zip-archive.ts';
 
 /** A pack's photoshop-sources.json: each imported brush's preset, the file it came from, and its images, by its name. */
-export const PHOTOSHOP_SOURCES = 'photoshop-sources.json';
 export type PhotoshopPackSources = Record<string, PhotoshopBrushSource & { file: string; group?: string }>;
 
 export type ImportedPhotoshopPack = { dir: string; manifest: StampPaintPackManifest; skipped: readonly string[]; files: Record<string, string> };
@@ -52,7 +51,7 @@ function sourcePreset(preset: PhotoshopDescriptor): PhotoshopDescriptor {
   return JSON.parse(JSON.stringify(preset, (key, value) => (key === 'dtipsErodibleTipHeightMap' ? undefined : value)));
 }
 
-/** Imports a Photoshop pack, replacing the pack's folder only once the import has succeeded (replaceStampPaintPack). */
+/** Imports a Photoshop pack, replacing what an import writes only once it has succeeded (replaceStampPaintPack). */
 export function importPhotoshopPack(options: ImportStampPaintPackOptions): ImportedPhotoshopPack {
   return replaceStampPaintPack(options, (staging) => writePackAssets(options, staging));
 }

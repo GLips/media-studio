@@ -83,7 +83,8 @@ whatever the tool had, so the run paints them at 100 px and says so. Photoshop s
 so a preset whose name repeats an earlier one's isn't captured; the manifest lists them. A pack takes 0.2 to 0.4 s a
 cell, with the time spent on big brushes.
 
-`studio brushes import` replaces the pack's whole folder, `reference/` with it: capture after importing.
+`studio brushes import` leaves `reference/` be, so capture before or after importing. `studio brushes sheet` measures
+each brush of the pack that has no Procreate preview against its S-curve here (docs/private-styles.md).
 
 ## Gotchas
 

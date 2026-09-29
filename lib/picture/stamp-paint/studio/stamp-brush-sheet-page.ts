@@ -1,8 +1,9 @@
 // stamp-brush-sheet-page.ts: the brush fidelity sheet's browser side, run by lib/picture/stamp-paint/engine/stamp-brush-sheet.ts
 // through withBrowserModulePage. It paints a brush along Procreate's preview stroke with the studio's GPU renderer,
-// measures that and the brush's Procreate preview alike, and lays out a row of the sheet. It serves the fitter
-// (lib/picture/stamp-paint/engine/stamp-brush-fit.ts) the same way. Every image is under the styles folder, served at
-// /files/: a brush's assets at <style>/brushes/<pack>/<file>, and each preview by that path.
+// measures that and the brush's target alike (its Procreate preview, or its Photoshop reference cropped to the
+// preview's frame), and lays out a row of the sheet. It serves the fitter (lib/picture/stamp-paint/engine/stamp-brush-fit.ts)
+// the same way. A brush's assets are under the styles folder, served at /files/<style>/brushes/<pack>/<file>; a target
+// comes as a URL, a preview's under /files/ and a reference's as a data URL.
 
 import type { StampBrush } from '../models/stamp-brush.ts';
 import type { StampPaintRendererModel } from '../models/stamp-paint-renderer-model.ts';
@@ -18,9 +19,9 @@ const loadImage = async (src: string) => {
   return image;
 };
 
-/** A preview is white paint on transparency, so its alpha is its coverage. */
-async function previewCoverage(file: string): Promise<Uint8Array> {
-  const image = await loadImage(`/files/${file}`);
+/** A target is paint on transparency (a preview's white, a reference's black), so its alpha is its coverage. */
+async function targetCoverage(src: string): Promise<Uint8Array> {
+  const image = await loadImage(src);
   const context = Object.assign(document.createElement('canvas'), { width: W, height: H }).getContext('2d')!;
   context.drawImage(image, 0, 0, W, H);
   const rgba = context.getImageData(0, 0, W, H).data, coverage = new Uint8Array(W * H);
@@ -37,8 +38,8 @@ function paintedCoverage(canvas: HTMLCanvasElement): Uint8Array {
   return coverage;
 }
 
-async function measureProcreatePreview(file: string): Promise<StrokeCoverageProfile | null> {
-  return measureStrokeCoverage(await previewCoverage(file), W, H);
+async function measureStrokeTarget(src: string): Promise<StrokeCoverageProfile | null> {
+  return measureStrokeCoverage(await targetCoverage(src), W, H);
 }
 
 /** `brush` as Procreate previews it, at `diameter`, drawn under `model`: its measure, and the painting as a PNG data URL when asked for. */
@@ -56,10 +57,10 @@ async function paintOnProcreatePreviewStroke(brush: StampBrush, diameter: number
 const HEADER = 98;
 
 /**
- * One row of the sheet: a header of `lines` (the first bold), then the preview as black ink on white at the left and
- * ours at the right, each the preview's size. Returns a PNG data URL.
+ * One row of the sheet: a header of `lines` (the first bold), then the target as black ink on white at the left,
+ * labelled by what it is, and ours at the right, each the preview's size. Returns a PNG data URL.
  */
-async function drawStampBrushSheetRow({ previewFile, ours, lines, grade }: { previewFile?: string; ours: string; lines: string[]; grade?: StrokeFidelityGrade }): Promise<string> {
+async function drawStampBrushSheetRow({ target, ours, lines, grade }: { target?: { src: string; label: string }; ours: string; lines: string[]; grade?: StrokeFidelityGrade }): Promise<string> {
   const canvas = Object.assign(document.createElement('canvas'), { width: W * 2, height: HEADER + H });
   const context = canvas.getContext('2d')!;
   context.fillStyle = '#ffffff';
@@ -71,10 +72,10 @@ async function drawStampBrushSheetRow({ previewFile, ours, lines, grade }: { pre
     context.font = i === 0 ? 'bold 22px -apple-system, Helvetica, sans-serif' : '17px -apple-system, Helvetica, sans-serif';
     context.fillText(line, 12, 26 + i * 22, canvas.width - 24);
   });
-  if (previewFile) {
-    // White paint on transparency, turned to black ink so it reads as ours does.
+  if (target) {
+    // Paint on transparency, turned to black ink so it reads as ours does.
     const ink = Object.assign(document.createElement('canvas'), { width: W, height: H }).getContext('2d')!;
-    ink.drawImage(await loadImage(`/files/${previewFile}`), 0, 0, W, H);
+    ink.drawImage(await loadImage(target.src), 0, 0, W, H);
     ink.globalCompositeOperation = 'source-in';
     ink.fillStyle = '#000000';
     ink.fillRect(0, 0, W, H);
@@ -84,9 +85,9 @@ async function drawStampBrushSheetRow({ previewFile, ours, lines, grade }: { pre
   context.fillStyle = '#999999';
   context.fillRect(W - 1, HEADER, 2, H);
   context.font = '15px -apple-system, Helvetica, sans-serif';
-  context.fillText('Procreate preview', 12, HEADER + H - 10);
+  if (target) context.fillText(target.label, 12, HEADER + H - 10);
   context.fillText('studio', W + 12, HEADER + H - 10);
   return canvas.toDataURL('image/png');
 }
 
-Object.assign(globalThis, { measureProcreatePreview, paintOnProcreatePreviewStroke, drawStampBrushSheetRow });
+Object.assign(globalThis, { measureStrokeTarget, paintOnProcreatePreviewStroke, drawStampBrushSheetRow });

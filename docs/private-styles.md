@@ -52,7 +52,8 @@ import the studio's `models` and `studio` code, never a project or `engine` code
 
 **Importing a pack.** `studio brushes import <archive> --style <name> --pack <pack>` turns a Procreate pack (a
 `.brushset`, or the zip it came in) or a Photoshop pack (an `.abr` or `.tpl`, or a zip holding them) into
-`brushes/<pack>/`, replacing what's there. Both become the same brush (`StampBrush`) in the same layout:
+`brushes/<pack>/`, replacing what an earlier import wrote there and leaving the rest (`fidelity/`, `reference/`).
+Both become the same brush (`StampBrush`) in the same layout:
 
 ```
 brushes/<pack>/
@@ -61,6 +62,7 @@ brushes/<pack>/
   grains/      each brush's grain (a Photoshop texture's pattern), likewise
   previews/    each brush's own Procreate preview, to judge a render against (Photoshop files carry none)
   fidelity/    the brush fidelity sheet, once drawn (studio brushes sheet)
+  reference/   Photoshop's own renders of the pack's brushes (studio photoshop references, docs/photoshop-capture.md)
   papers/      each .procreate canvas in the zip, as Procreate shows it, and its tooth as <paper>.grain.png
   manifest.json
   procreate-sources.json  each brush's Procreate settings as read, for studio brushes fit
@@ -70,7 +72,8 @@ brushes/<pack>/
 A Photoshop pack reads `.abr` version 6 and later (everything since Photoshop CS) and `.tpl` tool presets, whose
 tool options (a Mixer Brush's wet, load and mix, the tool's flow and mode) sit beside the brush. Names Photoshop
 repeats across a file's groups get the group in brackets. Its manifest has no previews but `diameters`, each preset's
-own size in pixels, which the sheet paints it at. The Mixer Brush's settings are carried in the brush's `wetMix` and
+own size in pixels; the sheet measures its brushes against `reference/`, and paints one with no reference at its own
+size, unscored. The Mixer Brush's settings are carried in the brush's `wetMix` and
 noted unsupported: nothing paints wet mixing yet (vid-90). Don't import a pack whose licence limits its brushes to
 Photoshop (True Grit's does).
 
@@ -82,7 +85,9 @@ into `palette` and a paper into `paper` (`image` for its photograph, `grain` for
 
 **Judging the brushes.** `studio brushes sheet --style <name> --pack <pack>` paints each brush with the studio's GPU
 renderer along the stroke Procreate drew its preview with (one stamp, for a brush Procreate previews that way), at the
-diameter whose thickness matches the preview's, and sets it beside that preview. It writes a row per brush
+diameter whose thickness matches the preview's, and sets it beside that preview. A brush without a preview (every
+Photoshop brush) is measured instead against its `reference/` capture along the same stroke, the row's left column
+labelled by which it is. It writes a row per brush
 (`rows/<brush>.png`), the rows stacked at half size (`sheet.jpg`) and `report.json` into `brushes/<pack>/fidelity/`,
 out of git because the rows hold the pack's previews. Each row and the report measure both strokes alike
 (lib/picture/stamp-paint/models/procreate-preview-stroke.ts): a coverage map in 8-pixel cells, length, thickness along

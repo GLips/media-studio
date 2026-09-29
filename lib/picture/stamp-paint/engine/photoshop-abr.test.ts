@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
@@ -42,12 +42,19 @@ test('an .abr written as Photoshop lays one out reads back as it was: presets, g
   assert.ok(Buffer.from(bytes).includes(Buffer.from('\0\0\0\x04flowlong', 'latin1')));
 });
 
-test('importing an .abr writes the same pack layout a Procreate pack imports to, a repeated name told apart by its group', () => {
+test('importing an .abr writes the same pack layout a Procreate pack imports to, replacing only what an import writes', () => {
   withStudioTemp('abr-import', (dir) => {
     writeFileSync(join(dir, 'chalk.abr'), writePhotoshopAbr(fixture()));
-    const { app, manifest } = importStampPaintPack({ archive: join(dir, 'chalk.abr'), stylesDir: join(dir, 'styles'), style: 'sketch', pack: 'chalk' });
     const packDir = join(dir, 'styles/sketch/brushes/chalk');
+    // Photoshop's captures and a drawn sheet stay; a Procreate import's previews go with the rest of what it wrote.
+    for (const kept of ['reference', 'fidelity', 'previews']) mkdirSync(join(packDir, kept), { recursive: true });
+    writeFileSync(join(packDir, 'reference/manifest.json'), '{}');
+    writeFileSync(join(packDir, 'fidelity/report.json'), '{}');
+    writeFileSync(join(packDir, 'previews/old.png'), '');
+    const { app, manifest } = importStampPaintPack({ archive: join(dir, 'chalk.abr'), stylesDir: join(dir, 'styles'), style: 'sketch', pack: 'chalk' });
     assert.equal(app, 'photoshop');
+    assert.deepEqual(readdirSync(packDir).sort(), ['fidelity', 'grains', 'manifest.json', 'photoshop-sources.json', 'reference', 'tips']);
+    assert.equal(readFileSync(join(packDir, 'reference/manifest.json'), 'utf8'), '{}');
     assert.deepEqual(JSON.parse(readFileSync(join(packDir, 'manifest.json'), 'utf8')), JSON.parse(JSON.stringify(manifest)) as StampPaintPackManifest);
     assert.deepEqual(Object.keys(manifest.brushes), ['Chalk', 'Chalk (Wet)']);
     assert.deepEqual(manifest.files, ['grains/stripes.png', 'tips/chalk.png', 'tips/round-0.png']);

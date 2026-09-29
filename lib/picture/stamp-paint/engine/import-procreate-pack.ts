@@ -25,7 +25,7 @@ import {
 import { parseBinaryPlist, unarchiveKeyedPlist } from './binary-plist.ts';
 import { readProcreateComposite } from './procreate-canvas.ts';
 import {
-  fitWithin, replaceStampPaintPack, sha256OfFile, stampPackSlug as slugOf, STAMP_PACK_GRAIN_MAX as GRAIN_MAX, STAMP_PACK_PAPER_MAX as PAPER_MAX,
+  fitWithin, PROCREATE_SOURCES, replaceStampPaintPack, sha256OfFile, stampPackSlug as slugOf, STAMP_PACK_GRAIN_MAX as GRAIN_MAX, STAMP_PACK_PAPER_MAX as PAPER_MAX,
   STAMP_PACK_TIP_MAX as TIP_MAX, writeStampPackPng as writeBrushImage, type ImportStampPaintPackOptions,
 } from './stamp-paint-pack-files.ts';
 import { openZipBytes, openZipFile, type ZipArchive } from './zip-archive.ts';
@@ -37,7 +37,6 @@ import { openZipBytes, openZipFile, type ZipArchive } from './zip-archive.ts';
 const PROCREATE_ORIENTATION_TRANSPOSE: Readonly<Record<number, string>> = { 3: 'clock_flip', 4: 'cclock_flip' };
 
 /** A pack's procreate-sources.json: each imported brush's settings and images, and its dual's, by its name. */
-export const PROCREATE_SOURCES = 'procreate-sources.json';
 export type ProcreatePackSources = Record<string, { main: ProcreateBrushSource; dual?: ProcreateBrushSource }>;
 
 /** Settings as JSON keeps them: numbers, booleans, strings and pressure curves; bytes and dates aren't a brush's painting. */
@@ -103,7 +102,7 @@ function writePaper(bytes: Buffer, label: string, packDir: string, slug: string)
   return { image, grain, color };
 }
 
-/** Imports a Procreate pack, replacing the pack's folder only once the import has succeeded (replaceStampPaintPack). */
+/** Imports a Procreate pack, replacing what an import writes only once it has succeeded (replaceStampPaintPack). */
 export function importProcreatePack(options: ImportStampPaintPackOptions): ImportedProcreatePack {
   return replaceStampPaintPack(options, (staging) => writePackAssets(options.archive, staging, options.style, options.pack));
 }

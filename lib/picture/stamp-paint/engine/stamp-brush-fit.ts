@@ -15,8 +15,9 @@ import { compareStrokeProfiles, type StrokeCoverageProfile } from '../models/pro
 import { PROCREATE_READING } from '../models/procreate-reading.ts';
 import { fitProcreateReading, type ProcreateReadingFitStep } from '../models/procreate-reading-fit.ts';
 import { STAMP_PAINT_PACK_MANIFEST, type StampPaintPackManifest } from '../models/style.ts';
-import { PROCREATE_SOURCES, type ProcreatePackSources } from './import-procreate-pack.ts';
+import type { ProcreatePackSources } from './import-procreate-pack.ts';
 import { packFile, paintAtPreviewThickness, withStampBrushSheetPage, type StampBrushSheetEntry } from './stamp-brush-sheet.ts';
+import { PROCREATE_SOURCES } from './stamp-paint-pack-files.ts';
 
 const READING_FILE = fileURLToPath(new URL('../models/procreate-reading.ts', import.meta.url));
 
@@ -82,7 +83,7 @@ export async function fitStampBrushReading({ stylesDir, packs, keys, write, log 
   return withStampBrushSheetPage(stylesDir, async (call) => {
     const read = (b: (typeof brushes)[number], reading: ProcreateReading) => normalizeProcreateBrush(b.name, b.source.main, b.source.dual, reading).brush;
     const previews = new Map<string, StrokeCoverageProfile | null>();
-    for (const b of brushes) previews.set(b.preview, await call<StrokeCoverageProfile | null>('measureProcreatePreview', b.preview));
+    for (const b of brushes) previews.set(b.preview, await call<StrokeCoverageProfile | null>('measureStrokeTarget', b.preview));
     const scored = new Map<string, number>();
     const scoreBrush = async (b: (typeof brushes)[number], reading: ProcreateReading) => {
       const brush = read(b, reading), preview = previews.get(b.preview);
