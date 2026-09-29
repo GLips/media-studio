@@ -73,7 +73,7 @@ export const PROCREATE_PROBE_BASE: ProcreateProbeSettings = {
   dynamicsMix: 0, dynamicsPressureMix: 0, dynamicsWetAccumulation: 0, dynamicsLoad: 1,
   wetEdgesAmount: 0, burntEdgesAmount: 0, burntEdgesBlendMode: 10, dualBlendMode: 1,
   grainBlendMode: 1, grainDepth: 0, grainDepthJitter: 0, grainDepthMinimum: 0, textureApplication: 1, textureScale: 0.5,
-  textureBrightness: 0, textureContrast: 0, textureOffsetJitter: false, textureZoom: 0, textureMovement: 1, textureRotation: 0, textureDepthTilt: 0,
+  textureBrightness: 0, textureContrast: 0, textureOffsetJitter: false, textureZoom: 0, textureMovement: 1, textureRotation: 0, textureDepthTilt: false,
   dynamicsJitterHue: 0, dynamicsJitterSaturation: 0, dynamicsJitterLightness: 0, dynamicsJitterDarkness: 0,
   dynamicsJitterStrokeHue: 0, dynamicsJitterStrokeSaturation: 0, dynamicsJitterStrokeLightness: 0, dynamicsJitterStrokeDarkness: 0,
   dynamicsPressureHue: 0, dynamicsPressureSaturation: 0, dynamicsPressureBrightness: 0, dynamicsPressureSecondaryColor: 0,

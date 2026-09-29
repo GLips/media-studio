@@ -19,13 +19,27 @@ studio brushes probes --archive ~/Downloads/E13434.zip --brush "Smooth Ink Pen" 
 ```
 
 Each probe's `Brush.archive` is the template brush's, with the probe's settings written over it. That way it holds every
-key and class Procreate expects. Any single brush (not a dual) from a pack you own will do. The set has no previews:
-whatever preview comes back is Procreate's own.
+key and class Procreate expects. Each setting keeps the type the template stores it as: Procreate drops a brush whose
+key has the wrong type (a real where it keeps a bool), and imports the set empty if it drops them all. Any single
+brush (not a dual) from a pack you own will do. The set has no previews: whatever preview comes back is Procreate's own.
+
+The set opens with seven diagnostic brushes. Each one differs from a working brush in one respect, so if the probes
+ever import missing, the diagnostics Procreate keeps show what it requires:
+
+| Brush | Differs by |
+| --- | --- |
+| the template's own name | nothing: the template's folder repacked byte for byte, so it tests the packing alone |
+| Diag 1 template renamed | only its name, written through the plist writer, with no QuickLook, Reset, Signature or AuthorPicture folders |
+| Diag 2 bool as real | Probe 01 with `textureDepthTilt`, a bool, written as a real |
+| Diag 3 8-byte reals | Probe 01 with every real written 8 bytes wide (Procreate's are 4) |
+| Diag 4 non-v4 folder | Probe 01 in a folder whose name isn't a version-4 UUID |
+| Diag 5 with thumbnail | Probe 01 with a blank `QuickLook/Thumbnail.png` |
+| Diag 6 with Reset | Probe 01 with a `Reset/` copy of itself |
 
 ## Getting Procreate's previews back (about five minutes, on the iPad)
 
 1. AirDrop `studio-probes.brushset` to the iPad and open it in Procreate. It imports as a set called **Studio probes**,
-   65 brushes named Probe 01 to Probe 65.
+   72 brushes: the seven diagnostics, then Probe 01 to Probe 65. Note which diagnostics are missing, if any.
 2. Open the Brush Library and look at the set. Each probe should show a preview: a stroke, or one stamp for the
    stamp probes. If a probe shows nothing, open it in Brush Studio and close it again (Done), which makes Procreate
    draw its preview.
@@ -33,7 +47,7 @@ whatever preview comes back is Procreate's own.
 4. On the Mac:
 
    ```sh
-   unzip -l "Studio probes.brushset" | grep -c Thumbnail.png   # 65 means Procreate wrote every preview
+   unzip -l "Studio probes.brushset" | grep -c Thumbnail.png   # 72 means Procreate wrote every preview
    studio brushes import "Studio probes.brushset" --style procreate-probes --pack probes
    studio brushes sheet --style procreate-probes --pack probes
    ```

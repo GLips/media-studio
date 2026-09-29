@@ -12,13 +12,15 @@ export class PlistUid {
   }
 }
 /**
- * A real read with `keepReals`, so writing it back keeps it a real: Procreate stores most settings as reals, and a
- * whole-numbered one (1.0) would otherwise come back an integer.
+ * A real read with `keepReals`, so writing it back keeps it a real of its width: Procreate stores most settings as
+ * 4-byte reals, and a whole-numbered one (1.0) would otherwise come back an integer.
  */
 export class PlistReal {
   readonly value: number;
-  constructor(value: number) {
+  readonly bytes: 4 | 8;
+  constructor(value: number, bytes: 4 | 8 = 8) {
     this.value = value;
+    this.bytes = bytes;
   }
 }
 export type PlistValue = null | boolean | number | string | Uint8Array | PlistUid | PlistReal | PlistValue[] | { [key: string]: PlistValue };
@@ -54,7 +56,7 @@ export function parseBinaryPlist(bytes: Uint8Array, { keepReals = false } = {}):
       }
       case 0x2: {
         const value = info === 2 ? view.getFloat32(at + 1) : view.getFloat64(at + 1);
-        return keepReals ? new PlistReal(value) : value;
+        return keepReals ? new PlistReal(value, info === 2 ? 4 : 8) : value;
       }
       case 0x3: return view.getFloat64(at + 1);
       case 0x4: { const { length, start } = sized(); return bytes.slice(start, start + length); }
@@ -114,7 +116,7 @@ export function unarchiveKeyedPlist(bytes: Uint8Array): Record<string, unknown> 
 
 /**
  * `value` as a binary plist. A number is written as an integer when it's whole and as a real otherwise; a PlistReal
- * always as a real. Every object is written once per place it appears: nothing is shared.
+ * always as a real of its width. Every object is written once per place it appears: nothing is shared.
  */
 export function writeBinaryPlist(value: PlistValue): Uint8Array {
   const objects: Uint8Array[] = [];
@@ -126,10 +128,11 @@ export function writeBinaryPlist(value: PlistValue): Uint8Array {
   const sizeOf = (n: number) => (n < 256 ? 1 : n < 65536 ? 2 : n < 2 ** 32 ? 4 : 8);
   const uintBytes = (n: number, size: number) => Array.from({ length: size }, (_, i) => Math.floor(n / 256 ** (size - 1 - i)) % 256);
   const header = (kind: number, length: number) => (length < 15 ? [(kind << 4) | length] : [(kind << 4) | 0xf, 0x10 | Math.log2(sizeOf(length)), ...uintBytes(length, sizeOf(length))]);
-  const real = (n: number) => {
-    const bytes = new Uint8Array(9);
-    bytes[0] = 0x23;
-    new DataView(bytes.buffer).setFloat64(1, n);
+  const real = (n: number, width: 4 | 8 = 8) => {
+    const bytes = new Uint8Array(1 + width);
+    bytes[0] = width === 4 ? 0x22 : 0x23;
+    if (width === 4) new DataView(bytes.buffer).setFloat32(1, n);
+    else new DataView(bytes.buffer).setFloat64(1, n);
     return bytes;
   };
   const add = (v: PlistValue): number => {
@@ -138,7 +141,7 @@ export function writeBinaryPlist(value: PlistValue): Uint8Array {
     let bytes: number[] | Uint8Array;
     if (v === null) bytes = [0x00];
     else if (typeof v === 'boolean') bytes = [v ? 0x09 : 0x08];
-    else if (v instanceof PlistReal) bytes = real(v.value);
+    else if (v instanceof PlistReal) bytes = real(v.value, v.bytes);
     else if (typeof v === 'number') {
       if (!Number.isInteger(v)) bytes = real(v);
       else if (v < 0) {
