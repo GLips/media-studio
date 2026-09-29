@@ -8,8 +8,13 @@ import { lerp } from '#lib/picture/motion/models/motion.ts';
 import { seededRandom } from '#lib/picture/motion/models/random.ts';
 import type { StampBrushStamping } from './stamp-brush.ts';
 
-/** A point a stroke passes through, in the painting's pixels. `pressure` is 0..1, and 1 when left out. */
-export type StampStrokePoint = { x: number; y: number; pressure?: number };
+/**
+ * A point a stroke passes through, in the painting's pixels. `pressure` is 0..1, and 1 when left out. `lift` lifts the
+ * brush on the way to this point: no stamp lands between it and the point before, though the stroke's length, and so
+ * its reveal and taper, still counts the gap. One stroke with lifts is one deposit, so its parts never build on each
+ * other as separate strokes would.
+ */
+export type StampStrokePoint = { x: number; y: number; pressure?: number; lift?: boolean };
 
 /** A stamp the author places by hand: its own diameter and turn, or the deposit's. */
 export type StampPlacement = { x: number; y: number; diameter?: number; rotation?: number; pressure?: number };
@@ -68,6 +73,7 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
     const span = lengths[Math.min(segment + 1, path.length - 1)] - lengths[segment];
     const k = span > 0 ? (arc - lengths[segment]) / span : 0;
     const heading = headings[Math.min(segment, headings.length - 1)] ?? 0;
+    const lifted = b.lift === true && k > 0 && k < 1;
     const pressure = a.pressure === undefined && b.pressure === undefined ? undefined : lerp(a.pressure ?? 1, b.pressure ?? 1, k);
     const { taper } = brush;
     const ramp = Math.min(
@@ -81,6 +87,7 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
       const scatterTurn = random() * Math.PI * 2, scatterReach = Math.sqrt(random()) * brush.scatter.radius * diameter;
       const sizeLoss = random() * brush.jitter.size, opacityLoss = random() * brush.jitter.opacity;
       const turn = (random() * 2 - 1) * brush.rotation.jitter;
+      if (lifted) continue;
       stamps.push({
         x: lerp(a.x, b.x, k) - Math.sin(heading) * lateral + Math.cos(scatterTurn) * scatterReach,
         y: lerp(a.y, b.y, k) + Math.cos(heading) * lateral + Math.sin(scatterTurn) * scatterReach,

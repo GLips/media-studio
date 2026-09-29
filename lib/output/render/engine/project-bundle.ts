@@ -1,8 +1,8 @@
 // project-bundle.ts: points a Remotion bundle at one project. The browser entry (lib/picture/composition/studio/Root.tsx) imports
 // `@video` and `@stills`, which this aliases to the project's video.tsx and stills.tsx, or to a null module for the one
 // it doesn't have. A project's designs import its brand kit as `@brand` (lib/picture/brand/engine/project-brand.ts), and
-// the private styles its project.ts names as `#styles/<name>/…`, whose brushes are checked before each bundle
-// (lib/picture/stamp-paint/engine/project-styles.ts).
+// the private styles its project.ts names, whose brushes are checked before each bundle and served as
+// `@stamp-paint-styles` (lib/picture/stamp-paint/engine/project-styles.ts).
 //
 // One project per bundle on purpose: captures and audio are gitignored and imported, so a project that hasn't been
 // captured yet would break every other project's Studio and render if they shared a bundle.
@@ -14,7 +14,7 @@ import { webpack, type WebpackOverrideFn } from '@remotion/bundler';
 import { HostImportPlugin, HostModuleStubPlugin, HostTsconfigPathsPlugin } from './host-module-resolution.ts';
 import { previsFootageModuleFor, writePrevisFootageModule } from '#lib/footage/previs/engine/previs-footage.ts';
 import { writeProjectBrandModule } from '#lib/picture/brand/engine/project-brand.ts';
-import { assertProjectStylesReady } from '#lib/picture/stamp-paint/engine/project-styles.ts';
+import { writeProjectStylesModule } from '#lib/picture/stamp-paint/engine/project-styles.ts';
 import { projectHostLink, readProjectHostSpec } from '#lib/platform/host/engine/project-host-spec.ts';
 import { writeSfxCueModule } from '#lib/timing/sound/engine/cue-module.ts';
 
@@ -73,12 +73,12 @@ export function projectWebpackOverride(project: string): WebpackOverrideFn {
   writePrevisFootageModule(project);
   const sfxCues = writeSfxCueModule(project);
   const brand = writeProjectBrandModule(project);
-  assertProjectStylesReady(project);
+  const styles = writeProjectStylesModule(project);
   return (config) => ({
     ...config,
     resolve: {
       ...config.resolve,
-      alias: { ...(config.resolve?.alias as Record<string, string>), '@video': video, '@stills': stills, '@footage': previsFootageModuleFor(project), '@sfx-cues': sfxCues, '@brand': brand, 'react-dom': studioReactDom(join(dir, 'generated')) },
+      alias: { ...(config.resolve?.alias as Record<string, string>), '@video': video, '@stills': stills, '@footage': previsFootageModuleFor(project), '@sfx-cues': sfxCues, '@brand': brand, '@stamp-paint-styles': styles, 'react-dom': studioReactDom(join(dir, 'generated')) },
       plugins: [...(config.resolve?.plugins ?? []), ...hostPlugins],
     },
     plugins: [...(config.plugins ?? []), new webpack.DefinePlugin({ PROJECT_SLUG: JSON.stringify(projectSlug(project)), REPLAY_SLUG: JSON.stringify(replaySlug(project)), BLOCKOUT_SLUG: JSON.stringify(blockoutSlug(project)) })],

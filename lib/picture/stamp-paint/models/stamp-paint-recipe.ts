@@ -119,8 +119,12 @@ export function stampPaintRecipe(body: (paint: StampPaintScope) => void): StampP
 export type CompiledStampDeposit = {
   /** `<group>/<pass>/<deposit>`, unique in the painting: the seed of every stamp in it. */
   id: string;
+  /** A stroke's stamps overlap along its path; placed stamps each land alone. */
+  kind: StampPaintDeposit['kind'];
   brush: StampBrush;
   material: PaintMaterial;
+  /** The stamp's diameter at full size, as the deposit states it: what its texturized grain and edges scale with. */
+  diameter: number;
   blend: StampBlend;
   opacity: number;
   protectedBy: readonly StampRegion[];
@@ -180,7 +184,7 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
           : placeAuthoredStamps(deposit.at.map((at) => (at.diameter === undefined ? at : { ...at, diameter: at.diameter * scale })), stamping, diameter * scale, seed);
         const stamps = place(brush, 1, full);
         const dualStamps = brush.dual ? place(brush.dual, brush.dual.scale, `${full}|dual`) : [];
-        return { id: full, brush, material, blend, opacity, protectedBy, appliedAt, drawnOver, stamps, dualStamps };
+        return { id: full, kind: deposit.kind, brush, material, diameter, blend, opacity, protectedBy, appliedAt, drawnOver, stamps, dualStamps };
       });
       return { id: passId, clipTo, deposits };
     });

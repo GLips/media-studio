@@ -68,6 +68,11 @@ declare module '@sfx-cues' {
   const cues: readonly import('#lib/timing/sound/studio/sfx.tsx').SfxCueSound[] | null;
   export default cues;
 }
+/** The project's generated/stamp-paint-styles.ts: each style its project.ts names, with its manifests and image URLs (lib/picture/stamp-paint/engine/project-styles.ts). */
+declare module '@stamp-paint-styles' {
+  const styles: import('#lib/picture/stamp-paint/models/style.ts').BundledStampPaintStyles;
+  export default styles;
+}
 /** The project folder's name, defined at bundle time by lib/output/render/engine/project-bundle.ts. */
 declare const PROJECT_SLUG: string;
 /** Its replay composition's id, likewise. */

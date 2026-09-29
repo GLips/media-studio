@@ -62,3 +62,12 @@ export { CoverImage, defineStills, FitText, STILL_CARD_TILT, StillCard, StillHud
 export * from '#lib/footage/capture/studio/take.ts';
 export * from '#lib/picture/film/studio/three-stage.tsx';
 export * from '#lib/picture/camera/models/vec3.ts';
+// Stamp painting: a recipe of opaque and glaze groups of passes of deposits, painted on the GPU with a private style's
+// brushes (docs/private-styles.md, skills/video-canvas/SKILL.md).
+export { compileStampPaintRecipe, stampPaintRecipe, visibleStampCountAt, type CompiledStampPaint, type PaintMaterial, type StampGroupOptions, type StampGroupScope, type StampPaintColor, type StampPaintRecipe, type StampPaintScope, type StampPassOptions, type StampPassScope, type StampRegion } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+export { stampFillBrush, stampFillPath, stampRegionOutline, stampSmoothRegion, type StampFillOptions } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
+export type { StampStrokePoint, StampPlacement } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
+export type { StampBlend, StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
+export type { ResolvedStampPaintStyle, StampPaintPaper } from '#lib/picture/stamp-paint/models/style.ts';
+export { stampPaintStyle } from '#lib/picture/stamp-paint/studio/stamp-paint-styles.ts';
+export { StampPainting } from '#lib/picture/stamp-paint/studio/stamp-painting.tsx';

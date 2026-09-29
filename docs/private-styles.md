@@ -32,8 +32,18 @@ export default { capability: 'silent', styles: ['wash'] } satisfies ProjectDecla
 ```
 
 ```tsx
-import wash from '#styles/wash/style.ts';
+import type washStyle from '#styles/wash/style.ts';
+import { stampPaintStyle } from '#studio';
+
+export const wash = stampPaintStyle<typeof washStyle>('wash');
 ```
+
+`stampPaintStyle` is the style as the bundle carries it: its brushes resolved to their pack's `StampBrush`es, palette
+and paper, with every image a brush or the paper uses served beside it. Before each bundle the studio writes
+`generated/stamp-paint-styles.ts` (imported as `@stamp-paint-styles`) from the styles `project.ts` names; asking for
+one it doesn't name throws. Paint with it in a recipe and draw it with `StampPainting` (skills/video-canvas). A style
+can keep a module beside `style.ts` that paints the way its pack's author does, as `work/styles/watercolor/paint.ts`
+does, so every project paints in it alike.
 
 check:arch refuses an import of a style the project doesn't name, and public code importing any style. A style may
 import the studio's `models` and `studio` code, never a project or `engine` code.

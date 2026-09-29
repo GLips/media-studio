@@ -1,0 +1,70 @@
+// stamp-painting.tsx: a stamp painting in a scene. It holds the frame until every image the painting uses is on the
+// GPU, then draws the painting as it stands at the scene's time (stamp-paint-renderer.ts), and gives its WebGL context
+// back when it unmounts.
+//
+// Compile the recipe once, where the scene is defined, not while it renders: a painting that is a new object each
+// frame is loaded afresh each frame.
+
+import { useLayoutEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
+import { useDelayRender } from 'remotion';
+import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
+import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
+import { unmeasuredAttrs } from '#lib/output/look/studio/motion-tag.ts';
+import type { CompiledStampPaint } from '../models/stamp-paint-recipe.ts';
+import type { StampPaintPaper } from '../models/style.ts';
+import { createStampPaintRenderer, type StampPaintRenderer } from './stamp-paint-renderer.ts';
+import { stampPaintAssetUrl } from './stamp-paint-styles.ts';
+
+/**
+ * Draws `painting` on `paper` as it stands `t` seconds in (a scene's `s.t`: its deposits' `appliedAt` and `drawnOver`
+ * count on it), `width` by `height` of its own pixels (the frame's size unless given), stretched over `box` (the whole
+ * frame unless given).
+ */
+export function StampPainting({ painting, paper, t, width, height, box: given }: {
+  painting: CompiledStampPaint;
+  paper: StampPaintPaper;
+  t: number;
+  width?: number;
+  height?: number;
+  box?: { x: number; y: number; w: number; h: number };
+}) {
+  const format = useVideoFormat();
+  const box = given ?? fullFrameRect(format);
+  const w = Math.round(width ?? box.w), h = Math.round(height ?? box.h);
+  const holder = useRef<HTMLDivElement>(null);
+  const [renderer, setRenderer] = useState<StampPaintRenderer | null>(null);
+  const { delayRender, continueRender, cancelRender } = useDelayRender();
+
+  // Each renderer gets a canvas of its own, made here: one whose context was given back can't be drawn on again.
+  useLayoutEffect(() => {
+    const handle = delayRender('loading the stamp painting\'s images onto the GPU');
+    let open = true, live = true, made: StampPaintRenderer | null = null;
+    const release = () => {
+      if (open) continueRender(handle);
+      open = false;
+    };
+    const canvas = Object.assign(document.createElement('canvas'), { width: w, height: h });
+    Object.assign(canvas.style, { position: 'absolute', inset: '0', width: '100%', height: '100%' });
+    holder.current!.append(canvas);
+    createStampPaintRenderer(canvas, painting, paper, w, h, stampPaintAssetUrl).then((ready) => {
+      made = ready;
+      if (!live) return ready.dispose();
+      flushSync(() => setRenderer(ready));
+      release();
+    }, cancelRender);
+    return () => {
+      live = false;
+      made?.dispose();
+      canvas.remove();
+      setRenderer(null);
+      release();
+    };
+  }, [painting, paper, w, h, delayRender, continueRender, cancelRender]);
+
+  useLayoutEffect(() => {
+    renderer?.draw(t);
+  }, [renderer, t]);
+
+  return <div ref={holder} {...unmeasuredAttrs('stamp painting')} style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h }} />;
+}
