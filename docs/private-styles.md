@@ -8,6 +8,7 @@ in `work/projects/` can paint with it, and a project can use several.
 work/styles/<name>/
   style.ts     the style: `export default { … } satisfies StampPaintStyle` (lib/picture/stamp-paint/models/style.ts)
   <name>.md    how to paint in this style; guidance about the pack's brushes stays here, private
+  fidelity.ts  how faithfully the studio paints each brush: verified, approximated or unsupported, with a note (studio brushes sheet)
   brushes/     each pack's imported assets, in brushes/<pack>/ (studio brushes import). Not in git: each machine imports its own copy
 ```
 
@@ -56,6 +57,7 @@ brushes/<pack>/
   tips/        each brush's tip, dark is paint, downsized; <brush>.dual.png for a dual brush's second tip
   grains/      each brush's grain, likewise
   previews/    each brush's own Procreate preview, to judge a render against
+  fidelity/    the brush fidelity sheet, once drawn (studio brushes sheet)
   papers/      each .procreate canvas in the zip, as Procreate shows it, and its tooth as <paper>.grain.png
   manifest.json
 ```
@@ -65,6 +67,29 @@ The manifest holds the asset version, the files, and each brush normalized into 
 archive's hash, the previews, the zip's `.swatches` palettes, the papers (each with its mean colour), and per brush
 every setting that was approximated or dropped (`support`); the import prints a line per brush of those. Copy colours
 into `palette` and a paper into `paper` (`image` for its photograph, `grain` for its tooth) in style.ts.
+
+**Judging the brushes.** `studio brushes sheet --style <name> --pack <pack>` paints each brush with the studio's GPU
+renderer along the stroke Procreate drew its preview with (one stamp, for a brush Procreate previews that way), at the
+diameter whose thickness matches the preview's, and sets it beside that preview. It writes a row per brush
+(`rows/<brush>.png`), the rows stacked at half size (`sheet.jpg`) and `report.json` into `brushes/<pack>/fidelity/`,
+out of git because the rows hold the pack's previews. Each row and the report measure both strokes alike: length,
+thickness along the stroke, where each end reaches 80% of its peak, density, how dark the rim is against the body, how
+coarse the grain is. `--brush a,b` draws only those; `--out <dir>` writes elsewhere, to keep a sheet from before a
+change to the renderer or the importer and compare.
+
+Judge each brush from its row into the style's `fidelity.ts`, which git keeps:
+
+```ts
+import type { StampPaintStyleFidelity } from '#lib/picture/stamp-paint/models/style.ts';
+
+export default {
+  vvds: { 'Soft Wet Blend': { level: 'verified', note: 'matches (2%, +0.02)' } },
+} satisfies StampPaintStyleFidelity;
+```
+
+`verified` reads as its preview does, `approximated` reads close and the note says how it differs, `unsupported`
+doesn't read as the brush and the note says what's missing. The sheet shows each label on its row and lists the brushes
+without one. Re-draw and re-judge after changing how a brush is painted or read.
 
 **Missing brushes.** Before each bundle, every style the project names is checked. It stops the bundle, listing each
 problem with the pack's `source` (which says where to get it), when a pack isn't imported, a file its manifest lists is

@@ -2,9 +2,9 @@
 // StampBrush, with a note for every setting that doesn't carry over as Procreate means it. Procreate's field names
 // stop here: nothing past this file reads them.
 //
-// Several readings are the studio's own and uncalibrated (taper length, rotation scatter, grain scale, combine-mode
-// numbering, dual size), each noted as `approximated` where it applies; the fidelity sheet checks them against each
-// brush's Procreate preview.
+// Several readings are the studio's own (taper length, rotation scatter, grain scale, rim width, combine modes, dual
+// size), each noted as `approximated` where it applies. Each was set against the VVDS previews on the brush fidelity
+// sheet (`studio brushes sheet`); where a reading varied brush by brush with no better rule, the simplest was kept.
 //
 // Negative space: live-input settings (stabilization, smoothing, prediction, pressure smoothing), the size and opacity
 // sliders' positions (paintSize, paintOpacity, maxSize, minSize: a deposit states its own diameter and opacity), the
@@ -21,10 +21,17 @@ export type ProcreateBrushSettings = Readonly<Record<string, unknown>>;
 /** One Procreate brush's settings and where its images landed among the pack's assets. */
 export type ProcreateBrushSource = { settings: ProcreateBrushSettings; tip: StampBrushAsset; grain?: StampBrushAsset };
 
-/** Procreate's full pencil taper, read as this share of the stroke's length. */
+/**
+ * Procreate's full pencil taper, read as this share of the stroke's length. On the sheet no share from 0.1 to 0.7 fits
+ * the previews better overall; brushes split between shorter and longer.
+ */
 const TAPER_STROKE_SHARE = 0.5;
-/** Procreate's wet and burnt edges have an amount and no width; the rim is this fraction of the stamp's radius. */
-const EDGE_WIDTH = 0.1;
+/**
+ * Procreate's wet and burnt edges have an amount and no width; the rim is this fraction of the stamp's radius. Measured
+ * on the VVDS previews (the brush fidelity sheet): a glaze wash's rim falls halfway to its body 0.06 to 0.12 of the
+ * radius in, 0.07 at the median.
+ */
+const EDGE_WIDTH = 0.07;
 
 /** Procreate's blend modes by number, as its layers number them; 27 and 28 only appear on grains and duals. */
 const PROCREATE_BLEND_NAMES: Readonly<Record<number, string>> = {
@@ -33,9 +40,19 @@ const PROCREATE_BLEND_NAMES: Readonly<Record<number, string>> = {
   15: 'Hue', 16: 'Saturation', 17: 'Soft Light', 19: 'Darken', 20: 'Hard Mix', 21: 'Vivid Light', 22: 'Linear Light',
   23: 'Pin Light', 24: 'Lighter Color', 25: 'Darker Color', 26: 'Divide', 27: 'Height', 28: 'Linear Height',
 };
+/**
+ * A dual's combine mode by number. Looks wrong: 6 is Difference among layers, but every VVDS dual with it matches its
+ * preview best as overlay and near worst as difference. 10, 19 and 28 read as their layer names; the sheet neither
+ * confirms nor beats them (one or two brushes each, split).
+ */
 const DUAL_BLENDS: Readonly<Record<number, StampDualBlend>> = {
-  0: 'normal', 1: 'multiply', 2: 'screen', 4: 'lighten', 6: 'difference', 10: 'colorBurn', 11: 'overlay', 19: 'darken', 28: 'linearHeight',
+  0: 'normal', 1: 'multiply', 2: 'screen', 4: 'lighten', 6: 'overlay', 10: 'colorBurn', 11: 'overlay', 19: 'darken', 28: 'linearHeight',
 };
+/**
+ * A grain's tile is its textureScale times this, in stamp diameters: the size at which, on the sheet, the studio's grain
+ * matches the previews' (per brush the best factor ran 0.6 to 6×; near their geometric mean).
+ */
+const GRAIN_TILE = 2.5;
 const blendName = (mode: number) => `${mode} (${PROCREATE_BLEND_NAMES[mode] ?? 'unknown'})`;
 
 const IDENTITY_CURVE = ['{0.000000, 0.000000}', '{1.000000, 1.000000}'];
@@ -101,8 +118,8 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
 
   let grain: StampBrushLayer['grain'];
   if (source.grain) {
-    grain = { image: source.grain, scale: num('textureScale'), mode: num('textureApplication') === 1 ? 'texturized' : 'rolling', depth: num('grainDepth') };
-    note('approximated', 'textureScale, textureApplication', `grain read as ${grain.mode}, ${grain.scale.toFixed(2)} stamp diameters across, uncalibrated`);
+    grain = { image: source.grain, scale: num('textureScale') * GRAIN_TILE, mode: num('textureApplication') === 1 ? 'texturized' : 'rolling', depth: num('grainDepth') };
+    note('approximated', 'textureScale, textureApplication', `grain read as ${grain.mode}, its tile ${grain.scale.toFixed(2)} stamp diameters across`);
     note('unsupported', 'grainBlendMode', `the grain combines by ${blendName(num('grainBlendMode'))}; the studio's grain cuts paint by its depth`);
     unsupportedWhenSet(['textureBrightness', 'textureContrast'], "the grain's brightness and contrast: the image is kept as drawn");
     unsupportedWhenSet(['textureOffsetJitter'], "the grain's offset changing with each stroke");
@@ -142,10 +159,10 @@ export function normalizeProcreateBrush(name: string, main: ProcreateBrushSource
     const mode = Number(main.settings.dualBlendMode ?? 0);
     const blend = DUAL_BLENDS[mode];
     support.push(blend
-      ? { level: 'approximated', setting: 'dualBlendMode', detail: `combine mode ${blendName(mode)} read as ${blend}: combine modes are taken to number as layer modes do, which Procreate doesn't document` }
+      ? { level: 'approximated', setting: 'dualBlendMode', detail: `combine mode ${blendName(mode)} read as ${blend}, set against the pack's previews: Procreate doesn't document how combine modes number` }
       : { level: 'unsupported', setting: 'dualBlendMode', detail: `combine mode ${blendName(mode)} has no studio equivalent; read as multiply` });
     const scale = Number(dual.settings.maxSize ?? 1) / Number(main.settings.maxSize ?? 1);
-    support.push({ level: 'approximated', setting: 'Sub01 maxSize', detail: `the dual's stamps read as ${scale.toFixed(2)}× the main brush's, the ratio of their largest sizes` });
+    support.push({ level: 'approximated', setting: 'Sub01 maxSize', detail: `the dual's stamps read as ${scale.toFixed(2)}× the main brush's, the ratio of their largest sizes; on the sheet neither half nor double fits better` });
     brush.dual = { ...readLayer(dual, 'Sub01 ', support), blend: blend ?? 'multiply', scale };
   }
   return { brush, support };

@@ -45,7 +45,7 @@ test('a named style stops the bundle until each pack is imported, whole, at the 
   importPack('vvds', { version: STAMP_PAINT_ASSETS_VERSION, files: ['tips/wash-01.png', 'grains/paper.png'], brushes: { 'Wet Wash': washBrush } }, ['grains/paper.png']);
   importPack('grain', { version: STAMP_PAINT_ASSETS_VERSION - 1, files: [], brushes: {} }, []);
   assert.throws(() => writeProjectStylesModule(project), {
-    message: /  brushes\/grain\/: imported as version 0, and the studio reads version 1; import it again from Grain Pack, from the Grain shop$/,
+    message: new RegExp(`  brushes/grain/: imported as version ${STAMP_PAINT_ASSETS_VERSION - 1}, and the studio reads version ${STAMP_PAINT_ASSETS_VERSION}; import it again from Grain Pack, from the Grain shop$`),
   });
 
   importPack('grain', { version: STAMP_PAINT_ASSETS_VERSION, files: [], brushes: { Tooth: toothBrush } }, []);

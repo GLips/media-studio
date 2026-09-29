@@ -234,6 +234,7 @@ type DepositStamps = { main: number; dual: number };
 export type StampPaintRenderer = {
   /** Draws `painting` as it stands `t` seconds into its scene. */
   draw: (t: number) => void;
+  finish: () => void;
   dispose: () => void;
 };
 
@@ -567,6 +568,7 @@ void main() { result = texelFetch(source, ivec2(gl_FragCoord.xy), 0); }`);
 
   return {
     draw,
+    finish: () => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)),
     dispose() {
       for (const program of [...Object.values(programs), copyProgram]) gl.deleteProgram(program.program);
       compositor.dispose();

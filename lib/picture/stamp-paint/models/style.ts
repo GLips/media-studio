@@ -12,7 +12,7 @@ import type { StampPaintColor } from './stamp-paint-recipe.ts';
  * The version of the imported assets this studio reads. An import writes it into each pack's manifest; when the
  * studio's asset format changes this goes up, and the bundle refuses a style until its packs are imported again.
  */
-export const STAMP_PAINT_ASSETS_VERSION = 1;
+export const STAMP_PAINT_ASSETS_VERSION = 2;
 
 /** The file an import writes in each pack's folder, `brushes/<pack>/`, listing what it wrote there. */
 export const STAMP_PAINT_PACK_MANIFEST = 'manifest.json';
@@ -22,6 +22,26 @@ export const STAMP_PAINT_PACK_MANIFEST = 'manifest.json';
  * a nearby setting, `unsupported` is dropped. `setting` is the source format's own field name, so it can be looked up.
  */
 export type StampBrushSupportNote = { level: 'approximated' | 'unsupported'; setting: string; detail: string };
+
+/**
+ * How faithfully the studio paints one imported brush, judged on the brush fidelity sheet (`studio brushes sheet`)
+ * against its source's own preview: `verified` reads as the preview does; `approximated` reads close, and `note` says
+ * how it differs; `unsupported` doesn't read as the brush, and `note` says what's missing.
+ */
+export type StampBrushFidelity = { level: 'verified' | 'approximated' | 'unsupported'; note: string };
+
+/**
+ * A style's fidelity.ts, beside its style.ts and kept in git: `export default { … } satisfies StampPaintStyleFidelity`,
+ * each pack's brushes by their names in the pack. The sheet shows each brush's label on its row, and lists the brushes
+ * it has none for.
+ */
+export type StampPaintStyleFidelity = Readonly<Record<string, Readonly<Record<string, StampBrushFidelity>>>>;
+
+/**
+ * A brush's own preview from its source: the image (relative to the pack's folder), and whether it shows a stroke or,
+ * for a brush its source previews that way, one stamp.
+ */
+export type StampPaintPackPreview = { image: string; shows: 'stroke' | 'stamp' };
 
 /** A paper from the pack: a photograph of it, its tooth as a grain (dark is where pigment settles), its mean colour. */
 export type StampPaintPackPaper = { image: string; grain: string; color: StampPaintColor };
@@ -37,7 +57,7 @@ export type StampPaintPackManifest = {
   files: readonly string[];
   brushes: Readonly<Record<string, StampBrush>>;
   source: { archive: string; sha256: string };
-  previews: Readonly<Record<string, string>>;
+  previews: Readonly<Record<string, StampPaintPackPreview>>;
   support: Readonly<Record<string, readonly StampBrushSupportNote[]>>;
   palettes: Readonly<Record<string, readonly StampPaintColor[]>>;
   papers: Readonly<Record<string, StampPaintPackPaper>>;

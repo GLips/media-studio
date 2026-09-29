@@ -15,13 +15,13 @@ test('a dual brush reads its Sub01 as a whole second brush, sized by its largest
   assert.equal(brush.scatter.count, 5);
   assert.equal(brush.rotation.jitter, Math.PI);
   assert.equal(brush.accumulation, 'glaze');
-  assert.deepEqual(brush.wetEdge, { width: 0.1, strength: 0.7 });
-  assert.deepEqual(brush.grain, { image: asset('grains/wet-wash.png'), scale: 1.5, mode: 'texturized', depth: 0.2 });
+  assert.deepEqual(brush.wetEdge, { width: 0.07, strength: 0.7 });
+  assert.deepEqual(brush.grain, { image: asset('grains/wet-wash.png'), scale: 3.75, mode: 'texturized', depth: 0.2 });
   assert.equal(brush.dual?.blend, 'darken');
   assert.equal(brush.dual?.scale, 1.5);
   assert.equal(brush.dual?.scatter.count, 16);
   assert.equal(brush.dual?.accumulation, 'build');
-  assert.deepEqual(brush.dual?.burntEdge, { width: 0.1, strength: 0.5 });
+  assert.deepEqual(brush.dual?.burntEdge, { width: 0.07, strength: 0.5 });
   assert.equal(brush.dual?.grain, undefined);
 
   const settings = support.map((note) => `${note.level} ${note.setting}`);

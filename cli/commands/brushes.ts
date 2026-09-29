@@ -29,7 +29,33 @@ const importBrushesCommand = defineCommand({
   },
 });
 
+const sheetBrushesCommand = defineCommand({
+  meta: {
+    name: 'sheet',
+    description: "Draw the brush fidelity sheet for an imported pack: each brush painted on the GPU along the stroke its Procreate preview was drawn with, at the diameter that matches the preview's thickness, beside that preview, with both measured (length, thickness profile, where each end reaches 80% of its peak, density, how dark its rim is, how coarse its grain) and the label from the style's fidelity.ts. Writes rows/<brush>.png, sheet.jpg (the rows at half size) and report.json into work/styles/<style>/brushes/<pack>/fidelity/ (git ignores it: it holds the pack's previews), or --out. Prints a line per brush, and the brushes fidelity.ts doesn't label.",
+  },
+  args: {
+    style: { type: 'string', required: true, description: 'The style, work/styles/<style>/' },
+    pack: { type: 'string', required: true, description: "The pack's folder in the style's brushes/" },
+    brush: { type: 'string', valueHint: 'Dry Brush', description: 'Only these brushes, by their names in the pack (comma-separated)' },
+    out: { type: 'string', description: 'Write here instead, to keep a sheet from before a change' },
+  },
+  async run({ args }) {
+    const { relative, resolve } = await import('node:path');
+    const { STUDIO_ROOT, STUDIO_STYLES_DIR } = await import('#lib/platform/project/engine/studio-project.ts');
+    const { writeStampBrushSheet } = await import('#lib/picture/stamp-paint/engine/stamp-brush-sheet.ts');
+    const only = args.brush?.split(',').map((name) => name.trim()).filter(Boolean);
+    const { dir, sheet, entries, unlabelled } = await writeStampBrushSheet({ stylesDir: STUDIO_STYLES_DIR, style: args.style, pack: args.pack, out: args.out && resolve(args.out), only });
+    for (const { brush, diameter, comparison, fidelity } of entries) {
+      const measured = comparison ? `profile off ${Math.round(comparison.profileError * 100)}%, density ${comparison.density.toFixed(2)}` : 'no preview';
+      console.log(`${brush}: ${fidelity?.level ?? 'unlabelled'} (d ${diameter}, ${measured})`);
+    }
+    console.error(`brushes sheet: ${relative(STUDIO_ROOT, sheet)}, with a row per brush in ${relative(STUDIO_ROOT, dir)}/rows/ and report.json`);
+    if (unlabelled.length) console.error(`brushes sheet: work/styles/${args.style}/fidelity.ts labels none of ${unlabelled.join(', ')}`);
+  },
+});
+
 export default defineCommand({
   meta: { name: 'brushes', description: "A private style's brush assets, imported from packs you bought" },
-  subCommands: { import: importBrushesCommand },
+  subCommands: { import: importBrushesCommand, sheet: sheetBrushesCommand },
 });

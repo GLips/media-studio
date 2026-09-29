@@ -20,7 +20,7 @@ import type { StampBrush } from '../models/stamp-brush.ts';
 import type { StampPaintColor } from '../models/stamp-paint-recipe.ts';
 import {
   STAMP_PAINT_ASSETS_VERSION, STAMP_PAINT_PACK_MANIFEST,
-  type StampBrushSupportNote, type StampPaintPackManifest, type StampPaintPackPaper,
+  type StampBrushSupportNote, type StampPaintPackManifest, type StampPaintPackPaper, type StampPaintPackPreview,
 } from '../models/style.ts';
 import { parseBinaryPlist, unarchiveKeyedPlist } from './binary-plist.ts';
 import { readProcreateComposite } from './procreate-canvas.ts';
@@ -148,7 +148,7 @@ function writePackAssets(archive: string, dir: string, style: string, pack: stri
   if (!brushsets.length) throw new Error(`brushes import: ${archive} holds no .brushset`);
   for (const sub of ['tips', 'grains', 'previews', 'papers']) mkdirSync(join(dir, sub), { recursive: true });
 
-  const brushes: Record<string, StampBrush> = {}, support: Record<string, StampBrushSupportNote[]> = {}, previews: Record<string, string> = {};
+  const brushes: Record<string, StampBrush> = {}, support: Record<string, StampBrushSupportNote[]> = {}, previews: Record<string, StampPaintPackPreview> = {};
   const skipped: string[] = [];
   const files = new Set<string>();
   const write = (file: string, body: () => void) => {
@@ -191,7 +191,8 @@ function writePackAssets(archive: string, dir: string, style: string, pack: stri
         : normalized.support;
       if (has(`${folder}/QuickLook/Thumbnail.png`)) {
         write(`previews/${slug}.png`, () => writeFileSync(join(dir, `previews/${slug}.png`), brushset.read(`${folder}/QuickLook/Thumbnail.png`)));
-        previews[name] = `previews/${slug}.png`;
+        // Procreate previews a brush set to `stamp` as a single stamp, not a stroke.
+        previews[name] = { image: `previews/${slug}.png`, shows: settings.stamp === true ? 'stamp' : 'stroke' };
       }
     }
     brushset.close();
