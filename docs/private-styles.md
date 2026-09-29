@@ -111,8 +111,10 @@ page is one, `about:blank` isn't. The renderer needs the adapter's `texture-form
 read and write half-float targets in place).
 
 **Speed.** `studio profile <project> --frames a:b` times each frame's painting on the GPU and its whole render. The
-watercolor landscape (84 deposits, 1.5M stamps, 1920×1080) paints in about 104 ms a frame on an M1 Max (WebGPU on
-Metal) and renders in about 119 ms in one tab and 100 ms in two, so the painting dominates and capture is the rest. Its cost follows the stamps'
+watercolor landscape (84 deposits, 1.5M stamps, 1920×1080) paints in about 67 ms a frame on an M1 Max (WebGPU on
+Metal), loads in about 0.4 s, and renders in about 102 ms in one tab and 88 ms in two, so the painting dominates and
+capture is the rest. Holding each frame until WebGPU has checked its draw for errors (so a broken draw fails its own
+frame) is about 12 ms of that in one tab and 10 ms in two. Its cost follows the stamps'
 area: a denser brush spacing or bigger stamps cost in proportion.
 
 **Missing brushes.** Before each bundle, every style the project names is checked. It stops the bundle, listing each

@@ -1,6 +1,7 @@
 // stamp-painting.tsx: a stamp painting in a scene. It holds the frame until every image the painting uses is on the
 // GPU, then draws the painting as it stands at the scene's time (stamp-paint-renderer.ts, WebGPU), and destroys its GPU
-// device when it unmounts. A frame is drawn as it renders and never waited for: the screenshot waits for the GPU.
+// device when it unmounts. A frame is held until WebGPU has checked its draw for errors, never for the drawing itself:
+// the screenshot waits for the GPU.
 //
 // Compile the recipe once, where the scene is defined, not while it renders: a painting that is a new object each
 // frame is loaded afresh each frame.
@@ -69,15 +70,11 @@ export function StampPainting({ painting, paper, t, width, height, box: given }:
 
   useLayoutEffect(() => {
     if (!renderer) return;
+    const handle = delayRender('checking the stamp painting drew without a GPU error');
     const drawn = profile?.('stamp paint');
-    renderer.draw(t);
-    if (!drawn) return;
-    // Profiling alone holds the frame until the GPU is done, to time the drawing rather than its queueing.
-    const handle = delayRender('timing the stamp painting on the GPU');
-    renderer.finish().then(() => {
-      drawn();
-      continueRender(handle);
-    }, cancelRender);
+    const checked = renderer.draw(t);
+    // Profiling also holds the frame until the GPU is done, to time the drawing rather than its queueing.
+    (drawn ? checked.then(() => renderer.finish()).then(drawn) : checked).then(() => continueRender(handle), cancelRender);
   }, [renderer, t, profile, delayRender, continueRender, cancelRender]);
 
   return <div ref={holder} {...unmeasuredAttrs('stamp painting')} style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h }} />;

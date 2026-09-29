@@ -44,7 +44,7 @@ async function paintOnProcreatePreviewStroke(brush: StampBrush, diameter: number
   const canvas = Object.assign(document.createElement('canvas'), { width: W, height: H });
   const renderer = await createStampPaintRenderer(canvas, procreatePreviewPainting(brush, diameter, shows), { color: '#ffffff' }, W, H, ({ file }) => `/files/${file}`);
   try {
-    renderer.draw(0);
+    await renderer.draw(0);
     return { png: canvas.toDataURL('image/png'), profile: measureStrokeCoverage(paintedCoverage(canvas), W, H) };
   } finally {
     renderer.dispose();

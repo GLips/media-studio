@@ -20,6 +20,7 @@
 import type { StampBrushAsset, StampBrushLayer, StampDualBlend, StampGrainBlend } from '../models/stamp-brush.ts';
 import { visibleStampCountAt, type CompiledStampDeposit, type CompiledStampPaint, type StampRegion } from '../models/stamp-paint-recipe.ts';
 import type { PlacedStamp } from '../models/stamp-placement.ts';
+import { stampBlurRegion, type StampPixelBox } from '../models/stamp-blur-region.ts';
 import { coarsestStampTipLevel, STAMP_TIP_HULL_SIDES, stampTipHull, type StampTipHull, type StampTipLevel } from '../models/stamp-tip-hull.ts';
 import type { StampPaintPaper } from '../models/style.ts';
 import { PAINT_DEPOSIT_WORDS, STAMP_PAINT_COMPOSITOR_WGSL, stampPaintBlendIndex, writePaintDeposit } from './stamp-paint-compositor.ts';
@@ -349,7 +350,7 @@ function paintingImages(painting: CompiledStampPaint, paper: StampPaintPaper): [
   return [...new Map(assets.map((entry) => [assetKey(entry[0]), entry])).values()];
 }
 
-type Box = { x: number; y: number; w: number; h: number };
+type Box = StampPixelBox;
 
 /** Stamps whose bounds are kept together: a box is found from the chunks before it and the stamps within its own. */
 const REACH_CHUNK = 256;
@@ -396,8 +397,11 @@ type LoadedDeposit = {
 };
 
 export type StampPaintRenderer = {
-  /** Draws `painting` as it stands `t` seconds into its scene. */
-  draw: (t: number) => void;
+  /**
+   * Draws `painting` as it stands `t` seconds into its scene. Resolves once WebGPU has checked the draw, or rejects
+   * with its error: hold the frame until then, so a broken draw fails its own frame.
+   */
+  draw: (t: number) => Promise<void>;
   /** Resolves once the GPU has finished what's been drawn: for timing a draw, which a render never needs. */
   finish: () => Promise<void>;
   dispose: () => void;
@@ -424,13 +428,20 @@ export async function createStampPaintRenderer(
 async function rendererOnDevice(
   device: GPUDevice, canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string,
 ): Promise<StampPaintRenderer> {
-  // Loading is checked for any error WebGPU would otherwise report only later, unasked; a draw's error is thrown by
-  // the draw after it.
-  const SCOPES = ['validation', 'out-of-memory', 'internal'] as const;
-  for (const scope of SCOPES) device.pushErrorScope(scope);
-  let failure: string | null = null;
-  void device.lost.then((info) => { if (info.reason !== 'destroyed') failure ??= `the GPU device was lost: ${info.message}`; });
-  device.addEventListener('uncapturederror', (event) => { failure ??= (event as GPUUncapturedErrorEvent).error.message; });
+  // Loading and each draw are checked for any error WebGPU would otherwise report only later, unasked. A lost device
+  // isn't an error a scope catches, so the draw after it throws.
+  const checking = () => {
+    for (const scope of GPU_ERROR_SCOPES) device.pushErrorScope(scope);
+  };
+  const checked = async (what: string) => {
+    for (const _ of GPU_ERROR_SCOPES) {
+      const error = await device.popErrorScope();
+      if (error) throw new Error(`stamp paint: ${what} failed: ${error.message}`);
+    }
+  };
+  checking();
+  let lost: string | null = null;
+  void device.lost.then((info) => { if (info.reason !== 'destroyed') lost ??= info.message; });
   const context = canvas.getContext('webgpu') as GPUCanvasContext;
   const format: GPUTextureFormat = 'rgba8unorm';
   context.configure({ device, format, alphaMode: 'opaque' });
@@ -647,7 +658,7 @@ async function rendererOnDevice(
 
   function blurMask(encoder: GPUCommandEncoder, sigma: number, box: Box) {
     const halfSigma = Math.max(0.5, sigma / 2);
-    const half = { x: Math.floor(box.x / 2), y: Math.floor(box.y / 2), w: Math.ceil(box.w / 2) + 1, h: Math.ceil(box.h / 2) + 1 };
+    const half = stampBlurRegion(box, halfW, halfH);
     // The across pass also covers the rows the down pass reaches past the box: blurA outside them holds whatever an
     // earlier deposit or frame left, which would make a frame depend on what was drawn before it.
     const reach = Math.min(40, Math.ceil(halfSigma * 2.5)) + 1;
@@ -764,7 +775,7 @@ async function rendererOnDevice(
   }
 
   function draw(t: number) {
-    if (failure) throw new Error(`stamp paint: ${failure}`);
+    if (lost) throw new Error(`stamp paint: the GPU device was lost: ${lost}`);
     slots = 0;
     const encoder = device.createCommandEncoder();
     drawPaper(encoder);
@@ -812,16 +823,20 @@ async function rendererOnDevice(
     device.queue.submit([encoder.finish()]);
   }
 
-  for (const _ of SCOPES) {
-    const error = await device.popErrorScope();
-    if (error) throw new Error(`stamp paint: loading the painting onto the GPU failed: ${error.message}`);
-  }
+  await checked('loading the painting onto the GPU');
 
   // A painting whose inputs change in the same commit as its time is disposed before its last draw is asked for.
   let disposed = false;
   return {
-    draw: (t) => {
-      if (!disposed) draw(t);
+    draw: async (t) => {
+      if (disposed) return;
+      checking();
+      try {
+        draw(t);
+      } finally {
+        // A disposed device's scopes resolve with no error.
+        await checked(`drawing the painting at ${t} s`);
+      }
     },
     finish: () => (disposed ? Promise.resolve() : device.queue.onSubmittedWorkDone()),
     dispose() {
@@ -831,6 +846,8 @@ async function rendererOnDevice(
     },
   };
 }
+
+const GPU_ERROR_SCOPES = ['validation', 'out-of-memory', 'internal'] as const;
 
 /** Writes a Grain (GRAIN_WGSL) at word `at`: its tile in pixels, its offset in tiles, its mip level and how it reads. */
 function writeGrain(floats: Float32Array, ints: Int32Array, at: number, grain: NonNullable<StampBrushLayer['grain']>, tile: readonly [number, number], offset: readonly [number, number], lod: number) {
