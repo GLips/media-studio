@@ -1,7 +1,7 @@
 // ─── A project's project.ts, read off its AST ─────────────────────────
 //
-// `export default { capability: 'music-led', shared: ['look.ts'] } satisfies
-// ProjectDeclaration` (lib/platform/project/models/capability.ts). Read statically,
+// `export default { capability: 'music-led', shared: ['look.ts'], styles: ['wash'] }
+// satisfies ProjectDeclaration` (lib/platform/project/models/capability.ts). Read statically,
 // never imported: check:arch judges a snapshot, not the working tree. Only
 // literals are read, so a value built at runtime is reported as unreadable
 // rather than guessed at.
@@ -66,4 +66,40 @@ export function readDeclaredShared(declarations: readonly { project: string; fil
     shared[project] = paths;
   }
   return { shared, problems };
+}
+
+/** Project directory name → the styles in work/styles/ its project.ts's `styles` names. */
+export type DeclaredStyles = Readonly<Record<string, readonly string[]>>;
+
+/**
+ * Each project's `styles` list, keyed by project. An entry is a folder name in work/styles/; one that isn't a string
+ * literal, or that is a path rather than a name, is a problem and declares nothing.
+ */
+export function readDeclaredStyles(declarations: readonly { project: string; file: SourceFile }[]): { styles: DeclaredStyles; problems: DeclarationProblem[] } {
+  const styles: Record<string, readonly string[]> = {};
+  const problems: DeclarationProblem[] = [];
+  for (const { project, file } of declarations) {
+    const value = declaredProperty(file, 'styles');
+    if (!value) continue;
+    const problem = (node: AstNode, key: string, message: string) => problems.push({ path: file.path, line: file.lineOf(node.start), key, message });
+    if (value.type !== 'ArrayExpression') {
+      problem(value, 'styles unreadable', 'declares `styles` as something other than an array of names written out, so it uses no style');
+      continue;
+    }
+    const names: string[] = [];
+    for (const element of value.elements as (AstNode | null)[]) {
+      const entry = unwrapExpression(element ?? undefined);
+      if (entry?.type !== 'Literal' || typeof entry.value !== 'string') {
+        problem(element ?? value, 'styles unreadable', 'lists a style that isn\'t a name written out as a string, so it declares nothing');
+        continue;
+      }
+      if (!/^[\w.-]+$/.test(entry.value) || entry.value.startsWith('.')) {
+        problem(entry, `styles ${entry.value}`, `lists ${entry.value}, which isn't a style's folder name in work/styles/`);
+        continue;
+      }
+      names.push(entry.value);
+    }
+    styles[project] = names;
+  }
+  return { styles, problems };
 }

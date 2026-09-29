@@ -65,6 +65,8 @@ Every paid request is cached by its inputs in the project's `generated/`, so ask
 
 - **A brand kit** (colours, fonts, logos, voice) is `work/brands/<name>/`. `docs/brand-kits.md` says what it holds; font
   files stay on the machine, since most are licensed.
+- **A painting style** is `work/styles/<name>/`, private because its brushes come from a bought pack
+  (`docs/private-styles.md`). Its `brushes/` stays on the machine: each one imports the pack from its own copy.
 - **A product repo** a video shows real components from is a host. `work/hosts.json` maps a name to
   `{ "repo": "<git url>" }`; `work/hosts.local.json` (ignored) maps it to a working copy on this machine instead, used as
   it stands. A project opts in with `host.json` `{ "name", "ref", "browserStubs"? }`, and `studio hosts sync <project>`

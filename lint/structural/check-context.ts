@@ -10,7 +10,7 @@ import { existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { isolatedGitEnv } from '#lib/platform/git/engine/fixture-git.ts';
 import { classifyStudioPath, STUDIO_WORKSPACE_MOUNT, type StudioPosition } from '../policy/studio-tree.ts';
-import { readDeclaredShared, type DeclarationProblem } from './project-declaration.ts';
+import { readDeclaredShared, readDeclaredStyles, type DeclarationProblem, type DeclaredStyles } from './project-declaration.ts';
 import { loadSourceTree, walkAst, type AstNode, type CandidateSnapshot, type ImportTarget, type MountedSnapshot, type ScannedImport, type SourceFile, type SourceTree } from './source-tree.ts';
 
 export type Finding = {
@@ -36,6 +36,10 @@ export type CheckContext = {
   positionOf: (path: string) => StudioPosition;
   /** `shared` entries a project.ts writes that declare nothing, which scene ownership reports. */
   sharedDeclarationProblems: readonly DeclarationProblem[];
+  /** Each project's `styles` (its project.ts): the only styles in work/styles/ it may import. */
+  declaredStyles: DeclaredStyles;
+  /** `styles` entries a project.ts writes that declare nothing, which import policy reports. */
+  styleDeclarationProblems: readonly DeclarationProblem[];
   /** Every import edge of a governed file, in source order. */
   edgesFrom: (file: SourceFile) => readonly ImportEdge[];
   fileAt: (path: string) => SourceFile | undefined;
@@ -122,6 +126,7 @@ export function contextFor(tree: SourceTree): CheckContext {
     return position.kind === 'project' && position.role === 'project' ? [{ project: position.project, file }] : [];
   });
   const { shared: declaredShared, problems: sharedDeclarationProblems } = readDeclaredShared(declarations);
+  const { styles: declaredStyles, problems: styleDeclarationProblems } = readDeclaredStyles(declarations);
   const byPath = new Map(tree.sources.map((file) => [file.path, file]));
   const edges = new Map<SourceFile, ImportEdge[]>();
   const edgesFrom = (file: SourceFile) => {
@@ -175,6 +180,8 @@ export function contextFor(tree: SourceTree): CheckContext {
     exportedNames: (path) => exportedNames(path),
     positionOf: (path) => classifyStudioPath(path, declaredShared),
     sharedDeclarationProblems,
+    declaredStyles,
+    styleDeclarationProblems,
     edgesFrom,
     fileAt: (path) => byPath.get(path),
     originsOf: (path, name) => originsOf(path, name),

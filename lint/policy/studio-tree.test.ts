@@ -25,6 +25,10 @@ test('each path lands in its §4 position', () => {
     'web/src/features/review/controllers/review-queries.server.ts': 'web-client',
     'work/brands/kit/brand.ts': 'brand-kit',
     'work/brands/kit/extra.ts': 'undeclared',
+    'work/styles/wash/style.ts': 'style',
+    'work/styles/wash/recipes/tree.ts': 'style',
+    // Adversarial: brushes/ is what the importer writes, never source.
+    'work/styles/wash/brushes/loader.ts': 'undeclared',
     'work/projects/p/timeline.ts': 'timeline',
     'work/projects/p/timeline.test.ts': 'spec',
     // Adversarial: a test named for no root module is just another project file.

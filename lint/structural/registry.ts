@@ -2,9 +2,11 @@
 // list rather than the check directly: an unregistered check fails its spec.
 
 import type { StructuralCheck } from './check-context.ts';
+import { brushAssetsCheck } from './checks/brush-assets.ts';
 import { capabilityMatchCheck } from './checks/capability-match.ts';
 import { declaredTreeCheck } from './checks/declared-tree.ts';
 import { folderWidthCheck } from './checks/folder-width.ts';
+import { frameDeterminismCheck } from './checks/frame-determinism.ts';
 import { importPolicyCheck } from './checks/import-policy.ts';
 import { modelPurityCheck } from './checks/model-purity.ts';
 import { noScratchCheck } from './checks/no-scratch.ts';
@@ -21,6 +23,7 @@ export const STRUCTURAL_CHECKS: readonly StructuralCheck[] = [
   timingOwnershipCheck,
   sceneOwnershipCheck,
   modelPurityCheck,
+  frameDeterminismCheck,
   noScratchCheck,
   sdkContainmentCheck,
   studioTempCheck,
@@ -28,4 +31,5 @@ export const STRUCTURAL_CHECKS: readonly StructuralCheck[] = [
   retimeRegistrationCheck,
   capabilityMatchCheck,
   folderWidthCheck,
+  brushAssetsCheck,
 ];

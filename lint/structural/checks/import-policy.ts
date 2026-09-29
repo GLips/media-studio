@@ -8,7 +8,11 @@
 // web/src/infrastructure/ may), and nothing in lib/ imports the web app; a `#`
 // alias names a key package.json's `imports` has; no import climbs out of the
 // repo; nothing outside work/ imports into it, since work/ is your own
-// repository and a clean clone has none. Scene, model and scratch denials are checks (b), (c) and (d).
+// repository and a clean clone has none, and that holds its private painting
+// styles (work/styles/) out of public code. A project imports only the styles
+// its project.ts's `styles` names, which is how the bundle knows whose assets to
+// check; a style never imports a project, and, since it paints in the browser,
+// never engine code. Scene, model and scratch denials are checks (b), (c) and (d).
 //
 // A computed `import(expr)` isn't reported here: the CLI loads projects
 // that way. The checks that must follow every edge refuse it themselves.
@@ -28,7 +32,7 @@ const LIB_KINDS = new Set<StudioPosition['kind']>(['models', 'studio', 'engine']
 export const importPolicyCheck: StructuralCheck = {
   id: ID,
   run(context) {
-    const findings: Finding[] = [];
+    const findings: Finding[] = context.styleDeclarationProblems.map((problem) => ({ check: ID, ...problem }));
     for (const file of context.tree.sources) {
       const from = context.positionOf(file.path);
       for (const edge of context.edgesFrom(file)) {
@@ -52,6 +56,11 @@ export const importPolicyCheck: StructuralCheck = {
         if (from.kind === 'project' && to.kind === 'project' && to.project !== from.project) {
           report(`project ${from.project} imports project ${to.project}; shared code belongs in lib/ or a brand kit (work/brands/)`);
         }
+        if (from.kind === 'project' && to.kind === 'style' && !(context.declaredStyles[from.project] ?? []).includes(to.style)) {
+          report(`uses the style ${to.style}, which project ${from.project}'s project.ts doesn't name in \`styles\`, so the bundle won't check its brushes`);
+        }
+        if (from.kind === 'style' && to.kind === 'project') report(`style ${from.style} imports project ${to.project}; projects use a style, never the reverse`);
+        if (from.kind === 'style' && to.kind === 'engine') report('a style paints in the browser; engine code is Node');
         const crossed = edge.scanned.specifier.startsWith('.') ? libFeatureCrossedTo(file.path, target.path) : undefined;
         if (crossed !== undefined) report(`reaches ${crossed} by a relative path; import it through ${crossed === 'lib/api.ts' ? '#studio' : '#lib/*'}`);
         if (from.kind === 'studio' && to.kind === 'engine' && !SPEC_FILE.test(file.path)) report('studio code renders in the browser; engine code is Node');

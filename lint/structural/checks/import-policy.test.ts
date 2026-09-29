@@ -127,3 +127,35 @@ test('nothing outside work/ imports into it, whether or not the workspace is the
     'lib/picture/look/models/look.ts:../../../../work/projects/q/gone.ts',
   ]);
 });
+
+test('a project uses only the styles its project.ts names, public code none, and a style reaches no project or engine code', () => {
+  const findings = runCheckOnFiles('import-policy', {
+    'package.json': JSON.stringify({ imports: { '#lib/*': './lib/*', '#styles/*': './work/styles/*' } }),
+    'lib/output/render/engine/run.ts': 'export const run = 1;\n',
+    'lib/picture/kit/models/ink.ts': 'export const ink = 1;\n',
+    'work/styles/wash/style.ts': [
+      "import { ink } from '#lib/picture/kit/models/ink.ts';",
+      "import { run } from '#lib/output/render/engine/run.ts';",
+      "import { t } from '../../projects/p/timeline.ts';",
+    ].join('\n'),
+    'work/styles/ink/style.ts': 'export default {};\n',
+    'work/projects/p/project.ts': "export default { capability: 'silent', styles: ['wash', 'gone/../ink'] };\n",
+    'work/projects/p/timeline.ts': 'export const t = 0;\n',
+    'work/projects/p/scenes/intro.tsx': [
+      // Legal neighbour: a style the project names, by alias and relatively.
+      "import wash from '#styles/wash/style.ts';",
+      "import again from '../../../styles/wash/style.ts';",
+      // Adversarial: one it doesn't name.
+      "import ink from '#styles/ink/style.ts';",
+    ].join('\n'),
+    // Adversarial: public code reaching a style through the alias.
+    'lib/picture/kit/studio/paint.tsx': "import wash from '#styles/wash/style.ts';\n",
+  });
+  assert.deepEqual(caught(findings), [
+    'lib/picture/kit/studio/paint.tsx:#styles/wash/style.ts',
+    'work/projects/p/project.ts:styles gone/../ink',
+    'work/projects/p/scenes/intro.tsx:#styles/ink/style.ts',
+    'work/styles/wash/style.ts:#lib/output/render/engine/run.ts',
+    'work/styles/wash/style.ts:../../projects/p/timeline.ts',
+  ]);
+});

@@ -24,6 +24,7 @@
   "imports": {
     "#lib/*": "./lib/*",
     "#studio": "./lib/api.ts",
+    "#styles/*": "./work/styles/*",
     "#web/*": "./web/src/*"
   },
   "devDependencies": {

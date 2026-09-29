@@ -1,8 +1,9 @@
-// studio-workspace.ts: work/, where your own projects, brand kits and hosts.json live, in a git repository of its own
+// studio-workspace.ts: work/, where your own projects, brand kits, painting styles and hosts.json live, in a git repository of its own
 // that the studio's repository ignores. The studio is shared; what you make with it isn't.
 //
 //   work/projects/<p>/        a project (studio new)
 //   work/brands/<name>/       a brand kit (docs/brand-kits.md)
+//   work/styles/<name>/       a private stamp-paint style (docs/private-styles.md)
 //   work/hosts.json           host name → { repo } (lib/platform/host/engine/hosts.ts); hosts.local.json beside it, ignored
 //   work/arch-baseline.json   check:arch's baseline for the workspace's files, as lint/arch-baseline.json is the studio's
 //
@@ -15,15 +16,18 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isolatedGitEnv } from '#lib/platform/git/engine/fixture-git.ts';
-import { STUDIO_BRANDS_DIR, STUDIO_PROJECTS_DIR, STUDIO_WORKSPACE_DIR } from './studio-project.ts';
+import { STUDIO_BRANDS_DIR, STUDIO_PROJECTS_DIR, STUDIO_STYLES_DIR, STUDIO_WORKSPACE_DIR } from './studio-project.ts';
 
 /** Relative to work/, so the checkout can move. */
 const WORKSPACE_HOOKS_PATH = '../.githooks-workspace';
 
-/** What a project writes that's made, not authored: recorded, generated or rendered, and a brand's licensed fonts. */
+/**
+ * What a project writes that's made, not authored: recorded, generated or rendered; a brand's licensed fonts; and a
+ * style's brushes, imported from a bought pack.
+ */
 const WORKSPACE_IGNORES = [
   'projects/*/captures/', 'projects/*/out/', 'projects/*/audio/', 'projects/*/music/', 'projects/*/generated/',
-  'projects/*/host', 'brands/*/fonts/', 'hosts.local.json', '.DS_Store',
+  'projects/*/host', 'brands/*/fonts/', 'styles/*/brushes/', 'hosts.local.json', '.DS_Store',
 ];
 
 export function isStudioWorkspaceRepo(): boolean {
@@ -40,7 +44,7 @@ export function assertStudioWorkspace(): void {
  */
 export function initStudioWorkspace(): string[] {
   const done: string[] = [];
-  for (const dir of [STUDIO_PROJECTS_DIR, STUDIO_BRANDS_DIR]) mkdirSync(dir, { recursive: true });
+  for (const dir of [STUDIO_PROJECTS_DIR, STUDIO_BRANDS_DIR, STUDIO_STYLES_DIR]) mkdirSync(dir, { recursive: true });
   const git = (...args: string[]) => execFileSync('git', args, { cwd: STUDIO_WORKSPACE_DIR, env: isolatedGitEnv(), encoding: 'utf8' }).trim();
   if (!isStudioWorkspaceRepo()) {
     git('init', '-q');

@@ -9,12 +9,13 @@ import type { ProjectCapability, ProjectDeclaration } from '../models/capability
 
 export const STUDIO_ROOT = resolve(import.meta.dirname, '../../../..');
 /**
- * Your own work: projects, brand kits and hosts.json, in a git repository of its own that the studio's repository
+ * Your own work: projects, brand kits, painting styles and hosts.json, in a git repository of its own that the studio's repository
  * ignores (lib/platform/project/engine/studio-workspace.ts). A fresh clone has none until `studio workspace init`.
  */
 export const STUDIO_WORKSPACE_DIR = join(STUDIO_ROOT, 'work');
 export const STUDIO_PROJECTS_DIR = join(STUDIO_WORKSPACE_DIR, 'projects');
 export const STUDIO_BRANDS_DIR = join(STUDIO_WORKSPACE_DIR, 'brands');
+export const STUDIO_STYLES_DIR = join(STUDIO_WORKSPACE_DIR, 'styles');
 
 /** The project folders' names; none in a workspace with no projects yet. */
 export function listStudioProjects(): string[] {

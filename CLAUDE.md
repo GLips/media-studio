@@ -5,9 +5,9 @@
 - Commands: `npm run check:arch`, `npm run typecheck`, `npm test`. Run each on its own; a chained `&&` hides every
   failure after the first. The pre-commit gate (`.githooks/pre-commit`, on after `npm install`) runs check:arch, then
   `typecheck:gate` and `test:gate` (what a clean clone holds, no `work/`), and refuses the commit on any failure.
-- `work/` holds your projects (`work/projects/<p>/`), brand kits (`work/brands/<name>/`, see `docs/brand-kits.md`) and
-  `hosts.json`. The studio's git ignores it; it's a git repository of its own, made by `studio workspace init` (run it
-  first). Its commits run `.githooks-workspace/pre-commit`: `check:arch --scope workspace`, the full typecheck,
+- `work/` holds your projects (`work/projects/<p>/`), brand kits (`work/brands/<name>/`, see `docs/brand-kits.md`),
+  private painting styles (`work/styles/<name>/`, see `docs/private-styles.md`) and `hosts.json`. The studio's git
+  ignores it; it's a git repository of its own, made by `studio workspace init` (run it first). Its commits run `.githooks-workspace/pre-commit`: `check:arch --scope workspace`, the full typecheck,
   `npm run test:workspace`.
 - `lib/` is areas (`timing`, `picture`, `footage`, `output`, `platform`) of feature folders, each holding only the
   role folders it needs: `models/` (pure, loads in plain Node), `studio/` (renders in the browser), `engine/`

@@ -12,10 +12,11 @@
 // else in lib/ is undeclared, but for the barrel, `lib/api.ts` (`#studio`).
 // The areas are declared here (LIB_AREAS); a feature is any folder in one.
 //
-// Your own projects and brand kits sit in work/, a repository of its own that
-// check:arch mounts at `work/` in one path space with the studio's. Only
-// `work/projects/<p>/…` and `work/brands/<kit>/brand.ts` are positions there:
-// `work/` is never stripped, so a `work/lib/x.ts` is undeclared, not lib.
+// Your own projects, brand kits and painting styles sit in work/, a repository
+// of its own that check:arch mounts at `work/` in one path space with the
+// studio's. Only `work/projects/<p>/…`, `work/brands/<kit>/brand.ts` and
+// `work/styles/<style>/…` (outside its imported `brushes/`) are positions
+// there: `work/` is never stripped, so a `work/lib/x.ts` is undeclared, not lib.
 
 export type ProjectRole =
   /** `project.ts` declares the project's capability (lib/platform/project/models/capability.ts). */
@@ -50,6 +51,8 @@ export type StudioPosition =
    */
   | { kind: 'web-server' | 'web-client' }
   | { kind: 'brand-kit'; kit: string }
+  /** A private stamp-paint style's source, `work/styles/<style>/` (docs/private-styles.md); a project names the ones it uses. */
+  | { kind: 'style'; style: string }
   | ({ kind: 'project'; project: string } & ProjectRole)
   /** The checks themselves. Their fixtures name every violation on purpose. */
   | { kind: 'lint' }
@@ -108,6 +111,7 @@ export function classifyStudioPath(path: string, shared: DeclaredShared): Studio
   if (top === STUDIO_WORKSPACE_MOUNT) {
     const [, , name, ...inside] = parts;
     if (second === 'brands' && inside.length === 1 && inside[0] === 'brand.ts') return { kind: 'brand-kit', kit: name };
+    if (second === 'styles' && inside.length && inside[0] !== 'brushes') return { kind: 'style', style: name };
     if (second === 'projects' && inside.length) return { kind: 'project', project: name, ...projectRole(inside, shared[name] ?? []) };
   }
   return { kind: 'undeclared' };

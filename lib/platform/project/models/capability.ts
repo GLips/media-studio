@@ -18,6 +18,12 @@ export type ProjectDeclaration = {
    * A scene's own file or a root module can't be declared shared.
    */
   shared?: readonly string[];
+  /**
+   * The private stamp-paint styles its scenes paint with, by their folder in work/styles/ (`['wash']`), written out as
+   * literals. check:arch refuses an import of a style not named here, and the bundle refuses a named style whose
+   * brushes this machine hasn't imported.
+   */
+  styles?: readonly string[];
 };
 
 export type ProjectPart = 'music' | 'voice' | 'stills';
