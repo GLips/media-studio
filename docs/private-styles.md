@@ -91,6 +91,22 @@ export default {
 doesn't read as the brush and the note says what's missing. The sheet shows each label on its row and lists the brushes
 without one. Re-draw and re-judge after changing how a brush is painted or read.
 
+**Same pixels.** A painting draws on the GPU in half floats, and GPUs round floats differently, so what's promised
+depends on where it renders:
+
+- On one machine (one GPU, driver and Chrome) a frame is the same bytes however it's reached: cold, after other frames,
+  or with other tabs drawing beside it. `studio repeatable` checks all three, and a painting must report "identical",
+  not merely above its PSNR threshold. Anything less is a bug in the drawing, not rounding.
+- Across machines, never compare pixels. The same recipe can differ by a level or two where stamps overlap, which
+  reads the same but fails a byte or snapshot comparison. Judge by eye (the fidelity sheet, `--strip`).
+- A video's slices render on one machine. Each render snapshot records the GL renderer it drew on (`gl`), and
+  `studio render --join` refuses slices from more than one.
+
+**Speed.** `studio profile <project> --frames a:b` times each frame's painting on the GPU and its whole render. The
+watercolor landscape (84 deposits, 1.5M stamps, 1920×1080) paints in about 107 ms a frame on an M1 Max (ANGLE on
+Metal) and renders in about 124 ms, so the painting dominates and capture is the rest. Its cost follows the stamps'
+area: a denser brush spacing or bigger stamps cost in proportion.
+
 **Missing brushes.** Before each bundle, every style the project names is checked. It stops the bundle, listing each
 problem with the pack's `source` (which says where to get it), when a pack isn't imported, a file its manifest lists is
 gone, `brushes` names a brush its pack lacks, the paper names a file its pack lacks, or a manifest is from an older

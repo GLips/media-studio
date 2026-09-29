@@ -1,0 +1,83 @@
+// stamp-tip-hull.ts: the part of a tip's square a stamp needs to draw. A pack's tips paint a third to a half of their
+// square, and a frame's time goes on the square's pixels, so each stamp is drawn as a polygon around the tip's paint
+// instead of the whole square. Outside the polygon every texel a stamp can sample is bare (white), so it would lay no
+// paint there. The painting is the same to rounding: a stamp's place on its tip is interpolated from the polygon's
+// corners, not the square's, which moves a few pixels a level or two.
+//
+// What a stamp samples depends on its size: a small one reads a coarse mip level, whose paint has spread, and reads it
+// bilinearly, reaching a texel further. So the polygon holds the paint of every level up to the coarsest one used,
+// each texel grown by one of its level's texels.
+
+/** A mip level's paint: for each row, the first and last texel holding any, or null for a bare row. */
+export type StampTipLevel = { width: number; height: number; rows: readonly ([number, number] | null)[] };
+
+/** A convex polygon in the tip's UV square, counter-clockwise, as flat x, y pairs: at most STAMP_TIP_HULL_SIDES corners. */
+export type StampTipHull = Float32Array;
+
+/**
+ * Sides of the polygon, facing evenly spaced directions. Eight: sixteen hug a round tip closer, but each corner is
+ * shaded once a stamp, and on the landscape example they cost as much as they saved.
+ */
+export const STAMP_TIP_HULL_SIDES = 8;
+
+/**
+ * The polygon around the paint of `levels[0..coarsest]`, within the unit square. It's the tightest one whose sides
+ * face STAMP_TIP_HULL_SIDES fixed directions (these include the square's own four, so it never leaves the square),
+ * which is always convex and never smaller than the paint. A tip with no paint gets the whole square.
+ */
+export function stampTipHull(levels: readonly StampTipLevel[], coarsest: number): StampTipHull {
+  const normals = Array.from({ length: STAMP_TIP_HULL_SIDES }, (_, i) => {
+    const angle = (i / STAMP_TIP_HULL_SIDES) * 2 * Math.PI;
+    return [Math.cos(angle), Math.sin(angle)] as const;
+  });
+  const reach = normals.map(() => -Infinity);
+  const include = (x: number, y: number) => normals.forEach(([nx, ny], i) => { reach[i] = Math.max(reach[i], x * nx + y * ny); });
+  for (const level of levels.slice(0, coarsest + 1)) {
+    const clampX = (x: number) => Math.min(1, Math.max(0, x / level.width)), clampY = (y: number) => Math.min(1, Math.max(0, y / level.height));
+    level.rows.forEach((span, y) => {
+      if (!span) return;
+      // The texel's square, grown by a texel for the bilinear sample's reach, within the tip.
+      for (const x of [clampX(span[0] - 1), clampX(span[1] + 2)]) for (const v of [clampY(y - 1), clampY(y + 2)]) include(x, v);
+    });
+  }
+  if (reach[0] === -Infinity) return new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]);
+  // Each corner is where two neighbouring sides meet: every side touches the paint, so none is redundant.
+  const corners = normals.map(([ax, ay], i): [number, number] => {
+    const [bx, by] = normals[(i + 1) % STAMP_TIP_HULL_SIDES], det = ax * by - ay * bx;
+    return [snapToSquare((reach[i] * by - reach[(i + 1) % STAMP_TIP_HULL_SIDES] * ay) / det), snapToSquare((ax * reach[(i + 1) % STAMP_TIP_HULL_SIDES] - bx * reach[i]) / det)];
+  });
+  return new Float32Array(strictlyConvex(corners).flat());
+}
+
+/**
+ * The corners as the GPU gets them (32-bit), less any that repeat another or sit on the line between their
+ * neighbours. Sides that meet at a corner of the paint give corners a rounding error apart, which could fold the
+ * polygon, and a fan over a folded polygon covers a pixel twice: a build brush would lay that stamp there twice.
+ */
+function strictlyConvex(points: [number, number][]): [number, number][] {
+  const sorted = points.map(([x, y]): [number, number] => [Math.fround(x), Math.fround(y)]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o: [number, number], a: [number, number], b: [number, number]) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const chain = (ordered: [number, number][]) => ordered.reduce<[number, number][]>((kept, p) => {
+    while (kept.length >= 2 && cross(kept[kept.length - 2], kept[kept.length - 1], p) <= 1e-9) kept.pop();
+    kept.push(p);
+    return kept;
+  }, []);
+  const lower = chain(sorted), upper = chain([...sorted].reverse());
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
+}
+
+/**
+ * A corner a rounding error off the square's edge, put on it. Past the edge a stamp would read the tip's edge texels
+ * (a tip is clamped), and paint where its square never reached.
+ */
+const snapToSquare = (v: number) => (Math.abs(v) < 1e-5 ? 0 : Math.abs(v - 1) < 1e-5 ? 1 : v);
+
+/**
+ * The coarsest mip level a stamp `diameter` pixels across (squashed to `roundness` of it) samples of a tip `size`
+ * texels across. At level of detail λ a trilinear sample reads levels ⌊λ⌋ and the one above; one more is kept for
+ * however a GPU approximates λ.
+ */
+export function coarsestStampTipLevel(size: { width: number; height: number }, diameter: number, roundness: number, levels: number): number {
+  const texelsPerPixel = Math.max(size.width / diameter, size.height / (diameter * Math.min(1, roundness)));
+  return Math.min(levels - 1, Math.max(0, Math.floor(Math.log2(texelsPerPixel)) + 2));
+}

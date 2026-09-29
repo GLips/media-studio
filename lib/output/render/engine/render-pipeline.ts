@@ -438,7 +438,7 @@ export async function renderVideoSlice(session: RenderSession, { from, end, out 
  * Joins the slices in `dir` (renderVideoSlice's, one file each) into the whole video at `out`, under a fresh mastered
  * mix, so the placed sounds play across the joins. Refuses a slice rendered on another timeline than the video's now,
  * a gap or an overlap between slices, or a file short of the frames its snapshot says it holds: each would put every
- * later frame off its sound.
+ * later frame off its sound. Refuses slices drawn on more than one GPU too.
  *
  * Negative space: a silent project's join has no sound and doesn't check that none plays, since its slices are
  * muted; the delivered render's review is what refuses a sound in a silent project.
@@ -453,10 +453,14 @@ export async function joinVideoSlices(session: RenderSession, { dir, out }: { di
     if (loaded.kind === 'none') throw new Error(loaded.reason);
     const { frames } = loaded.snapshot;
     if (JSON.stringify(loaded.snapshot.timeline) !== now) throw new Error(`${name} (frames ${frames.from}–${frames.end - 1}) was rendered on another timeline than the video's now (a retime moves every later bar and cue): render it again`);
+    const { gl } = loaded.snapshot;
     const counted = countVideoFrames(file);
     if (counted !== frames.end - frames.from) throw new Error(`${name} holds ${counted} frames, and its snapshot says ${frames.end - frames.from}`);
-    return { file, ...frames };
+    return { file, gl, ...frames };
   }).sort((a, b) => a.from - b.from);
+  // Each GPU rounds a painted frame its own way, so slices from two would show a seam where they meet.
+  const gls = [...new Set(slices.map((s) => s.gl))];
+  if (gls.length > 1) throw new Error(`the slices in ${dir} were drawn on ${gls.length} GPUs (${gls.join('; ')}): render them all on one machine`);
   let reached = 0;
   for (const s of slices) {
     if (s.from !== reached) throw new Error(`${basename(s.file)} starts at frame ${s.from}, but the slices before it reach ${reached}: ${s.from > reached ? 'render the gap' : 'they overlap'}`);
@@ -477,24 +481,30 @@ export async function joinVideoSlices(session: RenderSession, { dir, out }: { di
   });
   const counted = countVideoFrames(out);
   if (counted !== timeline.durationInFrames) throw new Error(`${out} holds ${counted} frames, not the video's ${timeline.durationInFrames}`);
-  writeRenderSnapshot(out, { frames: { from: 0, end: timeline.durationInFrames }, timeline, clock: session.clock, voice: renderVoiceOf(session.project) });
+  writeRenderSnapshot(out, { frames: { from: 0, end: timeline.durationInFrames }, timeline, clock: session.clock, voice: renderVoiceOf(session.project), gl: gls[0] });
   return out;
 }
 
 // ---------- repeatability ----------
 
 /**
- * Renders each frame at `times` fresh, in a tab of its own, then again in one tab after other frames: the rest in
- * order, the rest reversed, and a later and an earlier neighbour. A tab's history is what leaks into a frame that
- * isn't a pure function of time (an unseeded random stream, drawing deferred to the next frame). GPU rounding leaves
- * renders a few levels apart, so equal means over 50 dB PSNR.
+ * Renders each frame at `times` fresh, in a browser of its own, then again three ways. In one tab after other frames:
+ * the rest in order, the rest reversed, a later and an earlier neighbour, and runs of the frames before it at each
+ * step a render's tabs take. And among its neighbours in the render's tabs at once (two at least), which share the
+ * GPU. A tab's history is what leaks into a frame that isn't a pure function of time (an unseeded random stream,
+ * drawing deferred to the next frame).
+ *
+ * Equal means over 50 dB PSNR, since a GPU scene may round differently from one draw to the next; each frame says
+ * whether it was identical, which a stamp painting must be (docs/private-styles.md says why).
  */
 export async function checkFramesRepeatable(session: RenderSession, times: number[]): Promise<{ ok: boolean; report: string[] }> {
   if (!times.length || times.some((t) => !Number.isFinite(t))) throw new Error('give times in seconds, e.g. 2,8.5');
-  const { fps, durationInFrames } = await session.compositionFor(session.props());
+  const composition = await session.compositionFor(session.props());
+  const { fps, durationInFrames } = composition;
   const frames = times.map((t) => Math.round(t * fps));
   const bad = frames.find((f) => !(f >= 0 && f < durationInFrames));
   if (bad !== undefined) throw new Error(`${bad / fps}s is outside the video`);
+  const inVideo = (f: number) => f >= 0 && f < durationInFrames;
   const worst = await withStudioTemp('repeatable', async (dir) => {
     const fresh = new Map<number, Awaited<ReturnType<typeof session.renderStills>>>();
     for (const [i, f] of frames.entries()) fresh.set(f, await session.renderStills(join(dir, `fresh-${i}`), [f]));
@@ -506,13 +516,16 @@ export async function checkFramesRepeatable(session: RenderSession, times: numbe
       ...frames.flatMap((f) => [1, 2, 3].flatMap((every) => [...runUpTo(f, every), f])),
     ];
     const replay = await session.renderReplay(join(dir, 'replay'), order);
+    const tabs = Math.max(2, session.workersFor(composition));
+    const together = await session.renderStills(join(dir, 'together'), frames.flatMap((f) => [-2, -1, 0, 1, 2].map((d) => f + d)).filter(inVideo), { tabs });
     const worst = new Map<number, number>();
-    for (const [i, f] of order.entries()) {
-      if (!fresh.has(f)) continue;
-      const { stderr } = measureWithFfmpeg(['-i', fresh.get(f)!.fileFor(f), '-i', replay.fileFor(i), '-lavfi', 'psnr', '-f', 'null', '-']);
+    const compare = (f: number, file: string) => {
+      const { stderr } = measureWithFfmpeg(['-i', fresh.get(f)!.fileFor(f), '-i', file, '-lavfi', 'psnr', '-f', 'null', '-']);
       const psnr = Number(/average:(\S+)/.exec(stderr)![1].replace('inf', 'Infinity'));
       worst.set(f, Math.min(worst.get(f) ?? Infinity, psnr));
-    }
+    };
+    for (const [i, f] of order.entries()) if (fresh.has(f)) compare(f, replay.fileFor(i));
+    for (const f of frames) compare(f, together.fileFor(f));
     return worst;
   });
   const report = frames.map((f) => {
@@ -520,6 +533,6 @@ export async function checkFramesRepeatable(session: RenderSession, times: numbe
     return `  ${db > 50 ? '✓' : '✗'} ${(f / fps).toFixed(2)}s  ${Number.isFinite(db) ? `${db.toFixed(1)} dB at worst` : 'identical'}`;
   });
   const ok = frames.every((f) => worst.get(f)! > 50);
-  report.push(ok ? 'repeatable ✓' : 'not repeatable: something in those frames depends on what the tab drew before');
+  report.push(ok ? 'repeatable ✓' : 'not repeatable: something in those frames depends on what the tab drew before, or on the tabs drawing beside it');
   return { ok, report };
 }

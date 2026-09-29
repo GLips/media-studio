@@ -118,11 +118,14 @@ export async function openRenderSession(project: string, { workers }: { workers?
 
   /**
    * Renders chosen frames as JPEGs `w` wide (the video's own width unless given) into `dir`, a new or empty folder the
-   * caller owns; returns each frame's file. Repeats are rendered once.
+   * caller owns, in `tabs` at once (the render's, unless given); returns each frame's file. Repeats are rendered once.
    */
-  function renderStills(dir: string, wanted: number[], { w, captions = false }: { w?: number; captions?: boolean } = {}) {
+  function renderStills(dir: string, wanted: number[], { w, captions = false, tabs }: { w?: number; captions?: boolean; tabs?: number } = {}) {
     const inputProps = props({ captions });
-    return inBrowser('stills', async (browser) => renderJpegs(dir, await compositionFor(inputProps, browser), inputProps, [...new Set(wanted)], browser, { w }));
+    return inBrowser('stills', async (browser) => {
+      const composition = await compositionFor(inputProps, browser);
+      return renderJpegs(dir, composition, inputProps, [...new Set(wanted)], browser, { w, concurrency: tabs ?? workersFor(composition) });
+    });
   }
 
   /**
@@ -203,7 +206,7 @@ export async function openRenderSession(project: string, { workers }: { workers?
       } else {
         copyFileSync(picture, out);
       }
-      writeRenderSnapshot(out, { frames: frames ?? { from: 0, end: composition.durationInFrames }, timeline: timeline ?? await readTimeline(), clock, voice: renderVoiceOf(project), motion });
+      writeRenderSnapshot(out, { frames: frames ?? { from: 0, end: composition.durationInFrames }, timeline: timeline ?? await readTimeline(), clock, voice: renderVoiceOf(project), gl, motion });
       return out;
     });
   }
@@ -229,6 +232,8 @@ export async function openRenderSession(project: string, { workers }: { workers?
         });
         return { result: composition, workers: concurrency };
       });
+      // The pass inBrowser just recorded holds the GL the frames were drawn on.
+      const gl = passes.at(-1)!.gl!;
       const { motion } = (await approve?.()) ?? {};
       // Remotion pads the frame numbers, so the glob's order is the video's.
       const frames = ['-y', '-v', 'error', '-framerate', String(fps), '-pattern_type', 'glob', '-i', join(tmp, 'f-*.png')];
@@ -244,7 +249,7 @@ export async function openRenderSession(project: string, { workers }: { workers?
         runFfmpegAsync([...frames, '-vf', `format=bgra,premultiply=inplace=1,${bt709}`, '-c:v', 'hevc_videotoolbox', '-pix_fmt', 'bgra', '-colorspace', 'bt709', '-q:v', '70', '-alpha_quality', '0.9',
           '-tag:v', 'hvc1', '-movflags', '+faststart', mov]),
       ]));
-      for (const out of [webm, mov]) writeRenderSnapshot(out, { frames: { from: 0, end: durationInFrames }, timeline, clock, voice: renderVoiceOf(project), motion });
+      for (const out of [webm, mov]) writeRenderSnapshot(out, { frames: { from: 0, end: durationInFrames }, timeline, clock, voice: renderVoiceOf(project), gl, motion });
     });
     return [webm, mov];
   }

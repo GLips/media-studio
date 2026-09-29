@@ -18,6 +18,7 @@
 import type { StampBrushAsset, StampBrushLayer, StampDualBlend } from '../models/stamp-brush.ts';
 import { visibleStampCountAt, type CompiledStampDeposit, type CompiledStampPaint, type StampRegion } from '../models/stamp-paint-recipe.ts';
 import type { PlacedStamp } from '../models/stamp-placement.ts';
+import { coarsestStampTipLevel, STAMP_TIP_HULL_SIDES, stampTipHull, type StampTipHull, type StampTipLevel } from '../models/stamp-tip-hull.ts';
 import type { StampPaintPaper } from '../models/style.ts';
 import { createFlatStampCompositor, type StampPaintCompositor } from './stamp-paint-compositor.ts';
 import {
@@ -50,20 +51,22 @@ float grainCut(sampler2D grain, vec2 uv, float depth) {
   return grainCut(grain, uv, depth, ${GRAIN_CONTRAST.toFixed(1)});
 }`;
 
+// A stamp is drawn as its tip's hull (stamp-tip-hull.ts), a fan of triangles from its first vertex, in the tip's UV
+// square. Its place on the tip is interpolated, not worked out from its pixel: Apple's GPUs fetch a texel at an
+// interpolated place before the shader runs, and a computed one took twice as long.
 const STAMP_VERTEX = `#version 300 es
 layout(location = 0) in vec4 stamp;
 layout(location = 1) in float alpha;
 uniform vec2 resolution;
 uniform float roundness;
+uniform vec2 hull[${STAMP_TIP_HULL_SIDES}];
 out vec2 tipUv;
 out float stampAlpha;
-const vec2 CORNERS[6] = vec2[6](vec2(-0.5, -0.5), vec2(0.5, -0.5), vec2(0.5, 0.5), vec2(-0.5, -0.5), vec2(0.5, 0.5), vec2(-0.5, 0.5));
 void main() {
-  vec2 corner = CORNERS[gl_VertexID];
-  vec2 offset = corner * vec2(1.0, roundness) * stamp.z;
+  tipUv = hull[gl_VertexID];
+  vec2 offset = (tipUv - 0.5) * vec2(1.0, roundness) * stamp.z;
   float s = sin(stamp.w), c = cos(stamp.w);
   vec2 at = stamp.xy + vec2(c * offset.x - s * offset.y, s * offset.x + c * offset.y);
-  tipUv = corner + 0.5;
   stampAlpha = alpha;
   gl_Position = vec4(at / resolution * 2.0 - 1.0, 0.0, 1.0);
 }`;
@@ -82,9 +85,8 @@ out vec4 result;
 ${GRAIN_GLSL}
 void main() {
   float coverage = 1.0 - texture(tip, tipUv).r;
-  float alpha = stampAlpha;
   if (rolling) coverage *= grainCut(grain, (tipUv - 0.5) / grainScale + 0.5, grainDepth);
-  result = channel * coverage * alpha;
+  result = channel * coverage * stampAlpha;
 }`;
 
 const BLUR_FRAGMENT = `#version 300 es
@@ -228,12 +230,13 @@ function paintingImages(painting: CompiledStampPaint, paper: StampPaintPaper): [
   return [...new Map(assets.map((entry) => [assetKey(entry[0]), entry])).values()];
 }
 
-/** Where a deposit's stamps sit in the painting's instance buffer, in stamps. */
-type DepositStamps = { main: number; dual: number };
+/** Where a deposit's stamps sit in the painting's instance buffer, in stamps, and the smallest of each (px across). */
+type DepositStamps = { main: number; dual: number; smallest: number; smallestDual: number };
 
 export type StampPaintRenderer = {
   /** Draws `painting` as it stands `t` seconds into its scene. */
   draw: (t: number) => void;
+  /** Waits for the GPU to finish what's been drawn, by reading a pixel back: for timing a draw, which a render never needs. */
   finish: () => void;
   dispose: () => void;
 };
@@ -257,15 +260,54 @@ export async function createStampPaintRenderer(
     return image;
   }));
   for (const [i, [asset, wrap]] of assets.entries()) {
-    images.set(assetKey(asset), { texture: createPaintGlImageTexture(gl, decoded[i], wrap), width: decoded[i].width, height: decoded[i].height });
+    // The paper's photograph is the one image whose colour is read.
+    const channels = paper.image && assetKey(asset) === assetKey(paper.image) ? 'colour' : 'red';
+    images.set(assetKey(asset), { texture: createPaintGlImageTexture(gl, decoded[i], wrap, channels), width: decoded[i].width, height: decoded[i].height });
   }
   const image = (asset: StampBrushAsset) => images.get(assetKey(asset))!;
+
+  // Each tip's paint at every mip level, read back as the GPU samples it; its hulls are made as draws ask for them.
+  const tipLevels = new Map<string, StampTipLevel[]>();
+  const readback = gl.createFramebuffer()!;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, readback);
+  for (const [asset, wrap] of assets) {
+    const { texture, width: w, height: h } = image(asset);
+    if (wrap !== 'clamp' || (paper.image && assetKey(asset) === assetKey(paper.image))) continue;
+    const levels: StampTipLevel[] = [];
+    for (let level = 0; level <= Math.floor(Math.log2(Math.max(w, h))); level++) {
+      const lw = Math.max(1, w >> level), lh = Math.max(1, h >> level), texels = new Uint8Array(lw * lh * 4);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, level);
+      gl.readPixels(0, 0, lw, lh, gl.RGBA, gl.UNSIGNED_BYTE, texels);
+      levels.push({ width: lw, height: lh, rows: Array.from({ length: lh }, (_, y) => {
+        let first = -1, last = -1;
+        for (let x = 0; x < lw; x++) {
+          if (texels[(y * lw + x) * 4] === 255) continue;
+          if (first < 0) first = x;
+          last = x;
+        }
+        return first < 0 ? null : [first, last];
+      }) });
+    }
+    tipLevels.set(assetKey(asset), levels);
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.deleteFramebuffer(readback);
+  const hulls = new Map<string, StampTipHull>();
+  /** The hull `layer`'s tip is drawn in when its smallest stamp is `smallest` px across. */
+  function tipHull(layer: StampBrushLayer, smallest: number): StampTipHull {
+    const levels = tipLevels.get(assetKey(layer.tip.image))!;
+    const coarsest = coarsestStampTipLevel(levels[0], smallest, layer.tip.roundness, levels.length);
+    const key = `${assetKey(layer.tip.image)}@${coarsest}`;
+    if (!hulls.has(key)) hulls.set(key, stampTipHull(levels, coarsest));
+    return hulls.get(key)!;
+  }
 
   // Every deposit's stamps, then its dual's, in one buffer; a draw points its attributes at its own.
   const placed = new Map<CompiledStampDeposit, DepositStamps>();
   let total = 0;
   for (const group of painting.groups) for (const pass of group.passes) for (const deposit of pass.deposits) {
-    placed.set(deposit, { main: total, dual: total + deposit.stamps.length });
+    const smallest = (stamps: readonly PlacedStamp[]) => stamps.reduce((least, s) => Math.min(least, s.diameter), Infinity);
+    placed.set(deposit, { main: total, dual: total + deposit.stamps.length, smallest: smallest(deposit.stamps), smallestDual: smallest(deposit.dualStamps) });
     total += deposit.stamps.length + deposit.dualStamps.length;
   }
   const data = new Float32Array(Math.max(1, total) * STAMP_FLOATS);
@@ -278,6 +320,11 @@ export async function createStampPaintRenderer(
   gl.bindBuffer(gl.ARRAY_BUFFER, stampBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
   const stampVao = gl.createVertexArray()!;
+  // The fan's triangles, by corner: indexed, so each corner is shaded once a stamp, not once for each triangle it's in.
+  const fanBuffer = gl.createBuffer()!;
+  gl.bindVertexArray(stampVao);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, fanBuffer);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint8Array(Array.from({ length: STAMP_TIP_HULL_SIDES - 2 }, (_, i) => [0, i + 1, i + 2]).flat()), gl.STATIC_DRAW);
   const regionBuffer = gl.createBuffer()!;
   const regionVao = gl.createVertexArray()!;
   gl.bindVertexArray(regionVao);
@@ -317,7 +364,7 @@ export async function createStampPaintRenderer(
     gl.clear(gl.COLOR_BUFFER_BIT);
   };
 
-  function drawStamps(layer: StampBrushLayer, first: number, count: number, channel: readonly number[]) {
+  function drawStamps(layer: StampBrushLayer, first: number, count: number, smallest: number, channel: readonly number[]) {
     if (!count) return;
     const program = programs.stamp;
     program.use();
@@ -332,6 +379,8 @@ export async function createStampPaintRenderer(
     gl.vertexAttribDivisor(1, 1);
     gl.uniform2fv(program.uniform('resolution'), resolution);
     gl.uniform1f(program.uniform('roundness'), layer.tip.roundness);
+    const hull = tipHull(layer, smallest);
+    gl.uniform2fv(program.uniform('hull'), hull);
     gl.uniform4fv(program.uniform('channel'), channel);
     bindPaintGlTexture(gl, program, 'tip', 0, image(layer.tip.image).texture);
     const rolling = layer.grain?.mode === 'rolling' && layer.grain.depth > 0;
@@ -345,7 +394,7 @@ export async function createStampPaintRenderer(
     if (layer.accumulation === 'glaze') gl.blendEquation(gl.MAX);
     else gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_COLOR);
     gl.colorMask(channel[0] > 0, channel[1] > 0, false, false);
-    gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, count);
+    gl.drawElementsInstanced(gl.TRIANGLES, (hull.length / 2 - 2) * 3, gl.UNSIGNED_BYTE, 0, count);
     gl.colorMask(true, true, true, true);
     gl.blendEquation(gl.FUNC_ADD);
     gl.disable(gl.BLEND);
@@ -534,10 +583,10 @@ void main() { result = texelFetch(source, ivec2(gl_FragCoord.xy), 0); }`);
           clear(targets.mask, box);
           bindPaintGlTarget(gl, targets.mask, box);
           const entry = placed.get(deposit)!;
-          drawStamps(brush, entry.main, count, [1, 0, 0, 0]);
+          drawStamps(brush, entry.main, count, entry.smallest, [1, 0, 0, 0]);
           if (brush.dual) {
             bindPaintGlTarget(gl, targets.mask, box);
-            drawStamps(brush.dual, entry.dual, dualCount, [0, 1, 0, 0]);
+            drawStamps(brush.dual, entry.dual, dualCount, entry.smallestDual, [0, 1, 0, 0]);
           }
           if (blurred) blurMask(sigma, box);
           const protectOn = deposit.protectedBy.length > 0;
@@ -582,6 +631,7 @@ void main() { result = texelFetch(source, ivec2(gl_FragCoord.xy), 0); }`);
       }
       for (const { texture } of images.values()) gl.deleteTexture(texture);
       gl.deleteBuffer(stampBuffer);
+      gl.deleteBuffer(fanBuffer);
       gl.deleteBuffer(regionBuffer);
       for (const vao of [stampVao, regionVao, emptyVao]) gl.deleteVertexArray(vao);
       // Scrubbing the Studio mounts a painting per scene, and Chrome drops contexts past about 16 live ones.

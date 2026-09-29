@@ -5,7 +5,7 @@
 // around each scene and voice line are for the Studio's timeline, where they show up by name, and for mounting.
 
 import { Audio } from '@remotion/media';
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, type ReactNode } from 'react';
 import { AbsoluteFill, Artifact, Sequence, useCurrentFrame, useVideoConfig, type VideoConfig } from 'remotion';
 import { footage as footageList } from '@footage';
 import sfxCues from '@sfx-cues';
@@ -15,6 +15,7 @@ import { previsRequestFor, previsSpan, type PrevisFootage, type PrevisRequest } 
 import { PrevisFootagePlayer } from '#lib/footage/previs/studio/previs.tsx';
 import { unmeasuredAttrs } from '#lib/output/look/studio/motion-tag.ts';
 import { FrameProbe } from '#lib/output/look/studio/probe.tsx';
+import { FrameProfiler } from '#lib/output/render/studio/frame-profiler.tsx';
 import type { SceneRung } from '#lib/timing/timeline/models/scene-rung.ts';
 import { SceneContext } from './scene.tsx';
 import { randomSeedFromKey } from '#lib/picture/motion/models/random.ts';
@@ -31,6 +32,8 @@ export type VideoProps = {
   blockouts: boolean;
   /** Play the project's cue list (sfx/cues.json) whether or not the video does (`sfxCueList`), to audition it. */
   auditionSfxCueList?: boolean;
+  /** Time the work drawing code offers and log it, for `studio profile` (see frame-profiler.tsx). */
+  profile?: boolean;
 };
 
 /** What lib/output/render/engine/render-pipeline.ts needs about the timeline (for the .srt and reports), emitted once as an artifact. */
@@ -100,7 +103,7 @@ function timelineReport(video: VideoDef, tl: Timeline, { fps, width, height, dur
 
 // `reportTimeline` is off in the replay composition: its Freeze can land on frame 0 more than once, and Remotion
 // refuses a second artifact with the same name.
-export function Video({ video, captions, probe, blockouts, auditionSfxCueList = false, reportTimeline = true }: VideoProps & { video: VideoDef; reportTimeline?: boolean }) {
+export function Video({ video, captions, probe, blockouts, auditionSfxCueList = false, profile = false, reportTimeline = true }: VideoProps & { video: VideoDef; reportTimeline?: boolean }) {
   const frame = useCurrentFrame();
   const config = useVideoConfig(), { fps } = config;
   const tl = useMemo(() => layoutVideo(video), [video]);
@@ -115,7 +118,7 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
   return (
     <AbsoluteFill ref={root} style={{ background: transparent ? undefined : '#fff', overflow: 'hidden' }}>
       <SfxCueListPlaying.Provider value={playsCueList}>
-        {tl.scenes.map((scene, i) => {
+        <ProfiledScenes profile={profile}>{tl.scenes.map((scene, i) => {
           const span = visibleSpan(tl, i);
           const from = Math.floor(span.start * fps);
           const paint = painted.find((p) => p.scene === scene);
@@ -124,7 +127,7 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
               {paint && <SceneLayer scene={scene} t={t} alpha={paint.alpha} transparent={transparent} footage={blockouts ? undefined : footageFor(scene)} />}
             </Sequence>
           );
-        })}
+        })}</ProfiledScenes>
       </SfxCueListPlaying.Provider>
       {playsCueList && sfxCues && <SfxCueListAudio cues={sfxCues} />}
       {video.sounds?.map((s, i) => <Sfx key={i} sound={s.sound} at={s.at} t={t} id={s.id ?? i} volume={s.volume} />)}
@@ -143,6 +146,8 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
     </AbsoluteFill>
   );
 }
+
+const ProfiledScenes = ({ profile, children }: { profile: boolean; children: ReactNode }) => (profile ? <FrameProfiler>{children}</FrameProfiler> : children);
 
 function MusicBedAudio({ video, tl, fps }: { video: VideoDef; tl: Timeline; fps: number }) {
   const bed = video.music!;

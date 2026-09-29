@@ -11,6 +11,7 @@ import { useDelayRender } from 'remotion';
 import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
 import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
 import { unmeasuredAttrs } from '#lib/output/look/studio/motion-tag.ts';
+import { useFrameProfile } from '#lib/output/render/studio/frame-profile.ts';
 import type { CompiledStampPaint } from '../models/stamp-paint-recipe.ts';
 import type { StampPaintPaper } from '../models/style.ts';
 import { createStampPaintRenderer, type StampPaintRenderer } from './stamp-paint-renderer.ts';
@@ -35,6 +36,7 @@ export function StampPainting({ painting, paper, t, width, height, box: given }:
   const holder = useRef<HTMLDivElement>(null);
   const [renderer, setRenderer] = useState<StampPaintRenderer | null>(null);
   const { delayRender, continueRender, cancelRender } = useDelayRender();
+  const profile = useFrameProfile();
 
   // Each renderer gets a canvas of its own, made here: one whose context was given back can't be drawn on again.
   useLayoutEffect(() => {
@@ -47,7 +49,9 @@ export function StampPainting({ painting, paper, t, width, height, box: given }:
     const canvas = Object.assign(document.createElement('canvas'), { width: w, height: h });
     Object.assign(canvas.style, { position: 'absolute', inset: '0', width: '100%', height: '100%' });
     holder.current!.append(canvas);
+    const loaded = profile?.('stamp paint load');
     createStampPaintRenderer(canvas, painting, paper, w, h, stampPaintAssetUrl).then((ready) => {
+      loaded?.();
       made = ready;
       if (!live) return ready.dispose();
       flushSync(() => setRenderer(ready));
@@ -60,11 +64,17 @@ export function StampPainting({ painting, paper, t, width, height, box: given }:
       setRenderer(null);
       release();
     };
-  }, [painting, paper, w, h, delayRender, continueRender, cancelRender]);
+  }, [painting, paper, w, h, profile, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
-    renderer?.draw(t);
-  }, [renderer, t]);
+    if (!renderer) return;
+    const drawn = profile?.('stamp paint');
+    renderer.draw(t);
+    if (drawn) {
+      renderer.finish();
+      drawn();
+    }
+  }, [renderer, t, profile]);
 
   return <div ref={holder} {...unmeasuredAttrs('stamp painting')} style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h }} />;
 }

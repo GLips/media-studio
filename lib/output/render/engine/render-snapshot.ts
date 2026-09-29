@@ -2,8 +2,8 @@
 //
 // Every video render writes <name>.snapshot.json beside <name>.mp4 (or .webm, or .mov): the timeline the composition
 // laid out when it rendered, a timed project's resolved clock (its bars, beats, downbeats, cues and named moments), the
-// composition frames the file holds (a slice starts past 0), whose voice it speaks in, and on a delivered render the
-// motion its check measured. The snapshot names the render by a hash of its bytes, so a file re-rendered without one,
+// composition frames the file holds (a slice starts past 0), whose voice it speaks in, the GPU it was drawn on, and on
+// a delivered render the motion its check measured. The snapshot names the render by a hash of its bytes, so a file re-rendered without one,
 // or copied over, reads as having none rather than as the older render's.
 //
 // A reader of a render (review, `studio look --video`) goes through loadRenderSnapshot, never the project's
@@ -17,7 +17,7 @@ import type { TimelineClockTable } from '#lib/timing/timeline/models/timeline.ts
 import type { RenderVoice } from '#lib/timing/voice/models/render-voice.ts';
 import type { TimelineReport } from '#lib/picture/composition/studio/Video.tsx';
 
-export const RENDER_SNAPSHOT_VERSION = 6;
+export const RENDER_SNAPSHOT_VERSION = 7;
 
 /** Which bytes a file is: `hash` is the first 10 hex digits of its SHA-256, `modified` its mtime as ISO. */
 export type RenderFileStamp = { hash: string; modified: string };
@@ -37,6 +37,11 @@ export type RenderSnapshot = {
   clock: TimelineClockTable | null;
   /** Whose voice it speaks in, as the project's audio was when it rendered: a review raises a banner on `draft`. */
   voice: RenderVoice;
+  /**
+   * The GL renderer its frames were drawn on, as WebGL names it. Another GPU rounds a painted frame differently, so
+   * slices from two are refused a join (docs/private-styles.md).
+   */
+  gl: string;
   /** Every tracked element's motion, when the render path measured it (a delivered render's check does). */
   motion?: MotionTracks;
 };
@@ -64,14 +69,14 @@ export function renderFileStamp(file: string): RenderFileStamp {
 }
 
 /** Writes `render`'s snapshot beside it, bound to its bytes as they are now. Call once the file is final. */
-export function writeRenderSnapshot(render: string, made: Pick<RenderSnapshot, 'frames' | 'timeline' | 'clock' | 'voice' | 'motion'>): string {
-  const { frames, timeline, clock, voice, motion } = made;
+export function writeRenderSnapshot(render: string, made: Pick<RenderSnapshot, 'frames' | 'timeline' | 'clock' | 'voice' | 'gl' | 'motion'>): string {
+  const { frames, timeline, clock, voice, gl, motion } = made;
   if (!(frames.from >= 0 && frames.end > frames.from && frames.end <= timeline.durationInFrames)) {
     throw new Error(`${basename(render)}: frames ${frames.from}–${frames.end - 1} aren't within the composition's 0–${timeline.durationInFrames - 1}`);
   }
   const snapshot: RenderSnapshot = {
     version: RENDER_SNAPSHOT_VERSION, render: { file: basename(render), hash: renderFileStamp(render).hash }, frames,
-    made: new Date().toISOString(), timeline, clock, voice, ...(motion && { motion }),
+    made: new Date().toISOString(), timeline, clock, voice, gl, ...(motion && { motion }),
   };
   const path = renderSnapshotPath(render);
   writeFileSync(path, JSON.stringify(snapshot));

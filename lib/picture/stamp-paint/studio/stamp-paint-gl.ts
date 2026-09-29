@@ -109,13 +109,16 @@ export function drawPaintGlPingPong(gl: WebGL2RenderingContext, pair: PaintGlPin
 }
 
 /**
- * An image as a mipmapped texture, tiled or clamped. A grain's mean is its smallest mip, read in a shader. Tiles are
- * mirrored: the pack's grains aren't all seamless, and a mirrored tile never shows a seam.
+ * An image as a mipmapped texture, tiled or clamped, holding its red channel alone (a tip or grain, which is grey) or
+ * its colour (a paper). A tip is sampled across a frame's whole stamp area, so a quarter of the bytes is a large
+ * part of a frame's time. A grain's mean is its smallest mip, read in a shader. Tiles are mirrored: the pack's grains
+ * aren't all seamless, and a mirrored tile never shows a seam.
  */
-export function createPaintGlImageTexture(gl: WebGL2RenderingContext, image: TexImageSource, wrap: 'tile' | 'clamp'): WebGLTexture {
+export function createPaintGlImageTexture(gl: WebGL2RenderingContext, image: TexImageSource, wrap: 'tile' | 'clamp', channels: 'red' | 'colour'): WebGLTexture {
   const texture = gl.createTexture()!;
   gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, image);
+  if (channels === 'red') gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, gl.RED, gl.UNSIGNED_BYTE, image);
+  else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, image);
   gl.generateMipmap(gl.TEXTURE_2D);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);

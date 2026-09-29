@@ -1,0 +1,55 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { stampTipHull, type StampTipLevel } from './stamp-tip-hull.ts';
+
+/** A tip `size` texels across painting an off-centre disc, and its levels down to one texel, each halving the disc. */
+function discTip(size: number): StampTipLevel[] {
+  const levels: StampTipLevel[] = [];
+  for (let w = size; w >= 1; w >>= 1) {
+    const cx = w * 0.4, cy = w * 0.55, r = Math.max(0.5, w * 0.3);
+    levels.push({ width: w, height: w, rows: Array.from({ length: w }, (_, y) => {
+      const half = Math.sqrt(Math.max(0, r * r - (y + 0.5 - cy) ** 2));
+      return half > 0 ? [Math.max(0, Math.floor(cx - half)), Math.min(w - 1, Math.ceil(cx + half) - 1)] : null;
+    }) });
+  }
+  return levels;
+}
+
+const inside = (hull: Float32Array, x: number, y: number) => {
+  for (let i = 0; i < hull.length; i += 2) {
+    const [ax, ay, bx, by] = [hull[i], hull[i + 1], hull[(i + 2) % hull.length], hull[(i + 3) % hull.length]];
+    if ((bx - ax) * (y - ay) - (by - ay) * (x - ax) < -1e-6) return false;
+  }
+  return true;
+};
+
+test('a tip\'s hull holds every texel a stamp can sample paint from, within the square, and folds nowhere', () => {
+  const levels = discTip(64);
+  for (const coarsest of [0, 2, 4]) {
+    const hull = stampTipHull(levels, coarsest);
+    for (const level of levels.slice(0, coarsest + 1)) {
+      level.rows.forEach((span, y) => {
+        if (!span) return;
+        // A bilinear sample reaches paint from a texel's neighbours: the texel grown by one, where it's in the tip.
+        for (const x of [span[0] - 1, span[1] + 2]) for (const v of [y - 1, y + 2]) {
+          const u = Math.min(1, Math.max(0, x / level.width)), w = Math.min(1, Math.max(0, v / level.height));
+          assert.ok(inside(hull, u, w), `level ${level.width}: ${u},${w} is outside the hull for coarsest ${coarsest}`);
+        }
+      });
+    }
+    for (const corner of hull) assert.ok(corner >= 0 && corner <= 1);
+    // Strictly convex, counter-clockwise: a fan over it covers each pixel once.
+    for (let i = 0; i < hull.length; i += 2) {
+      const n = hull.length;
+      const [ax, ay, bx, by, cx, cy] = [hull[i], hull[i + 1], hull[(i + 2) % n], hull[(i + 3) % n], hull[(i + 4) % n], hull[(i + 5) % n]];
+      assert.ok((bx - ax) * (cy - ay) - (by - ay) * (cx - ax) > 0);
+    }
+  }
+  // Paint at the finest level only fills part of the square; the coarsest level's one texel fills all of it.
+  assert.ok(!inside(stampTipHull(levels, 0), 0.02, 0.02));
+  assert.ok(inside(stampTipHull(levels, levels.length - 1), 0.02, 0.02));
+});
+
+test('a bare tip is drawn as its whole square', () => {
+  assert.deepEqual([...stampTipHull([{ width: 4, height: 4, rows: [null, null, null, null] }], 0)], [0, 0, 1, 0, 1, 1, 0, 1]);
+});
