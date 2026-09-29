@@ -57,7 +57,25 @@ const sheetBrushesCommand = defineCommand({
   },
 });
 
+const probesBrushesCommand = defineCommand({
+  meta: {
+    name: 'probes',
+    description: "Write the probe brushes, a .brushset that reads Procreate's renderer out one setting at a time (lib/picture/stamp-paint/models/procreate-probes.ts), each written over a single brush from a pack you own. Round-trip it through Procreate as docs/procreate-probes.md says, then import what comes back as a pack of its own and draw its sheet. Prints each probe and what its preview reads out.",
+  },
+  args: {
+    archive: { type: 'string', required: true, description: 'A pack holding the template brush: a .brushset, or the zip holding one' },
+    brush: { type: 'string', required: true, valueHint: 'Smooth Ink Pen', description: 'The template brush, by its name in the pack: a single brush, not a dual' },
+    out: { type: 'string', required: true, valueHint: 'studio-probes.brushset', description: 'Where to write the .brushset' },
+  },
+  async run({ args }) {
+    const { writeProcreateProbeBrushset } = await import('#lib/picture/stamp-paint/engine/procreate-probe-brushset.ts');
+    const probes = writeProcreateProbeBrushset({ archive: args.archive, brush: args.brush, out: args.out });
+    for (const probe of probes) console.log(`${probe.name}: ${probe.reads}`);
+    console.error(`brushes probes: ${probes.length} probes in ${args.out}`);
+  },
+});
+
 export default defineCommand({
   meta: { name: 'brushes', description: "A private style's brush assets, imported from packs you bought" },
-  subCommands: { import: importBrushesCommand, sheet: sheetBrushesCommand },
+  subCommands: { import: importBrushesCommand, sheet: sheetBrushesCommand, probes: probesBrushesCommand },
 });

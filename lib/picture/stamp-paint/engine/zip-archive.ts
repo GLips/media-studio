@@ -1,10 +1,11 @@
 // zip-archive.ts: reads entries out of a zip (a Procreate .brushset, .swatches or .procreate is one, and packs come as
 // zips of those) without unpacking it, from a file on disk or from bytes already read. Stored and deflated entries.
+// Writes one too, every entry stored, for the probe brushes (procreate-probe-brushset.ts).
 //
 // Negative space: no Zip64 or encryption. A pack's archives stay well under 4 GB; one that doesn't is refused by name.
 
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs';
-import { inflateRawSync } from 'node:zlib';
+import { crc32, inflateRawSync } from 'node:zlib';
 
 export type ZipArchive = {
   /** Every entry's path, directories and macOS resource forks (`__MACOSX/`) left out. */
@@ -62,4 +63,42 @@ export function openZipBytes(label: string, bytes: Buffer): ZipArchive {
     return bytes.subarray(at, at + length);
   };
   return openZip(label, bytes.byteLength, readAt, () => {});
+}
+
+/** A zip of `entries`, in order, each stored uncompressed: a brush set's PNGs are compressed already. */
+export function writeZipArchive(entries: readonly { name: string; data: Uint8Array }[]): Buffer {
+  const locals: Buffer[] = [], centrals: Buffer[] = [];
+  let at = 0;
+  for (const { name, data } of entries) {
+    const path = Buffer.from(name, 'utf8'), crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    // Bit 11: the name is UTF-8.
+    local.writeUInt16LE(0x0800, 6);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(path.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0x0800, 8);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(path.length, 28);
+    central.writeUInt32LE(at, 42);
+    locals.push(local, path, Buffer.from(data.buffer, data.byteOffset, data.byteLength));
+    centrals.push(central, path);
+    at += 30 + path.length + data.length;
+  }
+  const directory = Buffer.concat(centrals), end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(directory.length, 12);
+  end.writeUInt32LE(at, 16);
+  return Buffer.concat([...locals, directory, end]);
 }
