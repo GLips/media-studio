@@ -11,8 +11,8 @@
   `npm run test:workspace`.
 - `lib/` has three positions: `lib/models/` (pure, loads in plain Node), `lib/studio/` (renders in the browser) and
   `lib/engine/` (Node-side machinery). Each holds domain subfolders only, plus `lib/studio/api.ts`, which projects
-  import as `#studio`. `lib/sfx/` and `lib/paint/` are still to be split into them. An import into a `lib/<folder>` from
-  outside it uses its alias (`#models/*`, `#studio/*`, `#engine/*`, `#sfx/*`, `#paint/*`), never a relative path;
+  import as `#studio`. `lib/sfx/` is still to be split into them. An import into a `lib/<folder>` from
+  outside it uses its alias (`#models/*`, `#studio/*`, `#engine/*`, `#sfx/*`), never a relative path;
   `node lint/rewrite-lib-imports.ts` rewrites any that slip in.
 - Start a project with `studio new <slug> --capability <music-led|voice-led|mixed|silent|still-only>`. It passes every check
   from its first commit; a new project isn't baselined, so a violation in it blocks.

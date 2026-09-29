@@ -98,8 +98,8 @@ Scenes import the studio's conveniences from `#studio` (`lib/studio/api.ts`), an
   `~/.cache/media-studio`), aligned to the script.
 - `lib/models/voice/voice-take.ts`: where to cut a take into lines, and the pauses the read left between them.
 - `lib/models/music/music-beats.ts`: the tempo and beats of a music track.
-- `lib/paint/`: drawn layers (p5 sketches) inside scenes, with a watercolour style ported from p5.brush. See the
-  `video-canvas` skill. `studio repeatable` proves a drawn layer is a pure function of time.
+- Painted layers are being rebuilt as stamp painting and have no style yet; see the `video-canvas` skill.
+  `studio repeatable` proves a drawn layer is a pure function of time.
 - `web/`: the studio app behind `studio review`, on TanStack Start, Mantine and StyleX, served in-process
   by Vite (`lib/engine/web/studio-app-server.ts`). It reaches `lib/engine` only through
   `web/src/infrastructure/studio-engine.server.ts`.

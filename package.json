@@ -24,7 +24,6 @@
   "imports": {
     "#engine/*": "./lib/engine/*",
     "#models/*": "./lib/models/*",
-    "#paint/*": "./lib/paint/*",
     "#sfx/*": "./lib/sfx/*",
     "#studio": "./lib/studio/api.ts",
     "#studio/*": "./lib/studio/*",
@@ -75,8 +74,6 @@
     "effect": "4.0.0-rc.111",
     "esbuild": "0.28.1",
     "lucide-react": "1.41.0",
-    "p5": "2.3.3",
-    "p5.brush": "2.2.2",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "remotion": "4.0.525",

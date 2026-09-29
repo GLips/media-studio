@@ -4,7 +4,7 @@
 // studio drives a browser, a renderer or ffmpeg has one place to land. Packages
 // are matched by import; binaries by the string that names them to a spawn.
 //
-// Negative space: three and p5 aren't contained (§5.4), and shell or Python
+// Negative space: three isn't contained (§5.4), and shell or Python
 // tools calling ffmpeg are invisible to the lint tiers (§4).
 
 export type SdkOwner = { sdk: string; owner: string; packages?: readonly string[]; binaries?: readonly string[] };

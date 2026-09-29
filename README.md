@@ -12,7 +12,6 @@ frame is code, and a note like "hold that shot longer" is an edit and a re-rende
   customer, then zooms and highlights exactly the element each line is about.
 - **Your product's real UI**, composed from your repo's own React components rather than screenshots of them.
 - **Voiced explainers**, with each beat landing on its word, and **ads and teasers cut to music**, on the beat.
-- **Painted and hand-drawn looks**: watercolour openings, ink circled around a price, brush wipes between scenes.
 - **Generated images, music and footage** for what no capture can show, with each shot blocked out and approved
   before anything is paid for.
 - **Stills**: OG images, YouTube thumbnails and social posts at every size, each checked for text that's cut off,

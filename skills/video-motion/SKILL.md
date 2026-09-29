@@ -10,7 +10,7 @@ Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it.
 ## What a scene can be
 
 A scene may render any React whose output depends only on its time, fixed inputs and seed: DOM, SVG, canvas, three.js,
-p5, video, your own components. Remotion renders frames independently, out of order and several tabs at once, so
+video, your own components. Remotion renders frames independently, out of order and several tabs at once, so
 nothing may carry over from the frame before (no counters, no `Math.random()`, no stepped physics), and anything that
 loads (an image, a font, a model, a texture) must finish before the frame is captured (`<Img>`, `delayRender`).
 Randomness comes from `seededRandom` / `hashRandom` (`lib/models/motion/random.ts`).

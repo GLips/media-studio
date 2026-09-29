@@ -7,8 +7,8 @@
 import { openBrowser, type HeadlessBrowser } from '@remotion/renderer';
 
 /**
- * Every render's browser runs on the GPU. Painted layers (lib/paint) draw with WebGL, which Remotion's default
- * software renderer makes crawl.
+ * Every render's browser runs on the GPU. Three scenes (film, previs, reel) draw with WebGL, which Remotion's
+ * default software renderer makes crawl.
  */
 export const RENDER_CHROMIUM = { gl: 'angle' } as const;
 

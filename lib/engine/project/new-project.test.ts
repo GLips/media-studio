@@ -88,7 +88,7 @@ describe('studio new', { concurrency: true }, () => {
 
         writeFileSync(join(studio, 'tsconfig.scaffold.json'), JSON.stringify({
           extends: './tsconfig.json',
-          include: ['types.d.ts', 'lib/engine/bundle/host-modules.d.ts', 'lib/paint/p5-modules.d.ts', projectDir, 'work/brands/*/brand.ts'],
+          include: ['types.d.ts', 'lib/engine/bundle/host-modules.d.ts', projectDir, 'work/brands/*/brand.ts'],
         }));
         const types = await outcome(studio, join(studio, 'node_modules/.bin/tsc'), ['-p', 'tsconfig.scaffold.json']);
         assert.equal(types.code, 0, types.output);

@@ -5,7 +5,7 @@ import { openStudioRenderSession, studioProjectArg } from '../project-arg.ts';
 export default defineCommand({
   meta: {
     name: 'repeatable',
-    description: "Render chosen times alone, then again in other orders and among other frames, and fail if any differ. Run it on a new painted style (lib/paint): its randomness must be seeded.",
+    description: "Render chosen times alone, then again in other orders and among other frames, and fail if any differ. Run it on anything drawn with randomness (a painted or generative layer): it must be seeded.",
   },
   args: {
     project: studioProjectArg,

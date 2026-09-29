@@ -15,7 +15,7 @@
 //
 // Negative space: the rest of §2's allowed side (a project's picture reaching
 // only `#studio`, `#models/*` and its own files) isn't held yet: a project may
-// still import `#paint/*`, `#sfx/*` and `#studio/*` behind the barrel.
+// still import `#sfx/*` and `#studio/*` behind the barrel.
 
 import { libFolderCrossedTo, STUDIO_WORKSPACE_MOUNT, type StudioPosition } from '../../policy/studio-tree.ts';
 import type { Finding, StructuralCheck } from '../check-context.ts';
