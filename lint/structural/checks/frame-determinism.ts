@@ -2,7 +2,8 @@
 //
 // A frame is a function of its time, so code that can reach pixels reads no ambient randomness or clock:
 // `Math.random`, `crypto.getRandomValues` and `randomUUID`, `Date.now`, a bare `new Date()` or `Date()`,
-// `performance.now`, however reached (through `globalThis`, destructured). Seed randomness with
+// `performance.now` or `timeOrigin`, `process.hrtime`, however reached (through `globalThis`, destructured, an alias
+// of `Math`). Seed randomness with
 // lib/picture/motion/models/random.ts; take time from the scene.
 //
 // Held: lib's `models` and `studio` code, private styles, and a project's scenes, helpers, models, shared modules,
@@ -20,9 +21,15 @@ const AMBIENT: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   Math: { random: 'seed it: seededRandom or hashRandom' },
   crypto: { getRandomValues: 'seed it: seededRandom or hashRandom', randomUUID: 'use an ID the author writes' },
   Date: { now: "use the scene's time" },
-  performance: { now: "use the scene's time; time a render from engine code" },
+  performance: { now: "use the scene's time; time a render from engine code", timeOrigin: "use the scene's time" },
+  process: { hrtime: "use the scene's time; time a render from engine code" },
 };
-const GLOBAL_OBJECTS = new Set(['globalThis', 'window', 'self']);
+const GLOBAL_OBJECTS = new Set(['globalThis', 'window', 'self', 'global']);
+/** Nodes that are only types, erased before anything runs: `ReturnType<typeof Date.now>` reads nothing. */
+const TYPE_ONLY = new Set([
+  'TSTypeAnnotation', 'TSTypeAliasDeclaration', 'TSInterfaceDeclaration', 'TSTypeQuery', 'TSTypeReference',
+  'TSTypeParameterInstantiation', 'TSTypeParameterDeclaration', 'TSDeclareFunction', 'TSImportType',
+]);
 
 const PIXEL_PROJECT_ROLES = new Set(['scene', 'scene-helper', 'model', 'shared', 'timeline', 'video', 'stills', 'brand']);
 const reachesPixels = (position: StudioPosition) =>
@@ -69,12 +76,18 @@ function propertyName(member: AstNode): string | undefined {
 function ambientReadsIn(program: unknown): { construct: string; instead: string; offset: number }[] {
   const found: { construct: string; instead: string; offset: number }[] = [];
   walkAst(program, (node) => {
-    // Types are erased: `ReturnType<typeof Date.now>` reads nothing.
-    if (node.type.startsWith('TS') && !node.type.endsWith('Expression')) return false;
+    if (TYPE_ONLY.has(node.type)) return false;
     if (node.type === 'MemberExpression') {
       const owner = globalNamed(node.object as AstNode), name = propertyName(node);
       const instead = owner !== undefined && name !== undefined ? AMBIENT[owner]?.[name] : undefined;
       if (instead) found.push({ construct: `${owner}.${name}`, instead, offset: node.start });
+    }
+    // const M = Math, whose M.random() this check can't follow.
+    if (node.type === 'VariableDeclarator' && node.init && (node.id as AstNode).type === 'Identifier') {
+      const owner = globalNamed(node.init as AstNode);
+      if (owner !== undefined && owner !== 'Date' && AMBIENT[owner]) {
+        found.push({ construct: `${owner} aliased`, instead: `name ${owner}'s members where they're used, so each read is checked`, offset: node.start });
+      }
     }
     // const { random } = Math
     if (node.type === 'VariableDeclarator' && (node.id as AstNode).type === 'ObjectPattern' && node.init) {

@@ -12,6 +12,10 @@ test('ambient randomness and clocks are caught however they are reached, in code
       'const now = new Date();', 'const stamp = Date();', 'const bytes = window.crypto.getRandomValues(new Uint8Array(4));',
     ].join('\n'),
     'work/styles/ink/style.ts': 'export const seed = performance.now();\n',
+    // Adversarial: an alias, Node's `global`, a clock inside an enum, which runs.
+    'lib/picture/stamp-paint/studio/paint.ts': [
+      'const M = Math;', 'export const r = M.random();', 'const t = global.performance.timeOrigin;', 'enum Seed { At = Date.now() }',
+    ].join('\n'),
     'work/projects/p/scenes/intro/sky.ts': 'export const jitter = () => Math.random();\n',
     // Legal neighbours: a date from an argument, a seeded stream, an erased type, and an unrelated `now`.
     'lib/picture/motion/models/when.ts': [
@@ -30,6 +34,9 @@ test('ambient randomness and clocks are caught however they are reached, in code
     'lib/picture/stamp-paint/models/recipe.ts:crypto.randomUUID',
     'lib/picture/stamp-paint/models/recipe.ts:new Date()',
     'lib/picture/stamp-paint/models/recipe.ts:performance.now',
+    'lib/picture/stamp-paint/studio/paint.ts:Date.now',
+    'lib/picture/stamp-paint/studio/paint.ts:Math aliased',
+    'lib/picture/stamp-paint/studio/paint.ts:performance.timeOrigin',
     'work/projects/p/scenes/intro.tsx:Date.now',
     'work/projects/p/scenes/intro.tsx:Math.random',
     'work/projects/p/scenes/intro/sky.ts:Math.random',
