@@ -495,7 +495,8 @@ export async function joinVideoSlices(session: RenderSession, { dir, out }: { di
  * drawing deferred to the next frame).
  *
  * Equal means over 50 dB PSNR, since a GPU scene may round differently from one draw to the next; each frame says
- * whether it was identical, which a stamp painting must be (docs/private-styles.md says why).
+ * whether it was identical, which a stamp painting must be (docs/private-styles.md says why). Every capture is a PNG,
+ * so identical means the same pixels: a JPEG's quantizing can hide a ±1 difference.
  */
 export async function checkFramesRepeatable(session: RenderSession, times: number[]): Promise<{ ok: boolean; report: string[] }> {
   if (!times.length || times.some((t) => !Number.isFinite(t))) throw new Error('give times in seconds, e.g. 2,8.5');
@@ -507,7 +508,7 @@ export async function checkFramesRepeatable(session: RenderSession, times: numbe
   const inVideo = (f: number) => f >= 0 && f < durationInFrames;
   const worst = await withStudioTemp('repeatable', async (dir) => {
     const fresh = new Map<number, Awaited<ReturnType<typeof session.renderStills>>>();
-    for (const [i, f] of frames.entries()) fresh.set(f, await session.renderStills(join(dir, `fresh-${i}`), [f]));
+    for (const [i, f] of frames.entries()) fresh.set(f, await session.renderStills(join(dir, `fresh-${i}`), [f], { lossless: true }));
     // A render's tabs each draw every Nth frame, N its worker count, so each time also comes after runs of those.
     const runUpTo = (f: number, every: number) => [3, 2, 1].map((k) => f - k * every).filter((g) => g >= 0);
     const order = [
@@ -517,7 +518,7 @@ export async function checkFramesRepeatable(session: RenderSession, times: numbe
     ];
     const replay = await session.renderReplay(join(dir, 'replay'), order);
     const tabs = Math.max(2, session.workersFor(composition));
-    const together = await session.renderStills(join(dir, 'together'), frames.flatMap((f) => [-2, -1, 0, 1, 2].map((d) => f + d)).filter(inVideo), { tabs });
+    const together = await session.renderStills(join(dir, 'together'), frames.flatMap((f) => [-2, -1, 0, 1, 2].map((d) => f + d)).filter(inVideo), { tabs, lossless: true });
     const worst = new Map<number, number>();
     const compare = (f: number, file: string) => {
       const { stderr } = measureWithFfmpeg(['-i', fresh.get(f)!.fileFor(f), '-i', file, '-lavfi', 'psnr', '-f', 'null', '-']);

@@ -103,13 +103,14 @@ export async function openRenderSession(project: string, { workers }: { workers?
     return result;
   }
 
-  async function renderJpegs(dir: string, composition: VideoConfig, inputProps: Record<string, unknown>, frames: number[], browser: HeadlessBrowser, { w = composition.width, concurrency = workersFor(composition) } = {}) {
+  async function renderFrameImages(dir: string, composition: VideoConfig, inputProps: Record<string, unknown>, frames: number[], browser: HeadlessBrowser, { w = composition.width, concurrency = workersFor(composition), lossless = false } = {}) {
     mkdirSync(dir, { recursive: true });
     await renderFrames({
-      composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, inputProps, outputDir: dir, imageFormat: 'jpeg', jpegQuality: 90, scale: w / composition.width, frames,
+      composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, inputProps, outputDir: dir, scale: w / composition.width, frames,
+      ...(lossless ? { imageFormat: 'png' } : { imageFormat: 'jpeg', jpegQuality: 90 }),
       concurrency, imageSequencePattern: 'f-[frame].[ext]', onStart: () => {}, onFrameUpdate: () => {},
     });
-    const files = readdirSync(dir).filter((f) => /\.jpe?g$/.test(f));
+    const files = readdirSync(dir).filter((f) => /\.(jpe?g|png)$/.test(f));
     if (files.length !== frames.length) throw new Error(`rendered ${files.length} of ${frames.length} stills`);
     // renderFrames pads the frame number to the composition's length, so match by value.
     const byFrame = new Map(files.map((f) => [Number(/f-(\d+)/.exec(f)![1]), join(dir, f)]));
@@ -119,24 +120,26 @@ export async function openRenderSession(project: string, { workers }: { workers?
   /**
    * Renders chosen frames as JPEGs `w` wide (the video's own width unless given) into `dir`, a new or empty folder the
    * caller owns, in `tabs` at once (the render's, unless given); returns each frame's file. Repeats are rendered once.
+   * `lossless` writes PNGs, for comparing frames: JPEG can round a ±1 difference away.
    */
-  function renderStills(dir: string, wanted: number[], { w, captions = false, tabs }: { w?: number; captions?: boolean; tabs?: number } = {}) {
+  function renderStills(dir: string, wanted: number[], { w, captions = false, tabs, lossless }: { w?: number; captions?: boolean; tabs?: number; lossless?: boolean } = {}) {
     const inputProps = props({ captions });
     return inBrowser('stills', async (browser) => {
       const composition = await compositionFor(inputProps, browser);
-      return renderJpegs(dir, composition, inputProps, [...new Set(wanted)], browser, { w, concurrency: tabs ?? workersFor(composition) });
+      return renderFrameImages(dir, composition, inputProps, [...new Set(wanted)], browser, { w, concurrency: tabs ?? workersFor(composition), lossless });
     });
   }
 
   /**
    * Renders the video's frames in `order`, one after another in a single tab, so each has the history it's given, into
-   * `dir`, a new or empty folder the caller owns. `fileFor(i)` is the render of order[i].
+   * `dir`, a new or empty folder the caller owns, as PNGs, to compare with stills rendered `lossless`. `fileFor(i)` is
+   * the render of order[i].
    */
   function renderReplay(dir: string, order: number[]) {
     const inputProps: ReplayProps = { ...props(), order };
     return inBrowser('replay', async (browser) => {
       const composition = await selectComposition({ serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, id: replaySlug(project), inputProps });
-      return renderJpegs(dir, composition, inputProps, order.map((_, i) => i), browser, { concurrency: 1 });
+      return renderFrameImages(dir, composition, inputProps, order.map((_, i) => i), browser, { concurrency: 1, lossless: true });
     });
   }
 
