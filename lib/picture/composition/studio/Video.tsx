@@ -1,5 +1,5 @@
 // Video.tsx: a project's video as a composition: its scenes (crossfading where they meet), its voice lines, the
-// caption, and the reports lib/output/render/engine/render-pipeline.ts reads back.
+// captions in its style, and the reports lib/output/render/engine/render-pipeline.ts reads back.
 //
 // Painting is decided from the composition's frame alone (scenesAtFrame), exactly as the timeline lays it out. The Sequences
 // around each scene and voice line are for the Studio's timeline, where they show up by name, and for mounting.
@@ -9,7 +9,6 @@ import { useMemo, useRef, type ReactNode } from 'react';
 import { AbsoluteFill, Artifact, Sequence, useCurrentFrame, useVideoConfig, type VideoConfig } from 'remotion';
 import { footage as footageList } from '@footage';
 import sfxCues from '@sfx-cues';
-import { Caption } from './captions.tsx';
 import { levelGain, musicBedGainAt, VOICE_LUFS } from '#lib/timing/sound/models/mix.ts';
 import { previsRequestFor, previsSpan, type PrevisFootage, type PrevisRequest } from '#lib/footage/previs/studio/previs.ts';
 import { PrevisFootagePlayer } from '#lib/footage/previs/studio/previs.tsx';
@@ -22,6 +21,11 @@ import { randomSeedFromKey } from '#lib/picture/motion/models/random.ts';
 import { Sfx, SfxCueListAudio, SfxCueListPlaying } from '#lib/timing/sound/studio/sfx.tsx';
 import { sceneClockAt, sceneTimes, scenesAtFrame } from '#lib/timing/timeline/models/video-layout.ts';
 import { laidVideoOf, videoFormatOf, type LaidScene, type LaidVideo, type VideoDef } from './timeline.ts';
+import { BurnedCaptions, burnedCaptionPages, CaptionBandContext, sidecarCaptionPages } from '#lib/picture/captions/studio/caption-style.tsx';
+import { captionsToSrt, captionsToVtt } from '#lib/picture/captions/models/caption-sidecar.ts';
+import { captionTrackOfVoice, type CaptionTrack } from '#lib/picture/captions/models/caption-track.ts';
+import { pillCaptions } from '#lib/picture/captions/studio/pill-captions.tsx';
+import type { CaptionStyle } from '#lib/picture/captions/studio/caption-style.tsx';
 import { VideoTransparentContext } from './video-format.ts';
 
 export type VideoProps = {
@@ -37,7 +41,7 @@ export type VideoProps = {
   profile?: boolean;
 };
 
-/** What lib/output/render/engine/render-pipeline.ts needs about the timeline (for the .srt and reports), emitted once as an artifact. */
+/** What lib/output/render/engine/render-pipeline.ts needs about the timeline (for the sidecar and reports), emitted once as an artifact. */
 export type TimelineReport = {
   title: string;
   fps: number;
@@ -55,7 +59,9 @@ export type TimelineReport = {
    */
   scenes: { id: string; from: number; to: number; visible: { from: number; to: number }; start: number; dur: number; note?: string; rung?: SceneRung; lines: readonly string[]; previs?: PrevisRequest }[];
   /** Each voice line, with every word as it's spoken (spread by length over an estimated line), in video seconds. */
-  cues: { id: string; start: number; end: number; captionEnd: number; text: string; voiced: boolean; words: { text: string; start: number; end: number }[] }[];
+  cues: { id: string; start: number; end: number; text: string; voiced: boolean; words: { text: string; start: number; end: number }[] }[];
+  /** The captions as .srt and .vtt, paged by the style's sidecar rule; null for a video with nothing to caption. */
+  captions: { srt: string; vtt: string } | null;
   /** Where one scene dissolves into the next, in video seconds; a hard cut has none. */
   crossfades: { from: string; to: string; start: number; end: number }[];
   /** Each scene's `expect`, in video seconds. */
@@ -69,8 +75,19 @@ export type TimelineReport = {
 export type TimelineExpectation = { scene: string; start: number; end: number } & ({ see: string } | { hold: string; for: number; within?: number });
 export const TIMELINE_ARTIFACT = 'timeline.json';
 
+// Here, not in timeline.ts, which plain Node loads: a style is React.
+const HOUSE_CAPTIONS = pillCaptions();
 
-function timelineReport(video: VideoDef, tl: LaidVideo, { fps, width, height, durationInFrames }: VideoConfig, sfxCueList: boolean): string {
+/** The video's caption style and what it captions: its table, or its voiced lines. */
+export function videoCaptionsOf(video: VideoDef): { style: CaptionStyle; track: CaptionTrack } {
+  const { style = HOUSE_CAPTIONS, table } = video.captions ?? {};
+  if (table && Object.keys(video.voice).length) throw new Error('the video has a voice and a caption table: a voiced video captions its lines, so drop the table');
+  return { style, track: table ?? captionTrackOfVoice(video.timeline, video.voice) };
+}
+
+
+function timelineReport(video: VideoDef, tl: LaidVideo, { fps, width, height, durationInFrames }: VideoConfig, sfxCueList: boolean, captions: { style: CaptionStyle; track: CaptionTrack }): string {
+  const sidecar = captions.track.length ? sidecarCaptionPages(captions.style, captions.track, { width, height }) : null;
   const report: TimelineReport = {
     title: video.title,
     fps,
@@ -82,11 +99,12 @@ function timelineReport(video: VideoDef, tl: LaidVideo, { fps, width, height, du
     scenes: tl.scenes.map((scene) => ({
       id: scene.id, from: scene.from, to: scene.to, visible: scene.visible, start: scene.start, dur: scene.dur, note: scene.note, rung: scene.rung, lines: Object.keys(scene.spans), previs: previsRequestFor(tl, scene),
     })),
-    cues: tl.cues.map(({ id, start, end, captionEnd, text, src }) => {
+    cues: tl.cues.map(({ id, start, end, text, src }) => {
       const scene = tl.scenes.find((sc) => id in sc.spans)!, span = scene.spans[id];
       const words = span.words.map((w) => ({ text: w.text, start: scene.start + span.start + w.start, end: scene.start + span.start + w.end }));
-      return { id, start, end, captionEnd, text, voiced: src !== null, words };
+      return { id, start, end, text, voiced: src !== null, words };
     }),
+    captions: sidecar && { srt: captionsToSrt(sidecar), vtt: captionsToVtt(sidecar) },
     crossfades: tl.scenes.flatMap((scene, i) => (scene.xfade ? [{
       from: tl.scenes[i - 1].id, to: scene.id, start: scene.start - scene.xfade / 2, end: scene.start + scene.xfade / 2,
     }] : [])),
@@ -113,6 +131,8 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
   const config = useVideoConfig(), { fps } = config;
   const tl = useMemo(() => laidVideoOf(video), [video]);
   const { transparent } = useMemo(() => videoFormatOf(video), [video]);
+  const captioned = useMemo(() => videoCaptionsOf(video), [video]);
+  const pages = useMemo(() => burnedCaptionPages(captioned.style, captioned.track, config), [captioned, config.width, config.height]);
   const root = useRef<HTMLDivElement>(null);
   const t = frame / fps;
   const painted = scenesAtFrame(tl, frame);
@@ -122,6 +142,7 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
 
   return (
     <AbsoluteFill ref={root} style={{ background: transparent ? undefined : '#fff', overflow: 'hidden' }}>
+      <CaptionBandContext value={captioned.style.band}>
       <SfxCueListPlaying.Provider value={playsCueList}>
         <ProfiledScenes profile={profile}>{tl.scenes.map((scene, k) => {
           const paint = painted.find((p) => p.k === k);
@@ -132,6 +153,7 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
           );
         })}</ProfiledScenes>
       </SfxCueListPlaying.Provider>
+      </CaptionBandContext>
       {playsCueList && sfxCues && <SfxCueListAudio cues={sfxCues} />}
       {video.sounds?.map((s, i) => <Sfx key={i} sound={s.sound} at={s.at} t={t} id={s.id ?? i} volume={s.volume} />)}
       {tl.cues.map((cue) =>
@@ -143,8 +165,8 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
         ) : null,
       )}
       {video.music && <MusicBedAudio video={video} tl={tl} fps={fps} />}
-      {captions && <Caption cues={tl.cues} t={t} />}
-      {reportTimeline && frame === 0 && <Artifact filename={TIMELINE_ARTIFACT} content={timelineReport(video, tl, config, playsCueList)} />}
+      {captions && <BurnedCaptions style={captioned.style} pages={pages} t={t} />}
+      {reportTimeline && frame === 0 && <Artifact filename={TIMELINE_ARTIFACT} content={timelineReport(video, tl, config, playsCueList, captioned)} />}
       {probe && <FrameProbe root={root} />}
     </AbsoluteFill>
   );
@@ -192,7 +214,7 @@ export function BlockoutSolo({ video, scene: sceneId }: BlockoutSoloProps & { vi
   const tl = useMemo(() => laidVideoOf(video), [video]);
   const scene = tl.scenes.find((s) => s.id === sceneId)!;
   const { from } = previsSpan(tl, sceneId);
-  return <SceneLayer scene={scene} t={scene.start + from + frame / fps} alpha={1} />;
+  return <CaptionBandContext value={videoCaptionsOf(video).style.band}><SceneLayer scene={scene} t={scene.start + from + frame / fps} alpha={1} /></CaptionBandContext>;
 }
 
 // A component of its own so a scene's render can call hooks.

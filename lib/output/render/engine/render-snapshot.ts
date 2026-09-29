@@ -17,7 +17,7 @@ import type { TimelineClockTable } from '#lib/timing/timeline/models/timeline.ts
 import type { RenderVoice } from '#lib/timing/voice/models/render-voice.ts';
 import type { TimelineReport } from '#lib/picture/composition/studio/Video.tsx';
 
-export const RENDER_SNAPSHOT_VERSION = 9;
+export const RENDER_SNAPSHOT_VERSION = 10;
 
 /** Which bytes a file is: `hash` is the first 10 hex digits of its SHA-256, `modified` its mtime as ISO. */
 export type RenderFileStamp = { hash: string; modified: string };

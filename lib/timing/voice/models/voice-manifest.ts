@@ -15,7 +15,12 @@ export type VoiceTake = {
 export type VoiceLine = VoiceTake & {
   /** An imported WAV, or null for a line timed by `studio voice --read=estimate` that has no audio yet. */
   src: string | null;
+  /** What's said, as spokenText gives it. */
   text: string;
+  /** How it's captioned, as captionMarkup gives it: `*emphasis*` and `` `keycaps` ``, a word for each of `words`. */
+  caption: string;
+  /** voiceover.json's `"paragraph": true`: it starts a new paragraph of the read, so no caption page runs into it. */
+  paragraph: boolean;
   /** Integrated loudness as it plays in the mix; null for an estimated line. */
   lufs: number | null;
 };

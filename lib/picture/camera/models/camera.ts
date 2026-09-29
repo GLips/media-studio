@@ -6,7 +6,8 @@
 // panel is a screen box showing a capture through its own camera (half of a before/after, a phone screen); the whole
 // frame is the default panel.
 
-import { captionFreeRect, fullFrameRect, type FrameSize } from '#lib/picture/frame/models/frame.ts';
+import { captionFreeRect, type CaptionBandRule } from '#lib/picture/captions/models/caption-band.ts';
+import { fullFrameRect, type FrameSize } from '#lib/picture/frame/models/frame.ts';
 import { clamp, lerp, seg } from '#lib/picture/motion/models/motion.ts';
 
 export type Point = { x: number; y: number };
@@ -60,6 +61,8 @@ type FitOptions = {
   /** Page-pixel nudge after fitting. */
   dx?: number;
   dy?: number;
+  /** The video's caption style's band (`style.band`), when it isn't the pill's. */
+  captionBand?: CaptionBandRule;
 };
 
 /**
@@ -67,8 +70,8 @@ type FitOptions = {
  * `maxZoom`, never zoomed out past the box's share of the page. The rect is centred in the part of the box above the
  * caption band, so whatever the voice is describing is never under a caption.
  */
-export function camFit(shot: Shot, rect: Rect, frameSize: FrameSize, { pad = 40, maxZoom = 1.6, dx = 0, dy = 0 }: FitOptions = {}, box: Rect = fullFrameRect(frameSize)): Cam {
-  const free = captionFreeRect(frameSize);
+export function camFit(shot: Shot, rect: Rect, frameSize: FrameSize, { pad = 40, maxZoom = 1.6, dx = 0, dy = 0, captionBand }: FitOptions = {}, box: Rect = fullFrameRect(frameSize)): Cam {
+  const free = captionFreeRect(frameSize, captionBand);
   const area = { ...box, h: Math.min(box.h, free.y + free.h - box.y) };
   const k1 = scaleFor(shot, 1, frameSize);
   const zoom = Math.max(box.w / frameSize.width, Math.min(maxZoom, area.w / ((rect.w + pad * 2) * k1), area.h / ((rect.h + pad * 2) * k1)));

@@ -1,9 +1,10 @@
 // voice-project.ts: voices a project's script as one take, and cuts it into lines. `studio voice` runs it.
 //
 // voiceover.json: { "voice": "Kore", "lines": [{ "id": "s1", "text": "…", "paragraph": true }] }
-// A line with `"paragraph": true` starts a new paragraph of the read; the rest run on from the line before. The model
-// reads the text verbatim, so a delivery note would be spoken; direct it with its inline tags instead (`<short pause>`,
-// `<long pause>`, `<breath>`, `<laugh>`…), which captions and word times leave out.
+// A line with `"paragraph": true` starts a new paragraph of the read (and of the captions); the rest run on from the
+// line before. The model reads the text verbatim, so a delivery note would be spoken; direct it with its inline tags
+// instead (`<short pause>`, `<long pause>`, `<breath>`, `<laugh>`…), which captions and word times leave out.
+// `*word*` emphasises a word in the captions, and `` `key` `` draws it as a keycap; the model never sees either.
 //
 // The take (audio/take.wav) is one read, so pace and pitch carry across lines. Any change to the script re-reads the
 // whole take, since a spliced-in line would stand out. A recording is never replaced: each run re-cuts it, and
@@ -19,7 +20,7 @@ import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
 import { postOpenRouter } from '#lib/footage/generation/engine/openrouter.ts';
 import type { RenderVoice } from '../models/render-voice.ts';
 import { cutTakeIntoLines, type TakeClip } from '../models/voice-take.ts';
-import { alignSpokenWords, estimateSpokenWords, spokenText, type SpokenWord } from '../models/voice-words.ts';
+import { alignSpokenWords, captionMarkup, estimateSpokenWords, spokenText, ttsText, type SpokenWord } from '../models/voice-words.ts';
 import { samplesFromWav, wavFromPcm, wavFromSamples } from '#lib/timing/sound/models/wav.ts';
 import { heardWords } from './whisper-words.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
@@ -40,7 +41,10 @@ type Script = { voice: string; lines: { id: string; text: string; paragraph?: bo
 /** audio/take.json: where take.wav came from, and what whisper heard in it and its clips, keyed by each WAV's hash. */
 type TakeInfo = { source: 'tts' | 'draft' | 'recording'; hash?: string; heard?: Record<string, SpokenWord[]> };
 /** A manifest.json entry. `src` is relative to the project, and it, `lufs` and `pauseBefore` are null for an estimate. */
-type Voiced = { src: string | null; duration: number; text: string; words: SpokenWord[]; lufs: number | null; pauseBefore: number | null };
+type Voiced = {
+  src: string | null; duration: number; text: string; caption: string; paragraph: boolean; words: SpokenWord[]; lufs: number | null; pauseBefore: number | null;
+};
+type ScriptLine = { id: string; text: string; caption: string; paragraph: boolean };
 
 /**
  * How to get the take: `paid` reads it with Gemini TTS (needs OPENROUTER_API_KEY), `draft` with macOS `say` (free,
@@ -56,10 +60,10 @@ export async function voiceStudioProject(project: string, { mode, recording }: {
   const takePath = join(dir, 'take.wav'), infoPath = join(dir, 'take.json');
 
   const hashFor = (...key: unknown[]) => createHash('sha256').update(JSON.stringify(key)).digest('hex').slice(0, 16);
-  const readText = (paragraphBreak: string) => script.lines.map((line, i) => (i === 0 ? '' : line.paragraph ? paragraphBreak : ' ') + line.text).join('');
+  const readText = (paragraphBreak: string) => script.lines.map((line, i) => (i === 0 ? '' : line.paragraph ? paragraphBreak : ' ') + ttsText(line.text)).join('');
   const paidHash = hashFor(MODEL, script.voice, readText('\n\n'));
   const draftHash = hashFor('say', DRAFT_VOICE, sayText(readText(SAY_PARAGRAPH)));
-  const lines = script.lines.map((line) => ({ id: line.id, text: spokenText(line.text) }));
+  const lines: ScriptLine[] = script.lines.map((line) => ({ id: line.id, text: spokenText(line.text), caption: captionMarkup(line.text), paragraph: line.paragraph ?? false }));
 
   let info: TakeInfo | null = existsSync(infoPath) && existsSync(takePath) ? JSON.parse(readFileSync(infoPath, 'utf8')) : null;
   // take.json is saved as soon as the take is, and after each transcription, so a failure later never costs a re-read
@@ -116,12 +120,12 @@ export async function voiceStudioProject(project: string, { mode, recording }: {
 
   const manifest: Record<string, Voiced> = {};
   for (const [i, clip] of clips.entries()) {
-    const file = clipFile(clip.id), text = lines[i].text;
+    const file = clipFile(clip.id), { text, caption, paragraph } = lines[i];
     const duration = samplesFromWav(readFileSync(file)).samples.length / rate;
     const aligned = alignSpokenWords(text, clipWords[i], duration);
     const round = (x: number) => Math.round(x * 1000) / 1000;
     const words = aligned.words.map((w) => ({ text: w.text, start: round(w.start), end: round(w.end) }));
-    manifest[clip.id] = { src: `audio/${clip.id}.wav`, duration, text, words, lufs: measureAudibleLoudness(file).lufs, pauseBefore: clip.pauseBefore };
+    manifest[clip.id] = { src: `audio/${clip.id}.wav`, duration, text, caption, paragraph, words, lufs: measureAudibleLoudness(file).lufs, pauseBefore: clip.pauseBefore };
 
     const pause = clip.pauseBefore === null ? '' : `  after ${clip.pauseBefore.toFixed(2)}s`;
     const unheard = words.filter((_, k) => !aligned.heard[k]).map((w) => w.text);
@@ -150,11 +154,11 @@ export function renderVoiceOf(project: string): RenderVoice {
   return info.source === 'draft' ? 'draft' : 'final';
 }
 
-function estimateLines(lines: readonly { id: string; text: string }[]) {
+function estimateLines(lines: readonly ScriptLine[]) {
   const manifest: Record<string, Voiced> = {};
-  for (const line of lines) {
-    const duration = Number((line.text.split(/[\s-]+/).length / WORDS_PER_SECOND + 0.3).toFixed(2));
-    manifest[line.id] = { src: null, duration, text: line.text, words: estimateSpokenWords(line.text, duration), lufs: null, pauseBefore: null };
+  for (const { id, text, caption, paragraph } of lines) {
+    const duration = Number((text.split(/[\s-]+/).length / WORDS_PER_SECOND + 0.3).toFixed(2));
+    manifest[id] = { src: null, duration, text, caption, paragraph, words: estimateSpokenWords(text, duration), lufs: null, pauseBefore: null };
   }
   console.error(`estimated ${lines.length} lines from their word counts`);
   return manifest;
@@ -176,8 +180,8 @@ function voiceModule(manifest: Record<string, Voiced>) {
     return src ? [`import wav${i} from './${basename(src)}';`] : [];
   }).join('\n');
   const entries = ids.map((id, i) => {
-    const { src, duration, text, words, lufs, pauseBefore } = manifest[id];
-    return `  ${JSON.stringify(id)}: { src: ${src ? `wav${i}` : 'null'}, duration: ${duration}, lufs: ${lufs}, pauseBefore: ${pauseBefore}, text: ${JSON.stringify(text)},\n    words: ${JSON.stringify(words)} },`;
+    const { src, duration, text, caption, paragraph, words, lufs, pauseBefore } = manifest[id];
+    return `  ${JSON.stringify(id)}: { src: ${src ? `wav${i}` : 'null'}, duration: ${duration}, lufs: ${lufs}, pauseBefore: ${pauseBefore}, paragraph: ${paragraph},\n    text: ${JSON.stringify(text)},\n    caption: ${JSON.stringify(caption)},\n    words: ${JSON.stringify(words)} },`;
   }).join('\n');
   return `// Written by \`studio voice\`. Edits here are lost on the next run.
 import type { Voice } from '#lib/timing/voice/models/voice-manifest.ts';

@@ -10,6 +10,8 @@ import type { Timeline } from '#lib/timing/timeline/models/timeline.ts';
 import { videoLayoutOf, type SceneClock, type ScenePlacement, type SceneTimes, type VideoLayout } from '#lib/timing/timeline/models/video-layout.ts';
 import type { Voice } from '#lib/timing/voice/models/voice-manifest.ts';
 import type { SfxSound } from '#lib/timing/sound/studio/sfx.tsx';
+import type { CaptionTrack } from '#lib/picture/captions/models/caption-track.ts';
+import type { CaptionStyle } from '#lib/picture/captions/studio/caption-style.tsx';
 
 /**
  * What a scene promises; `studio check` fails if it isn't kept.
@@ -85,6 +87,12 @@ export type VideoDef = {
   scenes: readonly SceneDef[];
   /** The recorded lines the timeline places (audio/manifest.ts's `voice`); `{}` for a video with none. */
   voice: Voice;
+  /**
+   * How it's captioned: a `style` (`pillCaptions()` unless named, or `wordPopCaptions()`), and for a silent video the
+   * `table` its timeline.ts states (`captionTable`). A voiced video captions its lines. The .srt and .vtt page the same
+   * track by the style's sidecar rule.
+   */
+  captions?: { style?: CaptionStyle; table?: CaptionTrack };
   /** A music bed under the whole video, ducked under the voice. See `studio music`. */
   music?: MusicBed;
   /**

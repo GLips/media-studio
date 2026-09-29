@@ -32,7 +32,7 @@ test('every frame paints a scene mounted on it, cut scenes meeting on a frame an
 });
 
 test('a line read past its scene still has the scene under its last frame', () => {
-  const take = { duration: 1.01, pauseBefore: null, words: [], src: null, text: 'hi', lufs: null };
+  const take = { duration: 1.01, pauseBefore: null, words: [], src: null, text: 'hi', caption: 'hi', paragraph: false, lufs: null };
   const layout = videoLayoutOf(defineTimeline({ fps: 30, voice: { hi: take }, scenes: { only: voiceSpan(['hi'], { lead: 0, tail: 0 }) } }), { hi: take });
   assert.equal(layout.frames, 31);
   assert.equal(layout.scenes[0].visible.to, 31);

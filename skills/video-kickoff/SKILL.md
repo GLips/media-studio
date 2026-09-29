@@ -133,7 +133,7 @@ changing its binding; `timeline.ts` doesn't change.
 **Voiced**, the animatic is `video.tsx`, rough:
 
 1. Write the lines by `references/voiceover-lines.md` into `voiceover.json`, with `"paragraph": true` on each line that starts a new beat so the read
-   pauses there, and run `studio voice <p> --read=estimate`. That times each line from its word count, for free.
+   pauses there and no caption runs across it (`*word*` emphasises a word in the captions; the voice never sees it), and run `studio voice <p> --read=estimate`. That times each line from its word count, for free.
 2. Add the states to `capture.ts` with the `video-capture` skill, by the **Real UI only** rules below, and run
    `studio capture <p>`.
 3. Build `video.tsx` as an **animatic**: one scene per table row, with the table's text as its `note`, one camera and at

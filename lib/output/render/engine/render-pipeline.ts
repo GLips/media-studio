@@ -4,7 +4,6 @@
 // (VideoFormat.transparent) delivers as WebM and HEVC with alpha instead of MP4.
 //
 // Progress goes to stderr; each function returns what it made, for the command to print on stdout.
-import { serializeSrt } from '@remotion/captions';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { rasterizeSvgs } from '#lib/footage/capture/engine/html-raster.ts';
@@ -236,9 +235,6 @@ async function renderDeliveryVideo(session: RenderSession, { out, inputProps, ti
   });
 }
 
-const srtFrom = (timeline: TimelineReport) =>
-  serializeSrt({ lines: timeline.cues.map((q) => [{ text: q.text, startMs: q.start * 1000, endMs: q.captionEnd * 1000, timestampMs: null, confidence: 1 }]) });
-
 // Checks the delivered file, not the frames: right length, has sound at delivery loudness without clipping (a
 // silent project's has no audio track at all), and a tiled sheet of it to look at.
 function reviewDelivery(session: RenderSession, captions: boolean, timeline: TimelineReport) {
@@ -310,9 +306,9 @@ const draftVoiceWarning = (session: RenderSession) => `
 /**
  * The whole pipeline: refusing a line that's still estimated; video.mp4 with captions, whose frames the framing check
  * measures as they're drawn, delivered only if it passes; the mastered mix under it; video-plain.mp4 without
- * captions, if `plain`; each checked for delivery; video.srt; and where the time went. A silent
- * project has no mix and no .srt; a transparent one delivers as renderTransparentDelivery says. Returns what it
- * delivered.
+ * captions, if `plain`; each checked for delivery; video.srt and video.vtt, the composition's own sidecar (a silent
+ * project has them only from a caption table); and where the time went. A silent project has no mix; a transparent
+ * one delivers as renderTransparentDelivery says. Returns what it delivered.
  *
  * The check rides on the captioned render rather than running first, so every frame is drawn once, not twice: a
  * failing check costs a render's encode more than it would alone, and `studio check` is still the quick way to one.
@@ -346,16 +342,23 @@ export async function renderDeliveredVideo(session: RenderSession, { plain }: { 
     await renderDeliveryVideo(session, { out: videoFor(session, false), inputProps: session.props(), timeline, approve: async () => delivery! });
     await session.timed('video-plain.mp4 review', () => reviewDelivery(session, false, timeline));
   }
-  // A silent video speaks no lines, so it has no captions.
-  const srt = join(outDirFor(session), 'video.srt');
-  if (session.silent) rmSync(srt, { force: true });
-  else writeFileSync(srt, srtFrom(timeline));
+  const sidecars = writeCaptionSidecars(session, timeline);
   const variants = plain ? [true, false] : [true];
-  const delivered = [...variants.map((captions) => videoFor(session, captions)), ...(session.silent ? [] : [srt])];
+  const delivered = [...variants.map((captions) => videoFor(session, captions)), ...sidecars];
   for (const line of formatRenderPasses(session)) console.error(line);
   // Again at the end, where it can't scroll away under the render's progress.
   if (draft) console.error(draftVoiceWarning(session));
   return delivered;
+}
+
+/** out/video.srt and out/video.vtt from the timeline report, or neither for a video with nothing to caption. */
+function writeCaptionSidecars(session: RenderSession, timeline: TimelineReport): string[] {
+  const files = { srt: join(outDirFor(session), 'video.srt'), vtt: join(outDirFor(session), 'video.vtt') };
+  for (const [kind, file] of Object.entries(files) as ['srt' | 'vtt', string][]) {
+    if (timeline.captions) writeFileSync(file, timeline.captions[kind]);
+    else rmSync(file, { force: true });
+  }
+  return timeline.captions ? [files.srt, files.vtt] : [];
 }
 
 /**
@@ -372,7 +375,7 @@ function approveCheckedRender(session: RenderSession, sink: ReturnType<typeof ar
 
 /**
  * A transparent video's delivery: video.webm and video-hevc.mov, whose frames the framing check measures as they're
- * drawn, each checked for its alpha. It's silent, so it has no mix, no .srt and no plain cut, and
+ * drawn, each checked for its alpha, and a caption table's sidecar. It's silent, so it has no mix and no plain cut, and
  * the project must say so, since a sound it plays would be lost.
  */
 async function renderTransparentDelivery(session: RenderSession, timeline: TimelineReport, { plain }: { plain: boolean }): Promise<string[]> {
@@ -381,7 +384,7 @@ async function renderTransparentDelivery(session: RenderSession, timeline: Timel
   if (plain) throw new Error(`${name} is transparent and silent, so it has no captions to leave out: drop --plain`);
   // Files of an opaque render would read as this one's.
   for (const old of [videoFor(session, true), videoFor(session, false)]) removeRender(old);
-  for (const old of [masterWavFor(session), join(outDirFor(session), 'video.srt'), join(outDirFor(session), 'check', 'review.jpg')]) rmSync(old, { force: true });
+  for (const old of [masterWavFor(session), join(outDirFor(session), 'check', 'review.jpg')]) rmSync(old, { force: true });
   const { webm, mov } = transparentVideosFor(session);
   const sink = artifactSink();
   await session.renderTransparentVideo({
@@ -389,7 +392,7 @@ async function renderTransparentDelivery(session: RenderSession, timeline: Timel
     approve: async () => ({ motion: approveCheckedRender(session, sink, timeline).motion }),
   });
   await session.timed('review', () => reviewTransparentDelivery(session, timeline));
-  const delivered = [webm, mov];
+  const delivered = [webm, mov, ...writeCaptionSidecars(session, timeline)];
   for (const line of formatRenderPasses(session)) console.error(line);
   return delivered;
 }

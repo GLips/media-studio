@@ -1,14 +1,15 @@
 // kit.tsx: shots that recur across videos, built from the primitives. Each takes its colours and words as props, so
 // a project brings its own brand, and each is a pure function of its clock. Each fits the video's frame
-// (useVideoFormat), and text-bearing shots keep above captionSafeArea's top, where burned-in captions sit. Each tags
-// what moves in it for the motion tracks (motion-tag.ts).
+// (useVideoFormat), and text-bearing shots keep above the caption band's top (useCaptionSafeArea), where the video's
+// style burns captions in. Each tags what moves in it for the motion tracks (motion-tag.ts).
 
 import { evolvePath } from '@remotion/paths';
 import { Fragment, useId, type ReactNode } from 'react';
 import { camFit, camTop, camWhole, centerOf, lerpCam, view, type Rect, type Shot, type View } from '#lib/picture/camera/models/camera.ts';
 import { Capture, CaptureMotion } from '#lib/footage/capture/studio/capture.tsx';
 import { DISPLAY_FONT } from '#lib/picture/type/models/faces.ts';
-import { captionFreeRect, captionSafeArea, FONT, fullFrameRect, type FrameSize } from '#lib/picture/frame/models/frame.ts';
+import { FONT, fullFrameRect, type FrameSize } from '#lib/picture/frame/models/frame.ts';
+import { useCaptionBandRule, useCaptionSafeArea } from '#lib/picture/captions/studio/caption-style.tsx';
 import { clamp, lerp, motionCurves, motionDurations, seg, stagger, staggerFinish } from '#lib/picture/motion/models/motion.ts';
 import { motionAttrs, pieceMotionAttrs } from '#lib/output/look/studio/motion-tag.ts';
 import { odometerSinceLanding, odometerWheels, type OdometerMode, type OdometerWheel } from './odometer-wheels.ts';
@@ -118,7 +119,7 @@ export function MotionTitle({ s, shot, eyebrow, title, subtitle, accent, wash = 
   const k = s.t / (s.dur + 0.5);
   const cam = lerpCam(top, bottom, k);
   // The block hangs from the accent bar, which sits a clear gap above the caption band.
-  const barY = captionSafeArea(size).top - 120;
+  const barY = useCaptionSafeArea().top - 120;
   const inK = (at: number) => seg(s.t, at, at + 0.7, motionCurves.cubic.entrance);
   return (
     <>
@@ -164,7 +165,7 @@ export function ClickToBlur({ t, shot, frame, target, clickAt = 1.3, from = { dx
   push?: number;
 }) {
   const size = useVideoFormat();
-  const start = camFit(shot, frame, size, { pad: 80, maxZoom: 1.25 });
+  const start = camFit(shot, frame, size, { pad: 80, maxZoom: 1.25, captionBand: useCaptionBandRule() });
   const cam = lerpCam(start, { ...start, zoom: start.zoom * push }, seg(t, 0, 18));
   const v = view(shot, cam, size);
   const k = seg(t, clickAt + 0.3, clickAt + 1.4);
@@ -289,9 +290,9 @@ export function ConfirmDialog({ k, origin, message, anchor: given }: { k: number
  * 0..1 runs the list from top to bottom, as given.
  */
 export function NativeMenu({ k, from, items, scroll = 0, rowH = 34, bottom: given }: { k: number; from: Rect; items: readonly string[]; scroll?: number; rowH?: number; bottom?: number }) {
-  const size = useVideoFormat();
+  const band = useCaptionSafeArea();
   if (k <= 0) return null;
-  const bottom = given ?? captionFreeRect(size).h;
+  const bottom = given ?? band.top - 20;
   const y = from.y + from.h + 4;
   const h = Math.min(bottom - y, items.length * rowH + 12);
   const offset = scroll * Math.max(0, items.length * rowH + 12 - h);

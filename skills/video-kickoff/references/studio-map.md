@@ -19,7 +19,7 @@ Every step is a `studio` verb. A `<project>` is a slug (`launch-teaser`), a uniq
 | Look | `studio look <project> --sheet=1,5,9` | a contact sheet of chosen times, `--strip=4:5` for a stretch of motion, or `--graph=4:6` to plot that stretch's measured motion (position, velocity, size, opacity, reported values) against the words, with its numbers. Open the image to check frames without rendering video |
 | Check | `studio check <project>` | the framing check and the motion tracks on every frame (`--scene` or `--at=a:b` for less), a table of when each scene and line starts and ends, `out/check/timeline.json` (scenes, lines, words, crossfades) and `out/check/motion.json` (how every tagged element moved) |
 | Mix | `studio mix <project>` | `out/mix.wav`, the mastered mix on its own, to audition |
-| Render | `studio render <project>` | `out/mix.wav`, `out/video.mp4` (captions burned in), `out/video.srt`, review sheets in `out/check/`, each video with a `.snapshot.json` beside it (the timeline it was rendered from). `--animatic` renders the video as it plays now, unchecked and unmixed, to `out/wip/animatic.mp4`, for approving it in `studio review` before it's voiced or finished; `--frames=a:b` renders just those frames, silent; `--join=<folder>` joins such slices under the mix. A `--read=draft` voice gets a loud warning, and its snapshot says so, so `studio review` shows a DRAFT VOICE banner over it. A transparent video (`format: { transparent: true }`, silent) delivers `out/video.webm` (VP9 with alpha, Chrome and Firefox) and `out/video-hevc.mov` (HEVC with alpha via macOS VideoToolbox, Safari) in place of the MP4, and `studio review` plays it over a checkerboard or a colour |
+| Render | `studio render <project>` | `out/mix.wav`, `out/video.mp4` (captions burned in), `out/video.srt` and `out/video.vtt`, review sheets in `out/check/`, each video with a `.snapshot.json` beside it (the timeline it was rendered from). `--animatic` renders the video as it plays now, unchecked and unmixed, to `out/wip/animatic.mp4`, for approving it in `studio review` before it's voiced or finished; `--frames=a:b` renders just those frames, silent; `--join=<folder>` joins such slices under the mix. A `--read=draft` voice gets a loud warning, and its snapshot says so, so `studio review` shows a DRAFT VOICE banner over it. A transparent video (`format: { transparent: true }`, silent) delivers `out/video.webm` (VP9 with alpha, Chrome and Firefox) and `out/video-hevc.mov` (HEVC with alpha via macOS VideoToolbox, Safari) in place of the MP4, and `studio review` plays it over a checkerboard or a colour |
 | Review | `studio review <project>` | the studio app (`web/`, on port 4317) on the project's newest render or still: pin notes on a moment and a point, which save to `review/notes-<render>.json` and copy as markdown; the scrubber carries the render's scene cuts, beats and cues, and a storyboard under it has a card per scene with stills cut from the render |
 
 `studio render` refuses to render if any line is still estimated. It renders the captioned video with the check
@@ -29,7 +29,8 @@ It then masters the mix to −14 LUFS and muxes it in under the muted video. Ren
 (`--workers` or a video's `renderWorkers` changes that), fail if their browser has only software GL, and end
 with each pass's time, the workers and the GPU backends. Each MP4 must have
 the right length and an audio stream, measure −14 ±1 LUFS and peak at −1 dBTP or lower. A `silent` project (no voice,
-music or sound) has no mix, mastering or loudness check and no `.srt`: each MP4 must have no audio track instead. A mix
+music or sound) has no mix, mastering or loudness check, and a sidecar only from a caption table: each MP4 must have no
+audio track instead. A mix
 that renders silent in any other project fails. Each is tiled into a sheet to look over.
 
 `studio api [name]` lists what `lib/api.ts` exports, read from the code, or prints one export's signature and
@@ -87,10 +88,15 @@ path.
   scenes a frame paints, centring crossfades on the cuts.
 - `lib/picture/composition/studio/timeline.ts`: `defineVideo`, which pairs the scenes bound with `bindTimeline` with
   where the timeline placed them.
+- `lib/picture/captions/`: captions, one timing core under pluggable styles. A voiced video captions its lines (a
+  script's `*word*` is emphasis, `` `key` `` a keycap); a silent one states a `captionTable` in its `timeline.ts`.
+  `defineVideo({ captions: { style, table } })` picks the look: `pillCaptions()` (the default) or `wordPopCaptions()`,
+  each taking a `band` and a `rule`. The .srt and .vtt page the same track by the style's sidecar rule.
 - `lib/picture/camera/models/camera.ts`: a camera over captures (`camFit`, `camAt`, `lerpCam`) and views, which map page rects to the
   frame.
 - `lib/footage/capture/studio/capture.tsx`, `lib/picture/kit/studio/overlays.tsx`: captures (with blur, motion blur and state changes), cursor paths with
-  clicks, highlights, spotlights, tags, text, frosted glass and washes. Scene text stays above `captionSafeArea(frame).top`.
+  clicks, highlights, spotlights, tags, text, frosted glass and washes. Scene text stays above the caption band's top: `useCaptionSafeArea().top`, the
+  video's style's band (`camFit` takes it as `captionBand` when it isn't the pill's).
 - `lib/picture/kit/studio/kit.tsx`: whole shots built from those, taking their brand colours and words as arguments: `MotionTitle`,
   `ClickToBlur`, `SplitCompare`, `Phone`, `GlassCard`, `SectionCard`, `EndCard`, and redraws of what a screenshot
   can't hold (`ConfirmDialog`, `NativeMenu`). When a shot recurs in a second video, move it here.

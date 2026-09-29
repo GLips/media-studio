@@ -9,11 +9,30 @@ export type SpokenWord = { text: string; start: number; end: number };
 
 export const scriptWords = (text: string) => text.split(/\s+/).filter(Boolean);
 
-/**
- * A script line as it's heard and captioned: without the TTS model's inline tags (`<short pause>`, `<laugh>`…), which
- * are performed, not said.
- */
-export const spokenText = (text: string) => text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+// The TTS model's inline tags (`<short pause>`, `<laugh>`…) are performed, not said, and caption markup (`*word*` for
+// emphasis, `` `key` `` for a keycap) is drawn, not said.
+const withoutTags = (text: string) => text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
+/** A keycap word: `` `key` `` and any punctuation after it. */
+export const KEYCAP_WORD = /^`([^`]+)`([^\p{L}\p{N}]*)$/u;
+/** A word that opens or closes emphasis: a `*` inside any punctuation at its start or end. */
+export const OPENS_EMPHASIS = /^([^\p{L}\p{N}*`]*)\*(?=.)/u;
+export const CLOSES_EMPHASIS = /(?<=.)\*([^\p{L}\p{N}*`]*)$/u;
+
+/** One word without its caption markup, so a keycap of `*` stays a `*`. */
+const unmarkedWord = (word: string) => {
+  const key = KEYCAP_WORD.exec(word);
+  return key ? key[1] + key[2] : word.replace(OPENS_EMPHASIS, '$1').replace(CLOSES_EMPHASIS, '$1');
+};
+
+/** A script line as it's heard and word-timed: without its tags or caption markup, a word for each of captionMarkup's. */
+export const spokenText = (text: string) => scriptWords(withoutTags(text)).map(unmarkedWord).join(' ');
+
+/** A script line as it's captioned: without its tags, keeping its markup. */
+export const captionMarkup = (text: string) => withoutTags(text);
+
+/** A script line as the TTS model reads it: its tags kept for the model to perform, its caption markup dropped. */
+export const ttsText = (text: string) => text.replace(/[^\s<>]+/g, unmarkedWord);
 
 // Case and punctuation don't decide a match: whisper writes "what's" where a script has "what’s", or "Show all," as "show all".
 const normalWord = (word: string) => word.toLowerCase().replace(/[’']/g, '').replace(/[^\p{L}\p{N}]+/gu, '');

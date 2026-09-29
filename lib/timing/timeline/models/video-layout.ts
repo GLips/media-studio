@@ -61,8 +61,6 @@ export type VoiceCue = {
   /** In video seconds, from its first frame. */
   start: number;
   end: number;
-  /** Where its caption ends: at the next line's start if that's in the same scene, else `end`. */
-  captionEnd: number;
   text: string;
   lufs: number | null;
 };
@@ -81,15 +79,12 @@ export function videoLayoutOf(timeline: Timeline, voice: Voice): VideoLayout {
   const cues: VoiceCue[] = [];
   const scenes = timeline.scenes.map((placed, k): ScenePlacement => {
     const spans: Record<string, ScenePlacement['spans'][string]> = {};
-    placed.lines.forEach(({ id, frame, duration }, j) => {
+    placed.lines.forEach(({ id, frame, duration }) => {
       const line = voice[id];
       if (!line) throw new Error(`scene ${placed.id} speaks line ${id}, which the video's voice doesn't have: pass defineVideo the manifest its timeline reads`);
       const start = (frame - placed.from) / fps;
       spans[id] = { start, end: start + duration, words: line.words };
-      // Within a scene a caption holds through the pause until the next line starts, so a line split for pacing
-      // ("…filter, / search, / and…") doesn't flash a one-word caption on and off.
-      if (j > 0) cues[cues.length - 1].captionEnd = frame / fps;
-      cues.push({ id, src: line.src, start: frame / fps, end: frame / fps + duration, captionEnd: frame / fps + duration, text: line.text, lufs: line.lufs });
+      cues.push({ id, src: line.src, start: frame / fps, end: frame / fps + duration, text: line.text, lufs: line.lufs });
     });
     return {
       id: placed.id, from: placed.from, to: placed.to, visible: placed.visible,
