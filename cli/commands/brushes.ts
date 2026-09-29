@@ -60,7 +60,7 @@ const sheetBrushesCommand = defineCommand({
 const probesBrushesCommand = defineCommand({
   meta: {
     name: 'probes',
-    description: "Write the probe brushes, a .brushset that reads Procreate's renderer out one setting at a time (lib/picture/stamp-paint/models/procreate-probes.ts), each written over a single brush from a pack you own, after a few diagnostic brushes that each differ from a probe in one respect, so which ones Procreate keeps says what it requires. Round-trip it through Procreate as docs/procreate-probes.md says, then import what comes back as a pack of its own and draw its sheet. Prints each brush and what it reads out.",
+    description: "Write the probe brushes, a .brushset that reads Procreate's renderer out one setting at a time (lib/picture/stamp-paint/models/procreate-probes.ts), each written over a single brush from a pack you own. Round-trip it through Procreate as docs/procreate-probes.md says, then import what comes back as a pack of its own and draw its sheet. Prints each probe and what its preview reads out.",
   },
   args: {
     archive: { type: 'string', required: true, description: 'A pack holding the template brush: a .brushset, or the zip holding one' },
@@ -69,9 +69,9 @@ const probesBrushesCommand = defineCommand({
   },
   async run({ args }) {
     const { writeProcreateProbeBrushset } = await import('#lib/picture/stamp-paint/engine/procreate-probe-brushset.ts');
-    const brushes = writeProcreateProbeBrushset({ archive: args.archive, brush: args.brush, out: args.out });
-    for (const brush of brushes) console.log(`${brush.name}: ${brush.reads}`);
-    console.error(`brushes probes: ${brushes.length} brushes in ${args.out}`);
+    const probes = writeProcreateProbeBrushset({ archive: args.archive, brush: args.brush, out: args.out });
+    for (const probe of probes) console.log(`${probe.name}: ${probe.reads}`);
+    console.error(`brushes probes: ${probes.length} probes in ${args.out}`);
   },
 });
 

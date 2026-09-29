@@ -32,7 +32,6 @@ test("every probe keeps each setting the type its template stores it as, since P
     for (const name of set.names.filter((n) => n.endsWith('Brush.archive'))) {
       const archive = parseBinaryPlist(new Uint8Array(set.read(name)), { keepReals: true }) as { $objects: Record<string, PlistValue>[] };
       const brush = archive.$objects[1], label = String(archive.$objects[(brush.name as PlistUid).uid]);
-      if (label.startsWith('Diag 2') || label.startsWith('Diag 3')) continue;
       for (const key of keys) assert.equal(typeOf(brush[key]), typeOf(root[key]), `${label}: ${key}`);
     }
   });
