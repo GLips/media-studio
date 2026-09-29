@@ -1,7 +1,7 @@
 import { Badge, Box, Button, Group, Paper, Stack, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useState } from 'react';
-import { reviewNoteRenderOf, type ReviewNote, type ReviewRenderStamp } from '#models/review/review-notes.ts';
+import { reviewNoteRenderOf, type ReviewNote, type ReviewRenderStamp } from '#lib/output/review/models/review-notes.ts';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { Textarea } from '#web/shared/ui/textarea.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';

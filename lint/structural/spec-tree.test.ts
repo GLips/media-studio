@@ -3,8 +3,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { runFixtureGit } from '#engine/git/fixture-git.ts';
-import { withStudioTemp } from '#engine/temp/studio-temp.ts';
+import { runFixtureGit } from '#lib/platform/git/engine/fixture-git.ts';
+import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { caught, runCheckOnFiles } from './spec-tree.ts';
 
 /** A committed repo at `root` standing in for the one a hook runs in, and what a leak would change in it. */
@@ -54,12 +54,12 @@ test('under a hook, a fixture repo stays its own: the repo being committed keeps
       runFixtureGit(fixture, ['add', '-A']);
       runFixtureGit(fixture, ['-c', 'user.email=spec@example.com', 'commit', '-q', '-m', 'base']);
       return runCheckOnFiles('timing-ownership', {
-        'lib/models/timeline/timeline.ts': 'export const beatSpan = (n: number) => n;\n',
-        'work/projects/p/video.tsx': "import { beatSpan } from '../../../lib/models/timeline/timeline.ts';\nbeatSpan(1);\n",
+        'lib/timing/timeline/models/timeline.ts': 'export const beatSpan = (n: number) => n;\n',
+        'work/projects/p/video.tsx': "import { beatSpan } from '../../../lib/timing/timeline/models/timeline.ts';\nbeatSpan(1);\n",
       });
     });
     assert.deepEqual(parent.state(), untouched);
     // The check read the fixture's index, not the parent's.
-    assert.deepEqual(caught(findings), ['work/projects/p/video.tsx:beatSpan from ../../../lib/models/timeline/timeline.ts']);
+    assert.deepEqual(caught(findings), ['work/projects/p/video.tsx:beatSpan from ../../../lib/timing/timeline/models/timeline.ts']);
   });
 });

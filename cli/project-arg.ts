@@ -17,7 +17,7 @@ export const renderWorkersArg = {
 
 /** Bundles the project a command-line argument names, which must have a video.tsx; `workers` is a --workers value. */
 export async function openStudioRenderSession(projectArg: string, { workers }: { workers?: string } = {}) {
-  const { resolveStudioProjectWith } = await import('#engine/project/studio-project.ts');
-  const { openRenderSession } = await import('#engine/render/render-session.ts');
+  const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
+  const { openRenderSession } = await import('#lib/output/render/engine/render-session.ts');
   return openRenderSession(resolveStudioProjectWith(projectArg, 'video.tsx'), { workers: workers === undefined ? undefined : Number(workers) });
 }

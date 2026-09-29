@@ -1,5 +1,5 @@
 #!/bin/sh
-# The workspace's pre-commit gate (work/ is its own repository; lib/engine/project/studio-workspace.ts points its
+# The workspace's pre-commit gate (work/ is its own repository; lib/platform/project/engine/studio-workspace.ts points its
 # core.hooksPath here): check:arch over the index this commit holds, read against the studio's own index, then the full
 # typecheck and the workspace projects' tests. Each runs on its own, so one failure doesn't hide the next.
 #

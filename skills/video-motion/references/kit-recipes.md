@@ -1,6 +1,6 @@
 # Kit recipes: words, numbers, strokes
 
-Shortcuts in `lib/studio/kit/kit.tsx`, all raw: each eases itself.
+Shortcuts in `lib/picture/kit/studio/kit.tsx`, all raw: each eases itself.
 
 - **Words coming in**: `<WordReveal t={s.t - at} text x y width />` staggers words 60 ms apart (`timing.each`,
   40–80 ms reads as one gesture), each rising 12 px (`rise`) as it fades in. The box is laid out whole from its

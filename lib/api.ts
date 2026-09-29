@@ -1,0 +1,64 @@
+// api.ts: the studio's conveniences for a project's video.tsx or stills.tsx, in one import: `#studio`. A scene may import
+// anything else in a feature's studio/ or models/ folder too, as `#lib/<area>/<feature>/<role>/<file>`.
+
+export { BrandLogo, brandLogoFor, type StudioBrand, type StudioBrandLogo } from '#lib/picture/brand/studio/brand.tsx';
+export * from '#lib/footage/previs/studio/blockout.tsx';
+export * from '#lib/footage/previs/studio/blockout-camera.ts';
+export { FlatBlockout, type FlatPiece, type FlatPieceKind, type FlatViewMoves } from '#lib/footage/previs/studio/flat-blockout.tsx';
+export type { FlatKey, FlatPose, FlatView } from '#lib/footage/previs/studio/flat-blockout-pose.ts';
+export * from '#lib/timing/timeline/models/beat-grid.ts';
+export * from '#lib/picture/camera/models/camera.ts';
+export * from '#lib/footage/capture/studio/capture.tsx';
+export * from '#lib/picture/type/studio/fonts.ts';
+export * from '#lib/picture/type/models/faces.ts';
+export * from '#lib/picture/frame/models/frame.ts';
+export * from '#lib/picture/film/studio/grade.tsx';
+export * from '#lib/picture/kit/studio/kit.tsx';
+export * from '#lib/picture/motion/models/motion.ts';
+export * from '#lib/picture/film/studio/motion-blur.tsx';
+export * from '#lib/picture/motion/models/shutter.ts';
+export { motionAttrs, motionEchoAttrs, pieceMotionAttrs, unmeasuredAttrs, useMotionTag, type MotionTag } from '#lib/output/look/studio/motion-tag.ts';
+export * from '#lib/picture/kit/studio/overlays.tsx';
+export * from '#lib/picture/motion/models/random.ts';
+// The reel pieces: the high-energy register of music-led videos (skills/video-motion/references/reel-pieces.md).
+// Each model is re-exported by name: the helpers it exports only for its own drawing stay out of the barrel.
+export * from '#lib/picture/reel/studio/bounce.tsx';
+export { type BallLaunch, type BallPhase, type BallPose, type BounceParams, type BounceTiming, bouncingBallAt } from '#lib/picture/reel/models/bounce.ts';
+export { fieldSwellAt, type FieldSwellOptions, type SwellFrom, type SwellPose } from '#lib/picture/reel/models/bounce-swell.ts';
+export * from '#lib/picture/reel/studio/capture-plane.tsx';
+export { type CapturePlaneProjection, capturePlaneProjection, capturePlaneView, lerpPlanePose, PLANE_REST_POSE, type PlaneLift, planeLiftStart, type PlanePose } from '#lib/picture/reel/models/capture-plane.ts';
+export * from '#lib/picture/reel/studio/column-field.tsx';
+export { type ColumnBall, type ColumnBallState, type ColumnCameraMove, type ColumnCameraPose, type ColumnCameraState, type ColumnCell, columnDiscCells, columnFieldHeight, type ColumnFieldLights, columnFieldPoint, type ColumnFieldSpec, type ColumnLabel, type ColumnLight, columnNoise, type ColumnRise } from '#lib/picture/reel/models/column-field.ts';
+export { columnBallAt, columnCameraAt, columnFieldProject, topDownPose } from '#lib/picture/reel/models/column-field-motion.ts';
+export { columnTitaniumMaterial } from '#lib/picture/reel/studio/column-field-materials.ts';
+export * from '#lib/picture/reel/studio/glyph-field.tsx';
+export * from '#lib/picture/reel/models/glyph-field.ts';
+export * from '#lib/picture/reel/models/glyph-field-frame.ts';
+export * from '#lib/picture/reel/studio/hud.tsx';
+export { REEL_HUD_BOOT_DECODE, REEL_HUD_GLYPHS, REEL_HUD_PALETTE, REEL_HUD_SLOTS, REEL_HUD_SWAP_DECODE, reelHudBoxes, reelHudBoxPoints, type ReelHudCell, reelHudDecode, type ReelHudDecodeSchedule, type ReelHudGround, reelHudGrounds, type ReelHudLayoutProps, reelHudLitSquare, type ReelHudPalette, reelHudPlateMix, type ReelHudRead, reelHudReadGrounds, type ReelHudSection, type ReelHudSlot, reelHudTimecode, type ReelHudTone, reelHudToneOver, reelHudToneWeights } from '#lib/picture/reel/models/hud.ts';
+export * from '#lib/picture/reel/studio/lens.tsx';
+export * from '#lib/picture/reel/models/lens.ts';
+export * from '#lib/picture/reel/studio/needle.tsx';
+export { needleContactAt, needleCoversAt, needleExposuresAt, needleLensHeight, type NeedleLensing, type NeedlePose, needlePoseAt, needleRig, type NeedleRig, type NeedleRigSettings, needleScreenPoint, type NeedleShot, needleShotAt, type NeedleStrike, type NeedleTake } from '#lib/picture/reel/models/needle.ts';
+export * from '#lib/picture/reel/studio/recap.tsx';
+export { type GlitchHit, type GlitchLook, type RecapExit, recapGridRects, type RecapLayout, type RecapOrder, recapPopStarts, recapTileUnder, shakeOffset } from '#lib/picture/reel/models/recap.ts';
+export * from '#lib/picture/reel/studio/ticker.tsx';
+export * from '#lib/picture/reel/models/ticker-layout.ts';
+export { TICKER_BOLD, TICKER_HERO_POSES, TICKER_LIGHT, TICKER_LOOKS, type TickerColors, type TickerEnter, type TickerExit, type TickerHeroPoses, type TickerKick, type TickerLook, tickerLookBeat } from '#lib/picture/reel/models/ticker.ts';
+export * from '#lib/picture/reel/studio/type.tsx';
+export * from '#lib/picture/reel/studio/type-slant.tsx';
+export * from '#lib/picture/reel/studio/type-scramble.tsx';
+export { CODE_GLYPHS, scrambleAt, scrambleFinish, type ScrambleTiming, type SlantEntrance, slantMatrix, type SlantPose, slantWordPose, type Tittle } from '#lib/picture/reel/models/type.ts';
+export { useScene } from '#lib/picture/composition/studio/scene.tsx';
+export { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
+export { useScreenRect } from '#lib/output/look/studio/screen-rect.ts';
+export { defineScene, defineVideo, videoFormatOf, type LineSpan, type SceneClock, type ScenePrevis, type VideoSound } from '#lib/picture/composition/studio/timeline.ts';
+export { sceneCueSeconds, sceneForTimelineClock } from '#lib/picture/composition/studio/timeline-scene.tsx';
+export type { SceneRung } from '#lib/timing/timeline/models/scene-rung.ts';
+export { blockingScene } from '#lib/footage/previs/studio/blocking-scene.tsx';
+export * from '#lib/timing/sound/studio/sfx.tsx';
+export { STILL_FEED_SIZES, STILL_PRESETS, type StillFitReport, type StillPreset } from '#lib/output/stills/models/still-presets.ts';
+export { CoverImage, defineStills, FitText, STILL_CARD_TILT, StillCard, StillHud, stillDesign, useStillFrame, type StillAxes, type StillCardTilt, type StillDesign, type StillFocus, type StillImage, type StillsDef } from '#lib/output/stills/studio/stills.tsx';
+export * from '#lib/footage/capture/studio/take.ts';
+export * from '#lib/picture/film/studio/three-stage.tsx';
+export * from '#lib/picture/camera/models/vec3.ts';

@@ -1,11 +1,11 @@
-// studio sfx: sound effects from the seeded recipes in lib/sfx/.
+// studio sfx: sound effects from the seeded recipes in lib/timing/sound/models/recipes.ts.
 import { defineCommand } from 'citty';
 import { openStudioRenderSession, studioProjectArg } from '../project-arg.ts';
 
 const kit = defineCommand({
-  meta: { name: 'kit', description: "Rewrite the kit's sounds (SFX.click, SFX.whoosh, …) into lib/studio/sfx/, seeded so a rerun writes the same files. Prints the files." },
+  meta: { name: 'kit', description: "Rewrite the kit's sounds (SFX.click, SFX.whoosh, …) into lib/timing/sound/studio/, seeded so a rerun writes the same files. Prints the files." },
   async run() {
-    const { writeSfxKit } = await import('#sfx/sfx-files.ts');
+    const { writeSfxKit } = await import('#lib/timing/sound/engine/sfx-files.ts');
     for (const file of writeSfxKit()) console.log(file);
   },
 });
@@ -13,7 +13,7 @@ const kit = defineCommand({
 const list = defineCommand({
   meta: { name: 'list', description: 'Print every recipe with its presets and parameters.' },
   async run() {
-    const { describeSfxRecipes } = await import('#sfx/sfx-files.ts');
+    const { describeSfxRecipes } = await import('#lib/timing/sound/engine/sfx-files.ts');
     console.log(describeSfxRecipes());
   },
 });
@@ -34,7 +34,7 @@ const render = defineCommand({
   async run({ args }) {
     const { resolve } = await import('node:path');
     if (args.category !== undefined && args.category !== 'ui' && args.category !== 'accent') throw new Error(`--category is ui or accent, not "${args.category}"`);
-    const { writeSfxFile } = await import('#sfx/sfx-files.ts');
+    const { writeSfxFile } = await import('#lib/timing/sound/engine/sfx-files.ts');
     const set = Object.fromEntries((args.set ?? '').split(',').filter(Boolean).map((pair) => {
       const at = pair.indexOf('='), k = pair.slice(0, at).trim(), v = pair.slice(at + 1).trim();
       if (at < 0 || !k || !v || !Number.isFinite(Number(v))) throw new Error(`--set takes name=number pairs, not "${pair}"`);
@@ -53,7 +53,7 @@ const rerender = defineCommand({
   args: { dir: { type: 'positional', required: true, description: "A folder of rendered sounds, e.g. a project's sfx/" } },
   async run({ args }) {
     const { resolve } = await import('node:path');
-    const { rerenderSfxFiles } = await import('#sfx/sfx-files.ts');
+    const { rerenderSfxFiles } = await import('#lib/timing/sound/engine/sfx-files.ts');
     const modules = rerenderSfxFiles(resolve(args.dir));
     if (!modules.length) throw new Error(`${args.dir} has no sound modules written by \`studio sfx render\``);
     for (const module of modules) console.log(module);
@@ -65,7 +65,7 @@ const showcase = defineCommand({
   args: { out: { type: 'positional', required: false, default: 'scratch/sfx-showcase', description: 'The folder to write' } },
   async run({ args }) {
     const { resolve } = await import('node:path');
-    const { writeSfxShowcase } = await import('#sfx/sfx-files.ts');
+    const { writeSfxShowcase } = await import('#lib/timing/sound/engine/sfx-files.ts');
     console.log(writeSfxShowcase(resolve(args.out)));
   },
 });
@@ -80,9 +80,9 @@ const draft = defineCommand({
     'click-style': { type: 'string', valueHint: 'soft|mechanical|pop|tick', description: "How the video's clicks sound; default the cue list's, or soft" },
   },
   async run({ args }) {
-    const { checkProject, writeCheckReports } = await import('#engine/render/render-pipeline.ts');
-    const { SFX_CLICK_STYLES } = await import('#sfx/cues.ts');
-    const { draftProjectSfxCueList } = await import('#sfx/project-cue-list.ts');
+    const { checkProject, writeCheckReports } = await import('#lib/output/render/engine/render-pipeline.ts');
+    const { SFX_CLICK_STYLES } = await import('#lib/timing/sound/models/cues.ts');
+    const { draftProjectSfxCueList } = await import('#lib/timing/sound/engine/project-cue-list.ts');
     const style = args['click-style'];
     if (style !== undefined && !Object.hasOwn(SFX_CLICK_STYLES, style)) throw new Error(`--click-style is one of ${Object.keys(SFX_CLICK_STYLES).join(', ')}, not ${style}`);
     const session = await openStudioRenderSession(args.project);

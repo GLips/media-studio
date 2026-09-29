@@ -15,7 +15,7 @@ export default defineCommand({
     const passThrough = args._.slice(1);
     const { spawn } = await import('node:child_process');
     const { join } = await import('node:path');
-    const { resolveStudioProject, STUDIO_ROOT } = await import('#engine/project/studio-project.ts');
+    const { resolveStudioProject, STUDIO_ROOT } = await import('#lib/platform/project/engine/studio-project.ts');
     const project = resolveStudioProject(args.project);
     // remotion.config.ts reads PROJECT, and the Studio finds that config in its working directory.
     const remotion = join(STUDIO_ROOT, 'node_modules', '.bin', 'remotion');

@@ -5,15 +5,15 @@
  */
 @import "@mantine/core/styles.layer.css";
 
-/* The studio's own faces (lib/studio/fonts), the ones its renders set, so the app reads in the showcase's type. */
+/* The studio's own faces (lib/picture/type/studio), the ones its renders set, so the app reads in the showcase's type. */
 @font-face {
   font-family: "Archivo";
-  src: url("../../lib/studio/fonts/Archivo.ttf") format("truetype");
+  src: url("../../lib/picture/type/studio/Archivo.ttf") format("truetype");
   font-weight: 100 900;
   font-stretch: 62% 125%;
 }
 @font-face {
   font-family: "JetBrains Mono";
-  src: url("../../lib/studio/fonts/JetBrainsMono.ttf") format("truetype");
+  src: url("../../lib/picture/type/studio/JetBrainsMono.ttf") format("truetype");
   font-weight: 100 800;
 }

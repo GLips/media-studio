@@ -20,7 +20,7 @@ export const Route = createRootRouteWithContext<RootRouteContext>()({
 /**
  * StyleX's Vite plugin injects its dev tags through `transformIndexHtml`, which Start never runs: it renders the
  * document from this route. The `/@id/` prefix sends the runtime through Vite's pipeline so `import.meta.hot` lives.
- * Always rendered: the app only ever runs on Vite's dev server (lib/engine/web).
+ * Always rendered: the app only ever runs on Vite's dev server (lib/platform/web/engine/studio-app-server.ts).
  */
 function StylexDevAssets() {
   return (

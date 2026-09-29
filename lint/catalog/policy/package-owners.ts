@@ -60,6 +60,11 @@ export type PackageOwnership = {
   /** The package, exactly as package.json spells it. Subpaths are the reader's job. */
   package: string;
   /**
+   * For an alias whose one name covers code on both sides of a fence: the specifiers the row governs, in place of
+   * matching `package` by name. `package` then only names the row in messages.
+   */
+  matches?: RegExp;
+  /**
    * The modules allowed to import it, source-root-relative and with the real
    * extension. A LIST because two modules can jointly own one capability, and an
    * explicit list is what makes "does any owner still import this?" answerable.
@@ -84,25 +89,26 @@ export type PackageOwnership = {
  * (`web/src`). A row with NO owner governs the tree unconditionally, which is
  * what makes it a total ban rather than a containment.
  *
- * `#engine` is lib/engine, the studio's Node-side machinery. It is an alias
- * rather than an npm package, and `classifySpecifier` reads any specifier
- * outside the tree's own `#web/` prefix as a package, so its row keys on the
- * alias's first segment the way `packageNameOf` splits it.
+ * The engine row is the studio's Node-side machinery: every feature's `engine/`
+ * folder, reached as `#lib/<area>/<feature>/engine/…`. `#lib` also names the
+ * browser-safe `models/` and `studio/` code the app imports freely, so that row
+ * matches the specifier's shape rather than the package name.
  */
 export const PACKAGE_OWNERS: PackageOwnership[] = [
   {
-    package: "#engine",
+    package: "#lib/*/*/engine",
+    matches: /^#lib\/[^/]+\/[^/]+\/engine\//,
     owners: ["infrastructure/studio-engine.server.ts"],
-    why: "lib/engine reads and writes the studio's projects on disk and spawns renders, so it only runs on the server. One door means one place that decides which engine calls a browser request can reach; the app calls it through a server function or a server route.",
+    why: "Engine code reads and writes the studio's projects on disk and spawns renders, so it only runs on the server. One door means one place that decides which engine calls a browser request can reach; the app calls it through a server function or a server route.",
   },
   {
     package: "@remotion/renderer",
     owners: [],
-    why: "NOTHING in the web app renders a composition itself. lib/engine owns the renderer's browser, its worker count and its GL check; the app reaches a render through #web/infrastructure/studio-engine.server.ts.",
+    why: "NOTHING in the web app renders a composition itself. The engine owns the renderer's browser, its worker count and its GL check; the app reaches a render through #web/infrastructure/studio-engine.server.ts.",
   },
   {
     package: "@remotion/bundler",
     owners: [],
-    why: "NOTHING in the web app bundles a composition itself: that is lib/engine's, reached through #web/infrastructure/studio-engine.server.ts. The app's own bundle is Vite's.",
+    why: "NOTHING in the web app bundles a composition itself: that is the engine's, reached through #web/infrastructure/studio-engine.server.ts. The app's own bundle is Vite's.",
   },
 ];

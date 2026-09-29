@@ -2,7 +2,7 @@
 
 A frame-by-frame reading of the Opus 5.5 showreel (the first 15.9 s of the reference video, `source.mp4` below), for
 building a reel or a reel piece here: the system it runs on, then its eight bars, each with how we'd build it with
-`lib/studio`. Read the system first, then the bars your piece comes from. The video isn't in the repo; with a copy to
+the studio's code. Read the system first, then the bars your piece comes from. The video isn't in the repo; with a copy to
 hand, `studio study` makes the same kind of strips, sheets and plots this reading was measured from.
 
 Sources, cited in brackets: [01]…[07] are frame studies of each section, [hud] a study of the HUD (the last study,
@@ -147,7 +147,7 @@ variants are where each one is used.
   HyperFrames' −0.03 to −0.05 em.
 - Archivo's cap height is ≈0.69 em (cap 110 is 160 px type), JetBrains Mono's ≈0.73 em.
 - Words whose letters move are set one glyph per span, placed from the font's advances (`layoutGlyphLine`,
-  `lib/models/reel/ticker-layout.ts`), not by the browser's line layout.
+  `lib/picture/reel/models/ticker-layout.ts`), not by the browser's line layout.
 
 ### HUD [hud]
 
@@ -182,9 +182,9 @@ rule), [hud]'s numbers win.
 - **Running:** t is reel time from f54. The timecode reads `HH:MM:SS:FF`, FF in 60ths (last live read 14:57, on
   f951). The lit square is floor(t/0.46875) mod 4. The fill grows 1122·t/15 px (74.8 px/s). Each label decodes over
   18 f from its downbeat (reveal 0.61·i/n, lock 0.28 + 0.72(i + 1)/n); the old one lingers a frame on f279, 504, 729.
-- Build: `ReelHud` (`lib/studio/reel/hud.tsx`) takes the clock, the sections and `readAt(slot, t, box)`: each
+- Build: `ReelHud` (`lib/picture/reel/studio/hud.tsx`) takes the clock, the sections and `readAt(slot, t, box)`: each
   part's tone (light, dark or on-accent) and, where the ground under it is mixed or busy, a plate of that ground's
-  colour at `plateOpacity` (0.75). `reelHudGrounds` and `reelHudReadGrounds` (`lib/models/reel/hud.ts`, with the rest below) read both from what a bar draws under the
+  colour at `plateOpacity` (0.75). `reelHudGrounds` and `reelHudReadGrounds` (`lib/picture/reel/models/hud.ts`, with the rest below) read both from what a bar draws under the
   part's box; `reelHudToneOver` picks the tone for a colour. `REEL_HUD_BOOT_DECODE` and `REEL_HUD_SWAP_DECODE` hold
   the schedules above, and `reelHudToneWeights` and `reelHudPlateMix` mix tones and plates over sub-frame samples. At
   30 fps FF runs 00–29, the readout says 30 FPS, the decodes take 15 and 9 frames, and the squares alternate 14- and
@@ -211,7 +211,7 @@ rule), [hud]'s numbers win.
   that row varies only ≈4 luma, so the test can't tell. Build it into the grounds (`Vignette` at ≈0.11 on the ground
   layer), never over the HUD.
 - **Bloom:** only on the end card, +15 luma within 40 px of the title [07]. None on the particles [06].
-- Build: `LensFringe` (`lib/studio/reel/lens.tsx`) wraps the whole frame, HUD included: `radial` at rest, `kicks` on
+- Build: `LensFringe` (`lib/picture/reel/studio/lens.tsx`) wraps the whole frame, HUD included: `radial` at rest, `kicks` on
   cuts, `splits` for glitches. Glitch slices and ghosts live in `ScrambleText` and `GlitchFlash`.
 
 ### 60 fps, 30 fps and smear
@@ -237,21 +237,21 @@ rule), [hud]'s numbers win.
 
 ### Pieces
 
-In `lib/studio/reel/` unless noted.
+In `lib/picture/reel/studio/` unless noted.
 
 | Piece | File | Reference bars |
 |---|---|---|
-| `BounceBall`, `bouncingBallAt`, `BounceCallout`, `FieldSwell` | `bounce.tsx`, `lib/models/reel/bounce.ts`, `bounce-swell.ts` | 1; bar 2's tittle zoom; bar 8's full stop |
-| `RiseWord`, `WeightWord`, `SelectionBox`, `SlantWord`, `ScrambleText` | `type.tsx`, `type-slant.tsx`, `type-scramble.tsx`, `lib/models/reel/type.ts` | 2, 8 |
+| `BounceBall`, `bouncingBallAt`, `BounceCallout`, `FieldSwell` | `bounce.tsx`, `lib/picture/reel/models/bounce.ts`, `bounce-swell.ts` | 1; bar 2's tittle zoom; bar 8's full stop |
+| `RiseWord`, `WeightWord`, `SelectionBox`, `SlantWord`, `ScrambleText` | `type.tsx`, `type-slant.tsx`, `type-scramble.tsx`, `lib/picture/reel/models/type.ts` | 2, 8 |
 | `GlyphField`, `FieldFlash`, `ShockRing` | `glyph-field.tsx` | 3; bar 7's implosion |
-| `ColumnField`, `columnCameraAt`, `columnBallAt` on `ThreeStage`'s accumulation | `column-field.tsx`, `lib/models/reel/column-field-motion.ts`, `lib/studio/film/three-stage.tsx` | 4 |
-| `TickerBands` | `ticker.tsx`, `lib/models/reel/ticker.ts`, `ticker-layout.ts` | 5 |
+| `ColumnField`, `columnCameraAt`, `columnBallAt` on `ThreeStage`'s accumulation | `column-field.tsx`, `lib/picture/reel/models/column-field-motion.ts`, `lib/picture/film/studio/three-stage.tsx` | 4 |
+| `TickerBands` | `ticker.tsx`, `lib/picture/reel/models/ticker.ts`, `ticker-layout.ts` | 5 |
 | none yet; [06] specs `particleMorph` | | 6 |
-| `RecapGrid`, `GlitchFlash`, `Shake`, `FadeToBlack` | `recap.tsx`, `lib/models/reel/recap.ts` | 7, 8 |
-| `ReelHud` | `hud.tsx`, `lib/models/reel/hud.ts` | all |
-| `LensFringe` | `lens.tsx`, `lib/models/reel/lens.ts` | the frame post |
-| `Odometer` | `lib/studio/kit/kit.tsx`, `lib/studio/kit/odometer-wheels.ts` | bar 5's price roll |
-| `CapturePlane`, `Needle` | `capture-plane.tsx`, `needle.tsx`, `lib/models/reel/needle.ts` | none: a reel over captures |
+| `RecapGrid`, `GlitchFlash`, `Shake`, `FadeToBlack` | `recap.tsx`, `lib/picture/reel/models/recap.ts` | 7, 8 |
+| `ReelHud` | `hud.tsx`, `lib/picture/reel/models/hud.ts` | all |
+| `LensFringe` | `lens.tsx`, `lib/picture/reel/models/lens.ts` | the frame post |
+| `Odometer` | `lib/picture/kit/studio/kit.tsx`, `lib/picture/kit/studio/odometer-wheels.ts` | bar 5's price roll |
+| `CapturePlane`, `Needle` | `capture-plane.tsx`, `needle.tsx`, `lib/picture/reel/models/needle.ts` | none: a reel over captures |
 
 ## The bars
 
@@ -284,7 +284,7 @@ In `lib/studio/reel/` unless noted.
 - **Swell out:** the ball grows ×1.10 (f149), 2.31 (f155), 8.41 (f161, 944 px), 15.7 (f164) and fills the frame on
   f165, ×1.25 a frame from f157. It stretches 1.75:1 over f151–154 and is round by f158, its edge soft (≈0.085 r). The
   guide, diamonds and ghosts fade over f151–157, the callout over f151–156. No cut: f165's orange is bar 2's ground.
-- Build: `BounceBall` and `bouncingBallAt` (`bounce.tsx` on `lib/models/reel/bounce.ts`, whose reference values are
+- Build: `BounceBall` and `bouncingBallAt` (`bounce.tsx` on `lib/picture/reel/models/bounce.ts`, whose reference values are
   this bar's), `BounceCallout`, `FieldSwell`. The one departure is the crouch: `bounce.ts` runs the impact's squash
   straight into it, without the rebound, which at 30 fps lands on a frame of its own and reads as a stutter, squash–stretch–squash. At 30 fps put
   each max squash on a rendered frame; the swell's last ≈5 frames grow ×1.56 each, so soften its edge (σ ≈0.035 r) or
@@ -351,7 +351,7 @@ and 10, ≈3% under the flash on beat 8, not at all on 11.
 - **Out (f392):** a layout match: the squares become bar 4's column tops seen from overhead. +1.25% scale; splits of
   ±2 / ±1.2 / ±1 px on f392 / 394 / 396.
 - Build: `GlyphField` (`glyph-field.tsx`) with `GLYPH_SHAPES`, waves from `glyphWaveArrivals` (both
-  `lib/models/reel/glyph-field.ts`), `FieldFlash` and `ShockRing`; `glyphFieldLayout` feeds the match cut and bar 7's implosion. [03]'s wave fits: beat 8 from its line
+  `lib/picture/reel/models/glyph-field.ts`), `FieldFlash` and `ShockRing`; `glyphFieldLayout` feeds the match cut and bar 7's implosion. [03]'s wave fits: beat 8 from its line
   + 2 f at 0.038 s a cell; beat 9 from its line − 2 f at 0.0523 s a cell; beat 10 along (1, 1)/√2 at 0.0292 s a step;
   beat 11 from the edges at 0.019 s a cell, the turn on `perceptualSpring(0.185, 0.3)`, arriving on the beat. Flash 0.57 with τ 2.3 f; ring 2670 px/s,
   22 px, 0.17, τ 4.6 f, the inner ring at 0.65× its speed. At 30 fps keep the delays continuous, give the newborn

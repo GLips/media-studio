@@ -2,7 +2,7 @@
 
 A reel, in this file's sense, is any music-led marketing video in the high-energy register (an ad, a launch teaser, a
 social cut, a product promo, a showreel, or the open and close of a walkthrough): a run of bars, each one device (a
-bounce, a slam of words, a field, a ticker) doing one thing to the beat, built from the pieces in `lib/studio/reel/`
+bounce, a slam of words, a field, a ticker) doing one thing to the beat, built from the pieces in `lib/picture/reel/studio/`
 (see `reel-pieces.md`) and cut together on the music. This is the shared brief for building one bar of it, whether
 you're building the whole video or one of several builders.
 
@@ -52,7 +52,7 @@ Draw only through the bar's pure function of `f`: no state, no randomness but se
   over what the bar draws under its box: the ink's tone, and a plate where the ground under it is mixed or busy. Read
   that ground rather than guess it: `reelHudGrounds(box, groundAt)` samples the box edge to edge into each ground's
   share, and `reelHudReadGrounds(grounds, looks)` picks the ink most of the box wants, plated where the other inks'
-  grounds or busy type show (`lib/models/reel/hud.ts`).
+  grounds or busy type show (`lib/picture/reel/models/hud.ts`).
 - **Sounds** the picture lands (a strike, a whip, a stamp) go in the bar's `sounds`, on its clock; `video.tsx` places them on the
   video (`defineVideo({ sounds })`, `sfx.md`), never as an `<Sfx>` in `render`: the finale replays `render` in its tiles, and
   a cut would stop a whip that runs across it. The music carries the beat; a sound marks what the music can't: a slam
@@ -97,7 +97,7 @@ the bar's first frame, and without the other bars in the bundle. Several builder
 For a builder working alongside others; building alone, the whole project is yours.
 
 - Write only your bar's module. Read anything.
-- Don't edit the pieces (`lib/studio/reel/`), the clock module, `video.tsx` or other bars. If a piece lacks something
+- Don't edit the pieces (`lib/picture/reel/studio/`), the clock module, `video.tsx` or other bars. If a piece lacks something
   your bar needs, work around it in your bar and name the gap in your report, so the orchestrator can fix the piece.
 - No paid calls, no `git add`, no commits.
 

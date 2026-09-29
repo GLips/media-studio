@@ -32,7 +32,7 @@ the right length and an audio stream, measure −14 ±1 LUFS and peak at −1 dB
 music or sound) has no mix, mastering or loudness check and no `.srt`: each MP4 must have no audio track instead. A mix
 that renders silent in any other project fails. Each is tiled into a sheet to look over.
 
-`studio api [name]` lists what `lib/studio/api.ts` exports, read from the code, or prints one export's signature and
+`studio api [name]` lists what `lib/api.ts` exports, read from the code, or prints one export's signature and
 doc comment. `studio repeatable <project> 2,8.5` proves a painted layer is a pure function of time; `studio sfx` renders sound
 effects from seeded recipes (`studio sfx list`; `studio sfx showcase` to listen through them all).
 
@@ -47,9 +47,9 @@ blocks. The pre-commit gate (`.githooks/pre-commit`, switched on by `npm install
 
 ```
 work/projects/<yyyy-mm-name>/
-  project.ts       its capability: music-led, voice-led, mixed, silent or still-only (lib/models/project/capability.ts),
+  project.ts       its capability: music-led, voice-led, mixed, silent or still-only (lib/platform/project/models/capability.ts),
                    and the modules its scenes may share
-  capture.ts       the named shots: stills and takes, each with its own setup (lib/engine/capture/capture.ts)
+  capture.ts       the named shots: stills and takes, each with its own setup (lib/footage/capture/engine/capture.ts)
   voiceover.json   { voice, lines: [{ id, text }] }
   timeline.ts      the timing, stated once: each scene's driver (beats, seconds or its voiced lines) and its cues
   timeline.test.ts registers the timeline with the retime runner
@@ -70,46 +70,49 @@ scene's `expect` says what must be on screen while a word is spoken:
 
 ## Pieces
 
-Scenes import the studio's conveniences from `#studio` (`lib/studio/api.ts`), and anything else in `lib/studio/` as
-`#studio/<folder>/<file>`; never by relative path. `lib/studio/` holds domain folders only, besides `api.ts`.
+`lib/` holds areas (`timing`, `picture`, `footage`, `output`, `platform`), each a set of features (`timing/voice`,
+`picture/camera`, …), and each feature splits by role: `models/` is pure and loads in plain Node, `studio/` renders in
+the browser, `engine/` is Node-side machinery. Scenes import the studio's conveniences from `#studio` (`lib/api.ts`),
+and anything else in a feature's `studio/` or `models/` as `#lib/<area>/<feature>/<role>/<file>`; never by relative
+path.
 
-- `lib/engine/capture/capture.ts`: named shots, each on a fresh page so any can be redone alone. Stills are screenshots with element
+- `lib/footage/capture/engine/capture.ts`: named shots, each on a fresh page so any can be redone alone. Stills are screenshots with element
   rects in page coordinates; takes are CDP screencasts with marks (rects and times) and a mouse and key log, filmed at
   the site's own pace.
-- `lib/studio/capture/take.ts`: takes in a scene. `fitTake` pins marks to words, `takeShot` is the frame showing then (a Shot,
+- `lib/footage/capture/studio/take.ts`: takes in a scene. `fitTake` pins marks to words, `takeShot` is the frame showing then (a Shot,
   so cameras work on it), `onTake` moves a mark's rect by the frame's scroll. `TakeCursor` draws our cursor and click
   sounds from the log, so a re-voice never needs a reshoot.
-- `lib/studio/composition/timeline.ts`: `defineScene`, `defineVideo`, and the layout that times scenes to their lines and centres
+- `lib/picture/composition/studio/timeline.ts`: `defineScene`, `defineVideo`, and the layout that times scenes to their lines and centres
   crossfades on the cuts.
-- `lib/models/camera/camera.ts`: a camera over captures (`camFit`, `camAt`, `lerpCam`) and views, which map page rects to the
+- `lib/picture/camera/models/camera.ts`: a camera over captures (`camFit`, `camAt`, `lerpCam`) and views, which map page rects to the
   frame.
-- `lib/studio/capture/capture.tsx`, `overlays.tsx`: captures (with blur, motion blur and state changes), cursor paths with
+- `lib/footage/capture/studio/capture.tsx`, `lib/picture/kit/studio/overlays.tsx`: captures (with blur, motion blur and state changes), cursor paths with
   clicks, highlights, spotlights, tags, text, frosted glass and washes. Scene text stays above `captionSafeArea(frame).top`.
-- `lib/studio/kit/kit.tsx`: whole shots built from those, taking their brand colours and words as arguments: `MotionTitle`,
+- `lib/picture/kit/studio/kit.tsx`: whole shots built from those, taking their brand colours and words as arguments: `MotionTitle`,
   `ClickToBlur`, `SplitCompare`, `Phone`, `GlassCard`, `SectionCard`, `EndCard`, and redraws of what a screenshot
   can't hold (`ConfirmDialog`, `NativeMenu`). When a shot recurs in a second video, move it here.
-- `lib/studio/probe/probe.tsx`: measures highlights, clicks, tags and the caption on each frame. `lib/models/frame/framing-check.ts`
+- `lib/output/look/studio/probe.tsx`: measures highlights, clicks, tags and the caption on each frame. `lib/picture/frame/models/framing-check.ts`
   decides what's a problem.
-- `lib/studio/mix/mix.ts`: voice levelling, and a music bed that ducks under the voice. `lib/engine/ffmpeg/loudness.ts` measures.
-- `lib/studio/sfx/sfx.tsx`: `<Sfx>` plays a sound so it lands on a scene time; `CursorPath` clicks sound by themselves.
-  `lib/sfx/` synthesizes every sound from a seeded recipe (whoosh, riser, impact, chime and more), so there's nothing
+- `lib/timing/sound/models/mix.ts`: voice levelling, and a music bed that ducks under the voice. `lib/output/ffmpeg/engine/loudness.ts` measures.
+- `lib/timing/sound/studio/sfx.tsx`: `<Sfx>` plays a sound so it lands on a scene time; `CursorPath` clicks sound by themselves.
+  `lib/timing/sound/models/recipes.ts` synthesizes every sound from a seeded recipe (whoosh, riser, impact, chime and more), so there's nothing
   to license.
-- `lib/engine/voice/whisper-words.ts`, `lib/models/voice/voice-words.ts`: word timings from whisper.cpp (installed on first use into
+- `lib/timing/voice/engine/whisper-words.ts`, `lib/timing/voice/models/voice-words.ts`: word timings from whisper.cpp (installed on first use into
   `~/.cache/media-studio`), aligned to the script.
-- `lib/models/voice/voice-take.ts`: where to cut a take into lines, and the pauses the read left between them.
-- `lib/models/music/music-beats.ts`: the tempo and beats of a music track.
+- `lib/timing/voice/models/voice-take.ts`: where to cut a take into lines, and the pauses the read left between them.
+- `lib/timing/music/models/music-beats.ts`: the tempo and beats of a music track.
 - Painted layers are being rebuilt as stamp painting and have no style yet; see the `video-canvas` skill.
   `studio repeatable` proves a drawn layer is a pure function of time.
 - `web/`: the studio app behind `studio review`, on TanStack Start, Mantine and StyleX, served in-process
-  by Vite (`lib/engine/web/studio-app-server.ts`). It reaches `lib/engine` only through
+  by Vite (`lib/platform/web/engine/studio-app-server.ts`). It reaches engine code only through
   `web/src/infrastructure/studio-engine.server.ts`.
 - `cli/studio.ts`: the `studio` entry point. Each verb is `cli/commands/<verb>.ts`, parsing its arguments and calling
-  into `lib/`: `lib/engine/render/render-pipeline.ts` checks, mixes, renders and reviews a bundled project
-  (`lib/engine/render/render-session.ts`), `lib/engine/voice/voice-project.ts` reads the script as one take (Gemini TTS through
-  `lib/engine/generation/openrouter.ts`, `say`, or a recording) and cuts it, and `lib/engine/project/studio-project.ts` resolves `<project>`.
-- `lib/engine/generation/paid-generation.ts`: every paid image, video or music generation, cached by request hash into a project's
+  into `lib/`: `lib/output/render/engine/render-pipeline.ts` checks, mixes, renders and reviews a bundled project
+  (`lib/output/render/engine/render-session.ts`), `lib/timing/voice/engine/voice-project.ts` reads the script as one take (Gemini TTS through
+  `lib/footage/generation/engine/openrouter.ts`, `say`, or a recording) and cuts it, and `lib/platform/project/engine/studio-project.ts` resolves `<project>`.
+- `lib/footage/generation/engine/paid-generation.ts`: every paid image, video or music generation, cached by request hash into a project's
   `generated/` (gitignored) with each result's prompt, model, references and cost in `generated/provenance.json`.
-  `lib/engine/render/previs-render.ts` is `studio gen video`: a scene's 3D blockout (`lib/studio/previs/blockout.tsx`) rendered into footage.
+  `lib/output/render/engine/previs-render.ts` is `studio gen video`: a scene's 3D blockout (`lib/footage/previs/studio/blockout.tsx`) rendered into footage.
 
-Remotion bundles `lib/studio` and one project's `video.tsx`. Remotion is free for companies of up to three people;
+Remotion bundles one project's `video.tsx` and the `lib/` code it imports. Remotion is free for companies of up to three people;
 past that it needs a company license.

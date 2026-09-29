@@ -2,7 +2,7 @@
 //
 // Every timed project (one with a timeline.ts) registers with the shared retime
 // runner: its timeline.test.ts calls `assertTimelineRetimes`, imported from
-// lib/models/timeline/retime.ts, and `npm test` runs it. The runner itself holds
+// lib/timing/timeline/models/retime.ts, and `npm test` runs it. The runner itself holds
 // the behaviour (lengthening a scene moves what follows and keeps each move's
 // length); this check holds that no timed project skips it.
 //
@@ -13,7 +13,7 @@
 import { callsTo, type Finding, type StructuralCheck } from '../check-context.ts';
 
 const ID = 'retime-registration';
-export const RETIME_RUNNER = { path: 'lib/models/timeline/retime.ts', name: 'assertTimelineRetimes' } as const;
+export const RETIME_RUNNER = { path: 'lib/timing/timeline/models/retime.ts', name: 'assertTimelineRetimes' } as const;
 
 export const retimeRegistrationCheck: StructuralCheck = {
   id: ID,

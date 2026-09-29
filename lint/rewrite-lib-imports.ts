@@ -1,7 +1,7 @@
 // ─── node lint/rewrite-lib-imports.ts: relative imports into lib/ → aliases ──
 //
-// Rewrites every relative import that climbs into another `lib/<folder>` to that
-// folder's `#` alias, the fix for import-policy's crossing finding. It edits the
+// Rewrites every relative import that climbs into another lib feature
+// (`lib/<area>/<feature>`) to its `#lib/*` alias, the fix for import-policy's crossing finding. It edits the
 // working tree's tracked sources in place and reruns clean: a second run
 // changes nothing. Every rewrite is checked by expanding the alias back to the
 // file the relative path named.
@@ -13,8 +13,8 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { isolatedGitEnv } from '#engine/git/fixture-git.ts';
-import { aliasForRepoPath, expandStudioAlias, libFolderCrossedTo, normalizeRepoPath, STUDIO_WORKSPACE_MOUNT } from './policy/studio-tree.ts';
+import { isolatedGitEnv } from '#lib/platform/git/engine/fixture-git.ts';
+import { aliasForRepoPath, expandStudioAlias, libFeatureCrossedTo, normalizeRepoPath, STUDIO_WORKSPACE_MOUNT } from './policy/studio-tree.ts';
 import { parseSourceFile, SOURCE_EXTENSIONS } from './structural/source-tree.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -35,7 +35,7 @@ for (const path of tracked) {
   for (const { specifier, offset } of parseSourceFile(path, text).imports) {
     if (!specifier.startsWith('.')) continue;
     const target = normalizeRepoPath(`${path.slice(0, path.lastIndexOf('/') + 1)}${specifier}`);
-    if (libFolderCrossedTo(path, target) === undefined) continue;
+    if (libFeatureCrossedTo(path, target) === undefined) continue;
     const alias = aliasForRepoPath(target, imports);
     if (alias === undefined || expandStudioAlias(alias, imports) !== target) {
       throw new Error(`${path}: no alias in package.json's imports names ${target} (imported as ${specifier})`);

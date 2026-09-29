@@ -2,7 +2,7 @@ import { describeRule } from "../lib/rule-spec.ts";
 import { clientServerInfraRule } from "./client-server-infra.ts";
 
 // The allowlist is the browser adapters: api-client and the query client. `studio-engine.server`
-// is the app's one door into lib/engine, and is the server module every client case reaches for.
+// is the app's one door into the studio's engine code, and is the server module every client case reaches for.
 const PANEL = "/repo/web/src/features/billing/ui/panel.tsx";
 const SHARED_UI = "/repo/web/src/shared/ui/badge.tsx";
 const IMPORT_ENGINE_DOOR = `import { listStudioProjects } from "#web/infrastructure/studio-engine.server.ts";`;
@@ -10,7 +10,7 @@ const IMPORT_ENGINE_DOOR = `import { listStudioProjects } from "#web/infrastruct
 describeRule("boundary/client-server-infra", clientServerInfraRule, {
   obvious: [
     {
-      // `infrastructure/studio-engine.server.ts` is the web app's door to lib/engine, so it is the
+      // `infrastructure/studio-engine.server.ts` is the web app's door to engine code, so it is the
       // whole Node side behind one specifier — and it is not on the allowlist.
       name: "a client component importing the module that wraps the engine",
       filename: PANEL,

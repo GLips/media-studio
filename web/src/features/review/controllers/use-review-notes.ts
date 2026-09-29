@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { ReviewNote } from '#models/review/review-notes.ts';
-import type { ReviewArtifact } from '#models/review/review-artifact.ts';
+import type { ReviewNote } from '#lib/output/review/models/review-notes.ts';
+import type { ReviewArtifact } from '#lib/output/review/models/review-artifact.ts';
 import { submitReviewNotes } from './review-artifact.ts';
 
 /**

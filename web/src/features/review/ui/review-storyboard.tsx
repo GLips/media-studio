@@ -1,8 +1,8 @@
 import { Box, Group, Image, Paper, SimpleGrid, Stack, Text, Title, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
-import type { ReviewArtifact } from '#models/review/review-artifact.ts';
-import { formatReviewMoment, type ReviewNote } from '#models/review/review-notes.ts';
-import type { ReviewStoryboardCard, ReviewStoryboardStill } from '#models/review/review-storyboard.ts';
+import type { ReviewArtifact } from '#lib/output/review/models/review-artifact.ts';
+import { formatReviewMoment, type ReviewNote } from '#lib/output/review/models/review-notes.ts';
+import type { ReviewStoryboardCard, ReviewStoryboardStill } from '#lib/output/review/models/review-storyboard.ts';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { colors, fonts, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { formatTimelineMomentName } from './review-note-format.ts';

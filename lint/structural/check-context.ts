@@ -8,7 +8,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
-import { isolatedGitEnv } from '#engine/git/fixture-git.ts';
+import { isolatedGitEnv } from '#lib/platform/git/engine/fixture-git.ts';
 import { classifyStudioPath, STUDIO_WORKSPACE_MOUNT, type StudioPosition } from '../policy/studio-tree.ts';
 import { readDeclaredShared, type DeclarationProblem } from './project-declaration.ts';
 import { loadSourceTree, walkAst, type AstNode, type CandidateSnapshot, type ImportTarget, type MountedSnapshot, type ScannedImport, type SourceFile, type SourceTree } from './source-tree.ts';

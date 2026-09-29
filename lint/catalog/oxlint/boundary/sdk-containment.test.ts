@@ -3,7 +3,7 @@
 // shipping beside the rule rather than beside the data: what is proved here is the
 // READER, and the reader is the same whatever the rows say.
 //
-// Three rows: `#engine` (lib/engine) is owned by `infrastructure/studio-engine.server.ts`, and
+// Three rows: engine code (`#lib/<area>/<feature>/engine/…`) is owned by `infrastructure/studio-engine.server.ts`, and
 // `@remotion/renderer` and `@remotion/bundler` are banned outright — the app reaches a render
 // through the engine, never the renderer itself.
 
@@ -14,7 +14,7 @@ const FEATURE_CONTROLLER = "/repo/web/src/features/review/controllers/review-que
 const FEATURE_UI = "/repo/web/src/features/review/ui/review-screen.tsx";
 const ROUTE = "/repo/web/src/routes/media.$project.ts";
 const ENGINE_DOOR = "/repo/web/src/infrastructure/studio-engine.server.ts";
-const IMPORT_ENGINE = `import { readReviewArtifact } from "#engine/review/review-artifact.ts";`;
+const IMPORT_ENGINE = `import { readReviewArtifact } from "#lib/output/review/engine/review-artifact.ts";`;
 
 describeRule("boundary/sdk-containment", sdkContainmentRule, {
   obvious: [
@@ -22,7 +22,7 @@ describeRule("boundary/sdk-containment", sdkContainmentRule, {
       name: "a feature controller reaching the engine directly rather than through the app's one door",
       filename: FEATURE_CONTROLLER,
       code: IMPORT_ENGINE,
-      errors: [{ message: "#engine/review/review-artifact.ts may only be imported by #web/infrastructure/studio-engine.server.ts. lib/engine reads and writes the studio's projects on disk and spawns renders, so it only runs on the server. One door means one place that decides which engine calls a browser request can reach; the app calls it through a server function or a server route." }],
+      errors: [{ message: "#lib/output/review/engine/review-artifact.ts may only be imported by #web/infrastructure/studio-engine.server.ts. Engine code reads and writes the studio's projects on disk and spawns renders, so it only runs on the server. One door means one place that decides which engine calls a browser request can reach; the app calls it through a server function or a server route." }],
     },
     {
       name: "a route rendering a composition itself",
@@ -48,13 +48,13 @@ describeRule("boundary/sdk-containment", sdkContainmentRule, {
     {
       name: "a dynamic import is a call expression, not an import declaration",
       filename: ROUTE,
-      code: `export const loader = async () => (await import("#engine/project/studio-project.ts")).listStudioProjects;`,
+      code: `export const loader = async () => (await import("#lib/platform/project/engine/studio-project.ts")).listStudioProjects;`,
       errors: [{ messageId: "rawSdkOutsideOwner" }],
     },
     {
       name: "a re-export hands the engine on under the feature's own name",
       filename: FEATURE_CONTROLLER,
-      code: `export { readReviewArtifact } from "#engine/review/review-artifact.ts";`,
+      code: `export { readReviewArtifact } from "#lib/output/review/engine/review-artifact.ts";`,
       errors: [{ messageId: "rawSdkOutsideOwner" }],
     },
     {
@@ -66,7 +66,7 @@ describeRule("boundary/sdk-containment", sdkContainmentRule, {
     {
       name: "a literal require() is the same dependency, and reaches no import visitor",
       filename: FEATURE_CONTROLLER,
-      code: `const engine = require("#engine/review/project-media.ts");`,
+      code: `const engine = require("#lib/output/review/engine/project-media.ts");`,
       errors: [{ messageId: "rawSdkOutsideOwner" }],
     },
     {
@@ -100,7 +100,7 @@ describeRule("boundary/sdk-containment", sdkContainmentRule, {
     {
       name: "the owning module is exactly where the engine belongs",
       filename: ENGINE_DOOR,
-      code: `${IMPORT_ENGINE}\nexport { listStudioProjects } from "#engine/project/studio-project.ts";`,
+      code: `${IMPORT_ENGINE}\nexport { listStudioProjects } from "#lib/platform/project/engine/studio-project.ts";`,
     },
     {
       name: "the door, which is what callers are meant to import",
@@ -108,19 +108,19 @@ describeRule("boundary/sdk-containment", sdkContainmentRule, {
       code: `import { readReviewArtifact } from "#web/infrastructure/studio-engine.server.ts";`,
     },
     {
-      name: "the browser-side studio and models aliases have no row",
+      name: "the barrel and a feature's models and studio code have no row, though #lib names the engine too",
       filename: FEATURE_UI,
-      code: `import { Player } from "#studio";\nimport { cueAt } from "#models/timeline/cue.ts";`,
+      code: `import { Player } from "#studio";\nimport { cueAt } from "#lib/timing/timeline/models/cue.ts";\nimport { Kit } from "#lib/picture/kit/studio/kit.tsx";`,
     },
     {
-      name: "a package whose name merely starts with an owned one",
+      name: "a package whose name merely starts with an owned one, and an engine folder that is no feature's role",
       filename: FEATURE_UI,
-      code: `import { Player } from "@remotion/player";\nimport { engineVersion } from "#engine-docs/version.ts";`,
+      code: `import { Player } from "@remotion/player";\nimport { engineVersion } from "#lib/engine/version.ts";`,
     },
     {
       name: "a relative path that happens to end in an owned package's name is a file in this repo",
       filename: FEATURE_CONTROLLER,
-      code: `import { engine } from "./#engine";`,
+      code: `import { engine } from "./#lib/output/review/engine/x.ts";`,
     },
     {
       name: "a test may reach the engine to build a fixture",

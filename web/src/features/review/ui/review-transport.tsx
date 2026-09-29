@@ -1,7 +1,7 @@
 import { ActionIcon, Button, Group, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react';
-import { formatReviewMoment } from '#models/review/review-notes.ts';
+import { formatReviewMoment } from '#lib/output/review/models/review-notes.ts';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { fonts } from '#web/shared/ui/theme.stylex.ts';
 import type { ReviewPlayback } from './use-review-playback.ts';

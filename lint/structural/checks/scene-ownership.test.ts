@@ -40,14 +40,14 @@ test("a scene reaches only its own folder, shared modules and the timeline; noth
 
 test('a finale replays other scenes only as the composition hands them over', () => {
   const findings = runCheckOnFiles('scene-ownership', {
-    'lib/models/timeline/bind-timeline.ts': 'export const bindTimeline = (t: unknown, b: unknown) => [t, b];\n',
+    'lib/timing/timeline/models/bind-timeline.ts': 'export const bindTimeline = (t: unknown, b: unknown) => [t, b];\n',
     'work/projects/p/project.ts': "export default { capability: 'music-led', shared: ['replayed.ts'] };\n",
     'work/projects/p/timeline.ts': 'export const t = 0;\n',
     'work/projects/p/bars/ink.tsx': 'export const ink = (clock: unknown) => clock;\n',
     // Legal: the finale takes its replays as arguments, and the composition injects them.
-    'work/projects/p/bars/finale.tsx': "import type { bindTimeline } from '../../../../lib/models/timeline/bind-timeline.ts';\nexport const finale = (clock: unknown, replays: unknown) => [clock, replays];\n",
+    'work/projects/p/bars/finale.tsx': "import type { bindTimeline } from '../../../../lib/timing/timeline/models/bind-timeline.ts';\nexport const finale = (clock: unknown, replays: unknown) => [clock, replays];\n",
     'work/projects/p/video.tsx': [
-      "import { bindTimeline } from '../../../lib/models/timeline/bind-timeline.ts';", "import { t } from './timeline.ts';",
+      "import { bindTimeline } from '../../../lib/timing/timeline/models/bind-timeline.ts';", "import { t } from './timeline.ts';",
       "import { ink } from './bars/ink.tsx';", "import { finale } from './bars/finale.tsx';", 'bindTimeline(t, { ink, finale });',
     ].join('\n'),
     // Adversarial: a shared registry of scenes the finale could read its replays from.

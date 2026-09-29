@@ -1,6 +1,6 @@
 ---
 name: video-motion
-description: Motion for any video's scenes in lib/studio code, and checking the render. Use when animating an approved storyboard or brief, or for motion feedback ("slow the zooms", "the highlight comes too late").
+description: Motion for any video's scenes in the studio's React code, and checking the render. Use when animating an approved storyboard or brief, or for motion feedback ("slow the zooms", "the highlight comes too late").
 ---
 
 # Motion
@@ -13,9 +13,9 @@ A scene may render any React whose output depends only on its time, fixed inputs
 video, your own components. Remotion renders frames independently, out of order and several tabs at once, so
 nothing may carry over from the frame before (no counters, no `Math.random()`, no stepped physics), and anything that
 loads (an image, a font, a model, a texture) must finish before the frame is captured (`<Img>`, `delayRender`).
-Randomness comes from `seededRandom` / `hashRandom` (`lib/models/motion/random.ts`).
+Randomness comes from `seededRandom` / `hashRandom` (`lib/picture/motion/models/random.ts`).
 
-`lib/studio/api.ts` exports the studio's conveniences: the timeline, curves and springs, cameras over captures, the
+`lib/api.ts` exports the studio's conveniences: the timeline, curves and springs, cameras over captures, the
 kit and reel pieces, the checks' tags. Use them where they fit, and import anything else a scene needs. `studio api
 <name>` prints any function's signature and doc. The existing projects each show one way to tell one story, not a
 structure to copy.
@@ -29,7 +29,7 @@ Pick up the register's own reference before building:
 
 ## Timing
 
-A project states its schedule once, in `timeline.ts`: `defineTimeline` (`lib/models/timeline/timeline.ts`) lists the
+A project states its schedule once, in `timeline.ts`: `defineTimeline` (`lib/timing/timeline/models/timeline.ts`) lists the
 scenes in order, each with one driver that sets its length:
 
 - `voiceSpan(['fix-a', 'fix-b'], { lead, gap, tail, min })`: as long as its recorded lines, whose words are its cues
@@ -100,7 +100,7 @@ You know what happens because you wrote the code. The viewer sees it once, at fu
 ## The high-energy register: ads, teasers, promos
 
 A launch ad, teaser, social cut or product promo is usually cut to music: one idea per bar, an event on every beat,
-full-bleed colour, display type as the image, hard cuts on the hit. `lib/studio/reel/` has pieces built for it (a
+full-bleed colour, display type as the image, hard cuts on the hit. `lib/picture/reel/studio/` has pieces built for it (a
 bounce, kinetic type, ticker bands, a glyph field, a 3D field, a capture on a tilted card, a recap grid, a HUD), and
 kit.tsx's `Odometer`; a bar the pieces don't cover is built directly, or as a new piece.
 `references/reel-assembly.md` builds it bar by bar on a beat grid, `references/reel-pieces.md` adds a piece,
@@ -147,7 +147,7 @@ approved in review, then build the scene over the same cues and rhythm.
 ## Kit and generated stills
 
 - **Words coming in, a number rolling, a stroke drawing on**: `WordReveal`, `Odometer` and `DrawPath` in
-  `lib/studio/kit/kit.tsx`. Read [references/kit-recipes.md](references/kit-recipes.md) before using one.
+  `lib/picture/kit/studio/kit.tsx`. Read [references/kit-recipes.md](references/kit-recipes.md) before using one.
 - **A still nothing drawn or captured gives** (title-card art, a background, a physical product's shot, a concept
   icon) is generated, paid, with `studio gen image`: read [references/generated-stills.md](references/generated-stills.md)
   first. A product's UI is never generated (the `video-kickoff` skill, Real UI only).
@@ -224,7 +224,7 @@ A graph can't tell you whether a move reads. Check that on the strip, and check 
 ## Every video becomes a template
 
 When a shot works and could come back (an end card, a title, a product UI rebuilt in DOM), move it into
-`lib/studio/kit/kit.tsx` with its brand colours and words as props. The next video starts from it and changes the skin.
+`lib/picture/kit/studio/kit.tsx` with its brand colours and words as props. The next video starts from it and changes the skin.
 For something Remotion-specific (fonts, measuring text), see the `remotion` skill. A painted or generative layer is the
 `video-canvas` skill. A shot of the real world (a product in use, a place, people) can be generated footage, blocked
 in 3D (or flat, for a 2D shot) and rendered once: the `video-gen` skill. Music, sound effects and the mix are their own pass once the picture

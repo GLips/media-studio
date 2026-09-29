@@ -4,7 +4,7 @@
 
 All of this already happens, so don't redo it with your own gain, `loudnorm` or compressor:
 
-- **Voice.** Every line is levelled to −20 LUFS (`VOICE_LUFS`, `lib/studio/mix/mix.ts`). A line quieter than that throws:
+- **Voice.** Every line is levelled to −20 LUFS (`VOICE_LUFS`, `lib/timing/sound/models/mix.ts`). A line quieter than that throws:
   the composition can boost it, but Remotion clips each source at full scale, and a voice's peaks sit close to it.
   Re-read it rather than boosting it.
 - **Music.** Levels are set in LU relative to the voice, so a quiet track and a hot one sit the same under the same
@@ -14,7 +14,7 @@ All of this already happens, so don't redo it with your own gain, `loudnorm` or 
 - **Effects** are levelled when `studio sfx` renders them, by category, relative to the voice, then play at their
   `volume`. They aren't ducked (`sfx.md`).
 - **Mastering.** `studio mix` and `studio render` render the soundtrack, then apply one gain to reach −14 LUFS and a
-  true-peak limiter at −2 dBTP (`lib/engine/render/render-pipeline.ts`). Encoding to AAC adds a little overshoot, and the extra 1 dB
+  true-peak limiter at −2 dBTP (`lib/output/render/engine/render-pipeline.ts`). Encoding to AAC adds a little overshoot, and the extra 1 dB
   of headroom keeps the delivered file under the −1 dBTP ceiling. `studio render` then measures the delivered video
   and fails if it isn't −14 ± 1 LUFS or peaks over −1 dBTP. A mix that renders silent fails before mastering: something
   that should sound didn't. A video meant to have no sound at all declares `capability: 'silent'` in `project.ts`; it

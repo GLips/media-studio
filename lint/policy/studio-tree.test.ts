@@ -1,24 +1,27 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { classifyStudioPath, expandStudioAlias } from './studio-tree.ts';
+import { classifyStudioPath, expandStudioAlias, libFeatureCrossedTo } from './studio-tree.ts';
 
 test('each path lands in its §4 position', () => {
   const shared = { p: ['look.ts'] };
   const cases: Record<string, string> = {
-    'lib/models/timeline/clock.ts': 'models',
-    'lib/studio/api.ts': 'studio barrel',
-    'lib/studio/reel/hud.tsx': 'studio',
-    'lib/engine/render/run.ts': 'engine',
-    'lib/sfx/cues.ts': 'lib-unsplit',
-    // Adversarial: lib/, lib/models/ and lib/studio/ (but for its barrel) hold subfolders only, so a module directly
-    // in one is placed nowhere.
+    'lib/timing/timeline/models/clock.ts': 'models',
+    'lib/api.ts': 'studio barrel',
+    'lib/picture/reel/studio/hud.tsx': 'studio',
+    'lib/output/render/engine/run.ts': 'engine',
+    // A file deeper in a role folder is still that role.
+    'lib/output/render/engine/motion-calibration/video.tsx': 'engine',
+    // Adversarial: lib/ holds areas, an area features and a feature role folders, so a module directly in one, in a
+    // folder that names no role, or in an area LIB_AREAS doesn't declare is placed nowhere.
     'lib/music-fit.ts': 'undeclared',
-    'lib/models/music-fit.ts': 'undeclared',
-    'lib/studio/kit.tsx': 'undeclared',
+    'lib/timing/music-fit.ts': 'undeclared',
+    'lib/picture/kit/kit.tsx': 'undeclared',
+    'lib/picture/kit/helpers/x.ts': 'undeclared',
+    'lib/helpers/strings/models/x.ts': 'undeclared',
     'web/src/infrastructure/studio-engine.server.ts': 'web-server',
     'web/src/routes/api.studio.ts': 'web-client',
     'web/vite.config.ts': 'root-config',
-    // Adversarial: `.server` names a server module only in infrastructure/, the app's one door into lib/engine.
+    // Adversarial: `.server` names a server module only in infrastructure/, the app's one door into lib's engine code.
     'web/src/features/review/controllers/review-queries.server.ts': 'web-client',
     'work/brands/kit/brand.ts': 'brand-kit',
     'work/brands/kit/extra.ts': 'undeclared',
@@ -41,7 +44,7 @@ test('each path lands in its §4 position', () => {
     'skills/x/tool.ts': 'ungoverned',
     // Adversarial: the workspace's own positions are its projects and brand kits; `work/` isn't stripped to find
     // another, and the old top-level folders place nothing.
-    'work/lib/models/timeline/clock.ts': 'undeclared',
+    'work/lib/timing/timeline/models/clock.ts': 'undeclared',
     'work/stray.ts': 'undeclared',
     'projects/p/timeline.ts': 'undeclared',
     'brands/kit/brand.ts': 'undeclared',
@@ -51,16 +54,23 @@ test('each path lands in its §4 position', () => {
     const position = classifyStudioPath(path, shared);
     const label = position.kind === 'project'
       ? [position.role, 'scene' in position ? position.scene : undefined].filter(Boolean).join(' ')
-      : position.kind === 'studio' && position.barrel ? 'studio barrel' : position.kind;
+      : 'barrel' in position ? 'studio barrel' : position.kind;
     assert.equal(label, expected, path);
   }
 });
 
 test('an alias expands to the same normalized path its relative spelling names', () => {
-  const imports = { '#studio': './lib/studio/api.ts', '#models/*': './lib/models/*', '#models/timeline/*': './lib/models/timeline/v2/*' };
-  assert.equal(expandStudioAlias('#studio', imports), 'lib/studio/api.ts');
-  assert.equal(expandStudioAlias('#models/reel/../motion/ease.ts', imports), 'lib/models/motion/ease.ts');
+  const imports = { '#studio': './lib/api.ts', '#lib/*': './lib/*', '#lib/timing/timeline/*': './lib/timing/timeline/v2/*' };
+  assert.equal(expandStudioAlias('#studio', imports), 'lib/api.ts');
+  assert.equal(expandStudioAlias('#lib/picture/reel/../motion/models/ease.ts', imports), 'lib/picture/motion/models/ease.ts');
   // The longest matching prefix wins, as in Node.
-  assert.equal(expandStudioAlias('#models/timeline/clock.ts', imports), 'lib/models/timeline/v2/clock.ts');
+  assert.equal(expandStudioAlias('#lib/timing/timeline/models/clock.ts', imports), 'lib/timing/timeline/v2/models/clock.ts');
   assert.equal(expandStudioAlias('#engine/render.ts', imports), undefined);
+});
+
+test('a relative import crosses into another feature, not between role folders of its own', () => {
+  assert.equal(libFeatureCrossedTo('lib/picture/kit/studio/kit.tsx', 'lib/picture/kit/models/layout.ts'), undefined);
+  assert.equal(libFeatureCrossedTo('lib/picture/kit/studio/kit.tsx', 'lib/picture/motion/models/ease.ts'), 'lib/picture/motion');
+  // Adversarial: the barrel is in no feature, so every feature it reaches is crossed into.
+  assert.equal(libFeatureCrossedTo('lib/api.ts', 'lib/picture/kit/studio/kit.tsx'), 'lib/picture/kit');
 });

@@ -1,6 +1,6 @@
 import { Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
-import type { SceneRung } from '#models/timeline/scene-rung.ts';
+import type { SceneRung } from '#lib/timing/timeline/models/scene-rung.ts';
 import { colors } from '#web/shared/ui/theme.stylex.ts';
 
 const styles = stylex.create({

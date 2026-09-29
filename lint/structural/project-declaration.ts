@@ -1,7 +1,7 @@
 // ─── A project's project.ts, read off its AST ─────────────────────────
 //
 // `export default { capability: 'music-led', shared: ['look.ts'] } satisfies
-// ProjectDeclaration` (lib/models/project/capability.ts). Read statically,
+// ProjectDeclaration` (lib/platform/project/models/capability.ts). Read statically,
 // never imported: check:arch judges a snapshot, not the working tree. Only
 // literals are read, so a value built at runtime is reported as unreadable
 // rather than guessed at.

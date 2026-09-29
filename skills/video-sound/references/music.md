@@ -15,7 +15,7 @@ studio music gen <p> "<prompt>" --name=lead --full  # a full-length track (about
 ```
 
 Either way, the track is copied into `work/projects/<p>/music/`. Its loudness, tempo and beats are measured
-(`lib/engine/music/music-track.ts`, `lib/models/music/music-beats.ts`), and `music/index.ts` is rewritten. That file says `Edits here are lost
+(`lib/timing/music/engine/music-track.ts`, `lib/timing/music/models/music-beats.ts`), and `music/index.ts` is rewritten. That file says `Edits here are lost
 on the next run`. Then:
 
 ```tsx
@@ -74,7 +74,7 @@ studio music fit <p> --name=lead --as=lead-60 --seconds=60   # any length, to au
 ```
 
 It keeps the intro, drops or repeats whole bars by jumping between downbeats whose bars sound alike, and keeps the
-outro (`lib/models/music/music-fit.ts`). Less than a bar left over comes off the head, or goes before it as silence. The original
+outro (`lib/timing/music/models/music-fit.ts`). Less than a bar left over comes off the head, or goes before it as silence. The original
 stays, so point the video at the fit (`music: { track: music['bed-fit'] }`, no `sourceStartSeconds`) and rerun `fit`
 after any retime. Adding or generating a track under a name drops the fits cut from its old audio, so fit again
 after that too. A fitted track that no longer matches the video's length fades out like any other.

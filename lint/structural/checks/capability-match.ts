@@ -1,6 +1,6 @@
 // ─── Capability match ─────────────────────────────────────────────────
 //
-// A project declares its capability in project.ts (lib/models/project/
+// A project declares its capability in project.ts (lib/platform/project/models/
 // capability.ts), and that declaration is held to what the project binds: its
 // timeline's grid (music) and voice (voice), read off the defineTimeline call,
 // and its stills.tsx's defineStills (stills). A bound timeline with neither
@@ -13,15 +13,15 @@
 // still check hold those. Nor is a silent video's quiet: a scene can place a
 // sound anywhere, so its delivered file's review holds that it has no audio.
 
-import { capabilityOfParts, PROJECT_CAPABILITIES, type ProjectCapability, type ProjectPart } from '#models/project/capability.ts';
+import { capabilityOfParts, PROJECT_CAPABILITIES, type ProjectCapability, type ProjectPart } from '#lib/platform/project/models/capability.ts';
 import { declaredProperty, propertyKeyName, unwrapExpression } from '../project-declaration.ts';
 import type { AstNode, SourceFile } from '../source-tree.ts';
 import { callsTo, type CheckContext, type Finding, type StructuralCheck } from '../check-context.ts';
 
 const ID = 'capability-match';
-const DEFINE_TIMELINE = { path: 'lib/models/timeline/timeline.ts', name: 'defineTimeline' };
-const BIND_TIMELINE = { path: 'lib/models/timeline/bind-timeline.ts', name: 'bindTimeline' };
-const DEFINE_STILLS = { path: 'lib/studio/stills/stills.tsx', name: 'defineStills' };
+const DEFINE_TIMELINE = { path: 'lib/timing/timeline/models/timeline.ts', name: 'defineTimeline' };
+const BIND_TIMELINE = { path: 'lib/timing/timeline/models/bind-timeline.ts', name: 'bindTimeline' };
+const DEFINE_STILLS = { path: 'lib/output/stills/studio/stills.tsx', name: 'defineStills' };
 /** The keys of a timeline's spec that make a part. */
 const TIMELINE_PARTS: Readonly<Record<string, ProjectPart>> = { grid: 'music', voice: 'voice' };
 

@@ -1,4 +1,4 @@
-// vite.config.ts: the studio app, served in-process by `studio review` (lib/engine/web). tk2's stack: StyleX ahead of
+// vite.config.ts: the studio app, served in-process by `studio review` (lib/platform/web/engine/studio-app-server.ts). tk2's stack: StyleX ahead of
 // React, TanStack Start (client-rendered: every screen plays media, so there is nothing to server-render). No Nitro:
 // nothing deploys a server (the app runs in-process), and its dev server hands any <video> or <img> fetch to Vite's
 // static files, which don't hold the projects' media.
@@ -28,11 +28,11 @@ export default defineConfig({
     tanstackStart({
       // Client-rendered: the server sends a shell and the browser renders every route.
       spa: { enabled: true },
-      // The fence between the lib split's positions, held by the bundler as well as the lint: no browser module may
-      // pull in Node-side machinery.
+      // The fence between lib's roles, held by the bundler as well as the lint: no browser module may pull in a
+      // feature's engine code, its Node-side machinery.
       importProtection: {
         behavior: 'error',
-        client: { specifiers: ['#engine/*'], files: ['**/*.server.*'] },
+        client: { specifiers: [/^#lib\/[^/]+\/[^/]+\/engine\//], files: ['**/*.server.*'] },
       },
     }),
     viteReact(),

@@ -22,11 +22,8 @@
   },
   "type": "module",
   "imports": {
-    "#engine/*": "./lib/engine/*",
-    "#models/*": "./lib/models/*",
-    "#sfx/*": "./lib/sfx/*",
-    "#studio": "./lib/studio/api.ts",
-    "#studio/*": "./lib/studio/*",
+    "#lib/*": "./lib/*",
+    "#studio": "./lib/api.ts",
     "#web/*": "./web/src/*"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
 import { Alert, Button, Group, Stack, Text } from '@mantine/core';
-import type { ReviewArtifact, ReviewArtifactStatus } from '#models/review/review-artifact.ts';
+import type { ReviewArtifact, ReviewArtifactStatus } from '#lib/output/review/models/review-artifact.ts';
 import { AnchorLink } from '#web/shared/ui/anchor-link.tsx';
 import { formatRenderTime } from './review-note-format.ts';
 

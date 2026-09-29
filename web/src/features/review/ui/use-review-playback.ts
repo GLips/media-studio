@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { reviewFrameAt } from '#models/review/review-notes.ts';
+import { reviewFrameAt } from '#lib/output/review/models/review-notes.ts';
 
 /**
  * The review's clock: the frame on screen, read from each presented frame's own timestamp while playing, and the moves

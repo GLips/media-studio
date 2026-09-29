@@ -1,6 +1,6 @@
 // studio new: starts a project of a declared capability that passes check:arch, typecheck and its tests as written.
 import { defineCommand } from 'citty';
-import { PROJECT_CAPABILITIES } from '#models/project/capability.ts';
+import { PROJECT_CAPABILITIES } from '#lib/platform/project/models/capability.ts';
 
 export default defineCommand({
   meta: {
@@ -16,14 +16,14 @@ export default defineCommand({
   },
   async run({ args }) {
     const { basename } = await import('node:path');
-    const { scaffoldStudioProject } = await import('#engine/project/new-project.ts');
-    const { captureStudioProject } = await import('#engine/capture/capture.ts');
+    const { scaffoldStudioProject } = await import('#lib/platform/project/engine/new-project.ts');
+    const { captureStudioProject } = await import('#lib/footage/capture/engine/capture.ts');
     const { capability } = args;
     const dir = scaffoldStudioProject({ slug: args.slug, capability, url: args.url, title: args.title, brand: args.brand });
     if (args.url) await captureStudioProject(dir);
     const voiced = capability === 'voice-led' || capability === 'mixed';
     if (voiced) {
-      const { voiceStudioProject } = await import('#engine/voice/voice-project.ts');
+      const { voiceStudioProject } = await import('#lib/timing/voice/engine/voice-project.ts');
       await voiceStudioProject(dir, { mode: 'estimate' });
     }
     const name = basename(dir);

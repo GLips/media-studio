@@ -1,5 +1,5 @@
 // studio music: adds a music track to a project, supplied or generated, and fits one to the video's length
-// (lib/engine/music/music-track.ts).
+// (lib/timing/music/engine/music-track.ts).
 import { defineCommand } from 'citty';
 import { studioProjectArg } from '../project-arg.ts';
 
@@ -15,8 +15,8 @@ const add = defineCommand({
   },
   async run({ args }) {
     const { resolve } = await import('node:path');
-    const { resolveStudioProject } = await import('#engine/project/studio-project.ts');
-    const { addProjectMusicTrack } = await import('#engine/music/music-track.ts');
+    const { resolveStudioProject } = await import('#lib/platform/project/engine/studio-project.ts');
+    const { addProjectMusicTrack } = await import('#lib/timing/music/engine/music-track.ts');
     console.log(addProjectMusicTrack(resolveStudioProject(args.project), resolve(args.track), args.name));
   },
 });
@@ -33,8 +33,8 @@ const gen = defineCommand({
     full: { type: 'boolean', description: 'A full-length track (lyria-3-pro) rather than a 30 s clip, for music that has to go somewhere' },
   },
   async run({ args }) {
-    const { resolveStudioProject } = await import('#engine/project/studio-project.ts');
-    const { generateProjectMusicTrack } = await import('#engine/music/music-track.ts');
+    const { resolveStudioProject } = await import('#lib/platform/project/engine/studio-project.ts');
+    const { generateProjectMusicTrack } = await import('#lib/timing/music/engine/music-track.ts');
     console.log(await generateProjectMusicTrack(resolveStudioProject(args.project), { prompt: args.prompt, name: args.name, full: Boolean(args.full) }));
   },
 });
@@ -56,8 +56,8 @@ const fit = defineCommand({
     tail: { type: 'string', valueHint: '1', description: "With --bars: seconds of silence after the track's ending, for a picture that holds past it" },
   },
   async run({ args }) {
-    const { resolveStudioProject } = await import('#engine/project/studio-project.ts');
-    const { fitProjectMusicTrack, formatMusicFitReport } = await import('#engine/music/music-track.ts');
+    const { resolveStudioProject } = await import('#lib/platform/project/engine/studio-project.ts');
+    const { fitProjectMusicTrack, formatMusicFitReport } = await import('#lib/timing/music/engine/music-track.ts');
     const as = args.as ?? `${args.name}-fit`;
     if (args.bars !== undefined) {
       if (args.seconds !== undefined) throw new Error('give --bars or --seconds, not both: bars set their own length');

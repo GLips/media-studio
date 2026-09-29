@@ -16,8 +16,8 @@ export default defineCommand({
   async run({ args }) {
     const at = args.at?.split(':').map(Number);
     if (at && !(at.length === 2 && at.every(Number.isFinite) && at[0] < at[1])) throw new Error(`--at is a stretch of seconds like 12:20, not ${args.at}`);
-    const { checkProject, formatTimelineTable, writeCheckReports } = await import('#engine/render/render-pipeline.ts');
-    const { formatRenderPasses } = await import('#engine/render/render-session.ts');
+    const { checkProject, formatTimelineTable, writeCheckReports } = await import('#lib/output/render/engine/render-pipeline.ts');
+    const { formatRenderPasses } = await import('#lib/output/render/engine/render-session.ts');
     const session = await openStudioRenderSession(args.project, { workers: args.workers });
     const scope = { scene: args.scene, at: at && ([at[0], at[1]] as const) };
     const check = await checkProject(session, scope);

@@ -6,12 +6,12 @@ description: Capture a site for a video by writing a project's capture.ts (still
 # Capturing
 
 Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it. `work/projects/<p>/capture.ts` declares
-named shots with `captureShots` from `lib/engine/capture/capture.ts`, whose header and types are the API. `studio capture <p>` films
+named shots with `captureShots` from `lib/footage/capture/engine/capture.ts`, whose header and types are the API. `studio capture <p>` films
 them into `captures/`; `--only=a,b` redoes just those, and the rest keep their last capture. The shape a real one
 settles into:
 
 ```ts
-import { captureShots, type Page } from '#engine/capture/capture.ts';
+import { captureShots, type Page } from '#lib/footage/capture/engine/capture.ts';
 
 const PDP = 'https://shop.example.com/products/widget';
 // A chat teaser that arrives at random would flicker between states that crossfade.

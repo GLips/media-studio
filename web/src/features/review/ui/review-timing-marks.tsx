@@ -1,7 +1,7 @@
 import { Box, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
-import { formatReviewMoment } from '#models/review/review-notes.ts';
-import type { ReviewTimingMarks as ReviewTimingMarkList } from '#models/review/review-storyboard.ts';
+import { formatReviewMoment } from '#lib/output/review/models/review-notes.ts';
+import type { ReviewTimingMarks as ReviewTimingMarkList } from '#lib/output/review/models/review-storyboard.ts';
 import { colors } from '#web/shared/ui/theme.stylex.ts';
 import { formatTimelineMomentName } from './review-note-format.ts';
 

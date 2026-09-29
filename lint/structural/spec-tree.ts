@@ -6,8 +6,8 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { isolatedGitEnv, runFixtureGit } from '#engine/git/fixture-git.ts';
-import { withStudioTemp } from '#engine/temp/studio-temp.ts';
+import { isolatedGitEnv, runFixtureGit } from '#lib/platform/git/engine/fixture-git.ts';
+import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { contextFor, studioScope, type Finding } from './check-context.ts';
 import { STRUCTURAL_CHECKS } from './registry.ts';
 import { loadSourceTree } from './source-tree.ts';

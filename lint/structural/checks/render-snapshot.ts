@@ -9,10 +9,10 @@
 //   blockout is exempt: a scene's layout sketch sent to generation, not the video.
 // - The timeline file name (a path-like string ending in `timeline.json`) is
 //   spelt only where Video.tsx names the artifact and the render session
-//   names the report, and those constants reach only lib/engine/render, which
+//   names the report, and those constants reach only the render feature's engine, which
 //   reads the artifact and writes the check's report, however they're re-exported.
 // - The snapshot file name (`.snapshot.json`) is spelt only in the loader's
-//   folder, so a snapshot is read through loadRenderSnapshot.
+//   module and its spec, so a snapshot is read through loadRenderSnapshot.
 //
 // Negative space: prose naming the files (a command's help) has spaces and
 // isn't a path, so it's not caught, and nor is a name built by concatenation.
@@ -23,11 +23,11 @@ import type { Finding, StructuralCheck } from '../check-context.ts';
 const ID = 'render-snapshot';
 /** The renderer's calls that write a video file. */
 const VIDEO_WRITERS = ['renderMedia', 'stitchFramesToVideo'];
-const RENDER_OWNERS = ['lib/engine/render/render-session.ts', 'lib/engine/render/previs-render.ts'];
+const RENDER_OWNERS = ['lib/output/render/engine/render-session.ts', 'lib/output/render/engine/previs-render.ts'];
 /** Where the timeline file is named, and the constant each names it by. */
-const TIMELINE_NAMES = [{ path: 'lib/studio/composition/Video.tsx', name: 'TIMELINE_ARTIFACT' }, { path: 'lib/engine/render/render-session.ts', name: 'TIMELINE_REPORT_NAME' }];
-const TIMELINE_ARTIFACT_READERS = 'lib/engine/render/';
-const SNAPSHOT_OWNER = 'lib/engine/snapshot/';
+const TIMELINE_NAMES = [{ path: 'lib/picture/composition/studio/Video.tsx', name: 'TIMELINE_ARTIFACT' }, { path: 'lib/output/render/engine/render-session.ts', name: 'TIMELINE_REPORT_NAME' }];
+const TIMELINE_ARTIFACT_READERS = 'lib/output/render/engine/';
+const SNAPSHOT_OWNER = 'lib/output/render/engine/render-snapshot';
 
 export const renderSnapshotCheck: StructuralCheck = {
   id: ID,
@@ -55,7 +55,7 @@ export const renderSnapshotCheck: StructuralCheck = {
             found(file.lineOf(node.start), text, 'names timeline.json, the latest check\'s report: a render\'s timeline is in its snapshot (loadRenderSnapshot)');
           }
           if (text.includes('.snapshot.json') && !file.path.startsWith(SNAPSHOT_OWNER)) {
-            found(file.lineOf(node.start), text, 'names a render\'s snapshot file: read it through loadRenderSnapshot (lib/engine/snapshot)');
+            found(file.lineOf(node.start), text, 'names a render\'s snapshot file: read it through loadRenderSnapshot (lib/output/render/engine/render-snapshot.ts)');
           }
         }
       });

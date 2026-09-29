@@ -1,5 +1,5 @@
 // The app's program. Its compiler options are the repo's (../tsconfig.json), not tk2's stricter set: the app pulls in
-// lib/models, lib/studio and lib/sfx, which are checked under whatever program imports them.
+// lib's models and studio code, which is checked under whatever program imports it.
 {
   "compilerOptions": {
     "target": "ES2023",

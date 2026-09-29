@@ -1,8 +1,8 @@
 import { Box, Image, SegmentedControl, Stack, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useState, type RefObject } from 'react';
-import type { ReviewArtifact } from '#models/review/review-artifact.ts';
-import type { ReviewNote } from '#models/review/review-notes.ts';
+import type { ReviewArtifact } from '#lib/output/review/models/review-artifact.ts';
+import type { ReviewNote } from '#lib/output/review/models/review-notes.ts';
 import { shadows } from '#web/shared/ui/shadows.ts';
 import { colors, fonts } from '#web/shared/ui/theme.stylex.ts';
 import { reviewNoteCovers, type ReviewNoteDraft } from './review-note-format.ts';

@@ -20,10 +20,10 @@ export default defineCommand({
   },
   async run({ args }) {
     const { join } = await import('node:path');
-    const { resolveStudioProjectWith } = await import('#engine/project/studio-project.ts');
-    const { describeStillFits, renderProjectStills } = await import('#engine/render/render-stills.ts');
-    const { withStudioTemp } = await import('#engine/temp/studio-temp.ts');
-    const { stillName } = await import('#models/still/still-presets.ts');
+    const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
+    const { describeStillFits, renderProjectStills } = await import('#lib/output/render/engine/render-stills.ts');
+    const { withStudioTemp } = await import('#lib/platform/temp/engine/studio-temp.ts');
+    const { stillName } = await import('#lib/output/stills/models/still-presets.ts');
     const project = resolveStudioProjectWith(args.project, 'stills.tsx');
     const renderStills = async (drawnDir?: string) => {
       const stills = await renderProjectStills(project, { designs: list(args.design), presets: list(args.preset), variants: list(args.variant) }, { format: args.jpg ? 'jpeg' : 'png', check: Boolean(args.check), drawnDir });
@@ -37,10 +37,10 @@ export default defineCommand({
         ? `still check: ${failed.length} of ${stills.length} failed${args.check ? '' : ', not written'}: ${failed.map((s) => stillName(s.still)).join(', ')}`
         : `still check ✓ (${stills.length} still${stills.length > 1 ? 's' : ''})`);
       if (failed.length) process.exitCode = 1;
-      const { describeLookAlikeAxis, stillAxesThatLookAlike } = await import('#engine/stills/still-sheet.ts');
+      const { describeLookAlikeAxis, stillAxesThatLookAlike } = await import('#lib/output/stills/engine/still-sheet.ts');
       for (const alike of stillAxesThatLookAlike(stills)) console.error(`⚠ ${describeLookAlikeAxis(alike)}`);
       if (drawnDir) {
-        const { renderStillSheets } = await import('#engine/stills/still-sheet.ts');
+        const { renderStillSheets } = await import('#lib/output/stills/engine/still-sheet.ts');
         for (const sheet of await renderStillSheets(stills, { outDir: join(project, 'out', 'still-sheets'), workDir: drawnDir, project })) console.log(sheet);
       }
     };

@@ -47,8 +47,8 @@ import { visitModuleSources } from "../lib/module-source-visitor.ts";
  * Each entry matches EXACTLY. An entry read as a prefix would admit a whole
  * subtree, and the browser then gets every module in it.
  *
- * NEGATIVE SPACE: `studio-engine.server` is the app's one door into lib/engine
- * (`#engine/*`) and is deliberately absent; a client reaches the engine only
+ * NEGATIVE SPACE: `studio-engine.server` is the app's one door into the
+ * studio's engine code (`#lib/<area>/<feature>/engine/…`) and is deliberately absent; a client reaches the engine only
  * through a server function or a server route.
  */
 const CLIENT_SAFE_INFRASTRUCTURE = ["api-client", "providers/query-client"];

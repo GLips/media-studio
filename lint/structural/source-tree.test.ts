@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
-import { isolatedGitEnv, runFixtureGit } from '#engine/git/fixture-git.ts';
-import { studioTempRoot } from '#engine/temp/studio-temp.ts';
+import { isolatedGitEnv, runFixtureGit } from '#lib/platform/git/engine/fixture-git.ts';
+import { studioTempRoot } from '#lib/platform/temp/engine/studio-temp.ts';
 import { loadSourceTree, type CandidateSnapshot, type TreeScope } from './source-tree.ts';
 
 const root = join(studioTempRoot(), 'source-tree');
@@ -17,17 +17,17 @@ const write = (path: string, text: string) => {
 git('init', '-q');
 git('config', 'user.email', 'spec@example.com');
 git('config', 'user.name', 'spec');
-write('package.json', JSON.stringify({ imports: { '#studio': './lib/studio/api.ts', '#models/*': './lib/models/*' } }));
-write('lib/studio/api.ts', 'export const a = 1;\n');
-write('lib/models/timeline/clock.ts', 'export const c = 1;\n');
-write('lib/models/timeline/index.ts', 'export {};\n');
+write('package.json', JSON.stringify({ imports: { '#studio': './lib/api.ts', '#lib/*': './lib/*' } }));
+write('lib/api.ts', 'export const a = 1;\n');
+write('lib/timing/timeline/models/clock.ts', 'export const c = 1;\n');
+write('lib/timing/timeline/models/index.ts', 'export {};\n');
 write('projects/p/video.tsx', [
   "import { a } from '#studio';",
-  "import { a as b } from '../../lib/studio/api.ts';",
-  "import { c } from '#models/timeline/clock.ts';",
-  "import '../../lib/models/timeline';",
+  "import { a as b } from '../../lib/api.ts';",
+  "import { c } from '#lib/timing/timeline/models/clock.ts';",
+  "import '../../lib/timing/timeline/models';",
   "import { x } from '#nowhere';",
-  "export { c as d } from '#models/timeline/clock.ts';",
+  "export { c as d } from '#lib/timing/timeline/models/clock.ts';",
 ].join('\n'));
 write('odd/stray.ts', 'export {};\n');
 git('add', '.');
@@ -42,13 +42,13 @@ test('an alias and the relative spelling of one file resolve to the same canonic
   const video = tree.sources.find((file) => file.path === 'projects/p/video.tsx')!;
   const targets = video.imports.map((i) => tree.resolveImport(video.path, i.specifier, i.names));
   assert.deepEqual(targets, [
-    { kind: 'module', path: 'lib/studio/api.ts', backed: true },
-    { kind: 'module', path: 'lib/studio/api.ts', backed: true },
-    { kind: 'module', path: 'lib/models/timeline/clock.ts', backed: true },
+    { kind: 'module', path: 'lib/api.ts', backed: true },
+    { kind: 'module', path: 'lib/api.ts', backed: true },
+    { kind: 'module', path: 'lib/timing/timeline/models/clock.ts', backed: true },
     // A directory import lands on its index, not on the directory.
-    { kind: 'module', path: 'lib/models/timeline/index.ts', backed: true },
+    { kind: 'module', path: 'lib/timing/timeline/models/index.ts', backed: true },
     { kind: 'unresolved-alias', specifier: '#nowhere' },
-    { kind: 'module', path: 'lib/models/timeline/clock.ts', backed: true },
+    { kind: 'module', path: 'lib/timing/timeline/models/clock.ts', backed: true },
   ]);
 });
 
@@ -59,15 +59,15 @@ test('a file outside the declared tree is reported, not dropped', () => {
 });
 
 test('the index snapshot reads staged content, never the working tree', () => {
-  write('lib/studio/api.ts', "import 'fs';\n");
-  write('lib/studio/untracked.ts', 'export {};\n');
+  write('lib/api.ts', "import 'fs';\n");
+  write('lib/untracked.ts', 'export {};\n');
   const tree = load();
-  assert.equal(tree.sources.find((file) => file.path === 'lib/studio/api.ts')!.text, 'export const a = 1;\n');
-  assert.ok(!tree.paths.has('lib/studio/untracked.ts'));
+  assert.equal(tree.sources.find((file) => file.path === 'lib/api.ts')!.text, 'export const a = 1;\n');
+  assert.ok(!tree.paths.has('lib/untracked.ts'));
 
-  git('add', 'lib/studio/api.ts');
+  git('add', 'lib/api.ts');
   const staged = load();
-  assert.equal(staged.sources.find((file) => file.path === 'lib/studio/api.ts')!.imports[0].specifier, 'fs');
+  assert.equal(staged.sources.find((file) => file.path === 'lib/api.ts')!.imports[0].specifier, 'fs');
   const committed = load({ kind: 'commit', rev: 'HEAD' });
-  assert.equal(committed.sources.find((file) => file.path === 'lib/studio/api.ts')!.imports.length, 0);
+  assert.equal(committed.sources.find((file) => file.path === 'lib/api.ts')!.imports.length, 0);
 });

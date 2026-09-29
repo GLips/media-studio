@@ -1,5 +1,5 @@
 // studio review: a project's renders and stills in the studio app (web/), where notes are pinned on them. It opens the
-// app already serving this checkout, or serves it here. See lib/engine/web/studio-app-server.ts.
+// app already serving this checkout, or serves it here. See lib/platform/web/engine/studio-app-server.ts.
 import { defineCommand } from 'citty';
 
 export default defineCommand({
@@ -13,8 +13,8 @@ export default defineCommand({
     open: { type: 'boolean', default: true, description: 'Open it in the browser (--no-open to just serve)' },
   },
   async run({ args }) {
-    const { resolveStudioReviewTarget } = await import('#engine/review/review-target.ts');
-    const { openStudioAppServer } = await import('#engine/web/studio-app-server.ts');
+    const { resolveStudioReviewTarget } = await import('#lib/output/review/engine/review-target.ts');
+    const { openStudioAppServer } = await import('#lib/platform/web/engine/studio-app-server.ts');
     const target = resolveStudioReviewTarget(args.target);
     const app = await openStudioAppServer({ port: Number(args.port) });
     const url = `${app.url}${target.route}`;

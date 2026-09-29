@@ -81,7 +81,7 @@ nobody looks at it. The studio's register is its motion reels (frames described 
 - **Swap figure and ground for contrast.** Light type goes on a dark ground and dark type on a light field. Where a
   colour doesn't reach 4.5:1 for small text, change the ink, not the field (the buy box's HUD is black over magenta).
 
-The pieces, all from `lib/studio/api.ts`:
+The pieces, all from `lib/api.ts`:
 
 | Piece | What it does |
 | --- | --- |

@@ -40,35 +40,35 @@ declare module '*.woff2' {
   const src: string;
   export default src;
 }
-/** The project's video.tsx, or null when it has only stills (lib/engine/bundle/project-bundle.ts). */
+/** The project's video.tsx, or null when it has only stills (lib/output/render/engine/project-bundle.ts). */
 declare module '@video' {
-  const video: import('#studio/composition/timeline.ts').VideoDef | null;
+  const video: import('#lib/picture/composition/studio/timeline.ts').VideoDef | null;
   export default video;
 }
 /** The project's stills.tsx, or null when it has only a video. */
 declare module '@stills' {
-  const stills: import('#studio/stills/stills.tsx').StillsDef | null;
+  const stills: import('#lib/output/stills/studio/stills.tsx').StillsDef | null;
   export default stills;
 }
-/** The brand kit the project's brand.ts names, with its overrides, loaded (lib/engine/bundle/project-brand.ts). Importing it without one throws. */
+/** The brand kit the project's brand.ts names, with its overrides, loaded (lib/picture/brand/engine/project-brand.ts). Importing it without one throws. */
 declare module '@brand' {
-  const brand: import('#studio/brand/brand.tsx').StudioBrand;
+  const brand: import('#lib/picture/brand/studio/brand.tsx').StudioBrand;
   export default brand;
 }
 declare module '*.mp4' {
   const src: string;
   export default src;
 }
-/** The project's generated/footage.ts, rewritten from footage.json on every bundle (lib/engine/bundle/previs-footage.ts). */
+/** The project's generated/footage.ts, rewritten from footage.json on every bundle (lib/footage/previs/engine/previs-footage.ts). */
 declare module '@footage' {
-  export const footage: Readonly<Record<string, import('#studio/previs/previs.ts').PrevisFootage>>;
+  export const footage: Readonly<Record<string, import('#lib/footage/previs/studio/previs.ts').PrevisFootage>>;
 }
-/** The project's generated/sfx-cues.ts, rendered from sfx/cues.json on every bundle, or null without one (lib/sfx/cue-module.ts). */
+/** The project's generated/sfx-cues.ts, rendered from sfx/cues.json on every bundle, or null without one (lib/timing/sound/engine/cue-module.ts). */
 declare module '@sfx-cues' {
-  const cues: readonly import('#studio/sfx/sfx.tsx').SfxCueSound[] | null;
+  const cues: readonly import('#lib/timing/sound/studio/sfx.tsx').SfxCueSound[] | null;
   export default cues;
 }
-/** The project folder's name, defined at bundle time by lib/engine/bundle/project-bundle.ts. */
+/** The project folder's name, defined at bundle time by lib/output/render/engine/project-bundle.ts. */
 declare const PROJECT_SLUG: string;
 /** Its replay composition's id, likewise. */
 declare const REPLAY_SLUG: string;

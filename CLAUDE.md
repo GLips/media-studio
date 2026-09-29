@@ -9,17 +9,18 @@
   `hosts.json`. The studio's git ignores it; it's a git repository of its own, made by `studio workspace init` (run it
   first). Its commits run `.githooks-workspace/pre-commit`: `check:arch --scope workspace`, the full typecheck,
   `npm run test:workspace`.
-- `lib/` has three positions: `lib/models/` (pure, loads in plain Node), `lib/studio/` (renders in the browser) and
-  `lib/engine/` (Node-side machinery). Each holds domain subfolders only, plus `lib/studio/api.ts`, which projects
-  import as `#studio`. `lib/sfx/` is still to be split into them. An import into a `lib/<folder>` from
-  outside it uses its alias (`#models/*`, `#studio/*`, `#engine/*`, `#sfx/*`), never a relative path;
-  `node lint/rewrite-lib-imports.ts` rewrites any that slip in.
+- `lib/` is areas (`timing`, `picture`, `footage`, `output`, `platform`) of feature folders, each holding only the
+  role folders it needs: `models/` (pure, loads in plain Node), `studio/` (renders in the browser), `engine/`
+  (Node-side machinery). So `lib/<area>/<feature>/<role>/`, plus `lib/api.ts`, which projects import as `#studio`.
+  `models` imports only `models`; `studio` imports `models` and `studio`; `engine` imports `models` and `engine`; browser
+  code never imports `engine`. A new area is declared in `lint/policy/studio-tree.ts`. An import into a feature from
+  outside it uses `#lib/*`, never a relative path; `node lint/rewrite-lib-imports.ts` rewrites any that slip in.
 - Start a project with `studio new <slug> --capability <music-led|voice-led|mixed|silent|still-only>`. It passes every check
   from its first commit; a new project isn't baselined, so a violation in it blocks.
 - A project, `work/projects/<p>/`: `project.ts` (its capability, held to what it binds, and the `shared` modules its
   scenes may import), `timeline.ts`, `timeline.test.ts` (the retime runner), a file per scene in `scenes/` or `bars/`
   with its helpers in a folder of its name, `video.tsx`, `stills.tsx`.
 - Timing lives in `timeline.ts`. A scene reaches another's moment by its cue, never by importing it. `timeline.ts`
-  imports `#models/*`, never `#studio`.
+  imports `models` code (`#lib/<area>/<feature>/models/…`), never `#studio`.
 - Lint and the hooks enforce this. Older violations sit in baselines that only shrink: `lint/arch-baseline.json` for
   the studio, `work/arch-baseline.json` for the workspace.

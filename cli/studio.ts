@@ -4,8 +4,8 @@
 import { defineCommand, runCommand, runMain } from 'citty';
 import { existsSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { STUDIO_ROOT } from '#engine/project/studio-project.ts';
-import { studioTempRoot } from '#engine/temp/studio-temp.ts';
+import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
+import { studioTempRoot } from '#lib/platform/temp/engine/studio-temp.ts';
 
 const studioCommand = defineCommand({
   meta: {
@@ -47,7 +47,7 @@ studioTempRoot();
 function warnIfInAnotherStudio() {
   let dir = process.cwd();
   while (!existsSync(join(dir, '.git')) && dirname(dir) !== dir) dir = dirname(dir);
-  if (existsSync(join(dir, 'lib/studio/api.ts')) && realpathSync(dir) !== realpathSync(STUDIO_ROOT)) {
+  if (existsSync(join(dir, 'lib/api.ts')) && realpathSync(dir) !== realpathSync(STUDIO_ROOT)) {
     process.stderr.write(`studio: you're in ${dir}; studio home is ${STUDIO_ROOT}\n`);
   }
 }

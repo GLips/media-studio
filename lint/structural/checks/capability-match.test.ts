@@ -3,19 +3,19 @@ import { test } from 'node:test';
 import { caught, runCheckOnFiles } from '../spec-tree.ts';
 
 const LIB = {
-  'lib/models/timeline/timeline.ts': 'export const defineTimeline = (s: unknown) => s;\n',
-  'lib/models/timeline/bind-timeline.ts': 'export const bindTimeline = (t: unknown, b: unknown) => [t, b];\n',
-  'lib/studio/stills/stills.tsx': 'export const defineStills = (d: unknown) => d;\n',
-  'lib/studio/api.ts': "export { defineStills } from './stills/stills.tsx';\n",
+  'lib/timing/timeline/models/timeline.ts': 'export const defineTimeline = (s: unknown) => s;\n',
+  'lib/timing/timeline/models/bind-timeline.ts': 'export const bindTimeline = (t: unknown, b: unknown) => [t, b];\n',
+  'lib/output/stills/studio/stills.tsx': 'export const defineStills = (d: unknown) => d;\n',
+  'lib/api.ts': "export { defineStills } from '#lib/output/stills/studio/stills.tsx';\n",
 };
 const declares = (capability: string) => `export default { capability: '${capability}' } satisfies { capability: string };\n`;
-const timeline = (keys: string) => `import { defineTimeline } from '../../../lib/models/timeline/timeline.ts';\nexport const timeline = defineTimeline({ ${keys ? `${keys}, ` : ''}scenes: {} });\n`;
-const BOUND = "import { bindTimeline } from '../../../lib/models/timeline/bind-timeline.ts';\nimport { timeline } from './timeline.ts';\nexport default bindTimeline(timeline, {});\n";
+const timeline = (keys: string) => `import { defineTimeline } from '../../../lib/timing/timeline/models/timeline.ts';\nexport const timeline = defineTimeline({ ${keys ? `${keys}, ` : ''}scenes: {} });\n`;
+const BOUND = "import { bindTimeline } from '../../../lib/timing/timeline/models/bind-timeline.ts';\nimport { timeline } from './timeline.ts';\nexport default bindTimeline(timeline, {});\n";
 const STILLS = "import { defineStills } from '#studio';\nexport default defineStills({});\n";
 
 test('a declared capability is held to the music, voice and stills the project binds, and silent to none', () => {
   const findings = runCheckOnFiles('capability-match', {
-    'package.json': JSON.stringify({ imports: { '#studio': './lib/studio/api.ts' } }),
+    'package.json': JSON.stringify({ imports: { '#studio': './lib/api.ts', '#lib/*': './lib/*' } }),
     ...LIB,
     // Legal: each capability, bound as declared.
     'work/projects/music/project.ts': declares('music-led'),

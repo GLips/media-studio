@@ -1,6 +1,6 @@
 import { Button, Group, Paper, Stack } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
-import type { ReviewNoteContext } from '#models/review/review-notes.ts';
+import type { ReviewNoteContext } from '#lib/output/review/models/review-notes.ts';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { Textarea } from '#web/shared/ui/textarea.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';

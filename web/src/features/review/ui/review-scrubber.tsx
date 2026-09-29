@@ -1,8 +1,8 @@
 import { Box, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useRef, useState, type PointerEvent } from 'react';
-import type { ReviewArtifact } from '#models/review/review-artifact.ts';
-import { formatReviewMoment, type ReviewNote } from '#models/review/review-notes.ts';
+import type { ReviewArtifact } from '#lib/output/review/models/review-artifact.ts';
+import { formatReviewMoment, type ReviewNote } from '#lib/output/review/models/review-notes.ts';
 import { colors, fonts } from '#web/shared/ui/theme.stylex.ts';
 import type { ReviewNoteDraft } from './review-note-format.ts';
 import { ReviewSceneRung } from './review-scene-rung.tsx';

@@ -1,4 +1,4 @@
-// studio capture: films the shots the project's capture.ts defines (lib/engine/capture/capture.ts).
+// studio capture: films the shots the project's capture.ts defines (lib/footage/capture/engine/capture.ts).
 import { defineCommand } from 'citty';
 import { studioProjectArg } from '../project-arg.ts';
 
@@ -13,8 +13,8 @@ export default defineCommand({
   },
   async run({ args }) {
     const { basename } = await import('node:path');
-    const { resolveStudioProjectWith } = await import('#engine/project/studio-project.ts');
-    const { captureStudioProject } = await import('#engine/capture/capture.ts');
+    const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
+    const { captureStudioProject } = await import('#lib/footage/capture/engine/capture.ts');
     const project = resolveStudioProjectWith(args.project, 'capture.ts');
     const { index, uncaptured } = await captureStudioProject(project, { only: args.only?.split(',') });
     if (uncaptured.length) {

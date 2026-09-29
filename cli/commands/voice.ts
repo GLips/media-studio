@@ -1,6 +1,6 @@
-// studio voice: voices a project's script as one take and cuts it into lines (lib/engine/voice/voice-project.ts).
+// studio voice: voices a project's script as one take and cuts it into lines (lib/timing/voice/engine/voice-project.ts).
 import { defineCommand } from 'citty';
-import type { VoiceMode } from '#engine/voice/voice-project.ts';
+import type { VoiceMode } from '#lib/timing/voice/engine/voice-project.ts';
 import { studioProjectArg } from '../project-arg.ts';
 
 const VOICE_READS = ['paid', 'draft', 'estimate'] as const satisfies readonly VoiceMode[];
@@ -22,8 +22,8 @@ export default defineCommand({
   },
   async run({ args }) {
     const { resolve } = await import('node:path');
-    const { resolveStudioProjectWith } = await import('#engine/project/studio-project.ts');
-    const { voiceStudioProject } = await import('#engine/voice/voice-project.ts');
+    const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
+    const { voiceStudioProject } = await import('#lib/timing/voice/engine/voice-project.ts');
     const project = resolveStudioProjectWith(args.project, 'voiceover.json');
     console.log(await voiceStudioProject(project, { mode: args.read, recording: args.take && resolve(args.take) }));
   },

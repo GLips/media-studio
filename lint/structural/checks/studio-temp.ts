@@ -1,6 +1,6 @@
 // ─── Studio temp: one owner for the temp dir ──────────────────────────
 //
-// Only lib/engine/temp/studio-temp.ts names mkdtemp, mkdtempSync or tmpdir.
+// Only lib/platform/temp/engine/studio-temp.ts names mkdtemp, mkdtempSync or tmpdir.
 // Everything else takes its folder from studioTempRoot() or withStudioTemp(),
 // which remove it when the step or the process ends, so a command that throws
 // or a server that's stopped can't leak one into the system temp dir.
@@ -19,7 +19,7 @@
 import type { Finding, StructuralCheck } from '../check-context.ts';
 
 const ID = 'studio-temp';
-const OWNER = 'lib/engine/temp/studio-temp.ts';
+const OWNER = 'lib/platform/temp/engine/studio-temp.ts';
 const EXEMPT = new Set([OWNER, 'lint/structural/checks/studio-temp.ts', 'lint/structural/checks/studio-temp.test.ts']);
 const CODE_FILE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
 const TEMP_DIR_API = /\b(mkdtempSync|mkdtemp|tmpdir)\b/;

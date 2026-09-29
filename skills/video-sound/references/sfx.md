@@ -59,7 +59,7 @@ the series' edits and names them: redo those.
 
 ## Where sounds come from
 
-Every sound is synthesized from a seeded recipe in `lib/sfx/` (after Farnell's *Designing Sound*): `whoosh`, `riser`,
+Every sound is synthesized from a seeded recipe in `lib/timing/sound/models/recipes.ts` (after Farnell's *Designing Sound*): `whoosh`, `riser`,
 `impact` (a dry hit: a crack, a thwack of noise that dies in a few cycles, and a kick's body under it, `weight` its low
 end; `impact.lock` strikes twice, a bolt catching just after the hit), `chime`, `ding`, `pop`, `click`, `key`,
 `toggle`, `typing`, `scroll` and `buzz` (a tattoo machine; its `strike` preset is one needle landing at `lead`, its
@@ -68,7 +68,7 @@ draws that thud out into an 808's ring for a last shot that holds), each in a sm
 Nothing to license, and a rerun writes identical files. `studio sfx list` prints every recipe's presets and parameters.
 
 1. **The kit**, already rendered: `SFX.click`, `key`, `toggleOn`, `toggleOff`, `pop`, `whoosh`, `whip`, `riser`,
-   `impact`, `chime`, `success`, `ding` (`lib/studio/sfx/kit.ts`). Reach for these first.
+   `impact`, `chime`, `success`, `ding` (`lib/timing/sound/studio/kit.ts`). Reach for these first.
 2. **A project's own**, when the kit's take doesn't fit the moment (a longer whoosh, a softer chime):
 
    ```sh
@@ -103,8 +103,8 @@ To hear the options, `studio sfx showcase` renders every preset and a few varian
 
 ## Playing one
 
-For a moment the draft can't find, `<Sfx sound at t id volume>` (`lib/studio/sfx/sfx.tsx`, exported from
-`lib/studio/api.ts`) plays `sound` so that it **lands** on `at`, in scene seconds. It plays whether or not the video
+For a moment the draft can't find, `<Sfx sound at t id volume>` (`lib/timing/sound/studio/sfx.tsx`, exported from
+`lib/api.ts`) plays `sound` so that it **lands** on `at`, in scene seconds. It plays whether or not the video
 plays a cue list; redraft after adding one so the list's accents keep clear of it.
 
 - **Where it lands.** Each sound knows where its event is: a click starts on `at`, a whoosh passes on it, and a riser

@@ -1,5 +1,5 @@
-import { formatReviewMoment, type ReviewNote } from '#models/review/review-notes.ts';
-import type { TimelineMoment } from '#models/timeline/scene-moments.ts';
+import { formatReviewMoment, type ReviewNote } from '#lib/output/review/models/review-notes.ts';
+import type { TimelineMoment } from '#lib/timing/timeline/models/scene-moments.ts';
 
 /** A note written but not yet saved: no id, and its context is worked out as it's drawn. */
 export type ReviewNoteDraft = Omit<ReviewNote, 'id' | 'context'>;

@@ -1,5 +1,5 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
-import { landingArtifactOf } from '#models/review/review-artifact.ts';
+import { landingArtifactOf } from '#lib/output/review/models/review-artifact.ts';
 import { ProjectEmptyPage, projectListingQueryOptions } from '#web/features/projects/index.ts';
 
 /** A project opens on the newest thing it has made; one with nothing yet says how to make something. */

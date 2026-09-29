@@ -5,11 +5,12 @@
 // either tier, so the structural checks and a later oxlint tier hand it the same
 // repo-relative string and reach one verdict.
 //
-// `lib-unsplit` holds `lib/sfx` until the lib split slices move it into
-// models/studio/engine. It is declared, so its files are checked, not
-// reported as unknown. A file directly in `lib/` or `lib/models/`, or in
-// `lib/studio/` other than its barrel api.ts, is undeclared: their top levels
-// hold subfolders only.
+// lib/ is areas of features: `lib/<area>/<feature>/<role>/…`, where the role
+// is `models` (pure, loads in plain Node), `studio` (renders in the browser) or
+// `engine` (Node-side machinery), and gives the file its position. An area
+// holds feature folders only and a feature role folders only, so anything
+// else in lib/ is undeclared, but for the barrel, `lib/api.ts` (`#studio`).
+// The areas are declared here (LIB_AREAS); a feature is any folder in one.
 //
 // Your own projects and brand kits sit in work/, a repository of its own that
 // check:arch mounts at `work/` in one path space with the studio's. Only
@@ -17,7 +18,7 @@
 // `work/` is never stripped, so a `work/lib/x.ts` is undeclared, not lib.
 
 export type ProjectRole =
-  /** `project.ts` declares the project's capability (lib/models/project/capability.ts). */
+  /** `project.ts` declares the project's capability (lib/platform/project/models/capability.ts). */
   | { role: 'timeline' | 'video' | 'stills' | 'brand' | 'capture' | 'project' }
   /** A spec beside a root module (`timeline.test.ts`): run by `node --test`, it may bind the whole project; nothing imports it. */
   | { role: 'spec' }
@@ -38,14 +39,14 @@ export type ProjectRole =
   | { role: 'unclassified' };
 
 export type StudioPosition =
-  | { kind: 'models' }
-  | { kind: 'studio'; barrel: boolean }
-  | { kind: 'engine' }
-  | { kind: 'lib-unsplit' }
+  /** A file in a feature's role folder; `feature` is `<area>/<feature>`. */
+  | { kind: LibRole; feature: string }
+  /** `lib/api.ts`, the barrel projects import as `#studio`. It renders in the browser, as `studio` does. */
+  | { kind: 'studio'; barrel: true }
   | { kind: 'cli' }
   /**
    * The web app (web/). `web-server` is a `.server` module in web/src/infrastructure/, the app's one door into
-   * lib/engine; everything else in web/ is `web-client`, since TanStack Start may put it in a browser chunk.
+   * lib's engine code; everything else in web/ is `web-client`, since TanStack Start may put it in a browser chunk.
    */
   | { kind: 'web-server' | 'web-client' }
   | { kind: 'brand-kit'; kit: string }
@@ -57,6 +58,12 @@ export type StudioPosition =
   /** Deliberately ungoverned (§4): `scratch/`, `node_modules/`, `skills/`. */
   | { kind: 'ungoverned' }
   | { kind: 'undeclared' };
+
+export type LibRole = 'models' | 'studio' | 'engine';
+const LIB_ROLES: readonly LibRole[] = ['models', 'studio', 'engine'];
+const isLibRole = (folder: string): folder is LibRole => LIB_ROLES.some((role) => role === folder);
+/** lib/'s areas, each a group of features. A new area is declared here, which keeps lib/'s top level a short list. */
+export const LIB_AREAS: readonly string[] = ['timing', 'picture', 'footage', 'output', 'platform'];
 
 const ROOT_ROLES: Record<string, 'timeline' | 'video' | 'stills' | 'brand' | 'capture' | 'project'> = {
   'timeline.ts': 'timeline', 'video.tsx': 'video', 'stills.tsx': 'stills', 'brand.ts': 'brand', 'capture.ts': 'capture', 'project.ts': 'project',
@@ -88,14 +95,10 @@ export function classifyStudioPath(path: string, shared: DeclaredShared): Studio
   if (top === 'lint') return { kind: 'lint' };
   if (parts.length === 1) return TOOL_CONFIG.test(top) ? { kind: 'root-config' } : { kind: 'undeclared' };
   if (top === 'lib') {
-    if (parts.length === 2) return { kind: 'undeclared' };
-    if (second === 'models') return parts.length > 3 ? { kind: 'models' } : { kind: 'undeclared' };
-    if (second === 'studio') {
-      if (path === 'lib/studio/api.ts') return { kind: 'studio', barrel: true };
-      return parts.length > 3 ? { kind: 'studio', barrel: false } : { kind: 'undeclared' };
-    }
-    if (second === 'engine') return { kind: 'engine' };
-    return { kind: 'lib-unsplit' };
+    if (path === 'lib/api.ts') return { kind: 'studio', barrel: true };
+    const [, area, feature, role] = parts;
+    if (parts.length < 5 || !LIB_AREAS.includes(area) || !isLibRole(role)) return { kind: 'undeclared' };
+    return { kind: role, feature: `${area}/${feature}` };
   }
   if (top === 'cli') return { kind: 'cli' };
   if (top === 'web') {
@@ -136,7 +139,7 @@ function projectRole(inside: string[], shared: readonly string[]): ProjectRole {
 /**
  * Expands a `#…` subpath import through package.json's `imports`, by Node's rule: an exact key first, then the `*`
  * pattern with the longest prefix. The result is repo-relative with `./` and `..` resolved, so `#studio` and
- * `../../lib/studio/api.ts` compare equal before any ownership check reads them.
+ * `../../lib/api.ts` compare equal before any ownership check reads them.
  */
 export function expandStudioAlias(specifier: string, imports: Readonly<Record<string, string>>): string | undefined {
   let target = imports[specifier];
@@ -167,14 +170,19 @@ export function normalizeRepoPath(path: string): string {
 }
 
 /**
- * The `lib/<folder>` a relative import from `fromPath` climbs into, or undefined when it stays in its own tree. Such an
- * import must use the folder's `#` alias: a relative path is short only between neighbours, and an alias survives a
- * move on either end.
+ * The `lib/<area>/<feature>`, or the barrel `lib/api.ts`, that a relative import from `fromPath` climbs into, or
+ * undefined when it stays in its own feature. Such an import must use `#lib/*` (or `#studio`): a relative path is
+ * short only between neighbours, and an alias survives a move on either end. The barrel is a unit of its own, so it
+ * reaches every feature by alias, and is reached by one.
  */
-export function libFolderCrossedTo(fromPath: string, targetPath: string): string | undefined {
-  const folder = (path: string) => (path.startsWith('lib/') ? path.split('/')[1] : undefined);
-  const to = folder(targetPath);
-  return to !== undefined && to !== folder(fromPath) ? to : undefined;
+export function libFeatureCrossedTo(fromPath: string, targetPath: string): string | undefined {
+  const feature = (path: string) => {
+    if (path === 'lib/api.ts') return path;
+    const parts = path.split('/');
+    return parts[0] === 'lib' && parts.length >= 4 ? parts.slice(0, 3).join('/') : undefined;
+  };
+  const to = feature(targetPath);
+  return to !== undefined && to !== feature(fromPath) ? to : undefined;
 }
 
 /**

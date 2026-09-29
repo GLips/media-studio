@@ -9,7 +9,7 @@ Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it.
 
 **Drawn layers are being rebuilt.** The studio has no painting style right now: stamp painting, drawn on the GPU,
 is on its way to replace the old one. Until it lands, a painted look isn't available; say so, and offer what
-`lib/studio` can do instead (SVG strokes, masks, three.js) or hold the shot for the new style.
+the studio's React code can do instead (SVG strokes, masks, three.js) or hold the shot for the new style.
 
 ## The one rule: a frame is a function of its time
 

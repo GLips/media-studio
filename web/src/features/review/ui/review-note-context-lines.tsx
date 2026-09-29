@@ -1,7 +1,7 @@
 import { Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
-import { formatReviewMomentPlace } from '#models/review/review-moment.ts';
-import { formatStillAxes, type ReviewNoteContext } from '#models/review/review-notes.ts';
+import { formatReviewMomentPlace } from '#lib/output/review/models/review-moment.ts';
+import { formatStillAxes, type ReviewNoteContext } from '#lib/output/review/models/review-notes.ts';
 import { colors, fonts } from '#web/shared/ui/theme.stylex.ts';
 
 const styles = stylex.create({

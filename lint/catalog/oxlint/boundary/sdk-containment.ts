@@ -75,7 +75,7 @@ export const sdkContainmentRule = defineTreeRule({
       if (target?.kind !== "package") return;
 
       for (const row of contained) {
-        if (row.package !== target.name) continue;
+        if (row.matches ? !row.matches.test(specifier) : row.package !== target.name) continue;
         context.report({
           node: source,
           messageId: "rawSdkOutsideOwner",

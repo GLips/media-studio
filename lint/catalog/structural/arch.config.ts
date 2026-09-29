@@ -27,10 +27,10 @@ export const architectureConfig: ArchitectureConfig = {
 
     "api/barrel-purity": {
       ...defaultCheckConfigs["api/barrel-purity"],
-      // The Node-side machinery a browser chunk can't carry. `#engine` is lib/engine, which the app
-      // reaches through `infrastructure/studio-engine.server.ts` alone; the rest are the renderer,
-      // the bundlers and the dev server lib/engine drives.
-      serverOnlyPackages: ["#engine", "@remotion/renderer", "@remotion/bundler", "@remotion/install-whisper-cpp", "esbuild", "vite"],
+      // The Node-side machinery a browser chunk can't carry: the renderer, the bundlers and the dev server the
+      // engine drives. Engine code itself (`#lib/*/*/engine/…`) isn't a name this list can hold; package-owners'
+      // engine row confines it to `infrastructure/studio-engine.server.ts`, and check:arch's import-policy holds it too.
+      serverOnlyPackages: ["@remotion/renderer", "@remotion/bundler", "@remotion/install-whisper-cpp", "esbuild", "vite"],
       // createServerOnlyFn cuts the chain as createServerFn does: Start's compiler replaces its body with a throwing
       // stub in the client build and drops the imports only it used. The features' server-route responders use it.
       serverFnBoundary: {

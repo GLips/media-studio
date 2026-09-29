@@ -1,4 +1,4 @@
-import type { ReviewArtifact } from '#models/review/review-artifact.ts';
+import type { ReviewArtifact } from '#lib/output/review/models/review-artifact.ts';
 
 type ReviewedFile = Pick<ReviewArtifact, 'project' | 'path' | 'render'>;
 

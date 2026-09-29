@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
-import { runFixtureGit } from '#engine/git/fixture-git.ts';
-import { withStudioTemp } from '#engine/temp/studio-temp.ts';
+import { runFixtureGit } from '#lib/platform/git/engine/fixture-git.ts';
+import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { judgeArchitecture } from './arch-verdict.ts';
 import { caught } from './spec-tree.ts';
 
@@ -19,9 +19,9 @@ test('the workspace scope judges what work/ has staged, through the studio\'s ba
     runFixtureGit(root, ['init', '-q']);
     writeFiles(root, {
       '.gitignore': '/work/\n',
-      'package.json': JSON.stringify({ imports: { '#studio': './lib/studio/api.ts' } }),
-      'lib/studio/composition/timeline.ts': 'export const defineScene = (s: unknown) => s;\n',
-      'lib/studio/api.ts': "export { defineScene } from './composition/timeline.ts';\n",
+      'package.json': JSON.stringify({ imports: { '#studio': './lib/api.ts', '#lib/*': './lib/*' } }),
+      'lib/picture/composition/studio/timeline.ts': 'export const defineScene = (s: unknown) => s;\n',
+      'lib/api.ts': "export { defineScene } from '#lib/picture/composition/studio/timeline.ts';\n",
     });
     runFixtureGit(root, ['add', '-A']);
 
