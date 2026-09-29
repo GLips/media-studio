@@ -4,7 +4,7 @@
 // pack's files, served at /files/.
 
 import type { StampBrush } from '../models/stamp-brush.ts';
-import { measureStrokeCoverage, PROCREATE_PREVIEW_SIZE, procreatePreviewPainting, type StrokeCoverageProfile } from '../models/procreate-preview-stroke.ts';
+import { measureStrokeCoverage, PROCREATE_PREVIEW_SIZE, procreatePreviewPainting, type StrokeCoverageProfile, type StrokeFidelityGrade } from '../models/procreate-preview-stroke.ts';
 import { createStampPaintRenderer } from './stamp-paint-renderer.ts';
 
 const { width: W, height: H } = PROCREATE_PREVIEW_SIZE;
@@ -51,18 +51,18 @@ async function paintOnProcreatePreviewStroke(brush: StampBrush, diameter: number
   }
 }
 
-const HEADER = 76;
+const HEADER = 98;
 
 /**
  * One row of the sheet: a header of `lines` (the first bold), then the preview as black ink on white at the left and
  * ours at the right, each the preview's size. Returns a PNG data URL.
  */
-async function drawStampBrushSheetRow({ previewFile, ours, lines, label }: { previewFile?: string; ours: string; lines: string[]; label?: 'verified' | 'approximated' | 'unsupported' }): Promise<string> {
+async function drawStampBrushSheetRow({ previewFile, ours, lines, grade }: { previewFile?: string; ours: string; lines: string[]; grade?: StrokeFidelityGrade }): Promise<string> {
   const canvas = Object.assign(document.createElement('canvas'), { width: W * 2, height: HEADER + H });
   const context = canvas.getContext('2d')!;
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, canvas.width, canvas.height);
-  context.fillStyle = { verified: '#d8f0d8', approximated: '#f6ecc8', unsupported: '#f4d4d4' }[label ?? 'approximated'] ?? '#eeeeee';
+  context.fillStyle = grade ? { close: '#d8f0d8', rough: '#f6ecc8', off: '#f4d4d4' }[grade] : '#eeeeee';
   context.fillRect(0, 0, canvas.width, HEADER);
   context.fillStyle = '#111111';
   lines.forEach((line, i) => {

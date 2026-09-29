@@ -8,7 +8,8 @@ in `work/projects/` can paint with it, and a project can use several.
 work/styles/<name>/
   style.ts     the style: `export default { … } satisfies StampPaintStyle` (lib/picture/stamp-paint/models/style.ts)
   <name>.md    how to paint in this style; guidance about the pack's brushes stays here, private
-  fidelity.ts  how faithfully the studio paints each brush: verified, approximated or unsupported, with a note (studio brushes sheet)
+  fidelity.ts  a note per brush on how and why it differs from its Procreate preview
+  fidelity-grades.json  each brush's score and grade (close, rough, off), written by studio brushes sheet
   brushes/     each pack's imported assets, in brushes/<pack>/ (studio brushes import). Not in git: each machine imports its own copy
 ```
 
@@ -72,24 +73,34 @@ into `palette` and a paper into `paper` (`image` for its photograph, `grain` for
 renderer along the stroke Procreate drew its preview with (one stamp, for a brush Procreate previews that way), at the
 diameter whose thickness matches the preview's, and sets it beside that preview. It writes a row per brush
 (`rows/<brush>.png`), the rows stacked at half size (`sheet.jpg`) and `report.json` into `brushes/<pack>/fidelity/`,
-out of git because the rows hold the pack's previews. Each row and the report measure both strokes alike: length,
-thickness along the stroke, where each end reaches 80% of its peak, density, how dark the rim is against the body, how
-coarse the grain is. `--brush a,b` draws only those; `--out <dir>` writes elsewhere, to keep a sheet from before a
-change to the renderer or the importer and compare.
+out of git because the rows hold the pack's previews. Each row and the report measure both strokes alike
+(lib/picture/stamp-paint/models/procreate-preview-stroke.ts): a coverage map in 8-pixel cells, length, thickness along
+the stroke, where each end reaches 80% of its peak, density, how dark the rim is against the body, grain size, edge
+width (pixels from a fifth to four fifths of its density), mottle in the body (fine and coarse), and fill (a hollow
+line against a solid one). Their gaps weigh into one score per brush, 0 for a perfect match, and the score grades it:
 
-Judge each brush from its row into the style's `fidelity.ts`, which git keeps:
+| grade   | score        | reads as                                        |
+| ------- | ------------ | ----------------------------------------------- |
+| `close` | 0.2 or less  | its preview, at a glance                        |
+| `rough` | up to 0.45   | the brush, plainly different in some way        |
+| `off`   | above 0.45   | not the brush: shape, density or texture wrong  |
+
+A gap anyone would call plain adds about 0.1 (`STROKE_SCORE_WEIGHTS` says how much each measure counts). A whole pack
+drawn to its own `fidelity/` also writes each brush's score and grade into the style's `fidelity-grades.json`, which
+git keeps. `--brush a,b` draws only those; `--out <dir>` writes elsewhere, to keep a sheet from before a change to the
+renderer or the importer and compare.
+
+The style's `fidelity.ts`, which git keeps, holds a note per brush on how and why it differs, which a score can't say:
 
 ```ts
 import type { StampPaintStyleFidelity } from '#lib/picture/stamp-paint/models/style.ts';
 
 export default {
-  vvds: { 'Soft Wet Blend': { level: 'verified', note: 'matches (2%, +0.02)' } },
+  vvds: { 'Pigment Dark Brush': 'an even dark scaly texture in Procreate, which comes from wet mixing' },
 } satisfies StampPaintStyleFidelity;
 ```
 
-`verified` reads as its preview does, `approximated` reads close and the note says how it differs, `unsupported`
-doesn't read as the brush and the note says what's missing. The sheet shows each label on its row and lists the brushes
-without one. Re-draw and re-judge after changing how a brush is painted or read.
+Re-draw after changing how a brush is painted or read, and re-read the notes of any brush whose grade moved.
 
 **Same pixels.** A painting draws on the GPU through WebGPU, in half floats, and GPUs round floats differently, so
 what's promised depends on where it renders:

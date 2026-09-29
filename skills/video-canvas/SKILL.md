@@ -17,9 +17,9 @@ ls work/styles/
 ```
 
 Each has `<name>.md`, how to paint in it (which brushes do what, the pack's workflow, what didn't carry over), and
-often a helper module that paints the way its author does. Read both before painting. Its `fidelity.ts` labels each
-brush verified, approximated or unsupported against its Procreate preview; prefer the first two, and read the note
-before leaning on an approximated brush's look. No folder there means no
+often a helper module that paints the way its author does. Read both before painting. Its `fidelity-grades.json` grades
+each brush close, rough or off against its Procreate preview (a score from the brush fidelity sheet), and its
+`fidelity.ts` notes how each differs; prefer close brushes, and read the note before leaning on a rough one's look. No folder there means no
 painted look on this machine; say so, and offer what the studio's React code can do (SVG strokes, masks, three.js).
 A style whose `brushes/` is missing must be imported first (`studio brushes import`, docs/private-styles.md); the
 bundle refuses it, naming where the pack came from.

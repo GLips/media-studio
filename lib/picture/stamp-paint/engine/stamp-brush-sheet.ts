@@ -2,7 +2,9 @@
 // the studio's GPU renderer along the stroke its Procreate preview was drawn with, beside that preview, at the diameter
 // whose thickness matches the preview's, and the two are measured alike (procreate-preview-stroke.ts). Writes, in
 // brushes/<pack>/fidelity/ unless told otherwise: a row per brush (rows/<brush>.png), the rows stacked at half size
-// (sheet.jpg), and report.json with each brush's diameter, measures and label from the style's fidelity.ts.
+// (sheet.jpg), and report.json with each brush's diameter, measures, score and grade, and its note from the style's
+// fidelity.ts. A whole pack drawn where it belongs also writes each brush's score and grade into the style's
+// fidelity-grades.json, which git keeps, so a painter reads the grades without drawing the sheet.
 //
 // The sheet embeds the pack's previews, so it stays under brushes/, which git ignores; an import replaces the pack's
 // folder and so clears a sheet drawn from the brushes it replaced.
@@ -12,9 +14,11 @@ import { basename, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
 import { withBrowserModulePage } from '#lib/output/render/engine/browser-module-page.ts';
-import { compareStrokeProfiles, type StrokeCoverageProfile, type StrokeProfileComparison } from '../models/procreate-preview-stroke.ts';
+import {
+  compareStrokeProfiles, STROKE_SCORE_GRADES, strokeFidelityGrade, type StrokeCoverageProfile, type StrokeFidelityGrade, type StrokeProfileComparison,
+} from '../models/procreate-preview-stroke.ts';
 import type { StampBrush } from '../models/stamp-brush.ts';
-import { STAMP_PAINT_PACK_MANIFEST, type StampBrushFidelity, type StampPaintPackManifest, type StampPaintStyleFidelity } from '../models/style.ts';
+import { STAMP_PAINT_PACK_MANIFEST, type StampPaintPackManifest, type StampPaintStyleFidelity, STAMP_PAINT_FIDELITY_GRADES, type StampPaintStyleGrades } from '../models/style.ts';
 
 const SHEET_PAGE = fileURLToPath(new URL('../studio/stamp-brush-sheet-page.ts', import.meta.url));
 /** Rounds of fitting the diameter to the preview's thickness; thickness follows diameter closely, so two land within a few percent. */
@@ -27,10 +31,13 @@ export type StampBrushSheetEntry = {
   row: string;
   diameter: number;
   comparison?: StrokeProfileComparison;
-  fidelity?: StampBrushFidelity;
+  /** From the comparison's score; none without a preview to score against. */
+  grade?: StrokeFidelityGrade;
+  /** The style's fidelity.ts note on why it differs. */
+  note?: string;
 };
 
-export type StampBrushSheet = { dir: string; sheet: string; entries: StampBrushSheetEntry[]; unlabelled: string[] };
+export type StampBrushSheet = { dir: string; sheet: string; entries: StampBrushSheetEntry[]; scores?: string };
 
 const slugOf = (preview: string | undefined, name: string) => (preview ? basename(preview, '.png') : name.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
 const pct = (n: number) => `${Math.round(n * 100)}%`;
@@ -49,7 +56,7 @@ function describeBrush(brush: StampBrush): string {
 
 function describeComparison(c: StrokeProfileComparison | undefined): string {
   if (!c) return 'no preview to measure against';
-  return `length ×${c.length.toFixed(2)} · peak ×${c.peak.toFixed(2)} · profile off ${pct(c.profileError)} · 80% reached ${pct(c.start.preview)}→${pct(c.start.ours)} in, ${pct(c.end.preview)}→${pct(c.end.ours)} from the end · density ${c.density >= 0 ? '+' : ''}${c.density.toFixed(2)} · rim ${c.rim.preview.toFixed(2)}→${c.rim.ours.toFixed(2)} · grain ${c.grain.preview.toFixed(1)}→${c.grain.ours.toFixed(1)} px`;
+  return `score ${c.score.toFixed(3)} · map off ${pct(c.mapError)} · length ×${c.length.toFixed(2)} · peak ×${c.peak.toFixed(2)} · profile off ${pct(c.profileError)} · 80% reached ${pct(c.start.preview)}→${pct(c.start.ours)} in, ${pct(c.end.preview)}→${pct(c.end.ours)} from the end · density ${c.density >= 0 ? '+' : ''}${c.density.toFixed(2)} · rim ${c.rim.preview.toFixed(2)}→${c.rim.ours.toFixed(2)} · grain ${c.grain.preview.toFixed(1)}→${c.grain.ours.toFixed(1)} px · edge ${c.edgeWidth.preview}→${c.edgeWidth.ours} px · mottle ${c.mottle.preview.fine.toFixed(2)}/${c.mottle.preview.coarse.toFixed(2)}→${c.mottle.ours.fine.toFixed(2)}/${c.mottle.ours.coarse.toFixed(2)} · fill ${c.fill.preview.toFixed(2)}→${c.fill.ours.toFixed(2)}`;
 }
 
 /**
@@ -61,7 +68,7 @@ export async function writeStampBrushSheet({ stylesDir, style, pack, out, only }
   const manifestFile = join(packDir, STAMP_PAINT_PACK_MANIFEST);
   if (!existsSync(manifestFile)) throw new Error(`brushes sheet: ${pack} isn't imported into work/styles/${style}/brushes/; run studio brushes import first`);
   const manifest = JSON.parse(readFileSync(manifestFile, 'utf8')) as StampPaintPackManifest;
-  const labels = (await readStyleFidelity(styleDir))[pack] ?? {};
+  const notes = (await readStyleFidelity(styleDir))[pack] ?? {};
   const names = Object.keys(manifest.brushes).filter((name) => !only || only.includes(name));
   const missing = only?.filter((name) => !manifest.brushes[name]) ?? [];
   if (missing.length) throw new Error(`brushes sheet: ${pack} has no brush ${missing.map((name) => JSON.stringify(name)).join(', ')}`);
@@ -83,16 +90,16 @@ export async function writeStampBrushSheet({ stylesDir, style, pack, out, only }
         painted = await call('paintOnProcreatePreviewStroke', brush, diameter, shows);
       }
       const comparison = preview && painted.profile ? compareStrokeProfiles(preview, painted.profile) : undefined;
-      const fidelity = labels[name];
+      const note = notes[name], grade = comparison && strokeFidelityGrade(comparison.score);
       const lines = [
-        `${name}  ·  ${fidelity ? fidelity.level.toUpperCase() : 'UNLABELLED'}${fidelity ? `: ${fidelity.note}` : ''}`,
+        `${name}  ·  ${grade ? grade.toUpperCase() : 'NO PREVIEW'}${note ? `: ${note}` : ''}`,
         `d ${Math.round(diameter)} px · ${describeComparison(comparison)}`,
         describeBrush(brush),
       ];
       const row = join(dir, 'rows', `${slugOf(previewFile, name)}.png`);
-      const png = await call<string>('drawStampBrushSheetRow', { previewFile, ours: painted.png, lines, label: fidelity?.level });
+      const png = await call<string>('drawStampBrushSheetRow', { previewFile, ours: painted.png, lines, grade });
       writeFileSync(row, Buffer.from(png.slice(png.indexOf(',') + 1), 'base64'));
-      done.push({ brush: name, row, diameter: Math.round(diameter), comparison, fidelity });
+      done.push({ brush: name, row, diameter: Math.round(diameter), comparison, ...(grade && { grade }), ...(note && { note }) });
     }
     return done;
   });
@@ -101,7 +108,14 @@ export async function writeStampBrushSheet({ stylesDir, style, pack, out, only }
   const inputs = entries.flatMap(({ row }) => ['-i', row]);
   const stack = entries.length > 1 ? `${entries.map((_, i) => `[${i}]`).join('')}vstack=inputs=${entries.length},` : '';
   runFfmpeg(['-nostdin', '-v', 'error', ...inputs, '-filter_complex', `${stack}scale=iw/2:-1`, '-frames:v', '1', '-q:v', '3', '-y', sheet]);
-  const unlabelled = Object.keys(manifest.brushes).filter((name) => !labels[name]);
-  writeFileSync(join(dir, 'report.json'), `${JSON.stringify({ style, pack, source: manifest.source, entries: entries.map((e) => ({ ...e, row: basename(e.row) })), unlabelled }, null, 2)}\n`);
-  return { dir, sheet, entries, unlabelled };
+  const total = entries.reduce((sum, e) => sum + (e.comparison?.score ?? 0), 0);
+  writeFileSync(join(dir, 'report.json'), `${JSON.stringify({ style, pack, source: manifest.source, grades: STROKE_SCORE_GRADES, total, entries: entries.map((e) => ({ ...e, row: basename(e.row) })) }, null, 2)}\n`);
+  let scores: string | undefined;
+  if (!out && !only) {
+    scores = join(styleDir, STAMP_PAINT_FIDELITY_GRADES);
+    const all: StampPaintStyleGrades = existsSync(scores) ? JSON.parse(readFileSync(scores, 'utf8')) : {};
+    all[pack] = Object.fromEntries(entries.flatMap((e) => (e.comparison && e.grade ? [[e.brush, { grade: e.grade, score: Math.round(e.comparison.score * 1000) / 1000 }]] : [])));
+    writeFileSync(scores, `${JSON.stringify(all, null, 2)}\n`);
+  }
+  return { dir, sheet, entries, scores };
 }

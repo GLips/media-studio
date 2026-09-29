@@ -33,7 +33,7 @@ const importBrushesCommand = defineCommand({
 const sheetBrushesCommand = defineCommand({
   meta: {
     name: 'sheet',
-    description: "Draw the brush fidelity sheet for an imported pack: each brush painted on the GPU along the stroke its Procreate preview was drawn with, at the diameter that matches the preview's thickness, beside that preview, with both measured (length, thickness profile, where each end reaches 80% of its peak, density, how dark its rim is, how coarse its grain) and the label from the style's fidelity.ts. Writes rows/<brush>.png, sheet.jpg (the rows at half size) and report.json into work/styles/<style>/brushes/<pack>/fidelity/ (git ignores it: it holds the pack's previews), or --out. Prints a line per brush, and the brushes fidelity.ts doesn't label.",
+    description: "Draw the brush fidelity sheet for an imported pack: each brush painted on the GPU along the stroke its Procreate preview was drawn with, at the diameter that matches the preview's thickness, beside that preview, with both measured (coverage map, length, thickness profile, where each end reaches 80% of its peak, density, rim, grain size, edge width, mottle, fill) into one score per brush and its grade (close, rough, off), and the note from the style's fidelity.ts. Writes rows/<brush>.png, sheet.jpg (the rows at half size) and report.json into work/styles/<style>/brushes/<pack>/fidelity/ (git ignores it: it holds the pack's previews), or --out; a whole pack drawn there also writes the grades into work/styles/<style>/fidelity-grades.json. Prints a line per brush.",
   },
   args: {
     style: { type: 'string', required: true, description: 'The style, work/styles/<style>/' },
@@ -46,13 +46,14 @@ const sheetBrushesCommand = defineCommand({
     const { STUDIO_ROOT, STUDIO_STYLES_DIR } = await import('#lib/platform/project/engine/studio-project.ts');
     const { writeStampBrushSheet } = await import('#lib/picture/stamp-paint/engine/stamp-brush-sheet.ts');
     const only = args.brush?.split(',').map((name) => name.trim()).filter(Boolean);
-    const { dir, sheet, entries, unlabelled } = await writeStampBrushSheet({ stylesDir: STUDIO_STYLES_DIR, style: args.style, pack: args.pack, out: args.out && resolve(args.out), only });
-    for (const { brush, diameter, comparison, fidelity } of entries) {
-      const measured = comparison ? `profile off ${Math.round(comparison.profileError * 100)}%, density ${comparison.density.toFixed(2)}` : 'no preview';
-      console.log(`${brush}: ${fidelity?.level ?? 'unlabelled'} (d ${diameter}, ${measured})`);
+    const { dir, sheet, entries, scores } = await writeStampBrushSheet({ stylesDir: STUDIO_STYLES_DIR, style: args.style, pack: args.pack, out: args.out && resolve(args.out), only });
+    for (const { brush, diameter, comparison, grade } of entries) {
+      const measured = comparison ? `score ${comparison.score.toFixed(3)}, map off ${Math.round(comparison.mapError * 100)}%, density ${comparison.density.toFixed(2)}` : 'no preview';
+      console.log(`${brush}: ${grade ?? 'ungraded'} (d ${diameter}, ${measured})`);
     }
-    console.error(`brushes sheet: ${relative(STUDIO_ROOT, sheet)}, with a row per brush in ${relative(STUDIO_ROOT, dir)}/rows/ and report.json`);
-    if (unlabelled.length) console.error(`brushes sheet: work/styles/${args.style}/fidelity.ts labels none of ${unlabelled.join(', ')}`);
+    const scored = entries.filter((e) => e.comparison);
+    console.error(`brushes sheet: ${relative(STUDIO_ROOT, sheet)}, with a row per brush in ${relative(STUDIO_ROOT, dir)}/rows/ and report.json; total score ${scored.reduce((sum, e) => sum + e.comparison!.score, 0).toFixed(3)} over ${scored.length} brushes`);
+    if (scores) console.error(`brushes sheet: grades written to ${relative(STUDIO_ROOT, scores)}`);
   },
 });
 

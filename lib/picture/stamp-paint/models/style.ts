@@ -25,18 +25,20 @@ export const STAMP_PAINT_PACK_MANIFEST = 'manifest.json';
 export type StampBrushSupportNote = { level: 'approximated' | 'unsupported' | 'inapplicable'; setting: string; detail: string };
 
 /**
- * How faithfully the studio paints one imported brush, judged on the brush fidelity sheet (`studio brushes sheet`)
- * against its source's own preview: `verified` reads as the preview does; `approximated` reads close, and `note` says
- * how it differs; `unsupported` doesn't read as the brush, and `note` says what's missing.
+ * A style's fidelity.ts, beside its style.ts and kept in git: `export default { … } satisfies StampPaintStyleFidelity`,
+ * a note per brush, each pack's brushes by their names in the pack, on how and why it differs from its source's own
+ * preview. How far it differs is the sheet's score and grade (fidelity-grades.json), not the note's to say.
  */
-export type StampBrushFidelity = { level: 'verified' | 'approximated' | 'unsupported'; note: string };
+export type StampPaintStyleFidelity = Readonly<Record<string, Readonly<Record<string, string>>>>;
+
+/** A style's fidelity-grades.json, which `studio brushes sheet` writes beside its fidelity.ts. */
+export const STAMP_PAINT_FIDELITY_GRADES = 'fidelity-grades.json';
 
 /**
- * A style's fidelity.ts, beside its style.ts and kept in git: `export default { … } satisfies StampPaintStyleFidelity`,
- * each pack's brushes by their names in the pack. The sheet shows each brush's label on its row, and lists the brushes
- * it has none for.
+ * Each pack's brushes, by name, with their score on the brush fidelity sheet (0 matches the preview) and the grade it
+ * earns (lib/picture/stamp-paint/models/procreate-preview-stroke.ts: `close`, `rough` or `off`).
  */
-export type StampPaintStyleFidelity = Readonly<Record<string, Readonly<Record<string, StampBrushFidelity>>>>;
+export type StampPaintStyleGrades = Record<string, Record<string, { grade: 'close' | 'rough' | 'off'; score: number }>>;
 
 /**
  * A brush's own preview from its source: the image (relative to the pack's folder), and whether it shows a stroke or,

@@ -32,3 +32,18 @@ test("a wet rim reads as a darker edge than the stroke's body", () => {
   assert.ok(c.rim.ours > 0.3, `rim ${c.rim.ours}`);
   assert.ok(Math.abs(c.rim.preview) < 1e-9);
 });
+
+test('a hollow stroke reads as unfilled and a soft-edged one as wider-edged, each costing it score', () => {
+  const solid = measureStrokeCoverage(band(20, 179, 40, 200), W, H)!;
+  const hollow = measureStrokeCoverage(band(20, 179, 40, 20, 6, 220), W, H)!;
+  assert.ok(solid.fill > 0.95 && hollow.fill < 0.5, `fill ${solid.fill} → ${hollow.fill}`);
+  const soft = band(20, 179, 40, 200);
+  for (let y = 0; y < H; y++) for (let x = 20; x <= 179; x++) {
+    const depth = Math.min(y - 10, 49 - y);
+    if (depth >= 0 && depth < 8) soft[y * W + x] = Math.round(200 * (depth + 1) / 9);
+  }
+  const softened = measureStrokeCoverage(soft, W, H)!;
+  assert.ok(softened.edgeWidth >= 4 && solid.edgeWidth <= 2, `edge ${solid.edgeWidth} → ${softened.edgeWidth}`);
+  assert.equal(compareStrokeProfiles(solid, solid).score, 0);
+  assert.ok(compareStrokeProfiles(solid, hollow).score > compareStrokeProfiles(solid, softened).score);
+});
