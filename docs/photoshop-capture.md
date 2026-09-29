@@ -10,7 +10,7 @@ quits, unattended. Its code is `lib/picture/photoshop-capture/` (what to paint, 
 npm run photoshop -- check                 # could a capture start now? changes nothing
 npm run photoshop -- probes                # the probe set, about a minute
 npm run photoshop -- references "<pack>.abr" --style watercolor --pack <pack>
-npm run photoshop -- restore               # put settings back after a run that was killed
+npm run photoshop -- restore               # put back what a killed or stuck run changed (--force: see below)
 ```
 
 ## Graham's Photoshop comes back as it was
@@ -19,10 +19,24 @@ A run refuses to start if Photoshop is open (it's Graham's, with his documents) 
 restored. Otherwise it copies the whole `~/Library/Preferences/Adobe Photoshop 2026 Settings/` folder (Brushes.psp,
 MRUBrushes.psp, Patterns.psp, tool presets, prefs) and the `Adobe Photoshop 2026 Paths` file, with their hashes, into
 `~/Library/Application Support/media-studio/photoshop-settings/<run>/`. It launches Photoshop with `open -g`, sets
-`displayDialogs` to NO before anything else, closes its own documents unsaved, and quits. Then it rewrites every file
-that changed, with its old timestamps, removes any new ones, checks every hash and writes `restored.json`. Photoshop
-writes its settings when it quits, which is why the restore comes after the quit, never before. A run that's killed
-leaves its snapshot pending: `npm run photoshop -- restore` puts it back, and until then no run starts.
+`displayDialogs` to NO before anything else, closes its own documents as it finishes with them, and quits. When it
+sees its Photoshop exit it records every settings file's hash (`exited.json`), then rewrites every file that changed,
+with its old timestamps, removes any new ones, checks every hash and writes `restored.json`. Photoshop writes its
+settings when it quits, which is why the restore comes after the quit, never before.
+
+A restore never undoes someone else's session. A run's background Photoshop is still Photoshop: Graham once opened it
+mid-run to install brushes, the run's quit hung behind him, and a blind restore of that run's snapshot later wiped his
+191 MB brush install. So:
+
+- the run quits only a Photoshop with no documents open and answering scripts; otherwise someone is using it, and the
+  run leaves it running (never closed unsaved, never killed) with its snapshot pending;
+- a restore puts back only files still exactly as the run's Photoshop left them (`exited.json`), and keeps, and
+  lists, any a later session changed;
+- a snapshot with no `exited.json` (the run never saw its Photoshop exit) is refused: `check` says so and what
+  differs, and `restore --force` is for when no one has used Photoshop since that run;
+- every file a restore overwrites or removes is first copied to the snapshot's `replaced-<time>/`, and it says where.
+
+Until a pending snapshot is restored, no run starts.
 
 Everything goes through ExtendScript (`osascript … do javascript`) and Action Manager descriptors: no UI clicks, no
 accessibility permission.

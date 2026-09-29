@@ -4,13 +4,15 @@
 // Photoshop is Graham's own app. A studio run owns the Photoshop it scripts, start to end: it refuses if Photoshop is
 // already running (his documents, his state), snapshots the whole settings folder (brush presets in Brushes.psp and
 // MRUBrushes.psp, patterns, tool options, recent files and document sizes), launches Photoshop in the background,
-// and afterwards closes its own documents unsaved, quits, and puts the settings folder back byte for byte. So what a
+// and afterwards quits it and puts back, byte for byte, the settings files its Photoshop changed. So what a
 // run does to the preset lists in memory (an .abr appended, a probe tip or pattern defined) is written at quit and
 // then undone from the snapshot, and nothing is ever deleted from a preset list by script (deleting by index removes
 // a different preset than the flat list says; it cost Graham four presets once).
 //
-// A run that dies before its restore leaves its snapshot marked pending; restorePendingPhotoshopSettings puts it back
-// (`npm run photoshop -- restore`), and nothing starts Photoshop while one is pending.
+// A restore never undoes someone else's Photoshop session: it puts back only files still as the run's Photoshop left
+// them when the run saw it exit, sets aside everything it replaces, and without that exit record refuses unless forced
+// (models/photoshop-settings-restore.ts). A run whose Photoshop someone is using leaves it running, its snapshot
+// pending; nothing starts Photoshop while one is pending.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -18,6 +20,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, rmdir
 import { homedir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
+import { planPhotoshopSettingsRestore, type PhotoshopRunExit, type PhotoshopSettingsRestorePlan } from '../models/photoshop-settings-restore.ts';
 
 export const PHOTOSHOP_BUNDLE_ID = 'com.adobe.Photoshop';
 export const PHOTOSHOP_APP = '/Applications/Adobe Photoshop 2026/Adobe Photoshop 2026.app';
@@ -79,13 +82,21 @@ async function launchPhotoshop(): Promise<void> {
   await waitFor('still not taking scripts', 180, scriptable);
 }
 
-/** Closes every open document unsaved (they're all the run's own), then quits and waits for Photoshop to exit. */
+/**
+ * Quits Photoshop and waits for it to exit. The run's own documents are closed by the scripts that open them, so a
+ * document still open isn't the run's: someone is using this Photoshop (Graham once installed brushes in a run's
+ * background Photoshop), and it's left running, never closed unsaved nor killed. So is one that won't quit.
+ */
 async function quitPhotoshop(): Promise<void> {
-  if (photoshopIsRunning()) {
-    // Unsaved documents would make quit ask whether to save them: a dialog.
-    runPhotoshopScript('while (app.documents.length) app.documents[0].close(SaveOptions.DONOTSAVECHANGES); "closed"', { timeoutSeconds: 120 });
-    osascript([`tell application id "${PHOTOSHOP_BUNDLE_ID}" to quit`]);
+  if (!photoshopIsRunning()) return;
+  let open: string;
+  try {
+    open = runPhotoshopScript('app.documents.length', { timeoutSeconds: 60 });
+  } catch (error) {
+    throw new Error(`photoshop: the run's Photoshop doesn't answer scripts (${(error as Error).message.split('\n')[0]}): someone may be using it, so it's left running`);
   }
+  if (open !== '0') throw new Error(`photoshop: the run's Photoshop has ${open} documents open that the run didn't leave: someone is using it, so it's left running`);
+  osascript(['with timeout of 60 seconds', `tell application id "${PHOTOSHOP_BUNDLE_ID}" to quit`, 'end timeout']);
   await waitFor('still running after quit', 180, () => !photoshopIsRunning());
 }
 
@@ -124,71 +135,105 @@ function snapshotPhotoshopSettings(run: string): string {
   return dir;
 }
 
-export type PhotoshopSettingsRestore = { backup: string; files: number; rewritten: string[]; removed: string[] };
+export type PhotoshopSettingsRestore = { backup: string; files: number; rewritten: string[]; removed: string[]; kept: string[]; setAside?: string };
+
+const readJson = <T>(file: string) => JSON.parse(readFileSync(file, 'utf8')) as T;
+const exitRecord = (backup: string) => (existsSync(join(backup, 'exited.json')) ? readJson<PhotoshopRunExit>(join(backup, 'exited.json')) : undefined);
+
+/** Records the settings as the run's Photoshop left them, as the run sees it exit (photoshop-settings-restore.ts). */
+function recordPhotoshopExit(backup: string) {
+  const exit: PhotoshopRunExit = { exitedAt: new Date().toISOString(), files: hashPhotoshopSettings(PREFERENCES) };
+  writeFileSync(join(backup, 'exited.json'), `${JSON.stringify(exit, null, 2)}\n`);
+}
+
+/** What restoring `backup` now would do, or why it won't (photoshop-settings-restore.ts). */
+export function planPendingPhotoshopRestore(backup: string, force = false): PhotoshopSettingsRestorePlan {
+  const snapshot = readJson<SettingsSnapshot>(join(backup, 'snapshot.json'));
+  return planPhotoshopSettingsRestore(snapshot.files, hashPhotoshopSettings(PREFERENCES), { exit: exitRecord(backup), force });
+}
 
 /**
- * Puts Photoshop's settings back from `backup` with Photoshop not running: every snapshotted file rewritten whose
- * bytes differ (its timestamps kept), every file the run added removed, then every file hashed against the snapshot.
+ * Puts Photoshop's settings back from `backup` with Photoshop not running, as planPhotoshopSettingsRestore allows:
+ * every file the run changed rewritten from the snapshot (its timestamps kept), every file it added removed, and each
+ * checked by hash after. Every file it overwrites or removes is first copied to `<backup>/replaced-<time>/`, so a
+ * restore can itself be undone. Files another session changed since the run are kept, and listed.
  */
-export function restorePhotoshopSettings(backup: string): PhotoshopSettingsRestore {
+export function restorePhotoshopSettings(backup: string, { force = false }: { force?: boolean } = {}): PhotoshopSettingsRestore {
   if (photoshopIsRunning()) throw new Error('photoshop: quit Photoshop before its settings are restored');
-  const snapshot = JSON.parse(readFileSync(join(backup, 'snapshot.json'), 'utf8')) as SettingsSnapshot;
-  const now = hashPhotoshopSettings(PREFERENCES);
-  const rewritten: string[] = [], removed: string[] = [];
-  for (const [file, hash] of Object.entries(snapshot.files)) {
-    if (now[file] === hash) continue;
+  const plan = planPendingPhotoshopRestore(backup, force);
+  if (plan.refused) throw new Error(`photoshop: won't restore ${backup}: ${plan.refused}`);
+  const replaced = [...plan.rewrite, ...plan.remove].filter((file) => existsSync(join(PREFERENCES, file)));
+  let setAside: string | undefined;
+  if (replaced.length) {
+    setAside = join(backup, `replaced-${new Date().toISOString().replace(/[-:]/g, '').replace(/\..*/, '')}`);
+    for (const file of replaced) {
+      mkdirSync(dirname(join(setAside, file)), { recursive: true });
+      cpSync(join(PREFERENCES, file), join(setAside, file), { preserveTimestamps: true });
+    }
+  }
+  for (const file of plan.rewrite) {
     const from = join(backup, 'files', file), to = join(PREFERENCES, file);
     mkdirSync(dirname(to), { recursive: true });
     cpSync(from, to, { preserveTimestamps: true });
     const { atime, mtime } = statSync(from);
     utimesSync(to, atime, mtime);
-    rewritten.push(file);
   }
-  for (const file of Object.keys(now)) {
-    if (file in snapshot.files) continue;
+  for (const file of plan.remove) {
     rmSync(join(PREFERENCES, file));
-    removed.push(file);
     // A folder the run made, now empty, goes too.
     for (let d = dirname(join(PREFERENCES, file)); d !== PREFERENCES && readdirSync(d).length === 0; d = dirname(d)) rmdirSync(d);
   }
-  const after = hashPhotoshopSettings(PREFERENCES);
-  const wrong = [...new Set([...Object.keys(after), ...Object.keys(snapshot.files)])].filter((file) => after[file] !== snapshot.files[file]);
-  if (wrong.length) throw new Error(`photoshop: after restoring ${backup}, these differ from the snapshot: ${wrong.join(', ')}`);
-  const restore = { backup, files: Object.keys(after).length, rewritten, removed };
+  const snapshot = readJson<SettingsSnapshot>(join(backup, 'snapshot.json')), after = hashPhotoshopSettings(PREFERENCES);
+  const wrong = [...plan.rewrite, ...plan.remove].filter((file) => after[file] !== snapshot.files[file]);
+  if (wrong.length) throw new Error(`photoshop: after restoring ${backup}, these differ from the snapshot: ${wrong.join(', ')}${setAside ? `; what they were is in ${setAside}` : ''}`);
+  const restore: PhotoshopSettingsRestore = { backup, files: Object.keys(after).length, rewritten: plan.rewrite, removed: plan.remove, kept: plan.keep, ...(setAside && { setAside }) };
   writeFileSync(join(backup, 'restored.json'), `${JSON.stringify({ restoredAt: new Date().toISOString(), ...restore }, null, 2)}\n`);
   return restore;
 }
 
-export function restorePendingPhotoshopSettings(): PhotoshopSettingsRestore[] {
+/** Restores every pending snapshot, as restorePhotoshopSettings allows each. */
+export function restorePendingPhotoshopSettings({ force = false }: { force?: boolean } = {}): PhotoshopSettingsRestore[] {
   // The oldest snapshot is the state before any of the runs, so it's the one that counts; restore it last.
-  return pendingPhotoshopSettingsBackups().reverse().map(restorePhotoshopSettings);
+  return pendingPhotoshopSettingsBackups().reverse().map((backup) => restorePhotoshopSettings(backup, { force }));
 }
 
 export type PhotoshopSession = { run: string; backup: string; version: string };
 
 /**
  * Runs `step` against a Photoshop this run launched, and afterwards quits it and restores the settings snapshot,
- * however `step` ends. Refuses to start while Photoshop is running or a snapshot is pending.
+ * however `step` ends. Refuses to start while Photoshop is running or a snapshot is pending. When its Photoshop can't
+ * be quit (someone is using it), the snapshot is left pending with no exit record, and a later restore refuses unless
+ * forced: nothing the run can see says whose changes the settings then hold.
  */
 export async function withOwnedPhotoshop<T>(run: string, step: (session: PhotoshopSession) => Promise<T> | T, log: (line: string) => void): Promise<{ result: T; restore: PhotoshopSettingsRestore }> {
   if (!existsSync(PHOTOSHOP_APP)) throw new Error(`photoshop: no Photoshop 2026 at ${PHOTOSHOP_APP}`);
   if (photoshopIsRunning()) throw new Error("photoshop: Photoshop is open. It's Graham's: save and quit it, and the run launches its own and puts his settings back after");
   const pending = pendingPhotoshopSettingsBackups();
-  if (pending.length) throw new Error(`photoshop: a run's settings snapshot was never restored (${pending.join(', ')}); run \`npm run photoshop -- restore\` first`);
+  if (pending.length) throw new Error(`photoshop: a run's settings snapshot was never restored (${pending.join(', ')}); see \`npm run photoshop -- check\``);
   const backup = snapshotPhotoshopSettings(run);
   log(`photoshop: settings snapshot in ${backup}`);
-  let result: T;
+  let result: T | undefined, failure: unknown;
   try {
     await launchPhotoshop();
     const version = runPhotoshopScript('app.version');
     log(`photoshop: Photoshop ${version} launched`);
     result = await step({ run, backup, version });
-  } finally {
-    await quitPhotoshop();
-    const restore = restorePhotoshopSettings(backup);
-    log(`photoshop: quit; settings restored and checked byte for byte (${restore.files} files, ${restore.rewritten.length} rewritten, ${restore.removed.length} removed)`);
+  } catch (error) {
+    failure = error;
   }
-  return { result, restore: JSON.parse(readFileSync(join(backup, 'restored.json'), 'utf8')) as PhotoshopSettingsRestore };
+  // Whatever happened above, the quit and the restore are tried before anything is thrown.
+  let restore: PhotoshopSettingsRestore;
+  try {
+    await quitPhotoshop();
+    recordPhotoshopExit(backup);
+    restore = restorePhotoshopSettings(backup);
+    log(`photoshop: quit; settings restored and checked byte for byte (${restore.files} files, ${restore.rewritten.length} rewritten, ${restore.removed.length} removed${restore.setAside ? `, what they were set aside in ${restore.setAside}` : ''})`);
+  } catch (cleanup) {
+    const pendingNote = `${(cleanup as Error).message}. Its settings snapshot ${backup} stays pending: once Photoshop is quit, \`npm run photoshop -- check\` says what a restore would do`;
+    throw failure ? new AggregateError([failure, cleanup], `photoshop: the run failed (${(failure as Error).message}), and ${pendingNote}`) : new Error(pendingNote);
+  }
+  if (failure) throw failure;
+  return { result: result as T, restore };
 }
 
 export type PhotoshopCheck = { ok: boolean; lines: string[] };
@@ -208,8 +253,11 @@ export function checkPhotoshop(): PhotoshopCheck {
     if (existsSync(join(settings, file))) lines.push(`✓ ${file} present, ${statSync(join(settings, file)).size} bytes: snapshotted and put back byte for byte`);
     else lines.push(`· no ${file} yet: Photoshop writes it on quit, and the restore removes it again`);
   }
-  const pending = pendingPhotoshopSettingsBackups();
-  if (pending.length) fail(`a settings snapshot was never restored: ${pending.join(', ')}; run \`npm run photoshop -- restore\``);
+  for (const backup of pendingPhotoshopSettingsBackups()) {
+    const plan = planPendingPhotoshopRestore(backup);
+    if (plan.refused) fail(`a settings snapshot was never restored, and restoring it isn't safe: ${backup}: ${plan.refused}`);
+    else fail(`a settings snapshot was never restored: ${backup}; \`npm run photoshop -- restore\` would rewrite ${plan.rewrite.length} files and remove ${plan.remove.length}${plan.keep.length ? `, keeping ${plan.keep.length} another session changed since (${plan.keep.join(', ')})` : ''}, setting aside what it replaces`);
+  }
   if (photoshopIsRunning()) {
     let documents = '?';
     try {

@@ -68,11 +68,18 @@ const referencesCommand = defineCommand({
 });
 
 const restoreCommand = defineCommand({
-  meta: { name: 'restore', description: "Put Photoshop's settings back from a run's snapshot that was never restored (a run that crashed or was killed). Photoshop must be quit." },
-  run() {
-    const restored = restorePendingPhotoshopSettings();
+  meta: {
+    name: 'restore',
+    description: "Put back Photoshop's settings files a run changed, from its snapshot that was never restored (a run that crashed, was killed, or whose Photoshop someone was using). Only files still as the run's Photoshop left them are put back; files a later session changed are kept. Every file replaced is set aside first in the snapshot's replaced-<time>/. Without a record of the run's Photoshop exiting, it refuses unless --force. Photoshop must be quit.",
+  },
+  args: { force: { type: 'boolean', description: "Restore a snapshot whose run never saw its Photoshop exit: only when no one has used Photoshop since that run" } },
+  run({ args }) {
+    const restored = restorePendingPhotoshopSettings({ force: args.force });
     if (!restored.length) console.log('photoshop restore: no snapshot is waiting');
-    for (const r of restored) console.log(`photoshop restore: ${r.backup}: ${r.files} files checked, rewritten ${r.rewritten.join(', ') || 'none'}, removed ${r.removed.join(', ') || 'none'}`);
+    for (const r of restored) {
+      console.log(`photoshop restore: ${r.backup}: ${r.files} files checked, rewritten ${r.rewritten.join(', ') || 'none'}, removed ${r.removed.join(', ') || 'none'}${r.kept.length ? `, kept (changed by a later session) ${r.kept.join(', ')}` : ''}`);
+      if (r.setAside) console.log(`photoshop restore: what they were before is set aside in ${r.setAside}`);
+    }
   },
 });
 
