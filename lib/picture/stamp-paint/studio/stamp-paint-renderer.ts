@@ -35,11 +35,6 @@ const STAMP_FLOATS = 5;
  * previews.
  */
 const GRAIN_CONTRAST = 2.5;
-/**
- * A grain's tile over `scale` stamp diameters. The import reads Procreate's grain scale as the tile's size over the
- * stamp's, uncalibrated; against the pack's previews the texture is this much larger.
- */
-const GRAIN_TILE = 2.5;
 
 const GRAIN_GLSL = `
 float grainCut(sampler2D grain, vec2 uv, float depth, float contrast) {
@@ -148,9 +143,19 @@ float edged(float a, float soft, vec2 strength) {
   return clamp(a * (1.0 - 0.35 * strength.x) + rim * (0.7 * strength.x + 1.1 * strength.y), 0.0, 1.0);
 }
 
-// The dual brush's coverage d combined with the brush's m, only where the brush has paint.
+// The dual brush's coverage d combined with the brush's m by its blend (as DUAL_BLENDS orders them), each coverage read
+// as the brightness of white paint, as Procreate's layer blends read it; then held to where the brush has paint.
 float combined(float m, float d) {
-  return m * d;
+  float c = m * d;
+  if (dualBlend == 0) c = d;
+  else if (dualBlend == 2) c = m + d - m * d;
+  else if (dualBlend == 3) c = m < 0.5 ? 2.0 * m * d : 1.0 - 2.0 * (1.0 - m) * (1.0 - d);
+  else if (dualBlend == 4) c = min(m, d);
+  else if (dualBlend == 5) c = max(m, d);
+  else if (dualBlend == 6) c = d <= 0.0 ? 0.0 : 1.0 - min(1.0, (1.0 - m) / d);
+  else if (dualBlend == 7) c = abs(m - d);
+  else if (dualBlend == 8) c = max(0.0, m + d - 1.0);
+  return c * clamp(m * 8.0, 0.0, 1.0);
 }
 
 void main() {
@@ -386,7 +391,7 @@ export async function createStampPaintRenderer(
     const rolling = layer.grain?.mode === 'rolling' && layer.grain.depth > 0;
     gl.uniform1i(program.uniform('rolling'), rolling ? 1 : 0);
     bindPaintGlTexture(gl, program, 'grain', 1, rolling ? image(layer.grain!.image).texture : null);
-    gl.uniform1f(program.uniform('grainScale'), (layer.grain?.scale ?? 1) * GRAIN_TILE);
+    gl.uniform1f(program.uniform('grainScale'), layer.grain?.scale ?? 1);
     gl.uniform1f(program.uniform('grainDepth'), layer.grain?.depth ?? 0);
     gl.enable(gl.BLEND);
     // A glaze stroke is as dense as its densest stamp at each point, so it never builds past its flow within itself and
@@ -499,7 +504,7 @@ void main() { result = texelFetch(source, ivec2(gl_FragCoord.xy), 0); }`);
       bindPaintGlTexture(gl, program, prefix, unit, on ? image(layer.grain!.image).texture : null);
       if (!on) return;
       const { width: w, height: h } = image(layer.grain!.image);
-      const size = layer.grain!.scale * deposit.diameter * GRAIN_TILE;
+      const size = layer.grain!.scale * deposit.diameter;
       gl.uniform2fv(program.uniform(`${prefix}Tile`), [size, size * (h / w)]);
       gl.uniform1f(program.uniform(`${prefix}Depth`), layer.grain!.depth);
     };
@@ -577,7 +582,8 @@ void main() { result = texelFetch(source, ivec2(gl_FragCoord.xy), 0); }`);
           const { brush } = deposit;
           const hasEdges = (layer?: StampBrushLayer) => !!layer && ((layer.wetEdge?.strength ?? 0) > 0 || (layer.burntEdge?.strength ?? 0) > 0);
           const blurred = hasEdges(brush) || hasEdges(brush.dual);
-          const sigma = Math.max(1, Math.max(brush.wetEdge?.width ?? 0, brush.burntEdge?.width ?? 0, 0.1) * deposit.diameter);
+          // An edge's width is a share of the stamp's radius; the rim is where the mask stands above a blur that wide.
+          const sigma = Math.max(1, Math.max(...[brush, brush.dual].flatMap((layer) => [layer?.wetEdge?.width ?? 0, layer?.burntEdge?.width ?? 0])) * deposit.diameter / 2);
           const box = depositBox(deposit, count, dualCount, blurred ? sigma * 3 : 2);
           if (!box) continue;
           clear(targets.mask, box);
