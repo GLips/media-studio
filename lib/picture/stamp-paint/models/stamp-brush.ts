@@ -65,20 +65,31 @@ export type StampBrushStamping = {
   pressure: { size: number; opacity: number };
 };
 
-export type StampBrush = StampBrushStamping & {
-  /** Its name in its pack, as the manifest keys it. Part of no seed: renaming a brush changes no painting's randomness. */
-  name: string;
+/** A brush's own stamps and how they pool: all of a brush but its name and its dual. */
+export type StampBrushLayer = StampBrushStamping & {
   /**
    * How a stroke's own stamps combine. `glaze`: where they overlap each other they don't darken, so the stroke reaches
    * at most its flow, and only a later stroke builds on it. `build`: each stamp lays over the ones before, so overlaps
    * darken within the stroke.
    */
   accumulation: 'glaze' | 'build';
-  /**
-   * A second brush stamped along the same stroke and combined with the first by `blend`, only where the first has
-   * paint: a dry, broken texture inside the main shape. It places its own stamps by its own settings.
-   */
-  dual?: { stamping: StampBrushStamping; blend: StampBlend };
   wetEdge?: StampBrushEdge;
   burntEdge?: StampBrushEdge;
+};
+
+/**
+ * How a dual brush's coverage combines with the main brush's. Beyond the deposit blends: `colorBurn` and `difference`
+ * as their layer modes; `linearHeight` cuts the main coverage by the dual's, as grain cuts a stamp.
+ */
+export type StampDualBlend = StampBlend | 'colorBurn' | 'difference' | 'linearHeight';
+
+export type StampBrush = StampBrushLayer & {
+  /** Its name in its pack, as the manifest keys it. Part of no seed: renaming a brush changes no painting's randomness. */
+  name: string;
+  /**
+   * A second, whole brush stamped along the same stroke and combined with the first by `blend`, only where the first
+   * has paint: a dry, broken texture inside the main shape. It places its stamps by its own settings, pools by its own
+   * edges and accumulation, and its stamps are `scale` times the main brush's diameter.
+   */
+  dual?: StampBrushLayer & { blend: StampDualBlend; scale: number };
 };

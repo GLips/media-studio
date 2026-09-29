@@ -39,7 +39,14 @@ function styleAssetProblems(dir: string, style: StampPaintStyle): string[] {
     const manifest = manifests.get(pack);
     return manifest && !manifest.brushes[brush] ? [`  brushes.${name}: ${pack} has no brush ${JSON.stringify(brush)}; import it again from ${style.packs[pack].source}`] : [];
   });
-  return [...packProblems, ...brushProblems];
+  const paperImages = { 'paper.image': style.paper.image, 'paper.grain': style.paper.grain?.image };
+  const paperProblems = Object.entries(paperImages).flatMap(([name, image]) => {
+    if (!image) return [];
+    if (!style.packs[image.pack]) return [`  ${name}: names the pack ${image.pack}, which isn't in packs`];
+    const manifest = manifests.get(image.pack);
+    return manifest && !manifest.files.includes(image.file) ? [`  ${name}: ${image.pack} has no file ${image.file}; import it again from ${style.packs[image.pack].source}`] : [];
+  });
+  return [...packProblems, ...brushProblems, ...paperProblems];
 }
 
 /** Throws, naming every style problem at once, unless each style the project names can paint on this machine. */

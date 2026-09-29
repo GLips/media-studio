@@ -14,6 +14,7 @@ const studioCommand = defineCommand({
   },
   subCommands: {
     workspace: () => import('./commands/workspace.ts').then((m) => m.default),
+    brushes: () => import('./commands/brushes.ts').then((m) => m.default),
     new: () => import('./commands/new.ts').then((m) => m.default),
     capture: () => import('./commands/capture.ts').then((m) => m.default),
     probe: () => import('./commands/probe.ts').then((m) => m.default),

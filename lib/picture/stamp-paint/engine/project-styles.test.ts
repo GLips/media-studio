@@ -16,8 +16,9 @@ function washProject(styles: readonly string[]) {
   writeFileSync(join(project, 'project.ts'), `export default ${JSON.stringify({ capability: 'silent', styles })};\n`);
   const packs = { vvds: { source: 'VVDS Watercolor Studio, from Creative Market' }, grain: { source: 'Grain Pack, from the Grain shop' } };
   const brushes = { wash: { pack: 'vvds', brush: 'Wet Wash' }, tooth: { pack: 'grain', brush: 'Tooth' } };
-  const style_ = { packs, brushes, palette: { sky: '#88aacc' }, paper: { color: '#f4efe4' } };
-  writeFileSync(join(style, 'style.ts'), `export default ${JSON.stringify(style_)};\n`);
+  // style.ts is read with require, which caches it: write it before the first check.
+  const writeStyle = (paper: object) => writeFileSync(join(style, 'style.ts'), `export default ${JSON.stringify({ packs, brushes, palette: { sky: '#88aacc' }, paper })};\n`);
+  writeStyle({ color: '#f4efe4' });
   const importPack = (pack: string, manifest: object, files: readonly string[]) => {
     mkdirSync(join(style, 'brushes', pack), { recursive: true });
     for (const file of files) {
@@ -26,7 +27,7 @@ function washProject(styles: readonly string[]) {
     }
     writeFileSync(join(style, 'brushes', pack, 'manifest.json'), JSON.stringify(manifest));
   };
-  return { project, importPack };
+  return { project, importPack, writeStyle };
 }
 
 test('a named style stops the bundle until each pack is imported, whole, at the version the studio reads', () => {
@@ -47,6 +48,16 @@ test('a named style stops the bundle until each pack is imported, whole, at the 
 
   importPack('grain', { version: STAMP_PAINT_ASSETS_VERSION, files: [], brushes: { Tooth: {} } }, []);
   assertProjectStylesReady(project);
+});
+
+test("a style's paper must be a file its pack's import wrote", () => {
+  const { project, importPack, writeStyle } = washProject(['wash']);
+  importPack('vvds', { version: STAMP_PAINT_ASSETS_VERSION, files: ['papers/cold-press.png'], brushes: { 'Wet Wash': {} } }, ['papers/cold-press.png']);
+  importPack('grain', { version: STAMP_PAINT_ASSETS_VERSION, files: [], brushes: { Tooth: {} } }, []);
+  writeStyle({ color: '#f4efe4', image: { pack: 'vvds', file: 'papers/hot-press.png' }, grain: { image: { pack: 'paper', file: 'tooth.png' }, scale: 1, depth: 0.3 } });
+  assert.throws(() => assertProjectStylesReady(project), {
+    message: /  paper\.image: vvds has no file papers\/hot-press\.png; import it again from VVDS Watercolor Studio, from Creative Market\n  paper\.grain: names the pack paper, which isn't in packs$/,
+  });
 });
 
 test('a project that names no style bundles without one, and a name work/styles/ lacks is refused', () => {

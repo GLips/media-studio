@@ -29,7 +29,7 @@ export type PlacedStamp = {
 };
 
 /** Spacing below this stamps faster than any brush reads. */
-const MIN_SPACING = 0.02;
+export const STAMP_MIN_SPACING = 0.02;
 
 const pressured = (pressure: number | undefined, sensitivity: number) => 1 - sensitivity * (1 - (pressure ?? 1));
 
@@ -57,7 +57,7 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
   for (let i = 1; i < path.length; i++) lengths.push(lengths[i - 1] + Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y));
   const length = lengths.at(-1)!;
   const headings = segmentHeadings(path);
-  const steps = length > 0 ? Math.ceil(length / (Math.max(brush.spacing, MIN_SPACING) * diameter)) : 0;
+  const steps = length > 0 ? Math.ceil(length / (Math.max(brush.spacing, STAMP_MIN_SPACING) * diameter)) : 0;
   const count = Math.max(1, Math.round(brush.scatter.count));
   const stamps: PlacedStamp[] = [];
   let segment = 0;

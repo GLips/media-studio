@@ -18,11 +18,30 @@ export const STAMP_PAINT_ASSETS_VERSION = 1;
 export const STAMP_PAINT_PACK_MANIFEST = 'manifest.json';
 
 /**
- * `brushes/<pack>/manifest.json`, as the importer writes it: the version it wrote, every file it wrote (relative to
- * the pack's folder) and each brush it normalized, by its name in the pack. The bundle checks all three before
- * painting. The importer may add its provenance (the archive's hash).
+ * A setting of a source brush the normalized brush doesn't carry as the source means it: `approximated` is read into
+ * a nearby setting, `unsupported` is dropped. `setting` is the source format's own field name, so it can be looked up.
  */
-export type StampPaintPackManifest = { version: number; files: readonly string[]; brushes: Readonly<Record<string, StampBrush>> };
+export type StampBrushSupportNote = { level: 'approximated' | 'unsupported'; setting: string; detail: string };
+
+/** A paper from the pack: a photograph of it, its tooth as a grain (dark is where pigment settles), its mean colour. */
+export type StampPaintPackPaper = { image: string; grain: string; color: StampPaintColor };
+
+/**
+ * `brushes/<pack>/manifest.json`, as the importer writes it. The bundle checks `version`, that every file in `files`
+ * (relative to the pack's folder) exists, and that each brush a style names is in `brushes`, by its name in the pack.
+ * The rest is for whoever writes the style: where the pack came from, each brush's own preview from its source (for
+ * judging fidelity) and what didn't carry over, and the pack's palettes and papers.
+ */
+export type StampPaintPackManifest = {
+  version: number;
+  files: readonly string[];
+  brushes: Readonly<Record<string, StampBrush>>;
+  source: { archive: string; sha256: string };
+  previews: Readonly<Record<string, string>>;
+  support: Readonly<Record<string, readonly StampBrushSupportNote[]>>;
+  palettes: Readonly<Record<string, readonly StampPaintColor[]>>;
+  papers: Readonly<Record<string, StampPaintPackPaper>>;
+};
 
 /** A style's style.ts: `export default { … } satisfies StampPaintStyle`. */
 export type StampPaintStyle = {
@@ -36,8 +55,13 @@ export type StampPaintStyle = {
   /** Named colours, `#rrggbb`. */
   palette: Readonly<Record<string, StampPaintColor>>;
   /**
-   * What it paints on: the paper's colour and, for tooth every deposit shows, a grain fixed to the canvas, an image
-   * in one of its packs, `scale` its width over the painting's and `depth` (0..1) how strongly it cuts into paint.
+   * What it paints on: the paper's colour, or a photograph of it (`image`, laid under the painting in its place); and,
+   * for tooth every deposit shows, a grain fixed to the canvas. Both are images in one of its packs; `scale` is the
+   * grain's width over the painting's and `depth` (0..1) how strongly it cuts into paint.
    */
-  paper: { color: StampPaintColor; grain?: { image: Omit<StampBrushAsset, 'style'>; scale: number; depth: number } };
+  paper: {
+    color: StampPaintColor;
+    image?: Omit<StampBrushAsset, 'style'>;
+    grain?: { image: Omit<StampBrushAsset, 'style'>; scale: number; depth: number };
+  };
 };

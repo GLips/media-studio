@@ -118,3 +118,16 @@ test('a stroke partway drawn shows a prefix of the finished stroke\'s stamps, th
   const halfway = drawn.stamps.slice(0, counts[3]);
   assert.ok(halfway.every((stamp) => stamp.reveal <= 0.5) && drawn.stamps[counts[3]].reveal > 0.5);
 });
+
+test("a dual brush's stamps are its scale times the deposit's diameter, stroked or placed", () => {
+  const still = { ...brush, jitter: { lateral: 0, size: 0, opacity: 0 }, taper: { start: 0, end: 0, size: 1, opacity: 1 } };
+  const dualed = { ...still, dual: { ...still, accumulation: 'build' as const, blend: 'multiply' as const, scale: 1.5 } };
+  const [stroke, placed] = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) => {
+    pass.stroke('s', { brush: dualed, material: ochre, diameter: 20, path: [{ x: 0, y: 0 }, { x: 300, y: 0 }] });
+    pass.stamps('d', { brush: dualed, material: ochre, diameter: 20, at: [{ x: 0, y: 0, diameter: 8 }] });
+  })))).groups[0].passes[0].deposits;
+  assert.ok(stroke.dualStamps.length > 0 && stroke.dualStamps.every((stamp) => stamp.diameter === 30));
+  assert.ok(stroke.stamps.every((stamp) => stamp.diameter === 20));
+  assert.equal(placed.stamps[0].diameter, 8);
+  assert.equal(placed.dualStamps[0].diameter, 12);
+});

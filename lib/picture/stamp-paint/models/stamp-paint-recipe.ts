@@ -175,11 +175,11 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
           throw new Error(`stamp paint: ${full} draws over ${drawnOver}s, which needs an appliedAt and no less than 0`);
         }
         if (!(deposit.kind === 'stroke' ? deposit.path : deposit.at).length) throw new Error(`stamp paint: ${full} has no points to stamp`);
-        const place = (stamping: StampBrushStamping, seed: string) => deposit.kind === 'stroke'
-          ? placeStrokeStamps(deposit.path, stamping, diameter, seed)
-          : placeAuthoredStamps(deposit.at, stamping, diameter, seed);
-        const stamps = place(brush, full);
-        const dualStamps = brush.dual ? place(brush.dual.stamping, `${full}|dual`) : [];
+        const place = (stamping: StampBrushStamping, scale: number, seed: string) => deposit.kind === 'stroke'
+          ? placeStrokeStamps(deposit.path, stamping, diameter * scale, seed)
+          : placeAuthoredStamps(deposit.at.map((at) => (at.diameter === undefined ? at : { ...at, diameter: at.diameter * scale })), stamping, diameter * scale, seed);
+        const stamps = place(brush, 1, full);
+        const dualStamps = brush.dual ? place(brush.dual, brush.dual.scale, `${full}|dual`) : [];
         return { id: full, brush, material, blend, opacity, protectedBy, appliedAt, drawnOver, stamps, dualStamps };
       });
       return { id: passId, clipTo, deposits };
