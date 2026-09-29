@@ -73,6 +73,7 @@ export * from '#lib/picture/camera/models/vec3.ts';
 export { compileStampPaintRecipe, stampPaintRecipe, visibleStampCountAt, type CompiledStampPaint, type PaintMaterial, type StampGroupOptions, type StampGroupScope, type StampPaintColor, type StampPaintRecipe, type StampPaintScope, type StampPassOptions, type StampPassScope, type StampRegion } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 export { stampFillBrush, stampFillPath, stampRegionOutline, stampSmoothRegion, type StampFillOptions } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
 export type { StampStrokePoint, StampPlacement } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
+export { STAMP_PRESSURE_PROFILES, type StampPressureCurve, type StampPressureProfileName, type StampStrokeHand } from '#lib/picture/stamp-paint/models/stamp-stroke-hand.ts';
 export type { StampBlend, StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 export type { ResolvedStampPaintStyle, StampPaintPaper } from '#lib/picture/stamp-paint/models/style.ts';
 export { stampPaintStyle } from '#lib/picture/stamp-paint/studio/stamp-paint-styles.ts';

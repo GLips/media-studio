@@ -9,12 +9,13 @@ import { seededRandom } from '#lib/picture/motion/models/random.ts';
 import type { StampBrushColorDynamics, StampBrushStamping } from './stamp-brush.ts';
 
 /**
- * A point a stroke passes through, in the painting's pixels. `pressure` is 0..1, and 1 when left out. `lift` lifts the
- * brush on the way to this point: no stamp lands between it and the point before, though the stroke's length, and so
- * its reveal and taper, still counts the gap. One stroke with lifts is one deposit, so its parts never build on each
- * other as separate strokes would.
+ * A point a stroke passes through, in the painting's pixels. `pressure` is 0..1, and 1 when left out. `speed` is how
+ * fast the hand moves here, relative to the rest of the stroke (1 when left out, and positive): a revealed stroke spends
+ * its time where it's slow. `lift` lifts the brush on the way to this point: no stamp lands between it and the point
+ * before, though the stroke's length, and so its reveal and taper, still counts the gap. One stroke with lifts is one
+ * deposit, so its parts never build on each other as separate strokes would.
  */
-export type StampStrokePoint = { x: number; y: number; pressure?: number; lift?: boolean };
+export type StampStrokePoint = { x: number; y: number; pressure?: number; speed?: number; lift?: boolean };
 
 /** A stamp the author places by hand: its own diameter and turn, or the deposit's. */
 export type StampPlacement = { x: number; y: number; diameter?: number; rotation?: number; pressure?: number };
@@ -112,6 +113,7 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
   const lengths = [0];
   for (let i = 1; i < path.length; i++) lengths.push(lengths[i - 1] + Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y));
   const length = lengths.at(-1)!;
+  const reveal = revealAlong(path, lengths);
   const headings = segmentHeadings(path);
   const steps = length > 0 ? Math.ceil(length / (Math.max(brush.spacing, STAMP_MIN_SPACING) * diameter)) : 0;
   const count = Math.max(1, Math.round(brush.scatter.count));
@@ -159,11 +161,23 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
         blur: brush.blur.amount * (1 - later.blurLoss * brush.blur.jitter),
         grainTurn: heading * (brush.grain?.rotation ?? 0),
         tint: tintOf(brush.color, later.tint, pressure),
-        reveal: along,
+        reveal: reveal(segment, k, along),
       });
     }
   }
   return stamps;
+}
+
+/**
+ * A stroke's reveal at a place on it (segment `segment`, `k` of the way along it, `along` of the whole length): the
+ * share of the hand's travel time spent reaching it, from its points' speeds. Without speeds that's `along` itself.
+ */
+function revealAlong(path: readonly StampStrokePoint[], lengths: readonly number[]): (segment: number, k: number, along: number) => number {
+  if (!path.some((point) => point.speed !== undefined)) return (_segment, _k, along) => along;
+  const times = [0];
+  for (let i = 1; i < path.length; i++) times.push(times[i - 1] + (lengths[i] - lengths[i - 1]) / (((path[i - 1].speed ?? 1) + (path[i].speed ?? 1)) / 2));
+  const total = times.at(-1)!;
+  return (segment, k) => (total > 0 ? lerp(times[segment], times[Math.min(segment + 1, path.length - 1)], k) / total : 0);
 }
 
 /** The author's placements in order, each with the brush's size, opacity and turn jitter, seeded by `seed`. */

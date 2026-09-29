@@ -12,6 +12,7 @@
 import { seededRandom } from '#lib/picture/motion/models/random.ts';
 import type { StampBlend, StampBrush, StampBrushColorDynamics, StampBrushLayer } from './stamp-brush.ts';
 import { placeAuthoredStamps, placeStrokeStamps, type PlacedStamp, type StampPlacement, type StampPlacementBrush, type StampStrokePoint } from './stamp-placement.ts';
+import { handStampStroke, type StampStrokeHand } from './stamp-stroke-hand.ts';
 
 export type StampPaintColor = `#${string}`;
 
@@ -46,7 +47,15 @@ type StampDepositSettings = {
   drawnOver?: number;
 };
 
-export type StampStrokeSettings = StampDepositSettings & { path: readonly StampStrokePoint[] };
+export type StampStrokeSettings = StampDepositSettings & {
+  path: readonly StampStrokePoint[];
+  /**
+   * How a hand paints the path: a pressure profile, pressure and speed from its turns, and wobble (stamp-stroke-hand.ts),
+   * composed with any pressure its points carry, and seeded by the deposit's ID. Left out, the points' pressure is all
+   * there is and the stroke reveals at an even pace.
+   */
+  hand?: StampStrokeHand;
+};
 export type StampPlacementSettings = StampDepositSettings & { at: readonly StampPlacement[] };
 
 /**
@@ -160,7 +169,8 @@ export type CompiledStampPaint = { groups: readonly CompiledStampGroup[] };
 /**
  * Checks `recipe` and places every stamp. Throws on an ID used twice at one level (it would seed two deposits alike),
  * an empty ID or one holding `/` or `|` (the seed's separators), a clipped pass with nothing before it to clip to, a
- * deposit with no points or a diameter that isn't positive, and a `drawnOver` that is negative or has no `appliedAt`.
+ * deposit with no points or a diameter that isn't positive, a stroke point whose speed isn't positive, and a
+ * `drawnOver` that is negative or has no `appliedAt`.
  */
 export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStampPaint {
   const seen = new Set<string>(), duplicates = new Set<string>();
@@ -187,8 +197,11 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
           throw new Error(`stamp paint: ${full} draws over ${drawnOver}s, which needs an appliedAt and no less than 0`);
         }
         if (!(deposit.kind === 'stroke' ? deposit.path : deposit.at).length) throw new Error(`stamp paint: ${full} has no points to stamp`);
+        if (deposit.kind === 'stroke' && deposit.path.some(({ speed }) => speed !== undefined && !(speed > 0))) throw new Error(`stamp paint: ${full} has a point whose speed isn't positive`);
+        // The hand's path is worked out once, so the main stamps and the dual's follow the same wobble.
+        const path = deposit.kind !== 'stroke' ? [] : deposit.hand ? handStampStroke(deposit.path, deposit.hand, diameter, `${full}|hand`) : deposit.path;
         const place = (stamping: StampPlacementBrush, scale: number, seed: string) => deposit.kind === 'stroke'
-          ? placeStrokeStamps(deposit.path, stamping, diameter * scale, seed)
+          ? placeStrokeStamps(path, stamping, diameter * scale, seed)
           : placeAuthoredStamps(deposit.at.map((at) => (at.diameter === undefined ? at : { ...at, diameter: at.diameter * scale })), stamping, diameter * scale, seed);
         const stamps = place(brush, 1, full);
         const dualStamps = brush.dual ? place(brush.dual, brush.dual.scale, `${full}|dual`) : [];

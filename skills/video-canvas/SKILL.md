@@ -21,7 +21,8 @@ often a helper module that paints the way its author does. Read both before pain
 each brush close, rough or off against its Procreate preview (a score from the brush fidelity sheet), and its
 `fidelity.ts` notes how each differs; prefer close brushes, and read the note before leaning on a rough one's look. No folder there means no
 painted look on this machine; say so, and offer what the studio's React code can do (SVG strokes, masks, three.js).
-A style whose `brushes/` is missing must be imported first (`studio brushes import`, docs/private-styles.md); the
+A style whose `brushes/` is missing must be imported first (`studio brushes import`, from a Procreate `.brushset` or a
+Photoshop `.abr` or `.tpl`, docs/private-styles.md); the
 bundle refuses it, naming where the pack came from.
 
 A project paints with a style once its `project.ts` names it (`styles: ['watercolor']`); then it imports
@@ -40,6 +41,22 @@ Everything is from `#studio`.
     shading that can't leave the silhouette.
   - A **stroke** is a brush along a path; **stamps** are single placements (blooms, flowers). Each has `material`
     (`{ kind: 'flat', color }`), `diameter` px, `opacity`, `appliedAt` and `drawnOver` seconds.
+  - Give every stroke a **`hand`**, or it paints at constant pressure, the way a mouse does, and the brush's taper,
+    swell and pressure-driven size and opacity never show. `hand: { profile, curvature, wobble }`:
+    - `profile` is pressure along the stroke: `'taper'` (light, firm, light) for most marks, `'pressFlick'` (heavy,
+      fading fast) for hair, grass and hatching, `'swell'` (thin, full, thin) for leaves and petals, `'drag'` (steady,
+      lifting at the end) for washes and fills, or a curve `(along) => pressure`, which can build on
+      `STAMP_PRESSURE_PROFILES`. A stroke shorter than `fullProfileAt` diameters (12) gets a shallower profile.
+    - `curvature` (0..1, try 0.3) presses harder where the path turns tightly and lightens straight runs by up to that
+      share, as a hand does when it slows into a corner.
+    - `wobble: { pressure: 0.1, position: 0.1 }` adds seeded unsteadiness (a share of the pressure; diameters sideways),
+      so strokes along one path differ. It's seeded by the deposit's ID, so a frame still depends only on its time.
+    - Every `hand` stroke also gets a speed: it eases in and slows through turns, and `drawnOver` reveals it at that
+      pace rather than an even one. A point's own `pressure` (and `speed`) still counts, multiplied in.
+    - `node -e "import('./lib/picture/stamp-paint/engine/stamp-stroke-hand-sheet.ts').then((m) =>
+      m.writeStampStrokeHandSheet({ stylesDir: 'work/styles', style, pack, brushes: [name], diameter: 36, out }))"`
+      paints one path under each profile, with and without curvature and wobble, beside constant pressure: see how a
+      brush answers before choosing.
   - `group.protect(regions, body)` keeps paper bare inside `regions` for what `body` lays: highlights, glints.
 - `stampFillPath(region, diameter)` is one stroke that covers a region, the way a hand fills a shape;
   `stampSmoothRegion(points)` turns a few control points into a smooth silhouette; `stampFillBrush(brush)` untapers a
