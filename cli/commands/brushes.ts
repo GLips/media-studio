@@ -40,13 +40,21 @@ const sheetBrushesCommand = defineCommand({
     pack: { type: 'string', required: true, description: "The pack's folder in the style's brushes/" },
     brush: { type: 'string', valueHint: 'Dry Brush', description: 'Only these brushes, by their names in the pack (comma-separated)' },
     out: { type: 'string', description: 'Write here instead, to keep a sheet from before a change' },
+    compositing: { type: 'string', valueHint: 'linear', description: "Mix paint in 'srgb' (the renderer's default) or 'linear' light, to set a capture of Procreate against both; a sheet under anything but the default needs --out" },
   },
   async run({ args }) {
     const { relative, resolve } = await import('node:path');
     const { STUDIO_ROOT, STUDIO_STYLES_DIR } = await import('#lib/platform/project/engine/studio-project.ts');
     const { writeStampBrushSheet } = await import('#lib/picture/stamp-paint/engine/stamp-brush-sheet.ts');
+    const { STAMP_PAINT_RENDERER_MODEL } = await import('#lib/picture/stamp-paint/models/stamp-paint-renderer-model.ts');
+    type StampPaintRendererModel = typeof STAMP_PAINT_RENDERER_MODEL;
     const only = args.brush?.split(',').map((name) => name.trim()).filter(Boolean);
-    const { dir, sheet, entries, scores } = await writeStampBrushSheet({ stylesDir: STUDIO_STYLES_DIR, style: args.style, pack: args.pack, out: args.out && resolve(args.out), only });
+    const compositing = args.compositing ?? STAMP_PAINT_RENDERER_MODEL.compositing;
+    if (compositing !== 'srgb' && compositing !== 'linear') throw new Error(`brushes sheet: --compositing is srgb or linear, not ${JSON.stringify(compositing)}`);
+    const model: StampPaintRendererModel = { ...STAMP_PAINT_RENDERER_MODEL, compositing };
+    // The pack's own fidelity/ and the style's grades hold the default model's sheet: a trial goes elsewhere.
+    if (!args.out && JSON.stringify(model) !== JSON.stringify(STAMP_PAINT_RENDERER_MODEL)) throw new Error('brushes sheet: a sheet under a model other than the default needs --out');
+    const { dir, sheet, entries, scores } = await writeStampBrushSheet({ stylesDir: STUDIO_STYLES_DIR, style: args.style, pack: args.pack, out: args.out && resolve(args.out), only, model });
     for (const { brush, diameter, comparison, grade } of entries) {
       const measured = comparison ? `score ${comparison.score.toFixed(3)}, map off ${Math.round(comparison.mapError * 100)}%, density ${comparison.density.toFixed(2)}` : 'no preview';
       console.log(`${brush}: ${grade ?? 'ungraded'} (d ${diameter}, ${measured})`);

@@ -6,13 +6,14 @@
 // what's under the paint and return the result, each pixel premultiplied, and `writePaintDeposit` fills the
 // `PaintDeposit` a deposit's pass reads its paint from.
 //
-// This compositor mixes paint as flat colour, in sRGB as Procreate does: a deposit by its blend (W3C separable
-// blending, over a group layer that may still be clear), a group by its composite: `opaque` covers, its coverage
-// raised so a body of paint hides what's under it while its thin edges stay soft; `glaze` multiplies at its opacity,
-// so what's under it shows through tinted, as a transparent wash does.
+// This compositor mixes paint as flat colour: a deposit by its blend (W3C separable blending, over a group layer that
+// may still be clear), a group by its composite: `opaque` covers, its coverage raised so a body of paint hides what's
+// under it while its thin edges stay soft; `glaze` multiplies at its opacity, so what's under it shows through tinted,
+// as a transparent wash does.
 //
-// Negative space: a `pigment` material mixes as a `flat` one until vid-83. Colours mix in sRGB, not linear light,
-// because that's how the pack's author saw them mix.
+// Negative space: a `pigment` material mixes as a `flat` one until vid-83. This module doesn't choose the colour
+// space: it mixes whatever the renderer hands it, gamma-encoded sRGB by default or linear light
+// (StampPaintRendererModel's compositing, in stamp-paint-renderer.ts).
 
 import type { StampBlend } from '../models/stamp-brush.ts';
 import type { PaintMaterial } from '../models/stamp-paint-recipe.ts';

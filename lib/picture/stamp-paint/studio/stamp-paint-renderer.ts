@@ -16,8 +16,12 @@
 //
 // A grain's stretch is about its own mean paint (its smallest mip), so a contrasty grain keeps its overall tone and
 // its brightness alone moves that.
+//
+// Where how Procreate paints is still an open question, a StampPaintRendererModel (models/stamp-paint-renderer-model.ts)
+// switches between the candidates.
 
 import type { StampBrushAsset, StampBrushLayer, StampDualBlend, StampGrainBlend } from '../models/stamp-brush.ts';
+import { STAMP_PAINT_RENDERER_MODEL, type StampPaintRendererModel } from '../models/stamp-paint-renderer-model.ts';
 import { visibleStampCountAt, type CompiledStampDeposit, type CompiledStampPaint, type StampRegion } from '../models/stamp-paint-recipe.ts';
 import type { PlacedStamp } from '../models/stamp-placement.ts';
 import { stampBlurRegion, type StampPixelBox } from '../models/stamp-blur-region.ts';
@@ -39,6 +43,13 @@ const SLOT = 256;
 
 /** A compute pass's workgroup is 8 × 8 pixels. */
 const WORKGROUP = 8;
+
+// The sRGB transfer both ways. LINEAR_LIGHT is set as a pipeline is made, from the model's compositing.
+const COLOR_SPACE_WGSL = /* wgsl */ `
+override LINEAR_LIGHT: bool = false;
+fn linearOf(c: vec3f) -> vec3f { return select(pow((c + 0.055) / 1.055, vec3f(2.4)), c / 12.92, c <= vec3f(0.04045)); }
+fn srgbOf(c: vec3f) -> vec3f { return select(1.055 * pow(c, vec3f(1.0 / 2.4)) - 0.055, c * 12.92, c <= vec3f(0.0031308)); }
+fn workingColor(c: vec3f) -> vec3f { return select(c, linearOf(c), LINEAR_LIGHT); }`;
 
 const DUAL_BLENDS: readonly StampDualBlend[] = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'colorBurn', 'difference', 'linearHeight'];
 const GRAIN_BLENDS: readonly StampGrainBlend[] = ['multiply', 'subtract', 'linearBurn', 'colorDodge', 'colorBurn', 'darken', 'lighten', 'divide', 'hardMix', 'height', 'linearHeight'];
@@ -158,6 +169,7 @@ struct Blur { sourceSize: vec2f, direction: vec2f, sigma: f32, origin: vec2u, ex
 const DEPOSIT_WGSL = /* wgsl */ `
 ${STAMP_PAINT_COMPOSITOR_WGSL}
 ${GRAIN_WGSL}
+${COLOR_SPACE_WGSL}
 struct Deposit {
   paint: PaintDeposit, secondary: vec4f, view: vec4f, edges: vec4f, dualEdges: vec4f, grain: Grain, dualGrain: Grain,
   paperDepth: f32, paperLod: f32, opacity: f32, dualBlend: i32, burntBlend: i32, flags: u32, origin: vec2u, extent: vec2u,
@@ -272,6 +284,8 @@ fn tinted(color: vec3f, pixel: vec2u) -> vec3f {
   let coverage = clamp(m, 0.0, 1.0) * keep * u.opacity;
   var paint = u.paint;
   if ((u.flags & TINTED) != 0u) { paint.color = tinted(paint.color, pixel); }
+  // A tint moves the colour as written, so the colour is decoded only once it's tinted.
+  paint.color = workingColor(paint.color);
   let under = textureLoad(layer, pixel);
   var over = depositPaint(under, paint, coverage);
   // A burnt rim burns into paint already there, the group's or the deposit's own (its stamps laid over one another).
@@ -294,6 +308,7 @@ struct Group { opacity: f32, glaze: u32, origin: vec2u, extent: vec2u }
 }`;
 
 const PAPER_WGSL = /* wgsl */ `
+${COLOR_SPACE_WGSL}
 struct Paper { color: vec3f, hasImage: u32, cover: vec2f, lod: f32 }
 @group(0) @binding(0) var<uniform> u: Paper;
 @group(0) @binding(1) var image: texture_2d<f32>;
@@ -305,15 +320,17 @@ struct Paper { color: vec3f, hasImage: u32, cover: vec2f, lod: f32 }
   let uv = (vec2f(id.xy) + 0.5) / vec2f(size);
   var color = u.color;
   if (u.hasImage == 1u) { color = textureSampleLevel(image, linearClamp, (uv - 0.5) * u.cover + 0.5, u.lod).rgb; }
-  textureStore(painting, id.xy, vec4f(color, 1.0));
+  textureStore(painting, id.xy, vec4f(workingColor(color), 1.0));
 }`;
 
 const OUTPUT_WGSL = /* wgsl */ `
 ${FULL_FRAME_WGSL}
+${COLOR_SPACE_WGSL}
 @group(0) @binding(0) var painting: texture_2d<f32>;
 @fragment fn output(@builtin(position) at: vec4f) -> @location(0) vec4f {
   let pixel = vec2u(at.xy);
-  let color = textureLoad(painting, pixel, 0).rgb;
+  var color = textureLoad(painting, pixel, 0).rgb;
+  if (LINEAR_LIGHT) { color = srgbOf(clamp(color, vec3f(0.0), vec3f(1.0))); }
   // An ordered dither, the same each frame, so a smooth wash doesn't band when the half floats become bytes.
   let dither = (fract(dot(vec2f(pixel), vec2f(0.7548776662, 0.5698402910))) - 0.5) / 255.0;
   return vec4f(clamp(color + dither, vec3f(0.0), vec3f(1.0)), 1.0);
@@ -415,10 +432,11 @@ export type StampPaintRenderer = {
  */
 export async function createStampPaintRenderer(
   canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string,
+  model: StampPaintRendererModel = STAMP_PAINT_RENDERER_MODEL,
 ): Promise<StampPaintRenderer> {
   const device = await createStampPaintDevice();
   try {
-    return await rendererOnDevice(device, canvas, painting, paper, width, height, imageUrl);
+    return await rendererOnDevice(device, canvas, painting, paper, width, height, imageUrl, model);
   } catch (error) {
     // Destroying the device frees every texture and buffer made on it, and unconfigures the canvas.
     device.destroy();
@@ -428,6 +446,7 @@ export async function createStampPaintRenderer(
 
 async function rendererOnDevice(
   device: GPUDevice, canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string,
+  model: StampPaintRendererModel,
 ): Promise<StampPaintRenderer> {
   // Loading and each draw are checked for any error WebGPU would otherwise report only later, unasked. A lost device
   // isn't an error a scope catches, so the draw after it throws.
@@ -574,10 +593,12 @@ async function rendererOnDevice(
     const glaze = accumulation === 'glaze';
     return [accumulation, { plain: [stampPipeline(glaze, 0, false), stampPipeline(glaze, 1, false)], tinted: [stampPipeline(glaze, 0, true), stampPipeline(glaze, 1, true)] }];
   })) as Record<StampBrushLayer['accumulation'], Record<'plain' | 'tinted', [GPURenderPipeline, GPURenderPipeline]>>;
-  const computePipeline = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } });
-  const pipelines = { blur: computePipeline(BLUR_WGSL), deposit: computePipeline(DEPOSIT_WGSL), group: computePipeline(GROUP_WGSL), paper: computePipeline(PAPER_WGSL) };
+  // Only the passes that hold COLOR_SPACE_WGSL take its constant: WebGPU refuses one a shader doesn't declare.
+  const colorSpace = { LINEAR_LIGHT: model.compositing === 'linear' ? 1 : 0 };
+  const computePipeline = (code: string, constants?: Record<string, number>) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }), ...(constants && { constants }) } });
+  const pipelines = { blur: computePipeline(BLUR_WGSL), deposit: computePipeline(DEPOSIT_WGSL, colorSpace), group: computePipeline(GROUP_WGSL), paper: computePipeline(PAPER_WGSL, colorSpace) };
   const outputModule = device.createShaderModule({ code: OUTPUT_WGSL });
-  const outputPipeline = device.createRenderPipeline({ layout: 'auto', vertex: { module: outputModule }, fragment: { module: outputModule, targets: [{ format }] } });
+  const outputPipeline = device.createRenderPipeline({ layout: 'auto', vertex: { module: outputModule }, fragment: { module: outputModule, targets: [{ format }], constants: colorSpace } });
   const regionModule = device.createShaderModule({ code: REGION_WGSL });
   const regionPipeline = (blend: GPUBlendState) => device.createRenderPipeline({
     layout: 'auto', vertex: { module: regionModule, buffers: [{ arrayStride: 8, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x2' }] }] },
