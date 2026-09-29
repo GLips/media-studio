@@ -36,9 +36,9 @@ export function stampSmoothRegion(points: readonly Point[], steps = 8): StampReg
   return { kind: 'polygon', points: curve };
 }
 
-/** The brush as a fill sweeps it: untapered, so a silhouette is as dense in its last row as its first. */
+/** The brush as a fill sweeps it: untapered and unfading, so a silhouette is as dense in its last row as its first. */
 export function stampFillBrush<B extends StampBrush>(brush: B): B {
-  return { ...brush, taper: { start: 0, end: 0, size: 1, opacity: 1 } };
+  return { ...brush, taper: { ...brush.taper, start: 0, end: 0, size: 1, opacity: 1 }, falloff: 0 };
 }
 
 /** The region's edge, closed (its first point repeated at the end), to stroke along. */

@@ -17,7 +17,10 @@
 import type { StampBlend } from '../models/stamp-brush.ts';
 import type { PaintMaterial } from '../models/stamp-paint-recipe.ts';
 
-const BLENDS: readonly StampBlend[] = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten'];
+const BLENDS: readonly StampBlend[] = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'colorBurn'];
+
+/** A blend's number in the compositor's WGSL, for a pass that states a blend of its own (a burnt rim's). */
+export const stampPaintBlendIndex = (blend: StampBlend) => BLENDS.indexOf(blend);
 
 /** How much an opaque group's coverage is raised: a wash at half its density or more covers. */
 const OPAQUE_COVER = 2;
@@ -32,6 +35,7 @@ fn blendedPaint(b: vec3f, s: vec3f, blend: i32) -> vec3f {
     case 3: { return mix(2.0 * b * s, 1.0 - 2.0 * (1.0 - b) * (1.0 - s), step(vec3f(0.5), b)); }
     case 4: { return min(b, s); }
     case 5: { return max(b, s); }
+    case 6: { return select(1.0 - min(vec3f(1.0), (1.0 - b) / max(s, vec3f(1e-4))), vec3f(1.0), b >= vec3f(1.0)); }
     default: { return s; }
   }
 }
@@ -63,5 +67,5 @@ export const PAINT_DEPOSIT_WORDS = 4;
 /** Writes the PaintDeposit for `material` laid by `blend` at word `at` of a uniform slot. */
 export function writePaintDeposit(floats: Float32Array, ints: Int32Array, at: number, material: PaintMaterial, blend: StampBlend) {
   floats.set([1, 3, 5].map((i) => parseInt(material.color.slice(i, i + 2), 16) / 255), at);
-  ints[at + 3] = BLENDS.indexOf(blend);
+  ints[at + 3] = stampPaintBlendIndex(blend);
 }

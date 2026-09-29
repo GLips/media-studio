@@ -18,9 +18,10 @@ const importBrushesCommand = defineCommand({
     const { importProcreatePack } = await import('#lib/picture/stamp-paint/engine/import-procreate-pack.ts');
     const { dir, manifest, skipped } = importProcreatePack({ archive: args.archive, stylesDir: STUDIO_STYLES_DIR, style: args.style, pack: args.pack });
     for (const [name, notes] of Object.entries(manifest.support)) {
-      const unsupported = notes.filter((note) => note.level === 'unsupported'), approximated = notes.length - unsupported.length;
+      const count = (level: string) => notes.filter((note) => note.level === level).length;
+      const unsupported = notes.filter((note) => note.level === 'unsupported');
       const dual = manifest.brushes[name]?.dual ? ', dual' : '';
-      console.log(`${name}${dual}: ${approximated} approximated, ${unsupported.length} unsupported${unsupported.length ? ` (${unsupported.map((note) => note.setting).join('; ')})` : ''}`);
+      console.log(`${name}${dual}: ${count('approximated')} approximated, ${count('inapplicable')} not applicable, ${unsupported.length} unsupported${unsupported.length ? ` (${unsupported.map((note) => note.setting).join('; ')})` : ''}`);
     }
     const counts = [`${Object.keys(manifest.brushes).length} brushes`, `${Object.keys(manifest.palettes).length} palettes`, `${Object.keys(manifest.papers).length} papers`];
     console.error(`brushes: imported ${counts.join(', ')} into ${relative(STUDIO_ROOT, dir)}/; every note is in its manifest.json`);

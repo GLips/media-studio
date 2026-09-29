@@ -6,15 +6,19 @@ import { compileStampPaintRecipe, stampPaintRecipe, type StampRegion } from './s
 
 const brush: StampBrush = {
   name: 'Wash',
+  blend: 'normal',
   accumulation: 'glaze',
   tip: { image: { style: 'wash', pack: 'vvds', file: 'tips/wash.png' }, roundness: 1 },
   spacing: 0.2,
-  jitter: { lateral: 0, size: 0, opacity: 0 },
-  scatter: { count: 1, radius: 0 },
-  rotation: { angle: 0, follow: 1, jitter: 0 },
-  taper: { start: 0.2, end: 0.2, size: 0.3, opacity: 0.5 },
+  jitter: { lateral: 0, size: 0, opacity: 0, flow: 0 },
+  scatter: { count: 1, countJitter: 0, radius: 0 },
+  rotation: { angle: 0, follow: 1, jitter: 0, randomStart: false },
+  flip: { x: false, y: false },
+  blur: { amount: 0, jitter: 0 },
+  taper: { start: 0.2, end: 0.2, size: 0.3, opacity: 0.5, shape: 0, pressure: 0 },
+  falloff: 0,
   flow: 0.4,
-  pressure: { size: 0.5, opacity: 0.5 },
+  pressure: { size: 0.5, opacity: 0.5, flow: 0 },
 };
 
 test('a fill covers a concave region in one stroke, lifting across its notch rather than painting it', () => {

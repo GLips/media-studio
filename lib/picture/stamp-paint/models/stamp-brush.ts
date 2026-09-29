@@ -10,7 +10,15 @@
  */
 export type StampBrushAsset = { style: string; pack: string; file: string };
 
-export type StampBlend = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten';
+export type StampBlend = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'colorBurn';
+
+/**
+ * How a grain's paint g combines with a stamp's coverage a, each 0..1, before `depth` mixes the result back toward a.
+ * The separable modes are their layer formulas, the stamp as base (`subtract` a − g, `linearBurn` a + g − 1, `divide`
+ * a / g, `hardMix` all or nothing where a + g reaches 1). `height` treats the grain as a relief the paint fills from
+ * its deepest point up to a, with a crisp waterline; `linearHeight` fills it the same way with a soft one.
+ */
+export type StampGrainBlend = 'multiply' | 'subtract' | 'linearBurn' | 'colorDodge' | 'colorBurn' | 'darken' | 'lighten' | 'divide' | 'hardMix' | 'height' | 'linearHeight';
 
 export type StampBrushTip = {
   image: StampBrushAsset;
@@ -29,15 +37,38 @@ export type StampBrushGrain = {
   mode: 'rolling' | 'texturized';
   /** How strongly the grain cuts into the stamp, 0..1. */
   depth: number;
+  blend: StampGrainBlend;
+  /**
+   * The grain's paint is stretched about its own mean by `contrast` (-1 flat, 0 as drawn, 1 hard) and then raised by
+   * `brightness` (-1..1), before it combines with the stamp.
+   */
+  brightness: number;
+  contrast: number;
+  /** How far each deposit shifts the grain, at random, as a share of its tile: 0 lays every stroke on the same patch. */
+  offsetJitter: number;
+  /**
+   * A rolling grain's reading of each stamp. `zoom`: 1 grows its tile with the stamp's own size, 0 keeps the size it
+   * has at the deposit's diameter. `movement`: 1 carries it with the stamp, 0 leaves it on the canvas (between, it
+   * slides behind). `rotation`: how far it turns with the stroke's direction, 0..1. A texturized grain ignores all three.
+   */
+  zoom: number;
+  movement: number;
+  rotation: number;
 };
 
-/** A ring of pigment gathered at the rim of the brush's own wet deposit (a wet edge) or a darkened rim (a burnt edge). */
-export type StampBrushEdge = {
-  /** How far in from the rim, as a fraction of the stamp's radius. */
-  width: number;
-  /** How much darker the rim is than the body, 0..1. */
-  strength: number;
-};
+/**
+ * Pigment a wet glaze gathers at the rim of its own deposit as it dries, `width` in from the outline as a fraction of
+ * the stamp's radius, darkening it by up to `rim` (0..1) over the body. The body keeps its density: a wash reads pale
+ * inside its rim only when something else (its flow, its dual) keeps it pale.
+ */
+export type StampBrushWetEdge = { width: number; rim: number };
+
+/**
+ * A rim, `width` in from the deposit's outline as a fraction of its radius, that darkens paint already there, the
+ * group's or the deposit's own: `strength` (0..1) of the deposit's paint laid over it by `blend` along the rim, as a
+ * stamp's edge burns into the paint it lands on.
+ */
+export type StampBrushBurntEdge = { width: number; strength: number; blend: StampBlend };
 
 /** How one brush lays its stamps: everything but its name and what it does to a whole stroke. */
 export type StampBrushStamping = {
@@ -45,24 +76,56 @@ export type StampBrushStamping = {
   grain?: StampBrushGrain;
   /** Distance between stamps along a stroke. Below about 0.05, stamps pile up faster than they read. */
   spacing: number;
-  /** Each stamp's random variation, 0..1: sideways offset (in diameters), and size and opacity lost. */
-  jitter: { lateral: number; size: number; opacity: number };
-  /** `count` stamps at each spacing step, each offset at random within `radius` of the stroke. */
-  scatter: { count: number; radius: number };
   /**
-   * `angle` turns every stamp; `follow` (0..1) turns it with the stroke's direction, unwrapped along the stroke so a
-   * partial follow never jumps; `jitter` turns each at random.
+   * Each stamp's random variation, 0..1: sideways offset (in diameters), size and opacity lost, and `flow` lost (as a
+   * wetter or drier stamp lays less paint, independently of opacity).
    */
-  rotation: { angle: number; follow: number; jitter: number };
+  jitter: { lateral: number; size: number; opacity: number; flow: number };
+  /**
+   * `count` stamps at each spacing step, each offset at random within `radius` of the stroke; `countJitter` (0..1)
+   * drops up to that share of them at random, step by step.
+   */
+  scatter: { count: number; countJitter: number; radius: number };
+  /**
+   * `angle` turns every stamp; `follow` (-1..1) turns it with the stroke's direction (against it when negative),
+   * unwrapped along the stroke so a partial follow never jumps; `jitter` turns each at random; `randomStart` turns a
+   * whole deposit by a random angle.
+   */
+  rotation: { angle: number; follow: number; jitter: number; randomStart: boolean };
+  /** Whether each stamp is flipped across its width (`x`) or its length (`y`) at random, one in two. */
+  flip: { x: boolean; y: boolean };
+  /** How blurred each stamp is, 0..1 (1 about a sixteenth of its size), and up to how much of that `jitter` takes away. */
+  blur: { amount: number; jitter: number };
   /**
    * The stroke's first `start` and last `end` fractions of its length ease in from `size` and `opacity` (each 0..1 of
-   * full) to full, so a stroke starts and lifts off without a hard stamp at either end.
+   * full) to full, so a stroke starts and lifts off without a hard stamp at either end. `shape` (0..1) bends the ease
+   * so the taper holds its width longer and narrows at the tip. `pressure` (0..1) is how far the taper stands in for the
+   * stroke's own pressure: at 0 the pressure shows through the taper, at 1 the taper alone sets size and opacity.
    */
-  taper: { start: number; end: number; size: number; opacity: number };
+  taper: { start: number; end: number; size: number; opacity: number; shape: number; pressure: number };
+  /**
+   * How fast a stroke fades along its length, 0..1: its paint keeps (1 − falloff) of itself every ten diameters
+   * travelled, so a small falloff fades a long stroke gently.
+   */
+  falloff: number;
   /** How much of each stamp's paint lands, 0..1. */
   flow: number;
-  /** How far a stroke's pressure moves each stamp's size and opacity, 0..1: 0 ignores pressure. */
-  pressure: { size: number; opacity: number };
+  /**
+   * How far a stroke's pressure moves each stamp's size, opacity and flow, 0..1: 0 ignores pressure. Opacity and flow
+   * multiply, so a brush can thin by pressure through either.
+   */
+  pressure: { size: number; opacity: number; flow: number };
+};
+
+/**
+ * How a brush's colour varies from its deposit's, each 0..1: hue (as a share of the colour wheel), saturation,
+ * lightening and darkening. `stamp` varies each stamp at random, `stroke` the whole deposit at random, and `pressure`
+ * moves each stamp by how light its pressure is; `pressure.secondary` blends toward the deposit's secondary colour.
+ */
+export type StampBrushColorDynamics = {
+  stamp: { hue: number; saturation: number; lightness: number; darkness: number };
+  stroke: { hue: number; saturation: number; lightness: number; darkness: number };
+  pressure: { hue: number; saturation: number; lightness: number; secondary: number };
 };
 
 /** A brush's own stamps and how they pool: all of a brush but its name and its dual. */
@@ -73,19 +136,24 @@ export type StampBrushLayer = StampBrushStamping & {
    * darken within the stroke.
    */
   accumulation: 'glaze' | 'build';
-  wetEdge?: StampBrushEdge;
-  burntEdge?: StampBrushEdge;
+  wetEdge?: StampBrushWetEdge;
+  burntEdge?: StampBrushBurntEdge;
 };
 
 /**
- * How a dual brush's coverage combines with the main brush's. Beyond the deposit blends: `colorBurn` and `difference`
- * as their layer modes; `linearHeight` cuts the main coverage by the dual's, as grain cuts a stamp.
+ * How a dual brush's coverage combines with the main brush's. Beyond the deposit blends: `difference` as its layer
+ * mode; `linearHeight` treats the dual as a relief the main stamps' paint fills, as a linear-height grain does, and
+ * shapes the main coverage before its grain; every other blend combines with the grained coverage.
  */
-export type StampDualBlend = StampBlend | 'colorBurn' | 'difference' | 'linearHeight';
+export type StampDualBlend = StampBlend | 'difference' | 'linearHeight';
 
 export type StampBrush = StampBrushLayer & {
   /** Its name in its pack, as the manifest keys it. Part of no seed: renaming a brush changes no painting's randomness. */
   name: string;
+  /** The blend a deposit paints in unless it states its own. */
+  blend: StampBlend;
+  /** How its colour varies stamp to stamp and stroke to stroke; none when left out. */
+  color?: StampBrushColorDynamics;
   /**
    * A second, whole brush stamped along the same stroke and combined with the first by `blend`, only where the first
    * has paint: a dry, broken texture inside the main shape. It places its stamps by its own settings, pools by its own

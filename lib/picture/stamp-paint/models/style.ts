@@ -12,16 +12,17 @@ import type { StampPaintColor } from './stamp-paint-recipe.ts';
  * The version of the imported assets this studio reads. An import writes it into each pack's manifest; when the
  * studio's asset format changes this goes up, and the bundle refuses a style until its packs are imported again.
  */
-export const STAMP_PAINT_ASSETS_VERSION = 2;
+export const STAMP_PAINT_ASSETS_VERSION = 3;
 
 /** The file an import writes in each pack's folder, `brushes/<pack>/`, listing what it wrote there. */
 export const STAMP_PAINT_PACK_MANIFEST = 'manifest.json';
 
 /**
  * A setting of a source brush the normalized brush doesn't carry as the source means it: `approximated` is read into
- * a nearby setting, `unsupported` is dropped. `setting` is the source format's own field name, so it can be looked up.
+ * a nearby setting, `unsupported` is dropped, and `inapplicable` is dropped because a painting never has what it
+ * responds to (a pen's tilt). `setting` is the source format's own field name, so it can be looked up.
  */
-export type StampBrushSupportNote = { level: 'approximated' | 'unsupported'; setting: string; detail: string };
+export type StampBrushSupportNote = { level: 'approximated' | 'unsupported' | 'inapplicable'; setting: string; detail: string };
 
 /**
  * How faithfully the studio paints one imported brush, judged on the brush fidelity sheet (`studio brushes sheet`)

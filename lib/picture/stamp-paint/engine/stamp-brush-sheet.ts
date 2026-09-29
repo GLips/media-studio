@@ -41,8 +41,8 @@ async function readStyleFidelity(styleDir: string): Promise<StampPaintStyleFidel
 }
 
 function describeBrush(brush: StampBrush): string {
-  const grain = brush.grain ? `grain ${brush.grain.mode} ×${brush.grain.scale.toFixed(2)} depth ${brush.grain.depth.toFixed(2)}` : 'no grain';
-  const edges = [brush.wetEdge && `wet ${brush.wetEdge.strength.toFixed(2)}`, brush.burntEdge && `burnt ${brush.burntEdge.strength.toFixed(2)}`].filter(Boolean).join(' ');
+  const grain = brush.grain ? `grain ${brush.grain.mode} ${brush.grain.blend} ×${brush.grain.scale.toFixed(2)} depth ${brush.grain.depth.toFixed(2)}` : 'no grain';
+  const edges = [brush.wetEdge && `wet rim ${brush.wetEdge.rim.toFixed(2)}`, brush.burntEdge && `burnt ${brush.burntEdge.strength.toFixed(2)}`].filter(Boolean).join(' ');
   const dual = brush.dual ? `dual ${brush.dual.blend} ×${brush.dual.scale.toFixed(2)}` : '';
   return [grain, edges, dual, brush.accumulation, `taper ${brush.taper.start.toFixed(2)}/${brush.taper.end.toFixed(2)}`].filter(Boolean).join(' · ');
 }

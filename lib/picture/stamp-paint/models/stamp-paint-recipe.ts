@@ -9,8 +9,9 @@
 // Randomness comes from IDs, never from order: each deposit is seeded by its hierarchical ID
 // (`<group>/<pass>/<deposit>`), so adding a stroke changes no other stroke, and renaming one reseeds only it.
 
-import type { StampBlend, StampBrush, StampBrushStamping } from './stamp-brush.ts';
-import { placeAuthoredStamps, placeStrokeStamps, type PlacedStamp, type StampPlacement, type StampStrokePoint } from './stamp-placement.ts';
+import { seededRandom } from '#lib/picture/motion/models/random.ts';
+import type { StampBlend, StampBrush, StampBrushColorDynamics, StampBrushLayer } from './stamp-brush.ts';
+import { placeAuthoredStamps, placeStrokeStamps, type PlacedStamp, type StampPlacement, type StampPlacementBrush, type StampStrokePoint } from './stamp-placement.ts';
 
 export type StampPaintColor = `#${string}`;
 
@@ -30,7 +31,10 @@ type StampDepositSettings = {
   material: PaintMaterial;
   /** The stamp's diameter at full size, in the painting's pixels. */
   diameter: number;
+  /** Left out, the brush's own blend. */
   blend?: StampBlend;
+  /** The colour a brush whose colour follows pressure moves toward (StampBrushColorDynamics); the material's own if left out. */
+  secondaryColor?: StampPaintColor;
   /** The most this deposit can build to, 0..1, however its stamps overlap. */
   opacity?: number;
   /** Seconds into the scene when the deposit starts to appear. Left out, it's there from the start. */
@@ -122,7 +126,11 @@ export type CompiledStampDeposit = {
   /** A stroke's stamps overlap along its path; placed stamps each land alone. */
   kind: StampPaintDeposit['kind'];
   brush: StampBrush;
+  /** Its material, its colour moved by the brush's stroke colour jitter. */
   material: PaintMaterial;
+  secondaryColor: StampPaintColor;
+  /** Where the brush's grain and its dual's start, as shares of their tiles: each deposit's own, by offset jitter. */
+  grainOffset: { main: readonly [number, number]; dual: readonly [number, number] };
   /** The stamp's diameter at full size, as the deposit states it: what its texturized grain and edges scale with. */
   diameter: number;
   blend: StampBlend;
@@ -173,18 +181,25 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
       if (!pass.clipped) clipBase = passId;
       const deposits = pass.deposits.map(({ id: depositId, deposit, protectedBy }): CompiledStampDeposit => {
         const full = claim(depositId, passId);
-        const { brush, material, blend = 'normal', opacity = 1, appliedAt, drawnOver, diameter } = deposit;
+        const { brush, material, blend = brush.blend, opacity = 1, appliedAt, drawnOver, diameter } = deposit;
         if (!(diameter > 0) || !Number.isFinite(diameter)) throw new Error(`stamp paint: ${full} has diameter ${diameter}, and a stamp needs a positive one`);
         if (drawnOver !== undefined && (appliedAt === undefined || drawnOver < 0)) {
           throw new Error(`stamp paint: ${full} draws over ${drawnOver}s, which needs an appliedAt and no less than 0`);
         }
         if (!(deposit.kind === 'stroke' ? deposit.path : deposit.at).length) throw new Error(`stamp paint: ${full} has no points to stamp`);
-        const place = (stamping: StampBrushStamping, scale: number, seed: string) => deposit.kind === 'stroke'
+        const place = (stamping: StampPlacementBrush, scale: number, seed: string) => deposit.kind === 'stroke'
           ? placeStrokeStamps(deposit.path, stamping, diameter * scale, seed)
           : placeAuthoredStamps(deposit.at.map((at) => (at.diameter === undefined ? at : { ...at, diameter: at.diameter * scale })), stamping, diameter * scale, seed);
         const stamps = place(brush, 1, full);
         const dualStamps = brush.dual ? place(brush.dual, brush.dual.scale, `${full}|dual`) : [];
-        return { id: full, kind: deposit.kind, brush, material, diameter, blend, opacity, protectedBy, appliedAt, drawnOver, stamps, dualStamps };
+        const random = seededRandom(`${full}|deposit|paint`);
+        const offset = (layer?: StampBrushLayer) => [random(), random()].map((r) => r * (layer?.grain?.offsetJitter ?? 0)) as [number, number];
+        const grainOffset = { main: offset(brush), dual: offset(brush.dual) };
+        const color = brush.color ? strokeColor(material.color, brush.color.stroke, [random(), random(), random(), random()]) : material.color;
+        return {
+          id: full, kind: deposit.kind, brush, material: { ...material, color }, secondaryColor: deposit.secondaryColor ?? material.color, grainOffset,
+          diameter, blend, opacity, protectedBy, appliedAt, drawnOver, stamps, dualStamps,
+        };
       });
       return { id: passId, clipTo, deposits };
     });
@@ -213,4 +228,32 @@ export function visibleStampCountAt(deposit: CompiledStampDeposit, t: number, wh
     else high = middle;
   }
   return low;
+}
+
+/** `color` moved by a brush's stroke colour jitter, from four draws (each 0..1). */
+function strokeColor(color: StampPaintColor, jitter: StampBrushColorDynamics['stroke'], draws: readonly number[]): StampPaintColor {
+  return shiftStampPaintColor(color, {
+    hue: (draws[0] * 2 - 1) * jitter.hue,
+    saturation: (draws[1] * 2 - 1) * jitter.saturation,
+    lightness: draws[2] * jitter.lightness - draws[3] * jitter.darkness,
+  });
+}
+
+/**
+ * `color` turned by `hue` (a share of the wheel) and moved in HSL by `saturation` and `lightness` (each −1..1, added,
+ * then held in range). The renderer shifts a stamp's tint the same way (STAMP_TINT_WGSL).
+ */
+export function shiftStampPaintColor(color: StampPaintColor, { hue, saturation, lightness }: { hue: number; saturation: number; lightness: number }): StampPaintColor {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  const h = d === 0 ? 0 : max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  const h2 = (((h / 6 + hue) % 1) + 1) % 1, s2 = Math.min(1, Math.max(0, s + saturation)), l2 = Math.min(1, Math.max(0, l + lightness));
+  const c = (1 - Math.abs(2 * l2 - 1)) * s2;
+  const channel = (n: number) => {
+    const k = (n + h2 * 12) % 12;
+    return l2 - (c / 2) * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  const hex = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0');
+  return `#${hex(channel(0))}${hex(channel(8))}${hex(channel(4))}`;
 }
