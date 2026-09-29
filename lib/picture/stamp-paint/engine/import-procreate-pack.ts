@@ -2,7 +2,8 @@
 // which may also hold .swatches palettes and .procreate paper canvases) into a style's assets in
 // work/styles/<style>/brushes/<pack>/: each brush's tip and grain turned to dark-is-paint and downsized, its dual's
 // likewise, its Procreate preview, the papers and a manifest (StampPaintPackManifest) holding the normalized brushes
-// and what didn't carry over. An import replaces the pack's folder whole, and only once it has succeeded.
+// and what didn't carry over; and procreate-sources.json, each brush's own settings and images, which `studio brushes
+// fit` reads again with other constants. An import replaces the pack's folder whole, and only once it has succeeded.
 //
 // A .brushset is a zip of one folder per brush, named by UUID, in the order brushset.plist lists: Brush.archive (an
 // NSKeyedArchiver plist of settings), Shape.png, Grain.png, QuickLook/Thumbnail.png and, for a dual brush, Sub01/
@@ -34,6 +35,14 @@ const TIP_MAX = 512, GRAIN_MAX = 1024, PAPER_MAX = 2560;
  * seen are listed, each checked against the document's own thumbnail.
  */
 const PROCREATE_ORIENTATION_TRANSPOSE: Readonly<Record<number, string>> = { 3: 'clock_flip', 4: 'cclock_flip' };
+
+/** A pack's procreate-sources.json: each imported brush's settings and images, and its dual's, by its name. */
+export const PROCREATE_SOURCES = 'procreate-sources.json';
+export type ProcreatePackSources = Record<string, { main: ProcreateBrushSource; dual?: ProcreateBrushSource }>;
+
+/** Settings as JSON keeps them: numbers, booleans, strings and pressure curves; bytes and dates aren't a brush's painting. */
+const jsonSettings = (settings: ProcreateBrushSettings): ProcreateBrushSettings => Object.fromEntries(Object.entries(settings).filter(([key, value]) =>
+  typeof value === 'number' || typeof value === 'boolean' || typeof value === 'string' || (key.endsWith('Curve') && value !== null && typeof value === 'object')));
 
 export type ImportProcreatePackOptions = { archive: string; stylesDir: string; style: string; pack: string };
 export type ImportedProcreatePack = { dir: string; manifest: StampPaintPackManifest; skipped: readonly string[] };
@@ -148,6 +157,7 @@ function writePackAssets(archive: string, dir: string, style: string, pack: stri
   if (!brushsets.length) throw new Error(`brushes import: ${archive} holds no .brushset`);
   for (const sub of ['tips', 'grains', 'previews', 'papers']) mkdirSync(join(dir, sub), { recursive: true });
 
+  const sources: ProcreatePackSources = {};
   const brushes: Record<string, StampBrush> = {}, support: Record<string, StampBrushSupportNote[]> = {}, previews: Record<string, StampPaintPackPreview> = {};
   const skipped: string[] = [];
   const files = new Set<string>();
@@ -184,7 +194,9 @@ function writePackAssets(archive: string, dir: string, style: string, pack: stri
       const hasDual = has(`${folder}/Sub01/Brush.archive`), dualSettings = hasDual ? unarchiveKeyedPlist(brushset.read(`${folder}/Sub01/Brush.archive`)) as ProcreateBrushSettings : undefined;
       const dualShapeMissing = hasDual && !has(`${folder}/Sub01/Shape.png`);
       const dual = dualSettings && !dualShapeMissing ? source(`${folder}/Sub01/`, '.dual', dualSettings) : undefined;
-      const normalized = normalizeProcreateBrush(name, source(`${folder}/`, '', settings), dual);
+      const main = source(`${folder}/`, '', settings);
+      const normalized = normalizeProcreateBrush(name, main, dual);
+      sources[name] = { main: { ...main, settings: jsonSettings(main.settings) }, ...(dual && { dual: { ...dual, settings: jsonSettings(dual.settings) } }) };
       brushes[name] = normalized.brush;
       support[name] = dualShapeMissing
         ? [...normalized.support, { level: 'unsupported', setting: 'Sub01 bundledShapePath', detail: `the dual's tip is Procreate's own ${String(dualSettings?.bundledShapePath)}, which the pack doesn't hold; imported without its dual` }]
@@ -224,6 +236,7 @@ function writePackAssets(archive: string, dir: string, style: string, pack: stri
     palettes,
     papers,
   };
+  writeFileSync(join(dir, PROCREATE_SOURCES), `${JSON.stringify(sources, null, 1)}\n`);
   writeFileSync(join(dir, STAMP_PAINT_PACK_MANIFEST), `${JSON.stringify(manifest, null, 2)}\n`);
   return { manifest, skipped };
 }

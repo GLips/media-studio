@@ -61,6 +61,7 @@ brushes/<pack>/
   fidelity/    the brush fidelity sheet, once drawn (studio brushes sheet)
   papers/      each .procreate canvas in the zip, as Procreate shows it, and its tooth as <paper>.grain.png
   manifest.json
+  procreate-sources.json  each brush's Procreate settings as read, for studio brushes fit
 ```
 
 The manifest holds the asset version, the files, and each brush normalized into the studio's brush definition
@@ -101,6 +102,14 @@ export default {
 ```
 
 Re-draw after changing how a brush is painted or read, and re-read the notes of any brush whose grade moved.
+
+**Fitting the importer.** Where Procreate's meaning isn't known (how big a grain's tile is, how wide and dark a wet
+rim, how far each glaze mode builds within its stroke, how flow and depth curve), the importer reads a setting by a
+constant of its `ProcreateReading`, checked in as `lib/picture/stamp-paint/models/procreate-reading.ts`. `studio
+brushes fit --packs watercolor/vvds` fits every constant at once against every previewed brush of the packs given, by
+the sheet's summed score, with each brush that ends up further off than it started counted again. It's deterministic,
+takes a few minutes, and writes the file; re-import the packs and re-draw their sheets after. The constants are the
+same for every brush of every pack: a brush is never tuned alone, so what fits one pack's previews holds for the next.
 
 **Same pixels.** A painting draws on the GPU through WebGPU, in half floats, and GPUs round floats differently, so
 what's promised depends on where it renders:

@@ -3,6 +3,8 @@ import { test } from 'node:test';
 import { normalizeProcreateBrush, procreateGrainNegated, procreateTipNegated } from './procreate-brush.ts';
 
 const asset = (file: string) => ({ style: 'wash', pack: 'vvds', file });
+/** A reading of plain scales, so the test reads the settings, not whatever the fit last chose. */
+const reading = { taperShare: 0.5, edgeWidth: 0.035, rimSharpness: 16, wetRim: 1, grainTile: 2.5, grainBrightness: 0.5, grainContrast: 3, grainDepthCurve: 1, glazeFlowCurve: 1, blendingFlowCurve: 1, dualScale: 1, glazeBuildLight: 0, glazeBuildUniform: 0, glazeBuildIntense: 0, glazeBuildHeavy: 0 };
 
 test('a dual brush reads its Sub01 as a whole second brush, sized by its largest size against the main one', () => {
   const main = {
@@ -11,7 +13,7 @@ test('a dual brush reads its Sub01 as a whole second brush, sized by its largest
     dynamicsTiltOpacity: 0.2,
   };
   const sub = { maxSize: 3, dynamicsGlazedFlow: 1, plotSpacing: 0.3, shapeCount: 1, burntEdgesAmount: 0.5, renderingRecursiveMixing: true, dynamicsMix: 0.4 };
-  const { brush, support } = normalizeProcreateBrush('Wet Wash', { settings: main, tip: asset('tips/wet-wash.png'), grain: asset('grains/wet-wash.png') }, { settings: sub, tip: asset('tips/wet-wash.dual.png') });
+  const { brush, support } = normalizeProcreateBrush('Wet Wash', { settings: main, tip: asset('tips/wet-wash.png'), grain: asset('grains/wet-wash.png') }, { settings: sub, tip: asset('tips/wet-wash.dual.png') }, reading);
 
   assert.equal(brush.scatter.count, 5);
   assert.equal(brush.rotation.jitter, Math.PI);

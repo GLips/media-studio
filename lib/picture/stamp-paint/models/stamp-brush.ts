@@ -39,11 +39,11 @@ export type StampBrushGrain = {
   depth: number;
   blend: StampGrainBlend;
   /**
-   * The grain's paint is stretched about its own mean by `contrast` (-1 flat, 0 as drawn, 1 hard) and then raised by
-   * `brightness` (-1..1), before it combines with the stamp.
+   * The grain's paint is stretched about its own mean by `stretch` (0 flat, 1 as drawn, more is harder) and then raised
+   * by `brightness` (-1..1), before it combines with the stamp.
    */
   brightness: number;
-  contrast: number;
+  stretch: number;
   /** How far each deposit shifts the grain, at random, as a share of its tile: 0 lays every stroke on the same patch. */
   offsetJitter: number;
   /**
@@ -59,16 +59,17 @@ export type StampBrushGrain = {
 /**
  * Pigment a wet glaze gathers at the rim of its own deposit as it dries, `width` in from the outline as a fraction of
  * the stamp's radius, darkening it by up to `rim` (0..1) over the body. The body keeps its density: a wash reads pale
- * inside its rim only when something else (its flow, its dual) keeps it pale.
+ * inside its rim only when something else (its flow, its dual) keeps it pale. `sharpness` is how steeply the rim
+ * rises where the deposit's coverage stands above its blur `width` wide: higher keeps it a crisp line at the outline.
  */
-export type StampBrushWetEdge = { width: number; rim: number };
+export type StampBrushWetEdge = { width: number; rim: number; sharpness: number };
 
 /**
  * A rim, `width` in from the deposit's outline as a fraction of its radius, that darkens paint already there, the
  * group's or the deposit's own: `strength` (0..1) of the deposit's paint laid over it by `blend` along the rim, as a
- * stamp's edge burns into the paint it lands on.
+ * stamp's edge burns into the paint it lands on. `sharpness` as a wet edge's.
  */
-export type StampBrushBurntEdge = { width: number; strength: number; blend: StampBlend };
+export type StampBrushBurntEdge = { width: number; strength: number; sharpness: number; blend: StampBlend };
 
 /** How one brush lays its stamps: everything but its name and what it does to a whole stroke. */
 export type StampBrushStamping = {
@@ -131,11 +132,16 @@ export type StampBrushColorDynamics = {
 /** A brush's own stamps and how they pool: all of a brush but its name and its dual. */
 export type StampBrushLayer = StampBrushStamping & {
   /**
-   * How a stroke's own stamps combine. `glaze`: where they overlap each other they don't darken, so the stroke reaches
-   * at most its flow, and only a later stroke builds on it. `build`: each stamp lays over the ones before, so overlaps
-   * darken within the stroke.
+   * How a stroke's own stamps combine. `glaze`: where they overlap each other they darken only as far as `glazeBuild`
+   * lets them, so the stroke reaches at most a stamp's full paint, and only a later stroke builds on it. `build`: each
+   * stamp lays over the ones before, so overlaps darken within the stroke without limit.
    */
   accumulation: 'glaze' | 'build';
+  /**
+   * How far a glaze's overlapping stamps build within the stroke, 0 to 1 (0 by default): at 0 an overlap is as dark as
+   * its darkest stamp; at 1 stamps lay over each other up to a stamp's paint before its tip (its flow through its grain).
+   */
+  glazeBuild?: number;
   wetEdge?: StampBrushWetEdge;
   burntEdge?: StampBrushBurntEdge;
 };

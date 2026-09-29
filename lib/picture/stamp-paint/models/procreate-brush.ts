@@ -2,20 +2,60 @@
 // StampBrush, with a note for every setting that doesn't carry over as Procreate means it. Procreate's field names
 // stop here: nothing past this file reads them.
 //
-// Several readings are the studio's own (taper length, rotation scatter, grain scale and polarity, rim width, combine
-// modes, dual size, falloff span), each noted as `approximated` where it applies. Each was set against the VVDS
-// previews on the brush fidelity sheet (`studio brushes sheet`); where a reading varied brush by brush with no better
-// rule, the simplest was kept.
+// Several readings are the studio's own (taper length, rotation scatter, grain scale, brightness and contrast, rim
+// width and sharpness, flow and depth curves, how far each glaze mode builds, combine modes, dual size, falloff span), each noted as `approximated`
+// where it applies. Their constants are a ProcreateReading, fitted against the whole pack at once by `studio brushes
+// fit` (lib/picture/stamp-paint/engine/stamp-brush-fit.ts) and checked in as procreate-reading.ts, shared by every
+// pack: a reading that fits one pack's previews by tuning brush by brush would fit no other pack.
 //
 // Negative space: live-input settings (stabilization, smoothing, prediction, pressure smoothing), the size and opacity
-// sliders' positions (paintSize, paintOpacity, maxSize, minSize: a deposit states its own diameter and opacity), the
-// finger taper (taperStartLength…: a stroke with pressure is a pencil stroke), smudge and erase settings and the
+// sliders' positions and limits (paintSize, paintOpacity, maxSize, minSize, maxOpacity: a deposit states its own
+// diameter and opacity), the finger taper (taperStartLength…: a stroke with pressure is a pencil stroke), smudge and erase settings and the
 // preview's own settings aren't a brush's painting, and go unreported. Tilt, azimuth and speed are noted `inapplicable`
 // (a path has none); wet mixing is noted `unsupported`, left to the wet-paint model.
 
 import type { StampBlend, StampBrush, StampBrushAsset, StampBrushColorDynamics, StampBrushLayer, StampDualBlend, StampGrainBlend } from './stamp-brush.ts';
 import { STAMP_MIN_SPACING } from './stamp-placement.ts';
 import type { StampBrushSupportNote } from './style.ts';
+import { PROCREATE_READING } from './procreate-reading.ts';
+
+/**
+ * The constants that turn Procreate's settings into the studio's, where Procreate's meaning isn't known and is fitted
+ * (`studio brushes fit`). Each is a scale or a curve on one reading, the same for every brush of every pack.
+ */
+export type ProcreateReading = {
+  /** Procreate's full pencil taper, read as this share of the stroke's length. */
+  taperShare: number;
+  /** A wet or burnt edge's width, a fraction of the stamp's radius: Procreate gives an amount and no width. */
+  edgeWidth: number;
+  /** How steeply a rim rises at the outline (StampBrushWetEdge's sharpness). */
+  rimSharpness: number;
+  /** How dark a full wet edge (1) makes its rim over the body; less is proportionally less. */
+  wetRim: number;
+  /** A grain's tile, in stamp diameters, at textureScale 1. */
+  grainTile: number;
+  /** A grain's brightness at textureBrightness 1: how far it raises the grain's paint. */
+  grainBrightness: number;
+  /** How far full textureContrast (1) stretches a grain about its mean; -1 flattens it whatever this is. */
+  grainContrast: number;
+  /** A grain's depth is grainDepth to this power: above 1, a shallow grain cuts in less. */
+  grainDepthCurve: number;
+  /** A glaze's stamp flow is dynamicsGlazedFlow to this power. */
+  glazeFlowCurve: number;
+  /** A blending mode's stamp flow is dynamicsGlazedFlow to this power: its stamps build, so flow tells differently. */
+  blendingFlowCurve: number;
+  /** A dual's stamps are this times the ratio of the dual's largest size to the main brush's. */
+  dualScale: number;
+  /**
+   * How far each glaze mode's stamps build within the stroke (StampBrushLayer's glazeBuild), by its transfer flags:
+   * light (neither), uniform (modulated), intense (max) and heavy (both). The names are the Handbook's; which flags
+   * make which mode is inferred.
+   */
+  glazeBuildLight: number;
+  glazeBuildUniform: number;
+  glazeBuildIntense: number;
+  glazeBuildHeavy: number;
+};
 
 /** A Brush.archive's root object, as unarchived: its settings by Procreate's names. */
 export type ProcreateBrushSettings = Readonly<Record<string, unknown>>;
@@ -23,16 +63,6 @@ export type ProcreateBrushSettings = Readonly<Record<string, unknown>>;
 /** One Procreate brush's settings and where its images landed among the pack's assets. */
 export type ProcreateBrushSource = { settings: ProcreateBrushSettings; tip: StampBrushAsset; grain?: StampBrushAsset };
 
-/**
- * Procreate's full pencil taper, read as this share of the stroke's length. On the sheet no share from 0.1 to 0.7 fits
- * the previews better overall; brushes split between shorter and longer.
- */
-const TAPER_STROKE_SHARE = 0.5;
-/**
- * Procreate's wet and burnt edges have an amount and no width; the rim is this fraction of the stamp's radius. Fit with
- * the renderer's rim gain to Main Watercolor's preview, whose rim peaks a pixel in and is halfway to its body by four.
- */
-const EDGE_WIDTH = 0.035;
 
 /** Procreate's blend modes by number, as its layers number them; 27 and 28 only appear on grains and duals. */
 const PROCREATE_BLEND_NAMES: Readonly<Record<number, string>> = {
@@ -56,17 +86,10 @@ const GRAIN_BLENDS: Readonly<Record<number, StampGrainBlend>> = {
 /** The brush's own blend and its burnt edge's, by number, as layer modes number. */
 const BRUSH_BLENDS: Readonly<Record<number, StampBlend>> = { 0: 'normal', 1: 'multiply', 2: 'screen', 4: 'lighten', 10: 'colorBurn', 11: 'overlay', 19: 'darken' };
 const BURNT_BLENDS = BRUSH_BLENDS;
-/**
- * A grain's tile is its textureScale times this, in stamp diameters: the size at which, on the sheet, the studio's grain
- * matches the previews' (per brush the best factor ran 0.6 to 6×; near their geometric mean).
- */
-const GRAIN_TILE = 2.5;
-/**
- * A grain's brightness is its textureBrightness times this, raising its paint. On the sheet, half fits the 26 VVDS
- * brushes that set one best overall (as read, the brighter grains leave their strokes too dark; negated, most go pale).
- */
-const GRAIN_BRIGHTNESS = 0.5;
 const blendName = (mode: number) => `${mode} (${PROCREATE_BLEND_NAMES[mode] ?? 'unknown'})`;
+
+/** textureContrast (-1..1) as a stretch about the grain's mean: -1 flat, 0 as drawn, 1 the reading's full stretch. */
+const grainStretch = (contrast: number, reading: ProcreateReading) => (contrast > 0 ? 1 + (reading.grainContrast - 1) * contrast : 1 + contrast);
 
 const IDENTITY_CURVE = ['{0.000000, 0.000000}', '{1.000000, 1.000000}'];
 
@@ -77,7 +100,7 @@ const IDENTITY_CURVE = ['{0.000000, 0.000000}', '{1.000000, 1.000000}'];
 export const procreateTipNegated = (settings: ProcreateBrushSettings) => settings.shapeInverted !== true;
 export const procreateGrainNegated = (settings: ProcreateBrushSettings) => settings.textureInverted !== true;
 
-function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBrushSupportNote[]): StampBrushLayer {
+function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBrushSupportNote[], reading: ProcreateReading): StampBrushLayer {
   const s = source.settings;
   const num = (key: string) => Number(s[key] ?? 0);
   const on = (key: string) => s[key] === true;
@@ -93,21 +116,30 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
   if (shapeScatter) note('approximated', 'shapeScatter', `${shapeScatter.toFixed(2)} read as each stamp turned at random by up to ±${Math.round(shapeScatter * 90)}°`);
   const taperStart = num('pencilTaperStartLength'), taperEnd = num('pencilTaperEndLength');
   if (taperStart || taperEnd) {
-    note('approximated', 'pencilTaperStartLength, pencilTaperEndLength', `taper lengths read as shares of the stroke, the full slider as ${TAPER_STROKE_SHARE} of it`);
+    note('approximated', 'pencilTaperStartLength, pencilTaperEndLength', `taper lengths read as shares of the stroke, the full slider as ${reading.taperShare.toFixed(2)} of it`);
     whenSet('approximated', ['pencilTaperShape'], "the taper's tip read as how long the taper holds its width before it narrows");
     whenSet('approximated', ['taperPressure'], "read as how far the taper stands in for the stroke's pressure: at 0 the previews still taper by pressure");
   }
 
   // Rendering modes, by the flags Procreate stores them as. A blending mode (recursive mixing) builds within the stroke
-  // and its wet edge only softens; a glaze reaches at most its flow, and its wet edge gathers a rim.
+  // and its wet edge only softens; a glaze builds only as far as its mode's fitted glazeBuild, and its wet edge
+  // gathers a rim.
   const blending = on('renderingRecursiveMixing');
-  if (!blending && (on('renderingModulatedTransfer') || on('renderingMaxTransfer'))) {
-    note('approximated', ['renderingMaxTransfer', 'renderingModulatedTransfer'].filter(on).join(', '), "a heavier glaze; on the sheet its body reads as the studio's one glaze does");
+  const modulated = on('renderingModulatedTransfer'), maxTransfer = on('renderingMaxTransfer');
+  const glazeBuild = modulated && maxTransfer ? reading.glazeBuildHeavy : maxTransfer ? reading.glazeBuildIntense
+    : modulated ? reading.glazeBuildUniform : reading.glazeBuildLight;
+  if (blending && (modulated || maxTransfer)) {
+    note('approximated', ['renderingMaxTransfer', 'renderingModulatedTransfer'].filter(on).join(', '), 'a blending mode reads as the one build, whichever it is');
   }
   // Charge and pull sit at Procreate's defaults on brushes that never mix, so wet mixing is noted only on one that does.
   if (blending || num('dynamicsMix') > 0) {
-    whenSet('unsupported', ['dynamicsMix', 'dynamicsLoad', 'dynamicsWetAccumulation', 'dynamicsPressureBleed', 'dynamicsPressureMix'], 'wet mixing with paint already down (vid-81, vid-83): the recipe mixes pigment only between deposits');
+    whenSet('unsupported', ['dynamicsMix', 'dynamicsLoad', 'dynamicsWetAccumulation', 'dynamicsPressureMix'], 'wet mixing with paint already down (vid-90): the recipe mixes pigment only between deposits');
   }
+  // Wet Mix's blur softens paint already on the canvas as the brush mixes into it (the Handbook; Freya Lupen's
+  // converter files it with Wet Mix), not the stamp: Smooth Ink Pen sets 0.32 and previews a crisp edge.
+  whenSet('unsupported', ['dynamicsBlur', 'dynamicsBlurJitter'], "Wet Mix's blur of paint already down (vid-90); the stamp stays sharp");
+  // Apple Pencil pressure's Bleed, beside its flow (Freya Lupen's converter), not a Wet Mix slider.
+  whenSet('unsupported', ['dynamicsPressureBleed'], "pressure's bleed: what it moves isn't known, and it isn't read");
 
   for (const [curve, used] of [['dynamicsPressureSizeCurve', num('dynamicsPressureSize')], ['dynamicsPressureOpacityCurve', num('dynamicsPressureOpacity')]] as const) {
     const points = (s[curve] as { points?: unknown[] } | null)?.points;
@@ -123,8 +155,8 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
   if (source.grain) {
     const grainBlend = GRAIN_BLENDS[num('grainBlendMode')];
     grain = {
-      image: source.grain, scale: num('textureScale') * GRAIN_TILE, mode: num('textureApplication') === 1 ? 'texturized' : 'rolling', depth: num('grainDepth'),
-      blend: grainBlend ?? 'multiply', brightness: num('textureBrightness') * GRAIN_BRIGHTNESS * (procreateGrainNegated(s) ? 1 : -1), contrast: num('textureContrast'), offsetJitter: on('textureOffsetJitter') ? 1 : 0,
+      image: source.grain, scale: num('textureScale') * reading.grainTile, mode: num('textureApplication') === 1 ? 'texturized' : 'rolling', depth: num('grainDepth') ** reading.grainDepthCurve,
+      blend: grainBlend ?? 'multiply', brightness: num('textureBrightness') * reading.grainBrightness * (procreateGrainNegated(s) ? 1 : -1), stretch: grainStretch(num('textureContrast'), reading), offsetJitter: on('textureOffsetJitter') ? 1 : 0,
       zoom: num('textureZoom'), movement: num('textureMovement'), rotation: num('textureRotation'),
     };
     note('approximated', 'textureScale, textureApplication', `grain read as ${grain.mode}, its tile ${grain.scale.toFixed(2)} stamp diameters across`);
@@ -139,7 +171,7 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
   }
 
   const wet = num('wetEdgesAmount'), burnt = num('burntEdgesAmount');
-  if (wet > 0 || burnt > 0) note('approximated', 'wetEdgesAmount, burntEdgesAmount', `edge amounts carry over; the rim's width is the studio's ${EDGE_WIDTH} of the radius`);
+  if (wet > 0 || burnt > 0) note('approximated', 'wetEdgesAmount, burntEdgesAmount', `edge amounts carry over; the rim's width is the studio's ${reading.edgeWidth.toFixed(3)} of the radius`);
   // Every blending-mode brush with wet edges previews a crisp, unrimmed outline, however wet.
   if (wet > 0 && blending) note('approximated', 'wetEdgesAmount', 'in a blending mode, wet edges show no rim and no softening on the preview; read as none');
   const burntBlend = BURNT_BLENDS[num('burntEdgesBlendMode')];
@@ -154,17 +186,19 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
     scatter: { count: Math.max(1, Math.round(num('shapeCount') * 16)), countJitter: num('shapeCountJitter'), radius: 0 },
     rotation: { angle: num('shapeAngle'), follow: Math.min(1, Math.max(-1, num('shapeRotation'))), jitter: (shapeScatter * Math.PI) / 2, randomStart: on('shapeRandomise') },
     flip: { x: on('shapeFlipXJitter'), y: on('shapeFlipYJitter') },
-    blur: { amount: num('dynamicsBlur'), jitter: num('dynamicsBlurJitter') },
+    blur: { amount: 0, jitter: 0 },
     taper: {
-      start: taperStart * TAPER_STROKE_SHARE, end: taperEnd * TAPER_STROKE_SHARE, size: 1 - num('pencilTaperSize'), opacity: 1 - num('pencilTaperOpacity'),
+      start: taperStart * reading.taperShare, end: taperEnd * reading.taperShare, size: 1 - num('pencilTaperSize'), opacity: 1 - num('pencilTaperOpacity'),
       shape: num('pencilTaperShape'), pressure: num('taperPressure'),
     },
     falloff: num('dynamicsFalloff'),
-    flow: num('dynamicsGlazedFlow') * Number(s.maxOpacity ?? 1),
+    // maxOpacity only bounds the sidebar's opacity slider (the Handbook's Properties): a deposit states its own opacity.
+    flow: num('dynamicsGlazedFlow') ** (blending ? reading.blendingFlowCurve : reading.glazeFlowCurve),
     pressure: { size: num('dynamicsPressureSize'), opacity: num('dynamicsPressureOpacity'), flow: num('dynamicsPressureOpacityTransfer') },
     accumulation: blending ? 'build' : 'glaze',
-    ...(wet > 0 && !blending && { wetEdge: { width: EDGE_WIDTH, rim: wet } }),
-    ...(burnt > 0 && { burntEdge: { width: EDGE_WIDTH, strength: burnt, blend: burntBlend ?? 'colorBurn' } }),
+    ...(!blending && glazeBuild > 0 && { glazeBuild }),
+    ...(wet > 0 && !blending && { wetEdge: { width: reading.edgeWidth, rim: Math.min(1, wet * reading.wetRim), sharpness: reading.rimSharpness } }),
+    ...(burnt > 0 && { burntEdge: { width: reading.edgeWidth, strength: burnt, sharpness: reading.rimSharpness, blend: burntBlend ?? 'colorBurn' } }),
   };
 }
 
@@ -182,12 +216,14 @@ function readColorDynamics(s: ProcreateBrushSettings): StampBrushColorDynamics |
 }
 
 /** `main` read into a StampBrush named `name`, with `dual` (its Sub01) as the dual brush, and what didn't carry over. */
-export function normalizeProcreateBrush(name: string, main: ProcreateBrushSource, dual?: ProcreateBrushSource): { brush: StampBrush; support: StampBrushSupportNote[] } {
+export function normalizeProcreateBrush(
+  name: string, main: ProcreateBrushSource, dual?: ProcreateBrushSource, reading: ProcreateReading = PROCREATE_READING,
+): { brush: StampBrush; support: StampBrushSupportNote[] } {
   const support: StampBrushSupportNote[] = [];
   const blend = BRUSH_BLENDS[Number(main.settings.blendMode ?? 0)];
   if (!blend) support.push({ level: 'unsupported', setting: 'blendMode', detail: `the brush paints in ${blendName(Number(main.settings.blendMode))}; read as normal` });
   const color = readColorDynamics(main.settings);
-  const brush: StampBrush = { name, blend: blend ?? 'normal', ...(color && { color }), ...readLayer(main, '', support) };
+  const brush: StampBrush = { name, blend: blend ?? 'normal', ...(color && { color }), ...readLayer(main, '', support, reading) };
   if (dual) {
     const mode = Number(main.settings.dualBlendMode ?? 0);
     const dualBlend = DUAL_BLENDS[mode];
@@ -195,9 +231,9 @@ export function normalizeProcreateBrush(name: string, main: ProcreateBrushSource
       ? { level: 'approximated', setting: 'dualBlendMode', detail: `combine mode ${blendName(mode)} read as ${dualBlend}, set against the pack's previews: Procreate doesn't document how combine modes number` }
       : { level: 'unsupported', setting: 'dualBlendMode', detail: `combine mode ${blendName(mode)} has no studio equivalent; read as multiply` });
     if (readColorDynamics(dual.settings)) support.push({ level: 'inapplicable', setting: 'Sub01 colour dynamics', detail: "a dual only shapes the main brush's coverage; its colour is the main brush's" });
-    const scale = Number(dual.settings.maxSize ?? 1) / Number(main.settings.maxSize ?? 1);
+    const scale = (Number(dual.settings.maxSize ?? 1) / Number(main.settings.maxSize ?? 1)) * reading.dualScale;
     support.push({ level: 'approximated', setting: 'Sub01 maxSize', detail: `the dual's stamps read as ${scale.toFixed(2)}× the main brush's, the ratio of their largest sizes; on the sheet neither half nor double fits better` });
-    brush.dual = { ...readLayer(dual, 'Sub01 ', support), blend: dualBlend ?? 'multiply', scale };
+    brush.dual = { ...readLayer(dual, 'Sub01 ', support, reading), blend: dualBlend ?? 'multiply', scale };
   }
   return { brush, support };
 }

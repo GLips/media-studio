@@ -1,7 +1,8 @@
 // stamp-brush-sheet-page.ts: the brush fidelity sheet's browser side, run by lib/picture/stamp-paint/engine/stamp-brush-sheet.ts
 // through withBrowserModulePage. It paints a brush along Procreate's preview stroke with the studio's GPU renderer,
-// measures that and the brush's Procreate preview alike, and lays out a row of the sheet. Every image is one of the
-// pack's files, served at /files/.
+// measures that and the brush's Procreate preview alike, and lays out a row of the sheet. It serves the fitter
+// (lib/picture/stamp-paint/engine/stamp-brush-fit.ts) the same way. Every image is under the styles folder, served at
+// /files/: a brush's assets at <style>/brushes/<pack>/<file>, and each preview by that path.
 
 import type { StampBrush } from '../models/stamp-brush.ts';
 import { measureStrokeCoverage, PROCREATE_PREVIEW_SIZE, procreatePreviewPainting, type StrokeCoverageProfile, type StrokeFidelityGrade } from '../models/procreate-preview-stroke.ts';
@@ -39,13 +40,13 @@ async function measureProcreatePreview(file: string): Promise<StrokeCoverageProf
   return measureStrokeCoverage(await previewCoverage(file), W, H);
 }
 
-/** `brush` as Procreate previews it, at `diameter`: the painting as a PNG data URL, and its measure. */
-async function paintOnProcreatePreviewStroke(brush: StampBrush, diameter: number, shows: 'stroke' | 'stamp'): Promise<{ png: string; profile: StrokeCoverageProfile | null }> {
+/** `brush` as Procreate previews it, at `diameter`: its measure, and the painting as a PNG data URL when asked for. */
+async function paintOnProcreatePreviewStroke(brush: StampBrush, diameter: number, shows: 'stroke' | 'stamp', withPng = true): Promise<{ png?: string; profile: StrokeCoverageProfile | null }> {
   const canvas = Object.assign(document.createElement('canvas'), { width: W, height: H });
-  const renderer = await createStampPaintRenderer(canvas, procreatePreviewPainting(brush, diameter, shows), { color: '#ffffff' }, W, H, ({ file }) => `/files/${file}`);
+  const renderer = await createStampPaintRenderer(canvas, procreatePreviewPainting(brush, diameter, shows), { color: '#ffffff' }, W, H, ({ style, pack, file }) => `/files/${style}/brushes/${pack}/${file}`);
   try {
     await renderer.draw(0);
-    return { png: canvas.toDataURL('image/png'), profile: measureStrokeCoverage(paintedCoverage(canvas), W, H) };
+    return { ...(withPng && { png: canvas.toDataURL('image/png') }), profile: measureStrokeCoverage(paintedCoverage(canvas), W, H) };
   } finally {
     renderer.dispose();
   }
