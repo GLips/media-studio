@@ -1,6 +1,7 @@
 // stamp-brush.ts: the normalized brush a stamp painting deposits with. A brush is a stamp (its tip), a grain and the
-// settings that place, size and fade each stamp along a stroke. Every importer (Procreate today, Photoshop ABR later)
-// translates its own fields into this shape, so no importer's names or quirks reach a recipe or the renderer.
+// settings that place, size and fade each stamp along a stroke. Both importers, Procreate's (procreate-brush.ts) and
+// Photoshop's (photoshop-brush.ts), translate their own fields into this one shape, so no importer's names or quirks
+// reach a recipe or the renderer.
 //
 // Lengths are fractions of the stamp's diameter and angles are radians, so a brush means the same at any size.
 
@@ -48,8 +49,8 @@ export type StampBrushGrain = {
   offsetJitter: number;
   /**
    * A rolling grain's reading of each stamp. `zoom`: 1 grows its tile with the stamp's own size, 0 keeps the size it
-   * has at the deposit's diameter. `movement`: 1 carries it with the stamp, 0 leaves it on the canvas (between, it
-   * slides behind). `rotation`: how far it turns with the stroke's direction, 0..1. A texturized grain ignores all three.
+   * has at the deposit's diameter. `movement`: 1 keeps it still on the canvas, each stamp showing the patch under it;
+   * 0 carries one patch along with every stamp (between, it slides). `rotation`: how far it turns with the stroke's direction, 0..1. A texturized grain ignores all three.
    */
   zoom: number;
   movement: number;
@@ -147,11 +148,20 @@ export type StampBrushLayer = StampBrushStamping & {
 };
 
 /**
- * How a dual brush's coverage combines with the main brush's. Beyond the deposit blends: `difference` as its layer
- * mode; `linearHeight` treats the dual as a relief the main stamps' paint fills, as a linear-height grain does, and
- * shapes the main coverage before its grain; every other blend combines with the grained coverage.
+ * How a dual brush's coverage combines with the main brush's. Beyond the deposit blends: `difference`, `linearBurn`,
+ * `colorDodge` and `hardMix` as their layer modes; `linearHeight` treats the dual as a relief the main stamps' paint
+ * fills, as a linear-height grain does, and shapes the main coverage before its grain; every other blend combines with
+ * the grained coverage.
  */
-export type StampDualBlend = StampBlend | 'difference' | 'linearHeight';
+export type StampDualBlend = StampBlend | 'difference' | 'linearHeight' | 'linearBurn' | 'colorDodge' | 'hardMix';
+
+/**
+ * Paint a brush takes up from the canvas and mixes into its own as it paints, each 0..1: `load`, how much paint it
+ * carries before it runs dry; `wetness`, how much of the paint under it it takes up; `mix`, the share of taken-up paint
+ * in what it lays. `sampleAllLayers` takes paint up from everything under it, not only its own deposit's layer.
+ * Carried from the source but not yet painted: the renderer mixes pigment only between deposits (vid-90).
+ */
+export type StampBrushWetMix = { load: number; wetness: number; mix: number; sampleAllLayers: boolean };
 
 export type StampBrush = StampBrushLayer & {
   /** Its name in its pack, as the manifest keys it. Part of no seed: renaming a brush changes no painting's randomness. */
@@ -166,4 +176,5 @@ export type StampBrush = StampBrushLayer & {
    * edges and accumulation, and its stamps are `scale` times the main brush's diameter.
    */
   dual?: StampBrushLayer & { blend: StampDualBlend; scale: number };
+  wetMix?: StampBrushWetMix;
 };

@@ -61,6 +61,11 @@ export type StampPaintPackManifest = {
   brushes: Readonly<Record<string, StampBrush>>;
   source: { archive: string; sha256: string };
   previews: Readonly<Record<string, StampPaintPackPreview>>;
+  /**
+   * The diameter, in pixels, each brush's source presets it at; absent for a source whose brushes have no size of
+   * their own (Procreate's are sized by the canvas). The sheet paints a brush without a preview at it.
+   */
+  diameters?: Readonly<Record<string, number>>;
   support: Readonly<Record<string, readonly StampBrushSupportNote[]>>;
   palettes: Readonly<Record<string, readonly StampPaintColor[]>>;
   papers: Readonly<Record<string, StampPaintPackPaper>>;

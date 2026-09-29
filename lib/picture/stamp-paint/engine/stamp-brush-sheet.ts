@@ -26,6 +26,8 @@ const SHEET_PAGE = fileURLToPath(new URL('../studio/stamp-brush-sheet-page.ts', 
 const DIAMETER_FITS = 3;
 /** The diameter a brush is first painted at, before it's fitted: about a mid-sized preview's thickness. */
 const FIRST_DIAMETER = 120;
+/** The diameters a brush without a preview may be painted at, its source's own clamped to what the row shows whole. */
+const UNPREVIEWED_DIAMETER = { min: 16, max: 240 };
 
 export type StampBrushSheetEntry = {
   brush: string;
@@ -47,14 +49,15 @@ export const withStampBrushSheetPage = <T>(stylesDir: string, use: (call: Browse
 export const packFile = (style: string, pack: string, file: string) => `${style}/brushes/${pack}/${file}`;
 
 /**
- * `brush` painted as Procreate previews it, at the diameter whose peak thickness matches `preview`'s (or the first
- * diameter, without one), and measured; with the painting as a PNG data URL when `withPng`.
+ * `brush` painted as Procreate previews it, at the diameter whose peak thickness matches `preview`'s (or, without one,
+ * its source's own `diameter` held within the row, else the first diameter), and measured; with the painting as a PNG
+ * data URL when `withPng`.
  */
 export async function paintAtPreviewThickness(
   call: BrowserModuleCall, brush: StampBrush, shows: 'stroke' | 'stamp', preview: StrokeCoverageProfile | null, withPng: boolean,
-  model: StampPaintRendererModel = STAMP_PAINT_RENDERER_MODEL,
+  model: StampPaintRendererModel = STAMP_PAINT_RENDERER_MODEL, sourceDiameter?: number,
 ): Promise<{ diameter: number; png?: string; profile: StrokeCoverageProfile | null }> {
-  let diameter = FIRST_DIAMETER;
+  let diameter = !preview && sourceDiameter ? Math.min(UNPREVIEWED_DIAMETER.max, Math.max(UNPREVIEWED_DIAMETER.min, sourceDiameter)) : FIRST_DIAMETER;
   let painted = await call<{ png?: string; profile: StrokeCoverageProfile | null }>('paintOnProcreatePreviewStroke', brush, diameter, shows, withPng, model);
   for (let fit = 0; preview && painted.profile && fit < DIAMETER_FITS; fit++) {
     const next = Math.min(2000, Math.max(2, diameter * (preview.peakThickness / painted.profile.peakThickness)));
@@ -109,7 +112,7 @@ export async function writeStampBrushSheet({ stylesDir, style, pack, out, only, 
     for (const name of names) {
       const brush = manifest.brushes[name], previewFile = manifest.previews[name]?.image, shows = manifest.previews[name]?.shows ?? 'stroke';
       const preview = previewFile ? await call<StrokeCoverageProfile | null>('measureProcreatePreview', packFile(style, pack, previewFile)) : null;
-      const { diameter, ...painted } = await paintAtPreviewThickness(call, brush, shows, preview, true, model);
+      const { diameter, ...painted } = await paintAtPreviewThickness(call, brush, shows, preview, true, model, manifest.diameters?.[name]);
       const comparison = preview && painted.profile ? compareStrokeProfiles(preview, painted.profile) : undefined;
       const note = notes[name], grade = comparison && strokeFidelityGrade(comparison.score);
       const lines = [

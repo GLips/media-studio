@@ -9,9 +9,8 @@
 // NSKeyedArchiver plist of settings), Shape.png, Grain.png, QuickLook/Thumbnail.png and, for a dual brush, Sub01/
 // holding a whole second brush. Reset/ keeps the brush as first shipped, and is ignored.
 
-import { createHash } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, openSync, readSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, join, resolve, sep } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import {
@@ -25,10 +24,11 @@ import {
 } from '../models/style.ts';
 import { parseBinaryPlist, unarchiveKeyedPlist } from './binary-plist.ts';
 import { readProcreateComposite } from './procreate-canvas.ts';
+import {
+  fitWithin, replaceStampPaintPack, sha256OfFile, stampPackSlug as slugOf, STAMP_PACK_GRAIN_MAX as GRAIN_MAX, STAMP_PACK_PAPER_MAX as PAPER_MAX,
+  STAMP_PACK_TIP_MAX as TIP_MAX, writeStampPackPng as writeBrushImage, type ImportStampPaintPackOptions,
+} from './stamp-paint-pack-files.ts';
 import { openZipBytes, openZipFile, type ZipArchive } from './zip-archive.ts';
-
-/** Longest side of each stored image, in pixels: tips stamp at a few hundred, grains tile, papers span a frame. */
-const TIP_MAX = 512, GRAIN_MAX = 1024, PAPER_MAX = 2560;
 
 /**
  * How ffmpeg turns a stored composite to the way Procreate shows it, by the document's orientation. Only the ones
@@ -44,35 +44,7 @@ export type ProcreatePackSources = Record<string, { main: ProcreateBrushSource; 
 const jsonSettings = (settings: ProcreateBrushSettings): ProcreateBrushSettings => Object.fromEntries(Object.entries(settings).filter(([key, value]) =>
   typeof value === 'number' || typeof value === 'boolean' || typeof value === 'string' || (key.endsWith('Curve') && value !== null && typeof value === 'object')));
 
-export type ImportProcreatePackOptions = { archive: string; stylesDir: string; style: string; pack: string };
 export type ImportedProcreatePack = { dir: string; manifest: StampPaintPackManifest; skipped: readonly string[] };
-
-const slugOf = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-
-function sha256OfFile(file: string): string {
-  const hash = createHash('sha256'), fd = openSync(file, 'r'), chunk = Buffer.alloc(1 << 22);
-  for (let read; (read = readSync(fd, chunk, 0, chunk.length, null)) > 0;) hash.update(chunk.subarray(0, read));
-  closeSync(fd);
-  return hash.digest('hex');
-}
-
-/** A PNG's size, from its IHDR chunk. */
-const pngSize = (png: Buffer) => ({ width: png.readUInt32BE(16), height: png.readUInt32BE(20) });
-
-function fitWithin(width: number, height: number, max: number) {
-  const scale = Math.min(1, max / Math.max(width, height));
-  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
-}
-
-/** A brush image as a grey PNG, downsized to fit `max` and negated when asked (to make dark paint). */
-function writeBrushImage(png: Buffer, max: number, negate: boolean, out: string) {
-  const { width, height } = fitWithin(pngSize(png).width, pngSize(png).height, max);
-  withStudioTemp('brush-image', (dir) => {
-    writeFileSync(join(dir, 'in.png'), png);
-    const filters = [`scale=${width}:${height}:flags=area`, 'format=gray', ...(negate ? ['negate'] : [])].join(',');
-    runFfmpeg(['-nostdin', '-v', 'error', '-i', join(dir, 'in.png'), '-vf', filters, '-y', out]);
-  });
-}
 
 /** Brushes in the order brushset.plist lists them, by folder, with the set's name. */
 function readBrushsetOrder(brushset: ZipArchive): { name: string; folders: string[] } {
@@ -131,24 +103,9 @@ function writePaper(bytes: Buffer, label: string, packDir: string, slug: string)
   return { image, grain, color };
 }
 
-/**
- * Writes into a staging folder beside the pack's, and swaps it in only once the manifest is written, so an import that
- * fails leaves the previous one whole. Refuses an archive kept inside the pack's folder, which the swap would delete.
- */
-export function importProcreatePack({ archive, stylesDir, style, pack }: ImportProcreatePackOptions): ImportedProcreatePack {
-  if (!existsSync(archive)) throw new Error(`brushes import: ${archive} doesn't exist`);
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(pack) || !/^[a-z0-9][a-z0-9-]*$/.test(style)) throw new Error('brushes import: --style and --pack are lowercase names: letters, digits and dashes');
-  const dir = join(stylesDir, style, 'brushes', pack), staging = join(stylesDir, style, 'brushes', `.${pack}.importing`);
-  if (resolve(archive).startsWith(`${resolve(dir)}${sep}`)) throw new Error(`brushes import: ${archive} is inside ${dir}, which an import replaces; keep the pack elsewhere`);
-  rmSync(staging, { recursive: true, force: true });
-  try {
-    const written = writePackAssets(archive, staging, style, pack);
-    rmSync(dir, { recursive: true, force: true });
-    renameSync(staging, dir);
-    return { dir, ...written };
-  } finally {
-    rmSync(staging, { recursive: true, force: true });
-  }
+/** Imports a Procreate pack, replacing the pack's folder only once the import has succeeded (replaceStampPaintPack). */
+export function importProcreatePack(options: ImportStampPaintPackOptions): ImportedProcreatePack {
+  return replaceStampPaintPack(options, (staging) => writePackAssets(options.archive, staging, options.style, options.pack));
 }
 
 function writePackAssets(archive: string, dir: string, style: string, pack: string): Omit<ImportedProcreatePack, 'dir'> {

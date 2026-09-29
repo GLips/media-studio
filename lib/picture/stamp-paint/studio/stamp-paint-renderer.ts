@@ -51,7 +51,7 @@ fn linearOf(c: vec3f) -> vec3f { return select(pow((c + 0.055) / 1.055, vec3f(2.
 fn srgbOf(c: vec3f) -> vec3f { return select(1.055 * pow(c, vec3f(1.0 / 2.4)) - 0.055, c * 12.92, c <= vec3f(0.0031308)); }
 fn workingColor(c: vec3f) -> vec3f { return select(c, linearOf(c), LINEAR_LIGHT); }`;
 
-const DUAL_BLENDS: readonly StampDualBlend[] = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'colorBurn', 'difference', 'linearHeight'];
+const DUAL_BLENDS: readonly StampDualBlend[] = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'colorBurn', 'difference', 'linearHeight', 'linearBurn', 'colorDodge', 'hardMix'];
 const GRAIN_BLENDS: readonly StampGrainBlend[] = ['multiply', 'subtract', 'linearBurn', 'colorDodge', 'colorBurn', 'darken', 'lighten', 'divide', 'hardMix', 'height', 'linearHeight'];
 
 const GRAIN_WGSL = /* wgsl */ `
@@ -217,6 +217,9 @@ fn combined(m: f32, d: f32) -> f32 {
     case 7: { c = abs(m - d); }
     // The dual as relief the brush's paint fills, as a linear-height grain reads it.
     case 8: { c = m * clamp((d - (1.0 - m)) * 2.0 + 0.5, 0.0, 1.0); }
+    case 9: { c = max(0.0, m + d - 1.0); }
+    case 10: { c = select(min(1.0, m / (1.0 - d)), 1.0, d >= 1.0); }
+    case 11: { c = step(1.0, m + d); }
     default: {}
   }
   return c * clamp(m * 8.0, 0.0, 1.0);

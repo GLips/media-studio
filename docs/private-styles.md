@@ -51,18 +51,28 @@ check:arch refuses an import of a style the project doesn't name, and public cod
 import the studio's `models` and `studio` code, never a project or `engine` code.
 
 **Importing a pack.** `studio brushes import <archive> --style <name> --pack <pack>` turns a Procreate pack (a
-`.brushset`, or the zip it came in) into `brushes/<pack>/`, replacing what's there:
+`.brushset`, or the zip it came in) or a Photoshop pack (an `.abr` or `.tpl`, or a zip holding them) into
+`brushes/<pack>/`, replacing what's there. Both become the same brush (`StampBrush`) in the same layout:
 
 ```
 brushes/<pack>/
-  tips/        each brush's tip, dark is paint, downsized; <brush>.dual.png for a dual brush's second tip
-  grains/      each brush's grain, likewise
-  previews/    each brush's own Procreate preview, to judge a render against
+  tips/        each brush's tip, dark is paint, downsized; <brush>.dual.png for a dual brush's second tip;
+               round-<hardness>.png for Photoshop's computed round tips
+  grains/      each brush's grain (a Photoshop texture's pattern), likewise
+  previews/    each brush's own Procreate preview, to judge a render against (Photoshop files carry none)
   fidelity/    the brush fidelity sheet, once drawn (studio brushes sheet)
   papers/      each .procreate canvas in the zip, as Procreate shows it, and its tooth as <paper>.grain.png
   manifest.json
   procreate-sources.json  each brush's Procreate settings as read, for studio brushes fit
+  photoshop-sources.json  each Photoshop preset as read, and the .abr or .tpl it came from
 ```
+
+A Photoshop pack reads `.abr` version 6 and later (everything since Photoshop CS) and `.tpl` tool presets, whose
+tool options (a Mixer Brush's wet, load and mix, the tool's flow and mode) sit beside the brush. Names Photoshop
+repeats across a file's groups get the group in brackets. Its manifest has no previews but `diameters`, each preset's
+own size in pixels, which the sheet paints it at. The Mixer Brush's settings are carried in the brush's `wetMix` and
+noted unsupported: nothing paints wet mixing yet (vid-90). Don't import a pack whose licence limits its brushes to
+Photoshop (True Grit's does).
 
 The manifest holds the asset version, the files, and each brush normalized into the studio's brush definition
 (`StampBrush`, lib/picture/stamp-paint/models/stamp-brush.ts), keyed by its name in the pack. It also records the
@@ -110,6 +120,9 @@ brushes fit --packs watercolor/vvds` fits every constant at once against every p
 the sheet's summed score, with each brush that ends up further off than it started counted again. It's deterministic,
 takes a few minutes, and writes the file; re-import the packs and re-draw their sheets after. The constants are the
 same for every brush of every pack: a brush is never tuned alone, so what fits one pack's previews holds for the next.
+Photoshop's importer reads the settings Photoshop doesn't define numerically (how far 100% scatter strays, how dark a
+wet edge gathers, how a texture's brightness and contrast act) by its own `PhotoshopReading`,
+`lib/picture/stamp-paint/models/photoshop-reading.ts`: first guesses until it's fitted against Photoshop's renders.
 
 **Same pixels.** A painting draws on the GPU through WebGPU, in half floats, and GPUs round floats differently, so
 what's promised depends on where it renders:
