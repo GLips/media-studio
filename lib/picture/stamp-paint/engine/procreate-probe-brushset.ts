@@ -5,12 +5,15 @@
 // real a 4-byte real): Procreate drops a brush whose key decodes as the wrong type, and dropped the whole first set
 // over textureDepthTilt, a bool the probes wrote as a real. Its images are drawn here, white is paint.
 //
+// A bridge probe is a real brush of the template's pack, copied whole and renamed, so it paints with its own settings.
+// The set's name carries a hash of what's in it, so the capture rig can tell whether Procreate holds this set already.
+//
 // Negative space: the probes carry no QuickLook/Thumbnail.png, so whatever preview comes back is Procreate's own.
 
 import { createHash } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { crc32, deflateSync } from 'node:zlib';
-import { drawProcreateProbeImage, PROCREATE_PROBE_BASE, procreateProbes, type ProcreateProbe, type ProcreateProbeSettings } from '../models/procreate-probes.ts';
+import { drawProcreateProbeImage, PROCREATE_PROBE_BASE, procreateProbeSize, type ProcreateProbe, type ProcreateProbeSettings } from '../models/procreate-probes.ts';
 import { parseBinaryPlist, PlistReal, PlistUid, unarchiveKeyedPlist, writeBinaryPlist, type PlistValue } from './binary-plist.ts';
 import { openZipBytes, openZipFile, writeZipArchive, type ZipArchive } from './zip-archive.ts';
 
@@ -92,18 +95,30 @@ function openTemplate(archive: string): ZipArchive {
   return inner;
 }
 
+/** The set's name in Procreate's Brush Library: the same for the same probes over the same template, and only then. */
+export function procreateProbeSetName(probes: readonly ProcreateProbe[], template: string): string {
+  return `Studio probes ${createHash('sha256').update(JSON.stringify({ probes, template })).digest('hex').slice(0, 6)}`;
+}
+
 /**
- * Writes the probe set to `out`, each probe over `brush` from the pack `archive` (a .brushset or the zip holding one),
- * which must be a single brush, not a dual. Returns the probes, in order.
+ * Writes `probes` as a set to `out`, each over `brush` from the pack `archive` (a .brushset or the zip holding one),
+ * which must be a single brush, not a dual; a bridge probe is its named brush from the same pack. Returns the set's
+ * name.
  */
-export function writeProcreateProbeBrushset({ archive, brush, out }: { archive: string; brush: string; out: string }): ProcreateProbe[] {
+export function writeProcreateProbeBrushset({ archive, brush, out, probes }: { archive: string; brush: string; out: string; probes: readonly ProcreateProbe[] }): string {
   const pack = openTemplate(archive);
-  const folder = pack.names.filter((name) => /^[^/]+\/Brush\.archive$/.test(name)).map((name) => name.split('/')[0])
-    .find((f) => String(unarchiveKeyedPlist(pack.read(`${f}/Brush.archive`)).name ?? '').trim() === brush);
-  if (!folder) throw new Error(`brushes probes: ${archive} has no brush named ${JSON.stringify(brush)}`);
-  if (pack.names.includes(`${folder}/Sub01/Brush.archive`)) throw new Error(`brushes probes: ${brush} is a dual brush; pick a single one as the template`);
-  const template = new Uint8Array(pack.read(`${folder}/Brush.archive`));
-  pack.close();
+  const folders = new Map(pack.names.filter((name) => /^[^/]+\/Brush\.archive$/.test(name)).map((name) => {
+    const folder = name.split('/')[0];
+    return [String(unarchiveKeyedPlist(pack.read(name)).name ?? '').trim(), folder] as const;
+  }));
+  const folderNamed = (name: string) => {
+    const folder = folders.get(name);
+    if (!folder) throw new Error(`brushes probes: ${archive} has no brush named ${JSON.stringify(name)}`);
+    return folder;
+  };
+  const templateFolder = folderNamed(brush);
+  if (pack.names.includes(`${templateFolder}/Sub01/Brush.archive`)) throw new Error(`brushes probes: ${brush} is a dual brush; pick a single one as the template`);
+  const template = new Uint8Array(pack.read(`${templateFolder}/Brush.archive`));
 
   const images = new Map<string, Buffer>();
   const image = (kind: Parameters<typeof drawProcreateProbeImage>[0], size: number) => {
@@ -112,26 +127,37 @@ export function writeProcreateProbeBrushset({ archive, brush, out }: { archive: 
     return images.get(key)!;
   };
   const entries: { name: string; data: Uint8Array }[] = [];
-  const folders: string[] = [];
+  const setFolders: string[] = [];
   const add = (at: string, files: { path: string; data: Uint8Array }[]) => {
-    folders.push(at);
+    setFolders.push(at);
     for (const { path, data } of files) entries.push({ name: `${at}/${path}`, data });
   };
-  const probeFiles = ({ name, ...probe }: ProcreateProbe) => [
-    { path: 'Brush.archive', data: probeArchive(template, name, { ...PROCREATE_PROBE_BASE, ...probe.settings }) },
-    { path: 'Shape.png', data: image(probe.tip, TIP_SIZE) },
-    { path: 'Grain.png', data: image(probe.grain, GRAIN_SIZE) },
-    ...(probe.dual ? [
-      { path: 'Sub01/Brush.archive', data: probeArchive(template, `${name} dual`, { ...PROCREATE_PROBE_BASE, ...probe.dual.settings }) },
-      { path: 'Sub01/Shape.png', data: image(probe.dual.tip, TIP_SIZE) },
-      { path: 'Sub01/Grain.png', data: image('flat', GRAIN_SIZE) },
-    ] : []),
-  ];
+  const probeFiles = ({ name, ...probe }: ProcreateProbe) => {
+    if (probe.bridge) {
+      const from = folderNamed(probe.bridge.brush);
+      return pack.names.filter((n) => n.startsWith(`${from}/`) && !n.endsWith('/')).map((n) => {
+        const path = n.slice(from.length + 1), data = new Uint8Array(pack.read(n));
+        return { path, data: path === 'Brush.archive' ? probeArchive(data, name, {}) : data };
+      });
+    }
+    const size = procreateProbeSize(probe.diameter);
+    return [
+      { path: 'Brush.archive', data: probeArchive(template, name, { ...PROCREATE_PROBE_BASE, ...size, ...probe.settings }) },
+      { path: 'Shape.png', data: image(probe.tip, TIP_SIZE) },
+      { path: 'Grain.png', data: image(probe.grain, GRAIN_SIZE) },
+      ...(probe.dual ? [
+        { path: 'Sub01/Brush.archive', data: probeArchive(template, `${name} dual`, { ...PROCREATE_PROBE_BASE, ...size, ...probe.dual.settings }) },
+        { path: 'Sub01/Shape.png', data: image(probe.dual.tip, TIP_SIZE) },
+        { path: 'Sub01/Grain.png', data: image('flat', GRAIN_SIZE) },
+      ] : []),
+    ];
+  };
 
-  const probes = procreateProbes();
   for (const probe of probes) add(folderOf(probe.name), probeFiles(probe));
+  pack.close();
+  const setName = procreateProbeSetName(probes, brush);
   // Procreate's own sets end with brushset.plist.
-  entries.push({ name: 'brushset.plist', data: brushsetPlist('Studio probes', folders) });
+  entries.push({ name: 'brushset.plist', data: brushsetPlist(setName, setFolders) });
   writeFileSync(out, writeZipArchive(entries));
-  return probes;
+  return setName;
 }

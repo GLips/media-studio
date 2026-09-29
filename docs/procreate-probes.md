@@ -25,7 +25,7 @@ brush (not a dual) from a pack you own will do. The set has no previews: whateve
 
 ## What Procreate gives back
 
-Procreate imports the set as **Studio probes**, 65 brushes, and draws each one's preview in its Brush Library. But
+Procreate imports the set as **Studio probes <hash>**, 88 brushes (with the two bridge brushes), and draws each one's preview in its Brush Library. But
 neither gets a preview back to the Mac:
 
 - An exported `.brushset` carries no rendered previews. Procreate writes `QuickLook/Thumbnail.png` only for a brush
@@ -33,9 +33,40 @@ neither gets a preview back to the Mac:
 - The Brush Library's previews are too small and too low-resolution to read a single stamp's gradient from, so
   screenshots of them don't do either.
 
-So the probes can't yet be read. They need a full-size render from Procreate, such as each probe drawn on a canvas and
-exported, and that round trip isn't worked out. Until then the importer's reading is fitted to a bought pack's own
-previews alone.
+So the probes need a full-size render from Procreate: each one painted on a canvas and exported.
+
+## Capturing on the iPad (parked, vid-96)
+
+The reference target moved to scripted Photoshop on the Mac, so this rig is parked. It's kept for Procreate packs
+later. `studio brushes capture --archive <pack>` drives Procreate on a USB-connected 12.9-inch iPad in landscape. It
+lays the probes out as named layers on 4096² canvases (`models/procreate-capture-plan.ts`), paints them with synthetic
+finger touches, exports every layer at once (Share › PNG Files), and pulls the PNGs and a `manifest.json` into
+`work/styles/<style>/brushes/procreate-captures/<run>/`.
+
+One-time setup on the Mac:
+
+1. `uv tool install pymobiledevice3` (USB file transfer into Procreate's shared folder).
+2. Xcode, the iPad trusted, Developer Mode on and Auto-Lock off.
+3. `studio brushes capture --setup --team <id>` builds and signs WebDriverAgent. A Personal Team's profile lasts a
+   week, so rebuild when the runner stops launching. Trust the developer certificate on the iPad once.
+4. Point Procreate's Save to Files at On My iPad › Procreate once by hand. The picker remembers it.
+
+What works, on Procreate 5.4.14 and iPadOS 17.7:
+
+- Template import, layer naming, hiding the background, and colour by hex.
+- Brush-set import through the Files app. Procreate's own Brushes folder doesn't auto-import, and its gallery Import
+  greys out `.brushset`.
+- Painting, and export of every layer as 4096² 8-bit sRGB PNGs with straight alpha, named in the XMP `dc:title`.
+- The screen maps to 4 canvas px a point, with the canvas's left edge at 169.875 pt. WebDriverAgent drops a touch's
+  fraction of a point, so the driver snaps to whole points and records where each landed.
+- A 5-probe pilot took 6.4 min, about 30 s a probe, most of it in panels.
+
+Left open:
+
+- The pilot's marks came back as 27×2 px slivers, and its lines came back empty. The probe base's size or shape keys,
+  or the finger's taps and strokes, don't yet give a round stamp. Check it by hand with one probe first.
+- `PROCREATE_FULL_SIZE_DIAMETER` still needs calibrating from the size ladder.
+- The repeat variation hasn't been measured.
 
 ## Reading them
 

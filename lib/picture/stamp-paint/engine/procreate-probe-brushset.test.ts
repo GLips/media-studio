@@ -26,7 +26,7 @@ test("every probe keeps each setting the type its template stores it as, since P
   const template = writeBinaryPlist({ $version: 100000, $archiver: 'NSKeyedArchiver', $top: { root: new PlistUid(1) }, $objects: ['$null', root, 'Template'] });
   withStudioTemp('probes', (dir) => {
     writeFileSync(join(dir, 'pack.brushset'), writeZipArchive([{ name: 'T/Brush.archive', data: template }, { name: 'brushset.plist', data: new Uint8Array() }]));
-    writeProcreateProbeBrushset({ archive: join(dir, 'pack.brushset'), brush: 'Template', out: join(dir, 'probes.brushset') });
+    writeProcreateProbeBrushset({ archive: join(dir, 'pack.brushset'), brush: 'Template', out: join(dir, 'probes.brushset'), probes: procreateProbes() });
     const set = openZipBytes('probes', readFileSync(join(dir, 'probes.brushset')));
     const typeOf = (v: PlistValue) => (v instanceof PlistReal ? `real${v.bytes}` : typeof v);
     for (const name of set.names.filter((n) => n.endsWith('Brush.archive'))) {
