@@ -4,7 +4,7 @@ import { normalizeProcreateBrush, procreateGrainNegated, procreateTipNegated } f
 
 const asset = (file: string) => ({ style: 'wash', pack: 'vvds', file });
 /** A reading of plain scales, so the test reads the settings, not whatever the fit last chose. */
-const reading = { taperShare: 0.5, edgeWidth: 0.035, rimSharpness: 16, wetRim: 1, grainTile: 2.5, grainBrightness: 0.5, grainContrast: 3, grainDepthCurve: 1, glazeFlowCurve: 1, blendingFlowCurve: 1, dualScale: 1, spacingPower: 1, lateralJitterScale: 1, glazeBuildLight: 0, glazeBuildUniform: 0, glazeBuildIntense: 0, glazeBuildHeavy: 0 };
+const reading = { taperShare: 0.5, edgeWidth: 0.035, rimSharpness: 16, wetRim: 1, grainTile: 2.5, grainBrightness: 0.5, grainContrast: 3, grainDepthCurve: 1, glazeFlowCurve: 1, blendingFlowCurve: 1, dualScale: 1, spacingPower: 1, lateralJitterScale: 1, lateralJitterPower: 0.5, glazeBuildLight: 0, glazeBuildUniform: 0, glazeBuildIntense: 0, glazeBuildHeavy: 0 };
 
 test('a dual brush reads its Sub01 as a whole second brush, sized by its largest size against the main one', () => {
   const main = {

@@ -4,8 +4,8 @@
 // sheet does, and sums the sheet's scores (models/procreate-reading-fit.ts searches). It writes the fitted reading
 // into models/procreate-reading.ts, which the importer reads; re-import the packs to carry it into their manifests.
 //
-// Each brush keeps the diameter the sheet fits it at under the starting reading, so a score moves only with how the
-// brush paints. A brush that reads the same under two readings is painted once: most constants touch a few brushes.
+// Each brush is painted at the diameter the sheet would give it under each candidate reading, so the fit scores what
+// the sheet will. A brush that reads the same under two readings is painted once: most constants touch a few brushes.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -82,19 +82,14 @@ export async function fitStampBrushReading({ stylesDir, packs, keys, write, log 
   return withStampBrushSheetPage(stylesDir, async (call) => {
     const read = (b: (typeof brushes)[number], reading: ProcreateReading) => normalizeProcreateBrush(b.name, b.source.main, b.source.dual, reading).brush;
     const previews = new Map<string, StrokeCoverageProfile | null>();
-    const diameters = new Map<string, number>();
-    for (const b of brushes) {
-      const preview = await call<StrokeCoverageProfile | null>('measureProcreatePreview', b.preview);
-      previews.set(b.preview, preview);
-      diameters.set(b.preview, (await paintAtPreviewThickness(call, read(b, PROCREATE_READING), b.shows, preview, false)).diameter);
-    }
+    for (const b of brushes) previews.set(b.preview, await call<StrokeCoverageProfile | null>('measureProcreatePreview', b.preview));
     const scored = new Map<string, number>();
     const scoreBrush = async (b: (typeof brushes)[number], reading: ProcreateReading) => {
-      const brush = read(b, reading), diameter = diameters.get(b.preview)!, preview = previews.get(b.preview);
+      const brush = read(b, reading), preview = previews.get(b.preview);
       if (!preview) return 0;
-      const key = `${JSON.stringify(brush)}@${diameter}`;
+      const key = JSON.stringify(brush);
       if (!scored.has(key)) {
-        const { profile } = await call<{ profile: StrokeCoverageProfile | null }>('paintOnProcreatePreviewStroke', brush, diameter, b.shows, false);
+        const { profile } = await paintAtPreviewThickness(call, brush, b.shows, preview, false);
         scored.set(key, profile ? compareStrokeProfiles(preview, profile).score : NOTHING_PAINTED);
       }
       return scored.get(key)!;
