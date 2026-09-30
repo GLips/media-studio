@@ -1,7 +1,8 @@
 // stamp-gate-wet-laws.ts: the GPU gate's grids over a wash's per-pixel laws, wetLand (stamp-wet-landing.ts) and
 // wetLift (stamp-wet-lift.ts). The laws are still being tuned, so their grids are held to properties a painter would
 // swear to, not to a baseline: paint landing never takes paint away nor lays more than the brush carries; a lift
-// never adds pigment, never leaves less than none, and takes less of a staining pigment than of one that isn't.
+// never adds pigment, never leaves less than none, takes at most its cover times strength of any, and takes less of a
+// staining pigment than of one that isn't.
 //
 // A row is one lane of a law's four amounts, so a property can compare lanes the law worked out together.
 
@@ -43,22 +44,23 @@ const vec = (v: Vec4) => `(${v.join(', ')})`;
 
 /**
  * wetLift over layers whose four amounts are equal and stain more lane by lane, and over uneven amounts some of them
- * none: each lane at every cover, strength and workability.
+ * none: each lane at every cover, strength and workability, set paint loosening as none, watercolour, crayon and all.
  */
 function wetLiftGrid(): StampGateFormulaGrid {
   const layers: readonly { was: Vec4; stain: Vec4 }[] = [
     { was: [0.8, 0.8, 0.8, 0.8], stain: [0, 0.3, 0.6, 0.9] },
     { was: [0.5, 1.5, 0.125, 0], stain: [0.25, 0.25, 0.25, 0.25] },
   ];
-  const entries = layers.flatMap(({ was, stain }, k) => COARSE.flatMap((cover) => COARSE.flatMap((strength) => COARSE.flatMap((workable) => LANES.map((lane): LawRow => ({
-    label: `was ${vec(was)} stain ${vec(stain)} cover ${cover} strength ${strength} workable ${workable} lane ${lane}`,
-    inputs: [...was, cover, strength, workable, ...stain, lane], lane, was, cover, bound: k === 0 ? 1 : 0,
-  }))))));
+  const entries = layers.flatMap(({ was, stain }, k) => COARSE.flatMap((cover) => COARSE.flatMap((strength) => COARSE.flatMap((workable) => [0, 0.375, 0.875, 1].flatMap((rewetting) => LANES.map((lane): LawRow => ({
+    label: `was ${vec(was)} stain ${vec(stain)} cover ${cover} strength ${strength} workable ${workable} rewetting ${rewetting} lane ${lane}`,
+    inputs: [...was, cover, strength, workable, rewetting, ...stain, lane], lane, was, cover, bound: k === 0 ? 1 : 0,
+  })))))));
   // Rows come four lanes at a time, so a lane's neighbour below is the one staining less, in the evenly laid layer.
-  return propertyGrid('wetLift', 'wetLift(vec4f(x(0), x(1), x(2), x(3)), x(4), x(5), x(6), vec4f(x(7), x(8), x(9), x(10)))[u32(x(11))]', 12, entries, (row, out, gpu, i) => {
+  return propertyGrid('wetLift', 'wetLift(vec4f(x(0), x(1), x(2), x(3)), x(4), x(5), x(6), x(7), vec4f(x(8), x(9), x(10), x(11)))[u32(x(12))]', 13, entries, (row, out, gpu, i) => {
     const was = row.was[row.lane], strength = row.inputs[5];
     if (out > was + TOL) return `lifting added pigment (was ${was})`;
     if (out < -TOL) return 'lifting left less than none';
+    if (was - out > Math.min(1, row.cover * strength) * was + TOL) return `lifting took more than its cover times strength (was ${was})`;
     if ((row.cover === 0 || strength === 0) && Math.abs(out - was) > TOL) return `a lift that reaches nothing moved paint (was ${was})`;
     if (row.bound && row.lane > 0 && out < gpu[i - 1] - TOL) return `a pigment staining more lost more than its neighbour staining less (${gpu[i - 1]})`;
     return null;

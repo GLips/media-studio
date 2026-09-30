@@ -1,10 +1,10 @@
 // stamp-gate-washes.ts: the washes the GPU gate paints and the physical properties it holds them to. A wash's look
-// is still being tuned, so none has a baseline; each is held to what paint must do whatever the tuning:
+// is still being tuned, so none has a baseline; each is held to what paint must do:
 //
 // - any frame order: a frame is the same drawn fresh or after another frame;
-// - conserved: water, softening, a bloom or wet paper moves pigment and never makes or loses it, so a wash's pigment
-//   totals match the same wash's without them;
-// - lifted: a lift never adds pigment nor leaves less than none, and takes a smaller share of a staining pigment.
+// - conserved: water, softening, a bloom or wet paper moves pigment, never making or losing it;
+// - lifted: a lift never raises a pigment's total nor leaves less than none, and takes a smaller share of a staining
+//   pigment. A pixel may gain as wet paint runs back in; that the law never adds is property/wetLift's.
 //
 // Each case paints its subject into its painting's last group, whose layer the renderer reads back (readLayer).
 
@@ -23,8 +23,7 @@ export type StampGateWashMedium = 'watercolour' | 'gouache' | 'crayon';
 
 /**
  * A wash case: its painting `subject`, drawn at `mid` and at its end in both orders; and what it's held to against
- * `without`, the same painting less the ops under test. `pigments` are the lifted case's, least staining first; a
- * lift that must take something (`mustLift`) fails a case where it takes nothing, so the check can't pass vacuously.
+ * `without`, the same painting less the ops under test. `pigments` are the lifted case's, least staining first.
  */
 export type StampGateWashCase = {
   id: string;
@@ -33,7 +32,7 @@ export type StampGateWashCase = {
 } & (
   | { property: 'order' }
   | { property: 'conserved'; without: StampGatePainting }
-  | { property: 'lifted'; without: StampGatePainting; pigments: readonly [string, string]; mustLift: boolean }
+  | { property: 'lifted'; without: StampGatePainting; pigments: readonly [string, string] }
 );
 
 /** How far a pigment's total may drift from the same wash's without the ops under test: its layer's half-float rounding summed over a few thousand pixels. */
@@ -88,8 +87,6 @@ function washCases(): StampGateWashCase[] {
     };
     return {
       id: `wash/lift-${medium}`, mid: MID, property: 'lifted', pigments: [W.ultramarine.id, W.phthaloBlue.id],
-      // Crayon is lifted as an eraser lifts, which the stub law can't yet: it lifts only where paint is workable.
-      mustLift: medium !== 'crayon',
       subject: washPainting(medium, false, (wash) => {
         patches(wash);
         wash.lift('lift', { kind: 'stroke', brush: SOFT, diameter: 34, path: [{ x: 15, y: 60 }, { x: 145, y: 55 }], ...shown(1) });
@@ -97,6 +94,12 @@ function washCases(): StampGateWashCase[] {
       without: washPainting(medium, false, patches),
     };
   });
+  // Two wet patches meeting, and a lift that takes nothing drawn across them: whatever works over a lift's
+  // neighbourhood (the lift's run-back) only moves the paint about.
+  const meeting = (wash: StampWashScope) => {
+    wash.fill('left', { brush: ROUND, diameter: 30, application: { kind: 'flood' }, region: stampGatePolygon(10, 10, 84, 10, 84, 110, 10, 110), material: pure(W.ultramarine), ...shown(0) });
+    wash.fill('right', { brush: ROUND, diameter: 30, application: { kind: 'flood' }, region: stampGatePolygon(76, 10, 150, 10, 150, 110, 76, 110), material: pure(W.burntSienna), ...shown(0) });
+  };
   const dropped = (wash: StampWashScope) => {
     sky(wash);
     wash.stroke('drop', { brush: SOFT, diameter: 30, material: pure(W.quinacridoneRose), path: [{ x: 20, y: 70 }, { x: 140, y: 64 }], ...shown(1) });
@@ -104,6 +107,13 @@ function washCases(): StampGateWashCase[] {
   return [
     ...water,
     ...lifted,
+    {
+      id: 'wash/lift-neighbourhood', mid: MID, property: 'conserved', without: washPainting('watercolour', true, meeting),
+      subject: washPainting('watercolour', true, (wash) => {
+        meeting(wash);
+        wash.lift('nothing', { kind: 'stroke', brush: SOFT, diameter: 34, path: [{ x: 20, y: 60 }, { x: 140, y: 55 }], strength: 0, ...shown(1) });
+      }),
+    },
     { id: 'wash/wet-in-wet', mid: MID, property: 'conserved', subject: washPainting('watercolour', true, dropped), without: washPainting('watercolour', false, dropped) },
     {
       id: 'wash/soften', mid: MID, property: 'conserved', without: washPainting('watercolour', false, stroke),
@@ -177,19 +187,16 @@ export function checkStampGateConserved(id: string, pigments: readonly string[],
 }
 
 /**
- * Whether a lift, `subject` against `without`, is bounded pixel by pixel in every pigment and took a smaller share of
- * the more staining of `staining` (least staining first); with `mustLift`, whether it took any of the least staining.
+ * Whether a lift, `subject` against `without`, took from no pigment's total more than it had and left none below
+ * nothing, took a smaller share of the more staining of `staining` (least staining first), and took some of the least
+ * staining, so it can't pass by lifting nothing.
  */
-export function checkStampGateLifted(id: string, pigments: readonly string[], staining: readonly [string, string], mustLift: boolean, subject: StampGateLayer, without: StampGateLayer): StampGateWashCheck {
+export function checkStampGateLifted(id: string, pigments: readonly string[], staining: readonly [string, string], subject: StampGateLayer, without: StampGateLayer): StampGateWashCheck {
   const problems: string[] = [];
   pigments.forEach((pigment, slot) => {
     const before = slotAmounts(without, slot), after = slotAmounts(subject, slot);
-    let rose = 0, below = 0;
-    after.forEach((v, i) => {
-      if (v > before[i] + STAMP_GATE_LAYER_TOLERANCE) rose++;
-      if (v < -STAMP_GATE_LAYER_TOLERANCE) below++;
-    });
-    if (rose) problems.push(`${pigment} rose at ${rose} pixels`);
+    if (total(after) > total(before) * (1 + STAMP_GATE_CONSERVED_TOLERANCE)) problems.push(`${pigment}'s total rose`);
+    const below = after.filter((v) => v < -STAMP_GATE_LAYER_TOLERANCE).length;
     if (below) problems.push(`${pigment} went below none at ${below} pixels`);
   });
   const share = (pigment: string) => {
@@ -200,9 +207,9 @@ export function checkStampGateLifted(id: string, pigments: readonly string[], st
   };
   const [loose, stained] = staining.map(share);
   if (stained > loose + STAMP_GATE_CONSERVED_TOLERANCE) problems.push(`${staining[1]}, staining more, lost more than ${staining[0]}`);
-  if (mustLift && !(loose > STAMP_GATE_CONSERVED_TOLERANCE)) problems.push(`it lifted none of ${staining[0]}`);
+  if (!(loose > STAMP_GATE_CONSERVED_TOLERANCE)) problems.push(`it lifted none of ${staining[0]}`);
   return {
     id: `${id}: lifted`, passed: !problems.length,
-    detail: `${staining[0]} lost ${(loose * 100).toFixed(2)}%, ${staining[1]} ${(stained * 100).toFixed(2)}%${problems.length ? `; ${problems.join('; ')}` : '; bounded at every pixel'}`,
+    detail: `${staining[0]} lost ${(loose * 100).toFixed(2)}%, ${staining[1]} ${(stained * 100).toFixed(2)}%${problems.length ? `; ${problems.join('; ')}` : '; bounded'}`,
   };
 }

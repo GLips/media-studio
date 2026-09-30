@@ -199,7 +199,7 @@ async function checkStampGateWash(id: string): Promise<StampGateWashCheck[]> {
   const without = await withGateRenderer(washCase.without, url, (renderer) => renderer.readLayer(end));
   return [...checks, washCase.property === 'conserved'
     ? checkStampGateConserved(id, pigments, painted.layer, without)
-    : checkStampGateLifted(id, pigments, washCase.pigments, washCase.mustLift, painted.layer, without)];
+    : checkStampGateLifted(id, pigments, washCase.pigments, painted.layer, without)];
 }
 
 /** The GPU the gate draws on, as a baseline records it. */
