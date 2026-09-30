@@ -25,7 +25,7 @@ test('importing an .abr writes the same pack layout a Procreate pack imports to,
     assert.deepEqual(readStampPaintPack(JSON.parse(readFileSync(join(generation.dir, 'manifest.json'), 'utf8'))), manifest);
     assert.deepEqual(generation.manifest, manifest);
     assert.deepEqual(Object.keys(manifest.brushes), ['Chalk', 'Chalk (Wet)', 'Pencil']);
-    assert.deepEqual(manifest.files, ['grains/stripes.png', 'tips/chalk.png', 'tips/pencil.heights.f32', 'tips/round-0-30.png', 'tips/round-80-12.png']);
+    assert.deepEqual(manifest.files, ['grains/stripes.png', 'tips/chalk.png', 'tips/pencil.contact.png', 'tips/pencil.heights.f32', 'tips/pencil.png', 'tips/round-0-30.png']);
     for (const file of manifest.files) assert.ok(existsSync(join(generation.dir, file)), file);
     assert.deepEqual(manifest.previews, {});
     assert.deepEqual([stampPaintPackDiameter(manifest, 'Chalk'), stampPaintPackDiameter(manifest, 'Chalk (Wet)')], [48, 30]);
@@ -36,11 +36,12 @@ test('importing an .abr writes the same pack layout a Procreate pack imports to,
     // A Mixer Brush's wet mixing stays in its source, the preset's tool options, for the wet-paint model (vid-90).
     const mixer = manifest.brushes['Chalk (Wet)'].preset.tool;
     assert.deepEqual(mixer?.kind === 'MixB' && [mixer.wetness, mixer.dryness, mixer.mix], [50, 100, 50]);
-    // An erodible tip paints as round; its height map, which only a simulation of its wear reads, sits beside it.
+    // An erodible tip paints its footprint, pressed by a contact image drawn from its height map, which sits beside it.
     const pencil = manifest.brushes.Pencil.tip;
     assert.ok(pencil.kind === 'erodible');
     assert.deepEqual(readFileSync(join(generation.dir, pencil.heightMap.file)), PHOTOSHOP_FIXTURE_ERODIBLE_HEIGHTS);
-    assert.equal(brushes.Pencil.tip.image.file, 'tips/round-80-12.png');
+    assert.equal(brushes.Pencil.tip.image.file, 'tips/pencil.png');
+    assert.equal(brushes.Pencil.tip.pressed?.contact.file, 'tips/pencil.contact.png');
   });
 });
 

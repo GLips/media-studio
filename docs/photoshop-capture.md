@@ -119,6 +119,23 @@ to the spray, where our reference paints it at 0, so that cell misses. Not yet r
 (invisible in every capture), granularity between 0 and 100, the rim at other sizes than the preset's, and an
 airbrush dual. A dense grain spray is hundreds of stamps a pixel.
 
+**Pressed tips** (vid-105). Erodible and bristle tips touch the paper as they're pressed: StampBrush's `tip.pressed`
+holds a contact image beside the footprint, the pressure from which each texel lays paint, over a ramp `softness` wide
+(`pressedTip`, on both renderers). A pose sizes neither; it scales their opacity. An unposed probe stamp reads as
+pressed harder than our reference's 0, so those cells miss.
+
+- *Erodible* (`tip erodible …`; photoshop-erodible.ts). The footprint is the shape's outline through a 2 px box. A
+  texel of height h touches once the pen sinks the tip a + b·p/D below its top (a 0.042 of the height, b 2.1 px), so
+  a big tip touches almost whole at once and a small one grows in. Unworn: Photoshop wears the tip along a stroke,
+  faster at lower simulated hardness (US 10,217,253 claims that wear), and the importer doesn't simulate it, so at 48%
+  the probes' lines paint wider than ours. Lino Crayon's and Pencil's custom maps paint too wide.
+- *Bristle* (`tip bristle …`; photoshop-bristle.ts). The footprint is about 234 × density bristle discs, its width
+  across set by the shape and a flat tip 0.13 d deep. Each bristle touches from its own contact, later toward its rim,
+  away from a point's axis, a curve's middle or an angle's near side. Past about 0.7 a long, soft one lays down wider.
+  The face lies across the stroke's first heading and holds it. Pack references of an unsized preset were painted at
+  100 px. Not drawn: splay that builds along a stroke (Round Angle Low Stiffness), a click's radial dashes, tilt, and
+  clumping, which every capture holds at 0.25.
+
 **What the controls do** (vid-105). Angle on pen pressure turns a stamp by p × 360°, and fade turns it a whole turn
 over its steps; initial direction holds the first heading. Scatter on pen pressure keeps p² of its reach (in the
 deposit's diameters, as uncontrolled scatter is), and a fade shrinks it to none over its steps. Texture Each Tip depth on pressure runs the other way: full pressure paints the

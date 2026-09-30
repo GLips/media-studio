@@ -5,7 +5,7 @@
 // Grid steps are 32nds, which f32 and f64 hold exactly, so a threshold like hardMix's a + g ≥ 1 falls the same way
 // on both, and a difference is the formula's, not the grid's rounding.
 
-import { PHOTOSHOP_POOLING, STAMP_DUAL_BLENDS, STAMP_GRAIN_BLENDS, stampDualCombine, stampDualModeIndex, stampGrainCut, stampGrainModeIndex, stampGrainPaint, stampPooled, stampTipNoise, stampTipNoiseAt } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
+import { PHOTOSHOP_POOLING, STAMP_DUAL_BLENDS, STAMP_GRAIN_BLENDS, stampDualCombine, stampDualModeIndex, stampGrainCut, stampGrainModeIndex, stampGrainPaint, stampPooled, stampPressedTip, stampTipNoise, stampTipNoiseAt } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import { STAMP_ACCUMULATION_KINDS, STAMP_ACCUMULATIONS, stampAccumulationIndex } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
 
 /**
@@ -66,7 +66,11 @@ export function stampFormulaGrids(): StampFormulaGrid[] {
   const tipNoiseAt = [0, 1, 7, 255, 4095].flatMap((x) => [0, 3, 1000, 65535].flatMap((y) => [0, 1, 12345, 1 << 23].map((seed) => ({
     label: `x ${x} y ${y} seed ${seed}`, inputs: [x, y, seed], expected: stampTipNoiseAt(x, y, seed),
   }))));
+  const pressedTip = [0.3, 1].flatMap((a) => UNIT.flatMap((c) => UNIT.flatMap((pressure) => [0.16, 0.5].flatMap((softness) => [1, 2.5].map((grow) => ({
+    label: `a ${a} c ${c} p ${pressure} softness ${softness} grow ${grow}`, inputs: [a, c, pressure, softness, -0.2, 1.4, grow], expected: stampPressedTip(a, c, pressure, softness, -0.2, 1.4, grow),
+  }))))));
   return [
+    grid('pressedTip', 'pressedTip(x(0), x(1), x(2), x(3), x(4), x(5), x(6))', 7, pressedTip),
     grid('tipNoise', 'tipNoise(x(0), x(1), x(2))', 3, tipNoise),
     grid('tipNoiseAt', 'tipNoiseAt(u32(x(0)), u32(x(1)), u32(x(2)))', 3, tipNoiseAt),
     grid('accumulationLay', 'accumulationLay(x(0), x(1), x(2), i32(x(3)))', 4, lay),

@@ -64,6 +64,12 @@ export type StampBrushTip<Image = StampBrushAsset> = {
    * grains are; the deposit's diameter still sets its spacing and scatter.
    */
   pixels?: number;
+  /**
+   * A tip that touches the paper as it's pressed, as a bristle or erodible tip does: each texel lays its paint once the
+   * stamp's pressure passes its contact (pressedTip), over a ramp `softness` wide. `contact`'s paint reads the contact
+   * down from `range`'s high end to its low; with `diameter`, contacts grow with the stamp's diameter over it.
+   */
+  pressed?: { contact: Image; range: readonly [lo: number, hi: number]; softness: number; diameter?: number };
 };
 
 /**
@@ -327,7 +333,23 @@ export type StampBrush<Image = StampBrushAsset> = StampBrushLayer<Image> & {
 /** `layer` with its tip's and grain's images bound by `bind`, the rest as it is. */
 function bindLayerImages<A, B, L extends StampBrushLayer<A>>(layer: L, bind: (image: A) => B): Omit<L, 'tip' | 'grain'> & StampBrushLayer<B> {
   const { tip, grain, ...rest } = layer;
-  return { ...rest, tip: { ...tip, image: bind(tip.image) }, ...(grain && { grain: { ...grain, image: bind(grain.image) } }) };
+  const { pressed, ...plain } = tip;
+  return {
+    ...rest,
+    tip: { ...plain, image: bind(tip.image), ...(pressed && { pressed: { ...pressed, contact: bind(pressed.contact) } }) },
+    ...(grain && { grain: { ...grain, image: bind(grain.image) } }),
+  };
+}
+
+/** Every image `brush` paints with, its dual's too, and how each wraps: a grain tiles, a tip or its contact doesn't. */
+export function stampBrushImages<A>(brush: StampBrush<A>): { image: A; wrap: 'tile' | 'clamp' }[] {
+  const images: { image: A; wrap: 'tile' | 'clamp' }[] = [];
+  for (const layer of brush.dual ? [brush, brush.dual] : [brush]) {
+    images.push({ image: layer.tip.image, wrap: 'clamp' });
+    if (layer.tip.pressed) images.push({ image: layer.tip.pressed.contact, wrap: 'clamp' });
+    if (layer.grain) images.push({ image: layer.grain.image, wrap: 'tile' });
+  }
+  return images;
 }
 
 /** `brush` with each of its images, and its dual's, bound by `bind` to what a renderer samples. */

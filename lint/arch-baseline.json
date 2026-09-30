@@ -1381,14 +1381,8 @@
     "lib/picture/stamp-paint/models/stamp-stroke-hand.ts": {
       "return points.map((point, i) => {": 1
     },
-    "lib/picture/stamp-paint/studio/stamp-paint-renderer.ts": {
-      "[brush, ...(brush.dual ? [brush.dual] : [])].flatMap((layer): [StampBrushAsset, 'tile' | 'clamp'][] => [[layer.tip.image, 'clamp'], ...(layer.grain ? [[layer.grain.image, 'tile'] satisfies [StampBrushAsset, 'tile']] : [])]))));": 1
-    },
     "lib/picture/stamp-reference/engine/photoshop-probe-reference.ts": {
       "if (scored) own.push({ cell, probe, buffers: buffers.map((b) => ({ ...b, coverage: cropBuffer(b.coverage, box.width, { x: pad, y: pad }, cell.box) })) });": 1
-    },
-    "lib/picture/stamp-styles/models/style.ts": {
-      "...Object.values(resolved.brushes).flatMap((brush) => [brush, ...(brush.dual ? [brush.dual] : [])].flatMap((layer) => [layer.tip.image, ...(layer.grain ? [layer.grain.image] : [])])),": 1
     },
     "lib/picture/video/studio/video.ts": {
       "return { ...layout, scenes: layout.scenes.map((placed, k) => ({ ...video.scenes[k], ...placed })) };": 1

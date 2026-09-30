@@ -15,6 +15,8 @@ import { cropPhotoshopCell } from '#lib/picture/photoshop-brushes/models/photosh
 import { PHOTOSHOP_PROBE_RAMP, PHOTOSHOP_PROBE_TIP, photoshopProbeRampValue, photoshopProbeTipPaint, type PhotoshopProbe } from '#lib/picture/photoshop-brushes/models/photoshop-probes.ts';
 import { readPhotoshopSheet } from '#lib/picture/photoshop-brushes/engine/photoshop-capture.ts';
 import { photoshopPressuredPath, type PhotoshopStrokePressure } from '#lib/picture/photoshop-brushes/models/photoshop-stroke-pressure.ts';
+import { drawPhotoshopBristleTip } from '#lib/picture/photoshop-brushes/models/photoshop-bristle.ts';
+import { drawPhotoshopErodibleTip, photoshopErodibleDefaultHeights } from '#lib/picture/photoshop-brushes/models/photoshop-erodible.ts';
 import { drawPhotoshopTipImage, normalizePhotoshopBrush, PHOTOSHOP_PEN_PRESSURE, PHOTOSHOP_SAMPLE_BORDER, type PhotoshopPressureContext, photoshopPatternNegated, photoshopTipImage, type PhotoshopTipAsset, type PhotoshopTipImage } from '#lib/picture/photoshop-brushes/models/photoshop-brush.ts';
 import type { PhotoshopKnownTip } from '#lib/picture/photoshop-brushes/models/photoshop-preset.ts';
 import { bindStampBrushImages, type StampBrushAsset } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
@@ -48,9 +50,22 @@ function rampImage(negated: boolean): StampReferenceImage {
 }
 
 /** A probe tip's image as the importer files it; Photoshop trims the rig's sample to its paint, `native` square. */
-const probeTipAsset = (tip: PhotoshopKnownTip, file: string): PhotoshopTipAsset => (tip.kind === 'sampled'
-  ? { kind: 'sampled', image: asset(file), sample: { width: PHOTOSHOP_PROBE_TIP.native, height: PHOTOSHOP_PROBE_TIP.native } }
-  : { kind: 'round', image: asset(file) });
+function probeTipAsset(tip: PhotoshopKnownTip, file: string): PhotoshopTipAsset {
+  if (tip.kind === 'sampled') return { kind: 'sampled', image: asset(file), sample: { width: PHOTOSHOP_PROBE_TIP.native, height: PHOTOSHOP_PROBE_TIP.native } };
+  if (tip.kind === 'erodible') return { kind: 'erodible', image: asset(file), contact: asset(`${file}-contact`), heightMap: asset(`${file}-heights`) };
+  if (tip.kind === 'bristle') return { kind: 'bristle', image: asset(file), contact: asset(`${file}-contact`) };
+  return { kind: 'round', image: asset(file) };
+}
+
+/** A drawn gray image, dark is paint, as mips of its paint. */
+const grayMips = (pixels: Uint8Array, size: number) => stampReferenceMips({ width: size, height: size, paint: Float32Array.from(pixels, (v) => 1 - v / 255) });
+
+/** A probe tip's images by name, `file` and a pressed tip's contact: an erodible one pressed from Photoshop's default heights. */
+function probeTipImages(tip: PhotoshopKnownTip, file: string) {
+  if (tip.kind !== 'erodible' && tip.kind !== 'bristle') return { [file]: () => stampReferenceMips(tipImage(photoshopTipImage(tip))) };
+  const drawn = () => (tip.kind === 'erodible' ? drawPhotoshopErodibleTip(tip, photoshopErodibleDefaultHeights(tip.shape, tip.gridSize), STAMP_PACK_TIP_MAX) : drawPhotoshopBristleTip(tip, STAMP_PACK_TIP_MAX));
+  return { [file]: () => { const { size, image } = drawn(); return grayMips(image, size); }, [`${file}-contact`]: () => { const { size, contact } = drawn(); return grayMips(contact, size); } };
+}
 
 /** A probe's dual tip, when it has one the studio reads. */
 const probeDualTip = ({ preset }: PhotoshopProbe) => (preset.dual && preset.dual.tip.kind !== 'unsupported' ? preset.dual.tip : undefined);
@@ -66,8 +81,8 @@ export function photoshopProbeReferenceBrush(probe: PhotoshopProbe, context: Pho
   }, undefined, context);
   // Each image drawn from the preset as the rig drew it, by the name it was given above.
   const images: Record<string, () => ReturnType<typeof stampReferenceMips>> = {
-    tip: () => stampReferenceMips(tipImage(photoshopTipImage(preset.tip))),
-    ...(dualTip && { 'dual-tip': () => stampReferenceMips(tipImage(photoshopTipImage(dualTip))) }),
+    ...probeTipImages(preset.tip, 'tip'),
+    ...(dualTip && probeTipImages(dualTip, 'dual-tip')),
     ramp: () => stampReferenceMips(rampImage(photoshopPatternNegated(preset))),
   };
   return { brush: bindStampBrushImages(brush, ({ file }) => images[file]()), support };

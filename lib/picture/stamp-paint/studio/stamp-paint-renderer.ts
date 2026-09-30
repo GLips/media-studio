@@ -9,7 +9,7 @@
 // Formulas and stage orders are WGSL twins of the CPU reference's registries, held to it by the formulas command.
 // The brush says where Procreate and Photoshop differ; nothing here asks where it came from.
 
-import { bindStampBrushImages, type StampBrush, type StampBrushAsset, type StampBrushGrain, type StampBrushLayer } from '../models/stamp-brush.ts';
+import { bindStampBrushImages, stampBrushImages, type StampBrush, type StampBrushAsset, type StampBrushGrain, type StampBrushLayer } from '../models/stamp-brush.ts';
 import { COVERAGE_FORMULAS_WGSL, stampDualModeIndex, stampGrainModeIndex } from '../models/coverage-formulas.ts';
 import {
   STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL, STAMP_ACCUMULATIONS, STAMP_BLUR_LEVELS, stampAccumulationBuild, stampAccumulationIndex,
@@ -25,9 +25,9 @@ import { stampUniformLayout, stampUniformStruct, stampUniformWriter, type StampU
 
 /**
  * Floats per stamp in the instance buffer: x, y, diameter, rotation, then alpha, blur, grain turn and flips (x 1, y 2),
- * then opacity, roundness and grain depth.
+ * then opacity, roundness, grain depth and pressure.
  */
-const STAMP_FLOATS = 11;
+const STAMP_FLOATS = 12;
 /** Floats per stamp in the tint buffer, for a brush with colour dynamics: hue, saturation, lightness, secondary. */
 const TINT_FLOATS = 4;
 
@@ -67,7 +67,7 @@ fn turned(v: vec2f, angle: f32) -> vec2f {
 // not its sampling, so the hull holds the paint. The tip's center lands on the stamp's place. Mask rows run top first.
 const STAMP_DRAW = stampUniformLayout('StampDraw', [
   ['resolution', 'vec2f'], ['roundness', 'f32'], ['rolling', 'u32'], ['grain', stampUniformStruct(GRAIN)], ['diameter', 'f32'], ['zoom', 'f32'],
-  ['movement', 'f32'], ['hull', { vec4fArray: STAMP_TIP_HULL_SIDES / 2 }], ['span', 'f32'], ['towardFull', 'u32'], ['center', 'vec2f'], ['noise', 'f32'],
+  ['movement', 'f32'], ['hull', { vec4fArray: STAMP_TIP_HULL_SIDES / 2 }], ['span', 'f32'], ['towardFull', 'u32'], ['center', 'vec2f'], ['noise', 'f32'], ['pressed', 'vec4f'],
 ]);
 const STAMP_WGSL = /* wgsl */ `
 ${STAMP_DRAW.wgsl}
@@ -77,12 +77,15 @@ ${STAMP_DRAW.wgsl}
 // Clamped, and anisotropic or not as the tip's sampling says.
 @group(0) @binding(3) var tipClamp: sampler;
 @group(0) @binding(4) var tile: sampler;
-struct Corner { @builtin(position) position: vec4f, @location(0) tipUv: vec2f, @location(1) alpha: f32, @location(2) blur: f32, @location(3) grainUv: vec2f, @location(4) tint: vec4f, @location(5) toward: f32, @location(6) grainDepth: f32, @location(7) noiseAt: vec2f, @location(8) @interpolate(flat) seed: u32 }
+// A pressed tip's contact image, blank when the tip has none (StampBrushTip's pressed, and u.pressed: softness, its
+// range's low and high, and the diameter its contacts grow over, 0 for none).
+@group(0) @binding(5) var contact: texture_2d<f32>;
+struct Corner { @builtin(position) position: vec4f, @location(0) tipUv: vec2f, @location(1) alpha: f32, @location(2) blur: f32, @location(3) grainUv: vec2f, @location(4) tint: vec4f, @location(5) toward: f32, @location(6) grainDepth: f32, @location(7) noiseAt: vec2f, @location(8) @interpolate(flat) seed: u32, @location(9) @interpolate(flat) pressure: f32, @location(10) @interpolate(flat) grow: f32 }
 struct Covered { @location(0) mask: vec4f, @location(1) cap: vec4f }
 struct Stamp { @location(0) mask: vec4f, @location(1) cap: vec4f, @location(2) tintA: vec4f, @location(3) tintB: vec4f }
 ${GRAIN_WGSL}
 ${TURNED_WGSL}
-@vertex fn place(@builtin(vertex_index) i: u32, @location(0) stamp: vec4f, @location(1) more: vec4f, @location(2) tint: vec4f, @location(3) last: vec3f) -> Corner {
+@vertex fn place(@builtin(vertex_index) i: u32, @location(0) stamp: vec4f, @location(1) more: vec4f, @location(2) tint: vec4f, @location(3) last: vec4f) -> Corner {
   let pair = u.hull[i / 2u];
   let uv = select(pair.xy, pair.zw, (i & 1u) == 1u);
   let flips = u32(more.w);
@@ -99,12 +102,15 @@ ${TURNED_WGSL}
   // A glaze or a build lays flow × opacity toward full; a buildToOpacity lays its flow toward its own opacity.
   let full = u.towardFull == 1u;
   // Noise goes by the tip's pixels at the stamp's width, as the CPU reference reads them (tipNoiseAt).
-  return Corner(vec4f(at.x, -at.y, 0.0, 1.0), uv, select(more.x, more.x * opacity, full), more.y * ${STAMP_BLUR_LEVELS.toFixed(1)}, grainUv, tint, select(opacity, 1.0, full), last.z, uv * stamp.z * u.span, stampNoiseSeed(stamp.xy));
+  let grow = select(1.0, stamp.z / u.pressed.w, u.pressed.w > 0.0);
+  return Corner(vec4f(at.x, -at.y, 0.0, 1.0), uv, select(more.x, more.x * opacity, full), more.y * ${STAMP_BLUR_LEVELS.toFixed(1)}, grainUv, tint, select(opacity, 1.0, full), last.z, uv * stamp.z * u.span, stampNoiseSeed(stamp.xy), last.w, grow);
 }
 // A stamp's paint (x) and its cap (y): the paint without its tip, how far a glaze's stroke may build there. A rolling
 // grain, carried by the stamp, cuts each one.
 fn covered(corner: Corner) -> vec2f {
   var tipped = 1.0 - textureSampleBias(tip, tipClamp, corner.tipUv, corner.blur).r;
+  let touches = 1.0 - textureSampleBias(contact, tipClamp, corner.tipUv, corner.blur).r;
+  if (u.pressed.x > 0.0) { tipped = pressedTip(tipped, touches, corner.pressure, u.pressed.x, u.pressed.y, u.pressed.z, corner.grow); }
   if (u.noise > 0.0) { tipped = tipNoise(tipped, tipNoiseAt(u32(max(floor(corner.noiseAt.x), 0.0)), u32(max(floor(corner.noiseAt.y), 0.0)), corner.seed), u.noise); }
   var coverage = vec2f(tipped, 1.0);
   if (u.rolling == 1u) {
@@ -133,7 +139,7 @@ const ORDERED_TILE = 32;
 // sampled at that path's interpolated gradients, the tip's grown by its blur as the fixed path's bias grows it.
 const ORDERED_DRAW = stampUniformLayout('OrderedDraw', [
   ['grain', stampUniformStruct(GRAIN)], ['roundness', 'f32'], ['rolling', 'u32'], ['diameter', 'f32'], ['zoom', 'f32'], ['movement', 'f32'],
-  ['span', 'f32'], ['first', 'u32'], ['count', 'u32'], ['tint', 'u32'], ['bins', 'u32'], ['tilesX', 'u32'], ['accumulation', 'i32'], ['center', 'vec2f'], ['noise', 'f32'],
+  ['span', 'f32'], ['first', 'u32'], ['count', 'u32'], ['tint', 'u32'], ['bins', 'u32'], ['tilesX', 'u32'], ['accumulation', 'i32'], ['center', 'vec2f'], ['noise', 'f32'], ['pressed', 'vec4f'],
 ]);
 const ORDERED_WGSL = /* wgsl */ `
 ${FULL_FRAME_WGSL}
@@ -147,6 +153,7 @@ ${ORDERED_DRAW.wgsl}
 @group(0) @binding(6) var<storage, read> tints: array<vec4f>;
 // Each tile's first entry (one past the last after them), then each tile's stamps by index from the layer's first.
 @group(0) @binding(7) var<storage, read> bins: array<u32>;
+@group(0) @binding(8) var contact: texture_2d<f32>;
 ${GRAIN_WGSL}
 ${TURNED_WGSL}
 ${STAMP_ACCUMULATION_LAY_WGSL}
@@ -173,7 +180,11 @@ fn laidInOrder(p: vec2f, tinted: bool) -> Laid {
     // Outside its square a stamp lays nothing; inside it but outside its hull its tip is bare, as the fixed path's is.
     if (any(uv < vec2f(0.0)) || any(uv > vec2f(1.0))) { continue; }
     let blur = exp2(stamps[at + 5u] * ${STAMP_BLUR_LEVELS.toFixed(1)});
-    var a = 1.0 - textureSampleGrad(tip, tipClamp, uv, turned(vec2f(1.0, 0.0), -rotation) / scale * blur, turned(vec2f(0.0, 1.0), -rotation) / scale * blur).r;
+    let dx = turned(vec2f(1.0, 0.0), -rotation) / scale * blur;
+    let dy = turned(vec2f(0.0, 1.0), -rotation) / scale * blur;
+    var a = 1.0 - textureSampleGrad(tip, tipClamp, uv, dx, dy).r;
+    let touches = 1.0 - textureSampleGrad(contact, tipClamp, uv, dx, dy).r;
+    if (u.pressed.x > 0.0) { a = pressedTip(a, touches, stamps[at + 11u], u.pressed.x, u.pressed.y, u.pressed.z, select(1.0, z / u.pressed.w, u.pressed.w > 0.0)); }
     if (u.noise > 0.0) {
       let noiseAt = max(floor(uv * z * u.span), vec2f(0.0));
       a = tipNoise(a, tipNoiseAt(u32(noiseAt.x), u32(noiseAt.y), stampNoiseSeed(xy)), u.noise);
@@ -433,7 +444,7 @@ const assetKey = ({ style, pack, file }: StampBrushAsset) => `${style}/${pack}/$
 /** Every image a painting and its paper need, each once, with how it wraps: a grain tiles, a tip or photograph doesn't. */
 function paintingImages(painting: CompiledStampPaint, paper: StampPaintPaper): [StampBrushAsset, 'tile' | 'clamp'][] {
   const assets = painting.groups.flatMap((group) => group.passes.flatMap((pass) => pass.deposits.flatMap(({ brush }) =>
-    [brush, ...(brush.dual ? [brush.dual] : [])].flatMap((layer): [StampBrushAsset, 'tile' | 'clamp'][] => [[layer.tip.image, 'clamp'], ...(layer.grain ? [[layer.grain.image, 'tile'] satisfies [StampBrushAsset, 'tile']] : [])]))));
+    stampBrushImages(brush).map(({ image, wrap }): [StampBrushAsset, 'tile' | 'clamp'] => [image, wrap]))));
   if (paper.image) assets.push([paper.image, 'clamp']);
   if (paper.grain) assets.push([paper.grain.image, 'tile']);
   return [...new Map(assets.map((entry) => [assetKey(entry[0]), entry])).values()];
@@ -637,7 +648,7 @@ async function rendererOnDevice(
   }
   const stampData = new Float32Array(Math.max(1, total) * STAMP_FLOATS), tintData = new Float32Array(Math.max(1, tints) * TINT_FLOATS);
   const write = (stamps: readonly PlacedStamp[], at: number) => stamps.forEach((s, i) => stampData.set(
-    [s.x, s.y, s.diameter, s.rotation, s.alpha, s.blur, s.grainTurn, (s.flipX ? 1 : 0) + (s.flipY ? 2 : 0), s.opacity, s.roundness, s.grainDepth], (at + i) * STAMP_FLOATS,
+    [s.x, s.y, s.diameter, s.rotation, s.alpha, s.blur, s.grainTurn, (s.flipX ? 1 : 0) + (s.flipY ? 2 : 0), s.opacity, s.roundness, s.grainDepth, s.pressure], (at + i) * STAMP_FLOATS,
   ));
   for (const [deposit, { main, dual, tint }] of deposits) {
     write(deposit.stamps, main);
@@ -701,7 +712,7 @@ async function rendererOnDevice(
     vertex: {
       module: stampModule,
       buffers: [
-        { arrayStride: STAMP_FLOATS * 4, stepMode: 'instance', attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }, { shaderLocation: 1, offset: 16, format: 'float32x4' }, { shaderLocation: 3, offset: 32, format: 'float32x3' }] },
+        { arrayStride: STAMP_FLOATS * 4, stepMode: 'instance', attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }, { shaderLocation: 1, offset: 16, format: 'float32x4' }, { shaderLocation: 3, offset: 32, format: 'float32x4' }] },
         { arrayStride: tinted && channel === 0 ? TINT_FLOATS * 4 : 0, stepMode: 'instance', attributes: [{ shaderLocation: 2, offset: 0, format: 'float32x4' }] },
       ],
     },
@@ -807,6 +818,8 @@ async function rendererOnDevice(
       const textures = [layer.tip.image.view, rolling ? rolling.image.view : targets.blank.view, layer.tip.sampling === 'anisotropic' ? anisotropicClamp : linearClamp, rolling?.tiling === 'mirror' ? mirrorTile : tile];
       const tintBinding = stampChannel === 0 && tinted ? { buffer: tintBuffer, at: loadedDeposit.tint! } : { buffer: noTintBuffer, at: 0 };
       const center: [number, number] = [layer.tip.center?.[0] ?? 0.5, layer.tip.center?.[1] ?? 0.5];
+      const { pressed } = layer.tip, contact = pressed ? pressed.contact.view : targets.blank.view;
+      const pressedWords: [number, number, number, number] = pressed ? [pressed.softness, ...pressed.range, pressed.diameter ?? 0] : [0, 0, 0, 0];
       if (plan.kind === 'ordered') {
         const pipeline = orderedPipelines[tinted ? 'tinted' : 'plain'][stampChannel];
         pass.setPipeline(pipeline);
@@ -831,8 +844,9 @@ async function rendererOnDevice(
             put('accumulation', stampAccumulationIndex(layer.accumulation.kind));
             put('center', center);
             put('noise', layer.tip.noise ?? 0);
+            put('pressed', pressedWords);
           }),
-          ...textures, { buffer: stampBuffer }, { buffer: tintBinding.buffer }, { buffer: binBuffer },
+          ...textures, { buffer: stampBuffer }, { buffer: tintBinding.buffer }, { buffer: binBuffer }, contact,
         ]));
         pass.draw(3);
         return;
@@ -860,8 +874,9 @@ async function rendererOnDevice(
           put('towardFull', plan.toward === 'full' ? 1 : 0);
           put('center', center);
           put('noise', layer.tip.noise ?? 0);
+          put('pressed', pressedWords);
         }),
-        ...textures,
+        ...textures, contact,
       ]));
       pass.setVertexBuffer(0, stampBuffer, first * STAMP_FLOATS * 4);
       pass.setVertexBuffer(1, tintBinding.buffer, tintBinding.at * TINT_FLOATS * 4);

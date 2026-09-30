@@ -31,7 +31,7 @@ test('Photoshop steps each stamp by its own size from the first point, and paint
 test('a buildToOpacity stroke lays each stamp toward its own opacity and never lowers what a stronger one left', () => {
   const tip = stampReferenceMips({ width: 2, height: 2, paint: new Float32Array([1, 1, 1, 1]) });
   const stamp = (opacity: number): PlacedStamp => ({
-    x: 2, y: 2, diameter: 4, rotation: 0, roundness: 1, alpha: 0.5, opacity, flipX: false, flipY: false, blur: 0, grainTurn: 0, grainDepth: 1, tint: { hue: 0, saturation: 0, lightness: 0, secondary: 0 }, reveal: 0,
+    x: 2, y: 2, diameter: 4, rotation: 0, roundness: 1, alpha: 0.5, opacity, flipX: false, flipY: false, blur: 0, grainTurn: 0, grainDepth: 1, pressure: 1, tint: { hue: 0, saturation: 0, lightness: 0, secondary: 0 }, reveal: 0,
   });
   const at = (stamps: PlacedStamp[]) => renderStampReferenceDeposit({
     brush: bindStampBrushImages(brush, () => tip), stamps, dualStamps: [], diameter: 4, opacity: 1, grainOffset: { main: [0, 0], dual: [0, 0] }, box: { x: 0, y: 0, width: 4, height: 4 },

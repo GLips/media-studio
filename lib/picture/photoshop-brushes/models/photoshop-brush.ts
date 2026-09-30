@@ -6,12 +6,15 @@
 //
 // Negative space: live-input, preview and preset-size settings (a deposit states its diameter) and a canvas
 // texture's depth dynamics (Photoshop ignores them too) go unreported. Build-up, tilt, stylus wheel, rotation and pose
-// are `inapplicable` (a path paints those controls as off). Bristle and erodible tips (read as round) and Mixer
-// Brush wet mixing (vid-90) are `unsupported`; an airbrush is its spray (photoshop-airbrush.ts).
+// are `inapplicable` (a path paints those controls as off). Mixer Brush wet mixing (vid-90) is `unsupported`; an
+// airbrush is its spray (photoshop-airbrush.ts), and erodible and bristle tips are pressed (photoshop-erodible.ts,
+// photoshop-bristle.ts).
 
 import { PHOTOSHOP_POOLING } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import { drawPhotoshopAirbrushGrain, drawPhotoshopAirbrushSpray, photoshopAirbrushImage, photoshopAirbrushMode, photoshopAirbrushReading } from './photoshop-airbrush.ts';
 import { drawPhotoshopComputedTip, PHOTOSHOP_PIXEL_TIP_DIAMETER, photoshopComputedTipSpan } from './photoshop-computed-tip.ts';
+import { photoshopBristleStampTip } from './photoshop-bristle.ts';
+import { photoshopErodibleStampTip } from './photoshop-erodible.ts';
 import {
   photoshopControlMinimum, photoshopModeName, type PhotoshopBlendMode, type PhotoshopControl, type PhotoshopDualMode, type PhotoshopDynamic, type PhotoshopKnownTip,
   type PhotoshopPaintablePreset, type PhotoshopPreset, type PhotoshopScatter, type PhotoshopTextureMode,
@@ -53,13 +56,15 @@ export type PhotoshopSampleSize = { width: number; height: number };
 
 /**
  * Where a tip's images landed among the pack's assets: a round tip's drawing; a sample, with its own size in pixels
- * (its centre is read from it); an erodible tip's round drawing and its height map (`gridSize`² little-endian 32-bit
- * floats, as the .abr holds them), which only a simulation of its wear reads.
+ * (its centre is read from it); an erodible tip's footprint, its contact image (photoshop-erodible.ts) and its height
+ * map (`gridSize`² little-endian 32-bit floats, as the .abr holds them) they were drawn from; a bristle tip's footprint
+ * and contact image (photoshop-bristle.ts).
  */
 export type PhotoshopTipAsset =
   | { kind: 'round'; image: StampBrushAsset }
   | { kind: 'sampled'; image: StampBrushAsset; sample: PhotoshopSampleSize }
-  | { kind: 'erodible'; image: StampBrushAsset; heightMap: StampBrushAsset };
+  | { kind: 'erodible'; image: StampBrushAsset; contact: StampBrushAsset; heightMap: StampBrushAsset }
+  | { kind: 'bristle'; image: StampBrushAsset; contact: StampBrushAsset };
 
 /**
  * One preset and where its images landed among the pack's assets. `dualTip` is absent when the file lacks the sample
@@ -101,7 +106,7 @@ function photoshopRoundTipHardness(tip: Exclude<PhotoshopKnownTip, { kind: 'samp
   return 1;
 }
 
-/** A tip as an image to write: sampled, an airbrush's, else round (a computed tip, or a bristle or erodible one read as round). */
+/** A tip as an image to write: sampled, an airbrush's, else round (a computed tip; a pressed one when drawn as round). */
 export function photoshopTipImage(tip: PhotoshopKnownTip): PhotoshopTipImage {
   const { geometry } = tip;
   if (tip.kind === 'sampled') return { kind: 'sampled', id: tip.sample, flipX: geometry.flipX, flipY: geometry.flipY };
@@ -120,9 +125,9 @@ export function drawPhotoshopTipImage(image: PhotoshopDrawnTipImage, max: number
   return { key: 'grain', ...drawPhotoshopAirbrushGrain() };
 }
 
-/** Which asset a tip lands as: a sample as itself, an erodible tip with its height map, any other as a round drawing. */
+/** Which asset a tip lands as: a sample as itself, an erodible or bristle tip pressed, any other as a round drawing. */
 export function photoshopTipAssetKind(tip: PhotoshopKnownTip): PhotoshopTipAsset['kind'] {
-  return tip.kind === 'sampled' || tip.kind === 'erodible' ? tip.kind : 'round';
+  return tip.kind === 'sampled' || tip.kind === 'erodible' || tip.kind === 'bristle' ? tip.kind : 'round';
 }
 
 /**
@@ -164,7 +169,9 @@ function tipOf(tip: PhotoshopKnownTip, asset: PhotoshopTipAsset, prefix: string,
     return { image: asset.image, roundness, sampling, span: (sample.width + 2 * PHOTOSHOP_SAMPLE_BORDER) / sample.width, center: [sampleCenter(sample.width, geometry.flipX), sampleCenter(sample.height, geometry.flipY)] };
   }
   if (tip.kind === 'sampled') throw new Error(`photoshop: a sampled tip given a ${asset.kind} image`);
-  if (geometry.diameter <= PHOTOSHOP_PIXEL_TIP_DIAMETER) note('approximated', `${prefix}tip.geometry.diameter`, `a ${geometry.diameter} px computed tip, drawn as Photoshop draws it at its size, rounded up to whole pixels; the stamps its dynamics shrink are scaled from that, not redrawn`);
+  if (asset.kind === 'erodible' && tip.kind === 'erodible') return { roundness, sampling, ...photoshopErodibleStampTip(tip, asset.image, asset.contact) };
+  if (asset.kind === 'bristle' && tip.kind === 'bristle') return { roundness, sampling, ...photoshopBristleStampTip(tip, asset.image, asset.contact) };
+  if (tip.kind === 'computed' && geometry.diameter <= PHOTOSHOP_PIXEL_TIP_DIAMETER) note('approximated', `${prefix}tip.geometry.diameter`, `a ${geometry.diameter} px computed tip, drawn as Photoshop draws it at its size, rounded up to whole pixels; the stamps its dynamics shrink are scaled from that, not redrawn`);
   if (tip.kind === 'airbrush') return { image: asset.image, roundness, sampling, ...photoshopAirbrushReading(tip).tip };
   return { image: asset.image, roundness, sampling, span: photoshopComputedTipSpan(geometry.diameter, photoshopRoundTipHardness(tip)) };
 }
@@ -240,8 +247,11 @@ function photoshopTransferBindings(p: PhotoshopPaintablePreset, context: Photosh
     ...(p.tool?.pressureOverridesOpacity && { opacity: { ...own.opacity, pressure: linear(1) } }),
   };
   if (!context.lingeringPose) return buttons;
+  const posedOpacity = { ...buttons.opacity, pressure: linear(1) };
+  // A pose sizes no airbrush's spray, erodible or bristle tip (the vid-105 probes: widths hold at every pose).
+  if (p.tip.kind === 'airbrush' || p.tip.kind === 'erodible' || p.tip.kind === 'bristle') return { ...buttons, opacity: posedOpacity };
   const sizeAmount = buttons.size.pressure?.kind === 'linear' ? buttons.size.pressure.amount : 0;
-  return { ...buttons, size: { ...buttons.size, pressure: linear(sizeAmount > 0 ? sizeAmount ** 2 : 1) }, opacity: { ...buttons.opacity, pressure: linear(1) } };
+  return { ...buttons, size: { ...buttons.size, pressure: linear(sizeAmount > 0 ? sizeAmount ** 2 : 1) }, opacity: posedOpacity };
 }
 
 /**
@@ -289,8 +299,10 @@ const degrees = (value: number) => (value ? (-value * Math.PI) / 180 : 0);
 
 function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: PhotoshopReading, context: PhotoshopPressureContext): StampBrushLayer {
   const p = source.preset, { tip } = p;
-  if (tip.kind === 'erodible' || tip.kind === 'bristle') {
-    note('unsupported', 'tip.kind', `${tip.kind === 'bristle' ? 'a bristle' : 'an erodible'} tip, simulated as it paints; read as a round tip of its hardness`);
+  if (tip.kind === 'bristle') note('approximated', 'tip.bristle', "a bristle tip, pressed into the paper and laid across the stroke's first heading; its splay building along a stroke isn't drawn, and clumping is unprobed");
+  if (tip.kind === 'erodible') {
+    note('approximated', 'tip.erodible', `an erodible tip, pressed into the paper by its heights, unworn: Photoshop wears it along a stroke${tip.simulatedHardness < 100 ? ` (hardness ${Math.round(tip.simulatedHardness)}% wears it)` : ''}, which isn't simulated`);
+    if (tip.lengthRatio !== 100) note('unprobed', 'tip.lengthRatio', `length ratio ${Math.round(tip.lengthRatio)}%: every capture has it at 100`);
   }
   const airbrush = tip.kind === 'airbrush' ? photoshopAirbrushReading(tip) : undefined;
   if (tip.kind === 'airbrush') {
@@ -381,7 +393,8 @@ function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: Photos
       grainDepth,
       rotation: {
         ...(angle.control.kind === 'direction' && { direction: linear(1) }),
-        ...(angle.control.kind === 'initialDirection' && { initialDirection: linear(1) }),
+        // A bristle tip faces across the stroke's first heading and holds it (the vid-105 probes' S-curves).
+        ...((angle.control.kind === 'initialDirection' || (tip.kind === 'bristle' && angle.control.kind !== 'direction')) && { initialDirection: linear(1) }),
         ...(angleControl?.sensor === 'pressure' && { pressure: whole }),
         ...(angleControl?.sensor === 'fade' && { fade: { ...whole, steps: angleControl.steps } }),
         random: linear(angle.jitter * reading.angleJitterSpan),

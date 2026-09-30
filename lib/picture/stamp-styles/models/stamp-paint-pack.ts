@@ -20,7 +20,7 @@ import type { StampPaintColor } from '#lib/picture/stamp-paint/models/stamp-pain
  * The version of the imported assets this studio reads. An import writes it into each pack's manifest; when the
  * manifest's format changes this goes up, and the studio refuses a pack until it's imported again.
  */
-export const STAMP_PAINT_ASSETS_VERSION = 6;
+export const STAMP_PAINT_ASSETS_VERSION = 7;
 
 /** The file an import writes in each pack's folder, `brushes/<pack>/`, listing what it wrote there. */
 export const STAMP_PAINT_PACK_MANIFEST = 'manifest.json';
@@ -123,7 +123,8 @@ function tipAsset(value: unknown, at: string, tip: PhotoshopPresetTip): Photosho
   const a = record(value, at), image = asset(a.image, `${at}.image`);
   const kind = oneOf(a.kind, `${at}.kind`, tip.kind === 'unsupported' ? [] : [photoshopTipAssetKind(tip)]);
   if (kind === 'round') return { kind, image };
-  if (kind === 'erodible') return { kind, image, heightMap: asset(a.heightMap, `${at}.heightMap`) };
+  if (kind === 'erodible') return { kind, image, contact: asset(a.contact, `${at}.contact`), heightMap: asset(a.heightMap, `${at}.heightMap`) };
+  if (kind === 'bristle') return { kind, image, contact: asset(a.contact, `${at}.contact`) };
   const sample = record(a.sample, `${at}.sample`);
   return { kind, image, sample: { width: count(sample.width, `${at}.sample.width`), height: count(sample.height, `${at}.sample.height`) } };
 }

@@ -5,7 +5,7 @@
 // Negative space: a style sets no per-brush defaults (diameter, opacity, material). A recipe states them on each
 // deposit until a style shows which ones repeat.
 
-import type { StampBrush, StampBrushAsset } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
+import { stampBrushImages, type StampBrush, type StampBrushAsset } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import type { StampPaintColor, StampPaintPaper } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import { resolveStampPaintPackBrush, type StampPaintPack } from './stamp-paint-pack.ts';
 
@@ -74,7 +74,7 @@ export function resolveStampPaintStyle<S extends StampPaintStyle>(name: string, 
 /** Every image a style paints with, by pack and file, each once: its brushes' tips and grains, their duals', its paper's. */
 export function stampPaintStyleImages(resolved: ResolvedStampPaintStyle): Omit<StampBrushAsset, 'style'>[] {
   const assets = [
-    ...Object.values(resolved.brushes).flatMap((brush) => [brush, ...(brush.dual ? [brush.dual] : [])].flatMap((layer) => [layer.tip.image, ...(layer.grain ? [layer.grain.image] : [])])),
+    ...Object.values(resolved.brushes).flatMap((brush) => stampBrushImages(brush).map(({ image }) => image)),
     ...(resolved.paper.image ? [resolved.paper.image] : []),
     ...(resolved.paper.grain ? [resolved.paper.grain.image] : []),
   ];

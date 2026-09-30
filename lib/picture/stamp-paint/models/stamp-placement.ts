@@ -47,6 +47,8 @@ export type PlacedStamp = {
    * dynamics. A mix, not a shallower depth, since a height grain's depth is a relief's, which paints nothing at 0.
    */
   grainDepth: number;
+  /** The pen's pressure at it, 0..1, as its taper lets it through: what a pressed tip touches by. */
+  pressure: number;
   /**
    * How its colour moves from its deposit's (StampBrushColorDynamics): hue as a share of the wheel, saturation and
    * lightness each −1..1, and the share of the deposit's secondary colour, 0..1. Zero for a brush without them.
@@ -117,6 +119,7 @@ function buildStamp(place: StampPlace, stamp: StampContext, brush: StampPlacemen
     blur: brush.blur.amount * (1 - draws.blur * brush.blur.jitter),
     grainTurn: place.grainTurn,
     grainDepth: stampStepShare(dynamics, 'grainDepth', stamp) * stampOwnShare(dynamics, 'grainDepth', stamp),
+    pressure: 1 - stamp.pressureThrough * (1 - stamp.pressure),
     tint: tintOf(brush.color, draws, stamp.pressure),
     reveal: place.reveal,
   };

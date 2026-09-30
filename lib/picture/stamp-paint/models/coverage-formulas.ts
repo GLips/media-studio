@@ -203,6 +203,16 @@ fn tipNoiseAt(x: u32, y: u32, seed: u32) -> f32 { return f32(pcgHash(x ^ pcgHash
     cpu: (a: number, n: number, depth: number) => clamp01(overlay(a, 0.5 + depth * (n - 0.5))),
     wgsl: /* wgsl */ `fn tipNoise(a: f32, n: f32, depth: f32) -> f32 { return clamp(overlaid(a, 0.5 + depth * (n - 0.5)), 0.0, 1.0); }`,
   },
+  /**
+   * A pressed tip's paint `a` where it touches: the texel's contact pressure is its contact image's paint `c` read down
+   * from `hi` to `lo`, times `grow`; it touches over a ramp `softness` wide, centred there, as `pressure` passes it.
+   */
+  pressedTip: {
+    cpu: (a: number, c: number, pressure: number, softness: number, lo: number, hi: number, grow: number) => a * clamp01(0.5 + (pressure - (hi - c * (hi - lo)) * grow) / softness),
+    wgsl: /* wgsl */ `fn pressedTip(a: f32, c: f32, pressure: f32, softness: f32, lo: f32, hi: f32, grow: f32) -> f32 {
+  return a * clamp(0.5 + (pressure - (hi - c * (hi - lo)) * grow) / softness, 0.0, 1.0);
+}`,
+  },
   /** Wet edges' pooling of built coverage `c`: rising to `peak` at half coverage, easing to `body` at full. */
   pooled: {
     cpu: (c: number, { peak, body }: Pick<StampPooling, 'peak' | 'body'>) => (c <= 0.5 ? 2 * peak * c : peak - 4 * (peak - body) * (c - 0.5) ** 2),
@@ -218,6 +228,7 @@ export const stampGrainPaint = STAMP_COVERAGE_FUNCTIONS.grainPaint.cpu;
 export const stampPooled = STAMP_COVERAGE_FUNCTIONS.pooled.cpu;
 export const stampTipNoiseAt = STAMP_COVERAGE_FUNCTIONS.tipNoiseAt.cpu;
 export const stampTipNoise = STAMP_COVERAGE_FUNCTIONS.tipNoise.cpu;
+export const stampPressedTip = STAMP_COVERAGE_FUNCTIONS.pressedTip.cpu;
 
 /** A stamp's noise seed: its place's f32 bits hashed, as the GPU reads them off the stamp it's given. */
 export function stampNoiseSeed(x: number, y: number): number {

@@ -9,7 +9,7 @@
 
 import type { StampBrush, StampBrushGrain, StampBrushLayer } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import type { PlacedStamp } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
-import { stampDualCombine, stampGrainCut, stampGrainPaint, stampNoiseSeed, stampPooled, stampTipNoise, stampTipNoiseAt } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
+import { stampDualCombine, stampGrainCut, stampGrainPaint, stampNoiseSeed, stampPooled, stampPressedTip, stampTipNoise, stampTipNoiseAt } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import {
   STAMP_ACCUMULATIONS, STAMP_BLUR_LEVELS, STAMP_RESOLVE_PLANS, stampAccumulationBuild, stampActiveLayers, stampResolvePlan, type StampActiveLayer, type StampResolveStage,
 } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
@@ -80,7 +80,7 @@ const grainMean = (grain: Grain) => grain.image.at(-1)!.paint[0];
 function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: StampReferenceBox, opacityScale: number): Float32Array {
   const { layer, active } = place, { accumulation } = layer;
   const tipImage = layer.tip.image[0], span = layer.tip.span ?? 1, roundness = layer.tip.roundness;
-  const [cx, cy] = layer.tip.center ?? [0.5, 0.5], noise = layer.tip.noise ?? 0;
+  const [cx, cy] = layer.tip.center ?? [0.5, 0.5], noise = layer.tip.noise ?? 0, { pressed } = layer.tip;
   const built = new Float32Array(box.width * box.height);
   const { lay, keepsCap: glaze, resolve } = STAMP_ACCUMULATIONS[accumulation.kind];
   // What a glaze keeps beside its build; zeros, unread, for the others.
@@ -106,11 +106,13 @@ function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: Stam
         const dx = px + 0.5 - stamp.x, dy = py + 0.5 - stamp.y;
         const [lx, ly] = turned(dx, dy, -stamp.rotation);
         const u = (lx / width) * (stamp.flipX ? -1 : 1) + cx, v = (ly / height) * (stamp.flipY ? -1 : 1) + cy;
-        let a = 0;
+        let a = 0, contact = 0;
         for (let k = 0; k < reads; k++) {
-          const off = (k + 0.5) / reads - 0.5;
-          a += sampleStampReference(layer.tip.image, alongV ? u : u + off / width, alongV ? v + off / height : v, lod, 'clamp') / reads;
+          const off = (k + 0.5) / reads - 0.5, ru = alongV ? u : u + off / width, rv = alongV ? v + off / height : v;
+          a += sampleStampReference(layer.tip.image, ru, rv, lod, 'clamp') / reads;
+          if (pressed) contact += sampleStampReference(pressed.contact, ru, rv, lod, 'clamp') / reads;
         }
+        if (pressed) a = stampPressedTip(a, contact, stamp.pressure, pressed.softness, ...pressed.range, pressed.diameter ? stamp.diameter / pressed.diameter : 1);
         if (a <= 0) continue;
         // The noise's pixel is the tip's, at the stamp's width, where the GPU's hull reads it.
         if (noise) a = stampTipNoise(a, stampTipNoiseAt(Math.max(0, Math.floor(u * width)), Math.max(0, Math.floor(v * width)), seed), noise);
