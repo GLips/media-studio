@@ -624,7 +624,7 @@
       "painted = await paint(diameter);": 1
     },
     "lib/picture/brush-fidelity/engine/brush-fidelity-sheet.ts": {
-      "const measured = src ? await measureBrushFidelityTarget(call, src) : null;": 1,
+      "const measured = src ? await measureBrushFidelityTarget(call, target, src) : null;": 1,
       "const scored = await scoreBrushFidelity(call, brush, target, measured, true, packUrls), outcome = brushFidelityOutcome(scored);": 1,
       "const rowPng = await call<string>('drawStampBrushSheetRow', { target: src && { src, label }, ours: scored.png, lines, grade });": 1
     },
@@ -635,7 +635,7 @@
       "for (const s of training) each.push(await score(s, candidate));": 1
     },
     "lib/picture/brush-fidelity/engine/brush-reading-subjects.ts": {
-      "const measured = await measureBrushFidelityTarget(call, brushFidelityTargetSrc(brush.target, brush.packUrl));": 1
+      "const measured = await measureBrushFidelityTarget(call, brush.target, brushFidelityTargetSrc(brush.target, brush.packUrl));": 1
     },
     "lib/picture/brush-fidelity/engine/stamp-stroke-hand-sheet.ts": {
       "const png = await call<string>('drawStampStrokeHandSheet', painted[name], diameter, packUrls);": 1

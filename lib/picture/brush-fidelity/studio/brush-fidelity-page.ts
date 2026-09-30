@@ -9,7 +9,8 @@ import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts'
 import type { CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import { createStampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
 import { brushFidelityAssetUrl, type BrushFidelityPackUrls } from '../models/brush-fidelity-pack-urls.ts';
-import { brushFidelityPainting, type BrushFidelityTarget } from '../models/brush-fidelity-target.ts';
+import { brushFidelityForeignPaint, brushFidelityPainting, type BrushFidelityTarget } from '../models/brush-fidelity-target.ts';
+import { clearPhotoshopForeignPaint, type PhotoshopForeignPaint } from '../models/photoshop-reference-stroke.ts';
 import { measureStrokeCoverage, type StrokeCoverageProfile, type StrokeFidelityGrade } from '../models/stroke-measure.ts';
 
 const { width: W, height: H } = PROCREATE_PREVIEW_SIZE;
@@ -40,16 +41,16 @@ function paintedCoverage(canvas: HTMLCanvasElement): Uint8Array {
   return coverage;
 }
 
-async function measureStrokeTarget(src: string): Promise<StrokeCoverageProfile | null> {
-  return measureStrokeCoverage(await targetCoverage(src), W, H);
+async function measureStrokeTarget(src: string, target: BrushFidelityTarget): Promise<StrokeCoverageProfile | null> {
+  return measureStrokeCoverage(clearPhotoshopForeignPaint(await targetCoverage(src), W, H, brushFidelityForeignPaint(target)), W, H);
 }
 
-async function paintAndMeasure(painting: CompiledStampPaint, withPng: boolean, packUrls: BrushFidelityPackUrls): Promise<{ png?: string; profile: StrokeCoverageProfile | null }> {
+async function paintAndMeasure(painting: CompiledStampPaint, foreign: PhotoshopForeignPaint, withPng: boolean, packUrls: BrushFidelityPackUrls): Promise<{ png?: string; profile: StrokeCoverageProfile | null }> {
   const canvas = Object.assign(document.createElement('canvas'), { width: W, height: H });
   const renderer = await createStampPaintRenderer(canvas, painting, { color: '#ffffff' }, W, H, (asset) => brushFidelityAssetUrl(packUrls, asset));
   try {
     await renderer.draw(0);
-    return { ...(withPng && { png: canvas.toDataURL('image/png') }), profile: measureStrokeCoverage(paintedCoverage(canvas), W, H) };
+    return { ...(withPng && { png: canvas.toDataURL('image/png') }), profile: measureStrokeCoverage(clearPhotoshopForeignPaint(paintedCoverage(canvas), W, H, foreign), W, H) };
   } finally {
     renderer.dispose();
   }
@@ -57,7 +58,7 @@ async function paintAndMeasure(painting: CompiledStampPaint, withPng: boolean, p
 
 /** `brush` painted as `target` was, at `diameter`, its images from `packUrls`: its measure, and the painting as a PNG data URL when asked for. */
 const paintBrushFidelity = (brush: StampBrush, target: BrushFidelityTarget, diameter: number, withPng: boolean, packUrls: BrushFidelityPackUrls) =>
-  paintAndMeasure(brushFidelityPainting(brush, target, diameter), withPng, packUrls);
+  paintAndMeasure(brushFidelityPainting(brush, target, diameter), brushFidelityForeignPaint(target), withPng, packUrls);
 
 const HEADER = 98;
 

@@ -21,7 +21,7 @@ async function measureBrushReadingSubjects<R extends BrushReading, Source>(
 ): Promise<BrushReadingSubject<Source>[]> {
   const subjects: BrushReadingSubject<Source>[] = [];
   for (const brush of brushes) {
-    const measured = await measureBrushFidelityTarget(call, brushFidelityTargetSrc(brush.target, brush.packUrl));
+    const measured = await measureBrushFidelityTarget(call, brush.target, brushFidelityTargetSrc(brush.target, brush.packUrl));
     subjects.push({ ...brush, measured, heldOut: reading.heldOut(brush.pack, brush.name) });
   }
   return subjects;

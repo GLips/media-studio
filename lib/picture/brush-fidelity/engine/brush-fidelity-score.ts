@@ -19,8 +19,8 @@ const DIAMETER_FITS = 3;
 /** The fidelity page, run with the styles folder served at /files/. */
 export const withBrushFidelityPage = <T>(stylesDir: string, use: (call: BrowserModuleCall) => Promise<T>) => withBrowserModulePage({ entry: FIDELITY_PAGE, filesDir: stylesDir }, use);
 
-/** A target's measure from its image (brushFidelityTargetSrc); null when nothing in it counts as stroke. */
-export const measureBrushFidelityTarget = (call: BrowserModuleCall, src: string) => call<StrokeCoverageProfile | null>('measureStrokeTarget', src);
+/** `target`'s measure from its image (brushFidelityTargetSrc); null when nothing in it counts as stroke. */
+export const measureBrushFidelityTarget = (call: BrowserModuleCall, target: BrushFidelityTarget, src: string) => call<StrokeCoverageProfile | null>('measureStrokeTarget', src, target);
 
 /**
  * A brush as scored: the diameter it was painted at, the painting as a PNG data URL when asked for, its measure (null

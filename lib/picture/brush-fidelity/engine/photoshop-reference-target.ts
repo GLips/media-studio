@@ -7,23 +7,42 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
-import type { PhotoshopAppliedOptions, PhotoshopCaptureManifest } from '#lib/picture/photoshop-brushes/models/photoshop-capture-plan.ts';
+import type { PhotoshopAppliedOptions, PhotoshopBox, PhotoshopCaptureManifest } from '#lib/picture/photoshop-brushes/models/photoshop-capture-plan.ts';
 import { PROCREATE_PREVIEW_SIZE } from '#lib/picture/procreate-brushes/models/procreate-preview-stroke.ts';
-import type { PhotoshopReferenceStroke } from '../models/photoshop-reference-stroke.ts';
+import { photoshopReferenceForeignStrokes, type PhotoshopReferenceStroke } from '../models/photoshop-reference-stroke.ts';
 
 /** The folder of a pack's Photoshop reference captures, which an import leaves be. */
 export const PHOTOSHOP_REFERENCE_DIR = 'reference';
 
-/** Each captured brush's S-curve in `packDir`'s reference/, by preset name; empty without a reference run. */
-export function readPhotoshopReferenceStrokes(packDir: string): Map<string, PhotoshopReferenceStroke> {
+/**
+ * Each captured brush's S-curve in `packDir`'s reference/, by preset name; empty without a reference run. `reachOf`:
+ * how far a captured item's paint lands from its path, in its diameters (stampBrushPaintReach), for the neighbours whose
+ * paint may lie in an S-curve's frame.
+ */
+export function readPhotoshopReferenceStrokes(packDir: string, reachOf: (item: string) => number): Map<string, PhotoshopReferenceStroke> {
   const dir = join(packDir, PHOTOSHOP_REFERENCE_DIR), manifestFile = join(dir, 'manifest.json');
   if (!existsSync(manifestFile)) return new Map();
   const manifest = JSON.parse(readFileSync(manifestFile, 'utf8')) as PhotoshopCaptureManifest;
-  return new Map(manifest.sheets.flatMap((sheet) => sheet.cells.flatMap((cell, index) => (cell.mark !== 'sCurve' ? [] : [[cell.item, {
-    sheet: join(dir, sheet.file), box: cell.box, diameter: (manifest.items[cell.item].preset!.diameter * PROCREATE_PREVIEW_SIZE.width) / cell.box.width,
-    pressure: { lingeringPose: sheet.cells.slice(0, index).some((before) => before.item === cell.item && before.pressure !== undefined) },
-    opacity: photoshopAppliedOpacity(manifest.items[cell.item].applied),
-  }] as const]))));
+  const diameterOf = (item: string) => manifest.items[item].preset!.diameter;
+  return new Map(manifest.sheets.flatMap((sheet) => sheet.cells.flatMap((cell, index) => {
+    if (cell.mark !== 'sCurve') return [];
+    const diameter = (diameterOf(cell.item) * PROCREATE_PREVIEW_SIZE.width) / cell.box.width;
+    return [[cell.item, {
+      sheet: join(dir, sheet.file), box: cell.box, diameter,
+      pressure: { lingeringPose: sheet.cells.slice(0, index).some((before) => before.item === cell.item && before.pressure !== undefined) },
+      opacity: photoshopAppliedOpacity(manifest.items[cell.item].applied),
+      foreign: {
+        strokes: photoshopReferenceForeignStrokes(sheet.cells, cell.box, photoshopReferenceFrame(cell.box), diameterOf, reachOf),
+        ownCore: Math.SQRT1_2 * diameter,
+      },
+    }] as const];
+  })));
+}
+
+/** The part of an S-curve's `box` its preview frame crops: the box's width, centred down it at the preview's proportions. */
+function photoshopReferenceFrame(box: PhotoshopBox) {
+  const { width: W, height: H } = PROCREATE_PREVIEW_SIZE, height = Math.round((box.width * H) / W);
+  return { x: box.x, y: Math.round(box.y + (box.height - height) / 2), width: box.width, height };
 }
 
 /**
@@ -40,7 +59,7 @@ const isPercent = (value: unknown): value is number => typeof value === 'number'
 export function photoshopReferenceStrokePng({ sheet, box }: PhotoshopReferenceStroke): string {
   const { width: W, height: H } = PROCREATE_PREVIEW_SIZE;
   // The mark scales the preview's path by the box's width over the preview's, centred on the box's middle.
-  const height = Math.round((box.width * H) / W), y = Math.round(box.y + (box.height - height) / 2);
-  const png = runFfmpeg(['-nostdin', '-v', 'error', '-i', sheet, '-vf', `crop=${box.width}:${height}:${box.x}:${y},scale=${W}:${H}:flags=area,format=rgba`, '-frames:v', '1', '-c:v', 'png', '-f', 'image2pipe', 'pipe:1'], { maxBuffer: W * H * 4 + 65536 });
+  const frame = photoshopReferenceFrame(box);
+  const png = runFfmpeg(['-nostdin', '-v', 'error', '-i', sheet, '-vf', `crop=${frame.width}:${frame.height}:${frame.x}:${frame.y},scale=${W}:${H}:flags=area,format=rgba`, '-frames:v', '1', '-c:v', 'png', '-f', 'image2pipe', 'pipe:1'], { maxBuffer: W * H * 4 + 65536 });
   return `data:image/png;base64,${png.toString('base64')}`;
 }

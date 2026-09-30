@@ -5,18 +5,24 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import {
-  stampPaintPackDiameter, type PhotoshopPackBrush, type ProcreatePackBrush, type StampPaintPack,
+  resolveStampPaintPackBrush, stampPaintPackDiameter, type PhotoshopPackBrush, type ProcreatePackBrush, type StampPaintPack,
 } from '#lib/picture/stamp-styles/models/stamp-paint-pack.ts';
 import { readStampPaintPackDir, readStampPaintPackGeneration } from '#lib/picture/stamp-styles/engine/stamp-paint-pack-files.ts';
 import {
   brushFidelityIdentityDifferences, currentBrushFidelityIdentity, parseBrushFidelityReport, type BrushFidelityReport,
 } from '../models/brush-fidelity-report.ts';
+import { stampBrushPaintReach } from '../models/photoshop-reference-stroke.ts';
 import { untargetedBrushFidelity, type BrushFidelityMeasurableTarget, type BrushFidelityTarget } from '../models/brush-fidelity-target.ts';
 import { photoshopReferenceStrokePng, readPhotoshopReferenceStrokes } from './photoshop-reference-target.ts';
 
 /** Each brush of `manifest` (in `packDir`) by name, with its target. */
 export function readBrushFidelityTargets(packDir: string, manifest: StampPaintPack): Record<string, BrushFidelityTarget> {
-  const references = readPhotoshopReferenceStrokes(packDir);
+  // A captured item the pack didn't import (a skipped preset) is read as reaching its tip's corner alone.
+  const reachOf = (item: string) => {
+    const read = resolveStampPaintPackBrush(manifest, item);
+    return read ? stampBrushPaintReach(read.brush) : Math.SQRT1_2;
+  };
+  const references = readPhotoshopReferenceStrokes(packDir, reachOf);
   return Object.fromEntries(Object.keys(manifest.brushes).map((name): [string, BrushFidelityTarget] => {
     const preview = manifest.previews[name], reference = references.get(name);
     return [name, preview ? { kind: 'procreatePreview', image: preview.image, shows: preview.shows }

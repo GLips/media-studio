@@ -6,7 +6,7 @@
 import { procreatePreviewPainting } from '#lib/picture/procreate-brushes/models/procreate-preview-stroke.ts';
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import type { CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
-import { photoshopReferencePainting, type PhotoshopReferenceStroke } from './photoshop-reference-stroke.ts';
+import { photoshopReferencePainting, type PhotoshopForeignPaint, type PhotoshopReferenceStroke } from './photoshop-reference-stroke.ts';
 
 /** `image` is the preview's file in its pack's folder. */
 export type BrushFidelityTarget =
@@ -42,6 +42,10 @@ export function brushFidelityDiameter(target: BrushFidelityTarget): number {
     case 'none': return target.diameter;
   }
 }
+
+/** Other cells' paint that may lie in `target`'s frame, cleared from it and ours alike: a reference's alone. */
+export const brushFidelityForeignPaint = (target: BrushFidelityTarget): PhotoshopForeignPaint =>
+  (target.kind === 'photoshopReference' ? target.stroke.foreign : { strokes: [], ownCore: 0 });
 
 /** Whether the diameter is fitted to the target's thickness: only a preview's, whose size Procreate doesn't say. */
 export const brushFidelityFitsDiameter = (target: BrushFidelityTarget) => target.kind === 'procreatePreview';

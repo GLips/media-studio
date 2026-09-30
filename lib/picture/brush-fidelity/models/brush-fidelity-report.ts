@@ -14,10 +14,11 @@ export const BRUSH_FIDELITY_REPORT_VERSION = 1;
 
 /**
  * How a brush is scored: stroke-measure.ts's measures, weights and comparison, BRUSH_FIDELITY_NOTHING_PAINTED, the
- * diameter fitting in brush-fidelity-score.ts, and how a target's stroke is painted (brush-fidelity-target.ts). Bump it
- * when any of them changes, so a score from before isn't held against one from after as if measured alike.
+ * diameter fitting in brush-fidelity-score.ts, how a target's stroke is painted and what of its frame is measured
+ * (brush-fidelity-target.ts). Bump it when any of them changes, so a score from before isn't held against one from
+ * after as if measured alike.
  */
-export const BRUSH_FIDELITY_SCORER_VERSION = 2;
+export const BRUSH_FIDELITY_SCORER_VERSION = 3;
 
 /**
  * How a brush fared against its target. `emptyRender`: its target measured, it painted nothing that counts as stroke.
