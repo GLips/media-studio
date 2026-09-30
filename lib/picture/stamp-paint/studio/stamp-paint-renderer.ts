@@ -146,6 +146,7 @@ const ORDERED_TILE = 32;
 // sampled at that path's interpolated gradients, the tip's grown by its blur as the fixed path's bias grows it.
 const ORDERED_DRAW = stampUniformLayout('OrderedDraw', [
   ['grain', stampUniformStruct(GRAIN)], ['roundness', 'f32'], ['rolling', 'u32'], ['diameter', 'f32'], ['zoom', 'f32'], ['movement', 'f32'],
+  // `first`: the layer's first stamp's first float in its bound slice; `tint`: its first tint's index there.
   ['span', 'f32'], ['first', 'u32'], ['count', 'u32'], ['tint', 'u32'], ['bins', 'u32'], ['tilesX', 'u32'], ['accumulation', 'i32'], ['center', 'vec2f'], ['noise', 'f32'], ['pressed', 'vec4f'],
 ]);
 const ORDERED_WGSL = /* wgsl */ `
@@ -174,7 +175,7 @@ fn laidInOrder(p: vec2f, tinted: bool) -> Laid {
     let i = bins[k];
     // A tile's stamps are in order, so the first not yet visible ends it.
     if (i >= u.count) { break; }
-    let at = (u.first + i) * ${STAMP_FLOATS}u;
+    let at = u.first + i * ${STAMP_FLOATS}u;
     let xy = vec2f(stamps[at], stamps[at + 1u]);
     let z = stamps[at + 2u];
     let rotation = stamps[at + 3u];
@@ -778,6 +779,9 @@ async function rendererOnDevice(
       slotsPerFrame += 8;
     }
   }
+  if (total * STAMP_FLOATS * 4 > device.limits.maxBufferSize) {
+    throw new Error(`stamp paint: the painting's ${total.toLocaleString()} stamps need ${Math.round((total * STAMP_FLOATS * 4) / 2 ** 20)} MB, over this GPU's ${Math.round(device.limits.maxBufferSize / 2 ** 20)} MB buffer`);
+  }
   const stampData = new Float32Array(Math.max(1, total) * STAMP_FLOATS), tintData = new Float32Array(Math.max(1, tints) * TINT_FLOATS);
   const write = (stamps: readonly PlacedStamp[], at: number) => stamps.forEach((s, i) => stampData.set(
     [s.x, s.y, s.diameter, s.rotation, s.alpha, s.blur, s.grainTurn, (s.flipX ? 1 : 0) + (s.flipY ? 2 : 0), s.opacity, s.roundness, s.grainDepth, s.pressure], (at + i) * STAMP_FLOATS,
@@ -791,6 +795,14 @@ async function rendererOnDevice(
     const made = device.createBuffer({ size: Math.max(16, Math.ceil(data.byteLength / 4) * 4), usage: usage | GPUBufferUsage.COPY_DST });
     device.queue.writeBuffer(made, 0, data.buffer, data.byteOffset, Math.ceil(data.byteLength / 4) * 4);
     return made;
+  };
+  /**
+   * `count` items of `floats` floats each from item `first` of `source`, bound from the aligned offset at or below it;
+   * `first` is then the item's first float within the binding.
+   */
+  const storageSlice = (source: GPUBuffer, first: number, count: number, floats: number) => {
+    const start = first * floats * 4, offset = start - (start % device.limits.minStorageBufferOffsetAlignment);
+    return { binding: { buffer: source, offset, size: start + count * floats * 4 - offset }, first: (start - offset) / 4 };
   };
   // A layer laid in order reads its stamps and tints as storage.
   const stampBuffer = buffer(stampData, GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE), tintBuffer = buffer(tintData, GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE);
@@ -1126,6 +1138,8 @@ async function rendererOnDevice(
       const { pressed } = layer.tip, contact = pressed ? pressed.contact.view : targets.blank.view;
       const pressedWords: [number, number, number, number] = pressed ? [pressed.softness, ...pressed.range, pressed.diameter ?? 0] : [0, 0, 0, 0];
       if (plan.kind === 'ordered') {
+        // Only this layer's stamps and tints are bound, so no painting's whole buffer meets the storage binding limit.
+        const stampSlice = storageSlice(stampBuffer, first, n, STAMP_FLOATS), tintSlice = storageSlice(tintBinding.buffer, tintBinding.at, tinted ? n : 1, TINT_FLOATS);
         const pipeline = orderedPipelines[tinted ? 'tinted' : 'plain'][stampChannel];
         pass.setPipeline(pipeline);
         pass.setBindGroup(0, bindGroup(pipeline, [
@@ -1141,9 +1155,9 @@ async function rendererOnDevice(
               put('movement', rolling.movement);
             }
             put('span', spanOf(layer));
-            put('first', first);
+            put('first', stampSlice.first);
             put('count', n);
-            put('tint', tintBinding.at);
+            put('tint', tintSlice.first / TINT_FLOATS);
             put('bins', plan.bins);
             put('tilesX', tilesX);
             put('accumulation', stampAccumulationIndex(layer.accumulation.kind));
@@ -1151,7 +1165,7 @@ async function rendererOnDevice(
             put('noise', layer.tip.noise ?? 0);
             put('pressed', pressedWords);
           }),
-          ...textures, { buffer: stampBuffer }, { buffer: tintBinding.buffer }, { buffer: binBuffer }, contact,
+          ...textures, stampSlice.binding, tintSlice.binding, { buffer: binBuffer }, contact,
         ]));
         pass.draw(3);
         return;
