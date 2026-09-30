@@ -52,7 +52,7 @@ export const brushFidelityFitsDiameter = (target: BrushFidelityTarget) => target
  */
 export function brushFidelityPainting(brush: StampBrush, target: BrushFidelityTarget, diameter: number): CompiledStampPaint {
   switch (target.kind) {
-    case 'photoshopReference': return photoshopReferencePainting(brush, diameter);
+    case 'photoshopReference': return photoshopReferencePainting(brush, diameter, target.stroke.opacity);
     case 'procreatePreview': return procreatePreviewPainting(brush, diameter, target.shows);
     case 'none': return procreatePreviewPainting(brush, diameter, 'stroke');
   }

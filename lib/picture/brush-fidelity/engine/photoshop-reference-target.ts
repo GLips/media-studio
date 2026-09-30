@@ -7,7 +7,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
-import type { PhotoshopCaptureManifest } from '#lib/picture/photoshop-brushes/models/photoshop-capture-plan.ts';
+import type { PhotoshopAppliedOptions, PhotoshopCaptureManifest } from '#lib/picture/photoshop-brushes/models/photoshop-capture-plan.ts';
 import { PROCREATE_PREVIEW_SIZE } from '#lib/picture/procreate-brushes/models/procreate-preview-stroke.ts';
 import type { PhotoshopReferenceStroke } from '../models/photoshop-reference-stroke.ts';
 
@@ -22,8 +22,19 @@ export function readPhotoshopReferenceStrokes(packDir: string): Map<string, Phot
   return new Map(manifest.sheets.flatMap((sheet) => sheet.cells.flatMap((cell, index) => (cell.mark !== 'sCurve' ? [] : [[cell.item, {
     sheet: join(dir, sheet.file), box: cell.box, diameter: (manifest.items[cell.item].preset!.diameter * PROCREATE_PREVIEW_SIZE.width) / cell.box.width,
     pressure: { lingeringPose: sheet.cells.slice(0, index).some((before) => before.item === cell.item && before.pressure !== undefined) },
+    opacity: photoshopAppliedOpacity(manifest.items[cell.item].applied),
   }] as const]))));
 }
+
+/**
+ * The tool opacity Photoshop painted at, 0..1 in its 255ths, as read back: a tool preset sets its own over the rig's
+ * 100%. A smudge preset's read-back has none; it paints at full strength.
+ */
+function photoshopAppliedOpacity({ opacity }: PhotoshopAppliedOptions): number {
+  return isPercent(opacity) ? Math.round((opacity / 100) * 255) / 255 : 1;
+}
+
+const isPercent = (value: unknown): value is number => typeof value === 'number';
 
 /** A brush's S-curve cropped to the preview's frame at its size, as a PNG data URL of black ink on transparency. */
 export function photoshopReferenceStrokePng({ sheet, box }: PhotoshopReferenceStroke): string {
