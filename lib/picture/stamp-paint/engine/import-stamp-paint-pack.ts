@@ -1,6 +1,6 @@
 // import-stamp-paint-pack.ts: `studio brushes import`, whichever app the pack is for. A .brushset (or a zip holding
 // one) is Procreate's (import-procreate-pack.ts); an .abr or .tpl (or a zip holding them and no .brushset) is
-// Photoshop's (import-photoshop-pack.ts). Both write the same pack layout and the same StampBrush.
+// Photoshop's (import-photoshop-pack.ts). Both write the same pack layout, its manifest saying which app it is.
 
 import { existsSync } from 'node:fs';
 import { importPhotoshopPack, isPhotoshopBrushFile } from './import-photoshop-pack.ts';
@@ -8,9 +8,7 @@ import { importProcreatePack } from './import-procreate-pack.ts';
 import type { ImportStampPaintPackOptions } from './stamp-paint-pack-files.ts';
 import { openZipFile } from './zip-archive.ts';
 
-export type StampPaintPackSourceApp = 'procreate' | 'photoshop';
-
-function sourceAppOf(archive: string): StampPaintPackSourceApp {
+function sourceAppOf(archive: string): 'procreate' | 'photoshop' {
   if (!existsSync(archive)) throw new Error(`brushes import: ${archive} doesn't exist`);
   if (archive.endsWith('.brushset')) return 'procreate';
   if (isPhotoshopBrushFile(archive)) return 'photoshop';
@@ -24,8 +22,7 @@ function sourceAppOf(archive: string): StampPaintPackSourceApp {
   throw new Error(`brushes import: ${archive} holds neither a Procreate .brushset nor a Photoshop .abr or .tpl`);
 }
 
-/** Imports `archive` as its app's pack, and says which app that was. */
+/** Imports `archive` as its app's pack. */
 export function importStampPaintPack(options: ImportStampPaintPackOptions) {
-  const app = sourceAppOf(options.archive);
-  return { app, ...(app === 'procreate' ? importProcreatePack(options) : importPhotoshopPack(options)) };
+  return sourceAppOf(options.archive) === 'procreate' ? importProcreatePack(options) : importPhotoshopPack(options);
 }

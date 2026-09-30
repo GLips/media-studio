@@ -1,8 +1,8 @@
 // stamp-brush-fit.ts: `npm run brushes:fit`. Fits the importer's ProcreateReading (models/procreate-brush.ts), the
 // constants shared by every Procreate brush, against every brush of the packs it's given at once: each candidate
-// reading reads each brush's own settings again (the pack's procreate-sources.json), paints it as the brush fidelity
-// sheet does, and sums the sheet's scores (models/procreate-reading-fit.ts searches). It writes the fitted reading
-// into models/procreate-reading.ts, which the importer reads; re-import the packs to carry it into their manifests.
+// reading reads each brush's own settings again (the pack's manifest), paints it as the brush fidelity sheet does,
+// and sums the sheet's scores (models/procreate-reading-fit.ts searches). It writes the fitted reading into
+// models/procreate-reading.ts, which every style reads its Procreate brushes by when it resolves them.
 //
 // Each brush is painted at the diameter the sheet would give it under each candidate reading, so the fit scores what
 // the sheet will. A brush that reads the same under two readings is painted once: most constants touch a few brushes.
@@ -14,10 +14,8 @@ import { normalizeProcreateBrush, type ProcreateReading } from '../models/procre
 import { compareStrokeProfiles, type StrokeCoverageProfile } from '../models/procreate-preview-stroke.ts';
 import { PROCREATE_READING } from '../models/procreate-reading.ts';
 import { fitProcreateReading, type ProcreateReadingFitStep } from '../models/procreate-reading-fit.ts';
-import { STAMP_PAINT_PACK_MANIFEST, type StampPaintPackManifest } from '../models/style.ts';
-import type { ProcreatePackSources } from './import-procreate-pack.ts';
 import { packFile, paintAtPreviewThickness, withStampBrushSheetPage, type StampBrushSheetEntry } from './stamp-brush-sheet.ts';
-import { PROCREATE_SOURCES } from './stamp-paint-pack-files.ts';
+import { readStampPaintPackDir } from './stamp-paint-pack-files.ts';
 
 const READING_FILE = fileURLToPath(new URL('../models/procreate-reading.ts', import.meta.url));
 
@@ -67,14 +65,12 @@ export async function fitStampBrushReading({ stylesDir, packs, keys, write, log 
 }): Promise<StampBrushFitResult> {
   const brushes = packs.flatMap(({ style, pack }) => {
     const dir = join(stylesDir, style, 'brushes', pack);
-    const sourcesFile = join(dir, PROCREATE_SOURCES);
-    if (!existsSync(sourcesFile)) throw new Error(`brushes fit: ${style}/${pack} has no ${PROCREATE_SOURCES}; import it again with studio brushes import`);
-    const manifest = JSON.parse(readFileSync(join(dir, STAMP_PAINT_PACK_MANIFEST), 'utf8')) as StampPaintPackManifest;
-    const sources = JSON.parse(readFileSync(sourcesFile, 'utf8')) as ProcreatePackSources;
+    const manifest = readStampPaintPackDir(dir);
+    if (manifest.app !== 'procreate') throw new Error(`brushes fit: ${style}/${pack} is a Photoshop pack; the fit reads Procreate brushes`);
     const reportFile = join(dir, 'fidelity', 'report.json');
     const report = existsSync(reportFile) ? JSON.parse(readFileSync(reportFile, 'utf8')) as { entries: StampBrushSheetEntry[] } : null;
     const sheetScores: Record<string, number | undefined> = Object.fromEntries((report?.entries ?? []).map((e) => [e.brush, e.comparison?.score]));
-    return Object.entries(sources).flatMap(([name, source]) => {
+    return Object.entries(manifest.brushes).flatMap(([name, source]) => {
       const preview = manifest.previews[name];
       return preview ? [{ style, pack, name, source, preview: packFile(style, pack, preview.image), shows: preview.shows, sheet: sheetScores[name] }] : [];
     });

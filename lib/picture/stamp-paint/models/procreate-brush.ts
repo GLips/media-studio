@@ -20,7 +20,7 @@
 
 import type { StampBlend, StampBrush, StampBrushAsset, StampBrushColorDynamics, StampBrushLayer, StampDualBlend, StampGrainBlend } from './stamp-brush.ts';
 import { STAMP_MIN_SPACING } from './stamp-placement.ts';
-import type { StampBrushSupportNote } from './style.ts';
+import type { StampBrushSupportNote } from './stamp-paint-pack.ts';
 import { PROCREATE_READING } from './procreate-reading.ts';
 
 /**

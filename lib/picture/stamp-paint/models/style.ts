@@ -7,23 +7,7 @@
 
 import type { StampBrush, StampBrushAsset } from './stamp-brush.ts';
 import type { StampPaintColor } from './stamp-paint-recipe.ts';
-
-/**
- * The version of the imported assets this studio reads. An import writes it into each pack's manifest; when the
- * studio's asset format changes this goes up, and the bundle refuses a style until its packs are imported again.
- */
-export const STAMP_PAINT_ASSETS_VERSION = 4;
-
-/** The file an import writes in each pack's folder, `brushes/<pack>/`, listing what it wrote there. */
-export const STAMP_PAINT_PACK_MANIFEST = 'manifest.json';
-
-/**
- * A setting of a source brush the normalized brush doesn't carry as the source means it: `approximated` is read into
- * a nearby setting, `unsupported` is dropped, and `inapplicable` is dropped because a painting never has what it
- * responds to (a pen's tilt). `setting` is the source format's own field name, so it can be looked up.
- */
-/** `unprobed`: a Photoshop setting at a value vid-97's probes never gave it, so the pipeline wasn't identified there. */
-export type StampBrushSupportNote = { level: 'approximated' | 'unsupported' | 'inapplicable' | 'unprobed'; setting: string; detail: string };
+import { resolveStampPaintPackBrush, type StampPaintPack } from './stamp-paint-pack.ts';
 
 /**
  * A style's fidelity.ts, beside its style.ts and kept in git: `export default { … } satisfies StampPaintStyleFidelity`,
@@ -40,37 +24,6 @@ export const STAMP_PAINT_FIDELITY_GRADES = 'fidelity-grades.json';
  * earns (lib/picture/stamp-paint/models/procreate-preview-stroke.ts: `close`, `rough` or `off`).
  */
 export type StampPaintStyleGrades = Record<string, Record<string, { grade: 'close' | 'rough' | 'off'; score: number }>>;
-
-/**
- * A brush's own preview from its source: the image (relative to the pack's folder), and whether it shows a stroke or,
- * for a brush its source previews that way, one stamp.
- */
-export type StampPaintPackPreview = { image: string; shows: 'stroke' | 'stamp' };
-
-/** A paper from the pack: a photograph of it, its tooth as a grain (dark is where pigment settles), its mean colour. */
-export type StampPaintPackPaper = { image: string; grain: string; color: StampPaintColor };
-
-/**
- * `brushes/<pack>/manifest.json`, as the importer writes it. The bundle checks `version`, that every file in `files`
- * (relative to the pack's folder) exists, and that each brush a style names is in `brushes`, by its name in the pack.
- * The rest is for whoever writes the style: where the pack came from, each brush's own preview from its source (for
- * judging fidelity) and what didn't carry over, and the pack's palettes and papers.
- */
-export type StampPaintPackManifest = {
-  version: number;
-  files: readonly string[];
-  brushes: Readonly<Record<string, StampBrush>>;
-  source: { archive: string; sha256: string };
-  previews: Readonly<Record<string, StampPaintPackPreview>>;
-  /**
-   * The diameter, in pixels, each brush's source presets it at; absent for a source whose brushes have no size of
-   * their own (Procreate's are sized by the canvas). The sheet paints a brush without a preview at it.
-   */
-  diameters?: Readonly<Record<string, number>>;
-  support: Readonly<Record<string, readonly StampBrushSupportNote[]>>;
-  palettes: Readonly<Record<string, readonly StampPaintColor[]>>;
-  papers: Readonly<Record<string, StampPaintPackPaper>>;
-};
 
 /** A style's style.ts: `export default { … } satisfies StampPaintStyle`. */
 export type StampPaintStyle = {
@@ -102,16 +55,19 @@ export type StampPaintPaper = {
   grain?: { image: StampBrushAsset; scale: number; depth: number };
 };
 
-/** One style as a bundle serves it (`@stamp-paint-styles`): its style.ts, its packs' manifests, a URL for each image it paints with. */
+/**
+ * One style as a bundle serves it (`@stamp-paint-styles`): its style.ts, its packs' manifests as JSON (unread until
+ * readStampPaintPack), a URL for each image it paints with.
+ */
 export type BundledStampPaintStyle = {
   style: StampPaintStyle;
-  manifests: Readonly<Record<string, StampPaintPackManifest>>;
+  manifests: Readonly<Record<string, unknown>>;
   /** By `<pack>/<file>`. */
   images: Readonly<Record<string, string>>;
 };
 export type BundledStampPaintStyles = Readonly<Record<string, BundledStampPaintStyle>>;
 
-/** A style ready to paint with: each of its brushes as its pack normalized it, its palette and its paper. */
+/** A style ready to paint with: each of its brushes read from its pack's source, its palette and its paper. */
 export type ResolvedStampPaintStyle<S extends StampPaintStyle = StampPaintStyle> = {
   name: string;
   brushes: { readonly [K in keyof S['brushes']]: StampBrush };
@@ -120,14 +76,14 @@ export type ResolvedStampPaintStyle<S extends StampPaintStyle = StampPaintStyle>
 };
 
 /**
- * `style`, named `name`, with its brushes looked up in its packs' manifests. Throws on a brush its pack lacks, which
- * the bundle's check (lib/picture/stamp-paint/engine/project-styles.ts) has already refused.
+ * `style`, named `name`, with its brushes read from its packs' sources. Throws on a brush its pack lacks, which the
+ * bundle's check (lib/picture/stamp-paint/engine/project-styles.ts) has already refused.
  */
-export function resolveStampPaintStyle<S extends StampPaintStyle>(name: string, style: S, manifests: Readonly<Record<string, StampPaintPackManifest>>): ResolvedStampPaintStyle<S> {
+export function resolveStampPaintStyle<S extends StampPaintStyle>(name: string, style: S, packs: Readonly<Record<string, StampPaintPack>>): ResolvedStampPaintStyle<S> {
   const brushes = Object.fromEntries(Object.entries(style.brushes).map(([key, { pack, brush }]) => {
-    const found = manifests[pack]?.brushes[brush];
+    const found = packs[pack] && resolveStampPaintPackBrush(packs[pack], brush);
     if (!found) throw new Error(`stamp paint: ${name}'s brush ${key} is ${pack}'s ${JSON.stringify(brush)}, which its manifest lacks`);
-    return [key, found];
+    return [key, found.brush];
   }));
   const { color, image, grain } = style.paper;
   const paper: StampPaintPaper = {

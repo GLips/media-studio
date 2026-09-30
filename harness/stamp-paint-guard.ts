@@ -1,11 +1,12 @@
-// node harness/stamp-paint-guard.ts <fingerprint|manifests|reports> (npm run brushes:guard -- …): what holds a
+// node harness/stamp-paint-guard.ts <fingerprint|brushes|reports> (npm run brushes:guard -- …): what holds a
 // restructuring of the brush engine to "nothing painted changes", brush by brush
 // (lib/picture/stamp-paint/engine/stamp-paint-guard.ts).
 import { defineCommand } from 'citty';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
-  diffStampBrushSheetReports, diffStampPaintFingerprints, diffStampPaintManifests, fingerprintStampPaintPacks, type StampPaintFingerprints,
+  diffStampBrushSheetReports, diffStampPaintBrushSnapshots, diffStampPaintFingerprints, fingerprintStampPaintPacks, snapshotStampPaintBrushes,
+  type StampPaintBrushSnapshot, type StampPaintFingerprints,
 } from '#lib/picture/stamp-paint/engine/stamp-paint-guard.ts';
 import { STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { runHarnessCommand } from './run-harness-command.ts';
@@ -39,14 +40,21 @@ const fingerprintCommand = defineCommand({
   },
 });
 
-const manifestsCommand = defineCommand({
-  meta: { name: 'manifests', description: "Where two pack manifests differ, brush by brush, a JSON path each; fails on any difference." },
+const brushesCommand = defineCommand({
+  meta: { name: 'brushes', description: "Read every imported pack's brushes from their sources; write them to a file, or check them against one, a JSON path per difference, failing on any." },
   args: {
-    before: { type: 'positional', required: true, description: 'A manifest.json' },
-    after: { type: 'positional', required: true, description: 'Another' },
+    write: { type: 'string', description: 'Write the brushes here' },
+    check: { type: 'string', description: 'Check against the brushes written here' },
   },
   run({ args }) {
-    report('manifest fields', diffStampPaintManifests(readJson(args.before), readJson(args.after)));
+    if (!args.write === !args.check) throw new Error('brushes guard brushes: give --write <file> or --check <file>');
+    const snapshot = snapshotStampPaintBrushes(STUDIO_STYLES_DIR);
+    if (args.write) {
+      writeFileSync(resolve(args.write), `${JSON.stringify(snapshot, null, 1)}\n`);
+      console.error(`brushes guard: ${Object.keys(snapshot).length} packs' brushes written into ${args.write}`);
+      return;
+    }
+    report('brush fields', diffStampPaintBrushSnapshots(readJson<StampPaintBrushSnapshot>(args.check!), snapshot));
   },
 });
 
@@ -64,5 +72,5 @@ const reportsCommand = defineCommand({
 
 await runHarnessCommand(defineCommand({
   meta: { name: 'stamp-paint-guard', description: 'Hold a restructuring of the brush engine to painting nothing differently' },
-  subCommands: { fingerprint: fingerprintCommand, manifests: manifestsCommand, reports: reportsCommand },
+  subCommands: { fingerprint: fingerprintCommand, brushes: brushesCommand, reports: reportsCommand },
 }));

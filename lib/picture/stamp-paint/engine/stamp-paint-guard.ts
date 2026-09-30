@@ -1,14 +1,15 @@
 // stamp-paint-guard.ts: `npm run brushes:guard`, what holds a restructuring of the brush engine to "nothing painted
 // changes". A fingerprint hashes the compiled stamps of every brush of every imported pack in every style, painted as
 // its fidelity sheet paints it and in a fixed probe painting (placed stamps and a hand-drawn stroke), so placement,
-// seeding and the recipe are checked in Node, brush by brush, without the GPU. Its diffs read two manifests, or two
-// sheet reports, brush by brush: a total can hide offsetting changes.
+// seeding and the recipe are checked in Node, brush by brush, without the GPU. A brush snapshot holds every pack's
+// brushes as their sources read, and its diff and the sheet reports' go brush by brush: a total can hide offsetting
+// changes.
 //
 // It holds to a tolerance, not to the bit: a stamp's numbers may drift by float order (STAMP_DRIFT), a brush's score
 // by SCORE_DRIFT and a pack's total by TOTAL_DRIFT, as nothing that small shows in a painting.
 //
 // Negative space: a fingerprint hashes stamps, not the brush, so a brush reshaped without moving a stamp keeps it; the
-// manifest diff shows the reshaping, and the sheet's scores what the GPU does with it.
+// brush snapshot's diff shows the reshaping, and the sheet's scores what the GPU does with it.
 
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -17,8 +18,9 @@ import { photoshopReferencePainting } from '../models/photoshop-reference-stroke
 import { procreatePreviewPainting } from '../models/procreate-preview-stroke.ts';
 import type { StampBrush } from '../models/stamp-brush.ts';
 import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint } from '../models/stamp-paint-recipe.ts';
-import { STAMP_PAINT_PACK_MANIFEST, type StampPaintPackManifest } from '../models/style.ts';
+import { resolveStampPaintPackBrushes, STAMP_PAINT_PACK_MANIFEST, stampPaintPackDiameter, type StampPaintPack } from '../models/stamp-paint-pack.ts';
 import { readPhotoshopReferenceStrokes } from './photoshop-reference-target.ts';
+import { readStampPaintPackDir } from './stamp-paint-pack-files.ts';
 
 /**
  * A painting's stamps: a hash of them exactly, their count, and each numeric field summed over them, so a hash that
@@ -83,23 +85,35 @@ function printMoved(before: StampPaintingPrint, after: StampPaintingPrint): stri
   return moved.length ? moved.map((key) => `${key} ${before.sums[key]} → ${after.sums[key]}`).join(', ') : undefined;
 }
 
+/** Every imported pack of every style in `stylesDir`, by `<style>/<pack>`, with its folder. */
+function importedStampPaintPacks(stylesDir: string): { id: string; dir: string; pack: StampPaintPack }[] {
+  return readdirSync(stylesDir).flatMap((style) => {
+    const brushes = join(stylesDir, style, 'brushes');
+    return existsSync(brushes)
+      ? readdirSync(brushes).filter((pack) => existsSync(join(brushes, pack, STAMP_PAINT_PACK_MANIFEST))).map((pack) => ({ id: `${style}/${pack}`, dir: join(brushes, pack), pack: readStampPaintPackDir(join(brushes, pack)) }))
+      : [];
+  });
+}
+
+/** Each pack, `<style>/<pack>`, to its brushes as their sources read, by name. */
+export type StampPaintBrushSnapshot = Record<string, Record<string, StampBrush>>;
+
+/** Every imported pack's brushes as their sources read today, to diff against a later reading. */
+export const snapshotStampPaintBrushes = (stylesDir: string): StampPaintBrushSnapshot =>
+  Object.fromEntries(importedStampPaintPacks(stylesDir).map(({ id, pack }) => [id, resolveStampPaintPackBrushes(pack)]));
+
 /** Every imported pack of every style in `stylesDir`, fingerprinted brush by brush. */
 export function fingerprintStampPaintPacks(stylesDir: string): StampPaintFingerprints {
-  const packs = readdirSync(stylesDir).flatMap((style) => {
-    const brushes = join(stylesDir, style, 'brushes');
-    return existsSync(brushes) ? readdirSync(brushes).filter((pack) => existsSync(join(brushes, pack, STAMP_PAINT_PACK_MANIFEST))).map((pack) => ({ style, pack, dir: join(brushes, pack) })) : [];
-  });
-  return Object.fromEntries(packs.map(({ style, pack, dir }) => {
-    const manifest = JSON.parse(readFileSync(join(dir, STAMP_PAINT_PACK_MANIFEST), 'utf8')) as StampPaintPackManifest;
+  return Object.fromEntries(importedStampPaintPacks(stylesDir).map(({ id, dir, pack: manifest }) => {
     const references = readPhotoshopReferenceStrokes(dir);
-    const brushes = Object.fromEntries(Object.entries(manifest.brushes).map(([name, brush]) => {
-      const preview = manifest.previews[name], reference = preview ? undefined : references.get(name), source = manifest.diameters?.[name];
+    const brushes = Object.fromEntries(Object.entries(resolveStampPaintPackBrushes(manifest)).map(([name, brush]) => {
+      const preview = manifest.previews[name], reference = preview ? undefined : references.get(name), source = stampPaintPackDiameter(manifest, name);
       const sheet = preview ? procreatePreviewPainting(brush, SHEET_DIAMETER, preview.shows)
         : reference ? photoshopReferencePainting(brush, reference.diameter, reference.poseOverrides)
         : procreatePreviewPainting(brush, source ? Math.min(UNPREVIEWED_DIAMETER.max, Math.max(UNPREVIEWED_DIAMETER.min, source)) : SHEET_DIAMETER, 'stroke');
       return [name, { sheet: printPainting(sheet), probe: printPainting(probePainting(brush)) }];
     }));
-    return [`${style}/${pack}`, brushes];
+    return [id, brushes];
   }));
 }
 
@@ -134,12 +148,12 @@ function jsonDifferences(a: unknown, b: unknown, path: string): string[] {
   return [`${path}: ${JSON.stringify(a)} → ${JSON.stringify(b)}`];
 }
 
-/** Where two pack manifests differ, brush by brush and then the rest, a line each. */
-export function diffStampPaintManifests(before: StampPaintPackManifest, after: StampPaintPackManifest): string[] {
-  const names = [...new Set([...Object.keys(before.brushes), ...Object.keys(after.brushes)])];
-  const brushes = names.flatMap((name) => jsonDifferences(before.brushes[name], after.brushes[name], JSON.stringify(name)));
-  const { brushes: _a, ...restBefore } = before, { brushes: _b, ...restAfter } = after;
-  return [...brushes, ...jsonDifferences(restBefore, restAfter, 'manifest')];
+/** Where two brush snapshots differ, pack by pack and brush by brush, a JSON path each. */
+export function diffStampPaintBrushSnapshots(before: StampPaintBrushSnapshot, after: StampPaintBrushSnapshot): string[] {
+  return [...new Set([...Object.keys(before), ...Object.keys(after)])].flatMap((pack) => {
+    const names = [...new Set([...Object.keys(before[pack] ?? {}), ...Object.keys(after[pack] ?? {})])];
+    return names.flatMap((name) => jsonDifferences(before[pack]?.[name], after[pack]?.[name], `${pack} ${JSON.stringify(name)}`));
+  });
 }
 
 type SheetReport = { total: number; entries: { brush: string; comparison?: { score: number } }[] };

@@ -21,8 +21,10 @@ import {
   compareStrokeProfiles, STROKE_SCORE_GRADES, strokeFidelityGrade, type StrokeCoverageProfile, type StrokeFidelityGrade, type StrokeProfileComparison,
 } from '../models/procreate-preview-stroke.ts';
 import type { StampBrush } from '../models/stamp-brush.ts';
-import { STAMP_PAINT_PACK_MANIFEST, type StampPaintPackManifest, type StampPaintStyleFidelity, STAMP_PAINT_FIDELITY_GRADES, type StampPaintStyleGrades } from '../models/style.ts';
+import { resolveStampPaintPackBrushes, stampPaintPackDiameter } from '../models/stamp-paint-pack.ts';
+import { type StampPaintStyleFidelity, STAMP_PAINT_FIDELITY_GRADES, type StampPaintStyleGrades } from '../models/style.ts';
 import { photoshopReferenceStrokePng, readPhotoshopReferenceStrokes } from './photoshop-reference-target.ts';
+import { readStampPaintPackDir } from './stamp-paint-pack-files.ts';
 
 const SHEET_PAGE = fileURLToPath(new URL('../studio/stamp-brush-sheet-page.ts', import.meta.url));
 /** Rounds of fitting the diameter to the preview's thickness; thickness follows diameter closely, so two land within a few percent. */
@@ -103,12 +105,10 @@ export async function writeStampBrushSheet({ stylesDir, style, pack, out, only }
   stylesDir: string; style: string; pack: string; out?: string; only?: readonly string[];
 }): Promise<StampBrushSheet> {
   const styleDir = join(stylesDir, style), packDir = join(styleDir, 'brushes', pack);
-  const manifestFile = join(packDir, STAMP_PAINT_PACK_MANIFEST);
-  if (!existsSync(manifestFile)) throw new Error(`brushes sheet: ${pack} isn't imported into work/styles/${style}/brushes/; run studio brushes import first`);
-  const manifest = JSON.parse(readFileSync(manifestFile, 'utf8')) as StampPaintPackManifest;
+  const manifest = readStampPaintPackDir(packDir), brushes = resolveStampPaintPackBrushes(manifest);
   const notes = (await readStyleFidelity(styleDir))[pack] ?? {};
-  const names = Object.keys(manifest.brushes).filter((name) => !only || only.includes(name));
-  const missing = only?.filter((name) => !manifest.brushes[name]) ?? [];
+  const names = Object.keys(brushes).filter((name) => !only || only.includes(name));
+  const missing = only?.filter((name) => !brushes[name]) ?? [];
   if (missing.length) throw new Error(`brushes sheet: ${pack} has no brush ${missing.map((name) => JSON.stringify(name)).join(', ')}`);
 
   const dir = out ?? join(packDir, 'fidelity');
@@ -118,14 +118,14 @@ export async function writeStampBrushSheet({ stylesDir, style, pack, out, only }
   const entries = await withStampBrushSheetPage(stylesDir, async (call) => {
     const done: StampBrushSheetEntry[] = [];
     for (const name of names) {
-      const brush = manifest.brushes[name], previewFile = manifest.previews[name]?.image, shows = manifest.previews[name]?.shows ?? 'stroke';
+      const brush = brushes[name], previewFile = manifest.previews[name]?.image, shows = manifest.previews[name]?.shows ?? 'stroke';
       const reference = previewFile ? undefined : references.get(name);
       const target = previewFile ? { src: packFile(style, pack, previewFile), label: 'Procreate preview' as const }
         : reference ? { src: photoshopReferenceStrokePng(reference), label: 'Photoshop reference' as const } : undefined;
       const preview = target ? await call<StrokeCoverageProfile | null>('measureStrokeTarget', target.src) : null;
       const { diameter, ...painted } = reference
         ? { diameter: reference.diameter, ...await call<{ png?: string; profile: StrokeCoverageProfile | null }>('paintOnPhotoshopReferenceStroke', brush, reference.diameter, reference.poseOverrides, true) }
-        : await paintAtPreviewThickness(call, brush, shows, preview, true, manifest.diameters?.[name]);
+        : await paintAtPreviewThickness(call, brush, shows, preview, true, stampPaintPackDiameter(manifest, name));
       const comparison = preview && painted.profile ? compareStrokeProfiles(preview, painted.profile) : undefined;
       const note = notes[name], grade = comparison && strokeFidelityGrade(comparison.score);
       const lines = [

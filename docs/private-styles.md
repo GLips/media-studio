@@ -64,14 +64,13 @@ brushes/<pack>/
   fidelity/    the brush fidelity sheet, once drawn (npm run brushes:sheet)
   reference/   Photoshop's own renders of the pack's brushes (npm run photoshop -- references, docs/photoshop-capture.md)
   papers/      each .procreate canvas in the zip, as Procreate shows it, and its tooth as <paper>.grain.png
-  manifest.json
-  procreate-sources.json  each brush's Procreate settings as read, for npm run brushes:fit
-  photoshop-sources.json  each Photoshop preset as read, and the .abr or .tpl it came from
+  manifest.json  each brush's source as read (Procreate settings, or a Photoshop preset and the .abr or .tpl it
+                 came from), the palettes and papers; a style reads each brush from its source when it resolves
 ```
 
 A Photoshop pack reads `.abr` version 6 and later (everything since Photoshop CS) and `.tpl` tool presets, whose
 tool options (a Mixer Brush's wet, load and mix, the tool's flow and mode) sit beside the brush. Names Photoshop
-repeats across a file's groups get the group in brackets. Its manifest has no previews but `diameters`, each preset's
+repeats across a file's groups get the group in brackets. Its manifest has no previews, and each preset keeps its
 own size in pixels; the sheet measures its brushes against `reference/`, and paints one with no reference at its own
 size, unscored. The Mixer Brush's settings are carried in the brush's `wetMix` and
 noted unsupported: nothing paints wet mixing yet (vid-90). Don't import a pack whose licence limits its brushes to
@@ -127,7 +126,8 @@ rim, how far each glaze mode builds within its stroke, how flow and depth curve)
 constant of its `ProcreateReading`, checked in as `lib/picture/stamp-paint/models/procreate-reading.ts`. `npm run
 brushes:fit -- --packs watercolor/vvds` fits every constant at once against every previewed brush of the packs given, by
 the sheet's summed score, with each brush that ends up further off than it started counted again. It's deterministic,
-takes a few minutes, and writes the file; re-import the packs and re-draw their sheets after. The constants are the
+takes a few minutes, and writes the file; re-draw the packs' sheets after (a brush is read from its source when a
+style resolves it, so nothing is imported again). The constants are the
 same for every brush of every pack: a brush is never tuned alone, so what fits one pack's previews holds for the next.
 Photoshop's pipeline was identified stage by stage from probe captures (vid-97), so its importer reads almost every
 setting exactly; what's left, how far 100% scatter strays and how far 100% angle jitter turns (at least a whole turn

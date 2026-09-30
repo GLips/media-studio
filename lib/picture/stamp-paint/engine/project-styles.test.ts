@@ -3,12 +3,16 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { studioTempRoot } from '#lib/platform/temp/engine/studio-temp.ts';
-import { STAMP_PAINT_ASSETS_VERSION } from '../models/style.ts';
+import { STAMP_PAINT_ASSETS_VERSION } from '../models/stamp-paint-pack.ts';
 import { writeProjectStylesModule } from './project-styles.ts';
 
 let workspaces = 0;
-const washBrush = { tip: { image: { style: 'wash', pack: 'vvds', file: 'tips/wash-01.png' }, roundness: 1 } };
-const toothBrush = { tip: { image: { style: 'wash', pack: 'grain', file: 'tips/tooth.png' }, roundness: 1 } };
+const washBrush = { main: { settings: {}, tip: { style: 'wash', pack: 'vvds', file: 'tips/wash-01.png' } } };
+const toothBrush = { main: { settings: {}, tip: { style: 'wash', pack: 'grain', file: 'tips/tooth.png' } } };
+/** A Procreate pack's manifest holding `brushes`, listing `files`. */
+const packManifest = (files: readonly string[], brushes: object, version = STAMP_PAINT_ASSETS_VERSION) => ({
+  version, app: 'procreate', files, brushes, source: { archive: 'pack.zip', sha256: '' }, skipped: {}, previews: {}, palettes: {}, papers: {},
+});
 
 function washProject(styles: readonly string[]) {
   const root = join(studioTempRoot(), `styles-${++workspaces}`);
@@ -34,7 +38,7 @@ function washProject(styles: readonly string[]) {
 
 test('a named style stops the bundle until each pack is imported, whole, at the version the studio reads, then serves the images it paints with', () => {
   const { project, importPack } = washProject(['wash']);
-  importPack('vvds', { version: STAMP_PAINT_ASSETS_VERSION, files: ['tips/wash-01.png', 'grains/paper.png'], brushes: {} }, ['tips/wash-01.png']);
+  importPack('vvds', packManifest(['tips/wash-01.png', 'grains/paper.png'], {}), ['tips/wash-01.png']);
   assert.throws(() => writeProjectStylesModule(project), {
     message: 'styles: wash can\'t paint until its packs are imported in work/styles/wash/ (brushes/ isn\'t in git, so each machine imports its own; docs/private-styles.md):\n'
       + '  brushes/vvds/grains/paper.png: VVDS Watercolor Studio, from Creative Market\n'
@@ -42,13 +46,13 @@ test('a named style stops the bundle until each pack is imported, whole, at the 
       + '  brushes.wash: vvds has no brush "Wet Wash"; import it again from VVDS Watercolor Studio, from Creative Market',
   });
 
-  importPack('vvds', { version: STAMP_PAINT_ASSETS_VERSION, files: ['tips/wash-01.png', 'grains/paper.png'], brushes: { 'Wet Wash': washBrush } }, ['grains/paper.png']);
-  importPack('grain', { version: STAMP_PAINT_ASSETS_VERSION - 1, files: [], brushes: {} }, []);
+  importPack('vvds', packManifest(['tips/wash-01.png', 'grains/paper.png'], { 'Wet Wash': washBrush }), ['grains/paper.png']);
+  importPack('grain', packManifest([], {}, STAMP_PAINT_ASSETS_VERSION - 1), []);
   assert.throws(() => writeProjectStylesModule(project), {
     message: new RegExp(`  brushes/grain/: imported as version ${STAMP_PAINT_ASSETS_VERSION - 1}, and the studio reads version ${STAMP_PAINT_ASSETS_VERSION}; import it again from Grain Pack, from the Grain shop$`),
   });
 
-  importPack('grain', { version: STAMP_PAINT_ASSETS_VERSION, files: [], brushes: { Tooth: toothBrush } }, []);
+  importPack('grain', packManifest([], { Tooth: toothBrush }), []);
   const module = readFileSync(writeProjectStylesModule(project), 'utf8');
   assert.match(module, /^import image0_0 from "\.\.\/\.\.\/\.\.\/styles\/wash\/brushes\/vvds\/tips\/wash-01\.png";$/m);
   assert.match(module, /^      "vvds\/tips\/wash-01\.png": image0_0,$/m);
@@ -56,8 +60,8 @@ test('a named style stops the bundle until each pack is imported, whole, at the 
 
 test("a style's paper must be a file its pack's import wrote", () => {
   const { project, importPack, writeStyle } = washProject(['wash']);
-  importPack('vvds', { version: STAMP_PAINT_ASSETS_VERSION, files: ['papers/cold-press.png'], brushes: { 'Wet Wash': washBrush } }, ['papers/cold-press.png']);
-  importPack('grain', { version: STAMP_PAINT_ASSETS_VERSION, files: [], brushes: { Tooth: toothBrush } }, []);
+  importPack('vvds', packManifest(['papers/cold-press.png'], { 'Wet Wash': washBrush }), ['papers/cold-press.png']);
+  importPack('grain', packManifest([], { Tooth: toothBrush }), []);
   writeStyle({ color: '#f4efe4', image: { pack: 'vvds', file: 'papers/hot-press.png' }, grain: { image: { pack: 'paper', file: 'tooth.png' }, scale: 1, depth: 0.3 } });
   assert.throws(() => writeProjectStylesModule(project), {
     message: /  paper\.image: vvds has no file papers\/hot-press\.png; import it again from VVDS Watercolor Studio, from Creative Market\n  paper\.grain: names the pack paper, which isn't in packs$/,

@@ -1,9 +1,9 @@
 // import-procreate-pack.ts: `studio brushes import`. Turns a bought Procreate pack (a .brushset, or the zip it came in,
 // which may also hold .swatches palettes and .procreate paper canvases) into a style's assets in
 // work/styles/<style>/brushes/<pack>/: each brush's tip and grain turned to dark-is-paint and downsized, its dual's
-// likewise, its Procreate preview, the papers and a manifest (StampPaintPackManifest) holding the normalized brushes
-// and what didn't carry over; and procreate-sources.json, each brush's own settings and images, which `studio brushes
-// fit` reads again with other constants. An import replaces the pack's folder whole, and only once it has succeeded.
+// likewise, its Procreate preview, the papers and a manifest (StampPaintPack) holding each brush's own settings and
+// images, which a style reads into a brush when it resolves. An import replaces what it writes whole, and only once it
+// has succeeded.
 //
 // A .brushset is a zip of one folder per brush, named by UUID, in the order brushset.plist lists: Brush.archive (an
 // NSKeyedArchiver plist of settings), Shape.png, Grain.png, QuickLook/Thumbnail.png and, for a dual brush, Sub01/
@@ -13,19 +13,16 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
-import {
-  normalizeProcreateBrush, procreateGrainNegated, procreateTipNegated, type ProcreateBrushSettings, type ProcreateBrushSource,
-} from '../models/procreate-brush.ts';
-import type { StampBrush } from '../models/stamp-brush.ts';
-import type { StampPaintColor } from '../models/stamp-paint-recipe.ts';
+import { procreateGrainNegated, procreateTipNegated, type ProcreateBrushSettings, type ProcreateBrushSource } from '../models/procreate-brush.ts';
 import {
   STAMP_PAINT_ASSETS_VERSION, STAMP_PAINT_PACK_MANIFEST,
-  type StampBrushSupportNote, type StampPaintPackManifest, type StampPaintPackPaper, type StampPaintPackPreview,
-} from '../models/style.ts';
+  type ProcreatePackBrush, type StampBrushSupportNote, type StampPaintPack, type StampPaintPackPaper, type StampPaintPackPreview,
+} from '../models/stamp-paint-pack.ts';
+import type { StampPaintColor } from '../models/stamp-paint-recipe.ts';
 import { parseBinaryPlist, unarchiveKeyedPlist } from './binary-plist.ts';
 import { readProcreateComposite } from './procreate-canvas.ts';
 import {
-  fitWithin, PROCREATE_SOURCES, replaceStampPaintPack, sha256OfFile, stampPackSlug as slugOf, STAMP_PACK_GRAIN_MAX as GRAIN_MAX, STAMP_PACK_PAPER_MAX as PAPER_MAX,
+  fitWithin, replaceStampPaintPack, sha256OfFile, stampPackSlug as slugOf, STAMP_PACK_GRAIN_MAX as GRAIN_MAX, STAMP_PACK_PAPER_MAX as PAPER_MAX,
   STAMP_PACK_TIP_MAX as TIP_MAX, writeStampPackPng as writeBrushImage, type ImportStampPaintPackOptions,
 } from './stamp-paint-pack-files.ts';
 import { openZipBytes, openZipFile, type ZipArchive } from './zip-archive.ts';
@@ -36,14 +33,11 @@ import { openZipBytes, openZipFile, type ZipArchive } from './zip-archive.ts';
  */
 const PROCREATE_ORIENTATION_TRANSPOSE: Readonly<Record<number, string>> = { 3: 'clock_flip', 4: 'cclock_flip' };
 
-/** A pack's procreate-sources.json: each imported brush's settings and images, and its dual's, by its name. */
-export type ProcreatePackSources = Record<string, { main: ProcreateBrushSource; dual?: ProcreateBrushSource }>;
-
 /** Settings as JSON keeps them: numbers, booleans, strings and pressure curves; bytes and dates aren't a brush's painting. */
 const jsonSettings = (settings: ProcreateBrushSettings): ProcreateBrushSettings => Object.fromEntries(Object.entries(settings).filter(([key, value]) =>
   typeof value === 'number' || typeof value === 'boolean' || typeof value === 'string' || (key.endsWith('Curve') && value !== null && typeof value === 'object')));
 
-export type ImportedProcreatePack = { dir: string; manifest: StampPaintPackManifest; skipped: readonly string[] };
+export type ImportedProcreatePack = { dir: string; manifest: StampPaintPack };
 
 /** Brushes in the order brushset.plist lists them, by folder, with the set's name. */
 function readBrushsetOrder(brushset: ZipArchive): { name: string; folders: string[] } {
@@ -113,9 +107,7 @@ function writePackAssets(archive: string, dir: string, style: string, pack: stri
   if (!brushsets.length) throw new Error(`brushes import: ${archive} holds no .brushset`);
   for (const sub of ['tips', 'grains', 'previews', 'papers']) mkdirSync(join(dir, sub), { recursive: true });
 
-  const sources: ProcreatePackSources = {};
-  const brushes: Record<string, StampBrush> = {}, support: Record<string, StampBrushSupportNote[]> = {}, previews: Record<string, StampPaintPackPreview> = {};
-  const skipped: string[] = [];
+  const brushes: Record<string, ProcreatePackBrush> = {}, skipped: Record<string, StampBrushSupportNote[]> = {}, previews: Record<string, StampPaintPackPreview> = {};
   const files = new Set<string>();
   const write = (file: string, body: () => void) => {
     if (files.has(file)) throw new Error(`brushes import: two of the pack's brushes or papers would both write ${file}; their names differ only in punctuation`);
@@ -132,10 +124,9 @@ function writePackAssets(archive: string, dir: string, style: string, pack: stri
       const name = String(settings.name ?? '').trim();
       // Procreate's section headers are brushes with a name and nothing to paint; their names hold no letter or digit.
       if (!/[\p{L}\p{N}]/u.test(name)) continue;
-      if (brushes[name] || support[name]) throw new Error(`brushes import: two brushes are named ${JSON.stringify(name)}, and a pack's manifest keys brushes by name`);
+      if (brushes[name] || skipped[name]) throw new Error(`brushes import: two brushes are named ${JSON.stringify(name)}, and a pack's manifest keys brushes by name`);
       if (!has(`${folder}/Shape.png`)) {
-        support[name] = [{ level: 'unsupported', setting: 'bundledShapePath', detail: `the tip is Procreate's own ${String(settings.bundledShapePath)}, which the pack doesn't hold; not imported` }];
-        skipped.push(name);
+        skipped[name] = [{ level: 'unsupported', setting: 'bundledShapePath', detail: `the tip is Procreate's own ${String(settings.bundledShapePath)}, which the pack doesn't hold; not imported` }];
         continue;
       }
       // A name in a script slugOf drops (水彩) is filed under its folder's UUID.
@@ -151,12 +142,13 @@ function writePackAssets(archive: string, dir: string, style: string, pack: stri
       const dualShapeMissing = hasDual && !has(`${folder}/Sub01/Shape.png`);
       const dual = dualSettings && !dualShapeMissing ? source(`${folder}/Sub01/`, '.dual', dualSettings) : undefined;
       const main = source(`${folder}/`, '', settings);
-      const normalized = normalizeProcreateBrush(name, main, dual);
-      sources[name] = { main: { ...main, settings: jsonSettings(main.settings) }, ...(dual && { dual: { ...dual, settings: jsonSettings(dual.settings) } }) };
-      brushes[name] = normalized.brush;
-      support[name] = dualShapeMissing
-        ? [...normalized.support, { level: 'unsupported', setting: 'Sub01 bundledShapePath', detail: `the dual's tip is Procreate's own ${String(dualSettings?.bundledShapePath)}, which the pack doesn't hold; imported without its dual` }]
-        : normalized.support;
+      brushes[name] = {
+        main: { ...main, settings: jsonSettings(main.settings) },
+        ...(dual && { dual: { ...dual, settings: jsonSettings(dual.settings) } }),
+        ...(dualShapeMissing && {
+          dropped: [{ level: 'unsupported', setting: 'Sub01 bundledShapePath', detail: `the dual's tip is Procreate's own ${String(dualSettings?.bundledShapePath)}, which the pack doesn't hold; imported without its dual` }],
+        }),
+      };
       if (has(`${folder}/QuickLook/Thumbnail.png`)) {
         write(`previews/${slug}.png`, () => writeFileSync(join(dir, `previews/${slug}.png`), brushset.read(`${folder}/QuickLook/Thumbnail.png`)));
         // Procreate previews a brush set to `stamp` as a single stamp, not a stroke.
@@ -182,17 +174,17 @@ function writePackAssets(archive: string, dir: string, style: string, pack: stri
   }
   outer?.close();
 
-  const manifest: StampPaintPackManifest = {
+  const manifest: StampPaintPack = {
     version: STAMP_PAINT_ASSETS_VERSION,
+    app: 'procreate',
     files: [...files].sort(),
     brushes,
     source: { archive: basename(archive), sha256: sha256OfFile(archive) },
+    skipped,
     previews,
-    support,
     palettes,
     papers,
   };
-  writeFileSync(join(dir, PROCREATE_SOURCES), `${JSON.stringify(sources, null, 1)}\n`);
-  writeFileSync(join(dir, STAMP_PAINT_PACK_MANIFEST), `${JSON.stringify(manifest, null, 2)}\n`);
-  return { manifest, skipped };
+  writeFileSync(join(dir, STAMP_PAINT_PACK_MANIFEST), `${JSON.stringify(manifest, null, 1)}\n`);
+  return { manifest };
 }

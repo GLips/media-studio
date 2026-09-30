@@ -12,11 +12,12 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { createRequire } from 'node:module';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import type { ProjectDeclaration } from '#lib/platform/project/models/capability.ts';
-import { resolveStampPaintStyle, STAMP_PAINT_ASSETS_VERSION, STAMP_PAINT_PACK_MANIFEST, stampPaintStyleImages, type StampPaintPackManifest, type StampPaintStyle } from '../models/style.ts';
+import { readStampPaintPack, STAMP_PAINT_PACK_MANIFEST, type StampPaintPack } from '../models/stamp-paint-pack.ts';
+import { resolveStampPaintStyle, stampPaintStyleImages, type StampPaintStyle } from '../models/style.ts';
 
 const stylesDirFor = (projectDir: string) => join(resolve(projectDir), '..', '..', 'styles');
 const requireDefault = <T>(file: string) => (createRequire(file)(file) as { default: T }).default;
-const readManifest = (styleDir: string, pack: string) => JSON.parse(readFileSync(join(styleDir, 'brushes', pack, STAMP_PAINT_PACK_MANIFEST), 'utf8')) as StampPaintPackManifest;
+const readManifest = (styleDir: string, pack: string) => readStampPaintPack(JSON.parse(readFileSync(join(styleDir, 'brushes', pack, STAMP_PAINT_PACK_MANIFEST), 'utf8')));
 const projectStylesModuleFor = (projectDir: string) => join(resolve(projectDir), 'generated', 'stamp-paint-styles.ts');
 
 function listStyles(projectDir: string) {
@@ -26,13 +27,15 @@ function listStyles(projectDir: string) {
 
 /** What's wrong with one style's imported packs on this machine, a line each; none when it can paint. */
 function styleAssetProblems(dir: string, style: StampPaintStyle): string[] {
-  const manifests = new Map<string, StampPaintPackManifest>();
+  const manifests = new Map<string, StampPaintPack>();
   const packProblems = Object.entries(style.packs).flatMap(([pack, { source }]) => {
     const manifestFile = join(dir, 'brushes', pack, STAMP_PAINT_PACK_MANIFEST);
     if (!existsSync(manifestFile)) return [`  brushes/${pack}/${STAMP_PAINT_PACK_MANIFEST}: ${source}`];
-    const manifest = readManifest(dir, pack);
-    if (manifest.version !== STAMP_PAINT_ASSETS_VERSION) {
-      return [`  brushes/${pack}/: imported as version ${manifest.version}, and the studio reads version ${STAMP_PAINT_ASSETS_VERSION}; import it again from ${source}`];
+    let manifest: StampPaintPack;
+    try {
+      manifest = readManifest(dir, pack);
+    } catch (error) {
+      return [`  brushes/${pack}/: ${(error as Error).message}; import it again from ${source}`];
     }
     manifests.set(pack, manifest);
     return manifest.files.filter((file) => !existsSync(join(dir, 'brushes', pack, file))).map((file) => `  brushes/${pack}/${file}: ${source}`);

@@ -61,7 +61,7 @@ const fitCommand = defineCommand({
     for (const key of Object.keys(fit.before) as (keyof typeof fit.before)[]) {
       if (fit.before[key] !== fit.after[key]) console.log(`moved ${key}: ${fit.before[key]} → ${fit.after[key]}`);
     }
-    console.error(`brushes fit: total ${fit.total.before.toFixed(3)} → ${fit.total.after.toFixed(3)}${fit.written ? `; wrote ${relative(STUDIO_ROOT, fit.written)}, so re-import the packs` : ''}`);
+    console.error(`brushes fit: total ${fit.total.before.toFixed(3)} → ${fit.total.after.toFixed(3)}${fit.written ? `; wrote ${relative(STUDIO_ROOT, fit.written)}; re-draw the sheets` : ''}`);
   },
 });
 

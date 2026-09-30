@@ -18,7 +18,7 @@ import { PHOTOSHOP_POOLING } from './coverage-formulas.ts';
 import { PHOTOSHOP_PIXEL_TIP_DIAMETER, photoshopComputedTipSpan } from './photoshop-computed-tip.ts';
 import { PHOTOSHOP_READING } from './photoshop-reading.ts';
 import type { StampBlend, StampBrush, StampBrushAsset, StampBrushColorDynamics, StampBrushLayer, StampBrushTip, StampBrushWetMix, StampDualBlend, StampGrainBlend } from './stamp-brush.ts';
-import type { StampBrushSupportNote } from './style.ts';
+import type { StampBrushSupportNote } from './stamp-paint-pack.ts';
 
 /**
  * The constants that turn Photoshop's settings into the studio's where Photoshop's meaning isn't published. Each is a
@@ -43,12 +43,12 @@ export type PhotoshopTipImage = { kind: 'sampled'; id: string; flipX: boolean; f
 
 /**
  * One preset and where its images landed among the pack's assets: its tip's and its dual's (none when the file lacks
- * the sample the preset names) with a sampled tip's own size in pixels, and its texture's pattern with the pattern's
- * width in pixels.
+ * the sample the dual names; a brush whose own tip is missing isn't imported) with a sampled tip's own size in
+ * pixels, and its texture's pattern with the pattern's width in pixels.
  */
 export type PhotoshopBrushSource = {
   preset: PhotoshopDescriptor;
-  tip?: StampBrushAsset;
+  tip: StampBrushAsset;
   tipSample?: PhotoshopSampleSize;
   dualTip?: StampBrushAsset;
   dualTipSample?: PhotoshopSampleSize;
@@ -261,7 +261,7 @@ function readMainLayer(source: PhotoshopBrushSource, notes: StampBrushSupportNot
   }
 
   return {
-    tip: tipOf(tip, source.tip!, source.tipSample, '', note),
+    tip: tipOf(tip, source.tip, source.tipSample, '', note),
     ...(grain && { grain }),
     spacing: spacingOf(tip, '', note),
     stepping: 'eachStamp',
@@ -354,14 +354,10 @@ function readTool(p: PhotoshopDescriptor, note: Note): { blend: StampBlend; wetM
   return { blend: blend ?? 'normal', wetMix };
 }
 
-/**
- * `source`'s preset read into a StampBrush named `name`, and what didn't carry over. A preset whose tip or dual tip
- * the file lacks throws: the importer skips those before it asks.
- */
+/** `source`'s preset read into a StampBrush named `name`, and what didn't carry over. */
 export function normalizePhotoshopBrush(name: string, source: PhotoshopBrushSource, reading: PhotoshopReading = PHOTOSHOP_READING): { brush: StampBrush; support: StampBrushSupportNote[] } {
   const support: StampBrushSupportNote[] = [];
   const note: Note = (level, setting, detail) => support.push({ level, setting, detail });
-  if (!source.tip) throw new Error(`photoshop brush ${JSON.stringify(name)}: its tip isn't among the pack's images`);
   const { blend, wetMix } = readTool(source.preset, note);
   const color = readColorDynamics(source.preset, note, reading);
   const brush: StampBrush = { name, blend, ...(color && { color }), ...readMainLayer(source, support, reading) };

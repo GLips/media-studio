@@ -9,7 +9,8 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
-import { STAMP_PAINT_PACK_MANIFEST, type BundledStampPaintStyles, type StampPaintPackManifest, type StampPaintStyle } from '../models/style.ts';
+import { readStampPaintPack, STAMP_PAINT_PACK_MANIFEST } from '../models/stamp-paint-pack.ts';
+import type { BundledStampPaintStyles, StampPaintStyle } from '../models/style.ts';
 
 /** Every workspace style, as a bundle would serve it, with every file its imported packs list. */
 async function readNodeStampPaintStyles(stylesDir: string): Promise<BundledStampPaintStyles> {
@@ -19,7 +20,7 @@ async function readNodeStampPaintStyles(stylesDir: string): Promise<BundledStamp
     const style = (await import(pathToFileURL(join(dir, 'style.ts')).href) as { default: StampPaintStyle }).default;
     const manifests = Object.fromEntries(Object.keys(style.packs).flatMap((pack) => {
       const file = join(dir, 'brushes', pack, STAMP_PAINT_PACK_MANIFEST);
-      return existsSync(file) ? [[pack, JSON.parse(readFileSync(file, 'utf8')) as StampPaintPackManifest]] : [];
+      return existsSync(file) ? [[pack, readStampPaintPack(JSON.parse(readFileSync(file, 'utf8')))]] : [];
     }));
     const images = Object.fromEntries(Object.entries(manifests).flatMap(([pack, manifest]) =>
       manifest.files.map((file) => [`${pack}/${file}`, pathToFileURL(join(dir, 'brushes', pack, file)).href])));

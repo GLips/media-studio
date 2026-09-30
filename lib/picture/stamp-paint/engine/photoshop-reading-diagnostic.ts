@@ -1,11 +1,10 @@
 // photoshop-reading-diagnostic.ts: `npm run brushes:diagnose`, vid-97's per-brush diagnostic of the PhotoshopReading
 // (models/photoshop-reading-spread.ts says what it reads). Each brush that uses a constant's mechanism is read again
-// from its pack's photoshop-sources.json at each candidate value, painted as the brush fidelity sheet paints it
+// from its pack's manifest at each candidate value, painted as the brush fidelity sheet paints it
 // against its Photoshop reference, and scored; its best candidate is where it lands. It also sums the training brushes
 // under each candidate, the shared fit the spread would justify, and the held-out brushes under the current value and
 // that one. It writes nothing: a constant moves in photoshop-reading.ts by hand, on what this shows.
 
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { normalizePhotoshopBrush, type PhotoshopReading } from '../models/photoshop-brush.ts';
 import { PHOTOSHOP_READING } from '../models/photoshop-reading.ts';
@@ -13,10 +12,9 @@ import {
   PHOTOSHOP_READING_INSENSITIVE, PHOTOSHOP_READING_MULTIPLES, photoshopBrushHeldOut, photoshopReadingSpread, photoshopReadingUses, type PhotoshopReadingSpread,
 } from '../models/photoshop-reading-spread.ts';
 import { compareStrokeProfiles, type StrokeCoverageProfile } from '../models/procreate-preview-stroke.ts';
-import type { PhotoshopPackSources } from './import-photoshop-pack.ts';
 import { photoshopReferenceStrokePng, readPhotoshopReferenceStrokes } from './photoshop-reference-target.ts';
 import { withStampBrushSheetPage } from './stamp-brush-sheet.ts';
-import { PHOTOSHOP_SOURCES } from './stamp-paint-pack-files.ts';
+import { readStampPaintPackDir } from './stamp-paint-pack-files.ts';
 
 /** What a brush that paints nothing scores, as the Procreate fit counts it. */
 const NOTHING_PAINTED = 2;
@@ -39,9 +37,10 @@ export async function diagnosePhotoshopReading({ stylesDir, packs, keys, log }: 
 }): Promise<PhotoshopReadingDiagnosis[]> {
   const brushes = packs.flatMap(({ style, pack }) => {
     const dir = join(stylesDir, style, 'brushes', pack);
-    const sources = JSON.parse(readFileSync(join(dir, PHOTOSHOP_SOURCES), 'utf8')) as PhotoshopPackSources;
+    const manifest = readStampPaintPackDir(dir);
+    if (manifest.app !== 'photoshop') throw new Error(`brushes diagnose: ${style}/${pack} is a Procreate pack; the diagnostic reads Photoshop brushes`);
     const references = readPhotoshopReferenceStrokes(dir);
-    return Object.entries(sources).flatMap(([name, source]) => {
+    return Object.entries(manifest.brushes).flatMap(([name, source]) => {
       const reference = references.get(name);
       return reference ? [{ pack, name, source, reference, heldOut: photoshopBrushHeldOut(pack, name) }] : [];
     });

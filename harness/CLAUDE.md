@@ -5,8 +5,9 @@ against its references. One file per rig, run as `node harness/<rig>.ts <verb>` 
 - `brush-fidelity.ts` (`npm run brushes:sheet`, `npm run brushes:fit`, `npm run brushes:diagnose`,
   `npm run brushes:hand`): the fidelity sheet, the Procreate reading fit, the Photoshop reading's per-brush diagnostic
   and the stroke hand sheet.
-- `stamp-paint-guard.ts` (`npm run brushes:guard -- fingerprint|manifests|reports`): holds a restructuring of the brush
-  engine to painting nothing differently, brush by brush: stamp fingerprints, manifest and sheet-report diffs.
+- `stamp-paint-guard.ts` (`npm run brushes:guard -- fingerprint|brushes|reports`): holds a restructuring of the brush
+  engine to painting nothing visibly differently, brush by brush: stamp fingerprints, brush snapshots and sheet-report
+  diffs, each to a tolerance.
 - `stamp-reference.ts` (`npm run stamp:reference -- probes <run>`): the slow CPU reference renderer against a
   Photoshop probe run, each cell's error split among the stages that own it.
 
