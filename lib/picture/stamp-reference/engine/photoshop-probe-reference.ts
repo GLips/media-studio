@@ -8,15 +8,15 @@
 // but the first, are skipped and counted, not scored.
 
 import { join } from 'node:path';
-import type { PhotoshopCaptureCell, PhotoshopCaptureSheet } from '#lib/picture/photoshop-capture/models/photoshop-capture-plan.ts';
-import { cropPhotoshopCell } from '#lib/picture/photoshop-capture/models/photoshop-capture-cells.ts';
-import { photoshopProbePreset } from '#lib/picture/photoshop-capture/models/photoshop-probe-preset.ts';
-import { PHOTOSHOP_PROBE_RAMP, PHOTOSHOP_PROBE_TIP, photoshopProbeRampValue, photoshopProbeTipPaint, type PhotoshopProbe } from '#lib/picture/photoshop-capture/models/photoshop-probes.ts';
-import { readPhotoshopSheet } from '#lib/picture/photoshop-capture/engine/photoshop-capture.ts';
-import { normalizePhotoshopBrush, PHOTOSHOP_SAMPLE_BORDER, photoshopPatternNegated, photoshopTipImage, type PhotoshopTipImage } from '#lib/picture/stamp-paint/models/photoshop-brush.ts';
-import { drawPhotoshopComputedTip } from '#lib/picture/stamp-paint/models/photoshop-computed-tip.ts';
+import type { PhotoshopCaptureCell, PhotoshopCaptureSheet } from '#lib/picture/photoshop-brushes/models/photoshop-capture-plan.ts';
+import { cropPhotoshopCell } from '#lib/picture/photoshop-brushes/models/photoshop-capture-cells.ts';
+import { photoshopProbePreset } from '#lib/picture/photoshop-brushes/models/photoshop-probe-preset.ts';
+import { PHOTOSHOP_PROBE_RAMP, PHOTOSHOP_PROBE_TIP, photoshopProbeRampValue, photoshopProbeTipPaint, type PhotoshopProbe } from '#lib/picture/photoshop-brushes/models/photoshop-probes.ts';
+import { readPhotoshopSheet } from '#lib/picture/photoshop-brushes/engine/photoshop-capture.ts';
+import { normalizePhotoshopBrush, PHOTOSHOP_SAMPLE_BORDER, photoshopPatternNegated, photoshopTipImage, type PhotoshopTipImage } from '#lib/picture/photoshop-brushes/models/photoshop-brush.ts';
+import { drawPhotoshopComputedTip } from '#lib/picture/photoshop-brushes/models/photoshop-computed-tip.ts';
 import { bindStampBrushImages, type StampBrushAsset } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
-import { STAMP_PACK_TIP_MAX } from '#lib/picture/stamp-paint/engine/stamp-paint-pack-files.ts';
+import { STAMP_PACK_TIP_MAX } from '#lib/picture/stamp-styles/engine/stamp-paint-pack-files.ts';
 import { placeStrokeStamps } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 import { stampReferenceMips, type StampReferenceImage } from '../models/stamp-reference-image.ts';
 import { renderStampReferenceDeposit, type StampReferenceArrangement } from '../models/stamp-reference-deposit.ts';

@@ -1,13 +1,13 @@
 // node harness/stamp-paint-guard.ts <fingerprint|brushes|reports> (npm run brushes:guard -- …): what holds a
 // restructuring of the brush engine to "nothing painted changes", brush by brush
-// (lib/picture/stamp-paint/engine/stamp-paint-guard.ts).
+// (lib/picture/brush-fidelity/engine/stamp-paint-guard.ts).
 import { defineCommand } from 'citty';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   diffStampBrushSheetReports, diffStampPaintBrushSnapshots, diffStampPaintFingerprints, fingerprintStampPaintPacks, snapshotStampPaintBrushes,
   type StampPaintBrushSnapshot, type StampPaintFingerprints,
-} from '#lib/picture/stamp-paint/engine/stamp-paint-guard.ts';
+} from '#lib/picture/brush-fidelity/engine/stamp-paint-guard.ts';
 import { STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { runHarnessCommand } from './run-harness-command.ts';
 

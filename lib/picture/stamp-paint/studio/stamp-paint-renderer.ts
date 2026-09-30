@@ -25,11 +25,10 @@
 import { bindStampBrushImages, type StampBrush, type StampBrushAsset, type StampBrushGrain, type StampBrushLayer } from '../models/stamp-brush.ts';
 import { COVERAGE_FORMULAS_WGSL, stampDualModeIndex, stampGrainModeIndex } from '../models/coverage-formulas.ts';
 import { STAMP_ACCUMULATIONS, STAMP_BLUR_LEVELS, stampResolveOrder } from '../models/stamp-deposit-stages.ts';
-import { visibleStampCountAt, type CompiledStampDeposit, type CompiledStampPaint, type StampRegion } from '../models/stamp-paint-recipe.ts';
+import { visibleStampCountAt, type CompiledStampDeposit, type CompiledStampPaint, type StampPaintPaper, type StampRegion } from '../models/stamp-paint-recipe.ts';
 import type { PlacedStamp } from '../models/stamp-placement.ts';
 import { stampBlurRegion, type StampPixelBox } from '../models/stamp-blur-region.ts';
 import { coarsestStampTipLevel, STAMP_TIP_HULL_SIDES, stampTipHull, type StampTipHull, type StampTipLevel } from '../models/stamp-tip-hull.ts';
-import type { StampPaintPaper } from '../models/style.ts';
 import { PAINT_DEPOSIT_WORDS, STAMP_PAINT_COMPOSITOR_WGSL, stampPaintBlendIndex, writePaintDeposit } from './stamp-paint-compositor.ts';
 import { createStampPaintDevice, FULL_FRAME_WGSL, loadStampPaintImages, readStampTipLevels, type StampPaintImage } from './stamp-paint-gpu.ts';
 import { stampUniformLayout, stampUniformStruct, stampUniformWriter, type StampUniformViews } from './stamp-uniform-layout.ts';

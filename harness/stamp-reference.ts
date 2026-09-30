@@ -4,7 +4,7 @@
 import { defineCommand } from 'citty';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import type { PhotoshopCaptureManifest } from '#lib/picture/photoshop-capture/models/photoshop-capture-plan.ts';
+import type { PhotoshopCaptureManifest } from '#lib/picture/photoshop-brushes/models/photoshop-capture-plan.ts';
 import { scorePhotoshopProbeRun } from '#lib/picture/stamp-reference/engine/photoshop-probe-reference.ts';
 import type { StampResolveStage } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
 import { runHarnessCommand } from './run-harness-command.ts';

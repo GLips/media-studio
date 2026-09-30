@@ -14,7 +14,7 @@ const ASSET_FILE = /\.(ttf|otf|woff2?|wav|mp3|png|jpe?g|webp)$/;
 registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier === '@stamp-paint-styles') {
-      return { url: new URL('../../../picture/stamp-paint/engine/node-stamp-paint-styles.ts', import.meta.url).href, shortCircuit: true };
+      return { url: new URL('../../../picture/stamp-styles/engine/node-stamp-paint-styles.ts', import.meta.url).href, shortCircuit: true };
     }
     if (specifier === '@remotion/fonts') {
       return { url: 'data:text/javascript,export const loadFont = () => Promise.resolve();', shortCircuit: true };

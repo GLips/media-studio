@@ -6,7 +6,7 @@ in `work/projects/` can paint with it, and a project can use several.
 
 ```
 work/styles/<name>/
-  style.ts     the style: `export default { … } satisfies StampPaintStyle` (lib/picture/stamp-paint/models/style.ts)
+  style.ts     the style: `export default { … } satisfies StampPaintStyle` (lib/picture/stamp-styles/models/style.ts)
   <name>.md    how to paint in this style; guidance about the pack's brushes stays here, private
   fidelity.ts  a note per brush on how and why it differs from its Procreate preview
   fidelity-grades.json  each brush's score and grade (close, rough, off), written by npm run brushes:sheet
@@ -17,7 +17,7 @@ work/styles/<name>/
 was bought; the brushes it paints with, by its own names for them, each a brush in a pack; its palette; and its paper:
 
 ```ts
-import type { StampPaintStyle } from '#lib/picture/stamp-paint/models/style.ts';
+import type { StampPaintStyle } from '#lib/picture/stamp-styles/models/style.ts';
 
 export default {
   packs: { vvds: { source: 'VVDS Realistic Watercolor Studio, bought on Creative Market (E13434.zip)' } },
@@ -89,11 +89,11 @@ renderer along the stroke Procreate drew its preview with (one stamp, for a brus
 diameter whose thickness matches the preview's, and sets it beside that preview. A brush without a preview (every
 Photoshop brush) is measured instead against its `reference/` capture, painted as Photoshop painted it: the same
 stroke at the reference's own diameter, under Photoshop's simulated pressure, through the brush's dynamics or the
-overrides a Brush Pose left (lib/picture/stamp-paint/models/photoshop-reference-stroke.ts). The row's left column says which
-target it is. It writes a row per brush (`rows/<brush>.png`), the rows stacked at half size (`sheet.jpg`, or
+overrides a Brush Pose left (lib/picture/brush-fidelity/models/brush-fidelity-target.ts). The row's left column says
+which target it is. It writes a row per brush (`rows/<brush>.png`), the rows stacked at half size (`sheet.jpg`, or
 `sheet-1.jpg` on past 120 brushes) and `report.json` into `brushes/<pack>/fidelity/`,
 out of git because the rows hold the pack's previews. Each row and the report measure both strokes alike
-(lib/picture/stamp-paint/models/procreate-preview-stroke.ts): a coverage map in 8-pixel cells, length, thickness along
+(lib/picture/brush-fidelity/models/stroke-measure.ts): a coverage map in 8-pixel cells, length, thickness along
 the stroke, where each end reaches 80% of its peak, density, how dark the rim is against the body, grain size, edge
 width (pixels from a fifth to four fifths of its density), mottle in the body (fine and coarse), and fill (a hollow
 line against a solid one). Their gaps weigh into one score per brush, 0 for a perfect match, and the score grades it:
@@ -104,7 +104,9 @@ line against a solid one). Their gaps weigh into one score per brush, 0 for a pe
 | `rough` | up to 0.45   | the brush, plainly different in some way        |
 | `off`   | above 0.45   | not the brush: shape, density or texture wrong  |
 
-A gap anyone would call plain adds about 0.1 (`STROKE_SCORE_WEIGHTS` says how much each measure counts). A whole pack
+A gap anyone would call plain adds about 0.1 (`STROKE_SCORE_WEIGHTS` says how much each measure counts), and a brush
+that paints nothing against its target scores 2. The sheet, the fit and the diagnostic all score a brush this one way
+(lib/picture/brush-fidelity/engine/brush-fidelity-score.ts). A whole pack
 drawn to its own `fidelity/` also writes each brush's score and grade into the style's `fidelity-grades.json`, which
 git keeps. `--brush a,b` draws only those; `--out <dir>` writes elsewhere, to keep a sheet from before a change to the
 renderer or the importer and compare.
@@ -112,7 +114,7 @@ renderer or the importer and compare.
 The style's `fidelity.ts`, which git keeps, holds a note per brush on how and why it differs, which a score can't say:
 
 ```ts
-import type { StampPaintStyleFidelity } from '#lib/picture/stamp-paint/models/style.ts';
+import type { StampPaintStyleFidelity } from '#lib/picture/brush-fidelity/models/brush-fidelity-style.ts';
 
 export default {
   vvds: { 'Pigment Dark Brush': 'an even dark scaly texture in Procreate, which comes from wet mixing' },
@@ -123,19 +125,21 @@ Re-draw after changing how a brush is painted or read, and re-read the notes of 
 
 **Fitting the importer.** Where Procreate's meaning isn't known (how big a grain's tile is, how wide and dark a wet
 rim, how far each glaze mode builds within its stroke, how flow and depth curve), the importer reads a setting by a
-constant of its `ProcreateReading`, checked in as `lib/picture/stamp-paint/models/procreate-reading.ts`. `npm run
-brushes:fit -- --packs watercolor/vvds` fits every constant at once against every previewed brush of the packs given, by
-the sheet's summed score, with each brush that ends up further off than it started counted again. It's deterministic,
-takes a few minutes, and writes the file; re-draw the packs' sheets after (a brush is read from its source when a
-style resolves it, so nothing is imported again). The constants are the
-same for every brush of every pack: a brush is never tuned alone, so what fits one pack's previews holds for the next.
+constant of its `ProcreateReading`, checked in as `lib/picture/procreate-brushes/models/procreate-reading.ts`.
 Photoshop's pipeline was identified stage by stage from probe captures (vid-97), so its importer reads almost every
 setting exactly; what's left, how far 100% scatter strays and how far 100% angle jitter turns (at least a whole turn
-each way), sits in its `PhotoshopReading`, `lib/picture/stamp-paint/models/photoshop-reading.ts`. `npm run brushes:diagnose -- --packs
-watercolor/photoshop-legacy,…` tries each of those constants brush by brush against the packs' Photoshop references
-and says whether the brushes agree on a value; it writes nothing. Kyle T. Webster's packs and a fifth of Legacy Brushes
-are held out of it (lib/picture/stamp-paint/models/photoshop-reading-spread.ts). A Photoshop import notes each setting
-a brush has at a value the probes never covered as `unprobed`, the one place its reading is a guess.
+each way), sits in its `PhotoshopReading`, `lib/picture/photoshop-brushes/models/photoshop-reading.ts`. Each reading's
+ranges, which brushes a constant touches and which are held out are in `lib/picture/brush-fidelity/models/brush-readings.ts`.
+
+`npm run brushes:fit -- --packs watercolor/vvds` fits every constant of the packs' app at once against every targeted
+training brush of the packs given (all of one app), by the sheet's summed score, with each brush that ends up further
+off than it started counted again. It's deterministic, takes a few minutes, and writes the reading module; re-draw the
+packs' sheets after (a brush is read from its source when a style resolves it, so nothing is imported again). The
+constants are the same for every brush of every pack: a brush is never tuned alone, so what fits one pack holds for
+the next. `npm run brushes:diagnose -- --packs watercolor/photoshop-legacy,…` tries each constant brush by brush and
+says whether the brushes agree on a value; it writes nothing. Kyle T. Webster's packs and a fifth of every other
+Photoshop pack are held out of both. A Photoshop import notes each setting a brush has at a value the probes never
+covered as `unprobed`, the one place its reading is a guess.
 
 **Same pixels.** A painting draws on the GPU through WebGPU, in half floats, and GPUs round floats differently, so
 what's promised depends on where it renders:

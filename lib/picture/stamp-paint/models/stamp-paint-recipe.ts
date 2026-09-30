@@ -10,11 +10,18 @@
 // (`<group>/<pass>/<deposit>`), so adding a stroke changes no other stroke, and renaming one reseeds only it.
 
 import { seededRandom } from '#lib/picture/motion/models/random.ts';
-import type { StampBlend, StampBrush, StampBrushColorDynamics, StampBrushLayer } from './stamp-brush.ts';
+import type { StampBlend, StampBrush, StampBrushAsset, StampBrushColorDynamics, StampBrushLayer } from './stamp-brush.ts';
 import { placeAuthoredStamps, placeStrokeStamps, type PlacedStamp, type StampPlacement, type StampPlacementBrush, type StampStrokePoint } from './stamp-placement.ts';
 import { handStampStroke, type StampStrokeHand } from './stamp-stroke-hand.ts';
 
 export type StampPaintColor = `#${string}`;
+
+/** What a painting is laid on: a style's paper with each image named in full, as a painting is laid on it. */
+export type StampPaintPaper = {
+  color: StampPaintColor;
+  image?: StampBrushAsset;
+  grain?: { image: StampBrushAsset; scale: number; depth: number };
+};
 
 /**
  * What a deposit is made of, which decides how it mixes with paint already in its group. `flat` mixes only by its

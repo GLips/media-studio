@@ -239,3 +239,11 @@ export function bindStampBrushImages<A, B>(brush: StampBrush<A>, bind: (image: A
   const { dual, ...main } = brush;
   return { ...bindLayerImages(main, bind), ...(dual && { dual: bindLayerImages(dual, bind) }) };
 }
+
+/**
+ * A setting of a source brush the normalized brush doesn't carry as the source means it: `approximated` is read into
+ * a nearby setting, `unsupported` is dropped, and `inapplicable` is dropped because a painting never has what it
+ * responds to (a pen's tilt). `unprobed`: a Photoshop setting at a value vid-97's probes never gave it, so the
+ * pipeline wasn't identified there. `setting` is the source format's own field name, so it can be looked up.
+ */
+export type StampBrushSupportNote = { level: 'approximated' | 'unsupported' | 'inapplicable' | 'unprobed'; setting: string; detail: string };
