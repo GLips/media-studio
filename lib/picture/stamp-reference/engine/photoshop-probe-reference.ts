@@ -15,8 +15,7 @@ import { cropPhotoshopCell } from '#lib/picture/photoshop-brushes/models/photosh
 import { PHOTOSHOP_PROBE_RAMP, PHOTOSHOP_PROBE_TIP, photoshopProbeRampValue, photoshopProbeTipPaint, type PhotoshopProbe } from '#lib/picture/photoshop-brushes/models/photoshop-probes.ts';
 import { readPhotoshopSheet } from '#lib/picture/photoshop-brushes/engine/photoshop-capture.ts';
 import { photoshopPressuredPath, type PhotoshopStrokePressure } from '#lib/picture/photoshop-brushes/models/photoshop-stroke-pressure.ts';
-import { normalizePhotoshopBrush, PHOTOSHOP_PEN_PRESSURE, PHOTOSHOP_SAMPLE_BORDER, type PhotoshopPressureContext, photoshopPatternNegated, photoshopTipImage, type PhotoshopTipAsset, type PhotoshopTipImage } from '#lib/picture/photoshop-brushes/models/photoshop-brush.ts';
-import { drawPhotoshopComputedTip } from '#lib/picture/photoshop-brushes/models/photoshop-computed-tip.ts';
+import { drawPhotoshopTipImage, normalizePhotoshopBrush, PHOTOSHOP_PEN_PRESSURE, PHOTOSHOP_SAMPLE_BORDER, type PhotoshopPressureContext, photoshopPatternNegated, photoshopTipImage, type PhotoshopTipAsset, type PhotoshopTipImage } from '#lib/picture/photoshop-brushes/models/photoshop-brush.ts';
 import type { PhotoshopKnownTip } from '#lib/picture/photoshop-brushes/models/photoshop-preset.ts';
 import { bindStampBrushImages, type StampBrushAsset } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { STAMP_PACK_TIP_MAX } from '#lib/picture/stamp-styles/engine/stamp-paint-pack-files.ts';
@@ -29,8 +28,8 @@ const asset = (file: string): StampBrushAsset => ({ style: 'probe', pack: 'probe
 
 /** A probe tip's image, 1 where it paints: the importer's drawing of a computed tip, or the rig's sampled tip as Photoshop trims it. */
 function tipImage(image: PhotoshopTipImage): StampReferenceImage {
-  if (image.kind === 'round') {
-    const { size, pixels } = drawPhotoshopComputedTip(image.diameter, image.hardness, image.span, STAMP_PACK_TIP_MAX);
+  if (image.kind !== 'sampled') {
+    const { size, pixels } = drawPhotoshopTipImage(image, STAMP_PACK_TIP_MAX);
     return { width: size, height: size, paint: Float32Array.from(pixels, (v) => 1 - v / 255) };
   }
   // Flipped into the image, inside its blank border, as the importer writes a sample.

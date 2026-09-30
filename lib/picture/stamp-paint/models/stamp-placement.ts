@@ -8,7 +8,7 @@ import { lerp } from '#lib/picture/motion/models/motion.ts';
 import { seededRandom } from '#lib/picture/motion/models/random.ts';
 import type { StampBrushColorDynamics, StampBrushStamping } from './stamp-brush.ts';
 import {
-  drawStampSlots, stampOwnShare, stampOwnTurn, stampStepCount, stampStepShare, stampStepTurn, type StampContext, type StampDraws, type StampStepContext,
+  drawStampSlots, stampOwnShare, stampOwnTurn, stampResponseCurve, stampStepCount, stampStepShare, stampStepTurn, type StampContext, type StampDraws, type StampStepContext,
 } from './stamp-dynamics.ts';
 
 /**
@@ -107,7 +107,7 @@ function buildStamp(place: StampPlace, stamp: StampContext, brush: StampPlacemen
   return {
     x: place.x,
     y: place.y,
-    diameter: place.size * stampOwnShare(dynamics, 'size', stamp),
+    diameter: brush.tip.pixels ?? place.size * stampOwnShare(dynamics, 'size', stamp),
     rotation: brush.rotation.angle + place.turn + stampStepTurn(dynamics, stamp) + stampOwnTurn(dynamics, stamp) + startTurn,
     roundness: stampStepShare(dynamics, 'roundness', stamp) * stampOwnShare(dynamics, 'roundness', stamp),
     alpha: brush.flow * stampStepShare(dynamics, 'flow', stamp) * stampOwnShare(dynamics, 'flow', stamp),
@@ -147,7 +147,8 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
   const length = lengths.at(-1)!;
   const reveal = revealAlong(path, lengths);
   const headings = segmentHeadings(path), initialHeading = headings[0] ?? 0;
-  const count = Math.max(1, Math.round(brush.scatter.count));
+  const { countGrowth, distribution } = brush.scatter;
+  const count = Math.max(1, Math.round(brush.scatter.count * (countGrowth ? (diameter / countGrowth.diameter) ** countGrowth.exponent : 1)));
   const startTurn = depositTurn(brush, seed);
   const { taper, dynamics } = brush;
   /** Where on the path `arc` falls, as step `index`, and what the stroke is doing there, before any stamp's randomness. */
@@ -196,7 +197,8 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
       const lateral = (draws.lateral * 2 - 1) * brush.scatter.lateral * reach * diameter;
       // A uniform distance, not a uniform spot in the disc, so stamps crowd the stroke: Photoshop's both-axes scatter
       // (vid-97's scatter probe fits it at 0.009 rms; uniform over the disc's area, 0.022).
-      const scatterTurn = draws.scatterTurn * Math.PI * 2, scatterReach = draws.scatterReach * brush.scatter.radius * reach * diameter;
+      const strays = distribution ? stampResponseCurve(distribution, draws.scatterReach) : draws.scatterReach;
+      const scatterTurn = draws.scatterTurn * Math.PI * 2, scatterReach = strays * brush.scatter.radius * reach * diameter;
       stamps.push(buildStamp({
         x: lerp(a.x, b.x, k) - Math.sin(step.heading) * lateral + Math.cos(scatterTurn) * scatterReach,
         y: lerp(a.y, b.y, k) + Math.cos(step.heading) * lateral + Math.sin(scatterTurn) * scatterReach,

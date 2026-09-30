@@ -10,9 +10,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import {
-  photoshopPatternNegated, photoshopSampleWithBorder, photoshopTipImage, type PhotoshopBrushSource, type PhotoshopTipAsset,
+  drawPhotoshopTipImage, photoshopPatternNegated, photoshopSampleWithBorder, photoshopTipImage, type PhotoshopBrushSource, type PhotoshopTipAsset,
 } from '#lib/picture/photoshop-brushes/models/photoshop-brush.ts';
-import { drawPhotoshopComputedTip } from '#lib/picture/photoshop-brushes/models/photoshop-computed-tip.ts';
 import { photoshopTagged, type PhotoshopDescriptor, type PhotoshopValue } from '#lib/picture/photoshop-brushes/models/photoshop-descriptor.ts';
 import { readPhotoshopPreset, type PhotoshopKnownTip } from '#lib/picture/photoshop-brushes/models/photoshop-preset.ts';
 import type { StampBrushAsset, StampBrushSupportNote } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
@@ -93,11 +92,8 @@ function writePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, 
         const sampledTipAsset = writeOnce(`${fileName}|${image.id}|${image.flipX}|${image.flipY}`, 'tips', slug, (out) => writeStampPackGray(photoshopSampleWithBorder(sample), STAMP_PACK_TIP_MAX, out, { negate: true, flipX: image.flipX, flipY: image.flipY }));
         return { kind: 'sampled', image: sampledTipAsset, sample: { width: sample.width, height: sample.height } };
       }
-      const hardness = Math.round(image.hardness * 100), key = `${hardness}-${stampPackSlug(String(image.diameter))}`;
-      const drawing = writeOnce(`round|${key}`, 'tips', `round-${key}`, (out) => {
-        const { size, pixels } = drawPhotoshopComputedTip(image.diameter, image.hardness, image.span, STAMP_PACK_TIP_MAX);
-        writeStampPackGray({ width: size, height: size, pixels }, STAMP_PACK_TIP_MAX, out);
-      });
+      const { key, size, pixels } = drawPhotoshopTipImage(image, STAMP_PACK_TIP_MAX);
+      const drawing = writeOnce(`drawn|${key}`, 'tips', key, (out) => writeStampPackGray({ width: size, height: size, pixels }, STAMP_PACK_TIP_MAX, out));
       if (tip.kind !== 'erodible') return { kind: 'round', image: drawing };
       const heights = erodibleHeights(raw, tip.gridSize, at);
       const heightMap = writeOnce(`heights|${heights.toString('hex')}`, 'tips', `${slug}.heights`, (out) => writeFileSync(out, heights), 'f32');

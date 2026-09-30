@@ -110,6 +110,15 @@ down, dim and spread (a 1 px stamp is four pixels at a quarter), its paint summi
 matched: a 1 px line at half pressure is half as dark as ours, 4 px hard sits a third of a pixel smaller than the
 profile, and a squashed small tip (Graphite Pencil, 32% round) is read as the round one squashed.
 
+**Airbrush** (vid-105, `tip airbrush …`; photoshop-airbrush.ts). Pressure is the nozzle's distance: the spray is a disc
+of radius D(1 − p)/2 + 1 px whatever a pose's size, landing evenly at hardness 100 and with a soft rim at 1.
+Granularity 0 sprays smoothly, its flow keeping a line as dark at every pressure; granularity 100 throws 2×1 px grains
+(`tip.pixels`), their count growing as the diameter^1.2 (`scatter.countGrowth`), spread over the disc
+(`scatter.distribution`); past splat size 1, soft drops of random size. An unposed probe stamp reads as full pressure
+to the spray, where our reference paints it at 0, so that cell misses. Not yet read: cutoff angle and streakiness
+(invisible in every capture), granularity between 0 and 100, the rim at other sizes than the preset's, and an
+airbrush dual. A dense grain spray is hundreds of stamps a pixel.
+
 **What the controls do** (vid-105). Angle on pen pressure turns a stamp by p × 360°, and fade turns it a whole turn
 over its steps; initial direction holds the first heading. Scatter on pen pressure keeps p² of its reach (in the
 deposit's diameters, as uncontrolled scatter is), and a fade shrinks it to none over its steps. Texture Each Tip depth on pressure runs the other way: full pressure paints the

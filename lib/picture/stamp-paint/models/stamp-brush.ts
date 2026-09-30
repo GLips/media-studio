@@ -59,6 +59,11 @@ export type StampBrushTip<Image = StampBrushAsset> = {
    * averages out where stamps pile up and shows at a stroke's soft edge (tipNoise).
    */
   noise?: number;
+  /**
+   * Each stamp's diameter in canvas pixels, whatever the deposit's diameter or its size dynamics, as an airbrush's
+   * grains are; the deposit's diameter still sets its spacing and scatter.
+   */
+  pixels?: number;
 };
 
 /**
@@ -138,7 +143,13 @@ export type StampBrushStamping<Image = StampBrushAsset> = {
    * random distance up to `radius` diameters, so they crowd the stroke, and across the stroke at random by up to
    * `lateral` diameters either way.
    */
-  scatter: { count: number; radius: number; lateral: number };
+  scatter: {
+    count: number; radius: number; lateral: number;
+    /** A uniform draw to the share of `radius` a stamp strays, so stamps can fill a disc evenly, as a spray does. */
+    distribution?: StampResponseCurve;
+    /** The count is at `diameter` px, and grows as (the deposit's diameter / `diameter`)^`exponent`. */
+    countGrowth?: { diameter: number; exponent: number };
+  };
   /**
    * The turn every stamp starts from, before its rotation dynamics: `angle`, plus with `randomStart` a random angle
    * drawn once per deposit.

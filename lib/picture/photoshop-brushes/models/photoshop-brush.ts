@@ -1,16 +1,17 @@
 // photoshop-brush.ts: a Photoshop brush preset (photoshop-preset.ts, from an .abr or a .tpl) read into a StampBrush,
-// with a note for every setting that doesn't carry over as Photoshop means it, by its path (`tipDynamics.size.jitter`).
+// noting every setting that doesn't carry over as Photoshop means it, by its path (`tipDynamics.size.jitter`).
 //
 // Photoshop's dialog names each setting and unit, so most carry over directly; unknown constants are a shared
 // PhotoshopReading. Pressure's several sources are resolved here once (photoshopPressureAmounts).
 //
 // Negative space: live-input, preview and preset-size settings (a deposit states its diameter) and a canvas
 // texture's depth dynamics (Photoshop ignores them too) go unreported. Build-up, tilt, stylus wheel, rotation and pose
-// are `inapplicable` (a path paints those controls as off). Bristle, erodible and airbrush tips (read as round)
-// and Mixer Brush wet mixing (vid-90) are `unsupported`.
+// are `inapplicable` (a path paints those controls as off). Bristle and erodible tips (read as round) and Mixer
+// Brush wet mixing (vid-90) are `unsupported`; an airbrush is its spray (photoshop-airbrush.ts).
 
 import { PHOTOSHOP_POOLING } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
-import { PHOTOSHOP_PIXEL_TIP_DIAMETER, photoshopComputedTipSpan } from './photoshop-computed-tip.ts';
+import { drawPhotoshopAirbrushGrain, drawPhotoshopAirbrushSpray, photoshopAirbrushImage, photoshopAirbrushMode, photoshopAirbrushReading } from './photoshop-airbrush.ts';
+import { drawPhotoshopComputedTip, PHOTOSHOP_PIXEL_TIP_DIAMETER, photoshopComputedTipSpan } from './photoshop-computed-tip.ts';
 import {
   photoshopControlMinimum, photoshopModeName, type PhotoshopBlendMode, type PhotoshopControl, type PhotoshopDualMode, type PhotoshopDynamic, type PhotoshopKnownTip,
   type PhotoshopPaintablePreset, type PhotoshopPreset, type PhotoshopScatter, type PhotoshopTextureMode,
@@ -40,7 +41,13 @@ export type PhotoshopReading = {
  * A Photoshop tip as an image: a sampled one by its id in the file, or a computed round one drawn at its hardness
  * (0..1) and diameter (px) over `span` diameters (photoshop-computed-tip.ts).
  */
-export type PhotoshopTipImage = { kind: 'sampled'; id: string; flipX: boolean; flipY: boolean } | { kind: 'round'; hardness: number; diameter: number; span: number };
+export type PhotoshopTipImage =
+  | { kind: 'sampled'; id: string; flipX: boolean; flipY: boolean }
+  | { kind: 'round'; hardness: number; diameter: number; span: number }
+  | { kind: 'spray'; hardness: number }
+  | { kind: 'grain' };
+/** A tip image the importer draws, not one the file holds. */
+export type PhotoshopDrawnTipImage = Exclude<PhotoshopTipImage, { kind: 'sampled' }>;
 
 export type PhotoshopSampleSize = { width: number; height: number };
 
@@ -94,12 +101,23 @@ function photoshopRoundTipHardness(tip: Exclude<PhotoshopKnownTip, { kind: 'samp
   return 1;
 }
 
-/** A tip as an image to write: sampled, else round (a computed tip, or a bristle, erodible or airbrush one read as round). */
+/** A tip as an image to write: sampled, an airbrush's, else round (a computed tip, or a bristle or erodible one read as round). */
 export function photoshopTipImage(tip: PhotoshopKnownTip): PhotoshopTipImage {
   const { geometry } = tip;
   if (tip.kind === 'sampled') return { kind: 'sampled', id: tip.sample, flipX: geometry.flipX, flipY: geometry.flipY };
+  if (tip.kind === 'airbrush') {
+    const image = photoshopAirbrushImage(tip);
+    return image.kind === 'round' ? { ...image, span: photoshopComputedTipSpan(image.diameter, image.hardness) } : image;
+  }
   const hardness = photoshopRoundTipHardness(tip);
   return { kind: 'round', hardness, diameter: geometry.diameter, span: photoshopComputedTipSpan(geometry.diameter, hardness) };
+}
+
+/** A drawn tip image, dark is paint, a texel a pixel at its diameter where that's under `max` texels, and a name for its file. */
+export function drawPhotoshopTipImage(image: PhotoshopDrawnTipImage, max: number): { key: string; size: number; pixels: Uint8Array } {
+  if (image.kind === 'round') return { key: `round-${Math.round(image.hardness * 100)}-${String(image.diameter).replace('.', '-')}`, ...drawPhotoshopComputedTip(image.diameter, image.hardness, image.span, max) };
+  if (image.kind === 'spray') return { key: `spray-${Math.round(image.hardness * 100)}`, ...drawPhotoshopAirbrushSpray(image.hardness) };
+  return { key: 'grain', ...drawPhotoshopAirbrushGrain() };
 }
 
 /** Which asset a tip lands as: a sample as itself, an erodible tip with its height map, any other as a round drawing. */
@@ -147,6 +165,7 @@ function tipOf(tip: PhotoshopKnownTip, asset: PhotoshopTipAsset, prefix: string,
   }
   if (tip.kind === 'sampled') throw new Error(`photoshop: a sampled tip given a ${asset.kind} image`);
   if (geometry.diameter <= PHOTOSHOP_PIXEL_TIP_DIAMETER) note('approximated', `${prefix}tip.geometry.diameter`, `a ${geometry.diameter} px computed tip, drawn as Photoshop draws it at its size, rounded up to whole pixels; the stamps its dynamics shrink are scaled from that, not redrawn`);
+  if (tip.kind === 'airbrush') return { image: asset.image, roundness, sampling, ...photoshopAirbrushReading(tip).tip };
   return { image: asset.image, roundness, sampling, span: photoshopComputedTipSpan(geometry.diameter, photoshopRoundTipHardness(tip)) };
 }
 
@@ -270,8 +289,14 @@ const degrees = (value: number) => (value ? (-value * Math.PI) / 180 : 0);
 
 function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: PhotoshopReading, context: PhotoshopPressureContext): StampBrushLayer {
   const p = source.preset, { tip } = p;
-  if (tip.kind === 'erodible' || tip.kind === 'airbrush' || tip.kind === 'bristle') {
-    note('unsupported', 'tip.kind', `${tip.kind === 'bristle' ? 'a bristle' : `an ${tip.kind}`} tip, simulated as it paints; read as a round tip of its hardness`);
+  if (tip.kind === 'erodible' || tip.kind === 'bristle') {
+    note('unsupported', 'tip.kind', `${tip.kind === 'bristle' ? 'a bristle' : 'an erodible'} tip, simulated as it paints; read as a round tip of its hardness`);
+  }
+  const airbrush = tip.kind === 'airbrush' ? photoshopAirbrushReading(tip) : undefined;
+  if (tip.kind === 'airbrush') {
+    const sprays = { smooth: 'smoothly', grain: 'grains', splat: 'drops' }[photoshopAirbrushMode(tip)];
+    note('approximated', 'tip.airbrush', `an airbrush spraying ${sprays}, wider as pressure falls; its cutoff angle and streakiness show in no capture, and granularity between 0 and 100 is unprobed`);
+    if (p.scatter && airbrush?.scatter) note('unsupported', 'scatter', "an airbrush's own scattering, read as its spray's alone");
   }
 
   const shape = p.tipDynamics;
@@ -343,15 +368,16 @@ function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: Photos
     // Noise breaks the brush's own tip, not its dual's (the `random noise` probe has no dual to say otherwise).
     tip: { ...tipOf(tip, source.tip, '', note), ...(p.noise && { noise: PHOTOSHOP_NOISE_DEPTH }) },
     ...(grain && { grain }),
-    spacing: spacingOf(tip, '', note),
-    stepping: 'eachStamp',
+    // An airbrush steps by its preset's diameter, whatever its spray's.
+    spacing: airbrush?.spacing ?? spacingOf(tip, '', note),
+    stepping: airbrush ? 'spread' : 'eachStamp',
     dynamics: stampDynamicsOf({
-      size: { ...transfer.size, random: linear(size.jitter) },
+      size: { ...transfer.size, random: linear(size.jitter), ...airbrush?.dynamics.size },
       opacity: { ...transfer.opacity, random: linear(opacity.jitter) },
-      flow: { ...transfer.flow, random: linear(flow.jitter) },
+      flow: { ...transfer.flow, random: linear(flow.jitter), ...airbrush?.dynamics.flow },
       roundness: { ...roundnessControl, random: linear(roundness.jitter * (1 - minimumRoundness)) },
       count,
-      scatter: reach,
+      scatter: { ...(!airbrush?.scatter && reach), ...airbrush?.dynamics.scatter },
       grainDepth,
       rotation: {
         ...(angle.control.kind === 'direction' && { direction: linear(1) }),
@@ -361,13 +387,13 @@ function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: Photos
         random: linear(angle.jitter * reading.angleJitterSpan),
       },
     }),
-    scatter,
+    scatter: airbrush?.scatter ?? scatter,
     rotation: { angle: degrees(tip.geometry.angle), randomStart: false },
     flip: { x: !!shape?.flipX, y: !!shape?.flipY },
     blur: { amount: 0, jitter: 0 },
     taper: NO_TAPER,
     falloff: 0,
-    flow: toolFlow,
+    flow: toolFlow * (airbrush?.flow ?? 1),
     accumulation: { kind: 'buildToOpacity' },
     ...(p.wetEdges && { wetEdges: PHOTOSHOP_POOLING }),
   };

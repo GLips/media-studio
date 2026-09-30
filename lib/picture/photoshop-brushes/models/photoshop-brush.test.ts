@@ -4,6 +4,7 @@ import { normalizePhotoshopBrush, type PhotoshopReading } from './photoshop-brus
 import { stampLinearDynamics } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { PHOTOSHOP_POOLING } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import { stampResponseCurve } from '#lib/picture/stamp-paint/models/stamp-dynamics.ts';
+import { placeStrokeStamps } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 import type { PhotoshopDescriptor } from './photoshop-descriptor.ts';
 import { photoshopPaintablePreset, readPhotoshopPreset } from './photoshop-preset.ts';
 import { normalizeProcreateBrush, type ProcreateReading } from '#lib/picture/procreate-brushes/models/procreate-brush.ts';
@@ -159,4 +160,30 @@ test('a control a stroke drives binds its sensor: angle turns a whole turn over 
   // Tilt reads full on a stroked path, as off does: no binding, and a note that says why.
   assert.equal(brush.dynamics.roundness, undefined);
   assert.ok(support.some((n) => n.setting === 'tipDynamics.roundness.control' && n.level === 'inapplicable'));
+});
+
+test("an airbrush sprays wider as pressure falls, its grains staying 2 px, and fills its spray evenly", () => {
+  const { brush } = normalizePhotoshopBrush('Grainy', {
+    preset: paintable({
+      _class: 'brushPreset',
+      Brsh: {
+        _class: 'dTips', Angl: { _unit: '#Ang', value: 0 }, Dmtr: px(50), dtipsType: long(1), 'Shp ': long(5), dtipsLengthRatio: pct(100), dtipsHardness: pct(100),
+        dtipsAirbrushCutoffAngle: 1, dtipsAirbrushGranularity: pct(100), dtipsAirbrushStreakiness: pct(1), dtipsAirbrushSplatSize: pct(1), dtipsAirbrushSplatCount: long(9), Spcn: pct(1), Intr: true,
+      },
+    }),
+    tip: { kind: 'round', image: asset('tips/grain.png') },
+  }, photoshopReading);
+  // Photoshop's spray at 100 px: radius 100(1 − p)/2 + 1, so 26 px at p 0.5; the rim, read at the preset's 50 px,
+  // doubles here.
+  const reachAt = (pressure: number) => {
+    const stamps = placeStrokeStamps([{ x: 0, y: 0, pressure }, { x: 400, y: 0, pressure }], brush, 100, 'spray');
+    assert.ok(stamps.every((s) => s.diameter === 2));
+    const offsets = stamps.map((s) => Math.abs(s.y)).toSorted((a, b) => a - b);
+    return { widest: offsets.at(-1)!, median: offsets[Math.floor(offsets.length / 2)] };
+  };
+  const half = reachAt(0.5), full = reachAt(1);
+  assert.ok(half.widest > 24 && half.widest <= 27, `reaches ${half.widest}`);
+  assert.ok(full.widest <= 2.1);
+  // Evenly over the disc, a cross-section's median offset is about 0.4 R; a uniform distance would crowd it to 0.25 R.
+  assert.ok(half.median > 0.35 * 27, `median ${half.median}`);
 });
