@@ -3,9 +3,9 @@
 // back in across its edge (studio/stamp-wet-lift-run-back.ts). WGSL only: the renderer is the one place it runs.
 
 /**
- * How much of a pigment, in unit films, the paper's fibres can hold as stain once the paint has set: a stain is dye in
- * the fibres, so a thick film's is no deeper than a thin one's. A full watercolour wash of phthalo (staining 0.9)
- * holds most of itself; the same pigment in thick gouache, a smaller share.
+ * How deep, in unit films, the paper's fibres take a stain once paint has set: a pigment stains its `staining` share of
+ * its first this-many films, so a thin tint keeps its stain in proportion (lifting it leaves its hue) while thick
+ * gouache's stain is no deeper than a full wash's.
  */
 export const STAMP_LIFT_STAIN_FIBRES = 0.6;
 
@@ -28,8 +28,8 @@ fn liftLoose(free: f32, rewetting: f32) -> f32 { return mix(clamp(rewetting, 0.0
 fn wetLift(was: vec4f, cover: f32, strength: f32, workable: f32, dried: f32, rewetting: f32, stain: vec4f) -> vec4f {
   let free = liftFree(workable, dried);
   let loose = liftLoose(free, rewetting);
-  let fibres = ${STAMP_LIFT_STAIN_FIBRES.toFixed(3)} * mix(1.0, ${STAMP_LIFT_WET_STAIN_HOLD.toFixed(3)}, free);
-  let held = min(was, clamp(stain, vec4f(0.0), vec4f(1.0)) * fibres);
+  let hold = mix(1.0, ${STAMP_LIFT_WET_STAIN_HOLD.toFixed(3)}, free);
+  let held = clamp(stain, vec4f(0.0), vec4f(1.0)) * min(was, vec4f(${STAMP_LIFT_STAIN_FIBRES.toFixed(3)})) * hold;
   let take = clamp(cover * strength, 0.0, 1.0) * loose;
   return was - take * (was - held);
 }`;
