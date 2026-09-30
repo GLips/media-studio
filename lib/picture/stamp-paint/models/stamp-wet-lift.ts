@@ -16,14 +16,18 @@ export const STAMP_LIFT_STAIN_FIBRES = 0.6;
 export const STAMP_LIFT_WET_STAIN_HOLD = 0.4;
 
 /**
- * `wetLift(was, cover, strength, workable, rewetting, stain)`: four pigment amounts after a lift at `cover` and
- * `strength` over paint `workable` free, set paint loosening by the medium's `rewetting`, each pigment staining
- * `stain`. Each amount keeps between its stain and all of itself; at most `cover * strength` of it goes.
+ * `wetLift(was, cover, strength, workable, dried, rewetting, stain)`: four pigment amounts after a lift at `cover`
+ * and `strength`. Paint that never set is as loose as it's `workable`; the `dried` share loosens only by the medium's
+ * `rewetting`, however wet again. Each keeps between its stain (`stain`) and all of itself.
  */
 export const STAMP_WET_LIFT_WGSL = /* wgsl */ `
-fn wetLift(was: vec4f, cover: f32, strength: f32, workable: f32, rewetting: f32, stain: vec4f) -> vec4f {
-  let free = clamp(workable, 0.0, 1.0);
-  let loose = mix(clamp(rewetting, 0.0, 1.0), 1.0, free);
+// How free the paint is, as fresh paint is: what of it never set, as workable as it is.
+fn liftFree(workable: f32, dried: f32) -> f32 { return clamp(workable, 0.0, 1.0) * (1.0 - clamp(dried, 0.0, 1.0)); }
+// How much of the paint a lift can work up: all that's free, and of the rest what the medium's rewetting loosens.
+fn liftLoose(free: f32, rewetting: f32) -> f32 { return mix(clamp(rewetting, 0.0, 1.0), 1.0, free); }
+fn wetLift(was: vec4f, cover: f32, strength: f32, workable: f32, dried: f32, rewetting: f32, stain: vec4f) -> vec4f {
+  let free = liftFree(workable, dried);
+  let loose = liftLoose(free, rewetting);
   let fibres = ${STAMP_LIFT_STAIN_FIBRES.toFixed(3)} * mix(1.0, ${STAMP_LIFT_WET_STAIN_HOLD.toFixed(3)}, free);
   let held = min(was, clamp(stain, vec4f(0.0), vec4f(1.0)) * fibres);
   let take = clamp(cover * strength, 0.0, 1.0) * loose;
@@ -39,14 +43,14 @@ export function stampLiftRunBackSigma(flow: number, diameter: number, wetness: n
 }
 
 /**
- * The run-back. `liftRunBackMobility`: how freely paint joins it, by the paper's `wetness` and `lifted`, the lift's
- * coverage blurred as far as paint runs: most on the lift's edge, none deep inside or far out. `liftRunBack`: amounts
- * `was` after it, given mobility `g`, the blurred mobility-weighted amounts `pulled` and blurred mobility `reach`.
+ * The run-back, lift law included. `liftRunBackMobility`: how freely paint joins it: by the paper's wetness,
+ * how loose its paint is, and `lifted`, the lift's coverage blurred as far as paint runs, so most on the lift's edge.
+ * `liftRunBack`: amounts after it, given mobility `g`, blurred weighted amounts `pulled` and blurred mobility `reach`.
  */
-export const STAMP_LIFT_RUN_BACK_WGSL = /* wgsl */ `
-fn liftRunBackMobility(wetness: f32, lifted: f32) -> f32 {
+export const STAMP_LIFT_RUN_BACK_WGSL = /* wgsl */ `${STAMP_WET_LIFT_WGSL}
+fn liftRunBackMobility(wetness: f32, workable: f32, dried: f32, rewetting: f32, lifted: f32) -> f32 {
   let l = clamp(lifted, 0.0, 1.0);
-  return clamp(wetness, 0.0, 1.0) * 4.0 * l * (1.0 - l);
+  return clamp(wetness, 0.0, 1.0) * liftLoose(liftFree(workable, dried), rewetting) * 4.0 * l * (1.0 - l);
 }
 // Pixels i and j trade g_i g_j K(i - j) (a_j - a_i), symmetric, so pigment is conserved; with g <= 1 and K summing
 // to 1 none goes negative, and the max only holds f16 rounding.
