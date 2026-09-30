@@ -16,6 +16,12 @@ type StampPooling = Extract<StampBrushWetEdges, { kind: 'pooling' }>;
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 const overlay = (base: number, blend: number) => (base < 0.5 ? 2 * base * blend : 1 - 2 * (1 - base) * (1 - blend));
 const smoothstep = (e0: number, e1: number, x: number) => { const t = clamp01((x - e0) / (e1 - e0)); return t * t * (3 - 2 * t); };
+/** PCG's output hash over a u32, as WGSL's u32 arithmetic wraps it. */
+const pcgHash = (v: number) => {
+  const s = (Math.imul(v, 747796405) + 2891336453) >>> 0;
+  const w = Math.imul(((s >>> ((s >>> 28) + 4)) ^ s) >>> 0, 277803737) >>> 0;
+  return ((w >>> 22) ^ w) >>> 0;
+};
 
 /**
  * Colour dodge and burn scale their pattern by depth × 248/255, floored to a 255th: Photoshop's, fitted at depths 100
@@ -175,6 +181,28 @@ fn grainPaint(raw: f32, brightness: f32, contrast: f32, aboutMean: bool, mean: f
   return clamp((raw + brightness - pivot) * slope + 128.0 / 255.0, 0.0, 1.0);
 }`,
   },
+  /**
+   * A tip's noise at its pixel (x, y) in stamp `seed`, 0..1: uniform, and fresh in every stamp. PCG hashes, in u32
+   * arithmetic both sides, so the CPU draws the GPU's numbers.
+   */
+  tipNoiseAt: {
+    cpu: (x: number, y: number, seed: number) => pcgHash((x ^ pcgHash((y ^ pcgHash(seed)) >>> 0)) >>> 0) / 4294967296,
+    wgsl: /* wgsl */ `fn pcgHash(v: u32) -> u32 {
+  let s = v * 747796405u + 2891336453u;
+  let w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+  return (w >> 22u) ^ w;
+}
+fn tipNoiseAt(x: u32, y: u32, seed: u32) -> f32 { return f32(pcgHash(x ^ pcgHash(y ^ pcgHash(seed)))) / 4294967296.0; }`,
+  },
+  /**
+   * Coverage `a` under noise `n` at `depth`: overlaid by 0.5 + depth·(n − 0.5), so the noise is widest at half
+   * coverage and none where the tip is empty or full. Photoshop's Noise: depth 2/3, uniform (the `random noise` probe's
+   * spread against its soft stamp's mean, kurtosis 1.85).
+   */
+  tipNoise: {
+    cpu: (a: number, n: number, depth: number) => clamp01(overlay(a, 0.5 + depth * (n - 0.5))),
+    wgsl: /* wgsl */ `fn tipNoise(a: f32, n: f32, depth: f32) -> f32 { return clamp(overlaid(a, 0.5 + depth * (n - 0.5)), 0.0, 1.0); }`,
+  },
   /** Wet edges' pooling of built coverage `c`: rising to `peak` at half coverage, easing to `body` at full. */
   pooled: {
     cpu: (c: number, { peak, body }: Pick<StampPooling, 'peak' | 'body'>) => (c <= 0.5 ? 2 * peak * c : peak - 4 * (peak - body) * (c - 0.5) ** 2),
@@ -188,6 +216,15 @@ export const stampGrainCut = STAMP_COVERAGE_FUNCTIONS.grainCut.cpu;
 export const stampDualCombine = STAMP_COVERAGE_FUNCTIONS.dualCombine.cpu;
 export const stampGrainPaint = STAMP_COVERAGE_FUNCTIONS.grainPaint.cpu;
 export const stampPooled = STAMP_COVERAGE_FUNCTIONS.pooled.cpu;
+export const stampTipNoiseAt = STAMP_COVERAGE_FUNCTIONS.tipNoiseAt.cpu;
+export const stampTipNoise = STAMP_COVERAGE_FUNCTIONS.tipNoise.cpu;
+
+/** A stamp's noise seed: its place's f32 bits hashed, as the GPU reads them off the stamp it's given. */
+export function stampNoiseSeed(x: number, y: number): number {
+  const bits = new Uint32Array(Float32Array.of(x, y).buffer);
+  return (bits[0] ^ Math.imul(bits[1], 0x9e3779b9)) >>> 0;
+}
+const STAMP_NOISE_SEED_WGSL = 'fn stampNoiseSeed(p: vec2f) -> u32 { let bits = bitcast<vec2u>(p); return bits.x ^ (bits.y * 0x9e3779b9u); }';
 
 /** Photoshop's wet edges (fitted at rms 0.00009): half coverage pools to 192/255, full coverage to 150/255. */
 export const PHOTOSHOP_POOLING: StampPooling = { kind: 'pooling', peak: 192 / 255, body: 150 / 255 };
@@ -210,4 +247,5 @@ ${wgslModes('grainTexture', 'a: f32, v: f32, d: f32', GRAIN_TEXTURE)}
 ${wgslModes('grainLayer', 'a: f32, g: f32', GRAIN_LAYER)}
 ${wgslModes('dualTexture', 'p: f32, s: f32', DUAL_TEXTURE)}
 ${wgslModes('dualLayer', 'p: f32, s: f32', DUAL_LAYER)}
-${Object.values(STAMP_COVERAGE_FUNCTIONS).map(({ wgsl }) => wgsl).join('\n')}`;
+${Object.values(STAMP_COVERAGE_FUNCTIONS).map(({ wgsl }) => wgsl).join('\n')}
+${STAMP_NOISE_SEED_WGSL}`;

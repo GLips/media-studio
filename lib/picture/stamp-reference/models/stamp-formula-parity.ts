@@ -5,7 +5,7 @@
 // Grid steps are 32nds, which f32 and f64 hold exactly, so a threshold like hardMix's a + g ≥ 1 falls the same way
 // on both, and a difference is the formula's, not the grid's rounding.
 
-import { PHOTOSHOP_POOLING, STAMP_DUAL_BLENDS, STAMP_GRAIN_BLENDS, stampDualCombine, stampDualModeIndex, stampGrainCut, stampGrainModeIndex, stampGrainPaint, stampPooled } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
+import { PHOTOSHOP_POOLING, STAMP_DUAL_BLENDS, STAMP_GRAIN_BLENDS, stampDualCombine, stampDualModeIndex, stampGrainCut, stampGrainModeIndex, stampGrainPaint, stampPooled, stampTipNoise, stampTipNoiseAt } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import { STAMP_ACCUMULATION_KINDS, STAMP_ACCUMULATIONS, stampAccumulationIndex } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
 
 /**
@@ -28,7 +28,7 @@ function grid(formula: string, call: string, width: number, entries: readonly { 
 
 const blendName = (b: { family: string; mode: string }) => `${b.family} ${b.mode}`;
 
-/** Every paired formula over its grid: each accumulation's lay, each mode of each family, the adjustments' cases, pooling, each resolve. */
+/** Every paired formula over its grid: tip noise and its hash, each accumulation's lay, each mode of each family, the adjustments' cases, pooling, each resolve. */
 export function stampFormulaGrids(): StampFormulaGrid[] {
   const grainCut = STAMP_GRAIN_BLENDS.flatMap((blend) => UNIT.flatMap((a) => UNIT.flatMap((v) => COARSE.map((d) => ({
     label: `${blendName(blend)} a ${a} v ${v} d ${d}`,
@@ -61,7 +61,14 @@ export function stampFormulaGrids(): StampFormulaGrid[] {
     inputs: [built, laid, opacity, stampAccumulationIndex(kind)],
     expected: STAMP_ACCUMULATIONS[kind].lay.cpu(built, laid, opacity),
   })))));
+  const tipNoise = UNIT.flatMap((a) => UNIT.flatMap((n) => COARSE.map((depth) => ({ label: `a ${a} n ${n} depth ${depth}`, inputs: [a, n, depth], expected: stampTipNoise(a, n, depth) }))));
+  // Pixels and seeds as small whole numbers, which the grid's f32 rows hold exactly.
+  const tipNoiseAt = [0, 1, 7, 255, 4095].flatMap((x) => [0, 3, 1000, 65535].flatMap((y) => [0, 1, 12345, 1 << 23].map((seed) => ({
+    label: `x ${x} y ${y} seed ${seed}`, inputs: [x, y, seed], expected: stampTipNoiseAt(x, y, seed),
+  }))));
   return [
+    grid('tipNoise', 'tipNoise(x(0), x(1), x(2))', 3, tipNoise),
+    grid('tipNoiseAt', 'tipNoiseAt(u32(x(0)), u32(x(1)), u32(x(2)))', 3, tipNoiseAt),
     grid('accumulationLay', 'accumulationLay(x(0), x(1), x(2), i32(x(3)))', 4, lay),
     grid('grainCut', 'grainCut(x(0), x(1), x(2), i32(x(3)), x(4) > 0.5)', 5, grainCut),
     grid('dualCombine', 'dualCombine(x(0), x(1), i32(x(2)), x(3) > 0.5)', 4, dualCombine),

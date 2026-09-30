@@ -67,7 +67,7 @@ fn turned(v: vec2f, angle: f32) -> vec2f {
 // not its sampling, so the hull holds the paint. The tip's center lands on the stamp's place. Mask rows run top first.
 const STAMP_DRAW = stampUniformLayout('StampDraw', [
   ['resolution', 'vec2f'], ['roundness', 'f32'], ['rolling', 'u32'], ['grain', stampUniformStruct(GRAIN)], ['diameter', 'f32'], ['zoom', 'f32'],
-  ['movement', 'f32'], ['hull', { vec4fArray: STAMP_TIP_HULL_SIDES / 2 }], ['span', 'f32'], ['towardFull', 'u32'], ['center', 'vec2f'],
+  ['movement', 'f32'], ['hull', { vec4fArray: STAMP_TIP_HULL_SIDES / 2 }], ['span', 'f32'], ['towardFull', 'u32'], ['center', 'vec2f'], ['noise', 'f32'],
 ]);
 const STAMP_WGSL = /* wgsl */ `
 ${STAMP_DRAW.wgsl}
@@ -77,7 +77,7 @@ ${STAMP_DRAW.wgsl}
 // Clamped, and anisotropic or not as the tip's sampling says.
 @group(0) @binding(3) var tipClamp: sampler;
 @group(0) @binding(4) var tile: sampler;
-struct Corner { @builtin(position) position: vec4f, @location(0) tipUv: vec2f, @location(1) alpha: f32, @location(2) blur: f32, @location(3) grainUv: vec2f, @location(4) tint: vec4f, @location(5) toward: f32, @location(6) grainDepth: f32 }
+struct Corner { @builtin(position) position: vec4f, @location(0) tipUv: vec2f, @location(1) alpha: f32, @location(2) blur: f32, @location(3) grainUv: vec2f, @location(4) tint: vec4f, @location(5) toward: f32, @location(6) grainDepth: f32, @location(7) noiseAt: vec2f, @location(8) @interpolate(flat) seed: u32 }
 struct Covered { @location(0) mask: vec4f, @location(1) cap: vec4f }
 struct Stamp { @location(0) mask: vec4f, @location(1) cap: vec4f, @location(2) tintA: vec4f, @location(3) tintB: vec4f }
 ${GRAIN_WGSL}
@@ -98,12 +98,14 @@ ${TURNED_WGSL}
   let grainUv = turned(local, -more.z) / size + u.movement * stamp.xy / u.grain.place.xy + u.grain.place.zw;
   // A glaze or a build lays flow × opacity toward full; a buildToOpacity lays its flow toward its own opacity.
   let full = u.towardFull == 1u;
-  return Corner(vec4f(at.x, -at.y, 0.0, 1.0), uv, select(more.x, more.x * opacity, full), more.y * ${STAMP_BLUR_LEVELS.toFixed(1)}, grainUv, tint, select(opacity, 1.0, full), last.z);
+  // Noise goes by the tip's pixels at the stamp's width, as the CPU reference reads them (tipNoiseAt).
+  return Corner(vec4f(at.x, -at.y, 0.0, 1.0), uv, select(more.x, more.x * opacity, full), more.y * ${STAMP_BLUR_LEVELS.toFixed(1)}, grainUv, tint, select(opacity, 1.0, full), last.z, uv * stamp.z * u.span, stampNoiseSeed(stamp.xy));
 }
 // A stamp's paint (x) and its cap (y): the paint without its tip, how far a glaze's stroke may build there. A rolling
 // grain, carried by the stamp, cuts each one.
 fn covered(corner: Corner) -> vec2f {
-  let tipped = 1.0 - textureSampleBias(tip, tipClamp, corner.tipUv, corner.blur).r;
+  var tipped = 1.0 - textureSampleBias(tip, tipClamp, corner.tipUv, corner.blur).r;
+  if (u.noise > 0.0) { tipped = tipNoise(tipped, tipNoiseAt(u32(max(floor(corner.noiseAt.x), 0.0)), u32(max(floor(corner.noiseAt.y), 0.0)), corner.seed), u.noise); }
   var coverage = vec2f(tipped, 1.0);
   if (u.rolling == 1u) {
     let raw = textureSample(grain, tile, corner.grainUv).r;
@@ -131,7 +133,7 @@ const ORDERED_TILE = 32;
 // sampled at that path's interpolated gradients, the tip's grown by its blur as the fixed path's bias grows it.
 const ORDERED_DRAW = stampUniformLayout('OrderedDraw', [
   ['grain', stampUniformStruct(GRAIN)], ['roundness', 'f32'], ['rolling', 'u32'], ['diameter', 'f32'], ['zoom', 'f32'], ['movement', 'f32'],
-  ['span', 'f32'], ['first', 'u32'], ['count', 'u32'], ['tint', 'u32'], ['bins', 'u32'], ['tilesX', 'u32'], ['accumulation', 'i32'], ['center', 'vec2f'],
+  ['span', 'f32'], ['first', 'u32'], ['count', 'u32'], ['tint', 'u32'], ['bins', 'u32'], ['tilesX', 'u32'], ['accumulation', 'i32'], ['center', 'vec2f'], ['noise', 'f32'],
 ]);
 const ORDERED_WGSL = /* wgsl */ `
 ${FULL_FRAME_WGSL}
@@ -172,6 +174,10 @@ fn laidInOrder(p: vec2f, tinted: bool) -> Laid {
     if (any(uv < vec2f(0.0)) || any(uv > vec2f(1.0))) { continue; }
     let blur = exp2(stamps[at + 5u] * ${STAMP_BLUR_LEVELS.toFixed(1)});
     var a = 1.0 - textureSampleGrad(tip, tipClamp, uv, turned(vec2f(1.0, 0.0), -rotation) / scale * blur, turned(vec2f(0.0, 1.0), -rotation) / scale * blur).r;
+    if (u.noise > 0.0) {
+      let noiseAt = max(floor(uv * z * u.span), vec2f(0.0));
+      a = tipNoise(a, tipNoiseAt(u32(noiseAt.x), u32(noiseAt.y), stampNoiseSeed(xy)), u.noise);
+    }
     if (u.rolling == 1u) {
       let grainTurn = stamps[at + 6u];
       let size = u.grain.place.xy * pow(z / u.diameter, u.zoom);
@@ -824,6 +830,7 @@ async function rendererOnDevice(
             put('tilesX', tilesX);
             put('accumulation', stampAccumulationIndex(layer.accumulation.kind));
             put('center', center);
+            put('noise', layer.tip.noise ?? 0);
           }),
           ...textures, { buffer: stampBuffer }, { buffer: tintBinding.buffer }, { buffer: binBuffer },
         ]));
@@ -852,6 +859,7 @@ async function rendererOnDevice(
           put('span', spanOf(layer));
           put('towardFull', plan.toward === 'full' ? 1 : 0);
           put('center', center);
+          put('noise', layer.tip.noise ?? 0);
         }),
         ...textures,
       ]));

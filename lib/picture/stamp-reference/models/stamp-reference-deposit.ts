@@ -9,7 +9,7 @@
 
 import type { StampBrush, StampBrushGrain, StampBrushLayer } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import type { PlacedStamp } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
-import { stampDualCombine, stampGrainCut, stampGrainPaint, stampPooled } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
+import { stampDualCombine, stampGrainCut, stampGrainPaint, stampNoiseSeed, stampPooled, stampTipNoise, stampTipNoiseAt } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import {
   STAMP_ACCUMULATIONS, STAMP_BLUR_LEVELS, STAMP_RESOLVE_PLANS, stampAccumulationBuild, stampActiveLayers, stampResolvePlan, type StampActiveLayer, type StampResolveStage,
 } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
@@ -80,7 +80,7 @@ const grainMean = (grain: Grain) => grain.image.at(-1)!.paint[0];
 function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: StampReferenceBox, opacityScale: number): Float32Array {
   const { layer, active } = place, { accumulation } = layer;
   const tipImage = layer.tip.image[0], span = layer.tip.span ?? 1, roundness = layer.tip.roundness;
-  const [cx, cy] = layer.tip.center ?? [0.5, 0.5];
+  const [cx, cy] = layer.tip.center ?? [0.5, 0.5], noise = layer.tip.noise ?? 0;
   const built = new Float32Array(box.width * box.height);
   const { lay, keepsCap: glaze, resolve } = STAMP_ACCUMULATIONS[accumulation.kind];
   // What a glaze keeps beside its build; zeros, unread, for the others.
@@ -100,7 +100,7 @@ function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: Stam
     const reach = (width / 2) * Math.SQRT2;
     const x0 = Math.max(box.x, Math.floor(stamp.x - reach)), x1 = Math.min(box.x + box.width, Math.ceil(stamp.x + reach));
     const y0 = Math.max(box.y, Math.floor(stamp.y - reach)), y1 = Math.min(box.y + box.height, Math.ceil(stamp.y + reach));
-    const opacity = stamp.opacity * opacityScale;
+    const opacity = stamp.opacity * opacityScale, seed = stampNoiseSeed(stamp.x, stamp.y);
     for (let py = y0; py < y1; py++) {
       for (let px = x0; px < x1; px++) {
         const dx = px + 0.5 - stamp.x, dy = py + 0.5 - stamp.y;
@@ -112,6 +112,8 @@ function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: Stam
           a += sampleStampReference(layer.tip.image, alongV ? u : u + off / width, alongV ? v + off / height : v, lod, 'clamp') / reads;
         }
         if (a <= 0) continue;
+        // The noise's pixel is the tip's, at the stamp's width, where the GPU's hull reads it.
+        if (noise) a = stampTipNoise(a, stampTipNoiseAt(Math.max(0, Math.floor(u * width)), Math.max(0, Math.floor(v * width)), seed), noise);
         let capped = 1;
         if (rolling && rollingTile) {
           const size = Math.pow(stamp.diameter / active.diameter, rolling.zoom);

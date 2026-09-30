@@ -54,6 +54,11 @@ export type StampBrushTip<Image = StampBrushAsset> = {
    * out. Photoshop centres a sample on its middle texel, which in an even width is half a texel past the middle.
    */
   center?: readonly [number, number];
+  /**
+   * How far each stamp's paint is broken into per-pixel noise, 0..1, none when left out: fresh in every stamp, so it
+   * averages out where stamps pile up and shows at a stroke's soft edge (tipNoise).
+   */
+  noise?: number;
 };
 
 /**

@@ -6,7 +6,7 @@
 //
 // Negative space: live-input, preview and preset-size settings (a deposit states its diameter) and a canvas
 // texture's depth dynamics (Photoshop ignores them too) go unreported. Build-up, tilt, stylus wheel, rotation and pose
-// are `inapplicable` (a path paints those controls as off). Noise, bristle, erodible and airbrush tips (read as round)
+// are `inapplicable` (a path paints those controls as off). Bristle, erodible and airbrush tips (read as round)
 // and Mixer Brush wet mixing (vid-90) are `unsupported`.
 
 import { PHOTOSHOP_POOLING } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
@@ -128,6 +128,9 @@ const sampleCenter = (size: number, flip: boolean) => {
   const center = (Math.floor(size / 2) + 0.5 + PHOTOSHOP_SAMPLE_BORDER) / (size + 2 * PHOTOSHOP_SAMPLE_BORDER);
   return flip ? 1 - center : center;
 };
+
+/** Photoshop's Noise: each stamp's paint overlaid by uniform noise at 2/3 (tipNoise). */
+const PHOTOSHOP_NOISE_DEPTH = 2 / 3;
 
 const tipRoundness = (tip: PhotoshopKnownTip) => Math.min(1, Math.max(0.01, tip.geometry.roundness / 100));
 
@@ -329,7 +332,6 @@ function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: Photos
 
   // Photoshop paints a tool's flow in 255ths: 25% lays 64/255.
   const toolFlow = p.tool?.flow !== undefined ? Math.round((p.tool.flow / 100) * 255) / 255 : 1;
-  if (p.noise) note('unsupported', 'noise', "noise on the tip's soft edge");
   if (p.buildUp) note('inapplicable', 'buildUp', 'build-up keeps painting while the pen rests: an authored stroke never rests');
   if (p.pose) {
     note(p.pose.overridePressure ? 'unsupported' : 'inapplicable', 'pose', p.pose.overridePressure
@@ -338,7 +340,8 @@ function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: Photos
   }
 
   return {
-    tip: tipOf(tip, source.tip, '', note),
+    // Noise breaks the brush's own tip, not its dual's (the `random noise` probe has no dual to say otherwise).
+    tip: { ...tipOf(tip, source.tip, '', note), ...(p.noise && { noise: PHOTOSHOP_NOISE_DEPTH }) },
     ...(grain && { grain }),
     spacing: spacingOf(tip, '', note),
     stepping: 'eachStamp',

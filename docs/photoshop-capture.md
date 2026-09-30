@@ -99,6 +99,11 @@ is applied again (the rig applies it afresh on each sheet): size and opacity fol
 save that a size minimum on pen pressure counts twice (the `pressure check …` probes). The sheet paints each
 reference the way it was painted.
 
+**Noise** (vid-105, `random noise`) overlays each stamp's paint a with 0.5 + (2/3)(n − 0.5), n uniform per pixel and
+fresh in every stamp: widest at half coverage, none where the tip is empty or full, and averaged down where stamps pile
+up (the line's soft edge keeps a tenth of a stamp's spread). Both renderers draw n from the same u32 hash
+(`tipNoiseAt`), seeded by the stamp's place.
+
 **What the controls do** (vid-105). Angle on pen pressure turns a stamp by p × 360°, and fade turns it a whole turn
 over its steps; initial direction holds the first heading. Scatter on pen pressure keeps p² of its reach (in the
 deposit's diameters, as uncontrolled scatter is), and a fade shrinks it to none over its steps. Texture Each Tip depth on pressure runs the other way: full pressure paints the
