@@ -88,15 +88,15 @@ export function placeStampFill(region: StampRegion, brush: StampBrush, diameter:
 }
 
 /**
- * The paint a fill's body is laid at: its brush's converged build, read off a straight stroke of it (`probe`). A glaze
- * or a build lays toward full, so it has built to 1 and keeps its densest stamp and cap; a buildToOpacity has built
- * to the strongest opacity any stamp brought, as it never lowers.
+ * A fill body's paint: its brush's converged build, read off a straight stroke (`probe`). Toward full it has built
+ * to 1; a buildToOpacity to the strongest opacity a stamp brought. `densest`: a glaze's densest stamp, its cap too, as
+ * a body has no tip to take off.
  */
-export type StampFillBodyLevels = { built: number; densest: number; cap: number };
+export type StampFillBodyLevels = { built: number; densest: number };
 
 export function stampFillBodyLevels(towardFull: boolean, probe: readonly PlacedStamp[]): StampFillBodyLevels {
   const densest = probe.reduce((most, s) => Math.max(most, s.alpha * s.opacity), 0);
-  return { built: towardFull ? 1 : probe.reduce((most, s) => Math.max(most, s.opacity), 0), densest, cap: densest };
+  return { built: towardFull ? 1 : probe.reduce((most, s) => Math.max(most, s.opacity), 0), densest };
 }
 
 /** A straight stroke of `brush` four diameters long, for its converged build (stampFillBodyLevels). */
@@ -106,15 +106,24 @@ export function stampFillProbe(brush: StampBrush, diameter: number, seed: string
 }
 
 /**
- * How far a fill's front has crossed its region along the normal to `direction`: its paint at (x, y) as a share, 0 ahead
- * of the front and 1 a diameter behind it. `progress` 0 has shown none of it, 1 all.
+ * A fill's front along the normal to `direction`: its paint at (x, y) as a share, 0 ahead and 1 a diameter behind.
+ * It runs from `from` to `to`, the ends of all it paints, a scattered stamp's reach past the outline too, so
+ * `progress` 0 shows none of it and 1 all.
  */
 export type StampFillFront = { normal: readonly [number, number]; from: number; to: number; soft: number };
 
-export function stampFillFront(polygon: readonly StampPoint[], direction: number, diameter: number): StampFillFront {
+export function stampFillFront(polygon: readonly StampPoint[], stamps: readonly PlacedStamp[], direction: number, diameter: number): StampFillFront {
   const normal = [-Math.sin(direction), Math.cos(direction)] as const;
-  const along = polygon.map(({ x, y }) => x * normal[0] + y * normal[1]);
-  return { normal, from: Math.min(...along), to: Math.max(...along), soft: diameter };
+  let from = Infinity, to = -Infinity;
+  const reach = (x: number, y: number, r: number) => {
+    const along = x * normal[0] + y * normal[1];
+    from = Math.min(from, along - r);
+    to = Math.max(to, along + r);
+  };
+  for (const { x, y } of polygon) reach(x, y, 0);
+  // A diameter from its centre: past a square tip's corners at any turn.
+  for (const { x, y, diameter: d } of stamps) reach(x, y, d);
+  return { normal, from, to, soft: diameter };
 }
 
 /** The share of a fill's paint at (x, y) shown with its front at `progress`; the renderer's fillFrontShare. */

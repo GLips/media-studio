@@ -1,16 +1,20 @@
 // node harness/stamp-reference.ts probes <run> (npm run stamp:reference -- probes <run>): the reference renderer
 // (lib/picture/stamp-reference) against a Photoshop probe run, cell by cell, each cell's error split among the stages
-// that own it (vid-97). `formulas`: every paired CPU/WGSL formula run on the GPU and held to its CPU side.
+// that own it (vid-97). `formulas`: every paired CPU/WGSL formula run on the GPU and held to its CPU side. `deposits`:
+// whole deposits (fills, masking fluid, `within`) painted by the GPU renderer and the CPU reference, compared.
 import { defineCommand } from 'citty';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { PhotoshopCaptureManifest } from '#lib/picture/photoshop-brushes/models/photoshop-capture-plan.ts';
 import { photoshopPresetMismatches } from '#lib/picture/photoshop-brushes/models/photoshop-preset.ts';
 import { photoshopProbes } from '#lib/picture/photoshop-brushes/models/photoshop-probes.ts';
 import { scorePhotoshopProbeRun } from '#lib/picture/stamp-reference/engine/photoshop-probe-reference.ts';
+import { checkStampDepositParity } from '#lib/picture/stamp-reference/engine/stamp-deposit-parity.ts';
 import { checkStampFormulaParity } from '#lib/picture/stamp-reference/engine/stamp-formula-parity.ts';
+import { STAMP_DEPOSIT_PARITY_RMS } from '#lib/picture/stamp-reference/models/stamp-deposit-parity.ts';
 import { STAMP_FORMULA_TOLERANCE } from '#lib/picture/stamp-reference/models/stamp-formula-parity.ts';
 import type { StampResolveStage } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
+import { STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { runHarnessCommand } from './run-harness-command.ts';
 
 const listArg = (value: string | undefined) => value?.split(',').map((s) => s.trim()).filter(Boolean);
@@ -69,7 +73,30 @@ const formulasCommand = defineCommand({
   },
 });
 
+// Each accumulation the fills lay: Kyle's Photoshop washes build to their opacity, VVDS's Procreate brushes glaze or build.
+const DEPOSIT_PARITY_BRUSHES = [
+  { style: 'watercolor', pack: 'kyle-watercolor', name: "Kyle's Real Watercolor - Medium Wash Slow" },
+  { style: 'watercolor', pack: 'kyle-watercolor', name: "Kyle's Real Watercolor - Opaque Thicker" },
+  { style: 'watercolor', pack: 'vvds', name: 'Main Watercolor Brush' },
+  { style: 'watercolor', pack: 'vvds', name: 'Super Wet Watercolor Brush' },
+];
+
+const depositsCommand = defineCommand({
+  meta: { name: 'deposits', description: `Paint a stroke, and a fill under a ragged partly lifted mask (alone, within a region, with a load gradient, and its front halfway), with a stroke under a state of the fluid built on it, by the GPU renderer and the CPU reference, for four brushes: fails past rms ${STAMP_DEPOSIT_PARITY_RMS}.` },
+  args: { out: { type: 'string', valueHint: 'dir', description: 'Write each case as a sheet (GPU, CPU, difference × 8) here' } },
+  async run({ args }) {
+    const out = args.out === undefined ? undefined : resolve(args.out);
+    const results = await checkStampDepositParity(STUDIO_STYLES_DIR, DEPOSIT_PARITY_BRUSHES, out !== undefined);
+    if (out) mkdirSync(out, { recursive: true });
+    for (const { brush, parityCase, rms, max, png } of results) {
+      console.log(`${brush.pack}/${brush.name} ${parityCase}: rms ${rms.toFixed(4)}, max ${max.toFixed(3)}${rms > STAMP_DEPOSIT_PARITY_RMS ? ' OVER' : ''}`);
+      if (out && png) writeFileSync(join(out, `${brush.pack}-${brush.name.replace(/\W+/g, '-')}-${parityCase}.png`), Buffer.from(png.slice(png.indexOf(',') + 1), 'base64'));
+    }
+    if (results.some(({ rms }) => rms > STAMP_DEPOSIT_PARITY_RMS)) process.exitCode = 1;
+  },
+});
+
 await runHarnessCommand(defineCommand({
   meta: { name: 'stamp-reference', description: 'The slow CPU reference renderer, held against Photoshop captures stage by stage, and the GPU formulas held to it' },
-  subCommands: { probes: probesCommand, formulas: formulasCommand },
+  subCommands: { probes: probesCommand, formulas: formulasCommand, deposits: depositsCommand },
 }));

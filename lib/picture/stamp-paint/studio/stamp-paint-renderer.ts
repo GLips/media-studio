@@ -18,7 +18,7 @@ import {
 } from '../models/stamp-deposit-stages.ts';
 import { STAMP_FILL_FRONT_SHARE } from '../models/stamp-fill.ts';
 import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
-import { stampFillProgressAt, visibleStampCountAt, type CompiledStampDeposit, type CompiledStampMask, type CompiledStampPaint, type CompiledStampPass, type StampPaintPaper } from '../models/stamp-paint-recipe.ts';
+import { stampDepositShowsAt, stampFillProgressAt, visibleStampCountAt, type CompiledStampDeposit, type CompiledStampMask, type CompiledStampMaskArea, type CompiledStampPaint, type CompiledStampPass, type StampPaintPaper } from '../models/stamp-paint-recipe.ts';
 import { STAMP_REGION_WGSL, stampEdgeReach, stampEdgeWidth, stampPolygonBox, type StampBox, type StampPoint } from '../models/stamp-region.ts';
 import type { PlacedStamp } from '../models/stamp-placement.ts';
 import { stampBlurRegion, type StampPixelBox } from '../models/stamp-blur-region.ts';
@@ -468,33 +468,41 @@ fn polygonDistance(p: vec2f, first: u32, count: u32) -> f32 {
   return select(-sqrt(nearest), sqrt(nearest), inside);
 }`;
 
-// One step of the masking fluid, drawn over its state's box (x, y, width, height): the state under it, read from
-// `parent` (its box `parent`, width 0 for none), with a mask's region joined by max or an unmask's lifted by amount,
-// everywhere when it has no region. `ragged`: the edge's amount and scale, 0 scale for a clean one.
-const MASK_STEP = stampUniformLayout('MaskStep', [
-  ['box', 'vec4f'], ['parent', 'vec4f'], ['ragged', 'vec2f'], ['width', 'f32'], ['amount', 'f32'], ['first', 'u32'], ['count', 'u32'], ['kind', 'u32'], ['seed', 'u32'],
-]);
+// A state of the masking fluid over its box: the state it's built on (`parent`, width 0 for none), then `opCount` ops
+// from `firstOp`, a mask joining its region by max, an unmask lifting its amount, everywhere without a region
+// (`count` 0). An op's region is worked out only within its `reach`, beyond which it's 0.
+const MASK_STEP = stampUniformLayout('MaskStep', [['box', 'vec4f'], ['parent', 'vec4f'], ['firstOp', 'u32'], ['opCount', 'u32']]);
+const MASK_OP_WORDS = 12;
 const MASK_STEP_WGSL = /* wgsl */ `
 ${COVERAGE_FORMULAS_WGSL}
 ${STAMP_REGION_WGSL}
 ${FULL_FRAME_WGSL}
 ${MASK_STEP.wgsl}
+struct MaskOp { reach: vec4f, ragged: vec2f, width: f32, amount: f32, first: u32, count: u32, kind: u32, seed: u32 }
 @group(0) @binding(0) var<uniform> u: MaskStep;
 @group(0) @binding(1) var<storage, read> points: array<vec2f>;
 @group(0) @binding(2) var parent: texture_2d<f32>;
+@group(0) @binding(3) var<storage, read> ops: array<MaskOp>;
 ${POLYGON_DISTANCE_WGSL}
 @fragment fn maskStep(@builtin(position) at: vec4f) -> @location(0) vec4f {
   let p = at.xy + u.box.xy;
-  var under = 0.0;
+  var fluid = 0.0;
   let q = floor(p) - u.parent.xy;
-  if (all(q >= vec2f(0.0)) && all(q < u.parent.zw)) { under = textureLoad(parent, vec2u(q), 0).r; }
-  var r = 1.0;
-  if (u.count > 0u) {
-    var moved = 0.0;
-    if (u.ragged.y > 0.0) { moved = u.ragged.x * edgeNoise(p.x / u.ragged.y, p.y / u.ragged.y, u.seed); }
-    r = edgeCoverage(polygonDistance(p, u.first, u.count) + moved, u.width);
+  if (all(q >= vec2f(0.0)) && all(q < u.parent.zw)) { fluid = textureLoad(parent, vec2u(q), 0).r; }
+  for (var i = u.firstOp; i < u.firstOp + u.opCount; i++) {
+    let op = ops[i];
+    var r = 1.0;
+    if (op.count > 0u) {
+      r = 0.0;
+      if (all(p >= op.reach.xy) && all(p <= op.reach.zw)) {
+        var moved = 0.0;
+        if (op.ragged.y > 0.0) { moved = op.ragged.x * edgeNoise(p.x / op.ragged.y, p.y / op.ragged.y, op.seed); }
+        r = edgeCoverage(polygonDistance(p, op.first, op.count) + moved, op.width);
+      }
+    }
+    fluid = select(fluid * (1.0 - op.amount * r), max(fluid, r), op.kind == 0u);
   }
-  return vec4f(select(under * (1.0 - u.amount * r), max(under, r), u.kind == 0u));
+  return vec4f(fluid);
 }`;
 
 // A fill's body over its box (fillBody), how thick its region is read from its grid (as stampGridAt reads one): the
@@ -523,9 +531,9 @@ fn gridAt(p: vec2f) -> f32 {
 }`;
 
 // A fill's body joined to its stamps' build, in the stamps' render pass, before rims blur it: its box (x, y, width,
-// height) and its levels (stampFillBodyLevels: built, cap, densest). The pipeline's blend joins it as the brush's
+// height) and its levels (stampFillBodyLevels: built, densest). The pipeline's blend joins it as the brush's
 // accumulation lays paint: toward full by screen, toward an opacity by max; a glaze's cap and densest by max.
-const BODY_DRAW = stampUniformLayout('BodyDraw', [['box', 'vec4f'], ['levels', 'vec4f']]);
+const BODY_DRAW = stampUniformLayout('BodyDraw', [['box', 'vec4f'], ['levels', 'vec2f']]);
 const BODY_DRAW_WGSL = /* wgsl */ `
 ${FULL_FRAME_WGSL}
 ${BODY_DRAW.wgsl}
@@ -537,7 +545,7 @@ fn laid(at: vec4f) -> Covered {
   let q = floor(at.xy) - u.box.xy;
   var b = 0.0;
   if (all(q >= vec2f(0.0)) && all(q < u.box.zw)) { b = textureLoad(body, vec2u(q), 0).r; }
-  return Covered(vec4f(b * u.levels.x), vec4f(b * u.levels.y, 0.0, b * u.levels.z, 0.0));
+  return Covered(vec4f(b * u.levels.x), vec4f(b * u.levels.y, 0.0, b * u.levels.y, 0.0));
 }
 @fragment fn laidBody(@builtin(position) at: vec4f) -> Covered { return laid(at); }
 // A tinted pass has tint targets, which the body leaves as they are: it carries no stamp's tint.
@@ -548,6 +556,11 @@ fn laid(at: vec4f) -> Covered {
 
 /** The most a painting's region textures (fill bodies, masking fluid, `within` regions) may take, bytes. */
 const STAMP_REGION_BUDGET = 512 * 1024 * 1024;
+/**
+ * Half floats: a state of the fluid is built on the one under it, and a chain of slight unmasks would round back to
+ * where it began in bytes.
+ */
+const STAMP_REGION_FORMAT = 'r16float', STAMP_REGION_TEXEL_BYTES = 2;
 
 const assetKey = ({ style, pack, file }: StampBrushAsset) => `${style}/${pack}/${file}`;
 
@@ -867,7 +880,7 @@ async function rendererOnDevice(
   const outputPipeline = device.createRenderPipeline({ layout: 'auto', vertex: { module: outputModule }, fragment: { module: outputModule, targets: [{ format }] } });
   const regionPipeline = (code: string, entryPoint: string) => {
     const module = device.createShaderModule({ code });
-    return device.createRenderPipeline({ layout: 'auto', vertex: { module }, fragment: { module, entryPoint, targets: [{ format: 'r8unorm' }] } });
+    return device.createRenderPipeline({ layout: 'auto', vertex: { module }, fragment: { module, entryPoint, targets: [{ format: STAMP_REGION_FORMAT }] } });
   };
   const maskStepPipeline = regionPipeline(MASK_STEP_WGSL, 'maskStep'), fillBodyPipeline = regionPipeline(FILL_BODY_WGSL, 'fillBodyAt');
   const bodyModule = device.createShaderModule({ code: BODY_DRAW_WGSL });
@@ -931,14 +944,14 @@ async function rendererOnDevice(
   const regions = loadRegions();
 
   /**
-   * Works out, once, what of the painting doesn't change with time: each fill's body, each state of the masking fluid a
-   * deposit lands under (from the state before it, over its own box), each pass's `within`. Each is a cropped r8
-   * texture, none for an empty state; together held to STAMP_REGION_BUDGET, refused past it naming what's there.
+   * Works out, once, what of the painting doesn't change with time: each fill's body, each state of the fluid a
+   * deposit lands under, each pass's `within`, as cropped textures (none for an empty state). All are planned and held
+   * to STAMP_REGION_BUDGET, refused past it naming what's there, before any is made.
    */
   function loadRegions() {
     const passes = painting.groups.flatMap((group) => group.passes);
     const all = passes.flatMap((pass) => pass.deposits);
-    // Every polygon once, and each fill's thickness grid, in two storage buffers.
+    // Every polygon once, each fill's thickness grid and every op of the fluid, in storage buffers.
     const points: number[] = [], placed = new Map<readonly StampPoint[], [number, number]>();
     const pointsOf = (polygon: readonly StampPoint[]) => {
       if (!placed.has(polygon)) {
@@ -948,22 +961,37 @@ async function rendererOnDevice(
       return placed.get(polygon)!;
     };
     const grids: number[] = [];
-    type Step = { box: Box; draw: (views: StampUniformViews) => GPURenderPipeline; parent?: RegionTexture | null; grid?: boolean };
+    const opWords: { floats: number[]; words: number[] }[] = [];
+    type Step = { box: Box; draw: (views: StampUniformViews) => GPURenderPipeline; parent?: Step | null; grid?: boolean };
     const steps: Step[] = [];
-    let bytes = 0;
-    const texture = (box: Box): RegionTexture => {
-      bytes += box.w * box.h;
-      const made = device.createTexture({ size: [box.w, box.h], format: 'r8unorm', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
-      return { view: made.createView(), box };
-    };
     const inPainting = (box: StampBox): Box | null => {
       const x = Math.max(0, Math.floor(box.x0)), y = Math.max(0, Math.floor(box.y0));
       const w = Math.min(width, Math.ceil(box.x1)) - x, h = Math.min(height, Math.ceil(box.y1)) - y;
       return w > 0 && h > 0 ? { x, y, w, h } : null;
     };
-    const made = new Map<Step, RegionTexture>();
+    /** An op of the fluid, its region's area or everywhere, as a MaskOp; its index. */
+    const opOf = (kind: 'mask' | 'unmask', amount: number, area: CompiledStampMaskArea | null) => {
+      const [first, count] = area ? pointsOf(area.polygon) : [0, 0], reach = area ? areaBox(area) : null, ragged = area?.edge?.ragged;
+      opWords.push({
+        floats: [reach?.x0 ?? 0, reach?.y0 ?? 0, reach?.x1 ?? 0, reach?.y1 ?? 0, ragged?.amount ?? 0, ragged?.scale ?? 0, stampEdgeWidth(area?.edge), amount],
+        words: [first, count, kind === 'mask' ? 0 : 1, area?.seed ?? 0],
+      });
+      return opWords.length - 1;
+    };
+    /** A step drawing `opCount` ops from `firstOp` over `box`, on `parent`'s state. */
+    const maskStep = (box: Box, parent: Step | null, firstOp: number, opCount: number): Step => ({
+      box, parent,
+      draw: (views) => {
+        const put = stampUniformWriter(MASK_STEP, views);
+        put('box', boxWords(box));
+        put('parent', boxWords(parent?.box));
+        put('firstOp', firstOp);
+        put('opCount', opCount);
+        return maskStepPipeline;
+      },
+    });
 
-    const bodies = new Map<CompiledStampDeposit, RegionTexture>();
+    const bodies = new Map<CompiledStampDeposit, Step>();
     for (const deposit of all) {
       if (deposit.kind !== 'fill') continue;
       const { fill } = deposit, box = inPainting(fill.box);
@@ -985,95 +1013,82 @@ async function rendererOnDevice(
         },
       };
       steps.push(step);
-      bodies.set(deposit, texture(box));
-      made.set(step, bodies.get(deposit)!);
+      bodies.set(deposit, step);
     }
 
-    // A state of the fluid covers the state under it, and a mask's own region as far as its edge reaches.
-    const fluids = new Map<CompiledStampMask, RegionTexture | null>();
-    const fluidOf = (mask: CompiledStampMask | null): RegionTexture | null => {
-      if (!mask) return null;
+    // Only the states a deposit lands under are made: each on the nearest such state under it, with the ops between
+    // in one step, so a run of masks costs one texture. A state covers the one it's built on and each mask's reach.
+    const read = new Set(all.flatMap((deposit) => (deposit.mask ? [deposit.mask] : [])));
+    const fluids = new Map<CompiledStampMask, Step | null>();
+    const fluidOf = (mask: CompiledStampMask): Step | null => {
       if (fluids.has(mask)) return fluids.get(mask)!;
-      const under = fluidOf(mask.under);
-      const own = mask.kind === 'mask' && mask.polygon ? inPainting(stampPolygonBox(mask.polygon, stampEdgeReach(mask.edge) + 1)) : null;
-      const box = own && under ? union(own, under.box) : own ?? under?.box ?? null;
-      if (!box) {
-        fluids.set(mask, null);
-        return null;
+      const between: CompiledStampMask[] = [];
+      let base: CompiledStampMask | null = mask;
+      for (; base && (base === mask || !read.has(base)); base = base.under) between.unshift(base);
+      const parent = base ? fluidOf(base) : null;
+      let box = parent?.box ?? null;
+      for (const op of between) {
+        const own = op.kind === 'mask' ? inPainting(areaBox(op.area)) : null;
+        if (own) box = box ? union(box, own) : own;
       }
-      const [first, count] = mask.polygon ? pointsOf(mask.polygon) : [0, 0];
-      const step: Step = {
-        box, parent: under,
-        draw: (views) => {
-          const put = stampUniformWriter(MASK_STEP, views);
-          put('box', boxWords(box));
-          put('parent', boxWords(under?.box));
-          put('ragged', mask.edge?.ragged ? [mask.edge.ragged.amount, mask.edge.ragged.scale] : [0, 0]);
-          put('width', stampEdgeWidth(mask.edge));
-          put('amount', mask.amount);
-          put('first', first);
-          put('count', count);
-          put('kind', mask.kind === 'mask' ? 0 : 1);
-          put('seed', mask.seed);
-          return maskStepPipeline;
-        },
-      };
-      steps.push(step);
-      const region = texture(box);
-      made.set(step, region);
-      fluids.set(mask, region);
-      return region;
+      const step = box && maskStep(box, parent, opWords.length, between.length);
+      if (step) {
+        for (const op of between) opOf(op.kind, op.kind === 'mask' ? 1 : op.amount, op.area);
+        steps.push(step);
+      }
+      fluids.set(mask, step);
+      return step;
     };
-    for (const deposit of all) fluidOf(deposit.mask);
+    for (const mask of read) fluidOf(mask);
 
-    const withins = new Map<CompiledStampPass, RegionTexture | null>();
+    // A pass's `within` is a state of its own: one mask of its region on no fluid.
+    const withins = new Map<CompiledStampPass, Step | null>();
     for (const pass of passes) {
       if (!pass.within) continue;
-      const box = inPainting(stampPolygonBox(pass.within, 1));
-      if (!box) {
-        withins.set(pass, null);
-        continue;
+      const area = { polygon: pass.within, seed: 0 }, box = inPainting(areaBox(area));
+      const step = box && maskStep(box, null, opWords.length, 1);
+      if (step) {
+        opOf('mask', 1, area);
+        steps.push(step);
       }
-      const [first, count] = pointsOf(pass.within);
-      const step: Step = {
-        box,
-        draw: (views) => {
-          const put = stampUniformWriter(MASK_STEP, views);
-          put('box', boxWords(box));
-          put('width', 1);
-          put('first', first);
-          put('count', count);
-          return maskStepPipeline;
-        },
-      };
-      steps.push(step);
-      withins.set(pass, texture(box));
-      made.set(step, withins.get(pass)!);
+      withins.set(pass, step);
     }
+
+    const bytes = steps.reduce((sum, { box }) => sum + box.w * box.h * STAMP_REGION_TEXEL_BYTES, 0);
     if (bytes > STAMP_REGION_BUDGET) {
       throw new Error(`stamp paint: the painting's fills, masking fluid and within regions need ${Math.round(bytes / 2 ** 20)} MB, over ${STAMP_REGION_BUDGET / 2 ** 20} MB: ${bodies.size} fill bodies, ${[...fluids.values()].filter(Boolean).length} states of the fluid, ${withins.size} within regions; share masks between deposits or crop them`);
     }
+    const made = new Map(steps.map((step): [Step, RegionTexture] => {
+      const texture = device.createTexture({ size: [step.box.w, step.box.h], format: STAMP_REGION_FORMAT, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+      return [step, { view: texture.createView(), box: step.box }];
+    }));
     if (steps.length) {
+      const opBytes = new ArrayBuffer(Math.max(1, opWords.length) * MASK_OP_WORDS * 4), opFloats = new Float32Array(opBytes), opInts = new Uint32Array(opBytes);
+      opWords.forEach(({ floats, words }, i) => {
+        opFloats.set(floats, i * MASK_OP_WORDS);
+        opInts.set(words, i * MASK_OP_WORDS + floats.length);
+      });
       const pointBuffer = buffer(new Float32Array(points.length ? points : [0, 0]), GPUBufferUsage.STORAGE), gridBuffer = buffer(new Float32Array(grids.length ? grids : [0]), GPUBufferUsage.STORAGE);
+      const opBuffer = buffer(opFloats, GPUBufferUsage.STORAGE);
       const words = new ArrayBuffer(steps.length * SLOT), uniformBuffer = device.createBuffer({ size: steps.length * SLOT, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
       const encoder = device.createCommandEncoder();
-      // In the order made, so a state of the fluid is drawn after the state under it.
+      // In the order planned, so a state of the fluid is drawn after the state it's built on.
       steps.forEach((step, i) => {
         const at = (i * SLOT) / 4, n = SLOT / 4;
         const pipeline = step.draw({ floats: new Float32Array(words, at * 4, n), ints: new Int32Array(words, at * 4, n), words: new Uint32Array(words, at * 4, n) });
         const pass = encoder.beginRenderPass({ colorAttachments: [{ view: made.get(step)!.view, loadOp: 'clear', storeOp: 'store' }] });
         pass.setPipeline(pipeline);
-        pass.setBindGroup(0, bindGroup(pipeline, [
-          { buffer: uniformBuffer, offset: i * SLOT, size: SLOT }, { buffer: pointBuffer },
-          step.grid ? { buffer: gridBuffer } : (step.parent?.view ?? targets.blank.view),
-        ]));
+        pass.setBindGroup(0, bindGroup(pipeline, step.grid
+          ? [{ buffer: uniformBuffer, offset: i * SLOT, size: SLOT }, { buffer: pointBuffer }, { buffer: gridBuffer }]
+          : [{ buffer: uniformBuffer, offset: i * SLOT, size: SLOT }, { buffer: pointBuffer }, step.parent ? made.get(step.parent)!.view : targets.blank.view, { buffer: opBuffer }]));
         pass.draw(3);
         pass.end();
       });
       device.queue.writeBuffer(uniformBuffer, 0, words);
       device.queue.submit([encoder.finish()]);
     }
-    return { bodies, fluids, withins };
+    const texturesOf = <K,>(byKey: Map<K, Step | null>) => new Map([...byKey].map(([key, step]): [K, RegionTexture | null] => [key, step && made.get(step)!]));
+    return { bodies: texturesOf(bodies), fluids: texturesOf(fluids), withins: texturesOf(withins) };
   }
 
   /** A layer's canvas grain's tile (a share of its stamps' diameter across), offset and mip level, written as a Grain at `at`. */
@@ -1174,7 +1189,7 @@ async function rendererOnDevice(
         const put = stampUniformWriter(BODY_DRAW, views);
         put('box', [body.box.x, body.box.y, body.box.w, body.box.h]);
         const { levels } = deposit.fill;
-        put('levels', [levels.built, levels.cap, levels.densest, 0]);
+        put('levels', [levels.built, levels.densest]);
       }), body.view]));
       pass.draw(3);
     }
@@ -1321,9 +1336,8 @@ async function rendererOnDevice(
       for (const pass of group.passes) {
         if (!pass.clipTo) clear(encoder, targets.clip.view);
         for (const deposit of pass.deposits) {
+          if (!stampDepositShowsAt(deposit, t)) continue;
           const count = visibleStampCountAt(deposit, t);
-          // A fill shows once its front has started across it, though its edge stroke may have no stamps.
-          if (deposit.kind === 'fill' ? !stampFillProgressAt(deposit, t) : !count) continue;
           const dualCount = visibleStampCountAt(deposit, t, 'dualStamps');
           const loadedDeposit = deposits.get(deposit)!;
           // The rim is where the mask stands above a blur as wide as its edge.
@@ -1394,6 +1408,9 @@ function writeGrain(views: StampUniformViews, at: number, grain: StampBrushGrain
   put('aboutMean', grain.contrastPivot === 'mean' ? 1 : 0);
   put('mirror', grain.tiling === 'mirror' ? 1 : 0);
 }
+
+/** Where a mask's region can cover anything: its box grown by how far its edge reaches. */
+const areaBox = (area: CompiledStampMaskArea) => stampPolygonBox(area.polygon, stampEdgeReach(area.edge) + 1);
 
 /** A box as a uniform's four words; an empty box for none, whose region reads 0 everywhere. */
 const boxWords = (box: Box | undefined): [number, number, number, number] => (box ? [box.x, box.y, box.w, box.h] : [0, 0, 0, 0]);

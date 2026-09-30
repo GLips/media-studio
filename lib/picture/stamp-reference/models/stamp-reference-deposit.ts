@@ -152,7 +152,7 @@ function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: Stam
       built[i] = towardFull ? laid + b * (1 - laid) : Math.max(b, laid);
       if (glaze) {
         densest[i] = Math.max(densest[i], body * fill.levels.densest);
-        cap[i] = Math.max(cap[i], body * fill.levels.cap);
+        cap[i] = Math.max(cap[i], body * fill.levels.densest);
       }
     });
   }

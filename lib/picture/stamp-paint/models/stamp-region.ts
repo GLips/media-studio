@@ -5,7 +5,7 @@
 //
 // The per-pixel formulas are CPU and WGSL twins (STAMP_REGION_FUNCTIONS), held together by the formulas command as
 // coverage-formulas.ts's are. The polygon's distance itself is a loop over its edges on both sides (stampPolygonDistance
-// here, polygonDistance in the renderer), held together by the renderer's comparison with the CPU reference.
+// here, polygonDistance in the renderer), held together by the deposits command's whole-painting comparison.
 
 import { STAMP_COVERAGE_FUNCTIONS } from './coverage-formulas.ts';
 
@@ -110,8 +110,8 @@ export function stampGridLocalMax(grid: StampGrid, radius: number): StampGrid {
 
 /**
  * Where `grid` crosses `level`, as closed loops (marching squares, each crossing placed linearly along its cell's
- * side). Loops that would run off the grid's border are closed along it; a grid whose border lies outside the level
- * never has one. A saddle cell joins its crossings by the cell's mean, so loops never cross.
+ * side). A loop that runs off the grid's border is left open, so callers pad the grid until its border lies below
+ * the level. A saddle cell joins its crossings by the cell's mean, so loops never cross.
  */
 export function stampGridContours(grid: StampGrid, level: number): StampPoint[][] {
   const { columns, rows, values, x0, y0, cell } = grid;

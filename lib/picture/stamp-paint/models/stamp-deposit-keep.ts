@@ -15,7 +15,7 @@ import { stampEdgeCoverage, stampEdgedCoverage, stampPolygonDistance, type Stamp
 export function stampMaskFluidAt(mask: CompiledStampMask | null, x: number, y: number): number {
   if (!mask) return 0;
   const under = stampMaskFluidAt(mask.under, x, y);
-  const r = mask.polygon ? stampEdgedCoverage(mask.polygon, mask.edge, mask.seed, x, y) : 1;
+  const r = mask.area ? stampEdgedCoverage(mask.area.polygon, mask.area.edge, mask.area.seed, x, y) : 1;
   return mask.kind === 'mask' ? Math.max(under, r) : under * (1 - mask.amount * r);
 }
 
