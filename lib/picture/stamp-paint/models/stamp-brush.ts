@@ -155,6 +155,11 @@ export type StampBrushStamping<Image = StampBrushAsset> = {
     distribution?: StampResponseCurve;
     /** The count is at `diameter` px, and grows as (the deposit's diameter / `diameter`)^`exponent`. */
     countGrowth?: { diameter: number; exponent: number };
+    /**
+     * What `radius` and `lateral` count in: the deposit's diameter (unset), or each stamp's own, after pressure, taper
+     * and its size draw, so a smaller stamp strays less (Photoshop's).
+     */
+    reachIn?: 'stamp';
   };
   /**
    * The turn every stamp starts from, before its rotation dynamics: `angle`, plus with `randomStart` a random angle

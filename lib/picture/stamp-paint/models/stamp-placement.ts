@@ -200,11 +200,12 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
     for (let c = 0; c < Math.max(count, kept); c++) {
       const draws = drawStampSlots(seededRandom(`${seed}|${i}|${c}`), 'stroke');
       if (lifted || c >= kept) continue;
-      const lateral = (draws.lateral * 2 - 1) * brush.scatter.lateral * reach * diameter;
+      const unit = brush.scatter.reachIn === 'stamp' ? stampOwnSize(dynamics, size, diameter, { ...step, stamp: c, draws }) : diameter;
+      const lateral = (draws.lateral * 2 - 1) * brush.scatter.lateral * reach * unit;
       // A uniform distance, not a uniform spot in the disc, so stamps crowd the stroke: Photoshop's both-axes scatter
       // (vid-97's scatter probe fits it at 0.009 rms; uniform over the disc's area, 0.022).
       const strays = distribution ? stampResponseCurve(distribution, draws.scatterReach) : draws.scatterReach;
-      const scatterTurn = draws.scatterTurn * Math.PI * 2, scatterReach = strays * brush.scatter.radius * reach * diameter;
+      const scatterTurn = draws.scatterTurn * Math.PI * 2, scatterReach = strays * brush.scatter.radius * reach * unit;
       stamps.push(buildStamp({
         x: lerp(a.x, b.x, k) - Math.sin(step.heading) * lateral + Math.cos(scatterTurn) * scatterReach,
         y: lerp(a.y, b.y, k) + Math.cos(step.heading) * lateral + Math.sin(scatterTurn) * scatterReach,

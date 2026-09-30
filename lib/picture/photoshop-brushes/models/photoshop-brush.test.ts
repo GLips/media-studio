@@ -3,7 +3,6 @@ import { test } from 'node:test';
 import { normalizePhotoshopBrush, type PhotoshopReading } from './photoshop-brush.ts';
 import { stampLinearDynamics } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { PHOTOSHOP_POOLING } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
-import { stampResponseCurve } from '#lib/picture/stamp-paint/models/stamp-dynamics.ts';
 import { placeStrokeStamps } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 import type { PhotoshopDescriptor } from './photoshop-descriptor.ts';
 import { photoshopPaintablePreset, readPhotoshopPreset } from './photoshop-preset.ts';
@@ -69,7 +68,8 @@ test('a Procreate brush and a Photoshop preset that paint alike normalize to the
 
   // Photoshop steps by each stamp's own size and its sample's narrow side (a square sample: its roundness of 0.5
   // doesn't enter), where Procreate spreads its steps along the stroke, and holds flow in 255ths. The two build, sample tips, cut and tile grain, adjust it and
-  // combine a dual as each was identified or fitted to. Its size and count jitter spread either way (`around`).
+  // combine a dual as each was identified or fitted to. Its size and count jitter spread either way (`around`), and a
+  // stamp strays in its own diameters.
   const photoshopWays = { accumulation: { kind: 'buildToOpacity' }, stepping: 'eachStamp' } as const;
   const { dynamics } = procreate.brush;
   // A sample is stored inside a blank texel each side, which it spans past.
@@ -78,9 +78,10 @@ test('a Procreate brush and a Photoshop preset that paint alike normalize to the
     ...procreate.brush, ...photoshopWays, flow: 163 / 255,
     dynamics: { ...dynamics, size: { ...dynamics.size, random: around(dynamics.size?.random) }, count: { ...dynamics.count, random: around(dynamics.count?.random) } },
     tip: { ...procreate.brush.tip, ...sample },
+    scatter: { ...procreate.brush.scatter, reachIn: 'stamp' },
     grain: { ...procreate.brush.grain!, blend: { family: 'texture', mode: procreate.brush.grain!.blend.mode }, contrastPivot: 'midGrey', tiling: 'repeat' },
     // Photoshop turns each dual dab a random way.
-    dual: { ...procreate.brush.dual!, ...photoshopWays, dynamics: { rotation: { random: { kind: 'linear', amount: Math.PI } } }, tip: { ...procreate.brush.dual!.tip, ...sample }, blend: { family: 'texture', mode: procreate.brush.dual!.blend.mode } },
+    dual: { ...procreate.brush.dual!, ...photoshopWays, scatter: { ...procreate.brush.dual!.scatter, reachIn: 'stamp' }, dynamics: { rotation: { random: { kind: 'linear', amount: Math.PI } } }, tip: { ...procreate.brush.dual!.tip, ...sample }, blend: { family: 'texture', mode: procreate.brush.dual!.blend.mode } },
   });
   assert.equal(photoshop.brush.scatter.count, 3);
 });
@@ -148,7 +149,7 @@ test("pressure is resolved once, a lingering pose over the pressure buttons over
   assert.deepEqual(pressure(buttons, true), [1, 1, 0.5]);
 });
 
-test('a control a stroke drives binds its sensor: angle turns a whole turn over pressure, scatter shrinks as p², size fades to its minimum', () => {
+test('a control a stroke drives binds its sensor: angle turns a whole turn over pressure, scatter shrinks as p² under a pose, count jitter empties steps as pressure falls, size fades to its minimum', () => {
   const { brush, support } = normalizePhotoshopBrush('Driven', {
     preset: paintable({
       _class: 'brushPreset', Brsh: { _class: 'computedBrush', Dmtr: px(50), Hrdn: pct(100), Spcn: pct(10), Intr: true },
@@ -159,10 +160,27 @@ test('a control a stroke drives binds its sensor: angle turns a whole turn over 
   }, photoshopReading);
   assert.deepEqual(brush.dynamics.size, { fade: { kind: 'linear', amount: 0.8, steps: 25 } });
   assert.deepEqual(brush.dynamics.rotation, { pressure: { kind: 'linear', amount: -2 * Math.PI } });
-  // Scatter on pressure keeps p² of its reach: a quarter at half pressure.
-  const reach = brush.dynamics.scatter?.pressure;
-  assert.ok(reach?.kind === 'curve');
-  assert.equal(stampResponseCurve(reach.points, 0.5), 0.25);
+  // Scatter on pressure keeps p of its reach, counted in the stamp's own diameter: under a pose at half pressure the
+  // stamp is half across, so it strays a quarter as far as at full.
+  const posed = normalizePhotoshopBrush('Driven', {
+    preset: paintable({
+      _class: 'brushPreset', Brsh: { _class: 'computedBrush', Dmtr: px(50), Hrdn: pct(100), Spcn: pct(10), Intr: true },
+      useScatter: true, scatterDynamics: control(2, 100), bothAxes: true, 'Cnt ': long(1), countDynamics: control(0, 0),
+    }),
+    tip: { kind: 'round', image: asset('tips/round.png') },
+  }, photoshopReading, { lingeringPose: true }).brush;
+  const farthest = (pressure: number) => Math.max(...placeStrokeStamps([{ x: 0, y: 0, pressure }, { x: 5000, y: 0, pressure }], posed, 50, 'reach').map((s) => Math.abs(s.y)));
+  assert.ok(Math.abs(farthest(0.5) / farthest(1) - 0.25) < 0.02);
+  // Count jitter beside count on pressure empties (1 − p)³ of the steps: at a quarter pressure 0.58 of full's paint.
+  const counted = normalizePhotoshopBrush('Counted', {
+    preset: paintable({
+      _class: 'brushPreset', Brsh: { _class: 'computedBrush', Dmtr: px(50), Hrdn: pct(100), Spcn: pct(10), Intr: true },
+      useScatter: true, scatterDynamics: control(0, 0), 'Cnt ': long(1), countDynamics: control(2, 100),
+    }),
+    tip: { kind: 'round', image: asset('tips/round.png') },
+  }, photoshopReading).brush;
+  const stamps = (pressure: number) => placeStrokeStamps([{ x: 0, y: 0, pressure }, { x: 50000, y: 0, pressure }], counted, 50, 'count').length;
+  assert.ok(Math.abs(stamps(0.25) / stamps(1) - 0.58) < 0.03);
   // Tilt reads full on a stroked path, as off does: no binding, and a note that says why.
   assert.equal(brush.dynamics.roundness, undefined);
   assert.ok(support.some((n) => n.setting === 'tipDynamics.roundness.control' && n.level === 'inapplicable'));

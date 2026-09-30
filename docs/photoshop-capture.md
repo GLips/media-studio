@@ -138,8 +138,16 @@ pressed harder than our reference's 0, so those cells miss.
   clumping, which every capture holds at 0.25.
 
 **What the controls do** (vid-105). Angle on pen pressure turns a stamp by p × 360°, and fade turns it a whole turn
-over its steps; initial direction holds the first heading. Scatter on pen pressure keeps p² of its reach (in the
-deposit's diameters, as uncontrolled scatter is), and a fade shrinks it to none over its steps. Texture Each Tip depth on pressure runs the other way: full pressure paints the
+over its steps; initial direction holds the first heading. A stamp strays in its own diameters, after pressure, a
+pose and size jitter (vid-113: Kyle's size-jittered salts and washes spread as wide as that on their reference lines,
+10–25% narrower than in the deposit's), and scatter on pen pressure keeps p of that reach, so under a pose it keeps
+p² of the deposit's diameter, as the `scatter by pressure` probes read; a fade shrinks it to none over its steps.
+Where size doesn't follow pressure it keeps p (`scatter by pressure unposed`, run 20260930-134958: its line's reach
+at each pressure matches ours at p, twice p²'s at half pressure). With 100% size jitter a stamp strays at most about
+three quarters of its own jittered width at 200%, a 10 px stamp 6 px, a 50 px one 35 (`random scatter 200 size jitter
+100`), where the tip's diameter would let every stamp reach 48; and a dual's reach holds at 200%, one dual diameter
+(`random dual scatter 200`: its paint's profile across the line spans ±24 px, 16 of reach and the dot's radius, and
+its mass is ours within 1%). Texture Each Tip depth on pressure runs the other way: full pressure paints the
 minimum depth, a fade climbs from it, and jitter takes each stamp's depth down toward it at random; a canvas texture
 ignores all three. A stamp's depth enters its mode's formula as the texture's depth times its share. In the height
 modes depth on pressure runs with it: a stamp at pressure p cuts at depth × p, its pose's opacity still outside the
@@ -153,7 +161,16 @@ whole pixels at the preset's diameter, and a squashed tip steps by it.
 way around what pressure gives it, s × (1 + j(2u − 1)), what passes the full diameter folding back under it: at full
 pressure that's the uniform 1 − j·u it always read as, and at p = 0.5 a 100% jitter reaches the full diameter. Each
 step is its first stamp's spacing at that jittered size. Count jitter spreads a step's count the same way, from 0 to
-twice the count at 100%, unfolded. A lingering pose's opacity drops opacity jitter, whether opacity's own control is off or pen pressure (`random
+twice the count at 100%, unfolded, rounded (the ends half as likely), and its first step lays one stamp, as a
+controlled count's does (every copy of the `random count …` probes). Those probes lay 0.93–1.01 of that rule's
+expected paint, within the spread of 68 steps; a single seed of ours read 1.16 by chance. Beside a control, jitter
+spreads the controlled count (count 1 at full pressure lays 0, 1, 2 at ¼, ½, ¼; count 2 lays 0 to 4) and empties a
+further j(1 − p)³ of the steps, about 0.15 at half pressure and 0.45 at a quarter, count 1 and count 2 alike, since
+both control to one stamp there (`random count 1 by pressure jitter 100`, `random count 2 …`, run 20260930-134958:
+over 952 steps; a count with no jitter never empties one). That that share runs with the jitter is a guess: only
+100% is probed. Roundness jitter over a minimum is scaled into it: 40% jitter over a 60% minimum keeps every stamp at
+0.84 or rounder (`random roundness jitter 40 minimum 60`, the least of 36 stamps 0.84), not 0.6.
+A lingering pose's opacity drops opacity jitter, whether opacity's own control is off or pen pressure (`random
 opacity jitter 60 by pressure posed`): posed lines paint alike copy for copy. A texture's brightness darkens the pattern before invert, so an inverted pattern's brightness takes paint away.
 A sample's diameter is its longer side and its stamp keeps its proportions, a dual's too (`tip sampled wide …`, `dual
 wide …`, on a second rig sample 112 × 48). It steps by its narrower side's share of its longer, its roundness left out, in

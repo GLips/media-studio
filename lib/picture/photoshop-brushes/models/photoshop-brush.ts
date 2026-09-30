@@ -262,14 +262,8 @@ function photoshopTransferBindings(p: PhotoshopPaintablePreset, context: Photosh
 }
 
 /**
- * Scatter on pen pressure keeps p² of its reach, over signal s = 1 − p (the vid-105 probes: spreads at poses 0.25 to 1
- * fit p², where p leaves the low poses too wide). A fade shrinks it linearly.
- */
-const SCATTER_BY_PRESSURE: StampScaleResponse = { kind: 'curve', points: Array.from({ length: 9 }, (_, i) => [i / 8, (1 - i / 8) ** 2] as const) };
-
-/**
- * Scatter and count, the main brush's or its dual's: the studio's scatter (its radius or lateral reach, and its
- * count), and the bindings of each. Scatter's control scales its reach, in the deposit's diameters, down to none.
+ * Scatter and count, the main brush's or its dual's, and the bindings of each. A stamp strays in its own diameters and
+ * a control scales that linearly, so a pose p keeps p² of the deposit's (docs/photoshop-capture.md, the controls).
  */
 function scatterOf(s: PhotoshopScatter | undefined, prefix: string, reading: PhotoshopReading, note: Note) {
   if (!s) return { scatter: { count: 1, radius: 0, lateral: 0 }, reach: {}, count: {} };
@@ -279,8 +273,8 @@ function scatterOf(s: PhotoshopScatter | undefined, prefix: string, reading: Pho
   const scatterDriver = driverOf(`${prefix}scatter.scatter`, 'scatter', scatter.control, note);
   const countDriver = driverOf(`${prefix}scatter.countDynamics`, 'count', count.control, note);
   return {
-    scatter: { count: Math.max(1, Math.round(s.count)), radius: both ? reach : 0, lateral: both ? 0 : reach } satisfies StampBrushLayer['scatter'],
-    reach: reach > 0 ? scaleBindingsOf(scatterDriver, scatterDriver?.sensor === 'pressure' ? SCATTER_BY_PRESSURE : linear(1)) : {},
+    scatter: { count: Math.max(1, Math.round(s.count)), radius: both ? reach : 0, lateral: both ? 0 : reach, reachIn: 'stamp' } satisfies StampBrushLayer['scatter'],
+    reach: reach > 0 ? scaleBindingsOf(scatterDriver, linear(1)) : {},
     count: { ...scaleBindingsOf(countDriver, linear(1 - count.minimum)), random: { ...linear(Math.min(1, count.jitter)), around: true } },
   };
 }

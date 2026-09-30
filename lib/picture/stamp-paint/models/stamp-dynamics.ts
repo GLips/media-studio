@@ -129,15 +129,21 @@ export function stampOwnTurn(dynamics: StampDynamics, stamp: StampContext): numb
 }
 
 /**
- * How many stamps a step lays. Step-read bindings keep 1 + floor((count − 1) × their share), one at the first step
- * (the `count …` probes). Random then keeps its share by rounding, never under 1, on the step's count draw; with
- * `around`, 0 to twice as many at full jitter. Stamps are the step's first, so none moves those another keeps.
+ * How many stamps a step lays. A count any binding drives lays one at the first step (the `count …` and `random
+ * count …` probes). Step-read bindings keep 1 + floor((count − 1) × their share); random then keeps its share by
+ * rounding, never under 1, or with `around` 0 to twice as many. Stamps are the step's first, so none moves another's.
  */
 export function stampStepCount(dynamics: StampDynamics, count: number, step: StampStepContext): number {
   const { pressure, fade, random } = dynamics.count ?? {};
-  let pressed = count;
-  if (pressure || fade) pressed = step.step === 0 ? 1 : 1 + Math.floor((count - 1) * stampStepShare(dynamics, 'count', step) + 1e-9);
+  if (step.step === 0 && (pressure || fade || random)) return 1;
+  const share = pressure || fade ? stampStepShare(dynamics, 'count', step) : 1;
+  const pressed = pressure || fade ? 1 + Math.floor((count - 1) * share + 1e-9) : count;
   if (!random) return pressed;
   const draw = randomDraw(random, step.countDraw);
-  return random.around ? Math.round(pressed * scaleShare(random, 1 - 2 * draw)) : Math.max(1, Math.round(pressed * scaleShare(random, draw)));
+  if (!random.around) return Math.max(1, Math.round(pressed * scaleShare(random, draw)));
+  // Beside a control, a spread count also empties jitter × (1 − share)³ of the steps (the `random count … by pressure`
+  // probes: none at full pressure, 0.15 at half, 0.45 at a quarter), the draw's low end.
+  const empty = (1 - scaleShare(random, 1)) * (1 - share) ** 3;
+  if (draw < empty) return 0;
+  return Math.round(pressed * scaleShare(random, 1 - (2 * (draw - empty)) / (1 - empty)));
 }
