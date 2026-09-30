@@ -4,6 +4,9 @@
 
 import { COVERAGE_FORMULAS_WGSL } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import { STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
+import { STAMP_FILL_FRONT_SHARE } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
+import { STAMP_PAINT_FIELD_SHARE } from '#lib/picture/stamp-paint/models/stamp-paint-field.ts';
+import { STAMP_REGION_WGSL } from '#lib/picture/stamp-paint/models/stamp-region.ts';
 import { createStampPaintDevice } from '#lib/picture/stamp-paint/studio/stamp-paint-gpu.ts';
 
 const WORKGROUP = 64;
@@ -15,6 +18,9 @@ const kernel = ({ call, width }: ParityGrid) => /* wgsl */ `
 ${COVERAGE_FORMULAS_WGSL}
 ${STAMP_ACCUMULATION_LAY_WGSL}
 ${STAMP_ACCUMULATION_RESOLVE_WGSL}
+${STAMP_REGION_WGSL}
+${STAMP_PAINT_FIELD_SHARE.wgsl}
+${STAMP_FILL_FRONT_SHARE.wgsl}
 @group(0) @binding(0) var<storage, read> inputs: array<f32>;
 @group(0) @binding(1) var<storage, read_write> outputs: array<f32>;
 var<private> row: u32;

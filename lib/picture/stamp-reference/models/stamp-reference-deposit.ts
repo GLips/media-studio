@@ -1,14 +1,16 @@
 // stamp-reference-deposit.ts: a deposit's coverage worked out pixel by pixel on the CPU, slowly, with every stage's
-// buffer kept: the reference the GPU renderer (stamp-paint/studio/stamp-paint-renderer.ts) is held to, and where
-// stages are rearranged to see which order a capture selects (vid-97). It samples tips and grains as the GPU's
-// samplers do (stamp-reference-image.ts), runs the CPU side of the GPU's formula and accumulation registries
-// (coverage-formulas.ts, stamp-deposit-stages.ts), and takes its active stages and their order from the same tables.
+// buffer kept: the reference the GPU renderer is held to, and where stages are rearranged to see which order a
+// capture selects. It samples as the GPU's samplers do, runs the CPU side of the GPU's formula and accumulation
+// registries, and takes its active stages and their order from the same tables.
 //
-// Coverage only: a deposit's colour, tints, paper, protected regions, clipping and Procreate's blurred wet and burnt
-// rims aren't here. Its captures are of coverage, and those stages sit after the ones in question.
+// Coverage only: colour, tints, paper, clipping and Procreate's blurred rims aren't here:
+// they come after coverage, which is what its captures hold. A fill's body joins its build as the GPU's does, and where a
+// deposit is kept (masking fluid, `within`, a fill's load and front) is stampDepositKeepAt's, applied last.
 
 import type { StampBrush, StampBrushGrain, StampBrushLayer } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import type { PlacedStamp } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
+import type { StampFillBody, StampFillBodyLevels } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
+import { stampFillBody, stampGridAt, stampPolygonDistance } from '#lib/picture/stamp-paint/models/stamp-region.ts';
 import { stampDualCombine, stampGrainCut, stampGrainPaint, stampNoiseSeed, stampPooled, stampPressedTip, stampTipNoise, stampTipNoiseAt } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import {
   STAMP_ACCUMULATIONS, STAMP_BLUR_LEVELS, STAMP_RESOLVE_PLANS, stampAccumulationBuild, stampActiveLayers, stampResolvePlan, type StampActiveLayer, type StampResolveStage,
@@ -38,6 +40,10 @@ export type StampReferenceDepositInput = {
   grainOffset: { main: readonly [number, number]; dual: readonly [number, number] };
   box: StampReferenceBox;
   arrangement?: StampReferenceArrangement;
+  /** A fill's body and the levels it's laid at, joined to the main layer's build (CompiledStampFill). */
+  fill?: StampFillBody & { levels: StampFillBodyLevels };
+  /** How much of the deposit is kept at a pixel centre (stampDepositKeepAt); all of it when left out. */
+  keep?: (x: number, y: number) => number;
 };
 
 /** Each buffer, row by row over the box, 0..1: the stamps as built, after each stage in order, and the result. */
@@ -77,7 +83,7 @@ const grainMean = (grain: Grain) => grain.image.at(-1)!.paint[0];
  * A layer's stamps built over the box. Each stamp's coverage is its tip, cut by a rolling grain when it has one, times
  * its flow, laid as its accumulation lays it (STAMP_ACCUMULATIONS).
  */
-function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: StampReferenceBox, opacityScale: number): Float32Array {
+function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: StampReferenceBox, opacityScale: number, fill?: StampReferenceDepositInput['fill']): Float32Array {
   const { layer, active } = place, { accumulation } = layer;
   const tipImage = layer.tip.image[0], span = layer.tip.span ?? 1, roundness = layer.tip.roundness;
   const [cx, cy] = layer.tip.center ?? [0.5, 0.5], noise = layer.tip.noise ?? 0, { pressed } = layer.tip;
@@ -136,6 +142,20 @@ function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: Stam
       }
     }
   }
+  // A fill's body joins the build as the GPU's blend joins it: toward full by screen, else by max; a glaze's cap too.
+  if (fill) {
+    const { towardFull } = STAMP_ACCUMULATIONS[accumulation.kind];
+    built.forEach((b, i) => {
+      const x = box.x + (i % box.width) + 0.5, y = box.y + Math.floor(i / box.width) + 0.5;
+      const body = stampFillBody(stampPolygonDistance(fill.polygon, x, y), stampGridAt(fill.thickness, x, y), fill.inset);
+      const laid = body * fill.levels.built;
+      built[i] = towardFull ? laid + b * (1 - laid) : Math.max(b, laid);
+      if (glaze) {
+        densest[i] = Math.max(densest[i], body * fill.levels.densest);
+        cap[i] = Math.max(cap[i], body * fill.levels.cap);
+      }
+    });
+  }
   const build = stampAccumulationBuild(accumulation);
   return built.map((b, i) => resolve.cpu({ built: b, densest: densest[i], cap: cap[i] }, build));
 }
@@ -148,7 +168,7 @@ export function renderStampReferenceDeposit(input: StampReferenceDepositInput): 
   const active = stampActiveLayers(brush, input.diameter);
   const main: LayerPlace = { layer: brush, active: active.main, offset: input.grainOffset.main };
   const dualPlace: LayerPlace | undefined = brush.dual && active.dual && { layer: brush.dual, active: active.dual, offset: input.grainOffset.dual };
-  const built = { main: buildLayer(main, input.stamps, box, opacityInBuild), dual: dualPlace && buildLayer(dualPlace, input.dualStamps, box, 1) };
+  const built = { main: buildLayer(main, input.stamps, box, opacityInBuild, input.fill), dual: dualPlace && buildLayer(dualPlace, input.dualStamps, box, 1) };
   const at = (i: number) => [box.x + (i % box.width) + 0.5, box.y + Math.floor(i / box.width) + 0.5] as const;
   // The dual's own canvas grain cuts it, and its own pooling gathers it, before it combines, wherever the dual stage
   // falls.
@@ -172,5 +192,6 @@ export function renderStampReferenceDeposit(input: StampReferenceDepositInput): 
     coverage = next;
   }
   const opacityLast = opacityAt === 'last' ? input.opacity : 1;
-  return { box, built, stages, coverage: coverage.map((c) => Math.min(1, Math.max(0, c)) * opacityLast) };
+  const { keep } = input;
+  return { box, built, stages, coverage: coverage.map((c, i) => Math.min(1, Math.max(0, c)) * opacityLast * (keep ? keep(...at(i)) : 1)) };
 }

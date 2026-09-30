@@ -1,13 +1,14 @@
 // stamp-paint-renderer.ts: draws a compiled stamp painting through WebGPU. Each frame repaints every
-// group on bare paper, so it depends only on its time; only images and stamp buffers persist.
+// group on bare paper; only images and stamp buffers persist.
 //
-// A deposit paints within its visible stamps' box, in the order Photoshop's captures show: a render pass stamps its
-// coverage mask (stampAccumulationPlan), compute passes blur it for wet or burnt edges, and a compute pass resolves
-// it (STAMP_RESOLVE_PLANS, rims, paper tooth, protected regions, clip, opacity) onto its group's layer. Groups then
-// land on the painting.
+// A deposit paints within its visible stamps' box in Photoshop's order: a render pass stamps its
+// coverage mask and joins a fill's body to it, compute passes blur it, and a compute pass resolves it onto its
+// group's layer. Groups then land on the painting.
+//
+// What doesn't change with time is worked out once, at load, into cropped single-channel textures: each fill's body,
+// the masking fluid under each deposit, each pass's `within` region.
 //
 // Formulas and stage orders are WGSL twins of the CPU reference's registries, held to it by the formulas command.
-// The brush says where Procreate and Photoshop differ; nothing here asks where it came from.
 
 import { bindStampBrushImages, stampBrushImages, type StampBrush, type StampBrushAsset, type StampBrushGrain, type StampBrushImageSource, type StampBrushLayer } from '../models/stamp-brush.ts';
 import { COVERAGE_FORMULAS_WGSL, stampDualModeIndex, stampGrainModeIndex } from '../models/coverage-formulas.ts';
@@ -15,7 +16,10 @@ import {
   STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL, STAMP_ACCUMULATIONS, STAMP_BLUR_LEVELS, stampAccumulationBuild, stampAccumulationIndex,
   stampAccumulationPlan, stampActiveLayers, stampResolvePlan, stampResolvePlanIndex, stampResolvePlansWgsl, type StampAccumulationPlan, type StampActiveLayer,
 } from '../models/stamp-deposit-stages.ts';
-import { visibleStampCountAt, type CompiledStampDeposit, type CompiledStampPaint, type StampPaintPaper, type StampRegion } from '../models/stamp-paint-recipe.ts';
+import { STAMP_FILL_FRONT_SHARE } from '../models/stamp-fill.ts';
+import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
+import { stampFillProgressAt, visibleStampCountAt, type CompiledStampDeposit, type CompiledStampMask, type CompiledStampPaint, type CompiledStampPass, type StampPaintPaper } from '../models/stamp-paint-recipe.ts';
+import { STAMP_REGION_WGSL, stampEdgeReach, stampEdgeWidth, stampPolygonBox, type StampBox, type StampPoint } from '../models/stamp-region.ts';
 import type { PlacedStamp } from '../models/stamp-placement.ts';
 import { stampBlurRegion, type StampPixelBox } from '../models/stamp-blur-region.ts';
 import { coarsestStampTipLevel, STAMP_TIP_HULL_SIDES, stampTipHull, type StampTipHull, type StampTipLevel } from '../models/stamp-tip-hull.ts';
@@ -249,9 +253,18 @@ const DEPOSIT = stampUniformLayout('Deposit', [
 
 /** What a deposit's resolve does, a bit each in its `flags`, and a WGSL constant each of the same name in capitals. */
 const DEPOSIT_FLAGS = {
-  canvasGrain: 1, dual: 2, dualCanvasGrain: 4, paper: 8, protected: 16, clipped: 32, clips: 64, tinted: 128,
-  pooled: 256, dualPooled: 512, dualLayer: 1024,
+  canvasGrain: 1, dual: 2, dualCanvasGrain: 4, paper: 8, masked: 16, clipped: 32, clips: 64, tinted: 128,
+  pooled: 256, dualPooled: 512, dualLayer: 1024, within: 2048, fill: 4096,
 } as const;
+
+/**
+ * Where a deposit's paint is kept, beside its Deposit (whose slot is full): the boxes of its masking fluid's texture
+ * and its pass's `within` region (x, y, width, height in the painting's pixels), and a fill's load field (its kind,
+ * geometry and ends, STAMP_PAINT_FIELD_SHARE) and front (its normal, from and to, softness and progress).
+ */
+const KEEP = stampUniformLayout('Keep', [
+  ['fluid', 'vec4f'], ['within', 'vec4f'], ['load', 'vec4f'], ['front', 'vec4f'], ['loadEnds', 'vec2f'], ['frontShape', 'vec2f'], ['loadKind', 'i32'],
+]);
 const DEPOSIT_FLAGS_WGSL = Object.entries(DEPOSIT_FLAGS).map(([flag, bit]) => `const ${flag.replace(/[A-Z]/g, (c) => `_${c}`).toUpperCase()} = ${bit}u;`).join('\n');
 
 /** Each resolve stage on the main layer's coverage `m`: `d` is the dual's, cut and pooled already, `at` the pixel. */
@@ -270,13 +283,16 @@ ${DEPOSIT.wgsl}
 ${DEPOSIT_FLAGS_WGSL}
 ${STAMP_ACCUMULATION_RESOLVE_WGSL}
 ${RESOLVE_STAGES_WGSL}
+${KEEP.wgsl}
+${STAMP_PAINT_FIELD_SHARE.wgsl}
+${STAMP_FILL_FRONT_SHARE.wgsl}
 @group(0) @binding(0) var<uniform> u: Deposit;
 @group(0) @binding(1) var mask: texture_2d<f32>;
 @group(0) @binding(2) var blurred: texture_2d<f32>;
 @group(0) @binding(3) var grain: texture_2d<f32>;
 @group(0) @binding(4) var dualGrain: texture_2d<f32>;
 @group(0) @binding(5) var paperGrain: texture_2d<f32>;
-@group(0) @binding(6) var protect: texture_2d<f32>;
+@group(0) @binding(6) var fluid: texture_2d<f32>;
 @group(0) @binding(7) var clip: texture_storage_2d<rgba16float, read_write>;
 @group(0) @binding(8) var layer: texture_storage_2d<rgba16float, read_write>;
 @group(0) @binding(9) var linearClamp: sampler;
@@ -285,6 +301,14 @@ ${RESOLVE_STAGES_WGSL}
 @group(0) @binding(12) var tintB: texture_2d<f32>;
 @group(0) @binding(13) var cap: texture_2d<f32>;
 @group(0) @binding(14) var mirrorTile: sampler;
+@group(0) @binding(15) var<uniform> k: Keep;
+@group(0) @binding(16) var within: texture_2d<f32>;
+// A region texture's value at a pixel, its box's x, y, width and height in the painting's pixels: none outside it.
+fn regionAt(region: texture_2d<f32>, box: vec4f, pixel: vec2u) -> f32 {
+  let q = vec2f(pixel) - box.xy;
+  if (any(q < vec2f(0.0)) || any(q >= box.zw)) { return 0.0; }
+  return textureLoad(region, vec2u(q), 0).r;
+}
 fn texturized(g: texture_2d<f32>, at: vec2f, a: f32, p: Grain) -> f32 {
   let uv = at / p.place.xy + p.place.zw;
   let raw = select(textureSampleLevel(g, tile, uv, p.shape.y).r, textureSampleLevel(g, mirrorTile, uv, p.shape.y).r, p.mirror == 1u);
@@ -359,7 +383,13 @@ fn tinted(color: vec3f, pixel: vec2u) -> vec3f {
     let mean = 1.0 - textureSampleLevel(paperGrain, tile, vec2f(0.5), 16.0).r;
     keep *= mix(1.0, clamp(tooth / max(mean, 0.01), 0.0, 1.0), u.paperDepth);
   }
-  if ((u.flags & PROTECTED) != 0u) { keep *= 1.0 - textureLoad(protect, pixel, 0).r; }
+  if ((u.flags & MASKED) != 0u) { keep *= 1.0 - regionAt(fluid, k.fluid, pixel); }
+  if ((u.flags & WITHIN) != 0u) { keep *= regionAt(within, k.within, pixel); }
+  // A fill's load is how much paint it lays, and its front how much of it shows yet: burnt edges and a clip base alike.
+  if ((u.flags & FILL) != 0u) {
+    keep *= clamp(mix(k.loadEnds.x, k.loadEnds.y, paintFieldShare(at, k.loadKind, k.load)), 0.0, 1.0);
+    keep *= fillFrontShare(at, k.front.xy, k.front.z, k.front.w, k.frontShape.x, k.frontShape.y);
+  }
   let clipped = textureLoad(clip, pixel);
   if ((u.flags & CLIPPED) != 0u) { keep *= clamp(clipped.r, 0.0, 1.0); }
   let coverage = clamp(m, 0.0, 1.0) * keep * u.opacity;
@@ -417,27 +447,107 @@ ${FULL_FRAME_WGSL}
   return vec4f(clamp(color + dither, vec3f(0.0), vec3f(1.0)), 1.0);
 }`;
 
-const REGION = stampUniformLayout('Region', [['resolution', 'vec2f'], ['ellipse', 'u32'], ['shape', 'vec4f']]);
-const REGION_WGSL = /* wgsl */ `
-${REGION.wgsl}
-@group(0) @binding(0) var<uniform> u: Region;
-@vertex fn place(@location(0) point: vec2f) -> @builtin(position) vec4f {
-  let at = point / u.resolution * 2.0 - 1.0;
-  return vec4f(at.x, -at.y, 0.0, 1.0);
-}
-@fragment fn fill(@builtin(position) at: vec4f) -> @location(0) vec4f {
-  if (u.ellipse == 1u) {
-    let d = (at.xy - u.shape.xy) / u.shape.zw;
-    if (dot(d, d) > 1.0) { discard; }
+// A region's signed distance, as stampPolygonDistance (stamp-region.ts) works it out: its polygon's `count` points
+// from `first` in `points`, positive inside by even-odd.
+const POLYGON_DISTANCE_WGSL = /* wgsl */ `
+fn polygonDistance(p: vec2f, first: u32, count: u32) -> f32 {
+  var nearest = 1e30;
+  var inside = false;
+  var j = first + count - 1u;
+  for (var i = first; i < first + count; i++) {
+    let a = points[j];
+    let b = points[i];
+    let e = b - a;
+    let q = p - a;
+    let along = clamp(dot(q, e) / max(dot(e, e), 1e-12), 0.0, 1.0);
+    let d = q - e * along;
+    nearest = min(nearest, dot(d, d));
+    if ((a.y > p.y) != (b.y > p.y) && p.x < a.x + (p.y - a.y) / (b.y - a.y) * e.x) { inside = !inside; }
+    j = i;
   }
-  return vec4f(1.0);
+  return select(-sqrt(nearest), sqrt(nearest), inside);
 }`;
 
-const COPY_WGSL = /* wgsl */ `
+// One step of the masking fluid, drawn over its state's box (x, y, width, height): the state under it, read from
+// `parent` (its box `parent`, width 0 for none), with a mask's region joined by max or an unmask's lifted by amount,
+// everywhere when it has no region. `ragged`: the edge's amount and scale, 0 scale for a clean one.
+const MASK_STEP = stampUniformLayout('MaskStep', [
+  ['box', 'vec4f'], ['parent', 'vec4f'], ['ragged', 'vec2f'], ['width', 'f32'], ['amount', 'f32'], ['first', 'u32'], ['count', 'u32'], ['kind', 'u32'], ['seed', 'u32'],
+]);
+const MASK_STEP_WGSL = /* wgsl */ `
+${COVERAGE_FORMULAS_WGSL}
+${STAMP_REGION_WGSL}
 ${FULL_FRAME_WGSL}
-@group(0) @binding(0) var source: texture_2d<f32>;
-@fragment fn copy(@builtin(position) at: vec4f) -> @location(0) vec4f { return textureLoad(source, vec2u(at.xy), 0); }`;
+${MASK_STEP.wgsl}
+@group(0) @binding(0) var<uniform> u: MaskStep;
+@group(0) @binding(1) var<storage, read> points: array<vec2f>;
+@group(0) @binding(2) var parent: texture_2d<f32>;
+${POLYGON_DISTANCE_WGSL}
+@fragment fn maskStep(@builtin(position) at: vec4f) -> @location(0) vec4f {
+  let p = at.xy + u.box.xy;
+  var under = 0.0;
+  let q = floor(p) - u.parent.xy;
+  if (all(q >= vec2f(0.0)) && all(q < u.parent.zw)) { under = textureLoad(parent, vec2u(q), 0).r; }
+  var r = 1.0;
+  if (u.count > 0u) {
+    var moved = 0.0;
+    if (u.ragged.y > 0.0) { moved = u.ragged.x * edgeNoise(p.x / u.ragged.y, p.y / u.ragged.y, u.seed); }
+    r = edgeCoverage(polygonDistance(p, u.first, u.count) + moved, u.width);
+  }
+  return vec4f(select(under * (1.0 - u.amount * r), max(under, r), u.kind == 0u));
+}`;
 
+// A fill's body over its box (fillBody), how thick its region is read from its grid (as stampGridAt reads one): the
+// grid's first value in `grid`, its origin and cell, and its columns and rows.
+const FILL_BODY = stampUniformLayout('FillBody', [['box', 'vec4f'], ['grid', 'vec4f'], ['gridSize', 'vec2u'], ['first', 'u32'], ['count', 'u32'], ['gridFirst', 'u32'], ['inset', 'f32']]);
+const FILL_BODY_WGSL = /* wgsl */ `
+${COVERAGE_FORMULAS_WGSL}
+${STAMP_REGION_WGSL}
+${FULL_FRAME_WGSL}
+${FILL_BODY.wgsl}
+@group(0) @binding(0) var<uniform> u: FillBody;
+@group(0) @binding(1) var<storage, read> points: array<vec2f>;
+@group(0) @binding(2) var<storage, read> grid: array<f32>;
+${POLYGON_DISTANCE_WGSL}
+fn gridAt(p: vec2f) -> f32 {
+  let size = vec2f(u.gridSize);
+  let uv = clamp((p - u.grid.xy) / u.grid.z, vec2f(0.0), size - 1.0);
+  let cell = min(vec2u(floor(uv)), u.gridSize - 2u);
+  let f = uv - vec2f(cell);
+  let at = u.gridFirst + cell.y * u.gridSize.x + cell.x;
+  return mix(mix(grid[at], grid[at + 1u], f.x), mix(grid[at + u.gridSize.x], grid[at + u.gridSize.x + 1u], f.x), f.y);
+}
+@fragment fn fillBodyAt(@builtin(position) at: vec4f) -> @location(0) vec4f {
+  let p = at.xy + u.box.xy;
+  return vec4f(fillBody(polygonDistance(p, u.first, u.count), gridAt(p), u.inset));
+}`;
+
+// A fill's body joined to its stamps' build, in the stamps' render pass, before rims blur it: its box (x, y, width,
+// height) and its levels (stampFillBodyLevels: built, cap, densest). The pipeline's blend joins it as the brush's
+// accumulation lays paint: toward full by screen, toward an opacity by max; a glaze's cap and densest by max.
+const BODY_DRAW = stampUniformLayout('BodyDraw', [['box', 'vec4f'], ['levels', 'vec4f']]);
+const BODY_DRAW_WGSL = /* wgsl */ `
+${FULL_FRAME_WGSL}
+${BODY_DRAW.wgsl}
+@group(0) @binding(0) var<uniform> u: BodyDraw;
+@group(0) @binding(1) var body: texture_2d<f32>;
+struct Covered { @location(0) mask: vec4f, @location(1) cap: vec4f }
+struct Stamp { @location(0) mask: vec4f, @location(1) cap: vec4f, @location(2) tintA: vec4f, @location(3) tintB: vec4f }
+fn laid(at: vec4f) -> Covered {
+  let q = floor(at.xy) - u.box.xy;
+  var b = 0.0;
+  if (all(q >= vec2f(0.0)) && all(q < u.box.zw)) { b = textureLoad(body, vec2u(q), 0).r; }
+  return Covered(vec4f(b * u.levels.x), vec4f(b * u.levels.y, 0.0, b * u.levels.z, 0.0));
+}
+@fragment fn laidBody(@builtin(position) at: vec4f) -> Covered { return laid(at); }
+// A tinted pass has tint targets, which the body leaves as they are: it carries no stamp's tint.
+@fragment fn laidBodyTinted(@builtin(position) at: vec4f) -> Stamp {
+  let c = laid(at);
+  return Stamp(c.mask, c.cap, vec4f(0.0), vec4f(0.0));
+}`;
+
+/** The most a painting's region textures (fill bodies, masking fluid, `within` regions) may take, bytes. */
+const STAMP_REGION_BUDGET = 512 * 1024 * 1024;
 
 const assetKey = ({ style, pack, file }: StampBrushAsset) => `${style}/${pack}/${file}`;
 
@@ -536,9 +646,10 @@ type LoadedDeposit = {
   mainHull: StampTipHull; dualHull: StampTipHull | null;
   /** How each layer's stamps are laid, and an `ordered` layer's bins' table in the bin buffer (binOrderedStamps). */
   mainPlan: LoadedPlan; dualPlan: LoadedPlan | null;
-  /** Its protected regions' triangles in the region buffer: [first vertex, vertex count, ellipse or null] for each. */
-  regions: [number, number, Extract<StampRegion, { kind: 'ellipse' }> | null][];
 };
+
+/** A region worked out at load (a fill's body, a state of the fluid, a `within`): its texture and its box on the painting. */
+type RegionTexture = { view: GPUTextureView; box: Box };
 
 export type StampPaintRenderer = {
   /**
@@ -628,9 +739,9 @@ async function rendererOnDevice(
     return byLevel.get(coarsest)!;
   }
 
-  // Every deposit's stamps, then its dual's, in one buffer, and its protected regions' triangles in another.
+  // Every deposit's stamps, then its dual's, in one buffer.
   const deposits = new Map<CompiledStampDeposit, LoadedDeposit>();
-  const regionPoints: number[] = [], binData: number[] = [];
+  const binData: number[] = [];
   const tilesX = Math.ceil(width / ORDERED_TILE), tilesY = Math.ceil(height / ORDERED_TILE);
   const loadPlan = (layer: BoundLayer, stamps: readonly PlacedStamp[]): LoadedPlan => {
     const plan = stampAccumulationPlan(layer.accumulation, stamps);
@@ -640,17 +751,6 @@ async function rendererOnDevice(
   for (const group of painting.groups) {
     slotsPerFrame += 1;
     for (const pass of group.passes) for (const deposit of pass.deposits) {
-      const regions = deposit.protectedBy.map((region): LoadedDeposit['regions'][number] => {
-        const first = regionPoints.length / 2;
-        if (region.kind === 'ellipse') {
-          const { x, y, radiusX: rx, radiusY: ry } = region;
-          regionPoints.push(x - rx, y - ry, x + rx, y - ry, x + rx, y + ry, x - rx, y - ry, x + rx, y + ry, x - rx, y + ry);
-          return [first, 6, region];
-        }
-        const [a] = region.points;
-        for (let i = 1; i + 1 < region.points.length; i++) regionPoints.push(a.x, a.y, region.points[i].x, region.points[i].y, region.points[i + 1].x, region.points[i + 1].y);
-        return [first, regionPoints.length / 2 - first, null];
-      });
       const brush = bound.get(deposit)!;
       deposits.set(deposit, {
         brush, active: stampActiveLayers(brush, deposit.diameter),
@@ -658,12 +758,11 @@ async function rendererOnDevice(
         mainReach: stampReach(deposit.stamps, reachSpanOf(brush)), dualReach: stampReach(deposit.dualStamps, brush.dual ? reachSpanOf(brush.dual) : 1),
         mainHull: tipHull(brush, deposit.stamps), dualHull: brush.dual ? tipHull(brush.dual, deposit.dualStamps) : null,
         mainPlan: loadPlan(brush, deposit.stamps), dualPlan: brush.dual ? loadPlan(brush.dual, deposit.dualStamps) : null,
-        regions,
       });
       total += deposit.stamps.length + deposit.dualStamps.length;
       if (deposit.brush.color) tints += deposit.stamps.length;
-      // Its stamps and dual's, two blur passes, its resolve, and each region.
-      slotsPerFrame += 5 + regions.length;
+      // Its stamps and dual's, a fill's body, two blur passes, and its resolve and where it's kept.
+      slotsPerFrame += 7;
     }
   }
   const stampData = new Float32Array(Math.max(1, total) * STAMP_FLOATS), tintData = new Float32Array(Math.max(1, tints) * TINT_FLOATS);
@@ -685,7 +784,6 @@ async function rendererOnDevice(
   // What an untinted stamp reads for its tint: read by every instance, so it's never indexed past.
   const noTintBuffer = buffer(new Float32Array(TINT_FLOATS), GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE);
   const binBuffer = buffer(new Uint32Array(binData.length ? binData : [0]), GPUBufferUsage.STORAGE);
-  const regionBuffer = buffer(new Float32Array(regionPoints), GPUBufferUsage.VERTEX);
   // The fan's triangles, by corner: indexed, so each corner is shaded once a stamp, not once for each triangle it's in.
   const fanBuffer = buffer(new Uint16Array(Array.from({ length: STAMP_TIP_HULL_SIDES - 2 }, (_, i) => [0, i + 1, i + 2]).flat()), GPUBufferUsage.INDEX);
 
@@ -717,9 +815,6 @@ async function rendererOnDevice(
   // it can't keep a buildToOpacity from lowering it; a layer whose opacity falls is laid in order instead
   // (stampAccumulationPlan), and this blend lays only those whose opacity holds or rises, where it never lowers B.
   const buildBlend: GPUBlendState = { color: { operation: 'add', srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } };
-  // Even-odd fill without a stencil: each fan triangle inverts what's under it, so a pixel inside an odd number of them
-  // ends up set, whatever the polygon's shape.
-  const invertBlend: GPUBlendState = { color: { operation: 'add', srcFactor: 'one-minus-dst', dstFactor: 'zero' }, alpha: { operation: 'add', srcFactor: 'one-minus-dst-alpha', dstFactor: 'zero' } };
   // Tints are laid premultiplied, each stamp over those before it.
   const overBlend: GPUBlendState = { color: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } };
   const stampModule = device.createShaderModule({ code: STAMP_WGSL });
@@ -770,14 +865,33 @@ async function rendererOnDevice(
   const pipelines = { blur: computePipeline(BLUR_WGSL), deposit: computePipeline(DEPOSIT_WGSL), group: computePipeline(GROUP_WGSL), paper: computePipeline(PAPER_WGSL) };
   const outputModule = device.createShaderModule({ code: OUTPUT_WGSL });
   const outputPipeline = device.createRenderPipeline({ layout: 'auto', vertex: { module: outputModule }, fragment: { module: outputModule, targets: [{ format }] } });
-  const regionModule = device.createShaderModule({ code: REGION_WGSL });
-  const regionPipeline = (blend: GPUBlendState) => device.createRenderPipeline({
-    layout: 'auto', vertex: { module: regionModule, buffers: [{ arrayStride: 8, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x2' }] }] },
-    fragment: { module: regionModule, targets: [{ format: 'r8unorm', blend }] },
-  });
-  const ellipsePipeline = regionPipeline(maxBlend), polygonPipeline = regionPipeline(invertBlend);
-  const copyModule = device.createShaderModule({ code: COPY_WGSL });
-  const copyMaxPipeline = device.createRenderPipeline({ layout: 'auto', vertex: { module: copyModule }, fragment: { module: copyModule, targets: [{ format: 'r8unorm', blend: maxBlend }] } });
+  const regionPipeline = (code: string, entryPoint: string) => {
+    const module = device.createShaderModule({ code });
+    return device.createRenderPipeline({ layout: 'auto', vertex: { module }, fragment: { module, entryPoint, targets: [{ format: 'r8unorm' }] } });
+  };
+  const maskStepPipeline = regionPipeline(MASK_STEP_WGSL, 'maskStep'), fillBodyPipeline = regionPipeline(FILL_BODY_WGSL, 'fillBodyAt');
+  const bodyModule = device.createShaderModule({ code: BODY_DRAW_WGSL });
+  // B ← b + B(1 − b): a toward-full build's lay (STAMP_ACCUMULATIONS) of a body laid whole.
+  const screenBlend: GPUBlendState = { color: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } };
+  const bodyPipelines = new Map<string, GPURenderPipeline>();
+  /** The pipeline joining a fill's body to its build: toward full by screen, else by max; a glaze's cap too; a tinted pass's tints left alone. */
+  const bodyPipeline = (towardFull: boolean, glaze: boolean, tinted: boolean) => {
+    const key = `${towardFull}|${glaze}|${tinted}`;
+    if (!bodyPipelines.has(key)) {
+      bodyPipelines.set(key, device.createRenderPipeline({
+        layout: 'auto', vertex: { module: bodyModule },
+        fragment: {
+          module: bodyModule, entryPoint: tinted ? 'laidBodyTinted' : 'laidBody',
+          targets: [
+            { format: 'rg16float', blend: towardFull ? screenBlend : maxBlend, writeMask: GPUColorWrite.RED },
+            { format: 'rgba16float', blend: maxBlend, writeMask: glaze ? GPUColorWrite.RED | GPUColorWrite.BLUE : 0 },
+            ...(tinted ? [0, 1].map(() => ({ format: 'rgba16float' as const, writeMask: 0 })) : []),
+          ],
+        },
+      }));
+    }
+    return bodyPipelines.get(key)!;
+  };
 
   const target = (w: number, h: number, usage: number, targetFormat: GPUTextureFormat = 'rgba16float') => {
     const texture = device.createTexture({ size: [w, h], format: targetFormat, usage: usage | GPUTextureUsage.TEXTURE_BINDING });
@@ -793,8 +907,6 @@ async function rendererOnDevice(
     blurA: target(halfW, halfH, STORAGE),
     blurB: target(halfW, halfH, STORAGE),
     clip: target(width, height, STORAGE | RENDER),
-    protect: target(width, height, RENDER, 'r8unorm'),
-    region: target(width, height, RENDER, 'r8unorm'),
     blank: target(1, 1, 0, 'r8unorm'),
     // Only a painting with colour dynamics lays tints.
     tintA: tints ? target(width, height, RENDER) : null,
@@ -815,6 +927,154 @@ async function rendererOnDevice(
   const rgb = (hex: string): [number, number, number] => [channel(hex, 1), channel(hex, 3), channel(hex, 5)];
   /** The mip level a grain `texture` tiled `tileW` pixels across reads: texels per pixel, as a fragment's derivatives would say. */
   const grainLod = (texture: StampPaintImage, tileW: number) => Math.max(0, Math.log2(texture.width / tileW));
+
+  const regions = loadRegions();
+
+  /**
+   * Works out, once, what of the painting doesn't change with time: each fill's body, each state of the masking fluid a
+   * deposit lands under (from the state before it, over its own box), each pass's `within`. Each is a cropped r8
+   * texture, none for an empty state; together held to STAMP_REGION_BUDGET, refused past it naming what's there.
+   */
+  function loadRegions() {
+    const passes = painting.groups.flatMap((group) => group.passes);
+    const all = passes.flatMap((pass) => pass.deposits);
+    // Every polygon once, and each fill's thickness grid, in two storage buffers.
+    const points: number[] = [], placed = new Map<readonly StampPoint[], [number, number]>();
+    const pointsOf = (polygon: readonly StampPoint[]) => {
+      if (!placed.has(polygon)) {
+        placed.set(polygon, [points.length / 2, polygon.length]);
+        for (const { x, y } of polygon) points.push(x, y);
+      }
+      return placed.get(polygon)!;
+    };
+    const grids: number[] = [];
+    type Step = { box: Box; draw: (views: StampUniformViews) => GPURenderPipeline; parent?: RegionTexture | null; grid?: boolean };
+    const steps: Step[] = [];
+    let bytes = 0;
+    const texture = (box: Box): RegionTexture => {
+      bytes += box.w * box.h;
+      const made = device.createTexture({ size: [box.w, box.h], format: 'r8unorm', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+      return { view: made.createView(), box };
+    };
+    const inPainting = (box: StampBox): Box | null => {
+      const x = Math.max(0, Math.floor(box.x0)), y = Math.max(0, Math.floor(box.y0));
+      const w = Math.min(width, Math.ceil(box.x1)) - x, h = Math.min(height, Math.ceil(box.y1)) - y;
+      return w > 0 && h > 0 ? { x, y, w, h } : null;
+    };
+    const made = new Map<Step, RegionTexture>();
+
+    const bodies = new Map<CompiledStampDeposit, RegionTexture>();
+    for (const deposit of all) {
+      if (deposit.kind !== 'fill') continue;
+      const { fill } = deposit, box = inPainting(fill.box);
+      if (!box) continue;
+      const [first, count] = pointsOf(fill.polygon), gridFirst = grids.length;
+      for (const v of fill.thickness.values) grids.push(v);
+      const step: Step = {
+        box, grid: true,
+        draw: (views) => {
+          const put = stampUniformWriter(FILL_BODY, views);
+          put('box', boxWords(box));
+          put('grid', [fill.thickness.x0, fill.thickness.y0, fill.thickness.cell, 0]);
+          put('gridSize', [fill.thickness.columns, fill.thickness.rows]);
+          put('first', first);
+          put('count', count);
+          put('gridFirst', gridFirst);
+          put('inset', fill.inset);
+          return fillBodyPipeline;
+        },
+      };
+      steps.push(step);
+      bodies.set(deposit, texture(box));
+      made.set(step, bodies.get(deposit)!);
+    }
+
+    // A state of the fluid covers the state under it, and a mask's own region as far as its edge reaches.
+    const fluids = new Map<CompiledStampMask, RegionTexture | null>();
+    const fluidOf = (mask: CompiledStampMask | null): RegionTexture | null => {
+      if (!mask) return null;
+      if (fluids.has(mask)) return fluids.get(mask)!;
+      const under = fluidOf(mask.under);
+      const own = mask.kind === 'mask' && mask.polygon ? inPainting(stampPolygonBox(mask.polygon, stampEdgeReach(mask.edge) + 1)) : null;
+      const box = own && under ? union(own, under.box) : own ?? under?.box ?? null;
+      if (!box) {
+        fluids.set(mask, null);
+        return null;
+      }
+      const [first, count] = mask.polygon ? pointsOf(mask.polygon) : [0, 0];
+      const step: Step = {
+        box, parent: under,
+        draw: (views) => {
+          const put = stampUniformWriter(MASK_STEP, views);
+          put('box', boxWords(box));
+          put('parent', boxWords(under?.box));
+          put('ragged', mask.edge?.ragged ? [mask.edge.ragged.amount, mask.edge.ragged.scale] : [0, 0]);
+          put('width', stampEdgeWidth(mask.edge));
+          put('amount', mask.amount);
+          put('first', first);
+          put('count', count);
+          put('kind', mask.kind === 'mask' ? 0 : 1);
+          put('seed', mask.seed);
+          return maskStepPipeline;
+        },
+      };
+      steps.push(step);
+      const region = texture(box);
+      made.set(step, region);
+      fluids.set(mask, region);
+      return region;
+    };
+    for (const deposit of all) fluidOf(deposit.mask);
+
+    const withins = new Map<CompiledStampPass, RegionTexture | null>();
+    for (const pass of passes) {
+      if (!pass.within) continue;
+      const box = inPainting(stampPolygonBox(pass.within, 1));
+      if (!box) {
+        withins.set(pass, null);
+        continue;
+      }
+      const [first, count] = pointsOf(pass.within);
+      const step: Step = {
+        box,
+        draw: (views) => {
+          const put = stampUniformWriter(MASK_STEP, views);
+          put('box', boxWords(box));
+          put('width', 1);
+          put('first', first);
+          put('count', count);
+          return maskStepPipeline;
+        },
+      };
+      steps.push(step);
+      withins.set(pass, texture(box));
+      made.set(step, withins.get(pass)!);
+    }
+    if (bytes > STAMP_REGION_BUDGET) {
+      throw new Error(`stamp paint: the painting's fills, masking fluid and within regions need ${Math.round(bytes / 2 ** 20)} MB, over ${STAMP_REGION_BUDGET / 2 ** 20} MB: ${bodies.size} fill bodies, ${[...fluids.values()].filter(Boolean).length} states of the fluid, ${withins.size} within regions; share masks between deposits or crop them`);
+    }
+    if (steps.length) {
+      const pointBuffer = buffer(new Float32Array(points.length ? points : [0, 0]), GPUBufferUsage.STORAGE), gridBuffer = buffer(new Float32Array(grids.length ? grids : [0]), GPUBufferUsage.STORAGE);
+      const words = new ArrayBuffer(steps.length * SLOT), uniformBuffer = device.createBuffer({ size: steps.length * SLOT, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      const encoder = device.createCommandEncoder();
+      // In the order made, so a state of the fluid is drawn after the state under it.
+      steps.forEach((step, i) => {
+        const at = (i * SLOT) / 4, n = SLOT / 4;
+        const pipeline = step.draw({ floats: new Float32Array(words, at * 4, n), ints: new Int32Array(words, at * 4, n), words: new Uint32Array(words, at * 4, n) });
+        const pass = encoder.beginRenderPass({ colorAttachments: [{ view: made.get(step)!.view, loadOp: 'clear', storeOp: 'store' }] });
+        pass.setPipeline(pipeline);
+        pass.setBindGroup(0, bindGroup(pipeline, [
+          { buffer: uniformBuffer, offset: i * SLOT, size: SLOT }, { buffer: pointBuffer },
+          step.grid ? { buffer: gridBuffer } : (step.parent?.view ?? targets.blank.view),
+        ]));
+        pass.draw(3);
+        pass.end();
+      });
+      device.queue.writeBuffer(uniformBuffer, 0, words);
+      device.queue.submit([encoder.finish()]);
+    }
+    return { bodies, fluids, withins };
+  }
 
   /** A layer's canvas grain's tile (a share of its stamps' diameter across), offset and mip level, written as a Grain at `at`. */
   const canvasGrainAt = (views: StampUniformViews, at: number, layer: StampActiveLayer<StampPaintImage> | undefined, offset: readonly [number, number]) => {
@@ -904,6 +1164,20 @@ async function rendererOnDevice(
     };
     stamp(loadedDeposit.brush, loadedDeposit.active.main, loadedDeposit.mainPlan, loadedDeposit.main, count, loadedDeposit.mainHull, 0);
     if (loadedDeposit.brush.dual && loadedDeposit.active.dual && loadedDeposit.dualPlan) stamp(loadedDeposit.brush.dual, loadedDeposit.active.dual, loadedDeposit.dualPlan, loadedDeposit.dual, dualCount, loadedDeposit.dualHull!, 1);
+    // A fill's body joins the build its edge stamps laid, before any rim blurs it, so rims see the whole fill.
+    const body = regions.bodies.get(deposit);
+    if (deposit.kind === 'fill' && body) {
+      const { kind } = loadedDeposit.brush.accumulation, { towardFull, keepsCap } = STAMP_ACCUMULATIONS[kind];
+      const pipeline = bodyPipeline(towardFull, keepsCap, tinted);
+      pass.setPipeline(pipeline);
+      pass.setBindGroup(0, bindGroup(pipeline, [slot((views) => {
+        const put = stampUniformWriter(BODY_DRAW, views);
+        put('box', [body.box.x, body.box.y, body.box.w, body.box.h]);
+        const { levels } = deposit.fill;
+        put('levels', [levels.built, levels.cap, levels.densest, 0]);
+      }), body.view]));
+      pass.draw(3);
+    }
     pass.end();
   }
 
@@ -931,41 +1205,10 @@ async function rendererOnDevice(
     blur(targets.blurA.view, [halfW, halfH], targets.blurB.view, [0, 1], half);
   }
 
-  function drawProtect(encoder: GPUCommandEncoder, regions: LoadedDeposit['regions']) {
-    const region = (pipeline: GPURenderPipeline, first: number, count: number, ellipse: LoadedDeposit['regions'][number][2]) => (pass: GPURenderPassEncoder) => {
-      pass.setPipeline(pipeline);
-      pass.setBindGroup(0, bindGroup(pipeline, [slot((views) => {
-        const put = stampUniformWriter(REGION, views);
-        put('resolution', [width, height]);
-        if (ellipse) {
-          put('ellipse', 1);
-          put('shape', [ellipse.x, ellipse.y, ellipse.radiusX, ellipse.radiusY]);
-        }
-      })]));
-      pass.setVertexBuffer(0, regionBuffer);
-      pass.draw(count, 1, first);
-    };
-    const into = (view: GPUTextureView, loadOp: GPULoadOp, paintPass: (pass: GPURenderPassEncoder) => void) => {
-      const pass = encoder.beginRenderPass({ colorAttachments: [{ view, loadOp, storeOp: 'store' }] });
-      paintPass(pass);
-      pass.end();
-    };
-    into(targets.protect.view, 'clear', (pass) => {
-      for (const [first, count, ellipse] of regions) if (ellipse) region(ellipsePipeline, first, count, ellipse)(pass);
-    });
-    // A polygon is filled alone, then joins the others by max.
-    for (const [first, count, ellipse] of regions) {
-      if (ellipse) continue;
-      into(targets.region.view, 'clear', region(polygonPipeline, first, count, null));
-      into(targets.protect.view, 'load', (pass) => {
-        pass.setPipeline(copyMaxPipeline);
-        pass.setBindGroup(0, bindGroup(copyMaxPipeline, [targets.region.view]));
-        pass.draw(3);
-      });
-    }
-  }
-
-  function resolveDeposit(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loadedDeposit: LoadedDeposit, clipped: boolean, blurred: boolean, box: Box) {
+  function resolveDeposit(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loadedDeposit: LoadedDeposit, pass: CompiledStampPass, t: number, blurred: boolean, box: Box) {
+    const clipped = !!pass.clipTo, fluid = deposit.mask ? regions.fluids.get(deposit.mask) ?? null : null;
+    // A pass within a region wholly off the painting lands nowhere: its `within` is an empty texture, read as none.
+    const within = pass.within ? regions.withins.get(pass) ?? null : null;
     const { brush, active } = loadedDeposit;
     const edgesOf = (layer?: StampActiveLayer<StampPaintImage>): [number, number, number, number] => (blurred && layer
       ? [layer.rim?.rim ?? 0, layer.rim?.sharpness ?? 0, layer.burntEdge?.strength ?? 0, layer.burntEdge?.sharpness ?? 0] : [0, 0, 0, 0]);
@@ -976,11 +1219,11 @@ async function rendererOnDevice(
       const grain = image(tooth.image), size = tooth.scale * width;
       paperTile = [size, size * (grain.height / grain.width), grainLod(grain, size)];
     }
-    const protectedBy = deposit.protectedBy.length > 0;
     const tinted = loadedDeposit.tint !== null;
     const flags: (keyof typeof DEPOSIT_FLAGS)[] = [
       ...(mainGrain ? ['canvasGrain' as const] : []), ...(brush.dual ? ['dual' as const] : []), ...(dualGrain ? ['dualCanvasGrain' as const] : []),
-      ...(tooth ? ['paper' as const] : []), ...(protectedBy ? ['protected' as const] : []), clipped ? 'clipped' as const : 'clips' as const, ...(tinted ? ['tinted' as const] : []),
+      ...(tooth ? ['paper' as const] : []), ...(fluid ? ['masked' as const] : []), ...(pass.within ? ['within' as const] : []),
+      ...(deposit.kind === 'fill' ? ['fill' as const] : []), clipped ? 'clipped' as const : 'clips' as const, ...(tinted ? ['tinted' as const] : []),
       ...(active.main.pooling ? ['pooled' as const] : []), ...(active.dual?.pooling ? ['dualPooled' as const] : []),
       ...(brush.dual?.blend.family === 'layer' ? ['dualLayer' as const] : []),
     ];
@@ -1017,8 +1260,21 @@ async function rendererOnDevice(
       mainGrain ? mainGrain.image.view : targets.blank.view,
       dualGrain ? dualGrain.image.view : targets.blank.view,
       tooth ? image(tooth.image).view : targets.blank.view,
-      targets.protect.view, targets.clip.view, targets.layer.view, linearClamp, tile,
+      fluid?.view ?? targets.blank.view, targets.clip.view, targets.layer.view, linearClamp, tile,
       tinted ? targets.tintA!.view : targets.blank.view, tinted ? targets.tintB!.view : targets.blank.view, targets.cap.view, mirrorTile,
+      slot((views) => {
+        const put = stampUniformWriter(KEEP, views);
+        put('fluid', boxWords(fluid?.box));
+        put('within', boxWords(within?.box));
+        if (deposit.kind !== 'fill') return;
+        const { load, front } = deposit.fill, ends = stampPaintFieldEnds(load);
+        put('load', ends.geometry);
+        put('loadEnds', [ends.first, ends.second]);
+        put('loadKind', ends.kind);
+        put('front', [front.normal[0], front.normal[1], front.from, front.to]);
+        put('frontShape', [front.soft, stampFillProgressAt(deposit, t)]);
+      }),
+      within?.view ?? targets.blank.view,
     ], box.w, box.h);
   }
 
@@ -1028,6 +1284,10 @@ async function rendererOnDevice(
     const { brush } = loadedDeposit;
     reachOfFirst(deposit.stamps, loadedDeposit.mainReach, count, reachSpanOf(brush), reach);
     if (brush.dual) reachOfFirst(deposit.dualStamps, loadedDeposit.dualReach, dualCount, reachSpanOf(brush.dual), reach);
+    if (deposit.kind === 'fill') {
+      const { x0, y0, x1, y1 } = deposit.fill.box;
+      reach.splice(0, 4, Math.min(reach[0], x0), Math.min(reach[1], y0), Math.max(reach[2], x1), Math.max(reach[3], y1));
+    }
     const x = Math.max(0, Math.floor(reach[0] - pad)), y = Math.max(0, Math.floor(reach[1] - pad));
     const w = Math.min(width, Math.ceil(reach[2] + pad)) - x, h = Math.min(height, Math.ceil(reach[3] + pad)) - y;
     return w > 0 && h > 0 ? { x, y, w, h } : null;
@@ -1062,7 +1322,8 @@ async function rendererOnDevice(
         if (!pass.clipTo) clear(encoder, targets.clip.view);
         for (const deposit of pass.deposits) {
           const count = visibleStampCountAt(deposit, t);
-          if (!count) continue;
+          // A fill shows once its front has started across it, though its edge stroke may have no stamps.
+          if (deposit.kind === 'fill' ? !stampFillProgressAt(deposit, t) : !count) continue;
           const dualCount = visibleStampCountAt(deposit, t, 'dualStamps');
           const loadedDeposit = deposits.get(deposit)!;
           // The rim is where the mask stands above a blur as wide as its edge.
@@ -1071,8 +1332,7 @@ async function rendererOnDevice(
           if (!box) continue;
           drawStamps(encoder, deposit, loadedDeposit, count, dualCount, box);
           if (blurred) blurMask(encoder, sigma, box);
-          if (loadedDeposit.regions.length) drawProtect(encoder, loadedDeposit.regions);
-          resolveDeposit(encoder, deposit, loadedDeposit, !!pass.clipTo, blurred, box);
+          resolveDeposit(encoder, deposit, loadedDeposit, pass, t, blurred, box);
           painted = painted ? union(painted, box) : box;
         }
       }
@@ -1134,6 +1394,9 @@ function writeGrain(views: StampUniformViews, at: number, grain: StampBrushGrain
   put('aboutMean', grain.contrastPivot === 'mean' ? 1 : 0);
   put('mirror', grain.tiling === 'mirror' ? 1 : 0);
 }
+
+/** A box as a uniform's four words; an empty box for none, whose region reads 0 everywhere. */
+const boxWords = (box: Box | undefined): [number, number, number, number] => (box ? [box.x, box.y, box.w, box.h] : [0, 0, 0, 0]);
 
 const union = (a: Box, b: Box): Box => {
   const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);

@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { stampLinearDynamics, type StampBrush } from './stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, visibleStampCountAt, type PaintMaterial, type StampRegion } from './stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, stampPaintRecipe, visibleStampCountAt, type CompiledStampMask, type PaintMaterial } from './stamp-paint-recipe.ts';
+import type { StampRegion } from './stamp-region.ts';
+
+/** The masking fluid's ops under a deposit, oldest first, by ID. */
+const fluid = (mask: CompiledStampMask | null): string[] => (mask ? [...fluid(mask.under), mask.id] : []);
 
 const brush: StampBrush = {
   name: 'Wet Wash',
@@ -24,36 +28,40 @@ const path = [{ x: 0, y: 0 }, { x: 300, y: 40 }, { x: 520, y: 10, pressure: 0.4 
 const sun: StampRegion = { kind: 'ellipse', x: 200, y: 100, radiusX: 40, radiusY: 40 };
 const horizon: StampRegion = { kind: 'polygon', points: [{ x: 0, y: 300 }, { x: 800, y: 300 }, { x: 800, y: 320 }] };
 
-test('a clipped pass clips to the nearest unclipped pass before it in its group, and protect masks only the deposits inside it', () => {
+test('a clipped pass clips to the nearest unclipped pass before it; a deposit lands under the fluid declared before it, until its scope ends', () => {
   const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => {
+    paint.mask('frame', { region: horizon });
     paint.group('sky', { composite: 'opaque' }, (group) => {
+      group.mask('sun', { region: sun, edge: { ragged: { amount: 3, scale: 12 } } });
       group.pass('base', {}, (pass) => pass.stroke('fill', { brush, material: ochre, diameter: 60, path }));
-      group.pass('texture', { clipped: true }, (pass) => {
+      group.pass('texture', { clipped: true, within: sun }, (pass) => {
         pass.stroke('before', { brush, material: ochre, diameter: 30, path });
-        pass.protect([sun], () => {
-          pass.stroke('around-sun', { brush, material: ochre, diameter: 30, path });
-          group.protect([horizon], () => pass.stroke('nested', { brush, material: ochre, diameter: 30, path }));
-        });
+        pass.unmask('lift', { amount: 0.5 });
         pass.stroke('after', { brush, material: ochre, diameter: 30, path });
       });
       group.pass('blotches', {}, (pass) => pass.stamps('drops', { brush, material: ochre, diameter: 20, at: [{ x: 10, y: 10 }] }));
       group.pass('glints', { clipped: true }, (pass) => pass.stamps('dots', { brush, material: ochre, diameter: 5, at: [{ x: 12, y: 12 }] }));
     });
+    paint.group('land', { composite: 'opaque' }, (group) => group.pass('wash', {}, (pass) => pass.stroke('s', { brush, material: ochre, diameter: 30, path })));
   }));
-  const [sky] = painting.groups;
-  assert.deepEqual(sky.passes.map((pass) => [pass.id, pass.clipTo]), [
-    ['sky/base', undefined],
-    ['sky/texture', 'sky/base'],
-    ['sky/blotches', undefined],
-    ['sky/glints', 'sky/blotches'],
+  const [sky, land] = painting.groups;
+  assert.deepEqual(sky.passes.map((pass) => [pass.id, pass.clipTo, !!pass.within]), [
+    ['sky/base', undefined, false],
+    ['sky/texture', 'sky/base', true],
+    ['sky/blotches', undefined, false],
+    ['sky/glints', 'sky/blotches', false],
   ]);
-  // Protecting adds a mask to the deposits made inside it and paints nothing of its own: no deposit restores paper.
-  assert.deepEqual(sky.passes[1].deposits.map((deposit) => [deposit.id, deposit.protectedBy]), [
-    ['sky/texture/before', []],
-    ['sky/texture/around-sun', [sun]],
-    ['sky/texture/nested', [sun, horizon]],
-    ['sky/texture/after', []],
+  const [base, texture, blotches] = sky.passes;
+  assert.deepEqual([base.deposits[0], ...texture.deposits, blotches.deposits[0], land.passes[0].deposits[0]].map((deposit) => [deposit.id, fluid(deposit.mask)]), [
+    ['sky/base/fill', ['frame', 'sky/sun']],
+    ['sky/texture/before', ['frame', 'sky/sun']],
+    ['sky/texture/after', ['frame', 'sky/sun', 'sky/texture/lift']],
+    // The lift ended with its pass, the sun's mask with its group.
+    ['sky/blotches/drops', ['frame', 'sky/sun']],
+    ['land/wash/s', ['frame']],
   ]);
+  // Deposits under the same fluid share it, so it's worked out once.
+  assert.equal(base.deposits[0].mask, blotches.deposits[0].mask);
 
   assert.throws(
     () => compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', { clipped: true }, () => {})))),

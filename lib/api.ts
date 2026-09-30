@@ -73,8 +73,10 @@ export { ThreeStage, softboxEnvironment, type ThreeBloom, type ThreeEnvironment,
 export { addVec3, crossVec3, dotVec3, lengthVec3, lerpVec3, scaleVec3, subVec3, unitVec3, type Vec3 } from '#lib/picture/frame/models/vec3.ts';
 // Stamp painting: a recipe of opaque and glaze groups of passes of deposits, painted on the GPU with a private style's
 // brushes (docs/private-styles.md, skills/video-canvas/SKILL.md).
-export { compileStampPaintRecipe, stampPaintRecipe, visibleStampCountAt, type CompiledStampPaint, type PaintMaterial, type StampGroupOptions, type StampGroupScope, type StampPaintColor, type StampPaintPaper, type StampPaintRecipe, type StampPaintScope, type StampPassOptions, type StampPassScope, type StampRegion } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
-export { stampFillBrush, stampFillPath, stampRegionOutline, stampSmoothRegion, type StampFillOptions } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
+export { compileStampPaintRecipe, stampPaintRecipe, visibleStampCountAt, type CompiledStampPaint, type PaintMaterial, type StampFillSettings, type StampGroupOptions, type StampGroupScope, type StampMaskSettings, type StampPaintColor, type StampPaintPaper, type StampPaintRecipe, type StampPaintScope, type StampPassOptions, type StampPassScope, type StampUnmaskSettings } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+export { stampRegionOutline, stampSmoothRegion, stampSweepPath } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
+export type { StampEdge, StampPoint, StampRegion } from '#lib/picture/stamp-paint/models/stamp-region.ts';
+export type { StampPaintField } from '#lib/picture/stamp-paint/models/stamp-paint-field.ts';
 export type { StampStrokePoint, StampPlacement } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 export { STAMP_PRESSURE_PROFILES, type StampPressureCurve, type StampPressureProfileName, type StampStrokeHand } from '#lib/picture/stamp-paint/models/stamp-stroke-hand.ts';
 export type { StampBlend, StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';

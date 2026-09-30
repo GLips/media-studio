@@ -1,31 +1,27 @@
-// stamp-fill.ts: strokes that cover a region, for the solid base silhouette a stamp painting builds each element on.
+// stamp-fill.ts: how a fill covers its region, and strokes that sweep or trace one.
 //
-// The recipe has no area fill on purpose: a silhouette laid by the brush itself gets the brush's own edge, grain and
-// rims, so its outline reads painted rather than cut. `stampFillPath` sweeps a region back and forth in rows, as a
-// hand fills a shape, and `stampRegionOutline` traces its edge for a crisper rim.
+// A fill's body isn't stamped: laid hundreds of times a pixel, a brush's build converges inside a region long before
+// the sweep ends, and only its edge shows the brush. So a fill is a body worked out per pixel (fillBody, at the
+// brush's converged build) under one stroke of the real brush along the contour half a diameter inside, where its
+// stamps' edges touch the outline. A neck narrower than a diameter drops out of that contour and the body alone
+// paints it, without shaving. The brush's dual, which varies across the body too, is stamped along the contour and
+// in rows over the region.
 
+import { seededRandom } from '#lib/picture/motion/models/random.ts';
 import type { StampBrush } from './stamp-brush.ts';
-import type { StampRegion } from './stamp-paint-recipe.ts';
-import type { StampStrokePoint } from './stamp-placement.ts';
+import { placeStrokeStamps, type PlacedStamp, type StampStrokePoint } from './stamp-placement.ts';
+import {
+  stampDistanceGrid, stampGridAt, stampGridContours, stampGridLocalMax, stampPolygonBox, stampRegionPolygon, type StampBox, type StampGrid, type StampPoint, type StampRegion,
+} from './stamp-region.ts';
 
-type Point = { x: number; y: number };
-
-const ELLIPSE_STEPS = 72;
-
-/** The region's outline as a closed polygon, its first point not repeated. */
-function regionPolygon(region: StampRegion): readonly Point[] {
-  if (region.kind === 'polygon') return region.points;
-  return Array.from({ length: ELLIPSE_STEPS }, (_, i) => {
-    const turn = (i / ELLIPSE_STEPS) * Math.PI * 2;
-    return { x: region.x + Math.cos(turn) * region.radiusX, y: region.y + Math.sin(turn) * region.radiusY };
-  });
-}
+/** Rows of a sweep or a fill's dual, a quarter diameter apart: close enough that a tip's own falloff doesn't band. */
+const SWEEP_ROWS = 0.25;
 
 /**
  * A region through `points`, closed and smoothed (a Catmull–Rom curve through each, `steps` points a span), for a
  * silhouette drawn from a few control points.
  */
-export function stampSmoothRegion(points: readonly Point[], steps = 8): StampRegion {
+export function stampSmoothRegion(points: readonly StampPoint[], steps = 8): StampRegion {
   const n = points.length, at = (i: number) => points[((i % n) + n) % n];
   const curve = points.flatMap((_, i) => Array.from({ length: steps }, (_slot, k) => {
     const u = k / steps, u2 = u * u, u3 = u2 * u;
@@ -36,88 +32,127 @@ export function stampSmoothRegion(points: readonly Point[], steps = 8): StampReg
   return { kind: 'polygon', points: curve };
 }
 
-/** The brush as a fill sweeps it: untapered and unfading, so a silhouette is as dense in its last row as its first. */
-export function stampFillBrush<B extends StampBrush>(brush: B): B {
-  return { ...brush, taper: { ...brush.taper, start: 0, end: 0, size: 1, opacity: 1 }, falloff: 0 };
-}
-
 /** The region's edge, closed (its first point repeated at the end), to stroke along. */
 export function stampRegionOutline(region: StampRegion): StampStrokePoint[] {
-  const polygon = regionPolygon(region);
+  const polygon = stampRegionPolygon(region);
   return [...polygon, polygon[0]].map(({ x, y }) => ({ x, y }));
 }
 
-export type StampFillOptions = {
-  /** Distance between rows, as a fraction of the diameter: close enough that a tip's own falloff doesn't band. */
-  rows?: number;
-  /** How far inside the edge the sweep turns, as a fraction of the diameter, so the stamps' own edge lands on it. */
-  inset?: number;
-  /** The rows' direction, radians: 0 sweeps left and right. */
-  angle?: number;
-  /** Whether the stroke ends by tracing the region's edge, `inset` inside it, smoothing the rows' stepped ends into its shape. */
-  trace?: boolean;
+/**
+ * One stroke sweeping `region` in rows `diameter` × `rows` apart along `angle` (radians, 0 left and right), each row
+ * from outline to outline, lifting across a gap: for a texture laid across an element, whose look is its own stamps,
+ * clipped to the element or masked.
+ */
+export function stampSweepPath(region: StampRegion, diameter: number, { rows = SWEEP_ROWS, angle = 0 }: { rows?: number; angle?: number } = {}): StampStrokePoint[] {
+  const polygon = stampRegionPolygon(region);
+  return rowRuns(polygon, angle, Math.max(1, rows * diameter), (points, y) => polygonSpans(points, y));
+}
+
+/** A fill's body as the renderer and the CPU reference lay it (STAMP_REGION_FUNCTIONS.fillBody). */
+export type StampFillBody = {
+  /** The region, traced (stampRegionPolygon). */
+  polygon: readonly StampPoint[];
+  /** The body's box: the region's own. */
+  box: StampBox;
+  /** How thick the region is near each point (stampGridLocalMax of its distance), which narrows the body's edge. */
+  thickness: StampGrid;
+  /** Half the diameter: where the edge stroke runs inside the outline. */
+  inset: number;
+};
+
+/** A fill's stamps and body, placed once. */
+export type StampFillPlacement = { body: StampFillBody; stamps: PlacedStamp[]; dualStamps: PlacedStamp[] };
+
+/**
+ * Places a fill of `region` by `brush` at `diameter`: its body, its edge stroke (untapered and unfading, so the
+ * contour is as dense at its end as its start) and its dual's stamps, along the contour and in rows along `direction`
+ * (radians) wherever the region comes within half a diameter.
+ */
+export function placeStampFill(region: StampRegion, brush: StampBrush, diameter: number, direction: number, seed: string): StampFillPlacement {
+  const polygon = stampRegionPolygon(region), inset = diameter / 2;
+  // A quarter of the inset: the contour's corners are exact to a few pixels, which the brush's own edge hides.
+  const cell = Math.max(1, inset / 4);
+  const distance = stampDistanceGrid(polygon, stampPolygonBox(polygon, inset + 2 * cell), cell);
+  const edge = stampGridContours(distance, inset).flatMap((loop, i) =>
+    [...loop, loop[0]].map(({ x, y }, k): StampStrokePoint => (i > 0 && k === 0 ? { x, y, lift: true } : { x, y })));
+  const untapered = { ...brush, taper: { ...brush.taper, start: 0, end: 0, size: 1, opacity: 1 }, falloff: 0 };
+  const stamps = edge.length ? placeStrokeStamps(edge, untapered, diameter, seed) : [];
+  let dualStamps: PlacedStamp[] = [];
+  if (brush.dual) {
+    const rows = rowRuns(polygon, direction, Math.max(1, SWEEP_ROWS * diameter), (points, y) => gridSpans(distance, points, direction, y, -inset));
+    const path = edge.length && rows.length ? [...edge, { ...rows[0], lift: true }, ...rows.slice(1)] : [...edge, ...rows];
+    dualStamps = path.length ? placeStrokeStamps(path, brush.dual, diameter * brush.dual.scale, `${seed}|dual`) : [];
+  }
+  const thickness = stampGridLocalMax(distance, inset);
+  return { body: { polygon, box: stampPolygonBox(polygon), thickness, inset }, stamps, dualStamps };
+}
+
+/**
+ * The paint a fill's body is laid at: its brush's converged build, read off a straight stroke of it (`probe`). A glaze
+ * or a build lays toward full, so it has built to 1 and keeps its densest stamp and cap; a buildToOpacity has built
+ * to the strongest opacity any stamp brought, as it never lowers.
+ */
+export type StampFillBodyLevels = { built: number; densest: number; cap: number };
+
+export function stampFillBodyLevels(towardFull: boolean, probe: readonly PlacedStamp[]): StampFillBodyLevels {
+  const densest = probe.reduce((most, s) => Math.max(most, s.alpha * s.opacity), 0);
+  return { built: towardFull ? 1 : probe.reduce((most, s) => Math.max(most, s.opacity), 0), densest, cap: densest };
+}
+
+/** A straight stroke of `brush` four diameters long, for its converged build (stampFillBodyLevels). */
+export function stampFillProbe(brush: StampBrush, diameter: number, seed: string): PlacedStamp[] {
+  const untapered = { ...brush, taper: { ...brush.taper, start: 0, end: 0, size: 1, opacity: 1 }, falloff: 0 };
+  return placeStrokeStamps([{ x: 0, y: 0 }, { x: diameter * 4, y: 0 }], untapered, diameter, seed);
+}
+
+/**
+ * How far a fill's front has crossed its region along the normal to `direction`: its paint at (x, y) as a share, 0 ahead
+ * of the front and 1 a diameter behind it. `progress` 0 has shown none of it, 1 all.
+ */
+export type StampFillFront = { normal: readonly [number, number]; from: number; to: number; soft: number };
+
+export function stampFillFront(polygon: readonly StampPoint[], direction: number, diameter: number): StampFillFront {
+  const normal = [-Math.sin(direction), Math.cos(direction)] as const;
+  const along = polygon.map(({ x, y }) => x * normal[0] + y * normal[1]);
+  return { normal, from: Math.min(...along), to: Math.max(...along), soft: diameter };
+}
+
+/** The share of a fill's paint at (x, y) shown with its front at `progress`; the renderer's fillFrontShare. */
+export const STAMP_FILL_FRONT_SHARE = {
+  cpu: (front: StampFillFront, progress: number, x: number, y: number) => {
+    const at = front.from + progress * (front.to - front.from + front.soft);
+    return Math.min(1, Math.max(0, (at - (x * front.normal[0] + y * front.normal[1])) / front.soft));
+  },
+  wgsl: /* wgsl */ `fn fillFrontShare(p: vec2f, normal: vec2f, start: f32, end: f32, soft: f32, progress: f32) -> f32 {
+  let at = start + progress * (end - start + soft);
+  return clamp((at - dot(p, normal)) / soft, 0.0, 1.0);
+}`,
 };
 
 /**
- * `polygon`'s outline moved `distance` inward along each vertex's normal, closed. Close to a sharp inward corner it can
- * cross itself, which a trace stroked along it doesn't mind.
+ * Rows `step` apart across `polygon` along `angle`, each split into runs by `spans` (in the rows' frame, where each
+ * row is horizontal), joined back and forth into one path that lifts between runs.
  */
-function insetPolygon(polygon: readonly Point[], distance: number): StampStrokePoint[] {
-  const n = polygon.length;
-  const area = polygon.reduce((sum, p, i) => sum + p.x * polygon[(i + 1) % n].y - polygon[(i + 1) % n].x * p.y, 0);
-  // Inward is the normal (−dy, dx) when the shoelace area is positive, (dy, −dx) when it's negative.
-  const side = area > 0 ? 1 : -1;
-  const normal = (a: Point, b: Point) => {
-    const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-    return { x: (-(b.y - a.y) / length) * side, y: ((b.x - a.x) / length) * side };
-  };
-  const moved = polygon.map((p, i) => {
-    const before = normal(polygon[(i - 1 + n) % n], p), after = normal(p, polygon[(i + 1) % n]);
-    const mean = { x: before.x + after.x, y: before.y + after.y }, length = Math.hypot(mean.x, mean.y) || 1;
-    const reach = distance / Math.max(0.5, length / 2);
-    return { x: p.x + (mean.x / length) * reach, y: p.y + (mean.y / length) * reach };
-  });
-  return [...moved, moved[0]];
-}
-
-/**
- * One stroke that sweeps `region` in rows for a brush `diameter` wide, revealed row by row, then traces its edge.
- * Rows turn back into the next; where a row is split (a concave notch), the brush lifts to the next run rather than
- * cross the gap, so the silhouette is one deposit and no part of it builds on another.
- */
-export function stampFillPath(region: StampRegion, diameter: number, { rows = 0.25, inset = 0.45, angle = 0, trace = true }: StampFillOptions = {}): StampStrokePoint[] {
+function rowRuns(polygon: readonly StampPoint[], angle: number, step: number, spans: (local: readonly StampPoint[], y: number) => [number, number][]): StampStrokePoint[] {
   const cos = Math.cos(angle), sin = Math.sin(angle);
-  // Work in the rows' frame, where each row is horizontal, and turn back at the end.
-  const local = regionPolygon(region).map(({ x, y }) => ({ x: x * cos + y * sin, y: -x * sin + y * cos }));
-  const toPainting = (x: number, y: number): StampStrokePoint => ({ x: x * cos - y * sin, y: x * sin + y * cos });
+  const local = polygon.map(({ x, y }) => ({ x: x * cos + y * sin, y: -x * sin + y * cos }));
+  const toPainting = (x: number, y: number) => ({ x: x * cos - y * sin, y: x * sin + y * cos });
   const top = Math.min(...local.map((p) => p.y)), bottom = Math.max(...local.map((p) => p.y));
-  const edge = inset * diameter, step = Math.max(1, rows * diameter);
-  const first = top + Math.min(edge, (bottom - top) / 2);
-  const count = Math.max(1, Math.ceil((bottom - edge - first) / step) + 1);
-  type Chain = { points: StampStrokePoint[]; span: [number, number]; rightward: boolean; row: number; first: number };
-  const open: Chain[] = [], done: Chain[] = [];
-  for (let r = 0; r < count; r++) {
-    const y = count === 1 ? (top + bottom) / 2 : first + ((bottom - edge - first) * r) / (count - 1);
-    const spans = rowSpans(local, y).map(([a, b]): [number, number] => [a + edge, b - edge]).filter(([a, b]) => b > a);
-    for (const span of spans) {
-      const chain = open.find((c) => c.row === r - 1 && c.span[0] < span[1] && span[0] < c.span[1]);
-      if (chain) {
-        chain.rightward = !chain.rightward;
-        chain.points.push(...(chain.rightward ? [toPainting(span[0], y), toPainting(span[1], y)] : [toPainting(span[1], y), toPainting(span[0], y)]));
-        Object.assign(chain, { span, row: r });
-      } else {
-        open.push({ points: [toPainting(span[0], y), toPainting(span[1], y)], span, rightward: true, row: r, first: r });
-      }
+  const path: StampStrokePoint[] = [];
+  let rightward = true;
+  for (let y = top + step / 2; y < bottom; y += step) {
+    const runs = spans(local, y);
+    for (const [a, b] of rightward ? runs : runs.toReversed()) {
+      const [start, end] = rightward ? [a, b] : [b, a];
+      path.push({ ...toPainting(start, y), ...(path.length && { lift: true }) }, toPainting(end, y));
     }
-    for (let i = open.length - 1; i >= 0; i--) if (open[i].row < r) done.push(...open.splice(i, 1));
+    rightward = !rightward;
   }
-  const chains = [...done, ...open].toSorted((p, q) => p.first - q.first).map((c) => c.points);
-  if (trace) chains.push(insetPolygon(regionPolygon(region), inset * diameter));
-  return chains.flatMap((points, i) => points.map((point, k) => (i > 0 && k === 0 ? { ...point, lift: true } : point)));
+  return path;
 }
 
 /** Where the horizontal line at `y` is inside `polygon` (even-odd), as sorted spans. */
-function rowSpans(polygon: readonly Point[], y: number): [number, number][] {
+function polygonSpans(polygon: readonly StampPoint[], y: number): [number, number][] {
   const crossings: number[] = [];
   for (let i = 0; i < polygon.length; i++) {
     const a = polygon[i], b = polygon[(i + 1) % polygon.length];
@@ -128,3 +163,26 @@ function rowSpans(polygon: readonly Point[], y: number): [number, number][] {
   for (let i = 0; i + 1 < crossings.length; i += 2) spans.push([crossings[i], crossings[i + 1]]);
   return spans;
 }
+
+/**
+ * Where the row at `y`, in the frame turned by `angle`, has `grid` above `level`, as spans in that frame: walked a
+ * grid cell at a time from a little before the region's reach to a little past it.
+ */
+function gridSpans(grid: StampGrid, local: readonly StampPoint[], angle: number, y: number, level: number): [number, number][] {
+  const cos = Math.cos(angle), sin = Math.sin(angle), reach = -level + grid.cell;
+  const x0 = Math.min(...local.map((p) => p.x)) - reach, x1 = Math.max(...local.map((p) => p.x)) + reach;
+  const spans: [number, number][] = [];
+  let start: number | null = null;
+  for (let x = x0; x <= x1 + grid.cell; x += grid.cell) {
+    const inside = x <= x1 && stampGridAt(grid, x * cos - y * sin, x * sin + y * cos) > level;
+    if (inside && start === null) start = x;
+    if (!inside && start !== null) {
+      spans.push([start, x - grid.cell]);
+      start = null;
+    }
+  }
+  return spans.filter(([a, b]) => b > a);
+}
+
+/** A seed for a region's ragged edge from its ID, as a u32 the renderer's noise reads. */
+export const stampRegionSeed = (id: string) => Math.floor(seededRandom(`${id}|region`)() * 0x100000000) >>> 0;

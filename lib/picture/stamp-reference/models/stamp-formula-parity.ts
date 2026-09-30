@@ -1,5 +1,5 @@
 // stamp-formula-parity.ts: the transfer grids the formulas command runs every paired CPU/WGSL formula over
-// (coverage-formulas.ts, stamp-deposit-stages.ts), and how a GPU run of them is held to the CPU. Each grid is a WGSL
+// (coverage-formulas.ts, stamp-deposit-stages.ts, stamp-region.ts, stamp-paint-field.ts, stamp-fill.ts), and how a GPU run of them is held to the CPU. Each grid is a WGSL
 // call over one row of inputs and the CPU's answer for the same row; the GPU side is stamp-formula-parity-page.ts.
 //
 // Grid steps are 32nds, which f32 and f64 hold exactly, so a threshold like hardMix's a + g ≥ 1 falls the same way
@@ -7,6 +7,9 @@
 
 import { PHOTOSHOP_POOLING, STAMP_DUAL_BLENDS, STAMP_GRAIN_BLENDS, stampDualCombine, stampDualModeIndex, stampGrainCut, stampGrainModeIndex, stampGrainPaint, stampPooled, stampPressedTip, stampTipNoise, stampTipNoiseAt } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import { STAMP_ACCUMULATION_KINDS, STAMP_ACCUMULATIONS, stampAccumulationIndex } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
+import { STAMP_FILL_FRONT_SHARE } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
+import { STAMP_PAINT_FIELD_SHARE } from '#lib/picture/stamp-paint/models/stamp-paint-field.ts';
+import { stampEdgeCoverage, stampEdgeNoise, stampFillBody } from '#lib/picture/stamp-paint/models/stamp-region.ts';
 
 /**
  * A formula's grid: `call` a WGSL expression over `x(0)`, `x(1)`, … (a row's inputs), `rows` its inputs, `labels`
@@ -69,7 +72,28 @@ export function stampFormulaGrids(): StampFormulaGrid[] {
   const pressedTip = [0.3, 1].flatMap((a) => UNIT.flatMap((c) => UNIT.flatMap((pressure) => [0.16, 0.5].flatMap((softness) => [1, 2.5].map((grow) => ({
     label: `a ${a} c ${c} p ${pressure} softness ${softness} grow ${grow}`, inputs: [a, c, pressure, softness, -0.2, 1.4, grow], expected: stampPressedTip(a, c, pressure, softness, -0.2, 1.4, grow),
   }))))));
+  // Regions, in painting pixels: distances and widths in eighths, points and geometry whole or in quarters.
+  const edgeCoverage = steps(64).map((u) => u * 12 - 6).flatMap((sd) => [1, 4, 12.5].map((width) => ({ label: `sd ${sd} width ${width}`, inputs: [sd, width], expected: stampEdgeCoverage(sd, width) })));
+  const edgeNoise = [-3.5, 0, 0.25, 1.5, 7.75, 100.125].flatMap((x) => [-40.5, 0, 0.75, 3.25, 250.5].flatMap((y) => [0, 12345, 4000000].map((seed) => ({
+    label: `x ${x} y ${y} seed ${seed}`, inputs: [x, y, seed], expected: stampEdgeNoise(x, y, seed),
+  }))));
+  const fillBody = steps(64).map((u) => u * 64 - 8).flatMap((sd) => [2, 10, 20, 37.5, 60].map((thickness) => ({
+    label: `sd ${sd} thickness ${thickness} c 25`, inputs: [sd, thickness, 25], expected: stampFillBody(sd, thickness, 25),
+  })));
+  const fieldGeometry: [number, readonly [number, number, number, number]][] = [[0, [0, 0, 0, 0]], [1, [100, 50, 300, 250]], [1, [0, 0, 0, 400]], [2, [200, 150, 120, 0]]];
+  const paintFieldShare = fieldGeometry.flatMap(([kind, geometry]) => [0, 50, 125.5, 200, 400].flatMap((x) => [0, 100, 150.25, 500].map((y) => ({
+    label: `kind ${kind} [${geometry.join(',')}] at ${x},${y}`, inputs: [x, y, kind, ...geometry], expected: STAMP_PAINT_FIELD_SHARE.cpu(x, y, kind, geometry),
+  }))));
+  const fillFrontShare = ([[0, 1], [1, 0], [-0.6, 0.8]] as const).flatMap((normal) => [0, 0.25, 0.5, 1].flatMap((progress) => [0, 120.5, 300].flatMap((x) => [0, 80, 260.25].map((y) => ({
+    label: `normal ${normal.join(',')} progress ${progress} at ${x},${y}`, inputs: [x, y, normal[0], normal[1], -20, 280, 50, progress],
+    expected: STAMP_FILL_FRONT_SHARE.cpu({ normal, from: -20, to: 280, soft: 50 }, progress, x, y),
+  })))));
   return [
+    grid('edgeCoverage', 'edgeCoverage(x(0), x(1))', 2, edgeCoverage),
+    grid('edgeNoise', 'edgeNoise(x(0), x(1), u32(x(2)))', 3, edgeNoise),
+    grid('fillBody', 'fillBody(x(0), x(1), x(2))', 3, fillBody),
+    grid('paintFieldShare', 'paintFieldShare(vec2f(x(0), x(1)), i32(x(2)), vec4f(x(3), x(4), x(5), x(6)))', 7, paintFieldShare),
+    grid('fillFrontShare', 'fillFrontShare(vec2f(x(0), x(1)), vec2f(x(2), x(3)), x(4), x(5), x(6), x(7))', 8, fillFrontShare),
     grid('pressedTip', 'pressedTip(x(0), x(1), x(2), x(3), x(4), x(5), x(6))', 7, pressedTip),
     grid('tipNoise', 'tipNoise(x(0), x(1), x(2))', 3, tipNoise),
     grid('tipNoiseAt', 'tipNoiseAt(u32(x(0)), u32(x(1)), u32(x(2)))', 3, tipNoiseAt),
