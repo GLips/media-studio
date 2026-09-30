@@ -2,16 +2,30 @@
 // passage's three media side by side, what it shows and what to look for, and the notes kept beside the sheet on what's
 // still rough. Pure: the engine (engine/wet-passage-sheet.ts) paints the passages and hands this their files.
 
+import { WET_ANIMATIONS } from './wet-animations.ts';
 import { WET_PASSAGES } from './wet-passages.ts';
 
-/** A medium's column: its name as the page says it, and each passage's image file (relative to the page) or refusal. */
-export type WetPassageSheetColumn = { label: string; passages: Record<string, { file: string } | { refused: string }> };
+/**
+ * A medium's column: its name as the page says it, each passage's image file (relative to the page) or refusal, and
+ * each animation check's frames, captioned, or refusal.
+ */
+export type WetPassageSheetColumn = {
+  label: string;
+  passages: Record<string, { file: string } | { refused: string }>;
+  animations: Record<string, { frames: readonly { file: string; caption: string }[] } | { refused: string }>;
+};
 
 /**
  * What the person keeps beside the sheet (notes.json in its folder), each optional: an opening note, what's still
- * rough in each passage by ID, and notes on the animation checks and the landscape.
+ * rough in each passage and each animation check by ID, a note opening the animation checks, and one on the landscape.
  */
-export type WetPassageSheetNotes = { intro?: string; passages?: Readonly<Record<string, string>>; animation?: string; landscape?: string };
+export type WetPassageSheetNotes = {
+  intro?: string;
+  passages?: Readonly<Record<string, string>>;
+  animation?: string;
+  animations?: Readonly<Record<string, string>>;
+  landscape?: string;
+};
 
 /** Images shown beside the passages: a landscape painted with the same ops, and references to compare against. */
 export type WetPassageSheetFigures = { landscape: readonly { file: string; caption: string }[]; references: readonly string[] };
@@ -27,7 +41,27 @@ h1 { font-size: 1.7rem; margin-bottom: .2rem; } h2 { margin-top: 2.6rem; border-
 img { width: 100%; display: block; border: 1px solid #ccc; }
 .refused { aspect-ratio: 36 / 26; display: flex; align-items: center; justify-content: center; border: 1px dashed #bbb; color: #777; background: #f3f1ec; text-align: center; padding: 1rem; }
 .look { background: #f3f0e6; border-left: 3px solid #b99a5b; padding: .5rem .9rem; } .rough { color: #7a3e00; }
-.two { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }`;
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.strip { display: grid; grid-template-columns: 8rem repeat(4, 1fr); gap: .6rem; align-items: center; margin: .5rem 0; } .strip > span { color: #555; }`;
+
+/** Each animation check: a strip of its frames per medium, what it shows and what to look for. */
+function animationChecks(columns: readonly WetPassageSheetColumn[], notes: WetPassageSheetNotes): string {
+  return WET_ANIMATIONS.map((animation) => {
+    const strips = columns.map(({ label, animations }) => {
+      const cell = animations[animation.id];
+      const frames = cell && 'frames' in cell
+        ? cell.frames.map(({ file, caption }) => `<figure><img src="${escaped(file)}" alt="${escaped(`${animation.title}, ${label}, ${caption}`)}"><figcaption>${escaped(caption)}</figcaption></figure>`).join('')
+        : `<div class="refused" title="${escaped(cell?.refused ?? '')}">The engine can’t paint this yet.</div>`;
+      return `<div class="strip"><span>${escaped(label)}</span>${frames}</div>`;
+    }).join('\n');
+    const rough = notes.animations?.[animation.id];
+    return `<h3>${escaped(animation.title)}</h3>
+<p>${escaped(animation.shows)}</p>
+${strips}
+<p class="look"><strong>Look for:</strong> ${escaped(animation.lookFor)}</p>
+${rough ? `<p class="rough"><strong>Still rough:</strong> ${escaped(rough)}</p>` : ''}`;
+  }).join('\n');
+}
 
 /** The sheet's page. */
 export function wetPassageSheetHtml(columns: readonly WetPassageSheetColumn[], notes: WetPassageSheetNotes, figures: WetPassageSheetFigures): string {
@@ -58,6 +92,7 @@ ${paragraphs(notes.intro)}
 ${passages}
 <h2>Animation</h2>
 ${paragraphs(notes.animation)}
+${animationChecks(columns, notes)}
 <h2>The fresh landscape</h2>
 ${paragraphs(notes.landscape)}
 ${landscape}
