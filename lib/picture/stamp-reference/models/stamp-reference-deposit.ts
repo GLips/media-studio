@@ -88,8 +88,8 @@ function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: Stam
   const rolling = active.rollingGrain;
   const rollingTile = rolling && grainTile(rolling, active.diameter);
   for (const stamp of stamps) {
-    // Never thinner than a pixel, as the GPU's stamps.
-    const width = stamp.diameter * span, height = Math.max(1, width * roundness * stamp.roundness);
+    // The image's own proportions, then squashed, and never thinner than a pixel, as the GPU's stamps.
+    const width = stamp.diameter * span, height = Math.max(1, width * (tipImage.height / tipImage.width) * roundness * stamp.roundness);
     // Anisotropic, as Photoshop resamples a squashed tip: the level of its less-shrunk side, averaged over up to 16 reads
     // along the other, so squashing blurs it only across the squash. Isotropic: one read at its more-shrunk side's level.
     const across = tipImage.width / width, down = tipImage.height / height;
@@ -97,7 +97,7 @@ function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: Stam
     const lod = Math.max(0, Math.log2(anisotropic ? Math.min(across, down) : Math.max(across, down))) + stamp.blur * STAMP_BLUR_LEVELS;
     const reads = anisotropic ? Math.min(16, Math.max(1, Math.ceil(Math.max(across, down) / Math.max(1, Math.min(across, down)) - 1e-9))) : 1;
     const alongV = down > across;
-    const reach = (width / 2) * Math.SQRT2;
+    const reach = (Math.max(width, height) / 2) * Math.SQRT2;
     const x0 = Math.max(box.x, Math.floor(stamp.x - reach)), x1 = Math.min(box.x + box.width, Math.ceil(stamp.x + reach));
     const y0 = Math.max(box.y, Math.floor(stamp.y - reach)), y1 = Math.min(box.y + box.height, Math.ceil(stamp.y + reach));
     const opacity = stamp.opacity * opacityScale, seed = stampNoiseSeed(stamp.x, stamp.y);

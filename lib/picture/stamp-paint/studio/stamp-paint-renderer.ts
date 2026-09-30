@@ -458,12 +458,18 @@ type BoundLayer = StampBrushLayer<StampPaintImage>;
 /** How many diameters wide a layer's tip image is drawn. */
 const spanOf = (layer: StampBrushLayer<unknown>) => layer.tip.span ?? 1;
 
+/** A tip image's height over its width: a stamp keeps its image's proportions, then its roundness squashes it. */
+const aspectOf = (layer: BoundLayer) => layer.tip.image.height / layer.tip.image.width;
+
+/** How many diameters a layer's stamp spans along its image's longer side, which bounds how far it reaches. */
+const reachSpanOf = (layer: BoundLayer) => spanOf(layer) * Math.max(1, aspectOf(layer));
+
 /** Stamps whose bounds are kept together: a box is found from the chunks before it and the stamps within its own. */
 const REACH_CHUNK = 256;
 
 /**
  * How far `stamps` reach, for each whole chunk of them from the first: x0, y0, x1, y1 of stamps 0 to the chunk's end.
- * A stamp's corners reach 0.75 of its tip image's width (`span` diameters) from its centre, however it's turned.
+ * A stamp's corners reach 0.75 of its tip image's longer side (`span` diameters) from its centre, however it's turned.
  */
 function stampReach(stamps: readonly PlacedStamp[], span: number): Float64Array {
   const chunks = new Float64Array(Math.floor(stamps.length / REACH_CHUNK) * 4);
@@ -600,8 +606,8 @@ async function rendererOnDevice(
     // The tip's texels spread over its span, so its pixels per texel go by the image's width, not the diameter.
     const smallest = stamps.reduce((least, s) => Math.min(least, s.diameter), Infinity) * spanOf(layer);
     const blurred = Math.ceil(stamps.reduce((most, s) => Math.max(most, s.blur), 0) * STAMP_BLUR_LEVELS);
-    const squashed = layer.tip.roundness * stamps.reduce((least, s) => Math.min(least, s.roundness), 1);
     const levels = tipLevels.get(assetKey(layer.tip.image))!;
+    const squashed = layer.tip.roundness * (levels[0].height / levels[0].width) * stamps.reduce((least, s) => Math.min(least, s.roundness), 1);
     const coarsest = Math.min(levels.length - 1, coarsestStampTipLevel(levels[0], smallest, squashed, levels.length) + blurred);
     const key = `${assetKey(layer.tip.image)}@${coarsest}`;
     if (!hulls.has(key)) hulls.set(key, stampTipHull(levels, coarsest));
@@ -612,9 +618,9 @@ async function rendererOnDevice(
   const deposits = new Map<CompiledStampDeposit, LoadedDeposit>();
   const regionPoints: number[] = [], binData: number[] = [];
   const tilesX = Math.ceil(width / ORDERED_TILE), tilesY = Math.ceil(height / ORDERED_TILE);
-  const loadPlan = (layer: StampBrushLayer<unknown>, stamps: readonly PlacedStamp[]): LoadedPlan => {
+  const loadPlan = (layer: BoundLayer, stamps: readonly PlacedStamp[]): LoadedPlan => {
     const plan = stampAccumulationPlan(layer.accumulation, stamps);
-    return plan.kind === 'ordered' ? { kind: 'ordered', bins: binOrderedStamps(stamps, spanOf(layer), tilesX, tilesY, binData) } : plan;
+    return plan.kind === 'ordered' ? { kind: 'ordered', bins: binOrderedStamps(stamps, reachSpanOf(layer), tilesX, tilesY, binData) } : plan;
   };
   let total = 0, tints = 0, slotsPerFrame = 1;
   for (const group of painting.groups) {
@@ -635,9 +641,9 @@ async function rendererOnDevice(
       deposits.set(deposit, {
         brush, active: stampActiveLayers(brush, deposit.diameter),
         main: total, dual: total + deposit.stamps.length, tint: deposit.brush.color ? tints : null,
-        mainReach: stampReach(deposit.stamps, spanOf(deposit.brush)), dualReach: stampReach(deposit.dualStamps, deposit.brush.dual ? spanOf(deposit.brush.dual) : 1),
+        mainReach: stampReach(deposit.stamps, reachSpanOf(brush)), dualReach: stampReach(deposit.dualStamps, brush.dual ? reachSpanOf(brush.dual) : 1),
         mainHull: tipHull(deposit.brush, deposit.stamps), dualHull: deposit.brush.dual ? tipHull(deposit.brush.dual, deposit.dualStamps) : null,
-        mainPlan: loadPlan(deposit.brush, deposit.stamps), dualPlan: deposit.brush.dual ? loadPlan(deposit.brush.dual, deposit.dualStamps) : null,
+        mainPlan: loadPlan(brush, deposit.stamps), dualPlan: brush.dual ? loadPlan(brush.dual, deposit.dualStamps) : null,
         regions,
       });
       total += deposit.stamps.length + deposit.dualStamps.length;
@@ -826,7 +832,7 @@ async function rendererOnDevice(
         pass.setBindGroup(0, bindGroup(pipeline, [
           slot((views) => {
             const put = stampUniformWriter(ORDERED_DRAW, views);
-            put('roundness', layer.tip.roundness);
+            put('roundness', layer.tip.roundness * aspectOf(layer));
             put('rolling', rolling ? 1 : 0);
             if (rolling) {
               const size = rolling.scale * diameter;
@@ -857,7 +863,7 @@ async function rendererOnDevice(
         slot((views) => {
           const put = stampUniformWriter(STAMP_DRAW, views);
           put('resolution', [width, height]);
-          put('roundness', layer.tip.roundness);
+          put('roundness', layer.tip.roundness * aspectOf(layer));
           put('rolling', rolling ? 1 : 0);
           if (rolling) {
             const size = rolling.scale * diameter;
@@ -1004,8 +1010,9 @@ async function rendererOnDevice(
   /** The pixels a deposit's first `count` stamps (and dual stamps) reach, padded for its edges' blur, or null. */
   function depositBox(deposit: CompiledStampDeposit, loadedDeposit: LoadedDeposit, count: number, dualCount: number, pad: number): Box | null {
     const reach = [Infinity, Infinity, -Infinity, -Infinity];
-    reachOfFirst(deposit.stamps, loadedDeposit.mainReach, count, spanOf(deposit.brush), reach);
-    if (deposit.brush.dual) reachOfFirst(deposit.dualStamps, loadedDeposit.dualReach, dualCount, spanOf(deposit.brush.dual), reach);
+    const { brush } = loadedDeposit;
+    reachOfFirst(deposit.stamps, loadedDeposit.mainReach, count, reachSpanOf(brush), reach);
+    if (brush.dual) reachOfFirst(deposit.dualStamps, loadedDeposit.dualReach, dualCount, reachSpanOf(brush.dual), reach);
     const x = Math.max(0, Math.floor(reach[0] - pad)), y = Math.max(0, Math.floor(reach[1] - pad));
     const w = Math.min(width, Math.ceil(reach[2] + pad)) - x, h = Math.min(height, Math.ceil(reach[3] + pad)) - y;
     return w > 0 && h > 0 ? { x, y, w, h } : null;

@@ -43,3 +43,16 @@ test('a buildToOpacity stroke lays each stamp toward its own opacity and never l
   assert.ok(Math.abs(at([stamp(1), stamp(0.2)]) - 0.5) < 1e-6);
   assert.ok(Math.abs(at([stamp(0.2), stamp(1)]) - 0.55) < 1e-6);
 });
+
+test("a tip image that isn't square keeps its proportions: a stamp's diameter spans the image's width", () => {
+  const tip = stampReferenceMips({ width: 20, height: 5, paint: new Float32Array(100).fill(1) });
+  const stamp: PlacedStamp = {
+    x: 20, y: 20, diameter: 40, rotation: 0, roundness: 1, alpha: 1, opacity: 1, flipX: false, flipY: false, blur: 0, grainTurn: 0, grainDepth: 1, pressure: 1, tint: { hue: 0, saturation: 0, lightness: 0, secondary: 0 }, reveal: 0,
+  };
+  const { coverage } = renderStampReferenceDeposit({
+    brush: bindStampBrushImages(brush, () => tip), stamps: [stamp], dualStamps: [], diameter: 40, opacity: 1, grainOffset: { main: [0, 0], dual: [0, 0] }, box: { x: 0, y: 0, width: 40, height: 40 },
+  });
+  const painted = (along: (i: number) => number) => Array.from({ length: 40 }, (_, i) => coverage[along(i)]).filter((c) => c > 0.5).length;
+  assert.equal(painted((x) => 20 * 40 + x), 40);
+  assert.equal(painted((y) => y * 40 + 20), 10);
+});

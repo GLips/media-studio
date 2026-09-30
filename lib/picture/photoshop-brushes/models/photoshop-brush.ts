@@ -163,10 +163,11 @@ const tipRoundness = (tip: PhotoshopKnownTip) => Math.min(1, Math.max(0.01, tip.
  */
 function tipOf(tip: PhotoshopKnownTip, asset: PhotoshopTipAsset, prefix: string, note: Note): StampBrushTip {
   const roundness = tipRoundness(tip), sampling = 'anisotropic', { geometry } = tip;
-  // The border widens the image past the diameter; a sample that isn't square takes its span from its width.
+  // The border widens the image past the diameter. A sample's diameter is its longer side, and its stamp keeps its
+  // proportions, so a tall sample's width is a share of the diameter.
   if (asset.kind === 'sampled') {
     const { sample } = asset;
-    return { image: asset.image, roundness, sampling, span: (sample.width + 2 * PHOTOSHOP_SAMPLE_BORDER) / sample.width, center: [sampleCenter(sample.width, geometry.flipX), sampleCenter(sample.height, geometry.flipY)] };
+    return { image: asset.image, roundness, sampling, span: (sample.width + 2 * PHOTOSHOP_SAMPLE_BORDER) / Math.max(sample.width, sample.height), center: [sampleCenter(sample.width, geometry.flipX), sampleCenter(sample.height, geometry.flipY)] };
   }
   if (tip.kind === 'sampled') throw new Error(`photoshop: a sampled tip given a ${asset.kind} image`);
   if (asset.kind === 'erodible' && tip.kind === 'erodible') return { roundness, sampling, ...photoshopErodibleStampTip(tip, asset.image, asset.contact) };
@@ -247,7 +248,10 @@ function photoshopTransferBindings(p: PhotoshopPaintablePreset, context: Photosh
     ...(p.tool?.pressureOverridesOpacity && { opacity: { ...own.opacity, pressure: linear(1) } }),
   };
   if (!context.lingeringPose) return buttons;
-  const posedOpacity = { ...buttons.opacity, pressure: linear(1) };
+  // A preset of another tool (mixer, smudge, eraser, pencil) keeps its own opacity under a lingering pose, though its
+  // size follows it: Kyle's references of them hold full paint to a simulated stroke's ends. Read from the pack
+  // references alone; unprobed.
+  const posedOpacity = p.tool && p.tool.kind !== 'PbTl' ? buttons.opacity : { ...buttons.opacity, pressure: linear(1) };
   // A pose sizes no airbrush's spray, erodible or bristle tip (the vid-105 probes: widths hold at every pose).
   if (p.tip.kind === 'airbrush' || p.tip.kind === 'erodible' || p.tip.kind === 'bristle') return { ...buttons, opacity: posedOpacity };
   const sizeAmount = buttons.size.pressure?.kind === 'linear' ? buttons.size.pressure.amount : 0;
@@ -282,12 +286,13 @@ function scatterOf(s: PhotoshopScatter | undefined, prefix: string, reading: Pho
  * A tip's spacing in diameters, and its note when Photoshop's spacing is off (a stamp per pointer event). Stepped
  * as Photoshop steps (`eachStamp`), so no step is under a pixel, however small the spacing.
  */
-function spacingOf(tip: PhotoshopKnownTip, prefix: string, note: Note) {
-  // Photoshop steps by its percentage of the tip's short side: a squashed tip's stamps close up with its roundness. A
-  // computed tip's is drawn in whole pixels at the preset's diameter (the angle probes: 48 px at 30% steps 28 px at
-  // 200%, where 14.4 would step 28.8), and scales with the stamp from there.
+function spacingOf(tip: PhotoshopKnownTip, asset: PhotoshopTipAsset, prefix: string, note: Note) {
+  // Photoshop steps by its percentage of the tip's short side: a squashed tip's and a sample's narrower side (its
+  // diameter is its longer). A computed tip's is whole pixels at the preset's diameter (the angle probes: 48 px at 30%
+  // steps 28 px at 200%, not 28.8), scaled with the stamp from there.
   const { diameter } = tip.geometry, roundness = tipRoundness(tip);
-  const short = tip.kind === 'sampled' || roundness === 1 ? roundness : Math.max(1, Math.round(diameter * roundness)) / diameter;
+  const sampleShort = asset.kind === 'sampled' ? Math.min(asset.sample.width, asset.sample.height * roundness) / Math.max(asset.sample.width, asset.sample.height) : roundness;
+  const short = tip.kind === 'sampled' || roundness === 1 ? sampleShort : Math.max(1, Math.round(diameter * roundness)) / diameter;
   const spacing = (tip.geometry.spacing / 100) * short;
   if (!tip.geometry.spaced) note('approximated', `${prefix}tip.geometry.spaced`, `spacing off stamps once per pointer event; read as its ${tip.geometry.spacing}% spacing`);
   return spacing;
@@ -381,7 +386,7 @@ function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: Photos
     tip: { ...tipOf(tip, source.tip, '', note), ...(p.noise && { noise: PHOTOSHOP_NOISE_DEPTH }) },
     ...(grain && { grain }),
     // An airbrush steps by its preset's diameter, whatever its spray's.
-    spacing: airbrush?.spacing ?? spacingOf(tip, '', note),
+    spacing: airbrush?.spacing ?? spacingOf(tip, source.tip, '', note),
     stepping: airbrush ? 'spread' : 'eachStamp',
     dynamics: stampDynamicsOf({
       size: { ...transfer.size, random: linear(size.jitter), ...airbrush?.dynamics.size },
@@ -422,7 +427,7 @@ function readDualLayer(source: PhotoshopBrushSource, dual: PhotoshopDual, tip: P
   if (dual.flip) note('approximated', 'dual.flip', "the dual's flip read as each of its stamps flipped across its width at random");
   return {
     tip: tipOf(tip, image, 'dual.', note),
-    spacing: spacingOf(tip, 'dual.', note),
+    spacing: spacingOf(tip, image, 'dual.', note),
     stepping: 'eachStamp',
     dynamics: stampDynamicsOf({ count, scatter: reach }),
     scatter,
