@@ -56,9 +56,9 @@ async function wetPassageMedium(stylesDir: string, { style: name, brushes: roles
 }
 
 /**
- * Paints the sheet into `out`: passages/<passage>-<style>.png and index.html, which links the images of `landscape/`
- * in `out` and each of `references` by its absolute path. Reads `out`/notes.json (WetPassageSheetNotes) when there is
- * one. Returns the files written.
+ * Paints the sheet into `out`: passages/<passage>-<style>.png and index.html, which shows the images of `landscape/`
+ * in `out` in name order (a leading `<n>-` orders them, left out of the caption) and links each of `references` by its
+ * absolute path. Reads `out`/notes.json (WetPassageSheetNotes) when there is one. Returns the files written.
  */
 export async function writeWetPassageSheet({ stylesDir, out, references }: { stylesDir: string; out: string; references: readonly string[] }): Promise<string[]> {
   const inputs = await Promise.all(WET_PASSAGE_MEDIA.map((medium) => wetPassageMedium(stylesDir, medium)));
@@ -89,7 +89,7 @@ export async function writeWetPassageSheet({ stylesDir, out, references }: { sty
   if (!isWetPassageSheetNotes(notes)) throw new Error(`wet passages: ${notesFile} isn't notes: an object of intro, animation and landscape text and passages' text by ID`);
   const landscapeDir = join(out, 'landscape');
   const landscape = existsSync(landscapeDir)
-    ? readdirSync(landscapeDir).filter((file) => file.endsWith('.png')).toSorted().map((file) => ({ file: `landscape/${file}`, caption: file.replace(/\.png$/, '').replace(/-/g, ' ') }))
+    ? readdirSync(landscapeDir).filter((file) => file.endsWith('.png')).toSorted().map((file) => ({ file: `landscape/${file}`, caption: file.replace(/\.png$/, '').replace(/^\d+-/, '').replace(/-/g, ' ') }))
     : [];
   writeFileSync(join(out, 'index.html'), wetPassageSheetHtml(columns, notes, { landscape, references }));
   return [...written, join(out, 'index.html')];
