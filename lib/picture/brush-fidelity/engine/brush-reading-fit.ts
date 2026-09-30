@@ -9,13 +9,14 @@
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { BrowserModuleCall } from '#lib/output/render/engine/browser-module-page.ts';
-import type { PhotoshopPackBrush, ProcreatePackBrush, StampPaintPack } from '#lib/picture/stamp-styles/models/stamp-paint-pack.ts';
-import type { BrushFidelityTarget } from '../models/brush-fidelity-target.ts';
+import type { StampPaintPack } from '#lib/picture/stamp-styles/models/stamp-paint-pack.ts';
 import { BRUSH_READINGS, type BrushReadingApp } from '../models/brush-readings.ts';
 import { searchBrushReading, type BrushReading, type BrushReadingFitStep } from '../models/brush-reading-search.ts';
-import type { StrokeCoverageProfile } from '../models/stroke-measure.ts';
-import { measureBrushFidelityTarget, scoreBrushFidelity, withBrushFidelityPage } from './brush-fidelity-score.ts';
-import { brushFidelityTargetSrc, readBrushFidelityBaselines, readBrushFidelityPacks } from './brush-fidelity-targets.ts';
+import { withBrushFidelityPage } from './brush-fidelity-score.ts';
+import { readBrushFidelityBaselines } from './brush-fidelity-targets.ts';
+import {
+  brushReadingKeys, brushReadingScorer, readBrushReadingSubjects, type BrushFidelityPackId, type BrushReadingSubject,
+} from './brush-reading-subjects.ts';
 
 /** Each app's reading module, which a fit rewrites. */
 const READING_FILES: Record<StampPaintPack['app'], string> = {
@@ -24,61 +25,11 @@ const READING_FILES: Record<StampPaintPack['app'], string> = {
 };
 
 /**
- * What each point a brush loses against its baseline costs the fit, beyond the loss itself: a shared constant that
- * makes some brushes closer by making another further off has to win by this much more. The baseline is its score on
- * the pack's last drawn sheet (fidelity/report.json), so a change to the model can't quietly give back what the sheet
- * showed. A fit needs that sheet drawn whole under today's source, reading and scorer (readBrushFidelityBaselines).
+ * What each point a brush loses against its baseline costs the fit beyond the loss itself, so a constant that helps
+ * some brushes by hurting another must win by this much more. The baseline is the pack's last whole sheet
+ * (readBrushFidelityBaselines), so a change to the model can't quietly give back what the sheet showed.
  */
 const REGRESSION_WEIGHT = 3;
-
-export type BrushFidelityPackId = { style: string; pack: string };
-
-/** A targeted brush of the packs, with its source as its app reads it and its target's measure. */
-export type BrushReadingSubject<Source> = {
-  style: string; pack: string; name: string; source: Source; target: BrushFidelityTarget; measured: StrokeCoverageProfile | null; heldOut: boolean;
-};
-
-/** Every targeted brush of `packs`, measured on `call`'s page, as their shared app reads them. */
-export async function readBrushReadingSubjects(call: BrowserModuleCall, stylesDir: string, packs: readonly BrushFidelityPackId[]): Promise<
-  | { app: 'procreate'; subjects: BrushReadingSubject<ProcreatePackBrush>[] }
-  | { app: 'photoshop'; subjects: BrushReadingSubject<PhotoshopPackBrush>[] }
-> {
-  const { app, packs: read } = readBrushFidelityPacks(stylesDir, packs);
-  const subjects: BrushReadingSubject<ProcreatePackBrush | PhotoshopPackBrush>[] = [];
-  for (const { manifest, brushes } of read) {
-    for (const { style, pack, name, target } of brushes) {
-      const measured = await measureBrushFidelityTarget(call, brushFidelityTargetSrc(target, style, pack)!);
-      subjects.push({ style, pack, name, source: manifest.brushes[name], target, measured, heldOut: BRUSH_READINGS[app].heldOut(pack, name) });
-    }
-  }
-  // readBrushFidelityPacks holds every pack to one app, so each source is that app's.
-  return app === 'procreate' ? { app, subjects: subjects as BrushReadingSubject<ProcreatePackBrush>[] } : { app, subjects: subjects as BrushReadingSubject<PhotoshopPackBrush>[] };
-}
-
-/** Scores a subject under a candidate reading; a brush that reads alike under two readings is painted once. */
-export function brushReadingScorer<R extends BrushReading, Source>(call: BrowserModuleCall, reading: BrushReadingApp<R, Source>) {
-  const scored = new Map<string, number>();
-  return async (subject: BrushReadingSubject<Source>, candidate: R): Promise<number> => {
-    if (!subject.measured) return 0;
-    const brush = reading.read(subject.name, subject.source, candidate), key = `${subject.pack}|${subject.name}|${JSON.stringify(brush)}`;
-    const known = scored.get(key);
-    if (known !== undefined) return known;
-    const result = await scoreBrushFidelity(call, brush, subject.target, subject.measured, false);
-    switch (result.kind) {
-      case 'scored': case 'emptyRender': scored.set(key, result.score); return result.score;
-      // A subject's target is measured (checked above), so neither can come back.
-      case 'unmeasurableTarget': case 'unscored': throw new Error(`brushes: ${subject.pack} ${subject.name}'s target was measured, yet it scored as ${result.kind}`);
-    }
-  };
-}
-
-/** Which of `reading`'s constants to search: `keys`, each checked, or else each one some subject uses. */
-export function brushReadingKeys<R extends BrushReading, Source>(verb: string, reading: BrushReadingApp<R, Source>, subjects: readonly BrushReadingSubject<Source>[], keys?: readonly string[]): (keyof R & string)[] {
-  const all = Object.keys(reading.ranges) as (keyof R & string)[];
-  const unknown = keys?.filter((key) => !all.includes(key as keyof R & string)) ?? [];
-  if (unknown.length) throw new Error(`brushes ${verb}: the reading has no ${unknown.join(', ')}; it has ${all.join(', ')}`);
-  return keys ? (keys as (keyof R & string)[]) : all.filter((key) => subjects.some((s) => reading.uses(key, s.source)));
-}
 
 export type BrushReadingFitResult = {
   before: BrushReading;

@@ -14,6 +14,9 @@ export type BrushFidelityTarget =
   | { kind: 'photoshopReference'; stroke: PhotoshopReferenceStroke }
   | { kind: 'none'; diameter: number };
 
+/** A target there's an image of to measure: a preview or a reference. */
+export type BrushFidelityMeasurableTarget = Exclude<BrushFidelityTarget, { kind: 'none' }>;
+
 export const BRUSH_FIDELITY_TARGET_LABELS = { procreatePreview: 'Procreate preview', photoshopReference: 'Photoshop reference', none: 'no target' } as const;
 export type BrushFidelityTargetLabel = (typeof BRUSH_FIDELITY_TARGET_LABELS)[BrushFidelityTarget['kind']];
 

@@ -81,7 +81,7 @@ const fitCommand = defineCommand({
 const diagnoseCommand = defineCommand({
   meta: {
     name: 'diagnose',
-    description: "The per-brush diagnostic of an app's reading (lib/picture/brush-fidelity/models/brush-readings.ts): each constant tried at multiples of its value on every targeted brush that uses it, scored against its Procreate preview or Photoshop reference, each brush's best printed with whether the training brushes cluster (tight, bimodal, scattered), and the training and held-out totals by candidate. Writes nothing.",
+    description: "The per-brush diagnostic of an app's reading (lib/picture/brush-fidelity/models/brush-readings.ts): each constant tried on every targeted brush that uses it at candidates about its value, in half and whole strides of its registered range's factor or step, clamped to the range, with today's value among them (marked 'now'), scored against its Procreate preview or Photoshop reference, each brush's best printed with whether the training brushes cluster (tight, bimodal, scattered), and the training and held-out totals by candidate. Writes nothing.",
   },
   args: {
     packs: { type: 'string', required: true, valueHint: 'watercolor/photoshop-legacy,watercolor/kyle-gouache', description: 'Packs with previews or references, each <style>/<pack>, comma-separated, all of one app' },
@@ -90,10 +90,11 @@ const diagnoseCommand = defineCommand({
   async run({ args }) {
     const keys = args.keys?.split(',').map((key) => key.trim());
     const diagnoses = await diagnoseBrushReading({ stylesDir: STUDIO_STYLES_DIR, packs: packsOf('diagnose', args.packs), keys, log: (line) => console.error(line) });
-    for (const { key, values, brushes, spread, training, heldOut } of diagnoses) {
-      const at = (list: number[]) => list.map((total, i) => `${+values[i].toFixed(4)}: ${total.toFixed(3)}`).join(', ');
-      console.log(`${key}: training brushes ${spread}`);
-      for (const b of brushes) console.log(`  ${b.heldOut ? 'held out ' : ''}${b.pack} ${b.brush}: best ${+values[b.best].toFixed(4)}${b.sensitive ? '' : ' (insensitive)'} [${b.scores.map((score) => score.toFixed(3)).join(' ')}]`);
+    for (const { key, values, baseline, brushes, spread, training, heldOut } of diagnoses) {
+      const value = (i: number) => `${+values[i].toFixed(4)}${i === baseline ? ' (now)' : ''}`;
+      const at = (list: number[]) => list.map((total, i) => `${value(i)}: ${total.toFixed(3)}`).join(', ');
+      console.log(`${key}: candidates ${values.map((_, i) => value(i)).join(', ')}; training brushes ${spread}`);
+      for (const b of brushes) console.log(`  ${b.heldOut ? 'held out ' : ''}${b.pack} ${b.brush}: best ${value(b.best)}${b.sensitive ? '' : ' (insensitive)'} [${b.scores.map((score) => score.toFixed(3)).join(' ')}]`);
       console.log(`  training total by value: ${at(training)}`);
       console.log(`  held-out total by value: ${at(heldOut)}`);
     }

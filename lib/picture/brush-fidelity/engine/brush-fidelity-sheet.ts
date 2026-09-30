@@ -82,7 +82,7 @@ export async function writeBrushFidelitySheet({ stylesDir, style, pack, out, onl
   const entries = await withBrushFidelityPage(stylesDir, async (call) => {
     const done: BrushFidelityReportEntry[] = [];
     for (const name of names) {
-      const brush = brushes[name], target = targets[name], src = brushFidelityTargetSrc(target, style, pack), label = BRUSH_FIDELITY_TARGET_LABELS[target.kind];
+      const brush = brushes[name], target = targets[name], src = target.kind === 'none' ? undefined : brushFidelityTargetSrc(target, style, pack), label = BRUSH_FIDELITY_TARGET_LABELS[target.kind];
       const measured = src ? await measureBrushFidelityTarget(call, src) : null;
       const scored = await scoreBrushFidelity(call, brush, target, measured, true), outcome = brushFidelityOutcome(scored);
       const note = notes[name], grade = gradeOf(outcome);

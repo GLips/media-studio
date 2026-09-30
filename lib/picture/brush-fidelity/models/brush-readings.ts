@@ -26,8 +26,8 @@ export type BrushReadingApp<R extends BrushReading, Source> = {
   module: (reading: R, against: string) => string;
 };
 
-const scale = (min: number, max: number) => ({ min, max, step: { times: 2, finest: 1.1 } });
-const amount = (min: number, max: number, plus: number, finest: number) => ({ min, max, step: { plus, finest } });
+const scale = (min: number, max: number): BrushReadingRange => ({ kind: 'multiplicative', min, max, factor: 2, finest: 1.1 });
+const amount = (min: number, max: number, step: number, finest: number): BrushReadingRange => ({ kind: 'additive', min, max, step, finest });
 
 const readingLines = (reading: BrushReading) => Object.entries(reading).map(([key, value]) => `  ${key}: ${value},`).join('\n');
 

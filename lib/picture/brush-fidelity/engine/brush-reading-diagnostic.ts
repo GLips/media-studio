@@ -7,16 +7,20 @@
 
 import type { BrowserModuleCall } from '#lib/output/render/engine/browser-module-page.ts';
 import { BRUSH_READINGS, type BrushReadingApp } from '../models/brush-readings.ts';
-import { BRUSH_READING_INSENSITIVE, BRUSH_READING_MULTIPLES, brushReadingSpread, type BrushReadingSpread } from '../models/brush-reading-spread.ts';
-import type { BrushReading } from '../models/brush-reading-search.ts';
+import { BRUSH_READING_INSENSITIVE, brushReadingSpread, type BrushReadingSpread } from '../models/brush-reading-spread.ts';
+import { brushReadingCandidates, type BrushReading } from '../models/brush-reading-search.ts';
 import { withBrushFidelityPage } from './brush-fidelity-score.ts';
-import { brushReadingKeys, brushReadingScorer, readBrushReadingSubjects, type BrushFidelityPackId, type BrushReadingSubject } from './brush-reading-fit.ts';
+import {
+  brushReadingKeys, brushReadingScorer, readBrushReadingSubjects, type BrushFidelityPackId, type BrushReadingSubject,
+} from './brush-reading-subjects.ts';
 
 export type BrushReadingBrushDiagnosis = { pack: string; brush: string; heldOut: boolean; scores: number[]; best: number; sensitive: boolean };
 
 export type BrushReadingDiagnosis = {
   key: string;
+  /** The candidates, ascending, within the constant's range (brushReadingCandidates); `baseline` indexes today's. */
   values: number[];
+  baseline: number;
   brushes: BrushReadingBrushDiagnosis[];
   /** From the training brushes that tell the candidates apart. */
   spread: BrushReadingSpread;
@@ -43,9 +47,9 @@ async function diagnoseSubjects<R extends BrushReading, Source>(
   const score = brushReadingScorer(call, reading), measured = subjects.filter((s) => s.measured);
   const diagnoses: BrushReadingDiagnosis[] = [];
   for (const key of brushReadingKeys('diagnose', reading, measured, keys)) {
-    const values = BRUSH_READING_MULTIPLES.map((times) => reading.reading[key] * times);
+    const { values, baseline } = brushReadingCandidates(reading.ranges[key], reading.reading[key]);
     const using = measured.filter((s) => reading.uses(key, s.source));
-    log?.(`brushes diagnose: ${key}, ${using.length} brushes use it (${using.filter((s) => s.heldOut).length} held out), candidates ${values.map((v) => +v.toFixed(4)).join(', ')}`);
+    log?.(`brushes diagnose: ${key}, ${using.length} brushes use it (${using.filter((s) => s.heldOut).length} held out), candidates ${values.map((v, i) => `${+v.toFixed(4)}${i === baseline ? ' (now)' : ''}`).join(', ')}`);
     const diagnosed: BrushReadingBrushDiagnosis[] = [];
     for (const subject of using) {
       const scores: number[] = [];
@@ -56,8 +60,8 @@ async function diagnoseSubjects<R extends BrushReading, Source>(
     const sum = (list: BrushReadingBrushDiagnosis[]) => values.map((_, i) => list.reduce((total, b) => total + b.scores[i], 0));
     const training = diagnosed.filter((b) => !b.heldOut);
     diagnoses.push({
-      key, values, brushes: diagnosed,
-      spread: brushReadingSpread(training.filter((b) => b.sensitive).map((b) => b.best)),
+      key, values, baseline, brushes: diagnosed,
+      spread: brushReadingSpread(training.filter((b) => b.sensitive).map((b) => b.best), values.length),
       training: sum(training), heldOut: sum(diagnosed.filter((b) => b.heldOut)),
     });
   }
