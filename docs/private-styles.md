@@ -52,20 +52,27 @@ import the studio's `models` and `studio` code, never a project or `engine` code
 
 **Importing a pack.** `studio brushes import <archive> --style <name> --pack <pack>` turns a Procreate pack (a
 `.brushset`, or the zip it came in) or a Photoshop pack (an `.abr` or `.tpl`, or a zip holding them) into
-`brushes/<pack>/`, replacing what an earlier import wrote there and leaving the rest (`fidelity/`, `reference/`).
-Both become the same brush (`StampBrush`) in the same layout:
+`brushes/<pack>/`. Each import writes a whole generation, then switches `current` to name it by one rename, so a
+reader sees the previous import or the new one, never a mix, and an import that fails leaves the previous one as it
+was; older generations are deleted after the switch. `fidelity/` and `reference/` sit beside the generations and
+outlive them. Everything that reads a pack's files resolves `current` once (`readStampPaintPackGeneration`). A pack
+imported before generations, its manifest straight in its folder, reads as not imported: import it again. Both apps
+become the same brush (`StampBrush`) in the same layout:
 
 ```
 brushes/<pack>/
-  tips/        each brush's tip, dark is paint, downsized; <brush>.dual.png for a dual brush's second tip;
-               round-<hardness>.png for Photoshop's computed round tips
-  grains/      each brush's grain (a Photoshop texture's pattern), likewise
-  previews/    each brush's own Procreate preview, to judge a render against (Photoshop files carry none)
+  current      the name of the generation readers use, switched by rename; .<pack>.lock beside the pack holds
+               one import at a time
   fidelity/    the brush fidelity sheet, once drawn (npm run brushes:sheet)
   reference/   Photoshop's own renders of the pack's brushes (npm run photoshop -- references, docs/photoshop-capture.md)
-  papers/      each .procreate canvas in the zip, as Procreate shows it, and its tooth as <paper>.grain.png
-  manifest.json  each brush's source as read (Procreate settings, or a Photoshop preset and the .abr or .tpl it
-                 came from), the palettes and papers; a style reads each brush from its source when it resolves
+  generations/<id>/  what one import wrote:
+    tips/        each brush's tip, dark is paint, downsized; <brush>.dual.png for a dual brush's second tip;
+                 round-<hardness>.png for Photoshop's computed round tips
+    grains/      each brush's grain (a Photoshop texture's pattern), likewise
+    previews/    each brush's own Procreate preview, to judge a render against (Photoshop files carry none)
+    papers/      each .procreate canvas in the zip, as Procreate shows it, and its tooth as <paper>.grain.png
+    manifest.json  each brush's source as read (Procreate settings, or a Photoshop preset and the .abr or .tpl it
+                   came from), the palettes and papers; a style reads each brush from its source when it resolves
 ```
 
 A Photoshop pack reads `.abr` version 6 and later (everything since Photoshop CS) and `.tpl` tool presets, whose

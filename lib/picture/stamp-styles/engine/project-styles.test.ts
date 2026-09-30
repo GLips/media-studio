@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import { studioTempRoot } from '#lib/platform/temp/engine/studio-temp.ts';
 import { STAMP_PAINT_ASSETS_VERSION } from '../models/stamp-paint-pack.ts';
 import { writeProjectStylesModule } from './project-styles.ts';
+import { replaceStampPaintPack } from './stamp-paint-pack-files.ts';
 
 let workspaces = 0;
 const washBrush = { main: { settings: {}, tip: { style: 'wash', pack: 'vvds', file: 'tips/wash-01.png' } } };
@@ -25,14 +26,16 @@ function washProject(styles: readonly string[]) {
   // style.ts is read with require, which caches it: write it before the first check.
   const writeStyle = (paper: object) => writeFileSync(join(style, 'style.ts'), `export default ${JSON.stringify({ packs, brushes, palette: { sky: '#88aacc' }, paper })};\n`);
   writeStyle({ color: '#f4efe4' });
-  const importPack = (pack: string, manifest: object, files: readonly string[]) => {
-    mkdirSync(join(style, 'brushes', pack), { recursive: true });
+  const archive = join(root, 'pack.zip');
+  writeFileSync(archive, '');
+  const importPack = (pack: string, manifest: object, files: readonly string[]) => replaceStampPaintPack({ archive, stylesDir: join(root, 'work', 'styles'), style: 'wash', pack }, (generation) => {
     for (const file of files) {
-      mkdirSync(join(style, 'brushes', pack, file, '..'), { recursive: true });
-      writeFileSync(join(style, 'brushes', pack, file), '');
+      mkdirSync(join(generation, file, '..'), { recursive: true });
+      writeFileSync(join(generation, file), '');
     }
-    writeFileSync(join(style, 'brushes', pack, 'manifest.json'), JSON.stringify(manifest));
-  };
+    writeFileSync(join(generation, 'manifest.json'), JSON.stringify(manifest));
+    return {};
+  });
   return { project, importPack, writeStyle };
 }
 
@@ -42,19 +45,19 @@ test('a named style stops the bundle until each pack is imported, whole, at the 
   assert.throws(() => writeProjectStylesModule(project), {
     message: 'styles: wash can\'t paint until its packs are imported in work/styles/wash/ (brushes/ isn\'t in git, so each machine imports its own; docs/private-styles.md):\n'
       + '  brushes/vvds/grains/paper.png: VVDS Watercolor Studio, from Creative Market\n'
-      + '  brushes/grain/manifest.json: Grain Pack, from the Grain shop\n'
+      + '  brushes/grain/: not imported: Grain Pack, from the Grain shop\n'
       + '  brushes.wash: vvds has no brush "Wet Wash"; import it again from VVDS Watercolor Studio, from Creative Market',
   });
 
-  importPack('vvds', packManifest(['tips/wash-01.png', 'grains/paper.png'], { 'Wet Wash': washBrush }), ['grains/paper.png']);
+  importPack('vvds', packManifest(['tips/wash-01.png', 'grains/paper.png'], { 'Wet Wash': washBrush }), ['tips/wash-01.png', 'grains/paper.png']);
   importPack('grain', packManifest([], {}, STAMP_PAINT_ASSETS_VERSION - 1), []);
   assert.throws(() => writeProjectStylesModule(project), {
-    message: new RegExp(`  brushes/grain/: imported as version ${STAMP_PAINT_ASSETS_VERSION - 1}, and the studio reads version ${STAMP_PAINT_ASSETS_VERSION}; import it again from Grain Pack, from the Grain shop$`),
+    message: new RegExp(`  brushes/grain/: .*manifest\\.json: imported as version ${STAMP_PAINT_ASSETS_VERSION - 1}, and the studio reads version ${STAMP_PAINT_ASSETS_VERSION}; import it again with studio brushes import \\(Grain Pack, from the Grain shop\\)$`),
   });
 
   importPack('grain', packManifest([], { Tooth: toothBrush }), []);
   const module = readFileSync(writeProjectStylesModule(project), 'utf8');
-  assert.match(module, /^import image0_0 from "\.\.\/\.\.\/\.\.\/styles\/wash\/brushes\/vvds\/tips\/wash-01\.png";$/m);
+  assert.match(module, /^import image0_0 from "\.\.\/\.\.\/\.\.\/styles\/wash\/brushes\/vvds\/generations\/[^/]+\/tips\/wash-01\.png";$/m);
   assert.match(module, /^      "vvds\/tips\/wash-01\.png": image0_0,$/m);
 });
 

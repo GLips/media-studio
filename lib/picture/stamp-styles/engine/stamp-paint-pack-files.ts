@@ -1,25 +1,53 @@
-// stamp-paint-pack-files.ts: what every brush importer (import-procreate-pack.ts, import-photoshop-pack.ts) does to
-// write a pack into work/styles/<style>/brushes/<pack>/: check the names, stage what it writes and swap that in only
-// once it's whole, leaving the rest of the folder be, write brush images as downsized grey PNGs, and hash the archive
-// it came from; and how the rigs read a pack back (readStampPaintPackDir).
+// stamp-paint-pack-files.ts: how a pack lives in work/styles/<style>/brushes/<pack>/, written by every brush importer
+// (import-procreate-pack.ts, import-photoshop-pack.ts) and read by everything that paints with one. An import writes
+// a whole generation, generations/<id>/ (the manifest and every image it lists), then renames `current` over the old
+// pointer to name it, so a reader sees one generation whole or the one before. Everything else in the pack's folder
+// (a sheet's fidelity/, Photoshop's reference/) sits beside the generations and outlives them. Also here: brush images
+// written as downsized grey PNGs, and the archive's hash.
 
 import { createHash, randomUUID } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { readStampPaintPack, STAMP_PAINT_PACK_MANIFEST, type StampPaintPack } from '../models/stamp-paint-pack.ts';
 
-/** The pack imported into `packDir`, read through readStampPaintPack; throws naming the folder when it isn't imported. */
-export function readStampPaintPackDir(packDir: string): StampPaintPack {
-  const file = join(packDir, STAMP_PAINT_PACK_MANIFEST);
-  if (!existsSync(file)) throw new Error(`${packDir} isn't imported; run studio brushes import first`);
+/** The file in a pack's folder naming its current generation, and the folder its generations sit in. */
+export const STAMP_PACK_CURRENT = 'current', STAMP_PACK_GENERATIONS = 'generations';
+
+/**
+ * The folder of `packDir`'s current generation, where its manifest and images are; undefined when it isn't imported.
+ * A pack from before generations, its manifest straight in its folder, reads as not imported: import it again.
+ */
+export function stampPaintPackGenerationDir(packDir: string): string | undefined {
+  const pointer = join(packDir, STAMP_PACK_CURRENT);
+  return existsSync(pointer) ? join(packDir, STAMP_PACK_GENERATIONS, readFileSync(pointer, 'utf8').trim()) : undefined;
+}
+
+/**
+ * The pack imported into `packDir`: its current generation's folder, resolved once so every file read from it is of
+ * one import, and its manifest read through readStampPaintPack. Throws naming the folder when it isn't imported.
+ */
+export function readStampPaintPackGeneration(packDir: string): { dir: string; manifest: StampPaintPack } {
+  const read = readImportedStampPaintPack(packDir);
+  if (!read) throw new Error(`${packDir} isn't imported; run studio brushes import first`);
+  return read;
+}
+
+/** As readStampPaintPackGeneration, but undefined for a pack that isn't imported. */
+export function readImportedStampPaintPack(packDir: string): { dir: string; manifest: StampPaintPack } | undefined {
+  const dir = stampPaintPackGenerationDir(packDir);
+  if (!dir) return undefined;
+  const file = join(dir, STAMP_PAINT_PACK_MANIFEST);
   try {
-    return readStampPaintPack(JSON.parse(readFileSync(file, 'utf8')));
+    return { dir, manifest: readStampPaintPack(JSON.parse(readFileSync(file, 'utf8'))) };
   } catch (error) {
-    throw new Error(`${file}: ${(error as Error).message}; import it again with studio brushes import`);
+    throw new Error(`${file}: ${error instanceof Error ? error.message : String(error)}; import it again with studio brushes import`, { cause: error });
   }
 }
+
+/** The pack imported into `packDir`, for a reader of its manifest alone (readStampPaintPackGeneration). */
+export const readStampPaintPackDir = (packDir: string): StampPaintPack => readStampPaintPackGeneration(packDir).manifest;
 
 /** Longest side of each stored image, in pixels: tips stamp at a few hundred, grains tile, papers span a frame. */
 export const STAMP_PACK_TIP_MAX = 512, STAMP_PACK_GRAIN_MAX = 1024, STAMP_PACK_PAPER_MAX = 2560;
@@ -41,11 +69,8 @@ export function fitWithin(width: number, height: number, max: number) {
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
 
-/**
- * What an importer writes into a pack's folder, of either app, and all an import replaces. The rest stays: a sheet's
- * fidelity/, a pack's Photoshop reference/ captures (npm run photoshop -- references), anything else put beside them.
- */
-const STAMP_PACK_IMPORTED = ['tips', 'grains', 'previews', 'papers', STAMP_PAINT_PACK_MANIFEST];
+/** A filesystem error's code (ENOENT, EEXIST…); undefined for anything else thrown. */
+const fsErrorCode = (error: unknown) => (error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : undefined);
 
 /** Whether process `pid` still runs; signal 0 only asks. */
 function processAlive(pid: number): boolean {
@@ -53,67 +78,104 @@ function processAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'EPERM';
+    return fsErrorCode(error) === 'EPERM';
   }
 }
 
+const lockHolder = (text: string) => Number(text.split(' ')[0]);
+
 /**
- * Holds `brushes/.<pack>.lock` while `body` runs, so two imports into one pack can't interleave their swaps. A lock
- * whose process has gone (a killed import) is taken over; one held by a live process refuses.
+ * Takes `lock` from a dead holder, or says who holds it. Renamed away first, so of two takers one rename wins and the
+ * other retries. What was renamed may turn out live (another taker locked between our read and rename): it's linked
+ * back, which fails rather than overwrite a newer lock.
+ */
+function takeOverStaleStampPackLock(lock: string, pack: string) {
+  let text: string;
+  try {
+    text = readFileSync(lock, 'utf8');
+  } catch (error) {
+    if (fsErrorCode(error) === 'ENOENT') return;
+    throw error;
+  }
+  if (processAlive(lockHolder(text))) throw new Error(`brushes import: process ${lockHolder(text)} is importing into ${pack} now (${lock})`);
+  const taken = `${lock}.stale-${randomUUID()}`;
+  try {
+    renameSync(lock, taken);
+  } catch (error) {
+    if (fsErrorCode(error) === 'ENOENT') return;
+    throw error;
+  }
+  const holder = lockHolder(readFileSync(taken, 'utf8'));
+  if (processAlive(holder)) {
+    try {
+      linkSync(taken, lock);
+    } finally {
+      rmSync(taken, { force: true });
+    }
+    throw new Error(`brushes import: process ${holder} is importing into ${pack} now (${lock})`);
+  }
+  rmSync(taken, { force: true });
+}
+
+/**
+ * Holds `brushes/.<pack>.lock` while `body` runs, so two imports into one pack can't interleave their publishing. It's
+ * made exclusively (O_EXCL); a lock whose process has gone (a killed import) is taken over, one held by a live process
+ * refuses. Released only while it's still this import's.
  */
 function withStampPackLock<T>(brushesDir: string, pack: string, body: () => T): T {
   mkdirSync(brushesDir, { recursive: true });
-  const lock = join(brushesDir, `.${pack}.lock`);
+  const lock = join(brushesDir, `.${pack}.lock`), mine = `${process.pid} ${randomUUID()}`;
   for (;;) {
     try {
-      writeFileSync(lock, String(process.pid), { flag: 'wx' });
+      writeFileSync(lock, mine, { flag: 'wx' });
       break;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      const holder = Number(readFileSync(lock, 'utf8'));
-      if (processAlive(holder)) throw new Error(`brushes import: process ${holder} is importing into ${pack} now (${lock})`);
-      rmSync(lock, { force: true });
+      if (fsErrorCode(error) !== 'EEXIST') throw error;
+      takeOverStaleStampPackLock(lock, pack);
     }
   }
   try {
     return body();
   } finally {
-    rmSync(lock, { force: true });
+    if (existsSync(lock) && readFileSync(lock, 'utf8') === mine) rmSync(lock, { force: true });
   }
 }
+
+/** A new generation's folder name: sorts by when it was written, and never repeats. */
+const stampPackGenerationName = () => `${new Date().toISOString().replace(/[-:.]/g, '')}-${randomUUID().slice(0, 8)}`;
 
 /**
- * Runs `write` into a staging folder of its own beside the pack's, and swaps what it wrote in only once `write`
- * returns, so an import that fails leaves the previous one whole; the pack's lock keeps two imports from swapping at
- * once. Every entry of STAMP_PACK_IMPORTED goes, even one this import didn't write (a Procreate pack's previews/ when
- * a Photoshop file is imported over it). Refuses an archive kept among those entries, which the swap would delete.
+ * Runs `write` into a new generation's folder, then names it `current` by one rename: a reader sees the previous import
+ * or the new one whole, and a failed import leaves the previous one current. Older generations go after the switch, as
+ * far as they can; one left behind is never current again. Refuses an archive among the generations.
  */
-export function replaceStampPaintPack<T>({ archive, stylesDir, style, pack }: ImportStampPaintPackOptions, write: (staging: string) => T): T & { dir: string } {
+export function replaceStampPaintPack<T>({ archive, stylesDir, style, pack }: ImportStampPaintPackOptions, write: (generation: string) => T): T & { dir: string } {
   if (!existsSync(archive)) throw new Error(`brushes import: ${archive} doesn't exist`);
   if (!/^[a-z0-9][a-z0-9-]*$/.test(pack) || !/^[a-z0-9][a-z0-9-]*$/.test(style)) throw new Error('brushes import: --style and --pack are lowercase names: letters, digits and dashes');
-  const brushesDir = join(stylesDir, style, 'brushes'), dir = join(brushesDir, pack);
-  const replaced = (entry: string) => resolve(archive) === resolve(dir, entry) || resolve(archive).startsWith(`${resolve(dir, entry)}${sep}`);
-  if (STAMP_PACK_IMPORTED.some(replaced)) throw new Error(`brushes import: ${archive} is inside ${dir}, among what an import replaces; keep the pack elsewhere`);
-  // Beside the pack, not in the studio's temp folder, so each entry renames into place on one volume.
-  const staging = join(brushesDir, `.${pack}.importing-${randomUUID()}`);
+  const brushesDir = join(stylesDir, style, 'brushes'), dir = join(brushesDir, pack), generations = join(dir, STAMP_PACK_GENERATIONS);
+  if (resolve(archive).startsWith(`${resolve(generations)}${sep}`)) throw new Error(`brushes import: ${archive} is inside ${generations}, which an import replaces; keep the pack elsewhere`);
   return withStampPackLock(brushesDir, pack, () => {
-    mkdirSync(staging);
-    return swapStagedPack(dir, staging, write);
-  });
-}
-
-function swapStagedPack<T>(dir: string, staging: string, write: (staging: string) => T): T & { dir: string } {
-  try {
-    const written = write(staging);
-    const unknown = readdirSync(staging).filter((entry) => !STAMP_PACK_IMPORTED.includes(entry));
-    if (unknown.length) throw new Error(`brushes import: wrote ${unknown.join(', ')}, which STAMP_PACK_IMPORTED doesn't list, so a later import wouldn't replace it`);
-    mkdirSync(dir, { recursive: true });
-    for (const entry of STAMP_PACK_IMPORTED) rmSync(join(dir, entry), { recursive: true, force: true });
-    for (const entry of readdirSync(staging)) renameSync(join(staging, entry), join(dir, entry));
+    const name = stampPackGenerationName(), generation = join(generations, name), pointer = join(dir, `.${STAMP_PACK_CURRENT}-${name}`);
+    mkdirSync(generation, { recursive: true });
+    let written: T;
+    try {
+      written = write(generation);
+      writeFileSync(pointer, `${name}\n`);
+      renameSync(pointer, join(dir, STAMP_PACK_CURRENT));
+    } catch (error) {
+      rmSync(pointer, { force: true });
+      rmSync(generation, { recursive: true, force: true });
+      throw error;
+    }
+    for (const old of readdirSync(generations).filter((entry) => entry !== name)) {
+      try {
+        rmSync(join(generations, old), { recursive: true, force: true });
+      } catch {
+        // Best effort, by design: the switch has happened, and the next import deletes what's left.
+      }
+    }
     return { dir, ...written };
-  } finally {
-    rmSync(staging, { recursive: true, force: true });
-  }
+  });
 }
 
 /** A PNG's size, from its IHDR chunk. */

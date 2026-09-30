@@ -1,13 +1,14 @@
 // brush-fidelity-page.ts: the brush fidelity page, run by lib/picture/brush-fidelity/engine/brush-fidelity-score.ts
 // through withBrowserModulePage for the sheet, the reading fit and the diagnostic. It paints a brush with the studio's
 // GPU renderer as its target was painted (brush-fidelity-target.ts), measures that and the target alike, and lays out a
-// row of the sheet. A brush's assets are under the styles folder, served at /files/<style>/brushes/<pack>/<file>; a
-// target comes as a URL, a preview's under /files/ and a reference's as a data URL.
+// row of the sheet. A brush's assets are under the styles folder, served at /files/, at the URLs Node resolved
+// (brush-fidelity-pack-urls.ts); a target comes as a URL, a preview's under /files/ and a reference's as a data URL.
 
 import { PROCREATE_PREVIEW_SIZE } from '#lib/picture/procreate-brushes/models/procreate-preview-stroke.ts';
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import type { CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import { createStampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
+import { brushFidelityAssetUrl, type BrushFidelityPackUrls } from '../models/brush-fidelity-pack-urls.ts';
 import { brushFidelityPainting, type BrushFidelityTarget } from '../models/brush-fidelity-target.ts';
 import { measureStrokeCoverage, type StrokeCoverageProfile, type StrokeFidelityGrade } from '../models/stroke-measure.ts';
 
@@ -43,9 +44,9 @@ async function measureStrokeTarget(src: string): Promise<StrokeCoverageProfile |
   return measureStrokeCoverage(await targetCoverage(src), W, H);
 }
 
-async function paintAndMeasure(painting: CompiledStampPaint, withPng: boolean): Promise<{ png?: string; profile: StrokeCoverageProfile | null }> {
+async function paintAndMeasure(painting: CompiledStampPaint, withPng: boolean, packUrls: BrushFidelityPackUrls): Promise<{ png?: string; profile: StrokeCoverageProfile | null }> {
   const canvas = Object.assign(document.createElement('canvas'), { width: W, height: H });
-  const renderer = await createStampPaintRenderer(canvas, painting, { color: '#ffffff' }, W, H, ({ style, pack, file }) => `/files/${style}/brushes/${pack}/${file}`);
+  const renderer = await createStampPaintRenderer(canvas, painting, { color: '#ffffff' }, W, H, (asset) => brushFidelityAssetUrl(packUrls, asset));
   try {
     await renderer.draw(0);
     return { ...(withPng && { png: canvas.toDataURL('image/png') }), profile: measureStrokeCoverage(paintedCoverage(canvas), W, H) };
@@ -54,8 +55,9 @@ async function paintAndMeasure(painting: CompiledStampPaint, withPng: boolean): 
   }
 }
 
-/** `brush` painted as `target` was, at `diameter`: its measure, and the painting as a PNG data URL when asked for. */
-const paintBrushFidelity = (brush: StampBrush, target: BrushFidelityTarget, diameter: number, withPng: boolean) => paintAndMeasure(brushFidelityPainting(brush, target, diameter), withPng);
+/** `brush` painted as `target` was, at `diameter`, its images from `packUrls`: its measure, and the painting as a PNG data URL when asked for. */
+const paintBrushFidelity = (brush: StampBrush, target: BrushFidelityTarget, diameter: number, withPng: boolean, packUrls: BrushFidelityPackUrls) =>
+  paintAndMeasure(brushFidelityPainting(brush, target, diameter), withPng, packUrls);
 
 const HEADER = 98;
 

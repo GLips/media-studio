@@ -12,12 +12,12 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { createRequire } from 'node:module';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import type { ProjectDeclaration } from '#lib/platform/project/models/capability.ts';
-import { readStampPaintPack, STAMP_PAINT_PACK_MANIFEST, type StampPaintPack } from '../models/stamp-paint-pack.ts';
+import { STAMP_PAINT_PACK_MANIFEST, type StampPaintPack } from '../models/stamp-paint-pack.ts';
 import { resolveStampPaintStyle, stampPaintStyleImages, type StampPaintStyle } from '../models/style.ts';
+import { readImportedStampPaintPack, readStampPaintPackGeneration } from './stamp-paint-pack-files.ts';
 
 const stylesDirFor = (projectDir: string) => join(resolve(projectDir), '..', '..', 'styles');
 const requireDefault = <T>(file: string) => (createRequire(file)(file) as { default: T }).default;
-const readManifest = (styleDir: string, pack: string) => readStampPaintPack(JSON.parse(readFileSync(join(styleDir, 'brushes', pack, STAMP_PAINT_PACK_MANIFEST), 'utf8')));
 const projectStylesModuleFor = (projectDir: string) => join(resolve(projectDir), 'generated', 'stamp-paint-styles.ts');
 
 function listStyles(projectDir: string) {
@@ -29,16 +29,16 @@ function listStyles(projectDir: string) {
 function styleAssetProblems(dir: string, style: StampPaintStyle): string[] {
   const manifests = new Map<string, StampPaintPack>();
   const packProblems = Object.entries(style.packs).flatMap(([pack, { source }]) => {
-    const manifestFile = join(dir, 'brushes', pack, STAMP_PAINT_PACK_MANIFEST);
-    if (!existsSync(manifestFile)) return [`  brushes/${pack}/${STAMP_PAINT_PACK_MANIFEST}: ${source}`];
-    let manifest: StampPaintPack;
+    let imported: ReturnType<typeof readImportedStampPaintPack>;
     try {
-      manifest = readManifest(dir, pack);
+      imported = readImportedStampPaintPack(join(dir, 'brushes', pack));
     } catch (error) {
-      return [`  brushes/${pack}/: ${(error as Error).message}; import it again from ${source}`];
+      return [`  brushes/${pack}/: ${error instanceof Error ? error.message : String(error)} (${source})`];
     }
+    if (!imported) return [`  brushes/${pack}/: not imported: ${source}`];
+    const { dir: generation, manifest } = imported;
     manifests.set(pack, manifest);
-    return manifest.files.filter((file) => !existsSync(join(dir, 'brushes', pack, file))).map((file) => `  brushes/${pack}/${file}: ${source}`);
+    return manifest.files.filter((file) => !existsSync(join(generation, file))).map((file) => `  brushes/${pack}/${file}: ${source}`);
   });
   // A pack that isn't imported is reported above; its brushes can't be looked for until it is.
   const brushProblems = Object.entries(style.brushes).flatMap(([name, { pack, brush }]) => {
@@ -81,11 +81,14 @@ export function writeProjectStylesModule(projectDir: string): string {
     const dir = join(stylesDirFor(projectDir), name);
     const style = requireDefault<StampPaintStyle>(join(dir, 'style.ts'));
     const packs = Object.keys(style.packs);
-    const manifests = Object.fromEntries(packs.map((pack) => [pack, readManifest(dir, pack)]));
+    // Resolved once per pack, so the manifest and images imported are one generation's. One published since the check
+    // above is whole by construction (replaceStampPaintPack), so it's bundled unchecked rather than mixed.
+    const generations = Object.fromEntries(packs.map((pack) => [pack, readStampPaintPackGeneration(join(dir, 'brushes', pack))]));
+    const manifests = Object.fromEntries(packs.map((pack) => [pack, generations[pack].manifest]));
     const images = stampPaintStyleImages(resolveStampPaintStyle(name, style, manifests));
     imports.push(`import style${s} from ${from(join(dir, 'style.ts'))};`);
-    packs.forEach((pack, p) => imports.push(`import manifest${s}_${p} from ${from(join(dir, 'brushes', pack, STAMP_PAINT_PACK_MANIFEST))};`));
-    images.forEach(({ pack, file }, i) => imports.push(`import image${s}_${i} from ${from(join(dir, 'brushes', pack, file))};`));
+    packs.forEach((pack, p) => imports.push(`import manifest${s}_${p} from ${from(join(generations[pack].dir, STAMP_PAINT_PACK_MANIFEST))};`));
+    images.forEach(({ pack, file }, i) => imports.push(`import image${s}_${i} from ${from(join(generations[pack].dir, file))};`));
     entries.push(
       `  ${JSON.stringify(name)}: {`,
       `    style: style${s},`,

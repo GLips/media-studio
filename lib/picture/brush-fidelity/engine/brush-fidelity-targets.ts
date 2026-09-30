@@ -3,11 +3,11 @@
 // report.json on disk (brush-fidelity-report.ts), with the baselines a fit reads from it.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import {
   stampPaintPackDiameter, type PhotoshopPackBrush, type ProcreatePackBrush, type StampPaintPack,
 } from '#lib/picture/stamp-styles/models/stamp-paint-pack.ts';
-import { readStampPaintPackDir } from '#lib/picture/stamp-styles/engine/stamp-paint-pack-files.ts';
+import { readStampPaintPackDir, readStampPaintPackGeneration } from '#lib/picture/stamp-styles/engine/stamp-paint-pack-files.ts';
 import {
   brushFidelityIdentityDifferences, currentBrushFidelityIdentity, parseBrushFidelityReport, type BrushFidelityReport,
 } from '../models/brush-fidelity-report.ts';
@@ -25,13 +25,21 @@ export function readBrushFidelityTargets(packDir: string, manifest: StampPaintPa
   }));
 }
 
-/** A pack's file as the fidelity page loads it: its URL under the styles folder, served at /files/. */
-export const brushFidelityPackFile = (style: string, pack: string, file: string) => `/files/${style}/brushes/${pack}/${file}`;
+/**
+ * An imported pack as the fidelity pages read it, its generation resolved once: its folder (where its fidelity/ and
+ * reference/ are), its manifest, and its generation's URL under the styles folder, served at /files/.
+ */
+export type BrushFidelityPack = { packDir: string; manifest: StampPaintPack; url: string };
+
+export function readBrushFidelityPack(stylesDir: string, style: string, pack: string): BrushFidelityPack {
+  const packDir = join(stylesDir, style, 'brushes', pack), { dir, manifest } = readStampPaintPackGeneration(packDir);
+  return { packDir, manifest, url: `/files/${relative(stylesDir, dir).split(sep).join('/')}` };
+}
 
 /** The image the fidelity page measures `target` from: a preview's URL, or a reference cropped to a data URL. */
-export function brushFidelityTargetSrc(target: BrushFidelityMeasurableTarget, style: string, pack: string): string {
+export function brushFidelityTargetSrc(target: BrushFidelityMeasurableTarget, packUrl: string): string {
   switch (target.kind) {
-    case 'procreatePreview': return brushFidelityPackFile(style, pack, target.image);
+    case 'procreatePreview': return `${packUrl}/${target.image}`;
     case 'photoshopReference': return photoshopReferenceStrokePng(target.stroke);
   }
 }
@@ -72,14 +80,16 @@ export function readBrushFidelityBaselines(stylesDir: string, style: string, pac
 }
 
 /** A targeted brush of a pack with its source, as its app's importer reads it. */
-export type BrushFidelityTargetedBrush<Source> = { style: string; pack: string; name: string; source: Source; target: BrushFidelityMeasurableTarget };
+export type BrushFidelityTargetedBrush<Source> = { style: string; pack: string; packUrl: string; name: string; source: Source; target: BrushFidelityMeasurableTarget };
 
-/** Each targeted brush of `manifest`'s pack (in `dir`) with its source, typed by the app `brushes` was narrowed to. */
-function targetedBrushes<Source>(style: string, pack: string, dir: string, manifest: StampPaintPack, brushes: Readonly<Record<string, Source>>): BrushFidelityTargetedBrush<Source>[] {
-  const targets = readBrushFidelityTargets(dir, manifest);
+/** Each targeted brush of `read`'s pack with its source, typed by the app `brushes` was narrowed to. */
+function targetedBrushes<Source>(
+  style: string, pack: string, { packDir, manifest, url }: BrushFidelityPack, brushes: Readonly<Record<string, Source>>,
+): BrushFidelityTargetedBrush<Source>[] {
+  const targets = readBrushFidelityTargets(packDir, manifest);
   return Object.entries(brushes).flatMap(([name, source]) => {
     const target = targets[name];
-    return target.kind === 'none' ? [] : [{ style, pack, name, source, target }];
+    return target.kind === 'none' ? [] : [{ style, pack, packUrl: url, name, source, target }];
   });
 }
 
@@ -90,10 +100,10 @@ export function readBrushFidelityPacks(stylesDir: string, packs: readonly { styl
   const procreate: BrushFidelityTargetedBrush<ProcreatePackBrush>[] = [], photoshop: BrushFidelityTargetedBrush<PhotoshopPackBrush>[] = [];
   const apps = new Set<StampPaintPack['app']>();
   for (const { style, pack } of packs) {
-    const dir = join(stylesDir, style, 'brushes', pack), manifest = readStampPaintPackDir(dir);
+    const read = readBrushFidelityPack(stylesDir, style, pack), { manifest } = read;
     apps.add(manifest.app);
-    if (manifest.app === 'procreate') procreate.push(...targetedBrushes(style, pack, dir, manifest, manifest.brushes));
-    else photoshop.push(...targetedBrushes(style, pack, dir, manifest, manifest.brushes));
+    if (manifest.app === 'procreate') procreate.push(...targetedBrushes(style, pack, read, manifest.brushes));
+    else photoshop.push(...targetedBrushes(style, pack, read, manifest.brushes));
   }
   if (apps.size !== 1) throw new Error(`brushes: ${packs.map(({ style, pack }) => `${style}/${pack}`).join(', ')} mix ${[...apps].join(' and ')} packs; a reading is one app's`);
   return apps.has('photoshop') ? { app: 'photoshop', brushes: photoshop } : { app: 'procreate', brushes: procreate };

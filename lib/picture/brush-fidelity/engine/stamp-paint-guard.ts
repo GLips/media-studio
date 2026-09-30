@@ -18,8 +18,8 @@ import { gunzipSync, gzipSync } from 'node:zlib';
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import type { PlacedStamp } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
-import { resolveStampPaintPackBrushes, STAMP_PAINT_PACK_MANIFEST, type StampPaintPack } from '#lib/picture/stamp-styles/models/stamp-paint-pack.ts';
-import { readStampPaintPackDir } from '#lib/picture/stamp-styles/engine/stamp-paint-pack-files.ts';
+import { resolveStampPaintPackBrushes, type StampPaintPack } from '#lib/picture/stamp-styles/models/stamp-paint-pack.ts';
+import { readImportedStampPaintPack } from '#lib/picture/stamp-styles/engine/stamp-paint-pack-files.ts';
 import { brushFidelityIdentityDifferences, brushFidelityOutcomeScore, type BrushFidelityReport } from '../models/brush-fidelity-report.ts';
 import { brushFidelityDiameter, brushFidelityPainting } from '../models/brush-fidelity-target.ts';
 import { readBrushFidelityTargets } from './brush-fidelity-targets.ts';
@@ -119,7 +119,10 @@ function importedStampPaintPacks(stylesDir: string): { id: string; dir: string; 
   return readdirSync(stylesDir).flatMap((style) => {
     const brushes = join(stylesDir, style, 'brushes');
     return existsSync(brushes)
-      ? readdirSync(brushes).filter((pack) => existsSync(join(brushes, pack, STAMP_PAINT_PACK_MANIFEST))).map((pack) => ({ id: `${style}/${pack}`, dir: join(brushes, pack), pack: readStampPaintPackDir(join(brushes, pack)) }))
+      ? readdirSync(brushes).flatMap((pack) => {
+        const imported = readImportedStampPaintPack(join(brushes, pack));
+        return imported ? [{ id: `${style}/${pack}`, dir: join(brushes, pack), pack: imported.manifest }] : [];
+      })
       : [];
   });
 }

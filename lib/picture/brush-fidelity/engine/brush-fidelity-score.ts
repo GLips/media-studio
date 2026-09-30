@@ -10,6 +10,7 @@ import {
 } from '../models/brush-fidelity-target.ts';
 import type { BrushFidelityOutcome } from '../models/brush-fidelity-report.ts';
 import { compareStrokeProfiles, type StrokeCoverageProfile, type StrokeProfileComparison } from '../models/stroke-measure.ts';
+import type { BrushFidelityPackUrls } from '../models/brush-fidelity-pack-urls.ts';
 
 const FIDELITY_PAGE = fileURLToPath(new URL('../studio/brush-fidelity-page.ts', import.meta.url));
 /** Rounds of fitting the diameter to the preview's thickness; thickness follows diameter closely, so two land within a few percent. */
@@ -40,11 +41,14 @@ export function brushFidelityOutcome(scored: BrushFidelityScore): BrushFidelityO
   }
 }
 
-/** `brush` painted as `target` was, at the diameter whose peak thickness matches `measured` where it's fitted, and scored. */
+/**
+ * `brush` painted as `target` was, at the diameter whose peak thickness matches `measured` where it's fitted, and scored;
+ * its images loaded from `packUrls`, every pack it paints from resolved.
+ */
 export async function scoreBrushFidelity(
-  call: BrowserModuleCall, brush: StampBrush, target: BrushFidelityTarget, measured: StrokeCoverageProfile | null, withPng: boolean,
+  call: BrowserModuleCall, brush: StampBrush, target: BrushFidelityTarget, measured: StrokeCoverageProfile | null, withPng: boolean, packUrls: BrushFidelityPackUrls,
 ): Promise<BrushFidelityScore> {
-  const paint = (diameter: number) => call<{ png?: string; profile: StrokeCoverageProfile | null }>('paintBrushFidelity', brush, target, diameter, withPng);
+  const paint = (diameter: number) => call<{ png?: string; profile: StrokeCoverageProfile | null }>('paintBrushFidelity', brush, target, diameter, withPng, packUrls);
   let diameter = brushFidelityDiameter(target), painted = await paint(diameter);
   for (let fit = 0; brushFidelityFitsDiameter(target) && measured && painted.profile && fit < DIAMETER_FITS; fit++) {
     const next = Math.min(2000, Math.max(2, diameter * (measured.peakThickness / painted.profile.peakThickness)));

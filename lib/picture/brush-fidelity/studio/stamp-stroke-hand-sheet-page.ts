@@ -2,13 +2,14 @@
 // lib/picture/brush-fidelity/engine/stamp-stroke-hand-sheet.ts through withBrowserModulePage. It paints one path, a wave
 // that ends in a sharp turn, under each way of authoring its pressure (stamp-stroke-hand.ts), one row each with a
 // constant-pressure stroke first to compare against, and plots each row's pressure beside it. Brush images are under the
-// styles folder, served at /files/.
+// styles folder, served at /files/, at the URLs Node resolved (brush-fidelity-pack-urls.ts).
 
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { compileStampPaintRecipe, stampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import type { StampStrokePoint } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 import { handStampStroke, type StampStrokeHand } from '#lib/picture/stamp-paint/models/stamp-stroke-hand.ts';
 import { createStampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
+import { brushFidelityAssetUrl, type BrushFidelityPackUrls } from '../models/brush-fidelity-pack-urls.ts';
 
 const ROW = 200, LABEL = 250, PAINT = 900, PLOT = 220;
 
@@ -29,15 +30,15 @@ function sheetPath(top: number): StampStrokePoint[] {
   return [...wave, { x: 560, y: top + 25 }, { x: 860, y: top + 55 }];
 }
 
-/** The sheet for `brush` at `diameter`: a row per variant, as a PNG data URL. */
-async function drawStampStrokeHandSheet(brush: StampBrush, diameter: number): Promise<string> {
+/** The sheet for `brush` at `diameter`, its images from `packUrls`: a row per variant, as a PNG data URL. */
+async function drawStampStrokeHandSheet(brush: StampBrush, diameter: number, packUrls: BrushFidelityPackUrls): Promise<string> {
   const width = LABEL + PAINT + PLOT, height = ROW * VARIANTS.length;
   const material = { kind: 'flat', color: '#1d2a44' } as const;
   const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => VARIANTS.forEach(({ hand }, row) => paint.group(`row-${row}`, { composite: 'glaze', opacity: 1 }, (group) => group.pass('stroke', {}, (pass) => {
     pass.stroke('stroke', { brush, material, diameter, path: sheetPath(row * ROW), hand });
   })))));
   const paintCanvas = Object.assign(document.createElement('canvas'), { width: PAINT, height });
-  const renderer = await createStampPaintRenderer(paintCanvas, painting, { color: '#ffffff' }, PAINT, height, ({ style, pack, file }) => `/files/${style}/brushes/${pack}/${file}`);
+  const renderer = await createStampPaintRenderer(paintCanvas, painting, { color: '#ffffff' }, PAINT, height, (asset) => brushFidelityAssetUrl(packUrls, asset));
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
   const context = canvas.getContext('2d')!;
   context.fillStyle = '#ffffff';

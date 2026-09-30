@@ -7,7 +7,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { withBrowserModulePage } from '#lib/output/render/engine/browser-module-page.ts';
 import { resolveStampPaintPackBrushes } from '#lib/picture/stamp-styles/models/stamp-paint-pack.ts';
-import { readStampPaintPackDir } from '#lib/picture/stamp-styles/engine/stamp-paint-pack-files.ts';
+import { brushFidelityPackKey } from '../models/brush-fidelity-pack-urls.ts';
+import { readBrushFidelityPack } from './brush-fidelity-targets.ts';
 
 const SHEET_PAGE = fileURLToPath(new URL('../studio/stamp-stroke-hand-sheet-page.ts', import.meta.url));
 
@@ -15,14 +16,15 @@ const SHEET_PAGE = fileURLToPath(new URL('../studio/stamp-stroke-hand-sheet-page
 export async function writeStampStrokeHandSheet({ stylesDir, style, pack, brushes, diameter, out }: {
   stylesDir: string; style: string; pack: string; brushes: readonly string[]; diameter: number; out: string;
 }): Promise<string[]> {
-  const painted = resolveStampPaintPackBrushes(readStampPaintPackDir(join(stylesDir, style, 'brushes', pack)));
+  const { manifest, url } = readBrushFidelityPack(stylesDir, style, pack), packUrls = { [brushFidelityPackKey(style, pack)]: url };
+  const painted = resolveStampPaintPackBrushes(manifest);
   const missing = brushes.filter((name) => !painted[name]);
   if (missing.length) throw new Error(`stroke hand sheet: ${pack} has no brush ${missing.map((name) => JSON.stringify(name)).join(', ')}`);
   mkdirSync(out, { recursive: true });
   return withBrowserModulePage({ entry: SHEET_PAGE, filesDir: stylesDir }, async (call) => {
     const written: string[] = [];
     for (const name of brushes) {
-      const png = await call<string>('drawStampStrokeHandSheet', painted[name], diameter);
+      const png = await call<string>('drawStampStrokeHandSheet', painted[name], diameter, packUrls);
       const file = join(out, `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.png`);
       writeFileSync(file, Buffer.from(png.slice(png.indexOf(',') + 1), 'base64'));
       written.push(file);

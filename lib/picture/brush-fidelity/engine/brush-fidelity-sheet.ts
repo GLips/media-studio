@@ -17,15 +17,15 @@ import { pathToFileURL } from 'node:url';
 import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { resolveStampPaintPackBrushes } from '#lib/picture/stamp-styles/models/stamp-paint-pack.ts';
-import { readStampPaintPackDir } from '#lib/picture/stamp-styles/engine/stamp-paint-pack-files.ts';
 import { STAMP_PAINT_FIDELITY_GRADES, type StampPaintStyleFidelity, type StampPaintStyleGrades } from '../models/brush-fidelity-style.ts';
 import {
   BRUSH_FIDELITY_REPORT_VERSION, brushFidelityOutcomeScore, currentBrushFidelityIdentity, type BrushFidelityOutcome, type BrushFidelityReportEntry,
 } from '../models/brush-fidelity-report.ts';
 import { BRUSH_FIDELITY_TARGET_LABELS } from '../models/brush-fidelity-target.ts';
+import { brushFidelityPackKey } from '../models/brush-fidelity-pack-urls.ts';
 import { STROKE_SCORE_GRADES, strokeFidelityGrade, type StrokeFidelityGrade, type StrokeProfileComparison } from '../models/stroke-measure.ts';
 import { brushFidelityOutcome, measureBrushFidelityTarget, scoreBrushFidelity, withBrushFidelityPage } from './brush-fidelity-score.ts';
-import { brushFidelityTargetSrc, readBrushFidelityTargets, writeBrushFidelityReport } from './brush-fidelity-targets.ts';
+import { brushFidelityTargetSrc, readBrushFidelityPack, readBrushFidelityTargets, writeBrushFidelityReport } from './brush-fidelity-targets.ts';
 
 /** Rows to a sheet image. */
 const SHEET_ROWS = 120;
@@ -69,8 +69,8 @@ function describeComparison(c: StrokeProfileComparison): string {
 export async function writeBrushFidelitySheet({ stylesDir, style, pack, out, only }: {
   stylesDir: string; style: string; pack: string; out?: string; only?: readonly string[];
 }): Promise<BrushFidelitySheet> {
-  const styleDir = join(stylesDir, style), packDir = join(styleDir, 'brushes', pack);
-  const manifest = readStampPaintPackDir(packDir), brushes = resolveStampPaintPackBrushes(manifest), targets = readBrushFidelityTargets(packDir, manifest);
+  const styleDir = join(stylesDir, style), { packDir, manifest, url } = readBrushFidelityPack(stylesDir, style, pack), packUrls = { [brushFidelityPackKey(style, pack)]: url };
+  const brushes = resolveStampPaintPackBrushes(manifest), targets = readBrushFidelityTargets(packDir, manifest);
   const notes = (await readStyleFidelity(styleDir))[pack] ?? {};
   const names = Object.keys(brushes).filter((name) => !only || only.includes(name));
   const missing = only?.filter((name) => !brushes[name]) ?? [];
@@ -82,9 +82,9 @@ export async function writeBrushFidelitySheet({ stylesDir, style, pack, out, onl
   const entries = await withBrushFidelityPage(stylesDir, async (call) => {
     const done: BrushFidelityReportEntry[] = [];
     for (const name of names) {
-      const brush = brushes[name], target = targets[name], src = target.kind === 'none' ? undefined : brushFidelityTargetSrc(target, style, pack), label = BRUSH_FIDELITY_TARGET_LABELS[target.kind];
+      const brush = brushes[name], target = targets[name], src = target.kind === 'none' ? undefined : brushFidelityTargetSrc(target, url), label = BRUSH_FIDELITY_TARGET_LABELS[target.kind];
       const measured = src ? await measureBrushFidelityTarget(call, src) : null;
-      const scored = await scoreBrushFidelity(call, brush, target, measured, true), outcome = brushFidelityOutcome(scored);
+      const scored = await scoreBrushFidelity(call, brush, target, measured, true, packUrls), outcome = brushFidelityOutcome(scored);
       const note = notes[name], grade = gradeOf(outcome);
       const lines = [
         `${name}  ·  ${grade ? grade.toUpperCase() : outcome.kind === 'unmeasurableTarget' ? 'NOT MEASURED' : 'NO TARGET'}${note ? `: ${note}` : ''}`,

@@ -7,24 +7,26 @@ import { PHOTOSHOP_FIXTURE_ERODIBLE_HEIGHTS, photoshopAbrFixture } from '#lib/pi
 import { writePhotoshopAbr } from '#lib/picture/photoshop-brushes/engine/photoshop-abr.ts';
 import { readStampPaintPack, resolveStampPaintPackBrushes, stampPaintPackDiameter } from '../models/stamp-paint-pack.ts';
 import { importStampPaintPack } from './import-stamp-paint-pack.ts';
+import { readStampPaintPackGeneration } from './stamp-paint-pack-files.ts';
 
-test('importing an .abr writes the same pack layout a Procreate pack imports to, replacing only what an import writes', () => {
+test('importing an .abr writes the same pack layout a Procreate pack imports to, its generation replacing only what an import writes', () => {
   withStudioTemp('abr-import', (dir) => {
     writeFileSync(join(dir, 'chalk.abr'), writePhotoshopAbr(photoshopAbrFixture()));
     const packDir = join(dir, 'styles/sketch/brushes/chalk');
-    // Photoshop's captures and a drawn sheet stay; a Procreate import's previews go with the rest of what it wrote.
-    for (const kept of ['reference', 'fidelity', 'previews']) mkdirSync(join(packDir, kept), { recursive: true });
+    // Photoshop's captures and a drawn sheet sit beside the generations, so they stay.
+    for (const kept of ['reference', 'fidelity']) mkdirSync(join(packDir, kept), { recursive: true });
     writeFileSync(join(packDir, 'reference/manifest.json'), '{}');
     writeFileSync(join(packDir, 'fidelity/report.json'), '{}');
-    writeFileSync(join(packDir, 'previews/old.png'), '');
     const { manifest } = importStampPaintPack({ archive: join(dir, 'chalk.abr'), stylesDir: join(dir, 'styles'), style: 'sketch', pack: 'chalk' });
     assert.equal(manifest.app, 'photoshop');
-    assert.deepEqual(readdirSync(packDir).sort(), ['fidelity', 'grains', 'manifest.json', 'reference', 'tips']);
+    assert.deepEqual(readdirSync(packDir).sort(), ['current', 'fidelity', 'generations', 'reference']);
     assert.equal(readFileSync(join(packDir, 'reference/manifest.json'), 'utf8'), '{}');
-    assert.deepEqual(readStampPaintPack(JSON.parse(readFileSync(join(packDir, 'manifest.json'), 'utf8'))), manifest);
+    const generation = readStampPaintPackGeneration(packDir);
+    assert.deepEqual(readStampPaintPack(JSON.parse(readFileSync(join(generation.dir, 'manifest.json'), 'utf8'))), manifest);
+    assert.deepEqual(generation.manifest, manifest);
     assert.deepEqual(Object.keys(manifest.brushes), ['Chalk', 'Chalk (Wet)', 'Pencil']);
     assert.deepEqual(manifest.files, ['grains/stripes.png', 'tips/chalk.png', 'tips/pencil.heights.f32', 'tips/round-0-30.png', 'tips/round-80-12.png']);
-    for (const file of manifest.files) assert.ok(existsSync(join(packDir, file)), file);
+    for (const file of manifest.files) assert.ok(existsSync(join(generation.dir, file)), file);
     assert.deepEqual(manifest.previews, {});
     assert.deepEqual([stampPaintPackDiameter(manifest, 'Chalk'), stampPaintPackDiameter(manifest, 'Chalk (Wet)')], [48, 30]);
     const brushes = resolveStampPaintPackBrushes(manifest), chalk = brushes.Chalk;
@@ -35,7 +37,7 @@ test('importing an .abr writes the same pack layout a Procreate pack imports to,
     // An erodible tip paints as round; its height map, which only a simulation of its wear reads, sits beside it.
     const pencil = manifest.brushes.Pencil.tip;
     assert.ok(pencil.kind === 'erodible');
-    assert.deepEqual(readFileSync(join(packDir, pencil.heightMap.file)), PHOTOSHOP_FIXTURE_ERODIBLE_HEIGHTS);
+    assert.deepEqual(readFileSync(join(generation.dir, pencil.heightMap.file)), PHOTOSHOP_FIXTURE_ERODIBLE_HEIGHTS);
     assert.equal(brushes.Pencil.tip.image.file, 'tips/round-80-12.png');
   });
 });
@@ -43,8 +45,8 @@ test('importing an .abr writes the same pack layout a Procreate pack imports to,
 test("a manifest is read whole: a field of the wrong shape anywhere, or a tip's image of another kind than its tip, is refused", () => {
   withStudioTemp('abr-manifest', (dir) => {
     writeFileSync(join(dir, 'chalk.abr'), writePhotoshopAbr(photoshopAbrFixture()));
-    const { dir: packDir } = importStampPaintPack({ archive: join(dir, 'chalk.abr'), stylesDir: join(dir, 'styles'), style: 'sketch', pack: 'chalk' });
-    const stored = () => JSON.parse(readFileSync(join(packDir, 'manifest.json'), 'utf8'));
+    importStampPaintPack({ archive: join(dir, 'chalk.abr'), stylesDir: join(dir, 'styles'), style: 'sketch', pack: 'chalk' });
+    const stored = () => JSON.parse(readFileSync(join(readStampPaintPackGeneration(join(dir, 'styles/sketch/brushes/chalk')).dir, 'manifest.json'), 'utf8'));
     const refused = (change: (m: ReturnType<typeof stored>) => void, problem: RegExp) => {
       const m = stored();
       change(m);

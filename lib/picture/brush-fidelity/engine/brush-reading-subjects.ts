@@ -6,6 +6,7 @@ import type { BrowserModuleCall } from '#lib/output/render/engine/browser-module
 import type { PhotoshopPackBrush, ProcreatePackBrush } from '#lib/picture/stamp-styles/models/stamp-paint-pack.ts';
 import { BRUSH_READINGS, type BrushReadingApp } from '../models/brush-readings.ts';
 import type { BrushReading } from '../models/brush-reading-search.ts';
+import { brushFidelityPackKey } from '../models/brush-fidelity-pack-urls.ts';
 import type { StrokeCoverageProfile } from '../models/stroke-measure.ts';
 import { measureBrushFidelityTarget, scoreBrushFidelity } from './brush-fidelity-score.ts';
 import { brushFidelityTargetSrc, readBrushFidelityPacks, type BrushFidelityTargetedBrush } from './brush-fidelity-targets.ts';
@@ -20,7 +21,7 @@ async function measureBrushReadingSubjects<R extends BrushReading, Source>(
 ): Promise<BrushReadingSubject<Source>[]> {
   const subjects: BrushReadingSubject<Source>[] = [];
   for (const brush of brushes) {
-    const measured = await measureBrushFidelityTarget(call, brushFidelityTargetSrc(brush.target, brush.style, brush.pack));
+    const measured = await measureBrushFidelityTarget(call, brushFidelityTargetSrc(brush.target, brush.packUrl));
     subjects.push({ ...brush, measured, heldOut: reading.heldOut(brush.pack, brush.name) });
   }
   return subjects;
@@ -45,7 +46,7 @@ export function brushReadingScorer<R extends BrushReading, Source>(call: Browser
     const brush = reading.read(subject.name, subject.source, candidate), key = `${subject.pack}|${subject.name}|${JSON.stringify(brush)}`;
     const known = scored.get(key);
     if (known !== undefined) return known;
-    const result = await scoreBrushFidelity(call, brush, subject.target, subject.measured, false);
+    const result = await scoreBrushFidelity(call, brush, subject.target, subject.measured, false, { [brushFidelityPackKey(subject.style, subject.pack)]: subject.packUrl });
     switch (result.kind) {
       case 'scored': case 'emptyRender': scored.set(key, result.score); return result.score;
       // A subject's target is measured (checked above), so neither can come back.
