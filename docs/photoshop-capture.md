@@ -66,7 +66,7 @@ Brush Pose (size and opacity overridden), or simulated pressure (taper at both e
 
 ## The probe set
 
-`photoshopProbes()`, 344 probes and 900 cells, in a few minutes. Each is a plain round, or a sampled tip the run defines
+`photoshopProbes()`, 371 probes and 1009 cells, in a few minutes. Each is a plain round, or a sampled tip the run defines
 (`studio-probe-tip`: a half-circle with a hard and a soft side, 112 px once Photoshop trims it; `studio-probe-wide`, a
 bar 112 × 48), with one thing changed:
 
@@ -192,3 +192,6 @@ each brush of the pack that has no Procreate preview against its S-curve here (d
 - Selecting a preset by index doesn't follow the order `presetNames` lists them in. Select by name.
 - A global ExtendScript function named `colorSettings` breaks the whole script with "Error 1220: Illegal Argument, line 0".
 - Selecting a preset keeps whatever it doesn't set from the one before, so each item starts from a plain round.
+- A height-mode texture set by script with a minimum depth over about 30 doesn't take: 25/40 read back as 40/63 and
+  10/50 as 50/20, while 6/31 held. The same settings loaded from an .abr hold (every pack preset's read-back matches
+  its file), so it's the scripting, not the importer's reading. The read-back check names it.

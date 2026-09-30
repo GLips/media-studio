@@ -434,6 +434,44 @@ export function photoshopProbes(): PhotoshopProbe[] {
   add('texture height d25 by pressure min 40 each tip', 'height at depth 25% on pen pressure with a 40% minimum: whether the minimum floors it', depthBy(driven(pressure()), { mode: 'height', depth: 25, minimumDepth: 40 }), [...posedLines, simLine]);
   add('texture height d25 jitter 50 each tip', 'height at depth 25% with 50% depth jitter', depthBy(jitter(50), { mode: 'height', depth: 25 }), [line, mark('line', { pressure: 1 })], 2);
   add('texture height d25 fade 10 each tip', 'height at depth 25% faded over 10 steps', depthBy(driven(fade(10)), { mode: 'height', depth: 25 }), [line]);
+
+  // vid-113: what vid-105 left open. Opacity jitter with its own control under a pose, and depth on a control a path
+  // reads full.
+  add('random opacity jitter 60 by pressure posed', 'opacity on pen pressure with 60% jitter at flow 40%, unposed, at Brush Pose 1 and 0.5, then a simulated S-curve the pose lingers into: whether a pose drops the jitter of an opacity already on pressure', base(round(64, 100, 5), { flow: 40, transfer: { opacity: { control: pressure(), jitter: 60 }, flow: OFF } }), [line, mark('line', { pressure: 1 }), mark('line', { pressure: 0.5 }), mark('sCurve', { simulatePressure: true })]);
+  add('texture depth by tilt minimum 50', 'Texture Each Tip subtract depth on pen tilt with a 50% minimum: whether a stroked path, which reads tilt full, paints the minimum depth', depthBy(driven({ kind: 'penTilt', minimum: 0 }), { minimumDepth: 50 }), [line]);
+  // A sample's step: whether its roundness shortens it, on the square sample and under the wide one's aspect, and a dual's.
+  add('tip sampled roundness 50 steps', "the square sample at roundness 50%, spacing 200%: whether roundness shortens a sample's step", base(sampled(128, { roundness: 50, spacing: 200 })), [line]);
+  add('tip sampled wide roundness 25', 'the wide sample at roundness 25%, spacing 200%: its step, roundness under its aspect', base(wide(128, 200, { roundness: 25 })), [line]);
+  add('dual sampled roundness 50 apart', "a square sampled dual at 64 px, roundness 50%, spacing 200%, under a hard 200 px tip: a dual sample's step", base(round(200, 100, 5), dual(sampled(64, { roundness: 50, spacing: 200 }), 'multiply')), [line]);
+  // A height relief's minimum, jitter and fade, shallow enough not to saturate (depth 25 always does). Photoshop's
+  // scripting scales a height texture's depth and minimum by 255/160 when the minimum isn't 0, so the second asks for
+  // 160/255 of each, to read back as 10 and 50.
+  add('texture height d10 by pressure min 50 each tip', 'height at depth 10% on pen pressure with a 50% minimum: the floor, unsaturated', depthBy(driven(pressure()), { mode: 'height', depth: 10, minimumDepth: 50 }), [...posedLines, simLine]);
+  add('texture height d6.27 by pressure min 31.37 each tip', 'the same asked at 160/255 of each, in case scripting scales them', depthBy(driven(pressure()), { mode: 'height', depth: 6.27, minimumDepth: 31.37 }), [...posedLines, simLine]);
+  add('texture height d10 jitter 100 each tip', "height at depth 10% with 100% depth jitter, stamps apart: each stamp's depth", depthBy(jitter(100), { mode: 'height', depth: 10 }), [line], 2);
+  add('texture height d10 fade 5 each tip', "height at depth 10% faded over 5 steps: which way a relief's depth fades", depthBy(driven(fade(5)), { mode: 'height', depth: 10 }), [line]);
+  // The sampled dual: each dab's turn and flip, its scatter's reach, a tiny sampled dab, and colour burn over paint just
+  // under full, where a height relief may lift it past the pose's opacity.
+  add('dual wide sparse', "the wide sampled dual at 64 px, 300% apart, under a hard 200 px tip: each dab's turn along a line and an S-curve", base(round(200, 100, 5), dual(wide(64, 300), 'multiply')), [line, sCurve], 3);
+  add('dual wide sparse flip', "the same with the dual's flip on: every dab mirrored, some at random, or none", base(round(200, 100, 5), { dual: { ...dual(wide(64, 300), 'multiply').dual!, flip: true } }), [line], 3);
+  add('dual wide scatter across', 'the wide dual scattered 100% across the stroke: its reach, half its long side (32 px) or half its short (14 px)', base(round(200, 100, 5), dual(wide(64, 300), 'multiply', { scatter: 100 })), [line], 3);
+  add('dual big scatter across', "a hard 128 px dual, 300% apart, scattered 100% across a hard 64 px primary: its reach in its own diameter (64 px) or the primary's (32 px)", base(round(64, 100, 5), dual(round(128, 100, 300), 'multiply', { scatter: 100 })), [line], 3);
+  add('dual sampled tiny apart', "the rig sample as a 3 px dual 400% apart in a hard 200 px tip: a tiny sampled dab's darkness, the sample's mean or its peak", base(round(200, 100, 5), dual(sampled(3, { spacing: 400 }), 'multiply')), [line]);
+  const burnMarks = [...[1, 0.98, 0.9].map((p) => mark('line', { pressure: p })), mark('sCurve', { simulatePressure: true })];
+  add('dual colorBurn tiny posed', 'a 2 px dual 300% apart under colour burn in a hard 96 px tip: the burn where no dual lands at poses 1, 0.98, 0.9 and along simulated pressure', base(round(96, 100, 5), dual(round(2, 100, 300), 'colorBurn')), burnMarks);
+  add('texture height each tip posed', "height 30% per stamp on a hard 96 px tip: whether the relief lifts the paint past the pose's opacity", base(round(96, 100, 5), ramp('height', 30, { eachTip: true })), burnMarks);
+  add('texture height each tip posed dual colorBurn', 'the two together, as Compressed Charcoal: which the burn sees, the capped or the lifted paint', base(round(96, 100, 5), { ...ramp('height', 30, { eachTip: true }), ...dual(round(2, 100, 300), 'colorBurn') }), burnMarks);
+  // Pressed tips: an erodible point at Lino Crayon's and Pencil's settings from Photoshop's default heights, and a thin
+  // bristle at its own 13 px and at 100, for how a bristle's mark scales.
+  add('tip erodible point h97 g9 d20', 'an erodible point at Lino Crayon settings, default heights, no dual', base(erodible(0, 97, 20, 9, 10)), [...simulated, mark('line', { pressure: 0.25 })]);
+  add('tip erodible point h100 g5 d9', 'an erodible point at Pencil settings, no texture', base(erodible(0, 100, 9, 5, 8)), [...simulated, mark('line', { pressure: 0.25 })]);
+  // Count jitter beside a control, and scatter's reach: in the stamp's own diameter or the stroke's, past 100%.
+  for (const count of [1, 2]) add(`random count ${count} by pressure jitter 100`, `count ${count} on pen pressure with 100% count jitter, no scatter, flow 25%: whether jitter spreads the controlled count, replaces it or is dropped`, base(round(24, 100, 200), { flow: 25, scatter: { scatter: jitter(0), bothAxes: false, count, countDynamics: { control: pressure(), jitter: 100 } } }), [0.25, 0.5, 1].map((p) => mark('line', { pressure: p })), 4);
+  add('scatter by pressure unposed', 'scatter 100% on pen pressure along a simulated line, no pose before it and no size dynamic: reach p or p² at pressure p', base(round(24, 100, 50), scatterBy(pressure())), [simLine], 2);
+  add('random scatter 200 size jitter 100', 'scatter 200% on both axes with 100% size jitter, stamps apart: whether a stamp strays in its own jittered diameter, and the reach past 100%', base(round(48, 100, 300), { ...shape({ size: jitter(100) }), ...scattered({ scatter: 200, bothAxes: true }) }), [line], 4);
+  add('random dual scatter 200', "the dual's scatter 200% on both axes: whether its reach stays 0.5 dual diameters per 100%", base(WIDE, dual(DOTS, 'multiply', { scatter: 200, bothAxes: true })), [line], 4);
+  add('random roundness jitter 40 minimum 60', 'roundness jitter 40% with a 60% minimum: scaled into [0.84, 1] or spread over [0.6, 1]', base(round(48, 100, 200), shape({ roundness: jitter(40), minimumRoundness: 60 })), [line], 4);
+  for (const diameter of [13, 100]) add(`tip bristle round blunt streaks d${diameter}`, `Round Blunt Streaks' bristles at ${diameter} px: each bristle's width and paint against the tip's size`, base(bristle(1, 0.1, 1.37, 0.01, 0.74, diameter)), simulated);
   return probes;
 }
 
