@@ -141,14 +141,16 @@ export function renderStampReferenceDeposit(input: StampReferenceDepositInput): 
   const main: LayerPlace = { layer: brush, diameter: input.diameter, offset: input.grainOffset.main };
   const dual: LayerPlace | undefined = brush.dual && { layer: brush.dual, diameter: input.diameter * brush.dual.scale, offset: input.grainOffset.dual };
   const built = { main: buildLayer(main, input.stamps, box, opacityInBuild), dual: dual && buildLayer(dual, input.dualStamps, box, 1) };
-  // The dual's own canvas grain cuts it before it combines, wherever the dual stage falls.
+  // The dual's own canvas grain cuts it, and its own pooling gathers it, before it combines, wherever the dual stage
+  // falls.
   const dualGrain = canvasGrainOf(brush.dual), mainGrain = canvasGrainOf(brush);
+  const poolingOf = (layer?: StampBrushLayer<StampReferenceMips>) => (layer?.wetEdges?.kind === 'pooling' ? layer.wetEdges : undefined);
+  const dualPooling = poolingOf(brush.dual), pooling = poolingOf(brush);
   const secondary = dual && built.dual!.map((s, i) => {
-    if (!dualGrain) return s;
     const px = box.x + (i % box.width) + 0.5, py = box.y + Math.floor(i / box.width) + 0.5;
-    return stampGrainCut(s, canvasGrainPaint(dual, dualGrain, px, py), dualGrain);
+    const cut = dualGrain ? stampGrainCut(s, canvasGrainPaint(dual, dualGrain, px, py), dualGrain) : s;
+    return dualPooling ? stampPooled(cut, dualPooling) : cut;
   });
-  const pooling = brush.wetEdges?.kind === 'pooling' ? brush.wetEdges : undefined;
   let coverage = built.main;
   const stages: StampReferenceDeposit['stages'] = [];
   for (const stage of order) {

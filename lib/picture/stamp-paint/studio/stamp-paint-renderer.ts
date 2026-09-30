@@ -159,7 +159,7 @@ ${BLUR.wgsl}
 const DEPOSIT = stampUniformLayout('Deposit', [
   ['paint', { struct: 'PaintDeposit', words: PAINT_DEPOSIT_WORDS, align: 4 }], ['secondary', 'vec4f'], ['view', 'vec4f'], ['edges', 'vec4f'], ['dualEdges', 'vec4f'],
   ['grain', stampUniformStruct('Grain', GRAIN)], ['dualGrain', stampUniformStruct('Grain', GRAIN)], ['paperDepth', 'f32'], ['paperLod', 'f32'], ['opacity', 'f32'],
-  ['dualBlend', 'i32'], ['burntBlend', 'i32'], ['flags', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'], ['glazeBuild', 'vec2f'], ['pooling', 'vec4f'],
+  ['dualBlend', 'i32'], ['burntBlend', 'i32'], ['dualBurntBlend', 'i32'], ['flags', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'], ['glazeBuild', 'vec2f'], ['pooling', 'vec4f'],
 ]);
 
 /** What a deposit's resolve does, a bit each in its `flags`, and a WGSL constant each of the same name in capitals. */
@@ -237,6 +237,7 @@ fn tinted(color: vec3f, pixel: vec2u) -> vec3f {
   let soft = textureSampleLevel(blurred, linearClamp, at / u.view.xy, 0.0);
   var m = raw.r;
   var burnt = rimOf(raw.r, soft.r, u.edges.w) * u.edges.z;
+  var dualBurnt = 0.0;
   // The grain cuts the built stroke, then the dual combines with it, then the whole pools: Photoshop's order. A dual
   // that shapes where the stamps' paint lies (DUAL_FIRST, stampDualBeforeGrain) combines before the grain.
   var d = 0.0;
@@ -244,7 +245,9 @@ fn tinted(color: vec3f, pixel: vec2u) -> vec3f {
     d = raw.g;
     if ((u.flags & DUAL_CANVAS_GRAIN) != 0u) { d = texturized(dualGrain, at, d, u.dualGrain); }
     if ((u.flags & DUAL_POOLED) != 0u) { d = pooled(d, u.pooling.z, u.pooling.w); }
-    burnt = max(burnt, rimOf(raw.g, soft.g, u.dualEdges.w) * u.dualEdges.z * step(0.0001, raw.r));
+    dualBurnt = rimOf(raw.g, soft.g, u.dualEdges.w) * u.dualEdges.z * step(0.0001, raw.r);
+    // Rims burning by one blend are one rim, joined by max; each burns by its own blend when they differ.
+    if (u.dualBurntBlend == u.burntBlend) { burnt = max(burnt, dualBurnt); dualBurnt = 0.0; }
   }
   let dualFirst = (u.flags & DUAL_FIRST) != 0u;
   if (dualFirst) { m = dualCombine(m, d, u.dualBlend, (u.flags & DUAL_LAYER) != 0u); }
@@ -273,8 +276,11 @@ fn tinted(color: vec3f, pixel: vec2u) -> vec3f {
   let under = textureLoad(layer, pixel);
   var over = depositPaint(under, paint, coverage);
   // A burnt rim burns into paint already there, the group's or the deposit's own (its stamps laid over one another).
-  let burn = clamp(burnt, 0.0, 1.0) * max(under.a, clamp(m, 0.0, 1.0)) * keep * u.opacity;
+  let burnable = max(under.a, clamp(m, 0.0, 1.0)) * keep * u.opacity;
+  let burn = clamp(burnt, 0.0, 1.0) * burnable;
   if (burn > 0.0) { over = depositPaint(over, PaintDeposit(paint.color, u.burntBlend), burn); }
+  let dualBurn = clamp(dualBurnt, 0.0, 1.0) * burnable;
+  if (dualBurn > 0.0) { over = depositPaint(over, PaintDeposit(paint.color, u.dualBurntBlend), dualBurn); }
   textureStore(layer, pixel, over);
   if ((u.flags & CLIPS) != 0u) { textureStore(clip, pixel, vec4f(coverage) + clipped * (1.0 - coverage)); }
 }`;
@@ -753,9 +759,10 @@ async function rendererOnDevice(
 
   function resolveDeposit(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loaded: LoadedDeposit, clipped: boolean, blurred: boolean, box: Box) {
     const { brush } = loaded;
-    const grainAt = (views: StampUniformViews, at: number, layer: BoundLayer | undefined, offset: readonly [number, number]) => {
+    // A canvas grain tiles in its own layer's stamp diameters: the dual's are its scale times the main brush's.
+    const grainAt = (views: StampUniformViews, at: number, layer: BoundLayer | undefined, offset: readonly [number, number], diameter: number) => {
       const grain = canvasGrain(layer);
-      if (grain) canvasGrainAt(views, at, grain, offset, deposit.diameter);
+      if (grain) canvasGrainAt(views, at, grain, offset, diameter);
     };
     const rimOf = (layer?: BoundLayer) => (layer?.wetEdges?.kind === 'rim' ? layer.wetEdges : undefined);
     const poolingOf = (layer?: BoundLayer) => (layer?.wetEdges?.kind === 'pooling' ? layer.wetEdges : undefined);
@@ -787,13 +794,15 @@ async function rendererOnDevice(
         put('view', [width, height, paperTile[0], paperTile[1]]);
         put('edges', edgesOf(brush));
         put('dualEdges', edgesOf(brush.dual));
-        grainAt(views, DEPOSIT.at.grain, brush, deposit.grainOffset.main);
-        grainAt(views, DEPOSIT.at.dualGrain, brush.dual, deposit.grainOffset.dual);
+        grainAt(views, DEPOSIT.at.grain, brush, deposit.grainOffset.main, deposit.diameter);
+        grainAt(views, DEPOSIT.at.dualGrain, brush.dual, deposit.grainOffset.dual, deposit.diameter * (brush.dual?.scale ?? 1));
         put('paperDepth', tooth?.depth ?? 0);
         put('paperLod', paperTile[2]);
         put('opacity', deposit.opacity);
         put('dualBlend', brush.dual ? stampDualModeIndex(brush.dual.blend) : 0);
-        put('burntBlend', stampPaintBlendIndex((brush.burntEdge ?? brush.dual?.burntEdge)?.blend ?? 'colorBurn'));
+        const burntBlend = (brush.burntEdge ?? brush.dual?.burntEdge)?.blend ?? 'colorBurn';
+        put('burntBlend', stampPaintBlendIndex(burntBlend));
+        put('dualBurntBlend', stampPaintBlendIndex(brush.dual?.burntEdge?.blend ?? burntBlend));
         put('flags', flags.reduce((all, flag) => all | DEPOSIT_FLAGS[flag], 0));
         put('origin', [box.x, box.y]);
         put('extent', [box.w, box.h]);
