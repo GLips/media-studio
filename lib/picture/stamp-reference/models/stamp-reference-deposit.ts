@@ -1,14 +1,14 @@
 // stamp-reference-deposit.ts: a deposit's coverage worked out pixel by pixel on the CPU, slowly, with every stage's
 // buffer kept: the reference the GPU renderer (stamp-paint/studio/stamp-paint-renderer.ts) is held to, and where
 // stages are rearranged to see which order a capture selects (vid-97). It samples tips and grains as the GPU's
-// samplers do (stamp-reference-image.ts) and blends by the same definitions (stamp-reference-blend.ts).
+// samplers do (stamp-reference-image.ts) and blends by the same definitions (stamp-paint/models/coverage-formulas.ts).
 //
 // Coverage only: a deposit's colour, tints, paper, protected regions, clipping and Procreate's blurred wet and burnt
 // rims aren't here. Its captures are of coverage, and those stages sit after the ones in question.
 
 import type { StampBrush, StampBrushLayer } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import type { PlacedStamp } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
-import { stampDualBeforeGrain, stampDualCombine, stampGrainCut, stampGrainPaint, stampPooled } from './stamp-reference-blend.ts';
+import { stampDualBeforeGrain, stampDualCombine, stampGrainCut, stampGrainPaint, stampPooled } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import { sampleStampReference, type StampReferenceMips } from './stamp-reference-image.ts';
 
 /** Mip levels a stamp's full blur reads above its own, as the GPU's BLUR_LEVELS. */

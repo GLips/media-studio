@@ -15,7 +15,7 @@ export type StampBlend = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken'
 
 /**
  * How a grain's paint v cuts a coverage a (each 0..1, v 1 keeps paint) at depth d, by the grain's `formula`
- * (stamp-reference-blend.ts has both). As a `texture`, Photoshop's texture modes, identified from its captures (vid-97):
+ * (coverage-formulas.ts has both). As a `texture`, Photoshop's texture modes, identified from its captures (vid-97):
  * `multiply` a(1 − d(1 − v)), `subtract` a − v mixed in by d, `linearBurn` a − d(1 − v), `darken` min(a, 1 − d(1 − v)),
  * `overlay` a as base, `colorDodge` and `colorBurn` with v scaled by depth, `hardMix` 4a + 3dv − 3, and `height` and
  * `linearHeight` the grain as a relief 12da deep; `lighten` and `divide`, no Photoshop mode, as layers. As a `layer`,

@@ -19,17 +19,17 @@
 //   4. a compute pass lays each finished group onto the painting, and a render pass writes the painting to the canvas.
 //
 // Paint mixes on gamma-encoded sRGB, as Photoshop's does with RGB blend gamma off. Every grain, dual and pooling
-// formula is stamp-reference-blend.ts's, which the reference renderer shares. Where Procreate and Photoshop paint
+// formula is coverage-formulas.ts's, which the reference renderer shares. Where Procreate and Photoshop paint
 // differently, the brush says which way (accumulation, a grain's and a dual's formula, a grain's contrast pivot and
 // tiling, a tip's sampling), and nothing here asks where a brush came from.
 
-import type { StampBrushAsset, StampBrushLayer, StampDualBlend, StampGrainBlend } from '../models/stamp-brush.ts';
+import type { StampBrushAsset, StampBrushLayer } from '../models/stamp-brush.ts';
+import { COVERAGE_FORMULAS_WGSL, STAMP_DUAL_MODE_INDEX, STAMP_GRAIN_MODE_INDEX, stampDualBeforeGrain } from '../models/coverage-formulas.ts';
 import { visibleStampCountAt, type CompiledStampDeposit, type CompiledStampPaint, type StampRegion } from '../models/stamp-paint-recipe.ts';
 import type { PlacedStamp } from '../models/stamp-placement.ts';
 import { stampBlurRegion, type StampPixelBox } from '../models/stamp-blur-region.ts';
 import { coarsestStampTipLevel, STAMP_TIP_HULL_SIDES, stampTipHull, type StampTipHull, type StampTipLevel } from '../models/stamp-tip-hull.ts';
 import type { StampPaintPaper } from '../models/style.ts';
-import { stampDualBeforeGrain } from '#lib/picture/stamp-reference/models/stamp-reference-blend.ts';
 import { PAINT_DEPOSIT_WORDS, STAMP_PAINT_COMPOSITOR_WGSL, stampPaintBlendIndex, writePaintDeposit } from './stamp-paint-compositor.ts';
 import { createStampPaintDevice, FULL_FRAME_WGSL, loadStampPaintImages, readStampTipLevels, type StampPaintImage } from './stamp-paint-gpu.ts';
 
@@ -50,66 +50,8 @@ const SLOT = 256;
 /** A compute pass's workgroup is 8 × 8 pixels. */
 const WORKGROUP = 8;
 
-const DUAL_BLENDS: readonly StampDualBlend[] = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'colorBurn', 'difference', 'linearHeight', 'linearBurn', 'colorDodge', 'hardMix'];
-const GRAIN_BLENDS: readonly StampGrainBlend[] = ['multiply', 'subtract', 'linearBurn', 'colorDodge', 'colorBurn', 'darken', 'lighten', 'overlay', 'divide', 'hardMix', 'height', 'linearHeight'];
-
-// Each function is its namesake in stamp-reference-blend.ts, in WGSL: change the two together.
-const BLEND_WGSL = /* wgsl */ `
-fn dodgeScale(depth: f32) -> f32 { return floor(round(depth * 255.0) * 248.0 / 255.0) / 255.0; }
-fn overlaid(base: f32, blend: f32) -> f32 { return select(1.0 - 2.0 * (1.0 - base) * (1.0 - blend), 2.0 * base * blend, base < 0.5); }
-fn grainSlope(contrast: f32) -> f32 { return select(1.0 / (1.0 - contrast), 1.0 + contrast, contrast < 0.0); }
-// stampGrainPaint: brightness and contrast about mid-grey, where a contrast of 1 is steep but finite, or stretched about
-// the grain's mean paint and then brightened.
-fn grainPaint(raw: f32, brightness: f32, contrast: f32, aboutMean: bool, mean: f32) -> f32 {
-  if (aboutMean) { return clamp(mean + (raw - mean) * grainSlope(min(contrast, 0.999)) + brightness, 0.0, 1.0); }
-  if (contrast == 0.0) { return clamp(raw + brightness, 0.0, 1.0); }
-  if (contrast < 0.0) { return clamp((raw - 128.0 / 255.0) * (1.0 + contrast) + 0.5 + brightness, 0.0, 1.0); }
-  let pivot = select(127.5 / 255.0, 126.589 / 255.0, contrast >= 1.0);
-  let slope = select(1.0 / (1.0 - contrast), 231.63, contrast >= 1.0);
-  return clamp((raw + brightness - pivot) * slope + 128.0 / 255.0, 0.0, 1.0);
-}
-// stampGrainCut: coverage a cut by grain paint v at depth d, by the grain blend (as GRAIN_BLENDS orders them) read as
-// a texture (textureCut) or a layer (layerCut, mixed back toward a by depth).
-fn grainCut(a: f32, v: f32, d: f32, blend: i32, layer: bool) -> f32 {
-  if (layer) { return a + d * (clamp(layerCut(a, v, blend), 0.0, 1.0) - a); }
-  return textureCut(a, v, d, blend);
-}
-fn textureCut(a: f32, v: f32, d: f32, blend: i32) -> f32 {
-  let k = dodgeScale(d);
-  switch (blend) {
-    case 1: { return a + d * (clamp(a - v, 0.0, 1.0) - a); }
-    case 2: { return clamp(a - d * (1.0 - v), 0.0, 1.0); }
-    case 3: { return clamp(a / (1.0 - k * v), 0.0, 1.0); }
-    case 4: { return clamp(1.0 - (1.0 - a) / (1.0 - k * (1.0 - v)), 0.0, 1.0); }
-    case 5: { return min(a, 1.0 - d * (1.0 - v)); }
-    case 6: { return a + d * (max(a, v) - a); }
-    case 7: { return clamp(overlaid(a, 0.5 + d * (v - 0.5)), 0.0, 1.0); }
-    case 8: { return a + d * (select(1.0, clamp(a / v, 0.0, 1.0), v > 0.0) - a); }
-    case 9: { return clamp(4.0 * a + 3.0 * d * v - 3.0, 0.0, 1.0); }
-    case 10: { return clamp(12.0 * d * a - v, 0.0, 1.0); }
-    case 11: { let m = 12.0 * d * a; return clamp(max(m * (1.0 - v), m - v), 0.0, 1.0); }
-    default: { return clamp(a * (1.0 - d * (1.0 - v)), 0.0, 1.0); }
-  }
-}
-fn layerCut(a: f32, g: f32, blend: i32) -> f32 {
-  switch (blend) {
-    case 1: { return a - g; }
-    case 2: { return a + g - 1.0; }
-    case 3: { return select(1.0, a / (1.0 - g), g < 1.0); }
-    case 4: { return select(0.0, 1.0 - (1.0 - a) / g, g > 0.0); }
-    case 5: { return min(a, g); }
-    case 6: { return max(a, g); }
-    case 7: { return overlaid(a, g); }
-    case 8: { return select(1.0, a / g, g > 0.0); }
-    case 9: { return step(1.0, a + g); }
-    case 10: { return a * smoothstep(-0.04, 0.04, g - (1.0 - a)); }
-    case 11: { return a * clamp((g - (1.0 - a)) * 2.0 + 0.5, 0.0, 1.0); }
-    default: { return a * g; }
-  }
-}`;
-
 const GRAIN_WGSL = /* wgsl */ `
-${BLEND_WGSL}
+${COVERAGE_FORMULAS_WGSL}
 // A grain as its brush reads it: \`place\` is its tile (px) and offset (tiles), \`shape\` its depth, mip level,
 // brightness and contrast; \`layer\` whether its blend is a layer formula, \`aboutMean\` its contrast's pivot,
 // \`mirror\` whether it tiles mirrored.
@@ -241,52 +183,8 @@ fn texturized(g: texture_2d<f32>, at: vec2f, a: f32, p: Grain) -> f32 {
   return grained(a, raw, grainMean(g, tile), p);
 }
 
-// stampPooled: wet edges' pooling of built coverage c, rising to peak at half coverage and easing to body at full.
-fn pooled(c: f32, peak: f32, body: f32) -> f32 {
-  return select(peak - 4.0 * (peak - body) * (c - 0.5) * (c - 0.5), 2.0 * peak * c, c <= 0.5);
-}
-
 // Where the mask stands above its blur, as steeply as the edge's sharpness says.
 fn rimOf(a: f32, soft: f32, sharpness: f32) -> f32 { return clamp((a - soft) * sharpness, 0.0, 1.0); }
-
-// stampDualCombine: the dual's coverage s combined with the brush's grained p by its blend (as DUAL_BLENDS orders
-// them), read as a texture or, when DUAL_LAYER, a layer. The layer blends would paint where the brush has none, so
-// they're held to where it has paint.
-fn combined(p: f32, s: f32) -> f32 {
-  let hold = clamp(p * 8.0, 0.0, 1.0);
-  if ((u.flags & DUAL_LAYER) != 0u) { return clamp(layerCombine(p, s), 0.0, 1.0) * hold; }
-  let k = 248.0 / 255.0;
-  switch (u.dualBlend) {
-    case 0: { return s * hold; }
-    case 2: { return (p + s - p * s) * hold; }
-    case 3: { return clamp(overlaid(p, s), 0.0, 1.0); }
-    case 4: { return min(p, s); }
-    case 5: { return max(p, s) * hold; }
-    case 6: { return clamp(1.0 - (1.0 - p) / (1.0 - k * (1.0 - s)), 0.0, 1.0); }
-    case 7: { return abs(p - s) * hold; }
-    case 8: { return clamp(overlaid(p, 1.0 - s), 0.0, 1.0); }
-    case 9: { return clamp(p + s - 1.0, 0.0, 1.0); }
-    case 10: { return clamp(p / (1.0 - k * s), 0.0, 1.0); }
-    case 11: { return clamp(4.0 * p + 3.0 * s - 3.0, 0.0, 1.0); }
-    default: { return p * s; }
-  }
-}
-fn layerCombine(p: f32, s: f32) -> f32 {
-  switch (u.dualBlend) {
-    case 0: { return s; }
-    case 2: { return p + s - p * s; }
-    case 3: { return overlaid(p, s); }
-    case 4: { return min(p, s); }
-    case 5: { return max(p, s); }
-    case 6: { return select(1.0 - min(1.0, (1.0 - p) / s), 0.0, s <= 0.0); }
-    case 7: { return abs(p - s); }
-    case 8: { return p * clamp((s - (1.0 - p)) * 2.0 + 0.5, 0.0, 1.0); }
-    case 9: { return max(0.0, p + s - 1.0); }
-    case 10: { return select(min(1.0, p / (1.0 - s)), 1.0, s >= 1.0); }
-    case 11: { return step(1.0, p + s); }
-    default: { return p * s; }
-  }
-}
 
 fn hsl(c: vec3f) -> vec3f {
   let hi = max(c.r, max(c.g, c.b));
@@ -335,9 +233,9 @@ fn tinted(color: vec3f, pixel: vec2u) -> vec3f {
     burnt = max(burnt, rimOf(raw.g, soft.g, u.dualEdges.w) * u.dualEdges.z * step(0.0001, raw.r));
   }
   let dualFirst = (u.flags & DUAL_FIRST) != 0u;
-  if (dualFirst) { m = combined(m, d); }
+  if (dualFirst) { m = dualCombine(m, d, u.dualBlend, (u.flags & DUAL_LAYER) != 0u); }
   if ((u.flags & TEXTURIZED) != 0u) { m = texturized(grain, at, m, u.grain); }
-  if ((u.flags & DUAL) != 0u && !dualFirst) { m = combined(m, d); }
+  if ((u.flags & DUAL) != 0u && !dualFirst) { m = dualCombine(m, d, u.dualBlend, (u.flags & DUAL_LAYER) != 0u); }
   if ((u.flags & POOLED) != 0u) { m = pooled(m, u.pooling.x, u.pooling.y); }
   // A wet rim is laid after the dual combines, as the whole stroke's pigment gathers there, but through the grain: a
   // grain that breaks the body into flecks breaks its rim too.
@@ -844,7 +742,7 @@ async function rendererOnDevice(
         grainAt(floats, ints, at + 16, brush, deposit.grainOffset.main);
         grainAt(floats, ints, at + 28, brush.dual, deposit.grainOffset.dual);
         floats.set([tooth?.depth ?? 0, paperTile[2], deposit.opacity], at + 40);
-        ints[at + 43] = brush.dual ? DUAL_BLENDS.indexOf(brush.dual.blend) : 0;
+        ints[at + 43] = brush.dual ? STAMP_DUAL_MODE_INDEX[brush.dual.formula][brush.dual.blend] : 0;
         ints[at + 44] = stampPaintBlendIndex((brush.burntEdge ?? brush.dual?.burntEdge)?.blend ?? 'colorBurn');
         words[at + 45] = (texturized(brush) ? 1 : 0) | (brush.dual ? 2 : 0) | (texturized(brush.dual) ? 4 : 0) | (tooth ? 8 : 0) | (protectedBy ? 16 : 0) | (clipped ? 32 : 64) | (tinted ? 128 : 0)
           | (brush.accumulation === 'glaze' ? 256 : 0) | (brush.dual?.accumulation === 'glaze' ? 512 : 0) | (brush.pooling ? 1024 : 0) | (brush.dual?.pooling ? 2048 : 0)
@@ -965,7 +863,7 @@ const GPU_ERROR_SCOPES = ['validation', 'out-of-memory', 'internal'] as const;
 /** Writes a Grain (GRAIN_WGSL) at word `at`: its tile in pixels, its offset in tiles, its mip level and how it reads. */
 function writeGrain(floats: Float32Array, ints: Int32Array, at: number, grain: NonNullable<StampBrushLayer['grain']>, tile: readonly [number, number], offset: readonly [number, number], lod: number) {
   floats.set([tile[0], tile[1], offset[0], offset[1], grain.depth, lod, grain.brightness, grain.contrast], at);
-  ints.set([GRAIN_BLENDS.indexOf(grain.blend), grain.formula === 'layer' ? 1 : 0, grain.contrastPivot === 'mean' ? 1 : 0, grain.tiling === 'mirror' ? 1 : 0], at + 8);
+  ints.set([STAMP_GRAIN_MODE_INDEX[grain.formula][grain.blend], grain.formula === 'layer' ? 1 : 0, grain.contrastPivot === 'mean' ? 1 : 0, grain.tiling === 'mirror' ? 1 : 0], at + 8);
 }
 
 const union = (a: Box, b: Box): Box => {

@@ -14,7 +14,7 @@
 // pressure are `unsupported`; the Mixer Brush's settings are carried in `wetMix` and noted `unsupported` until vid-90.
 
 import { photoshopEnum, photoshopFlag, photoshopNumber, photoshopObject, type PhotoshopDescriptor } from './photoshop-descriptor.ts';
-import { PHOTOSHOP_POOLING } from '#lib/picture/stamp-reference/models/stamp-reference-blend.ts';
+import { PHOTOSHOP_POOLING } from './coverage-formulas.ts';
 import { PHOTOSHOP_PIXEL_TIP_DIAMETER, photoshopComputedTipSpan } from './photoshop-computed-tip.ts';
 import { PHOTOSHOP_READING } from './photoshop-reading.ts';
 import type { StampBlend, StampBrush, StampBrushAsset, StampBrushColorDynamics, StampBrushLayer, StampBrushTip, StampBrushWetMix, StampDualBlend, StampGrainBlend } from './stamp-brush.ts';

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { normalizePhotoshopBrush, type PhotoshopReading } from './photoshop-brush.ts';
-import { PHOTOSHOP_POOLING } from '#lib/picture/stamp-reference/models/stamp-reference-blend.ts';
+import { PHOTOSHOP_POOLING } from './coverage-formulas.ts';
 import type { PhotoshopDescriptor } from './photoshop-descriptor.ts';
 import { normalizeProcreateBrush, type ProcreateReading } from './procreate-brush.ts';
 
