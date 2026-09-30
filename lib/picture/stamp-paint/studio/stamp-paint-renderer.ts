@@ -1448,9 +1448,12 @@ async function rendererOnDevice(
     const clipped = !!pass.clipTo, fluid = deposit.mask ? regions.fluids.get(deposit.mask) ?? null : null;
     // A pass within a region wholly off the painting lands nowhere: its `within` is an empty texture, read as none.
     const within = pass.within ? regions.withins.get(pass) ?? null : null;
-    const { brush, active } = loadedDeposit;
+    const { brush, active, landing } = loadedDeposit;
+    // In a wash whose paint flows, the drying-rim stage (stamp-wet-rim.ts) rims the wash as one: a brush's own wet
+    // edges would rim each stroke again. Its Procreate rim goes, and Photoshop's pooling keeps its body, not its peak.
+    const washRims = !!landing && (wetMedium?.wetting.flow ?? 0) > 0;
     const edgesOf = (layer?: StampActiveLayer<StampPaintImage>): [number, number, number, number] => (blurred && layer
-      ? [layer.rim?.rim ?? 0, layer.rim?.sharpness ?? 0, layer.burntEdge?.strength ?? 0, layer.burntEdge?.sharpness ?? 0] : [0, 0, 0, 0]);
+      ? [washRims ? 0 : layer.rim?.rim ?? 0, layer.rim?.sharpness ?? 0, layer.burntEdge?.strength ?? 0, layer.burntEdge?.sharpness ?? 0] : [0, 0, 0, 0]);
     const mainGrain = active.main.canvasGrain, dualGrain = active.dual?.canvasGrain;
     const tooth = paper.grain;
     let paperTile = [1, 1, 0];
@@ -1468,7 +1471,6 @@ async function rendererOnDevice(
       ...(active.main.pooling ? ['pooled' as const] : []), ...(active.dual?.pooling ? ['dualPooled' as const] : []),
       ...(brush.dual?.blend.family === 'layer' ? ['dualLayer' as const] : []),
     ];
-    const { landing } = loadedDeposit;
     dispatch(encoder, depositPipeline(!!trace, !!landing), [
       slot((views) => {
         const put = stampUniformWriter(DEPOSIT, views);
@@ -1490,7 +1492,8 @@ async function rendererOnDevice(
         put('build', [stampAccumulationBuild(accumulations[0]), stampAccumulationBuild(accumulations[1])]);
         put('accumulation', [stampAccumulationIndex(accumulations[0].kind), stampAccumulationIndex(accumulations[1].kind)]);
         const { pooling } = active.main, dualPooling = active.dual?.pooling;
-        put('pooling', [pooling?.peak ?? 0, pooling?.body ?? 0, dualPooling?.peak ?? 0, dualPooling?.body ?? 0]);
+        const peakOf = (edges?: { peak: number; body: number }) => (washRims ? edges?.body : edges?.peak) ?? 0;
+        put('pooling', [peakOf(pooling), pooling?.body ?? 0, peakOf(dualPooling), dualPooling?.body ?? 0]);
       }),
       targets.mask.view, blurred ? targets.blurB.view : targets.mask.view,
       mainGrain ? mainGrain.image.view : targets.blank.view,
@@ -1724,6 +1727,9 @@ async function rendererOnDevice(
         if (event > first) save(event, true, painted);
         if (event++ < from) continue;
         const record = wetness!.washes.get(pass)!;
+        // A wash dries after its last deposit: its stages wait until every one is wholly shown, so no rim forms round
+        // paint still being revealed.
+        if (events[event - 1].settledAt > t) continue;
         for (const stage of stages) if (stage.after === 'wash') painted = unionOf(painted, stage.encode(encoder, { kind: 'wash', pass, record }));
       }
       if (painted) layGroup(encoder, index, group, painted, moved);
