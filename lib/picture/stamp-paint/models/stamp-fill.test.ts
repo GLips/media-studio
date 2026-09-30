@@ -8,7 +8,7 @@ const brush: StampBrush = {
   name: 'Wash',
   blend: 'normal',
   accumulation: 'glaze',
-  tip: { image: { style: 'wash', pack: 'vvds', file: 'tips/wash.png' }, roundness: 1 },
+  tip: { image: { style: 'wash', pack: 'vvds', file: 'tips/wash.png' }, roundness: 1, sampling: 'isotropic' },
   spacing: 0.2,
   stepping: 'spread',
   jitter: { lateral: 0, size: 0, opacity: 0, flow: 0 },

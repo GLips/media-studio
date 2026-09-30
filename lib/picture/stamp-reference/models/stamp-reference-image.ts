@@ -1,6 +1,7 @@
 // stamp-reference-image.ts: a tip's or grain's paint as the reference renderer (stamp-reference-deposit.ts) reads it,
 // sampled the way the GPU renderer's samplers do: a mip chain whose every level averages four texels of the one below,
-// read bilinearly between texel centres and linearly between levels, clamped (a tip) or tiled (a grain).
+// read bilinearly between texel centres and linearly between levels, clamped (a tip) or tiled (a grain), as drawn or
+// mirrored every other tile.
 
 /** A grey image's paint, 0..1, row by row, 1 where it paints. */
 export type StampReferenceImage = { width: number; height: number; paint: Float32Array };
@@ -25,15 +26,21 @@ export function stampReferenceMips(image: StampReferenceImage): StampReferenceMi
   return levels;
 }
 
-export type StampReferenceWrap = 'clamp' | 'tile';
+export type StampReferenceWrap = 'clamp' | 'tile' | 'mirror';
+
+/** Texel `i` of `n` wrapped as `wrap` says. */
+function wrapped(i: number, n: number, wrap: StampReferenceWrap): number {
+  if (wrap === 'clamp') return Math.min(n - 1, Math.max(0, i));
+  if (wrap === 'tile') return ((i % n) + n) % n;
+  const m = ((i % (2 * n)) + 2 * n) % (2 * n);
+  return m < n ? m : 2 * n - 1 - m;
+}
 
 function bilinear(image: StampReferenceImage, u: number, v: number, wrap: StampReferenceWrap): number {
   const x = u * image.width - 0.5, y = v * image.height - 0.5;
   const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
   const at = (xi: number, yi: number) => {
-    const cx = wrap === 'tile' ? ((xi % image.width) + image.width) % image.width : Math.min(image.width - 1, Math.max(0, xi));
-    const cy = wrap === 'tile' ? ((yi % image.height) + image.height) % image.height : Math.min(image.height - 1, Math.max(0, yi));
-    return image.paint[cy * image.width + cx];
+    return image.paint[wrapped(yi, image.height, wrap) * image.width + wrapped(xi, image.width, wrap)];
   };
   return (at(x0, y0) * (1 - fx) + at(x0 + 1, y0) * fx) * (1 - fy) + (at(x0, y0 + 1) * (1 - fx) + at(x0 + 1, y0 + 1) * fx) * fy;
 }

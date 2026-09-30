@@ -28,8 +28,8 @@ export type PlacedStamp = {
   /** The share of the brush's paint this stamp lays down, 0..1: its flow after pressure and jitter. */
   alpha: number;
   /**
-   * How far its paint may build, 0..1: its opacity after taper, pressure, falloff and jitter. A `build` brush builds
-   * toward it; a `glaze` lays alpha × opacity.
+   * How far its paint may build, 0..1: its opacity after taper, pressure, falloff and jitter. A `buildToOpacity` brush
+   * builds toward it; a `glaze` or a `build` lays alpha × opacity.
    */
   opacity: number;
   /** Whether it's mirrored across its width (x) and its length (y). */

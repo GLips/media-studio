@@ -8,6 +8,10 @@
 // fit` (lib/picture/stamp-paint/engine/stamp-brush-fit.ts) and checked in as procreate-reading.ts, shared by every
 // pack: a reading that fits one pack's previews by tuning brush by brush would fit no other pack.
 //
+// Where Photoshop's captures (vid-97) showed a way of painting that differs from what vid-89 fitted these previews with,
+// a brush reads vid-89's: `build` stamps over each other without limit, grain and dual blends as `layer` formulas, grain
+// contrast about its mean, grain tiled mirrored, tips sampled isotropically. Procreate's own are still to be identified.
+//
 // Negative space: live-input settings (stabilization, smoothing, prediction, pressure smoothing), the size and opacity
 // sliders' positions and limits (paintSize, paintOpacity, maxSize, minSize, maxOpacity: a deposit states its own
 // diameter and opacity), the finger taper (taperStartLength…: a stroke with pressure is a pencil stroke), smudge and erase settings and the
@@ -36,6 +40,8 @@ export type ProcreateReading = {
   grainTile: number;
   /** A grain's brightness at textureBrightness 1: how far it raises the grain's paint. */
   grainBrightness: number;
+  /** How far full textureContrast (1) stretches a grain about its mean; -1 flattens it whatever this is. */
+  grainContrast: number;
   /** A grain's depth is grainDepth to this power: above 1, a shallow grain cuts in less. */
   grainDepthCurve: number;
   /** A glaze's stamp flow is dynamicsGlazedFlow to this power. */
@@ -99,6 +105,11 @@ const blendName = (mode: number) => `${mode} (${PROCREATE_BLEND_NAMES[mode] ?? '
 
 /** A stamp's lateral jitter in diameters for Procreate's plotJitter. */
 const lateralJitter = (plotJitter: number, reading: ProcreateReading) => reading.lateralJitterScale * plotJitter ** reading.lateralJitterPower;
+/**
+ * textureContrast (-1..1) as a StampBrushGrain contrast about the grain's mean: flattening as it is, and a positive one
+ * stretching by 1 + (grainContrast − 1) × textureContrast, the contrast whose slope that is.
+ */
+const grainContrastOf = (contrast: number, reading: ProcreateReading) => (contrast > 0 ? 1 - 1 / (1 + (reading.grainContrast - 1) * contrast) : contrast);
 
 const IDENTITY_CURVE = ['{0.000000, 0.000000}', '{1.000000, 1.000000}'];
 
@@ -168,7 +179,8 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
     const grainBlend = GRAIN_BLENDS[num('grainBlendMode')];
     grain = {
       image: source.grain, scale: num('textureScale') * reading.grainTile, mode: num('textureApplication') === 1 ? 'texturized' : 'rolling', depth: num('grainDepth') ** reading.grainDepthCurve,
-      blend: grainBlend ?? 'multiply', brightness: num('textureBrightness') * reading.grainBrightness * (procreateGrainNegated(s) ? 1 : -1), contrast: num('textureContrast'), offsetJitter: on('textureOffsetJitter') ? 1 : 0,
+      blend: grainBlend ?? 'multiply', formula: 'layer', brightness: num('textureBrightness') * reading.grainBrightness * (procreateGrainNegated(s) ? 1 : -1),
+      contrast: grainContrastOf(num('textureContrast'), reading), contrastPivot: 'mean', tiling: 'mirror', offsetJitter: on('textureOffsetJitter') ? 1 : 0,
       zoom: num('textureZoom'), movement: num('textureMovement'), rotation: num('textureRotation'),
     };
     note('approximated', 'textureScale, textureApplication', `grain read as ${grain.mode}, its tile ${grain.scale.toFixed(2)} stamp diameters across`);
@@ -176,7 +188,7 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
       ? `${blendName(num('grainBlendMode'))} read as ${grainBlend}, set against the pack's previews: Procreate doesn't document how grain modes number`
       : `${blendName(num('grainBlendMode'))} has no studio reading; read as multiply`);
     // Brightness lightens the image as drawn, before Procreate inverts it: on an inverted grain it takes paint away.
-    whenSet('approximated', ['textureBrightness', 'textureContrast'], "the grain's brightness, fitted on the sheet, and its contrast, read as Photoshop's about mid-grey");
+    whenSet('approximated', ['textureBrightness', 'textureContrast'], "the grain's brightness and contrast, read about its own mean and fitted on the sheet");
     whenSet('unsupported', ['grainDepthJitter', 'grainDepthMinimum'], 'grain depth varying stamp to stamp');
   } else if (typeof s.bundledGrainPath === 'string') {
     note('unsupported', 'bundledGrainPath', `the grain is Procreate's own ${s.bundledGrainPath}, which the pack doesn't hold`);
@@ -190,7 +202,7 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
   if (burnt > 0 && !burntBlend) note('unsupported', 'burntEdgesBlendMode', `the burnt rim blends by ${blendName(num('burntEdgesBlendMode'))}; read as colour burn`);
 
   return {
-    tip: { image: source.tip, roundness: Math.min(1, Math.max(0.01, Number(s.shapeRoundness ?? 1))) },
+    tip: { image: source.tip, roundness: Math.min(1, Math.max(0.01, Number(s.shapeRoundness ?? 1))), sampling: 'isotropic' },
     ...(grain && { grain }),
     spacing: Math.max(spacing, STAMP_MIN_SPACING),
     stepping: 'spread',
@@ -246,7 +258,7 @@ export function normalizeProcreateBrush(
     if (readColorDynamics(dual.settings)) support.push({ level: 'inapplicable', setting: 'Sub01 colour dynamics', detail: "a dual only shapes the main brush's coverage; its colour is the main brush's" });
     const scale = (Number(dual.settings.maxSize ?? 1) / Number(main.settings.maxSize ?? 1)) * reading.dualScale;
     support.push({ level: 'approximated', setting: 'Sub01 maxSize', detail: `the dual's stamps read as ${scale.toFixed(2)}× the main brush's, the ratio of their largest sizes; on the sheet neither half nor double fits better` });
-    brush.dual = { ...readLayer(dual, 'Sub01 ', support, reading), blend: dualBlend ?? 'multiply', scale };
+    brush.dual = { ...readLayer(dual, 'Sub01 ', support, reading), blend: dualBlend ?? 'multiply', formula: 'layer', scale };
   }
   return { brush, support };
 }

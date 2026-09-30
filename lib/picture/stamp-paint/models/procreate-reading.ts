@@ -10,6 +10,7 @@ export const PROCREATE_READING: ProcreateReading = {
   wetRim: 0.1682,
   grainTile: 2.1023,
   grainBrightness: 0.6,
+  grainContrast: 2.5227,
   grainDepthCurve: 1,
   glazeFlowCurve: 0.5,
   blendingFlowCurve: 1.1889,

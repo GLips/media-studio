@@ -13,7 +13,7 @@ const control = (bVTy: number, jitter: number, minimum = 0): PhotoshopDescriptor
 
 /** Readings of plain scales, so the two sources' settings meet on their meanings, not on whatever the fits chose. */
 const procreateReading: ProcreateReading = {
-  taperShare: 0.5, edgeWidth: 0.05, rimSharpness: 16, wetRim: 1, grainTile: 2, grainBrightness: 0.5, grainDepthCurve: 1, glazeFlowCurve: 1,
+  taperShare: 0.5, edgeWidth: 0.05, rimSharpness: 16, wetRim: 1, grainTile: 2, grainBrightness: 0.5, grainContrast: 3, grainDepthCurve: 1, glazeFlowCurve: 1,
   blendingFlowCurve: 1, dualScale: 1, spacingPower: 1, lateralJitterScale: 1, lateralJitterPower: 1, glazeBuildLight: 1, glazeBuildUniform: 1, glazeBuildIntense: 1, glazeBuildHeavy: 1,
 };
 const photoshopReading: PhotoshopReading = {
@@ -54,9 +54,14 @@ test('a Procreate brush and a Photoshop preset that paint alike normalize to the
   }, photoshopReading);
 
   // Photoshop steps by each stamp's own size and its short side (its roundness is 0.5), where Procreate spreads its
-  // steps along the stroke, and holds flow in 255ths.
+  // steps along the stroke, and holds flow in 255ths. The two build, sample tips, cut and tile grain, adjust it and
+  // combine a dual as each was identified or fitted to.
+  const photoshopWays = { accumulation: 'buildToOpacity', stepping: 'eachStamp' } as const;
   assert.deepEqual(photoshop.brush, {
-    ...procreate.brush, stepping: 'eachStamp', spacing: procreate.brush.spacing * 0.5, flow: 163 / 255, dual: { ...procreate.brush.dual!, stepping: 'eachStamp' },
+    ...procreate.brush, ...photoshopWays, spacing: procreate.brush.spacing * 0.5, flow: 163 / 255,
+    tip: { ...procreate.brush.tip, sampling: 'anisotropic' },
+    grain: { ...procreate.brush.grain!, formula: 'texture', contrastPivot: 'midGrey', tiling: 'repeat' },
+    dual: { ...procreate.brush.dual!, ...photoshopWays, tip: { ...procreate.brush.dual!.tip, sampling: 'anisotropic' }, formula: 'texture' },
   });
   assert.equal(photoshop.brush.scatter.count, 3);
 });

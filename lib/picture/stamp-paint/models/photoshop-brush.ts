@@ -115,15 +115,15 @@ const sampleCenter = (size: number, flip: boolean) => {
 /** A tip as the studio reads it: its image, roundness, a sample's centre, and a computed tip's span past its diameter. */
 function tipOf(tip: PhotoshopDescriptor, image: StampBrushAsset, sample: PhotoshopSampleSize | undefined, prefix: string, note: Note): StampBrushTip {
   const drawn = photoshopTipImage(tip);
-  const roundness = Math.min(1, Math.max(0.01, photoshopNumber(tip, 'Rndn', 100) / 100));
+  const roundness = Math.min(1, Math.max(0.01, photoshopNumber(tip, 'Rndn', 100) / 100)), sampling = 'anisotropic';
   // The border widens the image past the diameter; a sample that isn't square takes its span from its width.
   if (drawn.kind === 'sampled') {
     return sample
-      ? { image, roundness, span: (sample.width + 2 * PHOTOSHOP_SAMPLE_BORDER) / sample.width, center: [sampleCenter(sample.width, drawn.flipX), sampleCenter(sample.height, drawn.flipY)] }
-      : { image, roundness };
+      ? { image, roundness, sampling, span: (sample.width + 2 * PHOTOSHOP_SAMPLE_BORDER) / sample.width, center: [sampleCenter(sample.width, drawn.flipX), sampleCenter(sample.height, drawn.flipY)] }
+      : { image, roundness, sampling };
   }
   if (drawn.diameter <= PHOTOSHOP_PIXEL_TIP_DIAMETER) note('approximated', `${prefix}Brsh.Dmtr`, `a ${drawn.diameter} px computed tip, which Photoshop draws in whole pixels, read by its profile`);
-  return { image, roundness, span: drawn.span };
+  return { image, roundness, sampling, span: drawn.span };
 }
 
 /** Photoshop's samples and patterns are lighter where more paint goes, so each is negated, a pattern unless inverted. */
@@ -227,9 +227,12 @@ function readMainLayer(source: PhotoshopBrushSource, notes: StampBrushSupportNot
         // Photoshop holds depth in 255ths.
         depth: Math.round((photoshopNumber(p, 'textureDepth', 100) / 100) * 255) / 255,
         blend: blend ?? 'multiply',
+        formula: 'texture',
         // Brightness is in 255ths; both apply after invert, which the stored image already holds.
         brightness: photoshopNumber(p, 'textureBrightness') / 255,
         contrast: photoshopNumber(p, 'textureContrast') / 100,
+        contrastPivot: 'midGrey',
+        tiling: 'repeat',
         offsetJitter: 0,
         // Each tip is textured where it lands, the pattern still fixed to the canvas: it neither moves, grows nor turns with the stamp.
         zoom: 0, movement: 1, rotation: 0,
@@ -268,7 +271,7 @@ function readMainLayer(source: PhotoshopBrushSource, notes: StampBrushSupportNot
     falloff: 0,
     flow: toolFlow,
     pressure: { size: sizePressure, opacity: opacityPressure, flow: flowPressure },
-    accumulation: 'build',
+    accumulation: 'buildToOpacity',
     ...(wet && { pooling: PHOTOSHOP_POOLING }),
   };
 }
@@ -295,8 +298,9 @@ function readDualLayer(source: PhotoshopBrushSource, notes: StampBrushSupportNot
     // The secondary builds as its own stroke at full flow, whatever the tool's.
     flow: 1,
     pressure: { size: 0, opacity: 0, flow: 0 },
-    accumulation: 'build',
+    accumulation: 'buildToOpacity',
     blend: blend ?? 'multiply',
+    formula: 'texture',
     scale,
   };
 }

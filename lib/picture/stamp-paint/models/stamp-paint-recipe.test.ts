@@ -7,7 +7,7 @@ const brush: StampBrush = {
   name: 'Wet Wash',
   blend: 'normal',
   accumulation: 'glaze',
-  tip: { image: { style: 'wash', pack: 'vvds', file: 'tips/wash.png' }, roundness: 1 },
+  tip: { image: { style: 'wash', pack: 'vvds', file: 'tips/wash.png' }, roundness: 1, sampling: 'isotropic' },
   spacing: 0.1,
   stepping: 'spread',
   jitter: { lateral: 0.2, size: 0.3, opacity: 0.3, flow: 0 },
@@ -126,7 +126,7 @@ test('a stroke partway drawn shows a prefix of the finished stroke\'s stamps, th
 
 test("a dual brush's stamps are its scale times the deposit's diameter, stroked or placed", () => {
   const still = { ...brush, jitter: { lateral: 0, size: 0, opacity: 0, flow: 0 }, taper: { ...brush.taper, start: 0, end: 0, size: 1, opacity: 1 } };
-  const dualed = { ...still, dual: { ...still, accumulation: 'build' as const, blend: 'multiply' as const, scale: 1.5 } };
+  const dualed = { ...still, dual: { ...still, accumulation: 'build' as const, blend: 'multiply' as const, formula: 'layer' as const, scale: 1.5 } };
   const [stroke, placed] = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) => {
     pass.stroke('s', { brush: dualed, material: ochre, diameter: 20, path: [{ x: 0, y: 0 }, { x: 300, y: 0 }] });
     pass.stamps('d', { brush: dualed, material: ochre, diameter: 20, at: [{ x: 0, y: 0, diameter: 8 }] });

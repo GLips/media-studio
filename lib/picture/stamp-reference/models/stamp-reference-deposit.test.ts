@@ -6,8 +6,8 @@ import { renderStampReferenceDeposit } from './stamp-reference-deposit.ts';
 import { stampReferenceMips } from './stamp-reference-image.ts';
 
 const brush: StampBrush = {
-  name: 'Round', blend: 'normal', accumulation: 'build',
-  tip: { image: { style: 's', pack: 'p', file: 'tip.png' }, roundness: 1 },
+  name: 'Round', blend: 'normal', accumulation: 'buildToOpacity',
+  tip: { image: { style: 's', pack: 'p', file: 'tip.png' }, roundness: 1, sampling: 'isotropic' },
   spacing: 0.25,
   stepping: 'eachStamp',
   jitter: { lateral: 0, size: 0, opacity: 0, flow: 0 },
@@ -29,7 +29,7 @@ test('Photoshop steps each stamp by its own size from the first point, and paint
   assert.ok(thinning.length > even.length && steps.every((step, i) => i === 0 || step < steps[i - 1]), `steps ${steps.map((s) => s.toFixed(2))}`);
 });
 
-test('a build stroke lays each stamp toward its own opacity and never lowers what a stronger one left', () => {
+test('a buildToOpacity stroke lays each stamp toward its own opacity and never lowers what a stronger one left', () => {
   const tip = stampReferenceMips({ width: 2, height: 2, paint: new Float32Array([1, 1, 1, 1]) });
   const stamp = (opacity: number): PlacedStamp => ({
     x: 2, y: 2, diameter: 4, rotation: 0, alpha: 0.5, opacity, flipX: false, flipY: false, blur: 0, grainTurn: 0, tint: { hue: 0, saturation: 0, lightness: 0, secondary: 0 }, reveal: 0,

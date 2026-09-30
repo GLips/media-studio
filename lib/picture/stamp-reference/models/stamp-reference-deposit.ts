@@ -8,7 +8,7 @@
 
 import type { StampBrush, StampBrushLayer } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import type { PlacedStamp } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
-import { stampDualCombine, stampGrainCut, stampGrainPaint, stampPooled } from './stamp-reference-blend.ts';
+import { stampDualBeforeGrain, stampDualCombine, stampGrainCut, stampGrainPaint, stampPooled } from './stamp-reference-blend.ts';
 import { sampleStampReference, type StampReferenceMips } from './stamp-reference-image.ts';
 
 /** Mip levels a stamp's full blur reads above its own, as the GPU's BLUR_LEVELS. */
@@ -71,14 +71,17 @@ function grainTile(place: LayerPlace) {
 /** A canvas-fixed grain's paint at pixel centre (px, py). */
 function canvasGrain(place: LayerPlace, px: number, py: number): number {
   const grain = place.layer.grain!, tile = grainTile(place);
-  const raw = sampleStampReference(place.images.grain!, px / tile.across + place.offset[0], py / tile.down + place.offset[1], tile.lod, 'tile');
-  return stampGrainPaint(raw, grain);
+  const raw = sampleStampReference(place.images.grain!, px / tile.across + place.offset[0], py / tile.down + place.offset[1], tile.lod, grain.tiling === 'mirror' ? 'mirror' : 'tile');
+  return stampGrainPaint(raw, grain, grainMean(place));
 }
+
+/** A grain image's mean paint, its smallest mip, as the GPU reads it. */
+const grainMean = (place: LayerPlace) => place.images.grain!.at(-1)!.paint[0];
 
 /**
  * A layer's stamps built over the box. Each stamp's coverage is its tip, cut by a rolling grain when it has one, times
- * its flow. `build` moves each pixel toward the stamp's opacity and never lowers it; `glaze` lays alpha × opacity and
- * keeps the densest stamp, built toward its cap by glazeBuild.
+ * its flow. `buildToOpacity` moves each pixel toward the stamp's opacity and never lowers it; `build` lays alpha ×
+ * opacity over it; `glaze` does too and keeps the densest stamp, built toward its cap by glazeBuild.
  */
 function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: StampReferenceBox, opacityScale: number): Float32Array {
   const { layer, images } = place;
@@ -92,11 +95,12 @@ function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: Stam
   for (const stamp of stamps) {
     // Never thinner than a pixel, as the GPU's stamps.
     const width = stamp.diameter * span, height = Math.max(1, width * roundness);
-    // Anisotropic, as the GPU's tip sampler is and Photoshop resamples a squashed tip: the level of its less-shrunk
-    // side, averaged over up to 16 reads along the other, so squashing blurs it only across the squash.
+    // Anisotropic, as Photoshop resamples a squashed tip: the level of its less-shrunk side, averaged over up to 16 reads
+    // along the other, so squashing blurs it only across the squash. Isotropic: one read at its more-shrunk side's level.
     const across = tipImage.width / width, down = tipImage.height / height;
-    const lod = Math.max(0, Math.log2(Math.min(across, down))) + stamp.blur * BLUR_LEVELS;
-    const reads = Math.min(16, Math.max(1, Math.ceil(Math.max(across, down) / Math.max(1, Math.min(across, down)) - 1e-9)));
+    const anisotropic = layer.tip.sampling === 'anisotropic';
+    const lod = Math.max(0, Math.log2(anisotropic ? Math.min(across, down) : Math.max(across, down))) + stamp.blur * BLUR_LEVELS;
+    const reads = anisotropic ? Math.min(16, Math.max(1, Math.ceil(Math.max(across, down) / Math.max(1, Math.min(across, down)) - 1e-9))) : 1;
     const alongV = down > across;
     const reach = (width / 2) * Math.SQRT2;
     const x0 = Math.max(box.x, Math.floor(stamp.x - reach)), x1 = Math.min(box.x + box.width, Math.ceil(stamp.x + reach));
@@ -119,9 +123,9 @@ function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: Stam
           const [gx, gy] = turned(dx, dy, -stamp.grainTurn);
           const gu = gx / (rollingTile.across * size) + (rolling.movement * stamp.x) / rollingTile.across + place.offset[0];
           const gv = gy / (rollingTile.down * size) + (rolling.movement * stamp.y) / rollingTile.down + place.offset[1];
-          const g = stampGrainPaint(sampleStampReference(images.grain!, gu, gv, Math.max(0, Math.log2(images.grain![0].width / (rollingTile.across * size))), 'tile'), rolling);
-          a = stampGrainCut(a, g, rolling.depth, rolling.blend);
-          capped = stampGrainCut(1, g, rolling.depth, rolling.blend);
+          const g = stampGrainPaint(sampleStampReference(images.grain!, gu, gv, Math.max(0, Math.log2(images.grain![0].width / (rollingTile.across * size))), rolling.tiling === 'mirror' ? 'mirror' : 'tile'), rolling, grainMean(place));
+          a = stampGrainCut(a, g, rolling);
+          capped = stampGrainCut(1, g, rolling);
         }
         const i = (py - box.y) * box.width + (px - box.x), laid = a * stamp.alpha;
         if (glaze) {
@@ -129,6 +133,8 @@ function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: Stam
           built[i] += paint * (1 - built[i]);
           densest![i] = Math.max(densest![i], paint);
           cap![i] = Math.max(cap![i], capped * stamp.alpha * opacity);
+        } else if (layer.accumulation === 'build') {
+          built[i] += laid * opacity * (1 - built[i]);
         } else if (opacity > built[i]) {
           built[i] += laid * (opacity - built[i]);
         }
@@ -139,9 +145,14 @@ function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: Stam
   return built;
 }
 
-/** A deposit's coverage over `box`, stage by stage in `arrangement`'s order (Photoshop's by default). */
+/**
+ * A deposit's coverage over `box`, stage by stage in `arrangement`'s order: by default Photoshop's, or the dual first
+ * when it shapes where the stamps' paint lies, as the GPU renderer orders them.
+ */
 export function renderStampReferenceDeposit(input: StampReferenceDepositInput): StampReferenceDeposit {
-  const { brush, box, arrangement = PHOTOSHOP_STAMP_ARRANGEMENT } = input;
+  const { brush, box } = input;
+  const arrangement = input.arrangement ?? (brush.dual && stampDualBeforeGrain(brush.dual.blend, brush.dual.formula)
+    ? { ...PHOTOSHOP_STAMP_ARRANGEMENT, order: ['dual', 'grain', 'pooling'] as const } : PHOTOSHOP_STAMP_ARRANGEMENT);
   const opacityInBuild = arrangement.opacity === 'inBuild' ? input.opacity : 1;
   const main: LayerPlace = { layer: brush, images: input.images.main, diameter: input.diameter, offset: input.grainOffset.main };
   const dual: LayerPlace | undefined = brush.dual && { layer: brush.dual, images: input.images.dual!, diameter: input.diameter * brush.dual.scale, offset: input.grainOffset.dual };
@@ -151,7 +162,7 @@ export function renderStampReferenceDeposit(input: StampReferenceDepositInput): 
     const grain = dual.layer.grain;
     if (!grain || grain.mode !== 'texturized' || grain.depth <= 0) return s;
     const px = box.x + (i % box.width) + 0.5, py = box.y + Math.floor(i / box.width) + 0.5;
-    return stampGrainCut(s, canvasGrain(dual, px, py), grain.depth, grain.blend);
+    return stampGrainCut(s, canvasGrain(dual, px, py), grain);
   });
   let coverage = built.main;
   const stages: StampReferenceDeposit['stages'] = [];
@@ -160,9 +171,9 @@ export function renderStampReferenceDeposit(input: StampReferenceDepositInput): 
       const px = box.x + (i % box.width) + 0.5, py = box.y + Math.floor(i / box.width) + 0.5;
       if (stage === 'grain') {
         const grain = brush.grain;
-        return grain && grain.mode === 'texturized' && grain.depth > 0 ? stampGrainCut(c, canvasGrain(main, px, py), grain.depth, grain.blend) : c;
+        return grain && grain.mode === 'texturized' && grain.depth > 0 ? stampGrainCut(c, canvasGrain(main, px, py), grain) : c;
       }
-      if (stage === 'dual') return secondary ? stampDualCombine(c, secondary[i], brush.dual!.blend) : c;
+      if (stage === 'dual') return secondary ? stampDualCombine(c, secondary[i], brush.dual!.blend, brush.dual!.formula) : c;
       return brush.pooling ? stampPooled(c, brush.pooling) : c;
     });
     stages.push({ stage, coverage: next });

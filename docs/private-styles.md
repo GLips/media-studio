@@ -75,7 +75,9 @@ repeats across a file's groups get the group in brackets. Its manifest has no pr
 own size in pixels; the sheet measures its brushes against `reference/`, and paints one with no reference at its own
 size, unscored. The Mixer Brush's settings are carried in the brush's `wetMix` and
 noted unsupported: nothing paints wet mixing yet (vid-90). Don't import a pack whose licence limits its brushes to
-Photoshop (True Grit's does).
+Photoshop (True Grit's does). Photoshop's own sets: `Legacy Brushes.abr` and `Converted Legacy Tool Presets.abr` in
+`/Applications/Adobe Photoshop 2026/Presets/Brushes/`, and `Default Brushes.abr` inside the app, in
+`Adobe Photoshop 2026.app/Contents/Required/`.
 
 The manifest holds the asset version, the files, and each brush normalized into the studio's brush definition
 (`StampBrush`, lib/picture/stamp-paint/models/stamp-brush.ts), keyed by its name in the pack. It also records the
