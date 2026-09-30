@@ -20,7 +20,7 @@ import type { StampPaintColor } from '#lib/picture/stamp-paint/models/stamp-pain
  * The version of the imported assets this studio reads. An import writes it into each pack's manifest; when the
  * manifest's format changes this goes up, and the studio refuses a pack until it's imported again.
  */
-export const STAMP_PAINT_ASSETS_VERSION = 7;
+export const STAMP_PAINT_ASSETS_VERSION = 8;
 
 /** The file an import writes in each pack's folder, `brushes/<pack>/`, listing what it wrote there. */
 export const STAMP_PAINT_PACK_MANIFEST = 'manifest.json';
