@@ -134,7 +134,8 @@ ranges, which brushes a constant touches and which are held out are in `lib/pict
 
 `npm run brushes:fit -- --packs watercolor/vvds` fits every constant of the packs' app at once against every targeted
 training brush of the packs given (all of one app), by the sheet's summed score, with each brush that ends up further
-off than it started counted again. It's deterministic, takes a few minutes, and writes the reading module; re-draw the
+off than its last sheet showed counted again. It needs each pack's whole sheet drawn under today's source, reading and
+scorer, which `report.json` records, and refuses one that isn't, saying which sheet to draw again. It's deterministic, takes a few minutes, and writes the reading module; re-draw the
 packs' sheets after (a brush is read from its source when a style resolves it, so nothing is imported again). The
 constants are the same for every brush of every pack: a brush is never tuned alone, so what fits one pack holds for
 the next. `npm run brushes:diagnose -- --packs watercolor/photoshop-legacy,…` tries each constant brush by brush and

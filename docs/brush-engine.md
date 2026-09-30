@@ -35,8 +35,9 @@ both apps' brushes; inside either app's feature, that app would import the other
 
 **brush-fidelity** holds a painted brush against its target, a Procreate preview or a Photoshop reference capture
 (`brush-fidelity-target.ts`): one measure (`stroke-measure.ts`), one scorer (`brush-fidelity-score.ts`) that the
-sheet, the fit, the diagnostic and the guard all use, and each app's reading registered for fitting
-(`brush-readings.ts`). `npm run brushes:sheet`, `brushes:fit` and `brushes:diagnose` run it (docs/private-styles.md).
+sheet, the fit, the diagnostic and the guard all use, one versioned report of a sheet (`brush-fidelity-report.ts`,
+naming the source, reading and scorer it was drawn under) that the fit's baselines and the guard read, and each app's
+reading registered for fitting (`brush-readings.ts`). `npm run brushes:sheet`, `brushes:fit` and `brushes:diagnose` run it (docs/private-styles.md).
 
 **stamp-reference** is the slow CPU renderer the GPU is held to, stage by stage, against Photoshop's probe captures
 (`node harness/stamp-reference.ts probes <run>`). It covers coverage only: no colour, paper or blurred rims.

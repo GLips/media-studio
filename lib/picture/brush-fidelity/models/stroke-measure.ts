@@ -1,6 +1,9 @@
 // stroke-measure.ts: how a stroke's coverage is measured and two strokes compared, so a brush painted by the studio
 // is set beside its target (a Procreate preview, a Photoshop reference) by number as well as by eye: one profile of
 // each, their gaps weighed into one score, and the score graded.
+//
+// A change to how anything here measures or weighs bumps BRUSH_FIDELITY_SCORER_VERSION (brush-fidelity-report.ts), so
+// sheets drawn before it aren't read as measured alike.
 
 /** Coverage at or above this (of 255) counts as the stroke when measuring its extent and thickness. */
 const STROKE_COVERAGE = 64;

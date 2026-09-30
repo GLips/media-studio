@@ -9,6 +9,7 @@ import { writeBrushFidelitySheet } from '#lib/picture/brush-fidelity/engine/brus
 import { diagnoseBrushReading } from '#lib/picture/brush-fidelity/engine/brush-reading-diagnostic.ts';
 import { fitBrushReading } from '#lib/picture/brush-fidelity/engine/brush-reading-fit.ts';
 import { writeStampStrokeHandSheet } from '#lib/picture/brush-fidelity/engine/stamp-stroke-hand-sheet.ts';
+import { strokeFidelityGrade } from '#lib/picture/brush-fidelity/models/stroke-measure.ts';
 import { STUDIO_ROOT, STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { runHarnessCommand } from './run-harness-command.ts';
 
@@ -31,14 +32,26 @@ const sheetCommand = defineCommand({
   },
   async run({ args }) {
     const only = args.brush?.split(',').map((name) => name.trim()).filter(Boolean);
-    const { dir, sheets, entries, scores } = await writeBrushFidelitySheet({ stylesDir: STUDIO_STYLES_DIR, style: args.style, pack: args.pack, out: args.out && resolve(args.out), only });
-    for (const { brush, diameter, comparison, score, grade, target } of entries) {
-      const measured = comparison ? `score ${comparison.score.toFixed(3)}, map off ${Math.round(comparison.mapError * 100)}%, density ${comparison.density.toFixed(2)}`
-        : score !== undefined ? `paints nothing, score ${score.toFixed(3)}` : 'nothing to measure against';
-      console.log(`${brush}: ${grade ?? 'ungraded'} (d ${diameter}, against its ${target}, ${measured})`);
+    const { dir, sheets, entries, total, scores } = await writeBrushFidelitySheet({ stylesDir: STUDIO_STYLES_DIR, style: args.style, pack: args.pack, out: args.out && resolve(args.out), only });
+    let scored = 0;
+    for (const { brush, diameter, outcome, target } of entries) {
+      const against = `d ${diameter}, against its ${target}`;
+      switch (outcome.kind) {
+        case 'scored': {
+          const c = outcome.comparison;
+          scored++;
+          console.log(`${brush}: ${strokeFidelityGrade(c.score)} (${against}, score ${c.score.toFixed(3)}, map off ${Math.round(c.mapError * 100)}%, density ${c.density.toFixed(2)})`);
+          break;
+        }
+        case 'emptyRender':
+          scored++;
+          console.log(`${brush}: ${strokeFidelityGrade(outcome.score)} (${against}, paints nothing, score ${outcome.score.toFixed(3)})`);
+          break;
+        case 'unmeasurableTarget': console.log(`${brush}: ungraded (${against}, which has nothing to measure)`); break;
+        case 'unscored': console.log(`${brush}: ungraded (${against}, nothing to measure against)`); break;
+      }
     }
-    const scored = entries.filter((e) => e.score !== undefined);
-    console.error(`brushes sheet: ${sheets.map((sheet) => relative(STUDIO_ROOT, sheet)).join(', ')}, with a row per brush in ${relative(STUDIO_ROOT, dir)}/rows/ and report.json; total score ${scored.reduce((sum, e) => sum + e.score!, 0).toFixed(3)} over ${scored.length} brushes`);
+    console.error(`brushes sheet: ${sheets.map((sheet) => relative(STUDIO_ROOT, sheet)).join(', ')}, with a row per brush in ${relative(STUDIO_ROOT, dir)}/rows/ and report.json; total score ${total.toFixed(3)} over ${scored} brushes`);
     if (scores) console.error(`brushes sheet: grades written to ${relative(STUDIO_ROOT, scores)}`);
   },
 });

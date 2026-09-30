@@ -8,6 +8,7 @@ import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts'
 import {
   BRUSH_FIDELITY_NOTHING_PAINTED, brushFidelityDiameter, brushFidelityFitsDiameter, type BrushFidelityTarget,
 } from '../models/brush-fidelity-target.ts';
+import type { BrushFidelityOutcome } from '../models/brush-fidelity-report.ts';
 import { compareStrokeProfiles, type StrokeCoverageProfile, type StrokeProfileComparison } from '../models/stroke-measure.ts';
 
 const FIDELITY_PAGE = fileURLToPath(new URL('../studio/brush-fidelity-page.ts', import.meta.url));
@@ -21,10 +22,23 @@ export const withBrushFidelityPage = <T>(stylesDir: string, use: (call: BrowserM
 export const measureBrushFidelityTarget = (call: BrowserModuleCall, src: string) => call<StrokeCoverageProfile | null>('measureStrokeTarget', src);
 
 /**
- * A brush as scored: the diameter it was painted at, its measure, the painting as a PNG data URL when asked for, and,
- * against a measured target, the comparison and its score (BRUSH_FIDELITY_NOTHING_PAINTED when it paints nothing).
+ * A brush as scored: the diameter it was painted at, the painting as a PNG data URL when asked for, its measure (null
+ * when nothing it painted counts as stroke), and how it fared against its target (BrushFidelityOutcome).
  */
-export type BrushFidelityScore = { diameter: number; png?: string; profile: StrokeCoverageProfile | null; comparison?: StrokeProfileComparison; score?: number };
+export type BrushFidelityScore = { diameter: number; png?: string } & (
+  | { kind: 'scored'; profile: StrokeCoverageProfile; comparison: StrokeProfileComparison; score: number }
+  | { kind: 'emptyRender'; profile: null; score: typeof BRUSH_FIDELITY_NOTHING_PAINTED }
+  | { kind: 'unmeasurableTarget' | 'unscored'; profile: StrokeCoverageProfile | null }
+);
+
+/** The outcome alone, as a report keeps it. */
+export function brushFidelityOutcome(scored: BrushFidelityScore): BrushFidelityOutcome {
+  switch (scored.kind) {
+    case 'scored': return { kind: 'scored', comparison: scored.comparison, score: scored.score };
+    case 'emptyRender': return { kind: 'emptyRender', score: scored.score };
+    case 'unmeasurableTarget': case 'unscored': return { kind: scored.kind };
+  }
+}
 
 /** `brush` painted as `target` was, at the diameter whose peak thickness matches `measured` where it's fitted, and scored. */
 export async function scoreBrushFidelity(
@@ -38,7 +52,10 @@ export async function scoreBrushFidelity(
     diameter = next;
     painted = await paint(diameter);
   }
-  if (!measured) return { diameter, ...painted };
-  const comparison = painted.profile ? compareStrokeProfiles(measured, painted.profile) : undefined;
-  return { diameter, ...painted, ...(comparison && { comparison }), score: comparison?.score ?? BRUSH_FIDELITY_NOTHING_PAINTED };
+  const { png, profile } = painted, shown = { diameter, ...(png !== undefined && { png }) };
+  if (target.kind === 'none') return { ...shown, kind: 'unscored', profile };
+  if (!measured) return { ...shown, kind: 'unmeasurableTarget', profile };
+  if (!profile) return { ...shown, kind: 'emptyRender', profile, score: BRUSH_FIDELITY_NOTHING_PAINTED };
+  const comparison = compareStrokeProfiles(measured, profile);
+  return { ...shown, kind: 'scored', profile, comparison, score: comparison.score };
 }
