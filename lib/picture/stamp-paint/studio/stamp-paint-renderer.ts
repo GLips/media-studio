@@ -80,7 +80,8 @@ fn turned(v: vec2f, angle: f32) -> vec2f {
 // A stamp is drawn as its tip's hull (stamp-tip-hull.ts), a fan of triangles from its first corner, in the tip's UV
 // square. Its place on the tip is interpolated, not worked out from its pixel: Apple's GPUs fetch a texel at an
 // interpolated place before the shader runs, and a computed one took twice as long. A flipped stamp mirrors its hull,
-// not its sampling, so the hull still holds its paint. The mask's rows run top first, as the painting's do, so y is
+// not its sampling, so the hull still holds its paint. The tip's center (StampBrushTip), not its square's middle, lands
+// on the stamp's place, as the CPU reference places it. The mask's rows run top first, as the painting's do, so y is
 // flipped into clip space.
 //
 // A rolling grain sits under each stamp: turned by the stamp's grain turn, its tile grown by the stamp's size as far as
@@ -88,7 +89,7 @@ fn turned(v: vec2f, angle: f32) -> vec2f {
 // still on the canvas; as size or direction changes it slides, which is a rolling grain's streak.
 const STAMP_DRAW = stampUniformLayout('StampDraw', [
   ['resolution', 'vec2f'], ['roundness', 'f32'], ['rolling', 'u32'], ['grain', stampUniformStruct(GRAIN)], ['diameter', 'f32'], ['zoom', 'f32'],
-  ['movement', 'f32'], ['hull', { vec4fArray: STAMP_TIP_HULL_SIDES / 2 }], ['span', 'f32'], ['towardFull', 'u32'],
+  ['movement', 'f32'], ['hull', { vec4fArray: STAMP_TIP_HULL_SIDES / 2 }], ['span', 'f32'], ['towardFull', 'u32'], ['center', 'vec2f'],
 ]);
 const STAMP_WGSL = /* wgsl */ `
 ${STAMP_DRAW.wgsl}
@@ -111,7 +112,7 @@ ${TURNED_WGSL}
   // Never thinner than a pixel: Photoshop's Flat brushes (roundness 0) sweep a hairline into a solid ribbon.
   let opacity = last.x;
   let squash = max(u.roundness * last.y, 1.0 / (stamp.z * u.span));
-  let local = turned((uv - 0.5) * vec2f(1.0, squash) * stamp.z * u.span * mirror, stamp.w);
+  let local = turned((uv - u.center) * vec2f(1.0, squash) * stamp.z * u.span * mirror, stamp.w);
   let at = (stamp.xy + local) / u.resolution * 2.0 - 1.0;
   let size = u.grain.place.xy * pow(stamp.z / u.diameter, u.zoom);
   let grainUv = turned(local, -more.z) / size + u.movement * stamp.xy / u.grain.place.xy + u.grain.place.zw;
@@ -151,7 +152,7 @@ const ORDERED_TILE = 32;
 // that path's interpolation gives, the tip's grown by its blur as the fixed path's bias grows it.
 const ORDERED_DRAW = stampUniformLayout('OrderedDraw', [
   ['grain', stampUniformStruct(GRAIN)], ['roundness', 'f32'], ['rolling', 'u32'], ['diameter', 'f32'], ['zoom', 'f32'], ['movement', 'f32'],
-  ['span', 'f32'], ['first', 'u32'], ['count', 'u32'], ['tint', 'u32'], ['bins', 'u32'], ['tilesX', 'u32'], ['accumulation', 'i32'],
+  ['span', 'f32'], ['first', 'u32'], ['count', 'u32'], ['tint', 'u32'], ['bins', 'u32'], ['tilesX', 'u32'], ['accumulation', 'i32'], ['center', 'vec2f'],
 ]);
 const ORDERED_WGSL = /* wgsl */ `
 ${FULL_FRAME_WGSL}
@@ -187,7 +188,7 @@ fn laidInOrder(p: vec2f, tinted: bool) -> Laid {
     let squash = max(u.roundness * stamps[at + 9u], 1.0 / (z * u.span));
     let scale = vec2f(1.0, squash) * z * u.span * mirror;
     let local = p - xy;
-    let uv = turned(local, -rotation) / scale + 0.5;
+    let uv = turned(local, -rotation) / scale + u.center;
     // Outside its square a stamp lays nothing; inside it but outside its hull its tip is bare, as the fixed path's is.
     if (any(uv < vec2f(0.0)) || any(uv > vec2f(1.0))) { continue; }
     let blur = exp2(stamps[at + 5u] * ${STAMP_BLUR_LEVELS.toFixed(1)});
@@ -820,6 +821,7 @@ async function rendererOnDevice(
       const offset = deposit.grainOffset[channel === 0 ? 'main' : 'dual'];
       const textures = [layer.tip.image.view, rolling ? rolling.image.view : targets.blank.view, layer.tip.sampling === 'anisotropic' ? anisotropicClamp : linearClamp, rolling?.tiling === 'mirror' ? mirrorTile : tile];
       const tints = channel === 0 && tinted ? { buffer: tintBuffer, at: loaded.tint! } : { buffer: noTintBuffer, at: 0 };
+      const center: [number, number] = [layer.tip.center?.[0] ?? 0.5, layer.tip.center?.[1] ?? 0.5];
       if (plan.kind === 'ordered') {
         const pipeline = orderedPipelines[tinted ? 'tinted' : 'plain'][channel];
         pass.setPipeline(pipeline);
@@ -842,6 +844,7 @@ async function rendererOnDevice(
             put('bins', plan.bins);
             put('tilesX', tilesX);
             put('accumulation', stampAccumulationIndex(layer.accumulation.kind));
+            put('center', center);
           }),
           ...textures, { buffer: stampBuffer }, { buffer: tints.buffer }, { buffer: binBuffer },
         ]));
@@ -869,6 +872,7 @@ async function rendererOnDevice(
           put('hull', hullWords);
           put('span', spanOf(layer));
           put('towardFull', plan.toward === 'full' ? 1 : 0);
+          put('center', center);
         }),
         ...textures,
       ]));
