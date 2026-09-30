@@ -65,8 +65,9 @@ function strictlyConvex(points: [number, number][]): [number, number][] {
 }
 
 /**
- * A corner a rounding error off the square's edge, put on it. Past the edge a stamp would read the tip's edge texels
- * (a tip is clamped), and paint where its square never reached.
+ * A corner a rounding error off the square's edge, put on it. Past the edge a stamp reads the tip's clamped edge
+ * texels, painting where its square never reached. The renderer pushes a side exactly on it out by a sliver only
+ * (STAMP_EDGE_SLIVER).
  */
 const snapToSquare = (v: number) => (Math.abs(v) < 1e-5 ? 0 : Math.abs(v - 1) < 1e-5 ? 1 : v);
 

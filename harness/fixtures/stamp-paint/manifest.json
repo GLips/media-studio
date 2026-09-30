@@ -146,11 +146,11 @@
     },
     "painting/colour-groups": {
       "file": "painting/colour-groups.png",
-      "output": "08d6774dd5072f547913985a957cf9acb6278828f652aa6e0d55b51c05b4808f",
+      "output": "bde06513865dc9dcb85e459916ac306be3052bc887955311a647cddb0db95971",
       "inputs": "f4886902b6dc75fb742d9fc542b5c13983c6b2b8602bb96fc5dc704492100a3b",
-      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "reason": "vid-120: a pixel centre exactly on a stamp's right or bottom edge is now covered, as on its left and top (the rasterizer's top-left rule dropped it); tips with paint at the square's edge move a few pixels.",
       "accepted": "2026-09-30",
-      "acceptedOver": "23552c3",
+      "acceptedOver": "9d35aa0",
       "adapter": "apple metal-3"
     },
     "painting/pigment-crayon": {
@@ -182,38 +182,38 @@
     },
     "painting/regions": {
       "file": "painting/regions.png",
-      "output": "c5168b5c373b19f15b01e48d61ab50916f0137596d9a93e7f12d89b32a662cff",
+      "output": "97e55753165a57bd526beb6bcca07b71f045fbc31c36217ee14d949a7923dcdb",
       "inputs": "2b6e0aaab6ada8a9d166c40f31d23c3cdc0d6c8f60c1abaa3bedb2de26219464",
-      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "reason": "vid-120: a pixel centre exactly on a stamp's right or bottom edge is now covered, as on its left and top (the rasterizer's top-left rule dropped it); tips with paint at the square's edge move a few pixels.",
       "accepted": "2026-09-30",
-      "acceptedOver": "23552c3",
+      "acceptedOver": "9d35aa0",
       "adapter": "apple metal-3"
     },
     "painting/strokes-accumulations": {
       "file": "painting/strokes-accumulations.png",
-      "output": "169d7dca44970c9e12de78f41dc96180deb587b6202ab268be09fe74727ed263",
+      "output": "b966c30b82ea398f672223552a08a56bf7949b08fce70a837872e3bb3dcc5dc2",
       "inputs": "bb71e650397aeae9cc266da921e932b6329dfbc61903f07d9cd9ffa48999ac2e",
-      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "reason": "vid-120: a pixel centre exactly on a stamp's right or bottom edge is now covered, as on its left and top (the rasterizer's top-left rule dropped it); tips with paint at the square's edge move a few pixels.",
       "accepted": "2026-09-30",
-      "acceptedOver": "23552c3",
+      "acceptedOver": "9d35aa0",
       "adapter": "apple metal-3"
     },
     "painting/strokes-duals-edges": {
       "file": "painting/strokes-duals-edges.png",
-      "output": "c4de1fadacb2dc1937d78c75c91ddd0a75704d73ca56b270ef97f88b12b96f69",
+      "output": "e7524a071ff5922cc93b97cc854166e3c284f4e8b7d57100c100dbf41ae31d13",
       "inputs": "84e7bcafa992bfe6a712ea1fd099ec4fc0e03ae033b14edfa7e4296641ec9b45",
-      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "reason": "vid-120: a pixel centre exactly on a stamp's right or bottom edge is now covered, as on its left and top (the rasterizer's top-left rule dropped it); tips with paint at the square's edge move a few pixels.",
       "accepted": "2026-09-30",
-      "acceptedOver": "23552c3",
+      "acceptedOver": "9d35aa0",
       "adapter": "apple metal-3"
     },
     "painting/strokes-grains": {
       "file": "painting/strokes-grains.png",
-      "output": "5233a84fa697f5e8106fda47dc1f6f2962833773aa26e2bf4b19097fbcd13669",
+      "output": "2bd6658e2a199c017b7816f41d90b448a96ef0936b95e082626e28e81b1d9ad6",
       "inputs": "c006508d3a518039e98fceed863130907a8de9e992ac6e63556973aeed8be739",
-      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "reason": "vid-120: a pixel centre exactly on a stamp's right or bottom edge is now covered, as on its left and top (the rasterizer's top-left rule dropped it); tips with paint at the square's edge move a few pixels.",
       "accepted": "2026-09-30",
-      "acceptedOver": "23552c3",
+      "acceptedOver": "9d35aa0",
       "adapter": "apple metal-3"
     }
   }

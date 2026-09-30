@@ -69,6 +69,8 @@ fn turned(v: vec2f, angle: f32) -> vec2f {
   return vec2f(c * v.x - s * v.y, s * v.x + c * v.y);
 }`;
 
+/** Pixels a hull side on the tip square's edge is pushed out by: past a rasterizer's subpixel snapping (8 bits on most). */
+const STAMP_EDGE_SLIVER = (1 / 64).toFixed(6);
 // A stamp is its tip's hull (stamp-tip-hull.ts) as a triangle fan, its tip place interpolated: Apple's GPUs fetch
 // an interpolated place's texel before the shader runs; computing it took twice as long. A flip mirrors the hull,
 // not its sampling, so the hull holds the paint. The tip's center lands on the stamp's place. Mask rows run top first.
@@ -94,12 +96,17 @@ ${GRAIN_WGSL}
 ${TURNED_WGSL}
 @vertex fn place(@builtin(vertex_index) i: u32, @location(0) stamp: vec4f, @location(1) more: vec4f, @location(2) tint: vec4f, @location(3) last: vec4f) -> Corner {
   let pair = u.hull[i / 2u];
-  let uv = select(pair.xy, pair.zw, (i & 1u) == 1u);
+  let corner = select(pair.xy, pair.zw, (i & 1u) == 1u);
   let flips = u32(more.w);
   let mirror = vec2f(select(1.0, -1.0, (flips & 1u) != 0u), select(1.0, -1.0, (flips & 2u) != 0u));
   // Never thinner than a pixel: Photoshop's Flat brushes (roundness 0) sweep a hairline into a solid ribbon.
   let opacity = last.x;
   let squash = max(u.roundness * last.y, 1.0 / (stamp.z * u.span));
+  // A pixel centre on the square's edge is covered on all four sides, as Photoshop and the ordered path cover it. The
+  // rasterizer's top-left rule drops it on two sides, so a hull side on the square's edge (stampTipHull puts it there
+  // exactly) is pushed out by a sliver of a pixel, whose clamped tip reads the edge texel.
+  let edge = select(vec2f(0.0), vec2f(1.0), corner == vec2f(1.0)) - select(vec2f(0.0), vec2f(1.0), corner == vec2f(0.0));
+  let uv = corner + edge * ${STAMP_EDGE_SLIVER} / (vec2f(1.0, squash) * stamp.z * u.span);
   let local = turned((uv - u.center) * vec2f(1.0, squash) * stamp.z * u.span * mirror, stamp.w);
   let at = (stamp.xy + local) / u.resolution * 2.0 - 1.0;
   // A rolling grain turns with the stamp, grows with its size by zoom and travels the canvas by movement: at
