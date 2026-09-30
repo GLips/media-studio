@@ -44,19 +44,20 @@ const vec = (v: Vec4) => `(${v.join(', ')})`;
 
 /**
  * wetLift over layers whose four amounts are equal and stain more lane by lane, and over uneven amounts some of them
- * none: each lane at every cover, strength and workability, set paint loosening as none, watercolour, crayon and all.
+ * none: each lane at every cover, strength and workability, fresh, half set and set, set paint loosening by none,
+ * some and all.
  */
 function wetLiftGrid(): StampGateFormulaGrid {
   const layers: readonly { was: Vec4; stain: Vec4 }[] = [
     { was: [0.8, 0.8, 0.8, 0.8], stain: [0, 0.3, 0.6, 0.9] },
     { was: [0.5, 1.5, 0.125, 0], stain: [0.25, 0.25, 0.25, 0.25] },
   ];
-  const entries = layers.flatMap(({ was, stain }, k) => COARSE.flatMap((cover) => COARSE.flatMap((strength) => COARSE.flatMap((workable) => [0, 0.375, 0.875, 1].flatMap((rewetting) => LANES.map((lane): LawRow => ({
-    label: `was ${vec(was)} stain ${vec(stain)} cover ${cover} strength ${strength} workable ${workable} rewetting ${rewetting} lane ${lane}`,
-    inputs: [...was, cover, strength, workable, rewetting, ...stain, lane], lane, was, cover, bound: k === 0 ? 1 : 0,
-  })))))));
+  const entries = layers.flatMap(({ was, stain }, k) => COARSE.flatMap((cover) => COARSE.flatMap((strength) => COARSE.flatMap((workable) => [0, 0.5, 1].flatMap((dried) => [0, 0.375, 1].flatMap((rewetting) => LANES.map((lane): LawRow => ({
+    label: `was ${vec(was)} stain ${vec(stain)} cover ${cover} strength ${strength} workable ${workable} dried ${dried} rewetting ${rewetting} lane ${lane}`,
+    inputs: [...was, cover, strength, workable, dried, rewetting, ...stain, lane], lane, was, cover, bound: k === 0 ? 1 : 0,
+  }))))))));
   // Rows come four lanes at a time, so a lane's neighbour below is the one staining less, in the evenly laid layer.
-  return propertyGrid('wetLift', 'wetLift(vec4f(x(0), x(1), x(2), x(3)), x(4), x(5), x(6), x(7), vec4f(x(8), x(9), x(10), x(11)))[u32(x(12))]', 13, entries, (row, out, gpu, i) => {
+  return propertyGrid('wetLift', 'wetLift(vec4f(x(0), x(1), x(2), x(3)), x(4), x(5), x(6), x(7), x(8), vec4f(x(9), x(10), x(11), x(12)))[u32(x(13))]', 14, entries, (row, out, gpu, i) => {
     const was = row.was[row.lane], strength = row.inputs[5];
     if (out > was + TOL) return `lifting added pigment (was ${was})`;
     if (out < -TOL) return 'lifting left less than none';
