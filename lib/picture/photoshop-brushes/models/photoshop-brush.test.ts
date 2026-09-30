@@ -77,7 +77,7 @@ test('a Procreate brush and a Photoshop preset that paint alike normalize to the
   assert.equal(photoshop.brush.scatter.count, 3);
 });
 
-test("a Mixer Brush preset carries its wet mixing, noted as not yet painted, and a missing pattern drops only the texture", () => {
+test("a Mixer Brush preset's wet mixing is noted as not yet painted, and a missing pattern drops only the texture", () => {
   const { brush, support } = normalizePhotoshopBrush('Wet Blend', {
     preset: paintable({
       _class: 'brushPreset', Brsh: { _class: 'computedBrush', Dmtr: px(40), Hrdn: pct(0), Spcn: pct(25), Intr: true },
@@ -86,9 +86,8 @@ test("a Mixer Brush preset carries its wet mixing, noted as not yet painted, and
     }),
     tip: { kind: 'round', image: asset('tips/round-0.png') },
   }, photoshopReading);
-  assert.deepEqual(brush.wetMix, { load: 0.4, wetness: 0.8, mix: 0.6, sampleAllLayers: true });
   assert.equal(brush.grain, undefined);
-  // Wet edges pool the built coverage; they no longer thin the flow.
+  // Wet edges pool the built coverage, leaving the flow the tool's.
   assert.equal(brush.flow, 128 / 255);
   assert.deepEqual(brush.wetEdges, PHOTOSHOP_POOLING);
   assert.ok(brush.tip.span! > 1, "a soft computed tip's image reaches past its diameter");

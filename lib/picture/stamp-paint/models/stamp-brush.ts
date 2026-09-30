@@ -226,14 +226,6 @@ export type StampBrushLayer<Image = StampBrushAsset> = StampBrushStamping<Image>
   burntEdge?: StampBrushBurntEdge;
 };
 
-/**
- * Paint a brush takes up from the canvas and mixes into its own as it paints, each 0..1: `load`, how much paint it
- * carries before it runs dry; `wetness`, how much of the paint under it it takes up; `mix`, the share of taken-up paint
- * in what it lays. `sampleAllLayers` takes paint up from everything under it, not only its own deposit's layer.
- * Carried from the source but not yet painted: the renderer mixes pigment only between deposits (vid-90).
- */
-export type StampBrushWetMix = { load: number; wetness: number; mix: number; sampleAllLayers: boolean };
-
 export type StampBrush<Image = StampBrushAsset> = StampBrushLayer<Image> & {
   /** Its name in its pack, as the manifest keys it. Part of no seed: renaming a brush changes no painting's randomness. */
   name: string;
@@ -247,7 +239,6 @@ export type StampBrush<Image = StampBrushAsset> = StampBrushLayer<Image> & {
    * edges and accumulation, and its stamps are `scale` times the main brush's diameter.
    */
   dual?: StampBrushLayer<Image> & { blend: StampDualBlend; scale: number };
-  wetMix?: StampBrushWetMix;
 };
 
 /** `layer` with its tip's and grain's images bound by `bind`, the rest as it is. */

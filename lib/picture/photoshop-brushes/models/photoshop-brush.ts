@@ -10,8 +10,8 @@
 // deposit states its diameter), airbrush build-up while the pen rests (a path never rests) and the preview's settings
 // aren't a brush's painting, and go unreported, save build-up, noted `inapplicable`. Tilt, stylus wheel, rotation and
 // brush pose are `inapplicable` (a path has only pressure); fade controls, noise, and bristle, erodible and airbrush
-// tips (read as round) are `unsupported`; the Mixer Brush's settings are carried in `wetMix` and noted `unsupported`
-// until vid-90.
+// tips (read as round) are `unsupported`; so is the Mixer Brush's wet mixing, whose settings stay in the preset's tool
+// options for the wet-paint model (vid-90).
 
 import { PHOTOSHOP_POOLING } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import { PHOTOSHOP_PIXEL_TIP_DIAMETER, photoshopComputedTipSpan } from './photoshop-computed-tip.ts';
@@ -22,7 +22,7 @@ import {
 import { PHOTOSHOP_READING } from './photoshop-reading.ts';
 import {
   stampDynamics, type StampBlend, type StampBrush, type StampBrushAsset, type StampBrushColorDynamics, type StampBrushLayer, type StampBrushSupportNote, type StampBrushTip,
-  type StampBrushWetMix, type StampDualBlend, type StampGrainBlend,
+  type StampDualBlend, type StampGrainBlend,
 } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 
 /**
@@ -336,10 +336,10 @@ function readColorDynamics(color: PhotoshopPreset['color'], note: Note, reading:
   return Object.values(dynamics).some((group) => Object.values(group).some((v) => v !== 0)) ? dynamics : undefined;
 }
 
-/** A Mixer Brush's settings, carried for the wet-paint model (vid-90), and its other tools noted. */
-function readTool(p: PhotoshopPreset, note: Note): { blend: StampBlend; wetMix?: StampBrushWetMix } {
+/** The tool's own blend, and what else of the tool doesn't carry over. */
+function readTool(p: PhotoshopPreset, note: Note): StampBlend {
   const { tool } = p;
-  if (!tool) return { blend: 'normal' };
+  if (!tool) return 'normal';
   const blend = typeof tool.mode === 'string' ? BRUSH_BLENDS[tool.mode] : null;
   if (!blend) note('unsupported', 'tool.mode', `the tool paints in ${photoshopModeName(tool.mode)}; read as normal`);
   if (tool.opacity !== 100) note('approximated', 'tool.opacity', `the preset paints at ${tool.opacity}% opacity; a deposit states its own`);
@@ -352,18 +352,19 @@ function readTool(p: PhotoshopPreset, note: Note): { blend: StampBlend; wetMix?:
   }
   if (tool.kind === 'PcTl') note('approximated', 'tool', "a pencil's hard, unsmoothed edge read as the brush's own");
   else if (tool.kind === 'unsupported') note('inapplicable', 'tool', `a preset of another tool (${tool.classId}), which paints nothing new: its tip is read as a brush's`);
-  if (tool.kind !== 'MixB') return { blend: blend ?? 'normal' };
-  const wetMix: StampBrushWetMix = { load: (tool.dryness ?? 100) / 100, wetness: (tool.wetness ?? 0) / 100, mix: (tool.mix ?? 0) / 100, sampleAllLayers: !!tool.sampleAllLayers };
-  note('unsupported', 'tool.wetness, dryness, mix, sampleAllLayers', `Mixer Brush wet ${Math.round(wetMix.wetness * 100)}%, load ${Math.round(wetMix.load * 100)}%, mix ${Math.round(wetMix.mix * 100)}%: carried in wetMix, not yet painted (vid-90)`);
-  if (tool.autoFill !== undefined || tool.autoClean !== undefined) note('inapplicable', 'tool.autoFill, autoClean', 'refilling and cleaning the brush between strokes: every deposit starts loaded');
-  return { blend: blend ?? 'normal', wetMix };
+  if (tool.kind === 'MixB') {
+    const pct = (value: number | undefined, unset: number) => Math.round(value ?? unset);
+    note('unsupported', 'tool.wetness, dryness, mix, sampleAllLayers', `Mixer Brush wet ${pct(tool.wetness, 0)}%, load ${pct(tool.dryness, 100)}%, mix ${pct(tool.mix, 0)}%: wet mixing isn't yet painted (vid-90)`);
+    if (tool.autoFill !== undefined || tool.autoClean !== undefined) note('inapplicable', 'tool.autoFill, autoClean', 'refilling and cleaning the brush between strokes: every deposit starts loaded');
+  }
+  return blend ?? 'normal';
 }
 
 /** `source`'s preset read into a StampBrush named `name`, and what didn't carry over. */
 export function normalizePhotoshopBrush(name: string, source: PhotoshopBrushSource, reading: PhotoshopReading = PHOTOSHOP_READING): { brush: StampBrush; support: StampBrushSupportNote[] } {
   const support: StampBrushSupportNote[] = [];
   const note: Note = (level, setting, detail) => support.push({ level, setting, detail });
-  const { blend, wetMix } = readTool(source.preset, note);
+  const blend = readTool(source.preset, note);
   const color = readColorDynamics(source.preset.color, note, reading);
   const brush: StampBrush = { name, blend, ...(color && { color }), ...readMainLayer(source, note, reading) };
   const { dual } = source.preset;
@@ -373,6 +374,5 @@ export function normalizePhotoshopBrush(name: string, source: PhotoshopBrushSour
     else if (source.dualTip) brush.dual = readDualLayer(source, dual, tip, source.dualTip, note, reading);
     else note('unsupported', 'dual.tip', "the dual's tip isn't in the file; imported without its dual");
   }
-  if (wetMix) brush.wetMix = wetMix;
   return { brush, support };
 }

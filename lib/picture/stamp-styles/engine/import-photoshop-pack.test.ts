@@ -33,7 +33,9 @@ test('importing an .abr writes the same pack layout a Procreate pack imports to,
     assert.equal(chalk.grain?.kind, 'canvas');
     assert.deepEqual(chalk.grain?.blend, { family: 'texture', mode: 'height' });
     assert.equal(chalk.grain?.scale, 4 / 48);
-    assert.equal(brushes['Chalk (Wet)'].wetMix?.load, 1);
+    // A Mixer Brush's wet mixing stays in its source, the preset's tool options, for the wet-paint model (vid-90).
+    const mixer = manifest.brushes['Chalk (Wet)'].preset.tool;
+    assert.deepEqual(mixer?.kind === 'MixB' && [mixer.wetness, mixer.dryness, mixer.mix], [50, 100, 50]);
     // An erodible tip paints as round; its height map, which only a simulation of its wear reads, sits beside it.
     const pencil = manifest.brushes.Pencil.tip;
     assert.ok(pencil.kind === 'erodible');

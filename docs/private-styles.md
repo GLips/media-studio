@@ -79,7 +79,7 @@ A Photoshop pack reads `.abr` version 6 and later (everything since Photoshop CS
 tool options (a Mixer Brush's wet, load and mix, the tool's flow and mode) sit beside the brush. Names Photoshop
 repeats across a file's groups get the group in brackets. Its manifest has no previews, and each preset keeps its
 own size in pixels; the sheet measures its brushes against `reference/`, and paints one with no reference at its own
-size, unscored. The Mixer Brush's settings are carried in the brush's `wetMix` and
+size, unscored. The Mixer Brush's settings stay in the preset's tool options and are
 noted unsupported: nothing paints wet mixing yet (vid-90). Don't import a pack whose licence limits its brushes to
 Photoshop (True Grit's does). Photoshop's own sets: `Legacy Brushes.abr` and `Converted Legacy Tool Presets.abr` in
 `/Applications/Adobe Photoshop 2026/Presets/Brushes/`, and `Default Brushes.abr` inside the app, in
