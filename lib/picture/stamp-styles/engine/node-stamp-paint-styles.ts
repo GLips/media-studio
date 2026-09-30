@@ -5,11 +5,12 @@
 //
 // Negative space: it doesn't check a style's packs as a bundle does. Nothing in Node paints; a pack that isn't
 // imported leaves its manifest out, and a scene asking for the style throws naming the brush it lacks.
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { readImportedStampPaintPack } from './stamp-paint-pack-files.ts';
+import { STAMP_PAINT_PACK_MANIFEST } from '../models/stamp-paint-pack.ts';
 import type { BundledStampPaintStyles, StampPaintStyle } from '../models/style.ts';
 
 /** Every workspace style, as a bundle would serve it, with every file its imported packs list. */
@@ -22,10 +23,11 @@ async function readNodeStampPaintStyles(stylesDir: string): Promise<BundledStamp
       const read = readImportedStampPaintPack(join(dir, 'brushes', pack));
       return read ? [{ pack, ...read }] : [];
     });
-    const manifests = Object.fromEntries(imported.map(({ pack, manifest }) => [pack, manifest]));
+    // Raw JSON, as a bundle serves it: stampPaintStyle reads each manifest itself, and a read one doesn't read again.
+    const manifests = new Map(imported.map(({ pack, dir: generation }) => [pack, readFileSync(join(generation, STAMP_PAINT_PACK_MANIFEST), 'utf8')]));
     const images = Object.fromEntries(imported.flatMap(({ pack, dir: generation, manifest }) =>
       manifest.files.map((file) => [`${pack}/${file}`, pathToFileURL(join(generation, file)).href])));
-    return [name, { style, manifests, images }];
+    return [name, { style, manifests: Object.fromEntries([...manifests].map(([pack, json]) => [pack, JSON.parse(json)])), images }];
   })));
 }
 
