@@ -4,7 +4,7 @@ import { normalizePhotoshopBrush, type PhotoshopReading } from './photoshop-brus
 import { stampDynamics } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { PHOTOSHOP_POOLING } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import type { PhotoshopDescriptor } from './photoshop-descriptor.ts';
-import { readPhotoshopPreset } from './photoshop-preset.ts';
+import { photoshopPaintablePreset, readPhotoshopPreset } from './photoshop-preset.ts';
 import { normalizeProcreateBrush, type ProcreateReading } from '#lib/picture/procreate-brushes/models/procreate-brush.ts';
 
 const asset = (file: string) => ({ style: 'wash', pack: 'mixed', file });
@@ -12,6 +12,13 @@ const pct = (value: number) => ({ _unit: '#Prc', value });
 const px = (value: number) => ({ _unit: '#Pxl', value });
 const long = (value: number) => ({ _long: value });
 const control = (bVTy: number, jitter: number, minimum = 0): PhotoshopDescriptor => ({ _class: 'brVr', bVTy: long(bVTy), fStp: long(25), jitter: pct(jitter), 'Mnm ': pct(minimum) });
+/** A sample 99 px square: its centre texel (49) and blank border put its centre at the image's. */
+const sampledTip = (file: string) => ({ kind: 'sampled', image: asset(file), sample: { width: 99, height: 99 } }) as const;
+function paintable(d: PhotoshopDescriptor) {
+  const preset = photoshopPaintablePreset(readPhotoshopPreset(d));
+  assert.ok(preset, 'a tip the studio reads');
+  return preset;
+}
 
 /** Readings of plain scales, so the two sources' settings meet on their meanings, not on whatever the fits chose. */
 const procreateReading: ProcreateReading = {
@@ -52,30 +59,32 @@ test('a Procreate brush and a Photoshop preset that paint alike normalize to the
     toolOptions: { _class: 'PbTl', Opct: long(100), flow: long(64), 'Md  ': { _enum: 'BlnM', value: 'Nrml' } },
   };
   const photoshop = normalizePhotoshopBrush('Textured Round', {
-    preset: readPhotoshopPreset(preset), tip: asset('tips/round.png'), dualTip: asset('tips/dual.png'), pattern: { image: asset('grains/paper.png'), width: 300 },
+    preset: paintable(preset), tip: sampledTip('tips/round.png'), dualTip: sampledTip('tips/dual.png'), pattern: { image: asset('grains/paper.png'), width: 300 },
   }, photoshopReading);
 
   // Photoshop steps by each stamp's own size and its short side (its roundness is 0.5), where Procreate spreads its
   // steps along the stroke, and holds flow in 255ths. The two build, sample tips, cut and tile grain, adjust it and
   // combine a dual as each was identified or fitted to.
   const photoshopWays = { accumulation: { kind: 'buildToOpacity' }, stepping: 'eachStamp' } as const;
+  // A sample is stored inside a blank texel each side, which it spans past.
+  const sample = { sampling: 'anisotropic', span: 101 / 99, center: [0.5, 0.5] } as const;
   assert.deepEqual(photoshop.brush, {
     ...procreate.brush, ...photoshopWays, spacing: procreate.brush.spacing * 0.5, flow: 163 / 255,
-    tip: { ...procreate.brush.tip, sampling: 'anisotropic' },
+    tip: { ...procreate.brush.tip, ...sample },
     grain: { ...procreate.brush.grain!, blend: { family: 'texture', mode: procreate.brush.grain!.blend.mode }, contrastPivot: 'midGrey', tiling: 'repeat' },
-    dual: { ...procreate.brush.dual!, ...photoshopWays, tip: { ...procreate.brush.dual!.tip, sampling: 'anisotropic' }, blend: { family: 'texture', mode: procreate.brush.dual!.blend.mode } },
+    dual: { ...procreate.brush.dual!, ...photoshopWays, tip: { ...procreate.brush.dual!.tip, ...sample }, blend: { family: 'texture', mode: procreate.brush.dual!.blend.mode } },
   });
   assert.equal(photoshop.brush.scatter.count, 3);
 });
 
 test("a Mixer Brush preset carries its wet mixing, noted as not yet painted, and a missing pattern drops only the texture", () => {
   const { brush, support } = normalizePhotoshopBrush('Wet Blend', {
-    preset: readPhotoshopPreset({
+    preset: paintable({
       _class: 'brushPreset', Brsh: { _class: 'computedBrush', Dmtr: px(40), Hrdn: pct(0), Spcn: pct(25), Intr: true },
       useTexture: true, Txtr: { _class: 'Ptrn', 'Nm  ': 'Canvas', Idnt: 'missing' }, Wtdg: true,
       toolOptions: { _class: 'MixB', flow: long(50), wetness: 80, dryness: 40, mix: 60, sampleAllLayers: true, autoClean: true },
     }),
-    tip: asset('tips/round-0.png'),
+    tip: { kind: 'round', image: asset('tips/round-0.png') },
   }, photoshopReading);
   assert.deepEqual(brush.wetMix, { load: 0.4, wetness: 0.8, mix: 0.6, sampleAllLayers: true });
   assert.equal(brush.grain, undefined);
@@ -89,12 +98,12 @@ test("a Mixer Brush preset carries its wet mixing, noted as not yet painted, and
 
 test('a texture reads as Photoshop sets it: its mode, its depth in 255ths, its brightness in 255ths and its contrast', () => {
   const { brush, support } = normalizePhotoshopBrush('Overlay', {
-    preset: readPhotoshopPreset({
+    preset: paintable({
       _class: 'brushPreset', Brsh: { _class: 'computedBrush', Dmtr: px(100), Hrdn: pct(100), Spcn: pct(1), Intr: true },
       useTexture: true, Txtr: { _class: 'Ptrn', 'Nm  ': 'Paper', Idnt: 'paper' }, textureBlendMode: { _enum: 'BlnM', value: 'Ovrl' },
       textureDepth: pct(33), textureBrightness: long(-51), textureContrast: long(-50), textureScale: pct(100), TxtC: false,
     }),
-    tip: asset('tips/round-100-100.png'), pattern: { image: asset('grains/paper.png'), width: 256 },
+    tip: { kind: 'round', image: asset('tips/round-100-100.png') }, pattern: { image: asset('grains/paper.png'), width: 256 },
   }, photoshopReading);
   assert.deepEqual(
     { blend: brush.grain?.blend, depth: brush.grain?.depth, brightness: brush.grain?.brightness, contrast: brush.grain?.contrast, spacing: brush.spacing },
@@ -105,11 +114,11 @@ test('a texture reads as Photoshop sets it: its mode, its depth in 255ths, its b
 
 test("roundness jitter reaches down to the preset's minimum roundness, as vid-97's probes show, and roundness by pressure is read alike", () => {
   const { brush, support } = normalizePhotoshopBrush('Squashing', {
-    preset: readPhotoshopPreset({
+    preset: paintable({
       _class: 'brushPreset', Brsh: { _class: 'computedBrush', Dmtr: px(100), Hrdn: pct(100), Spcn: pct(10), Intr: true },
       useTipDynamics: true, roundnessDynamics: control(2, 50), minimumRoundness: pct(25),
     }),
-    tip: asset('tips/round-100-100.png'),
+    tip: { kind: 'round', image: asset('tips/round-100-100.png') },
   }, photoshopReading);
   assert.deepEqual(brush.dynamics.filter((d) => d.target === 'roundness'), stampDynamics({ pressure: { roundness: 0.75 }, random: { roundness: 0.375 } }));
   assert.equal(support.some((note) => note.setting.startsWith('tipDynamics.roundness')), false, 'both are read, neither approximated');

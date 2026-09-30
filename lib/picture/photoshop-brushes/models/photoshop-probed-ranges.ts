@@ -1,10 +1,9 @@
 // photoshop-probed-ranges.ts: what vid-97's probes covered, field by field of a brush preset, so an import can say
-// where a pack's brush goes past what the pipeline was identified on. Read off the probes themselves (as presets,
-// photoshop-probe-preset.ts), so it widens as probes are added. A field counts only where it takes effect
+// where a pack's brush goes past what the pipeline was identified on. Read off the probes' own presets, so it widens
+// as probes are added. A field counts only where it takes effect
 // (photoshopPresetLeaves): a group switched off holds none.
 
 import { photoshopPresetLeaves, type PhotoshopPreset } from './photoshop-preset.ts';
-import { photoshopProbePreset } from './photoshop-probe-preset.ts';
 import { photoshopProbes } from './photoshop-probes.ts';
 
 /** A field's probed values: the span of a number, or the set of a flag, code or mode. */
@@ -14,7 +13,7 @@ export type PhotoshopProbedRange = { kind: 'number'; min: number; max: number } 
 export function photoshopProbedRanges(): Map<string, PhotoshopProbedRange> {
   const ranges = new Map<string, PhotoshopProbedRange>();
   for (const probe of photoshopProbes()) {
-    for (const { path, value } of photoshopPresetLeaves(photoshopProbePreset(probe.name, probe.settings))) {
+    for (const { path, value } of photoshopPresetLeaves(probe.preset)) {
       const known = ranges.get(path);
       if (typeof value === 'number') {
         if (known?.kind === 'number') known.min = Math.min(known.min, value), known.max = Math.max(known.max, value);

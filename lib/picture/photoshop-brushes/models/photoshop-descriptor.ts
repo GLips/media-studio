@@ -20,3 +20,33 @@ export function photoshopTagged(v: PhotoshopValue | undefined): Tagged | undefin
   if (!v || typeof v !== 'object' || Array.isArray(v) || '_class' in v) return undefined;
   return v as Tagged;
 }
+
+const isJsonObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+
+/** `v`, JSON as a manifest stores a descriptor's value, checked and rebuilt as one; throws naming the path that isn't. */
+function parsePhotoshopValue(v: unknown, at: string): PhotoshopValue {
+  if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'string') return v;
+  if (Array.isArray(v)) return v.map((item, i) => parsePhotoshopValue(item, `${at}[${i}]`));
+  if (!isJsonObject(v)) throw new Error(`${at} isn't a descriptor value`);
+  if ('_class' in v) return parsePhotoshopDescriptor(v, at);
+  if (typeof v._unit === 'string' && typeof v.value === 'number') return { _unit: v._unit, value: v.value };
+  if (typeof v._enum === 'string' && typeof v.value === 'string') return { _enum: v._enum, value: v.value };
+  if (typeof v._long === 'number') return { _long: v._long };
+  if (typeof v._raw === 'string' && typeof v.hex === 'string') return { _raw: v._raw, hex: v.hex };
+  if (typeof v._classRef === 'string') return { _classRef: v._classRef };
+  throw new Error(`${at} isn't a descriptor value`);
+}
+
+/** `v`, a descriptor as JSON holds it (a manifest's preset), checked and rebuilt, every value to its tagged shape. */
+export function parsePhotoshopDescriptor(v: unknown, at: string): PhotoshopDescriptor {
+  if (!isJsonObject(v) || typeof v._class !== 'string') throw new Error(`${at} isn't a descriptor`);
+  const descriptor: PhotoshopDescriptor = { _class: v._class };
+  for (const [key, value] of Object.entries(v)) {
+    if (key === '_class') continue;
+    if (key === '_name') {
+      if (typeof value !== 'string') throw new Error(`${at}._name isn't a string`);
+      descriptor._name = value;
+    } else descriptor[key] = parsePhotoshopValue(value, `${at}.${key}`);
+  }
+  return descriptor;
+}

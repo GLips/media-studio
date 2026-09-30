@@ -16,7 +16,6 @@ import {
   PHOTOSHOP_CAPTURE_DOCUMENT, PHOTOSHOP_GROUND_RGB, PHOTOSHOP_NOT_CAPTURED, planPhotoshopProbeCapture, planPhotoshopReferenceCapture, photoshopReferenceSize,
   type PhotoshopCaptureCell, type PhotoshopCaptureManifest, type PhotoshopCaptureSheet,
 } from '../models/photoshop-capture-plan.ts';
-import { photoshopProbePreset } from '../models/photoshop-probe-preset.ts';
 import { PHOTOSHOP_PROBE_RAMP, PHOTOSHOP_PROBE_TIP, photoshopProbeRampValue, photoshopProbes, photoshopProbeTipPaint } from '../models/photoshop-probes.ts';
 
 const CAPTURE_JSX = readFileSync(new URL('./photoshop-capture.jsxinc', import.meta.url), 'utf8');
@@ -109,8 +108,8 @@ export async function capturePhotoshopProbes({ dir: root, only, repeat = [], log
   // costs only the cleanup, not the capture.
   const { result: manifest, restore } = await withOwnedPhotoshop(`probes-${run}`, ({ version }) => {
     const assets = captureScript<{ colorSettings: Record<string, unknown> }>('defineProbeAssets', { rampFile, tipFile, rampName: PHOTOSHOP_PROBE_RAMP.name, tipName: PHOTOSHOP_PROBE_TIP.name });
-    const items = Object.fromEntries(probes.map((p) => [p.name, { reads: p.reads, settings: p.settings }]));
-    const presets = Object.fromEntries(probes.map((p) => [p.name, photoshopProbePreset(p.name, p.settings)]));
+    const items = Object.fromEntries(probes.map((p) => [p.name, { reads: p.reads }]));
+    const presets = Object.fromEntries(probes.map((p) => [p.name, p.preset]));
     const jobs = Object.fromEntries(Object.entries(presets).map(([key, preset]) => [key, { script: photoshopPresetScript(preset) }]));
     const painted = paintSheets(dir, sheets, jobs, { rampName: PHOTOSHOP_PROBE_RAMP.name, tipName: PHOTOSHOP_PROBE_TIP.name }, log);
     const finished = new Date(), total = (finished.getTime() - started.getTime()) / 1000;

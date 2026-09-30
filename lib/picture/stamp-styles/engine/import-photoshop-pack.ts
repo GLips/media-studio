@@ -5,16 +5,20 @@
 // Photoshop files carry no rendered previews, so the manifest's previews stay empty: Photoshop's own renders come
 // from the capture rig (vid-100).
 //
-// A computed tip (and a bristle or erodible one, read as round) is drawn by Photoshop's profile at its hardness and
-// diameter, over the span its soft edge reaches, and shared by every brush alike, as tips/round-<hardness>-<diameter>.png; a sampled tip is written once per file and flip, as the first brush
-// that uses it names it; a pattern likewise, once per polarity.
+// A computed tip (and a bristle, erodible or airbrush one, read as round) is drawn by Photoshop's profile at its
+// hardness and diameter, over the span its soft edge reaches, and shared by every brush alike, as
+// tips/round-<hardness>-<diameter>.png; an erodible tip's height map is written beside it, once per map, as
+// tips/<brush>.heights.f32. A sampled tip is written once per file and flip, as the first brush that uses it names
+// it; a pattern likewise, once per polarity. A brush whose tip class the studio doesn't read is skipped.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { photoshopPatternNegated, photoshopSampleWithBorder, photoshopTipImage, type PhotoshopBrushSource } from '#lib/picture/photoshop-brushes/models/photoshop-brush.ts';
+import {
+  photoshopPatternNegated, photoshopSampleWithBorder, photoshopTipImage, type PhotoshopBrushSource, type PhotoshopTipAsset,
+} from '#lib/picture/photoshop-brushes/models/photoshop-brush.ts';
 import { drawPhotoshopComputedTip } from '#lib/picture/photoshop-brushes/models/photoshop-computed-tip.ts';
-import type { PhotoshopDescriptor } from '#lib/picture/photoshop-brushes/models/photoshop-descriptor.ts';
-import { readPhotoshopPreset, type PhotoshopPresetTip } from '#lib/picture/photoshop-brushes/models/photoshop-preset.ts';
+import { photoshopTagged, type PhotoshopDescriptor, type PhotoshopValue } from '#lib/picture/photoshop-brushes/models/photoshop-descriptor.ts';
+import { readPhotoshopPreset, type PhotoshopKnownTip } from '#lib/picture/photoshop-brushes/models/photoshop-preset.ts';
 import type { StampBrushAsset, StampBrushSupportNote } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { readStampPaintPack, STAMP_PAINT_ASSETS_VERSION, STAMP_PAINT_PACK_MANIFEST, type PhotoshopPackBrush, type StampPaintPack } from '../models/stamp-paint-pack.ts';
 import { displayName, readPhotoshopAbr, readPhotoshopTpl, type PhotoshopBrushFile } from '#lib/picture/photoshop-brushes/engine/photoshop-abr.ts';
@@ -43,9 +47,20 @@ function readBrushFiles(archive: string): { name: string; file: PhotoshopBrushFi
   }
 }
 
-/** A preset for the manifest: its bristle and erodible tips' height maps dropped, which only a simulation reads. */
+/** A preset for the manifest: its erodible tips' height maps dropped, as each is written beside the tips (erodibleHeights). */
 function sourcePreset(preset: PhotoshopDescriptor): PhotoshopDescriptor {
   return JSON.parse(JSON.stringify(preset, (key, value) => (key === 'dtipsErodibleTipHeightMap' ? undefined : value)));
+}
+
+const descriptorOf = (v: PhotoshopValue | undefined) => (v && typeof v === 'object' && !Array.isArray(v) && '_class' in v ? v : undefined);
+
+/** An erodible tip's height map as the .abr holds it, `gridSize`² little-endian float32s; `at` names the brush. */
+function erodibleHeights(tip: PhotoshopDescriptor | undefined, gridSize: number, at: string): Buffer {
+  const raw = photoshopTagged(tip?.dtipsErodibleTipHeightMap);
+  if (!raw || !('_raw' in raw)) throw new Error(`brushes import: ${at}'s erodible tip holds no height map`);
+  const bytes = Buffer.from(raw.hex, 'hex');
+  if (bytes.length !== gridSize * gridSize * 4) throw new Error(`brushes import: ${at}'s erodible height map is ${bytes.length} bytes, not a ${gridSize}² grid of floats`);
+  return bytes;
 }
 
 /** Imports a Photoshop pack, replacing what an import writes only once it has succeeded (replaceStampPaintPack). */
@@ -59,12 +74,12 @@ function writePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, 
 
   const brushes: Record<string, PhotoshopPackBrush<PhotoshopDescriptor>> = {}, skipped: Record<string, StampBrushSupportNote[]> = {};
   const files = new Set<string>(), written = new Map<string, StampBrushAsset>();
-  /** An image written once under `key`, at a file named from `slug` that no other image has taken. */
-  const writeOnce = (key: string, folder: string, slug: string, body: (out: string) => void): StampBrushAsset => {
+  /** A file written once under `key`, at a name from `slug` and `extension` that no other file has taken. */
+  const writeOnce = (key: string, folder: string, slug: string, body: (out: string) => void, extension = 'png'): StampBrushAsset => {
     const known = written.get(key);
     if (known) return known;
-    let file = `${folder}/${slug}.png`;
-    for (let n = 2; files.has(file); n++) file = `${folder}/${slug}-${n}.png`;
+    let file = `${folder}/${slug}.${extension}`;
+    for (let n = 2; files.has(file); n++) file = `${folder}/${slug}-${n}.${extension}`;
     body(join(dir, file));
     files.add(file);
     const asset = { style, pack, file };
@@ -73,23 +88,24 @@ function writePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, 
   };
 
   for (const { name: fileName, file } of brushFiles) {
-    /** A sampled tip's own size, which its centre is read from, keyed as the source keys it; nothing for a computed tip. */
-    const sampleSize = (key: 'tipSample' | 'dualTipSample', tip: PhotoshopPresetTip | undefined) => {
-      const image = tip && photoshopTipImage(tip), sample = image?.kind === 'sampled' ? file.tips.get(image.id) : undefined;
-      return sample ? { [key]: { width: sample.width, height: sample.height } } : {};
-    };
-    const tipAsset = (tip: PhotoshopPresetTip, slug: string): StampBrushAsset | undefined => {
+    /** Where `tip` (its descriptor `raw`) lands among the pack's files; nothing for a sample the file lacks. */
+    const tipAsset = (tip: PhotoshopKnownTip, raw: PhotoshopDescriptor | undefined, slug: string, at: string): PhotoshopTipAsset | undefined => {
       const image = photoshopTipImage(tip);
-      if (image.kind === 'round') {
-        const hardness = Math.round(image.hardness * 100), key = `${hardness}-${stampPackSlug(String(image.diameter))}`;
-        return writeOnce(`round|${key}`, 'tips', `round-${key}`, (out) => {
-          const { size, pixels } = drawPhotoshopComputedTip(image.diameter, image.hardness, image.span, STAMP_PACK_TIP_MAX);
-          writeStampPackGray({ width: size, height: size, pixels }, STAMP_PACK_TIP_MAX, out);
-        });
+      if (image.kind === 'sampled') {
+        const sample = file.tips.get(image.id);
+        if (!sample) return undefined;
+        const written = writeOnce(`${fileName}|${image.id}|${image.flipX}|${image.flipY}`, 'tips', slug, (out) => writeStampPackGray(photoshopSampleWithBorder(sample), STAMP_PACK_TIP_MAX, out, { negate: true, flipX: image.flipX, flipY: image.flipY }));
+        return { kind: 'sampled', image: written, sample: { width: sample.width, height: sample.height } };
       }
-      const sample = file.tips.get(image.id);
-      if (!sample) return undefined;
-      return writeOnce(`${fileName}|${image.id}|${image.flipX}|${image.flipY}`, 'tips', slug, (out) => writeStampPackGray(photoshopSampleWithBorder(sample), STAMP_PACK_TIP_MAX, out, { negate: true, flipX: image.flipX, flipY: image.flipY }));
+      const hardness = Math.round(image.hardness * 100), key = `${hardness}-${stampPackSlug(String(image.diameter))}`;
+      const drawing = writeOnce(`round|${key}`, 'tips', `round-${key}`, (out) => {
+        const { size, pixels } = drawPhotoshopComputedTip(image.diameter, image.hardness, image.span, STAMP_PACK_TIP_MAX);
+        writeStampPackGray({ width: size, height: size, pixels }, STAMP_PACK_TIP_MAX, out);
+      });
+      if (tip.kind !== 'erodible') return { kind: 'round', image: drawing };
+      const heights = erodibleHeights(raw, tip.gridSize, at);
+      const heightMap = writeOnce(`heights|${heights.toString('hex')}`, 'tips', `${slug}.heights`, (out) => writeFileSync(out, heights), 'f32');
+      return { kind: 'erodible', image: drawing, heightMap };
     };
 
     for (const { descriptor: preset, group } of file.presets) {
@@ -100,17 +116,17 @@ function writePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, 
       const slug = stampPackSlug(name) || `brush-${Object.keys(brushes).length + 1}`;
 
       const typed = readPhotoshopPreset(preset), { tip } = typed, dualTip = typed.dual?.tip;
-      const tipImage = tipAsset(tip, slug);
-      if (!tipImage) {
-        skipped[name] = [{ level: 'unsupported', setting: 'tip.sampledData', detail: `the tip is a sample ${fileName} doesn't hold; not imported` }];
+      if (tip.kind === 'unsupported') {
+        skipped[name] = [{ level: 'unsupported', setting: 'tip.kind', detail: `the tip is a ${tip.classId}, which the studio doesn't read; not imported` }];
         continue;
       }
-      const source: PhotoshopBrushSource<PhotoshopDescriptor> = {
-        preset: sourcePreset(preset),
-        tip: tipImage,
-        ...sampleSize('tipSample', tip),
-        ...(dualTip && { dualTip: tipAsset(dualTip, `${slug}.dual`), ...sampleSize('dualTipSample', dualTip) }),
-      };
+      const tipImage = tipAsset(tip, descriptorOf(preset.Brsh), slug, name);
+      if (!tipImage) {
+        skipped[name] = [{ level: 'unsupported', setting: 'tip.sample', detail: `the tip is a sample ${fileName} doesn't hold; not imported` }];
+        continue;
+      }
+      const dualImage = dualTip && dualTip.kind !== 'unsupported' ? tipAsset(dualTip, descriptorOf(descriptorOf(preset.dualBrush)?.Brsh), `${slug}.dual`, `${name}'s dual`) : undefined;
+      const source: PhotoshopBrushSource<PhotoshopDescriptor> = { preset: sourcePreset(preset), tip: tipImage, ...(dualImage && { dualTip: dualImage }) };
       const patternId = typed.texture?.pattern?.id ?? '', pattern = typed.texture && file.patterns.get(patternId);
       if (pattern) {
         const negate = photoshopPatternNegated(typed);

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
-import { photoshopAbrFixture } from '#lib/picture/photoshop-brushes/engine/photoshop-abr-fixture.ts';
+import { PHOTOSHOP_FIXTURE_ERODIBLE_HEIGHTS, photoshopAbrFixture } from '#lib/picture/photoshop-brushes/engine/photoshop-abr-fixture.ts';
 import { writePhotoshopAbr } from '#lib/picture/photoshop-brushes/engine/photoshop-abr.ts';
 import { readStampPaintPack, resolveStampPaintPackBrushes, stampPaintPackDiameter } from '../models/stamp-paint-pack.ts';
 import { importStampPaintPack } from './import-stamp-paint-pack.ts';
@@ -22,8 +22,8 @@ test('importing an .abr writes the same pack layout a Procreate pack imports to,
     assert.deepEqual(readdirSync(packDir).sort(), ['fidelity', 'grains', 'manifest.json', 'reference', 'tips']);
     assert.equal(readFileSync(join(packDir, 'reference/manifest.json'), 'utf8'), '{}');
     assert.deepEqual(readStampPaintPack(JSON.parse(readFileSync(join(packDir, 'manifest.json'), 'utf8'))), manifest);
-    assert.deepEqual(Object.keys(manifest.brushes), ['Chalk', 'Chalk (Wet)']);
-    assert.deepEqual(manifest.files, ['grains/stripes.png', 'tips/chalk.png', 'tips/round-0-30.png']);
+    assert.deepEqual(Object.keys(manifest.brushes), ['Chalk', 'Chalk (Wet)', 'Pencil']);
+    assert.deepEqual(manifest.files, ['grains/stripes.png', 'tips/chalk.png', 'tips/pencil.heights.f32', 'tips/round-0-30.png', 'tips/round-80-12.png']);
     for (const file of manifest.files) assert.ok(existsSync(join(packDir, file)), file);
     assert.deepEqual(manifest.previews, {});
     assert.deepEqual([stampPaintPackDiameter(manifest, 'Chalk'), stampPaintPackDiameter(manifest, 'Chalk (Wet)')], [48, 30]);
@@ -32,5 +32,27 @@ test('importing an .abr writes the same pack layout a Procreate pack imports to,
     assert.deepEqual(chalk.grain?.blend, { family: 'texture', mode: 'height' });
     assert.equal(chalk.grain?.scale, 4 / 48);
     assert.equal(brushes['Chalk (Wet)'].wetMix?.load, 1);
+    // An erodible tip paints as round; its height map, which only a simulation of its wear reads, sits beside it.
+    const pencil = manifest.brushes.Pencil.tip;
+    assert.ok(pencil.kind === 'erodible');
+    assert.deepEqual(readFileSync(join(packDir, pencil.heightMap.file)), PHOTOSHOP_FIXTURE_ERODIBLE_HEIGHTS);
+    assert.equal(brushes.Pencil.tip.image.file, 'tips/round-80-12.png');
+  });
+});
+
+test("a manifest is read whole: a field of the wrong shape anywhere, or a tip's image of another kind than its tip, is refused", () => {
+  withStudioTemp('abr-manifest', (dir) => {
+    writeFileSync(join(dir, 'chalk.abr'), writePhotoshopAbr(photoshopAbrFixture()));
+    const { dir: packDir } = importStampPaintPack({ archive: join(dir, 'chalk.abr'), stylesDir: join(dir, 'styles'), style: 'sketch', pack: 'chalk' });
+    const stored = () => JSON.parse(readFileSync(join(packDir, 'manifest.json'), 'utf8'));
+    const refused = (change: (m: ReturnType<typeof stored>) => void, problem: RegExp) => {
+      const m = stored();
+      change(m);
+      assert.throws(() => readStampPaintPack(m), problem);
+    };
+    refused((m) => void (m.previews.bad = 42), /previews\.bad isn't an object/);
+    refused((m) => void (m.brushes.Chalk.pattern.width = 'wrong'), /brushes\.Chalk\.pattern\.width/);
+    refused((m) => void (m.brushes.Chalk.tip.kind = 'round'), /brushes\.Chalk\.tip\.kind is "round", not one of sampled/);
+    refused((m) => void (m.brushes.Pencil.preset.Brsh.Dmtr = { _unit: '#Pxl' }), /brushes\.Pencil\.preset\.Brsh\.Dmtr isn't a descriptor value/);
   });
 });

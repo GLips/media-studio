@@ -51,7 +51,9 @@ only the cleanup, never the capture. `manifest.json` holds:
 - the Photoshop version, and its colour settings: RGB blend gamma off means paint mixes on gamma-encoded values, and
   dither on means 8-bit dithering (the sheets are 16-bit, so they have none);
 - the document: RGB, 16 bits, 72 dpi, transparent, one layer;
-- per item, the settings asked for and the tool options read back after applying them, with any mismatch named;
+- per item, the tool options read back after applying it, with any mismatch named. A probe is keyed by its name, its
+  preset being `photoshopProbes()`'s, and the reference renderer scores it only while its read-back holds that
+  preset; a pack brush's item carries its preset;
 - every sheet's file and every cell's box, mark, ground, colour, pressure and stroke points;
 - the times (total, painting, and per cell, with launch and quit counted);
 - what isn't captured (`PHOTOSHOP_NOT_CAPTURED`): build-up, since a stroked path spends no time under a held pen,

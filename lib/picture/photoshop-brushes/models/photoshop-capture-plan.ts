@@ -10,7 +10,7 @@
 // Coordinates are sheet pixels; at 72 dpi Photoshop's points are pixels too.
 
 import { procreatePreviewStrokePath } from '#lib/picture/procreate-brushes/models/procreate-preview-stroke.ts';
-import { PHOTOSHOP_PROBE_INK, type PhotoshopBrushSettings, type PhotoshopGround, type PhotoshopMark, type PhotoshopMarkKind, type PhotoshopProbe } from './photoshop-probes.ts';
+import { PHOTOSHOP_PROBE_INK, type PhotoshopGround, type PhotoshopMark, type PhotoshopMarkKind, type PhotoshopProbe } from './photoshop-probes.ts';
 
 export const PHOTOSHOP_SHEET_SIZE = 4096;
 const CELL_UNIT = 256;
@@ -115,7 +115,7 @@ function layOutSheets(items: readonly LayoutItem[], group: PhotoshopSheetGroup, 
 export function planPhotoshopProbeCapture(probes: readonly PhotoshopProbe[], { only, repeat = [] }: { only?: readonly string[]; repeat?: readonly string[] } = {}): PhotoshopCaptureSheet[] {
   const byName = new Map(probes.map((p) => [p.name, p]));
   for (const name of [...(only ?? []), ...repeat]) if (!byName.has(name)) throw new Error(`capture plan: no probe named ${JSON.stringify(name)}`);
-  const item = (p: PhotoshopProbe): LayoutItem => ({ key: p.name, marks: p.marks, cell: PROBE_CELL, diameter: p.settings.tip.diameter, copies: p.copies ?? 1 });
+  const item = (p: PhotoshopProbe): LayoutItem => ({ key: p.name, marks: p.marks, cell: PROBE_CELL, diameter: p.preset.tip.geometry.diameter, copies: p.copies ?? 1 });
   const chosen = probes.filter((p) => !only || only.includes(p.name));
   const repeated = repeat.map((name) => item(byName.get(name)!));
   return [
@@ -186,10 +186,12 @@ export type PhotoshopCaptureManifest = {
   assets?: { ramp: { name: string; width: number; height: number; file: string }; tip: { name: string; size: number; file: string } };
   /** For a reference run: the .abr its brushes came from. */
   source?: { abr: string; pack: string; style: string };
-  /** Each item's requested settings (a probe's) or preset (a pack brush's), and the tool options Photoshop read back. */
+  /**
+   * Each item, a probe by its name (its preset is photoshopProbes()'s, which the read-back is held to) or a pack
+   * brush with its preset, and the tool options Photoshop read back.
+   */
   items: Record<string, {
     reads?: string;
-    settings?: PhotoshopBrushSettings;
     preset?: PhotoshopReferencePreset;
     applied: PhotoshopAppliedOptions;
     /** A probe's settings that its read-back doesn't hold (photoshopPresetMismatches, photoshop-brushes/models/photoshop-preset.ts); absent when all took. */

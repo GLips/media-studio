@@ -1,5 +1,5 @@
 // photoshop-probe-reference.ts: each Photoshop probe capture against the reference renderer's render of the same probe
-// (vid-97). A probe goes through the importer as an .abr preset would (photoshop-probe-preset.ts), its marks are
+// (vid-97). A probe's preset goes through the importer as an .abr's would (photoshop-brush.ts), its marks are
 // placed as a painting's strokes are, and the reference lays them; each cell's difference is split among the stages
 // that own it (stamp-reference-score.ts).
 //
@@ -10,11 +10,11 @@
 import { join } from 'node:path';
 import type { PhotoshopCaptureCell, PhotoshopCaptureSheet } from '#lib/picture/photoshop-brushes/models/photoshop-capture-plan.ts';
 import { cropPhotoshopCell } from '#lib/picture/photoshop-brushes/models/photoshop-capture-cells.ts';
-import { photoshopProbePreset } from '#lib/picture/photoshop-brushes/models/photoshop-probe-preset.ts';
 import { PHOTOSHOP_PROBE_RAMP, PHOTOSHOP_PROBE_TIP, photoshopProbeRampValue, photoshopProbeTipPaint, type PhotoshopProbe } from '#lib/picture/photoshop-brushes/models/photoshop-probes.ts';
 import { readPhotoshopSheet } from '#lib/picture/photoshop-brushes/engine/photoshop-capture.ts';
-import { normalizePhotoshopBrush, PHOTOSHOP_SAMPLE_BORDER, photoshopPatternNegated, photoshopTipImage, type PhotoshopTipImage } from '#lib/picture/photoshop-brushes/models/photoshop-brush.ts';
+import { normalizePhotoshopBrush, PHOTOSHOP_SAMPLE_BORDER, photoshopPatternNegated, photoshopTipImage, type PhotoshopTipAsset, type PhotoshopTipImage } from '#lib/picture/photoshop-brushes/models/photoshop-brush.ts';
 import { drawPhotoshopComputedTip } from '#lib/picture/photoshop-brushes/models/photoshop-computed-tip.ts';
+import type { PhotoshopKnownTip } from '#lib/picture/photoshop-brushes/models/photoshop-preset.ts';
 import { bindStampBrushImages, type StampBrushAsset } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { STAMP_PACK_TIP_MAX } from '#lib/picture/stamp-styles/engine/stamp-paint-pack-files.ts';
 import { placeStrokeStamps } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
@@ -45,34 +45,49 @@ function rampImage(negated: boolean): StampReferenceImage {
   return { width, height, paint };
 }
 
+/** A probe tip's image as the importer files it; Photoshop trims the rig's sample to its paint, `native` square. */
+const probeTipAsset = (tip: PhotoshopKnownTip, file: string): PhotoshopTipAsset => (tip.kind === 'sampled'
+  ? { kind: 'sampled', image: asset(file), sample: { width: PHOTOSHOP_PROBE_TIP.native, height: PHOTOSHOP_PROBE_TIP.native } }
+  : { kind: 'round', image: asset(file) });
+
+/** A probe's dual tip, when it has one the studio reads. */
+const probeDualTip = ({ preset }: PhotoshopProbe) => (preset.dual && preset.dual.tip.kind !== 'unsupported' ? preset.dual.tip : undefined);
+
 /** A probe as the importer reads it, with its images. */
 export function photoshopProbeReferenceBrush(probe: PhotoshopProbe) {
-  const preset = photoshopProbePreset(probe.name, probe.settings);
-  const dualTip = probe.settings.dual && photoshopTipImage(preset.dual!.tip);
+  const { preset } = probe, dualTip = probeDualTip(probe);
   const { brush, support } = normalizePhotoshopBrush(probe.name, {
     preset,
-    tip: asset('tip'),
-    // Photoshop trims the rig's sample to its paint, `native` square.
-    ...(probe.settings.tip.kind === 'sampled' && { tipSample: { width: PHOTOSHOP_PROBE_TIP.native, height: PHOTOSHOP_PROBE_TIP.native } }),
-    ...(dualTip && { dualTip: asset('dual-tip') }),
-    ...(probe.settings.texture && { pattern: { image: asset('ramp'), width: PHOTOSHOP_PROBE_RAMP.width } }),
+    tip: probeTipAsset(preset.tip, 'tip'),
+    ...(dualTip && { dualTip: probeTipAsset(dualTip, 'dual-tip') }),
+    ...(preset.texture && { pattern: { image: asset('ramp'), width: PHOTOSHOP_PROBE_RAMP.width } }),
   });
   // Each image drawn from the preset as the rig drew it, by the name it was given above.
-  const images = {
+  const images: Record<string, () => ReturnType<typeof stampReferenceMips>> = {
     tip: () => stampReferenceMips(tipImage(photoshopTipImage(preset.tip))),
-    'dual-tip': () => stampReferenceMips(tipImage(dualTip!)),
+    ...(dualTip && { 'dual-tip': () => stampReferenceMips(tipImage(photoshopTipImage(dualTip))) }),
     ramp: () => stampReferenceMips(rampImage(photoshopPatternNegated(preset))),
   };
-  return { brush: bindStampBrushImages(brush, ({ file }) => images[file as keyof typeof images]()), support };
+  return { brush: bindStampBrushImages(brush, ({ file }) => images[file]()), support };
+}
+
+/**
+ * Whether a probe paints at random: a shape jitter, the dual's scatter, or Scatter on at all, which a count needs
+ * even with no scatter (those count probes are compared by statistics as the random ones are).
+ */
+function randomProbe({ preset }: PhotoshopProbe): boolean {
+  const shape = preset.tipDynamics;
+  return preset.scatter !== undefined || [shape?.size, shape?.angle, shape?.roundness].some((d) => (d?.jitter ?? 0) > 0) || (preset.dual?.scatter.scatter.jitter ?? 0) > 0;
 }
 
 /** Why a cell isn't scored, or null when it is. */
-function skipped(cell: PhotoshopCaptureCell, probe: PhotoshopProbe): string | null {
+function skipped(cell: PhotoshopCaptureCell, probe: PhotoshopProbe, untaken: ReadonlySet<string>): string | null {
+  if (untaken.has(probe.name)) return 'painted from another preset';
   if (cell.copy > 1) return 'a further copy';
   if (cell.ground !== 'clear') return 'on a ground';
   if (cell.pressure !== undefined) return 'under a Brush Pose';
   if (cell.simulatePressure) return 'simulated pressure';
-  if (probe.settings.jitter || probe.settings.dual?.scatter) return 'random';
+  if (randomProbe(probe)) return 'random';
   return null;
 }
 
@@ -88,13 +103,13 @@ export type PhotoshopProbeCellScore = { probe: string; cell: string; score: Stam
 export function renderPhotoshopProbeCell(probe: PhotoshopProbe, cell: PhotoshopCaptureCell, { arrangement, pad = 0 }: { arrangement?: StampReferenceArrangement; pad?: number } = {}) {
   const { brush } = photoshopProbeReferenceBrush(probe);
   const box = { x: -pad, y: -pad, width: cell.box.width + 2 * pad, height: cell.box.height + 2 * pad };
-  const diameter = probe.settings.tip.diameter;
+  const diameter = probe.preset.tip.geometry.diameter;
   // Each stroke finishes and lays over the ones before it, as separate strokes do.
   const deposits = cell.strokes.map((stroke, s) => {
     const path = stroke.map(([x, y]) => ({ x: x - cell.box.x, y: y - cell.box.y }));
     const seed = `${probe.name}|${s}`;
     return renderStampReferenceDeposit({
-      brush, diameter, opacity: byte(probe.settings.opacity / 100), box, arrangement,
+      brush, diameter, opacity: byte(probe.preset.tool.opacity / 100), box, arrangement,
       stamps: placeStrokeStamps(path, brush, diameter, seed),
       dualStamps: brush.dual ? placeStrokeStamps(path, brush.dual, diameter * brush.dual.scale, `${seed}|dual`) : [],
       // The pattern is fixed to the sheet, and cells start on whole tiles.
@@ -111,7 +126,10 @@ export function renderPhotoshopProbeCell(probe: PhotoshopProbe, cell: PhotoshopC
 }
 
 /** How far past its box a probe's paint can reach: a soft tip's tail runs out to about 0.85 of its diameter. */
-const probeReach = (probe: PhotoshopProbe) => Math.ceil(probe.settings.tip.diameter * Math.max(1, (probe.settings.dual?.tip.diameter ?? 0) / probe.settings.tip.diameter) * 1.2) + 2;
+const probeReach = (probe: PhotoshopProbe) => {
+  const diameter = probe.preset.tip.geometry.diameter;
+  return Math.ceil(diameter * Math.max(1, (probeDualTip(probe)?.geometry.diameter ?? 0) / diameter) * 1.2) + 2;
+};
 
 /** The rows of `buffer` (`width` wide, starting at `from` in it) that fall in `box`, as the box's own array. */
 function cropBuffer(buffer: Float32Array, width: number, from: { x: number; y: number }, box: { width: number; height: number }) {
@@ -124,9 +142,13 @@ function cropBuffer(buffer: Float32Array, width: number, from: { x: number; y: n
  * Scores every scorable cell of `sheets` (a run's, in `dir`) whose probe is in `only` (all when left out). Every cell
  * of a sheet is painted, in the order the rig painted them, as a soft tip's tail reaches into the cells beside it;
  * `probes` must hold every item the sheets name. A cell painted over a ground, under a pose or at random is painted
- * as near as the reference can, for what it spills, but not scored.
+ * as near as the reference can, for what it spills, but not scored; so is a probe in `untaken`, one Photoshop didn't
+ * set as the probe asks.
  */
-export function scorePhotoshopProbeRun({ dir, sheets, probes, only, arrangement }: { dir: string; sheets: readonly (PhotoshopCaptureSheet & { file: string })[]; probes: readonly PhotoshopProbe[]; only?: readonly string[]; arrangement?: StampReferenceArrangement }) {
+export function scorePhotoshopProbeRun({ dir, sheets, probes, untaken, only, arrangement }: {
+  dir: string; sheets: readonly (PhotoshopCaptureSheet & { file: string })[]; probes: readonly PhotoshopProbe[]; untaken: ReadonlySet<string>; only?: readonly string[];
+  arrangement?: StampReferenceArrangement;
+}) {
   const byName = new Map(probes.map((p) => [p.name, p]));
   const scores: PhotoshopProbeCellScore[] = [];
   const skips = new Map<string, number>();
@@ -138,7 +160,7 @@ export function scorePhotoshopProbeRun({ dir, sheets, probes, only, arrangement 
     for (const cell of sheet.cells) {
       const probe = byName.get(cell.item);
       if (!probe) throw new Error(`stamp reference: ${sheet.name} paints ${JSON.stringify(cell.item)}, which isn't among the probes`);
-      const why = skipped(cell, probe), scored = !why && (!only || only.includes(cell.item));
+      const why = skipped(cell, probe, untaken), scored = !why && (!only || only.includes(cell.item));
       if (why && (!only || only.includes(cell.item))) skips.set(why, (skips.get(why) ?? 0) + 1);
       if (cell.groundBox) {
         const g = cell.groundBox;

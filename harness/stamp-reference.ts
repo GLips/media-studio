@@ -5,6 +5,8 @@ import { defineCommand } from 'citty';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { PhotoshopCaptureManifest } from '#lib/picture/photoshop-brushes/models/photoshop-capture-plan.ts';
+import { photoshopPresetMismatches } from '#lib/picture/photoshop-brushes/models/photoshop-preset.ts';
+import { photoshopProbes } from '#lib/picture/photoshop-brushes/models/photoshop-probes.ts';
 import { scorePhotoshopProbeRun } from '#lib/picture/stamp-reference/engine/photoshop-probe-reference.ts';
 import type { StampResolveStage } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
 import { runHarnessCommand } from './run-harness-command.ts';
@@ -24,9 +26,23 @@ const probesCommand = defineCommand({
     const dir = resolve(args.run);
     const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as PhotoshopCaptureManifest;
     const only = listArg(args.only);
-    const probes = Object.entries(manifest.items).filter(([, item]) => item.settings).map(([name, item]) => ({ name, reads: item.reads ?? '', settings: item.settings!, marks: [] }));
+    if (manifest.kind !== 'probes') throw new Error(`stamp reference: ${dir} is a ${manifest.kind} run, not a probe run`);
+    // A run's items are probes by name. One Photoshop didn't set as the probe now asks (its read-back differs) was
+    // painted from another preset, so its cells aren't scored.
+    const defined = new Map(photoshopProbes().map((p) => [p.name, p]));
+    const untaken = new Set<string>();
+    const probes = Object.entries(manifest.items).map(([name, item]) => {
+      const probe = defined.get(name);
+      if (!probe) throw new Error(`stamp reference: ${dir} painted probe ${JSON.stringify(name)}, which photoshopProbes() no longer defines`);
+      const differs = photoshopPresetMismatches(probe.preset, item.applied);
+      if (differs.length) {
+        untaken.add(name);
+        console.error(`stamp reference: ${JSON.stringify(name)} was painted from another preset, not scored: ${differs.join('; ')}`);
+      }
+      return probe;
+    });
     const arrangement = { order: listArg(args.order) as StampResolveStage[] | undefined, opacity: args.opacity as 'last' | 'inBuild' | undefined };
-    const { scores, skipped } = scorePhotoshopProbeRun({ dir, sheets: manifest.sheets, probes, only, arrangement });
+    const { scores, skipped } = scorePhotoshopProbeRun({ dir, sheets: manifest.sheets, probes, untaken, only, arrangement });
     if (args.json) {
       console.log(JSON.stringify({ arrangement, scores, skipped }, null, 2));
       return;
