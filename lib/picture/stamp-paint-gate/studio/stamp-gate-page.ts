@@ -1,7 +1,8 @@
 // stamp-gate-page.ts: the GPU gate's browser side, run by engine/stamp-gate.ts through withBrowserModulePage. It runs
 // the formula grids (stamp-gate-formulas.ts) on the renderer's own WGSL, paints the gate's paintings
 // (stamp-gate-paintings.ts) with the studio's renderer, holds a traced resolve to the frame it draws, and paints each
-// wash case, reading its layer back for the properties it's held to (stamp-gate-washes.ts). Paintings are built here,
+// wash case, reading its layer back for the properties it's held to (stamp-gate-washes.ts), and animates the
+// animation cases (stamp-gate-animation.ts). Paintings are built here,
 // as a compiled painting's typed arrays don't survive the trip from Node.
 
 import { PAINT_KUBELKA_MUNK_WGSL } from '#lib/picture/paint/models/paint-kubelka-munk.ts';
@@ -16,6 +17,10 @@ import { STAMP_GRID_AT_WGSL, STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL } fr
 import { createStampPaintDevice } from '#lib/picture/stamp-paint/studio/stamp-paint-gpu.ts';
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
+import {
+  checkStampGateBoil, checkStampGateDrift, checkStampGateSunset, STAMP_GATE_ANIMATION_FPS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_DRIFT_FRAMES,
+  stampGateBoilPainting, stampGateDriftPainting, stampGateSunsetPainting,
+} from '../models/stamp-gate-animation.ts';
 import { stampGatePrivatePainting, type StampGatePrivateCase } from '../models/stamp-gate-private-cases.ts';
 import { stampGateFrameDifference, stampGateFramePasses, type StampGateFrameDifference } from '../models/stamp-gate-frames.ts';
 import { checkStampGateConserved, checkStampGateLifted, stampGateLastGroupPigments, stampGateWashCase, type StampGateWashCheck } from '../models/stamp-gate-washes.ts';
@@ -100,7 +105,7 @@ function imageUrl({ size, pixels }: StampGateImage): string {
 async function withGateRenderer<T>(gate: Omit<StampGatePainting, 'images'>, url: (file: string) => string, use: (renderer: StampPaintRenderer, frame: () => Uint8ClampedArray) => Promise<T>): Promise<T> {
   const { painting, paper, mixing, width, height } = gate;
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
-  const renderer = await createStampPaintRenderer(canvas, painting, paper, mixing, width, height, ({ file }) => url(file));
+  const renderer = await createStampPaintRenderer(canvas, painting, paper, mixing, width, height, ({ file }) => url(file), { fps: STAMP_GATE_ANIMATION_FPS });
   const frame = () => {
     const context = Object.assign(document.createElement('canvas'), { width, height }).getContext('2d')!;
     context.drawImage(canvas, 0, 0);
@@ -202,6 +207,35 @@ async function checkStampGateWash(id: string): Promise<StampGateWashCheck[]> {
     : checkStampGateLifted(id, pigments, washCase.pigments, painted.layer, without)];
 }
 
+/** Frame `k`'s time at the animations' frame rate. */
+const frameAt = (k: number) => k / STAMP_GATE_ANIMATION_FPS;
+
+/** Animation case `id` (stamp-gate-animation.ts), drawn frame by frame on one renderer and held to its property. */
+async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> {
+  if (id === 'animation/drift') {
+    const gate = stampGateDriftPainting();
+    const frames = await withGateRenderer(gate, drawnImages(gate), (renderer, frame) => STAMP_GATE_DRIFT_FRAMES.reduce<Promise<{ frame: number; rgba: Uint8ClampedArray }[]>>(
+      async (done, k) => [...await done, { frame: k, rgba: await drawn(renderer, frame, frameAt(k)) }], Promise.resolve([])));
+    return checkStampGateDrift(frames, gate.width);
+  }
+  if (id === 'animation/boil') {
+    const gate = stampGateBoilPainting();
+    return withGateRenderer(gate, drawnImages(gate), async (renderer, frame) => {
+      const frames = await [0, 1, 2, 3, 4, 5].reduce<Promise<Uint8ClampedArray[]>>(async (done, k) => [...await done, await drawn(renderer, frame, frameAt(k))], Promise.resolve([]));
+      return checkStampGateBoil(frames, await drawn(renderer, frame, 0), gate.width, gate.height);
+    });
+  }
+  if (id === 'animation/sunset') {
+    const traced = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), async (renderer) => {
+      const deposits = gate.painting.groups.flatMap((group) => group.passes.flatMap((pass) => pass.deposits));
+      const traces = await renderer.trace(gate.t, deposits.map((deposit) => ({ deposit, crop: { x: 0, y: 0, w: gate.width, h: gate.height } })));
+      return traces.map((trace) => trace.coverage);
+    });
+    return checkStampGateSunset(await traced(stampGateSunsetPainting('day')), await traced(stampGateSunsetPainting('dusk')));
+  }
+  throw new Error(`stamp gate: no animation case ${JSON.stringify(id)}; the gate animates ${STAMP_GATE_ANIMATION_IDS.join(', ')}`);
+}
+
 /** The GPU the gate draws on, as a baseline records it. */
 async function stampGateAdapter(): Promise<string> {
   const adapter = await navigator.gpu.requestAdapter();
@@ -210,4 +244,4 @@ async function stampGateAdapter(): Promise<string> {
   return [vendor, architecture, device, description].filter(Boolean).join(' ');
 }
 
-Object.assign(globalThis, { runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, stampGateAdapter });
+Object.assign(globalThis, { runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, checkStampGateAnimation, stampGateAdapter });
