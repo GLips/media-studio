@@ -3,12 +3,12 @@
 // makes of that. Placement (stamp-placement.ts) asks for a target's share or turn and never learns where a dynamic
 // came from: an importer resolves every source (a Photoshop tool's pressure buttons, a pose) into the brush.
 //
-// A sensor is read at the step, alike for its every stamp (pressure, direction), or at the stamp (random, from its
-// own draws). Size's step share sets the next step's spacing before a stamp's chance shrinks it, so the two are
+// A sensor is read at the step, alike for its every stamp (pressure, fade, direction), or at the stamp (random, from
+// its own draws). Size's step share sets the next step's spacing before a stamp's chance shrinks it, so the two are
 // asked for apart.
 
 import type {
-  StampAngleResponse, StampDynamics, StampResponseCurve, StampScaleResponse, StampScaleTarget, StampSensorParams,
+  StampAngleResponse, StampDynamics, StampResponseCurve, StampScaleResponse, StampScaleTarget, StampSensorParams, StampTargetSensors,
 } from './stamp-brush.ts';
 
 /**
@@ -18,6 +18,7 @@ import type {
  */
 export const STAMP_DRAW_SLOTS = [
   'lateral', 'scatterTurn', 'scatterReach', 'size', 'opacity', 'rotation', 'flipX', 'flipY', 'blur', 'flow', 'hue', 'saturation', 'lightness', 'darkness', 'roundness',
+  'grainDepth',
 ] as const;
 export type StampDrawSlot = (typeof STAMP_DRAW_SLOTS)[number];
 export type StampDraws = Record<StampDrawSlot, number>;
@@ -31,7 +32,7 @@ export function drawStampSlots(random: () => number, placing: 'stroke' | 'author
 
 /**
  * The stroke at one spacing step, alike for its stamps. A sensor names the counter it reads: `step` counts steps
- * (scattered stamps share one; Photoshop's fade would count these), `distance` the pixels travelled, lifted gaps
+ * (scattered stamps share one; fade counts these), `distance` the pixels travelled, lifted gaps
  * included (a falloff's input). An authored stamp is its own step, at no distance or heading.
  */
 export type StampStepContext = {
@@ -44,7 +45,7 @@ export type StampStepContext = {
   pressureThrough: number;
   /** The direction of travel here, radians, unwrapped along the stroke so a partial follow never jumps at ±π. */
   heading: number;
-  /** The deposit's first heading, which Photoshop's initial direction (vid-105) holds for the whole stroke. */
+  /** The deposit's first heading, which the initial direction sensor holds for the whole stroke. */
   initialHeading: number;
   step: number;
   distance: number;
@@ -69,32 +70,43 @@ const scaleShare = (response: StampScaleResponse, s: number) => (response.kind =
 /** The turn an angle response gives at `signal`, radians. */
 const angleTurn = (response: StampAngleResponse, signal: number) => (response.kind === 'linear' ? response.amount * signal : stampResponseCurve(response.points, signal));
 
-// Each sensor's signal reads its binding's own parameters (StampSensorParams) beside the context: none has any yet,
-// and a sensor that gains one (fade's steps) reads it here.
+// Each sensor's signal reads its binding's own parameters (StampSensorParams) beside the context.
 
 /** Pressure's signal for a scale target: its shortfall from full, as far as a taper lets it through. */
 const pressureLoss = (_params: StampSensorParams['pressure'], step: StampStepContext) => step.pressureThrough * (1 - step.pressure);
+/**
+ * Fade's signal for a scale target: how far the stroke is through its `steps`, 0 at the first step. Photoshop's fade
+ * control, whose captures step it by the spacing step, scattered stamps alike.
+ */
+const fadeLoss = (params: StampSensorParams['fade'], step: StampStepContext) => (params.steps > 0 ? Math.min(1, step.step / params.steps) : 1);
 /** Random's signal: the draw it's given, the target's own; centred to −1..1 for an angle. */
 const randomDraw = (_params: StampSensorParams['random'], draw: number) => draw;
-/** Direction's signal: the heading, radians. */
-const directionHeading = (_params: StampSensorParams['direction'], step: StampStepContext) => step.heading;
 
-/** The share of `target` its step-read bindings keep (pressure), composed by product. */
+/** The targets a stamp's own draw can drive. */
+type StampRandomTarget = { [T in StampScaleTarget]: 'random' extends StampTargetSensors[T] ? T : never }[StampScaleTarget];
+
+/** The share of `target` its step-read bindings keep (pressure, then fade), composed by product. */
 export function stampStepShare(dynamics: StampDynamics, target: StampScaleTarget, step: StampStepContext): number {
-  const pressure = dynamics[target]?.pressure;
-  return pressure ? scaleShare(pressure, pressureLoss(pressure, step)) : 1;
+  const { pressure, fade } = dynamics[target] ?? {};
+  return (pressure ? scaleShare(pressure, pressureLoss(pressure, step)) : 1) * (fade ? scaleShare(fade, fadeLoss(fade, step)) : 1);
 }
 
 /** The share of a stamp's `target` its stamp-read bindings keep (random: the stamp's own draw for the target). */
-export function stampOwnShare(dynamics: StampDynamics, target: Exclude<StampScaleTarget, 'count'>, stamp: StampContext): number {
+export function stampOwnShare(dynamics: StampDynamics, target: Exclude<StampRandomTarget, 'count'>, stamp: StampContext): number {
   const random = dynamics[target]?.random;
   return random ? scaleShare(random, randomDraw(random, stamp.draws[target])) : 1;
 }
 
-/** The turn a step's bindings give each of its stamps (direction: the heading), radians. */
+/**
+ * The turn a step's bindings give each of its stamps, radians: direction by the heading, initial direction by the
+ * first, and pressure and fade by how far each holds from none (pressure's full, fade's first step), 0..1.
+ */
 export function stampStepTurn(dynamics: StampDynamics, step: StampStepContext): number {
-  const direction = dynamics.rotation?.direction;
-  return direction ? angleTurn(direction, directionHeading(direction, step)) : 0;
+  const { direction, initialDirection, pressure, fade } = dynamics.rotation ?? {};
+  return (direction ? angleTurn(direction, step.heading) : 0)
+    + (initialDirection ? angleTurn(initialDirection, step.initialHeading) : 0)
+    + (pressure ? angleTurn(pressure, 1 - pressureLoss(pressure, step)) : 0)
+    + (fade ? angleTurn(fade, 1 - fadeLoss(fade, step)) : 0);
 }
 
 /** The turn a stamp's own bindings give it (random: its draw, centred to −1..1), radians. */
@@ -104,12 +116,13 @@ export function stampOwnTurn(dynamics: StampDynamics, stamp: StampContext): numb
 }
 
 /**
- * How many of a step's `count` stamps it keeps, never under 1. Each count binding keeps whole stamps of what the one
- * before kept: pressure by flooring (vid-97's count probes: 4 at pressure 0.98 keeps 3), then random by rounding, on
- * the step's own count draw. Kept stamps are the step's first, so neither moves the stamps it keeps.
+ * How many of a step's `count` stamps it keeps, never under 1. Step-read bindings keep 1 + floor((count − 1) × their
+ * share), one at the first step (the `count …` probes); random then keeps its share by rounding, on the step's count
+ * draw. Kept stamps are the step's first, so neither moves those it keeps.
  */
 export function stampStepCount(dynamics: StampDynamics, count: number, step: StampStepContext): number {
-  const { pressure, random } = dynamics.count ?? {};
-  const pressed = pressure ? Math.max(1, Math.floor(count * scaleShare(pressure, pressureLoss(pressure, step)) + 1e-9)) : count;
+  const { pressure, fade, random } = dynamics.count ?? {};
+  let pressed = count;
+  if (pressure || fade) pressed = step.step === 0 ? 1 : 1 + Math.floor((count - 1) * stampStepShare(dynamics, 'count', step) + 1e-9);
   return random ? Math.max(1, Math.round(pressed * scaleShare(random, randomDraw(random, step.countDraw)))) : pressed;
 }

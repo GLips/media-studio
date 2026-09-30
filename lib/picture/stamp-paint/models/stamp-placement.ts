@@ -43,6 +43,11 @@ export type PlacedStamp = {
   /** How far a rolling grain turns under it, radians: the stroke's direction times the grain's rotation. */
   grainTurn: number;
   /**
+   * How much of a rolling grain's cut it takes, 0..1, mixed toward its uncut paint: below 1 only under grain depth
+   * dynamics. A mix, not a shallower depth, since a height grain's depth is a relief's, which paints nothing at 0.
+   */
+  grainDepth: number;
+  /**
    * How its colour moves from its deposit's (StampBrushColorDynamics): hue as a share of the wheel, saturation and
    * lightness each −1..1, and the share of the deposit's secondary colour, 0..1. Zero for a brush without them.
    */
@@ -111,6 +116,7 @@ function buildStamp(place: StampPlace, stamp: StampContext, brush: StampPlacemen
     flipY: brush.flip.y && draws.flipY < 0.5,
     blur: brush.blur.amount * (1 - draws.blur * brush.blur.jitter),
     grainTurn: place.grainTurn,
+    grainDepth: stampStepShare(dynamics, 'grainDepth', stamp) * stampOwnShare(dynamics, 'grainDepth', stamp),
     tint: tintOf(brush.color, draws, stamp.pressure),
     reveal: place.reveal,
   };
@@ -144,8 +150,8 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
   const count = Math.max(1, Math.round(brush.scatter.count));
   const startTurn = depositTurn(brush, seed);
   const { taper, dynamics } = brush;
-  /** Where on the path `arc` falls, and what the stroke is doing there, before any stamp's randomness. */
-  const at = (arc: number) => {
+  /** Where on the path `arc` falls, as step `index`, and what the stroke is doing there, before any stamp's randomness. */
+  const at = (arc: number, index: number) => {
     const along = length > 0 ? arc / length : 0;
     let segment = 0;
     while (segment < path.length - 2 && lengths[segment + 1] < arc) segment++;
@@ -157,10 +163,10 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
       taper.end > 0 ? Math.min(1, (1 - along) / taper.end) : 1,
     );
     const ramp = 1 - (1 - linear) ** (1 + 3 * taper.shape);
-    // `step` and `countDraw` are the step's own, known once the steps are laid; nothing a step's size reads.
+    // `countDraw` is the step's own, drawn once the steps are laid; nothing a step's size reads.
     const step: StampStepContext = {
       pressure: lerp(a.pressure ?? 1, b.pressure ?? 1, k), pressureThrough: lerp(1 - taper.pressure, 1, ramp),
-      heading: headings[Math.min(segment, headings.length - 1)] ?? 0, initialHeading, step: 0, distance: arc, countDraw: 0,
+      heading: headings[Math.min(segment, headings.length - 1)] ?? 0, initialHeading, step: index, distance: arc, countDraw: 0,
     };
     const size = diameter * lerp(taper.size, 1, ramp) * stampStepShare(dynamics, 'size', step);
     return { along, segment, k, a, b, ramp, size, step, lifted: b.lift === true && k > 0 && k < 1 };
@@ -168,12 +174,12 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
   const places: ReturnType<typeof at>[] = [];
   if (brush.stepping === 'spread') {
     const steps = length > 0 ? Math.ceil(length / (Math.max(brush.spacing, STAMP_MIN_SPACING) * diameter)) : 0;
-    for (let i = 0; i <= steps; i++) places.push(at(steps ? (i / steps) * length : 0));
+    for (let i = 0; i <= steps; i++) places.push(at(steps ? (i / steps) * length : 0, i));
   } else {
     // Each step is the spacing of the stamp it leaves, at that stamp's size before its random loss. A step landing on
     // the end paints nothing there: steps summed in floating point fall a hair short of it, hence the tolerance.
     for (let arc = 0, first = true; first || arc < length - 1e-6; first = false) {
-      const place = at(arc);
+      const place = at(arc, places.length);
       places.push(place);
       arc += Math.max(1, brush.spacing * place.size);
     }
@@ -182,15 +188,15 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
   places.forEach(({ along, segment, k, a, b, ramp, size, step: where, lifted }, i) => {
     const fade = (1 - brush.falloff) ** (where.distance / diameter / FALLOFF_SPAN);
     // The count draw is the step's own stream's, drawn only for a brush whose count reads it.
-    const step: StampStepContext = { ...where, step: i, countDraw: dynamics.count?.random ? seededRandom(`${seed}|${i}|count`)() : 0 };
-    const kept = stampStepCount(dynamics, count, step);
+    const step: StampStepContext = { ...where, countDraw: dynamics.count?.random ? seededRandom(`${seed}|${i}|count`)() : 0 };
+    const kept = stampStepCount(dynamics, count, step), reach = stampStepShare(dynamics, 'scatter', step);
     for (let c = 0; c < count; c++) {
       const draws = drawStampSlots(seededRandom(`${seed}|${i}|${c}`), 'stroke');
       if (lifted || c >= kept) continue;
-      const lateral = (draws.lateral * 2 - 1) * brush.scatter.lateral * diameter;
+      const lateral = (draws.lateral * 2 - 1) * brush.scatter.lateral * reach * diameter;
       // A uniform distance, not a uniform spot in the disc, so stamps crowd the stroke: Photoshop's both-axes scatter
       // (vid-97's scatter probe fits it at 0.009 rms; uniform over the disc's area, 0.022).
-      const scatterTurn = draws.scatterTurn * Math.PI * 2, scatterReach = draws.scatterReach * brush.scatter.radius * diameter;
+      const scatterTurn = draws.scatterTurn * Math.PI * 2, scatterReach = draws.scatterReach * brush.scatter.radius * reach * diameter;
       stamps.push(buildStamp({
         x: lerp(a.x, b.x, k) - Math.sin(step.heading) * lateral + Math.cos(scatterTurn) * scatterReach,
         y: lerp(a.y, b.y, k) + Math.cos(step.heading) * lateral + Math.sin(scatterTurn) * scatterReach,

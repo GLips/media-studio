@@ -28,3 +28,12 @@ test('a curve response is read piecewise-linearly over its sensor, flat past its
   const stamps = placeStrokeStamps([{ x: 0, y: 0 }, { x: 0, y: 100 }], brushWith(turn), 20, 'curve');
   assert.ok(stamps.length > 1 && stamps.every((stamp) => Math.abs(stamp.rotation - Math.PI / 4) < 1e-12));
 });
+
+test("a controlled count keeps 1 + floor((count − 1) × its share), and one at the stroke's first step", () => {
+  // The `count 4 fade 10` probe: Photoshop keeps 1, 3, 3, 3, 2, 2, 2, 1, 1 over its first nine steps.
+  const brush = { ...brushWith({ count: { fade: { kind: 'linear', amount: 1, steps: 10 } } }), scatter: { count: 4, radius: 0, lateral: 0 } };
+  const stamps = placeStrokeStamps([{ x: 0, y: 0 }, { x: 400, y: 0 }], brush, 100, 'count');
+  const perStep = new Map<number, number>();
+  for (const stamp of stamps) perStep.set(Math.round(stamp.x), (perStep.get(Math.round(stamp.x)) ?? 0) + 1);
+  assert.deepEqual([...perStep.values()], [1, 3, 3, 3, 2, 2, 2, 1, 1]);
+});

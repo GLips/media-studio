@@ -162,16 +162,19 @@ export type StampBrushStamping<Image = StampBrushAsset> = {
 
 /**
  * What each target can be driven by. A scale target keeps a share of itself: `size`, `opacity`, `flow` (multiplying
- * with opacity, as a drier stamp lays less), `roundness` (squashing the stamp without moving the next step) and a
- * step's `count`. `rotation`, an angle target, turns by radians. Sensors are read in stamp-dynamics.ts.
+ * with opacity), `roundness` (not moving the next step), a step's `count`, `scatter` (its reach) and `grainDepth` (how
+ * much of a rolling grain's cut a stamp takes; a canvas grain cuts the built stroke). `rotation` turns by radians;
+ * stamp-dynamics.ts reads sensors.
  */
 export type StampTargetSensors = {
-  size: 'pressure' | 'random';
-  opacity: 'pressure' | 'random';
-  flow: 'pressure' | 'random';
-  roundness: 'pressure' | 'random';
-  count: 'pressure' | 'random';
-  rotation: 'direction' | 'random';
+  size: 'pressure' | 'fade' | 'random';
+  opacity: 'pressure' | 'fade' | 'random';
+  flow: 'pressure' | 'fade' | 'random';
+  roundness: 'pressure' | 'fade' | 'random';
+  count: 'pressure' | 'fade' | 'random';
+  scatter: 'pressure' | 'fade';
+  grainDepth: 'pressure' | 'fade' | 'random';
+  rotation: 'direction' | 'initialDirection' | 'pressure' | 'fade' | 'random';
 };
 export type StampDynamicTarget = keyof StampTargetSensors;
 export type StampAngleTarget = 'rotation';
@@ -191,55 +194,77 @@ export type StampResponseCurve = readonly (readonly [input: number, output: numb
 export type StampScaleResponse = { kind: 'linear'; amount: number } | { kind: 'curve'; points: StampResponseCurve };
 
 /**
- * How an angle target answers its sensor's signal (radians for `direction`, −1..1 for `random`): `linear` turns by
- * amount × the signal, `curve` by the curve at it, in radians.
+ * How an angle target answers its sensor's signal (radians for `direction` and `initialDirection`, −1..1 for
+ * `random`, 0..1 for `pressure` and `fade`): `linear` turns by amount × the signal, `curve` by the curve at it, in radians.
  */
 export type StampAngleResponse = { kind: 'linear'; amount: number } | { kind: 'curve'; points: StampResponseCurve };
 
 export type StampResponseFor<T extends StampDynamicTarget> = T extends StampAngleTarget ? StampAngleResponse : StampScaleResponse;
 
 /**
- * Each sensor's own parameters, which its binding carries beside the response and its signal reads (stamp-dynamics.ts).
- * None of today's sensors has any; a sensor that needs one declares it here, as Photoshop's fade (vid-105) would
- * `{ steps: number }`, the count of steps its signal runs full over.
+ * Each sensor's own parameters, which its binding carries beside the response and its signal reads (stamp-dynamics.ts):
+ * `fade`'s `steps`, the count of spacing steps its signal runs full over.
  */
-export type StampSensorParams = { pressure: Record<never, never>; random: Record<never, never>; direction: Record<never, never> };
+export type StampSensorParams = {
+  pressure: Record<never, never>;
+  fade: { steps: number };
+  random: Record<never, never>;
+  direction: Record<never, never>;
+  initialDirection: Record<never, never>;
+};
 
 /** One target's binding to one sensor: how the target answers it, and the sensor's own parameters. */
 export type StampBinding<T extends StampDynamicTarget, S extends StampSensor> = StampResponseFor<T> & StampSensorParams[S];
 
 /**
  * A brush's dynamics: at most one binding per target and sensor. Bindings of one target compose, in a fixed sensor
- * order: a scale target keeps the product of each binding's share (pressure × random), save count, which keeps whole
- * stamps binding by binding; an angle target turns by the sum of each binding's angle (direction + random).
+ * order: a scale target keeps the product of each binding's share (pressure × fade × random), save count, which keeps
+ * whole stamps binding by binding; an angle target turns by the sum of each binding's angle.
  */
 export type StampDynamics = { readonly [T in StampDynamicTarget]?: { readonly [S in StampTargetSensors[T]]?: StampBinding<T, S> } };
 
 /** Every target, and each target's sensors, in the one order a brush's dynamics are written and composed in. */
 const STAMP_TARGET_SENSORS: { readonly [T in StampDynamicTarget]: readonly StampTargetSensors[T][] } = {
-  size: ['pressure', 'random'],
-  opacity: ['pressure', 'random'],
-  flow: ['pressure', 'random'],
-  roundness: ['pressure', 'random'],
-  count: ['pressure', 'random'],
-  rotation: ['direction', 'random'],
+  size: ['pressure', 'fade', 'random'],
+  opacity: ['pressure', 'fade', 'random'],
+  flow: ['pressure', 'fade', 'random'],
+  roundness: ['pressure', 'fade', 'random'],
+  count: ['pressure', 'fade', 'random'],
+  scatter: ['pressure', 'fade'],
+  grainDepth: ['pressure', 'fade', 'random'],
+  rotation: ['direction', 'initialDirection', 'pressure', 'fade', 'random'],
 };
-const STAMP_DYNAMIC_TARGETS: readonly StampDynamicTarget[] = ['size', 'opacity', 'flow', 'roundness', 'count', 'rotation'];
+const STAMP_DYNAMIC_TARGETS: readonly StampDynamicTarget[] = ['size', 'opacity', 'flow', 'roundness', 'count', 'scatter', 'grainDepth', 'rotation'];
+
+/** Bindings by target and sensor, any left out or undefined: what stampDynamicsOf writes in order. */
+export type StampDynamicsBindings = { readonly [T in StampDynamicTarget]?: { readonly [S in StampTargetSensors[T]]?: StampBinding<T, S> | undefined } };
 
 /**
- * A brush's dynamics from linear amounts by target and sensor, written in one order so two brushes that answer alike
- * compare equal; an amount of 0 is no binding, and a target with none is left out.
+ * A brush's dynamics from its bindings, written in one order so two brushes that answer alike compare equal; a
+ * linear binding of amount 0 is no binding, and a target with none is left out.
  */
-export function stampLinearDynamics(amounts: { readonly [T in StampDynamicTarget]?: { readonly [S in StampTargetSensors[T]]?: number } }): StampDynamics {
-  const dynamics: Record<string, Record<string, { kind: 'linear'; amount: number }>> = {};
+export function stampDynamicsOf(bindings: StampDynamicsBindings): StampDynamics {
+  const dynamics: Record<string, Record<string, StampBinding<StampDynamicTarget, StampSensor>>> = {};
   for (const target of STAMP_DYNAMIC_TARGETS) {
-    const by: Partial<Record<StampSensor, number>> = amounts[target] ?? {};
+    const by: Partial<Record<StampSensor, StampBinding<StampDynamicTarget, StampSensor>>> = bindings[target] ?? {};
     for (const sensor of STAMP_TARGET_SENSORS[target]) {
-      const amount = by[sensor] ?? 0;
-      if (amount) (dynamics[target] ??= {})[sensor] = { kind: 'linear', amount };
+      const binding = by[sensor];
+      if (binding && !(binding.kind === 'linear' && !binding.amount)) (dynamics[target] ??= {})[sensor] = binding;
     }
   }
   return dynamics;
+}
+
+/** Linear amounts by target and sensor, for the sensors that take no parameters. */
+type StampLinearAmounts = { readonly [T in StampDynamicTarget]?: { readonly [S in Exclude<StampTargetSensors[T], 'fade'>]?: number } };
+
+/** A brush's dynamics from linear amounts by target and sensor (stampDynamicsOf's order; an amount of 0 is none). */
+export function stampLinearDynamics(amounts: StampLinearAmounts): StampDynamics {
+  const bindings: Record<string, Record<string, { kind: 'linear'; amount: number }>> = {};
+  for (const [target, by] of Object.entries(amounts)) {
+    for (const [sensor, amount] of Object.entries(by ?? {})) (bindings[target] ??= {})[sensor] = { kind: 'linear', amount: amount ?? 0 };
+  }
+  return stampDynamicsOf(bindings);
 }
 
 /**

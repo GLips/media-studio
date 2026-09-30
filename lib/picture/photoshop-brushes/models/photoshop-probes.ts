@@ -310,15 +310,23 @@ export function photoshopProbes(): PhotoshopProbe[] {
     add(`flow by ${label}`, `flow on ${label}: what a stroked path gives it`, base(round(64, 100, 5), transferBy(noControl, control)), [line]);
   }
   // Texture depth per stamp, the subtract ramp at depth 100 under a hard tip, stamps apart so each shows its depth.
-  const depthBy = (depthDynamics: PhotoshopDynamic, { minimumDepth = 0, eachTip = true, spacing = 150 } = {}) => {
-    const parts = ramp('subtract', 100, { eachTip });
-    return base(round(96, 100, spacing), { texture: { ...parts.texture!, depthDynamics, minimumDepth } });
+  type DepthProbe = { minimumDepth?: number; eachTip?: boolean; spacing?: number; mode?: PhotoshopTextureMode; depth?: number; brightness?: number; contrast?: number; parts?: ProbeParts };
+  const depthBy = (depthDynamics: PhotoshopDynamic, { minimumDepth = 0, eachTip = true, spacing = 150, mode = 'subtract', depth = 100, brightness = 0, contrast = 0, parts = {} }: DepthProbe = {}) => {
+    const { texture } = ramp(mode, depth, { eachTip, brightness, contrast });
+    return base(round(96, 100, spacing), { ...parts, texture: { ...texture!, depthDynamics, minimumDepth } });
   };
   add('texture depth by pressure', 'Texture Each Tip depth on pen pressure: depth against pressure, and along simulated pressure', depthBy(driven(pressure())), [...posedLines, simLine]);
   add('texture depth by pressure minimum 50', 'depth on pen pressure with a 50% minimum depth', depthBy(driven(pressure()), { minimumDepth: 50 }), posedLines.slice(0, 2));
   add('texture depth jitter 100', "depth jitter 100%: each stamp's depth drawn at random", depthBy(jitter(100)), [line], 2);
   add('texture depth jitter 100 minimum 50', 'depth jitter 100% with a 50% minimum depth', depthBy(jitter(100), { minimumDepth: 50 }), [line], 2);
   add('texture depth fade 20', 'depth faded over 20 stamps', depthBy(driven(fade(20))), [line]);
+  // Beside what else a brush like Kyle's Magic 1 has: whether any of them keeps a depth control from taking hold.
+  add('texture depth by pressure brightness', 'depth on pen pressure, the pattern brightened 20 and its contrast 40', depthBy(driven(pressure()), { brightness: 20, contrast: 40 }), [...posedLines, simLine]);
+  add('texture depth by pressure dual', 'depth on pen pressure beside a colour burn dual', depthBy(driven(pressure()), { parts: dual(round(72, 0, 16), 'colorBurn') }), [...posedLines, simLine]);
+  add('texture depth by pressure count', 'depth on pen pressure with count 4 on pen pressure', depthBy(driven(pressure()), { parts: scattered({ count: 4, countControl: pressure() }) }), [...posedLines, simLine]);
+  // Height modes read depth as a relief's: whether a depth control takes the relief shallower, or the texture away.
+  add('texture depth by pressure height 19', 'depth 19% on pen pressure in height mode', depthBy(driven(pressure()), { mode: 'height', depth: 19 }), [...posedLines, simLine]);
+  add('texture depth by pressure linearHeight 19', 'depth 19% on pen pressure in linear height mode', depthBy(driven(pressure()), { mode: 'linearHeight', depth: 19 }), [...posedLines, simLine]);
   add('texture depth by pressure canvas', 'depth on pen pressure with Texture Each Tip off: whether the canvas texture takes it', depthBy(driven(pressure()), { eachTip: false, spacing: 5 }), posedLines.slice(0, 2));
   // Count 3 on pen pressure where stamps overlap, fresh and after posed lines (Kyle's Medium Wash Slow).
   const dense3 = base(round(64, 50, 10), { flow: 20, ...scattered({ count: 3, countControl: pressure() }) });

@@ -66,7 +66,7 @@ Brush Pose (size and opacity overridden), or simulated pressure (taper at both e
 
 ## The probe set
 
-`photoshopProbes()`, 239 probes, 422 cells on 12 sheets in about a minute. Each is a plain round, or a sampled tip the run defines
+`photoshopProbes()`, 284 probes and 611 cells, in a few minutes. Each is a plain round, or a sampled tip the run defines
 (`studio-probe-tip`: a half-circle with a hard and a soft side, 112 px once Photoshop trims it), with one thing changed:
 
 - single stamps of computed tips across hardness and diameter, an ellipse, and the sampled tip at sizes, angle,
@@ -78,6 +78,9 @@ Brush Pose (size and opacity overridden), or simulated pressure (taper at both e
 - a dual brush under each of its eight modes, the secondary's dabs apart and overlapping;
 - wet edges; pressure on size, opacity and flow; Fade on each;
 - size jitter, scatter and noise, painted several times each since they're random by design;
+- each control a stroked path can drive (vid-105): angle on pressure, fade, initial direction, tilt, stylus wheel and
+  rotation; scatter, count, roundness and Texture Each Tip depth on pressure, fade and jitter, height modes included;
+  and the bristle, erodible and airbrush tips the packs use;
 - vid-97's inputs painted alone beside what combines them, so a combine reads pixel for pixel off two captures: a
   soft 240 px stamp alone and under each texture mode, a dual's primary and secondary alone and combined under each
   mode, and again over a primary spaced a diameter apart, so the combine reads across primary coverage 0..1, more
@@ -89,12 +92,20 @@ half the diameter at half the opacity. The `pressure …` probes and a pack's re
 that way. **Simulated pressure** goes by the share of the path's length: it rises straight from 0 over the first 46%,
 holds at 0.98, never quite full, and falls to 0 over the last 46%
 (lib/picture/brush-fidelity/models/photoshop-reference-stroke.ts). It drives the brush's own pen-pressure dynamics, so a
-brush with none paints it untapered, as every reference S-curve that starts a sheet shows. Count on pen pressure keeps
-floor(count × (m + (1 − m)p)) stamps a step, at least one, so along a simulated stroke count 2 keeps one throughout
-(the `count …` probes). After a posed cell of the same brush, the pose's size and opacity overrides outlast it until the brush
+brush with none paints it untapered, as every reference S-curve that starts a sheet shows. Count on a control keeps
+1 + floor((count − 1) × its share) stamps a step, and one at the first step, so along a simulated stroke count 2 keeps
+one throughout (the `count …` probes; count 4 on fade 10 keeps 1, 3, 3, 3, 2, 2, 2, 1, 1). After a posed cell of the same brush, the pose's size and opacity overrides outlast it until the brush
 is applied again (the rig applies it afresh on each sheet): size and opacity follow the simulated pressure wholly,
 save that a size minimum on pen pressure counts twice (the `pressure check …` probes). The sheet paints each
 reference the way it was painted.
+
+**What the controls do** (vid-105). Angle on pen pressure turns a stamp by p × 360°, and fade turns it a whole turn
+over its steps; initial direction holds the first heading. Scatter on pen pressure keeps p² of its reach (in the
+deposit's diameters, as uncontrolled scatter is), and a fade shrinks it to none over its steps. Texture Each Tip depth on pressure runs the other way: full pressure paints the
+minimum depth, a fade climbs from it, and jitter takes each stamp's depth down toward it at random; a canvas texture
+ignores all three. In the height modes a depth control doesn't follow the formula's depth (read at full depth, noted).
+Tilt, stylus wheel and rotation read full on a stroked path, the same as off. A computed tip's short side is drawn in
+whole pixels at the preset's diameter, and a squashed tip steps by it.
 
 A run also paints a sample of probes (`PHOTOSHOP_REPEAT_SAMPLE`, one of each kind) twice more on sheets of their own,
 at the same places, and compares them. Everything but the random scatter probe has come back identical to the bit,

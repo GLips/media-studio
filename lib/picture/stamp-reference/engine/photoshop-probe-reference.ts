@@ -3,16 +3,19 @@
 // placed as a painting's strokes are, and the reference lays them; each cell's difference is split among the stages
 // that own it (stamp-reference-score.ts).
 //
-// Negative space: cells on a ground (their paint's colour matters, not only its coverage), under a Brush Pose (a pose
-// scales size and opacity whatever the brush says) or with simulated pressure, and every copy of a randomness probe
-// but the first, are skipped and counted, not scored.
+// A cell is painted at the pressure Photoshop painted it at (photoshop-stroke-pressure.ts), its brush read as the pen
+// drove it: a pose's overrides hold in its own cell and linger in the item's later cells on the sheet.
+//
+// Negative space: cells on a ground (their paint's colour matters, not only its coverage), and randomness probes (and
+// every further copy), are skipped and counted, not scored.
 
 import { join } from 'node:path';
 import type { PhotoshopCaptureCell, PhotoshopCaptureSheet } from '#lib/picture/photoshop-brushes/models/photoshop-capture-plan.ts';
 import { cropPhotoshopCell } from '#lib/picture/photoshop-brushes/models/photoshop-capture-cells.ts';
 import { PHOTOSHOP_PROBE_RAMP, PHOTOSHOP_PROBE_TIP, photoshopProbeRampValue, photoshopProbeTipPaint, type PhotoshopProbe } from '#lib/picture/photoshop-brushes/models/photoshop-probes.ts';
 import { readPhotoshopSheet } from '#lib/picture/photoshop-brushes/engine/photoshop-capture.ts';
-import { normalizePhotoshopBrush, PHOTOSHOP_SAMPLE_BORDER, photoshopPatternNegated, photoshopTipImage, type PhotoshopTipAsset, type PhotoshopTipImage } from '#lib/picture/photoshop-brushes/models/photoshop-brush.ts';
+import { photoshopPressuredPath, type PhotoshopStrokePressure } from '#lib/picture/photoshop-brushes/models/photoshop-stroke-pressure.ts';
+import { normalizePhotoshopBrush, PHOTOSHOP_PEN_PRESSURE, PHOTOSHOP_SAMPLE_BORDER, type PhotoshopPressureContext, photoshopPatternNegated, photoshopTipImage, type PhotoshopTipAsset, type PhotoshopTipImage } from '#lib/picture/photoshop-brushes/models/photoshop-brush.ts';
 import { drawPhotoshopComputedTip } from '#lib/picture/photoshop-brushes/models/photoshop-computed-tip.ts';
 import type { PhotoshopKnownTip } from '#lib/picture/photoshop-brushes/models/photoshop-preset.ts';
 import { bindStampBrushImages, type StampBrushAsset } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
@@ -53,15 +56,15 @@ const probeTipAsset = (tip: PhotoshopKnownTip, file: string): PhotoshopTipAsset 
 /** A probe's dual tip, when it has one the studio reads. */
 const probeDualTip = ({ preset }: PhotoshopProbe) => (preset.dual && preset.dual.tip.kind !== 'unsupported' ? preset.dual.tip : undefined);
 
-/** A probe as the importer reads it, with its images. */
-export function photoshopProbeReferenceBrush(probe: PhotoshopProbe) {
+/** A probe as the importer reads it under `context`, with its images. */
+export function photoshopProbeReferenceBrush(probe: PhotoshopProbe, context: PhotoshopPressureContext = PHOTOSHOP_PEN_PRESSURE) {
   const { preset } = probe, dualTip = probeDualTip(probe);
   const { brush, support } = normalizePhotoshopBrush(probe.name, {
     preset,
     tip: probeTipAsset(preset.tip, 'tip'),
     ...(dualTip && { dualTip: probeTipAsset(dualTip, 'dual-tip') }),
     ...(preset.texture && { pattern: { image: asset('ramp'), width: PHOTOSHOP_PROBE_RAMP.width } }),
-  });
+  }, undefined, context);
   // Each image drawn from the preset as the rig drew it, by the name it was given above.
   const images: Record<string, () => ReturnType<typeof stampReferenceMips>> = {
     tip: () => stampReferenceMips(tipImage(photoshopTipImage(preset.tip))),
@@ -85,8 +88,6 @@ function skipped(cell: PhotoshopCaptureCell, probe: PhotoshopProbe, untaken: Rea
   if (untaken.has(probe.name)) return 'painted from another preset';
   if (cell.copy > 1) return 'a further copy';
   if (cell.ground !== 'clear') return 'on a ground';
-  if (cell.pressure !== undefined) return 'under a Brush Pose';
-  if (cell.simulatePressure) return 'simulated pressure';
   if (randomProbe(probe)) return 'random';
   return null;
 }
@@ -96,17 +97,27 @@ const byte = (v: number) => Math.round(v * 255) / 255;
 
 export type PhotoshopProbeCellScore = { probe: string; cell: string; score: StampReferenceScore };
 
+/** `buffers` laid each over the ones before. */
+const over = (buffers: Float32Array[]) => buffers.reduce((under, top) => under.map((u, i) => u + top[i] * (1 - u)));
+
+/** The pressure Photoshop painted `cell` at. */
+const cellPressure = (cell: PhotoshopCaptureCell): PhotoshopStrokePressure => {
+  if (cell.pressure !== undefined) return { kind: 'posed', pressure: cell.pressure };
+  return cell.simulatePressure ? { kind: 'simulated' } : { kind: 'none' };
+};
+
 /**
  * The reference's coverage for `cell` over its box grown by `pad` pixels each side (in the cell's own pixels, so the
- * box starts at −pad), and every stage's buffer.
+ * box starts at −pad), and every stage's buffer. `posed`: a pose was in force, its own or an earlier cell's.
  */
-export function renderPhotoshopProbeCell(probe: PhotoshopProbe, cell: PhotoshopCaptureCell, { arrangement, pad = 0 }: { arrangement?: StampReferenceArrangement; pad?: number } = {}) {
-  const { brush } = photoshopProbeReferenceBrush(probe);
+export function renderPhotoshopProbeCell(probe: PhotoshopProbe, cell: PhotoshopCaptureCell, { arrangement, pad = 0, posed = cell.pressure !== undefined }: { arrangement?: StampReferenceArrangement; pad?: number; posed?: boolean } = {}) {
+  const { brush } = photoshopProbeReferenceBrush(probe, { lingeringPose: posed });
+  const pressure = cellPressure(cell);
   const box = { x: -pad, y: -pad, width: cell.box.width + 2 * pad, height: cell.box.height + 2 * pad };
   const diameter = probe.preset.tip.geometry.diameter;
   // Each stroke finishes and lays over the ones before it, as separate strokes do.
   const deposits = cell.strokes.map((stroke, s) => {
-    const path = stroke.map(([x, y]) => ({ x: x - cell.box.x, y: y - cell.box.y }));
+    const path = photoshopPressuredPath(stroke.map(([x, y]) => [x - cell.box.x, y - cell.box.y] as const), pressure);
     const seed = `${probe.name}|${s}`;
     return renderStampReferenceDeposit({
       brush, diameter, opacity: byte(probe.preset.tool.opacity / 100), box, arrangement,
@@ -116,7 +127,6 @@ export function renderPhotoshopProbeCell(probe: PhotoshopProbe, cell: PhotoshopC
       grainOffset: { main: [0, 0], dual: [0, 0] },
     });
   });
-  const over = (buffers: Float32Array[]) => buffers.reduce((under, top) => under.map((u, i) => u + top[i] * (1 - u)));
   const coverage = over(deposits.map((d) => d.coverage));
   const buffers = [
     { owner: 'build' as const, coverage: over(deposits.map((d) => d.built.main)) },
@@ -155,6 +165,8 @@ export function scorePhotoshopProbeRun({ dir, sheets, probes, untaken, only, arr
     if (!sheet.cells.some((cell) => !only || only.includes(cell.item))) continue;
     const painted = new Float32Array(sheet.width * sheet.height);
     const own: { cell: PhotoshopCaptureCell; probe: PhotoshopProbe; buffers: ReturnType<typeof renderPhotoshopProbeCell>['buffers'] }[] = [];
+    // Items posed on this sheet so far, whose overrides linger until the next sheet applies them afresh.
+    const posed = new Set<string>();
     for (const cell of sheet.cells) {
       const probe = byName.get(cell.item);
       if (!probe) throw new Error(`stamp reference: ${sheet.name} paints ${JSON.stringify(cell.item)}, which isn't among the probes`);
@@ -165,7 +177,8 @@ export function scorePhotoshopProbeRun({ dir, sheets, probes, untaken, only, arr
         for (let y = g.y; y < g.y + g.height; y++) painted.fill(1, y * sheet.width + g.x, y * sheet.width + g.x + g.width);
       }
       const pad = probeReach(probe);
-      const { box, coverage, buffers } = renderPhotoshopProbeCell(probe, cell, { arrangement, pad });
+      if (cell.pressure !== undefined) posed.add(cell.item);
+      const { box, coverage, buffers } = renderPhotoshopProbeCell(probe, cell, { arrangement, pad, posed: posed.has(cell.item) });
       for (let y = 0; y < box.height; y++) {
         const sy = cell.box.y + box.y + y;
         if (sy < 0 || sy >= sheet.height) continue;

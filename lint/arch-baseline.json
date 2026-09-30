@@ -2104,9 +2104,6 @@
     "lib/picture/stamp-paint/studio/stamp-paint-renderer.ts": {
       "async function rendererOnDevice(": 3
     },
-    "lib/picture/stamp-reference/engine/photoshop-probe-reference.ts": {
-      "export function renderPhotoshopProbeCell(probe: PhotoshopProbe, cell: PhotoshopCaptureCell, { arrangement, pad = 0 }: { arrangement?: StampReferenceArrangement; pad?: number } = {}) {": 1
-    },
     "lib/picture/stamp-reference/models/stamp-reference-deposit.test.ts": {
       "const stamp = (opacity: number): PlacedStamp => ({": 1
     },

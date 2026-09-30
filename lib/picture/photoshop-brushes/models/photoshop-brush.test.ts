@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { normalizePhotoshopBrush, type PhotoshopReading } from './photoshop-brush.ts';
 import { stampLinearDynamics } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { PHOTOSHOP_POOLING } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
+import { stampResponseCurve } from '#lib/picture/stamp-paint/models/stamp-dynamics.ts';
 import type { PhotoshopDescriptor } from './photoshop-descriptor.ts';
 import { photoshopPaintablePreset, readPhotoshopPreset } from './photoshop-preset.ts';
 import { normalizeProcreateBrush, type ProcreateReading } from '#lib/picture/procreate-brushes/models/procreate-brush.ts';
@@ -138,4 +139,24 @@ test("pressure is resolved once, a lingering pose over the pressure buttons over
   // Under a lingering pose a size minimum counts twice, and opacity follows wholly; flow is the brush's throughout.
   assert.deepEqual(pressure(plain, true), [0.6 ** 2, 1, 0.5]);
   assert.deepEqual(pressure(buttons, true), [1, 1, 0.5]);
+});
+
+test('a control a stroke drives binds its sensor: angle turns a whole turn over pressure, scatter shrinks as p², size fades to its minimum', () => {
+  const { brush, support } = normalizePhotoshopBrush('Driven', {
+    preset: paintable({
+      _class: 'brushPreset', Brsh: { _class: 'computedBrush', Dmtr: px(50), Hrdn: pct(100), Spcn: pct(10), Intr: true },
+      useTipDynamics: true, szVr: control(1, 0), minimumDiameter: pct(20), angleDynamics: control(2, 0), roundnessDynamics: control(3, 0),
+      useScatter: true, scatterDynamics: control(2, 100), bothAxes: true, 'Cnt ': long(1), countDynamics: control(0, 0),
+    }),
+    tip: { kind: 'round', image: asset('tips/round.png') },
+  }, photoshopReading);
+  assert.deepEqual(brush.dynamics.size, { fade: { kind: 'linear', amount: 0.8, steps: 25 } });
+  assert.deepEqual(brush.dynamics.rotation, { pressure: { kind: 'linear', amount: -2 * Math.PI } });
+  // Scatter on pressure keeps p² of its reach: a quarter at half pressure.
+  const reach = brush.dynamics.scatter?.pressure;
+  assert.ok(reach?.kind === 'curve');
+  assert.equal(stampResponseCurve(reach.points, 0.5), 0.25);
+  // Tilt reads full on a stroked path, as off does: no binding, and a note that says why.
+  assert.equal(brush.dynamics.roundness, undefined);
+  assert.ok(support.some((n) => n.setting === 'tipDynamics.roundness.control' && n.level === 'inapplicable'));
 });

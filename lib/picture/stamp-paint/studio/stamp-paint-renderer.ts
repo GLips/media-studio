@@ -25,9 +25,9 @@ import { stampUniformLayout, stampUniformStruct, stampUniformWriter, type StampU
 
 /**
  * Floats per stamp in the instance buffer: x, y, diameter, rotation, then alpha, blur, grain turn and flips (x 1, y 2),
- * then opacity.
+ * then opacity, roundness and grain depth.
  */
-const STAMP_FLOATS = 10;
+const STAMP_FLOATS = 11;
 /** Floats per stamp in the tint buffer, for a brush with colour dynamics: hue, saturation, lightness, secondary. */
 const TINT_FLOATS = 4;
 
@@ -50,8 +50,9 @@ ${GRAIN.wgsl}
 // A grain image's mean paint: its smallest mip.
 fn grainMean(g: texture_2d<f32>, tile: sampler) -> f32 { return 1.0 - textureSampleLevel(g, tile, vec2f(0.5), 16.0).r; }
 // Coverage a cut by the grain's texel \`raw\` (as the image holds it, dark is paint), \`mean\` the grain's mean paint.
-fn grained(a: f32, raw: f32, mean: f32, p: Grain) -> f32 {
-  return grainCut(a, grainPaint(1.0 - raw, p.shape.z, p.shape.w, p.aboutMean == 1u, mean), p.shape.x, p.blend, p.layer == 1u);
+// \`share\`: how much of the cut a stamp takes (PlacedStamp.grainDepth), 1 for any grain but a rolling one's.
+fn grained(a: f32, raw: f32, mean: f32, p: Grain, share: f32) -> f32 {
+  return mix(a, grainCut(a, grainPaint(1.0 - raw, p.shape.z, p.shape.w, p.aboutMean == 1u, mean), p.shape.x, p.blend, p.layer == 1u), share);
 }`;
 
 const TURNED_WGSL = /* wgsl */ `
@@ -76,12 +77,12 @@ ${STAMP_DRAW.wgsl}
 // Clamped, and anisotropic or not as the tip's sampling says.
 @group(0) @binding(3) var tipClamp: sampler;
 @group(0) @binding(4) var tile: sampler;
-struct Corner { @builtin(position) position: vec4f, @location(0) tipUv: vec2f, @location(1) alpha: f32, @location(2) blur: f32, @location(3) grainUv: vec2f, @location(4) tint: vec4f, @location(5) toward: f32 }
+struct Corner { @builtin(position) position: vec4f, @location(0) tipUv: vec2f, @location(1) alpha: f32, @location(2) blur: f32, @location(3) grainUv: vec2f, @location(4) tint: vec4f, @location(5) toward: f32, @location(6) grainDepth: f32 }
 struct Covered { @location(0) mask: vec4f, @location(1) cap: vec4f }
 struct Stamp { @location(0) mask: vec4f, @location(1) cap: vec4f, @location(2) tintA: vec4f, @location(3) tintB: vec4f }
 ${GRAIN_WGSL}
 ${TURNED_WGSL}
-@vertex fn place(@builtin(vertex_index) i: u32, @location(0) stamp: vec4f, @location(1) more: vec4f, @location(2) tint: vec4f, @location(3) last: vec2f) -> Corner {
+@vertex fn place(@builtin(vertex_index) i: u32, @location(0) stamp: vec4f, @location(1) more: vec4f, @location(2) tint: vec4f, @location(3) last: vec3f) -> Corner {
   let pair = u.hull[i / 2u];
   let uv = select(pair.xy, pair.zw, (i & 1u) == 1u);
   let flips = u32(more.w);
@@ -97,7 +98,7 @@ ${TURNED_WGSL}
   let grainUv = turned(local, -more.z) / size + u.movement * stamp.xy / u.grain.place.xy + u.grain.place.zw;
   // A glaze or a build lays flow × opacity toward full; a buildToOpacity lays its flow toward its own opacity.
   let full = u.towardFull == 1u;
-  return Corner(vec4f(at.x, -at.y, 0.0, 1.0), uv, select(more.x, more.x * opacity, full), more.y * ${STAMP_BLUR_LEVELS.toFixed(1)}, grainUv, tint, select(opacity, 1.0, full));
+  return Corner(vec4f(at.x, -at.y, 0.0, 1.0), uv, select(more.x, more.x * opacity, full), more.y * ${STAMP_BLUR_LEVELS.toFixed(1)}, grainUv, tint, select(opacity, 1.0, full), last.z);
 }
 // A stamp's paint (x) and its cap (y): the paint without its tip, how far a glaze's stroke may build there. A rolling
 // grain, carried by the stamp, cuts each one.
@@ -107,7 +108,7 @@ fn covered(corner: Corner) -> vec2f {
   if (u.rolling == 1u) {
     let raw = textureSample(grain, tile, corner.grainUv).r;
     let mean = grainMean(grain, tile);
-    coverage = vec2f(grained(tipped, raw, mean, u.grain), grained(1.0, raw, mean, u.grain));
+    coverage = vec2f(grained(tipped, raw, mean, u.grain, corner.grainDepth), grained(1.0, raw, mean, u.grain, corner.grainDepth));
   }
   return coverage * corner.alpha;
 }
@@ -176,7 +177,7 @@ fn laidInOrder(p: vec2f, tinted: bool) -> Laid {
       let size = u.grain.place.xy * pow(z / u.diameter, u.zoom);
       let grainUv = turned(local, -grainTurn) / size + u.movement * xy / u.grain.place.xy + u.grain.place.zw;
       let raw = textureSampleGrad(grain, tile, grainUv, turned(vec2f(1.0, 0.0), -grainTurn) / size, turned(vec2f(0.0, 1.0), -grainTurn) / size).r;
-      a = grained(a, raw, mean, u.grain);
+      a = grained(a, raw, mean, u.grain, stamps[at + 10u]);
     }
     let paint = a * stamps[at + 4u];
     laid.built = accumulationLay(laid.built, paint, stamps[at + 8u], u.accumulation);
@@ -270,7 +271,7 @@ ${RESOLVE_STAGES_WGSL}
 fn texturized(g: texture_2d<f32>, at: vec2f, a: f32, p: Grain) -> f32 {
   let uv = at / p.place.xy + p.place.zw;
   let raw = select(textureSampleLevel(g, tile, uv, p.shape.y).r, textureSampleLevel(g, mirrorTile, uv, p.shape.y).r, p.mirror == 1u);
-  return grained(a, raw, grainMean(g, tile), p);
+  return grained(a, raw, grainMean(g, tile), p, 1.0);
 }
 
 // Where the mask stands above its blur, as steeply as the edge's sharpness says.
@@ -630,7 +631,7 @@ async function rendererOnDevice(
   }
   const stampData = new Float32Array(Math.max(1, total) * STAMP_FLOATS), tintData = new Float32Array(Math.max(1, tints) * TINT_FLOATS);
   const write = (stamps: readonly PlacedStamp[], at: number) => stamps.forEach((s, i) => stampData.set(
-    [s.x, s.y, s.diameter, s.rotation, s.alpha, s.blur, s.grainTurn, (s.flipX ? 1 : 0) + (s.flipY ? 2 : 0), s.opacity, s.roundness], (at + i) * STAMP_FLOATS,
+    [s.x, s.y, s.diameter, s.rotation, s.alpha, s.blur, s.grainTurn, (s.flipX ? 1 : 0) + (s.flipY ? 2 : 0), s.opacity, s.roundness, s.grainDepth], (at + i) * STAMP_FLOATS,
   ));
   for (const [deposit, { main, dual, tint }] of deposits) {
     write(deposit.stamps, main);
@@ -694,7 +695,7 @@ async function rendererOnDevice(
     vertex: {
       module: stampModule,
       buffers: [
-        { arrayStride: STAMP_FLOATS * 4, stepMode: 'instance', attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }, { shaderLocation: 1, offset: 16, format: 'float32x4' }, { shaderLocation: 3, offset: 32, format: 'float32x2' }] },
+        { arrayStride: STAMP_FLOATS * 4, stepMode: 'instance', attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }, { shaderLocation: 1, offset: 16, format: 'float32x4' }, { shaderLocation: 3, offset: 32, format: 'float32x3' }] },
         { arrayStride: tinted && channel === 0 ? TINT_FLOATS * 4 : 0, stepMode: 'instance', attributes: [{ shaderLocation: 2, offset: 0, format: 'float32x4' }] },
       ],
     },

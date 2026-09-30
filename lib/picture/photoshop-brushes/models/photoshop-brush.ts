@@ -4,9 +4,10 @@
 // Photoshop's dialog names each setting and unit, so most carry over directly; unknown constants are a shared
 // PhotoshopReading. Pressure's several sources are resolved here once (photoshopPressureAmounts).
 //
-// Negative space: live-input, preview and preset-size settings (a deposit states its diameter) go unreported;
-// build-up (a path never rests), tilt, stylus wheel, rotation and pose are `inapplicable`. Fade, noise, bristle,
-// erodible and airbrush tips (read as round) and Mixer Brush wet mixing (left to the wet-paint model) are `unsupported`.
+// Negative space: live-input, preview and preset-size settings (a deposit states its diameter) and a canvas
+// texture's depth dynamics (Photoshop ignores them too) go unreported. Build-up, tilt, stylus wheel, rotation and pose
+// are `inapplicable` (a path paints those controls as off). Noise, bristle, erodible and airbrush tips (read as round)
+// and Mixer Brush wet mixing (vid-90) are `unsupported`.
 
 import { PHOTOSHOP_POOLING } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import { PHOTOSHOP_PIXEL_TIP_DIAMETER, photoshopComputedTipSpan } from './photoshop-computed-tip.ts';
@@ -16,8 +17,8 @@ import {
 } from './photoshop-preset.ts';
 import { PHOTOSHOP_READING } from './photoshop-reading.ts';
 import {
-  stampLinearDynamics, type StampBlend, type StampBrush, type StampBrushAsset, type StampBrushColorDynamics, type StampBrushLayer, type StampBrushSupportNote, type StampBrushTip,
-  type StampDualBlend, type StampGrainBlend,
+  stampDynamicsOf, type StampBlend, type StampBrush, type StampBrushAsset, type StampBrushColorDynamics, type StampBrushLayer, type StampBrushSupportNote, type StampBrushTip,
+  type StampDualBlend, type StampGrainBlend, type StampScaleResponse,
 } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 
 /**
@@ -156,15 +157,38 @@ const shares = (d: PhotoshopDynamic = OFF) => ({ jitter: d.jitter / 100, control
 type Note = (level: StampBrushSupportNote['level'], setting: string, detail: string) => void;
 
 /**
- * A dynamic's pressure response (its linear pressure amount), from its control and the minimum it falls to at no
- * pressure, noting any control a path can't drive.
+ * What a stroke can drive a dynamic by: pressure, or fade over its `steps`. Tilt, stylus wheel and rotation read full
+ * on a stroked path, painting as off does (the vid-105 probes), so they drive nothing.
  */
-function pressureOf(path: string, what: string, control: PhotoshopControl, minimum: number, note: Note): number {
-  if (control.kind === 'off') return 0;
-  if (control.kind === 'penPressure') return 1 - minimum;
-  if (control.kind === 'fade') note('unsupported', `${path}.control`, `${what} fades over a count of stamps; the studio fades a stroke only by its falloff and tapers`);
-  else note('inapplicable', `${path}.control`, `${what} follows ${control.kind === 'unsupported' ? `control ${control.code}` : CONTROL_NAMES[control.kind]}: an authored stroke has only pressure`);
-  return 0;
+type PhotoshopDriver = { sensor: 'pressure' } | { sensor: 'fade'; steps: number };
+
+/** The driver of a dynamic `what` at `path`, noting a control a stroke can't drive; direction is angle's alone. */
+function driverOf(path: string, what: string, control: PhotoshopControl, note: Note): PhotoshopDriver | undefined {
+  switch (control.kind) {
+    case 'off': return undefined;
+    case 'penPressure': return { sensor: 'pressure' };
+    case 'fade': return { sensor: 'fade', steps: control.steps };
+    case 'penTilt': case 'stylusWheel': case 'rotation':
+      note('inapplicable', `${path}.control`, `${what} follows ${CONTROL_NAMES[control.kind]}: an authored stroke has only pressure, and Photoshop paints a path as off`);
+      return undefined;
+    case 'direction': case 'initialDirection':
+      note('unsupported', `${path}.control`, `${what} follows ${CONTROL_NAMES[control.kind]}, which the studio reads only for angle`);
+      return undefined;
+    case 'unsupported':
+      note('unsupported', `${path}.control`, `${what} follows control ${control.code}, which the studio doesn't read`);
+      return undefined;
+    default:
+      return undefined;
+  }
+}
+
+const linear = (amount: number): StampScaleResponse => ({ kind: 'linear', amount });
+type PhotoshopScaleBindings = { pressure?: StampScaleResponse; fade?: StampScaleResponse & { steps: number } };
+
+/** `response` bound to `driver`'s sensor. */
+function scaleBindingsOf(driver: PhotoshopDriver | undefined, response: StampScaleResponse): PhotoshopScaleBindings {
+  if (!driver) return {};
+  return driver.sensor === 'pressure' ? { pressure: response } : { fade: { ...response, steps: driver.steps } };
 }
 
 /**
@@ -176,45 +200,49 @@ export type PhotoshopPressureContext = { lingeringPose: boolean };
 export const PHOTOSHOP_PEN_PRESSURE: PhotoshopPressureContext = { lingeringPose: false };
 
 /**
- * Pressure's linear amounts on size, opacity and flow: a lingering pose over the options bar's buttons (each drives
- * wholly) over the brush's dynamics. A pose drives both wholly, but the size amount a beneath counts twice (minimum m
- * gives 1 − (1 − m)²(1 − p)); opacity's is unprobed, read as not. Tool szVr, opVr, prVr are noted, not read.
+ * Size, opacity and flow's controls. Pressure: a lingering pose over the options bar's buttons (each drives wholly)
+ * over the brush's own. Under a pose a size amount a counts twice (1 − (1 − m)²(1 − p)); opacity's is unprobed, read
+ * as not. A fade stands. The tool's szVr, opVr and prVr repeat the brush's, so aren't read.
  */
-function photoshopPressureAmounts(p: PhotoshopPaintablePreset, context: PhotoshopPressureContext, note: Note): { size: number; opacity: number; flow: number } {
+function photoshopTransferBindings(p: PhotoshopPaintablePreset, context: PhotoshopPressureContext, note: Note) {
   const size = shares(p.tipDynamics?.size), opacity = shares(p.transfer?.opacity), flow = shares(p.transfer?.flow);
-  const buttons = {
-    size: p.tool?.pressureOverridesSize ? 1 : pressureOf('tipDynamics.size', 'size', size.control, (p.tipDynamics?.minimumDiameter ?? 0) / 100, note),
-    opacity: p.tool?.pressureOverridesOpacity ? 1 : pressureOf('transfer.opacity', 'opacity', opacity.control, opacity.minimum, note),
-    flow: pressureOf('transfer.flow', 'flow', flow.control, flow.minimum, note),
+  const minimumDiameter = (p.tipDynamics?.minimumDiameter ?? 0) / 100;
+  const own = {
+    size: scaleBindingsOf(driverOf('tipDynamics.size', 'size', size.control, note), linear(1 - minimumDiameter)),
+    opacity: scaleBindingsOf(driverOf('transfer.opacity', 'opacity', opacity.control, note), linear(1 - opacity.minimum)),
+    flow: scaleBindingsOf(driverOf('transfer.flow', 'flow', flow.control, note), linear(1 - flow.minimum)),
   };
-  if (p.tool) {
-    // A tool preset keeps the tool's own pressure dynamics beside the brush's, and they often differ.
-    const own = [['sizeDynamics', 'size', p.tipDynamics?.size], ['opacityDynamics', 'opacity', p.transfer?.opacity], ['flowDynamics', 'flow', p.transfer?.flow]] as const;
-    for (const [key, what, brush] of own) {
-      if (p.tool[key]?.control.kind === 'penPressure' && brush?.control.kind !== 'penPressure') {
-        note('unsupported', `tool.${key}`, `the tool's own ${what} by pen pressure; the brush's dynamics are read, which don't set it`);
-      }
-    }
-  }
+  const buttons = {
+    ...own,
+    ...(p.tool?.pressureOverridesSize && { size: { ...own.size, pressure: linear(1) } }),
+    ...(p.tool?.pressureOverridesOpacity && { opacity: { ...own.opacity, pressure: linear(1) } }),
+  };
   if (!context.lingeringPose) return buttons;
-  return { ...buttons, size: buttons.size > 0 ? buttons.size ** 2 : 1, opacity: 1 };
+  const sizeAmount = buttons.size.pressure?.kind === 'linear' ? buttons.size.pressure.amount : 0;
+  return { ...buttons, size: { ...buttons.size, pressure: linear(sizeAmount > 0 ? sizeAmount ** 2 : 1) }, opacity: { ...buttons.opacity, pressure: linear(1) } };
 }
 
 /**
- * Scatter and count, the main brush's or its dual's: the studio's scatter (its radius or lateral reach, and its count)
- * and the count's linear dynamics.
+ * Scatter on pen pressure keeps p² of its reach, over signal s = 1 − p (the vid-105 probes: spreads at poses 0.25 to 1
+ * fit p², where p leaves the low poses too wide). A fade shrinks it linearly.
  */
-function scatterOf(s: PhotoshopScatter | undefined, prefix: string, reading: PhotoshopReading, note: Note): { scatter: StampBrushLayer['scatter']; count: { pressure: number; random: number } } {
-  if (!s) return { scatter: { count: 1, radius: 0, lateral: 0 }, count: { pressure: 0, random: 0 } };
+const SCATTER_BY_PRESSURE: StampScaleResponse = { kind: 'curve', points: Array.from({ length: 9 }, (_, i) => [i / 8, (1 - i / 8) ** 2] as const) };
+
+/**
+ * Scatter and count, the main brush's or its dual's: the studio's scatter (its radius or lateral reach, and its
+ * count), and the bindings of each. Scatter's control scales its reach, in the deposit's diameters, down to none.
+ */
+function scatterOf(s: PhotoshopScatter | undefined, prefix: string, reading: PhotoshopReading, note: Note) {
+  if (!s) return { scatter: { count: 1, radius: 0, lateral: 0 }, reach: {}, count: {} };
   const scatter = shares(s.scatter), count = shares(s.countDynamics);
   const reach = scatter.jitter * reading.scatterSpan, both = s.bothAxes;
   if (reach > 0) note('approximated', `${prefix}scatter.scatter.jitter`, `${Math.round(scatter.jitter * 100)}% read as stamps strayed up to ${reach.toFixed(2)} diameters ${both ? 'every way' : 'across the stroke'}`);
-  if (scatter.control.kind === 'penPressure') note('unsupported', `${prefix}scatter.scatter.control`, 'scatter by pressure: the studio scatters alike at any pressure');
-  else if (scatter.control.kind !== 'off') pressureOf(`${prefix}scatter.scatter`, 'scatter', scatter.control, 0, note);
-  const countPressure = pressureOf(`${prefix}scatter.countDynamics`, 'count', count.control, count.minimum, note);
+  const scatterDriver = driverOf(`${prefix}scatter.scatter`, 'scatter', scatter.control, note);
+  const countDriver = driverOf(`${prefix}scatter.countDynamics`, 'count', count.control, note);
   return {
-    scatter: { count: Math.max(1, Math.round(s.count)), radius: both ? reach : 0, lateral: both ? 0 : reach },
-    count: { pressure: countPressure, random: Math.min(1, count.jitter) },
+    scatter: { count: Math.max(1, Math.round(s.count)), radius: both ? reach : 0, lateral: both ? 0 : reach } satisfies StampBrushLayer['scatter'],
+    reach: reach > 0 ? scaleBindingsOf(scatterDriver, scatterDriver?.sensor === 'pressure' ? SCATTER_BY_PRESSURE : linear(1)) : {},
+    count: { ...scaleBindingsOf(countDriver, linear(1 - count.minimum)), random: linear(Math.min(1, count.jitter)) },
   };
 }
 
@@ -223,8 +251,12 @@ function scatterOf(s: PhotoshopScatter | undefined, prefix: string, reading: Pho
  * as Photoshop steps (`eachStamp`), so no step is under a pixel, however small the spacing.
  */
 function spacingOf(tip: PhotoshopKnownTip, prefix: string, note: Note) {
-  // Photoshop steps by its percentage of the tip's short side: a squashed tip's stamps close up with its roundness.
-  const spacing = (tip.geometry.spacing / 100) * tipRoundness(tip);
+  // Photoshop steps by its percentage of the tip's short side: a squashed tip's stamps close up with its roundness. A
+  // computed tip's is drawn in whole pixels at the preset's diameter (the angle probes: 48 px at 30% steps 28 px at
+  // 200%, where 14.4 would step 28.8), and scales with the stamp from there.
+  const { diameter } = tip.geometry, roundness = tipRoundness(tip);
+  const short = tip.kind === 'sampled' || roundness === 1 ? roundness : Math.max(1, Math.round(diameter * roundness)) / diameter;
+  const spacing = (tip.geometry.spacing / 100) * short;
   if (!tip.geometry.spaced) note('approximated', `${prefix}tip.geometry.spaced`, `spacing off stamps once per pointer event; read as its ${tip.geometry.spacing}% spacing`);
   return spacing;
 }
@@ -241,26 +273,23 @@ function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: Photos
 
   const shape = p.tipDynamics;
   const size = shares(shape?.size), angle = shares(shape?.angle), roundness = shares(shape?.roundness);
-  const pressure = photoshopPressureAmounts(p, context, note);
-  let follow = 0;
-  if (angle.control.kind === 'direction') follow = 1;
-  else if (angle.control.kind === 'initialDirection') {
-    follow = 1;
-    note('approximated', 'tipDynamics.angle.control', "initial direction read as following the stroke's direction throughout");
-  } else if (angle.control.kind === 'penPressure') note('unsupported', 'tipDynamics.angle.control', 'angle by pressure: the studio turns stamps alike at any pressure');
-  else if (angle.control.kind !== 'off') pressureOf('tipDynamics.angle', 'angle', angle.control, 0, note);
+  const transfer = photoshopTransferBindings(p, context, note);
+  // An angle control turns a whole turn over its range: pressure by p × 360° (the vid-105 probes), fade from a whole
+  // turn at its first step to none at its last. Counter-clockwise, as Photoshop's angle turns; its sign is unprobed.
+  const angleControl = angle.control.kind === 'direction' || angle.control.kind === 'initialDirection' ? undefined : driverOf('tipDynamics.angle', 'angle', angle.control, note);
+  const whole = { kind: 'linear', amount: -2 * Math.PI } as const;
   if (angle.jitter > 0) note('approximated', 'tipDynamics.angle.jitter', `${Math.round(angle.jitter * 100)}% read as each stamp turned at random by up to ±${Math.round((angle.jitter * reading.angleJitterSpan * 180) / Math.PI)}°`);
   // vid-97's probes: jittered roundness falls evenly from full to the minimum (which Photoshop never lets under 1%).
   // Pressure is read down to the same minimum, as size's is.
   const minimumRoundness = (shape?.minimumRoundness ?? 0) / 100;
-  const roundnessJitter = roundness.jitter * (1 - minimumRoundness);
-  const roundnessPressure = pressureOf('tipDynamics.roundness', 'roundness', roundness.control, minimumRoundness, note);
+  const roundnessControl = scaleBindingsOf(driverOf('tipDynamics.roundness', 'roundness', roundness.control, note), linear(1 - minimumRoundness));
   if (shape?.projection) note('inapplicable', 'tipDynamics.projection', "the tip's projection by pen tilt: an authored stroke has only pressure");
 
-  const { scatter, count } = scatterOf(p.scatter, '', reading, note);
+  const { scatter, reach, count } = scatterOf(p.scatter, '', reading, note);
   const opacity = shares(p.transfer?.opacity), flow = shares(p.transfer?.flow);
 
   let grain: StampBrushLayer['grain'];
+  let grainDepth = {};
   const texture = p.texture;
   if (texture) {
     if (!source.pattern) {
@@ -284,7 +313,16 @@ function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: Photos
       };
       note('approximated', 'texture.scale', `the pattern tiles ${grain.scale.toFixed(2)} diameters across at the preset's ${tip.geometry.diameter} px; Photoshop keeps it that many pixels at any size`);
       if (typeof mode !== 'string') note('unsupported', 'texture.mode', `${photoshopModeName(mode)} has no studio reading; read as multiply`);
-      if (texture.eachTip && (texture.depthDynamics.jitter > 0 || texture.depthDynamics.control.kind !== 'off')) note('unsupported', 'texture.depthDynamics, minimumDepth', 'texture depth varying stamp to stamp');
+      const depthVaries = texture.depthDynamics.jitter > 0 || texture.depthDynamics.control.kind !== 'off';
+      if (texture.eachTip && depthVaries && (mode === 'height' || mode === 'linearHeight')) {
+        note('unsupported', 'texture.depthDynamics', `depth varying stamp to stamp under ${mode}, read at its full depth: in the probes (run 20260930-082615) a height relief paints whole at depth 0 but thinner than its formula between`);
+      } else if (texture.eachTip) {
+        // Each tip's depth runs the other way from the other dynamics: full pressure paints the minimum depth, and a
+        // fade climbs from it (the vid-105 probes). Jitter takes a stamp's depth down toward the minimum.
+        const depth = shares(texture.depthDynamics), minimum = texture.minimumDepth / 100;
+        const control = scaleBindingsOf(driverOf('texture.depthDynamics', 'texture depth', depth.control, note), { kind: 'curve', points: [[0, minimum], [1, 1]] });
+        grainDepth = { ...control, random: linear(depth.jitter * (1 - minimum)) };
+      }
       if (texture.protect) note('inapplicable', 'texture.protect', "protect texture lays one brush's pattern on every brush in Photoshop; each studio brush keeps its own");
     }
   }
@@ -304,13 +342,21 @@ function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: Photos
     ...(grain && { grain }),
     spacing: spacingOf(tip, '', note),
     stepping: 'eachStamp',
-    dynamics: stampLinearDynamics({
-      size: { pressure: pressure.size, random: size.jitter },
-      opacity: { pressure: pressure.opacity, random: opacity.jitter },
-      flow: { pressure: pressure.flow, random: flow.jitter },
-      roundness: { pressure: roundnessPressure, random: roundnessJitter },
+    dynamics: stampDynamicsOf({
+      size: { ...transfer.size, random: linear(size.jitter) },
+      opacity: { ...transfer.opacity, random: linear(opacity.jitter) },
+      flow: { ...transfer.flow, random: linear(flow.jitter) },
+      roundness: { ...roundnessControl, random: linear(roundness.jitter * (1 - minimumRoundness)) },
       count,
-      rotation: { direction: follow, random: angle.jitter * reading.angleJitterSpan },
+      scatter: reach,
+      grainDepth,
+      rotation: {
+        ...(angle.control.kind === 'direction' && { direction: linear(1) }),
+        ...(angle.control.kind === 'initialDirection' && { initialDirection: linear(1) }),
+        ...(angleControl?.sensor === 'pressure' && { pressure: whole }),
+        ...(angleControl?.sensor === 'fade' && { fade: { ...whole, steps: angleControl.steps } }),
+        random: linear(angle.jitter * reading.angleJitterSpan),
+      },
     }),
     scatter,
     rotation: { angle: degrees(tip.geometry.angle), randomStart: false },
@@ -329,14 +375,14 @@ type PhotoshopDual = NonNullable<PhotoshopPreset['dual']>;
 function readDualLayer(source: PhotoshopBrushSource, dual: PhotoshopDual, tip: PhotoshopKnownTip, image: PhotoshopTipAsset, note: Note, reading: PhotoshopReading): StampBrush['dual'] {
   const { mode } = dual;
   if (typeof mode !== 'string') note('unsupported', 'dual.mode', `${photoshopModeName(mode)} has no studio reading; read as multiply`);
-  const { scatter, count } = scatterOf(dual.scatter, 'dual.', reading, note);
+  const { scatter, reach, count } = scatterOf(dual.scatter, 'dual.', reading, note);
   const scale = (tip.geometry.diameter / source.preset.tip.geometry.diameter) * reading.dualScale;
   if (dual.flip) note('approximated', 'dual.flip', "the dual's flip read as each of its stamps flipped across its width at random");
   return {
     tip: tipOf(tip, image, 'dual.', note),
     spacing: spacingOf(tip, 'dual.', note),
     stepping: 'eachStamp',
-    dynamics: stampLinearDynamics({ count }),
+    dynamics: stampDynamicsOf({ count, scatter: reach }),
     scatter,
     rotation: { angle: degrees(tip.geometry.angle), randomStart: false },
     flip: { x: dual.flip, y: false },
@@ -360,7 +406,8 @@ function readColorDynamics(color: PhotoshopPreset['color'], note: Note, reading:
   if (color.purity) note('unsupported', 'color.purity', `a ${Math.round(color.purity)}% shift in saturation, stroke-wide`);
   if (swing.jitter > 0) note('unsupported', 'color.swing.jitter', 'stamps strayed toward the background colour at random: the studio moves toward the secondary colour by pressure only');
   const secondary = swing.control.kind === 'penPressure' ? 1 : 0;
-  if (swing.control.kind !== 'off' && swing.control.kind !== 'penPressure') pressureOf('color.swing', 'foreground to background', swing.control, 0, note);
+  if (swing.control.kind === 'fade') note('unsupported', 'color.swing.control', 'foreground to background over a fade: the studio moves toward the secondary colour by pressure only');
+  else if (swing.control.kind !== 'penPressure') driverOf('color.swing', 'foreground to background', swing.control, note);
   const dynamics: StampBrushColorDynamics = {
     stamp: color.perTip ? varied : none,
     stroke: color.perTip ? none : varied,
