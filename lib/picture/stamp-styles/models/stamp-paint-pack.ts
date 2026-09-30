@@ -180,22 +180,32 @@ export function resolveStampPaintPackBrush(pack: StampPaintPack, name: string): 
   return source && normalizePhotoshopBrush(name, source);
 }
 
+/** Every brush of `pack` read from its source, by name, with what didn't carry over. */
+function resolveEveryStampPaintPackBrush(pack: StampPaintPack): [string, { brush: StampBrush; support: StampBrushSupportNote[] }][] {
+  if (pack.app === 'procreate') {
+    return Object.entries(pack.brushes).map(([name, source]) => {
+      const read = normalizeProcreateBrush(name, source.main, source.dual);
+      return [name, { brush: read.brush, support: [...read.support, ...(source.dropped ?? [])] }];
+    });
+  }
+  const probed = photoshopProbedRanges();
+  return Object.entries(pack.brushes).map(([name, source]) => {
+    const read = normalizePhotoshopBrush(name, source);
+    const unprobed = photoshopUnprobedFields(source.preset, probed).map(({ path, value, probed: range }): StampBrushSupportNote => ({ level: 'unprobed', setting: path, detail: `${value}, where the probes gave ${range}` }));
+    return [name, { brush: read.brush, support: [...read.support, ...unprobed] }];
+  });
+}
+
 /** Every brush of `pack`, read from its source, by name. */
 export const resolveStampPaintPackBrushes = (pack: StampPaintPack): Record<string, StampBrush> =>
-  Object.fromEntries(Object.keys(pack.brushes).map((name) => [name, resolveStampPaintPackBrush(pack, name)!.brush]));
+  Object.fromEntries(resolveEveryStampPaintPackBrush(pack).map(([name, { brush }]) => [name, brush]));
 
 /**
  * What didn't carry over, brush by brush: the normalizer's notes, a Photoshop brush's settings past what the probes
  * covered, and why each skipped brush wasn't imported.
  */
 export function stampPaintPackSupport(pack: StampPaintPack): Record<string, StampBrushSupportNote[]> {
-  const probed = pack.app === 'photoshop' ? photoshopProbedRanges() : undefined;
-  const read = Object.fromEntries(Object.keys(pack.brushes).map((name) => {
-    const notes = resolveStampPaintPackBrush(pack, name)!.support;
-    if (pack.app !== 'photoshop') return [name, notes];
-    const unprobed = photoshopUnprobedFields(pack.brushes[name].preset, probed!).map(({ path, value, probed: range }): StampBrushSupportNote => ({ level: 'unprobed', setting: path, detail: `${value}, where the probes gave ${range}` }));
-    return [name, [...notes, ...unprobed]];
-  }));
+  const read = Object.fromEntries(resolveEveryStampPaintPackBrush(pack).map(([name, { support }]) => [name, support]));
   return { ...read, ...Object.fromEntries(Object.entries(pack.skipped).map(([name, notes]) => [name, [...notes]])) };
 }
 
