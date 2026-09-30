@@ -31,7 +31,7 @@ export const procreatePreviewStrokePath = (): StampStrokePoint[] => PREVIEW_STRO
  * darkness is the brush's coverage: an opaque group raises coverage to cover what's under it.
  */
 export function procreatePreviewPainting(brush: StampBrush, diameter: number, preview: 'stroke' | 'stamp'): CompiledStampPaint {
-  const material = { kind: 'flat', color: '#000000' } as const;
+  const material = { kind: 'color', color: '#000000' } as const;
   return compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('preview', { composite: 'glaze', opacity: 1 }, (group) => group.pass('stroke', {}, (pass) => {
     if (preview === 'stamp') pass.stamps('stamp', { brush, material, diameter, at: [{ x: PROCREATE_PREVIEW_SIZE.width / 2, y: PROCREATE_PREVIEW_SIZE.height / 2 }] });
     else pass.stroke('stroke', { brush, material, diameter, path: procreatePreviewStrokePath() });

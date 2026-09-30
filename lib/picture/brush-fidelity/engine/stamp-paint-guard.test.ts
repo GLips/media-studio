@@ -23,7 +23,7 @@ const brush: StampBrush = {
 };
 
 const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) => {
-  pass.stroke('s', { brush, material: { kind: 'flat', color: '#000000' }, diameter: 40, path: [{ x: 0, y: 0 }, { x: 400, y: 60 }] });
+  pass.stroke('s', { brush, material: { kind: 'color', color: '#000000' }, diameter: 40, path: [{ x: 0, y: 0 }, { x: 400, y: 60 }] });
 }))));
 
 /** `painting` with its one deposit's stamps passed through `edit`. */

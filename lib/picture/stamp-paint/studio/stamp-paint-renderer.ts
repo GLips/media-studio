@@ -559,6 +559,8 @@ export type StampPaintRenderer = {
 export async function createStampPaintRenderer(
   canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string,
 ): Promise<StampPaintRenderer> {
+  const mixture = painting.groups.flatMap((group) => group.passes.flatMap((pass) => pass.deposits)).find((deposit) => deposit.material.kind === 'mixture');
+  if (mixture) throw new Error(`stamp paint: ${mixture.id} lays a mixture of pigments, which only a style that paints in pigment can lay`);
   const device = await createStampPaintDevice();
   try {
     return await rendererOnDevice(device, canvas, painting, paper, width, height, imageUrl);
@@ -985,8 +987,9 @@ async function rendererOnDevice(
     dispatch(encoder, pipelines.deposit, [
       slot((views) => {
         const put = stampUniformWriter(DEPOSIT, views);
-        writePaintDeposit(views.floats, views.ints, DEPOSIT.at.paint, deposit.material, deposit.blend);
-        put('secondary', [...rgb(deposit.secondaryColor), 0]);
+        // SAFETY: rendererOnDevice refused any mixture before loading.
+        writePaintDeposit(views.floats, views.ints, DEPOSIT.at.paint, deposit.material as Extract<typeof deposit.material, { kind: 'color' }>, deposit.blend);
+        put('secondary', [...rgb(deposit.secondaryColor ?? '#000000'), 0]);
         put('view', [width, height, paperTile[0], paperTile[1]]);
         put('edges', edgesOf(active.main));
         put('dualEdges', edgesOf(active.dual));

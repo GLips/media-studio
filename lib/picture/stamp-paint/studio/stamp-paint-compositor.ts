@@ -61,7 +61,7 @@ fn groupPaint(under: vec4f, layer: vec4f, glaze: bool, opacity: f32) -> vec4f {
 export const PAINT_DEPOSIT_WORDS = 4;
 
 /** Writes the PaintDeposit for `material` laid by `blend` at word `at` of a uniform slot. */
-export function writePaintDeposit(floats: Float32Array, ints: Int32Array, at: number, material: PaintMaterial, blend: StampBlend) {
+export function writePaintDeposit(floats: Float32Array, ints: Int32Array, at: number, material: Extract<PaintMaterial, { kind: 'color' }>, blend: StampBlend) {
   floats.set([1, 3, 5].map((i) => parseInt(material.color.slice(i, i + 2), 16) / 255), at);
   ints[at + 3] = stampPaintBlendIndex(blend);
 }

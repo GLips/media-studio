@@ -110,7 +110,7 @@ export function photoshopReferenceStrokePath(): StampStrokePoint[] {
  * (a tool preset's own, which scales a built stroke's coverage), so the painting's darkness is its coverage.
  */
 export function photoshopReferencePainting(brush: StampBrush, diameter: number, opacity: number): CompiledStampPaint {
-  const material = { kind: 'flat', color: '#000000' } as const;
+  const material = { kind: 'color', color: '#000000' } as const;
   return compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('reference', { composite: 'glaze', opacity }, (group) => group.pass('stroke', {}, (pass) => {
     pass.stroke('stroke', { brush, material, diameter, path: photoshopReferenceStrokePath() });
   }))));

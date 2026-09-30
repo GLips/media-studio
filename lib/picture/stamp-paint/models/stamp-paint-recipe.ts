@@ -9,6 +9,7 @@
 // (`<group>/<pass>/<deposit>`), so adding a stroke changes no other stroke, and renaming one reseeds only it.
 
 import { seededRandom } from '#lib/picture/motion/models/random.ts';
+import { paintMixtureProblem, type PaintMixture } from '#lib/picture/paint/models/paint-mixture.ts';
 import type { StampBlend, StampBrush, StampBrushAsset, StampBrushColorDynamics, StampBrushLayer } from './stamp-brush.ts';
 import { placeAuthoredStamps, placeStrokeStamps, type PlacedStamp, type StampPlacement, type StampPlacementBrush, type StampStrokePoint } from './stamp-placement.ts';
 import { handStampStroke, type StampStrokeHand } from './stamp-stroke-hand.ts';
@@ -23,10 +24,11 @@ export type StampPaintPaper = {
 };
 
 /**
- * What a deposit is made of, which decides how it mixes with paint already in its group. `flat` mixes only by its
- * blend; `pigment` mixes spectrally with the pigment under it, as real paints do (blue over yellow reads green).
+ * What a deposit is made of. A `color` is flat colour, laid by its blend as Photoshop lays it; in a style that paints
+ * in pigment it's fitted as a pigment of its own. A `mixture` is pigments in proportion at a strength
+ * (paint-mixture.ts), which only a style that paints in pigment can lay.
  */
-export type PaintMaterial = { kind: 'flat'; color: StampPaintColor } | { kind: 'pigment'; color: StampPaintColor };
+export type PaintMaterial = { kind: 'color'; color: StampPaintColor } | ({ kind: 'mixture' } & PaintMixture);
 
 /** An area of the painting, in its pixels. */
 export type StampRegion =
@@ -40,7 +42,7 @@ type StampDepositSettings = {
   diameter: number;
   /** Left out, the brush's own blend. */
   blend?: StampBlend;
-  /** The colour a brush whose colour follows pressure moves toward (StampBrushColorDynamics); the material's own if left out. */
+  /** The colour a brush whose colour follows pressure moves toward (StampBrushColorDynamics); a colour material's own if left out. */
   secondaryColor?: StampPaintColor;
   /** The most this deposit can build to, 0..1, however its stamps overlap. */
   opacity?: number;
@@ -141,9 +143,10 @@ export type CompiledStampDeposit = {
   /** A stroke's stamps overlap along its path; placed stamps each land alone. */
   kind: StampPaintDeposit['kind'];
   brush: StampBrush;
-  /** Its material, its colour moved by the brush's stroke colour jitter. */
+  /** Its material, a colour moved by the brush's stroke colour jitter. */
   material: PaintMaterial;
-  secondaryColor: StampPaintColor;
+  /** None for a mixture: a brush's colour dynamics move a colour, not pigments. */
+  secondaryColor?: StampPaintColor;
   /** Where the brush's grain and its dual's start, as shares of their tiles: each deposit's own, by offset jitter. */
   grainOffset: { main: readonly [number, number]; dual: readonly [number, number] };
   /** The stamp's diameter at full size, as the deposit states it: what its texturized grain and edges scale with. */
@@ -175,7 +178,7 @@ export type CompiledStampPaint = { groups: readonly CompiledStampGroup[] };
 /**
  * Checks `recipe` and places every stamp. Throws on an ID used twice at one level (it would seed two deposits alike),
  * an empty ID or one holding `/` or `|` (the seed's separators), a clipped pass with nothing before it, a deposit
- * with no points or a non-positive diameter, a non-positive stroke speed, and a negative `drawnOver`.
+ * with no points or a non-positive diameter, a non-positive stroke speed, a negative `drawnOver`, a bad mixture.
  */
 export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStampPaint {
   const seen = new Set<string>(), duplicates = new Set<string>();
@@ -211,9 +214,17 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
         const random = seededRandom(`${full}|deposit|paint`);
         const offset = (layer?: StampBrushLayer) => [random(), random()].map((r) => r * (layer?.grain?.offsetJitter ?? 0)) as [number, number];
         const grainOffset = { main: offset(brush), dual: offset(brush.dual) };
-        const color = brush.color ? strokeColor(material.color, brush.color.stroke, [random(), random(), random(), random()]) : material.color;
+        const jitter = [random(), random(), random(), random()];
+        let paint: Pick<CompiledStampDeposit, 'material' | 'secondaryColor'>;
+        if (material.kind === 'color') {
+          paint = { material: { kind: 'color', color: brush.color ? strokeColor(material.color, brush.color.stroke, jitter) : material.color }, secondaryColor: deposit.secondaryColor ?? material.color };
+        } else {
+          const problem = paintMixtureProblem(material);
+          if (problem) throw new Error(`stamp paint: ${full}'s mixture can't be painted: ${problem}`);
+          paint = { material };
+        }
         return {
-          id: full, kind: deposit.kind, brush, material: { ...material, color }, secondaryColor: deposit.secondaryColor ?? material.color, grainOffset,
+          id: full, kind: deposit.kind, brush, ...paint, grainOffset,
           diameter, blend, opacity, protectedBy, ...(appliedAt !== undefined && { reveal: { at: appliedAt, over: drawnOver ?? 0 } }), stamps, dualStamps,
         };
       });

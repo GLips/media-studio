@@ -26,7 +26,7 @@ test('a fill covers a concave region in one stroke, lifting across its notch rat
   const u: StampRegion = { kind: 'polygon', points: [0, 0, 100, 0, 100, 200, 300, 200, 300, 0, 400, 0, 400, 300, 0, 300].reduce<{ x: number; y: number }[]>(
     (points, v, i, all) => (i % 2 ? points : [...points, { x: v, y: all[i + 1] }]), []) };
   const deposits = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) =>
-    group.pass('p', {}, (pass) => pass.stroke('fill', { brush: stampFillBrush(brush), material: { kind: 'flat', color: '#406585' }, diameter: 40, path: stampFillPath(u, 40) }))))).groups[0].passes[0].deposits;
+    group.pass('p', {}, (pass) => pass.stroke('fill', { brush: stampFillBrush(brush), material: { kind: 'color', color: '#406585' }, diameter: 40, path: stampFillPath(u, 40) }))))).groups[0].passes[0].deposits;
   assert.equal(deposits.length, 1);
   const { stamps } = deposits[0];
   const inNotch = stamps.filter(({ x, y }) => x > 110 && x < 290 && y < 190);

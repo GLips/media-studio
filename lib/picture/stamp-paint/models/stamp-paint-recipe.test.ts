@@ -19,7 +19,7 @@ const brush: StampBrush = {
   falloff: 0,
   flow: 0.4,
 };
-const ochre: PaintMaterial = { kind: 'pigment', color: '#c8902f' };
+const ochre: PaintMaterial = { kind: 'color', color: '#c8902f' };
 const path = [{ x: 0, y: 0 }, { x: 300, y: 40 }, { x: 520, y: 10, pressure: 0.4 }];
 const sun: StampRegion = { kind: 'ellipse', x: 200, y: 100, radiusX: 40, radiusY: 40 };
 const horizon: StampRegion = { kind: 'polygon', points: [{ x: 0, y: 300 }, { x: 800, y: 300 }, { x: 800, y: 320 }] };

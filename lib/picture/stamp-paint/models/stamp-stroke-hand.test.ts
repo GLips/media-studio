@@ -63,8 +63,8 @@ const brush: StampBrush = {
 
 test('in a recipe, a hand stroke thins by its profile and its reveal slows through the corner', () => {
   const [even, handed] = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) => {
-    pass.stroke('even', { brush, material: { kind: 'flat', color: '#000000' }, diameter: D, path: corner });
-    pass.stroke('hand', { brush, material: { kind: 'flat', color: '#000000' }, diameter: D, path: corner, hand: { profile: 'swell', curvature: 0.3 } });
+    pass.stroke('even', { brush, material: { kind: 'color', color: '#000000' }, diameter: D, path: corner });
+    pass.stroke('hand', { brush, material: { kind: 'color', color: '#000000' }, diameter: D, path: corner, hand: { profile: 'swell', curvature: 0.3 } });
   })))).groups[0].passes[0].deposits;
   assert.ok(even.stamps.every((s) => s.diameter === D));
   assert.ok(handed.stamps[0].diameter < 0.5 * D && nearest(handed.stamps, 400, 0).diameter > 0.9 * D);

@@ -33,7 +33,7 @@ function sheetPath(top: number): StampStrokePoint[] {
 /** The sheet for `brush` at `diameter`, its images from `packUrls`: a row per variant, as a PNG data URL. */
 async function drawStampStrokeHandSheet(brush: StampBrush, diameter: number, packUrls: BrushFidelityPackUrls): Promise<string> {
   const width = LABEL + PAINT + PLOT, height = ROW * VARIANTS.length;
-  const material = { kind: 'flat', color: '#1d2a44' } as const;
+  const material = { kind: 'color', color: '#1d2a44' } as const;
   const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => VARIANTS.forEach(({ hand }, row) => paint.group(`row-${row}`, { composite: 'glaze', opacity: 1 }, (group) => group.pass('stroke', {}, (pass) => {
     pass.stroke('stroke', { brush, material, diameter, path: sheetPath(row * ROW), hand });
   })))));

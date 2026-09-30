@@ -44,7 +44,7 @@ const TOTAL_DRIFT = 0.01;
 
 /** Placed stamps at their own sizes, turns and pressures, and a hand-drawn stroke with a lift. */
 function probePainting(brush: StampBrush): CompiledStampPaint {
-  const material = { kind: 'pigment', color: '#6a4c93' } as const;
+  const material = { kind: 'color', color: '#6a4c93' } as const;
   return compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('probe', { composite: 'glaze', opacity: 0.8 }, (group) => group.pass('probe', {}, (pass) => {
     pass.stamps('placed', { brush, material, diameter: 70, secondaryColor: '#e0b040', at: [
       { x: 100, y: 120 }, { x: 260, y: 140, diameter: 40, rotation: 0.7 }, { x: 420, y: 110, pressure: 0.3 }, { x: 600, y: 150, diameter: 110, pressure: 0.8, rotation: -1.2 },
