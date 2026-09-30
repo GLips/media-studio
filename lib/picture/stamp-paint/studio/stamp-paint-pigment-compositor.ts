@@ -146,9 +146,11 @@ fn landDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f
   let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
   if (cover <= 0.0 || wet.action == WET_WATER) { return; }
   let under = textureLoad(layer, pixel, 0u).x;
+  // A lift thins the film where it is rather than shrinking it, so coverage stays: the group dries what's left over
+  // that coverage, and a later stroke there meets paint, however little.
   if (wet.action == WET_LIFT) {
     for (var l = 0u; l < LAYERS; l++) {
-      var now = wetLift(textureLoad(layer, pixel, l), cover, wet.strength, wet.workable, stains[paint.group * LAYERS + l]);
+      var now = wetLift(textureLoad(layer, pixel, l), cover, wet.strength, wet.workable, ${f32(medium.wetting.rewetting)}, stains[paint.group * LAYERS + l]);
       if (l == 0u) { now.x = under; }
       textureStore(layer, pixel, l, now);
     }
