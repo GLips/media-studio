@@ -55,7 +55,7 @@ function paritySheet(gpu: ArrayLike<number>, cpu: ArrayLike<number>): string {
 async function paintParityCase(brush: StampBrush, assetUrl: (asset: StampBrushAsset) => string, parityCase: StampDepositParityCase, withSheets: boolean) {
   const painting = compileStampPaintRecipe(stampDepositParityRecipe(brush, parityCase));
   const canvas = Object.assign(document.createElement('canvas'), { width: W, height: H });
-  const renderer = await createStampPaintRenderer(canvas, painting, { color: '#ffffff' }, W, H, assetUrl);
+  const renderer = await createStampPaintRenderer(canvas, painting, { color: '#ffffff' }, { kind: 'flat' }, W, H, assetUrl);
   const read = Object.assign(document.createElement('canvas'), { width: W, height: H }).getContext('2d')!;
   try {
     await renderer.draw(STAMP_DEPOSIT_PARITY_TIME);

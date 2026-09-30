@@ -81,5 +81,10 @@ export type { StampStrokePoint, StampPlacement } from '#lib/picture/stamp-paint/
 export { STAMP_PRESSURE_PROFILES, type StampPressureCurve, type StampPressureProfileName, type StampStrokeHand } from '#lib/picture/stamp-paint/models/stamp-stroke-hand.ts';
 export type { StampBlend, StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 export type { ResolvedStampPaintStyle } from '#lib/picture/stamp-styles/models/style.ts';
+// Pigment paint: a style that paints in pigment names its medium and pigments; a deposit lays a colour or a mixture.
+export { PAINT_MEDIA, TITANIUM_WHITE, type PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
+export type { PaintMixture, PaintMixturePart } from '#lib/picture/paint/models/paint-mixture.ts';
+export type { PaintPigmentAppearance } from '#lib/picture/paint/models/paint-pigment.ts';
+export { WATERCOLOUR_PIGMENTS } from '#lib/picture/paint/models/paint-watercolour-pigments.ts';
 export { stampPaintStyle } from '#lib/picture/stamp-styles/studio/stamp-paint-styles.ts';
 export { StampPainting } from '#lib/picture/stamp-styles/studio/stamp-painting.tsx';

@@ -1,3 +1,5 @@
 {
-  "lib/picture/stamp-paint": "A deposit's paint is pigment in a medium, mixed and dried with Kubelka–Munk."
+  "lib/picture/stamp-paint": "A deposit's paint is pigment in a medium, mixed and dried with Kubelka–Munk.",
+  "lib/picture/stamp-styles": "A style that paints in pigment names its medium and the pigments its paintings mix.",
+  "lib/picture/stamp-reference": "The CPU reference paints in pigment as the GPU does, to hold it to the same result."
 }

@@ -298,9 +298,6 @@
     "lib/picture/stamp-styles/engine/project-styles.ts": {
       "const requireDefault = <T>(file: string) => (createRequire(file)(file) as { default: T }).default;": 1
     },
-    "lib/picture/stamp-styles/models/style.ts": {
-      "return { name, brushes: brushes as ResolvedStampPaintStyle<S>['brushes'], palette: style.palette, paper };": 1
-    },
     "lib/picture/stamp-styles/studio/stamp-paint-styles.ts": {
       "return resolveStampPaintStyle(name, style as S, packs);": 1
     },
@@ -1406,9 +1403,6 @@
     },
     "lib/picture/stamp-paint/studio/stamp-paint-renderer.ts": {
       "void device.lost.then((info) => { if (info.reason !== 'destroyed') lost ??= info.message; });": 1
-    },
-    "lib/picture/stamp-styles/studio/stamp-painting.tsx": {
-      "createStampPaintRenderer(canvas, painting, paper, w, h, stampPaintAssetUrl).then((ready) => {": 1
     },
     "lib/picture/stills/studio/still-probe.tsx": {
       "whenStillSettled(root.current!).then(() => {": 1

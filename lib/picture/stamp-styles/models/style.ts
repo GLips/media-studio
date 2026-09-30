@@ -6,7 +6,10 @@
 // deposit until a style shows which ones repeat.
 
 import { stampBrushImages, type StampBrush, type StampBrushAsset } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
+import type { PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
+import type { PaintPigmentAppearance } from '#lib/picture/paint/models/paint-pigment.ts';
 import type { StampPaintColor, StampPaintPaper } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import type { StampPaintMixing, StampPigmentMixing } from '#lib/picture/stamp-paint/models/stamp-pigment-paint.ts';
 import { resolveStampPaintPackBrush, type StampPaintPack } from './stamp-paint-pack.ts';
 
 /** A style's style.ts: `export default { … } satisfies StampPaintStyle`. */
@@ -30,6 +33,11 @@ export type StampPaintStyle = {
     image?: Omit<StampBrushAsset, 'style'>;
     grain?: { image: Omit<StampBrushAsset, 'style'>; scale: number; depth: number };
   };
+  /**
+   * Whether it paints in pigment, mixed and dried with Kubelka–Munk, rather than flat colour blended as Photoshop
+   * blends it: the `medium` it paints in, and the pigments its paintings mix by name, each keyed by its id.
+   */
+  paint?: { medium: PaintMedium; pigments: Readonly<Record<string, PaintPigmentAppearance>> };
 };
 
 /**
@@ -44,17 +52,33 @@ export type BundledStampPaintStyle = {
 };
 export type BundledStampPaintStyles = Readonly<Record<string, BundledStampPaintStyle>>;
 
-/** A style ready to paint with: each of its brushes read from its pack's source, its palette and its paper. */
+/** How a style's paint mixes: in pigment, its own pigments by key, where its `paint` says so; else either way. */
+export type StampPaintStyleMixing<S extends StampPaintStyle> =
+  S extends { paint: { pigments: infer P extends Readonly<Record<string, PaintPigmentAppearance>> } } ? StampPigmentMixing<P> : StampPaintMixing;
+
+/**
+ * A style ready to paint with: each of its brushes read from its pack's source, its palette, its paper, and how its
+ * paint mixes (its pigments with it, for a style that paints in pigment).
+ */
 export type ResolvedStampPaintStyle<S extends StampPaintStyle = StampPaintStyle> = {
   name: string;
   brushes: { readonly [K in keyof S['brushes']]: StampBrush };
   palette: S['palette'];
   paper: StampPaintPaper;
+  mixing: StampPaintStyleMixing<S>;
 };
+
+/** `style`'s mixing, as its resolved type says. */
+function mixingOf<S extends StampPaintStyle>(style: S): StampPaintStyleMixing<S> {
+  const mixing: StampPaintMixing = style.paint ? { kind: 'pigment', medium: style.paint.medium, pigments: style.paint.pigments } : { kind: 'flat' };
+  // SAFETY: where S has paint this is StampPigmentMixing of its very pigments; otherwise the type is any mixing.
+  return mixing as StampPaintStyleMixing<S>;
+}
 
 /**
  * `style`, named `name`, with its brushes read from its packs' sources. Throws on a brush its pack lacks, which the
- * bundle's check (lib/picture/stamp-styles/engine/project-styles.ts) has already refused.
+ * bundle's check (lib/picture/stamp-styles/engine/project-styles.ts) has already refused, or a pigment keyed by
+ * other than its id.
  */
 export function resolveStampPaintStyle<S extends StampPaintStyle>(name: string, style: S, packs: Readonly<Record<string, StampPaintPack>>): ResolvedStampPaintStyle<S> {
   const brushes = Object.fromEntries(Object.entries(style.brushes).map(([key, { pack, brush }]) => {
@@ -68,7 +92,14 @@ export function resolveStampPaintStyle<S extends StampPaintStyle>(name: string, 
     ...(image && { image: { style: name, ...image } }),
     ...(grain && { grain: { ...grain, image: { style: name, ...grain.image } } }),
   };
-  return { name, brushes: brushes as ResolvedStampPaintStyle<S>['brushes'], palette: style.palette, paper };
+  const misnamed = Object.entries(style.paint?.pigments ?? {}).find(([key, { id }]) => key !== id);
+  if (misnamed) throw new Error(`stamp paint: ${name}'s pigment ${misnamed[0]} has the id ${misnamed[1].id}; key each pigment by its id`);
+  // SAFETY: brushes has an entry for each of style.brushes' keys, mapped above.
+  const resolved = brushes as ResolvedStampPaintStyle<S>['brushes'];
+  return {
+    name, brushes: resolved, palette: style.palette, paper,
+    mixing: mixingOf(style),
+  };
 }
 
 /** Every image a style paints with, by pack and file, each once: its brushes' tips and grains, their duals', its paper's. */

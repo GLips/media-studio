@@ -2,6 +2,8 @@
 // withBrowserModulePage. It compiles the renderer's own WGSL for the formula and accumulation registries into one
 // compute shader per grid (stamp-formula-parity.ts), runs each row's call on the GPU in f32, and hands back the results.
 
+import { PAINT_KUBELKA_MUNK_WGSL } from '#lib/picture/paint/models/paint-kubelka-munk.ts';
+import { PAINT_PAPER_WGSL } from '#lib/picture/paint/models/paint-paper.ts';
 import { COVERAGE_FORMULAS_WGSL } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import { STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
 import { STAMP_FILL_FRONT_SHARE } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
@@ -16,6 +18,8 @@ type ParityGrid = { call: string; width: number; rows: number[] };
 
 const kernel = ({ call, width }: ParityGrid) => /* wgsl */ `
 ${COVERAGE_FORMULAS_WGSL}
+${PAINT_KUBELKA_MUNK_WGSL}
+${PAINT_PAPER_WGSL}
 ${STAMP_ACCUMULATION_LAY_WGSL}
 ${STAMP_ACCUMULATION_RESOLVE_WGSL}
 ${STAMP_REGION_WGSL}

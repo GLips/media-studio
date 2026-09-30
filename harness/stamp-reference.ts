@@ -2,6 +2,7 @@
 // (lib/picture/stamp-reference) against a Photoshop probe run, cell by cell, each cell's error split among the stages
 // that own it (vid-97). `formulas`: every paired CPU/WGSL formula run on the GPU and held to its CPU side. `deposits`:
 // whole deposits (fills, masking fluid, `within`) painted by the GPU renderer and the CPU reference, compared.
+// `pigment`: the pigment fixture on the GPU against the CPU reference.
 import { defineCommand } from 'citty';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -11,6 +12,7 @@ import { photoshopProbes } from '#lib/picture/photoshop-brushes/models/photoshop
 import { scorePhotoshopProbeRun } from '#lib/picture/stamp-reference/engine/photoshop-probe-reference.ts';
 import { checkStampDepositParity } from '#lib/picture/stamp-reference/engine/stamp-deposit-parity.ts';
 import { checkStampFormulaParity } from '#lib/picture/stamp-reference/engine/stamp-formula-parity.ts';
+import { checkStampPigmentParity, STAMP_PIGMENT_TOLERANCE, writeStampPigmentFrames, type StampPigmentDifference } from '#lib/picture/stamp-reference/engine/stamp-pigment-parity.ts';
 import { STAMP_DEPOSIT_PARITY_RMS } from '#lib/picture/stamp-reference/models/stamp-deposit-parity.ts';
 import { STAMP_FORMULA_TOLERANCE } from '#lib/picture/stamp-reference/models/stamp-formula-parity.ts';
 import type { StampResolveStage } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
@@ -63,7 +65,7 @@ const probesCommand = defineCommand({
 });
 
 const formulasCommand = defineCommand({
-  meta: { name: 'formulas', description: `Run every paired formula's WGSL (accumulation lay, grain cut, dual combine, grain paint, pooling, accumulation resolve, region edges and noise, fill body, paint fields, fill fronts) on the GPU over a grid of inputs, every mode, and compare it to the CPU's: fails past ${STAMP_FORMULA_TOLERANCE}.` },
+  meta: { name: 'formulas', description: `Run every paired formula's WGSL (accumulation lay, grain cut, dual combine, grain paint, pooling, accumulation resolve, region edges and noise, fill body, paint fields, fill fronts, Kubelka–Munk films, the paper's settle, contact and clumps) on the GPU over a grid of inputs, every mode, and compare it to the CPU's: fails past ${STAMP_FORMULA_TOLERANCE}.` },
   async run() {
     const results = await checkStampFormulaParity();
     for (const r of results) {
@@ -96,7 +98,22 @@ const depositsCommand = defineCommand({
   },
 });
 
+const differenceLine = ({ max, mean, overTwo }: StampPigmentDifference) => `max ${max}, mean ${mean.toFixed(3)}, ${(overTwo * 100).toFixed(2)}% past 2 levels`;
+
+const pigmentCommand = defineCommand({
+  meta: { name: 'pigment', description: `Paint the pigment fixture (mixtures, a colour, wet mixing, glazes, an opaque group, a graded fill round masking fluid, a pass within a region, a twelve-pigment wash, a granulating paper) in watercolour, gouache and crayon, each on the GPU twice and with the CPU reference: fails if the GPU doesn't repeat exactly, or sits from the CPU past ${STAMP_PIGMENT_TOLERANCE.mean} levels on average, ${STAMP_PIGMENT_TOLERANCE.max} anywhere or 2 in over ${STAMP_PIGMENT_TOLERANCE.overTwo * 100}% of channels.` },
+  args: { out: { type: 'string', description: 'Also write gpu.png and cpu.png here' } },
+  async run({ args }) {
+    for (const result of await checkStampPigmentParity()) {
+      console.log(`${result.medium}: GPU against itself: ${differenceLine(result.repeat)}; against the CPU reference: ${differenceLine(result.reference)}`);
+      if (args.out) console.log(`  frames: ${writeStampPigmentFrames(resolve(args.out), result).join(', ')}`);
+      const { mean, max, overTwo } = result.reference;
+      if (result.repeat.max > 0 || mean > STAMP_PIGMENT_TOLERANCE.mean || max > STAMP_PIGMENT_TOLERANCE.max || overTwo > STAMP_PIGMENT_TOLERANCE.overTwo) process.exitCode = 1;
+    }
+  },
+});
+
 await runHarnessCommand(defineCommand({
   meta: { name: 'stamp-reference', description: 'The slow CPU reference renderer, held against Photoshop captures stage by stage, and the GPU formulas held to it' },
-  subCommands: { probes: probesCommand, formulas: formulasCommand, deposits: depositsCommand },
+  subCommands: { probes: probesCommand, formulas: formulasCommand, deposits: depositsCommand, pigment: pigmentCommand },
 }));

@@ -24,9 +24,13 @@ export function paintWetSettle(valley: number, paperDepth: number, granulation: 
   return 1 + a * (valley - 1);
 }
 
-/** The share of a dry medium's paint that catches where the paper stands `h` high: none below `tooth` of its mean, all at the mean. */
-export function paintDryContact(h: number, meanHeight: number, tooth: number): number {
-  return Math.min(1, Math.max(0, (h - tooth * meanHeight) / Math.max(meanHeight * (1 - tooth), 0.01)));
+/**
+ * The share of a dry medium's paint that catches where the paper stands `h` high: on a paper `paperDepth` deep (0
+ * smooth, 1 its full relief), none below `tooth` of its mean and all at the mean; a smoother paper takes it all more.
+ */
+export function paintDryContact(h: number, meanHeight: number, tooth: number, paperDepth: number): number {
+  const contact = Math.min(1, Math.max(0, (h - tooth * meanHeight) / Math.max(meanHeight * (1 - tooth), 0.01)));
+  return 1 + paperDepth * (contact - 1);
 }
 
 /** A whole number's hash to 0..1 (PCG's output permutation), the same in f64 here and u32 in WGSL. */
@@ -71,8 +75,9 @@ fn paintWetSettle(valley: f32, paperDepth: f32, granulation: f32, load: f32) -> 
   let a = clamp(paperDepth + granulation * ${GRANULATION_SETTLE.toFixed(4)} * load, 0.0, 1.0);
   return 1.0 + a * (valley - 1.0);
 }
-fn paintDryContact(h: f32, meanHeight: f32, tooth: f32) -> f32 {
-  return clamp((h - tooth * meanHeight) / max(meanHeight * (1.0 - tooth), 0.01), 0.0, 1.0);
+fn paintDryContact(h: f32, meanHeight: f32, tooth: f32, paperDepth: f32) -> f32 {
+  let contact = clamp((h - tooth * meanHeight) / max(meanHeight * (1.0 - tooth), 0.01), 0.0, 1.0);
+  return 1.0 + paperDepth * (contact - 1.0);
 }
 fn paintHash01(x: u32, y: u32, seed: u32) -> f32 {
   let v = (x * 0x27d4eb2du) ^ (y * 0x165667b1u) ^ seed;

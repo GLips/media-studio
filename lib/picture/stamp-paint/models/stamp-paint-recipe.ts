@@ -227,6 +227,9 @@ export type CompiledStampPass = {
   deposits: readonly CompiledStampDeposit[];
 };
 
+/** How much an opaque group's coverage is raised as it lands, in flat colour and pigment alike: a wash at half its density or more covers. */
+export const STAMP_OPAQUE_COVER = 2;
+
 export type CompiledStampGroup = { id: string; composite: 'opaque' | 'glaze'; opacity: number; passes: readonly CompiledStampPass[] };
 
 /** A checked recipe with every stamp placed, its groups in the order they paint. */

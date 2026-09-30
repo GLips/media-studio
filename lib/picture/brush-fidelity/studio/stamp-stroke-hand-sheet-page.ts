@@ -38,7 +38,7 @@ async function drawStampStrokeHandSheet(brush: StampBrush, diameter: number, pac
     pass.stroke('stroke', { brush, material, diameter, path: sheetPath(row * ROW), hand });
   })))));
   const paintCanvas = Object.assign(document.createElement('canvas'), { width: PAINT, height });
-  const renderer = await createStampPaintRenderer(paintCanvas, painting, { color: '#ffffff' }, PAINT, height, (asset) => brushFidelityAssetUrl(packUrls, asset));
+  const renderer = await createStampPaintRenderer(paintCanvas, painting, { color: '#ffffff' }, { kind: 'flat' }, PAINT, height, (asset) => brushFidelityAssetUrl(packUrls, asset));
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
   const context = canvas.getContext('2d')!;
   context.fillStyle = '#ffffff';

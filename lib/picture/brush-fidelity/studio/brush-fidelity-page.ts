@@ -47,7 +47,7 @@ async function measureStrokeTarget(src: string, target: BrushFidelityTarget): Pr
 
 async function paintAndMeasure(painting: CompiledStampPaint, foreign: PhotoshopForeignPaint, withPng: boolean, packUrls: BrushFidelityPackUrls): Promise<{ png?: string; profile: StrokeCoverageProfile | null }> {
   const canvas = Object.assign(document.createElement('canvas'), { width: W, height: H });
-  const renderer = await createStampPaintRenderer(canvas, painting, { color: '#ffffff' }, W, H, (asset) => brushFidelityAssetUrl(packUrls, asset));
+  const renderer = await createStampPaintRenderer(canvas, painting, { color: '#ffffff' }, { kind: 'flat' }, W, H, (asset) => brushFidelityAssetUrl(packUrls, asset));
   try {
     await renderer.draw(0);
     return { ...(withPng && { png: canvas.toDataURL('image/png') }), profile: measureStrokeCoverage(clearPhotoshopForeignPaint(paintedCoverage(canvas), W, H, foreign), W, H) };

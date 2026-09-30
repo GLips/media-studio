@@ -13,18 +13,19 @@ import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
 import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { useFrameProfile } from '#lib/picture/profiling/studio/frame-profile.ts';
-import type { CompiledStampPaint, StampPaintPaper } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import type { CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
+import type { ResolvedStampPaintStyle } from '../models/style.ts';
 import { stampPaintAssetUrl } from './stamp-paint-styles.ts';
 
 /**
- * Draws `painting` on `paper` as it stands `t` seconds in (a scene's `s.t`: its deposits' `appliedAt` and `drawnOver`
+ * Draws `painting` in `style` (on its paper, its paint mixed as it mixes) as it stands `t` seconds in (a scene's `s.t`: its deposits' `appliedAt` and `drawnOver`
  * count on it), `width` by `height` of its own pixels (the frame's size unless given), stretched over `box` (the whole
  * frame unless given).
  */
-export function StampPainting({ painting, paper, t, width, height, box: given }: {
+export function StampPainting({ painting, style: { paper, mixing }, t, width, height, box: given }: {
   painting: CompiledStampPaint;
-  paper: StampPaintPaper;
+  style: Pick<ResolvedStampPaintStyle, 'paper' | 'mixing'>;
   t: number;
   width?: number;
   height?: number;
@@ -51,12 +52,12 @@ export function StampPainting({ painting, paper, t, width, height, box: given }:
     Object.assign(canvas.style, { position: 'absolute', inset: '0', width: '100%', height: '100%' });
     holder.current!.append(canvas);
     const loaded = profile?.('stamp paint load');
-    createStampPaintRenderer(canvas, painting, paper, w, h, stampPaintAssetUrl).then((ready) => {
+    createStampPaintRenderer(canvas, painting, paper, mixing, w, h, stampPaintAssetUrl).then((ready) => {
       loaded?.();
       made = ready;
       if (!live) return ready.dispose();
       flushSync(() => setRenderer(ready));
-      release();
+      return release();
     }, cancelRender);
     return () => {
       live = false;
@@ -65,7 +66,7 @@ export function StampPainting({ painting, paper, t, width, height, box: given }:
       setRenderer(null);
       release();
     };
-  }, [painting, paper, w, h, profile, delayRender, continueRender, cancelRender]);
+  }, [painting, paper, mixing, w, h, profile, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!renderer) return;

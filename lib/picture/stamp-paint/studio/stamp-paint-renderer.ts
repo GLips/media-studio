@@ -19,11 +19,14 @@ import {
 import { STAMP_FILL_FRONT_SHARE } from '../models/stamp-fill.ts';
 import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
 import { stampDepositShowsAt, stampFillProgressAt, visibleStampCountAt, type CompiledStampDeposit, type CompiledStampMask, type CompiledStampMaskArea, type CompiledStampPaint, type CompiledStampPass, type StampPaintPaper } from '../models/stamp-paint-recipe.ts';
+import { compileStampPigmentPaint, type StampPaintMixing } from '../models/stamp-pigment-paint.ts';
+import { PAINT_BANDS } from '#lib/picture/paint/models/paint-spectrum.ts';
 import { STAMP_REGION_WGSL, stampEdgeReach, stampEdgeWidth, stampPolygonBox, type StampBox, type StampPoint } from '../models/stamp-region.ts';
 import type { PlacedStamp } from '../models/stamp-placement.ts';
 import { stampBlurRegion, type StampPixelBox } from '../models/stamp-blur-region.ts';
 import { coarsestStampTipLevel, STAMP_TIP_HULL_SIDES, stampTipHull, type StampTipHull, type StampTipLevel } from '../models/stamp-tip-hull.ts';
-import { PAINT_DEPOSIT_WORDS, STAMP_PAINT_COMPOSITOR_WGSL, stampPaintBlendIndex, writePaintDeposit } from './stamp-paint-compositor.ts';
+import { flatStampPaintCompositor, type StampPaintCompositor, type StampPaintTarget } from './stamp-paint-compositor.ts';
+import { stampPigmentCompositor } from './stamp-paint-pigment-compositor.ts';
 import { createStampPaintDevice, FULL_FRAME_WGSL, loadStampPaintImages, readStampTipLevels, type StampPaintImage, uploadStampPaintGreyImages } from './stamp-paint-gpu.ts';
 import { stampUniformLayout, stampUniformStruct, stampUniformWriter, type StampUniformViews } from './stamp-uniform-layout.ts';
 
@@ -244,17 +247,25 @@ ${BLUR.wgsl}
   textureStore(blurred, pixel, sum / total);
 }`;
 
+/** The WGSL declaring a compositor's `target` as `name` at `binding`: storage with `access`, or sampled for null. */
+function stampPaintTargetWgsl(name: string, binding: number, target: StampPaintTarget, access: 'read_write' | 'write' | null) {
+  const array = target.kind === 'array' ? '_array' : '';
+  const type = access ? `texture_storage_2d${array}<rgba16float, ${access}>` : `texture_2d${array}<f32>`;
+  return `@group(0) @binding(${binding}) var ${name}: ${type};`;
+}
+
+/** A deposit's resolve uniform. Its compositor's PaintDeposit has a slot of its own, `paint`, as this one is full. */
 const DEPOSIT = stampUniformLayout('Deposit', [
-  ['paint', { external: 'PaintDeposit', words: PAINT_DEPOSIT_WORDS, align: 4 }], ['secondary', 'vec4f'], ['view', 'vec4f'], ['edges', 'vec4f'], ['dualEdges', 'vec4f'],
+  ['view', 'vec4f'], ['edges', 'vec4f'], ['dualEdges', 'vec4f'],
   ['grain', stampUniformStruct(GRAIN)], ['dualGrain', stampUniformStruct(GRAIN)], ['paperDepth', 'f32'], ['paperLod', 'f32'], ['opacity', 'f32'],
-  ['dualBlend', 'i32'], ['burntBlend', 'i32'], ['dualBurntBlend', 'i32'], ['flags', 'u32'], ['resolvePlan', 'i32'], ['origin', 'vec2u'], ['extent', 'vec2u'],
+  ['dualBlend', 'i32'], ['flags', 'u32'], ['resolvePlan', 'i32'], ['origin', 'vec2u'], ['extent', 'vec2u'],
   ['build', 'vec2f'], ['accumulation', 'vec2u'], ['pooling', 'vec4f'],
 ]);
 
 /** What a deposit's resolve does, a bit each in its `flags`, and a WGSL constant each of the same name in capitals. */
 const DEPOSIT_FLAGS = {
-  canvasGrain: 1, dual: 2, dualCanvasGrain: 4, paper: 8, masked: 16, clipped: 32, clips: 64, tinted: 128,
-  pooled: 256, dualPooled: 512, dualLayer: 1024, within: 2048, fill: 4096,
+  canvasGrain: 1, dual: 2, dualCanvasGrain: 4, paper: 8, masked: 16, clipped: 32, clips: 64,
+  pooled: 128, dualPooled: 256, dualLayer: 512, within: 1024, fill: 2048,
 } as const;
 
 /**
@@ -276,10 +287,12 @@ const RESOLVE_STAGES_WGSL = stampResolvePlansWgsl('resolveStages', 'd: f32, at: 
 
 // A compute pass has no derivatives to choose a mip level by, so each grain's level is worked out on the CPU: a tile
 // is a fixed number of pixels across the whole painting, so it reads the same level everywhere.
-const DEPOSIT_WGSL = /* wgsl */ `
-${STAMP_PAINT_COMPOSITOR_WGSL}
-${GRAIN_WGSL}
+const depositWgsl = (compositor: StampPaintCompositor) => /* wgsl */ `
 ${DEPOSIT.wgsl}
+${compositor.deposit.layout.wgsl}
+${stampPaintTargetWgsl('layer', 8, compositor.targets.layer, 'read_write')}
+${compositor.deposit.wgsl}
+${GRAIN_WGSL}
 ${DEPOSIT_FLAGS_WGSL}
 ${STAMP_ACCUMULATION_RESOLVE_WGSL}
 ${RESOLVE_STAGES_WGSL}
@@ -294,15 +307,13 @@ ${STAMP_FILL_FRONT_SHARE.wgsl}
 @group(0) @binding(5) var paperGrain: texture_2d<f32>;
 @group(0) @binding(6) var fluid: texture_2d<f32>;
 @group(0) @binding(7) var clip: texture_storage_2d<rgba16float, read_write>;
-@group(0) @binding(8) var layer: texture_storage_2d<rgba16float, read_write>;
 @group(0) @binding(9) var linearClamp: sampler;
 @group(0) @binding(10) var tile: sampler;
-@group(0) @binding(11) var tintA: texture_2d<f32>;
-@group(0) @binding(12) var tintB: texture_2d<f32>;
 @group(0) @binding(13) var cap: texture_2d<f32>;
 @group(0) @binding(14) var mirrorTile: sampler;
 @group(0) @binding(15) var<uniform> k: Keep;
 @group(0) @binding(16) var within: texture_2d<f32>;
+@group(0) @binding(17) var<uniform> paint: ${compositor.deposit.layout.name};
 // A region texture's value at a pixel, its box's x, y, width and height in the painting's pixels: none outside it.
 fn regionAt(region: texture_2d<f32>, box: vec4f, pixel: vec2u) -> f32 {
   let q = vec2f(pixel) - box.xy;
@@ -317,31 +328,6 @@ fn texturized(g: texture_2d<f32>, at: vec2f, a: f32, p: Grain) -> f32 {
 
 // Where the mask stands above its blur, as steeply as the edge's sharpness says.
 fn rimOf(a: f32, soft: f32, sharpness: f32) -> f32 { return clamp((a - soft) * sharpness, 0.0, 1.0); }
-
-fn hsl(c: vec3f) -> vec3f {
-  let hi = max(c.r, max(c.g, c.b));
-  let lo = min(c.r, min(c.g, c.b));
-  let l = (hi + lo) / 2.0;
-  let d = hi - lo;
-  if (d <= 0.0) { return vec3f(0.0, 0.0, l); }
-  var h = (c.r - c.g) / d + 4.0;
-  if (hi == c.r) { h = (c.g - c.b) / d + 6.0; } else if (hi == c.g) { h = (c.b - c.r) / d + 2.0; }
-  return vec3f(fract(h / 6.0), d / (1.0 - abs(2.0 * l - 1.0)), l);
-}
-fn rgbOf(v: vec3f) -> vec3f {
-  let c = (1.0 - abs(2.0 * v.z - 1.0)) * v.y;
-  let k = (vec3f(0.0, 8.0, 4.0) + v.x * 12.0) % 12.0;
-  return v.z - c / 2.0 * max(vec3f(-1.0), min(min(k - 3.0, 9.0 - k), vec3f(1.0)));
-}
-// The deposit's colour moved by its stamps' mean tint here, as shiftStampPaintColor (stamp-paint-recipe.ts) moves one.
-fn tinted(color: vec3f, pixel: vec2u) -> vec3f {
-  let a = textureLoad(tintA, pixel, 0);
-  if (a.w <= 0.0) { return color; }
-  let t = a.xyz / a.w;
-  let v = hsl(color);
-  let moved = rgbOf(vec3f(fract(v.x + t.x), clamp(v.y + t.y, 0.0, 1.0), clamp(v.z + t.z, 0.0, 1.0)));
-  return mix(moved, u.secondary.rgb, clamp(textureLoad(tintB, pixel, 0).x / a.w, 0.0, 1.0));
-}
 
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn deposit(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
@@ -365,8 +351,6 @@ fn tinted(color: vec3f, pixel: vec2u) -> vec3f {
     if ((u.flags & DUAL_CANVAS_GRAIN) != 0u) { d = texturized(dualGrain, at, d, u.dualGrain); }
     if ((u.flags & DUAL_POOLED) != 0u) { d = pooled(d, u.pooling.z, u.pooling.w); }
     dualBurnt = rimOf(raw.g, soft.g, u.dualEdges.w) * u.dualEdges.z * step(0.0001, raw.r);
-    // Rims burning by one blend are one rim, joined by max; each burns by its own blend when they differ.
-    if (u.dualBurntBlend == u.burntBlend) { burnt = max(burnt, dualBurnt); dualBurnt = 0.0; }
   }
   // The stages in the order of the brush's plan (STAMP_RESOLVE_PLANS).
   var m = resolveStages(raw.r, d, at, u.resolvePlan);
@@ -376,12 +360,12 @@ fn tinted(color: vec3f, pixel: vec2u) -> vec3f {
   if ((u.flags & CANVAS_GRAIN) != 0u) { wet = texturized(grain, at, wet, u.grain); }
   m += wet;
   var keep = 1.0;
-  // A paper's tooth was photographed, not drawn as a brush grain is: it cuts in proportion to its own mean paint,
-  // its smallest mip. A photograph isn't seamless, so it tiles mirrored.
+  // No tooth reads as an even paper: its paint and mean alike.
+  var tooth = vec2f(0.5);
+  // A paper's tooth tiles mirrored, a photograph not being seamless; its mean is its smallest mip.
   if ((u.flags & PAPER) != 0u) {
-    let tooth = 1.0 - textureSampleLevel(paperGrain, mirrorTile, at / u.view.zw, u.paperLod).r;
-    let mean = 1.0 - textureSampleLevel(paperGrain, tile, vec2f(0.5), 16.0).r;
-    keep *= mix(1.0, clamp(tooth / max(mean, 0.01), 0.0, 1.0), u.paperDepth);
+    tooth = vec2f(1.0 - textureSampleLevel(paperGrain, mirrorTile, at / u.view.zw, u.paperLod).r, 1.0 - textureSampleLevel(paperGrain, tile, vec2f(0.5), 16.0).r);
+    keep *= paperKept(tooth.x, tooth.y, u.paperDepth);
   }
   if ((u.flags & MASKED) != 0u) { keep *= 1.0 - regionAt(fluid, k.fluid, pixel); }
   if ((u.flags & WITHIN) != 0u) { keep *= regionAt(within, k.within, pixel); }
@@ -393,55 +377,55 @@ fn tinted(color: vec3f, pixel: vec2u) -> vec3f {
   let clipped = textureLoad(clip, pixel);
   if ((u.flags & CLIPPED) != 0u) { keep *= clamp(clipped.r, 0.0, 1.0); }
   let coverage = clamp(m, 0.0, 1.0) * keep * u.opacity;
-  var paint = u.paint;
-  if ((u.flags & TINTED) != 0u) { paint.color = tinted(paint.color, pixel); }
-  let under = textureLoad(layer, pixel);
-  var over = depositPaint(under, paint, coverage);
   // A burnt rim burns into paint already there, the group's or the deposit's own (its stamps laid over one another).
-  let burnable = max(under.a, clamp(m, 0.0, 1.0)) * keep * u.opacity;
-  let burn = clamp(burnt, 0.0, 1.0) * burnable;
-  if (burn > 0.0) { over = depositPaint(over, PaintDeposit(paint.color, u.burntBlend), burn); }
-  let dualBurn = clamp(dualBurnt, 0.0, 1.0) * burnable;
-  if (dualBurn > 0.0) { over = depositPaint(over, PaintDeposit(paint.color, u.dualBurntBlend), dualBurn); }
-  textureStore(layer, pixel, over);
+  let burnable = max(layerCoverage(pixel), clamp(m, 0.0, 1.0)) * keep * u.opacity;
+  layDeposit(pixel, coverage, vec2f(clamp(burnt, 0.0, 1.0) * burnable, clamp(dualBurnt, 0.0, 1.0) * burnable), tooth, at);
   if ((u.flags & CLIPS) != 0u) { textureStore(clip, pixel, vec4f(coverage) + clipped * (1.0 - coverage)); }
 }`;
 
-const GROUP = stampUniformLayout('Group', [['opacity', 'f32'], ['glaze', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u']]);
-const GROUP_WGSL = /* wgsl */ `
-${STAMP_PAINT_COMPOSITOR_WGSL}
-${GROUP.wgsl}
-@group(0) @binding(0) var<uniform> u: Group;
-@group(0) @binding(1) var layer: texture_2d<f32>;
-@group(0) @binding(2) var painting: texture_storage_2d<rgba16float, read_write>;
-@compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn group(@builtin(global_invocation_id) id: vec3u) {
-  if (any(id.xy >= u.extent)) { return; }
-  let pixel = u.origin + id.xy;
-  textureStore(painting, pixel, groupPaint(textureLoad(painting, pixel), textureLoad(layer, pixel, 0), u.glaze == 1u, u.opacity));
-}`;
-
 const PAPER = stampUniformLayout('Paper', [['color', 'vec3f'], ['hasImage', 'u32'], ['cover', 'vec2f'], ['lod', 'f32']]);
-const PAPER_WGSL = /* wgsl */ `
+const PAPER_COLOR_WGSL = /* wgsl */ `
 ${PAPER.wgsl}
+// The paper's gamma-encoded colour at \`pixel\` of a painting \`size\` big: its photograph's, covering the painting, or its colour.
+fn paperColor(image: texture_2d<f32>, paperSampler: sampler, p: Paper, pixel: vec2u, size: vec2u) -> vec3f {
+  let uv = (vec2f(pixel) + 0.5) / vec2f(size);
+  if (p.hasImage == 1u) { return textureSampleLevel(image, paperSampler, (uv - 0.5) * p.cover + 0.5, p.lod).rgb; }
+  return p.color;
+}`;
+const paperWgsl = (compositor: StampPaintCompositor) => /* wgsl */ `
+${stampPaintTargetWgsl('painting', 2, compositor.targets.painting, 'write')}
+${compositor.paper}
+${PAPER_COLOR_WGSL}
 @group(0) @binding(0) var<uniform> u: Paper;
 @group(0) @binding(1) var image: texture_2d<f32>;
-@group(0) @binding(2) var painting: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(3) var linearClamp: sampler;
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn paper(@builtin(global_invocation_id) id: vec3u) {
   let size = textureDimensions(painting);
   if (any(id.xy >= size)) { return; }
-  let uv = (vec2f(id.xy) + 0.5) / vec2f(size);
-  var color = u.color;
-  if (u.hasImage == 1u) { color = textureSampleLevel(image, linearClamp, (uv - 0.5) * u.cover + 0.5, u.lod).rgb; }
-  textureStore(painting, id.xy, vec4f(color, 1.0));
+  layPaper(id.xy, paperColor(image, linearClamp, u, id.xy, size));
 }`;
 
-const OUTPUT_WGSL = /* wgsl */ `
+// \`group\` is its index in the painting, and \`paper\` the paper under it, for a compositor that lays a group on bare paper.
+const GROUP = stampUniformLayout('Group', [['opacity', 'f32'], ['glaze', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'], ['group', 'u32'], ['paper', stampUniformStruct(PAPER)]]);
+const groupWgsl = (compositor: StampPaintCompositor) => /* wgsl */ `
+${stampPaintTargetWgsl('layer', 1, compositor.targets.layer, null)}
+${stampPaintTargetWgsl('painting', 2, compositor.targets.painting, 'read_write')}
+${compositor.group.wgsl}
+${PAPER_COLOR_WGSL}
+${GROUP.wgsl}
+@group(0) @binding(0) var<uniform> u: Group;
+@compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn group(@builtin(global_invocation_id) id: vec3u) {
+  if (any(id.xy >= u.extent)) { return; }
+  layGroup(u.origin + id.xy, u.glaze == 1u, u.opacity);
+}`;
+
+const outputWgsl = (compositor: StampPaintCompositor) => /* wgsl */ `
 ${FULL_FRAME_WGSL}
-@group(0) @binding(0) var painting: texture_2d<f32>;
+${stampPaintTargetWgsl('painting', 0, compositor.targets.painting, null)}
+${compositor.output}
 @fragment fn output(@builtin(position) at: vec4f) -> @location(0) vec4f {
   let pixel = vec2u(at.xy);
-  let color = textureLoad(painting, pixel, 0).rgb;
+  let color = screenColor(pixel);
   // An ordered dither, the same each frame, so a smooth wash doesn't band when the half floats become bytes.
   let dither = (fract(dot(vec2f(pixel), vec2f(0.7548776662, 0.5698402910))) - 0.5) / 255.0;
   return vec4f(clamp(color + dither, vec3f(0.0), vec3f(1.0)), 1.0);
@@ -655,6 +639,8 @@ type LoadedDeposit = {
   brush: StampBrush<StampPaintImage>;
   active: ReturnType<typeof stampActiveLayers<StampPaintImage>>;
   main: number; dual: number; tint: number | null;
+  /** Writes its compositor's PaintDeposit into a uniform slot. */
+  writePaint: (views: StampUniformViews) => void;
   mainReach: Float64Array; dualReach: Float64Array;
   mainHull: StampTipHull; dualHull: StampTipHull | null;
   /** How each layer's stamps are laid, and an `ordered` layer's bins' table in the bin buffer (binOrderedStamps). */
@@ -676,18 +662,17 @@ export type StampPaintRenderer = {
 };
 
 /**
- * A renderer for one painting on `canvas`, `width` by `height` of the painting's pixels; `imageUrl` maps each image
- * to its URL. It resolves once every image is on the GPU. A frame may round a few pixels a level differently from one
- * draw to the next (docs/private-styles.md, "Same pixels"), which `studio repeatable`'s PSNR bar allows.
+ * A renderer for one painting on `canvas`, `width` by `height` pixels, its paint mixed as `mixing` says; `imageUrl`
+ * maps each image to its URL. Resolves once every image is on the GPU; refuses a painting it can't mix before any GPU
+ * work. A frame may round a few pixels a level differently between draws (docs/private-styles.md, "Same pixels").
  */
 export async function createStampPaintRenderer(
-  canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string,
+  canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string,
 ): Promise<StampPaintRenderer> {
-  const mixture = painting.groups.flatMap((group) => group.passes.flatMap((pass) => pass.deposits)).find((deposit) => deposit.material.kind === 'mixture');
-  if (mixture) throw new Error(`stamp paint: ${mixture.id} lays a mixture of pigments, which only a style that paints in pigment can lay`);
+  const compositor = compositorFor(painting, paper, mixing);
   const device = await createStampPaintDevice();
   try {
-    return await rendererOnDevice(device, canvas, painting, paper, width, height, imageUrl);
+    return await rendererOnDevice(device, compositor, canvas, painting, paper, width, height, imageUrl);
   } catch (error) {
     // Destroying the device frees every texture and buffer made on it, and unconfigures the canvas.
     device.destroy();
@@ -695,8 +680,18 @@ export async function createStampPaintRenderer(
   }
 }
 
+/** How `mixing` composites `painting`, worked out before a device is asked for, so a painting it can't mix fails first. */
+function compositorFor(painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing): (device: GPUDevice) => StampPaintCompositor {
+  if (mixing.kind === 'pigment') {
+    const paint = compileStampPigmentPaint(painting, mixing, PAINT_BANDS);
+    return (device) => stampPigmentCompositor(device, paint, paper.color);
+  }
+  const flat = flatStampPaintCompositor(painting);
+  return () => flat;
+}
+
 async function rendererOnDevice(
-  device: GPUDevice, canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string,
+  device: GPUDevice, compositorOn: (device: GPUDevice) => StampPaintCompositor, canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string,
 ): Promise<StampPaintRenderer> {
   // Loading and each draw are checked for any error WebGPU would otherwise report only later, unasked. A lost device
   // isn't an error a scope catches, so the draw after it throws.
@@ -710,6 +705,10 @@ async function rendererOnDevice(
     }
   };
   checking();
+  // Made inside the error scopes, so a buffer it can't make fails the load.
+  const compositor = compositorOn(device);
+  const paintBytes = compositor.deposit.layout.words * 4;
+  if (paintBytes > SLOT) throw new Error(`stamp paint: a compositor's ${compositor.deposit.layout.name} takes ${paintBytes} bytes, over a uniform slot's ${SLOT}`);
   let lost: string | null = null;
   void device.lost.then((info) => { if (info.reason !== 'destroyed') lost ??= info.message; });
   const context = canvas.getContext('webgpu') as GPUCanvasContext;
@@ -767,15 +766,16 @@ async function rendererOnDevice(
       const brush = bound.get(deposit)!;
       deposits.set(deposit, {
         brush, active: stampActiveLayers(brush, deposit.diameter),
-        main: total, dual: total + deposit.stamps.length, tint: deposit.brush.color ? tints : null,
+        main: total, dual: total + deposit.stamps.length, tint: compositor.readsStampTints && deposit.brush.color ? tints : null,
+        writePaint: compositor.deposit.writerFor(deposit),
         mainReach: stampReach(deposit.stamps, reachSpanOf(brush)), dualReach: stampReach(deposit.dualStamps, brush.dual ? reachSpanOf(brush.dual) : 1),
         mainHull: tipHull(brush, deposit.stamps), dualHull: brush.dual ? tipHull(brush.dual, deposit.dualStamps) : null,
         mainPlan: loadPlan(brush, deposit.stamps), dualPlan: brush.dual ? loadPlan(brush.dual, deposit.dualStamps) : null,
       });
       total += deposit.stamps.length + deposit.dualStamps.length;
-      if (deposit.brush.color) tints += deposit.stamps.length;
-      // Its stamps and dual's, a fill's body, two blur passes, and its resolve and where it's kept.
-      slotsPerFrame += 7;
+      if (compositor.readsStampTints && deposit.brush.color) tints += deposit.stamps.length;
+      // Its stamps and dual's, a fill's body, two blur passes, and its resolve, where it's kept and its paint.
+      slotsPerFrame += 8;
     }
   }
   const stampData = new Float32Array(Math.max(1, total) * STAMP_FLOATS), tintData = new Float32Array(Math.max(1, tints) * TINT_FLOATS);
@@ -875,8 +875,8 @@ async function rendererOnDevice(
   });
   const orderedPipelines = { plain: [orderedPipeline(0, false), orderedPipeline(1, false)], tinted: [orderedPipeline(0, true), orderedPipeline(1, true)] };
   const computePipeline = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } });
-  const pipelines = { blur: computePipeline(BLUR_WGSL), deposit: computePipeline(DEPOSIT_WGSL), group: computePipeline(GROUP_WGSL), paper: computePipeline(PAPER_WGSL) };
-  const outputModule = device.createShaderModule({ code: OUTPUT_WGSL });
+  const pipelines = { blur: computePipeline(BLUR_WGSL), deposit: computePipeline(depositWgsl(compositor)), group: computePipeline(groupWgsl(compositor)), paper: computePipeline(paperWgsl(compositor)) };
+  const outputModule = device.createShaderModule({ code: outputWgsl(compositor) });
   const outputPipeline = device.createRenderPipeline({ layout: 'auto', vertex: { module: outputModule }, fragment: { module: outputModule, targets: [{ format }] } });
   const regionPipeline = (code: string, entryPoint: string) => {
     const module = device.createShaderModule({ code });
@@ -908,28 +908,38 @@ async function rendererOnDevice(
 
   const target = (w: number, h: number, usage: number, targetFormat: GPUTextureFormat = 'rgba16float') => {
     const texture = device.createTexture({ size: [w, h], format: targetFormat, usage: usage | GPUTextureUsage.TEXTURE_BINDING });
-    return { texture, view: texture.createView() };
+    return { texture, view: texture.createView(), layers: [texture.createView()] };
+  };
+  /** A compositor's target, an array's layers each cleared through a view of its own. */
+  const layered = (shape: StampPaintTarget, usage: number) => {
+    if (shape.kind === 'plain') return target(width, height, usage);
+    const texture = device.createTexture({ size: [width, height, shape.layers], format: 'rgba16float', usage: usage | GPUTextureUsage.TEXTURE_BINDING });
+    return {
+      texture, view: texture.createView({ dimension: '2d-array' }),
+      layers: Array.from({ length: shape.layers }, (_, layer) => texture.createView({ dimension: '2d', baseArrayLayer: layer, arrayLayerCount: 1 })),
+    };
   };
   const RENDER = GPUTextureUsage.RENDER_ATTACHMENT, STORAGE = GPUTextureUsage.STORAGE_BINDING;
   const halfW = Math.ceil(width / 2), halfH = Math.ceil(height / 2);
   const targets = {
-    painting: target(width, height, STORAGE),
-    layer: target(width, height, STORAGE | RENDER),
+    painting: layered(compositor.targets.painting, STORAGE),
+    layer: layered(compositor.targets.layer, STORAGE | RENDER),
     mask: target(width, height, RENDER, 'rg16float'),
     cap: target(width, height, RENDER, 'rgba16float'),
     blurA: target(halfW, halfH, STORAGE),
     blurB: target(halfW, halfH, STORAGE),
     clip: target(width, height, STORAGE | RENDER),
     blank: target(1, 1, 0, 'r8unorm'),
-    // Only a painting with colour dynamics lays tints.
+    // Only a painting with colour dynamics lays tints, and only for a compositor that reads them.
     tintA: tints ? target(width, height, RENDER) : null,
     tintB: tints ? target(width, height, RENDER) : null,
   };
 
-  const bindGroup = (pipeline: GPURenderPipeline | GPUComputePipeline, resources: GPUBindingResource[]) =>
-    device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: resources.map((resource, binding) => ({ binding, resource })) });
+  /** Binds each of `resources` at its index; a null is a binding the pipeline doesn't have. */
+  const bindGroup = (pipeline: GPURenderPipeline | GPUComputePipeline, resources: (GPUBindingResource | null)[]) =>
+    device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: resources.flatMap((resource, binding) => (resource ? [{ binding, resource }] : [])) });
   const clear = (encoder: GPUCommandEncoder, view: GPUTextureView) => encoder.beginRenderPass({ colorAttachments: [{ view, loadOp: 'clear', storeOp: 'store' }] }).end();
-  const dispatch = (encoder: GPUCommandEncoder, pipeline: GPUComputePipeline, resources: GPUBindingResource[], w: number, h: number) => {
+  const dispatch = (encoder: GPUCommandEncoder, pipeline: GPUComputePipeline, resources: (GPUBindingResource | null)[], w: number, h: number) => {
     const pass = encoder.beginComputePass();
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, bindGroup(pipeline, resources));
@@ -1228,7 +1238,7 @@ async function rendererOnDevice(
     const edgesOf = (layer?: StampActiveLayer<StampPaintImage>): [number, number, number, number] => (blurred && layer
       ? [layer.rim?.rim ?? 0, layer.rim?.sharpness ?? 0, layer.burntEdge?.strength ?? 0, layer.burntEdge?.sharpness ?? 0] : [0, 0, 0, 0]);
     const mainGrain = active.main.canvasGrain, dualGrain = active.dual?.canvasGrain;
-    const tooth = paper.grain && paper.grain.depth > 0 ? paper.grain : undefined;
+    const tooth = paper.grain;
     let paperTile = [1, 1, 0];
     if (tooth) {
       const grain = image(tooth.image), size = tooth.scale * width;
@@ -1238,16 +1248,13 @@ async function rendererOnDevice(
     const flags: (keyof typeof DEPOSIT_FLAGS)[] = [
       ...(mainGrain ? ['canvasGrain' as const] : []), ...(brush.dual ? ['dual' as const] : []), ...(dualGrain ? ['dualCanvasGrain' as const] : []),
       ...(tooth ? ['paper' as const] : []), ...(fluid ? ['masked' as const] : []), ...(pass.within ? ['within' as const] : []),
-      ...(deposit.kind === 'fill' ? ['fill' as const] : []), clipped ? 'clipped' as const : 'clips' as const, ...(tinted ? ['tinted' as const] : []),
+      ...(deposit.kind === 'fill' ? ['fill' as const] : []), clipped ? 'clipped' as const : 'clips' as const,
       ...(active.main.pooling ? ['pooled' as const] : []), ...(active.dual?.pooling ? ['dualPooled' as const] : []),
       ...(brush.dual?.blend.family === 'layer' ? ['dualLayer' as const] : []),
     ];
     dispatch(encoder, pipelines.deposit, [
       slot((views) => {
         const put = stampUniformWriter(DEPOSIT, views);
-        // SAFETY: rendererOnDevice refused any mixture before loading.
-        writePaintDeposit(views.floats, views.ints, DEPOSIT.at.paint, deposit.material as Extract<typeof deposit.material, { kind: 'color' }>, deposit.blend);
-        put('secondary', [...rgb(deposit.secondaryColor ?? '#000000'), 0]);
         put('view', [width, height, paperTile[0], paperTile[1]]);
         put('edges', edgesOf(active.main));
         put('dualEdges', edgesOf(active.dual));
@@ -1257,9 +1264,6 @@ async function rendererOnDevice(
         put('paperLod', paperTile[2]);
         put('opacity', deposit.opacity);
         put('dualBlend', brush.dual ? stampDualModeIndex(brush.dual.blend) : 0);
-        const burntBlend = (brush.burntEdge ?? brush.dual?.burntEdge)?.blend ?? 'colorBurn';
-        put('burntBlend', stampPaintBlendIndex(burntBlend));
-        put('dualBurntBlend', stampPaintBlendIndex(brush.dual?.burntEdge?.blend ?? burntBlend));
         put('flags', flags.reduce((all, flag) => all | DEPOSIT_FLAGS[flag], 0));
         put('resolvePlan', stampResolvePlanIndex(stampResolvePlan(brush.dual)));
         put('origin', [box.x, box.y]);
@@ -1276,7 +1280,7 @@ async function rendererOnDevice(
       dualGrain ? dualGrain.image.view : targets.blank.view,
       tooth ? image(tooth.image).view : targets.blank.view,
       fluid?.view ?? targets.blank.view, targets.clip.view, targets.layer.view, linearClamp, tile,
-      tinted ? targets.tintA!.view : targets.blank.view, tinted ? targets.tintB!.view : targets.blank.view, targets.cap.view, mirrorTile,
+      null, null, targets.cap.view, mirrorTile,
       slot((views) => {
         const put = stampUniformWriter(KEEP, views);
         put('fluid', boxWords(fluid?.box));
@@ -1290,6 +1294,8 @@ async function rendererOnDevice(
         put('frontShape', [front.soft, stampFillProgressAt(deposit, t)]);
       }),
       within?.view ?? targets.blank.view,
+      slot(loadedDeposit.writePaint),
+      ...compositor.deposit.resources({ a: tinted ? targets.tintA!.view : targets.blank.view, b: tinted ? targets.tintB!.view : targets.blank.view }),
     ], box.w, box.h);
   }
 
@@ -1308,21 +1314,21 @@ async function rendererOnDevice(
     return w > 0 && h > 0 ? { x, y, w, h } : null;
   }
 
+  const photograph = paper.image ? image(paper.image) : null;
+  /** The paper's Paper uniform at word `at`. Cover: the photograph fills the painting, cropped along whichever side it has to spare. */
+  const writePaper = (views: StampUniformViews, at: number) => {
+    const put = stampUniformWriter(PAPER, views, at);
+    put('color', rgb(paper.color));
+    if (!photograph) return;
+    const fit = Math.max(width / photograph.width, height / photograph.height);
+    put('hasImage', 1);
+    put('cover', [width / (photograph.width * fit), height / (photograph.height * fit)]);
+    put('lod', Math.max(0, Math.log2(1 / fit)));
+  };
+  const groupResources = compositor.group.resources({ photograph: photograph?.view ?? targets.blank.view, sampler: linearClamp });
+
   function drawPaper(encoder: GPUCommandEncoder) {
-    const photograph = paper.image ? image(paper.image) : null;
-    // Cover: the photograph fills the painting, cropped along whichever side it has to spare.
-    const fit = photograph ? Math.max(width / photograph.width, height / photograph.height) : 1;
-    dispatch(encoder, pipelines.paper, [
-      slot((views) => {
-        const put = stampUniformWriter(PAPER, views);
-        put('color', rgb(paper.color));
-        if (!photograph) return;
-        put('hasImage', 1);
-        put('cover', [width / (photograph.width * fit), height / (photograph.height * fit)]);
-        put('lod', Math.max(0, Math.log2(1 / fit)));
-      }),
-      photograph?.view ?? targets.blank.view, targets.painting.view, linearClamp,
-    ], width, height);
+    dispatch(encoder, pipelines.paper, [slot((views) => writePaper(views, 0)), photograph?.view ?? targets.blank.view, targets.painting.view, linearClamp], width, height);
   }
 
   function draw(t: number) {
@@ -1330,8 +1336,8 @@ async function rendererOnDevice(
     slots = 0;
     const encoder = device.createCommandEncoder();
     drawPaper(encoder);
-    for (const group of painting.groups) {
-      clear(encoder, targets.layer.view);
+    for (const [index, group] of painting.groups.entries()) {
+      for (const view of targets.layer.layers) clear(encoder, view);
       let painted: Box | null = null;
       for (const pass of group.passes) {
         if (!pass.clipTo) clear(encoder, targets.clip.view);
@@ -1359,8 +1365,10 @@ async function rendererOnDevice(
           put('glaze', group.composite === 'glaze' ? 1 : 0);
           put('origin', [box.x, box.y]);
           put('extent', [box.w, box.h]);
+          put('group', index);
+          writePaper(views, GROUP.at.paper);
         }),
-        targets.layer.view, targets.painting.view,
+        targets.layer.view, targets.painting.view, ...groupResources,
       ], box.w, box.h);
     }
     const out = encoder.beginRenderPass({ colorAttachments: [{ view: context.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store' }] });

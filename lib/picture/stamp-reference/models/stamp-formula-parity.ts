@@ -6,6 +6,8 @@
 // on both, and a difference is the formula's, not the grid's rounding.
 
 import { PHOTOSHOP_POOLING, STAMP_DUAL_BLENDS, STAMP_GRAIN_BLENDS, stampDualCombine, stampDualModeIndex, stampGrainCut, stampGrainModeIndex, stampGrainPaint, stampPooled, stampPressedTip, stampTipNoise, stampTipNoiseAt } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
+import { kubelkaMunkFilm, kubelkaMunkOver } from '#lib/picture/paint/models/paint-kubelka-munk.ts';
+import { paintClumps, paintDryContact, paintValley, paintWetSettle } from '#lib/picture/paint/models/paint-paper.ts';
 import { STAMP_ACCUMULATION_KINDS, STAMP_ACCUMULATIONS, stampAccumulationIndex } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
 import { STAMP_FILL_FRONT_SHARE } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
 import { STAMP_PAINT_FIELD_SHARE } from '#lib/picture/stamp-paint/models/stamp-paint-field.ts';
@@ -88,12 +90,39 @@ export function stampFormulaGrids(): StampFormulaGrid[] {
     label: `normal ${normal.join(',')} progress ${progress} at ${x},${y}`, inputs: [x, y, normal[0], normal[1], -20, 280, 50, progress],
     expected: STAMP_FILL_FRONT_SHARE.cpu({ normal, from: -20, to: 280, soft: 50 }, progress, x, y),
   })))));
+  // Films from clear to thick, pure scatterers and pure absorbers among them, over black to near white.
+  const FILM = [0, 1e-3, 0.03125, 0.25, 1, 4, 32];
+  const film = FILM.flatMap((absorb) => FILM.flatMap((scatter) => [0, 0.25, 0.96875].map((under) => ({
+    label: `absorb ${absorb} scatter ${scatter} under ${under}`,
+    inputs: [absorb, scatter, under],
+    expected: kubelkaMunkOver(kubelkaMunkFilm({ absorb: Math.fround(absorb), scatter: Math.fround(scatter) }), under),
+  }))));
+  const filmT = FILM.flatMap((absorb) => FILM.map((scatter) => ({
+    label: `absorb ${absorb} scatter ${scatter}`, inputs: [absorb, scatter], expected: kubelkaMunkFilm({ absorb: Math.fround(absorb), scatter: Math.fround(scatter) }).T,
+  })));
+  const settle = UNIT.flatMap((h) => [0.25, 0.5].flatMap((mean) => COARSE.flatMap((depth) => [0, 0.5].flatMap((granulation) => [0.25, 1].map((load) => ({
+    label: `h ${h} mean ${mean} depth ${depth} granulation ${granulation} load ${load}`,
+    inputs: [h, mean, depth, granulation, load],
+    expected: paintWetSettle(paintValley(h, mean), depth, granulation, load),
+  }))))));
+  const contact = UNIT.flatMap((h) => [0.25, 0.5].flatMap((mean) => [0.5, 0.875].flatMap((tooth) => COARSE.map((depth) => ({
+    label: `h ${h} mean ${mean} tooth ${tooth} depth ${depth}`, inputs: [h, mean, tooth, depth], expected: paintDryContact(h, mean, tooth, depth),
+  })))));
+  // Pixel centres and 24-bit seeds, which f32 holds exactly.
+  const clumps = [0, 0.5, 1].flatMap((flocculation) => [0.5, 3.5, 17.5, 1023.5].flatMap((x) => [0.5, 9.5, 700.5].flatMap((y) => [0, 12345, 0xabcdef].map((seed) => ({
+    label: `flocculation ${flocculation} x ${x} y ${y} seed ${seed}`, inputs: [flocculation, x, y, seed], expected: paintClumps(flocculation, x, y, seed),
+  })))));
   return [
     grid('edgeCoverage', 'edgeCoverage(x(0), x(1))', 2, edgeCoverage),
     grid('edgeNoise', 'edgeNoise(x(0), x(1), u32(x(2)))', 3, edgeNoise),
     grid('fillBody', 'fillBody(x(0), x(1), x(2))', 3, fillBody),
     grid('paintFieldShare', 'paintFieldShare(vec2f(x(0), x(1)), i32(x(2)), vec4f(x(3), x(4), x(5), x(6)))', 7, paintFieldShare),
     grid('fillFrontShare', 'fillFrontShare(vec2f(x(0), x(1)), vec2f(x(2), x(3)), x(4), x(5), x(6), x(7))', 8, fillFrontShare),
+    grid('kubelkaMunkOver', 'kubelkaMunkOver(kubelkaMunkFilm(vec4f(x(0)), vec4f(x(1))), vec4f(x(2))).x', 3, film),
+    grid('kubelkaMunkFilm T', 'kubelkaMunkFilm(vec4f(x(0)), vec4f(x(1))).T.x', 2, filmT),
+    grid('paintWetSettle', 'paintWetSettle(paintValley(x(0), x(1)), x(2), x(3), x(4))', 5, settle),
+    grid('paintDryContact', 'paintDryContact(x(0), x(1), x(2), x(3))', 4, contact),
+    grid('paintClumps', 'paintClumps(x(0), x(1), x(2), u32(x(3)))', 4, clumps),
     grid('pressedTip', 'pressedTip(x(0), x(1), x(2), x(3), x(4), x(5), x(6))', 7, pressedTip),
     grid('tipNoise', 'tipNoise(x(0), x(1), x(2))', 3, tipNoise),
     grid('tipNoiseAt', 'tipNoiseAt(u32(x(0)), u32(x(1)), u32(x(2)))', 3, tipNoiseAt),
