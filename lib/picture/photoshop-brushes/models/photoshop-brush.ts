@@ -290,11 +290,10 @@ function scatterOf(s: PhotoshopScatter | undefined, prefix: string, reading: Pho
  * as Photoshop steps (`eachStamp`), so no step is under a pixel, however small the spacing.
  */
 function spacingOf(tip: PhotoshopKnownTip, asset: PhotoshopTipAsset, prefix: string, note: Note) {
-  // Photoshop steps by a share of the tip's short side, whole pixels at the preset's diameter (48 px at 30% steps 28
-  // px at 200%). A sample's short side is the lesser of its roundness and its narrow side's share, even where roundness
-  // squashes that side (`tip sampled wide …`: 128 px at 50% steps as its 55 px side).
-  const { diameter } = tip.geometry, roundness = tipRoundness(tip);
-  const share = asset.kind === 'sampled' ? Math.min(roundness, Math.min(asset.sample.width, asset.sample.height) / Math.max(asset.sample.width, asset.sample.height)) : roundness;
+  // Photoshop steps by a share of the tip's short side, whole pixels at the preset's diameter. A sample's short side is
+  // its image's narrower one, its roundness left out (`tip sampled roundness 50 steps`, docs/photoshop-capture.md).
+  const { diameter } = tip.geometry;
+  const share = asset.kind === 'sampled' ? Math.min(asset.sample.width, asset.sample.height) / Math.max(asset.sample.width, asset.sample.height) : tipRoundness(tip);
   const short = share === 1 ? 1 : Math.max(1, Math.round(diameter * share)) / diameter;
   const spacing = (tip.geometry.spacing / 100) * short;
   if (!tip.geometry.spaced) note('approximated', `${prefix}tip.geometry.spaced`, `spacing off stamps once per pointer event; read as its ${tip.geometry.spacing}% spacing`);

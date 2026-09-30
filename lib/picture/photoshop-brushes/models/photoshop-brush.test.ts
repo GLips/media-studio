@@ -67,15 +67,15 @@ test('a Procreate brush and a Photoshop preset that paint alike normalize to the
     preset: paintable(preset), tip: sampledTip('tips/round.png'), dualTip: sampledTip('tips/dual.png'), pattern: { image: asset('grains/paper.png'), width: 300 },
   }, photoshopReading);
 
-  // Photoshop steps by each stamp's own size and its short side (its roundness is 0.5), where Procreate spreads its
-  // steps along the stroke, and holds flow in 255ths. The two build, sample tips, cut and tile grain, adjust it and
+  // Photoshop steps by each stamp's own size and its sample's narrow side (a square sample: its roundness of 0.5
+  // doesn't enter), where Procreate spreads its steps along the stroke, and holds flow in 255ths. The two build, sample tips, cut and tile grain, adjust it and
   // combine a dual as each was identified or fitted to. Its size and count jitter spread either way (`around`).
   const photoshopWays = { accumulation: { kind: 'buildToOpacity' }, stepping: 'eachStamp' } as const;
   const { dynamics } = procreate.brush;
   // A sample is stored inside a blank texel each side, which it spans past.
   const sample = { sampling: 'anisotropic', span: 101 / 99, center: [0.5, 0.5] } as const;
   assert.deepEqual(photoshop.brush, {
-    ...procreate.brush, ...photoshopWays, spacing: procreate.brush.spacing * 0.5, flow: 163 / 255,
+    ...procreate.brush, ...photoshopWays, flow: 163 / 255,
     dynamics: { ...dynamics, size: { ...dynamics.size, random: around(dynamics.size?.random) }, count: { ...dynamics.count, random: around(dynamics.count?.random) } },
     tip: { ...procreate.brush.tip, ...sample },
     grain: { ...procreate.brush.grain!, blend: { family: 'texture', mode: procreate.brush.grain!.blend.mode }, contrastPivot: 'midGrey', tiling: 'repeat' },

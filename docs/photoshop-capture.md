@@ -145,19 +145,21 @@ ignores all three. A stamp's depth enters its mode's formula as the texture's de
 modes depth on pressure runs with it: a stamp at pressure p cuts at depth × p, its pose's opacity still outside the
 relief (`texture height d5 by pressure`, `d50`, run 20260930-082615's `height 19`; Kyle's pastel settings at every
 pose); their minimum, fade and jitter are unprobed.
-Tilt, stylus wheel and rotation read full on a stroked path, the same as off. A computed tip's short side is drawn in
+Tilt, stylus wheel and rotation read full on a stroked path, the same as off, Texture Each Tip depth on tilt included
+(`texture depth by tilt minimum 50`, run 20260930-134958). A computed tip's short side is drawn in
 whole pixels at the preset's diameter, and a squashed tip steps by it.
 
 **Jitter** (vid-105, run 20260930-111705 and the `random count …` probes). Size jitter spreads a stamp's size either
 way around what pressure gives it, s × (1 + j(2u − 1)), what passes the full diameter folding back under it: at full
 pressure that's the uniform 1 − j·u it always read as, and at p = 0.5 a 100% jitter reaches the full diameter. Each
 step is its first stamp's spacing at that jittered size. Count jitter spreads a step's count the same way, from 0 to
-twice the count at 100%, unfolded. A lingering pose's opacity drops opacity jitter: posed lines paint alike copy for
-copy. A texture's brightness darkens the pattern before invert, so an inverted pattern's brightness takes paint away.
+twice the count at 100%, unfolded. A lingering pose's opacity drops opacity jitter, whether opacity's own control is off or pen pressure (`random
+opacity jitter 60 by pressure posed`): posed lines paint alike copy for copy. A texture's brightness darkens the pattern before invert, so an inverted pattern's brightness takes paint away.
 A sample's diameter is its longer side and its stamp keeps its proportions, a dual's too (`tip sampled wide …`, `dual
-wide …`, on a second rig sample 112 × 48). It steps by the lesser of its roundness and its narrower side's share of its
-longer, in whole pixels at the preset's diameter: 64 px steps as 27, 128 px at roundness 50% as 55 (one probe; a
-roundness that squashes the narrower side is unexplained). Photoshop turns each dual dab a random way whatever its
+wide …`, on a second rig sample 112 × 48). It steps by its narrower side's share of its longer, its roundness left out, in
+whole pixels at the preset's diameter: 64 px steps as 27, 128 px at roundness 50% as 55, a square sample at roundness
+50% and spacing 200% every 256 px, the wide one at roundness 25% every ~110, a square dual at 64 px and roundness 50%
+every 128 (run 20260930-134958). Tall samples step by their narrow side as wide ones do. Photoshop turns each dual dab a random way whatever its
 settings, which a round dual never showed; the dual cells match in mass (within 5%), not pixel for pixel. A height
 relief's depth jitter and fade paint within 0.1; its minimum wouldn't take (Photoshop read 25/40 back as 40/63).
 
