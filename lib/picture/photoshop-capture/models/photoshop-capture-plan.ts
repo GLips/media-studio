@@ -192,7 +192,7 @@ export type PhotoshopCaptureManifest = {
     settings?: PhotoshopBrushSettings;
     preset?: PhotoshopReferencePreset;
     applied: PhotoshopAppliedOptions;
-    /** A probe's settings that its read-back doesn't hold (models/photoshop-readback.ts); absent when all took. */
+    /** A probe's settings that its read-back doesn't hold (photoshopPresetMismatches, stamp-paint/models/photoshop-preset.ts); absent when all took. */
     mismatches?: string[];
   }>;
   sheets: (PhotoshopCaptureSheet & { file: string })[];

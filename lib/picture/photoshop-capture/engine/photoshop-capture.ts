@@ -10,18 +10,18 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
 import { runPhotoshopScript, withOwnedPhotoshop, type PhotoshopSettingsRestore } from '#lib/platform/photoshop/engine/photoshop-app.ts';
+import { photoshopPresetMismatches, photoshopPresetScript } from '#lib/picture/stamp-paint/models/photoshop-preset.ts';
 import { comparePhotoshopCells, cropPhotoshopCell, type PhotoshopPixels } from '../models/photoshop-capture-cells.ts';
 import {
   PHOTOSHOP_CAPTURE_DOCUMENT, PHOTOSHOP_GROUND_RGB, PHOTOSHOP_NOT_CAPTURED, planPhotoshopProbeCapture, planPhotoshopReferenceCapture, photoshopReferenceSize,
   type PhotoshopCaptureCell, type PhotoshopCaptureManifest, type PhotoshopCaptureSheet,
 } from '../models/photoshop-capture-plan.ts';
-import { photoshopSettingsMismatches } from '../models/photoshop-readback.ts';
+import { photoshopProbePreset } from '../models/photoshop-probe-preset.ts';
 import { PHOTOSHOP_PROBE_RAMP, PHOTOSHOP_PROBE_TIP, photoshopProbeRampValue, photoshopProbes, photoshopProbeTipPaint } from '../models/photoshop-probes.ts';
 
 const CAPTURE_JSX = readFileSync(new URL('./photoshop-capture.jsxinc', import.meta.url), 'utf8');
 
 type Log = (line: string) => void;
-type ItemJob = PhotoshopCaptureManifest['items'][string];
 
 const runId = (date: Date) => date.toISOString().replace(/[-:]/g, '').replace(/\..*/, '').replace('T', '-');
 
@@ -58,13 +58,16 @@ export function* readPhotoshopCaptureCells(dir: string): Generator<{ manifest: P
   }
 }
 
-/** Paints each sheet in its own script and saves it into `dir`; returns the sheets with their files, and what each item applied. */
-function paintSheets(dir: string, sheets: readonly PhotoshopCaptureSheet[], items: Record<string, Omit<ItemJob, 'applied'>>, extra: Record<string, unknown>, log: Log) {
+/**
+ * Paints each sheet in its own script and saves it into `dir`; returns the sheets with their files, and what each item
+ * applied. `jobs` holds what the script sets for each item: a probe's preset as its `script`, or a pack brush's `preset`.
+ */
+function paintSheets(dir: string, sheets: readonly PhotoshopCaptureSheet[], jobs: Record<string, unknown>, extra: Record<string, unknown>, log: Log) {
   const applied: Record<string, PhotoshopCaptureManifest['items'][string]['applied']> = {};
   let paintMs = 0;
   const written = sheets.map((sheet, i) => {
     const file = `${sheet.name}.png`;
-    const jobItems = Object.fromEntries([...new Set(sheet.cells.map((c) => c.item))].map((key) => [key, items[key]]));
+    const jobItems = Object.fromEntries([...new Set(sheet.cells.map((c) => c.item))].map((key) => [key, jobs[key]]));
     const result = captureScript<{ applied: typeof applied; paintMs: number; totalMs: number }>('paintSheet', { ...extra, sheet, items: jobItems, grounds: PHOTOSHOP_GROUND_RGB, file: join(dir, file) });
     // A randomness probe's copies are the same settings: the first read-back stands.
     for (const [key, options] of Object.entries(result.applied)) applied[key] ??= options;
@@ -107,7 +110,9 @@ export async function capturePhotoshopProbes({ dir: root, only, repeat = [], log
   const { result: manifest, restore } = await withOwnedPhotoshop(`probes-${run}`, ({ version }) => {
     const assets = captureScript<{ colorSettings: Record<string, unknown> }>('defineProbeAssets', { rampFile, tipFile, rampName: PHOTOSHOP_PROBE_RAMP.name, tipName: PHOTOSHOP_PROBE_TIP.name });
     const items = Object.fromEntries(probes.map((p) => [p.name, { reads: p.reads, settings: p.settings }]));
-    const painted = paintSheets(dir, sheets, items, { rampName: PHOTOSHOP_PROBE_RAMP.name, tipName: PHOTOSHOP_PROBE_TIP.name }, log);
+    const presets = Object.fromEntries(probes.map((p) => [p.name, photoshopProbePreset(p.name, p.settings)]));
+    const jobs = Object.fromEntries(Object.entries(presets).map(([key, preset]) => [key, { script: photoshopPresetScript(preset) }]));
+    const painted = paintSheets(dir, sheets, jobs, { rampName: PHOTOSHOP_PROBE_RAMP.name, tipName: PHOTOSHOP_PROBE_TIP.name }, log);
     const finished = new Date(), total = (finished.getTime() - started.getTime()) / 1000;
     const manifest: PhotoshopCaptureManifest = {
       run, kind: 'probes', startedAt: started.toISOString(), finishedAt: finished.toISOString(),
@@ -116,7 +121,7 @@ export async function capturePhotoshopProbes({ dir: root, only, repeat = [], log
       document: PHOTOSHOP_CAPTURE_DOCUMENT,
       assets: { ramp: { ...PHOTOSHOP_PROBE_RAMP, file: basename(rampFile) }, tip: { ...PHOTOSHOP_PROBE_TIP, file: basename(tipFile) } },
       items: Object.fromEntries(Object.entries(painted.applied).map(([key, applied]) => {
-        const mismatches = photoshopSettingsMismatches(items[key].settings, applied);
+        const mismatches = photoshopPresetMismatches(presets[key], applied);
         for (const line of mismatches) log(`photoshop: ${key} didn't take as asked: ${line}`);
         return [key, { ...items[key], applied, ...(mismatches.length ? { mismatches } : {}) }];
       })),

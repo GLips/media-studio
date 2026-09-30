@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { normalizePhotoshopBrush, type PhotoshopReading } from './photoshop-brush.ts';
 import { PHOTOSHOP_POOLING } from './coverage-formulas.ts';
 import type { PhotoshopDescriptor } from './photoshop-descriptor.ts';
+import { readPhotoshopPreset } from './photoshop-preset.ts';
 import { normalizeProcreateBrush, type ProcreateReading } from './procreate-brush.ts';
 
 const asset = (file: string) => ({ style: 'wash', pack: 'mixed', file });
@@ -50,7 +51,7 @@ test('a Procreate brush and a Photoshop preset that paint alike normalize to the
     toolOptions: { _class: 'PbTl', Opct: long(100), flow: long(64), 'Md  ': { _enum: 'BlnM', value: 'Nrml' } },
   };
   const photoshop = normalizePhotoshopBrush('Textured Round', {
-    preset, tip: asset('tips/round.png'), dualTip: asset('tips/dual.png'), pattern: { image: asset('grains/paper.png'), width: 300 },
+    preset: readPhotoshopPreset(preset), tip: asset('tips/round.png'), dualTip: asset('tips/dual.png'), pattern: { image: asset('grains/paper.png'), width: 300 },
   }, photoshopReading);
 
   // Photoshop steps by each stamp's own size and its short side (its roundness is 0.5), where Procreate spreads its
@@ -68,11 +69,11 @@ test('a Procreate brush and a Photoshop preset that paint alike normalize to the
 
 test("a Mixer Brush preset carries its wet mixing, noted as not yet painted, and a missing pattern drops only the texture", () => {
   const { brush, support } = normalizePhotoshopBrush('Wet Blend', {
-    preset: {
+    preset: readPhotoshopPreset({
       _class: 'brushPreset', Brsh: { _class: 'computedBrush', Dmtr: px(40), Hrdn: pct(0), Spcn: pct(25), Intr: true },
       useTexture: true, Txtr: { _class: 'Ptrn', 'Nm  ': 'Canvas', Idnt: 'missing' }, Wtdg: true,
       toolOptions: { _class: 'MixB', flow: long(50), wetness: 80, dryness: 40, mix: 60, sampleAllLayers: true, autoClean: true },
-    },
+    }),
     tip: asset('tips/round-0.png'),
   }, photoshopReading);
   assert.deepEqual(brush.wetMix, { load: 0.4, wetness: 0.8, mix: 0.6, sampleAllLayers: true });
@@ -82,16 +83,16 @@ test("a Mixer Brush preset carries its wet mixing, noted as not yet painted, and
   assert.deepEqual(brush.wetEdges, PHOTOSHOP_POOLING);
   assert.ok(brush.tip.span! > 1, "a soft computed tip's image reaches past its diameter");
   const unsupported = support.filter((note) => note.level === 'unsupported').map((note) => note.setting);
-  assert.deepEqual(unsupported, ['toolOptions.wetness, dryness, mix, sampleAllLayers', 'Txtr']);
+  assert.deepEqual(unsupported, ['tool.wetness, dryness, mix, sampleAllLayers', 'texture.pattern']);
 });
 
 test('a texture reads as Photoshop sets it: its mode, its depth in 255ths, its brightness in 255ths and its contrast', () => {
   const { brush, support } = normalizePhotoshopBrush('Overlay', {
-    preset: {
+    preset: readPhotoshopPreset({
       _class: 'brushPreset', Brsh: { _class: 'computedBrush', Dmtr: px(100), Hrdn: pct(100), Spcn: pct(1), Intr: true },
       useTexture: true, Txtr: { _class: 'Ptrn', 'Nm  ': 'Paper', Idnt: 'paper' }, textureBlendMode: { _enum: 'BlnM', value: 'Ovrl' },
       textureDepth: pct(33), textureBrightness: long(-51), textureContrast: long(-50), textureScale: pct(100), TxtC: false,
-    },
+    }),
     tip: asset('tips/round-100-100.png'), pattern: { image: asset('grains/paper.png'), width: 256 },
   }, photoshopReading);
   assert.deepEqual(
@@ -103,12 +104,12 @@ test('a texture reads as Photoshop sets it: its mode, its depth in 255ths, its b
 
 test("roundness jitter reaches down to the preset's minimum roundness, as vid-97's probes show, and roundness by pressure is read alike", () => {
   const { brush, support } = normalizePhotoshopBrush('Squashing', {
-    preset: {
+    preset: readPhotoshopPreset({
       _class: 'brushPreset', Brsh: { _class: 'computedBrush', Dmtr: px(100), Hrdn: pct(100), Spcn: pct(10), Intr: true },
       useTipDynamics: true, roundnessDynamics: control(2, 50), minimumRoundness: pct(25),
-    },
+    }),
     tip: asset('tips/round-100-100.png'),
   }, photoshopReading);
   assert.deepEqual({ pressure: brush.pressure.roundness, jitter: brush.jitter.roundness }, { pressure: 0.75, jitter: 0.375 });
-  assert.equal(support.some((note) => note.setting.startsWith('roundnessDynamics')), false, 'both are read, neither approximated');
+  assert.equal(support.some((note) => note.setting.startsWith('tipDynamics.roundness')), false, 'both are read, neither approximated');
 });

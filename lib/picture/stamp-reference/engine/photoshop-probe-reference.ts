@@ -14,7 +14,6 @@ import { photoshopProbePreset } from '#lib/picture/photoshop-capture/models/phot
 import { PHOTOSHOP_PROBE_RAMP, PHOTOSHOP_PROBE_TIP, photoshopProbeRampValue, photoshopProbeTipPaint, type PhotoshopProbe } from '#lib/picture/photoshop-capture/models/photoshop-probes.ts';
 import { readPhotoshopSheet } from '#lib/picture/photoshop-capture/engine/photoshop-capture.ts';
 import { normalizePhotoshopBrush, PHOTOSHOP_SAMPLE_BORDER, photoshopPatternNegated, photoshopTipImage, type PhotoshopTipImage } from '#lib/picture/stamp-paint/models/photoshop-brush.ts';
-import { photoshopObject } from '#lib/picture/stamp-paint/models/photoshop-descriptor.ts';
 import { drawPhotoshopComputedTip } from '#lib/picture/stamp-paint/models/photoshop-computed-tip.ts';
 import { bindStampBrushImages, type StampBrushAsset } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { STAMP_PACK_TIP_MAX } from '#lib/picture/stamp-paint/engine/stamp-paint-pack-files.ts';
@@ -49,7 +48,7 @@ function rampImage(negated: boolean): StampReferenceImage {
 /** A probe as the importer reads it, with its images. */
 export function photoshopProbeReferenceBrush(probe: PhotoshopProbe) {
   const preset = photoshopProbePreset(probe.name, probe.settings);
-  const dualTip = probe.settings.dual && photoshopTipImage(photoshopObject(photoshopObject(preset, 'dualBrush'), 'Brsh')!);
+  const dualTip = probe.settings.dual && photoshopTipImage(preset.dual!.tip);
   const { brush, support } = normalizePhotoshopBrush(probe.name, {
     preset,
     tip: asset('tip'),
@@ -60,7 +59,7 @@ export function photoshopProbeReferenceBrush(probe: PhotoshopProbe) {
   });
   // Each image drawn from the preset as the rig drew it, by the name it was given above.
   const images = {
-    tip: () => stampReferenceMips(tipImage(photoshopTipImage(photoshopObject(preset, 'Brsh')!))),
+    tip: () => stampReferenceMips(tipImage(photoshopTipImage(preset.tip))),
     'dual-tip': () => stampReferenceMips(tipImage(dualTip!)),
     ramp: () => stampReferenceMips(rampImage(photoshopPatternNegated(preset))),
   };

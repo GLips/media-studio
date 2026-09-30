@@ -8,7 +8,8 @@
 
 import { photoshopProbedRanges, photoshopUnprobedFields } from '#lib/picture/photoshop-capture/models/photoshop-probed-ranges.ts';
 import { normalizePhotoshopBrush, type PhotoshopBrushSource } from './photoshop-brush.ts';
-import { photoshopNumber, photoshopObject } from './photoshop-descriptor.ts';
+import type { PhotoshopDescriptor } from './photoshop-descriptor.ts';
+import { readPhotoshopPreset, type PhotoshopPreset } from './photoshop-preset.ts';
 import { normalizeProcreateBrush, type ProcreateBrushSource } from './procreate-brush.ts';
 import type { StampBrush, StampBrushAsset } from './stamp-brush.ts';
 import type { StampPaintColor } from './stamp-paint-recipe.ts';
@@ -45,8 +46,11 @@ export type StampPaintPackPaper = { image: string; grain: string; color: StampPa
  */
 export type ProcreatePackBrush = { main: ProcreateBrushSource; dual?: ProcreateBrushSource; dropped?: readonly StampBrushSupportNote[] };
 
-/** A Photoshop brush's source: its preset and images, and the file in the archive it came from, in its group. */
-export type PhotoshopPackBrush = PhotoshopBrushSource & { file: string; group?: string };
+/**
+ * A Photoshop brush's source: its preset and images, and the file in the archive it came from, in its group. The
+ * manifest stores the .abr's descriptor (`Preset`), which readStampPaintPack reads into the typed preset.
+ */
+export type PhotoshopPackBrush<Preset = PhotoshopPreset> = PhotoshopBrushSource<Preset> & { file: string; group?: string };
 
 /**
  * `brushes/<pack>/manifest.json`, as the importer writes it. `files` lists every image it wrote (relative to the
@@ -90,8 +94,9 @@ function photoshopSource(value: unknown, at: string): PhotoshopPackBrush {
   if (s.dualTip !== undefined) asset(s.dualTip, `${at}.dualTip`);
   if (s.pattern !== undefined) asset(record(s.pattern, `${at}.pattern`).image, `${at}.pattern.image`);
   text(s.file, `${at}.file`);
-  // The preset is Photoshop's descriptor, read field by field by the normalizer, which defaults what it lacks.
-  return s as PhotoshopPackBrush;
+  // What the descriptor lacks, the typed preset reads as Photoshop's default.
+  const stored = s as PhotoshopPackBrush<PhotoshopDescriptor>;
+  return { ...stored, preset: readPhotoshopPreset(stored.preset) };
 }
 
 /**
@@ -163,5 +168,5 @@ export function stampPaintPackSupport(pack: StampPaintPack): Record<string, Stam
  * (Procreate's are sized by the canvas). The sheet paints a brush without a preview or reference at it.
  */
 export function stampPaintPackDiameter(pack: StampPaintPack, name: string): number | undefined {
-  return pack.app === 'photoshop' && pack.brushes[name] ? photoshopNumber(photoshopObject(pack.brushes[name].preset, 'Brsh'), 'Dmtr', 100) : undefined;
+  return pack.app === 'photoshop' && pack.brushes[name] ? pack.brushes[name].preset.tip.diameter : undefined;
 }

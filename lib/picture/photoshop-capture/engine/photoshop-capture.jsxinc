@@ -2,34 +2,28 @@
 // lib/platform/photoshop/engine/photoshop-actions.jsxinc by photoshop-capture.ts. Each entry point takes the global
 // JOB and returns JSON text.
 //
-// Every setting a probe doesn't vary is set explicitly to its plain value, never left as whatever the tool held, so a
-// probe's capture depends on its settings alone. Dynamics keys are charIDs (szVr, opVr, prVr, brVr, bVTy, fStp):
-// Photoshop silently ignores the same keys written as stringIDs.
+// A probe is set as its preset's script (stamp-paint/models/photoshop-preset.ts, photoshopPresetScript): every field
+// it holds, each group it lacks switched off, so a probe's capture depends on its settings alone.
 
-// bVTy: what drives a dynamic.
-var CONTROL = { off: 0, fade: 1, penPressure: 2 };
-function variation(control, jitter) {
-  var v = new ActionDescriptor();
-  v.putInteger(C("bVTy"), control ? CONTROL[control.control] : 0);
-  v.putInteger(C("fStp"), control ? control.fadeSteps : 25);
-  v.putUnitDouble(S("jitter"), C("#Prc"), jitter || 0);
-  v.putUnitDouble(S("minimum"), C("#Prc"), control ? control.minimum : 0);
-  return v;
-}
+// A key, class or enum value from the script: "S:" a stringID, "C:" a charID. Dynamics keys must be charIDs (szVr,
+// opVr, prVr, brVr, bVTy, fStp): Photoshop silently ignores them written as stringIDs, and the script writes them so.
+function scriptId(k) { return k.charAt(0) === "C" ? C(k.substring(2)) : S(k.substring(2)); }
 
-function tipDescriptor(tip, sampledTip) {
-  var t = tip.kind === "sampled" ? sampledTip : new ActionDescriptor();
-  t.putUnitDouble(C("Dmtr"), C("#Pxl"), tip.diameter);
-  if (tip.kind === "computed") t.putUnitDouble(C("Hrdn"), C("#Prc"), tip.hardness);
-  t.putUnitDouble(C("Angl"), C("#Ang"), tip.angle);
-  t.putUnitDouble(C("Rndn"), C("#Prc"), tip.roundness);
-  t.putUnitDouble(C("Spcn"), C("#Prc"), tip.spacing);
-  t.putBoolean(S("interfaceIconFrameDimmed"), true);
-  t.putBoolean(S("flipX"), tip.flipX);
-  t.putBoolean(S("flipY"), tip.flipY);
-  return t;
+// The script's JSON onto the descriptor `d`, key by key: tagged values as photoshop-descriptor.ts tags them.
+function objToDesc(obj, d) {
+  for (var k in obj) {
+    if (!obj.hasOwnProperty(k) || k === "_class") continue;
+    var v = obj[k], id = scriptId(k);
+    if (typeof v === "boolean") d.putBoolean(id, v);
+    else if (typeof v === "number") d.putDouble(id, v);
+    else if (typeof v === "string") d.putString(id, v);
+    else if (v._unit !== undefined) d.putUnitDouble(id, C(v._unit), v.value);
+    else if (v._long !== undefined) d.putInteger(id, v._long);
+    else if (v._enum !== undefined) d.putEnumerated(id, scriptId(v._enum), scriptId(v.value));
+    else d.putObject(id, scriptId(v._class), objToDesc(v, new ActionDescriptor()));
+  }
+  return d;
 }
-var TIP_CLASS = { computed: "computedBrush", sampled: "sampledBrush" };
 
 // The sampled probe tip's descriptor, as Photoshop holds it once defined (its sampledData names the bitmap).
 function probeTip(name) {
@@ -57,65 +51,13 @@ function plainToolOptions(opts) {
   setPose(opts, null);
 }
 
-function applyProbeSettings(s, sampledTip, rampName) {
-  var o = getToolOptions();
-  setBrushTip(o, tipDescriptor(s.tip, sampledTip), TIP_CLASS[s.tip.kind]);
+// A sampled tip is the rig's defined sample (its sampledData names the bitmap) with the probe's settings over it.
+function applyProbeScript(script, sampledTip) {
+  var o = getToolOptions(), tip = script["S:brush"], rest = {}, cls = tip._class.substring(2);
+  for (var k in script) if (script.hasOwnProperty(k) && k !== "S:brush") rest[k] = script[k];
+  setBrushTip(o, objToDesc(tip, cls === "sampledBrush" ? sampledTip : new ActionDescriptor()), cls);
   plainToolOptions(o);
-  o.putInteger(C("Opct"), s.opacity);
-  o.putInteger(S("flow"), s.flow);
-
-  var j = s.jitter || {};
-  o.putBoolean(S("useTipDynamics"), !!(s.size || j.size || j.angle || j.roundness));
-  o.putObject(C("szVr"), C("brVr"), variation(s.size, j.size || 0));
-  o.putUnitDouble(S("minimumDiameter"), C("#Prc"), s.size ? s.size.minimum : 0);
-  o.putObject(S("angleDynamics"), C("brVr"), variation(null, j.angle || 0));
-  o.putObject(S("roundnessDynamics"), C("brVr"), variation(null, j.roundness || 0));
-  o.putUnitDouble(S("minimumRoundness"), C("#Prc"), j.minimumRoundness || 0);
-
-  o.putBoolean(S("usePaintDynamics"), !!s.transfer);
-  o.putObject(C("opVr"), C("brVr"), variation(s.transfer ? s.transfer.opacity : null, 0));
-  o.putObject(C("prVr"), C("brVr"), variation(s.transfer ? s.transfer.flow : null, 0));
-
-  // Count only takes effect with Scatter on.
-  var scatter = j.scatter || 0, count = j.count || 1;
-  o.putBoolean(S("useScatter"), scatter > 0 || count > 1);
-  o.putBoolean(S("bothAxes"), !!j.bothAxes);
-  o.putInteger(S("count"), count);
-  o.putObject(S("scatterDynamics"), C("brVr"), variation(null, scatter));
-  o.putObject(S("countDynamics"), C("brVr"), variation(j.countControl || null, 0));
-
-  o.putBoolean(S("useTexture"), !!s.texture);
-  if (s.texture) {
-    var pat = new ActionDescriptor(); pat.putString(C("Nm  "), rampName);
-    o.putObject(S("texture"), S("pattern"), pat);
-    o.putUnitDouble(S("textureScale"), C("#Prc"), s.texture.scale);
-    o.putBoolean(S("invertTexture"), s.texture.invert);
-    o.putInteger(S("textureBrightness"), s.texture.brightness);
-    o.putInteger(S("textureContrast"), s.texture.contrast);
-    o.putEnumerated(S("textureBlendMode"), S("blendMode"), S(s.texture.mode));
-    o.putUnitDouble(S("textureDepth"), C("#Prc"), s.texture.depth);
-    o.putBoolean(S("textClickPoint"), s.texture.eachTip);
-    o.putUnitDouble(S("minimumDepth"), C("#Prc"), 0);
-    o.putObject(S("textureDepthDynamics"), C("brVr"), variation(null, 0));
-  }
-
-  var db = new ActionDescriptor();
-  db.putBoolean(S("useDualBrush"), !!s.dual);
-  if (s.dual) {
-    db.putBoolean(S("flip"), false);
-    db.putObject(C("Brsh"), S("computedBrush"), tipDescriptor(s.dual.tip, null));
-    db.putEnumerated(S("blendMode"), S("blendMode"), S(s.dual.mode));
-    var dualScatter = s.dual.scatter || 0, dualCount = s.dual.count || 1;
-    db.putBoolean(S("useScatter"), dualScatter > 0 || dualCount > 1);
-    db.putBoolean(S("bothAxes"), !!s.dual.bothAxes);
-    db.putInteger(S("count"), dualCount);
-    db.putObject(S("countDynamics"), C("brVr"), variation(null, 0));
-    db.putObject(S("scatterDynamics"), C("brVr"), variation(null, dualScatter));
-  }
-  o.putObject(S("dualBrush"), S("dualBrush"), db);
-
-  o.putBoolean(S("wetEdges"), s.wetEdges);
-  o.putBoolean(S("noise"), s.noise);
+  objToDesc(rest, o);
   setToolOptions(o);
 }
 
@@ -142,7 +84,7 @@ function applyPreset(p) {
   if (currentDiameter() !== p.diameter) setDiameter(p.diameter);
 }
 
-// Paints one sheet (JOB.sheet) and saves it as JOB.file. JOB.items holds each cell item's probe settings or preset.
+// Paints one sheet (JOB.sheet) and saves it as JOB.file. JOB.items holds each cell item's probe script or preset.
 function paintSheet() {
   var t0 = new Date().getTime(), applied = {}, sampledTip = null;
   selectTool("paintbrushTool");
@@ -153,7 +95,7 @@ function paintSheet() {
     for (var i = 0; i < JOB.sheet.cells.length; i++) {
       var cell = JOB.sheet.cells[i], item = JOB.items[cell.item];
       if (cell.item !== current) {
-        if (item.settings) applyProbeSettings(item.settings, sampledTip, JOB.rampName);
+        if (item.script) applyProbeScript(item.script, sampledTip);
         else applyPreset(item.preset);
         applied[cell.item] = descToObj(getToolOptions());
         current = cell.item; pose = undefined;

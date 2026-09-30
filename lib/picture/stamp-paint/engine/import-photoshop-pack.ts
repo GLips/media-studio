@@ -13,9 +13,10 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { photoshopPatternNegated, photoshopSampleWithBorder, photoshopTipImage, type PhotoshopBrushSource } from '../models/photoshop-brush.ts';
 import { drawPhotoshopComputedTip } from '../models/photoshop-computed-tip.ts';
-import { photoshopFlag, photoshopObject, type PhotoshopDescriptor } from '../models/photoshop-descriptor.ts';
+import type { PhotoshopDescriptor } from '../models/photoshop-descriptor.ts';
+import { readPhotoshopPreset, type PhotoshopPresetTip } from '../models/photoshop-preset.ts';
 import type { StampBrushAsset } from '../models/stamp-brush.ts';
-import { STAMP_PAINT_ASSETS_VERSION, STAMP_PAINT_PACK_MANIFEST, type PhotoshopPackBrush, type StampBrushSupportNote, type StampPaintPack } from '../models/stamp-paint-pack.ts';
+import { readStampPaintPack, STAMP_PAINT_ASSETS_VERSION, STAMP_PAINT_PACK_MANIFEST, type PhotoshopPackBrush, type StampBrushSupportNote, type StampPaintPack } from '../models/stamp-paint-pack.ts';
 import { displayName, readPhotoshopAbr, readPhotoshopTpl, type PhotoshopBrushFile } from './photoshop-abr.ts';
 import {
   replaceStampPaintPack, sha256OfFile, stampPackSlug, STAMP_PACK_GRAIN_MAX, STAMP_PACK_TIP_MAX, writeStampPackGray, type ImportStampPaintPackOptions,
@@ -56,7 +57,7 @@ function writePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, 
   const brushFiles = readBrushFiles(archive);
   for (const sub of ['tips', 'grains']) mkdirSync(join(dir, sub), { recursive: true });
 
-  const brushes: Record<string, PhotoshopPackBrush> = {}, skipped: Record<string, StampBrushSupportNote[]> = {};
+  const brushes: Record<string, PhotoshopPackBrush<PhotoshopDescriptor>> = {}, skipped: Record<string, StampBrushSupportNote[]> = {};
   const files = new Set<string>(), written = new Map<string, StampBrushAsset>();
   /** An image written once under `key`, at a file named from `slug` that no other image has taken. */
   const writeOnce = (key: string, folder: string, slug: string, body: (out: string) => void): StampBrushAsset => {
@@ -73,12 +74,11 @@ function writePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, 
 
   for (const { name: fileName, file } of brushFiles) {
     /** A sampled tip's own size, which its centre is read from, keyed as the source keys it; nothing for a computed tip. */
-    const sampleSize = (key: 'tipSample' | 'dualTipSample', tip: PhotoshopDescriptor | undefined) => {
+    const sampleSize = (key: 'tipSample' | 'dualTipSample', tip: PhotoshopPresetTip | undefined) => {
       const image = tip && photoshopTipImage(tip), sample = image?.kind === 'sampled' ? file.tips.get(image.id) : undefined;
       return sample ? { [key]: { width: sample.width, height: sample.height } } : {};
     };
-    const tipAsset = (tip: PhotoshopDescriptor | undefined, slug: string): StampBrushAsset | undefined => {
-      if (!tip) return undefined;
+    const tipAsset = (tip: PhotoshopPresetTip, slug: string): StampBrushAsset | undefined => {
       const image = photoshopTipImage(tip);
       if (image.kind === 'round') {
         const hardness = Math.round(image.hardness * 100), key = `${hardness}-${stampPackSlug(String(image.diameter))}`;
@@ -99,24 +99,22 @@ function writePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, 
       for (let n = 2; name in brushes || name in skipped; n++) name = `${shown} ${n}`;
       const slug = stampPackSlug(name) || `brush-${Object.keys(brushes).length + 1}`;
 
-      const tip = photoshopObject(preset, 'Brsh'), dual = photoshopObject(preset, 'dualBrush');
-      const dualTip = photoshopFlag(dual, 'useDualBrush') ? photoshopObject(dual, 'Brsh') : undefined;
+      const typed = readPhotoshopPreset(preset), { tip } = typed, dualTip = typed.dual?.tip;
       const tipImage = tipAsset(tip, slug);
       if (!tipImage) {
-        skipped[name] = [{ level: 'unsupported', setting: 'Brsh.sampledData', detail: `the tip is a sample ${fileName} doesn't hold; not imported` }];
+        skipped[name] = [{ level: 'unsupported', setting: 'tip.sampledData', detail: `the tip is a sample ${fileName} doesn't hold; not imported` }];
         continue;
       }
-      const source: PhotoshopBrushSource = {
+      const source: PhotoshopBrushSource<PhotoshopDescriptor> = {
         preset: sourcePreset(preset),
         tip: tipImage,
         ...sampleSize('tipSample', tip),
         ...(dualTip && { dualTip: tipAsset(dualTip, `${slug}.dual`), ...sampleSize('dualTipSample', dualTip) }),
       };
-      const texture = photoshopFlag(preset, 'useTexture') ? photoshopObject(preset, 'Txtr') : undefined;
-      const pattern = texture && file.patterns.get(String(texture.Idnt ?? ''));
+      const patternId = typed.texture?.pattern?.id ?? '', pattern = typed.texture && file.patterns.get(patternId);
       if (pattern) {
-        const negate = photoshopPatternNegated(preset);
-        const image = writeOnce(`${fileName}|${String(texture.Idnt)}|${negate}`, 'grains', stampPackSlug(displayName(pattern.name)) || slug, (out) => writeStampPackGray(pattern.image, STAMP_PACK_GRAIN_MAX, out, { negate }));
+        const negate = photoshopPatternNegated(typed);
+        const image = writeOnce(`${fileName}|${patternId}|${negate}`, 'grains', stampPackSlug(displayName(pattern.name)) || slug, (out) => writeStampPackGray(pattern.image, STAMP_PACK_GRAIN_MAX, out, { negate }));
         source.pattern = { image, width: pattern.image.width };
       }
       brushes[name] = { ...source, file: fileName, ...(group && { group }) };
@@ -124,7 +122,7 @@ function writePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, 
   }
   if (!Object.keys(brushes).length) throw new Error(`brushes import: ${archive} holds no brush presets`);
 
-  const manifest: StampPaintPack = {
+  const stored = {
     version: STAMP_PAINT_ASSETS_VERSION,
     app: 'photoshop',
     files: [...files].sort(),
@@ -135,6 +133,6 @@ function writePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, 
     palettes: {},
     papers: {},
   };
-  writeFileSync(join(dir, STAMP_PAINT_PACK_MANIFEST), `${JSON.stringify(manifest, null, 1)}\n`);
-  return { manifest };
+  writeFileSync(join(dir, STAMP_PAINT_PACK_MANIFEST), `${JSON.stringify(stored, null, 1)}\n`);
+  return { manifest: readStampPaintPack(stored) };
 }

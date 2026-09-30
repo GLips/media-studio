@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import type { PhotoshopDescriptor } from '../models/photoshop-descriptor.ts';
-import { resolveStampPaintPackBrushes, stampPaintPackDiameter } from '../models/stamp-paint-pack.ts';
+import { readStampPaintPack, resolveStampPaintPackBrushes, stampPaintPackDiameter } from '../models/stamp-paint-pack.ts';
 import { importStampPaintPack } from './import-stamp-paint-pack.ts';
 import { readPhotoshopAbr, writePhotoshopAbr, type PhotoshopBrushFile } from './photoshop-abr.ts';
 
@@ -55,7 +55,7 @@ test('importing an .abr writes the same pack layout a Procreate pack imports to,
     assert.equal(manifest.app, 'photoshop');
     assert.deepEqual(readdirSync(packDir).sort(), ['fidelity', 'grains', 'manifest.json', 'reference', 'tips']);
     assert.equal(readFileSync(join(packDir, 'reference/manifest.json'), 'utf8'), '{}');
-    assert.deepEqual(JSON.parse(readFileSync(join(packDir, 'manifest.json'), 'utf8')), JSON.parse(JSON.stringify(manifest)));
+    assert.deepEqual(readStampPaintPack(JSON.parse(readFileSync(join(packDir, 'manifest.json'), 'utf8'))), manifest);
     assert.deepEqual(Object.keys(manifest.brushes), ['Chalk', 'Chalk (Wet)']);
     assert.deepEqual(manifest.files, ['grains/stripes.png', 'tips/chalk.png', 'tips/round-0-30.png']);
     for (const file of manifest.files) assert.ok(existsSync(join(packDir, file)), file);

@@ -8,7 +8,7 @@
 // Brushes, the training pack, a fifth is held out, chosen by a hash of the brush's name so it never moves.
 
 import type { PhotoshopReading } from './photoshop-brush.ts';
-import { photoshopFlag, photoshopNumber, photoshopObject, type PhotoshopDescriptor } from './photoshop-descriptor.ts';
+import type { PhotoshopPreset } from './photoshop-preset.ts';
 
 /** Candidates for each constant, as multiples of its current value. */
 export const PHOTOSHOP_READING_MULTIPLES = [0.25, 0.5, 0.75, 1, 1.5, 2, 3] as const;
@@ -17,12 +17,11 @@ export const PHOTOSHOP_READING_MULTIPLES = [0.25, 0.5, 0.75, 1, 1.5, 2, 3] as co
 export const PHOTOSHOP_READING_INSENSITIVE = 0.02;
 
 /** Whether `preset` uses the mechanism `key` reads; hue jitter is colour, which a coverage sheet can't see. */
-export function photoshopReadingUses(key: keyof PhotoshopReading, preset: PhotoshopDescriptor): boolean {
-  const jitter = (name: string) => photoshopNumber(photoshopObject(preset, name), 'jitter', 0) > 0;
+export function photoshopReadingUses(key: keyof PhotoshopReading, preset: PhotoshopPreset): boolean {
   switch (key) {
-    case 'scatterSpan': return photoshopFlag(preset, 'useScatter') && jitter('scatterDynamics');
-    case 'angleJitterSpan': return photoshopFlag(preset, 'useTipDynamics') && jitter('angleDynamics');
-    case 'dualScale': return photoshopFlag(photoshopObject(preset, 'dualBrush'), 'useDualBrush');
+    case 'scatterSpan': return (preset.scatter?.scatter.jitter ?? 0) > 0;
+    case 'angleJitterSpan': return (preset.tipDynamics?.angle.jitter ?? 0) > 0;
+    case 'dualScale': return !!preset.dual;
     case 'hueJitterShare': return false;
   }
 }
