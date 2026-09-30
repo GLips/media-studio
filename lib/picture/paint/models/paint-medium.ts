@@ -49,9 +49,12 @@ export type PaintMedium = {
 export type PaintWetting = {
   /** How far paint landing on flooded paper spreads by itself, in diameters of the brush laying it; 0 never spreads. */
   flow: number;
-  /** Seconds flooded paper takes to dry, its wetness falling evenly from 1 to 0. */
+  /** Seconds flooded paper of middling absorbency takes to dry, its wetness falling evenly from 1 to 0. */
   drying: number;
-  /** Seconds laid paint stays as workable as wet once its water has gone: oil's is days, watercolour's none. */
+  /**
+   * Seconds paint sets behind its water: it stays as workable as the paper was that long before. Watercolour's is
+   * none. An oil would be a brush carrying its liquid medium as water (brushWater 1), no flow, and an open time of days.
+   */
   openTime: number;
   /**
    * How much of set paint a lift works back up, 0..1, as loose as wet paint is at 1: gouache's binder redissolves,

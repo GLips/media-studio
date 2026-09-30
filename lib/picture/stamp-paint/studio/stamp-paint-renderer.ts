@@ -737,7 +737,7 @@ export async function createStampPaintRenderer(
 ): Promise<StampPaintRenderer> {
   const refused = painting.groups.find((group) => group.motion || group.boil);
   if (refused) throw new Error(`stamp paint: ${refused.id} ${refused.motion ? 'moves' : 'boils'}, which isn't painted yet (vid-117)`);
-  const { compositorOn, wetness, medium } = compositorFor(painting, paper, mixing);
+  const { compositorOn, wetness, medium } = compositorFor(painting, paper, mixing, { width, height });
   const device = await createStampPaintDevice();
   try {
     return await rendererOnDevice(device, compositorOn, wetness, medium, canvas, painting, paper, width, height, imageUrl);
@@ -752,10 +752,10 @@ export async function createStampPaintRenderer(
  * How `mixing` composites `painting`, and how wet its washes land, worked out before a device is asked for, so a
  * painting it can't mix fails first. Only pigment has washes: the flat compositor refuses one.
  */
-function compositorFor(painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing) {
+function compositorFor(painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, size: { width: number; height: number }) {
   if (mixing.kind === 'pigment') {
     const paint = compileStampPigmentPaint(painting, mixing, PAINT_BANDS);
-    return { compositorOn: (device: GPUDevice) => stampPigmentCompositor(device, paint, paper.color), wetness: compileStampWetness(painting, mixing.medium, paper), medium: mixing.medium };
+    return { compositorOn: (device: GPUDevice) => stampPigmentCompositor(device, paint, paper.color), wetness: compileStampWetness(painting, mixing.medium, paper, size), medium: mixing.medium };
   }
   const flat = flatStampPaintCompositor(painting);
   return { compositorOn: () => flat, wetness: null, medium: null };
@@ -882,18 +882,24 @@ async function rendererOnDevice(
   const binBuffer = buffer(new Uint32Array(binData.length ? binData : [0]), GPUBufferUsage.STORAGE);
   // What an untraced resolve binds for the trace it never records.
   const noTraceBuffer = buffer(new Float32Array(1), GPUBufferUsage.STORAGE), noTraceCrop = buffer(new Uint32Array(SLOT / 4), GPUBufferUsage.UNIFORM);
-  // Every wash deposit's wetness and workable grids, one after another, and where each starts.
-  const wetGrids: number[] = [];
+  // Every wash deposit's wetness and workable grids, one after another, and where each starts. Each is a window of
+  // the painting's lattice round the deposit (stamp-wetness.ts), so the upload grows with what the deposits cover.
   const wetFirsts = new Map<CompiledStampDeposit, { wetness: number; workable: number }>();
+  let wetFloats = 0;
   for (const [deposit, { before: { wetness: wet, workable } }] of wetness?.landings ?? []) {
     if (wet.x0 !== workable.x0 || wet.y0 !== workable.y0 || wet.cell !== workable.cell || wet.columns !== workable.columns || wet.rows !== workable.rows) {
       throw new Error(`stamp paint: ${deposit.id}'s wetness and workable grids aren't on one lattice`);
     }
-    wetFirsts.set(deposit, { wetness: wetGrids.length, workable: wetGrids.length + wet.values.length });
-    for (const v of wet.values) wetGrids.push(v);
-    for (const v of workable.values) wetGrids.push(v);
+    wetFirsts.set(deposit, { wetness: wetFloats, workable: wetFloats + wet.values.length });
+    wetFloats += wet.values.length + workable.values.length;
   }
-  const wetGridBuffer = buffer(new Float32Array(wetGrids.length ? wetGrids : [0]), GPUBufferUsage.STORAGE);
+  const wetGrids = new Float32Array(Math.max(1, wetFloats));
+  for (const [deposit, { before }] of wetness?.landings ?? []) {
+    const firsts = wetFirsts.get(deposit)!;
+    wetGrids.set(before.wetness.values, firsts.wetness);
+    wetGrids.set(before.workable.values, firsts.workable);
+  }
+  const wetGridBuffer = buffer(wetGrids, GPUBufferUsage.STORAGE);
   // The fan's triangles, by corner: indexed, so each corner is shaded once a stamp, not once for each triangle it's in.
   const fanBuffer = buffer(new Uint16Array(Array.from({ length: STAMP_TIP_HULL_SIDES - 2 }, (_, i) => [0, i + 1, i + 2]).flat()), GPUBufferUsage.INDEX);
 
