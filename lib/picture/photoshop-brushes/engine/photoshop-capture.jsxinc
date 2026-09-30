@@ -51,13 +51,26 @@ function plainToolOptions(opts) {
   setPose(opts, null);
 }
 
-// A sampled tip is the rig's defined sample (its sampledData names the bitmap) with the probe's settings over it.
-function applyProbeScript(script, sampledTip) {
+// A sampled tip, the brush's or its dual's, is the rig's defined sample it names (`samples`; its sampledData names the
+// bitmap) with the probe's settings over it. `sampledTips` holds each sample's descriptor twice, one for each.
+function applyProbeScript(script, samples, sampledTips) {
   var o = getToolOptions(), tip = script["S:brush"], rest = {}, cls = tip._class.substring(2);
-  for (var k in script) if (script.hasOwnProperty(k) && k !== "S:brush") rest[k] = script[k];
-  setBrushTip(o, objToDesc(tip, cls === "sampledBrush" ? sampledTip : new ActionDescriptor()), cls);
+  for (var k in script) if (script.hasOwnProperty(k) && k !== "S:brush" && k !== "S:dualBrush") rest[k] = script[k];
+  setBrushTip(o, objToDesc(tip, cls === "sampledBrush" ? sampledTips[samples.tip].main : new ActionDescriptor()), cls);
   plainToolOptions(o);
   objToDesc(rest, o);
+  var dual = script["S:dualBrush"];
+  if (dual) {
+    var dualRest = {}, dualDesc = new ActionDescriptor();
+    for (var d in dual) if (dual.hasOwnProperty(d) && d !== "S:brush") dualRest[d] = dual[d];
+    objToDesc(dualRest, dualDesc);
+    var dualTip = dual["S:brush"];
+    if (dualTip) {
+      var base = dualTip._class === "S:sampledBrush" ? sampledTips[samples.dual].dual : new ActionDescriptor();
+      dualDesc.putObject(S("brush"), scriptId(dualTip._class), objToDesc(dualTip, base));
+    }
+    o.putObject(S("dualBrush"), scriptId(dual._class), dualDesc);
+  }
   setToolOptions(o);
 }
 
@@ -86,16 +99,16 @@ function applyPreset(p) {
 
 // Paints one sheet (JOB.sheet) and saves it as JOB.file. JOB.items holds each cell item's probe script or preset.
 function paintSheet() {
-  var t0 = new Date().getTime(), applied = {}, sampledTip = null;
+  var t0 = new Date().getTime(), applied = {}, sampledTips = {};
   selectTool("paintbrushTool");
-  if (JOB.tipName) sampledTip = probeTip(JOB.tipName);
+  for (var t = 0; JOB.tipNames && t < JOB.tipNames.length; t++) sampledTips[JOB.tipNames[t]] = { main: probeTip(JOB.tipNames[t]), dual: probeTip(JOB.tipNames[t]) };
   var doc = newCaptureDocument(JOB.sheet.width, JOB.sheet.height, JOB.sheet.name);
   try {
     var current = null, pose;
     for (var i = 0; i < JOB.sheet.cells.length; i++) {
       var cell = JOB.sheet.cells[i], item = JOB.items[cell.item];
       if (cell.item !== current) {
-        if (item.script) applyProbeScript(item.script, sampledTip);
+        if (item.script) applyProbeScript(item.script, item.samples, sampledTips);
         else applyPreset(item.preset);
         applied[cell.item] = descToObj(getToolOptions());
         current = cell.item; pose = undefined;
@@ -117,12 +130,14 @@ function paintSheet() {
   return toJSON({ applied: applied, paintMs: paintMs, totalMs: new Date().getTime() - t0 });
 }
 
-// Defines the probe run's ramp pattern and sampled tip from the PNGs the rig wrote, each from a document of its own.
+// Defines the probe run's ramp pattern and sampled tips from the PNGs the rig wrote, each from a document of its own.
 function defineProbeAssets() {
   var ramp = app.open(File(JOB.rampFile));
   try { defineFromDocument(ramp, "Ptrn", JOB.rampName); } finally { ramp.close(SaveOptions.DONOTSAVECHANGES); }
-  var tip = app.open(File(JOB.tipFile));
-  try { defineFromDocument(tip, "Brsh", JOB.tipName); } finally { tip.close(SaveOptions.DONOTSAVECHANGES); }
+  for (var i = 0; i < JOB.tips.length; i++) {
+    var tip = app.open(File(JOB.tips[i].file));
+    try { defineFromDocument(tip, "Brsh", JOB.tips[i].name); } finally { tip.close(SaveOptions.DONOTSAVECHANGES); }
+  }
   return toJSON({ colorSettings: readColorSettings(), patterns: presetNames(PRESET_PATTERNS).length, brushes: presetNames(PRESET_BRUSHES).length });
 }
 

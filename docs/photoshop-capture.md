@@ -66,8 +66,9 @@ Brush Pose (size and opacity overridden), or simulated pressure (taper at both e
 
 ## The probe set
 
-`photoshopProbes()`, 307 probes and 718 cells, in a few minutes. Each is a plain round, or a sampled tip the run defines
-(`studio-probe-tip`: a half-circle with a hard and a soft side, 112 px once Photoshop trims it), with one thing changed:
+`photoshopProbes()`, 344 probes and 900 cells, in a few minutes. Each is a plain round, or a sampled tip the run defines
+(`studio-probe-tip`: a half-circle with a hard and a soft side, 112 px once Photoshop trims it; `studio-probe-wide`, a
+bar 112 × 48), with one thing changed:
 
 - single stamps of computed tips across hardness and diameter, an ellipse, and the sampled tip at sizes, angle,
   roundness and flips;
@@ -77,7 +78,7 @@ Brush Pose (size and opacity overridden), or simulated pressure (taper at both e
   and off, with a depth ladder, lower flow, scale and invert, and brightness and contrast;
 - a dual brush under each of its eight modes, the secondary's dabs apart and overlapping;
 - wet edges; pressure on size, opacity and flow; Fade on each;
-- size jitter, scatter and noise, painted several times each since they're random by design;
+- size, opacity and count jitter, scatter and noise, painted several times each since they're random by design;
 - each control a stroked path can drive (vid-105): angle on pressure, fade, initial direction, tilt, stylus wheel and
   rotation; scatter, count, roundness and Texture Each Tip depth on pressure, fade and jitter, height modes included;
   and the bristle, erodible and airbrush tips the packs use;
@@ -140,9 +141,25 @@ pressed harder than our reference's 0, so those cells miss.
 over its steps; initial direction holds the first heading. Scatter on pen pressure keeps p² of its reach (in the
 deposit's diameters, as uncontrolled scatter is), and a fade shrinks it to none over its steps. Texture Each Tip depth on pressure runs the other way: full pressure paints the
 minimum depth, a fade climbs from it, and jitter takes each stamp's depth down toward it at random; a canvas texture
-ignores all three. In the height modes a depth control doesn't follow the formula's depth (read at full depth, noted).
+ignores all three. A stamp's depth enters its mode's formula as the texture's depth times its share. In the height
+modes depth on pressure runs with it: a stamp at pressure p cuts at depth × p, its pose's opacity still outside the
+relief (`texture height d5 by pressure`, `d50`, run 20260930-082615's `height 19`; Kyle's pastel settings at every
+pose); their minimum, fade and jitter are unprobed.
 Tilt, stylus wheel and rotation read full on a stroked path, the same as off. A computed tip's short side is drawn in
 whole pixels at the preset's diameter, and a squashed tip steps by it.
+
+**Jitter** (vid-105, run 20260930-111705 and the `random count …` probes). Size jitter spreads a stamp's size either
+way around what pressure gives it, s × (1 + j(2u − 1)), what passes the full diameter folding back under it: at full
+pressure that's the uniform 1 − j·u it always read as, and at p = 0.5 a 100% jitter reaches the full diameter. Each
+step is its first stamp's spacing at that jittered size. Count jitter spreads a step's count the same way, from 0 to
+twice the count at 100%, unfolded. A lingering pose's opacity drops opacity jitter: posed lines paint alike copy for
+copy. A texture's brightness darkens the pattern before invert, so an inverted pattern's brightness takes paint away.
+A sample's diameter is its longer side and its stamp keeps its proportions, a dual's too (`tip sampled wide …`, `dual
+wide …`, on a second rig sample 112 × 48). It steps by the lesser of its roundness and its narrower side's share of its
+longer, in whole pixels at the preset's diameter: 64 px steps as 27, 128 px at roundness 50% as 55 (one probe; a
+roundness that squashes the narrower side is unexplained). Photoshop turns each dual dab a random way whatever its
+settings, which a round dual never showed; the dual cells match in mass (within 5%), not pixel for pixel. A height
+relief's depth jitter and fade paint within 0.1; its minimum wouldn't take (Photoshop read 25/40 back as 40/63).
 
 A run also paints a sample of probes (`PHOTOSHOP_REPEAT_SAMPLE`, one of each kind) twice more on sheets of their own,
 at the same places, and compares them. Everything but the random scatter probe has come back identical to the bit,

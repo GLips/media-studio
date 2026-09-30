@@ -110,7 +110,7 @@ type CanvasGrain<Image> = Extract<StampBrushGrain<Image>, { kind: 'canvas' }>;
 type RollingGrain<Image> = Extract<StampBrushGrain<Image>, { kind: 'rolling' }>;
 
 /**
- * A layer's stages that do something, each left out when it does nothing: a grain at depth 0, a rim of 0, a burnt
+ * A layer's stages that do something, each left out when it does nothing: a grain at depth 0 (but a relief), a rim of 0, a burnt
  * edge of strength 0. `diameter` is its stamps' at the deposit's diameter, which its canvas grain tiles by.
  */
 export type StampActiveLayer<Image> = {
@@ -124,7 +124,9 @@ export type StampActiveLayer<Image> = {
 
 function activeLayer<Image>(layer: StampBrushLayer<Image>, diameter: number): StampActiveLayer<Image> {
   const { grain, wetEdges, burntEdge } = layer;
-  const cuts = grain && grain.depth > 0 ? grain : undefined;
+  // A texture's height relief holds its depth inside its formula: at depth 0 it takes all the paint, as Photoshop's does.
+  const relief = grain?.blend.family === 'texture' && (grain.blend.mode === 'height' || grain.blend.mode === 'linearHeight');
+  const cuts = grain && (grain.depth > 0 || relief) ? grain : undefined;
   return {
     diameter,
     ...(cuts?.kind === 'canvas' && { canvasGrain: cuts }),

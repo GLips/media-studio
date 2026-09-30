@@ -92,9 +92,22 @@ export function stampStepShare(dynamics: StampDynamics, target: StampScaleTarget
 }
 
 /** The share of a stamp's `target` its stamp-read bindings keep (random: the stamp's own draw for the target). */
-export function stampOwnShare(dynamics: StampDynamics, target: Exclude<StampRandomTarget, 'count'>, stamp: StampContext): number {
+export function stampOwnShare(dynamics: StampDynamics, target: Exclude<StampRandomTarget, 'count' | 'size'>, stamp: StampContext): number {
   const random = dynamics[target]?.random;
   return random ? scaleShare(random, randomDraw(random, stamp.draws[target])) : 1;
+}
+
+/**
+ * A stamp's diameter from its step's `size`: its own draw takes it down, or with `around` spreads it either way, what
+ * passes `full` (the deposit's diameter) folding back under it.
+ */
+export function stampOwnSize(dynamics: StampDynamics, size: number, full: number, stamp: StampContext): number {
+  const random = dynamics.size?.random;
+  if (!random) return size;
+  const draw = randomDraw(random, stamp.draws.size);
+  if (!random.around) return size * scaleShare(random, draw);
+  const spread = size * scaleShare(random, 1 - 2 * draw);
+  return spread > full ? Math.max(0, 2 * full - spread) : spread;
 }
 
 /**
@@ -116,13 +129,15 @@ export function stampOwnTurn(dynamics: StampDynamics, stamp: StampContext): numb
 }
 
 /**
- * How many of a step's `count` stamps it keeps, never under 1. Step-read bindings keep 1 + floor((count − 1) × their
- * share), one at the first step (the `count …` probes); random then keeps its share by rounding, on the step's count
- * draw. Kept stamps are the step's first, so neither moves those it keeps.
+ * How many stamps a step lays. Step-read bindings keep 1 + floor((count − 1) × their share), one at the first step
+ * (the `count …` probes). Random then keeps its share by rounding, never under 1, on the step's count draw; with
+ * `around`, 0 to twice as many at full jitter. Stamps are the step's first, so none moves those another keeps.
  */
 export function stampStepCount(dynamics: StampDynamics, count: number, step: StampStepContext): number {
   const { pressure, fade, random } = dynamics.count ?? {};
   let pressed = count;
   if (pressure || fade) pressed = step.step === 0 ? 1 : 1 + Math.floor((count - 1) * stampStepShare(dynamics, 'count', step) + 1e-9);
-  return random ? Math.max(1, Math.round(pressed * scaleShare(random, randomDraw(random, step.countDraw)))) : pressed;
+  if (!random) return pressed;
+  const draw = randomDraw(random, step.countDraw);
+  return random.around ? Math.round(pressed * scaleShare(random, 1 - 2 * draw)) : Math.max(1, Math.round(pressed * scaleShare(random, draw)));
 }

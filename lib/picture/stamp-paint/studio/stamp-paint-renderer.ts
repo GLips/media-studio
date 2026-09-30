@@ -50,9 +50,9 @@ ${GRAIN.wgsl}
 // A grain image's mean paint: its smallest mip.
 fn grainMean(g: texture_2d<f32>, tile: sampler) -> f32 { return 1.0 - textureSampleLevel(g, tile, vec2f(0.5), 16.0).r; }
 // Coverage a cut by the grain's texel \`raw\` (as the image holds it, dark is paint), \`mean\` the grain's mean paint.
-// \`share\`: how much of the cut a stamp takes (PlacedStamp.grainDepth), 1 for any grain but a rolling one's.
+// \`share\`: the stamp's share of the grain's depth (PlacedStamp.grainDepth), 1 for any grain but a rolling one's.
 fn grained(a: f32, raw: f32, mean: f32, p: Grain, share: f32) -> f32 {
-  return mix(a, grainCut(a, grainPaint(1.0 - raw, p.shape.z, p.shape.w, p.aboutMean == 1u, mean), p.shape.x, p.blend, p.layer == 1u), share);
+  return grainCut(a, grainPaint(1.0 - raw, p.shape.z, p.shape.w, p.aboutMean == 1u, mean), p.shape.x * share, p.blend, p.layer == 1u);
 }`;
 
 const TURNED_WGSL = /* wgsl */ `

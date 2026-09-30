@@ -12,7 +12,7 @@
 import { join } from 'node:path';
 import type { PhotoshopCaptureCell, PhotoshopCaptureSheet } from '#lib/picture/photoshop-brushes/models/photoshop-capture-plan.ts';
 import { cropPhotoshopCell } from '#lib/picture/photoshop-brushes/models/photoshop-capture-cells.ts';
-import { PHOTOSHOP_PROBE_RAMP, PHOTOSHOP_PROBE_TIP, photoshopProbeRampValue, photoshopProbeTipPaint, type PhotoshopProbe } from '#lib/picture/photoshop-brushes/models/photoshop-probes.ts';
+import { PHOTOSHOP_PROBE_RAMP, PHOTOSHOP_PROBE_SAMPLES, photoshopProbeRampValue, type PhotoshopProbe } from '#lib/picture/photoshop-brushes/models/photoshop-probes.ts';
 import { readPhotoshopSheet } from '#lib/picture/photoshop-brushes/engine/photoshop-capture.ts';
 import { photoshopPressuredPath, type PhotoshopStrokePressure } from '#lib/picture/photoshop-brushes/models/photoshop-stroke-pressure.ts';
 import { drawPhotoshopBristleTip } from '#lib/picture/photoshop-brushes/models/photoshop-bristle.ts';
@@ -28,6 +28,16 @@ import { scoreStampReference, type StampReferenceScore } from '../models/stamp-r
 
 const asset = (file: string): StampBrushAsset => ({ style: 'probe', pack: 'probe', file });
 
+/** A rig sample by the id a probe names. */
+function probeSample(id: string) {
+  const found = Object.entries(PHOTOSHOP_PROBE_SAMPLES).find(([name]) => name === id);
+  if (!found) throw new Error(`stamp reference: no rig sample ${JSON.stringify(id)}`);
+  return found[1];
+}
+
+/** Texel `i` of a sample `n` wide trimmed from an image `size` wide, flipped or not. */
+const sampleTexel = (i: number, n: number, size: number, flip: boolean) => (flip ? n - 1 - i : i) + (size - n) / 2;
+
 /** A probe tip's image, 1 where it paints: the importer's drawing of a computed tip, or the rig's sampled tip as Photoshop trims it. */
 function tipImage(image: PhotoshopTipImage): StampReferenceImage {
   if (image.kind !== 'sampled') {
@@ -35,11 +45,10 @@ function tipImage(image: PhotoshopTipImage): StampReferenceImage {
     return { width: size, height: size, paint: Float32Array.from(pixels, (v) => 1 - v / 255) };
   }
   // Flipped into the image, inside its blank border, as the importer writes a sample.
-  const { size, native } = PHOTOSHOP_PROBE_TIP, inset = (size - native) / 2, b = PHOTOSHOP_SAMPLE_BORDER, side = native + 2 * b;
-  const paint = new Float32Array(side * side);
-  const at = (i: number, flip: boolean) => (flip ? native - 1 - i : i) + inset;
-  for (let y = 0; y < native; y++) for (let x = 0; x < native; x++) paint[(y + b) * side + x + b] = photoshopProbeTipPaint(at(x, image.flipX), at(y, image.flipY));
-  return { width: side, height: side, paint };
+  const sample = probeSample(image.id), [nw, nh] = sample.native, b = PHOTOSHOP_SAMPLE_BORDER, width = nw + 2 * b, height = nh + 2 * b;
+  const paint = new Float32Array(width * height);
+  for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) paint[(y + b) * width + x + b] = sample.paint(sampleTexel(x, nw, sample.width, image.flipX), sampleTexel(y, nh, sample.height, image.flipY));
+  return { width, height, paint };
 }
 
 /** The ramp pattern as a brush's grain reads it: its paint, which the importer negates unless the preset inverts it. */
@@ -51,7 +60,10 @@ function rampImage(negated: boolean): StampReferenceImage {
 
 /** A probe tip's image as the importer files it; Photoshop trims the rig's sample to its paint, `native` square. */
 function probeTipAsset(tip: PhotoshopKnownTip, file: string): PhotoshopTipAsset {
-  if (tip.kind === 'sampled') return { kind: 'sampled', image: asset(file), sample: { width: PHOTOSHOP_PROBE_TIP.native, height: PHOTOSHOP_PROBE_TIP.native } };
+  if (tip.kind === 'sampled') {
+    const [width, height] = probeSample(tip.sample).native;
+    return { kind: 'sampled', image: asset(file), sample: { width, height } };
+  }
   if (tip.kind === 'erodible') return { kind: 'erodible', image: asset(file), contact: asset(`${file}-contact`), heightMap: asset(`${file}-heights`) };
   if (tip.kind === 'bristle') return { kind: 'bristle', image: asset(file), contact: asset(`${file}-contact`) };
   return { kind: 'round', image: asset(file) };

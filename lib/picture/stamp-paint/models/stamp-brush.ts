@@ -145,9 +145,9 @@ export type StampBrushStamping<Image = StampBrushAsset> = {
   /** How each stamp's size, opacity, flow, roundness and turn, and each step's count, answer the stroke (StampDynamics). */
   dynamics: StampDynamics;
   /**
-   * `count` stamps at each spacing step, before its count dynamics keep fewer, each offset a random way by a uniformly
-   * random distance up to `radius` diameters, so they crowd the stroke, and across the stroke at random by up to
-   * `lateral` diameters either way.
+   * `count` stamps at each spacing step, before its count dynamics keep fewer (or, by random, more), each offset a
+   * random way by a uniformly random distance up to `radius` diameters, so they crowd the stroke, and across the stroke
+   * at random by up to `lateral` diameters either way.
    */
   scatter: {
     count: number; radius: number; lateral: number;
@@ -230,7 +230,12 @@ export type StampResponseFor<T extends StampDynamicTarget> = T extends StampAngl
 export type StampSensorParams = {
   pressure: Record<never, never>;
   fade: { steps: number };
-  random: Record<never, never>;
+  /**
+   * `around`: the draw spreads a size or count either side of what the stroke gives it, by 1 + amount × (2u − 1),
+   * where it would only take it down: a size past the deposit's diameter folds back under it, and a count reaches
+   * twice its own (Photoshop's jitter, the `random size jitter …` and `random count …` probes).
+   */
+  random: { around?: boolean };
   direction: Record<never, never>;
   initialDirection: Record<never, never>;
 };

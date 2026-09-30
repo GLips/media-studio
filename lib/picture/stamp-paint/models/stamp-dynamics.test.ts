@@ -37,3 +37,16 @@ test("a controlled count keeps 1 + floor((count − 1) × its share), and one at
   for (const stamp of stamps) perStep.set(Math.round(stamp.x), (perStep.get(Math.round(stamp.x)) ?? 0) + 1);
   assert.deepEqual([...perStep.values()], [1, 3, 3, 3, 2, 2, 2, 1, 1]);
 });
+
+test('an `around` jitter spreads size either side of what pressure gives it, folded under full, and count up to twice', () => {
+  // Size on pressure at 0.5 with 100% jitter: Photoshop's stamps reach from none to the full diameter, never past it.
+  const sized = brushWith({ size: { pressure: { kind: 'linear', amount: 1 }, random: { kind: 'linear', amount: 1, around: true } } });
+  const sizes = placeAuthoredStamps(Array.from({ length: 400 }, (_, i) => ({ x: i, y: 0, pressure: 0.5 })), sized, 100, 'around').map((s) => s.diameter);
+  assert.ok(Math.max(...sizes) <= 100 && Math.max(...sizes) > 90 && Math.min(...sizes) < 10, `${Math.min(...sizes)}..${Math.max(...sizes)}`);
+  // Count 4 at 100% jitter: from none to 8 a step, 4 on average.
+  const counted = { ...brushWith({ count: { random: { kind: 'linear', amount: 1, around: true } } }), scatter: { count: 4, radius: 0, lateral: 0 } };
+  const perStep = new Map<number, number>();
+  for (const stamp of placeStrokeStamps([{ x: 0, y: 0 }, { x: 20000, y: 0 }], counted, 100, 'around')) perStep.set(Math.round(stamp.x), (perStep.get(Math.round(stamp.x)) ?? 0) + 1);
+  const counts = [...perStep.values()], mean = counts.reduce((a, b) => a + b, 0) / 401;
+  assert.ok(Math.max(...counts) === 8 && perStep.size < 401 && Math.abs(mean - 4) < 0.4, `max ${Math.max(...counts)}, ${perStep.size} steps laid, mean ${mean}`);
+});

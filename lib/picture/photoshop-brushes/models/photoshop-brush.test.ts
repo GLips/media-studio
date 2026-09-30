@@ -31,6 +31,9 @@ const photoshopReading: PhotoshopReading = {
   scatterSpan: 0.5, angleJitterSpan: Math.PI, hueJitterShare: 0.5, dualScale: 1,
 };
 
+/** A random binding spread either way, as Photoshop's size and count jitter are. */
+const around = <R extends object>(random: R | undefined) => random && { ...random, around: true };
+
 test('a Procreate brush and a Photoshop preset that paint alike normalize to the same StampBrush', () => {
   const procreate = normalizeProcreateBrush('Textured Round', {
     settings: {
@@ -66,15 +69,18 @@ test('a Procreate brush and a Photoshop preset that paint alike normalize to the
 
   // Photoshop steps by each stamp's own size and its short side (its roundness is 0.5), where Procreate spreads its
   // steps along the stroke, and holds flow in 255ths. The two build, sample tips, cut and tile grain, adjust it and
-  // combine a dual as each was identified or fitted to.
+  // combine a dual as each was identified or fitted to. Its size and count jitter spread either way (`around`).
   const photoshopWays = { accumulation: { kind: 'buildToOpacity' }, stepping: 'eachStamp' } as const;
+  const { dynamics } = procreate.brush;
   // A sample is stored inside a blank texel each side, which it spans past.
   const sample = { sampling: 'anisotropic', span: 101 / 99, center: [0.5, 0.5] } as const;
   assert.deepEqual(photoshop.brush, {
     ...procreate.brush, ...photoshopWays, spacing: procreate.brush.spacing * 0.5, flow: 163 / 255,
+    dynamics: { ...dynamics, size: { ...dynamics.size, random: around(dynamics.size?.random) }, count: { ...dynamics.count, random: around(dynamics.count?.random) } },
     tip: { ...procreate.brush.tip, ...sample },
     grain: { ...procreate.brush.grain!, blend: { family: 'texture', mode: procreate.brush.grain!.blend.mode }, contrastPivot: 'midGrey', tiling: 'repeat' },
-    dual: { ...procreate.brush.dual!, ...photoshopWays, tip: { ...procreate.brush.dual!.tip, ...sample }, blend: { family: 'texture', mode: procreate.brush.dual!.blend.mode } },
+    // Photoshop turns each dual dab a random way.
+    dual: { ...procreate.brush.dual!, ...photoshopWays, dynamics: { rotation: { random: { kind: 'linear', amount: Math.PI } } }, tip: { ...procreate.brush.dual!.tip, ...sample }, blend: { family: 'texture', mode: procreate.brush.dual!.blend.mode } },
   });
   assert.equal(photoshop.brush.scatter.count, 3);
 });

@@ -229,6 +229,9 @@ function scaleBindingsOf(driver: PhotoshopDriver | undefined, response: StampSca
 export type PhotoshopPressureContext = { lingeringPose: boolean };
 export const PHOTOSHOP_PEN_PRESSURE: PhotoshopPressureContext = { lingeringPose: false };
 
+/** Whether a lingering pose sets the brush's opacity: it does a brush tool's preset's, and drops its opacity jitter. */
+const photoshopPoseSetsOpacity = (p: PhotoshopPaintablePreset, context: PhotoshopPressureContext) => context.lingeringPose && (!p.tool || p.tool.kind === 'PbTl');
+
 /**
  * Size, opacity and flow's controls. Pressure: a lingering pose over the options bar's buttons (each drives wholly)
  * over the brush's own. Under a pose a size amount a counts twice (1 − (1 − m)²(1 − p)); opacity's is unprobed, read
@@ -251,7 +254,7 @@ function photoshopTransferBindings(p: PhotoshopPaintablePreset, context: Photosh
   // A preset of another tool (mixer, smudge, eraser, pencil) keeps its own opacity under a lingering pose, though its
   // size follows it: Kyle's references of them hold full paint to a simulated stroke's ends. Read from the pack
   // references alone; unprobed.
-  const posedOpacity = p.tool && p.tool.kind !== 'PbTl' ? buttons.opacity : { ...buttons.opacity, pressure: linear(1) };
+  const posedOpacity = photoshopPoseSetsOpacity(p, context) ? { ...buttons.opacity, pressure: linear(1) } : buttons.opacity;
   // A pose sizes no airbrush's spray, erodible or bristle tip (the vid-105 probes: widths hold at every pose).
   if (p.tip.kind === 'airbrush' || p.tip.kind === 'erodible' || p.tip.kind === 'bristle') return { ...buttons, opacity: posedOpacity };
   const sizeAmount = buttons.size.pressure?.kind === 'linear' ? buttons.size.pressure.amount : 0;
@@ -278,7 +281,7 @@ function scatterOf(s: PhotoshopScatter | undefined, prefix: string, reading: Pho
   return {
     scatter: { count: Math.max(1, Math.round(s.count)), radius: both ? reach : 0, lateral: both ? 0 : reach } satisfies StampBrushLayer['scatter'],
     reach: reach > 0 ? scaleBindingsOf(scatterDriver, scatterDriver?.sensor === 'pressure' ? SCATTER_BY_PRESSURE : linear(1)) : {},
-    count: { ...scaleBindingsOf(countDriver, linear(1 - count.minimum)), random: linear(Math.min(1, count.jitter)) },
+    count: { ...scaleBindingsOf(countDriver, linear(1 - count.minimum)), random: { ...linear(Math.min(1, count.jitter)), around: true } },
   };
 }
 
@@ -287,12 +290,12 @@ function scatterOf(s: PhotoshopScatter | undefined, prefix: string, reading: Pho
  * as Photoshop steps (`eachStamp`), so no step is under a pixel, however small the spacing.
  */
 function spacingOf(tip: PhotoshopKnownTip, asset: PhotoshopTipAsset, prefix: string, note: Note) {
-  // Photoshop steps by its percentage of the tip's short side: a squashed tip's and a sample's narrower side (its
-  // diameter is its longer). A computed tip's is whole pixels at the preset's diameter (the angle probes: 48 px at 30%
-  // steps 28 px at 200%, not 28.8), scaled with the stamp from there.
+  // Photoshop steps by a share of the tip's short side, whole pixels at the preset's diameter (48 px at 30% steps 28
+  // px at 200%). A sample's short side is the lesser of its roundness and its narrow side's share, even where roundness
+  // squashes that side (`tip sampled wide …`: 128 px at 50% steps as its 55 px side).
   const { diameter } = tip.geometry, roundness = tipRoundness(tip);
-  const sampleShort = asset.kind === 'sampled' ? Math.min(asset.sample.width, asset.sample.height * roundness) / Math.max(asset.sample.width, asset.sample.height) : roundness;
-  const short = tip.kind === 'sampled' || roundness === 1 ? sampleShort : Math.max(1, Math.round(diameter * roundness)) / diameter;
+  const share = asset.kind === 'sampled' ? Math.min(roundness, Math.min(asset.sample.width, asset.sample.height) / Math.max(asset.sample.width, asset.sample.height)) : roundness;
+  const short = share === 1 ? 1 : Math.max(1, Math.round(diameter * share)) / diameter;
   const spacing = (tip.geometry.spacing / 100) * short;
   if (!tip.geometry.spaced) note('approximated', `${prefix}tip.geometry.spaced`, `spacing off stamps once per pointer event; read as its ${tip.geometry.spacing}% spacing`);
   return spacing;
@@ -347,8 +350,9 @@ function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: Photos
         // Photoshop holds depth in 255ths.
         depth: Math.round((texture.depth / 100) * 255) / 255,
         blend: { family: 'texture', mode: typeof mode === 'string' ? GRAIN_BLENDS[mode] : 'multiply' },
-        // Brightness is in 255ths; both apply after invert, which the stored image already holds.
-        brightness: texture.brightness / 255,
+        // Brightness is in 255ths, and darkens the pattern before invert, so an inverted one's takes paint away (Kyle's
+        // pastel settings, the `texture height d5 by pressure pastel` probes). Contrast, about mid grey, reads alike.
+        brightness: ((texture.invert ? -1 : 1) * texture.brightness) / 255,
         contrast: texture.contrast / 100,
         contrastPivot: 'midGrey',
         tiling: 'repeat',
@@ -358,15 +362,18 @@ function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: Photos
       };
       note('approximated', 'texture.scale', `the pattern tiles ${grain.scale.toFixed(2)} diameters across at the preset's ${tip.geometry.diameter} px; Photoshop keeps it that many pixels at any size`);
       if (typeof mode !== 'string') note('unsupported', 'texture.mode', `${photoshopModeName(mode)} has no studio reading; read as multiply`);
-      const depthVaries = texture.depthDynamics.jitter > 0 || texture.depthDynamics.control.kind !== 'off';
-      if (texture.eachTip && depthVaries && (mode === 'height' || mode === 'linearHeight')) {
-        note('unsupported', 'texture.depthDynamics', `depth varying stamp to stamp under ${mode}, read at its full depth: in the probes (run 20260930-082615) a height relief paints whole at depth 0 but thinner than its formula between`);
-      } else if (texture.eachTip) {
-        // Each tip's depth runs the other way from the other dynamics: full pressure paints the minimum depth, and a
-        // fade climbs from it (the vid-105 probes). Jitter takes a stamp's depth down toward the minimum.
+      if (texture.eachTip) {
+        // A stamp's depth is the grain's times its share. Outside the height modes it runs the other way from the other
+        // dynamics: full pressure paints the minimum depth, and a fade climbs from it. A height relief's runs with
+        // pressure, depth × p (the vid-105 probes). Jitter takes a stamp's depth down toward the minimum.
+        const relief = mode === 'height' || mode === 'linearHeight';
         const depth = shares(texture.depthDynamics), minimum = texture.minimumDepth / 100;
-        const control = scaleBindingsOf(driverOf('texture.depthDynamics', 'texture depth', depth.control, note), { kind: 'curve', points: [[0, minimum], [1, 1]] });
+        const response: StampScaleResponse = relief ? linear(1 - minimum) : { kind: 'curve', points: [[0, minimum], [1, 1]] };
+        const control = scaleBindingsOf(driverOf('texture.depthDynamics', 'texture depth', depth.control, note), response);
         grainDepth = { ...control, random: linear(depth.jitter * (1 - minimum)) };
+        if (relief && (depth.jitter > 0 || minimum > 0 || depth.control.kind === 'fade')) {
+          note('approximated', 'texture.depthDynamics', `${mode}'s depth by pressure is probed at minimum 0; its minimum, fade and jitter are read as pressure's`);
+        }
       }
       if (texture.protect) note('inapplicable', 'texture.protect', "protect texture lays one brush's pattern on every brush in Photoshop; each studio brush keeps its own");
     }
@@ -389,8 +396,9 @@ function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: Photos
     spacing: airbrush?.spacing ?? spacingOf(tip, source.tip, '', note),
     stepping: airbrush ? 'spread' : 'eachStamp',
     dynamics: stampDynamicsOf({
-      size: { ...transfer.size, random: linear(size.jitter), ...airbrush?.dynamics.size },
-      opacity: { ...transfer.opacity, random: linear(opacity.jitter) },
+      size: { ...transfer.size, random: { ...linear(size.jitter), around: true }, ...airbrush?.dynamics.size },
+      // A pose's opacity drops the jitter: the `random opacity jitter … posed` probes paint alike copy for copy under it.
+      opacity: { ...transfer.opacity, ...(!photoshopPoseSetsOpacity(p, context) && { random: linear(opacity.jitter) }) },
       flow: { ...transfer.flow, random: linear(flow.jitter), ...airbrush?.dynamics.flow },
       roundness: { ...roundnessControl, random: linear(roundness.jitter * (1 - minimumRoundness)) },
       count,
@@ -429,7 +437,9 @@ function readDualLayer(source: PhotoshopBrushSource, dual: PhotoshopDual, tip: P
     tip: tipOf(tip, image, 'dual.', note),
     spacing: spacingOf(tip, image, 'dual.', note),
     stepping: 'eachStamp',
-    dynamics: stampDynamicsOf({ count, scatter: reach }),
+    // Photoshop turns each dual dab a random way, whatever its settings (the `dual wide …` probes); a round one's
+    // turn doesn't show.
+    dynamics: stampDynamicsOf({ count, scatter: reach, rotation: { random: { kind: 'linear', amount: Math.PI } } }),
     scatter,
     rotation: { angle: degrees(tip.geometry.angle), randomStart: false },
     flip: { x: dual.flip, y: false },

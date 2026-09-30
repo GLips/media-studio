@@ -71,8 +71,26 @@ export function photoshopProbeTipPaint(x: number, y: number): number {
   return 0.2 + (0.8 * (x - inset)) / (s - 2 * inset - 1);
 }
 
-/** The sampled tip's id: the one sample a probe preset names, which the rig and the reference map to its tip image. */
-export const PHOTOSHOP_PROBE_SAMPLE_ID = 'studio-probe-tip';
+/**
+ * The wide tip: the sampled tip's ramp in a rounded bar twice as wide as tall, `native` once trimmed, so a sample that
+ * isn't square shows how Photoshop sizes, squashes and steps it, as a brush's tip and as a dual's.
+ */
+export const PHOTOSHOP_PROBE_WIDE_TIP = { name: 'studio-probe-wide', width: 128, height: 64, native: [112, 48] } as const;
+/** The wide tip's paint, 0..1, at (x, y): its notch is 16 px, top left. */
+export function photoshopProbeWideTipPaint(x: number, y: number): number {
+  const { width, height } = PHOTOSHOP_PROBE_WIDE_TIP, inset = 8, radius = 12;
+  if (x >= inset && x < inset + 16 && y >= inset && y < inset + 16) return 1;
+  const cx = Math.min(Math.max(x + 0.5, inset + radius), width - inset - radius), cy = Math.min(Math.max(y + 0.5, inset + radius), height - inset - radius);
+  if (Math.hypot(x + 0.5 - cx, y + 0.5 - cy) > radius) return 0;
+  return 0.2 + (0.8 * (x - inset)) / (width - 2 * inset - 1);
+}
+
+/** Each rig sample by the id a probe preset names, which the rig defines and the reference draws: its image and paint. */
+export const PHOTOSHOP_PROBE_SAMPLES = {
+  [PHOTOSHOP_PROBE_TIP.name]: { width: PHOTOSHOP_PROBE_TIP.size, height: PHOTOSHOP_PROBE_TIP.size, native: [PHOTOSHOP_PROBE_TIP.native, PHOTOSHOP_PROBE_TIP.native], paint: photoshopProbeTipPaint },
+  [PHOTOSHOP_PROBE_WIDE_TIP.name]: { width: PHOTOSHOP_PROBE_WIDE_TIP.width, height: PHOTOSHOP_PROBE_WIDE_TIP.height, native: PHOTOSHOP_PROBE_WIDE_TIP.native, paint: photoshopProbeWideTipPaint },
+} as const satisfies Record<string, { width: number; height: number; native: readonly [number, number]; paint: (x: number, y: number) => number }>;
+export type PhotoshopProbeSampleId = keyof typeof PHOTOSHOP_PROBE_SAMPLES;
 
 type ComputedTip = Extract<PhotoshopKnownTip, { kind: 'computed' }>;
 type SampledTip = Extract<PhotoshopKnownTip, { kind: 'sampled' }>;
@@ -80,8 +98,8 @@ type SampledTip = Extract<PhotoshopKnownTip, { kind: 'sampled' }>;
 const geometry = (diameter: number, spacing: number, extra: Partial<PhotoshopTipGeometry>): PhotoshopTipGeometry =>
   ({ diameter, angle: 0, roundness: 100, spacing, spaced: true, flipX: false, flipY: false, ...extra });
 const round = (diameter: number, hardness = 100, spacing = 5, extra: Partial<PhotoshopTipGeometry> = {}): ComputedTip => ({ kind: 'computed', hardness, geometry: geometry(diameter, spacing, extra) });
-/** The rig's sampled tip (PHOTOSHOP_PROBE_TIP), scaled to `diameter`. */
-const sampled = (diameter: number, extra: Partial<PhotoshopTipGeometry> = {}): SampledTip => ({ kind: 'sampled', sample: PHOTOSHOP_PROBE_SAMPLE_ID, geometry: geometry(diameter, 5, extra) });
+/** A rig sample (PHOTOSHOP_PROBE_TIP unless named), scaled to `diameter`. */
+const sampled = (diameter: number, extra: Partial<PhotoshopTipGeometry> = {}, sample: PhotoshopProbeSampleId = PHOTOSHOP_PROBE_TIP.name): SampledTip => ({ kind: 'sampled', sample, geometry: geometry(diameter, 5, extra) });
 
 const OFF: PhotoshopDynamic = { control: { kind: 'off' }, jitter: 0 };
 const jitter = (percent: number): PhotoshopDynamic => ({ control: { kind: 'off' }, jitter: percent });
@@ -310,10 +328,10 @@ export function photoshopProbes(): PhotoshopProbe[] {
     add(`flow by ${label}`, `flow on ${label}: what a stroked path gives it`, base(round(64, 100, 5), transferBy(noControl, control)), [line]);
   }
   // Texture depth per stamp, the subtract ramp at depth 100 under a hard tip, stamps apart so each shows its depth.
-  type DepthProbe = { minimumDepth?: number; eachTip?: boolean; spacing?: number; mode?: PhotoshopTextureMode; depth?: number; brightness?: number; contrast?: number; parts?: ProbeParts };
-  const depthBy = (depthDynamics: PhotoshopDynamic, { minimumDepth = 0, eachTip = true, spacing = 150, mode = 'subtract', depth = 100, brightness = 0, contrast = 0, parts = {} }: DepthProbe = {}) => {
-    const { texture } = ramp(mode, depth, { eachTip, brightness, contrast });
-    return base(round(96, 100, spacing), { ...parts, texture: { ...texture!, depthDynamics, minimumDepth } });
+  type DepthProbe = { minimumDepth?: number; eachTip?: boolean; spacing?: number; mode?: PhotoshopTextureMode; depth?: number; brightness?: number; contrast?: number; invert?: boolean; flow?: number; parts?: ProbeParts };
+  const depthBy = (depthDynamics: PhotoshopDynamic, { minimumDepth = 0, eachTip = true, spacing = 150, mode = 'subtract', depth = 100, brightness = 0, contrast = 0, invert = false, flow = 100, parts = {} }: DepthProbe = {}) => {
+    const { texture } = ramp(mode, depth, { eachTip, brightness, contrast, invert });
+    return base(round(96, 100, spacing), { flow, ...parts, texture: { ...texture!, depthDynamics, minimumDepth } });
   };
   add('texture depth by pressure', 'Texture Each Tip depth on pen pressure: depth against pressure, and along simulated pressure', depthBy(driven(pressure())), [...posedLines, simLine]);
   add('texture depth by pressure minimum 50', 'depth on pen pressure with a 50% minimum depth', depthBy(driven(pressure()), { minimumDepth: 50 }), posedLines.slice(0, 2));
@@ -375,6 +393,47 @@ export function photoshopProbes(): PhotoshopProbe[] {
     ['soft', airbrush(1, 0, 1, 200, 45)], ['hard', airbrush(100, 0, 1, 200, 1)], ['soft grainy', airbrush(1, 100, 1, 200, 45)], ['hard grainy sparse', airbrush(100, 100, 1, 9, 1)],
     ['splat big', airbrush(1, 100, 43, 12, 45, 30, 43)], ['splat fine', airbrush(1, 100, 3, 19, 45, 30, 43)],
   ] as const) add(`tip airbrush ${label}`, `an airbrush tip, ${label}: its spray's profile and grain`, base(tip), simulated, label.includes('grainy') || label.includes('splat') ? 2 : undefined);
+
+  // vid-105: the height modes at the shallow depths Kyle's pastels use (5 to 21%, most on pen pressure, their pattern
+  // brightened): a depth ladder under Brush Pose, stamps apart, then on a soft stamp, flow's part, and depth on pen
+  // pressure. Each unposed line comes first, before a pose can linger.
+  for (const mode of ['height', 'linearHeight'] as const) {
+    for (const depth of [0, 5, 10, 25]) add(`texture ${mode} d${depth} each tip ladder`, `${mode} at depth ${depth}% per stamp, unposed and at Brush Pose 0.25 to 1: depth and opacity in the relief`, depthBy(OFF, { mode, depth }), [line, ...posedLines]);
+    for (const depth of [5, 25]) add(`texture ${mode} d${depth} each tip soft`, `${mode} at depth ${depth}% per stamp on a soft stamp: the transfer over coverage (radius) and ramp value (x)`, base(SOFT, ramp(mode, depth, { eachTip: true })), [mark('stamp')]);
+    add(`texture ${mode} d5 by pressure`, `depth 5% on pen pressure in ${mode}: the relief against pressure at a shallow depth`, depthBy(driven(pressure()), { mode, depth: 5 }), [...posedLines, simLine]);
+  }
+  for (const flow of [25, 50]) add(`texture height d10 each tip flow ${flow}`, `height at depth 10% per stamp, flow ${flow}%: whether flow enters the relief as opacity does`, depthBy(OFF, { mode: 'height', depth: 10, flow }), [line, ...posedLines.slice(1)]);
+  add('texture height d50 by pressure', 'depth 50% on pen pressure in height mode', depthBy(driven(pressure()), { mode: 'height', depth: 50 }), [...posedLines, simLine]);
+  for (const eachTip of [true, false]) {
+    add(`texture height d5 by pressure pastel${eachTip ? ' each tip' : ''}`, `Kyle's pastels: height at depth 5% on pen pressure, the pattern inverted, brightened 47 and its contrast 50, ${eachTip ? 'per stamp' : 'on the canvas'}, dense at flow 20%`, depthBy(driven(pressure()), { mode: 'height', depth: 5, brightness: 47, contrast: 50, invert: true, eachTip, spacing: 3, flow: 20 }), [...posedLines, mark('sCurve', { simulatePressure: true })]);
+  }
+  // Count jitter: stamps a step piled at one place, at flow 25%, so each step's darkness counts its stamps.
+  for (const [count, countJitter] of [[4, 50], [4, 100], [2, 100]] as const) {
+    add(`random count ${count} jitter ${countJitter}`, `count ${count} with ${countJitter}% count jitter, no scatter, flow 25%: how many stamps each step keeps`, base(round(24, 100, 200), { flow: 25, scatter: { scatter: jitter(0), bothAxes: false, count, countDynamics: jitter(countJitter) } }), [line], 4);
+  }
+  // Opacity jitter under a pose, and size jitter beside size on pressure: whether a lingering pose's opacity replaces
+  // the jitter, and whether the two sizes multiply. Each unposed line first, before a pose can linger.
+  for (const opacityJitter of [30, 60]) {
+    add(`random opacity jitter ${opacityJitter} posed`, `opacity jitter ${opacityJitter}% at flow 40%, unposed, at Brush Pose 1 and 0.5, then a simulated S-curve the pose lingers into`, base(round(64, 100, 5), { flow: 40, transfer: { opacity: jitter(opacityJitter), flow: OFF } }), [line, mark('line', { pressure: 1 }), mark('line', { pressure: 0.5 }), mark('sCurve', { simulatePressure: true })], 3);
+  }
+  for (const sizeJitter of [0, 50, 100]) {
+    add(`random size jitter ${sizeJitter} by pressure`, `size on pen pressure with ${sizeJitter}% size jitter, stamps apart: how the two sizes combine`, base(round(24, 100, 300), shape({ size: { control: pressure(), jitter: sizeJitter } })), [...posedLines, mark('sCurve', { simulatePressure: true })], 3);
+  }
+  // A sample that isn't square (PHOTOSHOP_PROBE_WIDE_TIP): which side its diameter spans, whether it keeps its
+  // proportions, which side it steps by, and whether a dual's is stretched to a square.
+  const wide = (diameter: number, spacing: number, extra: Partial<PhotoshopTipGeometry> = {}): SampledTip => ({ kind: 'sampled', sample: PHOTOSHOP_PROBE_WIDE_TIP.name, geometry: geometry(diameter, spacing, extra) });
+  for (const diameter of [64, 128]) add(`tip sampled wide d${diameter}`, `the wide sample at ${diameter} px: its span, proportions and steps`, base(wide(diameter, 200)), [mark('stamp'), mark('line')]);
+  add('tip sampled wide roundness 50', 'the wide sample at roundness 50%: which side squashes, and its steps', base(wide(128, 150, { roundness: 50 })), [mark('stamp'), mark('line')]);
+  add('tip sampled wide angle 90', 'the wide sample turned 90°: its steps along its long side', base(wide(64, 100, { angle: 90 })), [mark('line')]);
+  for (const [label, spacing] of [['apart', 200], ['dense', 25]] as const) {
+    add(`dual wide ${label}`, `a wide sampled dual at 64 px, spacing ${spacing}%, under a hard 200 px tip: its dabs' shape`, base(round(200, 100, 5), dual(wide(64, spacing), 'multiply')), [mark('stamp'), mark('line')]);
+  }
+  // Medium Wash Slow and Brutus: a big sampled dual under colour burn, dense, whose footprint ends short of the reference.
+  add('dual sampled colorBurn dense', 'a 120 px sampled dual at spacing 25% under colour burn beneath a soft 128 px tip: how far the dual reaches', base(round(128, 0, 5), dual(sampled(120, { spacing: 25 }), 'colorBurn')), [mark('stamp'), mark('line'), mark('sCurve', { simulatePressure: true })]);
+  // A height relief's minimum, jitter and fade, beside its depth on pressure.
+  add('texture height d25 by pressure min 40 each tip', 'height at depth 25% on pen pressure with a 40% minimum: whether the minimum floors it', depthBy(driven(pressure()), { mode: 'height', depth: 25, minimumDepth: 40 }), [...posedLines, simLine]);
+  add('texture height d25 jitter 50 each tip', 'height at depth 25% with 50% depth jitter', depthBy(jitter(50), { mode: 'height', depth: 25 }), [line, mark('line', { pressure: 1 })], 2);
+  add('texture height d25 fade 10 each tip', 'height at depth 25% faded over 10 steps', depthBy(driven(fade(10)), { mode: 'height', depth: 25 }), [line]);
   return probes;
 }
 

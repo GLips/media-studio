@@ -8,7 +8,7 @@ import { lerp } from '#lib/picture/motion/models/motion.ts';
 import { seededRandom } from '#lib/picture/motion/models/random.ts';
 import type { StampBrushColorDynamics, StampBrushStamping } from './stamp-brush.ts';
 import {
-  drawStampSlots, stampOwnShare, stampOwnTurn, stampResponseCurve, stampStepCount, stampStepShare, stampStepTurn, type StampContext, type StampDraws, type StampStepContext,
+  drawStampSlots, stampOwnShare, stampOwnSize, stampOwnTurn, stampResponseCurve, stampStepCount, stampStepShare, stampStepTurn, type StampContext, type StampDraws, type StampStepContext,
 } from './stamp-dynamics.ts';
 
 /**
@@ -101,7 +101,8 @@ const depositTurn = (brush: StampBrushStamping<unknown>, seed: string) => (brush
  * step's dynamics, the author's own `turn` (0 along a stroke), the taper's opacity and the stroke's `fade` (1 for an
  * authored stamp).
  */
-type StampPlace = { x: number; y: number; size: number; turn: number; taperOpacity: number; fade: number; grainTurn: number; reveal: number };
+/** `full`: the size a spread of it folds back under. */
+type StampPlace = { x: number; y: number; size: number; full: number; turn: number; taperOpacity: number; fade: number; grainTurn: number; reveal: number };
 
 /** The one rule a stamp is built by, placed along a stroke or by the author: its place, then its context's dynamics. */
 function buildStamp(place: StampPlace, stamp: StampContext, brush: StampPlacementBrush, startTurn: number): PlacedStamp {
@@ -109,7 +110,7 @@ function buildStamp(place: StampPlace, stamp: StampContext, brush: StampPlacemen
   return {
     x: place.x,
     y: place.y,
-    diameter: brush.tip.pixels ?? place.size * stampOwnShare(dynamics, 'size', stamp),
+    diameter: brush.tip.pixels ?? stampOwnSize(dynamics, place.size, place.full, stamp),
     rotation: brush.rotation.angle + place.turn + stampStepTurn(dynamics, stamp) + stampOwnTurn(dynamics, stamp) + startTurn,
     roundness: stampStepShare(dynamics, 'roundness', stamp) * stampOwnShare(dynamics, 'roundness', stamp),
     alpha: brush.flow * stampStepShare(dynamics, 'flow', stamp) * stampOwnShare(dynamics, 'flow', stamp),
@@ -180,12 +181,14 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
     const steps = length > 0 ? Math.ceil(length / (Math.max(brush.spacing, STAMP_MIN_SPACING) * diameter)) : 0;
     for (let i = 0; i <= steps; i++) places.push(at(steps ? (i / steps) * length : 0, i));
   } else {
-    // Each step is the spacing of the stamp it leaves, at that stamp's size before its random loss. A step landing on
-    // the end paints nothing there: steps summed in floating point fall a hair short of it, hence the tolerance.
+    // Each step is the spacing of its first stamp, at that stamp's size after its random loss (the draws it's placed
+    // with below): Spatter Spread's jittered dots close up. A step landing on the end paints nothing there: steps summed
+    // in floating point fall a hair short of it, hence the tolerance.
     for (let arc = 0, first = true; first || arc < length - 1e-6; first = false) {
       const place = at(arc, places.length);
+      const draws = drawStampSlots(seededRandom(`${seed}|${places.length}|0`), 'stroke');
       places.push(place);
-      arc += Math.max(1, brush.spacing * place.size);
+      arc += Math.max(1, brush.spacing * stampOwnSize(dynamics, place.size, diameter, { ...place.step, stamp: 0, draws }));
     }
   }
   const stamps: PlacedStamp[] = [];
@@ -194,7 +197,7 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
     // The count draw is the step's own stream's, drawn only for a brush whose count reads it.
     const step: StampStepContext = { ...where, countDraw: dynamics.count?.random ? seededRandom(`${seed}|${i}|count`)() : 0 };
     const kept = stampStepCount(dynamics, count, step), reach = stampStepShare(dynamics, 'scatter', step);
-    for (let c = 0; c < count; c++) {
+    for (let c = 0; c < Math.max(count, kept); c++) {
       const draws = drawStampSlots(seededRandom(`${seed}|${i}|${c}`), 'stroke');
       if (lifted || c >= kept) continue;
       const lateral = (draws.lateral * 2 - 1) * brush.scatter.lateral * reach * diameter;
@@ -205,7 +208,7 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
       stamps.push(buildStamp({
         x: lerp(a.x, b.x, k) - Math.sin(step.heading) * lateral + Math.cos(scatterTurn) * scatterReach,
         y: lerp(a.y, b.y, k) + Math.cos(step.heading) * lateral + Math.sin(scatterTurn) * scatterReach,
-        size, turn: 0, taperOpacity: lerp(taper.opacity, 1, ramp), fade,
+        size, full: diameter, turn: 0, taperOpacity: lerp(taper.opacity, 1, ramp), fade,
         grainTurn: brush.grain?.kind === 'rolling' ? step.heading * brush.grain.rotation : 0,
         reveal: reveal(segment, k, along),
       }, { ...step, stamp: c, draws }, brush, startTurn));
@@ -234,7 +237,7 @@ export function placeAuthoredStamps(at: readonly StampPlacement[], brush: StampP
     return buildStamp({
       x: placement.x,
       y: placement.y,
-      size: (placement.diameter ?? diameter) * stampStepShare(brush.dynamics, 'size', step),
+      size: (placement.diameter ?? diameter) * stampStepShare(brush.dynamics, 'size', step), full: placement.diameter ?? diameter,
       turn: placement.rotation ?? 0, taperOpacity: 1, fade: 1, grainTurn: 0,
       reveal: at.length > 1 ? i / (at.length - 1) : 0,
     }, { ...step, stamp: 0, draws: drawStampSlots(seededRandom(`${seed}|${i}|0`), 'authored') }, brush, startTurn);

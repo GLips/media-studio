@@ -123,9 +123,9 @@ function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: Stam
           const gu = gx / (rollingTile.across * size) + (rolling.movement * stamp.x) / rollingTile.across + place.offset[0];
           const gv = gy / (rollingTile.down * size) + (rolling.movement * stamp.y) / rollingTile.down + place.offset[1];
           const g = stampGrainPaint(sampleStampReference(rolling.image, gu, gv, Math.max(0, Math.log2(rolling.image[0].width / (rollingTile.across * size))), rolling.tiling === 'mirror' ? 'mirror' : 'tile'), rolling, grainMean(rolling));
-          const share = stamp.grainDepth;
-          a += share * (stampGrainCut(a, g, rolling) - a);
-          capped = 1 + share * (stampGrainCut(1, g, rolling) - 1);
+          const cut = { blend: rolling.blend, depth: rolling.depth * stamp.grainDepth };
+          a = stampGrainCut(a, g, cut);
+          capped = stampGrainCut(1, g, cut);
         }
         const i = (py - box.y) * box.width + (px - box.x), laid = a * stamp.alpha;
         built[i] = lay.cpu(built[i], laid, opacity);
