@@ -73,7 +73,8 @@ Look at what you paint: `studio look` gives a sheet of chosen frames, mid-reveal
 against the pack's `previews/`, or for a Photoshop pack its `reference/`, Photoshop's own strokes, which
 `npm run photoshop -- references` captures (docs/photoshop-capture.md). What the renderer doesn't do yet is ticketed: varied washes, pooled and lost edges and bleeding (vid-81),
 granulation, pigment mixing and true glazing (vid-83), the brush settings the importer drops (vid-84). Don't fake those
-by stacking deposits: overlapping deposits build into dark blotches.
+by stacking deposits: overlapping deposits build into dark blotches. docs/brush-engine.md says where the engine,
+each app's reading, the styles and the fidelity sheet live, for a change to how a brush paints.
 
 ## The one rule: a frame is a function of its time
 

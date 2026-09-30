@@ -79,7 +79,8 @@ Photoshop (True Grit's does). Photoshop's own sets: `Legacy Brushes.abr` and `Co
 `Adobe Photoshop 2026.app/Contents/Required/`.
 
 The manifest holds the asset version, the files, and each brush normalized into the studio's brush definition
-(`StampBrush`, lib/picture/stamp-paint/models/stamp-brush.ts), keyed by its name in the pack. It also records the
+(`StampBrush`, lib/picture/stamp-paint/models/stamp-brush.ts; docs/brush-engine.md says where each part of the
+engine lives), keyed by its name in the pack. It also records the
 archive's hash, the previews, the zip's `.swatches` palettes, the papers (each with its mean colour), and per brush
 every setting that was approximated or dropped (`support`); the import prints a line per brush of those. Copy colours
 into `palette` and a paper into `paper` (`image` for its photograph, `grain` for its tooth) in style.ts.
