@@ -11,7 +11,7 @@ const brush: StampBrush = {
   spacing: 0.1,
   stepping: 'spread',
   jitter: { lateral: 0.2, size: 0.3, opacity: 0.3, flow: 0, roundness: 0 },
-  scatter: { count: 2, countJitter: 0, radius: 0.1 },
+  scatter: { count: 2, countJitter: 0, countPressure: 0, radius: 0.1 },
   rotation: { angle: 0, follow: 1, jitter: 0.5, randomStart: false },
   flip: { x: false, y: false },
   blur: { amount: 0, jitter: 0 },
@@ -94,7 +94,7 @@ test('a recipe that would seed or draw wrongly is refused when it compiles, nami
 });
 
 test('a stroke tapers at both ends however short, and turns with its direction from its first stamp', () => {
-  const still = { ...brush, jitter: { lateral: 0, size: 0, opacity: 0, flow: 0, roundness: 0 }, scatter: { count: 1, countJitter: 0, radius: 0 }, rotation: { ...brush.rotation, jitter: 0 } };
+  const still = { ...brush, jitter: { lateral: 0, size: 0, opacity: 0, flow: 0, roundness: 0 }, scatter: { count: 1, countJitter: 0, countPressure: 0, radius: 0 }, rotation: { ...brush.rotation, jitter: 0 } };
   // A pen often repeats its first point.
   const stroke = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 19 }];
   const [deposit] = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) =>

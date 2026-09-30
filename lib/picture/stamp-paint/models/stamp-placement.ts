@@ -161,8 +161,10 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
   const stamps: PlacedStamp[] = [];
   places.forEach(({ arc, along, segment, k, a, b, pressure, ramp, through, size, heading, lifted }, i) => {
     const fade = (1 - brush.falloff) ** (arc / diameter / FALLOFF_SPAN);
-    // Count jitter keeps a step's first stamps, from the step's own stream, so it never moves the stamps it keeps.
-    const kept = brush.scatter.countJitter > 0 ? Math.max(1, Math.round(count * (1 - brush.scatter.countJitter * seededRandom(`${seed}|${i}|count`)()))) : count;
+    // Count pressure and jitter keep a step's first stamps, jitter from the step's own stream, so neither moves the
+    // stamps it keeps. Pressure keeps whole stamps only (vid-97's count probes: 4 at pressure 0.98 keeps 3).
+    const pressed = Math.max(1, Math.floor(count * pressured(pressure, brush.scatter.countPressure) + 1e-9));
+    const kept = brush.scatter.countJitter > 0 ? Math.max(1, Math.round(pressed * (1 - brush.scatter.countJitter * seededRandom(`${seed}|${i}|count`)()))) : pressed;
     for (let c = 0; c < count; c++) {
       const random = seededRandom(`${seed}|${i}|${c}`);
       // Drawn in a fixed order, every one always, so adding a use for one never shifts another.

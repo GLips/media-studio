@@ -128,8 +128,9 @@ export type StampBrushStamping = {
   /**
    * `count` stamps at each spacing step, each offset a random way by a uniformly random distance up to `radius`
    * diameters, so they crowd the stroke; `countJitter` (0..1) drops up to that share of them at random, step by step.
+   * `countPressure` (0..1) is how far pressure thins them: a step keeps the whole stamps of count × its pressured share.
    */
-  scatter: { count: number; countJitter: number; radius: number };
+  scatter: { count: number; countJitter: number; countPressure: number; radius: number };
   /**
    * `angle` turns every stamp; `follow` (-1..1) turns it with the stroke's direction (against it when negative),
    * unwrapped along the stroke so a partial follow never jumps; `jitter` turns each at random; `randomStart` turns a

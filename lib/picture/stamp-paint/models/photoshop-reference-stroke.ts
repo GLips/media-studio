@@ -3,9 +3,9 @@
 // cropped to, under Photoshop's simulated pressure, at the reference's diameter.
 //
 // Simulated pressure, from vid-97's pressure probes and references: it rises straight from 0 at the path's start,
-// holds full over its middle and falls straight to 0 at its end, by the share of the path's length (a line and the
-// S-curve, 819 and 798 px, agree by share, not by pixel). It drives the brush's own pen-pressure dynamics, as a pen
-// would: a brush with none paints it untapered. But the rig paints most S-curves just after a line under a Brush Pose,
+// holds just short of full over its middle and falls straight to 0 at its end, by the share of the path's length (a
+// line and the S-curve agree by share, not by pixel). It drives the brush's own pen-pressure dynamics, count included,
+// as a pen would: a brush with none paints it untapered. But the rig paints most S-curves just after a posed line,
 // and the pose's overrides outlast it until the brush is applied again: size and opacity then follow the pressure
 // wholly, save that a size minimum m on pen pressure counts twice, m + (1 − m)(m + (1 − m)p) (vid-97's pressure check).
 //
@@ -20,8 +20,15 @@ import type { StampStrokePoint } from './stamp-placement.ts';
 /** The share of the path over which simulated pressure rises from 0 to full, and falls again at the end. */
 const SIMULATED_PRESSURE_RAMP = 0.46;
 
+/**
+ * Simulated pressure's height, just short of full: opacity on pen pressure peaks at 0.98 along it, and count 4 on pen
+ * pressure keeps at most 3 stamps a step and count 2 one, where a Brush Pose at 1 reaches 1 and keeps them all
+ * (vid-97's pressure and count probes).
+ */
+const SIMULATED_PRESSURE_PEAK = 0.98;
+
 /** Photoshop's simulated pressure at share `t` (0..1) of a stroked path's length. */
-export const photoshopSimulatedPressure = (t: number) => Math.max(0, Math.min(1, Math.min(t, 1 - t) / SIMULATED_PRESSURE_RAMP));
+export const photoshopSimulatedPressure = (t: number) => SIMULATED_PRESSURE_PEAK * Math.max(0, Math.min(1, Math.min(t, 1 - t) / SIMULATED_PRESSURE_RAMP));
 
 /** The rig's S-curve in the preview's pixels, each point carrying the simulated pressure at its share of the length. */
 export function photoshopReferenceStrokePath(): StampStrokePoint[] {

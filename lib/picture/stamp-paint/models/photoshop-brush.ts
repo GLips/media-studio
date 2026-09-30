@@ -150,17 +150,16 @@ function pressureOf(key: string, what: string, control: number, minimum: number,
 
 /** Scatter and count, the main brush's or its dual's, read into the studio's lateral jitter, scatter radius and count. */
 function scatterOf(d: PhotoshopDescriptor | undefined, prefix: string, on: boolean, reading: PhotoshopReading, note: Note) {
-  if (!on) return { lateral: 0, scatter: { count: 1, countJitter: 0, radius: 0 } };
+  if (!on) return { lateral: 0, scatter: { count: 1, countJitter: 0, countPressure: 0, radius: 0 } };
   const scatter = dynamic(photoshopObject(d, 'scatterDynamics')), count = dynamic(photoshopObject(d, 'countDynamics'));
   const reach = scatter.jitter * reading.scatterSpan, both = photoshopFlag(d, 'bothAxes');
   if (reach > 0) note('approximated', `${prefix}scatterDynamics.jitter`, `${Math.round(scatter.jitter * 100)}% read as stamps strayed up to ${reach.toFixed(2)} diameters ${both ? 'every way' : 'across the stroke'}`);
   if (scatter.control === CONTROL_PRESSURE) note('unsupported', `${prefix}scatterDynamics.bVTy`, 'scatter by pressure: the studio scatters alike at any pressure');
   else if (scatter.control !== CONTROL_OFF) pressureOf(`${prefix}scatterDynamics`, 'scatter', scatter.control, 0, note);
-  if (count.control === CONTROL_PRESSURE) note('unsupported', `${prefix}countDynamics.bVTy`, 'count by pressure: the studio counts alike at any pressure');
-  else if (count.control !== CONTROL_OFF) pressureOf(`${prefix}countDynamics`, 'count', count.control, 0, note);
+  const countPressure = pressureOf(`${prefix}countDynamics`, 'count', count.control, count.minimum, note);
   return {
     lateral: both ? 0 : reach,
-    scatter: { count: Math.max(1, Math.round(photoshopNumber(d, 'Cnt ', 1))), countJitter: Math.min(1, count.jitter), radius: both ? reach : 0 },
+    scatter: { count: Math.max(1, Math.round(photoshopNumber(d, 'Cnt ', 1))), countJitter: Math.min(1, count.jitter), countPressure, radius: both ? reach : 0 },
   };
 }
 

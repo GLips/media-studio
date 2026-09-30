@@ -64,7 +64,7 @@ Brush Pose (size and opacity overridden), or simulated pressure (taper at both e
 
 ## The probe set
 
-`photoshopProbes()`, 201 probes, 344 cells on 10 sheets in about a minute. Each is a plain round, or a sampled tip the run defines
+`photoshopProbes()`, 237 probes, 419 cells on 12 sheets in about a minute. Each is a plain round, or a sampled tip the run defines
 (`studio-probe-tip`: a half-circle with a hard and a soft side, 112 px once Photoshop trims it), with one thing changed:
 
 - single stamps of computed tips across hardness and diameter, an ellipse, and the sampled tip at sizes, angle,
@@ -84,10 +84,12 @@ Brush Pose (size and opacity overridden), or simulated pressure (taper at both e
 
 **Brush Pose pressure scales size and opacity both**, whatever the brush's own dynamics say: a pose at 0.5 paints
 half the diameter at half the opacity. The `pressure …` probes and a pack's reference lines at 0.25 and 0.5 are read
-that way. **Simulated pressure** goes by the share of the path's length: it rises straight from 0 to full over the first 46%,
-holds, and falls to 0 over the last 46% (lib/picture/stamp-paint/models/photoshop-reference-stroke.ts). It drives the
-brush's own pen-pressure dynamics, so a brush with none paints it untapered, as every reference S-curve that starts a
-sheet shows. After a posed cell of the same brush, the pose's size and opacity overrides outlast it until the brush
+that way. **Simulated pressure** goes by the share of the path's length: it rises straight from 0 over the first 46%,
+holds at 0.98, never quite full, and falls to 0 over the last 46%
+(lib/picture/stamp-paint/models/photoshop-reference-stroke.ts). It drives the brush's own pen-pressure dynamics, so a
+brush with none paints it untapered, as every reference S-curve that starts a sheet shows. Count on pen pressure keeps
+floor(count × (m + (1 − m)p)) stamps a step, at least one, so along a simulated stroke count 2 keeps one throughout
+(the `count …` probes). After a posed cell of the same brush, the pose's size and opacity overrides outlast it until the brush
 is applied again (the rig applies it afresh on each sheet): size and opacity follow the simulated pressure wholly,
 save that a size minimum on pen pressure counts twice (the `pressure check …` probes). The sheet paints each
 reference the way it was painted.

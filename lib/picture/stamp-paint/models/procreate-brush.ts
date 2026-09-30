@@ -208,7 +208,7 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
     stepping: 'spread',
     jitter: { lateral: lateralJitter(num('plotJitter'), reading), size: num('dynamicsJitterSize'), opacity: num('dynamicsJitterOpacity'), flow: num('dynamicsWetnessJitter'), roundness: 0 },
     // shapeCount stores Procreate's 1–16 stamps as sixteenths.
-    scatter: { count: Math.max(1, Math.round(num('shapeCount') * 16)), countJitter: num('shapeCountJitter'), radius: 0 },
+    scatter: { count: Math.max(1, Math.round(num('shapeCount') * 16)), countJitter: num('shapeCountJitter'), countPressure: 0, radius: 0 },
     rotation: { angle: num('shapeAngle'), follow: Math.min(1, Math.max(-1, num('shapeRotation'))), jitter: (shapeScatter * Math.PI) / 2, randomStart: on('shapeRandomise') },
     flip: { x: on('shapeFlipXJitter'), y: on('shapeFlipYJitter') },
     blur: { amount: 0, jitter: 0 },

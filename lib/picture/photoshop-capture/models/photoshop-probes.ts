@@ -243,6 +243,19 @@ export function photoshopProbes(): PhotoshopProbe[] {
   const posedLines = [0.25, 0.5, 0.75, 1].map((p) => mark('line', { pressure: p }));
   add('count 4 by pressure', 'count 4 on pen pressure at flow 25%: how many stamps a step keeps at each pressure', counted(0), [mark('sCurve', { simulatePressure: true }), ...posedLines]);
   add('count 4 by pressure minimum 50', 'count 4 on pen pressure with a 50% minimum: where the minimum holds it', counted(50), posedLines.slice(0, 2));
+  // Count 2 on pen pressure where stamps overlap, alone, with flow on pressure and with a dual, each beside count 2
+  // fixed: along a simulated S-curve it keeps one stamp a step throughout, as simulated pressure never reaches 1.
+  const dense = (count: PhotoshopControl, extra: Partial<PhotoshopBrushSettings> = {}) => base(round(64, 50, 10), { flow: 20, jitter: { ...still, count: 2, countControl: count }, ...extra });
+  const flowPressed = { transfer: { opacity: pressure('off'), flow: pressure('penPressure') } };
+  const withDual = { dual: { tip: round(48, 0, 150), mode: 'multiply' as const } };
+  for (const [suffix, extra] of [['', {}], [' flow by pressure', flowPressed], [' dual', withDual]] as const) {
+    for (const [label, control] of [['fixed', pressure('off')], ['by pressure', pressure('penPressure')]] as const) {
+      add(`count 2 ${label} dense${suffix}`, `count 2 ${label} at 10% spacing${suffix}: count by pressure where stamps overlap`, dense(control, extra), [mark('sCurve', { simulatePressure: true })]);
+    }
+  }
+  for (const pose of [1, 0.5]) {
+    add(`count 2 by pressure dense after pose ${pose}`, `count 2 on pen pressure, an S-curve after a posed line at ${pose}: whether count keeps the pose's pressure`, dense(pressure('penPressure')), [mark('line', { pressure: pose }), mark('sCurve', { simulatePressure: true })]);
+  }
   // Texture brightness past ±50, where Kyle's packs mostly sit (-150..150): whether it still shifts the ramp's values
   // as an addition, under the modes those packs use.
   for (const mode of ['subtract', 'overlay'] as const) for (const brightness of [-150, -100, -65, 100, 150]) {
