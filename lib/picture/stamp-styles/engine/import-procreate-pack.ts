@@ -11,7 +11,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
+import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { procreateGrainNegated, procreateTipNegated, type ProcreateBrushSettings, type ProcreateBrushSource } from '#lib/picture/procreate-brushes/models/procreate-brush.ts';
 import {

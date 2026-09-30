@@ -3,11 +3,11 @@
 // Each source is decoded once per command: one ffmpeg pass selects every frame the command needs, however many.
 import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { tileLabelledImages } from '#lib/output/ffmpeg/engine/contact-sheet.ts';
+import { tileLabelledImages } from '#lib/platform/ffmpeg/engine/contact-sheet.ts';
 import { formatFrameMotion, type MotionClock } from './frame-motion.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import type { RenderSession } from '#lib/output/render/engine/render-session.ts';
-import { runFfmpeg, runFfprobe } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
+import { runFfmpeg, runFfprobe } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 
 export type LookSource =
   | { kind: 'composition'; session: RenderSession; captions: boolean }

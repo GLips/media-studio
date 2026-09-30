@@ -10,7 +10,7 @@ import { musicBedGainAt, type MusicBed } from '../models/mix.ts';
 import type { SfxSound } from '../studio/sfx.tsx';
 import { laidVideoOf, videoFormatOf, type VideoDef } from '#lib/picture/composition/studio/timeline.ts';
 import { randomSeedFromKey } from '#lib/picture/motion/models/random.ts';
-import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
+import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 
 // Attacks are found at 16 kHz in two bands: above 1.5 kHz, where a hit's attack is sharpest, and the full band, which
 // hears a kick's boom. An attack is a jump of at least MIN_RISE_DB in either.
@@ -207,7 +207,7 @@ type MomentaryLoudness = { end: number; lufs: number }[];
 
 /**
  * ebur128's momentary loudness (400 ms) every 100 ms, by the end of its window, with `padSeconds` of silence after the
- * file so windows run past its end. A mono file counts as it plays in the mix, from both speakers (lib/output/ffmpeg/engine/loudness.ts).
+ * file so windows run past its end. A mono file counts as it plays in the mix, from both speakers (lib/platform/ffmpeg/engine/loudness.ts).
  */
 function momentaryLoudness(file: string, padSeconds: number): MomentaryLoudness {
   const out = runFfmpeg(['-v', 'error', '-i', file, '-af',

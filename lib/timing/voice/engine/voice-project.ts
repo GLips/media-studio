@@ -12,13 +12,13 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { measureAudibleLoudness } from '#lib/output/ffmpeg/engine/loudness.ts';
-import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
-import { postOpenRouter } from '#lib/footage/generation/engine/openrouter.ts';
+import { measureAudibleLoudness } from '#lib/platform/ffmpeg/engine/loudness.ts';
+import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
+import { postOpenRouter } from '#lib/platform/paid-generation/engine/openrouter.ts';
 import type { RenderVoice } from '../models/render-voice.ts';
 import { cutTakeIntoLines, type TakeClip } from '../models/voice-take.ts';
 import { alignSpokenWords, captionMarkup, estimateSpokenWords, spokenText, ttsText, type SpokenWord } from '../models/voice-words.ts';
-import { samplesFromWav, wavFromPcm, wavFromSamples } from '#lib/timing/sound/models/wav.ts';
+import { samplesFromWav, wavFromPcm, wavFromSamples } from '#lib/platform/wav/models/wav.ts';
 import { heardWords } from './whisper-words.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 

@@ -1,4 +1,4 @@
-// generated-image.ts: `studio gen image`. Generates a still (cached like every paid generation, lib/footage/generation/engine/paid-generation.ts)
+// generated-image.ts: `studio gen image`. Generates a still (cached like every paid generation, lib/platform/paid-generation/engine/paid-generation.ts)
 // and lists it by name in generated/images.ts, which the video imports:
 //   import { images } from './generated/images.ts';
 //   <Img src={images['title-bg'].src} style={{ objectFit: 'cover' }} />
@@ -8,9 +8,9 @@
 // that isn't cached is checked against the model's own description (fetchOpenRouterImageModel) before it's paid for.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
-import { fetchOpenRouterImageModel, type OpenRouterImageModel } from './openrouter.ts';
-import { generatePaidMedia } from './paid-generation.ts';
-import { runFfprobe } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
+import { fetchOpenRouterImageModel, type OpenRouterImageModel } from '#lib/platform/paid-generation/engine/openrouter.ts';
+import { generatePaidMedia } from '#lib/platform/paid-generation/engine/paid-generation.ts';
+import { runFfprobe } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 
 /**
  * Chosen in vid-20's bake-off: good at title backgrounds, product shots from a reference, icons and legible small

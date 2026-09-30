@@ -2,7 +2,7 @@
 // screen asks for them and kept per render hash, so a card shows exactly what the render shows.
 import { existsSync, mkdirSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { runFfmpegAsync } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
+import { runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 
 export type ReviewStillCutter = { cut: (media: string, hash: string, frame: number, fps: number) => Promise<string> };
 

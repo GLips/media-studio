@@ -10,11 +10,11 @@
 // writes the snapshot `studio review` reads.
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { PROJECT_CAPABILITIES, type ProjectCapability } from '../models/capability.ts';
+import { PROJECT_CAPABILITIES, type ProjectCapability } from '#lib/platform/project/models/capability.ts';
 import { stillsStarterFiles } from './scaffold-stills.ts';
 import { timedStarterFiles } from './scaffold-timed.ts';
-import { STUDIO_BRANDS_DIR, STUDIO_PROJECTS_DIR } from './studio-project.ts';
-import { assertStudioWorkspace } from './studio-workspace.ts';
+import { STUDIO_BRANDS_DIR, STUDIO_PROJECTS_DIR } from '#lib/platform/project/engine/studio-project.ts';
+import { assertStudioWorkspace } from '#lib/platform/project/engine/studio-workspace.ts';
 
 export type NewStudioProject = { slug: string; capability: ProjectCapability; url?: string; title?: string; brand?: string };
 

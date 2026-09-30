@@ -3,19 +3,19 @@
 // (lib/footage/previs/engine/previs-footage.ts), so the scene plays it in place of its blockout (lib/footage/previs/studio/previs.tsx).
 //
 // The blockout is the whole request's content: re-rendering an unchanged scene makes the same MP4 and so the same
-// cache key (lib/footage/generation/engine/paid-generation.ts), while a changed subject, move or prompt pays for a new render. Timing never
+// cache key (lib/platform/paid-generation/engine/paid-generation.ts), while a changed subject, move or prompt pays for a new render. Timing never
 // should: it's fixed afterwards with the scene's `previs.retime`.
 import { renderMedia, selectComposition } from '@remotion/renderer';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
-import { generatePaidMedia } from '#lib/footage/generation/engine/paid-generation.ts';
+import { generatePaidMedia } from '#lib/platform/paid-generation/engine/paid-generation.ts';
 import { readPrevisFootageList, writePrevisFootageEntry } from '#lib/footage/previs/engine/previs-footage.ts';
 import { blockoutSlug } from './project-bundle.ts';
 import { RENDER_CHROMIUM } from './render-browser.ts';
 import type { RenderSession } from './render-session.ts';
 import { assertPrevisSpanFits, PREVIS_MODEL, PREVIS_SHORT_SIDE, previsAspectRatio } from '#lib/footage/previs/studio/previs.ts';
-import { probeMediaSeconds } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
+import { probeMediaSeconds } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 
 // Seedance numbers references by kind in the order sent, and the blockout goes first. Worded as a new video

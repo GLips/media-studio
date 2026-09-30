@@ -14,7 +14,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
+import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { readBrushFidelityBrushes } from '../models/brush-readings.ts';
 import { STAMP_PAINT_FIDELITY_GRADES, type StampPaintStyleFidelity, type StampPaintStyleGrades } from '../models/brush-fidelity-style.ts';

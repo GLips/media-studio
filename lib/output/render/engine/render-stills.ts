@@ -11,7 +11,7 @@ import { inRenderBrowser, RENDER_CHROMIUM } from './render-browser.ts';
 import { artifactSink } from './render-session.ts';
 import { stillProblems, type StillMeasure, type StillPixels, type StillProblem } from '#lib/output/stills/models/still-check.ts';
 import { isStillFitArtifact, STILL_MEASURE_ARTIFACT, STILL_UI_ZONES, stillName, type StillFitReport, type StillProps, type StillRenderProps } from '#lib/output/stills/models/still-presets.ts';
-import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
+import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 
 /** Which stills to render: each list keeps the stills whose design, preset or variant is in it; absent keeps all. */

@@ -3,7 +3,7 @@
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
-import { wavFromSamples } from '../models/wav.ts';
+import { wavFromSamples } from '#lib/platform/wav/models/wav.ts';
 import { SFX_RATE } from '../models/dsp.ts';
 import { renderSfx, sfxParamSpecs, SFX_LOUDNESS_UNDER_VOICE, type RenderedSfx, type SfxRequest } from '../models/library.ts';
 import { SFX_RECIPES, type SfxRecipe } from '../models/recipes.ts';

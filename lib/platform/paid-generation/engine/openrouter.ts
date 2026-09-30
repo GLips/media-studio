@@ -3,7 +3,7 @@
 //
 // Paid generation reaches three different endpoints, one per kind of media: images answer in one JSON response, video
 // is a job to submit and poll, and audio (Lyria) streams out of chat completions. Each returns the same OpenRouterMedia,
-// so lib/footage/generation/engine/paid-generation.ts caches and records them all alike.
+// so lib/platform/paid-generation/engine/paid-generation.ts caches and records them all alike.
 
 const API = 'https://openrouter.ai/api/v1';
 // OpenRouter's own advice for video jobs, which take from half a minute to several.

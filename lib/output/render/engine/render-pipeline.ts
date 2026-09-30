@@ -6,12 +6,12 @@
 // Progress goes to stderr; each function returns what it made, for the command to print on stdout.
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
-import { rasterizeSvgs } from '#lib/footage/capture/engine/html-raster.ts';
+import { rasterizeSvgs } from '#lib/platform/raster/engine/html-raster.ts';
 import { framingArtifactName, framingProblems, takeFitWarnings, type FramingReport } from '#lib/picture/frame/models/framing-check.ts';
 import { holdProblems } from '#lib/picture/motion/models/hold-check.ts';
 import { buildMotionGraph, motionGraphBackdropFrame, type MotionGraphSpace } from '#lib/picture/motion/models/motion-graph.ts';
 import { assembleMotionTracks, formatMotionReport, motionArtifactName, type FrameMotion, type MotionTracks } from '#lib/picture/motion/models/motion-tracks.ts';
-import { measureLoudness } from '#lib/output/ffmpeg/engine/loudness.ts';
+import { measureLoudness } from '#lib/platform/ffmpeg/engine/loudness.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { artifactSink, DELIVERY_AUDIO_CODEC, formatRenderPasses, TIMELINE_REPORT_NAME, type RenderSession } from './render-session.ts';
 import { loadRenderSnapshot, renderSnapshotPath, writeRenderSnapshot } from './render-snapshot.ts';
@@ -21,7 +21,7 @@ import { readSfxCueList } from '#lib/timing/sound/engine/cue-module.ts';
 import { renderVoiceOf } from '#lib/timing/voice/engine/voice-project.ts';
 import type { OnArtifact } from '@remotion/renderer';
 import type { TimelineReport, VideoProps } from '#lib/picture/composition/studio/Video.tsx';
-import { countVideoFrames, measureWithFfmpeg, runFfmpeg, runFfprobe } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
+import { countVideoFrames, measureWithFfmpeg, runFfmpeg, runFfprobe } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 
 const outDirFor = (session: RenderSession) => join(session.project, 'out');
 const videoFor = (session: RenderSession, captions: boolean) => join(outDirFor(session), captions ? 'video.mp4' : 'video-plain.mp4');

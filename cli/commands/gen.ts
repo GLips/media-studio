@@ -1,4 +1,4 @@
-// studio gen: paid generation through OpenRouter (lib/footage/generation/engine/paid-generation.ts), one verb per kind of media. Every result is
+// studio gen: paid generation through OpenRouter (lib/platform/paid-generation/engine/paid-generation.ts), one verb per kind of media. Every result is
 // cached, so asking again costs nothing.
 import { defineCommand } from 'citty';
 import { openStudioRenderSession, studioProjectArg } from '../project-arg.ts';

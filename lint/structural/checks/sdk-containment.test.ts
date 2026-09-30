@@ -20,7 +20,7 @@ test('a contained SDK reached outside its owner is caught, however it is spelled
     ].join('\n'),
     // Legal neighbours: each owner, and prose that merely mentions ffmpeg.
     'lib/footage/capture/engine/capture.ts': "import { chromium } from 'playwright';\n",
-    'lib/output/ffmpeg/engine/ffmpeg.ts': "import { spawn } from 'node:child_process';\nspawn('ffmpeg', []);\n",
+    'lib/platform/ffmpeg/engine/ffmpeg.ts': "import { spawn } from 'node:child_process';\nspawn('ffmpeg', []);\n",
     'lib/output/render/engine/bundle.ts': "import { build } from 'esbuild';\nimport { bundle } from '@remotion/bundler';\n",
     'lib/platform/web/engine/studio-app-server.ts': "import { createServer } from 'vite';\n",
     'web/vite.config.ts': "import { defineConfig } from 'vite';\n",

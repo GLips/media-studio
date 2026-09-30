@@ -17,7 +17,7 @@ import type { VideoConfig } from 'remotion';
 import { projectSlug, replaySlug } from './project-bundle.ts';
 import { readProjectCapability } from '#lib/platform/project/engine/studio-project.ts';
 import { bundleStudioProject } from './studio-bundle.ts';
-import { runFfmpeg, runFfmpegAsync } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
+import { runFfmpeg, runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { writeRenderSnapshot, type RenderSnapshot } from './render-snapshot.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { readProjectClock } from '#lib/timing/timeline/engine/project-clock.ts';

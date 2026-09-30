@@ -100,7 +100,13 @@ export const LIB_AREAS: readonly string[] = ['timing', 'picture', 'footage', 'ou
  */
 export type LibLayer = { name: string; features: readonly string[] };
 export const LIB_LAYERS: readonly LibLayer[] = [
-  { name: 'platform', features: ['platform/temp', 'platform/git', 'platform/zip', 'platform/photoshop', 'platform/project', 'platform/host', 'platform/web'] },
+  {
+    name: 'platform',
+    features: [
+      'platform/temp', 'platform/git', 'platform/zip', 'platform/wav', 'platform/ffmpeg', 'platform/raster', 'platform/paid-generation',
+      'platform/photoshop', 'platform/project', 'platform/host', 'platform/web',
+    ],
+  },
 ];
 
 /** The index in LIB_LAYERS of a foundation's layer, or undefined for a peer. `feature` is `<area>/<feature>`. */

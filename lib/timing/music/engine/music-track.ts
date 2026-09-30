@@ -9,9 +9,9 @@
 // it beside the original, with the spans it was cut from.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
-import { measureAudibleLoudness } from '#lib/output/ffmpeg/engine/loudness.ts';
-import { probeMediaSeconds, runFfmpeg, runFfprobe } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
-import { generatePaidMedia } from '#lib/footage/generation/engine/paid-generation.ts';
+import { measureAudibleLoudness } from '#lib/platform/ffmpeg/engine/loudness.ts';
+import { probeMediaSeconds, runFfmpeg, runFfprobe } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
+import { generatePaidMedia } from '#lib/platform/paid-generation/engine/paid-generation.ts';
 import { detectMusicBeats } from '../models/music-beats.ts';
 import { planMusicArrangement, planMusicFit, spliceMusicSpans } from '../models/music-fit.ts';
 import type { MusicTrack } from '#lib/timing/sound/models/mix.ts';

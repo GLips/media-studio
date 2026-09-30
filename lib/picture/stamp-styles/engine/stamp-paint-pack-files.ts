@@ -8,7 +8,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, existsSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
-import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
+import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { readStampPaintPack, STAMP_PAINT_PACK_MANIFEST, type StampPaintPack } from '../models/stamp-paint-pack.ts';
 

@@ -7,7 +7,7 @@
 // speech cue. Mixed, a section of bars sits between a voiced opening and a voiced close. Silent, they are fixed
 // spans in seconds, and the video plays no sound at all.
 
-import type { ProjectCapability } from '../models/capability.ts';
+import type { ProjectCapability } from '#lib/platform/project/models/capability.ts';
 
 type TimedCapability = Exclude<ProjectCapability, 'still-only'>;
 

@@ -1,4 +1,4 @@
-// studio api: the reference for what a video.tsx can import, read from lib/api.ts (lib/platform/project/engine/studio-api-reference.ts).
+// studio api: the reference for what a video.tsx can import, read from lib/api.ts (lib/platform/scaffold/engine/studio-api-reference.ts).
 import { defineCommand } from 'citty';
 
 export default defineCommand({
@@ -10,7 +10,7 @@ export default defineCommand({
     name: { type: 'positional', required: false, description: 'An export, e.g. fitTake' },
   },
   async run({ args }) {
-    const { findStudioApiExport, formatStudioApiExport, formatStudioApiIndex, readStudioApiExports } = await import('#lib/platform/project/engine/studio-api-reference.ts');
+    const { findStudioApiExport, formatStudioApiExport, formatStudioApiIndex, readStudioApiExports } = await import('#lib/platform/scaffold/engine/studio-api-reference.ts');
     const exports = readStudioApiExports();
     console.log(args.name ? formatStudioApiExport(findStudioApiExport(exports, args.name)) : formatStudioApiIndex(exports));
   },

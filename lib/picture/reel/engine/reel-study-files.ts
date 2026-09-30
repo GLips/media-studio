@@ -6,13 +6,13 @@
 
 import { rmSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { tileLabelledImages } from '#lib/output/ffmpeg/engine/contact-sheet.ts';
+import { tileLabelledImages } from '#lib/platform/ffmpeg/engine/contact-sheet.ts';
 import {
   beatLabel, buildStudyPlot, detectStudyCuts, formatStudyIndex, measureStudyFrames, parseStudySections, sectionsFromCuts,
   studyBeatGrid, studyPalette, type StudyFrame, type StudyReport, type StudySection,
 } from '../models/reel-study.ts';
-import { rasterizeSvgs } from '#lib/footage/capture/engine/html-raster.ts';
-import { runFfmpeg, runFfprobe } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
+import { rasterizeSvgs } from '#lib/platform/raster/engine/html-raster.ts';
+import { runFfmpeg, runFfprobe } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 
 // Measured small: enough pixels for energy, cuts and colour, few enough to hold a whole reel in memory.

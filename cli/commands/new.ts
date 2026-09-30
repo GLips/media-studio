@@ -16,7 +16,7 @@ export default defineCommand({
   },
   async run({ args }) {
     const { basename } = await import('node:path');
-    const { scaffoldStudioProject } = await import('#lib/platform/project/engine/new-project.ts');
+    const { scaffoldStudioProject } = await import('#lib/platform/scaffold/engine/new-project.ts');
     const { captureStudioProject } = await import('#lib/footage/capture/engine/capture.ts');
     const { capability } = args;
     const dir = scaffoldStudioProject({ slug: args.slug, capability, url: args.url, title: args.title, brand: args.brand });

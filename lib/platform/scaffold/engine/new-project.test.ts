@@ -7,10 +7,10 @@ import { appendFileSync, mkdirSync, readdirSync, realpathSync, symlinkSync, writ
 import { basename, join } from 'node:path';
 import { describe, test } from 'node:test';
 import { promisify } from 'node:util';
-import { PROJECT_CAPABILITIES, type ProjectCapability } from '../models/capability.ts';
+import { PROJECT_CAPABILITIES, type ProjectCapability } from '#lib/platform/project/models/capability.ts';
 import { isolatedGitEnv, runFixtureGit } from '#lib/platform/git/engine/fixture-git.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
-import { STUDIO_ROOT } from './studio-project.ts';
+import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 
 const run = promisify(execFile);
 

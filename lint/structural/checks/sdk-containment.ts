@@ -1,9 +1,9 @@
-// ─── SDK containment: one owner per contained SDK ─────────────────────
+// ─── SDK containment: each contained SDK reached only from its owners ──
 //
-// A contained package is imported only under its owner folder, a type-only
+// A contained package is imported only under an owner folder, a type-only
 // import included: a project's capture takes playwright's Page from
 // #lib/footage/capture/engine, so playwright's API has one importer. A contained binary is
-// named only under its owner: any string that is exactly `ffmpeg` (or a path
+// named only under an owner: any string that is exactly `ffmpeg` (or a path
 // ending in it) counts, whatever call it reaches through, and so does any
 // string or template head that starts a command line with it (`ffmpeg -i …`),
 // so a shell, `shell: true` or a promisified exec can't hide it. A flag must
@@ -29,14 +29,14 @@ export const sdkContainmentCheck: StructuralCheck = {
       // SDKs it polices: neither runs one.
       const { kind } = context.positionOf(file.path);
       if (kind === 'root-config' || kind === 'lint') continue;
-      const outside = (row: SdkOwner) => !file.path.startsWith(row.owner);
+      const outside = (row: SdkOwner) => !row.owners.some((owner) => file.path.startsWith(owner));
       for (const edge of context.edgesFrom(file)) {
         if (edge.target.kind !== 'package') continue;
         const row = ownerOfPackage(edge.target.name);
         if (!row || !outside(row)) continue;
         findings.push({
           check: ID, path: file.path, line: edge.line, key: edge.target.name,
-          message: `imports ${edge.target.name}; only ${row.owner} may, so go through what it exports`,
+          message: `imports ${edge.target.name}; only ${row.owners.join(' and ')} may, so go through what it exports`,
         });
       }
       const named = (offset: number, command: string) => {
@@ -44,7 +44,7 @@ export const sdkContainmentCheck: StructuralCheck = {
         if (!row || !outside(row)) return;
         findings.push({
           check: ID, path: file.path, line: file.lineOf(offset), key: command,
-          message: `runs ${command}; only ${row.owner} starts it, so call what it exports`,
+          message: `runs ${command}; only ${row.owners.join(' and ')} start it, so call what it exports`,
         });
       };
       walkAst(file.program, (node) => {

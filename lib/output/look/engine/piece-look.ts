@@ -4,7 +4,7 @@
 import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { rasterizeSvgs } from '#lib/footage/capture/engine/html-raster.ts';
+import { rasterizeSvgs } from '#lib/platform/raster/engine/html-raster.ts';
 import { readProjectTimeline } from '#lib/timing/timeline/engine/project-clock.ts';
 import { buildPieceGraph } from '#lib/picture/motion/models/piece-graph.ts';
 import { formatPieceTables, isPieceTracksDefinition, samplePieceTracks, type PieceTracksDefinition } from '#lib/picture/motion/models/piece-tracks.ts';

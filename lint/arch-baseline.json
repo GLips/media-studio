@@ -98,7 +98,7 @@
       "const text = flat((el as HTMLElement).innerText);": 1,
       "let els = [...document.querySelectorAll(tag)].filter(visible).filter((e) => re.test(flat((e as HTMLElement).innerText)));": 1
     },
-    "lib/footage/generation/engine/s3-upload.ts": {
+    "lib/platform/paid-generation/engine/s3-upload.ts": {
       "const env = Object.fromEntries(Object.entries(UPLOAD_ENV).map(([key, name]) => [key, process.env[name]!])) as Omit<S3UploadConfig, 'region'>;": 1
     },
     "lib/footage/previs/studio/flat-blockout-pose.ts": {
@@ -497,7 +497,7 @@
       "await page.keyboard.type(ch);": 1,
       "await page.waitForTimeout(perKey * 1000);": 1
     },
-    "lib/footage/capture/engine/html-raster.ts": {
+    "lib/platform/raster/engine/html-raster.ts": {
       "const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });": 1,
       "await page.setContent(`<!doctype html><body style=\"margin:0\">${svg}</body>`);": 1,
       "await page.screenshot({ path: out, clip: { x: 0, y: 0, width, height } });": 1,
@@ -508,11 +508,11 @@
       "await page.screenshot({ path: out, fullPage: true });": 1,
       "measured.push(await page.$$eval(`[${attribute}]`, (els, name) => {": 1
     },
-    "lib/footage/generation/engine/openrouter.ts": {
+    "lib/platform/paid-generation/engine/openrouter.ts": {
       "await new Promise((resolve) => setTimeout(resolve, VIDEO_POLL_MS));": 1,
       "job = await (await fetchOpenRouter(`/videos/${jobId}`)).json();": 2
     },
-    "lib/footage/generation/engine/paid-generation.test.ts": {
+    "lib/platform/paid-generation/engine/paid-generation.test.ts": {
       "await generatePaidMedia(project, { kind: 'video', model: 'bytedance/seedance-2.5', name: 'shot', prompt, params: { duration: 5 }, references: [{ path: blockout }] });": 1
     },
     "lib/output/look/engine/piece-look.ts": {
@@ -544,7 +544,7 @@
     "lib/footage/generation/engine/generated-image.ts": {
       "console.error(`images['${request.name}']: ${w}×${h}, ${request.model}`);": 1
     },
-    "lib/footage/generation/engine/paid-generation.ts": {
+    "lib/platform/paid-generation/engine/paid-generation.ts": {
       "for (const file of made.files) console.error(`cached ${file}`);": 1,
       "if (jobId) console.error(`picking up video job ${jobId}`);": 1,
       "console.error(`submitted video job ${jobId}`);": 1,
@@ -552,7 +552,7 @@
       "for (const file of files) console.error(`generated ${file}  ${cost}${media.requestId ? `  (${media.requestId})` : ''}`);": 1,
       "console.error(`generated media of an unknown format (starts ${bytes.subarray(0, 12).toString('hex')}), saved as .bin`);": 1
     },
-    "lib/footage/generation/engine/s3-upload.ts": {
+    "lib/platform/paid-generation/engine/s3-upload.ts": {
       "console.error(`uploaded references/${sha256}.${ext} (${(bytes.length / 1e6).toFixed(1)} MB)`);": 1
     },
     "lib/output/render/engine/previs-render.ts": {
@@ -608,11 +608,11 @@
     "lib/footage/capture/engine/page-probe.ts": {
       "const url = /^[a-z][a-z0-9+.-]*:/i.test(target) ? target : existsSync(resolve(target)) ? pathToFileURL(resolve(target)).href : target;": 1
     },
-    "lib/footage/generation/engine/paid-generation.ts": {
+    "lib/platform/paid-generation/engine/paid-generation.ts": {
       "const sorted = (value: unknown): unknown => Array.isArray(value) ? value.map(sorted)": 1,
       "return brand === 'avif' ? 'avif' : ['heic', 'heix', 'mif1'].includes(brand) ? 'heic' : brand.startsWith('qt') ? 'mov' : 'mp4';": 2
     },
-    "lib/output/ffmpeg/engine/contact-sheet.ts": {
+    "lib/platform/ffmpeg/engine/contact-sheet.ts": {
       "const escapeDrawtext = (text: string) => text.replace(/[\\\\':,;%]/g, (c) => (c === \"'\" ? '’' : c === '%' ? '\\\\%' : `\\\\${c}`));": 1
     },
     "lib/output/look/studio/probe.tsx": {
@@ -841,7 +841,6 @@
       "→ lib/timing/timeline": 1
     },
     "lib/output/look": {
-      "→ lib/footage/capture": 1,
       "→ lib/output/render": 1,
       "→ lib/picture/camera": 1,
       "→ lib/picture/composition": 1,
@@ -852,7 +851,6 @@
       "→ lib/timing/timeline": 1
     },
     "lib/output/render": {
-      "→ lib/footage/capture": 1,
       "→ lib/footage/previs": 1,
       "→ lib/output/stills": 1,
       "→ lib/picture/brand": 1,
@@ -860,18 +858,15 @@
       "→ lib/picture/frame": 1,
       "→ lib/picture/motion": 1,
       "→ lib/timing/sound": 1,
-      "→ lib/timing/timeline": 1,
-      "→ lib/timing/voice": 1
+      "→ lib/timing/timeline": 1
     },
     "lib/output/review": {
       "→ lib/output/render": 1,
       "→ lib/picture/motion": 1,
       "→ lib/timing/sound": 1,
-      "→ lib/timing/timeline": 1,
-      "→ lib/timing/voice": 1
+      "→ lib/timing/timeline": 1
     },
     "lib/output/stills": {
-      "→ lib/footage/capture": 1,
       "→ lib/output/look": 1,
       "→ lib/output/render": 1,
       "→ lib/output/review": 1,
@@ -895,8 +890,7 @@
       "→ lib/picture/motion": 1,
       "→ lib/picture/reel": 1,
       "→ lib/picture/type": 1,
-      "→ lib/timing/timeline": 1,
-      "→ lib/timing/voice": 1
+      "→ lib/timing/timeline": 1
     },
     "lib/picture/composition": {
       "→ lib/footage/previs": 1,
@@ -907,8 +901,7 @@
       "→ lib/picture/frame": 1,
       "→ lib/picture/motion": 1,
       "→ lib/timing/sound": 1,
-      "→ lib/timing/timeline": 1,
-      "→ lib/timing/voice": 1
+      "→ lib/timing/timeline": 1
     },
     "lib/picture/film": {
       "→ lib/output/look": 1,
@@ -938,7 +931,6 @@
       "→ lib/timing/timeline": 1
     },
     "lib/picture/reel": {
-      "→ lib/footage/capture": 1,
       "→ lib/output/look": 1,
       "→ lib/output/render": 1,
       "→ lib/picture/camera": 1,
@@ -962,47 +954,22 @@
       "→ lib/output/render": 1,
       "→ lib/picture/composition": 1,
       "→ lib/picture/motion": 1,
-      "→ lib/timing/timeline": 1,
-      "→ lib/timing/voice": 1
+      "→ lib/timing/timeline": 1
     },
     "lib/timing/timeline": {
       "→ lib/output/render": 1,
       "→ lib/picture/frame": 1,
-      "→ lib/picture/motion": 1,
-      "→ lib/timing/voice": 1
-    },
-    "lib/timing/voice": {
-      "→ lib/timing/sound": 1
+      "→ lib/picture/motion": 1
     }
   },
   "feature-visibility": {
     "lib/footage/capture/visibility.json": {
       "missing:lib/footage/previs": 1,
-      "missing:lib/output/look": 1,
-      "missing:lib/output/render": 1,
-      "missing:lib/output/stills": 1,
-      "missing:lib/picture/kit": 1,
-      "missing:lib/picture/reel": 1
-    },
-    "lib/footage/generation/visibility.json": {
-      "missing:lib/output/render": 1,
-      "missing:lib/timing/music": 1,
-      "missing:lib/timing/voice": 1
+      "missing:lib/picture/kit": 1
     },
     "lib/footage/previs/visibility.json": {
       "missing:lib/output/render": 1,
       "missing:lib/picture/composition": 1
-    },
-    "lib/output/ffmpeg/visibility.json": {
-      "missing:lib/footage/generation": 1,
-      "missing:lib/output/look": 1,
-      "missing:lib/output/render": 1,
-      "missing:lib/output/review": 1,
-      "missing:lib/output/stills": 1,
-      "missing:lib/picture/reel": 1,
-      "missing:lib/timing/music": 1,
-      "missing:lib/timing/sound": 1,
-      "missing:lib/timing/voice": 1
     },
     "lib/output/look/visibility.json": {
       "missing:lib/footage/capture": 1,
@@ -1118,8 +1085,7 @@
       "missing:lib/output/review": 1,
       "missing:lib/picture/composition": 1,
       "missing:lib/picture/kit": 1,
-      "missing:lib/timing/music": 1,
-      "missing:lib/timing/voice": 1
+      "missing:lib/timing/music": 1
     },
     "lib/timing/timeline/visibility.json": {
       "missing:lib/footage/previs": 1,
@@ -1162,16 +1128,6 @@
     "lib/footage/capture/engine/capture.ts": {
       "fromSetup: unknown": 1
     },
-    "lib/footage/generation/engine/openrouter.ts": {
-      "body: object": 4
-    },
-    "lib/footage/generation/engine/paid-generation.test.ts": {
-      "p: any": 1
-    },
-    "lib/footage/generation/engine/paid-generation.ts": {
-      "value: unknown": 2,
-      "request: unknown[]": 1
-    },
     "lib/output/render/engine/browser-module-page.ts": {
       "args: unknown[]": 2,
       "a: unknown[]": 1,
@@ -1185,6 +1141,16 @@
     },
     "lib/picture/film/studio/three-stage.tsx": {
       "value: unknown": 1
+    },
+    "lib/platform/paid-generation/engine/openrouter.ts": {
+      "body: object": 4
+    },
+    "lib/platform/paid-generation/engine/paid-generation.test.ts": {
+      "p: any": 1
+    },
+    "lib/platform/paid-generation/engine/paid-generation.ts": {
+      "value: unknown": 2,
+      "request: unknown[]": 1
     },
     "lib/timing/voice/engine/voice-project.ts": {
       "key: unknown[]": 1
@@ -1210,16 +1176,16 @@
     }
   },
   "no-known-value-widening": {
-    "lib/footage/generation/engine/openrouter.ts": {
-      "return Record<string, string>": 1
-    },
     "lib/output/look/studio/motion-tag.ts": {
       "return Record<string, string>": 2
     },
-    "lib/platform/project/engine/new-project.ts": {
+    "lib/platform/paid-generation/engine/openrouter.ts": {
+      "return Record<string, string>": 1
+    },
+    "lib/platform/scaffold/engine/new-project.ts": {
       "files: Record<string, string>": 1
     },
-    "lib/platform/project/engine/scaffold-stills.ts": {
+    "lib/platform/scaffold/engine/scaffold-stills.ts": {
       "return Record<string, string>": 1
     },
     "lib/timing/sound/engine/sfx-files.ts": {
@@ -1240,14 +1206,14 @@
     }
   },
   "no-opaque-record": {
-    "lib/footage/generation/engine/paid-generation.ts": {
-      "Record<string, unknown>": 3
-    },
     "lib/output/look/engine/piece-look.ts": {
       "Record<string, unknown>": 1
     },
     "lib/output/render/engine/render-session.ts": {
       "Record<string, unknown>": 1
+    },
+    "lib/platform/paid-generation/engine/paid-generation.ts": {
+      "Record<string, unknown>": 3
     },
     "lint/oxlint/lib/rule-options.ts": {
       "Record<string, unknown>": 1
@@ -1314,21 +1280,21 @@
     "lib/footage/capture/engine/capture.ts": {
       "(): Promise<unknown>": 5
     },
-    "lib/footage/generation/engine/paid-generation.ts": {
-      "(): unknown": 1
-    },
     "lib/output/render/engine/browser-module-page.ts": {
       "(): unknown": 1
     },
     "lib/output/render/engine/host-module-resolution.ts": {
       "parseJsonc(): unknown": 1
+    },
+    "lib/platform/paid-generation/engine/paid-generation.ts": {
+      "(): unknown": 1
     }
   },
   "oxc(no-map-spread)": {
     "lib/footage/capture/engine/capture.ts": {
       "const opening = raw.filter((f) => f.t < t0).slice(-1).map((f) => ({ ...f, t: t0 }));": 1
     },
-    "lib/footage/generation/engine/paid-generation.ts": {
+    "lib/platform/paid-generation/engine/paid-generation.ts": {
       "const references = (request.references ?? []).map((ref) => ({ ...ref, bytes: readFileSync(ref.path) }))": 1,
       ".map((ref) => ({ ...ref, sha256: createHash('sha256').update(ref.bytes).digest('hex') }));": 1,
       "references: references.map(({ path, sha256, frame }) => ({ path: relative(project, path), sha256, ...(frame && { frame }) })),": 1,
@@ -1541,7 +1507,7 @@
     "lib/footage/generation/engine/generated-image.test.ts": {
       "generations.push(JSON.parse(String(init?.body)));": 1
     },
-    "lib/footage/generation/engine/paid-generation.test.ts": {
+    "lib/platform/paid-generation/engine/paid-generation.test.ts": {
       "calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });": 1
     },
     "lib/output/render/engine/render-stills.ts": {
@@ -1553,7 +1519,7 @@
       "let generations: any[] = [];": 1,
       "assert.equal((Object.values(provenance)[0] as any).requestId, 'gen-img-1');": 1
     },
-    "lib/footage/generation/engine/paid-generation.test.ts": {
+    "lib/platform/paid-generation/engine/paid-generation.test.ts": {
       "let calls: { url: string; body: any }[] = [];": 1,
       "assert.deepEqual(Object.values(provenance).map((p: any) => [p.prompt, p.cost, p.references[0].path]), [['a title card', 0.04, 'still.png']]);": 1
     },
@@ -1586,7 +1552,7 @@
     }
   },
   "typescript(no-misused-spread)": {
-    "lib/footage/generation/engine/openrouter.ts": {
+    "lib/platform/paid-generation/engine/openrouter.ts": {
       "const response = await fetch(url, { ...init, headers: { ...openRouterHeaders(), ...init.headers } });": 1
     },
     "lib/picture/brand/studio/brand.tsx": {
@@ -1666,7 +1632,7 @@
     "lib/footage/generation/engine/generated-image.test.ts": {
       "assert.equal((Object.values(provenance)[0] as any).requestId, 'gen-img-1');": 1
     },
-    "lib/footage/generation/engine/paid-generation.test.ts": {
+    "lib/platform/paid-generation/engine/paid-generation.test.ts": {
       "assert.deepEqual(Object.values(provenance).map((p: any) => [p.prompt, p.cost, p.references[0].path]), [['a title card', 0.04, 'still.png']]);": 1,
       "const link = new URL(submit.body.input_references[0].video_url.url);": 1
     },
@@ -1688,7 +1654,7 @@
     "lib/footage/generation/engine/generated-image.ts": {
       "const list: Record<string, ImageEntry> = existsSync(listPath) ? JSON.parse(readFileSync(listPath, 'utf8')) : {};": 1
     },
-    "lib/footage/generation/engine/openrouter.ts": {
+    "lib/platform/paid-generation/engine/openrouter.ts": {
       "const result: { data: { b64_json: string }[]; usage?: { cost?: number | null } } = await response.json();": 1,
       "const { data }: { data: OpenRouterImageModel[] } = await (await fetchOpenRouter('/images/models')).json();": 1,
       "const { endpoints }: { endpoints: unknown[] } = await (await fetchOpenRouter(`/images/models/${model}/endpoints`)).json();": 1,
@@ -1697,7 +1663,7 @@
       "const chunk = JSON.parse(data);": 1,
       "cost = chunk.usage?.cost ?? cost;": 1
     },
-    "lib/footage/generation/engine/paid-generation.test.ts": {
+    "lib/platform/paid-generation/engine/paid-generation.test.ts": {
       "calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });": 1,
       "const provenance = JSON.parse(readFileSync(join(project, 'generated', 'provenance.json'), 'utf8'));": 1,
       "calls.push({ url: `${init?.method ?? 'GET'} ${url.origin}${url.pathname}`, body: typeof init?.body === 'string' ? JSON.parse(init.body) : null });": 1
@@ -1773,13 +1739,13 @@
       "assert.equal(generations[0].aspect_ratio, '16:9');": 1,
       "assert.equal((Object.values(provenance)[0] as any).requestId, 'gen-img-1');": 1
     },
-    "lib/footage/generation/engine/openrouter.ts": {
+    "lib/platform/paid-generation/engine/openrouter.ts": {
       "if (chunk.error) throw new Error(`OpenRouter /chat/completions: ${chunk.error.message}`);": 2,
       "requestId ??= chunk.id ?? null;": 1,
       "base64 += chunk.choices?.[0]?.delta?.audio?.data ?? '';": 1,
       "cost = chunk.usage?.cost ?? cost;": 1
     },
-    "lib/footage/generation/engine/paid-generation.test.ts": {
+    "lib/platform/paid-generation/engine/paid-generation.test.ts": {
       "assert.equal(calls[0].body.input_references[0].image_url.url, `data:image/png;base64,${PNG.toString('base64')}`);": 1,
       "assert.deepEqual(Object.values(provenance).map((p: any) => [p.prompt, p.cost, p.references[0].path]), [['a title card', 0.04, 'still.png']]);": 3,
       "const link = new URL(submit.body.input_references[0].video_url.url);": 1
@@ -1817,13 +1783,13 @@
     "lib/footage/capture/engine/capture.ts": {
       "const readProvenance = (dir: string): Record<string, ShotProvenance> => (existsSync(provenancePath(dir)) ? JSON.parse(readFileSync(provenancePath(dir), 'utf8')) : {});": 1
     },
-    "lib/footage/generation/engine/openrouter.ts": {
+    "lib/platform/paid-generation/engine/openrouter.ts": {
       "return (await postOpenRouter('/videos', body)).json();": 1
     },
-    "lib/footage/generation/engine/paid-generation.test.ts": {
+    "lib/platform/paid-generation/engine/paid-generation.test.ts": {
       "assert.deepEqual(Object.values(provenance).map((p: any) => [p.prompt, p.cost, p.references[0].path]), [['a title card', 0.04, 'still.png']]);": 1
     },
-    "lib/footage/generation/engine/paid-generation.ts": {
+    "lib/platform/paid-generation/engine/paid-generation.ts": {
       "const readJsonRecord = <T>(path: string): Record<string, T> => (existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {});": 1
     },
     "lib/footage/previs/engine/previs-footage.ts": {
@@ -1892,10 +1858,10 @@
       "const quote = (s: string) => `'${s.replace(/['\\\\]/g, '\\\\$&')}'`;": 1,
       "const reEscape = (s: string) => s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');": 1
     },
-    "lib/footage/generation/engine/paid-generation.ts": {
+    "lib/platform/paid-generation/engine/paid-generation.ts": {
       "export function paidGenerationKey(...request: unknown[]): string {": 1
     },
-    "lib/output/ffmpeg/engine/loudness.ts": {
+    "lib/platform/ffmpeg/engine/loudness.ts": {
       "export function measureLoudness(file: string): Loudness {": 1
     },
     "lib/output/render/engine/frame-profiling.ts": {
@@ -2079,7 +2045,7 @@
     }
   },
   "unicorn(prefer-array-find)": {
-    "lib/platform/project/engine/studio-api-reference.ts": {
+    "lib/platform/scaffold/engine/studio-api-reference.ts": {
       "const exact = exports.find((e) => e.name === name) ?? exports.filter((e) => e.name.toLowerCase() === name.toLowerCase()).at(0);": 1
     },
     "lib/timing/timeline/models/timeline.ts": {

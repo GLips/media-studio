@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { lookAgainst, lookMotion, openLookSource } from './frame-look.ts';
 import { findStillRuns } from './frame-motion.ts';
-import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
+import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { studioTempRoot } from '#lib/platform/temp/engine/studio-temp.ts';
 
 // Six black frames, losslessly encoded; `after` draws a white 10×10 box on its frame 3 only.

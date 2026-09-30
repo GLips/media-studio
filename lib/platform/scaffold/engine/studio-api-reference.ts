@@ -7,7 +7,7 @@ import { relative } from 'node:path';
 import type { Node } from 'typescript/unstable/ast';
 import { isArrowFunction, isFunctionDeclaration, isFunctionExpression, isVariableDeclaration } from 'typescript/unstable/ast/is';
 import { API, SymbolFlags, type Checker, type Symbol as TsSymbol } from 'typescript/unstable/sync';
-import { STUDIO_ROOT } from './studio-project.ts';
+import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 
 const API_MODULE = 'lib/api.ts';
 const INDEX_WIDTH = 118;

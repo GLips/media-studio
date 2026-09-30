@@ -102,7 +102,7 @@ path.
   can't hold (`ConfirmDialog`, `NativeMenu`). When a shot recurs in a second video, move it here.
 - `lib/output/look/studio/probe.tsx`: measures highlights, clicks, tags and the caption on each frame. `lib/picture/frame/models/framing-check.ts`
   decides what's a problem.
-- `lib/timing/sound/models/mix.ts`: voice levelling, and a music bed that ducks under the voice. `lib/output/ffmpeg/engine/loudness.ts` measures.
+- `lib/timing/sound/models/mix.ts`: voice levelling, and a music bed that ducks under the voice. `lib/platform/ffmpeg/engine/loudness.ts` measures.
 - `lib/timing/sound/studio/sfx.tsx`: `<Sfx>` plays a sound so it lands on a scene time; `CursorPath` clicks sound by themselves.
   `lib/timing/sound/models/recipes.ts` synthesizes every sound from a seeded recipe (whoosh, riser, impact, chime and more), so there's nothing
   to license.
@@ -118,8 +118,8 @@ path.
 - `cli/studio.ts`: the `studio` entry point. Each verb is `cli/commands/<verb>.ts`, parsing its arguments and calling
   into `lib/`: `lib/output/render/engine/render-pipeline.ts` checks, mixes, renders and reviews a bundled project
   (`lib/output/render/engine/render-session.ts`), `lib/timing/voice/engine/voice-project.ts` reads the script as one take (Gemini TTS through
-  `lib/footage/generation/engine/openrouter.ts`, `say`, or a recording) and cuts it, and `lib/platform/project/engine/studio-project.ts` resolves `<project>`.
-- `lib/footage/generation/engine/paid-generation.ts`: every paid image, video or music generation, cached by request hash into a project's
+  `lib/platform/paid-generation/engine/openrouter.ts`, `say`, or a recording) and cuts it, and `lib/platform/project/engine/studio-project.ts` resolves `<project>`.
+- `lib/platform/paid-generation/engine/paid-generation.ts`: every paid image, video or music generation, cached by request hash into a project's
   `generated/` (gitignored) with each result's prompt, model, references and cost in `generated/provenance.json`.
   `lib/output/render/engine/previs-render.ts` is `studio gen video`: a scene's 3D blockout (`lib/footage/previs/studio/blockout.tsx`) rendered into footage.
 

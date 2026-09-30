@@ -8,7 +8,7 @@
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
+import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { runPhotoshopScript, withOwnedPhotoshop, type PhotoshopSettingsRestore } from '#lib/platform/photoshop/engine/photoshop-app.ts';
 import { photoshopPresetMismatches, photoshopPresetScript } from '../models/photoshop-preset.ts';
 import { comparePhotoshopCells, cropPhotoshopCell, type PhotoshopPixels } from '../models/photoshop-capture-cells.ts';

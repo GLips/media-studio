@@ -9,8 +9,8 @@ import { basename, join } from 'node:path';
 import type { RenderedStill } from '#lib/output/render/engine/render-stills.ts';
 import { formatStillAxes, type ReviewStillCellsFile } from '#lib/output/review/models/review-notes.ts';
 import { STILL_FEED_SIZES, STILL_PRESETS, STILL_UI_ZONES, type StillPreset } from '../models/still-presets.ts';
-import { runFfmpegAsync } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
-import { rasterizeHtmlPages } from '#lib/footage/capture/engine/html-raster.ts';
+import { runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
+import { rasterizeHtmlPages } from '#lib/platform/raster/engine/html-raster.ts';
 
 /** Each still is shown within this box, above its feed row. */
 const SHEET_STILL_BOX = { w: 480, h: 600 };
