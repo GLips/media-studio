@@ -3,7 +3,7 @@
 // compute shader per grid (stamp-formula-parity.ts), runs each row's call on the GPU in f32, and hands back the results.
 
 import { COVERAGE_FORMULAS_WGSL } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
-import { STAMP_ACCUMULATION_RESOLVE_WGSL } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
+import { STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
 import { createStampPaintDevice } from '#lib/picture/stamp-paint/studio/stamp-paint-gpu.ts';
 
 const WORKGROUP = 64;
@@ -13,6 +13,7 @@ type ParityGrid = { call: string; width: number; rows: number[] };
 
 const kernel = ({ call, width }: ParityGrid) => /* wgsl */ `
 ${COVERAGE_FORMULAS_WGSL}
+${STAMP_ACCUMULATION_LAY_WGSL}
 ${STAMP_ACCUMULATION_RESOLVE_WGSL}
 @group(0) @binding(0) var<storage, read> inputs: array<f32>;
 @group(0) @binding(1) var<storage, read_write> outputs: array<f32>;

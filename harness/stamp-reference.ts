@@ -59,7 +59,7 @@ const probesCommand = defineCommand({
 });
 
 const formulasCommand = defineCommand({
-  meta: { name: 'formulas', description: `Run every paired formula's WGSL (grain cut, dual combine, grain paint, pooling, accumulation resolve) on the GPU over a grid of inputs, every mode, and compare it to the CPU's: fails past ${STAMP_FORMULA_TOLERANCE}.` },
+  meta: { name: 'formulas', description: `Run every paired formula's WGSL (accumulation lay, grain cut, dual combine, grain paint, pooling, accumulation resolve) on the GPU over a grid of inputs, every mode, and compare it to the CPU's: fails past ${STAMP_FORMULA_TOLERANCE}.` },
   async run() {
     const results = await checkStampFormulaParity();
     for (const r of results) {

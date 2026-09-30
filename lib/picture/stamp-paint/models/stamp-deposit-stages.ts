@@ -2,8 +2,8 @@
 // renderer (stamp-paint-renderer.ts) and the CPU reference (stamp-reference-deposit.ts). What each accumulation does
 // as a stamp lands and how it resolves; which stages run, in which order (a plan both renderers walk, the GPU's code
 // generated from it); which of a brush's layers' stages are active; and how far a stamp's blur reaches up its tip's
-// mips. An accumulation's resolve is a CPU and WGSL pair written side by side, held together by the formulas command
-// (docs/brush-engine.md).
+// mips; and how the GPU lays a layer's stamps, by fixed blend or in order. An accumulation's lay and resolve are CPU
+// and WGSL pairs written side by side, held together by the formulas command (docs/brush-engine.md).
 
 import { stampDualBeforeGrain, stampWgslSwitch } from './coverage-formulas.ts';
 import type { StampAccumulation, StampBrush, StampBrushBurntEdge, StampBrushGrain, StampBrushLayer, StampBrushWetEdges, StampDualBlend } from './stamp-brush.ts';
@@ -11,8 +11,11 @@ import type { StampAccumulation, StampBrush, StampBrushBurntEdge, StampBrushGrai
 /** Mip levels a stamp's full blur (1) reads above its own: four is a sixteenth of its size. */
 export const STAMP_BLUR_LEVELS = 4;
 
-/** A stamp lays `laid` × its `opacity` over what's `built`, toward full paint. */
-const layTowardFull = (built: number, laid: number, opacity: number) => built + laid * opacity * (1 - built);
+/** A stamp lays `laid` × its `opacity` over what's `built`, toward full paint: the same whatever order stamps land in. */
+const layTowardFull = {
+  cpu: (built: number, laid: number, opacity: number) => built + laid * opacity * (1 - built),
+  wgsl: 'built + laid * opacity * (1.0 - built)',
+};
 
 /** What a stroke's build holds after its last stamp, per pixel: the build, and a glaze's densest stamp and cap. */
 export type StampAccumulationKept = { built: number; densest: number; cap: number };
@@ -21,7 +24,8 @@ export type StampAccumulationKept = { built: number; densest: number; cap: numbe
  * What each accumulation does (StampAccumulation says why). `lay` is the build after one stamp: `built` so far, the
  * stamp's paint `laid` and its `opacity`. `towardFull`: it lays paint × opacity toward full; else its paint toward
  * its own opacity. `keepsCap`: the densest stamp and the cap are kept beside the build. `resolve` is the stroke from
- * what the build kept, `build` a glaze's own, as the CPU works it out and as a WGSL expression over the same names.
+ * what the build kept, `build` a glaze's own. `lay` and `resolve` are each a CPU function and a WGSL expression over
+ * the same names.
  */
 export const STAMP_ACCUMULATIONS = {
   glaze: {
@@ -32,21 +36,44 @@ export const STAMP_ACCUMULATIONS = {
   build: { towardFull: true, keepsCap: false, lay: layTowardFull, resolve: { cpu: ({ built }: StampAccumulationKept) => built, wgsl: 'built' } },
   buildToOpacity: {
     towardFull: false, keepsCap: false,
-    lay: (built: number, laid: number, opacity: number) => (opacity > built ? built + laid * (opacity - built) : built),
+    // Never lowers: in Photoshop's probes (fade opacity 40, fade opacity 130 minimum 20 flow 50) a fainter stamp
+    // leaves the paint a stronger one built where it lands.
+    lay: { cpu: (built: number, laid: number, opacity: number) => (opacity > built ? built + laid * (opacity - built) : built), wgsl: 'select(built, built + laid * (opacity - built), opacity > built)' },
     resolve: { cpu: ({ built }: StampAccumulationKept) => built, wgsl: 'built' },
   },
 } satisfies Record<StampAccumulation['kind'], {
-  towardFull: boolean; keepsCap: boolean; lay: (built: number, laid: number, opacity: number) => number;
+  towardFull: boolean; keepsCap: boolean;
+  lay: { cpu: (built: number, laid: number, opacity: number) => number; wgsl: string };
   resolve: { cpu: (kept: StampAccumulationKept, build: number) => number; wgsl: string };
 }>;
 
 /** Every accumulation, in the table's order. */
 // SAFETY: the table `satisfies` a record over exactly StampAccumulation['kind'], so its keys are those kinds.
 export const STAMP_ACCUMULATION_KINDS = Object.keys(STAMP_ACCUMULATIONS) as StampAccumulation['kind'][];
-/** An accumulation's case in `accumulationResolve`, the WGSL switch over the table's resolves. */
+/** An accumulation's case in `accumulationLay` and `accumulationResolve`, the WGSL switches over the table. */
 export const stampAccumulationIndex = (kind: StampAccumulation['kind']) => STAMP_ACCUMULATION_KINDS.indexOf(kind);
 /** A glaze's `build`, which its resolve reads; 0 for the others, which read none. */
 export const stampAccumulationBuild = (accumulation: StampAccumulation) => (accumulation.kind === 'glaze' ? accumulation.build : 0);
+/** The table's lays in WGSL, by the accumulation's index. */
+export const STAMP_ACCUMULATION_LAY_WGSL = stampWgslSwitch(
+  'accumulationLay', 'built: f32, laid: f32, opacity: f32, kind: i32', 'f32', 'kind',
+  Object.values(STAMP_ACCUMULATIONS).map(({ lay }) => `return ${lay.wgsl};`),
+);
+
+/**
+ * How the GPU lays a layer's stamps. `fixedBlend`: by the blend B ← lerp(B, toward, t), stamp after stamp, which is
+ * the accumulation's `lay` wherever their order can't matter: toward full paint, or toward an opacity no stamp brings
+ * less of than one before it, so B never stands above the opacity arriving. `ordered`: each pixel walks its stamps in
+ * order and lays each by `lay`, for an opacity that falls, where the blend would lower the paint.
+ */
+export type StampAccumulationPlan = { kind: 'fixedBlend'; toward: 'full' | 'opacity' } | { kind: 'ordered' };
+
+/** How the GPU lays `stamps` under `accumulation`: ordered only where the blend can't lay what `lay` does. */
+export function stampAccumulationPlan(accumulation: StampAccumulation, stamps: readonly { opacity: number }[]): StampAccumulationPlan {
+  if (STAMP_ACCUMULATIONS[accumulation.kind].towardFull) return { kind: 'fixedBlend', toward: 'full' };
+  const falls = stamps.some((stamp, i) => i > 0 && stamp.opacity < stamps[i - 1].opacity);
+  return falls ? { kind: 'ordered' } : { kind: 'fixedBlend', toward: 'opacity' };
+}
 /** The table's resolves in WGSL, by the accumulation's index. */
 export const STAMP_ACCUMULATION_RESOLVE_WGSL = stampWgslSwitch(
   'accumulationResolve', 'built: f32, densest: f32, cap: f32, build: f32, kind: i32', 'f32', 'kind',

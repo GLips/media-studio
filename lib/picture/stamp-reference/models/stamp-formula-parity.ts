@@ -28,7 +28,7 @@ function grid(formula: string, call: string, width: number, entries: readonly { 
 
 const blendName = (b: { family: string; mode: string }) => `${b.family} ${b.mode}`;
 
-/** Every paired formula over its grid: each mode of each family, the adjustments' cases, pooling, each accumulation's resolve. */
+/** Every paired formula over its grid: each accumulation's lay, each mode of each family, the adjustments' cases, pooling, each resolve. */
 export function stampFormulaGrids(): StampFormulaGrid[] {
   const grainCut = STAMP_GRAIN_BLENDS.flatMap((blend) => UNIT.flatMap((a) => UNIT.flatMap((v) => COARSE.map((d) => ({
     label: `${blendName(blend)} a ${a} v ${v} d ${d}`,
@@ -56,7 +56,13 @@ export function stampFormulaGrids(): StampFormulaGrid[] {
     inputs: [built, densest, cap, build, stampAccumulationIndex(kind)],
     expected: STAMP_ACCUMULATIONS[kind].resolve.cpu({ built, densest, cap }, build),
   }))))));
+  const lay = STAMP_ACCUMULATION_KINDS.flatMap((kind) => UNIT.flatMap((built) => COARSE.flatMap((laid) => UNIT.map((opacity) => ({
+    label: `${kind} built ${built} laid ${laid} opacity ${opacity}`,
+    inputs: [built, laid, opacity, stampAccumulationIndex(kind)],
+    expected: STAMP_ACCUMULATIONS[kind].lay.cpu(built, laid, opacity),
+  })))));
   return [
+    grid('accumulationLay', 'accumulationLay(x(0), x(1), x(2), i32(x(3)))', 4, lay),
     grid('grainCut', 'grainCut(x(0), x(1), x(2), i32(x(3)), x(4) > 0.5)', 5, grainCut),
     grid('dualCombine', 'dualCombine(x(0), x(1), i32(x(2)), x(3) > 0.5)', 4, dualCombine),
     grid('grainPaint', 'grainPaint(x(0), x(1), x(2), x(3) > 0.5, x(4))', 5, grainPaint),

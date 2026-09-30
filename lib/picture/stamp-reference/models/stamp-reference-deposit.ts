@@ -123,7 +123,7 @@ function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: Stam
           capped = stampGrainCut(1, g, rolling);
         }
         const i = (py - box.y) * box.width + (px - box.x), laid = a * stamp.alpha;
-        built[i] = lay(built[i], laid, opacity);
+        built[i] = lay.cpu(built[i], laid, opacity);
         if (glaze) {
           densest[i] = Math.max(densest[i], laid * opacity);
           cap[i] = Math.max(cap[i], capped * stamp.alpha * opacity);

@@ -281,6 +281,12 @@ export function photoshopProbes(): PhotoshopProbe[] {
   add('pressure check size', 'size on pen pressure: an S-curve right after the probe is applied, then after a posed line', base(round(64, 100, 5), sizeBy(pressure())), [sim, mark('line', { pressure: 0.5 }), sim]);
   add('pressure check size minimum 30', 'size on pen pressure with a 30% minimum: an S-curve after a posed line, where the minimum may count twice', base(round(64, 100, 5), sizeBy(pressure(30))), [mark('line', { pressure: 1 }), sim]);
   add('pressure check reapplied', 'no dynamics, applied fresh after a posed probe: whether the pose outlasts a new brush', base(round(64, 100, 5)), [sim]);
+
+  // A stroke's opacity falling over paint it built at a higher one (vid-108): whether a later, fainter stamp lowers
+  // what's built, or never does. Along a line each pixel takes about ten stamps, each fainter than the one before; the
+  // self-crossing curve comes back over its loop about 64 stamps after it first passed, by then at its minimum.
+  add('fade opacity 40 flow 25', 'opacity faded over 40 stamps at flow 25%: whether a fainter stamp lowers the paint stronger ones built', base(round(64, 100, 10), { flow: 25, ...transferBy(fade(40), noControl) }), [mark('line')]);
+  add('fade opacity 130 minimum 20 flow 50', 'opacity faded over 130 stamps to 20% at flow 50%, crossing its own loop: the later pass at 20% over paint built near 60%', base(round(64, 100, 10), { flow: 50, ...transferBy({ kind: 'fade', steps: 130, minimum: 20 }, noControl) }), [mark('selfCross'), mark('line')]);
   return probes;
 }
 

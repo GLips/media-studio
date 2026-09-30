@@ -6,7 +6,8 @@
 // show (vid-97):
 //   1. a render pass stamps it, instanced, into a coverage mask: the brush's in red, its dual's in green. Each stamp
 //      lays its flow over the stroke toward its opacity (a glaze's or a build's toward full, its paint flow × opacity,
-//      as its accumulation says); a glaze also keeps, by max, its densest stamp and its cap (a stamp's paint before its
+//      as its accumulation says), by a fixed blend, or walked in order per pixel where its opacity falls and the
+//      blend would lower the paint (stampAccumulationPlan); a glaze also keeps, by max, its densest stamp and its cap (a stamp's paint before its
 //      tip), and the resolve takes its stroke from the densest stamp toward the build held under the cap, as far as its
 //      build says. A brush with colour dynamics also lays each stamp's tint, weighted by coverage, into two targets.
 //   2. compute passes blur the mask, when the brush has wet or burnt edges: the rim is where the mask stands above it.
@@ -27,8 +28,8 @@
 import { bindStampBrushImages, type StampBrush, type StampBrushAsset, type StampBrushGrain, type StampBrushLayer } from '../models/stamp-brush.ts';
 import { COVERAGE_FORMULAS_WGSL, stampDualModeIndex, stampGrainModeIndex } from '../models/coverage-formulas.ts';
 import {
-  STAMP_ACCUMULATION_RESOLVE_WGSL, STAMP_ACCUMULATIONS, STAMP_BLUR_LEVELS, stampAccumulationBuild, stampAccumulationIndex, stampActiveLayers, stampResolvePlan,
-  stampResolvePlanIndex, stampResolvePlansWgsl, type StampActiveLayer,
+  STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL, STAMP_ACCUMULATIONS, STAMP_BLUR_LEVELS, stampAccumulationBuild, stampAccumulationIndex,
+  stampAccumulationPlan, stampActiveLayers, stampResolvePlan, stampResolvePlanIndex, stampResolvePlansWgsl, type StampAccumulationPlan, type StampActiveLayer,
 } from '../models/stamp-deposit-stages.ts';
 import { visibleStampCountAt, type CompiledStampDeposit, type CompiledStampPaint, type StampPaintPaper, type StampRegion } from '../models/stamp-paint-recipe.ts';
 import type { PlacedStamp } from '../models/stamp-placement.ts';
@@ -69,6 +70,13 @@ fn grained(a: f32, raw: f32, mean: f32, p: Grain) -> f32 {
   return grainCut(a, grainPaint(1.0 - raw, p.shape.z, p.shape.w, p.aboutMean == 1u, mean), p.shape.x, p.blend, p.layer == 1u);
 }`;
 
+const TURNED_WGSL = /* wgsl */ `
+fn turned(v: vec2f, angle: f32) -> vec2f {
+  let s = sin(angle);
+  let c = cos(angle);
+  return vec2f(c * v.x - s * v.y, s * v.x + c * v.y);
+}`;
+
 // A stamp is drawn as its tip's hull (stamp-tip-hull.ts), a fan of triangles from its first corner, in the tip's UV
 // square. Its place on the tip is interpolated, not worked out from its pixel: Apple's GPUs fetch a texel at an
 // interpolated place before the shader runs, and a computed one took twice as long. A flipped stamp mirrors its hull,
@@ -94,11 +102,7 @@ struct Corner { @builtin(position) position: vec4f, @location(0) tipUv: vec2f, @
 struct Covered { @location(0) mask: vec4f, @location(1) cap: vec4f }
 struct Stamp { @location(0) mask: vec4f, @location(1) cap: vec4f, @location(2) tintA: vec4f, @location(3) tintB: vec4f }
 ${GRAIN_WGSL}
-fn turned(v: vec2f, angle: f32) -> vec2f {
-  let s = sin(angle);
-  let c = cos(angle);
-  return vec2f(c * v.x - s * v.y, s * v.x + c * v.y);
-}
+${TURNED_WGSL}
 @vertex fn place(@builtin(vertex_index) i: u32, @location(0) stamp: vec4f, @location(1) more: vec4f, @location(2) tint: vec4f, @location(3) last: vec2f) -> Corner {
   let pair = u.hull[i / 2u];
   let uv = select(pair.xy, pair.zw, (i & 1u) == 1u);
@@ -127,14 +131,92 @@ fn covered(corner: Corner) -> vec2f {
   }
   return coverage * corner.alpha;
 }
-// The mask blends the stamp's paint as alpha over the stroke, toward its opacity (colour): B ← lerp(B, O, t·f). The
-// pipeline's write masks keep the brush's channel or its dual's. A glaze keeps, by max, each pixel's cap (red, green)
-// and its densest stamp (blue, alpha): its stroke builds up to the cap, as far as its build says.
+// The mask blends the stamp's paint as alpha over the stroke, toward full or its opacity (colour): B ← lerp(B, O, t·f),
+// the layer's fixedBlend plan (stampAccumulationPlan). The pipeline's write masks keep the brush's channel or its
+// dual's. A glaze keeps, by max, each pixel's cap (red, green) and its densest stamp (blue, alpha): its stroke builds
+// up to the cap, as far as its build says.
 @fragment fn cover(corner: Corner) -> Covered { let a = covered(corner); return Covered(vec4f(vec3f(corner.toward), a.x), a.yyxx); }
 // A brush with colour dynamics also lays its tint, premultiplied by its coverage, over the tints before it.
 @fragment fn coverTinted(corner: Corner) -> Stamp {
   let a = covered(corner);
   return Stamp(vec4f(vec3f(corner.toward), a.x), a.yyxx, vec4f(corner.tint.xyz * a.x, a.x), vec4f(corner.tint.w * a.x, 0.0, 0.0, a.x));
+}`;
+
+/** Pixels a side of the tiles an `ordered` layer's stamps are binned by (binOrderedStamps). */
+const ORDERED_TILE = 32;
+
+// A layer laid in order (its `ordered` plan) is one triangle over the deposit's box: each pixel walks the stamps binned
+// to its tile, first to last, and lays each by its accumulation's lay (STAMP_ACCUMULATION_LAY_WGSL). A stamp's place
+// on its tip inverts the fixed path's vertex transform, and its tip and rolling grain are sampled at the gradients
+// that path's interpolation gives, the tip's grown by its blur as the fixed path's bias grows it.
+const ORDERED_DRAW = stampUniformLayout('OrderedDraw', [
+  ['grain', stampUniformStruct(GRAIN)], ['roundness', 'f32'], ['rolling', 'u32'], ['diameter', 'f32'], ['zoom', 'f32'], ['movement', 'f32'],
+  ['span', 'f32'], ['first', 'u32'], ['count', 'u32'], ['tint', 'u32'], ['bins', 'u32'], ['tilesX', 'u32'], ['accumulation', 'i32'],
+]);
+const ORDERED_WGSL = /* wgsl */ `
+${FULL_FRAME_WGSL}
+${ORDERED_DRAW.wgsl}
+@group(0) @binding(0) var<uniform> u: OrderedDraw;
+@group(0) @binding(1) var tip: texture_2d<f32>;
+@group(0) @binding(2) var grain: texture_2d<f32>;
+@group(0) @binding(3) var tipClamp: sampler;
+@group(0) @binding(4) var tile: sampler;
+@group(0) @binding(5) var<storage, read> stamps: array<f32>;
+@group(0) @binding(6) var<storage, read> tints: array<vec4f>;
+// Each tile's first entry (one past the last after them), then each tile's stamps by index from the layer's first.
+@group(0) @binding(7) var<storage, read> bins: array<u32>;
+${GRAIN_WGSL}
+${TURNED_WGSL}
+${STAMP_ACCUMULATION_LAY_WGSL}
+struct Laid { built: f32, tintA: vec4f, tintB: vec4f }
+fn laidInOrder(p: vec2f, tinted: bool) -> Laid {
+  let cell = u.bins + (u32(p.y) / ${ORDERED_TILE}u) * u.tilesX + u32(p.x) / ${ORDERED_TILE}u;
+  var laid = Laid(0.0, vec4f(0.0), vec4f(0.0));
+  var mean = 0.0;
+  if (u.rolling == 1u) { mean = grainMean(grain, tile); }
+  for (var k = bins[cell]; k < bins[cell + 1u]; k++) {
+    let i = bins[k];
+    // A tile's stamps are in order, so the first not yet visible ends it.
+    if (i >= u.count) { break; }
+    let at = (u.first + i) * ${STAMP_FLOATS}u;
+    let xy = vec2f(stamps[at], stamps[at + 1u]);
+    let z = stamps[at + 2u];
+    let rotation = stamps[at + 3u];
+    let flips = u32(stamps[at + 7u]);
+    let mirror = vec2f(select(1.0, -1.0, (flips & 1u) != 0u), select(1.0, -1.0, (flips & 2u) != 0u));
+    let squash = max(u.roundness * stamps[at + 9u], 1.0 / (z * u.span));
+    let scale = vec2f(1.0, squash) * z * u.span * mirror;
+    let local = p - xy;
+    let uv = turned(local, -rotation) / scale + 0.5;
+    // Outside its square a stamp lays nothing; inside it but outside its hull its tip is bare, as the fixed path's is.
+    if (any(uv < vec2f(0.0)) || any(uv > vec2f(1.0))) { continue; }
+    let blur = exp2(stamps[at + 5u] * ${STAMP_BLUR_LEVELS.toFixed(1)});
+    var a = 1.0 - textureSampleGrad(tip, tipClamp, uv, turned(vec2f(1.0, 0.0), -rotation) / scale * blur, turned(vec2f(0.0, 1.0), -rotation) / scale * blur).r;
+    if (u.rolling == 1u) {
+      let grainTurn = stamps[at + 6u];
+      let size = u.grain.place.xy * pow(z / u.diameter, u.zoom);
+      let grainUv = turned(local, -grainTurn) / size + u.movement * xy / u.grain.place.xy + u.grain.place.zw;
+      let raw = textureSampleGrad(grain, tile, grainUv, turned(vec2f(1.0, 0.0), -grainTurn) / size, turned(vec2f(0.0, 1.0), -grainTurn) / size).r;
+      a = grained(a, raw, mean, u.grain);
+    }
+    let paint = a * stamps[at + 4u];
+    laid.built = accumulationLay(laid.built, paint, stamps[at + 8u], u.accumulation);
+    // Tints lay premultiplied, each over those before, as the fixed path's blend lays them. Only a buildToOpacity is
+    // laid in order (stampAccumulationPlan), whose blend weighs a tint by the stamp's paint.
+    if (tinted) {
+      let t = tints[u.tint + i];
+      laid.tintA = vec4f(t.xyz * paint, paint) + laid.tintA * (1.0 - paint);
+      laid.tintB = vec4f(t.w * paint, 0.0, 0.0, paint) + laid.tintB * (1.0 - paint);
+    }
+  }
+  return laid;
+}
+struct Covered { @location(0) mask: vec4f, @location(1) cap: vec4f }
+struct Stamp { @location(0) mask: vec4f, @location(1) cap: vec4f, @location(2) tintA: vec4f, @location(3) tintB: vec4f }
+@fragment fn coverOrdered(@builtin(position) at: vec4f) -> Covered { return Covered(vec4f(laidInOrder(at.xy, false).built), vec4f(0.0)); }
+@fragment fn coverOrderedTinted(@builtin(position) at: vec4f) -> Stamp {
+  let laid = laidInOrder(at.xy, true);
+  return Stamp(vec4f(laid.built), vec4f(0.0), laid.tintA, laid.tintB);
 }`;
 
 const BLUR = stampUniformLayout('Blur', [['sourceSize', 'vec2f'], ['direction', 'vec2f'], ['sigma', 'f32'], ['origin', 'vec2u'], ['extent', 'vec2u']]);
@@ -411,6 +493,33 @@ function reachOfFirst(stamps: readonly PlacedStamp[], chunks: Float64Array, coun
   }
 }
 
+type LoadedPlan = Exclude<StampAccumulationPlan, { kind: 'ordered' }> | { kind: 'ordered'; bins: number };
+
+/**
+ * Appends an `ordered` layer's bins to `into` and returns where they start: for each tile ORDERED_TILE pixels a side,
+ * `tilesX` across the painting, row by row, the entry its stamps start at (and one past the last tile's), then each
+ * tile's stamps, by index in order, that reach into it (0.75 of the tip's width from the centre, as stampReach).
+ */
+function binOrderedStamps(stamps: readonly PlacedStamp[], span: number, tilesX: number, tilesY: number, into: number[]): number {
+  const tiles = Array.from({ length: tilesX * tilesY }, (): number[] => []);
+  const tileOf = (v: number, count: number) => Math.min(count - 1, Math.max(0, Math.floor(v / ORDERED_TILE)));
+  stamps.forEach((s, i) => {
+    const r = s.diameter * span * 0.75;
+    for (let ty = tileOf(s.y - r, tilesY); ty <= tileOf(s.y + r, tilesY); ty++) {
+      for (let tx = tileOf(s.x - r, tilesX); tx <= tileOf(s.x + r, tilesX); tx++) tiles[ty * tilesX + tx].push(i);
+    }
+  });
+  const table = into.length;
+  let entry = table + tiles.length + 1;
+  for (const tile of tiles) {
+    into.push(entry);
+    entry += tile.length;
+  }
+  into.push(entry);
+  for (const tile of tiles) for (const i of tile) into.push(i);
+  return table;
+}
+
 /**
  * A deposit as the GPU holds it: where its stamps and dual stamps start in the instance buffer, where its tints start
  * in the tint buffer (null for a brush without colour dynamics), and what's fixed.
@@ -422,6 +531,8 @@ type LoadedDeposit = {
   main: number; dual: number; tint: number | null;
   mainReach: Float64Array; dualReach: Float64Array;
   mainHull: StampTipHull; dualHull: StampTipHull | null;
+  /** How each layer's stamps are laid, and an `ordered` layer's bins' table in the bin buffer (binOrderedStamps). */
+  mainPlan: LoadedPlan; dualPlan: LoadedPlan | null;
   /** Its protected regions' triangles in the region buffer: [first vertex, vertex count, ellipse or null] for each. */
   regions: [number, number, Extract<StampRegion, { kind: 'ellipse' }> | null][];
 };
@@ -502,7 +613,12 @@ async function rendererOnDevice(
 
   // Every deposit's stamps, then its dual's, in one buffer, and its protected regions' triangles in another.
   const deposits = new Map<CompiledStampDeposit, LoadedDeposit>();
-  const regionPoints: number[] = [];
+  const regionPoints: number[] = [], binData: number[] = [];
+  const tilesX = Math.ceil(width / ORDERED_TILE), tilesY = Math.ceil(height / ORDERED_TILE);
+  const loadPlan = (layer: StampBrushLayer<unknown>, stamps: readonly PlacedStamp[]): LoadedPlan => {
+    const plan = stampAccumulationPlan(layer.accumulation, stamps);
+    return plan.kind === 'ordered' ? { kind: 'ordered', bins: binOrderedStamps(stamps, spanOf(layer), tilesX, tilesY, binData) } : plan;
+  };
   let total = 0, tints = 0, slotsPerFrame = 1;
   for (const group of painting.groups) {
     slotsPerFrame += 1;
@@ -524,6 +640,7 @@ async function rendererOnDevice(
         main: total, dual: total + deposit.stamps.length, tint: deposit.brush.color ? tints : null,
         mainReach: stampReach(deposit.stamps, spanOf(deposit.brush)), dualReach: stampReach(deposit.dualStamps, deposit.brush.dual ? spanOf(deposit.brush.dual) : 1),
         mainHull: tipHull(deposit.brush, deposit.stamps), dualHull: deposit.brush.dual ? tipHull(deposit.brush.dual, deposit.dualStamps) : null,
+        mainPlan: loadPlan(deposit.brush, deposit.stamps), dualPlan: deposit.brush.dual ? loadPlan(deposit.brush.dual, deposit.dualStamps) : null,
         regions,
       });
       total += deposit.stamps.length + deposit.dualStamps.length;
@@ -541,14 +658,16 @@ async function rendererOnDevice(
     write(deposit.dualStamps, dual);
     if (tint !== null) deposit.stamps.forEach(({ tint: t }, i) => tintData.set([t.hue, t.saturation, t.lightness, t.secondary], (tint + i) * TINT_FLOATS));
   }
-  const buffer = (data: Float32Array | Uint16Array, usage: number) => {
+  const buffer = (data: Float32Array | Uint16Array | Uint32Array, usage: number) => {
     const made = device.createBuffer({ size: Math.max(16, Math.ceil(data.byteLength / 4) * 4), usage: usage | GPUBufferUsage.COPY_DST });
     device.queue.writeBuffer(made, 0, data.buffer, data.byteOffset, Math.ceil(data.byteLength / 4) * 4);
     return made;
   };
-  const stampBuffer = buffer(stampData, GPUBufferUsage.VERTEX), tintBuffer = buffer(tintData, GPUBufferUsage.VERTEX);
+  // A layer laid in order reads its stamps and tints as storage.
+  const stampBuffer = buffer(stampData, GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE), tintBuffer = buffer(tintData, GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE);
   // What an untinted stamp reads for its tint: read by every instance, so it's never indexed past.
-  const noTintBuffer = buffer(new Float32Array(TINT_FLOATS), GPUBufferUsage.VERTEX);
+  const noTintBuffer = buffer(new Float32Array(TINT_FLOATS), GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE);
+  const binBuffer = buffer(new Uint32Array(binData.length ? binData : [0]), GPUBufferUsage.STORAGE);
   const regionBuffer = buffer(new Float32Array(regionPoints), GPUBufferUsage.VERTEX);
   // The fan's triangles, by corner: indexed, so each corner is shaded once a stamp, not once for each triangle it's in.
   const fanBuffer = buffer(new Uint16Array(Array.from({ length: STAMP_TIP_HULL_SIDES - 2 }, (_, i) => [0, i + 1, i + 2]).flat()), GPUBufferUsage.INDEX);
@@ -577,9 +696,9 @@ async function rendererOnDevice(
   const mirrorTile = device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear', addressModeU: 'mirror-repeat', addressModeV: 'mirror-repeat' });
 
   const maxBlend: GPUBlendState = { color: { operation: 'max', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'max', srcFactor: 'one', dstFactor: 'one' } };
-  // Each stamp moves its stroke toward its opacity by its paint: B ← lerp(B, O, t·f), as Photoshop builds. Photoshop
-  // also never lowers B, which a blend can't see: where a lower-opacity stamp (a fade, a lighter press) lands on paint
-  // built past its opacity, this pulls it down toward that opacity. Exact while a stroke's opacity holds or rises.
+  // Each stamp moves its stroke toward full or its opacity by its paint: B ← lerp(B, O, t·f). A blend can't see B, so
+  // it can't keep a buildToOpacity from lowering it; a layer whose opacity falls is laid in order instead
+  // (stampAccumulationPlan), and this blend lays only those whose opacity holds or rises, where it never lowers B.
   const buildBlend: GPUBlendState = { color: { operation: 'add', srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } };
   // Even-odd fill without a stencil: each fan triangle inverts what's under it, so a pixel inside an odd number of them
   // ends up set, whatever the polygon's shape.
@@ -614,6 +733,22 @@ async function rendererOnDevice(
     const glaze = accumulation === 'glaze';
     return [accumulation, { plain: [stampPipeline(glaze, 0, false), stampPipeline(glaze, 1, false)], tinted: [stampPipeline(glaze, 0, true), stampPipeline(glaze, 1, true)] }];
   })) as Record<'glaze' | 'build', Record<'plain' | 'tinted', [GPURenderPipeline, GPURenderPipeline]>>;
+  const orderedModule = device.createShaderModule({ code: ORDERED_WGSL });
+  /** An ordered pipeline: it writes the layer's channel whole, and a tinted pass's tints, which only the brush's own stamps write. */
+  const orderedPipeline = (channel: 0 | 1, tinted: boolean) => device.createRenderPipeline({
+    layout: 'auto',
+    vertex: { module: orderedModule },
+    fragment: {
+      module: orderedModule,
+      entryPoint: tinted && channel === 0 ? 'coverOrderedTinted' : 'coverOrdered',
+      targets: [
+        { format: 'rg16float', writeMask: channel === 0 ? GPUColorWrite.RED : GPUColorWrite.GREEN },
+        { format: 'rgba16float', writeMask: 0 },
+        ...(tinted ? [0, 1].map(() => ({ format: 'rgba16float' as const, writeMask: channel === 0 ? GPUColorWrite.ALL : 0 })) : []),
+      ],
+    },
+  });
+  const orderedPipelines = { plain: [orderedPipeline(0, false), orderedPipeline(1, false)], tinted: [orderedPipeline(0, true), orderedPipeline(1, true)] };
   const computePipeline = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } });
   const pipelines = { blur: computePipeline(BLUR_WGSL), deposit: computePipeline(DEPOSIT_WGSL), group: computePipeline(GROUP_WGSL), paper: computePipeline(PAPER_WGSL) };
   const outputModule = device.createShaderModule({ code: OUTPUT_WGSL });
@@ -679,12 +814,41 @@ async function rendererOnDevice(
     });
     pass.setScissorRect(box.x, box.y, box.w, box.h);
     pass.setIndexBuffer(fanBuffer, 'uint16');
-    const stamp = (layer: BoundLayer, active: StampActiveLayer<StampPaintImage>, first: number, n: number, hull: StampTipHull, channel: 0 | 1) => {
+    const stamp = (layer: BoundLayer, active: StampActiveLayer<StampPaintImage>, plan: LoadedPlan, first: number, n: number, hull: StampTipHull, channel: 0 | 1) => {
       if (!n) return;
-      const accumulation = STAMP_ACCUMULATIONS[layer.accumulation.kind];
-      const pipeline = stampPipelines[accumulation.keepsCap ? 'glaze' : 'build'][tinted ? 'tinted' : 'plain'][channel];
       const { rollingGrain: rolling, diameter } = active;
       const offset = deposit.grainOffset[channel === 0 ? 'main' : 'dual'];
+      const textures = [layer.tip.image.view, rolling ? rolling.image.view : targets.blank.view, layer.tip.sampling === 'anisotropic' ? anisotropicClamp : linearClamp, rolling?.tiling === 'mirror' ? mirrorTile : tile];
+      const tints = channel === 0 && tinted ? { buffer: tintBuffer, at: loaded.tint! } : { buffer: noTintBuffer, at: 0 };
+      if (plan.kind === 'ordered') {
+        const pipeline = orderedPipelines[tinted ? 'tinted' : 'plain'][channel];
+        pass.setPipeline(pipeline);
+        pass.setBindGroup(0, bindGroup(pipeline, [
+          slot((views) => {
+            const put = stampUniformWriter(ORDERED_DRAW, views);
+            put('roundness', layer.tip.roundness);
+            put('rolling', rolling ? 1 : 0);
+            if (rolling) {
+              const size = rolling.scale * diameter;
+              writeGrain(views, ORDERED_DRAW.at.grain, rolling, [size, size * (rolling.image.height / rolling.image.width)], offset, 0);
+              put('diameter', diameter);
+              put('zoom', rolling.zoom);
+              put('movement', rolling.movement);
+            }
+            put('span', spanOf(layer));
+            put('first', first);
+            put('count', n);
+            put('tint', tints.at);
+            put('bins', plan.bins);
+            put('tilesX', tilesX);
+            put('accumulation', stampAccumulationIndex(layer.accumulation.kind));
+          }),
+          ...textures, { buffer: stampBuffer }, { buffer: tints.buffer }, { buffer: binBuffer },
+        ]));
+        pass.draw(3);
+        return;
+      }
+      const pipeline = stampPipelines[STAMP_ACCUMULATIONS[layer.accumulation.kind].keepsCap ? 'glaze' : 'build'][tinted ? 'tinted' : 'plain'][channel];
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, bindGroup(pipeline, [
         slot((views) => {
@@ -704,16 +868,16 @@ async function rendererOnDevice(
           hullWords.set(hull);
           put('hull', hullWords);
           put('span', spanOf(layer));
-          put('towardFull', accumulation.towardFull ? 1 : 0);
+          put('towardFull', plan.toward === 'full' ? 1 : 0);
         }),
-        layer.tip.image.view, rolling ? rolling.image.view : targets.blank.view, layer.tip.sampling === 'anisotropic' ? anisotropicClamp : linearClamp, rolling?.tiling === 'mirror' ? mirrorTile : tile,
+        ...textures,
       ]));
       pass.setVertexBuffer(0, stampBuffer, first * STAMP_FLOATS * 4);
-      pass.setVertexBuffer(1, channel === 0 && tinted ? tintBuffer : noTintBuffer, channel === 0 && tinted ? loaded.tint! * TINT_FLOATS * 4 : 0);
+      pass.setVertexBuffer(1, tints.buffer, tints.at * TINT_FLOATS * 4);
       pass.drawIndexed((hull.length / 2 - 2) * 3, n);
     };
-    stamp(loaded.brush, loaded.active.main, loaded.main, count, loaded.mainHull, 0);
-    if (loaded.brush.dual && loaded.active.dual) stamp(loaded.brush.dual, loaded.active.dual, loaded.dual, dualCount, loaded.dualHull!, 1);
+    stamp(loaded.brush, loaded.active.main, loaded.mainPlan, loaded.main, count, loaded.mainHull, 0);
+    if (loaded.brush.dual && loaded.active.dual && loaded.dualPlan) stamp(loaded.brush.dual, loaded.active.dual, loaded.dualPlan, loaded.dual, dualCount, loaded.dualHull!, 1);
     pass.end();
   }
 

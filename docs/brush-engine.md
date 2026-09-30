@@ -22,9 +22,11 @@ step's and stamp's context, what each sensor reads from it, each response); a ne
 deposit's stages resolve in, and which of a brush's stages are active (`stampActiveLayers`), which the GPU and the CPU
 reference both read. A formula is a pair, its CPU function and its WGSL twin written side by side, not one definition
 compiled to both: `node harness/stamp-reference.ts formulas` runs each twin on the GPU over a grid of inputs and holds
-it to its CPU side. The GPU's resolve order and mode switches are generated from the tables.
-`stamp-paint-recipe.ts` is the painting a scene writes, with its paper. `studio/` is the WebGPU renderer, its uniform
-layout and the compositor.
+it to its CPU side. The GPU's resolve order and mode switches are generated from the tables. How the GPU lays a
+layer's stamps is a plan (`stampAccumulationPlan`): a fixed blend where stamp order can't change the build, and
+otherwise, for a `buildToOpacity` whose opacity falls (Photoshop never lowers what's built), each pixel walks its
+stamps in order and lays each by the table's `lay`. `stamp-paint-recipe.ts` is the painting a scene writes, with its
+paper. `studio/` is the WebGPU renderer, its uniform layout and the compositor.
 
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants
 of `procreate-reading.ts`), and the stroke Procreate draws its previews along. Its `engine/` reads binary plists and
