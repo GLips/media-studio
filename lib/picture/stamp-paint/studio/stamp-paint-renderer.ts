@@ -289,11 +289,11 @@ const KEEP = stampUniformLayout('Keep', [
   ['fluid', 'vec4f'], ['within', 'vec4f'], ['load', 'vec4f'], ['front', 'vec4f'], ['loadEnds', 'vec2f'], ['frontShape', 'vec2f'], ['loadKind', 'i32'],
 ]);
 /**
- * A wash deposit's landing (StampWetLanding): its wetness and workable grids' lattice (x0, y0, cell) and size, where
- * each starts in the wet grid buffer, its painting time, its brush's water, a lift's strength, and what it does.
+ * A wash deposit's landing (StampWetLanding): its wetness, workable and dried grids' lattice (x0, y0, cell) and size,
+ * where each starts in the wet grid buffer, its painting time, its brush's water, a lift's strength, and what it does.
  */
 const WET_OP = stampUniformLayout('WetOp', [
-  ['lattice', 'vec4f'], ['size', 'vec2u'], ['wetnessFirst', 'u32'], ['workableFirst', 'u32'],
+  ['lattice', 'vec4f'], ['size', 'vec2u'], ['wetnessFirst', 'u32'], ['workableFirst', 'u32'], ['driedFirst', 'u32'],
   ['tau', 'f32'], ['water', 'f32'], ['strength', 'f32'], ['action', 'u32'],
 ]);
 const WET_ACTIONS = { paint: 0, water: 1, lift: 2 } as const;
@@ -304,11 +304,11 @@ ${WET_OP.wgsl}
 @group(0) @binding(20) var footprint: texture_storage_2d<rgba16float, write>;
 ${STAMP_GRID_AT_WGSL}
 ${Object.entries(WET_ACTIONS).map(([action, index]) => `const WET_${action.toUpperCase()} = ${index}u;`).join('\n')}
-struct WetLanding { wetness: f32, workable: f32, tau: f32, water: f32, strength: f32, action: u32 }
+struct WetLanding { wetness: f32, workable: f32, dried: f32, tau: f32, water: f32, strength: f32, action: u32 }
 fn wetLandingAt(at: vec2f) -> WetLanding {
   return WetLanding(
     gridAt(at, wet.lattice.xyz, wet.size, wet.wetnessFirst), gridAt(at, wet.lattice.xyz, wet.size, wet.workableFirst),
-    wet.tau, wet.water, wet.strength, wet.action,
+    gridAt(at, wet.lattice.xyz, wet.size, wet.driedFirst), wet.tau, wet.water, wet.strength, wet.action,
   );
 }`;
 // A wash deposit lands, and leaves its footprint for the stages after it (StampWetStageMoment): what it laid, and
@@ -901,22 +901,23 @@ async function rendererOnDevice(
   const binBuffer = buffer(new Uint32Array(binData.length ? binData : [0]), GPUBufferUsage.STORAGE);
   // What an untraced resolve binds for the trace it never records.
   const noTraceBuffer = buffer(new Float32Array(1), GPUBufferUsage.STORAGE), noTraceCrop = buffer(new Uint32Array(SLOT / 4), GPUBufferUsage.UNIFORM);
-  // Every wash deposit's wetness and workable grids, one after another, and where each starts. Each is a window of
+  // Every wash deposit's wetness, workable and dried grids, one after another, and where each starts. Each is a window of
   // the painting's lattice round the deposit (stamp-wetness.ts), so the upload grows with what the deposits cover.
-  const wetFirsts = new Map<CompiledStampDeposit, { wetness: number; workable: number }>();
+  const wetFirsts = new Map<CompiledStampDeposit, { wetness: number; workable: number; dried: number }>();
   let wetFloats = 0;
-  for (const [deposit, { before: { wetness: wet, workable } }] of wetness?.landings ?? []) {
-    if (wet.x0 !== workable.x0 || wet.y0 !== workable.y0 || wet.cell !== workable.cell || wet.columns !== workable.columns || wet.rows !== workable.rows) {
-      throw new Error(`stamp paint: ${deposit.id}'s wetness and workable grids aren't on one lattice`);
+  for (const [deposit, { before: { wetness: wet, workable, dried } }] of wetness?.landings ?? []) {
+    if ([workable, dried].some((other) => wet.x0 !== other.x0 || wet.y0 !== other.y0 || wet.cell !== other.cell || wet.columns !== other.columns || wet.rows !== other.rows)) {
+      throw new Error(`stamp paint: ${deposit.id}'s wetness, workable and dried grids aren't on one lattice`);
     }
-    wetFirsts.set(deposit, { wetness: wetFloats, workable: wetFloats + wet.values.length });
-    wetFloats += wet.values.length + workable.values.length;
+    wetFirsts.set(deposit, { wetness: wetFloats, workable: wetFloats + wet.values.length, dried: wetFloats + 2 * wet.values.length });
+    wetFloats += 3 * wet.values.length;
   }
   const wetGrids = new Float32Array(Math.max(1, wetFloats));
   for (const [deposit, { before }] of wetness?.landings ?? []) {
     const firsts = wetFirsts.get(deposit)!;
     wetGrids.set(before.wetness.values, firsts.wetness);
     wetGrids.set(before.workable.values, firsts.workable);
+    wetGrids.set(before.dried.values, firsts.dried);
   }
   const wetGridBuffer = buffer(wetGrids, GPUBufferUsage.STORAGE);
   // The fan's triangles, by corner: indexed, so each corner is shaded once a stamp, not once for each triangle it's in.
@@ -1461,6 +1462,7 @@ async function rendererOnDevice(
         put('size', [grid.columns, grid.rows]);
         put('wetnessFirst', firsts.wetness);
         put('workableFirst', firsts.workable);
+        put('driedFirst', firsts.dried);
         put('tau', landing.tau);
         put('water', landing.water);
         put('strength', action.kind === 'lift' ? action.strength : 0);

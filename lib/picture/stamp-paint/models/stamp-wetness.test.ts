@@ -105,3 +105,20 @@ test("wait('damp') lasts until the wettest paper is damp, and wait('dry') until 
   assert.equal(stampGridAt(dried.before.workable, 100, 100), 1);
   assert.ok(Math.abs(landing(slow.wetness, slow.pass, 'set').tau - (1 / rate + 500 + 1 / rate)) < 1e-6);
 });
+
+test('paint that has dried stays dried when water wets it again, until fresh paint covers it', () => {
+  const { pass, wetness } = washed((wash) => {
+    wash.stamps('sky', { ...drop({ x: 100, y: 100 }), material: { kind: 'color', color: '#3355aa' } });
+    wash.lift('blot', drop({ x: 100, y: 100 }));
+    wash.wait('dry');
+    wash.water('rewet', drop({ x: 100, y: 100 }));
+    wash.lift('scrub', drop({ x: 100, y: 100 }));
+    wash.stamps('again', { ...drop({ x: 100, y: 100 }), material: { kind: 'color', color: '#3355aa' } });
+    wash.lift('fresh', drop({ x: 100, y: 100 }));
+  });
+  const at = (id: string) => landing(wetness, pass, id).before;
+  assert.equal(stampGridAt(at('blot').dried, 100, 100), 0);
+  assert.equal(stampGridAt(at('scrub').workable, 100, 100), 1);
+  assert.equal(stampGridAt(at('scrub').dried, 100, 100), 1);
+  assert.equal(stampGridAt(at('fresh').dried, 100, 100), 0);
+});
