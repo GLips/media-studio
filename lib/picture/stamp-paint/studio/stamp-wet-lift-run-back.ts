@@ -22,11 +22,11 @@ const WORKGROUP = 8;
 export const STAMP_LIFT_RUN_BACK_MOST_SIGMA = 16;
 
 /**
- * A lift's run-back: its wetness grid's lattice, size and first value in the grid buffer; the box its footprint
+ * A lift's run-back: its grids' lattice, size and first values in the grid buffer (wetness, workable, dried); the box its footprint
  * holds (`liftOrigin`, `liftExtent`); the pixels it works over; its sigma, the kernel's reach and the kernel's sum.
  */
 const RUN_BACK = stampUniformLayout('RunBack', [
-  ['lattice', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['reach', 'u32'],
+  ['lattice', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['reach', 'u32'], ['rewetting', 'f32'],
   ['liftOrigin', 'vec2u'], ['liftExtent', 'vec2u'], ['origin', 'vec2u'], ['extent', 'vec2u'], ['sigma', 'f32'], ['norm', 'f32'],
 ]);
 
@@ -71,8 +71,12 @@ ${STAMP_GRID_AT_WGSL}
     let q = p + vec2i(0, d);
     if (inside(q, u.origin, u.extent)) { lifted += kernelAt(d) * textureLoad(liftRows, q, 0).r; }
   }
-  let wetness = gridAt(vec2f(p) + 0.5, u.lattice.xyz, u.size, u.first);
-  textureStore(mobility, p, vec4f(liftRunBackMobility(wetness, lifted)));
+  let at = vec2f(p) + 0.5;
+  let points = u.size.x * u.size.y;
+  let wetness = gridAt(at, u.lattice.xyz, u.size, u.first);
+  let workable = gridAt(at, u.lattice.xyz, u.size, u.first + points);
+  let dried = gridAt(at, u.lattice.xyz, u.size, u.first + 2u * points);
+  textureStore(mobility, p, vec4f(liftRunBackMobility(wetness, workable, dried, u.rewetting, lifted)));
 }`;
 
 const pulledRowsWgsl = (layers: number) => /* wgsl */ `${PRELUDE}
@@ -141,11 +145,12 @@ function loadLiftRunBack({ device, medium, wetness, width, height, layer, footpr
   const lifts = [...wetness.landings].filter(([deposit]) => deposit.action.kind === 'lift');
   if (!lifts.length || medium.wetting.flow <= 0) return { encode: () => null };
 
-  // Every lift's wetness grid, one after another, each with a uniform buffer of its own, as a frame may hold several.
+  // Every lift's grids (wetness, workable, dried, on one lattice), one after another, each lift with a uniform
+  // buffer of its own, as a frame may hold several.
   const firsts = new Map<CompiledStampDeposit, number>(), values: number[] = [];
   for (const [deposit, { before }] of lifts) {
     firsts.set(deposit, values.length);
-    values.push(...before.wetness.values);
+    values.push(...before.wetness.values, ...before.workable.values, ...before.dried.values);
   }
   const grid = device.createBuffer({ size: values.length * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
   device.queue.writeBuffer(grid, 0, new Float32Array(values));
@@ -181,6 +186,7 @@ function loadLiftRunBack({ device, medium, wetness, width, height, layer, footpr
     put('lattice', [wet.x0, wet.y0, wet.cell, 0]);
     put('size', [wet.columns, wet.rows]);
     put('first', firsts.get(deposit)!);
+    put('rewetting', medium.wetting.rewetting);
     put('reach', reach);
     put('liftOrigin', [lift.x, lift.y]);
     put('liftExtent', [lift.w, lift.h]);
