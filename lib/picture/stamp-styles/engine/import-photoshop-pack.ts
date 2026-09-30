@@ -3,9 +3,9 @@
 // dark-is-paint, and a manifest (StampPaintPack) of each brush's preset, images and source file. Photoshop files carry
 // no rendered previews, so the manifest's stay empty; Photoshop's renders come from the capture rig.
 //
-// A computed tip is drawn by Photoshop's profile (tips/round-<hardness>-<diameter>.png), an airbrush as its spray, a
-// pressed tip as footprint and contact. A sample is written once per file and flip, a pattern once per polarity. A
-// brush of an unread tip class is skipped.
+// A computed tip is drawn by Photoshop's profile (tips/round-<hardness>-<diameter>.png), an airbrush as its spray, an
+// erodible tip as footprint and contact; a bristle tip isn't written, as it's drawn at the size it paints. A sample is
+// written once per file and flip, a pattern once per polarity. A brush of an unread tip class is skipped.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
@@ -13,7 +13,6 @@ import {
   drawPhotoshopTipImage, photoshopPatternNegated, photoshopSampleWithBorder, photoshopTipImage, type PhotoshopBrushSource, type PhotoshopTipAsset,
 } from '#lib/picture/photoshop-brushes/models/photoshop-brush.ts';
 import { photoshopTagged, type PhotoshopDescriptor, type PhotoshopValue } from '#lib/picture/photoshop-brushes/models/photoshop-descriptor.ts';
-import { drawPhotoshopBristleTip } from '#lib/picture/photoshop-brushes/models/photoshop-bristle.ts';
 import { drawPhotoshopErodibleTip } from '#lib/picture/photoshop-brushes/models/photoshop-erodible.ts';
 import { readPhotoshopPreset, type PhotoshopKnownTip } from '#lib/picture/photoshop-brushes/models/photoshop-preset.ts';
 import type { StampBrushAsset, StampBrushSupportNote } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
@@ -92,16 +91,12 @@ function writePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, 
         const heightMap = writeOnce(`heights|${heights.toString('hex')}`, 'tips', `${slug}.heights`, (out) => writeFileSync(out, heights), 'f32');
         const values = Float32Array.from({ length: tip.gridSize ** 2 }, (_, i) => heights.readFloatLE(4 * i));
         const { size, image, contact } = drawPhotoshopErodibleTip(tip, values, STAMP_PACK_TIP_MAX);
-        const key = `${heights.toString('hex')}|${tip.shape}|${tip.geometry.diameter}`;
+        const key = `${tip.customized ? heights.toString('hex') : tip.gridSize}|${tip.shape}|${tip.geometry.diameter}`;
         const gray = (pixels: Uint8Array) => (out: string) => writeStampPackGray({ width: size, height: size, pixels }, STAMP_PACK_TIP_MAX, out);
         return { kind: 'erodible', image: writeOnce(`erodible|${key}`, 'tips', slug, gray(image)), contact: writeOnce(`contact|${key}`, 'tips', `${slug}.contact`, gray(contact)), heightMap };
       }
-      if (tip.kind === 'bristle') {
-        const { size, image, contact } = drawPhotoshopBristleTip(tip, STAMP_PACK_TIP_MAX);
-        const key = [tip.shape, tip.density, tip.length, tip.thickness, tip.stiffness, tip.geometry.diameter].join('|');
-        const gray = (pixels: Uint8Array) => (out: string) => writeStampPackGray({ width: size, height: size, pixels }, STAMP_PACK_TIP_MAX, out);
-        return { kind: 'bristle', image: writeOnce(`bristle|${key}`, 'tips', slug, gray(image)), contact: writeOnce(`bristle-contact|${key}`, 'tips', `${slug}.contact`, gray(contact)) };
-      }
+      // A bristle tip is drawn at the diameter it's painted at, so the pack holds no image of it.
+      if (tip.kind === 'bristle') return { kind: 'bristle' };
       const image = photoshopTipImage(tip);
       if (image.kind === 'sampled') {
         const sample = file.tips.get(image.id);

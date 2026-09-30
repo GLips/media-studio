@@ -34,32 +34,35 @@ function insideOutline(shape: number, u: number, v: number): boolean {
 }
 
 /**
- * Photoshop's default heights for `shape` on an n×n grid, read off the Legacy pack's maps (every one but Pencil's and
- * Lino Crayon's, to 0.004): a point is a cone from 1 at its apex to 0.5 at its rim, a round a half-ellipsoid on a 0.63
- * base, a square and a triangle flat at 1. Probes paint Photoshop's defaults.
+ * Photoshop's default height for `shape` at grid place (x, y), read off the Legacy pack's maps (to 0.004): a point a
+ * cone from 1 to 0.5 at its rim, a round a half-ellipsoid on 0.63, a square and a triangle flat. Continuous between
+ * nodes: a point's stamp is as round on its diagonals as across, not a bilinear diamond.
  */
-export function photoshopErodibleDefaultHeights(shape: number, n: number): Float32Array {
-  const heights = new Float32Array(n * n), c = (n - 1) / 2;
-  for (let j = 0; j < n; j++) {
-    for (let i = 0; i < n; i++) {
-      const r = Math.hypot(i - c, j - c) / c;
-      let h = 0;
-      if (shape === 0) h = r <= 1.2 ? Math.max(0.5, 1 - r / 2) : 0;
-      else if (shape === 2) h = r <= 1.2 ? 0.63 + 0.37 * Math.sqrt(Math.max(0, 1 - r * r)) : 0;
-      else if (shape === 3) h = 1;
-      else if (shape === 4) h = Math.abs(i - c) <= c * (1 - j / (n - 1)) + 1 + 1e-9 ? 1 : 0;
-      heights[j * n + i] = h;
-    }
-  }
-  return heights;
+function defaultHeightAt(shape: number, n: number, x: number, y: number): number {
+  const c = (n - 1) / 2, r = Math.hypot(x - c, y - c) / c;
+  if (shape === 0) return r <= 1.2 ? Math.max(0.5, 1 - r / 2) : 0;
+  if (shape === 2) return r <= 1.2 ? 0.63 + 0.37 * Math.sqrt(Math.max(0, 1 - r * r)) : 0;
+  if (shape === 4) return Math.abs(x - c) <= c * (1 - y / (n - 1)) + 1 + 1e-9 ? 1 : 0;
+  return 1;
 }
 
-/** The grid's height at grid place (x, y), bilinearly, its corners on the tip's edges. */
-function heightAt(heights: Float32Array, n: number, x: number, y: number): number {
+/** A saved map's height at grid place (x, y), bilinearly, its corners on the tip's edges. */
+function savedHeightAt(heights: Float32Array, n: number, x: number, y: number): number {
   const gx = Math.min(n - 1, Math.max(0, x)), gy = Math.min(n - 1, Math.max(0, y));
   const x0 = Math.min(n - 2, Math.floor(gx)), y0 = Math.min(n - 2, Math.floor(gy)), fx = gx - x0, fy = gy - y0;
   const h = (i: number, j: number) => heights[j * n + i];
   return (h(x0, y0) * (1 - fx) + h(x0 + 1, y0) * fx) * (1 - fy) + (h(x0, y0 + 1) * (1 - fx) + h(x0 + 1, y0 + 1) * fx) * fy;
+}
+
+/**
+ * The heights Photoshop paints a tip from: its saved map only when flagged customized, else its shape's defaults.
+ * Lino Crayon's and Pencil's uncustomized maps are worn snapshots (tops at 0.91) that paint as the defaults (vid-113:
+ * Lino's reference lines within 0.7 px of the defaults'). A customized map is unprobed.
+ */
+function paintedHeights(tip: PhotoshopErodibleTip, saved: Float32Array | null): { at: (x: number, y: number) => number; peak: number } {
+  const n = tip.gridSize;
+  if (!tip.customized || !saved) return { at: (x, y) => defaultHeightAt(tip.shape, n, x, y), peak: 1 };
+  return { at: (x, y) => savedHeightAt(saved, n, x, y), peak: saved.reduce((top, h) => Math.max(top, h), 0) };
 }
 
 /** The contact range a tip's contact image reads over, in pressure at its preset diameter. */
@@ -72,10 +75,10 @@ const spanOf = (tip: PhotoshopErodibleTip) => (tip.geometry.diameter + 2) / tip.
  * The tip's footprint and its contact image, `size` texels square (the diameter and a pixel each side, at most `max`),
  * dark is paint in both: a contact image's paint reads its contact down from the range's high end to its low.
  */
-export function drawPhotoshopErodibleTip(tip: PhotoshopErodibleTip, heights: Float32Array, max: number): { size: number; image: Uint8Array; contact: Uint8Array } {
+export function drawPhotoshopErodibleTip(tip: PhotoshopErodibleTip, saved: Float32Array | null, max: number): { size: number; image: Uint8Array; contact: Uint8Array } {
   const D = tip.geometry.diameter, n = tip.gridSize, size = Math.min(max, Math.round(D) + 2), texel = (D + 2) / size;
   const [lo, hi] = contactRange(tip);
-  const peak = heights.reduce((top, h) => Math.max(top, h), 0);
+  const { at, peak } = paintedHeights(tip, saved);
   const image = new Uint8Array(size * size), contact = new Uint8Array(size * size);
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
@@ -86,7 +89,7 @@ export function drawPhotoshopErodibleTip(tip: PhotoshopErodibleTip, heights: Flo
         for (let i = 0; i < BOX_SAMPLES; i++) cover += insideOutline(tip.shape, (cx - 1 + (2 * (i + 0.5)) / BOX_SAMPLES) / D, (cy - 1 + (2 * (j + 0.5)) / BOX_SAMPLES) / D) ? 1 : 0;
       }
       image[y * size + x] = Math.round(255 * (1 - cover / BOX_SAMPLES ** 2));
-      const h = heightAt(heights, n, (cx / D) * (n - 1), (cy / D) * (n - 1));
+      const h = at((cx / D) * (n - 1), (cy / D) * (n - 1));
       const pressure = h <= 0 ? hi : ((peak - h - PRESS.a) * D) / PRESS.b;
       contact[y * size + x] = Math.round(255 * (1 - Math.min(1, Math.max(0, (hi - pressure) / (hi - lo)))));
     }

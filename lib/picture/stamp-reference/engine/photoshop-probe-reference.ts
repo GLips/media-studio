@@ -15,8 +15,7 @@ import { cropPhotoshopCell } from '#lib/picture/photoshop-brushes/models/photosh
 import { PHOTOSHOP_PROBE_RAMP, PHOTOSHOP_PROBE_SAMPLES, photoshopProbeRampValue, type PhotoshopProbe } from '#lib/picture/photoshop-brushes/models/photoshop-probes.ts';
 import { readPhotoshopSheet } from '#lib/picture/photoshop-brushes/engine/photoshop-capture.ts';
 import { photoshopPressuredPath, type PhotoshopStrokePressure } from '#lib/picture/photoshop-brushes/models/photoshop-stroke-pressure.ts';
-import { drawPhotoshopBristleTip } from '#lib/picture/photoshop-brushes/models/photoshop-bristle.ts';
-import { drawPhotoshopErodibleTip, photoshopErodibleDefaultHeights } from '#lib/picture/photoshop-brushes/models/photoshop-erodible.ts';
+import { drawPhotoshopErodibleTip } from '#lib/picture/photoshop-brushes/models/photoshop-erodible.ts';
 import { drawPhotoshopTipImage, normalizePhotoshopBrush, PHOTOSHOP_PEN_PRESSURE, PHOTOSHOP_SAMPLE_BORDER, type PhotoshopPressureContext, photoshopPatternNegated, photoshopTipImage, type PhotoshopTipAsset, type PhotoshopTipImage } from '#lib/picture/photoshop-brushes/models/photoshop-brush.ts';
 import type { PhotoshopKnownTip } from '#lib/picture/photoshop-brushes/models/photoshop-preset.ts';
 import { bindStampBrushImages, type StampBrushAsset } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
@@ -65,25 +64,30 @@ function probeTipAsset(tip: PhotoshopKnownTip, file: string): PhotoshopTipAsset 
     return { kind: 'sampled', image: asset(file), sample: { width, height } };
   }
   if (tip.kind === 'erodible') return { kind: 'erodible', image: asset(file), contact: asset(`${file}-contact`), heightMap: asset(`${file}-heights`) };
-  if (tip.kind === 'bristle') return { kind: 'bristle', image: asset(file), contact: asset(`${file}-contact`) };
+  if (tip.kind === 'bristle') return { kind: 'bristle' };
   return { kind: 'round', image: asset(file) };
 }
 
 /** A drawn gray image, dark is paint, as mips of its paint. */
 const grayMips = (pixels: Uint8Array, size: number) => stampReferenceMips({ width: size, height: size, paint: Float32Array.from(pixels, (v) => 1 - v / 255) });
+const drawnMips = ({ size, pixels }: { size: number; pixels: Uint8Array }) => grayMips(pixels, size);
 
-/** A probe tip's images by name, `file` and a pressed tip's contact: an erodible one pressed from Photoshop's default heights. */
+/**
+ * A probe tip's images by name, `file` and a pressed tip's contact: an erodible one pressed from Photoshop's default
+ * heights. A bristle tip has none: it's drawn as it's bound.
+ */
 function probeTipImages(tip: PhotoshopKnownTip, file: string) {
-  if (tip.kind !== 'erodible' && tip.kind !== 'bristle') return { [file]: () => stampReferenceMips(tipImage(photoshopTipImage(tip))) };
-  const drawn = () => (tip.kind === 'erodible' ? drawPhotoshopErodibleTip(tip, photoshopErodibleDefaultHeights(tip.shape, tip.gridSize), STAMP_PACK_TIP_MAX) : drawPhotoshopBristleTip(tip, STAMP_PACK_TIP_MAX));
+  if (tip.kind === 'bristle') return {};
+  if (tip.kind !== 'erodible') return { [file]: () => stampReferenceMips(tipImage(photoshopTipImage(tip))) };
+  const drawn = () => drawPhotoshopErodibleTip(tip, null, STAMP_PACK_TIP_MAX);
   return { [file]: () => { const { size, image } = drawn(); return grayMips(image, size); }, [`${file}-contact`]: () => { const { size, contact } = drawn(); return grayMips(contact, size); } };
 }
 
 /** A probe's dual tip, when it has one the studio reads. */
 const probeDualTip = ({ preset }: PhotoshopProbe) => (preset.dual && preset.dual.tip.kind !== 'unsupported' ? preset.dual.tip : undefined);
 
-/** A probe as the importer reads it under `context`, with its images. */
-export function photoshopProbeReferenceBrush(probe: PhotoshopProbe, context: PhotoshopPressureContext = PHOTOSHOP_PEN_PRESSURE) {
+/** A probe as the importer reads it under `context`, with its images bound for a deposit at `diameter`. */
+export function photoshopProbeReferenceBrush(probe: PhotoshopProbe, diameter: number, context: PhotoshopPressureContext = PHOTOSHOP_PEN_PRESSURE) {
   const { preset } = probe, dualTip = probeDualTip(probe);
   const { brush, support } = normalizePhotoshopBrush(probe.name, {
     preset,
@@ -97,7 +101,8 @@ export function photoshopProbeReferenceBrush(probe: PhotoshopProbe, context: Pho
     ...(dualTip && probeTipImages(dualTip, 'dual-tip')),
     ramp: () => stampReferenceMips(rampImage(photoshopPatternNegated(preset))),
   };
-  return { brush: bindStampBrushImages(brush, ({ file }) => images[file]()), support };
+  const bound = bindStampBrushImages(brush, diameter, (image) => ('draw' in image ? drawnMips(image.draw()) : images[image.file]()));
+  return { brush: bound, support };
 }
 
 /**
@@ -137,10 +142,10 @@ const cellPressure = (cell: PhotoshopCaptureCell): PhotoshopStrokePressure => {
  * box starts at −pad), and every stage's buffer. `posed`: a pose was in force, its own or an earlier cell's.
  */
 export function renderPhotoshopProbeCell(probe: PhotoshopProbe, cell: PhotoshopCaptureCell, { arrangement, pad = 0, posed = cell.pressure !== undefined }: { arrangement?: StampReferenceArrangement; pad?: number; posed?: boolean } = {}) {
-  const { brush } = photoshopProbeReferenceBrush(probe, { lingeringPose: posed });
+  const diameter = probe.preset.tip.geometry.diameter;
+  const { brush } = photoshopProbeReferenceBrush(probe, diameter, { lingeringPose: posed });
   const pressure = cellPressure(cell);
   const box = { x: -pad, y: -pad, width: cell.box.width + 2 * pad, height: cell.box.height + 2 * pad };
-  const diameter = probe.preset.tip.geometry.diameter;
   // Each stroke finishes and lays over the ones before it, as separate strokes do.
   const deposits = cell.strokes.map((stroke, s) => {
     const path = photoshopPressuredPath(stroke.map(([x, y]) => [x - cell.box.x, y - cell.box.y] as const), pressure);

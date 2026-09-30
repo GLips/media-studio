@@ -14,7 +14,9 @@ stamp-paint
 ```
 
 **stamp-paint** is the engine, and knows no app. `models/stamp-brush.ts` is the brush (`StampBrush`: a tip, spacing,
-dynamics keyed by target and sensor, scatter, rotation, grain, dual, edges, accumulation); `stamp-placement.ts`
+dynamics keyed by target and sensor, scatter, rotation, grain, dual, edges, accumulation). Its tip is an image or a
+bristle tip (`stamp-bristle-tip.ts`), drawn at the diameter a deposit paints at: `bindStampBrushImages` binds either
+at that diameter, and each renderer caches what it draws by key. `stamp-placement.ts`
 places its stamps along a stroke by one rule (`buildStamp`), reading dynamics through `stamp-dynamics.ts` (each
 step's and stamp's context, what each sensor reads from it, each response); a new sensor or target is an entry in
 `StampTargetSensors`, its parameters (`StampSensorParams`) and its signal there. `coverage-formulas.ts` and

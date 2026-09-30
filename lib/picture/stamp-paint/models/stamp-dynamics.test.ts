@@ -4,7 +4,7 @@ import type { StampDynamics } from './stamp-brush.ts';
 import { placeAuthoredStamps, placeStrokeStamps, type StampPlacementBrush } from './stamp-placement.ts';
 
 const brushWith = (dynamics: StampDynamics): StampPlacementBrush => ({
-  tip: { image: null, roundness: 1, sampling: 'isotropic' },
+  tip: { roundness: 1, sampling: 'isotropic' },
   spacing: 0.5,
   stepping: 'spread',
   dynamics,

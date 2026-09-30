@@ -41,7 +41,6 @@ export type StampPaintImage = { texture: GPUTexture; view: GPUTextureView; width
 /**
  * Loads each image as a mipmapped texture of its red channel alone (a grey tip or grain) or its colour (a paper). A
  * tip is sampled across a frame's whole stamp area, so a quarter of the bytes is a large part of a frame's time.
- * WebGPU makes no mipmaps: each level averages four texels of the one below.
  */
 export async function loadStampPaintImages(device: GPUDevice, images: readonly { url: string; channels: 'red' | 'colour' }[]): Promise<StampPaintImage[]> {
   const bitmaps = await Promise.all(images.map(async ({ url }) => {
@@ -49,6 +48,32 @@ export async function loadStampPaintImages(device: GPUDevice, images: readonly {
     if (!response.ok) throw new Error(`stamp paint: ${url} answered ${response.status}`);
     return createImageBitmap(await response.blob(), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
   }));
+  return mipmappedTextures(device, images.map(({ channels }, i) => {
+    const bitmap = bitmaps[i], { width, height } = bitmap;
+    return {
+      width, height, format: channels === 'red' ? 'r8unorm' : 'rgba8unorm',
+      fill: (texture: GPUTexture) => {
+        device.queue.copyExternalImageToTexture({ source: bitmap }, { texture }, [width, height]);
+        // A closed bitmap reads as 0 × 0.
+        bitmap.close();
+      },
+    };
+  }));
+}
+
+/** Uploads grey images drawn in memory (a bristle tip's), a byte a texel, as mipmapped textures of their red channel. */
+export function uploadStampPaintGreyImages(device: GPUDevice, images: readonly { width: number; height: number; pixels: Uint8Array }[]): StampPaintImage[] {
+  return mipmappedTextures(device, images.map(({ width, height, pixels }) => ({
+    width, height, format: 'r8unorm' as const,
+    fill: (texture: GPUTexture) => device.queue.writeTexture({ texture }, pixels, { bytesPerRow: width }, [width, height]),
+  })));
+}
+
+/**
+ * A texture for each image, its top level filled by `fill`, then each level below. WebGPU makes no mipmaps: each
+ * level averages four texels of the one above it.
+ */
+function mipmappedTextures(device: GPUDevice, images: readonly { width: number; height: number; format: GPUTextureFormat; fill: (texture: GPUTexture) => void }[]): StampPaintImage[] {
   const module = device.createShaderModule({ code: MIP_WGSL });
   const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
   const pipelines = new Map<GPUTextureFormat, GPURenderPipeline>();
@@ -57,16 +82,13 @@ export async function loadStampPaintImages(device: GPUDevice, images: readonly {
     return pipelines.get(format)!;
   };
   const encoder = device.createCommandEncoder();
-  const loaded = images.map(({ channels }, i) => {
-    const bitmap = bitmaps[i], { width, height } = bitmap, format: GPUTextureFormat = channels === 'red' ? 'r8unorm' : 'rgba8unorm';
+  const made = images.map(({ width, height, format, fill }) => {
     const levels = Math.floor(Math.log2(Math.max(width, height))) + 1;
     const texture = device.createTexture({
       size: [width, height], format, mipLevelCount: levels,
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT,
     });
-    device.queue.copyExternalImageToTexture({ source: bitmap }, { texture }, [width, height]);
-    // A closed bitmap reads as 0 × 0.
-    bitmap.close();
+    fill(texture);
     for (let level = 1; level < levels; level++) {
       const pass = encoder.beginRenderPass({ colorAttachments: [{ view: texture.createView({ baseMipLevel: level, mipLevelCount: 1 }), loadOp: 'clear', storeOp: 'store' }] });
       pass.setPipeline(pipeline(format));
@@ -79,7 +101,7 @@ export async function loadStampPaintImages(device: GPUDevice, images: readonly {
     return { texture, view: texture.createView(), width, height };
   });
   device.queue.submit([encoder.finish()]);
-  return loaded;
+  return made;
 }
 
 /** A tip's paint at every mip level, read back from the GPU as it samples it: a texel holds paint where it isn't white. */

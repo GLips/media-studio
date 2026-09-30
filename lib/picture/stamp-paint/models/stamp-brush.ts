@@ -5,7 +5,9 @@
 // Lengths are fractions of the stamp's diameter and angles are radians, so a brush means the same at any size.
 //
 // Imported, each image is a StampBrushAsset; a renderer binds each to what it samples (bindStampBrushImages), so a
-// grain's image travels with its settings.
+// grain's image travels with its settings. A bristle tip is no image until then: it's drawn at the deposit's diameter.
+
+import { drawStampBristleTip, STAMP_BRISTLE_CONTACT_RANGE, stampBristleTipSpan, type StampBristleTip } from './stamp-bristle-tip.ts';
 
 /**
  * An image among a style's assets: `work/styles/<style>/brushes/<pack>/<file>`, `file` as the pack's manifest lists
@@ -35,6 +37,7 @@ export type StampDualBlend =
   | { family: 'texture'; mode: 'multiply' | 'darken' | 'overlay' | 'colorDodge' | 'colorBurn' | 'linearBurn' | 'hardMix' | 'linearHeight' }
   | { family: 'layer'; mode: 'normal' | 'multiply' | 'screen' | 'lighten' | 'difference' | 'colorBurn' | 'overlay' | 'darken' | 'linearHeight' };
 
+/** A tip as a renderer samples it: an image, and a pressed tip's contact. */
 export type StampBrushTip<Image = StampBrushAsset> = {
   image: Image;
   /** Height over width of the stamp, (0, 1]: 1 keeps the image's own proportions, less squashes it across the stroke. */
@@ -71,6 +74,16 @@ export type StampBrushTip<Image = StampBrushAsset> = {
    */
   pressed?: { contact: Image; range: readonly [lo: number, hi: number]; softness: number; diameter?: number };
 };
+
+/**
+ * A tip of bristles (stamp-bristle-tip.ts), held as its drawing rule: a renderer binds it at each deposit's diameter
+ * into an image tip, since its bristles keep their pixel width at every size. A stamp its dynamics size away from the
+ * deposit's diameter scales the image drawn at that diameter.
+ */
+export type StampBristleBrushTip = Pick<StampBrushTip, 'roundness' | 'sampling'> & { bristles: StampBristleTip };
+
+/** A brush layer's tip: an image, or, until a renderer binds it at a diameter (bindStampBrushImages), bristles. */
+export type StampLayerTip<Image = StampBrushAsset> = StampBrushAsset extends Image ? StampBrushTip<Image> | StampBristleBrushTip : StampBrushTip<Image>;
 
 /**
  * A grain: `canvas` is fixed to the canvas and cuts the built stroke, so every stamp reveals the same field, as paper
@@ -132,7 +145,7 @@ export type StampBrushBurntEdge = { width: number; strength: number; sharpness: 
 
 /** How one brush lays its stamps: everything but its name and what it does to a whole stroke. */
 export type StampBrushStamping<Image = StampBrushAsset> = {
-  tip: StampBrushTip<Image>;
+  tip: StampLayerTip<Image>;
   grain?: StampBrushGrain<Image>;
   /** Distance between stamps along a stroke. Below about 0.05, stamps pile up faster than they read. */
   spacing: number;
@@ -340,32 +353,62 @@ export type StampBrush<Image = StampBrushAsset> = StampBrushLayer<Image> & {
   dual?: StampBrushLayer<Image> & { blend: StampDualBlend; scale: number };
 };
 
-/** `layer` with its tip's and grain's images bound by `bind`, the rest as it is. */
-function bindLayerImages<A, B, L extends StampBrushLayer<A>>(layer: L, bind: (image: A) => B): Omit<L, 'tip' | 'grain'> & StampBrushLayer<B> {
-  const { tip, grain, ...rest } = layer;
+/**
+ * An image a bound brush samples that no pack holds: a bristle tip's footprint or contact, drawn at a deposit's
+ * diameter. `key` names what's drawn and at what size, so a renderer draws and uploads each once; `draw` draws it,
+ * `size` texels square, dark is paint.
+ */
+export type StampDrawnImage = { key: string; draw: () => { size: number; pixels: Uint8Array } };
+
+/** An image a brush names, bound by a renderer to what it samples: a pack's asset, or one drawn for the deposit. */
+export type StampBrushImageSource = StampBrushAsset | StampDrawnImage;
+
+/** `tip` with its images bound by `bind`, a bristle tip drawn at `diameter`. */
+function bindTipImages<B>(tip: StampLayerTip, diameter: number, bind: (image: StampBrushImageSource) => B): StampBrushTip<B> {
+  if ('bristles' in tip) {
+    const { bristles, ...look } = tip, key = `bristles|${JSON.stringify(bristles)}@${diameter}`;
+    let drawn: ReturnType<typeof drawStampBristleTip> | undefined;
+    const drawing = () => (drawn ??= drawStampBristleTip(bristles, diameter));
+    return {
+      ...look,
+      image: bind({ key, draw: () => ({ size: drawing().size, pixels: drawing().image }) }),
+      span: stampBristleTipSpan(bristles, diameter),
+      pressed: { contact: bind({ key: `${key}|contact`, draw: () => ({ size: drawing().size, pixels: drawing().contact }) }), range: STAMP_BRISTLE_CONTACT_RANGE, softness: bristles.softness },
+    };
+  }
   const { pressed, ...plain } = tip;
-  return {
-    ...rest,
-    tip: { ...plain, image: bind(tip.image), ...(pressed && { pressed: { ...pressed, contact: bind(pressed.contact) } }) },
-    ...(grain && { grain: { ...grain, image: bind(grain.image) } }),
-  };
+  return { ...plain, image: bind(tip.image), ...(pressed && { pressed: { ...pressed, contact: bind(pressed.contact) } }) };
 }
 
-/** Every image `brush` paints with, its dual's too, and how each wraps: a grain tiles, a tip or its contact doesn't. */
-export function stampBrushImages<A>(brush: StampBrush<A>): { image: A; wrap: 'tile' | 'clamp' }[] {
-  const images: { image: A; wrap: 'tile' | 'clamp' }[] = [];
+/** `layer` with its tip's and grain's images bound by `bind`, its tip at `diameter`, the rest as it is. */
+function bindLayerImages<B, L extends StampBrushLayer>(layer: L, diameter: number, bind: (image: StampBrushImageSource) => B): Omit<L, 'tip' | 'grain'> & StampBrushLayer<B> {
+  const { tip, grain, ...rest } = layer;
+  return { ...rest, tip: bindTipImages(tip, diameter, bind), ...(grain && { grain: { ...grain, image: bind(grain.image) } }) };
+}
+
+/**
+ * Every asset `brush` paints with, its dual's too, and how each wraps: a grain tiles, a tip or its contact doesn't. A
+ * bristle tip has none: it's drawn as it's bound.
+ */
+export function stampBrushImages(brush: StampBrush): { image: StampBrushAsset; wrap: 'tile' | 'clamp' }[] {
+  const images: { image: StampBrushAsset; wrap: 'tile' | 'clamp' }[] = [];
   for (const layer of brush.dual ? [brush, brush.dual] : [brush]) {
-    images.push({ image: layer.tip.image, wrap: 'clamp' });
-    if (layer.tip.pressed) images.push({ image: layer.tip.pressed.contact, wrap: 'clamp' });
+    if (!('bristles' in layer.tip)) {
+      images.push({ image: layer.tip.image, wrap: 'clamp' });
+      if (layer.tip.pressed) images.push({ image: layer.tip.pressed.contact, wrap: 'clamp' });
+    }
     if (layer.grain) images.push({ image: layer.grain.image, wrap: 'tile' });
   }
   return images;
 }
 
-/** `brush` with each of its images, and its dual's, bound by `bind` to what a renderer samples. */
-export function bindStampBrushImages<A, B>(brush: StampBrush<A>, bind: (image: A) => B): StampBrush<B> {
+/**
+ * `brush` with each of its images, and its dual's, bound by `bind` to what a renderer samples, for a deposit at
+ * `diameter`: a bristle tip is drawn at it, its dual's at the dual's own.
+ */
+export function bindStampBrushImages<B>(brush: StampBrush, diameter: number, bind: (image: StampBrushImageSource) => B): StampBrush<B> {
   const { dual, ...main } = brush;
-  return { ...bindLayerImages(main, bind), ...(dual && { dual: bindLayerImages(dual, bind) }) };
+  return { ...bindLayerImages(main, diameter, bind), ...(dual && { dual: bindLayerImages(dual, diameter * dual.scale, bind) }) };
 }
 
 /**

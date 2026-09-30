@@ -9,7 +9,7 @@
 // Formulas and stage orders are WGSL twins of the CPU reference's registries, held to it by the formulas command.
 // The brush says where Procreate and Photoshop differ; nothing here asks where it came from.
 
-import { bindStampBrushImages, stampBrushImages, type StampBrush, type StampBrushAsset, type StampBrushGrain, type StampBrushLayer } from '../models/stamp-brush.ts';
+import { bindStampBrushImages, stampBrushImages, type StampBrush, type StampBrushAsset, type StampBrushGrain, type StampBrushImageSource, type StampBrushLayer } from '../models/stamp-brush.ts';
 import { COVERAGE_FORMULAS_WGSL, stampDualModeIndex, stampGrainModeIndex } from '../models/coverage-formulas.ts';
 import {
   STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL, STAMP_ACCUMULATIONS, STAMP_BLUR_LEVELS, stampAccumulationBuild, stampAccumulationIndex,
@@ -20,7 +20,7 @@ import type { PlacedStamp } from '../models/stamp-placement.ts';
 import { stampBlurRegion, type StampPixelBox } from '../models/stamp-blur-region.ts';
 import { coarsestStampTipLevel, STAMP_TIP_HULL_SIDES, stampTipHull, type StampTipHull, type StampTipLevel } from '../models/stamp-tip-hull.ts';
 import { PAINT_DEPOSIT_WORDS, STAMP_PAINT_COMPOSITOR_WGSL, stampPaintBlendIndex, writePaintDeposit } from './stamp-paint-compositor.ts';
-import { createStampPaintDevice, FULL_FRAME_WGSL, loadStampPaintImages, readStampTipLevels, type StampPaintImage } from './stamp-paint-gpu.ts';
+import { createStampPaintDevice, FULL_FRAME_WGSL, loadStampPaintImages, readStampTipLevels, type StampPaintImage, uploadStampPaintGreyImages } from './stamp-paint-gpu.ts';
 import { stampUniformLayout, stampUniformStruct, stampUniformWriter, type StampUniformViews } from './stamp-uniform-layout.ts';
 
 /**
@@ -456,7 +456,7 @@ type Box = StampPixelBox;
 type BoundLayer = StampBrushLayer<StampPaintImage>;
 
 /** How many diameters wide a layer's tip image is drawn. */
-const spanOf = (layer: StampBrushLayer<unknown>) => layer.tip.span ?? 1;
+const spanOf = (layer: BoundLayer) => layer.tip.span ?? 1;
 
 /** A tip image's height over its width: a stamp keeps its image's proportions, then its roundness squashes it. */
 const aspectOf = (layer: BoundLayer) => layer.tip.image.height / layer.tip.image.width;
@@ -595,23 +595,35 @@ async function rendererOnDevice(
   const isPhotograph = (asset: StampBrushAsset) => !!paper.image && assetKey(asset) === assetKey(paper.image);
   const loaded = await loadStampPaintImages(device, assets.map(([asset]) => ({ url: imageUrl(asset), channels: isPhotograph(asset) ? 'colour' : 'red' })));
   const images = new Map(assets.map(([asset], i) => [assetKey(asset), loaded[i]]));
-  const image = (asset: StampBrushAsset) => images.get(assetKey(asset))!;
+  // A bristle tip's images are drawn for each diameter it's painted at, once a key.
+  const drawn = new Map<string, StampPaintImage>();
+  const image = (source: StampBrushImageSource) => {
+    if (!('draw' in source)) return images.get(assetKey(source))!;
+    if (!drawn.has(source.key)) {
+      const { size, pixels } = source.draw();
+      drawn.set(source.key, uploadStampPaintGreyImages(device, [{ width: size, height: size, pixels }])[0]);
+    }
+    return drawn.get(source.key)!;
+  };
+  const bound = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => pass.deposits.map((deposit) =>
+    [deposit, bindStampBrushImages(deposit.brush, deposit.diameter, image)] as const))));
 
   // Each tip's paint at every mip level, for its hulls.
-  const tips = assets.filter(([asset, wrap]) => wrap === 'clamp' && !isPhotograph(asset));
-  const tipLevels = new Map<string, StampTipLevel[]>(await Promise.all(tips.map(async ([asset]) => [assetKey(asset), await readStampTipLevels(device, image(asset))] as const)));
-  const hulls = new Map<string, StampTipHull>();
+  const tips = new Set([...bound.values()].flatMap((brush) => (brush.dual ? [brush.tip.image, brush.dual.tip.image] : [brush.tip.image])));
+  const tipLevels = new Map<StampPaintImage, StampTipLevel[]>(await Promise.all([...tips].map(async (tip) => [tip, await readStampTipLevels(device, tip)] as const)));
+  const hulls = new Map<StampPaintImage, Map<number, StampTipHull>>();
   /** The hull `layer`'s tip is drawn in, for the coarsest level its smallest or most blurred stamp reads. */
-  function tipHull(layer: StampBrushLayer, stamps: readonly PlacedStamp[]): StampTipHull {
+  function tipHull(layer: BoundLayer, stamps: readonly PlacedStamp[]): StampTipHull {
     // The tip's texels spread over its span, so its pixels per texel go by the image's width, not the diameter.
     const smallest = stamps.reduce((least, s) => Math.min(least, s.diameter), Infinity) * spanOf(layer);
     const blurred = Math.ceil(stamps.reduce((most, s) => Math.max(most, s.blur), 0) * STAMP_BLUR_LEVELS);
-    const levels = tipLevels.get(assetKey(layer.tip.image))!;
+    const levels = tipLevels.get(layer.tip.image)!;
     const squashed = layer.tip.roundness * (levels[0].height / levels[0].width) * stamps.reduce((least, s) => Math.min(least, s.roundness), 1);
     const coarsest = Math.min(levels.length - 1, coarsestStampTipLevel(levels[0], smallest, squashed, levels.length) + blurred);
-    const key = `${assetKey(layer.tip.image)}@${coarsest}`;
-    if (!hulls.has(key)) hulls.set(key, stampTipHull(levels, coarsest));
-    return hulls.get(key)!;
+    const byLevel = hulls.get(layer.tip.image) ?? new Map<number, StampTipHull>();
+    hulls.set(layer.tip.image, byLevel);
+    if (!byLevel.has(coarsest)) byLevel.set(coarsest, stampTipHull(levels, coarsest));
+    return byLevel.get(coarsest)!;
   }
 
   // Every deposit's stamps, then its dual's, in one buffer, and its protected regions' triangles in another.
@@ -637,12 +649,12 @@ async function rendererOnDevice(
         for (let i = 1; i + 1 < region.points.length; i++) regionPoints.push(a.x, a.y, region.points[i].x, region.points[i].y, region.points[i + 1].x, region.points[i + 1].y);
         return [first, regionPoints.length / 2 - first, null];
       });
-      const brush = bindStampBrushImages(deposit.brush, image);
+      const brush = bound.get(deposit)!;
       deposits.set(deposit, {
         brush, active: stampActiveLayers(brush, deposit.diameter),
         main: total, dual: total + deposit.stamps.length, tint: deposit.brush.color ? tints : null,
         mainReach: stampReach(deposit.stamps, reachSpanOf(brush)), dualReach: stampReach(deposit.dualStamps, brush.dual ? reachSpanOf(brush.dual) : 1),
-        mainHull: tipHull(deposit.brush, deposit.stamps), dualHull: deposit.brush.dual ? tipHull(deposit.brush.dual, deposit.dualStamps) : null,
+        mainHull: tipHull(brush, deposit.stamps), dualHull: brush.dual ? tipHull(brush.dual, deposit.dualStamps) : null,
         mainPlan: loadPlan(brush, deposit.stamps), dualPlan: brush.dual ? loadPlan(brush.dual, deposit.dualStamps) : null,
         regions,
       });

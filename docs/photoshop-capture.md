@@ -134,12 +134,16 @@ pressed harder than our reference's 0, so those cells miss.
   a big tip touches almost whole at once and a small one grows in. Unworn: Photoshop wears the tip along a stroke,
   faster at lower simulated hardness (US 10,217,253 claims that wear), and the importer doesn't simulate it, so at 48%
   the probes' lines paint wider than ours. Lino Crayon's and Pencil's custom maps paint too wide.
-- *Bristle* (`tip bristle …`; photoshop-bristle.ts). The footprint is about 234 × density bristle discs, its width
-  across set by the shape and a flat tip 0.13 d deep. Each bristle touches from its own contact, later toward its rim,
-  away from a point's axis, a curve's middle or an angle's near side. Past about 0.7 a long, soft one lays down wider.
-  The face lies across the stroke's first heading and holds it. Pack references of an unsized preset were painted at
-  100 px. Not drawn: splay that builds along a stroke (Round Angle Low Stiffness), a click's radial dashes, tilt, and
-  clumping, which every capture holds at 0.25.
+- *Bristle* (`tip bristle …`; photoshop-bristle.ts). The footprint is 100 × density × (1 + 5 × density) bristle
+  discs, its width across set by the shape, a flat tip's bristles in about a line. A bristle's mark is fixed in pixels
+  (vid-113: about 2 px wide at both 13 and 100 px, `… streaks d13`/`d100`): its radius is 1.15 px plus 0.28 ×
+  thickness diameters, and only where the bristles sit scales with the diameter. So the tip is data
+  (StampBristleTip), drawn by both renderers at the diameter each deposit paints at; the pack holds no image of it.
+  Each bristle touches from its own contact, later toward its rim, away from a point's axis, a curve's middle or an
+  angle's near side; a long, soft one lays down wider near full pressure. The face lies across the stroke's first
+  heading and holds it. Pack references of an unsized preset were painted at 100 px. Not drawn: splay that builds
+  along a stroke (Round Angle Low Stiffness), a click's radial dashes, tilt, and clumping, which every capture holds
+  at 0.25.
 
 **What the controls do** (vid-105). Angle on pen pressure turns a stamp by p × 360°, and fade turns it a whole turn
 over its steps; initial direction holds the first heading. A stamp strays in its own diameters, after pressure, a

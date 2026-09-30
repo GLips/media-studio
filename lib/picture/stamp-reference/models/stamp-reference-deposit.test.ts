@@ -3,7 +3,6 @@ import { test } from 'node:test';
 import { stampLinearDynamics, bindStampBrushImages, type StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { placeStrokeStamps, type PlacedStamp } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 import { normalizePhotoshopBrush } from '#lib/picture/photoshop-brushes/models/photoshop-brush.ts';
-import { drawPhotoshopBristleTip } from '#lib/picture/photoshop-brushes/models/photoshop-bristle.ts';
 import { photoshopPaintablePreset, readPhotoshopPreset } from '#lib/picture/photoshop-brushes/models/photoshop-preset.ts';
 import { renderStampReferenceDeposit } from './stamp-reference-deposit.ts';
 import { stampReferenceMips } from './stamp-reference-image.ts';
@@ -37,7 +36,7 @@ test('a buildToOpacity stroke lays each stamp toward its own opacity and never l
     x: 2, y: 2, diameter: 4, rotation: 0, roundness: 1, alpha: 0.5, opacity, flipX: false, flipY: false, blur: 0, grainTurn: 0, grainDepth: 1, pressure: 1, tint: { hue: 0, saturation: 0, lightness: 0, secondary: 0 }, reveal: 0,
   });
   const at = (stamps: PlacedStamp[]) => renderStampReferenceDeposit({
-    brush: bindStampBrushImages(brush, () => tip), stamps, dualStamps: [], diameter: 4, opacity: 1, grainOffset: { main: [0, 0], dual: [0, 0] }, box: { x: 0, y: 0, width: 4, height: 4 },
+    brush: bindStampBrushImages(brush, 4, () => tip), stamps, dualStamps: [], diameter: 4, opacity: 1, grainOffset: { main: [0, 0], dual: [0, 0] }, box: { x: 0, y: 0, width: 4, height: 4 },
   }).coverage[1 * 4 + 1];
   // Two stamps at flow 0.5 build to 0.75 of full; at opacity 0.6, to 0.75 of 0.6.
   assert.ok(Math.abs(at([stamp(1), stamp(1)]) - 0.75) < 1e-6);
@@ -53,14 +52,13 @@ test("a tip image that isn't square keeps its proportions: a stamp's diameter sp
     x: 20, y: 20, diameter: 40, rotation: 0, roundness: 1, alpha: 1, opacity: 1, flipX: false, flipY: false, blur: 0, grainTurn: 0, grainDepth: 1, pressure: 1, tint: { hue: 0, saturation: 0, lightness: 0, secondary: 0 }, reveal: 0,
   };
   const { coverage } = renderStampReferenceDeposit({
-    brush: bindStampBrushImages(brush, () => tip), stamps: [stamp], dualStamps: [], diameter: 40, opacity: 1, grainOffset: { main: [0, 0], dual: [0, 0] }, box: { x: 0, y: 0, width: 40, height: 40 },
+    brush: bindStampBrushImages(brush, 40, () => tip), stamps: [stamp], dualStamps: [], diameter: 40, opacity: 1, grainOffset: { main: [0, 0], dual: [0, 0] }, box: { x: 0, y: 0, width: 40, height: 40 },
   });
   const painted = (along: (i: number) => number) => Array.from({ length: 40 }, (_, i) => coverage[along(i)]).filter((c) => c > 0.5).length;
   assert.equal(painted((x) => 20 * 40 + x), 40);
   assert.equal(painted((y) => y * 40 + 20), 10);
 });
 
-const asset = (file: string) => ({ style: 's', pack: 'p', file });
 const pct = (value: number) => ({ _unit: '#Prc', value });
 const total = (coverage: Float32Array) => coverage.reduce((sum, c) => sum + c, 0);
 
@@ -73,11 +71,12 @@ test("a flat bristle tip lies across the stroke's first heading, and paints more
     },
   }));
   assert.ok(preset?.tip.kind === 'bristle');
-  const drawn = drawPhotoshopBristleTip(preset.tip, 512);
-  const mips = (pixels: Uint8Array) => stampReferenceMips({ width: drawn.size, height: drawn.size, paint: Float32Array.from(pixels, (v) => 1 - v / 255) });
-  const images: Record<string, ReturnType<typeof mips>> = { 'tip.png': mips(drawn.image), 'contact.png': mips(drawn.contact) };
-  const { brush: flat } = normalizePhotoshopBrush('Flat', { preset, tip: { kind: 'bristle', image: asset('tip.png'), contact: asset('contact.png') } });
-  const bound = bindStampBrushImages(flat, (image) => images[image.file]);
+  const { brush: flat } = normalizePhotoshopBrush('Flat', { preset, tip: { kind: 'bristle' } });
+  const bound = bindStampBrushImages(flat, 40, (image) => {
+    if (!('draw' in image)) throw new Error(`a bristle brush names no asset, but ${image.file}`);
+    const { size, pixels } = image.draw();
+    return stampReferenceMips({ width: size, height: size, paint: Float32Array.from(pixels, (v) => 1 - v / 255) });
+  });
   // A stroke straight down, then turning right: the flat face stays across the first heading, spanning x throughout.
   const box = { x: -60, y: -20, width: 240, height: 240 };
   const paint = (pressure: number, stamps = Infinity) => renderStampReferenceDeposit({

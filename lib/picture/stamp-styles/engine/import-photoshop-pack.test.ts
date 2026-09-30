@@ -40,8 +40,10 @@ test('importing an .abr writes the same pack layout a Procreate pack imports to,
     const pencil = manifest.brushes.Pencil.tip;
     assert.ok(pencil.kind === 'erodible');
     assert.deepEqual(readFileSync(join(generation.dir, pencil.heightMap.file)), PHOTOSHOP_FIXTURE_ERODIBLE_HEIGHTS);
-    assert.equal(brushes.Pencil.tip.image.file, 'tips/pencil.png');
-    assert.equal(brushes.Pencil.tip.pressed?.contact.file, 'tips/pencil.contact.png');
+    const pencilTip = brushes.Pencil.tip;
+    assert.ok(!('bristles' in pencilTip));
+    assert.equal(pencilTip.image.file, 'tips/pencil.png');
+    assert.equal(pencilTip.pressed?.contact.file, 'tips/pencil.contact.png');
   });
 });
 

@@ -6,7 +6,7 @@
 
 import { lerp } from '#lib/picture/motion/models/motion.ts';
 import { seededRandom } from '#lib/picture/motion/models/random.ts';
-import type { StampBrushColorDynamics, StampBrushStamping } from './stamp-brush.ts';
+import type { StampBrushColorDynamics, StampBrushStamping, StampBrushTip } from './stamp-brush.ts';
 import {
   drawStampSlots, stampOwnShare, stampOwnSize, stampOwnTurn, stampResponseCurve, stampStepCount, stampStepShare, stampStepTurn, type StampContext, type StampDraws, type StampStepContext,
 } from './stamp-dynamics.ts';
@@ -64,8 +64,8 @@ export type PlacedStamp = {
 export type StampTint = { hue: number; saturation: number; lightness: number; secondary: number };
 
 /** The stamping a placement reads: a brush's own stamps, and its colour dynamics when it's a main brush that has them. */
-// Placement reads no image, so a brush places alike whatever its images are bound to.
-export type StampPlacementBrush = StampBrushStamping<unknown> & { color?: StampBrushColorDynamics };
+// Placement reads no image, so a brush places alike whatever its images are bound to, a bristle tip bound or not.
+export type StampPlacementBrush = Omit<StampBrushStamping<unknown>, 'tip'> & { tip: Pick<StampBrushTip<unknown>, 'roundness' | 'sampling' | 'pixels'>; color?: StampBrushColorDynamics };
 
 /**
  * Falloff is per this many diameters travelled: a brush's falloff is small (0.01 to 0.1), and read per diameter it
@@ -94,7 +94,7 @@ function tintOf(color: StampBrushColorDynamics | undefined, draws: StampDraws, p
  * What a whole deposit draws once, from its own stream: the turn `randomStart` gives every stamp. Seeded apart from
  * any stamp's stream, so it never shifts one.
  */
-const depositTurn = (brush: StampBrushStamping<unknown>, seed: string) => (brush.rotation.randomStart ? seededRandom(`${seed}|deposit`)() * Math.PI * 2 : 0);
+const depositTurn = (brush: StampPlacementBrush, seed: string) => (brush.rotation.randomStart ? seededRandom(`${seed}|deposit`)() * Math.PI * 2 : 0);
 
 /**
  * Where a stamp lands and what the deposit does there, before the stamp's own chance: its `size` after taper and its

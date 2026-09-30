@@ -21,7 +21,7 @@ import {
 } from './photoshop-preset.ts';
 import { PHOTOSHOP_READING } from './photoshop-reading.ts';
 import {
-  stampDynamicsOf, type StampBlend, type StampBrush, type StampBrushAsset, type StampBrushColorDynamics, type StampBrushLayer, type StampBrushSupportNote, type StampBrushTip,
+  stampDynamicsOf, type StampBlend, type StampBrush, type StampBrushAsset, type StampBrushColorDynamics, type StampBrushLayer, type StampBrushSupportNote, type StampLayerTip,
   type StampDualBlend, type StampGrainBlend, type StampScaleResponse,
 } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 
@@ -57,14 +57,14 @@ export type PhotoshopSampleSize = { width: number; height: number };
 /**
  * Where a tip's images landed among the pack's assets: a round tip's drawing; a sample, with its own size in pixels
  * (its centre is read from it); an erodible tip's footprint, its contact image (photoshop-erodible.ts) and its height
- * map (`gridSize`² little-endian 32-bit floats, as the .abr holds them) they were drawn from; a bristle tip's footprint
- * and contact image (photoshop-bristle.ts).
+ * map (`gridSize`² little-endian 32-bit floats, as the .abr holds them) they were drawn from. A bristle tip has none
+ * (photoshop-bristle.ts).
  */
 export type PhotoshopTipAsset =
   | { kind: 'round'; image: StampBrushAsset }
   | { kind: 'sampled'; image: StampBrushAsset; sample: PhotoshopSampleSize }
   | { kind: 'erodible'; image: StampBrushAsset; contact: StampBrushAsset; heightMap: StampBrushAsset }
-  | { kind: 'bristle'; image: StampBrushAsset; contact: StampBrushAsset };
+  | { kind: 'bristle' };
 
 /**
  * One preset and where its images landed among the pack's assets. `dualTip` is absent when the file lacks the sample
@@ -161,7 +161,7 @@ const tipRoundness = (tip: PhotoshopKnownTip) => Math.min(1, Math.max(0.01, tip.
  * A tip as the studio reads it: its image, roundness, a sample's centre, and a round tip's span past its diameter. A
  * sampled preset tip always has a sampled asset (readStampPaintPack holds a manifest to it).
  */
-function tipOf(tip: PhotoshopKnownTip, asset: PhotoshopTipAsset, prefix: string, note: Note): StampBrushTip {
+function tipOf(tip: PhotoshopKnownTip, asset: PhotoshopTipAsset, prefix: string, note: Note): StampLayerTip {
   const roundness = tipRoundness(tip), sampling = 'anisotropic', { geometry } = tip;
   // The border widens the image past the diameter. A sample's diameter is its longer side, and its stamp keeps its
   // proportions, so a tall sample's width is a share of the diameter.
@@ -171,7 +171,8 @@ function tipOf(tip: PhotoshopKnownTip, asset: PhotoshopTipAsset, prefix: string,
   }
   if (tip.kind === 'sampled') throw new Error(`photoshop: a sampled tip given a ${asset.kind} image`);
   if (asset.kind === 'erodible' && tip.kind === 'erodible') return { roundness, sampling, ...photoshopErodibleStampTip(tip, asset.image, asset.contact) };
-  if (asset.kind === 'bristle' && tip.kind === 'bristle') return { roundness, sampling, ...photoshopBristleStampTip(tip, asset.image, asset.contact) };
+  if (asset.kind === 'bristle' && tip.kind === 'bristle') return { roundness, sampling, bristles: photoshopBristleStampTip(tip) };
+  if (asset.kind === 'bristle') throw new Error(`photoshop: a ${tip.kind} tip given a bristle asset`);
   if (tip.kind === 'computed' && geometry.diameter <= PHOTOSHOP_PIXEL_TIP_DIAMETER) note('approximated', `${prefix}tip.geometry.diameter`, `a ${geometry.diameter} px computed tip, drawn as Photoshop draws it at its size, rounded up to whole pixels; the stamps its dynamics shrink are scaled from that, not redrawn`);
   if (tip.kind === 'airbrush') return { image: asset.image, roundness, sampling, ...photoshopAirbrushReading(tip).tip };
   return { image: asset.image, roundness, sampling, span: photoshopComputedTipSpan(geometry.diameter, photoshopRoundTipHardness(tip)) };

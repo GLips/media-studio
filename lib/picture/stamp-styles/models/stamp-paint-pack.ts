@@ -118,13 +118,14 @@ function procreateBrush(value: unknown, at: string): ProcreatePackBrush {
   };
 }
 
-/** A tip's asset, which must be the kind its preset tip lands as (photoshopTipAssetKind). */
+/** A tip's asset, which must be the kind its preset tip lands as (photoshopTipAssetKind). A bristle tip has no image. */
 function tipAsset(value: unknown, at: string, tip: PhotoshopPresetTip): PhotoshopTipAsset {
-  const a = record(value, at), image = asset(a.image, `${at}.image`);
+  const a = record(value, at);
   const kind = oneOf(a.kind, `${at}.kind`, tip.kind === 'unsupported' ? [] : [photoshopTipAssetKind(tip)]);
+  if (kind === 'bristle') return { kind };
+  const image = asset(a.image, `${at}.image`);
   if (kind === 'round') return { kind, image };
   if (kind === 'erodible') return { kind, image, contact: asset(a.contact, `${at}.contact`), heightMap: asset(a.heightMap, `${at}.heightMap`) };
-  if (kind === 'bristle') return { kind, image, contact: asset(a.contact, `${at}.contact`) };
   const sample = record(a.sample, `${at}.sample`);
   return { kind, image, sample: { width: count(sample.width, `${at}.sample.width`), height: count(sample.height, `${at}.sample.height`) } };
 }

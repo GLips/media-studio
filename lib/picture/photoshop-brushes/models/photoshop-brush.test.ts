@@ -99,7 +99,7 @@ test("a Mixer Brush preset's wet mixing is noted as not yet painted, and a missi
   // Wet edges pool the built coverage, leaving the flow the tool's.
   assert.equal(brush.flow, 128 / 255);
   assert.deepEqual(brush.wetEdges, PHOTOSHOP_POOLING);
-  assert.ok(brush.tip.span! > 1, "a soft computed tip's image reaches past its diameter");
+  assert.ok('span' in brush.tip && brush.tip.span! > 1, "a soft computed tip's image reaches past its diameter");
   const unsupported = support.filter((note) => note.level === 'unsupported').map((note) => note.setting);
   assert.deepEqual(unsupported, ['tool.wetness, dryness, mix, sampleAllLayers', 'texture.pattern']);
 });
