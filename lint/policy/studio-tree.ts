@@ -93,6 +93,22 @@ const isLibRole = (folder: string): folder is LibRole => LIB_ROLES.some((role) =
 /** lib/'s areas, each a group of features. A new area is declared here, which keeps lib/'s top level a short list. */
 export const LIB_AREAS: readonly string[] = ['timing', 'picture', 'footage', 'output', 'platform'];
 
+/**
+ * lib's foundations, in layers, lowest first. A foundation (`<area>/<feature>`) imports only foundations of its own
+ * layer or one below, never a peer, and any feature imports a foundation without a grant. A feature listed nowhere is
+ * a peer: importing it takes its grant (visibility.json). Areas group features by subject; this is their height.
+ */
+export type LibLayer = { name: string; features: readonly string[] };
+export const LIB_LAYERS: readonly LibLayer[] = [
+  { name: 'platform', features: ['platform/temp', 'platform/git', 'platform/zip', 'platform/photoshop', 'platform/project', 'platform/host', 'platform/web'] },
+];
+
+/** The index in LIB_LAYERS of a foundation's layer, or undefined for a peer. `feature` is `<area>/<feature>`. */
+export function libFoundationLayer(feature: string): number | undefined {
+  const index = LIB_LAYERS.findIndex((layer) => layer.features.includes(feature));
+  return index < 0 ? undefined : index;
+}
+
 const ROOT_ROLES: Record<string, 'timeline' | 'video' | 'stills' | 'brand' | 'capture' | 'project'> = {
   'timeline.ts': 'timeline', 'video.tsx': 'video', 'stills.tsx': 'stills', 'brand.ts': 'brand', 'capture.ts': 'capture', 'project.ts': 'project',
 };

@@ -76,7 +76,8 @@ All TypeScript: quality rules extended to the whole repo by vid-107.
 | doc-budgets | structural | each doc in docs/doc-budgets.manifest.json stays under its word ceiling |
 | barrel-discoverability | structural | a barrel names what it exports |
 | test-file-mirror (advisory) | structural | a spec sits beside the module it's named for |
-| feature-visibility | structural | a feature imported from another feature grants it, with a reason, in its visibility.json (one finding per ungranted pair) |
+| feature-layers | structural | a lib foundation (`LIB_LAYERS`) imports only foundations of its own layer or a lower one |
+| feature-visibility | structural | a feature imported from another feature grants it, with a reason, in its visibility.json (one finding per ungranted pair); a foundation needs no grant and keeps no grant file |
 | feature-cycles | structural | no feature imports one that imports it back (one finding per import inside a cycle) |
 | no-test-imports | structural | only a spec imports a spec |
 | oxlint's built-ins | oxlint | the correctness, suspicious and perf categories, type-aware `typescript/*`, sonarjs duplication, `import/*` (oxlint.config.ts). Off: `typescript/no-unsafe-type-assertion`, whose sites require-safety-comment governs with an escape it lacks; `react/no-array-index-key` outside web/, as a Remotion frame renders from scratch and never reorders a stateful list |

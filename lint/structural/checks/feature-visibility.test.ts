@@ -55,6 +55,16 @@ test('a grant outliving its import, a grant without a reason and a grant file ou
   ]);
 });
 
+test('an import of a foundation needs no grant, and a foundation keeps no grant file', () => {
+  const findings = runCheckOnFiles('feature-visibility', {
+    'package.json': PACKAGE,
+    'lib/platform/temp/engine/studio-temp.ts': 'export const temp = 1;\n',
+    'lib/platform/temp/visibility.json': JSON.stringify({ 'lib/picture/paint': 'makes its folders there' }),
+    'lib/picture/paint/models/paint.ts': "import { temp } from '#lib/platform/temp/engine/studio-temp.ts';\n",
+  });
+  assert.deepEqual(caught(findings), ['lib/platform/temp/visibility.json:foundation']);
+});
+
 test('an import into or out of a feature held out until vid-108 lands needs no grant', () => {
   const findings = runCheckOnFiles('feature-visibility', {
     'package.json': PACKAGE,

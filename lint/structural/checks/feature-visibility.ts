@@ -4,13 +4,14 @@
 // needs a grant in the importee's `visibility.json`: `{ "<importer folder>":
 // "<why>" }`, so a feature lists its dependants and a new one is an edit there.
 // `lib/api.ts`, projects, cli/, harness/ and the web app consume lib rather than
-// peer with it, so need no grant; what they may reach is import-policy's.
+// peer with it, so need no grant; what they may reach is import-policy's. Nor
+// does a lib foundation (LIB_LAYERS), which keeps no grant file.
 //
 // One finding per ungranted pair, filed on the grant file and keyed by the
-// importer: a grant covers the pair, so another file of it adds no coupling to
-// review. A grant outliving its last import is a finding: the coupling could
+// importer. A grant outliving its last import is a finding: the coupling could
 // return unreviewed.
 
+import { libFoundationLayer } from '../../policy/studio-tree.ts';
 import type { Finding, StructuralCheck } from '../check-context.ts';
 import { crossFeatureEdges, studioFeatureOf } from './feature-edges.ts';
 
@@ -30,7 +31,9 @@ export const featureVisibilityCheck: StructuralCheck = {
 
     for (const [folder, file] of grantFiles) {
       const path = `${folder}/${GRANT_FILE}`;
-      if (!features.has(folder)) {
+      if (isFoundation(folder)) {
+        findings.push({ check: ID, path, line: 1, key: 'foundation', message: `${folder} is a foundation (LIB_LAYERS), which any feature imports without a grant: delete its ${GRANT_FILE}` });
+      } else if (!features.has(folder)) {
         findings.push({ check: ID, path, line: 1, key: 'no-feature', message: `${folder} isn't a feature, so its ${GRANT_FILE} grants nothing: move it to the feature it's for, or delete it` });
       } else if (file.kind === 'malformed') {
         findings.push({ check: ID, path, line: 1, key: 'unreadable', message: `unreadable: ${file.reason}. Until it parses, no import of ${folder} is granted` });
@@ -40,7 +43,7 @@ export const featureVisibilityCheck: StructuralCheck = {
     const used = new Set<string>();
     const reported = new Set<string>();
     for (const { importer, importee, sameTree, edge } of crossFeatureEdges(context)) {
-      if (!sameTree) continue;
+      if (!sameTree || isFoundation(importee)) continue;
       used.add(`${importer}\0${importee}`);
       const file = grantFiles.get(importee);
       if (file?.kind === 'malformed') continue;
@@ -55,7 +58,7 @@ export const featureVisibilityCheck: StructuralCheck = {
     }
 
     for (const [folder, file] of grantFiles) {
-      if (file.kind !== 'grants' || !features.has(folder)) continue;
+      if (file.kind !== 'grants' || !features.has(folder) || isFoundation(folder)) continue;
       for (const importer of file.grants.keys()) {
         if (used.has(`${importer}\0${folder}`)) continue;
         findings.push({
@@ -69,6 +72,8 @@ export const featureVisibilityCheck: StructuralCheck = {
     return findings;
   },
 };
+
+const isFoundation = (folder: string) => folder.startsWith('lib/') && libFoundationLayer(folder.slice(4)) !== undefined;
 
 function parseGrantFile(text: string): GrantFile {
   let parsed: unknown;

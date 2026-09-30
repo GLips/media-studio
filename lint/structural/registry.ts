@@ -8,6 +8,7 @@ import { barrelDiscoverabilityCheck } from './checks/barrel-discoverability.ts';
 import { declaredTreeCheck } from './checks/declared-tree.ts';
 import { docBudgetsCheck } from './checks/doc-budgets.ts';
 import { featureCyclesCheck } from './checks/feature-cycles.ts';
+import { featureLayersCheck } from './checks/feature-layers.ts';
 import { featureVisibilityCheck } from './checks/feature-visibility.ts';
 import { fileSizeCheck } from './checks/file-size.ts';
 import { testFileMirrorCheck } from './checks/test-file-mirror.ts';
@@ -59,6 +60,7 @@ export const STRUCTURAL_CHECKS: readonly StructuralCheck[] = [
   testFileMirrorCheck,
   featureVisibilityCheck,
   featureCyclesCheck,
+  featureLayersCheck,
   typedTreeCheck,
   noOpaqueRecordCheck,
   noWidenThenAssertCheck,

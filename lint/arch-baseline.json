@@ -1109,31 +1109,6 @@
       "missing:lib/picture/kit": 1,
       "missing:lib/picture/reel": 1
     },
-    "lib/platform/git/visibility.json": {
-      "missing:lib/platform/project": 1
-    },
-    "lib/platform/host/visibility.json": {
-      "missing:lib/footage/capture": 1,
-      "missing:lib/output/render": 1,
-      "missing:lib/timing/sound": 1
-    },
-    "lib/platform/project/visibility.json": {
-      "missing:lib/footage/capture": 1,
-      "missing:lib/output/render": 1,
-      "missing:lib/output/review": 1,
-      "missing:lib/platform/host": 1,
-      "missing:lib/platform/web": 1,
-      "missing:lib/timing/sound": 1
-    },
-    "lib/platform/temp/visibility.json": {
-      "missing:lib/footage/generation": 1,
-      "missing:lib/output/look": 1,
-      "missing:lib/output/render": 1,
-      "missing:lib/picture/brand": 1,
-      "missing:lib/picture/reel": 1,
-      "missing:lib/platform/project": 1,
-      "missing:lib/timing/voice": 1
-    },
     "lib/timing/music/visibility.json": {
       "missing:lib/picture/reel": 1
     },
