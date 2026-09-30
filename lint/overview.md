@@ -79,7 +79,7 @@ All TypeScript: quality rules extended to the whole repo by vid-107.
 | feature-visibility | structural | a feature imported from another feature grants it, with a reason, in its visibility.json (one finding per ungranted pair) |
 | feature-cycles | structural | no feature imports one that imports it back (one finding per import inside a cycle) |
 | no-test-imports | structural | only a spec imports a spec |
-| oxlint's built-ins | oxlint | the correctness, suspicious and perf categories, type-aware `typescript/*`, sonarjs duplication, `import/*` (oxlint.config.ts) |
+| oxlint's built-ins | oxlint | the correctness, suspicious and perf categories, type-aware `typescript/*`, sonarjs duplication, `import/*` (oxlint.config.ts). Off: `typescript/no-unsafe-type-assertion`, whose sites require-safety-comment governs with an escape it lacks; `react/no-array-index-key` outside web/, as a Remotion frame renders from scratch and never reorders a stateful list |
 
 Web app: rules whose subject only the web app has.
 

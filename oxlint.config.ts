@@ -44,6 +44,11 @@ export default defineConfig({
 
   rules: {
     'arch/require-safety-comment': 'error',
+    // Off, as arch/require-safety-comment governs the same sites: an assertion is allowed when a SAFETY comment
+    // names its invariant, which this rule, with no such escape, would refuse all the same.
+    'typescript/no-unsafe-type-assertion': 'off',
+    // Keys by index go wrong only when a stateful list reorders; a Remotion frame renders from scratch. On in web/.
+    'react/no-array-index-key': 'off',
     'arch/no-chained-type-assertions': 'error',
     'arch/no-type-argument-assertion': 'error',
     'arch/no-reflect-access': 'error',
@@ -122,6 +127,7 @@ export default defineConfig({
         'no-console': 'off',
       },
     },
+    { files: ['web/**'], rules: { 'react/no-array-index-key': 'error' } },
     { files: [...TERMINAL_PROGRAM_GLOBS], rules: { 'no-console': 'off' } },
     { files: [...DEFAULT_EXPORT_MODULE_GLOBS], rules: { 'import/no-default-export': 'off' } },
   ],
