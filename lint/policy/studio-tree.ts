@@ -51,10 +51,10 @@ export type StudioPosition =
    */
   | { kind: 'harness' }
   /**
-   * The web app (web/). `web-server` is a `.server` module in web/src/infrastructure/, the app's one door into
-   * lib's engine code; everything else in web/ is `web-client`, since TanStack Start may put it in a browser chunk.
+   * The web app (web/src/). `web-server` is a `.server` module in web/src/infrastructure/, the app's door into
+   * lib's engine code; everything else is `web-client`, since TanStack Start may put it in a browser chunk.
    */
-  | { kind: 'web-server' | 'web-client' }
+  | ({ kind: 'web-server' | 'web-client' } & WebPlace)
   | { kind: 'brand-kit'; kit: string }
   /** A private stamp-paint style's source, `work/styles/<style>/` (docs/private-styles.md); a project names the ones it uses. */
   | { kind: 'style'; style: string }
@@ -66,6 +66,31 @@ export type StudioPosition =
   /** Deliberately ungoverned (§4): `scratch/`, `node_modules/`, `skills/`. */
   | { kind: 'ungoverned' }
   | { kind: 'undeclared' };
+
+/**
+ * Where a file sits in web/src/. A feature (`features/<f>/`) is reached from outside through its barrel
+ * (`index.ts`) and holds layers, highest first in WEB_FEATURE_LAYERS: a layer imports only down the list.
+ */
+export type WebPlace =
+  | { place: 'route' | 'shared' | 'shared-ui' | 'infrastructure' | 'entry' }
+  /** `routeTree.gen.ts`, TanStack Router's generated route tree: exempt from every check. */
+  | { place: 'generated' }
+  | { place: 'feature'; feature: string; layer: WebFeatureLayer | 'barrel' };
+
+export type WebFeatureLayer = 'ui' | 'controllers';
+/** Highest first: `ui` renders what `controllers` fetch and validate, and never the reverse. */
+export const WEB_FEATURE_LAYERS: readonly WebFeatureLayer[] = ['ui', 'controllers'];
+const isWebFeatureLayer = (folder: string): folder is WebFeatureLayer => WEB_FEATURE_LAYERS.some((layer) => layer === folder);
+const WEB_ENTRIES = new Set(['start.ts', 'router.tsx']);
+/** A stylesheet at src/'s top (the app's global styles, which the root route links) is shared, like shared/. */
+const STYLESHEET = /\.css$/;
+
+/** The one web module that imports lib's engine code; the app reaches the engine only through what it exports. */
+export const WEB_ENGINE_DOOR = 'web/src/infrastructure/studio-engine.server.ts';
+/** The web app's StyleX token source: its scales are what every other module names instead of a raw value. */
+export const WEB_THEME_MODULE = 'web/src/shared/ui/theme.stylex.ts';
+/** Every shadow the web app draws, by name: the one module allowed to write one. */
+export const WEB_SHADOW_MODULE = 'web/src/shared/ui/shadows.ts';
 
 export type LibRole = 'models' | 'studio' | 'engine';
 const LIB_ROLES: readonly LibRole[] = ['models', 'studio', 'engine'];
@@ -112,7 +137,9 @@ export function classifyStudioPath(path: string, shared: DeclaredShared): Studio
   if (top === 'harness') return { kind: 'harness' };
   if (top === 'web') {
     if (parts.length === 2 && TOOL_CONFIG.test(second)) return { kind: 'root-config' };
-    return WEB_SERVER_MODULE.test(path) ? { kind: 'web-server' } : { kind: 'web-client' };
+    const place = second === 'src' ? webPlace(parts.slice(2)) : undefined;
+    if (!place) return { kind: 'undeclared' };
+    return { kind: WEB_SERVER_MODULE.test(path) ? 'web-server' : 'web-client', ...place };
   }
   if (top === STUDIO_WORKSPACE_MOUNT) {
     const [, , name, ...inside] = parts;
@@ -121,6 +148,22 @@ export function classifyStudioPath(path: string, shared: DeclaredShared): Studio
     if (second === 'projects' && inside.length) return { kind: 'project', project: name, ...projectRole(inside, shared[name] ?? []) };
   }
   return { kind: 'undeclared' };
+}
+
+/** A web/src/ path's place, from inside src/; undefined when no place names it. */
+function webPlace(inside: string[]): WebPlace | undefined {
+  const [first, second, third] = inside;
+  if (inside.length === 1) {
+    if (first === 'routeTree.gen.ts') return { place: 'generated' };
+    if (STYLESHEET.test(first)) return { place: 'shared' };
+    return WEB_ENTRIES.has(first) ? { place: 'entry' } : undefined;
+  }
+  if (first === 'routes') return { place: 'route' };
+  if (first === 'infrastructure') return { place: 'infrastructure' };
+  if (first === 'shared') return second === 'ui' && inside.length > 2 ? { place: 'shared-ui' } : { place: 'shared' };
+  if (first !== 'features' || inside.length < 3) return undefined;
+  if (inside.length === 3) return third === 'index.ts' ? { place: 'feature', feature: second, layer: 'barrel' } : undefined;
+  return isWebFeatureLayer(third) ? { place: 'feature', feature: second, layer: third } : undefined;
 }
 
 function projectRole(inside: string[], shared: readonly string[]): ProjectRole {

@@ -1,9 +1,8 @@
 #!/bin/sh
 # The pre-commit gate: check:arch over what this commit holds, then the typecheck and the tests of what a clean clone
-# holds, then the web app's own gate: its typecheck, the lint catalog's programs, oxlint over web/src and the catalog's
-# structural tier. Those last four read the working tree, not the index. Each runs on its own, so one failure doesn't
-# hide the next, and any failure refuses the commit. `npm install` switches it on (package.json's prepare sets
-# core.hooksPath to .githooks, for every worktree of the clone).
+# holds, then the web app's typecheck and oxlint over web/src. Those last two read the working tree, not the index.
+# Each runs on its own, so one failure doesn't hide the next, and any failure refuses the commit. `npm install`
+# switches it on (package.json's prepare sets core.hooksPath to .githooks, for every worktree of the clone).
 #
 # Not gated: a project's composition, timeline and retime test, which import its gitignored recordings and captures.
 # `npm run typecheck` and `npm test` cover them in a checkout that has those; `studio new`'s test covers each new kind.
@@ -18,9 +17,7 @@ for name in $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$name"
 
 npm run -s typecheck:gate || failed="$failed typecheck"
 npm run -s typecheck:web || failed="$failed typecheck:web"
-npm run -s typecheck:lint || failed="$failed typecheck:lint"
 npm run -s lint || failed="$failed lint"
-npm run -s check:structural || failed="$failed check:structural"
 log=$(mktemp)
 npm run -s test:gate > "$log" 2>&1 || { tail -n 60 "$log"; failed="$failed test"; }
 rm -f "$log"

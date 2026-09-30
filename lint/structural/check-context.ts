@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { isolatedGitEnv } from '#lib/platform/git/engine/fixture-git.ts';
 import { classifyStudioPath, STUDIO_WORKSPACE_MOUNT, type StudioPosition } from '../policy/studio-tree.ts';
 import { readDeclaredShared, readDeclaredStyles, type DeclarationProblem, type DeclaredStyles } from './project-declaration.ts';
+import { createTypeCheckerHost, tsconfigFor, type SourceFile as TypedSourceFile, type TypeCheckerHost, type TypedProgram } from './type-checker.ts';
 import { loadSourceTree, walkAst, type AstNode, type CandidateSnapshot, type ImportTarget, type MountedSnapshot, type ScannedImport, type SourceFile, type SourceTree } from './source-tree.ts';
 
 export type Finding = {
@@ -31,6 +32,8 @@ export type StructuralCheck = { id: string; advisory?: true; run: (context: Chec
 export type ImportEdge = { from: SourceFile; scanned: ScannedImport; target: ImportTarget; line: number };
 
 export type CheckContext = {
+  /** The studio's checkout, absolute: where the snapshot's paths resolve for the compiler. */
+  root: string;
   tree: SourceTree;
   /** Where a path sits, each project's `shared` (its project.ts) applied: every check reads one classification. */
   positionOf: (path: string) => StudioPosition;
@@ -51,6 +54,13 @@ export type CheckContext = {
   originsOf: (path: string, name: string) => readonly { path: string; name: string }[];
   /** Every name a module offers, its star exports' included. */
   exportedNames: (path: string) => readonly string[];
+  /**
+   * The program that compiles `path` (tsconfigFor its position) and its parse there, undefined when that program
+   * doesn't hold it. The compiler boots on the first call, so a run no type check reaches never starts one.
+   */
+  typed: (path: string) => { program: TypedProgram; file: TypedSourceFile | undefined };
+  /** Ends the compiler, if a check started one. */
+  dispose: () => void;
 };
 
 /**
@@ -82,6 +92,7 @@ export function studioScope(path: string): 'governed' | 'exempt' | 'undeclared' 
   if (position.kind === 'undeclared') return 'undeclared';
   if (position.kind === 'ungoverned' || position.kind === 'lint') return 'exempt';
   if (position.kind === 'project' && position.role === 'generated') return 'exempt';
+  if ((position.kind === 'web-client' || position.kind === 'web-server') && position.place === 'generated') return 'exempt';
   return 'governed';
 }
 
@@ -98,12 +109,12 @@ export function createCheckContext(root: string, target: CheckTarget): CheckCont
     // `work` itself is the workspace added as a gitlink.
     const tracked = [...tree.paths].find((path) => path === STUDIO_WORKSPACE_MOUNT || path.startsWith(`${STUDIO_WORKSPACE_MOUNT}/`));
     if (tracked) throw new Error(`the studio tracks ${tracked}, in work/, which is your workspace's repository: untrack it (git rm --cached)`);
-    return contextFor(tree);
+    return contextFor(tree, root);
   }
   const workspace: MountedSnapshot = { root: join(root, STUDIO_WORKSPACE_MOUNT), mount: STUDIO_WORKSPACE_MOUNT, snapshot: { kind: 'index' }, gitEnv: process.env };
   assertOwnWorkspaceRepository(workspace);
   const studio: MountedSnapshot = { root, mount: '', snapshot: { kind: 'index' }, gitEnv: isolatedGitEnv() };
-  return contextFor(loadSourceTree({ repos: [studio, workspace], scope: studioScope }));
+  return contextFor(loadSourceTree({ repos: [studio, workspace], scope: studioScope }), root);
 }
 
 /**
@@ -120,7 +131,7 @@ function assertOwnWorkspaceRepository({ root, gitEnv }: MountedSnapshot): void {
   if (read !== own) throw new Error(`git reads ${read} for ${root}, not its own ${own}: this process's GIT_DIR names another repository`);
 }
 
-export function contextFor(tree: SourceTree): CheckContext {
+export function contextFor(tree: SourceTree, root: string): CheckContext {
   const declarations = tree.sources.flatMap((file) => {
     const position = classifyStudioPath(file.path, {});
     return position.kind === 'project' && position.role === 'project' ? [{ project: position.project, file }] : [];
@@ -175,10 +186,19 @@ export function contextFor(tree: SourceTree): CheckContext {
     });
     return [...new Set([...own, ...starred])];
   };
+  let types: TypeCheckerHost | undefined;
+  const positionOf = (path: string) => classifyStudioPath(path, declaredShared);
   return {
+    root,
     tree,
+    typed: (path) => {
+      types ??= createTypeCheckerHost(root, tree);
+      const program = types.programFor(tsconfigFor(positionOf(path)));
+      return { program, file: program.sourceFile(path) };
+    },
+    dispose: () => types?.dispose(),
     exportedNames: (path) => exportedNames(path),
-    positionOf: (path) => classifyStudioPath(path, declaredShared),
+    positionOf,
     sharedDeclarationProblems,
     declaredStyles,
     styleDeclarationProblems,

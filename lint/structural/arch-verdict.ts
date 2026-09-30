@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { STUDIO_WORKSPACE_MOUNT } from '../policy/studio-tree.ts';
 import { compareToBaseline, type Baseline, type BaselineComparison } from './baseline.ts';
 import { createCheckContext, type CheckContext, type CheckTarget, type Finding } from './check-context.ts';
-import { STRUCTURAL_CHECKS } from './registry.ts';
+import { ROLLING_OUT, STRUCTURAL_CHECKS } from './registry.ts';
 
 export type ArchVerdict = BaselineComparison & {
   context: CheckContext;
@@ -26,16 +26,26 @@ export type ArchVerdict = BaselineComparison & {
 
 export function judgeArchitecture(root: string, target: CheckTarget): ArchVerdict {
   const context = createCheckContext(root, target);
-  const judged = (finding: Finding) => finding.path.startsWith(`${STUDIO_WORKSPACE_MOUNT}/`) === (target.scope === 'workspace');
+  const judged = (finding: Finding) => finding.path.startsWith(`${STUDIO_WORKSPACE_MOUNT}/`) === (target.scope === 'workspace')
+    && (!ROLLING_OUT.has(finding.check) || finding.path.startsWith('web/'));
   const findings: Finding[] = [];
   const advisories: Finding[] = [];
   const crashed: string[] = [];
-  for (const check of STRUCTURAL_CHECKS) {
-    try {
-      (check.advisory ? advisories : findings).push(...check.run(context).filter(judged));
-    } catch (error) {
-      crashed.push(`${check.id}: ${error instanceof Error ? error.stack : String(error)}`);
+  try {
+    for (const check of STRUCTURAL_CHECKS) {
+      const rollingOut = ROLLING_OUT.has(check.id);
+      // A check not yet switched on keeps only web findings, which the workspace never judges; nor may its crash block.
+      if (rollingOut && target.scope === 'workspace') continue;
+      try {
+        (check.advisory ? advisories : findings).push(...check.run(context).filter(judged));
+      } catch (error) {
+        const stack = error instanceof Error ? error.stack ?? error.message : String(error);
+        if (rollingOut) advisories.push({ check: check.id, path: '(crashed)', line: 1, key: 'crash', message: stack });
+        else crashed.push(`${check.id}: ${stack}`);
+      }
     }
+  } finally {
+    context.dispose();
   }
   const baselineFile = target.scope === 'workspace' ? `${STUDIO_WORKSPACE_MOUNT}/arch-baseline.json` : 'lint/arch-baseline.json';
   // A workspace with no baseline staged has no finding excused.

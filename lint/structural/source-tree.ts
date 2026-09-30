@@ -159,7 +159,7 @@ export function parseSourceFile(path: string, text: string): SourceFile {
  * Every import a file names: static imports and re-exports off the module record (a re-export keeps its edge), and
  * the forms the record doesn't carry (`import()`, `require()`, `import('…')` in a type, `import x = require()`,
  * `export {} from`). A type-only import is kept and marked: it couples two ends without executing, which a purity
- * check must tell apart. The forms follow the enforced-architecture catalog's `import-scanning.ts`.
+ * check must tell apart.
  */
 function scanModule(module: ReturnType<typeof parseSync>['module'], program: AstNode) {
   const nameOf = (name: { kind: string; name: string | null }) =>
@@ -292,6 +292,8 @@ function resolveImportTarget(
   paths: ReadonlySet<string>, aliases: Record<string, string>, fromPath: string, specifier: string, names: readonly string[] | '*',
 ): ImportTarget {
   if (specifier === '') return { kind: 'computed' };
+  // A bundler query (`./app.css?url`, `./x.ts?raw`) loads the same file, so it lands where the bare path does.
+  specifier = specifier.replace(/\?.*$/, '');
   if (specifier.startsWith('/')) return { kind: 'outside', specifier };
   if (specifier.startsWith('node:') || BUILTINS.has(specifier.split('/')[0])) return { kind: 'builtin', name: specifier };
   let modulePath: string | undefined;

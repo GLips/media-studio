@@ -80,7 +80,7 @@ test('an import into another feature uses #lib/*; a relative path within the fea
   ]);
 });
 
-test('web client code reaches engine code only through a .server door in infrastructure/, and lib/ never imports web/', () => {
+test('web code reaches engine code only through the door, and lib/ never imports web/', () => {
   const findings = runCheckOnFiles('import-policy', {
     'package.json': JSON.stringify({ imports: { '#lib/*': './lib/*', '#web/*': './web/src/*' } }),
     'lib/output/review/engine/review-artifact.ts': 'export const readReviewArtifact = 1;\n',
@@ -90,11 +90,15 @@ test('web client code reaches engine code only through a .server door in infrast
       // Adversarial: the same reach spelled relatively, and a type-only one, which still names the module.
       "import { readReviewArtifact as again } from '../../../../../lib/output/review/engine/review-artifact.ts';",
       "import type { readReviewArtifact as T } from '#lib/output/review/engine/review-artifact.ts';",
+      // Adversarial: a bundler query loads the same module.
+      "import source from '#lib/output/review/engine/review-artifact.ts?raw';",
+    ].join('\n'),
+    'web/src/features/review/controllers/review-queries.server.ts': [
+      // Adversarial: `.server` outside infrastructure/ is not a door.
+      "import { readReviewArtifact } from '#lib/output/review/engine/review-artifact.ts';",
       // Legal neighbour: the door.
       "import { readReviewArtifact as door } from '#web/infrastructure/studio-engine.server.ts';",
     ].join('\n'),
-    // Adversarial: `.server` outside infrastructure/ is not a door.
-    'web/src/features/review/controllers/review-queries.server.ts': "import { readReviewArtifact } from '#lib/output/review/engine/review-artifact.ts';\n",
     'lib/platform/web/engine/serve.ts': "import { door } from '#web/infrastructure/studio-engine.server.ts';\n",
   });
   assert.deepEqual(caught(findings), [
@@ -102,6 +106,7 @@ test('web client code reaches engine code only through a .server door in infrast
     'web/src/features/review/controllers/review-queries.server.ts:#lib/output/review/engine/review-artifact.ts',
     'web/src/features/review/ui/review-screen.tsx:#lib/output/review/engine/review-artifact.ts',
     'web/src/features/review/ui/review-screen.tsx:#lib/output/review/engine/review-artifact.ts',
+    'web/src/features/review/ui/review-screen.tsx:#lib/output/review/engine/review-artifact.ts?raw',
     // Twice: a client reaching engine code, and a feature reached by a relative path.
     'web/src/features/review/ui/review-screen.tsx:../../../../../lib/output/review/engine/review-artifact.ts',
     'web/src/features/review/ui/review-screen.tsx:../../../../../lib/output/review/engine/review-artifact.ts',
@@ -161,5 +166,96 @@ test('a project uses only the styles its project.ts names, public code none, and
     'work/projects/p/scenes/intro.tsx:#styles/ink/style.ts',
     'work/styles/wash/style.ts:#lib/output/render/engine/run.ts',
     'work/styles/wash/style.ts:../../projects/p/timeline.ts',
+  ]);
+});
+
+test('a web feature is entered through its barrel, which announces only its own modules, and its layers import down', () => {
+  const findings = runCheckOnFiles('import-policy', {
+    'package.json': JSON.stringify({ imports: { '#web/*': './web/src/*' } }),
+    'web/src/shared/ui/readout.tsx': 'export const Readout = 1;\n',
+    'web/src/features/review/index.ts': [
+      "export { ReviewScreen } from './ui/review-screen.tsx';",
+      "export { reviewQuery } from './controllers/review-queries.ts';",
+      // Adversarial: a barrel passing on another unit's export.
+      "export { Readout } from '#web/shared/ui/readout.tsx';",
+    ].join('\n'),
+    'web/src/features/review/ui/review-screen.tsx': [
+      // Legal neighbours: a layer below, and a shared primitive.
+      "import { reviewQuery } from '../controllers/review-queries.ts';",
+      "import { Readout } from '#web/shared/ui/readout.tsx';",
+    ].join('\n'),
+    'web/src/features/review/controllers/review-queries.ts': [
+      // A layer above, its own barrel, and a UI primitive.
+      "import { ReviewScreen } from '../ui/review-screen.tsx';",
+      "import { ReviewScreen as again } from '../index.ts';",
+      "import type { Readout } from '#web/shared/ui/readout.tsx';",
+    ].join('\n'),
+    'web/src/features/projects/ui/projects-page.tsx': [
+      // Legal neighbour: another feature through its barrel.
+      "import { ReviewScreen } from '#web/features/review/index.ts';",
+      // Adversarial: the same feature's inner file, relatively.
+      "import { ReviewScreen as inner } from '../../review/ui/review-screen.tsx';",
+    ].join('\n'),
+    'web/src/routes/index.tsx': [
+      "import { ReviewScreen } from '#web/features/review/index.ts';",
+      "import { reviewQuery } from '#web/features/review/controllers/review-queries.ts';",
+    ].join('\n'),
+  });
+  assert.deepEqual(caught(findings), [
+    'web/src/features/projects/ui/projects-page.tsx:../../review/ui/review-screen.tsx',
+    'web/src/features/review/controllers/review-queries.ts:#web/shared/ui/readout.tsx',
+    'web/src/features/review/controllers/review-queries.ts:../index.ts',
+    'web/src/features/review/controllers/review-queries.ts:../ui/review-screen.tsx',
+    'web/src/features/review/index.ts:#web/shared/ui/readout.tsx',
+    'web/src/routes/index.tsx:#web/features/review/controllers/review-queries.ts',
+  ]);
+});
+
+test('each web place imports only below it, and a .server module is reached from a feature\'s controllers only', () => {
+  const findings = runCheckOnFiles('import-policy', {
+    'package.json': JSON.stringify({ imports: { '#web/*': './web/src/*', '#lib/*': './lib/*' } }),
+    'lib/output/review/engine/review-artifact.ts': 'export const readReviewArtifact = 1;\n',
+    'web/src/routeTree.gen.ts': 'export const routeTree = 1;\n',
+    'web/src/features/review/index.ts': "export { ReviewScreen } from './ui/review-screen.tsx';\n",
+    'web/src/features/review/ui/review-screen.tsx': "import { fileResponse } from '#web/infrastructure/media-response.server.ts';\n",
+    // Legal neighbour: a controller calling the door inside its server functions.
+    'web/src/features/review/controllers/review-artifact.ts': "import { readReviewArtifact } from '#web/infrastructure/studio-engine.server.ts';\n",
+    'web/src/infrastructure/studio-engine.server.ts': "export { readReviewArtifact } from '#lib/output/review/engine/review-artifact.ts';\n",
+    'web/src/infrastructure/media-response.server.ts': [
+      "import { ReviewScreen } from '../features/review/index.ts';",
+      "import { Readout } from '#web/shared/ui/readout.tsx';",
+      // Adversarial: a server module that isn't the door, reaching engine code.
+      "import { readReviewArtifact } from '#lib/output/review/engine/review-artifact.ts';",
+    ].join('\n'),
+    'web/src/infrastructure/providers/query-client.ts': 'export const queryClient = 1;\n',
+    'web/src/shared/ui/readout.tsx': [
+      "import { ReviewScreen } from '#web/features/review/index.ts';",
+      "import { queryClient } from '../../infrastructure/providers/query-client.ts';",
+      // Legal neighbour: a sibling primitive.
+      "import { colors } from './theme.stylex.ts';",
+    ].join('\n'),
+    'web/src/shared/ui/theme.stylex.ts': 'export const colors = 1;\n',
+    'web/src/router.tsx': [
+      "import { ReviewScreen } from '#web/features/review/index.ts';",
+      // Legal neighbours: the generated route tree and a client-safe adapter.
+      "import { routeTree } from './routeTree.gen.ts';",
+      "import { queryClient } from '#web/infrastructure/providers/query-client.ts';",
+    ].join('\n'),
+    'web/src/routes/__root.tsx': [
+      "import { getRouter } from '../router.tsx';",
+      // Adversarial: type-only still names the server module.
+      "import type { fileResponse } from '#web/infrastructure/media-response.server.ts';",
+    ].join('\n'),
+  });
+  assert.deepEqual(caught(findings), [
+    'web/src/features/review/ui/review-screen.tsx:#web/infrastructure/media-response.server.ts',
+    'web/src/infrastructure/media-response.server.ts:#lib/output/review/engine/review-artifact.ts',
+    'web/src/infrastructure/media-response.server.ts:#web/shared/ui/readout.tsx',
+    'web/src/infrastructure/media-response.server.ts:../features/review/index.ts',
+    'web/src/router.tsx:#web/features/review/index.ts',
+    'web/src/routes/__root.tsx:#web/infrastructure/media-response.server.ts',
+    'web/src/routes/__root.tsx:../router.tsx',
+    'web/src/shared/ui/readout.tsx:#web/features/review/index.ts',
+    'web/src/shared/ui/readout.tsx:../../infrastructure/providers/query-client.ts',
   ]);
 });

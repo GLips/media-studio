@@ -4,8 +4,8 @@
 // (`lib/<area>/<feature>`) from outside it uses the `#lib/*` alias, never a
 // relative path (lint/rewrite-lib-imports.ts rewrites them); `studio` code
 // never reaches `engine` code, except from a spec, which runs in Node and is
-// never bundled; the web app's client code never reaches `engine` code (only a `.server` module in
-// web/src/infrastructure/ may), and nothing in lib/ imports the web app; a `#`
+// never bundled; nothing in lib/ imports the web app, whose own rows are
+// webEdgeProblems; a `#`
 // alias names a key package.json's `imports` has; no import climbs out of the
 // repo; nothing outside work/ imports into it, since work/ is your own
 // repository and a clean clone has none, and that holds its private painting
@@ -21,7 +21,9 @@
 // only `#studio`, `models` code and its own files) isn't held yet: a project
 // may still import any of lib by `#lib/*`, behind the barrel.
 
-import { libFeatureCrossedTo, STUDIO_WORKSPACE_MOUNT, type StudioPosition } from '../../policy/studio-tree.ts';
+import {
+  libFeatureCrossedTo, STUDIO_WORKSPACE_MOUNT, WEB_ENGINE_DOOR, WEB_FEATURE_LAYERS, type StudioPosition, type WebPlace,
+} from '../../policy/studio-tree.ts';
 import type { Finding, StructuralCheck } from '../check-context.ts';
 
 const ID = 'import-policy';
@@ -64,12 +66,67 @@ export const importPolicyCheck: StructuralCheck = {
         const crossed = edge.scanned.specifier.startsWith('.') ? libFeatureCrossedTo(file.path, target.path) : undefined;
         if (crossed !== undefined) report(`reaches ${crossed} by a relative path; import it through ${crossed === 'lib/api.ts' ? '#studio' : '#lib/*'}`);
         if (from.kind === 'studio' && to.kind === 'engine' && !SPEC_FILE.test(file.path)) report('studio code renders in the browser; engine code is Node');
-        if (from.kind === 'web-client' && to.kind === 'engine') {
-          report('web client code may land in a browser chunk; reach engine code through web/src/infrastructure/studio-engine.server.ts');
-        }
+        if (isWeb(from)) for (const problem of webEdgeProblems(from, to, file.path)) report(problem);
         if (LIB_KINDS.has(from.kind) && (to.kind === 'web-client' || to.kind === 'web-server')) report('lib/ is the studio the web app is built on; it never imports web/');
       }
     }
     return findings;
   },
 };
+
+type WebPosition = Extract<StudioPosition, { kind: 'web-client' | 'web-server' }>;
+const isWeb = (position: StudioPosition): position is WebPosition => position.kind === 'web-client' || position.kind === 'web-server';
+
+/**
+ * The places each web place never imports, and why. One reason per importer: it's what the importer is for that
+ * rules the edge out. Unlisted edges are open, the app's own layers to lib's and to packages included.
+ */
+const WEB_PLACE_DENIALS: Record<WebPlace['place'], { denies: readonly WebPlace['place'][]; why: string }> = {
+  route: { denies: ['entry', 'generated'], why: 'the entries and the route tree mount the routes, so the edge is a cycle' },
+  feature: { denies: ['route', 'entry', 'generated'], why: 'routes mount a feature, and one that knows none of them works under any' },
+  shared: {
+    denies: ['feature', 'route', 'infrastructure', 'shared-ui', 'entry', 'generated'],
+    why: 'everything imports shared/, so it imports none of the app back, and has no screen',
+  },
+  'shared-ui': {
+    denies: ['feature', 'route', 'infrastructure', 'entry', 'generated'],
+    why: 'every screen is written in these primitives, so they know no feature, route or adapter',
+  },
+  infrastructure: {
+    denies: ['feature', 'route', 'shared-ui', 'entry', 'generated'],
+    why: 'an adapter serves the places above it and consumes none of them; it has no screen',
+  },
+  entry: { denies: ['feature'], why: 'the entries wire the app and reach features only through the generated route tree' },
+  generated: { denies: [], why: '' },
+};
+
+/** What's wrong with one import from a web file, by both ends' positions, so every spelling of the edge is judged alike. */
+function webEdgeProblems(from: WebPosition, to: StudioPosition, fromPath: string): string[] {
+  const problems: string[] = [];
+  const ownFeature = from.place === 'feature' && isWeb(to) && to.place === 'feature' && to.feature === from.feature;
+  if (to.kind === 'engine' && fromPath !== WEB_ENGINE_DOOR) {
+    problems.push(`reaches engine code, which only ${WEB_ENGINE_DOOR} imports; call what it exports, from a server function`);
+  }
+  if (from.place === 'feature' && from.layer === 'barrel' && !ownFeature) {
+    problems.push(`feature ${from.feature}'s barrel announces its own modules only; what they need, they import themselves`);
+  }
+  if (!isWeb(to)) return problems;
+  const denial = WEB_PLACE_DENIALS[from.place];
+  if (denial.denies.includes(to.place)) problems.push(`${from.place} imports ${to.place}: ${denial.why}`);
+  // Controllers hold the app's server functions, whose bodies Start's compiler strips from the browser build;
+  // barrel-purity holds what a barrel's chain may carry past them.
+  if (from.kind === 'web-client' && to.kind === 'web-server' && !(from.place === 'feature' && from.layer === 'controllers')) {
+    problems.push('imports a .server module, which may put server code in a browser chunk; only a feature\'s controllers reach one');
+  }
+  if (from.place === 'feature' && from.layer === 'controllers' && to.place === 'shared-ui') {
+    problems.push('controllers fetch and validate; a UI primitive is the ui layer\'s to use');
+  }
+  if (to.place !== 'feature') return problems;
+  if (!ownFeature && to.layer !== 'barrel') problems.push(`reaches past feature ${to.feature}'s barrel; import what its index.ts exports`);
+  if (!ownFeature || from.place !== 'feature' || from.layer === 'barrel') return problems;
+  if (to.layer === 'barrel') problems.push('imports its own feature\'s barrel, which re-exports it back: import the module itself');
+  else if (WEB_FEATURE_LAYERS.indexOf(to.layer) < WEB_FEATURE_LAYERS.indexOf(from.layer)) {
+    problems.push(`${from.layer} imports ${to.layer}, a layer above it; a layer imports only down ${WEB_FEATURE_LAYERS.join(' → ')}`);
+  }
+  return problems;
+}

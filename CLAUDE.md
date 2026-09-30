@@ -23,5 +23,7 @@
   with its helpers in a folder of its name, `video.tsx`, `stills.tsx`.
 - Timing lives in `timeline.ts`. A scene reaches another's moment by its cue, never by importing it. `timeline.ts`
   imports `models` code (`#lib/<area>/<feature>/models/…`), never `#studio`.
-- Lint and the hooks enforce this. Older violations sit in baselines that only shrink: `lint/arch-baseline.json` for
-  the studio, `work/arch-baseline.json` for the workspace.
+- Lint and the hooks enforce this; `lint/overview.md` lists the rules. Every rule reads the layout from
+  `lint/policy/studio-tree.ts`, so a new folder is declared there, and the quality rules cover all TypeScript. Older
+  violations sit in baselines that only shrink: `lint/arch-baseline.json` for the studio, `work/arch-baseline.json`
+  for the workspace.

@@ -23,7 +23,12 @@ export function runCheckOnFiles(checkId: string, files: Record<string, string>):
     }
     runFixtureGit(root, ['add', '-A']);
     const tree = loadSourceTree({ repos: [{ root, mount: '', snapshot: { kind: 'index' }, gitEnv: isolatedGitEnv() }], scope: studioScope });
-    return check.run(contextFor(tree));
+    const context = contextFor(tree, root);
+    try {
+      return check.run(context);
+    } finally {
+      context.dispose();
+    }
   });
 }
 
