@@ -10,8 +10,8 @@
 import * as THREE from 'three';
 import { useStudioFontsReady } from '#lib/picture/type/studio/fonts.ts';
 import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
-import { pieceMotionAttrs } from '#lib/output/look/studio/motion-tag.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
+import { pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { clamp } from '#lib/picture/motion/models/motion.ts';
 import { ThreeStage, softboxEnvironment, type ThreeBloom, type ThreeEnvironment, type ThreeFrame, type ThreeLens, type ThreeSample } from '#lib/picture/film/studio/three-stage.tsx';
 import { columnFieldHeight, columnFieldPoint, type ColumnCameraState, type ColumnCell, type ColumnFieldLights, type ColumnFieldSpec, type ColumnLabel, type ColumnLight } from '../models/column-field.ts';

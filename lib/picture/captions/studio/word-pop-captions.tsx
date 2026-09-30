@@ -3,7 +3,7 @@
 // pages by the readable rule.
 
 import { backOutEase, motionCurves, seg } from '#lib/picture/motion/models/motion.ts';
-import { layoutGlyphLine, type GlyphLineSlot } from '#lib/picture/reel/models/ticker-layout.ts';
+import { layoutGlyphLine, type GlyphLineSlot } from '#lib/picture/type/models/glyph-layout.ts';
 import { DISPLAY_FONT, MONO_ADVANCE_EM, MONO_FONT } from '#lib/picture/type/models/faces.ts';
 import { useStudioFontsReady } from '#lib/picture/type/studio/fonts.ts';
 import type { CaptionBand, CaptionBandRule } from '../models/caption-band.ts';

@@ -7,7 +7,7 @@
 //
 // A note written on another render moves to its moment's frame on this one (placeReviewNotes), so a retime doesn't
 // leave it on a frame that now shows something else. review-moment.ts says what a moment is.
-import type { MotionTracks } from '#lib/picture/motion/models/motion-tracks.ts';
+import type { MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
 import type { SceneRung } from '#lib/timing/timeline/models/scene-rung.ts';
 import { formatReviewMomentPlace, placeReviewMoment, reviewMomentAt, type ReviewMoment, type ReviewTiming } from './review-moment.ts';
 

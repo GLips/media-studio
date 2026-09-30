@@ -10,69 +10,25 @@ import { AbsoluteFill, Artifact, Sequence, useCurrentFrame, useVideoConfig, type
 import { footage as footageList } from '@footage';
 import sfxCues from '@sfx-cues';
 import { levelGain, musicBedGainAt, VOICE_LUFS } from '#lib/timing/sound/models/mix.ts';
-import { previsRequestFor, previsSpan, type PrevisFootage, type PrevisRequest } from '#lib/footage/previs/studio/previs.ts';
+import { previsRequestFor, previsSpan, type PrevisFootage } from '#lib/footage/previs/studio/previs.ts';
+import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
+import type { BlockoutSoloProps, VideoProps } from '#lib/picture/video/models/composition-props.ts';
 import { PrevisFootagePlayer } from '#lib/footage/previs/studio/previs.tsx';
-import { unmeasuredAttrs } from '#lib/output/look/studio/motion-tag.ts';
-import { FrameProbe } from '#lib/output/look/studio/probe.tsx';
-import { FrameProfiler } from '#lib/output/render/studio/frame-profiler.tsx';
-import type { SceneRung } from '#lib/timing/timeline/models/scene-rung.ts';
-import { SceneContext } from './scene.tsx';
+import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
+import { FrameProbe } from '#lib/picture/measurement/studio/probe.tsx';
+import { FrameProfiler } from '#lib/picture/profiling/studio/frame-profiler.tsx';
+import { SceneContext } from '#lib/picture/video/studio/scene.tsx';
 import { randomSeedFromKey } from '#lib/picture/motion/models/random.ts';
 import { Sfx, SfxCueListAudio, SfxCueListPlaying } from '#lib/timing/sound/studio/sfx.tsx';
 import { sceneClockAt, sceneTimes, scenesAtFrame } from '#lib/timing/timeline/models/video-layout.ts';
-import { laidVideoOf, videoFormatOf, type LaidScene, type LaidVideo, type VideoDef } from './timeline.ts';
+import { laidVideoOf, videoFormatOf, type LaidScene, type LaidVideo, type VideoDef } from '#lib/picture/video/studio/video.ts';
 import { BurnedCaptions, burnedCaptionPages, CaptionBandContext, sidecarCaptionPages } from '#lib/picture/captions/studio/caption-style.tsx';
 import { captionsToSrt, captionsToVtt } from '#lib/picture/captions/models/caption-sidecar.ts';
 import { captionTrackOfVoice, type CaptionTrack } from '#lib/picture/captions/models/caption-track.ts';
 import { pillCaptions } from '#lib/picture/captions/studio/pill-captions.tsx';
 import type { CaptionStyle } from '#lib/picture/captions/studio/caption-style.tsx';
-import { VideoTransparentContext } from './video-format.ts';
+import { VideoTransparentContext } from '#lib/picture/frame/studio/video-format.ts';
 
-export type VideoProps = {
-  /** Burn captions in. */
-  captions: boolean;
-  /** Measure every frame for the framing check and motion tracks (see probe.tsx). */
-  probe: boolean;
-  /** Previs scenes show their blockouts, even where generated footage exists (see previs.tsx). */
-  blockouts: boolean;
-  /** Play the project's cue list (sfx/cues.json) whether or not the video does (`sfxCueList`), to audition it. */
-  auditionSfxCueList?: boolean;
-  /** Time the work drawing code offers and log it, for `studio profile` (see frame-profiler.tsx). */
-  profile?: boolean;
-};
-
-/** What lib/output/render/engine/render-pipeline.ts needs about the timeline (for the sidecar and reports), emitted once as an artifact. */
-export type TimelineReport = {
-  title: string;
-  fps: number;
-  width: number;
-  height: number;
-  /** Whether it renders transparent (VideoFormat.transparent), which delivers it as WebM and HEVC .mov with alpha. */
-  transparent: boolean;
-  duration: number;
-  /** The composition's length, which can run a little past `duration` (see VideoLayout.frames). */
-  durationInFrames: number;
-  /** `rung` only where the scene's binding declares one. */
-  /**
-   * `from` and `to` are its cut and the next one's, in frames, and `visible` the frames it's on screen, its crossfades
-   * included; `start` and `dur` are its cuts in seconds.
-   */
-  scenes: { id: string; from: number; to: number; visible: { from: number; to: number }; start: number; dur: number; note?: string; rung?: SceneRung; lines: readonly string[]; previs?: PrevisRequest }[];
-  /** Each voice line, with every word as it's spoken (spread by length over an estimated line), in video seconds. */
-  cues: { id: string; start: number; end: number; text: string; voiced: boolean; words: { text: string; start: number; end: number }[] }[];
-  /** The captions as .srt and .vtt, paged by the style's sidecar rule; null for a video with nothing to caption. */
-  captions: { srt: string; vtt: string } | null;
-  /** Where one scene dissolves into the next, in video seconds; a hard cut has none. */
-  crossfades: { from: string; to: string; start: number; end: number }[];
-  /** Each scene's `expect`, in video seconds. */
-  expectations: TimelineExpectation[];
-  /** Whether this render plays the project's cue list (see lib/timing/sound/models/cues.ts), which plays its clicks, keys and accents. */
-  sfxCueList: boolean;
-  /** Each of `VideoDef.sounds`, landing `at` video seconds, with the take it plays's recipe (`impact`, `whip`…). */
-  sounds: { id: string; at: number; sound: string }[];
-};
-/** A scene's `expect` (see SceneExpectation), its `during` in video seconds. */
-export type TimelineExpectation = { scene: string; start: number; end: number } & ({ see: string } | { hold: string; for: number; within?: number });
 export const TIMELINE_ARTIFACT = 'timeline.json';
 
 // Here, not in timeline.ts, which plain Node loads: a style is React.
@@ -204,8 +160,6 @@ function SceneLayer({ scene, t, alpha, transparent = false, footage }: { scene: 
     </AbsoluteFill>
   );
 }
-
-export type BlockoutSoloProps = { scene: string };
 
 /** One previs scene's blockout alone over its previsSpan, silent: the reference video `studio gen video` sends. */
 export function BlockoutSolo({ video, scene: sceneId }: BlockoutSoloProps & { video: VideoDef }) {

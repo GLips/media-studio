@@ -1,0 +1,4 @@
+{
+  "lib/footage/previs": "A retimed previs pins generated footage to words the way a take is pinned (checkSourcePins, pinnedSourceTime).",
+  "lib/picture/kit": "The kit's product windows play captures and follow a take's cursor."
+}

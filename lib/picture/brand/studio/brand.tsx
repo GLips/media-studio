@@ -4,11 +4,11 @@
 
 import { Img } from 'remotion';
 import type { Brand, BrandFace } from '../models/brand.ts';
-import { contrastRatio } from '#lib/output/stills/models/still-check.ts';
-import type { Rect } from '#lib/picture/camera/models/camera.ts';
+import { contrastRatio } from '#lib/picture/color/models/contrast.ts';
+import type { Rect } from '#lib/picture/frame/models/geometry.ts';
 import { loadStudioFaces } from '#lib/picture/type/studio/fonts.ts';
 import { type StudioFace } from '#lib/picture/type/models/faces.ts';
-import type { StillImage } from '#lib/output/stills/studio/stills.tsx';
+import type { StillImage } from '#lib/picture/stills/studio/stills.tsx';
 
 export type StudioBrandLogo = StillImage & { color: string };
 

@@ -4,7 +4,7 @@
 import { Matrix4, Quaternion, Vector3 } from 'three';
 import { fullFrameRect, type FrameSize } from '#lib/picture/frame/models/frame.ts';
 import { clamp, lerp, sineInOutEase } from '#lib/picture/motion/models/motion.ts';
-import type { Vec3 } from '#lib/picture/camera/models/vec3.ts';
+import type { Vec3 } from '#lib/picture/frame/models/vec3.ts';
 import { columnFieldPoint, type ColumnBall, type ColumnBallState, type ColumnCameraMove, type ColumnCameraPose, type ColumnCameraState, type ColumnCell, type ColumnFieldSpec } from './column-field.ts';
 
 const rad = (d: number) => (d * Math.PI) / 180;

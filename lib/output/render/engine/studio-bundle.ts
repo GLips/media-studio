@@ -26,7 +26,7 @@ const BUNDLE_CONFIG_MODULES = [
   'lib/output/render/engine/host-module-resolution.ts', 'lib/output/render/engine/host-modules.d.ts',
   'lib/output/render/engine/tsx-test-hooks.ts', 'lib/footage/previs/engine/previs-footage.ts',
   'lib/picture/brand/engine/project-brand.ts', 'lib/platform/host/engine/hosts.ts',
-  'lib/platform/host/engine/project-host-spec.ts', 'lib/timing/sound/engine/cue-module.ts',
+  'lib/platform/host/engine/project-host-spec.ts', 'lib/output/sfx-cues/engine/cue-module.ts',
 ].map((path) => join(STUDIO_ROOT, path));
 
 type BundleInput = { path: string; size: number; mtimeMs: number; hash: string };

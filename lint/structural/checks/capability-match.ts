@@ -19,7 +19,7 @@ import { callsTo, type CheckContext, type Finding, type StructuralCheck } from '
 const ID = 'capability-match';
 const DEFINE_TIMELINE = { path: 'lib/timing/timeline/models/timeline.ts', name: 'defineTimeline' };
 const BIND_TIMELINE = { path: 'lib/timing/timeline/models/bind-timeline.ts', name: 'bindTimeline' };
-const DEFINE_STILLS = { path: 'lib/output/stills/studio/stills.tsx', name: 'defineStills' };
+const DEFINE_STILLS = { path: 'lib/picture/stills/studio/stills.tsx', name: 'defineStills' };
 /** The keys of a timeline's spec that make a part. */
 const TIMELINE_PARTS: Readonly<Record<string, ProjectPart>> = { grid: 'music', voice: 'voice' };
 

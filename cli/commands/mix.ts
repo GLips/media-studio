@@ -13,7 +13,7 @@ export default defineCommand({
     check: { type: 'boolean', description: 'Only the rows of placed sounds against the music, without rendering out/mix.wav: to check a change to the sounds while a cut made from the last mix is still in use' },
   },
   async run({ args }) {
-    const { videoSoundCheckReport } = await import('#lib/timing/sound/engine/sound-check.ts');
+    const { videoSoundCheckReport } = await import('#lib/output/sound-check/engine/sound-check.ts');
     if (args.check) {
       const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
       console.log((await videoSoundCheckReport(resolveStudioProjectWith(args.project, 'video.tsx'))).join('\n'));

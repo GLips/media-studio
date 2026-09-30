@@ -5,11 +5,11 @@
 // things happen given on that same clock. Their poses, layout and timing are models/reel/recap.ts; this draws them.
 
 import { useId, type CSSProperties, type ReactNode } from 'react';
-import type { Rect } from '#lib/picture/camera/models/camera.ts';
+import type { Rect } from '#lib/picture/frame/models/geometry.ts';
 import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
 import { clamp } from '#lib/picture/motion/models/motion.ts';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
-import { motionEchoAttrs, pieceMotionAttrs } from '#lib/output/look/studio/motion-tag.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
+import { motionEchoAttrs, pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { hashRandom } from '#lib/picture/motion/models/random.ts';
 import {
   GLITCH_LOOK, RECAP_EPS, glitchCuts, recapPlan, recapShotScale, shakeOffset, type GlitchHit, type GlitchLook, type RecapExit, type RecapLayout, type RecapTileLook,

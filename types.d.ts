@@ -42,12 +42,12 @@ declare module '*.woff2' {
 }
 /** The project's video.tsx, or null when it has only stills (lib/output/render/engine/project-bundle.ts). */
 declare module '@video' {
-  const video: import('#lib/picture/composition/studio/timeline.ts').VideoDef | null;
+  const video: import('#lib/picture/video/studio/video.ts').VideoDef | null;
   export default video;
 }
 /** The project's stills.tsx, or null when it has only a video. */
 declare module '@stills' {
-  const stills: import('#lib/output/stills/studio/stills.tsx').StillsDef | null;
+  const stills: import('#lib/picture/stills/studio/stills.tsx').StillsDef | null;
   export default stills;
 }
 /** The brand kit the project's brand.ts names, with its overrides, loaded (lib/picture/brand/engine/project-brand.ts). Importing it without one throws. */
@@ -63,7 +63,7 @@ declare module '*.mp4' {
 declare module '@footage' {
   export const footage: Readonly<Record<string, import('#lib/footage/previs/studio/previs.ts').PrevisFootage>>;
 }
-/** The project's generated/sfx-cues.ts, rendered from sfx/cues.json on every bundle, or null without one (lib/timing/sound/engine/cue-module.ts). */
+/** The project's generated/sfx-cues.ts, rendered from sfx/cues.json on every bundle, or null without one (lib/output/sfx-cues/engine/cue-module.ts). */
 declare module '@sfx-cues' {
   const cues: readonly import('#lib/timing/sound/studio/sfx.tsx').SfxCueSound[] | null;
   export default cues;

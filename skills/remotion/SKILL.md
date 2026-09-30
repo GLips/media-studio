@@ -22,7 +22,7 @@ studio primitive in a feature's `studio/` folder can use any Remotion API inside
   volume is 0–1. Effects are levelled by category when `studio sfx` renders them (`lib/timing/sound/models/sfx-loudness.ts`).
   Choosing and placing a video's music and effects is the `video-sound` skill.
 - **Measure for the checks.** A primitive that marks a subject, a tag or text carries `data-framing` (see
-  `lib/output/look/studio/probe.tsx`), so the framing check sees it.
+  `lib/picture/measurement/studio/probe.tsx`), so the framing check sees it.
 
 ## References
 

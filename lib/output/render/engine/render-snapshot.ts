@@ -10,10 +10,10 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
-import type { MotionTracks } from '#lib/picture/motion/models/motion-tracks.ts';
+import type { MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
 import type { TimelineClockTable } from '#lib/timing/timeline/models/timeline.ts';
 import type { RenderVoice } from '#lib/timing/voice/models/render-voice.ts';
-import type { TimelineReport } from '#lib/picture/composition/studio/Video.tsx';
+import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
 
 export const RENDER_SNAPSHOT_VERSION = 10;
 

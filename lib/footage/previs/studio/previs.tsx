@@ -4,7 +4,7 @@ import { Video } from '@remotion/media';
 import { AbsoluteFill, Freeze, Sequence, useVideoConfig } from 'remotion';
 import type { PrevisFootage } from './previs.ts';
 import { checkSourcePins, pinnedSourceTime } from '#lib/footage/capture/studio/take.ts';
-import type { LaidScene } from '#lib/picture/composition/studio/timeline.ts';
+import type { LaidScene } from '#lib/picture/video/studio/video.ts';
 import type { SceneClock } from '#lib/timing/timeline/models/video-layout.ts';
 
 /** A previs scene's footage at the scene's clock, retimed by its `previs.retime` if it has one. */

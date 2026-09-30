@@ -24,6 +24,19 @@ test('a foundation imports foundations of its layer or below, never a peer; a pe
   assert.deepEqual(onlyEdges(caught(findings)), ['lib/platform/git:→ lib/picture/paint']);
 });
 
+test('a foundation imports down the layers, never up', () => {
+  const findings = runCheckOnFiles('feature-layers', {
+    'package.json': PACKAGE,
+    'lib/platform/temp/engine/studio-temp.ts': 'export const temp = 1;\n',
+    // Legal: vocabulary stands on platform.
+    'lib/picture/frame/models/frame.ts': "import { temp } from '#lib/platform/temp/engine/studio-temp.ts';\nexport const frame = temp;\n",
+    // Upward: vocabulary reaching into authoring.
+    'lib/picture/motion/models/motion.ts': "import { video } from '#lib/picture/video/models/video.ts';\nexport const motion = video;\n",
+    'lib/picture/video/models/video.ts': "import { frame } from '#lib/picture/frame/models/frame.ts';\nexport const video = frame;\n",
+  });
+  assert.deepEqual(onlyEdges(caught(findings)), ['lib/picture/motion:→ lib/picture/video']);
+});
+
 test('a declared foundation that is no feature is reported on the policy', () => {
   const findings = runCheckOnFiles('feature-layers', { 'package.json': PACKAGE, 'lib/platform/temp/engine/studio-temp.ts': 'export const temp = 1;\n' });
   const expected = LIB_LAYERS.flatMap((layer) => layer.features).filter((feature) => feature !== 'platform/temp')

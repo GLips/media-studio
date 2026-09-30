@@ -2,11 +2,12 @@
 // its axes in lens space and their projection, the key light's shade, sheen and rim, the hold drift, the shutter's
 // exposures and the lift's spring. Runs without a browser.
 
-import { centerOf, inflate, scaleFor, screenPoint, view, type Point, type Rect, type Shot, type View } from '#lib/picture/camera/models/camera.ts';
+import { scaleFor, screenPoint, view, type Shot, type View } from '#lib/picture/camera/models/camera.ts';
+import { centerOf, inflate, type Point, type Rect } from '#lib/picture/frame/models/geometry.ts';
 import { fullFrameRect, type FrameSize } from '#lib/picture/frame/models/frame.ts';
 import { clamp, lerp, perceptualSpring, type PerceptualSpring } from '#lib/picture/motion/models/motion.ts';
 import { hashRandom } from '#lib/picture/motion/models/random.ts';
-import { crossVec3, dotVec3, unitVec3, type Vec3 } from '#lib/picture/camera/models/vec3.ts';
+import { crossVec3, dotVec3, unitVec3, type Vec3 } from '#lib/picture/frame/models/vec3.ts';
 
 /**
  * Where a card is and how it's turned. `x`, `y` are px from its view's box, `z` px toward the viewer. `rx` tips the top

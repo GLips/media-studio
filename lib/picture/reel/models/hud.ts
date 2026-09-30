@@ -2,7 +2,7 @@
 // Node for clearance), how a part reads over the grounds a scene names, the decode, timecode and beat square, and the
 // inks and plates a frame mixes. Runs without a browser; reel/hud.tsx draws it.
 
-import type { Point, Rect } from '#lib/picture/camera/models/camera.ts';
+import type { Point, Rect } from '#lib/picture/frame/models/geometry.ts';
 import type { FrameSize, VideoFormat } from '#lib/picture/frame/models/frame.ts';
 import { MONO_ADVANCE_EM, MONO_CAP_EM } from '#lib/picture/type/models/faces.ts';
 import { scrambleAt } from './type.ts';

@@ -1,0 +1,4 @@
+{
+  "lib/output/look": "`studio look` reads a piece's motion by the same piece graph the check judges.",
+  "lib/output/render": "`studio check` renders the frames, then judges their framing, holds and motion here."
+}

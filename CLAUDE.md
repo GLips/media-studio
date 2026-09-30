@@ -12,10 +12,13 @@
   `lint --scope workspace`, `npm run test:workspace`.
 - `lib/` is areas (`timing`, `picture`, `footage`, `output`, `platform`) of feature folders, each holding only the
   role folders it needs: `models/` (pure, loads in plain Node), `studio/` (renders in the browser), `engine/`
-  (Node-side machinery). So `lib/<area>/<feature>/<role>/`, plus `lib/api.ts`, which projects import as `#studio`.
-  The brush engine's features are laid out in `docs/brush-engine.md`.
-  `models` imports only `models`; `studio` imports `models` and `studio`; `engine` imports `models` and `engine`; browser
-  code never imports `engine`. A new area is declared in `lint/policy/studio-tree.ts`. An import into a feature from
+  (Node-side machinery). So `lib/<area>/<feature>/<role>/`, plus `lib/api.ts`, which projects import as `#studio`. The
+  brush engine's features are laid out in `docs/brush-engine.md`. `models` imports only `models`; `studio` imports
+  `models` and `studio`; `engine` imports `models` and `engine`; browser code never imports `engine`. Features stand
+  in layers, lowest first (`LIB_LAYERS` in `lint/policy/studio-tree.ts`): platform, vocabulary (frame, motion, type,
+  color), timing, framing (captions, camera), measurement, authoring (video, stills). A foundation imports only its
+  own layer or lower, and anyone imports it freely; every other feature is a peer, imported only with a reasoned grant
+  in its `visibility.json`. A new area is declared in `lint/policy/studio-tree.ts`. An import into a feature from
   outside it uses `#lib/*`, never a relative path; `node lint/rewrite-lib-imports.ts` rewrites any that slip in.
 - Start a project with `studio new <slug> --capability <music-led|voice-led|mixed|silent|still-only>`. It passes every check
   from its first commit; a new project isn't baselined, so a violation in it blocks.

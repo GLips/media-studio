@@ -2,7 +2,7 @@
 // under a point; a GlitchFlash hit's look and each frame's slice cuts; a Shake's rattle. Each is a pure function of
 // `t`, seconds on the author's clock.
 
-import type { Point, Rect } from '#lib/picture/camera/models/camera.ts';
+import type { Point, Rect } from '#lib/picture/frame/models/geometry.ts';
 import type { FrameSize, VideoFormat } from '#lib/picture/frame/models/frame.ts';
 import { backOutEase, clamp, lerp } from '#lib/picture/motion/models/motion.ts';
 import { seededRandom } from '#lib/picture/motion/models/random.ts';

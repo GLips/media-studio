@@ -8,8 +8,10 @@
 // playing between pins at whatever speed joins them, and at the take's own speed outside them. Two pins on one mark
 // hold its frame.
 
-import { assertKeysInOrder, type Rect, type Shot } from '#lib/picture/camera/models/camera.ts';
-import { noteTakeFitStrain, type TakeFitStrain } from '#lib/output/look/studio/take-fit-strain.ts';
+import { assertKeysInOrder, type Shot } from '#lib/picture/camera/models/camera.ts';
+import { type Rect } from '#lib/picture/frame/models/geometry.ts';
+import { noteTakeFitStrain } from '#lib/picture/measurement/studio/take-fit-strain.ts';
+import { type TakeFitStrain } from '#lib/picture/measurement/models/framing-marks.ts';
 
 export type TakeFrame = { src: string; t: number; scrollY: number };
 /** [t, x, y, click]: a cursor waypoint in viewport pixels; `click` is 1 where it clicked. */

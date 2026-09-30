@@ -9,14 +9,16 @@
 // tags itself for the motion tracks (motion-tag.ts).
 
 import { useId, type CSSProperties, type ReactNode } from 'react';
-import type { StaggerMembership } from '#lib/picture/motion/models/motion-tracks.ts';
-import { assertKeysInOrder, inflate, pagePoint, screenPoint, viewOfScreenRect, type Point, type Rect, type View } from '#lib/picture/camera/models/camera.ts';
-import { FONT, fullFrameRect, type FrameSize } from '#lib/picture/frame/models/frame.ts';
+import type { StaggerMembership } from '#lib/picture/measurement/models/motion-tracks.ts';
+import { assertKeysInOrder, pagePoint, screenPoint, viewOfScreenRect, type View } from '#lib/picture/camera/models/camera.ts';
+import { inflate, type Point, type Rect } from '#lib/picture/frame/models/geometry.ts';
+import { fullFrameRect, type FrameSize } from '#lib/picture/frame/models/frame.ts';
+import { FONT } from '#lib/picture/type/models/faces.ts';
 import { clamp, lerp, motionCurves, seg } from '#lib/picture/motion/models/motion.ts';
-import { pieceMotionAttrs } from '#lib/output/look/studio/motion-tag.ts';
+import { pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { SFX, Sfx } from '#lib/timing/sound/studio/sfx.tsx';
 import { sceneTimeOf, takeMouseAt, type TakeFit } from '#lib/footage/capture/studio/take.ts';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 
 const INK = '#1c365e';
 /** An SVG layer over the whole frame. */

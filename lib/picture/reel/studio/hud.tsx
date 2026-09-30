@@ -8,14 +8,14 @@
 
 import { MONO_FONT } from '#lib/picture/type/models/faces.ts';
 import { clamp, motionCurves, powerOutEase } from '#lib/picture/motion/models/motion.ts';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
-import { pieceMotionAttrs } from '#lib/output/look/studio/motion-tag.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
+import { pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import {
   bracketPath, defaultReadout, hudInks, hudInkSet, hudPlates, LIGHT_READ, REEL_HUD_BOOT_DECODE, REEL_HUD_PALETTE, REEL_HUD_SWAP_DECODE,
   reelHudDecode, reelHudLayout, reelHudLitSquare, reelHudPlateMix, reelHudTimecode, reelHudToneWeights, REFERENCE_SECTIONS, REFERENCE_SPB,
   sectionLabel, type ReelHudCell, type ReelHudLayoutProps, type ReelHudPalette, type ReelHudRead, type ReelHudSlot,
 } from '../models/hud.ts';
-import type { Rect } from '#lib/picture/camera/models/camera.ts';
+import type { Rect } from '#lib/picture/frame/models/geometry.ts';
 
 export type ReelHudProps = ReelHudLayoutProps & {
   /** Seconds since the HUD boots; nothing draws before 0. */

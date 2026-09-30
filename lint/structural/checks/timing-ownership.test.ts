@@ -4,10 +4,10 @@ import { caught, runCheckOnFiles } from '../spec-tree.ts';
 
 const STUDIO = {
   'package.json': JSON.stringify({ imports: { '#studio': './lib/api.ts', '#lib/*': './lib/*' } }),
-  'lib/picture/composition/studio/timeline.ts': 'export const defineVideo = (v: unknown) => v;\n',
+  'lib/picture/video/studio/video.ts': 'export const defineVideo = (v: unknown) => v;\n',
   'lib/timing/timeline/models/timeline.ts': 'export const fixedSpan = (s: number) => s;\n',
   'lib/timing/timeline/models/beat-grid.ts': 'export const beatGrid = () => 0;\n',
-  'lib/api.ts': "export * from '#lib/timing/timeline/models/beat-grid.ts';\nexport { defineVideo } from '#lib/picture/composition/studio/timeline.ts';\nexport { fixedSpan } from '#lib/timing/timeline/models/timeline.ts';\n",
+  'lib/api.ts': "export * from '#lib/timing/timeline/models/beat-grid.ts';\nexport { defineVideo } from '#lib/picture/video/studio/video.ts';\nexport { fixedSpan } from '#lib/timing/timeline/models/timeline.ts';\n",
 };
 
 test('a timing constructor imported outside timeline.ts is caught, however it is spelled', () => {

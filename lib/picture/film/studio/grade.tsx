@@ -3,7 +3,7 @@
 
 import { useId } from 'react';
 import { useCurrentFrame } from 'remotion';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 
 /**
  * Monochrome grain, new every frame and the same on every render of that frame (its noise is seeded by the frame).

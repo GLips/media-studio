@@ -5,17 +5,18 @@
 
 import { evolvePath } from '@remotion/paths';
 import { Fragment, useId, type ReactNode } from 'react';
-import { camFit, camTop, camWhole, centerOf, lerpCam, view, type Rect, type Shot, type View } from '#lib/picture/camera/models/camera.ts';
+import { camFit, camTop, camWhole, lerpCam, view, type Shot, type View } from '#lib/picture/camera/models/camera.ts';
+import { centerOf, type Rect } from '#lib/picture/frame/models/geometry.ts';
 import { Capture, CaptureMotion } from '#lib/footage/capture/studio/capture.tsx';
-import { DISPLAY_FONT } from '#lib/picture/type/models/faces.ts';
-import { FONT, fullFrameRect, type FrameSize } from '#lib/picture/frame/models/frame.ts';
+import { DISPLAY_FONT, FONT } from '#lib/picture/type/models/faces.ts';
+import { fullFrameRect, type FrameSize } from '#lib/picture/frame/models/frame.ts';
 import { useCaptionBandRule, useCaptionSafeArea } from '#lib/picture/captions/studio/caption-style.tsx';
 import { clamp, lerp, motionCurves, motionDurations, seg, stagger, staggerFinish } from '#lib/picture/motion/models/motion.ts';
-import { motionAttrs, pieceMotionAttrs } from '#lib/output/look/studio/motion-tag.ts';
+import { motionAttrs, pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { odometerSinceLanding, odometerWheels, type OdometerMode, type OdometerWheel } from './odometer-wheels.ts';
 import { ClipToBox, CursorPath, Glass, Tag, Text, Wash } from './overlays.tsx';
 import type { SceneClock } from '#lib/timing/timeline/models/video-layout.ts';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 
 export type { OdometerMode } from './odometer-wheels.ts';
 

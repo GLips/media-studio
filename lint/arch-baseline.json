@@ -98,19 +98,15 @@
       "const text = flat((el as HTMLElement).innerText);": 1,
       "let els = [...document.querySelectorAll(tag)].filter(visible).filter((e) => re.test(flat((e as HTMLElement).innerText)));": 1
     },
-    "lib/platform/paid-generation/engine/s3-upload.ts": {
-      "const env = Object.fromEntries(Object.entries(UPLOAD_ENV).map(([key, name]) => [key, process.env[name]!])) as Omit<S3UploadConfig, 'region'>;": 1
-    },
     "lib/footage/previs/studio/flat-blockout-pose.ts": {
       "for (const [channel, to] of Object.entries(key.to) as [keyof P, number][]) next[channel] = lerp(pose[channel], to, k) as P[keyof P];": 2
     },
     "lib/output/look/engine/piece-look.ts": {
       "const module = (await import(pathToFileURL(file).href)) as Record<string, unknown>;": 1
     },
-    "lib/output/look/studio/probe.tsx": {
-      "kind: el.dataset.framing as FramingMark['kind'],": 1,
-      "return JSON.parse(raw) as T;": 1,
-      "const { event, fromNow, request, volume } = JSON.parse(el.dataset.sfxEvent!) as SfxMarkAttr;": 1
+    "lib/output/picture-checks/models/motion-graph.ts": {
+      "const inMove = values.slice(a, b + 1) as number[];": 1,
+      "}).map((m) => Object.fromEntries(Object.entries(m).filter(([, v]) => v !== undefined)) as ChannelMove);": 1
     },
     "lib/output/render/engine/browser-module-page.ts": {
       "const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;": 1,
@@ -123,6 +119,9 @@
     },
     "lib/output/render/engine/project-bundle.ts": {
       "alias: { ...(config.resolve?.alias as Record<string, string>), '@video': video, '@stills': stills, '@footage': previsFootageModuleFor(project), '@sfx-cues': sfxCues, '@brand': brand, '@stamp-paint-styles': styles, 'react-dom': studioReactDom(join(dir, 'generated')) },": 1
+    },
+    "lib/output/render/engine/project-clock.ts": {
+      "const { timeline } = (await import(pathToFileURL(file).href)) as { timeline?: Timeline };": 1
     },
     "lib/output/render/engine/render-browser.ts": {
       "await page.goto({ url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`, timeout: 30_000 });": 1
@@ -149,8 +148,14 @@
     "lib/output/review/engine/review-artifact.ts": {
       "const readJson = <T,>(file: string): T | undefined => (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) as T : undefined);": 1
     },
-    "lib/output/stills/studio/stills.tsx": {
-      "for (const [name, { component, presets, axes, props }] of Object.entries(designs) as [string, StillDesign<object, StillAxes>][]) {": 1
+    "lib/output/sfx-cues/engine/cue-module.ts": {
+      "const list = JSON.parse(readFileSync(path, 'utf8')) as SfxCueList;": 1
+    },
+    "lib/output/sfx-cues/models/cue-events.ts": {
+      "return numbered(found, (e) => `reveal:${(e as { track: string }).track}`);": 1
+    },
+    "lib/output/sound-check/engine/sound-check.ts": {
+      "const takes: readonly SfxSound[] = Array.isArray(sound.sound) ? sound.sound : [sound.sound as SfxSound];": 1
     },
     "lib/picture/brand/engine/project-brand.ts": {
       "const requireDefault = <T>(file: string) => (createRequire(file)(file) as { default: T }).default;": 1
@@ -161,21 +166,19 @@
     "lib/picture/composition/studio/Root.tsx": {
       "const projectVideo = video as VideoDef;": 1
     },
-    "lib/picture/composition/studio/timeline-scene.tsx": {
-      "return Object.fromEntries(Object.entries(clock.cues).map(([name, frame]) => [name, ((frame as number) - clock.from) / clock.fps])) as Record<Cue, number>;": 2
-    },
     "lib/picture/film/studio/three-stage.tsx": {
       "pass.render(renderer, null as never, stage.image, 0, false);": 1
     },
-    "lib/picture/motion/models/motion-graph.ts": {
-      "const inMove = values.slice(a, b + 1) as number[];": 1,
-      "}).map((m) => Object.fromEntries(Object.entries(m).filter(([, v]) => v !== undefined)) as ChannelMove);": 1
-    },
-    "lib/picture/motion/models/motion-tracks.ts": {
+    "lib/picture/measurement/models/motion-tracks.ts": {
       "const tracks = JSON.parse(json) as MotionTracks;": 1
     },
-    "lib/picture/motion/models/piece-tracks.ts": {
+    "lib/picture/measurement/models/piece-tracks.ts": {
       "typeof value === 'object' && value !== null && (value as { kind?: unknown }).kind === 'piece-tracks';": 1
+    },
+    "lib/picture/measurement/studio/probe.tsx": {
+      "kind: el.dataset.framing as FramingMark['kind'],": 1,
+      "return JSON.parse(raw) as T;": 1,
+      "const { event, fromNow, request, volume } = JSON.parse(el.dataset.sfxEvent!) as SfxMarkAttr;": 1
     },
     "lib/picture/reel/engine/reel-study-files.ts": {
       "return { fps: num / (den || 1), duration: Number(probe.format.duration), width: probe.streams[0].width as number, height: probe.streams[0].height as number };": 2
@@ -196,11 +199,20 @@
       "for (const role of Object.keys(INK_ALPHA.light) as HudInkRole[]) {": 1,
       "for (const tone of Object.keys(weights) as ReelHudTone[]) {": 1
     },
+    "lib/picture/stills/studio/stills.tsx": {
+      "for (const [name, { component, presets, axes, props }] of Object.entries(designs) as [string, StillDesign<object, StillAxes>][]) {": 1
+    },
+    "lib/picture/video/studio/timeline-scene.tsx": {
+      "return Object.fromEntries(Object.entries(clock.cues).map(([name, frame]) => [name, ((frame as number) - clock.from) / clock.fps])) as Record<Cue, number>;": 2
+    },
     "lib/platform/host/engine/hosts.ts": {
       "const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;": 1
     },
     "lib/platform/host/engine/project-host-spec.ts": {
       "const spec = JSON.parse(readFileSync(path, 'utf8')) as ProjectHostSpec;": 1
+    },
+    "lib/platform/paid-generation/engine/s3-upload.ts": {
+      "const env = Object.fromEntries(Object.entries(UPLOAD_ENV).map(([key, name]) => [key, process.env[name]!])) as Omit<S3UploadConfig, 'region'>;": 1
     },
     "lib/platform/project/engine/studio-project.ts": {
       "const { default: declaration } = (await import(/* @vite-ignore */ pathToFileURL(file).href)) as { default: ProjectDeclaration };": 1
@@ -209,19 +221,10 @@
       "if (result instanceof Promise) return result.finally(remove) as T;": 1,
       "return (error as NodeJS.ErrnoException).code === 'EPERM';": 1
     },
-    "lib/timing/sound/engine/cue-module.ts": {
-      "const list = JSON.parse(readFileSync(path, 'utf8')) as SfxCueList;": 1
-    },
     "lib/timing/sound/engine/sfx-files.ts": {
       "return [writeSfxFile(JSON.parse(request) as SfxRequest, join(dir, file.replace(/\\.ts$/, '.wav'))).module];": 1,
       "...Object.entries(sfxParamSpecs(recipe as unknown as SfxRecipe)).map(([param, { min, max, doc }]) =>": 2,
       "`  ${param} ${min}–${max} (default ${round((recipe.defaults as Record<string, number>)[param])}): ${doc}`),": 1
-    },
-    "lib/timing/sound/engine/sound-check.ts": {
-      "const takes: readonly SfxSound[] = Array.isArray(sound.sound) ? sound.sound : [sound.sound as SfxSound];": 1
-    },
-    "lib/timing/sound/models/cue-events.ts": {
-      "return numbered(found, (e) => `reveal:${(e as { track: string }).track}`);": 1
     },
     "lib/timing/sound/models/library.ts": {
       "return SFX_RECIPES[name as SfxRecipeName] as unknown as SfxRecipe;": 3,
@@ -229,9 +232,6 @@
     },
     "lib/timing/sound/studio/sfx.tsx": {
       "const takes: readonly SfxSound[] = Array.isArray(sound) ? sound : [sound as SfxSound];": 1
-    },
-    "lib/timing/timeline/engine/project-clock.ts": {
-      "const { timeline } = (await import(pathToFileURL(file).href)) as { timeline?: Timeline };": 1
     },
     "lib/timing/timeline/models/bind-timeline.ts": {
       "const binding = (bindings as unknown as Record<string, (clock: ResolvedSceneClock, replays: Record<string, BoundReplay<Bound>>) => Bound>)[key];": 2
@@ -497,24 +497,6 @@
       "await page.keyboard.type(ch);": 1,
       "await page.waitForTimeout(perKey * 1000);": 1
     },
-    "lib/platform/raster/engine/html-raster.ts": {
-      "const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });": 1,
-      "await page.setContent(`<!doctype html><body style=\"margin:0\">${svg}</body>`);": 1,
-      "await page.screenshot({ path: out, clip: { x: 0, y: 0, width, height } });": 1,
-      "await page.close();": 2,
-      "const page = await browser.newPage({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1 });": 1,
-      "await page.goto(pathToFileURL(html).href);": 1,
-      "await page.evaluate(() => document.fonts.ready);": 1,
-      "await page.screenshot({ path: out, fullPage: true });": 1,
-      "measured.push(await page.$$eval(`[${attribute}]`, (els, name) => {": 1
-    },
-    "lib/platform/paid-generation/engine/openrouter.ts": {
-      "await new Promise((resolve) => setTimeout(resolve, VIDEO_POLL_MS));": 1,
-      "job = await (await fetchOpenRouter(`/videos/${jobId}`)).json();": 2
-    },
-    "lib/platform/paid-generation/engine/paid-generation.test.ts": {
-      "await generatePaidMedia(project, { kind: 'video', model: 'bytedance/seedance-2.5', name: 'shot', prompt, params: { duration: 5 }, references: [{ path: blockout }] });": 1
-    },
     "lib/output/look/engine/piece-look.ts": {
       "const module = (await import(pathToFileURL(file).href)) as Record<string, unknown>;": 1
     },
@@ -525,11 +507,29 @@
       "const sink = await draw(composition, still, drawn, format);": 1,
       "await draw(composition, { ...still, ground: true }, groundFile, 'png');": 1
     },
-    "lib/output/stills/studio/still-probe.tsx": {
+    "lib/picture/stills/studio/still-probe.tsx": {
       "while (root.querySelector('[data-still-fit]:not([data-still-fitted])')) await new Promise((resolve) => setTimeout(resolve, 16));": 1
     },
     "lib/picture/type/studio/fonts.ts": {
       "await Promise.all(loads);": 1
+    },
+    "lib/platform/paid-generation/engine/openrouter.ts": {
+      "await new Promise((resolve) => setTimeout(resolve, VIDEO_POLL_MS));": 1,
+      "job = await (await fetchOpenRouter(`/videos/${jobId}`)).json();": 2
+    },
+    "lib/platform/paid-generation/engine/paid-generation.test.ts": {
+      "await generatePaidMedia(project, { kind: 'video', model: 'bytedance/seedance-2.5', name: 'shot', prompt, params: { duration: 5 }, references: [{ path: blockout }] });": 1
+    },
+    "lib/platform/raster/engine/html-raster.ts": {
+      "const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });": 1,
+      "await page.setContent(`<!doctype html><body style=\"margin:0\">${svg}</body>`);": 1,
+      "await page.screenshot({ path: out, clip: { x: 0, y: 0, width, height } });": 1,
+      "await page.close();": 2,
+      "const page = await browser.newPage({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1 });": 1,
+      "await page.goto(pathToFileURL(html).href);": 1,
+      "await page.evaluate(() => document.fonts.ready);": 1,
+      "await page.screenshot({ path: out, fullPage: true });": 1,
+      "measured.push(await page.$$eval(`[${attribute}]`, (els, name) => {": 1
     },
     "lib/timing/voice/engine/voice-project.ts": {
       "clipWords[i] = await hear(clipFile(clip.id));": 1,
@@ -543,17 +543,6 @@
     },
     "lib/footage/generation/engine/generated-image.ts": {
       "console.error(`images['${request.name}']: ${w}×${h}, ${request.model}`);": 1
-    },
-    "lib/platform/paid-generation/engine/paid-generation.ts": {
-      "for (const file of made.files) console.error(`cached ${file}`);": 1,
-      "if (jobId) console.error(`picking up video job ${jobId}`);": 1,
-      "console.error(`submitted video job ${jobId}`);": 1,
-      "const job = await awaitOpenRouterVideoJob(jobId, (status) => console.error(`video job ${jobId} ${status}`));": 1,
-      "for (const file of files) console.error(`generated ${file}  ${cost}${media.requestId ? `  (${media.requestId})` : ''}`);": 1,
-      "console.error(`generated media of an unknown format (starts ${bytes.subarray(0, 12).toString('hex')}), saved as .bin`);": 1
-    },
-    "lib/platform/paid-generation/engine/s3-upload.ts": {
-      "console.error(`uploaded references/${sha256}.${ext} (${(bytes.length / 1e6).toFixed(1)} MB)`);": 1
     },
     "lib/output/render/engine/previs-render.ts": {
       "console.error(`rendering scene ${sceneId}'s blockout, ${composition.durationInFrames / composition.fps}s…`);": 1,
@@ -586,6 +575,17 @@
       "console.error(`hosts: fetching ${name}`);": 1,
       "console.error(`hosts: ${found[1].join(' ')} in ${dir}`);": 1
     },
+    "lib/platform/paid-generation/engine/paid-generation.ts": {
+      "for (const file of made.files) console.error(`cached ${file}`);": 1,
+      "if (jobId) console.error(`picking up video job ${jobId}`);": 1,
+      "console.error(`submitted video job ${jobId}`);": 1,
+      "const job = await awaitOpenRouterVideoJob(jobId, (status) => console.error(`video job ${jobId} ${status}`));": 1,
+      "for (const file of files) console.error(`generated ${file}  ${cost}${media.requestId ? `  (${media.requestId})` : ''}`);": 1,
+      "console.error(`generated media of an unknown format (starts ${bytes.subarray(0, 12).toString('hex')}), saved as .bin`);": 1
+    },
+    "lib/platform/paid-generation/engine/s3-upload.ts": {
+      "console.error(`uploaded references/${sha256}.${ext} (${(bytes.length / 1e6).toFixed(1)} MB)`);": 1
+    },
     "lib/timing/music/engine/music-track.ts": {
       "if (staleFits.length) console.error(`dropped ${staleFits.map((n) => `music.${n}`).join(', ')}, fit from the old music.${name}; fit again`);": 1,
       "console.error(`${name}: ${basename(source)}, ${duration.toFixed(1)}s, ${lufs} LUFS, ${bpm} BPM, first beats ${beats.slice(0, 4).join(', ')}s`);": 1
@@ -608,15 +608,19 @@
     "lib/footage/capture/engine/page-probe.ts": {
       "const url = /^[a-z][a-z0-9+.-]*:/i.test(target) ? target : existsSync(resolve(target)) ? pathToFileURL(resolve(target)).href : target;": 1
     },
-    "lib/platform/paid-generation/engine/paid-generation.ts": {
-      "const sorted = (value: unknown): unknown => Array.isArray(value) ? value.map(sorted)": 1,
-      "return brand === 'avif' ? 'avif' : ['heic', 'heix', 'mif1'].includes(brand) ? 'heic' : brand.startsWith('qt') ? 'mov' : 'mp4';": 2
+    "lib/output/picture-checks/models/framing-check.ts": {
+      "const label = (m: FramingMark) => (m.name === 'click' ? 'a click' : m.name ? `highlight \"${m.name}\"` : 'a highlight');": 1,
+      "const why = !m ? 'isn\\'t drawn' : m.strength < 0.5 ? 'is still drawing on, or fading' : m.opacity < 0.5 ? 'is faded out' : obstruction(m, marks, frameSize);": 2
     },
-    "lib/platform/ffmpeg/engine/contact-sheet.ts": {
-      "const escapeDrawtext = (text: string) => text.replace(/[\\\\':,;%]/g, (c) => (c === \"'\" ? '’' : c === '%' ? '\\\\%' : `\\\\${c}`));": 1
+    "lib/output/picture-checks/models/hold-check.ts": {
+      "const whys = [...new Set(frames.map((f) => (f.shown ? '' : f.opacity !== undefined ? `never gets past ${Math.round(Math.max(...faint) * 100)}% opaque` : f.why)))];": 1
     },
-    "lib/output/look/studio/probe.tsx": {
-      "const phase: ScenePhase = layers.length === 1 ? 'solo' : i === 0 ? 'out' : 'in';": 1
+    "lib/output/picture-checks/models/motion-graph.ts": {
+      "const values = channel.kind === 'value' ? run.values[channel.key] : channel.kind === 'opacity' ? run.screen.opacity : box?.[channel.kind];": 1,
+      "const digits = Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : Math.abs(v) >= 1 ? 2 : 3;": 2,
+      "const pastTo = dir > 0 ? m.range[1] > hi : dir < 0 ? m.range[0] < lo : m.range[0] < lo || m.range[1] > hi;": 1,
+      "const pastFrom = dir > 0 ? m.range[0] < lo : dir < 0 ? m.range[1] > hi : false;": 1,
+      "const label = `${track.id.length > 50 ? `${track.id.slice(0, 48)}…` : track.id}${!onBackdrop(trackRuns(track, first, last)) ? ' (not on this frame: no trail)' : frameSized(trackRuns(track, first, last)) ? ' (frame-sized: no trail)' : ''}`;": 1
     },
     "lib/output/render/engine/render-pipeline.ts": {
       "report.push(held.problems.length ? `holds: ${held.problems.length} of ${held.checked} not kept`": 1
@@ -629,9 +633,9 @@
       "return note.render === undefined ? 'unrecorded' : note.render === render.hash ? 'this' : 'other';": 1,
       "const when = note.frame === undefined ? ''": 1
     },
-    "lib/picture/frame/models/framing-check.ts": {
-      "const label = (m: FramingMark) => (m.name === 'click' ? 'a click' : m.name ? `highlight \"${m.name}\"` : 'a highlight');": 1,
-      "const why = !m ? 'isn\\'t drawn' : m.strength < 0.5 ? 'is still drawing on, or fading' : m.opacity < 0.5 ? 'is faded out' : obstruction(m, marks, frameSize);": 2
+    "lib/output/sound-check/engine/sound-check.ts": {
+      "const row = (cells: string[]) => cells.map((c, i) => (i === 0 ? c.padEnd(widths[0]) : i < widths.length ? c.padStart(widths[i]) : c)).join('  ').trimEnd();": 1,
+      "lines.push(!empty.length ? `Empty beats (${where}): none`": 1
     },
     "lib/picture/kit/studio/kit.tsx": {
       "transform: `translateX(${align === 'left' ? 0 : align === 'center' ? -50 : -100}%) scale(${scale})`,": 1
@@ -639,25 +643,18 @@
     "lib/picture/kit/studio/overlays.tsx": {
       "textAnchor={align === 'left' ? 'start' : align === 'center' ? 'middle' : 'end'}": 1
     },
-    "lib/picture/motion/models/hold-check.ts": {
-      "const whys = [...new Set(frames.map((f) => (f.shown ? '' : f.opacity !== undefined ? `never gets past ${Math.round(Math.max(...faint) * 100)}% opaque` : f.why)))];": 1
-    },
-    "lib/picture/motion/models/motion-graph.ts": {
-      "const values = channel.kind === 'value' ? run.values[channel.key] : channel.kind === 'opacity' ? run.screen.opacity : box?.[channel.kind];": 1,
-      "const digits = Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : Math.abs(v) >= 1 ? 2 : 3;": 2,
-      "const pastTo = dir > 0 ? m.range[1] > hi : dir < 0 ? m.range[0] < lo : m.range[0] < lo || m.range[1] > hi;": 1,
-      "const pastFrom = dir > 0 ? m.range[0] < lo : dir < 0 ? m.range[1] > hi : false;": 1,
-      "const label = `${track.id.length > 50 ? `${track.id.slice(0, 48)}…` : track.id}${!onBackdrop(trackRuns(track, first, last)) ? ' (not on this frame: no trail)' : frameSized(trackRuns(track, first, last)) ? ' (frame-sized: no trail)' : ''}`;": 1
-    },
-    "lib/picture/motion/models/motion-tracks.ts": {
+    "lib/picture/measurement/models/motion-tracks.ts": {
       "const when = e.frames ? (e.frames.first === e.frames.last ? ` at ${at(e.frames.first)}` : ` ${at(e.frames.first)}–${at(e.frames.last)} (${e.frames.count} frames)`) : '';": 1
+    },
+    "lib/picture/measurement/models/piece-tracks.ts": {
+      "...(boxed ? (clearance ? [fixed(clearance.margin), clearance.nearest] : ['', '']) : []),": 1
+    },
+    "lib/picture/measurement/studio/probe.tsx": {
+      "const phase: ScenePhase = layers.length === 1 ? 'solo' : i === 0 ? 'out' : 'in';": 1
     },
     "lib/picture/motion/models/motion.ts": {
       "standard: (k) => { k = clamp(k); return k === 0 || k === 1 ? k : k < 0.5 ? Math.pow(2, 20 * k - 10) / 2 : (2 - Math.pow(2, -20 * k + 10)) / 2; },": 1,
       "const at = (t: number) => (t <= 0 ? 0 : t >= settled ? 1 : 1 - gap(t));": 1
-    },
-    "lib/picture/motion/models/piece-tracks.ts": {
-      "...(boxed ? (clearance ? [fixed(clearance.margin), clearance.nearest] : ['', '']) : []),": 1
     },
     "lib/picture/reel/models/bounce.ts": {
       "i < 0 ? m.ts[0] + i * m.before : i >= m.n ? m.ts[m.n - 1] + (i - m.n + 1) * m.after : m.ts[i];": 1,
@@ -668,9 +665,6 @@
     },
     "lib/picture/reel/models/reel-study.ts": {
       "const span = to - from, tick = span > 20 ? 1 : span > 6 ? 0.5 : span > 2 ? 0.25 : 0.1;": 2
-    },
-    "lib/picture/reel/models/ticker-layout.ts": {
-      "const n = v < axis.default ? (v - axis.default) / (axis.default - axis.min) : v > axis.default ? (v - axis.default) / (axis.max - axis.default) : 0;": 1
     },
     "lib/picture/reel/models/type.ts": {
       "export const leftOf = (x: number, width: number, align: Align) => (align === 'center' ? x - width / 2 : align === 'right' ? x - width : x);": 1
@@ -691,9 +685,12 @@
     "lib/picture/type/studio/fonts.ts": {
       "const format = url.endsWith('.otf') ? 'opentype' : url.endsWith('.woff2') ? 'woff2' : url.endsWith('.woff') ? 'woff' : 'truetype';": 2
     },
-    "lib/timing/sound/engine/sound-check.ts": {
-      "const row = (cells: string[]) => cells.map((c, i) => (i === 0 ? c.padEnd(widths[0]) : i < widths.length ? c.padStart(widths[i]) : c)).join('  ').trimEnd();": 1,
-      "lines.push(!empty.length ? `Empty beats (${where}): none`": 1
+    "lib/platform/ffmpeg/engine/contact-sheet.ts": {
+      "const escapeDrawtext = (text: string) => text.replace(/[\\\\':,;%]/g, (c) => (c === \"'\" ? '’' : c === '%' ? '\\\\%' : `\\\\${c}`));": 1
+    },
+    "lib/platform/paid-generation/engine/paid-generation.ts": {
+      "const sorted = (value: unknown): unknown => Array.isArray(value) ? value.map(sorted)": 1,
+      "return brand === 'avif' ? 'avif' : ['heic', 'heix', 'mif1'].includes(brand) ? 'heic' : brand.startsWith('qt') ? 'mov' : 'mp4';": 2
     },
     "lib/timing/sound/models/dsp.ts": {
       "t < 0 ? 0 : t < attack ? t / attack : Math.exp(-(t - attack) / tau);": 1
@@ -811,301 +808,17 @@
     }
   },
   "eslint(no-unused-vars)": {
+    "lib/output/picture-checks/models/framing-check.ts": {
+      "return spans.map(({ last: _, ...s }) => s);": 1
+    },
     "lib/output/render/engine/render-pipeline.ts": {
       "import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';": 1
     },
     "lib/output/review/models/review-notes.ts": {
       "const first = note.frame, last = note.end ?? note.frame, { fps } = sources;": 1
     },
-    "lib/picture/frame/models/framing-check.ts": {
-      "return spans.map(({ last: _, ...s }) => s);": 1
-    },
     "lib/picture/kit/studio/kit.tsx": {
       "import { clamp, lerp, motionCurves, motionDurations, seg, stagger, staggerFinish } from '#lib/picture/motion/models/motion.ts';": 1
-    }
-  },
-  "feature-cycles": {
-    "lib/footage/capture": {
-      "→ lib/output/look": 1,
-      "→ lib/picture/camera": 1,
-      "→ lib/picture/motion": 1
-    },
-    "lib/footage/previs": {
-      "→ lib/footage/capture": 1,
-      "→ lib/output/look": 1,
-      "→ lib/picture/camera": 1,
-      "→ lib/picture/composition": 1,
-      "→ lib/picture/frame": 1,
-      "→ lib/picture/motion": 1,
-      "→ lib/picture/type": 1,
-      "→ lib/timing/timeline": 1
-    },
-    "lib/output/look": {
-      "→ lib/output/render": 1,
-      "→ lib/picture/camera": 1,
-      "→ lib/picture/composition": 1,
-      "→ lib/picture/frame": 1,
-      "→ lib/picture/motion": 1,
-      "→ lib/picture/type": 1,
-      "→ lib/timing/sound": 1,
-      "→ lib/timing/timeline": 1
-    },
-    "lib/output/render": {
-      "→ lib/footage/previs": 1,
-      "→ lib/output/stills": 1,
-      "→ lib/picture/brand": 1,
-      "→ lib/picture/composition": 1,
-      "→ lib/picture/frame": 1,
-      "→ lib/picture/motion": 1,
-      "→ lib/timing/sound": 1,
-      "→ lib/timing/timeline": 1
-    },
-    "lib/output/review": {
-      "→ lib/output/render": 1,
-      "→ lib/picture/motion": 1,
-      "→ lib/timing/sound": 1,
-      "→ lib/timing/timeline": 1
-    },
-    "lib/output/stills": {
-      "→ lib/output/look": 1,
-      "→ lib/output/render": 1,
-      "→ lib/output/review": 1,
-      "→ lib/picture/camera": 1,
-      "→ lib/picture/type": 1
-    },
-    "lib/picture/brand": {
-      "→ lib/output/stills": 1,
-      "→ lib/picture/camera": 1,
-      "→ lib/picture/type": 1
-    },
-    "lib/picture/camera": {
-      "→ lib/picture/captions": 1,
-      "→ lib/picture/frame": 1,
-      "→ lib/picture/motion": 1
-    },
-    "lib/picture/captions": {
-      "→ lib/picture/camera": 1,
-      "→ lib/picture/composition": 1,
-      "→ lib/picture/frame": 1,
-      "→ lib/picture/motion": 1,
-      "→ lib/picture/reel": 1,
-      "→ lib/picture/type": 1,
-      "→ lib/timing/timeline": 1
-    },
-    "lib/picture/composition": {
-      "→ lib/footage/previs": 1,
-      "→ lib/output/look": 1,
-      "→ lib/output/render": 1,
-      "→ lib/output/stills": 1,
-      "→ lib/picture/captions": 1,
-      "→ lib/picture/frame": 1,
-      "→ lib/picture/motion": 1,
-      "→ lib/timing/sound": 1,
-      "→ lib/timing/timeline": 1
-    },
-    "lib/picture/film": {
-      "→ lib/output/look": 1,
-      "→ lib/picture/composition": 1,
-      "→ lib/picture/frame": 1
-    },
-    "lib/picture/frame": {
-      "→ lib/output/look": 1,
-      "→ lib/picture/camera": 1
-    },
-    "lib/picture/kit": {
-      "→ lib/footage/capture": 1,
-      "→ lib/output/look": 1,
-      "→ lib/picture/camera": 1,
-      "→ lib/picture/captions": 1,
-      "→ lib/picture/composition": 1,
-      "→ lib/picture/frame": 1,
-      "→ lib/picture/motion": 1,
-      "→ lib/picture/type": 1,
-      "→ lib/timing/sound": 1,
-      "→ lib/timing/timeline": 1
-    },
-    "lib/picture/motion": {
-      "→ lib/picture/camera": 1,
-      "→ lib/picture/composition": 1,
-      "→ lib/picture/frame": 1,
-      "→ lib/timing/timeline": 1
-    },
-    "lib/picture/reel": {
-      "→ lib/output/look": 1,
-      "→ lib/output/render": 1,
-      "→ lib/picture/camera": 1,
-      "→ lib/picture/composition": 1,
-      "→ lib/picture/film": 1,
-      "→ lib/picture/frame": 1,
-      "→ lib/picture/kit": 1,
-      "→ lib/picture/motion": 1,
-      "→ lib/picture/type": 1,
-      "→ lib/timing/music": 1,
-      "→ lib/timing/timeline": 1
-    },
-    "lib/picture/type": {
-      "→ lib/picture/frame": 1,
-      "→ lib/picture/reel": 1
-    },
-    "lib/timing/music": {
-      "→ lib/timing/sound": 1
-    },
-    "lib/timing/sound": {
-      "→ lib/output/render": 1,
-      "→ lib/picture/composition": 1,
-      "→ lib/picture/motion": 1,
-      "→ lib/timing/timeline": 1
-    },
-    "lib/timing/timeline": {
-      "→ lib/output/render": 1,
-      "→ lib/picture/frame": 1,
-      "→ lib/picture/motion": 1
-    }
-  },
-  "feature-visibility": {
-    "lib/footage/capture/visibility.json": {
-      "missing:lib/footage/previs": 1,
-      "missing:lib/picture/kit": 1
-    },
-    "lib/footage/previs/visibility.json": {
-      "missing:lib/output/render": 1,
-      "missing:lib/picture/composition": 1
-    },
-    "lib/output/look/visibility.json": {
-      "missing:lib/footage/capture": 1,
-      "missing:lib/footage/previs": 1,
-      "missing:lib/output/stills": 1,
-      "missing:lib/picture/composition": 1,
-      "missing:lib/picture/film": 1,
-      "missing:lib/picture/frame": 1,
-      "missing:lib/picture/kit": 1,
-      "missing:lib/picture/reel": 1
-    },
-    "lib/output/render/visibility.json": {
-      "missing:lib/output/look": 1,
-      "missing:lib/output/review": 1,
-      "missing:lib/output/stills": 1,
-      "missing:lib/picture/composition": 1,
-      "missing:lib/picture/reel": 1,
-      "missing:lib/timing/sound": 1,
-      "missing:lib/timing/timeline": 1
-    },
-    "lib/output/review/visibility.json": {
-      "missing:lib/output/stills": 1
-    },
-    "lib/output/stills/visibility.json": {
-      "missing:lib/output/render": 1,
-      "missing:lib/picture/brand": 1,
-      "missing:lib/picture/composition": 1
-    },
-    "lib/picture/brand/visibility.json": {
-      "missing:lib/output/render": 1
-    },
-    "lib/picture/camera/visibility.json": {
-      "missing:lib/footage/capture": 1,
-      "missing:lib/footage/previs": 1,
-      "missing:lib/output/look": 1,
-      "missing:lib/output/stills": 1,
-      "missing:lib/picture/brand": 1,
-      "missing:lib/picture/captions": 1,
-      "missing:lib/picture/frame": 1,
-      "missing:lib/picture/kit": 1,
-      "missing:lib/picture/motion": 1,
-      "missing:lib/picture/reel": 1
-    },
-    "lib/picture/captions/visibility.json": {
-      "missing:lib/picture/camera": 1,
-      "missing:lib/picture/composition": 1,
-      "missing:lib/picture/kit": 1
-    },
-    "lib/picture/composition/visibility.json": {
-      "missing:lib/footage/previs": 1,
-      "missing:lib/output/look": 1,
-      "missing:lib/output/render": 1,
-      "missing:lib/picture/captions": 1,
-      "missing:lib/picture/film": 1,
-      "missing:lib/picture/kit": 1,
-      "missing:lib/picture/motion": 1,
-      "missing:lib/picture/reel": 1,
-      "missing:lib/timing/sound": 1
-    },
-    "lib/picture/film/visibility.json": {
-      "missing:lib/picture/reel": 1
-    },
-    "lib/picture/frame/visibility.json": {
-      "missing:lib/footage/previs": 1,
-      "missing:lib/output/look": 1,
-      "missing:lib/output/render": 1,
-      "missing:lib/picture/camera": 1,
-      "missing:lib/picture/captions": 1,
-      "missing:lib/picture/composition": 1,
-      "missing:lib/picture/film": 1,
-      "missing:lib/picture/kit": 1,
-      "missing:lib/picture/motion": 1,
-      "missing:lib/picture/reel": 1,
-      "missing:lib/picture/type": 1,
-      "missing:lib/timing/timeline": 1
-    },
-    "lib/picture/kit/visibility.json": {
-      "missing:lib/picture/reel": 1
-    },
-    "lib/picture/motion/visibility.json": {
-      "missing:lib/footage/capture": 1,
-      "missing:lib/footage/previs": 1,
-      "missing:lib/output/look": 1,
-      "missing:lib/output/render": 1,
-      "missing:lib/output/review": 1,
-      "missing:lib/picture/camera": 1,
-      "missing:lib/picture/captions": 1,
-      "missing:lib/picture/composition": 1,
-      "missing:lib/picture/kit": 1,
-      "missing:lib/picture/reel": 1,
-      "missing:lib/timing/sound": 1,
-      "missing:lib/timing/timeline": 1
-    },
-    "lib/picture/reel/visibility.json": {
-      "missing:lib/picture/captions": 1,
-      "missing:lib/picture/type": 1
-    },
-    "lib/picture/type/visibility.json": {
-      "missing:lib/footage/previs": 1,
-      "missing:lib/output/look": 1,
-      "missing:lib/output/stills": 1,
-      "missing:lib/picture/brand": 1,
-      "missing:lib/picture/captions": 1,
-      "missing:lib/picture/kit": 1,
-      "missing:lib/picture/reel": 1
-    },
-    "lib/timing/music/visibility.json": {
-      "missing:lib/picture/reel": 1
-    },
-    "lib/timing/sound/visibility.json": {
-      "missing:lib/output/look": 1,
-      "missing:lib/output/render": 1,
-      "missing:lib/output/review": 1,
-      "missing:lib/picture/composition": 1,
-      "missing:lib/picture/kit": 1,
-      "missing:lib/timing/music": 1
-    },
-    "lib/timing/timeline/visibility.json": {
-      "missing:lib/footage/previs": 1,
-      "missing:lib/output/look": 1,
-      "missing:lib/output/render": 1,
-      "missing:lib/output/review": 1,
-      "missing:lib/picture/captions": 1,
-      "missing:lib/picture/composition": 1,
-      "missing:lib/picture/kit": 1,
-      "missing:lib/picture/motion": 1,
-      "missing:lib/picture/reel": 1,
-      "missing:lib/timing/sound": 1
-    },
-    "lib/timing/voice/visibility.json": {
-      "missing:lib/output/render": 1,
-      "missing:lib/output/review": 1,
-      "missing:lib/picture/captions": 1,
-      "missing:lib/picture/composition": 1,
-      "missing:lib/timing/sound": 1,
-      "missing:lib/timing/timeline": 1
     }
   },
   "file-size": {
@@ -1176,7 +889,10 @@
     }
   },
   "no-known-value-widening": {
-    "lib/output/look/studio/motion-tag.ts": {
+    "lib/output/sfx-cues/models/cues.ts": {
+      "return Record<string, number>": 1
+    },
+    "lib/picture/measurement/studio/motion-tag.ts": {
       "return Record<string, string>": 2
     },
     "lib/platform/paid-generation/engine/openrouter.ts": {
@@ -1190,9 +906,6 @@
     },
     "lib/timing/sound/engine/sfx-files.ts": {
       "SFX_KIT: Readonly<Record<string, { sound: string; takes?: number }>>": 1
-    },
-    "lib/timing/sound/models/cues.ts": {
-      "return Record<string, number>": 1
     },
     "lib/timing/sound/models/library.ts": {
       "return Readonly<Record<string, SfxParamSpec>>": 1
@@ -1294,15 +1007,11 @@
     "lib/footage/capture/engine/capture.ts": {
       "const opening = raw.filter((f) => f.t < t0).slice(-1).map((f) => ({ ...f, t: t0 }));": 1
     },
-    "lib/platform/paid-generation/engine/paid-generation.ts": {
-      "const references = (request.references ?? []).map((ref) => ({ ...ref, bytes: readFileSync(ref.path) }))": 1,
-      ".map((ref) => ({ ...ref, sha256: createHash('sha256').update(ref.bytes).digest('hex') }));": 1,
-      "references: references.map(({ path, sha256, frame }) => ({ path: relative(project, path), sha256, ...(frame && { frame }) })),": 1,
-      "...(framed.length && { frame_images: await Promise.all(framed.map(async (ref) => ({ ...(await part(ref)), frame_type: ref.frame }))) }),": 1
+    "lib/output/picture-checks/models/framing-check.test.ts": {
+      "].map((r) => ({ ...r, takeFitStrains: [] }));": 1
     },
-    "lib/output/look/studio/probe.tsx": {
-      "const marks = measurable<HTMLElement | SVGElement>(root, '[data-framing]').map((el): FramingMark => {": 1,
-      "return { frame, marks, takeFitStrains: drainTakeFitStrains().map((strain) => ({ ...strain, scenes })) };": 1
+    "lib/output/picture-checks/models/motion-graph.ts": {
+      "return spans.map(([a, b]): ChannelMove => {": 1
     },
     "lib/output/render/engine/render-pipeline.ts": {
       "const slices = readdirSync(dir).filter((name) => extname(name) === '.mp4' && join(dir, name) !== out).map((name) => {": 1,
@@ -1324,6 +1033,14 @@
     "lib/output/review/models/review-storyboard.ts": {
       ".map((m) => ({ ...m, frame: m.frame - frames.from, scene: bar.id }))),": 1
     },
+    "lib/output/sfx-cues/models/cue-events.ts": {
+      "return events.toSorted((a, b) => a.at - b.at).map((e) => {": 1,
+      "return timeline.scenes.slice(1).map((scene, i) => {": 1,
+      ".map((e): SfxEvent => {": 3
+    },
+    "lib/output/sfx-cues/models/cues.test.ts": {
+      "const now = [...events.map((e) => (e.id === 'scene:b' ? { ...e, at: 5.5 } : e)).filter((e) => e.id !== 'click:a:3' && e.id !== 'move:d:1'), click('click:a:4', 3)];": 1
+    },
     "lib/picture/captions/models/caption-pages.test.ts": {
       "id, paragraph, words: captionTokens(text).map((token, k) => ({ ...token, start: at + k * 0.3, end: at + k * 0.3 + 0.25 })),": 1
     },
@@ -1331,22 +1048,17 @@
       "return { id, paragraph: line.paragraph, words: tokens.map((token, k) => ({ ...token, start: at + line.words[k].start, end: at + line.words[k].end })) };": 1,
       "return { id: `${key}.${k}`, paragraph: true, words: tokens.map((token, j) => ({ ...token, start: start + timed[j].start, end: start + timed[j].end })) };": 1
     },
-    "lib/picture/composition/studio/timeline.ts": {
-      "return { ...layout, scenes: layout.scenes.map((placed, k) => ({ ...video.scenes[k], ...placed })) };": 1
-    },
     "lib/picture/composition/studio/Video.tsx": {
       "expectations: tl.scenes.flatMap((scene) => (scene.expect?.(sceneTimes(scene)) ?? []).map(({ during, ...promise }) => {": 1
     },
-    "lib/picture/frame/models/framing-check.test.ts": {
-      "].map((r) => ({ ...r, takeFitStrains: [] }));": 1
-    },
-    "lib/picture/motion/models/motion-graph.ts": {
-      "return spans.map(([a, b]): ChannelMove => {": 1
-    },
-    "lib/picture/motion/models/motion-tracks.ts": {
+    "lib/picture/measurement/models/motion-tracks.ts": {
       "list: (): MotionInstrumentationError[] => [...unframed.values(), ...spans.list().map(({ of, span }) => ({ ...of, frames: span }))],": 1,
       "tracks: [...runs].map(([id, { first: s, runs: rs }]) => ({": 1,
       "ambiguous: ambiguous.list().map(({ of, span }) => ({ ...of, frames: span })),": 1
+    },
+    "lib/picture/measurement/studio/probe.tsx": {
+      "const marks = measurable<HTMLElement | SVGElement>(root, '[data-framing]').map((el): FramingMark => {": 1,
+      "return { frame, marks, takeFitStrains: drainTakeFitStrains().map((strain) => ({ ...strain, scenes })) };": 1
     },
     "lib/picture/reel/models/glyph-field-frame.ts": {
       "const cells = glyphFieldLayout(count, size, layout).map((slot) => ({ ...slot, item: (items ? items[slot.index] : null) as D }));": 1,
@@ -1358,26 +1070,27 @@
     "lib/picture/reel/studio/type-slant.tsx": {
       "const dots = dotsAt(m, pose.scale).map((d) => ({ ...d, swap: tittle?.(d) }));": 1
     },
+    "lib/picture/video/studio/video.ts": {
+      "return { ...layout, scenes: layout.scenes.map((placed, k) => ({ ...video.scenes[k], ...placed })) };": 1
+    },
+    "lib/platform/paid-generation/engine/paid-generation.ts": {
+      "const references = (request.references ?? []).map((ref) => ({ ...ref, bytes: readFileSync(ref.path) }))": 1,
+      ".map((ref) => ({ ...ref, sha256: createHash('sha256').update(ref.bytes).digest('hex') }));": 1,
+      "references: references.map(({ path, sha256, frame }) => ({ path: relative(project, path), sha256, ...(frame && { frame }) })),": 1,
+      "...(framed.length && { frame_images: await Promise.all(framed.map(async (ref) => ({ ...(await part(ref)), frame_type: ref.frame }))) }),": 1
+    },
     "lib/timing/sound/engine/sfx-files.ts": {
       "...SHOWCASE_MUTATIONS.map((m) => ({ sound: name, ...m })),": 1
-    },
-    "lib/timing/sound/models/cue-events.ts": {
-      "return events.toSorted((a, b) => a.at - b.at).map((e) => {": 1,
-      "return timeline.scenes.slice(1).map((scene, i) => {": 1,
-      ".map((e): SfxEvent => {": 3
-    },
-    "lib/timing/sound/models/cues.test.ts": {
-      "const now = [...events.map((e) => (e.id === 'scene:b' ? { ...e, at: 5.5 } : e)).filter((e) => e.id !== 'click:a:3' && e.id !== 'move:d:1'), click('click:a:4', 3)];": 1
     },
     "lib/timing/sound/models/recipes.ts": {
       "? strikeLayers({ at: p.releaseAfter, gain: p.release, noiseHz: noiseHz * 1.15, noiseQ: 0.9, noiseTau, tones: scaled.map((t) => ({ ...t, hz: t.hz * 1.08 })) }, random)": 1
     }
   },
   "promise(always-return)": {
-    "lib/output/look/studio/screen-rect.ts": {
+    "lib/picture/measurement/studio/screen-rect.ts": {
       "whenLaidOut(layer).then(() => {": 1
     },
-    "lib/output/stills/studio/still-probe.tsx": {
+    "lib/picture/stills/studio/still-probe.tsx": {
       "whenStillSettled(root.current!).then(() => {": 1
     },
     "lib/picture/type/studio/fonts.ts": {
@@ -1386,20 +1099,20 @@
     }
   },
   "react-hooks(exhaustive-deps)": {
-    "lib/output/stills/studio/stills.tsx": {
-      "}, [name, text, box.w, box.h, max, min, face.family, face.stretch?.[0], face.stretch?.[1], delayRender, continueRender]);": 2,
-      "const [lo, hi] = face.stretch ?? [100, 100];": 1,
-      "}, [ready, name, text, box.w, box.h, max, min, face.family, face.stretch?.[0], face.stretch?.[1]]);": 2
-    },
     "lib/picture/captions/studio/caption-style.tsx": {
       "const band = useMemo(() => style.band(size), [style, size.width, size.height]);": 1
     },
     "lib/picture/composition/studio/Video.tsx": {
       "const pages = useMemo(() => burnedCaptionPages(captioned.style, captioned.track, config), [captioned, config.width, config.height]);": 1
+    },
+    "lib/picture/stills/studio/stills.tsx": {
+      "}, [name, text, box.w, box.h, max, min, face.family, face.stretch?.[0], face.stretch?.[1], delayRender, continueRender]);": 2,
+      "const [lo, hi] = face.stretch ?? [100, 100];": 1,
+      "}, [ready, name, text, box.w, box.h, max, min, face.family, face.stretch?.[0], face.stretch?.[1]]);": 2
     }
   },
   "react(exhaustive-effect-dependencies)": {
-    "lib/output/stills/studio/stills.tsx": {
+    "lib/picture/stills/studio/stills.tsx": {
       "}, [name, text, box.w, box.h, max, min, face.family, face.stretch?.[0], face.stretch?.[1], delayRender, continueRender]);": 1,
       "const [lo, hi] = face.stretch ?? [100, 100];": 1
     }
@@ -1439,17 +1152,17 @@
     }
   },
   "react(preserve-manual-memoization)": {
-    "lib/output/look/studio/screen-rect.ts": {
+    "lib/picture/measurement/studio/screen-rect.ts": {
       "}, [target, selector, width]);": 1
     }
   },
   "react(refs)": {
-    "lib/output/render/studio/frame-profiler.tsx": {
+    "lib/picture/profiling/studio/frame-profiler.tsx": {
       "frame.current = useCurrentFrame();": 1
     }
   },
   "react(set-state-in-effect)": {
-    "lib/output/look/studio/screen-rect.ts": {
+    "lib/picture/measurement/studio/screen-rect.ts": {
       "measure();": 1
     }
   },
@@ -1459,20 +1172,20 @@
     }
   },
   "typescript(consistent-return)": {
-    "lib/output/look/studio/motion-tag.ts": {
-      "return () => {": 1
-    },
-    "lib/output/look/studio/screen-rect.ts": {
-      "return release;": 1
-    },
     "lib/output/render/engine/browser-module-page.ts": {
       "const server = createServer((request, response) => {": 1
     },
-    "lib/picture/type/studio/fonts.ts": {
+    "lib/output/sfx-cues/models/cues.ts": {
+      "function sfxEventOptions(event: SfxEvent, clickStyle: SfxClickStyle): SfxRequest[] {": 1
+    },
+    "lib/picture/measurement/studio/motion-tag.ts": {
+      "return () => {": 1
+    },
+    "lib/picture/measurement/studio/screen-rect.ts": {
       "return release;": 1
     },
-    "lib/timing/sound/models/cues.ts": {
-      "function sfxEventOptions(event: SfxEvent, clickStyle: SfxClickStyle): SfxRequest[] {": 1
+    "lib/picture/type/studio/fonts.ts": {
+      "return release;": 1
     },
     "lint/structural/checks/barrel-discoverability.ts": {
       "if (node.type !== 'ExportSpecifier') return;": 1,
@@ -1495,8 +1208,8 @@
   },
   "typescript(consistent-type-imports)": {
     "types.d.ts": {
-      "const video: import('#lib/picture/composition/studio/timeline.ts').VideoDef | null;": 1,
-      "const stills: import('#lib/output/stills/studio/stills.tsx').StillsDef | null;": 1,
+      "const video: import('#lib/picture/video/studio/video.ts').VideoDef | null;": 1,
+      "const stills: import('#lib/picture/stills/studio/stills.tsx').StillsDef | null;": 1,
       "const brand: import('#lib/picture/brand/studio/brand.tsx').StudioBrand;": 1,
       "export const footage: Readonly<Record<string, import('#lib/footage/previs/studio/previs.ts').PrevisFootage>>;": 1,
       "const cues: readonly import('#lib/timing/sound/studio/sfx.tsx').SfxCueSound[] | null;": 1,
@@ -1507,11 +1220,11 @@
     "lib/footage/generation/engine/generated-image.test.ts": {
       "generations.push(JSON.parse(String(init?.body)));": 1
     },
-    "lib/platform/paid-generation/engine/paid-generation.test.ts": {
-      "calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });": 1
-    },
     "lib/output/render/engine/render-stills.ts": {
       "const values = (key: keyof StillProps) => [...new Set(all.map((c) => (c.defaultProps as StillProps)[key]))].join(', ');": 1
+    },
+    "lib/platform/paid-generation/engine/paid-generation.test.ts": {
+      "calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });": 1
     }
   },
   "typescript(no-explicit-any)": {
@@ -1519,26 +1232,26 @@
       "let generations: any[] = [];": 1,
       "assert.equal((Object.values(provenance)[0] as any).requestId, 'gen-img-1');": 1
     },
+    "lib/picture/stills/studio/stills.tsx": {
+      "export type ResolvedStillDesign = { component: ComponentType<any>; presets: readonly StillPreset[]; axes: StillAxes; variants: Readonly<Record<string, StillVariant>> };": 1,
+      "export function defineStills(designs: Readonly<Record<string, StillDesign<any, any>>>): StillsDef {": 2
+    },
     "lib/platform/paid-generation/engine/paid-generation.test.ts": {
       "let calls: { url: string; body: any }[] = [];": 1,
       "assert.deepEqual(Object.values(provenance).map((p: any) => [p.prompt, p.cost, p.references[0].path]), [['a title card', 0.04, 'still.png']]);": 1
-    },
-    "lib/output/stills/studio/stills.tsx": {
-      "export type ResolvedStillDesign = { component: ComponentType<any>; presets: readonly StillPreset[]; axes: StillAxes; variants: Readonly<Record<string, StillVariant>> };": 1,
-      "export function defineStills(designs: Readonly<Record<string, StillDesign<any, any>>>): StillsDef {": 2
     },
     "lib/timing/sound/models/recipes.ts": {
       "export const SFX_RECIPES = { click, key, toggle, impact, whoosh, riser, chime, ding, pop, typing, scroll, buzz } as const satisfies Record<string, SfxRecipe<any>>;": 1
     }
   },
   "typescript(no-floating-promises)": {
-    "lib/output/look/studio/probe.tsx": {
+    "lib/picture/measurement/studio/probe.tsx": {
       "Promise.resolve().then(() => whenLaidOut(root.current!)).then(() => setTimeout(() => {": 1
     },
-    "lib/output/look/studio/screen-rect.ts": {
+    "lib/picture/measurement/studio/screen-rect.ts": {
       "whenLaidOut(layer).then(() => {": 1
     },
-    "lib/output/stills/studio/still-probe.tsx": {
+    "lib/picture/stills/studio/still-probe.tsx": {
       "whenStillSettled(root.current!).then(() => {": 1
     },
     "lib/picture/type/studio/fonts.ts": {
@@ -1552,9 +1265,6 @@
     }
   },
   "typescript(no-misused-spread)": {
-    "lib/platform/paid-generation/engine/openrouter.ts": {
-      "const response = await fetch(url, { ...init, headers: { ...openRouterHeaders(), ...init.headers } });": 1
-    },
     "lib/picture/brand/studio/brand.tsx": {
       "const full = h.length === 3 ? [...h].map((c) => c + c).join('') : h;": 1
     },
@@ -1593,6 +1303,9 @@
     },
     "lib/picture/reel/studio/type-measure.ts": {
       "const chars = [...text].map((char, i) => {": 1
+    },
+    "lib/platform/paid-generation/engine/openrouter.ts": {
+      "const response = await fetch(url, { ...init, headers: { ...openRouterHeaders(), ...init.headers } });": 1
     }
   },
   "typescript(no-unnecessary-type-assertion)": {
@@ -1612,9 +1325,6 @@
     }
   },
   "typescript(no-unnecessary-type-parameters)": {
-    "lib/output/look/studio/probe.tsx": {
-      "function parseAttr<T>(el: Element, attr: string, problems: FrameMotion['problems'], id: string): T | undefined {": 1
-    },
     "lib/output/render/engine/render-session.ts": {
       "const json = <T,>(name: string): T => {": 1
     },
@@ -1624,6 +1334,9 @@
     "lib/picture/brand/engine/project-brand.ts": {
       "const requireDefault = <T>(file: string) => (createRequire(file)(file) as { default: T }).default;": 1
     },
+    "lib/picture/measurement/studio/probe.tsx": {
+      "function parseAttr<T>(el: Element, attr: string, problems: FrameMotion['problems'], id: string): T | undefined {": 1
+    },
     "lib/platform/host/engine/hosts.ts": {
       "const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;": 1
     }
@@ -1631,10 +1344,6 @@
   "typescript(no-unsafe-argument)": {
     "lib/footage/generation/engine/generated-image.test.ts": {
       "assert.equal((Object.values(provenance)[0] as any).requestId, 'gen-img-1');": 1
-    },
-    "lib/platform/paid-generation/engine/paid-generation.test.ts": {
-      "assert.deepEqual(Object.values(provenance).map((p: any) => [p.prompt, p.cost, p.references[0].path]), [['a title card', 0.04, 'still.png']]);": 1,
-      "const link = new URL(submit.body.input_references[0].video_url.url);": 1
     },
     "lib/output/render/engine/frame-profiling.ts": {
       "if (text.startsWith(FRAME_PROFILE_LOG_PREFIX)) entries.push(JSON.parse(text.slice(FRAME_PROFILE_LOG_PREFIX.length)));": 1
@@ -1645,6 +1354,10 @@
     },
     "lib/picture/reel/models/ticker-layout.test.ts": {
       "const even = line('MOTAV', Array(5).fill({ wght: 437, wdth: 81.5 }));": 1
+    },
+    "lib/platform/paid-generation/engine/paid-generation.test.ts": {
+      "assert.deepEqual(Object.values(provenance).map((p: any) => [p.prompt, p.cost, p.references[0].path]), [['a title card', 0.04, 'still.png']]);": 1,
+      "const link = new URL(submit.body.input_references[0].video_url.url);": 1
     }
   },
   "typescript(no-unsafe-assignment)": {
@@ -1653,6 +1366,36 @@
     },
     "lib/footage/generation/engine/generated-image.ts": {
       "const list: Record<string, ImageEntry> = existsSync(listPath) ? JSON.parse(readFileSync(listPath, 'utf8')) : {};": 1
+    },
+    "lib/output/look/engine/frame-look.test.ts": {
+      "const diff = [null, ...Array(20).fill(1)];": 1,
+      "assert.deepEqual(findStillRuns({ first: 0, luma: [], diff }, 3.5, clock), [{ from: 0, to: 8, maxDiff: 1 }, { from: 9, to: 17, maxDiff: 1 }]);": 1,
+      "assert.deepEqual(findStillRuns({ first: 0, luma: [], diff: diff.slice(0, 6) }, 3.5), []);": 1
+    },
+    "lib/output/look/engine/piece-look.ts": {
+      "const video: VideoDef = (await import(pathToFileURL(join(project, 'video.tsx')).href)).default;": 1
+    },
+    "lib/output/picture-checks/models/motion-graph.test.ts": {
+      "{ start: 0, values: [0, 25, 50, ...hold, 75, 100] },": 2
+    },
+    "lib/output/picture-checks/models/motion-graph.ts": {
+      "run.values[name] = [...(run.values[name] ?? Array(n).fill(null)), ...(seg.values[name] ? slice(seg.values[name]) : Array(m).fill(null))];": 2
+    },
+    "lib/output/render/engine/render-pipeline.ts": {
+      "const probe = JSON.parse(runFfprobe(['-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', video]).toString());": 2,
+      "const hasAudio = probe.streams.some((s: { codec_type: string }) => s.codec_type === 'audio');": 1
+    },
+    "lib/output/review/models/review-notes.test.ts": {
+      "return { start: 60, end: 90, phase: 'solo', parent: null, attribution: 'scene', screen: { x: of(x), y: of(y), w: of(w), h: of(h), opacity: of(1) }, local: null, values: {} };": 5
+    },
+    "lib/output/sound-check/engine/sound-check.ts": {
+      "const video: VideoDef = (await import(pathToFileURL(join(project, 'video.tsx')).href)).default;": 1
+    },
+    "lib/picture/composition/studio/Video.tsx": {
+      "return { id: String(id ?? i), at, sound: takes[randomSeedFromKey(id ?? i) % takes.length].request.sound };": 1
+    },
+    "lib/picture/reel/engine/reel-study-files.ts": {
+      "const probe = JSON.parse(runFfprobe(['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height,r_frame_rate:format=duration', '-of', 'json', video]).toString());": 1
     },
     "lib/platform/paid-generation/engine/openrouter.ts": {
       "const result: { data: { b64_json: string }[]; usage?: { cost?: number | null } } = await response.json();": 1,
@@ -1668,33 +1411,6 @@
       "const provenance = JSON.parse(readFileSync(join(project, 'generated', 'provenance.json'), 'utf8'));": 1,
       "calls.push({ url: `${init?.method ?? 'GET'} ${url.origin}${url.pathname}`, body: typeof init?.body === 'string' ? JSON.parse(init.body) : null });": 1
     },
-    "lib/output/look/engine/frame-look.test.ts": {
-      "const diff = [null, ...Array(20).fill(1)];": 1,
-      "assert.deepEqual(findStillRuns({ first: 0, luma: [], diff }, 3.5, clock), [{ from: 0, to: 8, maxDiff: 1 }, { from: 9, to: 17, maxDiff: 1 }]);": 1,
-      "assert.deepEqual(findStillRuns({ first: 0, luma: [], diff: diff.slice(0, 6) }, 3.5), []);": 1
-    },
-    "lib/output/look/engine/piece-look.ts": {
-      "const video: VideoDef = (await import(pathToFileURL(join(project, 'video.tsx')).href)).default;": 1
-    },
-    "lib/output/render/engine/render-pipeline.ts": {
-      "const probe = JSON.parse(runFfprobe(['-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', video]).toString());": 2,
-      "const hasAudio = probe.streams.some((s: { codec_type: string }) => s.codec_type === 'audio');": 1
-    },
-    "lib/output/review/models/review-notes.test.ts": {
-      "return { start: 60, end: 90, phase: 'solo', parent: null, attribution: 'scene', screen: { x: of(x), y: of(y), w: of(w), h: of(h), opacity: of(1) }, local: null, values: {} };": 5
-    },
-    "lib/picture/composition/studio/Video.tsx": {
-      "return { id: String(id ?? i), at, sound: takes[randomSeedFromKey(id ?? i) % takes.length].request.sound };": 1
-    },
-    "lib/picture/motion/models/motion-graph.test.ts": {
-      "{ start: 0, values: [0, 25, 50, ...hold, 75, 100] },": 2
-    },
-    "lib/picture/motion/models/motion-graph.ts": {
-      "run.values[name] = [...(run.values[name] ?? Array(n).fill(null)), ...(seg.values[name] ? slice(seg.values[name]) : Array(m).fill(null))];": 2
-    },
-    "lib/picture/reel/engine/reel-study-files.ts": {
-      "const probe = JSON.parse(runFfprobe(['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height,r_frame_rate:format=duration', '-of', 'json', video]).toString());": 1
-    },
     "lib/platform/temp/engine/studio-temp.test.ts": {
       "const [, stoppedBy] = await once(child, 'exit');": 1
     },
@@ -1703,9 +1419,6 @@
     },
     "lib/timing/music/models/music-fit.ts": {
       "const steps: (Step | undefined)[][][] = Array.from({ length: maxBars + 1 }, () => downbeats.map(() => Array(MIN_SPAN_BARS + 1)));": 1
-    },
-    "lib/timing/sound/engine/sound-check.ts": {
-      "const video: VideoDef = (await import(pathToFileURL(join(project, 'video.tsx')).href)).default;": 1
     },
     "lib/timing/voice/engine/voice-project.ts": {
       "const script: Script = JSON.parse(readFileSync(join(project, 'voiceover.json'), 'utf8'));": 1,
@@ -1739,17 +1452,6 @@
       "assert.equal(generations[0].aspect_ratio, '16:9');": 1,
       "assert.equal((Object.values(provenance)[0] as any).requestId, 'gen-img-1');": 1
     },
-    "lib/platform/paid-generation/engine/openrouter.ts": {
-      "if (chunk.error) throw new Error(`OpenRouter /chat/completions: ${chunk.error.message}`);": 2,
-      "requestId ??= chunk.id ?? null;": 1,
-      "base64 += chunk.choices?.[0]?.delta?.audio?.data ?? '';": 1,
-      "cost = chunk.usage?.cost ?? cost;": 1
-    },
-    "lib/platform/paid-generation/engine/paid-generation.test.ts": {
-      "assert.equal(calls[0].body.input_references[0].image_url.url, `data:image/png;base64,${PNG.toString('base64')}`);": 1,
-      "assert.deepEqual(Object.values(provenance).map((p: any) => [p.prompt, p.cost, p.references[0].path]), [['a title card', 0.04, 'still.png']]);": 3,
-      "const link = new URL(submit.body.input_references[0].video_url.url);": 1
-    },
     "lib/footage/previs/studio/blockout.tsx": {
       "if (object instanceof THREE.Mesh || object instanceof THREE.LineSegments) object.geometry.dispose();": 1
     },
@@ -1761,6 +1463,9 @@
       "const hasAudio = probe.streams.some((s: { codec_type: string }) => s.codec_type === 'audio');": 1,
       "if (probe.streams.some((s: { codec_type: string }) => s.codec_type === 'audio')) problems.push('has an audio stream, though a transparent video is silent');": 1
     },
+    "lib/output/sound-check/engine/sound-check.ts": {
+      "const video: VideoDef = (await import(pathToFileURL(join(project, 'video.tsx')).href)).default;": 1
+    },
     "lib/picture/composition/studio/Video.tsx": {
       "return { id: String(id ?? i), at, sound: takes[randomSeedFromKey(id ?? i) % takes.length].request.sound };": 1
     },
@@ -1771,26 +1476,25 @@
       "const [num, den] = String(probe.streams[0].r_frame_rate).split('/').map(Number);": 1,
       "return { fps: num / (den || 1), duration: Number(probe.format.duration), width: probe.streams[0].width as number, height: probe.streams[0].height as number };": 3
     },
+    "lib/platform/paid-generation/engine/openrouter.ts": {
+      "if (chunk.error) throw new Error(`OpenRouter /chat/completions: ${chunk.error.message}`);": 2,
+      "requestId ??= chunk.id ?? null;": 1,
+      "base64 += chunk.choices?.[0]?.delta?.audio?.data ?? '';": 1,
+      "cost = chunk.usage?.cost ?? cost;": 1
+    },
+    "lib/platform/paid-generation/engine/paid-generation.test.ts": {
+      "assert.equal(calls[0].body.input_references[0].image_url.url, `data:image/png;base64,${PNG.toString('base64')}`);": 1,
+      "assert.deepEqual(Object.values(provenance).map((p: any) => [p.prompt, p.cost, p.references[0].path]), [['a title card', 0.04, 'still.png']]);": 3,
+      "const link = new URL(submit.body.input_references[0].video_url.url);": 1
+    },
     "lib/timing/music/engine/music-track.ts": {
       "const [stream] = JSON.parse(runFfprobe(['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=channels,sample_rate', '-of', 'json', sourcePath]).toString()).streams;": 1,
       "const channels = Number(stream.channels), rate = Number(stream.sample_rate);": 2
-    },
-    "lib/timing/sound/engine/sound-check.ts": {
-      "const video: VideoDef = (await import(pathToFileURL(join(project, 'video.tsx')).href)).default;": 1
     }
   },
   "typescript(no-unsafe-return)": {
     "lib/footage/capture/engine/capture.ts": {
       "const readProvenance = (dir: string): Record<string, ShotProvenance> => (existsSync(provenancePath(dir)) ? JSON.parse(readFileSync(provenancePath(dir), 'utf8')) : {});": 1
-    },
-    "lib/platform/paid-generation/engine/openrouter.ts": {
-      "return (await postOpenRouter('/videos', body)).json();": 1
-    },
-    "lib/platform/paid-generation/engine/paid-generation.test.ts": {
-      "assert.deepEqual(Object.values(provenance).map((p: any) => [p.prompt, p.cost, p.references[0].path]), [['a title card', 0.04, 'still.png']]);": 1
-    },
-    "lib/platform/paid-generation/engine/paid-generation.ts": {
-      "const readJsonRecord = <T>(path: string): Record<string, T> => (existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {});": 1
     },
     "lib/footage/previs/engine/previs-footage.ts": {
       "return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};": 1
@@ -1804,6 +1508,15 @@
     "lib/picture/composition/studio/Root.tsx": {
       "construct: (target, args, newTarget) => Reflect.construct(target, args.length ? args : [pinned], newTarget),": 1,
       "get: (target, key) => (key === 'now' ? () => pinned : Reflect.get(target, key)),": 1
+    },
+    "lib/platform/paid-generation/engine/openrouter.ts": {
+      "return (await postOpenRouter('/videos', body)).json();": 1
+    },
+    "lib/platform/paid-generation/engine/paid-generation.test.ts": {
+      "assert.deepEqual(Object.values(provenance).map((p: any) => [p.prompt, p.cost, p.references[0].path]), [['a title card', 0.04, 'still.png']]);": 1
+    },
+    "lib/platform/paid-generation/engine/paid-generation.ts": {
+      "const readJsonRecord = <T>(path: string): Record<string, T> => (existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {});": 1
     },
     "lib/timing/music/engine/music-track.ts": {
       "return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};": 1
@@ -1827,7 +1540,10 @@
     "lib/output/render/engine/render-snapshot.ts": {
       "if (snapshot.version !== RENDER_SNAPSHOT_VERSION) return { kind: 'none', reason: `${basename(path)} is snapshot version ${snapshot.version}, not ${RENDER_SNAPSHOT_VERSION}: ${remake}` };": 2
     },
-    "lib/picture/motion/models/motion-tracks.ts": {
+    "lib/output/sfx-cues/engine/cue-module.ts": {
+      "if (list.version !== SFX_CUE_LIST_VERSION) throw new Error(`${path} is version ${list.version}; delete it and redraft with studio sfx draft`);": 1
+    },
+    "lib/picture/measurement/models/motion-tracks.ts": {
       "throw new Error(`motion tracks are version ${tracks.version}, and this reads version ${MOTION_TRACKS_VERSION}: run studio check again`);": 2
     },
     "lib/picture/reel/models/column-field.test.ts": {
@@ -1835,9 +1551,6 @@
     },
     "lib/picture/reel/models/lens.test.ts": {
       "assert.ok(decay.every((px, i) => px < (i ? decay[i - 1] : 2.5) && px > 0.5), `falls away over the next frames: ${decay}`);": 1
-    },
-    "lib/timing/sound/engine/cue-module.ts": {
-      "if (list.version !== SFX_CUE_LIST_VERSION) throw new Error(`${path} is version ${list.version}; delete it and redraft with studio sfx draft`);": 1
     },
     "lint/structural/checks/trampolines.ts": {
       "if (property.type === 'Property' && key?.type === 'Identifier' && value && isFunction(value)) found.push({ name: `${id.name}.${key.name}`, fn: value });": 2
@@ -1858,11 +1571,13 @@
       "const quote = (s: string) => `'${s.replace(/['\\\\]/g, '\\\\$&')}'`;": 1,
       "const reEscape = (s: string) => s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');": 1
     },
-    "lib/platform/paid-generation/engine/paid-generation.ts": {
-      "export function paidGenerationKey(...request: unknown[]): string {": 1
+    "lib/output/picture-checks/models/framing-check.ts": {
+      "function obstruction(m: FramingMark, marks: readonly FramingMark[], { width, height }: FrameSize): string | null {": 1
     },
-    "lib/platform/ffmpeg/engine/loudness.ts": {
-      "export function measureLoudness(file: string): Loudness {": 1
+    "lib/output/picture-checks/models/motion-graph.ts": {
+      "function motionAmount(track: MotionTrack, req: Pick<MotionGraphRequest, 'first' | 'last'>) {": 1,
+      "const valuesOf = (l: Plot['lines'][number]) => l.series.flatMap((s) => s.values).filter((v) => v !== null);": 1,
+      "const spreadOf = (vs: number[]) => Math.max(...vs) - Math.min(...vs);": 1
     },
     "lib/output/render/engine/frame-profiling.ts": {
       "export async function profileFrames(session: RenderSession, { from, end }: { from: number; end: number }): Promise<FrameProfileReport> {": 1,
@@ -1885,11 +1600,16 @@
     "lib/output/review/models/review-notes.test.ts": {
       "const rect = (x: number) => ({ x, y: 0.1, w: 0.4, h: 0.8 });": 1
     },
+    "lib/output/sfx-cues/models/cues.ts": {
+      "function whooshFit(at: number, { from, to }: { from: number; to: number }): Record<string, number> {": 1,
+      "export function draftSfxCues(events: readonly SfxEvent[], words: readonly SpokenWord[], { clickStyle, previous }: { clickStyle: SfxClickStyle; previous?: SfxCueList | null }): { list: SfxCueList; dropped: { id: string; why: string }[] } {": 1,
+      "export function staleSfxCues(list: SfxCueList, events: readonly SfxEvent[], { from, to, fps, partial }: { from: number; to: number; fps: number; partial: boolean }): SfxCueProblem[] {": 1
+    },
+    "lib/output/sound-check/engine/sound-check.ts": {
+      "export function formatVideoSoundCheck({ fps, sounds, emptyBeats }: VideoSoundCheck): string[] {": 1
+    },
     "lib/output/stills/engine/still-sheet.test.ts": {
       "const look = (headline: number, crop: number) => new Uint8Array(16).fill(headline + crop);": 1
-    },
-    "lib/output/stills/models/still-check.ts": {
-      "export function relativeLuminance([r, g, b]: readonly number[]) {": 1
     },
     "lib/picture/captions/models/caption-sidecar.ts": {
       "function timestamp(seconds: number, separator: ',' | '.') {": 1
@@ -1897,16 +1617,8 @@
     "lib/picture/film/studio/three-stage.tsx": {
       "function coprimeNear(n: number, share: number) {": 1
     },
-    "lib/picture/frame/models/framing-check.ts": {
-      "function obstruction(m: FramingMark, marks: readonly FramingMark[], { width, height }: FrameSize): string | null {": 1
-    },
     "lib/picture/kit/studio/kit.tsx": {
       "export function ConfirmDialog({ k, origin, message, anchor: given }: { k: number; origin: string; message: string; anchor?: { x: number; y: number } }) {": 1
-    },
-    "lib/picture/motion/models/motion-graph.ts": {
-      "function motionAmount(track: MotionTrack, req: Pick<MotionGraphRequest, 'first' | 'last'>) {": 1,
-      "const valuesOf = (l: Plot['lines'][number]) => l.series.flatMap((s) => s.values).filter((v) => v !== null);": 1,
-      "const spreadOf = (vs: number[]) => Math.max(...vs) - Math.min(...vs);": 1
     },
     "lib/picture/motion/models/motion.test.ts": {
       "const peak = (ease: (k: number) => number) => Math.max(...Array.from({ length: 10001 }, (_, i) => ease(i / 10000)));": 1
@@ -1957,6 +1669,12 @@
     "lib/picture/reel/studio/type.tsx": {
       "export function SelectionBox({": 1
     },
+    "lib/platform/ffmpeg/engine/loudness.ts": {
+      "export function measureLoudness(file: string): Loudness {": 1
+    },
+    "lib/platform/paid-generation/engine/paid-generation.ts": {
+      "export function paidGenerationKey(...request: unknown[]): string {": 1
+    },
     "lib/platform/project/engine/studio-project.ts": {
       "export function resolveStudioProject(arg: string): string {": 1
     },
@@ -1965,14 +1683,6 @@
     },
     "lib/timing/music/engine/music-track.ts": {
       "const off = at - downbeat, signed = (x: number) => `${x >= 0 ? '+' : ''}${x.toFixed(2)}`;": 1
-    },
-    "lib/timing/sound/engine/sound-check.ts": {
-      "export function formatVideoSoundCheck({ fps, sounds, emptyBeats }: VideoSoundCheck): string[] {": 1
-    },
-    "lib/timing/sound/models/cues.ts": {
-      "function whooshFit(at: number, { from, to }: { from: number; to: number }): Record<string, number> {": 1,
-      "export function draftSfxCues(events: readonly SfxEvent[], words: readonly SpokenWord[], { clickStyle, previous }: { clickStyle: SfxClickStyle; previous?: SfxCueList | null }): { list: SfxCueList; dropped: { id: string; why: string }[] } {": 1,
-      "export function staleSfxCues(list: SfxCueList, events: readonly SfxEvent[], { from, to, fps, partial }: { from: number; to: number; fps: number; partial: boolean }): SfxCueProblem[] {": 1
     },
     "lib/timing/sound/models/dsp.ts": {
       "export function addRoom(dry: Float64Array, wetDb: number): Float64Array {": 1
@@ -2053,7 +1763,7 @@
     }
   },
   "unicorn(prefer-set-has)": {
-    "lib/picture/motion/models/hold-check.ts": {
+    "lib/output/picture-checks/models/hold-check.ts": {
       "const PAGE_CHANNELS = ['cx', 'cy'];": 1
     },
     "lint/structural/checks/barrel-purity.ts": {

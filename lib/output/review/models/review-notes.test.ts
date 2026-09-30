@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { MotionSegment, MotionTracks } from '#lib/picture/motion/models/motion-tracks.ts';
+import type { MotionSegment, MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
 import { formatReviewNotesMarkdown, reviewNoteContext, type ReviewContextSources } from './review-notes.ts';
 
 // 30 fps, 1000×500 frame. `intro` then `buy` from 2 s; a card with a price inside it, both on frames 60–90.

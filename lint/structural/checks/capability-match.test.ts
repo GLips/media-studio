@@ -5,8 +5,8 @@ import { caught, runCheckOnFiles } from '../spec-tree.ts';
 const LIB = {
   'lib/timing/timeline/models/timeline.ts': 'export const defineTimeline = (s: unknown) => s;\n',
   'lib/timing/timeline/models/bind-timeline.ts': 'export const bindTimeline = (t: unknown, b: unknown) => [t, b];\n',
-  'lib/output/stills/studio/stills.tsx': 'export const defineStills = (d: unknown) => d;\n',
-  'lib/api.ts': "export { defineStills } from '#lib/output/stills/studio/stills.tsx';\n",
+  'lib/picture/stills/studio/stills.tsx': 'export const defineStills = (d: unknown) => d;\n',
+  'lib/api.ts': "export { defineStills } from '#lib/picture/stills/studio/stills.tsx';\n",
 };
 const declares = (capability: string) => `export default { capability: '${capability}' } satisfies { capability: string };\n`;
 const timeline = (keys: string) => `import { defineTimeline } from '../../../lib/timing/timeline/models/timeline.ts';\nexport const timeline = defineTimeline({ ${keys ? `${keys}, ` : ''}scenes: {} });\n`;

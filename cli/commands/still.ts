@@ -23,7 +23,7 @@ export default defineCommand({
     const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
     const { describeStillFits, renderProjectStills } = await import('#lib/output/render/engine/render-stills.ts');
     const { withStudioTemp } = await import('#lib/platform/temp/engine/studio-temp.ts');
-    const { stillName } = await import('#lib/output/stills/models/still-presets.ts');
+    const { stillName } = await import('#lib/picture/stills/models/still-presets.ts');
     const project = resolveStudioProjectWith(args.project, 'stills.tsx');
     const renderStills = async (drawnDir?: string) => {
       const stills = await renderProjectStills(project, { designs: list(args.design), presets: list(args.preset), variants: list(args.variant) }, { format: args.jpg ? 'jpeg' : 'png', check: Boolean(args.check), drawnDir });

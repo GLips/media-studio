@@ -41,7 +41,7 @@ export default defineCommand({
       if (args.out && !/\.png$/i.test(args.out)) throw new Error(`a --graph is an image: give --out a .png name, not ${args.out}`);
       const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
       const { parseLookFrames } = await import('#lib/output/look/engine/frame-look.ts');
-      const { readProjectClock } = await import('#lib/timing/timeline/engine/project-clock.ts');
+      const { readProjectClock } = await import('#lib/output/render/engine/project-clock.ts');
       const { lookPieceModels } = await import('#lib/output/look/engine/piece-look.ts');
       const project = resolveStudioProjectWith(args.project, 'timeline.ts');
       const frames = await (async () => {
@@ -77,7 +77,7 @@ export default defineCommand({
     if ([args.frames, args.bar, args.sheet, args.strip].filter(Boolean).length > 1) throw new Error('choose frames one way: --frames, --bar, --sheet or --strip');
     const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
     const { lookAgainst, lookFrameSheet, lookMotion, openLookSource, parseLookCrop, parseLookFrames, parseLookNumber } = await import('#lib/output/look/engine/frame-look.ts');
-    const { readProjectClock } = await import('#lib/timing/timeline/engine/project-clock.ts');
+    const { readProjectClock } = await import('#lib/output/render/engine/project-clock.ts');
     const project = resolveStudioProjectWith(args.project, 'video.tsx');
     const inProject = (file: string) => (isAbsolute(file) ? file : join(project, file));
     const out = inProject(args.out ?? (args.motion ? 'out/check/motion.txt' : args.against ? 'out/check/against.jpg' : 'out/check/sheet.jpg'));

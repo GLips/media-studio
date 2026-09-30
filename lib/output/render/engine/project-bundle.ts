@@ -16,7 +16,7 @@ import { previsFootageModuleFor, writePrevisFootageModule } from '#lib/footage/p
 import { writeProjectBrandModule } from '#lib/picture/brand/engine/project-brand.ts';
 import { writeProjectStylesModule } from '#lib/picture/stamp-styles/engine/project-styles.ts';
 import { projectHostLink, readProjectHostSpec } from '#lib/platform/host/engine/project-host-spec.ts';
-import { writeSfxCueModule } from '#lib/timing/sound/engine/cue-module.ts';
+import { writeSfxCueModule } from '#lib/output/sfx-cues/engine/cue-module.ts';
 
 export function projectSlug(project: string) {
   return basename(resolve(project));

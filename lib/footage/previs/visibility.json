@@ -1,0 +1,4 @@
+{
+  "lib/output/render": "`studio gen video` renders a previs scene's blockout, and the bundle lists the footage generated for it.",
+  "lib/picture/composition": "The composition plays a previs scene's generated footage in place of its blockout."
+}

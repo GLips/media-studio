@@ -4,7 +4,7 @@ import { VOICE_LUFS } from './mix.ts';
 import { SFX_RATE } from './dsp.ts';
 import { renderSfx, resolveSfxParams, SFX_LOUDNESS_UNDER_VOICE, SFX_PRE_ROLL_SECONDS } from './library.ts';
 import { SFX_RECIPES } from './recipes.ts';
-import { detectAudioAttacks } from '../engine/sound-check.ts';
+import { detectAudioAttacks } from './audio-attacks.ts';
 
 test('a request always renders the same samples, and another seed gives another take of the same sound', () => {
   const a = renderSfx({ sound: 'click', seed: 'click-3' }), b = renderSfx({ sound: 'click', seed: 'click-3' });

@@ -3,8 +3,8 @@
 // it to final changes its binding in video.tsx, never timeline.ts.
 
 import type { ResolvedSceneClock } from '#lib/timing/timeline/models/timeline.ts';
-import type { SceneDef, ScenePrevis } from '#lib/picture/composition/studio/timeline.ts';
-import { sceneForTimelineClock } from '#lib/picture/composition/studio/timeline-scene.tsx';
+import type { SceneDef, ScenePrevis } from '#lib/picture/video/studio/video.ts';
+import { sceneForTimelineClock } from '#lib/picture/video/studio/timeline-scene.tsx';
 import { FlatBlockout, type FlatPiece, type FlatViewMoves } from './flat-blockout.tsx';
 
 type FlatPrevis = ScenePrevis extends infer P ? P extends unknown ? Omit<P, 'blockout'> : never : never;

@@ -8,12 +8,13 @@
 
 import type { CSSProperties, ReactNode } from 'react';
 import { Img } from 'remotion';
-import { centerOf, inflate, rectToScreen, viewScale, type Point, type Rect, type View } from '#lib/picture/camera/models/camera.ts';
+import { rectToScreen, viewScale, type View } from '#lib/picture/camera/models/camera.ts';
+import { centerOf, inflate, type Point, type Rect } from '#lib/picture/frame/models/geometry.ts';
 import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
 import { clamp } from '#lib/picture/motion/models/motion.ts';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
-import { cameraMotionAttrs, motionEchoAttrs, pieceMotionAttrs } from '#lib/output/look/studio/motion-tag.ts';
-import { dotVec3, type Vec3 } from '#lib/picture/camera/models/vec3.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
+import { cameraMotionAttrs, motionEchoAttrs, pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
+import { dotVec3, type Vec3 } from '#lib/picture/frame/models/vec3.ts';
 import {
   along, backOf, cornersOf, eyeOf, faceLight, framedStretch, lensScale, liftHeight, lightDirection, planeFrame, planeTrail, plateSheen, pointOn,
   sheenGradient, sheenLineLength, withDrift, PLANE_REST_POSE, type LiftedPlate, type PlaneFrame, type PlaneLift, type PlanePose,

@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["fonttools>=4.50", "uharfbuzz>=0.40"]
 # ///
-"""Writes archivo-metrics.ts: the bundled Archivo's advances and kerning at its masters, so ticker-layout.ts can place a
+"""Writes archivo-metrics.ts: the bundled Archivo's advances and kerning at its masters, so glyph-layout.ts can place a
 line of glyphs, each at its own weight and width, without measuring the DOM.
 
     uv run lib/picture/type/models/archivo-metrics.py
@@ -147,14 +147,14 @@ class Shaper:
 
 
 def normalise(table, tag, user):
-    """User value to the table's normalised coordinate, as ticker-layout.ts does it."""
+    """User value to the table's normalised coordinate, as glyph-layout.ts does it."""
     axis = table["axes"][tag]
     n = normalizeValue(user, (axis["min"], axis["default"], axis["max"]))
     return piecewiseLinearMap(n, dict(axis["avar"]))
 
 
 def interpolate(table, values, user):
-    """Bilinear in normalised coordinates between the stops either side, as ticker-layout.ts does it."""
+    """Bilinear in normalised coordinates between the stops either side, as glyph-layout.ts does it."""
     cells = []
     for tag in AXES:
         stops, n = table["axes"][tag]["stops"], normalise(table, tag, user[tag])
@@ -206,10 +206,10 @@ def render_ts(table):
         "//",
         "// Archivo's advance for each character and kerning for each pair that has any, in font units, at every combination",
         "// of the axes' `stops` (weight-major). Stops are normalised coordinates where the font's variation regions break,",
-        "// so values between them are bilinear and ticker-layout.ts interpolates them exactly; `avar` maps fvar-normalised",
+        "// so values between them are bilinear and glyph-layout.ts interpolates them exactly; `avar` maps fvar-normalised",
         "// weight onto them (Archivo's weight is not linear in its axis).",
         "",
-        "import type { VariableFontMetrics } from '#lib/picture/reel/models/ticker-layout.ts';",
+        "import type { VariableFontMetrics } from './glyph-layout.ts';",
         "",
         "export const ARCHIVO_METRICS: VariableFontMetrics = {",
         f"  unitsPerEm: {table['unitsPerEm']},",

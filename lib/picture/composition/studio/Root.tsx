@@ -8,11 +8,12 @@ import stills from '@stills';
 import video from '@video';
 import { DEFAULT_VIDEO_FORMAT } from '#lib/picture/frame/models/frame.ts';
 import { assertPrevisSpanFits, previsSpan } from '#lib/footage/previs/studio/previs.ts';
-import { StillProbe } from '#lib/output/stills/studio/still-probe.tsx';
-import { STILL_PRESETS, stillName, type StillProps, type StillRenderProps } from '#lib/output/stills/models/still-presets.ts';
-import { StillPresetContext, type StillsDef } from '#lib/output/stills/studio/stills.tsx';
-import { laidVideoOf, videoFormatOf, type VideoDef } from './timeline.ts';
-import { BlockoutSolo, Video, type BlockoutSoloProps, type VideoProps } from './Video.tsx';
+import { StillProbe } from '#lib/picture/stills/studio/still-probe.tsx';
+import { STILL_PRESETS, stillName, type StillProps, type StillRenderProps } from '#lib/picture/stills/models/still-presets.ts';
+import { StillPresetContext, type StillsDef } from '#lib/picture/stills/studio/stills.tsx';
+import { laidVideoOf, videoFormatOf, type VideoDef } from '#lib/picture/video/studio/video.ts';
+import { BlockoutSolo, Video } from './Video.tsx';
+import type { BlockoutSoloProps, CompositionRenderSettings, ReplayProps, VideoProps } from '#lib/picture/video/models/composition-props.ts';
 
 /**
  * Stops `Date` at `clock` for the whole tab. Timers, animation frames and performance.now keep real time, and
@@ -35,14 +36,6 @@ if (video?.clock !== undefined) pinBrowserDate(video.clock);
 // The components below render only when Root registered them, which it does only with a video.
 const projectVideo = video as VideoDef;
 const ProjectVideo = (props: VideoProps & CompositionRenderSettings) => <Video video={projectVideo} {...props} />;
-
-/**
- * How Node renders a composition rather than what it draws, carried in its defaultProps because selectComposition
- * hands those back; the components ignore it. lib/output/render/engine/render-session.ts's workersFor reads it.
- */
-export type CompositionRenderSettings = { renderWorkers?: number };
-
-export type ReplayProps = VideoProps & { order: number[] };
 
 /**
  * Frame i shows the video's frame order[i] (the last one past the end). Rendered in one tab, that gives each frame a

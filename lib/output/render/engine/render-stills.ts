@@ -1,5 +1,5 @@
 // render-stills.ts: renders a project's stills (its stills.tsx, registered by lib/picture/composition/studio/Root.tsx) to
-// out/stills/<design>-<preset>-<variant>.png, checking each first (lib/output/stills/models/still-check.ts): a still with a problem isn't
+// out/stills/<design>-<preset>-<variant>.png, checking each first (lib/picture/stills/models/still-check.ts): a still with a problem isn't
 // written, and an older file of its name is removed, so out/stills never holds a still that fails; a full run also
 // removes stills no design makes any more. Node only.
 import { getCompositions, renderStill } from '@remotion/renderer';
@@ -9,8 +9,8 @@ import { join } from 'node:path';
 import { bundleStudioProject } from './studio-bundle.ts';
 import { inRenderBrowser, RENDER_CHROMIUM } from './render-browser.ts';
 import { artifactSink } from './render-session.ts';
-import { stillProblems, type StillMeasure, type StillPixels, type StillProblem } from '#lib/output/stills/models/still-check.ts';
-import { isStillFitArtifact, STILL_MEASURE_ARTIFACT, STILL_UI_ZONES, stillName, type StillFitReport, type StillProps, type StillRenderProps } from '#lib/output/stills/models/still-presets.ts';
+import { stillProblems, type StillMeasure, type StillPixels, type StillProblem } from '#lib/picture/stills/models/still-check.ts';
+import { isStillFitArtifact, STILL_MEASURE_ARTIFACT, STILL_UI_ZONES, stillName, type StillFitReport, type StillProps, type StillRenderProps } from '#lib/picture/stills/models/still-presets.ts';
 import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 

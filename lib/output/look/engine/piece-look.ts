@@ -5,10 +5,10 @@ import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { rasterizeSvgs } from '#lib/platform/raster/engine/html-raster.ts';
-import { readProjectTimeline } from '#lib/timing/timeline/engine/project-clock.ts';
-import { buildPieceGraph } from '#lib/picture/motion/models/piece-graph.ts';
-import { formatPieceTables, isPieceTracksDefinition, samplePieceTracks, type PieceTracksDefinition } from '#lib/picture/motion/models/piece-tracks.ts';
-import { videoFormatOf, type VideoDef } from '#lib/picture/composition/studio/timeline.ts';
+import { readProjectTimeline } from '#lib/output/render/engine/project-clock.ts';
+import { buildPieceGraph } from '#lib/output/picture-checks/models/piece-graph.ts';
+import { formatPieceTables, isPieceTracksDefinition, samplePieceTracks, type PieceTracksDefinition } from '#lib/picture/measurement/models/piece-tracks.ts';
+import { videoFormatOf, type VideoDef } from '#lib/picture/video/studio/video.ts';
 
 const SCENE_DIRS = ['bars', 'scenes'];
 const MODEL_FILE = /-model\.ts$/;

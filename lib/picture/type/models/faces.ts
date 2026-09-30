@@ -1,7 +1,8 @@
 // faces.ts: the studio's faces by name and metric, which layout reads without loading a font. lib/picture/type/studio/fonts.ts
 // loads the files themselves.
 
-import { FONT } from '#lib/picture/frame/models/frame.ts';
+/** The system face: walkthroughs set their text in it, so it reads as the product's own UI. */
+export const FONT = '-apple-system, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif';
 
 /**
  * A face as FitText and a brand kit name it: its CSS family list, and the range of its width axis when it has one,

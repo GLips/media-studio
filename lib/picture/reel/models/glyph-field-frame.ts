@@ -2,7 +2,7 @@
 // each cell, the filter's drops and moves, the punch, the collapse and the motion smear. A pure function of its props.
 
 import type { FrameSize, VideoFormat } from '#lib/picture/frame/models/frame.ts';
-import type { Point } from '#lib/picture/camera/models/camera.ts';
+import type { Point } from '#lib/picture/frame/models/geometry.ts';
 import { backOutEase, clamp, lerp, motionCurves, type EaseFn } from '#lib/picture/motion/models/motion.ts';
 import { hashRandom } from '#lib/picture/motion/models/random.ts';
 import { GLYPH_FIELD_COLORS, GLYPH_SHAPES, glyphFieldLayout, glyphPunchScale, glyphRegroupPlan, glyphWaveArrivals, type GlyphCell, type GlyphClip, type GlyphFilterStep, type GlyphFilterTiming, type GlyphHit, type GlyphImplode, type GlyphKey, type GlyphLayout, type GlyphPunch, type GlyphShape, type GlyphWave } from './glyph-field.ts';

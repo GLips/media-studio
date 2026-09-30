@@ -4,8 +4,8 @@
 import { useId } from 'react';
 import { useStudioFontsReady } from '#lib/picture/type/studio/fonts.ts';
 import { DISPLAY_FONT, MONO_FONT } from '#lib/picture/type/models/faces.ts';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
-import { motionEchoAttrs, pieceMotionAttrs } from '#lib/output/look/studio/motion-tag.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
+import { motionEchoAttrs, pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { hashRandom } from '#lib/picture/motion/models/random.ts';
 import { labelAt, leftOf, scrambleAt, scrambleFinish, wordGlitchAt, type Align, type Setting } from '../models/type.ts';
 import { faceStyle, layer, measureWord } from './type-measure.ts';

@@ -6,8 +6,8 @@
 import { useId, type ReactElement, type ReactNode } from 'react';
 import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
 import { lensFringeAt, lensFringeSubpixelMax, type LensFringeTiming } from '../models/lens.ts';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
-import { pieceMotionAttrs } from '#lib/output/look/studio/motion-tag.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
+import { pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 
 /**
  * Chromatic aberration over `children`: the frame post, above the content and the HUD and under FilmGrain. `t` is

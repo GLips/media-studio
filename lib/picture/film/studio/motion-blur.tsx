@@ -4,8 +4,8 @@
 // travel instead.
 
 import type { ReactNode } from 'react';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
-import { motionEchoAttrs } from '#lib/output/look/studio/motion-tag.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
+import { motionEchoAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 
 /**
  * `render(t)` drawn at `samples` times over the `shutter` (a fraction of a frame: 0.5 is film's 180°) ending at `t`,

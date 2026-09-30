@@ -86,7 +86,7 @@ path.
 - `lib/timing/timeline/models/timeline.ts`: `defineTimeline` and its drivers (`voiceSpan`, `beatSpan`, `fixedSpan`), the one
   schedule, in frames. `video-layout.ts` beside it places each scene and voice line on the video and decides which
   scenes a frame paints, centring crossfades on the cuts.
-- `lib/picture/composition/studio/timeline.ts`: `defineVideo`, which pairs the scenes bound with `bindTimeline` with
+- `lib/picture/video/studio/video.ts`: `defineVideo`, which pairs the scenes bound with `bindTimeline` with
   where the timeline placed them.
 - `lib/picture/captions/`: captions, one timing core under pluggable styles. A voiced video captions its lines (a
   script's `*word*` is emphasis, `` `key` `` a keycap); a silent one states a `captionTable` in its `timeline.ts`.
@@ -100,7 +100,7 @@ path.
 - `lib/picture/kit/studio/kit.tsx`: whole shots built from those, taking their brand colours and words as arguments: `MotionTitle`,
   `ClickToBlur`, `SplitCompare`, `Phone`, `GlassCard`, `SectionCard`, `EndCard`, and redraws of what a screenshot
   can't hold (`ConfirmDialog`, `NativeMenu`). When a shot recurs in a second video, move it here.
-- `lib/output/look/studio/probe.tsx`: measures highlights, clicks, tags and the caption on each frame. `lib/picture/frame/models/framing-check.ts`
+- `lib/picture/measurement/studio/probe.tsx`: measures highlights, clicks, tags and the caption on each frame. `lib/output/picture-checks/models/framing-check.ts`
   decides what's a problem.
 - `lib/timing/sound/models/mix.ts`: voice levelling, and a music bed that ducks under the voice. `lib/platform/ffmpeg/engine/loudness.ts` measures.
 - `lib/timing/sound/studio/sfx.tsx`: `<Sfx>` plays a sound so it lands on a scene time; `CursorPath` clicks sound by themselves.

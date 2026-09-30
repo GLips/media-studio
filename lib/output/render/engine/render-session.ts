@@ -20,12 +20,12 @@ import { bundleStudioProject } from './studio-bundle.ts';
 import { runFfmpeg, runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { writeRenderSnapshot, type RenderSnapshot } from './render-snapshot.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
-import { readProjectClock } from '#lib/timing/timeline/engine/project-clock.ts';
+import { readProjectClock } from './project-clock.ts';
 import { renderVoiceOf } from '#lib/timing/voice/engine/voice-project.ts';
 import { inRenderBrowser, RENDER_CHROMIUM } from './render-browser.ts';
-import type { MotionTracks } from '#lib/picture/motion/models/motion-tracks.ts';
-import type { CompositionRenderSettings, ReplayProps } from '#lib/picture/composition/studio/Root.tsx';
-import type { TimelineReport, VideoProps } from '#lib/picture/composition/studio/Video.tsx';
+import type { MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
+import type { CompositionRenderSettings, ReplayProps, VideoProps } from '#lib/picture/video/models/composition-props.ts';
+import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
 
 export type RenderSession = Awaited<ReturnType<typeof openRenderSession>>;
 

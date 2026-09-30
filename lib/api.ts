@@ -7,11 +7,13 @@ export { dollyMove, orbitMove, pushInMove, type BlockoutMove, type BlockoutPose 
 export { FlatBlockout, type FlatPiece, type FlatPieceKind, type FlatViewMoves } from '#lib/footage/previs/studio/flat-blockout.tsx';
 export type { FlatKey, FlatPose, FlatView } from '#lib/footage/previs/studio/flat-blockout-pose.ts';
 export { beatGrid, steadyBeatGrid, type BeatGrid } from '#lib/timing/timeline/models/beat-grid.ts';
-export { applyAffine, assertKeysInOrder, camAt, camFit, camTop, camWhole, centerOf, clampCam, inflate, lerpCam, multiplyAffine, pagePoint, rectToScreen, scaleFor, screenPoint, screenRect, union, view, viewOf, viewOfScreenRect, viewScale, type AffineMatrix, type Cam, type Point, type Rect, type Shot, type View } from '#lib/picture/camera/models/camera.ts';
+export { assertKeysInOrder, camAt, camFit, camTop, camWhole, clampCam, lerpCam, pagePoint, rectToScreen, scaleFor, screenPoint, screenRect, view, viewOf, viewOfScreenRect, viewScale, type Cam, type Shot, type View } from '#lib/picture/camera/models/camera.ts';
+export { applyAffine, centerOf, inflate, multiplyAffine, union, type AffineMatrix, type Point, type Rect } from '#lib/picture/frame/models/geometry.ts';
 export { Capture, CaptureMotion, CaptureStates, CaptureSwap } from '#lib/footage/capture/studio/capture.tsx';
 export { areStudioFontsLoaded, loadStudioFaces, useStudioFontsReady, whenStudioFontsLoaded, type StudioFontFile } from '#lib/picture/type/studio/fonts.ts';
 export { ARCHIVO_FACE, DISPLAY_FONT, MONO_ADVANCE_EM, MONO_CAP_EM, MONO_FONT, type StudioFace } from '#lib/picture/type/models/faces.ts';
-export { DEFAULT_VIDEO_FORMAT, FONT, fullFrameRect, type FrameSize, type VideoFormat } from '#lib/picture/frame/models/frame.ts';
+export { DEFAULT_VIDEO_FORMAT, fullFrameRect, type FrameSize, type VideoFormat } from '#lib/picture/frame/models/frame.ts';
+export { FONT } from '#lib/picture/type/models/faces.ts';
 export { captionFreeRect, captionSafeArea, pillCaptionBand, type CaptionBand, type CaptionBandRule } from '#lib/picture/captions/models/caption-band.ts';
 export { READABLE_CAPTION_RULE, type CaptionPagingRule } from '#lib/picture/captions/models/caption-pages.ts';
 export { useCaptionSafeArea, type CaptionRenderProps, type CaptionStyle } from '#lib/picture/captions/studio/caption-style.tsx';
@@ -22,7 +24,7 @@ export { ClickToBlur, ConfirmDialog, DrawPath, EndCard, GlassCard, MotionTitle, 
 export { backOutEase, clamp, lerp, motionCurves, motionDurations, off, on, perceptualSpring, powerOutEase, seg, sineInOutEase, stagger, staggerFinish, type CurveRoles, type EaseFn, type PerceptualSpring, type StaggerFrom, type StaggerTiming } from '#lib/picture/motion/models/motion.ts';
 export { ShutterBlur } from '#lib/picture/film/studio/motion-blur.tsx';
 export { REEL_SHUTTER, shutterOpensAt, shutterTravel, smearSigma } from '#lib/picture/motion/models/shutter.ts';
-export { motionAttrs, motionEchoAttrs, pieceMotionAttrs, unmeasuredAttrs, useMotionTag, type MotionTag } from '#lib/output/look/studio/motion-tag.ts';
+export { motionAttrs, motionEchoAttrs, pieceMotionAttrs, unmeasuredAttrs, useMotionTag, type MotionTag } from '#lib/picture/measurement/studio/motion-tag.ts';
 export { ClickRipple, ClipToBox, Cursor, CursorPath, Glass, Highlight, Spotlight, Tag, TakeCursor, Text, Wash, cursorAt, offscreen, type CursorKey } from '#lib/picture/kit/studio/overlays.tsx';
 export { hashRandom, randomSeedFromKey, seededRandom } from '#lib/picture/motion/models/random.ts';
 // The reel pieces: the high-energy register of music-led videos (skills/video-motion/references/reel-pieces.md).
@@ -48,26 +50,27 @@ export { needleContactAt, needleCoversAt, needleExposuresAt, needleLensHeight, n
 export { FadeToBlack, GlitchFlash, RecapGrid, Shake, type RecapTile, type RecapTileView } from '#lib/picture/reel/studio/recap.tsx';
 export { recapGridRects, recapPopStarts, recapTileUnder, shakeOffset, type GlitchHit, type GlitchLook, type RecapExit, type RecapLayout, type RecapOrder } from '#lib/picture/reel/models/recap.ts';
 export { TickerBand, TickerBands, type TickerBandProps, type TickerBandsProps } from '#lib/picture/reel/studio/ticker.tsx';
-export { ARCHIVO_BASELINE_EM, ARCHIVO_CAP_EM, archivoAdvance, archivoKern, layoutGlyphLine, layoutTickerRow, mixGlyphPose, tickerBreathAt, type GlyphAxes, type GlyphLine, type GlyphLineSlot, type GlyphPose, type TickerBreath, type TickerPose, type TickerRowStyle, type TickerSlot, type VariableFontMetrics } from '#lib/picture/reel/models/ticker-layout.ts';
+export { layoutTickerRow, mixGlyphPose, tickerBreathAt, type GlyphPose, type TickerBreath, type TickerPose, type TickerRowStyle, type TickerSlot } from '#lib/picture/reel/models/ticker-layout.ts';
+export { ARCHIVO_BASELINE_EM, ARCHIVO_CAP_EM, archivoAdvance, archivoKern, layoutGlyphLine, type GlyphAxes, type GlyphLine, type GlyphLineSlot, type VariableFontMetrics } from '#lib/picture/type/models/glyph-layout.ts';
 export { TICKER_BOLD, TICKER_HERO_POSES, TICKER_LIGHT, TICKER_LOOKS, tickerLookBeat, type TickerColors, type TickerEnter, type TickerExit, type TickerHeroPoses, type TickerKick, type TickerLook } from '#lib/picture/reel/models/ticker.ts';
 export { IndexLabel, RiseWord, SelectionBox, WeightWord, type WordSelection } from '#lib/picture/reel/studio/type.tsx';
 export { SlantWord } from '#lib/picture/reel/studio/type-slant.tsx';
 export { ScrambleText } from '#lib/picture/reel/studio/type-scramble.tsx';
 export { CODE_GLYPHS, scrambleAt, scrambleFinish, slantMatrix, slantWordPose, type ScrambleTiming, type SlantEntrance, type SlantPose, type Tittle } from '#lib/picture/reel/models/type.ts';
-export { useScene } from '#lib/picture/composition/studio/scene.tsx';
-export { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
-export { useScreenRect } from '#lib/output/look/studio/screen-rect.ts';
-export { defineVideo, videoFormatOf, type ScenePrevis, type VideoSound } from '#lib/picture/composition/studio/timeline.ts';
+export { useScene } from '#lib/picture/video/studio/scene.tsx';
+export { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
+export { useScreenRect } from '#lib/picture/measurement/studio/screen-rect.ts';
+export { defineVideo, videoFormatOf, type ScenePrevis, type VideoSound } from '#lib/picture/video/studio/video.ts';
 export type { LineSpan, SceneClock } from '#lib/timing/timeline/models/video-layout.ts';
-export { sceneCueSeconds, sceneForTimelineClock } from '#lib/picture/composition/studio/timeline-scene.tsx';
+export { sceneCueSeconds, sceneForTimelineClock } from '#lib/picture/video/studio/timeline-scene.tsx';
 export type { SceneRung } from '#lib/timing/timeline/models/scene-rung.ts';
 export { blockingScene } from '#lib/footage/previs/studio/blocking-scene.tsx';
 export { SFX, Sfx, SfxCueListAudio, SfxCueListPlaying, type SfxCueSound, type SfxSound } from '#lib/timing/sound/studio/sfx.tsx';
-export { STILL_FEED_SIZES, STILL_PRESETS, type StillFitReport, type StillPreset } from '#lib/output/stills/models/still-presets.ts';
-export { CoverImage, FitText, STILL_CARD_TILT, StillCard, StillHud, defineStills, stillDesign, useStillFrame, type StillAxes, type StillCardTilt, type StillDesign, type StillFocus, type StillImage, type StillsDef } from '#lib/output/stills/studio/stills.tsx';
+export { STILL_FEED_SIZES, STILL_PRESETS, type StillFitReport, type StillPreset } from '#lib/picture/stills/models/still-presets.ts';
+export { CoverImage, FitText, STILL_CARD_TILT, StillCard, StillHud, defineStills, stillDesign, useStillFrame, type StillAxes, type StillCardTilt, type StillDesign, type StillFocus, type StillImage, type StillsDef } from '#lib/picture/stills/studio/stills.tsx';
 export { checkSourcePins, fitTake, onTake, pinnedSourceTime, sceneTimeOf, takeFrameAt, takeMouseAt, takeShot, takeTimeAt, type Take, type TakeFit, type TakeFrame, type TakeMark, type TakeMouse } from '#lib/footage/capture/studio/take.ts';
 export { ThreeStage, softboxEnvironment, type ThreeBloom, type ThreeEnvironment, type ThreeFrame, type ThreeLens, type ThreeSample } from '#lib/picture/film/studio/three-stage.tsx';
-export { addVec3, crossVec3, dotVec3, lengthVec3, lerpVec3, scaleVec3, subVec3, unitVec3, type Vec3 } from '#lib/picture/camera/models/vec3.ts';
+export { addVec3, crossVec3, dotVec3, lengthVec3, lerpVec3, scaleVec3, subVec3, unitVec3, type Vec3 } from '#lib/picture/frame/models/vec3.ts';
 // Stamp painting: a recipe of opaque and glaze groups of passes of deposits, painted on the GPU with a private style's
 // brushes (docs/private-styles.md, skills/video-canvas/SKILL.md).
 export { compileStampPaintRecipe, stampPaintRecipe, visibleStampCountAt, type CompiledStampPaint, type PaintMaterial, type StampGroupOptions, type StampGroupScope, type StampPaintColor, type StampPaintPaper, type StampPaintRecipe, type StampPaintScope, type StampPassOptions, type StampPassScope, type StampRegion } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';

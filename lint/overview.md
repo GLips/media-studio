@@ -76,7 +76,7 @@ All TypeScript: quality rules extended to the whole repo by vid-107.
 | doc-budgets | structural | each doc in docs/doc-budgets.manifest.json stays under its word ceiling |
 | barrel-discoverability | structural | a barrel names what it exports |
 | test-file-mirror (advisory) | structural | a spec sits beside the module it's named for |
-| feature-layers | structural | a lib foundation (`LIB_LAYERS`) imports only foundations of its own layer or a lower one |
+| feature-layers | structural | a lib foundation (`LIB_LAYERS`: platform, vocabulary, timing, framing, measurement, authoring, lowest first) imports only foundations of its own layer or a lower one |
 | feature-visibility | structural | a feature imported from another feature grants it, with a reason, in its visibility.json (one finding per ungranted pair); a foundation needs no grant and keeps no grant file |
 | feature-cycles | structural | no feature imports one that imports it back (one finding per import inside a cycle) |
 | no-test-imports | structural | only a spec imports a spec |

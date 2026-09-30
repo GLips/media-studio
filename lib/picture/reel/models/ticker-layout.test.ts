@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { layoutGlyphLine, layoutTickerRow, type GlyphAxes, type TickerRowStyle } from './ticker-layout.ts';
+import { layoutTickerRow, type TickerRowStyle } from './ticker-layout.ts';
+import { layoutGlyphLine, type GlyphAxes } from '#lib/picture/type/models/glyph-layout.ts';
 
 const close = (actual: readonly number[], expected: readonly number[], within: number) => {
   assert.equal(actual.length, expected.length);

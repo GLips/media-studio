@@ -3,10 +3,10 @@
 //
 // Archivo's advance for each character and kerning for each pair that has any, in font units, at every combination
 // of the axes' `stops` (weight-major). Stops are normalised coordinates where the font's variation regions break,
-// so values between them are bilinear and ticker-layout.ts interpolates them exactly; `avar` maps fvar-normalised
+// so values between them are bilinear and glyph-layout.ts interpolates them exactly; `avar` maps fvar-normalised
 // weight onto them (Archivo's weight is not linear in its axis).
 
-import type { VariableFontMetrics } from '#lib/picture/reel/models/ticker-layout.ts';
+import type { VariableFontMetrics } from './glyph-layout.ts';
 
 export const ARCHIVO_METRICS: VariableFontMetrics = {
   unitsPerEm: 1000,

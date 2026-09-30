@@ -9,11 +9,11 @@
 
 import * as THREE from 'three';
 import { motionCurves } from '#lib/picture/motion/models/motion.ts';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
-import { pieceMotionAttrs } from '#lib/output/look/studio/motion-tag.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
+import { pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { hashRandom } from '#lib/picture/motion/models/random.ts';
 import { ThreeStage, type ThreeEnvironment, type ThreeFrame, type ThreeSample } from '#lib/picture/film/studio/three-stage.tsx';
-import type { Vec3 } from '#lib/picture/camera/models/vec3.ts';
+import type { Vec3 } from '#lib/picture/frame/models/vec3.ts';
 import {
   needleInFrame, needleLensHeight, needlePoseAt, needleRestAxis, needleRig, needleScreenPoint, needleShotAt, needleTakeExposures,
   type NeedlePose, type NeedleRig, type NeedleStrike,

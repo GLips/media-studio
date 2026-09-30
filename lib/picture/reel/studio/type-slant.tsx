@@ -2,12 +2,12 @@
 // round on top so a scene can zoom through one. Its pose and transform are models/reel/type.ts's.
 
 import { Fragment, useId, type ReactNode } from 'react';
-import { applyAffine, type AffineMatrix, type Point } from '#lib/picture/camera/models/camera.ts';
+import { applyAffine, type AffineMatrix, type Point } from '#lib/picture/frame/models/geometry.ts';
 import { useStudioFontsReady } from '#lib/picture/type/studio/fonts.ts';
 import { DISPLAY_FONT } from '#lib/picture/type/models/faces.ts';
 import { REEL_SHUTTER, shutterOpensAt, smearSigma } from '#lib/picture/motion/models/shutter.ts';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
-import { pieceMotionAttrs } from '#lib/output/look/studio/motion-tag.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
+import { pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import {
   labelAt, leftOf, SLANT_LABEL_IN, slantMatrix, slantWordPose, stemAt, TITTLE_ACROSS, TITTLE_HEIGHT, type Align, type Setting, type Tittle,
 } from '../models/type.ts';

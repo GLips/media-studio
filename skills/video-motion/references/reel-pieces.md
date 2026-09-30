@@ -29,7 +29,7 @@ the image rather than a label on it, and colour comes in full-bleed fields, not 
   part takes. Default to the reference's values (from the breakdown), so the piece looks right with no tuning. Sizes
   are frame pixels, the reference's as measured on its 1920×1080 frame; say in the doc comment what share of frame
   height a size is. A piece reads the frame's size and fps from `useVideoFormat()`
-  (`lib/picture/composition/studio/video-format.ts`); a model takes them as arguments (a `FrameSize`, an `fps`), never assumed.
+  (`lib/picture/frame/studio/video-format.ts`); a model takes them as arguments (a `FrameSize`, an `fps`), never assumed.
 - **Type**: `DISPLAY_FONT` (Archivo, variable: `fontWeight` 100–900 and `fontStretch` 62–125% are continuous, so
   both can animate) and `MONO_FONT` for HUD labels and readouts (`lib/picture/type/studio/fonts.ts`).
 - **Curves**: `motionCurves.expo` (`entrance` for arrivals, `exit`, `standard`) and `seg`, or `perceptualSpring(duration,
@@ -40,7 +40,7 @@ the image rather than a label on it, and colour comes in full-bleed fields, not 
   ghosts behind it, or blur it along its path (an SVG `feGaussianBlur` with `stdDeviation="x 0"`). A whole shot can
   use `ShutterBlur` (`lib/picture/film/studio/motion-blur.tsx`), at `samples` times the cost.
 - **Motion tags.** The moving element carries `pieceMotionAttrs(motion, '<picked name>', { kind: '<piece>', values:
-  { … } })` (`lib/output/look/studio/motion-tag.ts`), with a `motion?: string | false` prop. A piece of hundreds of parts tags
+  { … } })` (`lib/picture/measurement/studio/motion-tag.ts`), with a `motion?: string | false` prop. A piece of hundreds of parts tags
   the whole and reports its progress as a value; it doesn't tag each cell. A canvas the probe can't see into carries
   `unmeasuredAttrs('<what>')` (`ThreeStage` does this itself).
 - **Cost.** A reel renders 600 frames. Keep a frame under about 2,000 DOM nodes; past that, draw into a canvas (2D in

@@ -1,7 +1,7 @@
 // caption-band.ts: the strip of the frame a caption style draws in, which scenes and cameras keep their subject above.
 // Each style declares its band as a rule over the frame's size; the pill's is the default.
 
-import type { Rect } from '#lib/picture/camera/models/camera.ts';
+import type { Rect } from '#lib/picture/frame/models/geometry.ts';
 import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
 
 export type CaptionBand = {

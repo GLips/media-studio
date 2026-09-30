@@ -1,7 +1,7 @@
 // type.ts: the kinetic type pieces' pure math: how a word is set and placed, a SlantWord's pose and transform, and a
 // ScrambleText's decode and glitch schedule. Runs without a browser; the drawing measures and draws in reel/type*.tsx.
 
-import { inflate, multiplyAffine, type AffineMatrix, type Point, type Rect } from '#lib/picture/camera/models/camera.ts';
+import { inflate, multiplyAffine, type AffineMatrix, type Point, type Rect } from '#lib/picture/frame/models/geometry.ts';
 import { fullFrameRect, type FrameSize } from '#lib/picture/frame/models/frame.ts';
 import { clamp, lerp, motionCurves, sineInOutEase } from '#lib/picture/motion/models/motion.ts';
 import { hashRandom, seededRandom } from '#lib/picture/motion/models/random.ts';

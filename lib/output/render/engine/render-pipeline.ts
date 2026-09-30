@@ -7,20 +7,23 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { rasterizeSvgs } from '#lib/platform/raster/engine/html-raster.ts';
-import { framingArtifactName, framingProblems, takeFitWarnings, type FramingReport } from '#lib/picture/frame/models/framing-check.ts';
-import { holdProblems } from '#lib/picture/motion/models/hold-check.ts';
-import { buildMotionGraph, motionGraphBackdropFrame, type MotionGraphSpace } from '#lib/picture/motion/models/motion-graph.ts';
-import { assembleMotionTracks, formatMotionReport, motionArtifactName, type FrameMotion, type MotionTracks } from '#lib/picture/motion/models/motion-tracks.ts';
+import { framingProblems, takeFitWarnings } from '#lib/output/picture-checks/models/framing-check.ts';
+import { framingArtifactName, type FramingReport } from '#lib/picture/measurement/models/framing-marks.ts';
+import { holdProblems } from '#lib/output/picture-checks/models/hold-check.ts';
+import { buildMotionGraph, motionGraphBackdropFrame, type MotionGraphSpace } from '#lib/output/picture-checks/models/motion-graph.ts';
+import { assembleMotionTracks, formatMotionReport, motionArtifactName, type FrameMotion, type MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
 import { measureLoudness } from '#lib/platform/ffmpeg/engine/loudness.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { artifactSink, DELIVERY_AUDIO_CODEC, formatRenderPasses, TIMELINE_REPORT_NAME, type RenderSession } from './render-session.ts';
 import { loadRenderSnapshot, renderSnapshotPath, writeRenderSnapshot } from './render-snapshot.ts';
-import { sfxEventsFrom, sfxMarkArtifactName, type SfxEvent, type SfxMark } from '#lib/timing/sound/models/cue-events.ts';
-import { sfxCueListReport } from '#lib/timing/sound/engine/project-cue-list.ts';
-import { readSfxCueList } from '#lib/timing/sound/engine/cue-module.ts';
+import { sfxEventsFrom, type SfxEvent } from '#lib/output/sfx-cues/models/cue-events.ts';
+import { sfxMarkArtifactName, type SfxMark } from '#lib/timing/sound/models/sfx-marks.ts';
+import { sfxCueListReport } from '#lib/output/sfx-cues/engine/project-cue-list.ts';
+import { readSfxCueList } from '#lib/output/sfx-cues/engine/cue-module.ts';
 import { renderVoiceOf } from '#lib/timing/voice/engine/voice-project.ts';
 import type { OnArtifact } from '@remotion/renderer';
-import type { TimelineReport, VideoProps } from '#lib/picture/composition/studio/Video.tsx';
+import type { VideoProps } from '#lib/picture/video/models/composition-props.ts';
+import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
 import { countVideoFrames, measureWithFfmpeg, runFfmpeg, runFfprobe } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 
 const outDirFor = (session: RenderSession) => join(session.project, 'out');
@@ -57,8 +60,8 @@ export type ProjectCheck = { ok: boolean; timeline: TimelineReport; motion: Moti
 
 /**
  * Measures every frame of `scope` (the whole video by default) and reports framing problems as stretches of time (see
- * lib/picture/frame/models/framing-check.ts), then strained take fits, which don't fail it, then what motion it tracked (see
- * lib/picture/motion/models/motion-tracks.ts), whose instrumentation errors do.
+ * lib/output/picture-checks/models/framing-check.ts), then strained take fits, which don't fail it, then what motion it tracked (see
+ * lib/picture/measurement/models/motion-tracks.ts), whose instrumentation errors do.
  */
 export async function checkProject(session: RenderSession, scope: CheckScope = {}): Promise<ProjectCheck> {
   const inputProps = checkedProps(session);
@@ -133,7 +136,7 @@ export function formatTimelineTable(timeline: TimelineReport): string[] {
 // ---------- motion graphs ----------
 
 /**
- * Measures the motion of `at` (seconds) and draws it (see lib/picture/motion/models/motion-graph.ts) over one of its frames, as a PNG
+ * Measures the motion of `at` (seconds) and draws it (see lib/output/picture-checks/models/motion-graph.ts) over one of its frames, as a PNG
  * at `out` with the number summary beside it (`.txt`). Measuring here rather than reading out/check/motion.json means
  * a graph is never of an older render. Returns the summary and both files.
  */

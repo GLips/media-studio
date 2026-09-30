@@ -1,0 +1,7 @@
+{
+  "lib/output/look": "`studio look` renders frames through a render session and reads the project's timeline as a render loads it.",
+  "lib/output/review": "A review artifact names the render snapshot it was made from.",
+  "lib/output/sound-check": "`studio mix` loads video.tsx in Node through the render's tsx hooks.",
+  "lib/output/stills": "The still sheet lays out the stills a render produced.",
+  "lib/picture/reel": "recap.test loads the reel's studio code in Node through the render's tsx hooks."
+}

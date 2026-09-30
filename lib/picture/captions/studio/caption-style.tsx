@@ -6,7 +6,7 @@ import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
 import { pillCaptionBand, type CaptionBand, type CaptionBandRule } from '../models/caption-band.ts';
 import { captionStateAt, pageCaptions, type CaptionMeasure, type CaptionPage, type CaptionPagingRule, type CaptionState } from '../models/caption-pages.ts';
 import type { CaptionTrack } from '../models/caption-track.ts';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 
 export type CaptionRenderProps = { state: CaptionState; band: CaptionBand; t: number };
 

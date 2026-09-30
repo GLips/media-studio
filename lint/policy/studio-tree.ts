@@ -107,6 +107,12 @@ export const LIB_LAYERS: readonly LibLayer[] = [
       'platform/photoshop', 'platform/project', 'platform/host', 'platform/web',
     ],
   },
+  { name: 'vocabulary', features: ['picture/frame', 'picture/motion', 'picture/type', 'picture/color'] },
+  { name: 'timing', features: ['timing/voice', 'timing/timeline', 'timing/sound', 'timing/music'] },
+  // The camera keeps clear of the caption band a style reserves, so it stands on captions.
+  { name: 'framing', features: ['picture/captions', 'picture/camera'] },
+  { name: 'measurement', features: ['picture/measurement', 'picture/profiling'] },
+  { name: 'authoring', features: ['picture/video', 'picture/stills'] },
 ];
 
 /** The index in LIB_LAYERS of a foundation's layer, or undefined for a peer. `feature` is `<area>/<feature>`. */

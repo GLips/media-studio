@@ -8,8 +8,8 @@
 import { AbsoluteFill } from 'remotion';
 import { DISPLAY_FONT, MONO_FONT } from '#lib/picture/type/models/faces.ts';
 import { flatPoseAt, type FlatKey, type FlatPose, type FlatView } from './flat-blockout-pose.ts';
-import { motionAttrs } from '#lib/output/look/studio/motion-tag.ts';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
+import { motionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 
 /** `box` is any shape or panel, `type` a line of words set at its box's height, `image` a slot for a picture or footage. */
 export type FlatPieceKind = 'box' | 'type' | 'image';

@@ -9,7 +9,7 @@
 import { Img } from 'remotion';
 import { lerpCam, viewScale, type Cam, type View } from '#lib/picture/camera/models/camera.ts';
 import { clamp, motionCurves, seg } from '#lib/picture/motion/models/motion.ts';
-import { cameraMotionAttrs, unmeasuredAttrs } from '#lib/output/look/studio/motion-tag.ts';
+import { cameraMotionAttrs, unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 
 /**
  * A capture through a view, clipped to the view's box. `blur` is in frame pixels. `motion` names its camera in the

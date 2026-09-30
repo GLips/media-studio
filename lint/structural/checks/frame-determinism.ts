@@ -40,7 +40,7 @@ const isSpec = (path: string) => /\.test\.tsx?$/.test(path);
  * Mounted (by Video.tsx) only in a `studio profile` render, and logs its times rather than drawing them. Drawing code
  * reaches it through frame-profile.ts's context, which reads no clock.
  */
-const FRAME_PROFILER = 'lib/output/render/studio/frame-profiler.tsx';
+const FRAME_PROFILER = 'lib/picture/profiling/studio/frame-profiler.tsx';
 
 export const frameDeterminismCheck: StructuralCheck = {
   id: ID,

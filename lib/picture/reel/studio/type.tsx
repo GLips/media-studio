@@ -9,13 +9,13 @@
 // SlantWord and ScrambleText live in type-slant.tsx and type-scramble.tsx.
 
 import { useId } from 'react';
-import { inflate, type Rect } from '#lib/picture/camera/models/camera.ts';
+import { inflate, type Rect } from '#lib/picture/frame/models/geometry.ts';
 import { useStudioFontsReady } from '#lib/picture/type/studio/fonts.ts';
 import { DISPLAY_FONT, MONO_ADVANCE_EM, MONO_CAP_EM, MONO_FONT } from '#lib/picture/type/models/faces.ts';
 import { clamp, lerp, motionCurves, powerOutEase } from '#lib/picture/motion/models/motion.ts';
 import { REEL_SHUTTER, shutterOpensAt, shutterTravel, smearSigma } from '#lib/picture/motion/models/shutter.ts';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
-import { pieceMotionAttrs } from '#lib/output/look/studio/motion-tag.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
+import { pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { frameEdgesRect, labelAt, leftOf, lerpRect, type Align, type Setting } from '../models/type.ts';
 import { faceStyle, layer, measureWord, widerSetting } from './type-measure.ts';
 

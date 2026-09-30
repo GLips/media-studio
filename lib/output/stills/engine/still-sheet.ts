@@ -8,7 +8,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { RenderedStill } from '#lib/output/render/engine/render-stills.ts';
 import { formatStillAxes, type ReviewStillCellsFile } from '#lib/output/review/models/review-notes.ts';
-import { STILL_FEED_SIZES, STILL_PRESETS, STILL_UI_ZONES, type StillPreset } from '../models/still-presets.ts';
+import { STILL_FEED_SIZES, STILL_PRESETS, STILL_UI_ZONES, type StillPreset } from '#lib/picture/stills/models/still-presets.ts';
 import { runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { rasterizeHtmlPages } from '#lib/platform/raster/engine/html-raster.ts';
 

@@ -3,7 +3,7 @@
 // where a point is seen, and each frame's shutter, focus and exposures. Pure: reel/needle.tsx draws it.
 
 import type { FrameSize, VideoFormat } from '#lib/picture/frame/models/frame.ts';
-import { addVec3, crossVec3, dotVec3, lengthVec3, lerpVec3, scaleVec3, subVec3, unitVec3, type Vec3 } from '#lib/picture/camera/models/vec3.ts';
+import { addVec3, crossVec3, dotVec3, lengthVec3, lerpVec3, scaleVec3, subVec3, unitVec3, type Vec3 } from '#lib/picture/frame/models/vec3.ts';
 import { BODY_BACK, BODY_START, NOSE } from './needle-cartridge.ts';
 
 export type NeedleStrike = {

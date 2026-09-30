@@ -1,11 +1,11 @@
 // sfx.tsx: sound effects placed on a moment in scene time, and a video's cue list played over the whole video. The
 // sounds are rendered from lib/timing/sound/models/recipes.ts: the kit's into ./sfx/kit.ts by `studio sfx kit`, a project's own by
-// `studio sfx render`, and a cue list's on every bundle (lib/timing/sound/engine/cue-module.ts).
+// `studio sfx render`, and a cue list's on every bundle (lib/output/sfx-cues/engine/cue-module.ts).
 
 import { Audio } from '@remotion/media';
 import { createContext, useContext } from 'react';
 import { Sequence, useCurrentFrame, useVideoConfig } from 'remotion';
-import type { SfxMarkAttr, SfxMarkedEvent } from '../models/cue-events.ts';
+import type { SfxMarkAttr, SfxMarkedEvent } from '../models/sfx-marks.ts';
 import { randomSeedFromKey } from '#lib/picture/motion/models/random.ts';
 import type { SfxRequest } from '../models/library.ts';
 

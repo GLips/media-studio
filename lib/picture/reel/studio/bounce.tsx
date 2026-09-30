@@ -11,8 +11,8 @@ import {
   ballEllipse, bounceModel, contactTime, contactX, groundDents, guidePath, launchSwell, markEase, rawPoseAt, shutterCentres,
   typeOnScramble, type BounceParams,
 } from '../models/bounce.ts';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
-import { pieceMotionAttrs } from '#lib/output/look/studio/motion-tag.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
+import { pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 
 // ---------- the swell ----------
 

@@ -81,8 +81,8 @@ const draft = defineCommand({
   },
   async run({ args }) {
     const { checkProject, writeCheckReports } = await import('#lib/output/render/engine/render-pipeline.ts');
-    const { SFX_CLICK_STYLES } = await import('#lib/timing/sound/models/cues.ts');
-    const { draftProjectSfxCueList } = await import('#lib/timing/sound/engine/project-cue-list.ts');
+    const { SFX_CLICK_STYLES } = await import('#lib/output/sfx-cues/models/cues.ts');
+    const { draftProjectSfxCueList } = await import('#lib/output/sfx-cues/engine/project-cue-list.ts');
     const style = args['click-style'];
     if (style !== undefined && !Object.hasOwn(SFX_CLICK_STYLES, style)) throw new Error(`--click-style is one of ${Object.keys(SFX_CLICK_STYLES).join(', ')}, not ${style}`);
     const session = await openStudioRenderSession(args.project);

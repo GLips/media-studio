@@ -3,7 +3,7 @@
 // in-betweens come from lerping four numbers. glyph-field-frame.ts turns these into a frame's draws.
 
 import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
-import type { Point } from '#lib/picture/camera/models/camera.ts';
+import type { Point } from '#lib/picture/frame/models/geometry.ts';
 import type { EaseFn } from '#lib/picture/motion/models/motion.ts';
 import { hashRandom } from '#lib/picture/motion/models/random.ts';
 

@@ -12,8 +12,8 @@ import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
-import { unmeasuredAttrs } from '#lib/output/look/studio/motion-tag.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
+import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 
 export type ThreeFrame = { scene: THREE.Scene; camera: THREE.PerspectiveCamera };
 

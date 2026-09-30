@@ -10,7 +10,7 @@ export default defineCommand({
   args: { project: studioProjectArg },
   async run({ args }) {
     const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
-    const { readProjectClock } = await import('#lib/timing/timeline/engine/project-clock.ts');
+    const { readProjectClock } = await import('#lib/output/render/engine/project-clock.ts');
     const project = resolveStudioProjectWith(args.project, 'timeline.ts');
     const clock = await readProjectClock(project);
     if (!clock) throw new Error(`${project} has no timeline.ts: studio clock reads a timed project`);

@@ -1,0 +1,4 @@
+{
+  "lib/output/render": "The bundle builds the cue module from sfx/cues.json, and `studio check` drafts cue events from what it measured.",
+  "lib/output/review": "A review artifact carries the cue list the video played."
+}

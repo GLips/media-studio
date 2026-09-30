@@ -8,12 +8,12 @@
 
 import { useId, useLayoutEffect, useRef } from 'react';
 import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
-import type { Point } from '#lib/picture/camera/models/camera.ts';
+import type { Point } from '#lib/picture/frame/models/geometry.ts';
 import { clamp } from '#lib/picture/motion/models/motion.ts';
 import { GLYPH_FIELD_COLORS } from '../models/glyph-field.ts';
 import { glyphFieldFrame, parseGlyphColor, type GlyphDraw, type GlyphFieldFrame, type GlyphFieldProps, type GlyphSample } from '../models/glyph-field-frame.ts';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
-import { pieceMotionAttrs, unmeasuredAttrs } from '#lib/output/look/studio/motion-tag.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
+import { pieceMotionAttrs, unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 
 /** One frame of the reference reel (60 fps): the unit its timings were measured in. */
 const REF_F = 1 / 60;

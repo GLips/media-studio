@@ -1,7 +1,7 @@
 // pill-captions.tsx: the house caption, a page of text in a navy pill at the foot of the frame, fading in and out
 // around its words and swapping in place where one page runs into the next.
 
-import { FONT } from '#lib/picture/frame/models/frame.ts';
+import { FONT } from '#lib/picture/type/models/faces.ts';
 import { motionCurves, seg } from '#lib/picture/motion/models/motion.ts';
 import { pillCaptionBand, type CaptionBandRule } from '../models/caption-band.ts';
 import { READABLE_CAPTION_RULE, type CaptionPagingRule } from '../models/caption-pages.ts';

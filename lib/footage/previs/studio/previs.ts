@@ -7,7 +7,8 @@
 // footage time is blockout time less `from`.
 
 import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
-import type { LaidScene, LaidVideo } from '#lib/picture/composition/studio/timeline.ts';
+import type { PrevisRequest } from '#lib/picture/video/models/timeline-report.ts';
+import type { LaidScene, LaidVideo } from '#lib/picture/video/studio/video.ts';
 
 export const PREVIS_MODEL = 'bytedance/seedance-2.5';
 /** The whole seconds Seedance 2.5 renders: a request is the scene's time on screen, rounded up into these. */
@@ -29,9 +30,6 @@ export function previsAspectRatio({ width, height }: FrameSize): (typeof PREVIS_
 
 /** One scene's generated footage, as generated/footage.ts lists it. */
 export type PrevisFootage = { src: string; from: number; duration: number };
-
-/** What `studio gen video` asks for a previs scene, read from the timeline report. */
-export type PrevisRequest = { blockout: '3d' | '2d'; prompt: string; references: readonly string[]; audio: boolean; from: number; duration: number };
 
 /**
  * Where a scene's blockout render starts, in scene seconds, and how many whole seconds it runs. Not checked against

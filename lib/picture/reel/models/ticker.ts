@@ -3,10 +3,8 @@
 
 import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
 import { smearSigma } from '#lib/picture/motion/models/shutter.ts';
-import {
-  archivoAdvance, layoutGlyphLine, mixGlyphPose, tickerBreathAt,
-  type GlyphAxes, type GlyphPose, type GlyphLineSlot, type TickerBreath, type TickerPose,
-} from './ticker-layout.ts';
+import { mixGlyphPose, tickerBreathAt, type GlyphPose, type TickerBreath, type TickerPose } from './ticker-layout.ts';
+import { archivoAdvance, layoutGlyphLine, type GlyphAxes, type GlyphLineSlot } from '#lib/picture/type/models/glyph-layout.ts';
 
 // ---------- the reference's values ----------
 

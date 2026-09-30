@@ -1,7 +1,7 @@
 // review-artifact.ts: the shapes the review screen reads, which lib/output/review/engine/ fills from disk and the app draws:
 // a project's reviewable files, and everything about one of them. Pure: the naming rules for a transparent pair and a
 // file's notes live here, so the engine and the screen agree on them.
-import type { MotionTracks } from '#lib/picture/motion/models/motion-tracks.ts';
+import type { MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
 import type { RenderVoice } from '#lib/timing/voice/models/render-voice.ts';
 import type { ReviewTiming } from './review-moment.ts';
 import type { ReviewMediaKind, ReviewNote, ReviewRenderStamp, ReviewScene, ReviewSoundMarker, ReviewStillCell } from './review-notes.ts';

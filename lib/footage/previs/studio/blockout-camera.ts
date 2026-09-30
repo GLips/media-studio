@@ -6,7 +6,7 @@
 // World units are metres, y is up, and subjects stand on the ground at y = 0.
 
 import { lerp } from '#lib/picture/motion/models/motion.ts';
-import { lengthVec3, lerpVec3, subVec3, type Vec3 } from '#lib/picture/camera/models/vec3.ts';
+import { lengthVec3, lerpVec3, subVec3, type Vec3 } from '#lib/picture/frame/models/vec3.ts';
 
 /** Where the camera is, the point it looks at, and its vertical field of view in degrees. */
 export type BlockoutPose = { position: Vec3; target: Vec3; fov: number };

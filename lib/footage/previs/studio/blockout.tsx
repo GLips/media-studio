@@ -10,8 +10,8 @@
 import { useLayoutEffect, useRef } from 'react';
 import * as THREE from 'three';
 import type { BlockoutPose } from './blockout-camera.ts';
-import type { Vec3 } from '#lib/picture/camera/models/vec3.ts';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
+import type { Vec3 } from '#lib/picture/frame/models/vec3.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 
 /**
  * `figure` is a person stand-in (body and head), `card` a flat panel such as a phone, screen or sign (give it a small

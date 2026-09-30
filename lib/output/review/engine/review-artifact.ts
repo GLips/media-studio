@@ -7,8 +7,8 @@
 // the command that makes it, so the screen can say which note fields it can't fill.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join, relative } from 'node:path';
-import { readSfxCueList } from '#lib/timing/sound/engine/cue-module.ts';
-import { sfxCuePlays } from '#lib/timing/sound/models/cues.ts';
+import { readSfxCueList } from '#lib/output/sfx-cues/engine/cue-module.ts';
+import { sfxCuePlays } from '#lib/output/sfx-cues/models/cues.ts';
 import { reviewTimingOf } from '../models/review-moment.ts';
 import { reviewStoryboardOf, reviewTimingMarksOf } from '../models/review-storyboard.ts';
 import { placeReviewNotes, REVIEW_NOTES_VERSION, reviewFrameAt, type ReviewMediaKind, type ReviewNote, type ReviewNotesFile, type ReviewStillCellsFile } from '../models/review-notes.ts';

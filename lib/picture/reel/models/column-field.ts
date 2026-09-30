@@ -4,7 +4,7 @@
 import type { Material, Matrix4, Texture, Vector3 } from 'three';
 import { clamp, lerp, motionCurves, type EaseFn } from '#lib/picture/motion/models/motion.ts';
 import { hashRandom } from '#lib/picture/motion/models/random.ts';
-import type { Vec3 } from '#lib/picture/camera/models/vec3.ts';
+import type { Vec3 } from '#lib/picture/frame/models/vec3.ts';
 
 /** A column: its place on the grid (i across, j down the overhead frame, a pitch apart) and its colour. */
 export type ColumnCell = { i: number; j: number; color: string };

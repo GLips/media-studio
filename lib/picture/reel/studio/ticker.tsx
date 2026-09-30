@@ -9,13 +9,12 @@ import { useId, type ReactNode } from 'react';
 import { DISPLAY_FONT } from '#lib/picture/type/models/faces.ts';
 import { motionCurves } from '#lib/picture/motion/models/motion.ts';
 import { smearSigma } from '#lib/picture/motion/models/shutter.ts';
-import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts';
-import { pieceMotionAttrs } from '#lib/output/look/studio/motion-tag.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
+import { pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { hashRandom } from '#lib/picture/motion/models/random.ts';
 import { Odometer } from '#lib/picture/kit/studio/kit.tsx';
-import {
-  ARCHIVO_BASELINE_EM, ARCHIVO_CAP_EM, layoutTickerRow, type GlyphAxes, type TickerBreath, type TickerPose, type TickerSlot,
-} from '../models/ticker-layout.ts';
+import { layoutTickerRow, type TickerBreath, type TickerPose, type TickerSlot } from '../models/ticker-layout.ts';
+import { ARCHIVO_BASELINE_EM, ARCHIVO_CAP_EM, type GlyphAxes } from '#lib/picture/type/models/glyph-layout.ts';
 import {
   TICKER_BOLD, TICKER_BOX_TAPS, TICKER_BREATH, TICKER_COLORS, TICKER_ENTER, TICKER_EXIT, TICKER_GLYPH_BOX_EM,
   TICKER_HERO_PHASE, TICKER_HERO_POSES, TICKER_KICK, TICKER_LIGHT, TICKER_LOOKS, TICKER_SHUTTER, tickerBlurLevel,

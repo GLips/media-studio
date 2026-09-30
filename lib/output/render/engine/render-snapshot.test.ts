@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import type { TimelineReport } from '#lib/picture/composition/studio/Video.tsx';
+import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { loadRenderSnapshot, writeRenderSnapshot } from './render-snapshot.ts';
 
