@@ -1,11 +1,11 @@
 // stamp-dynamics.ts: how a brush's dynamics (StampDynamics, stamp-brush.ts) are read as a stroke is placed: what the
 // placement knows at each step and each stamp (StampContext), what each sensor reads from it, and what each response
 // makes of that. Placement (stamp-placement.ts) asks for a target's share or turn and never learns where a dynamic
-// came from: an importer resolves every source of one (a Photoshop tool's pressure buttons, a pose) into the brush.
+// came from: an importer resolves every source (a Photoshop tool's pressure buttons, a pose) into the brush.
 //
-// A sensor is read either at the step, alike for every stamp of a spacing step (pressure, direction), or at the stamp
-// (random, from the stamp's own draws). Size's step share sets the next step's spacing before a stamp's own chance
-// shrinks it, so the two are asked for apart.
+// A sensor is read at the step, alike for its every stamp (pressure, direction), or at the stamp (random, from its
+// own draws). Size's step share sets the next step's spacing before a stamp's chance shrinks it, so the two are
+// asked for apart.
 
 import type {
   StampAngleResponse, StampDynamics, StampResponseCurve, StampScaleResponse, StampScaleTarget, StampSensorParams,
@@ -13,9 +13,8 @@ import type {
 
 /**
  * The draws each stamp makes from its own stream, in this order, every one always, so adding a use for one never
- * shifts another and every painting keeps its randomness; a new random target appends its slot. A stroke's stamps draw
- * the first three, where they land off the path; an authored stamp's place is the author's, so its stream starts at
- * `size`.
+ * shifts another and every painting keeps its randomness; a new random target appends its slot. The first three,
+ * where a stroke's stamp lands off the path, an authored stamp doesn't draw.
  */
 export const STAMP_DRAW_SLOTS = [
   'lateral', 'scatterTurn', 'scatterReach', 'size', 'opacity', 'rotation', 'flipX', 'flipY', 'blur', 'flow', 'hue', 'saturation', 'lightness', 'darkness', 'roundness',
@@ -31,11 +30,9 @@ export function drawStampSlots(random: () => number, placing: 'stroke' | 'author
 }
 
 /**
- * What the stroke is doing at one spacing step, the same for each of its stamps. Its counters are distinct inputs, and
- * a sensor names the one it reads: `step` counts spacing steps along the deposit (four scattered stamps at a step are
- * one step; Photoshop's fade, vid-105, would count these), `distance` is the path's length travelled to the step in
- * pixels, lifted gaps included (a falloff's input), and a stamp's `stamp` (StampContext) is its place among its step's
- * scattered stamps. An authored stamp is a step of its own, `step` its index, at no distance and no heading.
+ * The stroke at one spacing step, alike for its stamps. A sensor names the counter it reads: `step` counts steps
+ * (scattered stamps share one; Photoshop's fade would count these), `distance` the pixels travelled, lifted gaps
+ * included (a falloff's input). An authored stamp is its own step, at no distance or heading.
  */
 export type StampStepContext = {
   /** The stroke's pressure here, 0..1: 1 where the path gives none. */

@@ -21,11 +21,10 @@ const layTowardFull = {
 export type StampAccumulationKept = { built: number; densest: number; cap: number };
 
 /**
- * What each accumulation does (StampAccumulation says why). `lay` is the build after one stamp: `built` so far, the
- * stamp's paint `laid` and its `opacity`. `towardFull`: it lays paint × opacity toward full; else its paint toward
- * its own opacity. `keepsCap`: the densest stamp and the cap are kept beside the build. `resolve` is the stroke from
- * what the build kept, `build` a glaze's own. `lay` and `resolve` are each a CPU function and a WGSL expression over
- * the same names.
+ * What each accumulation does (StampAccumulation says why). `lay`: the build after one stamp. `towardFull`: paint ×
+ * opacity toward full; else paint toward its own opacity. `keepsCap`: the densest stamp and cap are kept beside the
+ * build. `resolve`: the stroke from what was kept. Each of `lay` and `resolve` is a CPU function and a WGSL
+ * expression over the same names.
  */
 export const STAMP_ACCUMULATIONS = {
   glaze: {
@@ -61,10 +60,10 @@ export const STAMP_ACCUMULATION_LAY_WGSL = stampWgslSwitch(
 );
 
 /**
- * How the GPU lays a layer's stamps. `fixedBlend`: by the blend B ← lerp(B, toward, t), stamp after stamp, which is
- * the accumulation's `lay` wherever their order can't matter: toward full paint, or toward an opacity no stamp brings
- * less of than one before it, so B never stands above the opacity arriving. `ordered`: each pixel walks its stamps in
- * order and lays each by `lay`, for an opacity that falls, where the blend would lower the paint.
+ * How the GPU lays a layer's stamps. `fixedBlend`: by the blend B ← lerp(B, toward, t), equal to `lay` wherever
+ * order can't matter: toward full, or toward an opacity that never falls, so B never exceeds the opacity arriving.
+ * `ordered`: each pixel walks its stamps in order, laying each by `lay`, for a falling opacity the blend would
+ * lower.
  */
 export type StampAccumulationPlan = { kind: 'fixedBlend'; toward: 'full' | 'opacity' } | { kind: 'ordered' };
 

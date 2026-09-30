@@ -139,11 +139,9 @@ function cropBuffer(buffer: Float32Array, width: number, from: { x: number; y: n
 }
 
 /**
- * Scores every scorable cell of `sheets` (a run's, in `dir`) whose probe is in `only` (all when left out). Every cell
- * of a sheet is painted, in the order the rig painted them, as a soft tip's tail reaches into the cells beside it;
- * `probes` must hold every item the sheets name. A cell painted over a ground, under a pose or at random is painted
- * as near as the reference can, for what it spills, but not scored; so is a probe in `untaken`, one Photoshop didn't
- * set as the probe asks.
+ * Scores the cells of `sheets` whose probe is in `only` (default all). Every cell is painted in the rig's order (soft
+ * tips spill); `probes` must hold every item the sheets name. A cell over a ground, under a pose
+ * or at random is painted but not scored; so is an `untaken` probe, one Photoshop didn't set as asked.
  */
 export function scorePhotoshopProbeRun({ dir, sheets, probes, untaken, only, arrangement }: {
   dir: string; sheets: readonly (PhotoshopCaptureSheet & { file: string })[]; probes: readonly PhotoshopProbe[]; untaken: ReadonlySet<string>; only?: readonly string[];

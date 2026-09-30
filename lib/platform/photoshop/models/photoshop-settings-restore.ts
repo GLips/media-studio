@@ -2,11 +2,10 @@
 // (engine/photoshop-app.ts does the file work). Settings are compared by hash, each file by its path under
 // ~/Library/Preferences.
 //
-// A snapshot is the state before a run. Putting it back is right only for what the run's own Photoshop changed: once
-// someone else's Photoshop session has run since (Graham's, installing brushes), putting the snapshot back wipes his
-// changes too, and it once did (a 191 MB brush install). So a run records the settings as its Photoshop left them
-// the moment it saw that Photoshop exit, and a restore puts back only files still exactly as it left them. Without
-// that record the run's changes can't be told from a later session's, and a restore refuses unless forced.
+// A snapshot is the state before a run, right to put back only for what the run's own Photoshop changed: after someone
+// else's session (Graham's, installing brushes) it wipes his changes too, as it once did (a 191 MB brush install). So
+// a run records the settings as its Photoshop left them when it saw it exit, and a restore puts back only files still
+// exactly so. Without that record a restore refuses unless forced.
 
 export type PhotoshopSettingsHashes = Record<string, string>;
 
@@ -29,7 +28,7 @@ export type PhotoshopSettingsRestorePlan = {
  * Photoshop left them are touched. Without it, the restore refuses (when anything differs) unless `force`.
  */
 export function planPhotoshopSettingsRestore(snapshot: PhotoshopSettingsHashes, now: PhotoshopSettingsHashes, { exit, force = false }: { exit?: PhotoshopRunExit; force?: boolean } = {}): PhotoshopSettingsRestorePlan {
-  const differing = [...new Set([...Object.keys(snapshot), ...Object.keys(now)])].filter((file) => snapshot[file] !== now[file]).sort();
+  const differing = [...new Set([...Object.keys(snapshot), ...Object.keys(now)])].filter((file) => snapshot[file] !== now[file]).toSorted();
   // Unchanged since the run's Photoshop exited, so any difference from the snapshot is the run's own.
   const runs = (file: string) => !exit || exit.files[file] === now[file];
   const keep = differing.filter((file) => !runs(file));

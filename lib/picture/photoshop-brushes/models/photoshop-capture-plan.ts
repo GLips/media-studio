@@ -1,11 +1,10 @@
-// photoshop-capture-plan.ts: where on Photoshop's capture sheets each mark goes (vid-100). A run paints many
-// captures on one sheet and saves it once, which is what makes it about 0.2 s a capture; the rig
-// (engine/photoshop-capture.ts) paints every cell of a sheet on its one layer and saves one 16-bit PNG.
+// photoshop-capture-plan.ts: where on Photoshop's capture sheets each mark goes. The rig
+// (engine/photoshop-capture.ts) paints every cell of a sheet on one layer and saves one 16-bit PNG, which is what
+// makes it about 0.2 s a capture.
 //
-// Cells are squares whose side is a multiple of 256 and so is every cell's origin. Photoshop anchors a texture
-// fixed to the canvas at the canvas origin, so the 256-wide ramp pattern has the same phase in every cell, and a cell
-// and its repeat can be compared pixel for pixel. A pack's own patterns have other sizes: the cell's origin in the
-// manifest gives their phase.
+// Cell sides and origins are multiples of 256. Photoshop anchors a canvas-fixed texture at the canvas origin, so the
+// 256-wide ramp pattern has the same phase in every cell and a cell and its repeat compare pixel for pixel. A pack's
+// own patterns have other sizes: the cell's origin in the manifest gives their phase.
 //
 // Coordinates are sheet pixels; at 72 dpi Photoshop's points are pixels too.
 
@@ -87,7 +86,9 @@ function layOutSheets(items: readonly LayoutItem[], group: PhotoshopSheetGroup, 
   const newSheet = () => {
     sheet = { name: `${prefix}-${sheets.length + 1}`, group, width: W, height: H, cells: [] };
     sheets.push(sheet);
-    x = 0, y = 0, rowHeight = 0;
+    x = 0;
+    y = 0;
+    rowHeight = 0;
   };
   for (const item of items) {
     if (item.cell % CELL_UNIT || item.cell > W) throw new Error(`capture plan: ${item.key}'s cell is ${item.cell} px, not a multiple of ${CELL_UNIT} up to ${W}`);
@@ -95,8 +96,15 @@ function layOutSheets(items: readonly LayoutItem[], group: PhotoshopSheetGroup, 
       item.marks.forEach((mark, index) => {
         const width = MARK_WIDTH[mark.mark] * item.cell;
         if (!sheet) newSheet();
-        if (rowHeight !== item.cell || x + width > W) y += rowHeight, x = 0, rowHeight = item.cell;
-        if (y + item.cell > H) newSheet(), rowHeight = item.cell;
+        if (rowHeight !== item.cell || x + width > W) {
+          y += rowHeight;
+          x = 0;
+          rowHeight = item.cell;
+        }
+        if (y + item.cell > H) {
+          newSheet();
+          rowHeight = item.cell;
+        }
         const box = { x, y, width, height: item.cell };
         x += width;
         const groundBox = mark.ground === 'clear' ? undefined : { x: box.x + GROUND_INSET, y: box.y + GROUND_INSET, width: box.width - 2 * GROUND_INSET, height: box.height - 2 * GROUND_INSET };
@@ -125,10 +133,9 @@ export function planPhotoshopProbeCapture(probes: readonly PhotoshopProbe[], { o
 }
 
 /**
- * A pack brush's reference marks: a single stamp; a straight stroke at pen pressures 0.25, 0.5 and 1 (Brush Poses);
- * the standard S-curve under simulated pressure; two overlapping strokes. Black on the transparent sheet, so alpha is
- * the brush's coverage. The stamp and the overlap are at full pressure: a stroked path with neither a Brush Pose nor
- * simulated pressure paints at none, so a brush whose size or opacity follows pressure would leave next to nothing.
+ * A pack brush's reference marks, black on the transparent sheet so alpha is coverage. The stamp and the overlap are
+ * at full pressure: a stroked path with neither a Brush Pose nor simulated pressure paints at none, so a brush whose
+ * size or opacity follows pressure would leave next to nothing.
  */
 export const PHOTOSHOP_REFERENCE_MARKS: readonly PhotoshopMark[] = [
   { mark: 'stamp', ground: 'clear', color: PHOTOSHOP_PROBE_INK, pressure: 1 },

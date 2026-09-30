@@ -69,7 +69,7 @@ ${readingLines(reading)}
 `,
 };
 
-const PHOTOSHOP_HELD_OUT_PACKS: readonly string[] = ['kyle-watercolor', 'kyle-dry-media', 'kyle-gouache'];
+const PHOTOSHOP_HELD_OUT_PACKS: ReadonlySet<string> = new Set(['kyle-watercolor', 'kyle-dry-media', 'kyle-gouache']);
 
 const PHOTOSHOP: BrushReadingApp<PhotoshopReading, PhotoshopPackBrush> = {
   reading: PHOTOSHOP_READING,
@@ -91,7 +91,7 @@ const PHOTOSHOP: BrushReadingApp<PhotoshopReading, PhotoshopPackBrush> = {
     }
   },
   heldOut: (pack, name) => {
-    if (PHOTOSHOP_HELD_OUT_PACKS.includes(pack)) return true;
+    if (PHOTOSHOP_HELD_OUT_PACKS.has(pack)) return true;
     let hash = 2166136261;
     for (let i = 0; i < name.length; i++) hash = Math.imul(hash ^ name.charCodeAt(i), 16777619) >>> 0;
     return hash % 5 === 0;

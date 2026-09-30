@@ -7,7 +7,6 @@
 // Suppressing one line: `// oxlint-disable-next-line arch/<rule>`, with the reason beside it.
 
 import { defineConfig } from 'oxlint';
-import { HELD_OUT_UNTIL_VID_108_PATHS } from './lint/policy/held-out.ts';
 import { DEFAULT_EXPORT_MODULE_GLOBS, TERMINAL_PROGRAM_GLOBS } from './lint/policy/studio-tree.ts';
 
 export default defineConfig({
@@ -28,7 +27,6 @@ export default defineConfig({
     '**/dist/**',
     '**/.output/**',
     '**/.tanstack/**',
-    ...HELD_OUT_UNTIL_VID_108_PATHS.map((path) => (path.endsWith('/') ? `${path}**` : path)),
   ],
 
   // Type-aware needs oxlint-tsgolint; its type information reaches the built-in `typescript/*` rules only.

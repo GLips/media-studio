@@ -73,7 +73,7 @@ export function brushFidelityIdentityDifferences(before: BrushFidelityReportIden
   if (a.archive !== b.archive || a.sha256 !== b.sha256) lines.push(`source ${a.archive} (${a.sha256.slice(0, 12)}) → ${b.archive} (${b.sha256.slice(0, 12)})`);
   if (a.assetsVersion !== b.assetsVersion) lines.push(`assets version ${a.assetsVersion} → ${b.assetsVersion}`);
   if (r.app !== s.app) lines.push(`reading app ${r.app} → ${s.app}`);
-  else for (const key of [...new Set([...Object.keys(r.values), ...Object.keys(s.values)])]) {
+  else for (const key of new Set([...Object.keys(r.values), ...Object.keys(s.values)])) {
     if (r.values[key] !== s.values[key]) lines.push(`reading ${key} ${r.values[key]} → ${s.values[key]}`);
   }
   if (before.scorer !== after.scorer) lines.push(`scorer version ${before.scorer} → ${after.scorer}`);
@@ -149,8 +149,8 @@ export function parseBrushFidelityReport(value: unknown, file: string): BrushFid
     return {
       version: BRUSH_FIDELITY_REPORT_VERSION, style: text(r.style, 'style'), pack: text(r.pack, 'pack'), identity: parseIdentity(r.identity),
       grades: STROKE_SCORE_GRADES, total: num(r.total, 'total'),
-      entries: entries.map((value, i): BrushFidelityReportEntry => {
-        const e = record(value, `entries[${i}]`);
+      entries: entries.map((rawEntry, i): BrushFidelityReportEntry => {
+        const e = record(rawEntry, `entries[${i}]`);
         const target = TARGET_LABELS.includes(e.target) ? e.target as BrushFidelityTargetLabel : fail(`entries[${i}].target is ${JSON.stringify(e.target)}`);
         return {
           brush: text(e.brush, `entries[${i}].brush`), row: text(e.row, `entries[${i}].row`), diameter: num(e.diameter, `entries[${i}].diameter`), target,
@@ -161,6 +161,6 @@ export function parseBrushFidelityReport(value: unknown, file: string): BrushFid
   } catch (error) {
     if (!(error instanceof BrushFidelityReportError)) throw error;
     const at = typeof value === 'object' && value && 'style' in value && 'pack' in value ? `--style ${String(value.style)} --pack ${String(value.pack)}` : '--style <style> --pack <pack>';
-    throw new Error(`${file}: ${error.message}; draw it again: npm run brushes:sheet -- ${at}`);
+    throw new Error(`${file}: ${error.message}; draw it again: npm run brushes:sheet -- ${at}`, { cause: error });
   }
 }

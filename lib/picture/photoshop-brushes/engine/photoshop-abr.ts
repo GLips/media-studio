@@ -1,13 +1,11 @@
-// photoshop-abr.ts: Photoshop's brush files. An .abr (version 6 and later, everything Photoshop has written since CS)
-// is a two-short header and then `8BIM` sections: `samp`, the sampled tips; `patt`, the patterns textures name; `desc`,
-// one ActionDescriptor listing every preset; `phry`, the presets' groups; `plid`, which isn't read. A .tpl holds tool
-// presets the same way (`tpsh` tips, `tppa` patterns, `tptp` the presets), each preset's tool options beside its brush.
-// Both read into a PhotoshopBrushFile; writePhotoshopAbr writes one back as Photoshop lays it out.
+// photoshop-abr.ts: Photoshop's brush files. An .abr (version 6+, all since CS) is a two-short header, then `8BIM`
+// sections: `samp` tips, `patt` patterns, `desc` one ActionDescriptor of every preset, `phry` groups, `plid` (unread).
+// A .tpl holds tool presets alike (`tpsh`, `tppa`, `tptp`).
 //
-// Tips and patterns are Photoshop's image blocks (its "virtual memory array lists"): a rectangle and per-channel planes,
-// raw or PackBits. A tip is one 8-bit or 16-bit plane where more is more paint; a pattern is grey, RGB or indexed.
-// The layout follows Krita's reverse engineering (libs/brush/kis_abr_brush_collection.cpp) and psd-tools', checked
-// against every file Photoshop 2026 ships.
+// Tips and patterns are Photoshop's "virtual memory array lists": a rectangle and per-channel planes, raw or PackBits.
+// A tip is one 8- or 16-bit plane, more is more paint; a pattern is grey, RGB or indexed. The layout follows Krita's
+// reverse engineering (libs/brush/kis_abr_brush_collection.cpp) and psd-tools', checked against every file Photoshop
+// 2026 ships.
 //
 // Negative space: version 1 and 2 files (Photoshop 7 and older) aren't read: they hold only tips, no settings.
 

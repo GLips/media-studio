@@ -19,7 +19,7 @@ test('importing an .abr writes the same pack layout a Procreate pack imports to,
     writeFileSync(join(packDir, 'fidelity/report.json'), '{}');
     const { manifest } = importStampPaintPack({ archive: join(dir, 'chalk.abr'), stylesDir: join(dir, 'styles'), style: 'sketch', pack: 'chalk' });
     assert.equal(manifest.app, 'photoshop');
-    assert.deepEqual(readdirSync(packDir).sort(), ['current', 'fidelity', 'generations', 'reference']);
+    assert.deepEqual(readdirSync(packDir).toSorted(), ['current', 'fidelity', 'generations', 'reference']);
     assert.equal(readFileSync(join(packDir, 'reference/manifest.json'), 'utf8'), '{}');
     const generation = readStampPaintPackGeneration(packDir);
     assert.deepEqual(readStampPaintPack(JSON.parse(readFileSync(join(generation.dir, 'manifest.json'), 'utf8'))), manifest);

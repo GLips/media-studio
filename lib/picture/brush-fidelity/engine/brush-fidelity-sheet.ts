@@ -1,12 +1,8 @@
-// brush-fidelity-sheet.ts: `npm run brushes:sheet`, the brush fidelity sheet. Each brush of an imported pack is scored
-// against its target (brush-fidelity-score.ts): painted by the studio's GPU renderer as its Procreate preview or its
-// Photoshop reference was, and the two measured alike; a brush with neither is painted at its source's own size,
-// unscored. Writes, in brushes/<pack>/fidelity/ unless told otherwise: a row per brush (rows/<brush>.png), the rows
-// stacked at half size (sheet.jpg; sheet-1.jpg, sheet-2.jpg… past 120 brushes), and report.json
-// (brush-fidelity-report.ts) with each brush's diameter, outcome and note from the style's fidelity.ts, under what it
-// scored: the pack's source, the app's reading and the scorer. A whole pack drawn where it belongs
-// also writes each brush's score and grade into the style's fidelity-grades.json, which git keeps, so a painter reads
-// the grades without drawing the sheet.
+// brush-fidelity-sheet.ts: `npm run brushes:sheet`. Each brush of an imported pack is painted on the GPU as its
+// Procreate preview or Photoshop reference was and scored against it (brush-fidelity-score.ts); a brush with neither
+// is painted unscored. Writes rows, a half-size sheet.jpg and report.json (stamped with source, reading and scorer)
+// to brushes/<pack>/fidelity/. A whole pack drawn in place also writes grades to the style's fidelity-grades.json,
+// which git keeps, so a painter reads them without drawing the sheet.
 //
 // The sheet embeds the pack's previews, so it stays under brushes/, which git ignores. An import leaves fidelity/ be,
 // so a sheet there shows the brushes as they were when it was drawn.

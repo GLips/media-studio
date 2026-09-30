@@ -1,14 +1,13 @@
-// photoshop-descriptor-codec.ts: Photoshop's ActionDescriptor serialization, the settings format inside an .abr's 8BIMdesc
-// section, a .tpl's tool presets and what scripting's executeActionGet returns. Reads a descriptor into plain JSON
-// (models/photoshop-descriptor.ts) and writes one back, byte for byte as Photoshop lays it out, so the same value round-trips.
+// photoshop-descriptor-codec.ts: Photoshop's ActionDescriptor serialization (an .abr's 8BIMdesc section, a .tpl's
+// tool presets, scripting's executeActionGet). Reads one into plain JSON (models/photoshop-descriptor.ts) and writes it
+// back byte for byte as Photoshop lays it out.
 //
-// A key or class is a charID (four bytes, written with a zero length: `Nm  `, `Brsh`) or a stringID (written with its
-// length: `useTipDynamics`); both read as the string, the charID keeping its padding. Photoshop's own files mix the
-// two, and a stringID where Photoshop writes a charID is silently ignored when loaded, so a key is kept as written.
+// A key or class is a charID (four bytes, zero length: `Nm  `, `Brsh`) or a stringID (with its length:
+// `useTipDynamics`); both read as the string, a charID keeping its padding. Photoshop mixes the two and silently
+// ignores a stringID where it writes a charID, so a key is kept as written.
 //
-// Negative space: references (`obj `) and paths (`Pth `) aren't read, and a few types don't write back as read (`comp`
-// as a 32-bit `long`, `UnFl` as a list of units, `GlbO` as `Objc`, a class reference without its name); no brush or
-// tool preset holds any of them.
+// Negative space: references (`obj `) and paths (`Pth `) aren't read, and `comp`, `UnFl`, `GlbO` and a class
+// reference's name don't write back as read; no brush or tool preset holds any of them.
 
 import { photoshopTagged, type PhotoshopDescriptor, type PhotoshopValue } from '../models/photoshop-descriptor.ts';
 

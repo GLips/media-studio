@@ -114,7 +114,7 @@ test('a stroke partway drawn shows a prefix of the finished stroke\'s stamps, th
   assert.equal(visibleStampCountAt(whole, 1.9), 0);
   assert.equal(visibleStampCountAt(whole, 2), whole.stamps.length);
   const counts = [1.99, 2, 3, 4, 5, 6, 7].map((t) => visibleStampCountAt(drawn, t));
-  assert.deepEqual(counts, [...counts].sort((a, b) => a - b));
+  assert.deepEqual(counts, counts.toSorted((a, b) => a - b));
   assert.equal(counts[0], 0);
   assert.ok(counts[1] > 0 && counts[3] > counts[1] && counts[3] < whole.stamps.length, `a partial stroke: ${counts}`);
   assert.equal(counts.at(-1), whole.stamps.length);

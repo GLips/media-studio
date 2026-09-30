@@ -21,29 +21,35 @@ export const STROKE_MAP_CELL = 8;
 /** Mottle splits a stroke's body at a box this many pixels across: finer is grain, coarser is mottle. */
 const MOTTLE_BOX = 13;
 
-/**
- * A stroke's shape, measured from its coverage. `thickness` samples its height at even steps across `span` (its
- * columns from first to last covered); `density` is its mean coverage where it counts as stroke, 0..1. `edge` is its
- * mean coverage at each depth in from its top and bottom edges, over the middle half of its span: a wet rim shows as a
- * rise at the start. `texture` is how much its coverage changes across each of STROKE_TEXTURE_LAGS, within the stroke:
- * a coarser texture keeps rising to longer lags.
- *
- * `edgeWidth` is how many pixels its coverage takes to climb from a fifth to four fifths of its density, going in from
- * its top and bottom edges (the median crossing): a crisp edge is a pixel or two. `mottle` is the spread of coverage in
- * its body (away from its edges), `fine` within MOTTLE_BOX and `coarse` between boxes, each 0..1. `fill` is the mean
- * coverage of a column's middle third over its whole: 1 is even, below 1 hollow, above 1 dense in the middle. `map` is
- * the whole image's mean coverage in cells of STROKE_MAP_CELL, row by row.
- */
+/** A stroke's shape, measured from its coverage. */
 export type StrokeCoverageProfile = {
+  /** Its columns from first to last covered. */
   span: { x0: number; x1: number };
   peakThickness: number;
+  /** Its height at even steps across `span`. */
   thickness: readonly number[];
+  /** Its mean coverage where it counts as stroke, 0..1. */
   density: number;
+  /**
+   * Mean coverage at each depth in from its top and bottom edges, over the middle half of its span: a wet rim shows as
+   * a rise at the start.
+   */
   edge: readonly number[];
+  /**
+   * How much its coverage changes across each of STROKE_TEXTURE_LAGS, within the stroke: a coarser texture keeps
+   * rising to longer lags.
+   */
   texture: readonly number[];
+  /**
+   * Pixels its coverage takes to climb from a fifth to four fifths of its density, going in from its top and bottom
+   * edges (the median crossing): a crisp edge is a pixel or two.
+   */
   edgeWidth: number;
+  /** Coverage's spread in its body (away from its edges), `fine` within MOTTLE_BOX and `coarse` between boxes, 0..1. */
   mottle: { fine: number; coarse: number };
+  /** Mean coverage of a column's middle third over its whole: 1 is even, below 1 hollow, above 1 dense in the middle. */
   fill: number;
+  /** The whole image's mean coverage in cells of STROKE_MAP_CELL, row by row. */
   map: { columns: number; rows: number; cells: readonly number[] };
 };
 
@@ -121,7 +127,7 @@ function textureProfile(coverage: Uint8Array, width: number, height: number): nu
 
 const median = (values: number[]) => {
   if (!values.length) return 0;
-  const sorted = values.sort((a, b) => a - b);
+  const sorted = values.toSorted((a, b) => a - b);
   return sorted[Math.floor(sorted.length / 2)];
 };
 
@@ -203,20 +209,16 @@ function coverageMap(coverage: Uint8Array, width: number, height: number): Strok
   return { columns, rows, cells: Array.from(sums, (s, i) => Math.round((s / counts[i] / 255) * 1000) / 1000) };
 }
 
-/**
- * How `ours` differs from `preview`. `length` and `peak` are ratios, ours over the preview's. `profileError` is the
- * mean gap between their thickness profiles, each laid over the preview's span, over the preview's peak. `start` and
- * `end` are how far in from each end the stroke first reaches 80% of its peak, as a share of its span: where a taper
- * shows. `density` is ours less the preview's. `mapError` is the mean gap between their coverage maps, each cell
- * averaged with its neighbours, over the cells either paints. `score` weighs every gap into one number (STROKE_SCORE_WEIGHTS), 0 for a perfect match; `terms` is
- * each gap's share of it.
- */
+/** How `ours` differs from `preview`. `length` and `peak` are ratios, ours over the preview's. */
 export type StrokeProfileComparison = {
   length: number;
   peak: number;
+  /** The mean gap between their thickness profiles, each laid over the preview's span, over the preview's peak. */
   profileError: number;
+  /** How far in from each end the stroke first reaches 80% of its peak, as a share of its span: where a taper shows. */
   start: { preview: number; ours: number };
   end: { preview: number; ours: number };
+  /** Ours less the preview's. */
   density: number;
   /** How much darker the first few pixels in from the edge are than the stroke's body, 0..1, each stroke's own. */
   rim: { preview: number; ours: number };
@@ -225,16 +227,17 @@ export type StrokeProfileComparison = {
   edgeWidth: { preview: number; ours: number };
   mottle: { preview: { fine: number; coarse: number }; ours: { fine: number; coarse: number } };
   fill: { preview: number; ours: number };
+  /** The mean gap between their coverage maps, each cell averaged with its neighbours, over the cells either paints. */
   mapError: number;
+  /** Every gap weighed into one number (STROKE_SCORE_WEIGHTS), 0 for a perfect match; `terms` is each gap's share. */
   score: number;
   terms: Readonly<Record<keyof typeof STROKE_SCORE_WEIGHTS, number>>;
 };
 
 /**
- * How much each gap counts toward a brush's score, set so that a gap anyone would call plain on the sheet adds about
- * 0.1: the maps a tenth apart, the profile a fifth off, density or rim 0.2 apart, the edge 2.7× as wide (a log ratio,
- * with a pixel added to each so a one-pixel edge isn't read as infinitely crisper than none), mottle 0.05 apart, the
- * fill a third apart. Grain size is the noisiest, so it counts least.
+ * Each gap's weight, set so a gap plain on the sheet adds about 0.1: maps 0.1 apart, profile 0.2 off, density or rim
+ * 0.2, edge 2.7× as wide (log ratio, a pixel added so a one-pixel edge isn't infinitely crisper than none), mottle
+ * 0.05, fill a third. Grain size is noisiest, so counts least.
  */
 export const STROKE_SCORE_WEIGHTS = {
   map: 1, profile: 0.5, density: 0.5, rim: 0.5, edge: 0.1, fineMottle: 2, coarseMottle: 2, fill: 0.3, grain: 0.03, length: 0.3,
@@ -264,7 +267,7 @@ export const strokeGrainSize = (texture: readonly number[]) => {
 };
 
 const rampShare = (thickness: readonly number[], fromEnd: boolean) => {
-  const peak = Math.max(...thickness), ordered = fromEnd ? [...thickness].reverse() : thickness;
+  const peak = Math.max(...thickness), ordered = fromEnd ? thickness.toReversed() : thickness;
   return ordered.findIndex((t) => t >= 0.8 * peak) / thickness.length;
 };
 

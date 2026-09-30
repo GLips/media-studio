@@ -1,18 +1,14 @@
-// stamp-paint-compositor.ts: how paint lands on what's under it. Every colour that reaches a stamp painting passes
-// through here, a deposit onto its group's layer, then a finished group onto the painting, so mixing paint as pigment
-// (Kubelka–Munk layering and mixing, vid-83) replaces this one module and nothing else.
+// stamp-paint-compositor.ts: how paint lands on what's under it, a deposit onto its group's layer and a group onto
+// the painting. Every colour passes through here, so mixing as pigment (Kubelka–Munk) replaces this one module.
 //
-// It's WGSL the renderer's compute passes include (stamp-paint-renderer.ts): `depositPaint` and `groupPaint` take
-// what's under the paint and return the result, each pixel premultiplied, and `writePaintDeposit` fills the
-// `PaintDeposit` a deposit's pass reads its paint from.
+// WGSL for the renderer's compute passes: `depositPaint` and `groupPaint` return paint over what's under it,
+// premultiplied; `writePaintDeposit` fills a deposit's `PaintDeposit`.
 //
-// This compositor mixes paint as flat colour: a deposit by its blend (W3C separable blending, over a group layer that
-// may still be clear), a group by its composite: `opaque` covers, its coverage raised so a body of paint hides what's
-// under it while its thin edges stay soft; `glaze` multiplies at its opacity, so what's under it shows through tinted,
-// as a transparent wash does.
+// Flat colour: a deposit by its blend (W3C separable, over a maybe-clear layer); an `opaque` group covers, coverage
+// raised so a body hides what's under it while thin edges stay soft; a `glaze` multiplies at its opacity.
 //
-// Negative space: a `pigment` material mixes as a `flat` one until vid-83. Colours are mixed as written, gamma-encoded
-// sRGB, as Photoshop mixes with RGB blend gamma off (vid-97): nothing here decodes them to linear light.
+// Negative space: `pigment` mixes as `flat` for now. Colours mix gamma-encoded, as Photoshop does with RGB blend
+// gamma off: nothing decodes to linear light.
 
 import type { StampBlend } from '../models/stamp-brush.ts';
 import type { PaintMaterial } from '../models/stamp-paint-recipe.ts';

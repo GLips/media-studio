@@ -65,7 +65,7 @@ export const noKnownValueWideningCheck: StructuralCheck = {
         const type = types[index];
         if (!type) continue;
         // Only an object literal has keys of its own to lose; a lookup table read by a computed key needs the open domain.
-        const dictionary = pair.value.kind === SyntaxKind.ObjectLiteralExpression && openKeyDomainValueTypes(source.typed, type) !== undefined;
+        const dictionary = writesOwnKeys(pair.value) && openKeyDomainValueTypes(source.typed, type) !== undefined;
         if (dictionary && indexed.has(declaredName(source, pair.site) ?? '')) continue;
         if (!dictionary && !typeResolvesToFlags(source.typed, type, UNTYPED_TYPE_FLAGS | NON_PRIMITIVE_TYPE_FLAGS)) continue;
         const annotation = pair.annotation.getText(source.file);
@@ -87,6 +87,13 @@ function siteKey(source: TypedSource, { site, annotation }: AnnotatedValue): str
   const name = (site as Node & { name?: Node }).name;
   const spelled = annotation.getText(source.file).replace(/\s+/g, ' ');
   return name && site.kind !== SyntaxKind.ArrowFunction ? `${name.getText(source.file)}: ${spelled}` : `return ${spelled}`;
+}
+
+/** An object literal naming a key itself; one made only of spreads (`{ ...a, ...b }`) has keys it only passes on. */
+function writesOwnKeys(value: Node): boolean {
+  if (value.kind !== SyntaxKind.ObjectLiteralExpression) return false;
+  const { properties = [] } = value as Node & { properties?: readonly Node[] };
+  return properties.some((property) => property.kind !== SyntaxKind.SpreadAssignment);
 }
 
 /** Names this file reads by a key that isn't a literal (`ROLES[name]`). */

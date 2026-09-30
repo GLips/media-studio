@@ -49,11 +49,11 @@ const probesCommand = defineCommand({
       console.log(JSON.stringify({ arrangement, scores, skipped }, null, 2));
       return;
     }
-    for (const { probe, cell, score } of [...scores].sort((a, b) => b.score.rms - a.score.rms)) {
+    for (const { probe, cell, score } of scores.toSorted((a, b) => b.score.rms - a.score.rms)) {
       const owners = score.owners.map((o) => `${o.owner} ${o.rms.toFixed(4)} (${o.pixels} px)`).join(', ');
       console.log(`${score.rms.toFixed(4)} max ${score.max.toFixed(3)}  ${probe} / ${cell}: ${owners}`);
     }
-    const all = scores.map((s) => s.score.rms).sort((a, b) => a - b);
+    const all = scores.map((s) => s.score.rms).toSorted((a, b) => a - b);
     console.log(`stamp reference: ${scores.length} cells, median rms ${(all[Math.floor(all.length / 2)] ?? 0).toFixed(4)}, worst ${(all.at(-1) ?? 0).toFixed(4)}; skipped ${Object.entries(skipped).map(([why, n]) => `${n} ${why}`).join(', ') || 'none'}`);
   },
 });

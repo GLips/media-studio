@@ -5,7 +5,6 @@ One lint system with two tiers. They're split by what a rule can see, and both r
 ```
 policy/studio-tree.ts   where a path sits: lib areas, features and roles, projects, cli, harness, web places
 policy/*.ts             tables the checks read: SDK owners, timing constructors
-policy/held-out.ts      TEMPORARY: vid-108's folders, held out of the rules vid-107 switched on
 structural/             whole-tree checks (npm run check:arch, check-arch.ts), over the git index
 oxlint/                 per-file rules, run by oxlint.config.ts (npm run lint, lint.ts), over the working tree
 baseline.ts             how both tiers count findings against a baseline
@@ -92,12 +91,3 @@ Web app: rules whose subject only the web app has.
 | no-inline-color, no-inline-font-size, no-inline-style-prop, no-raw-primitives, no-stylex-border-shorthand, vendor-component-containment | oxlint | styling goes through the design system's tokens and primitives |
 | barrel-purity | structural | a feature barrel never reaches a server-only package |
 | css-tokens, shadow-source, token-equality | structural | stylesheet values, shadows and spacing name their tokens |
-
-## Held out
-
-`policy/held-out.ts` is temporary. vid-108 is restructuring the brush engine's features (lib/picture/stamp-paint,
-stamp-styles, photoshop-brushes, procreate-brushes, brush-fidelity, stamp-reference, lib/platform/photoshop, and
-their three harness entry points).
-The rules vid-107 switched on skip those folders: oxlint ignores them, and the structural checks it lists drop their
-findings there, and any feature edge touching them. The studio's own checks still govern them. The module goes
-when vid-108 lands.

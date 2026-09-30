@@ -39,9 +39,9 @@ ${FULL_FRAME_WGSL}
 export type StampPaintImage = { texture: GPUTexture; view: GPUTextureView; width: number; height: number };
 
 /**
- * Loads each image as a mipmapped texture holding its red channel alone (a tip or grain, which is grey) or its colour
- * (a paper). A tip is sampled across a frame's whole stamp area, so a quarter of the bytes is a large part of a
- * frame's time. WebGPU makes no mipmaps, so each level is drawn from the one below, averaging its four texels.
+ * Loads each image as a mipmapped texture of its red channel alone (a grey tip or grain) or its colour (a paper). A
+ * tip is sampled across a frame's whole stamp area, so a quarter of the bytes is a large part of a frame's time.
+ * WebGPU makes no mipmaps: each level averages four texels of the one below.
  */
 export async function loadStampPaintImages(device: GPUDevice, images: readonly { url: string; channels: 'red' | 'colour' }[]): Promise<StampPaintImage[]> {
   const bitmaps = await Promise.all(images.map(async ({ url }) => {

@@ -64,13 +64,3 @@ test('an import of a foundation needs no grant, and a foundation keeps no grant 
   });
   assert.deepEqual(caught(findings), ['lib/platform/temp/visibility.json:foundation']);
 });
-
-test('an import into or out of a feature held out until vid-108 lands needs no grant', () => {
-  const findings = runCheckOnFiles('feature-visibility', {
-    'package.json': PACKAGE,
-    'lib/picture/stamp-paint/models/stamp.ts': "import { reel } from '#lib/picture/reel/models/reel.ts';\nexport const stamp = 1;\n",
-    'lib/picture/reel/models/reel.ts': 'export const reel = 1;\n',
-    'lib/picture/kit/models/kit.ts': "import { stamp } from '#lib/picture/stamp-paint/models/stamp.ts';\n",
-  });
-  assert.deepEqual(caught(findings), []);
-});

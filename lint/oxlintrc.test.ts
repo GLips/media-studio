@@ -17,7 +17,6 @@ const MODEL = 'lib/timing/beat/models/beat-grid.ts';
 const MODEL_SPEC = 'lib/timing/beat/models/beat-grid.test.ts';
 const SCENE = 'work/projects/p/scenes/intro.tsx';
 const WEB_UI = 'web/src/features/f/ui/panel.tsx';
-const HELD_OUT = 'lib/picture/stamp-paint/models/stamp.ts';
 
 const LONG_COMMENT = `// ${Array.from({ length: 70 }, (_, i) => `word${i}`).join(' ')}`;
 const FIXTURES: Record<string, string> = {
@@ -46,7 +45,6 @@ export const Intro = ({ a, b, c, d, e, f, g, h, i }: IntroProps) => {
 export const Outro = () => <div />;
 `,
   [WEB_UI]: `export const Panel = () => <div style={{ color: "#ff0000" }}>hi</div>;\n`,
-  [HELD_OUT]: `${LONG_COMMENT}\nexport const stamp = JSON.parse("1") as number;\n`,
 };
 
 /** Every rule the studio applies to all TypeScript, and the fixture file that must trip it. */
@@ -113,8 +111,4 @@ test('the web design-system rules fire in the web app and stay silent on a Remot
   for (const rule of ['no-inline-color', 'no-inline-style-prop', 'no-raw-primitives']) {
     assert.ok(findings.has(`${rule} ${WEB_UI}`), `${rule} missed the web app`);
   }
-});
-
-test('a folder held out until vid-108 lands is not linted', () => {
-  assert.deepEqual([...findings].filter((finding) => finding.endsWith(HELD_OUT)), []);
 });

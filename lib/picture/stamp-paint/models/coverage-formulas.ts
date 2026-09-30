@@ -1,13 +1,11 @@
 // coverage-formulas.ts: one registry of how a grain cuts coverage, how a dual combines with its brush, a grain's
-// brightness and contrast, and wet edges' pooling. Each entry is a pair written twice, the number the CPU reference
-// works out (`cpu`) and the WGSL the GPU renderer runs (`wgsl`, in COVERAGE_FORMULAS_WGSL), side by side; nothing
-// derives one from the other, so `node harness/stamp-reference.ts formulas` runs every WGSL twin on the GPU over a
-// grid of inputs and holds it to its `cpu`. A mode's WGSL case and index are generated from its family's table, so a
-// mode added there has its case on the GPU. Each table holds exactly its family's modes (StampGrainBlend,
-// StampDualBlend): a mode no importer reads has no formula.
+// brightness and contrast, and wet edges' pooling. Each entry is written twice: for the CPU reference (`cpu`) and
+// the GPU (`wgsl`, in COVERAGE_FORMULAS_WGSL). Neither derives from the other, so `node harness/stamp-reference.ts
+// formulas` runs every WGSL twin on the GPU over an input grid and holds it to its `cpu`. WGSL cases are generated
+// from each family's table, which holds exactly its modes: one no importer reads has no formula.
 //
-// The `texture` formulas are Photoshop's, identified from its captures (vid-97): each fits its probes to the capture's
-// noise, the constants included. The `layer` formulas are the ones vid-89 fitted Procreate's previews with.
+// The `texture` formulas are Photoshop's, identified from its captures: each, constants included, fits its probes
+// to the capture's noise. The `layer` formulas were fitted to Procreate's previews.
 
 import type { StampBrushWetEdges, StampDualBlend, StampGrainBlend, StampGrainLook } from './stamp-brush.ts';
 

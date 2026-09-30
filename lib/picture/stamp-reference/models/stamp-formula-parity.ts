@@ -72,13 +72,16 @@ export function stampFormulaGrids(): StampFormulaGrid[] {
 }
 
 /** A formula's result on the GPU against the CPU: how many rows, the largest difference and where, and how many pass `tolerance`. */
-export function compareStampFormulaGrid(grid: StampFormulaGrid, gpu: ArrayLike<number>, tolerance = STAMP_FORMULA_TOLERANCE) {
+export function compareStampFormulaGrid(formulaGrid: StampFormulaGrid, gpu: ArrayLike<number>, tolerance = STAMP_FORMULA_TOLERANCE) {
   let worst = 0, at = 0, over = 0;
-  for (let i = 0; i < grid.expected.length; i++) {
-    const difference = Math.abs(gpu[i] - grid.expected[i]);
+  for (let i = 0; i < formulaGrid.expected.length; i++) {
+    const difference = Math.abs(gpu[i] - formulaGrid.expected[i]);
     // NaN never passes: a WGSL twin that divides by zero where the CPU doesn't is a finding.
     if (!(difference <= tolerance)) over++;
-    if (!(difference <= worst)) worst = difference, at = i;
+    if (!(difference <= worst)) {
+      worst = difference;
+      at = i;
+    }
   }
-  return { formula: grid.formula, rows: grid.expected.length, worst, worstAt: grid.labels[at], gpu: gpu[at], cpu: grid.expected[at], over };
+  return { formula: formulaGrid.formula, rows: formulaGrid.expected.length, worst, worstAt: formulaGrid.labels[at], gpu: gpu[at], cpu: formulaGrid.expected[at], over };
 }

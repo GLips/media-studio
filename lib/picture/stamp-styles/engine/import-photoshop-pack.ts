@@ -1,15 +1,11 @@
-// import-photoshop-pack.ts: `studio brushes import` for Photoshop. Turns an .abr, a .tpl, or a pack's zip holding
-// either or both, into a style's assets in work/styles/<style>/brushes/<pack>/, the same layout a Procreate pack
-// imports to: each brush's tip, dual tip and texture turned to dark-is-paint, and a manifest (StampPaintPack) holding
-// each brush's preset, its images and the file it came from, which a style reads into a brush when it resolves.
-// Photoshop files carry no rendered previews, so the manifest's previews stay empty: Photoshop's own renders come
-// from the capture rig (vid-100).
+// import-photoshop-pack.ts: `studio brushes import` for Photoshop. Turns an .abr, a .tpl, or a zip of either into
+// work/styles/<style>/brushes/<pack>/, laid out as a Procreate pack: each brush's tip, dual tip and texture as
+// dark-is-paint, and a manifest (StampPaintPack) of each brush's preset, images and source file. Photoshop files carry
+// no rendered previews, so the manifest's stay empty; Photoshop's renders come from the capture rig.
 //
-// A computed tip (and a bristle, erodible or airbrush one, read as round) is drawn by Photoshop's profile at its
-// hardness and diameter, over the span its soft edge reaches, and shared by every brush alike, as
-// tips/round-<hardness>-<diameter>.png; an erodible tip's height map is written beside it, once per map, as
-// tips/<brush>.heights.f32. A sampled tip is written once per file and flip, as the first brush that uses it names
-// it; a pattern likewise, once per polarity. A brush whose tip class the studio doesn't read is skipped.
+// A computed tip (bristle, erodible and airbrush read as round) is drawn by Photoshop's profile, shared as
+// tips/round-<hardness>-<diameter>.png, an erodible one's height map beside it. A sampled tip is written once per file
+// and flip, named by its first brush; a pattern once per polarity. A brush of an unread tip class is skipped.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
@@ -94,8 +90,8 @@ function writePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, 
       if (image.kind === 'sampled') {
         const sample = file.tips.get(image.id);
         if (!sample) return undefined;
-        const written = writeOnce(`${fileName}|${image.id}|${image.flipX}|${image.flipY}`, 'tips', slug, (out) => writeStampPackGray(photoshopSampleWithBorder(sample), STAMP_PACK_TIP_MAX, out, { negate: true, flipX: image.flipX, flipY: image.flipY }));
-        return { kind: 'sampled', image: written, sample: { width: sample.width, height: sample.height } };
+        const sampledTipAsset = writeOnce(`${fileName}|${image.id}|${image.flipX}|${image.flipY}`, 'tips', slug, (out) => writeStampPackGray(photoshopSampleWithBorder(sample), STAMP_PACK_TIP_MAX, out, { negate: true, flipX: image.flipX, flipY: image.flipY }));
+        return { kind: 'sampled', image: sampledTipAsset, sample: { width: sample.width, height: sample.height } };
       }
       const hardness = Math.round(image.hardness * 100), key = `${hardness}-${stampPackSlug(String(image.diameter))}`;
       const drawing = writeOnce(`round|${key}`, 'tips', `round-${key}`, (out) => {
@@ -141,7 +137,7 @@ function writePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, 
   const stored = {
     version: STAMP_PAINT_ASSETS_VERSION,
     app: 'photoshop',
-    files: [...files].sort(),
+    files: [...files].toSorted(),
     brushes,
     source: { archive: basename(archive), sha256: sha256OfFile(archive) },
     skipped,

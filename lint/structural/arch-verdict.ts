@@ -12,7 +12,6 @@ import { join } from 'node:path';
 import { STUDIO_WORKSPACE_MOUNT } from '../policy/studio-tree.ts';
 import { baselineTier, compareToBaseline, type Baseline, type BaselineComparison } from '../baseline.ts';
 import { createCheckContext, type CheckContext, type CheckTarget, type Finding } from './check-context.ts';
-import { isHeldOutUntilVid108 } from '../policy/held-out.ts';
 import { STRUCTURAL_CHECKS } from './registry.ts';
 
 export type ArchVerdict = BaselineComparison & {
@@ -27,8 +26,7 @@ export type ArchVerdict = BaselineComparison & {
 
 export function judgeArchitecture(root: string, target: CheckTarget): ArchVerdict {
   const context = createCheckContext(root, target);
-  const judged = (finding: Finding) => finding.path.startsWith(`${STUDIO_WORKSPACE_MOUNT}/`) === (target.scope === 'workspace')
-    && !isHeldOutUntilVid108(finding.check, finding.path);
+  const judged = (finding: Finding) => finding.path.startsWith(`${STUDIO_WORKSPACE_MOUNT}/`) === (target.scope === 'workspace');
   const findings: Finding[] = [];
   const advisories: Finding[] = [];
   const crashed: string[] = [];

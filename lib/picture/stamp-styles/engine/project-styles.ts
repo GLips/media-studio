@@ -1,12 +1,10 @@
-// project-styles.ts: the private styles a project's project.ts names in `styles`, found in work/styles/<name>/ and
-// checked before a bundle: each pack a style's style.ts lists must be imported on this machine, at the asset version
-// the studio reads, with every file its manifest lists. A style that fails stops the bundle, listing each file with
-// the pack's `source`, as a brand kit's missing fonts do. A style that passes is written into generated/stamp-paint-styles.ts,
-// which the bundle aliases as `@stamp-paint-styles`: each style.ts, its packs' manifests and the images it paints with,
-// imported so the bundle serves them (lib/picture/stamp-styles/studio/stamp-paint-styles.ts reads it).
+// project-styles.ts: the private styles a project.ts names, checked from work/styles/<name>/ before a bundle: each
+// pack a style.ts lists must be imported here, at the studio's asset version, with every file its manifest lists. A
+// failing style stops the bundle, listing each file with the pack's `source`. A passing one goes into
+// generated/stamp-paint-styles.ts (aliased `@stamp-paint-styles`), importing its style.ts, manifests and images.
 //
-// Imported by lib/output/render/engine/project-bundle.ts, so it stays free of import.meta (the Remotion CLI bundles that
-// file to CommonJS): work/styles is found from the project's folder, and project.ts and style.ts are read with require,
+// Stays free of import.meta: lib/output/render/engine/project-bundle.ts imports it, and the Remotion CLI bundles that to
+// CommonJS. So work/styles is found from the project's folder, and project.ts and style.ts are read with require,
 // which Node strips of types.
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';

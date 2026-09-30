@@ -12,11 +12,9 @@ import {
 } from './stamp-dynamics.ts';
 
 /**
- * A point a stroke passes through, in the painting's pixels. `pressure` is 0..1, and 1 when left out. `speed` is how
- * fast the hand moves here, relative to the rest of the stroke (1 when left out, and positive): a revealed stroke spends
- * its time where it's slow. `lift` lifts the brush on the way to this point: no stamp lands between it and the point
- * before, though the stroke's length, and so its reveal and taper, still counts the gap. One stroke with lifts is one
- * deposit, so its parts never build on each other as separate strokes would.
+ * A stroke's point in painting pixels. `pressure` 0..1 and `speed` (the hand's, relative, positive; a reveal lingers
+ * where it's slow) default to 1. `lift`: no stamp lands since the point before, though length, reveal and taper
+ * count the gap; still one deposit, so its parts never build on each other.
  */
 export type StampStrokePoint = { x: number; y: number; pressure?: number; speed?: number; lift?: boolean };
 

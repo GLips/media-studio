@@ -1,29 +1,13 @@
-// stamp-paint-renderer.ts: draws a compiled stamp painting (lib/picture/stamp-paint/models/stamp-paint-recipe.ts) at a
-// moment, on the GPU through WebGPU. Each frame starts from bare paper and paints every group again, so a frame depends
-// only on its time: nothing a tab drew before survives into the next, and only images and stamp buffers are kept.
+// stamp-paint-renderer.ts: draws a compiled stamp painting through WebGPU. Each frame repaints every
+// group on bare paper, so it depends only on its time; only images and stamp buffers persist.
 //
-// A deposit is painted in four steps, each within the box its visible stamps reach, in the order Photoshop's captures
-// show (vid-97):
-//   1. a render pass stamps it, instanced, into a coverage mask: the brush's in red, its dual's in green. Each stamp
-//      lays its flow over the stroke toward its opacity (a glaze's or a build's toward full, its paint flow × opacity,
-//      as its accumulation says), by a fixed blend, or walked in order per pixel where its opacity falls and the
-//      blend would lower the paint (stampAccumulationPlan); a glaze also keeps, by max, its densest stamp and its cap (a stamp's paint before its
-//      tip), and the resolve takes its stroke from the densest stamp toward the build held under the cap, as far as its
-//      build says. A brush with colour dynamics also lays each stamp's tint, weighted by coverage, into two targets.
-//   2. compute passes blur the mask, when the brush has wet or burnt edges: the rim is where the mask stands above it.
-//   3. one compute pass resolves the coverage (its accumulation's resolve, then canvas grain, the dual combined by its
-//      blend and pooling in its plan's order (STAMP_RESOLVE_PLANS), the wet rim,
-//      the paper's tooth, protected regions, the clipping pass, the deposit's opacity), lays it onto its group's layer
-//      through the compositor (stamp-paint-compositor.ts), burns its burnt rim into the paint there, and adds it to the
-//      clip when its pass is unclipped.
-//   4. a compute pass lays each finished group onto the painting, and a render pass writes the painting to the canvas.
+// A deposit paints within its visible stamps' box, in the order Photoshop's captures show: a render pass stamps its
+// coverage mask (stampAccumulationPlan), compute passes blur it for wet or burnt edges, and a compute pass resolves
+// it (STAMP_RESOLVE_PLANS, rims, paper tooth, protected regions, clip, opacity) onto its group's layer. Groups then
+// land on the painting.
 //
-// Paint mixes on gamma-encoded sRGB, as Photoshop's does with RGB blend gamma off. Its grain, dual and pooling
-// formulas, accumulation resolves and stage orders are WGSL twins from the registries the CPU reference reads
-// (coverage-formulas.ts, stamp-deposit-stages.ts), which stampActiveLayers switches on for both alike; the formulas
-// command holds each formula's and resolve's twin to its CPU side. Where Procreate and Photoshop paint differently,
-// the brush says which way (accumulation, a grain's and a dual's blend family, a grain's contrast pivot
-// and tiling, a tip's sampling), and nothing here asks where a brush came from.
+// Formulas and stage orders are WGSL twins of the CPU reference's registries, held to it by the formulas command.
+// The brush says where Procreate and Photoshop differ; nothing here asks where it came from.
 
 import { bindStampBrushImages, type StampBrush, type StampBrushAsset, type StampBrushGrain, type StampBrushLayer } from '../models/stamp-brush.ts';
 import { COVERAGE_FORMULAS_WGSL, stampDualModeIndex, stampGrainModeIndex } from '../models/coverage-formulas.ts';
@@ -77,16 +61,9 @@ fn turned(v: vec2f, angle: f32) -> vec2f {
   return vec2f(c * v.x - s * v.y, s * v.x + c * v.y);
 }`;
 
-// A stamp is drawn as its tip's hull (stamp-tip-hull.ts), a fan of triangles from its first corner, in the tip's UV
-// square. Its place on the tip is interpolated, not worked out from its pixel: Apple's GPUs fetch a texel at an
-// interpolated place before the shader runs, and a computed one took twice as long. A flipped stamp mirrors its hull,
-// not its sampling, so the hull still holds its paint. The tip's center (StampBrushTip), not its square's middle, lands
-// on the stamp's place, as the CPU reference places it. The mask's rows run top first, as the painting's do, so y is
-// flipped into clip space.
-//
-// A rolling grain sits under each stamp: turned by the stamp's grain turn, its tile grown by the stamp's size as far as
-// its zoom says, and carried along the canvas as far as its movement says. At movement 1 and constant size it lies
-// still on the canvas; as size or direction changes it slides, which is a rolling grain's streak.
+// A stamp is its tip's hull (stamp-tip-hull.ts) as a triangle fan, its tip place interpolated: Apple's GPUs fetch
+// an interpolated place's texel before the shader runs; computing it took twice as long. A flip mirrors the hull,
+// not its sampling, so the hull holds the paint. The tip's center lands on the stamp's place. Mask rows run top first.
 const STAMP_DRAW = stampUniformLayout('StampDraw', [
   ['resolution', 'vec2f'], ['roundness', 'f32'], ['rolling', 'u32'], ['grain', stampUniformStruct(GRAIN)], ['diameter', 'f32'], ['zoom', 'f32'],
   ['movement', 'f32'], ['hull', { vec4fArray: STAMP_TIP_HULL_SIDES / 2 }], ['span', 'f32'], ['towardFull', 'u32'], ['center', 'vec2f'],
@@ -114,6 +91,8 @@ ${TURNED_WGSL}
   let squash = max(u.roundness * last.y, 1.0 / (stamp.z * u.span));
   let local = turned((uv - u.center) * vec2f(1.0, squash) * stamp.z * u.span * mirror, stamp.w);
   let at = (stamp.xy + local) / u.resolution * 2.0 - 1.0;
+  // A rolling grain turns with the stamp, grows with its size by zoom and travels the canvas by movement: at
+  // movement 1 and constant size it lies still; as size or direction change it slides, a rolling grain's streak.
   let size = u.grain.place.xy * pow(stamp.z / u.diameter, u.zoom);
   let grainUv = turned(local, -more.z) / size + u.movement * stamp.xy / u.grain.place.xy + u.grain.place.zw;
   // A glaze or a build lays flow × opacity toward full; a buildToOpacity lays its flow toward its own opacity.
@@ -146,10 +125,9 @@ fn covered(corner: Corner) -> vec2f {
 /** Pixels a side of the tiles an `ordered` layer's stamps are binned by (binOrderedStamps). */
 const ORDERED_TILE = 32;
 
-// A layer laid in order (its `ordered` plan) is one triangle over the deposit's box: each pixel walks the stamps binned
-// to its tile, first to last, and lays each by its accumulation's lay (STAMP_ACCUMULATION_LAY_WGSL). A stamp's place
-// on its tip inverts the fixed path's vertex transform, and its tip and rolling grain are sampled at the gradients
-// that path's interpolation gives, the tip's grown by its blur as the fixed path's bias grows it.
+// An `ordered` layer is one triangle over the deposit's box: each pixel walks its tile's stamps in order, laying each
+// by its accumulation's lay. A stamp's tip place inverts the fixed path's vertex transform; tip and rolling grain are
+// sampled at that path's interpolated gradients, the tip's grown by its blur as the fixed path's bias grows it.
 const ORDERED_DRAW = stampUniformLayout('OrderedDraw', [
   ['grain', stampUniformStruct(GRAIN)], ['roundness', 'f32'], ['rolling', 'u32'], ['diameter', 'f32'], ['zoom', 'f32'], ['movement', 'f32'],
   ['span', 'f32'], ['first', 'u32'], ['count', 'u32'], ['tint', 'u32'], ['bins', 'u32'], ['tilesX', 'u32'], ['accumulation', 'i32'], ['center', 'vec2f'],
@@ -808,22 +786,22 @@ async function rendererOnDevice(
     writeGrain(views, at, grain, [size, size * (grain.image.height / grain.image.width)], offset, grainLod(grain.image, size));
   };
 
-  function drawStamps(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loaded: LoadedDeposit, count: number, dualCount: number, box: Box) {
-    const tinted = loaded.tint !== null;
+  function drawStamps(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loadedDeposit: LoadedDeposit, count: number, dualCount: number, box: Box) {
+    const tinted = loadedDeposit.tint !== null;
     const pass = encoder.beginRenderPass({
       colorAttachments: [targets.mask, targets.cap, ...(tinted ? [targets.tintA!, targets.tintB!] : [])].map(({ view }) => ({ view, loadOp: 'clear' as const, storeOp: 'store' as const })),
     });
     pass.setScissorRect(box.x, box.y, box.w, box.h);
     pass.setIndexBuffer(fanBuffer, 'uint16');
-    const stamp = (layer: BoundLayer, active: StampActiveLayer<StampPaintImage>, plan: LoadedPlan, first: number, n: number, hull: StampTipHull, channel: 0 | 1) => {
+    const stamp = (layer: BoundLayer, active: StampActiveLayer<StampPaintImage>, plan: LoadedPlan, first: number, n: number, hull: StampTipHull, stampChannel: 0 | 1) => {
       if (!n) return;
       const { rollingGrain: rolling, diameter } = active;
-      const offset = deposit.grainOffset[channel === 0 ? 'main' : 'dual'];
+      const offset = deposit.grainOffset[stampChannel === 0 ? 'main' : 'dual'];
       const textures = [layer.tip.image.view, rolling ? rolling.image.view : targets.blank.view, layer.tip.sampling === 'anisotropic' ? anisotropicClamp : linearClamp, rolling?.tiling === 'mirror' ? mirrorTile : tile];
-      const tints = channel === 0 && tinted ? { buffer: tintBuffer, at: loaded.tint! } : { buffer: noTintBuffer, at: 0 };
+      const tintBinding = stampChannel === 0 && tinted ? { buffer: tintBuffer, at: loadedDeposit.tint! } : { buffer: noTintBuffer, at: 0 };
       const center: [number, number] = [layer.tip.center?.[0] ?? 0.5, layer.tip.center?.[1] ?? 0.5];
       if (plan.kind === 'ordered') {
-        const pipeline = orderedPipelines[tinted ? 'tinted' : 'plain'][channel];
+        const pipeline = orderedPipelines[tinted ? 'tinted' : 'plain'][stampChannel];
         pass.setPipeline(pipeline);
         pass.setBindGroup(0, bindGroup(pipeline, [
           slot((views) => {
@@ -840,18 +818,18 @@ async function rendererOnDevice(
             put('span', spanOf(layer));
             put('first', first);
             put('count', n);
-            put('tint', tints.at);
+            put('tint', tintBinding.at);
             put('bins', plan.bins);
             put('tilesX', tilesX);
             put('accumulation', stampAccumulationIndex(layer.accumulation.kind));
             put('center', center);
           }),
-          ...textures, { buffer: stampBuffer }, { buffer: tints.buffer }, { buffer: binBuffer },
+          ...textures, { buffer: stampBuffer }, { buffer: tintBinding.buffer }, { buffer: binBuffer },
         ]));
         pass.draw(3);
         return;
       }
-      const pipeline = stampPipelines[STAMP_ACCUMULATIONS[layer.accumulation.kind].keepsCap ? 'glaze' : 'build'][tinted ? 'tinted' : 'plain'][channel];
+      const pipeline = stampPipelines[STAMP_ACCUMULATIONS[layer.accumulation.kind].keepsCap ? 'glaze' : 'build'][tinted ? 'tinted' : 'plain'][stampChannel];
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, bindGroup(pipeline, [
         slot((views) => {
@@ -877,11 +855,11 @@ async function rendererOnDevice(
         ...textures,
       ]));
       pass.setVertexBuffer(0, stampBuffer, first * STAMP_FLOATS * 4);
-      pass.setVertexBuffer(1, tints.buffer, tints.at * TINT_FLOATS * 4);
+      pass.setVertexBuffer(1, tintBinding.buffer, tintBinding.at * TINT_FLOATS * 4);
       pass.drawIndexed((hull.length / 2 - 2) * 3, n);
     };
-    stamp(loaded.brush, loaded.active.main, loaded.mainPlan, loaded.main, count, loaded.mainHull, 0);
-    if (loaded.brush.dual && loaded.active.dual && loaded.dualPlan) stamp(loaded.brush.dual, loaded.active.dual, loaded.dualPlan, loaded.dual, dualCount, loaded.dualHull!, 1);
+    stamp(loadedDeposit.brush, loadedDeposit.active.main, loadedDeposit.mainPlan, loadedDeposit.main, count, loadedDeposit.mainHull, 0);
+    if (loadedDeposit.brush.dual && loadedDeposit.active.dual && loadedDeposit.dualPlan) stamp(loadedDeposit.brush.dual, loadedDeposit.active.dual, loadedDeposit.dualPlan, loadedDeposit.dual, dualCount, loadedDeposit.dualHull!, 1);
     pass.end();
   }
 
@@ -923,9 +901,9 @@ async function rendererOnDevice(
       pass.setVertexBuffer(0, regionBuffer);
       pass.draw(count, 1, first);
     };
-    const into = (view: GPUTextureView, loadOp: GPULoadOp, draw: (pass: GPURenderPassEncoder) => void) => {
+    const into = (view: GPUTextureView, loadOp: GPULoadOp, paintPass: (pass: GPURenderPassEncoder) => void) => {
       const pass = encoder.beginRenderPass({ colorAttachments: [{ view, loadOp, storeOp: 'store' }] });
-      draw(pass);
+      paintPass(pass);
       pass.end();
     };
     into(targets.protect.view, 'clear', (pass) => {
@@ -943,8 +921,8 @@ async function rendererOnDevice(
     }
   }
 
-  function resolveDeposit(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loaded: LoadedDeposit, clipped: boolean, blurred: boolean, box: Box) {
-    const { brush, active } = loaded;
+  function resolveDeposit(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loadedDeposit: LoadedDeposit, clipped: boolean, blurred: boolean, box: Box) {
+    const { brush, active } = loadedDeposit;
     const edgesOf = (layer?: StampActiveLayer<StampPaintImage>): [number, number, number, number] => (blurred && layer
       ? [layer.rim?.rim ?? 0, layer.rim?.sharpness ?? 0, layer.burntEdge?.strength ?? 0, layer.burntEdge?.sharpness ?? 0] : [0, 0, 0, 0]);
     const mainGrain = active.main.canvasGrain, dualGrain = active.dual?.canvasGrain;
@@ -955,7 +933,7 @@ async function rendererOnDevice(
       paperTile = [size, size * (grain.height / grain.width), grainLod(grain, size)];
     }
     const protectedBy = deposit.protectedBy.length > 0;
-    const tinted = loaded.tint !== null;
+    const tinted = loadedDeposit.tint !== null;
     const flags: (keyof typeof DEPOSIT_FLAGS)[] = [
       ...(mainGrain ? ['canvasGrain' as const] : []), ...(brush.dual ? ['dual' as const] : []), ...(dualGrain ? ['dualCanvasGrain' as const] : []),
       ...(tooth ? ['paper' as const] : []), ...(protectedBy ? ['protected' as const] : []), clipped ? 'clipped' as const : 'clips' as const, ...(tinted ? ['tinted' as const] : []),
@@ -1000,10 +978,10 @@ async function rendererOnDevice(
   }
 
   /** The pixels a deposit's first `count` stamps (and dual stamps) reach, padded for its edges' blur, or null. */
-  function depositBox(deposit: CompiledStampDeposit, loaded: LoadedDeposit, count: number, dualCount: number, pad: number): Box | null {
+  function depositBox(deposit: CompiledStampDeposit, loadedDeposit: LoadedDeposit, count: number, dualCount: number, pad: number): Box | null {
     const reach = [Infinity, Infinity, -Infinity, -Infinity];
-    reachOfFirst(deposit.stamps, loaded.mainReach, count, spanOf(deposit.brush), reach);
-    if (deposit.brush.dual) reachOfFirst(deposit.dualStamps, loaded.dualReach, dualCount, spanOf(deposit.brush.dual), reach);
+    reachOfFirst(deposit.stamps, loadedDeposit.mainReach, count, spanOf(deposit.brush), reach);
+    if (deposit.brush.dual) reachOfFirst(deposit.dualStamps, loadedDeposit.dualReach, dualCount, spanOf(deposit.brush.dual), reach);
     const x = Math.max(0, Math.floor(reach[0] - pad)), y = Math.max(0, Math.floor(reach[1] - pad));
     const w = Math.min(width, Math.ceil(reach[2] + pad)) - x, h = Math.min(height, Math.ceil(reach[3] + pad)) - y;
     return w > 0 && h > 0 ? { x, y, w, h } : null;
@@ -1040,15 +1018,15 @@ async function rendererOnDevice(
           const count = visibleStampCountAt(deposit, t);
           if (!count) continue;
           const dualCount = visibleStampCountAt(deposit, t, 'dualStamps');
-          const loaded = deposits.get(deposit)!;
+          const loadedDeposit = deposits.get(deposit)!;
           // The rim is where the mask stands above a blur as wide as its edge.
-          const sigma = loaded.active.edgeSigma, blurred = sigma > 0;
-          const box = depositBox(deposit, loaded, count, dualCount, blurred ? sigma * 3 : 2);
+          const sigma = loadedDeposit.active.edgeSigma, blurred = sigma > 0;
+          const box = depositBox(deposit, loadedDeposit, count, dualCount, blurred ? sigma * 3 : 2);
           if (!box) continue;
-          drawStamps(encoder, deposit, loaded, count, dualCount, box);
+          drawStamps(encoder, deposit, loadedDeposit, count, dualCount, box);
           if (blurred) blurMask(encoder, sigma, box);
-          if (loaded.regions.length) drawProtect(encoder, loaded.regions);
-          resolveDeposit(encoder, deposit, loaded, !!pass.clipTo, blurred, box);
+          if (loadedDeposit.regions.length) drawProtect(encoder, loadedDeposit.regions);
+          resolveDeposit(encoder, deposit, loadedDeposit, !!pass.clipTo, blurred, box);
           painted = painted ? union(painted, box) : box;
         }
       }

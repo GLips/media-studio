@@ -29,12 +29,3 @@ test('each import inside a feature cycle, at any depth, is a finding; a chain is
     'web/src/features/g:→ web/src/features/f',
   ]);
 });
-
-test('a feature held out until vid-108 lands closes no cycle', () => {
-  const findings = runCheckOnFiles('feature-cycles', {
-    'package.json': JSON.stringify({ imports: { '#lib/*': './lib/*' } }),
-    'lib/picture/stamp-paint/models/stamp.ts': "import { reel } from '#lib/picture/reel/models/reel.ts';\nexport const stamp = 1;\n",
-    'lib/picture/reel/models/reel.ts': "import { stamp } from '#lib/picture/stamp-paint/models/stamp.ts';\nexport const reel = 1;\n",
-  });
-  assert.deepEqual(caught(findings), []);
-});

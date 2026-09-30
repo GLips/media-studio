@@ -11,7 +11,7 @@ const asset = (file: string) => ({ style: 'wash', pack: 'mixed', file });
 const pct = (value: number) => ({ _unit: '#Prc', value });
 const px = (value: number) => ({ _unit: '#Pxl', value });
 const long = (value: number) => ({ _long: value });
-const control = (bVTy: number, jitter: number, minimum = 0): PhotoshopDescriptor => ({ _class: 'brVr', bVTy: long(bVTy), fStp: long(25), jitter: pct(jitter), 'Mnm ': pct(minimum) });
+const control = (bVTy: number, jitter: number, minimum = 0) => ({ _class: 'brVr', bVTy: long(bVTy), fStp: long(25), jitter: pct(jitter), 'Mnm ': pct(minimum) }) satisfies PhotoshopDescriptor;
 /** A sample 99 px square: its centre texel (49) and blank border put its centre at the image's. */
 const sampledTip = (file: string) => ({ kind: 'sampled', image: asset(file), sample: { width: 99, height: 99 } }) as const;
 function paintable(d: PhotoshopDescriptor) {
@@ -41,7 +41,7 @@ test('a Procreate brush and a Photoshop preset that paint alike normalize to the
     tip: asset('tips/round.png'), grain: asset('grains/paper.png'),
   }, { settings: { maxSize: 2, renderingRecursiveMixing: true, dynamicsGlazedFlow: 1, plotSpacing: 0.2, shapeCount: 1 / 16 }, tip: asset('tips/dual.png') }, procreateReading);
 
-  const preset: PhotoshopDescriptor = {
+  const preset = {
     _class: 'brushPreset', 'Nm  ': 'Textured Round',
     Brsh: { _class: 'sampledBrush', Dmtr: px(100), Angl: { _unit: '#Ang', value: 0 }, Rndn: pct(50), Spcn: pct(10), Intr: true, flipX: false, flipY: false, sampledData: 'tip' },
     useTipDynamics: true, flipX: true, flipY: false, minimumDiameter: pct(25), szVr: control(2, 30), angleDynamics: control(6, 25), roundnessDynamics: control(0, 0),
@@ -57,7 +57,7 @@ test('a Procreate brush and a Photoshop preset that paint alike normalize to the
     },
     Wtdg: false, Nose: false, 'Rpt ': false,
     toolOptions: { _class: 'PbTl', Opct: long(100), flow: long(64), 'Md  ': { _enum: 'BlnM', value: 'Nrml' } },
-  };
+  } satisfies PhotoshopDescriptor;
   const photoshop = normalizePhotoshopBrush('Textured Round', {
     preset: paintable(preset), tip: sampledTip('tips/round.png'), dualTip: sampledTip('tips/dual.png'), pattern: { image: asset('grains/paper.png'), width: 300 },
   }, photoshopReading);

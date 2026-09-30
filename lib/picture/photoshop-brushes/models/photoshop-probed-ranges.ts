@@ -16,8 +16,10 @@ export function photoshopProbedRanges(): Map<string, PhotoshopProbedRange> {
     for (const { path, value } of photoshopPresetLeaves(probe.preset)) {
       const known = ranges.get(path);
       if (typeof value === 'number') {
-        if (known?.kind === 'number') known.min = Math.min(known.min, value), known.max = Math.max(known.max, value);
-        else ranges.set(path, { kind: 'number', min: value, max: value });
+        if (known?.kind === 'number') {
+          known.min = Math.min(known.min, value);
+          known.max = Math.max(known.max, value);
+        } else ranges.set(path, { kind: 'number', min: value, max: value });
       } else if (known?.kind === 'values') known.values.add(value);
       else ranges.set(path, { kind: 'values', values: new Set([value]) });
     }

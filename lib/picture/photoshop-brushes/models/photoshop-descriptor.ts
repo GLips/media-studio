@@ -18,7 +18,7 @@ type Tagged = PhotoshopUnitFloat | PhotoshopEnum | PhotoshopInteger | PhotoshopR
 /** Which tagged value `v` is, by its tag; a descriptor has a `_class` and none of the tags. */
 export function photoshopTagged(v: PhotoshopValue | undefined): Tagged | undefined {
   if (!v || typeof v !== 'object' || Array.isArray(v) || '_class' in v) return undefined;
-  return v as Tagged;
+  return v;
 }
 
 const isJsonObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);

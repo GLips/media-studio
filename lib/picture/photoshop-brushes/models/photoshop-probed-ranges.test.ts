@@ -10,5 +10,5 @@ test('a preset is flagged only where a setting that takes effect goes past what 
   const off = { control: { kind: 'off' }, jitter: 0 } as const;
   const scatter = { scatter: { ...off, jitter: 100 }, bothAxes: true, count: 6, countDynamics: off };
   const flagged = photoshopUnprobedFields({ ...preset, scatter, buildUp: true }, ranges).map((f) => f.path);
-  assert.deepEqual(flagged.sort(), ['buildUp', 'scatter.count']);
+  assert.deepEqual(flagged.toSorted(), ['buildUp', 'scatter.count']);
 });

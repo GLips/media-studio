@@ -1,18 +1,14 @@
-// photoshop-app.ts: driving Photoshop 2026 on this Mac from Node, with no UI: ExtendScript through `osascript … do
-// javascript`, on top of photoshop-actions.jsxinc (vid-100). And keeping Graham's Photoshop exactly as it was.
+// photoshop-app.ts: driving Photoshop 2026 from Node with no UI (ExtendScript via `osascript … do javascript`),
+// keeping Graham's Photoshop as it was.
 //
-// Photoshop is Graham's own app. A studio run owns the Photoshop it scripts, start to end: it refuses if Photoshop is
-// already running (his documents, his state), snapshots the whole settings folder (brush presets in Brushes.psp and
-// MRUBrushes.psp, patterns, tool options, recent files and document sizes), launches Photoshop in the background,
-// and afterwards quits it and puts back, byte for byte, the settings files its Photoshop changed. So what a
-// run does to the preset lists in memory (an .abr appended, a probe tip or pattern defined) is written at quit and
-// then undone from the snapshot, and nothing is ever deleted from a preset list by script (deleting by index removes
-// a different preset than the flat list says; it cost Graham four presets once).
+// A run owns the Photoshop it scripts: it refuses if Photoshop is already running, snapshots the settings folder
+// (Brushes.psp, MRUBrushes.psp, patterns, tool options…), launches it in the background, then quits it and puts back,
+// byte for byte, the files it changed. Presets it defines are written at quit, then undone. Never delete from a
+// preset list by script: by index it removes a different preset than the flat list says, and cost Graham four
+// presets once.
 //
-// A restore never undoes someone else's Photoshop session: it puts back only files still as the run's Photoshop left
-// them when the run saw it exit, sets aside everything it replaces, and without that exit record refuses unless forced
-// (models/photoshop-settings-restore.ts). A run whose Photoshop someone is using leaves it running, its snapshot
-// pending; nothing starts Photoshop while one is pending.
+// A restore never undoes another session's changes (models/photoshop-settings-restore.ts). A run whose Photoshop is
+// in use leaves it running, snapshot pending; nothing starts Photoshop meanwhile.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -93,7 +89,7 @@ async function quitPhotoshop(): Promise<void> {
   try {
     open = runPhotoshopScript('app.documents.length', { timeoutSeconds: 60 });
   } catch (error) {
-    throw new Error(`photoshop: the run's Photoshop doesn't answer scripts (${(error as Error).message.split('\n')[0]}): someone may be using it, so it's left running`);
+    throw new Error(`photoshop: the run's Photoshop doesn't answer scripts (${(error as Error).message.split('\n')[0]}): someone may be using it, so it's left running`, { cause: error });
   }
   if (open !== '0') throw new Error(`photoshop: the run's Photoshop has ${open} documents open that the run didn't leave: someone is using it, so it's left running`);
   osascript(['with timeout of 60 seconds', `tell application id "${PHOTOSHOP_BUNDLE_ID}" to quit`, 'end timeout']);
@@ -119,7 +115,7 @@ function hashPhotoshopSettings(root: string): Record<string, string> {
 /** Snapshots that were never restored, oldest first. */
 export function pendingPhotoshopSettingsBackups(): string[] {
   if (!existsSync(PHOTOSHOP_SETTINGS_BACKUPS)) return [];
-  return readdirSync(PHOTOSHOP_SETTINGS_BACKUPS).sort().map((name) => join(PHOTOSHOP_SETTINGS_BACKUPS, name))
+  return readdirSync(PHOTOSHOP_SETTINGS_BACKUPS).toSorted().map((name) => join(PHOTOSHOP_SETTINGS_BACKUPS, name))
     .filter((dir) => existsSync(join(dir, 'snapshot.json')) && !existsSync(join(dir, 'restored.json')));
 }
 
@@ -153,10 +149,9 @@ export function planPendingPhotoshopRestore(backup: string, force = false): Phot
 }
 
 /**
- * Puts Photoshop's settings back from `backup` with Photoshop not running, as planPhotoshopSettingsRestore allows:
- * every file the run changed rewritten from the snapshot (its timestamps kept), every file it added removed, and each
- * checked by hash after. Every file it overwrites or removes is first copied to `<backup>/replaced-<time>/`, so a
- * restore can itself be undone. Files another session changed since the run are kept, and listed.
+ * Puts Photoshop's settings back from `backup`, Photoshop not running, as planPhotoshopSettingsRestore allows: changed
+ * files rewritten (timestamps kept), added files removed, each checked by hash. Everything overwritten or removed is
+ * first copied to `<backup>/replaced-<time>/`, so a restore can be undone. Files another session changed are kept, and listed.
  */
 export function restorePhotoshopSettings(backup: string, { force = false }: { force?: boolean } = {}): PhotoshopSettingsRestore {
   if (photoshopIsRunning()) throw new Error('photoshop: quit Photoshop before its settings are restored');
@@ -194,16 +189,16 @@ export function restorePhotoshopSettings(backup: string, { force = false }: { fo
 /** Restores every pending snapshot, as restorePhotoshopSettings allows each. */
 export function restorePendingPhotoshopSettings({ force = false }: { force?: boolean } = {}): PhotoshopSettingsRestore[] {
   // The oldest snapshot is the state before any of the runs, so it's the one that counts; restore it last.
-  return pendingPhotoshopSettingsBackups().reverse().map((backup) => restorePhotoshopSettings(backup, { force }));
+  return pendingPhotoshopSettingsBackups().toReversed().map((backup) => restorePhotoshopSettings(backup, { force }));
 }
 
 export type PhotoshopSession = { run: string; backup: string; version: string };
 
 /**
- * Runs `step` against a Photoshop this run launched, and afterwards quits it and restores the settings snapshot,
- * however `step` ends. Refuses to start while Photoshop is running or a snapshot is pending. When its Photoshop can't
- * be quit (someone is using it), the snapshot is left pending with no exit record, and a later restore refuses unless
- * forced: nothing the run can see says whose changes the settings then hold.
+ * Runs `step` against a Photoshop this run launched, then quits it and restores the snapshot, however `step` ends.
+ * Refuses while Photoshop runs or a snapshot is pending. If its Photoshop can't be quit (someone is using it), the
+ * snapshot stays pending with no exit record, and a later restore refuses unless forced: nothing says whose changes
+ * the settings then hold.
  */
 export async function withOwnedPhotoshop<T>(run: string, step: (session: PhotoshopSession) => Promise<T> | T, log: (line: string) => void): Promise<{ result: T; restore: PhotoshopSettingsRestore }> {
   if (!existsSync(PHOTOSHOP_APP)) throw new Error(`photoshop: no Photoshop 2026 at ${PHOTOSHOP_APP}`);

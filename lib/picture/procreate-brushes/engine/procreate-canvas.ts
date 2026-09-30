@@ -55,7 +55,8 @@ function decompressLz4Block(source: Uint8Array, out: Uint8Array, start: number):
     const token = source[from++];
     const literals = length(token >> 4);
     out.set(source.subarray(from, from + literals), to);
-    from += literals, to += literals;
+    from += literals;
+    to += literals;
     if (from >= source.length) break;
     const offset = source[from] | (source[from + 1] << 8);
     from += 2;

@@ -27,7 +27,7 @@ function regionPolygon(region: StampRegion): readonly Point[] {
  */
 export function stampSmoothRegion(points: readonly Point[], steps = 8): StampRegion {
   const n = points.length, at = (i: number) => points[((i % n) + n) % n];
-  const curve = points.flatMap((_, i) => Array.from({ length: steps }, (_, k) => {
+  const curve = points.flatMap((_, i) => Array.from({ length: steps }, (_slot, k) => {
     const u = k / steps, u2 = u * u, u3 = u2 * u;
     const [p0, p1, p2, p3] = [at(i - 1), at(i), at(i + 1), at(i + 2)];
     const along = (a: number, b: number, c: number, d: number) => 0.5 * (2 * b + (c - a) * u + (2 * a - 5 * b + 4 * c - d) * u2 + (3 * b - a - 3 * c + d) * u3);
@@ -81,9 +81,9 @@ function insetPolygon(polygon: readonly Point[], distance: number): StampStrokeP
 }
 
 /**
- * One stroke that sweeps `region` in rows, for a brush `diameter` wide, revealed row by row, then traces its edge.
- * Rows turn back into the next where they overlap; where a row is split (a concave notch), the brush lifts to the next
- * run rather than cross the gap, so the whole silhouette is one deposit and no part of it builds on another.
+ * One stroke that sweeps `region` in rows for a brush `diameter` wide, revealed row by row, then traces its edge.
+ * Rows turn back into the next; where a row is split (a concave notch), the brush lifts to the next run rather than
+ * cross the gap, so the silhouette is one deposit and no part of it builds on another.
  */
 export function stampFillPath(region: StampRegion, diameter: number, { rows = 0.25, inset = 0.45, angle = 0, trace = true }: StampFillOptions = {}): StampStrokePoint[] {
   const cos = Math.cos(angle), sin = Math.sin(angle);
@@ -111,7 +111,7 @@ export function stampFillPath(region: StampRegion, diameter: number, { rows = 0.
     }
     for (let i = open.length - 1; i >= 0; i--) if (open[i].row < r) done.push(...open.splice(i, 1));
   }
-  const chains = [...done, ...open].sort((p, q) => p.first - q.first).map((c) => c.points);
+  const chains = [...done, ...open].toSorted((p, q) => p.first - q.first).map((c) => c.points);
   if (trace) chains.push(insetPolygon(regionPolygon(region), inset * diameter));
   return chains.flatMap((points, i) => points.map((point, k) => (i > 0 && k === 0 ? { ...point, lift: true } : point)));
 }

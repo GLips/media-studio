@@ -1,0 +1,5 @@
+{
+  "lib/picture/brush-fidelity": "A Procreate preview is one fidelity target, read by Procreate's own reading.",
+  "lib/picture/photoshop-brushes": "Photoshop's references are painted along Procreate's preview stroke, the S-curve both apps are compared on.",
+  "lib/picture/stamp-styles": "A pack's importer reads Procreate brushes, and a pack may hold both apps'."
+}

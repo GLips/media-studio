@@ -53,12 +53,9 @@ export const readBrushFidelityReport = (file: string): BrushFidelityReport => pa
 export const writeBrushFidelityReport = (file: string, report: BrushFidelityReport) => writeFileSync(file, `${JSON.stringify(report, null, 2)}\n`);
 
 /**
- * What each targeted brush of `<style>/<pack>` scored on the pack's last whole sheet, by name: the baseline a fit holds
- * it to. A brush whose target has nothing to measure holds at 0, as the fit scores it.
- *
- * A report of another source, reading or scorer is refused, not warned about: its scores measured other brushes, or
- * measured them another way, so holding today's brushes to them would weigh the fit by a comparison nobody made.
- * Drawing the sheets again is a few minutes; a fit that quietly regressed against a stale baseline isn't found at all.
+ * Each targeted brush's score on the pack's last whole sheet: the baseline a fit holds it to (0 when its target has
+ * nothing to measure). A report of another source, reading or scorer is refused, not warned about: it measured other
+ * brushes or another way. Redrawing takes minutes; a fit regressed against a stale baseline is never found.
  */
 export function readBrushFidelityBaselines(stylesDir: string, style: string, pack: string): Map<string, number> {
   const dir = join(stylesDir, style, 'brushes', pack), manifest = readStampPaintPackDir(dir), file = brushFidelityReportFile(dir);

@@ -1,12 +1,10 @@
-// stamp-tip-hull.ts: the part of a tip's square a stamp needs to draw. A pack's tips paint a third to a half of their
-// square, and a frame's time goes on the square's pixels, so each stamp is drawn as a polygon around the tip's paint
-// instead of the whole square. Outside the polygon every texel a stamp can sample is bare (white), so it would lay no
-// paint there. The painting is the same to rounding: a stamp's place on its tip is interpolated from the polygon's
-// corners, not the square's, which moves a few pixels a level or two.
+// stamp-tip-hull.ts: the part of a tip's square a stamp needs to draw. Tips paint a third to half their square, and
+// a frame's time goes on its pixels, so each stamp is drawn as a polygon around the tip's paint; every texel outside
+// it is bare. The painting matches to rounding: interpolating from the polygon's corners moves a few pixels a level
+// or two.
 //
-// What a stamp samples depends on its size: a small one reads a coarse mip level, whose paint has spread, and reads it
-// bilinearly, reaching a texel further. So the polygon holds the paint of every level up to the coarsest one used,
-// each texel grown by one of its level's texels.
+// A small stamp reads a coarse mip, whose paint has spread, bilinearly, reaching a texel further. So the polygon
+// holds every level's paint up to the coarsest used, each texel grown by one.
 
 /** A mip level's paint: for each row, the first and last texel holding any, or null for a bare row. */
 export type StampTipLevel = { width: number; height: number; rows: readonly ([number, number] | null)[] };
@@ -51,18 +49,18 @@ export function stampTipHull(levels: readonly StampTipLevel[], coarsest: number)
 
 /**
  * The corners as the GPU gets them (32-bit), less any that repeat another or sit on the line between their
- * neighbours. Sides that meet at a corner of the paint give corners a rounding error apart, which could fold the
- * polygon, and a fan over a folded polygon covers a pixel twice: a build brush would lay that stamp there twice.
+ * neighbours. Sides meeting at a corner of the paint give corners a rounding error apart, which could fold the
+ * polygon, and a fan over a folded polygon covers a pixel twice: a build brush would lay there twice.
  */
 function strictlyConvex(points: [number, number][]): [number, number][] {
-  const sorted = points.map(([x, y]): [number, number] => [Math.fround(x), Math.fround(y)]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const sorted = points.map(([x, y]): [number, number] => [Math.fround(x), Math.fround(y)]).toSorted((a, b) => a[0] - b[0] || a[1] - b[1]);
   const cross = (o: [number, number], a: [number, number], b: [number, number]) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
   const chain = (ordered: [number, number][]) => ordered.reduce<[number, number][]>((kept, p) => {
     while (kept.length >= 2 && cross(kept[kept.length - 2], kept[kept.length - 1], p) <= 1e-9) kept.pop();
     kept.push(p);
     return kept;
   }, []);
-  const lower = chain(sorted), upper = chain([...sorted].reverse());
+  const lower = chain(sorted), upper = chain(sorted.toReversed());
   return [...lower.slice(0, -1), ...upper.slice(0, -1)];
 }
 

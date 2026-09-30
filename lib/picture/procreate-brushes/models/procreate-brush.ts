@@ -1,22 +1,13 @@
-// procreate-brush.ts: a Procreate brush (its Brush.archive settings, and its Sub01 when it's a dual brush) read into a
-// StampBrush, with a note for every setting that doesn't carry over as Procreate means it. Procreate's field names
-// stop here: nothing past this file reads them.
+// procreate-brush.ts: a Procreate brush (Brush.archive, plus Sub01 for a dual) read into a StampBrush, with a note
+// for every setting that doesn't carry over as Procreate means it. Nothing past this file reads Procreate's names.
 //
-// Several readings are the studio's own (taper length, rotation scatter, grain scale, brightness and contrast, rim
-// width and sharpness, flow and depth curves, how far each glaze mode builds, combine modes, dual size, falloff span), each noted as `approximated`
-// where it applies. Their constants are a ProcreateReading, fitted against the whole pack at once by `studio brushes
-// fit` (lib/picture/brush-fidelity/engine/brush-reading-fit.ts) and checked in as procreate-reading.ts, shared by every
-// pack: a reading that fits one pack's previews by tuning brush by brush would fit no other pack.
+// The studio's own readings (taper, grain, rim, curves, glaze build…) are noted `approximated`; their constants, a
+// ProcreateReading, are fitted over whole packs by `studio brushes fit`: tuning per brush fits no other pack. Where
+// Photoshop paints otherwise, a brush keeps what these previews were fitted with (unlimited `build`, `layer` blends,
+// mirrored grain…); Procreate's is unidentified.
 //
-// Where Photoshop's captures (vid-97) showed a way of painting that differs from what vid-89 fitted these previews with,
-// a brush reads vid-89's: `build` stamps over each other without limit, grain and dual blends as `layer` formulas, grain
-// contrast about its mean, grain tiled mirrored, tips sampled isotropically. Procreate's own are still to be identified.
-//
-// Negative space: live-input settings (stabilization, smoothing, prediction, pressure smoothing), the size and opacity
-// sliders' positions and limits (paintSize, paintOpacity, maxSize, minSize, maxOpacity: a deposit states its own
-// diameter and opacity), the finger taper (taperStartLength…: a stroke with pressure is a pencil stroke), smudge and erase settings and the
-// preview's own settings aren't a brush's painting, and go unreported. Tilt, azimuth and speed are noted `inapplicable`
-// (a path has none); wet mixing is noted `unsupported`, left to the wet-paint model.
+// Negative space: live-input and slider settings, finger taper (a pressure stroke is a pencil stroke), smudge, erase
+// and preview: unreported. Tilt, azimuth, speed: `inapplicable`; wet mixing: `unsupported`, left to wet-paint.
 
 import {
   stampLinearDynamics, type StampBlend, type StampBrush, type StampBrushAsset, type StampBrushColorDynamics, type StampBrushLayer, type StampBrushSupportNote, type StampDualBlend, type StampGrainBlend,

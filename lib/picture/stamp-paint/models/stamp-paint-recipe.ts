@@ -2,9 +2,8 @@
 //
 // A recipe is ordered compositing groups, each a stack of ordered passes, each a list of deposits: a stroke, or
 // stamps placed by hand, of one brush in one material. A scene writes it with `stampPaintRecipe`, and
-// `compileStampPaintRecipe` checks it and places every stamp of every deposit, the whole painting's worth, once. A
-// frame at time `t` then only chooses how many of each deposit's stamps show (`visibleStampCountAt`), so it is a
-// function of `t` alone.
+// `compileStampPaintRecipe` checks it and places every stamp of the whole painting once. A frame at time `t` only
+// chooses how many of each deposit's stamps show (`visibleStampCountAt`), so it is a function of `t` alone.
 //
 // Randomness comes from IDs, never from order: each deposit is seeded by its hierarchical ID
 // (`<group>/<pass>/<deposit>`), so adding a stroke changes no other stroke, and renaming one reseeds only it.
@@ -175,9 +174,8 @@ export type CompiledStampPaint = { groups: readonly CompiledStampGroup[] };
 
 /**
  * Checks `recipe` and places every stamp. Throws on an ID used twice at one level (it would seed two deposits alike),
- * an empty ID or one holding `/` or `|` (the seed's separators), a clipped pass with nothing before it to clip to, a
- * deposit with no points or a diameter that isn't positive, a stroke point whose speed isn't positive, and a negative
- * `drawnOver`.
+ * an empty ID or one holding `/` or `|` (the seed's separators), a clipped pass with nothing before it, a deposit
+ * with no points or a non-positive diameter, a non-positive stroke speed, and a negative `drawnOver`.
  */
 export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStampPaint {
   const seen = new Set<string>(), duplicates = new Set<string>();

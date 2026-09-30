@@ -142,11 +142,11 @@ export const TERMINAL_PROGRAM_GLOBS: readonly string[] = ['cli/**', 'harness/**'
 
 /**
  * Modules loaded by path for their default export, which is their contract: a CLI command (cli/studio.ts), a
- * project's declaration, capture, brand and sounds, a kit's brand, a style and its fidelity grades, and lint's
- * oxlint plugin. oxlint's no-default-export is off in them.
+ * project's declaration, capture, brand and sounds, a kit's brand, a style and its fidelity grades, Node's stand-in
+ * for the `@stamp-paint-styles` module, and lint's oxlint plugin. oxlint's no-default-export is off in them.
  */
 export const DEFAULT_EXPORT_MODULE_GLOBS: readonly string[] = [
-  'cli/commands/*.ts', 'lint/oxlint/plugin.ts',
+  'cli/commands/*.ts', 'lint/oxlint/plugin.ts', 'lib/picture/stamp-styles/engine/node-stamp-paint-styles.ts',
   'work/projects/*/project.ts', 'work/projects/*/capture.ts', 'work/projects/*/brand.ts', 'work/projects/*/sfx/*.ts',
   'work/brands/*/brand.ts', 'work/styles/*/style.ts', 'work/styles/*/fidelity.ts',
 ];

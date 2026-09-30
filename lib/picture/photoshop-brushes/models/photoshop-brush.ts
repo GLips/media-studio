@@ -1,20 +1,12 @@
-// photoshop-brush.ts: a Photoshop brush preset (photoshop-preset.ts, read from an .abr's `brushPreset` or a .tpl's tool
-// preset) read into a StampBrush, the same shape a Procreate brush becomes, with a note for every setting that doesn't
-// carry over as Photoshop means it. `setting` in a note is the field's path in the preset (`tipDynamics.size.jitter`).
+// photoshop-brush.ts: a Photoshop brush preset (photoshop-preset.ts, from an .abr or a .tpl) read into a StampBrush,
+// with a note for every setting that doesn't carry over as Photoshop means it, by its path (`tipDynamics.size.jitter`).
 //
-// Photoshop's own meanings are better known than Procreate's (its dialog names each setting and its unit), so most
-// settings carry over directly; the constants that aren't known are a PhotoshopReading, one set shared by every pack,
-// to be fitted against Photoshop's renders (vid-97) as ProcreateReading is against Procreate's previews.
+// Photoshop's dialog names each setting and unit, so most carry over directly; unknown constants are a shared
+// PhotoshopReading. Pressure's several sources are resolved here once (photoshopPressureAmounts).
 //
-// Pressure reaches a brush from several places in Photoshop, and they're resolved here, once, into its dynamics
-// (photoshopPressureAmounts), so nothing past this file knows where a dynamic came from.
-//
-// Negative space: live-input settings (smoothing and its catch-up, pressure smoothing), the preset's own size (a
-// deposit states its diameter), airbrush build-up while the pen rests (a path never rests) and the preview's settings
-// aren't a brush's painting, and go unreported, save build-up, noted `inapplicable`. Tilt, stylus wheel, rotation and
-// brush pose are `inapplicable` (a path has only pressure); fade controls, noise, and bristle, erodible and airbrush
-// tips (read as round) are `unsupported`; so is the Mixer Brush's wet mixing, whose settings stay in the preset's tool
-// options for the wet-paint model (vid-90).
+// Negative space: live-input, preview and preset-size settings (a deposit states its diameter) go unreported;
+// build-up (a path never rests), tilt, stylus wheel, rotation and pose are `inapplicable`. Fade, noise, bristle,
+// erodible and airbrush tips (read as round) and Mixer Brush wet mixing (left to the wet-paint model) are `unsupported`.
 
 import { PHOTOSHOP_POOLING } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import { PHOTOSHOP_PIXEL_TIP_DIAMETER, photoshopComputedTipSpan } from './photoshop-computed-tip.ts';
@@ -62,10 +54,9 @@ export type PhotoshopTipAsset =
   | { kind: 'erodible'; image: StampBrushAsset; heightMap: StampBrushAsset };
 
 /**
- * One preset and where its images landed among the pack's assets: its tip's and its dual's (none when the file lacks
- * the sample the dual names, or its class isn't read; a brush whose own tip is missing isn't imported), and its
- * texture's pattern with the pattern's width in pixels. `Preset` is the typed preset, or the .abr's descriptor as a
- * manifest stores it.
+ * One preset and where its images landed among the pack's assets. `dualTip` is absent when the file lacks the sample
+ * the dual names or its class isn't read; a brush missing its own tip isn't imported. `Preset` is the typed preset, or
+ * the .abr's descriptor as a manifest stores it.
  */
 export type PhotoshopBrushSource<Preset = PhotoshopPaintablePreset> = {
   preset: Preset;
@@ -185,13 +176,10 @@ export type PhotoshopPressureContext = { lingeringPose: boolean };
 export const PHOTOSHOP_PEN_PRESSURE: PhotoshopPressureContext = { lingeringPose: false };
 
 /**
- * Pressure's linear amounts on size, opacity and flow, resolved once from everything in Photoshop that sets them, in
- * precedence: a lingering pose (when in force) over the options bar's pressure buttons over the brush's own dynamics.
- * The buttons drive size or opacity wholly, whatever the brush says. A lingering pose drives both wholly, save that
- * the size amount a beneath it counts twice (a²: a minimum m gives 1 − (1 − m)²(1 − p)). The tool preset's own
- * dynamics (szVr, opVr, prVr) are noted, not read.
+ * Pressure's linear amounts on size, opacity and flow: a lingering pose over the options bar's buttons (each drives
+ * wholly) over the brush's dynamics. A pose drives both wholly, but the size amount a beneath counts twice (minimum m
+ * gives 1 − (1 − m)²(1 − p)); opacity's is unprobed, read as not. Tool szVr, opVr, prVr are noted, not read.
  */
-// Whether a pose counts an opacity minimum twice too is unprobed; it's read as not counting.
 function photoshopPressureAmounts(p: PhotoshopPaintablePreset, context: PhotoshopPressureContext, note: Note): { size: number; opacity: number; flow: number } {
   const size = shares(p.tipDynamics?.size), opacity = shares(p.transfer?.opacity), flow = shares(p.transfer?.flow);
   const buttons = {

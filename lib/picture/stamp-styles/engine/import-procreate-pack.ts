@@ -1,9 +1,7 @@
-// import-procreate-pack.ts: `studio brushes import`. Turns a bought Procreate pack (a .brushset, or the zip it came in,
-// which may also hold .swatches palettes and .procreate paper canvases) into a style's assets in
-// work/styles/<style>/brushes/<pack>/: each brush's tip and grain turned to dark-is-paint and downsized, its dual's
-// likewise, its Procreate preview, the papers and a manifest (StampPaintPack) holding each brush's own settings and
-// images, which a style reads into a brush when it resolves. An import replaces what it writes whole, and only once it
-// has succeeded.
+// import-procreate-pack.ts: `studio brushes import`. Turns a bought Procreate pack (a .brushset, or its zip, which may
+// also hold .swatches palettes and .procreate papers) into work/styles/<style>/brushes/<pack>/: each brush's and dual's
+// tip and grain as dark-is-paint, downsized, its preview, the papers, and a manifest (StampPaintPack) a style resolves
+// brushes from. An import replaces what it writes whole, and only once it has succeeded.
 //
 // A .brushset is a zip of one folder per brush, named by UUID, in the order brushset.plist lists: Brush.archive (an
 // NSKeyedArchiver plist of settings), Shape.png, Grain.png, QuickLook/Thumbnail.png and, for a dual brush, Sub01/
@@ -88,7 +86,7 @@ function writePaper(bytes: Buffer, label: string, packDir: string, slug: string)
     luma[i] = Math.round(0.299 * rgb[i * 3] + 0.587 * rgb[i * 3 + 1] + 0.114 * rgb[i * 3 + 2]);
   }
   // Stretched between its 1st and 99th percentiles, so the tooth's valleys (where pigment settles) read dark.
-  const sorted = luma.slice().sort(), low = sorted[Math.floor(pixels * 0.01)], high = Math.max(low + 1, sorted[Math.floor(pixels * 0.99)]);
+  const sorted = luma.toSorted(), low = sorted[Math.floor(pixels * 0.01)], high = Math.max(low + 1, sorted[Math.floor(pixels * 0.99)]);
   withStudioTemp('paper-grain', (dir) => {
     writeFileSync(join(dir, 'grain.raw'), luma.map((value) => Math.round(Math.min(1, Math.max(0, (value - low) / (high - low))) * 255)));
     runFfmpeg(['-nostdin', '-v', 'error', '-f', 'rawvideo', '-pix_fmt', 'gray', '-s', `${width}x${height}`, '-i', join(dir, 'grain.raw'), '-y', join(packDir, grain)]);
@@ -178,7 +176,7 @@ function writePackAssets(archive: string, dir: string, style: string, pack: stri
   const manifest: StampPaintPack = {
     version: STAMP_PAINT_ASSETS_VERSION,
     app: 'procreate',
-    files: [...files].sort(),
+    files: [...files].toSorted(),
     brushes,
     source: { archive: basename(archive), sha256: sha256OfFile(archive) },
     skipped,

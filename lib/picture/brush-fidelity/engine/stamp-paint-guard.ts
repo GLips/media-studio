@@ -1,12 +1,8 @@
-// stamp-paint-guard.ts: `npm run brushes:guard`, what holds a restructuring of the brush engine to "nothing painted
-// changes". A fingerprint keeps the compiled deposits of every brush of every imported pack in every style, whole,
-// painted as its fidelity sheet paints it and in a fixed probe painting (placed stamps and a hand-drawn stroke), so
-// placement, seeding and the recipe are checked in Node, stamp by stamp, without the GPU. A brush snapshot holds every
-// pack's brushes as their sources read, and its diff and the sheet reports' go brush by brush: a total can hide
-// offsetting changes.
-//
-// It holds to a tolerance, not to the bit: a stamp's numbers may drift by float order (STAMP_DRIFT), a brush's score
-// by SCORE_DRIFT and a pack's total by TOTAL_DRIFT, as nothing that small shows in a painting.
+// stamp-paint-guard.ts: `npm run brushes:guard`, holding a brush-engine restructuring to "nothing painted changes".
+// A fingerprint keeps every imported brush's compiled deposits (as its sheet paints it, and in a fixed probe painting),
+// checking placement, seeding and recipe in Node without the GPU. A brush snapshot holds every brush as read; diffs go
+// brush by brush, as a total hides offsetting changes. Tolerances (STAMP_DRIFT, SCORE_DRIFT, TOTAL_DRIFT) allow float
+// order: nothing that small shows.
 //
 // Negative space: a fingerprint keeps stamps, not the brush, so a brush reshaped without moving a stamp keeps it; the
 // brush snapshot's diff shows the reshaping, and the sheet's scores what the GPU does with it.

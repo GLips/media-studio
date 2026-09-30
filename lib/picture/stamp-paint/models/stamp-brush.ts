@@ -1,40 +1,35 @@
-// stamp-brush.ts: the normalized brush a stamp painting deposits with. A brush is a stamp (its tip), a grain and the
-// settings that place, size and fade each stamp along a stroke. Both importers, Procreate's (procreate-brush.ts) and
-// Photoshop's (photoshop-brush.ts), translate their own fields into this one shape, so no importer's names or quirks
-// reach a recipe or the renderer.
+// stamp-brush.ts: the normalized brush a stamp painting deposits with: a tip, a grain and the settings that place,
+// size and fade each stamp along a stroke. The Procreate and Photoshop importers (procreate-brush.ts,
+// photoshop-brush.ts) translate into this shape, so no importer's quirks reach a recipe or the renderer.
 //
 // Lengths are fractions of the stamp's diameter and angles are radians, so a brush means the same at any size.
 //
-// A brush is generic in its images: as imported, each is a StampBrushAsset; a renderer binds each to what it samples
-// (bindStampBrushImages), so a grain's image travels with the grain's settings and nothing looks it up apart.
+// Imported, each image is a StampBrushAsset; a renderer binds each to what it samples (bindStampBrushImages), so a
+// grain's image travels with its settings.
 
 /**
- * An image among a style's imported assets: `work/styles/<style>/brushes/<pack>/<file>`, where `file` is as the
- * pack's manifest lists it. Whole, so a painting that uses two styles names each image without doubt. Dark is paint.
+ * An image among a style's assets: `work/styles/<style>/brushes/<pack>/<file>`, `file` as the pack's manifest lists
+ * it. Whole, so a painting using two styles names each image without doubt. Dark is paint.
  */
 export type StampBrushAsset = { style: string; pack: string; file: string };
 
 export type StampBlend = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'colorBurn';
 
 /**
- * How a grain's paint v cuts a coverage a (each 0..1, v 1 keeps paint) at depth d (coverage-formulas.ts has each
- * formula). `texture`: Photoshop's texture modes, identified from its captures (vid-97), depth inside each formula:
- * `multiply` a(1 − d(1 − v)), `subtract` a − v mixed in by d, `linearBurn` a − d(1 − v), `darken` min(a, 1 − d(1 − v)),
- * `overlay` a as base, `colorDodge` and `colorBurn` with v scaled by depth, `hardMix` 4a + 3dv − 3, and `height` and
- * `linearHeight` the grain as a relief 12da deep. `layer`: the layer blends vid-89 fitted Procreate's grains with, a as
- * base, mixed back toward a by depth; `height` and `linearHeight` a relief the paint fills from its deepest point up to
- * a, with a crisp waterline or a soft one.
+ * How a grain's paint v (1 keeps paint) cuts coverage a at depth d; coverage-formulas.ts has the formulas.
+ * `texture`: Photoshop's modes, identified from captures, depth inside each formula. `layer`: blends fitted to
+ * Procreate's grains, a as base, mixed toward a by depth. Heights are a relief: `texture`'s 12da deep, `layer`'s
+ * filled from its deepest point up to a.
  */
 export type StampGrainBlend =
   | { family: 'texture'; mode: 'multiply' | 'subtract' | 'linearBurn' | 'colorDodge' | 'colorBurn' | 'darken' | 'overlay' | 'hardMix' | 'height' | 'linearHeight' }
   | { family: 'layer'; mode: 'multiply' | 'subtract' | 'linearBurn' | 'colorDodge' | 'colorBurn' | 'darken' | 'lighten' | 'divide' | 'hardMix' | 'height' | 'linearHeight' };
 
 /**
- * How a dual brush's coverage s combines with the main brush's grained coverage p. `texture`: Photoshop's Dual Brush
- * modes, identified from its captures (vid-97), its texture formulas at full depth with s as the pattern, and
- * `linearHeight` an overlay of p by 1 − s, each painting nothing where p has none. `layer`: the layer blends vid-89
- * fitted Procreate's duals with, p as base, held to where p has paint; `linearHeight` the dual as a relief p's stamps
- * fill, which shapes p before its grain cuts it.
+ * How a dual's coverage s combines with the main brush's grained coverage p, never painting where p has none.
+ * `texture`: Photoshop's Dual Brush modes, its texture formulas at full depth, s the pattern; `linearHeight` overlays
+ * p by 1 − s. `layer`: blends fitted to Procreate's duals, p as base; `linearHeight` a relief p's stamps fill,
+ * shaping p before its grain.
  */
 export type StampDualBlend =
   | { family: 'texture'; mode: 'multiply' | 'darken' | 'overlay' | 'colorDodge' | 'colorBurn' | 'linearBurn' | 'hardMix' | 'linearHeight' }
@@ -87,10 +82,10 @@ export type StampGrainLook<Image = StampBrushAsset> = {
   depth: number;
   blend: StampGrainBlend;
   /**
-   * The grain's paint is raised by `brightness` (-1..1) and pushed from its pivot by `contrast` (-1..1, 0 as drawn):
-   * below 0 it flattens by (1 + contrast), above 0 it steepens by 1 / (1 − contrast). About `midGrey` it's Photoshop's
-   * pattern adjustment: flattened then brightened, or brightened then steepened, all but a threshold at 1. About the
-   * grain's `mean` paint (its smallest mip) it's stretched then brightened, so a contrasty grain keeps its overall tone.
+   * The grain's paint is raised by `brightness` (-1..1) and pushed from its pivot by `contrast` (-1..1): below 0
+   * flattened by (1 + contrast), above 0 steepened by 1 / (1 − contrast). About `midGrey`, Photoshop's pattern
+   * adjustment: flattened then brightened, or brightened then steepened, a threshold at 1. About the grain's `mean`
+   * (smallest mip), stretched then brightened, keeping its tone.
    */
   brightness: number;
   contrast: number;
@@ -105,12 +100,10 @@ export type StampGrainLook<Image = StampBrushAsset> = {
 };
 
 /**
- * Wet edges, as either app paints them. `pooling`, Photoshop's, on the built coverage c before the stroke's opacity:
- * 2·peak·c up to half coverage, then easing down to `body` at full, so paint reads darkest where it thins, along its
- * outline, and a stroke laid over itself never passes `peak`. `rim`, Procreate's: pigment a wet glaze gathers at the
- * rim of its own deposit as it dries, `width` in from the outline as a fraction of the stamp's radius, darkening it by
- * up to `rim` (0..1) over the body, which keeps its density. `sharpness` is how steeply the rim rises where the
- * deposit's coverage stands above its blur `width` wide: higher keeps it a crisp line at the outline.
+ * Wet edges. `pooling`, Photoshop's, on built coverage c before opacity: 2·peak·c to half coverage, easing to
+ * `body` at full, so paint is darkest where it thins and never passes `peak`. `rim`, Procreate's: pigment a drying
+ * glaze gathers `width` (of the radius) in from the outline, up to `rim` darker. `sharpness`: its rise where
+ * coverage exceeds its `width`-wide blur.
  */
 export type StampBrushWetEdges = { kind: 'pooling'; peak: number; body: number } | { kind: 'rim'; width: number; rim: number; sharpness: number };
 
@@ -128,9 +121,9 @@ export type StampBrushStamping<Image = StampBrushAsset> = {
   /** Distance between stamps along a stroke. Below about 0.05, stamps pile up faster than they read. */
   spacing: number;
   /**
-   * How steps are measured. `spread`: in the deposit's diameter, evened out so a stamp lands on each end. `eachStamp`:
-   * each step is the spacing of the stamp it leaves, at that stamp's own size (never under a pixel), from a stamp on
-   * the first point to the last whole step before the end, as Photoshop steps: a thinning stroke's stamps close up.
+   * How steps are measured. `spread`: in the deposit's diameter, evened out so a stamp lands on each end. `eachStamp`,
+   * as Photoshop steps: each step is the spacing of the stamp it leaves at its own size (never under a pixel), from the
+   * first point to the last whole step before the end, so a thinning stroke's stamps close up.
    */
   stepping: 'spread' | 'eachStamp';
   /** How each stamp's size, opacity, flow, roundness and turn, and each step's count, answer the stroke (StampDynamics). */
@@ -142,21 +135,20 @@ export type StampBrushStamping<Image = StampBrushAsset> = {
    */
   scatter: { count: number; radius: number; lateral: number };
   /**
-   * The turn every stamp starts from, before its rotation dynamics: `angle`, and with `randomStart` a random angle
-   * drawn once for the whole deposit.
+   * The turn every stamp starts from, before its rotation dynamics: `angle`, plus with `randomStart` a random angle
+   * drawn once per deposit.
    */
-  // randomStart isn't a dynamic: it's one draw per deposit, always over the whole circle, where a dynamic reads each
-  // stamp or step. A sensor for it would carry a deposit's stream in every stamp's context for one boolean.
+  // randomStart isn't a dynamic, which reads each stamp or step: as a sensor it would carry a deposit's stream in
+  // every stamp's context for one boolean.
   rotation: { angle: number; randomStart: boolean };
   /** Whether each stamp is flipped across its width (`x`) or its length (`y`) at random, one in two. */
   flip: { x: boolean; y: boolean };
   /** How blurred each stamp is, 0..1 (1 about a sixteenth of its size), and up to how much of that `jitter` takes away. */
   blur: { amount: number; jitter: number };
   /**
-   * The stroke's first `start` and last `end` fractions of its length ease in from `size` and `opacity` (each 0..1 of
-   * full) to full, so a stroke starts and lifts off without a hard stamp at either end. `shape` (0..1) bends the ease
-   * so the taper holds its width longer and narrows at the tip. `pressure` (0..1) is how far the taper stands in for the
-   * stroke's own pressure: at 0 the pressure shows through the taper, at 1 the taper alone sets size and opacity.
+   * The stroke's first `start` and last `end` fractions ease from `size` and `opacity` (0..1 of full) to full, so
+   * it lifts off without a hard stamp. `shape` (0..1) bends the ease to hold width longer. `pressure` (0..1): how
+   * far the taper replaces the stroke's pressure, 0 showing it through, 1 the taper alone.
    */
   taper: { start: number; end: number; size: number; opacity: number; shape: number; pressure: number };
   /**
@@ -169,10 +161,9 @@ export type StampBrushStamping<Image = StampBrushAsset> = {
 };
 
 /**
- * What each target can be driven by. A scale target keeps a share of its own: a stamp's `size`, `opacity`, `flow`
- * (which multiply with opacity, as a wetter or drier stamp lays less paint) and `roundness` (a share of the tip's, which
- * squashes the stamp without moving the next step), and a step's `count` of stamps. An angle target, `rotation`, turns
- * each stamp by radians. A sensor is added to a target here, and read in stamp-dynamics.ts.
+ * What each target can be driven by. A scale target keeps a share of itself: `size`, `opacity`, `flow` (multiplying
+ * with opacity, as a drier stamp lays less), `roundness` (squashing the stamp without moving the next step) and a
+ * step's `count`. `rotation`, an angle target, turns by radians. Sensors are read in stamp-dynamics.ts.
  */
 export type StampTargetSensors = {
   size: 'pressure' | 'random';
@@ -263,12 +254,10 @@ export type StampBrushColorDynamics = {
 };
 
 /**
- * How a stroke's own stamps combine. `glaze`: where they overlap each other they darken only as far as `build` (0..1)
- * lets them: at 0 an overlap is as dark as its darkest stamp, at 1 stamps lay over each other up to a stamp's paint
- * before its tip (its flow through its grain), so the stroke reaches at most that, and only a later stroke builds on
- * it. `build`: each stamp lays its flow × opacity over the ones before, so overlaps darken toward full paint without
- * limit. `buildToOpacity`, as Photoshop builds: each stamp lays its flow over the ones before, toward its own opacity,
- * and never lowers what's there, so overlaps darken up to the highest opacity a stamp brought.
+ * How a stroke's own stamps combine. `glaze`: overlaps darken by `build` (0..1): at 0 to the darkest stamp, at 1 to
+ * a stamp's paint before its tip (flow through grain); only a later stroke builds past. `build`: each lays
+ * flow × opacity over the last, toward full. `buildToOpacity`, Photoshop's: each lays its flow toward its own
+ * opacity, never lowering what's there.
  */
 export type StampAccumulation = { kind: 'glaze'; build: number } | { kind: 'build' } | { kind: 'buildToOpacity' };
 
@@ -307,9 +296,9 @@ export function bindStampBrushImages<A, B>(brush: StampBrush<A>, bind: (image: A
 }
 
 /**
- * A setting of a source brush the normalized brush doesn't carry as the source means it: `approximated` is read into
- * a nearby setting, `unsupported` is dropped, and `inapplicable` is dropped because a painting never has what it
- * responds to (a pen's tilt). `unprobed`: a Photoshop setting at a value vid-97's probes never gave it, so the
- * pipeline wasn't identified there. `setting` is the source format's own field name, so it can be looked up.
+ * A source brush's setting the normalized brush doesn't carry as meant: `approximated` into a nearby setting,
+ * `unsupported` dropped, `inapplicable` dropped as a painting never has its input (a pen's tilt). `unprobed`: a
+ * Photoshop setting at a value no probe gave it, its pipeline unidentified there. `setting` is the source's field
+ * name.
  */
 export type StampBrushSupportNote = { level: 'approximated' | 'unsupported' | 'inapplicable' | 'unprobed'; setting: string; detail: string };

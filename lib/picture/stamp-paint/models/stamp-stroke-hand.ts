@@ -1,11 +1,11 @@
 // stamp-stroke-hand.ts: how a painter's hand moves a brush along an authored stroke, its pressure and its speed at
 // every point, so a stroke written in code reads as painted rather than drawn with a mouse at constant pressure.
 //
-// Four pieces compose into one pressure per point: a profile over the stroke's length (a taper, a flick), the path's
-// own shape (a hand slows in a tight turn and presses there, and speeds up and lightens on a straight run), and seeded
-// wobble. Speed comes from the same shape, plus the ease-in of a hand getting going, and a stroke's reveal spends its
-// time where the hand is slow (stamp-placement.ts). Everything is a function of the path and the deposit's seed, so a
-// frame still depends only on its time.
+// Pieces compose into one pressure per point: a profile over the stroke's length (a taper, a flick), the path's
+// shape (a hand slows and presses in a tight turn, speeds up and lightens on a straight run), and seeded wobble.
+// Speed comes from the same shape plus a hand's ease-in, and a reveal spends its time where the hand is slow
+// (stamp-placement.ts). Everything is a function of the path and the deposit's seed, so a frame depends only on its
+// time.
 
 import { clamp, lerp } from '#lib/picture/motion/models/motion.ts';
 import { seededRandom } from '#lib/picture/motion/models/random.ts';

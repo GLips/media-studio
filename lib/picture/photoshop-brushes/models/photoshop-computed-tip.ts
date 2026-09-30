@@ -1,12 +1,12 @@
-// photoshop-computed-tip.ts: Photoshop's computed round tip, its alpha against distance from the stamp's centre,
-// identified from single-stamp captures at hardnesses 0..100 and diameters 32..256 (vid-97).
+// photoshop-computed-tip.ts: Photoshop's computed round tip's alpha by distance from centre, fitted to single-stamp
+// captures at hardness 0..100, diameter 32..256.
 //
 // A soft tip (hardness up to 0.95) is flat out to c, then falls as 10^(−((r − c)/w)²); hardness 0 is exactly
 // 10^(−(r/R)²), still 0.1 at the rim, so a soft tip reaches well past its diameter. c and w are a share of the radius
-// plus a few pixels, which is why a 32 px tip reads softer than a 256 px one. A hard tip is an erf edge, σ 0.704 px.
-// Tips of 7.5 px and less fit no radial profile: Photoshop draws them as a bitmap of whole pixels.
+// plus a few pixels: a 32 px tip reads softer than 256 px. A hard tip is an erf edge, σ 0.704 px. Tips of 7.5 px
+// and less fit no radial profile: they're drawn in whole pixels.
 
-/** [hardness, c / R, w / R]: at 0, 0.5 and 0.9 fitted jointly over three diameters, the rest at 128 px. */
+/** [hardness, c / R, w / R]: 0, 0.5 and 0.9 fitted over three diameters, the rest at 128 px. */
 const SHAPE: [number, number, number][] = [
   [0, 0.0015, 1.0015], [0.1, 0.159, 0.8647], [0.25, 0.3708, 0.6738], [0.4, 0.5562, 0.5035], [0.5, 0.6608, 0.3981],
   [0.6, 0.7564, 0.3019], [0.75, 0.8691, 0.1712], [0.9, 0.9575, 0.0607], [0.95, 0.9773, 0.0276],
@@ -62,10 +62,9 @@ export function photoshopComputedTipAlpha(r: number, diameter: number, hardness:
 }
 
 /**
- * The tip's full width where its alpha reaches 0, with a pixel to spare each side for sampling, rounded up to an even
- * number of pixels, over its diameter: the span of an image that holds the whole tip. Drawn a texel a pixel at its own
- * diameter, an even width puts texel centres on pixel centres under a stamp centred on a pixel corner, as Photoshop
- * centres them, so sampling it adds no blur of its own: a hard edge is 0.7 px soft, and half a texel shows.
+ * The span, over its diameter, of an image holding the whole tip, a pixel spare each side, rounded up to even pixels.
+ * An even width puts texel centres on pixel centres under a stamp centred on a pixel corner, as Photoshop centres
+ * them, so sampling adds no blur: a hard edge is 0.7 px soft, and half a texel shows.
  */
 export function photoshopComputedTipSpan(diameter: number, hardness: number): number {
   let r = diameter / 2 * 0.5;

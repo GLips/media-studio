@@ -206,7 +206,7 @@ export const resolveStampPaintPackBrushes = (pack: StampPaintPack): Record<strin
  */
 export function stampPaintPackSupport(pack: StampPaintPack): Record<string, StampBrushSupportNote[]> {
   const read = Object.fromEntries(resolveEveryStampPaintPackBrush(pack).map(([name, { support }]) => [name, support]));
-  return { ...read, ...Object.fromEntries(Object.entries(pack.skipped).map(([name, notes]) => [name, [...notes]])) };
+  return { ...read, ...Object.fromEntries(Object.entries(pack.skipped).map(([name, skipNotes]) => [name, [...skipNotes]])) };
 }
 
 /**

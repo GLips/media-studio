@@ -1,12 +1,10 @@
-// photoshop-reference-stroke.ts: a brush painted as the Photoshop rig paints its reference S-curve (vid-100), so the
-// brush fidelity sheet sets like beside like: the rig's own polyline, in the Procreate preview's frame the reference is
-// cropped to, under Photoshop's simulated pressure, at the reference's diameter.
+// photoshop-reference-stroke.ts: a brush painted as the Photoshop rig paints its reference S-curve, so the fidelity
+// sheet sets like beside like: the rig's own polyline, in the Procreate preview's frame the reference is cropped to,
+// under Photoshop's simulated pressure, at the reference's diameter.
 //
-// Simulated pressure, from vid-97's pressure probes and references: it rises straight from 0 at the path's start,
-// holds just short of full over its middle and falls straight to 0 at its end, by the share of the path's length (a
-// line and the S-curve agree by share, not by pixel). It drives the brush's pen-pressure dynamics, count included, as
-// a pen would: a brush with none paints it untapered. How the pen drove the brush there (a pose's overrides lingering
-// from a posed line before it) is the stroke's PhotoshopPressureContext, which the brush is read under.
+// Simulated pressure (from the pressure probes) rises straight from 0, holds just short of full over the middle and
+// falls straight to 0, by share of the path's length (a line and the S-curve agree by share, not pixel). It drives
+// pen-pressure dynamics, count included, as a pen would; a brush with none paints untapered.
 
 import { photoshopMarkStrokes, type PhotoshopBox } from '#lib/picture/photoshop-brushes/models/photoshop-capture-plan.ts';
 import { PROCREATE_PREVIEW_SIZE } from '#lib/picture/procreate-brushes/models/procreate-preview-stroke.ts';
@@ -16,10 +14,9 @@ import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint } fr
 import type { StampStrokePoint } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 
 /**
- * Where a brush's S-curve sits among a pack's reference sheets, its diameter in the preview's pixels once cropped, and
- * how the pen drove the brush as Photoshop painted it: a Brush Pose's overrides linger when it's after a posed cell of
- * the same brush on the same sheet; applying a brush, as the rig does for each sheet, clears them (vid-97's pressure
- * check).
+ * Where a brush's S-curve sits among a pack's reference sheets, its diameter in preview pixels once cropped, and how
+ * the pen drove it: a Brush Pose's overrides linger after a posed cell of the same brush on the same sheet; applying a
+ * brush, as the rig does per sheet, clears them.
  */
 export type PhotoshopReferenceStroke = { sheet: string; box: PhotoshopBox; diameter: number; pressure: PhotoshopPressureContext };
 

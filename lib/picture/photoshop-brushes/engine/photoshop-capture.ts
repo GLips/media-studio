@@ -77,7 +77,7 @@ function paintSheets(dir: string, sheets: readonly PhotoshopCaptureSheet[], jobs
   return { sheets: written, applied, paintMs };
 }
 
-const blending = (colorSettings: Record<string, unknown>) => (colorSettings.RGBBlendGamma === true ? 'linear (gamma 1.0)' : 'gamma-encoded') as PhotoshopCaptureManifest['photoshop']['blending'];
+const blending = (colorSettings: Record<string, unknown>) => (colorSettings.RGBBlendGamma === true ? 'linear (gamma 1.0)' : 'gamma-encoded');
 
 /** Each repeated cell's difference between its two paintings, keyed by item, mark and copy. */
 function measureRepeats(dir: string, sheets: PhotoshopCaptureManifest['sheets']): NonNullable<PhotoshopCaptureManifest['repeatability']> {
@@ -113,7 +113,7 @@ export async function capturePhotoshopProbes({ dir: root, only, repeat = [], log
     const jobs = Object.fromEntries(Object.entries(presets).map(([key, preset]) => [key, { script: photoshopPresetScript(preset) }]));
     const painted = paintSheets(dir, sheets, jobs, { rampName: PHOTOSHOP_PROBE_RAMP.name, tipName: PHOTOSHOP_PROBE_TIP.name }, log);
     const finished = new Date(), total = (finished.getTime() - started.getTime()) / 1000;
-    const manifest: PhotoshopCaptureManifest = {
+    const probeManifest: PhotoshopCaptureManifest = {
       run, kind: 'probes', startedAt: started.toISOString(), finishedAt: finished.toISOString(),
       seconds: { total, paint: painted.paintMs / 1000, perCapture: total / cells },
       photoshop: { version, colorSettings: assets.colorSettings, blending: blending(assets.colorSettings) },
@@ -128,8 +128,8 @@ export async function capturePhotoshopProbes({ dir: root, only, repeat = [], log
       notCaptured: PHOTOSHOP_NOT_CAPTURED,
       ...(repeat.length ? { repeatability: measureRepeats(dir, painted.sheets) } : {}),
     };
-    writeFileSync(join(dir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-    return manifest;
+    writeFileSync(join(dir, 'manifest.json'), `${JSON.stringify(probeManifest, null, 2)}\n`);
+    return probeManifest;
   }, log);
   return { dir, manifest, restore };
 }
@@ -157,7 +157,7 @@ export async function capturePhotoshopReferences({ abr, stylesDir, style, pack, 
     const painted = paintSheets(dir, sheets, items, {}, log);
     // Written before the quit, as for the probes.
     const finished = new Date(), total = (finished.getTime() - started.getTime()) / 1000;
-    const manifest: PhotoshopCaptureManifest = {
+    const referenceManifest: PhotoshopCaptureManifest = {
       run, kind: 'references', startedAt: started.toISOString(), finishedAt: finished.toISOString(),
       seconds: { total, paint: painted.paintMs / 1000, perCapture: total / cells },
       photoshop: { version, colorSettings: loaded.colorSettings, blending: blending(loaded.colorSettings) },
@@ -168,8 +168,8 @@ export async function capturePhotoshopReferences({ abr, stylesDir, style, pack, 
       notCaptured: PHOTOSHOP_NOT_CAPTURED,
       ...(loaded.repeated.length ? { repeatedNames: loaded.repeated } : {}),
     };
-    writeFileSync(join(dir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-    return manifest;
+    writeFileSync(join(dir, 'manifest.json'), `${JSON.stringify(referenceManifest, null, 2)}\n`);
+    return referenceManifest;
   }, log);
   return { dir, manifest, restore };
 }

@@ -27,6 +27,8 @@ test('an annotation deleting a written literal\'s keys is caught at a variable, 
       "const ROLES: Record<string, 'video'> = { 'video.tsx': 'video' };",
       'export const roleOf = (file: string) => ROLES[file];',
       'export const samples: Float32Array = new Float32Array(4);',
+      // Keys only passed on from other dictionaries: the literal writes none of its own.
+      'export const merged = (a: Record<string, number>): Record<string, number> => ({ ...a });',
     ].join('\n'),
   });
   assert.deepEqual(caught(findings), [
