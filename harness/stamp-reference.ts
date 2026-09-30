@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { PhotoshopCaptureManifest } from '#lib/picture/photoshop-capture/models/photoshop-capture-plan.ts';
 import { scorePhotoshopProbeRun } from '#lib/picture/stamp-reference/engine/photoshop-probe-reference.ts';
-import { PHOTOSHOP_STAMP_ARRANGEMENT, type StampReferenceStage } from '#lib/picture/stamp-reference/models/stamp-reference-deposit.ts';
+import type { StampResolveStage } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
 import { runHarnessCommand } from './run-harness-command.ts';
 
 const listArg = (value: string | undefined) => value?.split(',').map((s) => s.trim()).filter(Boolean);
@@ -16,7 +16,7 @@ const probesCommand = defineCommand({
   args: {
     run: { type: 'positional', required: true, description: 'The run folder, e.g. work/styles/watercolor/brushes/photoshop-probes/<run>' },
     only: { type: 'string', valueHint: 'tip computed h50,wet edges h50', description: 'Score only these probes (comma-separated)' },
-    order: { type: 'string', valueHint: 'grain,dual,pooling', description: "The stages after the build, in order (Photoshop's by default)" },
+    order: { type: 'string', valueHint: 'grain,dual,pooling', description: "The stages after the build, in order (the GPU renderer's by default)" },
     opacity: { type: 'string', valueHint: 'last|inBuild', description: "Where the deposit's opacity applies (last by default)" },
     json: { type: 'boolean', description: 'Print every score as JSON' },
   },
@@ -25,10 +25,7 @@ const probesCommand = defineCommand({
     const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as PhotoshopCaptureManifest;
     const only = listArg(args.only);
     const probes = Object.entries(manifest.items).filter(([, item]) => item.settings).map(([name, item]) => ({ name, reads: item.reads ?? '', settings: item.settings!, marks: [] }));
-    const arrangement = {
-      order: (listArg(args.order) as StampReferenceStage[] | undefined) ?? PHOTOSHOP_STAMP_ARRANGEMENT.order,
-      opacity: (args.opacity as 'last' | 'inBuild' | undefined) ?? PHOTOSHOP_STAMP_ARRANGEMENT.opacity,
-    };
+    const arrangement = { order: listArg(args.order) as StampResolveStage[] | undefined, opacity: args.opacity as 'last' | 'inBuild' | undefined };
     const { scores, skipped } = scorePhotoshopProbeRun({ dir, sheets: manifest.sheets, probes, only, arrangement });
     if (args.json) {
       console.log(JSON.stringify({ arrangement, scores, skipped }, null, 2));

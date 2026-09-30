@@ -23,7 +23,8 @@
 // and tiling, a tip's sampling), and nothing here asks where a brush came from.
 
 import { bindStampBrushImages, type StampBrush, type StampBrushAsset, type StampBrushGrain, type StampBrushLayer } from '../models/stamp-brush.ts';
-import { COVERAGE_FORMULAS_WGSL, stampDualBeforeGrain, stampDualModeIndex, stampGrainModeIndex } from '../models/coverage-formulas.ts';
+import { COVERAGE_FORMULAS_WGSL, stampDualModeIndex, stampGrainModeIndex } from '../models/coverage-formulas.ts';
+import { STAMP_ACCUMULATIONS, STAMP_BLUR_LEVELS, stampResolveOrder } from '../models/stamp-deposit-stages.ts';
 import { visibleStampCountAt, type CompiledStampDeposit, type CompiledStampPaint, type StampRegion } from '../models/stamp-paint-recipe.ts';
 import type { PlacedStamp } from '../models/stamp-placement.ts';
 import { stampBlurRegion, type StampPixelBox } from '../models/stamp-blur-region.ts';
@@ -31,6 +32,7 @@ import { coarsestStampTipLevel, STAMP_TIP_HULL_SIDES, stampTipHull, type StampTi
 import type { StampPaintPaper } from '../models/style.ts';
 import { PAINT_DEPOSIT_WORDS, STAMP_PAINT_COMPOSITOR_WGSL, stampPaintBlendIndex, writePaintDeposit } from './stamp-paint-compositor.ts';
 import { createStampPaintDevice, FULL_FRAME_WGSL, loadStampPaintImages, readStampTipLevels, type StampPaintImage } from './stamp-paint-gpu.ts';
+import { stampUniformLayout, stampUniformStruct, stampUniformWriter, type StampUniformViews } from './stamp-uniform-layout.ts';
 
 /**
  * Floats per stamp in the instance buffer: x, y, diameter, rotation, then alpha, blur, grain turn and flips (x 1, y 2),
@@ -40,21 +42,22 @@ const STAMP_FLOATS = 10;
 /** Floats per stamp in the tint buffer, for a brush with colour dynamics: hue, saturation, lightness, secondary. */
 const TINT_FLOATS = 4;
 
-/** Mip levels a stamp's full blur (1) reads above its own: four is a sixteenth of its size. */
-const BLUR_LEVELS = 4;
-
 /** Bytes per uniform slot: every draw's uniforms sit at an offset WebGPU allows binding at (256). */
 const SLOT = 256;
 
 /** A compute pass's workgroup is 8 × 8 pixels. */
 const WORKGROUP = 8;
 
+/**
+ * A grain as its brush reads it: `place` is its tile (px) and offset (tiles), `shape` its depth, mip level, brightness
+ * and contrast; `layer` whether its blend is a layer formula, `aboutMean` its contrast's pivot, `mirror` whether it
+ * tiles mirrored.
+ */
+const GRAIN = stampUniformLayout('Grain', [['place', 'vec4f'], ['shape', 'vec4f'], ['blend', 'i32'], ['layer', 'u32'], ['aboutMean', 'u32'], ['mirror', 'u32']]);
+
 const GRAIN_WGSL = /* wgsl */ `
 ${COVERAGE_FORMULAS_WGSL}
-// A grain as its brush reads it: \`place\` is its tile (px) and offset (tiles), \`shape\` its depth, mip level,
-// brightness and contrast; \`layer\` whether its blend is a layer formula, \`aboutMean\` its contrast's pivot,
-// \`mirror\` whether it tiles mirrored.
-struct Grain { place: vec4f, shape: vec4f, blend: i32, layer: u32, aboutMean: u32, mirror: u32 }
+${GRAIN.wgsl}
 // A grain image's mean paint: its smallest mip.
 fn grainMean(g: texture_2d<f32>, tile: sampler) -> f32 { return 1.0 - textureSampleLevel(g, tile, vec2f(0.5), 16.0).r; }
 // Coverage a cut by the grain's texel \`raw\` (as the image holds it, dark is paint), \`mean\` the grain's mean paint.
@@ -71,8 +74,12 @@ fn grained(a: f32, raw: f32, mean: f32, p: Grain) -> f32 {
 // A rolling grain sits under each stamp: turned by the stamp's grain turn, its tile grown by the stamp's size as far as
 // its zoom says, and carried along the canvas as far as its movement says. At movement 1 and constant size it lies
 // still on the canvas; as size or direction changes it slides, which is a rolling grain's streak.
+const STAMP_DRAW = stampUniformLayout('StampDraw', [
+  ['resolution', 'vec2f'], ['roundness', 'f32'], ['rolling', 'u32'], ['grain', stampUniformStruct('Grain', GRAIN)], ['diameter', 'f32'], ['zoom', 'f32'],
+  ['movement', 'f32'], ['hull', { vec4fArray: STAMP_TIP_HULL_SIDES / 2 }], ['span', 'f32'], ['towardFull', 'u32'],
+]);
 const STAMP_WGSL = /* wgsl */ `
-struct StampDraw { resolution: vec2f, roundness: f32, rolling: u32, grain: Grain, diameter: f32, zoom: f32, movement: f32, hull: array<vec4f, ${STAMP_TIP_HULL_SIDES / 2}>, span: f32, towardFull: u32 }
+${STAMP_DRAW.wgsl}
 @group(0) @binding(0) var<uniform> u: StampDraw;
 @group(0) @binding(1) var tip: texture_2d<f32>;
 @group(0) @binding(2) var grain: texture_2d<f32>;
@@ -102,7 +109,7 @@ fn turned(v: vec2f, angle: f32) -> vec2f {
   let grainUv = turned(local, -more.z) / size + u.movement * stamp.xy / u.grain.place.xy + u.grain.place.zw;
   // A glaze or a build lays flow × opacity toward full; a buildToOpacity lays its flow toward its own opacity.
   let full = u.towardFull == 1u;
-  return Corner(vec4f(at.x, -at.y, 0.0, 1.0), uv, select(more.x, more.x * opacity, full), more.y * ${BLUR_LEVELS.toFixed(1)}, grainUv, tint, select(opacity, 1.0, full));
+  return Corner(vec4f(at.x, -at.y, 0.0, 1.0), uv, select(more.x, more.x * opacity, full), more.y * ${STAMP_BLUR_LEVELS.toFixed(1)}, grainUv, tint, select(opacity, 1.0, full));
 }
 // A stamp's paint (x) and its cap (y): the paint without its tip, how far a glaze's stroke may build there. A rolling
 // grain, carried by the stamp, cuts each one.
@@ -126,8 +133,9 @@ fn covered(corner: Corner) -> vec2f {
   return Stamp(vec4f(vec3f(corner.toward), a.x), a.yyxx, vec4f(corner.tint.xyz * a.x, a.x), vec4f(corner.tint.w * a.x, 0.0, 0.0, a.x));
 }`;
 
+const BLUR = stampUniformLayout('Blur', [['sourceSize', 'vec2f'], ['direction', 'vec2f'], ['sigma', 'f32'], ['origin', 'vec2u'], ['extent', 'vec2u']]);
 const BLUR_WGSL = /* wgsl */ `
-struct Blur { sourceSize: vec2f, direction: vec2f, sigma: f32, origin: vec2u, extent: vec2u }
+${BLUR.wgsl}
 @group(0) @binding(0) var<uniform> u: Blur;
 @group(0) @binding(1) var source: texture_2d<f32>;
 @group(0) @binding(2) var blurred: texture_storage_2d<rgba16float, write>;
@@ -149,18 +157,26 @@ struct Blur { sourceSize: vec2f, direction: vec2f, sigma: f32, origin: vec2u, ex
   textureStore(blurred, pixel, sum / total);
 }`;
 
+const DEPOSIT = stampUniformLayout('Deposit', [
+  ['paint', { struct: 'PaintDeposit', words: PAINT_DEPOSIT_WORDS, align: 4 }], ['secondary', 'vec4f'], ['view', 'vec4f'], ['edges', 'vec4f'], ['dualEdges', 'vec4f'],
+  ['grain', stampUniformStruct('Grain', GRAIN)], ['dualGrain', stampUniformStruct('Grain', GRAIN)], ['paperDepth', 'f32'], ['paperLod', 'f32'], ['opacity', 'f32'],
+  ['dualBlend', 'i32'], ['burntBlend', 'i32'], ['flags', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'], ['glazeBuild', 'vec2f'], ['pooling', 'vec4f'],
+]);
+
+/** What a deposit's resolve does, a bit each in its `flags`, and a WGSL constant each of the same name in capitals. */
+const DEPOSIT_FLAGS = {
+  canvasGrain: 1, dual: 2, dualCanvasGrain: 4, paper: 8, protected: 16, clipped: 32, clips: 64, tinted: 128,
+  glaze: 256, dualGlaze: 512, pooled: 1024, dualPooled: 2048, dualLayer: 4096, dualFirst: 8192,
+} as const;
+const DEPOSIT_FLAGS_WGSL = Object.entries(DEPOSIT_FLAGS).map(([flag, bit]) => `const ${flag.replace(/[A-Z]/g, (c) => `_${c}`).toUpperCase()} = ${bit}u;`).join('\n');
+
 // A compute pass has no derivatives to choose a mip level by, so each grain's level is worked out on the CPU: a tile
 // is a fixed number of pixels across the whole painting, so it reads the same level everywhere.
 const DEPOSIT_WGSL = /* wgsl */ `
 ${STAMP_PAINT_COMPOSITOR_WGSL}
 ${GRAIN_WGSL}
-struct Deposit {
-  paint: PaintDeposit, secondary: vec4f, view: vec4f, edges: vec4f, dualEdges: vec4f, grain: Grain, dualGrain: Grain,
-  paperDepth: f32, paperLod: f32, opacity: f32, dualBlend: i32, burntBlend: i32, flags: u32, origin: vec2u, extent: vec2u,
-  glazeBuild: vec2f, pooling: vec4f,
-}
-const TEXTURIZED = 1u; const DUAL = 2u; const DUAL_TEXTURIZED = 4u; const PAPER = 8u; const PROTECTED = 16u; const CLIPPED = 32u; const CLIPS = 64u; const TINTED = 128u;
-const GLAZE = 256u; const DUAL_GLAZE = 512u; const POOLED = 1024u; const DUAL_POOLED = 2048u; const DUAL_LAYER = 4096u; const DUAL_FIRST = 8192u;
+${DEPOSIT.wgsl}
+${DEPOSIT_FLAGS_WGSL}
 @group(0) @binding(0) var<uniform> u: Deposit;
 @group(0) @binding(1) var mask: texture_2d<f32>;
 @group(0) @binding(2) var blurred: texture_2d<f32>;
@@ -227,19 +243,19 @@ fn tinted(color: vec3f, pixel: vec2u) -> vec3f {
   var d = 0.0;
   if ((u.flags & DUAL) != 0u) {
     d = raw.g;
-    if ((u.flags & DUAL_TEXTURIZED) != 0u) { d = texturized(dualGrain, at, d, u.dualGrain); }
+    if ((u.flags & DUAL_CANVAS_GRAIN) != 0u) { d = texturized(dualGrain, at, d, u.dualGrain); }
     if ((u.flags & DUAL_POOLED) != 0u) { d = pooled(d, u.pooling.z, u.pooling.w); }
     burnt = max(burnt, rimOf(raw.g, soft.g, u.dualEdges.w) * u.dualEdges.z * step(0.0001, raw.r));
   }
   let dualFirst = (u.flags & DUAL_FIRST) != 0u;
   if (dualFirst) { m = dualCombine(m, d, u.dualBlend, (u.flags & DUAL_LAYER) != 0u); }
-  if ((u.flags & TEXTURIZED) != 0u) { m = texturized(grain, at, m, u.grain); }
+  if ((u.flags & CANVAS_GRAIN) != 0u) { m = texturized(grain, at, m, u.grain); }
   if ((u.flags & DUAL) != 0u && !dualFirst) { m = dualCombine(m, d, u.dualBlend, (u.flags & DUAL_LAYER) != 0u); }
   if ((u.flags & POOLED) != 0u) { m = pooled(m, u.pooling.x, u.pooling.y); }
   // A wet rim is laid after the dual combines, as the whole stroke's pigment gathers there, but through the grain: a
   // grain that breaks the body into flecks breaks its rim too.
   var wet = rimOf(raw.r, soft.r, u.edges.y) * u.edges.x;
-  if ((u.flags & TEXTURIZED) != 0u) { wet = texturized(grain, at, wet, u.grain); }
+  if ((u.flags & CANVAS_GRAIN) != 0u) { wet = texturized(grain, at, wet, u.grain); }
   m += wet;
   var keep = 1.0;
   // A paper's tooth was photographed, not drawn as a brush grain is: it cuts in proportion to its own mean paint,
@@ -264,9 +280,10 @@ fn tinted(color: vec3f, pixel: vec2u) -> vec3f {
   if ((u.flags & CLIPS) != 0u) { textureStore(clip, pixel, vec4f(coverage) + clipped * (1.0 - coverage)); }
 }`;
 
+const GROUP = stampUniformLayout('Group', [['opacity', 'f32'], ['glaze', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u']]);
 const GROUP_WGSL = /* wgsl */ `
 ${STAMP_PAINT_COMPOSITOR_WGSL}
-struct Group { opacity: f32, glaze: u32, origin: vec2u, extent: vec2u }
+${GROUP.wgsl}
 @group(0) @binding(0) var<uniform> u: Group;
 @group(0) @binding(1) var layer: texture_2d<f32>;
 @group(0) @binding(2) var painting: texture_storage_2d<rgba16float, read_write>;
@@ -276,8 +293,9 @@ struct Group { opacity: f32, glaze: u32, origin: vec2u, extent: vec2u }
   textureStore(painting, pixel, groupPaint(textureLoad(painting, pixel), textureLoad(layer, pixel, 0), u.glaze == 1u, u.opacity));
 }`;
 
+const PAPER = stampUniformLayout('Paper', [['color', 'vec3f'], ['hasImage', 'u32'], ['cover', 'vec2f'], ['lod', 'f32']]);
 const PAPER_WGSL = /* wgsl */ `
-struct Paper { color: vec3f, hasImage: u32, cover: vec2f, lod: f32 }
+${PAPER.wgsl}
 @group(0) @binding(0) var<uniform> u: Paper;
 @group(0) @binding(1) var image: texture_2d<f32>;
 @group(0) @binding(2) var painting: texture_storage_2d<rgba16float, write>;
@@ -302,8 +320,9 @@ ${FULL_FRAME_WGSL}
   return vec4f(clamp(color + dither, vec3f(0.0), vec3f(1.0)), 1.0);
 }`;
 
+const REGION = stampUniformLayout('Region', [['resolution', 'vec2f'], ['ellipse', 'u32'], ['shape', 'vec4f']]);
 const REGION_WGSL = /* wgsl */ `
-struct Region { resolution: vec2f, ellipse: u32, shape: vec4f }
+${REGION.wgsl}
 @group(0) @binding(0) var<uniform> u: Region;
 @vertex fn place(@location(0) point: vec2f) -> @builtin(position) vec4f {
   let at = point / u.resolution * 2.0 - 1.0;
@@ -453,7 +472,7 @@ async function rendererOnDevice(
   function tipHull(layer: StampBrushLayer, stamps: readonly PlacedStamp[]): StampTipHull {
     // The tip's texels spread over its span, so its pixels per texel go by the image's width, not the diameter.
     const smallest = stamps.reduce((least, s) => Math.min(least, s.diameter), Infinity) * spanOf(layer);
-    const blurred = Math.ceil(stamps.reduce((most, s) => Math.max(most, s.blur), 0) * BLUR_LEVELS);
+    const blurred = Math.ceil(stamps.reduce((most, s) => Math.max(most, s.blur), 0) * STAMP_BLUR_LEVELS);
     const squashed = layer.tip.roundness * stamps.reduce((least, s) => Math.min(least, s.roundness), 1);
     const levels = tipLevels.get(assetKey(layer.tip.image))!;
     const coarsest = Math.min(levels.length - 1, coarsestStampTipLevel(levels[0], smallest, squashed, levels.length) + blurred);
@@ -521,10 +540,10 @@ async function rendererOnDevice(
   const stagedFloats = new Float32Array(staging), stagedInts = new Int32Array(staging), stagedWords = new Uint32Array(staging);
   let slots = 0;
   /** A zeroed slot filled by `fill`, which writes its words from 0 into the views it's given. */
-  const slot = (fill: (floats: Float32Array, ints: Int32Array, words: Uint32Array) => void): GPUBufferBinding => {
+  const slot = (fill: (views: StampUniformViews) => void): GPUBufferBinding => {
     const offset = slots++ * SLOT, word = offset / 4, words = SLOT / 4;
     stagedWords.fill(0, word, word + words);
-    fill(stagedFloats.subarray(word, word + words), stagedInts.subarray(word, word + words), stagedWords.subarray(word, word + words));
+    fill({ floats: stagedFloats.subarray(word, word + words), ints: stagedInts.subarray(word, word + words), words: stagedWords.subarray(word, word + words) });
     return { buffer: uniforms, offset, size: SLOT };
   };
 
@@ -627,9 +646,9 @@ async function rendererOnDevice(
   /** `layer`'s grain when it's fixed to the canvas and cuts, which the resolve cuts into its built coverage. */
   const canvasGrain = (layer?: BoundLayer) => (layer?.grain?.kind === 'canvas' && layer.grain.depth > 0 ? layer.grain : undefined);
   /** A canvas grain's tile (a share of the deposit's `diameter` across), offset and mip level, written as a Grain at `at`. */
-  const canvasGrainAt = (floats: Float32Array, ints: Int32Array, at: number, grain: StampBrushGrain<StampPaintImage>, offset: readonly [number, number], diameter: number) => {
+  const canvasGrainAt = (views: StampUniformViews, at: number, grain: StampBrushGrain<StampPaintImage>, offset: readonly [number, number], diameter: number) => {
     const size = grain.scale * diameter;
-    writeGrain(floats, ints, at, grain, [size, size * (grain.image.height / grain.image.width)], offset, grainLod(grain.image, size));
+    writeGrain(views, at, grain, [size, size * (grain.image.height / grain.image.width)], offset, grainLod(grain.image, size));
   };
 
   function drawStamps(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loaded: LoadedDeposit, count: number, dualCount: number, box: Box) {
@@ -641,23 +660,28 @@ async function rendererOnDevice(
     pass.setIndexBuffer(fanBuffer, 'uint16');
     const stamp = (layer: BoundLayer, first: number, n: number, hull: StampTipHull, channel: 0 | 1) => {
       if (!n) return;
-      const pipeline = stampPipelines[layer.accumulation.kind === 'glaze' ? 'glaze' : 'build'][tinted ? 'tinted' : 'plain'][channel];
+      const accumulation = STAMP_ACCUMULATIONS[layer.accumulation.kind];
+      const pipeline = stampPipelines[accumulation.keepsCap ? 'glaze' : 'build'][tinted ? 'tinted' : 'plain'][channel];
       const rolling = layer.grain?.kind === 'rolling' && layer.grain.depth > 0 ? layer.grain : undefined;
       const diameter = deposit.diameter * (channel === 1 ? deposit.brush.dual!.scale : 1);
       const offset = deposit.grainOffset[channel === 0 ? 'main' : 'dual'];
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, bindGroup(pipeline, [
-        slot((floats, ints, words) => {
-          floats.set([width, height, layer.tip.roundness]);
-          words[3] = rolling ? 1 : 0;
+        slot((views) => {
+          const put = stampUniformWriter(STAMP_DRAW, views);
+          put('resolution', [width, height]);
+          put('roundness', layer.tip.roundness);
+          put('rolling', rolling ? 1 : 0);
           if (rolling) {
             const size = rolling.scale * diameter;
-            writeGrain(floats, ints, 4, rolling, [size, size * (rolling.image.height / rolling.image.width)], offset, 0);
-            floats.set([diameter, rolling.zoom, rolling.movement], 16);
+            writeGrain(views, STAMP_DRAW.at.grain, rolling, [size, size * (rolling.image.height / rolling.image.width)], offset, 0);
+            put('diameter', diameter);
+            put('zoom', rolling.zoom);
+            put('movement', rolling.movement);
           }
-          floats.set(hull, 20);
-          floats[20 + STAMP_TIP_HULL_SIDES * 2] = spanOf(layer);
-          words[21 + STAMP_TIP_HULL_SIDES * 2] = layer.accumulation.kind === 'buildToOpacity' ? 0 : 1;
+          put('hull', hull);
+          put('span', spanOf(layer));
+          put('towardFull', accumulation.towardFull ? 1 : 0);
         }),
         layer.tip.image.view, rolling ? rolling.image.view : targets.blank.view, layer.tip.sampling === 'anisotropic' ? anisotropicClamp : linearClamp, rolling?.tiling === 'mirror' ? mirrorTile : tile,
       ]));
@@ -679,9 +703,13 @@ async function rendererOnDevice(
     const top = Math.max(0, half.y - reach);
     const across = { ...half, y: top, h: half.h + (half.y - top) + reach };
     const blur = (source: GPUTextureView, sourceSize: [number, number], into: GPUTextureView, direction: [number, number], region: typeof half) => dispatch(encoder, pipelines.blur, [
-      slot((floats, _ints, words) => {
-        floats.set([...sourceSize, ...direction, halfSigma]);
-        words.set([region.x, region.y, region.w, region.h], 6);
+      slot((views) => {
+        const put = stampUniformWriter(BLUR, views);
+        put('sourceSize', sourceSize);
+        put('direction', direction);
+        put('sigma', halfSigma);
+        put('origin', [region.x, region.y]);
+        put('extent', [region.w, region.h]);
       }),
       source, into, linearClamp,
     ], region.w, region.h);
@@ -693,11 +721,12 @@ async function rendererOnDevice(
   function drawProtect(encoder: GPUCommandEncoder, regions: LoadedDeposit['regions']) {
     const region = (pipeline: GPURenderPipeline, first: number, count: number, ellipse: LoadedDeposit['regions'][number][2]) => (pass: GPURenderPassEncoder) => {
       pass.setPipeline(pipeline);
-      pass.setBindGroup(0, bindGroup(pipeline, [slot((floats, _ints, words) => {
-        floats.set([width, height]);
+      pass.setBindGroup(0, bindGroup(pipeline, [slot((views) => {
+        const put = stampUniformWriter(REGION, views);
+        put('resolution', [width, height]);
         if (ellipse) {
-          words[2] = 1;
-          floats.set([ellipse.x, ellipse.y, ellipse.radiusX, ellipse.radiusY], 4);
+          put('ellipse', 1);
+          put('shape', [ellipse.x, ellipse.y, ellipse.radiusX, ellipse.radiusY]);
         }
       })]));
       pass.setVertexBuffer(0, regionBuffer);
@@ -725,9 +754,9 @@ async function rendererOnDevice(
 
   function resolveDeposit(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loaded: LoadedDeposit, clipped: boolean, blurred: boolean, box: Box) {
     const { brush } = loaded;
-    const grainAt = (floats: Float32Array, ints: Int32Array, at: number, layer: BoundLayer | undefined, offset: readonly [number, number]) => {
+    const grainAt = (views: StampUniformViews, at: number, layer: BoundLayer | undefined, offset: readonly [number, number]) => {
       const grain = canvasGrain(layer);
-      if (grain) canvasGrainAt(floats, ints, at, grain, offset, deposit.diameter);
+      if (grain) canvasGrainAt(views, at, grain, offset, deposit.diameter);
     };
     const rimOf = (layer?: BoundLayer) => (layer?.wetEdges?.kind === 'rim' ? layer.wetEdges : undefined);
     const poolingOf = (layer?: BoundLayer) => (layer?.wetEdges?.kind === 'pooling' ? layer.wetEdges : undefined);
@@ -743,22 +772,34 @@ async function rendererOnDevice(
     }
     const protectedBy = deposit.protectedBy.length > 0;
     const tinted = loaded.tint !== null;
+    const keepsCap = (layer?: BoundLayer) => !!layer && STAMP_ACCUMULATIONS[layer.accumulation.kind].keepsCap;
+    const flags: (keyof typeof DEPOSIT_FLAGS)[] = [
+      ...(mainGrain ? ['canvasGrain' as const] : []), ...(brush.dual ? ['dual' as const] : []), ...(dualGrain ? ['dualCanvasGrain' as const] : []),
+      ...(tooth ? ['paper' as const] : []), ...(protectedBy ? ['protected' as const] : []), clipped ? 'clipped' as const : 'clips' as const, ...(tinted ? ['tinted' as const] : []),
+      ...(keepsCap(brush) ? ['glaze' as const] : []), ...(keepsCap(brush.dual) ? ['dualGlaze' as const] : []),
+      ...(poolingOf(brush) ? ['pooled' as const] : []), ...(poolingOf(brush.dual) ? ['dualPooled' as const] : []),
+      ...(brush.dual?.blend.family === 'layer' ? ['dualLayer' as const] : []), ...(stampResolveOrder(brush.dual)[0] === 'dual' ? ['dualFirst' as const] : []),
+    ];
     dispatch(encoder, pipelines.deposit, [
-      slot((floats, ints, words) => {
-        writePaintDeposit(floats, ints, 0, deposit.material, deposit.blend);
-        const at = PAINT_DEPOSIT_WORDS;
-        floats.set([...rgb(deposit.secondaryColor), 0, width, height, paperTile[0], paperTile[1], ...edgesOf(brush), ...edgesOf(brush.dual)], at);
-        grainAt(floats, ints, at + 16, brush, deposit.grainOffset.main);
-        grainAt(floats, ints, at + 28, brush.dual, deposit.grainOffset.dual);
-        floats.set([tooth?.depth ?? 0, paperTile[2], deposit.opacity], at + 40);
-        ints[at + 43] = brush.dual ? stampDualModeIndex(brush.dual.blend) : 0;
-        ints[at + 44] = stampPaintBlendIndex((brush.burntEdge ?? brush.dual?.burntEdge)?.blend ?? 'colorBurn');
-        words[at + 45] = (mainGrain ? 1 : 0) | (brush.dual ? 2 : 0) | (dualGrain ? 4 : 0) | (tooth ? 8 : 0) | (protectedBy ? 16 : 0) | (clipped ? 32 : 64) | (tinted ? 128 : 0)
-          | (brush.accumulation.kind === 'glaze' ? 256 : 0) | (brush.dual?.accumulation.kind === 'glaze' ? 512 : 0) | (poolingOf(brush) ? 1024 : 0) | (poolingOf(brush.dual) ? 2048 : 0)
-          | (brush.dual?.blend.family === 'layer' ? 4096 : 0) | (brush.dual && stampDualBeforeGrain(brush.dual.blend) ? 8192 : 0);
-        words.set([box.x, box.y, box.w, box.h], at + 46);
-        floats.set([glazeBuildOf(brush), glazeBuildOf(brush.dual)], at + 50);
-        floats.set([poolingOf(brush)?.peak ?? 0, poolingOf(brush)?.body ?? 0, poolingOf(brush.dual)?.peak ?? 0, poolingOf(brush.dual)?.body ?? 0], at + 52);
+      slot((views) => {
+        const put = stampUniformWriter(DEPOSIT, views);
+        writePaintDeposit(views.floats, views.ints, DEPOSIT.at.paint, deposit.material, deposit.blend);
+        put('secondary', [...rgb(deposit.secondaryColor), 0]);
+        put('view', [width, height, paperTile[0], paperTile[1]]);
+        put('edges', edgesOf(brush));
+        put('dualEdges', edgesOf(brush.dual));
+        grainAt(views, DEPOSIT.at.grain, brush, deposit.grainOffset.main);
+        grainAt(views, DEPOSIT.at.dualGrain, brush.dual, deposit.grainOffset.dual);
+        put('paperDepth', tooth?.depth ?? 0);
+        put('paperLod', paperTile[2]);
+        put('opacity', deposit.opacity);
+        put('dualBlend', brush.dual ? stampDualModeIndex(brush.dual.blend) : 0);
+        put('burntBlend', stampPaintBlendIndex((brush.burntEdge ?? brush.dual?.burntEdge)?.blend ?? 'colorBurn'));
+        put('flags', flags.reduce((all, flag) => all | DEPOSIT_FLAGS[flag], 0));
+        put('origin', [box.x, box.y]);
+        put('extent', [box.w, box.h]);
+        put('glazeBuild', [glazeBuildOf(brush), glazeBuildOf(brush.dual)]);
+        put('pooling', [poolingOf(brush)?.peak ?? 0, poolingOf(brush)?.body ?? 0, poolingOf(brush.dual)?.peak ?? 0, poolingOf(brush.dual)?.body ?? 0]);
       }),
       targets.mask.view, blurred ? targets.blurB.view : targets.mask.view,
       mainGrain ? mainGrain.image.view : targets.blank.view,
@@ -784,11 +825,13 @@ async function rendererOnDevice(
     // Cover: the photograph fills the painting, cropped along whichever side it has to spare.
     const fit = photograph ? Math.max(width / photograph.width, height / photograph.height) : 1;
     dispatch(encoder, pipelines.paper, [
-      slot((floats, _ints, words) => {
-        floats.set(rgb(paper.color));
+      slot((views) => {
+        const put = stampUniformWriter(PAPER, views);
+        put('color', rgb(paper.color));
         if (!photograph) return;
-        words[3] = 1;
-        floats.set([width / (photograph.width * fit), height / (photograph.height * fit), Math.max(0, Math.log2(1 / fit))], 4);
+        put('hasImage', 1);
+        put('cover', [width / (photograph.width * fit), height / (photograph.height * fit)]);
+        put('lod', Math.max(0, Math.log2(1 / fit)));
       }),
       photograph?.view ?? targets.blank.view, targets.painting.view, linearClamp,
     ], width, height);
@@ -827,10 +870,12 @@ async function rendererOnDevice(
       if (!painted) continue;
       const box = painted;
       dispatch(encoder, pipelines.group, [
-        slot((floats, _ints, words) => {
-          floats[0] = group.opacity;
-          words[1] = group.composite === 'glaze' ? 1 : 0;
-          words.set([box.x, box.y, box.w, box.h], 2);
+        slot((views) => {
+          const put = stampUniformWriter(GROUP, views);
+          put('opacity', group.opacity);
+          put('glaze', group.composite === 'glaze' ? 1 : 0);
+          put('origin', [box.x, box.y]);
+          put('extent', [box.w, box.h]);
         }),
         targets.layer.view, targets.painting.view,
       ], box.w, box.h);
@@ -870,10 +915,15 @@ async function rendererOnDevice(
 
 const GPU_ERROR_SCOPES = ['validation', 'out-of-memory', 'internal'] as const;
 
-/** Writes a Grain (GRAIN_WGSL) at word `at`: its tile in pixels, its offset in tiles, its mip level and how it reads. */
-function writeGrain(floats: Float32Array, ints: Int32Array, at: number, grain: StampBrushGrain<StampPaintImage>, tile: readonly [number, number], offset: readonly [number, number], lod: number) {
-  floats.set([tile[0], tile[1], offset[0], offset[1], grain.depth, lod, grain.brightness, grain.contrast], at);
-  ints.set([stampGrainModeIndex(grain.blend), grain.blend.family === 'layer' ? 1 : 0, grain.contrastPivot === 'mean' ? 1 : 0, grain.tiling === 'mirror' ? 1 : 0], at + 8);
+/** Writes a Grain at word `at`: its tile in pixels, its offset in tiles, its mip level and how it reads. */
+function writeGrain(views: StampUniformViews, at: number, grain: StampBrushGrain<StampPaintImage>, tile: readonly [number, number], offset: readonly [number, number], lod: number) {
+  const put = stampUniformWriter(GRAIN, views, at);
+  put('place', [tile[0], tile[1], offset[0], offset[1]]);
+  put('shape', [grain.depth, lod, grain.brightness, grain.contrast]);
+  put('blend', stampGrainModeIndex(grain.blend));
+  put('layer', grain.blend.family === 'layer' ? 1 : 0);
+  put('aboutMean', grain.contrastPivot === 'mean' ? 1 : 0);
+  put('mirror', grain.tiling === 'mirror' ? 1 : 0);
 }
 
 const union = (a: Box, b: Box): Box => {

@@ -3,13 +3,13 @@
 // stage that moved its coverage by more than STAGE_FOOTPRINT, or to the build when none did. So "off" becomes a list
 // of the stages to look at, not one number.
 
-import type { StampReferenceStage } from './stamp-reference-deposit.ts';
+import type { StampResolveStage } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
 
 /** A stage moving a pixel's coverage by less than this leaves it to the stage before. */
 const STAGE_FOOTPRINT = 1 / 255;
 
 /** The stages a pixel's error can go to. Opacity scales every pixel alike, so it owns none: its error shows everywhere. */
-export type StampReferenceOwner = 'build' | StampReferenceStage;
+export type StampReferenceOwner = 'build' | StampResolveStage;
 
 export type StampReferenceScore = {
   /** Over every pixel either side paints. */

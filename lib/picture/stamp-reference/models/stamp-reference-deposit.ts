@@ -8,23 +8,17 @@
 
 import type { StampBrush, StampBrushGrain, StampBrushLayer } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import type { PlacedStamp } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
-import { stampDualBeforeGrain, stampDualCombine, stampGrainCut, stampGrainPaint, stampPooled } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
+import { stampDualCombine, stampGrainCut, stampGrainPaint, stampPooled } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
+import { STAMP_ACCUMULATIONS, STAMP_BLUR_LEVELS, stampGlazed, stampResolveOrder, type StampResolveStage } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
 import { sampleStampReference, type StampReferenceMips } from './stamp-reference-image.ts';
 
-/** Mip levels a stamp's full blur reads above its own, as the GPU's BLUR_LEVELS. */
-const BLUR_LEVELS = 4;
-
-/** The stages after the stamps have built, each on the coverage the one before it left. */
-export type StampReferenceStage = 'grain' | 'dual' | 'pooling';
-
+/** A rearrangement to try against a capture; what's left out is as the GPU renderer does it. */
 export type StampReferenceArrangement = {
-  order: readonly StampReferenceStage[];
-  /** Whether the deposit's opacity scales the finished coverage (`last`) or each stamp's as it builds (`inBuild`). */
-  opacity: 'last' | 'inBuild';
+  /** The stages after the build; stampResolveOrder's by default. */
+  order?: readonly StampResolveStage[];
+  /** Whether the deposit's opacity scales the finished coverage (`last`, the default) or each stamp's as it builds (`inBuild`). */
+  opacity?: 'last' | 'inBuild';
 };
-
-/** What Photoshop's captures select: canvas texture on the built stroke, then the dual, then wet edges, then opacity. */
-export const PHOTOSHOP_STAMP_ARRANGEMENT: StampReferenceArrangement = { order: ['grain', 'dual', 'pooling'], opacity: 'last' };
 
 /** Pixels `x`, `y` up to `width` × `height`, in the painting's pixels: what a reference deposit works out. */
 export type StampReferenceBox = { x: number; y: number; width: number; height: number };
@@ -47,7 +41,7 @@ export type StampReferenceDepositInput = {
 export type StampReferenceDeposit = {
   box: StampReferenceBox;
   built: { main: Float32Array; dual?: Float32Array };
-  stages: { stage: StampReferenceStage; coverage: Float32Array }[];
+  stages: { stage: StampResolveStage; coverage: Float32Array }[];
   coverage: Float32Array;
 };
 
@@ -80,15 +74,14 @@ const canvasGrainOf = (layer?: StampBrushLayer<StampReferenceMips>) => (layer?.g
 
 /**
  * A layer's stamps built over the box. Each stamp's coverage is its tip, cut by a rolling grain when it has one, times
- * its flow. `buildToOpacity` moves each pixel toward the stamp's opacity and never lowers it; `build` lays alpha ×
- * opacity over it; `glaze` does too and keeps the densest stamp, built toward its cap as far as its build says.
+ * its flow, laid as its accumulation lays it (STAMP_ACCUMULATIONS).
  */
 function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: StampReferenceBox, opacityScale: number): Float32Array {
   const { layer } = place, { accumulation } = layer;
   const tipImage = layer.tip.image[0], span = layer.tip.span ?? 1, roundness = layer.tip.roundness;
   const [cx, cy] = layer.tip.center ?? [0.5, 0.5];
   const built = new Float32Array(box.width * box.height);
-  const glaze = accumulation.kind === 'glaze';
+  const lay = STAMP_ACCUMULATIONS[accumulation.kind].lay, glaze = STAMP_ACCUMULATIONS[accumulation.kind].keepsCap;
   const densest = glaze ? new Float32Array(built.length) : undefined, cap = glaze ? new Float32Array(built.length) : undefined;
   const rolling = layer.grain?.kind === 'rolling' && layer.grain.depth > 0 ? layer.grain : undefined;
   const rollingTile = rolling && grainTile(rolling, place.diameter);
@@ -99,7 +92,7 @@ function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: Stam
     // along the other, so squashing blurs it only across the squash. Isotropic: one read at its more-shrunk side's level.
     const across = tipImage.width / width, down = tipImage.height / height;
     const anisotropic = layer.tip.sampling === 'anisotropic';
-    const lod = Math.max(0, Math.log2(anisotropic ? Math.min(across, down) : Math.max(across, down))) + stamp.blur * BLUR_LEVELS;
+    const lod = Math.max(0, Math.log2(anisotropic ? Math.min(across, down) : Math.max(across, down))) + stamp.blur * STAMP_BLUR_LEVELS;
     const reads = anisotropic ? Math.min(16, Math.max(1, Math.ceil(Math.max(across, down) / Math.max(1, Math.min(across, down)) - 1e-9))) : 1;
     const alongV = down > across;
     const reach = (width / 2) * Math.SQRT2;
@@ -128,32 +121,23 @@ function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: Stam
           capped = stampGrainCut(1, g, rolling);
         }
         const i = (py - box.y) * box.width + (px - box.x), laid = a * stamp.alpha;
+        built[i] = lay(built[i], laid, opacity);
         if (glaze) {
-          const paint = laid * opacity;
-          built[i] += paint * (1 - built[i]);
-          densest![i] = Math.max(densest![i], paint);
+          densest![i] = Math.max(densest![i], laid * opacity);
           cap![i] = Math.max(cap![i], capped * stamp.alpha * opacity);
-        } else if (accumulation.kind === 'build') {
-          built[i] += laid * opacity * (1 - built[i]);
-        } else if (opacity > built[i]) {
-          built[i] += laid * (opacity - built[i]);
         }
       }
     }
   }
-  if (accumulation.kind === 'glaze') for (let i = 0; i < built.length; i++) built[i] = densest![i] + (Math.min(built[i], cap![i]) - densest![i]) * accumulation.build;
+  if (accumulation.kind === 'glaze') for (let i = 0; i < built.length; i++) built[i] = stampGlazed(densest![i], built[i], cap![i], accumulation.build);
   return built;
 }
 
-/**
- * A deposit's coverage over `box`, stage by stage in `arrangement`'s order: by default Photoshop's, or the dual first
- * when it shapes where the stamps' paint lies, as the GPU renderer orders them.
- */
+/** A deposit's coverage over `box`, stage by stage in the GPU renderer's order unless `arrangement` rearranges it. */
 export function renderStampReferenceDeposit(input: StampReferenceDepositInput): StampReferenceDeposit {
   const { brush, box } = input;
-  const arrangement = input.arrangement ?? (brush.dual && stampDualBeforeGrain(brush.dual.blend)
-    ? { ...PHOTOSHOP_STAMP_ARRANGEMENT, order: ['dual', 'grain', 'pooling'] as const } : PHOTOSHOP_STAMP_ARRANGEMENT);
-  const opacityInBuild = arrangement.opacity === 'inBuild' ? input.opacity : 1;
+  const order = input.arrangement?.order ?? stampResolveOrder(brush.dual), opacityAt = input.arrangement?.opacity ?? 'last';
+  const opacityInBuild = opacityAt === 'inBuild' ? input.opacity : 1;
   const main: LayerPlace = { layer: brush, diameter: input.diameter, offset: input.grainOffset.main };
   const dual: LayerPlace | undefined = brush.dual && { layer: brush.dual, diameter: input.diameter * brush.dual.scale, offset: input.grainOffset.dual };
   const built = { main: buildLayer(main, input.stamps, box, opacityInBuild), dual: dual && buildLayer(dual, input.dualStamps, box, 1) };
@@ -167,7 +151,7 @@ export function renderStampReferenceDeposit(input: StampReferenceDepositInput): 
   const pooling = brush.wetEdges?.kind === 'pooling' ? brush.wetEdges : undefined;
   let coverage = built.main;
   const stages: StampReferenceDeposit['stages'] = [];
-  for (const stage of arrangement.order) {
+  for (const stage of order) {
     const next = coverage.map((c, i) => {
       const px = box.x + (i % box.width) + 0.5, py = box.y + Math.floor(i / box.width) + 0.5;
       if (stage === 'grain') return mainGrain ? stampGrainCut(c, canvasGrainPaint(main, mainGrain, px, py), mainGrain) : c;
@@ -177,6 +161,6 @@ export function renderStampReferenceDeposit(input: StampReferenceDepositInput): 
     stages.push({ stage, coverage: next });
     coverage = next;
   }
-  const opacityLast = arrangement.opacity === 'last' ? input.opacity : 1;
+  const opacityLast = opacityAt === 'last' ? input.opacity : 1;
   return { box, built, stages, coverage: coverage.map((c) => Math.min(1, Math.max(0, c)) * opacityLast) };
 }
