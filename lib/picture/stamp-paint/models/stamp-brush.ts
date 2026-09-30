@@ -208,11 +208,21 @@ export type StampAngleResponse = { kind: 'linear'; amount: number } | { kind: 'c
 export type StampResponseFor<T extends StampDynamicTarget> = T extends StampAngleTarget ? StampAngleResponse : StampScaleResponse;
 
 /**
- * A brush's dynamics: at most one response per target and sensor. Bindings of one target compose, in a fixed sensor
+ * Each sensor's own parameters, which its binding carries beside the response and its signal reads (stamp-dynamics.ts).
+ * None of today's sensors has any; a sensor that needs one declares it here, as Photoshop's fade (vid-105) would
+ * `{ steps: number }`, the count of steps its signal runs full over.
+ */
+export type StampSensorParams = { pressure: Record<never, never>; random: Record<never, never>; direction: Record<never, never> };
+
+/** One target's binding to one sensor: how the target answers it, and the sensor's own parameters. */
+export type StampBinding<T extends StampDynamicTarget, S extends StampSensor> = StampResponseFor<T> & StampSensorParams[S];
+
+/**
+ * A brush's dynamics: at most one binding per target and sensor. Bindings of one target compose, in a fixed sensor
  * order: a scale target keeps the product of each binding's share (pressure × random), save count, which keeps whole
  * stamps binding by binding; an angle target turns by the sum of each binding's angle (direction + random).
  */
-export type StampDynamics = { readonly [T in StampDynamicTarget]?: { readonly [S in StampTargetSensors[T]]?: StampResponseFor<T> } };
+export type StampDynamics = { readonly [T in StampDynamicTarget]?: { readonly [S in StampTargetSensors[T]]?: StampBinding<T, S> } };
 
 /** Every target, and each target's sensors, in the one order a brush's dynamics are written and composed in. */
 const STAMP_TARGET_SENSORS: { readonly [T in StampDynamicTarget]: readonly StampTargetSensors[T][] } = {

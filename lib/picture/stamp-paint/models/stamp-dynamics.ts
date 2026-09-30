@@ -8,7 +8,7 @@
 // shrinks it, so the two are asked for apart.
 
 import type {
-  StampAngleResponse, StampDynamics, StampResponseCurve, StampScaleResponse, StampScaleTarget,
+  StampAngleResponse, StampDynamics, StampResponseCurve, StampScaleResponse, StampScaleTarget, StampSensorParams,
 } from './stamp-brush.ts';
 
 /**
@@ -72,31 +72,38 @@ const scaleShare = (response: StampScaleResponse, s: number) => (response.kind =
 /** The turn an angle response gives at `signal`, radians. */
 const angleTurn = (response: StampAngleResponse, signal: number) => (response.kind === 'linear' ? response.amount * signal : stampResponseCurve(response.points, signal));
 
+// Each sensor's signal reads its binding's own parameters (StampSensorParams) beside the context: none has any yet,
+// and a sensor that gains one (fade's steps) reads it here.
+
 /** Pressure's signal for a scale target: its shortfall from full, as far as a taper lets it through. */
-const pressureLoss = (step: StampStepContext) => step.pressureThrough * (1 - step.pressure);
+const pressureLoss = (_params: StampSensorParams['pressure'], step: StampStepContext) => step.pressureThrough * (1 - step.pressure);
+/** Random's signal: the draw it's given, the target's own; centred to −1..1 for an angle. */
+const randomDraw = (_params: StampSensorParams['random'], draw: number) => draw;
+/** Direction's signal: the heading, radians. */
+const directionHeading = (_params: StampSensorParams['direction'], step: StampStepContext) => step.heading;
 
 /** The share of `target` its step-read bindings keep (pressure), composed by product. */
 export function stampStepShare(dynamics: StampDynamics, target: StampScaleTarget, step: StampStepContext): number {
   const pressure = dynamics[target]?.pressure;
-  return pressure ? scaleShare(pressure, pressureLoss(step)) : 1;
+  return pressure ? scaleShare(pressure, pressureLoss(pressure, step)) : 1;
 }
 
 /** The share of a stamp's `target` its stamp-read bindings keep (random: the stamp's own draw for the target). */
 export function stampOwnShare(dynamics: StampDynamics, target: Exclude<StampScaleTarget, 'count'>, stamp: StampContext): number {
   const random = dynamics[target]?.random;
-  return random ? scaleShare(random, stamp.draws[target]) : 1;
+  return random ? scaleShare(random, randomDraw(random, stamp.draws[target])) : 1;
 }
 
 /** The turn a step's bindings give each of its stamps (direction: the heading), radians. */
 export function stampStepTurn(dynamics: StampDynamics, step: StampStepContext): number {
   const direction = dynamics.rotation?.direction;
-  return direction ? angleTurn(direction, step.heading) : 0;
+  return direction ? angleTurn(direction, directionHeading(direction, step)) : 0;
 }
 
 /** The turn a stamp's own bindings give it (random: its draw, centred to −1..1), radians. */
 export function stampOwnTurn(dynamics: StampDynamics, stamp: StampContext): number {
   const random = dynamics.rotation?.random;
-  return random ? angleTurn(random, stamp.draws.rotation * 2 - 1) : 0;
+  return random ? angleTurn(random, randomDraw(random, stamp.draws.rotation) * 2 - 1) : 0;
 }
 
 /**
@@ -106,6 +113,6 @@ export function stampOwnTurn(dynamics: StampDynamics, stamp: StampContext): numb
  */
 export function stampStepCount(dynamics: StampDynamics, count: number, step: StampStepContext): number {
   const { pressure, random } = dynamics.count ?? {};
-  const pressed = pressure ? Math.max(1, Math.floor(count * scaleShare(pressure, pressureLoss(step)) + 1e-9)) : count;
-  return random ? Math.max(1, Math.round(pressed * scaleShare(random, step.countDraw))) : pressed;
+  const pressed = pressure ? Math.max(1, Math.floor(count * scaleShare(pressure, pressureLoss(pressure, step)) + 1e-9)) : count;
+  return random ? Math.max(1, Math.round(pressed * scaleShare(random, randomDraw(random, step.countDraw)))) : pressed;
 }
