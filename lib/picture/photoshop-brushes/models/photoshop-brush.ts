@@ -16,7 +16,10 @@ import { PHOTOSHOP_POOLING } from '#lib/picture/stamp-paint/models/coverage-form
 import { PHOTOSHOP_PIXEL_TIP_DIAMETER, photoshopComputedTipSpan } from './photoshop-computed-tip.ts';
 import type { PhotoshopDynamic, PhotoshopPreset, PhotoshopPresetTip, PhotoshopScatter } from './photoshop-preset.ts';
 import { PHOTOSHOP_READING } from './photoshop-reading.ts';
-import type { StampBlend, StampBrush, StampBrushAsset, StampBrushColorDynamics, StampBrushLayer, StampBrushSupportNote, StampBrushTip, StampBrushWetMix, StampDualBlend, StampGrainBlend } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
+import {
+  stampDynamics, type StampBlend, type StampBrush, type StampBrushAsset, type StampBrushColorDynamics, type StampBrushLayer, type StampBrushSupportNote, type StampBrushTip,
+  type StampBrushWetMix, type StampDualBlend, type StampGrainBlend,
+} from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 
 /**
  * The constants that turn Photoshop's settings into the studio's where Photoshop's meaning isn't published. Each is a
@@ -138,19 +141,16 @@ function pressureOf(path: string, what: string, control: string, minimum: number
   return 0;
 }
 
-/** Scatter and count, the main brush's or its dual's, read into the studio's lateral jitter, scatter radius and count. */
-function scatterOf(s: PhotoshopScatter | undefined, prefix: string, reading: PhotoshopReading, note: Note) {
-  if (!s) return { lateral: 0, scatter: { count: 1, countJitter: 0, countPressure: 0, radius: 0 } };
+/** Scatter and count, the main brush's or its dual's, read into the studio's scatter: its radius or lateral reach, and its count. */
+function scatterOf(s: PhotoshopScatter | undefined, prefix: string, reading: PhotoshopReading, note: Note): StampBrushLayer['scatter'] {
+  if (!s) return { count: 1, countJitter: 0, countPressure: 0, radius: 0, lateral: 0 };
   const scatter = shares(s.scatter), count = shares(s.countDynamics);
   const reach = scatter.jitter * reading.scatterSpan, both = s.bothAxes;
   if (reach > 0) note('approximated', `${prefix}scatter.scatter.jitter`, `${Math.round(scatter.jitter * 100)}% read as stamps strayed up to ${reach.toFixed(2)} diameters ${both ? 'every way' : 'across the stroke'}`);
   if (scatter.control === 'penPressure') note('unsupported', `${prefix}scatter.scatter.control`, 'scatter by pressure: the studio scatters alike at any pressure');
   else if (scatter.control !== 'off') pressureOf(`${prefix}scatter.scatter`, 'scatter', scatter.control, 0, note);
   const countPressure = pressureOf(`${prefix}scatter.countDynamics`, 'count', count.control, count.minimum, note);
-  return {
-    lateral: both ? 0 : reach,
-    scatter: { count: Math.max(1, Math.round(s.count)), countJitter: Math.min(1, count.jitter), countPressure, radius: both ? reach : 0 },
-  };
+  return { count: Math.max(1, Math.round(s.count)), countJitter: Math.min(1, count.jitter), countPressure, radius: both ? reach : 0, lateral: both ? 0 : reach };
 }
 
 /**
@@ -193,7 +193,7 @@ function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: Photos
   const roundnessPressure = pressureOf('tipDynamics.roundness', 'roundness', roundness.control, minimumRoundness, note);
   if (shape?.projection) note('inapplicable', 'tipDynamics.projection', "the tip's projection by pen tilt: an authored stroke has only pressure");
 
-  const { lateral, scatter } = scatterOf(p.scatter, '', reading, note);
+  const scatter = scatterOf(p.scatter, '', reading, note);
 
   const opacity = shares(p.transfer?.opacity), flow = shares(p.transfer?.flow);
   const opacityPressure = p.tool?.pressureOverridesOpacity ? 1 : pressureOf('transfer.opacity', 'opacity', opacity.control, opacity.minimum, note);
@@ -243,7 +243,10 @@ function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: Photos
     ...(grain && { grain }),
     spacing: spacingOf(tip, '', note),
     stepping: 'eachStamp',
-    jitter: { lateral, size: size.jitter, opacity: opacity.jitter, flow: flow.jitter, roundness: roundnessJitter },
+    dynamics: stampDynamics({
+      pressure: { size: sizePressure, opacity: opacityPressure, flow: flowPressure, roundness: roundnessPressure },
+      random: { size: size.jitter, opacity: opacity.jitter, flow: flow.jitter, roundness: roundnessJitter },
+    }),
     scatter,
     rotation: { angle: degrees(tip.angle), follow, jitter: angle.jitter * reading.angleJitterSpan, randomStart: false },
     flip: { x: !!shape?.flipX, y: !!shape?.flipY },
@@ -251,7 +254,6 @@ function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: Photos
     taper: NO_TAPER,
     falloff: 0,
     flow: toolFlow,
-    pressure: { size: sizePressure, opacity: opacityPressure, flow: flowPressure, roundness: roundnessPressure },
     accumulation: { kind: 'buildToOpacity' },
     ...(p.wetEdges && { wetEdges: PHOTOSHOP_POOLING }),
   };
@@ -260,14 +262,14 @@ function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: Photos
 function readDualLayer(source: PhotoshopBrushSource, dual: NonNullable<PhotoshopPreset['dual']>, note: Note, reading: PhotoshopReading): StampBrush['dual'] {
   const blend = DUAL_BLENDS[dual.mode];
   if (!blend) note('unsupported', 'dual.mode', `${dual.mode} has no studio reading; read as multiply`);
-  const { lateral, scatter } = scatterOf(dual.scatter, 'dual.', reading, note);
+  const scatter = scatterOf(dual.scatter, 'dual.', reading, note);
   const scale = (dual.tip.diameter / source.preset.tip.diameter) * reading.dualScale;
   if (dual.flip) note('approximated', 'dual.flip', "the dual's flip read as each of its stamps flipped across its width at random");
   return {
     tip: tipOf(dual.tip, source.dualTip!, source.dualTipSample, 'dual.', note),
     spacing: spacingOf(dual.tip, 'dual.', note),
     stepping: 'eachStamp',
-    jitter: { lateral, size: 0, opacity: 0, flow: 0, roundness: 0 },
+    dynamics: [],
     scatter,
     rotation: { angle: degrees(dual.tip.angle), follow: 0, jitter: 0, randomStart: false },
     flip: { x: dual.flip, y: false },
@@ -276,7 +278,6 @@ function readDualLayer(source: PhotoshopBrushSource, dual: NonNullable<Photoshop
     falloff: 0,
     // The secondary builds as its own stroke at full flow, whatever the tool's.
     flow: 1,
-    pressure: { size: 0, opacity: 0, flow: 0, roundness: 0 },
     accumulation: { kind: 'buildToOpacity' },
     blend: { family: 'texture', mode: blend ?? 'multiply' },
     scale,

@@ -13,7 +13,7 @@
 
 import { photoshopMarkStrokes, type PhotoshopBox } from '#lib/picture/photoshop-brushes/models/photoshop-capture-plan.ts';
 import { PROCREATE_PREVIEW_SIZE } from '#lib/picture/procreate-brushes/models/procreate-preview-stroke.ts';
-import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
+import { stampDynamicAmount, type StampBrush, type StampDynamic } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import type { StampStrokePoint } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 
@@ -54,8 +54,16 @@ export function photoshopReferenceStrokePath(): StampStrokePoint[] {
  */
 export function photoshopReferencePainting(brush: StampBrush, diameter: number, poseOverrides: boolean): CompiledStampPaint {
   // A size minimum m leaves the brush's size following pressure by 1 − m; counted twice, size is 1 − (1 − m)²(1 − p).
-  const size = brush.pressure.size > 0 ? brush.pressure.size ** 2 : 1;
-  const painted: StampBrush = poseOverrides ? { ...brush, pressure: { ...brush.pressure, size, opacity: 1 } } : brush;
+  const minimumSize = stampDynamicAmount(brush.dynamics, 'pressure', 'size'), size = minimumSize > 0 ? minimumSize ** 2 : 1;
+  const posed = (d: StampDynamic) => d.sensor === 'pressure' && (d.target === 'size' || d.target === 'opacity');
+  const painted: StampBrush = !poseOverrides ? brush : {
+    ...brush,
+    dynamics: [
+      ...brush.dynamics.filter((d) => !posed(d)),
+      { sensor: 'pressure', response: { kind: 'linear', amount: size }, target: 'size' },
+      { sensor: 'pressure', response: { kind: 'linear', amount: 1 }, target: 'opacity' },
+    ],
+  };
   const material = { kind: 'flat', color: '#000000' } as const;
   return compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('reference', { composite: 'glaze', opacity: 1 }, (group) => group.pass('stroke', {}, (pass) => {
     pass.stroke('stroke', { brush: painted, material, diameter, path: photoshopReferenceStrokePath() });

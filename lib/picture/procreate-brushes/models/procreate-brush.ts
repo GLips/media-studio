@@ -18,7 +18,9 @@
 // preview's own settings aren't a brush's painting, and go unreported. Tilt, azimuth and speed are noted `inapplicable`
 // (a path has none); wet mixing is noted `unsupported`, left to the wet-paint model.
 
-import type { StampBlend, StampBrush, StampBrushAsset, StampBrushColorDynamics, StampBrushLayer, StampBrushSupportNote, StampDualBlend, StampGrainBlend } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
+import {
+  stampDynamics, type StampBlend, type StampBrush, type StampBrushAsset, type StampBrushColorDynamics, type StampBrushLayer, type StampBrushSupportNote, type StampDualBlend, type StampGrainBlend,
+} from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { STAMP_MIN_SPACING } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 import { PROCREATE_READING } from './procreate-reading.ts';
 
@@ -205,9 +207,12 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
     ...(grain && { grain }),
     spacing: Math.max(spacing, STAMP_MIN_SPACING),
     stepping: 'spread',
-    jitter: { lateral: lateralJitter(num('plotJitter'), reading), size: num('dynamicsJitterSize'), opacity: num('dynamicsJitterOpacity'), flow: num('dynamicsWetnessJitter'), roundness: 0 },
+    dynamics: stampDynamics({
+      pressure: { size: num('dynamicsPressureSize'), opacity: num('dynamicsPressureOpacity'), flow: num('dynamicsPressureOpacityTransfer') },
+      random: { size: num('dynamicsJitterSize'), opacity: num('dynamicsJitterOpacity'), flow: num('dynamicsWetnessJitter') },
+    }),
     // shapeCount stores Procreate's 1–16 stamps as sixteenths.
-    scatter: { count: Math.max(1, Math.round(num('shapeCount') * 16)), countJitter: num('shapeCountJitter'), countPressure: 0, radius: 0 },
+    scatter: { count: Math.max(1, Math.round(num('shapeCount') * 16)), countJitter: num('shapeCountJitter'), countPressure: 0, radius: 0, lateral: lateralJitter(num('plotJitter'), reading) },
     rotation: { angle: num('shapeAngle'), follow: Math.min(1, Math.max(-1, num('shapeRotation'))), jitter: (shapeScatter * Math.PI) / 2, randomStart: on('shapeRandomise') },
     flip: { x: on('shapeFlipXJitter'), y: on('shapeFlipYJitter') },
     blur: { amount: 0, jitter: 0 },
@@ -218,7 +223,6 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
     falloff: num('dynamicsFalloff'),
     // maxOpacity only bounds the sidebar's opacity slider (the Handbook's Properties): a deposit states its own opacity.
     flow: num('dynamicsGlazedFlow') ** (blending ? reading.blendingFlowCurve : reading.glazeFlowCurve),
-    pressure: { size: num('dynamicsPressureSize'), opacity: num('dynamicsPressureOpacity'), flow: num('dynamicsPressureOpacityTransfer'), roundness: 0 },
     accumulation: blending ? { kind: 'build' } : { kind: 'glaze', build: glazeBuild },
     ...(wet > 0 && !blending && { wetEdges: { kind: 'rim', width: reading.edgeWidth, rim: Math.min(1, wet * reading.wetRim), sharpness: reading.rimSharpness } }),
     ...(burnt > 0 && { burntEdge: { width: reading.edgeWidth, strength: burnt, sharpness: reading.rimSharpness, blend: burntBlend ?? 'colorBurn' } }),

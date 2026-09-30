@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { normalizePhotoshopBrush, type PhotoshopReading } from './photoshop-brush.ts';
+import { stampDynamics } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { PHOTOSHOP_POOLING } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import type { PhotoshopDescriptor } from './photoshop-descriptor.ts';
 import { readPhotoshopPreset } from './photoshop-preset.ts';
@@ -110,6 +111,6 @@ test("roundness jitter reaches down to the preset's minimum roundness, as vid-97
     }),
     tip: asset('tips/round-100-100.png'),
   }, photoshopReading);
-  assert.deepEqual({ pressure: brush.pressure.roundness, jitter: brush.jitter.roundness }, { pressure: 0.75, jitter: 0.375 });
+  assert.deepEqual(brush.dynamics.filter((d) => d.target === 'roundness'), stampDynamics({ pressure: { roundness: 0.75 }, random: { roundness: 0.375 } }));
   assert.equal(support.some((note) => note.setting.startsWith('tipDynamics.roundness')), false, 'both are read, neither approximated');
 });

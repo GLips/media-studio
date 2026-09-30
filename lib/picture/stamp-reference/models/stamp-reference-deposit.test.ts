@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { bindStampBrushImages, type StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
+import { stampDynamics, bindStampBrushImages, type StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { placeStrokeStamps, type PlacedStamp } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 import { renderStampReferenceDeposit } from './stamp-reference-deposit.ts';
 import { stampReferenceMips } from './stamp-reference-image.ts';
@@ -10,14 +10,13 @@ const brush: StampBrush = {
   tip: { image: { style: 's', pack: 'p', file: 'tip.png' }, roundness: 1, sampling: 'isotropic' },
   spacing: 0.25,
   stepping: 'eachStamp',
-  jitter: { lateral: 0, size: 0, opacity: 0, flow: 0, roundness: 0 },
-  scatter: { count: 1, countJitter: 0, countPressure: 0, radius: 0 },
+  dynamics: stampDynamics({ pressure: { size: 1 } }),
+  scatter: { count: 1, countJitter: 0, countPressure: 0, radius: 0, lateral: 0 },
   rotation: { angle: 0, follow: 0, jitter: 0, randomStart: false },
   flip: { x: false, y: false },
   blur: { amount: 0, jitter: 0 },
   taper: { start: 0, end: 0, size: 1, opacity: 1, shape: 0, pressure: 0 },
   falloff: 0, flow: 1,
-  pressure: { size: 1, opacity: 0, flow: 0, roundness: 0 },
 };
 
 test('Photoshop steps each stamp by its own size from the first point, and paints nothing on the last', () => {

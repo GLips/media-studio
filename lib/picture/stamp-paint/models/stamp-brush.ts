@@ -133,18 +133,15 @@ export type StampBrushStamping<Image = StampBrushAsset> = {
    * the first point to the last whole step before the end, as Photoshop steps: a thinning stroke's stamps close up.
    */
   stepping: 'spread' | 'eachStamp';
-  /**
-   * Each stamp's random variation, 0..1: sideways offset (in diameters), size and opacity lost, `flow` lost (as a
-   * wetter or drier stamp lays less paint, independently of opacity), and `roundness` lost, a share of the tip's own
-   * that squashes the stamp across its length without moving the next step.
-   */
-  jitter: { lateral: number; size: number; opacity: number; flow: number; roundness: number };
+  /** How each stamp's size, opacity, flow and roundness answer the stroke's pressure and chance. */
+  dynamics: readonly StampDynamic[];
   /**
    * `count` stamps at each spacing step, each offset a random way by a uniformly random distance up to `radius`
-   * diameters, so they crowd the stroke; `countJitter` (0..1) drops up to that share of them at random, step by step.
-   * `countPressure` (0..1) is how far pressure thins them: a step keeps the whole stamps of count × its pressured share.
+   * diameters, so they crowd the stroke, and across the stroke at random by up to `lateral` diameters either way;
+   * `countJitter` (0..1) drops up to that share of them at random, step by step. `countPressure` (0..1) is how far
+   * pressure thins them: a step keeps the whole stamps of count × its pressured share.
    */
-  scatter: { count: number; countJitter: number; countPressure: number; radius: number };
+  scatter: { count: number; countJitter: number; countPressure: number; radius: number; lateral: number };
   /**
    * `angle` turns every stamp; `follow` (-1..1) turns it with the stroke's direction (against it when negative),
    * unwrapped along the stroke so a partial follow never jumps; `jitter` turns each at random; `randomStart` turns a
@@ -169,12 +166,37 @@ export type StampBrushStamping<Image = StampBrushAsset> = {
   falloff: number;
   /** How much of each stamp's paint lands, 0..1. */
   flow: number;
-  /**
-   * How far a stroke's pressure moves each stamp's size, opacity, flow and roundness, 0..1: 0 ignores pressure. Opacity
-   * and flow multiply, so a brush can thin by pressure through either; roundness squashes the stamp as its jitter does.
-   */
-  pressure: { size: number; opacity: number; flow: number; roundness: number };
 };
+
+/**
+ * What a dynamic moves, each a share of the stamp's own that it keeps: its size, its opacity and its `flow` (which
+ * multiply, so a brush can thin through either; flow as a wetter or drier stamp lays less paint), and its `roundness`,
+ * a share of the tip's own that squashes the stamp across its length without moving the next step.
+ */
+export type StampDynamicTarget = 'size' | 'opacity' | 'flow' | 'roundness';
+export const STAMP_DYNAMIC_TARGETS: readonly StampDynamicTarget[] = ['size', 'opacity', 'flow', 'roundness'];
+
+/**
+ * A sensor, a response and a target: each stamp's `target` keeps 1 − amount × shortfall of itself, the shortfall
+ * being how far the `sensor` reads from full: `pressure`, one less the stroke's pressure at the stamp (within a taper,
+ * as far as the taper lets it through); `random`, the stamp's own draw for the target, 0..1. Responses are linear.
+ */
+export type StampDynamic = { sensor: 'pressure' | 'random'; response: { kind: 'linear'; amount: number }; target: StampDynamicTarget };
+
+/**
+ * A brush's dynamics from each sensor's amount by target, in one order (by target, pressure first) so two brushes
+ * that answer alike compare equal; an amount of 0 is no dynamic.
+ */
+export function stampDynamics(amounts: { pressure?: Partial<Record<StampDynamicTarget, number>>; random?: Partial<Record<StampDynamicTarget, number>> }): StampDynamic[] {
+  return STAMP_DYNAMIC_TARGETS.flatMap((target) => (['pressure', 'random'] as const).flatMap((sensor): StampDynamic[] => {
+    const amount = amounts[sensor]?.[target] ?? 0;
+    return amount ? [{ sensor, response: { kind: 'linear', amount }, target }] : [];
+  }));
+}
+
+/** How much `sensor` moves `target` in `dynamics`: its linear amount, 0 when it doesn't. */
+export const stampDynamicAmount = (dynamics: readonly StampDynamic[], sensor: StampDynamic['sensor'], target: StampDynamicTarget) =>
+  dynamics.find((d) => d.sensor === sensor && d.target === target)?.response.amount ?? 0;
 
 /**
  * How a brush's colour varies from its deposit's, each 0..1: hue (as a share of the colour wheel), saturation,
