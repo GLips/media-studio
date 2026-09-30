@@ -4,11 +4,11 @@
 // the screenshot waits for the GPU.
 //
 // Compile the recipe once, where the scene is defined, not while it renders: a painting that is a new object each
-// frame is loaded afresh each frame.
+// frame is loaded afresh each frame. A group that moves or boils does so within one painting, at the video's fps.
 
 import { useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { useDelayRender } from 'remotion';
+import { useDelayRender, useVideoConfig } from 'remotion';
 import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
 import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
@@ -32,6 +32,7 @@ export function StampPainting({ painting, style: { paper, mixing }, t, width, he
   box?: { x: number; y: number; w: number; h: number };
 }) {
   const format = useVideoFormat();
+  const { fps } = useVideoConfig();
   const box = given ?? fullFrameRect(format);
   const w = Math.round(width ?? box.w), h = Math.round(height ?? box.h);
   const holder = useRef<HTMLDivElement>(null);
@@ -52,7 +53,7 @@ export function StampPainting({ painting, style: { paper, mixing }, t, width, he
     Object.assign(canvas.style, { position: 'absolute', inset: '0', width: '100%', height: '100%' });
     holder.current!.append(canvas);
     const loaded = profile?.('stamp paint load');
-    createStampPaintRenderer(canvas, painting, paper, mixing, w, h, stampPaintAssetUrl).then((ready) => {
+    createStampPaintRenderer(canvas, painting, paper, mixing, w, h, stampPaintAssetUrl, { fps }).then((ready) => {
       loaded?.();
       made = ready;
       if (!live) return ready.dispose();
@@ -66,7 +67,7 @@ export function StampPainting({ painting, style: { paper, mixing }, t, width, he
       setRenderer(null);
       release();
     };
-  }, [painting, paper, mixing, w, h, profile, delayRender, continueRender, cancelRender]);
+  }, [painting, paper, mixing, w, h, fps, profile, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!renderer) return;

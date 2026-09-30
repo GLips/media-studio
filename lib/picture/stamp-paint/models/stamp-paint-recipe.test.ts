@@ -167,15 +167,28 @@ test("a wash keeps its deposits and waits in painting order, a bloom waiting unt
     group.wash('w', {}, (wash) => wash.stroke('s', { brush, material: ochre, diameter: 30, path, water: 2 }))))), /carries 2 water/);
 });
 
-test("a boil's epoch re-seeds only its own group's deposits, their IDs kept", () => {
-  const recipe = stampPaintRecipe((paint) => {
-    paint.group('cloud', { composite: 'glaze', opacity: 1, boil: { every: 2 } }, (group) => group.pass('p', {}, (pass) => pass.stroke('puff', { brush, material: ochre, diameter: 30, path })));
+test("a boil's epoch re-seeds only its own group's marks, keeping their IDs and colours", () => {
+  const jittery: StampBrush = { ...brush, color: { stamp: { hue: 0, saturation: 0, lightness: 0, darkness: 0 }, stroke: { hue: 0.2, saturation: 0.2, lightness: 0.2, darkness: 0 }, pressure: { hue: 0, saturation: 0, lightness: 0, secondary: 0 } } };
+  const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => {
+    paint.group('cloud', { composite: 'glaze', opacity: 1, boil: { every: 2 } }, (group) => group.pass('p', {}, (pass) => pass.stroke('puff', { brush: jittery, material: ochre, diameter: 30, path })));
     paint.group('hill', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) => pass.stroke('line', { brush, material: ochre, diameter: 30, path })));
-  });
-  const stampsOf = (epoch: number) => compileStampPaintRecipe(recipe, { boilEpochs: new Map([['cloud', epoch], ['hill', epoch]]) }).groups.map((group) => group.passes[0].deposits[0]);
-  const [cloud0, hill0] = stampsOf(0), [cloud1, hill1] = stampsOf(1);
-  assert.deepEqual(compileStampPaintRecipe(recipe).groups[0].passes[0].deposits[0].stamps, cloud0.stamps);
-  assert.notDeepEqual(cloud1.stamps, cloud0.stamps);
-  assert.equal(cloud1.id, cloud0.id);
-  assert.deepEqual(hill1.stamps, hill0.stamps);
+  }));
+  const [cloud, hill] = painting.groups;
+  assert.equal(hill.boil, undefined);
+  assert.equal(cloud.boil!.reseeded(0).passes[0].deposits[0].stamps.length, cloud.passes[0].deposits[0].stamps.length);
+  assert.deepEqual(cloud.boil!.reseeded(0).passes[0].deposits[0].stamps, cloud.passes[0].deposits[0].stamps);
+  const [puff0, puff1] = [0, 1].map((epoch) => cloud.boil!.reseeded(epoch).passes[0].deposits[0]);
+  assert.notDeepEqual(puff1.stamps, puff0.stamps);
+  assert.equal(puff1.id, puff0.id);
+  assert.deepEqual(puff1.action, puff0.action);
+});
+
+test('a colour change reshapes nothing: every mark lands where and as it did, only its paint differs', () => {
+  const jittery: StampBrush = { ...brush, color: { stamp: { hue: 0.1, saturation: 0.1, lightness: 0.1, darkness: 0 }, stroke: { hue: 0, saturation: 0, lightness: 0, darkness: 0 }, pressure: { hue: 0, saturation: 0, lightness: 0, secondary: 0 } } };
+  const lit = (color: `#${string}`) => compileStampPaintRecipe(stampPaintRecipe((paint) => {
+    paint.group('sky', { composite: 'glaze', opacity: 1 }, (group) => group.pass('p', {}, (pass) => pass.stroke('glow', { brush: jittery, material: { kind: 'color', color }, diameter: 30, path })));
+  })).groups[0].passes[0].deposits[0];
+  const [day, dusk] = [lit('#c8902f'), lit('#b0402a')];
+  assert.deepEqual(dusk.stamps, day.stamps);
+  assert.deepEqual(dusk.dualStamps, day.dualStamps);
 });

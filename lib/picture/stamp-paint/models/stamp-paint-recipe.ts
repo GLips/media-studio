@@ -19,6 +19,7 @@ import {
 } from './stamp-fill.ts';
 import { stampPaintFieldAt, stampPaintFieldEnds, stampPaintFieldProblem, type StampPaintField } from './stamp-paint-field.ts';
 import { stampRegionPolygon, type StampEdge, type StampPoint, type StampRegion } from './stamp-region.ts';
+import { checkStampGroupMotion, type StampGroupBoil, type StampGroupMotion } from './stamp-group-motion.ts';
 
 export type StampPaintColor = `#${string}`;
 
@@ -123,18 +124,6 @@ export type StampMaskSettings = { region: StampRegion; edge?: StampEdge };
  * declared after it in its scope.
  */
 export type StampUnmaskSettings = { amount?: number } & ({ region: StampRegion; edge?: StampEdge } | { region?: undefined; edge?: undefined });
-
-/**
- * A group moving over the scene: its placement at each key (seconds into the scene, pixels, radians, scale), eased
- * linearly between keys and held beyond them. It's painted in its own place, paper texture and grain included, and
- * laid where it's moved to, so its texture travels with it rather than swimming.
- */
-export type StampGroupMotion = { keys: readonly { at: number; x: number; y: number; rotation?: number; scale?: number }[] };
-/**
- * A group painted anew every `every` frames, each time with its randomness seeded afresh, as hand-drawn animation
- * boils on twos (`every: 2`). Between, it holds.
- */
-export type StampGroupBoil = { every: number };
 
 /**
  * `opaque` covers what it's painted over, as body colour does; `glaze` lays over it at `opacity`, letting it show
@@ -400,28 +389,23 @@ export type CompiledStampGroup = {
   id: string; composite: 'opaque' | 'glaze'; opacity: number; passes: readonly CompiledStampPass[];
   /** Absent for a group that stays where it's painted. */
   motion?: StampGroupMotion;
-  /** Absent for a group painted once. */
-  boil?: StampGroupBoil;
+  /**
+   * Absent for a group painted once. `epoch`: which of its boil's paintings this is (0, as written); `reseeded`
+   * compiles this group alone at another epoch, each deposit's randomness drawn afresh and its ID, fluid, colour and
+   * reveal kept, so an epoch reshapes marks but never repaints the palette.
+   */
+  boil?: StampGroupBoil & { epoch: number; reseeded: (epoch: number) => CompiledStampGroup };
 };
 
 /** A checked recipe with every stamp placed, its groups in the order they paint. */
 export type CompiledStampPaint = { groups: readonly CompiledStampGroup[] };
 
 /**
- * How a painting is compiled for one moment of a boil: each boiling group's epoch by its ID (StampGroupBoil; 0, the
- * first, when left out). An epoch re-seeds every deposit of its group, their IDs unchanged.
- */
-export type StampPaintCompileOptions = { boilEpochs?: ReadonlyMap<string, number> };
-
-/** The boil epoch of frame `frame` for a group boiling every `every` frames. */
-export const stampBoilEpoch = (frame: number, { every }: StampGroupBoil) => Math.floor(frame / every);
-
-/**
  * Checks `recipe` and places every stamp. Throws on an ID used twice at one level (it would seed two deposits alike)
  * or holding `/` or `|` (the seed's separators), a clipped pass with nothing before it, a deposit with no points or
  * diameter, a region that isn't a shape, or any number out of its range.
  */
-export function compileStampPaintRecipe(recipe: StampPaintRecipe, { boilEpochs }: StampPaintCompileOptions = {}): CompiledStampPaint {
+export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStampPaint {
   const seen = new Set<string>(), duplicates = new Set<string>();
   const claim = (id: string, parent?: string) => {
     if (!id || /[/|]/.test(id)) throw new Error(`stamp paint: "${id}" isn't an ID: IDs are non-empty and hold no "/" or "|"`);
@@ -446,20 +430,24 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe, { boilEpochs }
     if (!(amount >= 0 && amount <= 1)) throw new Error(`stamp paint: ${full} lifts ${amount} of the fluid, and an unmask lifts 0..1 of it`);
     masks.set(node, { ...common, kind: 'unmask', amount, area: op.region ? areaOf(op.region, op.edge) : null });
   }
-  const groups = recipe.groups.map(({ id, options, passes }, written) => {
-    const groupId = claim(id);
+  /**
+   * `group` compiled with every deposit seeded for boil `epoch` (0: as written). IDs are claimed only as written:
+   * an epoch's are those same IDs, checked already.
+   */
+  const compileGroup = ({ id, options, passes }: StampPaintRecipeGroup, epoch: number): CompiledStampGroup => {
+    const named = epoch ? (child: string, parent?: string) => (parent ? `${parent}/${child}` : child) : claim;
+    const groupId = named(id);
     let clipBase: string | undefined;
     const compiledPasses = passes.map((pass): CompiledStampPass => {
-      const passId = claim(pass.id, groupId);
+      const passId = named(pass.id, groupId);
       if (pass.clipped && !clipBase) throw new Error(`stamp paint: ${passId} is clipped, but no unclipped pass comes before it in ${groupId}`);
       const clipTo = pass.clipped ? clipBase : undefined;
       if (!pass.clipped) clipBase = passId;
       const schedule = pass.steps.map((step): CompiledStampWashStep => {
         if (step.kind === 'wait') return { kind: 'wait', until: checkedWait(step.until, passId) };
-        const full = claim(step.id, passId);
+        const full = named(step.id, passId);
         if (!pass.wash && step.action.kind !== 'paint') throw new Error(`stamp paint: ${full} ${step.action.kind === 'water' ? 'wets' : 'lifts'}, which only a wash's deposits do`);
         if (step.water !== undefined && !(step.water >= 0 && step.water <= 1)) throw new Error(`stamp paint: ${full} carries ${step.water} water, and a brush carries 0..1`);
-        const epoch = options.boil ? boilEpochs?.get(groupId) ?? 0 : 0;
         const deposit = compileDeposit(full, step, step.mask && masks.get(step.mask)!, epoch ? `${full}|boil${epoch}` : full);
         return { kind: 'deposit', deposit, water: step.action.kind === 'lift' ? null : step.water ?? null };
       });
@@ -478,11 +466,15 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe, { boilEpochs }
     });
     const opacity = options.composite === 'glaze' ? options.opacity : 1;
     const { motion, boil } = options;
-    if (motion) checkMotion(motion, groupId);
+    if (motion) checkStampGroupMotion(motion, groupId);
     if (boil && !(Number.isInteger(boil.every) && boil.every >= 1)) throw new Error(`stamp paint: ${groupId} boils every ${boil.every} frames, and a boil repaints every whole number of frames from 1`);
-    const group: CompiledStampGroup = { id: groupId, composite: options.composite, opacity, passes: compiledPasses, ...(motion && { motion }), ...(boil && { boil }) };
-    return { written, order: options.order ?? 0, depth: options.depth ?? 0, group };
-  });
+    const written = { id, options, passes };
+    return {
+      id: groupId, composite: options.composite, opacity, passes: compiledPasses, ...(motion && { motion }),
+      ...(boil && { boil: { every: boil.every, epoch, reseeded: (next: number) => compileGroup(written, next) } }),
+    };
+  };
+  const groups = recipe.groups.map((group, written) => ({ written, order: group.options.order ?? 0, depth: group.options.depth ?? 0, group: compileGroup(group, 0) }));
   if (duplicates.size) throw new Error(`stamp paint: IDs used twice, which would seed two deposits alike: ${[...duplicates].join(', ')}`);
   groups.sort((a, b) => a.order - b.order || b.depth - a.depth || a.written - b.written);
   return { groups: groups.map(({ group }) => group) };
@@ -491,15 +483,6 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe, { boilEpochs }
 function checkedWait(until: StampWashWait, passId: string): StampWashWait {
   if (typeof until === 'object' && !(until.seconds >= 0 && Number.isFinite(until.seconds))) throw new Error(`stamp paint: ${passId} waits ${until.seconds}s, and a wait takes a finite 0 or more`);
   return until;
-}
-
-function checkMotion({ keys }: StampGroupMotion, groupId: string) {
-  if (!keys.length) throw new Error(`stamp paint: ${groupId} moves with no keys`);
-  keys.forEach((key, i) => {
-    const values = [key.at, key.x, key.y, key.rotation ?? 0, key.scale ?? 1];
-    if (!values.every(Number.isFinite) || !((key.scale ?? 1) > 0)) throw new Error(`stamp paint: ${groupId}'s motion key ${i} needs finite values and a positive scale`);
-    if (i && !(key.at > keys[i - 1].at)) throw new Error(`stamp paint: ${groupId}'s motion keys need increasing times; key ${i} is at ${key.at}s`);
-  });
 }
 
 /**
@@ -548,6 +531,12 @@ function compileAction(full: string, action: StampRecipeAction, brush: StampBrus
   return { kind: 'paint', material, ...(secondaryColor && { secondaryColor }) };
 }
 
+/** A deposit's eight draws from `seed`: its grains' offsets, then its colour jitter. */
+function stampDepositDraws(seed: string) {
+  const random = seededRandom(`${seed}|deposit|paint`);
+  return Array.from({ length: 8 }, () => random());
+}
+
 /** A deposit checked and its stamps placed, `full` its ID, under the fluid `mask`, its randomness drawn from `seed`. */
 function compileDeposit(full: string, { geometry, tool, action }: StampPaintRecipeDeposit, mask: CompiledStampMask | null, seed: string): CompiledStampDeposit {
   const { brush, opacity = 1, appliedAt, drawnOver, diameter } = tool;
@@ -556,10 +545,14 @@ function compileDeposit(full: string, { geometry, tool, action }: StampPaintReci
   if (geometry.kind !== 'fill' && !(geometry.kind === 'stroke' ? geometry.path : geometry.at).length) throw new Error(`stamp paint: ${full} has no points to stamp`);
   if (geometry.kind === 'fill') checkedStampPolygon(geometry.region, full);
   if (geometry.kind === 'stroke' && geometry.path.some(({ speed }) => speed !== undefined && !(speed > 0))) throw new Error(`stamp paint: ${full} has a point whose speed isn't positive`);
-  const random = seededRandom(`${seed}|deposit|paint`);
-  const offset = (layer?: StampBrushLayer) => [random(), random()].map((r) => r * (layer?.grain?.offsetJitter ?? 0)) as [number, number];
-  const grainOffset = { main: offset(brush), dual: offset(brush.dual) };
-  const jitter = [random(), random(), random(), random()];
+  // Four draws place the grains, four jitter the colour. A boil's epoch draws only its grains afresh: colour is the
+  // author's palette, which an epoch mustn't flicker.
+  const own = stampDepositDraws(seed), jitter = (seed === full ? own : stampDepositDraws(full)).slice(4);
+  const offset = (layer: StampBrushLayer | undefined, at: number): [number, number] => {
+    const reach = layer?.grain?.offsetJitter ?? 0;
+    return [own[at] * reach, own[at + 1] * reach];
+  };
+  const grainOffset = { main: offset(brush, 0), dual: offset(brush.dual, 2) };
   const blend = (action.kind === 'paint' && action.blend) || brush.blend;
   const common = {
     id: full, brush, action: compileAction(full, action, brush, jitter), grainOffset, diameter, blend, opacity, mask,

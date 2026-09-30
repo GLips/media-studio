@@ -2,6 +2,9 @@
 // landDeposit); a stage then works over the neighbourhood of its group's layer: wet paint running into water, a
 // bloom's cauliflower edge, pigment gathering at a drying rim. The renderer runs every stage after each wash deposit
 // it lands (`after: 'deposit'`) or once a wash's last has landed (`after: 'wash'`), in the order listed.
+//
+// Warning: a stage keeps nothing from one moment to the next but what it writes into the group's layer. A frame may
+// start partway through a group from a checkpoint (stamp-paint-checkpoints.ts), which restores the layer alone.
 
 import type { PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
 import type { StampWashRecord, StampWetLanding, StampWetness } from '../models/stamp-wetness.ts';
@@ -28,7 +31,7 @@ export type StampWetStageContext = {
 /**
  * What a stage encodes after: a deposit landed over `box`, the footprint then holding, per pixel of the box, the
  * coverage it laid (r, kept: fluid, `within` and clip applied) and where paint may land (g: the fluid, `within` and
- * clip alone); or a wash done.
+ * clip alone); or a wash done. Its deposit and pass are as written, even in a boil's epoch.
  */
 export type StampWetStageMoment =
   | { kind: 'deposit'; deposit: CompiledStampDeposit; pass: CompiledStampPass; landing: StampWetLanding; box: StampPixelBox }
