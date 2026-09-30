@@ -19,10 +19,11 @@ import { STAMP_OPAQUE_COVER, type CompiledStampDeposit, type StampPaintColor } f
 import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
 import { stampUniformLayout, stampUniformWriter, type StampUniformViews } from './stamp-uniform-layout.ts';
 
-/** Words per component in the component buffer: slot, seed, amount, granulation, flocculation. */
-const COMPONENT_WORDS = 5;
+/** Words per component in the component buffer: slot, seed, amount at the material's first end and its second, granulation, flocculation. */
+const COMPONENT_WORDS = 6;
 
-const PIGMENT_PAINT_DEPOSIT = stampUniformLayout('PaintDeposit', [['first', 'u32'], ['count', 'u32'], ['group', 'u32']]);
+/** A deposit's components (the first and how many), its group, and where its material grades (StampPigmentGrade). */
+const PIGMENT_PAINT_DEPOSIT = stampUniformLayout('PaintDeposit', [['first', 'u32'], ['count', 'u32'], ['group', 'u32'], ['gradeKind', 'i32'], ['grade', 'vec4f']]);
 
 /** A number as a WGSL f32 literal, to the precision an f32 holds. */
 const f32 = (value: number) => value.toPrecision(9);
@@ -37,15 +38,17 @@ export function stampPigmentCompositor(device: GPUDevice, paint: StampPigmentPai
 
   const writers = new Map<CompiledStampDeposit, (views: StampUniformViews) => void>();
   const componentWords: number[] = [];
-  for (const [deposit, { group, components }] of paint.deposits) {
+  for (const [deposit, { group, components, grade }] of paint.deposits) {
     const first = componentWords.length / COMPONENT_WORDS;
     writers.set(deposit, (views) => {
       const put = stampUniformWriter(PIGMENT_PAINT_DEPOSIT, views);
       put('first', first);
       put('count', components.length);
       put('group', group);
+      put('gradeKind', grade.kind);
+      put('grade', [...grade.geometry]);
     });
-    for (const { slot, seed, amount, granulation, flocculation } of components) componentWords.push(slot, seed, amount, granulation, flocculation);
+    for (const { slot, seed, amounts, granulation, flocculation } of components) componentWords.push(slot, seed, ...amounts, granulation, flocculation);
   }
   const componentData = new ArrayBuffer(Math.max(COMPONENT_WORDS, componentWords.length) * 4);
   const asWords = new Uint32Array(componentData), asFloats = new Float32Array(componentData);
@@ -94,7 +97,7 @@ fn paperReflectance(i: u32, color: vec3f) -> vec4f {
 
   const contact = medium.paperContact.kind === 'peaks'
     ? `paintDryContact(h, meanHeight, ${f32(medium.paperContact.tooth)}, u.paperDepth)`
-    : 'paintWetSettle(valley, u.paperDepth, c.granulation, c.amount)';
+    : 'paintWetSettle(valley, u.paperDepth, c.granulation, amount)';
 
   return {
     targets: { layer: { kind: 'array', layers }, painting: { kind: 'array', layers: V } },
@@ -103,23 +106,26 @@ fn paperReflectance(i: u32, color: vec3f) -> vec4f {
       layout: PIGMENT_PAINT_DEPOSIT,
       wgsl: /* wgsl */ `
 ${PAINT_PAPER_WGSL}
-struct PigmentComponent { slot: u32, seed: u32, amount: f32, granulation: f32, flocculation: f32 }
+struct PigmentComponent { slot: u32, seed: u32, first: f32, second: f32, granulation: f32, flocculation: f32 }
 @group(0) @binding(24) var<storage, read> components: array<PigmentComponent>;
 const LAYERS = ${layers}u;
 // The tooth moves each pigment about in layDeposit, rather than cutting the deposit's coverage.
 fn paperKept(tooth: f32, mean: f32, depth: f32) -> f32 { return 1.0; }
 fn layerCoverage(pixel: vec2u) -> f32 { return textureLoad(layer, pixel, 0u).x; }
-// A full stroke's pigment amounts here, where the paper's tooth and each pigment's habits put them.
+// A full stroke's pigment amounts here, graded between its material's ends by amount, where the paper's tooth and
+// each pigment's habits put them.
 fn incomingAt(tooth: vec2f, at: vec2f) -> array<vec4f, LAYERS> {
   let h = 1.0 - tooth.x;
   let meanHeight = 1.0 - tooth.y;
   let valley = paintValley(h, meanHeight);
+  let graded = paintFieldShare(at, paint.gradeKind, paint.grade);
   var incoming: array<vec4f, LAYERS>;
   for (var k = paint.first; k < paint.first + paint.count; k++) {
     let c = components[k];
+    let amount = c.first + (c.second - c.first) * graded;
     let share = max(0.0, ${contact} * paintClumps(c.flocculation, at.x, at.y, c.seed));
     let channel = c.slot + 1u;
-    incoming[channel / 4u][channel % 4u] += c.amount * share;
+    incoming[channel / 4u][channel % 4u] += amount * share;
   }
   return incoming;
 }
