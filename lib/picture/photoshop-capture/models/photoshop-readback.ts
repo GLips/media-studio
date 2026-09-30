@@ -35,19 +35,27 @@ export function photoshopSettingsMismatches(settings: PhotoshopBrushSettings, ap
   expect('noise', settings.noise, applied.noise);
   expect('build-up', false, applied.repeat);
 
-  const sizeJitter = settings.jitter?.size ?? 0;
-  expect('shape dynamics', !!settings.size || sizeJitter > 0, applied.useTipDynamics);
+  const sizeJitter = settings.jitter?.size ?? 0, angleJitter = settings.jitter?.angle ?? 0, roundnessJitter = settings.jitter?.roundness ?? 0;
+  expect('shape dynamics', !!settings.size || sizeJitter > 0 || angleJitter > 0 || roundnessJitter > 0, applied.useTipDynamics);
   if (settings.size || sizeJitter) {
     const size = object(applied.szVr);
     expect('size control', CONTROL_CODE[settings.size?.control ?? 'off'], size.bVTy);
     expect('size jitter', sizeJitter, unit(size.jitter));
   }
+  if (angleJitter) expect('angle jitter', angleJitter, unit(object(applied.angleDynamics).jitter));
+  if (roundnessJitter) {
+    expect('roundness jitter', roundnessJitter, unit(object(applied.roundnessDynamics).jitter));
+    // Photoshop keeps a minimum roundness of at least 1%.
+    expect('minimum roundness', Math.max(1, settings.jitter?.minimumRoundness ?? 0), unit(applied.minimumRoundness));
+  }
+  if (settings.jitter?.count) expect('count', settings.jitter.count, applied.count);
+  if (settings.jitter?.countControl) expect('count control', CONTROL_CODE[settings.jitter.countControl.control], object(applied.countDynamics).bVTy);
   expect('transfer', !!settings.transfer, applied.usePaintDynamics);
   if (settings.transfer) {
     expect('opacity control', CONTROL_CODE[settings.transfer.opacity.control], object(applied.opVr).bVTy);
     expect('flow control', CONTROL_CODE[settings.transfer.flow.control], object(applied.prVr).bVTy);
   }
-  expect('scatter', (settings.jitter?.scatter ?? 0) > 0, applied.useScatter);
+  expect('scatter', (settings.jitter?.scatter ?? 0) > 0 || (settings.jitter?.count ?? 1) > 1, applied.useScatter);
 
   expect('texture', !!settings.texture, applied.useTexture);
   if (settings.texture) {
@@ -67,6 +75,8 @@ export function photoshopSettingsMismatches(settings: PhotoshopBrushSettings, ap
     expect('dual diameter', settings.dual.tip.diameter, unit(dualTip.diameter));
     expect('dual hardness', settings.dual.tip.hardness, unit(dualTip.hardness));
     expect('dual spacing', settings.dual.tip.spacing, unit(dualTip.spacing));
+    if (settings.dual.scatter) expect('dual scatter', settings.dual.scatter, unit(object(dual.scatterDynamics).jitter));
+    if (settings.dual.count) expect('dual count', settings.dual.count, dual.count);
   }
   return out;
 }

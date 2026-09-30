@@ -206,7 +206,7 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
     ...(grain && { grain }),
     spacing: Math.max(spacing, STAMP_MIN_SPACING),
     stepping: 'spread',
-    jitter: { lateral: lateralJitter(num('plotJitter'), reading), size: num('dynamicsJitterSize'), opacity: num('dynamicsJitterOpacity'), flow: num('dynamicsWetnessJitter') },
+    jitter: { lateral: lateralJitter(num('plotJitter'), reading), size: num('dynamicsJitterSize'), opacity: num('dynamicsJitterOpacity'), flow: num('dynamicsWetnessJitter'), roundness: 0 },
     // shapeCount stores Procreate's 1–16 stamps as sixteenths.
     scatter: { count: Math.max(1, Math.round(num('shapeCount') * 16)), countJitter: num('shapeCountJitter'), radius: 0 },
     rotation: { angle: num('shapeAngle'), follow: Math.min(1, Math.max(-1, num('shapeRotation'))), jitter: (shapeScatter * Math.PI) / 2, randomStart: on('shapeRandomise') },
@@ -219,7 +219,7 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
     falloff: num('dynamicsFalloff'),
     // maxOpacity only bounds the sidebar's opacity slider (the Handbook's Properties): a deposit states its own opacity.
     flow: num('dynamicsGlazedFlow') ** (blending ? reading.blendingFlowCurve : reading.glazeFlowCurve),
-    pressure: { size: num('dynamicsPressureSize'), opacity: num('dynamicsPressureOpacity'), flow: num('dynamicsPressureOpacityTransfer') },
+    pressure: { size: num('dynamicsPressureSize'), opacity: num('dynamicsPressureOpacity'), flow: num('dynamicsPressureOpacityTransfer'), roundness: 0 },
     accumulation: blending ? 'build' : 'glaze',
     ...(!blending && glazeBuild > 0 && { glazeBuild }),
     ...(wet > 0 && !blending && { wetEdge: { width: reading.edgeWidth, rim: Math.min(1, wet * reading.wetRim), sharpness: reading.rimSharpness } }),

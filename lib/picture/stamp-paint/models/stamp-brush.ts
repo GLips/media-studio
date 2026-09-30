@@ -120,10 +120,11 @@ export type StampBrushStamping = {
    */
   stepping: 'spread' | 'eachStamp';
   /**
-   * Each stamp's random variation, 0..1: sideways offset (in diameters), size and opacity lost, and `flow` lost (as a
-   * wetter or drier stamp lays less paint, independently of opacity).
+   * Each stamp's random variation, 0..1: sideways offset (in diameters), size and opacity lost, `flow` lost (as a
+   * wetter or drier stamp lays less paint, independently of opacity), and `roundness` lost, a share of the tip's own
+   * that squashes the stamp across its length without moving the next step.
    */
-  jitter: { lateral: number; size: number; opacity: number; flow: number };
+  jitter: { lateral: number; size: number; opacity: number; flow: number; roundness: number };
   /**
    * `count` stamps at each spacing step, each offset a random way by a uniformly random distance up to `radius`
    * diameters, so they crowd the stroke; `countJitter` (0..1) drops up to that share of them at random, step by step.
@@ -154,10 +155,10 @@ export type StampBrushStamping = {
   /** How much of each stamp's paint lands, 0..1. */
   flow: number;
   /**
-   * How far a stroke's pressure moves each stamp's size, opacity and flow, 0..1: 0 ignores pressure. Opacity and flow
-   * multiply, so a brush can thin by pressure through either.
+   * How far a stroke's pressure moves each stamp's size, opacity, flow and roundness, 0..1: 0 ignores pressure. Opacity
+   * and flow multiply, so a brush can thin by pressure through either; roundness squashes the stamp as its jitter does.
    */
-  pressure: { size: number; opacity: number; flow: number };
+  pressure: { size: number; opacity: number; flow: number; roundness: number };
 };
 
 /**

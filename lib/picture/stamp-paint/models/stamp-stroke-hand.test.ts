@@ -52,14 +52,14 @@ const brush: StampBrush = {
   tip: { image: { style: 's', pack: 'p', file: 'tip.png' }, roundness: 1, sampling: 'isotropic' },
   spacing: 0.1,
   stepping: 'spread',
-  jitter: { lateral: 0, size: 0, opacity: 0, flow: 0 },
+  jitter: { lateral: 0, size: 0, opacity: 0, flow: 0, roundness: 0 },
   scatter: { count: 1, countJitter: 0, radius: 0 },
   rotation: { angle: 0, follow: 0, jitter: 0, randomStart: false },
   flip: { x: false, y: false },
   blur: { amount: 0, jitter: 0 },
   taper: { start: 0, end: 0, size: 1, opacity: 1, shape: 0, pressure: 0 },
   falloff: 0, flow: 1,
-  pressure: { size: 1, opacity: 0, flow: 0 },
+  pressure: { size: 1, opacity: 0, flow: 0, roundness: 0 },
 };
 
 test('in a recipe, a hand stroke thins by its profile and its reveal slows through the corner', () => {

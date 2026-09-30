@@ -44,10 +44,11 @@ export function photoshopProbePreset(name: string, s: PhotoshopBrushSettings): P
   return {
     _class: 'brushPreset', 'Nm  ': name,
     Brsh: tipDescriptor(s.tip),
-    useTipDynamics: !!(s.size || s.jitter?.size), flipX: false, flipY: false, minimumDiameter: pct(s.size?.minimum ?? 0),
-    szVr: variation(s.size, s.jitter?.size), angleDynamics: variation(undefined), roundnessDynamics: variation(undefined),
-    useScatter: (s.jitter?.scatter ?? 0) > 0, bothAxes: s.jitter?.bothAxes ?? false, 'Cnt ': 1,
-    scatterDynamics: variation(undefined, s.jitter?.scatter), countDynamics: variation(undefined),
+    useTipDynamics: !!(s.size || s.jitter?.size || s.jitter?.angle || s.jitter?.roundness), flipX: false, flipY: false, minimumDiameter: pct(s.size?.minimum ?? 0),
+    szVr: variation(s.size, s.jitter?.size), angleDynamics: variation(undefined, s.jitter?.angle), roundnessDynamics: variation(undefined, s.jitter?.roundness),
+    minimumRoundness: pct(Math.max(1, s.jitter?.minimumRoundness ?? 0)),
+    useScatter: (s.jitter?.scatter ?? 0) > 0 || (s.jitter?.count ?? 1) > 1, bothAxes: s.jitter?.bothAxes ?? false, 'Cnt ': s.jitter?.count ?? 1,
+    scatterDynamics: variation(undefined, s.jitter?.scatter), countDynamics: variation(s.jitter?.countControl),
     useTexture: !!texture,
     ...(texture && {
       Txtr: { _class: 'Ptrn', 'Nm  ': 'studio-probe-ramp', Idnt: 'studio-probe-ramp' }, textureScale: pct(texture.scale), textureBrightness: long(texture.brightness),
@@ -58,7 +59,10 @@ export function photoshopProbePreset(name: string, s: PhotoshopBrushSettings): P
     useColorDynamics: false,
     dualBrush: {
       _class: 'dualBrush', useDualBrush: !!s.dual,
-      ...(s.dual && { BlnM: mode(s.dual.mode), Flip: false, useScatter: false, bothAxes: false, 'Cnt ': 1, scatterDynamics: variation(undefined), countDynamics: variation(undefined), Brsh: tipDescriptor(s.dual.tip) }),
+      ...(s.dual && {
+        BlnM: mode(s.dual.mode), Flip: false, useScatter: (s.dual.scatter ?? 0) > 0 || (s.dual.count ?? 1) > 1, bothAxes: s.dual.bothAxes ?? false, 'Cnt ': s.dual.count ?? 1,
+        scatterDynamics: variation(undefined, s.dual.scatter), countDynamics: variation(undefined), Brsh: tipDescriptor(s.dual.tip),
+      }),
     },
     Wtdg: s.wetEdges, Nose: s.noise, 'Rpt ': false,
     toolOptions: { _class: 'PbTl', Opct: long(s.opacity), flow: long(s.flow), 'Md  ': { _enum: 'BlnM', value: 'Nrml' } },

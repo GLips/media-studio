@@ -64,22 +64,25 @@ function applyProbeSettings(s, sampledTip, rampName) {
   o.putInteger(C("Opct"), s.opacity);
   o.putInteger(S("flow"), s.flow);
 
-  o.putBoolean(S("useTipDynamics"), !!(s.size || (s.jitter && s.jitter.size)));
-  o.putObject(C("szVr"), C("brVr"), variation(s.size, s.jitter ? s.jitter.size : 0));
+  var j = s.jitter || {};
+  o.putBoolean(S("useTipDynamics"), !!(s.size || j.size || j.angle || j.roundness));
+  o.putObject(C("szVr"), C("brVr"), variation(s.size, j.size || 0));
   o.putUnitDouble(S("minimumDiameter"), C("#Prc"), s.size ? s.size.minimum : 0);
-  o.putObject(S("angleDynamics"), C("brVr"), variation(null, 0));
-  o.putObject(S("roundnessDynamics"), C("brVr"), variation(null, 0));
+  o.putObject(S("angleDynamics"), C("brVr"), variation(null, j.angle || 0));
+  o.putObject(S("roundnessDynamics"), C("brVr"), variation(null, j.roundness || 0));
+  o.putUnitDouble(S("minimumRoundness"), C("#Prc"), j.minimumRoundness || 0);
 
   o.putBoolean(S("usePaintDynamics"), !!s.transfer);
   o.putObject(C("opVr"), C("brVr"), variation(s.transfer ? s.transfer.opacity : null, 0));
   o.putObject(C("prVr"), C("brVr"), variation(s.transfer ? s.transfer.flow : null, 0));
 
-  var scatter = s.jitter ? s.jitter.scatter : 0;
-  o.putBoolean(S("useScatter"), scatter > 0);
-  o.putBoolean(S("bothAxes"), s.jitter ? s.jitter.bothAxes : false);
-  o.putInteger(S("count"), 1);
+  // Count only takes effect with Scatter on.
+  var scatter = j.scatter || 0, count = j.count || 1;
+  o.putBoolean(S("useScatter"), scatter > 0 || count > 1);
+  o.putBoolean(S("bothAxes"), !!j.bothAxes);
+  o.putInteger(S("count"), count);
   o.putObject(S("scatterDynamics"), C("brVr"), variation(null, scatter));
-  o.putObject(S("countDynamics"), C("brVr"), variation(null, 0));
+  o.putObject(S("countDynamics"), C("brVr"), variation(j.countControl || null, 0));
 
   o.putBoolean(S("useTexture"), !!s.texture);
   if (s.texture) {
@@ -102,11 +105,12 @@ function applyProbeSettings(s, sampledTip, rampName) {
     db.putBoolean(S("flip"), false);
     db.putObject(C("Brsh"), S("computedBrush"), tipDescriptor(s.dual.tip, null));
     db.putEnumerated(S("blendMode"), S("blendMode"), S(s.dual.mode));
-    db.putBoolean(S("useScatter"), false);
-    db.putBoolean(S("bothAxes"), false);
-    db.putInteger(S("count"), 1);
+    var dualScatter = s.dual.scatter || 0, dualCount = s.dual.count || 1;
+    db.putBoolean(S("useScatter"), dualScatter > 0 || dualCount > 1);
+    db.putBoolean(S("bothAxes"), !!s.dual.bothAxes);
+    db.putInteger(S("count"), dualCount);
     db.putObject(S("countDynamics"), C("brVr"), variation(null, 0));
-    db.putObject(S("scatterDynamics"), C("brVr"), variation(null, 0));
+    db.putObject(S("scatterDynamics"), C("brVr"), variation(null, dualScatter));
   }
   o.putObject(S("dualBrush"), S("dualBrush"), db);
 

@@ -101,3 +101,15 @@ test('a texture reads as Photoshop sets it: its mode, its depth in 255ths, its b
   );
   assert.deepEqual(support.filter((note) => note.setting.startsWith('texture')).map((note) => note.level), ['approximated'], 'only the texture scale is approximated');
 });
+
+test("roundness jitter reaches down to the preset's minimum roundness, as vid-97's probes show, and roundness by pressure is read alike", () => {
+  const { brush, support } = normalizePhotoshopBrush('Squashing', {
+    preset: {
+      _class: 'brushPreset', Brsh: { _class: 'computedBrush', Dmtr: px(100), Hrdn: pct(100), Spcn: pct(10), Intr: true },
+      useTipDynamics: true, roundnessDynamics: control(2, 50), minimumRoundness: pct(25),
+    },
+    tip: asset('tips/round-100-100.png'),
+  }, photoshopReading);
+  assert.deepEqual({ pressure: brush.pressure.roundness, jitter: brush.jitter.roundness }, { pressure: 0.75, jitter: 0.375 });
+  assert.equal(support.some((note) => note.setting.startsWith('roundnessDynamics')), false, 'both are read, neither approximated');
+});

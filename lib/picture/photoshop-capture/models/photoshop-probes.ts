@@ -36,10 +36,14 @@ export type PhotoshopBrushSettings = {
   transfer?: { opacity: PhotoshopControl; flow: PhotoshopControl };
   /** The ramp pattern as texture. `eachTip` is Texture Each Tip: per stamp when on, fixed to the canvas when off. */
   texture?: { mode: (typeof PHOTOSHOP_TEXTURE_MODES)[number]; depth: number; scale: number; eachTip: boolean; invert: boolean; brightness: number; contrast: number };
-  /** A second computed tip, combined with the first by `mode` (no scatter, one count). */
-  dual?: { tip: PhotoshopComputedTip; mode: (typeof PHOTOSHOP_DUAL_MODES)[number] };
-  /** Randomness, only in the probes about it: size jitter and scatter, in percent. */
-  jitter?: { size: number; scatter: number; bothAxes: boolean };
+  /** A second computed tip, combined with the first by `mode`, with its own scatter (percent) and count (1 when left out). */
+  dual?: { tip: PhotoshopComputedTip; mode: (typeof PHOTOSHOP_DUAL_MODES)[number]; scatter?: number; bothAxes?: boolean; count?: number };
+  /**
+   * Randomness, only in the probes about it, in percent: size, angle and roundness jitter (roundness falling no lower
+   * than `minimumRoundness`), and scatter with `count` stamps a step (1 when left out; more turns Scatter on), the count
+   * driven by `countControl` when given.
+   */
+  jitter?: { size: number; scatter: number; bothAxes: boolean; angle?: number; roundness?: number; minimumRoundness?: number; count?: number; countControl?: PhotoshopControl };
   wetEdges: boolean;
   noise: boolean;
 };
@@ -214,6 +218,45 @@ export function photoshopProbes(): PhotoshopProbe[] {
   add('random size jitter 50', "size jitter 50%: the jitter's distribution", base(round(48, 100, 25), { jitter: { size: 50, scatter: 0, bothAxes: false } }), [mark('line')], 4);
   add('random scatter 100', 'scatter 100% on both axes: the scatter distribution', base(round(24, 100, 50), { jitter: { size: 0, scatter: 100, bothAxes: true } }), [mark('line')], 4);
   add('random noise', 'Noise on a soft tip: whether it varies between runs', base(round(96, 0, 5), { noise: true }), [mark('stamp'), mark('line')], 2);
+
+  // vid-97's third round: the randomness and counts the packs use that the first two rounds held still. Stamps two
+  // diameters apart, so each one's angle, roundness and place read on its own.
+  const still = { size: 0, scatter: 0, bothAxes: false };
+  const ellipse = { ...round(48, 100, 200), roundness: 30 };
+  for (const angle of [25, 50]) {
+    add(`random angle jitter ${angle}`, `angle jitter ${angle}% on a 30% ellipse: the spread of stamp angles (mod 180°)`, base(ellipse, { jitter: { ...still, angle } }), [mark('line')], 4);
+  }
+  add('random angle jitter 100 sampled', 'angle jitter 100% on the asymmetric sampled tip: the whole span, direction included', base(sampled(48, { spacing: 200 }), { jitter: { ...still, angle: 100 } }), [mark('line')], 4);
+  add('random roundness jitter 50', 'roundness jitter 50% on a round tip: the spread of stamp roundness', base(round(48, 100, 200), { jitter: { ...still, roundness: 50 } }), [mark('line')], 4);
+  add('random roundness jitter 100 minimum 25', 'roundness jitter 100% with a 25% minimum: where the minimum holds it', base(round(48, 100, 200), { jitter: { ...still, roundness: 100, minimumRoundness: 25 } }), [mark('line')], 4);
+  add('random scatter 100 count 4', 'scatter 100% on both axes with 4 stamps a step: whether each stamp scatters on its own', base(round(24, 100, 200), { jitter: { ...still, scatter: 100, bothAxes: true, count: 4 } }), [mark('line')], 4);
+  add('count 4 flow 25', 'count 4 with no scatter at flow 25%: whether the stamps a step pile up as 4 stamps build', base(round(48, 50, 25), { flow: 25, jitter: { ...still, count: 4 } }), [mark('line')]);
+  // The dual inside a hard primary wider than its scatter reaches: multiply at full primary paints the secondary alone.
+  const WIDE = round(200, 100, 5), DOTS = round(16, 100, 200);
+  add('dual base dots', 'the dual scatter probes\' secondary painted alone, as a primary', base(DOTS), [mark('line')]);
+  add('random dual scatter 100', "the dual's scatter 100% on both axes: its distribution, and whose diameter it goes by", base(WIDE, { dual: { tip: DOTS, mode: 'multiply', scatter: 100, bothAxes: true } }), [mark('line')], 4);
+  add('random dual scatter 100 one axis', "the dual's scatter 100% across the stroke only", base(WIDE, { dual: { tip: DOTS, mode: 'multiply', scatter: 100, bothAxes: false } }), [mark('line')], 4);
+  add('random dual scatter 100 count 4', "the dual's scatter with 4 stamps a step", base(WIDE, { dual: { tip: DOTS, mode: 'multiply', scatter: 100, bothAxes: true, count: 4 } }), [mark('line')], 4);
+  // Count by pen pressure, which Kyle's washes use: at flow 25%, stamps two diameters apart, each stamp's alpha says how
+  // many of the step's 4 landed (1 − 0.75^k) at each Brush Pose pressure, and along a simulated-pressure S-curve.
+  const counted = (minimum: number) => base(round(48, 100, 200), { flow: 25, jitter: { ...still, count: 4, countControl: pressure('penPressure', { minimum }) } });
+  const posedLines = [0.25, 0.5, 0.75, 1].map((p) => mark('line', { pressure: p }));
+  add('count 4 by pressure', 'count 4 on pen pressure at flow 25%: how many stamps a step keeps at each pressure', counted(0), [mark('sCurve', { simulatePressure: true }), ...posedLines]);
+  add('count 4 by pressure minimum 50', 'count 4 on pen pressure with a 50% minimum: where the minimum holds it', counted(50), posedLines.slice(0, 2));
+  // Texture brightness past ±50, where Kyle's packs mostly sit (-150..150): whether it still shifts the ramp's values
+  // as an addition, under the modes those packs use.
+  for (const mode of ['subtract', 'overlay'] as const) for (const brightness of [-150, -100, -65, 100, 150]) {
+    add(`texture ${mode} brightness ${brightness}`, `${mode} at brightness ${brightness}: how brightness past ±50 remaps the pattern's values`, base(round(96, 100, 5), { texture: { mode, depth: 100, scale: 100, eachTip: false, invert: false, brightness, contrast: 0 } }), [mark('line')]);
+  }
+  add('dual count 4', "the dual's count 4 with no scatter: whether its stamps a step pile up, against the dual probes' secondary alone", base(WIDE, { dual: { tip: DUAL_SECONDARY, mode: 'multiply', count: 4 } }), [mark('line')]);
+
+  // Simulated pressure against what painted before it (docs/photoshop-capture.md): run on their own, in this order, so
+  // the first S-curve is its sheet's first mark and the others follow a posed line or a probe applied fresh.
+  const sim = mark('sCurve', { simulatePressure: true });
+  add('pressure check plain', 'no dynamics: an S-curve first on its sheet, then after a posed line (pose 0.5)', base(round(64, 100, 5)), [sim, mark('line', { pressure: 0.5 }), sim]);
+  add('pressure check size', 'size on pen pressure: an S-curve right after the probe is applied, then after a posed line', base(round(64, 100, 5), { size: pressure('penPressure') }), [sim, mark('line', { pressure: 0.5 }), sim]);
+  add('pressure check size minimum 30', 'size on pen pressure with a 30% minimum: an S-curve after a posed line, where the minimum may count twice', base(round(64, 100, 5), { size: pressure('penPressure', { minimum: 30 }) }), [mark('line', { pressure: 1 }), sim]);
+  add('pressure check reapplied', 'no dynamics, applied fresh after a posed probe: whether the pose outlasts a new brush', base(round(64, 100, 5)), [sim]);
   return probes;
 }
 

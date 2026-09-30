@@ -11,7 +11,7 @@ const brush: StampBrush = {
   tip: { image: { style: 'wash', pack: 'vvds', file: 'tips/wash.png' }, roundness: 1, sampling: 'isotropic' },
   spacing: 0.2,
   stepping: 'spread',
-  jitter: { lateral: 0, size: 0, opacity: 0, flow: 0 },
+  jitter: { lateral: 0, size: 0, opacity: 0, flow: 0, roundness: 0 },
   scatter: { count: 1, countJitter: 0, radius: 0 },
   rotation: { angle: 0, follow: 1, jitter: 0, randomStart: false },
   flip: { x: false, y: false },
@@ -19,7 +19,7 @@ const brush: StampBrush = {
   taper: { start: 0.2, end: 0.2, size: 0.3, opacity: 0.5, shape: 0, pressure: 0 },
   falloff: 0,
   flow: 0.4,
-  pressure: { size: 0.5, opacity: 0.5, flow: 0 },
+  pressure: { size: 0.5, opacity: 0.5, flow: 0, roundness: 0 },
 };
 
 test('a fill covers a concave region in one stroke, lifting across its notch rather than painting it', () => {

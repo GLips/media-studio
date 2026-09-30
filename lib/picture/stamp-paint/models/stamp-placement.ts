@@ -25,6 +25,8 @@ export type PlacedStamp = {
   y: number;
   diameter: number;
   rotation: number;
+  /** The share of its tip's roundness it keeps, 0..1: below 1 only under roundness pressure or jitter. */
+  roundness: number;
   /** The share of the brush's paint this stamp lays down, 0..1: its flow after pressure and jitter. */
   alpha: number;
   /**
@@ -88,11 +90,12 @@ function tintOf(color: StampBrushColorDynamics | undefined, draws: readonly numb
 const depositTurn = (brush: StampBrushStamping, seed: string) => (brush.rotation.randomStart ? seededRandom(`${seed}|deposit`)() * Math.PI * 2 : 0);
 
 /**
- * The draws every stamp makes after its placement's own, in a fixed order: flips, blur, flow and its tint's four.
+ * The draws every stamp makes after its placement's own, in a fixed order: flips, blur, flow, its tint's four and roundness.
  */
 function laterDraws(random: () => number) {
   const flipX = random() < 0.5, flipY = random() < 0.5, blurLoss = random(), flowLoss = random();
-  return { flipX, flipY, blurLoss, flowLoss, tint: [random(), random(), random(), random()] };
+  const tint = [random(), random(), random(), random()], roundnessLoss = random();
+  return { flipX, flipY, blurLoss, flowLoss, tint, roundnessLoss };
 }
 
 /**
@@ -176,6 +179,7 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
         y: lerp(a.y, b.y, k) + Math.cos(heading) * lateral + Math.sin(scatterTurn) * scatterReach,
         diameter: size * (1 - sizeLoss),
         rotation: brush.rotation.angle + brush.rotation.follow * heading + turn + startTurn,
+        roundness: pressured(pressure, brush.pressure.roundness * through) * (1 - later.roundnessLoss * brush.jitter.roundness),
         alpha: brush.flow * pressured(pressure, brush.pressure.flow * through) * (1 - later.flowLoss * brush.jitter.flow),
         opacity: lerp(taper.opacity, 1, ramp) * pressured(pressure, brush.pressure.opacity * through) * fade * (1 - opacityLoss),
         flipX: brush.flip.x && later.flipX,
@@ -215,6 +219,7 @@ export function placeAuthoredStamps(at: readonly StampPlacement[], brush: StampP
       y: placement.y,
       diameter: (placement.diameter ?? diameter) * pressured(placement.pressure, brush.pressure.size) * (1 - sizeLoss),
       rotation: brush.rotation.angle + (placement.rotation ?? 0) + turn + startTurn,
+      roundness: pressured(placement.pressure, brush.pressure.roundness) * (1 - later.roundnessLoss * brush.jitter.roundness),
       alpha: brush.flow * pressured(placement.pressure, brush.pressure.flow) * (1 - later.flowLoss * brush.jitter.flow),
       opacity: pressured(placement.pressure, brush.pressure.opacity) * (1 - opacityLoss),
       flipX: brush.flip.x && later.flipX,

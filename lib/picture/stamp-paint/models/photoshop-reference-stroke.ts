@@ -6,10 +6,10 @@
 // holds full over its middle and falls straight to 0 at its end, by the share of the path's length (a line and the
 // S-curve, 819 and 798 px, agree by share, not by pixel). It drives the brush's own pen-pressure dynamics, as a pen
 // would: a brush with none paints it untapered. But the rig paints most S-curves just after a line under a Brush Pose,
-// and the pose's overrides outlast it: size and opacity then follow the pressure wholly, whatever the brush's dynamics.
+// and the pose's overrides outlast it until the brush is applied again: size and opacity then follow the pressure
+// wholly, save that a size minimum m on pen pressure counts twice, m + (1 − m)(m + (1 − m)p) (vid-97's pressure check).
 //
-// Negative space: under the overrides, a size minimum on pen pressure counts once more (m + (1 − m)(m + (1 − m)p)
-// fits the probes); here it counts not at all, as a stroke carries one pressure for every response.
+// Negative space: whether an opacity minimum counts twice too is unprobed; it's read as not counting.
 
 import { photoshopMarkStrokes } from '#lib/picture/photoshop-capture/models/photoshop-capture-plan.ts';
 import { PROCREATE_PREVIEW_SIZE } from './procreate-preview-stroke.ts';
@@ -38,7 +38,9 @@ export function photoshopReferenceStrokePath(): StampStrokePoint[] {
  * glaze, as procreatePreviewPainting, so the painting's darkness is its coverage.
  */
 export function photoshopReferencePainting(brush: StampBrush, diameter: number, poseOverrides: boolean): CompiledStampPaint {
-  const painted: StampBrush = poseOverrides ? { ...brush, pressure: { ...brush.pressure, size: 1, opacity: 1 } } : brush;
+  // A size minimum m leaves the brush's size following pressure by 1 − m; counted twice, size is 1 − (1 − m)²(1 − p).
+  const size = brush.pressure.size > 0 ? brush.pressure.size ** 2 : 1;
+  const painted: StampBrush = poseOverrides ? { ...brush, pressure: { ...brush.pressure, size, opacity: 1 } } : brush;
   const material = { kind: 'flat', color: '#000000' } as const;
   return compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('reference', { composite: 'glaze', opacity: 1 }, (group) => group.pass('stroke', {}, (pass) => {
     pass.stroke('stroke', { brush: painted, material, diameter, path: photoshopReferenceStrokePath() });

@@ -20,7 +20,7 @@ const IGNORED = new Set(['_class', 'Nm  ', 'Idnt', 'sampledData']);
 const SWITCHED: Readonly<Record<string, string>> = {
   Txtr: 'useTexture', textureScale: 'useTexture', textureBrightness: 'useTexture', textureContrast: 'useTexture', textureBlendMode: 'useTexture',
   textureDepth: 'useTexture', TxtC: 'useTexture', InvT: 'useTexture', textureDepthDynamics: 'useTexture', minimumDepth: 'useTexture',
-  szVr: 'useTipDynamics', minimumDiameter: 'useTipDynamics', angleDynamics: 'useTipDynamics', roundnessDynamics: 'useTipDynamics',
+  szVr: 'useTipDynamics', minimumDiameter: 'useTipDynamics', angleDynamics: 'useTipDynamics', roundnessDynamics: 'useTipDynamics', minimumRoundness: 'useTipDynamics',
   bothAxes: 'useScatter', 'Cnt ': 'useScatter', scatterDynamics: 'useScatter', countDynamics: 'useScatter',
   opVr: 'usePaintDynamics', prVr: 'usePaintDynamics',
 };

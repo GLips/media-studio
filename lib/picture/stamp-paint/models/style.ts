@@ -12,7 +12,7 @@ import type { StampPaintColor } from './stamp-paint-recipe.ts';
  * The version of the imported assets this studio reads. An import writes it into each pack's manifest; when the
  * studio's asset format changes this goes up, and the bundle refuses a style until its packs are imported again.
  */
-export const STAMP_PAINT_ASSETS_VERSION = 3;
+export const STAMP_PAINT_ASSETS_VERSION = 4;
 
 /** The file an import writes in each pack's folder, `brushes/<pack>/`, listing what it wrote there. */
 export const STAMP_PAINT_PACK_MANIFEST = 'manifest.json';

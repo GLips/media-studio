@@ -87,9 +87,10 @@ half the diameter at half the opacity. The `pressure …` probes and a pack's re
 that way. **Simulated pressure** goes by the share of the path's length: it rises straight from 0 to full over the first 46%,
 holds, and falls to 0 over the last 46% (lib/picture/stamp-paint/models/photoshop-reference-stroke.ts). It drives the
 brush's own pen-pressure dynamics, so a brush with none paints it untapered, as every reference S-curve that starts a
-sheet shows. Anywhere else the S-curve follows a posed line, and the pose's size and opacity overrides outlast it: size
-and opacity follow the simulated pressure wholly, whatever the brush's dynamics. The sheet paints each reference the
-way it was painted.
+sheet shows. After a posed cell of the same brush, the pose's size and opacity overrides outlast it until the brush
+is applied again (the rig applies it afresh on each sheet): size and opacity follow the simulated pressure wholly,
+save that a size minimum on pen pressure counts twice (the `pressure check …` probes). The sheet paints each
+reference the way it was painted.
 
 A run also paints a sample of probes (`PHOTOSHOP_REPEAT_SAMPLE`, one of each kind) twice more on sheets of their own,
 at the same places, and compares them. Everything but the random scatter probe has come back identical to the bit,

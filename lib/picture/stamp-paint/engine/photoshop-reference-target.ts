@@ -15,8 +15,9 @@ export const PHOTOSHOP_REFERENCE_DIR = 'reference';
 
 /**
  * Where a brush's S-curve sits among a pack's reference sheets, its diameter in the preview's pixels once cropped, and
- * whether a Brush Pose's size and opacity overrides were still in force when Photoshop painted it. They were after a
- * posed line, the cell before; a sheet's first stroke follows only the brush's own pressure dynamics (vid-97).
+ * whether a Brush Pose's size and opacity overrides were still in force when Photoshop painted it. They are after a
+ * posed cell of the same brush on the same sheet; applying a brush, as the rig does for each sheet, clears them, and
+ * the stroke follows only the brush's own pressure dynamics (vid-97's pressure check).
  */
 export type PhotoshopReferenceStroke = { sheet: string; box: PhotoshopBox; diameter: number; poseOverrides: boolean };
 
@@ -27,7 +28,7 @@ export function readPhotoshopReferenceStrokes(packDir: string): Map<string, Phot
   const manifest = JSON.parse(readFileSync(manifestFile, 'utf8')) as PhotoshopCaptureManifest;
   return new Map(manifest.sheets.flatMap((sheet) => sheet.cells.flatMap((cell, index) => (cell.mark !== 'sCurve' ? [] : [[cell.item, {
     sheet: join(dir, sheet.file), box: cell.box, diameter: (manifest.items[cell.item].preset!.diameter * PROCREATE_PREVIEW_SIZE.width) / cell.box.width,
-    poseOverrides: index > 0,
+    poseOverrides: sheet.cells.slice(0, index).some((before) => before.item === cell.item && before.pressure !== undefined),
   }] as const]))));
 }
 

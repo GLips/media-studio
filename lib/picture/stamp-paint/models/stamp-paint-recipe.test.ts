@@ -10,7 +10,7 @@ const brush: StampBrush = {
   tip: { image: { style: 'wash', pack: 'vvds', file: 'tips/wash.png' }, roundness: 1, sampling: 'isotropic' },
   spacing: 0.1,
   stepping: 'spread',
-  jitter: { lateral: 0.2, size: 0.3, opacity: 0.3, flow: 0 },
+  jitter: { lateral: 0.2, size: 0.3, opacity: 0.3, flow: 0, roundness: 0 },
   scatter: { count: 2, countJitter: 0, radius: 0.1 },
   rotation: { angle: 0, follow: 1, jitter: 0.5, randomStart: false },
   flip: { x: false, y: false },
@@ -18,7 +18,7 @@ const brush: StampBrush = {
   taper: { start: 0.2, end: 0.2, size: 0.3, opacity: 0.5, shape: 0, pressure: 0 },
   falloff: 0,
   flow: 0.4,
-  pressure: { size: 0.5, opacity: 0.5, flow: 0 },
+  pressure: { size: 0.5, opacity: 0.5, flow: 0, roundness: 0 },
 };
 const ochre: PaintMaterial = { kind: 'pigment', color: '#c8902f' };
 const path = [{ x: 0, y: 0 }, { x: 300, y: 40 }, { x: 520, y: 10, pressure: 0.4 }];
@@ -94,7 +94,7 @@ test('a recipe that would seed or draw wrongly is refused when it compiles, nami
 });
 
 test('a stroke tapers at both ends however short, and turns with its direction from its first stamp', () => {
-  const still = { ...brush, jitter: { lateral: 0, size: 0, opacity: 0, flow: 0 }, scatter: { count: 1, countJitter: 0, radius: 0 }, rotation: { ...brush.rotation, jitter: 0 } };
+  const still = { ...brush, jitter: { lateral: 0, size: 0, opacity: 0, flow: 0, roundness: 0 }, scatter: { count: 1, countJitter: 0, radius: 0 }, rotation: { ...brush.rotation, jitter: 0 } };
   // A pen often repeats its first point.
   const stroke = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 19 }];
   const [deposit] = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) =>
@@ -125,7 +125,7 @@ test('a stroke partway drawn shows a prefix of the finished stroke\'s stamps, th
 });
 
 test("a dual brush's stamps are its scale times the deposit's diameter, stroked or placed", () => {
-  const still = { ...brush, jitter: { lateral: 0, size: 0, opacity: 0, flow: 0 }, taper: { ...brush.taper, start: 0, end: 0, size: 1, opacity: 1 } };
+  const still = { ...brush, jitter: { lateral: 0, size: 0, opacity: 0, flow: 0, roundness: 0 }, taper: { ...brush.taper, start: 0, end: 0, size: 1, opacity: 1 } };
   const dualed = { ...still, dual: { ...still, accumulation: 'build' as const, blend: 'multiply' as const, formula: 'layer' as const, scale: 1.5 } };
   const [stroke, placed] = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) => {
     pass.stroke('s', { brush: dualed, material: ochre, diameter: 20, path: [{ x: 0, y: 0 }, { x: 300, y: 0 }] });

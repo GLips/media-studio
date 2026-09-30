@@ -10,8 +10,8 @@
 // Negative space: live-input settings (smoothing and its catch-up, pressure smoothing), the preset's own size
 // (`Dmtr`: a deposit states its diameter), airbrush build-up while the pen rests (`Rpt `: a path never rests) and the
 // preview's settings aren't a brush's painting, and go unreported, save build-up, noted `inapplicable`. Tilt, stylus
-// wheel, rotation and brush pose are `inapplicable` (a path has only pressure); fade controls, noise and roundness
-// jitter are `unsupported`; the Mixer Brush's settings are carried in `wetMix` and noted `unsupported` until vid-90.
+// wheel, rotation and brush pose are `inapplicable` (a path has only pressure); fade controls, noise and roundness by
+// pressure are `unsupported`; the Mixer Brush's settings are carried in `wetMix` and noted `unsupported` until vid-90.
 
 import { photoshopEnum, photoshopFlag, photoshopNumber, photoshopObject, type PhotoshopDescriptor } from './photoshop-descriptor.ts';
 import { PHOTOSHOP_POOLING } from '#lib/picture/stamp-reference/models/stamp-reference-blend.ts';
@@ -201,7 +201,11 @@ function readMainLayer(source: PhotoshopBrushSource, notes: StampBrushSupportNot
   } else if (angle.control === CONTROL_PRESSURE) note('unsupported', 'angleDynamics.bVTy', 'angle by pressure: the studio turns stamps alike at any pressure');
   else if (angle.control !== CONTROL_OFF) pressureOf('angleDynamics', 'angle', angle.control, 0, note);
   if (angle.jitter > 0) note('approximated', 'angleDynamics.jitter', `${Math.round(angle.jitter * 100)}% read as each stamp turned at random by up to ±${Math.round((angle.jitter * reading.angleJitterSpan * 180) / Math.PI)}°`);
-  if (roundness.jitter > 0 || roundness.control !== CONTROL_OFF) note('unsupported', 'roundnessDynamics', "roundness varying stamp to stamp: every stamp keeps the tip's roundness");
+  // vid-97's probes: jittered roundness falls evenly from full to the minimum (which Photoshop never lets under 1%).
+  // Pressure is read down to the same minimum, as size's is.
+  const minimumRoundness = photoshopNumber(p, 'minimumRoundness') / 100;
+  const roundnessJitter = roundness.jitter * (1 - minimumRoundness);
+  const roundnessPressure = pressureOf('roundnessDynamics', 'roundness', roundness.control, minimumRoundness, note);
   if (tipDynamics && photoshopFlag(p, 'brushProjection')) note('inapplicable', 'brushProjection', "the tip's projection by pen tilt: an authored stroke has only pressure");
 
   const { lateral, scatter } = scatterOf(p, '', photoshopFlag(p, 'useScatter'), reading, note);
@@ -262,7 +266,7 @@ function readMainLayer(source: PhotoshopBrushSource, notes: StampBrushSupportNot
     ...(grain && { grain }),
     spacing: spacingOf(tip, '', note),
     stepping: 'eachStamp',
-    jitter: { lateral, size: size.jitter, opacity: opacity.jitter, flow: flow.jitter },
+    jitter: { lateral, size: size.jitter, opacity: opacity.jitter, flow: flow.jitter, roundness: roundnessJitter },
     scatter,
     rotation: { angle: degrees(photoshopNumber(tip, 'Angl')), follow, jitter: angle.jitter * reading.angleJitterSpan, randomStart: false },
     flip: { x: tipDynamics && photoshopFlag(p, 'flipX'), y: tipDynamics && photoshopFlag(p, 'flipY') },
@@ -270,7 +274,7 @@ function readMainLayer(source: PhotoshopBrushSource, notes: StampBrushSupportNot
     taper: NO_TAPER,
     falloff: 0,
     flow: toolFlow,
-    pressure: { size: sizePressure, opacity: opacityPressure, flow: flowPressure },
+    pressure: { size: sizePressure, opacity: opacityPressure, flow: flowPressure, roundness: roundnessPressure },
     accumulation: 'buildToOpacity',
     ...(wet && { pooling: PHOTOSHOP_POOLING }),
   };
@@ -288,7 +292,7 @@ function readDualLayer(source: PhotoshopBrushSource, notes: StampBrushSupportNot
     tip: tipOf(tip, source.dualTip!, source.dualTipSample, 'dualBrush.', note),
     spacing: spacingOf(tip, 'dualBrush.', note),
     stepping: 'eachStamp',
-    jitter: { lateral, size: 0, opacity: 0, flow: 0 },
+    jitter: { lateral, size: 0, opacity: 0, flow: 0, roundness: 0 },
     scatter,
     rotation: { angle: degrees(photoshopNumber(tip, 'Angl')), follow: 0, jitter: 0, randomStart: false },
     flip: { x: photoshopFlag(dual, 'Flip'), y: false },
@@ -297,7 +301,7 @@ function readDualLayer(source: PhotoshopBrushSource, notes: StampBrushSupportNot
     falloff: 0,
     // The secondary builds as its own stroke at full flow, whatever the tool's.
     flow: 1,
-    pressure: { size: 0, opacity: 0, flow: 0 },
+    pressure: { size: 0, opacity: 0, flow: 0, roundness: 0 },
     accumulation: 'buildToOpacity',
     blend: blend ?? 'multiply',
     formula: 'texture',

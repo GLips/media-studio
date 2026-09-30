@@ -130,8 +130,8 @@ the sheet's summed score, with each brush that ends up further off than it start
 takes a few minutes, and writes the file; re-import the packs and re-draw their sheets after. The constants are the
 same for every brush of every pack: a brush is never tuned alone, so what fits one pack's previews holds for the next.
 Photoshop's pipeline was identified stage by stage from probe captures (vid-97), so its importer reads almost every
-setting exactly; what's left, how far 100% scatter strays and how far 100% angle jitter turns, sits in its
-`PhotoshopReading`, `lib/picture/stamp-paint/models/photoshop-reading.ts`. `npm run brushes:diagnose -- --packs
+setting exactly; what's left, how far 100% scatter strays and how far 100% angle jitter turns (at least a whole turn
+each way), sits in its `PhotoshopReading`, `lib/picture/stamp-paint/models/photoshop-reading.ts`. `npm run brushes:diagnose -- --packs
 watercolor/photoshop-legacy,…` tries each of those constants brush by brush against the packs' Photoshop references
 and says whether the brushes agree on a value; it writes nothing. Kyle T. Webster's packs and a fifth of Legacy Brushes
 are held out of it (lib/picture/stamp-paint/models/photoshop-reading-spread.ts). A Photoshop import notes each setting

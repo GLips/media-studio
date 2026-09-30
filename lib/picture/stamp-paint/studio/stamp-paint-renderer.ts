@@ -37,7 +37,7 @@ import { createStampPaintDevice, FULL_FRAME_WGSL, loadStampPaintImages, readStam
  * Floats per stamp in the instance buffer: x, y, diameter, rotation, then alpha, blur, grain turn and flips (x 1, y 2),
  * then opacity.
  */
-const STAMP_FLOATS = 9;
+const STAMP_FLOATS = 10;
 /** Floats per stamp in the tint buffer, for a brush with colour dynamics: hue, saturation, lightness, secondary. */
 const TINT_FLOATS = 4;
 
@@ -147,13 +147,14 @@ fn turned(v: vec2f, angle: f32) -> vec2f {
   let c = cos(angle);
   return vec2f(c * v.x - s * v.y, s * v.x + c * v.y);
 }
-@vertex fn place(@builtin(vertex_index) i: u32, @location(0) stamp: vec4f, @location(1) more: vec4f, @location(2) tint: vec4f, @location(3) opacity: f32) -> Corner {
+@vertex fn place(@builtin(vertex_index) i: u32, @location(0) stamp: vec4f, @location(1) more: vec4f, @location(2) tint: vec4f, @location(3) last: vec2f) -> Corner {
   let pair = u.hull[i / 2u];
   let uv = select(pair.xy, pair.zw, (i & 1u) == 1u);
   let flips = u32(more.w);
   let mirror = vec2f(select(1.0, -1.0, (flips & 1u) != 0u), select(1.0, -1.0, (flips & 2u) != 0u));
   // Never thinner than a pixel: Photoshop's Flat brushes (roundness 0) sweep a hairline into a solid ribbon.
-  let squash = max(u.roundness, 1.0 / (stamp.z * u.span));
+  let opacity = last.x;
+  let squash = max(u.roundness * last.y, 1.0 / (stamp.z * u.span));
   let local = turned((uv - 0.5) * vec2f(1.0, squash) * stamp.z * u.span * mirror, stamp.w);
   let at = (stamp.xy + local) / u.resolution * 2.0 - 1.0;
   let size = u.grain.place.xy * pow(stamp.z / u.diameter, u.zoom);
@@ -551,8 +552,9 @@ async function rendererOnDevice(
     // The tip's texels spread over its span, so its pixels per texel go by the image's width, not the diameter.
     const smallest = stamps.reduce((least, s) => Math.min(least, s.diameter), Infinity) * spanOf(layer);
     const blurred = Math.ceil(stamps.reduce((most, s) => Math.max(most, s.blur), 0) * BLUR_LEVELS);
+    const squashed = layer.tip.roundness * stamps.reduce((least, s) => Math.min(least, s.roundness), 1);
     const levels = tipLevels.get(assetKey(layer.tip.image))!;
-    const coarsest = Math.min(levels.length - 1, coarsestStampTipLevel(levels[0], smallest, layer.tip.roundness, levels.length) + blurred);
+    const coarsest = Math.min(levels.length - 1, coarsestStampTipLevel(levels[0], smallest, squashed, levels.length) + blurred);
     const key = `${assetKey(layer.tip.image)}@${coarsest}`;
     if (!hulls.has(key)) hulls.set(key, stampTipHull(levels, coarsest));
     return hulls.get(key)!;
@@ -590,7 +592,7 @@ async function rendererOnDevice(
   }
   const stampData = new Float32Array(Math.max(1, total) * STAMP_FLOATS), tintData = new Float32Array(Math.max(1, tints) * TINT_FLOATS);
   const write = (stamps: readonly PlacedStamp[], at: number) => stamps.forEach((s, i) => stampData.set(
-    [s.x, s.y, s.diameter, s.rotation, s.alpha, s.blur, s.grainTurn, (s.flipX ? 1 : 0) + (s.flipY ? 2 : 0), s.opacity], (at + i) * STAMP_FLOATS,
+    [s.x, s.y, s.diameter, s.rotation, s.alpha, s.blur, s.grainTurn, (s.flipX ? 1 : 0) + (s.flipY ? 2 : 0), s.opacity, s.roundness], (at + i) * STAMP_FLOATS,
   ));
   for (const [deposit, { main, dual, tint }] of deposits) {
     write(deposit.stamps, main);
@@ -652,7 +654,7 @@ async function rendererOnDevice(
     vertex: {
       module: stampModule,
       buffers: [
-        { arrayStride: STAMP_FLOATS * 4, stepMode: 'instance', attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }, { shaderLocation: 1, offset: 16, format: 'float32x4' }, { shaderLocation: 3, offset: 32, format: 'float32' }] },
+        { arrayStride: STAMP_FLOATS * 4, stepMode: 'instance', attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }, { shaderLocation: 1, offset: 16, format: 'float32x4' }, { shaderLocation: 3, offset: 32, format: 'float32x2' }] },
         { arrayStride: tinted && channel === 0 ? TINT_FLOATS * 4 : 0, stepMode: 'instance', attributes: [{ shaderLocation: 2, offset: 0, format: 'float32x4' }] },
       ],
     },

@@ -72,7 +72,7 @@ function skipped(cell: PhotoshopCaptureCell, probe: PhotoshopProbe): string | nu
   if (cell.ground !== 'clear') return 'on a ground';
   if (cell.pressure !== undefined) return 'under a Brush Pose';
   if (cell.simulatePressure) return 'simulated pressure';
-  if (probe.settings.jitter) return 'random';
+  if (probe.settings.jitter || probe.settings.dual?.scatter) return 'random';
   return null;
 }
 

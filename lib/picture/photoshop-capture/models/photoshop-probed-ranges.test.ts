@@ -9,9 +9,9 @@ test('a preset is flagged only where a setting that takes effect goes past what 
   const ranges = photoshopProbedRanges(), probe = photoshopProbes().find((p) => p.settings.texture)!;
   const preset = photoshopProbePreset(probe.name, probe.settings);
   assert.deepEqual(photoshopUnprobedFields(preset, ranges), []);
-  // Airbrush build-up was never probed, nor a count past 1 once scatter is on (as the scatter probe has it).
+  // Airbrush build-up was never probed, nor a count past 4 once scatter is on.
   const scatter = { useScatter: true, bothAxes: true, scatterDynamics: { ...(preset.scatterDynamics as PhotoshopDescriptor), jitter: { _unit: '#Prc', value: 100 } } };
-  const flagged = photoshopUnprobedFields({ ...preset, ...scatter, 'Rpt ': true, 'Cnt ': 3 }, ranges).map((f) => f.path);
+  const flagged = photoshopUnprobedFields({ ...preset, ...scatter, 'Rpt ': true, 'Cnt ': 6 }, ranges).map((f) => f.path);
   assert.deepEqual(flagged.sort(), ['Cnt ', 'Rpt ']);
   // A texture switched off keeps its settings, which paint nothing.
   assert.deepEqual(photoshopUnprobedFields({ ...preset, useTexture: false, textureScale: { _unit: '#Prc', value: 1000 } }, ranges), []);
