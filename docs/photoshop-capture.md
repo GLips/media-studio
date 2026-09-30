@@ -66,7 +66,7 @@ Brush Pose (size and opacity overridden), or simulated pressure (taper at both e
 
 ## The probe set
 
-`photoshopProbes()`, 284 probes and 611 cells, in a few minutes. Each is a plain round, or a sampled tip the run defines
+`photoshopProbes()`, 292 probes and 643 cells, in a few minutes. Each is a plain round, or a sampled tip the run defines
 (`studio-probe-tip`: a half-circle with a hard and a soft side, 112 px once Photoshop trims it), with one thing changed:
 
 - single stamps of computed tips across hardness and diameter, an ellipse, and the sampled tip at sizes, angle,
@@ -89,9 +89,9 @@ Brush Pose (size and opacity overridden), or simulated pressure (taper at both e
 
 **Brush Pose pressure scales size and opacity both**, whatever the brush's own dynamics say: a pose at 0.5 paints
 half the diameter at half the opacity. The `pressure …` probes and a pack's reference lines at 0.25 and 0.5 are read
-that way. **Simulated pressure** goes by the share of the path's length: it rises straight from 0 over the first 46%,
-holds at 0.98, never quite full, and falls to 0 over the last 46%
-(lib/picture/brush-fidelity/models/photoshop-reference-stroke.ts). It drives the brush's own pen-pressure dynamics, so a
+that way. **Simulated pressure** goes by the share of the path's length: it rises straight from 0 as if to reach full at the
+middle, is cut at 0.98, never quite full, so holds from 49% to 51%, and falls to 0 over the last 49%
+(lib/picture/photoshop-brushes/models/photoshop-stroke-pressure.ts; run 20260930-084651 fits 0.49 at rms 0.004). It drives the brush's own pen-pressure dynamics, so a
 brush with none paints it untapered, as every reference S-curve that starts a sheet shows. Count on a control keeps
 1 + floor((count − 1) × its share) stamps a step, and one at the first step, so along a simulated stroke count 2 keeps
 one throughout (the `count …` probes; count 4 on fade 10 keeps 1, 3, 3, 3, 2, 2, 2, 1, 1). After a posed cell of the same brush, the pose's size and opacity overrides outlast it until the brush

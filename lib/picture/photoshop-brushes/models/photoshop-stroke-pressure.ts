@@ -4,8 +4,12 @@
 
 import type { StampStrokePoint } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 
-/** The share of the path over which simulated pressure rises from 0 to full, and falls again at the end. */
-const SIMULATED_PRESSURE_RAMP = 0.46;
+/**
+ * The share of the path over which simulated pressure rises from 0 to its peak, and falls again at the end: it climbs
+ * as if to full at the middle, cut at the peak. Fitted to the reference renderer against posed-then-simulated cells
+ * (run 20260930-084651: rms 0.004 at 0.49, 0.034 at 0.46).
+ */
+const SIMULATED_PRESSURE_RAMP = 0.49;
 
 /**
  * Simulated pressure's height, just short of full: opacity on pen pressure peaks at 0.98 along it, and count 4 on pen

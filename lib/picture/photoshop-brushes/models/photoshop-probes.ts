@@ -332,6 +332,20 @@ export function photoshopProbes(): PhotoshopProbe[] {
   const dense3 = base(round(64, 50, 10), { flow: 20, ...scattered({ count: 3, countControl: pressure() }) });
   add('count 3 by pressure dense', 'count 3 on pen pressure at 10% spacing along a simulated S-curve, fresh', dense3, [mark('sCurve', { simulatePressure: true })]);
   add('count 3 by pressure dense after poses', 'count 3 on pen pressure: posed lines at 0.25, 0.5 and 1, then a simulated S-curve, as a reference sheet paints', dense3, [...[0.25, 0.5, 1].map((p) => mark('line', { pressure: p })), mark('sCurve', { simulatePressure: true })]);
+  // A stamp's own opacity against the dual (Kyle's Brutus): whether the dual combines with paint the opacity already
+  // capped, or with the flow's build before the opacity. Overlay tells them apart: it darkens paint under a half.
+  for (const mode of ['overlay', 'multiply'] as const) {
+    add(`dual ${mode} opacity by pressure`, `the dual (${mode}) with opacity on pen pressure: whether the combine sees the paint before or after its opacity`, base(DUAL_PRIMARY, { ...transferBy(pressure(), noControl), ...dual(DUAL_SECONDARY, mode) }), posedLines);
+  }
+  add('dual overlay opacity 50', 'the dual (overlay) at tool opacity 50%, beside opacity on pen pressure', base(DUAL_PRIMARY, { opacity: 50, ...dual(DUAL_SECONDARY, 'overlay') }), [line]);
+  // Brutus's dynamics on the rig's sampled tip, alone and with an overlay dual, as a reference sheet paints them.
+  const pressedAll = (parts: ProbeParts) => base(sampled(128, { spacing: 2 }), {
+    opacity: 90, flow: 20, ...transferBy(pressure(), pressure()), ...parts,
+    ...shape({ size: driven(pressure()), roundness: driven(pressure()), minimumRoundness: 1, angle: driven({ kind: 'initialDirection' }) }),
+  });
+  const sheetMarks = [...[0.25, 0.5, 1].map((p) => mark('line', { pressure: p })), mark('sCurve', { simulatePressure: true })];
+  add('pressure all', 'size, roundness, opacity and flow on pen pressure, angle on initial direction, flow 20%: posed lines, then a simulated S-curve', pressedAll({}), sheetMarks);
+  add('pressure all dual overlay', 'the same with an overlay dual', pressedAll(dual(round(200, 0, 12), 'overlay')), sheetMarks);
 
   // The tips Photoshop simulates as it paints (bristle, erodible, airbrush), at the settings the packs use: a stamp,
   // lines at Brush Pose pressures, a line and an S-curve under simulated pressure.
