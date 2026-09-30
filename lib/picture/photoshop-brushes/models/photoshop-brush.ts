@@ -358,14 +358,14 @@ function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: Photos
       if (texture.eachTip) {
         // A stamp's depth is the grain's times its share. Outside the height modes it runs the other way from the other
         // dynamics: full pressure paints the minimum depth, and a fade climbs from it. A height relief's runs with
-        // pressure, depth × p (the vid-105 probes). Jitter takes a stamp's depth down toward the minimum.
+        // pressure, floored at its minimum, and a fade takes it down. Jitter takes depth down toward the minimum.
         const relief = mode === 'height' || mode === 'linearHeight';
         const depth = shares(texture.depthDynamics), minimum = texture.minimumDepth / 100;
         const response: StampScaleResponse = relief ? linear(1 - minimum) : { kind: 'curve', points: [[0, minimum], [1, 1]] };
         const control = scaleBindingsOf(driverOf('texture.depthDynamics', 'texture depth', depth.control, note), response);
         grainDepth = { ...control, random: linear(depth.jitter * (1 - minimum)) };
-        if (relief && (depth.jitter > 0 || minimum > 0 || depth.control.kind === 'fade')) {
-          note('approximated', 'texture.depthDynamics', `${mode}'s depth by pressure is probed at minimum 0; its minimum, fade and jitter are read as pressure's`);
+        if (mode === 'linearHeight' && (depth.jitter > 0 || minimum > 0 || depth.control.kind === 'fade')) {
+          note('approximated', 'texture.depthDynamics', "linear height's minimum, fade and jitter are unprobed, read as height's");
         }
       }
       if (texture.protect) note('inapplicable', 'texture.protect', "protect texture lays one brush's pattern on every brush in Photoshop; each studio brush keeps its own");

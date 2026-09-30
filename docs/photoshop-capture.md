@@ -90,9 +90,13 @@ bar 112 × 48), with one thing changed:
 
 **Brush Pose pressure scales size and opacity both**, whatever the brush's own dynamics say: a pose at 0.5 paints
 half the diameter at half the opacity. The `pressure …` probes and a pack's reference lines at 0.25 and 0.5 are read
-that way. **Simulated pressure** goes by the share of the path's length: it rises straight from 0 as if to reach full at the
-middle, is cut at 0.98, never quite full, so holds from 49% to 51%, and falls to 0 over the last 49%
-(lib/picture/photoshop-brushes/models/photoshop-stroke-pressure.ts; run 20260930-084651 fits 0.49 at rms 0.004). It drives the brush's own pen-pressure dynamics, so a
+that way. **Simulated pressure** goes by the share of the path's length: it rises straight from 0 to full at the
+middle and falls to 0 at the end, but is read at 51 even pieces of each anchor-to-anchor segment, straight between
+(lib/picture/photoshop-brushes/models/photoshop-stroke-pressure.ts). So a two-anchor line peaks at 50/51, 0.98, held
+from 49% to 51% (run 20260930-084651 fits the ramp at rms 0.004), while the S-curve, 115 anchors 7 px apart, all but
+reaches full: its paint peaks at 0.996–0.998 where a line's holds at 0.98 (`pressure size`), and colour burn over it,
+which a pose at 0.98 leaves at 0.27 where no dual lands, is 0.87 there (`dual colorBurn tiny posed`, rms 0.54 → 0.07).
+The piece count is fitted from the line's peak alone. It drives the brush's own pen-pressure dynamics, so a
 brush with none paints it untapered, as every reference S-curve that starts a sheet shows. Count on a control keeps
 1 + floor((count − 1) × its share) stamps a step, and one at the first step, so along a simulated stroke count 2 keeps
 one throughout (the `count …` probes; count 4 on fade 10 keeps 1, 3, 3, 3, 2, 2, 2, 1, 1). After a posed cell of the same brush, the pose's size and opacity overrides outlast it until the brush
@@ -152,7 +156,12 @@ minimum depth, a fade climbs from it, and jitter takes each stamp's depth down t
 ignores all three. A stamp's depth enters its mode's formula as the texture's depth times its share. In the height
 modes depth on pressure runs with it: a stamp at pressure p cuts at depth × p, its pose's opacity still outside the
 relief (`texture height d5 by pressure`, `d50`, run 20260930-082615's `height 19`; Kyle's pastel settings at every
-pose); their minimum, fade and jitter are unprobed.
+pose). The relief never lifts paint past the pose's opacity: a pose at 0.98 peaks at 0.9800 and 0.9 at 0.9000
+(`texture height each tip posed`). Its minimum floors depth on pressure as read (`d6.27 … min 31.37`, read back as 6
+and 31: masses 0.85–0.96 of Photoshop's, 0.21–0.73 without the minimum), a fade takes it down step by step (within
+3% in mass), and jitter takes each stamp's depth down, never up: at depth 10 every one of 12 stamps paints under
+depth 10's paint at its place, on average 0.28 of it, where uniform depth gives about 0.39 (`d10 jitter 100`, whose
+rms of 0.25 is the draws).
 Tilt, stylus wheel and rotation read full on a stroked path, the same as off, Texture Each Tip depth on tilt included
 (`texture depth by tilt minimum 50`, run 20260930-134958). A computed tip's short side is drawn in
 whole pixels at the preset's diameter, and a squashed tip steps by it.
@@ -177,8 +186,12 @@ wide …`, on a second rig sample 112 × 48). It steps by its narrower side's sh
 whole pixels at the preset's diameter: 64 px steps as 27, 128 px at roundness 50% as 55, a square sample at roundness
 50% and spacing 200% every 256 px, the wide one at roundness 25% every ~110, a square dual at 64 px and roundness 50%
 every 128 (run 20260930-134958). Tall samples step by their narrow side as wide ones do. Photoshop turns each dual dab a random way whatever its
-settings, which a round dual never showed; the dual cells match in mass (within 5%), not pixel for pixel. A height
-relief's depth jitter and fade paint within 0.1; its minimum wouldn't take (Photoshop read 25/40 back as 40/63).
+settings, which a round dual never showed, spread evenly all the way round (`dual wide sparse`: 32 dabs, one
+chirality); its flip mirrors about half of them at random (`… flip`: 14 of 33), not all. Its scatter strays across the
+stroke up to half its own diameter, a wide sample's longer side (±32 px at 64 px) and a dual bigger than the brush past
+the brush's half (`dual wide scatter across`, `dual big scatter across`). The dual cells match in mass (within 1%), not
+pixel for pixel. A 3 px sampled dab paints the same mass as ours over twice the pixels, softer (`dual sampled tiny
+apart`, unmatched). A height relief's minimum wouldn't take at first (Photoshop read 25/40 back as 40/63).
 
 A run also paints a sample of probes (`PHOTOSHOP_REPEAT_SAMPLE`, one of each kind) twice more on sheets of their own,
 at the same places, and compares them. Everything but the random scatter probe has come back identical to the bit,
