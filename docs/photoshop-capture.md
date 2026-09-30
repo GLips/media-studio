@@ -66,7 +66,7 @@ Brush Pose (size and opacity overridden), or simulated pressure (taper at both e
 
 ## The probe set
 
-`photoshopProbes()`, 371 probes and 1009 cells, in a few minutes. Each is a plain round, or a sampled tip the run defines
+`photoshopProbes()`, 373 probes and 1023 cells, in a few minutes. Each is a plain round, or a sampled tip the run defines
 (`studio-probe-tip`: a half-circle with a hard and a soft side, 112 px once Photoshop trims it; `studio-probe-wide`, a
 bar 112 × 48), with one thing changed:
 

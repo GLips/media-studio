@@ -471,6 +471,9 @@ export function photoshopProbes(): PhotoshopProbe[] {
   add('random scatter 200 size jitter 100', 'scatter 200% on both axes with 100% size jitter, stamps apart: whether a stamp strays in its own jittered diameter, and the reach past 100%', base(round(48, 100, 300), { ...shape({ size: jitter(100) }), ...scattered({ scatter: 200, bothAxes: true }) }), [line], 4);
   add('random dual scatter 200', "the dual's scatter 200% on both axes: whether its reach stays 0.5 dual diameters per 100%", base(WIDE, dual(DOTS, 'multiply', { scatter: 200, bothAxes: true })), [line], 4);
   add('random roundness jitter 40 minimum 60', 'roundness jitter 40% with a 60% minimum: scaled into [0.84, 1] or spread over [0.6, 1]', base(round(48, 100, 200), shape({ roundness: jitter(40), minimumRoundness: 60 })), [line], 4);
+  // Tilt under a lingering pose, and count jitter at half beside a control: whether the empty steps scale with it.
+  add('texture depth by tilt minimum 50 posed', 'Texture Each Tip subtract depth on pen tilt with a 50% minimum, a posed line then a simulated S-curve the pose lingers into: whether a pose sets tilt', depthBy(driven({ kind: 'penTilt', minimum: 0 }), { minimumDepth: 50 }), [mark('line', { pressure: 1 }), mark('sCurve', { simulatePressure: true })]);
+  add('random count 1 by pressure jitter 50', 'count 1 on pen pressure with 50% count jitter, no scatter, flow 25%: whether the steps jitter empties beside a control scale with it', base(round(24, 100, 200), { flow: 25, scatter: { scatter: jitter(0), bothAxes: false, count: 1, countDynamics: { control: pressure(), jitter: 50 } } }), [0.25, 0.5, 1].map((p) => mark('line', { pressure: p })), 4);
   for (const diameter of [13, 100]) add(`tip bristle round blunt streaks d${diameter}`, `Round Blunt Streaks' bristles at ${diameter} px: each bristle's width and paint against the tip's size`, base(bristle(1, 0.1, 1.37, 0.01, 0.74, diameter)), simulated);
   return probes;
 }
