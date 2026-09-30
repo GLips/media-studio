@@ -1,17 +1,16 @@
 // stamp-pigment-paint.ts: a stamp painting's paint when its style paints in pigment, worked out once on the CPU for
-// the GPU's pigment compositor and the CPU reference alike.
+// the GPU's pigment compositor (stamp-paint-pigment-compositor.ts), which lays and dries it per pixel.
 //
 // Each group is one wet wash whose palette is every pigment its deposits lay (a colour fitted as a pigment of its
 // own). Its layer holds each palette pigment's amount per pixel, so a pigment stays itself to the pixel, where
-// vid-81's lift needs it. The per-pixel rules here are the CPU twins of stamp-paint-pigment-compositor.ts's WGSL.
+// vid-81's lift needs it.
 
-import { kubelkaMunkFilm, kubelkaMunkOver } from '#lib/picture/paint/models/paint-kubelka-munk.ts';
 import { paintPigmentFromColor, paintPigmentInMedium, type PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
 import { paintMixtureComponents } from '#lib/picture/paint/models/paint-mixture.ts';
-import { paintClumps, paintDryContact, paintPigmentSeed, paintValley, paintWetSettle } from '#lib/picture/paint/models/paint-paper.ts';
+import { paintPigmentSeed } from '#lib/picture/paint/models/paint-paper.ts';
 import type { PaintPigment, PaintPigmentAppearance } from '#lib/picture/paint/models/paint-pigment.ts';
-import { paintHexToLinear, srgbToLinear, type PaintBands } from '#lib/picture/paint/models/paint-spectrum.ts';
-import { STAMP_OPAQUE_COVER, type CompiledStampDeposit, type CompiledStampPaint, type StampPaintColor } from './stamp-paint-recipe.ts';
+import type { PaintBands } from '#lib/picture/paint/models/paint-spectrum.ts';
+import type { CompiledStampDeposit, CompiledStampPaint, StampPaintColor } from './stamp-paint-recipe.ts';
 
 /**
  * Paint as pigment in a `medium`, mixed and dried with Kubelka–Munk. `pigments`, keyed by id, are the ones a mixture
@@ -93,62 +92,3 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
 const samePigment = (a: PaintPigment, b: PaintPigment) =>
   a.K.every((k, i) => k === b.K[i]) && a.S.every((s, i) => s === b.S[i])
   && a.granulation === b.granulation && a.flocculation === b.flocculation && a.staining === b.staining;
-
-/**
- * A deposit laid into a group's pixel (coverage, then each slot's amount), twin of `layDeposit`. `tooth` is the
- * paper's paint here, `mean` its mean. The wash takes the incoming paint by volume, less as pickup carries the wet
- * paint under it along: a stand-in for levelling that doesn't conserve paint (vid-81's).
- */
-export function stampPigmentLayDeposit(
-  pixel: Float64Array, components: readonly StampPigmentComponent[], medium: PaintMedium, cover: number,
-  paper: { tooth: number; mean: number; depth: number }, x: number, y: number,
-) {
-  const c = Math.min(1, Math.max(0, cover));
-  if (c <= 0) return;
-  const h = 1 - paper.tooth, meanHeight = 1 - paper.mean;
-  const valley = paintValley(h, meanHeight);
-  const incoming = new Float64Array(pixel.length);
-  for (const component of components) {
-    const contact = medium.paperContact.kind === 'peaks'
-      ? paintDryContact(h, meanHeight, medium.paperContact.tooth, paper.depth)
-      : paintWetSettle(valley, paper.depth, component.granulation, component.amount);
-    incoming[component.slot + 1] += component.amount * Math.max(0, contact * paintClumps(component.flocculation, x, y, component.seed));
-  }
-  const under = pixel[0];
-  const rate = c * (1 - medium.pickup * under);
-  for (let i = 1; i < pixel.length; i++) pixel[i] += rate * (incoming[i] - pixel[i]);
-  pixel[0] = c + under * (1 - c);
-}
-
-/**
- * A group's pixel dried onto `painting` (reflectance per band, in place), twin of `layGroup`. A glaze is its film at
- * `opacity` of its thickness over what's there. An opaque group is painted on paper kept for it: its film at full
- * body over bare `paper`, covering as far as its coverage, raised as the flat compositor raises it.
- */
-export function stampPigmentDryGroup(
-  painting: Float64Array, pixel: Float64Array, group: StampPigmentGroup, medium: PaintMedium, composite: 'glaze' | 'opaque', opacity: number, paper: Float64Array,
-) {
-  const coverage = pixel[0];
-  if (coverage <= 0) return;
-  const bands = painting.length;
-  const thickness = composite === 'glaze' ? opacity : 1 / Math.max(coverage, 0.001);
-  const cover = Math.min(1, coverage * STAMP_OPAQUE_COVER) * opacity;
-  for (let b = 0; b < bands; b++) {
-    let absorb = 0, scatter = 0;
-    group.palette.forEach((pigment, slot) => {
-      absorb += pixel[slot + 1] * pigment.K[b];
-      scatter += pixel[slot + 1] * pigment.S[b];
-    });
-    const film = kubelkaMunkFilm({ absorb: absorb * thickness, scatter: scatter * (1 + medium.dryingScatter) * thickness });
-    const laid = composite === 'glaze' ? kubelkaMunkOver(film, painting[b]) : painting[b] + (kubelkaMunkOver(film, paper[b]) - painting[b]) * cover;
-    painting[b] = Math.min(1, Math.max(0, laid));
-  }
-}
-
-
-/** The paper's reflectance per band at a pixel whose photograph reads `color` (gamma sRGB, 0..1): its written colour's, moved as far as the pixel differs. */
-export function stampPigmentPaper(bands: PaintBands, paperColor: StampPaintColor, color: readonly number[]): Float64Array {
-  const base = bands.reflectanceOf(paintHexToLinear(paperColor)), written = paintHexToLinear(paperColor);
-  const moved = color.map((v, i) => srgbToLinear(v) - written[i]);
-  return base.map((R, b) => Math.min(0.999, Math.max(0.001, R + bands.correctionBasis.reduce((sum, column, c) => sum + column[b] * moved[c], 0))));
-}

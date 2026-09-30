@@ -3,7 +3,6 @@ import { test } from 'node:test';
 import { kubelkaMunkFilm, kubelkaMunkOver } from './paint-kubelka-munk.ts';
 import { PAINT_MEDIA, TITANIUM_WHITE, paintPigmentFromColor } from './paint-medium.ts';
 import { paintFilm, paintLayered, paintMixtureComponents, paintMixtureProblem, paintOpaque, type PaintMixture } from './paint-mixture.ts';
-import { paintClumps, paintValley, paintWetSettle } from './paint-paper.ts';
 import { paintPigmentFromAppearance, type PaintPigmentAppearance } from './paint-pigment.ts';
 import { PAINT_BANDS, linearToSrgb, paintBandsToLinearRgb, paintDeltaE, paintHexToLinear, spectralPaintBands, type PaintBands } from './paint-spectrum.ts';
 import { WATERCOLOUR_PIGMENTS as W } from './paint-watercolour-pigments.ts';
@@ -68,27 +67,6 @@ test('a pigment fitted from its appearance reproduces it over white and over bla
     assert.ok(paintDeltaE(over(0), paintHexToLinear(appearance.overBlack)) < (tint ? 3 : 2), `${appearance.id} over black`);
     if (tint) assert.ok(paintDeltaE(over(1, tint.strength), paintHexToLinear(tint.color)) < 3, `${appearance.id} tint`);
   }
-});
-
-test('granulation grows with load, and only in a granulating pigment', () => {
-  // Paper heights with mean 0.5, so relative valley depths 0..2.
-  const heights = Array.from({ length: 101 }, (_, i) => i / 100);
-  const spread = (granulation: number, load: number) => {
-    const shares = heights.map((h) => paintWetSettle(paintValley(h, 0.5), 0, granulation, load));
-    const mean = shares.reduce((a, b) => a + b, 0) / shares.length;
-    assert.ok(Math.abs(mean - 1) < 1e-9, `conserved over the paper: mean ${mean}`);
-    return Math.max(...shares) - Math.min(...shares);
-  };
-  const granulating = PAINT_MEDIA.watercolour.granulation * (W.ultramarine.granulation ?? 0);
-  assert.ok(spread(granulating, 0.1) < spread(granulating, 0.3) && spread(granulating, 0.3) < spread(granulating, 0.6), 'heavier washes granulate more');
-  assert.equal(spread(0, 1), 0, 'a non-granulating pigment lies even');
-});
-
-test('clumps move paint about without adding any', () => {
-  let sum = 0, n = 0;
-  for (let y = 0; y < 200; y++) for (let x = 0; x < 200; x++, n++) sum += paintClumps(1, x, y, 12345);
-  assert.ok(Math.abs(sum / n - 1) < 0.02, `mean ${sum / n}`);
-  assert.equal(paintClumps(0, 3, 4, 1), 1);
 });
 
 test('a mixture is its proportions at a strength: scaling the amounts changes nothing, and white is a component of its own', () => {

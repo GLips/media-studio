@@ -19,6 +19,18 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = { '.png': 'image/png', '
 export type BrowserModuleCall = <T>(name: string, ...args: unknown[]) => Promise<T>;
 
 /**
+ * The files under `root` that `entry` imports, itself among them, bundled for `platform` as the studio bundles it, as
+ * paths from `root`. Packages aren't followed: only source files are listed.
+ */
+export async function bundledSourceFiles(root: string, entry: string, platform: 'node' | 'browser'): Promise<string[]> {
+  const bundled = await build({
+    entryPoints: [entry], absWorkingDir: root, bundle: true, write: false, metafile: true, logLevel: 'silent', platform,
+    ...(platform === 'node' ? { format: 'esm', packages: 'external' } : { format: 'iife', target: 'chrome120' }),
+  });
+  return Object.keys(bundled.metafile.inputs).filter((file) => !file.startsWith('node_modules/') && !file.includes(':')).map((file) => file.split(sep).join('/'));
+}
+
+/**
  * Opens `entry` (bundled for the browser) in a page of the render browser, with `filesDir` served at `/files/`, and
  * hands `use` a way to call what the module put on globalThis. The page, server and browser close when `use` settles.
  */

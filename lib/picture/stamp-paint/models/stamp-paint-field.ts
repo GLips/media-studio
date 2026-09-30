@@ -3,7 +3,7 @@
 // which interpolates by pigment amounts, never by rendered colour, so interpolation is the reader's.
 //
 // STAMP_PAINT_FIELD_SHARE says where a point sits between a gradient's two ends (0 at the first, 1 at the second,
-// held outside); the renderer reads the same share in WGSL (paintFieldShare), twins held by the formulas command.
+// held outside); the renderer reads the same share in WGSL (paintFieldShare), twins held together by the GPU gate.
 
 import type { StampPoint } from './stamp-region.ts';
 

@@ -103,10 +103,6 @@
     "harness/stamp-paint-guard.ts": {
       "const readJson = <T>(file: string) => JSON.parse(readFileSync(resolve(file), 'utf8')) as T;": 1
     },
-    "harness/stamp-reference.ts": {
-      "const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as PhotoshopCaptureManifest;": 1,
-      "const arrangement = { order: listArg(args.order) as StampResolveStage[] | undefined, opacity: args.opacity as 'last' | 'inBuild' | undefined };": 2
-    },
     "lib/footage/capture/engine/capture.ts": {
       "still: <T>(name: string, options: StillOptions<T>) => add({ name, kind: 'still', options: options as StillOptions }),": 1,
       "if ((error as Error).name !== 'TimeoutError') throw error;": 1,
@@ -1378,9 +1374,6 @@
     "lib/picture/stamp-paint/models/stamp-stroke-hand.ts": {
       "return points.map((point, i) => {": 1
     },
-    "lib/picture/stamp-reference/engine/photoshop-probe-reference.ts": {
-      "if (scored) own.push({ cell, probe, buffers: buffers.map((b) => ({ ...b, coverage: cropBuffer(b.coverage, box.width, { x: pad, y: pad }, cell.box) })) });": 1
-    },
     "lib/picture/video/studio/video.ts": {
       "return { ...layout, scenes: layout.scenes.map((placed, k) => ({ ...video.scenes[k], ...placed })) };": 1
     },
@@ -1954,9 +1947,6 @@
       "assert.ok(sizes[0] < Math.max(...sizes), `${sizes}`);": 1,
       "assert.ok(counts[1] > 0 && counts[3] > counts[1] && counts[3] < whole.stamps.length, `a partial stroke: ${counts}`);": 1
     },
-    "lib/picture/stamp-reference/models/stamp-reference-deposit.test.ts": {
-      "assert.ok(thinning.length > even.length && steps.every((step, i) => i === 0 || step < steps[i - 1]), `steps ${steps.map((s) => s.toFixed(2))}`);": 1
-    },
     "lint/structural/checks/trampolines.ts": {
       "if (property.type === 'Property' && key?.type === 'Identifier' && value && isFunction(value)) found.push({ name: `${id.name}.${key.name}`, fn: value });": 2
     }
@@ -2091,9 +2081,6 @@
     },
     "lib/picture/stamp-paint/studio/stamp-paint-renderer.ts": {
       "async function rendererOnDevice(": 3
-    },
-    "lib/picture/stamp-reference/models/stamp-reference-deposit.test.ts": {
-      "const stamp = (opacity: number): PlacedStamp => ({": 1
     },
     "lib/picture/stamp-styles/engine/import-photoshop-pack.ts": {
       "function readBrushFiles(archive: string): { name: string; file: PhotoshopBrushFile }[] {": 1

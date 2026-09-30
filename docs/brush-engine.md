@@ -6,7 +6,7 @@ styles that carry a pack into a project, and how close a painted brush comes to 
 
 ```
 brush-fidelity     → stamp-styles, photoshop-brushes, procreate-brushes, stamp-paint
-stamp-reference    → stamp-styles, photoshop-brushes, stamp-paint
+stamp-paint-gate   → stamp-styles, stamp-paint, paint
 stamp-styles       → photoshop-brushes, procreate-brushes, stamp-paint, platform/zip
 photoshop-brushes  → procreate-brushes, stamp-paint
 procreate-brushes  → stamp-paint, platform/zip
@@ -21,10 +21,10 @@ places its stamps along a stroke by one rule (`buildStamp`), reading dynamics th
 step's and stamp's context, what each sensor reads from it, each response); a new sensor or target is an entry in
 `StampTargetSensors`, its parameters (`StampSensorParams`) and its signal there. `coverage-formulas.ts` and
 `stamp-deposit-stages.ts` are the one registry of every blend, grain adjustment, pooling and accumulation, the plans a
-deposit's stages resolve in, and which of a brush's stages are active (`stampActiveLayers`), which the GPU and the CPU
-reference both read. A formula is a pair, its CPU function and its WGSL twin written side by side, not one definition
-compiled to both: `node harness/stamp-reference.ts formulas` runs each twin on the GPU over a grid of inputs and holds
-it to its CPU side. The GPU's resolve order and mode switches are generated from the tables. How the GPU lays a
+deposit's stages resolve in, and which of a brush's stages are active (`stampActiveLayers`). Rendering maths lives
+only in WGSL, generated from those tables; the GPU is the one renderer. A function keeps a CPU twin only where the
+studio runs it off the GPU too (Kubelka–Munk, `stampPaintFieldAt`, a region's distance and grid), and a dual mode
+declares `needsDual` rather than having the CPU run its combine. The GPU's resolve order and mode switches are generated from the tables. How the GPU lays a
 layer's stamps is a plan (`stampAccumulationPlan`): a fixed blend where stamp order can't change the build, and
 otherwise, for a `buildToOpacity` whose opacity falls (Photoshop never lowers what's built), each pixel walks its
 stamps in order and lays each by the table's `lay`. `stamp-paint-recipe.ts` is the painting a scene writes, with its
@@ -50,8 +50,12 @@ sheet, the fit, the diagnostic and the guard all use, one versioned report of a 
 naming the source, reading and scorer it was drawn under) that the fit's baselines and the guard read, and each app's
 reading registered for fitting (`brush-readings.ts`). `npm run brushes:sheet`, `brushes:fit` and `brushes:diagnose` run it (docs/private-styles.md).
 
-**stamp-reference** is the slow CPU renderer the GPU is held to, stage by stage, against Photoshop's probe captures
-(`node harness/stamp-reference.ts probes <run>`). It covers coverage only: no colour, paper or blurred rims.
+**stamp-paint-gate** holds the GPU renderer to accepted output (`npm run stamp:gate -- run`): every rendering
+formula over a grid, each runtime twin against its CPU side, synthetic paintings that walk every path the renderer
+takes, and a traced resolve against its frame. Pre-commit runs it on the staged tree when a path it covers changes;
+no adapter, a timeout or a difference fails the commit. Public baselines live in `harness/fixtures/stamp-paint/`, a
+pack's brushes' in `work/validation/stamp-paint/` (`stamp:gate -- private run`). A baseline changes only by
+`update <ids> --reason …`, which writes candidates with their differences, then `accept <ids>`.
 
 `lib/platform/zip/` reads the zips packs come in. `lint/policy/studio-tree.ts` declares the areas; check:arch holds
 each feature to its roles and refuses a cycle between features.

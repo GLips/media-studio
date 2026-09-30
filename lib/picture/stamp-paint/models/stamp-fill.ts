@@ -40,7 +40,7 @@ export function stampRegionOutline(region: StampRegion): StampStrokePoint[] {
   return [...polygon, polygon[0]].map(({ x, y }) => ({ x, y }));
 }
 
-/** A wash's body as the renderer and the CPU reference lay it (STAMP_REGION_FUNCTIONS.washBody). */
+/** A wash's body as the renderer lays it (STAMP_REGION_WGSL's washBody). */
 export type StampWashBody = {
   /** The region, traced (stampRegionPolygon). */
   polygon: readonly StampPoint[];
@@ -118,17 +118,11 @@ export function stampWashFront(polygon: readonly StampPoint[], stamps: readonly 
   return { normal, from, to, soft: diameter };
 }
 
-/** The share of a fill's paint at (x, y) shown with its front at `progress`; the renderer's washFrontShare. */
-export const STAMP_WASH_FRONT_SHARE = {
-  cpu: (front: StampWashFront, progress: number, x: number, y: number) => {
-    const at = front.from + progress * (front.to - front.from + front.soft);
-    return Math.min(1, Math.max(0, (at - (x * front.normal[0] + y * front.normal[1])) / front.soft));
-  },
-  wgsl: /* wgsl */ `fn washFrontShare(p: vec2f, normal: vec2f, start: f32, end: f32, soft: f32, progress: f32) -> f32 {
+/** The share of a fill's paint at `p` shown with its front (StampWashFront) at `progress`, in WGSL. */
+export const STAMP_WASH_FRONT_SHARE_WGSL = /* wgsl */ `fn washFrontShare(p: vec2f, normal: vec2f, start: f32, end: f32, soft: f32, progress: f32) -> f32 {
   let at = start + progress * (end - start + soft);
   return clamp((at - dot(p, normal)) / soft, 0.0, 1.0);
-}`,
-};
+}`;
 
 /**
  * How a fill lays its paint. `wash`: a converged body under the brush's edge (placeStampWash), as wet paint floods a

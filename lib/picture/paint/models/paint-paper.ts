@@ -1,55 +1,13 @@
 // paint-paper.ts: how paint meets the paper, a height field (its grain image, light high). A wet medium pools into
-// the valleys, further by a pigment's granulation and load: linear in the valley's relative depth (mean 1), so paint
-// moves and none is added; with no granulation it's the flat compositor's tooth, mix(1, v, depth). A dry medium
-// catches on the peaks. Flocculation clumps a pigment by noise seeded by its id, mean 1.
+// the valleys, further by a pigment's granulation and load, so paint moves and none is added. A dry medium catches
+// on the peaks. Flocculation clumps a pigment by noise seeded by its id. Only the GPU lays paint, so the rules are
+// WGSL alone, held to their accepted output by the GPU gate.
 //
-// Negative space: conserved over the paper, not within one footprint (a sum per deposit); and
-// granulation doesn't yet depend on how wet the paper is (vid-81).
+// Negative space: conserved over the paper, not within one footprint; and granulation doesn't yet depend on how wet
+// the paper is (vid-81).
 
 /** How far a granulating pigment's load deepens its pooling: at full load a granulation of 2/3 pools all the way. */
 const GRANULATION_SETTLE = 1.5;
-
-/** How deep the paper is at a height `h` (0..1, light high), relative to its mean depth: 1 on average. */
-export function paintValley(h: number, meanHeight: number): number {
-  return (1 - h) / Math.max(1 - meanHeight, 0.01);
-}
-
-/**
- * The share of a wet pigment's amount that lands where the paper's relative depth is `valley`: 1 + a(v − 1), `a` the
- * paper's depth plus granulation (the pigment's times the medium's) times GRANULATION_SETTLE times the pigment's load
- * in unit films, held to 0..1, so the share never falls below 0.
- */
-export function paintWetSettle(valley: number, paperDepth: number, granulation: number, load: number): number {
-  const a = Math.min(1, Math.max(0, paperDepth + granulation * GRANULATION_SETTLE * load));
-  return 1 + a * (valley - 1);
-}
-
-/**
- * The share of a dry medium's paint that catches where the paper stands `h` high: on a paper `paperDepth` deep (0
- * smooth, 1 its full relief), none below `tooth` of its mean and all at the mean; a smoother paper takes it all more.
- */
-export function paintDryContact(h: number, meanHeight: number, tooth: number, paperDepth: number): number {
-  const contact = Math.min(1, Math.max(0, (h - tooth * meanHeight) / Math.max(meanHeight * (1 - tooth), 0.01)));
-  return 1 + paperDepth * (contact - 1);
-}
-
-/** A whole number's hash to 0..1 (PCG's output permutation), the same in f64 here and u32 in WGSL. */
-function hash01(x: number, y: number, seed: number): number {
-  let v = (Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1) ^ seed) >>> 0;
-  v = (Math.imul(v, 747796405) + 2891336453) >>> 0;
-  const word = Math.imul(((v >>> ((v >>> 28) + 4)) ^ v) >>> 0, 277803737) >>> 0;
-  return (((word >>> 22) ^ word) >>> 8) / 16777216;
-}
-
-/** Smooth value noise at `x`, `y` (lattice units), 0..1. */
-function valueNoise(x: number, y: number, seed: number): number {
-  const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy;
-  const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
-  // The lattice wraps at 2²⁴ so a whole number stays exact in f32 on the GPU.
-  const at = (dx: number, dy: number) => hash01((ix + dx) & 0xffffff, (iy + dy) & 0xffffff, seed);
-  const top = at(0, 0) + (at(1, 0) - at(0, 0)) * sx, bottom = at(0, 1) + (at(1, 1) - at(0, 1)) * sx;
-  return top + (bottom - top) * sy;
-}
 
 /** A pigment's seed for its clumps, from its id (FNV-1a): the same clumps wherever it's laid, apart from other pigments'. */
 export function paintPigmentSeed(id: string): number {
@@ -60,15 +18,10 @@ export function paintPigmentSeed(id: string): number {
 }
 
 /**
- * The share of a flocculating pigment's amount at painting pixel `x`, `y`: 1 + f(2n − 1), n clumps of about 2.5 and
- * 1.2 pixels, so a pigment with flocculation 1 lies from bare to doubled, 1 on average.
+ * The paper in WGSL. Each share averages 1 over the paper: `paintWetSettle` is linear in the valley's relative depth,
+ * steeper by granulation × load; `paintDryContact` catches nothing below `tooth` of the mean height; `paintClumps` is
+ * value noise in clumps of about 2.5 and 1.2 pixels, its lattice wrapping at 2²⁴ so it stays exact in f32.
  */
-export function paintClumps(flocculation: number, x: number, y: number, seed: number): number {
-  if (flocculation <= 0) return 1;
-  const n = 0.65 * valueNoise(x / 2.5, y / 2.5, seed) + 0.35 * valueNoise(x / 1.2, y / 1.2, seed ^ 0x5bd1e9);
-  return 1 + flocculation * (2 * n - 1);
-}
-
 export const PAINT_PAPER_WGSL = /* wgsl */ `
 fn paintValley(h: f32, meanHeight: f32) -> f32 { return (1.0 - h) / max(1.0 - meanHeight, 0.01); }
 fn paintWetSettle(valley: f32, paperDepth: f32, granulation: f32, load: f32) -> f32 {

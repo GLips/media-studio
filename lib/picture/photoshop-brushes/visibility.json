@@ -1,5 +1,4 @@
 {
   "lib/picture/brush-fidelity": "A Photoshop reference capture is one fidelity target, cropped and read by Photoshop's own reading.",
-  "lib/picture/stamp-reference": "The CPU reference paints Photoshop's probe presets, to compare with Photoshop's captures of them.",
   "lib/picture/stamp-styles": "A pack's importer reads Photoshop presets, and a pack may hold both apps'."
 }

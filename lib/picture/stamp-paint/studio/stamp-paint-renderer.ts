@@ -1,27 +1,27 @@
 // stamp-paint-renderer.ts: draws a compiled stamp painting through WebGPU. Each frame repaints every
 // group on bare paper; only images and stamp buffers persist.
 //
-// A deposit paints within its visible stamps' box in Photoshop's order: a render pass stamps its
-// coverage mask and joins a wash's body to it, compute passes blur it, and a compute pass resolves it onto its
-// group's layer. Groups then land on the painting.
+// A deposit paints within its visible stamps' box in Photoshop's order: a render pass stamps its coverage mask and
+// joins a wash's body to it, compute passes blur it, and a compute pass resolves it onto its group's layer.
 //
 // What doesn't change with time is worked out once, at load, into cropped single-channel textures: each wash's body,
 // the masking fluid under each deposit, each pass's `within` region.
 //
-// Formulas and stage orders are WGSL twins of the CPU reference's registries, held to it by the formulas command.
+// Formulas and stage orders are generated from the models' WGSL registries and held by the GPU gate
+// (lib/picture/stamp-paint-gate), which also traces a resolve stage by stage (trace).
 
 import { bindStampBrushImages, stampBrushImages, type StampBrush, type StampBrushAsset, type StampBrushGrain, type StampBrushImageSource, type StampBrushLayer } from '../models/stamp-brush.ts';
 import { COVERAGE_FORMULAS_WGSL, stampDualModeIndex, stampGrainModeIndex } from '../models/coverage-formulas.ts';
 import {
-  STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL, STAMP_ACCUMULATIONS, STAMP_BLUR_LEVELS, stampAccumulationBuild, stampAccumulationIndex,
-  stampAccumulationPlan, stampActiveLayers, stampResolvePlan, stampResolvePlanIndex, stampResolvePlansWgsl, type StampAccumulationPlan, type StampActiveLayer,
+  STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL, STAMP_ACCUMULATIONS, STAMP_BLUR_LEVELS, STAMP_RESOLVE_ORDERS, STAMP_RESOLVE_PLANS, stampAccumulationBuild, stampAccumulationIndex,
+  stampAccumulationPlan, stampActiveLayers, stampResolveOrderIndex, stampResolveOrdersWgsl, stampResolvePlan, type StampAccumulationPlan, type StampActiveLayer, type StampResolveStage,
 } from '../models/stamp-deposit-stages.ts';
-import { STAMP_WASH_FRONT_SHARE } from '../models/stamp-fill.ts';
+import { STAMP_WASH_FRONT_SHARE_WGSL } from '../models/stamp-fill.ts';
 import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
 import { stampDepositShowsAt, stampWashProgressAt, visibleStampCountAt, type CompiledStampDeposit, type CompiledStampMask, type CompiledStampMaskArea, type CompiledStampPaint, type CompiledStampPass, type StampPaintPaper } from '../models/stamp-paint-recipe.ts';
 import { compileStampPigmentPaint, type StampPaintMixing } from '../models/stamp-pigment-paint.ts';
 import { PAINT_BANDS } from '#lib/picture/paint/models/paint-spectrum.ts';
-import { STAMP_REGION_WGSL, stampEdgeReach, stampEdgeWidth, stampPolygonBox, type StampBox, type StampPoint } from '../models/stamp-region.ts';
+import { STAMP_GRID_AT_WGSL, STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL, stampEdgeReach, stampEdgeWidth, stampPolygonBox, type StampBox, type StampPoint } from '../models/stamp-region.ts';
 import type { PlacedStamp } from '../models/stamp-placement.ts';
 import { stampBlurRegion, type StampPixelBox } from '../models/stamp-blur-region.ts';
 import { coarsestStampTipLevel, STAMP_TIP_HULL_SIDES, stampTipHull, type StampTipHull, type StampTipLevel } from '../models/stamp-tip-hull.ts';
@@ -108,7 +108,7 @@ ${TURNED_WGSL}
   let grainUv = turned(local, -more.z) / size + u.movement * stamp.xy / u.grain.place.xy + u.grain.place.zw;
   // A glaze or a build lays flow × opacity toward full; a buildToOpacity lays its flow toward its own opacity.
   let full = u.towardFull == 1u;
-  // Noise goes by the tip's pixels at the stamp's width, as the CPU reference reads them (tipNoiseAt).
+  // Noise goes by the tip's pixels at the stamp's width (tipNoiseAt), so it keeps its grain as a stamp shrinks.
   let grow = select(1.0, stamp.z / u.pressed.w, u.pressed.w > 0.0);
   return Corner(vec4f(at.x, -at.y, 0.0, 1.0), uv, select(more.x, more.x * opacity, full), more.y * ${STAMP_BLUR_LEVELS.toFixed(1)}, grainUv, tint, select(opacity, 1.0, full), last.z, uv * stamp.z * u.span, stampNoiseSeed(stamp.xy), last.w, grow);
 }
@@ -259,7 +259,7 @@ function stampPaintTargetWgsl(name: string, binding: number, target: StampPaintT
 const DEPOSIT = stampUniformLayout('Deposit', [
   ['view', 'vec4f'], ['edges', 'vec4f'], ['dualEdges', 'vec4f'],
   ['grain', stampUniformStruct(GRAIN)], ['dualGrain', stampUniformStruct(GRAIN)], ['paperDepth', 'f32'], ['paperLod', 'f32'], ['opacity', 'f32'],
-  ['dualBlend', 'i32'], ['flags', 'u32'], ['resolvePlan', 'i32'], ['origin', 'vec2u'], ['extent', 'vec2u'],
+  ['dualBlend', 'i32'], ['flags', 'u32'], ['resolveOrder', 'i32'], ['origin', 'vec2u'], ['extent', 'vec2u'],
   ['build', 'vec2f'], ['accumulation', 'vec2u'], ['pooling', 'vec4f'],
 ]);
 
@@ -279,12 +279,21 @@ const KEEP = stampUniformLayout('Keep', [
 ]);
 const DEPOSIT_FLAGS_WGSL = Object.entries(DEPOSIT_FLAGS).map(([flag, bit]) => `const ${flag.replace(/[A-Z]/g, (c) => `_${c}`).toUpperCase()} = ${bit}u;`).join('\n');
 
-/** Each resolve stage on the main layer's coverage `m`: `d` is the dual's, cut and pooled already, `at` the pixel. */
-const RESOLVE_STAGES_WGSL = stampResolvePlansWgsl('resolveStages', 'd: f32, at: vec2f', {
+/**
+ * Each resolve stage on the main layer's coverage `m`: `d` is the dual's, cut and pooled already, `at` the pixel. A
+ * traced resolve records `m` after each (traced), so what a diagnosis reads is what the frame lays.
+ */
+const RESOLVE_STAGES_WGSL = stampResolveOrdersWgsl('resolveStages', 'd: f32, at: vec2f', {
   grain: 'if ((u.flags & CANVAS_GRAIN) != 0u) { m = texturized(grain, at, m, u.grain); }',
   dual: 'if ((u.flags & DUAL) != 0u) { m = dualCombine(m, d, u.dualBlend, (u.flags & DUAL_LAYER) != 0u); }',
   pooling: 'if ((u.flags & POOLED) != 0u) { m = pooled(m, u.pooling.x, u.pooling.y); }',
-});
+}, (position) => `traced(${position}u, m);`);
+
+/** Values a traced resolve records per pixel: the build as its accumulation resolves it, after each stage, and the coverage laid. */
+const TRACE_SLOTS = STAMP_RESOLVE_PLANS.grainFirst.length + 2;
+
+/** A traced deposit's crop (its origin and size in the painting's pixels) and where in the trace buffer its slots start, in floats. */
+const TRACE_CROP = stampUniformLayout('TraceCrop', [['origin', 'vec2u'], ['extent', 'vec2u'], ['offset', 'u32']]);
 
 // A compute pass has no derivatives to choose a mip level by, so each grain's level is worked out on the CPU: a tile
 // is a fixed number of pixels across the whole painting, so it reads the same level everywhere.
@@ -298,8 +307,19 @@ ${DEPOSIT_FLAGS_WGSL}
 ${STAMP_ACCUMULATION_RESOLVE_WGSL}
 ${RESOLVE_STAGES_WGSL}
 ${KEEP.wgsl}
+${TRACE_CROP.wgsl}
 ${STAMP_PAINT_FIELD_SHARE.wgsl}
-${STAMP_WASH_FRONT_SHARE.wgsl}
+${STAMP_WASH_FRONT_SHARE_WGSL}
+// The diagnostic variant (StampPaintRenderer's trace): the same resolve, recording each stage's coverage as it goes.
+override TRACE: bool = false;
+var<private> tracedPixel: vec2u;
+// Records \`value\` as the pixel's \`slot\` (TRACE_SLOTS a pixel, each a plane of the crop), within the traced crop.
+fn traced(slot: u32, value: f32) {
+  if (!TRACE) { return; }
+  let q = tracedPixel - tracing.origin;
+  if (any(tracedPixel < tracing.origin) || any(q >= tracing.extent)) { return; }
+  traces[tracing.offset + (slot * tracing.extent.y + q.y) * tracing.extent.x + q.x] = value;
+}
 @group(0) @binding(0) var<uniform> u: Deposit;
 @group(0) @binding(1) var mask: texture_2d<f32>;
 @group(0) @binding(2) var blurred: texture_2d<f32>;
@@ -310,6 +330,8 @@ ${STAMP_WASH_FRONT_SHARE.wgsl}
 @group(0) @binding(7) var clip: texture_storage_2d<rgba16float, read_write>;
 @group(0) @binding(9) var linearClamp: sampler;
 @group(0) @binding(10) var tile: sampler;
+@group(0) @binding(11) var<storage, read_write> traces: array<f32>;
+@group(0) @binding(12) var<uniform> tracing: TraceCrop;
 @group(0) @binding(13) var cap: texture_2d<f32>;
 @group(0) @binding(14) var mirrorTile: sampler;
 @group(0) @binding(15) var<uniform> k: Keep;
@@ -334,6 +356,7 @@ fn rimOf(a: f32, soft: f32, sharpness: f32) -> f32 { return clamp((a - soft) * s
   if (any(id.xy >= u.extent)) { return; }
   let pixel = u.origin + id.xy;
   let at = vec2f(pixel) + 0.5;
+  tracedPixel = pixel;
   // Each layer's stroke as its accumulation resolves it: a glaze's from its densest stamp (the cap's blue or alpha)
   // toward the build held under its cap (red or green).
   let built = textureLoad(mask, pixel, 0).rg;
@@ -353,8 +376,9 @@ fn rimOf(a: f32, soft: f32, sharpness: f32) -> f32 { return clamp((a - soft) * s
     if ((u.flags & DUAL_POOLED) != 0u) { d = pooled(d, u.pooling.z, u.pooling.w); }
     dualBurnt = rimOf(raw.g, soft.g, u.dualEdges.w) * u.dualEdges.z * step(0.0001, raw.r);
   }
-  // The stages in the order of the brush's plan (STAMP_RESOLVE_PLANS).
-  var m = resolveStages(raw.r, d, at, u.resolvePlan);
+  // The stages in the order of the brush's plan (STAMP_RESOLVE_PLANS), or a diagnosis's.
+  traced(0u, raw.r);
+  var m = resolveStages(raw.r, d, at, u.resolveOrder);
   // A wet rim is laid after the dual combines, as the whole stroke's pigment gathers there, but through the grain: a
   // grain that breaks the body into flecks breaks its rim too.
   var wet = rimOf(raw.r, soft.r, u.edges.y) * u.edges.x;
@@ -378,6 +402,7 @@ fn rimOf(a: f32, soft: f32, sharpness: f32) -> f32 { return clamp((a - soft) * s
   let clipped = textureLoad(clip, pixel);
   if ((u.flags & CLIPPED) != 0u) { keep *= clamp(clipped.r, 0.0, 1.0); }
   let coverage = clamp(m, 0.0, 1.0) * keep * u.opacity;
+  traced(${TRACE_SLOTS - 1}u, coverage);
   // A burnt rim burns into paint already there, the group's or the deposit's own (its stamps laid over one another).
   let burnable = max(layerCoverage(pixel), clamp(m, 0.0, 1.0)) * keep * u.opacity;
   layDeposit(pixel, coverage, vec2f(clamp(burnt, 0.0, 1.0) * burnable, clamp(dualBurnt, 0.0, 1.0) * burnable), tooth, at);
@@ -432,27 +457,6 @@ ${compositor.output}
   return vec4f(clamp(color + dither, vec3f(0.0), vec3f(1.0)), 1.0);
 }`;
 
-// A region's signed distance, as stampPolygonDistance (stamp-region.ts) works it out: its polygon's `count` points
-// from `first` in `points`, positive inside by even-odd.
-const POLYGON_DISTANCE_WGSL = /* wgsl */ `
-fn polygonDistance(p: vec2f, first: u32, count: u32) -> f32 {
-  var nearest = 1e30;
-  var inside = false;
-  var j = first + count - 1u;
-  for (var i = first; i < first + count; i++) {
-    let a = points[j];
-    let b = points[i];
-    let e = b - a;
-    let q = p - a;
-    let along = clamp(dot(q, e) / max(dot(e, e), 1e-12), 0.0, 1.0);
-    let d = q - e * along;
-    nearest = min(nearest, dot(d, d));
-    if ((a.y > p.y) != (b.y > p.y) && p.x < a.x + (p.y - a.y) / (b.y - a.y) * e.x) { inside = !inside; }
-    j = i;
-  }
-  return select(-sqrt(nearest), sqrt(nearest), inside);
-}`;
-
 // A state of the masking fluid over its box: the state it's built on (`parent`, width 0 for none), then `opCount` ops
 // from `firstOp`, a mask joining its region by max, an unmask lifting its amount, everywhere without a region
 // (`count` 0). An op's region is worked out only within its `reach`, beyond which it's 0.
@@ -468,7 +472,7 @@ struct MaskOp { reach: vec4f, ragged: vec2f, width: f32, amount: f32, first: u32
 @group(0) @binding(1) var<storage, read> points: array<vec2f>;
 @group(0) @binding(2) var parent: texture_2d<f32>;
 @group(0) @binding(3) var<storage, read> ops: array<MaskOp>;
-${POLYGON_DISTANCE_WGSL}
+${STAMP_POLYGON_DISTANCE_WGSL}
 @fragment fn maskStep(@builtin(position) at: vec4f) -> @location(0) vec4f {
   let p = at.xy + u.box.xy;
   var fluid = 0.0;
@@ -490,8 +494,8 @@ ${POLYGON_DISTANCE_WGSL}
   return vec4f(fluid);
 }`;
 
-// A wash's body over its box (washBody), how thick its region is read from its grid (as stampGridAt reads one): the
-// grid's first value in `grid`, its origin and cell, and its columns and rows.
+// A wash's body over its box (washBody), how thick its region is read from its grid (gridAt): the grid's first value
+// in `grid`, its origin and cell, and its columns and rows.
 const WASH_BODY = stampUniformLayout('WashBody', [['box', 'vec4f'], ['grid', 'vec4f'], ['gridSize', 'vec2u'], ['first', 'u32'], ['count', 'u32'], ['gridFirst', 'u32'], ['inset', 'f32']]);
 const WASH_BODY_WGSL = /* wgsl */ `
 ${COVERAGE_FORMULAS_WGSL}
@@ -501,18 +505,11 @@ ${WASH_BODY.wgsl}
 @group(0) @binding(0) var<uniform> u: WashBody;
 @group(0) @binding(1) var<storage, read> points: array<vec2f>;
 @group(0) @binding(2) var<storage, read> grid: array<f32>;
-${POLYGON_DISTANCE_WGSL}
-fn gridAt(p: vec2f) -> f32 {
-  let size = vec2f(u.gridSize);
-  let uv = clamp((p - u.grid.xy) / u.grid.z, vec2f(0.0), size - 1.0);
-  let cell = min(vec2u(floor(uv)), u.gridSize - 2u);
-  let f = uv - vec2f(cell);
-  let at = u.gridFirst + cell.y * u.gridSize.x + cell.x;
-  return mix(mix(grid[at], grid[at + 1u], f.x), mix(grid[at + u.gridSize.x], grid[at + u.gridSize.x + 1u], f.x), f.y);
-}
+${STAMP_POLYGON_DISTANCE_WGSL}
+${STAMP_GRID_AT_WGSL}
 @fragment fn washBodyAt(@builtin(position) at: vec4f) -> @location(0) vec4f {
   let p = at.xy + u.box.xy;
-  return vec4f(washBody(polygonDistance(p, u.first, u.count), gridAt(p), u.inset));
+  return vec4f(washBody(polygonDistance(p, u.first, u.count), gridAt(p, u.grid.xyz, u.gridSize, u.gridFirst), u.inset));
 }`;
 
 // A wash's body joined to its stamps' build, in the stamps' render pass, before rims blur it: its box (x, y, width,
@@ -646,7 +643,25 @@ type LoadedDeposit = {
   mainHull: StampTipHull; dualHull: StampTipHull | null;
   /** How each layer's stamps are laid, and an `ordered` layer's bins' table in the bin buffer (binOrderedStamps). */
   mainPlan: LoadedPlan; dualPlan: LoadedPlan | null;
+  /** Its plan's order's case in the resolve (stampResolveOrderIndex). */
+  resolveOrder: number;
 };
+
+/**
+ * A deposit to trace in a frame: the pixels to record, and the order its stages run in, its brush's plan's unless a
+ * diagnosis asks for another (the frame then lays it in that order too).
+ */
+export type StampDepositTraceRequest = { deposit: CompiledStampDeposit; crop: StampPixelBox; order?: readonly StampResolveStage[] };
+
+/**
+ * A traced deposit over its crop, row by row: its build as its accumulation resolves it, its coverage after each stage
+ * in the order it ran, and the coverage it laid (kept and at its opacity). All 0 where it paints nothing, as outside
+ * the pixels its stamps reach or when it doesn't show yet.
+ */
+export type StampDepositTrace = { crop: StampPixelBox; built: Float32Array; stages: { stage: StampResolveStage; coverage: Float32Array }[]; coverage: Float32Array };
+
+/** A frame's traces: each traced deposit's request and where its slots start in `buffer`, in floats. */
+type FrameTrace = { deposits: Map<CompiledStampDeposit, { request: StampDepositTraceRequest; order: number; offset: number }>; buffer: GPUBuffer };
 
 /** A region worked out at load (a wash's body, a state of the fluid, a `within`): its texture and its box on the painting. */
 type RegionTexture = { view: GPUTextureView; box: Box };
@@ -659,6 +674,11 @@ export type StampPaintRenderer = {
   draw: (t: number) => Promise<void>;
   /** Resolves once the GPU has finished what's been drawn: for timing a draw, which a render never needs. */
   finish: () => Promise<void>;
+  /**
+   * Draws the frame at `t` as `draw` does, recording each requested deposit's resolve stage by stage, read back once:
+   * for diagnosing a brush against a capture, not for rendering. Throws on a deposit not in the painting or asked for twice.
+   */
+  trace: (t: number, requests: readonly StampDepositTraceRequest[]) => Promise<StampDepositTrace[]>;
   dispose: () => void;
 };
 
@@ -772,6 +792,7 @@ async function rendererOnDevice(
         mainReach: stampReach(deposit.stamps, reachSpanOf(brush)), dualReach: stampReach(deposit.dualStamps, brush.dual ? reachSpanOf(brush.dual) : 1),
         mainHull: tipHull(brush, deposit.stamps), dualHull: brush.dual ? tipHull(brush.dual, deposit.dualStamps) : null,
         mainPlan: loadPlan(brush, deposit.stamps), dualPlan: brush.dual ? loadPlan(brush.dual, deposit.dualStamps) : null,
+        resolveOrder: stampResolveOrderIndex(STAMP_RESOLVE_PLANS[stampResolvePlan(brush.dual)]),
       });
       total += deposit.stamps.length + deposit.dualStamps.length;
       if (compositor.readsStampTints && deposit.brush.color) tints += deposit.stamps.length;
@@ -809,6 +830,8 @@ async function rendererOnDevice(
   // What an untinted stamp reads for its tint: read by every instance, so it's never indexed past.
   const noTintBuffer = buffer(new Float32Array(TINT_FLOATS), GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE);
   const binBuffer = buffer(new Uint32Array(binData.length ? binData : [0]), GPUBufferUsage.STORAGE);
+  // What an untraced resolve binds for the trace it never records.
+  const noTraceBuffer = buffer(new Float32Array(1), GPUBufferUsage.STORAGE), noTraceCrop = buffer(new Uint32Array(SLOT / 4), GPUBufferUsage.UNIFORM);
   // The fan's triangles, by corner: indexed, so each corner is shaded once a stamp, not once for each triangle it's in.
   const fanBuffer = buffer(new Uint16Array(Array.from({ length: STAMP_TIP_HULL_SIDES - 2 }, (_, i) => [0, i + 1, i + 2]).flat()), GPUBufferUsage.INDEX);
 
@@ -887,7 +910,11 @@ async function rendererOnDevice(
   });
   const orderedPipelines = { plain: [orderedPipeline(0, false), orderedPipeline(1, false)], tinted: [orderedPipeline(0, true), orderedPipeline(1, true)] };
   const computePipeline = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } });
-  const pipelines = { blur: computePipeline(BLUR_WGSL), deposit: computePipeline(depositWgsl(compositor)), group: computePipeline(groupWgsl(compositor)), paper: computePipeline(paperWgsl(compositor)) };
+  const depositModule = device.createShaderModule({ code: depositWgsl(compositor) });
+  // The traced resolve is the ordinary one with TRACE on, made only when a trace asks for it.
+  const depositPipeline = (trace: boolean) => device.createComputePipeline({ layout: 'auto', compute: { module: depositModule, constants: { TRACE: trace ? 1 : 0 } } });
+  let tracePipeline: GPUComputePipeline | null = null;
+  const pipelines = { blur: computePipeline(BLUR_WGSL), deposit: depositPipeline(false), group: computePipeline(groupWgsl(compositor)), paper: computePipeline(paperWgsl(compositor)) };
   const outputModule = device.createShaderModule({ code: outputWgsl(compositor) });
   const outputPipeline = device.createRenderPipeline({ layout: 'auto', vertex: { module: outputModule }, fragment: { module: outputModule, targets: [{ format }] } });
   const regionPipeline = (code: string, entryPoint: string) => {
@@ -1244,7 +1271,8 @@ async function rendererOnDevice(
     blur(targets.blurA.view, [halfW, halfH], targets.blurB.view, [0, 1], half);
   }
 
-  function resolveDeposit(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loadedDeposit: LoadedDeposit, pass: CompiledStampPass, t: number, blurred: boolean, box: Box) {
+  function resolveDeposit(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loadedDeposit: LoadedDeposit, pass: CompiledStampPass, t: number, blurred: boolean, box: Box, frameTrace?: FrameTrace) {
+    const trace = frameTrace?.deposits.get(deposit);
     const clipped = !!pass.clipTo, fluid = deposit.mask ? regions.fluids.get(deposit.mask) ?? null : null;
     // A pass within a region wholly off the painting lands nowhere: its `within` is an empty texture, read as none.
     const within = pass.within ? regions.withins.get(pass) ?? null : null;
@@ -1266,7 +1294,7 @@ async function rendererOnDevice(
       ...(active.main.pooling ? ['pooled' as const] : []), ...(active.dual?.pooling ? ['dualPooled' as const] : []),
       ...(brush.dual?.blend.family === 'layer' ? ['dualLayer' as const] : []),
     ];
-    dispatch(encoder, pipelines.deposit, [
+    dispatch(encoder, trace ? tracePipeline! : pipelines.deposit, [
       slot((views) => {
         const put = stampUniformWriter(DEPOSIT, views);
         put('view', [width, height, paperTile[0], paperTile[1]]);
@@ -1279,7 +1307,7 @@ async function rendererOnDevice(
         put('opacity', deposit.opacity);
         put('dualBlend', brush.dual ? stampDualModeIndex(brush.dual.blend) : 0);
         put('flags', flags.reduce((all, flag) => all | DEPOSIT_FLAGS[flag], 0));
-        put('resolvePlan', stampResolvePlanIndex(stampResolvePlan(brush.dual)));
+        put('resolveOrder', trace?.order ?? loadedDeposit.resolveOrder);
         put('origin', [box.x, box.y]);
         put('extent', [box.w, box.h]);
         // A layer that isn't there reads its build as none, as a `build` accumulation, whatever it resolves to.
@@ -1294,7 +1322,15 @@ async function rendererOnDevice(
       dualGrain ? dualGrain.image.view : targets.blank.view,
       tooth ? image(tooth.image).view : targets.blank.view,
       fluid?.view ?? targets.blank.view, targets.clip.view, targets.layer.view, linearClamp, tile,
-      null, null, targets.cap.view, mirrorTile,
+      { buffer: trace ? frameTrace!.buffer : noTraceBuffer },
+      trace ? slot((views) => {
+        const put = stampUniformWriter(TRACE_CROP, views);
+        const { crop } = trace.request;
+        put('origin', [crop.x, crop.y]);
+        put('extent', [crop.w, crop.h]);
+        put('offset', trace.offset);
+      }) : { buffer: noTraceCrop },
+      targets.cap.view, mirrorTile,
       slot((views) => {
         const put = stampUniformWriter(KEEP, views);
         put('fluid', boxWords(fluid?.box));
@@ -1345,7 +1381,7 @@ async function rendererOnDevice(
     dispatch(encoder, pipelines.paper, [slot((views) => writePaper(views, 0)), photograph?.view ?? targets.blank.view, targets.painting.view, linearClamp], width, height);
   }
 
-  function draw(t: number) {
+  function draw(t: number, frameTrace?: FrameTrace) {
     if (lost) throw new Error(`stamp paint: the GPU device was lost: ${lost}`);
     slots = 0;
     const encoder = device.createCommandEncoder();
@@ -1366,7 +1402,7 @@ async function rendererOnDevice(
           if (!box) continue;
           drawStamps(encoder, deposit, loadedDeposit, count, dualCount, box);
           if (blurred) blurMask(encoder, sigma, box);
-          resolveDeposit(encoder, deposit, loadedDeposit, pass, t, blurred, box);
+          resolveDeposit(encoder, deposit, loadedDeposit, pass, t, blurred, box, frameTrace);
           painted = painted ? union(painted, box) : box;
         }
       }
@@ -1391,7 +1427,7 @@ async function rendererOnDevice(
     out.draw(3);
     out.end();
     device.queue.writeBuffer(uniforms, 0, staging, 0, slots * SLOT);
-    device.queue.submit([encoder.finish()]);
+    return encoder;
   }
 
   await checked('loading the painting onto the GPU');
@@ -1403,10 +1439,48 @@ async function rendererOnDevice(
       if (disposed) return;
       checking();
       try {
-        draw(t);
+        device.queue.submit([draw(t).finish()]);
       } finally {
         // A disposed device's scopes resolve with no error.
         await checked(`drawing the painting at ${t} s`);
+      }
+    },
+    trace: async (t, requests) => {
+      if (disposed) throw new Error('stamp paint: a disposed renderer traces nothing');
+      const traced: FrameTrace['deposits'] = new Map();
+      let floats = 0;
+      for (const request of requests) {
+        const { deposit, crop } = request;
+        if (!deposits.has(deposit)) throw new Error(`stamp paint: can't trace ${deposit.id}, which isn't in the painting`);
+        if (traced.has(deposit)) throw new Error(`stamp paint: ${deposit.id} is traced twice in one frame`);
+        if (!(crop.w > 0 && crop.h > 0)) throw new Error(`stamp paint: ${deposit.id}'s trace crop is ${crop.w} × ${crop.h}, and a crop needs pixels`);
+        traced.set(deposit, { request, order: request.order ? stampResolveOrderIndex(request.order) : deposits.get(deposit)!.resolveOrder, offset: floats });
+        floats += crop.w * crop.h * TRACE_SLOTS;
+      }
+      const bytes = Math.max(4, floats * 4);
+      checking();
+      const traceBuffer = device.createBuffer({ size: bytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+      const read = device.createBuffer({ size: bytes, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+      try {
+        try {
+          tracePipeline ??= depositPipeline(true);
+          const encoder = draw(t, { deposits: traced, buffer: traceBuffer });
+          encoder.copyBufferToBuffer(traceBuffer, 0, read, 0, bytes);
+          device.queue.submit([encoder.finish()]);
+        } finally {
+          await checked(`tracing the painting at ${t} s`);
+        }
+        await read.mapAsync(GPUMapMode.READ);
+        const all = new Float32Array(read.getMappedRange().slice(0));
+        read.unmap();
+        return requests.map(({ deposit, crop }) => {
+          const { order, offset } = traced.get(deposit)!, plane = crop.w * crop.h;
+          const at = (index: number) => all.slice(offset + index * plane, offset + (index + 1) * plane);
+          return { crop, built: at(0), stages: STAMP_RESOLVE_ORDERS[order].map((stage, k) => ({ stage, coverage: at(k + 1) })), coverage: at(TRACE_SLOTS - 1) };
+        });
+      } finally {
+        traceBuffer.destroy();
+        read.destroy();
       }
     },
     finish: () => (disposed ? Promise.resolve() : device.queue.onSubmittedWorkDone()),

@@ -1,5 +1,5 @@
 {
   "lib/output/render": "A project's bundle includes its styles module (`@stamp-paint-styles`), which stamp-styles writes.",
   "lib/picture/brush-fidelity": "A sheet reads an imported pack from disk and resolves its brushes, the ones it scores.",
-  "lib/picture/stamp-reference": "Probe presets are read from an imported pack and resolved as a pack's brushes always are."
+  "lib/picture/stamp-paint-gate": "The gate's private run paints brushes read from an imported pack, resolved as a pack's brushes always are."
 }

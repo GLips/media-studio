@@ -378,7 +378,7 @@ export function visibleStampCountAt(deposit: CompiledStampDeposit, t: number, wh
   return low;
 }
 
-/** How far a wash's front has crossed it at `t` seconds, 0..1 (STAMP_WASH_FRONT_SHARE): 0 before `appliedAt`. */
+/** How far a wash's front has crossed it at `t` seconds, 0..1 (STAMP_WASH_FRONT_SHARE_WGSL): 0 before `appliedAt`. */
 export function stampWashProgressAt(deposit: CompiledStampDeposit & { kind: 'wash' }, t: number): number {
   const { reveal } = deposit;
   if (!reveal) return 1;

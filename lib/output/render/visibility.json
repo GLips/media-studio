@@ -5,5 +5,5 @@
   "lib/output/stills": "The still sheet lays out the stills a render produced.",
   "lib/picture/brush-fidelity": "The WebGPU painter runs in a headless page through withBrowserModulePage, to paint what the sheet scores.",
   "lib/picture/reel": "recap.test loads the reel's studio code in Node through the render's tsx hooks.",
-  "lib/picture/stamp-reference": "The GPU stages it is held to run in a headless page through withBrowserModulePage."
+  "lib/picture/stamp-paint-gate": "The GPU gate runs the renderer in a headless page through withBrowserModulePage."
 }

@@ -5,3 +5,4 @@ scratch/
 # Your own projects, brand kits and hosts: a git repository of its own that `studio workspace init` makes
 # (lib/platform/project/engine/studio-workspace.ts).
 /work/
+harness/fixtures/stamp-paint/candidates/

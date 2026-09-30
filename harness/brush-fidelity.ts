@@ -1,16 +1,25 @@
-// node harness/brush-fidelity.ts <sheet|fit|diagnose|hand|fills> (npm run brushes:sheet / brushes:fit /
-// brushes:diagnose / brushes:hand / brushes:fills): how close an imported pack's brushes paint to their targets,
-// fitting an app's reading to close the gap, the per-brush diagnostic of a reading, how a brush answers each stroke
-// hand, and how it fills a region (lib/picture/brush-fidelity/engine/brush-fidelity-sheet.ts, brush-reading-fit.ts,
-// brush-reading-diagnostic.ts, stamp-stroke-hand-sheet.ts, stamp-fill-sheet.ts; docs/private-styles.md).
+// node harness/brush-fidelity.ts <sheet|fit|diagnose|hand|fills|probes> (npm run brushes:sheet / brushes:fit /
+// brushes:diagnose / brushes:hand / brushes:fills / brushes:probes): how close an imported pack's brushes paint to
+// their targets, fitting an app's reading to close the gap, the per-brush diagnostic of a reading, how a brush answers
+// each stroke hand, how it fills a region, and a Photoshop probe run scored cell by cell against the GPU renderer's
+// stage trace (lib/picture/brush-fidelity/engine/brush-fidelity-sheet.ts, brush-reading-fit.ts,
+// brush-reading-diagnostic.ts, stamp-stroke-hand-sheet.ts, stamp-fill-sheet.ts, photoshop-probe-scoring.ts;
+// docs/private-styles.md).
 import { defineCommand } from 'citty';
-import { relative, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
 import { writeBrushFidelitySheet } from '#lib/picture/brush-fidelity/engine/brush-fidelity-sheet.ts';
 import { diagnoseBrushReading } from '#lib/picture/brush-fidelity/engine/brush-reading-diagnostic.ts';
 import { fitBrushReading } from '#lib/picture/brush-fidelity/engine/brush-reading-fit.ts';
+import { scorePhotoshopProbeRun } from '#lib/picture/brush-fidelity/engine/photoshop-probe-scoring.ts';
 import { writeStampFillSheet } from '#lib/picture/brush-fidelity/engine/stamp-fill-sheet.ts';
 import { writeStampStrokeHandSheet } from '#lib/picture/brush-fidelity/engine/stamp-stroke-hand-sheet.ts';
+import type { PhotoshopProbeOpacity } from '#lib/picture/brush-fidelity/models/photoshop-probe-painting.ts';
 import { strokeFidelityGrade } from '#lib/picture/brush-fidelity/models/stroke-measure.ts';
+import type { PhotoshopCaptureManifest } from '#lib/picture/photoshop-brushes/models/photoshop-capture-plan.ts';
+import { photoshopPresetMismatches } from '#lib/picture/photoshop-brushes/models/photoshop-preset.ts';
+import { photoshopProbes } from '#lib/picture/photoshop-brushes/models/photoshop-probes.ts';
+import { STAMP_RESOLVE_ORDERS } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
 import { STUDIO_ROOT, STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { runHarnessCommand } from './run-harness-command.ts';
 
@@ -140,7 +149,67 @@ const fillsCommand = defineCommand({
   },
 });
 
+const listArg = (value: string | undefined) => value?.split(',').map((s) => s.trim()).filter(Boolean);
+
+/** `--order` as one of the orders the GPU can resolve in: every stage once. */
+function probeOrder(value: string | undefined) {
+  const listed = listArg(value);
+  if (!listed) return undefined;
+  const order = STAMP_RESOLVE_ORDERS.find((known) => known.join() === listed.join());
+  if (!order) throw new Error(`brushes probes: --order ${JSON.stringify(value)} isn't an order of the stages: name each of grain, dual and pooling once, e.g. dual,grain,pooling`);
+  return order;
+}
+
+function probeOpacity(value: string | undefined): PhotoshopProbeOpacity | undefined {
+  if (value === undefined || value === 'last' || value === 'inBuild') return value;
+  throw new Error(`brushes probes: --opacity is last or inBuild, not ${JSON.stringify(value)}`);
+}
+
+const probesCommand = defineCommand({
+  meta: { name: 'probes', description: "Paint every probe of a Photoshop probe run (its folder, with manifest.json) through the importer on the GPU, trace each cell stage by stage, and score it against its capture: rms and max over the painted pixels, and each stage's share. Skipped cells (grounds, further copies, randomness, probes Photoshop didn't set as asked) are counted." },
+  args: {
+    run: { type: 'positional', required: true, description: 'The run folder, e.g. work/styles/watercolor/brushes/photoshop-probes/<run>' },
+    only: { type: 'string', valueHint: 'tip computed h50,wet edges h50', description: 'Score only these probes (comma-separated)' },
+    order: { type: 'string', valueHint: 'grain,dual,pooling', description: "The stages after the build, each once, in order (each brush's plan's by default)" },
+    opacity: { type: 'string', valueHint: 'last|inBuild', description: "Where the deposit's opacity applies (last by default)" },
+    json: { type: 'boolean', description: 'Print every score as JSON' },
+  },
+  async run({ args }) {
+    const dir = resolve(args.run);
+    // SAFETY: the rig (harness/photoshop.ts) writes a run's manifest.json from this type; its kind is checked below.
+    const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as PhotoshopCaptureManifest;
+    const only = listArg(args.only);
+    if (manifest.kind !== 'probes') throw new Error(`brushes probes: ${dir} is a ${manifest.kind} run, not a probe run`);
+    const arrangement = { order: probeOrder(args.order), opacity: probeOpacity(args.opacity) };
+    // A run's items are probes by name. One Photoshop didn't set as the probe now asks (its read-back differs) was
+    // painted from another preset, so its cells aren't scored.
+    const defined = new Map(photoshopProbes().map((p) => [p.name, p]));
+    const untaken = new Set<string>();
+    const probes = Object.entries(manifest.items).map(([name, item]) => {
+      const probe = defined.get(name);
+      if (!probe) throw new Error(`brushes probes: ${dir} painted probe ${JSON.stringify(name)}, which photoshopProbes() no longer defines`);
+      const differs = photoshopPresetMismatches(probe.preset, item.applied);
+      if (differs.length) {
+        untaken.add(name);
+        console.error(`brushes probes: ${JSON.stringify(name)} was painted from another preset, not scored: ${differs.join('; ')}`);
+      }
+      return probe;
+    });
+    const { scores, skipped } = await scorePhotoshopProbeRun({ dir, sheets: manifest.sheets, probes, untaken, only, arrangement });
+    if (args.json) {
+      console.log(JSON.stringify({ arrangement, scores, skipped }, null, 2));
+      return;
+    }
+    for (const { probe, cell, score } of scores.toSorted((a, b) => b.score.rms - a.score.rms)) {
+      const owners = score.owners.map((o) => `${o.owner} ${o.rms.toFixed(4)} (${o.pixels} px)`).join(', ');
+      console.log(`${score.rms.toFixed(4)} max ${score.max.toFixed(3)}  ${probe} / ${cell}: ${owners}`);
+    }
+    const all = scores.map((s) => s.score.rms).toSorted((a, b) => a - b);
+    console.log(`brushes probes: ${scores.length} cells, median rms ${(all[Math.floor(all.length / 2)] ?? 0).toFixed(4)}, worst ${(all.at(-1) ?? 0).toFixed(4)}; skipped ${Object.entries(skipped).map(([why, n]) => `${n} ${why}`).join(', ') || 'none'}`);
+  },
+});
+
 await runHarnessCommand(defineCommand({
-  meta: { name: 'brush-fidelity', description: "How close an imported pack's brushes paint to their targets, and fitting the importer to them" },
-  subCommands: { sheet: sheetCommand, fit: fitCommand, diagnose: diagnoseCommand, hand: handCommand, fills: fillsCommand },
+  meta: { name: 'brush-fidelity', description: "How close an imported pack's brushes paint to their targets, fitting the importer to them, and Photoshop's probes scored stage by stage" },
+  subCommands: { sheet: sheetCommand, fit: fitCommand, diagnose: diagnoseCommand, hand: handCommand, fills: fillsCommand, probes: probesCommand },
 }));

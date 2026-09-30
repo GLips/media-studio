@@ -10,7 +10,7 @@ import { PROCREATE_PREVIEW_SIZE } from '#lib/picture/procreate-brushes/models/pr
 import type { PhotoshopPressureContext } from '#lib/picture/photoshop-brushes/models/photoshop-brush.ts';
 import { photoshopPressuredPath } from '#lib/picture/photoshop-brushes/models/photoshop-stroke-pressure.ts';
 import type { StampBrush, StampBrushLayer } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
-import { stampDualCombine } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
+import { stampDualNeedsDual } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import type { StampStrokePoint } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 
@@ -32,7 +32,7 @@ export type PhotoshopReferenceStroke = {
  */
 export function stampBrushPaintReach(brush: StampBrush<unknown>): number {
   const { dual } = brush;
-  return dual && stampDualCombine(1, 0, dual.blend) === 0 ? Math.min(layerReach(brush), dual.scale * layerReach(dual)) : layerReach(brush);
+  return dual && stampDualNeedsDual(dual.blend) ? Math.min(layerReach(brush), dual.scale * layerReach(dual)) : layerReach(brush);
 }
 
 const layerReach = (layer: StampBrushLayer<unknown>) => Math.SQRT1_2 + Math.max(layer.scatter.radius, layer.scatter.lateral);

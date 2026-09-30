@@ -1,7 +1,7 @@
-// stamp-reference-score.ts: how far a reference render's coverage is from a capture's, and which stage owns the
-// difference (vid-97's error attribution). A stage owns the pixels it changes: each pixel's error goes to the last
-// stage that moved its coverage by more than STAGE_FOOTPRINT, or to the build when none did. So "off" becomes a list
-// of the stages to look at, not one number.
+// photoshop-probe-score.ts: how far a probe cell's traced coverage is from Photoshop's capture of it, and which stage
+// owns the difference (vid-97's error attribution). A stage owns the pixels it changes: each pixel's error goes to the
+// last stage that moved its coverage by more than STAGE_FOOTPRINT, or to the build when none did. So "off" becomes a
+// list of the stages to look at, not one number.
 
 import type { StampResolveStage } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
 
@@ -9,27 +9,27 @@ import type { StampResolveStage } from '#lib/picture/stamp-paint/models/stamp-de
 const STAGE_FOOTPRINT = 1 / 255;
 
 /** The stages a pixel's error can go to. Opacity scales every pixel alike, so it owns none: its error shows everywhere. */
-export type StampReferenceOwner = 'build' | StampResolveStage;
+export type PhotoshopProbeStageOwner = 'build' | StampResolveStage;
 
-export type StampReferenceScore = {
+export type PhotoshopProbeScore = {
   /** Over every pixel either side paints. */
   rms: number;
   max: number;
   pixels: number;
   /** Each owner's pixels and rms over them; owners with no pixels are left out. */
-  owners: { owner: StampReferenceOwner; pixels: number; rms: number }[];
+  owners: { owner: PhotoshopProbeStageOwner; pixels: number; rms: number }[];
 };
 
 /**
- * `reference` against `capture`, both coverage 0..1 over the same pixels. `buffers` are the reference's coverage after
- * the build and after each stage in order, each with its owner.
+ * `painted` against `capture`, both coverage 0..1 over the same pixels. `buffers` are the painted coverage after the
+ * build and after each stage in order, each with its owner.
  */
-export function scoreStampReference(reference: Float32Array, capture: Float32Array, buffers: readonly { owner: StampReferenceOwner; coverage: Float32Array }[]): StampReferenceScore {
-  const sums = new Map<StampReferenceOwner, { pixels: number; squares: number }>();
+export function scorePhotoshopProbe(painted: Float32Array, capture: Float32Array, buffers: readonly { owner: PhotoshopProbeStageOwner; coverage: Float32Array }[]): PhotoshopProbeScore {
+  const sums = new Map<PhotoshopProbeStageOwner, { pixels: number; squares: number }>();
   let pixels = 0, squares = 0, max = 0;
-  for (let i = 0; i < reference.length; i++) {
-    if (reference[i] <= 0 && capture[i] <= 0) continue;
-    const error = reference[i] - capture[i];
+  for (let i = 0; i < painted.length; i++) {
+    if (painted[i] <= 0 && capture[i] <= 0) continue;
+    const error = painted[i] - capture[i];
     pixels++;
     squares += error * error;
     max = Math.max(max, Math.abs(error));

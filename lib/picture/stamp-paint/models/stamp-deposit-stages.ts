@@ -1,9 +1,8 @@
-// stamp-deposit-stages.ts: how a deposit's coverage is built and resolved, as tables both renderers read: the GPU
-// renderer (stamp-paint-renderer.ts) and the CPU reference (stamp-reference-deposit.ts). What each accumulation does
-// as a stamp lands and how it resolves; which stages run, in which order (a plan both renderers walk, the GPU's code
-// generated from it); which of a brush's layers' stages are active; and how far a stamp's blur reaches up its tip's
-// mips; and how the GPU lays a layer's stamps, by fixed blend or in order. An accumulation's lay and resolve are CPU
-// and WGSL pairs written side by side, held together by the formulas command (docs/brush-engine.md).
+// stamp-deposit-stages.ts: how a deposit's coverage is built and resolved, as tables the GPU renderer
+// (stamp-paint-renderer.ts) generates its code from. What each accumulation does as a stamp lands and how it resolves;
+// which stages run, in which order; which of a brush's layers' stages are active; how far a stamp's blur reaches up
+// its tip's mips; and how the GPU lays a layer's stamps, by fixed blend or in order. An accumulation's lay and resolve
+// are WGSL, held to their accepted output by the GPU gate (docs/brush-engine.md).
 
 import { stampDualBeforeGrain, stampWgslSwitch } from './coverage-formulas.ts';
 import type { StampAccumulation, StampBrush, StampBrushBurntEdge, StampBrushGrain, StampBrushLayer, StampBrushWetEdges, StampDualBlend } from './stamp-brush.ts';
@@ -12,39 +11,28 @@ import type { StampAccumulation, StampBrush, StampBrushBurntEdge, StampBrushGrai
 export const STAMP_BLUR_LEVELS = 4;
 
 /** A stamp lays `laid` × its `opacity` over what's `built`, toward full paint: the same whatever order stamps land in. */
-const layTowardFull = {
-  cpu: (built: number, laid: number, opacity: number) => built + laid * opacity * (1 - built),
-  wgsl: 'built + laid * opacity * (1.0 - built)',
-};
-
-/** What a stroke's build holds after its last stamp, per pixel: the build, and a glaze's densest stamp and cap. */
-export type StampAccumulationKept = { built: number; densest: number; cap: number };
+const layTowardFull = 'built + laid * opacity * (1.0 - built)';
 
 /**
  * What each accumulation does (StampAccumulation says why). `lay`: the build after one stamp. `towardFull`: paint ×
- * opacity toward full; else paint toward its own opacity. `keepsCap`: the densest stamp and cap are kept beside the
- * build. `resolve`: the stroke from what was kept. Each of `lay` and `resolve` is a CPU function and a WGSL
- * expression over the same names.
+ * opacity toward full; else toward its own opacity. `keepsCap`: the densest stamp and cap are kept beside the build.
+ * `resolve`: the stroke from what was kept. Each is a WGSL expression over those names.
  */
 export const STAMP_ACCUMULATIONS = {
   glaze: {
     towardFull: true, keepsCap: true, lay: layTowardFull,
     // Its densest stamp built toward the build held under its cap, as far as its `build` says.
-    resolve: { cpu: ({ built, densest, cap }: StampAccumulationKept, build: number) => densest + (Math.min(built, cap) - densest) * build, wgsl: 'mix(densest, min(built, cap), build)' },
+    resolve: 'mix(densest, min(built, cap), build)',
   },
-  build: { towardFull: true, keepsCap: false, lay: layTowardFull, resolve: { cpu: ({ built }: StampAccumulationKept) => built, wgsl: 'built' } },
+  build: { towardFull: true, keepsCap: false, lay: layTowardFull, resolve: 'built' },
   buildToOpacity: {
     towardFull: false, keepsCap: false,
     // Never lowers: in Photoshop's probes (fade opacity 40, fade opacity 130 minimum 20 flow 50) a fainter stamp
     // leaves the paint a stronger one built where it lands.
-    lay: { cpu: (built: number, laid: number, opacity: number) => (opacity > built ? built + laid * (opacity - built) : built), wgsl: 'select(built, built + laid * (opacity - built), opacity > built)' },
-    resolve: { cpu: ({ built }: StampAccumulationKept) => built, wgsl: 'built' },
+    lay: 'select(built, built + laid * (opacity - built), opacity > built)',
+    resolve: 'built',
   },
-} satisfies Record<StampAccumulation['kind'], {
-  towardFull: boolean; keepsCap: boolean;
-  lay: { cpu: (built: number, laid: number, opacity: number) => number; wgsl: string };
-  resolve: { cpu: (kept: StampAccumulationKept, build: number) => number; wgsl: string };
-}>;
+} satisfies Record<StampAccumulation['kind'], { towardFull: boolean; keepsCap: boolean; lay: string; resolve: string }>;
 
 /** Every accumulation, in the table's order. */
 // SAFETY: the table `satisfies` a record over exactly StampAccumulation['kind'], so its keys are those kinds.
@@ -56,7 +44,7 @@ export const stampAccumulationBuild = (accumulation: StampAccumulation) => (accu
 /** The table's lays in WGSL, by the accumulation's index. */
 export const STAMP_ACCUMULATION_LAY_WGSL = stampWgslSwitch(
   'accumulationLay', 'built: f32, laid: f32, opacity: f32, kind: i32', 'f32', 'kind',
-  Object.values(STAMP_ACCUMULATIONS).map(({ lay }) => `return ${lay.wgsl};`),
+  Object.values(STAMP_ACCUMULATIONS).map(({ lay }) => `return ${lay};`),
 );
 
 /**
@@ -76,7 +64,7 @@ export function stampAccumulationPlan(accumulation: StampAccumulation, stamps: r
 /** The table's resolves in WGSL, by the accumulation's index. */
 export const STAMP_ACCUMULATION_RESOLVE_WGSL = stampWgslSwitch(
   'accumulationResolve', 'built: f32, densest: f32, cap: f32, build: f32, kind: i32', 'f32', 'kind',
-  Object.values(STAMP_ACCUMULATIONS).map(({ resolve }) => `return ${resolve.wgsl};`),
+  Object.values(STAMP_ACCUMULATIONS).map(({ resolve }) => `return ${resolve};`),
 );
 
 /** The stages after the stamps have built, each on the coverage the one before it left. */
@@ -93,17 +81,32 @@ export const STAMP_RESOLVE_PLANS = {
 export type StampResolvePlan = keyof typeof STAMP_RESOLVE_PLANS;
 
 export const stampResolvePlan = (dual?: { blend: StampDualBlend }): StampResolvePlan => (dual && stampDualBeforeGrain(dual.blend) ? 'dualFirst' : 'grainFirst');
-const RESOLVE_PLANS = Object.keys(STAMP_RESOLVE_PLANS);
-/** A plan's case in the WGSL generated by stampResolvePlansWgsl. */
-export const stampResolvePlanIndex = (plan: StampResolvePlan) => RESOLVE_PLANS.indexOf(plan);
+
+const STAMP_RESOLVE_STAGES = STAMP_RESOLVE_PLANS.grainFirst;
+/**
+ * Every order the GPU can resolve a deposit's stages in: each plan's, and the others, which only a diagnosis asks for
+ * (a probe scored under another order). Every stage runs in each; one that does nothing to a brush is skipped there.
+ */
+export const STAMP_RESOLVE_ORDERS: readonly (readonly StampResolveStage[])[] = [
+  STAMP_RESOLVE_PLANS.grainFirst, STAMP_RESOLVE_PLANS.dualFirst,
+  ['grain', 'pooling', 'dual'], ['dual', 'pooling', 'grain'], ['pooling', 'grain', 'dual'], ['pooling', 'dual', 'grain'],
+];
+
+/** An order's case in the WGSL of stampResolveOrdersWgsl; throws on a list that isn't every stage once. */
+export function stampResolveOrderIndex(order: readonly StampResolveStage[]): number {
+  const index = STAMP_RESOLVE_ORDERS.findIndex((known) => known.join() === order.join());
+  if (index < 0) throw new Error(`stamp paint: ${JSON.stringify(order.join(','))} isn't an order of the resolve's stages: it names each of ${STAMP_RESOLVE_STAGES.join(', ')} once`);
+  return index;
+}
 
 /**
- * WGSL function `name(coverage, …params, plan: i32) -> f32` running each plan's stages in its order, from `stages`, a
- * statement each that moves `m`: so the GPU runs the orders this table lists, and a plan added here is a case there.
+ * WGSL function `name(coverage, …params, order: i32) -> f32` running the stages in each order of
+ * STAMP_RESOLVE_ORDERS, from `stages`, a statement each that moves `m`, with `after(k)` after the k-th (from 1): so
+ * the orders the GPU runs and the one a diagnosis traces are one code.
  */
-export function stampResolvePlansWgsl(name: string, params: string, stages: Record<StampResolveStage, string>): string {
-  return stampWgslSwitch(name, `coverage: f32, ${params}, plan: i32`, 'f32', 'plan', Object.values(STAMP_RESOLVE_PLANS).map((order) =>
-    ['var m = coverage;', ...order.map((stage) => stages[stage]), 'return m;'].join(' ')));
+export function stampResolveOrdersWgsl(name: string, params: string, stages: Record<StampResolveStage, string>, after: (position: number) => string): string {
+  return stampWgslSwitch(name, `coverage: f32, ${params}, order: i32`, 'f32', 'order', STAMP_RESOLVE_ORDERS.map((order) =>
+    ['var m = coverage;', ...order.map((stage, k) => `${stages[stage]} ${after(k + 1)}`), 'return m;'].join(' ')));
 }
 
 type CanvasGrain<Image> = Extract<StampBrushGrain<Image>, { kind: 'canvas' }>;
@@ -138,9 +141,9 @@ function activeLayer<Image>(layer: StampBrushLayer<Image>, diameter: number): St
 }
 
 /**
- * Which stages of `brush`'s main layer and its dual's are active at the deposit's `diameter`, decided once for both
- * renderers. `edgeSigma` is the blur a layer's rim or burnt edge stands above (the widest active edge, a share of the
- * stamp's radius), 0 when neither layer has one; the CPU reference paints no rims, so only the GPU reads it.
+ * Which stages of `brush`'s main layer and its dual's are active at the deposit's `diameter`. `edgeSigma` is the blur
+ * a layer's rim or burnt edge stands above (the widest active edge, a share of the stamp's radius), 0 when neither
+ * layer has one.
  */
 export function stampActiveLayers<Image>(brush: StampBrush<Image>, diameter: number) {
   const main = activeLayer(brush, diameter), dual = brush.dual && activeLayer(brush.dual, diameter * brush.dual.scale);

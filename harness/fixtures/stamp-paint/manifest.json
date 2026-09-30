@@ -1,0 +1,220 @@
+{
+  "baselines": {
+    "formula/accumulationLay": {
+      "file": "formula/accumulationLay.f32",
+      "output": "6dafcd9dfc864f6239a9180d3688282dcfa9b2183c10dd92a7f38a5eebdeb0d2",
+      "inputs": "8890f65609ff15d200eaee0ad0eb1bb5756e6c03cb0507f122ad02b9db7afcea",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "formula/accumulationResolve": {
+      "file": "formula/accumulationResolve.f32",
+      "output": "4379f1c5d1ca6fb68f0e1c038d79eb4822630f7b0a9a2a5db7b8ae599d0fc00a",
+      "inputs": "1336d357f123827396798c83f5e4e8f4348aa53b0a323db45c48b063d4b32410",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "formula/dualCombine": {
+      "file": "formula/dualCombine.f32",
+      "output": "85a3b639cbda94dbc941ffcb111383123e200105452220c4b8c14cd9ff049c7f",
+      "inputs": "ec8d1d257dff040ce9b785e0d692948776f31076dac061a947369eb89570c1f2",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "formula/edgeCoverage": {
+      "file": "formula/edgeCoverage.f32",
+      "output": "206a3e6bd6a21838c121ecd8389e75f913259b23710bb929f7245d3bfa7dfe9c",
+      "inputs": "5f2ca9831055f0c75b2f53c3fb16953a774d4f60cc2fd805bd47b9b4ea826690",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "formula/edgeNoise": {
+      "file": "formula/edgeNoise.f32",
+      "output": "a8f34ef341e6180882e9c967a6542ffe8a1f4b207c5c22eb8d8e56e55e85c162",
+      "inputs": "35cd3d4acc2cc70111c492b68e8fa0266d49ec307c5ccaeed5574d74011fcdfd",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "formula/grainCut": {
+      "file": "formula/grainCut.f32",
+      "output": "d852956fb229c12c352bad675b80a101398385fbcbedf77259bac0f75424ea1a",
+      "inputs": "f621dfd4dad1dfb3b28374a2e017147b35466e7f80962dca210d277bb0937efb",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "formula/grainPaint": {
+      "file": "formula/grainPaint.f32",
+      "output": "8be17796370fbae0617eb8d4b9f4fa785ad03aa76dc53e274f6f797020a54f71",
+      "inputs": "a56f05a7c9e56d10ff90d9de873e2c5be6687ebbc5ebabfe8b2c0971aa1d230d",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "formula/paintClumps": {
+      "file": "formula/paintClumps.f32",
+      "output": "e57c4797d4a3d709e87417712053e05d23863e727672e9887235d87dc2375d92",
+      "inputs": "601d41cb7362868456be23f3d79254239ef59da2231e97920908090c4490acd2",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "formula/paintDryContact": {
+      "file": "formula/paintDryContact.f32",
+      "output": "3325290ae5a51d52cf723a612dab4680631fd9a85187cd9ccaeb1294307018b3",
+      "inputs": "775363cb5de52b30c5a2ba30f83881db206cdcd32cdfb17a70de5909921bfb32",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "formula/paintWetSettle": {
+      "file": "formula/paintWetSettle.f32",
+      "output": "08641701684719cb01c22d8a8a06c16d8884be9bdb723f1bf9132c6e47184073",
+      "inputs": "a1d0310b4e7f362b2ad58bd60a3c315d6340ac545fd73604390d0ed1124c98f1",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "formula/pooled": {
+      "file": "formula/pooled.f32",
+      "output": "62198b0f11303d0e068580e4b6a8eea522edd2bbfc43799294ddc625646d0d9a",
+      "inputs": "0e42939794c932a6b56f5aea1ae72eb22982224168126c58cf4b0adfbef49f96",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "formula/pressedTip": {
+      "file": "formula/pressedTip.f32",
+      "output": "01e7f3745b4d0a83b15953dce9a402c93bf6da6076cde24863a5c158d8921823",
+      "inputs": "c73f300771ced84fe53998d3940c4c15d34769a604dc2f69f6ee71069415f509",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "formula/tipNoise": {
+      "file": "formula/tipNoise.f32",
+      "output": "82efa417b0de9b3a45d1620f90afe9adda8a2bd14bad9ca337389ea91ebf5e9a",
+      "inputs": "a38ac252b26277135baeada139b4def8694bf7ff36fc7491a5ccb6149e69c9f7",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "formula/tipNoiseAt": {
+      "file": "formula/tipNoiseAt.f32",
+      "output": "06195325639bb6ed0acd9df8e2db6f07cbf6ddf94003f5daa9ea9104608c8514",
+      "inputs": "9bcae603a964c3757634d069b4c41e26d8e1df0b0e6886ce093a835abc13807f",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "formula/washBody": {
+      "file": "formula/washBody.f32",
+      "output": "04eb0616d29ec1cd56eb15fc62eaa6a35c78520b317fb9966ad90c957cdde959",
+      "inputs": "e0084f194cdbd4145f699e4f2cc65198894723b75e670c8a093a3460d7032220",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "formula/washFrontShare": {
+      "file": "formula/washFrontShare.f32",
+      "output": "73c09736bdbefca2f0b9cb050d30041b9300d7c6657de5d8c0a821ea9606ae0a",
+      "inputs": "0863619e08e03c66e555c908605f11408bfb93114155b4f2d207f8aa495855bd",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "painting/colour-groups": {
+      "file": "painting/colour-groups.png",
+      "output": "08d6774dd5072f547913985a957cf9acb6278828f652aa6e0d55b51c05b4808f",
+      "inputs": "f4886902b6dc75fb742d9fc542b5c13983c6b2b8602bb96fc5dc704492100a3b",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "painting/pigment-crayon": {
+      "file": "painting/pigment-crayon.png",
+      "output": "b037073084d701dc72d2f2c9374b8c3810a5cbf0c72a1eca8b9cbe4f94cff26b",
+      "inputs": "e4de33ce6548e86e8da64b4f26ec4f09b6d7ec49c017349b6af8fe1a7aacffc7",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "painting/pigment-gouache": {
+      "file": "painting/pigment-gouache.png",
+      "output": "c2c00d5c6a5794a484149eaad81d6ad1923ff93babed0cb9a0158821e9c93cb5",
+      "inputs": "1aa3aad6d514acf03bfa6f446e06c6160da06d63fd1549604fcf115497d7c804",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "painting/pigment-watercolour": {
+      "file": "painting/pigment-watercolour.png",
+      "output": "30e5311e9b2ee5325461e847a3f76ed22b935872ddd2527ce2cc0e34b60a6215",
+      "inputs": "2d0a6a0b7c1e54592e05f410f47c7e310e38aad6095f7d64fe9051a8c7158f41",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "painting/regions": {
+      "file": "painting/regions.png",
+      "output": "c5168b5c373b19f15b01e48d61ab50916f0137596d9a93e7f12d89b32a662cff",
+      "inputs": "2b6e0aaab6ada8a9d166c40f31d23c3cdc0d6c8f60c1abaa3bedb2de26219464",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "painting/strokes-accumulations": {
+      "file": "painting/strokes-accumulations.png",
+      "output": "169d7dca44970c9e12de78f41dc96180deb587b6202ab268be09fe74727ed263",
+      "inputs": "bb71e650397aeae9cc266da921e932b6329dfbc61903f07d9cd9ffa48999ac2e",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "painting/strokes-duals-edges": {
+      "file": "painting/strokes-duals-edges.png",
+      "output": "c4de1fadacb2dc1937d78c75c91ddd0a75704d73ca56b270ef97f88b12b96f69",
+      "inputs": "84e7bcafa992bfe6a712ea1fd099ec4fc0e03ae033b14edfa7e4296641ec9b45",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    },
+    "painting/strokes-grains": {
+      "file": "painting/strokes-grains.png",
+      "output": "5233a84fa697f5e8106fda47dc1f6f2962833773aa26e2bf4b19097fbcd13669",
+      "inputs": "c006508d3a518039e98fceed863130907a8de9e992ac6e63556973aeed8be739",
+      "reason": "Seeded from the GPU renderer (vid-116). At seeding the retired CPU reference held every formula within 1e-4 (worst 1.3e-5) and the pigment paintings within 6 levels (these frames are byte-identical to the ones it held); the other paintings are the renderer's own output, unchecked by a second renderer",
+      "accepted": "2026-09-30",
+      "acceptedOver": "23552c3",
+      "adapter": "apple metal-3"
+    }
+  }
+}

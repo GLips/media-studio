@@ -3,11 +3,9 @@
 // over an edge. A distance grid, coarser than the pixels, gives a fill the contour its edge stroke follows and how
 // thick the region is near a point.
 //
-// The per-pixel formulas are CPU and WGSL twins (STAMP_REGION_FUNCTIONS), held together by the formulas command as
-// coverage-formulas.ts's are. The polygon's distance itself is a loop over its edges on both sides (stampPolygonDistance
-// here, polygonDistance in the renderer), held together by the deposits command's whole-painting comparison.
-
-import { STAMP_COVERAGE_FUNCTIONS } from './coverage-formulas.ts';
+// The per-pixel formulas are WGSL only (STAMP_REGION_WGSL), held to their accepted output by the GPU gate as
+// coverage-formulas.ts's are. The polygon's distance and a grid's reading are twins, since a fill's layout needs them
+// on the CPU (stampPolygonDistance, stampGridAt) and the renderer per pixel; the gate holds each pair together.
 
 export type StampPoint = { x: number; y: number };
 
@@ -84,6 +82,43 @@ export function stampGridAt(grid: StampGrid, x: number, y: number): number {
   if (grid.columns < 2 || grid.rows < 2) return grid.values[0];
   return (at(0, 0) * (1 - fu) + at(1, 0) * fu) * (1 - fv) + (at(0, 1) * (1 - fu) + at(1, 1) * fu) * fv;
 }
+
+/**
+ * stampPolygonDistance in WGSL: the polygon's `count` points from `first` in the storage array `points`, which the
+ * shader including it declares. Twins, both at runtime: the CPU's lays out a fill's grids, the GPU's reads regions per
+ * pixel; the GPU gate holds them together.
+ */
+export const STAMP_POLYGON_DISTANCE_WGSL = /* wgsl */ `
+fn polygonDistance(p: vec2f, first: u32, count: u32) -> f32 {
+  var nearest = 1e30;
+  var inside = false;
+  var j = first + count - 1u;
+  for (var i = first; i < first + count; i++) {
+    let a = points[j];
+    let b = points[i];
+    let e = b - a;
+    let q = p - a;
+    let along = clamp(dot(q, e) / max(dot(e, e), 1e-12), 0.0, 1.0);
+    let d = q - e * along;
+    nearest = min(nearest, dot(d, d));
+    if ((a.y > p.y) != (b.y > p.y) && p.x < a.x + (p.y - a.y) / (b.y - a.y) * e.x) { inside = !inside; }
+    j = i;
+  }
+  return select(-sqrt(nearest), sqrt(nearest), inside);
+}`;
+
+/**
+ * stampGridAt in WGSL: a grid whose values start at `first` in the storage array `grid` (which the including shader
+ * declares), its origin and cell as (x0, y0, cell), its columns and rows as `size`. Twins as polygonDistance's are.
+ */
+export const STAMP_GRID_AT_WGSL = /* wgsl */ `
+fn gridAt(p: vec2f, origin: vec3f, size: vec2u, first: u32) -> f32 {
+  let uv = clamp((p - origin.xy) / origin.z, vec2f(0.0), vec2f(size) - 1.0);
+  let cell = min(vec2u(floor(uv)), size - 2u);
+  let f = uv - vec2f(cell);
+  let at = first + cell.y * size.x + cell.x;
+  return mix(mix(grid[at], grid[at + 1u], f.x), mix(grid[at + size.x], grid[at + size.x + 1u], f.x), f.y);
+}`;
 
 /**
  * The largest value of `grid` within `radius` px of each of its points: over a distance grid, how thick the region
@@ -173,33 +208,13 @@ export function stampGridContours(grid: StampGrid, level: number): StampPoint[][
 }
 
 /**
- * The per-pixel formulas a region is read by, each a CPU function and the WGSL function of the same name.
+ * The per-pixel formulas a region is read by, in WGSL, included after COVERAGE_FORMULAS_WGSL (they call tipNoiseAt).
+ * `edgeNoise` is what a ragged edge moves its outline by. `washBody` is full only under the edge stroke's centre, so
+ * the stroke's outer half meets the paper; where the region is too thin for the stroke, the body alone paints it.
  */
-export const STAMP_REGION_FUNCTIONS = {
-  /** Coverage at signed distance `sd` over an edge `width` px wide, centred on the outline: a smoothstep. */
-  edgeCoverage: {
-    cpu: (sd: number, width: number) => {
-      const t = Math.min(1, Math.max(0, sd / width + 0.5));
-      return t * t * (3 - 2 * t);
-    },
-    wgsl: /* wgsl */ `fn edgeCoverage(sd: f32, width: f32) -> f32 { return smoothstep(0.0, 1.0, clamp(sd / width + 0.5, 0.0, 1.0)); }`,
-  },
-  /**
-   * Smooth value noise at (x, y) in lattice units, −1..1, seeded: two octaves of tipNoiseAt's hash at the lattice's
-   * corners, eased between them. What a ragged edge moves its outline by.
-   */
-  edgeNoise: {
-    cpu: (x: number, y: number, seed: number) => {
-      const octave = (u: number, v: number, salt: number) => {
-        const i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j;
-        const su = fu * fu * (3 - 2 * fu), sv = fv * fv * (3 - 2 * fv);
-        // Offset so the lattice's u32s stay whole for any painting coordinate.
-        const corner = (di: number, dj: number) => STAMP_COVERAGE_FUNCTIONS.tipNoiseAt.cpu((i + di + 32768) >>> 0, (j + dj + 32768) >>> 0, (seed ^ salt) >>> 0) * 2 - 1;
-        return (corner(0, 0) * (1 - su) + corner(1, 0) * su) * (1 - sv) + (corner(0, 1) * (1 - su) + corner(1, 1) * su) * sv;
-      };
-      return (octave(x, y, 0) * 2 + octave(x * 2.3, y * 2.3, 0x5bd1e995)) / 3;
-    },
-    wgsl: /* wgsl */ `fn edgeNoiseOctave(p: vec2f, seed: u32) -> f32 {
+export const STAMP_REGION_WGSL = /* wgsl */ `
+fn edgeCoverage(sd: f32, width: f32) -> f32 { return smoothstep(0.0, 1.0, clamp(sd / width + 0.5, 0.0, 1.0)); }
+fn edgeNoiseOctave(p: vec2f, seed: u32) -> f32 {
   let i = floor(p);
   let f = p - i;
   let s = f * f * (3.0 - 2.0 * f);
@@ -212,45 +227,16 @@ export const STAMP_REGION_FUNCTIONS = {
 }
 fn edgeNoise(x: f32, y: f32, seed: u32) -> f32 {
   return (edgeNoiseOctave(vec2f(x, y), seed) * 2.0 + edgeNoiseOctave(vec2f(x, y) * 2.3, seed ^ 0x5bd1e995u)) / 3.0;
-}`,
-  },
-  /**
-   * A wash's body at signed distance `sd`, the region `thickness` px thick nearby, its edge stroke's centre `c` px in:
-   * full only under that centre, so the stroke's own outer half meets the paper.
-   * Where the region is too thin for the stroke, the body alone paints it, rising over a fifth to a half of it.
-   */
-  washBody: {
-    cpu: (sd: number, thickness: number, c: number) => {
-      const f = Math.min(1, Math.max(0, (thickness - 0.5 * c) / (0.5 * c)));
-      const lo = 0.2 * thickness + (0.5 * c - 0.2 * thickness) * f, hi = Math.max(lo + 1, 0.5 * thickness + (c - 0.5 * thickness) * f);
-      const t = Math.min(1, Math.max(0, (sd - lo) / (hi - lo)));
-      return t * t * (3 - 2 * t);
-    },
-    wgsl: /* wgsl */ `fn washBody(sd: f32, thickness: f32, c: f32) -> f32 {
+}
+fn washBody(sd: f32, thickness: f32, c: f32) -> f32 {
   let f = clamp((thickness - 0.5 * c) / (0.5 * c), 0.0, 1.0);
   let lo = mix(0.2 * thickness, 0.5 * c, f);
   let hi = max(lo + 1.0, mix(0.5 * thickness, c, f));
   return smoothstep(lo, hi, sd);
-}`,
-  },
-};
-
-export const stampEdgeCoverage = STAMP_REGION_FUNCTIONS.edgeCoverage.cpu;
-export const stampEdgeNoise = STAMP_REGION_FUNCTIONS.edgeNoise.cpu;
-export const stampWashBody = STAMP_REGION_FUNCTIONS.washBody.cpu;
-
-/** The region formulas in WGSL; they call COVERAGE_FORMULAS_WGSL's tipNoiseAt, so they're included after it. */
-export const STAMP_REGION_WGSL = Object.values(STAMP_REGION_FUNCTIONS).map(({ wgsl }) => wgsl).join('\n');
+}`;
 
 /** An edge's width: 1 px, antialiased, unless it's soft. */
 export const stampEdgeWidth = (edge?: StampEdge) => Math.max(1, edge?.soft ?? 0);
 
 /** How far past its outline an edge can reach, px: half its width, and its ragged amount. */
 export const stampEdgeReach = (edge?: StampEdge) => stampEdgeWidth(edge) / 2 + (edge?.ragged?.amount ?? 0);
-
-/** Coverage of `polygon` with `edge` at (x, y), its ragged noise seeded by `seed`. */
-export function stampEdgedCoverage(polygon: readonly StampPoint[], edge: StampEdge | undefined, seed: number, x: number, y: number): number {
-  const ragged = edge?.ragged;
-  const moved = ragged ? ragged.amount * stampEdgeNoise(x / ragged.scale, y / ragged.scale, seed) : 0;
-  return stampEdgeCoverage(stampPolygonDistance(polygon, x, y) + moved, stampEdgeWidth(edge));
-}
