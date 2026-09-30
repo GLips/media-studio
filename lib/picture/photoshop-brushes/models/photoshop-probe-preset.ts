@@ -52,9 +52,7 @@ export function photoshopProbePreset(name: string, s: PhotoshopBrushSettings): P
     ...(dual && {
       dual: {
         mode: dual.mode, flip: false, tip: presetTip(dual.tip),
-        ...(((dual.scatter ?? 0) > 0 || (dual.count ?? 1) > 1) && {
-          scatter: { scatter: variation(undefined, dual.scatter), bothAxes: dual.bothAxes ?? false, count: dual.count ?? 1, countDynamics: variation(undefined) },
-        }),
+        scatter: { scatter: variation(undefined, dual.scatter), bothAxes: dual.bothAxes ?? false, count: dual.count ?? 1, countDynamics: variation(undefined) },
       },
     }),
     wetEdges: s.wetEdges, noise: s.noise, buildUp: false,

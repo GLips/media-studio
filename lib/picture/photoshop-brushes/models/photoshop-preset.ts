@@ -57,7 +57,7 @@ export type PhotoshopPreset = {
   };
   transfer?: { opacity: PhotoshopDynamic; flow: PhotoshopDynamic };
   color?: { swing: PhotoshopDynamic; hue: number; saturation: number; brightness: number; purity: number; perTip: boolean };
-  dual?: { mode: string; flip: boolean; tip: PhotoshopPresetTip; scatter?: PhotoshopScatter };
+  dual?: { mode: string; flip: boolean; tip: PhotoshopPresetTip; scatter: PhotoshopScatter };
   wetEdges: boolean;
   noise: boolean;
   buildUp: boolean;
@@ -99,8 +99,8 @@ type Coded = Named & { codes: readonly string[]; fallback: string };
 type Enumerated = Named & { type: Named; values: Readonly<Record<string, string>>; fallback: string };
 /** A descriptor held under a key; `switch` in it turns it on (absent when off); `kinds` names its class by its `kind`. */
 type Nested = Named & { class: Named; kinds?: Readonly<Record<string, string>>; fields: Fields; switch?: Named; optional?: true; flatInScript?: true };
-/** Fields in the same descriptor as their switch, present when it's on. */
-type Group = { switch: Named; fields: Fields };
+/** Fields in the same descriptor as their switch, present when it's on; `alwaysOn` when Photoshop holds it on. */
+type Group = { switch: Named; fields: Fields; alwaysOn?: true };
 type Field = ({ leaf: Leaf } | { coded: Coded } | { enumerated: Enumerated } | { nested: Nested } | { group: Group });
 type Fields = Readonly<Record<string, Field>>;
 
@@ -184,7 +184,8 @@ export const PHOTOSHOP_PRESET_FIELDS: Fields = {
   dual: {
     nested: {
       key: 'dualBrush', class: { key: 'dualBrush' }, switch: { key: 'useDualBrush' },
-      fields: { mode: blendMode('BlnM', 'blendMode', 'multiply'), flip: leaf('Flip', 'flag', { id: 'flip', fallback: false }), tip: tip(), scatter: { group: SCATTER } },
+      // The dual pane has no Scatter switch: Photoshop reads it back on whatever a script sets, and every .abr holds it on.
+      fields: { mode: blendMode('BlnM', 'blendMode', 'multiply'), flip: leaf('Flip', 'flag', { id: 'flip', fallback: false }), tip: tip(), scatter: { group: { ...SCATTER, alwaysOn: true } } },
     },
   },
   wetEdges: leaf('Wtdg', 'flag', { id: 'wetEdges', fallback: false }),
@@ -239,7 +240,7 @@ function readFields(d: PhotoshopDescriptor, fields: Fields): Record<string, unkn
       const abr = tagged && '_enum' in tagged ? tagged.value : undefined;
       value = abr === undefined ? field.enumerated.fallback : (field.enumerated.values[abr] ?? abr);
     } else if ('group' in field) {
-      if (d[field.group.switch.key] === true) value = readFields(d, field.group.fields);
+      if (field.group.alwaysOn || d[field.group.switch.key] === true) value = readFields(d, field.group.fields);
     } else {
       const n = field.nested, inner = d[n.key];
       if (isDescriptor(inner)) {
@@ -369,7 +370,7 @@ export function photoshopPresetLeaves(preset: PhotoshopPreset): PhotoshopPresetL
         leaves.push({ path, value: typeof v === 'number' ? v : String(v) });
       } else if ('coded' in field || 'enumerated' in field) leaves.push({ path, value: String(v) });
       else {
-        const switched = 'group' in field || !!field.nested.switch;
+        const switched = 'group' in field ? !field.group.alwaysOn : !!field.nested.switch;
         if (switched) leaves.push({ path, value: v === undefined ? 'off' : 'on' });
         if (v === undefined) continue;
         const inner = v as Record<string, unknown>;
