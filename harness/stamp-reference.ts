@@ -1,6 +1,6 @@
 // node harness/stamp-reference.ts probes <run> (npm run stamp:reference -- probes <run>): the reference renderer
 // (lib/picture/stamp-reference) against a Photoshop probe run, cell by cell, each cell's error split among the stages
-// that own it (vid-97).
+// that own it (vid-97). `formulas`: every paired CPU/WGSL formula run on the GPU and held to its CPU side.
 import { defineCommand } from 'citty';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -8,6 +8,8 @@ import type { PhotoshopCaptureManifest } from '#lib/picture/photoshop-brushes/mo
 import { photoshopPresetMismatches } from '#lib/picture/photoshop-brushes/models/photoshop-preset.ts';
 import { photoshopProbes } from '#lib/picture/photoshop-brushes/models/photoshop-probes.ts';
 import { scorePhotoshopProbeRun } from '#lib/picture/stamp-reference/engine/photoshop-probe-reference.ts';
+import { checkStampFormulaParity } from '#lib/picture/stamp-reference/engine/stamp-formula-parity.ts';
+import { STAMP_FORMULA_TOLERANCE } from '#lib/picture/stamp-reference/models/stamp-formula-parity.ts';
 import type { StampResolveStage } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
 import { runHarnessCommand } from './run-harness-command.ts';
 
@@ -56,7 +58,18 @@ const probesCommand = defineCommand({
   },
 });
 
+const formulasCommand = defineCommand({
+  meta: { name: 'formulas', description: `Run every paired formula's WGSL (grain cut, dual combine, grain paint, pooling, accumulation resolve) on the GPU over a grid of inputs, every mode, and compare it to the CPU's: fails past ${STAMP_FORMULA_TOLERANCE}.` },
+  async run() {
+    const results = await checkStampFormulaParity();
+    for (const r of results) {
+      console.log(`${r.formula}: ${r.rows} rows, worst ${r.worst.toExponential(2)} at ${r.worstAt} (gpu ${r.gpu}, cpu ${r.cpu})${r.over ? `, ${r.over} past ${STAMP_FORMULA_TOLERANCE}` : ''}`);
+    }
+    if (results.some((r) => r.over)) process.exitCode = 1;
+  },
+});
+
 await runHarnessCommand(defineCommand({
-  meta: { name: 'stamp-reference', description: 'The slow CPU reference renderer, held against Photoshop captures stage by stage' },
-  subCommands: { probes: probesCommand },
+  meta: { name: 'stamp-reference', description: 'The slow CPU reference renderer, held against Photoshop captures stage by stage, and the GPU formulas held to it' },
+  subCommands: { probes: probesCommand, formulas: formulasCommand },
 }));

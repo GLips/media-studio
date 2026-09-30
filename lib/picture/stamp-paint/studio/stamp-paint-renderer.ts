@@ -10,21 +10,26 @@
 //      tip), and the resolve takes its stroke from the densest stamp toward the build held under the cap, as far as its
 //      build says. A brush with colour dynamics also lays each stamp's tint, weighted by coverage, into two targets.
 //   2. compute passes blur the mask, when the brush has wet or burnt edges: the rim is where the mask stands above it.
-//   3. one compute pass resolves the coverage (canvas grain, the dual combined by its blend, before the grain when
-//      it shapes where the stamps' paint lies (stampDualBeforeGrain), pooling, the wet rim,
+//   3. one compute pass resolves the coverage (its accumulation's resolve, then canvas grain, the dual combined by its
+//      blend and pooling in its plan's order (STAMP_RESOLVE_PLANS), the wet rim,
 //      the paper's tooth, protected regions, the clipping pass, the deposit's opacity), lays it onto its group's layer
 //      through the compositor (stamp-paint-compositor.ts), burns its burnt rim into the paint there, and adds it to the
 //      clip when its pass is unclipped.
 //   4. a compute pass lays each finished group onto the painting, and a render pass writes the painting to the canvas.
 //
-// Paint mixes on gamma-encoded sRGB, as Photoshop's does with RGB blend gamma off. Every grain, dual and pooling
-// formula is coverage-formulas.ts's, which the reference renderer shares. Where Procreate and Photoshop paint
-// differently, the brush says which way (accumulation, a grain's and a dual's blend family, a grain's contrast pivot
+// Paint mixes on gamma-encoded sRGB, as Photoshop's does with RGB blend gamma off. Its grain, dual and pooling
+// formulas, accumulation resolves and stage orders are WGSL twins from the registries the CPU reference reads
+// (coverage-formulas.ts, stamp-deposit-stages.ts), which stampActiveLayers switches on for both alike; the formulas
+// command holds each formula's and resolve's twin to its CPU side. Where Procreate and Photoshop paint differently,
+// the brush says which way (accumulation, a grain's and a dual's blend family, a grain's contrast pivot
 // and tiling, a tip's sampling), and nothing here asks where a brush came from.
 
 import { bindStampBrushImages, type StampBrush, type StampBrushAsset, type StampBrushGrain, type StampBrushLayer } from '../models/stamp-brush.ts';
 import { COVERAGE_FORMULAS_WGSL, stampDualModeIndex, stampGrainModeIndex } from '../models/coverage-formulas.ts';
-import { STAMP_ACCUMULATIONS, STAMP_BLUR_LEVELS, stampResolveOrder } from '../models/stamp-deposit-stages.ts';
+import {
+  STAMP_ACCUMULATION_RESOLVE_WGSL, STAMP_ACCUMULATIONS, STAMP_BLUR_LEVELS, stampAccumulationBuild, stampAccumulationIndex, stampActiveLayers, stampResolvePlan,
+  stampResolvePlanIndex, stampResolvePlansWgsl, type StampActiveLayer,
+} from '../models/stamp-deposit-stages.ts';
 import { visibleStampCountAt, type CompiledStampDeposit, type CompiledStampPaint, type StampPaintPaper, type StampRegion } from '../models/stamp-paint-recipe.ts';
 import type { PlacedStamp } from '../models/stamp-placement.ts';
 import { stampBlurRegion, type StampPixelBox } from '../models/stamp-blur-region.ts';
@@ -124,7 +129,7 @@ fn covered(corner: Corner) -> vec2f {
 }
 // The mask blends the stamp's paint as alpha over the stroke, toward its opacity (colour): B ← lerp(B, O, t·f). The
 // pipeline's write masks keep the brush's channel or its dual's. A glaze keeps, by max, each pixel's cap (red, green)
-// and its densest stamp (blue, alpha): its stroke builds up to the cap, as far as its glazeBuild says.
+// and its densest stamp (blue, alpha): its stroke builds up to the cap, as far as its build says.
 @fragment fn cover(corner: Corner) -> Covered { let a = covered(corner); return Covered(vec4f(vec3f(corner.toward), a.x), a.yyxx); }
 // A brush with colour dynamics also lays its tint, premultiplied by its coverage, over the tints before it.
 @fragment fn coverTinted(corner: Corner) -> Stamp {
@@ -159,15 +164,23 @@ ${BLUR.wgsl}
 const DEPOSIT = stampUniformLayout('Deposit', [
   ['paint', { external: 'PaintDeposit', words: PAINT_DEPOSIT_WORDS, align: 4 }], ['secondary', 'vec4f'], ['view', 'vec4f'], ['edges', 'vec4f'], ['dualEdges', 'vec4f'],
   ['grain', stampUniformStruct(GRAIN)], ['dualGrain', stampUniformStruct(GRAIN)], ['paperDepth', 'f32'], ['paperLod', 'f32'], ['opacity', 'f32'],
-  ['dualBlend', 'i32'], ['burntBlend', 'i32'], ['dualBurntBlend', 'i32'], ['flags', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'], ['glazeBuild', 'vec2f'], ['pooling', 'vec4f'],
+  ['dualBlend', 'i32'], ['burntBlend', 'i32'], ['dualBurntBlend', 'i32'], ['flags', 'u32'], ['resolvePlan', 'i32'], ['origin', 'vec2u'], ['extent', 'vec2u'],
+  ['build', 'vec2f'], ['accumulation', 'vec2u'], ['pooling', 'vec4f'],
 ]);
 
 /** What a deposit's resolve does, a bit each in its `flags`, and a WGSL constant each of the same name in capitals. */
 const DEPOSIT_FLAGS = {
   canvasGrain: 1, dual: 2, dualCanvasGrain: 4, paper: 8, protected: 16, clipped: 32, clips: 64, tinted: 128,
-  glaze: 256, dualGlaze: 512, pooled: 1024, dualPooled: 2048, dualLayer: 4096, dualFirst: 8192,
+  pooled: 256, dualPooled: 512, dualLayer: 1024,
 } as const;
 const DEPOSIT_FLAGS_WGSL = Object.entries(DEPOSIT_FLAGS).map(([flag, bit]) => `const ${flag.replace(/[A-Z]/g, (c) => `_${c}`).toUpperCase()} = ${bit}u;`).join('\n');
+
+/** Each resolve stage on the main layer's coverage `m`: `d` is the dual's, cut and pooled already, `at` the pixel. */
+const RESOLVE_STAGES_WGSL = stampResolvePlansWgsl('resolveStages', 'd: f32, at: vec2f', {
+  grain: 'if ((u.flags & CANVAS_GRAIN) != 0u) { m = texturized(grain, at, m, u.grain); }',
+  dual: 'if ((u.flags & DUAL) != 0u) { m = dualCombine(m, d, u.dualBlend, (u.flags & DUAL_LAYER) != 0u); }',
+  pooling: 'if ((u.flags & POOLED) != 0u) { m = pooled(m, u.pooling.x, u.pooling.y); }',
+});
 
 // A compute pass has no derivatives to choose a mip level by, so each grain's level is worked out on the CPU: a tile
 // is a fixed number of pixels across the whole painting, so it reads the same level everywhere.
@@ -176,6 +189,8 @@ ${STAMP_PAINT_COMPOSITOR_WGSL}
 ${GRAIN_WGSL}
 ${DEPOSIT.wgsl}
 ${DEPOSIT_FLAGS_WGSL}
+${STAMP_ACCUMULATION_RESOLVE_WGSL}
+${RESOLVE_STAGES_WGSL}
 @group(0) @binding(0) var<uniform> u: Deposit;
 @group(0) @binding(1) var mask: texture_2d<f32>;
 @group(0) @binding(2) var blurred: texture_2d<f32>;
@@ -229,17 +244,18 @@ fn tinted(color: vec3f, pixel: vec2u) -> vec3f {
   if (any(id.xy >= u.extent)) { return; }
   let pixel = u.origin + id.xy;
   let at = vec2f(pixel) + 0.5;
-  // A glaze's stroke reads its densest stamp, built toward its cap by its glazeBuild.
+  // Each layer's stroke as its accumulation resolves it: a glaze's from its densest stamp (the cap's blue or alpha)
+  // toward the build held under its cap (red or green).
   let built = textureLoad(mask, pixel, 0).rg;
   let kept = textureLoad(cap, pixel, 0);
-  let glazed = mix(kept.ba, min(built, kept.rg), u.glazeBuild);
-  let raw = vec2f(select(built.x, glazed.x, (u.flags & GLAZE) != 0u), select(built.y, glazed.y, (u.flags & DUAL_GLAZE) != 0u));
+  let raw = vec2f(
+    accumulationResolve(built.x, kept.b, kept.r, u.build.x, i32(u.accumulation.x)),
+    accumulationResolve(built.y, kept.a, kept.g, u.build.y, i32(u.accumulation.y)),
+  );
   let soft = textureSampleLevel(blurred, linearClamp, at / u.view.xy, 0.0);
-  var m = raw.r;
   var burnt = rimOf(raw.r, soft.r, u.edges.w) * u.edges.z;
   var dualBurnt = 0.0;
-  // The grain cuts the built stroke, then the dual combines with it, then the whole pools: Photoshop's order. A dual
-  // that shapes where the stamps' paint lies (DUAL_FIRST, stampDualBeforeGrain) combines before the grain.
+  // The dual's own grain and pooling come before it combines, wherever its plan puts the combine.
   var d = 0.0;
   if ((u.flags & DUAL) != 0u) {
     d = raw.g;
@@ -249,11 +265,8 @@ fn tinted(color: vec3f, pixel: vec2u) -> vec3f {
     // Rims burning by one blend are one rim, joined by max; each burns by its own blend when they differ.
     if (u.dualBurntBlend == u.burntBlend) { burnt = max(burnt, dualBurnt); dualBurnt = 0.0; }
   }
-  let dualFirst = (u.flags & DUAL_FIRST) != 0u;
-  if (dualFirst) { m = dualCombine(m, d, u.dualBlend, (u.flags & DUAL_LAYER) != 0u); }
-  if ((u.flags & CANVAS_GRAIN) != 0u) { m = texturized(grain, at, m, u.grain); }
-  if ((u.flags & DUAL) != 0u && !dualFirst) { m = dualCombine(m, d, u.dualBlend, (u.flags & DUAL_LAYER) != 0u); }
-  if ((u.flags & POOLED) != 0u) { m = pooled(m, u.pooling.x, u.pooling.y); }
+  // The stages in the order of the brush's plan (STAMP_RESOLVE_PLANS).
+  var m = resolveStages(raw.r, d, at, u.resolvePlan);
   // A wet rim is laid after the dual combines, as the whole stroke's pigment gathers there, but through the grain: a
   // grain that breaks the body into flecks breaks its rim too.
   var wet = rimOf(raw.r, soft.r, u.edges.y) * u.edges.x;
@@ -403,8 +416,9 @@ function reachOfFirst(stamps: readonly PlacedStamp[], chunks: Float64Array, coun
  * in the tint buffer (null for a brush without colour dynamics), and what's fixed.
  */
 type LoadedDeposit = {
-  /** Its brush with each image bound to its texture. */
+  /** Its brush with each image bound to its texture, and which of its layers' stages are active. */
   brush: StampBrush<StampPaintImage>;
+  active: ReturnType<typeof stampActiveLayers<StampPaintImage>>;
   main: number; dual: number; tint: number | null;
   mainReach: Float64Array; dualReach: Float64Array;
   mainHull: StampTipHull; dualHull: StampTipHull | null;
@@ -504,8 +518,9 @@ async function rendererOnDevice(
         for (let i = 1; i + 1 < region.points.length; i++) regionPoints.push(a.x, a.y, region.points[i].x, region.points[i].y, region.points[i + 1].x, region.points[i + 1].y);
         return [first, regionPoints.length / 2 - first, null];
       });
+      const brush = bindStampBrushImages(deposit.brush, image);
       deposits.set(deposit, {
-        brush: bindStampBrushImages(deposit.brush, image),
+        brush, active: stampActiveLayers(brush, deposit.diameter),
         main: total, dual: total + deposit.stamps.length, tint: deposit.brush.color ? tints : null,
         mainReach: stampReach(deposit.stamps, spanOf(deposit.brush)), dualReach: stampReach(deposit.dualStamps, deposit.brush.dual ? spanOf(deposit.brush.dual) : 1),
         mainHull: tipHull(deposit.brush, deposit.stamps), dualHull: deposit.brush.dual ? tipHull(deposit.brush.dual, deposit.dualStamps) : null,
@@ -649,11 +664,11 @@ async function rendererOnDevice(
   /** The mip level a grain `texture` tiled `tileW` pixels across reads: texels per pixel, as a fragment's derivatives would say. */
   const grainLod = (texture: StampPaintImage, tileW: number) => Math.max(0, Math.log2(texture.width / tileW));
 
-  /** `layer`'s grain when it's fixed to the canvas and cuts, which the resolve cuts into its built coverage. */
-  const canvasGrain = (layer?: BoundLayer) => (layer?.grain?.kind === 'canvas' && layer.grain.depth > 0 ? layer.grain : undefined);
-  /** A canvas grain's tile (a share of the deposit's `diameter` across), offset and mip level, written as a Grain at `at`. */
-  const canvasGrainAt = (views: StampUniformViews, at: number, grain: StampBrushGrain<StampPaintImage>, offset: readonly [number, number], diameter: number) => {
-    const size = grain.scale * diameter;
+  /** A layer's canvas grain's tile (a share of its stamps' diameter across), offset and mip level, written as a Grain at `at`. */
+  const canvasGrainAt = (views: StampUniformViews, at: number, layer: StampActiveLayer<StampPaintImage> | undefined, offset: readonly [number, number]) => {
+    const grain = layer?.canvasGrain;
+    if (!grain) return;
+    const size = grain.scale * layer.diameter;
     writeGrain(views, at, grain, [size, size * (grain.image.height / grain.image.width)], offset, grainLod(grain.image, size));
   };
 
@@ -664,12 +679,11 @@ async function rendererOnDevice(
     });
     pass.setScissorRect(box.x, box.y, box.w, box.h);
     pass.setIndexBuffer(fanBuffer, 'uint16');
-    const stamp = (layer: BoundLayer, first: number, n: number, hull: StampTipHull, channel: 0 | 1) => {
+    const stamp = (layer: BoundLayer, active: StampActiveLayer<StampPaintImage>, first: number, n: number, hull: StampTipHull, channel: 0 | 1) => {
       if (!n) return;
       const accumulation = STAMP_ACCUMULATIONS[layer.accumulation.kind];
       const pipeline = stampPipelines[accumulation.keepsCap ? 'glaze' : 'build'][tinted ? 'tinted' : 'plain'][channel];
-      const rolling = layer.grain?.kind === 'rolling' && layer.grain.depth > 0 ? layer.grain : undefined;
-      const diameter = deposit.diameter * (channel === 1 ? deposit.brush.dual!.scale : 1);
+      const { rollingGrain: rolling, diameter } = active;
       const offset = deposit.grainOffset[channel === 0 ? 'main' : 'dual'];
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, bindGroup(pipeline, [
@@ -698,8 +712,8 @@ async function rendererOnDevice(
       pass.setVertexBuffer(1, channel === 0 && tinted ? tintBuffer : noTintBuffer, channel === 0 && tinted ? loaded.tint! * TINT_FLOATS * 4 : 0);
       pass.drawIndexed((hull.length / 2 - 2) * 3, n);
     };
-    stamp(loaded.brush, loaded.main, count, loaded.mainHull, 0);
-    if (loaded.brush.dual) stamp(loaded.brush.dual, loaded.dual, dualCount, loaded.dualHull!, 1);
+    stamp(loaded.brush, loaded.active.main, loaded.main, count, loaded.mainHull, 0);
+    if (loaded.brush.dual && loaded.active.dual) stamp(loaded.brush.dual, loaded.active.dual, loaded.dual, dualCount, loaded.dualHull!, 1);
     pass.end();
   }
 
@@ -762,18 +776,10 @@ async function rendererOnDevice(
   }
 
   function resolveDeposit(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loaded: LoadedDeposit, clipped: boolean, blurred: boolean, box: Box) {
-    const { brush } = loaded;
-    // A canvas grain tiles in its own layer's stamp diameters: the dual's are its scale times the main brush's.
-    const grainAt = (views: StampUniformViews, at: number, layer: BoundLayer | undefined, offset: readonly [number, number], diameter: number) => {
-      const grain = canvasGrain(layer);
-      if (grain) canvasGrainAt(views, at, grain, offset, diameter);
-    };
-    const rimOf = (layer?: BoundLayer) => (layer?.wetEdges?.kind === 'rim' ? layer.wetEdges : undefined);
-    const poolingOf = (layer?: BoundLayer) => (layer?.wetEdges?.kind === 'pooling' ? layer.wetEdges : undefined);
-    const edgesOf = (layer?: BoundLayer): [number, number, number, number] => (blurred && layer
-      ? [rimOf(layer)?.rim ?? 0, rimOf(layer)?.sharpness ?? 0, layer.burntEdge?.strength ?? 0, layer.burntEdge?.sharpness ?? 0] : [0, 0, 0, 0]);
-    const mainGrain = canvasGrain(brush), dualGrain = canvasGrain(brush.dual);
-    const glazeBuildOf = (layer?: BoundLayer) => (layer?.accumulation.kind === 'glaze' ? layer.accumulation.build : 0);
+    const { brush, active } = loaded;
+    const edgesOf = (layer?: StampActiveLayer<StampPaintImage>): [number, number, number, number] => (blurred && layer
+      ? [layer.rim?.rim ?? 0, layer.rim?.sharpness ?? 0, layer.burntEdge?.strength ?? 0, layer.burntEdge?.sharpness ?? 0] : [0, 0, 0, 0]);
+    const mainGrain = active.main.canvasGrain, dualGrain = active.dual?.canvasGrain;
     const tooth = paper.grain && paper.grain.depth > 0 ? paper.grain : undefined;
     let paperTile = [1, 1, 0];
     if (tooth) {
@@ -782,13 +788,11 @@ async function rendererOnDevice(
     }
     const protectedBy = deposit.protectedBy.length > 0;
     const tinted = loaded.tint !== null;
-    const keepsCap = (layer?: BoundLayer) => !!layer && STAMP_ACCUMULATIONS[layer.accumulation.kind].keepsCap;
     const flags: (keyof typeof DEPOSIT_FLAGS)[] = [
       ...(mainGrain ? ['canvasGrain' as const] : []), ...(brush.dual ? ['dual' as const] : []), ...(dualGrain ? ['dualCanvasGrain' as const] : []),
       ...(tooth ? ['paper' as const] : []), ...(protectedBy ? ['protected' as const] : []), clipped ? 'clipped' as const : 'clips' as const, ...(tinted ? ['tinted' as const] : []),
-      ...(keepsCap(brush) ? ['glaze' as const] : []), ...(keepsCap(brush.dual) ? ['dualGlaze' as const] : []),
-      ...(poolingOf(brush) ? ['pooled' as const] : []), ...(poolingOf(brush.dual) ? ['dualPooled' as const] : []),
-      ...(brush.dual?.blend.family === 'layer' ? ['dualLayer' as const] : []), ...(stampResolveOrder(brush.dual)[0] === 'dual' ? ['dualFirst' as const] : []),
+      ...(active.main.pooling ? ['pooled' as const] : []), ...(active.dual?.pooling ? ['dualPooled' as const] : []),
+      ...(brush.dual?.blend.family === 'layer' ? ['dualLayer' as const] : []),
     ];
     dispatch(encoder, pipelines.deposit, [
       slot((views) => {
@@ -796,10 +800,10 @@ async function rendererOnDevice(
         writePaintDeposit(views.floats, views.ints, DEPOSIT.at.paint, deposit.material, deposit.blend);
         put('secondary', [...rgb(deposit.secondaryColor), 0]);
         put('view', [width, height, paperTile[0], paperTile[1]]);
-        put('edges', edgesOf(brush));
-        put('dualEdges', edgesOf(brush.dual));
-        grainAt(views, DEPOSIT.at.grain, brush, deposit.grainOffset.main, deposit.diameter);
-        grainAt(views, DEPOSIT.at.dualGrain, brush.dual, deposit.grainOffset.dual, deposit.diameter * (brush.dual?.scale ?? 1));
+        put('edges', edgesOf(active.main));
+        put('dualEdges', edgesOf(active.dual));
+        canvasGrainAt(views, DEPOSIT.at.grain, active.main, deposit.grainOffset.main);
+        canvasGrainAt(views, DEPOSIT.at.dualGrain, active.dual, deposit.grainOffset.dual);
         put('paperDepth', tooth?.depth ?? 0);
         put('paperLod', paperTile[2]);
         put('opacity', deposit.opacity);
@@ -808,10 +812,15 @@ async function rendererOnDevice(
         put('burntBlend', stampPaintBlendIndex(burntBlend));
         put('dualBurntBlend', stampPaintBlendIndex(brush.dual?.burntEdge?.blend ?? burntBlend));
         put('flags', flags.reduce((all, flag) => all | DEPOSIT_FLAGS[flag], 0));
+        put('resolvePlan', stampResolvePlanIndex(stampResolvePlan(brush.dual)));
         put('origin', [box.x, box.y]);
         put('extent', [box.w, box.h]);
-        put('glazeBuild', [glazeBuildOf(brush), glazeBuildOf(brush.dual)]);
-        put('pooling', [poolingOf(brush)?.peak ?? 0, poolingOf(brush)?.body ?? 0, poolingOf(brush.dual)?.peak ?? 0, poolingOf(brush.dual)?.body ?? 0]);
+        // A layer that isn't there reads its build as none, as a `build` accumulation, whatever it resolves to.
+        const accumulations = [brush.accumulation, brush.dual?.accumulation ?? { kind: 'build' as const }];
+        put('build', [stampAccumulationBuild(accumulations[0]), stampAccumulationBuild(accumulations[1])]);
+        put('accumulation', [stampAccumulationIndex(accumulations[0].kind), stampAccumulationIndex(accumulations[1].kind)]);
+        const { pooling } = active.main, dualPooling = active.dual?.pooling;
+        put('pooling', [pooling?.peak ?? 0, pooling?.body ?? 0, dualPooling?.peak ?? 0, dualPooling?.body ?? 0]);
       }),
       targets.mask.view, blurred ? targets.blurB.view : targets.mask.view,
       mainGrain ? mainGrain.image.view : targets.blank.view,
@@ -864,12 +873,8 @@ async function rendererOnDevice(
           if (!count) continue;
           const dualCount = visibleStampCountAt(deposit, t, 'dualStamps');
           const loaded = deposits.get(deposit)!;
-          const { brush } = loaded;
-          const rim = (layer?: BoundLayer) => (layer?.wetEdges?.kind === 'rim' ? layer.wetEdges : undefined);
-          const hasEdges = (layer?: BoundLayer) => !!layer && ((rim(layer)?.rim ?? 0) > 0 || (layer.burntEdge?.strength ?? 0) > 0);
-          const blurred = hasEdges(brush) || hasEdges(brush.dual);
-          // An edge's width is a share of the stamp's radius; the rim is where the mask stands above a blur that wide.
-          const sigma = Math.max(1, Math.max(...[brush, brush.dual].flatMap((layer) => [rim(layer)?.width ?? 0, layer?.burntEdge?.width ?? 0])) * deposit.diameter / 2);
+          // The rim is where the mask stands above a blur as wide as its edge.
+          const sigma = loaded.active.edgeSigma, blurred = sigma > 0;
           const box = depositBox(deposit, loaded, count, dualCount, blurred ? sigma * 3 : 2);
           if (!box) continue;
           drawStamps(encoder, deposit, loaded, count, dualCount, box);

@@ -1,8 +1,10 @@
-// coverage-formulas.ts: how a grain cuts coverage, how a dual combines with its brush, a grain's brightness and
-// contrast, and wet edges' pooling, each defined once, as the number the CPU works out and the WGSL the GPU renderer
-// runs (stamp-paint-renderer.ts includes COVERAGE_FORMULAS_WGSL). A mode's WGSL case and its index are generated from
-// the tables here, so a mode added to a family is added to both, and a mode the GPU is handed always has its case. Each
-// table holds exactly its family's modes (StampGrainBlend, StampDualBlend): a mode no importer reads has no formula.
+// coverage-formulas.ts: one registry of how a grain cuts coverage, how a dual combines with its brush, a grain's
+// brightness and contrast, and wet edges' pooling. Each entry is a pair written twice, the number the CPU reference
+// works out (`cpu`) and the WGSL the GPU renderer runs (`wgsl`, in COVERAGE_FORMULAS_WGSL), side by side; nothing
+// derives one from the other, so `node harness/stamp-reference.ts formulas` runs every WGSL twin on the GPU over a
+// grid of inputs and holds it to its `cpu`. A mode's WGSL case and index are generated from its family's table, so a
+// mode added there has its case on the GPU. Each table holds exactly its family's modes (StampGrainBlend,
+// StampDualBlend): a mode no importer reads has no formula.
 //
 // The `texture` formulas are Photoshop's, identified from its captures (vid-97): each fits its probes to the capture's
 // noise, the constants included. The `layer` formulas are the ones vid-89 fitted Procreate's previews with.
@@ -94,6 +96,7 @@ const DUAL_LAYER = {
 } satisfies Record<ModeOf<StampDualBlend, 'layer'>, Formula<[p: number, s: number]>>;
 
 /** Each mode's number in its family's generated WGSL switch: its place in the table. */
+// SAFETY: built from the table's own keys, so it has an entry for each K.
 const indexOf = <K extends string>(table: Record<K, unknown>) => Object.fromEntries(Object.keys(table).map((mode, i) => [mode, i])) as Record<K, number>;
 const GRAIN_MODE_INDEX = { texture: indexOf(GRAIN_TEXTURE), layer: indexOf(GRAIN_LAYER) };
 const DUAL_MODE_INDEX = { texture: indexOf(DUAL_TEXTURE), layer: indexOf(DUAL_LAYER) };
@@ -105,18 +108,17 @@ export const stampGrainModeIndex = (blend: StampGrainBlend) =>
 export const stampDualModeIndex = (blend: StampDualBlend) =>
   (blend.family === 'texture' ? DUAL_MODE_INDEX.texture[blend.mode] : DUAL_MODE_INDEX.layer[blend.mode]);
 
-/** Coverage `a` cut by grain paint `v` (1 keeps paint) at the grain's depth, by its blend. */
-export function stampGrainCut(a: number, v: number, { depth, blend }: Pick<StampGrainLook<unknown>, 'depth' | 'blend'>): number {
-  return blend.family === 'texture' ? GRAIN_TEXTURE[blend.mode].cpu(a, v, depth) : a + depth * (clamp01(GRAIN_LAYER[blend.mode].cpu(a, v)) - a);
-}
-
-/**
- * The dual's coverage `s` combined with the brush's grained coverage `p` by `blend`. The layer blends would paint where
- * the brush has none, so they're held to where it has paint (fully from p = 1/8).
- */
-export function stampDualCombine(p: number, s: number, blend: StampDualBlend): number {
-  return blend.family === 'texture' ? DUAL_TEXTURE[blend.mode].cpu(p, s) : clamp01(DUAL_LAYER[blend.mode].cpu(p, s)) * clamp01(p * 8);
-}
+// SAFETY: a table's keys are exactly its K, its family's modes (each table `satisfies` its family's record).
+const modesOf = <K extends string>(table: Record<K, unknown>) => Object.keys(table) as K[];
+/** Every grain blend and every dual blend there is a formula for, in table order. */
+export const STAMP_GRAIN_BLENDS: readonly StampGrainBlend[] = [
+  ...modesOf(GRAIN_TEXTURE).map((mode) => ({ family: 'texture' as const, mode })),
+  ...modesOf(GRAIN_LAYER).map((mode) => ({ family: 'layer' as const, mode })),
+];
+export const STAMP_DUAL_BLENDS: readonly StampDualBlend[] = [
+  ...modesOf(DUAL_TEXTURE).map((mode) => ({ family: 'texture' as const, mode })),
+  ...modesOf(DUAL_LAYER).map((mode) => ({ family: 'layer' as const, mode })),
+];
 
 /** Whether a dual combines before its brush's grain cuts it: a `layer` linear height shapes where the stamps' paint lies. */
 export const stampDualBeforeGrain = (blend: StampDualBlend) => blend.family === 'layer' && blend.mode === 'linearHeight';
@@ -124,41 +126,48 @@ export const stampDualBeforeGrain = (blend: StampDualBlend) => blend.family === 
 /** How far `contrast` (-1..1) steepens a grain: flattened by 1 + contrast below 0, steepened by 1 / (1 − contrast) above. */
 export const stampGrainSlope = (contrast: number) => (contrast < 0 ? 1 + contrast : 1 / (1 - contrast));
 
-/**
- * A grain's paint as its brush adjusts it: `raw` 0..1 as the image holds it (1 paints), `mean` its mean paint. About
- * mid-grey, Photoshop's pattern brightness and contrast; a contrast of 1 (Photoshop's 100) is steep but finite. About
- * the mean, stretched and then brightened.
- */
-export function stampGrainPaint(raw: number, { brightness: b, contrast: c, contrastPivot }: Pick<StampGrainLook<unknown>, 'brightness' | 'contrast' | 'contrastPivot'>, mean: number): number {
-  if (contrastPivot === 'mean') return clamp01(mean + (raw - mean) * stampGrainSlope(Math.min(c, 0.999)) + b);
-  if (c === 0) return clamp01(raw + b);
-  if (c < 0) return clamp01((raw - 128 / 255) * (1 + c) + 0.5 + b);
-  const [pivot, slope] = c >= 1 ? [126.589 / 255, 231.63] : [127.5 / 255, 1 / (1 - c)];
-  return clamp01((raw + b - pivot) * slope + 128 / 255);
-}
-
-/** Wet edges' pooling of built coverage `c`: rising to `peak` at half coverage, easing to `body` at full. */
-export function stampPooled(c: number, { peak, body }: Pick<StampPooling, 'peak' | 'body'>): number {
-  return c <= 0.5 ? 2 * peak * c : peak - 4 * (peak - body) * (c - 0.5) ** 2;
-}
-
-/** Photoshop's wet edges (fitted at rms 0.00009): half coverage pools to 192/255, full coverage to 150/255. */
-export const PHOTOSHOP_POOLING: StampPooling = { kind: 'pooling', peak: 192 / 255, body: 150 / 255 };
-
-/** A family's formulas as a WGSL function switching on its mode's index; the last case is also the default. */
-function wgslSwitch(name: string, params: string, table: Record<string, { wgsl: string }>): string {
-  const cases = Object.values(table).map(({ wgsl }, i, all) => `    case ${i}${i === all.length - 1 ? ', default' : ''}: { return ${wgsl}; }`);
-  return `fn ${name}(${params}, mode: i32) -> f32 {\n  switch (mode) {\n${cases.join('\n')}\n  }\n}`;
-}
+type GrainLookOf<K extends keyof StampGrainLook<unknown>> = Pick<StampGrainLook<unknown>, K>;
 
 /**
- * The formulas above in WGSL: `grainCut` (a grain's, texture or layer by `layer`), `dualCombine` (a dual's), `grainPaint`
- * and `pooled`, each its namesake's twin.
+ * The formulas built on the mode tables, each a CPU function and the WGSL function of the same name that the renderer
+ * calls, over the same arguments, a look's fields passed one by one and a blend as its family's case.
  */
-export const COVERAGE_FORMULAS_WGSL = /* wgsl */ `
-fn dodgeScale(depth: f32) -> f32 { return floor(round(depth * 255.0) * 248.0 / 255.0) / 255.0; }
-fn overlaid(base: f32, blend: f32) -> f32 { return select(1.0 - 2.0 * (1.0 - base) * (1.0 - blend), 2.0 * base * blend, base < 0.5); }
-fn grainSlope(contrast: f32) -> f32 { return select(1.0 / (1.0 - contrast), 1.0 + contrast, contrast < 0.0); }
+export const STAMP_COVERAGE_FUNCTIONS = {
+  /** Coverage `a` cut by grain paint `v` (1 keeps paint) at the grain's depth, by its blend. */
+  grainCut: {
+    cpu: (a: number, v: number, { depth, blend }: GrainLookOf<'depth' | 'blend'>) =>
+      (blend.family === 'texture' ? GRAIN_TEXTURE[blend.mode].cpu(a, v, depth) : a + depth * (clamp01(GRAIN_LAYER[blend.mode].cpu(a, v)) - a)),
+    wgsl: /* wgsl */ `fn grainCut(a: f32, v: f32, d: f32, mode: i32, layer: bool) -> f32 {
+  if (layer) { return a + d * (clamp(grainLayer(a, v, mode), 0.0, 1.0) - a); }
+  return grainTexture(a, v, d, mode);
+}`,
+  },
+  /**
+   * The dual's coverage `s` combined with the brush's grained coverage `p` by `blend`. The layer blends would paint
+   * where the brush has none, so they're held to where it has paint (fully from p = 1/8).
+   */
+  dualCombine: {
+    cpu: (p: number, s: number, blend: StampDualBlend) =>
+      (blend.family === 'texture' ? DUAL_TEXTURE[blend.mode].cpu(p, s) : clamp01(DUAL_LAYER[blend.mode].cpu(p, s)) * clamp01(p * 8)),
+    wgsl: /* wgsl */ `fn dualCombine(p: f32, s: f32, mode: i32, layer: bool) -> f32 {
+  if (layer) { return clamp(dualLayer(p, s, mode), 0.0, 1.0) * clamp(p * 8.0, 0.0, 1.0); }
+  return dualTexture(p, s, mode);
+}`,
+  },
+  /**
+   * A grain's paint as its brush adjusts it: `raw` 0..1 as the image holds it (1 paints), `mean` its mean paint. About
+   * mid-grey, Photoshop's pattern brightness and contrast; a contrast of 1 (Photoshop's 100) is steep but finite.
+   * About the mean, stretched and then brightened.
+   */
+  grainPaint: {
+    cpu: (raw: number, { brightness: b, contrast: c, contrastPivot }: GrainLookOf<'brightness' | 'contrast' | 'contrastPivot'>, mean: number) => {
+      if (contrastPivot === 'mean') return clamp01(mean + (raw - mean) * stampGrainSlope(Math.min(c, 0.999)) + b);
+      if (c === 0) return clamp01(raw + b);
+      if (c < 0) return clamp01((raw - 128 / 255) * (1 + c) + 0.5 + b);
+      const [pivot, slope] = c >= 1 ? [126.589 / 255, 231.63] : [127.5 / 255, 1 / (1 - c)];
+      return clamp01((raw + b - pivot) * slope + 128 / 255);
+    },
+    wgsl: /* wgsl */ `fn grainSlope(contrast: f32) -> f32 { return select(1.0 / (1.0 - contrast), 1.0 + contrast, contrast < 0.0); }
 fn grainPaint(raw: f32, brightness: f32, contrast: f32, aboutMean: bool, mean: f32) -> f32 {
   if (aboutMean) { return clamp(mean + (raw - mean) * grainSlope(min(contrast, 0.999)) + brightness, 0.0, 1.0); }
   if (contrast == 0.0) { return clamp(raw + brightness, 0.0, 1.0); }
@@ -166,19 +175,41 @@ fn grainPaint(raw: f32, brightness: f32, contrast: f32, aboutMean: bool, mean: f
   let pivot = select(127.5 / 255.0, 126.589 / 255.0, contrast >= 1.0);
   let slope = select(1.0 / (1.0 - contrast), 231.63, contrast >= 1.0);
   return clamp((raw + brightness - pivot) * slope + 128.0 / 255.0, 0.0, 1.0);
-}
-${wgslSwitch('grainTexture', 'a: f32, v: f32, d: f32', GRAIN_TEXTURE)}
-${wgslSwitch('grainLayer', 'a: f32, g: f32', GRAIN_LAYER)}
-fn grainCut(a: f32, v: f32, d: f32, mode: i32, layer: bool) -> f32 {
-  if (layer) { return a + d * (clamp(grainLayer(a, v, mode), 0.0, 1.0) - a); }
-  return grainTexture(a, v, d, mode);
-}
-${wgslSwitch('dualTexture', 'p: f32, s: f32', DUAL_TEXTURE)}
-${wgslSwitch('dualLayer', 'p: f32, s: f32', DUAL_LAYER)}
-fn dualCombine(p: f32, s: f32, mode: i32, layer: bool) -> f32 {
-  if (layer) { return clamp(dualLayer(p, s, mode), 0.0, 1.0) * clamp(p * 8.0, 0.0, 1.0); }
-  return dualTexture(p, s, mode);
-}
-fn pooled(c: f32, peak: f32, body: f32) -> f32 {
+}`,
+  },
+  /** Wet edges' pooling of built coverage `c`: rising to `peak` at half coverage, easing to `body` at full. */
+  pooled: {
+    cpu: (c: number, { peak, body }: Pick<StampPooling, 'peak' | 'body'>) => (c <= 0.5 ? 2 * peak * c : peak - 4 * (peak - body) * (c - 0.5) ** 2),
+    wgsl: /* wgsl */ `fn pooled(c: f32, peak: f32, body: f32) -> f32 {
   return select(peak - 4.0 * (peak - body) * (c - 0.5) * (c - 0.5), 2.0 * peak * c, c <= 0.5);
-}`;
+}`,
+  },
+};
+
+export const stampGrainCut = STAMP_COVERAGE_FUNCTIONS.grainCut.cpu;
+export const stampDualCombine = STAMP_COVERAGE_FUNCTIONS.dualCombine.cpu;
+export const stampGrainPaint = STAMP_COVERAGE_FUNCTIONS.grainPaint.cpu;
+export const stampPooled = STAMP_COVERAGE_FUNCTIONS.pooled.cpu;
+
+/** Photoshop's wet edges (fitted at rms 0.00009): half coverage pools to 192/255, full coverage to 150/255. */
+export const PHOTOSHOP_POOLING: StampPooling = { kind: 'pooling', peak: 192 / 255, body: 150 / 255 };
+
+/** Cases of a WGSL function `name` switching on `select` (an i32), one for each of `bodies`; the last is also the default. */
+export function stampWgslSwitch(name: string, params: string, returns: string, select: string, bodies: readonly string[]): string {
+  const cases = bodies.map((body, i) => `    case ${i}${i === bodies.length - 1 ? ', default' : ''}: { ${body} }`);
+  return `fn ${name}(${params}) -> ${returns} {\n  switch (${select}) {\n${cases.join('\n')}\n  }\n}`;
+}
+
+/** A family's formulas as a WGSL function switching on its mode's index. */
+const wgslModes = (name: string, params: string, table: Record<string, { wgsl: string }>) =>
+  stampWgslSwitch(name, `${params}, mode: i32`, 'f32', 'mode', Object.values(table).map(({ wgsl }) => `return ${wgsl};`));
+
+/** The registry in WGSL: each family's mode switch, then STAMP_COVERAGE_FUNCTIONS' twins, which call them. */
+export const COVERAGE_FORMULAS_WGSL = /* wgsl */ `
+fn dodgeScale(depth: f32) -> f32 { return floor(round(depth * 255.0) * 248.0 / 255.0) / 255.0; }
+fn overlaid(base: f32, blend: f32) -> f32 { return select(1.0 - 2.0 * (1.0 - base) * (1.0 - blend), 2.0 * base * blend, base < 0.5); }
+${wgslModes('grainTexture', 'a: f32, v: f32, d: f32', GRAIN_TEXTURE)}
+${wgslModes('grainLayer', 'a: f32, g: f32', GRAIN_LAYER)}
+${wgslModes('dualTexture', 'p: f32, s: f32', DUAL_TEXTURE)}
+${wgslModes('dualLayer', 'p: f32, s: f32', DUAL_LAYER)}
+${Object.values(STAMP_COVERAGE_FUNCTIONS).map(({ wgsl }) => wgsl).join('\n')}`;

@@ -17,8 +17,12 @@ stamp-paint
 dynamics keyed by target and sensor, scatter, rotation, grain, dual, edges, accumulation); `stamp-placement.ts`
 places its stamps along a stroke by one rule (`buildStamp`), reading dynamics through `stamp-dynamics.ts` (each
 step's and stamp's context, what each sensor reads from it, each response); a new sensor or target is an entry in
-`StampTargetSensors`, its parameters (`StampSensorParams`) and its signal there; `coverage-formulas.ts` and `stamp-deposit-stages.ts`
-define every blend, accumulation and the order a deposit resolves in, once, for the GPU and the CPU reference alike;
+`StampTargetSensors`, its parameters (`StampSensorParams`) and its signal there. `coverage-formulas.ts` and
+`stamp-deposit-stages.ts` are the one registry of every blend, grain adjustment, pooling and accumulation, the plans a
+deposit's stages resolve in, and which of a brush's stages are active (`stampActiveLayers`), which the GPU and the CPU
+reference both read. A formula is a pair, its CPU function and its WGSL twin written side by side, not one definition
+compiled to both: `node harness/stamp-reference.ts formulas` runs each twin on the GPU over a grid of inputs and holds
+it to its CPU side. The GPU's resolve order and mode switches are generated from the tables.
 `stamp-paint-recipe.ts` is the painting a scene writes, with its paper. `studio/` is the WebGPU renderer, its uniform
 layout and the compositor.
 
