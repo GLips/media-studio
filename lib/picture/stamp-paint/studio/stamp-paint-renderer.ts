@@ -74,7 +74,7 @@ fn grained(a: f32, raw: f32, mean: f32, p: Grain) -> f32 {
 // its zoom says, and carried along the canvas as far as its movement says. At movement 1 and constant size it lies
 // still on the canvas; as size or direction changes it slides, which is a rolling grain's streak.
 const STAMP_DRAW = stampUniformLayout('StampDraw', [
-  ['resolution', 'vec2f'], ['roundness', 'f32'], ['rolling', 'u32'], ['grain', stampUniformStruct('Grain', GRAIN)], ['diameter', 'f32'], ['zoom', 'f32'],
+  ['resolution', 'vec2f'], ['roundness', 'f32'], ['rolling', 'u32'], ['grain', stampUniformStruct(GRAIN)], ['diameter', 'f32'], ['zoom', 'f32'],
   ['movement', 'f32'], ['hull', { vec4fArray: STAMP_TIP_HULL_SIDES / 2 }], ['span', 'f32'], ['towardFull', 'u32'],
 ]);
 const STAMP_WGSL = /* wgsl */ `
@@ -157,8 +157,8 @@ ${BLUR.wgsl}
 }`;
 
 const DEPOSIT = stampUniformLayout('Deposit', [
-  ['paint', { struct: 'PaintDeposit', words: PAINT_DEPOSIT_WORDS, align: 4 }], ['secondary', 'vec4f'], ['view', 'vec4f'], ['edges', 'vec4f'], ['dualEdges', 'vec4f'],
-  ['grain', stampUniformStruct('Grain', GRAIN)], ['dualGrain', stampUniformStruct('Grain', GRAIN)], ['paperDepth', 'f32'], ['paperLod', 'f32'], ['opacity', 'f32'],
+  ['paint', { external: 'PaintDeposit', words: PAINT_DEPOSIT_WORDS, align: 4 }], ['secondary', 'vec4f'], ['view', 'vec4f'], ['edges', 'vec4f'], ['dualEdges', 'vec4f'],
+  ['grain', stampUniformStruct(GRAIN)], ['dualGrain', stampUniformStruct(GRAIN)], ['paperDepth', 'f32'], ['paperLod', 'f32'], ['opacity', 'f32'],
   ['dualBlend', 'i32'], ['burntBlend', 'i32'], ['dualBurntBlend', 'i32'], ['flags', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'], ['glazeBuild', 'vec2f'], ['pooling', 'vec4f'],
 ]);
 
@@ -644,7 +644,8 @@ async function rendererOnDevice(
     pass.dispatchWorkgroups(Math.ceil(w / WORKGROUP), Math.ceil(h / WORKGROUP));
     pass.end();
   };
-  const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const channel = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16) / 255;
+  const rgb = (hex: string): [number, number, number] => [channel(hex, 1), channel(hex, 3), channel(hex, 5)];
   /** The mip level a grain `texture` tiled `tileW` pixels across reads: texels per pixel, as a fragment's derivatives would say. */
   const grainLod = (texture: StampPaintImage, tileW: number) => Math.max(0, Math.log2(texture.width / tileW));
 
@@ -684,7 +685,10 @@ async function rendererOnDevice(
             put('zoom', rolling.zoom);
             put('movement', rolling.movement);
           }
-          put('hull', hull);
+          // A hull has as many corners as stayed convex, up to the array's; the fan draws only those, and the rest are zeros.
+          const hullWords = new Float32Array(STAMP_TIP_HULL_SIDES * 2);
+          hullWords.set(hull);
+          put('hull', hullWords);
           put('span', spanOf(layer));
           put('towardFull', accumulation.towardFull ? 1 : 0);
         }),
@@ -766,7 +770,7 @@ async function rendererOnDevice(
     };
     const rimOf = (layer?: BoundLayer) => (layer?.wetEdges?.kind === 'rim' ? layer.wetEdges : undefined);
     const poolingOf = (layer?: BoundLayer) => (layer?.wetEdges?.kind === 'pooling' ? layer.wetEdges : undefined);
-    const edgesOf = (layer?: BoundLayer) => (blurred && layer
+    const edgesOf = (layer?: BoundLayer): [number, number, number, number] => (blurred && layer
       ? [rimOf(layer)?.rim ?? 0, rimOf(layer)?.sharpness ?? 0, layer.burntEdge?.strength ?? 0, layer.burntEdge?.sharpness ?? 0] : [0, 0, 0, 0]);
     const mainGrain = canvasGrain(brush), dualGrain = canvasGrain(brush.dual);
     const glazeBuildOf = (layer?: BoundLayer) => (layer?.accumulation.kind === 'glaze' ? layer.accumulation.build : 0);
