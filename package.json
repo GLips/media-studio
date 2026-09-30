@@ -23,6 +23,7 @@
     "brushes:fills": "node harness/brush-fidelity.ts fills",
     "brushes:probes": "node harness/brush-fidelity.ts probes",
     "brushes:guard": "node harness/stamp-paint-guard.ts",
+    "wet:passages": "node harness/wet-passage-sheet.ts paint",
     "stamp:gate": "node harness/stamp-paint-gate.ts",
     "prepare": "git config core.hooksPath .githooks"
   },

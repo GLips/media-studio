@@ -762,8 +762,27 @@ export type StampPaintRenderer = {
    * for diagnosing a brush against a capture, not for rendering. Throws on a deposit not in the painting or asked for twice.
    */
   trace: (t: number, requests: readonly StampDepositTraceRequest[]) => Promise<StampDepositTrace[]>;
+  /**
+   * Draws the frame at `t` as `draw` does and reads back the layer its last group left, before that group dried
+   * into the painting: for checking what the compositor laid (the GPU gate's pigment checks), not for rendering.
+   */
+  readLayer: (t: number) => Promise<StampLayerReadback>;
   dispose: () => void;
 };
+
+/**
+ * A group's layer as read back: `layers` of rgba16float, each `width` × `height`, in `values` layer by layer, row by
+ * row, four channels a pixel. For pigment, layer 0's first channel is coverage and each other channel a pigment's amount.
+ */
+export type StampLayerReadback = { width: number; height: number; layers: number; values: Float32Array };
+
+/** An IEEE half-float's bits as a number. */
+function halfFloat(bits: number): number {
+  const exponent = (bits >> 10) & 0x1f, fraction = bits & 0x3ff, sign = bits & 0x8000 ? -1 : 1;
+  if (exponent === 0) return sign * fraction * 2 ** -24;
+  if (exponent === 0x1f) return fraction ? NaN : sign * Infinity;
+  return sign * (1 + fraction / 1024) * 2 ** (exponent - 15);
+}
 
 /**
  * A renderer for one painting on `canvas`, its paint mixed as `mixing` says; `fps`, the scene's frame rate, counts a
@@ -1107,6 +1126,7 @@ async function rendererOnDevice(
   const laysTints = [...writtenBank.deposits.values()].some(({ tint }) => tint !== null);
   const targets = {
     painting: layered(compositor.targets.painting, STORAGE | SAVED),
+    // Saved by checkpoints, and copied out by readLayer for the GPU gate's pigment checks.
     layer: layered(compositor.targets.layer, STORAGE | RENDER | SAVED),
     // A moving group's layer resampled to where it's placed, for its lay; only a painting with one has it.
     moved: painting.groups.some((group) => group.motion) ? layered(compositor.targets.layer, STORAGE) : null,
@@ -1654,16 +1674,19 @@ async function rendererOnDevice(
     return { drawn, keyAt, settled: stampSettledEventCount(events, t) };
   }
 
-  function draw(t: number, frameTrace?: FrameTrace) {
+  /**
+   * Encodes the frame at `t`. `whole` draws it from bare paper, neither restoring nor saving a checkpoint: a traced
+   * frame, so every deposit it asks for is resolved in it, and a read-back layer, which a checkpoint may skip past.
+   */
+  function draw(t: number, { frameTrace, whole = frameTrace !== undefined }: { frameTrace?: FrameTrace; whole?: boolean } = {}) {
     if (lost) throw new Error(`stamp paint: the GPU device was lost: ${lost}`);
     slots = 0;
     const encoder = device.createCommandEncoder();
     const { drawn, keyAt, settled } = framePlan(t);
-    // A traced frame is drawn whole, so every deposit it asks for is resolved in it.
-    const start = frameTrace ? null : checkpoints.latest(settled, keyAt);
+    const start = whole ? null : checkpoints.latest(settled, keyAt);
     const from = start?.event ?? 0;
     // Saved: the settled prefix, and the state before the first group that moves or boils, which later frames share.
-    const saves = new Set(frameTrace ? [] : [settled, Math.min(settled, varyingFrom)].filter((event) => event > from));
+    const saves = new Set(whole ? [] : [settled, Math.min(settled, varyingFrom)].filter((event) => event > from));
     const save = (event: number, inGroup: boolean, painted: Box | null) => {
       if (saves.has(event)) checkpoints.save(encoder, { event, key: keyAt(event), inGroup, painted });
     };
@@ -1748,7 +1771,7 @@ async function rendererOnDevice(
       const read = device.createBuffer({ size: bytes, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
       try {
         try {
-          const encoder = draw(t, { deposits: traced, buffer: traceBuffer });
+          const encoder = draw(t, { frameTrace: { deposits: traced, buffer: traceBuffer } });
           encoder.copyBufferToBuffer(traceBuffer, 0, read, 0, bytes);
           device.queue.submit([encoder.finish()]);
         } finally {
@@ -1764,6 +1787,33 @@ async function rendererOnDevice(
         });
       } finally {
         traceBuffer.destroy();
+        read.destroy();
+      }
+    },
+    readLayer: async (t) => {
+      if (disposed) throw new Error('stamp paint: a disposed renderer reads back nothing');
+      const layers = targets.layer.layers.length, rowBytes = Math.ceil((width * 8) / 256) * 256;
+      const read = device.createBuffer({ size: rowBytes * height * layers, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+      try {
+        checking();
+        try {
+          const encoder = draw(t, { whole: true });
+          encoder.copyTextureToBuffer({ texture: targets.layer.texture }, { buffer: read, bytesPerRow: rowBytes, rowsPerImage: height }, [width, height, layers]);
+          device.queue.submit([encoder.finish()]);
+        } finally {
+          await checked(`reading back the layer at ${t} s`);
+        }
+        await read.mapAsync(GPUMapMode.READ);
+        const halves = new Uint16Array(read.getMappedRange()), values = new Float32Array(width * height * 4 * layers);
+        for (let l = 0; l < layers; l++) {
+          for (let y = 0; y < height; y++) {
+            const from = (l * height + y) * (rowBytes / 2), to = (l * height + y) * width * 4;
+            for (let i = 0; i < width * 4; i++) values[to + i] = halfFloat(halves[from + i]);
+          }
+        }
+        read.unmap();
+        return { width, height, layers, values };
+      } finally {
         read.destroy();
       }
     },

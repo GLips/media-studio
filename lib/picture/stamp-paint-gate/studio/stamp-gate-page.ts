@@ -1,7 +1,8 @@
 // stamp-gate-page.ts: the GPU gate's browser side, run by engine/stamp-gate.ts through withBrowserModulePage. It runs
 // the formula grids (stamp-gate-formulas.ts) on the renderer's own WGSL, paints the gate's paintings
-// (stamp-gate-paintings.ts) with the studio's renderer, and holds a traced resolve to the frame it draws. Paintings are
-// built here, as a compiled painting's typed arrays don't survive the trip from Node.
+// (stamp-gate-paintings.ts) with the studio's renderer, holds a traced resolve to the frame it draws, and paints each
+// wash case, reading its layer back for the properties it's held to (stamp-gate-washes.ts). Paintings are built here,
+// as a compiled painting's typed arrays don't survive the trip from Node.
 
 import { PAINT_KUBELKA_MUNK_WGSL } from '#lib/picture/paint/models/paint-kubelka-munk.ts';
 import { PAINT_PAPER_WGSL } from '#lib/picture/paint/models/paint-paper.ts';
@@ -9,12 +10,15 @@ import { COVERAGE_FORMULAS_WGSL } from '#lib/picture/stamp-paint/models/coverage
 import { STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
 import { STAMP_FLOOD_FRONT_SHARE_WGSL } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
 import { STAMP_PAINT_FIELD_SHARE } from '#lib/picture/stamp-paint/models/stamp-paint-field.ts';
+import { STAMP_WET_LAND_WGSL } from '#lib/picture/stamp-paint/models/stamp-wet-landing.ts';
+import { STAMP_WET_LIFT_WGSL } from '#lib/picture/stamp-paint/models/stamp-wet-lift.ts';
 import { STAMP_GRID_AT_WGSL, STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL } from '#lib/picture/stamp-paint/models/stamp-region.ts';
 import { createStampPaintDevice } from '#lib/picture/stamp-paint/studio/stamp-paint-gpu.ts';
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
 import { stampGatePrivatePainting, type StampGatePrivateCase } from '../models/stamp-gate-private-cases.ts';
-import { stampGateFrameDifference, type StampGateFrameDifference } from '../models/stamp-gate-frames.ts';
+import { stampGateFrameDifference, stampGateFramePasses, type StampGateFrameDifference } from '../models/stamp-gate-frames.ts';
+import { checkStampGateConserved, checkStampGateLifted, stampGateLastGroupPigments, stampGateWashCase, type StampGateWashCheck } from '../models/stamp-gate-washes.ts';
 import { stampGatePainting, stampGateTracePainting, type StampGateImage, type StampGatePainting } from '../models/stamp-gate-paintings.ts';
 
 const WORKGROUP = 64;
@@ -31,6 +35,8 @@ ${STAMP_ACCUMULATION_RESOLVE_WGSL}
 ${STAMP_REGION_WGSL}
 ${STAMP_PAINT_FIELD_SHARE.wgsl}
 ${STAMP_FLOOD_FRONT_SHARE_WGSL}
+${STAMP_WET_LAND_WGSL}
+${STAMP_WET_LIFT_WGSL}
 @group(0) @binding(0) var<storage, read> inputs: array<f32>;
 @group(0) @binding(1) var<storage, read_write> outputs: array<f32>;
 ${points ? `@group(0) @binding(2) var<storage, read> points: array<vec2f>;\n${STAMP_POLYGON_DISTANCE_WGSL}` : ''}
@@ -164,6 +170,38 @@ async function traceStampGate(): Promise<{ worst: number; mean: number; ordinary
   });
 }
 
+/** `renderer`'s frame at `t`, once the GPU has drawn it. */
+async function drawn(renderer: StampPaintRenderer, frame: () => Uint8ClampedArray, t: number) {
+  await renderer.draw(t);
+  await renderer.finish();
+  return frame();
+}
+
+/**
+ * Wash case `id`: its frames the same whichever came first, and, against the same painting without the ops under
+ * test, its pigment conserved or its lift bounded, read from the last group's layer at its end.
+ */
+async function checkStampGateWash(id: string): Promise<StampGateWashCheck[]> {
+  const washCase = stampGateWashCase(id), { subject, mid } = washCase, url = drawnImages(subject);
+  const end = subject.t;
+  const painted = await withGateRenderer(subject, url, async (renderer, frame) => ({
+    end: await drawn(renderer, frame, end), mid: await drawn(renderer, frame, mid), again: await drawn(renderer, frame, end), layer: await renderer.readLayer(end),
+  }));
+  const fresh = await withGateRenderer(subject, url, (renderer, frame) => drawn(renderer, frame, mid));
+  const ends = stampGateFrameDifference(painted.end, painted.again), mids = stampGateFrameDifference(fresh, painted.mid);
+  const checks: StampGateWashCheck[] = [{
+    id: `${id}: any frame order`, passed: stampGateFramePasses(ends) && stampGateFramePasses(mids),
+    detail: `its end drawn again after ${mid} s: max ${ends.max}, mean ${ends.mean.toFixed(4)}; ${mid} s drawn fresh against after its end: max ${mids.max}, mean ${mids.mean.toFixed(4)}`,
+  }];
+  if (washCase.property === 'order') return checks;
+  const pigments = stampGateLastGroupPigments(subject);
+  if (stampGateLastGroupPigments(washCase.without).join() !== pigments.join()) throw new Error(`stamp gate: ${id} and its painting without the ops under test lay different pigments`);
+  const without = await withGateRenderer(washCase.without, url, (renderer) => renderer.readLayer(end));
+  return [...checks, washCase.property === 'conserved'
+    ? checkStampGateConserved(id, pigments, painted.layer, without)
+    : checkStampGateLifted(id, pigments, washCase.pigments, painted.layer, without)];
+}
+
 /** The GPU the gate draws on, as a baseline records it. */
 async function stampGateAdapter(): Promise<string> {
   const adapter = await navigator.gpu.requestAdapter();
@@ -172,4 +210,4 @@ async function stampGateAdapter(): Promise<string> {
   return [vendor, architecture, device, description].filter(Boolean).join(' ');
 }
 
-Object.assign(globalThis, { runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, stampGateAdapter });
+Object.assign(globalThis, { runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, stampGateAdapter });
