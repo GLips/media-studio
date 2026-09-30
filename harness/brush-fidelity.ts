@@ -1,13 +1,14 @@
-// node harness/brush-fidelity.ts <sheet|fit|diagnose|hand> (npm run brushes:sheet / brushes:fit / brushes:diagnose /
-// brushes:hand): how close an imported pack's brushes paint to their targets, fitting an app's reading to close the
-// gap, the per-brush diagnostic of a reading, and how a brush answers each stroke hand
-// (lib/picture/brush-fidelity/engine/brush-fidelity-sheet.ts, brush-reading-fit.ts, brush-reading-diagnostic.ts,
-// stamp-stroke-hand-sheet.ts; docs/private-styles.md).
+// node harness/brush-fidelity.ts <sheet|fit|diagnose|hand|fills> (npm run brushes:sheet / brushes:fit /
+// brushes:diagnose / brushes:hand / brushes:fills): how close an imported pack's brushes paint to their targets,
+// fitting an app's reading to close the gap, the per-brush diagnostic of a reading, how a brush answers each stroke
+// hand, and how it fills a region (lib/picture/brush-fidelity/engine/brush-fidelity-sheet.ts, brush-reading-fit.ts,
+// brush-reading-diagnostic.ts, stamp-stroke-hand-sheet.ts, stamp-fill-sheet.ts; docs/private-styles.md).
 import { defineCommand } from 'citty';
 import { relative, resolve } from 'node:path';
 import { writeBrushFidelitySheet } from '#lib/picture/brush-fidelity/engine/brush-fidelity-sheet.ts';
 import { diagnoseBrushReading } from '#lib/picture/brush-fidelity/engine/brush-reading-diagnostic.ts';
 import { fitBrushReading } from '#lib/picture/brush-fidelity/engine/brush-reading-fit.ts';
+import { writeStampFillSheet } from '#lib/picture/brush-fidelity/engine/stamp-fill-sheet.ts';
 import { writeStampStrokeHandSheet } from '#lib/picture/brush-fidelity/engine/stamp-stroke-hand-sheet.ts';
 import { strokeFidelityGrade } from '#lib/picture/brush-fidelity/models/stroke-measure.ts';
 import { STUDIO_ROOT, STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
@@ -120,7 +121,26 @@ const handCommand = defineCommand({
   },
 });
 
+const fillsCommand = defineCommand({
+  meta: {
+    name: 'fills',
+    description: "The fill sheet: one region filled with each brush as a wash and in each strokes pattern (zigzag, back and forth, hatch, cross-hatch, scribble), laid and half drawn, each with its stamp count, a PNG per brush, to choose how a brush fills.",
+  },
+  args: {
+    style: { type: 'string', required: true, description: 'The style, work/styles/<style>/' },
+    pack: { type: 'string', required: true, description: "The pack's folder in the style's brushes/" },
+    brush: { type: 'string', required: true, valueHint: 'Dry Brush', description: 'The brushes, by their names in the pack (comma-separated)' },
+    diameter: { type: 'string', default: '36', description: 'The stamp diameter, in pixels' },
+    out: { type: 'string', required: true, description: 'The folder to write the PNGs into' },
+  },
+  async run({ args }) {
+    const brushes = args.brush.split(',').map((name) => name.trim()).filter(Boolean);
+    const written = await writeStampFillSheet({ stylesDir: STUDIO_STYLES_DIR, style: args.style, pack: args.pack, brushes, diameter: Number(args.diameter), out: resolve(args.out) });
+    for (const file of written) console.log(relative(STUDIO_ROOT, file));
+  },
+});
+
 await runHarnessCommand(defineCommand({
   meta: { name: 'brush-fidelity', description: "How close an imported pack's brushes paint to their targets, and fitting the importer to them" },
-  subCommands: { sheet: sheetCommand, fit: fitCommand, diagnose: diagnoseCommand, hand: handCommand },
+  subCommands: { sheet: sheetCommand, fit: fitCommand, diagnose: diagnoseCommand, hand: handCommand, fills: fillsCommand },
 }));

@@ -84,7 +84,7 @@ export function renderStampPigmentReference(input: StampPigmentReferenceInput): 
       const { coverage } = renderStampReferenceDeposit({
         brush: bindStampBrushImages(deposit.brush, deposit.diameter, mips), stamps: deposit.stamps, dualStamps: deposit.dualStamps,
         diameter: deposit.diameter, opacity: deposit.opacity, grainOffset: deposit.grainOffset, box,
-        ...(deposit.kind === 'fill' && { fill: deposit.fill }),
+        ...(deposit.kind === 'wash' && { wash: deposit.wash }),
         keep: (x, y) => stampDepositKeepAt(deposit, pass.within, Number.MAX_VALUE, x, y),
       });
       const components = paint.deposits.get(deposit)!;
@@ -157,7 +157,7 @@ export function stampPigmentFixture(mediumName: (typeof STAMP_PIGMENT_FIXTURE_ME
     p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => {
       g.mask('sun', { region: { kind: 'ellipse', x: 250, y: 45, radiusX: 22, radiusY: 22 }, edge: { soft: 3 } });
       g.pass('wash', {}, (pass) => pass.fill('granulating', {
-        brush, diameter: 40, region: { kind: 'polygon', points: [{ x: 10, y: 10 }, { x: 310, y: 10 }, { x: 310, y: 95 }, { x: 10, y: 95 }] },
+        brush, diameter: 40, application: { kind: 'wash' }, region: { kind: 'polygon', points: [{ x: 10, y: 10 }, { x: 310, y: 10 }, { x: 310, y: 95 }, { x: 10, y: 95 }] },
         material: { kind: 'mixture', parts: [{ pigment: W.ultramarine, amount: 1 }, { pigment: W.burntSienna, amount: 0.3 }], strength: 0.9 },
         load: { kind: 'linear', from: { x: 0, y: 10, value: 1 }, to: { x: 0, y: 95, value: 0.3 } },
       }));

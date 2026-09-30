@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { stampLinearDynamics, type StampBrush } from './stamp-brush.ts';
+import { stampLinearDynamics, type StampBrush, type StampBrushMedia } from './stamp-brush.ts';
+import type { StampFillApplication } from './stamp-fill.ts';
 import { compileStampPaintRecipe, stampPaintRecipe } from './stamp-paint-recipe.ts';
-import { stampFillBody, stampGridAt, stampPolygonDistance, type StampRegion } from './stamp-region.ts';
+import { stampWashBody, stampGridAt, stampPolygonDistance, type StampRegion } from './stamp-region.ts';
 
 const brush: StampBrush = {
   name: 'Wash',
@@ -23,15 +24,20 @@ const brush: StampBrush = {
 
 const polygon = (...xy: number[]): StampRegion => ({ kind: 'polygon', points: xy.flatMap((v, i) => (i % 2 ? [] : [{ x: v, y: xy[i + 1] }])) });
 
-function compiledFill(region: StampRegion, diameter: number) {
-  const [deposit] = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) =>
-    group.pass('p', {}, (pass) => pass.fill('fill', { brush, material: { kind: 'color', color: '#406585' }, diameter, region }))))).groups[0].passes[0].deposits;
-  assert.equal(deposit.kind, 'fill');
+/** `region` filled at `diameter` by a brush of `media`, as `settings` say. */
+function compiledFill(region: StampRegion, diameter: number, settings: { application?: StampFillApplication }, media?: StampBrushMedia) {
+  return compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) =>
+    pass.fill('fill', { brush: { ...brush, ...(media && { media }) }, material: { kind: 'color', color: '#406585' }, diameter, region, ...settings }))))).groups[0].passes[0].deposits[0];
+}
+
+function compiledWash(region: StampRegion, diameter: number) {
+  const deposit = compiledFill(region, diameter, { application: { kind: 'wash' } });
+  if (deposit.kind !== 'wash') throw new Error(`a wash compiled to a ${deposit.kind}`);
   return deposit;
 }
 
-test("a fill's edge stroke puts its stamps' edges on the outline, round a disc and into a concave notch's corners, never across it", () => {
-  const disc = compiledFill({ kind: 'ellipse', x: 200, y: 200, radiusX: 120, radiusY: 120 }, 50);
+test("a wash's edge stroke puts its stamps' edges on the outline, round a disc and into a concave notch's corners, never across it", () => {
+  const disc = compiledWash({ kind: 'ellipse', x: 200, y: 200, radiusX: 120, radiusY: 120 }, 50);
   // Untapered at full size, each stamp's centre half a diameter in, so its edge touches the outline all the way round.
   assert.ok(disc.stamps.length > 50);
   for (const { x, y, diameter } of disc.stamps) {
@@ -39,22 +45,43 @@ test("a fill's edge stroke puts its stamps' edges on the outline, round a disc a
     assert.ok(Math.abs(Math.hypot(x - 200, y - 200) - 95) < 2, `stamp at ${x},${y}`);
   }
   // A U, its notch 200 wide from the top down to y 200: the edge follows the notch's sides, but paints nothing in it.
-  const u = compiledFill(polygon(0, 0, 100, 0, 100, 200, 300, 200, 300, 0, 400, 0, 400, 300, 0, 300), 40);
+  const u = compiledWash(polygon(0, 0, 100, 0, 100, 200, 300, 200, 300, 0, 400, 0, 400, 300, 0, 300), 40);
   assert.deepEqual(u.stamps.filter(({ x, y }) => x > 100 && x < 300 && y < 200), []);
   for (const [x, y] of [[80, 20], [320, 20], [120, 220], [280, 220]]) assert.ok(u.stamps.some((s) => Math.hypot(s.x - x, s.y - y) < 6), `no stamp near ${x},${y}`);
 });
 
-test("a fill's body paints a feature narrower than a diameter, which its edge stroke leaves out", () => {
+test("a wash's body paints a feature narrower than a diameter, which its edge stroke leaves out", () => {
   // A slab with a spike 10 px wide rising 200 px from it: far thinner than the 60-px brush.
   const region = polygon(0, 300, 195, 300, 200, 100, 205, 300, 400, 300, 400, 400, 0, 400);
-  const fill = compiledFill(region, 60);
-  assert.equal(fill.kind === 'fill' && fill.stamps.some(({ y }) => y < 290), false);
-  if (fill.kind !== 'fill') return;
-  const body = (x: number, y: number) => stampFillBody(stampPolygonDistance(fill.fill.polygon, x, y), stampGridAt(fill.fill.thickness, x, y), fill.fill.inset);
+  const fill = compiledWash(region, 60);
+  assert.equal(fill.stamps.some(({ y }) => y < 290), false);
+  const body = (x: number, y: number) => stampWashBody(stampPolygonDistance(fill.wash.polygon, x, y), stampGridAt(fill.wash.thickness, x, y), fill.wash.inset);
   // Down the spike's middle the body is solid, and it stays inside the spike.
   for (const y of [150, 200, 250]) {
     const half = (5 * (y - 100)) / 200;
     assert.ok(body(200, y) > 0.9, `spike empty at y ${y}`);
     assert.equal(body(200 + half + 1, y), 0);
   }
+});
+
+test("a fill in strokes lays marks whose edges reach the outline, never past it, and a wide hatch leaves paper between", () => {
+  const disc = { kind: 'ellipse', x: 200, y: 200, radiusX: 120, radiusY: 120 } as const;
+  for (const pattern of ['zigzag', 'backAndForth', 'hatch', 'crossHatch', 'scribble'] as const) {
+    const fill = compiledFill(disc, 30, { application: { kind: 'strokes', pattern, variation: 0, hand: {} } });
+    assert.equal(fill.kind, 'stroke');
+    const reach = Math.max(...fill.stamps.map(({ x, y }) => Math.hypot(x - 200, y - 200) + 15));
+    assert.ok(reach > 115 && reach < 122, `${pattern} reaches ${reach}`);
+  }
+  // Rows about two diameters apart: every stamp's centre lies within a few px of a row, and between rows lies paper.
+  const hatch = compiledFill(disc, 30, { application: { kind: 'strokes', pattern: 'hatch', spacing: 2, variation: 0 } });
+  const rows = hatch.stamps.map(({ y }) => y).toSorted((a, b) => a - b).filter((y, i, ys) => i === 0 || y - ys[i - 1] > 10);
+  assert.ok(rows.length >= 3 && rows.every((y, i) => i === 0 || y - rows[i - 1] > 55), `rows at ${rows.map(Math.round).join(', ')}`);
+});
+
+test("a fill is laid as its brush's media lays it unless it says, and refused when no one says", () => {
+  const square = polygon(0, 0, 200, 0, 200, 200, 0, 200);
+  assert.equal(compiledFill(square, 30, {}, 'wet').kind, 'wash');
+  assert.equal(compiledFill(square, 30, {}, 'dry').kind, 'stroke');
+  assert.equal(compiledFill(square, 30, { application: { kind: 'strokes', pattern: 'hatch' } }, 'wet').kind, 'stroke');
+  assert.throws(() => compiledFill(square, 30, {}), /states its application/);
 });

@@ -3,22 +3,22 @@
 // A recipe is ordered groups of ordered passes of deposits: a stroke, placed
 // stamps or a fill of a region, of one brush in one material, landing under the masking fluid declared before it.
 // `compileStampPaintRecipe` checks it and places every stamp of the painting once. A frame at `t` only chooses how
-// many of each deposit's stamps show (`visibleStampCountAt`) and how far a fill's front has crossed it
-// (`stampFillProgressAt`), so it is a function of `t` alone.
+// many of each deposit's stamps show (`visibleStampCountAt`) and how far a wash's front has crossed it
+// (`stampWashProgressAt`), so it is a function of `t` alone.
 //
 // Randomness comes from IDs, never order: each deposit is seeded by its ID (`<group>/<pass>/<deposit>`), so adding a
 // stroke changes no other.
 
 import { seededRandom } from '#lib/picture/motion/models/random.ts';
 import { paintMixtureProblem, type PaintMixture } from '#lib/picture/paint/models/paint-mixture.ts';
-import type { StampBlend, StampBrush, StampBrushAsset, StampBrushColorDynamics, StampBrushLayer } from './stamp-brush.ts';
+import type { StampBlend, StampBrush, StampBrushAsset, StampBrushColorDynamics, StampBrushLayer, StampBrushMedia } from './stamp-brush.ts';
 import { placeAuthoredStamps, placeStrokeStamps, type PlacedStamp, type StampPlacement, type StampPlacementBrush, type StampStrokePoint } from './stamp-placement.ts';
 import { handStampStroke, type StampStrokeHand } from './stamp-stroke-hand.ts';
 import { STAMP_ACCUMULATIONS } from './stamp-deposit-stages.ts';
 import {
-  placeStampFill, stampFillBodyLevels, stampFillFront, stampFillProbe, stampRegionSeed, type StampFillBody, type StampFillBodyLevels, type StampFillFront,
+  placeStampWash, stampFillStrokePath, stampWashBodyLevels, stampWashFront, stampWashProbe, stampRegionSeed, type StampFillApplication, type StampWashBody, type StampWashBodyLevels, type StampWashFront,
 } from './stamp-fill.ts';
-import { stampPaintFieldProblem, type StampPaintField } from './stamp-paint-field.ts';
+import { stampPaintFieldAt, stampPaintFieldProblem, type StampPaintField } from './stamp-paint-field.ts';
 import { stampRegionPolygon, type StampEdge, type StampPoint, type StampRegion } from './stamp-region.ts';
 
 export type StampPaintColor = `#${string}`;
@@ -69,11 +69,11 @@ export type StampStrokeSettings = StampDepositSettings & {
 export type StampPlacementSettings = StampDepositSettings & { at: readonly StampPlacement[] };
 
 /**
- * A wash over `region` (stamp-fill.ts): solid inside, the brush's own at its edge, its dual across all of it.
- * `direction`: radians the dual's rows run along and a drawn fill's front crosses (0: rows left to right, the front
- * coming down). `load`: how much paint, 0..1, across the region, 1 when left out; a colour lays it as coverage.
+ * Paint over `region`, reaching its edges (stamp-fill.ts). `application`: a wash or strokes, by default as its brush's
+ * media lays it. `direction`: radians its rows run along (0: left to right); a drawn fill reveals across them. `load`: how
+ * much paint, 0..1, across the region (1 when left out): a wash's coverage, each stroke stamp's opacity.
  */
-export type StampFillSettings = StampDepositSettings & { region: StampRegion; direction?: number; load?: StampPaintField<number> };
+export type StampFillSettings = StampDepositSettings & { region: StampRegion; application?: StampFillApplication; direction?: number; load?: StampPaintField<number> };
 
 /**
  * Masking fluid over `region`: no deposit declared after it in its scope lands under it, until an unmask lifts it.
@@ -187,8 +187,8 @@ export type CompiledStampMask = {
 /** Where a mask or an unmask acts: its region traced, its edge, and its ragged edge's seed (stampRegionSeed of its ID). */
 export type CompiledStampMaskArea = { polygon: readonly StampPoint[]; edge?: StampEdge; seed: number };
 
-/** A fill's placed body and how its front crosses it (stamp-fill.ts). */
-export type CompiledStampFill = StampFillBody & { load: StampPaintField<number>; levels: StampFillBodyLevels; front: StampFillFront };
+/** A wash's placed body and how its front crosses it (stamp-fill.ts). */
+export type CompiledStampWash = StampWashBody & { load: StampPaintField<number>; levels: StampWashBodyLevels; front: StampWashFront };
 
 type CompiledStampDepositCommon = {
   /** `<group>/<pass>/<deposit>`, unique in the painting: the seed of every stamp in it. */
@@ -208,14 +208,17 @@ type CompiledStampDepositCommon = {
   mask: CompiledStampMask | null;
   /** When it shows (StampDepositReveal): from `at` seconds, drawn over `over` (0 lands whole); none, there throughout. */
   reveal?: { at: number; over: number };
-  /** Every stamp of the finished deposit, in reveal order: a fill's are its edge stroke's. */
+  /** Every stamp of the finished deposit, in reveal order: a wash's are its edge stroke's. */
   stamps: readonly PlacedStamp[];
   /** The brush's dual stamps, placed by its own settings along the same stroke, in reveal order; none without one. */
   dualStamps: readonly PlacedStamp[];
 };
 
-/** A stroke's stamps overlap along its path; placed stamps each land alone; a fill is a body under its edge stroke. */
-export type CompiledStampDeposit = CompiledStampDepositCommon & ({ kind: 'stroke' | 'stamps' } | { kind: 'fill'; fill: CompiledStampFill });
+/**
+ * A stroke's stamps overlap along its path (a fill laid in strokes is one); placed stamps each land alone; a wash is
+ * a body under its edge stroke.
+ */
+export type CompiledStampDeposit = CompiledStampDepositCommon & ({ kind: 'stroke' | 'stamps' } | { kind: 'wash'; wash: CompiledStampWash });
 
 export type CompiledStampPass = {
   /** `<group>/<pass>`. */
@@ -301,6 +304,9 @@ function checkedStampPolygon(region: StampRegion, what: string): readonly StampP
   return polygon;
 }
 
+/** How a fill of wet or dry media is laid unless it says: wet paint floods a shape; a crayon zigzags across it. */
+const STAMP_MEDIA_FILLS: Record<StampBrushMedia, StampFillApplication> = { wet: { kind: 'wash' }, dry: { kind: 'strokes', pattern: 'zigzag' } };
+
 /** A deposit checked and its stamps placed, `full` its ID, under the fluid `mask`. */
 function compileDeposit(full: string, deposit: StampPaintDeposit, mask: CompiledStampMask | null): CompiledStampDeposit {
   const { brush, material, blend = brush.blend, opacity = 1, appliedAt, drawnOver, diameter } = deposit;
@@ -326,13 +332,22 @@ function compileDeposit(full: string, deposit: StampPaintDeposit, mask: Compiled
   };
   if (deposit.kind === 'fill') {
     const direction = deposit.direction ?? 0;
-    const { body, stamps, dualStamps } = placeStampFill(deposit.region, brush, diameter, direction, full);
-    const levels = stampFillBodyLevels(STAMP_ACCUMULATIONS[brush.accumulation.kind].towardFull, stampFillProbe(brush, diameter, `${full}|probe`));
     const load = deposit.load ?? { kind: 'constant' as const, value: 1 };
     const problem = stampPaintFieldProblem(load, (value) => (value >= 0 && value <= 1 ? null : `a load of ${value}, outside 0..1`));
     if (problem) throw new Error(`stamp paint: ${full}'s load can't be painted: ${problem}`);
-    const fill = { ...body, load, levels, front: stampFillFront(body.polygon, [...stamps, ...dualStamps], direction, diameter) };
-    return { ...common, kind: 'fill', fill, stamps, dualStamps };
+    const application = deposit.application ?? (brush.media && STAMP_MEDIA_FILLS[brush.media]);
+    if (!application) throw new Error(`stamp paint: ${full} fills with ${JSON.stringify(brush.name)}, whose media no style declares, so it states its application`);
+    if (application.kind === 'wash') {
+      const { body, stamps, dualStamps } = placeStampWash(deposit.region, brush, diameter, direction, full);
+      const levels = stampWashBodyLevels(STAMP_ACCUMULATIONS[brush.accumulation.kind].towardFull, stampWashProbe(brush, diameter, `${full}|probe`));
+      const wash = { ...body, load, levels, front: stampWashFront(body.polygon, [...stamps, ...dualStamps], direction, diameter) };
+      return { ...common, kind: 'wash', wash, stamps, dualStamps };
+    }
+    const strokes = stampFillStrokePath(deposit.region, diameter, direction, application, full);
+    const place = (stamping: StampPlacementBrush, scale: number, seed: string) => (strokes.length ? placeStrokeStamps(strokes, stamping, diameter * scale, seed) : []);
+    const stamps = place(brush, 1, full);
+    for (const stamp of stamps) stamp.opacity *= stampPaintFieldAt(load, stamp.x, stamp.y);
+    return { ...common, kind: 'stroke', stamps, dualStamps: brush.dual ? place(brush.dual, brush.dual.scale, `${full}|dual`) : [] };
   }
   // The hand's path is worked out once, so the main stamps and the dual's follow the same wobble.
   const path = deposit.kind !== 'stroke' ? [] : deposit.hand ? handStampStroke(deposit.path, deposit.hand, diameter, `${full}|hand`) : deposit.path;
@@ -344,14 +359,14 @@ function compileDeposit(full: string, deposit: StampPaintDeposit, mask: Compiled
 
 /**
  * How many of `deposit`'s stamps (or its dual stamps) show at `t` seconds: none before `appliedAt`, then a growing
- * prefix of them. A fill's all show from `appliedAt`: its front reveals it (stampFillProgressAt).
+ * prefix of them. A wash's all show from `appliedAt`: its front reveals it (stampWashProgressAt).
  */
 export function visibleStampCountAt(deposit: CompiledStampDeposit, t: number, which: 'stamps' | 'dualStamps' = 'stamps'): number {
   const stamps = deposit[which];
   const { reveal } = deposit;
   if (!reveal) return stamps.length;
   if (t < reveal.at) return 0;
-  if (deposit.kind === 'fill') return stamps.length;
+  if (deposit.kind === 'wash') return stamps.length;
   const progress = revealProgress(reveal, t);
   // Stamps come in reveal order, so the count is where `progress` would sort among them.
   let low = 0, high = stamps.length;
@@ -363,15 +378,15 @@ export function visibleStampCountAt(deposit: CompiledStampDeposit, t: number, wh
   return low;
 }
 
-/** How far a fill's front has crossed it at `t` seconds, 0..1 (STAMP_FILL_FRONT_SHARE): 0 before `appliedAt`. */
-export function stampFillProgressAt(deposit: CompiledStampDeposit & { kind: 'fill' }, t: number): number {
+/** How far a wash's front has crossed it at `t` seconds, 0..1 (STAMP_WASH_FRONT_SHARE): 0 before `appliedAt`. */
+export function stampWashProgressAt(deposit: CompiledStampDeposit & { kind: 'wash' }, t: number): number {
   const { reveal } = deposit;
   if (!reveal) return 1;
   return t < reveal.at ? 0 : revealProgress(reveal, t);
 }
 
-/** Whether any of `deposit` shows at `t`: a fill once its front has started across it, though its edge stroke may have no stamps; else once a stamp shows. */
-export const stampDepositShowsAt = (deposit: CompiledStampDeposit, t: number) => (deposit.kind === 'fill' ? stampFillProgressAt(deposit, t) > 0 : visibleStampCountAt(deposit, t) > 0);
+/** Whether any of `deposit` shows at `t`: a wash once its front has started across it, though its edge stroke may have no stamps; else once a stamp shows. */
+export const stampDepositShowsAt = (deposit: CompiledStampDeposit, t: number) => (deposit.kind === 'wash' ? stampWashProgressAt(deposit, t) > 0 : visibleStampCountAt(deposit, t) > 0);
 
 const revealProgress = ({ at, over }: { at: number; over: number }, t: number) => (over ? Math.min(1, (t - at) / over) : 1);
 

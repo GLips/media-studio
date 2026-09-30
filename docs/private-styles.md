@@ -14,13 +14,15 @@ work/styles/<name>/
 ```
 
 `style.ts` names each pack its brushes come from, by its folder in `brushes/`, with a `source` that says where the pack
-was bought; the brushes it paints with, by its own names for them, each a brush in a pack; its palette; and its paper:
+was bought and its `media` (`wet` or `dry`, which Photoshop's brushes don't say, and which a fill's application defaults
+to: a wet brush washes a region, a dry one strokes it); the brushes it paints with, by its own names for them, each a
+brush in a pack, with `media` of its own when it differs from its pack's; its palette; and its paper:
 
 ```ts
 import type { StampPaintStyle } from '#lib/picture/stamp-styles/models/style.ts';
 
 export default {
-  packs: { vvds: { source: 'VVDS Realistic Watercolor Studio, bought on Creative Market (E13434.zip)' } },
+  packs: { vvds: { source: 'VVDS Realistic Watercolor Studio, bought on Creative Market (E13434.zip)', media: 'wet' } },
   brushes: { wash: { pack: 'vvds', brush: 'Wet Wash' }, blotch: { pack: 'vvds', brush: 'Blotch 03' } },
   palette: { sky: '#8fb3d9', earth: '#7a5c3e' },
   paper: { color: '#f4efe4' },

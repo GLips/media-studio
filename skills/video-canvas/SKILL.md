@@ -39,9 +39,17 @@ Everything is from `#studio`.
     ground, a shadow).
   - A **pass** is one layer of paint inside it. `clipped: true` keeps it inside the last unclipped pass: texture and
     shading that can't leave the silhouette. `within: region` keeps it inside a region (a reflection in its water).
-  - A **fill** covers a `region` with a wash: solid inside, the brush's own edge at the outline, reaching it exactly,
-    however small a spike. It costs what its edge does, not its area. `direction` (radians) is the way its front
-    crosses it as `drawnOver` reveals it; `load` grades how much paint it lays (`{ kind: 'linear', from, to }`).
+  - A **fill** covers a `region`, reaching its outline, laid by its `application`:
+    - `{ kind: 'wash' }`: solid inside, the brush's own edge at the outline, however small a spike. It costs what its
+      edge does, not its area.
+    - `{ kind: 'strokes', pattern, spacing?, variation?, hand? }`: real strokes of the brush, the marks and the paper
+      between them showing. `pattern` is `'zigzag'`, `'backAndForth'`, `'hatch'`, `'crossHatch'` or `'scribble'`;
+      `spacing` is diameters between rows (over 1 leaves paper); `variation` (0..1, 0.3) is how unevenly a hand lays
+      them. It costs what its strokes do.
+    - Left out, the brush's media decides: a wet brush washes, a dry one (pencil, crayon) zigzags. Override it for a
+      hatched shadow in watercolour, or a wash of a brush whose media no style declares.
+    - `direction` (radians) is the way its rows run, and it reveals across them as `drawnOver` runs; `load` grades how
+      much paint it lays (`{ kind: 'linear', from, to }`).
   - A **stroke** is a brush along a path; **stamps** are single placements (blooms, flowers). Each has `material`
     (`{ kind: 'color', color }`), `diameter` px, `opacity`, `appliedAt` and `drawnOver` seconds.
   - Give every stroke a **`hand`**, or it paints at constant pressure, the way a mouse does, and the brush's taper,
@@ -62,8 +70,7 @@ Everything is from `#studio`.
     everything declared after it in that scope, until the scope ends; `unmask(id, { region, amount })` lifts all or
     part of it. `edge`: `{ soft: px }` or `{ ragged: { amount, scale } }`, else a clean antialiased line. Paint
     already there stays: a mask is for highlights, glints and reserves, not erasing.
-- `stampSweepPath(region, diameter)` is one stroke sweeping a region in rows, for a texture laid across a shape;
-  `stampSmoothRegion(points)` turns a few control points into a smooth silhouette; `stampRegionOutline(region)` traces
+- `stampSmoothRegion(points)` turns a few control points into a smooth silhouette; `stampRegionOutline(region)` traces
   its edge.
 - `compileStampPaintRecipe(recipe)` once, at scene definition, never in render: a new painting each frame reloads it.
 - Render `<StampPainting painting={painting} paper={style.paper} t={s.t} />` in a scene. It draws with WebGPU, which

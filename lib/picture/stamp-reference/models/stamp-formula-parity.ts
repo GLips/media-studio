@@ -9,9 +9,9 @@ import { PHOTOSHOP_POOLING, STAMP_DUAL_BLENDS, STAMP_GRAIN_BLENDS, stampDualComb
 import { kubelkaMunkFilm, kubelkaMunkOver } from '#lib/picture/paint/models/paint-kubelka-munk.ts';
 import { paintClumps, paintDryContact, paintValley, paintWetSettle } from '#lib/picture/paint/models/paint-paper.ts';
 import { STAMP_ACCUMULATION_KINDS, STAMP_ACCUMULATIONS, stampAccumulationIndex } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
-import { STAMP_FILL_FRONT_SHARE } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
+import { STAMP_WASH_FRONT_SHARE } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
 import { STAMP_PAINT_FIELD_SHARE } from '#lib/picture/stamp-paint/models/stamp-paint-field.ts';
-import { stampEdgeCoverage, stampEdgeNoise, stampFillBody } from '#lib/picture/stamp-paint/models/stamp-region.ts';
+import { stampEdgeCoverage, stampEdgeNoise, stampWashBody } from '#lib/picture/stamp-paint/models/stamp-region.ts';
 
 /**
  * A formula's grid: `call` a WGSL expression over `x(0)`, `x(1)`, … (a row's inputs), `rows` its inputs, `labels`
@@ -79,16 +79,16 @@ export function stampFormulaGrids(): StampFormulaGrid[] {
   const edgeNoise = [-3.5, 0, 0.25, 1.5, 7.75, 100.125].flatMap((x) => [-40.5, 0, 0.75, 3.25, 250.5].flatMap((y) => [0, 12345, 4000000].map((seed) => ({
     label: `x ${x} y ${y} seed ${seed}`, inputs: [x, y, seed], expected: stampEdgeNoise(x, y, seed),
   }))));
-  const fillBody = steps(64).map((u) => u * 64 - 8).flatMap((sd) => [2, 10, 20, 37.5, 60].map((thickness) => ({
-    label: `sd ${sd} thickness ${thickness} c 25`, inputs: [sd, thickness, 25], expected: stampFillBody(sd, thickness, 25),
+  const washBody = steps(64).map((u) => u * 64 - 8).flatMap((sd) => [2, 10, 20, 37.5, 60].map((thickness) => ({
+    label: `sd ${sd} thickness ${thickness} c 25`, inputs: [sd, thickness, 25], expected: stampWashBody(sd, thickness, 25),
   })));
   const fieldGeometry: [number, readonly [number, number, number, number]][] = [[0, [0, 0, 0, 0]], [1, [100, 50, 300, 250]], [1, [0, 0, 0, 400]], [2, [200, 150, 120, 0]]];
   const paintFieldShare = fieldGeometry.flatMap(([kind, geometry]) => [0, 50, 125.5, 200, 400].flatMap((x) => [0, 100, 150.25, 500].map((y) => ({
     label: `kind ${kind} [${geometry.join(',')}] at ${x},${y}`, inputs: [x, y, kind, ...geometry], expected: STAMP_PAINT_FIELD_SHARE.cpu(x, y, kind, geometry),
   }))));
-  const fillFrontShare = ([[0, 1], [1, 0], [-0.6, 0.8]] as const).flatMap((normal) => [0, 0.25, 0.5, 1].flatMap((progress) => [0, 120.5, 300].flatMap((x) => [0, 80, 260.25].map((y) => ({
+  const washFrontShare = ([[0, 1], [1, 0], [-0.6, 0.8]] as const).flatMap((normal) => [0, 0.25, 0.5, 1].flatMap((progress) => [0, 120.5, 300].flatMap((x) => [0, 80, 260.25].map((y) => ({
     label: `normal ${normal.join(',')} progress ${progress} at ${x},${y}`, inputs: [x, y, normal[0], normal[1], -20, 280, 50, progress],
-    expected: STAMP_FILL_FRONT_SHARE.cpu({ normal, from: -20, to: 280, soft: 50 }, progress, x, y),
+    expected: STAMP_WASH_FRONT_SHARE.cpu({ normal, from: -20, to: 280, soft: 50 }, progress, x, y),
   })))));
   // Films from clear to thick, pure scatterers and pure absorbers among them, over black to near white.
   const FILM = [0, 1e-3, 0.03125, 0.25, 1, 4, 32];
@@ -115,9 +115,9 @@ export function stampFormulaGrids(): StampFormulaGrid[] {
   return [
     grid('edgeCoverage', 'edgeCoverage(x(0), x(1))', 2, edgeCoverage),
     grid('edgeNoise', 'edgeNoise(x(0), x(1), u32(x(2)))', 3, edgeNoise),
-    grid('fillBody', 'fillBody(x(0), x(1), x(2))', 3, fillBody),
+    grid('washBody', 'washBody(x(0), x(1), x(2))', 3, washBody),
     grid('paintFieldShare', 'paintFieldShare(vec2f(x(0), x(1)), i32(x(2)), vec4f(x(3), x(4), x(5), x(6)))', 7, paintFieldShare),
-    grid('fillFrontShare', 'fillFrontShare(vec2f(x(0), x(1)), vec2f(x(2), x(3)), x(4), x(5), x(6), x(7))', 8, fillFrontShare),
+    grid('washFrontShare', 'washFrontShare(vec2f(x(0), x(1)), vec2f(x(2), x(3)), x(4), x(5), x(6), x(7))', 8, washFrontShare),
     grid('kubelkaMunkOver', 'kubelkaMunkOver(kubelkaMunkFilm(vec4f(x(0)), vec4f(x(1))), vec4f(x(2))).x', 3, film),
     grid('kubelkaMunkFilm T', 'kubelkaMunkFilm(vec4f(x(0)), vec4f(x(1))).T.x', 2, filmT),
     grid('paintWetSettle', 'paintWetSettle(paintValley(x(0), x(1)), x(2), x(3), x(4))', 5, settle),

@@ -338,9 +338,21 @@ export type StampBrushLayer<Image = StampBrushAsset> = StampBrushStamping<Image>
   burntEdge?: StampBrushBurntEdge;
 };
 
+/**
+ * Wet media or dry, as art supplies are sorted. Wet paint floods and levels into a film, so a fill of it is a wash;
+ * dry media (crayon, pencil, pastel) catch on the paper's tooth mark by mark, so a fill of them is strokes. Not a
+ * style's PaintMedium, the paint a pigment style mixes in.
+ */
+export type StampBrushMedia = 'wet' | 'dry';
+
 export type StampBrush<Image = StampBrushAsset> = StampBrushLayer<Image> & {
   /** Its name in its pack, as the manifest keys it. Part of no seed: renaming a brush changes no painting's randomness. */
   name: string;
+  /**
+   * Wet or dry media, which a fill's application defaults to. A style declares it (StampPaintStyle); a pack's brush
+   * read alone has none, as Photoshop's brushes don't say, and a fill with it must state its application.
+   */
+  media?: StampBrushMedia;
   /** The blend a deposit paints in unless it states its own. */
   blend: StampBlend;
   /** How its colour varies stamp to stamp and stroke to stroke; none when left out. */

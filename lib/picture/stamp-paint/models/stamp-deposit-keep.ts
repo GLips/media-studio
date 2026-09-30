@@ -1,11 +1,11 @@
 // stamp-deposit-keep.ts: how much of a deposit's paint is kept at a point, apart from its brush: under its masking
-// fluid, within its pass's region, and for a fill its load and how far its front has crossed. The renderer's resolve
+// fluid, within its pass's region, and for a wash its load and how far its front has crossed. The renderer's resolve
 // reads the same, the fluid and `within` from textures worked out at load (stamp-paint-renderer.ts), the load and
 // front per pixel; the CPU reference reads this.
 
-import { STAMP_FILL_FRONT_SHARE } from './stamp-fill.ts';
+import { STAMP_WASH_FRONT_SHARE } from './stamp-fill.ts';
 import { stampPaintFieldAt } from './stamp-paint-field.ts';
-import { stampFillProgressAt, type CompiledStampDeposit, type CompiledStampMask } from './stamp-paint-recipe.ts';
+import { stampWashProgressAt, type CompiledStampDeposit, type CompiledStampMask } from './stamp-paint-recipe.ts';
 import { stampEdgeCoverage, stampEdgedCoverage, stampPolygonDistance, type StampPoint } from './stamp-region.ts';
 
 /**
@@ -23,9 +23,9 @@ export function stampMaskFluidAt(mask: CompiledStampMask | null, x: number, y: n
 export function stampDepositKeepAt(deposit: CompiledStampDeposit, within: readonly StampPoint[] | null, t: number, x: number, y: number): number {
   let keep = 1 - stampMaskFluidAt(deposit.mask, x, y);
   if (within) keep *= stampEdgeCoverage(stampPolygonDistance(within, x, y), 1);
-  if (deposit.kind === 'fill') {
-    keep *= Math.min(1, Math.max(0, stampPaintFieldAt(deposit.fill.load, x, y)));
-    keep *= STAMP_FILL_FRONT_SHARE.cpu(deposit.fill.front, stampFillProgressAt(deposit, t), x, y);
+  if (deposit.kind === 'wash') {
+    keep *= Math.min(1, Math.max(0, stampPaintFieldAt(deposit.wash.load, x, y)));
+    keep *= STAMP_WASH_FRONT_SHARE.cpu(deposit.wash.front, stampWashProgressAt(deposit, t), x, y);
   }
   return keep;
 }

@@ -2,10 +2,10 @@
 // group on bare paper; only images and stamp buffers persist.
 //
 // A deposit paints within its visible stamps' box in Photoshop's order: a render pass stamps its
-// coverage mask and joins a fill's body to it, compute passes blur it, and a compute pass resolves it onto its
+// coverage mask and joins a wash's body to it, compute passes blur it, and a compute pass resolves it onto its
 // group's layer. Groups then land on the painting.
 //
-// What doesn't change with time is worked out once, at load, into cropped single-channel textures: each fill's body,
+// What doesn't change with time is worked out once, at load, into cropped single-channel textures: each wash's body,
 // the masking fluid under each deposit, each pass's `within` region.
 //
 // Formulas and stage orders are WGSL twins of the CPU reference's registries, held to it by the formulas command.
@@ -16,9 +16,9 @@ import {
   STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL, STAMP_ACCUMULATIONS, STAMP_BLUR_LEVELS, stampAccumulationBuild, stampAccumulationIndex,
   stampAccumulationPlan, stampActiveLayers, stampResolvePlan, stampResolvePlanIndex, stampResolvePlansWgsl, type StampAccumulationPlan, type StampActiveLayer,
 } from '../models/stamp-deposit-stages.ts';
-import { STAMP_FILL_FRONT_SHARE } from '../models/stamp-fill.ts';
+import { STAMP_WASH_FRONT_SHARE } from '../models/stamp-fill.ts';
 import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
-import { stampDepositShowsAt, stampFillProgressAt, visibleStampCountAt, type CompiledStampDeposit, type CompiledStampMask, type CompiledStampMaskArea, type CompiledStampPaint, type CompiledStampPass, type StampPaintPaper } from '../models/stamp-paint-recipe.ts';
+import { stampDepositShowsAt, stampWashProgressAt, visibleStampCountAt, type CompiledStampDeposit, type CompiledStampMask, type CompiledStampMaskArea, type CompiledStampPaint, type CompiledStampPass, type StampPaintPaper } from '../models/stamp-paint-recipe.ts';
 import { compileStampPigmentPaint, type StampPaintMixing } from '../models/stamp-pigment-paint.ts';
 import { PAINT_BANDS } from '#lib/picture/paint/models/paint-spectrum.ts';
 import { STAMP_REGION_WGSL, stampEdgeReach, stampEdgeWidth, stampPolygonBox, type StampBox, type StampPoint } from '../models/stamp-region.ts';
@@ -265,7 +265,7 @@ const DEPOSIT = stampUniformLayout('Deposit', [
 /** What a deposit's resolve does, a bit each in its `flags`, and a WGSL constant each of the same name in capitals. */
 const DEPOSIT_FLAGS = {
   canvasGrain: 1, dual: 2, dualCanvasGrain: 4, paper: 8, masked: 16, clipped: 32, clips: 64,
-  pooled: 128, dualPooled: 256, dualLayer: 512, within: 1024, fill: 2048,
+  pooled: 128, dualPooled: 256, dualLayer: 512, within: 1024, wash: 2048,
 } as const;
 
 /**
@@ -298,7 +298,7 @@ ${STAMP_ACCUMULATION_RESOLVE_WGSL}
 ${RESOLVE_STAGES_WGSL}
 ${KEEP.wgsl}
 ${STAMP_PAINT_FIELD_SHARE.wgsl}
-${STAMP_FILL_FRONT_SHARE.wgsl}
+${STAMP_WASH_FRONT_SHARE.wgsl}
 @group(0) @binding(0) var<uniform> u: Deposit;
 @group(0) @binding(1) var mask: texture_2d<f32>;
 @group(0) @binding(2) var blurred: texture_2d<f32>;
@@ -370,9 +370,9 @@ fn rimOf(a: f32, soft: f32, sharpness: f32) -> f32 { return clamp((a - soft) * s
   if ((u.flags & MASKED) != 0u) { keep *= 1.0 - regionAt(fluid, k.fluid, pixel); }
   if ((u.flags & WITHIN) != 0u) { keep *= regionAt(within, k.within, pixel); }
   // A fill's load is how much paint it lays, and its front how much of it shows yet: burnt edges and a clip base alike.
-  if ((u.flags & FILL) != 0u) {
+  if ((u.flags & WASH) != 0u) {
     keep *= clamp(mix(k.loadEnds.x, k.loadEnds.y, paintFieldShare(at, k.loadKind, k.load)), 0.0, 1.0);
-    keep *= fillFrontShare(at, k.front.xy, k.front.z, k.front.w, k.frontShape.x, k.frontShape.y);
+    keep *= washFrontShare(at, k.front.xy, k.front.z, k.front.w, k.frontShape.x, k.frontShape.y);
   }
   let clipped = textureLoad(clip, pixel);
   if ((u.flags & CLIPPED) != 0u) { keep *= clamp(clipped.r, 0.0, 1.0); }
@@ -489,15 +489,15 @@ ${POLYGON_DISTANCE_WGSL}
   return vec4f(fluid);
 }`;
 
-// A fill's body over its box (fillBody), how thick its region is read from its grid (as stampGridAt reads one): the
+// A wash's body over its box (washBody), how thick its region is read from its grid (as stampGridAt reads one): the
 // grid's first value in `grid`, its origin and cell, and its columns and rows.
-const FILL_BODY = stampUniformLayout('FillBody', [['box', 'vec4f'], ['grid', 'vec4f'], ['gridSize', 'vec2u'], ['first', 'u32'], ['count', 'u32'], ['gridFirst', 'u32'], ['inset', 'f32']]);
-const FILL_BODY_WGSL = /* wgsl */ `
+const WASH_BODY = stampUniformLayout('WashBody', [['box', 'vec4f'], ['grid', 'vec4f'], ['gridSize', 'vec2u'], ['first', 'u32'], ['count', 'u32'], ['gridFirst', 'u32'], ['inset', 'f32']]);
+const WASH_BODY_WGSL = /* wgsl */ `
 ${COVERAGE_FORMULAS_WGSL}
 ${STAMP_REGION_WGSL}
 ${FULL_FRAME_WGSL}
-${FILL_BODY.wgsl}
-@group(0) @binding(0) var<uniform> u: FillBody;
+${WASH_BODY.wgsl}
+@group(0) @binding(0) var<uniform> u: WashBody;
 @group(0) @binding(1) var<storage, read> points: array<vec2f>;
 @group(0) @binding(2) var<storage, read> grid: array<f32>;
 ${POLYGON_DISTANCE_WGSL}
@@ -509,13 +509,13 @@ fn gridAt(p: vec2f) -> f32 {
   let at = u.gridFirst + cell.y * u.gridSize.x + cell.x;
   return mix(mix(grid[at], grid[at + 1u], f.x), mix(grid[at + u.gridSize.x], grid[at + u.gridSize.x + 1u], f.x), f.y);
 }
-@fragment fn fillBodyAt(@builtin(position) at: vec4f) -> @location(0) vec4f {
+@fragment fn washBodyAt(@builtin(position) at: vec4f) -> @location(0) vec4f {
   let p = at.xy + u.box.xy;
-  return vec4f(fillBody(polygonDistance(p, u.first, u.count), gridAt(p), u.inset));
+  return vec4f(washBody(polygonDistance(p, u.first, u.count), gridAt(p), u.inset));
 }`;
 
-// A fill's body joined to its stamps' build, in the stamps' render pass, before rims blur it: its box (x, y, width,
-// height) and its levels (stampFillBodyLevels: built, densest). The pipeline's blend joins it as the brush's
+// A wash's body joined to its stamps' build, in the stamps' render pass, before rims blur it: its box (x, y, width,
+// height) and its levels (stampWashBodyLevels: built, densest). The pipeline's blend joins it as the brush's
 // accumulation lays paint: toward full by screen, toward an opacity by max; a glaze's cap and densest by max.
 const BODY_DRAW = stampUniformLayout('BodyDraw', [['box', 'vec4f'], ['levels', 'vec2f']]);
 const BODY_DRAW_WGSL = /* wgsl */ `
@@ -647,7 +647,7 @@ type LoadedDeposit = {
   mainPlan: LoadedPlan; dualPlan: LoadedPlan | null;
 };
 
-/** A region worked out at load (a fill's body, a state of the fluid, a `within`): its texture and its box on the painting. */
+/** A region worked out at load (a wash's body, a state of the fluid, a `within`): its texture and its box on the painting. */
 type RegionTexture = { view: GPUTextureView; box: Box };
 
 export type StampPaintRenderer = {
@@ -774,7 +774,7 @@ async function rendererOnDevice(
       });
       total += deposit.stamps.length + deposit.dualStamps.length;
       if (compositor.readsStampTints && deposit.brush.color) tints += deposit.stamps.length;
-      // Its stamps and dual's, a fill's body, two blur passes, and its resolve, where it's kept and its paint.
+      // Its stamps and dual's, a wash's body, two blur passes, and its resolve, where it's kept and its paint.
       slotsPerFrame += 8;
     }
   }
@@ -882,12 +882,12 @@ async function rendererOnDevice(
     const module = device.createShaderModule({ code });
     return device.createRenderPipeline({ layout: 'auto', vertex: { module }, fragment: { module, entryPoint, targets: [{ format: STAMP_REGION_FORMAT }] } });
   };
-  const maskStepPipeline = regionPipeline(MASK_STEP_WGSL, 'maskStep'), fillBodyPipeline = regionPipeline(FILL_BODY_WGSL, 'fillBodyAt');
+  const maskStepPipeline = regionPipeline(MASK_STEP_WGSL, 'maskStep'), washBodyPipeline = regionPipeline(WASH_BODY_WGSL, 'washBodyAt');
   const bodyModule = device.createShaderModule({ code: BODY_DRAW_WGSL });
   // B ← b + B(1 − b): a toward-full build's lay (STAMP_ACCUMULATIONS) of a body laid whole.
   const screenBlend: GPUBlendState = { color: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } };
   const bodyPipelines = new Map<string, GPURenderPipeline>();
-  /** The pipeline joining a fill's body to its build: toward full by screen, else by max; a glaze's cap too; a tinted pass's tints left alone. */
+  /** The pipeline joining a wash's body to its build: toward full by screen, else by max; a glaze's cap too; a tinted pass's tints left alone. */
   const bodyPipeline = (towardFull: boolean, glaze: boolean, tinted: boolean) => {
     const key = `${towardFull}|${glaze}|${tinted}`;
     if (!bodyPipelines.has(key)) {
@@ -954,14 +954,14 @@ async function rendererOnDevice(
   const regions = loadRegions();
 
   /**
-   * Works out, once, what of the painting doesn't change with time: each fill's body, each state of the fluid a
+   * Works out, once, what of the painting doesn't change with time: each wash's body, each state of the fluid a
    * deposit lands under, each pass's `within`, as cropped textures (none for an empty state). All are planned and held
    * to STAMP_REGION_BUDGET, refused past it naming what's there, before any is made.
    */
   function loadRegions() {
     const passes = painting.groups.flatMap((group) => group.passes);
     const all = passes.flatMap((pass) => pass.deposits);
-    // Every polygon once, each fill's thickness grid and every op of the fluid, in storage buffers.
+    // Every polygon once, each wash's thickness grid and every op of the fluid, in storage buffers.
     const points: number[] = [], placed = new Map<readonly StampPoint[], [number, number]>();
     const pointsOf = (polygon: readonly StampPoint[]) => {
       if (!placed.has(polygon)) {
@@ -1003,23 +1003,23 @@ async function rendererOnDevice(
 
     const bodies = new Map<CompiledStampDeposit, Step>();
     for (const deposit of all) {
-      if (deposit.kind !== 'fill') continue;
-      const { fill } = deposit, box = inPainting(fill.box);
+      if (deposit.kind !== 'wash') continue;
+      const { wash } = deposit, box = inPainting(wash.box);
       if (!box) continue;
-      const [first, count] = pointsOf(fill.polygon), gridFirst = grids.length;
-      for (const v of fill.thickness.values) grids.push(v);
+      const [first, count] = pointsOf(wash.polygon), gridFirst = grids.length;
+      for (const v of wash.thickness.values) grids.push(v);
       const step: Step = {
         box, grid: true,
         draw: (views) => {
-          const put = stampUniformWriter(FILL_BODY, views);
+          const put = stampUniformWriter(WASH_BODY, views);
           put('box', boxWords(box));
-          put('grid', [fill.thickness.x0, fill.thickness.y0, fill.thickness.cell, 0]);
-          put('gridSize', [fill.thickness.columns, fill.thickness.rows]);
+          put('grid', [wash.thickness.x0, wash.thickness.y0, wash.thickness.cell, 0]);
+          put('gridSize', [wash.thickness.columns, wash.thickness.rows]);
           put('first', first);
           put('count', count);
           put('gridFirst', gridFirst);
-          put('inset', fill.inset);
-          return fillBodyPipeline;
+          put('inset', wash.inset);
+          return washBodyPipeline;
         },
       };
       steps.push(step);
@@ -1189,16 +1189,16 @@ async function rendererOnDevice(
     };
     stamp(loadedDeposit.brush, loadedDeposit.active.main, loadedDeposit.mainPlan, loadedDeposit.main, count, loadedDeposit.mainHull, 0);
     if (loadedDeposit.brush.dual && loadedDeposit.active.dual && loadedDeposit.dualPlan) stamp(loadedDeposit.brush.dual, loadedDeposit.active.dual, loadedDeposit.dualPlan, loadedDeposit.dual, dualCount, loadedDeposit.dualHull!, 1);
-    // A fill's body joins the build its edge stamps laid, before any rim blurs it, so rims see the whole fill.
+    // A wash's body joins the build its edge stamps laid, before any rim blurs it, so rims see the whole wash.
     const body = regions.bodies.get(deposit);
-    if (deposit.kind === 'fill' && body) {
+    if (deposit.kind === 'wash' && body) {
       const { kind } = loadedDeposit.brush.accumulation, { towardFull, keepsCap } = STAMP_ACCUMULATIONS[kind];
       const pipeline = bodyPipeline(towardFull, keepsCap, tinted);
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, bindGroup(pipeline, [slot((views) => {
         const put = stampUniformWriter(BODY_DRAW, views);
         put('box', [body.box.x, body.box.y, body.box.w, body.box.h]);
-        const { levels } = deposit.fill;
+        const { levels } = deposit.wash;
         put('levels', [levels.built, levels.densest]);
       }), body.view]));
       pass.draw(3);
@@ -1248,7 +1248,7 @@ async function rendererOnDevice(
     const flags: (keyof typeof DEPOSIT_FLAGS)[] = [
       ...(mainGrain ? ['canvasGrain' as const] : []), ...(brush.dual ? ['dual' as const] : []), ...(dualGrain ? ['dualCanvasGrain' as const] : []),
       ...(tooth ? ['paper' as const] : []), ...(fluid ? ['masked' as const] : []), ...(pass.within ? ['within' as const] : []),
-      ...(deposit.kind === 'fill' ? ['fill' as const] : []), clipped ? 'clipped' as const : 'clips' as const,
+      ...(deposit.kind === 'wash' ? ['wash' as const] : []), clipped ? 'clipped' as const : 'clips' as const,
       ...(active.main.pooling ? ['pooled' as const] : []), ...(active.dual?.pooling ? ['dualPooled' as const] : []),
       ...(brush.dual?.blend.family === 'layer' ? ['dualLayer' as const] : []),
     ];
@@ -1285,13 +1285,13 @@ async function rendererOnDevice(
         const put = stampUniformWriter(KEEP, views);
         put('fluid', boxWords(fluid?.box));
         put('within', boxWords(within?.box));
-        if (deposit.kind !== 'fill') return;
-        const { load, front } = deposit.fill, ends = stampPaintFieldEnds(load);
+        if (deposit.kind !== 'wash') return;
+        const { load, front } = deposit.wash, ends = stampPaintFieldEnds(load);
         put('load', ends.geometry);
         put('loadEnds', [ends.first, ends.second]);
         put('loadKind', ends.kind);
         put('front', [front.normal[0], front.normal[1], front.from, front.to]);
-        put('frontShape', [front.soft, stampFillProgressAt(deposit, t)]);
+        put('frontShape', [front.soft, stampWashProgressAt(deposit, t)]);
       }),
       within?.view ?? targets.blank.view,
       slot(loadedDeposit.writePaint),
@@ -1305,8 +1305,8 @@ async function rendererOnDevice(
     const { brush } = loadedDeposit;
     reachOfFirst(deposit.stamps, loadedDeposit.mainReach, count, reachSpanOf(brush), reach);
     if (brush.dual) reachOfFirst(deposit.dualStamps, loadedDeposit.dualReach, dualCount, reachSpanOf(brush.dual), reach);
-    if (deposit.kind === 'fill') {
-      const { x0, y0, x1, y1 } = deposit.fill.box;
+    if (deposit.kind === 'wash') {
+      const { x0, y0, x1, y1 } = deposit.wash.box;
       reach.splice(0, 4, Math.min(reach[0], x0), Math.min(reach[1], y0), Math.max(reach[2], x1), Math.max(reach[3], y1));
     }
     const x = Math.max(0, Math.floor(reach[0] - pad)), y = Math.max(0, Math.floor(reach[1] - pad));

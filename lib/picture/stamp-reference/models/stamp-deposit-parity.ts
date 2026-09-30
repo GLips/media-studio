@@ -1,9 +1,9 @@
 // stamp-deposit-parity.ts: whole deposits painted by the GPU renderer and by the CPU reference, compared pixel by
 // pixel (the deposits command). The formula grids hold each WGSL twin alone; this holds what joins them: a fill's
-// body in its build, masking fluid states built one on another in cropped textures, `within`, a fill's load and front.
+// body in its build, masking fluid states built one on another in cropped textures, `within`, a wash's load and front.
 //
 // Each case is a glaze group of black on white, so the GPU's paint is its coverage (an opaque group raises it). A plain
-// stroke is the control: what a brush's stages already differ by, which a fill or a mask should add nothing to.
+// stroke is the control: what a brush's stages already differ by, which a wash or a mask should add nothing to.
 
 import { bindStampBrushImages, type StampBrush, type StampBrushImageSource } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { stampDepositKeepAt } from '#lib/picture/stamp-paint/models/stamp-deposit-keep.ts';
@@ -11,7 +11,7 @@ import { stampPaintRecipe, type CompiledStampPaint, type StampPaintRecipe } from
 import type { StampReferenceMips } from './stamp-reference-image.ts';
 import { renderStampReferenceDeposit } from './stamp-reference-deposit.ts';
 
-export const STAMP_DEPOSIT_PARITY_CASES = ['stroke', 'fill', 'within', 'load', 'front'] as const;
+export const STAMP_DEPOSIT_PARITY_CASES = ['stroke', 'wash', 'within', 'load', 'front'] as const;
 export type StampDepositParityCase = (typeof STAMP_DEPOSIT_PARITY_CASES)[number];
 
 export const STAMP_DEPOSIT_PARITY_SIZE = { width: 640, height: 420 };
@@ -23,8 +23,8 @@ export const STAMP_DEPOSIT_PARITY_RMS = 0.01;
 const black = { kind: 'color', color: '#000000' } as const;
 
 /**
- * A case's painting of `brush`. Past the control: a fill under a ragged reserve half lifted on its right; apart from
- * it, so neither's paint lies on the other, a stroke under a state built on the fill's with two more ops (a soft
+ * A case's painting of `brush`. Past the control: a wash under a ragged reserve half lifted on its right; apart from
+ * it, so neither's paint lies on the other, a stroke under a state built on the wash's with two more ops (a soft
  * ragged band, a global lift): a state of the fluid drawn from the one under it.
  */
 export function stampDepositParityRecipe(brush: StampBrush, parityCase: StampDepositParityCase): StampPaintRecipe {
@@ -38,7 +38,7 @@ export function stampDepositParityRecipe(brush: StampBrush, parityCase: StampDep
     const within = parityCase === 'within' ? { kind: 'polygon' as const, points: [{ x: 40, y: 30 }, { x: 460, y: 60 }, { x: 440, y: 390 }, { x: 60, y: 370 }] } : undefined;
     group.pass('p', { ...(within && { within }) }, (pass) => {
       const fill = {
-        brush, material: black, diameter: 60, direction: 0.3,
+        brush, material: black, diameter: 60, direction: 0.3, application: { kind: 'wash' as const },
         region: { kind: 'polygon' as const, points: [{ x: 30, y: 60 }, { x: 290, y: 20 }, { x: 470, y: 110 }, { x: 450, y: 400 }, { x: 240, y: 330 }, { x: 60, y: 400 }] },
         ...(parityCase === 'load' && { load: { kind: 'linear' as const, from: { x: 30, y: 0, value: 1 }, to: { x: 470, y: 0, value: 0.3 } } }),
       };
@@ -61,7 +61,7 @@ export function stampDepositParityReference(painting: CompiledStampPaint, bind: 
       const { coverage: laid } = renderStampReferenceDeposit({
         brush: bindStampBrushImages(deposit.brush, deposit.diameter, bind), stamps: deposit.stamps, dualStamps: deposit.dualStamps,
         diameter: deposit.diameter, opacity: deposit.opacity, grainOffset: deposit.grainOffset, box: { x: 0, y: 0, width, height },
-        ...(deposit.kind === 'fill' && { fill: deposit.fill }),
+        ...(deposit.kind === 'wash' && { wash: deposit.wash }),
         keep: (x, y) => stampDepositKeepAt(deposit, pass.within, t, x, y),
       });
       laid.forEach((a, i) => {

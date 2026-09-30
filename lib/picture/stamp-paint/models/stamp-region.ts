@@ -87,7 +87,7 @@ export function stampGridAt(grid: StampGrid, x: number, y: number): number {
 
 /**
  * The largest value of `grid` within `radius` px of each of its points: over a distance grid, how thick the region
- * is near there (the radius of the widest disc inside it, close by), which a fill's body narrows its edge to.
+ * is near there (the radius of the widest disc inside it, close by), which a wash's body narrows its edge to.
  */
 export function stampGridLocalMax(grid: StampGrid, radius: number): StampGrid {
   const { columns, rows, values } = grid, reach = Math.ceil(radius / grid.cell), within = (radius / grid.cell) ** 2;
@@ -215,18 +215,18 @@ fn edgeNoise(x: f32, y: f32, seed: u32) -> f32 {
 }`,
   },
   /**
-   * A fill's body at signed distance `sd`, the region `thickness` px thick nearby, its edge stroke's centre `c` px in:
+   * A wash's body at signed distance `sd`, the region `thickness` px thick nearby, its edge stroke's centre `c` px in:
    * full only under that centre, so the stroke's own outer half meets the paper.
    * Where the region is too thin for the stroke, the body alone paints it, rising over a fifth to a half of it.
    */
-  fillBody: {
+  washBody: {
     cpu: (sd: number, thickness: number, c: number) => {
       const f = Math.min(1, Math.max(0, (thickness - 0.5 * c) / (0.5 * c)));
       const lo = 0.2 * thickness + (0.5 * c - 0.2 * thickness) * f, hi = Math.max(lo + 1, 0.5 * thickness + (c - 0.5 * thickness) * f);
       const t = Math.min(1, Math.max(0, (sd - lo) / (hi - lo)));
       return t * t * (3 - 2 * t);
     },
-    wgsl: /* wgsl */ `fn fillBody(sd: f32, thickness: f32, c: f32) -> f32 {
+    wgsl: /* wgsl */ `fn washBody(sd: f32, thickness: f32, c: f32) -> f32 {
   let f = clamp((thickness - 0.5 * c) / (0.5 * c), 0.0, 1.0);
   let lo = mix(0.2 * thickness, 0.5 * c, f);
   let hi = max(lo + 1.0, mix(0.5 * thickness, c, f));
@@ -237,7 +237,7 @@ fn edgeNoise(x: f32, y: f32, seed: u32) -> f32 {
 
 export const stampEdgeCoverage = STAMP_REGION_FUNCTIONS.edgeCoverage.cpu;
 export const stampEdgeNoise = STAMP_REGION_FUNCTIONS.edgeNoise.cpu;
-export const stampFillBody = STAMP_REGION_FUNCTIONS.fillBody.cpu;
+export const stampWashBody = STAMP_REGION_FUNCTIONS.washBody.cpu;
 
 /** The region formulas in WGSL; they call COVERAGE_FORMULAS_WGSL's tipNoiseAt, so they're included after it. */
 export const STAMP_REGION_WGSL = Object.values(STAMP_REGION_FUNCTIONS).map(({ wgsl }) => wgsl).join('\n');

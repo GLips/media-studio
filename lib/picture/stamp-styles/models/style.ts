@@ -5,7 +5,7 @@
 // Negative space: a style sets no per-brush defaults (diameter, opacity, material). A recipe states them on each
 // deposit until a style shows which ones repeat.
 
-import { stampBrushImages, type StampBrush, type StampBrushAsset } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
+import { stampBrushImages, type StampBrush, type StampBrushAsset, type StampBrushMedia } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import type { PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
 import type { PaintPigmentAppearance } from '#lib/picture/paint/models/paint-pigment.ts';
 import type { StampPaintColor, StampPaintPaper } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
@@ -16,11 +16,14 @@ import { resolveStampPaintPackBrush, type StampPaintPack } from './stamp-paint-p
 export type StampPaintStyle = {
   /**
    * The packs its brushes come from, by their folder in brushes/. `source` says where the pack was bought, so a
-   * machine that lacks its assets knows where to get it.
+   * machine that lacks its assets knows where to get it; `media` whether its brushes are wet or dry, which Photoshop's don't say.
    */
-  packs: Readonly<Record<string, { source: string }>>;
-  /** The brushes it paints with, by the style's own names for them (`wash`, `blotch`), each a brush in one of its packs. */
-  brushes: Readonly<Record<string, { pack: string; brush: string }>>;
+  packs: Readonly<Record<string, { source: string; media: StampBrushMedia }>>;
+  /**
+   * The brushes it paints with, by the style's own names for them (`wash`, `blotch`), each a brush in one of its packs,
+   * of its pack's media unless it states its own (a dry brush in a watercolour pack).
+   */
+  brushes: Readonly<Record<string, { pack: string; brush: string; media?: StampBrushMedia }>>;
   /** Named colours, `#rrggbb`. */
   palette: Readonly<Record<string, StampPaintColor>>;
   /**
@@ -57,7 +60,7 @@ export type StampPaintStyleMixing<S extends StampPaintStyle> =
   S extends { paint: { pigments: infer P extends Readonly<Record<string, PaintPigmentAppearance>> } } ? StampPigmentMixing<P> : StampPaintMixing;
 
 /**
- * A style ready to paint with: each of its brushes read from its pack's source, its palette, its paper, and how its
+ * A style ready to paint with: each of its brushes read from its pack's source with its media, its palette, its paper, and how its
  * paint mixes (its pigments with it, for a style that paints in pigment).
  */
 export type ResolvedStampPaintStyle<S extends StampPaintStyle = StampPaintStyle> = {
@@ -81,10 +84,10 @@ function mixingOf<S extends StampPaintStyle>(style: S): StampPaintStyleMixing<S>
  * other than its id.
  */
 export function resolveStampPaintStyle<S extends StampPaintStyle>(name: string, style: S, packs: Readonly<Record<string, StampPaintPack>>): ResolvedStampPaintStyle<S> {
-  const brushes = Object.fromEntries(Object.entries(style.brushes).map(([key, { pack, brush }]) => {
+  const brushes = Object.fromEntries(Object.entries(style.brushes).map(([key, { pack, brush, media }]) => {
     const found = packs[pack] && resolveStampPaintPackBrush(packs[pack], brush);
     if (!found) throw new Error(`stamp paint: ${name}'s brush ${key} is ${pack}'s ${JSON.stringify(brush)}, which its manifest lacks`);
-    return [key, found.brush];
+    return [key, { ...found.brush, media: media ?? style.packs[pack].media }];
   }));
   const { color, image, grain } = style.paper;
   const paper: StampPaintPaper = {
