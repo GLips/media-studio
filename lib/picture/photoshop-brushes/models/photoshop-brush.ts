@@ -337,11 +337,16 @@ function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: Photos
       note('unsupported', 'texture.pattern', `the texture is Photoshop's pattern ${JSON.stringify(texture.pattern?.name ?? '')}, which the file doesn't hold; read as no texture`);
     } else {
       const { mode } = texture;
+      const relief = mode === 'height' || mode === 'linearHeight', minimum = texture.minimumDepth / 100;
+      // A lingering pose reads as full tilt, a plain path as none (`texture depth by tilt minimum 50 posed`). Full tilt
+      // paints as off for every dynamic but Texture Each Tip depth outside the height modes, which runs the other way:
+      // it paints at its minimum, leaving jitter nothing to take.
+      const depthAtMinimum = context.lingeringPose && texture.eachTip && !relief && texture.depthDynamics.control.kind === 'penTilt';
       grain = {
         image: source.pattern.image,
         scale: (source.pattern.width * texture.scale) / 100 / tip.geometry.diameter,
         // Photoshop holds depth in 255ths.
-        depth: Math.round((texture.depth / 100) * 255) / 255,
+        depth: (Math.round((texture.depth / 100) * 255) / 255) * (depthAtMinimum ? minimum : 1),
         blend: { family: 'texture', mode: typeof mode === 'string' ? GRAIN_BLENDS[mode] : 'multiply' },
         // Brightness is in 255ths, and darkens the pattern before invert, so an inverted one's takes paint away (Kyle's
         // pastel settings, the `texture height d5 by pressure pastel` probes). Contrast, about mid grey, reads alike.
@@ -359,11 +364,10 @@ function readMainLayer(source: PhotoshopBrushSource, note: Note, reading: Photos
         // A stamp's depth is the grain's times its share. Outside the height modes it runs the other way from the other
         // dynamics: full pressure paints the minimum depth, and a fade climbs from it. A height relief's runs with
         // pressure, floored at its minimum, and a fade takes it down. Jitter takes depth down toward the minimum.
-        const relief = mode === 'height' || mode === 'linearHeight';
-        const depth = shares(texture.depthDynamics), minimum = texture.minimumDepth / 100;
+        const depth = shares(texture.depthDynamics);
         const response: StampScaleResponse = relief ? linear(1 - minimum) : { kind: 'curve', points: [[0, minimum], [1, 1]] };
         const control = scaleBindingsOf(driverOf('texture.depthDynamics', 'texture depth', depth.control, note), response);
-        grainDepth = { ...control, random: linear(depth.jitter * (1 - minimum)) };
+        grainDepth = depthAtMinimum ? {} : { ...control, random: linear(depth.jitter * (1 - minimum)) };
         if (mode === 'linearHeight' && (depth.jitter > 0 || minimum > 0 || depth.control.kind === 'fade')) {
           note('approximated', 'texture.depthDynamics', "linear height's minimum, fade and jitter are unprobed, read as height's");
         }

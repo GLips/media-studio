@@ -162,8 +162,11 @@ and 31: masses 0.85–0.96 of Photoshop's, 0.21–0.73 without the minimum), a f
 3% in mass), and jitter takes each stamp's depth down, never up: at depth 10 every one of 12 stamps paints under
 depth 10's paint at its place, on average 0.28 of it, where uniform depth gives about 0.39 (`d10 jitter 100`, whose
 rms of 0.25 is the draws).
-Tilt, stylus wheel and rotation read full on a stroked path, the same as off, Texture Each Tip depth on tilt included
-(`texture depth by tilt minimum 50`, run 20260930-134958). A computed tip's short side is drawn in
+Tilt, stylus wheel and rotation paint as off on a stroked path, Texture Each Tip depth on tilt included (`texture
+depth by tilt minimum 50`, run 20260930-134958). A Brush Pose, and a stroke it lingers into, gives tilt a value: the
+upright pen's, read as full tilt. That is as off for size, flow, angle, scatter and a height relief's depth, but
+Texture Each Tip depth outside the height modes paints at its minimum (`… posed`, run 20260930-142634; Kyle's G Dry
+Out and G Roundup references). A computed tip's short side is drawn in
 whole pixels at the preset's diameter, and a squashed tip steps by it.
 
 **Jitter** (vid-105, run 20260930-111705 and the `random count …` probes). Size jitter spreads a stamp's size either
