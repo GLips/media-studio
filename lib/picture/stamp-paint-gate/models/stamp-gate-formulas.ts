@@ -3,7 +3,8 @@
 //
 // A rendering formula lives only in WGSL, so its grid is held to an accepted baseline (engine/stamp-gate-store.ts).
 // A runtime twin has a CPU side the studio also runs (Kubelka–Munk, a paint field, a region's distance and grid), so
-// its grid is held to that; so is each dual mode's needsDual, a flag the CPU reads in place of the combine.
+// its grid is held to that; so is each dual mode's needsDual. A law still being tuned (stamp-gate-wet-laws.ts) is held
+// to properties.
 //
 // Grid steps are 16ths or 32nds, exact in f32 and f64, so thresholds fall the same way on both.
 
@@ -12,11 +13,12 @@ import { PHOTOSHOP_POOLING, STAMP_DUAL_BLENDS, STAMP_GRAIN_BLENDS, stampDualMode
 import { STAMP_ACCUMULATION_KINDS, stampAccumulationIndex } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
 import { STAMP_PAINT_FIELD_SHARE } from '#lib/picture/stamp-paint/models/stamp-paint-field.ts';
 import { stampDistanceGrid, stampGridAt, stampPolygonBox, stampPolygonDistance, stampRegionPolygon, type StampPoint } from '#lib/picture/stamp-paint/models/stamp-region.ts';
+import { stampGateWetLawGrids, type StampGatePropertyResult } from './stamp-gate-wet-laws.ts';
 
 /**
  * A formula's grid: `call` a WGSL expression over `x(0)`, `x(1)`, … (a row's inputs), `rows` its inputs, `labels` what
  * each row is. `points` and `grid` fill the storage arrays polygonDistance and gridAt read. A twin's `expected` is its
- * CPU side's answer for each row; a rendering formula's is its baseline.
+ * CPU side's answer for each row; a rendering formula's is its baseline; a property grid's `check` reads the GPU's rows.
  */
 export type StampGateFormulaGrid = {
   formula: string;
@@ -26,7 +28,7 @@ export type StampGateFormulaGrid = {
   labels: string[];
   points?: Float32Array;
   grid?: Float32Array;
-  expected: { kind: 'baseline' } | { kind: 'twin'; values: Float64Array };
+  expected: { kind: 'baseline' } | { kind: 'twin'; values: Float64Array } | { kind: 'property'; check: (gpu: ArrayLike<number>) => StampGatePropertyResult };
 };
 
 /** How far the GPU may sit from what it's held to: f32 arithmetic, well inside what a half-float target keeps (about 1e-3). */
@@ -166,7 +168,7 @@ function twinGrids(): StampGateFormulaGrid[] {
 }
 
 /** Every formula grid the gate runs, its rendering formulas' first. */
-export const stampGateFormulaGrids = (): StampGateFormulaGrid[] => [...renderingGrids(), ...twinGrids()];
+export const stampGateFormulaGrids = (): StampGateFormulaGrid[] => [...renderingGrids(), ...twinGrids(), ...stampGateWetLawGrids()];
 
 /** A formula's GPU output against what it's held to: how many rows, the largest difference and where, and how many pass `tolerance`. */
 export function compareStampGateFormula(grid: StampGateFormulaGrid, expected: ArrayLike<number>, gpu: ArrayLike<number>, tolerance = STAMP_GATE_FORMULA_TOLERANCE) {
