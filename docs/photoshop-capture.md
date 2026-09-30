@@ -174,10 +174,12 @@ twice the count at 100%, unfolded, rounded (the ends half as likely), and its fi
 controlled count's does (every copy of the `random count …` probes). Those probes lay 0.93–1.01 of that rule's
 expected paint, within the spread of 68 steps; a single seed of ours read 1.16 by chance. Beside a control, jitter
 spreads the controlled count (count 1 at full pressure lays 0, 1, 2 at ¼, ½, ¼; count 2 lays 0 to 4) and empties a
-further j(1 − p)³ of the steps, about 0.15 at half pressure and 0.45 at a quarter, count 1 and count 2 alike, since
-both control to one stamp there (`random count 1 by pressure jitter 100`, `random count 2 …`, run 20260930-134958:
-over 952 steps; a count with no jitter never empties one). That that share runs with the jitter is a guess: only
-100% is probed. Roundness jitter over a minimum is scaled into it: 40% jitter over a 60% minimum keeps every stamp at
+further share of the steps, about 0.15 at half pressure and 0.45 at a quarter at 100%, count 1 and count 2 alike,
+since both control to one stamp there (`random count 1 by pressure jitter 100`, `random count 2 …`, run
+20260930-134958: over 952 steps; a count with no jitter never empties one). At 50% it empties none: `random count 1
+by pressure jitter 50` (run 20260930-142634) lays exactly one stamp on all 476 steps at every pose, where j(1 − p)³
+would empty 10 and 57 of them. So the share is read as (2j − 1)(1 − p)³, emptying only past 50%, where a jittered
+count can round to none; between 50% and 100% its shape is unprobed. Roundness jitter over a minimum is scaled into it: 40% jitter over a 60% minimum keeps every stamp at
 0.84 or rounder (`random roundness jitter 40 minimum 60`, the least of 36 stamps 0.84), not 0.6.
 A lingering pose's opacity drops opacity jitter, whether opacity's own control is off or pen pressure (`random
 opacity jitter 60 by pressure posed`): posed lines paint alike copy for copy. A texture's brightness darkens the pattern before invert, so an inverted pattern's brightness takes paint away.

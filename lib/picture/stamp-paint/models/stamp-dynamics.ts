@@ -141,9 +141,9 @@ export function stampStepCount(dynamics: StampDynamics, count: number, step: Sta
   if (!random) return pressed;
   const draw = randomDraw(random, step.countDraw);
   if (!random.around) return Math.max(1, Math.round(pressed * scaleShare(random, draw)));
-  // Beside a control, a spread count also empties jitter × (1 − share)³ of the steps (the `random count … by pressure`
-  // probes: none at full pressure, 0.15 at half, 0.45 at a quarter), the draw's low end.
-  const empty = (1 - scaleShare(random, 1)) * (1 - share) ** 3;
+  // Beside a control, a jitter over 50% also empties (2j − 1)(1 − share)³ of the steps, the draw's low end (`random
+  // count … by pressure`: at 100% none at full pressure, 0.15 at half, 0.45 at a quarter; at 50% none at all).
+  const empty = Math.max(0, 1 - 2 * scaleShare(random, 1)) * (1 - share) ** 3;
   if (draw < empty) return 0;
   return Math.round(pressed * scaleShare(random, 1 - (2 * (draw - empty)) / (1 - empty)));
 }
