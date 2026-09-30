@@ -46,7 +46,7 @@ export type StudioPosition =
   | { kind: 'studio'; barrel: true }
   | { kind: 'cli' }
   /**
-   * `harness/`: entry points for the brush-fidelity rigs (Photoshop and Procreate captures, the fidelity sheet and
+   * `harness/`: entry points for the brush-fidelity rigs (Photoshop captures, the fidelity sheet and
    * fit), run by node or npm rather than `studio`, which is for authoring. Wiring only, with cli's import rights.
    */
   | { kind: 'harness' }

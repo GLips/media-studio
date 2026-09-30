@@ -1,7 +1,6 @@
 // stamp-stroke-hand-sheet.ts: the stroke hand sheet, one path painted under each way of authoring its pressure
 // (stamp-stroke-hand.ts) beside a constant-pressure stroke, a PNG per brush. The painting is the studio's GPU renderer's,
-// drawn by stamp-stroke-hand-sheet-page.ts. Run it with
-// `node -e "import('./lib/picture/stamp-paint/engine/stamp-stroke-hand-sheet.ts').then((m) => m.writeStampStrokeHandSheet({ … }))"`.
+// drawn by stamp-stroke-hand-sheet-page.ts. `npm run brushes:hand` runs it.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

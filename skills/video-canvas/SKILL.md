@@ -53,9 +53,7 @@ Everything is from `#studio`.
       so strokes along one path differ. It's seeded by the deposit's ID, so a frame still depends only on its time.
     - Every `hand` stroke also gets a speed: it eases in and slows through turns, and `drawnOver` reveals it at that
       pace rather than an even one. A point's own `pressure` (and `speed`) still counts, multiplied in.
-    - `node -e "import('./lib/picture/stamp-paint/engine/stamp-stroke-hand-sheet.ts').then((m) =>
-      m.writeStampStrokeHandSheet({ stylesDir: 'work/styles', style, pack, brushes: [name], diameter: 36, out }))"`
-      paints one path under each profile, with and without curvature and wobble, beside constant pressure: see how a
+    - `npm run brushes:hand -- --style <style> --pack <pack> --brush <name> --out <dir>` paints one path under each profile, with and without curvature and wobble, beside constant pressure: see how a
       brush answers before choosing.
   - `group.protect(regions, body)` keeps paper bare inside `regions` for what `body` lays: highlights, glints.
 - `stampFillPath(region, diameter)` is one stroke that covers a region, the way a hand fills a shape;
