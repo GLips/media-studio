@@ -110,7 +110,7 @@ export function formatStudioApiIndex(exports: readonly StudioApiExport[]): strin
 /** One export's signatures, doc and tags. */
 export function formatStudioApiExport(entry: StudioApiExport): string {
   const tags = entry.tags.map((t) => `@${t.name}${t.text ? ` ${t.text}` : ''}`);
-  return [`${entry.file}`, '', ...entry.signatures.flatMap((s) => [s, '']), entry.doc, ...(tags.length ? ['', ...tags] : [])].join('\n').trimEnd();
+  return [entry.file, '', ...entry.signatures.flatMap((s) => [s, '']), entry.doc, ...(tags.length ? ['', ...tags] : [])].join('\n').trimEnd();
 }
 
 /** The export called `name`; failing that, a message naming the closest ones. */

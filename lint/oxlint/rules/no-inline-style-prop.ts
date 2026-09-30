@@ -21,10 +21,9 @@ const STYLE_PROPS = new Set(["style"]);
  * Whether an expression ships an object literal, through any of the wrappers that keep one from
  * being the top node.
  *
- * The literal is the violation; a cast, a ternary, or a style ARRAY is packaging around it. React
- * Native's `style={[styles.row, { padding: 12 }]}` is the spelling that matters most here — this
- * rule is aimed squarely at stylesheet-bearing projects, and in those the array form is the
- * idiomatic way to write the very thing the rule bans.
+ * The literal is the violation; a cast, a ternary, or a style ARRAY is packaging around it. The
+ * array matters most: in stylesheet projects `style={[styles.row, { padding: 12 }]}` is the
+ * idiomatic spelling of the very thing the rule bans.
  */
 function shipsObjectLiteral(node: ESTree.Node): boolean {
   // The wrappers that change nothing about the value are `lib/transparent-wrappers.ts`'s to list,

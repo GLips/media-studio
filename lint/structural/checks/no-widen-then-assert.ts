@@ -2,12 +2,11 @@
 //
 // A value with a known type keeps it to the end of the function: no step
 // assigns it to `unknown`, `object` or an opaque open record and then asserts
-// the type back with nothing checked between. So a field changed on `User`
-// reports at each use; the round trip can't hold the old type in place.
+// the type back with nothing checked between, so the round trip can't hold an
+// old type in place.
 //
-// A call is evidence, since the checker reads its return type: `const u:
-// unknown = loadUser()` reports when loadUser returns User, and
-// `const raw: unknown = JSON.parse(s)` doesn't, since `any` had nothing to lose.
+// A call is evidence: `const u: unknown = loadUser()` reports when loadUser
+// returns User; `JSON.parse(s)` doesn't, since `any` had nothing to lose.
 //
 // Negative space: the binding must be a `const` (a reassigned `let` may not hold
 // the widened value at the assertion), the asserted expression a plain name,

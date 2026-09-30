@@ -23,7 +23,7 @@ function sceneModelFiles(project: string): string[] {
       if (!entry.isDirectory()) return [];
       return readdirSync(join(root, entry.name)).filter((name) => MODEL_FILE.test(name)).map((name) => join(root, entry.name, name));
     });
-  }).sort();
+  }).toSorted();
 }
 
 /**

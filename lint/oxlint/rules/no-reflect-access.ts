@@ -28,36 +28,10 @@ const BANNED_REFLECT_METHODS = new Map<string, "reflectGet" | "reflectApply">([
   ["apply", "reflectApply"],
 ]);
 
-// Whether the name resolves to a binding THIS FILE declares a VALUE for, rather than to the
-// language builtin.
-//
-// Two obvious ways to ask this are each right in exactly one of the two hosts the rule runs in,
-// and silently wrong in the other. Measured on oxlint 1.77.0, both hosts:
-//
-//   under the oxlint CLI     the global scope declares `Reflect`, and `isGlobalReference` is true
-//   under RuleTester         no global scope is populated, and `isGlobalReference` is false
-//
-// So `isGlobalReference` cannot be read — it answers opposite things about the same identifier.
-// Neither can a scope-chain walk that looks the NAME up. It gets the SHADOWING wrong: a name is
-// bound by every declaration that spells it, in value space and type space alike, so a `type
-// Reflect = never` inside a function hides the real `const Reflect` outside it and the rule fires
-// on a call that is genuinely local. A reference resolves to the binding the CALL uses. (The name
-// walk is also what made this rule inert, when it returned on any binding at all rather than
-// asking each definition — the CLI's global scope binds `Reflect` for every use.)
-//
-// Asking the RESOLVED REFERENCE agrees in both, and an unresolved one is the builtin — nothing in
-// the file declares it. Under the CLI it resolves instead to a global-scope variable with no
-// definitions, which says the same thing. `lib/imported-names.ts` reaches for the resolver over a
-// name lookup for the same reason, spelled `require`.
-//
-// The walk to `upper` is not a name walk in disguise. A reference is recorded on the scope that
-// CONTAINS it, which for a `switch` discriminant is the scope above the one `getScope` returns —
-// so a lookup in a single scope misses it, `resolved` comes back undefined, and the rule reports
-// on a local binding it should have left alone. `switch (Reflect.get(…))` with a `const Reflect`
-// in the file is that false positive.
-// Takes the identifier as a plain `Node`, because it arrives through
-// `withoutTransparentWrappers` — which answers "what is this value" and cannot know that this
-// caller narrowed it to an identifier. The two fields read here are on every identifier node.
+// Whether THIS FILE binds `Reflect` to a value. Asks the resolved reference: `isGlobalReference`
+// flips between CLI and RuleTester, and a name lookup gets shadowing wrong (`type Reflect`).
+// Walks `upper` because a `switch` discriminant's reference lives one scope above `getScope`'s.
+// A plain `Node`: it arrives through `withoutTransparentWrappers`.
 function resolvesToLocalBinding(sourceCode: SourceCode, identifier: ESTree.Node): boolean {
   let scope: Scope | null = sourceCode.getScope(identifier);
   while (scope !== null) {
@@ -70,65 +44,32 @@ function resolvesToLocalBinding(sourceCode: SourceCode, identifier: ESTree.Node)
     }
     scope = scope.upper;
   }
-  // No scope records this reference. Not observed — every identifier oxlint hands a visitor is
-  // recorded somewhere — and `false` means "not a local binding", which reports. It is the same
-  // direction the resolver's own `null` takes two lines up, and the same one an unforeseen
-  // definition kind takes in `bindsAValue`: this rule's failure mode is silence, so no default
-  // here chooses it.
+  // No scope records this reference; not observed. `false` means "not a local binding", which
+  // reports, the same direction as the resolver's `null` above and `bindsAValue`'s defaults: this
+  // rule's failure mode is silence, so no default here chooses it.
   return false;
 }
 
-// Whether one definition of the resolved variable puts a value in the file at run time.
-//
-// Asked per definition and not per variable, because TypeScript MERGES declarations into one:
-// `interface Reflect {…}` beside `declare const Reflect: Reflect` is a single variable with two
-// definitions, and reading only the first said "this file binds Reflect" about two declarations
-// that between them bind nothing. Both halves compile under `--strict` and emit the call verbatim.
-//
-// Three ways a definition binds nothing, each a one-line file-wide off-switch otherwise:
-//
-//   a type-space KIND       `type Reflect = never` and `interface Reflect {}`. The resolver skips
-//       these when they stand alone — a value reference resolves past them to the builtin — but
-//       NOT when they merge with a value declaration, which is why the kind is read here rather
-//       than left to the resolver. `Definition["type"]` as `@oxlint/plugins` declares it does not
-//       list these; the runtime produces them, measured.
-//   `declare`               describes something that already exists. Nothing carrying it
-//       introduces a runtime binding — const, function, class, namespace or module — and an
-//       ambient `.d.ts` never reaches this rule at all, so the arm suppresses no legitimate case.
-//   a type-only import      `import type { Reflect }` and `import { type Reflect }`. The resolver
-//       does NOT skip these the way it skips a type alias, so both spellings have to be read:
-//       `importKind` sits on the DECLARATION for the first and on the SPECIFIER for the second.
-//   an alias to an ENTITY    `import Reflect = NodeJS`, which is a one-line off-switch in any
-//       project carrying `@types/node` — or `= JSX` in any React one — and erases to nothing at
-//       all. Its definition claims `importKind: "value"` on both the node and its parent, which
-//       is why the arm above does not catch it. The `= require("…")` spelling of the same syntax
-//       DOES bind a value and is left alone, so the moduleReference is what separates them.
-//
-// NEGATIVE SPACE, in the false-positive direction, and it is the reason `TSModuleName` is refused
-// by kind rather than by inspection: an INSTANTIATED namespace — `namespace Reflect { export const
-// get = … }` — does bind a value, and this reports on it. Telling it from the erased kind means
-// reimplementing TypeScript's instantiation rule, to buy silence on a namespace shadowing a
-// language builtin. A real instance is one `oxlint-disable-next-line`; the uninstantiated half
-// left open is a file-wide off-switch with no bound.
-//
-// `TSEnumName` is deliberately absent from the list, and that is a verdict rather than an
-// omission: an enum emits a real object, so the name really is bound. The ambient spellings that
-// do erase — `declare enum` — carry the `declare` flag and are refused by the arm below.
-const TYPE_SPACE_DEFINITIONS: readonly string[] = ["Type", "TSModuleName"];
+// Type-space kinds, which the resolver skips alone but not merged with a value declaration.
+// `@oxlint/plugins` doesn't type them; the runtime produces them, measured. NEGATIVE SPACE: an
+// instantiated namespace binds a value and still reports (telling it apart is TypeScript's
+// instantiation rule). `TSEnumName` is absent: an enum emits a real object.
+const TYPE_SPACE_DEFINITIONS: ReadonlySet<string> = new Set(["Type", "TSModuleName"]);
 
+// Asked per DEFINITION, because TypeScript merges `interface Reflect` and `declare const Reflect`
+// into one variable that binds nothing. Besides type-space kinds, three bind nothing: `declare`,
+// a type-only import (`importKind` on the declaration or the specifier), and an alias to an
+// entity (`import Reflect = NodeJS`), which claims `importKind: "value"`. Each would otherwise be
+// a one-line file-wide off-switch.
 function bindsAValue(definition: { type: string; node: ESTree.Node; parent: ESTree.Node | null }): boolean {
-  if (TYPE_SPACE_DEFINITIONS.includes(definition.type)) return false;
+  if (TYPE_SPACE_DEFINITIONS.has(definition.type)) return false;
   if (isTypeOnlyImport(definition.node) || isTypeOnlyImport(definition.parent)) return false;
   if (isEntityAlias(definition.node)) return false;
-  // `declare` sits on the DECLARATION, and a `Variable` definition's node is the DECLARATOR
-  // inside it — so reading the flag off `definition.node` alone calls every ambient `const` a real
-  // binding. The other arm is not a fallback: a `declare class Reflect` and a `declare enum` carry
-  // the flag on the definition's OWN node, with no declarator to climb out of, and reading only
-  // `parent` there misses them.
+  // `declare` sits on the DECLARATION, and a `Variable` definition's node is the DECLARATOR inside
+  // it. The other arm is not a fallback: `declare class` and `declare enum` carry the flag on the
+  // definition's own node.
   const declaration = definition.node.type === "VariableDeclarator" ? definition.parent : definition.node;
-  // Unreachable — every definition kind that reaches here carries a node. `false` is the direction
-  // an unforeseen one should take: it means "binds nothing", which REPORTS. Silence is the failure
-  // this rule shipped with, and a default that picks it is a default that hides.
+  // Unreachable. `false` means "binds nothing", which REPORTS; a default choosing silence hides.
   if (declaration === null) return false;
   return !("declare" in declaration && declaration.declare === true);
 }
@@ -137,14 +78,10 @@ function isTypeOnlyImport(node: ESTree.Node | null): boolean {
   return node !== null && "importKind" in node && node.importKind === "type";
 }
 
-// `import X = A.B` names something that already exists; `import X = require(…)` loads a module and
-// binds it. One syntax, and the moduleReference is the only thing that separates them — the
-// definition's `importKind` says `"value"` for both.
-//
-// It is not the same as separating "binds a value" from "does not": an alias to an INSTANTIATED
-// entity emits `var X = A.B` and does bind one, and this refuses it. That is the instantiation
-// question again, one indirection further out, and it takes the same verdict for the same reason —
-// see the note in `bindsAValue`.
+// `import X = A.B` names something that exists; `import X = require(…)` binds a module. Only the
+// moduleReference separates them, as `importKind` says `"value"` for both. An alias to an
+// INSTANTIATED entity does bind a value and is refused anyway: the same instantiation verdict as
+// the namespace note on `TYPE_SPACE_DEFINITIONS`.
 function isEntityAlias(node: ESTree.Node): boolean {
   return (
     node.type === "TSImportEqualsDeclaration" &&
@@ -165,26 +102,15 @@ export const noReflectAccessRule = defineSourceRule({
   create(context) {
 
     return {
-      // The MEMBER READ is the subject, not the call, and that is the load-bearing choice in this
-      // visitor. `Reflect.get.call(null, o, k)` is a one-token rewrite of the banned form: it
-      // reads `get` off `Reflect` in place, the source still literally says `Reflect.get`, and it
-      // hands back the same `any`. A `CallExpression` visitor sees the outer call, finds
-      // `Reflect.get` in the callee's OBJECT position rather than the object itself, and stays
-      // silent — a false negative on this rule's whole promise. Visiting the read closes that,
-      // `Reflect["get"].apply(…)` with it, and `const get = Reflect.get` besides.
-      //
-      // It also subsumes the callee-side wedge. `Reflect.get!(…)` and `(Reflect.get as Getter)(…)`
-      // beat a matcher reading `node.callee`, but the member expression inside them is visited
-      // directly, so nothing here has to unwrap a callee to catch them.
+      // The MEMBER READ is the subject, not the call. A `CallExpression` visitor misses
+      // `Reflect.get.call(null, o, k)`, `Reflect["get"].apply(…)` and `const get = Reflect.get`,
+      // which read the same `any`. Visiting the read catches them, and `Reflect.get!(…)` and
+      // `(Reflect.get as Getter)(…)` too, with no callee to unwrap.
       MemberExpression(node) {
-        // The OBJECT still needs unwrapping: `(Reflect as never).get(…)` and `Reflect!.get(…)` put
-        // a node between this read and the identifier, invisibly to a reader and with no change to
-        // the emitted JS. `lib/transparent-wrappers.ts` owns which nodes those are, for the reason
-        // no-type-argument-assertion gives: a wrapped callee and a wrapped value are one
-        // question, and a rule holding its own list of the answer is how the two drift.
+        // `(Reflect as never).get(…)` and `Reflect!.get(…)` wrap the object with no change to the
+        // emitted JS; `lib/transparent-wrappers.ts` owns that list so rules can't drift apart.
         const owner = withoutTransparentWrappers(node.object);
-        // Resolved as a global rather than matched by name, so a local `const Reflect = …` — or an
-        // import that shadows it — is correctly left alone.
+        // Resolved rather than matched by name, so a local or imported `Reflect` is left alone.
         if (
           owner.type !== "Identifier" ||
           owner.name !== "Reflect" ||

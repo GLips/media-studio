@@ -57,7 +57,7 @@ export function relativeLuminance([r, g, b]: readonly number[]) {
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 }
 export function contrastRatio(a: readonly number[], b: readonly number[]) {
-  const [hi, lo] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x);
+  const [hi, lo] = [relativeLuminance(a), relativeLuminance(b)].toSorted((x, y) => y - x);
   return (hi + 0.05) / (lo + 0.05);
 }
 

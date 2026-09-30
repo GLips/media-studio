@@ -33,4 +33,4 @@ export function runCheckOnFiles(checkId: string, files: Record<string, string>):
 }
 
 /** `path:key` per finding, sorted, for asserting which constructs a check caught. */
-export const caught = (findings: readonly Finding[]) => findings.map((finding) => `${finding.path}:${finding.key}`).sort();
+export const caught = (findings: readonly Finding[]) => findings.map((finding) => `${finding.path}:${finding.key}`).toSorted();

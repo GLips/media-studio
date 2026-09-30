@@ -50,7 +50,7 @@ test('a regroup gives each kept cell its own slot, on paths that never cross, sh
   const from = pick.map((k) => lattice()[k]);
   const to = glyphFieldLayout(from.length, FORMAT, { columns: 6, pitch: 90 });
   const { slot, delay } = glyphRegroupPlan(from, to, 0.12);
-  assert.deepEqual([...slot].sort((a, b) => a - b), to.map((_, k) => k));
+  assert.deepEqual(slot.toSorted((a, b) => a - b), to.map((_, k) => k));
 
   const cross = (p1: typeof to[0], p2: typeof to[0], q1: typeof to[0], q2: typeof to[0]) => {
     const side = (a: typeof to[0], b: typeof to[0], c: typeof to[0]) => Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
@@ -60,7 +60,7 @@ test('a regroup gives each kept cell its own slot, on paths that never cross, sh
     for (let b = a + 1; b < from.length; b++) assert.ok(!cross(from[a], to[slot[a]], from[b], to[slot[b]]), `paths ${a} and ${b} cross`);
   }
   const length = from.map((p, k) => Math.hypot(p.x - to[slot[k]].x, p.y - to[slot[k]].y));
-  const byDelay = from.map((_, k) => k).sort((a, b) => delay[a] - delay[b]);
+  const byDelay = from.map((_, k) => k).toSorted((a, b) => delay[a] - delay[b]);
   for (let k = 1; k < byDelay.length; k++) assert.ok(length[byDelay[k - 1]] <= length[byDelay[k]]);
   assert.equal(Math.min(...delay), 0);
   assert.ok(near(Math.max(...delay), 0.12));

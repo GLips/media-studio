@@ -2,15 +2,13 @@
 //
 // No type is an open dictionary with an `unknown`, `any` or `object` value:
 // `Record<string, unknown>`, an index signature, a mapped type over an open key
-// domain, or an alias to one. So a misspelled key is a compile error rather
-// than `undefined` at run time, and a field rename reports at each read. Which
-// open domain (string, number, PropertyKey) isn't read; a closed one
-// (`Record<keyof T, unknown>`, a dirty-field tracker) names a shape and is legal.
+// domain, or an alias to one, so a misspelled key is a compile error rather
+// than `undefined` at run time. A closed domain (`Record<keyof T, unknown>`) is
+// legal.
 //
-// A bag reached through a name declared in the governed tree reports at that
-// declaration only. One declared anywhere else (lib.d.ts, a .d.ts, a package)
-// reports at each use, the only place it can: asking "is it in the program"
-// instead would let an ambient `declare type Bag = …` silence every use.
+// A bag named in the governed tree reports at that declaration only; one
+// declared elsewhere (lib.d.ts, a package) reports at each use. Asking "is it in
+// the program" instead would let an ambient `declare type Bag` silence every use.
 //
 // Negative space: `Record<'draft' | 'paid', unknown>` is silent; its keys are
 // checked, though its reads still need casts. An array isn't a bag.

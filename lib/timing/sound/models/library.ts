@@ -19,8 +19,8 @@ const roomWetDb = (room: number) => lerp(-26, -8, room);
 const SFX_PEAK_CEILING_DB = -1;
 /**
  * Silence every rendered sound opens with, counted in its `landsAt`. `<Sfx>` starts a sound on the frame after its
- * exact start and trims the fraction of a frame between them off its front, so the sound lands on its time to the
- * sample; the trim is under a frame, and this is over one at 24 fps, so it only ever takes silence.
+ * exact start and trims the difference off its front; the trim is under a frame, and this is over one at 24 fps, so
+ * it only ever takes silence.
  */
 export const SFX_PRE_ROLL_SECONDS = 0.05;
 

@@ -5,16 +5,20 @@ One lint system with two tiers. They're split by what a rule can see, and both r
 ```
 policy/studio-tree.ts   where a path sits: lib areas, features and roles, projects, cli, harness, web places
 policy/*.ts             tables the checks read: SDK owners, timing constructors
-structural/             whole-tree checks (npm run check:arch), over the git index
-oxlint/                 per-file rules (npm run lint), over the working tree
-arch-baseline.json      today's structural findings, which only shrink
+policy/held-out.ts      TEMPORARY: vid-108's folders, held out of the rules vid-107 switched on
+structural/             whole-tree checks (npm run check:arch, check-arch.ts), over the git index
+oxlint/                 per-file rules, run by oxlint.config.ts (npm run lint, lint.ts), over the working tree
+baseline.ts             how both tiers count findings against a baseline
+arch-baseline.json      the studio's baselined findings, both tiers; work/arch-baseline.json is the workspace's
 ```
 
 **Layout comes from `studio-tree.ts` alone.** No rule lists directories. A rule about features, barrels, layers or
 roles asks `classifyStudioPath` for a file's position, so a folder is covered the moment it's declared there. A file
 no position covers is itself a finding (`declared-tree`). Rules about code quality apply to every TypeScript file,
-by file type. Web-only rules are about the web app's subjects (server functions, its design system, its routes), and
-they decide from a file's position whether it's one of them.
+by file type, lint/ and work/ included. Web-only rules are about the web app's subjects (server functions, its
+design system, its routes), and they decide from a file's position whether it's one of them. Where oxlint needs
+globs, they're declared in studio-tree.ts beside the positions: `TERMINAL_PROGRAM_GLOBS` (no-console is off, as
+the console is their output) and `DEFAULT_EXPORT_MODULE_GLOBS` (loaded by path for their default export).
 
 ## The tiers
 
@@ -23,11 +27,13 @@ a canonical path, so an alias and a relative spelling reach one verdict. The `ty
 compiler what a declaration means. `type-checker.ts` serves the compiler the same snapshot through the API's virtual
 filesystem, and `tsconfigFor` picks each file's program by its position. Findings are counted per check, file and
 key against the baseline: one past it blocks, and a stale entry blocks until `--update-baseline` rewrites it.
-Advisory checks print and never block. Each check's spec runs it on a throwaway git repo in the studio's layout
+Advisory checks print and never block. Each scope has one baseline for both tiers: an oxlint finding is filed under
+the id oxlint prints (`arch(no-long-comments)`), keyed by its line's text, and each tier rewrites only its own. Each check's spec runs it on a throwaway git repo in the studio's layout
 (`spec-tree.ts`).
 
 **`oxlint/`** holds per-file syntax rules, registered as `arch/*` by `oxlint/plugin.ts` and enabled in
-`.oxlintrc.json` beside oxlint's built-ins (type-aware `typescript/*`, sonarjs duplication, `import/no-cycle`).
+`oxlint.config.ts` beside oxlint's built-ins (type-aware `typescript/*`, sonarjs duplication, `import/no-cycle`).
+`npm run lint` runs oxlint over the studio, and `-- --scope workspace` over work/; a warning never blocks.
 Rule specs use RuleTester; `lint/oxlintrc.test.ts` runs the real CLI once, because RuleTester builds no global
 scope. `oxlint/lib/rule-file.ts` turns oxlint's filename into a studio position.
 
@@ -70,9 +76,10 @@ All TypeScript: quality rules extended to the whole repo by vid-107.
 | doc-budgets | structural | each doc in docs/doc-budgets.manifest.json stays under its word ceiling |
 | barrel-discoverability | structural | a barrel names what it exports |
 | test-file-mirror (advisory) | structural | a spec sits beside the module it's named for |
-| feature-visibility | structural | a feature imported from another feature grants it, with a reason, in its visibility.json |
-| feature-cycles | structural | no feature imports one that imports it back |
+| feature-visibility | structural | a feature imported from another feature grants it, with a reason, in its visibility.json (one finding per ungranted pair) |
+| feature-cycles | structural | no feature imports one that imports it back (one finding per import inside a cycle) |
 | no-test-imports | structural | only a spec imports a spec |
+| oxlint's built-ins | oxlint | the correctness, suspicious and perf categories, type-aware `typescript/*`, sonarjs duplication, `import/*` (oxlint.config.ts) |
 
 Web app: rules whose subject only the web app has.
 
@@ -85,8 +92,11 @@ Web app: rules whose subject only the web app has.
 | barrel-purity | structural | a feature barrel never reaches a server-only package |
 | css-tokens, shadow-source, token-equality | structural | stylesheet values, shadows and spacing name their tokens |
 
-## Rollout
+## Held out
 
-`ROLLING_OUT` in `structural/registry.ts` lists the structural checks extended to all TypeScript that aren't
-switched on yet, and `npm run lint` covers web/src only. Until vid-107's phase B baselines today's findings,
-check:arch keeps only those checks' findings in the web app.
+`policy/held-out.ts` is temporary. vid-108 is restructuring the brush engine's features (lib/picture/stamp-paint,
+stamp-styles, photoshop-brushes, procreate-brushes, brush-fidelity, stamp-reference, lib/platform/photoshop, and
+their three harness entry points).
+The rules vid-107 switched on skip those folders: oxlint ignores them, and the structural checks it lists drop their
+findings there, and any feature edge touching them. The studio's own checks still govern them. The module goes
+when vid-108 lands.

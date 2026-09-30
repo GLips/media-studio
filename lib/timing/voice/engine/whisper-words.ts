@@ -36,7 +36,7 @@ export async function heardWords(wavPath: string): Promise<SpokenWord[]> {
   // tokens like [_BEG_] are markers, not speech. A token's DTW time is when it's spoken; its offsets are coarser.
   const words: SpokenWord[] = [];
   for (const token of transcription.flatMap((item) => item.tokens)) {
-    if (/^\[_/.test(token.text) || !token.text.trim()) continue;
+    if (token.text.startsWith('[_') || !token.text.trim()) continue;
     const start = (token.t_dtw >= 0 ? token.t_dtw * 10 : token.offsets.from) / 1000;
     const end = token.offsets.to / 1000;
     const last = words.at(-1);

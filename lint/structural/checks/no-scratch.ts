@@ -34,7 +34,7 @@ const isExempt = (path: string) => path === '.gitignore' || path.startsWith('lin
 export const noScratchCheck: StructuralCheck = {
   id: ID,
   run(context) {
-    const paths = [...context.tree.paths].filter((path) => !isExempt(path)).sort();
+    const paths = [...context.tree.paths].filter((path) => !isExempt(path)).toSorted();
     const texts = context.tree.readTexts(paths);
     const findings: Finding[] = [];
     paths.forEach((path, i) => {

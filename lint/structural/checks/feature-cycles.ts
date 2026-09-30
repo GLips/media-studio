@@ -1,9 +1,10 @@
 // ─── No feature imports a feature that imports it back ────────────────
 //
-// At any depth: A → B → C → A is one cycle, reported once with every member.
-// While features form no cycle, any one of them can move or be deleted by
-// editing only its importers. No visibility grant makes a cycle legal; the fix
-// is to move what both need into a feature of its own.
+// At any depth: A → B → C → A is a cycle. Each import within one tangle (a
+// strongly connected component) is its own finding, keyed by the importee, so a
+// new edge is new and cutting one shrinks the baseline. Without cycles, any
+// feature can move or be deleted by editing only its importers. No grant makes
+// a cycle legal; move what both need into a feature of its own.
 //
 // Edges come from resolved targets (feature-edges.ts), never specifier text, so
 // `#lib/…` and a relative climb are the same edge. How many edges features
@@ -22,19 +23,19 @@ export const featureCyclesCheck: StructuralCheck = {
       edgesOf.set(cross.importer, [...(edgesOf.get(cross.importer) ?? []), cross]);
     }
     const targetsOf = new Map([...edgesOf].map(([feature, edges]) => [feature, new Set(edges.map((edge) => edge.importee))]));
-    return stronglyConnectedComponents([...edgesOf.keys()].sort(), targetsOf).map((component): Finding => {
-      const members = [...component].sort();
+    return stronglyConnectedComponents([...edgesOf.keys()].toSorted(), targetsOf).flatMap((component) => {
+      const members = component.toSorted();
       const inCycle = new Set(members);
-      const pairs = members.flatMap((from) => [...(targetsOf.get(from) ?? [])].filter((to) => inCycle.has(to)).sort().map((to) => `${from} → ${to}`));
-      // Filed on the first member's first file into the cycle, so one cycle keeps one address run to run and sits on
-      // a source file (a feature's folder classifies as nothing).
-      const anchor = edgesOf.get(members[0])!
-        .filter((cross) => inCycle.has(cross.importee))
-        .sort((a, b) => a.edge.from.path.localeCompare(b.edge.from.path) || a.edge.line - b.edge.line)[0];
-      return {
-        check: ID, path: anchor.edge.from.path, line: anchor.edge.line, key: members.join(' ↔ '),
-        message: `feature cycle ${members.join(' ↔ ')} (${pairs.join(', ')}): move what they share into a feature both import`,
-      };
+      return members.flatMap((from) => {
+        const firstInto = new Map<string, CrossFeatureEdge>();
+        for (const cross of edgesOf.get(from)!) {
+          if (inCycle.has(cross.importee) && !firstInto.has(cross.importee)) firstInto.set(cross.importee, cross);
+        }
+        return [...firstInto].toSorted(([a], [b]) => a.localeCompare(b)).map(([to, { edge }]): Finding => ({
+          check: ID, path: from, line: 1, key: `→ ${to}`,
+          message: `imports ${to} (first at ${edge.from.path}:${edge.line}), inside the feature cycle ${members.join(' ↔ ')}: move what they share into a feature both import`,
+        }));
+      });
     });
   },
 };

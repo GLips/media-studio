@@ -112,7 +112,7 @@ export function needleContactAt(strikes: readonly NeedleStrike[], t: number): { 
 /** The needle's pose at `t`, or null while it's out of shot: between one strike's exit and the next one's way in. */
 export function needlePoseAt(strikes: readonly NeedleStrike[], t: number, rig: NeedleRigSettings): NeedlePose | null {
   const r = needleRig(rig);
-  const order = [...strikes].sort((p, q) => p.at - q.at);
+  const order = strikes.toSorted((p, q) => p.at - q.at);
   const rest = needleRestAxis(r);
   const here = tipPath(order, t, r, rest);
   if (!here) return null;

@@ -25,8 +25,10 @@ export const sdkContainmentCheck: StructuralCheck = {
   run(context) {
     const findings: Finding[] = [];
     for (const file of context.tree.sources) {
-      // A tool's config configures that tool by importing it (web/vite.config.ts's defineConfig); it runs nothing.
-      if (context.positionOf(file.path).kind === 'root-config') continue;
+      // A tool's config configures that tool by importing it (web/vite.config.ts's defineConfig), and lint/ names the
+      // SDKs it polices: neither runs one.
+      const { kind } = context.positionOf(file.path);
+      if (kind === 'root-config' || kind === 'lint') continue;
       const outside = (row: SdkOwner) => !file.path.startsWith(row.owner);
       for (const edge of context.edgesFrom(file)) {
         if (edge.target.kind !== 'package') continue;

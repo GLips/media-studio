@@ -13,5 +13,7 @@
   },
   // Deliberately no host files: a scene imports its host as `@host/…`, which lib/output/render/engine/host-modules.d.ts types as `any`, so
   // tsc never reads the host (its aliases, env types and server code only type-check under its own settings).
-  "include": ["lib", "lint", "cli", "harness", "remotion.config.ts", "types.d.ts", "work/projects/*/video.tsx", "work/projects/*/stills.tsx", "work/projects/*/capture.ts", "work/brands/*/brand.ts", "work/styles/*/style.ts", "work/projects/*/brand.ts", "work/projects/*/project.ts"]
+  "include": ["lib", "lint", "cli", "harness", "remotion.config.ts", "types.d.ts", "work/projects", "work/brands", "work/styles"],
+  // Generated modules and render output: nothing hand-written to check.
+  "exclude": ["work/projects/*/generated", "work/projects/*/out"]
 }

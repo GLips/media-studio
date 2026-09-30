@@ -214,7 +214,7 @@ export function glyphRegroupPlan(from: readonly Point[], to: readonly Point[], s
   const cost = from.map((a) => to.map((b) => Math.hypot(a.x - b.x, a.y - b.y)));
   const slot = minCostAssignment(cost);
   const length = from.map((_, k) => cost[k][slot[k]]);
-  const byLength = from.map((_, k) => k).sort((a, b) => length[a] - length[b] || a - b);
+  const byLength = from.map((_, k) => k).toSorted((a, b) => length[a] - length[b] || a - b);
   const delay = new Array<number>(from.length).fill(0);
   byLength.forEach((k, rank) => { delay[k] = from.length > 1 ? (spread * rank) / (from.length - 1) : 0; });
   return { slot, delay };

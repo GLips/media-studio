@@ -173,7 +173,7 @@ function describePage(page: Page, at: { x: number; y: number } | undefined): Pro
       const steps: string[] = [];
       for (let node: Element | null = el; node && node !== document.body; node = node.parentElement) {
         const parent: Element | null = node.parentElement;
-        const sameTag = parent ? [...parent.children].filter((c) => c.tagName === node!.tagName) : [];
+        const sameTag = parent ? [...parent.children].filter((c) => c.tagName === node.tagName) : [];
         steps.unshift(sameTag.length > 1 ? `${tagOf(node)}:nth-of-type(${sameTag.indexOf(node) + 1})` : tagOf(node));
         const anchor = parent && parent !== document.body ? anchorOf(parent) : 'body';
         if (anchor) {

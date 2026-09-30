@@ -1,18 +1,12 @@
 import type { ESTree, Visitor } from "@oxlint/plugins";
 
-// Every place a module specifier can appear: the four static forms, `import()`, `require()` and
-// `require.resolve()`, `import x = require(…)`, and `import("…")` in type position. A rule fencing
-// on the specifier goes through here, so none misses the one form it didn't think of. CommonJS is
-// seen, not forbidden: both spellings create the same dependency.
-//
-// NEGATIVE SPACE: a computed specifier — `import(path)`, `require(name)`, an interpolated template
-// — is not visited, because there is nothing to fence on. A template with no substitutions IS
-// checkable and is visited.
+// Every place a module specifier can appear, static, dynamic, `require`, `import =` and type
+// position, so no rule fencing on specifiers misses a form. CommonJS is seen, not forbidden.
+// NEGATIVE SPACE: a computed specifier has nothing to fence on and is not visited.
 
 /**
- * The node a diagnostic is anchored to. A `TemplateElement` rather than a cast, because the only
- * honest node for `import(`@/shared/utils`)` is the quasi itself — casting it to a StringLiteral
- * would make the type lie to every consumer to save one union member.
+ * A diagnostic's anchor. A `TemplateElement` because a backtick specifier's honest node is the
+ * quasi, not a cast StringLiteral.
  */
 export type ModuleSourceNode = ESTree.StringLiteral | ESTree.TemplateElement;
 
@@ -61,40 +55,12 @@ function onStaticSpecifier(
 }
 
 /**
- * The one module a specifier expression names, with the node to blame for it — or `undefined` when
- * it names a family rather than a module.
+ * The one module a specifier names, with the node to blame. THE ONE OWNER of this: a second copy
+ * would diverge in coverage. A backtick template without substitutions counts, since it is the
+ * spelling someone reaches for to dodge a fence.
  *
- * A computed specifier (`import(path)`, `require(name)`) has nothing to fence on. A literal is
- * checkable, and so is a template with no substitutions — ``import(`@/shared/utils`)`` is the same
- * edge, and the backtick is exactly the spelling someone reaches for to make a fence stop matching.
- * Both forms are answered here rather than by each caller, because the caller that answered for
- * itself is the one that carried the literal and forgot the template.
- *
- * THE ONE OWNER of "is this specifier statically known, and what is it". A second private copy —
- * `lib/imported-names.ts` is where one would go — agreeing on every input today is the reason to
- * merge it here rather than a reason to keep it. Two copies diverge in COVERAGE before they diverge
- * in behaviour: the same backtick bypass has to be closed in each, and the fixture written for one
- * asserts nothing about the other. So ``import(`@/infrastructure/db/${name}`)`` — the negative
- * space this module's header names — is pinnable on one side and unpinned on the other, with
- * nothing reporting the next patch that lands on one side only.
- *
- * The return is an object because the two callers want different halves: `visitModuleSources` blames
- * a node and `runtimeImportSpecifier` returns a bare string. A superset of both is one function; a
- * string return would put the blame node back in the caller, which is how a second copy starts.
- *
- * Takes `undefined` so the missing-argument case — `require()` — is answered here rather than at
- * each call site, where two callers would each place the guard somewhere different.
- *
- * NEGATIVE SPACE: a template WITH a substitution names a family of modules and gets `undefined`
- * rather than its literal prefix. A non-string literal — `require(0)` — names no module. A quasi
- * whose `cooked` is null cannot be reached: an invalid escape is a SyntaxError outside a tagged
- * template, and a tagged template is not a `TemplateLiteral`. It is refused rather than trusted.
- *
- * The non-string one is not
- * merely a type narrow: force it through with a cast and `require(0)` hands every consumer a NUMBER
- * as its specifier, which dies in the first rule to call `.split` on it. It decides what this
- * module finds, so it is fixtured like the other two, per the convention `lib/imported-names.ts`
- * states.
+ * NEGATIVE SPACE: `undefined` for a substituted template (a family) and `require(0)`. A null
+ * `cooked` is unreachable, and refused.
  */
 export function staticModuleSpecifier(
   source: ESTree.Node | undefined,
@@ -127,21 +93,11 @@ function isRequireCallee(callee: ESTree.CallExpression["callee"]): boolean {
 }
 
 /**
- * A type import creates no runtime dependency, so a file may NAME any type it likes even where it
- * may not depend on the module at runtime.
+ * A type import creates no runtime dependency. Inline `import { type A, b }` still binds `b`, so
+ * every specifier must be type-only; `length > 0` keeps a bare `import "pkg"` a runtime edge.
  *
- * The declaration-level `import type` / `export type` is the easy half. The half that matters is
- * the inline spelling: `import { type Invoice, parseInvoice } from "./invoice"` has
- * `importKind: "value"` at the declaration and still binds `parseInvoice` at runtime, so only an
- * import whose every specifier is type-only is erased. A bare `import "pkg"` has no specifiers at
- * all and is pure side effect — the `length > 0` guard is what keeps it a runtime edge.
- *
- * Pass `source.parent` from `visitModuleSources`. An `ImportExpression`, a `require()` and a
- * `require.resolve()` all fall through to false, which is correct: none of them has a type-only
- * form, and `import type` has no dynamic spelling. The two TypeScript spellings do have one, and
- * both are answered here — a `TSImportType` is erased by definition, and
- * `import type X = require(…)` is legal TS whose literal's parent is the module reference rather
- * than the declaration.
+ * Pass `source.parent` from `visitModuleSources`. Dynamic forms have no type-only spelling;
+ * `import type X = require(…)` does, with the module reference as the literal's parent.
  */
 export function isTypeOnlyDeclaration(declaration: ESTree.Node): boolean {
   switch (declaration.type) {

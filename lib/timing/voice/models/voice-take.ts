@@ -3,9 +3,8 @@
 // A take reads as one performance: pace, pitch and breath carry from line to line, which separate reads never do.
 // Whisper's word times over a whole take drift by up to half a second, so they only say roughly where each line is;
 // the cuts go in the longest quiet stretches around the boundaries, found in the audio and chosen together, so short
-// lines ("filter, / search, / and…") each keep their own speech. Each clip keeps a breath
-// of quiet at either end, and the quiet trimmed off between two lines comes back as `pauseBefore`, so the timeline
-// can replay the read's timing.
+// lines ("filter, / search, / and…") each keep their own speech. The quiet trimmed off between two lines comes back
+// as `pauseBefore`, so the timeline can replay the read's timing.
 import { alignSpokenWords, scriptWords, type SpokenWord } from './voice-words.ts';
 
 // What each clip keeps of the quiet around its words: a breath before, and a little longer after so it doesn't end
@@ -83,7 +82,7 @@ function frameLevels(samples: Int16Array, rate: number) {
 // Quiet is relative to the take's own floor, so room noise in a recording isn't read as speech. The floor is the
 // 10th-percentile frame, which a take with any pauses in it reaches; 300 (about −40 dBFS) covers a digitally silent one.
 function quietLevel(levels: number[]) {
-  const sorted = [...levels].sort((a, b) => a - b);
+  const sorted = levels.toSorted((a, b) => a - b);
   return Math.min(QUIET_CEILING, Math.max(300, 2 * (sorted[Math.floor(sorted.length * 0.1)] ?? 0)));
 }
 
@@ -112,7 +111,7 @@ function chooseCuts(levels: number[], quiet: number, windows: readonly (readonly
     }
     let lowest = first;
     for (let f = first; f <= last; f++) if (levels[f] < levels[lowest]) lowest = f;
-    const longest = [...runs].sort((x, y) => y.frames - x.frames);
+    const longest = runs.toSorted((x, y) => y.frames - x.frames);
     const clearRun = longest[0] && (!longest[1] || longest[1].frames < AMBIGUOUS_PAUSE * longest[0].frames) ? longest[0] : null;
     return { pauses: [...runs, { from: lowest, frames: 0 }], clearRun };
   });

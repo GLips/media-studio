@@ -106,10 +106,9 @@ function judgeCheckedFrames(session: RenderSession, sink: ReturnType<typeof arti
 }
 
 /**
- * Writes out/check/timeline.json (when each scene, line and word lands, and where scenes crossfade, for aiming sheets
- * and strips) and the motion tracks: out/check/motion.json for the whole video, and a scoped check's beside it
- * (motion-<scene>.json, motion-<from>-<to>.json), so it never replaces the whole one. Returns both paths. They're the
- * latest check's, for reading now; a render's own timeline and motion are in its snapshot.
+ * Writes out/check/timeline.json (when each scene, line and word lands, and where scenes crossfade) and the motion
+ * tracks: out/check/motion.json, or a scoped check's beside it (motion-<scene>.json), so it never replaces the whole
+ * one. Returns both paths. They're the latest check's; a render's own timeline and motion are in its snapshot.
  */
 export function writeCheckReports(session: RenderSession, { timeline, motion }: Pick<ProjectCheck, 'timeline' | 'motion'>, { scene, at }: CheckScope = {}): string[] {
   const dir = join(outDirFor(session), 'check');
@@ -162,11 +161,10 @@ export async function renderMotionGraph(session: RenderSession, { at, tracks, sp
 const DELIVERY_LUFS = -14, DELIVERY_TRUE_PEAK = -1, MASTER_TRUE_PEAK = -2;
 
 /**
- * Renders the soundtrack once, uncompressed, and masters it to out/mix.wav: one gain to delivery loudness, then a
- * limiter for the peaks. Not loudnorm: when its linear mode can't reach the target it becomes an AGC, which fills in
- * the music's ducks. With `auditionSfxCueList`, the project's cue list plays whether or not the video plays it, into
- * out/mix-sfx-cues.wav, to audition it beside the video's mix. Refuses a silent project, which has no mix, and fails
- * on a mix that renders silent, since a voice, music or sound it plays didn't sound.
+ * Masters the soundtrack to out/mix.wav: one gain to delivery loudness, then a limiter for the peaks. Not loudnorm:
+ * when its linear mode can't reach the target it becomes an AGC, which fills in the music's ducks.
+ * `auditionSfxCueList` plays the cue list into out/mix-sfx-cues.wav whether or not the video does. A mix that renders
+ * silent fails: something it plays didn't sound.
  */
 export async function renderMasteredMix(session: RenderSession, { auditionSfxCueList = false }: { auditionSfxCueList?: boolean } = {}): Promise<string> {
   if (session.silent) throw new Error(`${basename(session.project)} is silent (project.ts): it plays no voice, music or sound, so it has no mix`);
@@ -304,14 +302,11 @@ const draftVoiceWarning = (session: RenderSession) => `
 `;
 
 /**
- * The whole pipeline: refusing a line that's still estimated; video.mp4 with captions, whose frames the framing check
- * measures as they're drawn, delivered only if it passes; the mastered mix under it; video-plain.mp4 without
- * captions, if `plain`; each checked for delivery; video.srt and video.vtt, the composition's own sidecar (a silent
- * project has them only from a caption table); and where the time went. A silent project has no mix; a transparent
- * one delivers as renderTransparentDelivery says. Returns what it delivered.
+ * The whole pipeline: video.mp4 with captions, delivered only if its framing check passes; the mastered mix;
+ * video-plain.mp4 if `plain`; each checked for delivery; video.srt and video.vtt. Returns what it delivered.
  *
- * The check rides on the captioned render rather than running first, so every frame is drawn once, not twice: a
- * failing check costs a render's encode more than it would alone, and `studio check` is still the quick way to one.
+ * The check rides on the captioned render so every frame is drawn once: a failing check costs an encode, and
+ * `studio check` is still the quick way to one.
  */
 export async function renderDeliveredVideo(session: RenderSession, { plain }: { plain: boolean }): Promise<string[]> {
   const timeline = await session.readTimeline();
@@ -438,13 +433,11 @@ export async function renderVideoSlice(session: RenderSession, { from, end, out 
 }
 
 /**
- * Joins the slices in `dir` (renderVideoSlice's, one file each) into the whole video at `out`, under a fresh mastered
- * mix, so the placed sounds play across the joins. Refuses a slice rendered on another timeline than the video's now,
- * a gap or an overlap between slices, or a file short of the frames its snapshot says it holds: each would put every
- * later frame off its sound. Refuses slices drawn on more than one GPU too.
+ * Joins the slices in `dir` at `out`, under a fresh mastered mix, so placed sounds play across the joins. Refuses
+ * another timeline, a gap or overlap, or a file short of its snapshot's frames: each puts every later frame off its
+ * sound.
  *
- * Negative space: a silent project's join has no sound and doesn't check that none plays, since its slices are
- * muted; the delivered render's review is what refuses a sound in a silent project.
+ * Negative space: a silent join doesn't check that no sound plays; the delivered render's review does.
  */
 export async function joinVideoSlices(session: RenderSession, { dir, out }: { dir: string; out: string }): Promise<string> {
   const timeline = await session.readTimeline();
@@ -460,7 +453,7 @@ export async function joinVideoSlices(session: RenderSession, { dir, out }: { di
     const counted = countVideoFrames(file);
     if (counted !== frames.end - frames.from) throw new Error(`${name} holds ${counted} frames, and its snapshot says ${frames.end - frames.from}`);
     return { file, gpu, ...frames };
-  }).sort((a, b) => a.from - b.from);
+  }).toSorted((a, b) => a.from - b.from);
   // Each GPU rounds a painted frame its own way, so slices from two would show a seam where they meet.
   const gpus = [...new Set(slices.map((s) => s.gpu))];
   if (gpus.length > 1) throw new Error(`the slices in ${dir} were drawn on ${gpus.length} GPUs (${gpus.join('; ')}): render them all on one machine`);
@@ -491,15 +484,11 @@ export async function joinVideoSlices(session: RenderSession, { dir, out }: { di
 // ---------- repeatability ----------
 
 /**
- * Renders each frame at `times` fresh, in a browser of its own, then again three ways. In one tab after other frames:
- * the rest in order, the rest reversed, a later and an earlier neighbour, and runs of the frames before it at each
- * step a render's tabs take. And among its neighbours in the render's tabs at once (two at least), which share the
- * GPU. A tab's history is what leaks into a frame that isn't a pure function of time (an unseeded random stream,
- * drawing deferred to the next frame).
+ * Renders each frame at `times`, then again in one tab after other frames and among neighbours in the render's
+ * concurrent tabs: a tab's history leaks into a frame that isn't a pure function of time.
  *
- * Equal means over 50 dB PSNR, since a GPU scene (a stamp painting among them) may round differently from one draw to
- * the next; each frame also says whether it was identical, which isn't asked for. Every capture is a PNG, so identical
- * means the same pixels: a JPEG's quantizing can hide a ±1 difference.
+ * Equal means over 50 dB PSNR, as a GPU scene may round differently each draw. Captures are PNG: JPEG can hide a ±1
+ * difference.
  */
 export async function checkFramesRepeatable(session: RenderSession, times: number[]): Promise<{ ok: boolean; report: string[] }> {
   if (!times.length || times.some((t) => !Number.isFinite(t))) throw new Error('give times in seconds, e.g. 2,8.5');

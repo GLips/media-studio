@@ -2,13 +2,11 @@
 //
 // A literal keeps the type TypeScript read from it: no annotation on a
 // variable, a class property or a return replaces its own keys with `unknown`,
-// `any`, `object` or an open dictionary. So `handlers.stpo` is an error and
-// `satisfies` checks the values without the loss. `Record<string, Handler>`
-// reports though its value is precise: the loss is in the keys. A closed domain
-// (`Record<'start' | 'stop', Handler>`) deletes nothing and is legal.
+// `any`, `object` or an open dictionary; `satisfies` checks without the loss.
+// `Record<string, Handler>` reports though its value is precise: the loss is in
+// the keys. A closed domain (`Record<'start' | 'stop', Handler>`) is legal.
 //
-// An empty `{}` or `[]` is legal: an accumulator gets the type it grows into,
-// the one case where the annotation adds information.
+// An empty `{}` or `[]` is legal: there the annotation adds information.
 //
 // Negative space: the value must be written at the annotation. `const h: Bag =
 // base` and any call (`const x: unknown = parse(text)`, a boundary) are silent;
@@ -56,6 +54,7 @@ export const noKnownValueWideningCheck: StructuralCheck = {
   run(context) {
     const findings: Finding[] = [];
     for (const source of typedSources(context)) {
+      const indexed = namesIndexedByComputedKey(source);
       const pairs = typeCheckableNodesOfKind(source.file, WIDENING_SITE_KINDS)
         .map(annotatedValueAt)
         .filter((pair): pair is AnnotatedValue => pair !== undefined && isSelfEvidentValue(pair.value));
@@ -65,7 +64,9 @@ export const noKnownValueWideningCheck: StructuralCheck = {
       for (const [index, pair] of pairs.entries()) {
         const type = types[index];
         if (!type) continue;
-        const dictionary = openKeyDomainValueTypes(source.typed, type) !== undefined;
+        // Only an object literal has keys of its own to lose; a lookup table read by a computed key needs the open domain.
+        const dictionary = pair.value.kind === SyntaxKind.ObjectLiteralExpression && openKeyDomainValueTypes(source.typed, type) !== undefined;
+        if (dictionary && indexed.has(declaredName(source, pair.site) ?? '')) continue;
         if (!dictionary && !typeResolvesToFlags(source.typed, type, UNTYPED_TYPE_FLAGS | NON_PRIMITIVE_TYPE_FLAGS)) continue;
         const annotation = pair.annotation.getText(source.file);
         // Two messages: `satisfies unknown` compiles and checks nothing, so it's only offered for the dictionary.
@@ -86,6 +87,20 @@ function siteKey(source: TypedSource, { site, annotation }: AnnotatedValue): str
   const name = (site as Node & { name?: Node }).name;
   const spelled = annotation.getText(source.file).replace(/\s+/g, ' ');
   return name && site.kind !== SyntaxKind.ArrowFunction ? `${name.getText(source.file)}: ${spelled}` : `return ${spelled}`;
+}
+
+/** Names this file reads by a key that isn't a literal (`ROLES[name]`). */
+function namesIndexedByComputedKey(source: TypedSource): ReadonlySet<string> {
+  return new Set(typeCheckableNodesOfKind(source.file, new Set([SyntaxKind.ElementAccessExpression])).flatMap((node) => {
+    const { expression, argumentExpression } = node as Node & { expression: Node; argumentExpression: Node };
+    const literalKey = argumentExpression.kind === SyntaxKind.StringLiteral || argumentExpression.kind === SyntaxKind.NumericLiteral;
+    return expression.kind === SyntaxKind.Identifier && !literalKey ? [expression.getText(source.file)] : [];
+  }));
+}
+
+function declaredName(source: TypedSource, site: Node): string | undefined {
+  if (site.kind !== SyntaxKind.VariableDeclaration && site.kind !== SyntaxKind.PropertyDeclaration) return undefined;
+  return (site as Node & { name?: Node }).name?.getText(source.file);
 }
 
 function annotatedValueAt(site: Node): AnnotatedValue | undefined {

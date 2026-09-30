@@ -12,7 +12,7 @@ const STYLESHEET = /\.css$/;
 
 export const declaredTreeCheck: StructuralCheck = {
   id: ID,
-  run: (context) => [...context.tree.undeclared, ...[...context.tree.paths].filter((path) => STYLESHEET.test(path) && studioScope(path) === 'undeclared').sort()].map((path): Finding => ({
+  run: (context) => [...context.tree.undeclared, ...[...context.tree.paths].filter((path) => STYLESHEET.test(path) && studioScope(path) === 'undeclared').toSorted()].map((path): Finding => ({
     check: ID, path, line: 1, key: 'undeclared',
     message: 'no position in the declared tree (lint/policy/studio-tree.ts) covers this file, so no check reads it',
   })),

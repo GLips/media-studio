@@ -1,11 +1,11 @@
 // needle.tsx: the reel's signature shot, a tattoo cartridge needle striking the frame itself. A 7-needle round liner,
 // wet with ink, stands out of a clear-tipped cartridge that leans back toward the lens. Each strike is one blow: in
-// from out of frame in a frame or two, smeared along its path, sharp on the contact, driven in for a frame, then
-// snapped back out the way it came. Between strikes it is out of shot, and the frame is the surface's.
+// from out of frame in a frame or two, smeared, sharp on contact, driven in for a frame, then snapped back out.
+// Between strikes it is out of shot.
 //
 // The camera looks straight down from where one surface unit is one frame pixel, so each strike lands on its own
-// pixel of the layer beneath (the ink grid). The canvas is transparent: needle, shadow and glints over whatever is
-// under it. The motion is a pure function of time (`needlePoseAt` in #lib/picture/reel/models/needle.ts), drawn here.
+// pixel of the layer beneath (the ink grid). The canvas is transparent. The motion is a pure function of time
+// (`needlePoseAt`, models/needle.ts), drawn here.
 
 import * as THREE from 'three';
 import { motionCurves } from '#lib/picture/motion/models/motion.ts';
@@ -88,8 +88,8 @@ function tubeGeometry(zs: number[], centre: (z: number) => [number, number], rad
 
 /**
  * The studio its steel reflects. From straight above, a cylinder tilted off the lens mirrors only a cone of directions
- * pointing down past its tip, into the ground: so the floor is the ground's colour, and two strips on that cone draw a
- * line of light down each needle, the clear tip and the barrel. A card behind the lens glints on the ink.
+ * pointing down past its tip: so the floor is the ground's colour, and two strips on that cone draw a line of light
+ * down each needle, tip and barrel. A card behind the lens glints on the ink.
  */
 function needleStudio(axis: Vec3, ground: string): ThreeEnvironment {
   return {

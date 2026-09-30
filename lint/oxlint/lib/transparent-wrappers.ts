@@ -3,19 +3,11 @@ import type { ESTree } from "@oxlint/plugins";
 /**
  * The expression nodes that wrap a value without changing what it is.
  *
- * `(process).env`, `process!.env` and `(globalThis as never).localStorage` are the same read with a
- * node wedged in. Stepping through them is a few lines; not stepping through them is a bypass that
- * TypeScript syntax hands over for free — and it is a bypass a reader cannot see, because the
- * source still says `process.env`.
+ * `process!.env` is the same read with a node wedged in: an invisible bypass unless stepped through.
+ * A predicate, not a set, is exported so callers narrow to reach `.expression`.
  *
- * Every member carries its operand on `expression`, which is what makes one predicate cover all
- * five. The predicate is the export rather than the set: a `Set<string>` membership test tells
- * TypeScript nothing, and the callers all need to reach `.expression` afterwards.
- *
- * NEGATIVE SPACE: `ParenthesizedExpression` is deliberately absent. oxlint does not emit the node
- * under its default options — `(process).env` arrives with the parens already gone — so a member
- * for it is a branch no fixture can reach, and an unreachable branch is indistinguishable from a
- * broken one. A tier that turns paren preservation on adds it back with a fixture.
+ * NEGATIVE SPACE: no `ParenthesizedExpression`; oxlint drops parens by default, so no fixture could
+ * reach it.
  */
 type TransparentWrapper =
   | ESTree.ChainExpression

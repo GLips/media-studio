@@ -47,9 +47,8 @@ export const motionCurves = {
   },
   /**
    * Exponential (Penner's expo, exact: an arrival is 1 − 2^(−10k)): the showreel's snap. An arrival is half done a
-   * tenth of the way in and then settles for the rest, so a move lands hard on its beat and still looks finished; its
-   * standard move waits, whips through the middle and brakes. The reference reel's settles fit it within a pixel.
-   * For a teaser or reel, not walkthrough UI.
+   * tenth of the way in, then settles, so a move lands hard on its beat and still looks finished; its standard move
+   * waits, whips through and brakes. Fits the reference reel within a pixel. For a teaser or reel, not walkthrough UI.
    */
   expo: {
     standard: (k) => { k = clamp(k); return k === 0 || k === 1 ? k : k < 0.5 ? Math.pow(2, 20 * k - 10) / 2 : (2 - Math.pow(2, -20 * k + 10)) / 2; },
@@ -145,14 +144,13 @@ export type PerceptualSpring = ((t: number) => number) & {
 const SPRING_ARRIVED = 0.02;
 
 /**
- * A spring timed by how it feels rather than by when it arrives: Apple's spring(duration:bounce:), as kvin.me's
- * "Effortless UI spring animations" writes it out. Stiffness is (2π/duration)² and the damping ratio 1 − bounce, so
- * `duration` is the period of its swing and every bounce moves at the same pace; a bouncier one only overshoots more.
- * To land a move on a beat, start it `arrival` seconds before the beat:
+ * A spring timed by how it feels: Apple's spring(duration:bounce:), after kvin.me's "Effortless UI spring
+ * animations". `duration` is its swing's period, so every bounce moves at the same pace, only overshooting more.
+ * To land on a beat, start `arrival` seconds before:
  *
  *   const pop = perceptualSpring(0.4, 0.3); … scale={lerp(0.8, 1, pop(t - (beat - pop.arrival)))}
  *
- * Apple's negative bounce (overdamped, slower than smooth) is left out: bounce 0 is already the calmest a move needs.
+ * Apple's negative (overdamped) bounce is left out: bounce 0 is the calmest a move needs.
  */
 export function perceptualSpring(duration: number, bounce = 0): PerceptualSpring {
   if (!(duration > 0)) throw new RangeError(`perceptualSpring: duration must be positive, got ${duration}`);
@@ -188,9 +186,8 @@ export type StaggerFrom = 'start' | 'end' | 'center' | 'edges' | number;
 export type StaggerTiming = ({ each: number } | { lagRatio: number; duration: number }) & { max?: number; from?: StaggerFrom; fps: number };
 
 /**
- * Seconds after the group starts that item `i` of `n` starts, on a whole frame. With `max`, a long list packs its
- * starts closer, so several items can share a frame. A component that consumes a stagger passes
- * `stagger: { group, index: i, count: n }` to its motion tag, so the tracks see the group.
+ * Seconds after the group starts that item `i` of `n` starts, on a whole frame (with `max`, items can share one). A
+ * component consuming a stagger passes `stagger: { group, index: i, count: n }` to its motion tag, so tracks see it.
  *
  *   rows.map((row, i) => <Text … k={seg(s.t, at + stagger(i, rows.length, { each: 0.08, max: 0.4, fps }), …)} />)
  */

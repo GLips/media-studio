@@ -20,7 +20,7 @@ export const STUDIO_STYLES_DIR = join(STUDIO_WORKSPACE_DIR, 'styles');
 /** The project folders' names; none in a workspace with no projects yet. */
 export function listStudioProjects(): string[] {
   if (!existsSync(STUDIO_PROJECTS_DIR)) return [];
-  return readdirSync(STUDIO_PROJECTS_DIR, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();
+  return readdirSync(STUDIO_PROJECTS_DIR, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).toSorted();
 }
 
 /**

@@ -2,14 +2,14 @@
 //
 // An import from one feature into another of its tree (feature-edges.ts)
 // needs a grant in the importee's `visibility.json`: `{ "<importer folder>":
-// "<why>" }`. What depends on a feature is then listed inside it, and a new
-// dependant is an edit there. `lib/api.ts`, projects, cli/, harness/ and the
-// web app consume lib rather than peer with it, so need no grant: one per
-// consumer would say nothing. What they may reach is import-policy's.
+// "<why>" }`, so a feature lists its dependants and a new one is an edit there.
+// `lib/api.ts`, projects, cli/, harness/ and the web app consume lib rather than
+// peer with it, so need no grant; what they may reach is import-policy's.
 //
-// Filed on the importing file, keyed by the importee, so each new importing
-// file is new even while an old one is baselined. A grant outliving its last
-// import is a finding: the coupling could return unreviewed.
+// One finding per ungranted pair, filed on the grant file and keyed by the
+// importer: a grant covers the pair, so another file of it adds no coupling to
+// review. A grant outliving its last import is a finding: the coupling could
+// return unreviewed.
 
 import type { Finding, StructuralCheck } from '../check-context.ts';
 import { crossFeatureEdges, studioFeatureOf } from './feature-edges.ts';
@@ -45,12 +45,12 @@ export const featureVisibilityCheck: StructuralCheck = {
       const file = grantFiles.get(importee);
       if (file?.kind === 'malformed') continue;
       if (file?.grants.has(importer)) continue;
-      const once = `${edge.from.path}\0${importee}`;
-      if (reported.has(once)) continue;
-      reported.add(once);
+      const pair = `${importer}\0${importee}`;
+      if (reported.has(pair)) continue;
+      reported.add(pair);
       findings.push({
-        check: ID, path: edge.from.path, line: edge.line, key: importee,
-        message: `${importer} imports ${importee}, which doesn't grant it: add "${importer}" with the reason to ${importee}/${GRANT_FILE}, or move what both need into a feature of its own`,
+        check: ID, path: `${importee}/${GRANT_FILE}`, line: 1, key: `missing:${importer}`,
+        message: `${importer} imports ${importee} (first at ${edge.from.path}:${edge.line}), which doesn't grant it: add "${importer}" with the reason here, or move what both need into a feature of its own`,
       });
     }
 

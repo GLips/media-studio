@@ -102,8 +102,7 @@ export function videoLayoutOf(timeline: Timeline, voice: Voice): VideoLayout {
 /**
  * The scenes painted on `frame`, bottom first, by index, each with its opacity. A crossfade straddles its cut: the
  * outgoing scene keeps playing at full opacity under the incoming one as it fades up. Which scenes paint is read off
- * their `visible` frames, the ones they're mounted on, so a fade still short of opaque always has its outgoing scene
- * under it.
+ * their `visible` (mounted) frames, so a fade short of opaque always has its outgoing scene under it.
  */
 export function scenesAtFrame({ scenes, fps }: VideoLayout, frame: number): { k: number; alpha: number }[] {
   const k = Math.max(0, scenes.findIndex((s, j) => frame >= s.from && (frame < s.to || j === scenes.length - 1)));

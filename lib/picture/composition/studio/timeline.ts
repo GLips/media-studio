@@ -15,11 +15,9 @@ import type { CaptionStyle } from '#lib/picture/captions/studio/caption-style.ts
 
 /**
  * What a scene promises; `studio check` fails if it isn't kept.
- * - `see`: the named highlight is drawn, on screen and clear of tags and the caption, for all of `during`.
- * - `hold`: the tracked element (its motion name, or `owner/name`) is steady and visible for `for` seconds somewhere
- *   in `during`: centre and size within `within` px (default 2), reported values within 0.5%, 95% opaque with the
- *   next scene's dissolve counted. e.g. the price, a second before the next line:
- *   `{ hold: 'price', for: 1, during: { start: s.line('price').word('twelve').start, end: s.line('next').start } }`
+ * - `see`: the named highlight is drawn on screen, clear of tags and the caption, for all `during`.
+ * - `hold`: the tracked element (motion name, or `owner/name`) is steady and visible for `for` seconds within
+ *   `during`: centre and size within `within` px (default 2), values within 0.5%, 95% opaque, dissolves counted.
  */
 export type SceneExpectation =
   | { see: string; during: { start: number; end: number } }

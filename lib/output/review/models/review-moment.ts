@@ -1,17 +1,13 @@
 // review-moment.ts: where a review note sits in a video's structure, which a retime keeps and a frame number doesn't.
-// Pure: the review server builds a render's timing from its snapshot, and review-notes.ts records and places moments.
 //
-// A moment is read off the render the note was written on, and placed on another render through that render's own
-// timing, so the two snapshots are the only clocks involved: never the project's current code.
+// A moment is read off the render the note was written on, and placed on another through that render's timing, never
+// the project's code.
 //
-// The anchor, most specific first: the spoken word under the frame, the scene's last beat at or before it, or else
-// the scene's cut. A named cue within reach rides along and places the note ahead of its anchor: a cue keeps its name
-// when its scene's beats are re-cut, and a beat number doesn't.
+// The anchor: the spoken word under the frame, the scene's last beat at or before it, or the scene's cut. A named cue
+// within reach places the note ahead of its anchor, as a cue keeps its name when beats are re-cut. A moment keeps its
+// scene's rung on that render, so a note on the animatic still reads as one.
 //
-// A moment also names its scene's rung on the fidelity ladder as it was on that render, so a note on the animatic
-// still reads as one after the scene has risen.
-//
-// Negative space: a moment is one instant. A range note places its first frame and keeps its length.
+// A moment is one instant: a range note places its first frame and keeps its length.
 import type { SceneRung } from '#lib/timing/timeline/models/scene-rung.ts';
 import type { TimelineClockTable } from '#lib/timing/timeline/models/timeline.ts';
 
@@ -84,7 +80,7 @@ export function reviewMomentAt(frame: number, timing: ReviewTiming): ReviewMomen
   if (!scene) return undefined;
   const nearest = Object.entries(timing.cues)
     .filter(([, at]) => Math.abs(at - frame) <= REVIEW_CUE_REACH_FRAMES)
-    .sort(([, a], [, b]) => Math.abs(a - frame) - Math.abs(b - frame))[0];
+    .toSorted(([, a], [, b]) => Math.abs(a - frame) - Math.abs(b - frame))[0];
   const base = { scene: scene.id, ...(scene.bar !== null && { bar: scene.bar }), ...(scene.rung && { rung: scene.rung }), ...(nearest && { cue: { name: nearest[0], frames: frame - nearest[1] } }) };
   const line = timing.lines.find((l) => l.from <= frame && frame < l.to);
   const word = line ? line.words.findLastIndex((w) => w.from <= frame) : -1;
@@ -108,7 +104,7 @@ export function placeReviewMoment(moment: ReviewMoment, timing: ReviewTiming): R
     const line = timing.lines.find((l) => l.id === moment.line);
     if (!line) return { gone: `line ${moment.line} isn't spoken in this render` };
     // A re-read line can gain or lose words before this one: the same word nearest its old place.
-    const same = line.words.map((w, i) => ({ ...w, i })).filter((w) => w.text === moment.text).sort((a, b) => Math.abs(a.i - moment.word) - Math.abs(b.i - moment.word))[0];
+    const same = line.words.map((w, i) => ({ ...w, i })).filter((w) => w.text === moment.text).toSorted((a, b) => Math.abs(a.i - moment.word) - Math.abs(b.i - moment.word))[0];
     return same ? { frame: same.from + moment.frames } : { gone: `line ${moment.line} no longer says "${moment.text}"` };
   }
   const frame = scene.from + moment.frames;

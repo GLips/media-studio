@@ -31,11 +31,11 @@ export function listProjectArtifacts(project: string): ProjectArtifact[] {
       const pair = transparentPairOf(artifact.path);
       return pair && paths.has(pair) ? { ...artifact, pair } : artifact;
     })
-    .sort((a, b) => b.modified.localeCompare(a.modified));
+    .toSorted((a, b) => b.modified.localeCompare(a.modified));
 }
 
 /** Every project with what it has made, the most recently active first. */
 export function listProjectsWithArtifacts(projects: readonly string[]): ProjectListing[] {
   return projects.map((project) => ({ project, artifacts: listProjectArtifacts(project) }))
-    .sort((a, b) => (b.artifacts[0]?.modified ?? '').localeCompare(a.artifacts[0]?.modified ?? '') || a.project.localeCompare(b.project));
+    .toSorted((a, b) => (b.artifacts[0]?.modified ?? '').localeCompare(a.artifacts[0]?.modified ?? '') || a.project.localeCompare(b.project));
 }

@@ -151,7 +151,7 @@ export function bounceModel(p: BounceParams, format: VideoFormat): BounceModel {
   gaps.forEach((gap, i) => {
     if (!(gap > 2 * half)) throw new RangeError(`bouncingBallAt: beats ${i} and ${i + 1} are ${gap.toFixed(3)} s apart, no longer than a landing (${(2 * half).toFixed(3)} s)`);
   });
-  const spb = p.spb ?? (gaps.length ? [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length / 2)] : 0.5);
+  const spb = p.spb ?? (gaps.length ? gaps.toSorted((a, b) => a - b)[Math.floor(gaps.length / 2)] : 0.5);
   const g = p.gravity ?? (8 * (p.height ?? REF.height)) / (spb - 2 * half) ** 2;
   const step = p.step ?? REF.step, groundY = p.groundY ?? REF.groundY, k = p.stretchPerSpeed ?? REF.stretchPerSpeed;
   const x = p.x ?? format.width / 2 - ((n - 1) * step) / 2;
@@ -324,8 +324,8 @@ const SCRAMBLE_GLYPHS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789*#&%+/<>[]{}=?';
 /**
  * `text` typing on as the reference's HUD decodes: its first place shows a random glyph from `since` 0, the rest type
  * on from `hold` at `rate` characters a second, each re-rolling every frame (at `fps`) until it settles `lag` after it
- * appeared. Characters not yet shown are spaces, so the line never shifts. type.ts's scrambleAt scrambles every
- * character from the start.
+ * appeared. Characters not yet shown are spaces, so the line never shifts. (type.ts's scrambleAt scrambles all at
+ * once.)
  */
 export function typeOnScramble(text: string, since: number, seed: string, { fps, rate = 90, hold = 4 * REF_F, lag = 4 * REF_F }: { fps: number; rate?: number; hold?: number; lag?: number }): string {
   const count = (s: number) => (s < 0 ? 0 : s < hold ? 1 : 2 + Math.floor((s - hold) * rate));

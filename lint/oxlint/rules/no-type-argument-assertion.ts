@@ -15,12 +15,10 @@ import { defineSourceRule } from "../lib/rule-file.ts";
 import { withoutTransparentWrappers } from "../lib/transparent-wrappers.ts";
 import { type ESTree } from "@oxlint/plugins";
 
-// Matched against the LAST segment of the callee, so the receiver never has to be enumerated. Every
-// name here reads external bytes: the HTTP verbs (axios, ky, ofetch and every wrapper of them),
-// `json` for a Response body, `parse` for text formats, the SQL driver methods, and the GraphQL
-// tags. `all` is absent on purpose despite `db.all<Row>()`: it would take `Promise.all<[A, B]>`
-// with it, and that type argument is a real annotation rather than a claim about data. `sql` is
-// absent for a different reason — it has an owner, and the header says which.
+// Matched against the callee's LAST segment, so receivers need no list. Every name reads external
+// bytes: HTTP verbs, a Response's `json`, `parse`, SQL driver methods, GraphQL tags. `all` is
+// absent despite `db.all<Row>()`: it would take `Promise.all<[A, B]>`, a real annotation rather
+// than a claim about data. `sql` is absent because it has an owner; the header says which.
 const ASSERTING_DATA_CALL_NAMES = new Set([
   "delete",
   "execute",
@@ -38,14 +36,11 @@ const ASSERTING_DATA_CALL_NAMES = new Set([
 ]);
 
 // Both spellings of the member access, plus the bare call. `client["get"]<User>(url)` is the one a
-// rule reading only `property.name` misses, and it is a single keystroke from the plain form.
+// rule reading only `property.name` misses.
 //
-// A callee can be wrapped too: `api.get!<User>(url)` and `(api.get as Getter)<User>(url)` are the
-// same call with a node wedged between it and its callee, and either one beats a matcher reading
-// `callee` directly. `lib/transparent-wrappers.ts` owns which nodes those are — a wrapped callee
-// and a wrapped value are one question, and this rule holding its own list of the answer is how
-// the two drift. Its NEGATIVE SPACE note carries the `ParenthesizedExpression` reasoning; the
-// parenthesized call in the spec below reports through the plain path either way.
+// A callee can be wrapped too: `api.get!<User>(url)` and `(api.get as Getter)<User>(url)` beat a
+// matcher reading `callee` directly. `lib/transparent-wrappers.ts` owns which nodes those are, so
+// wrapped callees and wrapped values never drift apart.
 function calledName(expression: ESTree.Expression): string | null {
   const callee = withoutTransparentWrappers(expression);
   if (callee.type === "Identifier") return callee.name;

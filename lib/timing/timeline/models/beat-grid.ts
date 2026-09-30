@@ -16,14 +16,10 @@ export type BeatGrid = {
 };
 
 /**
- * The grid of a track as the video plays it: its tracked beats (so a track that drifts is followed), with beat 0 at
- * its first downbeat (a fitted track's `fit.downbeats[0]`, else its first beat), shifted by where the video starts in
- * the track (`MusicBed.sourceStartSeconds`). Past its last tracked beat it goes on at the tempo.
+ * A track's grid as played: its tracked beats from its first downbeat, so drift is followed.
  *
- * `steady` is for a track made on a grid (electronic, generated): the tracker places each beat up to 100 ms either
- * side of the real one where a syncopated bass pulls it, so the grid is instead one tempo and phase fitted through
- * them all. Across a fitted track's seam the phase holds only if the seam sat on the source's real grid: check the
- * cuts after one by ear or with `studio study`.
+ * `steady` fits one tempo and phase, for a grid-made track whose beats a syncopated bass pulls up to 100 ms off.
+ * Across a fitted seam that holds only if the seam sat on the source's grid: check cuts after one by ear.
  */
 export function beatGrid(track: { bpm: number; beats: readonly number[]; fit?: { downbeats: readonly number[] } }, { sourceStartSeconds = 0, steady = false } = {}): BeatGrid {
   const first = track.fit?.downbeats[0] ?? track.beats[0];
@@ -55,7 +51,7 @@ export function steadyBeatGrid(bpm: number, first = 0): BeatGrid {
 /**
  * One tempo and phase through tracked beats, robust to the stretches a tracker got pulled off (which all lean the same
  * way, so a median of slopes leans with them). Every line through two beats a bar or more apart is a candidate; the
- * one the most beats sit within 25 ms of wins, refined by least squares through those beats.
+ * one the most beats sit within 25 ms of wins, then refined by least squares.
  */
 function fitSteadyBeatGrid(beats: readonly number[], nominalSpb: number): BeatGrid {
   const n = beats.map((b) => Math.round((b - beats[0]) / nominalSpb));

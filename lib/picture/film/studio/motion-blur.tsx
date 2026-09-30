@@ -8,10 +8,9 @@ import { useVideoFormat } from '#lib/picture/composition/studio/video-format.ts'
 import { motionEchoAttrs } from '#lib/output/look/studio/motion-tag.ts';
 
 /**
- * `render(t)` drawn at `samples` times spread over the `shutter` (a fraction of a frame: 0.5 is film's 180°) ending at
- * `t`, averaged. The average is exact only when every sample is opaque over the frame, so `render` must draw its own
- * background: wrap a whole shot, not one element over another shot. Costs `samples` renders; 6–10 is smooth. A still
- * frame is drawn once. Only the sample at `t` is measured; the others are echoes.
+ * `render(t)` drawn at `samples` times over the `shutter` (a fraction of a frame: 0.5 is film's 180°) ending at `t`,
+ * averaged. The average is exact only when every sample is opaque, so `render` must draw its own background: wrap a
+ * whole shot, not one element over another. 6–10 samples is smooth. Only the sample at `t` is measured.
  */
 export function ShutterBlur({ t, render, shutter = 0.5, samples = 8, moving = true }: {
   t: number;

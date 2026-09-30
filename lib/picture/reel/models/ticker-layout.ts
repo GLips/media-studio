@@ -153,13 +153,11 @@ const tickerPoseAt = (light: TickerPose, bold: TickerPose, k: number): TickerPos
 });
 
 /**
- * The slots of an endless repeating row that cover `from`–`to` px along its band at `t`, each glyph at its own point
- * in the breath and every slot pushed along by the widths before it. `offset` is where slot 0 would rest: the drift.
+ * The slots of an endless repeating row covering `from`–`to` px of its band at `t`; `offset` is the drift.
  *
- * Laid from any one slot, the row would sway as a whole with the breath around that slot. Instead the row keeps its
- * mean displacement at zero over a window `anchor` px either side of `centre` (Hann-weighted, so slots slide in and
- * out of it smoothly): neighbours move in opposite directions and the drift reads linear, as the reference's. Keep
- * `centre` fixed on the band while `from`–`to` changes, or the row shifts with it.
+ * Laid from one slot, the row would sway whole. Instead its mean displacement is zero over a Hann window `anchor` px
+ * around `centre`, so neighbours move oppositely and the drift reads linear. Keep `centre` fixed as `from`–`to`
+ * moves, or it shifts.
  */
 export function layoutTickerRow(t: number, style: TickerRowStyle, { offset, from, to, centre = (from + to) / 2, anchor = to - from }: {
   offset: number;

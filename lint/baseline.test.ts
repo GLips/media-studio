@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { baselineOf, compareToBaseline } from './baseline.ts';
-import type { Finding } from './check-context.ts';
+import { baselineOf, baselineTier, compareToBaseline, rebaselineTier } from './baseline.ts';
+import type { Finding } from './structural/check-context.ts';
 
 const finding = (path: string, line: number, key = 'x'): Finding => ({ check: 'c', path, line, key, message: '' });
 
@@ -12,4 +12,11 @@ test("baselined findings report without blocking, even after they move; a new or
   assert.deepEqual(baselined.map((f) => `${f.path}:${f.line}`), ['a.ts:5', 'a.ts:12']);
   assert.deepEqual(fresh.map((f) => `${f.path}:${f.line}`), ['a.ts:20', 'new.ts:1']);
   assert.deepEqual(stale, [{ check: 'c', path: 'b.ts', key: 'x', count: 1 }]);
+});
+
+test("each tier judges and rewrites only its own entries in the scope's one baseline", () => {
+  const both = { 'file-size': { 'a.ts': { big: 1 } }, 'arch(no-long-comments)': { 'a.ts': { '// long': 1 } } };
+  assert.deepEqual(Object.keys(baselineTier(both, 'oxlint')), ['arch(no-long-comments)']);
+  const rewritten = rebaselineTier(both, 'structural', [{ check: 'file-size', path: 'b.ts', line: 1, key: 'big', message: '' }]);
+  assert.deepEqual(rewritten, { 'arch(no-long-comments)': { 'a.ts': { '// long': 1 } }, 'file-size': { 'b.ts': { big: 1 } } });
 });

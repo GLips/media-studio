@@ -1,16 +1,14 @@
 // hosts.ts: a video can be about a product repo, its host, and compose that repo's real React components.
 //
-//   work/hosts.json             committed in the workspace, optional: host name → { repo: git url }
-//   work/hosts.local.json       gitignored, optional: host name → a working copy on this machine (absolute, or ~/…)
-//   <project>/host.json         the project opts in: { name, ref, browserStubs? } (lib/platform/host/engine/project-host-spec.ts)
+//   work/hosts.json             optional, committed: host name → { repo: git url }
+//   work/hosts.local.json       optional, gitignored: host name → a working copy (absolute, or ~/…)
+//   <project>/host.json         the project opts in: { name, ref, browserStubs? }
 //   <project>/host              gitignored symlink to the resolved checkout, so a scene imports
 //                               `./host/src/components/Button.tsx` and tsc and webpack follow it like any file
 //
-// A working copy named in hosts.local.json is used as it stands (whatever is checked out, dirty or not), so a video
-// can show work in progress. Otherwise the ref is checked out from one shared partial clone, <cache>/<name>.git, into
-// a worktree per commit, <cache>/<name>@<short-sha>, which later syncs at the same commit (from any studio clone) reuse.
-// <cache> is $XDG_CACHE_HOME/studio/hosts, or ~/.cache/studio/hosts. It must sit outside the studio tree: a host's
-// own tooling (vite, tsc) walks up for node_modules and would pick up the studio's packages.
+// A working copy named in hosts.local.json is used as it stands, dirty or not. Otherwise the ref is checked out from
+// one shared partial clone into a worktree per commit. The cache ($XDG_CACHE_HOME/studio/hosts) must sit outside the
+// studio tree: a host's own tooling walks up for node_modules and would pick up the studio's.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -145,7 +143,7 @@ export function listHosts(): HostListing[] {
     const spec = readProjectHostSpec(join(STUDIO_PROJECTS_DIR, slug));
     return spec ? [{ slug, ...spec }] : [];
   });
-  const names = [...new Set([...Object.keys(repos), ...Object.keys(workingCopies), ...users.map((u) => u.name)])].sort();
+  const names = [...new Set([...Object.keys(repos), ...Object.keys(workingCopies), ...users.map((u) => u.name)])].toSorted();
   return names.map((name) => ({
     name,
     repo: repos[name]?.repo ?? null,

@@ -26,11 +26,11 @@ export type ScenePhase = 'in' | 'solo' | 'out';
 
 /**
  * What a track's `local` box is measured against:
- * - `scene`: nothing owns it, so its own motion is its screen motion;
- * - `group`: the tagged element it's nested in, in that element's own CSS pixels, its transforms undone;
- * - `camera`: the camera it's drawn through, in page pixels of that camera's capture;
- * - `unknown`: its owner's transform couldn't be recovered (a rotation on the way, a zero-size group), or a library
- *   piece was handed a screen rect it can't trace. Only its screen motion is known, which may be partly inherited.
+ * - `scene`: nothing owns it, so its motion is its screen motion;
+ * - `group`: its tagged parent, in that element's CSS pixels, transforms undone;
+ * - `camera`: its camera, in that capture's page pixels;
+ * - `unknown`: its owner's transform is unrecoverable (a rotation, a zero-size group, an untraceable rect). Only
+ *   its screen motion is known, maybe inherited.
  */
 export type MotionAttribution = 'scene' | 'group' | 'camera' | 'unknown';
 
@@ -171,8 +171,8 @@ function errorLog() {
 
 /**
  * The samples on one frame that can go into tracks: a camera seen through several captures merged into one, and
- * every id still claimed twice, or carrying a value that isn't a number, dropped. A name only authors chose that's
- * claimed twice is an error; one the library picked for any of them is ambiguous, and noted in `ambiguous` by id and count.
+ * every id still claimed twice, or with a non-number value, dropped. A doubled name only authors chose is an error;
+ * one the library picked for any of them is ambiguous, noted in `ambiguous` by id and count.
  */
 function usableSamples(fm: FrameMotion, log: ReturnType<typeof errorLog>, ambiguous: (id: string, elements: number) => void): MotionSample[] {
   const byId = new Map<string, MotionSample[]>();
@@ -264,7 +264,7 @@ export function assembleMotionTracks(frames: readonly FrameMotion[], { fps, firs
       id, scene: s.scene, name: s.name, ...(s.kind && { kind: s.kind }), segments: rs.map((r) => segmentOf(r.samples, r.start, id, log)),
     })),
     coverage: {
-      scenes: [...coverage].map(([id, c]) => ({ id, tracks: c.tracks.size, unmeasured: [...c.unmeasured].sort() })),
+      scenes: [...coverage].map(([id, c]) => ({ id, tracks: c.tracks.size, unmeasured: [...c.unmeasured].toSorted() })),
       ambiguous: ambiguous.list().map(({ of, span }) => ({ ...of, frames: span })),
     },
     errors: log.list(),

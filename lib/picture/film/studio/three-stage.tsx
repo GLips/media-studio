@@ -277,7 +277,7 @@ function jitterExposure(scene: THREE.Scene, camera: THREE.PerspectiveCamera, e: 
 /**
  * Tone maps the average and encodes it for the canvas. Encoded alone, a transparent (premultiplied) average would
  * brighten partial cover and clip added light white over a light page. So it's laid over the backdrop in linear
- * light, encoded, and the backdrop's share taken out again: composited over that colour, the page shows the linear blend.
+ * light, encoded, and the backdrop's share taken out: composited over that colour, the page shows the linear blend.
  */
 const STAGE_OUTPUT = /* glsl */ `
 uniform sampler2D tImage;

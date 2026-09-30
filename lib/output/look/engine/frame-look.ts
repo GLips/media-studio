@@ -43,7 +43,7 @@ export function parseLookFrames(spec: string): number[] {
   if (!frames.length || !frames.every((f) => Number.isInteger(f) && f >= 0)) {
     throw new Error(`frames are whole numbers, like 200:210, 200:260:5 or 161,176,191, not ${spec}`);
   }
-  return [...new Set(frames)].sort((a, b) => a - b);
+  return [...new Set(frames)].toSorted((a, b) => a - b);
 }
 
 /** A number from a comma or colon list; an empty item is NaN, where Number('') would quietly make it 0. */
@@ -123,7 +123,7 @@ function imagesOut(label: string, dir: string) {
 }
 
 function readImages(dir: string, frames: number[]) {
-  const files = readdirSync(dir).sort().map((f) => join(dir, f));
+  const files = readdirSync(dir).toSorted().map((f) => join(dir, f));
   if (files.length !== frames.length) throw new Error(`decoded ${files.length} of ${frames.length} frames into ${dir}`);
   return files;
 }
@@ -181,7 +181,7 @@ export async function lookAgainst(before: OpenLookSource, after: OpenLookSource,
     const describe = (i: number) => `${changed[i].toLocaleString('en-US')} px (${perMille(i).toFixed(1)}‰)`;
 
     const rows = frames.map((_, i) => i);
-    const shown = rows.length <= MAX_AGAINST_ROWS ? rows : [...rows].sort((x, y) => changed[y] - changed[x]).slice(0, MAX_AGAINST_ROWS).sort((x, y) => x - y);
+    const shown = rows.length <= MAX_AGAINST_ROWS ? rows : rows.toSorted((x, y) => changed[y] - changed[x]).slice(0, MAX_AGAINST_ROWS).toSorted((x, y) => x - y);
     tileLabelledImages(shown.flatMap((i) => [
       { file: a[i], label: `${frames[i]} before` }, { file: b[i], label: `${frames[i]} after` }, { file: m[i], label: `${frames[i]} changed: ${describe(i)}` },
     ]), out, { cols: 3 * cols, w, h });

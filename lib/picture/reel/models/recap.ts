@@ -49,14 +49,13 @@ export function recapPopStarts(n: number, cols: number, rows: number, order: Rec
   });
   // Distances from the centre aren't whole, so ranks are matched after rounding away float noise.
   const key = (r: number) => Math.round(r * 1e6);
-  const steps = [...new Set(ranks.map(key))].sort((a, b) => a - b);
+  const steps = [...new Set(ranks.map(key))].toSorted((a, b) => a - b);
   const each = steps.length > 1 ? spread / (steps.length - 1) : 0;
   return ranks.map((r) => Math.round(steps.indexOf(key(r)) * each * fps) / fps);
 }
 
-// The reference's two grids. A 2×2 of 942×522 tiles, 12 px (1.1% H) in from the edges and apart, 12 px corners, pops
-// each from 0.76 over 0.25 s, overshooting 12.6% of the way; a 3×3 of 624×344, 8 in, 16 (1.5% H) apart, 8 px corners,
-// from 0.66 over 0.23 s, overshooting 15.4% (to 1.05; its middle and CODE tiles within 3 px every frame).
+// The reference's two grids, measured: a 2×2 of 942×522 tiles and a 3×3 of 624×344, in its px and seconds. The
+// 3×3's pop, peaking at 1.05, matches its middle and CODE tiles within 3 px every frame.
 const RECAP_TWO_UP = { margin: 12, gutter: 12, radius: 12, from: 0.76, duration: 0.25, overshoot: 0.126 };
 const RECAP_THREE_UP = { margin: 8, gutter: 16, radius: 8, from: 0.66, duration: 0.23, overshoot: 0.154 };
 // The pop-out's swell before it shrinks: less than the pop-in's, as an exit is the quieter move.

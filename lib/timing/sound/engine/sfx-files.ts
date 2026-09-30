@@ -96,7 +96,7 @@ export function writeSfxFile(request: SfxRequest, out: string): { wav: string; m
  * to a recipe or to rendering reaches the sounds a video already places. Returns the modules rewritten.
  */
 export function rerenderSfxFiles(dir: string): string[] {
-  return readdirSync(dir).filter((file) => file.endsWith('.ts')).sort().flatMap((file) => {
+  return readdirSync(dir).filter((file) => file.endsWith('.ts')).toSorted().flatMap((file) => {
     const text = readFileSync(join(dir, file), 'utf8');
     const request = text.match(/request: (\{.*\}) \} satisfies SfxSound;$/m)?.[1];
     if (!text.startsWith('// Written by `studio sfx render') || !request) return [];

@@ -1,11 +1,12 @@
-// project-brand.ts: the kit a project's brand.ts names, read from work/brands/<name>/ (see lib/picture/brand/models/brand.ts), and
-// generated/brand.ts, which the bundle aliases as `@brand`. That module is rewritten on every bundle. It imports the
-// kit's brand.ts and the project's and merges them in the bundle, so an open Studio picks up an edit to either. A kit
+// project-brand.ts: the kit a project's brand.ts names, read from work/brands/<name>/ (see models/brand.ts), and
+// generated/brand.ts, which the bundle aliases as `@brand` and rewrites every time. It imports the kit's brand.ts and
+// the project's and merges them in the bundle, so an open Studio picks up an edit to either. A kit
 // whose font or logo files are missing, or an override that doesn't fit, stops the bundle.
 //
-// Imported by lib/output/render/engine/project-bundle.ts, so it stays free of import.meta (the Remotion CLI bundles that file to
-// CommonJS): the kit's folder is found from the project's (work/projects/<p> → work/brands), and both brand.ts files
-// are read with require, which Node strips of types. Require caches, so in a long-lived process these checks can see an earlier edit; the bundle checks again.
+// Imported by project-bundle.ts, so it stays free of import.meta (the Remotion CLI bundles that file to CommonJS):
+// the kit's folder is found from the project's (work/projects/<p> → work/brands), and both brand.ts files are read
+// with require, which strips types. Require caches, so a long-lived process can see a stale edit; the bundle
+// checks again.
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, dirname, join, relative, resolve } from 'node:path';
@@ -56,10 +57,9 @@ function svgSize(path: string): { w: number; h: number } {
 }
 
 /**
- * Rewrites generated/brand.ts: the project's kit with its overrides, its fonts loaded and logos sized
- * (lib/picture/brand/studio/brand.tsx), or a module that throws, naming the fix, when a design imports `@brand` in a project with no
- * brand.ts. The kit's files are imported by name, so a project that names another kit, or a kit that names other
- * files, needs a new bundle. Returns its path.
+ * Rewrites generated/brand.ts and returns its path: the project's kit with its overrides, fonts loaded and logos sized
+ * (brand.tsx), or, in a project with no brand.ts, a module that throws naming the fix. The kit's files are imported
+ * by name, so a project naming another kit, or a kit naming other files, needs a new bundle.
  */
 export function writeProjectBrandModule(projectDir: string): string {
   const path = projectBrandModuleFor(projectDir);

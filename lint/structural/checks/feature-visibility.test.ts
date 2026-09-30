@@ -29,11 +29,11 @@ test("an import from one feature into another needs the importee's grant, howeve
     'cli/paint.ts': "import { brush } from '#lib/picture/brush/models/brush.ts';\n",
   });
   assert.deepEqual(caught(findings), [
-    'lib/picture/paint/engine/paint.ts:lib/picture/brush',
-    'lib/picture/paint/models/stroke.ts:lib/picture/brush',
+    // Once for the pair, however many of paint's files import brush.
+    'lib/picture/brush/visibility.json:missing:lib/picture/paint',
     // A grant naming a folder that is no feature.
     'lib/picture/paper/visibility.json:grant:lib/picture/gone',
-    'web/src/features/f/ui/page.tsx:web/src/features/g',
+    'web/src/features/g/visibility.json:missing:web/src/features/f',
   ]);
 });
 
@@ -53,4 +53,14 @@ test('a grant outliving its import, a grant without a reason and a grant file ou
     'lib/picture/paint/visibility.json:grant:lib/picture/brush',
     'lib/picture/visibility.json:no-feature',
   ]);
+});
+
+test('an import into or out of a feature held out until vid-108 lands needs no grant', () => {
+  const findings = runCheckOnFiles('feature-visibility', {
+    'package.json': PACKAGE,
+    'lib/picture/stamp-paint/models/stamp.ts': "import { reel } from '#lib/picture/reel/models/reel.ts';\nexport const stamp = 1;\n",
+    'lib/picture/reel/models/reel.ts': 'export const reel = 1;\n',
+    'lib/picture/kit/models/kit.ts': "import { stamp } from '#lib/picture/stamp-paint/models/stamp.ts';\n",
+  });
+  assert.deepEqual(caught(findings), []);
 });

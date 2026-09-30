@@ -25,9 +25,9 @@ export type TimelineSceneMoments = {
 
 export function timelineSceneMoments(timeline: Timeline): TimelineSceneMoments[] {
   return timeline.scenes.map((scene, k) => {
-    const span = timeline.spec.scenes[scene.id] as SceneSpan;
+    const span = timeline.spec.scenes[scene.id];
     const moments: TimelineMoment[] = [
-      ...Object.entries(scene.cues as Readonly<Record<string, number>>).map(([name, frame]) => ({
+      ...Object.entries(scene.cues).map(([name, frame]) => ({
         kind: 'cue' as const, name, frame, at: momentWords(span.cues![name], span.driver),
       })),
       ...timeline.replays.filter((replay) => replay.target === scene.id).map((replay) => ({
@@ -40,7 +40,7 @@ export function timelineSceneMoments(timeline: Timeline): TimelineSceneMoments[]
     ];
     return {
       n: scene.n, id: scene.id, driver: scene.driver, from: scene.from, to: scene.to, beats: scene.beats,
-      musicBeat: timeline.musicBeats[k], moments: moments.sort((a, b) => a.frame - b.frame),
+      musicBeat: timeline.musicBeats[k], moments: moments.toSorted((a, b) => a.frame - b.frame),
     };
   });
 }

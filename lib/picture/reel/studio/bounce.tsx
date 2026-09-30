@@ -61,7 +61,7 @@ export function FieldSwell({ color, motion, from, to, lift, stretch, shutter, ..
   motion?: string | false;
 } & ({ k: number; duration?: number; t?: never } | { t: number; duration?: number; k?: never })) {
   const format = useVideoFormat();
-  const duration = clock.duration ?? SWELL_TIME, k = clock.k ?? clock.t! / duration;
+  const duration = clock.duration ?? SWELL_TIME, k = clock.k ?? clock.t / duration;
   if (k < 0) return null;
   const opts = { format, from, to, lift, stretch, shutter, duration };
   const tag = pieceMotionAttrs(motion, 'swell', { kind: 'field-swell', values: { k: clamp(k) } });

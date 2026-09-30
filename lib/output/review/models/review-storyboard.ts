@@ -1,14 +1,11 @@
 // review-storyboard.ts: the storyboard `studio review` shows beside a render, and the timing marks on its scrubber,
-// both read from the render's own snapshot. Pure: lib/output/review/engine/ hands it the snapshot, the app draws it, and
-// the stills are that render's frames, so a card shows what was rendered at the rung each scene was on.
+// both read from the render's snapshot, so a card shows what was rendered at the rung each scene was on.
 //
-// A card per scene with its note, its rung and its stills. A timed video (one with a clock) gets a still on each frame
-// the timeline names in a scene (its cues, the replays landing there, its landmarks), captioned in timeline.ts's words,
-// and one per voiced line from the middle of its words; a scene naming nothing gets one from its middle. A video
-// without a clock gets a still per line, or one from each scene's middle.
+// A card per scene with its note, its rung and its stills. A timed video gets a still on each frame the timeline names
+// in a scene, captioned in timeline.ts's words, and one per voiced line from the middle of its words; a scene naming
+// nothing gets one from its middle. A video without a clock gets a still per line, or one from each scene's middle.
 //
-// Every frame here is on the render's clock, from its first frame: a slice (`studio render --frames`) keeps only the
-// cards, stills and marks inside it.
+// Every frame here is on the render's clock: a slice keeps only what's inside it.
 import type { TimelineMoment } from '#lib/timing/timeline/models/scene-moments.ts';
 import type { SceneRung } from '#lib/timing/timeline/models/scene-rung.ts';
 import type { TimelineClockTable } from '#lib/timing/timeline/models/timeline.ts';
@@ -64,7 +61,7 @@ export function reviewStoryboardOf({ fps, frames, scenes, lines, clock }: Review
     const stills = [
       ...[...new Set(named.map((m) => m.frame))].map((frame) => ({ frame: onRender(frame), moments: named.filter((m) => m.frame === frame) })),
       ...lines.filter((line) => scene.lines.includes(line.id)).map(lineStill),
-    ].filter((s) => held(s.frame)).sort((a, b) => a.frame - b.frame);
+    ].filter((s) => held(s.frame)).toSorted((a, b) => a.frame - b.frame);
     const middle = Math.min(Math.max(Math.round((Math.max(from, 0) + Math.min(to, length)) / 2), 0), length - 1);
     const timing = bar?.driver === 'beat'
       ? `${bar.beats} beats${bar.musicBeat !== null && bar.musicBeat !== 1 ? `, in on the music's beat ${bar.musicBeat}` : ''}`

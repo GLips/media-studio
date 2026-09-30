@@ -1,11 +1,10 @@
 // ─── The files the checks read, parsed once, from one git snapshot ────
 //
-// Every check reads the same candidate snapshot: the index (what the next commit
-// would hold) or a committed tree. Never the working tree, so an untracked
-// scratch file or a half-edit by another agent can't change a verdict, and a
-// pre-commit run judges exactly what is being committed.
+// Every check reads the same candidate snapshot: the index or a committed tree.
+// Never the working tree, so an untracked file or another agent's half-edit
+// can't change a verdict, and a pre-commit run judges exactly what's committed.
 //
-// Import targets resolve against that snapshot too. Gitignored generated inputs
+// Imports resolve against that snapshot too. Gitignored generated inputs
 // (`captures/index.ts`, `music/index.ts`) aren't in it: their edges stay, as a
 // canonical path with `backed: false`, so a check still classifies them by path.
 //
@@ -72,8 +71,8 @@ export type SourceFile = {
 };
 
 /**
- * One repository's snapshot and where it sits in the tree's path space: `mount` is `''` for the root repository,
- * whose package.json names the aliases, or a folder (`work`) that prefixes every path the repository lists.
+ * One repository's snapshot and its place in the tree's path space: `mount` is `''` for the root repository,
+ * whose package.json names the aliases, or a folder (`work`) prefixing every path it lists.
  * `gitEnv` is the environment git runs in: the process's own for the repository git is committing (a hook's
  * GIT_INDEX_FILE is the index the commit holds), isolatedGitEnv() for any other.
  */
@@ -136,7 +135,7 @@ export function loadSourceTree(options: { repos: readonly MountedSnapshot[]; sco
   // imports through the root's too.
   const aliases = owner.get('package.json')?.repo.mount === '' ? readImportsMap(readText('package.json')) : {};
   return {
-    paths, sources, undeclared: undeclared.sort(), readTexts,
+    paths, sources, undeclared: undeclared.toSorted(), readTexts,
     resolveImport: (fromPath, specifier, names) => resolveImportTarget(paths, aliases, fromPath, specifier, names),
   };
 }
@@ -235,7 +234,7 @@ function scanModule(module: ReturnType<typeof parseSync>['module'], program: Ast
     // A computed specifier keeps its edge, as the empty string, so a check can refuse what it can't follow.
     imports.push({ specifier: text ?? '', offset: literal.start ?? node.start, names, typeOnly, bindings: [] });
   });
-  return { imports: imports.sort((a, b) => a.offset - b.offset), exports, starExports };
+  return { imports: imports.toSorted((a, b) => a.offset - b.offset), exports, starExports };
 }
 
 const isRequire = (callee: AstNode) =>

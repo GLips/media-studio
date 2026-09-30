@@ -1,25 +1,16 @@
 // ─── Import policy: the §2 denials no studio check owns ───────────────
 //
-// A project never imports another project; an import into a lib feature
-// (`lib/<area>/<feature>`) from outside it uses the `#lib/*` alias, never a
-// relative path (lint/rewrite-lib-imports.ts rewrites them); `studio` code
-// never reaches `engine` code, except from a spec, which runs in Node and is
-// never bundled; nothing in lib/ imports the web app, whose own rows are
-// webEdgeProblems; a `#`
-// alias names a key package.json's `imports` has; no import climbs out of the
-// repo; nothing outside work/ imports into it, since work/ is your own
-// repository and a clean clone has none, and that holds its private painting
-// styles (work/styles/) out of public code. A project imports only the styles
-// its project.ts's `styles` names, which is how the bundle knows whose assets to
-// check; a style never imports a project, and, since it paints in the browser,
-// never engine code. Scene, model and scratch denials are checks (b), (c) and (d).
+// No project imports another; entering a lib feature from outside uses
+// `#lib/*`; `studio` reaches `engine` only from a spec, which is never bundled;
+// lib/ never imports the web app; nothing climbs out of the repo; nothing
+// outside work/ imports into it, since a clean clone has none. A project
+// imports only the styles its project.ts names, so the bundle knows whose
+// assets to check; a style never imports a project or engine code.
 //
-// A computed `import(expr)` isn't reported here: the CLI loads projects
-// that way. The checks that must follow every edge refuse it themselves.
+// A computed `import(expr)` isn't reported: the CLI loads projects that way.
 //
-// Negative space: the rest of §2's allowed side (a project's picture reaching
-// only `#studio`, `models` code and its own files) isn't held yet: a project
-// may still import any of lib by `#lib/*`, behind the barrel.
+// Negative space: a project may still import any of lib by `#lib/*`; §2's
+// narrower allowed side isn't held yet.
 
 import {
   libFeatureCrossedTo, STUDIO_WORKSPACE_MOUNT, WEB_ENGINE_DOOR, WEB_FEATURE_LAYERS, type StudioPosition, type WebPlace,

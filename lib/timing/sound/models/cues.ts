@@ -1,14 +1,12 @@
-// cues.ts: a video's sound effects as a cue list: one cue per event (lib/timing/sound/models/cue-events.ts), each with the sound the
-// draft chose for it, or why it left it silent, and a few alternatives. An agent edits the draft rather than placing
-// every sound by hand; `studio check` reports the rules an edit breaks. Pure.
+// cues.ts: a video's sound effects, one cue per event, with the sound the draft chose and alternatives. `studio
+// check` reports the rules an edit breaks.
 //
-// The rules are working defaults to tune by ear, not published standards:
-// - a click within 150 ms of the one before stays silent, as Screenify debounces them;
-// - an accent goes only on a scene change, a reveal or a big camera move, at most one every 4 s, never on two scene
-//   changes in a row, and never under a spoken word (a riser may build under one, but peaks in a gap). The draft
-//   prefers scene changes, then big moves, then reveals, and among those the ones with the longest silence around;
-// - a whoosh on a camera move lasts as long as the move, and a riser peaks on its reveal.
-// A sound a scene placed by hand plays from its `<Sfx>`, not the list; its cue is there so the rules count it.
+// The rules are defaults to tune by ear:
+// - a click right after another stays silent, as Screenify debounces them;
+// - an accent goes only on a scene change, a reveal or a big camera move, never on two scene changes in a row, and
+//   never under a spoken word (a riser may build under one, but peaks in a gap);
+// - a whoosh lasts as long as its move, and a riser peaks on its reveal.
+// A sound a scene placed by hand plays from its `<Sfx>`; its cue is there so the rules count it.
 
 import type { SpokenWord } from '#lib/timing/voice/models/voice-words.ts';
 import { roundSfxSeconds, sfxEventSeries, type SfxEvent } from './cue-events.ts';
@@ -77,7 +75,7 @@ export function sfxCuePlays(list: SfxCueList): SfxCuePlay[] {
   return list.cues.flatMap((cue) => {
     const sound = sfxCueSound(cue, list.clickStyle);
     return sound ? [sfxCuePlay(cue, sound)] : [];
-  }).sort((a, b) => a.at - b.at);
+  }).toSorted((a, b) => a.at - b.at);
 }
 
 const recipeOf = (sound: SfxRequest) => sound.sound.split('.')[0];
@@ -165,13 +163,11 @@ function seriesCounts(events: readonly SfxEvent[]): Map<string, number> {
 }
 
 /**
- * Drafts a cue for every event. Clicks and keys all sound, bar debounced clicks; placed sounds play from their scene.
- * Accents are chosen by rank (scene changes, then big camera moves, then reveals) and the silence around them, each
- * only where every accent rule holds against those already sounding.
+ * Drafts a cue for every event, picking accents by rank (scene changes, big moves, reveals) and the silence around
+ * them, wherever every accent rule holds.
  *
- * Edits in `previous` carry over by event id, and count as sounding first. Ids number a scene's clicks (and moves, and
- * each track's reveals) in order, so where a series gained or lost events its ids no longer name the same ones: those
- * edits are dropped, and returned in `dropped` with why.
+ * Edits in `previous` carry over by event id and sound first. Ids number a series in order, so a series that gained
+ * or lost events drops its edits into `dropped`.
  */
 export function draftSfxCues(events: readonly SfxEvent[], words: readonly SpokenWord[], { clickStyle, previous }: { clickStyle: SfxClickStyle; previous?: SfxCueList | null }): { list: SfxCueList; dropped: { id: string; why: string }[] } {
   const ids = new Set(events.map((e) => e.id)), before = seriesCounts(previous?.cues.map((c) => c.event) ?? []), now = seriesCounts(events);
@@ -208,7 +204,7 @@ export function draftSfxCues(events: readonly SfxEvent[], words: readonly Spoken
   // Within a rank, the longest silence first: a pause the voice leaves is where the video takes a breath, like the
   // lead into a new section.
   const candidates = cues.filter((c) => ACCENT_RANK[c.event.kind] !== undefined)
-    .sort((a, b) => ACCENT_RANK[a.event.kind]! - ACCENT_RANK[b.event.kind]! || silenceAround(b.event.at, words) - silenceAround(a.event.at, words) || a.event.at - b.event.at);
+    .toSorted((a, b) => ACCENT_RANK[a.event.kind]! - ACCENT_RANK[b.event.kind]! || silenceAround(b.event.at, words) - silenceAround(a.event.at, words) || a.event.at - b.event.at);
   const accents = cues.flatMap((c) => {
     const play = soundingPlay(c);
     return play && isAccent(play.sound) ? [play] : [];
@@ -256,21 +252,18 @@ export function sfxCueOverrides(list: SfxCueList, words: readonly SpokenWord[]):
   for (const cue of list.cues.filter((c) => c.event.kind === 'placed' && isSfxCueEdited(c))) {
     found.push({ id: cue.event.id, at: cue.event.at, problem: 'edits do nothing to a placed sound, which plays from its <Sfx>: change that instead' });
   }
-  return found.sort((a, b) => a.at - b.at);
+  return found.toSorted((a, b) => a.at - b.at);
 }
 
 /**
- * Where the cue list and the video disagree: a cue whose event moved or went (a re-voice, a retime), or an event with
- * no cue at all, which would play nothing (a click added since the draft). Matched by kind and time, not id, so a
- * check of one stretch doesn't misread ids numbered across a whole scene. Judges events inside `span` only. Placed
- * sounds play whatever the list says, but are judged too: the list's accents keep clear of where it says they are.
+ * Stale cues: a cue whose event moved or went, or an event with no cue. Matched by kind and time, not id, as a check
+ * of one stretch would misread ids numbered across a scene. Placed sounds are judged too: accents keep clear of them.
  *
- * `partial`: the check measured only part of the video. Camera moves and reveals are measured from the first frame
- * checked, so one already under way there isn't found; those two kinds are then left unjudged.
+ * `partial`: moves and reveals under way at the first frame checked go unmeasured, so unjudged.
  */
 export function staleSfxCues(list: SfxCueList, events: readonly SfxEvent[], { from, to, fps, partial }: { from: number; to: number; fps: number; partial: boolean }): SfxCueProblem[] {
   const judged = (e: SfxEvent) => e.at >= from && e.at <= to && !(partial && (e.kind === 'camera-move' || e.kind === 'reveal'));
-  const matching = (e: SfxEvent, among: readonly SfxEvent[]) => among.filter((o) => o.kind === e.kind).sort((a, b) => Math.abs(a.at - e.at) - Math.abs(b.at - e.at))[0];
+  const matching = (e: SfxEvent, among: readonly SfxEvent[]) => among.filter((o) => o.kind === e.kind).toSorted((a, b) => Math.abs(a.at - e.at) - Math.abs(b.at - e.at))[0];
   const cued = list.cues.map((c) => c.event);
   const stale = cued.filter(judged).flatMap((event) => {
     const closest = matching(event, events);
@@ -283,7 +276,7 @@ export function staleSfxCues(list: SfxCueList, events: readonly SfxEvent[], { fr
     if (closest && Math.abs(closest.at - event.at) <= 1 / fps) return [];
     return [{ id: event.id, at: event.at, problem: `a ${event.kind} the cue list has no cue for${event.kind === 'click' || event.kind === 'key' ? ', so it plays nothing' : ''}: redraft with studio sfx draft` }];
   });
-  return [...stale, ...uncued].sort((a, b) => a.at - b.at);
+  return [...stale, ...uncued].toSorted((a, b) => a.at - b.at);
 }
 
 /** The report lines for stale cues (which fail) and overrides (which don't). */

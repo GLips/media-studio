@@ -123,7 +123,7 @@ function renderStrip(video: string, s: StudySection, fps: number, grid: ReturnTy
     // frame after it one early.
     runFfmpeg(['-v', 'error', ...(vectors ? ['-flags2', '+export_mvs'] : []), '-ss', (Math.max(0, first - 0.5) / fps).toFixed(4), '-i', video,
       '-frames:v', String(Math.ceil(count / step)), '-vf', filters.join(','), '-fps_mode', 'vfr', '-q:v', '3', join(dir, '%04d.jpg')]);
-    const files = readdirSync(dir).filter((f) => f.endsWith('.jpg')).sort();
+    const files = readdirSync(dir).filter((f) => f.endsWith('.jpg')).toSorted();
     const h = 2 * Math.round((w * 9) / 16 / 2);
     tileLabelledImages(files.map((file, k) => {
       const t = (first + k * step) / fps;

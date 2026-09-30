@@ -15,10 +15,9 @@ export type StillPreset = keyof typeof STILL_PRESETS;
 export type StillUiZone = { name: string; rect: { x: number; y: number; w: number; h: number } };
 
 /**
- * Where each platform covers the image, which no text or logo may sit under (lib/output/stills/models/still-check.ts). Platforms move these,
- * so they're data. YouTube's duration badge takes the bottom-right corner, generously, since its size varies with the
- * surface. A story's top band is Instagram's progress bar, name and close; the bottom, its reply bar and share buttons:
- * Meta asks for 250 px and 340 px left clear. OG images, squares and portraits are shown whole.
+ * Where each platform covers the image, which no text or logo may sit under. Platforms move these, so they're data.
+ * YouTube's duration badge varies in size with the surface, so its corner is generous. A story's top and bottom bands
+ * are Instagram's chrome: Meta asks for 250 px and 340 px left clear. The rest are shown whole.
  */
 export const STILL_UI_ZONES: Readonly<Record<StillPreset, readonly StillUiZone[]>> = {
   og: [],

@@ -51,7 +51,7 @@ for (const path of tracked) {
   console.log(`${path}: ${rewrites.length}`);
   if (check) continue;
   let next = text;
-  for (const { offset, from, to } of rewrites.sort((a, b) => b.offset - a.offset)) {
+  for (const { offset, from, to } of rewrites.toSorted((a, b) => b.offset - a.offset)) {
     next = next.slice(0, offset) + to + next.slice(offset + from.length);
   }
   writeFileSync(join(root, path), next);

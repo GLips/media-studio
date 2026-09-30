@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { caught, runCheckOnFiles } from '../spec-tree.ts';
 
-test('features that import each other back, at any depth, are one cycle each; a chain is not a cycle', () => {
+test('each import inside a feature cycle, at any depth, is a finding; a chain is not a cycle', () => {
   const findings = runCheckOnFiles('feature-cycles', {
     'package.json': JSON.stringify({ imports: { '#lib/*': './lib/*', '#studio': './lib/api.ts' } }),
     // Obvious: two features importing each other, once by alias and once by a relative climb.
@@ -20,8 +20,21 @@ test('features that import each other back, at any depth, are one cycle each; a 
     'lib/api.ts': "export { paper } from '#lib/picture/paper/models/paper.ts';\nexport const studio = 1;\n",
   });
   assert.deepEqual(caught(findings), [
-    'lib/output/cue/models/cue.ts:lib/output/cue ↔ lib/timing/beat ↔ lib/timing/clock',
-    'lib/picture/brush/models/brush.ts:lib/picture/brush ↔ lib/picture/paint',
-    'web/src/features/f/ui/page.tsx:web/src/features/f ↔ web/src/features/g',
+    'lib/output/cue:→ lib/timing/clock',
+    'lib/picture/brush:→ lib/picture/paint',
+    'lib/picture/paint:→ lib/picture/brush',
+    'lib/timing/beat:→ lib/output/cue',
+    'lib/timing/clock:→ lib/timing/beat',
+    'web/src/features/f:→ web/src/features/g',
+    'web/src/features/g:→ web/src/features/f',
   ]);
+});
+
+test('a feature held out until vid-108 lands closes no cycle', () => {
+  const findings = runCheckOnFiles('feature-cycles', {
+    'package.json': JSON.stringify({ imports: { '#lib/*': './lib/*' } }),
+    'lib/picture/stamp-paint/models/stamp.ts': "import { reel } from '#lib/picture/reel/models/reel.ts';\nexport const stamp = 1;\n",
+    'lib/picture/reel/models/reel.ts': "import { stamp } from '#lib/picture/stamp-paint/models/stamp.ts';\nexport const reel = 1;\n",
+  });
+  assert.deepEqual(caught(findings), []);
 });

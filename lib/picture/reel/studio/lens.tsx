@@ -136,8 +136,7 @@ function lensMapUrls({ width, height }: FrameSize) {
   if (cached) return cached;
   // PNG data URLs: Chrome counts an feImage of an element or an SVG as cross-origin, which turns feDisplacementMap
   // off, and a data URL is ready on the first frame, where a fetched image might not be.
-  // 256 cells across (144 down at 16:9, 7.5 px each at 1080p): each map is linear (or bilinear) between cell centres,
-  // so the stretch keeps it exact.
+  // 256 cells across: each map is linear (or bilinear) between cell centres, so the stretch keeps it exact.
   const w = 256, h = Math.round((w * height) / width), cellX = width / w, cellY = height / h;
   const draw = (pixel: (x: number, y: number) => [number, number, number]) => {
     const canvas = document.createElement('canvas');

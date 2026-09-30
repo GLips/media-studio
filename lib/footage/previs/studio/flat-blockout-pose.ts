@@ -26,7 +26,7 @@ const DEFAULT_OVER = 12;
  */
 export function flatPoseAt<P extends Record<string, number>>(rest: P, keys: readonly FlatKey<P>[], frame: number): P {
   let pose = rest;
-  for (const key of [...keys].sort((a, b) => a.at - b.at)) {
+  for (const key of keys.toSorted((a, b) => a.at - b.at)) {
     if (frame < key.at) break;
     const k = seg(frame, key.at, key.at + (key.over ?? DEFAULT_OVER), key.ease ?? motionCurves.expressive.standard);
     const next = { ...pose };

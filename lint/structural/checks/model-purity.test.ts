@@ -28,7 +28,7 @@ test('a model reaching render, I/O or browser code is caught through any chain; 
     // A project's timeline is a model too.
     'work/projects/p/timeline.ts': "import { Scene } from '../../../lib/api.ts';\nexport const t = Scene;\n",
   });
-  assert.deepEqual(findings.map((finding) => `${finding.path}: ${finding.message}`).sort(), [
+  assert.deepEqual(findings.map((finding) => `${finding.path}: ${finding.message}`).toSorted(), [
     'lib/picture/motion/models/size.ts: a model reaches the global process',
     'lib/picture/motion/models/size.ts: a model reaches the global window',
     // Every lib file a chain passes through is a model now, so the middle hop is caught on its own too.

@@ -1,10 +1,2566 @@
 {
+  "arch(no-chained-type-assertions)": {
+    "lib/output/render/engine/browser-module-page.ts": {
+      "(fn: string, list: unknown[]) => (globalThis as unknown as Record<string, (...a: unknown[]) => unknown>)[fn](...list),": 1
+    },
+    "lib/timing/sound/engine/sfx-files.ts": {
+      "...Object.entries(sfxParamSpecs(recipe as unknown as SfxRecipe)).map(([param, { min, max, doc }]) =>": 1
+    },
+    "lib/timing/sound/models/library.ts": {
+      "return SFX_RECIPES[name as SfxRecipeName] as unknown as SfxRecipe;": 1
+    },
+    "lib/timing/timeline/models/bind-timeline.ts": {
+      "const binding = (bindings as unknown as Record<string, (clock: ResolvedSceneClock, replays: Record<string, BoundReplay<Bound>>) => Bound>)[key];": 1
+    },
+    "lib/timing/timeline/models/timeline.ts": {
+      "return {": 1
+    },
+    "lint/structural/source-tree.ts": {
+      "const program = parsed.program as unknown as AstNode;": 1
+    }
+  },
+  "arch(no-long-comments)": {
+    "lib/picture/motion/models/motion.ts": {
+      "/**": 1
+    }
+  },
+  "arch(no-reflect-access)": {
+    "lib/picture/composition/studio/Root.tsx": {
+      "get: (target, key) => (key === 'now' ? () => pinned : Reflect.get(target, key)),": 1
+    }
+  },
+  "arch(no-type-argument-assertion)": {
+    "lib/output/render/engine/render-pipeline.ts": {
+      "const timeline = sink.json<TimelineReport>(TIMELINE_REPORT_NAME);": 1,
+      "const reports = frames.map((f) => sink.json<FramingReport>(framingArtifactName(f)));": 1,
+      "const motion = assembleMotionTracks(frames.map((f) => sink.json<FrameMotion>(motionArtifactName(f))), { fps, ...span });": 1,
+      "const sfxEvents = sfxEventsFrom({ timeline, motion, marks: frames.flatMap((f) => sink.json<SfxMark[]>(sfxMarkArtifactName(f))) });": 1
+    },
+    "lib/output/render/engine/render-session.ts": {
+      "return sink.json<TimelineReport>(TIMELINE_REPORT_NAME);": 1
+    },
+    "lib/output/render/engine/render-stills.ts": {
+      "const fits = sink.names().filter(isStillFitArtifact).map((n) => sink.json<StillFitReport>(n));": 1,
+      "measure: sink.json<StillMeasure>(STILL_MEASURE_ARTIFACT), fits,": 1
+    }
+  },
+  "arch(no-vacant-symbol-names)": {
+    "lib/footage/previs/studio/blockout.tsx": {
+      "export type BlockoutShape = 'box' | 'sphere' | 'cylinder' | 'cone' | 'figure' | 'card';": 1
+    },
+    "lib/picture/reel/models/bounce-shape.ts": {
+      "export function shapeOfStrain(s: Strain) {": 1
+    },
+    "lib/picture/reel/models/glyph-field.ts": {
+      "export type GlyphShape = { L: number; w: number; r: number; theta: number };": 1,
+      "export type GlyphShapeKey = { at: number; value: Partial<GlyphShape>; ease?: EaseFn };": 1
+    },
+    "lib/platform/host/engine/hosts.ts": {
+      "const PACKAGE_MANAGER_BY_LOCKFILE: readonly [string, readonly string[]][] = [": 1
+    },
+    "lib/timing/music/engine/music-track.ts": {
+      "export type MusicFitShape = { seconds: number } | { bars: readonly number[]; tailSeconds?: number };": 1
+    },
+    "lib/timing/voice/engine/voice-project.ts": {
+      "type TakeInfo = { source: 'tts' | 'draft' | 'recording'; hash?: string; heard?: Record<string, SpokenWord[]> };": 1
+    },
+    "lint/oxlint/lib/parameter-shapes.ts": {
+      "export function parameterObjectPattern(": 1
+    },
+    "lint/oxlint/rules/no-inline-style-prop.ts": {
+      "function shipsObjectLiteral(node: ESTree.Node): boolean {": 1
+    },
+    "lint/oxlint/rules/no-module-mocking.ts": {
+      "function isTestFrameworkObject(sourceCode: SourceCode, node: ESTree.Expression): boolean {": 1
+    },
+    "lint/oxlint/rules/no-type-argument-assertion.ts": {
+      "const ASSERTING_DATA_CALL_NAMES = new Set([": 1
+    }
+  },
+  "arch(require-safety-comment)": {
+    "cli/commands/sfx.ts": {
+      "const lines = draftProjectSfxCueList(session.project, { timeline: check.timeline, events: check.sfxEvents, clickStyle: style as keyof typeof SFX_CLICK_STYLES | undefined });": 1
+    },
+    "lib/footage/capture/engine/capture.ts": {
+      "still: <T>(name: string, options: StillOptions<T>) => add({ name, kind: 'still', options: options as StillOptions }),": 1,
+      "if ((error as Error).name !== 'TimeoutError') throw error;": 1,
+      "const shots = (await import(pathToFileURL(script).href)).default as CaptureShots | undefined;": 1,
+      "const [selector, opts] = typeof spec === 'string' ? [spec, {} as RectOptions] : spec;": 1,
+      "els = els.filter((el) => re.test(((el as HTMLElement).innerText ?? el.textContent).trim()));": 1,
+      "const entry = existsSync(entryPath(dir, s.name)) ? (JSON.parse(readFileSync(entryPath(dir, s.name), 'utf8')) as Entry) : null;": 1
+    },
+    "lib/footage/capture/engine/page-probe.ts": {
+      "if (tagOf(el) === 'input') return INPUT_ROLES[(el as HTMLInputElement).type] ?? 'textbox';": 1,
+      "const labels = (el as HTMLInputElement).labels;": 1,
+      "|| (tagOf(el) === 'select' ? flat((el as HTMLSelectElement).selectedOptions[0]?.text) : '')": 1,
+      "|| (tagOf(el) === 'input' ? flat((el as HTMLInputElement).value) : '')": 1,
+      "|| (el.matches(LANDMARK) && roleOf(el) !== 'heading' ? '' : flat((el as HTMLElement).innerText).slice(0, 80));": 1,
+      "const text = flat((el as HTMLElement).innerText);": 1,
+      "let els = [...document.querySelectorAll(tag)].filter(visible).filter((e) => re.test(flat((e as HTMLElement).innerText)));": 1
+    },
+    "lib/footage/generation/engine/s3-upload.ts": {
+      "const env = Object.fromEntries(Object.entries(UPLOAD_ENV).map(([key, name]) => [key, process.env[name]!])) as Omit<S3UploadConfig, 'region'>;": 1
+    },
+    "lib/footage/previs/studio/flat-blockout-pose.ts": {
+      "for (const [channel, to] of Object.entries(key.to) as [keyof P, number][]) next[channel] = lerp(pose[channel], to, k) as P[keyof P];": 2
+    },
+    "lib/output/look/engine/piece-look.ts": {
+      "const module = (await import(pathToFileURL(file).href)) as Record<string, unknown>;": 1
+    },
+    "lib/output/look/studio/probe.tsx": {
+      "kind: el.dataset.framing as FramingMark['kind'],": 1,
+      "return JSON.parse(raw) as T;": 1,
+      "const { event, fromNow, request, volume } = JSON.parse(el.dataset.sfxEvent!) as SfxMarkAttr;": 1
+    },
+    "lib/output/render/engine/browser-module-page.ts": {
+      "const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;": 1,
+      "return await use(<R>(name: string, ...args: unknown[]) => page.evaluate(": 1,
+      "(fn: string, list: unknown[]) => (globalThis as unknown as Record<string, (...a: unknown[]) => unknown>)[fn](...list),": 2,
+      "name, args as never,": 1
+    },
+    "lib/output/render/engine/host-module-resolution.ts": {
+      "const json = parseJsonc(readFileSync(configPath, 'utf8')) as TsconfigJson;": 1
+    },
+    "lib/output/render/engine/project-bundle.ts": {
+      "alias: { ...(config.resolve?.alias as Record<string, string>), '@video': video, '@stills': stills, '@footage': previsFootageModuleFor(project), '@sfx-cues': sfxCues, '@brand': brand, '@stamp-paint-styles': styles, 'react-dom': studioReactDom(join(dir, 'generated')) },": 1
+    },
+    "lib/output/render/engine/render-browser.ts": {
+      "await page.goto({ url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`, timeout: 30_000 });": 1
+    },
+    "lib/output/render/engine/render-pipeline.ts": {
+      "for (const [kind, file] of Object.entries(files) as ['srt' | 'vtt', string][]) {": 1
+    },
+    "lib/output/render/engine/render-session.ts": {
+      "const { renderWorkers } = composition.defaultProps as CompositionRenderSettings;": 1
+    },
+    "lib/output/render/engine/render-snapshot.ts": {
+      "const snapshot = JSON.parse(readFileSync(path, 'utf8')) as RenderSnapshot;": 1
+    },
+    "lib/output/render/engine/render-stills.ts": {
+      "const { design, preset, variant } = c.defaultProps as StillProps;": 1,
+      "const values = (key: keyof StillProps) => [...new Set(all.map((c) => (c.defaultProps as StillProps)[key]))].join(', ');": 1,
+      "const current = new Set(all.map((c) => stillName(c.defaultProps as StillProps)));": 1,
+      "const still = composition.defaultProps as StillProps;": 1
+    },
+    "lib/output/render/engine/studio-bundle.ts": {
+      "const kept = JSON.parse(readFileSync(current, 'utf8')) as KeptBundle;": 1,
+      "? !existsSync((JSON.parse(readFileSync(current, 'utf8')) as KeptBundle).project)": 1
+    },
+    "lib/output/review/engine/review-artifact.ts": {
+      "const readJson = <T,>(file: string): T | undefined => (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) as T : undefined);": 1
+    },
+    "lib/output/stills/studio/stills.tsx": {
+      "for (const [name, { component, presets, axes, props }] of Object.entries(designs) as [string, StillDesign<object, StillAxes>][]) {": 1
+    },
+    "lib/picture/brand/engine/project-brand.ts": {
+      "const requireDefault = <T>(file: string) => (createRequire(file)(file) as { default: T }).default;": 1
+    },
+    "lib/picture/captions/models/caption-track.ts": {
+      "const frame = (scene.cues as Readonly<Record<string, number>>)[name];": 1
+    },
+    "lib/picture/composition/studio/Root.tsx": {
+      "const projectVideo = video as VideoDef;": 1
+    },
+    "lib/picture/composition/studio/timeline-scene.tsx": {
+      "return Object.fromEntries(Object.entries(clock.cues).map(([name, frame]) => [name, ((frame as number) - clock.from) / clock.fps])) as Record<Cue, number>;": 2
+    },
+    "lib/picture/film/studio/three-stage.tsx": {
+      "pass.render(renderer, null as never, stage.image, 0, false);": 1
+    },
+    "lib/picture/motion/models/motion-graph.ts": {
+      "const inMove = values.slice(a, b + 1) as number[];": 1,
+      "}).map((m) => Object.fromEntries(Object.entries(m).filter(([, v]) => v !== undefined)) as ChannelMove);": 1
+    },
+    "lib/picture/motion/models/motion-tracks.ts": {
+      "const tracks = JSON.parse(json) as MotionTracks;": 1
+    },
+    "lib/picture/motion/models/piece-tracks.ts": {
+      "typeof value === 'object' && value !== null && (value as { kind?: unknown }).kind === 'piece-tracks';": 1
+    },
+    "lib/picture/reel/engine/reel-study-files.ts": {
+      "return { fps: num / (den || 1), duration: Number(probe.format.duration), width: probe.streams[0].width as number, height: probe.streams[0].height as number };": 2
+    },
+    "lib/picture/reel/models/capture-plane.ts": {
+      "for (const key of Object.keys(DRIFT) as (keyof PlanePose)[]) {": 1
+    },
+    "lib/picture/reel/models/column-field-motion.ts": {
+      "const { from, duration } = ball.enter ?? { from: [-1, 9, -7] as Vec3, duration: 0.45 };": 1
+    },
+    "lib/picture/reel/models/glyph-field-frame.ts": {
+      "const raw = typeof key.value === 'function' ? (key.value as ValueFn<V, D>)(cell, hit) : key.value;": 1,
+      "const cells = glyphFieldLayout(count, size, layout).map((slot) => ({ ...slot, item: (items ? items[slot.index] : null) as D }));": 1
+    },
+    "lib/picture/reel/models/hud.ts": {
+      "const set = (base: 'light' | 'dark', colour: Rgb, lit: Rgb) => Object.fromEntries((Object.keys(INK_ALPHA.light) as HudInkRole[]).map((role) => {": 2,
+      "const out = {} as Record<HudInkRole, string>;": 1,
+      "for (const role of Object.keys(INK_ALPHA.light) as HudInkRole[]) {": 1,
+      "for (const tone of Object.keys(weights) as ReelHudTone[]) {": 1
+    },
+    "lib/platform/host/engine/hosts.ts": {
+      "const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;": 1
+    },
+    "lib/platform/host/engine/project-host-spec.ts": {
+      "const spec = JSON.parse(readFileSync(path, 'utf8')) as ProjectHostSpec;": 1
+    },
+    "lib/platform/project/engine/studio-project.ts": {
+      "const { default: declaration } = (await import(/* @vite-ignore */ pathToFileURL(file).href)) as { default: ProjectDeclaration };": 1
+    },
+    "lib/platform/temp/engine/studio-temp.ts": {
+      "if (result instanceof Promise) return result.finally(remove) as T;": 1,
+      "return (error as NodeJS.ErrnoException).code === 'EPERM';": 1
+    },
+    "lib/timing/sound/engine/cue-module.ts": {
+      "const list = JSON.parse(readFileSync(path, 'utf8')) as SfxCueList;": 1
+    },
+    "lib/timing/sound/engine/sfx-files.ts": {
+      "return [writeSfxFile(JSON.parse(request) as SfxRequest, join(dir, file.replace(/\\.ts$/, '.wav'))).module];": 1,
+      "...Object.entries(sfxParamSpecs(recipe as unknown as SfxRecipe)).map(([param, { min, max, doc }]) =>": 2,
+      "`  ${param} ${min}–${max} (default ${round((recipe.defaults as Record<string, number>)[param])}): ${doc}`),": 1
+    },
+    "lib/timing/sound/engine/sound-check.ts": {
+      "const takes: readonly SfxSound[] = Array.isArray(sound.sound) ? sound.sound : [sound.sound as SfxSound];": 1
+    },
+    "lib/timing/sound/models/cue-events.ts": {
+      "return numbered(found, (e) => `reveal:${(e as { track: string }).track}`);": 1
+    },
+    "lib/timing/sound/models/library.ts": {
+      "return SFX_RECIPES[name as SfxRecipeName] as unknown as SfxRecipe;": 3,
+      "const base = { ...recipe.defaults, ...(preset ? recipe.presets[preset] : {}) } as Record<string, number>;": 1
+    },
+    "lib/timing/sound/studio/sfx.tsx": {
+      "const takes: readonly SfxSound[] = Array.isArray(sound) ? sound : [sound as SfxSound];": 1
+    },
+    "lib/timing/timeline/engine/project-clock.ts": {
+      "const { timeline } = (await import(pathToFileURL(file).href)) as { timeline?: Timeline };": 1
+    },
+    "lib/timing/timeline/models/bind-timeline.ts": {
+      "const binding = (bindings as unknown as Record<string, (clock: ResolvedSceneClock, replays: Record<string, BoundReplay<Bound>>) => Bound>)[key];": 2
+    },
+    "lib/timing/timeline/models/retime.ts": {
+      "const spec = timeline.spec as TimelineSpec;": 1,
+      "const shift = (moved.cues as Record<string, number>)[name] - (scene.cues as Record<string, number>)[name];": 2,
+      "const was = (scene.moves as Record<string, { from: number; to: number }>)[name];": 1,
+      "const now = (moved.moves as Record<string, { from: number; to: number }>)[name];": 1
+    },
+    "lib/timing/timeline/models/timeline.ts": {
+      "({ driver: 'beat', beats, ...options }) as { driver: 'beat'; beats: number } & O;": 1,
+      "({ driver: 'fixed', seconds, ...options }) as { driver: 'fixed'; seconds: number } & O;": 1,
+      "({ driver: 'voice', lines, ...options }) as { driver: 'voice'; lines: readonly Line[] } & O;": 1,
+      "const keys = Object.keys(spec.scenes) as (keyof Scenes & string)[];": 1,
+      "const lastBeat = musical.length ? startBeat[musical.at(-1)!] + (spans[musical.at(-1)!] as BeatSpan).beats : 0;": 1,
+      "return {": 2,
+      "return Object.entries(table as Record<string, ReplaySpec>).map(([name, replay]): ResolvedReplay => {": 1,
+      "scenes: placed, scene: (key) => placed[indexOf(key)] as never, clock: (key) => clocks[indexOf(key)] as never, cue: (name) => cue(name), replays,": 2,
+      "const gaps = typeof span.gap === 'object' ? span.gap as Readonly<Record<string, number>> : {};": 1,
+      "const set = typeof gap === 'number' ? gap : (gap as Readonly<Record<string, number>> | undefined)?.[id];": 1,
+      "cues: Object.fromEntries(timeline.scenes.flatMap((scene) => Object.entries(scene.cues as Record<string, number>).map(([name, frame]) => [`${scene.id}.${name}`, frame]))),": 1
+    },
+    "lint/baseline.ts": {
+      "const [check, path, key] = JSON.parse(id) as [string, string, string];": 1
+    },
+    "lint/check-arch.ts": {
+      "const onDisk = existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as Baseline) : {};": 1
+    },
+    "lint/lint.ts": {
+      "const onDisk = existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as Baseline) : {};": 1
+    },
+    "lint/oxlint/lib/rule-options.ts": {
+      "const value = (option as Record<string, unknown>)[key];": 1
+    },
+    "lint/oxlint/oxlint-verdict.ts": {
+      "const baseline = existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as Baseline) : {};": 1,
+      "return JSON.parse(execFileSync(binary, ['-f', 'json', ...files], { cwd: root, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })) as OxlintReport;": 1,
+      "const stdout = (failure as { stdout?: string }).stdout;": 1,
+      "return JSON.parse(stdout) as OxlintReport;": 1
+    },
+    "lint/oxlint/rules/no-deprecated-input-validator.ts": {
+      "const receiver = (node.callee as ESTree.MemberExpression).object;": 1
+    },
+    "lint/rewrite-lib-imports.ts": {
+      "const imports = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { imports: Record<string, string> }).imports;": 1
+    },
+    "lint/structural/arch-verdict.ts": {
+      "const baseline = JSON.parse(baselineText) as Baseline;": 1
+    },
+    "lint/structural/check-context.ts": {
+      "const callee = node.callee as AstNode | undefined;": 1,
+      "if (node.type === 'CallExpression' && callee?.type === 'Identifier' && locals.has(callee.name as string)) calls.push(node);": 1
+    },
+    "lint/structural/checks/barrel-discoverability.ts": {
+      "const nameOf = (node: AstNode) => (node.type === 'Identifier' ? node.name : node.value) as string;": 1,
+      "const from = (node.source as AstNode).value as string;": 2,
+      "const namespace = node.exported ? ` as ${nameOf(node.exported as AstNode)}` : '';": 1,
+      "const local = nameOf(node.local as AstNode), exported = nameOf(node.exported as AstNode);": 2
+    },
+    "lint/structural/checks/barrel-purity.ts": {
+      "const callee = node.callee as AstNode;": 1,
+      "if (callee.type === 'Identifier' && locals.has(callee.name as string)) calls.add(callee);": 1,
+      "const object = member?.object as AstNode | undefined;": 1,
+      "if (object?.type === 'Identifier' && namespaces.has(object.name as string)": 1,
+      "&& SERVER_FN_CONSTRUCTORS.includes((member!.property as AstNode).name as string)) calls.add(object);": 2,
+      "const name = node.name as string;": 1
+    },
+    "lint/structural/checks/capability-match.ts": {
+      "const spec = call && unwrapExpression((call.arguments as AstNode[])[0]);": 1,
+      "return value?.type === 'Literal' && PROJECT_CAPABILITIES.includes(value.value as ProjectCapability) ? value.value as ProjectCapability : undefined;": 2,
+      "return (object.properties as AstNode[]).flatMap((p) => (p.type === 'Property' ? [propertyKeyName(p)].filter((k): k is string => k !== undefined) : []));": 1
+    },
+    "lint/structural/checks/doc-budgets.ts": {
+      "return [finding(DOC_BUDGETS_MANIFEST, 'unreadable', `doesn't parse (${(error as Error).message}): every budgeted doc goes uncounted`)];": 1
+    },
+    "lint/structural/checks/feature-visibility.ts": {
+      "return { kind: 'malformed', reason: (error as Error).message };": 1
+    },
+    "lint/structural/checks/frame-determinism.ts": {
+      "if (node.type === 'Identifier') return node.name as string;": 1,
+      "const object = node.object as AstNode;": 1,
+      "if (object.type !== 'Identifier' || !GLOBAL_OBJECTS.has(object.name as string)) return undefined;": 1,
+      "const property = member.property as AstNode;": 1,
+      "if (!member.computed) return property.name as string;": 1,
+      "const owner = globalNamed(node.object as AstNode), name = propertyName(node);": 1,
+      "if (node.type === 'VariableDeclarator' && node.init && (node.id as AstNode).type === 'Identifier') {": 1,
+      "const owner = globalNamed(node.init as AstNode);": 2,
+      "if (node.type === 'VariableDeclarator' && (node.id as AstNode).type === 'ObjectPattern' && node.init) {": 1,
+      "for (const property of ((node.id as AstNode).properties as AstNode[])) {": 2,
+      "const key = property.key as AstNode | undefined;": 1,
+      "const name = key?.type === 'Identifier' ? key.name as string : key?.type === 'Literal' ? String(key.value) : undefined;": 1,
+      "if ((node.type === 'NewExpression' || node.type === 'CallExpression') && globalNamed(node.callee as AstNode) === 'Date') {": 1,
+      "if (node.type === 'CallExpression' || !(node.arguments as unknown[]).length) found.push({ construct: call, instead: \"use the scene's time\", offset: node.start });": 1
+    },
+    "lint/structural/checks/model-purity.ts": {
+      "const node = pattern as AstNode | null | undefined;": 1,
+      "else if (node.type === 'ObjectPattern') for (const property of node.properties as AstNode[]) bind(property.type === 'Property' ? property.value : property);": 1,
+      "else if (node.type === 'ArrayPattern') for (const element of node.elements as AstNode[]) bind(element);": 1,
+      "const init = node.init as AstNode | null, id = node.id as AstNode;": 2,
+      "if (init?.type === 'Identifier' && GLOBAL_OBJECTS.has(init.name as string) && id.type === 'ObjectPattern') {": 1,
+      "for (const property of id.properties as AstNode[]) {": 1,
+      "const key = property.key as AstNode | undefined;": 1,
+      "if (key?.type === 'Identifier' && isImpure(key.name)) found.push({ name: key.name as string, offset: property.start });": 1,
+      "for (const param of node.params as AstNode[]) bind(param);": 1,
+      "const object = node.object as AstNode, property = node.property as AstNode;": 2,
+      "if (object.type === 'Identifier' && GLOBAL_OBJECTS.has(object.name as string) && isImpure(name)) {": 1,
+      "found.push({ name: name as string, offset: node.start });": 1,
+      "found.push({ name: node.name as string, offset: node.start });": 1
+    },
+    "lint/structural/checks/no-broad-parameters.ts": {
+      "const annotated = ((fn as Node & { parameters?: readonly Node[] }).parameters ?? [])": 1,
+      ".filter((parameter) => (parameter as Node & { type?: Node }).type !== undefined && !isReceiver(parameter));": 1,
+      "const annotations = annotated.map((parameter) => (parameter as Node & { type: Node }).type);": 1,
+      "const name = (parameter as Node & { name?: Node & { text?: string } }).name;": 2
+    },
+    "lint/structural/checks/no-known-value-widening.ts": {
+      "const name = (site as Node & { name?: Node }).name;": 1,
+      "const { expression, argumentExpression } = node as Node & { expression: Node; argumentExpression: Node };": 1,
+      "return (site as Node & { name?: Node }).name?.getText(source.file);": 1,
+      "const node = site as Node & { type?: Node; initializer?: Node; expression?: Node; body?: Node };": 1,
+      "const returnType = (enclosingFunctionLike(site) as (Node & { type?: Node }) | undefined)?.type;": 1,
+      "const wrapped = (inner as Node & { expression?: Node }).expression;": 1,
+      "const literal = value as Node & { properties?: readonly Node[]; elements?: readonly Node[] };": 1
+    },
+    "lint/structural/checks/no-opaque-record.ts": {
+      "const name = (node as Node & { name?: Node }).name;": 2
+    },
+    "lint/structural/checks/no-runtime-typeof.ts": {
+      "const operand = (node as Node & { expression?: Node }).expression;": 1
+    },
+    "lint/structural/checks/no-unknown-returns.ts": {
+      "const annotated = typeCheckableNodesOfKind(source.file, FUNCTION_LIKE_KINDS)": 1,
+      ".filter((fn) => (fn as Node & { type?: Node }).type !== undefined) as (Node & { type: Node; name?: Node })[];": 1
+    },
+    "lint/structural/checks/no-unknown-type-aliases.ts": {
+      "const name = (alias as Node & { name?: Node & { text?: string } }).name;": 1
+    },
+    "lint/structural/checks/no-widen-then-assert.ts": {
+      "const { expression: subject, type: asserted } = assertion as Node & { expression?: Node; type?: Node };": 1,
+      "const { type: declaredType, initializer } = declaration as Node & { type?: Node; initializer?: Node };": 1,
+      "const original = widening.throughAssertion ? (initializer as Node & { expression?: Node }).expression ?? initializer : initializer;": 1,
+      "const name = (subject as Node & { text?: string }).text ?? 'this value';": 1,
+      "const assertedNode = (initializer as Node & { type?: Node }).type;": 1
+    },
+    "lint/structural/checks/render-snapshot.ts": {
+      "if (node.type === 'TemplateLiteral') return (node.quasis as AstNode[]).map((q) => (q.value as { cooked?: string }).cooked ?? '');": 2
+    },
+    "lint/structural/checks/sdk-containment.ts": {
+      "const head = node.type === 'TemplateLiteral' ? ((node.quasis as AstNode[])[0].value as { cooked?: string }).cooked : text;": 2,
+      "if (node?.type === 'TemplateLiteral' && (node.expressions as unknown[]).length === 0) {": 1,
+      "return ((node.quasis as AstNode[])[0].value as { cooked?: string }).cooked;": 2
+    },
+    "lint/structural/checks/shadow-source.ts": {
+      "if (node.type === 'Property') return named(node.key as AstNode, node.computed);": 1,
+      "if (node.type === 'MemberExpression') return named(node.property as AstNode, node.computed);": 1
+    },
+    "lint/structural/checks/timing-ownership.ts": {
+      "const isLocal = (node: unknown) => (node as AstNode | undefined)?.type === 'Identifier' && locals.includes((node as AstNode).name as string);": 3,
+      "const property = node.property as AstNode;": 1,
+      "if (node.type === 'VariableDeclarator' && isLocal(node.init) && (node.id as AstNode).type === 'ObjectPattern') {": 1,
+      "for (const property of (node.id as AstNode).properties as AstNode[]) {": 2,
+      "const key = property.key as AstNode | undefined;": 1,
+      "if (key?.type === 'Identifier') found.push({ name: key.name as string, offset: property.start });": 1
+    },
+    "lint/structural/checks/token-equality.ts": {
+      "const name = (node.name as AstNode).name as string;": 2,
+      "const value = node.value as AstNode | null;": 1,
+      "const literal = value?.type === 'JSXExpressionContainer' ? value.expression as AstNode : value;": 1,
+      "const key = node.key as AstNode;": 1,
+      "const name = key.type === 'Identifier' ? key.name as string : key.type === 'Literal' ? String(key.value) : undefined;": 1,
+      "const px = pxOf(node.value as AstNode);": 1,
+      "if (node.type !== 'VariableDeclarator' || (node.id as AstNode).name !== name) return;": 1,
+      "const call = node.init as AstNode | null;": 1,
+      "const scale = call?.type === 'CallExpression' ? (call.arguments as AstNode[])[0] : undefined;": 1,
+      "for (const property of scale.properties as AstNode[]) {": 1,
+      "const key = property.key as AstNode | undefined, value = property.value as AstNode | undefined;": 2,
+      "if (Number.isFinite(px) && px > 0) byPx.set(Math.round(px), key.name as string);": 1
+    },
+    "lint/structural/checks/trampolines.ts": {
+      "for (const statement of file.program.body as AstNode[]) {": 1,
+      "? statement.declaration as AstNode | null : null;": 1,
+      "found.push({ name: ((declaration.id as AstNode | null)?.name as string | undefined) ?? 'default', fn: declaration });": 2,
+      "for (const declarator of declaration.declarations as AstNode[]) {": 1,
+      "const id = declarator.id as AstNode, init = declarator.init as AstNode | null;": 2,
+      "if (isFunction(init)) found.push({ name: id.name as string, fn: init });": 1,
+      "for (const property of init.properties as AstNode[]) {": 1,
+      "const key = property.key as AstNode | undefined, value = property.value as AstNode | undefined;": 2,
+      "return (file.program.body as AstNode[]).flatMap((statement) => {": 1,
+      "const declaration = statement.type === 'ExportNamedDeclaration' ? statement.declaration as AstNode | null : statement;": 1,
+      "if (declaration?.type === 'FunctionDeclaration') return [(declaration.id as AstNode).name as string];": 2,
+      "return (declaration.declarations as AstNode[]).flatMap((declarator) =>": 1,
+      "(declarator.id as AstNode).type === 'Identifier' && isFunction(declarator.init as AstNode | null) ? [(declarator.id as AstNode).name as string] : []);": 4,
+      "const params = (fn.params as AstNode[]).map((param) => {": 1,
+      "const inner = param.type === 'RestElement' ? param.argument as AstNode : param;": 1,
+      "return inner.type === 'Identifier' ? inner.name as string : undefined;": 1,
+      "const body = fn.body as AstNode;": 1,
+      "const statements = body.body as AstNode[];": 1,
+      "expression = only?.type === 'ReturnStatement' ? only.argument as AstNode | undefined": 1,
+      ": only?.type === 'ExpressionStatement' ? only.expression as AstNode : undefined;": 1,
+      "if (expression?.type === 'AwaitExpression') expression = expression.argument as AstNode;": 1,
+      "const callee = expression.callee as AstNode;": 1,
+      "const name = callee.type === 'Identifier' && callable.has(callee.name as string) ? callee.name as string": 2,
+      ": callee.type === 'MemberExpression' && !callee.computed && (callee.object as AstNode).type === 'Identifier'": 1,
+      "&& namespaces.has((callee.object as AstNode).name as string)": 2,
+      "? `${(callee.object as AstNode).name as string}.${(callee.property as AstNode).name as string}` : undefined;": 4,
+      "const inner = argument.type === 'SpreadElement' ? argument.argument as AstNode : argument;": 1,
+      "return inner.type === 'Identifier' && params.includes(inner.name as string);": 1,
+      "return (expression.arguments as AstNode[]).every(forwardsOwn) ? name : undefined;": 1
+    },
+    "lint/structural/project-declaration.ts": {
+      "while (node && ['TSSatisfiesExpression', 'TSAsExpression', 'ParenthesizedExpression'].includes(node.type)) node = node.expression as AstNode;": 1,
+      "const key = property.key as AstNode;": 1,
+      "return key.type === 'Identifier' ? key.name as string : key.type === 'Literal' ? String(key.value) : undefined;": 1,
+      "const exported = (file.program.body as AstNode[]).find((node) => node.type === 'ExportDefaultDeclaration');": 1,
+      "const object = exported && unwrapExpression(exported.declaration as AstNode);": 1,
+      "const property = (object.properties as AstNode[]).find((p) => p.type === 'Property' && propertyKeyName(p) === name);": 1,
+      "return property && unwrapExpression(property.value as AstNode);": 1,
+      "for (const element of value.elements as (AstNode | null)[]) {": 2
+    },
+    "lint/structural/source-tree.ts": {
+      "const program = parsed.program as unknown as AstNode;": 2,
+      "const awaited = node.type === 'VariableDeclarator' && (node.init as AstNode | null)?.type === 'AwaitExpression'": 1,
+      "? ((node.init as AstNode).argument as AstNode) : undefined;": 2,
+      "const pattern = node.id as AstNode | undefined;": 1,
+      "const keys = (pattern.properties as AstNode[]).map((property) =>": 1,
+      "property.type === 'Property' && !property.computed && (property.key as AstNode).type === 'Identifier' ? (property.key as AstNode).name as string : undefined);": 3,
+      "source = node.source ?? (node.argument as AstNode | undefined)?.literal ?? node.argument;": 1,
+      "} else if (node.type === 'CallExpression' && isRequire(node.callee as AstNode)) source = (node.arguments as AstNode[])[0];": 2,
+      "const reference = node.moduleReference as AstNode;": 1,
+      "} else if (node.type === 'ExportNamedDeclaration' && (node.specifiers as unknown[]).length === 0) source = node.source;": 1,
+      "const literal = source as AstNode;": 1,
+      "const quasis = literal.type === 'TemplateLiteral' && (literal.expressions as unknown[]).length === 0 ? literal.quasis as AstNode[] : undefined;": 2,
+      "? literal.value : (quasis?.[0]?.value as { cooked?: string } | undefined)?.cooked;": 1,
+      "(callee.type === 'MemberExpression' && (callee.object as AstNode).name === 'require' && (callee.property as AstNode).name === 'resolve');": 2,
+      "const record = node as AstNode;": 1,
+      "const imports = (JSON.parse(packageJson) as { imports?: Record<string, unknown> }).imports ?? {};": 1
+    },
+    "lint/structural/type-checker.ts": {
+      "const named = node as { typeName?: Node; exprName?: Node; name?: Node };": 1
+    },
+    "lint/structural/type-shapes.ts": {
+      "return (node as Node & { typeName?: { text?: string } }).typeName?.text === 'const';": 1,
+      "const name = (fn as Node & { name?: Node }).name;": 1,
+      "const returnType = (declaration as Node & { type?: Node }).type;": 1,
+      "const subject = (returnType as Node & { parameterName?: Node & { text?: string } }).parameterName;": 1
+    }
+  },
+  "eslint(eqeqeq)": {
+    "lib/picture/reel/studio/type-slant.tsx": {
+      "const swapped = (node: ReactNode) => node != null && node !== false;": 1
+    },
+    "lint/structural/source-tree.ts": {
+      "if (source == null) return;": 1
+    }
+  },
+  "eslint(no-await-in-loop)": {
+    "lib/footage/capture/engine/capture.ts": {
+      "await onFreshPage(shot.options.device, async (page) => {": 1,
+      "for (let item = queue.shift(); item !== undefined; item = queue.shift()) await work(item);": 1,
+      "await page.mouse.move(from.x + (to.x - from.x) * e, from.y + (to.y - from.y) * e);": 1,
+      "await page.waitForTimeout((seconds * 1000) / steps);": 1,
+      "await page.keyboard.type(ch);": 1,
+      "await page.waitForTimeout(perKey * 1000);": 1
+    },
+    "lib/footage/capture/engine/html-raster.ts": {
+      "const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });": 1,
+      "await page.setContent(`<!doctype html><body style=\"margin:0\">${svg}</body>`);": 1,
+      "await page.screenshot({ path: out, clip: { x: 0, y: 0, width, height } });": 1,
+      "await page.close();": 2,
+      "const page = await browser.newPage({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1 });": 1,
+      "await page.goto(pathToFileURL(html).href);": 1,
+      "await page.evaluate(() => document.fonts.ready);": 1,
+      "await page.screenshot({ path: out, fullPage: true });": 1,
+      "measured.push(await page.$$eval(`[${attribute}]`, (els, name) => {": 1
+    },
+    "lib/footage/generation/engine/openrouter.ts": {
+      "await new Promise((resolve) => setTimeout(resolve, VIDEO_POLL_MS));": 1,
+      "job = await (await fetchOpenRouter(`/videos/${jobId}`)).json();": 2
+    },
+    "lib/footage/generation/engine/paid-generation.test.ts": {
+      "await generatePaidMedia(project, { kind: 'video', model: 'bytedance/seedance-2.5', name: 'shot', prompt, params: { duration: 5 }, references: [{ path: blockout }] });": 1
+    },
+    "lib/output/look/engine/piece-look.ts": {
+      "const module = (await import(pathToFileURL(file).href)) as Record<string, unknown>;": 1
+    },
+    "lib/output/render/engine/render-pipeline.ts": {
+      "for (const [i, f] of frames.entries()) fresh.set(f, await session.renderStills(join(dir, `fresh-${i}`), [f], { lossless: true }));": 1
+    },
+    "lib/output/render/engine/render-stills.ts": {
+      "const sink = await draw(composition, still, drawn, format);": 1,
+      "await draw(composition, { ...still, ground: true }, groundFile, 'png');": 1
+    },
+    "lib/output/stills/studio/still-probe.tsx": {
+      "while (root.querySelector('[data-still-fit]:not([data-still-fitted])')) await new Promise((resolve) => setTimeout(resolve, 16));": 1
+    },
+    "lib/picture/type/studio/fonts.ts": {
+      "await Promise.all(loads);": 1
+    },
+    "lib/timing/voice/engine/voice-project.ts": {
+      "clipWords[i] = await hear(clipFile(clip.id));": 1,
+      "const { wav, duration } = await speak(text, voice);": 1
+    }
+  },
+  "eslint(no-console)": {
+    "lib/footage/capture/engine/capture.ts": {
+      "console.error(`captured ${name}  (${Object.keys(measured).join(', ') || 'no rects'})`);": 1,
+      "console.error(`filmed ${name}  (${frames.length} frames over ${duration.toFixed(1)}s — Chrome sends frames only on repaint; marks: ${markList})`);": 1
+    },
+    "lib/footage/generation/engine/generated-image.ts": {
+      "console.error(`images['${request.name}']: ${w}×${h}, ${request.model}`);": 1
+    },
+    "lib/footage/generation/engine/paid-generation.ts": {
+      "for (const file of made.files) console.error(`cached ${file}`);": 1,
+      "if (jobId) console.error(`picking up video job ${jobId}`);": 1,
+      "console.error(`submitted video job ${jobId}`);": 1,
+      "const job = await awaitOpenRouterVideoJob(jobId, (status) => console.error(`video job ${jobId} ${status}`));": 1,
+      "for (const file of files) console.error(`generated ${file}  ${cost}${media.requestId ? `  (${media.requestId})` : ''}`);": 1,
+      "console.error(`generated media of an unknown format (starts ${bytes.subarray(0, 12).toString('hex')}), saved as .bin`);": 1
+    },
+    "lib/footage/generation/engine/s3-upload.ts": {
+      "console.error(`uploaded references/${sha256}.${ext} (${(bytes.length / 1e6).toFixed(1)} MB)`);": 1
+    },
+    "lib/output/render/engine/previs-render.ts": {
+      "console.error(`rendering scene ${sceneId}'s blockout, ${composition.durationInFrames / composition.fps}s…`);": 1,
+      "console.error(`blockout ${kept}`);": 1
+    },
+    "lib/output/render/engine/render-pipeline.ts": {
+      "console.error(`mix: ${before.lufs} LUFS, ${before.truePeak} dBTP → +${gain.toFixed(1)} dB and limited at ${ceiling.toFixed(1)} → ${after.lufs} LUFS, ${after.truePeak} dBTP (${encodedPeak} encoded)`);": 1,
+      "if (pct !== shown) { shown = pct; console.error(`  ${out}: ${pct}%`); }": 1,
+      "console.error(`${video}: ${actual.toFixed(2)}s, ${sound} ✓  sheet → ${out}`);": 1,
+      "for (const line of lines) console.error(line);": 1,
+      "console.error(`  sheet → ${out}`);": 1,
+      "if (draft) console.error(draftVoiceWarning(session));": 2,
+      "for (const line of formatRenderPasses(session)) console.error(line);": 2,
+      "for (const line of check.report) console.error(line);": 1,
+      "console.error('silent (project.ts): no voice, music or sound, so no mix, mastering or loudness review; the video has no audio track');": 1,
+      "if (renderVoiceOf(session.project) === 'draft') console.error(draftVoiceWarning(session));": 1
+    },
+    "lib/output/render/engine/studio-bundle.ts": {
+      "console.error(`bundling ${project}…`);": 1,
+      "} else console.error('a file changed while bundling, so this bundle serves this run only');": 1
+    },
+    "lib/picture/reel/engine/reel-study-files.ts": {
+      "console.error(`${basename(video)}: ${duration.toFixed(2)} s, ${width}×${height} at ${fps} fps`);": 1,
+      "console.error(`${cuts.length} cuts, ${sections.length} sections, grid ${grid.bpm} BPM (tracker read ${grid.detectedBpm})`);": 1,
+      "console.error(`section ${s.index + 1}/${sections.length} ${s.label}`);": 1
+    },
+    "lib/platform/host/engine/hosts.ts": {
+      "if (install) console.error(`hosts: ${spec.name} is your working copy at ${workingCopy}; install its packages there yourself`);": 1,
+      "console.error(`hosts: cloning ${repo}`);": 1,
+      "console.error(`hosts: fetching ${name}`);": 1,
+      "console.error(`hosts: ${found[1].join(' ')} in ${dir}`);": 1
+    },
+    "lib/timing/music/engine/music-track.ts": {
+      "if (staleFits.length) console.error(`dropped ${staleFits.map((n) => `music.${n}`).join(', ')}, fit from the old music.${name}; fit again`);": 1,
+      "console.error(`${name}: ${basename(source)}, ${duration.toFixed(1)}s, ${lufs} LUFS, ${bpm} BPM, first beats ${beats.slice(0, 4).join(', ')}s`);": 1
+    },
+    "lib/timing/voice/engine/voice-project.ts": {
+      "console.error(`imported ${recording} as the take`);": 1,
+      "console.error(`${mode === 'draft' ? 'drafted' : 'voiced'} the take  ${duration.toFixed(2)}s`);": 1,
+      "console.error(`cut ${clip.id}  ${duration.toFixed(2)}s${pause}${unheard.length ? `  (misheard, timed from their neighbours: ${unheard.join(' ')})` : ''}`);": 1,
+      "if (problem) console.error(`listen to ${clip.id}: the read ${problem} before it, so the cut may be heard. Add <short pause> before it, or move the line break`);": 1,
+      "console.error(`estimated ${lines.length} lines from their word counts`);": 1,
+      "console.error(`${Object.keys(manifest).length} lines, ${total.toFixed(1)}s of voice`);": 1,
+      "console.error(`${voice}  ${duration.toFixed(2)}s`);": 1
+    }
+  },
+  "eslint(no-nested-ternary)": {
+    "cli/commands/look.ts": {
+      "const out = inProject(args.out ?? (args.motion ? 'out/check/motion.txt' : args.against ? 'out/check/against.jpg' : 'out/check/sheet.jpg'));": 1,
+      "const cols = Number(args.cols ?? (args.against ? 1 : args.strip ? 5 : 3)), w = Number(args.w ?? (args.strip ? 384 : 640));": 1
+    },
+    "lib/footage/capture/engine/page-probe.ts": {
+      "const url = /^[a-z][a-z0-9+.-]*:/i.test(target) ? target : existsSync(resolve(target)) ? pathToFileURL(resolve(target)).href : target;": 1
+    },
+    "lib/footage/generation/engine/paid-generation.ts": {
+      "const sorted = (value: unknown): unknown => Array.isArray(value) ? value.map(sorted)": 1,
+      "return brand === 'avif' ? 'avif' : ['heic', 'heix', 'mif1'].includes(brand) ? 'heic' : brand.startsWith('qt') ? 'mov' : 'mp4';": 2
+    },
+    "lib/output/ffmpeg/engine/contact-sheet.ts": {
+      "const escapeDrawtext = (text: string) => text.replace(/[\\\\':,;%]/g, (c) => (c === \"'\" ? '’' : c === '%' ? '\\\\%' : `\\\\${c}`));": 1
+    },
+    "lib/output/look/studio/probe.tsx": {
+      "const phase: ScenePhase = layers.length === 1 ? 'solo' : i === 0 ? 'out' : 'in';": 1
+    },
+    "lib/output/render/engine/render-pipeline.ts": {
+      "report.push(held.problems.length ? `holds: ${held.problems.length} of ${held.checked} not kept`": 1
+    },
+    "lib/output/review/models/review-moment.ts": {
+      "const where = moment.kind === 'beat' ? `${moment.bar ? `bar ${moment.bar}` : moment.scene}${rung} · beat ${moment.beat}${past(moment.frames)}`": 1,
+      "const cue = moment.cue && `${moment.cue.name}${moment.cue.frames > 0 ? ` +${moment.cue.frames}f` : moment.cue.frames < 0 ? ` ${moment.cue.frames}f` : ''}`;": 1
+    },
+    "lib/output/review/models/review-notes.ts": {
+      "return note.render === undefined ? 'unrecorded' : note.render === render.hash ? 'this' : 'other';": 1,
+      "const when = note.frame === undefined ? ''": 1
+    },
+    "lib/picture/frame/models/framing-check.ts": {
+      "const label = (m: FramingMark) => (m.name === 'click' ? 'a click' : m.name ? `highlight \"${m.name}\"` : 'a highlight');": 1,
+      "const why = !m ? 'isn\\'t drawn' : m.strength < 0.5 ? 'is still drawing on, or fading' : m.opacity < 0.5 ? 'is faded out' : obstruction(m, marks, frameSize);": 2
+    },
+    "lib/picture/kit/studio/kit.tsx": {
+      "transform: `translateX(${align === 'left' ? 0 : align === 'center' ? -50 : -100}%) scale(${scale})`,": 1
+    },
+    "lib/picture/kit/studio/overlays.tsx": {
+      "textAnchor={align === 'left' ? 'start' : align === 'center' ? 'middle' : 'end'}": 1
+    },
+    "lib/picture/motion/models/hold-check.ts": {
+      "const whys = [...new Set(frames.map((f) => (f.shown ? '' : f.opacity !== undefined ? `never gets past ${Math.round(Math.max(...faint) * 100)}% opaque` : f.why)))];": 1
+    },
+    "lib/picture/motion/models/motion-graph.ts": {
+      "const values = channel.kind === 'value' ? run.values[channel.key] : channel.kind === 'opacity' ? run.screen.opacity : box?.[channel.kind];": 1,
+      "const digits = Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : Math.abs(v) >= 1 ? 2 : 3;": 2,
+      "const pastTo = dir > 0 ? m.range[1] > hi : dir < 0 ? m.range[0] < lo : m.range[0] < lo || m.range[1] > hi;": 1,
+      "const pastFrom = dir > 0 ? m.range[0] < lo : dir < 0 ? m.range[1] > hi : false;": 1,
+      "const label = `${track.id.length > 50 ? `${track.id.slice(0, 48)}…` : track.id}${!onBackdrop(trackRuns(track, first, last)) ? ' (not on this frame: no trail)' : frameSized(trackRuns(track, first, last)) ? ' (frame-sized: no trail)' : ''}`;": 1
+    },
+    "lib/picture/motion/models/motion-tracks.ts": {
+      "const when = e.frames ? (e.frames.first === e.frames.last ? ` at ${at(e.frames.first)}` : ` ${at(e.frames.first)}–${at(e.frames.last)} (${e.frames.count} frames)`) : '';": 1
+    },
+    "lib/picture/motion/models/motion.ts": {
+      "standard: (k) => { k = clamp(k); return k === 0 || k === 1 ? k : k < 0.5 ? Math.pow(2, 20 * k - 10) / 2 : (2 - Math.pow(2, -20 * k + 10)) / 2; },": 1,
+      "const at = (t: number) => (t <= 0 ? 0 : t >= settled ? 1 : 1 - gap(t));": 1
+    },
+    "lib/picture/motion/models/piece-tracks.ts": {
+      "...(boxed ? (clearance ? [fixed(clearance.margin), clearance.nearest] : ['', '']) : []),": 1
+    },
+    "lib/picture/reel/models/bounce.ts": {
+      "i < 0 ? m.ts[0] + i * m.before : i >= m.n ? m.ts[m.n - 1] + (i - m.n + 1) * m.after : m.ts[i];": 1,
+      "const count = (s: number) => (s < 0 ? 0 : s < hold ? 1 : 2 + Math.floor((s - hold) * rate));": 1
+    },
+    "lib/picture/reel/models/glyph-field-frame.ts": {
+      "s === undefined ? fallback : s.endsWith('%') ? (parseFloat(s) / 100) * percentOf : parseFloat(s);": 1
+    },
+    "lib/picture/reel/models/reel-study.ts": {
+      "const span = to - from, tick = span > 20 ? 1 : span > 6 ? 0.5 : span > 2 ? 0.25 : 0.1;": 2
+    },
+    "lib/picture/reel/models/ticker-layout.ts": {
+      "const n = v < axis.default ? (v - axis.default) / (axis.default - axis.min) : v > axis.default ? (v - axis.default) / (axis.max - axis.default) : 0;": 1
+    },
+    "lib/picture/reel/models/type.ts": {
+      "export const leftOf = (x: number, width: number, align: Align) => (align === 'center' ? x - width / 2 : align === 'right' ? x - width : x);": 1
+    },
+    "lib/picture/reel/studio/capture-plane.tsx": {
+      "const shown = facing ? v : typeof back === 'string' ? null : back;": 1
+    },
+    "lib/picture/reel/studio/lens.tsx": {
+      "{fringe.red !== 0 || fringe.blue !== 0": 1
+    },
+    "lib/picture/reel/studio/ticker.tsx": {
+      "const directionOf = (b: number) => directions?.[b] ?? (b === middle ? 0 : Math.abs(b - middle) % 2 ? -1 : 1);": 1
+    },
+    "lib/picture/reel/studio/type.tsx": {
+      "const anchorX = x + (align === 'center' ? 0.5 : align === 'right' ? 1 : 0) * spacing * set.size;": 1,
+      "textAnchor={align === 'center' ? 'middle' : align === 'right' ? 'end' : 'start'}": 1
+    },
+    "lib/picture/type/studio/fonts.ts": {
+      "const format = url.endsWith('.otf') ? 'opentype' : url.endsWith('.woff2') ? 'woff2' : url.endsWith('.woff') ? 'woff' : 'truetype';": 2
+    },
+    "lib/timing/sound/engine/sound-check.ts": {
+      "const row = (cells: string[]) => cells.map((c, i) => (i === 0 ? c.padEnd(widths[0]) : i < widths.length ? c.padStart(widths[i]) : c)).join('  ').trimEnd();": 1,
+      "lines.push(!empty.length ? `Empty beats (${where}): none`": 1
+    },
+    "lib/timing/sound/models/dsp.ts": {
+      "t < 0 ? 0 : t < attack ? t / attack : Math.exp(-(t - attack) / tau);": 1
+    },
+    "lib/timing/sound/models/recipes.ts": {
+      "const fall = p.tail > 0 ? Math.exp(-after / (p.tail / 6.9)) : after > 0 ? 0 : 1;": 1
+    },
+    "lib/timing/timeline/models/retime.ts": {
+      "const edited = span.driver === 'beat' ? { ...spec.scenes, [key]: { ...span, beats: span.beats + 1 } }": 1,
+      "const fail = (what: string) => failures.push(`${key} ${span.driver === 'beat' ? 'a beat longer' : span.driver === 'fixed' ? 'a second longer' : `with ${reread} re-read a second slower`}: ${what}`);": 1,
+      "const added = span.driver === 'beat' ? framesPerBeat : span.driver === 'fixed' ? fps : after.scenes[k].end - before.scenes[k].end;": 1
+    },
+    "lib/timing/timeline/models/scene-moments.ts": {
+      "const unit = (at: number | 'end') => (at === 'end' ? 'end' : driver === 'beat' ? `beat ${at}` : `${at} s`);": 1
+    },
+    "lib/timing/timeline/models/timeline.ts": {
+      "return span.driver === 'fixed' ? span.seconds : span.driver === 'voice' ? voiceLayouts[k]!.seconds : 0;": 1,
+      "const at = typeof moment === 'object' ? ('at' in moment ? moment.at : undefined) : moment;": 1
+    },
+    "lib/timing/voice/engine/voice-project.ts": {
+      "const readText = (paragraphBreak: string) => script.lines.map((line, i) => (i === 0 ? '' : line.paragraph ? paragraphBreak : ' ') + ttsText(line.text)).join('');": 1,
+      "const problem = !clip.cutIsClear ? 'has no one clear pause' : clip.cutPause < TIGHT_PAUSE ? `pauses only ${Math.round(clip.cutPause * 1000)} ms` : null;": 1
+    },
+    "lib/timing/voice/models/voice-words.ts": {
+      "const cost = Array.from({ length: n + 1 }, (_, i) => Array.from({ length: m + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)));": 1
+    },
+    "lint/check-arch.ts": {
+      "const where = target.scope === 'workspace' ? 'work/\\'s index, with the studio\\'s' : target.snapshot.kind === 'index' ? 'the index' : `commit ${target.snapshot.rev}`;": 1
+    },
+    "lint/structural/arch-verdict.ts": {
+      "const baselineText = target.scope === 'public'": 1
+    },
+    "lint/structural/checks/barrel-purity.ts": {
+      "const serverOnly = target.kind === 'builtin' ? target.name": 1
+    },
+    "lint/structural/checks/frame-determinism.ts": {
+      "const name = key?.type === 'Identifier' ? key.name as string : key?.type === 'Literal' ? String(key.value) : undefined;": 1
+    },
+    "lint/structural/checks/model-purity.ts": {
+      "const name = node.computed ? (property.type === 'Literal' ? property.value : undefined) : property.name;": 1
+    },
+    "lint/structural/checks/timing-ownership.ts": {
+      "const name = node.computed ? (property.type === 'Literal' ? property.value : undefined) : property.name;": 1
+    },
+    "lint/structural/checks/token-equality.ts": {
+      "(surface === 'prop' ? SPACING_PROPS : SPACING_KEYS).includes(name) ? { scale: spacing, kind: 'spacing' }": 1,
+      "const name = key.type === 'Identifier' ? key.name as string : key.type === 'Literal' ? String(key.value) : undefined;": 1,
+      "const magnitude = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number.parseFloat(raw) : NaN;": 1
+    },
+    "lint/structural/checks/trampolines.ts": {
+      "expression = only?.type === 'ReturnStatement' ? only.argument as AstNode | undefined": 1,
+      "const name = callee.type === 'Identifier' && callable.has(callee.name as string) ? callee.name as string": 1
+    },
+    "lint/structural/project-declaration.ts": {
+      "return key.type === 'Identifier' ? key.name as string : key.type === 'Literal' ? String(key.value) : undefined;": 1
+    },
+    "lint/structural/source-tree.ts": {
+      "name.kind === 'Name' ? name.name! : name.kind === 'Default' ? 'default' : '*';": 1
+    },
+    "lint/structural/type-checker.ts": {
+      "fileName === root ? '' : fileName.startsWith(prefix) ? fileName.slice(prefix.length).split(sep).join('/') : undefined;": 1
+    }
+  },
+  "eslint(no-shadow)": {
+    "cli/commands/music.ts": {
+      "const { fit } = track;": 1
+    },
+    "lib/footage/capture/engine/capture.ts": {
+      "return page.evaluate(([specs, relative, shot]) => {": 3
+    },
+    "lib/footage/capture/engine/page-probe.ts": {
+      "return page.evaluate((at) => {": 1,
+      "return page.evaluate(([elements, at]) => {": 2
+    },
+    "lib/output/render/engine/frame-profiling.ts": {
+      "const composition = await session.compositionFor(profiled, browser);": 1,
+      "const composition = await session.compositionFor(inputProps, browser);": 1
+    },
+    "lib/output/render/engine/render-pipeline.ts": {
+      "const worst = new Map<number, number>();": 1
+    },
+    "lib/output/render/engine/render-session.ts": {
+      "const composition = await compositionFor(inputProps, browser);": 1
+    },
+    "lib/output/render/engine/studio-bundle.ts": {
+      "const recording: WebpackOverrideFn = async (config) => {": 1
+    },
+    "lib/picture/composition/studio/Root.tsx": {
+      "function StillCompositions({ stills }: { stills: StillsDef }) {": 1,
+      "function VideoCompositions({ video }: { video: VideoDef }) {": 1
+    },
+    "lib/picture/reel/models/capture-plane.ts": {
+      "export function capturePlaneProjection(view: View, pose: PlanePose, { lens = 1100, vanish = centerOf(fullFrameRect(view.frameSize)) }: { lens?: number; vanish?: Point } = {}): CapturePlaneProjection {": 1
+    },
+    "lib/picture/reel/studio/bounce.tsx": {
+      "const drawn = 56 * clamp(since / (3 * REF_F)) + 31 * motionCurves.cubic.entrance((since - 3 * REF_F) / (5 * REF_F));": 1
+    },
+    "lib/timing/music/engine/music-track.ts": {
+      "return Array.from({ length: channels }, (_, c) => Float32Array.from({ length: all.length / channels }, (_, i) => all[i * channels + c]));": 1
+    },
+    "lib/timing/timeline/models/retime.ts": {
+      "const shiftOf = (i: number, anchoredAtEnd = false) => (i > k || (i === k && anchoredAtEnd) ? added : 0);": 1,
+      "const musicAt = (timeline: Timeline) => timeline.audio.find((placed) => placed.kind === 'music')?.atSeconds ?? 0;": 1
+    },
+    "lib/timing/timeline/models/timeline.ts": {
+      "const end = (ref: ReplaySpec['from']) => (typeof ref === 'string' ? { cue: ref, frames: 0 } : ref);": 1
+    },
+    "lib/timing/voice/models/voice-words.ts": {
+      "const cost = Array.from({ length: n + 1 }, (_, i) => Array.from({ length: m + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)));": 1
+    }
+  },
+  "eslint(no-unused-expressions)": {
+    "lib/picture/reel/models/column-field-motion.ts": {
+      "if (p) [sum.add(p), n++];": 1
+    }
+  },
+  "eslint(no-unused-vars)": {
+    "lib/output/render/engine/render-pipeline.ts": {
+      "import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';": 1
+    },
+    "lib/output/review/models/review-notes.ts": {
+      "const first = note.frame, last = note.end ?? note.frame, { fps } = sources;": 1
+    },
+    "lib/picture/frame/models/framing-check.ts": {
+      "return spans.map(({ last: _, ...s }) => s);": 1
+    },
+    "lib/picture/kit/studio/kit.tsx": {
+      "import { clamp, lerp, motionCurves, motionDurations, seg, stagger, staggerFinish } from '#lib/picture/motion/models/motion.ts';": 1
+    }
+  },
+  "feature-cycles": {
+    "lib/footage/capture": {
+      "→ lib/output/look": 1,
+      "→ lib/picture/camera": 1,
+      "→ lib/picture/motion": 1
+    },
+    "lib/footage/previs": {
+      "→ lib/footage/capture": 1,
+      "→ lib/output/look": 1,
+      "→ lib/picture/camera": 1,
+      "→ lib/picture/composition": 1,
+      "→ lib/picture/frame": 1,
+      "→ lib/picture/motion": 1,
+      "→ lib/picture/type": 1,
+      "→ lib/timing/timeline": 1
+    },
+    "lib/output/look": {
+      "→ lib/footage/capture": 1,
+      "→ lib/output/render": 1,
+      "→ lib/picture/camera": 1,
+      "→ lib/picture/composition": 1,
+      "→ lib/picture/frame": 1,
+      "→ lib/picture/motion": 1,
+      "→ lib/picture/type": 1,
+      "→ lib/timing/sound": 1,
+      "→ lib/timing/timeline": 1
+    },
+    "lib/output/render": {
+      "→ lib/footage/capture": 1,
+      "→ lib/footage/previs": 1,
+      "→ lib/output/stills": 1,
+      "→ lib/picture/brand": 1,
+      "→ lib/picture/composition": 1,
+      "→ lib/picture/frame": 1,
+      "→ lib/picture/motion": 1,
+      "→ lib/timing/sound": 1,
+      "→ lib/timing/timeline": 1,
+      "→ lib/timing/voice": 1
+    },
+    "lib/output/review": {
+      "→ lib/output/render": 1,
+      "→ lib/picture/motion": 1,
+      "→ lib/timing/sound": 1,
+      "→ lib/timing/timeline": 1,
+      "→ lib/timing/voice": 1
+    },
+    "lib/output/stills": {
+      "→ lib/footage/capture": 1,
+      "→ lib/output/look": 1,
+      "→ lib/output/render": 1,
+      "→ lib/output/review": 1,
+      "→ lib/picture/camera": 1,
+      "→ lib/picture/type": 1
+    },
+    "lib/picture/brand": {
+      "→ lib/output/stills": 1,
+      "→ lib/picture/camera": 1,
+      "→ lib/picture/type": 1
+    },
+    "lib/picture/camera": {
+      "→ lib/picture/captions": 1,
+      "→ lib/picture/frame": 1,
+      "→ lib/picture/motion": 1
+    },
+    "lib/picture/captions": {
+      "→ lib/picture/camera": 1,
+      "→ lib/picture/composition": 1,
+      "→ lib/picture/frame": 1,
+      "→ lib/picture/motion": 1,
+      "→ lib/picture/reel": 1,
+      "→ lib/picture/type": 1,
+      "→ lib/timing/timeline": 1,
+      "→ lib/timing/voice": 1
+    },
+    "lib/picture/composition": {
+      "→ lib/footage/previs": 1,
+      "→ lib/output/look": 1,
+      "→ lib/output/render": 1,
+      "→ lib/output/stills": 1,
+      "→ lib/picture/captions": 1,
+      "→ lib/picture/frame": 1,
+      "→ lib/picture/motion": 1,
+      "→ lib/timing/sound": 1,
+      "→ lib/timing/timeline": 1,
+      "→ lib/timing/voice": 1
+    },
+    "lib/picture/film": {
+      "→ lib/output/look": 1,
+      "→ lib/picture/composition": 1,
+      "→ lib/picture/frame": 1
+    },
+    "lib/picture/frame": {
+      "→ lib/output/look": 1,
+      "→ lib/picture/camera": 1
+    },
+    "lib/picture/kit": {
+      "→ lib/footage/capture": 1,
+      "→ lib/output/look": 1,
+      "→ lib/picture/camera": 1,
+      "→ lib/picture/captions": 1,
+      "→ lib/picture/composition": 1,
+      "→ lib/picture/frame": 1,
+      "→ lib/picture/motion": 1,
+      "→ lib/picture/type": 1,
+      "→ lib/timing/sound": 1,
+      "→ lib/timing/timeline": 1
+    },
+    "lib/picture/motion": {
+      "→ lib/picture/camera": 1,
+      "→ lib/picture/composition": 1,
+      "→ lib/picture/frame": 1,
+      "→ lib/timing/timeline": 1
+    },
+    "lib/picture/reel": {
+      "→ lib/footage/capture": 1,
+      "→ lib/output/look": 1,
+      "→ lib/output/render": 1,
+      "→ lib/picture/camera": 1,
+      "→ lib/picture/composition": 1,
+      "→ lib/picture/film": 1,
+      "→ lib/picture/frame": 1,
+      "→ lib/picture/kit": 1,
+      "→ lib/picture/motion": 1,
+      "→ lib/picture/type": 1,
+      "→ lib/timing/music": 1,
+      "→ lib/timing/timeline": 1
+    },
+    "lib/picture/type": {
+      "→ lib/picture/frame": 1,
+      "→ lib/picture/reel": 1
+    },
+    "lib/timing/music": {
+      "→ lib/timing/sound": 1
+    },
+    "lib/timing/sound": {
+      "→ lib/output/render": 1,
+      "→ lib/picture/composition": 1,
+      "→ lib/picture/motion": 1,
+      "→ lib/timing/timeline": 1,
+      "→ lib/timing/voice": 1
+    },
+    "lib/timing/timeline": {
+      "→ lib/output/render": 1,
+      "→ lib/picture/frame": 1,
+      "→ lib/picture/motion": 1,
+      "→ lib/timing/voice": 1
+    },
+    "lib/timing/voice": {
+      "→ lib/timing/sound": 1
+    }
+  },
+  "feature-visibility": {
+    "lib/footage/capture/visibility.json": {
+      "missing:lib/footage/previs": 1,
+      "missing:lib/output/look": 1,
+      "missing:lib/output/render": 1,
+      "missing:lib/output/stills": 1,
+      "missing:lib/picture/kit": 1,
+      "missing:lib/picture/reel": 1
+    },
+    "lib/footage/generation/visibility.json": {
+      "missing:lib/output/render": 1,
+      "missing:lib/timing/music": 1,
+      "missing:lib/timing/voice": 1
+    },
+    "lib/footage/previs/visibility.json": {
+      "missing:lib/output/render": 1,
+      "missing:lib/picture/composition": 1
+    },
+    "lib/output/ffmpeg/visibility.json": {
+      "missing:lib/footage/generation": 1,
+      "missing:lib/output/look": 1,
+      "missing:lib/output/render": 1,
+      "missing:lib/output/review": 1,
+      "missing:lib/output/stills": 1,
+      "missing:lib/picture/reel": 1,
+      "missing:lib/timing/music": 1,
+      "missing:lib/timing/sound": 1,
+      "missing:lib/timing/voice": 1
+    },
+    "lib/output/look/visibility.json": {
+      "missing:lib/footage/capture": 1,
+      "missing:lib/footage/previs": 1,
+      "missing:lib/output/stills": 1,
+      "missing:lib/picture/composition": 1,
+      "missing:lib/picture/film": 1,
+      "missing:lib/picture/frame": 1,
+      "missing:lib/picture/kit": 1,
+      "missing:lib/picture/reel": 1
+    },
+    "lib/output/render/visibility.json": {
+      "missing:lib/output/look": 1,
+      "missing:lib/output/review": 1,
+      "missing:lib/output/stills": 1,
+      "missing:lib/picture/composition": 1,
+      "missing:lib/picture/reel": 1,
+      "missing:lib/timing/sound": 1,
+      "missing:lib/timing/timeline": 1
+    },
+    "lib/output/review/visibility.json": {
+      "missing:lib/output/stills": 1
+    },
+    "lib/output/stills/visibility.json": {
+      "missing:lib/output/render": 1,
+      "missing:lib/picture/brand": 1,
+      "missing:lib/picture/composition": 1
+    },
+    "lib/picture/brand/visibility.json": {
+      "missing:lib/output/render": 1
+    },
+    "lib/picture/camera/visibility.json": {
+      "missing:lib/footage/capture": 1,
+      "missing:lib/footage/previs": 1,
+      "missing:lib/output/look": 1,
+      "missing:lib/output/stills": 1,
+      "missing:lib/picture/brand": 1,
+      "missing:lib/picture/captions": 1,
+      "missing:lib/picture/frame": 1,
+      "missing:lib/picture/kit": 1,
+      "missing:lib/picture/motion": 1,
+      "missing:lib/picture/reel": 1
+    },
+    "lib/picture/captions/visibility.json": {
+      "missing:lib/picture/camera": 1,
+      "missing:lib/picture/composition": 1,
+      "missing:lib/picture/kit": 1
+    },
+    "lib/picture/composition/visibility.json": {
+      "missing:lib/footage/previs": 1,
+      "missing:lib/output/look": 1,
+      "missing:lib/output/render": 1,
+      "missing:lib/picture/captions": 1,
+      "missing:lib/picture/film": 1,
+      "missing:lib/picture/kit": 1,
+      "missing:lib/picture/motion": 1,
+      "missing:lib/picture/reel": 1,
+      "missing:lib/timing/sound": 1
+    },
+    "lib/picture/film/visibility.json": {
+      "missing:lib/picture/reel": 1
+    },
+    "lib/picture/frame/visibility.json": {
+      "missing:lib/footage/previs": 1,
+      "missing:lib/output/look": 1,
+      "missing:lib/output/render": 1,
+      "missing:lib/picture/camera": 1,
+      "missing:lib/picture/captions": 1,
+      "missing:lib/picture/composition": 1,
+      "missing:lib/picture/film": 1,
+      "missing:lib/picture/kit": 1,
+      "missing:lib/picture/motion": 1,
+      "missing:lib/picture/reel": 1,
+      "missing:lib/picture/type": 1,
+      "missing:lib/timing/timeline": 1
+    },
+    "lib/picture/kit/visibility.json": {
+      "missing:lib/picture/reel": 1
+    },
+    "lib/picture/motion/visibility.json": {
+      "missing:lib/footage/capture": 1,
+      "missing:lib/footage/previs": 1,
+      "missing:lib/output/look": 1,
+      "missing:lib/output/render": 1,
+      "missing:lib/output/review": 1,
+      "missing:lib/picture/camera": 1,
+      "missing:lib/picture/captions": 1,
+      "missing:lib/picture/composition": 1,
+      "missing:lib/picture/kit": 1,
+      "missing:lib/picture/reel": 1,
+      "missing:lib/timing/sound": 1,
+      "missing:lib/timing/timeline": 1
+    },
+    "lib/picture/reel/visibility.json": {
+      "missing:lib/picture/captions": 1,
+      "missing:lib/picture/type": 1
+    },
+    "lib/picture/type/visibility.json": {
+      "missing:lib/footage/previs": 1,
+      "missing:lib/output/look": 1,
+      "missing:lib/output/stills": 1,
+      "missing:lib/picture/brand": 1,
+      "missing:lib/picture/captions": 1,
+      "missing:lib/picture/kit": 1,
+      "missing:lib/picture/reel": 1
+    },
+    "lib/platform/git/visibility.json": {
+      "missing:lib/platform/project": 1
+    },
+    "lib/platform/host/visibility.json": {
+      "missing:lib/footage/capture": 1,
+      "missing:lib/output/render": 1,
+      "missing:lib/timing/sound": 1
+    },
+    "lib/platform/project/visibility.json": {
+      "missing:lib/footage/capture": 1,
+      "missing:lib/output/render": 1,
+      "missing:lib/output/review": 1,
+      "missing:lib/platform/host": 1,
+      "missing:lib/platform/web": 1,
+      "missing:lib/timing/sound": 1
+    },
+    "lib/platform/temp/visibility.json": {
+      "missing:lib/footage/generation": 1,
+      "missing:lib/output/look": 1,
+      "missing:lib/output/render": 1,
+      "missing:lib/picture/brand": 1,
+      "missing:lib/picture/reel": 1,
+      "missing:lib/platform/project": 1,
+      "missing:lib/timing/voice": 1
+    },
+    "lib/timing/music/visibility.json": {
+      "missing:lib/picture/reel": 1
+    },
+    "lib/timing/sound/visibility.json": {
+      "missing:lib/output/look": 1,
+      "missing:lib/output/render": 1,
+      "missing:lib/output/review": 1,
+      "missing:lib/picture/composition": 1,
+      "missing:lib/picture/kit": 1,
+      "missing:lib/timing/music": 1,
+      "missing:lib/timing/voice": 1
+    },
+    "lib/timing/timeline/visibility.json": {
+      "missing:lib/footage/previs": 1,
+      "missing:lib/output/look": 1,
+      "missing:lib/output/render": 1,
+      "missing:lib/output/review": 1,
+      "missing:lib/picture/captions": 1,
+      "missing:lib/picture/composition": 1,
+      "missing:lib/picture/kit": 1,
+      "missing:lib/picture/motion": 1,
+      "missing:lib/picture/reel": 1,
+      "missing:lib/timing/sound": 1
+    },
+    "lib/timing/voice/visibility.json": {
+      "missing:lib/output/render": 1,
+      "missing:lib/output/review": 1,
+      "missing:lib/picture/captions": 1,
+      "missing:lib/picture/composition": 1,
+      "missing:lib/timing/sound": 1,
+      "missing:lib/timing/timeline": 1
+    }
+  },
+  "file-size": {
+    "lib/picture/kit/studio/kit.tsx": {
+      "size": 1
+    },
+    "lib/picture/type/models/archivo-metrics.ts": {
+      "size": 1
+    },
+    "lib/timing/sound/models/recipes.ts": {
+      "size": 1
+    }
+  },
+  "import(no-unassigned-import)": {
+    "lib/picture/reel/studio/recap.test.ts": {
+      "import '#lib/output/render/engine/tsx-test-hooks.ts';": 1
+    }
+  },
+  "no-broad-parameters": {
+    "lib/footage/capture/engine/capture.ts": {
+      "fromSetup: unknown": 1
+    },
+    "lib/footage/generation/engine/openrouter.ts": {
+      "body: object": 4
+    },
+    "lib/footage/generation/engine/paid-generation.test.ts": {
+      "p: any": 1
+    },
+    "lib/footage/generation/engine/paid-generation.ts": {
+      "value: unknown": 2,
+      "request: unknown[]": 1
+    },
+    "lib/output/render/engine/browser-module-page.ts": {
+      "args: unknown[]": 2,
+      "a: unknown[]": 1,
+      "list: unknown[]": 1
+    },
+    "lib/picture/brand/engine/project-brand.test.ts": {
+      "spec: object": 1
+    },
+    "lib/picture/brand/models/brand.ts": {
+      "values: object | undefined": 1
+    },
+    "lib/picture/film/studio/three-stage.tsx": {
+      "value: unknown": 1
+    },
+    "lib/timing/voice/engine/voice-project.ts": {
+      "key: unknown[]": 1
+    },
+    "lint/oxlint/lib/rule-options.ts": {
+      "option: unknown": 1
+    },
+    "lint/structural/checks/frame-determinism.ts": {
+      "program: unknown": 1
+    },
+    "lint/structural/checks/model-purity.ts": {
+      "pattern: unknown": 1,
+      "name: unknown": 1
+    },
+    "lint/structural/checks/shadow-source.ts": {
+      "computed: unknown": 1
+    },
+    "lint/structural/checks/timing-ownership.ts": {
+      "node: unknown": 1
+    },
+    "lint/structural/source-tree.ts": {
+      "node: unknown": 1
+    }
+  },
+  "no-known-value-widening": {
+    "lib/footage/generation/engine/openrouter.ts": {
+      "return Record<string, string>": 1
+    },
+    "lib/output/look/studio/motion-tag.ts": {
+      "return Record<string, string>": 2
+    },
+    "lib/platform/project/engine/new-project.ts": {
+      "files: Record<string, string>": 1
+    },
+    "lib/platform/project/engine/scaffold-stills.ts": {
+      "return Record<string, string>": 1
+    },
+    "lib/timing/sound/engine/sfx-files.ts": {
+      "SFX_KIT: Readonly<Record<string, { sound: string; takes?: number }>>": 1
+    },
+    "lib/timing/sound/models/cues.ts": {
+      "return Record<string, number>": 1
+    },
+    "lib/timing/sound/models/library.ts": {
+      "return Readonly<Record<string, SfxParamSpec>>": 1
+    },
+    "lint/oxlintrc.test.ts": {
+      "FIXTURES: Record<string, string>": 1,
+      "EXTENDED: Record<string, string>": 1
+    },
+    "lint/policy/studio-tree.test.ts": {
+      "cases: Record<string, string>": 1
+    }
+  },
+  "no-opaque-record": {
+    "lib/footage/generation/engine/paid-generation.ts": {
+      "Record<string, unknown>": 3
+    },
+    "lib/output/look/engine/piece-look.ts": {
+      "Record<string, unknown>": 1
+    },
+    "lib/output/render/engine/render-session.ts": {
+      "Record<string, unknown>": 1
+    },
+    "lint/oxlint/lib/rule-options.ts": {
+      "Record<string, unknown>": 1
+    },
+    "lint/structural/source-tree.ts": {
+      "{ type: string; start: number; end: number; [key: string]: unknown }": 1,
+      "Record<string, unknown>": 1
+    }
+  },
+  "no-runtime-typeof": {
+    "lib/picture/brand/models/brand.ts": {
+      "typeof v": 2
+    },
+    "lib/platform/web/engine/studio-app-server.ts": {
+      "typeof body.root": 1
+    },
+    "lint/oxlint/lib/rule-options.ts": {
+      "typeof option": 1,
+      "typeof value": 1
+    },
+    "lint/structural/checks/doc-budgets.ts": {
+      "typeof ceiling": 1
+    },
+    "lint/structural/checks/feature-visibility.ts": {
+      "typeof reason": 1
+    },
+    "lint/structural/checks/frame-determinism.ts": {
+      "typeof property.value": 1
+    },
+    "lint/structural/checks/model-purity.ts": {
+      "typeof name": 1
+    },
+    "lint/structural/checks/render-snapshot.ts": {
+      "typeof node.value": 1
+    },
+    "lint/structural/checks/sdk-containment.ts": {
+      "typeof node.value": 1
+    },
+    "lint/structural/checks/timing-ownership.ts": {
+      "typeof name": 1
+    },
+    "lint/structural/checks/token-equality.ts": {
+      "typeof literal.value": 2,
+      "typeof raw": 3
+    },
+    "lint/structural/project-declaration.ts": {
+      "typeof key.value": 1,
+      "typeof entry.value": 2
+    },
+    "lint/structural/source-tree.ts": {
+      "typeof literal.value": 1,
+      "typeof target": 1
+    }
+  },
   "no-scratch": {
     "cli/commands/sfx.ts": {
       "args: { out: { type: 'positional', required: false, default: 'scratch/sfx-showcase', description: 'The folder to write' } },": 1
     },
     "skills/video-sound/references/sfx.md": {
       "To hear the options, `studio sfx showcase` renders every preset and a few variants into `scratch/sfx-showcase/`, with an": 1
+    }
+  },
+  "no-unknown-returns": {
+    "lib/footage/capture/engine/capture.ts": {
+      "(): Promise<unknown>": 5
+    },
+    "lib/footage/generation/engine/paid-generation.ts": {
+      "(): unknown": 1
+    },
+    "lib/output/render/engine/browser-module-page.ts": {
+      "(): unknown": 1
+    },
+    "lib/output/render/engine/host-module-resolution.ts": {
+      "parseJsonc(): unknown": 1
+    }
+  },
+  "oxc(no-map-spread)": {
+    "lib/footage/capture/engine/capture.ts": {
+      "const opening = raw.filter((f) => f.t < t0).slice(-1).map((f) => ({ ...f, t: t0 }));": 1
+    },
+    "lib/footage/generation/engine/paid-generation.ts": {
+      "const references = (request.references ?? []).map((ref) => ({ ...ref, bytes: readFileSync(ref.path) }))": 1,
+      ".map((ref) => ({ ...ref, sha256: createHash('sha256').update(ref.bytes).digest('hex') }));": 1,
+      "references: references.map(({ path, sha256, frame }) => ({ path: relative(project, path), sha256, ...(frame && { frame }) })),": 1,
+      "...(framed.length && { frame_images: await Promise.all(framed.map(async (ref) => ({ ...(await part(ref)), frame_type: ref.frame }))) }),": 1
+    },
+    "lib/output/look/studio/probe.tsx": {
+      "const marks = measurable<HTMLElement | SVGElement>(root, '[data-framing]').map((el): FramingMark => {": 1,
+      "return { frame, marks, takeFitStrains: drainTakeFitStrains().map((strain) => ({ ...strain, scenes })) };": 1
+    },
+    "lib/output/render/engine/render-pipeline.ts": {
+      "const slices = readdirSync(dir).filter((name) => extname(name) === '.mp4' && join(dir, name) !== out).map((name) => {": 1,
+      "...frames.flatMap((f) => [1, 2, 3].flatMap((every) => [...runUpTo(f, every), f])),": 1
+    },
+    "lib/output/review/engine/project-artifacts.ts": {
+      ".map((artifact) => {": 1
+    },
+    "lib/output/review/engine/review-artifact.ts": {
+      "...(snapshot?.timeline.sounds ?? []).map((s) => ({ ...s, source: 'video' as const })),": 1,
+      "].filter((s) => holds(s.at)).map((s) => ({ ...s, at: s.at - shift, frame: reviewFrameAt(s.at - shift, fps) })).toSorted((a, b) => a.at - b.at);": 1
+    },
+    "lib/output/review/models/review-moment.ts": {
+      "const same = line.words.map((w, i) => ({ ...w, i })).filter((w) => w.text === moment.text).toSorted((a, b) => Math.abs(a.i - moment.word) - Math.abs(b.i - moment.word))[0];": 1
+    },
+    "lib/output/review/models/review-notes.ts": {
+      ".map((s) => ({ id: s.id, sound: s.sound, frame: s.frame, ...(s.id === note.cue && { targeted: true as const }) }));": 1
+    },
+    "lib/output/review/models/review-storyboard.ts": {
+      ".map((m) => ({ ...m, frame: m.frame - frames.from, scene: bar.id }))),": 1
+    },
+    "lib/picture/captions/models/caption-pages.test.ts": {
+      "id, paragraph, words: captionTokens(text).map((token, k) => ({ ...token, start: at + k * 0.3, end: at + k * 0.3 + 0.25 })),": 1
+    },
+    "lib/picture/captions/models/caption-track.ts": {
+      "return { id, paragraph: line.paragraph, words: tokens.map((token, k) => ({ ...token, start: at + line.words[k].start, end: at + line.words[k].end })) };": 1,
+      "return { id: `${key}.${k}`, paragraph: true, words: tokens.map((token, j) => ({ ...token, start: start + timed[j].start, end: start + timed[j].end })) };": 1
+    },
+    "lib/picture/composition/studio/timeline.ts": {
+      "return { ...layout, scenes: layout.scenes.map((placed, k) => ({ ...video.scenes[k], ...placed })) };": 1
+    },
+    "lib/picture/composition/studio/Video.tsx": {
+      "expectations: tl.scenes.flatMap((scene) => (scene.expect?.(sceneTimes(scene)) ?? []).map(({ during, ...promise }) => {": 1
+    },
+    "lib/picture/frame/models/framing-check.test.ts": {
+      "].map((r) => ({ ...r, takeFitStrains: [] }));": 1
+    },
+    "lib/picture/motion/models/motion-graph.ts": {
+      "return spans.map(([a, b]): ChannelMove => {": 1
+    },
+    "lib/picture/motion/models/motion-tracks.ts": {
+      "list: (): MotionInstrumentationError[] => [...unframed.values(), ...spans.list().map(({ of, span }) => ({ ...of, frames: span }))],": 1,
+      "tracks: [...runs].map(([id, { first: s, runs: rs }]) => ({": 1,
+      "ambiguous: ambiguous.list().map(({ of, span }) => ({ ...of, frames: span })),": 1
+    },
+    "lib/picture/reel/models/glyph-field-frame.ts": {
+      "const cells = glyphFieldLayout(count, size, layout).map((slot) => ({ ...slot, item: (items ? items[slot.index] : null) as D }));": 1,
+      "const planned = order.map((k) => ({ clip: planClip(waves[k].clip), ...glyphWaveArrivals(waves[k], cells, { pitch, center, seed, index: k }), index: k }));": 1
+    },
+    "lib/picture/reel/models/glyph-field.test.ts": {
+      "const lattice = () => glyphFieldLayout(19 * 11, FORMAT).map((slot) => ({ ...slot, item: null }));": 1
+    },
+    "lib/picture/reel/studio/type-slant.tsx": {
+      "const dots = dotsAt(m, pose.scale).map((d) => ({ ...d, swap: tittle?.(d) }));": 1
+    },
+    "lib/timing/sound/engine/sfx-files.ts": {
+      "...SHOWCASE_MUTATIONS.map((m) => ({ sound: name, ...m })),": 1
+    },
+    "lib/timing/sound/models/cue-events.ts": {
+      "return events.toSorted((a, b) => a.at - b.at).map((e) => {": 1,
+      "return timeline.scenes.slice(1).map((scene, i) => {": 1,
+      ".map((e): SfxEvent => {": 3
+    },
+    "lib/timing/sound/models/cues.test.ts": {
+      "const now = [...events.map((e) => (e.id === 'scene:b' ? { ...e, at: 5.5 } : e)).filter((e) => e.id !== 'click:a:3' && e.id !== 'move:d:1'), click('click:a:4', 3)];": 1
+    },
+    "lib/timing/sound/models/recipes.ts": {
+      "? strikeLayers({ at: p.releaseAfter, gain: p.release, noiseHz: noiseHz * 1.15, noiseQ: 0.9, noiseTau, tones: scaled.map((t) => ({ ...t, hz: t.hz * 1.08 })) }, random)": 1
+    }
+  },
+  "promise(always-return)": {
+    "lib/output/look/studio/screen-rect.ts": {
+      "whenLaidOut(layer).then(() => {": 1
+    },
+    "lib/output/stills/studio/still-probe.tsx": {
+      "whenStillSettled(root.current!).then(() => {": 1
+    },
+    "lib/picture/type/studio/fonts.ts": {
+      "loads.push(loadFont({ ...face, url, format }).then(() => { settledLoads++; }));": 1,
+      "whenStudioFontsLoaded().then(() => {": 1
+    }
+  },
+  "react-hooks(exhaustive-deps)": {
+    "lib/output/stills/studio/stills.tsx": {
+      "}, [name, text, box.w, box.h, max, min, face.family, face.stretch?.[0], face.stretch?.[1], delayRender, continueRender]);": 2,
+      "const [lo, hi] = face.stretch ?? [100, 100];": 1,
+      "}, [ready, name, text, box.w, box.h, max, min, face.family, face.stretch?.[0], face.stretch?.[1]]);": 2
+    },
+    "lib/picture/captions/studio/caption-style.tsx": {
+      "const band = useMemo(() => style.band(size), [style, size.width, size.height]);": 1
+    },
+    "lib/picture/composition/studio/Video.tsx": {
+      "const pages = useMemo(() => burnedCaptionPages(captioned.style, captioned.track, config), [captioned, config.width, config.height]);": 1
+    }
+  },
+  "react(exhaustive-effect-dependencies)": {
+    "lib/output/stills/studio/stills.tsx": {
+      "}, [name, text, box.w, box.h, max, min, face.family, face.stretch?.[0], face.stretch?.[1], delayRender, continueRender]);": 1,
+      "const [lo, hi] = face.stretch ?? [100, 100];": 1
+    }
+  },
+  "react(hooks)": {
+    "lib/picture/kit/studio/kit.tsx": {
+      "const box = given ?? fullFrameRect(useVideoFormat());": 1
+    }
+  },
+  "react(memo-dependencies)": {
+    "lib/picture/captions/studio/caption-style.tsx": {
+      "const band = useMemo(() => style.band(size), [style, size.width, size.height]);": 1
+    },
+    "lib/picture/composition/studio/Video.tsx": {
+      "const pages = useMemo(() => burnedCaptionPages(captioned.style, captioned.track, config), [captioned, config.width, config.height]);": 1
+    }
+  },
+  "react(no-array-index-key)": {
+    "lib/footage/capture/studio/capture.tsx": {
+      "<Capture key={i} view={{ ...view, shot }} alpha={i === 0 ? 1 : seg(t, at, at + fade)} />": 1
+    },
+    "lib/picture/captions/studio/pill-captions.tsx": {
+      "{page.lines.map((line, j) => <div key={j}>{line.map((word, i) => <PillWord key={i} word={word} first={i === 0} scale={scale} />)}</div>)}": 2
+    },
+    "lib/picture/captions/studio/word-pop-captions.tsx": {
+      "<div key={j} style={{ whiteSpace: 'nowrap' }}>": 1,
+      "<span key={i}>": 1
+    },
+    "lib/picture/composition/studio/Video.tsx": {
+      "{video.sounds?.map((s, i) => <Sfx key={i} sound={s.sound} at={s.at} t={t} id={s.id ?? i} volume={s.volume} />)}": 1
+    },
+    "lib/picture/kit/studio/kit.tsx": {
+      "<ClipToBox key={i} box={side.view.box} picked={i === 0 ? 'left' : 'right'}>": 1,
+      "side.label ? <Tag key={i} text={side.label} x={side.view.box.x + 32} y={(SPLIT_LABEL_STRIP - 53) / 2} k={k} bg={side.labelBg} size={28} /> : null,": 1,
+      "<Text key={i} text={typeof p === 'string' ? p : p.text} x={rect.x + 88} y={y0 + 250 + i * 104} size={60} weight={700} color={ink}": 1,
+      "{items.map((item, i) => <div key={i} style={{ height: rowH }}>{item}</div>)}": 1,
+      "<Fragment key={w}>": 1,
+      "return <span key={u} {...tag} style={{ display: 'inline-block', opacity: e, transform: `translateY(${(1 - e) * rise}px)` }}>{unit}</span>;": 1
+    },
+    "lib/picture/kit/studio/overlays.tsx": {
+      "{clicks.map(([kt], i) => <Sfx key={i} sound={SFX.click} id={i} at={kt} t={t} event=\"click\" />)}": 1,
+      "{clicks.map(([kt, p], i) => <ClickRipple key={i} at={screenPoint(view, p)} k={(t - kt) / RIPPLE_LIFE} n={i + 1} through={view} />)}": 1,
+      "{fit.take.keys.map((time, i) => <Sfx key={i} sound={SFX.key} id={i} at={sceneTimeOf(fit, time)} t={t} volume={0.7} event=\"key\" />)}": 1
+    },
+    "lib/picture/reel/studio/bounce.tsx": {
+      "<div key={j} style={{": 1,
+      "<g key={i}>": 1,
+      "<ellipse key={j} {...ballEllipse(gp.g)} fill=\"none\" stroke={ink} strokeWidth={1.5} opacity={gp.alpha} />": 1,
+      "<ellipse key={j} {...ballEllipse(pose, at)} fill={color} opacity={1 / centres.length} style={centres.length > 1 ? { mixBlendMode: 'plus-lighter' } : undefined} />": 1
+    },
+    "lib/picture/reel/studio/capture-plane.tsx": {
+      "<div key={i} style={{ position: 'absolute', inset: 0, perspective: lens, perspectiveOrigin: `${vanish.x}px ${vanish.y}px`, filter: `blur(${Math.hypot(sigma, blur)}px)`, opacity: alpha * strength, pointerEvents: 'none' }}>": 1
+    },
+    "lib/picture/reel/studio/lens.tsx": {
+      "<feColorMatrix key={`w${i}`} in=\"ramp\" type=\"matrix\" values={`${row(red[i])}  ${row(green[i])}  0 0 0 0 ${i === 0 ? 1 : 0}  0 0 0 0 1`} result={`w${i}`} />,": 1,
+      "<feComposite key={`p${i}`} in={tap} in2={`w${i}`} operator=\"arithmetic\" k1={1} result={`p${i}`} />,": 1
+    },
+    "lib/picture/reel/studio/recap.tsx": {
+      "<RecapTileFrame key={i} rect={rect} look={here} smear={[sigma(vx, rect.w), sigma(vy, rect.h)]} radius={radius ?? look.radius} tag={tag}>": 1,
+      "{cuts.map((cut, i) => <feOffset key={i} in=\"src\" dx={cut.dx} dy={0} x={cut.x} y={cut.y} width={cut.w} height={cut.h} result={`cut${i}`} />)}": 1,
+      "{cuts.map((_, i) => <feMergeNode key={i} in={`cut${i}`} />)}": 1
+    },
+    "lib/picture/reel/studio/ticker.tsx": {
+      "<div key={`ground-${b}`} style={{ position: 'absolute', left: 0, top: top(b), width, height: top(b + 1) - top(b), background: c.ground }} />": 1,
+      "key={b} t={t} {...band} word={hero} count={count} size={size} cap={cap} colors={c} breath={breath}": 1,
+      "key={b} t={t} {...band} text={text} cap={cap} dot={dot} fill={striped ? c.type : c.band}": 1,
+      "<Glyph key={i} char={g.char} axes={g.axes} x={g.x} baseline={baseline} size={size} color={color} filter={g.level === null ? undefined : `url(#${id}-g${g.level})`} />": 1
+    },
+    "lib/picture/reel/studio/type-scramble.tsx": {
+      "? <text key={i} x={left + c.x} y={base} style={face}>{s.char}</text>": 1,
+      ": <text key={i} x={left + c.x + (c.w - tracking) / 2} y={base} textAnchor=\"middle\" style={face}>{s.char}</text>;": 1,
+      "<g key={i} {...motionEchoAttrs} clipPath={`url(#${id}-band${i})`}>": 1,
+      "<svg key={n} width={width} height={height} style={{ ...layer, mixBlendMode: pass.blend }}>": 1,
+      "<clipPath key={i} id={`${id}-band${i}`}>": 1
+    },
+    "lib/picture/reel/studio/type-slant.tsx": {
+      "{dots.map((d, i) => !swapped(d.swap) && <circle key={i} cx={d.x} cy={d.y} r={d.r} />)}": 1,
+      "{dots.map((d, i) => swapped(d.swap) && <Fragment key={i}>{d.swap}</Fragment>)}": 1
+    },
+    "lib/picture/reel/studio/type.tsx": {
+      "<rect key={i} fill={color} opacity={e.alpha}": 1,
+      "? <rect key={i} x={p.x - HANDLE / 2 + 1} y={p.y - HANDLE / 2 + 1} width={HANDLE - 2} height={HANDLE - 2} fill={handle} stroke={color} strokeWidth={2} />": 1,
+      ": <line key={i} x1={q.x} y1={q.y} x2={p.x} y2={p.y} stroke={handle} strokeWidth={HANDLE} strokeLinecap=\"square\" opacity={HANDLE / (HANDLE + len)} />;": 1
+    }
+  },
+  "react(no-object-type-as-default-prop)": {
+    "lib/picture/kit/studio/kit.tsx": {
+      "export function ClickToBlur({ t, shot, frame, target, clickAt = 1.3, from = { dx: -220, dy: 160 }, blur = 34, wash = '22, 40, 70', push = 1.08 }: {": 1
+    },
+    "lib/picture/reel/studio/bounce.tsx": {
+      "function SwellDisc({ pose, centres = [pose], color, tag }: { pose: SwellPose; centres?: readonly { x: number; y: number }[]; color: string; tag: Record<string, string> }) {": 1
+    },
+    "lib/picture/reel/studio/hud.tsx": {
+      "t, beatOf = (s) => s / REFERENCE_SPB, beatsPerBar = 4, duration = 15, title = 'CLAUDE', subtitle = 'MOTION REEL 2026',": 1,
+      "readout, sections = REFERENCE_SECTIONS, readAt = () => LIGHT_READ, plateOpacity = 0.75, palette = REEL_HUD_PALETTE,": 1
+    },
+    "lib/picture/reel/studio/needle.tsx": {
+      "ground = '#0c0c0e', shift = { x: 0, y: 0 }, motion, ...rig": 1
+    },
+    "lib/picture/reel/studio/ticker.tsx": {
+      "light = TICKER_LIGHT, bold = TICKER_BOLD, oblique = 0, block = () => 0, shutter = TICKER_SHUTTER, motion, name = 'band',": 1
+    },
+    "lib/picture/reel/studio/type-scramble.tsx": {
+      "seed = text, charset, delay, each, rate, hits = [], split = 13, cursor, label, labelColor = color, motion,": 1
+    }
+  },
+  "react(preserve-manual-memoization)": {
+    "lib/output/look/studio/screen-rect.ts": {
+      "}, [target, selector, width]);": 1
+    }
+  },
+  "react(refs)": {
+    "lib/output/render/studio/frame-profiler.tsx": {
+      "frame.current = useCurrentFrame();": 1
+    }
+  },
+  "react(set-state-in-effect)": {
+    "lib/output/look/studio/screen-rect.ts": {
+      "measure();": 1
+    }
+  },
+  "sonarjs(no-identical-expressions)": {
+    "lib/timing/music/models/music-beats.ts": {
+      "const lo = Math.round(60 / 180 / HOP_SECONDS), hi = Math.round(60 / 60 / HOP_SECONDS);": 1
+    }
+  },
+  "typescript(consistent-return)": {
+    "lib/output/look/studio/motion-tag.ts": {
+      "return () => {": 1
+    },
+    "lib/output/look/studio/screen-rect.ts": {
+      "return release;": 1
+    },
+    "lib/output/render/engine/browser-module-page.ts": {
+      "const server = createServer((request, response) => {": 1
+    },
+    "lib/picture/type/studio/fonts.ts": {
+      "return release;": 1
+    },
+    "lib/timing/sound/models/cues.ts": {
+      "function sfxEventOptions(event: SfxEvent, clickStyle: SfxClickStyle): SfxRequest[] {": 1
+    },
+    "lint/structural/checks/barrel-discoverability.ts": {
+      "if (node.type !== 'ExportSpecifier') return;": 1,
+      "if (local === exported) return;": 1
+    },
+    "lint/structural/checks/barrel-purity.ts": {
+      "if (node.type !== 'Identifier' || calls.has(node)) return;": 1
+    },
+    "lint/structural/checks/frame-determinism.ts": {
+      "walkAst(program, (node) => {": 1
+    },
+    "lint/structural/checks/model-purity.ts": {
+      "if (node.type !== 'Identifier' || !isImpure(node.name) || bindings.has(node)) return;": 1,
+      "if (parent?.type === 'MemberExpression' && parent.property === node && !parent.computed) return;": 1,
+      "if (keyed && parent.key === node && !parent.computed && !(parent.type === 'Property' && parent.shorthand && parent.value === node)) return;": 1
+    },
+    "lint/structural/checks/sdk-containment.ts": {
+      "walkAst(file.program, (node) => {": 1
+    }
+  },
+  "typescript(consistent-type-imports)": {
+    "types.d.ts": {
+      "const video: import('#lib/picture/composition/studio/timeline.ts').VideoDef | null;": 1,
+      "const stills: import('#lib/output/stills/studio/stills.tsx').StillsDef | null;": 1,
+      "const brand: import('#lib/picture/brand/studio/brand.tsx').StudioBrand;": 1,
+      "export const footage: Readonly<Record<string, import('#lib/footage/previs/studio/previs.ts').PrevisFootage>>;": 1,
+      "const cues: readonly import('#lib/timing/sound/studio/sfx.tsx').SfxCueSound[] | null;": 1,
+      "const styles: import('#lib/picture/stamp-styles/models/style.ts').BundledStampPaintStyles;": 1
+    }
+  },
+  "typescript(no-base-to-string)": {
+    "lib/footage/generation/engine/generated-image.test.ts": {
+      "generations.push(JSON.parse(String(init?.body)));": 1
+    },
+    "lib/footage/generation/engine/paid-generation.test.ts": {
+      "calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });": 1
+    },
+    "lib/output/render/engine/render-stills.ts": {
+      "const values = (key: keyof StillProps) => [...new Set(all.map((c) => (c.defaultProps as StillProps)[key]))].join(', ');": 1
+    }
+  },
+  "typescript(no-explicit-any)": {
+    "lib/footage/generation/engine/generated-image.test.ts": {
+      "let generations: any[] = [];": 1,
+      "assert.equal((Object.values(provenance)[0] as any).requestId, 'gen-img-1');": 1
+    },
+    "lib/footage/generation/engine/paid-generation.test.ts": {
+      "let calls: { url: string; body: any }[] = [];": 1,
+      "assert.deepEqual(Object.values(provenance).map((p: any) => [p.prompt, p.cost, p.references[0].path]), [['a title card', 0.04, 'still.png']]);": 1
+    },
+    "lib/output/stills/studio/stills.tsx": {
+      "export type ResolvedStillDesign = { component: ComponentType<any>; presets: readonly StillPreset[]; axes: StillAxes; variants: Readonly<Record<string, StillVariant>> };": 1,
+      "export function defineStills(designs: Readonly<Record<string, StillDesign<any, any>>>): StillsDef {": 2
+    },
+    "lib/timing/sound/models/recipes.ts": {
+      "export const SFX_RECIPES = { click, key, toggle, impact, whoosh, riser, chime, ding, pop, typing, scroll, buzz } as const satisfies Record<string, SfxRecipe<any>>;": 1
+    }
+  },
+  "typescript(no-floating-promises)": {
+    "lib/output/look/studio/probe.tsx": {
+      "Promise.resolve().then(() => whenLaidOut(root.current!)).then(() => setTimeout(() => {": 1
+    },
+    "lib/output/look/studio/screen-rect.ts": {
+      "whenLaidOut(layer).then(() => {": 1
+    },
+    "lib/output/stills/studio/still-probe.tsx": {
+      "whenStillSettled(root.current!).then(() => {": 1
+    },
+    "lib/picture/type/studio/fonts.ts": {
+      "whenStudioFontsLoaded().then(() => {": 1
+    }
+  },
+  "typescript(no-misused-promises)": {
+    "lint/oxlint/lib/rule-spec.ts": {
+      "RuleTester.describe = describe;": 1,
+      "RuleTester.it = it;": 1
+    }
+  },
+  "typescript(no-misused-spread)": {
+    "lib/footage/generation/engine/openrouter.ts": {
+      "const response = await fetch(url, { ...init, headers: { ...openRouterHeaders(), ...init.headers } });": 1
+    },
+    "lib/picture/brand/studio/brand.tsx": {
+      "const full = h.length === 3 ? [...h].map((c) => c + c).join('') : h;": 1
+    },
+    "lib/picture/captions/studio/word-pop-captions.tsx": {
+      "const chars = (text: string) => [...text].map((char) => ({ char, axes }));": 1
+    },
+    "lib/picture/reel/models/bounce.ts": {
+      "return [...text].map((ch, i) => {": 1
+    },
+    "lib/picture/reel/models/glyph-field-frame.ts": {
+      "const full = hex.length <= 4 ? [...hex].map((c) => c + c).join('') : hex;": 1
+    },
+    "lib/picture/reel/models/hud.ts": {
+      "const chars = [...text];": 1,
+      "const width = (s: string, adv = advance) => ([...s].length - 1) * adv + glyph;": 1,
+      "const subtitleX = titleX + [...title].length * advance + REF.subtitleGap * k;": 1,
+      "const h = m[1].length === 3 ? [...m[1]].map((c) => c + c).join('') : m[1];": 1
+    },
+    "lib/picture/reel/models/ticker-layout.test.ts": {
+      "const line = (text: string, axes: GlyphAxes[]) => layoutGlyphLine([...text].map((char, i) => ({ char, axes: axes[i] })), 1000);": 1,
+      "unit: [...'MOTION', null], size: 160, breath: { period: 0.875, lag: 0.047 }, phase: 0.3,": 1
+    },
+    "lib/picture/reel/models/ticker.ts": {
+      "const chars = count ? [...word, ' '] : [...word];": 2
+    },
+    "lib/picture/reel/models/type.test.ts": {
+      "assert.ok(ticks.every((g) => [...g].every((c) => CODE_GLYPHS.includes(c))), 'the reference\\'s code glyphs by default');": 1,
+      "assert.ok([...glyphs(0.1, 'hud', 'AB')].every((c) => c === 'A' || c === 'B'), 'a charset of its own');": 1
+    },
+    "lib/picture/reel/models/type.ts": {
+      "return [...text].map((char, slot) => {": 1,
+      "return delay + Math.max(0, [...text].filter((c) => c.trim()).length - 1) * each;": 1
+    },
+    "lib/picture/reel/studio/ticker.tsx": {
+      "const style = { unit: [...text, null], size, breath, light, bold, phase };": 1
+    },
+    "lib/picture/reel/studio/type-measure.ts": {
+      "const chars = [...text].map((char, i) => {": 1
+    }
+  },
+  "typescript(no-unnecessary-type-assertion)": {
+    "lint/structural/checks/no-known-value-widening.ts": {
+      "const returnType = (enclosingFunctionLike(site) as (Node & { type?: Node }) | undefined)?.type;": 1
+    }
+  },
+  "typescript(no-unnecessary-type-conversion)": {
+    "lib/output/render/engine/previs-render.ts": {
+      "const stale = Boolean(playing && playing.blockout !== basename(blockout));": 1
+    },
+    "lib/timing/timeline/models/timeline.ts": {
+      "if (!['beat', 'fixed', 'voice'].includes(span.driver)) throw new Error(`scene ${key}: no driver ${String(span.driver)}; use beatSpan, fixedSpan or voiceSpan`);": 1
+    },
+    "lint/oxlint/rules/no-module-mocking.ts": {
+      "return String(definition.parent.source.value);": 1
+    }
+  },
+  "typescript(no-unnecessary-type-parameters)": {
+    "lib/output/look/studio/probe.tsx": {
+      "function parseAttr<T>(el: Element, attr: string, problems: FrameMotion['problems'], id: string): T | undefined {": 1
+    },
+    "lib/output/render/engine/render-session.ts": {
+      "const json = <T,>(name: string): T => {": 1
+    },
+    "lib/output/review/engine/review-artifact.ts": {
+      "const readJson = <T,>(file: string): T | undefined => (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) as T : undefined);": 1
+    },
+    "lib/picture/brand/engine/project-brand.ts": {
+      "const requireDefault = <T>(file: string) => (createRequire(file)(file) as { default: T }).default;": 1
+    },
+    "lib/platform/host/engine/hosts.ts": {
+      "const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;": 1
+    }
+  },
+  "typescript(no-unsafe-argument)": {
+    "lib/footage/generation/engine/generated-image.test.ts": {
+      "assert.equal((Object.values(provenance)[0] as any).requestId, 'gen-img-1');": 1
+    },
+    "lib/footage/generation/engine/paid-generation.test.ts": {
+      "assert.deepEqual(Object.values(provenance).map((p: any) => [p.prompt, p.cost, p.references[0].path]), [['a title card', 0.04, 'still.png']]);": 1,
+      "const link = new URL(submit.body.input_references[0].video_url.url);": 1
+    },
+    "lib/output/render/engine/frame-profiling.ts": {
+      "if (text.startsWith(FRAME_PROFILE_LOG_PREFIX)) entries.push(JSON.parse(text.slice(FRAME_PROFILE_LOG_PREFIX.length)));": 1
+    },
+    "lib/picture/film/studio/three-stage.tsx": {
+      "out.add(object.geometry);": 1,
+      "for (const m of Array.isArray(object.material) ? object.material : [object.material]) addMaterial(m);": 1
+    },
+    "lib/picture/reel/models/ticker-layout.test.ts": {
+      "const even = line('MOTAV', Array(5).fill({ wght: 437, wdth: 81.5 }));": 1
+    }
+  },
+  "typescript(no-unsafe-assignment)": {
+    "lib/footage/generation/engine/generated-image.test.ts": {
+      "const provenance = JSON.parse(readFileSync(join(project, 'generated', 'provenance.json'), 'utf8'));": 1
+    },
+    "lib/footage/generation/engine/generated-image.ts": {
+      "const list: Record<string, ImageEntry> = existsSync(listPath) ? JSON.parse(readFileSync(listPath, 'utf8')) : {};": 1
+    },
+    "lib/footage/generation/engine/openrouter.ts": {
+      "const result: { data: { b64_json: string }[]; usage?: { cost?: number | null } } = await response.json();": 1,
+      "const { data }: { data: OpenRouterImageModel[] } = await (await fetchOpenRouter('/images/models')).json();": 1,
+      "const { endpoints }: { endpoints: unknown[] } = await (await fetchOpenRouter(`/images/models/${model}/endpoints`)).json();": 1,
+      "let job: OpenRouterVideoJob = await (await fetchOpenRouter(`/videos/${jobId}`)).json();": 1,
+      "job = await (await fetchOpenRouter(`/videos/${jobId}`)).json();": 1,
+      "const chunk = JSON.parse(data);": 1,
+      "cost = chunk.usage?.cost ?? cost;": 1
+    },
+    "lib/footage/generation/engine/paid-generation.test.ts": {
+      "calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });": 1,
+      "const provenance = JSON.parse(readFileSync(join(project, 'generated', 'provenance.json'), 'utf8'));": 1,
+      "calls.push({ url: `${init?.method ?? 'GET'} ${url.origin}${url.pathname}`, body: typeof init?.body === 'string' ? JSON.parse(init.body) : null });": 1
+    },
+    "lib/output/look/engine/frame-look.test.ts": {
+      "const diff = [null, ...Array(20).fill(1)];": 1,
+      "assert.deepEqual(findStillRuns({ first: 0, luma: [], diff }, 3.5, clock), [{ from: 0, to: 8, maxDiff: 1 }, { from: 9, to: 17, maxDiff: 1 }]);": 1,
+      "assert.deepEqual(findStillRuns({ first: 0, luma: [], diff: diff.slice(0, 6) }, 3.5), []);": 1
+    },
+    "lib/output/look/engine/piece-look.ts": {
+      "const video: VideoDef = (await import(pathToFileURL(join(project, 'video.tsx')).href)).default;": 1
+    },
+    "lib/output/render/engine/render-pipeline.ts": {
+      "const probe = JSON.parse(runFfprobe(['-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', video]).toString());": 2,
+      "const hasAudio = probe.streams.some((s: { codec_type: string }) => s.codec_type === 'audio');": 1
+    },
+    "lib/output/review/models/review-notes.test.ts": {
+      "return { start: 60, end: 90, phase: 'solo', parent: null, attribution: 'scene', screen: { x: of(x), y: of(y), w: of(w), h: of(h), opacity: of(1) }, local: null, values: {} };": 5
+    },
+    "lib/picture/composition/studio/Video.tsx": {
+      "return { id: String(id ?? i), at, sound: takes[randomSeedFromKey(id ?? i) % takes.length].request.sound };": 1
+    },
+    "lib/picture/motion/models/motion-graph.test.ts": {
+      "{ start: 0, values: [0, 25, 50, ...hold, 75, 100] },": 2
+    },
+    "lib/picture/motion/models/motion-graph.ts": {
+      "run.values[name] = [...(run.values[name] ?? Array(n).fill(null)), ...(seg.values[name] ? slice(seg.values[name]) : Array(m).fill(null))];": 2
+    },
+    "lib/picture/reel/engine/reel-study-files.ts": {
+      "const probe = JSON.parse(runFfprobe(['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height,r_frame_rate:format=duration', '-of', 'json', video]).toString());": 1
+    },
+    "lib/platform/temp/engine/studio-temp.test.ts": {
+      "const [, stoppedBy] = await once(child, 'exit');": 1
+    },
+    "lib/timing/music/engine/music-track.ts": {
+      "const [stream] = JSON.parse(runFfprobe(['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=channels,sample_rate', '-of', 'json', sourcePath]).toString()).streams;": 1
+    },
+    "lib/timing/music/models/music-fit.ts": {
+      "const steps: (Step | undefined)[][][] = Array.from({ length: maxBars + 1 }, () => downbeats.map(() => Array(MIN_SPAN_BARS + 1)));": 1
+    },
+    "lib/timing/sound/engine/sound-check.ts": {
+      "const video: VideoDef = (await import(pathToFileURL(join(project, 'video.tsx')).href)).default;": 1
+    },
+    "lib/timing/voice/engine/voice-project.ts": {
+      "const script: Script = JSON.parse(readFileSync(join(project, 'voiceover.json'), 'utf8'));": 1,
+      "let info: TakeInfo | null = existsSync(infoPath) && existsSync(takePath) ? JSON.parse(readFileSync(infoPath, 'utf8')) : null;": 1,
+      "const manifest: Record<string, Voiced> = JSON.parse(readFileSync(manifestPath, 'utf8'));": 1,
+      "const info: TakeInfo = JSON.parse(readFileSync(infoPath, 'utf8'));": 1
+    }
+  },
+  "typescript(no-unsafe-call)": {
+    "lib/footage/previs/studio/blockout.tsx": {
+      "if (object instanceof THREE.Mesh || object instanceof THREE.LineSegments) object.geometry.dispose();": 1
+    },
+    "lib/output/render/engine/render-pipeline.ts": {
+      "const hasAudio = probe.streams.some((s: { codec_type: string }) => s.codec_type === 'audio');": 1,
+      "if (probe.streams.some((s: { codec_type: string }) => s.codec_type === 'audio')) problems.push('has an audio stream, though a transparent video is silent');": 1
+    },
+    "lib/picture/film/studio/three-stage.tsx": {
+      "uniforms.backdrop.value.copy(behind);": 1
+    }
+  },
+  "typescript(no-unsafe-enum-comparison)": {
+    "lint/structural/source-tree.ts": {
+      "if (entry.exportName.kind === 'None') starExports.push({ specifier: request.value, typeOnly: entry.isType });": 1
+    }
+  },
+  "typescript(no-unsafe-member-access)": {
+    "lib/footage/capture/engine/capture.ts": {
+      "const shots = (await import(pathToFileURL(script).href)).default as CaptureShots | undefined;": 1
+    },
+    "lib/footage/generation/engine/generated-image.test.ts": {
+      "assert.equal(generations[0].aspect_ratio, '16:9');": 1,
+      "assert.equal((Object.values(provenance)[0] as any).requestId, 'gen-img-1');": 1
+    },
+    "lib/footage/generation/engine/openrouter.ts": {
+      "if (chunk.error) throw new Error(`OpenRouter /chat/completions: ${chunk.error.message}`);": 2,
+      "requestId ??= chunk.id ?? null;": 1,
+      "base64 += chunk.choices?.[0]?.delta?.audio?.data ?? '';": 1,
+      "cost = chunk.usage?.cost ?? cost;": 1
+    },
+    "lib/footage/generation/engine/paid-generation.test.ts": {
+      "assert.equal(calls[0].body.input_references[0].image_url.url, `data:image/png;base64,${PNG.toString('base64')}`);": 1,
+      "assert.deepEqual(Object.values(provenance).map((p: any) => [p.prompt, p.cost, p.references[0].path]), [['a title card', 0.04, 'still.png']]);": 3,
+      "const link = new URL(submit.body.input_references[0].video_url.url);": 1
+    },
+    "lib/footage/previs/studio/blockout.tsx": {
+      "if (object instanceof THREE.Mesh || object instanceof THREE.LineSegments) object.geometry.dispose();": 1
+    },
+    "lib/output/look/engine/piece-look.ts": {
+      "const video: VideoDef = (await import(pathToFileURL(join(project, 'video.tsx')).href)).default;": 1
+    },
+    "lib/output/render/engine/render-pipeline.ts": {
+      "const actual = Number(probe.format.duration);": 2,
+      "const hasAudio = probe.streams.some((s: { codec_type: string }) => s.codec_type === 'audio');": 1,
+      "if (probe.streams.some((s: { codec_type: string }) => s.codec_type === 'audio')) problems.push('has an audio stream, though a transparent video is silent');": 1
+    },
+    "lib/picture/composition/studio/Video.tsx": {
+      "return { id: String(id ?? i), at, sound: takes[randomSeedFromKey(id ?? i) % takes.length].request.sound };": 1
+    },
+    "lib/picture/film/studio/three-stage.tsx": {
+      "uniforms.backdrop.value.copy(behind);": 1
+    },
+    "lib/picture/reel/engine/reel-study-files.ts": {
+      "const [num, den] = String(probe.streams[0].r_frame_rate).split('/').map(Number);": 1,
+      "return { fps: num / (den || 1), duration: Number(probe.format.duration), width: probe.streams[0].width as number, height: probe.streams[0].height as number };": 3
+    },
+    "lib/timing/music/engine/music-track.ts": {
+      "const [stream] = JSON.parse(runFfprobe(['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=channels,sample_rate', '-of', 'json', sourcePath]).toString()).streams;": 1,
+      "const channels = Number(stream.channels), rate = Number(stream.sample_rate);": 2
+    },
+    "lib/timing/sound/engine/sound-check.ts": {
+      "const video: VideoDef = (await import(pathToFileURL(join(project, 'video.tsx')).href)).default;": 1
+    }
+  },
+  "typescript(no-unsafe-return)": {
+    "lib/footage/capture/engine/capture.ts": {
+      "const readProvenance = (dir: string): Record<string, ShotProvenance> => (existsSync(provenancePath(dir)) ? JSON.parse(readFileSync(provenancePath(dir), 'utf8')) : {});": 1
+    },
+    "lib/footage/generation/engine/openrouter.ts": {
+      "return (await postOpenRouter('/videos', body)).json();": 1
+    },
+    "lib/footage/generation/engine/paid-generation.test.ts": {
+      "assert.deepEqual(Object.values(provenance).map((p: any) => [p.prompt, p.cost, p.references[0].path]), [['a title card', 0.04, 'still.png']]);": 1
+    },
+    "lib/footage/generation/engine/paid-generation.ts": {
+      "const readJsonRecord = <T>(path: string): Record<string, T> => (existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {});": 1
+    },
+    "lib/footage/previs/engine/previs-footage.ts": {
+      "return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};": 1
+    },
+    "lib/output/render/engine/render-session.ts": {
+      "return JSON.parse(content);": 1
+    },
+    "lib/output/review/models/review-notes.test.ts": {
+      "const n = 31, of = (v: number) => Array(n).fill(v);": 1
+    },
+    "lib/picture/composition/studio/Root.tsx": {
+      "construct: (target, args, newTarget) => Reflect.construct(target, args.length ? args : [pinned], newTarget),": 1,
+      "get: (target, key) => (key === 'now' ? () => pinned : Reflect.get(target, key)),": 1
+    },
+    "lib/timing/music/engine/music-track.ts": {
+      "return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};": 1
+    },
+    "lib/timing/music/models/music-fit.ts": {
+      "const steps: (Step | undefined)[][][] = Array.from({ length: maxBars + 1 }, () => downbeats.map(() => Array(MIN_SPAN_BARS + 1)));": 1
+    }
+  },
+  "typescript(no-unsafe-type-assertion)": {
+    "cli/commands/sfx.ts": {
+      "const lines = draftProjectSfxCueList(session.project, { timeline: check.timeline, events: check.sfxEvents, clickStyle: style as keyof typeof SFX_CLICK_STYLES | undefined });": 1
+    },
+    "lib/footage/capture/engine/capture.ts": {
+      "still: <T>(name: string, options: StillOptions<T>) => add({ name, kind: 'still', options: options as StillOptions }),": 1,
+      "if ((error as Error).name !== 'TimeoutError') throw error;": 1,
+      "const shots = (await import(pathToFileURL(script).href)).default as CaptureShots | undefined;": 1,
+      "els = els.filter((el) => re.test(((el as HTMLElement).innerText ?? el.textContent).trim()));": 1,
+      "const entry = existsSync(entryPath(dir, s.name)) ? (JSON.parse(readFileSync(entryPath(dir, s.name), 'utf8')) as Entry) : null;": 1
+    },
+    "lib/footage/capture/engine/page-probe.ts": {
+      "if (tagOf(el) === 'input') return INPUT_ROLES[(el as HTMLInputElement).type] ?? 'textbox';": 1,
+      "const labels = (el as HTMLInputElement).labels;": 1,
+      "|| (tagOf(el) === 'select' ? flat((el as HTMLSelectElement).selectedOptions[0]?.text) : '')": 1,
+      "|| (tagOf(el) === 'input' ? flat((el as HTMLInputElement).value) : '')": 1,
+      "|| (el.matches(LANDMARK) && roleOf(el) !== 'heading' ? '' : flat((el as HTMLElement).innerText).slice(0, 80));": 1,
+      "const text = flat((el as HTMLElement).innerText);": 1,
+      "let els = [...document.querySelectorAll(tag)].filter(visible).filter((e) => re.test(flat((e as HTMLElement).innerText)));": 1
+    },
+    "lib/footage/generation/engine/generated-image.test.ts": {
+      "globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {": 1,
+      "assert.equal((Object.values(provenance)[0] as any).requestId, 'gen-img-1');": 1
+    },
+    "lib/footage/generation/engine/paid-generation.test.ts": {
+      "globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {": 2
+    },
+    "lib/footage/generation/engine/s3-upload.ts": {
+      "const env = Object.fromEntries(Object.entries(UPLOAD_ENV).map(([key, name]) => [key, process.env[name]!])) as Omit<S3UploadConfig, 'region'>;": 1
+    },
+    "lib/footage/previs/studio/flat-blockout-pose.ts": {
+      "for (const [channel, to] of Object.entries(key.to) as [keyof P, number][]) next[channel] = lerp(pose[channel], to, k) as P[keyof P];": 2
+    },
+    "lib/output/look/engine/piece-look.ts": {
+      "const module = (await import(pathToFileURL(file).href)) as Record<string, unknown>;": 1
+    },
+    "lib/output/look/studio/probe.tsx": {
+      "kind: el.dataset.framing as FramingMark['kind'],": 1,
+      "return JSON.parse(raw) as T;": 1,
+      "const { event, fromNow, request, volume } = JSON.parse(el.dataset.sfxEvent!) as SfxMarkAttr;": 1
+    },
+    "lib/output/render/engine/browser-module-page.ts": {
+      "const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;": 1,
+      "return await use(<R>(name: string, ...args: unknown[]) => page.evaluate(": 1,
+      "(fn: string, list: unknown[]) => (globalThis as unknown as Record<string, (...a: unknown[]) => unknown>)[fn](...list),": 1,
+      "name, args as never,": 1
+    },
+    "lib/output/render/engine/host-module-resolution.ts": {
+      "const json = parseJsonc(readFileSync(configPath, 'utf8')) as TsconfigJson;": 1
+    },
+    "lib/output/render/engine/project-bundle.ts": {
+      "alias: { ...(config.resolve?.alias as Record<string, string>), '@video': video, '@stills': stills, '@footage': previsFootageModuleFor(project), '@sfx-cues': sfxCues, '@brand': brand, '@stamp-paint-styles': styles, 'react-dom': studioReactDom(join(dir, 'generated')) },": 1
+    },
+    "lib/output/render/engine/render-browser.ts": {
+      "await page.goto({ url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`, timeout: 30_000 });": 1
+    },
+    "lib/output/render/engine/render-pipeline.ts": {
+      "for (const [kind, file] of Object.entries(files) as ['srt' | 'vtt', string][]) {": 1
+    },
+    "lib/output/render/engine/render-snapshot.ts": {
+      "const snapshot = JSON.parse(readFileSync(path, 'utf8')) as RenderSnapshot;": 1
+    },
+    "lib/output/render/engine/render-stills.ts": {
+      "const { design, preset, variant } = c.defaultProps as StillProps;": 1,
+      "const values = (key: keyof StillProps) => [...new Set(all.map((c) => (c.defaultProps as StillProps)[key]))].join(', ');": 1,
+      "const current = new Set(all.map((c) => stillName(c.defaultProps as StillProps)));": 1,
+      "const still = composition.defaultProps as StillProps;": 1
+    },
+    "lib/output/render/engine/studio-bundle.ts": {
+      "const kept = JSON.parse(readFileSync(current, 'utf8')) as KeptBundle;": 1,
+      "? !existsSync((JSON.parse(readFileSync(current, 'utf8')) as KeptBundle).project)": 1
+    },
+    "lib/output/review/engine/review-artifact.ts": {
+      "const readJson = <T,>(file: string): T | undefined => (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) as T : undefined);": 1
+    },
+    "lib/picture/brand/engine/project-brand.ts": {
+      "const requireDefault = <T>(file: string) => (createRequire(file)(file) as { default: T }).default;": 1
+    },
+    "lib/picture/composition/studio/Root.tsx": {
+      "const projectVideo = video as VideoDef;": 1
+    },
+    "lib/picture/composition/studio/timeline-scene.tsx": {
+      "return Object.fromEntries(Object.entries(clock.cues).map(([name, frame]) => [name, ((frame as number) - clock.from) / clock.fps])) as Record<Cue, number>;": 2
+    },
+    "lib/picture/film/studio/three-stage.tsx": {
+      "pass.render(renderer, null as never, stage.image, 0, false);": 1
+    },
+    "lib/picture/motion/models/motion-graph.ts": {
+      "const inMove = values.slice(a, b + 1) as number[];": 1,
+      "}).map((m) => Object.fromEntries(Object.entries(m).filter(([, v]) => v !== undefined)) as ChannelMove);": 1
+    },
+    "lib/picture/motion/models/motion-tracks.ts": {
+      "const tracks = JSON.parse(json) as MotionTracks;": 1
+    },
+    "lib/picture/reel/engine/reel-study-files.ts": {
+      "return { fps: num / (den || 1), duration: Number(probe.format.duration), width: probe.streams[0].width as number, height: probe.streams[0].height as number };": 2
+    },
+    "lib/picture/reel/models/capture-plane.ts": {
+      "for (const key of Object.keys(DRIFT) as (keyof PlanePose)[]) {": 1
+    },
+    "lib/picture/reel/models/glyph-field-frame.ts": {
+      "const raw = typeof key.value === 'function' ? (key.value as ValueFn<V, D>)(cell, hit) : key.value;": 1,
+      "const cells = glyphFieldLayout(count, size, layout).map((slot) => ({ ...slot, item: (items ? items[slot.index] : null) as D }));": 1
+    },
+    "lib/picture/reel/models/hud.ts": {
+      "const set = (base: 'light' | 'dark', colour: Rgb, lit: Rgb) => Object.fromEntries((Object.keys(INK_ALPHA.light) as HudInkRole[]).map((role) => {": 2,
+      "const out = {} as Record<HudInkRole, string>;": 1,
+      "for (const role of Object.keys(INK_ALPHA.light) as HudInkRole[]) {": 1,
+      "for (const tone of Object.keys(weights) as ReelHudTone[]) {": 1
+    },
+    "lib/platform/host/engine/hosts.ts": {
+      "const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;": 1
+    },
+    "lib/platform/host/engine/project-host-spec.ts": {
+      "const spec = JSON.parse(readFileSync(path, 'utf8')) as ProjectHostSpec;": 1
+    },
+    "lib/platform/project/engine/new-project.test.ts": {
+      "const failed = error as { code?: number; stdout?: string; stderr?: string };": 1,
+      "const files = readdirSync(join(studio, projectDir), { recursive: true }) as string[];": 1
+    },
+    "lib/platform/project/engine/studio-project.ts": {
+      "const { default: declaration } = (await import(/* @vite-ignore */ pathToFileURL(file).href)) as { default: ProjectDeclaration };": 1
+    },
+    "lib/platform/temp/engine/studio-temp.test.ts": {
+      "const [chunk] = await once(child.stdout, 'data') as [Buffer];": 1
+    },
+    "lib/platform/temp/engine/studio-temp.ts": {
+      "if (result instanceof Promise) return result.finally(remove) as T;": 1,
+      "return (error as NodeJS.ErrnoException).code === 'EPERM';": 1
+    },
+    "lib/platform/web/engine/studio-app-server.ts": {
+      "const body = (await reply.json().catch(() => null)) as { app?: unknown; root?: unknown } | null;": 1
+    },
+    "lib/timing/sound/engine/cue-module.ts": {
+      "const list = JSON.parse(readFileSync(path, 'utf8')) as SfxCueList;": 1
+    },
+    "lib/timing/sound/engine/sfx-files.ts": {
+      "return [writeSfxFile(JSON.parse(request) as SfxRequest, join(dir, file.replace(/\\.ts$/, '.wav'))).module];": 1,
+      "...Object.entries(sfxParamSpecs(recipe as unknown as SfxRecipe)).map(([param, { min, max, doc }]) =>": 1
+    },
+    "lib/timing/sound/engine/sound-check.ts": {
+      "const takes: readonly SfxSound[] = Array.isArray(sound.sound) ? sound.sound : [sound.sound as SfxSound];": 1
+    },
+    "lib/timing/sound/models/cue-events.ts": {
+      "return numbered(found, (e) => `reveal:${(e as { track: string }).track}`);": 1
+    },
+    "lib/timing/sound/models/library.test.ts": {
+      "const stringly = { brightness: '0.5' } as unknown as Record<string, number>;": 1
+    },
+    "lib/timing/sound/models/library.ts": {
+      "return SFX_RECIPES[name as SfxRecipeName] as unknown as SfxRecipe;": 2,
+      "const base = { ...recipe.defaults, ...(preset ? recipe.presets[preset] : {}) } as Record<string, number>;": 1
+    },
+    "lib/timing/sound/studio/sfx.tsx": {
+      "const takes: readonly SfxSound[] = Array.isArray(sound) ? sound : [sound as SfxSound];": 1
+    },
+    "lib/timing/timeline/engine/project-clock.ts": {
+      "const { timeline } = (await import(pathToFileURL(file).href)) as { timeline?: Timeline };": 1
+    },
+    "lib/timing/timeline/models/bind-timeline.ts": {
+      "const binding = (bindings as unknown as Record<string, (clock: ResolvedSceneClock, replays: Record<string, BoundReplay<Bound>>) => Bound>)[key];": 1
+    },
+    "lib/timing/timeline/models/timeline.test.ts": {
+      "assert.throws(() => bindTimeline(timeline, { a: () => 0 } as never), /missing b/);": 1
+    },
+    "lib/timing/timeline/models/timeline.ts": {
+      "({ driver: 'beat', beats, ...options }) as { driver: 'beat'; beats: number } & O;": 1,
+      "({ driver: 'fixed', seconds, ...options }) as { driver: 'fixed'; seconds: number } & O;": 1,
+      "({ driver: 'voice', lines, ...options }) as { driver: 'voice'; lines: readonly Line[] } & O;": 1,
+      "const lastBeat = musical.length ? startBeat[musical.at(-1)!] + (spans[musical.at(-1)!] as BeatSpan).beats : 0;": 1,
+      "return {": 1,
+      "return Object.entries(table as Record<string, ReplaySpec>).map(([name, replay]): ResolvedReplay => {": 1,
+      "scenes: placed, scene: (key) => placed[indexOf(key)] as never, clock: (key) => clocks[indexOf(key)] as never, cue: (name) => cue(name), replays,": 2,
+      "const gaps = typeof span.gap === 'object' ? span.gap as Readonly<Record<string, number>> : {};": 1,
+      "const set = typeof gap === 'number' ? gap : (gap as Readonly<Record<string, number>> | undefined)?.[id];": 1
+    },
+    "lint/baseline.ts": {
+      "const [check, path, key] = JSON.parse(id) as [string, string, string];": 1
+    },
+    "lint/check-arch.ts": {
+      "const onDisk = existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as Baseline) : {};": 1
+    },
+    "lint/lint.ts": {
+      "const onDisk = existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as Baseline) : {};": 1
+    },
+    "lint/oxlint/lib/rule-file.ts": {
+      "const manifest = JSON.parse(readFileSync(`${cwd}/package.json`, \"utf8\")) as { imports?: Record<string, string> };": 1
+    },
+    "lint/oxlint/lib/rule-options.ts": {
+      "const value = (option as Record<string, unknown>)[key];": 1
+    },
+    "lint/oxlint/oxlint-verdict.ts": {
+      "const baseline = existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as Baseline) : {};": 1,
+      "return JSON.parse(execFileSync(binary, ['-f', 'json', ...files], { cwd: root, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })) as OxlintReport;": 1,
+      "const stdout = (failure as { stdout?: string }).stdout;": 1,
+      "return JSON.parse(stdout) as OxlintReport;": 1
+    },
+    "lint/oxlint/rules/no-deprecated-input-validator.ts": {
+      "const receiver = (node.callee as ESTree.MemberExpression).object;": 1
+    },
+    "lint/oxlintrc.test.ts": {
+      "output = (failure as { stdout: string }).stdout;": 1,
+      "const report = JSON.parse(output) as OxlintReport;": 1
+    },
+    "lint/rewrite-lib-imports.ts": {
+      "const imports = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { imports: Record<string, string> }).imports;": 1
+    },
+    "lint/structural/arch-verdict.ts": {
+      "const baseline = JSON.parse(baselineText) as Baseline;": 1
+    },
+    "lint/structural/check-context.ts": {
+      "const callee = node.callee as AstNode | undefined;": 1,
+      "if (node.type === 'CallExpression' && callee?.type === 'Identifier' && locals.has(callee.name as string)) calls.push(node);": 1
+    },
+    "lint/structural/checks/barrel-discoverability.ts": {
+      "const nameOf = (node: AstNode) => (node.type === 'Identifier' ? node.name : node.value) as string;": 1,
+      "const from = (node.source as AstNode).value as string;": 2,
+      "const namespace = node.exported ? ` as ${nameOf(node.exported as AstNode)}` : '';": 1,
+      "const local = nameOf(node.local as AstNode), exported = nameOf(node.exported as AstNode);": 2
+    },
+    "lint/structural/checks/barrel-purity.ts": {
+      "const callee = node.callee as AstNode;": 1,
+      "if (callee.type === 'Identifier' && locals.has(callee.name as string)) calls.add(callee);": 1,
+      "const object = member?.object as AstNode | undefined;": 1,
+      "if (object?.type === 'Identifier' && namespaces.has(object.name as string)": 1,
+      "&& SERVER_FN_CONSTRUCTORS.includes((member!.property as AstNode).name as string)) calls.add(object);": 2,
+      "const name = node.name as string;": 1
+    },
+    "lint/structural/checks/capability-match.ts": {
+      "const spec = call && unwrapExpression((call.arguments as AstNode[])[0]);": 1,
+      "return value?.type === 'Literal' && PROJECT_CAPABILITIES.includes(value.value as ProjectCapability) ? value.value as ProjectCapability : undefined;": 2,
+      "return (object.properties as AstNode[]).flatMap((p) => (p.type === 'Property' ? [propertyKeyName(p)].filter((k): k is string => k !== undefined) : []));": 1
+    },
+    "lint/structural/checks/doc-budgets.ts": {
+      "return [finding(DOC_BUDGETS_MANIFEST, 'unreadable', `doesn't parse (${(error as Error).message}): every budgeted doc goes uncounted`)];": 1
+    },
+    "lint/structural/checks/feature-visibility.ts": {
+      "return { kind: 'malformed', reason: (error as Error).message };": 1
+    },
+    "lint/structural/checks/frame-determinism.ts": {
+      "if (node.type === 'Identifier') return node.name as string;": 1,
+      "const object = node.object as AstNode;": 1,
+      "if (object.type !== 'Identifier' || !GLOBAL_OBJECTS.has(object.name as string)) return undefined;": 1,
+      "const property = member.property as AstNode;": 1,
+      "if (!member.computed) return property.name as string;": 1,
+      "const owner = globalNamed(node.object as AstNode), name = propertyName(node);": 1,
+      "if (node.type === 'VariableDeclarator' && node.init && (node.id as AstNode).type === 'Identifier') {": 1,
+      "const owner = globalNamed(node.init as AstNode);": 2,
+      "if (node.type === 'VariableDeclarator' && (node.id as AstNode).type === 'ObjectPattern' && node.init) {": 1,
+      "for (const property of ((node.id as AstNode).properties as AstNode[])) {": 2,
+      "const key = property.key as AstNode | undefined;": 1,
+      "const name = key?.type === 'Identifier' ? key.name as string : key?.type === 'Literal' ? String(key.value) : undefined;": 1,
+      "if ((node.type === 'NewExpression' || node.type === 'CallExpression') && globalNamed(node.callee as AstNode) === 'Date') {": 1,
+      "if (node.type === 'CallExpression' || !(node.arguments as unknown[]).length) found.push({ construct: call, instead: \"use the scene's time\", offset: node.start });": 1
+    },
+    "lint/structural/checks/model-purity.ts": {
+      "const node = pattern as AstNode | null | undefined;": 1,
+      "else if (node.type === 'ObjectPattern') for (const property of node.properties as AstNode[]) bind(property.type === 'Property' ? property.value : property);": 1,
+      "else if (node.type === 'ArrayPattern') for (const element of node.elements as AstNode[]) bind(element);": 1,
+      "const init = node.init as AstNode | null, id = node.id as AstNode;": 2,
+      "if (init?.type === 'Identifier' && GLOBAL_OBJECTS.has(init.name as string) && id.type === 'ObjectPattern') {": 1,
+      "for (const property of id.properties as AstNode[]) {": 1,
+      "const key = property.key as AstNode | undefined;": 1,
+      "if (key?.type === 'Identifier' && isImpure(key.name)) found.push({ name: key.name as string, offset: property.start });": 1,
+      "for (const param of node.params as AstNode[]) bind(param);": 1,
+      "const object = node.object as AstNode, property = node.property as AstNode;": 2,
+      "if (object.type === 'Identifier' && GLOBAL_OBJECTS.has(object.name as string) && isImpure(name)) {": 1,
+      "found.push({ name: name as string, offset: node.start });": 1,
+      "found.push({ name: node.name as string, offset: node.start });": 1
+    },
+    "lint/structural/checks/no-broad-parameters.ts": {
+      "const annotations = annotated.map((parameter) => (parameter as Node & { type: Node }).type);": 1
+    },
+    "lint/structural/checks/no-known-value-widening.ts": {
+      "const { expression, argumentExpression } = node as Node & { expression: Node; argumentExpression: Node };": 1
+    },
+    "lint/structural/checks/no-unknown-returns.ts": {
+      "const annotated = typeCheckableNodesOfKind(source.file, FUNCTION_LIKE_KINDS)": 1
+    },
+    "lint/structural/checks/render-snapshot.ts": {
+      "if (node.type === 'TemplateLiteral') return (node.quasis as AstNode[]).map((q) => (q.value as { cooked?: string }).cooked ?? '');": 2
+    },
+    "lint/structural/checks/sdk-containment.ts": {
+      "const head = node.type === 'TemplateLiteral' ? ((node.quasis as AstNode[])[0].value as { cooked?: string }).cooked : text;": 2,
+      "if (node?.type === 'TemplateLiteral' && (node.expressions as unknown[]).length === 0) {": 1,
+      "return ((node.quasis as AstNode[])[0].value as { cooked?: string }).cooked;": 2
+    },
+    "lint/structural/checks/shadow-source.ts": {
+      "if (node.type === 'Property') return named(node.key as AstNode, node.computed);": 1,
+      "if (node.type === 'MemberExpression') return named(node.property as AstNode, node.computed);": 1
+    },
+    "lint/structural/checks/timing-ownership.ts": {
+      "const isLocal = (node: unknown) => (node as AstNode | undefined)?.type === 'Identifier' && locals.includes((node as AstNode).name as string);": 3,
+      "const property = node.property as AstNode;": 1,
+      "if (node.type === 'VariableDeclarator' && isLocal(node.init) && (node.id as AstNode).type === 'ObjectPattern') {": 1,
+      "for (const property of (node.id as AstNode).properties as AstNode[]) {": 2,
+      "const key = property.key as AstNode | undefined;": 1,
+      "if (key?.type === 'Identifier') found.push({ name: key.name as string, offset: property.start });": 1
+    },
+    "lint/structural/checks/token-equality.ts": {
+      "const name = (node.name as AstNode).name as string;": 2,
+      "const value = node.value as AstNode | null;": 1,
+      "const literal = value?.type === 'JSXExpressionContainer' ? value.expression as AstNode : value;": 1,
+      "const key = node.key as AstNode;": 1,
+      "const name = key.type === 'Identifier' ? key.name as string : key.type === 'Literal' ? String(key.value) : undefined;": 1,
+      "const px = pxOf(node.value as AstNode);": 1,
+      "if (node.type !== 'VariableDeclarator' || (node.id as AstNode).name !== name) return;": 1,
+      "const call = node.init as AstNode | null;": 1,
+      "const scale = call?.type === 'CallExpression' ? (call.arguments as AstNode[])[0] : undefined;": 1,
+      "for (const property of scale.properties as AstNode[]) {": 1,
+      "const key = property.key as AstNode | undefined, value = property.value as AstNode | undefined;": 2,
+      "if (Number.isFinite(px) && px > 0) byPx.set(Math.round(px), key.name as string);": 1
+    },
+    "lint/structural/checks/trampolines.ts": {
+      "for (const statement of file.program.body as AstNode[]) {": 1,
+      "? statement.declaration as AstNode | null : null;": 1,
+      "found.push({ name: ((declaration.id as AstNode | null)?.name as string | undefined) ?? 'default', fn: declaration });": 2,
+      "for (const declarator of declaration.declarations as AstNode[]) {": 1,
+      "const id = declarator.id as AstNode, init = declarator.init as AstNode | null;": 2,
+      "if (isFunction(init)) found.push({ name: id.name as string, fn: init });": 1,
+      "for (const property of init.properties as AstNode[]) {": 1,
+      "const key = property.key as AstNode | undefined, value = property.value as AstNode | undefined;": 2,
+      "return (file.program.body as AstNode[]).flatMap((statement) => {": 1,
+      "const declaration = statement.type === 'ExportNamedDeclaration' ? statement.declaration as AstNode | null : statement;": 1,
+      "if (declaration?.type === 'FunctionDeclaration') return [(declaration.id as AstNode).name as string];": 2,
+      "return (declaration.declarations as AstNode[]).flatMap((declarator) =>": 1,
+      "(declarator.id as AstNode).type === 'Identifier' && isFunction(declarator.init as AstNode | null) ? [(declarator.id as AstNode).name as string] : []);": 4,
+      "const params = (fn.params as AstNode[]).map((param) => {": 1,
+      "const inner = param.type === 'RestElement' ? param.argument as AstNode : param;": 1,
+      "return inner.type === 'Identifier' ? inner.name as string : undefined;": 1,
+      "const body = fn.body as AstNode;": 1,
+      "const statements = body.body as AstNode[];": 1,
+      "expression = only?.type === 'ReturnStatement' ? only.argument as AstNode | undefined": 1,
+      ": only?.type === 'ExpressionStatement' ? only.expression as AstNode : undefined;": 1,
+      "if (expression?.type === 'AwaitExpression') expression = expression.argument as AstNode;": 1,
+      "const callee = expression.callee as AstNode;": 1,
+      "const name = callee.type === 'Identifier' && callable.has(callee.name as string) ? callee.name as string": 2,
+      ": callee.type === 'MemberExpression' && !callee.computed && (callee.object as AstNode).type === 'Identifier'": 1,
+      "&& namespaces.has((callee.object as AstNode).name as string)": 2,
+      "? `${(callee.object as AstNode).name as string}.${(callee.property as AstNode).name as string}` : undefined;": 4,
+      "const inner = argument.type === 'SpreadElement' ? argument.argument as AstNode : argument;": 1,
+      "return inner.type === 'Identifier' && params.includes(inner.name as string);": 1,
+      "return (expression.arguments as AstNode[]).every(forwardsOwn) ? name : undefined;": 1
+    },
+    "lint/structural/project-declaration.ts": {
+      "while (node && ['TSSatisfiesExpression', 'TSAsExpression', 'ParenthesizedExpression'].includes(node.type)) node = node.expression as AstNode;": 1,
+      "const key = property.key as AstNode;": 1,
+      "return key.type === 'Identifier' ? key.name as string : key.type === 'Literal' ? String(key.value) : undefined;": 1,
+      "const exported = (file.program.body as AstNode[]).find((node) => node.type === 'ExportDefaultDeclaration');": 1,
+      "const object = exported && unwrapExpression(exported.declaration as AstNode);": 1,
+      "const property = (object.properties as AstNode[]).find((p) => p.type === 'Property' && propertyKeyName(p) === name);": 1,
+      "return property && unwrapExpression(property.value as AstNode);": 1,
+      "for (const element of value.elements as (AstNode | null)[]) {": 2
+    },
+    "lint/structural/source-tree.ts": {
+      "const program = parsed.program as unknown as AstNode;": 1,
+      "const awaited = node.type === 'VariableDeclarator' && (node.init as AstNode | null)?.type === 'AwaitExpression'": 1,
+      "? ((node.init as AstNode).argument as AstNode) : undefined;": 2,
+      "const pattern = node.id as AstNode | undefined;": 1,
+      "const keys = (pattern.properties as AstNode[]).map((property) =>": 1,
+      "property.type === 'Property' && !property.computed && (property.key as AstNode).type === 'Identifier' ? (property.key as AstNode).name as string : undefined);": 3,
+      "source = node.source ?? (node.argument as AstNode | undefined)?.literal ?? node.argument;": 1,
+      "} else if (node.type === 'CallExpression' && isRequire(node.callee as AstNode)) source = (node.arguments as AstNode[])[0];": 2,
+      "const reference = node.moduleReference as AstNode;": 1,
+      "} else if (node.type === 'ExportNamedDeclaration' && (node.specifiers as unknown[]).length === 0) source = node.source;": 1,
+      "const literal = source as AstNode;": 1,
+      "const quasis = literal.type === 'TemplateLiteral' && (literal.expressions as unknown[]).length === 0 ? literal.quasis as AstNode[] : undefined;": 2,
+      "? literal.value : (quasis?.[0]?.value as { cooked?: string } | undefined)?.cooked;": 1,
+      "(callee.type === 'MemberExpression' && (callee.object as AstNode).name === 'require' && (callee.property as AstNode).name === 'resolve');": 2,
+      "const record = node as AstNode;": 1,
+      "const imports = (JSON.parse(packageJson) as { imports?: Record<string, unknown> }).imports ?? {};": 1
+    },
+    "lint/structural/type-checker.ts": {
+      "const named = node as { typeName?: Node; exprName?: Node; name?: Node };": 1
+    }
+  },
+  "typescript(require-array-sort-compare)": {
+    "lint/structural/checks/css-tokens.test.ts": {
+      "assert.deepEqual(findings.map((finding) => finding.line).toSorted(), [3, 4, 5]);": 1
+    },
+    "lint/structural/checks/folder-width.ts": {
+      "return [...perFolder].filter(([, count]) => count > FOLDER_WIDTH_LIMIT).toSorted().map(([folder, count]): Finding => ({": 1
+    }
+  },
+  "typescript(restrict-template-expressions)": {
+    "lib/output/look/engine/frame-look.test.ts": {
+      "assert.ok(diffs[1] > 1 && diffs[2] > 1, `frames 3 and 4 move (the box comes and goes): ${diffs}`);": 1
+    },
+    "lib/output/render/engine/render-snapshot.ts": {
+      "if (snapshot.version !== RENDER_SNAPSHOT_VERSION) return { kind: 'none', reason: `${basename(path)} is snapshot version ${snapshot.version}, not ${RENDER_SNAPSHOT_VERSION}: ${remake}` };": 2
+    },
+    "lib/picture/motion/models/motion-tracks.ts": {
+      "throw new Error(`motion tracks are version ${tracks.version}, and this reads version ${MOTION_TRACKS_VERSION}: run studio check again`);": 2
+    },
+    "lib/picture/reel/models/column-field.test.ts": {
+      "assert.ok(Math.abs(landed.position.y - landed.radius - columnFieldPoint(spec, at, cell)[1]) < 1e-9, `rests on ${cell} at ${at}`);": 1
+    },
+    "lib/picture/reel/models/lens.test.ts": {
+      "assert.ok(decay.every((px, i) => px < (i ? decay[i - 1] : 2.5) && px > 0.5), `falls away over the next frames: ${decay}`);": 1
+    },
+    "lib/timing/sound/engine/cue-module.ts": {
+      "if (list.version !== SFX_CUE_LIST_VERSION) throw new Error(`${path} is version ${list.version}; delete it and redraft with studio sfx draft`);": 1
+    },
+    "lint/structural/checks/trampolines.ts": {
+      "if (property.type === 'Property' && key?.type === 'Identifier' && value && isFunction(value)) found.push({ name: `${id.name}.${key.name}`, fn: value });": 2
+    }
+  },
+  "unicorn(consistent-function-scoping)": {
+    "lib/footage/capture/engine/capture.ts": {
+      "const visible = (el: Element) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };": 1,
+      "const scrollsInside = (el: Element) => /auto|scroll/.test(getComputedStyle(el).overflowY) && el.scrollHeight > el.clientHeight + 4;": 1
+    },
+    "lib/footage/capture/engine/page-probe.ts": {
+      "const tagOf = (el: Element) => el.tagName.toLowerCase();": 1,
+      "const flat = (s: string | null | undefined) => (s ?? '').replace(/\\s+/g, ' ').trim();": 1,
+      "const clickable = (el: Element) => getComputedStyle(el).cursor === 'pointer' && (!el.parentElement || getComputedStyle(el.parentElement).cursor !== 'pointer');": 1,
+      "const visible = (el: Element) => {": 1,
+      "const generated = (s: string) => /[:]|\\d{3,}|[0-9a-f]{6,}|^(css|sc|jsx|emotion|styled|tw)-|^m_|^_|__[\\w-]{5}$|^(radix|mantine|headlessui|react|rc)-.*\\d/i.test(s);": 1,
+      "const attr = (name: string, value: string) => `[${name}=\"${value.replace(/[\"\\\\]/g, '\\\\$&')}\"]`;": 1,
+      "const quote = (s: string) => `'${s.replace(/['\\\\]/g, '\\\\$&')}'`;": 1,
+      "const reEscape = (s: string) => s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');": 1
+    },
+    "lib/footage/generation/engine/paid-generation.ts": {
+      "export function paidGenerationKey(...request: unknown[]): string {": 1
+    },
+    "lib/output/ffmpeg/engine/loudness.ts": {
+      "export function measureLoudness(file: string): Loudness {": 1
+    },
+    "lib/output/render/engine/frame-profiling.ts": {
+      "export async function profileFrames(session: RenderSession, { from, end }: { from: number; end: number }): Promise<FrameProfileReport> {": 1,
+      "export function formatFrameProfile(report: FrameProfileReport): string[] {": 1
+    },
+    "lib/output/render/engine/render-pipeline.ts": {
+      "function judgeCheckedFrames(session: RenderSession, sink: ReturnType<typeof artifactSink>, timeline: TimelineReport, span: { first: number; last: number }): ProjectCheck {": 1,
+      "const runUpTo = (f: number, every: number) => [3, 2, 1].map((k) => f - k * every).filter((g) => g >= 0);": 1
+    },
+    "lib/output/render/engine/render-session.ts": {
+      "export async function openRenderSession(project: string, { workers }: { workers?: number } = {}) {": 1
+    },
+    "lib/output/render/engine/render-stills.ts": {
+      "const keeps = (list: readonly string[] | undefined, value: string) => !list || list.includes(value);": 1,
+      "export function describeStillFits({ still, fits }: RenderedStill): string[] {": 1
+    },
+    "lib/output/review/models/review-moment.test.ts": {
+      "const lineTiming = (words: string[]) => reviewTimingOf({": 1
+    },
+    "lib/output/review/models/review-notes.test.ts": {
+      "const rect = (x: number) => ({ x, y: 0.1, w: 0.4, h: 0.8 });": 1
+    },
+    "lib/output/stills/engine/still-sheet.test.ts": {
+      "const look = (headline: number, crop: number) => new Uint8Array(16).fill(headline + crop);": 1
+    },
+    "lib/output/stills/models/still-check.ts": {
+      "export function relativeLuminance([r, g, b]: readonly number[]) {": 1
+    },
+    "lib/picture/captions/models/caption-sidecar.ts": {
+      "function timestamp(seconds: number, separator: ',' | '.') {": 1
+    },
+    "lib/picture/film/studio/three-stage.tsx": {
+      "function coprimeNear(n: number, share: number) {": 1
+    },
+    "lib/picture/frame/models/framing-check.ts": {
+      "function obstruction(m: FramingMark, marks: readonly FramingMark[], { width, height }: FrameSize): string | null {": 1
+    },
+    "lib/picture/kit/studio/kit.tsx": {
+      "export function ConfirmDialog({ k, origin, message, anchor: given }: { k: number; origin: string; message: string; anchor?: { x: number; y: number } }) {": 1
+    },
+    "lib/picture/motion/models/motion-graph.ts": {
+      "function motionAmount(track: MotionTrack, req: Pick<MotionGraphRequest, 'first' | 'last'>) {": 1,
+      "const valuesOf = (l: Plot['lines'][number]) => l.series.flatMap((s) => s.values).filter((v) => v !== null);": 1,
+      "const spreadOf = (vs: number[]) => Math.max(...vs) - Math.min(...vs);": 1
+    },
+    "lib/picture/motion/models/motion.test.ts": {
+      "const peak = (ease: (k: number) => number) => Math.max(...Array.from({ length: 10001 }, (_, i) => ease(i / 10000)));": 1
+    },
+    "lib/picture/reel/models/capture-plane.test.ts": {
+      "const near = (a: { x: number; y: number }, b: { x: number; y: number }) => assert.ok(Math.hypot(a.x - b.x, a.y - b.y) < 1e-6, `${JSON.stringify(a)} is not ${JSON.stringify(b)}`);": 1
+    },
+    "lib/picture/reel/models/capture-plane.ts": {
+      "export function planeFrame(box: Rect, p: PlanePose): PlaneFrame {": 1
+    },
+    "lib/picture/reel/models/glyph-field-frame.ts": {
+      "function parseColorUncached(css: string): Rgba | null {": 1,
+      "function oklchToRgba(L: number, C: number, hue: number, alpha: number): Rgba {": 1
+    },
+    "lib/picture/reel/models/glyph-field.test.ts": {
+      "const cross = (p1: typeof to[0], p2: typeof to[0], q1: typeof to[0], q2: typeof to[0]) => {": 1,
+      "const keep = (c: { col: number; row: number }) => (c.col + 2 * c.row) % 7 === 0;": 1
+    },
+    "lib/picture/reel/models/hud.ts": {
+      "export function reelHudTimecode(t: number, fps: number): string {": 1,
+      "export function reelHudLayout({ size, title, subtitle, readout, label, beatsPerBar, frame }: HudLayoutInput) {": 1
+    },
+    "lib/picture/reel/models/recap.ts": {
+      "export function recapPopStarts(n: number, cols: number, rows: number, order: RecapOrder, spread: number, fps: number): number[] {": 1
+    },
+    "lib/picture/reel/models/ticker-layout.test.ts": {
+      "const line = (text: string, axes: GlyphAxes[]) => layoutGlyphLine([...text].map((char, i) => ({ char, axes: axes[i] })), 1000);": 1
+    },
+    "lib/picture/reel/models/type.test.ts": {
+      "const glyphs = (t: number, seed: string | number = 'code', charset?: string) =>": 1
+    },
+    "lib/picture/reel/studio/bounce.tsx": {
+      "export function BounceBall(props: BounceParams & {": 1
+    },
+    "lib/picture/reel/studio/column-field-materials.ts": {
+      "export function columnTopology(cells: readonly ColumnCell[], vary: number, seed: number): ColumnTopology {": 1
+    },
+    "lib/picture/reel/studio/lens.tsx": {
+      "function lensSubpixelPrimitives(radial: number, { width, height }: FrameSize): ReactElement[] {": 2
+    },
+    "lib/picture/reel/studio/needle.tsx": {
+      "const segmentNormal = (a: [number, number], b: [number, number]): [number, number] => {": 1,
+      "const glow = (intensity: number) => new THREE.MeshLambertMaterial({ color: 0x000000, emissive: '#ffffff', emissiveIntensity: intensity });": 1
+    },
+    "lib/picture/reel/studio/type-slant.tsx": {
+      "export function SlantWord({": 1
+    },
+    "lib/picture/reel/studio/type.tsx": {
+      "export function SelectionBox({": 1
+    },
+    "lib/platform/project/engine/studio-project.ts": {
+      "export function resolveStudioProject(arg: string): string {": 1
+    },
+    "lib/platform/project/engine/studio-workspace.ts": {
+      "export function initStudioWorkspace(): string[] {": 1
+    },
+    "lib/timing/music/engine/music-track.ts": {
+      "const off = at - downbeat, signed = (x: number) => `${x >= 0 ? '+' : ''}${x.toFixed(2)}`;": 1
+    },
+    "lib/timing/sound/engine/sound-check.ts": {
+      "export function formatVideoSoundCheck({ fps, sounds, emptyBeats }: VideoSoundCheck): string[] {": 1
+    },
+    "lib/timing/sound/models/cues.ts": {
+      "function whooshFit(at: number, { from, to }: { from: number; to: number }): Record<string, number> {": 1,
+      "export function draftSfxCues(events: readonly SfxEvent[], words: readonly SpokenWord[], { clickStyle, previous }: { clickStyle: SfxClickStyle; previous?: SfxCueList | null }): { list: SfxCueList; dropped: { id: string; why: string }[] } {": 1,
+      "export function staleSfxCues(list: SfxCueList, events: readonly SfxEvent[], { from, to, fps, partial }: { from: number; to: number; fps: number; partial: boolean }): SfxCueProblem[] {": 1
+    },
+    "lib/timing/sound/models/dsp.ts": {
+      "export function addRoom(dry: Float64Array, wetDb: number): Float64Array {": 1
+    },
+    "lib/timing/sound/models/mix.test.ts": {
+      "const near = (a: number, b: number) => assert.ok(Math.abs(a - b) < 0.01, `${a.toFixed(2)} dB, expected ${b}`);": 1
+    },
+    "lib/timing/sound/models/sfx-loudness.ts": {
+      "export function measureSfxLufs(samples: Float64Array): number {": 2
+    },
+    "lib/timing/timeline/models/retime.ts": {
+      "const musicAt = (timeline: Timeline) => timeline.audio.find((placed) => placed.kind === 'music')?.atSeconds ?? 0;": 1
+    },
+    "lib/timing/timeline/models/scene-moments.ts": {
+      "function momentWords(moment: SceneMoment, driver: SceneSpan['driver']): string {": 1
+    },
+    "lib/timing/timeline/models/timeline.ts": {
+      "const end = (ref: ReplaySpec['from']) => (typeof ref === 'string' ? { cue: ref, frames: 0 } : ref);": 1
+    },
+    "lib/timing/voice/engine/voice-project.ts": {
+      "export async function voiceStudioProject(project: string, { mode, recording }: { mode: VoiceMode; recording?: string }): Promise<string> {": 1,
+      "const round = (x: number) => Math.round(x * 1000) / 1000;": 1
+    },
+    "lib/timing/voice/models/voice-take.ts": {
+      "export function cutTakeIntoLines(lines: readonly TakeLine[], heard: readonly SpokenWord[], samples: Int16Array, rate: number): TakeClip[] {": 1,
+      "function chooseCuts(levels: number[], quiet: number, windows: readonly (readonly [number, number])[], lines: readonly TakeLine[]) {": 1
+    },
+    "lint/policy/studio-tree.test.ts": {
+      "const at = (path: string) => classifyStudioPath(path, {});": 1
+    },
+    "lint/policy/studio-tree.ts": {
+      "export function libFeatureCrossedTo(fromPath: string, targetPath: string): string | undefined {": 1
+    },
+    "lint/structural/checks/shadow-source.ts": {
+      "function namesBoxShadow(node: AstNode): boolean {": 1
+    },
+    "lint/structural/source-tree.ts": {
+      "function scanModule(module: ReturnType<typeof parseSync>['module'], program: AstNode) {": 1
+    },
+    "lint/structural/type-checker.ts": {
+      "export function createTypeCheckerHost(root: string, tree: SourceTree): TypeCheckerHost {": 1
+    }
+  },
+  "unicorn(no-array-fill-with-reference-type)": {
+    "lib/picture/reel/models/ticker-layout.test.ts": {
+      "const even = line('MOTAV', Array(5).fill({ wght: 437, wdth: 81.5 }));": 1
+    }
+  },
+  "unicorn(no-array-reverse)": {
+    "lib/output/render/engine/render-pipeline.ts": {
+      "...frames, ...[...frames].reverse(),": 1
+    },
+    "lib/picture/kit/studio/kit.tsx": {
+      "const bottom = ramp.map((s) => `rgba(0,0,0,${s * s}) ${100 - s * share * 100}%`).reverse();": 1
+    },
+    "lib/timing/music/models/music-beats.ts": {
+      "return beats.reverse();": 1
+    }
+  },
+  "unicorn(no-new-array)": {
+    "lib/picture/reel/models/glyph-field-frame.ts": {
+      "const moveDelay = new Array<number>(cells.length).fill(0);": 1
+    },
+    "lib/picture/reel/models/glyph-field.ts": {
+      "const delay = new Array<number>(from.length).fill(0);": 1,
+      "const assign = new Array<number>(n);": 1
+    },
+    "lib/timing/voice/models/voice-words.ts": {
+      "const pieceHeard = new Array(n).fill(false);": 1
+    }
+  },
+  "unicorn(prefer-array-find)": {
+    "lib/platform/project/engine/studio-api-reference.ts": {
+      "const exact = exports.find((e) => e.name === name) ?? exports.filter((e) => e.name.toLowerCase() === name.toLowerCase()).at(0);": 1
+    },
+    "lib/timing/timeline/models/timeline.ts": {
+      "const on = downbeats.filter((d) => d <= beat + 0.1).at(-1);": 1
+    }
+  },
+  "unicorn(prefer-set-has)": {
+    "lib/picture/motion/models/hold-check.ts": {
+      "const PAGE_CHANNELS = ['cx', 'cy'];": 1
+    },
+    "lint/structural/checks/barrel-purity.ts": {
+      "const SERVER_FN_CONSTRUCTORS = ['createServerFn', 'createMiddleware', 'createServerOnlyFn'];": 1
     }
   }
 }

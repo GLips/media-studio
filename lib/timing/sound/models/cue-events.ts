@@ -28,13 +28,11 @@ export type SfxMarkAttr = { event: SfxMarkedEvent; fromNow: number; request: Sfx
 export type SfxMark = Omit<SfxMarkAttr, 'fromNow'> & { scene?: string; at: number };
 
 /**
- * An event, identified as `click:speed:3` (the third click in scene speed), `scene:stock`, `move:sale:1` or
- * `reveal:<track>:1`, and landing `at` video seconds:
- * - `click`, `key`, `placed`: a marked `<Sfx>` (see SfxMarkedEvent), with its own sound and volume;
- * - `scene`: the cut into scene `scene`, or the middle of the dissolve into it (`dissolve`); `index` 1 is the change
- *   into the second scene, so neighbours can be told apart;
- * - `camera-move`: a camera moving from `from` to `to`, landing on its fastest frame; `big` if it travels far, fast;
- * - `reveal`: a highlight, dialog, card or free-standing text arriving (fully drawn).
+ * An event, identified as `click:speed:3`, `scene:stock`, `move:sale:1` or `reveal:<track>:1`:
+ * - `click`, `key`, `placed`: a marked `<Sfx>`, with its own sound and volume;
+ * - `scene`: the cut into `scene`, or its dissolve's middle; `index` 1 is the change into the second;
+ * - `camera-move`: at its fastest frame; `big` if it travels far, fast;
+ * - `reveal`: a highlight, dialog, card or text arriving drawn.
  */
 export type SfxEvent = { id: string; scene: string; at: number } & (
   | { kind: SfxMarkedEvent; request: SfxRequest; volume: number }
@@ -72,10 +70,10 @@ export const sfxEventSeries = (id: string) => id.replace(/:\d+$/, '');
 /** Numbers events of a series 1, 2, … in time order, into ids. */
 function numbered(events: Unnumbered[], series: (e: Unnumbered) => string): SfxEvent[] {
   const counts = new Map<string, number>();
-  return [...events].sort((a, b) => a.at - b.at).map((e) => {
+  return events.toSorted((a, b) => a.at - b.at).map((e) => {
     const key = series(e), n = (counts.get(key) ?? 0) + 1;
     counts.set(key, n);
-    return { id: `${key}:${n}`, ...e } as SfxEvent;
+    return { id: `${key}:${n}`, ...e };
   });
 }
 
@@ -131,7 +129,7 @@ function cameraMoves(motion: MotionTracks): Move[] {
 /** Camera moves, with several cameras moving together (a split's two panels) as one move: the one that travels furthest. */
 function cameraMoveEvents(motion: MotionTracks): SfxEvent[] {
   const fps = motion.fps, merged: Move[][] = [];
-  for (const move of cameraMoves(motion).filter((m) => m.last - m.first >= MIN_MOVE_FRAMES).sort((a, b) => a.first - b.first)) {
+  for (const move of cameraMoves(motion).filter((m) => m.last - m.first >= MIN_MOVE_FRAMES).toSorted((a, b) => a.first - b.first)) {
     const group = merged.find((g) => g[0].scene === move.scene && g.some((m) => move.first <= m.last && m.first <= move.last));
     if (group) group.push(move);
     else merged.push([move]);
@@ -176,5 +174,5 @@ export function sfxEventsFrom({ timeline, motion, marks }: { timeline: TimelineR
       if (e.kind === 'scene' && e.dissolve) return { ...e, at, dissolve: { from: roundSfxSeconds(e.dissolve.from), to: roundSfxSeconds(e.dissolve.to) } };
       return { ...e, at };
     })
-    .sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+    .toSorted((a, b) => a.at - b.at || a.id.localeCompare(b.id));
 }

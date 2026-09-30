@@ -1,10 +1,9 @@
 // review-notes.ts: the notes `studio review` pins on a render or a still, what each is about, and the markdown Graham
-// pastes back into a chat. Pure: lib/output/review/engine/ reads the artifacts, and the app's review screen calls these.
+// pastes back into a chat.
 //
-// A note's context comes only from artifacts a project already has: the render's snapshot for the scene, the
-// moment, the video-clock sounds and what's under the point, sfx/cues.json for the cue list, and on a still, a
-// variant sheet's .cells.json for the variant under the point. A source that's missing leaves its field off the note;
-// one that's there and holds nothing near gives an empty list.
+// A note's context comes only from artifacts a project already has: the render's snapshot, sfx/cues.json, and on a
+// still, a variant sheet's .cells.json. A source that's missing leaves its field off the note; one that's there and
+// holds nothing near gives an empty list.
 //
 // A note written on another render moves to its moment's frame on this one (placeReviewNotes), so a retime doesn't
 // leave it on a frame that now shows something else. review-moment.ts says what a moment is.
@@ -51,11 +50,9 @@ export type ReviewNoteContext = {
 export type ReviewRenderStamp = { hash: string; modified: string };
 
 /**
- * One note. `frame` (and `end`, for a range) is absent on a still; `x`/`y` (0–1 across the frame) are absent on a
- * range marked without a point or a note aimed at a sound marker. `cue` is the sound marker it was aimed at.
- * `render` is the hash of the render it's on; a note without one can't say which render it's about. `movedFrom` is
- * the render and frame it was written on, once it's been moved to its moment on a later render; `unplaced` says why
- * its moment isn't on the render being reviewed, and leaves it on its old frame.
+ * One note. `frame` (and `end`, for a range) is absent on a still; `x`/`y` (0–1) are absent without a point. `cue`
+ * is the sound marker it was aimed at; `render` the hash of the render it's on. `movedFrom` is where it was written,
+ * once moved to its moment; `unplaced` says why its moment isn't on this render.
  */
 export type ReviewNote = {
   id: string; frame?: number; end?: number; x?: number; y?: number; cue?: string; render?: string;
@@ -118,7 +115,7 @@ export function reviewNoteContext(note: Pick<ReviewNote, 'frame' | 'end' | 'x' |
 
 /**
  * The notes on `render`: each written on another render with a moment moves to that moment's frame here, a range
- * keeping its length and a point its x/y, its context read again on this render but its moment kept as written. A
+ * keeping its length and a point its x/y, its context read again but its moment kept as written. A
  * moment this render doesn't hold, or holds outside its frames, leaves the note where it was with `unplaced` saying so.
  */
 export function placeReviewNotes(notes: readonly ReviewNote[], { render, durationInFrames, sources }: {
@@ -156,7 +153,7 @@ export function reviewElementsUnder(motion: MotionTracks, frame: number, px: num
     if (!(opacity[i] > 0.05 && w[i] > 0 && h[i] > 0) || w[i] * h[i] > 0.9 * frameSize.w * frameSize.h) continue;
     if (Math.abs(px - x[i]) <= w[i] / 2 && Math.abs(py - y[i]) <= h[i] / 2) hits.push({ id: track.id, kind: track.kind, area: w[i] * h[i] });
   }
-  return hits.sort((a, b) => a.area - b.area).slice(0, 3).map(({ id, kind }) => (kind ? { id, kind } : { id }));
+  return hits.toSorted((a, b) => a.area - b.area).slice(0, 3).map(({ id, kind }) => (kind ? { id, kind } : { id }));
 }
 
 /** `headline short, crop card`: a variant by its place on each axis. */
@@ -184,7 +181,7 @@ export function formatReviewNotesMarkdown(file: Pick<ReviewNotesFile, 'media' | 
     [`\`${file.media}\``, render && `render \`${render.hash}\` modified ${render.modified}`, file.kind === 'video' && `${fps} fps`, savedTo && `saved to \`${savedTo}\``].filter(Boolean).join(' · '),
     '',
   ];
-  const notes = [...file.notes].sort((a, b) => (a.frame ?? 0) - (b.frame ?? 0));
+  const notes = file.notes.toSorted((a, b) => (a.frame ?? 0) - (b.frame ?? 0));
   const items = notes.map((note, i) => {
     const when = note.frame === undefined ? ''
       : note.end !== undefined && note.end !== note.frame ? `${formatReviewMoment(note.frame, fps)}–${formatReviewMoment(note.end, fps)}`

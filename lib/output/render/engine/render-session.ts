@@ -1,16 +1,14 @@
 // render-session.ts: one project bundled for rendering, and what every render command does with it. Node only.
 //
-// Each session bundles just its own project (see project-bundle.ts), so another project's missing captures can't
-// break it.
+// Each session bundles just its own project, so another project's missing captures can't break it.
 //
 // renderVideo (renderTransparentVideo, for a transparent format) is the one way the composition reaches a video file,
-// and it writes the render's snapshot beside it (lib/output/render/engine/render-snapshot.ts): a render made any other way
-// would be a file nothing can say the timeline of.
-// A video joined from its slices (render-pipeline.ts's joinVideoSlices) writes one too.
-// Stills and frame files write none: they're working images a command reads, not renders anyone reviews.
+// and it writes the render's snapshot beside it: a render made any other way would be a file with no known timeline.
+// A video joined from its slices writes one too. Stills and frame files write none: they're working images a command
+// reads, not renders anyone reviews.
 //
-// Every render runs in a browser of its own whose GPU backends (WebGL and WebGPU) are checked (render-browser.ts), on the session's
-// workers, and is timed: `passes` holds each pass's seconds, for a command to report where its time went.
+// Every render runs in a browser of its own whose GPU backends are checked, on the session's workers, and is timed:
+// `passes` holds each pass's seconds.
 import { renderFrames, renderMedia, selectComposition, type HeadlessBrowser, type OnArtifact, type RenderFramesOptions, type RenderMediaOptions } from '@remotion/renderer';
 import { copyFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { availableParallelism, getPriority, setPriority } from 'node:os';
@@ -166,13 +164,11 @@ export async function openRenderSession(project: string, { workers }: { workers?
   }
 
   /**
-   * The video, or `frames` of it, as an H.264 file at `out`, with its snapshot beside it. Its sound is the
-   * composition's, none (`muted`), or kept apart (`separateSound`): an uncompressed wav of it, drawn from the same
-   * frames, handed to `approve`. The snapshot holds `timeline`, read from the composition when not given.
+   * The video, or `frames` of it, as an H.264 file at `out`, with its snapshot. Its sound is the composition's, none
+   * (`muted`), or kept apart (`separateSound`) as a wav handed to `approve`.
    *
-   * `approve` is called once the picture has rendered, before anything is written at `out`: it can refuse the render
-   * by throwing, which leaves `out` as it was, and returns a `soundtrack` wav to mux in place of the picture's sound
-   * and the `motion` the snapshot holds, when the caller measured it.
+   * `approve` runs after the picture renders, before `out` is written: it can refuse by throwing, and returns a
+   * `soundtrack` wav to mux in and any `motion` it measured.
    */
   async function renderVideo({ out, frames, muted = false, separateSound = false, timeline, approve, inputProps = props(), onProgress, ...options }: Omit<RenderMediaOptions, VideoRenderOptions> & {
     out: string; frames?: RenderSnapshot['frames']; muted?: boolean; separateSound?: boolean; timeline?: TimelineReport; inputProps?: VideoProps;
@@ -215,10 +211,9 @@ export async function openRenderSession(project: string, { workers }: { workers?
   }
 
   /**
-   * A transparent video (VideoFormat.transparent) with its alpha, silent, each file with its snapshot: frames as PNGs,
-   * which Remotion screenshots without the page's background, encoded to VP9 in WebM at `webm` for Chrome and Firefox,
-   * and to HEVC with alpha through VideoToolbox (macOS only) at `mov` for Safari, which plays no VP9 alpha. `approve`
-   * is renderVideo's, called once the frames are drawn and before either encode.
+   * A transparent video with its alpha, silent, each file with its snapshot: VP9 in WebM at `webm` for Chrome and
+   * Firefox, and HEVC with alpha through VideoToolbox (macOS only) at `mov` for Safari, which plays no VP9 alpha.
+   * `approve` is renderVideo's, called once the frames are drawn and before either encode.
    */
   async function renderTransparentVideo({ webm, mov, timeline, inputProps = props(), onArtifact, approve, onProgress }: {
     webm: string; mov: string; timeline: TimelineReport; inputProps?: VideoProps; onArtifact?: OnArtifact;

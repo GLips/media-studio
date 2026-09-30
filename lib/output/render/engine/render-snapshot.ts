@@ -1,14 +1,12 @@
 // render-snapshot.ts: what a render was made from, written beside it, and the one loader that reads it back. Node only.
 //
-// Every video render writes <name>.snapshot.json beside <name>.mp4 (or .webm, or .mov): the timeline the composition
-// laid out when it rendered, a timed project's resolved clock (its bars, beats, downbeats, cues and named moments), the
-// composition frames the file holds (a slice starts past 0), whose voice it speaks in, the GPU it was drawn on, and on
-// a delivered render the motion its check measured. The snapshot names the render by a hash of its bytes, so a file re-rendered without one,
-// or copied over, reads as having none rather than as the older render's.
+// Every video render writes <name>.snapshot.json beside it: the timeline it laid out, a timed project's resolved
+// clock, the frames the file holds (a slice starts past 0), its voice, its GPU, and on a delivered render the motion
+// its check measured. The snapshot names the render by a hash of its bytes, so a file re-rendered without one, or
+// copied over, reads as having none rather than as the older render's.
 //
-// A reader of a render (review, `studio look --video`) goes through loadRenderSnapshot, never the project's
-// out/check/timeline.json: that is `studio check`'s latest report, rewritten by every check, and says nothing about
-// a render made before it.
+// A reader of a render goes through loadRenderSnapshot, never out/check/timeline.json: that is `studio check`'s latest
+// report, and says nothing about a render made before it.
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';

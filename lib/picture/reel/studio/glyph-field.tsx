@@ -1,10 +1,10 @@
-// glyph-field.tsx: the reference reel's generative grid (its section 03, and the implosion that closes section 07): a
-// lattice of glyphs morphing between dot, plus, X, diamond and square as waves cross it. Every glyph is one drawing,
+// glyph-field.tsx: the reference reel's generative grid (sections 03 and 07's closing implosion): a lattice of
+// glyphs morphing between dot, plus, X, diamond and square as waves cross it. Every glyph is one drawing,
 // two perpendicular rounded bars (length L, width w, corner r, turned θ, one fill), so the reference's in-betweens
 // (squircle, quatrefoil, notched octagon) come from lerping four numbers. Waves carry keyframe clips out from a point,
 // along a straight front or on delays of your own; a filter shrinks cells away and packs the survivors; the field
-// punches on beats and can implode into a point. One canvas draws it, so hundreds of cells cost one DOM node.
-// The numbers behind each frame come from lib/picture/reel/models/glyph-field.ts and glyph-field-frame.ts; this file paints them.
+// punches on beats and can implode into a point. One canvas draws it, so hundreds of cells cost one DOM node. The
+// numbers come from models/glyph-field-frame.ts; this file paints them.
 
 import { useId, useLayoutEffect, useRef } from 'react';
 import type { FrameSize } from '#lib/picture/frame/models/frame.ts';

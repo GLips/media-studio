@@ -109,7 +109,7 @@ export default defineCommand({
         return Array.from({ length: bar.to - bar.from }, (_, i) => bar.from + i);
       }
       const frameAt = (t: number) => Math.round(t * source.fps);
-      if (args.sheet) return [...new Set(args.sheet.split(',').map((t) => frameAt(parseLookNumber(t))))].sort((a, b) => a - b);
+      if (args.sheet) return [...new Set(args.sheet.split(',').map((t) => frameAt(parseLookNumber(t))))].toSorted((a, b) => a - b);
       if (args.strip) {
         const [from, to] = args.strip.split(':').map(parseLookNumber);
         if (!(Number.isFinite(from) && from < to)) throw new Error(`--strip is a stretch of seconds like 4:5, not ${args.strip}`);

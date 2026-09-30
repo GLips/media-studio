@@ -4,10 +4,14 @@
 // baselined violation leaves it baselined. A count above the baseline is a new
 // violation and blocks. A count below it is stale and blocks too, until the
 // baseline is rewritten: the list only shrinks on purpose, and each shrink is a
-// reviewable diff. A new file or a new project has no entries, so it blocks
-// from its first commit.
+// reviewable diff. A new file or project has no entries, so it blocks from its
+// first commit.
+//
+// Both tiers keep one baseline per scope. An oxlint rule is filed under the id
+// oxlint prints (`arch(no-long-comments)`), a structural check under its bare
+// id, so each tier judges and rewrites only its own entries (baselineTier).
 
-import type { Finding } from './check-context.ts';
+import type { Finding } from './structural/check-context.ts';
 
 /** check → path → key → count. */
 export type Baseline = Record<string, Record<string, Record<string, number>>>;
@@ -20,9 +24,24 @@ export type BaselineComparison = {
   baselined: Finding[];
 };
 
+export type BaselineTier = 'structural' | 'oxlint';
+
+export const baselineTierOf = (check: string): BaselineTier => (/^[a-z-]+\(.+\)$/.test(check) ? 'oxlint' : 'structural');
+
+/** The baseline's entries for one tier's checks. */
+export function baselineTier(baseline: Baseline, tier: BaselineTier): Baseline {
+  return Object.fromEntries(Object.entries(baseline).filter(([check]) => baselineTierOf(check) === tier));
+}
+
+/** The baseline with one tier's entries rewritten to `findings`, the other tier's kept, checks in order. */
+export function rebaselineTier(baseline: Baseline, tier: BaselineTier, findings: readonly Finding[]): Baseline {
+  const merged = { ...baselineTier(baseline, tier === 'oxlint' ? 'structural' : 'oxlint'), ...baselineOf(findings) };
+  return Object.fromEntries(Object.entries(merged).toSorted(([a], [b]) => a.localeCompare(b)));
+}
+
 export function baselineOf(findings: readonly Finding[]): Baseline {
   const baseline: Baseline = {};
-  for (const finding of [...findings].sort(byPlace)) {
+  for (const finding of findings.toSorted(byPlace)) {
     const keys = ((baseline[finding.check] ??= {})[finding.path] ??= {});
     keys[finding.key] = (keys[finding.key] ?? 0) + 1;
   }
@@ -31,7 +50,7 @@ export function baselineOf(findings: readonly Finding[]): Baseline {
 
 export function compareToBaseline(findings: readonly Finding[], baseline: Baseline): BaselineComparison {
   const groups = new Map<string, Finding[]>();
-  for (const finding of [...findings].sort(byPlace)) {
+  for (const finding of findings.toSorted(byPlace)) {
     const id = JSON.stringify([finding.check, finding.path, finding.key]);
     groups.set(id, [...(groups.get(id) ?? []), finding]);
   }
@@ -51,7 +70,7 @@ export function compareToBaseline(findings: readonly Finding[], baseline: Baseli
       }
     }
   }
-  return { fresh: fresh.sort(byPlace), stale, baselined };
+  return { fresh: fresh.toSorted(byPlace), stale, baselined };
 }
 
 const byPlace = (a: Finding, b: Finding) =>

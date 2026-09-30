@@ -32,7 +32,7 @@ export type GeneratedImageRequest = {
 };
 
 // What a video can import (types.d.ts declares these) and the image API reads as a reference.
-const IMPORTABLE_IMAGE = ['png', 'jpg', 'webp', 'svg'];
+const IMPORTABLE_IMAGE = new Set(['png', 'jpg', 'webp', 'svg']);
 const REFERENCE_IMAGE = ['.png', '.jpg', '.jpeg', '.webp'];
 
 type ImageEntry = { file: string; w: number; h: number; model: string; prompt: string };
@@ -55,7 +55,7 @@ export async function generateProjectImage(project: string, request: GeneratedIm
   });
   // Already paid for and cached, so a rerun lands here again rather than paying: the model needs changing.
   const ext = extname(file).slice(1);
-  if (!IMPORTABLE_IMAGE.includes(ext)) throw new Error(`${request.model} made a .${ext} (${file}), which a video can't import; pick another --model`);
+  if (!IMPORTABLE_IMAGE.has(ext)) throw new Error(`${request.model} made a .${ext} (${file}), which a video can't import; pick another --model`);
   const { w, h } = imageSize(file);
   const index = writeImageEntry(project, request.name, { file: relative(join(project, 'generated'), file), w, h, model: request.model, prompt: request.prompt });
   console.error(`images['${request.name}']: ${w}×${h}, ${request.model}`);

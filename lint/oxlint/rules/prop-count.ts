@@ -96,10 +96,9 @@ export const propCountRule = defineSourceRule({
  * Which of the three the finding is: a complete surface, one a base type widens, or one a key
  * nothing can read widens.
  *
- * The two floors are separate messages because the base one names a type and tells the reader to
- * go and open it. Sending that instruction to someone whose floor came from `({ [key]: value })`
- * is sending them to look for a base that is not there — and this rule's whole claim in the floor
- * case is that it knows what it could not read.
+ * The two floors are separate messages because the base one tells the reader to open a named
+ * type; someone whose floor came from `({ [key]: value })` would go looking for a base that is
+ * not there.
  */
 function floorMessageId(surface: PropSurface): "tooManyProps" | "tooManyPropsFloor" | "tooManyPropsFloorUnreadable" {
   if (surface.complete) return "tooManyProps";
@@ -179,16 +178,13 @@ function destructuredSurface(pattern: ESTree.ObjectPattern): PropSurface {
 }
 
 /**
- * The members `type` declares, following intersection terms and heritage entries into the types
- * they name.
+ * The members `type` declares, following intersection terms and heritage entries.
  *
- * Names are collected as a SET. `Model & { tone?: Tone }` narrowing a member `Model` already
- * declares is one prop in TypeScript and must be one prop here; summing the two sides carries a
- * seven-prop component over an eight-prop threshold, which is the over-count this rule must never
- * commit.
+ * Names are collected as a SET: `Model & { tone?: Tone }` narrowing a member `Model` already
+ * declares is one prop, and summing both sides would over-count.
  *
- * Only BASES are followed. A member whose type is a named type — `result: ScanResultViewModel` —
- * is ONE prop, and expanding it would report the very shape this rule asks for.
+ * Only BASES are followed: a member `result: ScanResultViewModel` is ONE prop, and expanding it
+ * would report the very shape this rule asks for.
  */
 function readType(
   type: ESTree.TSType,

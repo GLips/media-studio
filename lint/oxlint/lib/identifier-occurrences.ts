@@ -3,11 +3,9 @@ import type { ESTree, Visitor } from "@oxlint/plugins";
 /**
  * Visits each place a bare name appears, once per span.
  *
- * Some rules are a claim about a NAME rather than a call — importing `createServerFn`, aliasing it,
- * or reaching it through a namespace all get you the same ungated constructor, so the name itself
- * is the thing to find. The dedupe matters because a shorthand import specifier
- * (`import { createServerFn }`) is two Identifier nodes — the imported name and the local binding —
- * over one span, which would otherwise draw two diagnostics on one word.
+ * For rules about a NAME rather than a call: importing, aliasing or namespacing `createServerFn`
+ * all reach the same constructor. Deduped because a shorthand import specifier is two Identifier
+ * nodes over one span, which would draw two diagnostics on one word.
  */
 export function visitIdentifierNamed(
   name: string,

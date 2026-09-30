@@ -1,13 +1,13 @@
 // new-project.ts: starts a project that passes check:arch, typecheck and its tests from its first commit, of any
-// capability (lib/platform/project/models/capability.ts). `studio new` runs it; new-project.test.ts proves each kind.
+// capability. `studio new` runs it; new-project.test.ts proves each kind.
 //
-// Writes work/projects/<yyyy-mm>-<slug>/ with a project.ts declaring the capability and a capture script, which films the
-// URL as `home` if given one and otherwise starts empty, for a site that needs a sign-in or a server first. A timed
-// project (music-led, voice-led, mixed, silent) gets its timing in timeline.ts, its retime test and a scene file per scene,
-// each blocked in flat pieces on its cues (scaffold-timed.ts). A still-only one gets a stills.tsx registering one design (scaffold-stills.ts).
+// Writes work/projects/<yyyy-mm>-<slug>/ with a project.ts declaring the capability and a capture script, which films
+// the URL as `home` if given one and otherwise starts empty, for a site that needs a sign-in or a server first. A timed
+// project gets timeline.ts, its retime test and a scene file per scene, blocked in flat pieces on its cues. A
+// still-only one gets a stills.tsx registering one design.
 //
-// Negative space: it writes no render snapshot and no timing report. Every render writes its own snapshot beside it,
-// so a project's first `studio render --animatic` is what `studio review` reads.
+// Negative space: it writes no render snapshot and no timing report; a project's first `studio render --animatic`
+// writes the snapshot `studio review` reads.
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { PROJECT_CAPABILITIES, type ProjectCapability } from '../models/capability.ts';
@@ -65,26 +65,25 @@ export default { capability: '${capability}' } satisfies ProjectDeclaration;
 function captureScript(slug: string, url: string | undefined, title: string, stills: boolean) {
   const firstShot = url
     ? `shots.still('home', { setup: (page) => open(page, ${JSON.stringify(url)}), height: ${stills ? 1200 : 1600} });\n\n`
-    : `// \`studio probe ${slug} <url>\` shows a page as these shots will see it, with selectors for its elements.\n`;
+    : `// \`studio probe ${slug} <url>\` shows a page as these shots see it, with its selectors.\n`;
+  // Only a first shot calls it: an unused helper would fail lint from the project's first commit.
+  const openHelper = url
+    ? `const open = async (page: Page, url: string) => {\n  await page.goto(url, { waitUntil: 'load' });\n  await page.waitForTimeout(2500);\n};\n\n`
+    : '';
   // A still crops into a page and fills a story's 1080 px with a few hundred page px, so stills film at 3×.
   return `// Defines every shot the ${title} ${stills ? 'stills show' : 'video shows'}. Each shot opens its own page and gets itself to its state, so any
 // can be redone alone.
 //   studio capture ${slug} [--only=home,…]   films them (it imports the default export)
-import { captureShots, type Page } from '#lib/footage/capture/engine/capture.ts';
+import { captureShots${url ? ', type Page' : ''} } from '#lib/footage/capture/engine/capture.ts';
 
 const shots = captureShots({ project: import.meta.dirname, viewport: { width: 1440, height: 810 }${stills ? ', scale: 3' : ''} });
-const open = async (page: Page, url: string) => {
-  await page.goto(url, { waitUntil: 'load' });
-  await page.waitForTimeout(2500);
-};
-
-${firstShot}${stills
+${openHelper}${firstShot}${stills
     ? `// Each state a still shows, as a still with the rects a design crops to, e.g.
 //   shots.still('product', { setup: …, rects: { photo: '.product img', price: '.price' }, height: 1200 });`
-    : `// Each state the story needs, as a still (setup reaches it; rects are what scenes point at), e.g.
-//   shots.still('detail', { setup: …, rects: { button: '.buy', options: ['.option', { all: true }] }, height: 1200 });
-// or, where a cut would jump, a take that films the move, e.g.
-//   shots.take('open-menu', { setup: …, perform: (rec) => rec.click('.menu', { mark: 'open', rects: { menu: '.menu' } }) });`}
+    : `// Each state the story needs is a still: setup reaches it, and scenes point at its rects.
+//   shots.still('detail', { setup: …, rects: { button: '.buy' } });
+// Where a cut would jump, a take films the move.
+//   shots.take('open-menu', { setup: …, perform: (rec) => rec.click('.menu', { mark: 'open' }) });`}
 
 export default shots;
 `;

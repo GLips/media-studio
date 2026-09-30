@@ -16,9 +16,9 @@ import { BlockoutSolo, Video, type BlockoutSoloProps, type VideoProps } from './
 
 /**
  * Stops `Date` at `clock` for the whole tab. Timers, animation frames and performance.now keep real time, and
- * Remotion's timeouts are timers. The cost: Remotion's few Date.now readings (verbose delayRender timings, media cache
- * ages) stop too. Stopped, not ticking with the frame: that would need a global frame counter. Modules reading the
- * clock as they load, before this runs, see real time.
+ * Remotion's timeouts are timers. The cost: Remotion's few Date.now readings (delayRender timings, media cache ages)
+ * stop too. Stopped, not ticking with the frame: that would need a global frame counter. Modules reading the clock
+ * as they load, before this runs, see real time.
  */
 function pinBrowserDate(clock: string) {
   const RealDate = Date, pinned = new RealDate(clock).getTime();

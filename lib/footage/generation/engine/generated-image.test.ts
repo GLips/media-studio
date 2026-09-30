@@ -58,7 +58,7 @@ test('a generated image is listed by name with its size, and generating the name
   assert.equal((Object.values(provenance)[0] as any).requestId, 'gen-img-1');
 
   // Listed again from the cache without asking OpenRouter anything, even with no provider serving the model.
-  globalThis.fetch = (async () => { throw new Error('offline'); }) as unknown as typeof fetch;
+  globalThis.fetch = async () => { throw new Error('offline'); };
   assert.equal((await generateProjectImage(project, request)).file, file);
   globalThis.fetch = realFetch;
   stubOpenRouterImages();

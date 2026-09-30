@@ -23,6 +23,10 @@ test('an annotation deleting a written literal\'s keys is caught at a variable, 
       "export const modes: Record<'start' | 'stop', number> = { start: 1, stop: 2 };",
       'export const acc: Record<string, number> = {};',
       "export const parsed: unknown = JSON.parse('1');",
+      // A lookup table read by a computed key relies on its open key domain; a typed array has no keys to lose.
+      "const ROLES: Record<string, 'video'> = { 'video.tsx': 'video' };",
+      'export const roleOf = (file: string) => ROLES[file];',
+      'export const samples: Float32Array = new Float32Array(4);',
     ].join('\n'),
   });
   assert.deepEqual(caught(findings), [

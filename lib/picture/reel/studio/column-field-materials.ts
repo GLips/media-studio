@@ -241,10 +241,9 @@ export function ballMaterial(kind: NonNullable<ColumnBall['material']>, environm
 }
 
 /**
- * Anodized titanium: grey metal under an oxide film `film` nm thick, whose interference colours it: 75–105 is blue,
- * violet where the film thins and toward the rim, where light crosses it slanting; 25–40 bronze, 130–150 gold. Satin, so the overhead softbox
- * spreads over its crown rather than burning white; the clear coat keeps a hard glint. The film's slow bands show the
- * ball's turn. For another colour, pass it as a ball's `material`: `(env) => columnTitaniumMaterial(env, [a, b])`.
+ * Anodized titanium: grey metal coloured by interference in an oxide film `film` nm thick: 75–105 blue (violet
+ * where thinner and at the rim), 25–40 bronze, 130–150 gold. Satin, so the softbox spreads rather than burning
+ * white; the clear coat keeps a hard glint. Another colour: `(env) => columnTitaniumMaterial(env, [a, b])`.
  */
 export function columnTitaniumMaterial(environment: THREE.Texture | null, film: readonly [number, number] = [75, 105]) {
   const size = 64, data = new Uint8Array(size * size * 4);

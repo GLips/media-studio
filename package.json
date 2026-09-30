@@ -14,7 +14,7 @@
     "test:gate": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts'",
     "test:workspace": "node --test 'work/projects/**/*.test.ts'",
     "check:arch": "node lint/check-arch.ts",
-    "lint": "oxlint web/src",
+    "lint": "node lint/lint.ts",
     "photoshop": "node harness/photoshop.ts",
     "brushes:sheet": "node harness/brush-fidelity.ts sheet",
     "brushes:fit": "node harness/brush-fidelity.ts fit",

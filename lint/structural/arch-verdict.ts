@@ -10,9 +10,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { STUDIO_WORKSPACE_MOUNT } from '../policy/studio-tree.ts';
-import { compareToBaseline, type Baseline, type BaselineComparison } from './baseline.ts';
+import { baselineTier, compareToBaseline, type Baseline, type BaselineComparison } from '../baseline.ts';
 import { createCheckContext, type CheckContext, type CheckTarget, type Finding } from './check-context.ts';
-import { ROLLING_OUT, STRUCTURAL_CHECKS } from './registry.ts';
+import { isHeldOutUntilVid108 } from '../policy/held-out.ts';
+import { STRUCTURAL_CHECKS } from './registry.ts';
 
 export type ArchVerdict = BaselineComparison & {
   context: CheckContext;
@@ -27,21 +28,16 @@ export type ArchVerdict = BaselineComparison & {
 export function judgeArchitecture(root: string, target: CheckTarget): ArchVerdict {
   const context = createCheckContext(root, target);
   const judged = (finding: Finding) => finding.path.startsWith(`${STUDIO_WORKSPACE_MOUNT}/`) === (target.scope === 'workspace')
-    && (!ROLLING_OUT.has(finding.check) || finding.path.startsWith('web/'));
+    && !isHeldOutUntilVid108(finding.check, finding.path);
   const findings: Finding[] = [];
   const advisories: Finding[] = [];
   const crashed: string[] = [];
   try {
     for (const check of STRUCTURAL_CHECKS) {
-      const rollingOut = ROLLING_OUT.has(check.id);
-      // A check not yet switched on keeps only web findings, which the workspace never judges; nor may its crash block.
-      if (rollingOut && target.scope === 'workspace') continue;
       try {
         (check.advisory ? advisories : findings).push(...check.run(context).filter(judged));
       } catch (error) {
-        const stack = error instanceof Error ? error.stack ?? error.message : String(error);
-        if (rollingOut) advisories.push({ check: check.id, path: '(crashed)', line: 1, key: 'crash', message: stack });
-        else crashed.push(`${check.id}: ${stack}`);
+        crashed.push(`${check.id}: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       }
     }
   } finally {
@@ -53,5 +49,5 @@ export function judgeArchitecture(root: string, target: CheckTarget): ArchVerdic
     ? readFileSync(join(root, baselineFile), 'utf8')
     : context.tree.paths.has(baselineFile) ? context.tree.readTexts([baselineFile])[0] : '{}';
   const baseline = JSON.parse(baselineText) as Baseline;
-  return { context, baselineFile, findings, advisories, crashed, ...compareToBaseline(findings, baseline) };
+  return { context, baselineFile, findings, advisories, crashed, ...compareToBaseline(findings, baselineTier(baseline, 'structural')) };
 }

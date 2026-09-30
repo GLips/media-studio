@@ -22,8 +22,8 @@ const STUDIO_ROOT = fileURLToPath(new URL("../../..", import.meta.url)).replace(
  * Every spec proves three kinds, because a rule that stops matching fails silent:
  *   obvious      the violation the rule's header names.
  *   adversarial  the same violation spelled the way the rule's natural pattern misses.
- *   legal        code that looks like the violation and is allowed; over-matching trains people to ignore a rule.
- * An empty kind throws, so a stubbed spec can't pass on zero cases.
+ *   legal        code that looks like the violation and is allowed; over-matching trains people to ignore rules.
+ * An empty kind throws, so a stubbed spec can't pass.
  */
 export function describeRule(
   ruleId: string,

@@ -1,12 +1,10 @@
 // ─── Capability match ─────────────────────────────────────────────────
 //
-// A project declares its capability in project.ts (lib/platform/project/models/
-// capability.ts), and that declaration is held to what the project binds: its
-// timeline's grid (music) and voice (voice), read off the defineTimeline call,
-// and its stills.tsx's defineStills (stills). A bound timeline with neither
-// grid nor voice is silent. A timeline counts only when
-// video.tsx binds it with bindTimeline, and a video.tsx without a timeline.ts
-// still times its scenes itself, so it fits no capability.
+// A project's capability, declared in project.ts, is held to what the project
+// binds: its timeline's grid (music) and voice (voice), read off the
+// defineTimeline call, and its stills.tsx's defineStills (stills). A bound
+// timeline with neither is silent. A timeline counts only when video.tsx binds
+// it with bindTimeline; a video.tsx without a timeline.ts fits no capability.
 //
 // Negative space: what a part holds isn't judged here (a beat scene's cues, a
 // still's presets); the timeline throws at load and the retime runner and

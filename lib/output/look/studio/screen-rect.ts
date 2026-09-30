@@ -46,16 +46,11 @@ const sameRect = (a: Rect | null, b: Rect | null) =>
   a === b || (!!a && !!b && Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01 && Math.abs(a.w - b.w) < 0.01 && Math.abs(a.h - b.h) < 0.01);
 
 /**
- * Where `target` is on screen this frame, in composition pixels (the video's frame size) whatever the preview's zoom, with every
- * ancestor transform applied: the rect a Highlight, Spotlight or cursor takes. Null while the element isn't in the
- * DOM. Draw what uses it in the scene's own coordinates, outside any transformed wrapper.
+ * Where `target` is on screen, in composition pixels whatever the preview's zoom, with every ancestor transform
+ * applied; null while it isn't in the DOM. Draw what uses it outside any transformed wrapper. `selector` picks the
+ * first match inside `target`, for an element that hands out no ref.
  *
- * With `selector`, it's the first element matching it inside `target`: for one a component renders itself, which
- * hands out no ref, e.g. `useScreenRect(laneRef, '[aria-label="Retry webhooks"]')`.
- *
- * Measured after every commit; state set in a layout effect re-renders before paint, so the rect always belongs to
- * the frame on screen however frames are visited. Before layout is final (see whenLaidOut) the frame is held and
- * re-measured. Layout that shifts later without a re-render (an unsized image loading) isn't seen.
+ * Layout that shifts without a re-render (an unsized image loading) isn't seen.
  */
 export function useScreenRect(target: RefObject<Element | null>, selector?: string): Rect | null {
   // Re-render, and so re-measure, on every frame, even if nothing the caller passes down changes.
@@ -69,6 +64,9 @@ export function useScreenRect(target: RefObject<Element | null>, selector?: stri
     setRect((prev) => (sameRect(prev, next) ? prev : next));
   }, [target, selector, width]);
 
+  // Measured after every commit; state set in a layout effect re-renders before paint, so the rect always belongs to
+  // the frame on screen however frames are visited. Before layout is final (see whenLaidOut) the frame is held and
+  // re-measured.
   useLayoutEffect(() => {
     measure();
     const layer = target.current && sceneLayerOf(target.current);

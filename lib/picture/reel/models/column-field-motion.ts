@@ -106,7 +106,7 @@ function ballPath<C extends ColumnCell>(spec: ColumnFieldSpec<C>, ball: ColumnBa
     const T = Math.max(1e-3, t1 - t0);
     return { start: t0, t0, t1, p0, v0: p1.clone().sub(p0).divideScalar(T).addScaledVector(Y, 0.5 * g * T) };
   };
-  const contacts = [...ball.contacts].sort((p, q) => p.at - q.at);
+  const contacts = ball.contacts.toSorted((p, q) => p.at - q.at);
   const first = contacts[0];
   const { from, duration } = ball.enter ?? { from: [-1, 9, -7] as Vec3, duration: 0.45 };
   const landing = top(first.cell, first.at);

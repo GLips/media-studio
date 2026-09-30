@@ -28,9 +28,9 @@ const CENTRE_SQUARE: Rect = { x: 670, y: 400, w: 100, h: 100 };
 const card = (color: string): CSSProperties => ({ position: 'absolute', width: 160, height: 160, borderRadius: 24, background: color });
 
 /**
- * Good next to bad: `eased` travels 1000px with motionCurves.cubic.standard in 1s and holds; `linear` travels the same 1000px at one
+ * Good next to bad: `eased` travels 1000px with motionCurves.cubic.standard in 1s and holds; `linear` travels it at one
  * speed, stops dead, and jitters ±3px while it "holds". Velocity: a bell against a flat plateau with a cliff at each end.
- * Both are declared to hold for 1s after arriving: `eased` does, and `linear`'s jitter fails the check on purpose.
+ * Both declare a 1s hold: `linear`'s jitter fails the check on purpose.
  */
 const glide = (clock: ResolvedSceneClock) => sceneForTimelineClock(clock, {
   expect: () => [
@@ -51,10 +51,9 @@ const glide = (clock: ResolvedSceneClock) => sceneForTimelineClock(clock, {
 });
 
 /**
- * A push in on the grid's centre, where zoom rises 1 → 2.4 with no pan: the camera's cx and cy hold, and the ring on
- * the centre square keeps its screen centre (no centre velocity) while it grows on screen. In page space its centre
- * never moves; its size shrinks a little, since the ring's padding is screen pixels. The cursor crosses the page
- * meanwhile: its own (page) motion is only its path, the camera's push excluded.
+ * A push in on the grid's centre, zoom 1 → 2.4 with no pan: the ring on the centre square keeps its screen centre
+ * while it grows. In page space its centre never moves; its size shrinks a little, since the ring's padding is screen
+ * pixels. The cursor's own (page) motion is only its path, the camera's push excluded.
  */
 const push = (clock: ResolvedSceneClock) => sceneForTimelineClock(clock, {
   render: (s) => {
@@ -109,10 +108,9 @@ const counter = (clock: ResolvedSceneClock) => sceneForTimelineClock(clock, {
 });
 
 /**
- * Ownership. `stage` is drawn at 2× and holds still; `dot` inside it moves 100 of the stage's own pixels, so 200 on
- * screen: its local x moves 100, its screen x 200. `tilted` is turned 20°, so its `pin` is attribution unknown, and so
- * is `turned`'s `pin`, under an SVG group turned inside it. `chip` is tagged by ref and selector, as an element a host
- * component renders itself would be.
+ * Ownership. `stage` is drawn at 2× and holds still; `dot` inside it moves 100 of the stage's pixels, 200 on screen.
+ * `tilted` is turned 20°, so its `pin` is attribution unknown, as is `turned`'s `pin`, under an SVG group turned
+ * inside it. `chip` is tagged by ref and selector, as an element a host component renders itself would be.
  */
 const nested = (clock: ResolvedSceneClock) => sceneForTimelineClock(clock, {
   render: (s) => <Nested t={s.t} />,

@@ -63,7 +63,7 @@ const MUSIC_FADE_OUT = 2.5;
 /** Spans the music is ducked for, with gaps too short to come back up in merged away. */
 export function duckSpans(cues: readonly { start: number; end: number }[]): { start: number; end: number }[] {
   const spans: { start: number; end: number }[] = [];
-  for (const { start, end } of [...cues].sort((a, b) => a.start - b.start)) {
+  for (const { start, end } of cues.toSorted((a, b) => a.start - b.start)) {
     const last = spans.at(-1);
     if (last && start - last.end < DUCK_ATTACK + DUCK_RELEASE) last.end = Math.max(last.end, end);
     else spans.push({ start, end });
@@ -101,9 +101,9 @@ export function musicBedGainAt(bed: MusicBed, cues: readonly { start: number; en
     const start = Math.round(c.start * fps) / fps;
     return { start, end: start + (c.end - c.start) };
   }));
-  // A track played from its own start opens as it was written to (a music-led piece starts on its first hit), so only
-  // one started partway through fades in. A track fitted to this video's length ends on its own ending, so it isn't
-  // faded out; after a retime it no longer fits, and fades like any other until `studio music fit` runs again.
+  // A track played from its own start opens as it was written to, so only one started partway through fades in. A
+  // track fitted to this video's length ends on its own ending, so it isn't faded out; after a retime it no longer
+  // fits, and fades like any other until `studio music fit` runs again.
   const endsWithVideo = !!bed.track.fit && !bed.sourceStartSeconds && Math.abs(bed.track.duration - videoSeconds) < 0.5 / fps;
   const fades = { in: !!bed.sourceStartSeconds, out: !endsWithVideo };
   const levels = musicLevels(bed);

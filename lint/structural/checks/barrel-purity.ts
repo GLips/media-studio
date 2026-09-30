@@ -19,7 +19,7 @@ const ID = 'barrel-purity';
  * The Node-side machinery a browser chunk can't carry. Builtins need no entry. Engine code isn't named here:
  * import-policy confines it to the engine door, which a barrel reaches only past a server function.
  */
-const SERVER_ONLY_PACKAGES = ['@remotion/renderer', '@remotion/bundler', '@remotion/install-whisper-cpp', 'esbuild', 'vite'];
+const SERVER_ONLY_PACKAGES = new Set(['@remotion/renderer', '@remotion/bundler', '@remotion/install-whisper-cpp', 'esbuild', 'vite']);
 const SERVER_FN_MODULE = '@tanstack/react-start';
 const SERVER_FN_CONSTRUCTORS = ['createServerFn', 'createMiddleware', 'createServerOnlyFn'];
 
@@ -39,7 +39,7 @@ export const barrelPurityCheck: StructuralCheck = {
           const first = origin ?? edge;
           const { target } = edge;
           const serverOnly = target.kind === 'builtin' ? target.name
-            : target.kind === 'package' && SERVER_ONLY_PACKAGES.includes(target.name) ? target.name : undefined;
+            : target.kind === 'package' && SERVER_ONLY_PACKAGES.has(target.name) ? target.name : undefined;
           if (serverOnly !== undefined) {
             if (reported.has(serverOnly)) continue;
             reported.add(serverOnly);

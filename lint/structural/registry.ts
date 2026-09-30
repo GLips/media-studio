@@ -73,15 +73,3 @@ export const STRUCTURAL_CHECKS: readonly StructuralCheck[] = [
   shadowSourceCheck,
   tokenEqualityCheck,
 ];
-
-/**
- * Checks that apply to all TypeScript but aren't switched on yet: vid-107's phase B baselines today's findings and
- * deletes this set. Until then check:arch keeps only their findings in the web app, which most of them already
- * governed; their specs run them over the whole studio layout.
- */
-export const ROLLING_OUT: ReadonlySet<string> = new Set<string>([
-  'file-size', 'trampolines', 'doc-budgets', 'barrel-discoverability', 'test-file-mirror', 'feature-visibility', 'feature-cycles',
-  'typed-tree', 'no-opaque-record', 'no-widen-then-assert', 'no-known-value-widening', 'no-broad-parameters',
-  'no-unknown-returns', 'no-unknown-type-aliases', 'no-runtime-typeof',
-  'no-test-imports',
-]);

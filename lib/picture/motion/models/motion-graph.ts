@@ -41,8 +41,8 @@ const LANDED_SHARE = 0.01;
 
 /**
  * One plotted quantity of one track: a series per run of it (see trackRuns), never joined across a break. `cut` says
- * why a series begins or ends where it does, when that isn't the element's own doing to know: the stretch's edge, or
- * a break in its track. A move touching a cut edge may have started before it or go on after it.
+ * why a series begins or ends, when not the element's own doing: the stretch's edge, or a break in its track. A move
+ * touching a cut edge may have started before it or go on after it.
  */
 type ChannelSeries = { start: number; values: (number | null)[]; cut?: { start?: EdgeCause; end?: EdgeCause } }[];
 
@@ -120,7 +120,7 @@ function channelSeries(track: MotionTrack, channel: Channel, req: Pick<MotionGra
 }
 
 const valueChannelsOf = (tracks: readonly MotionTrack[]): Channel[] => [...new Set(tracks.flatMap((t) => t.segments.flatMap((s) => Object.keys(s.values))))]
-  .sort().map((key) => ({ key, kind: 'value', unit: '', still: VALUE_STILL }));
+  .toSorted().map((key) => ({ key, kind: 'value', unit: '', still: VALUE_STILL }));
 
 /** Per-frame change below which a channel counts as still: a value's is relative to its size. */
 function stillThreshold(channel: Channel, series: ChannelSeries) {
@@ -161,7 +161,7 @@ export function chooseGraphTracks(motion: MotionTracks, req: Pick<MotionGraphReq
     if (plotted.length > PALETTE.length) throw new Error(`${plotted.length} tracks match, and a graph tells ${PALETTE.length} apart: pick fewer (${plotted.map((t) => t.id).join(', ')})`);
     return { plotted, unplotted: [], still: [] };
   }
-  const ranked = present.map((t) => ({ t, amount: motionAmount(t, req) })).sort((a, b) => b.amount - a.amount);
+  const ranked = present.map((t) => ({ t, amount: motionAmount(t, req) })).toSorted((a, b) => b.amount - a.amount);
   const moving = ranked.filter((r) => r.amount > 0);
   return {
     plotted: moving.slice(0, DEFAULT_TRACK_COUNT).map((r) => r.t),
@@ -395,7 +395,7 @@ export function buildMotionGraph(motion: MotionTracks, timeline: TimelineReport,
   });
   if (new Set(firstMoves.map((m) => m.id)).size > 1) {
     const leads = new Map<string, { frame: number; channels: string[] }>();
-    for (const m of [...firstMoves].sort((a, b) => a.frame - b.frame)) {
+    for (const m of firstMoves.toSorted((a, b) => a.frame - b.frame)) {
       const lead = leads.get(m.id);
       if (!lead) leads.set(m.id, { frame: m.frame, channels: [m.channel] });
       else if (lead.frame === m.frame) lead.channels.push(m.channel);

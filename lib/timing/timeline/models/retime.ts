@@ -1,14 +1,11 @@
-// retime.ts: the one retime runner every timed project's timeline.test.ts calls (check (e) holds the registration).
+// retime.ts: the one retime runner every timed project's timeline.test.ts calls.
 //
 // A retime is lengthening one scene: a beat scene by a beat, a fixed one by a second, and a voiced one by re-recording
-// its first line a second slower to its first word. On a synthetic grid (re-fitted to the edited timeline, as `studio
-// music fit --bars` would), everything after the scene moves by exactly what was added and nothing before it moves:
-// scenes, cues, replays, the music's and the voice's placements and the project's own (its sounds, kicks). Inside a
-// re-recorded scene, every word moves by the second and the first line's start holds, so a speech cue moves with its
-// word and a cue in seconds stays put. Every move keeps its length and no scenes overlap. On the unchanged recording,
-// the landmarks refuse a longer beat scene and accept a longer scene outside the music. A move pinned between two
-// scenes' moments, or between a word and an offset, is what this catches: code alone can't tell it from a deliberate
-// stretch, but a retime changes its length.
+// its first line a second slower. On a grid re-fitted as `studio music fit --bars` would, everything after the scene
+// moves by exactly what was added and nothing before it moves, the project's own placements included. Inside a
+// re-recorded scene, a speech cue moves with its word and a cue in seconds stays put. On the unchanged recording, the
+// landmarks refuse a longer beat scene. What this catches is a move pinned between two moments: code alone can't tell
+// it from a deliberate stretch.
 
 import {
   defineTimeline, recordedGrid, tempoGrid, type FittedTrack, type SceneMoment, type SceneSpan, type SpeechCue, type Timeline,
@@ -99,7 +96,7 @@ export function assertTimelineRetimes(
     if (after.end < after.scenes.at(-1)!.end) fail(`the video ends on frame ${after.end}, before its last scene does`);
 
     if (placedBefore) {
-      for (const now of placements!(after)) {
+      for (const now of placements(after)) {
         const then = placedBefore.get(`${now.scene}/${now.id}`);
         if (then === undefined) { fail(`${now.scene}/${now.id} appears`); continue; }
         const i = keys.indexOf(now.scene), shift = now.frame - then;

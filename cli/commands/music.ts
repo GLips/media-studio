@@ -81,7 +81,7 @@ const fit = defineCommand({
     const moments = [
       ...timeline.scenes.filter((s) => s.start > 0).map((s) => ({ label: `cut to ${s.id}`, at: s.start })),
       ...timeline.expectations.map((e) => ({ label: `${e.scene}: ${'see' in e ? `see ${e.see}` : `hold ${e.hold}`}`, at: e.start })),
-    ].sort((a, b) => a.at - b.at);
+    ].toSorted((a, b) => a.at - b.at);
     console.log(['', 'Against the downbeats (a report only: nudge a lead or tail, or leave it):', ...formatMusicFitReport(result.track, moments)].join('\n'));
 
     function printFit({ file, index, track, seamDb, worstSeamDb }: ReturnType<typeof fitProjectMusicTrack>) {

@@ -68,17 +68,17 @@ export type CheckContext = {
  * re-export or rename). A type-only import binds nothing callable, and a local look-alike isn't the function.
  */
 export function callsTo(context: CheckContext, file: SourceFile, origin: { path: string; name: string }): AstNode[] {
-  const locals = context.edgesFrom(file).flatMap((edge) => {
+  const locals = new Set(context.edgesFrom(file).flatMap((edge) => {
     if (edge.scanned.typeOnly || edge.target.kind !== 'module') return [];
     const target = edge.target.path;
     return edge.scanned.bindings
       .filter((binding) => context.originsOf(target, binding.imported).some((o) => o.path === origin.path && o.name === origin.name))
       .map((binding) => binding.local);
-  });
+  }));
   const calls: AstNode[] = [];
   walkAst(file.program, (node) => {
     const callee = node.callee as AstNode | undefined;
-    if (node.type === 'CallExpression' && callee?.type === 'Identifier' && locals.includes(callee.name as string)) calls.push(node);
+    if (node.type === 'CallExpression' && callee?.type === 'Identifier' && locals.has(callee.name as string)) calls.push(node);
   });
   return calls;
 }
@@ -90,7 +90,7 @@ export function callsTo(context: CheckContext, file: SourceFile, origin: { path:
 export function studioScope(path: string): 'governed' | 'exempt' | 'undeclared' {
   const position = classifyStudioPath(path, {});
   if (position.kind === 'undeclared') return 'undeclared';
-  if (position.kind === 'ungoverned' || position.kind === 'lint') return 'exempt';
+  if (position.kind === 'ungoverned') return 'exempt';
   if (position.kind === 'project' && position.role === 'generated') return 'exempt';
   if ((position.kind === 'web-client' || position.kind === 'web-server') && position.place === 'generated') return 'exempt';
   return 'governed';

@@ -88,7 +88,7 @@ export function framingProblems(
   }
 
   const spans: (FramingProblem & { last: number })[] = [];
-  for (const f of found.sort((a, b) => a.frame - b.frame)) {
+  for (const f of found.toSorted((a, b) => a.frame - b.frame)) {
     const open = spans.findLast((s) => s.problem === f.problem && s.scene === f.scene);
     if (open && f.frame - open.last <= 1) {
       open.last = f.frame;

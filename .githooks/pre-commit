@@ -1,6 +1,7 @@
 #!/bin/sh
 # The pre-commit gate: check:arch over what this commit holds, then the typecheck and the tests of what a clean clone
-# holds, then the web app's typecheck and oxlint over web/src. Those last two read the working tree, not the index.
+# holds, then the web app's typecheck and lint (oxlint over every file, against the baseline). Those last two read
+# the working tree, not the index.
 # Each runs on its own, so one failure doesn't hide the next, and any failure refuses the commit. `npm install`
 # switches it on (package.json's prepare sets core.hooksPath to .githooks, for every worktree of the clone).
 #

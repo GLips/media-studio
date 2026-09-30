@@ -48,13 +48,13 @@ function framesOf(motion: MotionTracks, timeline: Pick<TimelineReport, 'crossfad
   });
 }
 
-const BOX_CHANNELS = ['x', 'y', 'width', 'height'];
+const BOX_CHANNELS = new Set(['x', 'y', 'width', 'height']);
 // A camera's pan is page pixels, which its zoom magnifies on screen.
 const PAGE_CHANNELS = ['cx', 'cy'];
 
 /** How far a channel may move and still hold, and the unit to say it in. */
 function toleranceFor(name: string, r: { lo: number; hi: number }, withinPx: number, zoom: number | null | undefined): { limit: number; unit: string } {
-  if (BOX_CHANNELS.includes(name)) return { limit: withinPx, unit: 'px' };
+  if (BOX_CHANNELS.has(name)) return { limit: withinPx, unit: 'px' };
   if (PAGE_CHANNELS.includes(name)) return { limit: withinPx / Math.max(1, zoom ?? 1), unit: ' page px' };
   return { limit: VALUE_SHARE * Math.max(1, Math.abs(r.lo), Math.abs(r.hi)), unit: '' };
 }
@@ -87,9 +87,9 @@ const describe = (b: HoldBreak) =>
   'why' in b ? `it ${b.why}` : `its ${b.channel} moves ${amount(b.moved, b.unit)} (holds within ${amount(b.limit, b.unit)})`;
 
 /**
- * Each hold that isn't kept, as a problem over its span, and how many were checked. `project` names it in the
- * `studio look` command a problem points at. A hold wholly outside the measured frames is skipped. One partly inside
- * them passes if it's kept on the measured part, and is listed in `unchecked` if not, since it may be kept outside.
+ * Each hold that isn't kept, as a problem over its span, and how many were checked. `project` goes in the `studio
+ * look` command a problem points at. A hold wholly outside the measured frames is skipped; one partly inside passes
+ * if kept on the measured part, else is listed in `unchecked`, since it may be kept outside.
  */
 export function holdProblems(motion: MotionTracks, timeline: Pick<TimelineReport, 'crossfades'>, holds: readonly HoldExpectation[], project: string): { problems: HoldProblem[]; unchecked: string[]; checked: number } {
   const { fps } = motion;

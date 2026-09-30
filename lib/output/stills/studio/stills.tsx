@@ -75,11 +75,9 @@ export function defineStills(designs: Readonly<Record<string, StillDesign<any, a
 export const StillPresetContext = createContext<StillPreset | null>(null);
 
 /**
- * The frame a design lays out in. `u` is 1% of the shorter side, the unit for type and margins, so a design keeps its
- * proportions at every preset. `wide` is a landscape frame (OG, YouTube), where text sits beside the subject rather
- * than under it; a square frame is not wide. `safe` is the frame less the platform's full-width bars (a story's top
- * and reply bars): text and logos go inside it, pictures may run under the bars. `zones` is every UI zone, corners
- * too (YouTube's duration badge), for a design to keep text out of.
+ * The frame a design lays out in. `u` is 1% of the shorter side, so a design keeps its proportions at every preset.
+ * `wide` is a landscape frame, where text sits beside the subject. `safe` is the frame less the platform's full-width
+ * bars: text and logos go inside it, pictures may run under. `zones` is every UI zone, corners too.
  */
 export function useStillFrame() {
   const { width: w, height: h } = useVideoConfig();
@@ -136,18 +134,20 @@ export type StillCardTilt = { rx: number; ry: number; rz: number };
 export const STILL_CARD_TILT: StillCardTilt = { rx: 3, ry: -8, rz: 0 };
 
 /**
- * A capture as a card in space, the reel's CapturePlane held still: `image` on a rounded card turned by `tilt`,
- * casting a shadow on the ground. A rect `focus` is the card: the card takes its shape, as large as fits `room`, and
- * shows only it, so no page around the subject creeps in; a point `focus` fills `room`, cropped around it. `lift` is one
- * control (a rect in the image's units) drawn again raised toward the viewer, with its own shadow, and ringed in `ring`
- * if given: the tap the reel shows, frozen. It grows about 6% as it rises, so it covers a sliver of what's around it:
- * lift a control with a little space around it, and pad the rect into that space. Put the card on a full-bleed field.
+ * A capture as a card in space, the reel's CapturePlane held still: `image` on a rounded card turned by `tilt`. A rect
+ * `focus` is the card, as large as fits `room`, showing only it, so no page around the subject creeps in; a point
+ * `focus` fills `room`, cropped around it. Put the card on a full-bleed field.
  */
 export function StillCard({ image, room, focus, tilt = STILL_CARD_TILT, radius, lift, ring }: {
   image: StillImage; room: Rect; focus: StillFocus;
   tilt?: StillCardTilt;
   /** Corner radius in px (default 3% of the card's shorter side). */
   radius?: number;
+  /**
+   * One control (a rect in the image's units) drawn again raised toward the viewer, ringed in `ring` if given: the
+   * reel's tap, frozen. It grows about 6% as it rises, so lift a control with a little space around it, and pad the
+   * rect into that space.
+   */
   lift?: Rect;
   ring?: string;
 }) {
@@ -225,11 +225,9 @@ const FIT_NARROWING_GAIN = 1.15;
 
 
 /**
- * Sets `text` as large as fits `box`, up to `max` px and down to `min`, measured in the browser once the fonts are in,
- * in `face` (Archivo, or a brand's `brand.fonts.display`). On a face with a width axis it narrows first (width 100% →
- * 66%, within the axis), keeping a narrower width only when that buys about 15% more size; on one without, it shrinks.
- * Lines are balanced. A text that fits only at `min`, or not even there, fails the still check (lib/output/stills/models/still-check.ts), so
- * `studio still` won't write it. `name` names it there, unique within the still.
+ * Sets `text` as large as fits `box`, between `min` and `max` px. On a face with a width axis it narrows first,
+ * keeping a narrower width only when that buys 15% more size; on one without, it shrinks. A text that needs `min` or
+ * less fails the still check. `name` names it there, unique within the still.
  */
 export function FitText({ name, text, box, max, min, face = ARCHIVO_FACE, align = 'end', style }: {
   name: string; text: string; box: Rect; max: number; min: number;

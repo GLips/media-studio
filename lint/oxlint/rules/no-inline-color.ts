@@ -36,9 +36,7 @@ const COLOR_LITERAL = /#[0-9a-fA-F]{3,8}\b|(?:rgb|rgba|hsl|hsla)\([^)]*[0-9]/;
 function staticStringValue(wrapped: ESTree.Node): string | null {
   // A cast, a `satisfies` and a `!` change nothing about the string that ships, and
   // `lib/transparent-wrappers.ts` is the one list of them. Without this, `c={"#0a0c10" as Color}`
-  // turns the rule off with one keyword, while no-inline-style-prop, which reads the same
-  // module, still sees it. A parenthesis needs no arm: oxlint emits no node for one, which that
-  // module's own negative space says.
+  // turns the rule off with one keyword. A parenthesis needs no arm: oxlint emits no node for one.
   const node = withoutTransparentWrappers(wrapped);
   if (node.type === "Literal" && typeof node.value === "string") return node.value;
   if (node.type === "TemplateLiteral" && node.expressions.length === 0) {

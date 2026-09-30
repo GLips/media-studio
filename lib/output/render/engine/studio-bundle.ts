@@ -1,20 +1,12 @@
-// studio-bundle.ts: bundles the studio's browser entry for one project, for the renderer to serve, and keeps the
-// bundle between runs. Node only.
-//
-// Apart from project-bundle.ts because that file can't use import.meta (the Remotion CLI bundles it to CommonJS),
-// and this one needs STUDIO_ROOT.
+// studio-bundle.ts: bundles the studio's browser entry for one project, and keeps the bundle between runs. Node
+// only. Apart from project-bundle.ts because that file can't use import.meta (the Remotion CLI bundles it to
+// CommonJS), and this one needs STUDIO_ROOT.
 //
 // A kept bundle is reused while every file webpack read for it is unchanged and every path it looked for and didn't
-// find is still missing: webpack's own record of its inputs, so a re-render of one bar after another costs a stat per
-// input rather than a bundle. What Node decides before webpack runs (which of video.tsx and stills.tsx the aliases
-// point at, the host link, the bundle code itself) webpack never records, so it's fingerprinted apart. Each bundle goes to a folder of its own and `current.json` is swapped in whole, so a
-// render still serving the previous bundle, or a second bundle of the same project at once, never reads a half-written
-// one.
-//
-// Webpack's own persistent cache is off. Remotion keys it on the whole config, entry and aliases by absolute path, so
-// every worktree and project wrote another ~240 MB to the shared node_modules/.cache/webpack and nothing pruned it. It
-// only helps a bundle after an edit (1.5 s rather than 3.3 s for a scene-heavy video); an unchanged project reuses the
-// kept bundle here without webpack at all.
+// find is still missing. What Node decides before webpack runs (aliases, the host link, this code) webpack never
+// records, so it's fingerprinted apart. Each bundle gets a folder of its own and `current.json` is swapped in whole,
+// so a render still serving the previous bundle, or a second bundle of the same project, never reads a half-written one.
+
 import { bundle, type WebpackOverrideFn } from '@remotion/bundler';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -98,6 +90,8 @@ export async function bundleStudioProject(project: string): Promise<string> {
     };
   };
   mkdirSync(home, { recursive: true });
+  // Webpack's persistent cache is off: keyed on absolute paths, it grew ~240 MB per worktree and project, unpruned,
+  // and an unchanged project reuses the kept bundle without webpack at all.
   const serveUrl = await bundle({ entryPoint: join(STUDIO_ROOT, 'lib/picture/composition/studio/index.ts'), webpackOverride: recording, outDir: join(home, dir), enableCaching: false });
   if (!recorded) throw new Error('webpack finished without reporting what it read, so the bundle can\'t be kept');
   // Webpack judges node_modules by package version, not file by file, so an install is judged by the lockfile.
@@ -112,7 +106,7 @@ export async function bundleStudioProject(project: string): Promise<string> {
     renameSync(written, join(home, 'current.json'));
   } else console.error('a file changed while bundling, so this bundle serves this run only');
   const others = readdirSync(home).filter((name) => /^\d+-\d+$/.test(name) && name !== dir)
-    .map((name) => ({ name, finished: statSync(join(home, name)).mtimeMs })).sort((a, b) => b.finished - a.finished);
+    .map((name) => ({ name, finished: statSync(join(home, name)).mtimeMs })).toSorted((a, b) => b.finished - a.finished);
   const stale = others.filter((o, i) => i >= KEPT_BUNDLES_MAX - 1 || (i >= KEPT_BUNDLES - 1 && Date.now() - o.finished > KEPT_BUNDLE_MS));
   for (const old of stale) {
     rmSync(join(home, old.name), { recursive: true, force: true });

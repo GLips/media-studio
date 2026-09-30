@@ -1,6 +1,6 @@
 // capture-plane.tsx: a capture as a card in space, the way a reel shows product UI: a crop of a page (a View) on a
-// rounded card posed in 3D, lit by one key light (shadow, rim, a sheen that slides as it turns, shade as it turns
-// away), with one control able to lift out of the page toward the viewer.
+// rounded card posed in 3D, lit by one key light (shadow, rim, a sliding sheen, shade as it turns away), with one
+// control able to lift out of the page toward the viewer.
 //
 // CSS 3D, not three.js, so the browser resamples the hi-DPI capture from its pixels. Each card is its own 3D context,
 // so cards stack in drawing order (far first) and never cut into each other. Flatteners (filter, opacity, overflow,

@@ -5,8 +5,8 @@
 // `seg(…, motionCurves.linear)`: an eased `k`, from `on()` or a curve token, eases twice and lands harder.
 //
 // Highlights and tags carry data-framing, which the framing check (probe.tsx) measures: a highlight marks what the
-// voice is describing, so one under a tag or the caption, or off the frame, is a shot nobody can follow. Each piece
-// also tags itself for the motion tracks (motion-tag.ts), with its progress and, where it knows it, its camera.
+// voice describes, so one under a tag or the caption, or off frame, is a shot nobody can follow. Each piece also
+// tags itself for the motion tracks (motion-tag.ts).
 
 import { useId, type CSSProperties, type ReactNode } from 'react';
 import type { StaggerMembership } from '#lib/picture/motion/models/motion-tracks.ts';
@@ -29,9 +29,8 @@ const roundRectPath = ({ x, y, w, h }: Rect, r: number) =>
 
 /**
  * Draws its children in screen coordinates, clipped to `box`, the way a panel clips its capture. Overlays aimed
- * through a panel's view go inside, so the framing check sees a ring cut off by the panel's edge. It's a group in the
- * motion tracks, so what's drawn in it is tracked under it: named `motion`, or `picked` (`panel` by default), the name a
- * kit piece built on it gives it.
+ * through a panel's view go inside, so the framing check sees a ring cut off by the panel's edge. It's a motion-tracks
+ * group its contents are tracked under, named `motion`, or `picked` (default `panel`) by a kit piece built on it.
  */
 export function ClipToBox({ box, motion, picked = 'panel', children }: { box: Rect; motion?: string | false; picked?: string; children: ReactNode }) {
   const { width, height } = useVideoFormat();
@@ -60,9 +59,9 @@ export function Cursor({ at, press = 0, alpha = 1, through, motion }: { at: Poin
 }
 
 /**
- * An expanding ring where a click landed; `k` 0..1 over its life, raw (it eases its own growth). The click point itself
- * is a subject for the framing check while the ring is fresh, so a click under the caption or outside its panel fails.
- * `through` is the view it was clicked on, if any; `n`, which click of a path it is, tells overlapping ripples apart.
+ * An expanding ring where a click landed; `k` 0..1 over its life, raw. The click point is a framing-check subject
+ * while the ring is fresh, so a click under the caption or outside its panel fails. `through` is the view clicked on,
+ * if any; `n`, which click of a path it is, tells overlapping ripples apart.
  */
 export function ClickRipple({ at, k, color = INK, through, n, motion }: { at: Point; k: number; color?: string; through?: View; n?: number; motion?: string | false }) {
   const frame = useVideoFormat();
@@ -122,7 +121,7 @@ export function TakeCursor({ view, t, fit, alpha = 1 }: { view: View; t: number;
   const events: [number, Point, boolean][] = [
     ...fit.take.mouse.map(([time, x, y, click]): [number, Point, boolean] => [sceneTimeOf(fit, time), { x, y }, click === 1]),
     ...fit.pins.map(([scene, time]): [number, Point, boolean] => [scene, takeMouseAt(fit.take, time), false]),
-  ].sort((a, b) => a[0] - b[0]);
+  ].toSorted((a, b) => a[0] - b[0]);
   const keys: [number, Point, { click?: boolean }][] = [];
   for (const [at, p, click] of events) {
     const last = keys[keys.length - 1];
@@ -147,16 +146,15 @@ export function offscreen(view: View, toward: Point): Point {
 // ---------- emphasis ----------
 
 /**
- * A glowing ring around a screen rect that draws itself on (`k` 0..1, raw: it eases the draw) and fades with `alpha`.
- * `name` is what a scene's `expect` refers to it by, and its track's name unless `motion` gives another. The rect comes
- * from a view (`screenRect`) or a live element (`useScreenRect`); null draws nothing. Say `through` when the rect isn't
- * straight from `screenRect`: its view, or `screen` for one in screen coordinates that no camera moves. `pad` gives way
- * at the frame's edge, or `box`'s (a panel's view box), so a subject flush with it is ringed just inside; the rect
- * itself never shrinks, so one off the frame still fails the framing check.
+ * A glowing ring around a screen rect that draws itself on (`k` 0..1, raw) and fades with `alpha`. `pad` gives way
+ * at the frame's or `box`'s edge, so a flush subject is ringed just inside; the rect never shrinks, so one off frame
+ * still fails the framing check.
  */
 export function Highlight({ rect, k, color = INK, pad = 10, radius = 12, alpha = 1, name, box, through, motion }: {
   rect: Rect | null;
+  /** What a scene's `expect` calls it, and its track's name unless `motion` differs. */
   name?: string;
+  /** Its view when the rect isn't straight from `screenRect`, or `screen` if no camera moves it. */
   through?: View | 'screen';
   motion?: string | false;
   box?: Rect;

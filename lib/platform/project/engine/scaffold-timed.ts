@@ -95,7 +95,7 @@ export function timedStarterFiles(slug: string, title: string, capability: Timed
 
 function timelineModule(slug: string, title: string, scenes: readonly StarterScene[], { music, voice }: { music: boolean; voice: boolean }) {
   const fixed = scenes.some((scene) => scene.span.startsWith('fixedSpan'));
-  const constructors = ['defineTimeline', ...(music ? ['beatSpan', 'tempoGrid'] : []), ...(voice ? ['voiceSpan'] : []), ...(fixed ? ['fixedSpan'] : [])].sort();
+  const constructors = ['defineTimeline', ...(music ? ['beatSpan', 'tempoGrid'] : []), ...(voice ? ['voiceSpan'] : []), ...(fixed ? ['fixedSpan'] : [])].toSorted();
   const about = [
     music && "Until there's a track the bars run on a steady tempo: `studio music add` (or `gen`),\n// then `studio music fit --bars`, gives one to cut to, and `recordedGrid(music['<name>'])` from its music/index.ts\n// replaces tempoGrid.",
     voice && 'The voiced scenes last as their lines were read (voiceover.json, `studio voice`), so a re-read line\n// re-times its scene, every later one and each speech cue on its words.',

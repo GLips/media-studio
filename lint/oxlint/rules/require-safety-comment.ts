@@ -17,16 +17,9 @@ type TypeAssertion = ESTree.TSAsExpression | ESTree.TSTypeAssertion;
 
 const SAFETY_COMMENT = /\bSAFETY\s*:/u;
 
-// The walk up stops once it has checked a node that sits directly in a statement list, so an
-// assertion inside a call argument still finds a comment written above the statement containing the
-// call. Without the stop, the search would run to Program and a comment above an unrelated earlier
-// statement would count.
-//
-// Testing the PARENT rather than listing statement kinds is what makes `export const x = raw as T`
-// work. An exported declaration is wrapped in an ExportNamedDeclaration, so the comment sits above
-// the wrapper, not above the VariableDeclaration — a rule that stops at the declaration finds
-// nothing and rejects every justified assertion on an exported binding. Exported code is the
-// common case, not the edge.
+// The walk up stops at a node sitting directly in a statement list, so an assertion inside a call
+// argument finds the comment above its statement, never one above an unrelated earlier one. Testing the PARENT, not statement kinds, is what makes `export const x = raw as T`
+// work: the comment sits above the ExportNamedDeclaration wrapper, not the VariableDeclaration.
 const STATEMENT_LIST_PARENTS = new Set([
   "BlockStatement",
   "ClassBody",

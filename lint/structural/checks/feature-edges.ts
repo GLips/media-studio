@@ -9,6 +9,7 @@
 //
 // Type-only imports count: a type crossing a boundary couples both ends.
 
+import { HELD_OUT_UNTIL_VID_108_PATHS } from '../../policy/held-out.ts';
 import type { StudioPosition } from '../../policy/studio-tree.ts';
 import type { CheckContext, ImportEdge } from '../check-context.ts';
 
@@ -38,6 +39,8 @@ export function crossFeatureEdges(context: CheckContext): CrossFeatureEdge[] {
       if (edge.target.kind !== 'module') continue;
       const importee = studioFeatureOf(context.positionOf(edge.target.path));
       if (!importee || importee.folder === importer.folder) continue;
+      // Either end held out: a feature vid-108 renames would rename the finding, and block its commit.
+      if ([importer, importee].some((feature) => HELD_OUT_UNTIL_VID_108_PATHS.includes(`${feature.folder}/`))) continue;
       found.push({ importer: importer.folder, importee: importee.folder, sameTree: importer.tree === importee.tree, edge });
     }
   }

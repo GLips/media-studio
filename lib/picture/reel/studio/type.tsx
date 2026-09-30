@@ -4,9 +4,9 @@
 //
 // None has an exit: each is still from its settle time on, so a scene holds a word by rendering any later `t`, and the
 // next word cuts in on its beat with figure and ground swapped. A word is measured once as the browser sets it and
-// drawn a letter at a time there, so moving a letter never reflows the word. Fast moves smear under a 1/120 s shutter.
+// drawn a letter at a time there, so moving a letter never reflows it.
 //
-// SlantWord is in type-slant.tsx and ScrambleText in type-scramble.tsx; the math they share is models/reel/type.ts's.
+// SlantWord and ScrambleText live in type-slant.tsx and type-scramble.tsx.
 
 import { useId } from 'react';
 import { inflate, type Rect } from '#lib/picture/camera/models/camera.ts';

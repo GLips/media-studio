@@ -20,9 +20,7 @@ const HOOK_NAME = /^use[A-Z]/;
  * The hook a callee names — `useEffect(…)`, `React.useEffect(…)`, `React["useEffect"](…)`, and the
  * aliased import of any of them — or undefined when the callee names no hook.
  *
- * The return is a NAME rather than a boolean because two of the four callers need to know WHICH
- * hook, and a caller comparing `hookCallName(callee, sourceCode) === "useEffect"` is asking the
- * same question as one testing it for undefined.
+ * A NAME rather than a boolean because two of the four callers need to know WHICH hook.
  */
 export function hookCallName(
   callee: ESTree.CallExpression["callee"],
@@ -57,23 +55,17 @@ function importedNameOf(
   const reference = scope.references.find(
     (candidate) => candidate.identifier.range[0] === identifier.range[0],
   );
-  // The DEFINITION'S NODE is the whole test, as in `lib/component-declarations.ts`: every other
-  // way a name can be bound — a `const`, a parameter, a namespace or default import — has a node
-  // that is not an `ImportSpecifier`, and a second filter on the definition's KIND would say the
-  // same thing twice. Every definition is walked rather than the first, because oxlint merges a
-  // type declaration and a value declaration of one name into a single `Variable` with two.
+  // The DEFINITION'S NODE is the whole test. Every definition is walked, as oxlint merges a type
+  // and a value declaration of one name into one `Variable`.
   //
-  // NO type-only arm, unlike `lib/imported-names.ts`, which must have one because it answers what a
-  // file READS from a module and a type-only read is not one. Here the node is already a callee, so
-  // an erased binding in that position is code that cannot run — whichever name this returns for it
-  // describes nothing that happens.
+  // NO type-only arm, unlike `lib/imported-names.ts`: a callee bound only as a type is code that
+  // cannot run, so the name returned for it describes nothing.
   for (const definition of reference?.resolved?.defs ?? []) {
     const specifier: ESTree.Node = definition.node;
     if (specifier.type !== "ImportSpecifier") continue;
     const name = exportedName(specifier.imported);
-    // `{ default as useAuth }` binds the module's default export, which has no name — so there is
-    // nothing here to prefer over the local spelling, and returning the string "default" would
-    // make the one spelling of a default import that carries a specifier stop being a hook.
+    // `{ default as useAuth }`: a default export has no name, so the local spelling stands;
+    // returning "default" would stop it being a hook.
     return name === "default" ? undefined : name;
   }
   return undefined;

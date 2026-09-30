@@ -1,13 +1,12 @@
-// take.ts: takes (recordings of the site from lib/footage/capture/engine/capture.ts) as pure math: which frame shows when, where a page rect
-// sits in it, and how the take's time is fitted to the scene's.
+// take.ts: takes (recordings of the site from engine/capture.ts) as pure math: which frame shows when, where a page
+// rect sits in it, and how the take's time is fitted to the scene's.
 //
 // A take's frame is a viewport-sized Shot, so cameras, Capture, highlights and the framing check work on it as on a
-// still. Its coordinates are viewport pixels; the page scrolls under them, so a page rect from a mark is moved by the
-// scroll of the frame it's drawn on (`onTake`).
+// still. The page scrolls under its viewport pixels, so a mark's page rect moves by its frame's scroll (`onTake`).
 //
-// A take is filmed at the site's own pace and fitted to the voice afterwards: `fitTake` pins moments of the take
-// (marks, by name) to scene times, playing between the pins at whatever speed joins them, and at the take's own
-// speed before the first and after the last. Two pins on one mark hold its frame.
+// A take is filmed at the site's own pace and fitted to the voice afterwards: `fitTake` pins marks to scene times,
+// playing between pins at whatever speed joins them, and at the take's own speed outside them. Two pins on one mark
+// hold its frame.
 
 import { assertKeysInOrder, type Rect, type Shot } from '#lib/picture/camera/models/camera.ts';
 import { noteTakeFitStrain, type TakeFitStrain } from '#lib/output/look/studio/take-fit-strain.ts';

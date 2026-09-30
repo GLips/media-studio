@@ -1,14 +1,13 @@
 // paid-generation.ts: every paid OpenRouter generation (`studio gen` verbs, `studio music`'s generated beds) goes
 // through generatePaidMedia, which writes the results into the project's generated/ and returns their paths.
 //
-// Outputs aren't reproducible (most models take no seed, or ignore it), so the cache is the only way to get the same
-// result twice: a request is keyed by its kind, model, prompt, params and the bytes of its reference files, and a
-// request already made costs nothing. generated/provenance.json records, per key, what made the files and what they
-// cost. A video job's id is kept in generated/pending.json from submit to download, so a run that dies while polling
-// picks the job back up rather than paying for another.
+// Outputs aren't reproducible (most models ignore a seed), so the cache, keyed by kind, model, prompt, params and
+// reference bytes, is the only way to get a result twice. generated/provenance.json records what made each and its
+// cost. A video job's id sits in generated/pending.json until download, so a run dying mid-poll resumes it rather
+// than paying again.
 //
-// References go inline as base64 data URLs, except a reference video: the video API takes only HTTPS for those, so
-// it's uploaded to our bucket (lib/footage/generation/engine/s3-upload.ts) and sent as a link that expires.
+// References go inline as base64, except a video: the video API takes only HTTPS, so it's uploaded to our bucket
+// (s3-upload.ts) and sent as an expiring link.
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
@@ -122,7 +121,7 @@ function writeJsonRecordEntry(path: string, key: string, value: unknown) {
  */
 export function paidGenerationKey(...request: unknown[]): string {
   const sorted = (value: unknown): unknown => Array.isArray(value) ? value.map(sorted)
-    : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, v]) => [k, sorted(v)]))
+    : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).toSorted(([a], [b]) => (a < b ? -1 : 1)).map(([k, v]) => [k, sorted(v)]))
     : value;
   return createHash('sha256').update(JSON.stringify(sorted(request))).digest('hex').slice(0, 16);
 }

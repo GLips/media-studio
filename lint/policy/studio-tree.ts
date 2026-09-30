@@ -1,22 +1,17 @@
 // ─── The studio's declared tree: where a repo path sits ───────────────
 //
-// The one answer to "what position is this file in" (plan §4), and the one
-// alias expansion. Runtime-neutral: no Node APIs, no AST types, no import from
-// either tier, so the structural checks and a later oxlint tier hand it the same
-// repo-relative string and reach one verdict.
+// The one answer to "what position is this file in", and the one alias
+// expansion. Runtime-neutral (no Node APIs, AST types or tier imports), so both
+// lint tiers hand it the same repo-relative string and reach one verdict.
 //
-// lib/ is areas of features: `lib/<area>/<feature>/<role>/…`, where the role
-// is `models` (pure, loads in plain Node), `studio` (renders in the browser) or
-// `engine` (Node-side machinery), and gives the file its position. An area
-// holds feature folders only and a feature role folders only, so anything
-// else in lib/ is undeclared, but for the barrel, `lib/api.ts` (`#studio`).
-// The areas are declared here (LIB_AREAS); a feature is any folder in one.
+// lib/ is `lib/<area>/<feature>/<role>/…`, the role giving the position.
+// Anything else in lib/ but `lib/api.ts` is undeclared. Areas are declared in
+// LIB_AREAS; a feature is any folder in one.
 //
-// Your own projects, brand kits and painting styles sit in work/, a repository
-// of its own that check:arch mounts at `work/` in one path space with the
-// studio's. Only `work/projects/<p>/…`, `work/brands/<kit>/brand.ts` and
-// `work/styles/<style>/…` (outside its imported `brushes/`) are positions
-// there: `work/` is never stripped, so a `work/lib/x.ts` is undeclared, not lib.
+// work/ is its own repository, mounted in one path space. Only
+// `work/projects/<p>/…`, `work/brands/<kit>/brand.ts` and `work/styles/<style>/…`
+// (outside its imported `brushes/`) are positions there: `work/` is never
+// stripped, so a `work/lib/x.ts` is undeclared, not lib.
 
 export type ProjectRole =
   /** `project.ts` declares the project's capability (lib/platform/project/models/capability.ts). */
@@ -110,6 +105,23 @@ const SOURCE_FILE = /^(.+)\.(ts|tsx)$/;
 const MODEL_FILE = /^(.+)-model\.ts$/;
 const TOOL_CONFIG = /\.config\.[cm]?[jt]s$/;
 const WEB_SERVER_MODULE = /^web\/src\/infrastructure\/.+\.server\.tsx?$/;
+
+/**
+ * Programs whose interface is the terminal, so a console call is their output, not a stray log: the CLI, the
+ * harness, lint's own commands (check-arch.ts, lint.ts) and a project's tools. oxlint's no-console is off in them.
+ */
+export const TERMINAL_PROGRAM_GLOBS: readonly string[] = ['cli/**', 'harness/**', 'lint/*.ts', 'work/projects/*/tools/**'];
+
+/**
+ * Modules loaded by path for their default export, which is their contract: a CLI command (cli/studio.ts), a
+ * project's declaration, capture, brand and sounds, a kit's brand, a style and its fidelity grades, and lint's
+ * oxlint plugin. oxlint's no-default-export is off in them.
+ */
+export const DEFAULT_EXPORT_MODULE_GLOBS: readonly string[] = [
+  'cli/commands/*.ts', 'lint/oxlint/plugin.ts',
+  'work/projects/*/project.ts', 'work/projects/*/capture.ts', 'work/projects/*/brand.ts', 'work/projects/*/sfx/*.ts',
+  'work/brands/*/brand.ts', 'work/styles/*/style.ts', 'work/styles/*/fidelity.ts',
+];
 
 /** Where the workspace repository is mounted in check:arch's one path space: the folder it is in the checkout. */
 export const STUDIO_WORKSPACE_MOUNT = 'work';
@@ -224,9 +236,8 @@ export function normalizeRepoPath(path: string): string {
 
 /**
  * The `lib/<area>/<feature>`, or the barrel `lib/api.ts`, that a relative import from `fromPath` climbs into, or
- * undefined when it stays in its own feature. Such an import must use `#lib/*` (or `#studio`): a relative path is
- * short only between neighbours, and an alias survives a move on either end. The barrel is a unit of its own, so it
- * reaches every feature by alias, and is reached by one.
+ * undefined when it stays in its own feature. Such an import must use `#lib/*` (or `#studio`): an alias survives a
+ * move on either end. The barrel is a unit of its own, reaching and reached by alias.
  */
 export function libFeatureCrossedTo(fromPath: string, targetPath: string): string | undefined {
   const feature = (path: string) => {

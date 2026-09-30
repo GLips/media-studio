@@ -37,29 +37,17 @@ export type ComponentDeclaration = {
 /**
  * Every exported component declaration in `program`, in source order.
  *
- * The bound VALUE is tested, never the name alone. A PascalCase const is routinely not a
- * component — `export const AllComponentsCtx = createContext(…)` and `export const DRAG_SLOP = 4`
- * both pass a name-only test, and reporting those trains people to ignore the rule, which costs
- * more than the smell it was watching for. That over-match is invisible to every positive fixture;
- * only a legal neighbour catches it.
- *
- * A component is listed once however many times it is exported. `export default Card` beside
- * `export { Card }` is legal and ordinary, and two entries for one declaration would tell
- * `single-component-export` that a one-component file holds two.
- *
- * The name is the DECLARATION'S, not the exported one: `export { CardImpl as Card }` is reported
- * as `CardImpl`, because these three rules send a reader to the declaration and that is the name
- * they will find when they get there.
+ * The bound VALUE is tested, not the name: `createContext(…)` and `DRAG_SLOP = 4` are PascalCase
+ * too. Listed once however often exported, so `single-component-export` doesn't count two. The
+ * name is the DECLARATION'S (`CardImpl` for `CardImpl as Card`): where the rules send a reader.
  */
 export function exportedComponents(
   program: ESTree.Program,
   sourceCode: SourceCode,
 ): ComponentDeclaration[] {
-  // Keyed by where the declaration starts, which is what makes the de-duplication above and the
-  // source ordering below one fact rather than two passes. Source order matters to
-  // `single-component-export`, which blames the SECOND component and lists them all in its message;
-  // an export list sits below the declarations it names, so appending as the statements are walked
-  // would order a mixed file by its export statements instead.
+  // Keyed by where the declaration starts, which both de-duplicates and gives source order.
+  // `single-component-export` blames the SECOND component, and an export list sits below what it
+  // names, so appending while walking would order by export statements instead.
   const found = new Map<number, ComponentDeclaration>();
   const take = (component: ComponentDeclaration | undefined) => {
     if (component !== undefined) found.set(component.node.range[0], component);
@@ -95,7 +83,7 @@ export function exportedComponents(
     for (const declarator of declaration.declarations) take(componentOfDeclarator(declarator));
   }
 
-  return [...found.values()].sort((one, other) => one.node.range[0] - other.node.range[0]);
+  return [...found.values()].toSorted((one, other) => one.node.range[0] - other.node.range[0]);
 }
 
 /**

@@ -2,10 +2,10 @@
 // primitives stand in for each subject on a gridded ground, seen through a real perspective camera (blockout-camera.ts),
 // so the video model gets true parallax to follow: a move made here doesn't read as a zoom.
 //
-// Plain three.js drawn straight onto a canvas, once per frame, from props alone: no scene graph survives between
-// frames, so any frame renders the same whether or not the one before it did, which is what Remotion's tabs need.
-// Only the renderer outlives a frame. Materials are made afresh each frame on purpose: kept across frames, they change
-// the output's bytes with the frames a tab happened to render before, and a blockout's bytes are its cache key.
+// Plain three.js drawn onto a canvas once per frame from props alone: only the renderer outlives a frame, so any
+// frame renders the same whether or not the one before it did, as Remotion's tabs need. Materials are made afresh
+// each frame on purpose: kept, they change the output's bytes with what a tab rendered before, and a blockout's
+// bytes are its cache key.
 
 import { useLayoutEffect, useRef } from 'react';
 import * as THREE from 'three';

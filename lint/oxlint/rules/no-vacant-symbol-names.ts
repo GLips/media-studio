@@ -46,16 +46,10 @@ function vacantTerm(name: string): string | null {
 
 /**
  * A declaration is an "address" when something outside its own block can reach it by name. Locals
- * inside a function body are excluded: they are read in the same screenful that declares them.
+ * in a function body are read in the same screenful that declares them.
  *
- * A NAMESPACE body is transparent here, because `N.data` is an address in exactly the sense the
- * header means — one search finds the declaration and each use. Reading `TSModuleBlock` as a
- * boundary makes the rule say two things about one namespace: the type arms ask this question about
- * nothing, so `namespace N { export type Data = … }` reports while the `export const data` beside
- * it does not.
- *
- * `isAmbientDescription` is asked separately, because it is the one exclusion the TYPE arms need
- * too and they ask no position question at all.
+ * A NAMESPACE body is transparent: `N.data` is an address too, as the type arms (which ask no
+ * position question) already hold. `isAmbientDescription` is separate; the type arms need it too.
  */
 function declaresAddressableName(node: ESTree.Node): boolean {
   let current: ESTree.Node | null = node.parent;
@@ -80,26 +74,16 @@ function declaresAddressableName(node: ESTree.Node): boolean {
  * Whether a declaration merely DESCRIBES a name declared somewhere else.
  *
  * `declare module "@vendor/tables"` and `declare global` name a package's exports and a host's
- * globals. The project cannot rename either, so a report there names no edit anyone can make —
- * the same failure the header calls out for the every-Identifier version of this rule, reached one
- * construct over. Asked by every arm, values and types alike, because `declare module "@vendor/x"
- * { export type Data = … }` is as unrenamable as the const beside it.
- *
- * Those TWO constructs and no other, which is why `declare` alone is not the test. A `declare
- * namespace App` names something this project owns and can rename, so it keeps reporting — matched
- * on `declare` alone it would be exempt, and the justification above would cover a case it does not
- * describe. The two are told apart by what they are named BY: a module by a string literal, the
- * global scope by its own kind.
- *
- * NEGATIVE SPACE: a `.d.ts` needs none of this. defineSourceRule skips ambient files already, so
- * this reaches only the ambient blocks written INSIDE an ordinary source file.
+ * globals, which the project cannot rename. Only those two: a `declare
+ * namespace App` is the project's own and keeps reporting, so `declare` alone is not the test.
+ * NEGATIVE SPACE: defineSourceRule already skips `.d.ts` files.
  */
 function isAmbientDescription(node: ESTree.Node): boolean {
   let current: ESTree.Node | null = node.parent;
   while (current !== null) {
     if (
       current.type === "TSModuleDeclaration" &&
-      current.declare === true &&
+      current.declare &&
       (current.kind === "global" || current.id.type === "Literal")
     ) {
       return true;

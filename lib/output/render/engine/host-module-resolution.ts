@@ -174,9 +174,9 @@ export class HostTsconfigPathsPlugin {
 
 /**
  * A webpack resolve plugin that bundles an empty module in place of any host file matching `globs` (relative to
- * `hostRoot`, a real path), as webpack's `alias: { x: false }` does. For server-only code a component's module graph
- * reaches but never runs while it renders: a framework's build strips it from the browser bundle, and this bundle
- * doesn't run that build. Imports of a stubbed module read undefined.
+ * `hostRoot`, a real path). For server-only code a component's module graph reaches but never runs while it renders:
+ * a framework's build strips it from the browser bundle, and this bundle doesn't run that build. Imports of a stubbed
+ * module read undefined.
  */
 export class HostModuleStubPlugin {
   readonly hostRoot: string;

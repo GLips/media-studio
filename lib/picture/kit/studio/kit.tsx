@@ -150,8 +150,8 @@ function motionTitleSmearMask({ width, height }: FrameSize): string {
 
 /**
  * A page that the cursor clicks, which then blurs out under a tinted wash: the backdrop for closing glass cards.
- * `frame` is the page rect the camera holds on, `target` the rect clicked, `from` the cursor's start offset from the
- * target, `push` a slow zoom over 18s so the backdrop never sits dead still. Pass a later `t` to resume mid-push.
+ * `frame` is the page rect the camera holds on, `target` the rect clicked, `from` the cursor's start offset from it,
+ * `push` a slow zoom over 18s so the backdrop never sits dead still. A later `t` resumes mid-push.
  */
 export function ClickToBlur({ t, shot, frame, target, clickAt = 1.3, from = { dx: -220, dy: 160 }, blur = 34, wash = '22, 40, 70', push = 1.08 }: {
   t: number;
@@ -357,10 +357,9 @@ export function wordRevealFinish(text: string, { fps, letters = false, timing }:
 }
 
 /**
- * Words that come in one after another, each rising `rise` px as it fades in, easing out. `t` is seconds since the
- * first word starts, raw: it staggers and eases each word itself. `letters` staggers letters, for one short display
- * word only. The words wrap in a box `width` wide, top-left at (x, y), laid out whole from its first frame, so nothing
- * shifts as they arrive.
+ * Words that come in one after another, each rising `rise` px as it fades in. `t` is raw seconds since the first word
+ * starts: it staggers and eases each word itself. `letters` staggers letters, for one short display word only. The
+ * words wrap `width` wide, laid out whole from the first frame, so nothing shifts as they arrive.
  */
 export function WordReveal({ t, text, x, y, width, size = 64, weight = 700, color = '#fff', align = 'left', spacing = -0.01, lineHeight = 1.15, rise = 12, letters = false, timing, motion }: {
   t: number;
@@ -647,9 +646,9 @@ function OdometerStill({ text, presence, size, tracking, nudge }: { text: string
 }
 
 /**
- * A stroke that draws itself on along SVG path `d`, from its start. `k` 0..1 is raw: it eases the draw. `d` is in
- * `box`'s own pixels (the whole frame by default), or in `viewBox`'s units when given, to draw an icon's `0 0 24 24`
- * path into `box`; `width` is frame pixels either way. Draw-on only: a morph between paths is built directly.
+ * A stroke that draws itself on along SVG path `d`. `k` 0..1 is raw: it eases the draw. `d` is in `box`'s pixels
+ * (the whole frame by default), or in `viewBox`'s units when given, to draw an icon's `0 0 24 24` path into `box`;
+ * `width` is frame pixels either way. Draw-on only: a morph between paths is built directly.
  */
 export function DrawPath({ d, k, color = '#fff', width = 6, box: given, viewBox, alpha = 1, motion }: {
   d: string;

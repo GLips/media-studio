@@ -139,8 +139,8 @@ export const toggle = defineSfxRecipe({
 
 /**
  * A kick's body, peaking at 1: a sine falling from `from` toward `to` Hz (1/e every `drop` s), held `hold`, then dying
- * by 1/e every `tau`. Clipped by `drive` at full level, so its harmonics carry on small speakers and a limiter pulls
- * less on it; cleaner as it dies, so a long tail stays a sub, not a low-mid drone.
+ * by 1/e every `tau`. Clipped by `drive` at full level, so its harmonics carry on small speakers; cleaner as it dies,
+ * so a long tail stays a sub, not a low-mid drone.
  */
 function kickBody({ from, to, drop, hold, tau, drive }: { from: number; to: number; drop: number; hold: number; tau: number; drive: number }): Float64Array {
   const attack = 0.0015, out = samplesFor(attack + hold + tau * 6.9);
@@ -449,9 +449,8 @@ export const scroll = defineSfxRecipe({
 // ——— Machines: a mechanism cycling fast enough to be heard as a pitch ——————————————————————————————————————————————
 
 /**
- * One mode of a body: a two-pole resonator ringing at `hz` and falling by 1/e every `tau` seconds, either of which
- * may move every sample, so a body can be damped while it rings. Zeros at DC and Nyquist keep it to its ring. An
- * impulse of 1 rings at amplitude 1.
+ * One mode of a body: a two-pole resonator ringing at `hz`, falling by 1/e every `tau` s, both free to move every
+ * sample, so a body can be damped mid-ring. Zeros at DC and Nyquist keep it to its ring; an impulse of 1 rings at 1.
  */
 function modalResonator() {
   let x1 = 0, x2 = 0, y1 = 0, y2 = 0;

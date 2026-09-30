@@ -22,5 +22,5 @@ test('a web stylesheet writes colors and absolute font sizes as tokens', () => {
     'web/src/styles.css:font-size',
     'web/src/styles.css:rgba(0, 0, 0, 0.4',
   ]);
-  assert.deepEqual(findings.map((finding) => finding.line).sort(), [3, 4, 5]);
+  assert.deepEqual(findings.map((finding) => finding.line).toSorted(), [3, 4, 5]);
 });

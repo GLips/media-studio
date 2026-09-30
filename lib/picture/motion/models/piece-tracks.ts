@@ -28,7 +28,7 @@ export type PieceTracksDefinition = { kind: 'piece-tracks'; scene: string; bind(
 
 /** A scene's piece tracks, bound to the clock the timeline resolves for `scene` (the same one its scene is handed). */
 export function definePieceTracks<Clock extends ResolvedSceneClock>(scene: Clock['id'], bind: (clock: Clock) => ScenePieces): PieceTracksDefinition {
-  return { kind: 'piece-tracks', scene, bind: bind as (clock: ResolvedSceneClock) => ScenePieces };
+  return { kind: 'piece-tracks', scene, bind };
 }
 
 export const isPieceTracksDefinition = (value: unknown): value is PieceTracksDefinition =>
@@ -109,7 +109,7 @@ export function formatPieceTables(pieces: readonly SampledPiece[], beatAt?: (fra
     ]);
     const widths = head.map((h, i) => Math.max(h.length, ...body.map((r) => r[i].length)));
     const line = (cells: string[]) => cells.map((c, i) => c.padStart(widths[i])).join('  ').trimEnd();
-    const tightest = piece.rows.filter((r) => r.clearance).sort((a, b) => a.clearance!.margin - b.clearance!.margin)[0];
+    const tightest = piece.rows.filter((r) => r.clearance).toSorted((a, b) => a.clearance!.margin - b.clearance!.margin)[0];
     return [
       piece.id,
       line(head),

@@ -1,19 +1,14 @@
 // capture.ts: films a site for a project's video to animate, as named shots: stills and takes.
 //
-// A still is a high-DPI screenshot plus the page-space rectangles of the elements a scene will point at; scenes pan,
-// zoom and ring over it. A take is a recording of the site being used (a click through a carousel, a scroll, a menu
-// opening), for the moments a cut between stills would jump. Each take logs its mouse path, clicks, keys and named
-// marks, so scenes draw their own cursor over it and fit its actions to the voice.
+// A still is a high-DPI screenshot plus page-space rects of what a scene will point at. A take records the site in
+// use, where a cut between stills would jump, logging mouse, keys and named marks for scenes to redraw and fit.
 //
-// Every shot rebuilds its own starting point in `setup`, on a fresh page, so any shot can be redone alone:
+// Every shot rebuilds its starting point in `setup` on a fresh page, so any shot can be redone alone:
 //
 //   const shots = captureShots({ project: import.meta.dirname, viewport: { width: 1440, height: 810 } });
-//   shots.still('pdp', { setup: (page) => page.goto(url), rects: { callout: '.note' }, height: 1600 });
+//   shots.still('pdp', { setup: (page) => page.goto(url), rects: { callout: '.note' } });
 //   shots.take('open-menu', { setup: (page) => page.goto(url), perform: (rec) => rec.click('.menu', { mark: 'open' }) });
-//   export default shots;   // `studio capture` imports it and runs the shots, writing captures/index.ts
-//
-//   studio capture <p>                   every shot
-//   studio capture <p> --only=pdp,menu   just those; the rest keep their last capture
+//   export default shots;   // `studio capture <p> [--only=pdp,menu]` runs them, writing captures/index.ts
 import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -93,24 +88,26 @@ type Entry = StillEntry | TakeEntry;
 // their frames.
 const STILL_CONCURRENCY = 4;
 
-/**
- * @param project The project directory; shots land in `<project>/captures`.
- * @param viewport CSS pixels. Keep it 16:9 so a zoom of 1 fills the frame.
- * @param scale Device pixel ratio, i.e. how far a camera can zoom before text softens.
- * @param css Injected into every page, for hiding scrollbars and other capture noise.
- * @param prepare Runs once per device before any shot, for what a visit keeps (a preview cookie). Each shot starts
- *   from its cookies and storage in a context of its own, so what one shot does (adding to a cart) never shows in another.
- * @param devices Other devices shots can ask for by name, e.g. a phone next to the desktop.
- * @param clock Pins what `Date` says in every page (`prepare`'s too), e.g. '2026-09-08T12:00:00' (local time unless
- *   it names a zone), so "5 minutes ago" reads the same on every capture. Timers and animations still run.
- */
 export function captureShots({ project, viewport, scale = 2, css = '', prepare, devices = {}, clock }: {
+  /** The project directory; shots land in `<project>/captures`. */
   project: string;
+  /** CSS pixels. Keep it 16:9 so a zoom of 1 fills the frame. */
   viewport: Size;
+  /** Device pixel ratio, i.e. how far a camera can zoom before text softens. */
   scale?: number;
+  /** Injected into every page, for hiding scrollbars and other capture noise. */
   css?: string;
+  /**
+   * Runs once per device before any shot, for what a visit keeps (a preview cookie). Each shot starts from its cookies
+   * and storage in a context of its own, so what one shot does (adding to a cart) never shows in another.
+   */
   prepare?: (page: Page) => Promise<unknown>;
+  /** Other devices shots can ask for by name, e.g. a phone next to the desktop. */
   devices?: Record<string, { viewport: Size; scale?: number; mobile?: boolean }>;
+  /**
+   * Pins what `Date` says in every page (`prepare`'s too), e.g. '2026-09-08T12:00:00' (local time unless it names a
+   * zone), so "5 minutes ago" reads the same on every capture. Timers and animations still run.
+   */
   clock?: string;
 }) {
   if (clock !== undefined && Number.isNaN(new Date(clock).getTime())) throw new Error(`capture: clock "${clock}" isn't a date`);
@@ -162,7 +159,7 @@ export function captureShots({ project, viewport, scale = 2, css = '', prepare, 
     try {
       await inPool(chosen.filter((s) => s.kind === 'still'), STILL_CONCURRENCY, (shot) => onFreshPage(shot.options.device, async (page) => {
         const fromSetup = await shot.options.setup(page);
-        return snapStill(page, dir, shot.name, deviceFor(shot.options.device), shot.options as StillOptions, fromSetup);
+        return snapStill(page, dir, shot.name, deviceFor(shot.options.device), shot.options, fromSetup);
       }, shot.name));
       for (const shot of chosen) {
         if (shot.kind !== 'take') continue;
@@ -220,7 +217,7 @@ export async function waitForHydration(page: Page, selector: string, { timeout =
     }, selector, { timeout });
   } catch (error) {
     if ((error as Error).name !== 'TimeoutError') throw error;
-    throw new Error(`capture: React didn't hydrate ${selector} on ${page.url()} within ${timeout / 1000}s (is it on the page, and is the site React?)`);
+    throw new Error(`capture: React didn't hydrate ${selector} on ${page.url()} within ${timeout / 1000}s (is it on the page, and is the site React?)`, { cause: error });
   }
 }
 

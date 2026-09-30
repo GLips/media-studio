@@ -124,7 +124,7 @@ type Glitch = { split: number; slices: { y: number; h: number; dx: number }[]; g
  * and a ghost's offset. Sizes are the reference's at its 306 px cap, scaled to `cap`.
  */
 export function wordGlitchAt(t: number, hits: readonly number[], peak: number, seed: string | number, cap: number): Glitch | null {
-  const sorted = [...hits].sort((p, q) => p - q);
+  const sorted = hits.toSorted((p, q) => p - q);
   const i = sorted.findLastIndex((h) => h <= t);
   if (i < 0 || (i === sorted.length - 1 && t - sorted[i] >= GLITCH.tail)) return null;
   const split = peak * Math.max(GLITCH.floor, GLITCH.decay ** ((t - sorted[i]) * 60));

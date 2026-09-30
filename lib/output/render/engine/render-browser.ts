@@ -1,10 +1,9 @@
 // render-browser.ts: the browser every render runs in, and the GPU backends it actually got. Node only.
 //
-// A render asks Chrome for the GPU (RENDER_CHROMIUM), but Chrome falls back to SwiftShader, its software GL, when it
-// can't have it or its GPU process keeps crashing, and says nothing: the render just takes many times as long. So
-// each render's browser is asked which renderer a WebGL context gets and which adapter WebGPU gets, before the render
-// and again after, and a missing or software one fails the render. Scenes draw with both: film, previs and reel with
-// WebGL, stamp paintings with WebGPU.
+// Chrome silently falls back to SwiftShader, its software GL, when it can't have the GPU or its GPU process keeps
+// crashing: the render just takes many times as long. So each render's browser is asked which renderer a WebGL
+// context gets and which adapter WebGPU gets, before the render and again after, and a missing or software one fails
+// the render. Film, previs and reel draw with WebGL, stamp paintings with WebGPU.
 //
 // WebGPU exists only in a secure context, so the question is asked of a page served over loopback HTTP, as Remotion
 // serves a render's: about:blank has no navigator.gpu.

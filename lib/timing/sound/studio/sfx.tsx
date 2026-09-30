@@ -25,8 +25,8 @@ export const SfxCueListPlaying = createContext(false);
 
 /**
  * Where a sound whose file starts on (fractional) frame `start` plays from: the frame at or after it, with the fraction
- * of a frame between them trimmed off its front. Every rendered sound opens with more than a frame of silence
- * (SFX_PRE_ROLL_SECONDS), so the trim only takes silence and the sound lands on its time to the sample, not the frame.
+ * between them trimmed off its front. Every rendered sound opens with over a frame of silence (SFX_PRE_ROLL_SECONDS),
+ * so the trim only takes silence and the sound lands to the sample.
  */
 function sfxPlacement(start: number): { from: number; trimBefore: number } {
   // Float noise must not tip a start that sits on a frame onto the next one.
@@ -35,15 +35,10 @@ function sfxPlacement(start: number): { from: number; trimBefore: number } {
 }
 
 /**
- * Plays `sound` so that its landing point falls when the scene clock `t` reaches `at`: a riser peaks on `at`, a whoosh
- * passes on it, a click starts on it. Given several takes, `id` picks one (the same one every render), so give each
- * event its own id. It works out its frame from where `t` stands now, so it needs no scene start: `frame − t·fps` is
- * the same every frame. It sounds only while mounted, so an effect inside a branch the scene has left stays quiet, as
- * the picture does.
+ * Plays `sound` so it lands when the scene clock `t` reaches `at`: a riser peaks there, a whoosh passes. `id`
+ * picks one of several takes, the same every render. It needs no scene start: `frame − t·fps` is constant.
  *
- * It also leaves a hidden mark saying what it plays and when, which `studio check` reads as an event for
- * `studio sfx draft`. `event` says what it marks: a library piece's `click` or `key`, which a video playing a cue list
- * leaves to the list (the mark is all it leaves), or, by default, a sound the scene `placed`, which always plays here.
+ * Its hidden mark is the event `studio check` reads. Under a cue list a `click` or `key` leaves only the mark.
  */
 export function Sfx({ sound, at, t, id = 0, volume = 1, event = 'placed' }: {
   sound: SfxSound | readonly SfxSound[]; at: number; t: number; id?: string | number; volume?: number; event?: SfxMarkedEvent;

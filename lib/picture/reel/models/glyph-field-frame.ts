@@ -139,8 +139,8 @@ function planClip<D>(clip: GlyphClip<D>): ClipPlan<D> {
       channels.get(ch)!.push({ at: key.at, value, ease: key.ease });
     }
   }
-  const numbers = NUMBER_CHANNELS.filter((ch) => channels.has(ch)).map((ch): [NumberChannel, GlyphKey<number, D>[]] => [ch, channels.get(ch)!.sort((a, b) => a.at - b.at)]);
-  return { numbers, fill: clip.fill ? [...clip.fill].sort((a, b) => a.at - b.at) : null };
+  const numbers = NUMBER_CHANNELS.filter((ch) => channels.has(ch)).map((ch): [NumberChannel, GlyphKey<number, D>[]] => [ch, channels.get(ch)!.toSorted((a, b) => a.at - b.at)]);
+  return { numbers, fill: clip.fill ? clip.fill.toSorted((a, b) => a.at - b.at) : null };
 }
 
 const linear: EaseFn = (k) => k;
@@ -197,12 +197,12 @@ function buildModel<D>(props: GlyphFieldProps<D>, size: FrameSize): FieldModel<D
   const restOf = typeof rest === 'function' ? rest : () => rest ?? {};
   const timing: Required<GlyphFilterTiming> = { exit: 0.26, enter: 0.3, spread: 0.2, move: 0.5, moveSpread: 0.12, moveEase: motionCurves.expo.entrance, ...filterTiming };
 
-  const order = waves.map((_, k) => k).sort((a, b) => waves[a].start - waves[b].start || a - b);
+  const order = waves.map((_, k) => k).toSorted((a, b) => waves[a].start - waves[b].start || a - b);
   const planned = order.map((k) => ({ clip: planClip(waves[k].clip), ...glyphWaveArrivals(waves[k], cells, { pitch, center, seed, index: k }), index: k }));
 
   const steps: StepPlan[] = [];
   let prevX = cells.map((c) => c.x), prevY = cells.map((c) => c.y);
-  [...filter].sort((a, b) => a.at - b.at).forEach((step, k) => {
+  filter.toSorted((a, b) => a.at - b.at).forEach((step, k) => {
     const keep = cells.map((cell) => step.keep?.(cell) ?? true);
     const tx = [...prevX], ty = [...prevY];
     const moveDelay = new Array<number>(cells.length).fill(0);
@@ -214,7 +214,7 @@ function buildModel<D>(props: GlyphFieldProps<D>, size: FrameSize): FieldModel<D
       kept.forEach((n, q) => { tx[n] = slots[plan.slot[q]].x; ty[n] = slots[plan.slot[q]].y; moveDelay[n] = plan.delay[q]; });
     } else {
       for (const n of kept) { tx[n] = cells[n].x; ty[n] = cells[n].y; }
-      const byLength = kept.map((n) => [n, Math.hypot(tx[n] - prevX[n], ty[n] - prevY[n])] as const).filter(([, d]) => d > 0).sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+      const byLength = kept.map((n) => [n, Math.hypot(tx[n] - prevX[n], ty[n] - prevY[n])] as const).filter(([, d]) => d > 0).toSorted((a, b) => a[1] - b[1] || a[0] - b[0]);
       byLength.forEach(([n], rank) => { moveDelay[n] = byLength.length > 1 ? (timing.moveSpread * rank) / (byLength.length - 1) : 0; });
     }
     const moves = kept.some((n) => tx[n] !== prevX[n] || ty[n] !== prevY[n]);

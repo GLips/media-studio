@@ -1,12 +1,10 @@
 // hud.tsx: a reel's chrome, after the reference reel's HUD: corner brackets, a title and a readout across the top,
-// and a timecode, beat squares, a progress rule and the section label along the bottom. It boots on its first frame
-// (the brackets grow from their corners and every text decodes), then keeps time: the squares step on the beats, the
-// rule fills, and each section's label decodes in on its downbeat. Nothing in it moves.
+// and a timecode, beat squares, a progress rule and the section label along the bottom. It boots on its first frame,
+// then keeps time: the squares step on the beats, the rule fills, each section's label decodes in on its downbeat.
 //
-// It samples no pixels. Each part takes light or dark inks as the scene reads it (`readAt`), from its own layout over
-// the part's whole box, as the reference's HUD reads its scene, not auto-contrast. Where the ground under a part is
-// busy type, or grounds wanting different inks, which no tone reads across, the scene puts a plate of a ground's colour
-// behind the part. `reelHudGrounds` and `reelHudReadGrounds` do the reading for a scene that can name its grounds.
+// It samples no pixels. Each part takes light or dark inks as the scene reads it over the part's box (`readAt`).
+// Where no tone reads across the ground (busy type, mixed grounds), the scene puts a plate behind the part.
+// `reelHudReadGrounds` does the reading for a scene that can name its grounds.
 
 import { MONO_FONT } from '#lib/picture/type/models/faces.ts';
 import { clamp, motionCurves, powerOutEase } from '#lib/picture/motion/models/motion.ts';
@@ -25,10 +23,9 @@ export type ReelHudProps = ReelHudLayoutProps & {
   /** Seconds the progress rule takes to fill. Ref 15 (8 bars at 128 BPM). */
   duration?: number;
   /**
-   * How each slot's part reads at `t`, judged over `box`, the part's box (`reelHudBoxes`): a tone right at one point
-   * of a part can vanish over the rest of it. A plate goes where no tone reads, with the tone that reads on the plate
-   * (`reelHudToneOver`). Asked 4 times across the first half of this frame: the inks mix by share, and a plate fades
-   * in by the share asking for it. Light inks, no plate, if absent.
+   * How each slot's part reads at `t`, judged over the part's whole `box` (`reelHudBoxes`): a tone right at one
+   * point can vanish over the rest. Where no tone reads, a plate, with the tone that reads on it (`reelHudToneOver`).
+   * Asked 4 times across the first half of this frame; inks and plate mix by share. Absent: light inks.
    */
   readAt?: (slot: ReelHudSlot, t: number, box: Rect) => ReelHudRead;
   /** How much of what's under a plate it hides: 0.75 knocks busy type back to a trace that inks read over. */

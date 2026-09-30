@@ -1,15 +1,13 @@
-// music-fit.ts: rebuilds a music track to an exact length, ending where the track ends. Pure: samples and beats in,
-// spans of the source out. `studio music fit` runs it (lib/timing/music/engine/music-track.ts).
+// music-fit.ts: rebuilds a music track to an exact length, as spans of the source. `studio music fit` runs it.
 //
-// PyMusicLooper's `extend` generalised: the track plays from its start to its own ending, jumping between downbeats
-// whose surrounding bars sound alike (compared as per-beat spectra) to lose or repeat whole bars, so the meter
-// carries across each seam. One loop pair only reaches lengths in steps of its loop, so the path may take several
-// jumps; each seam costs, so it takes few and long ones. What's left over, under a bar, comes off the head, under
-// the mix's fade-in, or goes before it as silence, so the music comes in a moment after the picture.
+// PyMusicLooper's `extend` generalised: the track plays from its start to its ending, jumping between downbeats
+// whose bars sound alike to lose or repeat bars, so the meter carries across each seam. One loop
+// pair only reaches lengths in steps of its loop, so the path may take several jumps; each seam costs, so it takes
+// few and long ones. What's left over, under a bar, comes off the head or goes before it as silence.
 
 /**
- * A stretch of the source track, in its seconds. A fitted track plays its spans end to end. A negative `from` on the
- * first span is that much silence before the track comes in.
+ * A stretch of the source track, in its seconds. A negative `from` on the first span is that much silence before the
+ * track comes in.
  */
 export type MusicSpan = { from: number; to: number };
 
@@ -110,11 +108,9 @@ export function planMusicFit({ samples, rate, beats, targetSeconds }: { samples:
 }
 
 /**
- * Plans a track that plays the source's `bars` in the order given, for a picture that needs time in particular
- * places: `[1, 2, 3, 3, 4]` plays bar 3 twice. Bar 1 starts on the first downbeat. Consecutive bars play as one span,
- * so each place the order breaks is a seam, and the plan says how alike its two sides sound. A run from bar 1 keeps
- * the pickup before it, and the track's last bar keeps its outro, then `tailSeconds` of silence, for a picture that
- * holds past the music's ending. The track's length is the arrangement's.
+ * Plans a track that plays the source's `bars` in the order given: `[1, 2, 3, 3, 4]` plays bar 3 twice. Bar 1 starts
+ * on the first downbeat. Each place the order breaks is a seam. A run from bar 1 keeps the pickup before it, and the
+ * track's last bar keeps its outro, then `tailSeconds` of silence.
  */
 export function planMusicArrangement({ samples, rate, beats, bars, tailSeconds = 0 }: {
   samples: Float32Array; rate: number; beats: readonly number[]; bars: readonly number[]; tailSeconds?: number;
@@ -321,5 +317,5 @@ function zScores(xs: readonly number[]): number[] {
   return xs.map((x) => (x - mean) / sd);
 }
 
-const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+const median = (xs: number[]) => xs.toSorted((a, b) => a - b)[Math.floor(xs.length / 2)];
 const round3 = (x: number) => Math.round(x * 1000) / 1000;

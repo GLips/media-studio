@@ -103,7 +103,7 @@ export function reelHudGrounds<G extends string>(box: Rect, groundAt: ((p: Point
     }
   }
   const n = points.length * samplers.length;
-  return [...seen].map(([ground, count]) => ({ ground, share: count / n })).sort((a, b) => b.share - a.share);
+  return [...seen].map(([ground, count]) => ({ ground, share: count / n })).toSorted((a, b) => b.share - a.share);
 }
 
 /**
@@ -113,10 +113,9 @@ export function reelHudGrounds<G extends string>(box: Rect, groundAt: ((p: Point
 export type ReelHudGround = { color: string; tone?: ReelHudTone; busy?: boolean };
 
 /**
- * How a part reads over `grounds` (`reelHudGrounds`). Paper inks (light, on-accent) and ink ones (dark) each suit some
- * grounds: the part takes the inks most of its box wants (ink ones from `inkFrom` of it), in the tone of the ground
- * wanting them that covers most. It sits on a plate of that ground's colour where grounds wanting the other inks show
- * through more than `mixed` of it, as no one tone reads across both, or where that ground is busy.
+ * How a part reads over `grounds` (`reelHudGrounds`): in the inks, paper (light) or ink (dark, from `inkFrom`), most
+ * of its box wants, toned as the largest ground wanting them. It gets a plate of that ground's colour where that
+ * ground is busy, or where grounds wanting the other inks cover over `mixed` of it, as no tone reads across both.
  */
 export function reelHudReadGrounds<G extends string>(
   grounds: readonly { ground: G; share: number }[],
@@ -279,7 +278,7 @@ export function hudPlates(g: HudLayout, mixAt: (slot: ReelHudSlot) => { color: s
     const box = g.boxes[slot], open = PLATE_OPEN[slot];
     const left = box.x - (open.includes('left') ? pad : margin), right = box.x + box.w + (open.includes('right') ? pad : margin);
     return [{ x: left, y: box.y - margin, w: right - left, h: box.h + 2 * margin, color: mix.color, opacity: opacity * mix.share }];
-  }).sort((a, b) => a.y - b.y || a.x - b.x);
+  }).toSorted((a, b) => a.y - b.y || a.x - b.x);
   const joined: HudPlate[] = [];
   for (const p of plates) {
     const last = joined.at(-1);

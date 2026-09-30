@@ -99,10 +99,9 @@ export const cornersOf = (box: Rect): [number, number][] => [[-box.w / 2, -box.h
 export type LiftedPlate = { u: number; v: number; w: number; h: number; z: number; scale: number };
 
 /**
- * The most the card, or its lifted plate (by its own scale on top), is stretched in any direction where it's in frame,
- * as frame px per layout px: sampled on a grid, since a push-in's nearest corner is often out of frame, and taken from
- * the projection's local stretch, since perspective stretches a tilted card past its depth's scale toward the frame's
- * edges. 0 when none of it is in frame.
+ * The most the card, or its lifted plate (times its own scale), is stretched anywhere in frame, in frame px per
+ * layout px; 0 if none is in frame. Sampled on a grid, as a push-in's nearest corner is often off frame, from the
+ * projection's local stretch, as perspective stretches a tilted card past its depth's scale.
  */
 export function framedStretch(f: PlaneFrame, box: Rect, lens: number, vanish: Point, lifted: LiftedPlate | null, { width, height }: FrameSize) {
   const N = 16;

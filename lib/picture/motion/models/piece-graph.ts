@@ -44,7 +44,7 @@ function drawPanel(panel: Panel, top: number, frames: readonly number[], beatFra
     `<rect x="${left}" y="${top}" width="${width}" height="${PANEL_H}" fill="#18181c"/>`,
     ...beatFrames.filter((b) => b >= first && b <= last).map((b) => `<line x1="${xOf(b)}" x2="${xOf(b)}" y1="${top}" y2="${top + PANEL_H}" stroke="#34343a"/>`),
     ...(panel.zero ? [`<line x1="${left}" x2="${left + width}" y1="${yOf(0)}" y2="${yOf(0)}" stroke="#ff5a4a" stroke-dasharray="4 3"/>`] : []),
-    text(PAD, top + 16, `${panel.piece.id}`, { size: 12, fill: DIM }),
+    text(PAD, top + 16, panel.piece.id, { size: 12, fill: DIM }),
     text(PAD, top + 36, `${panel.label}${panel.unit ? ` (${panel.unit})` : ''}`, { size: 15, fill: panel.color }),
     text(left - 6, top + 12, hi.toFixed(1), { size: 11, fill: DIM, anchor: 'end' }),
     text(left - 6, top + PANEL_H, lo.toFixed(1), { size: 11, fill: DIM, anchor: 'end' }),
@@ -88,7 +88,7 @@ export function buildPieceGraph(pieces: readonly SampledPiece[], {
     const shown = piece.rows.filter((r) => r.sample);
     map.push(`<polyline points="${shown.map((r) => `${r.sample!.x * MAP_SCALE},${r.sample!.y * MAP_SCALE}`).join(' ')}" fill="none" stroke="${color}" stroke-width="1.5" opacity="0.7"/>`);
     for (const r of shown) map.push(`<circle cx="${r.sample!.x * MAP_SCALE}" cy="${r.sample!.y * MAP_SCALE}" r="2.5" fill="${color}"/>`);
-    const tight = piece.rows.filter((r) => r.clearance && r.sample?.box).sort((a, b) => a.clearance!.margin - b.clearance!.margin)[0];
+    const tight = piece.rows.filter((r) => r.clearance && r.sample?.box).toSorted((a, b) => a.clearance!.margin - b.clearance!.margin)[0];
     if (tight) map.push(rect(tight.sample!.box!, MAP_SCALE, `fill="none" stroke="${color}" stroke-dasharray="5 3"`));
   }
   const legend = pieces.map((p, i) => text(mapW + 24, 20 + i * 22, `● ${p.id}`, { size: 14, fill: colors.get(p.id)! }));

@@ -27,7 +27,7 @@ export type FrameProfileReport = {
 };
 
 function spreadOf(values: number[]): FrameTimeSpread {
-  const sorted = [...values].sort((a, b) => a - b);
+  const sorted = values.toSorted((a, b) => a - b);
   const at = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
   return { median: at(0.5), p90: at(0.9), max: sorted[sorted.length - 1] };
 }

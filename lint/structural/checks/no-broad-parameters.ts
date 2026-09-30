@@ -1,16 +1,14 @@
 // ─── No broad parameters ──────────────────────────────────────────────
 //
-// Every parameter names what it accepts: none is `unknown` or `any`, so no body
-// reads a value it has to check first, and none is `object`, so no property read
-// needs a cast and a wrong argument fails at the call site. A rest, a defaulted
-// and a constructor parameter property are inputs like any other.
+// Every parameter names what it accepts: none is `unknown`, `any` or `object`,
+// so no body checks or casts what it reads and a wrong argument fails at the
+// call site. Rest, defaulted and constructor property parameters count.
 //
-// Exempt: a parameter named `cause` (a `catch` binding is unknown, so what's
-// forwarded into `new Error(msg, { cause })` has no type to name; by name, so
-// the hole stays greppable), and the subject of the function's own type
-// predicate (`value is T`), since a guard exists to type what has no type and
-// no-runtime-typeof asks for exactly that signature. A parser taking `unknown`
-// still reports: write it as a guard or an assertion.
+// Exempt: a parameter named `cause` (a `catch` binding forwarded into
+// `new Error(msg, { cause })` has no type to name; by name, so the hole stays
+// greppable), and the subject of the function's own type predicate, which
+// no-runtime-typeof asks for. A parser taking `unknown` still reports: write it
+// as a guard or an assertion.
 //
 // Negative space: an unannotated parameter is strict mode's complaint, and the
 // `this` annotation is no input: no caller passes it.

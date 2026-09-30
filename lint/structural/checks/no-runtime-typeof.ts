@@ -1,11 +1,10 @@
 // ─── No runtime typeof ────────────────────────────────────────────────
 //
 // No branch decides what an untyped value is from its representation: a
-// `typeof` over `unknown`, `any` or `object` is a parser written inline, so when
-// that input's shape changes one branch is edited and every other reader keeps
-// its old assumption. Put the test in a named guard (returning `value is T`) or
-// a schema, and every caller narrows through it; a `typeof` in a guard's own
-// body is its parse step and is silent.
+// `typeof` over `unknown`, `any` or `object` is an inline parser, so when the
+// input's shape changes one branch is edited and other readers keep the old
+// assumption. Put the test in a guard (`value is T`) or a schema; a `typeof` in
+// a guard's own body is its parse step and is silent.
 //
 // Over a type, `typeof` is ordinary control flow and is silent:
 // `typeof window === 'undefined'` asks about existence, and `typeof v ===

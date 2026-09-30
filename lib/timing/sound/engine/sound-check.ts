@@ -136,7 +136,7 @@ type AttackBands = { high: LevelEnvelope; full: LevelEnvelope };
 // Timed above 1.5 kHz where it has an attack there; a low thud only jumps in the full band.
 function soundLanding(bands: AttackBands, landsAt: number): { lands: 'attack' | 'swell'; t: number } {
   const biggestNear = (attacks: AudioAttack[]) =>
-    attacks.filter((a) => Math.abs(a.t - landsAt) <= SOUND_ATTACK_REACH).sort((a, b) => b.riseDb - a.riseDb)[0];
+    attacks.filter((a) => Math.abs(a.t - landsAt) <= SOUND_ATTACK_REACH).toSorted((a, b) => b.riseDb - a.riseDb)[0];
   const attack = biggestNear(attacksIn(bands.high, MIN_RISE_DB.high)) ?? biggestNear(attacksIn(bands.full, MIN_RISE_DB.full));
   if (attack) return { lands: 'attack', t: attack.t };
   return { lands: 'swell', t: peakIn(bands.full, landsAt - SWELL_PEAK_REACH, landsAt + SWELL_PEAK_REACH) };
@@ -146,7 +146,7 @@ function soundLanding(bands: AttackBands, landsAt: number): { lands: 'attack' | 
 function musicAttackTimes(bands: AttackBands): number[] {
   const high = attacksIn(bands.high, MIN_RISE_DB.high);
   const fullOnly = attacksIn(bands.full, MIN_RISE_DB.full).filter((f) => !high.some((h) => Math.abs(h.t - f.t) < LOOKBACK_SECONDS));
-  return [...high, ...fullOnly].map((a) => a.t).sort((a, b) => a - b);
+  return [...high, ...fullOnly].map((a) => a.t).toSorted((a, b) => a - b);
 }
 
 function nearestAttack(times: readonly number[], t: number, reach: number): number | null {
@@ -178,7 +178,7 @@ function emptyBeatsOf(bed: MusicBed, attacks: readonly number[], videoSeconds: n
       const at = grid.at(n), nearest = nearestAttack(attacksInVideo, at, EMPTY_BEAT_REACH);
       beats.push({ beat: n, at, offset: nearest === null ? null : nearest - at });
     }
-    const offsets = beats.flatMap((b) => (b.offset === null ? [] : [b.offset])).sort((a, b) => a - b);
+    const offsets = beats.flatMap((b) => (b.offset === null ? [] : [b.offset])).toSorted((a, b) => a - b);
     const median = offsets[offsets.length >> 1];
     return {
       beat0: grid.at(0), count: beats.length, empty: beats.filter((b) => b.offset === null).map(({ beat, at }) => ({ beat, at })),

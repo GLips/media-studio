@@ -76,7 +76,7 @@ export function readReviewArtifact(project: string, path: string): ReviewArtifac
     artifact.sounds = [
       ...(snapshot?.timeline.sounds ?? []).map((s) => ({ ...s, source: 'video' as const })),
       ...(cueList ? sfxCuePlays(cueList) : []).map((c) => ({ id: c.id, at: c.at, sound: c.sound.sound, source: 'cue-list' as const })),
-    ].filter((s) => holds(s.at)).map((s) => ({ ...s, at: s.at - shift, frame: reviewFrameAt(s.at - shift, fps) })).sort((a, b) => a.at - b.at);
+    ].filter((s) => holds(s.at)).map((s) => ({ ...s, at: s.at - shift, frame: reviewFrameAt(s.at - shift, fps) })).toSorted((a, b) => a.at - b.at);
   }
   if (cueList && snapshot) artifact.cueListPlayed = snapshot.timeline.sfxCueList;
   if (artifact.timing && artifact.durationInFrames !== null) {

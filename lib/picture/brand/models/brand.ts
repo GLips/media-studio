@@ -1,14 +1,12 @@
-// brand.ts: what a client's brand kit is. A kit lives in work/brands/<name>/ and nowhere else: brand.ts (a Brand, typed
-// with `satisfies`), its logos beside it, and its font files in fonts/, which git ignores because most are licensed.
-// A project opts in with <project>/brand.ts, a ProjectBrand naming the kit and overriding its colours, palette or
-// voice, and its stills and scenes import the result as `@brand` (lib/picture/brand/engine/project-brand.ts writes that module;
-// lib/picture/brand/studio/brand.tsx loads its fonts and logos).
+// brand.ts: what a client's brand kit is. A kit lives in work/brands/<name>/ only: brand.ts (a Brand, typed with
+// `satisfies`), its logos, and its font files in fonts/, which git ignores because most are licensed. A project opts
+// in with <project>/brand.ts, a ProjectBrand naming the kit and overriding its colours, palette or voice, and imports
+// the result as `@brand` (written by engine/project-brand.ts).
 //
-// A kit filled from a client's product repo is a snapshot of the repo's tokens: `snapshot` says where from and when.
-// It is never linked to the repo. Refresh it by reading the repo again.
+// A kit filled from a client's product repo is a snapshot of its tokens (`snapshot`), never linked; refresh it by
+// reading the repo again.
 //
-// A kit's and a project's brand.ts are data only (`import type` alone): Node requires them at bundle time, from the
-// Remotion CLI's CommonJS bundle of remotion.config.ts too.
+// Both brand.ts files are data only (`import type` alone): Node requires them at bundle time, CommonJS included.
 
 /** A face's font files, each by its path in the kit and the weights and style it covers. */
 export type BrandFontFile = { file: string; weight: string; style?: 'normal' | 'italic' };

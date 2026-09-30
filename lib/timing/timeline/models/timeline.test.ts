@@ -38,7 +38,7 @@ test('a timeline that no longer ends on the music\'s final hit throws at load, n
 
 test('cues that wait on each other in a circle are refused', () => {
   const circular = { ...scenes, a: beatSpan(4, { cues: { x: { after: 'y' }, y: { after: 'x' } } }) };
-  assert.throws(() => defineTimeline({ ...base, scenes: circular, landmarks } as never), /a\.x → a\.y → a\.x form a cycle/);
+  assert.throws(() => defineTimeline({ ...base, scenes: circular, landmarks }), /a\.x → a\.y → a\.x form a cycle/);
 });
 
 test('the retime runner passes a move anchored at one end and fails one pinned between two scenes', () => {

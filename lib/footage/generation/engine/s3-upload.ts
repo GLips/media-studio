@@ -71,7 +71,7 @@ export function presignS3Url(config: Omit<S3UploadConfig, 'endpoint' | 'bucket'>
     'X-Amz-Date': amzDate,
     'X-Amz-Expires': String(seconds),
     'X-Amz-SignedHeaders': 'host',
-  }).map(([k, v]) => `${encodeSigV4(k)}=${encodeSigV4(v)}`).sort().join('&');
+  }).map(([k, v]) => `${encodeSigV4(k)}=${encodeSigV4(v)}`).toSorted().join('&');
   const path = pathname.split('/').map((segment) => encodeSigV4(decodeURIComponent(segment))).join('/');
   const canonical = [method, path, query, `host:${host}`, '', 'host', 'UNSIGNED-PAYLOAD'].join('\n');
   const toSign = ['AWS4-HMAC-SHA256', amzDate, scope, createHash('sha256').update(canonical).digest('hex')].join('\n');

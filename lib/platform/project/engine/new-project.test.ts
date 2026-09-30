@@ -77,7 +77,7 @@ const checkWorkspace = (studio: string) => outcome(studio, process.execPath, ['l
 
 describe('studio new', { concurrency: true }, () => {
   for (const capability of PROJECT_CAPABILITIES) {
-    test(`a ${capability} project passes check:arch, typecheck and its tests as scaffolded`, async () => {
+    test(`a ${capability} project passes check:arch, lint, typecheck and its tests as scaffolded`, async () => {
       await inStudioCopy(async (studio) => {
         const project = await scaffold(studio, capability);
         const projectDir = `work/projects/${project}`;
@@ -85,6 +85,8 @@ describe('studio new', { concurrency: true }, () => {
 
         const arch = await checkWorkspace(studio);
         assert.equal(arch.code, 0, arch.output);
+        const lint = await outcome(studio, process.execPath, ['lint/lint.ts', '--scope', 'workspace']);
+        assert.equal(lint.code, 0, lint.output);
 
         writeFileSync(join(studio, 'tsconfig.scaffold.json'), JSON.stringify({
           extends: './tsconfig.json',

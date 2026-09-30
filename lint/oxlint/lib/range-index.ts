@@ -3,11 +3,9 @@ import type { Range } from "@oxlint/plugins";
 /**
  * Answers "did anything tagged X appear inside this node?" after the walk is over.
  *
- * Several rules are shaped as a claim about a SUBTREE — a useEffect callback that contains a
- * setState call but no `await`, say. A visitor sees the callback before it sees anything inside it,
- * so the question cannot be answered when the callback is visited. Recording tagged ranges as they
- * go by and asking afterwards keeps that logic out of every rule, and costs one array per tag
- * instead of a bespoke subtree walker per rule.
+ * Several rules claim something about a SUBTREE (a useEffect callback with a setState call but no
+ * `await`), and a visitor sees the callback before anything inside it. Recording tagged ranges and
+ * asking afterwards spares every rule a bespoke subtree walker.
  */
 export interface RangeIndex {
   record(tag: string, range: Range): void;

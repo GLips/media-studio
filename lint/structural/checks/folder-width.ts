@@ -23,7 +23,7 @@ export const folderWidthCheck: StructuralCheck = {
       const folder = path.slice(0, path.lastIndexOf('/'));
       perFolder.set(folder, (perFolder.get(folder) ?? 0) + 1);
     }
-    return [...perFolder].filter(([, count]) => count > FOLDER_WIDTH_LIMIT).sort().map(([folder, count]): Finding => ({
+    return [...perFolder].filter(([, count]) => count > FOLDER_WIDTH_LIMIT).toSorted().map(([folder, count]): Finding => ({
       check: ID, path: folder, line: 1, key: 'width',
       message: `${count} source files directly in ${folder}/, over ${FOLDER_WIDTH_LIMIT}: group them into subfolders by domain`,
     }));

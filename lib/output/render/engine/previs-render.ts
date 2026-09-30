@@ -18,11 +18,10 @@ import { assertPrevisSpanFits, PREVIS_MODEL, PREVIS_SHORT_SIDE, previsAspectRati
 import { probeMediaSeconds } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 
-// Seedance numbers its references by kind in the order sent (@Video1, @Image1, @Image2…), and the blockout goes first.
-// Worded as a new video that references @Video1's camera, never as changing @Video1: Seedance reads the task type from
-// the prompt, and as an edit the output must take the input's length and ratio (duration -1), which OpenRouter's
-// schema can't send. Each preamble is part of its requests' cache key: rewording one pays again for every scene it heads.
-// A 2D blockout has no camera to follow, so its preamble asks for placement and timing, and says nothing of photorealism.
+// Seedance numbers references by kind in the order sent, and the blockout goes first. Worded as a new video
+// referencing @Video1's camera, never as changing it: as an edit the output must take the input's length and ratio,
+// which OpenRouter's schema can't send. Each preamble is in its requests' cache key: rewording one pays again for
+// every scene it heads.
 const PREVIS_PREAMBLES = {
   '3d': 'Generate a new, photoreal video. Reference @Video1 for its camera movement, framing and timing, and for where each '
     + 'subject stands and how it moves: @Video1 is a grey 3D layout sketch of this shot, where each grey or tinted shape marks a subject '

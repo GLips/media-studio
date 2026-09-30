@@ -5,12 +5,9 @@
 // which remove it when the step or the process ends, so a command that throws
 // or a server that's stopped can't leak one into the system temp dir.
 //
-// Reads every tracked code file's text, not just the governed sources, so lint/,
-// web/ and a bin script are held to it too, and any spelling is caught: a
-// namespace's os.tmpdir(), a dynamic import's binding, fs.promises.mkdtemp.
-// A comment naming them is caught as well; say "temp folder" instead.
-//
-// Exempt: the owner, and this check and its spec, which have to name them.
+// Reads every tracked code file's text, not just the governed sources, so any
+// spelling anywhere is caught (os.tmpdir(), fs.promises.mkdtemp), comments
+// too; say "temp folder" instead. Exempt: the owner, this check and its spec.
 //
 // Negative space: a literal '/tmp/…' path, a spawned mktemp and $TMPDIR aren't
 // caught, and extensionless shell scripts (.githooks/) aren't read. None of the
@@ -27,7 +24,7 @@ const TEMP_DIR_API = /\b(mkdtempSync|mkdtemp|tmpdir)\b/;
 export const studioTempCheck: StructuralCheck = {
   id: ID,
   run(context) {
-    const paths = [...context.tree.paths].filter((path) => CODE_FILE.test(path) && !EXEMPT.has(path)).sort();
+    const paths = [...context.tree.paths].filter((path) => CODE_FILE.test(path) && !EXEMPT.has(path)).toSorted();
     const texts = context.tree.readTexts(paths);
     const findings: Finding[] = [];
     paths.forEach((path, i) => {

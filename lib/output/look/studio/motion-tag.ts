@@ -1,15 +1,13 @@
-// motion-tag.ts: how an element asks to have its motion recorded. The probe (probe.tsx) measures every tagged element
-// on every frame, and lib/picture/motion/models/motion-tracks.ts assembles the samples into tracks. A tag is DOM attributes, so only what's
-// drawn is recorded: a value computed and never rendered can't pass for motion.
+// motion-tag.ts: how an element asks to have its motion recorded. A tag is DOM attributes, so only what's drawn is
+// recorded: a value computed and never rendered can't pass for motion.
 //
-// - Hand-written motion: `data-motion="name"` on the element that moves, or `useMotionTag` for one a host renders.
-// - Library pieces tag themselves (`pieceMotionAttrs`) with a name they pick, their kind and progress values, and the
-//   camera they're aimed through. Every piece takes `motion`: a name of the author's, or `false` for no track.
+// - Hand-written motion: `data-motion="name"`, or `useMotionTag` for an element a host renders.
+// - Library pieces tag themselves (`pieceMotionAttrs`) with a name they pick; every piece takes `motion`: a name of
+//   the author's, or `false` for no track.
 //
-// A tagged element inside another belongs to it: its id is `scene/owner/name`, measured in the owner's frame. Author
-// names are identity, so two sharing a frame is an error. Two sharing a name the library picked for either are
-// reported ambiguous and left untracked there; and since such a name can pass between elements, one ending on the frame
-// another starts joins them into one segment.
+// A tagged element inside another belongs to it: its id is `scene/owner/name`, measured in the owner's frame. Two
+// author names sharing a frame is an error. Two sharing a library-picked name are reported ambiguous and left
+// untracked; since such a name can pass between elements, one ending on the frame another starts joins them.
 
 import { useLayoutEffect, type RefObject } from 'react';
 import { roundMotionValue, type StaggerMembership } from '#lib/picture/motion/models/motion-tracks.ts';

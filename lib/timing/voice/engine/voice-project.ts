@@ -1,16 +1,13 @@
 // voice-project.ts: voices a project's script as one take, and cuts it into lines. `studio voice` runs it.
 //
 // voiceover.json: { "voice": "Kore", "lines": [{ "id": "s1", "text": "…", "paragraph": true }] }
-// A line with `"paragraph": true` starts a new paragraph of the read (and of the captions); the rest run on from the
-// line before. The model reads the text verbatim, so a delivery note would be spoken; direct it with its inline tags
-// instead (`<short pause>`, `<long pause>`, `<breath>`, `<laugh>`…), which captions and word times leave out.
-// `*word*` emphasises a word in the captions, and `` `key` `` draws it as a keycap; the model never sees either.
+// A line with `"paragraph": true` starts a new paragraph of the read (and of the captions). The model reads the text
+// verbatim, so a delivery note would be spoken; direct it with its inline tags (`<short pause>`, `<breath>`…), which
+// captions and word times leave out. `*word*` emphasises a word, and `` `key` `` draws it as a keycap; the model never
+// sees either.
 //
-// The take (audio/take.wav) is one read, so pace and pitch carry across lines. Any change to the script re-reads the
-// whole take, since a spliced-in line would stand out. A recording is never replaced: each run re-cuts it, and
-// deleting audio/take.wav hands the script back to TTS. whisper.cpp hears the take (free, local; the first run
-// installs it), lib/timing/voice/models/voice-take.ts cuts it, and whisper hears each clip again for word times, since over a whole take
-// they drift. audio/manifest.ts is what the video imports.
+// The take is one read, so any change to the script re-reads it whole: a spliced-in line would stand out. A
+// recording is never replaced: deleting audio/take.wav hands the script back to TTS.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';

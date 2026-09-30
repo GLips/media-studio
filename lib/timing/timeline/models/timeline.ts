@@ -1,15 +1,12 @@
 // timeline.ts: a timed video's schedule, stated once in its project's timeline.ts and resolved here into the one result
 // the render, `studio clock` and the checks all read.
 //
-// Scenes run in order, each with exactly one driver from a closed set: `beatSpan` (a length in beats on the grid),
-// `fixedSpan` (seconds) and `voiceSpan` (its lines as recorded: the speech sets the length). The beat scenes form one
-// musical section on one grid. Cues live under their owning scene and are reached by qualified name; a speech cue sits
-// on a word of a line, so a re-recorded line moves it. Landmarks tie cues to the recording and throw at load where the
-// table and the music disagree. Lengths come only from drivers, so referencing a cue never changes a scene's length.
+// Each scene has exactly one driver: `beatSpan`, `fixedSpan` or `voiceSpan`. The beat scenes form one musical section
+// on one grid. A speech cue sits on a word, so a re-recorded line moves it. Landmarks throw at load where the table and
+// the music disagree. Lengths come only from drivers, so referencing a cue never changes a scene's length.
 //
-// Negative space: there is no absolute-beat function. A scene reaches its own beats through its clock, and another
-// scene's moment only by that scene's cue. Nothing here stretches a recording: speech keeps its take's timing, and the
-// music plays from the section's start as fitted, so a bed under a voice is trimmed, looped or re-fitted, never stretched.
+// Negative space: there is no absolute-beat function; a scene reaches another's moment only by its cue. Nothing here
+// stretches a recording: a bed under a voice is trimmed, looped or re-fitted.
 
 import { findSpokenPhrase } from '#lib/timing/voice/models/voice-words.ts';
 import type { VoiceTake } from '#lib/timing/voice/models/voice-manifest.ts';
@@ -199,8 +196,7 @@ declare const resolvedClock: unique symbol;
 /**
  * The clock a scene's code draws on: its frames counted from its origin (its beat 0, or where a non-musical scene
  * starts), so nothing in it depends on where the video places the scene. Its cut is frame 0, but later for a scene
- * that cuts in after its first beat, and earlier (negative) for a first scene with a pickup. Only `defineTimeline`
- * makes one.
+ * that cuts in after its first beat, and negative for a first scene with a pickup.
  */
 export type ResolvedSceneClock<Key extends string = string, Cue extends string = string, Move extends string = string, AnyCue extends string = string> =
   SceneFacts<Key> & SceneFrames<Cue, Move> & {
@@ -265,7 +261,7 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
   const fps = spec.fps ?? DEFAULT_VIDEO_FORMAT.fps;
   if (!(Number.isInteger(fps) && fps > 0)) throw new Error(`the timeline's fps is ${fps}: give it a whole number of frames a second`);
   const keys = Object.keys(spec.scenes) as (keyof Scenes & string)[];
-  const spans = keys.map((key) => spec.scenes[key] as SceneSpan);
+  const spans = keys.map((key) => spec.scenes[key]);
   if (!keys.length) throw new Error('the timeline has no scenes');
   spans.forEach((span, k) => checkSpan(keys[k], span));
   const musical = spans.flatMap((span, k) => (span.driver === 'beat' ? [k] : []));
@@ -349,7 +345,7 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
     try {
       return speechFrame(k, line.seconds + findSpokenPhrase(line.take.words, cue.phrase, cue.nth).start);
     } catch (error) {
-      throw new Error(`speech cue ${name} on line ${cue.line}: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`speech cue ${name} on line ${cue.line}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     }
   };
 
@@ -375,7 +371,7 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
     return frame;
   };
   const indexOf = (key: string) => {
-    const k = keys.indexOf(key as keyof Scenes & string);
+    const k = keys.indexOf(key);
     if (k < 0) throw new Error(`no scene ${key}: the timeline has ${keys.join(', ')}`);
     return k;
   };
@@ -416,9 +412,9 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
     return {
       ...facts, from: local(scene.from), to: local(scene.to), end: local(scene.end),
       visible: { from: local(scene.visible.from), to: local(scene.visible.to) },
-      cues: Object.fromEntries(Object.entries(scene.cues).map(([name, frame]) => [name, local(frame as number)])),
+      cues: Object.fromEntries(Object.entries(scene.cues).map(([name, frame]) => [name, local(frame)])),
       moves: Object.fromEntries(Object.entries(scene.moves).map(([name, move]) => {
-        const { from, to } = move as { from: number; to: number };
+        const { from, to } = move;
         return [name, { from: local(from), to: local(to) }];
       })),
       beatFrames: scene.beatFrames.map(local), lines: scene.lines.map((line) => ({ ...line, frame: local(line.frame) })),

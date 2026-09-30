@@ -42,10 +42,9 @@ function readBuilderChain(handlerCall: ESTree.CallExpression): {
 }
 
 /**
- * Reading `params` off the handler node is what keeps this robust. Any matcher written against the
- * handler's literal shape needs a slot for the `): Promise<T> =>` return-type annotation every real
- * handler carries — and in a typed codebase, a matcher missing that slot matches nothing at all.
- * Under a visitor the annotation is a sibling field of `params`, so it is simply not read.
+ * Reading `params` off the handler node keeps this robust: a matcher on the handler's literal shape
+ * needs a slot for the `): Promise<T> =>` annotation every typed handler carries, or matches
+ * nothing. Here the annotation is a sibling field of `params`, simply not read.
  */
 function handlerConsumesClientPayload(
   handler: ESTree.ArrowFunctionExpression | ESTree.Function,

@@ -25,7 +25,7 @@ const GROUND = '#111114';
 const FIELD = '#E8502A';
 const PAPER = '#F4EFE6';
 const FACE = ARCHIVO_FACE;`;
-  const imports = ['FitText', 'StillHud', 'defineStills', 'stillDesign', 'useStillFrame', ...(url ? ['StillCard'] : []), ...(brand ? [] : ['ARCHIVO_FACE'])].sort((a, b) => a.localeCompare(b));
+  const imports = ['FitText', 'StillHud', 'defineStills', 'stillDesign', 'useStillFrame', ...(url ? ['StillCard'] : []), ...(brand ? [] : ['ARCHIVO_FACE'])].toSorted((a, b) => a.localeCompare(b));
   return {
     ...(brand && { 'brand.ts': `// The kit this project uses. Add colors, palette or voice here to change them for this project alone.
 import type { ProjectBrand } from '#lib/picture/brand/models/brand.ts';

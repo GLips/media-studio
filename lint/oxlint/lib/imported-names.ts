@@ -1,3 +1,14 @@
+// Every name a file takes from a NAMED SET of modules, under the exporting module's spelling, for
+// the rules that fence on names (`View` from react-native). Exact module names, never a pattern:
+// a predicate is an off-switch anyone can widen.
+//
+// Read through scope analysis, so `RN.View` off a namespace is seen and a shadowing local is not.
+//
+// NEGATIVE SPACE, unreported: a non-literal key or specifier; names bound in a `.then` callback;
+// `let RN; RN = require("m")`; the inner name of a nested destructure; a pattern binding nothing;
+// `.default` interop hops; a namespace passed on as a value; re-exports, which rules read
+// themselves.
+
 import type { Definition, ESTree, SourceCode, Variable, Visitor } from "@oxlint/plugins";
 import { staticModuleSpecifier } from "./module-source-visitor.ts";
 import { staticKeyName } from "./static-key-name.ts";
@@ -6,38 +17,19 @@ import {
   withoutTransparentWrappers,
 } from "./transparent-wrappers.ts";
 
-// Every name a file takes from a NAMED SET of modules, under the exporting module's spelling, for
-// the rules that fence on names (`View` from react-native, `Textarea` from @mantine/core). Exact
-// module names, never a pattern: a predicate is an off-switch anyone can widen.
-//
-// Read through oxlint's scope analysis, not ImportDeclarations, so `import * as RN; RN.View` is
-// seen and a shadowing local `const View` is not a use. `require()` and `await import()` bind with
-// no module attached, so their specifier is read off the initializer.
-//
-// NEGATIVE SPACE, each reaching the module unreported: a non-literal key or specifier; names bound
-// in a `.then` callback; `let RN; RN = require("m")`; the inner name of a nested destructure; a
-// pattern binding nothing; `.default` interop hops; a namespace passed on as a value; re-exports,
-// which the rules read themselves.
-//
-// A condition that decides what this finds is pinned by a fixture; one that only narrows a type
-// stays to show the shape matched.
-
-/** The exporting module's name for a specifier, which is the one a local alias cannot change. */
+/** The exporting module's name for a specifier, which a local alias cannot change. */
 export function exportedName(name: ESTree.ModuleExportName): string {
   return name.type === "Literal" ? name.value : name.name;
 }
 
 /**
  * The module a runtime load expression names: `require("m")`, `import("m")`, `await import("m")`.
+ * These bind through an ordinary variable or none, so scope analysis cannot answer them and the
+ * specifier only exists on the initializer. `require.resolve` is deliberately absent: it loads
+ * nothing.
  *
- * The static forms are scope analysis's to answer. These three are the ones it cannot: they bind
- * through an ordinary variable, or through no binding at all, so the specifier only exists on the
- * initializer. `require.resolve` is deliberately absent — it names a path and loads nothing, so no
- * name comes out of it.
- *
- * `sourceCode` is here for `require` alone, which is a plain identifier a file may rebind. The
- * module loader is the one that resolves to no declaration; a parameter or a local named `require`
- * has one, and calling it loads nothing.
+ * `sourceCode` is for `require` alone, a plain identifier a file may rebind; a local or parameter
+ * named `require` loads nothing.
  */
 function runtimeImportSpecifier(
   node: ESTree.Node | null | undefined,
@@ -59,15 +51,9 @@ function runtimeImportSpecifier(
 /**
  * Whether this `require` is the file's own rather than the module loader.
  *
- * Asks the RESOLVED reference, not the scope chain by name. A name lookup answers a different
- * question and gets three cases wrong: `type require = number` and `interface require {}` declare
- * nothing callable, and the loader's own ambient declaration —
- * `declare function require(id: string): any`, the idiomatic way to tell TypeScript the loader
- * exists — would read as a rebind and turn the fence off for the whole file.
- *
- * An unresolved reference is the loader: nothing in the file declares it. A resolved one is a
- * rebind unless every definition it has is ambient, and a declared environment (`env: node`) gives
- * a global-scope Variable with no definitions at all.
+ * Asks the RESOLVED reference, not a name lookup, which reads `type require` or the loader's own
+ * `declare function require` as rebinds and turns the fence off. Unresolved is the loader;
+ * resolved is a rebind unless every definition is ambient (`env: node` gives none).
  */
 function isRebound(identifier: ESTree.IdentifierReference, sourceCode: SourceCode): boolean {
   const scope = sourceCode.getScope(identifier);
@@ -76,11 +62,9 @@ function isRebound(identifier: ESTree.IdentifierReference, sourceCode: SourceCod
   );
   const variable = reference?.resolved;
   if (variable === null || variable === undefined) return false;
-  // An ambient declaration describes something that exists already, so it binds nothing of its own.
-  // `declare` sits on the DECLARATION, and a `Variable` definition's node is the DECLARATOR inside
-  // it — so `declare var require`, which is how @types/node itself spells the loader, needs the
-  // climb. Reading `declare` off the declarator finds nothing there and calls it a rebind, which
-  // turns every `require()` spelling in the file off.
+  // An ambient declaration binds nothing of its own. `declare` sits on the DECLARATION, but a
+  // `Variable` definition's node is the DECLARATOR inside it, so `declare var require` (how
+  // @types/node spells the loader) needs the climb, or every `require()` in the file goes unfenced.
   return variable.defs.some((definition) => {
     const declaration: ESTree.Node | null | undefined =
       definition.node.type === "VariableDeclarator" ? definition.parent : definition.node;
@@ -90,15 +74,11 @@ function isRebound(identifier: ESTree.IdentifierReference, sourceCode: SourceCod
 }
 
 /**
- * Calls back once per load expression that binds NO name and has a member read taken off it:
- * `require("m").View`, `(await import("m")).env`. The callback gets the module's specifier and the
- * node that IS the module object, whose parent is the member read.
+ * Calls back once per load expression that binds NO name and has a member read taken off it,
+ * `require("m").View`, handing over the module object, whose parent is the read.
  *
- * PRIVATE, and it must stay that way. It was exported once, for a second rule that wanted the
- * module object rather than the key — and having the walk reachable from outside is what let that
- * rule keep its own module selection beside this file's. Two copies of this exact walk had already
- * let `(await (import("m") as never)).env` escape one rule while the other caught it: the same
- * cast, the same walk, two answers. A rule that needs this needs `visitImportedNames`.
+ * PRIVATE, and it must stay so: two copies of this walk once disagreed on the same cast, one rule
+ * catching it and another not. A rule that needs this needs `visitImportedNames`.
  */
 function visitUnboundModuleObjects(
   sourceCode: SourceCode,
@@ -131,29 +111,11 @@ function visitUnboundModuleObjects(
 }
 
 /**
- * Calls back once per name this file takes from any of `moduleSpecifiers`, with the node to blame
- * and the module it came from.
+ * Calls back once per name this file takes from any of `moduleSpecifiers`, with the node to blame. The name is the EXPORTING module's: `View as Screen` reports `View`.
  *
- * The name is always the EXPORTING module's: `import { View as Screen }` reports `View`, because
- * the fence is on what the module hands over, not on what this file decided to call it.
- *
- * A SET of modules rather than one: `process` and `node:process` are one module under two
- * spellings. The visitor this returns is spread into a rule's own
- * visitor object, so a rule calling it twice would have the second call's `Program` key silently
- * overwrite the first's — one whole module going unchecked with nothing to see. Taking the set is
- * what makes that unwritable.
- *
- * Callbacks fire in no particular order, and deliberately: the scope sweep runs at `Program` while
- * the two spellings that bind nothing are found mid-traversal, so nothing here can put a file's
- * findings in source order. Ordering is `lib/source-ordered-reports.ts`'s, which is the only place
- * that sees ALL of a rule's diagnostics — a sort here would order the imported names among
- * themselves and still emit them after every diagnostic the rule's other arms raise.
- *
- * THE VISITOR RETURNED CARRIES NO `Program:exit`, and must not grow one. The sweep runs at
- * `Program` instead — scope analysis is complete before traversal starts, so the answer is the
- * same either way. A consuming rule owns `Program:exit` for its ordered flush, and a spread key
- * and an owned key cannot share: whichever is second in the object literal wins silently, and
- * either loss takes a whole arm of the rule with it.
+ * A SET, since `process` and `node:process` are one module, and calling this twice would have the
+ * second spread `Program` key silently overwrite the first's. Callbacks fire in no order;
+ * `lib/source-ordered-reports.ts` orders.
  */
 export function visitImportedNames(
   sourceCode: SourceCode,
@@ -208,14 +170,9 @@ export function visitImportedNames(
         if (key !== undefined) take(key, parent, specifier);
         continue;
       }
-      // `<RN.View />` is the same read in JSX's own node shapes: a JSXMemberExpression whose
-      // property is a JSXIdentifier and never computed. A rule fencing a component library that
-      // read only MemberExpression would miss every use site that renders.
-      //
-      // No object check, unlike the arm above: only the leftmost name in `<A.B.C />` resolves to a
-      // binding, so a reference whose parent is a JSXMemberExpression is always that parent's
-      // object. JSX models its identifiers as a separate node family, so the two are the same node
-      // with types that do not overlap and the check could not be written as an identity anyway.
+      // `<RN.View />` is the same read in JSX's own node shapes, never computed; missing it misses
+      // every use site that renders. No object check, unlike the arm above: only the leftmost name
+      // in `<A.B.C />` resolves to a binding, so the reference is always its parent's object.
       if (parent.type === "JSXMemberExpression") {
         // `<RN.View>…</RN.View>` names the binding twice and resolves both, so the closing tag has
         // to be dropped or one element draws two diagnostics. Climbing first is what keeps
@@ -235,14 +192,10 @@ export function visitImportedNames(
   const takeFromImportBinding = (variable: Variable, definition: Definition) => {
     const specifier = definition.node;
 
-    // `import RN = require("m")` binds a value, compiles under `module: preserve`, and reaches no
-    // ImportDeclaration. Scope analysis files it as an ImportBinding whose node is the whole
-    // declaration, so the specifier hangs off the module reference rather than off a `source` —
-    // and the reference can name a local namespace (`import RN = NS`) rather than a module at all.
-    //
-    // The type-only spelling needs no guard, unlike the ImportDeclaration one below: a type-only
-    // binding can only be read in type position, and a type-position read is a TSQualifiedName,
-    // which is not a shape `takeNamespaceReads` matches.
+    // `import RN = require("m")` binds a value but reaches no ImportDeclaration: its specifier hangs
+    // off the module reference, which may name a local namespace (`import RN = NS`) instead. Its
+    // type-only spelling needs no guard: a type-position read is a TSQualifiedName, which
+    // `takeNamespaceReads` never matches.
     if (specifier.type === "TSImportEqualsDeclaration") {
       const reference = specifier.moduleReference;
       if (reference.type !== "TSExternalModuleReference") return;
@@ -277,11 +230,8 @@ export function visitImportedNames(
 
   /**
    * Declarators whose pattern has already been read. Every name a destructure binds is its own
-   * Variable pointing at the SAME declarator, so without this the pattern is read once per name
-   * bound and every key draws that many diagnostics.
-   *
-   * Per FILE, not per rule: the visitor this closure belongs to is built inside `create`, which
-   * oxlint calls once per source file.
+   * Variable pointing at the SAME declarator, so without this each key draws one diagnostic per
+   * name bound. Per file: `create` builds this visitor once per source file.
    */
   const patternsRead = new Set<ESTree.Node>();
 
@@ -298,14 +248,10 @@ export function visitImportedNames(
       return;
     }
 
-    // Otherwise the name sits somewhere inside a destructure, and the exports read are the keys of
-    // the declarator's OWN pattern — whatever depth the binding that led here was found at. Read
-    // from the pattern rather than climbing back up from the binding: `const { env: { KEY } } =
-    // require("m")` binds only `KEY`, whose own property belongs to the inner pattern, so a climb
-    // that stops at "not a direct child of `declarator.id`" reports nothing for a file that plainly
-    // takes `env` from the module. Reading the pattern is also what makes this agree with the
-    // namespace spelling — `const RN = require("m"); const { env: { KEY } } = RN` has always
-    // reported `env`, through `takeNamespaceReads` above.
+    // Otherwise the name sits inside a destructure: read the keys of the declarator's OWN pattern,
+    // never climb up from the binding. `const { env: { KEY } } = require("m")` binds only `KEY`, so
+    // a climb reports nothing though the file takes `env`; reading the pattern also agrees with the
+    // namespace spelling through `takeNamespaceReads`.
     if (patternsRead.has(declarator)) return;
     patternsRead.add(declarator);
     takePatternKeys(declarator.id, specifier);
@@ -314,6 +260,9 @@ export function visitImportedNames(
   return {
     ...visitUnboundModuleObjects(sourceCode, takeUnboundMemberRead),
 
+    // No `Program:exit` here, ever: a consuming rule owns it for its ordered flush, and of a spread
+    // key and an owned one the second silently wins. Scope analysis is complete before traversal,
+    // so `Program` sees the same.
     Program() {
       // Every scope, not just the module one: `function f() { const { View } = require("m") }`
       // binds inside a function scope, and a module-scope-only sweep calls that file clean.

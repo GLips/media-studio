@@ -50,7 +50,7 @@ export function bindTimeline<const T extends Timeline<Readonly<Record<string, Sc
       },
     ]));
     const binding = (bindings as unknown as Record<string, (clock: ResolvedSceneClock, replays: Record<string, BoundReplay<Bound>>) => Bound>)[key];
-    const result = binding(timeline.clock(key) as ResolvedSceneClock, replays);
+    const result = binding(timeline.clock(key), replays);
     bound.set(key, result);
     return result;
   };

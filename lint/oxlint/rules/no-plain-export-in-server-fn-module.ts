@@ -86,12 +86,9 @@ export const noPlainExportInServerFnModuleRule = defineSourceRule({
 
       if (node.type === "ExportDefaultDeclaration") {
         const { declaration } = node;
-        // Deliberately the same verdict as the `TSInterfaceDeclaration` entry in
-        // `TYPE_ONLY_DECLARATIONS` on the next line, spelled out because `Set<string>.has` narrows
-        // nothing: an interface is the one default-export kind that is not an expression, and
-        // without this the bridge test at the end of the branch has no declaration it can walk.
-        // The two move together — dropping the set entry must drop this line as well, or the two
-        // spellings of one construct start disagreeing.
+        // Repeats the `TYPE_ONLY_DECLARATIONS` entry because `Set<string>.has` narrows nothing: an
+        // interface is the one default-export kind that is not an expression, and the bridge test
+        // below needs a walkable declaration. Drop the set entry and this line together.
         if (declaration.type === "TSInterfaceDeclaration") return null;
         if (TYPE_ONLY_DECLARATIONS.has(declaration.type)) return null;
         if (

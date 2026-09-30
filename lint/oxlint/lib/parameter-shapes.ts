@@ -30,15 +30,9 @@ export function parameterAnnotation(
 /**
  * The pattern a parameter destructures, or undefined when the parameter binds a plain name.
  *
- * A rule reading `parameter.type === "ObjectPattern"` directly sees nothing for
- * `({ a, b } = { a: 1, b: 2 })`, which is the defaulted spelling of the same destructure.
- *
- * ONE wrapper is seen through, not the three `parameterAnnotation` sees through, and the asymmetry
- * is a fact about the language rather than an omission. `constructor(private { a }: P)` is TS1187 —
- * a parameter property must name a binding — so `TSParameterProperty` can never hold one of these.
- * And `(...{ a, b })` destructures the ARGUMENTS ARRAY: its keys are `0`, `1`, `length`, not the
- * caller's object, so following the rest element would hand a caller a set of names that are not
- * the parameter's at all.
+ * Sees through the default in `({ a, b } = { a: 1, b: 2 })`. Only that ONE wrapper, on purpose: a
+ * parameter property can't destructure (TS1187), and `(...{ a, b })` destructures the arguments
+ * array, whose keys (`0`, `1`, `length`) are not the caller's object.
  */
 export function parameterObjectPattern(
   parameter: ESTree.ParamPattern,

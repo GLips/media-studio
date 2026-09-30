@@ -1,11 +1,10 @@
 // ─── What the types checks ask the compiler ───────────────────────────
 //
 // Two questions carry the types checks, "is this key domain open" and "does
-// this resolve to something broad", and each is one call to the checker. The
-// compiler gives a type an index signature exactly when its key domain is open
-// (Record<string, T>, { [k: string]: T }, { [K in string]: T }, Partial of any
-// of them) and properties when it's closed (a literal union, an enum, keyof T),
-// so no spelling is enumerated here and none can be missed.
+// this resolve to something broad", each one checker call. The compiler
+// gives a type an index signature exactly when its key domain is open and
+// properties when it's closed (a literal union, an enum, keyof T), so no
+// spelling is enumerated here and none can be missed.
 //
 // Negative space, shared by every check that asks: an uninstantiated generic
 // (`{ [K in keyof T as string]: unknown }`) has no index signature until T is

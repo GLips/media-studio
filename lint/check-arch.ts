@@ -11,14 +11,14 @@
 //   npm run check:arch -- --update-baseline   rewrite the scope's baseline to today's findings
 //
 // The index, not the working tree: stage a file for the check to see it. What
-// each scope judges, and against which baseline: lint/structural/arch-verdict.ts.
+// each scope judges, against which baseline: lint/structural/arch-verdict.ts.
 
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { judgeArchitecture } from './structural/arch-verdict.ts';
-import { baselineOf } from './structural/baseline.ts';
+import { rebaselineTier, type Baseline } from './baseline.ts';
 import type { CheckTarget } from './structural/check-context.ts';
 import { STRUCTURAL_CHECKS } from './structural/registry.ts';
 
@@ -36,7 +36,10 @@ const { context, baselineFile, findings, advisories, crashed, fresh, stale, base
 
 if (values['update-baseline']) {
   if (crashed.length) throw new Error(`not rewriting the baseline while a check crashes:\n${crashed.join('\n')}`);
-  writeFileSync(join(root, baselineFile), `${JSON.stringify(baselineOf(findings), null, 2)}\n`);
+  // The file on disk is what's rewritten, so its oxlint entries are the ones kept, staged or not.
+  const file = join(root, baselineFile);
+  const onDisk = existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as Baseline) : {};
+  writeFileSync(file, `${JSON.stringify(rebaselineTier(onDisk, 'structural', findings), null, 2)}\n`);
   console.log(`Wrote ${findings.length} findings to ${baselineFile}${target.scope === 'workspace' ? ': stage it in work/ for the check to read it' : ''}.`);
   process.exit(0);
 }

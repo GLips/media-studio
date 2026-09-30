@@ -41,10 +41,10 @@ export function measureStudyFrames(frames: readonly StudyFrame[]): FrameMeasure[
 
 /** Frames where a cut lands: cut scores over `threshold`, at most one per `minGap` seconds (the strongest). */
 export function detectStudyCuts(measures: readonly FrameMeasure[], fps: number, { threshold = 6, minGap = 0.15 } = {}): number[] {
-  const candidates = measures.map((m, f) => ({ f, s: m.cutScore })).filter((c) => c.s >= threshold).sort((a, b) => b.s - a.s);
+  const candidates = measures.map((m, f) => ({ f, s: m.cutScore })).filter((c) => c.s >= threshold).toSorted((a, b) => b.s - a.s);
   const cuts: number[] = [];
   for (const c of candidates) if (cuts.every((f) => Math.abs(f - c.f) / fps >= minGap)) cuts.push(c.f);
-  return cuts.sort((a, b) => a - b);
+  return cuts.toSorted((a, b) => a - b);
 }
 
 /**
@@ -130,7 +130,7 @@ export function studyPalette(frames: readonly StudyFrame[], { top = 6, merge = 4
       total++;
     }
   }
-  const bins = [...count.keys()].filter((b) => count[b] > 0).sort((a, b) => count[b] - count[a])
+  const bins = [...count.keys()].filter((b) => count[b] > 0).toSorted((a, b) => count[b] - count[a])
     .map((b) => ({ n: count[b], rgb: [0, 1, 2].map((c) => sums[b * 3 + c] / count[b]) }));
   const merged: { n: number; rgb: number[] }[] = [];
   for (const bin of bins) {
@@ -140,7 +140,7 @@ export function studyPalette(frames: readonly StudyFrame[], { top = 6, merge = 4
       near.n += bin.n;
     } else merged.push({ ...bin });
   }
-  return merged.sort((a, b) => b.n - a.n).slice(0, top).map((m) => ({ hex: hexOf(m.rgb), share: m.n / total }));
+  return merged.toSorted((a, b) => b.n - a.n).slice(0, top).map((m) => ({ hex: hexOf(m.rgb), share: m.n / total }));
 }
 
 export type StudyReport = {
