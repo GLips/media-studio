@@ -1,12 +1,14 @@
 // stamp-brush-sheet-page.ts: the brush fidelity sheet's browser side, run by lib/picture/stamp-paint/engine/stamp-brush-sheet.ts
-// through withBrowserModulePage. It paints a brush along Procreate's preview stroke with the studio's GPU renderer,
-// measures that and the brush's target alike (its Procreate preview, or its Photoshop reference cropped to the
+// through withBrowserModulePage. It paints a brush with the studio's GPU renderer along Procreate's preview stroke, or
+// along the Photoshop rig's S-curve as its reference was painted (photoshop-reference-stroke.ts), measures that and the brush's target alike (its Procreate preview, or its Photoshop reference cropped to the
 // preview's frame), and lays out a row of the sheet. It serves the fitter (lib/picture/stamp-paint/engine/stamp-brush-fit.ts)
 // the same way. A brush's assets are under the styles folder, served at /files/<style>/brushes/<pack>/<file>; a target
 // comes as a URL, a preview's under /files/ and a reference's as a data URL.
 
 import type { StampBrush } from '../models/stamp-brush.ts';
 import { measureStrokeCoverage, PROCREATE_PREVIEW_SIZE, procreatePreviewPainting, type StrokeCoverageProfile, type StrokeFidelityGrade } from '../models/procreate-preview-stroke.ts';
+import { photoshopReferencePainting } from '../models/photoshop-reference-stroke.ts';
+import type { CompiledStampPaint } from '../models/stamp-paint-recipe.ts';
 import { createStampPaintRenderer } from './stamp-paint-renderer.ts';
 
 const { width: W, height: H } = PROCREATE_PREVIEW_SIZE;
@@ -41,10 +43,9 @@ async function measureStrokeTarget(src: string): Promise<StrokeCoverageProfile |
   return measureStrokeCoverage(await targetCoverage(src), W, H);
 }
 
-/** `brush` as Procreate previews it, at `diameter`: its measure, and the painting as a PNG data URL when asked for. */
-async function paintOnProcreatePreviewStroke(brush: StampBrush, diameter: number, shows: 'stroke' | 'stamp', withPng: boolean): Promise<{ png?: string; profile: StrokeCoverageProfile | null }> {
+async function paintAndMeasure(painting: CompiledStampPaint, withPng: boolean): Promise<{ png?: string; profile: StrokeCoverageProfile | null }> {
   const canvas = Object.assign(document.createElement('canvas'), { width: W, height: H });
-  const renderer = await createStampPaintRenderer(canvas, procreatePreviewPainting(brush, diameter, shows), { color: '#ffffff' }, W, H, ({ style, pack, file }) => `/files/${style}/brushes/${pack}/${file}`);
+  const renderer = await createStampPaintRenderer(canvas, painting, { color: '#ffffff' }, W, H, ({ style, pack, file }) => `/files/${style}/brushes/${pack}/${file}`);
   try {
     await renderer.draw(0);
     return { ...(withPng && { png: canvas.toDataURL('image/png') }), profile: measureStrokeCoverage(paintedCoverage(canvas), W, H) };
@@ -52,6 +53,12 @@ async function paintOnProcreatePreviewStroke(brush: StampBrush, diameter: number
     renderer.dispose();
   }
 }
+
+/** `brush` as Procreate previews it, at `diameter`: its measure, and the painting as a PNG data URL when asked for. */
+const paintOnProcreatePreviewStroke = (brush: StampBrush, diameter: number, shows: 'stroke' | 'stamp', withPng: boolean) => paintAndMeasure(procreatePreviewPainting(brush, diameter, shows), withPng);
+
+/** `brush` as the Photoshop rig painted its reference S-curve, at `diameter` in the preview's pixels. */
+const paintOnPhotoshopReferenceStroke = (brush: StampBrush, diameter: number, poseOverrides: boolean, withPng: boolean) => paintAndMeasure(photoshopReferencePainting(brush, diameter, poseOverrides), withPng);
 
 const HEADER = 98;
 
@@ -89,4 +96,4 @@ async function drawStampBrushSheetRow({ target, ours, lines, grade }: { target?:
   return canvas.toDataURL('image/png');
 }
 
-Object.assign(globalThis, { measureStrokeTarget, paintOnProcreatePreviewStroke, drawStampBrushSheetRow });
+Object.assign(globalThis, { measureStrokeTarget, paintOnProcreatePreviewStroke, paintOnPhotoshopReferenceStroke, drawStampBrushSheetRow });

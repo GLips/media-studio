@@ -117,7 +117,9 @@ fn turned(v: vec2f, angle: f32) -> vec2f {
   let uv = select(pair.xy, pair.zw, (i & 1u) == 1u);
   let flips = u32(more.w);
   let mirror = vec2f(select(1.0, -1.0, (flips & 1u) != 0u), select(1.0, -1.0, (flips & 2u) != 0u));
-  let local = turned((uv - 0.5) * vec2f(1.0, u.roundness) * stamp.z * u.span * mirror, stamp.w);
+  // Never thinner than a pixel: Photoshop's Flat brushes (roundness 0) sweep a hairline into a solid ribbon.
+  let squash = max(u.roundness, 1.0 / (stamp.z * u.span));
+  let local = turned((uv - 0.5) * vec2f(1.0, squash) * stamp.z * u.span * mirror, stamp.w);
   let at = (stamp.xy + local) / u.resolution * 2.0 - 1.0;
   let size = u.grain.place.xy * pow(stamp.z / u.diameter, u.zoom);
   let grainUv = turned(local, -more.z) / size + u.movement * stamp.xy / u.grain.place.xy + u.grain.place.zw;

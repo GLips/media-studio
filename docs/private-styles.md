@@ -86,9 +86,11 @@ into `palette` and a paper into `paper` (`image` for its photograph, `grain` for
 **Judging the brushes.** `npm run brushes:sheet -- --style <name> --pack <pack>` paints each brush with the studio's GPU
 renderer along the stroke Procreate drew its preview with (one stamp, for a brush Procreate previews that way), at the
 diameter whose thickness matches the preview's, and sets it beside that preview. A brush without a preview (every
-Photoshop brush) is measured instead against its `reference/` capture along the same stroke, the row's left column
-labelled by which it is. It writes a row per brush
-(`rows/<brush>.png`), the rows stacked at half size (`sheet.jpg`) and `report.json` into `brushes/<pack>/fidelity/`,
+Photoshop brush) is measured instead against its `reference/` capture, painted as Photoshop painted it: the same
+stroke at the reference's own diameter, under Photoshop's simulated pressure, through the brush's dynamics or the
+overrides a Brush Pose left (lib/picture/stamp-paint/models/photoshop-reference-stroke.ts). The row's left column says which
+target it is. It writes a row per brush (`rows/<brush>.png`), the rows stacked at half size (`sheet.jpg`, or
+`sheet-1.jpg` on past 120 brushes) and `report.json` into `brushes/<pack>/fidelity/`,
 out of git because the rows hold the pack's previews. Each row and the report measure both strokes alike
 (lib/picture/stamp-paint/models/procreate-preview-stroke.ts): a coverage map in 8-pixel cells, length, thickness along
 the stroke, where each end reaches 80% of its peak, density, how dark the rim is against the body, grain size, edge
@@ -125,10 +127,13 @@ brushes:fit -- --packs watercolor/vvds` fits every constant at once against ever
 the sheet's summed score, with each brush that ends up further off than it started counted again. It's deterministic,
 takes a few minutes, and writes the file; re-import the packs and re-draw their sheets after. The constants are the
 same for every brush of every pack: a brush is never tuned alone, so what fits one pack's previews holds for the next.
-Photoshop's importer reads the settings Photoshop doesn't define numerically (how far 100% scatter strays, how dark a
-wet edge gathers, how a texture's brightness and contrast act) by its own `PhotoshopReading`,
-`lib/picture/stamp-paint/models/photoshop-reading.ts`: first guesses until it's fitted against Photoshop's renders,
-which `npm run photoshop -- probes` and `npm run photoshop -- references` capture by script (docs/photoshop-capture.md).
+Photoshop's pipeline was identified stage by stage from probe captures (vid-97), so its importer reads almost every
+setting exactly; what's left, how far 100% scatter strays and how far 100% angle jitter turns, sits in its
+`PhotoshopReading`, `lib/picture/stamp-paint/models/photoshop-reading.ts`. `npm run brushes:diagnose -- --packs
+watercolor/photoshop-legacy,…` tries each of those constants brush by brush against the packs' Photoshop references
+and says whether the brushes agree on a value; it writes nothing. Kyle T. Webster's packs and a fifth of Legacy Brushes
+are held out of it (lib/picture/stamp-paint/models/photoshop-reading-spread.ts). A Photoshop import notes each setting
+a brush has at a value the probes never covered as `unprobed`, the one place its reading is a guess.
 
 **Same pixels.** A painting draws on the GPU through WebGPU, in half floats, and GPUs round floats differently, so
 what's promised depends on where it renders:

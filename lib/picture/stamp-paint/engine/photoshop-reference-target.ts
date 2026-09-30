@@ -13,15 +13,22 @@ import { PROCREATE_PREVIEW_SIZE } from '../models/procreate-preview-stroke.ts';
 /** The folder of a pack's Photoshop reference captures, which an import leaves be. */
 export const PHOTOSHOP_REFERENCE_DIR = 'reference';
 
-/** Where a brush's S-curve sits among a pack's reference sheets. */
-export type PhotoshopReferenceStroke = { sheet: string; box: PhotoshopBox };
+/**
+ * Where a brush's S-curve sits among a pack's reference sheets, its diameter in the preview's pixels once cropped, and
+ * whether a Brush Pose's size and opacity overrides were still in force when Photoshop painted it. They were after a
+ * posed line, the cell before; a sheet's first stroke follows only the brush's own pressure dynamics (vid-97).
+ */
+export type PhotoshopReferenceStroke = { sheet: string; box: PhotoshopBox; diameter: number; poseOverrides: boolean };
 
 /** Each captured brush's S-curve in `packDir`'s reference/, by preset name; empty without a reference run. */
 export function readPhotoshopReferenceStrokes(packDir: string): Map<string, PhotoshopReferenceStroke> {
   const dir = join(packDir, PHOTOSHOP_REFERENCE_DIR), manifestFile = join(dir, 'manifest.json');
   if (!existsSync(manifestFile)) return new Map();
   const manifest = JSON.parse(readFileSync(manifestFile, 'utf8')) as PhotoshopCaptureManifest;
-  return new Map(manifest.sheets.flatMap((sheet) => sheet.cells.filter((cell) => cell.mark === 'sCurve').map((cell) => [cell.item, { sheet: join(dir, sheet.file), box: cell.box }] as const)));
+  return new Map(manifest.sheets.flatMap((sheet) => sheet.cells.flatMap((cell, index) => (cell.mark !== 'sCurve' ? [] : [[cell.item, {
+    sheet: join(dir, sheet.file), box: cell.box, diameter: (manifest.items[cell.item].preset!.diameter * PROCREATE_PREVIEW_SIZE.width) / cell.box.width,
+    poseOverrides: index > 0,
+  }] as const]))));
 }
 
 /** A brush's S-curve cropped to the preview's frame at its size, as a PNG data URL of black ink on transparency. */

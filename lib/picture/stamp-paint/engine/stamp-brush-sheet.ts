@@ -1,17 +1,18 @@
 // stamp-brush-sheet.ts: `npm run brushes:sheet`, the brush fidelity sheet. Each brush of an imported pack is painted by
-// the studio's GPU renderer along the stroke its Procreate preview was drawn with, beside its target, at the diameter
-// whose thickness matches the target's, and the two are measured alike (procreate-preview-stroke.ts). The target is
-// the brush's Procreate preview, or without one its Photoshop reference along the same stroke
-// (photoshop-reference-target.ts); a brush with neither is painted at its source's own size, unscored. Writes, in
-// brushes/<pack>/fidelity/ unless told otherwise: a row per brush (rows/<brush>.png), the rows stacked at half size
-// (sheet.jpg), and report.json with each brush's diameter, measures, score and grade, and its note from the style's
-// fidelity.ts. A whole pack drawn where it belongs also writes each brush's score and grade into the style's
+// the studio's GPU renderer beside its target, and the two are measured alike (procreate-preview-stroke.ts). The target
+// is the brush's Procreate preview, painted along the stroke the preview was drawn with at the diameter whose thickness
+// matches it; or without one its Photoshop reference (photoshop-reference-target.ts), painted as the rig painted it, at
+// its diameter under simulated pressure (photoshop-reference-stroke.ts). A brush with neither is painted at its
+// source's own size, unscored. Writes, in brushes/<pack>/fidelity/ unless told otherwise: a row per brush
+// (rows/<brush>.png), the rows stacked at half size (sheet.jpg; sheet-1.jpg, sheet-2.jpg… past 120 brushes), and
+// report.json with each brush's diameter, measures, score and grade, and its note from the style's fidelity.ts. A
+// whole pack drawn where it belongs also writes each brush's score and grade into the style's
 // fidelity-grades.json, which git keeps, so a painter reads the grades without drawing the sheet.
 //
 // The sheet embeds the pack's previews, so it stays under brushes/, which git ignores. An import leaves fidelity/ be,
 // so a sheet there shows the brushes as they were when it was drawn.
 
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
@@ -26,6 +27,8 @@ import { photoshopReferenceStrokePng, readPhotoshopReferenceStrokes } from './ph
 const SHEET_PAGE = fileURLToPath(new URL('../studio/stamp-brush-sheet-page.ts', import.meta.url));
 /** Rounds of fitting the diameter to the preview's thickness; thickness follows diameter closely, so two land within a few percent. */
 const DIAMETER_FITS = 3;
+/** Rows to a sheet image. */
+const SHEET_ROWS = 120;
 /** The diameter a brush is first painted at, before it's fitted: about a mid-sized preview's thickness. */
 const FIRST_DIAMETER = 120;
 /** The diameters a brush without a preview may be painted at, its source's own clamped to what the row shows whole. */
@@ -44,7 +47,7 @@ export type StampBrushSheetEntry = {
   note?: string;
 };
 
-export type StampBrushSheet = { dir: string; sheet: string; entries: StampBrushSheetEntry[]; scores?: string };
+export type StampBrushSheet = { dir: string; sheets: string[]; entries: StampBrushSheetEntry[]; scores?: string };
 
 /** The sheet's browser page, run with the styles folder served at /files/. */
 export const withStampBrushSheetPage = <T>(stylesDir: string, use: (call: BrowserModuleCall) => Promise<T>) => withBrowserModulePage({ entry: SHEET_PAGE, filesDir: stylesDir }, use);
@@ -120,7 +123,9 @@ export async function writeStampBrushSheet({ stylesDir, style, pack, out, only }
       const target = previewFile ? { src: packFile(style, pack, previewFile), label: 'Procreate preview' as const }
         : reference ? { src: photoshopReferenceStrokePng(reference), label: 'Photoshop reference' as const } : undefined;
       const preview = target ? await call<StrokeCoverageProfile | null>('measureStrokeTarget', target.src) : null;
-      const { diameter, ...painted } = await paintAtPreviewThickness(call, brush, shows, preview, true, manifest.diameters?.[name]);
+      const { diameter, ...painted } = reference
+        ? { diameter: reference.diameter, ...await call<{ png?: string; profile: StrokeCoverageProfile | null }>('paintOnPhotoshopReferenceStroke', brush, reference.diameter, reference.poseOverrides, true) }
+        : await paintAtPreviewThickness(call, brush, shows, preview, true, manifest.diameters?.[name]);
       const comparison = preview && painted.profile ? compareStrokeProfiles(preview, painted.profile) : undefined;
       const note = notes[name], grade = comparison && strokeFidelityGrade(comparison.score);
       const lines = [
@@ -136,10 +141,15 @@ export async function writeStampBrushSheet({ stylesDir, style, pack, out, only }
     return done;
   });
 
-  const sheet = join(dir, 'sheet.jpg');
-  const inputs = entries.flatMap(({ row }) => ['-i', row]);
-  const stack = entries.length > 1 ? `${entries.map((_, i) => `[${i}]`).join('')}vstack=inputs=${entries.length},` : '';
-  runFfmpeg(['-nostdin', '-v', 'error', ...inputs, '-filter_complex', `${stack}scale=iw/2:-1`, '-frames:v', '1', '-q:v', '3', '-y', sheet]);
+  // One JPEG can't pass 65,535 px tall, and a row is 211 px at half size: a big pack (Legacy's 471) takes several.
+  const pages = Array.from({ length: Math.ceil(entries.length / SHEET_ROWS) }, (_, i) => entries.slice(i * SHEET_ROWS, (i + 1) * SHEET_ROWS));
+  for (const stale of readdirSync(dir).filter((file) => /^sheet(-\d+)?\.jpg$/.test(file))) rmSync(join(dir, stale));
+  const sheets = pages.map((page, i) => {
+    const sheet = join(dir, pages.length > 1 ? `sheet-${i + 1}.jpg` : 'sheet.jpg');
+    const stack = page.length > 1 ? `${page.map((_, k) => `[${k}]`).join('')}vstack=inputs=${page.length},` : '';
+    runFfmpeg(['-nostdin', '-v', 'error', ...page.flatMap(({ row }) => ['-i', row]), '-filter_complex', `${stack}scale=iw/2:-1`, '-frames:v', '1', '-q:v', '3', '-y', sheet]);
+    return sheet;
+  });
   const total = entries.reduce((sum, e) => sum + (e.comparison?.score ?? 0), 0);
   writeFileSync(join(dir, 'report.json'), `${JSON.stringify({ style, pack, source: manifest.source, grades: STROKE_SCORE_GRADES, total, entries: entries.map((e) => ({ ...e, row: basename(e.row) })) }, null, 2)}\n`);
   let scores: string | undefined;
@@ -149,5 +159,5 @@ export async function writeStampBrushSheet({ stylesDir, style, pack, out, only }
     all[pack] = Object.fromEntries(entries.flatMap((e) => (e.comparison && e.grade ? [[e.brush, { grade: e.grade, score: Math.round(e.comparison.score * 1000) / 1000 }]] : [])));
     writeFileSync(scores, `${JSON.stringify(all, null, 2)}\n`);
   }
-  return { dir, sheet, entries, scores };
+  return { dir, sheets, entries, scores };
 }

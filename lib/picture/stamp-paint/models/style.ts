@@ -22,7 +22,8 @@ export const STAMP_PAINT_PACK_MANIFEST = 'manifest.json';
  * a nearby setting, `unsupported` is dropped, and `inapplicable` is dropped because a painting never has what it
  * responds to (a pen's tilt). `setting` is the source format's own field name, so it can be looked up.
  */
-export type StampBrushSupportNote = { level: 'approximated' | 'unsupported' | 'inapplicable'; setting: string; detail: string };
+/** `unprobed`: a Photoshop setting at a value vid-97's probes never gave it, so the pipeline wasn't identified there. */
+export type StampBrushSupportNote = { level: 'approximated' | 'unsupported' | 'inapplicable' | 'unprobed'; setting: string; detail: string };
 
 /**
  * A style's fidelity.ts, beside its style.ts and kept in git: `export default { … } satisfies StampPaintStyleFidelity`,

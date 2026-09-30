@@ -109,8 +109,8 @@ export type StampBrushStamping = {
    */
   jitter: { lateral: number; size: number; opacity: number; flow: number };
   /**
-   * `count` stamps at each spacing step, each offset at random within `radius` of the stroke; `countJitter` (0..1)
-   * drops up to that share of them at random, step by step.
+   * `count` stamps at each spacing step, each offset a random way by a uniformly random distance up to `radius`
+   * diameters, so they crowd the stroke; `countJitter` (0..1) drops up to that share of them at random, step by step.
    */
   scatter: { count: number; countJitter: number; radius: number };
   /**

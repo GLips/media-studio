@@ -164,7 +164,9 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
       const random = seededRandom(`${seed}|${i}|${c}`);
       // Drawn in a fixed order, every one always, so adding a use for one never shifts another.
       const lateral = (random() * 2 - 1) * brush.jitter.lateral * diameter;
-      const scatterTurn = random() * Math.PI * 2, scatterReach = Math.sqrt(random()) * brush.scatter.radius * diameter;
+      // A uniform distance, not a uniform spot in the disc, so stamps crowd the stroke: Photoshop's both-axes scatter
+      // (vid-97's scatter probe fits it at 0.009 rms; uniform over the disc's area, 0.022).
+      const scatterTurn = random() * Math.PI * 2, scatterReach = random() * brush.scatter.radius * diameter;
       const sizeLoss = random() * brush.jitter.size, opacityLoss = random() * brush.jitter.opacity;
       const turn = (random() * 2 - 1) * brush.rotation.jitter;
       const later = laterDraws(random);

@@ -4,6 +4,7 @@
 // holding the normalized brushes and what didn't carry over, and photoshop-sources.json, each brush's preset and
 // images and the file it came from, which a fit reads again with other constants. Photoshop files carry no rendered
 // previews, so the manifest's previews stay empty: Photoshop's own renders come from the capture rig (vid-100).
+// Every setting a brush has at a value the probes never gave it is noted `unprobed` (photoshop-probed-ranges.ts).
 //
 // A computed tip (and a bristle or erodible one, read as round) is drawn by Photoshop's profile at its hardness and
 // diameter, over the span its soft edge reaches, and shared by every brush alike, as tips/round-<hardness>-<diameter>.png; a sampled tip is written once per file and flip, as the first brush
@@ -11,6 +12,7 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { photoshopProbedRanges, photoshopUnprobedFields } from '#lib/picture/photoshop-capture/models/photoshop-probed-ranges.ts';
 import { normalizePhotoshopBrush, photoshopPatternNegated, photoshopSampleWithBorder, photoshopTipImage, type PhotoshopBrushSource } from '../models/photoshop-brush.ts';
 import { drawPhotoshopComputedTip } from '../models/photoshop-computed-tip.ts';
 import { photoshopFlag, photoshopNumber, photoshopObject, type PhotoshopDescriptor } from '../models/photoshop-descriptor.ts';
@@ -62,6 +64,7 @@ function writePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, 
   const brushes: Record<string, StampBrush> = {}, support: Record<string, StampBrushSupportNote[]> = {}, sources: PhotoshopPackSources = {};
   const origin: Record<string, string> = {}, diameters: Record<string, number> = {}, skipped: string[] = [];
   const files = new Set<string>(), written = new Map<string, StampBrushAsset>();
+  const probed = photoshopProbedRanges();
   /** An image written once under `key`, at a file named from `slug` that no other image has taken. */
   const writeOnce = (key: string, folder: string, slug: string, body: (out: string) => void): StampBrushAsset => {
     const known = written.get(key);
@@ -125,7 +128,10 @@ function writePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, 
       }
       const normalized = normalizePhotoshopBrush(name, source);
       brushes[name] = normalized.brush;
-      support[name] = normalized.support;
+      support[name] = [
+        ...normalized.support,
+        ...photoshopUnprobedFields(preset, probed).map(({ path, value, probed: range }) => ({ level: 'unprobed' as const, setting: path, detail: `${value}, where the probes gave ${range}` })),
+      ];
       origin[name] = fileName;
       diameters[name] = photoshopNumber(tip, 'Dmtr', 100);
       sources[name] = { ...source, preset: sourcePreset(preset), file: fileName, ...(group && { group }) };

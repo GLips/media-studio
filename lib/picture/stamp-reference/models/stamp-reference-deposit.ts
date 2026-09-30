@@ -90,7 +90,8 @@ function buildLayer(place: LayerPlace, stamps: readonly PlacedStamp[], box: Stam
   const rolling = layer.grain?.mode === 'rolling' && layer.grain.depth > 0 ? layer.grain : undefined;
   const rollingTile = rolling && grainTile(place);
   for (const stamp of stamps) {
-    const width = stamp.diameter * span, height = width * roundness;
+    // Never thinner than a pixel, as the GPU's stamps.
+    const width = stamp.diameter * span, height = Math.max(1, width * roundness);
     // Anisotropic, as the GPU's tip sampler is and Photoshop resamples a squashed tip: the level of its less-shrunk
     // side, averaged over up to 16 reads along the other, so squashing blurs it only across the squash.
     const across = tipImage.width / width, down = tipImage.height / height;

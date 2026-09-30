@@ -3,7 +3,8 @@ against its references. One file per rig, run as `node harness/<rig>.ts <verb>` 
 
 - `photoshop.ts` (`npm run photoshop -- check|probes|references|restore`): Photoshop 2026's own renders, by script.
 - `procreate.ts` (`npm run procreate -- probes|capture`): the parked Procreate rig on a USB iPad.
-- `brush-fidelity.ts` (`npm run brushes:sheet`, `npm run brushes:fit`): the fidelity sheet and the reading fit.
+- `brush-fidelity.ts` (`npm run brushes:sheet`, `npm run brushes:fit`, `npm run brushes:diagnose`): the fidelity sheet,
+  the Procreate reading fit and the Photoshop reading's per-brush diagnostic.
 - `stamp-reference.ts` (`npm run stamp:reference -- probes <run>`): the slow CPU reference renderer against a
   Photoshop probe run, each cell's error split among the stages that own it.
 
