@@ -34,8 +34,25 @@ Wet paint is a wash, a pass painted wet (`group.wash`): its deposits paint, wet 
 and it can `wait` in painting time, which only its waits advance. `stamp-wetness.ts` works out, once as a painting
 loads, how wet the paper is where each lands, on coarse grids; the pigment compositor's `landDeposit` lays it by the
 laws in `stamp-wet-landing.ts` and `stamp-wet-lift.ts`, and `studio/stamp-wet-stages.ts` lists what then works over
-the neighbourhood (paint running into water). A plain pass lands as it always has. Flat colour has no washes.
+the neighbourhood: the flow stage (`stamp-wet-flow.ts`), where a deposit's fresh paint feathers into water on the
+paper and the workable paint its water stirs evens out, and a lift's run-back. A graded material lays each pigment
+of either end, its amount graded on the GPU. A plain pass lands as it always has. Flat colour has no washes.
 `stamp-paint-events.ts` is the painting in painting order, each deposit with the time it's settled by.
+
+**The flow stage.** Two populations move: the deposit's fresh paint (what `landDeposit` laid, left in `fresh`),
+freely, and the paint already there, as far as the deposit's water stirs it (workable, not `dried`, where its brush
+touched). Each is a conserved diffusion of sigma = flow × diameter / 2 at full wetness, narrower as drier. Paper is as
+wet as it was, or as the brush's water where it touched, so paint on dry paper keeps a hard edge.
+- It runs as passes at strides growing by about √2 (1, 2, 3, 4, 6, 8, 11, …), x then y, each a three-tap exchange
+  with the pixels a stride away. A pass adds variance of up to stride² / 2, and a pair takes the share of it its own
+  sigma needs. Doubling strides left ripples a stride apart.
+- Two pixels trade only as freely as the driest, least open pixel between them (a way, built per stride from the
+  last's), so paint never jumps a reserve or a dry gap.
+- What diffuses is each population's potential, its amounts averaged over 8 × 8 pixels, so granulation neither drives
+  paint nor is smoothed away. The layer takes the potential's net move, so texture stays where paint stays. A pixel
+  gives as its paint fills its potential, so never more than it holds.
+- Moves are f32 and the layer takes them in one f16 store: this GPU truncates f16 stores, and a store per pass lost
+  a tenth of a percent of the pigment.
 
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants
 of `procreate-reading.ts`), and the stroke Procreate draws its previews along. Its `engine/` reads binary plists and

@@ -2,14 +2,17 @@
 // the GPU's pigment compositor (stamp-paint-pigment-compositor.ts), which lays and dries it per pixel.
 //
 // Each group's palette is every pigment its deposits lay (a colour fitted as a pigment of its own). Its layer holds
-// each palette pigment's amount per pixel, so a pigment stays itself to the pixel, where a lift needs it.
+// each palette pigment's amount per pixel, so a pigment stays itself to the pixel, where a lift needs it. A graded
+// material (a graded wash) lays each pigment of either end at an amount the GPU grades between the two, so a wash
+// passes from one colour to another by pigment amounts, never by rendered colour.
 
 import { paintPigmentFromColor, paintPigmentInMedium, type PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
 import { paintMixtureComponents } from '#lib/picture/paint/models/paint-mixture.ts';
 import { paintPigmentSeed } from '#lib/picture/paint/models/paint-paper.ts';
 import type { PaintPigment, PaintPigmentAppearance } from '#lib/picture/paint/models/paint-pigment.ts';
 import type { PaintBands } from '#lib/picture/paint/models/paint-spectrum.ts';
-import type { CompiledStampDeposit, CompiledStampPaint, StampPaintColor } from './stamp-paint-recipe.ts';
+import { stampPaintFieldEnds } from './stamp-paint-field.ts';
+import type { CompiledStampDeposit, CompiledStampPaint, PaintMaterial, StampPaintColor } from './stamp-paint-recipe.ts';
 
 /**
  * Paint as pigment in a `medium`, mixed and dried with Kubelka–Munk. `pigments`, keyed by id, are the ones a mixture
@@ -30,8 +33,14 @@ export type StampPaintMixing = { kind: 'flat' } | StampPigmentMixing;
  */
 export const STAMP_PIGMENT_GROUP_SLOTS = 12;
 
-/** One pigment of a deposit's paint: its slot in its group's palette, a full stroke's amount (unit films), its habits. */
-export type StampPigmentComponent = { slot: number; amount: number; granulation: number; flocculation: number; seed: number };
+/**
+ * One pigment of a deposit's paint: its slot in its group's palette, a full stroke's amount (unit films) at its
+ * material's first end and at its second (the same for an ungraded one; 0 at an end without it), its habits.
+ */
+export type StampPigmentComponent = { slot: number; amounts: readonly [first: number, second: number]; granulation: number; flocculation: number; seed: number };
+
+/** Where a deposit's material grades between its ends, as paintFieldShare reads it (STAMP_PAINT_FIELD_SHARE): kind 0 for none. */
+export type StampPigmentGrade = { kind: 0 | 1 | 2; geometry: readonly [number, number, number, number] };
 
 export type StampPigmentGroup = {
   /** Its palette, a slot each. */
@@ -44,15 +53,23 @@ export type StampPigmentPaint = {
   medium: PaintMedium;
   bands: PaintBands;
   groups: readonly StampPigmentGroup[];
-  /** Each deposit's group, by index, and its components: none for water or a lift. */
-  deposits: ReadonlyMap<CompiledStampDeposit, { group: number; components: readonly StampPigmentComponent[] }>;
+  /** Each deposit's group, by index, its components (none for water or a lift) and where its material grades. */
+  deposits: ReadonlyMap<CompiledStampDeposit, StampPigmentDeposit>;
 };
+
+export type StampPigmentDeposit = { group: number; components: readonly StampPigmentComponent[]; grade: StampPigmentGrade };
+
+const UNGRADED: StampPigmentGrade = { kind: 0, geometry: [0, 0, 0, 0] };
+
+/** How much of pigment `id` an end of a material lays: none if it lacks it. */
+const amountAtEnd = (laid: readonly { pigment: PaintPigment; amount: number }[], id: string) => laid.find(({ pigment }) => pigment.id === id)?.amount ?? 0;
 
 export const stampPigmentLayers = (slots: number) => Math.ceil((slots + 1) / 4);
 
 /**
- * `painting`'s paint as `mixing` mixes it. Throws on a mixture naming a pigment `mixing` lacks, two different pigments
- * with one id anywhere in the painting, or a group that mixes more than STAMP_PIGMENT_GROUP_SLOTS pigments.
+ * `painting`'s paint as `mixing` mixes it, a graded material's pigments from both its ends. Throws on a mixture
+ * naming a pigment `mixing` lacks, two different pigments with one id anywhere in the painting, or a group that mixes
+ * more than STAMP_PIGMENT_GROUP_SLOTS pigments.
  */
 export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: StampPigmentMixing, bands: PaintBands): StampPigmentPaint {
   const { medium } = mixing;
@@ -61,31 +78,45 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
   const known = new Map(Object.values(mixing.pigments).map((appearance) => [appearance.id, paintPigmentInMedium(appearance, medium, bands)]));
   const named = new Set(known.keys());
   const white = medium.lightening.kind === 'white' ? medium.lightening.white.id : null;
-  const deposits = new Map<CompiledStampDeposit, { group: number; components: StampPigmentComponent[] }>();
+  const deposits = new Map<CompiledStampDeposit, StampPigmentDeposit>();
   const groups = painting.groups.map((group, g): StampPigmentGroup => {
     const palette: PaintPigment[] = [];
     for (const deposit of group.passes.flatMap((pass) => pass.deposits)) {
       const { action } = deposit;
       // Water and a lift lay no pigment of their own.
       if (action.kind !== 'paint') {
-        deposits.set(deposit, { group: g, components: [] });
+        deposits.set(deposit, { group: g, components: [], grade: UNGRADED });
         continue;
       }
-      if (action.material.kind !== 'constant') throw new Error(`stamp paint: ${deposit.id} grades its material, which isn't painted yet (vid-117)`);
-      const material = action.material.value;
-      const laid = material.kind === 'mixture'
-        ? paintMixtureComponents(material, medium, bands)
-        : [{ pigment: byColor.get(material.color) ?? byColor.set(material.color, paintPigmentFromColor(material.color, medium, bands)).get(material.color)!, amount: medium.body }];
-      deposits.set(deposit, { group: g, components: laid.map(({ pigment, amount }) => {
-        if (material.kind === 'mixture' && pigment.id !== white && !named.has(pigment.id)) {
-          throw new Error(`stamp paint: ${deposit.id} mixes ${pigment.id}, which isn't among its style's pigments (${[...named].join(', ')})`);
-        }
-        const first = known.get(pigment.id) ?? known.set(pigment.id, pigment).get(pigment.id)!;
-        if (!samePigment(first, pigment)) throw new Error(`stamp paint: ${deposit.id} lays a pigment named ${pigment.id} unlike the painting's other ${pigment.id}`);
-        let slot = palette.findIndex(({ id }) => id === pigment.id);
-        if (slot < 0) slot = palette.push(pigment) - 1;
-        return { slot, amount, granulation: pigment.granulation * medium.granulation, flocculation: pigment.flocculation, seed: paintPigmentSeed(pigment.id) };
-      }) });
+      const { first, second, kind, geometry } = stampPaintFieldEnds(action.material);
+      /** What a full stroke of `material` lays, each pigment the painting's one of its id. */
+      const laidOf = (material: PaintMaterial) => {
+        const laid = material.kind === 'mixture'
+          ? paintMixtureComponents(material, medium, bands)
+          : [{ pigment: byColor.get(material.color) ?? byColor.set(material.color, paintPigmentFromColor(material.color, medium, bands)).get(material.color)!, amount: medium.body }];
+        return laid.map(({ pigment, amount }) => {
+          if (material.kind === 'mixture' && pigment.id !== white && !named.has(pigment.id)) {
+            throw new Error(`stamp paint: ${deposit.id} mixes ${pigment.id}, which isn't among its style's pigments (${[...named].join(', ')})`);
+          }
+          const kept = known.get(pigment.id) ?? known.set(pigment.id, pigment).get(pigment.id)!;
+          if (!samePigment(kept, pigment)) throw new Error(`stamp paint: ${deposit.id} lays a pigment named ${pigment.id} unlike the painting's other ${pigment.id}`);
+          return { pigment: kept, amount };
+        });
+      };
+      const atFirst = laidOf(first), atSecond = kind === 0 ? atFirst : laidOf(second);
+      const pigments = [...atFirst, ...atSecond].map(({ pigment }) => pigment).filter((pigment, i, all) => all.findIndex(({ id }) => id === pigment.id) === i);
+      deposits.set(deposit, {
+        group: g,
+        grade: kind === 0 ? UNGRADED : { kind, geometry },
+        components: pigments.map((pigment) => {
+          let slot = palette.findIndex(({ id }) => id === pigment.id);
+          if (slot < 0) slot = palette.push(pigment) - 1;
+          return {
+            slot, amounts: [amountAtEnd(atFirst, pigment.id), amountAtEnd(atSecond, pigment.id)],
+            granulation: pigment.granulation * medium.granulation, flocculation: pigment.flocculation, seed: paintPigmentSeed(pigment.id),
+          };
+        }),
+      });
     }
     if (palette.length > STAMP_PIGMENT_GROUP_SLOTS) {
       throw new Error(`stamp paint: ${group.id} mixes ${palette.length} pigments, over the ${STAMP_PIGMENT_GROUP_SLOTS} a wash holds; split it into two groups (${palette.map(({ id }) => id).join(', ')})`);
