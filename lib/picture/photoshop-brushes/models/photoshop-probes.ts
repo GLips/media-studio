@@ -346,6 +346,12 @@ export function photoshopProbes(): PhotoshopProbe[] {
   const sheetMarks = [...[0.25, 0.5, 1].map((p) => mark('line', { pressure: p })), mark('sCurve', { simulatePressure: true })];
   add('pressure all', 'size, roundness, opacity and flow on pen pressure, angle on initial direction, flow 20%: posed lines, then a simulated S-curve', pressedAll({}), sheetMarks);
   add('pressure all dual overlay', 'the same with an overlay dual', pressedAll(dual(round(200, 0, 12), 'overlay')), sheetMarks);
+  // Legacy's 1 to 7 px tips, painted as a reference sheet paints them: the lingering pose takes them below a pixel.
+  // Tips under about 4 px are drawn another way: a dim, spread stamp whatever the hardness.
+  const smallTips = [...[1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 7].map((d) => [d, 100] as const), ...[1, 2, 3, 4, 5].map((d) => [d, 0] as const)];
+  for (const [diameter, hardness] of smallTips) {
+    add(`tip computed d${diameter} h${hardness} sheet`, `a ${diameter} px tip at hardness ${hardness}%, spacing 25%: a stamp, posed lines, then a simulated S-curve under the lingering pose`, base(round(diameter, hardness, 25)), [mark('stamp'), ...sheetMarks]);
+  }
 
   // The tips Photoshop simulates as it paints (bristle, erodible, airbrush), at the settings the packs use: a stamp,
   // lines at Brush Pose pressures, a line and an S-curve under simulated pressure.

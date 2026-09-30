@@ -3,8 +3,8 @@
 //
 // A soft tip (hardness up to 0.95) is flat out to c, then falls as 10^(−((r − c)/w)²); hardness 0 is exactly
 // 10^(−(r/R)²), still 0.1 at the rim, so a soft tip reaches well past its diameter. c and w are a share of the radius
-// plus a few pixels: a 32 px tip reads softer than 256 px. A hard tip is an erf edge, σ 0.704 px. Tips of 7.5 px
-// and less fit no radial profile: they're drawn in whole pixels.
+// plus a few pixels: a 32 px tip reads softer than 256 px. A hard tip is an erf edge, σ 0.704 px. Small tips are
+// drawn apart (SMALL_TIP_PROFILES).
 
 /** [hardness, c / R, w / R]: 0, 0.5 and 0.9 fitted over three diameters, the rest at 128 px. */
 const SHAPE: [number, number, number][] = [
@@ -20,8 +20,18 @@ const HARD_SIGMA = 0.704;
  */
 const FLOOR = 0.0015;
 
-/** Tips this small or smaller are drawn by Photoshop as whole pixels; the profile only approximates them. */
+/** Tips this small or smaller are drawn by Photoshop at their diameter rounded up to whole pixels. */
 export const PHOTOSHOP_PIXEL_TIP_DIAMETER = 7.5;
+
+/**
+ * A tip drawn 1 to 3 px wide, at any hardness, is a product of one profile across and one down: a pixel's alpha, out
+ * from the centre, under a stamp centred on a pixel corner. Separable to 1e-4 (run 20260930-091056); a stamp's paint
+ * sums to about its diameter, not its disk.
+ */
+const SMALL_TIP_PROFILES: Partial<Record<number, readonly number[]>> = { 1: [0.5], 2: [0.6052, 0.1052], 3: [0.6848, 0.1941, 0.0093] };
+
+/** The diameter Photoshop draws a computed tip at: 1.5 px paints as 2, 7.5 as 8. */
+const drawnDiameter = (diameter: number) => (diameter <= PHOTOSHOP_PIXEL_TIP_DIAMETER ? Math.ceil(diameter) : diameter);
 
 function lerpTable(table: [number, number, number][], h: number): [number, number] {
   if (h <= table[0][0]) return [table[0][1], table[0][2]];
@@ -67,8 +77,10 @@ export function photoshopComputedTipAlpha(r: number, diameter: number, hardness:
  * them, so sampling adds no blur: a hard edge is 0.7 px soft, and half a texel shows.
  */
 export function photoshopComputedTipSpan(diameter: number, hardness: number): number {
-  let r = diameter / 2 * 0.5;
-  while (photoshopComputedTipAlpha(r, diameter, hardness) > 0) r += 0.05;
+  const drawn = drawnDiameter(diameter), small = SMALL_TIP_PROFILES[drawn];
+  if (small) return (2 * small.length) / diameter;
+  let r = drawn / 2 * 0.5;
+  while (photoshopComputedTipAlpha(r, drawn, hardness) > 0) r += 0.05;
   return (2 * Math.ceil(r + 1)) / diameter;
 }
 
@@ -79,9 +91,12 @@ export function photoshopComputedTipSpan(diameter: number, hardness: number): nu
 export function drawPhotoshopComputedTip(diameter: number, hardness: number, span: number, max: number): { size: number; pixels: Uint8Array } {
   const size = Math.max(2, Math.min(max, Math.round(span * diameter)));
   const pixels = new Uint8Array(size * size), half = size / 2, px = (span * diameter) / size;
+  const drawn = drawnDiameter(diameter), small = SMALL_TIP_PROFILES[drawn];
+  const along = (i: number) => small?.[Math.floor(Math.abs(i + 0.5 - half) * px)] ?? 0;
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      pixels[y * size + x] = Math.round(255 * (1 - photoshopComputedTipAlpha(Math.hypot(x + 0.5 - half, y + 0.5 - half) * px, diameter, hardness)));
+      const alpha = small ? along(x) * along(y) : photoshopComputedTipAlpha(Math.hypot(x + 0.5 - half, y + 0.5 - half) * px, drawn, hardness);
+      pixels[y * size + x] = Math.round(255 * (1 - alpha));
     }
   }
   return { size, pixels };

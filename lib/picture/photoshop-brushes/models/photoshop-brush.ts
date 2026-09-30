@@ -146,7 +146,7 @@ function tipOf(tip: PhotoshopKnownTip, asset: PhotoshopTipAsset, prefix: string,
     return { image: asset.image, roundness, sampling, span: (sample.width + 2 * PHOTOSHOP_SAMPLE_BORDER) / sample.width, center: [sampleCenter(sample.width, geometry.flipX), sampleCenter(sample.height, geometry.flipY)] };
   }
   if (tip.kind === 'sampled') throw new Error(`photoshop: a sampled tip given a ${asset.kind} image`);
-  if (geometry.diameter <= PHOTOSHOP_PIXEL_TIP_DIAMETER) note('approximated', `${prefix}tip.geometry.diameter`, `a ${geometry.diameter} px computed tip, which Photoshop draws in whole pixels, read by its profile`);
+  if (geometry.diameter <= PHOTOSHOP_PIXEL_TIP_DIAMETER) note('approximated', `${prefix}tip.geometry.diameter`, `a ${geometry.diameter} px computed tip, drawn as Photoshop draws it at its size, rounded up to whole pixels; the stamps its dynamics shrink are scaled from that, not redrawn`);
   return { image: asset.image, roundness, sampling, span: photoshopComputedTipSpan(geometry.diameter, photoshopRoundTipHardness(tip)) };
 }
 

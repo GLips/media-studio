@@ -66,7 +66,7 @@ Brush Pose (size and opacity overridden), or simulated pressure (taper at both e
 
 ## The probe set
 
-`photoshopProbes()`, 292 probes and 643 cells, in a few minutes. Each is a plain round, or a sampled tip the run defines
+`photoshopProbes()`, 307 probes and 718 cells, in a few minutes. Each is a plain round, or a sampled tip the run defines
 (`studio-probe-tip`: a half-circle with a hard and a soft side, 112 px once Photoshop trims it), with one thing changed:
 
 - single stamps of computed tips across hardness and diameter, an ellipse, and the sampled tip at sizes, angle,
@@ -103,6 +103,12 @@ reference the way it was painted.
 fresh in every stamp: widest at half coverage, none where the tip is empty or full, and averaged down where stamps pile
 up (the line's soft edge keeps a tenth of a stamp's spread). Both renderers draw n from the same u32 hash
 (`tipNoiseAt`), seeded by the stamp's place.
+
+**Small tips** (vid-105, `tip computed d… sheet`). A computed tip of 7.5 px or less is drawn at its diameter rounded
+up (1.5 px paints as 2). At 1 to 3 px, hardness does nothing: the stamp is a product of one profile across and one
+down, dim and spread (a 1 px stamp is four pixels at a quarter), its paint summing to about its diameter. Not yet
+matched: a 1 px line at half pressure is half as dark as ours, 4 px hard sits a third of a pixel smaller than the
+profile, and a squashed small tip (Graphite Pencil, 32% round) is read as the round one squashed.
 
 **What the controls do** (vid-105). Angle on pen pressure turns a stamp by p × 360°, and fade turns it a whole turn
 over its steps; initial direction holds the first heading. Scatter on pen pressure keeps p² of its reach (in the
