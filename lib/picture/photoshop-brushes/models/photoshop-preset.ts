@@ -119,14 +119,16 @@ const readBackAt = (holder: PhotoshopReadBack, named: Named): PhotoshopReadBack 
 };
 /** A read-back number: descToObj gives a unit's as `{ value, unit }`. */
 const readBackValue = (v: unknown) => (isRecord(v) && 'value' in v ? v.value : v);
+const isNumber = (v: unknown): v is number => typeof v === 'number';
+/** Photoshop keeps a bristle tip's fractions as 32-bit floats and reports them to 14 digits, so numbers match to 1e-6. */
 function expect(out: string[], path: string, asked: unknown, got: unknown) {
-  if (asked !== got) out.push(`${path}: asked ${JSON.stringify(asked)}, read ${JSON.stringify(got)}`);
+  if (isNumber(asked) && isNumber(got) ? Math.abs(asked - got) > 1e-6 : asked !== got) out.push(`${path}: asked ${JSON.stringify(asked)}, read ${JSON.stringify(got)}`);
 }
 
 // -- Leaves --
 
-/** `identity`: a name or id, which says nothing of how a brush paints; `scripted: false`, not set on the tool by script. */
-type LeafOptions = { id?: string; identity?: true; scripted?: false };
+/** `identity`: a name or id, saying nothing of how a brush paints; `scripted: false`, not set by script; `readBack: false`, never reported back. */
+type LeafOptions = { id?: string; identity?: true; scripted?: false; readBack?: false };
 
 /**
  * A single value under `key`: `fallback` where the descriptor lacks it or holds another type (Photoshop's default),
@@ -145,7 +147,7 @@ function photoshopLeaf<T extends number | boolean | string, F extends T | undefi
       if (value !== undefined && options.scripted !== false) holder[scriptKey(named)] = scriptRaw(value);
     },
     mismatches(value, holder, path, out) {
-      if (value !== undefined && options.scripted !== false && !options.identity) expect(out, path, value, readBackValue(holder[readKey(named)]));
+      if (value !== undefined && options.scripted !== false && options.readBack !== false && !options.identity) expect(out, path, value, readBackValue(holder[readKey(named)]));
     },
     leaves(value, path, out) {
       if (value !== undefined && !options.identity) out.push({ path, value: typeof value === 'number' ? value : String(value) });
@@ -358,22 +360,24 @@ const optionalDynamic = (key: string) => photoshopOptionalNested({ key }, BRUSH_
 
 // Photoshop lists a tip's diameter, then its own settings, then the rest of its geometry; a script keeps that order.
 const TIP_DIAMETER = photoshopRecord({ diameter: pixels('Dmtr', 100, { id: 'diameter' }) });
+// A tip Photoshop simulates holds no roundness: one scripted onto it isn't reported back.
+const tipRoundness = (readBack?: false) => photoshopRecord({ roundness: percent('Rndn', 100, { id: 'roundness', readBack }) });
+const TIP_ROUNDNESS = tipRoundness(), TIP_ROUNDNESS_SIMULATED = tipRoundness(false);
 const TIP_PLACEMENT = photoshopRecord({
-  angle: angle('Angl', 0, { id: 'angle' }), roundness: percent('Rndn', 100, { id: 'roundness' }), spacing: percent('Spcn', 25, { id: 'spacing' }),
+  angle: angle('Angl', 0, { id: 'angle' }), spacing: percent('Spcn', 25, { id: 'spacing' }),
   /** Spacing on; off stamps once per pointer event. */
   spaced: flag('Intr', false, { id: 'interfaceIconFrameDimmed' }),
   flipX: flag('flipX', false), flipY: flag('flipY', false),
 });
-export type PhotoshopTipGeometry = FieldValue<typeof TIP_DIAMETER> & FieldValue<typeof TIP_PLACEMENT>;
+export type PhotoshopTipGeometry = FieldValue<typeof TIP_DIAMETER> & FieldValue<typeof TIP_ROUNDNESS> & FieldValue<typeof TIP_PLACEMENT>;
 
 const COMPUTED_TIP = photoshopRecord({ hardness: percent('Hrdn', 100, { id: 'hardness' }) });
 /** A sample, by its id in the file (the .abr's `samp`), which a script can't set: the rig selects it by name. */
 const SAMPLED_TIP = photoshopRecord({ sample: text('sampledData', '', { identity: true, scripted: false }) });
-// Bristle, erodible and airbrush tips are read, not yet painted (vid-105) nor scripted onto Photoshop by the rig. Their
-// fallbacks are only for a descriptor lacking a key, which no .abr at hand does. A bristle tip's sizes are fractions
-// (1.42 is 142%), though tagged percent.
+// Simulated tips' fallbacks are only for a descriptor lacking a key, which no .abr at hand does. A bristle tip's sizes
+// are fractions (1.42 is 142%), though tagged percent.
 const BRISTLE_TIP = photoshopRecord({
-  shape: integer('Shp ', 0), density: percent('Dnst', 0.5), length: percent('Lngt', 1), clumping: percent('clumping', 0.25), thickness: percent('thickness', 0.5),
+  shape: integer('Shp ', 0, { id: 'shape' }), density: percent('Dnst', 0.5, { id: 'density' }), length: percent('Lngt', 1, { id: 'length' }), clumping: percent('clumping', 0.25), thickness: percent('thickness', 0.5),
   stiffness: percent('stiffness', 0.5), physics: flag('physics', true),
 });
 /** `dtipsType` tells the two `dTips` apart: 0 erodible, 1 airbrush. */
@@ -381,11 +385,11 @@ const DTIPS_TYPE = integer('dtipsType', 0);
 // An erodible tip also holds the airbrush's settings, at their defaults, which it doesn't use. Its height map
 // (`dtipsErodibleTipHeightMap`, gridSize² floats) is kept apart, as an asset of the pack (import-photoshop-pack.ts).
 const ERODIBLE_TIP = photoshopRecord({
-  shape: integer('Shp ', 0), simulatedHardness: percent('dtipsHardness', 100), lengthRatio: percent('dtipsLengthRatio', 100), gridSize: integer('dtipsGridSize', 11),
-  customized: flag('dtipsErodibleTipCustomized', false), physics: flag('physics', true),
+  shape: integer('Shp ', 0, { id: 'shape' }), simulatedHardness: percent('dtipsHardness', 100), lengthRatio: percent('dtipsLengthRatio', 100), gridSize: integer('dtipsGridSize', 11, { readBack: false }),
+  customized: flag('dtipsErodibleTipCustomized', false, { readBack: false }), physics: flag('physics', true),
 });
 const AIRBRUSH_TIP = photoshopRecord({
-  shape: integer('Shp ', 5), simulatedHardness: percent('dtipsHardness', 100), lengthRatio: percent('dtipsLengthRatio', 100), cutoffAngle: double('dtipsAirbrushCutoffAngle', 15),
+  shape: integer('Shp ', 5, { id: 'shape' }), simulatedHardness: percent('dtipsHardness', 100), lengthRatio: percent('dtipsLengthRatio', 100), cutoffAngle: double('dtipsAirbrushCutoffAngle', 15),
   granularity: percent('dtipsAirbrushGranularity', 0), streakiness: percent('dtipsAirbrushStreakiness', 1), splatSize: percent('dtipsAirbrushSplatSize', 1),
   splatCount: integer('dtipsAirbrushSplatCount', 100), physics: flag('physics', true),
 });
@@ -402,7 +406,7 @@ export type PhotoshopPresetTip =
 export type PhotoshopKnownTip = Exclude<PhotoshopPresetTip, { kind: 'unsupported' }>;
 
 function readTip(d: PhotoshopDescriptor): PhotoshopPresetTip {
-  const geometry = { ...TIP_DIAMETER.read(d), ...TIP_PLACEMENT.read(d) };
+  const geometry = { ...TIP_DIAMETER.read(d), ...TIP_ROUNDNESS.read(d), ...TIP_PLACEMENT.read(d) };
   switch (d._class) {
     case 'computedBrush': return { kind: 'computed', geometry, ...COMPUTED_TIP.read(d) };
     case 'sampledBrush': return { kind: 'sampled', geometry, ...SAMPLED_TIP.read(d) };
@@ -419,22 +423,26 @@ function readTip(d: PhotoshopDescriptor): PhotoshopPresetTip {
 
 /** A known tip's class, and its own settings bound to their fields. */
 function tipParts(tip: PhotoshopKnownTip) {
+  const roundness = tip.kind === 'computed' || tip.kind === 'sampled' ? TIP_ROUNDNESS : TIP_ROUNDNESS_SIMULATED;
   const bind = <V>(classId: string, own: PhotoshopPresetField<V>, value: V, dtipsType?: number) => ({
     classId,
     script(d: PhotoshopScriptDescriptor) {
       if (dtipsType !== undefined) DTIPS_TYPE.script(dtipsType, d);
       TIP_DIAMETER.script(tip.geometry, d);
       own.script(value, d);
+      roundness.script(tip.geometry, d);
       TIP_PLACEMENT.script(tip.geometry, d);
     },
     mismatches(d: PhotoshopReadBack, path: string, out: string[]) {
       TIP_DIAMETER.mismatches(tip.geometry, d, at(path, 'geometry'), out);
       own.mismatches(value, d, path, out);
+      roundness.mismatches(tip.geometry, d, at(path, 'geometry'), out);
       TIP_PLACEMENT.mismatches(tip.geometry, d, at(path, 'geometry'), out);
     },
     leaves(path: string, out: PhotoshopPresetLeaf[]) {
       TIP_DIAMETER.leaves(tip.geometry, at(path, 'geometry'), out);
       own.leaves(value, path, out);
+      roundness.leaves(tip.geometry, at(path, 'geometry'), out);
       TIP_PLACEMENT.leaves(tip.geometry, at(path, 'geometry'), out);
     },
   });

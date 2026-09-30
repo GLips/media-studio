@@ -287,6 +287,66 @@ export function photoshopProbes(): PhotoshopProbe[] {
   // self-crossing curve comes back over its loop about 64 stamps after it first passed, by then at its minimum.
   add('fade opacity 40 flow 25', 'opacity faded over 40 stamps at flow 25%: whether a fainter stamp lowers the paint stronger ones built', base(round(64, 100, 10), { flow: 25, ...transferBy(fade(40), noControl) }), [mark('line')]);
   add('fade opacity 130 minimum 20 flow 50', 'opacity faded over 130 stamps to 20% at flow 50%, crossing its own loop: the later pass at 20% over paint built near 60%', base(round(64, 100, 10), { flow: 50, ...transferBy({ kind: 'fade', steps: 130, minimum: 20 }, noControl) }), [mark('selfCross'), mark('line')]);
+
+  // vid-105: the controls the packs drive angle, scatter, texture depth, roundness and count by, and what a stroked
+  // path gives the controls it has no input for (tilt, the stylus wheel, rotation). Stamps apart, so each reads alone.
+  const sCurve = mark('sCurve'), line = mark('line'), simLine = mark('line', { simulatePressure: true });
+  const angleBy = (control: PhotoshopControl) => base(ellipse, shape({ angle: driven(control) }));
+  add('angle by pressure', 'angle on pen pressure: the turn against pressure (Brush Pose 0.25 to 1), and along simulated pressure', angleBy(pressure()), [...posedLines, simLine]);
+  add('angle initial direction', "angle on initial direction along an S-curve: the stroke's first heading held, or followed", angleBy({ kind: 'initialDirection' }), [sCurve]);
+  add('angle direction', 'angle on direction along the same S-curve, beside initial direction', angleBy({ kind: 'direction' }), [sCurve]);
+  for (const [label, control] of [['tilt', { kind: 'penTilt', minimum: 0 }], ['stylus wheel', { kind: 'stylusWheel', minimum: 0 }], ['rotation', { kind: 'rotation', minimum: 0 }]] as const) {
+    add(`angle by ${label}`, `angle on ${label}: what a stroked path, which has no ${label}, gives it`, angleBy(control), [line]);
+  }
+  add('angle fade 20', 'angle faded over 20 stamps: the turn stamp by stamp', angleBy(fade(20)), [line]);
+  add('roundness fade 20', 'roundness faded over 20 stamps on a round tip, to its minimum 25%', base(round(48, 100, 200), shape({ roundness: driven(fade(20)), minimumRoundness: 25 })), [line]);
+  const scatterBy = (control: PhotoshopControl): ProbeParts => ({ scatter: { scatter: { control, jitter: 100 }, bothAxes: true, count: 1, countDynamics: OFF } });
+  add('scatter by pressure', 'scatter 100% on pen pressure: its reach against pressure, and along simulated pressure', base(round(24, 100, 50), scatterBy(pressure())), [...posedLines, simLine], 2);
+  add('scatter fade 40', 'scatter 100% faded over 40 stamps', base(round(24, 100, 50), scatterBy(fade(40))), [line], 2);
+  add('scatter by tilt', 'scatter 100% on pen tilt: what a stroked path gives it', base(round(24, 100, 50), scatterBy({ kind: 'penTilt', minimum: 0 })), [line], 2);
+  add('count 4 fade 10', 'count 4 faded over 10 steps at flow 25%: how many a step keeps as it fades', base(round(48, 100, 200), { flow: 25, ...scattered({ count: 4, countControl: fade(10) }) }), [line]);
+  for (const [label, control] of [['tilt', { kind: 'penTilt', minimum: 0 }]] as const) {
+    add(`size by ${label}`, `size on ${label}: what a stroked path gives it`, base(round(64, 100, 5), sizeBy(control)), [line]);
+    add(`flow by ${label}`, `flow on ${label}: what a stroked path gives it`, base(round(64, 100, 5), transferBy(noControl, control)), [line]);
+  }
+  // Texture depth per stamp, the subtract ramp at depth 100 under a hard tip, stamps apart so each shows its depth.
+  const depthBy = (depthDynamics: PhotoshopDynamic, { minimumDepth = 0, eachTip = true, spacing = 150 } = {}) => {
+    const parts = ramp('subtract', 100, { eachTip });
+    return base(round(96, 100, spacing), { texture: { ...parts.texture!, depthDynamics, minimumDepth } });
+  };
+  add('texture depth by pressure', 'Texture Each Tip depth on pen pressure: depth against pressure, and along simulated pressure', depthBy(driven(pressure())), [...posedLines, simLine]);
+  add('texture depth by pressure minimum 50', 'depth on pen pressure with a 50% minimum depth', depthBy(driven(pressure()), { minimumDepth: 50 }), posedLines.slice(0, 2));
+  add('texture depth jitter 100', "depth jitter 100%: each stamp's depth drawn at random", depthBy(jitter(100)), [line], 2);
+  add('texture depth jitter 100 minimum 50', 'depth jitter 100% with a 50% minimum depth', depthBy(jitter(100), { minimumDepth: 50 }), [line], 2);
+  add('texture depth fade 20', 'depth faded over 20 stamps', depthBy(driven(fade(20))), [line]);
+  add('texture depth by pressure canvas', 'depth on pen pressure with Texture Each Tip off: whether the canvas texture takes it', depthBy(driven(pressure()), { eachTip: false, spacing: 5 }), posedLines.slice(0, 2));
+  // Count 3 on pen pressure where stamps overlap, fresh and after posed lines (Kyle's Medium Wash Slow).
+  const dense3 = base(round(64, 50, 10), { flow: 20, ...scattered({ count: 3, countControl: pressure() }) });
+  add('count 3 by pressure dense', 'count 3 on pen pressure at 10% spacing along a simulated S-curve, fresh', dense3, [mark('sCurve', { simulatePressure: true })]);
+  add('count 3 by pressure dense after poses', 'count 3 on pen pressure: posed lines at 0.25, 0.5 and 1, then a simulated S-curve, as a reference sheet paints', dense3, [...[0.25, 0.5, 1].map((p) => mark('line', { pressure: p })), mark('sCurve', { simulatePressure: true })]);
+
+  // The tips Photoshop simulates as it paints (bristle, erodible, airbrush), at the settings the packs use: a stamp,
+  // lines at Brush Pose pressures, a line and an S-curve under simulated pressure.
+  const simulated = [mark('stamp'), mark('line', { pressure: 0.5 }), mark('line', { pressure: 1 }), simLine, mark('sCurve', { simulatePressure: true })];
+  const bristle = (shapeCode: number, density: number, length: number, thickness: number, stiffness: number, diameter = 36, spacing = 2): PhotoshopKnownTip =>
+    ({ kind: 'bristle', shape: shapeCode, density, length, clumping: 0.25, thickness, stiffness, physics: true, geometry: geometry(diameter, spacing, {}) });
+  for (const [label, tip] of [
+    ['round point', bristle(0, 0.31, 1.37, 0.01, 0.85, 25)], ['round blunt', bristle(1, 0.16, 1.37, 0.01, 0.56, 25)], ['round fan', bristle(4, 0.66, 0.25, 0.01, 0.88, 25)],
+    ['flat point', bristle(5, 0.34, 1.1, 0.01, 0.69)], ['flat blunt', bristle(6, 0.28, 1, 0.58, 0.87, 60, 1)], ['flat blunt sparse', bristle(6, 0.05, 0.25, 0.01, 0.74, 60)],
+    ['flat curve', bristle(7, 0.46, 0.33, 0.01, 0.8)], ['flat angle', bristle(8, 0.37, 0.25, 2, 0.48, 60)], ['flat fan', bristle(9, 0.66, 0.62, 0.5, 0.68, 25)],
+  ] as const) add(`tip bristle ${label}`, `a bristle tip, ${label}: its footprint, and the streaks it drags along a stroke`, base(tip), simulated);
+  const erodible = (shapeCode: number, hardness: number, diameter: number, gridSize: number, spacing = 2): PhotoshopKnownTip =>
+    ({ kind: 'erodible', shape: shapeCode, simulatedHardness: hardness, lengthRatio: 100, gridSize, customized: false, physics: true, geometry: geometry(diameter, spacing, {}) });
+  for (const [label, tip] of [
+    ['point h48', erodible(0, 48, 100, 11)], ['point h100', erodible(0, 100, 100, 5)], ['round h48', erodible(2, 48, 100, 11)], ['square h48', erodible(3, 48, 100, 11)], ['triangle h92', erodible(4, 92, 100, 13)],
+    ['point h48 d25', erodible(0, 48, 25, 11)],
+  ] as const) add(`tip erodible ${label}`, `an erodible tip, ${label}: the footprint pressure presses into the paper, and whether it wears along a stroke`, base(tip), [...simulated, mark('line', { pressure: 0.25 })]);
+  const airbrush = (hardness: number, granularity: number, splatSize: number, splatCount: number, cutoffAngle: number, diameter = 50, spacing = 1): PhotoshopKnownTip =>
+    ({ kind: 'airbrush', shape: 5, simulatedHardness: hardness, lengthRatio: 100, cutoffAngle, granularity, streakiness: 1, splatSize, splatCount, physics: true, geometry: geometry(diameter, spacing, {}) });
+  for (const [label, tip] of [
+    ['soft', airbrush(1, 0, 1, 200, 45)], ['hard', airbrush(100, 0, 1, 200, 1)], ['soft grainy', airbrush(1, 100, 1, 200, 45)], ['hard grainy sparse', airbrush(100, 100, 1, 9, 1)],
+    ['splat big', airbrush(1, 100, 43, 12, 45, 30, 43)], ['splat fine', airbrush(1, 100, 3, 19, 45, 30, 43)],
+  ] as const) add(`tip airbrush ${label}`, `an airbrush tip, ${label}: its spray's profile and grain`, base(tip), simulated, label.includes('grainy') || label.includes('splat') ? 2 : undefined);
   return probes;
 }
 
