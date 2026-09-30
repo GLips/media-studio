@@ -356,7 +356,7 @@ ${KEEP.wgsl}
 ${TRACE_CROP.wgsl}
 ${STAMP_PAINT_FIELD_SHARE.wgsl}
 ${STAMP_FLOOD_FRONT_SHARE_WGSL}
-${wet ? `${WET_WGSL}\n${compositor.deposit.wet}` : ''}
+${wet ? `${WET_WGSL}\n${stampPaintTargetWgsl('fresh', 21, compositor.targets.layer, 'write')}\n${compositor.deposit.wet}` : ''}
 // The diagnostic variant (StampPaintRenderer's trace): the same resolve, recording each stage's coverage as it goes.
 override TRACE: bool = false;
 var<private> tracedPixel: vec2u;
@@ -1139,8 +1139,9 @@ async function rendererOnDevice(
     // Only a painting with colour dynamics lays tints, and only for a compositor that reads them.
     tintA: laysTints ? target(width, height, RENDER) : null,
     tintB: laysTints ? target(width, height, RENDER) : null,
-    // Only a painting with washes leaves footprints.
+    // Only a painting with washes leaves footprints, and what each wash deposit laid (`fresh`, shaped as the layer).
     footprint: wetness?.landings.size ? target(width, height, STORAGE) : null,
+    fresh: wetness?.landings.size ? layered(compositor.targets.layer, STORAGE) : null,
   };
 
   /** Binds each of `resources` at its index; a null is a binding the pipeline doesn't have. */
@@ -1161,8 +1162,10 @@ async function rendererOnDevice(
 
   const regions = loadRegions();
   const stages = wetness?.landings.size
-    ? STAMP_WET_STAGES.map((stage) => ({ after: stage.after, encode: stage.load({ device, painting, medium: wetMedium!, wetness, width, height, layer: targets.layer, footprint: targets.footprint! }).encode }))
+    ? STAMP_WET_STAGES.map((stage) => Object.assign(stage.load({ device, painting, medium: wetMedium!, wetness, width, height, layer: targets.layer, footprint: targets.footprint!, fresh: targets.fresh! }), { after: stage.after }))
     : [];
+  /** How far past its stamps' reach a wash deposit resolves, so its footprint covers what its stages work over. */
+  const wetReach = (deposit: CompiledStampDeposit) => Math.max(0, ...stages.map((stage) => stage.reach?.(deposit) ?? 0));
 
   /**
    * Works out, once, what of the painting doesn't change with time: each flood's body, each state of the fluid a
@@ -1534,7 +1537,7 @@ async function rendererOnDevice(
         put('strength', action.kind === 'lift' ? action.strength : 0);
         put('action', WET_ACTIONS[action.kind]);
       }),
-      landing && targets.footprint!.view, null, null, null,
+      landing && targets.footprint!.view, landing && targets.fresh!.view, null, null,
       ...compositor.deposit.resources({ tints: { a: tinted ? targets.tintA!.view : targets.blank.view, b: tinted ? targets.tintB!.view : targets.blank.view }, wet: !!landing }),
     ], box.w, box.h);
   }
@@ -1710,7 +1713,7 @@ async function rendererOnDevice(
           const loadedDeposit = bank.deposits.get(deposit)!;
           // The rim is where the mask stands above a blur as wide as its edge.
           const sigma = loadedDeposit.active.edgeSigma, blurred = sigma > 0;
-          const box = depositBox(deposit, loadedDeposit, count, dualCount, blurred ? sigma * 3 : 2);
+          const box = depositBox(deposit, loadedDeposit, count, dualCount, (blurred ? sigma * 3 : 2) + (pass.kind === 'wash' ? wetReach(deposit) : 0));
           if (!box) continue;
           drawStamps(encoder, deposit, loadedDeposit, count, dualCount, box);
           if (blurred) blurMask(encoder, sigma, box);

@@ -164,9 +164,12 @@ fn landDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f
   }
   let incoming = incomingAt(tooth, at);
   for (var l = 0u; l < LAYERS; l++) {
-    var now = wetLand(textureLoad(layer, pixel, l), incoming[l], cover, wet.wetness, wet.workable);
+    let was = textureLoad(layer, pixel, l);
+    var now = wetLand(was, incoming[l], cover, wet.wetness, wet.workable);
     if (l == 0u) { now.x = cover + under * (1.0 - cover); }
     textureStore(layer, pixel, l, now);
+    // What it laid, which the flow stage moves (stamp-wet-flow.ts).
+    textureStore(fresh, pixel, l, now - was);
   }
 }`,
       writerFor: (deposit) => {

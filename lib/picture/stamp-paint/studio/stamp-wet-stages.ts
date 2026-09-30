@@ -10,12 +10,13 @@ import type { PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
 import type { StampWashRecord, StampWetLanding, StampWetness } from '../models/stamp-wetness.ts';
 import type { CompiledStampDeposit, CompiledStampPaint, CompiledStampPass } from '../models/stamp-paint-recipe.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
+import { STAMP_WET_FLOW_STAGE } from './stamp-wet-flow.ts';
 import { STAMP_LIFT_RUN_BACK_STAGE } from './stamp-wet-lift-run-back.ts';
 
 /**
- * What a stage is given as the renderer loads a painting: its device, the painting's size, medium and wetness; the
- * group layer it works on, rgba16float layers (coverage, then pigment amounts), whole and by layer; and `footprint`,
- * rgba16float, where the renderer leaves each wash deposit's resolve over its box (StampWetStageMoment).
+ * What a stage is given as a painting loads: its device, size, medium and wetness; the group layer it works on
+ * (coverage, then pigment amounts), whole and by layer; `footprint`, where each wash deposit's resolve is left over
+ * its box (StampWetStageMoment); and `fresh`, shaped as the layer: what a paint deposit laid, where footprint r > 0.
  */
 export type StampWetStageContext = {
   device: GPUDevice;
@@ -26,6 +27,7 @@ export type StampWetStageContext = {
   height: number;
   layer: { texture: GPUTexture; view: GPUTextureView; layers: readonly GPUTextureView[] };
   footprint: { texture: GPUTexture; view: GPUTextureView };
+  fresh: { texture: GPUTexture; view: GPUTextureView; layers: readonly GPUTextureView[] };
 };
 
 /**
@@ -42,10 +44,14 @@ export type StampWetStage = {
   after: StampWetStageMoment['kind'];
   /**
    * Made once a painting loads; `encode` adds its work to a frame's encoder and returns the pixels it changed (null
-   * for none), which the renderer lays the group over along with its deposits'.
+   * for none), which the renderer lays the group over with its deposits'. `reach`: how far past a wash deposit's
+   * stamps it works, px, so the renderer resolves the deposit that much wider.
    */
-  load: (context: StampWetStageContext) => { encode: (encoder: GPUCommandEncoder, moment: StampWetStageMoment) => StampPixelBox | null };
+  load: (context: StampWetStageContext) => {
+    reach?: (deposit: CompiledStampDeposit) => number;
+    encode: (encoder: GPUCommandEncoder, moment: StampWetStageMoment) => StampPixelBox | null;
+  };
 };
 
 /** Every stage, in the order each moment runs them. */
-export const STAMP_WET_STAGES: readonly StampWetStage[] = [STAMP_LIFT_RUN_BACK_STAGE];
+export const STAMP_WET_STAGES: readonly StampWetStage[] = [STAMP_WET_FLOW_STAGE, STAMP_LIFT_RUN_BACK_STAGE];
