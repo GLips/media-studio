@@ -1,9 +1,8 @@
 // stamp-pigment-paint.ts: a stamp painting's paint when its style paints in pigment, worked out once on the CPU for
 // the GPU's pigment compositor (stamp-paint-pigment-compositor.ts), which lays and dries it per pixel.
 //
-// Each group is one wet wash whose palette is every pigment its deposits lay (a colour fitted as a pigment of its
-// own). Its layer holds each palette pigment's amount per pixel, so a pigment stays itself to the pixel, where
-// vid-81's lift needs it.
+// Each group's palette is every pigment its deposits lay (a colour fitted as a pigment of its own). Its layer holds
+// each palette pigment's amount per pixel, so a pigment stays itself to the pixel, where a lift needs it.
 
 import { paintPigmentFromColor, paintPigmentInMedium, type PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
 import { paintMixtureComponents } from '#lib/picture/paint/models/paint-mixture.ts';
@@ -45,7 +44,8 @@ export type StampPigmentPaint = {
   medium: PaintMedium;
   bands: PaintBands;
   groups: readonly StampPigmentGroup[];
-  deposits: ReadonlyMap<CompiledStampDeposit, readonly StampPigmentComponent[]>;
+  /** Each deposit's group, by index, and its components: none for water or a lift. */
+  deposits: ReadonlyMap<CompiledStampDeposit, { group: number; components: readonly StampPigmentComponent[] }>;
 };
 
 export const stampPigmentLayers = (slots: number) => Math.ceil((slots + 1) / 4);
@@ -61,15 +61,22 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
   const known = new Map(Object.values(mixing.pigments).map((appearance) => [appearance.id, paintPigmentInMedium(appearance, medium, bands)]));
   const named = new Set(known.keys());
   const white = medium.lightening.kind === 'white' ? medium.lightening.white.id : null;
-  const deposits = new Map<CompiledStampDeposit, StampPigmentComponent[]>();
-  const groups = painting.groups.map((group): StampPigmentGroup => {
+  const deposits = new Map<CompiledStampDeposit, { group: number; components: StampPigmentComponent[] }>();
+  const groups = painting.groups.map((group, g): StampPigmentGroup => {
     const palette: PaintPigment[] = [];
     for (const deposit of group.passes.flatMap((pass) => pass.deposits)) {
-      const { material } = deposit;
+      const { action } = deposit;
+      // Water and a lift lay no pigment of their own.
+      if (action.kind !== 'paint') {
+        deposits.set(deposit, { group: g, components: [] });
+        continue;
+      }
+      if (action.material.kind !== 'constant') throw new Error(`stamp paint: ${deposit.id} grades its material, which isn't painted yet (vid-117)`);
+      const material = action.material.value;
       const laid = material.kind === 'mixture'
         ? paintMixtureComponents(material, medium, bands)
         : [{ pigment: byColor.get(material.color) ?? byColor.set(material.color, paintPigmentFromColor(material.color, medium, bands)).get(material.color)!, amount: medium.body }];
-      deposits.set(deposit, laid.map(({ pigment, amount }) => {
+      deposits.set(deposit, { group: g, components: laid.map(({ pigment, amount }) => {
         if (material.kind === 'mixture' && pigment.id !== white && !named.has(pigment.id)) {
           throw new Error(`stamp paint: ${deposit.id} mixes ${pigment.id}, which isn't among its style's pigments (${[...named].join(', ')})`);
         }
@@ -78,7 +85,7 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
         let slot = palette.findIndex(({ id }) => id === pigment.id);
         if (slot < 0) slot = palette.push(pigment) - 1;
         return { slot, amount, granulation: pigment.granulation * medium.granulation, flocculation: pigment.flocculation, seed: paintPigmentSeed(pigment.id) };
-      }));
+      }) });
     }
     if (palette.length > STAMP_PIGMENT_GROUP_SLOTS) {
       throw new Error(`stamp paint: ${group.id} mixes ${palette.length} pigments, over the ${STAMP_PIGMENT_GROUP_SLOTS} a wash holds; split it into two groups (${palette.map(({ id }) => id).join(', ')})`);

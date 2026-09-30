@@ -1,7 +1,7 @@
-// stamp-fill.ts: how a fill covers its region, as a wash or in strokes (StampFillApplication).
+// stamp-fill.ts: how a fill covers its region, flooded or in strokes (StampFillApplication).
 //
-// Wet paint's build converges inside a region, and only its edge shows the brush. So a wash is a body worked out
-// per pixel (washBody) under one stroke of the real brush along the contour half a diameter inside, where its
+// Wet paint's build converges inside a region, and only its edge shows the brush. So a flood is a body worked out
+// per pixel (floodBody) under one stroke of the real brush along the contour half a diameter inside, where its
 // stamps' edges touch the outline; a neck narrower than a diameter is the body's alone. The brush's dual is stamped
 // along the contour and in rows over the region.
 //
@@ -16,7 +16,7 @@ import {
   stampDistanceGrid, stampGridAt, stampGridContours, stampGridLocalMax, stampPolygonBox, stampRegionPolygon, type StampBox, type StampGrid, type StampPoint, type StampRegion,
 } from './stamp-region.ts';
 
-/** Rows of a wash's dual, a quarter diameter apart: close enough that a tip's own falloff doesn't band. */
+/** Rows of a flood's dual, a quarter diameter apart: close enough that a tip's own falloff doesn't band. */
 const DUAL_ROWS = 0.25;
 
 /**
@@ -40,8 +40,8 @@ export function stampRegionOutline(region: StampRegion): StampStrokePoint[] {
   return [...polygon, polygon[0]].map(({ x, y }) => ({ x, y }));
 }
 
-/** A wash's body as the renderer lays it (STAMP_REGION_WGSL's washBody). */
-export type StampWashBody = {
+/** A flood's body as the renderer lays it (STAMP_REGION_WGSL's floodBody). */
+export type StampFloodBody = {
   /** The region, traced (stampRegionPolygon). */
   polygon: readonly StampPoint[];
   /** The body's box: the region's own. */
@@ -53,14 +53,14 @@ export type StampWashBody = {
 };
 
 /** A fill's stamps and body, placed once. */
-export type StampWashPlacement = { body: StampWashBody; stamps: PlacedStamp[]; dualStamps: PlacedStamp[] };
+export type StampFloodPlacement = { body: StampFloodBody; stamps: PlacedStamp[]; dualStamps: PlacedStamp[] };
 
 /**
  * Places a fill of `region` by `brush` at `diameter`: its body, its edge stroke (untapered and unfading, so the
  * contour is as dense at its end as its start) and its dual's stamps, along the contour and in rows along `direction`
  * (radians) wherever the region comes within half a diameter.
  */
-export function placeStampWash(region: StampRegion, brush: StampBrush, diameter: number, direction: number, seed: string): StampWashPlacement {
+export function placeStampFlood(region: StampRegion, brush: StampBrush, diameter: number, direction: number, seed: string): StampFloodPlacement {
   const polygon = stampRegionPolygon(region), inset = diameter / 2;
   // A quarter of the inset: the contour's corners are exact to a few pixels, which the brush's own edge hides.
   const cell = Math.max(1, inset / 4);
@@ -80,19 +80,19 @@ export function placeStampWash(region: StampRegion, brush: StampBrush, diameter:
 }
 
 /**
- * A wash body's paint: its brush's converged build, read off a straight stroke (`probe`). Toward full it has built
+ * A flood body's paint: its brush's converged build, read off a straight stroke (`probe`). Toward full it has built
  * to 1; a buildToOpacity to the strongest opacity a stamp brought. `densest`: a glaze's densest stamp, its cap too, as
  * a body has no tip to take off.
  */
-export type StampWashBodyLevels = { built: number; densest: number };
+export type StampFloodBodyLevels = { built: number; densest: number };
 
-export function stampWashBodyLevels(towardFull: boolean, probe: readonly PlacedStamp[]): StampWashBodyLevels {
+export function stampFloodBodyLevels(towardFull: boolean, probe: readonly PlacedStamp[]): StampFloodBodyLevels {
   const densest = probe.reduce((most, s) => Math.max(most, s.alpha * s.opacity), 0);
   return { built: towardFull ? 1 : probe.reduce((most, s) => Math.max(most, s.opacity), 0), densest };
 }
 
-/** A straight stroke of `brush` four diameters long, for its converged build (stampWashBodyLevels). */
-export function stampWashProbe(brush: StampBrush, diameter: number, seed: string): PlacedStamp[] {
+/** A straight stroke of `brush` four diameters long, for its converged build (stampFloodBodyLevels). */
+export function stampFloodProbe(brush: StampBrush, diameter: number, seed: string): PlacedStamp[] {
   const untapered = { ...brush, taper: { ...brush.taper, start: 0, end: 0, size: 1, opacity: 1 }, falloff: 0 };
   return placeStrokeStamps([{ x: 0, y: 0 }, { x: diameter * 4, y: 0 }], untapered, diameter, seed);
 }
@@ -102,9 +102,9 @@ export function stampWashProbe(brush: StampBrush, diameter: number, seed: string
  * It runs from `from` to `to`, the ends of all it paints, a scattered stamp's reach past the outline too, so
  * `progress` 0 shows none of it and 1 all.
  */
-export type StampWashFront = { normal: readonly [number, number]; from: number; to: number; soft: number };
+export type StampFloodFront = { normal: readonly [number, number]; from: number; to: number; soft: number };
 
-export function stampWashFront(polygon: readonly StampPoint[], stamps: readonly PlacedStamp[], direction: number, diameter: number): StampWashFront {
+export function stampFloodFront(polygon: readonly StampPoint[], stamps: readonly PlacedStamp[], direction: number, diameter: number): StampFloodFront {
   const normal = [-Math.sin(direction), Math.cos(direction)] as const;
   let from = Infinity, to = -Infinity;
   const reach = (x: number, y: number, r: number) => {
@@ -118,17 +118,17 @@ export function stampWashFront(polygon: readonly StampPoint[], stamps: readonly 
   return { normal, from, to, soft: diameter };
 }
 
-/** The share of a fill's paint at `p` shown with its front (StampWashFront) at `progress`, in WGSL. */
-export const STAMP_WASH_FRONT_SHARE_WGSL = /* wgsl */ `fn washFrontShare(p: vec2f, normal: vec2f, start: f32, end: f32, soft: f32, progress: f32) -> f32 {
+/** The share of a fill's paint at `p` shown with its front (StampFloodFront) at `progress`, in WGSL. */
+export const STAMP_FLOOD_FRONT_SHARE_WGSL = /* wgsl */ `fn floodFrontShare(p: vec2f, normal: vec2f, start: f32, end: f32, soft: f32, progress: f32) -> f32 {
   let at = start + progress * (end - start + soft);
   return clamp((at - dot(p, normal)) / soft, 0.0, 1.0);
 }`;
 
 /**
- * How a fill lays its paint. `wash`: a converged body under the brush's edge (placeStampWash), as wet paint floods a
+ * How a fill lays its paint. `flood`: a converged body under the brush's edge (placeStampFlood), as wet paint floods a
  * shape. `strokes`: real strokes of the brush in a pattern, as a crayon or a pencil fills one (stampFillStrokePath).
  */
-export type StampFillApplication = { kind: 'wash' } | ({ kind: 'strokes' } & StampFillStrokes);
+export type StampFillApplication = { kind: 'flood' } | ({ kind: 'strokes' } & StampFillStrokes);
 
 /**
  * `backAndForth`: one stroke turning at each end of a row. `zigzag`: one stroke running diagonally from one side to

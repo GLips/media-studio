@@ -30,6 +30,13 @@ otherwise, for a `buildToOpacity` whose opacity falls (Photoshop never lowers wh
 stamps in order and lays each by the table's `lay`. `stamp-paint-recipe.ts` is the painting a scene writes, with its
 paper. `studio/` is the WebGPU renderer, its uniform layout and the compositor.
 
+Wet paint is a wash, a pass painted wet (`group.wash`): its deposits paint, wet (`water`, `soften`, `bloom`) or lift,
+and it can `wait` in painting time, which only its waits advance. `stamp-wetness.ts` works out, once as a painting
+loads, how wet the paper is where each lands, on coarse grids; the pigment compositor's `landDeposit` lays it by the
+laws in `stamp-wet-landing.ts` and `stamp-wet-lift.ts`, and `studio/stamp-wet-stages.ts` lists what then works over
+the neighbourhood (paint running into water). A plain pass lands as it always has. Flat colour has no washes.
+`stamp-paint-events.ts` is the painting in painting order, each deposit with the time it's settled by.
+
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants
 of `procreate-reading.ts`), and the stroke Procreate draws its previews along. Its `engine/` reads binary plists and
 `.procreate` canvases.

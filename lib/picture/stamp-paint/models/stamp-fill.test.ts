@@ -30,14 +30,14 @@ function compiledFill(region: StampRegion, diameter: number, settings: { applica
     pass.fill('fill', { brush: { ...brush, ...(media && { media }) }, material: { kind: 'color', color: '#406585' }, diameter, region, ...settings }))))).groups[0].passes[0].deposits[0];
 }
 
-function compiledWash(region: StampRegion, diameter: number) {
-  const deposit = compiledFill(region, diameter, { application: { kind: 'wash' } });
-  if (deposit.kind !== 'wash') throw new Error(`a wash compiled to a ${deposit.kind}`);
+function compiledFlood(region: StampRegion, diameter: number) {
+  const deposit = compiledFill(region, diameter, { application: { kind: 'flood' } });
+  if (deposit.kind !== 'flood') throw new Error(`a flood compiled to a ${deposit.kind}`);
   return deposit;
 }
 
-test("a wash's edge stroke puts its stamps' edges on the outline, round a disc and into a concave notch's corners, never across it", () => {
-  const disc = compiledWash({ kind: 'ellipse', x: 200, y: 200, radiusX: 120, radiusY: 120 }, 50);
+test("a flood's edge stroke puts its stamps' edges on the outline, round a disc and into a concave notch's corners, never across it", () => {
+  const disc = compiledFlood({ kind: 'ellipse', x: 200, y: 200, radiusX: 120, radiusY: 120 }, 50);
   // Untapered at full size, each stamp's centre half a diameter in, so its edge touches the outline all the way round.
   assert.ok(disc.stamps.length > 50);
   for (const { x, y, diameter } of disc.stamps) {
@@ -45,7 +45,7 @@ test("a wash's edge stroke puts its stamps' edges on the outline, round a disc a
     assert.ok(Math.abs(Math.hypot(x - 200, y - 200) - 95) < 2, `stamp at ${x},${y}`);
   }
   // A U, its notch 200 wide from the top down to y 200: the edge follows the notch's sides, but paints nothing in it.
-  const u = compiledWash(polygon(0, 0, 100, 0, 100, 200, 300, 200, 300, 0, 400, 0, 400, 300, 0, 300), 40);
+  const u = compiledFlood(polygon(0, 0, 100, 0, 100, 200, 300, 200, 300, 0, 400, 0, 400, 300, 0, 300), 40);
   assert.deepEqual(u.stamps.filter(({ x, y }) => x > 100 && x < 300 && y < 200), []);
   for (const [x, y] of [[80, 20], [320, 20], [120, 220], [280, 220]]) assert.ok(u.stamps.some((s) => Math.hypot(s.x - x, s.y - y) < 6), `no stamp near ${x},${y}`);
 });
@@ -66,7 +66,7 @@ test("a fill in strokes lays marks whose edges reach the outline, never past it,
 
 test("a fill is laid as its brush's media lays it unless it says, and refused when no one says", () => {
   const square = polygon(0, 0, 200, 0, 200, 200, 0, 200);
-  assert.equal(compiledFill(square, 30, {}, 'wet').kind, 'wash');
+  assert.equal(compiledFill(square, 30, {}, 'wet').kind, 'flood');
   assert.equal(compiledFill(square, 30, {}, 'dry').kind, 'stroke');
   assert.equal(compiledFill(square, 30, { application: { kind: 'strokes', pattern: 'hatch' } }, 'wet').kind, 'stroke');
   assert.throws(() => compiledFill(square, 30, {}), /states its application/);

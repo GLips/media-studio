@@ -2,9 +2,9 @@
 // group on bare paper; only images and stamp buffers persist.
 //
 // A deposit paints within its visible stamps' box in Photoshop's order: a render pass stamps its coverage mask and
-// joins a wash's body to it, compute passes blur it, and a compute pass resolves it onto its group's layer.
+// joins a flood's body to it, compute passes blur it, and a compute pass resolves it onto its group's layer.
 //
-// What doesn't change with time is worked out once, at load, into cropped single-channel textures: each wash's body,
+// What doesn't change with time is worked out once, at load, into cropped single-channel textures: each flood's body,
 // the masking fluid under each deposit, each pass's `within` region.
 //
 // Formulas and stage orders are generated from the models' WGSL registries and held by the GPU gate
@@ -16,11 +16,14 @@ import {
   STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL, STAMP_ACCUMULATIONS, STAMP_BLUR_LEVELS, STAMP_RESOLVE_ORDERS, STAMP_RESOLVE_PLANS, stampAccumulationBuild, stampAccumulationIndex,
   stampAccumulationPlan, stampActiveLayers, stampResolveOrderIndex, stampResolveOrdersWgsl, stampResolvePlan, type StampAccumulationPlan, type StampActiveLayer, type StampResolveStage,
 } from '../models/stamp-deposit-stages.ts';
-import { STAMP_WASH_FRONT_SHARE_WGSL } from '../models/stamp-fill.ts';
+import { STAMP_FLOOD_FRONT_SHARE_WGSL } from '../models/stamp-fill.ts';
 import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
-import { stampDepositShowsAt, stampWashProgressAt, visibleStampCountAt, type CompiledStampDeposit, type CompiledStampMask, type CompiledStampMaskArea, type CompiledStampPaint, type CompiledStampPass, type StampPaintPaper } from '../models/stamp-paint-recipe.ts';
+import { stampDepositShowsAt, stampFloodProgressAt, visibleStampCountAt } from '../models/stamp-deposit-reveal.ts';
+import type { CompiledStampDeposit, CompiledStampMask, CompiledStampMaskArea, CompiledStampPaint, CompiledStampPass, StampPaintPaper } from '../models/stamp-paint-recipe.ts';
 import { compileStampPigmentPaint, type StampPaintMixing } from '../models/stamp-pigment-paint.ts';
+import { compileStampWetness, type StampWetness } from '../models/stamp-wetness.ts';
 import { PAINT_BANDS } from '#lib/picture/paint/models/paint-spectrum.ts';
+import type { PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
 import { STAMP_GRID_AT_WGSL, STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL, stampEdgeReach, stampEdgeWidth, stampPolygonBox, type StampBox, type StampPoint } from '../models/stamp-region.ts';
 import type { PlacedStamp } from '../models/stamp-placement.ts';
 import { stampBlurRegion, type StampPixelBox } from '../models/stamp-blur-region.ts';
@@ -29,6 +32,7 @@ import { flatStampPaintCompositor, type StampPaintCompositor, type StampPaintTar
 import { stampPigmentCompositor } from './stamp-paint-pigment-compositor.ts';
 import { createStampPaintDevice, FULL_FRAME_WGSL, loadStampPaintImages, readStampTipLevels, type StampPaintImage, uploadStampPaintGreyImages } from './stamp-paint-gpu.ts';
 import { stampUniformLayout, stampUniformStruct, stampUniformWriter, type StampUniformViews } from './stamp-uniform-layout.ts';
+import { STAMP_WET_STAGES } from './stamp-wet-stages.ts';
 
 /**
  * Floats per stamp in the instance buffer: x, y, diameter, rotation, then alpha, blur, grain turn and flips (x 1, y 2),
@@ -273,7 +277,7 @@ const DEPOSIT = stampUniformLayout('Deposit', [
 /** What a deposit's resolve does, a bit each in its `flags`, and a WGSL constant each of the same name in capitals. */
 const DEPOSIT_FLAGS = {
   canvasGrain: 1, dual: 2, dualCanvasGrain: 4, paper: 8, masked: 16, clipped: 32, clips: 64,
-  pooled: 128, dualPooled: 256, dualLayer: 512, within: 1024, wash: 2048,
+  pooled: 128, dualPooled: 256, dualLayer: 512, within: 1024, flood: 2048,
 } as const;
 
 /**
@@ -284,6 +288,37 @@ const DEPOSIT_FLAGS = {
 const KEEP = stampUniformLayout('Keep', [
   ['fluid', 'vec4f'], ['within', 'vec4f'], ['load', 'vec4f'], ['front', 'vec4f'], ['loadEnds', 'vec2f'], ['frontShape', 'vec2f'], ['loadKind', 'i32'],
 ]);
+/**
+ * A wash deposit's landing (StampWetLanding): its wetness and workable grids' lattice (x0, y0, cell) and size, where
+ * each starts in the wet grid buffer, its painting time, its brush's water, a lift's strength, and what it does.
+ */
+const WET_OP = stampUniformLayout('WetOp', [
+  ['lattice', 'vec4f'], ['size', 'vec2u'], ['wetnessFirst', 'u32'], ['workableFirst', 'u32'],
+  ['tau', 'f32'], ['water', 'f32'], ['strength', 'f32'], ['action', 'u32'],
+]);
+const WET_ACTIONS = { paint: 0, water: 1, lift: 2 } as const;
+const WET_WGSL = /* wgsl */ `
+${WET_OP.wgsl}
+@group(0) @binding(18) var<storage, read> grid: array<f32>;
+@group(0) @binding(19) var<uniform> wet: WetOp;
+@group(0) @binding(20) var footprint: texture_storage_2d<rgba16float, write>;
+${STAMP_GRID_AT_WGSL}
+${Object.entries(WET_ACTIONS).map(([action, index]) => `const WET_${action.toUpperCase()} = ${index}u;`).join('\n')}
+struct WetLanding { wetness: f32, workable: f32, tau: f32, water: f32, strength: f32, action: u32 }
+fn wetLandingAt(at: vec2f) -> WetLanding {
+  return WetLanding(
+    gridAt(at, wet.lattice.xyz, wet.size, wet.wetnessFirst), gridAt(at, wet.lattice.xyz, wet.size, wet.workableFirst),
+    wet.tau, wet.water, wet.strength, wet.action,
+  );
+}`;
+// A wash deposit lands, and leaves its footprint for the stages after it (StampWetStageMoment): what it laid, and
+// where paint may land at all.
+const WET_LAND_WGSL = /* wgsl */ `landDeposit(pixel, coverage, rims, tooth, at, wetLandingAt(at));
+  var allowed = 1.0;
+  if ((u.flags & MASKED) != 0u) { allowed *= 1.0 - regionAt(fluid, k.fluid, pixel); }
+  if ((u.flags & WITHIN) != 0u) { allowed *= regionAt(within, k.within, pixel); }
+  if ((u.flags & CLIPPED) != 0u) { allowed *= clamp(clipped.r, 0.0, 1.0); }
+  textureStore(footprint, pixel, vec4f(coverage, allowed, 0.0, 0.0));`;
 const DEPOSIT_FLAGS_WGSL = Object.entries(DEPOSIT_FLAGS).map(([flag, bit]) => `const ${flag.replace(/[A-Z]/g, (c) => `_${c}`).toUpperCase()} = ${bit}u;`).join('\n');
 
 /**
@@ -302,9 +337,10 @@ const TRACE_SLOTS = STAMP_RESOLVE_PLANS.grainFirst.length + 2;
 /** A traced deposit's crop (its origin and size in the painting's pixels) and where in the trace buffer its slots start, in floats. */
 const TRACE_CROP = stampUniformLayout('TraceCrop', [['origin', 'vec2u'], ['extent', 'vec2u'], ['offset', 'u32']]);
 
-// A compute pass has no derivatives to choose a mip level by, so each grain's level is worked out on the CPU: a tile
-// is a fixed number of pixels across the whole painting, so it reads the same level everywhere.
-const depositWgsl = (compositor: StampPaintCompositor) => /* wgsl */ `
+// A compute pass has no derivatives, so each grain's mip level is worked out on the CPU. A wash's resolve (`wet`) is
+// a module of its own: WGSL counts a binding read under a false override as used, and a dry resolve mustn't hold
+// the wet bindings.
+const depositWgsl = (compositor: StampPaintCompositor, wet: boolean) => /* wgsl */ `
 ${DEPOSIT.wgsl}
 ${compositor.deposit.layout.wgsl}
 ${stampPaintTargetWgsl('layer', 8, compositor.targets.layer, 'read_write')}
@@ -316,7 +352,8 @@ ${RESOLVE_STAGES_WGSL}
 ${KEEP.wgsl}
 ${TRACE_CROP.wgsl}
 ${STAMP_PAINT_FIELD_SHARE.wgsl}
-${STAMP_WASH_FRONT_SHARE_WGSL}
+${STAMP_FLOOD_FRONT_SHARE_WGSL}
+${wet ? `${WET_WGSL}\n${compositor.deposit.wet}` : ''}
 // The diagnostic variant (StampPaintRenderer's trace): the same resolve, recording each stage's coverage as it goes.
 override TRACE: bool = false;
 var<private> tracedPixel: vec2u;
@@ -402,9 +439,9 @@ fn rimOf(a: f32, soft: f32, sharpness: f32) -> f32 { return clamp((a - soft) * s
   if ((u.flags & MASKED) != 0u) { keep *= 1.0 - regionAt(fluid, k.fluid, pixel); }
   if ((u.flags & WITHIN) != 0u) { keep *= regionAt(within, k.within, pixel); }
   // A fill's load is how much paint it lays, and its front how much of it shows yet: burnt edges and a clip base alike.
-  if ((u.flags & WASH) != 0u) {
+  if ((u.flags & FLOOD) != 0u) {
     keep *= clamp(mix(k.loadEnds.x, k.loadEnds.y, paintFieldShare(at, k.loadKind, k.load)), 0.0, 1.0);
-    keep *= washFrontShare(at, k.front.xy, k.front.z, k.front.w, k.frontShape.x, k.frontShape.y);
+    keep *= floodFrontShare(at, k.front.xy, k.front.z, k.front.w, k.frontShape.x, k.frontShape.y);
   }
   let clipped = textureLoad(clip, pixel);
   if ((u.flags & CLIPPED) != 0u) { keep *= clamp(clipped.r, 0.0, 1.0); }
@@ -412,7 +449,8 @@ fn rimOf(a: f32, soft: f32, sharpness: f32) -> f32 { return clamp((a - soft) * s
   traced(${TRACE_SLOTS - 1}u, coverage);
   // A burnt rim burns into paint already there, the group's or the deposit's own (its stamps laid over one another).
   let burnable = max(layerCoverage(pixel), clamp(m, 0.0, 1.0)) * keep * u.opacity;
-  layDeposit(pixel, coverage, vec2f(clamp(burnt, 0.0, 1.0) * burnable, clamp(dualBurnt, 0.0, 1.0) * burnable), tooth, at);
+  let rims = vec2f(clamp(burnt, 0.0, 1.0) * burnable, clamp(dualBurnt, 0.0, 1.0) * burnable);
+  ${wet ? WET_LAND_WGSL : 'layDeposit(pixel, coverage, rims, tooth, at);'}
   if ((u.flags & CLIPS) != 0u) { textureStore(clip, pixel, vec4f(coverage) + clipped * (1.0 - coverage)); }
 }`;
 
@@ -459,7 +497,7 @@ ${compositor.output}
 @fragment fn output(@builtin(position) at: vec4f) -> @location(0) vec4f {
   let pixel = vec2u(at.xy);
   let color = screenColor(pixel);
-  // An ordered dither, the same each frame, so a smooth wash doesn't band when the half floats become bytes.
+  // An ordered dither, the same each frame, so a smooth flood doesn't band when the half floats become bytes.
   let dither = (fract(dot(vec2f(pixel), vec2f(0.7548776662, 0.5698402910))) - 0.5) / 255.0;
   return vec4f(clamp(color + dither, vec3f(0.0), vec3f(1.0)), 1.0);
 }`;
@@ -501,26 +539,26 @@ ${STAMP_POLYGON_DISTANCE_WGSL}
   return vec4f(fluid);
 }`;
 
-// A wash's body over its box (washBody), how thick its region is read from its grid (gridAt): the grid's first value
+// A flood's body over its box (floodBody), how thick its region is read from its grid (gridAt): the grid's first value
 // in `grid`, its origin and cell, and its columns and rows.
-const WASH_BODY = stampUniformLayout('WashBody', [['box', 'vec4f'], ['grid', 'vec4f'], ['gridSize', 'vec2u'], ['first', 'u32'], ['count', 'u32'], ['gridFirst', 'u32'], ['inset', 'f32']]);
-const WASH_BODY_WGSL = /* wgsl */ `
+const FLOOD_BODY = stampUniformLayout('FloodBody', [['box', 'vec4f'], ['grid', 'vec4f'], ['gridSize', 'vec2u'], ['first', 'u32'], ['count', 'u32'], ['gridFirst', 'u32'], ['inset', 'f32']]);
+const FLOOD_BODY_WGSL = /* wgsl */ `
 ${COVERAGE_FORMULAS_WGSL}
 ${STAMP_REGION_WGSL}
 ${FULL_FRAME_WGSL}
-${WASH_BODY.wgsl}
-@group(0) @binding(0) var<uniform> u: WashBody;
+${FLOOD_BODY.wgsl}
+@group(0) @binding(0) var<uniform> u: FloodBody;
 @group(0) @binding(1) var<storage, read> points: array<vec2f>;
 @group(0) @binding(2) var<storage, read> grid: array<f32>;
 ${STAMP_POLYGON_DISTANCE_WGSL}
 ${STAMP_GRID_AT_WGSL}
-@fragment fn washBodyAt(@builtin(position) at: vec4f) -> @location(0) vec4f {
+@fragment fn floodBodyAt(@builtin(position) at: vec4f) -> @location(0) vec4f {
   let p = at.xy + u.box.xy;
-  return vec4f(washBody(polygonDistance(p, u.first, u.count), gridAt(p, u.grid.xyz, u.gridSize, u.gridFirst), u.inset));
+  return vec4f(floodBody(polygonDistance(p, u.first, u.count), gridAt(p, u.grid.xyz, u.gridSize, u.gridFirst), u.inset));
 }`;
 
-// A wash's body joined to its stamps' build, in the stamps' render pass, before rims blur it: its box (x, y, width,
-// height) and its levels (stampWashBodyLevels: built, densest). The pipeline's blend joins it as the brush's
+// A flood's body joined to its stamps' build, in the stamps' render pass, before rims blur it: its box (x, y, width,
+// height) and its levels (stampFloodBodyLevels: built, densest). The pipeline's blend joins it as the brush's
 // accumulation lays paint: toward full by screen, toward an opacity by max; a glaze's cap and densest by max.
 const BODY_DRAW = stampUniformLayout('BodyDraw', [['box', 'vec4f'], ['levels', 'vec2f']]);
 const BODY_DRAW_WGSL = /* wgsl */ `
@@ -670,7 +708,7 @@ export type StampDepositTrace = { crop: StampPixelBox; built: Float32Array; stag
 /** A frame's traces: each traced deposit's request and where its slots start in `buffer`, in floats. */
 type FrameTrace = { deposits: Map<CompiledStampDeposit, { request: StampDepositTraceRequest; order: number; offset: number }>; buffer: GPUBuffer };
 
-/** A region worked out at load (a wash's body, a state of the fluid, a `within`): its texture and its box on the painting. */
+/** A region worked out at load (a flood's body, a state of the fluid, a `within`): its texture and its box on the painting. */
 type RegionTexture = { view: GPUTextureView; box: Box };
 
 export type StampPaintRenderer = {
@@ -697,10 +735,12 @@ export type StampPaintRenderer = {
 export async function createStampPaintRenderer(
   canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string,
 ): Promise<StampPaintRenderer> {
-  const compositor = compositorFor(painting, paper, mixing);
+  const refused = painting.groups.find((group) => group.motion || group.boil);
+  if (refused) throw new Error(`stamp paint: ${refused.id} ${refused.motion ? 'moves' : 'boils'}, which isn't painted yet (vid-117)`);
+  const { compositorOn, wetness, medium } = compositorFor(painting, paper, mixing);
   const device = await createStampPaintDevice();
   try {
-    return await rendererOnDevice(device, compositor, canvas, painting, paper, width, height, imageUrl);
+    return await rendererOnDevice(device, compositorOn, wetness, medium, canvas, painting, paper, width, height, imageUrl);
   } catch (error) {
     // Destroying the device frees every texture and buffer made on it, and unconfigures the canvas.
     device.destroy();
@@ -708,18 +748,21 @@ export async function createStampPaintRenderer(
   }
 }
 
-/** How `mixing` composites `painting`, worked out before a device is asked for, so a painting it can't mix fails first. */
-function compositorFor(painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing): (device: GPUDevice) => StampPaintCompositor {
+/**
+ * How `mixing` composites `painting`, and how wet its washes land, worked out before a device is asked for, so a
+ * painting it can't mix fails first. Only pigment has washes: the flat compositor refuses one.
+ */
+function compositorFor(painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing) {
   if (mixing.kind === 'pigment') {
     const paint = compileStampPigmentPaint(painting, mixing, PAINT_BANDS);
-    return (device) => stampPigmentCompositor(device, paint, paper.color);
+    return { compositorOn: (device: GPUDevice) => stampPigmentCompositor(device, paint, paper.color), wetness: compileStampWetness(painting, mixing.medium, paper), medium: mixing.medium };
   }
   const flat = flatStampPaintCompositor(painting);
-  return () => flat;
+  return { compositorOn: () => flat, wetness: null, medium: null };
 }
 
 async function rendererOnDevice(
-  device: GPUDevice, compositorOn: (device: GPUDevice) => StampPaintCompositor, canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string,
+  device: GPUDevice, compositorOn: (device: GPUDevice) => StampPaintCompositor, wetness: StampWetness | null, wetMedium: PaintMedium | null, canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string,
 ): Promise<StampPaintRenderer> {
   // Loading and each draw are checked for any error WebGPU would otherwise report only later, unasked. A lost device
   // isn't an error a scope catches, so the draw after it throws.
@@ -803,8 +846,8 @@ async function rendererOnDevice(
       });
       total += deposit.stamps.length + deposit.dualStamps.length;
       if (compositor.readsStampTints && deposit.brush.color) tints += deposit.stamps.length;
-      // Its stamps and dual's, a wash's body, two blur passes, and its resolve, where it's kept and its paint.
-      slotsPerFrame += 8;
+      // Its stamps and dual's, a flood's body, two blur passes, and its resolve, where it's kept, its paint and a wash's landing.
+      slotsPerFrame += pass.kind === 'wash' ? 9 : 8;
     }
   }
   if (total * STAMP_FLOATS * 4 > device.limits.maxBufferSize) {
@@ -839,6 +882,18 @@ async function rendererOnDevice(
   const binBuffer = buffer(new Uint32Array(binData.length ? binData : [0]), GPUBufferUsage.STORAGE);
   // What an untraced resolve binds for the trace it never records.
   const noTraceBuffer = buffer(new Float32Array(1), GPUBufferUsage.STORAGE), noTraceCrop = buffer(new Uint32Array(SLOT / 4), GPUBufferUsage.UNIFORM);
+  // Every wash deposit's wetness and workable grids, one after another, and where each starts.
+  const wetGrids: number[] = [];
+  const wetFirsts = new Map<CompiledStampDeposit, { wetness: number; workable: number }>();
+  for (const [deposit, { before: { wetness: wet, workable } }] of wetness?.landings ?? []) {
+    if (wet.x0 !== workable.x0 || wet.y0 !== workable.y0 || wet.cell !== workable.cell || wet.columns !== workable.columns || wet.rows !== workable.rows) {
+      throw new Error(`stamp paint: ${deposit.id}'s wetness and workable grids aren't on one lattice`);
+    }
+    wetFirsts.set(deposit, { wetness: wetGrids.length, workable: wetGrids.length + wet.values.length });
+    for (const v of wet.values) wetGrids.push(v);
+    for (const v of workable.values) wetGrids.push(v);
+  }
+  const wetGridBuffer = buffer(new Float32Array(wetGrids.length ? wetGrids : [0]), GPUBufferUsage.STORAGE);
   // The fan's triangles, by corner: indexed, so each corner is shaded once a stamp, not once for each triangle it's in.
   const fanBuffer = buffer(new Uint16Array(Array.from({ length: STAMP_TIP_HULL_SIDES - 2 }, (_, i) => [0, i + 1, i + 2]).flat()), GPUBufferUsage.INDEX);
 
@@ -917,23 +972,35 @@ async function rendererOnDevice(
   });
   const orderedPipelines = { plain: [orderedPipeline(0, false), orderedPipeline(1, false)], tinted: [orderedPipeline(0, true), orderedPipeline(1, true)] };
   const computePipeline = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } });
-  const depositModule = device.createShaderModule({ code: depositWgsl(compositor) });
-  // The traced resolve is the ordinary one with TRACE on, made only when a trace asks for it.
-  const depositPipeline = (trace: boolean) => device.createComputePipeline({ layout: 'auto', compute: { module: depositModule, constants: { TRACE: trace ? 1 : 0 } } });
-  let tracePipeline: GPUComputePipeline | null = null;
-  const pipelines = { blur: computePipeline(BLUR_WGSL), deposit: depositPipeline(false), group: computePipeline(groupWgsl(compositor)), paper: computePipeline(paperWgsl(compositor)) };
+  const depositModules = { dry: device.createShaderModule({ code: depositWgsl(compositor, false) }), wet: compositor.deposit.wet ? device.createShaderModule({ code: depositWgsl(compositor, true) }) : null };
+  // The traced resolve is the ordinary one with TRACE on; each is made when first asked for.
+  const depositPipelines = new Map<string, GPUComputePipeline>();
+  const depositPipeline = (trace: boolean, wet: boolean) => {
+    const key = `${trace}|${wet}`;
+    if (!depositPipelines.has(key)) {
+      const module = wet ? depositModules.wet! : depositModules.dry;
+      depositPipelines.set(key, device.createComputePipeline({ layout: 'auto', compute: { module, constants: { TRACE: trace ? 1 : 0 } } }));
+    }
+    return depositPipelines.get(key)!;
+  };
+  const pipelines = { blur: computePipeline(BLUR_WGSL), group: computePipeline(groupWgsl(compositor)), paper: computePipeline(paperWgsl(compositor)) };
+  depositPipeline(false, false);
+  if (wetness?.landings.size) {
+    if (!compositor.deposit.wet) throw new Error('stamp paint: the painting has washes, and its compositor lays none');
+    depositPipeline(false, true);
+  }
   const outputModule = device.createShaderModule({ code: outputWgsl(compositor) });
   const outputPipeline = device.createRenderPipeline({ layout: 'auto', vertex: { module: outputModule }, fragment: { module: outputModule, targets: [{ format }] } });
   const regionPipeline = (code: string, entryPoint: string) => {
     const module = device.createShaderModule({ code });
     return device.createRenderPipeline({ layout: 'auto', vertex: { module }, fragment: { module, entryPoint, targets: [{ format: STAMP_REGION_FORMAT }] } });
   };
-  const maskStepPipeline = regionPipeline(MASK_STEP_WGSL, 'maskStep'), washBodyPipeline = regionPipeline(WASH_BODY_WGSL, 'washBodyAt');
+  const maskStepPipeline = regionPipeline(MASK_STEP_WGSL, 'maskStep'), floodBodyPipeline = regionPipeline(FLOOD_BODY_WGSL, 'floodBodyAt');
   const bodyModule = device.createShaderModule({ code: BODY_DRAW_WGSL });
   // B ← b + B(1 − b): a toward-full build's lay (STAMP_ACCUMULATIONS) of a body laid whole.
   const screenBlend: GPUBlendState = { color: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } };
   const bodyPipelines = new Map<string, GPURenderPipeline>();
-  /** The pipeline joining a wash's body to its build: toward full by screen, else by max; a glaze's cap too; a tinted pass's tints left alone. */
+  /** The pipeline joining a flood's body to its build: toward full by screen, else by max; a glaze's cap too; a tinted pass's tints left alone. */
   const bodyPipeline = (towardFull: boolean, glaze: boolean, tinted: boolean) => {
     const key = `${towardFull}|${glaze}|${tinted}`;
     if (!bodyPipelines.has(key)) {
@@ -979,6 +1046,8 @@ async function rendererOnDevice(
     // Only a painting with colour dynamics lays tints, and only for a compositor that reads them.
     tintA: tints ? target(width, height, RENDER) : null,
     tintB: tints ? target(width, height, RENDER) : null,
+    // Only a painting with washes leaves footprints.
+    footprint: wetness?.landings.size ? target(width, height, STORAGE) : null,
   };
 
   /** Binds each of `resources` at its index; a null is a binding the pipeline doesn't have. */
@@ -998,16 +1067,19 @@ async function rendererOnDevice(
   const grainLod = (texture: StampPaintImage, tileW: number) => Math.max(0, Math.log2(texture.width / tileW));
 
   const regions = loadRegions();
+  const stages = wetness?.landings.size
+    ? STAMP_WET_STAGES.map((stage) => ({ after: stage.after, encode: stage.load({ device, painting, medium: wetMedium!, wetness, width, height, layer: targets.layer, footprint: targets.footprint! }).encode }))
+    : [];
 
   /**
-   * Works out, once, what of the painting doesn't change with time: each wash's body, each state of the fluid a
+   * Works out, once, what of the painting doesn't change with time: each flood's body, each state of the fluid a
    * deposit lands under, each pass's `within`, as cropped textures (none for an empty state). All are planned and held
    * to STAMP_REGION_BUDGET, refused past it naming what's there, before any is made.
    */
   function loadRegions() {
     const passes = painting.groups.flatMap((group) => group.passes);
     const all = passes.flatMap((pass) => pass.deposits);
-    // Every polygon once, each wash's thickness grid and every op of the fluid, in storage buffers.
+    // Every polygon once, each flood's thickness grid and every op of the fluid, in storage buffers.
     const points: number[] = [], placed = new Map<readonly StampPoint[], [number, number]>();
     const pointsOf = (polygon: readonly StampPoint[]) => {
       if (!placed.has(polygon)) {
@@ -1049,23 +1121,23 @@ async function rendererOnDevice(
 
     const bodies = new Map<CompiledStampDeposit, Step>();
     for (const deposit of all) {
-      if (deposit.kind !== 'wash') continue;
-      const { wash } = deposit, box = inPainting(wash.box);
+      if (deposit.kind !== 'flood') continue;
+      const { flood } = deposit, box = inPainting(flood.box);
       if (!box) continue;
-      const [first, count] = pointsOf(wash.polygon), gridFirst = grids.length;
-      for (const v of wash.thickness.values) grids.push(v);
+      const [first, count] = pointsOf(flood.polygon), gridFirst = grids.length;
+      for (const v of flood.thickness.values) grids.push(v);
       const step: Step = {
         box, grid: true,
         draw: (views) => {
-          const put = stampUniformWriter(WASH_BODY, views);
+          const put = stampUniformWriter(FLOOD_BODY, views);
           put('box', boxWords(box));
-          put('grid', [wash.thickness.x0, wash.thickness.y0, wash.thickness.cell, 0]);
-          put('gridSize', [wash.thickness.columns, wash.thickness.rows]);
+          put('grid', [flood.thickness.x0, flood.thickness.y0, flood.thickness.cell, 0]);
+          put('gridSize', [flood.thickness.columns, flood.thickness.rows]);
           put('first', first);
           put('count', count);
           put('gridFirst', gridFirst);
-          put('inset', wash.inset);
-          return washBodyPipeline;
+          put('inset', flood.inset);
+          return floodBodyPipeline;
         },
       };
       steps.push(step);
@@ -1237,16 +1309,16 @@ async function rendererOnDevice(
     };
     stamp(loadedDeposit.brush, loadedDeposit.active.main, loadedDeposit.mainPlan, loadedDeposit.main, count, loadedDeposit.mainHull, 0);
     if (loadedDeposit.brush.dual && loadedDeposit.active.dual && loadedDeposit.dualPlan) stamp(loadedDeposit.brush.dual, loadedDeposit.active.dual, loadedDeposit.dualPlan, loadedDeposit.dual, dualCount, loadedDeposit.dualHull!, 1);
-    // A wash's body joins the build its edge stamps laid, before any rim blurs it, so rims see the whole wash.
+    // A flood's body joins the build its edge stamps laid, before any rim blurs it, so rims see the whole flood.
     const body = regions.bodies.get(deposit);
-    if (deposit.kind === 'wash' && body) {
+    if (deposit.kind === 'flood' && body) {
       const { kind } = loadedDeposit.brush.accumulation, { towardFull, keepsCap } = STAMP_ACCUMULATIONS[kind];
       const pipeline = bodyPipeline(towardFull, keepsCap, tinted);
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, bindGroup(pipeline, [slot((views) => {
         const put = stampUniformWriter(BODY_DRAW, views);
         put('box', [body.box.x, body.box.y, body.box.w, body.box.h]);
-        const { levels } = deposit.wash;
+        const { levels } = deposit.flood;
         put('levels', [levels.built, levels.densest]);
       }), body.view]));
       pass.draw(3);
@@ -1297,11 +1369,14 @@ async function rendererOnDevice(
     const flags: (keyof typeof DEPOSIT_FLAGS)[] = [
       ...(mainGrain ? ['canvasGrain' as const] : []), ...(brush.dual ? ['dual' as const] : []), ...(dualGrain ? ['dualCanvasGrain' as const] : []),
       ...(tooth ? ['paper' as const] : []), ...(fluid ? ['masked' as const] : []), ...(pass.within ? ['within' as const] : []),
-      ...(deposit.kind === 'wash' ? ['wash' as const] : []), clipped ? 'clipped' as const : 'clips' as const,
+      ...(deposit.kind === 'flood' ? ['flood' as const] : []),
+      // Only paint makes a clip base: water and a lift leave where a pass holds paint as it was.
+      ...(clipped ? ['clipped' as const] : []), ...(!clipped && deposit.action.kind === 'paint' ? ['clips' as const] : []),
       ...(active.main.pooling ? ['pooled' as const] : []), ...(active.dual?.pooling ? ['dualPooled' as const] : []),
       ...(brush.dual?.blend.family === 'layer' ? ['dualLayer' as const] : []),
     ];
-    dispatch(encoder, trace ? tracePipeline! : pipelines.deposit, [
+    const landing = pass.kind === 'wash' ? wetness!.landings.get(deposit)! : null;
+    dispatch(encoder, depositPipeline(!!trace, !!landing), [
       slot((views) => {
         const put = stampUniformWriter(DEPOSIT, views);
         put('view', [width, height, paperTile[0], paperTile[1]]);
@@ -1342,17 +1417,31 @@ async function rendererOnDevice(
         const put = stampUniformWriter(KEEP, views);
         put('fluid', boxWords(fluid?.box));
         put('within', boxWords(within?.box));
-        if (deposit.kind !== 'wash') return;
-        const { load, front } = deposit.wash, ends = stampPaintFieldEnds(load);
+        if (deposit.kind !== 'flood') return;
+        const { load, front } = deposit.flood, ends = stampPaintFieldEnds(load);
         put('load', ends.geometry);
         put('loadEnds', [ends.first, ends.second]);
         put('loadKind', ends.kind);
         put('front', [front.normal[0], front.normal[1], front.from, front.to]);
-        put('frontShape', [front.soft, stampWashProgressAt(deposit, t)]);
+        put('frontShape', [front.soft, stampFloodProgressAt(deposit, t)]);
       }),
       within?.view ?? targets.blank.view,
       slot(loadedDeposit.writePaint),
-      ...compositor.deposit.resources({ a: tinted ? targets.tintA!.view : targets.blank.view, b: tinted ? targets.tintB!.view : targets.blank.view }),
+      landing && { buffer: wetGridBuffer },
+      landing && slot((views) => {
+        const put = stampUniformWriter(WET_OP, views);
+        const { wetness: grid } = landing.before, firsts = wetFirsts.get(deposit)!, { action } = deposit;
+        put('lattice', [grid.x0, grid.y0, grid.cell, 0]);
+        put('size', [grid.columns, grid.rows]);
+        put('wetnessFirst', firsts.wetness);
+        put('workableFirst', firsts.workable);
+        put('tau', landing.tau);
+        put('water', landing.water);
+        put('strength', action.kind === 'lift' ? action.strength : 0);
+        put('action', WET_ACTIONS[action.kind]);
+      }),
+      landing && targets.footprint!.view, null, null, null,
+      ...compositor.deposit.resources({ tints: { a: tinted ? targets.tintA!.view : targets.blank.view, b: tinted ? targets.tintB!.view : targets.blank.view }, wet: !!landing }),
     ], box.w, box.h);
   }
 
@@ -1362,8 +1451,8 @@ async function rendererOnDevice(
     const { brush } = loadedDeposit;
     reachOfFirst(deposit.stamps, loadedDeposit.mainReach, count, reachSpanOf(brush), reach);
     if (brush.dual) reachOfFirst(deposit.dualStamps, loadedDeposit.dualReach, dualCount, reachSpanOf(brush.dual), reach);
-    if (deposit.kind === 'wash') {
-      const { x0, y0, x1, y1 } = deposit.wash.box;
+    if (deposit.kind === 'flood') {
+      const { x0, y0, x1, y1 } = deposit.flood.box;
       reach.splice(0, 4, Math.min(reach[0], x0), Math.min(reach[1], y0), Math.max(reach[2], x1), Math.max(reach[3], y1));
     }
     const x = Math.max(0, Math.floor(reach[0] - pad)), y = Math.max(0, Math.floor(reach[1] - pad));
@@ -1411,6 +1500,14 @@ async function rendererOnDevice(
           if (blurred) blurMask(encoder, sigma, box);
           resolveDeposit(encoder, deposit, loadedDeposit, pass, t, blurred, box, frameTrace);
           painted = painted ? union(painted, box) : box;
+          if (pass.kind === 'wash') {
+            const landing = wetness!.landings.get(deposit)!;
+            for (const stage of stages) if (stage.after === 'deposit') painted = unionOf(painted, stage.encode(encoder, { kind: 'deposit', deposit, pass, landing, box }));
+          }
+        }
+        if (pass.kind === 'wash') {
+          const record = wetness!.washes.get(pass)!;
+          for (const stage of stages) if (stage.after === 'wash') painted = unionOf(painted, stage.encode(encoder, { kind: 'wash', pass, record }));
         }
       }
       if (!painted) continue;
@@ -1470,7 +1567,6 @@ async function rendererOnDevice(
       const read = device.createBuffer({ size: bytes, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
       try {
         try {
-          tracePipeline ??= depositPipeline(true);
           const encoder = draw(t, { deposits: traced, buffer: traceBuffer });
           encoder.copyBufferToBuffer(traceBuffer, 0, read, 0, bytes);
           device.queue.submit([encoder.finish()]);
@@ -1517,6 +1613,8 @@ const areaBox = (area: CompiledStampMaskArea) => stampPolygonBox(area.polygon, s
 
 /** A box as a uniform's four words; an empty box for none, whose region reads 0 everywhere. */
 const boxWords = (box: Box | undefined): [number, number, number, number] => (box ? [box.x, box.y, box.w, box.h] : [0, 0, 0, 0]);
+
+const unionOf = (a: Box | null, b: Box | null) => (a && b ? union(a, b) : a ?? b);
 
 const union = (a: Box, b: Box): Box => {
   const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);

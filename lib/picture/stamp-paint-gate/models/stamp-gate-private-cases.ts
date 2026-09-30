@@ -1,12 +1,12 @@
 // stamp-gate-private-cases.ts: what the gate's private run paints with each of a pack's brushes, whose images can't
-// be public: a stroke, and a wash under masking fluid alone, within a region, with a load and its front halfway, each
-// with a stroke under a state of the fluid built on the wash's. Its baselines sit in ignored work/validation/.
+// be public: a stroke, and a flood under masking fluid alone, within a region, with a load and its front halfway, each
+// with a stroke under a state of the fluid built on the flood's. Its baselines sit in ignored work/validation/.
 
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { compileStampPaintRecipe, stampPaintRecipe, type StampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import type { StampGatePainting } from './stamp-gate-paintings.ts';
 
-export const STAMP_GATE_PRIVATE_CASES = ['stroke', 'wash', 'within', 'load', 'front'] as const;
+export const STAMP_GATE_PRIVATE_CASES = ['stroke', 'flood', 'within', 'load', 'front'] as const;
 export type StampGatePrivateCase = (typeof STAMP_GATE_PRIVATE_CASES)[number];
 
 export const STAMP_GATE_PRIVATE_SIZE = { width: 640, height: 420 };
@@ -16,8 +16,8 @@ export const STAMP_GATE_PRIVATE_TIME = 1;
 const black = { kind: 'color', color: '#000000' } as const;
 
 /**
- * A case's painting of `brush`, a glaze of black on white. Past the stroke: a wash under a ragged reserve half lifted on
- * its right; apart from it, so neither's paint lies on the other, a stroke under a state built on the wash's with two
+ * A case's painting of `brush`, a glaze of black on white. Past the stroke: a flood under a ragged reserve half lifted on
+ * its right; apart from it, so neither's paint lies on the other, a stroke under a state built on the flood's with two
  * more ops (a soft ragged band, a global lift).
  */
 export function stampGatePrivateRecipe(brush: StampBrush, privateCase: StampGatePrivateCase): StampPaintRecipe {
@@ -31,7 +31,7 @@ export function stampGatePrivateRecipe(brush: StampBrush, privateCase: StampGate
     const within = privateCase === 'within' ? { kind: 'polygon' as const, points: [{ x: 40, y: 30 }, { x: 460, y: 60 }, { x: 440, y: 390 }, { x: 60, y: 370 }] } : undefined;
     group.pass('p', { ...(within && { within }) }, (pass) => {
       const fill = {
-        brush, material: black, diameter: 60, direction: 0.3, application: { kind: 'wash' as const },
+        brush, material: black, diameter: 60, direction: 0.3, application: { kind: 'flood' as const },
         region: { kind: 'polygon' as const, points: [{ x: 30, y: 60 }, { x: 290, y: 20 }, { x: 470, y: 110 }, { x: 450, y: 400 }, { x: 240, y: 330 }, { x: 60, y: 400 }] },
         ...(privateCase === 'load' && { load: { kind: 'linear' as const, from: { x: 30, y: 0, value: 1 }, to: { x: 470, y: 0, value: 0.3 } } }),
       };

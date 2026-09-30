@@ -835,10 +835,6 @@
       "const anchorX = x + (align === 'center' ? 0.5 : align === 'right' ? 1 : 0) * spacing * set.size;": 1,
       "textAnchor={align === 'center' ? 'middle' : align === 'right' ? 'end' : 'start'}": 1
     },
-    "lib/picture/stamp-paint/models/stamp-paint-recipe.ts": {
-      "const path = deposit.kind !== 'stroke' ? [] : deposit.hand ? handStampStroke(deposit.path, deposit.hand, diameter, `${full}|hand`) : deposit.path;": 1,
-      "const h = d === 0 ? 0 : max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;": 2
-    },
     "lib/picture/stamp-paint/models/stamp-tip-hull.ts": {
       "const snapToSquare = (v: number) => (Math.abs(v) < 1e-5 ? 0 : Math.abs(v - 1) < 1e-5 ? 1 : v);": 1
     },
@@ -2072,9 +2068,6 @@
     },
     "lib/picture/reel/studio/type.tsx": {
       "export function SelectionBox({": 1
-    },
-    "lib/picture/stamp-paint/models/stamp-paint-recipe.ts": {
-      "export function shiftStampPaintColor(color: StampPaintColor, { hue, saturation, lightness }: { hue: number; saturation: number; lightness: number }): StampPaintColor {": 1
     },
     "lib/picture/stamp-paint/models/stamp-tip-hull.ts": {
       "function strictlyConvex(points: [number, number][]): [number, number][] {": 1

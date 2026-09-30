@@ -339,7 +339,7 @@ export type StampBrushLayer<Image = StampBrushAsset> = StampBrushStamping<Image>
 };
 
 /**
- * Wet media or dry, as art supplies are sorted. Wet paint floods and levels into a film, so a fill of it is a wash;
+ * Wet media or dry, as art supplies are sorted. Wet paint floods and levels into a film, so a fill of it is a flood;
  * dry media (crayon, pencil, pastel) catch on the paper's tooth mark by mark, so a fill of them is strokes. Not a
  * style's PaintMedium, the paint a pigment style mixes in.
  */

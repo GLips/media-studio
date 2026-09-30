@@ -122,7 +122,7 @@ fn gridAt(p: vec2f, origin: vec3f, size: vec2u, first: u32) -> f32 {
 
 /**
  * The largest value of `grid` within `radius` px of each of its points: over a distance grid, how thick the region
- * is near there (the radius of the widest disc inside it, close by), which a wash's body narrows its edge to.
+ * is near there (the radius of the widest disc inside it, close by), which a flood's body narrows its edge to.
  */
 export function stampGridLocalMax(grid: StampGrid, radius: number): StampGrid {
   const { columns, rows, values } = grid, reach = Math.ceil(radius / grid.cell), within = (radius / grid.cell) ** 2;
@@ -209,7 +209,7 @@ export function stampGridContours(grid: StampGrid, level: number): StampPoint[][
 
 /**
  * The per-pixel formulas a region is read by, in WGSL, included after COVERAGE_FORMULAS_WGSL (they call tipNoiseAt).
- * `edgeNoise` is what a ragged edge moves its outline by. `washBody` is full only under the edge stroke's centre, so
+ * `edgeNoise` is what a ragged edge moves its outline by. `floodBody` is full only under the edge stroke's centre, so
  * the stroke's outer half meets the paper; where the region is too thin for the stroke, the body alone paints it.
  */
 export const STAMP_REGION_WGSL = /* wgsl */ `
@@ -228,7 +228,7 @@ fn edgeNoiseOctave(p: vec2f, seed: u32) -> f32 {
 fn edgeNoise(x: f32, y: f32, seed: u32) -> f32 {
   return (edgeNoiseOctave(vec2f(x, y), seed) * 2.0 + edgeNoiseOctave(vec2f(x, y) * 2.3, seed ^ 0x5bd1e995u)) / 3.0;
 }
-fn washBody(sd: f32, thickness: f32, c: f32) -> f32 {
+fn floodBody(sd: f32, thickness: f32, c: f32) -> f32 {
   let f = clamp((thickness - 0.5 * c) / (0.5 * c), 0.0, 1.0);
   let lo = mix(0.2 * thickness, 0.5 * c, f);
   let hi = max(lo + 1.0, mix(0.5 * thickness, c, f));

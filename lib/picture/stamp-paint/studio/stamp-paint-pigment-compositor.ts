@@ -1,17 +1,20 @@
 // stamp-paint-pigment-compositor.ts: the StampPaintCompositor for a style that paints in pigment (vid-83).
 //
-// A group's layer holds its wash: coverage, then each palette pigment's amount (stamp-pigment-paint.ts). A deposit
-// lays its components where paper and habits put them, mixing by volume. A group dries as a Kubelka–Munk film, glazed
-// over what's there or, opaque, on paper kept for it. The painting holds reflectance per band.
+// A group's layer holds coverage, then each palette pigment's amount (stamp-pigment-paint.ts). A deposit lays its
+// components where paper and habits put them, mixing by volume; a wash's lands, wets or lifts as wet as its landing
+// is (stamp-wet-landing.ts, stamp-wet-lift.ts). A group dries as a Kubelka–Munk film, glazed over what's there or,
+// opaque, on paper kept for it. The painting holds reflectance per band.
 //
 // Negative space: a deposit's blend and a stamp's tint are colour operations with no pigment meaning, so neither
-// applies; a burnt rim only shapes coverage. A fill's `load` is coverage: over wet paint it moves the wash toward
-// its mixture rather than adding less pigment.
+// applies; a burnt rim only shapes coverage. A plain pass's fill `load` is coverage: over paint it moves the paint
+// toward its mixture rather than adding less pigment.
 
 import { PAINT_KUBELKA_MUNK_WGSL } from '#lib/picture/paint/models/paint-kubelka-munk.ts';
 import { PAINT_PAPER_WGSL } from '#lib/picture/paint/models/paint-paper.ts';
 import { paintHexToLinear } from '#lib/picture/paint/models/paint-spectrum.ts';
 import { STAMP_PIGMENT_GROUP_SLOTS, type StampPigmentPaint } from '../models/stamp-pigment-paint.ts';
+import { STAMP_WET_LAND_WGSL } from '../models/stamp-wet-landing.ts';
+import { STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
 import { STAMP_OPAQUE_COVER, type CompiledStampDeposit, type StampPaintColor } from '../models/stamp-paint-recipe.ts';
 import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
 import { stampUniformLayout, stampUniformWriter, type StampUniformViews } from './stamp-uniform-layout.ts';
@@ -19,7 +22,7 @@ import { stampUniformLayout, stampUniformWriter, type StampUniformViews } from '
 /** Words per component in the component buffer: slot, seed, amount, granulation, flocculation. */
 const COMPONENT_WORDS = 5;
 
-const PIGMENT_PAINT_DEPOSIT = stampUniformLayout('PaintDeposit', [['first', 'u32'], ['count', 'u32']]);
+const PIGMENT_PAINT_DEPOSIT = stampUniformLayout('PaintDeposit', [['first', 'u32'], ['count', 'u32'], ['group', 'u32']]);
 
 /** A number as a WGSL f32 literal, to the precision an f32 holds. */
 const f32 = (value: number) => value.toPrecision(9);
@@ -34,12 +37,13 @@ export function stampPigmentCompositor(device: GPUDevice, paint: StampPigmentPai
 
   const writers = new Map<CompiledStampDeposit, (views: StampUniformViews) => void>();
   const componentWords: number[] = [];
-  for (const [deposit, components] of paint.deposits) {
+  for (const [deposit, { group, components }] of paint.deposits) {
     const first = componentWords.length / COMPONENT_WORDS;
     writers.set(deposit, (views) => {
       const put = stampUniformWriter(PIGMENT_PAINT_DEPOSIT, views);
       put('first', first);
       put('count', components.length);
+      put('group', group);
     });
     for (const { slot, seed, amount, granulation, flocculation } of components) componentWords.push(slot, seed, amount, granulation, flocculation);
   }
@@ -63,7 +67,10 @@ export function stampPigmentCompositor(device: GPUDevice, paint: StampPigmentPai
     device.queue.writeBuffer(buffer, 0, data);
     return buffer;
   };
-  const components = upload(componentData), palettes = upload(paletteData);
+  // Each group's palette's staining, laid out as its layer is: coverage's channel stains nothing.
+  const stainData = new Float32Array(Math.max(1, paint.groups.length) * layers * 4);
+  paint.groups.forEach(({ palette }, g) => palette.forEach(({ staining }, slot) => { stainData[g * layers * 4 + slot + 1] = staining; }));
+  const components = upload(componentData), palettes = upload(paletteData), stains = upload(stainData);
 
   const paperRgb = paintHexToLinear(paperColor);
   const bandWgsl = /* wgsl */ `
@@ -97,15 +104,13 @@ fn paperReflectance(i: u32, color: vec3f) -> vec4f {
       wgsl: /* wgsl */ `
 ${PAINT_PAPER_WGSL}
 struct PigmentComponent { slot: u32, seed: u32, amount: f32, granulation: f32, flocculation: f32 }
-@group(0) @binding(18) var<storage, read> components: array<PigmentComponent>;
+@group(0) @binding(24) var<storage, read> components: array<PigmentComponent>;
 const LAYERS = ${layers}u;
 // The tooth moves each pigment about in layDeposit, rather than cutting the deposit's coverage.
 fn paperKept(tooth: f32, mean: f32, depth: f32) -> f32 { return 1.0; }
 fn layerCoverage(pixel: vec2u) -> f32 { return textureLoad(layer, pixel, 0u).x; }
-// The twin of stampPigmentLayDeposit. A burnt rim shapes coverage, as a wet one does, the main's and dual's joined.
-fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f) {
-  let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
-  if (cover <= 0.0) { return; }
+// A full stroke's pigment amounts here, where the paper's tooth and each pigment's habits put them.
+fn incomingAt(tooth: vec2f, at: vec2f) -> array<vec4f, LAYERS> {
   let h = 1.0 - tooth.x;
   let meanHeight = 1.0 - tooth.y;
   let valley = paintValley(h, meanHeight);
@@ -116,6 +121,13 @@ fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f)
     let channel = c.slot + 1u;
     incoming[channel / 4u][channel % 4u] += c.amount * share;
   }
+  return incoming;
+}
+// A burnt rim shapes coverage, as a wet one does, the main's and dual's joined.
+fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f) {
+  let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
+  if (cover <= 0.0) { return; }
+  let incoming = incomingAt(tooth, at);
   let under = textureLoad(layer, pixel, 0u).x;
   let rate = cover * (1.0 - ${f32(medium.pickup)} * under);
   for (var l = 0u; l < LAYERS; l++) {
@@ -125,12 +137,36 @@ fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f)
     textureStore(layer, pixel, l, now);
   }
 }`,
+      wet: /* wgsl */ `
+${STAMP_WET_LAND_WGSL}
+${STAMP_WET_LIFT_WGSL}
+@group(0) @binding(25) var<storage, read> stains: array<vec4f>;
+// Water leaves the pigment where it is: moving it is the neighbourhood's (stamp-wet-stages.ts).
+fn landDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, wet: WetLanding) {
+  let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
+  if (cover <= 0.0 || wet.action == WET_WATER) { return; }
+  let under = textureLoad(layer, pixel, 0u).x;
+  if (wet.action == WET_LIFT) {
+    for (var l = 0u; l < LAYERS; l++) {
+      var now = wetLift(textureLoad(layer, pixel, l), cover, wet.strength, wet.workable, stains[paint.group * LAYERS + l]);
+      if (l == 0u) { now.x = under; }
+      textureStore(layer, pixel, l, now);
+    }
+    return;
+  }
+  let incoming = incomingAt(tooth, at);
+  for (var l = 0u; l < LAYERS; l++) {
+    var now = wetLand(textureLoad(layer, pixel, l), incoming[l], cover, wet.wetness, wet.workable);
+    if (l == 0u) { now.x = cover + under * (1.0 - cover); }
+    textureStore(layer, pixel, l, now);
+  }
+}`,
       writerFor: (deposit) => {
         const writer = writers.get(deposit);
         if (!writer) throw new Error(`stamp paint: ${deposit.id} isn't in the painting its pigment compositor was made for`);
         return writer;
       },
-      resources: () => [{ buffer: components }],
+      resources: ({ wet }) => [{ buffer: components }, ...(wet ? [{ buffer: stains }] : [])],
     },
     group: {
       wgsl: /* wgsl */ `

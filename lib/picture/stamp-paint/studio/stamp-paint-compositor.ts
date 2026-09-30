@@ -29,14 +29,23 @@ export type StampPaintCompositor = {
     /** Its PaintDeposit, the renderer's `paint`. */
     layout: StampUniformLayout<readonly StampUniformField[]>;
     /**
-     * Its bindings from 18; `paperKept(tooth, mean, depth)`, `layerCoverage(pixel)` and `layDeposit(pixel, coverage,
+     * Its bindings from 24; `paperKept(tooth, mean, depth)`, `layerCoverage(pixel)` and `layDeposit(pixel, coverage,
      * rims, tooth, at)`: `rims` the main and dual burnt rims apart, `tooth` the paper's paint here and its mean.
      */
     wgsl: string;
+    /**
+     * For a compositor that lays washes: `landDeposit(pixel, coverage, rims, tooth, at, wet)`, a wash's deposit laid as
+     * its WetLanding says (the renderer declares it, and WET_PAINT, WET_WATER and WET_LIFT for its action). Absent,
+     * the compositor refuses a wash as it's made.
+     */
+    wet?: string;
     /** The writer of `deposit`'s PaintDeposit, made once as the renderer loads it. */
     writerFor: (deposit: CompiledStampDeposit) => (views: StampUniformViews) => void;
-    /** What it binds from 18, given the renderer's tint targets (blank where a pass has none). */
-    resources: (tints: { a: GPUTextureView; b: GPUTextureView }) => GPUBindingResource[];
+    /**
+     * What it binds from 24, given the renderer's tint targets (blank where a pass has none), for a dry resolve or a
+     * wash's (`wet`): a binding only `wet` reads must be left out of a dry one's, whose layout doesn't hold it.
+     */
+    resources: (bound: { tints: { a: GPUTextureView; b: GPUTextureView }; wet: boolean }) => GPUBindingResource[];
   };
   group: {
     /** Its bindings from 3; `layGroup(pixel, glaze, opacity)`. */
@@ -80,8 +89,8 @@ fn laidOver(under: vec4f, over: vec4f, blend: i32) -> vec4f {
 }`;
 
 const FLAT_TINT_WGSL = /* wgsl */ `
-@group(0) @binding(18) var tintA: texture_2d<f32>;
-@group(0) @binding(19) var tintB: texture_2d<f32>;
+@group(0) @binding(24) var tintA: texture_2d<f32>;
+@group(0) @binding(25) var tintB: texture_2d<f32>;
 fn hsl(c: vec3f) -> vec3f {
   let hi = max(c.r, max(c.g, c.b));
   let lo = min(c.r, min(c.g, c.b));
@@ -97,7 +106,7 @@ fn rgbOf(v: vec3f) -> vec3f {
   let k = (vec3f(0.0, 8.0, 4.0) + v.x * 12.0) % 12.0;
   return v.z - c / 2.0 * max(vec3f(-1.0), min(min(k - 3.0, 9.0 - k), vec3f(1.0)));
 }
-// The deposit's colour moved by its stamps' mean tint here, as shiftStampPaintColor (stamp-paint-recipe.ts) moves one.
+// The deposit's colour moved by its stamps' mean tint here, as shiftStampPaintColor (stamp-paint-color.ts) moves one.
 fn tinted(color: vec3f, pixel: vec2u) -> vec3f {
   let a = textureLoad(tintA, pixel, 0);
   if (a.w <= 0.0) { return color; }
@@ -110,13 +119,22 @@ fn tinted(color: vec3f, pixel: vec2u) -> vec3f {
 const byteAt = (color: string, i: number) => parseInt(color.slice(i, i + 2), 16) / 255;
 const hexRgb = (color: string): [number, number, number] => [byteAt(color, 1), byteAt(color, 3), byteAt(color, 5)];
 
-/** The flat compositor for `painting`: each deposit's colour and blends worked out once. Throws on a mixture of pigments. */
+/**
+ * The flat compositor for `painting`: each deposit's colour and blends worked out once. Throws on a mixture of
+ * pigments, a graded material or a wash: flat colour has no pigment to grade or water to carry it.
+ */
 export function flatStampPaintCompositor(painting: CompiledStampPaint): StampPaintCompositor {
   const writers = new Map<CompiledStampDeposit, (views: StampUniformViews) => void>();
+  const wash = painting.groups.flatMap((group) => group.passes).find((pass) => pass.kind === 'wash');
+  if (wash) throw new Error(`stamp paint: ${wash.id} is a wash, and wet paint needs a style that paints in pigment`);
   for (const deposit of painting.groups.flatMap((group) => group.passes.flatMap((pass) => pass.deposits))) {
-    const { material, brush } = deposit;
+    const { action, brush } = deposit;
+    // Only a wash's deposits wet or lift, and a wash was refused above.
+    if (action.kind !== 'paint') throw new Error(`stamp paint: ${deposit.id} ${action.kind === 'water' ? 'wets' : 'lifts'} outside a wash`);
+    if (action.material.kind !== 'constant') throw new Error(`stamp paint: ${deposit.id} grades its material, which only a style that paints in pigment can lay`);
+    const material = action.material.value;
     if (material.kind === 'mixture') throw new Error(`stamp paint: ${deposit.id} lays a mixture of pigments, which only a style that paints in pigment can lay`);
-    const color = hexRgb(material.color), secondary = hexRgb(deposit.secondaryColor ?? '#000000');
+    const color = hexRgb(material.color), secondary = hexRgb(action.secondaryColor ?? '#000000');
     const burntBlend = (brush.burntEdge ?? brush.dual?.burntEdge)?.blend ?? 'colorBurn';
     const dualBurntBlend = brush.dual?.burntEdge?.blend ?? burntBlend;
     writers.set(deposit, (views) => {
@@ -160,7 +178,7 @@ fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f)
         if (!writer) throw new Error(`stamp paint: ${deposit.id} isn't in the painting its flat compositor was made for`);
         return writer;
       },
-      resources: ({ a, b }) => [a, b],
+      resources: ({ tints: { a, b } }) => [a, b],
     },
     group: {
       wgsl: /* wgsl */ `

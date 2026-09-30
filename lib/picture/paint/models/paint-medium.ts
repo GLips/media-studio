@@ -38,6 +38,26 @@ export type PaintMedium = {
    * washes meet they mix rather than one replacing the other. A dry medium picks up nothing; its layers only stack.
    */
   pickup: number;
+  wetting: PaintWetting;
+};
+
+/**
+ * How the paint behaves wet over painting time, as a wash (stamp-wetness.ts) reads it. Nothing asks which medium it
+ * is, so ink, oil or a dry medium is a row of numbers.
+ */
+export type PaintWetting = {
+  /** How far paint landing on flooded paper spreads by itself, in diameters of the brush laying it; 0 never spreads. */
+  flow: number;
+  /** Seconds flooded paper takes to dry, its wetness falling evenly from 1 to 0. */
+  drying: number;
+  /** Seconds laid paint stays as workable as wet once its water has gone: oil's is days, watercolour's none. */
+  openTime: number;
+  /** How much dry paint water or a clean brush works back up, 0..1, before its pigments' staining holds some. */
+  rewetting: number;
+  /** How wet a loaded brush is, 0..1, where a deposit doesn't say. */
+  brushWater: number;
+  /** The wetness below which paint is damp rather than wet: what a wash's `wait('damp')` waits for. */
+  damp: number;
 };
 
 export const TITANIUM_WHITE: PaintPigmentAppearance = { id: 'titaniumWhite', name: 'titanium white (PW6)', overWhite: '#fbfbf9', overBlack: '#d6d6d4' };
@@ -45,18 +65,26 @@ export const TITANIUM_WHITE: PaintPigmentAppearance = { id: 'titaniumWhite', nam
 /** The media the engine paints in. */
 export const PAINT_MEDIA = {
   // Tuned by eye against the watercolor style's references (vid-109), not measured: a clear glaze keeps stacked
-  // darks deep, granulation reads as speckle rather than sandpaper, drying lightens only a little.
-  watercolour: { name: 'watercolour', color: { kind: 'glaze', hiding: 0.02 }, body: 1, lightening: { kind: 'water' }, granulation: 0.7, paperContact: { kind: 'valleys' }, dryingScatter: 0.1, pickup: 0.5 },
+  // darks deep, granulation reads as speckle rather than sandpaper, drying lightens only a little. Its wetting is a
+  // first guess (vid-117): paint travels, a sheet dries in minutes, unstaining pigment lifts some way.
+  watercolour: {
+    name: 'watercolour', color: { kind: 'glaze', hiding: 0.02 }, body: 1, lightening: { kind: 'water' }, granulation: 0.7, paperContact: { kind: 'valleys' }, dryingScatter: 0.1, pickup: 0.5,
+    wetting: { flow: 0.5, drying: 240, openTime: 0, rewetting: 0.35, brushWater: 0.7, damp: 0.35 },
+  },
   // Tuned by eye (vid-109), not measured: a stroke mostly lays its own paint over wet paint, darks dry lighter and
   // matte, and a dark colour holds its hue into tints with white.
   gouache: {
     name: 'gouache', color: { kind: 'masstone', scatter: 0.05 }, body: 2, lightening: { kind: 'white', white: TITANIUM_WHITE }, granulation: 0.1,
     paperContact: { kind: 'valleys' }, dryingScatter: 0.4, pickup: 0.2,
+    // A first guess (vid-117): it barely travels, dries fast and re-dissolves once dry.
+    wetting: { flow: 0.1, drying: 120, openTime: 0, rewetting: 0.9, brushWater: 0.4, damp: 0.35 },
   },
   // Tuned by eye (vid-109), not measured: skips the paper below 85% of its mean height, so the tooth reads bare.
   crayon: {
     name: 'crayon', color: { kind: 'masstone', scatter: 0.05 }, body: 1.5, lightening: { kind: 'white', white: { id: 'waxWhite', name: 'wax white', overWhite: '#f7f6f1', overBlack: '#9d9c97' } },
     granulation: 0, paperContact: { kind: 'peaks', tooth: 0.85 }, dryingScatter: 0, pickup: 0,
+    // No water and no flow; a clean brush or an eraser works some back up, as a smudge or a lift does (vid-117).
+    wetting: { flow: 0, drying: 1, openTime: 0, rewetting: 0.3, brushWater: 0, damp: 0.35 },
   },
 } as const satisfies Record<string, PaintMedium>;
 

@@ -29,7 +29,7 @@ test("a wash's palette holds each pigment once, whichever deposits lay it, and r
     { kind: 'color', color: '#c8305f' },
   ]), watercolour, PAINT_BANDS);
   assert.deepEqual(paint.groups[0].palette.map(({ id }) => id), ['burntSienna', 'ultramarine', 'color:#c8305f']);
-  const slots = [...paint.deposits.values()].map((components) => components.map(({ slot }) => slot));
+  const slots = [...paint.deposits.values()].map(({ components }) => components.map(({ slot }) => slot));
   assert.deepEqual(slots, [[0, 1], [2], [0], [2]]);
 
   const colours = Array.from({ length: STAMP_PIGMENT_GROUP_SLOTS + 1 }, (_, i): PaintMaterial => ({ kind: 'color', color: `#${(i * 16).toString(16).padStart(2, '0')}4080` }));

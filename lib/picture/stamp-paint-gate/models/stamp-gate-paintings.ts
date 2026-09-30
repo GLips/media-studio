@@ -1,7 +1,7 @@
 // stamp-gate-paintings.ts: the paintings the GPU gate paints and holds to their accepted frames. Each is small and
 // synthetic: its brushes are written here and its images drawn here, so it needs no pack and can be public. Between
 // them they walk every path the renderer takes: each accumulation and grain and how it's laid, both dual plans,
-// pooling, rims, tints, blends, groups, clips, paper, masks, `within`, washes, strokes fills, and the pigment
+// pooling, rims, tints, blends, groups, clips, paper, masks, `within`, floods, strokes fills, and the pigment
 // compositor in three media.
 //
 // Negative space: no pack's brush is painted here. A pack's brushes are private; the gate's private run
@@ -193,7 +193,7 @@ function colourGroups(): StampGatePainting {
 }
 
 /**
- * Regions on a photographed paper: masking fluid ragged and soft, lifted partly, a pass within an ellipse, a wash
+ * Regions on a photographed paper: masking fluid ragged and soft, lifted partly, a pass within an ellipse, a flood
  * graded by its load and another half across its front, a neck thinner than the brush, a hatch and a cross-hatch.
  */
 function regions(): StampGatePainting {
@@ -205,16 +205,16 @@ function regions(): StampGatePainting {
       g.mask('soft', { region: polygon(120, 20, 170, 20, 170, 100, 120, 100), edge: { soft: 6 } });
       g.unmask('half', { amount: 0.5, region: polygon(130, 20, 170, 20, 170, 60, 130, 60) });
       g.pass('sky', {}, (pass) => pass.fill('sky', {
-        brush: wet, diameter: 40, application: { kind: 'wash' }, material: color('#3060a0'), region: polygon(10, 10, 200, 10, 200, 110, 10, 110),
+        brush: wet, diameter: 40, application: { kind: 'flood' }, material: color('#3060a0'), region: polygon(10, 10, 200, 10, 200, 110, 10, 110),
         load: { kind: 'radial', center: { x: 100, y: 60 }, radius: 110, inner: 1, outer: 0.3 },
       }));
     });
     p.group('fronts', { composite: 'glaze', opacity: 1 }, (g) => {
       g.pass('front', {}, (pass) => pass.fill('front', {
-        brush: wet, diameter: 30, application: { kind: 'wash' }, material: color('#a04030'), region: { kind: 'ellipse', x: 260, y: 60, radiusX: 50, radiusY: 45 },
+        brush: wet, diameter: 30, application: { kind: 'flood' }, material: color('#a04030'), region: { kind: 'ellipse', x: 260, y: 60, radiusX: 50, radiusY: 45 },
         direction: 0.5, load: { kind: 'linear', from: { x: 210, y: 0, value: 1 }, to: { x: 310, y: 0, value: 0.4 } }, appliedAt: 0, drawnOver: 2,
       }));
-      g.pass('neck', {}, (pass) => pass.fill('neck', { brush: wet, diameter: 40, application: { kind: 'wash' }, material: color('#305030'), region: polygon(10, 230, 50, 230, 55, 130, 60, 230, 110, 230, 110, 238, 10, 238) }));
+      g.pass('neck', {}, (pass) => pass.fill('neck', { brush: wet, diameter: 40, application: { kind: 'flood' }, material: color('#305030'), region: polygon(10, 230, 50, 230, 55, 130, 60, 230, 110, 230, 110, 238, 10, 238) }));
       g.pass('within', { within: { kind: 'ellipse', x: 160, y: 185, radiusX: 40, radiusY: 25 } }, (pass) => {
         pass.stroke('across', { brush: wet, diameter: 30, material: color('#806020'), path: [{ x: 110, y: 170 }, { x: 210, y: 200 }] });
       });
@@ -249,7 +249,7 @@ export const STAMP_GATE_PIGMENT_MEDIA = ['watercolour', 'gouache', 'crayon'] as 
 
 /**
  * A painting in pigment in `mediumName` on a toothed paper: mixtures, a colour, wet mixing, glazes, an opaque group, a
- * graded wash round masking fluid, a pass within a region; its last group mixes twelve pigments, a full wash, so every
+ * graded flood round masking fluid, a pass within a region; its last group mixes twelve pigments, a full group, so every
  * layer of a group's state is laid and read.
  */
 function pigment(mediumName: (typeof STAMP_GATE_PIGMENT_MEDIA)[number]): StampGatePainting {
@@ -258,7 +258,7 @@ function pigment(mediumName: (typeof STAMP_GATE_PIGMENT_MEDIA)[number]): StampGa
     p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => {
       g.mask('sun', { region: { kind: 'ellipse', x: 250, y: 45, radiusX: 22, radiusY: 22 }, edge: { soft: 3 } });
       g.pass('wash', {}, (pass) => pass.fill('granulating', {
-        brush: round, diameter: 40, application: { kind: 'wash' }, region: polygon(10, 10, 310, 10, 310, 95, 10, 95),
+        brush: round, diameter: 40, application: { kind: 'flood' }, region: polygon(10, 10, 310, 10, 310, 95, 10, 95),
         material: { kind: 'mixture', parts: [{ pigment: W.ultramarine, amount: 1 }, { pigment: W.burntSienna, amount: 0.3 }], strength: 0.9 },
         load: { kind: 'linear', from: { x: 0, y: 10, value: 1 }, to: { x: 0, y: 95, value: 0.3 } },
       }));

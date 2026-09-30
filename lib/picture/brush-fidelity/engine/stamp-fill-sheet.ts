@@ -1,4 +1,4 @@
-// stamp-fill-sheet.ts: the fill sheet, one region filled as a wash and in each strokes pattern (StampFillApplication),
+// stamp-fill-sheet.ts: the fill sheet, one region filled flooded and in each strokes pattern (StampFillApplication),
 // laid and half drawn, a PNG per brush: how a brush fills, before choosing its application. The painting is the
 // studio's GPU renderer's, drawn by stamp-fill-sheet-page.ts. `npm run brushes:fills` runs it.
 

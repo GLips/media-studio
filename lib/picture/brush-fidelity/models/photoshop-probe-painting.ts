@@ -171,7 +171,7 @@ export function photoshopProbeSheetPainting({ sheet, probes, opacity, tipMax }: 
       // stroke's own, fresh from placement.
       if (opacity === 'inBuild') for (const stamp of stamps) stamp.opacity *= toolOpacity;
       return {
-        kind: 'stroke', id: `probes/cells/${c}-${s}`, brush, material: { kind: 'color', color: '#000000' }, diameter, blend: brush.blend, mask: null,
+        kind: 'stroke', id: `probes/cells/${c}-${s}`, brush, action: { kind: 'paint', material: { kind: 'constant', value: { kind: 'color', color: '#000000' } } }, diameter, blend: brush.blend, mask: null,
         opacity: opacity === 'last' ? toolOpacity : 1,
         stamps,
         dualStamps: brush.dual ? placeStrokeStamps(path, brush.dual, diameter * brush.dual.scale, `${seed}|dual`) : [],
@@ -180,5 +180,5 @@ export function photoshopProbeSheetPainting({ sheet, probes, opacity, tipMax }: 
       };
     });
   });
-  return { painting: { groups: [{ id: 'probes', composite: 'glaze', opacity: 1, passes: [{ id: 'probes/cells', within: null, deposits: cells.flat() }] }] }, images, cells };
+  return { painting: { groups: [{ id: 'probes', composite: 'glaze', opacity: 1, passes: [{ id: 'probes/cells', kind: 'dry', within: null, deposits: cells.flat() }] }] }, images, cells };
 }

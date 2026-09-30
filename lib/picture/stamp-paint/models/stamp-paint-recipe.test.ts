@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { stampLinearDynamics, type StampBrush } from './stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, visibleStampCountAt, type CompiledStampMask, type PaintMaterial } from './stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampMask, type PaintMaterial } from './stamp-paint-recipe.ts';
+import { visibleStampCountAt } from './stamp-deposit-reveal.ts';
 import type { StampRegion } from './stamp-region.ts';
 
 /** The masking fluid's ops under a deposit, oldest first, by ID. */
@@ -142,4 +143,39 @@ test("a dual brush's stamps are its scale times the deposit's diameter, stroked 
   assert.ok(stroke.stamps.every((stamp) => stamp.diameter === 20));
   assert.equal(placed.stamps[0].diameter, 8);
   assert.equal(placed.dualStamps[0].diameter, 12);
+});
+
+test("a wash keeps its deposits and waits in painting order, a bloom waiting until it's damp, and each tool's water", () => {
+  const washed = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('sky', { composite: 'glaze', opacity: 1 }, (group) => {
+    group.pass('dry', {}, (pass) => pass.stroke('s', { brush, material: ochre, diameter: 30, path }));
+    group.wash('wet', { preparation: { region: sun } }, (wash) => {
+      wash.stroke('blue', { brush, material: ochre, diameter: 30, path, water: 0.8 });
+      wash.soften('edge', { brush, diameter: 20, path });
+      wash.wait({ seconds: 30 });
+      wash.lift('cloud', { kind: 'stamps', brush, diameter: 40, at: [{ x: 200, y: 100 }], strength: 0.6 });
+      wash.bloom('drop', { brush, diameter: 10, at: [{ x: 210, y: 90 }] });
+    });
+  }))).groups[0];
+  const [dry, wet] = washed.passes;
+  assert.equal(dry.kind, 'dry');
+  assert.ok(wet.kind === 'wash' && wet.wash.preparation);
+  assert.deepEqual(wet.wash.schedule.map((step) => (step.kind === 'wait' ? ['wait', step.until] : [step.deposit.id, step.deposit.action.kind, step.water])), [
+    ['sky/wet/blue', 'paint', 0.8], ['sky/wet/edge', 'water', 0.3], ['wait', { seconds: 30 }], ['sky/wet/cloud', 'lift', null], ['wait', 'damp'], ['sky/wet/drop', 'water', 1],
+  ]);
+  assert.deepEqual(wet.deposits.map(({ id }) => id), ['sky/wet/blue', 'sky/wet/edge', 'sky/wet/cloud', 'sky/wet/drop']);
+  assert.throws(() => compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) =>
+    group.wash('w', {}, (wash) => wash.stroke('s', { brush, material: ochre, diameter: 30, path, water: 2 }))))), /carries 2 water/);
+});
+
+test("a boil's epoch re-seeds only its own group's deposits, their IDs kept", () => {
+  const recipe = stampPaintRecipe((paint) => {
+    paint.group('cloud', { composite: 'glaze', opacity: 1, boil: { every: 2 } }, (group) => group.pass('p', {}, (pass) => pass.stroke('puff', { brush, material: ochre, diameter: 30, path })));
+    paint.group('hill', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) => pass.stroke('line', { brush, material: ochre, diameter: 30, path })));
+  });
+  const stampsOf = (epoch: number) => compileStampPaintRecipe(recipe, { boilEpochs: new Map([['cloud', epoch], ['hill', epoch]]) }).groups.map((group) => group.passes[0].deposits[0]);
+  const [cloud0, hill0] = stampsOf(0), [cloud1, hill1] = stampsOf(1);
+  assert.deepEqual(compileStampPaintRecipe(recipe).groups[0].passes[0].deposits[0].stamps, cloud0.stamps);
+  assert.notDeepEqual(cloud1.stamps, cloud0.stamps);
+  assert.equal(cloud1.id, cloud0.id);
+  assert.deepEqual(hill1.stamps, hill0.stamps);
 });

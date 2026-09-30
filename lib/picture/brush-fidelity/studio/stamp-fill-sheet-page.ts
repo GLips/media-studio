@@ -1,5 +1,5 @@
 // stamp-fill-sheet-page.ts: the fill sheet's browser side, run by lib/picture/brush-fidelity/engine/stamp-fill-sheet.ts
-// through withBrowserModulePage. It fills one region, a blob with a notch and a narrow neck, as a wash and in each
+// through withBrowserModulePage. It fills one region, a blob with a notch and a narrow neck, flooded and in each
 // strokes pattern (StampFillApplication), a column each: laid whole in the top row, half drawn in the bottom one, each
 // labelled with how many stamps it cost. Brush images are served at /files/ (brush-fidelity-pack-urls.ts).
 
@@ -12,7 +12,7 @@ import { brushFidelityAssetUrl, type BrushFidelityPackUrls } from '../models/bru
 const CELL = { width: 330, height: 300 }, LABEL = 56, DRAWN_OVER = 2;
 
 const APPLICATIONS: readonly { label: string; application: StampFillApplication }[] = [
-  { label: 'wash', application: { kind: 'wash' } },
+  { label: 'flood', application: { kind: 'flood' } },
   { label: 'zigzag', application: { kind: 'strokes', pattern: 'zigzag' } },
   { label: 'back and forth', application: { kind: 'strokes', pattern: 'backAndForth' } },
   { label: 'hatch', application: { kind: 'strokes', pattern: 'hatch' } },
