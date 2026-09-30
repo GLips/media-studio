@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { stampDynamics, type StampBrush } from './stamp-brush.ts';
+import { stampLinearDynamics, type StampBrush } from './stamp-brush.ts';
 import { compileStampPaintRecipe, stampPaintRecipe } from './stamp-paint-recipe.ts';
 import { handStampStroke } from './stamp-stroke-hand.ts';
 
@@ -52,9 +52,9 @@ const brush: StampBrush = {
   tip: { image: { style: 's', pack: 'p', file: 'tip.png' }, roundness: 1, sampling: 'isotropic' },
   spacing: 0.1,
   stepping: 'spread',
-  dynamics: stampDynamics({ pressure: { size: 1 } }),
-  scatter: { count: 1, countJitter: 0, countPressure: 0, radius: 0, lateral: 0 },
-  rotation: { angle: 0, follow: 0, jitter: 0, randomStart: false },
+  dynamics: stampLinearDynamics({ size: { pressure: 1 } }),
+  scatter: { count: 1, radius: 0, lateral: 0 },
+  rotation: { angle: 0, randomStart: false },
   flip: { x: false, y: false },
   blur: { amount: 0, jitter: 0 },
   taper: { start: 0, end: 0, size: 1, opacity: 1, shape: 0, pressure: 0 },

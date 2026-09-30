@@ -6,19 +6,21 @@
 // other Photoshop pack's, chosen by a hash of the brush's name so it never moves. No Procreate brush is held out: its
 // reading was fitted against VVDS's previews, the only ones there are.
 
-import { normalizePhotoshopBrush, type PhotoshopReading } from '#lib/picture/photoshop-brushes/models/photoshop-brush.ts';
+import { normalizePhotoshopBrush, PHOTOSHOP_PEN_PRESSURE, type PhotoshopReading } from '#lib/picture/photoshop-brushes/models/photoshop-brush.ts';
 import { PHOTOSHOP_READING } from '#lib/picture/photoshop-brushes/models/photoshop-reading.ts';
 import { normalizeProcreateBrush, type ProcreateReading } from '#lib/picture/procreate-brushes/models/procreate-brush.ts';
 import { PROCREATE_READING } from '#lib/picture/procreate-brushes/models/procreate-reading.ts';
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
-import type { PhotoshopPackBrush, ProcreatePackBrush } from '#lib/picture/stamp-styles/models/stamp-paint-pack.ts';
+import type { PhotoshopPackBrush, ProcreatePackBrush, StampPaintPack } from '#lib/picture/stamp-styles/models/stamp-paint-pack.ts';
+import type { BrushFidelityTarget } from './brush-fidelity-target.ts';
 import type { BrushReading, BrushReadingRange } from './brush-reading-search.ts';
 
 export type BrushReadingApp<R extends BrushReading, Source> = {
   /** The checked-in reading every style reads the app's brushes by. */
   reading: R;
   ranges: Readonly<Record<keyof R & string, BrushReadingRange>>;
-  read: (name: string, source: Source, reading: R) => StampBrush;
+  /** A brush under `reading`, as its app drove it where `target` was painted. */
+  read: (name: string, source: Source, reading: R, target: BrushFidelityTarget) => StampBrush;
   /** Whether `source` uses the mechanism `key` reads, so a candidate for it can change how the brush paints. */
   uses: (key: keyof R & string, source: Source) => boolean;
   heldOut: (pack: string, name: string) => boolean;
@@ -77,7 +79,8 @@ const PHOTOSHOP: BrushReadingApp<PhotoshopReading, PhotoshopPackBrush> = {
     hueJitterShare: amount(0, 1, 0.25, 0.05),
     dualScale: scale(0.25, 4),
   },
-  read: (name, source, reading) => normalizePhotoshopBrush(name, source, reading).brush,
+  read: (name, source, reading, target) =>
+    normalizePhotoshopBrush(name, source, reading, target.kind === 'photoshopReference' ? target.stroke.pressure : PHOTOSHOP_PEN_PRESSURE).brush,
   // Hue jitter is colour, which a coverage sheet can't see.
   uses: (key, { preset }) => {
     switch (key) {
@@ -107,3 +110,10 @@ ${readingLines(reading)}
 
 /** Each app's reading, by the app a pack's manifest names. */
 export const BRUSH_READINGS = { procreate: PROCREATE, photoshop: PHOTOSHOP } as const;
+
+/** Each brush of `pack` by name, under its app's checked-in reading, as its app drove it for its target in `targets`. */
+export function readBrushFidelityBrushes(pack: StampPaintPack, targets: Readonly<Record<string, BrushFidelityTarget>>): Record<string, StampBrush> {
+  const readAll = <R extends BrushReading, Source>(app: BrushReadingApp<R, Source>, brushes: Readonly<Record<string, Source>>) =>
+    Object.fromEntries(Object.entries(brushes).map(([name, source]) => [name, app.read(name, source, app.reading, targets[name])]));
+  return pack.app === 'procreate' ? readAll(BRUSH_READINGS.procreate, pack.brushes) : readAll(BRUSH_READINGS.photoshop, pack.brushes);
+}

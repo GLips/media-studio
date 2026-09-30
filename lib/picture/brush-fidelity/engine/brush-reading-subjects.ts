@@ -43,7 +43,7 @@ export function brushReadingScorer<R extends BrushReading, Source>(call: Browser
   const scored = new Map<string, number>();
   return async (subject: BrushReadingSubject<Source>, candidate: R): Promise<number> => {
     if (!subject.measured) return 0;
-    const brush = reading.read(subject.name, subject.source, candidate), key = `${subject.pack}|${subject.name}|${JSON.stringify(brush)}`;
+    const brush = reading.read(subject.name, subject.source, candidate, subject.target), key = `${subject.pack}|${subject.name}|${JSON.stringify(brush)}`;
     const known = scored.get(key);
     if (known !== undefined) return known;
     const result = await scoreBrushFidelity(call, brush, subject.target, subject.measured, false, { [brushFidelityPackKey(subject.style, subject.pack)]: subject.packUrl });

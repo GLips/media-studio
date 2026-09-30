@@ -16,7 +16,7 @@ test('a dual brush reads its Sub01 as a whole second brush, sized by its largest
   const { brush, support } = normalizeProcreateBrush('Wet Wash', { settings: main, tip: asset('tips/wet-wash.png'), grain: asset('grains/wet-wash.png') }, { settings: sub, tip: asset('tips/wet-wash.dual.png') }, reading);
 
   assert.equal(brush.scatter.count, 5);
-  assert.equal(brush.rotation.jitter, Math.PI);
+  assert.deepEqual(brush.dynamics.rotation?.random, { kind: 'linear', amount: Math.PI });
   assert.equal(brush.accumulation.kind, 'glaze');
   assert.equal(brush.wetEdges?.kind === 'rim' && brush.wetEdges.rim, 0.7);
   assert.equal(brush.grain?.kind, 'canvas');

@@ -46,10 +46,13 @@ export function brushFidelityDiameter(target: BrushFidelityTarget): number {
 /** Whether the diameter is fitted to the target's thickness: only a preview's, whose size Procreate doesn't say. */
 export const brushFidelityFitsDiameter = (target: BrushFidelityTarget) => target.kind === 'procreatePreview';
 
-/** `brush` painted in black at `diameter` as `target` was: a full glaze, so the painting's darkness is its coverage. */
+/**
+ * `brush` painted in black at `diameter` as `target` was: a full glaze, so the painting's darkness is its coverage.
+ * `brush` is read as its app drove it for `target` (BrushReadingApp's `read`).
+ */
 export function brushFidelityPainting(brush: StampBrush, target: BrushFidelityTarget, diameter: number): CompiledStampPaint {
   switch (target.kind) {
-    case 'photoshopReference': return photoshopReferencePainting(brush, diameter, target.stroke.poseOverrides);
+    case 'photoshopReference': return photoshopReferencePainting(brush, diameter);
     case 'procreatePreview': return procreatePreviewPainting(brush, diameter, target.shows);
     case 'none': return procreatePreviewPainting(brush, diameter, 'stroke');
   }

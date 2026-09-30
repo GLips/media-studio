@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { stampDynamics, type StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
+import { stampLinearDynamics, type StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import type { PlacedStamp } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 import { diffStampPaintingPrints, printStampPainting } from './stamp-paint-guard.ts';
@@ -12,9 +12,9 @@ const brush: StampBrush = {
   tip: { image: { style: 'wash', pack: 'vvds', file: 'tips/wash.png' }, roundness: 1, sampling: 'isotropic' },
   spacing: 0.1,
   stepping: 'spread',
-  dynamics: stampDynamics({ pressure: { size: 0.5 }, random: { opacity: 0.3 } }),
-  scatter: { count: 1, countJitter: 0, countPressure: 0, radius: 0.1, lateral: 0.2 },
-  rotation: { angle: 0, follow: 1, jitter: 0.5, randomStart: false },
+  dynamics: stampLinearDynamics({ size: { pressure: 0.5 }, opacity: { random: 0.3 }, rotation: { direction: 1, random: 0.5 } }),
+  scatter: { count: 1, radius: 0.1, lateral: 0.2 },
+  rotation: { angle: 0, randomStart: false },
   flip: { x: false, y: false },
   blur: { amount: 0, jitter: 0 },
   taper: { start: 0.2, end: 0.2, size: 0.3, opacity: 0.5, shape: 0, pressure: 0 },

@@ -16,7 +16,7 @@ import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { runFfmpeg } from '#lib/output/ffmpeg/engine/ffmpeg.ts';
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
-import { resolveStampPaintPackBrushes } from '#lib/picture/stamp-styles/models/stamp-paint-pack.ts';
+import { readBrushFidelityBrushes } from '../models/brush-readings.ts';
 import { STAMP_PAINT_FIDELITY_GRADES, type StampPaintStyleFidelity, type StampPaintStyleGrades } from '../models/brush-fidelity-style.ts';
 import {
   BRUSH_FIDELITY_REPORT_VERSION, brushFidelityOutcomeScore, currentBrushFidelityIdentity, type BrushFidelityOutcome, type BrushFidelityReportEntry,
@@ -70,7 +70,7 @@ export async function writeBrushFidelitySheet({ stylesDir, style, pack, out, onl
   stylesDir: string; style: string; pack: string; out?: string; only?: readonly string[];
 }): Promise<BrushFidelitySheet> {
   const styleDir = join(stylesDir, style), { packDir, manifest, url } = readBrushFidelityPack(stylesDir, style, pack), packUrls = { [brushFidelityPackKey(style, pack)]: url };
-  const brushes = resolveStampPaintPackBrushes(manifest), targets = readBrushFidelityTargets(packDir, manifest);
+  const targets = readBrushFidelityTargets(packDir, manifest), brushes = readBrushFidelityBrushes(manifest, targets);
   const notes = (await readStyleFidelity(styleDir))[pack] ?? {};
   const names = Object.keys(brushes).filter((name) => !only || only.includes(name));
   const missing = only?.filter((name) => !brushes[name]) ?? [];

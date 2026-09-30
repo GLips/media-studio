@@ -21,7 +21,7 @@ export function readPhotoshopReferenceStrokes(packDir: string): Map<string, Phot
   const manifest = JSON.parse(readFileSync(manifestFile, 'utf8')) as PhotoshopCaptureManifest;
   return new Map(manifest.sheets.flatMap((sheet) => sheet.cells.flatMap((cell, index) => (cell.mark !== 'sCurve' ? [] : [[cell.item, {
     sheet: join(dir, sheet.file), box: cell.box, diameter: (manifest.items[cell.item].preset!.diameter * PROCREATE_PREVIEW_SIZE.width) / cell.box.width,
-    poseOverrides: sheet.cells.slice(0, index).some((before) => before.item === cell.item && before.pressure !== undefined),
+    pressure: { lingeringPose: sheet.cells.slice(0, index).some((before) => before.item === cell.item && before.pressure !== undefined) },
   }] as const]))));
 }
 

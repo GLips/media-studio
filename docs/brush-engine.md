@@ -14,8 +14,10 @@ stamp-paint
 ```
 
 **stamp-paint** is the engine, and knows no app. `models/stamp-brush.ts` is the brush (`StampBrush`: a tip, spacing,
-dynamics as sensor, response and target, scatter, rotation, grain, dual, edges, accumulation); `stamp-placement.ts`
-places its stamps along a stroke by one rule (`buildStamp`); `coverage-formulas.ts` and `stamp-deposit-stages.ts`
+dynamics keyed by target and sensor, scatter, rotation, grain, dual, edges, accumulation); `stamp-placement.ts`
+places its stamps along a stroke by one rule (`buildStamp`), reading dynamics through `stamp-dynamics.ts` (each
+step's and stamp's context, what each sensor reads from it, each response); a new sensor or target is an entry in
+`StampTargetSensors` and its signal there; `coverage-formulas.ts` and `stamp-deposit-stages.ts`
 define every blend, accumulation and the order a deposit resolves in, once, for the GPU and the CPU reference alike;
 `stamp-paint-recipe.ts` is the painting a scene writes, with its paper. `studio/` is the WebGPU renderer, its uniform
 layout and the compositor.
@@ -25,7 +27,8 @@ of `procreate-reading.ts`), and the stroke Procreate draws its previews along. I
 `.procreate` canvases.
 
 **photoshop-brushes** reads Photoshop's: the preset schema in Photoshop's own units (`photoshop-preset.ts`), the
-`.abr` reader and descriptor codec, the normalizer (`photoshop-brush.ts`, by `photoshop-reading.ts`), computed round
+`.abr` reader and descriptor codec, the normalizer (`photoshop-brush.ts`, by `photoshop-reading.ts`, which resolves every source of pressure,
+the brush's, the options bar's and a lingering pose's, into the brush's dynamics by one precedence), computed round
 tips, and the capture rig that has Photoshop paint probes and references (docs/photoshop-capture.md). It imports
 procreate-brushes only for the S-curve its references are painted along, Procreate's preview stroke.
 

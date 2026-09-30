@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { normalizePhotoshopBrush, type PhotoshopReading } from './photoshop-brush.ts';
-import { stampDynamics } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
+import { stampLinearDynamics } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { PHOTOSHOP_POOLING } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import type { PhotoshopDescriptor } from './photoshop-descriptor.ts';
 import { photoshopPaintablePreset, readPhotoshopPreset } from './photoshop-preset.ts';
@@ -119,6 +119,23 @@ test("roundness jitter reaches down to the preset's minimum roundness, as vid-97
     }),
     tip: { kind: 'round', image: asset('tips/round-100-100.png') },
   }, photoshopReading);
-  assert.deepEqual(brush.dynamics.filter((d) => d.target === 'roundness'), stampDynamics({ pressure: { roundness: 0.75 }, random: { roundness: 0.375 } }));
+  assert.deepEqual(brush.dynamics.roundness, stampLinearDynamics({ roundness: { pressure: 0.75, random: 0.375 } }).roundness);
   assert.equal(support.some((note) => note.setting.startsWith('tipDynamics.roundness')), false, 'both are read, neither approximated');
+});
+
+test("pressure is resolved once, a lingering pose over the pressure buttons over the brush's own dynamics", () => {
+  const preset = (tool: PhotoshopDescriptor) => paintable({
+    _class: 'brushPreset', Brsh: { _class: 'computedBrush', Dmtr: px(50), Hrdn: pct(100), Spcn: pct(10), Intr: true },
+    useTipDynamics: true, szVr: control(2, 0), minimumDiameter: pct(40), usePaintDynamics: true, opVr: control(2, 0, 20), prVr: control(2, 0, 50), toolOptions: tool,
+  });
+  const pressure = (tool: PhotoshopDescriptor, lingeringPose: boolean) => {
+    const { dynamics } = normalizePhotoshopBrush('Pressed', { preset: preset(tool), tip: { kind: 'round', image: asset('tips/round.png') } }, photoshopReading, { lingeringPose }).brush;
+    return [dynamics.size?.pressure, dynamics.opacity?.pressure, dynamics.flow?.pressure].map((response) => response?.kind === 'linear' && response.amount);
+  };
+  const plain = { _class: 'PbTl', Opct: long(100), flow: long(100) }, buttons = { ...plain, usePressureOverridesSize: true, usePressureOverridesOpacity: true };
+  assert.deepEqual(pressure(plain, false), [0.6, 0.8, 0.5], "the brush's own");
+  assert.deepEqual(pressure(buttons, false), [1, 1, 0.5], 'the buttons drive size and opacity wholly');
+  // Under a lingering pose a size minimum counts twice, and opacity follows wholly; flow is the brush's throughout.
+  assert.deepEqual(pressure(plain, true), [0.6 ** 2, 1, 0.5]);
+  assert.deepEqual(pressure(buttons, true), [1, 1, 0.5]);
 });

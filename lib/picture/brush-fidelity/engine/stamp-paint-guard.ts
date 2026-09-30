@@ -22,6 +22,7 @@ import { resolveStampPaintPackBrushes, type StampPaintPack } from '#lib/picture/
 import { readImportedStampPaintPack } from '#lib/picture/stamp-styles/engine/stamp-paint-pack-files.ts';
 import { brushFidelityIdentityDifferences, brushFidelityOutcomeScore, type BrushFidelityReport } from '../models/brush-fidelity-report.ts';
 import { brushFidelityDiameter, brushFidelityPainting } from '../models/brush-fidelity-target.ts';
+import { readBrushFidelityBrushes } from '../models/brush-readings.ts';
 import { readBrushFidelityTargets } from './brush-fidelity-targets.ts';
 
 /**
@@ -137,10 +138,10 @@ export const snapshotStampPaintBrushes = (stylesDir: string): StampPaintBrushSna
 /** Every brush of every imported pack of every style in `stylesDir`, printed one at a time: all at once is gigabytes. */
 export function* fingerprintStampPaintPacks(stylesDir: string): Generator<StampPaintBrushPrint> {
   for (const { id, dir, pack: manifest } of importedStampPaintPacks(stylesDir)) {
-    const targets = readBrushFidelityTargets(dir, manifest);
+    const targets = readBrushFidelityTargets(dir, manifest), asTargeted = readBrushFidelityBrushes(manifest, targets);
     for (const [name, brush] of Object.entries(resolveStampPaintPackBrushes(manifest))) {
       // A preview's brush is painted at the diameter its fit starts from, before the GPU fits it; stamps scale with it.
-      const sheet = brushFidelityPainting(brush, targets[name], brushFidelityDiameter(targets[name]));
+      const sheet = brushFidelityPainting(asTargeted[name], targets[name], brushFidelityDiameter(targets[name]));
       yield { pack: id, brush: name, sheet: printStampPainting(sheet), probe: printStampPainting(probePainting(brush)) };
     }
   }
