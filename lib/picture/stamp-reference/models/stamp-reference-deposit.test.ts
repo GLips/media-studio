@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
+import { bindStampBrushImages, type StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { placeStrokeStamps, type PlacedStamp } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 import { renderStampReferenceDeposit } from './stamp-reference-deposit.ts';
 import { stampReferenceMips } from './stamp-reference-image.ts';
 
 const brush: StampBrush = {
-  name: 'Round', blend: 'normal', accumulation: 'buildToOpacity',
+  name: 'Round', blend: 'normal', accumulation: { kind: 'buildToOpacity' },
   tip: { image: { style: 's', pack: 'p', file: 'tip.png' }, roundness: 1, sampling: 'isotropic' },
   spacing: 0.25,
   stepping: 'eachStamp',
@@ -35,7 +35,7 @@ test('a buildToOpacity stroke lays each stamp toward its own opacity and never l
     x: 2, y: 2, diameter: 4, rotation: 0, roundness: 1, alpha: 0.5, opacity, flipX: false, flipY: false, blur: 0, grainTurn: 0, tint: { hue: 0, saturation: 0, lightness: 0, secondary: 0 }, reveal: 0,
   });
   const at = (stamps: PlacedStamp[]) => renderStampReferenceDeposit({
-    brush, stamps, dualStamps: [], diameter: 4, opacity: 1, grainOffset: { main: [0, 0], dual: [0, 0] }, images: { main: { tip } }, box: { x: 0, y: 0, width: 4, height: 4 },
+    brush: bindStampBrushImages(brush, () => tip), stamps, dualStamps: [], diameter: 4, opacity: 1, grainOffset: { main: [0, 0], dual: [0, 0] }, box: { x: 0, y: 0, width: 4, height: 4 },
   }).coverage[1 * 4 + 1];
   // Two stamps at flow 0.5 build to 0.75 of full; at opacity 0.6, to 0.75 of 0.6.
   assert.ok(Math.abs(at([stamp(1), stamp(1)]) - 0.75) < 1e-6);

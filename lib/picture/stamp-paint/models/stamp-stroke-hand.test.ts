@@ -48,7 +48,7 @@ test('wobble is seeded per stroke, stays within its reach and keeps the lifts', 
 });
 
 const brush: StampBrush = {
-  name: 'Round', blend: 'normal', accumulation: 'glaze',
+  name: 'Round', blend: 'normal', accumulation: { kind: 'glaze', build: 0 },
   tip: { image: { style: 's', pack: 'p', file: 'tip.png' }, roundness: 1, sampling: 'isotropic' },
   spacing: 0.1,
   stepping: 'spread',

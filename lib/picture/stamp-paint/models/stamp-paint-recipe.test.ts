@@ -6,7 +6,7 @@ import { compileStampPaintRecipe, stampPaintRecipe, visibleStampCountAt, type Pa
 const brush: StampBrush = {
   name: 'Wet Wash',
   blend: 'normal',
-  accumulation: 'glaze',
+  accumulation: { kind: 'glaze', build: 0 },
   tip: { image: { style: 'wash', pack: 'vvds', file: 'tips/wash.png' }, roundness: 1, sampling: 'isotropic' },
   spacing: 0.1,
   stepping: 'spread',
@@ -87,10 +87,10 @@ test('a recipe that would seed or draw wrongly is refused when it compiles, nami
   assert.throws(() => compileStampPaintRecipe(recipe), (error: Error) =>
     error.message.includes('sky/wash/s1') && error.message.includes(': sky/wash/s1, sky') && !error.message.includes('sky/glaze/s1'));
 
-  const oneStroke = (settings: { diameter: number; appliedAt?: number; drawnOver?: number }) => () => compileStampPaintRecipe(stampPaintRecipe((paint) =>
+  const oneStroke = (settings: { diameter: number } | { diameter: number; appliedAt: number; drawnOver: number }) => () => compileStampPaintRecipe(stampPaintRecipe((paint) =>
     paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) => pass.stroke('s', { brush, material: ochre, path, ...settings })))));
   assert.throws(oneStroke({ diameter: 0 }), /g\/p\/s has diameter 0/);
-  assert.throws(oneStroke({ diameter: 40, drawnOver: 3 }), /g\/p\/s draws over 3s, which needs an appliedAt/);
+  assert.throws(oneStroke({ diameter: 40, appliedAt: 1, drawnOver: -3 }), /g\/p\/s draws over -3s, and a draw takes no less than 0/);
 });
 
 test('a stroke tapers at both ends however short, and turns with its direction from its first stamp', () => {
@@ -126,7 +126,7 @@ test('a stroke partway drawn shows a prefix of the finished stroke\'s stamps, th
 
 test("a dual brush's stamps are its scale times the deposit's diameter, stroked or placed", () => {
   const still = { ...brush, jitter: { lateral: 0, size: 0, opacity: 0, flow: 0, roundness: 0 }, taper: { ...brush.taper, start: 0, end: 0, size: 1, opacity: 1 } };
-  const dualed = { ...still, dual: { ...still, accumulation: 'build' as const, blend: 'multiply' as const, formula: 'layer' as const, scale: 1.5 } };
+  const dualed = { ...still, dual: { ...still, accumulation: { kind: 'build' as const }, blend: { family: 'layer' as const, mode: 'multiply' as const }, scale: 1.5 } };
   const [stroke, placed] = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) => {
     pass.stroke('s', { brush: dualed, material: ochre, diameter: 20, path: [{ x: 0, y: 0 }, { x: 300, y: 0 }] });
     pass.stamps('d', { brush: dualed, material: ochre, diameter: 20, at: [{ x: 0, y: 0, diameter: 8 }] });

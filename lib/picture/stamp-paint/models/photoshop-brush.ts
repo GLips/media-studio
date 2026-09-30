@@ -67,12 +67,12 @@ const blendName = (mode: string | undefined) => `${mode} (${PHOTOSHOP_BLEND_NAME
 /** A tool's own mode, which the deposit paints in. */
 const BRUSH_BLENDS: Readonly<Record<string, StampBlend>> = { Nrml: 'normal', Mltp: 'multiply', Scrn: 'screen', Ovrl: 'overlay', Drkn: 'darken', Lghn: 'lighten', CBrn: 'colorBurn' };
 /** Every mode Texture offers. */
-const GRAIN_BLENDS: Readonly<Record<string, StampGrainBlend>> = {
+const GRAIN_BLENDS: Readonly<Record<string, Extract<StampGrainBlend, { family: 'texture' }>['mode']>> = {
   Mltp: 'multiply', Sbtr: 'subtract', Drkn: 'darken', Ovrl: 'overlay', CDdg: 'colorDodge', CBrn: 'colorBurn', linearBurn: 'linearBurn', hardMix: 'hardMix',
   linearHeight: 'linearHeight', Hght: 'height',
 };
 /** Every mode Dual Brush offers. */
-const DUAL_BLENDS: Readonly<Record<string, StampDualBlend>> = {
+const DUAL_BLENDS: Readonly<Record<string, Extract<StampDualBlend, { family: 'texture' }>['mode']>> = {
   Mltp: 'multiply', Drkn: 'darken', Ovrl: 'overlay', CDdg: 'colorDodge', CBrn: 'colorBurn', linearBurn: 'linearBurn', hardMix: 'hardMix', linearHeight: 'linearHeight',
 };
 
@@ -226,11 +226,9 @@ function readMainLayer(source: PhotoshopBrushSource, notes: StampBrushSupportNot
       grain = {
         image: source.pattern.image,
         scale: (source.pattern.width * photoshopNumber(p, 'textureScale', 100)) / 100 / diameter,
-        mode: eachTip ? 'rolling' : 'texturized',
         // Photoshop holds depth in 255ths.
         depth: Math.round((photoshopNumber(p, 'textureDepth', 100) / 100) * 255) / 255,
-        blend: blend ?? 'multiply',
-        formula: 'texture',
+        blend: { family: 'texture', mode: blend ?? 'multiply' },
         // Brightness is in 255ths; both apply after invert, which the stored image already holds.
         brightness: photoshopNumber(p, 'textureBrightness') / 255,
         contrast: photoshopNumber(p, 'textureContrast') / 100,
@@ -238,7 +236,7 @@ function readMainLayer(source: PhotoshopBrushSource, notes: StampBrushSupportNot
         tiling: 'repeat',
         offsetJitter: 0,
         // Each tip is textured where it lands, the pattern still fixed to the canvas: it neither moves, grows nor turns with the stamp.
-        zoom: 0, movement: 1, rotation: 0,
+        ...(eachTip ? { kind: 'rolling' as const, zoom: 0, movement: 1, rotation: 0 } : { kind: 'canvas' as const }),
       };
       note('approximated', 'textureScale', `the pattern tiles ${grain.scale.toFixed(2)} diameters across at the preset's ${diameter} px; Photoshop keeps it that many pixels at any size`);
       if (!blend) note('unsupported', 'textureBlendMode', `${blendName(mode)} has no studio reading; read as multiply`);
@@ -274,8 +272,8 @@ function readMainLayer(source: PhotoshopBrushSource, notes: StampBrushSupportNot
     falloff: 0,
     flow: toolFlow,
     pressure: { size: sizePressure, opacity: opacityPressure, flow: flowPressure, roundness: roundnessPressure },
-    accumulation: 'buildToOpacity',
-    ...(wet && { pooling: PHOTOSHOP_POOLING }),
+    accumulation: { kind: 'buildToOpacity' },
+    ...(wet && { wetEdges: PHOTOSHOP_POOLING }),
   };
 }
 
@@ -301,9 +299,8 @@ function readDualLayer(source: PhotoshopBrushSource, notes: StampBrushSupportNot
     // The secondary builds as its own stroke at full flow, whatever the tool's.
     flow: 1,
     pressure: { size: 0, opacity: 0, flow: 0, roundness: 0 },
-    accumulation: 'buildToOpacity',
-    blend: blend ?? 'multiply',
-    formula: 'texture',
+    accumulation: { kind: 'buildToOpacity' },
+    blend: { family: 'texture', mode: blend ?? 'multiply' },
     scale,
   };
 }

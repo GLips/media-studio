@@ -32,7 +32,7 @@ export type ProcreateReading = {
   taperShare: number;
   /** A wet or burnt edge's width, a fraction of the stamp's radius: Procreate gives an amount and no width. */
   edgeWidth: number;
-  /** How steeply a rim rises at the outline (StampBrushWetEdge's sharpness). */
+  /** How steeply a rim rises at the outline (a rim StampBrushWetEdges' sharpness). */
   rimSharpness: number;
   /** How dark a full wet edge (1) makes its rim over the body; less is proportionally less. */
   wetRim: number;
@@ -62,7 +62,7 @@ export type ProcreateReading = {
   lateralJitterScale: number;
   lateralJitterPower: number;
   /**
-   * How far each glaze mode's stamps build within the stroke (StampBrushLayer's glazeBuild), by its transfer flags:
+   * How far each glaze mode's stamps build within the stroke (a glaze StampAccumulation's build), by its transfer flags:
    * light (neither), uniform (modulated), intense (max) and heavy (both). The names are the Handbook's; which flags
    * make which mode is inferred.
    */
@@ -91,11 +91,11 @@ const PROCREATE_BLEND_NAMES: Readonly<Record<number, string>> = {
  * Blotch) reads as a pale body inside its rim only so. 10, 19 and 28 read as their layer names; the sheet neither
  * confirms nor beats them (one or two brushes each, split).
  */
-const DUAL_BLENDS: Readonly<Record<number, StampDualBlend>> = {
+const DUAL_BLENDS: Readonly<Record<number, Extract<StampDualBlend, { family: 'layer' }>['mode']>> = {
   0: 'normal', 1: 'multiply', 2: 'screen', 4: 'lighten', 6: 'difference', 10: 'colorBurn', 11: 'overlay', 19: 'darken', 28: 'linearHeight',
 };
 /** A grain's blend mode by number, as layer modes number: the pack uses only these. */
-const GRAIN_BLENDS: Readonly<Record<number, StampGrainBlend>> = {
+const GRAIN_BLENDS: Readonly<Record<number, Extract<StampGrainBlend, { family: 'layer' }>['mode']>> = {
   1: 'multiply', 4: 'lighten', 7: 'subtract', 8: 'linearBurn', 9: 'colorDodge', 10: 'colorBurn', 19: 'darken', 20: 'hardMix', 26: 'divide', 27: 'height', 28: 'linearHeight',
 };
 /** The brush's own blend and its burnt edge's, by number, as layer modes number. */
@@ -178,12 +178,12 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
   if (source.grain) {
     const grainBlend = GRAIN_BLENDS[num('grainBlendMode')];
     grain = {
-      image: source.grain, scale: num('textureScale') * reading.grainTile, mode: num('textureApplication') === 1 ? 'texturized' : 'rolling', depth: num('grainDepth') ** reading.grainDepthCurve,
-      blend: grainBlend ?? 'multiply', formula: 'layer', brightness: num('textureBrightness') * reading.grainBrightness * (procreateGrainNegated(s) ? 1 : -1),
+      image: source.grain, scale: num('textureScale') * reading.grainTile, depth: num('grainDepth') ** reading.grainDepthCurve,
+      blend: { family: 'layer', mode: grainBlend ?? 'multiply' }, brightness: num('textureBrightness') * reading.grainBrightness * (procreateGrainNegated(s) ? 1 : -1),
       contrast: grainContrastOf(num('textureContrast'), reading), contrastPivot: 'mean', tiling: 'mirror', offsetJitter: on('textureOffsetJitter') ? 1 : 0,
-      zoom: num('textureZoom'), movement: num('textureMovement'), rotation: num('textureRotation'),
+      ...(num('textureApplication') === 1 ? { kind: 'canvas' as const } : { kind: 'rolling' as const, zoom: num('textureZoom'), movement: num('textureMovement'), rotation: num('textureRotation') }),
     };
-    note('approximated', 'textureScale, textureApplication', `grain read as ${grain.mode}, its tile ${grain.scale.toFixed(2)} stamp diameters across`);
+    note('approximated', 'textureScale, textureApplication', `grain read as ${grain.kind === 'canvas' ? 'texturized' : 'rolling'}, its tile ${grain.scale.toFixed(2)} stamp diameters across`);
     note(grainBlend ? 'approximated' : 'unsupported', 'grainBlendMode', grainBlend
       ? `${blendName(num('grainBlendMode'))} read as ${grainBlend}, set against the pack's previews: Procreate doesn't document how grain modes number`
       : `${blendName(num('grainBlendMode'))} has no studio reading; read as multiply`);
@@ -220,9 +220,8 @@ function readLayer(source: ProcreateBrushSource, prefix: string, notes: StampBru
     // maxOpacity only bounds the sidebar's opacity slider (the Handbook's Properties): a deposit states its own opacity.
     flow: num('dynamicsGlazedFlow') ** (blending ? reading.blendingFlowCurve : reading.glazeFlowCurve),
     pressure: { size: num('dynamicsPressureSize'), opacity: num('dynamicsPressureOpacity'), flow: num('dynamicsPressureOpacityTransfer'), roundness: 0 },
-    accumulation: blending ? 'build' : 'glaze',
-    ...(!blending && glazeBuild > 0 && { glazeBuild }),
-    ...(wet > 0 && !blending && { wetEdge: { width: reading.edgeWidth, rim: Math.min(1, wet * reading.wetRim), sharpness: reading.rimSharpness } }),
+    accumulation: blending ? { kind: 'build' } : { kind: 'glaze', build: glazeBuild },
+    ...(wet > 0 && !blending && { wetEdges: { kind: 'rim', width: reading.edgeWidth, rim: Math.min(1, wet * reading.wetRim), sharpness: reading.rimSharpness } }),
     ...(burnt > 0 && { burntEdge: { width: reading.edgeWidth, strength: burnt, sharpness: reading.rimSharpness, blend: burntBlend ?? 'colorBurn' } }),
   };
 }
@@ -258,7 +257,7 @@ export function normalizeProcreateBrush(
     if (readColorDynamics(dual.settings)) support.push({ level: 'inapplicable', setting: 'Sub01 colour dynamics', detail: "a dual only shapes the main brush's coverage; its colour is the main brush's" });
     const scale = (Number(dual.settings.maxSize ?? 1) / Number(main.settings.maxSize ?? 1)) * reading.dualScale;
     support.push({ level: 'approximated', setting: 'Sub01 maxSize', detail: `the dual's stamps read as ${scale.toFixed(2)}× the main brush's, the ratio of their largest sizes; on the sheet neither half nor double fits better` });
-    brush.dual = { ...readLayer(dual, 'Sub01 ', support, reading), blend: dualBlend ?? 'multiply', formula: 'layer', scale };
+    brush.dual = { ...readLayer(dual, 'Sub01 ', support, reading), blend: { family: 'layer', mode: dualBlend ?? 'multiply' }, scale };
   }
   return { brush, support };
 }

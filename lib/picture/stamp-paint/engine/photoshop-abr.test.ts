@@ -62,8 +62,8 @@ test('importing an .abr writes the same pack layout a Procreate pack imports to,
     assert.deepEqual(manifest.previews, {});
     assert.deepEqual([stampPaintPackDiameter(manifest, 'Chalk'), stampPaintPackDiameter(manifest, 'Chalk (Wet)')], [48, 30]);
     const brushes = resolveStampPaintPackBrushes(manifest), chalk = brushes.Chalk;
-    assert.equal(chalk.grain?.mode, 'texturized');
-    assert.equal(chalk.grain?.blend, 'height');
+    assert.equal(chalk.grain?.kind, 'canvas');
+    assert.deepEqual(chalk.grain?.blend, { family: 'texture', mode: 'height' });
     assert.equal(chalk.grain?.scale, 4 / 48);
     assert.equal(brushes['Chalk (Wet)'].wetMix?.load, 1);
   });

@@ -56,12 +56,12 @@ test('a Procreate brush and a Photoshop preset that paint alike normalize to the
   // Photoshop steps by each stamp's own size and its short side (its roundness is 0.5), where Procreate spreads its
   // steps along the stroke, and holds flow in 255ths. The two build, sample tips, cut and tile grain, adjust it and
   // combine a dual as each was identified or fitted to.
-  const photoshopWays = { accumulation: 'buildToOpacity', stepping: 'eachStamp' } as const;
+  const photoshopWays = { accumulation: { kind: 'buildToOpacity' }, stepping: 'eachStamp' } as const;
   assert.deepEqual(photoshop.brush, {
     ...procreate.brush, ...photoshopWays, spacing: procreate.brush.spacing * 0.5, flow: 163 / 255,
     tip: { ...procreate.brush.tip, sampling: 'anisotropic' },
-    grain: { ...procreate.brush.grain!, formula: 'texture', contrastPivot: 'midGrey', tiling: 'repeat' },
-    dual: { ...procreate.brush.dual!, ...photoshopWays, tip: { ...procreate.brush.dual!.tip, sampling: 'anisotropic' }, formula: 'texture' },
+    grain: { ...procreate.brush.grain!, blend: { family: 'texture', mode: procreate.brush.grain!.blend.mode }, contrastPivot: 'midGrey', tiling: 'repeat' },
+    dual: { ...procreate.brush.dual!, ...photoshopWays, tip: { ...procreate.brush.dual!.tip, sampling: 'anisotropic' }, blend: { family: 'texture', mode: procreate.brush.dual!.blend.mode } },
   });
   assert.equal(photoshop.brush.scatter.count, 3);
 });
@@ -79,8 +79,7 @@ test("a Mixer Brush preset carries its wet mixing, noted as not yet painted, and
   assert.equal(brush.grain, undefined);
   // Wet edges pool the built coverage; they no longer thin the flow.
   assert.equal(brush.flow, 128 / 255);
-  assert.deepEqual(brush.pooling, PHOTOSHOP_POOLING);
-  assert.equal(brush.wetEdge, undefined);
+  assert.deepEqual(brush.wetEdges, PHOTOSHOP_POOLING);
   assert.ok(brush.tip.span! > 1, "a soft computed tip's image reaches past its diameter");
   const unsupported = support.filter((note) => note.level === 'unsupported').map((note) => note.setting);
   assert.deepEqual(unsupported, ['toolOptions.wetness, dryness, mix, sampleAllLayers', 'Txtr']);
@@ -97,7 +96,7 @@ test('a texture reads as Photoshop sets it: its mode, its depth in 255ths, its b
   }, photoshopReading);
   assert.deepEqual(
     { blend: brush.grain?.blend, depth: brush.grain?.depth, brightness: brush.grain?.brightness, contrast: brush.grain?.contrast, spacing: brush.spacing },
-    { blend: 'overlay', depth: 84 / 255, brightness: -0.2, contrast: -0.5, spacing: 0.01 },
+    { blend: { family: 'texture', mode: 'overlay' }, depth: 84 / 255, brightness: -0.2, contrast: -0.5, spacing: 0.01 },
   );
   assert.deepEqual(support.filter((note) => note.setting.startsWith('texture')).map((note) => note.level), ['approximated'], 'only the texture scale is approximated');
 });

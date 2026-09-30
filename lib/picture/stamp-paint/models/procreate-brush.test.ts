@@ -17,15 +17,15 @@ test('a dual brush reads its Sub01 as a whole second brush, sized by its largest
 
   assert.equal(brush.scatter.count, 5);
   assert.equal(brush.rotation.jitter, Math.PI);
-  assert.equal(brush.accumulation, 'glaze');
-  assert.equal(brush.wetEdge?.rim, 0.7);
-  assert.equal(brush.grain?.mode, 'texturized');
-  assert.equal(brush.grain?.blend, 'height');
+  assert.equal(brush.accumulation.kind, 'glaze');
+  assert.equal(brush.wetEdges?.kind === 'rim' && brush.wetEdges.rim, 0.7);
+  assert.equal(brush.grain?.kind, 'canvas');
+  assert.equal(brush.grain?.blend.mode, 'height');
   assert.equal(brush.grain?.scale, 3.75);
-  assert.equal(brush.dual?.blend, 'darken');
+  assert.equal(brush.dual?.blend.mode, 'darken');
   assert.equal(brush.dual?.scale, 1.5);
   assert.equal(brush.dual?.scatter.count, 16);
-  assert.equal(brush.dual?.accumulation, 'build');
+  assert.deepEqual(brush.dual?.accumulation, { kind: 'build' });
   assert.equal(brush.dual?.burntEdge?.strength, 0.5);
   assert.equal(brush.dual?.grain, undefined);
 

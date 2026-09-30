@@ -16,7 +16,7 @@ import { readPhotoshopSheet } from '#lib/picture/photoshop-capture/engine/photos
 import { normalizePhotoshopBrush, PHOTOSHOP_SAMPLE_BORDER, photoshopPatternNegated, photoshopTipImage, type PhotoshopTipImage } from '#lib/picture/stamp-paint/models/photoshop-brush.ts';
 import { photoshopObject } from '#lib/picture/stamp-paint/models/photoshop-descriptor.ts';
 import { drawPhotoshopComputedTip } from '#lib/picture/stamp-paint/models/photoshop-computed-tip.ts';
-import type { StampBrushAsset } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
+import { bindStampBrushImages, type StampBrushAsset } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { STAMP_PACK_TIP_MAX } from '#lib/picture/stamp-paint/engine/stamp-paint-pack-files.ts';
 import { placeStrokeStamps } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 import { stampReferenceMips, type StampReferenceImage } from '../models/stamp-reference-image.ts';
@@ -58,12 +58,13 @@ export function photoshopProbeReferenceBrush(probe: PhotoshopProbe) {
     ...(dualTip && { dualTip: asset('dual-tip') }),
     ...(probe.settings.texture && { pattern: { image: asset('ramp'), width: PHOTOSHOP_PROBE_RAMP.width } }),
   });
-  const grain = probe.settings.texture && stampReferenceMips(rampImage(photoshopPatternNegated(preset)));
+  // Each image drawn from the preset as the rig drew it, by the name it was given above.
   const images = {
-    main: { tip: stampReferenceMips(tipImage(photoshopTipImage(photoshopObject(preset, 'Brsh')!))), ...(grain && { grain }) },
-    ...(dualTip && { dual: { tip: stampReferenceMips(tipImage(dualTip)) } }),
+    tip: () => stampReferenceMips(tipImage(photoshopTipImage(photoshopObject(preset, 'Brsh')!))),
+    'dual-tip': () => stampReferenceMips(tipImage(dualTip!)),
+    ramp: () => stampReferenceMips(rampImage(photoshopPatternNegated(preset))),
   };
-  return { brush, support, images };
+  return { brush: bindStampBrushImages(brush, ({ file }) => images[file as keyof typeof images]()), support };
 }
 
 /** Why a cell isn't scored, or null when it is. */
@@ -86,7 +87,7 @@ export type PhotoshopProbeCellScore = { probe: string; cell: string; score: Stam
  * box starts at −pad), and every stage's buffer.
  */
 export function renderPhotoshopProbeCell(probe: PhotoshopProbe, cell: PhotoshopCaptureCell, { arrangement, pad = 0 }: { arrangement?: StampReferenceArrangement; pad?: number } = {}) {
-  const { brush, images } = photoshopProbeReferenceBrush(probe);
+  const { brush } = photoshopProbeReferenceBrush(probe);
   const box = { x: -pad, y: -pad, width: cell.box.width + 2 * pad, height: cell.box.height + 2 * pad };
   const diameter = probe.settings.tip.diameter;
   // Each stroke finishes and lays over the ones before it, as separate strokes do.
@@ -94,7 +95,7 @@ export function renderPhotoshopProbeCell(probe: PhotoshopProbe, cell: PhotoshopC
     const path = stroke.map(([x, y]) => ({ x: x - cell.box.x, y: y - cell.box.y }));
     const seed = `${probe.name}|${s}`;
     return renderStampReferenceDeposit({
-      brush, diameter, opacity: byte(probe.settings.opacity / 100), box, arrangement, images,
+      brush, diameter, opacity: byte(probe.settings.opacity / 100), box, arrangement,
       stamps: placeStrokeStamps(path, brush, diameter, seed),
       dualStamps: brush.dual ? placeStrokeStamps(path, brush.dual, diameter * brush.dual.scale, `${seed}|dual`) : [],
       // The pattern is fixed to the sheet, and cells start on whole tiles.

@@ -38,14 +38,14 @@ type StampDepositSettings = {
   secondaryColor?: StampPaintColor;
   /** The most this deposit can build to, 0..1, however its stamps overlap. */
   opacity?: number;
-  /** Seconds into the scene when the deposit starts to appear. Left out, it's there from the start. */
-  appliedAt?: number;
-  /**
-   * Seconds a deposit takes to draw from `appliedAt` (which it needs), showing a growing share of a stroke's length or
-   * of its placements. Left out, it lands whole.
-   */
-  drawnOver?: number;
-};
+} & StampDepositReveal;
+
+/**
+ * When a deposit shows. `appliedAt`: seconds into the scene when it starts to appear; left out, it's there from the
+ * start. `drawnOver`: seconds it takes to draw from `appliedAt` (so only with one), showing a growing share of a
+ * stroke's length or of its placements; left out, it lands whole.
+ */
+type StampDepositReveal = { appliedAt?: undefined; drawnOver?: undefined } | { appliedAt: number; drawnOver?: number };
 
 export type StampStrokeSettings = StampDepositSettings & {
   path: readonly StampStrokePoint[];
@@ -145,8 +145,8 @@ export type CompiledStampDeposit = {
   blend: StampBlend;
   opacity: number;
   protectedBy: readonly StampRegion[];
-  appliedAt?: number;
-  drawnOver?: number;
+  /** When it shows (StampDepositReveal): from `at` seconds, drawn over `over` (0 lands whole); none, there throughout. */
+  reveal?: { at: number; over: number };
   /** Every stamp of the finished deposit, in reveal order. */
   stamps: readonly PlacedStamp[];
   /** The brush's dual stamps, placed by its own settings along the same stroke, in reveal order; none without one. */
@@ -169,8 +169,8 @@ export type CompiledStampPaint = { groups: readonly CompiledStampGroup[] };
 /**
  * Checks `recipe` and places every stamp. Throws on an ID used twice at one level (it would seed two deposits alike),
  * an empty ID or one holding `/` or `|` (the seed's separators), a clipped pass with nothing before it to clip to, a
- * deposit with no points or a diameter that isn't positive, a stroke point whose speed isn't positive, and a
- * `drawnOver` that is negative or has no `appliedAt`.
+ * deposit with no points or a diameter that isn't positive, a stroke point whose speed isn't positive, and a negative
+ * `drawnOver`.
  */
 export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStampPaint {
   const seen = new Set<string>(), duplicates = new Set<string>();
@@ -193,9 +193,7 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
         const full = claim(depositId, passId);
         const { brush, material, blend = brush.blend, opacity = 1, appliedAt, drawnOver, diameter } = deposit;
         if (!(diameter > 0) || !Number.isFinite(diameter)) throw new Error(`stamp paint: ${full} has diameter ${diameter}, and a stamp needs a positive one`);
-        if (drawnOver !== undefined && (appliedAt === undefined || drawnOver < 0)) {
-          throw new Error(`stamp paint: ${full} draws over ${drawnOver}s, which needs an appliedAt and no less than 0`);
-        }
+        if (drawnOver !== undefined && drawnOver < 0) throw new Error(`stamp paint: ${full} draws over ${drawnOver}s, and a draw takes no less than 0`);
         if (!(deposit.kind === 'stroke' ? deposit.path : deposit.at).length) throw new Error(`stamp paint: ${full} has no points to stamp`);
         if (deposit.kind === 'stroke' && deposit.path.some(({ speed }) => speed !== undefined && !(speed > 0))) throw new Error(`stamp paint: ${full} has a point whose speed isn't positive`);
         // The hand's path is worked out once, so the main stamps and the dual's follow the same wobble.
@@ -211,7 +209,7 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
         const color = brush.color ? strokeColor(material.color, brush.color.stroke, [random(), random(), random(), random()]) : material.color;
         return {
           id: full, kind: deposit.kind, brush, material: { ...material, color }, secondaryColor: deposit.secondaryColor ?? material.color, grainOffset,
-          diameter, blend, opacity, protectedBy, appliedAt, drawnOver, stamps, dualStamps,
+          diameter, blend, opacity, protectedBy, ...(appliedAt !== undefined && { reveal: { at: appliedAt, over: drawnOver ?? 0 } }), stamps, dualStamps,
         };
       });
       return { id: passId, clipTo, deposits };
@@ -230,9 +228,10 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
  */
 export function visibleStampCountAt(deposit: CompiledStampDeposit, t: number, which: 'stamps' | 'dualStamps' = 'stamps'): number {
   const stamps = deposit[which];
-  if (deposit.appliedAt === undefined) return stamps.length;
-  if (t < deposit.appliedAt) return 0;
-  const progress = deposit.drawnOver ? Math.min(1, (t - deposit.appliedAt) / deposit.drawnOver) : 1;
+  const { reveal } = deposit;
+  if (!reveal) return stamps.length;
+  if (t < reveal.at) return 0;
+  const progress = reveal.over ? Math.min(1, (t - reveal.at) / reveal.over) : 1;
   // Stamps come in reveal order, so the count is where `progress` would sort among them.
   let low = 0, high = stamps.length;
   while (low < high) {

@@ -56,7 +56,8 @@ export type PlacedStamp = {
 export type StampTint = { hue: number; saturation: number; lightness: number; secondary: number };
 
 /** The stamping a placement reads: a brush's own stamps, and its colour dynamics when it's a main brush that has them. */
-export type StampPlacementBrush = StampBrushStamping & { color?: StampBrushColorDynamics };
+// Placement reads no image, so a brush places alike whatever its images are bound to.
+export type StampPlacementBrush = StampBrushStamping<unknown> & { color?: StampBrushColorDynamics };
 
 /**
  * Falloff is per this many diameters travelled: a brush's falloff is small (0.01 to 0.1), and read per diameter it
@@ -87,7 +88,7 @@ function tintOf(color: StampBrushColorDynamics | undefined, draws: readonly numb
  * What a whole deposit draws once, from its own stream: the turn `randomStart` gives every stamp. Seeded apart from
  * any stamp's stream, so it never shifts one.
  */
-const depositTurn = (brush: StampBrushStamping, seed: string) => (brush.rotation.randomStart ? seededRandom(`${seed}|deposit`)() * Math.PI * 2 : 0);
+const depositTurn = (brush: StampBrushStamping<unknown>, seed: string) => (brush.rotation.randomStart ? seededRandom(`${seed}|deposit`)() * Math.PI * 2 : 0);
 
 /**
  * The draws every stamp makes after its placement's own, in a fixed order: flips, blur, flow, its tint's four and roundness.
@@ -187,7 +188,7 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
         flipX: brush.flip.x && later.flipX,
         flipY: brush.flip.y && later.flipY,
         blur: brush.blur.amount * (1 - later.blurLoss * brush.blur.jitter),
-        grainTurn: heading * (brush.grain?.rotation ?? 0),
+        grainTurn: brush.grain?.kind === 'rolling' ? heading * brush.grain.rotation : 0,
         tint: tintOf(brush.color, later.tint, pressure),
         reveal: reveal(segment, k, along),
       });

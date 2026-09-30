@@ -7,7 +7,7 @@ import { compileStampPaintRecipe, stampPaintRecipe, type StampRegion } from './s
 const brush: StampBrush = {
   name: 'Wash',
   blend: 'normal',
-  accumulation: 'glaze',
+  accumulation: { kind: 'glaze', build: 0 },
   tip: { image: { style: 'wash', pack: 'vvds', file: 'tips/wash.png' }, roundness: 1, sampling: 'isotropic' },
   spacing: 0.2,
   stepping: 'spread',
