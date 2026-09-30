@@ -7,6 +7,7 @@ import type { PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
 import type { StampWashRecord, StampWetLanding, StampWetness } from '../models/stamp-wetness.ts';
 import type { CompiledStampDeposit, CompiledStampPaint, CompiledStampPass } from '../models/stamp-paint-recipe.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
+import { STAMP_LIFT_RUN_BACK_STAGE } from './stamp-wet-lift-run-back.ts';
 
 /**
  * What a stage is given as the renderer loads a painting: its device, the painting's size, medium and wetness; the
@@ -44,4 +45,4 @@ export type StampWetStage = {
 };
 
 /** Every stage, in the order each moment runs them. */
-export const STAMP_WET_STAGES: readonly StampWetStage[] = [];
+export const STAMP_WET_STAGES: readonly StampWetStage[] = [STAMP_LIFT_RUN_BACK_STAGE];

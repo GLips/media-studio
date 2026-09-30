@@ -34,8 +34,9 @@ export type PaintMedium = {
   /** How much more a film scatters dry than wet: air between the particles, where water was. Watercolour dries lighter. */
   dryingScatter: number;
   /**
-   * How much of the wet paint under a stroke the stroke carries and lays mixed with its own, 0..1: where two wet
-   * washes meet they mix rather than one replacing the other. A dry medium picks up nothing; its layers only stack.
+   * How much of the wet paint under a loaded stroke the stroke carries and lays mixed with its own, 0..1: where two
+   * wet washes meet they mix rather than one replacing the other. A dry medium picks up nothing; its layers only
+   * stack. A lift isn't a loaded stroke: how much it takes is its own strength (stamp-wet-lift.ts).
    */
   pickup: number;
   wetting: PaintWetting;
@@ -55,7 +56,10 @@ export type PaintWetting = {
    * none. An oil would be a brush carrying its liquid medium as water (brushWater 1), no flow, and an open time of days.
    */
   openTime: number;
-  /** How much dry paint water or a clean brush works back up, 0..1, before its pigments' staining holds some. */
+  /**
+   * How much of set paint a lift works back up, 0..1, as loose as wet paint is at 1: gouache's binder redissolves,
+   * watercolour's gum less, and a dry medium's is what an eraser takes. Its pigments' staining then holds some.
+   */
   rewetting: number;
   /** How wet a loaded brush is, 0..1, where a deposit doesn't say. */
   brushWater: number;
@@ -86,8 +90,8 @@ export const PAINT_MEDIA = {
   crayon: {
     name: 'crayon', color: { kind: 'masstone', scatter: 0.05 }, body: 1.5, lightening: { kind: 'white', white: { id: 'waxWhite', name: 'wax white', overWhite: '#f7f6f1', overBlack: '#9d9c97' } },
     granulation: 0, paperContact: { kind: 'peaks', tooth: 0.85 }, dryingScatter: 0, pickup: 0,
-    // No water and no flow; a clean brush or an eraser works some back up, as a smudge or a lift does (vid-117).
-    wetting: { flow: 0, drying: 1, openTime: 0, rewetting: 0.3, brushWater: 0, damp: 0.35 },
+    // No water and no flow. A lift is an eraser, taking the wax off the tooth's peaks but not what's pressed in (vid-117).
+    wetting: { flow: 0, drying: 1, openTime: 0, rewetting: 0.85, brushWater: 0, damp: 0.35 },
   },
 } as const satisfies Record<string, PaintMedium>;
 
