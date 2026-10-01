@@ -18,7 +18,7 @@ import type { StampStrokeHand } from './stamp-stroke-hand.ts';
  * Colour charged into a wet wash: `touches` short swelling strokes of `brush` scattered by `placement`
  * (stampScatterMarks), sizes in px from [min, max], each loaded from `mixtures` by its own key. They show in turn
  * over `appliedAt`..+`drawnOver`. `when: 'damp'` waits once first, until the paper under all of them is damp.
- * Written as strokes `${id}-0`, `${id}-1`…, each its own mark.
+ * Written as strokes `${id}` keyed `0`, `1`…, each a mark.
  */
 export type StampChargeSettings = {
   placement: StampScatterPlacement;
@@ -112,14 +112,17 @@ export function stampWashWaits(scope: readonly string[], steps: (StampWrittenWai
   return { applied, waitUnder, wait, ended };
 }
 
-/** A charge's touches as mark paint, each with its ID's suffix: its geometry from the charge's key `full`, its material from a stream of its own. */
-export function stampChargeTouches(full: string, settings: StampChargeSettings): { suffix: string; settings: StampMarkPaintSettings & StampWashWater }[] {
+/**
+ * A charge's touches as mark paint, each with its key among the charge's children (touch k's is `k`): its geometry
+ * from the charge's full ID `full`, its material from a stream of its own.
+ */
+export function stampChargeTouches(full: string, settings: StampChargeSettings): { key: string; settings: StampMarkPaintSettings & StampWashWater }[] {
   const { placement, touches, mixtures, brush, diameter, length, angle, water, appliedAt, drawnOver } = settings;
   if (!(Number.isInteger(touches) && touches >= 1)) throw new Error(`stamp paint: ${full} charges ${touches} touches, and a charge lays a whole number from 1`);
   // Separate streams: a new mixture moves no touch, and a moved touch changes no colour.
   const marks = stampScatterMarks(placement, { count: touches, length, diameter, ...(angle !== undefined && { angle }), key: full });
   return marks.map((scattered, k) => ({
-    suffix: `-${k}`,
+    key: `${k}`,
     settings: {
       mark: { key: scattered.key, brush, diameter: scattered.diameter, geometry: { kind: 'stroke', path: stampScatteredStrokePath(scattered), hand: { profile: 'swell' } } },
       material: pickStampMaterial(mixtures, `${full}|${k}|material`),

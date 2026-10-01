@@ -19,6 +19,7 @@ import type { StampArea, StampStandsBefore } from './stamp-area.ts';
 import type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from './stamp-group-motion.ts';
 import type { CompiledStampMaterialKeys, StampMaterialKeys } from './stamp-material-keys.ts';
 import type { StampMark } from './stamp-marks.ts';
+import type { StampDepositName } from './stamp-deposit-identity.ts';
 import type { StampBackrunSettings, StampChargeSettings, StampWaitOptions, StampWashWait, StampWrittenWait } from './stamp-wash-effects.ts';
 
 export type StampPaintColor = `#${string}`;
@@ -224,7 +225,10 @@ export type StampPaintRecipeMask = {
 /** A deposit as written: compileDeposit checks it and places its stamps. */
 export type StampPaintRecipeDeposit<A extends StampRecipeWashAction = StampRecipeWashAction> = {
   kind: 'deposit';
-  id: string;
+  /** Its name in its passage (stamp-deposit-identity.ts), which with the passage's IDs seeds it. */
+  name: StampDepositName;
+  /** The applications it was written under, outermost first: what organised it, which never seeds it. */
+  provenance: readonly string[];
   geometry: StampDepositGeometry;
   // Loosened from StampToolSettings, whose reveal union a rest spread can't keep; its settings were checked as written.
   tool: { brush: StampBrush; diameter: number; opacity?: number; appliedAt?: number; drawnOver?: number };

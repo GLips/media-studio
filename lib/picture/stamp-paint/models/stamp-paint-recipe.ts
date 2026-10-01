@@ -11,6 +11,7 @@ import type {
   StampToolSettings, StampWashScope, StampWashWater,
 } from './stamp-paint-recipe-types.ts';
 import { stampChargeTouches, stampWashWaits } from './stamp-wash-effects.ts';
+import { stampDepositId, type StampDepositName, type StampPassageIdentity } from './stamp-deposit-identity.ts';
 
 /** How much water a softening stroke carries unless it says: a damp brush, which moves an edge without flooding it. */
 export const STAMP_SOFTEN_WATER = 0.3;
@@ -47,38 +48,43 @@ export function stampPaintRecipe(body: (paint: StampPaintScope) => void): StampP
     }
   };
   type PaintSettings = StampPaintSettings & { water?: number } & Partial<StampStrokeGeometry & StampPlacementGeometry & StampFillGeometry>;
+  /** What every deposit written in `writer`'s passage holds besides its geometry, tool and action: who it is and the fluid it lands under. */
+  const written = ({ provenance }: StampPassageWriter, name: StampDepositName) => ({ kind: 'deposit' as const, name, provenance, mask: fluid });
   /** A paint deposit as written, and the water its brush carries in a wash (undefined: its medium's); a dry pass drops it. */
-  const paintDeposit = (kind: StampDepositGeometry['kind'], id: string, settings: PaintSettings) => {
+  const paintDeposit = (writer: StampPassageWriter, kind: StampDepositGeometry['kind'], id: string, settings: PaintSettings) => {
     const { geometry, rest: { material, blend, secondaryColor, burnish, water, ...tool } } = splitGeometry(kind, settings);
     const action: StampRecipePaint = { kind: 'paint', material, ...(blend && { blend }), ...(secondaryColor && { secondaryColor }), ...(burnish && { burnish }) };
-    return { deposit: { kind: 'deposit' as const, id, geometry, tool, mask: fluid, action }, water };
+    return { deposit: { ...written(writer, { id, keys: [] }), geometry, tool, action }, water };
   };
   /** Paint from a mark as written: its brush, diameter and geometry the mark's. */
-  const markDeposit = (id: string, { mark, material, blend, secondaryColor, opacity, appliedAt, drawnOver }: StampMarkPaintSettings) => ({
-    kind: 'deposit' as const, id, geometry: mark.geometry, mark, mask: fluid,
+  const markDeposit = (writer: StampPassageWriter, name: StampDepositName, { mark, material, blend, secondaryColor, opacity, appliedAt, drawnOver }: StampMarkPaintSettings) => ({
+    ...written(writer, name), geometry: mark.geometry, mark,
     tool: { brush: mark.brush, diameter: mark.diameter, ...(opacity !== undefined && { opacity }), ...(appliedAt !== undefined && { appliedAt, ...(drawnOver !== undefined && { drawnOver }) }) },
     action: { kind: 'paint' as const, material, ...(blend && { blend }), ...(secondaryColor && { secondaryColor }) },
   });
   /** A dry pass's scope writing into `steps`: paint only. */
-  const dryScope = (scope: readonly string[], steps: StampPaintRecipeDeposit<StampRecipePaint>[]): StampPassScope => {
-    const paint = (kind: StampDepositGeometry['kind']) => (id: string, settings: PaintSettings) => steps.push(paintDeposit(kind, id, settings).deposit);
-    return { ...masking(scope), mark: (id, settings) => steps.push(markDeposit(id, settings)), stroke: paint('stroke'), stamps: paint('stamps'), fill: paint('fill') };
+  const dryScope = (writer: StampPassageWriter, steps: StampPaintRecipeDeposit<StampRecipePaint>[]): StampPassScope => {
+    const paint = (kind: StampDepositGeometry['kind']) => (id: string, settings: PaintSettings) => steps.push(paintDeposit(writer, kind, id, settings).deposit);
+    return {
+      ...masking(stampPassageScope(writer)), mark: (id, settings) => steps.push(markDeposit(writer, { id, keys: [] }, settings)), stroke: paint('stroke'), stamps: paint('stamps'), fill: paint('fill'),
+    };
   };
   /** A wash's scope writing into `steps`, and `ended`, which refuses a wait left with nothing after it to judge. */
-  const washScope = (scope: readonly string[], steps: StampPaintRecipeStep[]): { wash: StampWashScope; ended: () => void } => {
+  const washScope = (writer: StampPassageWriter, steps: StampPaintRecipeStep[]): { wash: StampWashScope; ended: () => void } => {
+    const scope = stampPassageScope(writer);
     const { applied, waitUnder, wait, ended } = stampWashWaits(scope, steps);
     const paint = (kind: StampDepositGeometry['kind']) => (id: string, settings: PaintSettings) => {
-      const { deposit, water } = paintDeposit(kind, id, settings);
+      const { deposit, water } = paintDeposit(writer, kind, id, settings);
       steps.push({ ...deposit, action: { ...deposit.action, ...(water !== undefined && { water }) } });
     };
     const water = (id: string, geometry: StampDepositGeometry, tool: StampPaintRecipeDeposit['tool'], amount: number) =>
-      steps.push({ kind: 'deposit', id, geometry, tool, action: { kind: 'water', water: amount }, mask: fluid });
-    const markPaint = (id: string, { water: carried, ...settings }: StampMarkPaintSettings & StampWashWater) => {
-      const deposit = markDeposit(id, settings);
+      steps.push({ ...written(writer, { id, keys: [] }), geometry, tool, action: { kind: 'water', water: amount } });
+    const markPaint = (name: StampDepositName, { water: carried, ...settings }: StampMarkPaintSettings & StampWashWater) => {
+      const deposit = markDeposit(writer, name, settings);
       steps.push({ ...deposit, action: { ...deposit.action, ...(carried !== undefined && { water: carried }) } });
     };
     const wash: StampWashScope = {
-      ...masking(scope), wait, mark: applied(markPaint),
+      ...masking(scope), wait, mark: applied((id, settings) => markPaint({ id, keys: [] }, settings)),
       stroke: applied(paint('stroke')), stamps: applied(paint('stamps')), fill: applied(paint('fill')),
       water: applied((id, { water: amount = 1, ...settings }) => {
         const { geometry, rest } = splitGeometry(settings.kind, settings);
@@ -86,7 +92,7 @@ export function stampPaintRecipe(body: (paint: StampPaintScope) => void): StampP
       }),
       lift: applied((id, { strength, ...settings }) => {
         const { geometry, rest } = splitGeometry(settings.kind, settings);
-        steps.push({ kind: 'deposit', id, geometry, tool: withoutKind(rest), action: { kind: 'lift', ...(strength !== undefined && { strength }) }, mask: fluid });
+        steps.push({ ...written(writer, { id, keys: [] }), geometry, tool: withoutKind(rest), action: { kind: 'lift', ...(strength !== undefined && { strength }) } });
       }),
       soften: applied((id, { water: amount = STAMP_SOFTEN_WATER, ...settings }) => {
         const { geometry, rest } = splitGeometry('stroke', settings);
@@ -98,9 +104,10 @@ export function stampPaintRecipe(body: (paint: StampPaintScope) => void): StampP
         water(id, geometry, rest, amount);
       }),
       charge: applied((id, settings) => {
-        const touches = stampChargeTouches([...scope, id].join('/'), settings);
+        // Its touches are placed and loaded from its identity, never its provenance, so organising it moves none.
+        const touches = stampChargeTouches(stampDepositId(writer.passage, { id, keys: [] }), settings);
         if (settings.when === 'damp') waitUnder(touches.length, 'charge', id);
-        for (const touch of touches) markPaint(`${id}${touch.suffix}`, touch.settings);
+        for (const touch of touches) markPaint({ id, keys: [touch.key] }, touch.settings);
       }),
       backrun: applied((id, { along, hand, water: amount = 1, ...tool }) => {
         waitUnder(1, 'backrun', id);
@@ -119,14 +126,14 @@ export function stampPaintRecipe(body: (paint: StampPaintScope) => void): StampP
         pass: (passId, passOptions, passBody) => {
           const steps: StampPaintRecipeDeposit<StampRecipePaint>[] = [];
           passes.push({ ...writtenPass(passId, passOptions), wash: null, steps });
-          scoped(() => passBody(dryScope([id, passId], steps)));
+          scoped(() => passBody(dryScope(stampPassageWriter(id, passId), steps)));
         },
         knockout: (passId, { preparation }, knockoutBody) => {
           if (passes.length) throw new Error(`stamp paint: ${id}/${passId} is a knockout after ${id}'s ${passes.map((pass) => pass.id).join(', ')}; a group knocks out once, before it paints`);
           const steps: StampPaintRecipeStep[] = [];
           passes.push({ ...writtenPass(passId, {}), wash: { ...(preparation && { preparation }), knockout: true }, steps });
           scoped(() => {
-            const { wash: { mask, unmask, water, lift, wait }, ended } = washScope([id, passId], steps);
+            const { wash: { mask, unmask, water, lift, wait }, ended } = washScope(stampPassageWriter(id, passId), steps);
             knockoutBody({ mask, unmask, water, lift, wait });
             ended();
           });
@@ -135,7 +142,7 @@ export function stampPaintRecipe(body: (paint: StampPaintScope) => void): StampP
           const steps: StampPaintRecipeStep[] = [];
           passes.push({ ...writtenPass(passId, passOptions), wash: { ...(preparation && { preparation }), ...(rim !== undefined && { rim }), knockout: false }, steps });
           scoped(() => {
-            const { wash, ended } = washScope([id, passId], steps);
+            const { wash, ended } = washScope(stampPassageWriter(id, passId), steps);
             washBody(wash);
             ended();
           });
@@ -145,6 +152,18 @@ export function stampPaintRecipe(body: (paint: StampPaintScope) => void): StampP
   });
   return { groups, masks };
 }
+
+/**
+ * Where a scope writes deposits: the passage that, with each deposit's name, makes its identity, and the applications
+ * enclosing them, outermost first. An application extends `provenance` and leaves `passage` alone, so wrapping paint
+ * in one reseeds nothing.
+ */
+type StampPassageWriter = { passage: StampPassageIdentity; provenance: readonly string[] };
+
+const stampPassageWriter = (group: string, passage: string): StampPassageWriter => ({ passage: { group, passage }, provenance: [] });
+
+/** The scope a passage's masks and waits are named in: its group's ID, then its own. */
+const stampPassageScope = ({ passage: { group, passage } }: StampPassageWriter) => [group, passage];
 
 /** A pass's settings as written. */
 const writtenPass = (passId: string, { clipped = false, within }: StampPassOptions) => ({ id: passId, clipped, ...(within && { within }) });

@@ -13,6 +13,7 @@ import { compileStampArea, stampFluidHolder, stampStandsBeforeExclusions, type C
 import { checkStampGroupMotion, type StampGroupBoil, type StampGroupMotion, type StampGroupPaper } from './stamp-group-motion.ts';
 import { stampMaterialKeysSpan } from './stamp-material-keys.ts';
 import type { StampMark } from './stamp-marks.ts';
+import { checkedStampIdSegment, stampDepositNameText } from './stamp-deposit-identity.ts';
 import type { StampPaintRecipe, StampPaintRecipeDeposit, StampPaintRecipeGroup, StampPaintRecipeMask } from './stamp-paint-recipe-types.ts';
 import { checkedStampRim, compileStampWashWait, type CompiledStampWash, type CompiledStampWashStep } from './stamp-wash-effects.ts';
 
@@ -117,8 +118,7 @@ export type CompiledStampPaint = { groups: readonly CompiledStampGroup[] };
 export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStampPaint {
   const seen = new Set<string>(), duplicates = new Set<string>();
   const claim = (id: string, parent?: string) => {
-    if (!id || /[/|]/.test(id)) throw new Error(`stamp paint: "${id}" isn't an ID: IDs are non-empty and hold no "/" or "|"`);
-    const full = parent ? `${parent}/${id}` : id;
+    const full = parent ? `${parent}/${checkedStampIdSegment(id)}` : checkedStampIdSegment(id);
     if (seen.has(full)) duplicates.add(full);
     seen.add(full);
     return full;
@@ -161,7 +161,7 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
       if (pass.wash?.knockout) {
         if (index > 0) throw new Error(`stamp paint: ${passId} is a knockout after ${groupId}'s first pass; a group knocks out once, before it paints`);
         const painted = pass.steps.flatMap((step) => (step.kind === 'deposit' && step.action.kind === 'paint' ? [step] : []))[0];
-        if (painted) throw new Error(`stamp paint: ${passId} is a knockout and ${painted.id} paints in it; a knockout only reserves and lifts`);
+        if (painted) throw new Error(`stamp paint: ${passId} is a knockout and ${stampDepositNameText(painted.name)} paints in it; a knockout only reserves and lifts`);
       }
       if (pass.clipped && !clipBase) throw new Error(`stamp paint: ${passId} is clipped, but no unclipped pass comes before it in ${groupId}`);
       const clipTo = pass.clipped ? clipBase : undefined;
@@ -169,7 +169,9 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
       if (!pass.clipped && !pass.wash?.knockout) clipBase = passId;
       /** `step` compiled, its action by `action` from the colour jitter drawn for it, placed from its mark's key or its own ID. */
       const deposit = <W extends StampRecipeWashAction, A extends CompiledStampAction>(step: StampPaintRecipeDeposit<W>, action: (full: string, draws: readonly number[]) => A) => {
-        const full = named(step.id, passId), fluid = step.mask && masks.get(step.mask)!;
+        // Its name seeds it and its provenance never does: wrapping it in an application moves nothing.
+        if (!epoch) step.name.keys.forEach(checkedStampIdSegment);
+        const full = named(stampDepositNameText(step.name), passId), fluid = step.mask && masks.get(step.mask)!;
         if (step.mark && !epoch) claimMark(step.mark);
         // A knockout acts on the paint behind the group, which a standing before doesn't hold off.
         return compileDeposit(full, step, (draws) => action(full, draws), pass.wash?.knockout ? fluid : held(fluid), stampBoilSeed(step.mark?.key ?? full, epoch));
@@ -219,4 +221,14 @@ function stampGroupRecolours(passes: readonly CompiledStampPass[]): CompiledStam
     return [first, second].flatMap((end) => (end.kind === 'keys' ? [stampMaterialKeysSpan(end)] : []));
   });
   return spans.length ? { from: Math.min(...spans.map(({ from }) => from)), to: Math.max(...spans.map(({ to }) => to)) } : null;
+}
+
+/**
+ * Everything a render reads of `painting`, as text: each stamp and draw, reveal, fluid and wash schedule, and each
+ * boiled group's next epoch. Two paintings printing alike paint alike, wetness too, which compileStampWetness works
+ * out from nothing else: how a check proves that organising a recipe moved none of it.
+ */
+export function stampCompiledPaintPrint(painting: CompiledStampPaint): string {
+  const boils = painting.groups.flatMap(({ boil }) => (boil ? [boil.reseeded(boil.epoch + 1)] : []));
+  return JSON.stringify({ painting, boils });
 }
