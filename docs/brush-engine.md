@@ -36,7 +36,7 @@ loads, how wet the paper is where each lands, on coarse grids; the pigment compo
 laws in `stamp-wet-landing.ts` and `stamp-wet-lift.ts`, and `studio/stamp-wet-stages.ts` lists what then works over
 the neighbourhood: the flow stage (`stamp-wet-flow.ts`), where a deposit's fresh paint feathers into water on the
 paper and the workable paint its water stirs evens out, or paint runs back into a lift, and the drying rim
-(`stamp-wet-rim.ts`) once a wash is done. A graded material lays each pigment
+(`stamp-wet-rim.ts`) at each of a wash's dryings, a `wait('dry')` and its end. A graded material lays each pigment
 of either end, its amount graded on the GPU. A plain pass lands as it always has. Flat colour has no washes.
 `stamp-paint-events.ts` is the painting in painting order, each deposit with the time it's settled by.
 

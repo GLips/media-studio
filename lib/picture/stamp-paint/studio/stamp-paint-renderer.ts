@@ -340,7 +340,7 @@ fn wetBodyAt(pixel: vec2u, here: f32) -> f32 {
 // paper's tooth, which break the hardened stroke as they would any.
 const WET_HARDEN_COVER_WGSL = /* wgsl */ `let landing = wetLandingAt(at);
   raw.x = wetLandCover(raw.x, wetBodyAt(pixel, raw.x), landing.water, landing.wetness);`;
-// A wash deposit lands, and leaves its footprint for the stages after it (StampWetStageMoment): what it laid, where
+// A wash deposit lands, and leaves its footprint for the stages after it (StampWetDepositMoment): what it laid, where
 // paint may land at all, and the paper's tooth.
 const WET_LAND_WGSL = /* wgsl */ `landDeposit(pixel, coverage, rims, tooth, at, landing);
   var allowed = 1.0;
