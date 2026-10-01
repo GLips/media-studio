@@ -86,3 +86,14 @@ test("an effect that certainly won't act is warned of, with the bloom stage's re
   ]);
   assert.throws(() => assertStampWetEffects(report), /2 wet effect\(s\) won't act/);
 });
+
+test("the report's dryings are the wash's own, closed where the paper set, whatever the wait was written as", () => {
+  const dryings = (wait: (wash: StampWashScope) => void) => reported((wash) => {
+    wait(wash);
+    wash.stroke('late', { brush, diameter: 30, path: [{ x: 100, y: 100 }, { x: 200, y: 120 }], material: { kind: 'color', color: '#224488' }, appliedAt: 1 });
+  }).washes[0].dryings.map(({ closes, deposits, rim }) => ({ closes, deposits, rim }));
+  const whenSet = [{ closes: 'wait', deposits: 1, rim: 1 }, { closes: 'end', deposits: 1, rim: 1 }];
+  assert.deepEqual(dryings((wash) => wash.wait('dry')), whenSet);
+  assert.deepEqual(dryings((wash) => wash.wait({ seconds: 3600 })), whenSet);
+  assert.deepEqual(dryings((wash) => wash.wait({ seconds: 1 })), [{ closes: 'end', deposits: 2, rim: 1 }]);
+});

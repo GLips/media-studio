@@ -72,7 +72,10 @@ loads, how wet the paper is where each lands, on coarse grids; the pigment compo
 laws in `stamp-wet-landing.ts` and `stamp-wet-lift.ts`, and `studio/stamp-wet-stages.ts` lists what then works over
 the neighbourhood: the flow stage (`stamp-wet-flow.ts`), where a deposit's fresh paint feathers into water on the
 paper and the workable paint its water stirs evens out, or paint runs back into a lift, and the drying rim
-(`stamp-wet-rim.ts`) at each of a wash's dryings, a `wait('dry')` and its end. A graded material lays each pigment
+(`stamp-wet-rim.ts`) at each of a wash's dryings. The dryings come from the resolved wetness, not the waits'
+tokens: `compileStampWetness` closes one after any wait the whole wash has set by (a `wait('dry')`, or a seconds wait
+long enough) and one at the wash's end, each `StampWashRecord.dryings`, which the rim stage and the wet report both
+read. A drying is the whole wash's, never a region's. A graded material lays each pigment
 of either end, its amount graded on the GPU. A plain pass lands as it always has. Flat colour has no washes.
 
 **Fields.** A material, a fill's load and a preparation's wetness are each a `StampPaintField`
@@ -82,7 +85,8 @@ GPU, its CPU twin for a strokes fill's stamp opacity and the wetness lattice). A
 recipe compiles (`stampSeededPaintField`): its own `seed`, a passage several deposits share, else the deposit's ID (a
 preparation's, its pass's), never a boil's epoch's.
 
-**Rim strength.** Each drying carries a `rim`, 0..2: its `wait('dry', { rim })`'s, else its wash's `rim`, else 1. It
+**Rim strength.** Each drying carries a `rim`, 0..2: its `wait('dry', { rim })`'s, else its wash's `rim`, else 1. A
+seconds wait takes no `rim`: one that sets the paper closes its drying at the wash's strength. It
 scales what each band pixel gives before the transport normalises it, so pigment stays conserved and the band and its
 eligibility are the medium's. At 0 the stage loads nothing for the drying but still owns its deposits' wet edges
 (`ownsWetEdges`), so their brushes' own rims stay off: a drying with no rim is a soft-edged wash, not a brush's ring.
@@ -135,7 +139,8 @@ materials a generator picks from by key (`pickStampMaterial`); a deposit's own m
 `wash.charge` writes ordinary strokes (`${id}-${k}`), geometry and material from separate streams.
 
 **Waits.** A wash waits for a sheen state, `'shiny'` or `'damp'` (the medium's `PaintSheen` thresholds, which the
-bloom's merging reads too), or `'dry'` (water gone and no paint workable, a drying: it rims), or for `{ seconds }`.
+bloom's merging reads too), or `'dry'` (water gone and no paint workable, a drying: it rims), or for `{ seconds }` (a drying too, if the whole
+wash has set by its end).
 A shiny or damp wait judges the wettest lattice point under the next application written after it (its compiled
 `under: { next: n }`, the n deposits after it, waits skipped; a charge's touches together), the whole wash
 (`under: 'wash'`) or a region; already past, it takes 0 s. `bloom`, `backrun` and a charge `when: 'damp'` write one,

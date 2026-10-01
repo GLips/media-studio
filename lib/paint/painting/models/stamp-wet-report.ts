@@ -8,7 +8,7 @@ import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { CompiledStampDeposit, CompiledStampPaint, CompiledStampPass } from './stamp-paint-recipe-compile.ts';
 import type { CompiledStampWashWait, StampWaitEffect, StampWashWait, StampWetEffectKind } from './stamp-wash-effects.ts';
 import { stampBloomVerdict } from './stamp-wet-bloom.ts';
-import { stampDryingRimBand, stampDryingRimWetShare, stampDryingWettest } from './stamp-wet-rim.ts';
+import { stampDryingRimSizing } from './stamp-wet-rim.ts';
 import { stampLandingCover, stampWaitDeposits, type StampWashWaitRecord, type StampWetness, type StampWetRange } from './stamp-wetness.ts';
 
 /**
@@ -36,9 +36,9 @@ export type StampWetReportTouch = {
 export type StampWetReportEffect = { kind: StampWetEffectKind; id: string; acting: 'all' | 'some' | 'none'; reason: string | null; touches: readonly StampWetReportTouch[] };
 
 /**
- * A drying (a wait('dry') or the wash's end) of `deposits` laid since the last: at painting second `at`, how far above
- * damp its wettest paper was (`wetShare`, 0..1), and its rim's band, px, as the rim stage would size it: an estimate.
- * `rim`: its strength (StampWashDrying's).
+ * A drying (StampWashDrying) of `deposits` laid since the last: at painting second `at`, how far above damp its
+ * wettest paper was (`wetShare`, 0..1), and its rim's band, px, as the rim stage would size it, an estimate. `rim`:
+ * its strength. None for a drying that painted nothing.
  */
 export type StampWetReportDrying = { closes: 'wait' | 'end'; at: number; deposits: number; wetShare: number; band: number; rim: number };
 
@@ -60,29 +60,15 @@ function washReport(pass: Extract<CompiledStampPass, { kind: 'wash' }>, wetness:
     until, under: underKind(under), effect: effect ?? null, ...judged,
     seconds: judged.to - judged.from, alreadyDrier: (until === 'shiny' || until === 'damp') && judged.to === judged.from && judged.points > 0,
   }));
-  const effects: StampWetReportEffect[] = [];
-  const dryings: StampWetReportDrying[] = [];
-  let since: CompiledStampDeposit[] = [], waited = 0;
-  const dry = (closes: StampWetReportDrying['closes'], at: number, rim = pass.wash.rim ?? 1) => {
-    const painted = since.filter((deposit) => deposit.action.kind === 'paint');
-    const grid = since.length ? stampDryingWettest({ deposits: since }, wetness) : null;
-    if (grid && painted.length) {
-      const wetShare = stampDryingRimWetShare(grid.values.reduce((most, value) => Math.max(most, value), 0), medium.wetting.sheen.damp);
-      const diameter = painted.reduce((sum, deposit) => sum + deposit.diameter, 0) / painted.length;
-      dryings.push({ closes, at, deposits: since.length, wetShare, band: stampDryingRimBand(medium.wetting.spread, diameter, wetShare), rim });
-    }
-    since = [];
-  };
-  for (const [index, step] of schedule.entries()) {
-    if (step.kind === 'deposit') {
-      since.push(step.deposit);
-      continue;
-    }
-    const wait = record.waits[waited++];
-    if (step.until === 'dry') dry('wait', wait.to, step.rim);
-    if (step.effect) effects.push(effectReport(step.effect, stampWaitDeposits(schedule, index).map((deposit) => touchReport(deposit, pass, wetness, medium))));
-  }
-  dry('end', duration);
+  const effects = schedule.flatMap((step, index) => step.kind === 'wait' && step.effect
+    ? [effectReport(step.effect, stampWaitDeposits(schedule, index).map((deposit) => touchReport(deposit, pass, wetness, medium)))]
+    : []);
+  const dryings = record.dryings.flatMap((drying): StampWetReportDrying[] => {
+    const sizing = stampDryingRimSizing(drying, wetness, medium.wetting.spread, medium.wetting.sheen.damp);
+    if (!sizing) return [];
+    const { closes, at, deposits, rim } = drying;
+    return [{ closes: closes === 'end' ? 'end' : 'wait', at, deposits: deposits.length, wetShare: sizing.wetShare, band: sizing.band, rim }];
+  });
   return { id: pass.id, duration, waits, effects, dryings };
 }
 

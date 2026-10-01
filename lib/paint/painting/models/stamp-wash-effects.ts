@@ -51,8 +51,8 @@ export type StampBackrunSettings = {
 };
 /**
  * A wash waiting in painting time: until the paper it judges is no wetter than its medium's `shiny` or `damp`
- * (PaintSheen); until the whole wash is `dry`, its water gone and no paint workable, a drying (it rims); or, the
- * advanced form, for `seconds`, which dries the paper as long without a drying event.
+ * (PaintSheen); until the whole wash is `dry`, its water gone and no paint workable, a drying (it rims); or for
+ * `seconds`, a drying too if the whole wash has set by then.
  */
 export type StampWashWait = 'shiny' | 'damp' | 'dry' | { seconds: number };
 /**
@@ -63,7 +63,8 @@ export type StampWashWait = 'shiny' | 'damp' | 'dry' | { seconds: number };
 export type StampWaitTarget = 'next' | 'wash' | { region: StampRegion };
 /**
  * What a wait judges (StampWaitTarget), and a wait('dry')'s `rim`: how strongly its drying's rim gathers pigment, 0..2
- * (StampWashOptions' `rim`), its wash's when left out. Only a wait for dry takes a rim: no other wait rims.
+ * (StampWashOptions' `rim`), its wash's when left out. Only a wait for dry takes one: a seconds wait that sets the
+ * paper closes its drying at its wash's, as the paper, not the wait, decided it.
  */
 export type StampWaitOptions = { under?: StampWaitTarget; rim?: number };
 
@@ -96,7 +97,7 @@ export function stampWashWaits(scope: readonly string[], steps: (StampWrittenWai
     if ((typeof until === 'object' || until === 'dry') && under !== 'wash') {
       throw new Error(`stamp paint: ${scope.join('/')} waits ${JSON.stringify(until)} under ${JSON.stringify(under)}, and only a shiny or damp wait judges less than the wash`);
     }
-    if (rim !== undefined && until !== 'dry') throw new Error(`stamp paint: ${scope.join('/')} gives a rim to a wait for ${JSON.stringify(until)}, and only a wait for dry rims`);
+    if (rim !== undefined && until !== 'dry') throw new Error(`stamp paint: ${scope.join('/')} gives a rim to a wait for ${JSON.stringify(until)}, and only a wait for dry takes a rim`);
     if (under !== 'next') {
       steps.push({ kind: 'wait', until, under, ...(rim !== undefined && { rim }) });
       return;
@@ -134,7 +135,7 @@ export function stampChargeTouches(full: string, settings: StampChargeSettings):
 
 /**
  * A wash in painting order: each deposit and each wait. `preparation` is the clean water laid over its region before
- * any of it, null for dry paper. `rim`, its dryings' unless a wait('dry') says (stampWashDryings), absent for the
+ * any of it, null for dry paper. `rim`, its dryings' unless a wait('dry') says (StampWashDrying), absent for the
  * medium's own.
  */
 export type CompiledStampWash = {

@@ -39,7 +39,6 @@ import { FULL_FRAME_WGSL, type StampPaintDevice, type StampPaintImage } from './
 import type { StampPaintGpuScope, StampPaintSurface } from './stamp-paint-surface.ts';
 import { stampUniformLayout, stampUniformStruct, stampUniformWriter, type StampUniformViews } from './stamp-uniform-layout.ts';
 import { STAMP_WET_STAGES, stampWetStageReach, type StampLoadedWetStage, type StampWetStage, type StampWetDepositMoment, type StampWetDryingMoment, type StampWetStageContext } from './stamp-wet-stages.ts';
-import { stampWashDryings } from '../models/stamp-wet-rim.ts';
 import { stampPaintCheckpoints } from './stamp-paint-checkpoints.ts';
 import { stampPaintEvents } from '../models/stamp-paint-events.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
@@ -1287,7 +1286,7 @@ function rendererOnSurface(
     }
   }
   /** Each wash drying by the deposit it ends after, as written. */
-  const dryingsByLast = new Map(painting.groups.flatMap((group) => group.passes).flatMap(stampWashDryings).map((drying) => [drying.deposits.at(-1)!, drying]));
+  const dryingsByLast = new Map([...wetness?.washes.values() ?? []].flatMap((record) => record.dryings).map((drying) => [drying.deposits.at(-1)!, drying]));
   /**
    * How far past its stamps' reach a deposit resolves: its edges' blur, and for a wash deposit its stages' reach and
    * two lattice cells more, so the box holds every pixel whose settled paint its landing would leave unzeroed.

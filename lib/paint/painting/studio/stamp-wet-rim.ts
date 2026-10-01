@@ -8,7 +8,8 @@
 // none of it is drawn to the rim.
 
 import { PAINT_PAPER_WGSL } from '#lib/paint/materials/models/paint-paper.ts';
-import { STAMP_DRYING_RIM_MOST_BAND, STAMP_DRYING_RIM_WGSL, stampDryingRimBand, stampDryingRimWetShare, stampDryingWettest, stampWashDryings, type StampWashDrying } from '../models/stamp-wet-rim.ts';
+import { STAMP_DRYING_RIM_MOST_BAND, STAMP_DRYING_RIM_WGSL, stampDryingRimSizing } from '../models/stamp-wet-rim.ts';
+import type { StampWashDrying } from '../models/stamp-wetness.ts';
 import { STAMP_GRID_AT_WGSL, type StampGrid } from '../models/stamp-region.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
@@ -391,9 +392,9 @@ type LoadedRim = {
   layers: number; spreads: ReturnType<typeof stampWetSpreads>;
 };
 
-function loadDryingRim({ device, painting, medium, wetness, width, height, layer, wash }: StampWetStageContext): StampLoadedWetStage<StampWetDryingMoment> {
+function loadDryingRim({ device, medium, wetness, width, height, layer, wash }: StampWetStageContext): StampLoadedWetStage<StampWetDryingMoment> {
   const { spread, sheen: { damp } } = medium.wetting;
-  const dryings = painting.groups.flatMap((group) => group.passes).flatMap(stampWashDryings);
+  const dryings = [...wetness.washes.values()].flatMap((record) => record.dryings);
   if (spread <= 0 || !dryings.length) return { encode: () => null };
 
   const rims = new Map<StampWashDrying, LoadedRim>();
@@ -403,12 +404,9 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
   const ownsWetEdges = (deposit: CompiledStampDeposit) => rimmed.has(deposit);
   let points = 0;
   for (const drying of dryings) {
-    const grid = stampDryingWettest(drying, wetness);
-    const painted = drying.deposits.filter((deposit) => deposit.action.kind === 'paint');
-    if (!grid || !painted.length) continue;
-    const wetShare = stampDryingRimWetShare(grid.values.reduce((most, value) => Math.max(most, value), 0), damp);
-    const diameter = painted.reduce((sum, deposit) => sum + deposit.diameter, 0) / painted.length;
-    const band = stampDryingRimBand(spread, diameter, wetShare);
+    const sizing = stampDryingRimSizing(drying, wetness, spread, damp);
+    if (!sizing) continue;
+    const { grid, painted, diameter, band } = sizing;
     // A band under a pixel or two is a rim no one sees: damp brushwork, or a medium that barely spreads.
     if (band < 1.5) continue;
     const box = gridBox(grid, width, height);

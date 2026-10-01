@@ -24,7 +24,6 @@ import { STAMP_WET_FLOW_STAGE } from '#lib/paint/painting/studio/stamp-wet-flow.
 import { STAMP_BLOOM_STAGE } from '#lib/paint/painting/studio/stamp-wet-bloom.ts';
 import { STAMP_DRYING_RIM_STAGE } from '#lib/paint/painting/studio/stamp-wet-rim.ts';
 import { STAMP_WET_STAGES, type StampWetStageContext } from '#lib/paint/painting/studio/stamp-wet-stages.ts';
-import { stampWashDryings } from '#lib/paint/painting/models/stamp-wet-rim.ts';
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampWashMovedWgsl } from '#lib/paint/painting/studio/stamp-paint-pigment-compositor.ts';
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
@@ -467,10 +466,10 @@ async function checkStampGateStripeCase(id: string): Promise<StampGateWashCheck>
   const { stage, medium: name } = stampGateStripeCase(id), medium = PAINT_MEDIA[name];
   if (stage === 'rim-strength') {
     const runs = await Promise.all(STAMP_GATE_RIM_STRENGTHS.map(async (rim) => {
-      const painting = stampGateStripePainting(rim), pass = painting.groups[0].passes[0], [drying] = stampWashDryings(pass);
+      const painting = stampGateStripePainting(rim), pass = painting.groups[0].passes[0];
       let ownsEdges = false;
-      const { before, after } = await runStampGateStage(id, painting, medium, drying.deposits.at(-1)!, { ...STAMP_GATE_STRIPE_SIZE, ...stampGateStripeLayer() }, (context, encoder) => {
-        const loaded = STAMP_DRYING_RIM_STAGE.load(context);
+      const { before, after } = await runStampGateStage(id, painting, medium, stampPassDeposits(pass).at(-1)!, { ...STAMP_GATE_STRIPE_SIZE, ...stampGateStripeLayer() }, (context, encoder) => {
+        const loaded = STAMP_DRYING_RIM_STAGE.load(context), [drying] = context.wetness.washes.get(pass)!.dryings;
         ownsEdges = drying.deposits.every((deposit) => loaded.ownsWetEdges?.(deposit) ?? false);
         loaded.encode(encoder, { drying, seed: 0 });
       });
@@ -482,7 +481,7 @@ async function checkStampGateStripeCase(id: string): Promise<StampGateWashCheck>
   const box = { x: 0, y: 0, w: STAMP_GATE_STRIPE_SIZE.width, h: STAMP_GATE_STRIPE_SIZE.height };
   const { before, after } = await runStampGateStage(id, painting, medium, drop, { ...STAMP_GATE_STRIPE_SIZE, ...stampGateStripeLayer() }, (context, encoder) => {
     if (stage === 'rim') {
-      STAMP_DRYING_RIM_STAGE.load(context).encode(encoder, { drying: stampWashDryings(pass)[0], seed: 0 });
+      STAMP_DRYING_RIM_STAGE.load(context).encode(encoder, { drying: context.wetness.washes.get(pass)!.dryings[0], seed: 0 });
       return;
     }
     const bloom = STAMP_BLOOM_STAGE.load(context);

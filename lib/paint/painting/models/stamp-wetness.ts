@@ -49,15 +49,30 @@ export type StampWashWaitRecord = {
 };
 
 /**
- * A wash's record: how many painting seconds it took, its waits included, each wait in painting order, and the paper
- * as it's left, over the whole lattice.
+ * One drying of a wash: the deposits laid since the last, drying and rimming as one, closed at painting second `at`
+ * by a wait the whole wash had set by, or its end. `id` names it, seeding its rim: the wash's own ID for its first.
+ * `rim`, 0..2: its wait('dry')'s, else its wash's, else 1.
  */
-export type StampWashRecord = { duration: number; waits: readonly StampWashWaitRecord[]; end: StampWetState };
+export type StampWashDrying = {
+  pass: CompiledStampPass; id: string; deposits: readonly CompiledStampDeposit[]; rim: number; at: number; closes: CompiledStampWashWait | 'end';
+};
+
+/**
+ * A wash's record: how many painting seconds it took, its waits included, each wait in painting order, its dryings in
+ * painting order (what the rim stage and the wet report both read), and the paper as it's left, over the whole lattice.
+ */
+export type StampWashRecord = { duration: number; waits: readonly StampWashWaitRecord[]; dryings: readonly StampWashDrying[]; end: StampWetState };
 
 export type StampWetness = {
   landings: ReadonlyMap<CompiledStampDeposit, StampWetLanding>;
   washes: ReadonlyMap<CompiledStampPass, StampWashRecord>;
 };
+
+/**
+ * Painting seconds a wash may still have to go and count as set: a seconds wait as long as wait('dry') would take
+ * lands within rounding of the moment, not on it.
+ */
+const STAMP_SET_SLACK = 1e-6;
 
 /** A paper's absorbency when it doesn't say. */
 export const STAMP_PAPER_ABSORBENCY = 0.5;
@@ -125,7 +140,13 @@ export function compileStampWetness(
       forSpan(wash, lattice, (k, w, x, y) => { wash.level[k] = cover[w] * stampPaintFieldAt(preparation.wetness, x, y); });
     }
     let tau = 0;
-    const waits: StampWashWaitRecord[] = [];
+    const waits: StampWashWaitRecord[] = [], dryings: StampWashDrying[] = [];
+    let since: CompiledStampDeposit[] = [];
+    const washRim = pass.wash.rim ?? 1;
+    const dry = (closes: StampWashDrying['closes'], rim: number) => {
+      if (since.length) dryings.push({ pass, id: dryings.length ? `${pass.id}|dry${dryings.length}` : pass.id, deposits: since, rim, at: tau, closes });
+      since = [];
+    };
     for (const [index, step] of schedule.entries()) {
       if (step.kind === 'wait') {
         const { under } = step;
@@ -136,6 +157,8 @@ export function compileStampWetness(
         tau += stampWashWaitSeconds(wash, tau, step.until, drying, target);
         const after = rangesOver(wash, judged, tau, drying);
         waits.push({ step, from, to: tau, points: judged.size, wetness: { before: before.wetness, after: after.wetness }, workable: { before: before.workable, after: after.workable } });
+        // The paper decides, not the token: any wait the whole wash has set by closes its drying, as wait('dry') does.
+        if (step.until === 'dry' || stampWashWaitSeconds(wash, tau, 'dry', drying, null) <= STAMP_SET_SLACK) dry(step, step.rim ?? washRim);
         continue;
       }
       const { deposit } = step, { action } = deposit;
@@ -154,8 +177,10 @@ export function compileStampWetness(
         wash.at[k] = tau;
       });
       landings.set(deposit, { tau, before, after: wetStateOver(wash, span, tau, drying), water });
+      since.push(deposit);
     }
-    washes.set(pass, { duration: tau, waits, end: wetStateOver(wash, lattice, tau, drying) });
+    dry('end', washRim);
+    washes.set(pass, { duration: tau, waits, dryings, end: wetStateOver(wash, lattice, tau, drying) });
   }
   return { landings, washes };
 }

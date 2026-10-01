@@ -117,7 +117,7 @@ Everything is from `#studio`.
     shine has gone, water dropped in starts to push), `wait('damp')` (the shine has gone), judged under the next thing
     you paint after it by default (`{ under: 'wash' }` for the whole wash's wettest paper, `{ under: { region } }`
     for a region); `wait('dry')` lets the whole wash dry and rims its edges. `wait({ seconds })` is for drying a set
-    time further, no state in mind.
+    time further, no state in mind; if the whole wash has set by then, it rims just as `wait('dry')` would.
   - **Colour charged into a wet wash**: `wash.charge(id, { placement, touches, mixtures, brush, diameter: [min, max],
     length: [min, max], angle?, water?, when?, appliedAt, drawnOver })` lays `touches` short swelling strokes, each
     loaded from `mixtures`, a weighted set (`{ kind: 'set', entries: [{ id, material, weight }] }`), so neighbours
