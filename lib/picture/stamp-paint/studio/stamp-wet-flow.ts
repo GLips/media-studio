@@ -12,7 +12,7 @@ import { STAMP_GRID_AT_WGSL } from '../models/stamp-region.ts';
 import { STAMP_WET_FLOW_WGSL, stampWetFlowSigma } from '../models/stamp-wet-flow.ts';
 import { stampWetTransportReach, stampWetTransportStrides } from '../models/stamp-wet-transport.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe.ts';
-import type { StampLoadedWetStage, StampWetStage, StampWetStageContext, StampWetStageMoment } from './stamp-wet-stages.ts';
+import type { StampLoadedWetStage, StampWetDepositMoment, StampWetStage, StampWetStageContext } from './stamp-wet-stages.ts';
 import { stampUniformLayout, stampUniformWriter } from './stamp-uniform-layout.ts';
 import { putStampWetTransportSlot, stampWetTransportPipelines, stampWetTransportSlotBinding } from './stamp-wet-transport.ts';
 
@@ -201,7 +201,7 @@ type FlowScratch = { w: number; h: number; textures: GPUTexture[]; paper: GPUTex
 export const STAMP_WET_FLOW_SCRATCH_BYTES = 8 + 4 + 8 + 2 * 8 + 2 * 2 * 16;
 
 /** Wet paint moving, after each wash deposit lands. */
-export const STAMP_WET_FLOW_STAGE: StampWetStage = {
+export const STAMP_WET_FLOW_STAGE = {
   id: 'flow',
   after: 'deposit',
   reach: (deposit, medium) => stampWetTransportReach(stampWetFlowSigma(deposit, medium)),
@@ -211,9 +211,9 @@ export const STAMP_WET_FLOW_STAGE: StampWetStage = {
       && (landing.water > 0 || landing.before.wetness.some((v) => v > 0)));
     return flowing.length ? flowOnDevice(context, flowing.map(([deposit]) => deposit)) : { encode: () => null };
   },
-};
+} satisfies StampWetStage;
 
-function flowOnDevice(context: StampWetStageContext, flowing: readonly CompiledStampDeposit[]): StampLoadedWetStage {
+function flowOnDevice(context: StampWetStageContext, flowing: readonly CompiledStampDeposit[]): StampLoadedWetStage<StampWetDepositMoment> {
   const { device, medium, layer, footprint, fresh, grids, wash, paperDepth } = context;
   const transport = stampWetTransportPipelines(device);
   // Compiled per group, its holds being its palette's: groups alike share one.
@@ -261,7 +261,7 @@ function flowOnDevice(context: StampWetStageContext, flowing: readonly CompiledS
     };
   };
 
-  function encodeFlow(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, { landing, box }: Extract<StampWetStageMoment, { kind: 'deposit' }>) {
+  function encodeFlow(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, { landing, box }: StampWetDepositMoment) {
     const plan = planned.get(deposit)!;
     if (!scratch || box.w > scratch.w || box.h > scratch.h) throw new Error(`stamp paint: the flow stage was given ${deposit.id}'s box unreserved`);
     const { paper, pigment, holds, paths, moved } = scratch;
@@ -331,6 +331,6 @@ function flowOnDevice(context: StampWetStageContext, flowing: readonly CompiledS
 
   return {
     reserve,
-    encode: (encoder, moment) => (moment.kind === 'deposit' && planned.has(moment.deposit) ? encodeFlow(encoder, moment.deposit, moment) : null),
+    encode: (encoder, moment) => (planned.has(moment.deposit) ? encodeFlow(encoder, moment.deposit, moment) : null),
   };
 }

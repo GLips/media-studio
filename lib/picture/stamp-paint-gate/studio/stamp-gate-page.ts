@@ -308,7 +308,7 @@ async function checkStampGateFlowCase(id: string): Promise<StampGateWashCheck> {
     stage.reserve?.(box);
     const before = await read();
     const encoder = device.createCommandEncoder();
-    stage.encode(encoder, { kind: 'deposit', deposit, pass, landing, box, seed: 0 });
+    stage.encode(encoder, { deposit, pass, landing, box, seed: 0 });
     device.queue.submit([encoder.finish()]);
     const error = await device.popErrorScope();
     if (error) throw new Error(`stamp gate: ${id}: ${error.message}`);

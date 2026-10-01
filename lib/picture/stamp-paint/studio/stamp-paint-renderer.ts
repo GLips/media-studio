@@ -34,7 +34,8 @@ import { flatStampPaintCompositor, type StampPaintCompositor, type StampPaintTar
 import { stampPigmentCompositor } from './stamp-paint-pigment-compositor.ts';
 import { createStampPaintDevice, FULL_FRAME_WGSL, loadStampPaintImages, readStampTipLevels, type StampPaintImage, uploadStampPaintGreyImages } from './stamp-paint-gpu.ts';
 import { stampUniformLayout, stampUniformStruct, stampUniformWriter, type StampUniformViews } from './stamp-uniform-layout.ts';
-import { STAMP_WET_STAGES, stampWetStageReach } from './stamp-wet-stages.ts';
+import { STAMP_WET_STAGES, stampWetStageReach, type StampLoadedWetStage, type StampWetDepositMoment, type StampWetDryingMoment, type StampWetStageContext } from './stamp-wet-stages.ts';
+import { stampWashDryings } from '../models/stamp-wet-rim.ts';
 import { stampPaintCheckpoints } from './stamp-paint-checkpoints.ts';
 import { stampPaintEvents, stampSettledEventCount } from '../models/stamp-paint-events.ts';
 import { stampBoilEpoch, stampGroupLayerFromScene, stampGroupPlacementAt, stampGroupSceneFromLayer, type StampGroupPlacement } from '../models/stamp-group-motion.ts';
@@ -1198,12 +1199,18 @@ async function rendererOnDevice(
   const grainLod = (texture: StampPaintImage, tileW: number) => Math.max(0, Math.log2(texture.width / tileW));
 
   const regions = loadRegions();
-  const stages = wetness?.landings.size
-    ? STAMP_WET_STAGES.map((stage) => Object.assign(stage.load({
+  const stages: LoadedWetStage[] = [];
+  if (wetness?.landings.size) {
+    const wetContext: StampWetStageContext = {
       device, painting, medium: wetMedium!, wetness, width, height, layer: targets.layer, wash: compositor.wash!,
       footprint: targets.footprint!, fresh: targets.fresh!, grids: writtenBank.grids, paperDepth: paper.grain?.depth ?? 0,
-    }), { after: stage.after }))
-    : [];
+    };
+    for (const stage of STAMP_WET_STAGES) {
+      stages.push(stage.after === 'deposit' ? { after: 'deposit', settled: !!stage.settled, running: stage.load(wetContext) } : { after: 'drying', running: stage.load(wetContext) });
+    }
+  }
+  /** Each wash drying by the deposit it ends after, as written. */
+  const dryingsByLast = new Map(painting.groups.flatMap((group) => group.passes).flatMap(stampWashDryings).map((drying) => [drying.deposits.at(-1)!, drying]));
   /**
    * How far past its stamps' reach a deposit resolves: its edges' blur, and for a wash deposit its stages' reach and
    * two lattice cells more, so the box holds every pixel whose settled paint its landing would leave unzeroed.
@@ -1219,7 +1226,7 @@ async function rendererOnDevice(
       for (const deposit of stampPassDeposits(pass)) {
         const loadedDeposit = bank.deposits.get(deposit)!;
         const box = depositBox(deposit, loadedDeposit, deposit.stamps.length, deposit.dualStamps.length, depositPad(loadedDeposit.identity, loadedDeposit, pass));
-        if (box) for (const stage of stages) stage.reserve?.(box);
+        if (box) for (const { running } of stages) running.reserve?.(box);
       }
     }
   };
@@ -1510,9 +1517,9 @@ async function rendererOnDevice(
     // A pass within a region wholly off the painting lands nowhere: its `within` is an empty texture, read as none.
     const within = pass.within ? regions.withins.get(pass) ?? null : null;
     const { brush, active, landing } = loadedDeposit;
-    // In a wash whose paint flows, the drying-rim stage (stamp-wet-rim.ts) rims the wash as one: a brush's own wet
-    // edges would rim each stroke again. Its Procreate rim goes, and Photoshop's pooling keeps its body, not its peak.
-    const washRims = !!landing && (wetMedium?.wetting.spread ?? 0) > 0;
+    // Where a stage rims the deposit's drying (the drying rim, stamp-wet-rim.ts), a brush's own wet edges would rim
+    // each stroke again. Its Procreate rim goes, and Photoshop's pooling keeps its body, not its peak.
+    const washRims = !!landing && stages.some(({ running }) => running.ownsWetEdges?.(loadedDeposit.identity));
     const edgesOf = (layer?: StampActiveLayer<StampPaintImage>): [number, number, number, number] => (blurred && layer
       ? [washRims ? 0 : layer.rim?.rim ?? 0, layer.rim?.sharpness ?? 0, layer.burntEdge?.strength ?? 0, layer.burntEdge?.sharpness ?? 0] : [0, 0, 0, 0]);
     const mainGrain = active.main.canvasGrain, dualGrain = active.dual?.canvasGrain;
@@ -1739,6 +1746,32 @@ async function rendererOnDevice(
   }
 
   /**
+   * Draws a shown deposit of `pass` and runs the deposit stages after it, returning the pixels changed. `settled`: the
+   * deposit is wholly shown at `t`.
+   */
+  function drawDeposit(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loadedDeposit: LoadedDeposit, pass: CompiledStampPass, t: number, epoch: number, settled: boolean, frameTrace?: FrameTrace): Box | null {
+    const count = visibleStampCountAt(deposit, t);
+    const dualCount = visibleStampCountAt(deposit, t, 'dualStamps');
+    // The rim is where the mask stands above a blur as wide as its edge.
+    const sigma = loadedDeposit.active.edgeSigma, blurred = sigma > 0;
+    const box = depositBox(deposit, loadedDeposit, count, dualCount, depositPad(loadedDeposit.identity, loadedDeposit, pass));
+    if (!box) return null;
+    drawStamps(encoder, deposit, loadedDeposit, count, dualCount, box);
+    if (blurred) blurMask(encoder, sigma, box);
+    resolveDeposit(encoder, deposit, loadedDeposit, pass, t, blurred, box, frameTrace);
+    let painted: Box = box;
+    // A stage knows each deposit as written; a boil's epoch lands as its deposit as written does (loadBank), and draws
+    // its randomness from the epoch's seed.
+    const { landing, identity } = loadedDeposit;
+    if (!landing) return painted;
+    const seed = paintPigmentSeed(stampBoilSeed(identity.id, epoch));
+    for (const stage of stages) {
+      if (stage.after === 'deposit' && (settled || !stage.settled)) painted = unionOf(painted, stage.running.encode(encoder, { deposit: identity, pass, landing, box, seed }))!;
+    }
+    return painted;
+  }
+
+  /**
    * Encodes the frame at `t`. `whole` draws it from bare paper, neither restoring nor saving a checkpoint: a traced
    * frame, so every deposit it asks for is resolved in it, and a read-back layer, which a checkpoint may skip past.
    */
@@ -1766,34 +1799,23 @@ async function rendererOnDevice(
       for (const [p, pass] of group.passes.entries()) {
         const drawnPass = marks.passes[p];
         if (!pass.clipTo && event >= from) clear(encoder, targets.clip.view);
+        const passFirst = event;
         for (const deposit of stampPassDeposits(drawnPass)) {
           if (event > first) save(event, true, painted);
-          if (event++ < from || !stampDepositShowsAt(deposit, t)) continue;
-          const count = visibleStampCountAt(deposit, t);
-          const dualCount = visibleStampCountAt(deposit, t, 'dualStamps');
+          if (event++ < from) continue;
           const loadedDeposit = bank.deposits.get(deposit)!;
-          // The rim is where the mask stands above a blur as wide as its edge.
-          const sigma = loadedDeposit.active.edgeSigma, blurred = sigma > 0;
-          const box = depositBox(deposit, loadedDeposit, count, dualCount, depositPad(loadedDeposit.identity, loadedDeposit, pass));
-          if (!box) continue;
-          drawStamps(encoder, deposit, loadedDeposit, count, dualCount, box);
-          if (blurred) blurMask(encoder, sigma, box);
-          resolveDeposit(encoder, deposit, loadedDeposit, pass, t, blurred, box, frameTrace);
-          painted = painted ? union(painted, box) : box;
-          // A stage knows each deposit as written; a boil's epoch lands as its deposit as written does (loadBank), and
-          // draws its randomness from the epoch's seed.
-          const { landing, identity } = loadedDeposit;
-          const seed = paintPigmentSeed(stampBoilSeed(identity.id, epoch));
-          if (landing) for (const stage of stages) if (stage.after === 'deposit') painted = unionOf(painted, stage.encode(encoder, { kind: 'deposit', deposit: identity, pass, landing, box, seed }));
+          if (stampDepositShowsAt(deposit, t)) painted = unionOf(painted, drawDeposit(encoder, deposit, loadedDeposit, pass, t, epoch, events[event - 1].settledAt <= t, frameTrace));
+          // A drying waits until every deposit in its wash so far is wholly shown, so no rim forms round paint still
+          // being revealed: the same wait a checkpoint past it makes.
+          const drying = dryingsByLast.get(loadedDeposit.identity);
+          if (!drying || events.slice(passFirst, event).some((settling) => settling.settledAt > t)) continue;
+          const seed = paintPigmentSeed(stampBoilSeed(drying.id, epoch));
+          for (const stage of stages) if (stage.after === 'drying') painted = unionOf(painted, stage.running.encode(encoder, { drying, seed }));
         }
+        // A wash's end is an event of its own, though its last drying ran with its last deposit.
         if (drawnPass.kind !== 'wash') continue;
         if (event > first) save(event, true, painted);
-        if (event++ < from) continue;
-        const record = wetness!.washes.get(pass)!;
-        // A wash dries after its last deposit: its stages wait until every one is wholly shown, so no rim forms round
-        // paint still being revealed.
-        if (events[event - 1].settledAt > t) continue;
-        for (const stage of stages) if (stage.after === 'wash') painted = unionOf(painted, stage.encode(encoder, { kind: 'wash', pass, record }));
+        event++;
       }
       if (painted) layGroup(encoder, index, group, painted, moved);
     }
@@ -1915,6 +1937,11 @@ const areaBox = (area: CompiledStampMaskArea) => stampPolygonBox(area.polygon, s
 const boxWords = (box: Box | undefined): [number, number, number, number] => (box ? [box.x, box.y, box.w, box.h] : [0, 0, 0, 0]);
 
 const unionOf = (a: Box | null, b: Box | null) => (a && b ? union(a, b) : a ?? b);
+
+/** A wet stage as loaded, by when it runs, a deposit stage with whether it waits for its deposit to be wholly shown. */
+type LoadedWetStage =
+  | { after: 'deposit'; settled: boolean; running: StampLoadedWetStage<StampWetDepositMoment> }
+  | { after: 'drying'; running: StampLoadedWetStage<StampWetDryingMoment> };
 
 const union = (a: Box, b: Box): Box => {
   const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);

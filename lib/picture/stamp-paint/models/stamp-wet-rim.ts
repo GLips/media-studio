@@ -1,13 +1,14 @@
 // stamp-wet-rim.ts: the drying rim. As a wash dries, water evaporates fastest at its edge and capillary flow carries
 // loose pigment out to replace it, so a dried wash keeps a thin, darker line along its edge and a paler band inside
-// it. A wash rims once, as one wet domain, at its end (studio/stamp-wet-rim.ts): along its paint's edge, closed over
-// the paper's grain, where that edge is abrupt. The law is WGSL; the band's size is worked out on the CPU too, to size
-// the stage's kernels.
+// it. A wash rims at each drying (a wait('dry'), and its end), the paint wetted since the last as one domain
+// (studio/stamp-wet-rim.ts): along its paint's edge, closed over the paper's grain, where that edge is abrupt. The
+// law is WGSL; the band's size is worked out on the CPU too, to size the stage's kernels.
 //
-// Negative space: a stroke inside a wash that dries before the next is laid doesn't rim here; it's one domain.
+// Negative space: a wait for 'damp' or for seconds doesn't rim, though paper left long enough dries; a drying is
+// what the author names.
 
 import { STAMP_WET_CELL, stampWetGrid, type StampWetness } from './stamp-wetness.ts';
-import { stampPassDeposits, type CompiledStampPass } from './stamp-paint-recipe.ts';
+import type { CompiledStampDeposit, CompiledStampPass } from './stamp-paint-recipe.ts';
 import { stampGridLocalMax, type StampGrid } from './stamp-region.ts';
 
 /** The widest band a rim draws pigment from, px: past it the kernels' taps grow and a real rim's band is no wider. */
@@ -37,12 +38,43 @@ export function stampDryingRimBand(spread: number, diameter: number, wetShare: n
 export const stampDryingRimWetShare = (wettest: number, damp: number) => Math.min(1, Math.max(0, (wettest - damp) / Math.max(1e-3, 1 - damp)));
 
 /**
- * The wettest each point of `pass`'s lattice got over the wash, over the windows its deposits' landings cover, or null
- * for a wash that landed nothing. Each point reads the wettest within a cell and a half, as a footprint averaged onto
+ * One drying of a wash: the deposits laid since its last wait('dry'), which dry, and rim, as one. `id` names it in
+ * its wash, seeding its rim: the wash's own ID for its first.
+ */
+export type StampWashDrying = { pass: CompiledStampPass; id: string; deposits: readonly CompiledStampDeposit[] };
+
+const washDryings = new WeakMap<CompiledStampPass, readonly StampWashDrying[]>();
+
+/**
+ * `pass`'s dryings in painting order, the same objects every call: one per wait('dry') with deposits laid before it
+ * and one at the wash's end with any after the last. None for a dry pass.
+ */
+export function stampWashDryings(pass: CompiledStampPass): readonly StampWashDrying[] {
+  if (pass.kind !== 'wash') return [];
+  const known = washDryings.get(pass);
+  if (known) return known;
+  const dryings: StampWashDrying[] = [];
+  let deposits: CompiledStampDeposit[] = [];
+  const dry = () => {
+    if (deposits.length) dryings.push({ pass, id: dryings.length ? `${pass.id}|dry${dryings.length}` : pass.id, deposits });
+    deposits = [];
+  };
+  for (const step of pass.wash.schedule) {
+    if (step.kind === 'deposit') deposits.push(step.deposit);
+    else if (step.until === 'dry') dry();
+  }
+  dry();
+  washDryings.set(pass, dryings);
+  return dryings;
+}
+
+/**
+ * The wettest each point of the lattice got over `drying`, over the windows its deposits' landings cover, or null for
+ * a drying that landed nothing. Each point reads the wettest within a cell and a half, as a footprint averaged onto
  * the lattice dilutes the points along a wash's edge, where its rim is.
  */
-export function stampWashWettest(pass: CompiledStampPass, wetness: StampWetness): StampGrid | null {
-  const landings = stampPassDeposits(pass).flatMap((deposit) => wetness.landings.get(deposit) ?? []);
+export function stampDryingWettest(drying: StampWashDrying, wetness: StampWetness): StampGrid | null {
+  const landings = drying.deposits.flatMap((deposit) => wetness.landings.get(deposit) ?? []);
   if (!landings.length) return null;
   const grids = landings.flatMap(({ before, after }) => [stampWetGrid(before, 'wetness'), stampWetGrid(after, 'wetness')]);
   let i0 = Infinity, j0 = Infinity, i1 = -Infinity, j1 = -Infinity;

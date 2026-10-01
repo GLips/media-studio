@@ -4,8 +4,8 @@
 // - drift: a moving group's texture travels with it (stuck), so frame k moved back by its motion is frame 0;
 // - boil: a group boiling on twos holds within an epoch, changes across epochs, leaves a still group alone, and
 //   frame 0 drawn again is frame 0;
-// - boil-wash: a boiling wash whose marks have nothing random to re-roll draws every epoch as frame 0, its paint
-//   flowing as far into the wet paper whichever epoch lays it;
+// - boil-wash: a boiling wash whose marks have nothing random to re-roll draws every epoch as frame 0 but for its
+//   drying rim's line, which re-rolls, its paint flowing as far into the wet paper whichever epoch lays it;
 // - sunset: one painting in two palettes lays the same coverage deposit by deposit; only its colour changes.
 
 import { PAINT_MEDIA } from '#lib/picture/paint/models/paint-medium.ts';
@@ -21,6 +21,11 @@ import type { StampGateWashCheck } from './stamp-gate-washes.ts';
 export const STAMP_GATE_ANIMATION_FPS = 30;
 /** How far a drifted frame may sit from frame 0 moved as far, in levels: the output's dither. */
 export const STAMP_GATE_DRIFT_TOLERANCE = 1;
+/**
+ * The most share of the boiling wash's pixels an epoch may change past the dither: its drying rim's line re-rolls
+ * each epoch, a few pixels along the dabs' edges, where an epoch whose paint didn't flow would change thousands.
+ */
+export const STAMP_GATE_BOIL_WASH_RIM_SHARE = 0.001;
 /** The least share of the cloud's pixels a new boil epoch must change by more than 2 levels, so a boil that holds fails. */
 export const STAMP_GATE_BOIL_CHANGE = 0.01;
 
@@ -82,14 +87,17 @@ export function stampGateBoilWashPainting(): StampGatePainting {
 
 /** Whether each of a boiling wash's frames (one an epoch) is frame 0, within the output's dither. */
 export function checkStampGateBoilWash(frames: readonly Rgba[]): StampGateWashCheck {
-  const worst = frames.slice(1).map((rgba) => {
-    let max = 0;
-    for (let i = 0; i < rgba.length; i++) if (i % 4 !== 3) max = Math.max(max, Math.abs(rgba[i] - frames[0][i]));
-    return max;
+  const pixels = frames[0].length / 4;
+  const changed = frames.slice(1).map((rgba) => {
+    let count = 0;
+    for (let i = 0; i < rgba.length; i += 4) {
+      if (Math.max(...[0, 1, 2].map((c) => Math.abs(rgba[i + c] - frames[0][i + c]))) > STAMP_GATE_DRIFT_TOLERANCE) count++;
+    }
+    return count;
   });
   return {
-    id: 'animation/boil-wash: each epoch flows as far', passed: worst.every((max) => max <= STAMP_GATE_DRIFT_TOLERANCE),
-    detail: `epochs 1 to ${worst.length} against frame 0: most ${worst.join(', ')} levels (past ${STAMP_GATE_DRIFT_TOLERANCE} fails)`,
+    id: 'animation/boil-wash: each epoch flows as far', passed: changed.every((count) => count <= STAMP_GATE_BOIL_WASH_RIM_SHARE * pixels),
+    detail: `epochs 1 to ${changed.length} against frame 0: ${changed.join(', ')} pixels past ${STAMP_GATE_DRIFT_TOLERANCE} level (past ${STAMP_GATE_BOIL_WASH_RIM_SHARE * pixels} fails)`,
   };
 }
 

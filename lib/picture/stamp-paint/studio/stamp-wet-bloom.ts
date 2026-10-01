@@ -15,7 +15,7 @@ import { STAMP_GRID_AT_WGSL } from '../models/stamp-region.ts';
 import type { StampWetWindow } from '../models/stamp-wetness.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe.ts';
-import type { StampLoadedWetStage, StampWetStage, StampWetStageContext, StampWetStageMoment } from './stamp-wet-stages.ts';
+import type { StampLoadedWetStage, StampWetDepositMoment, StampWetStage, StampWetStageContext } from './stamp-wet-stages.ts';
 import { stampUniformLayout, stampUniformWriter } from './stamp-uniform-layout.ts';
 import { encodeStampWetTransportSteps, stampWetSpreads, type StampWetTransportStep } from './stamp-wet-transport.ts';
 
@@ -202,7 +202,7 @@ type BloomScratch = {
   paper: GPUTextureView; paths: [GPUTextureView, GPUTextureView]; values: [GPUTextureView, GPUTextureView]; front: GPUTextureView; send: GPUTextureView;
 };
 
-function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: StampWetStageContext): StampLoadedWetStage {
+function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: StampWetStageContext): StampLoadedWetStage<StampWetDepositMoment> {
   const { spread } = medium.wetting;
   if (spread <= 0) return { encode: () => null };
   const sized = [...wetness.landings].flatMap(([deposit, landing]) => {
@@ -263,7 +263,7 @@ function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: S
     };
   };
 
-  const encode = (encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, { box, seed }: Extract<StampWetStageMoment, { kind: 'deposit' }>): StampPixelBox => {
+  const encode = (encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, { box, seed }: StampWetDepositMoment): StampPixelBox => {
     const plan = plans.get(deposit)!, { sigma, lattice } = plan;
     if (!scratch || box.w > scratch.w || box.h > scratch.h) throw new Error(`stamp paint: the bloom stage was given ${deposit.id}'s box unreserved`);
     const words = new ArrayBuffer(BLOOM.words * 4);
@@ -312,9 +312,12 @@ function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: S
   };
   return {
     reserve,
-    encode: (encoder, moment) => (moment.kind === 'deposit' && plans.has(moment.deposit) ? encode(encoder, moment.deposit, moment) : null),
+    encode: (encoder, moment) => (plans.has(moment.deposit) ? encode(encoder, moment.deposit, moment) : null),
   };
 }
 
-/** Blooms and backruns, after each wash deposit that lands wetter than the damp, workable paint round it. */
-export const STAMP_BLOOM_STAGE: StampWetStage = { id: 'bloom', after: 'deposit', reach: stampBloomReach, load: loadBloom };
+/**
+ * Blooms and backruns, after each wash deposit that lands wetter than the damp, workable paint round it: once wholly
+ * shown, as its front is worked out from the whole landing's water.
+ */
+export const STAMP_BLOOM_STAGE = { id: 'bloom', after: 'deposit', reach: stampBloomReach, settled: true, load: loadBloom } satisfies StampWetStage;
