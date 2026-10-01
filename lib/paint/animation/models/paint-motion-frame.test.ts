@@ -71,3 +71,26 @@ test('the build names conflicts, missing pins, keys out of order, a hold in seco
   assert.equal(folds.length, 1);
   assert.match(folds[0], /^frog: at 0\.\d+s its warp folds near .*frog's pin 'chest' moves paint there most/);
 });
+
+test('a flutter narrows paint across its axis alone, and a live node hands its caller its pins\' moves', () => {
+  const wings = { id: 'butterfly', box, clock: [{ kind: 'hold', frames: 2 }] } satisfies PaintMotionNode;
+  const sac = { id: 'sac', box, marks: 'live', pins: { puff: { at: { x: 200, y: 200 }, reach: 100 } } } satisfies PaintMotionNode<'puff'>;
+  const { motion, problems } = buildPaintMotion({
+    nodes: [wings, sac],
+    plays: [
+      paintMotionPlay(wings, { kind: 'flutter', at: { x: 200, y: 200 }, direction: 0, least: 0.3, period: 0.5 }, { clock: [{ kind: 'at', start: 0 }], origin: 'beat' }),
+      paintMotionPlay(sac, { kind: 'poses', keys: [{ at: 0, pose: {} }, { at: 1, pose: { puff: { scale: 1.9 } } }] }, { clock: [{ kind: 'at', start: 0 }], origin: 'puff' }),
+    ],
+    foldCheck: { from: 0, to: 2 },
+  });
+  assert.deepEqual(problems, []);
+  const spreads = Array.from({ length: 48 }, (_, i) => {
+    const map = paintMotionFrameAt(motion, i / 24).state.get('butterfly')?.warp?.map ?? ((p) => p);
+    assert.deepEqual(map({ x: 260, y: 200 }), { x: 260, y: 200 }, 'paint on the axis stays');
+    return (map({ x: 200, y: 260 }).y - 200) / 60;
+  });
+  assert.ok(Math.min(...spreads) < 0.35 && Math.max(...spreads) === 1, `${Math.min(...spreads)}..${Math.max(...spreads)}`);
+  const live = paintMotionFrameAt(motion, 2).live.get('sac')!;
+  assert.equal(live.pins.get('puff')?.scale, 1.9);
+  assert.equal(paintMotionFrameAt(motion, 0).live.get('sac')?.pins.size, 0, 'a pin at rest is left out');
+});
