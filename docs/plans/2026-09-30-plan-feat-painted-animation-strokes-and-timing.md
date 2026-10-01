@@ -47,7 +47,7 @@ What plans 2 and 3 need from this plan:
 - **Stamp identity is assigned once at rest,** keyed by rest position (today the placement ordinal on the rest stroke). Plan 3 reuses it with rest positions on a mesh.
 - **A source is evaluated at `t` and may return different strokes each frame** (plan 3's silhouettes). A stroke a source creates after its part's reveal has finished starts fully revealed.
 - **Visibility is a per-frame mask, separate from reveal,** fully visible by default. Only the slot is built here.
-- **The engine doesn't own its GPU device or assume one canvas-sized target.** Plan 2 shares the device with three.js's WebGPU renderer and renders groups to their own layers.
+- **The engine doesn't own its GPU device or assume one canvas-sized target.** Plan 2 shares the device with three.js's WebGPU renderer and renders groups to their own layers. *Status, 2026-10-01:* the device half holds on main. `stamp-paint-surface.ts` takes a lent device and draws into a handed texture (vid-129, then vid-123). Rendering a group to a layer target of its own is plan 2's work.
 
 ### Out of scope
 - Planes at depth, a camera, post and three.js compositing: plan 2.
@@ -182,9 +182,9 @@ Reveal, placement, deformation, boil, holds and colour run as pure timing channe
 
 **Who owns what.**
 - vid-114's score owns reveal allocation: which interval each deposit reveals over, from weights and cues. It resolves to scene seconds.
-- Plan 1 adds clocks in front of the lookup and channels beside it. Reveal stays `progress(deposit, τ)`, where `τ` is the deposit's part's clock time. Plan 1 never re-allocates the score.
+- Plan 1 adds channels beside the lookup, and holds in front of it. Reveal stays `progress(deposit, τ)`, where `τ` is the scene's time through the part's holds and freezes only. Plan 1 never re-allocates the score.
 
-**Clock transforms.** Each part (and each group, and the painting) has a clock: a chain of transforms from its parent's time to its own local time `τ`. Each transform is data, `{ kind, …params }`, evaluated by a registered pure function. `hold(loop(clip))` placed at a cue is the chain `[hold(2), at(cue), loop(…)]`, outermost first. The hold sees the parent's time, the `at` makes the clip's own time, and the loop wraps it (`paint/animation/models/paint-clock.ts`).
+**Clocks belong to writers.** Each play (a pose clip, a sway, a placement, a boil) has a clock: a chain of transforms from scene time to the clip's own local time `τ`. A part, a group or the painting carries only `hold` and `freeze`, which every writer under it and its reveal read through. *Why (spike 1.1):* a looping chain in front of the reveal lookup would un-draw and redraw the part on every loop, and repeat its boil epochs. Each transform is data, `{ kind, …params }`, evaluated by a registered pure function. `hold(loop(clip))` placed at a cue is the chain `[hold(2), at(cue), loop(…)]`, outermost first. The hold sees the parent's time, the `at` makes the clip's own time, and the loop wraps it (`paint/animation/models/paint-clock.ts`).
 
 | Kind | Maps input time `τ` to | Notes |
 |---|---|---|
@@ -226,7 +226,7 @@ Reveal is measured on the rest stroke (step 1), so no later step changes how muc
 - The seed is `hash(restId, epoch)`.
 - `stuck` is always epoch 0. `live` re-places every evaluated frame: under a hold, every held frame, never between them.
 
-**Purity and keys.** A frame is a pure function of (compiled painting, `t`, cues, `animationFps`). Everything that varies goes into the checkpoint key: each part's clock value after its holds, its warp, its epoch and its placement. Two frames inside one hold step share a key, which is what makes holds cheap.
+**Purity and keys.** A frame is a pure function of (compiled painting, `t`, cues, `animationFps`). Everything that varies goes into the checkpoint key: each part's time after its holds, each writer's clock value, its warp, its epoch and its placement. Two frames inside one hold step share a key, which is what makes holds cheap.
 
 ## Phase 4: The frog scene (sketched)
 

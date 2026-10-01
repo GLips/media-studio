@@ -1,7 +1,8 @@
-// paint-clock.ts: the times a painted animation's parts read, as plan 1's timing contract defines them
-// (docs/plans/2026-09-30-plan-feat-painted-animation-strokes-and-timing.md, phase 3). A part's clock is a chain of
-// steps from its parent's time to its own: placed at a cue, retimed, looped, held on twos, frozen. Each step is data,
-// evaluated by its kind's pure function, so a scene's timing can be checked and keyed before anything renders.
+// paint-clock.ts: the times a painted animation's writers read, as plan 1's timing contract defines them
+// (docs/plans/2026-09-30-plan-feat-painted-animation-strokes-and-timing.md, phase 3). A writer's clock (a pose clip,
+// a sway, a placement) is a chain of steps from scene time to its clip's own: placed at a cue, retimed, looped, held
+// on twos, frozen. A part carries only holds and freezes, so a loop never un-draws its reveal. Steps are data, so a
+// scene's timing can be checked and keyed before anything renders.
 //
 // Negative space: render fps never enters here. A 30 or 60 fps render samples the same held drawings.
 
@@ -55,7 +56,7 @@ export function paintClockStepProblem(step: PaintClockStep): string | null {
   return null;
 }
 
-/** The time `clock` hands its part when its parent's time is `time`: each step, outermost first. */
+/** The time `clock` hands its clip when the scene's time is `time`: each step, outermost first. */
 export function paintClockTimeAt(clock: PaintClock, time: number, animationFps: number): number {
   return clock.reduce((at, step) => paintClockStepTime(step, at, animationFps), time);
 }

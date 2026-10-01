@@ -34,7 +34,7 @@ export function paintChannelConflicts(writers: readonly PaintChannelWriter[]): s
 }
 
 /**
- * A stroke's boil epoch at its part's time `time`: 0, its seed as written, until the first grid step after its reveal
+ * A stroke's boil epoch at its part's time `time` (the scene's, through the part's holds): 0, its seed as written, until the first grid step after its reveal
  * ends at `revealEnd`, so it doesn't pop to a new seed as it finishes; then one more every `every` animation frames,
  * on the grid, so a part's boiling strokes change together.
  */

@@ -233,3 +233,111 @@ beyond core.
    Vulkan render machine is unverified.
 5. **The back seam's API:** if three drops or renames `setXRRenderTargetTextures`, fall back to its own render
    target's texture through the backend, with three owning its lifetime.
+
+## Plan 1, phase 1.1: authoring the frog (vid-130)
+
+**Short answer:** write anatomy as vid-114's groups and passages, and motion as plays aimed at the typed handles the
+anatomy returns. Poses are pins. Shapes come from a source that names parts and anchors, so no scene types a
+coordinate. In a cold test, fresh agents wrote both scenes in the chosen form from the stub types' docs alone, with no
+compile errors.
+
+- **The code:** stub types, both candidate forms, the chosen form, the frog and a ported watercolor-paintings
+  character in each, mistake probes, cold-writer logs and the shape sources. They live in
+  `~/research/2026-10-01-vid-130/authoring/code/` (spike branch `vid130-authoring`, ffcb50b; not landed).
+- **The page:** `~/research/2026-10-01-vid-130/authoring/index.html`, with every shape source's renders.
+- **What was tested:** text only, typechecked against stubs. Nothing was rendered in paint.
+
+### The chosen form
+
+```ts
+const frogGroup = s.group('frog', {
+  composite: 'opaque',
+  reveal: { at: cues.frog, over: 3 },
+  pins: { sac: { part: frog.parts.sac, at: frog.anchors.chin }, chest: { at: frog.anchors.back, reach: 220 } },
+}, (g) => {
+  g.passage('body', { area: frog.silhouette.region, weight: 2, defaults: { ...g.look.roles.body, well: g.look.wells.skin } }, (p) => { … });
+  g.passage('ink', { marks: boil(), defaults: { ...g.look.roles.outline, well: g.look.wells.ink } }, (p) => {
+    p.stroke('silhouette', { path: frog.silhouette.outline, weight: 3 });
+  });
+});
+s.play(frogGroup, puff, { at: frogGroup.revealed(), loop: 3 });
+s.play(frogGroup, breathe({ pin: 'chest', amount: 0.02, period: 3 }), { at: frogGroup.revealed() });
+```
+
+### Answers
+
+- **Where timing is written:** in plays, `s.play(handle, clip, { at, until, loop, rate, hold })`, aimed at typed
+  handles. `at` is a cue, or another handle's `.revealed()` or `.end`.
+  - How marks live (stuck, boil, live) is an option on the node. It describes the marks, not a track.
+  - Reveal stays vid-114's, on passages.
+  - Options-on-nodes (form A) was as short. But a cold writer used the outer scope inside an `apply`, and nothing
+    caught it, so the boil missed its strokes. String paths (`revealed('frog/ikn')`) fail only at run time.
+- **How a pose is written:** pins, of two kinds.
+  - Radial: `{ at, reach }`.
+  - Owned by a part: `{ part, at?, feather? }`. It was added because every cold writer guessed at reaches, and a
+    radial pin on the wing hinge squashed the body.
+
+  No lattice: the puff needs a box and six control moves in px, where a pin needs one `scale`. No ARAP for the frog.
+- **Stuck, boil or live:** `stuck` by default, `boil()` (every 2 animation frames, a small amount) and `live` opt-in per
+  node. The frog's body is stuck, its outline and the grass boil, and the grass blades are live.
+- **Reveal pacing:** vid-114's `{ at, over }` or `{ at, secondsPerWeight }`. Every cold writer reached for a reveal on a
+  group, split across its passages by weight. That is the one request to vid-114.
+- **Holds:** on the 24 fps clock, motion holds on twos and reveal runs on ones by default. A play can override it, in
+  frames.
+- **The timing contract changed.** The spike found that a part-level clock with a loop, in front of the reveal lookup,
+  un-draws and redraws the part on every loop, and repeats its boil epochs. So clocks belong to writers (plays). A
+  part carries only holds and freezes. Phase 3's contract is amended to match.
+- **References:** typed handles. A misspelt handle is a compile error; a misspelt path isn't.
+- **Shapes:** every source returns the same value: named parts, a silhouette, lines and anchors (`FigureShapes`).
+
+  | Source | What it gave | Verdict |
+  |---|---|---|
+  | Posed 3D primitives (three.js, rasterised to a label buffer, traced) | Part names, anchors, any view, posable; 4 poses in 1.5 s | First choice. Plan 3 reuses it |
+  | Named construction (2D signed-distance smooth union) | Part names and anchors, side view only; 3 poses in 1.1 s | Second |
+  | Font glyphs (Noto Emoji) | Outlines with no part names | Lettering only |
+  | Tracing a public-domain plate | Failed on a busy background; a nameless blob even when clean | No |
+  | An image model's frog, traced | Not tried: it needs Graham's key | Open |
+- **Scoped style:** a project-level look contract (roles and colour names), bound once per style and overridden per
+  group (`look: gouacheLook`).
+  - A second look must bind every colour, and the compiler checks it.
+  - Colour variety comes from a material-set well.
+  - Mixing styles in one painting works only for the pigment media (watercolour, gouache, crayon), which share a
+    compositor; a flat style needs plan 2's layers. Unverified in paint.
+- **Porting:** the watercolor-paintings character reads about as well, and its timing reads better as weights. It is
+  5.9–6.3k characters against 6.8k plus a 4.0k helper, but most of that saving is coordinates moved into the art,
+  which vid-114 rightly doesn't count. Lost in the port:
+  - the texture pattern's options, which should take vid-114's pattern object;
+  - the blotches' rotations;
+  - sizes from an element's box.
+
+### The cold test
+
+Fresh agents wrote each scene from the stubs' docs alone. The table gives errors on first compile.
+
+| Form | Frog | Character |
+|---|---|---|
+| A (options on nodes) | 1 (a stub defect) | 0, plus the uncaught outer-scope bug |
+| B (tracks on handles) | 0 | 0 |
+| Chosen | 0 | 0 |
+
+Every cold writer guessed at the same things:
+- pin reaches;
+- the hinge;
+- units;
+- what a place key means;
+- whether media can mix;
+- the missing group reveal.
+
+The chosen stubs state the units, and the part-owned pin answers the hinge.
+
+**Checks the compile step must add** (types can't): a hold given in seconds, a loop of 0, two writers on one pin
+(`paintChannelConflicts`), pose keys out of order, and chaining onto an open loop's `.end`. **Caught by nothing yet:**
+the outer scope used inside an `apply` (a lint rule), a pin reach that swallows the figure, and a rig nobody plays.
+
+### Ownership with vid-114
+
+- **vid-114:** groups, passages, applications, techniques, wells, sizes, waits, reveal allocation and painting time.
+- **The project's timeline:** cues.
+- **Plan 1:** place, deform, boil and marks, colour, the clocks on plays, looks and scoped style, and shape sources.
+  It adds only node options (`look`, `anchor`, `pins`, `marks`) to vid-114's tree, and handles returned from its
+  builders.
