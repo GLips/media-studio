@@ -114,7 +114,22 @@ function burnished(kit: DryPassageKit): StampPaintRecipe {
   })));
 }
 
+/** The continuous fills side by side over three tall swatches, as vid-121's crayon lemon and wall used them: zigzag, back and forth. */
+function fillTurns(kit: DryPassageKit): StampPaintRecipe {
+  const swatch = (k: number) => rect(16 + k * 156, 20, 16 + k * 156 + 136, H - 20);
+  const material = dryPassagePigment(kit, 'cadmiumRed', 0.55);
+  return stampPaintRecipe((paint) => paint.group('fills', { composite: 'opaque' }, (group) => group.pass('fills', {}, (pass) => {
+    pass.fill('zigzag', { brush: kit.brushes.stick, diameter: 16, region: swatch(0), application: { kind: 'strokes', pattern: 'zigzag', spacing: 0.8, variation: 0.4 }, direction: 0.5, material });
+    pass.fill('back-and-forth', { brush: kit.brushes.stick, diameter: 16, region: swatch(1), application: { kind: 'strokes', pattern: 'backAndForth', spacing: 0.8, variation: 0.4 }, direction: 0.5, material });
+  })));
+}
+
 export const DRY_PASSAGES: readonly DryPassage[] = [
+  {
+    id: 'fill-turns', title: 'Shading fills and their turns', recipe: fillTurns,
+    shows: 'A crayon fill laid as one continuous stroke: on the left a zigzag, in the middle back and forth along each row.',
+    lookFor: 'Where the stroke turns back, a hand eases off, so the turnarounds should be the lightest part, not a dark bead pressed in at each end of a row.',
+  },
   {
     id: 'layered-tooth', title: 'Tooth through layers', recipe: layeredTooth,
     shows: 'Five swatches of close hatching with one to five layers, each layer turned from the one under it. Along the top every layer is the same blue; along the bottom the layers go ochre, rose, blue, sienna, umber.',
