@@ -32,7 +32,7 @@ const washOf = (body: (wash: StampWashScope) => void) =>
 function wettestOf(body: (wash: StampWashScope) => void) {
   const painting = washOf(body);
   const [drying] = stampWashDryings(painting.groups[0].passes[0]);
-  return stampDryingWettest(drying, compileStampWetness(painting, PAINT_MEDIA.watercolour, { color: '#ffffff' }, { width: 800, height: 400 }));
+  return stampDryingWettest(drying, compileStampWetness(painting, () => PAINT_MEDIA.watercolour, { color: '#ffffff' }, { width: 800, height: 400 }));
 }
 
 test('a puddle reads as wet as it was right up to its edge, and damp brushwork beside it as its own brush', () => {

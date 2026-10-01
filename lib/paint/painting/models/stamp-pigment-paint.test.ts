@@ -93,3 +93,18 @@ test("a medium on the paper's tooth sets aside a brush's grain depth by pressure
     assert.ok(Math.abs(stampGrainDepthIn(stamp, null) - 0.25) < 1e-9);
   }
 });
+
+test('a group naming its own medium fits its palette in it, a pigment of one id two pigments in two media', () => {
+  const blue: PaintMaterial = { kind: 'mixture', parts: [{ pigment: W.ultramarine, amount: 1 }], strength: 0.5 };
+  const gouache: StampPigmentMixing = { kind: 'pigment', medium: PAINT_MEDIA.gouache, pigments: W };
+  const painting = compileStampPaintRecipe(stampPaintRecipe((p) => ['sky', 'wings', 'sea'].forEach((id) => p.group(id, { composite: 'glaze', opacity: 1, ...(id === 'wings' && { mixing: gouache }) }, (g) => g.pass('paint', {}, (pass) => {
+    pass.stamps('dab', { brush, material: blue, diameter: 10, at: [{ x: 5, y: 5 }] });
+  })))));
+  const paint = compileStampPigmentPaint(painting, watercolour, PAINT_BANDS);
+  assert.deepEqual(paint.media.map(({ name }) => name), ['watercolour', 'gouache']);
+  assert.deepEqual(paint.groups.map(({ medium }) => medium), [0, 1, 0]);
+  const [sky, wings, sea] = paint.groups.map(({ palette }) => palette);
+  assert.equal(sky[0], sea[0], 'one medium, one pigment');
+  assert.notDeepEqual(wings.map(({ id }) => id), sky.map(({ id }) => id), 'gouache lightens with white');
+  assert.notDeepEqual(wings.find(({ id }) => id === 'ultramarine')!.S, sky[0].S, 'fitted as masstone in gouache');
+});

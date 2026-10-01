@@ -33,7 +33,7 @@ const sheet = { kind: 'polygon' as const, points: [{ x: 0, y: 0 }, { x: 800, y: 
 function washed(body: (wash: StampWashScope) => void, options: StampWashOptions = {}, medium: PaintMedium = watercolour) {
   const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => group.wash('w', options, body))));
   const pass = painting.groups[0].passes[0];
-  return { pass, wetness: compileStampWetness(painting, medium, paper, size) };
+  return { pass, wetness: compileStampWetness(painting, () => medium, paper, size) };
 }
 /** `state`'s wetness, workable or settled at (x, y). */
 const at = (state: StampWetState, field: 'wetness' | 'workable' | 'settled', x: number, y: number) => stampGridAt(stampWetGrid(state, field), x, y);
@@ -126,7 +126,7 @@ test('paper settles once it dries out, and stays settled until water comes, howe
 test("a landing's window reaches as far past its water as it's asked", () => {
   const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => group.wash('w', {}, (wash) => wash.water('drop', drop({ x: 400, y: 200 }))))));
   const [deposit] = stampPassDeposits(painting.groups[0].passes[0]);
-  const windowOf = (margin: number) => compileStampWetness(painting, watercolour, paper, size, () => margin).landings.get(deposit)!.before.window;
+  const windowOf = (margin: number) => compileStampWetness(painting, () => watercolour, paper, size, () => margin).landings.get(deposit)!.before.window;
   const near = windowOf(0), far = windowOf(40);
   assert.ok(near.x0 - far.x0 >= 40 && far.columns - near.columns >= 10);
 });

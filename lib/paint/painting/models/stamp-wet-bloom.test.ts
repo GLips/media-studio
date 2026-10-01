@@ -17,7 +17,7 @@ function landing(paper: (i: number, j: number) => number, lays: (i: number, j: n
   const workable = (i: number, j: number) => Math.min(1, paper(i, j) / DAMP);
   const after = (i: number, j: number) => (lays(i, j) ? Math.max(brushWater, paper(i, j)) : paper(i, j));
   return {
-    tau: 0, water: brushWater,
+    tau: 0, water: brushWater, medium: PAINT_MEDIA.watercolour,
     before: { window, wetness: grid(paper), workable: grid(workable), settled: grid(() => 0) },
     after: { window, wetness: grid(after), workable: grid((i, j) => Math.min(1, after(i, j) / DAMP)), settled: grid(() => 0) },
   };

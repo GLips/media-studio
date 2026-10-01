@@ -32,6 +32,7 @@ import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/paint/pa
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import { checkStampGateHalfPixel, stampGateHalfPixelPainting } from '#lib/paint/gate/models/stamp-gate-half-pixel.ts';
 import { checkStampGateLive, STAMP_GATE_LIVE_POSE, stampGateLivePainting, stampGateLiveState } from '#lib/paint/gate/models/stamp-gate-live.ts';
+import { checkStampGateMedia, STAMP_GATE_MEDIA_GROUPS, STAMP_GATE_MEDIA_IDS, stampGateMediaPainting } from '#lib/paint/gate/models/stamp-gate-media.ts';
 import {
   checkStampGateBloomBoil, checkStampGateBoil, checkStampGateBoilWash, checkStampGateCutOut, checkStampGateDrift, checkStampGateWarp, checkStampGateEffectsSunset, checkStampGateKnockout, checkStampGateLent,
   checkStampGateRecolour, checkStampGateRepaint, checkStampGateSunset, STAMP_GATE_ANIMATION_FPS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_DRIFT_FRAMES, STAMP_GATE_EFFECTS_SUNSET_HOURS,
@@ -419,7 +420,7 @@ async function runStampGateStage(
   run: (context: StampWetStageContext, encoder: GPUCommandEncoder) => void,
 ): Promise<{ before: Float32Array; after: Float32Array }> {
   const { width, height } = written, layers = written.layer.length;
-  const wetness = compileStampWetness(painting, medium, { color: '#ffffff' }, { width, height });
+  const wetness = compileStampWetness(painting, () => medium, { color: '#ffffff' }, { width, height });
   const device = await createStampPaintDevice();
   try {
     const texture = (count: number, arrays: readonly Float32Array[]) => {
@@ -445,9 +446,9 @@ async function runStampGateStage(
     device.queue.writeBuffer(gridBuffer, 0, Float32Array.from([...grids.wetness, ...grids.workable, ...grids.settled]));
     device.pushErrorScope('validation');
     const context: StampWetStageContext = {
-      device, painting, medium, wetness, width, height, layer: arrayViews(layer),
+      device, painting, wetness, width, height, layer: arrayViews(layer),
       // A hold rippling across the case, so paint is held to its sums however unevenly the paper takes it.
-      wash: { layersOf: () => layers, movedWgsl: (n) => stampWashMovedWgsl(n, medium.body), holdWgsl: () => STAMP_GATE_FLOW_HOLD_WGSL },
+      wash: { layersOf: () => layers, movedWgsl: () => stampWashMovedWgsl(layers, medium.body), holdWgsl: () => STAMP_GATE_FLOW_HOLD_WGSL },
       footprint: { texture: footprint, view: footprint.createView({ dimension: '2d' }) },
       fresh: arrayViews(texture(layers, written.fresh ?? written.layer.map((values) => new Float32Array(values.length)))),
       grids: { buffer: gridBuffer, firsts: new Map([[landed, 0]]) }, paperDepth: 0,
@@ -497,6 +498,18 @@ async function checkStampGateStripeCase(id: string): Promise<StampGateWashCheck>
   return checkStampGateStripe(id, before, after);
 }
 
+/** Media case `id` (stamp-gate-media.ts): the painting of three media against each group painted alone in its own. */
+async function checkStampGateMediaCase(id: string): Promise<StampGateWashCheck[]> {
+  if (id !== 'media/mixed') throw new Error(`stamp gate: no media case ${JSON.stringify(id)}; the gate has ${STAMP_GATE_MEDIA_IDS.join(', ')}`);
+  const frameOf = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), (renderer, frame) => drawn(renderer, frame, gate.t));
+  return checkStampGateMedia({
+    together: await frameOf(stampGateMediaPainting(STAMP_GATE_MEDIA_GROUPS)),
+    alone: { wash: await frameOf(stampGateMediaPainting(['wash'], { alone: true })), body: await frameOf(stampGateMediaPainting(['body'], { alone: true })), wax: await frameOf(stampGateMediaPainting(['wax'], { alone: true })) },
+    bare: await frameOf(stampGateMediaPainting([])),
+    glazed: await frameOf(stampGateMediaPainting(STAMP_GATE_MEDIA_GROUPS, { bodyIn: 'watercolour' })),
+  });
+}
+
 /** The GPU the gate draws on, as a baseline records it. */
 async function stampGateAdapter(): Promise<string> {
   const adapter = await navigator.gpu.requestAdapter();
@@ -505,4 +518,4 @@ async function stampGateAdapter(): Promise<string> {
   return [vendor, architecture, device, description].filter(Boolean).join(' ');
 }
 
-Object.assign(globalThis, { runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, checkStampGateAnimation, checkStampGateFlowCase, checkStampGateStripeCase, stampGateAdapter });
+Object.assign(globalThis, { runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, checkStampGateAnimation, checkStampGateFlowCase, checkStampGateStripeCase, checkStampGateMediaCase, stampGateAdapter });

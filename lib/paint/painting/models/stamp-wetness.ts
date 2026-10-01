@@ -11,7 +11,7 @@
 import type { PaintMedium, PaintWetting } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampPaintFieldAt } from './stamp-paint-field.ts';
 import type { PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
-import type { CompiledStampDeposit, CompiledStampMask, CompiledStampPaint, CompiledStampPass, StampPaintPaper, StampWashWait } from './stamp-paint-recipe.ts';
+import type { CompiledStampDeposit, CompiledStampGroup, CompiledStampMask, CompiledStampPaint, CompiledStampPass, StampPaintPaper, StampWashWait } from './stamp-paint-recipe.ts';
 import type { StampGrid, StampPoint } from './stamp-region.ts';
 
 /** A window of the lattice: its first point (px), spacing (STAMP_WET_CELL) and points across and down. */
@@ -29,9 +29,10 @@ export const stampWetGrid = (state: StampWetState, field: 'wetness' | 'workable'
 
 /**
  * A wash's deposit landing: `tau`, painting seconds into its wash; the paper `before` it and `after` its own water,
- * over the window its stamps reach and a cell round them; `water`, what its brush carries, 0..1 (0 for a lift).
+ * over the window its stamps reach and a cell round them; `water`, what its brush carries, 0..1 (0 for a lift); the
+ * `medium` its group paints in, which the wet stages move its paint by.
  */
-export type StampWetLanding = { tau: number; before: StampWetState; after: StampWetState; water: number };
+export type StampWetLanding = { tau: number; before: StampWetState; after: StampWetState; water: number; medium: PaintMedium };
 
 /** A wash's record: how many painting seconds it took, its waits included, and the paper as it's left, over the whole lattice. */
 export type StampWashRecord = { duration: number; end: StampWetState };
@@ -86,18 +87,19 @@ type StampWetSpan = { i0: number; j0: number; columns: number; rows: number };
 type StampWashPaper = { lattice: StampWetSpan; level: Float64Array; at: Float64Array; settled: Uint8Array };
 
 /**
- * Every wash deposit's landing in `painting`, `size` px, its paint in `medium` on `paper`, each wash starting from
- * dry paper (or its preparation) at painting time 0. A landing's window reaches `margin(deposit)` px past what its
- * water covers, and a cell more: as far as a stage reads round it (StampWetStage's `reach`).
+ * Every wash deposit's landing in `painting`, `size` px, on `paper`, each group's paint in its `mediumOf`, each wash
+ * starting from dry paper (or its preparation) at painting time 0. A landing's window reaches `margin(deposit,
+ * medium)` px past what its water covers, and a cell more: as far as a stage reads round it (StampWetStage's `reach`).
  */
 export function compileStampWetness(
-  painting: CompiledStampPaint, medium: PaintMedium, paper: StampPaintPaper, size: { width: number; height: number }, margin: (deposit: CompiledStampDeposit) => number = () => 0,
+  painting: CompiledStampPaint, mediumOf: (group: CompiledStampGroup) => PaintMedium, paper: StampPaintPaper, size: { width: number; height: number },
+  margin: (deposit: CompiledStampDeposit, medium: PaintMedium) => number = () => 0,
 ): StampWetness {
-  const { wetting } = medium, drying = stampDrying(wetting, paper);
   const lattice = { i0: 0, j0: 0, columns: Math.ceil(size.width / STAMP_WET_CELL) + 1, rows: Math.ceil(size.height / STAMP_WET_CELL) + 1 };
   const landings = new Map<CompiledStampDeposit, StampWetLanding>(), washes = new Map<CompiledStampPass, StampWashRecord>();
-  for (const pass of painting.groups.flatMap((group) => group.passes)) {
+  for (const [group, pass] of painting.groups.flatMap((each) => each.passes.map((laid) => [each, laid] as const))) {
     if (pass.kind !== 'wash') continue;
+    const medium = mediumOf(group), { wetting } = medium, drying = stampDrying(wetting, paper);
     const { preparation, schedule } = pass.wash;
     const points = lattice.columns * lattice.rows;
     // Paint an earlier pass left has set: washes share no water.
@@ -116,7 +118,7 @@ export function compileStampWetness(
       }
       const { deposit } = step, { action } = deposit;
       const water = action.kind === 'lift' ? 0 : action.water ?? wetting.brushWater;
-      const span = depositSpan(deposit, lattice, margin(deposit));
+      const span = depositSpan(deposit, lattice, margin(deposit, medium));
       const before = wetStateOver(wash, span, tau, drying);
       const cover = footprintCover(span, deposit.stamps, deposit.kind === 'flood' ? [deposit.flood.polygon] : [], pass.within, deposit.mask);
       forSpan(wash, span, (k, w) => {
@@ -129,7 +131,7 @@ export function compileStampWetness(
         wash.level[k] = next;
         wash.at[k] = tau;
       });
-      landings.set(deposit, { tau, before, after: wetStateOver(wash, span, tau, drying), water });
+      landings.set(deposit, { tau, before, after: wetStateOver(wash, span, tau, drying), water, medium });
     }
     washes.set(pass, { duration: tau, end: wetStateOver(wash, lattice, tau, drying) });
   }

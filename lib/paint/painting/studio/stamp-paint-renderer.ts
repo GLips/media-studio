@@ -20,7 +20,7 @@ import { STAMP_FLOOD_FRONT_SHARE_WGSL } from '../models/stamp-fill.ts';
 import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
 import { stampDepositShowsAt, stampFloodProgressAt, visibleStampCountAt } from '../models/stamp-deposit-reveal.ts';
 import { stampBoilSeed, stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampMask, type CompiledStampMaskArea, type CompiledStampPaint, type CompiledStampPass, type StampPaintPaper } from '../models/stamp-paint-recipe.ts';
-import { compileStampPigmentPaint, stampGrainDepthIn, type StampPaintMixing } from '../models/stamp-pigment-paint.ts';
+import { compileStampPigmentPaint, stampGrainDepthIn, stampPigmentGroupMedium, type StampPaintMixing } from '../models/stamp-pigment-paint.ts';
 import { compileStampWetness, STAMP_WET_CELL, type StampWetLanding, type StampWetness } from '../models/stamp-wetness.ts';
 import { STAMP_WET_LAND_WGSL, stampFloodCarriesWater } from '../models/stamp-wet-landing.ts';
 import { PAINT_DRY_BURNISHED_PRESS, paintPigmentSeed } from '#lib/paint/materials/models/paint-paper.ts';
@@ -975,7 +975,7 @@ export async function createStampPaintRenderer(
   const boiling = painting.groups.find((group) => group.boil);
   if (boiling && !(fps && fps > 0)) throw new Error(`stamp paint: ${boiling.id} boils every ${boiling.boil!.every} frames, so its renderer needs the scene's fps`);
   let done = span('stamp paint compositor load');
-  const { compositorOn, wetnessOf, medium } = compositorFor(painting, paper, mixing, { width: surface.width, height: surface.height }, wetStages);
+  const { compositorOn, wetnessOf, mediumOf } = compositorFor(painting, paper, mixing, { width: surface.width, height: surface.height }, wetStages);
   done();
 
   done = span('stamp paint images load');
@@ -996,7 +996,7 @@ export async function createStampPaintRenderer(
   const scope = surface.scope();
   try {
     const loading = surface.checked('loading the painting onto the GPU', () =>
-      rendererOnSurface(surface, scope, compositorOn, wetnessOf, medium, painting, paper, image, bound, tipLevels, wetStages, fps ?? 0, span));
+      rendererOnSurface(surface, scope, compositorOn, wetnessOf, mediumOf, painting, paper, image, bound, tipLevels, wetStages, fps ?? 0, span));
     // The load itself ran within the call: what's left is WebGPU's check of it.
     done = span('stamp paint gpu check load');
     const renderer = await loading;
@@ -1009,18 +1009,22 @@ export async function createStampPaintRenderer(
 }
 
 /**
- * How `mixing` composites `painting`, and how wet a set of its groups' washes land, worked out before anything is
- * loaded, so a painting it can't mix fails first. Only pigment has washes: the flat compositor refuses one.
+ * How `mixing` composites `painting`, how wet a set of its groups' washes land, and the medium each group (by its
+ * ID) paints in, worked out before anything is loaded, so a painting it can't mix fails first. Only pigment has
+ * washes or media: the flat compositor refuses a wash, and a group naming a mixing of its own.
  */
 function compositorFor(painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, size: { width: number; height: number }, wetStages: readonly StampWetStage[]) {
   if (mixing.kind === 'pigment') {
     const paint = compileStampPigmentPaint(painting, mixing, PAINT_BANDS);
-    const margin = (deposit: CompiledStampDeposit) => stampWetStageReach(wetStages, deposit, mixing.medium);
-    const wetnessOf = (groups: CompiledStampPaint) => compileStampWetness(groups, mixing.medium, paper, size, margin);
-    return { compositorOn: (device: StampPaintDevice) => stampPigmentCompositor(device, paint, paper.color), wetnessOf, medium: mixing.medium };
+    const mediumOf = (group: Pick<CompiledStampGroup, 'id'>) => stampPigmentGroupMedium(paint, painting, group);
+    const margin = (deposit: CompiledStampDeposit, medium: PaintMedium) => stampWetStageReach(wetStages, deposit, medium);
+    const wetnessOf = (groups: CompiledStampPaint) => compileStampWetness(groups, mediumOf, paper, size, margin);
+    return { compositorOn: (device: StampPaintDevice) => stampPigmentCompositor(device, paint, paper.color), wetnessOf, mediumOf };
   }
+  const mixed = painting.groups.find((group) => group.mixing);
+  if (mixed) throw new Error(`stamp paint: ${mixed.id} paints in ${mixed.mixing!.medium.name}, and its painting is in flat colour, which has no media`);
   const flat = flatStampPaintCompositor(painting);
-  return { compositorOn: () => flat, wetnessOf: null, medium: null };
+  return { compositorOn: () => flat, wetnessOf: null, mediumOf: null };
 }
 
 /**
@@ -1029,7 +1033,7 @@ function compositorFor(painting: CompiledStampPaint, paper: StampPaintPaper, mix
  */
 function rendererOnSurface(
   surface: StampPaintSurface, scope: StampPaintGpuScope, compositorOn: (device: StampPaintDevice) => StampPaintCompositor,
-  wetnessOf: ((groups: CompiledStampPaint) => StampWetness) | null, wetMedium: PaintMedium | null, painting: CompiledStampPaint, paper: StampPaintPaper,
+  wetnessOf: ((groups: CompiledStampPaint) => StampWetness) | null, mediumOf: ((group: Pick<CompiledStampGroup, 'id'>) => PaintMedium) | null, painting: CompiledStampPaint, paper: StampPaintPaper,
   image: (source: StampBrushImageSource) => StampPaintImage, bound: ReadonlyMap<CompiledStampDeposit, StampBrush<StampPaintImage>>,
   tipLevels: ReadonlyMap<StampPaintImage, StampTipLevel[]>, wetStages: readonly StampWetStage[], fps: number, span: FrameProfileStart,
 ): StampPaintRenderer {
@@ -1077,6 +1081,9 @@ function rendererOnSurface(
   const slotsPerFrame = 1 + painting.groups.reduce((sum, group) => sum + 2 + group.passes.reduce((n, pass) => n + stampPassDeposits(pass).length * depositSlots(pass.kind === 'wash'), 0), 0);
   const tilesX = Math.ceil(width / ORDERED_TILE), tilesY = Math.ceil(height / ORDERED_TILE);
   const asWritten = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).map((deposit) => [deposit.id, deposit] as const))));
+  // Each deposit's medium by its ID, its group's as written (an epoch's and live marks' alike); none in flat colour.
+  const depositMedia = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).map((deposit) => [deposit.id, mediumOf?.(group) ?? null] as const))));
+  const mediumOfDeposit = (deposit: CompiledStampDeposit): PaintMedium | null => depositMedia.get(deposit.id) ?? null;
 
   /**
    * `groups`' deposits on the GPU, and what they're drawn with. A boil epoch (epochOf) lands as the deposits as
@@ -1106,12 +1113,12 @@ function rendererOnSurface(
       throw new Error(`stamp paint: the painting's ${total.toLocaleString()} stamps need ${Math.round((total * STAMP_FLOATS * 4) / 2 ** 20)} MB, over this GPU's ${Math.round(device.limits.maxBufferSize / 2 ** 20)} MB buffer`);
     }
     const stampData = new Float32Array(Math.max(1, total) * STAMP_FLOATS), tintData = new Float32Array(Math.max(1, tints) * TINT_FLOATS);
-    const write = (stamps: readonly PlacedStamp[], at: number) => stamps.forEach((s, i) => stampData.set(
-      [s.x, s.y, s.diameter, s.rotation, s.alpha, s.blur, s.grainTurn, (s.flipX ? 1 : 0) + (s.flipY ? 2 : 0), s.opacity, s.roundness, stampGrainDepthIn(s, wetMedium), s.pressure], (at + i) * STAMP_FLOATS,
+    const write = (stamps: readonly PlacedStamp[], at: number, medium: PaintMedium | null) => stamps.forEach((s, i) => stampData.set(
+      [s.x, s.y, s.diameter, s.rotation, s.alpha, s.blur, s.grainTurn, (s.flipX ? 1 : 0) + (s.flipY ? 2 : 0), s.opacity, s.roundness, stampGrainDepthIn(s, medium), s.pressure], (at + i) * STAMP_FLOATS,
     ));
     for (const { deposit, main, dual, tint } of placed) {
-      write(deposit.stamps, main);
-      write(deposit.dualStamps, dual);
+      write(deposit.stamps, main, mediumOfDeposit(deposit));
+      write(deposit.dualStamps, dual, mediumOfDeposit(deposit));
       if (tint !== null) deposit.stamps.forEach(({ tint: t }, i) => tintData.set([t.hue, t.saturation, t.lightness, t.secondary], (tint + i) * TINT_FLOATS));
     }
     // A layer laid in order reads its stamps and tints as storage.
@@ -1151,7 +1158,7 @@ function rendererOnSurface(
     const stages: LoadedWetStage[] = [];
     if (wetness?.landings.size) {
       const wetContext: StampWetStageContext = {
-        device: on, painting: { groups }, medium: wetMedium!, wetness, width, height, layer: targets.layer, wash: stageWash!,
+        device: on, painting: { groups }, wetness, width, height, layer: targets.layer, wash: stageWash!,
         footprint: targets.footprint!, fresh: targets.fresh!, grids, paperDepth: paper.grain?.depth ?? 0,
       };
       for (const stage of wetStages) {
@@ -1401,7 +1408,7 @@ function rendererOnSurface(
    */
   const depositPad = (identity: CompiledStampDeposit, loadedDeposit: LoadedDeposit, pass: CompiledStampPass) => {
     const sigma = loadedDeposit.active.edgeSigma;
-    return (sigma > 0 ? sigma * 3 : 2) + (pass.kind === 'wash' ? stampWetStageReach(wetStages, identity, wetMedium!) + 2 * STAMP_WET_CELL : 0);
+    return (sigma > 0 ? sigma * 3 : 2) + (pass.kind === 'wash' ? stampWetStageReach(wetStages, identity, mediumOfDeposit(identity)!) + 2 * STAMP_WET_CELL : 0);
   };
   /** Readies every stage `bank` draws with for each of `groups`' wash deposits' whole boxes (StampLoadedWetStage.reserve). */
   const reserveWashBoxes = (groups: readonly CompiledStampGroup[], bank: DepositBank) => {
@@ -1418,6 +1425,7 @@ function rendererOnSurface(
   const stageWash: StampWashLayer | undefined = compositor.wash && {
     ...compositor.wash,
     layersOf: (deposit) => compositor.wash!.layersOf(asWritten.get(deposit.id)!),
+    movedWgsl: (deposit) => compositor.wash!.movedWgsl(asWritten.get(deposit.id)!),
     holdWgsl: (deposit) => compositor.wash!.holdWgsl(asWritten.get(deposit.id)!),
   };
   done();
@@ -1794,7 +1802,7 @@ function rendererOnSurface(
       ...(mainGrain ? ['canvasGrain' as const] : []), ...(brush.dual ? ['dual' as const] : []), ...(dualGrain ? ['dualCanvasGrain' as const] : []),
       ...(tooth ? ['paper' as const] : []), ...(fluid ? ['masked' as const] : []), ...(pass.within ? ['within' as const] : []),
       ...(deposit.kind === 'flood' ? ['flood' as const] : []),
-      ...(deposit.kind === 'flood' && !landing && stampFloodCarriesWater(brush, wetMedium) ? ['floodWater' as const] : []),
+      ...(deposit.kind === 'flood' && !landing && stampFloodCarriesWater(brush, mediumOfDeposit(deposit)) ? ['floodWater' as const] : []),
       // Only paint makes a clip base: water and a lift leave where a pass holds paint as it was.
       ...(clipped ? ['clipped' as const] : []), ...(!clipped && deposit.action.kind === 'paint' ? ['clips' as const] : []),
       ...(active.main.pooling ? ['pooled' as const] : []), ...(active.dual?.pooling ? ['dualPooled' as const] : []),

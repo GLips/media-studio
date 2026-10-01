@@ -54,6 +54,17 @@ paper and the workable paint its water stirs evens out, or paint runs back into 
 of either end, its amount graded on the GPU. A plain pass lands as it always has. Flat colour has no washes.
 `stamp-paint-events.ts` is the painting in painting order, each deposit with the time it's settled by.
 
+**Media.** A painting in pigment has a mixing (a medium and the pigments its mixtures may name), and any group may
+name its own (`mixing` in its options, a style's `mixing`): gouache butterflies in a watercolour. Paper stays the
+painting's. `compileStampPigmentPaint` fits each group's palette in its group's medium, so one pigment id in gouache
+and in watercolour is two pigments, each with its medium's masstone scatter, white and granulation. Whatever a medium
+decides is per group: the pigment compositor writes its WGSL once per medium the painting holds, each pass reaching
+its group's by a switch on `GROUP_MEDIA` (a painting in one medium has neither); drying, a stage's reach, spread, damp
+and rewetting come from the landing's medium (`StampWetLanding`), a stamp's grain depth and a flood's water from its
+group's. Where media meet there's no new law: washes share no water, so a gouache group laid over a watercolour wash,
+wet or not, meets it set and stacks over it by Kubelka–Munk, a gouache film's scatter covering the dark under it as
+body colour does. A flat painting refuses a group naming a mixing.
+
 **Wet state.** The lattice holds the paper: per landing, its `wetness`, `workable` and `settled` (1 where the paper
 has dried since it last took water, and at a wash's start), uploaded once for the renderer and every stage. The paint's
 own history is in the group's layer: a group with a wash keeps, in its last channel, each pixel's open share, how
@@ -128,7 +139,8 @@ reading registered for fitting (`brush-readings.ts`). `npm run brushes:sheet`, `
 
 **gate** holds the GPU renderer to accepted output (`npm run stamp:gate -- run`): every rendering formula over a grid,
 each runtime twin against its CPU side, synthetic paintings that walk every path the renderer takes, and a traced
-resolve against its frame. Pre-commit runs it on the staged tree when a path it covers changes; no adapter, a timeout
+resolve against its frame; `media/mixed` holds each group of a three-medium painting to itself painted alone in its
+own medium (max 0), and gouache glazed over a dark watercolour wash to covering it. Pre-commit runs it on the staged tree when a path it covers changes; no adapter, a timeout
 or a difference fails the commit. Public baselines live in `harness/fixtures/stamp-paint/`, a pack's brushes' in
 `work/validation/stamp-paint/` (`stamp:gate -- private run`). A baseline changes only by `update <ids> --reason …`,
 which writes candidates with their differences, then `accept <ids>`.

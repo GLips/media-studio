@@ -87,6 +87,9 @@ Everything is from `#studio`.
   - **`paper: 'own'`** on a moving group is a collage's piece of paper. Its grain moves with it rather than sliding
     through it. Leave it out for paint on the painting's paper; a moving granulating shape's slight shimmer is usually
     fine.
+  - **`mixing: otherStyle.mixing`** paints a group in another style's medium and pigments, gouache butterflies in a
+    watercolour, with that style's brushes. The painting keeps its own paper. Its paint meets the groups under it
+    set and lies over them as that medium does: gouache covers a dark, a watercolour glazes it.
 - `stampSmoothRegion(points)` turns a few control points into a smooth silhouette; `stampRegionOutline(region)` traces
   its edge.
 - `compileStampPaintRecipe(recipe)` once, at scene definition, never in render: a new painting each frame reloads it.

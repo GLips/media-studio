@@ -385,13 +385,12 @@ function gridBox(grid: StampGrid, width: number, height: number): StampPixelBox 
  */
 type LoadedRim = {
   grid: StampGrid; first: number; box: StampPixelBox; uniform: GPUBuffer; writeSeed: (seed: number) => void;
-  layers: number; spreads: ReturnType<typeof stampWetSpreads>;
+  layers: number; moved: string; spreads: ReturnType<typeof stampWetSpreads>;
 };
 
-function loadDryingRim({ device, painting, medium, wetness, width, height, layer, wash }: StampWetStageContext): StampLoadedWetStage<StampWetDryingMoment> {
-  const { spread, damp } = medium.wetting;
+function loadDryingRim({ device, painting, wetness, width, height, layer, wash }: StampWetStageContext): StampLoadedWetStage<StampWetDryingMoment> {
   const dryings = painting.groups.flatMap((group) => group.passes).flatMap(stampWashDryings);
-  if (spread <= 0 || !dryings.length) return { encode: () => null };
+  if (!dryings.length) return { encode: () => null };
 
   const rims = new Map<StampWashDrying, LoadedRim>();
   let points = 0;
@@ -399,6 +398,9 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     const grid = stampDryingWettest(drying, wetness);
     const painted = drying.deposits.filter((deposit) => deposit.action.kind === 'paint');
     if (!grid || !painted.length) continue;
+    // A wash is one group's, so its paint is in one medium.
+    const { spread, damp } = wetness.landings.get(painted[0])!.medium.wetting;
+    if (spread <= 0) continue;
     const wetShare = stampDryingRimWetShare(grid.values.reduce((most, value) => Math.max(most, value), 0), damp);
     const diameter = painted.reduce((sum, deposit) => sum + deposit.diameter, 0) / painted.length;
     const band = stampDryingRimBand(spread, diameter, wetShare);
@@ -426,7 +428,7 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
       put('seed', seed);
       device.queue.writeBuffer(uniform, 0, words);
     };
-    rims.set(drying, { grid, first: points, box, uniform, writeSeed, layers, spreads });
+    rims.set(drying, { grid, first: points, box, uniform, writeSeed, layers, moved: wash.movedWgsl(painted[0]), spreads });
     points += grid.values.length;
   }
   if (!rims.size) return { encode: () => null };
@@ -459,18 +461,16 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     domain: compile(DOMAIN_WGSL), grainRows: compile(GRAIN_ROWS_WGSL), seeds: compile(SEEDS_WGSL), flood: compile(FLOOD_WGSL),
     send: compile(SEND_WGSL), contourRows: compile(CONTOUR_ROWS_WGSL), contour: compile(CONTOUR_WGSL), levelRows: compile(LEVEL_ROWS_WGSL),
   };
-  // Compiled per group layer count, which places the group's open share and bounds what's gathered.
-  const groupPasses = new Map([...new Set([...rims.values()].map((rim) => rim.layers))].map((n): [number, Record<'weights' | 'sent' | 'rim', GPUComputePipeline>] => {
-    const moved = wash.movedWgsl(n);
-    return [n, { weights: compile(weightsWgsl(n, moved)), sent: compile(sentWgsl(n, moved)), rim: compile(rimWgsl(n, moved)) }];
-  }));
+  // Compiled per group's wash layer WGSL: its layer count places its open share and bounds what's gathered.
+  const groupPasses = new Map([...new Map([...rims.values()].map((rim) => [rim.moved, rim.layers])).entries()].map(([moved, n]): [string, Record<'weights' | 'sent' | 'rim', GPUComputePipeline>] =>
+    [moved, { weights: compile(weightsWgsl(n, moved)), sent: compile(sentWgsl(n, moved)), rim: compile(rimWgsl(n, moved)) }]));
 
   // Each rim's dispatches, in order, bound once: the scratch textures are sized for every rim at load.
-  const rimSteps = new Map([...rims].map(([drying, { uniform, layers: groupLayers, spreads }]): [StampWashDrying, { pipeline: GPUComputePipeline; bindGroup: GPUBindGroup }[]] => {
+  const rimSteps = new Map([...rims].map(([drying, { uniform, moved, spreads }]): [StampWashDrying, { pipeline: GPUComputePipeline; bindGroup: GPUBindGroup }[]] => {
     const step = (pipeline: GPUComputePipeline, resources: GPUBindingResource[]) => ({
       pipeline, bindGroup: device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: resources.map((resource, binding) => ({ binding, resource })) }),
     });
-    const u = { buffer: uniform }, own = groupPasses.get(groupLayers)!;
+    const u = { buffer: uniform }, own = groupPasses.get(moved)!;
     return [drying, [
       step(passes.domain, [u, { buffer: grid }, layer.view, domain]),
       step(passes.grainRows, [u, domain, grainRows]),
