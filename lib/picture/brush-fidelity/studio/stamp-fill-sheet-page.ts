@@ -18,6 +18,7 @@ const APPLICATIONS: readonly { label: string; application: StampFillApplication 
   { label: 'hatch', application: { kind: 'strokes', pattern: 'hatch' } },
   { label: 'cross-hatch', application: { kind: 'strokes', pattern: 'crossHatch' } },
   { label: 'scribble', application: { kind: 'strokes', pattern: 'scribble' } },
+  { label: 'shading', application: { kind: 'strokes', pattern: 'shading' } },
 ];
 
 /** Each row's fills start drawing at `appliedAt`; the sheet is drawn at DRAWN_OVER, when the first row's are laid. */

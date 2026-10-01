@@ -131,11 +131,11 @@ export const STAMP_FLOOD_FRONT_SHARE_WGSL = /* wgsl */ `fn floodFrontShare(p: ve
 export type StampFillApplication = { kind: 'flood' } | ({ kind: 'strokes' } & StampFillStrokes);
 
 /**
- * `backAndForth`: one stroke turning at each end of a row. `zigzag`: one stroke running diagonally from one side to
- * the other, a sharp turn at each. `hatch`: parallel marks, each lifted and laid the same way. `crossHatch`: a hatch,
- * then another across it. `scribble`: one stroke looping as it goes back and forth.
+ * `backAndForth`: a stroke turning at each row's end. `zigzag`: a stroke running diagonally side to side. `hatch`:
+ * parallel marks, each lifted. `crossHatch`: a hatch, then another across it. `scribble`: a stroke looping back and
+ * forth. `shading`: short wrist-swing strokes in overlapping patches, lifting every few, as a crayon shades.
  */
-export type StampFillPattern = 'backAndForth' | 'zigzag' | 'hatch' | 'crossHatch' | 'scribble';
+export type StampFillPattern = 'backAndForth' | 'zigzag' | 'hatch' | 'crossHatch' | 'scribble' | 'shading';
 
 /**
  * A strokes fill. `spacing`: diameters between rows, centre to centre (STAMP_FILL_PATTERNS' when left out), past 1
@@ -150,10 +150,14 @@ export type StampFillStrokes = { pattern: StampFillPattern; spacing?: number; va
  */
 const HATCH_PRESSURE = (along: number) => 0.8 + 0.2 * Math.sin(Math.PI * along);
 
-/** Each pattern's spacing and hand: a hatch mark swells a little; a continuous stroke presses into its turns. */
+/**
+ * Each pattern's spacing and hand: a hatch mark swells a little; a brush going back and forth presses into its turns.
+ * A zigzag's and a shading's legs ease off at each reversal instead (shadingLegs), so their hands leave turns alone.
+ */
 export const STAMP_FILL_PATTERNS: Record<StampFillPattern, { spacing: number; hand: StampStrokeHand }> = {
   backAndForth: { spacing: 0.9, hand: { curvature: 0.4, wobble: { pressure: 0.15, position: 0.04 } } },
-  zigzag: { spacing: 1, hand: { curvature: 0.4, wobble: { pressure: 0.15, position: 0.04 } } },
+  zigzag: { spacing: 1, hand: { wobble: { pressure: 0.15, position: 0.04 } } },
+  shading: { spacing: 0.5, hand: { wobble: { pressure: 0.2, position: 0.05 } } },
   hatch: { spacing: 1.2, hand: { profile: HATCH_PRESSURE, wobble: { pressure: 0.1, position: 0.03 } } },
   crossHatch: { spacing: 1.5, hand: { profile: HATCH_PRESSURE, wobble: { pressure: 0.1, position: 0.03 } } },
   scribble: { spacing: 1.5, hand: { curvature: 0.3, wobble: { pressure: 0.15, position: 0.03 } } },
@@ -179,7 +183,9 @@ export function stampFillStrokePath(region: StampRegion, diameter: number, direc
   else if (pattern === 'crossHatch') marks = [...hatchMarks(rows(direction)), ...hatchMarks(rows(direction + CROSS_HATCH_TURN))];
   // A scribble's loops are a row apart wide, so each overlaps the next row's, and wider than the brush, so they read.
   else if (pattern === 'scribble') marks = chainRows(rows(direction, step)).map((chain) => scribbled(serpentine(chain), step, variation, random));
-  else marks = chainRows(rows(direction)).map(pattern === 'zigzag' ? zigzag : serpentine);
+  else if (pattern === 'shading') marks = shadingPatches(rows(direction), direction, diameter, variation, random).map((patch) => shadingLegs(serpentine(patch), diameter, variation, random));
+  else if (pattern === 'zigzag') marks = chainRows(rows(direction)).map((chain) => shadingLegs(zigzag(chain), diameter, variation, random));
+  else marks = chainRows(rows(direction)).map(serpentine);
   const path: StampStrokePoint[] = [];
   marks.filter((mark) => mark.length > 1).forEach((mark, i) => {
     const [first, ...rest] = handStampStroke(mark, hand, diameter, `${seed}|mark ${i}`);
@@ -259,6 +265,78 @@ const serpentine = (chain: FillRow): StampStrokePoint[] => chain.flatMap(({ star
 
 /** A chain as one stroke from one side to the other and back, a corner on each row; a lone span is run along. */
 const zigzag = (chain: FillRow): StampStrokePoint[] => (chain.length < 2 ? serpentine(chain) : chain.map(({ start, end }, i) => (i % 2 ? end : start)));
+
+/** A shading stroke's length, in diameters: a wrist's swing, the hand moving on along the patch between swings. */
+const SHADING_STROKE = 6;
+/** How far a shading patch reaches into its neighbour's, as a share of its stroke, so patches meet without a seam. */
+const SHADING_OVERLAP = 0.2;
+/** Strokes a hand lays before it lifts and starts again: from the first to the second, at random. */
+const SHADING_RUN = [4, 9] as const;
+
+/**
+ * Rows cut into patches a shading stroke long along them, each patch its rows' pieces in turn, a run of a few strokes
+ * before the hand lifts. Each row's cuts move at random, so seams don't line up; each piece reaches past its cut into
+ * the next patch, its eased ends (shadingLegs) blending in.
+ */
+function shadingPatches(rows: readonly FillRow[], angle: number, diameter: number, variation: number, random: () => number): FillRow[] {
+  const along = (p: StampPoint) => p.x * Math.cos(angle) + p.y * Math.sin(angle);
+  const stroke = SHADING_STROKE * diameter, reach = SHADING_OVERLAP * stroke;
+  const columns = new Map<number, { row: number; piece: FillRow[number] }[]>();
+  rows.forEach((row, r) => {
+    const phase = (random() * 2 - 1) * 0.25 * stroke * variation;
+    for (const { start, end } of row) {
+      const a = along(start), b = along(end), at = (x: number) => {
+        const k = Math.min(1, Math.max(0, (x - a) / (b - a || 1)));
+        return { x: start.x + (end.x - start.x) * k, y: start.y + (end.y - start.y) * k };
+      };
+      const [lo, hi] = a < b ? [a, b] : [b, a];
+      for (let column = Math.floor((lo - phase) / stroke); column * stroke + phase < hi; column++) {
+        const from = Math.max(lo, column * stroke + phase - reach), to = Math.min(hi, (column + 1) * stroke + phase + reach);
+        // A sliver at the region's edge is the next patch's to cover, not a stroke of its own.
+        if (to - from < 1.5 * diameter) continue;
+        const pieces = columns.get(column) ?? columns.set(column, []).get(column)!;
+        pieces.push({ row: r, piece: { start: at(from), end: at(to) } });
+      }
+    }
+  });
+  const patches: FillRow[] = [];
+  for (const pieces of columns.values()) {
+    let patch: FillRow = [], last = -2, run = 0;
+    for (const { row, piece } of pieces) {
+      if (row !== last + 1 || patch.length >= run) {
+        if (patch.length) patches.push(patch);
+        patch = [];
+        run = SHADING_RUN[0] + Math.floor(random() * (SHADING_RUN[1] - SHADING_RUN[0] + 1));
+      }
+      patch.push(piece);
+      last = row;
+    }
+    if (patch.length) patches.push(patch);
+  }
+  return patches;
+}
+
+/**
+ * A shading stroke's legs (a path turning back at each point) with the pressure a hand gives them: firm through the
+ * middle, nearly lifted at each turn and end, so a turnaround is a stroke's lightest part, never a bead where it doubles
+ * back. `variation` presses each leg a little harder or lighter.
+ */
+function shadingLegs(path: readonly StampStrokePoint[], diameter: number, variation: number, random: () => number): StampStrokePoint[] {
+  const out: StampStrokePoint[] = [];
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i], length = Math.hypot(b.x - a.x, b.y - a.y);
+    const firm = 1 - 0.35 * variation * random(), ease = Math.min(0.35 * length, 2 * diameter) / (length || 1);
+    const point = (k: number, pressure: number) => ({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, pressure });
+    if (i === 1) out.push(point(0, SHADING_TURN_PRESSURE));
+    // A leg shorter than a stroke's ease either side is the turn itself, the step from one row to the next.
+    if (length >= 1.5 * diameter) out.push(point(ease, firm), point(1 - ease, firm));
+    out.push(point(1, SHADING_TURN_PRESSURE));
+  }
+  return out;
+}
+
+/** The pressure a hand eases to where a shading stroke turns back: the stick nearly lifts. */
+const SHADING_TURN_PRESSURE = 0.25;
 
 /**
  * `path` with loops of about `radius` wound along it, turning one way, each advancing about its radius:

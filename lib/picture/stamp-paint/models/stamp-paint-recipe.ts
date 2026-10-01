@@ -533,8 +533,8 @@ function checkedStampPolygon(region: StampRegion, what: string): readonly StampP
   return polygon;
 }
 
-/** How a fill of wet or dry media is laid unless it says: wet paint floods a shape; a crayon zigzags across it. */
-const STAMP_MEDIA_FILLS: Record<StampBrushMedia, StampFillApplication> = { wet: { kind: 'flood' }, dry: { kind: 'strokes', pattern: 'zigzag' } };
+/** How a fill of wet or dry media is laid unless it says: wet paint floods a shape; a crayon shades it in short strokes. */
+const STAMP_MEDIA_FILLS: Record<StampBrushMedia, StampFillApplication> = { wet: { kind: 'flood' }, dry: { kind: 'strokes', pattern: 'shading' } };
 
 /** A deposit's eight draws from `seed`: its grains' offsets, then its colour jitter. */
 function stampDepositDraws(seed: string) {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { stampLinearDynamics, type StampBrush, type StampBrushMedia } from './stamp-brush.ts';
-import type { StampFillApplication } from './stamp-fill.ts';
+import { stampFillStrokePath, type StampFillApplication } from './stamp-fill.ts';
 import { compileStampPaintRecipe, stampPaintRecipe, stampPassDeposits } from './stamp-paint-recipe.ts';
 import type { StampRegion } from './stamp-region.ts';
 
@@ -52,7 +52,7 @@ test("a flood's edge stroke puts its stamps' edges on the outline, round a disc 
 
 test("a fill in strokes lays marks whose edges reach the outline, never past it, and a wide hatch leaves paper between", () => {
   const disc = { kind: 'ellipse', x: 200, y: 200, radiusX: 120, radiusY: 120 } as const;
-  for (const pattern of ['zigzag', 'backAndForth', 'hatch', 'crossHatch', 'scribble'] as const) {
+  for (const pattern of ['zigzag', 'backAndForth', 'hatch', 'crossHatch', 'scribble', 'shading'] as const) {
     const fill = compiledFill(disc, 30, { application: { kind: 'strokes', pattern, variation: 0, hand: {} } });
     assert.equal(fill.kind, 'stroke');
     const reach = Math.max(...fill.stamps.map(({ x, y }) => Math.hypot(x - 200, y - 200) + 15));
@@ -70,4 +70,20 @@ test("a fill is laid as its brush's media lays it unless it says, and refused wh
   assert.equal(compiledFill(square, 30, {}, 'dry').kind, 'stroke');
   assert.equal(compiledFill(square, 30, { application: { kind: 'strokes', pattern: 'hatch' } }, 'wet').kind, 'stroke');
   assert.throws(() => compiledFill(square, 30, {}), /states its application/);
+});
+
+test('a zigzag or shading fill eases off where it doubles back, so its turns are its lightest marks', () => {
+  const square: StampRegion = { kind: 'polygon', points: [{ x: 0, y: 0 }, { x: 300, y: 0 }, { x: 300, y: 200 }, { x: 0, y: 200 }] };
+  for (const pattern of ['zigzag', 'shading'] as const) {
+    const path = stampFillStrokePath(square, 16, 0, { pattern, variation: 0, hand: {} }, 'turns');
+    const pressures = path.map((p) => p.pressure ?? 1), firm = Math.max(...pressures);
+    // A corner of a reversal: the way in and the way out more than 60° apart (a shading's U-turn is two of them).
+    const turns = path.flatMap((p, i) => {
+      if (i === 0 || i === path.length - 1 || p.lift || path[i + 1].lift) return [];
+      const a = Math.atan2(p.y - path[i - 1].y, p.x - path[i - 1].x), b = Math.atan2(path[i + 1].y - p.y, path[i + 1].x - p.x);
+      return Math.abs(Math.atan2(Math.sin(b - a), Math.cos(b - a))) > Math.PI / 3 ? [pressures[i]] : [];
+    });
+    assert.ok(turns.length > 5, `${pattern} turns ${turns.length} times`);
+    assert.ok(turns.every((p) => p < 0.4 * firm), `${pattern} presses ${Math.max(...turns).toFixed(2)} at a turn against ${firm.toFixed(2)}`);
+  }
 });
