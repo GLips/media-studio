@@ -630,9 +630,6 @@
     "lib/picture/brush-fidelity/models/brush-reading-search.ts": {
       "const t = await score({ ...reading, [key]: value });": 1
     },
-    "lib/picture/stamp-paint/studio/stamp-paint-renderer.ts": {
-      "const error = await device.popErrorScope();": 1
-    },
     "lib/picture/stills/studio/still-probe.tsx": {
       "while (root.querySelector('[data-still-fit]:not([data-still-fitted])')) await new Promise((resolve) => setTimeout(resolve, 16));": 1
     },

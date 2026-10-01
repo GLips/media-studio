@@ -589,7 +589,7 @@ ${stampPaintTargetWgsl('moved', 2, layer, 'write')}
 /** A boiling group's epochs kept on the GPU besides its first: the one drawing, and a couple a scrub returns to. */
 const STAMP_BOIL_EPOCHS_KEPT = 3;
 
-const outputWgsl = (compositor: StampPaintCompositor) => /* wgsl */ `
+const outputWgsl = (compositor: StampPaintCompositor, dithered: boolean) => /* wgsl */ `
 ${FULL_FRAME_WGSL}
 ${stampPaintTargetWgsl('painting', 0, compositor.targets.painting, null)}
 ${compositor.output}
@@ -597,7 +597,7 @@ ${compositor.output}
   let pixel = vec2u(at.xy);
   let color = screenColor(pixel);
   // An ordered dither, the same each frame, so a smooth flood doesn't band when the half floats become bytes.
-  let dither = (fract(dot(vec2f(pixel), vec2f(0.7548776662, 0.5698402910))) - 0.5) / 255.0;
+  let dither = ${dithered ? '(fract(dot(vec2f(pixel), vec2f(0.7548776662, 0.5698402910))) - 0.5) / 255.0' : '0.0'};
   return vec4f(clamp(color + dither, vec3f(0.0), vec3f(1.0)), 1.0);
 }`;
 
@@ -876,25 +876,58 @@ export type StampPaintRendererOptions = {
  */
 export async function createStampPaintRenderer(
   canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string,
-  { fps, wetStages = STAMP_WET_STAGES }: StampPaintRendererOptions = {},
+  options: StampPaintRendererOptions = {},
 ): Promise<StampPaintRenderer> {
-  const boiling = painting.groups.find((group) => group.boil);
-  if (boiling && !(fps && fps > 0)) throw new Error(`stamp paint: ${boiling.id} boils every ${boiling.boil!.every} frames, so its renderer needs the scene's fps`);
-  const { compositorOn, wetnessOf, medium } = compositorFor(painting, paper, mixing, { width, height }, wetStages);
+  const prepared = prepareStampPainting(painting, paper, mixing, { width, height }, options);
   const device = await createStampPaintDevice();
   const context = canvas.getContext('webgpu') as GPUCanvasContext;
   const format: GPUTextureFormat = 'rgba8unorm';
+  device.pushErrorScope('validation');
   context.configure({ device, format, alphaMode: 'opaque' });
-  const output: StampPaintOutput = {
+  const refused = await device.popErrorScope();
+  if (refused) {
+    device.destroy();
+    throw new Error(`stamp paint: configuring the canvas failed: ${refused.message}`);
+  }
+  return rendererOnOutput({
     device, texture: () => context.getCurrentTexture(), format,
     // Destroying the device frees every texture and buffer made on it.
     release: () => {
       context.unconfigure();
       device.destroy();
     },
-  };
+  }, prepared, painting, paper, width, height, imageUrl);
+}
+
+/**
+ * A renderer on a lent device (createStampPaintDevice's, which three.js may share), drawing each frame into `frame`,
+ * sized as the painting. It never destroys the device. `frame` gets the canvas's colour, gamma-encoded and opaque,
+ * dithered only into bytes. Its load and draws hold error scopes across awaits: nothing else may push one meanwhile.
+ */
+export async function createStampPaintRendererOnDevice(
+  device: GPUDevice, frame: GPUTexture, painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, imageUrl: (asset: StampBrushAsset) => string,
+  options: StampPaintRendererOptions = {},
+): Promise<StampPaintRenderer> {
+  checkStampPaintFrameTexture(frame);
+  const { width, height } = frame;
+  const prepared = prepareStampPainting(painting, paper, mixing, { width, height }, options);
+  const lent = lentStampPaintDevice(device);
+  return rendererOnOutput({ device: lent.device, texture: () => frame, format: frame.format, release: lent.release }, prepared, painting, paper, width, height, imageUrl);
+}
+
+/** What a renderer works out before it touches a device, so a painting it can't paint or mix fails first. */
+function prepareStampPainting(painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, size: { width: number; height: number }, { fps, wetStages = STAMP_WET_STAGES }: StampPaintRendererOptions) {
+  const boiling = painting.groups.find((group) => group.boil);
+  if (boiling && !(fps && fps > 0)) throw new Error(`stamp paint: ${boiling.id} boils every ${boiling.boil!.every} frames, so its renderer needs the scene's fps`);
+  return { ...compositorFor(painting, paper, mixing, size, wetStages), wetStages, fps: fps ?? 0 };
+}
+
+async function rendererOnOutput(
+  output: StampPaintOutput, { compositorOn, wetnessOf, medium, wetStages, fps }: ReturnType<typeof prepareStampPainting>,
+  painting: CompiledStampPaint, paper: StampPaintPaper, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string,
+): Promise<StampPaintRenderer> {
   try {
-    return await rendererOnDevice(output, compositorOn, wetnessOf, medium, wetStages, painting, paper, width, height, imageUrl, fps ?? 0);
+    return await rendererOnDevice(output, compositorOn, wetnessOf, medium, wetStages, painting, paper, width, height, imageUrl, fps);
   } catch (error) {
     output.release();
     throw error;
@@ -902,27 +935,15 @@ export async function createStampPaintRenderer(
 }
 
 /**
- * A renderer on a device it's lent (one createStampPaintDevice made, which three.js may share), drawing each frame
- * into `frame`, whose size is the painting's. It never destroys the device; dispose frees what it made on it. `frame`
- * gets what the canvas would: gamma-encoded sRGB, opaque on its paper, dithered. Otherwise as createStampPaintRenderer.
+ * The output pass writes encoded colour to one 2D image it renders to: an -srgb format would encode it twice, and an
+ * integer one can't hold it.
  */
-export async function createStampPaintRendererOnDevice(
-  device: GPUDevice, frame: GPUTexture, painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, imageUrl: (asset: StampBrushAsset) => string,
-  { fps, wetStages = STAMP_WET_STAGES }: StampPaintRendererOptions = {},
-): Promise<StampPaintRenderer> {
+const STAMP_PAINT_FRAME_FORMATS: ReadonlySet<GPUTextureFormat> = new Set(['rgba8unorm', 'bgra8unorm', 'rgba16float', 'rgba32float']);
+
+function checkStampPaintFrameTexture(frame: GPUTexture) {
   if (!(frame.usage & GPUTextureUsage.RENDER_ATTACHMENT)) throw new Error('stamp paint: the texture a painting is drawn into needs RENDER_ATTACHMENT usage');
-  const { width, height } = frame;
-  const boiling = painting.groups.find((group) => group.boil);
-  if (boiling && !(fps && fps > 0)) throw new Error(`stamp paint: ${boiling.id} boils every ${boiling.boil!.every} frames, so its renderer needs the scene's fps`);
-  const { compositorOn, wetnessOf, medium } = compositorFor(painting, paper, mixing, { width, height }, wetStages);
-  const lent = lentStampPaintDevice(device);
-  const output: StampPaintOutput = { device: lent.device, texture: () => frame, format: frame.format, release: lent.release };
-  try {
-    return await rendererOnDevice(output, compositorOn, wetnessOf, medium, wetStages, painting, paper, width, height, imageUrl, fps ?? 0);
-  } catch (error) {
-    output.release();
-    throw error;
-  }
+  if (!STAMP_PAINT_FRAME_FORMATS.has(frame.format)) throw new Error(`stamp paint: a painting is drawn into ${[...STAMP_PAINT_FRAME_FORMATS].join(', ')}, not ${frame.format}`);
+  if (frame.dimension !== '2d' || frame.depthOrArrayLayers !== 1 || frame.sampleCount !== 1) throw new Error('stamp paint: a painting is drawn into one single-sampled 2D image');
 }
 
 /**
@@ -936,10 +957,18 @@ type StampPaintOutput = { device: GPUDevice; texture: () => GPUTexture; format: 
  * leaves the device to its owner. A proxy, since the renderer and its compositors make their resources in many
  * places; it's never handed to WebGPU as a device (as a canvas's configure would), only called.
  */
-const isDeviceMember = (device: GPUDevice, key: PropertyKey): key is keyof GPUDevice => key in device;
-
 function lentStampPaintDevice(device: GPUDevice): { device: GPUDevice; release: () => void } {
   const made: { destroy: () => void }[] = [];
+  // Scopes a failed load left pushed, popped on release so they don't swallow the owner's errors.
+  let open = 0;
+  const pushErrorScope = (filter: GPUErrorFilter) => {
+    open++;
+    device.pushErrorScope(filter);
+  };
+  const popErrorScope = () => {
+    open--;
+    return device.popErrorScope();
+  };
   const keep = <T extends { destroy: () => void }>(resource: T) => {
     made.push(resource);
     return resource;
@@ -950,14 +979,24 @@ function lentStampPaintDevice(device: GPUDevice): { device: GPUDevice; release: 
     get: (target, key) => {
       if (key === 'createBuffer') return createBuffer;
       if (key === 'createTexture') return createTexture;
+      if (key === 'pushErrorScope') return pushErrorScope;
+      if (key === 'popErrorScope') return popErrorScope;
       if (!isDeviceMember(target, key)) return undefined;
       const value = target[key];
       // A device's methods check their receiver, so each is called on the device itself.
       return typeof value === 'function' ? value.bind(target) : value;
     },
   });
-  return { device: lent, release: () => { for (const resource of made.splice(0)) resource.destroy(); } };
+  return {
+    device: lent,
+    release: () => {
+      for (; open > 0; open--) void device.popErrorScope();
+      for (const resource of made.splice(0)) resource.destroy();
+    },
+  };
 }
+
+const isDeviceMember = (device: GPUDevice, key: PropertyKey): key is keyof GPUDevice => key in device;
 
 /**
  * How `mixing` composites `painting`, and how wet a set of its groups' washes land, worked out before a device is
@@ -985,10 +1024,9 @@ async function rendererOnDevice(
     for (const scope of GPU_ERROR_SCOPES) device.pushErrorScope(scope);
   };
   const checked = async (what: string) => {
-    for (const _ of GPU_ERROR_SCOPES) {
-      const error = await device.popErrorScope();
-      if (error) throw new Error(`stamp paint: ${what} failed: ${error.message}`);
-    }
+    // Popped together, so none is left on a lent device when one reports an error.
+    const error = (await Promise.all(GPU_ERROR_SCOPES.map(() => device.popErrorScope()))).find(Boolean);
+    if (error) throw new Error(`stamp paint: ${what} failed: ${error.message}`);
   };
   checking();
   // Made inside the error scopes, so a buffer it can't make fails the load.
@@ -1234,7 +1272,7 @@ async function rendererOnDevice(
     if (!compositor.deposit.wet) throw new Error('stamp paint: the painting has washes, and its compositor lays none');
     depositPipeline(false, true);
   }
-  const outputModule = device.createShaderModule({ code: outputWgsl(compositor) });
+  const outputModule = device.createShaderModule({ code: outputWgsl(compositor, format.endsWith('8unorm')) });
   const outputPipeline = device.createRenderPipeline({ layout: 'auto', vertex: { module: outputModule }, fragment: { module: outputModule, targets: [{ format }] } });
   const regionPipeline = (code: string, entryPoint: string) => {
     const module = device.createShaderModule({ code });
