@@ -9,7 +9,7 @@ import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { checkedStampIdSegment } from './stamp-deposit-identity.ts';
 import { writeStampPassage, type StampPassageHost } from './stamp-paint-passage.ts';
 import type {
-  StampMasking, StampPaintEnvironment, StampPaintRecipe, StampPaintRecipeGroup, StampPaintRecipeMask, StampPaintRecipePass, StampPaintScope,
+  StampMasking, StampPaintEnvironment, StampPaintRecipe, StampPaintRecipeGroup, StampPaintRecipeMask, StampPaintRecipePass, StampPaintRecipeResist, StampPaintScope,
 } from './stamp-paint-recipe-types.ts';
 
 /**
@@ -18,7 +18,7 @@ import type {
  * which every operation is checked against as it's written.
  */
 export function stampPaintRecipe(environment: StampPaintEnvironment, body: (paint: StampPaintScope) => void): StampPaintRecipe {
-  const groups: StampPaintRecipeGroup[] = [], masks: NonNullable<StampPaintRecipeMask>[] = [];
+  const groups: StampPaintRecipeGroup[] = [], masks: NonNullable<StampPaintRecipeMask>[] = [], resists: NonNullable<StampPaintRecipeResist>[] = [];
   let fluid: StampPaintRecipeMask = null;
   const masking = (path: (id: string) => readonly string[]): StampMasking => {
     const push = (op: NonNullable<StampPaintRecipeMask>['op'], id: string) => {
@@ -42,9 +42,15 @@ export function stampPaintRecipe(environment: StampPaintEnvironment, body: (pain
     group(id, options, groupBody) {
       const passes: StampPaintRecipePass[] = [];
       groups.push({ id: checkedStampIdSegment(id), options, passes });
-      const host: StampPassageHost = { environment, medium: options.mixing?.medium ?? painted, group: id, fluid: () => fluid, masking };
+      // The group's wax outlasts every scope inside it, and no unmask reaches it: it's kept apart from the fluid.
+      let wax: StampPaintRecipeResist = null;
+      const host: StampPassageHost = { environment, medium: options.mixing?.medium ?? painted, group: id, fluid: () => fluid, resist: () => wax, masking };
       scoped(() => groupBody({
         ...masking((maskId) => [id, maskId]),
+        resist: (resistId, settings) => {
+          wax = { path: [id, resistId], settings, under: wax };
+          resists.push(wax);
+        },
         passage: (passageId, passageOptions, passageBody) => {
           passes.push(scoped(() => writeStampPassage(host, passageId, passageOptions, false, passageBody)));
         },
@@ -56,5 +62,5 @@ export function stampPaintRecipe(environment: StampPaintEnvironment, body: (pain
       }));
     },
   });
-  return { environment, groups, masks };
+  return { environment, groups, masks, resists };
 }

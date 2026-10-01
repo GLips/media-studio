@@ -23,6 +23,7 @@ import { STAMP_GATE_STRIPE_IDS } from '../models/stamp-gate-stripe.ts';
 import { STAMP_GATE_WASH_IDS } from '../models/stamp-gate-washes.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { STAMP_GATE_REGION_IDS } from '../models/stamp-gate-regions.ts';
+import { STAMP_GATE_MASK_IDS } from '../models/stamp-gate-masks.ts';
 import { readStampGateBaseline, stampGateFrame, stampGateInputsHash, writeStampGateCandidate, type StampGateOutput } from './stamp-gate-store.ts';
 
 /** The gate's browser side, which the private run loads too. */
@@ -49,10 +50,10 @@ export const stampGateBaselineIds = () => [
   ...STAMP_GATE_PAINTING_IDS.map((id) => `painting/${id}`),
 ];
 
-/** Runs the page: every formula grid, the paintings named, the trace, and the wash, animation, flow, stripe, region, media, outside layer and stage cases named. */
+/** Runs the page: every formula grid, the paintings named, the trace, and the wash, animation, flow, stripe, region, mask, media, outside layer and stage cases named. */
 async function collectStampGate(
   paintings: readonly string[], washes: readonly string[] = [], animations: readonly string[] = [], flows: readonly string[] = [], stripes: readonly string[] = [], regions: readonly string[] = [],
-  media: readonly string[] = [], outside: readonly string[] = [], stages: readonly string[] = [],
+  masks: readonly string[] = [], media: readonly string[] = [], outside: readonly string[] = [], stages: readonly string[] = [],
 ) {
   const grids = stampGateFormulaGrids();
   const gates = paintings.map((id) => ({ id, gate: stampGatePainting(id) }));
@@ -76,6 +77,7 @@ async function collectStampGate(
       cases<StampGateWashCheck>('checkStampGateFlowCase', flows),
       cases<StampGateWashCheck>('checkStampGateStripeCase', stripes),
       cases<StampGateWashCheck>('checkStampGateRegionCase', regions),
+      cases<StampGateWashCheck>('checkStampGateMaskCase', masks),
       cases<StampGateWashCheck>('checkStampGateMediaCase', media),
       cases<StampGateWashCheck>('checkStampGateOutsideCase', outside),
       cases<StampGateWashCheck>('checkStampGateStageCase', stages),
@@ -145,9 +147,12 @@ function checkTrace({ trace }: Collected): StampGateCheck {
   };
 }
 
-/** The whole gate against the baselines in `store`: every formula, twin, property grid, painting, the trace, every wash, animation, flow, stripe, region, media, outside layer and stage case. */
+/** The whole gate against the baselines in `store`: every formula, twin, property grid, painting, the trace, every wash, animation, flow, stripe, region, mask, media, outside layer and stage case. */
 export async function runStampGate(store: string): Promise<StampGateCheck[]> {
-  const collected = await collectStampGate(STAMP_GATE_PAINTING_IDS, STAMP_GATE_WASH_IDS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_FLOW_IDS, STAMP_GATE_STRIPE_IDS, STAMP_GATE_REGION_IDS, STAMP_GATE_MEDIA_IDS, STAMP_GATE_OUTSIDE_IDS, [...STAMP_GATE_STAGE_IDS, ...STAMP_GATE_LENS_IDS]);
+  const collected = await collectStampGate(
+    STAMP_GATE_PAINTING_IDS, STAMP_GATE_WASH_IDS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_FLOW_IDS, STAMP_GATE_STRIPE_IDS, STAMP_GATE_REGION_IDS, STAMP_GATE_MASK_IDS, STAMP_GATE_MEDIA_IDS,
+    STAMP_GATE_OUTSIDE_IDS, [...STAMP_GATE_STAGE_IDS, ...STAMP_GATE_LENS_IDS],
+  );
   return [
     ...formulaSubjects(collected).map((subject) => checkStampGateSubject(store, subject, collected.adapter)),
     ...checkTwins(collected),

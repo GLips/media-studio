@@ -10,12 +10,13 @@ import type { StampFloodBody, StampFloodBodyLevels, StampFloodFront } from './st
 import { stampPaintFieldEnds, stampPaintFieldProblem, stampSeededPaintField, type StampSeededPaintField } from './stamp-paint-field.ts';
 import { compilePaintAction, compileWashAction, type CompiledStampAction, type CompiledStampPaintAction, type StampRecipeWashAction } from './stamp-paint-action.ts';
 import { compileStampArea, stampFluidHolder, stampStandsBeforeExclusions, type CompiledStampArea } from './stamp-area.ts';
+import { compileStampBrushedMask, stampResistHolder, type CompiledStampBrushedMask } from './stamp-brushed-mask.ts';
 import { compileStampGroupMotion, type CompiledStampGroupMotion, type StampGroupBoil, type StampGroupPaper } from './stamp-group-motion.ts';
 import { stampKeysSpan } from './stamp-scene-keys.ts';
 import type { StampPaintMixing, StampPigmentMixing } from './stamp-pigment-paint.ts';
 import type { StampMark } from './stamp-marks.ts';
 import { checkedStampIdSegment, stampDepositNameText } from './stamp-deposit-identity.ts';
-import type { StampDepositWithin, StampPaintPaper, StampPaintRecipe, StampPaintRecipeDeposit, StampPaintRecipeGroup, StampPaintRecipeMask } from './stamp-paint-recipe-types.ts';
+import type { StampDepositWithin, StampPaintPaper, StampPaintRecipe, StampPaintRecipeDeposit, StampPaintRecipeGroup, StampPaintRecipeMask, StampPaintRecipeResist } from './stamp-paint-recipe-types.ts';
 import { checkedStampRim, compileStampWashWait, type CompiledStampWash, type CompiledStampWashStep } from './stamp-wash-effects.ts';
 
 /**
@@ -25,11 +26,12 @@ import { checkedStampRim, compileStampWashWait, type CompiledStampWash, type Com
 export type CompiledStampMask = {
   /**
    * `<scope>/<op>`, unique in the painting; or `<group>/stands-before`, a group's reserve over the fluid of each
-   * deposit of the groups it stands before, last, so none of their unmasks lifts it.
+   * deposit of the groups it stands before, last, so none of their unmasks lifts it; or `<group>/<resist>`, wax over
+   * the fluid of its group's later deposits, above their unmasks too.
    */
   id: string;
   under: CompiledStampMask | null;
-} & ({ kind: 'mask'; area: CompiledStampArea } | { kind: 'unmask'; amount: number; area: CompiledStampArea | null });
+} & ({ kind: 'mask'; area: CompiledStampArea } | { kind: 'brushed'; brushed: CompiledStampBrushedMask } | { kind: 'unmask'; amount: number; area: CompiledStampArea | null });
 
 /**
  * A flood's placed body and how its front crosses it (stamp-fill.ts). `tint`: what its brush's stamps average to
@@ -142,6 +144,11 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
     const { path, op, under } = node;
     const full = claim(path.at(-1)!, path.slice(0, -1).join('/') || undefined);
     const common = { id: full, under: under ? masks.get(under)! : null };
+    if (op.kind === 'mask' && 'marks' in op) {
+      op.marks.forEach(claimMark);
+      masks.set(node, { ...common, kind: 'brushed', brushed: compileStampBrushedMask(full, op.marks, null) });
+      continue;
+    }
     if (op.kind === 'mask') {
       masks.set(node, { ...common, kind: 'mask', area: compileStampArea(op, full) });
       continue;
@@ -150,6 +157,16 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
     if (!(amount >= 0 && amount <= 1)) throw new Error(`stamp paint: ${full} lifts ${amount} of the fluid, and an unmask lifts 0..1 of it`);
     masks.set(node, { ...common, kind: 'unmask', amount, area: op.region ? compileStampArea(op, full) : null });
   }
+  // Each group's wax, oldest first under each resist as written.
+  const waxes = new Map<NonNullable<StampPaintRecipeResist>, readonly CompiledStampBrushedMask[]>();
+  for (const node of recipe.resists) {
+    const { path, settings, under } = node, full = claim(path.at(-1)!, path[0]);
+    settings.marks.forEach(claimMark);
+    waxes.set(node, [...(under ? waxes.get(under)! : []), compileStampBrushedMask(full, settings.marks, { amount: settings.amount ?? 1 })]);
+  }
+  const resisted = stampResistHolder();
+  /** `fluid` with the wax written before it (`resist`) over it, as an epoch's deposits share it. */
+  const waxed = (fluid: CompiledStampMask | null, resist: StampPaintRecipeResist | undefined) => (resist ? resisted(fluid, waxes.get(resist)!) : fluid);
   // Groups in the order they paint; a standing before reaches only groups earlier in it.
   const resolved = recipe.groups.map((group, written) => ({ written, order: group.options.order ?? 0, depth: group.options.depth ?? 0, group }));
   resolved.sort((a, b) => a.order - b.order || b.depth - a.depth || a.written - b.written);
@@ -184,8 +201,8 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
         if (!epoch) [...step.name.items, step.name.id, ...step.name.keys].forEach(checkedStampIdSegment);
         const full = named(stampDepositNameText(step.name), passId), fluid = step.mask && masks.get(step.mask)!;
         if (step.mark && !epoch) claimMark(step.mark);
-        // A knockout acts on the paint behind the group, which a standing before doesn't hold off.
-        const reserved = pass.wash?.knockout ? fluid : held(fluid);
+        // A knockout acts on the paint behind the group, which neither a standing before nor the group's wax holds off.
+        const reserved = pass.wash?.knockout ? fluid : held(waxed(fluid, step.resist));
         return compileDeposit(full, step, (draws) => action(full, draws), reserved, stampBoilSeed(step.mark?.key ?? full, epoch), withinOf(step.within));
       };
       const common = { id: passId, ...(clipTo && { clipTo }), within: pass.within ? compileStampArea(pass.within, passId) : null };
@@ -204,7 +221,7 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
         const wetness = preparation.wetness ?? { kind: 'constant' as const, value: 1 };
         const problem = stampPaintFieldProblem(wetness, (value) => (value >= 0 && value <= 1 ? null : `a wetness of ${value}, outside 0..1`));
         if (problem) throw new Error(`stamp paint: ${passId}'s preparation can't be laid: ${problem}`);
-        const reserved = knockout ? null : held(null);
+        const reserved = knockout ? null : held(waxed(null, pass.resist));
         prepared = { polygon: checkedStampPolygon(preparation.region, passId), wetness: stampSeededPaintField(wetness, passId), ...(reserved && { held: reserved }) };
       }
       return { ...common, kind: 'wash', wash: { preparation: prepared, schedule, ...(rim !== undefined && { rim }) }, knockout };
