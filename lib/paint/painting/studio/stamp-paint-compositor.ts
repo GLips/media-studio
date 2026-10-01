@@ -60,6 +60,8 @@ export type StampPaintCompositor = {
     wgsl: string;
     /** What it binds from 3, given the paper's photograph (a blank texture if it has none) and a sampler. */
     resources: (paper: { photograph: GPUTextureView; sampler: GPUSampler }) => GPUBindingResource[];
+    /** Whether `layGroup` reads its paper (groupPaperAt), so the renderer binds where a carried paper is read from. */
+    readsPaper: boolean;
   };
   /** For a compositor that lays washes, how a wash group's layer is kept, for the stages that move its paint. */
   wash?: StampWashLayer;
@@ -244,6 +246,7 @@ fn layGroup(pixel: vec2u, glaze: bool, opacity: f32) {
   textureStore(painting, pixel, laidOver(textureLoad(painting, pixel), over, select(0, 1, glaze)));
 }`,
       resources: () => [],
+      readsPaper: false,
     },
     paper: /* wgsl */ `fn layPaper(pixel: vec2u, color: vec3f) { textureStore(painting, pixel, vec4f(color, 1.0)); }`,
     output: /* wgsl */ `fn screenColor(pixel: vec2u) -> vec3f { return textureLoad(painting, pixel, 0).rgb; }`,

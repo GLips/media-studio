@@ -40,7 +40,8 @@ import { stampWashDryings } from '../models/stamp-wet-rim.ts';
 import { stampPaintCheckpoints } from './stamp-paint-checkpoints.ts';
 import { stampPaintEvents } from '../models/stamp-paint-events.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
-import { stampGroupLayerFromScene, stampGroupSceneFromLayer, type StampGroupPlacement } from '../models/stamp-group-motion.ts';
+import type { StampGroupPlacement } from '../models/stamp-group-motion.ts';
+import { stampPlacementWarpMap, stampWarpCells, stampWarpTriangles, STAMP_WARP_MOST_CELLS, type StampWarpMap } from '../models/stamp-group-warp.ts';
 import { stampFramePlan, stampGroupEvents } from '../models/stamp-frame-plan.ts';
 
 /**
@@ -556,13 +557,14 @@ ${PAPER_COLOR_WGSL}
   layPaper(id.xy, paperColor(image, linearClamp, u, vec2f(id.xy) + 0.5, size));
 }`;
 
-// \`group\` is its index in the painting, and \`paper\` the paper under it, for a compositor that lays a group on bare paper;
-// \`paperFromScene\` (rows of an affine map) is where a scene pixel reads that paper: the pixel itself unless the group
-// carries its own paper as it moves (StampGroupPaper).
+// \`group\` is its index in the painting, and \`paper\` the paper under it, for a compositor that lays a group on bare paper.
+// A scene pixel reads that paper where it is, unless the group carries its own paper as it moves or warps
+// (StampGroupPaper, \`paperFromRest\`): then where the pixel's rest point is (\`paperRest\`, the lattice's).
 const GROUP = stampUniformLayout('Group', [
-  ['opacity', 'f32'], ['glaze', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'], ['group', 'u32'], ['paper', stampUniformStruct(PAPER)],
-  ['paperFromSceneX', 'vec4f'], ['paperFromSceneY', 'vec4f'],
+  ['opacity', 'f32'], ['glaze', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'], ['group', 'u32'], ['paper', stampUniformStruct(PAPER)], ['paperFromRest', 'u32'],
 ]);
+/** Where the group pass binds the rest point of each scene pixel, past any compositor's own bindings. */
+const GROUP_PAPER_REST_BINDING = 16;
 const groupWgsl = (compositor: StampPaintCompositor) => /* wgsl */ `
 ${stampPaintTargetWgsl('layer', 1, compositor.targets.layer, null)}
 ${stampPaintTargetWgsl('painting', 2, compositor.targets.painting, 'read_write')}
@@ -570,29 +572,38 @@ ${compositor.group.wgsl}
 ${PAPER_COLOR_WGSL}
 ${GROUP.wgsl}
 @group(0) @binding(0) var<uniform> u: Group;
+@group(0) @binding(${GROUP_PAPER_REST_BINDING}) var paperRest: texture_2d<f32>;
 fn groupPaperAt(pixel: vec2u) -> vec2f {
-  let p = vec3f(vec2f(pixel) + 0.5, 1.0);
-  return vec2f(dot(u.paperFromSceneX.xyz, p), dot(u.paperFromSceneY.xyz, p));
+  if (u.paperFromRest == 1u) { return textureLoad(paperRest, pixel, 0).xy; }
+  return vec2f(pixel) + 0.5;
 }
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn group(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
   layGroup(u.origin + id.xy, u.glaze == 1u, u.opacity);
 }`;
 
-// A moving group's layer resampled to where it's placed: each scene pixel reads the layer where the inverse placement
-// (stampGroupLayerFromScene) takes it, bilinearly. Beyond the layer there's no paint, rather than its clamped edge.
-const GROUP_MOVE = stampUniformLayout('GroupMove', [['fromSceneX', 'vec4f'], ['fromSceneY', 'vec4f'], ['origin', 'vec2u'], ['extent', 'vec2u']]);
+// A moved or warped group's lattice (stamp-group-warp.ts) rasterised into \`rest\`: each scene pixel it covers learns the
+// rest point it shows, which inverts the field for free. Pixels it doesn't cover keep STAMP_NO_REST, outside any layer.
+const STAMP_NO_REST = -65536;
+const GROUP_LATTICE_WGSL = /* wgsl */ `
+struct LatticePoint { @builtin(position) at: vec4f, @location(0) rest: vec2f };
+@vertex fn latticeVertex(@location(0) clip: vec2f, @location(1) rest: vec2f) -> LatticePoint { return LatticePoint(vec4f(clip, 0.0, 1.0), rest); }
+@fragment fn latticeRest(point: LatticePoint) -> @location(0) vec4f { return vec4f(point.rest, 0.0, 1.0); }`;
+
+// A moved or warped group's layer resampled to where it lies: each scene pixel reads the layer at its rest point,
+// bilinearly. Beyond the layer there's no paint, rather than its clamped edge.
+const GROUP_MOVE = stampUniformLayout('GroupMove', [['origin', 'vec2u'], ['extent', 'vec2u']]);
 const groupMoveWgsl = (layer: StampPaintTarget) => /* wgsl */ `
 ${GROUP_MOVE.wgsl}
 @group(0) @binding(0) var<uniform> u: GroupMove;
 ${stampPaintTargetWgsl('source', 1, layer, null)}
 ${stampPaintTargetWgsl('moved', 2, layer, 'write')}
 @group(0) @binding(3) var linearClamp: sampler;
+@group(0) @binding(4) var rest: texture_2d<f32>;
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn placeGroup(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
   let pixel = u.origin + id.xy;
-  let p = vec3f(vec2f(pixel) + 0.5, 1.0);
-  let q = vec2f(dot(u.fromSceneX.xyz, p), dot(u.fromSceneY.xyz, p));
+  let q = textureLoad(rest, pixel, 0).xy;
   let size = vec2f(textureDimensions(source));
   let inside = all(q >= vec2f(0.0)) && all(q <= size);
   ${layer.kind === 'array'
@@ -1102,6 +1113,15 @@ function rendererOnSurface(
     return { buffer: uniforms, offset, size: SLOT };
   };
 
+  // Only a painting with a group that moves or warps lays one through a lattice.
+  const latticed = painting.groups.filter((group) => group.motion || group.warp);
+  // Each frame's lattice triangles, uploaded with its uniforms: room for every moved group's one cell, every warped
+  // group's most.
+  const latticeFloats = latticed.reduce((sum, group) => sum + 24 * (group.warp ? STAMP_WARP_MOST_CELLS ** 2 : 1), 0);
+  const latticeStaging = new Float32Array(latticeFloats);
+  const latticeVertices = latticeFloats ? device.createBuffer({ size: latticeFloats * 4, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST }) : null;
+  let latticeUsed = 0;
+
   const linearClamp = device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear' });
   // For a tip resampled anisotropically (StampBrushTip's sampling): squashing blurs it only across the squash.
   const anisotropicClamp = device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear', maxAnisotropy: 16 });
@@ -1176,7 +1196,13 @@ function rendererOnSurface(
     return depositPipelines.get(key)!;
   };
   const pipelines = { blur: computePipeline(BLUR_WGSL), group: computePipeline(groupWgsl(compositor)), paper: computePipeline(paperWgsl(compositor)) };
-  const movePipeline = painting.groups.some((group) => group.motion) ? computePipeline(groupMoveWgsl(compositor.targets.layer)) : null;
+  const movePipeline = latticed.length ? computePipeline(groupMoveWgsl(compositor.targets.layer)) : null;
+  const latticeModule = latticed.length ? device.createShaderModule({ code: GROUP_LATTICE_WGSL }) : null;
+  const latticePipeline = latticeModule && device.createRenderPipeline({
+    layout: 'auto',
+    vertex: { module: latticeModule, buffers: [{ arrayStride: 16, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x2' }, { shaderLocation: 1, offset: 8, format: 'float32x2' }] }] },
+    fragment: { module: latticeModule, targets: [{ format: 'rg32float' }] },
+  });
   depositPipeline(false, false);
   if (wetness?.landings.size) {
     if (!compositor.deposit.wet) throw new Error('stamp paint: the painting has washes, and its compositor lays none');
@@ -1237,8 +1263,9 @@ function rendererOnSurface(
     painting: layered('painting', compositor.targets.painting, STORAGE | SAVED),
     // Saved by checkpoints, and copied out by readLayer for the GPU gate's pigment checks.
     layer: layered('layer', compositor.targets.layer, STORAGE | RENDER | SAVED),
-    // A moving group's layer resampled to where it's placed, for its lay; only a painting with one has it.
-    moved: painting.groups.some((group) => group.motion) ? layered('moved', compositor.targets.layer, STORAGE) : null,
+    // A moved or warped group's layer resampled to where it lies, for its lay, and each scene pixel's rest point.
+    moved: latticed.length ? layered('moved', compositor.targets.layer, STORAGE) : null,
+    rest: latticed.length ? target('rest', width, height, RENDER, 'rg32float') : null,
     mask: target('mask', width, height, RENDER, 'rg16float'),
     cap: target('cap', width, height, RENDER, 'rgba16float'),
     blurA: target('blurA', halfW, halfH, STORAGE),
@@ -1777,34 +1804,52 @@ function rendererOnSurface(
     put('lod', Math.max(0, Math.log2(1 / fit)));
   };
   const groupResources = compositor.group.resources({ photograph: photograph?.view ?? targets.blank.view, sampler: linearClamp });
+  /** The group pass's bindings from after the compositor's up to GROUP_PAPER_REST_BINDING: the rest points, for a compositor that reads its paper. */
+  const groupPaperRest = (fromRest: boolean): (GPUBindingResource | null)[] => (compositor.group.readsPaper
+    ? [...Array<null>(GROUP_PAPER_REST_BINDING - 3 - groupResources.length).fill(null), fromRest ? targets.rest!.view : targets.blank.view]
+    : []);
 
   function drawPaper(encoder: GPUCommandEncoder) {
     dispatch(encoder, pipelines.paper, [slot((views) => writePaper(views, 0)), photograph?.view ?? targets.blank.view, targets.painting.view, linearClamp], width, height);
   }
 
   /**
-   * Lays group `index`'s layer over `painted` onto the painting: where it's painted, or resampled to where it's `moved`,
-   * its own paper read where it's painted, too.
+   * Lays group `index`'s layer over `painted` onto the painting: where it's painted, or resampled to where its warp at
+   * `warpAt` bends it and its placement `moved` puts it, its own paper read where it's painted, too.
    */
-  function layGroup(encoder: GPUCommandEncoder, index: number, group: CompiledStampGroup, painted: Box, moved: StampGroupPlacement | null) {
-    let box: Box | null = painted, layer = targets.layer.view, paperFromScene = [1, 0, 0, 0, 1, 0];
-    if (moved) {
-      const pivot = group.motion!.pivot;
-      const corners = [[0, 0], [1, 0], [0, 1], [1, 1]].map(([u, v]) => stampGroupSceneFromLayer(moved, { x: painted.x + u * painted.w, y: painted.y + v * painted.h }, pivot));
-      // A pixel past the corners, for the bilinear read's reach.
-      box = inPainting(Math.min(...corners.map((c) => c.x)) - 1, Math.min(...corners.map((c) => c.y)) - 1, Math.max(...corners.map((c) => c.x)) + 1, Math.max(...corners.map((c) => c.y)) + 1);
+  function layGroup(encoder: GPUCommandEncoder, index: number, group: CompiledStampGroup, painted: Box, moved: StampGroupPlacement | null, warpAt: number | null) {
+    let box: Box | null = painted, layer = targets.layer.view, paperFromRest = false;
+    const bent = warpAt === null ? null : group.warp!.at(warpAt), placed = moved && stampPlacementWarpMap(moved, group.motion!.pivot);
+    const map: StampWarpMap | null = bent && placed ? (rest) => placed(bent(rest)) : bent ?? placed;
+    if (map) {
+      // A pixel past the painted box, for the bilinear read's reach. A placement is affine, so one cell carries it exactly.
+      const rest = { x: painted.x - 1, y: painted.y - 1, w: painted.w + 2, h: painted.h + 2 };
+      const { columns, rows } = bent ? stampWarpCells(rest.w, rest.h, group.warp!.cell) : { columns: 1, rows: 1 };
+      const triangles = stampWarpTriangles(map, rest, columns, rows);
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (let v = 0; v < triangles.length; v += 4) {
+        x0 = Math.min(x0, triangles[v]); x1 = Math.max(x1, triangles[v]);
+        y0 = Math.min(y0, triangles[v + 1]); y1 = Math.max(y1, triangles[v + 1]);
+        // To clip space, y up.
+        latticeStaging.set([(triangles[v] / width) * 2 - 1, 1 - (triangles[v + 1] / height) * 2, triangles[v + 2], triangles[v + 3]], latticeUsed + v);
+      }
+      box = inPainting(x0, y0, x1, y1);
       if (!box) return;
-      const into = box, fromScene = stampGroupLayerFromScene(moved, pivot);
-      if (group.paper === 'own') paperFromScene = fromScene;
+      const into = box, first = latticeUsed;
+      latticeUsed += triangles.length;
+      const pass = encoder.beginRenderPass({ colorAttachments: [{ view: targets.rest!.view, loadOp: 'clear', clearValue: [STAMP_NO_REST, STAMP_NO_REST, 0, 0], storeOp: 'store' }] });
+      pass.setPipeline(latticePipeline!);
+      pass.setVertexBuffer(0, latticeVertices, first * 4, triangles.length * 4);
+      pass.draw(triangles.length / 4);
+      pass.end();
+      paperFromRest = group.paper === 'own';
       dispatch(encoder, movePipeline!, [
         slot((views) => {
           const put = stampUniformWriter(GROUP_MOVE, views);
-          put('fromSceneX', [fromScene[0], fromScene[1], fromScene[2], 0]);
-          put('fromSceneY', [fromScene[3], fromScene[4], fromScene[5], 0]);
           put('origin', [into.x, into.y]);
           put('extent', [into.w, into.h]);
         }),
-        targets.layer.view, targets.moved!.view, linearClamp,
+        targets.layer.view, targets.moved!.view, linearClamp, targets.rest!.view,
       ], into.w, into.h);
       layer = targets.moved!.view;
     }
@@ -1818,10 +1863,9 @@ function rendererOnSurface(
         put('extent', [at.w, at.h]);
         put('group', index);
         writePaper(views, GROUP.at.paper);
-        put('paperFromSceneX', [paperFromScene[0], paperFromScene[1], paperFromScene[2], 0]);
-        put('paperFromSceneY', [paperFromScene[3], paperFromScene[4], paperFromScene[5], 0]);
+        put('paperFromRest', paperFromRest ? 1 : 0);
       }),
-      layer, targets.painting.view, ...groupResources,
+      layer, targets.painting.view, ...groupResources, ...groupPaperRest(paperFromRest),
     ], at.w, at.h);
   }
 
@@ -1899,6 +1943,7 @@ function rendererOnSurface(
   function draw(t: number, { frameTrace, whole = frameTrace !== undefined }: { frameTrace?: FrameTrace; whole?: boolean } = {}) {
     surface.assertLive();
     slots = 0;
+    latticeUsed = 0;
     const encoder = device.createCommandEncoder();
     const { groups, settled, checkpointKey, checkpointSaves } = stampFramePlan(painting, groupEvents, events, t, fps);
     const start = whole ? null : checkpoints.latest(settled, checkpointKey);
@@ -1909,7 +1954,7 @@ function rendererOnSurface(
     };
     if (start) checkpoints.restore(encoder, start);
     else drawPaper(encoder);
-    for (const [index, { group, moved, epoch }] of groups.entries()) {
+    for (const [index, { group, moved, warpAt, epoch }] of groups.entries()) {
       const { marks, bank } = epochOf(group, epoch);
       const { first, end } = groupEvents[index];
       if (end <= from) continue;
@@ -1934,7 +1979,7 @@ function rendererOnSurface(
           for (const stage of stages) if (stage.after === 'drying') painted = unionOf(painted, stage.running.encode(encoder, { drying, seed }));
         }
       }
-      if (painted) layGroup(encoder, index, group, painted, moved);
+      if (painted) layGroup(encoder, index, group, painted, moved, warpAt);
     }
     save(events.length, false, null);
     const out = encoder.beginRenderPass({ colorAttachments: [{ view: surface.frameTexture().createView(), loadOp: 'clear', storeOp: 'store' }] });
@@ -1943,6 +1988,7 @@ function rendererOnSurface(
     out.draw(3);
     out.end();
     device.queue.writeBuffer(uniforms, 0, staging, 0, slots * SLOT);
+    if (latticeUsed) device.queue.writeBuffer(latticeVertices!, 0, latticeStaging, 0, latticeUsed);
     return encoder;
   }
 

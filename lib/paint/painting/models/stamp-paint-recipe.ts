@@ -18,6 +18,7 @@ import {
 } from './stamp-paint-action.ts';
 import type { StampEdge, StampPoint, StampRegion } from './stamp-region.ts';
 import { compileStampGroupMotion, type CompiledStampGroupMotion, type StampGroupBoil, type StampGroupMotion, type StampGroupPaper } from './stamp-group-motion.ts';
+import { compileStampGroupWarp, type CompiledStampGroupWarp, type StampGroupWarp } from './stamp-group-warp.ts';
 import type { PaintMaterial, StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 import type { CompiledStampMaterialKeys, StampMaterialKeys } from './stamp-material-keys.ts';
 import { stampKeysSpan } from './stamp-scene-keys.ts';
@@ -137,6 +138,8 @@ export type StampGroupOptions = ({ composite: 'opaque' } | { composite: 'glaze';
   /** The painting's (`ground`, when left out) or its own, a collage's (StampGroupPaper). */
   paper?: StampGroupPaper;
   motion?: StampGroupMotion;
+  /** Its layer bent by a field (stamp-group-warp.ts), before its `motion` places it. */
+  warp?: StampGroupWarp;
   boil?: StampGroupBoil;
 };
 
@@ -432,6 +435,8 @@ export type CompiledStampGroup = {
   id: string; composite: 'opaque' | 'glaze'; opacity: number; paper: StampGroupPaper; passes: readonly CompiledStampPass[];
   /** Absent for a group that stays where it's painted. */
   motion?: CompiledStampGroupMotion;
+  /** Absent for a group that keeps its shape. */
+  warp?: CompiledStampGroupWarp;
   /** The scene seconds over which its paint changes (a keyed material's first key to its last); absent for paint that doesn't. */
   recolours?: { from: number; to: number };
   /**
@@ -522,12 +527,12 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
       return { ...common, kind: 'wash', wash: { preparation: prepared, schedule }, knockout };
     });
     const opacity = options.composite === 'glaze' ? options.opacity : 1;
-    const { boil } = options, motion = options.motion && compileStampGroupMotion(options.motion, groupId);
+    const { boil } = options, motion = options.motion && compileStampGroupMotion(options.motion, groupId), warp = options.warp && compileStampGroupWarp(options.warp, groupId);
     if (boil && !(Number.isInteger(boil.every) && boil.every >= 1)) throw new Error(`stamp paint: ${groupId} boils every ${boil.every} frames, and a boil repaints every whole number of frames from 1`);
     const written = { id, options, passes };
     const recolours = stampGroupRecolours(compiledPasses);
     return {
-      id: groupId, composite: options.composite, opacity, paper: options.paper ?? 'ground', passes: compiledPasses, ...(motion && { motion }), ...(recolours && { recolours }),
+      id: groupId, composite: options.composite, opacity, paper: options.paper ?? 'ground', passes: compiledPasses, ...(motion && { motion }), ...(warp && { warp }), ...(recolours && { recolours }),
       ...(boil && { boil: { every: boil.every, epoch, reseeded: (next: number) => compileGroup(written, next) } }),
     };
   };

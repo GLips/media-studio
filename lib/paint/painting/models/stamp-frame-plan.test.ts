@@ -48,3 +48,21 @@ test('a moving group\'s checkpoints are saved only where another frame would res
   assert.deepEqual([...planAt(3.5).checkpointSaves(0)].toSorted((a, b) => a - b), [ground, laid]);
   assert.equal(planAt(3.5).checkpointKey(laid), planAt(9).checkpointKey(laid));
 });
+
+test('a warping group\'s lay is keyed by its field\'s time, and shared only where the field holds', () => {
+  const warped = compileStampPaintRecipe(stampPaintRecipe((paint) => {
+    paint.group('ground', { composite: 'glaze', opacity: 1 }, (group) => group.pass('wash', {}, (pass) => pass.stroke('a', { brush, material: ink, diameter: 10, path: [{ x: 0, y: 0 }, { x: 50, y: 0 }] })));
+    // A sac puffing from 1 s to 3 s.
+    paint.group('sac', { composite: 'glaze', opacity: 1, warp: { at: (t) => (p) => ({ x: p.x, y: p.y * (1 + t) }), from: 1, to: 3 } }, (group) => group.pass('body', {}, (pass) => {
+      pass.stroke('a', { brush, material: ink, diameter: 10, path: [{ x: 0, y: 50 }, { x: 50, y: 50 }] });
+    }));
+  }));
+  const at = (t: number) => stampFramePlan(warped, stampGroupEvents(warped), stampPaintEvents(warped), t, 30);
+  const laid = 2, ground = 1;
+  assert.notEqual(at(2).checkpointKey(laid), at(2.5).checkpointKey(laid));
+  // While it puffs, its lay is this frame's own; held past its span, frames share it.
+  assert.deepEqual([...at(2).checkpointSaves(0)], [ground]);
+  assert.equal(at(3.5).checkpointKey(laid), at(9).checkpointKey(laid));
+  assert.equal(at(0).checkpointKey(laid), at(0.5).checkpointKey(laid));
+  assert.notEqual(at(0).checkpointKey(laid), at(9).checkpointKey(laid));
+});

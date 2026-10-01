@@ -493,6 +493,7 @@ ${underpaint ? `  if (UNDER_WRITES[u.group] != 0u) {
   }
 ` : ''}}`,
       resources: ({ photograph, sampler }) => [photograph, sampler, { buffer: palettes }],
+      readsPaper: true,
     },
     paper: /* wgsl */ `
 ${bandWgsl}

@@ -3,7 +3,7 @@
 // with it rather than swimming under it (stuck). A boiling group is painted afresh every few frames, on purpose.
 // The paper's photograph moves with a group only if the group lies on its own paper, a cut-out (StampGroupPaper).
 //
-// Negative space: a group moves rigidly. Deforming one (a raised arm) would warp its layer by a field, not a placement.
+// A placement is laid as a warp's one-cell lattice (stamp-group-warp.ts); a group that bends has a warp of its own.
 
 import type { StampPoint } from './stamp-region.ts';
 import { mapStampKeyList, stampKeyList, stampKeySpanAt, stampKeyTimesProblem, type StampKeyList } from './stamp-scene-keys.ts';
@@ -59,17 +59,6 @@ export function stampGroupPlacementAt({ keys }: CompiledStampGroupMotion, t: num
   const { from, to, share } = stampKeySpanAt(keys, t), a = keys[from], b = keys[to];
   const eased = (u: number, v: number) => u + (v - u) * share;
   return { x: eased(a.x, b.x), y: eased(a.y, b.y), rotation: eased(a.rotation, b.rotation), scale: eased(a.scale, b.scale) };
-}
-
-/**
- * Where a pixel of the scene reads its group's own layer from, for a group placed at `placement` about `pivot`: the
- * inverse placement as rows [a, b, c] and [d, e, f], so the layer's point is (a·x + b·y + c, d·x + e·y + f).
- */
-export function stampGroupLayerFromScene({ x, y, rotation, scale }: StampGroupPlacement, pivot: StampPoint = { x: 0, y: 0 }): [number, number, number, number, number, number] {
-  const cos = Math.cos(rotation) / scale, sin = Math.sin(rotation) / scale;
-  // Scene point p = pivot + (x, y) + R·s·(q − pivot); so q = pivot + R⁻¹(p − pivot − (x, y)) / s.
-  const ox = pivot.x + x, oy = pivot.y + y;
-  return [cos, sin, pivot.x - cos * ox - sin * oy, -sin, cos, pivot.y + sin * ox - cos * oy];
 }
 
 /** Where a point of the group's own layer lands in the scene, placed at `placement` about `pivot`. */
