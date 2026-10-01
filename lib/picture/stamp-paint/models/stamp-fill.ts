@@ -140,9 +140,17 @@ export type StampFillPattern = 'backAndForth' | 'zigzag' | 'hatch' | 'crossHatch
 /**
  * A strokes fill. `spacing`: diameters between rows, centre to centre (the pattern's own when left out), past 1
  * leaving paper between marks. `variation`, 0..1 (0.3): how unevenly a hand lays them, each row's place and tilt and
- * each mark's ends. `hand`: how each mark is painted (the pattern's own). `turns`: StampFillTurns.
+ * each mark's ends. `hand`: how each mark is painted (the pattern's own). `turns`: StampFillTurns. `reach`:
+ * StampFillReach.
  */
-export type StampFillStrokes = { pattern: StampFillPattern; spacing?: number; variation?: number; hand?: StampStrokeHand; turns?: StampFillTurns };
+export type StampFillStrokes = { pattern: StampFillPattern; spacing?: number; variation?: number; hand?: StampStrokeHand; turns?: StampFillTurns; reach?: StampFillReach };
+
+/**
+ * How far a strokes fill's marks reach. `inside` (when left out): within its outline. `over`: their middles run out
+ * to it and their paint past it, as a brush runs past a shape whose clip trims it; for a clipped texture over its
+ * silhouette, which inside stops short of the edge (a mark is narrower than its tip).
+ */
+export type StampFillReach = 'inside' | 'over';
 
 /**
  * Where a back and forth, zigzag or shading turns back. `eased` (when left out): the hand nearly lifts, as a crayon or
@@ -180,10 +188,10 @@ const CROSS_HATCH_TURN = Math.PI / 3;
  * region is thinner than a diameter the marks run down its middle, and may spill past its sides.
  */
 export function stampFillStrokePath(region: StampRegion, diameter: number, direction: number, strokes: StampFillStrokes, seed: string): StampStrokePoint[] {
-  const { pattern, variation = 0.3, turns = 'eased' } = strokes;
+  const { pattern, variation = 0.3, turns = 'eased', reach = 'inside' } = strokes;
   const { spacing, hand } = { ...STAMP_FILL_PATTERNS[pattern], ...strokes };
   if (!(spacing > 0) || !(variation >= 0 && variation <= 1)) throw new Error(`stamp paint: a strokes fill needs a positive spacing and a variation of 0..1, not ${spacing} and ${variation}`);
-  const inside = strokeRoom(region, diameter), random = seededRandom(`${seed}|fill strokes`);
+  const inside = strokeRoom(region, diameter, reach), random = seededRandom(`${seed}|fill strokes`);
   const step = spacing * diameter;
   const rows = (angle: number, extra = 0) => fillRows(inside, angle, step, variation, extra, random);
   let marks: StampStrokePoint[][];
@@ -205,11 +213,14 @@ export function stampFillStrokePath(region: StampRegion, diameter: number, direc
   return path;
 }
 
-/** Where a mark's centre may lie in `region`: half a diameter inside, or down the middle where it's thinner. */
+/**
+ * Where a mark's centre may lie in `region`: half a diameter inside, or down the middle where it's thinner; anywhere
+ * inside when its marks reach over the outline.
+ */
 type StrokeRoom = { polygon: readonly StampPoint[]; cell: number; inset: number; inside: (x: number, y: number, extra: number) => boolean };
 
-function strokeRoom(region: StampRegion, diameter: number): StrokeRoom {
-  const polygon = stampRegionPolygon(region), inset = diameter / 2, cell = Math.max(1, inset / 4);
+function strokeRoom(region: StampRegion, diameter: number, reach: StampFillReach): StrokeRoom {
+  const polygon = stampRegionPolygon(region), inset = reach === 'over' ? 0 : diameter / 2, cell = Math.max(1, diameter / 8);
   const distance = stampDistanceGrid(polygon, stampPolygonBox(polygon, 2 * cell), cell);
   const thickness = stampGridLocalMax(distance, inset);
   return { polygon, cell, inset, inside: (x, y, extra) => stampGridAt(distance, x, y) > Math.min(inset, stampGridAt(thickness, x, y) / 2) + extra };

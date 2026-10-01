@@ -294,20 +294,22 @@ const DEPOSIT_FLAGS = {
 /**
  * Where a deposit's paint is kept, beside its Deposit (whose slot is full): its fluid's and `within`'s boxes (x, y,
  * width, height), and a fill's load field (STAMP_PAINT_FIELD_SHARE), front (normal, from, to, softness, progress)
- * and body reach as it lands outside a wash (FLOOD_LAND_COVER_WGSL).
+ * and body levels as it lands outside a wash (FLOOD_LAND_COVER_WGSL); how far round a pixel its stroke's body is
+ * looked for, where its coverage hardens (strokeBodyAt).
  */
 const KEEP = stampUniformLayout('Keep', [
   ['fluid', 'vec4f'], ['within', 'vec4f'], ['load', 'vec4f'], ['front', 'vec4f'], ['loadEnds', 'vec2f'], ['frontShape', 'vec2f'], ['loadKind', 'i32'], ['bodyReach', 'f32'],
+  ['bodyLevels', 'vec2f'],
 ]);
 /**
  * A wash deposit's landing (StampWetLanding): its grids' lattice (x0, y0, cell) and size, where its wetness starts in
  * the wet grid buffer (workable and settled follow it), its painting time, its brush's water, a lift's strength, and
- * what it does, and how far round a pixel its stroke's body is looked for.
+ * what it does.
  */
 const WET_OP = stampUniformLayout('WetOp', [
-  ['lattice', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['tau', 'f32'], ['water', 'f32'], ['strength', 'f32'], ['action', 'u32'], ['bodyReach', 'f32'],
+  ['lattice', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['tau', 'f32'], ['water', 'f32'], ['strength', 'f32'], ['action', 'u32'],
 ]);
-/** How far round a pixel a wash's resolve looks for its stroke's body (wetBodyAt), as a share of the deposit's diameter: past a soft tip's shoulder. */
+/** How far round a pixel a wash's resolve looks for its stroke's body (strokeBodyAt), as a share of the deposit's diameter: past a soft tip's shoulder. */
 const WET_BODY_REACH = 0.2;
 const WET_ACTIONS = { paint: 0, water: 1, lift: 2 } as const;
 const WET_WGSL = /* wgsl */ `
@@ -329,11 +331,12 @@ fn wetLandingAt(at: vec2f) -> WetLanding {
 // On paper drier than its water a wash brush's stroke stops at a hard edge (wetLandCover), before its grain and the
 // paper's tooth, which break the hardened stroke as they would any.
 const WET_HARDEN_COVER_WGSL = /* wgsl */ `let landing = wetLandingAt(at);
-  raw.x = wetLandCover(raw.x, strokeBodyAt(pixel, raw.x, wet.bodyReach), landing.water, landing.wetness);`;
+  raw.x = wetLandCover(raw.x, strokeBodyAt(pixel, raw.x, k.bodyReach), landing.water, landing.wetness);`;
 // Outside a wash a flood carrying water (stampFloodCarriesWater) lands on dry paper: hardened to its water's edge
 // (wetLandCover), as a wash's would be there. Only its fringe looks round for its body: none lands where nothing
-// covers, and a full build is its own body.
-const FLOOD_LAND_COVER_WGSL = /* wgsl */ `if ((u.flags & FLOOD_WATER) != 0u && raw.x > 0.0 && raw.x < 1.0) {
+// covers, and paint its body has built to is its own body (a body's pixel resolves as laid() lays it).
+const FLOOD_LAND_COVER_WGSL = /* wgsl */ `if ((u.flags & FLOOD_WATER) != 0u && raw.x > 0.0
+    && raw.x < accumulationResolve(k.bodyLevels.x, k.bodyLevels.y, k.bodyLevels.y, u.build.x, i32(u.accumulation.x))) {
     raw.x = wetLandCover(raw.x, strokeBodyAt(pixel, raw.x, k.bodyReach), 1.0, 0.0);
   }`;
 // A wash deposit lands, and leaves its footprint for the stages after it (StampWetDepositMoment): what it laid, where
@@ -439,9 +442,9 @@ fn strokeBodyAt(pixel: vec2u, here: f32, reach: f32) -> f32 {
   var body = here;
   let lo = vec2f(u.origin);
   let hi = vec2f(u.origin + u.extent) - 1.0;
-  for (var k = 0; k < 12; k++) {
-    let outer = k < 8;
-    let angle = select(f32(k - 8) * 1.5708 + 0.3927, f32(k) * 0.7854, outer);
+  for (var i = 0; i < 12; i++) {
+    let outer = i < 8;
+    let angle = select(f32(i - 8) * 1.5708 + 0.3927, f32(i) * 0.7854, outer);
     let q = vec2u(clamp(vec2f(pixel) + select(0.5, 1.0, outer) * reach * vec2f(cos(angle), sin(angle)), lo, hi));
     let kept = textureLoad(cap, q, 0);
     body = max(body, accumulationResolve(textureLoad(mask, q, 0).r, kept.b, kept.r, u.build.x, i32(u.accumulation.x)));
@@ -667,8 +670,8 @@ ${STAMP_GRID_AT_WGSL}
 }`;
 
 // A flood's body joined to its stamps' build, in the stamps' render pass, before rims blur it: its box, levels
-// (stampFloodBodyLevels) and tint (CompiledStampFlood's). The pipeline's blend joins it as the brush's accumulation
-// lays paint: toward full by screen, toward an opacity by max; a glaze's cap and densest by max; tints over, as a stamp's.
+// (stampFloodBodyLevels) and tint (CompiledStampFlood's). Its blend joins it as the accumulation lays paint: screen
+// toward full, else max; a glaze's cap by max; its tint over the stamps', so inside it their jitter evens to its mean.
 const BODY_DRAW = stampUniformLayout('BodyDraw', [['box', 'vec4f'], ['tint', 'vec4f'], ['levels', 'vec2f']]);
 const BODY_DRAW_WGSL = /* wgsl */ `
 ${FULL_FRAME_WGSL}
@@ -1717,6 +1720,7 @@ function rendererOnSurface(
         const put = stampUniformWriter(KEEP, views);
         put('fluid', boxWords(fluid?.box));
         put('within', boxWords(within?.box));
+        put('bodyReach', WET_BODY_REACH * deposit.diameter);
         if (deposit.kind !== 'flood') return;
         const { load, front } = deposit.flood, ends = stampPaintFieldEnds(load);
         put('load', ends.geometry);
@@ -1724,7 +1728,7 @@ function rendererOnSurface(
         put('loadKind', ends.kind);
         put('front', [front.normal[0], front.normal[1], front.from, front.to]);
         put('frontShape', [front.soft, stampFloodProgressAt(deposit, t)]);
-        put('bodyReach', WET_BODY_REACH * deposit.diameter);
+        put('bodyLevels', [deposit.flood.levels.built, deposit.flood.levels.densest]);
       }),
       within?.view ?? targets.blank.view,
       slot((views) => loadedDeposit.writePaint(views, t)),
@@ -1738,7 +1742,6 @@ function rendererOnSurface(
         put('tau', landing.tau);
         put('water', landing.water);
         put('strength', action.kind === 'lift' ? action.strength : 0);
-        put('bodyReach', WET_BODY_REACH * deposit.diameter);
         put('action', WET_ACTIONS[action.kind]);
       }),
       landing && targets.footprint!.view, landing && targets.fresh!.view, !landing && pressing ? pressing.view : null, !landing && before ? before.view : null,

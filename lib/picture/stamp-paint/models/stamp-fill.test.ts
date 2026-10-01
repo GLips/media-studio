@@ -50,7 +50,7 @@ test("a flood's edge stroke puts its stamps' edges on the outline, round a disc 
   for (const [x, y] of [[80, 20], [320, 20], [120, 220], [280, 220]]) assert.ok(u.stamps.some((s) => Math.hypot(s.x - x, s.y - y) < 6), `no stamp near ${x},${y}`);
 });
 
-test("a fill in strokes lays marks whose edges reach the outline, never past it, and a wide hatch leaves paper between", () => {
+test("a fill in strokes lays marks whose edges reach the outline, past it only when it reaches over, and a wide hatch leaves paper between", () => {
   const disc = { kind: 'ellipse', x: 200, y: 200, radiusX: 120, radiusY: 120 } as const;
   for (const pattern of ['zigzag', 'backAndForth', 'hatch', 'crossHatch', 'scribble', 'shading'] as const) {
     const fill = compiledFill(disc, 30, { application: { kind: 'strokes', pattern, variation: 0, hand: {} } });
@@ -58,6 +58,10 @@ test("a fill in strokes lays marks whose edges reach the outline, never past it,
     const reach = Math.max(...fill.stamps.map(({ x, y }) => Math.hypot(x - 200, y - 200) + 15));
     assert.ok(reach > 115 && reach < 122, `${pattern} reaches ${reach}`);
   }
+  // Reaching over, its marks' middles run out to the outline, round the disc's shape, not its box.
+  const over = compiledFill(disc, 30, { application: { kind: 'strokes', pattern: 'backAndForth', variation: 0, reach: 'over' } });
+  const centres = over.stamps.map(({ x, y }) => Math.hypot(x - 200, y - 200));
+  assert.ok(Math.max(...centres) > 114 && Math.max(...centres) < 122, `centres reach ${Math.max(...centres)}`);
   // A region shorter than a shading stroke is still shaded, not left to a neighbouring patch it hasn't got.
   assert.ok(stampFillStrokePath(polygon(0, 0, 40, 0, 40, 40, 0, 40), 20, 0, { pattern: 'shading', variation: 0, hand: {} }, 'small').length > 0);
   // Rows about two diameters apart: every stamp's centre lies within a few px of a row, and between rows lies paper.

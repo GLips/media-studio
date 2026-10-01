@@ -74,8 +74,7 @@ export function compileDeposit<A extends CompiledStampAction>(
     if (application.kind === 'flood') {
       const { body, stamps, dualStamps } = placeStampFlood(geometry.region, brush, diameter, direction, seed);
       const levels = stampFloodBodyLevels(STAMP_ACCUMULATIONS[brush.accumulation.kind].towardFull, stampFloodProbe(brush, diameter, `${seed}|probe`));
-      // At full pressure, as its untapered edge stroke lays.
-      const flood = { ...body, load, levels, tint: stampExpectedTint(brush.color, 1), front: stampFloodFront(body.polygon, [...stamps, ...dualStamps], direction, diameter) };
+      const flood = { ...body, load, levels, tint: stampExpectedTint(brush.color), front: stampFloodFront(body.polygon, [...stamps, ...dualStamps], direction, diameter) };
       return { ...common, kind: 'flood', flood, stamps, dualStamps };
     }
     const strokes = stampFillStrokePath(geometry.region, diameter, direction, application, seed);

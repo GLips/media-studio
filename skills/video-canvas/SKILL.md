@@ -41,14 +41,16 @@ Everything is from `#studio`.
     shading that can't leave the silhouette. `within: region` keeps it inside a region (a reflection in its water).
   - A **fill** covers a `region`, reaching its outline, laid by its `application`:
     - `{ kind: 'flood' }`: solid inside, the brush's own edge at the outline, however small a spike. Outside a wash its
-      paper is dry, so wet paint stops there hard, keeping the tip's broken outline; for a soft edge, flood it in a
-      wash into wetted paper (`preparation`). It costs what its edge does, not its area.
-    - `{ kind: 'strokes', pattern, spacing?, variation?, hand?, turns? }`: real strokes of the brush, the marks and the
+      paper is dry, so wet paint stops there hard, keeping the tip's broken outline (a dry-media brush keeps its tip's
+      edge); for a soft edge, flood it in a wash into wetted paper (`preparation`), or in flat colour, which has no
+      washes, fill with strokes. It costs what its edge does, not its area.
+    - `{ kind: 'strokes', pattern, spacing?, variation?, hand?, turns?, reach? }`: real strokes of the brush, the marks and the
       paper between them showing. `pattern` is `'shading'`, `'zigzag'`, `'backAndForth'`, `'hatch'`, `'crossHatch'` or
       `'scribble'`; `spacing` is diameters between rows (over 1 leaves paper); `variation` (0..1, 0.3) is how unevenly
       a hand lays them. A pattern that turns back (shading, zigzag, back and forth) eases nearly to lifting at each
       turn (`turns: 'eased'`, the default, as a crayon shades); `turns: 'pressed'` keeps the brush down, for body
-      colour covering a shape to its outline. It costs what its strokes do.
+      colour covering a shape to its outline. Its marks stay inside the outline; `reach: 'over'` runs them out over it,
+      for a texture in a `clipped` pass over its silhouette, which trims them there. It costs what its strokes do.
     - Left out, the brush's media decides: a wet brush washes, a dry one (pencil, crayon) shades. Override it for a
       hatched shadow in watercolour, or a wash of a brush whose media no style declares.
     - `direction` (radians) is the way its rows run, and it reveals across them as `drawnOver` runs; `load` grades how

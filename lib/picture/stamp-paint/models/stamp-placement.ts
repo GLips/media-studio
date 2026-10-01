@@ -96,11 +96,11 @@ function tintOf(color: StampBrushColorDynamics | undefined, draws: StampTintDraw
 }
 
 /**
- * The tint `color`'s stamps average to at `pressure`: what paint built from many of them shows, as a flood's body
- * does. Their draws are uniform, so each averages a half.
+ * The tint `color`'s stamps average to at full pressure: what paint built from many of them shows, as a flood's body
+ * does beside its untapered edge stroke. Their draws are uniform, so each averages a half.
  */
-export function stampExpectedTint(color: StampBrushColorDynamics | undefined, pressure: number): StampTint {
-  return tintOf(color, { hue: 0.5, saturation: 0.5, lightness: 0.5, darkness: 0.5 }, pressure);
+export function stampExpectedTint(color: StampBrushColorDynamics | undefined): StampTint {
+  return tintOf(color, { hue: 0.5, saturation: 0.5, lightness: 0.5, darkness: 0.5 }, 1);
 }
 
 /**

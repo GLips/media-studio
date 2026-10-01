@@ -7,12 +7,12 @@ import type { PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
 import type { StampBrush } from './stamp-brush.ts';
 
 /**
- * Whether a flood laid outside a wash carries water, and so stops at a hard edge on the dry paper (wetLandCover):
- * as much as its medium's brush does, as a wash's deposit would; with no medium (flat colour), unless its brush is dry
- * media, whose fill is a flood only when its author asks.
+ * Whether a flood laid outside a wash carries water, and so stops at a hard edge on the dry paper (wetLandCover).
+ * A dry-media brush never does; any other does if its medium's brush holds water. Flat colour has no medium but
+ * floods as wet paint, a flood being a wet application; its soft-edged fill is a strokes one.
  */
 export function stampFloodCarriesWater(brush: Pick<StampBrush, 'media'>, medium: PaintMedium | null): boolean {
-  return medium ? medium.wetting.brushWater > 0 : brush.media !== 'dry';
+  return brush.media !== 'dry' && (!medium || medium.wetting.brushWater > 0);
 }
 
 /**
