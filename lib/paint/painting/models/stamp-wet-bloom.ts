@@ -96,7 +96,7 @@ export const STAMP_BLOOM_CARRY_SPREAD = 2;
  * where held, with `lineShare` of the paint; a paler zone over `zoneDecay` px.
  */
 const STAMP_BLOOM_BAND = {
-  least: 0.05, most: 1.8, plateau: 1, lineDecay: 4.5, fingers: 0.35, zoneDecay: 6, lineShare: 0.75,
+  least: 0.8, most: 1.8, plateau: 1, lineDecay: 4.5, fingers: 0.35, zoneDecay: 6, lineShare: 0.75,
   // On paper as wet as the drop, the edge is this many px softer, and the paling fades in over this many more.
   wetSoftness: 8, wetFeather: 20,
 };
@@ -285,9 +285,10 @@ fn bloomStreak(foot: vec2f, d: f32, seed: u32, sigma: f32) -> f32 {
   return mix(0.5, streak, exp(-max(d, 0.0) / (2.0 * cell)));
 }
 // How the lip lies along the front, as (weight, softness px, feather px): heavy with a crisp outer edge where the
-// water was \`held\`, faint and soft where it ran on. Crisp is still about a pixel and a half: any less and the edge is
-// a threshold, stepping along every slant. The wetter the paper round (\`merging\`, 0 damp, 1 as wet as the drop), the
-// fainter and softer, the paler inside fading in over more (feather); none at 1, which leaves the front open there.
+// water was \`held\`, lighter and softer where it ran on, which still stalls against the paint. Crisp is still about a
+// pixel and a half: any less and the edge is a threshold, stepping along every slant. The wetter the paper round
+// (\`merging\`, 0 damp, 1 as wet as the drop), the fainter and softer, the paler inside fading in over more (feather);
+// none at 1, which leaves the front open there.
 fn bloomFrontLine(held: f32, merging: f32) -> vec3f {
   let stalled = smoothstep(0.3, 0.8, held);
   let wet = clamp(merging, 0.0, 1.0);
