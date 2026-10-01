@@ -89,15 +89,15 @@ function wetLandGrid(): StampGateFormulaGrid {
   });
 }
 
-/** wetLandCover at every cover, for a brush with no water, some and plenty, on paper dry, damp and wet. */
+/** wetLandCover at every cover of a light and a full body, for a brush with no water, some and plenty, on paper dry, damp and wet. */
 function wetLandCoverGrid(): StampGateFormulaGrid {
   const covers = Array.from({ length: 21 }, (_, k) => k / 20);
-  const entries = [0, 0.5, 1].flatMap((water) => [0, 0.5, 1].flatMap((wetness) => covers.map((cover): LawRow => ({
-    label: `cover ${cover} water ${water} wetness ${wetness}`, inputs: [cover, water, wetness], lane: 0, was: [0, 0, 0, 0], cover, bound: 0,
-  }))));
-  return propertyGrid('wetLandCover', 'wetLandCover(x(0), x(1), x(2))', 3, entries, (row, out, gpu, i) => {
-    const [cover, water, wetness] = row.inputs;
-    if (out < -TOL || out > 1 + TOL) return 'coverage left 0..1';
+  const entries = [0.4, 1].flatMap((body) => [0, 0.5, 1].flatMap((water) => [0, 0.5, 1].flatMap((wetness) => covers.map((cover): LawRow => ({
+    label: `cover ${cover} body ${body} water ${water} wetness ${wetness}`, inputs: [cover, body, water, wetness], lane: 0, was: [0, 0, 0, 0], cover, bound: body,
+  })))));
+  return propertyGrid('wetLandCover', 'wetLandCover(x(0), x(1), x(2), x(3))', 4, entries, (row, out, gpu, i) => {
+    const [cover, , water, wetness] = row.inputs;
+    if (out < -TOL || out > Math.max(cover, row.bound) + TOL) return 'coverage past the stroke\'s body';
     if (water <= wetness && Math.abs(out - cover) > TOL) return 'paper as wet as the brush hardened its edge';
     if (cover > 0 && out < gpu[i - 1] - TOL) return 'more of the tip landed less';
     return null;

@@ -296,11 +296,13 @@ const KEEP = stampUniformLayout('Keep', [
 /**
  * A wash deposit's landing (StampWetLanding): its grids' lattice (x0, y0, cell) and size, where its wetness starts in
  * the wet grid buffer (workable and settled follow it), its painting time, its brush's water, a lift's strength, and
- * what it does.
+ * what it does, and how far round a pixel its stroke's body is looked for.
  */
 const WET_OP = stampUniformLayout('WetOp', [
-  ['lattice', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['tau', 'f32'], ['water', 'f32'], ['strength', 'f32'], ['action', 'u32'],
+  ['lattice', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['tau', 'f32'], ['water', 'f32'], ['strength', 'f32'], ['action', 'u32'], ['bodyReach', 'f32'],
 ]);
+/** How far round a pixel a wash's resolve looks for its stroke's body (wetBodyAt), as a share of the deposit's diameter: past a soft tip's shoulder. */
+const WET_BODY_REACH = 0.2;
 const WET_ACTIONS = { paint: 0, water: 1, lift: 2 } as const;
 const WET_WGSL = /* wgsl */ `
 ${WET_OP.wgsl}
@@ -317,17 +319,34 @@ fn wetLandingAt(at: vec2f) -> WetLanding {
     gridAt(at, wet.lattice.xyz, wet.size, wet.first), gridAt(at, wet.lattice.xyz, wet.size, wet.first + points),
     gridAt(at, wet.lattice.xyz, wet.size, wet.first + 2u * points), wet.tau, wet.water, wet.strength, wet.action,
   );
+}
+// The stroke's body near \`pixel\`: the most its build reaches within bodyReach, in the deposit's box, so a hardened edge
+// keeps the stroke's own density.
+fn wetBodyAt(pixel: vec2u, here: f32) -> f32 {
+  var body = here;
+  let lo = vec2f(u.origin);
+  let hi = vec2f(u.origin + u.extent) - 1.0;
+  for (var k = 0; k < 12; k++) {
+    let outer = k < 8;
+    let angle = select(f32(k - 8) * 1.5708 + 0.3927, f32(k) * 0.7854, outer);
+    let q = vec2u(clamp(vec2f(pixel) + select(0.5, 1.0, outer) * wet.bodyReach * vec2f(cos(angle), sin(angle)), lo, hi));
+    let kept = textureLoad(cap, q, 0);
+    body = max(body, accumulationResolve(textureLoad(mask, q, 0).r, kept.b, kept.r, u.build.x, i32(u.accumulation.x)));
+  }
+  return body;
 }`;
-// A wash deposit lands, its coverage hardened to its water's edge (wetLandCover), and leaves its footprint for the
-// stages after it (StampWetStageMoment): what it laid, and where paint may land at all.
-const WET_LAND_WGSL = /* wgsl */ `let landing = wetLandingAt(at);
-  let landed = wetLandCover(coverage, landing.water, landing.wetness);
-  landDeposit(pixel, landed, rims, tooth, at, landing);
+// On paper drier than its water a wash brush's stroke stops at a hard edge (wetLandCover), before its grain and the
+// paper's tooth, which break the hardened stroke as they would any.
+const WET_HARDEN_COVER_WGSL = /* wgsl */ `let landing = wetLandingAt(at);
+  raw.x = wetLandCover(raw.x, wetBodyAt(pixel, raw.x), landing.water, landing.wetness);`;
+// A wash deposit lands, and leaves its footprint for the stages after it (StampWetStageMoment): what it laid, and
+// where paint may land at all.
+const WET_LAND_WGSL = /* wgsl */ `landDeposit(pixel, coverage, rims, tooth, at, landing);
   var allowed = 1.0;
   if ((u.flags & MASKED) != 0u) { allowed *= 1.0 - regionAt(fluid, k.fluid, pixel); }
   if ((u.flags & WITHIN) != 0u) { allowed *= regionAt(within, k.within, pixel); }
   if ((u.flags & CLIPPED) != 0u) { allowed *= clamp(clipped.r, 0.0, 1.0); }
-  textureStore(footprint, pixel, vec4f(landed, allowed, 0.0, 0.0));`;
+  textureStore(footprint, pixel, vec4f(coverage, allowed, 0.0, 0.0));`;
 const DEPOSIT_FLAGS_WGSL = Object.entries(DEPOSIT_FLAGS).map(([flag, bit]) => `const ${flag.replace(/[A-Z]/g, (c) => `_${c}`).toUpperCase()} = ${bit}u;`).join('\n');
 
 /**
@@ -414,7 +433,7 @@ fn rimOf(a: f32, soft: f32, sharpness: f32) -> f32 { return clamp((a - soft) * s
   // toward the build held under its cap (red or green).
   let built = textureLoad(mask, pixel, 0).rg;
   let kept = textureLoad(cap, pixel, 0);
-  let raw = vec2f(
+  var raw = vec2f(
     accumulationResolve(built.x, kept.b, kept.r, u.build.x, i32(u.accumulation.x)),
     accumulationResolve(built.y, kept.a, kept.g, u.build.y, i32(u.accumulation.y)),
   );
@@ -429,6 +448,7 @@ fn rimOf(a: f32, soft: f32, sharpness: f32) -> f32 { return clamp((a - soft) * s
     if ((u.flags & DUAL_POOLED) != 0u) { d = pooled(d, u.pooling.z, u.pooling.w); }
     dualBurnt = rimOf(raw.g, soft.g, u.dualEdges.w) * u.dualEdges.z * step(0.0001, raw.r);
   }
+  ${wet ? WET_HARDEN_COVER_WGSL : ''}
   // The stages in the order of the brush's plan (STAMP_RESOLVE_PLANS), or a diagnosis's.
   traced(0u, raw.r);
   var m = resolveStages(raw.r, d, at, u.resolveOrder);
@@ -1574,6 +1594,7 @@ async function rendererOnDevice(
         put('tau', landing.tau);
         put('water', landing.water);
         put('strength', action.kind === 'lift' ? action.strength : 0);
+        put('bodyReach', WET_BODY_REACH * deposit.diameter);
         put('action', WET_ACTIONS[action.kind]);
       }),
       landing && targets.footprint!.view, landing && targets.fresh!.view, null, null,

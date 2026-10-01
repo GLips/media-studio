@@ -145,9 +145,10 @@ fn potentialAt(p: vec2i, pop: u32) -> vec4f {
   textureStore(pathOut, id.xy, way);
 }
 
-// Each pixel's exchange with the pixels a stride either side along the pass's axis, through the way between. The
-// paint already there moves only as stirred; the fresh paint moves freely. After a lift, a pair trades only as far
-// as the lift reached either of it.
+// Each pixel's exchange with the pixels a stride either side along the pass's axis, through the way between. Paint
+// moves down the gradient of each pigment's whole amount, fresh and old together, so fresh paint never darkens paint
+// already there as strong; each population carries the share of it that's free to move, the old as stirred. After a
+// lift, a pair trades only as far as the lift reached either of it.
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn exchange(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= f.extent)) { return; }
   let q = vec2i(f.origin + id.xy);
@@ -165,16 +166,23 @@ fn potentialAt(p: vec2i, pop: u32) -> vec4f {
     k[i] = flowConductance(f.sigma, f32(f.stride), f.before, way.x, way.y) * select(1.0, flowLiftPair(here.w, there.w), f.action == LIFT);
     stirred[i] = there.z;
   }
+  let moves = k[0] > 0.0 || k[1] > 0.0;
+  var wholeHere = vec4f(0.0);
+  var wholeThere = array<vec4f, 2>(vec4f(0.0), vec4f(0.0));
+  if (moves) {
+    wholeHere = potentialAt(q, 0u) + potentialAt(q, 1u);
+    for (var i = 0; i < 2; i++) {
+      if (k[i] > 0.0) { wholeThere[i] = potentialAt(partners[i], 0u) + potentialAt(partners[i], 1u); }
+    }
+  }
   for (var pop = 0u; pop < 2u; pop++) {
     var now = movedAt(q, pop);
-    if (k[0] > 0.0 || k[1] > 0.0) {
-      let potentialHere = potentialAt(q, pop);
+    if (moves) {
       let isFresh = pop == 0u;
-      let freeHere = flowFree(select(here.z, 1.0, isFresh), heldAt(q, pop), potentialHere);
+      let freeHere = flowFree(select(here.z, 1.0, isFresh), heldAt(q, pop), wholeHere);
       for (var i = 0; i < 2; i++) {
         if (k[i] <= 0.0) { continue; }
-        let potentialThere = potentialAt(partners[i], pop);
-        now += flowInto(potentialHere, potentialThere, freeHere, flowFree(select(stirred[i], 1.0, isFresh), heldAt(partners[i], pop), potentialThere), k[i]);
+        now += flowInto(wholeHere, wholeThere[i], freeHere, flowFree(select(stirred[i], 1.0, isFresh), heldAt(partners[i], pop), wholeThere[i]), k[i]);
       }
     }
     textureStore(movedOut, id.xy, pop, now);

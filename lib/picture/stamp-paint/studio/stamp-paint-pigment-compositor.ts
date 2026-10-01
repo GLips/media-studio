@@ -190,10 +190,13 @@ fn landDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f
   var was: array<vec4f, LAYERS>;
   for (var l = 0u; l < LAYERS; l++) { was[l] = textureLoad(layer, pixel, l); }
   let o = vec2u(paint.open / 4u, paint.open % 4u);
-  let open = was[o.x][o.y] * (1.0 - clamp(wet.settled, 0.0, 1.0));
+  // Settled only where every lattice point round it is: a stroke's edge lies between points, and the paint it laid
+  // there is as fresh as its body.
+  let settled = wet.settled >= ${f32(1 - 1e-4)};
+  let open = select(was[o.x][o.y], 0.0, settled);
   let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
   if (cover <= 0.0 || wet.action == WET_WATER) {
-    if (wet.settled > 0.0) {
+    if (settled) {
       var kept = was[o.x];
       kept[o.y] = open;
       textureStore(layer, pixel, o.x, kept);

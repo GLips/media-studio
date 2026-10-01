@@ -3,17 +3,19 @@
 // brush's water stops at a hard edge on dry paper, however soft its tip. WGSL only: the renderer is where it runs.
 
 /**
- * Where a wash brush's water stops on dry paper: about where its tip lays a third of its paint, so a soft tip's thin
- * fringe goes and its body fills. Low, as water carries pigment into the gaps of a grainy tip rather than leaving them.
+ * Where a wash brush's water stops on dry paper, as a share of the stroke's body: about where its tip lays a third of
+ * it, so a soft tip's thin fringe goes and its shoulder fills to the body, never past it.
  */
 export const STAMP_WET_WATER_EDGE = [0.15, 0.45] as const;
 
 /** The landing's laws, each as its comment says; the renderer hardens a wash's coverage, the compositor lands its paint. */
 export const STAMP_WET_LAND_WGSL = /* wgsl */ `
-// The coverage a brush carrying \`water\` lands at where its tip covers \`cover\`, on paper \`wetness\` wet: hardened
-// to its water's edge as far as the paper is drier than the brush. A brush with no water (a lift, crayon) keeps its tip.
-fn wetLandCover(cover: f32, water: f32, wetness: f32) -> f32 {
-  let hard = smoothstep(${STAMP_WET_WATER_EDGE[0].toFixed(3)}, ${STAMP_WET_WATER_EDGE[1].toFixed(3)}, cover);
+// The coverage a brush carrying \`water\` lands at where its stroke covers \`cover\` of its \`body\` nearby, on paper
+// \`wetness\` wet: hardened to its water's edge as far as the paper is drier than the brush, at the body's density. A
+// brush with no water (a lift, crayon) keeps its tip.
+fn wetLandCover(cover: f32, body: f32, water: f32, wetness: f32) -> f32 {
+  let level = max(body, cover);
+  let hard = level * smoothstep(${STAMP_WET_WATER_EDGE[0].toFixed(3)}, ${STAMP_WET_WATER_EDGE[1].toFixed(3)}, cover / max(level, 1e-4));
   let drier = clamp(water - wetness, 0.0, 1.0) / max(water, 1e-3);
   return mix(cover, hard, drier);
 }
