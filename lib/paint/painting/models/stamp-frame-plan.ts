@@ -11,6 +11,7 @@ import type { StampGroupPlacement } from './stamp-group-motion.ts';
 import { STAMP_WARP_CELL, type StampWarpMap } from './stamp-group-warp.ts';
 import { stampLiveGroupProblem, stampPaintFrameStateAt, type StampGroupFrameState, type StampGroupLay, type StampGroupMarks, type StampPaintFrameState } from './stamp-paint-frame-state.ts';
 import { stampSettledEventCount, type StampPaintEvent } from './stamp-paint-events.ts';
+import type { StampOutsideFrameState, StampOutsideLayerPlace } from './stamp-outside-layer.ts';
 import { stampPassDeposits, type CompiledStampGroup, type CompiledStampPaint } from './stamp-paint-recipe.ts';
 
 /** A group's events, as indices into the painting's (stampPaintEvents): from `first`, up to `end`. */
@@ -41,19 +42,31 @@ export type StampGroupFrame = {
   layVaries: boolean;
 };
 
+/**
+ * An outside layer as a frame lays it (stamp-outside-layer.ts): before the events from `event` on, so a checkpoint
+ * after `event` events stands before it and one after more holds it, under `key` (its content and how it's laid).
+ */
+export type StampOutsideLayerFrame = StampOutsideLayerPlace & { event: number; key: string; visibility: number };
+
+/** The outside layers a painting is drawn with: where each lies, and each one's state this frame. */
+export type StampOutsideLayersAt = { places: readonly StampOutsideLayerPlace[]; state: StampOutsideFrameState };
+
 export type StampFramePlan = {
   groups: readonly StampGroupFrame[];
+  /** Its outside layers, in the order they're laid. */
+  outside: readonly StampOutsideLayerFrame[];
   /** How many events are settled at the frame's time: the prefix a checkpoint may stand for. */
   settled: number;
   /**
    * The key a checkpoint after `event` events is held under: each group laid by then at its marks and lay, and a group
-   * partway through (or at its end, its lay varying) at its marks: its layer isn't laid yet.
+   * partway through (or at its end, its lay varying) at its marks: its layer isn't laid yet; and each outside layer
+   * laid before `event`, at its key.
    */
   checkpointKey: (event: number) => string;
   /**
    * The events after which a frame starting from event `from` saves a checkpoint, each with whether it's partway
-   * through a group (holding its layer): its settled prefix, the state before the first group with frame state, and
-   * the first group whose lay varies painted but not laid, which frames laying it otherwise share.
+   * through a group (holding its layer): its settled prefix, the state before the first group with frame state or
+   * outside layer, and the first group whose lay varies painted but not laid, which frames laying it otherwise share.
    */
   checkpointSaves: (from: number) => ReadonlyMap<number, boolean>;
 };
@@ -84,15 +97,33 @@ function stampGroupFrame(group: CompiledStampGroup, state: StampGroupFrameState)
   };
 }
 
+/** Each outside layer's frame, checked: every declared layer given a state, and no state for one that isn't. */
+function stampOutsideLayerFrames(groupEvents: readonly StampGroupEvents[], eventCount: number, { places, state }: StampOutsideLayersAt): StampOutsideLayerFrame[] {
+  const unknown = [...state.keys()].filter((id) => !places.some((place) => place.id === id));
+  if (unknown.length) throw new Error(`stamp paint: outside layer state for ${unknown.join(', ')}, which the painting has no outside layer of`);
+  return places.map((place) => {
+    const given = state.get(place.id);
+    if (!given) throw new Error(`stamp paint: outside layer ${place.id} has no state this frame; its content's key names its pixels, each frame`);
+    const { content, visibility = 1 } = given;
+    if (!(visibility >= 0 && visibility <= 1)) throw new Error(`stamp paint: outside layer ${place.id}'s visibility is ${visibility}, outside 0..1`);
+    // Built here, not left to the caller: whatever changes what's laid is in it.
+    const key = visibility === 0 ? 'hidden' : `${JSON.stringify(content)}${visibility < 1 ? `%${visibility}` : ''}${given.blur ? `~blur${given.blur}` : ''}${given.glow ? `~glow${JSON.stringify(given.glow)}` : ''}`;
+    return { ...place, event: groupEvents[place.groupIndex]?.first ?? eventCount, key, visibility };
+  });
+}
+
 /**
  * The frame of `painting` at `t` seconds into its scene, each group in its recipe's own state with `given` over it
- * (stampPaintFrameStateAt). Throws on state for a group the painting doesn't have, or state it can't draw.
+ * (stampPaintFrameStateAt), and each of `outside`'s layers in its state. Throws on state for a group or outside layer
+ * the painting doesn't have, state it can't draw, or an outside layer given none.
  */
 export function stampFramePlan(
   painting: CompiledStampPaint, groupEvents: readonly StampGroupEvents[], events: readonly StampPaintEvent[], t: number, given?: StampPaintFrameState,
+  outside: StampOutsideLayersAt = { places: [], state: new Map() },
 ): StampFramePlan {
   const state = stampPaintFrameStateAt(painting, t, given);
   const groups = painting.groups.map((group) => stampGroupFrame(group, state.get(group.id) ?? {}));
+  const outsideLayers = stampOutsideLayerFrames(groupEvents, events.length, outside);
   // A hidden group draws nothing, whatever its marks or lay.
   const marks = groups.map(({ marks: drawn, paintAt, visibility }) => (visibility === 0 ? 'hidden'
     : `${drawn.kind === 'live' ? `*${JSON.stringify(drawn.key)}` : drawn.epoch}${paintAt === null ? '' : `~${paintAt}`}`));
@@ -105,16 +136,22 @@ export function stampFramePlan(
    * stands at its last event painted but not laid. A group with no events draws nothing.
    */
   const reached = (event: number) => groupEvents.flatMap(({ first, end }, index) => (first < event && first < end ? [{ index, laid: end < event || (end === event && !groups[index].layVaries), painted: end === event }] : []));
+  // An outside layer at `event` is laid after a checkpoint there is saved, so only one before it holds it.
+  const outsideBefore = (event: number) => outsideLayers.filter((layer) => layer.event < event).map(({ id, key }) => `outside ${JSON.stringify(id)}=${key}`);
   /** Whether a checkpoint after `event` events holds a group's layer: partway through it, or at its end unlaid. */
   const inGroup = (event: number) => reached(event).some(({ laid: isLaid }) => !isLaid);
   const settled = stampSettledEventCount(events, t);
-  const varyingFrom = groupEvents.find((_, index) => state.has(painting.groups[index].id))?.first ?? events.length;
+  // Every outside layer varies: what's under it is worth a checkpoint.
+  const varyingFrom = Math.min(groupEvents.find((_, index) => state.has(painting.groups[index].id))?.first ?? events.length, ...outsideLayers.map((layer) => layer.event));
   const firstVaryingLay = groupEvents.find((span, index) => hasEvents(span) && groups[index].layVaries);
   const saves = [settled, Math.min(settled, varyingFrom), ...(firstVaryingLay && firstVaryingLay.end <= settled ? [firstVaryingLay.end] : [])];
   return {
     groups,
+    outside: outsideLayers,
     settled,
-    checkpointKey: (event) => reached(event).map(({ index, laid: isLaid, painted }) => (isLaid ? laid[index] : `${marks[index]}${painted ? '#painted' : ''}`)).join('|'),
+    checkpointKey: (event) => [
+      ...reached(event).map(({ index, laid: isLaid, painted }) => (isLaid ? laid[index] : `${marks[index]}${painted ? '#painted' : ''}`)), ...outsideBefore(event),
+    ].join('|'),
     checkpointSaves: (from) => new Map(saves.filter((event) => event > from).map((event) => [event, inGroup(event)])),
   };
 }

@@ -45,6 +45,9 @@ import {
   checkStampGateFlow, STAMP_GATE_FLOW_SIZE, stampGateFlowCase, stampGateFlowLayer, stampGateFlowPainting, stampGateHalfBits, stampGateHalfValue,
 } from '../models/stamp-gate-flow.ts';
 import { stampGatePrivatePainting, type StampGatePrivateCase } from '../models/stamp-gate-private-cases.ts';
+import {
+  checkStampGateOutsideLayer, STAMP_GATE_OUTSIDE_IDS, STAMP_GATE_OUTSIDE_SLOT, stampGateOutsideContent, stampGateOutsideKind, stampGateOutsidePainting,
+} from '../models/stamp-gate-outside-layer.ts';
 import { checkStampGateStripe, STAMP_GATE_STRIPE_SIZE, stampGateStripeCase, stampGateStripeLayer, stampGateStripePainting } from '../models/stamp-gate-stripe.ts';
 import { stampGateFrameDifference, stampGateFramePasses, type StampGateFrameDifference } from '../models/stamp-gate-frames.ts';
 import {
@@ -520,6 +523,37 @@ async function checkStampGateMediaCase(id: string): Promise<StampGateWashCheck[]
   });
 }
 
+/**
+ * Outside layer case `id` (stamp-gate-outside-layer.ts), on one surface: the painting with no outside layer; content
+ * a, b, a and a hidden on one renderer, its texture written before each frame; and b on a renderer of its own.
+ */
+async function checkStampGateOutsideCase(id: string): Promise<StampGateWashCheck[]> {
+  const kind = stampGateOutsideKind(id);
+  if (!kind) throw new Error(`stamp gate: no outside layer case ${JSON.stringify(id)}; the gate has ${STAMP_GATE_OUTSIDE_IDS.join(', ')}`);
+  const gate = stampGateOutsidePainting(kind), { width, height } = gate;
+  const halves = { a: Uint16Array.from(stampGateOutsideContent('a'), stampGateHalfBits), b: Uint16Array.from(stampGateOutsideContent('b'), stampGateHalfBits) };
+  return withGateSurface(gate, drawnImages(gate), async (surface, frame) => {
+    const plainRenderer = await gateRenderer(gate, surface), plain = await drawn(plainRenderer, frame, gate.t);
+    plainRenderer.dispose();
+    const texture = surface.device.createTexture({ size: [width, height], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+    const framesOf = async (order: readonly { content: 'a' | 'b'; visibility: number }[]) => {
+      const renderer = await createStampPaintRenderer(surface, gate.painting, gate.paper, gate.mixing, { outsideLayers: [{ ...STAMP_GATE_OUTSIDE_SLOT, texture }] });
+      const frames = await order.reduce<Promise<Uint8ClampedArray[]>>(async (done, { content, visibility }) => {
+        const before = await done;
+        surface.device.queue.writeTexture({ texture }, halves[content], { bytesPerRow: width * 8 }, [width, height]);
+        await renderer.draw(gate.t, undefined, new Map([[STAMP_GATE_OUTSIDE_SLOT.id, { content, visibility }]]));
+        await renderer.finish();
+        return [...before, frame()];
+      }, Promise.resolve([]));
+      renderer.dispose();
+      return frames;
+    };
+    const [a, b, aAgain, hidden] = await framesOf([{ content: 'a', visibility: 1 }, { content: 'b', visibility: 1 }, { content: 'a', visibility: 1 }, { content: 'a', visibility: 0 }]);
+    const [bFresh] = await framesOf([{ content: 'b', visibility: 1 }]);
+    return checkStampGateOutsideLayer(kind, { plain, a, b, aAgain, hidden, bFresh });
+  });
+}
+
 /** The GPU the gate draws on, as a baseline records it. */
 async function stampGateAdapter(): Promise<string> {
   const adapter = await navigator.gpu.requestAdapter();
@@ -528,4 +562,4 @@ async function stampGateAdapter(): Promise<string> {
   return [vendor, architecture, device, description].filter(Boolean).join(' ');
 }
 
-Object.assign(globalThis, { runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, checkStampGateAnimation, checkStampGateFlowCase, checkStampGateStripeCase, checkStampGateMediaCase, stampGateAdapter });
+Object.assign(globalThis, { runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, checkStampGateAnimation, checkStampGateFlowCase, checkStampGateStripeCase, checkStampGateMediaCase, checkStampGateOutsideCase, stampGateAdapter });

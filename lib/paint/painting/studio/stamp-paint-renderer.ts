@@ -41,8 +41,10 @@ import { stampPaintCheckpoints } from './stamp-paint-checkpoints.ts';
 import { stampPaintEvents } from '../models/stamp-paint-events.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { stampPlacementWarpMap, stampWarpCells, stampWarpTriangles, STAMP_WARP_MOST_CELLS } from '../models/stamp-group-warp.ts';
-import { stampFramePlan, stampGroupEvents, type StampGroupFrame } from '../models/stamp-frame-plan.ts';
+import { stampFramePlan, stampGroupEvents, type StampGroupFrame, type StampOutsideLayerFrame } from '../models/stamp-frame-plan.ts';
 import type { StampGroupMarks, StampPaintFrameState } from '../models/stamp-paint-frame-state.ts';
+import { stampOutsideLayerPlaces, type StampOutsideFrameState } from '../models/stamp-outside-layer.ts';
+import { checkStampOutsideLayerTexture, STAMP_OUTSIDE_LAY, stampOutsideLayWgsl, type StampOutsideLayer } from './stamp-outside-layer-lay.ts';
 
 /**
  * Floats per stamp in the instance buffer: x, y, diameter, rotation, then alpha, blur, grain turn and flips (x 1, y 2),
@@ -916,11 +918,11 @@ type LoadedRegions = {
 
 export type StampPaintRenderer = {
   /**
-   * Draws `painting` as it stands `t` seconds into its scene, each group in the state `frame` gives it (as painted
-   * where it gives none). Resolves once WebGPU has checked the draw, or rejects with its error: hold the frame until
-   * then, so a broken draw fails its own frame.
+   * Draws `painting` at `t` seconds into its scene, each group in `frame`'s state (as painted where it gives none),
+   * each outside layer in `outside`'s (every one needs one), its texture filled for this frame. Resolves once WebGPU
+   * has checked the draw, or rejects with its error: hold the frame until then.
    */
-  draw: (t: number, frame?: StampPaintFrameState) => Promise<void>;
+  draw: (t: number, frame?: StampPaintFrameState, outside?: StampOutsideFrameState) => Promise<void>;
   /** Resolves once the GPU has finished what's been drawn: for timing a draw, which a render never needs. */
   finish: () => Promise<void>;
   /**
@@ -956,6 +958,8 @@ export type StampPaintRendererOptions = {
   profile?: FrameProfileStart | null;
   /** The wet stages its washes run: every one, but for a check measuring what some do. */
   wetStages?: readonly StampWetStage[];
+  /** Layers rendered by someone else and laid in the painting's order (stamp-outside-layer.ts), on the surface's device. */
+  outsideLayers?: readonly StampOutsideLayer[];
 };
 
 /** The most lattice cells a frame lays `group` through: a warp's most, a move's one, none still. */
@@ -968,7 +972,7 @@ const latticeCellsMost = ({ lay, warp }: StampGroupFrame) => (warp ? STAMP_WARP_
  */
 export async function createStampPaintRenderer(
   surface: StampPaintSurface, painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing,
-  { profile, wetStages = STAMP_WET_STAGES }: StampPaintRendererOptions = {},
+  { profile, wetStages = STAMP_WET_STAGES, outsideLayers = [] }: StampPaintRendererOptions = {},
 ): Promise<StampPaintRenderer> {
   const span = profile ?? (() => () => {});
   let done = span('stamp paint compositor load');
@@ -993,7 +997,7 @@ export async function createStampPaintRenderer(
   const scope = surface.scope();
   try {
     const loading = surface.checked('loading the painting onto the GPU', () =>
-      rendererOnSurface(surface, scope, compositorOn, wetnessOf, mediumOf, painting, paper, image, bound, tipLevels, wetStages, span));
+      rendererOnSurface(surface, scope, compositorOn, wetnessOf, mediumOf, painting, paper, image, bound, tipLevels, wetStages, outsideLayers, span));
     // The load itself ran within the call: what's left is WebGPU's check of it.
     done = span('stamp paint gpu check load');
     const renderer = await loading;
@@ -1033,9 +1037,11 @@ function rendererOnSurface(
   surface: StampPaintSurface, scope: StampPaintGpuScope, compositorOn: (device: StampPaintDevice) => StampPaintCompositor,
   wetnessOf: ((groups: CompiledStampPaint) => StampWetness) | null, mediumOf: ((group: Pick<CompiledStampGroup, 'id'>) => PaintMedium) | null, painting: CompiledStampPaint, paper: StampPaintPaper,
   image: (source: StampBrushImageSource) => StampPaintImage, bound: ReadonlyMap<CompiledStampDeposit, StampBrush<StampPaintImage>>,
-  tipLevels: ReadonlyMap<StampPaintImage, StampTipLevel[]>, wetStages: readonly StampWetStage[], span: FrameProfileStart,
+  tipLevels: ReadonlyMap<StampPaintImage, StampTipLevel[]>, wetStages: readonly StampWetStage[], outsideLayers: readonly StampOutsideLayer[], span: FrameProfileStart,
 ): StampPaintRenderer {
   const { width, height, format } = surface, { device } = scope;
+  const outsidePlaces = stampOutsideLayerPlaces(painting, outsideLayers);
+  for (const layer of outsideLayers) checkStampOutsideLayerTexture(layer, width, height);
   let done = span('stamp paint compositor gpu load');
   const compositor = compositorOn(device);
   const paintBytes = compositor.deposit.layout.words * 4;
@@ -1076,7 +1082,7 @@ function rendererOnSurface(
   // passes, and its resolve, where it's kept, its paint and its trace; then a wash's landing, or a dry deposit's
   // pressure for a compositor that reads it. A boil's epoch has its group's deposits.
   const depositSlots = (wash: boolean) => 9 + (wash || compositor.reads.press ? 1 : 0);
-  const slotsPerFrame = 1 + painting.groups.reduce((sum, group) => sum + 2 + group.passes.reduce((n, pass) => n + stampPassDeposits(pass).length * depositSlots(pass.kind === 'wash'), 0), 0);
+  const slotsPerFrame = 1 + outsideLayers.length + painting.groups.reduce((sum, group) => sum + 2 + group.passes.reduce((n, pass) => n + stampPassDeposits(pass).length * depositSlots(pass.kind === 'wash'), 0), 0);
   const tilesX = Math.ceil(width / ORDERED_TILE), tilesY = Math.ceil(height / ORDERED_TILE);
   const asWritten = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).map((deposit) => [deposit.id, deposit] as const))));
   // Each deposit's medium by its ID, its group's as written (an epoch's and live marks' alike); none in flat colour.
@@ -1320,6 +1326,9 @@ function rendererOnSurface(
     if (!compositor.deposit.wet) throw new Error('stamp paint: the painting has washes, and its compositor lays none');
     depositPipeline(false, true);
   }
+  const outsidePipeline = outsideLayers.length
+    ? computePipeline(stampOutsideLayWgsl(compositor, stampPaintTargetWgsl('painting', 2, compositor.targets.painting, 'read_write'), WORKGROUP)) : null;
+  const outsideViews = outsideLayers.map(({ texture }) => texture.createView());
   const outputModule = device.createShaderModule({ code: outputWgsl(compositor, format.endsWith('8unorm')) });
   const outputPipeline = device.createRenderPipeline({ layout: 'auto', vertex: { module: outputModule }, fragment: { module: outputModule, targets: [{ format }] } });
   const regionPipeline = (code: string, entryPoint: string) => {
@@ -1977,6 +1986,11 @@ function rendererOnSurface(
     ], at.w, at.h);
   }
 
+  /** Lays outside layer `layer` over the painting at its visibility (stamp-outside-layer-lay.ts). */
+  function layOutsideLayer(encoder: GPUCommandEncoder, layer: StampOutsideLayerFrame) {
+    dispatch(encoder, outsidePipeline!, [slot((views) => stampUniformWriter(STAMP_OUTSIDE_LAY, views)('visibility', layer.visibility)), outsideViews[layer.slot], targets.painting.view], width, height);
+  }
+
   /** Whole pixels of the painting within x0..x1, y0..y1, or null for none. */
   const inPainting = (x0: number, y0: number, x1: number, y1: number): Box | null => {
     const x = Math.max(0, Math.floor(x0)), y = Math.max(0, Math.floor(y0));
@@ -2072,9 +2086,11 @@ function rendererOnSurface(
    * Encodes the frame at `t`. `whole` draws it from bare paper, neither restoring nor saving a checkpoint: a traced
    * frame, so every deposit it asks for is resolved in it, and a read-back layer, which a checkpoint may skip past.
    */
-  function draw(t: number, { frameTrace, whole = frameTrace !== undefined, state }: { frameTrace?: FrameTrace; whole?: boolean; state?: StampPaintFrameState } = {}) {
+  function draw(t: number, { frameTrace, whole = frameTrace !== undefined, state, outside = new Map() }: {
+    frameTrace?: FrameTrace; whole?: boolean; state?: StampPaintFrameState; outside?: StampOutsideFrameState;
+  } = {}) {
     surface.assertLive();
-    const { groups, settled, checkpointKey, checkpointSaves } = stampFramePlan(painting, groupEvents, events, t, state);
+    const { groups, outside: outsideFrames, settled, checkpointKey, checkpointSaves } = stampFramePlan(painting, groupEvents, events, t, state, { places: outsidePlaces, state: outside });
     slots = 0;
     latticeUsed = 0;
     latticeRoom(groups);
@@ -2082,13 +2098,26 @@ function rendererOnSurface(
     const start = whole ? null : checkpoints.latest(settled, checkpointKey);
     const from = start?.event ?? 0;
     const saves: ReadonlyMap<number, boolean> = whole ? new Map() : checkpointSaves(from);
+    // The event an outside layer was last laid at: the plan keys a checkpoint there as standing before it.
+    let outsideLaidAt = -1;
     // A group whose lay varies is saved at its end painted, before its lay, never laid: the plan says which a save holds.
     const save = (event: number, inGroup: boolean, painted: Box | null) => {
-      if (saves.get(event) === inGroup) checkpoints.save(encoder, { event, key: checkpointKey(event), inGroup, painted });
+      if (event !== outsideLaidAt && saves.get(event) === inGroup) checkpoints.save(encoder, { event, key: checkpointKey(event), inGroup, painted });
+    };
+    /** Lays the outside layers just before group `index`, saving what's under them first; a checkpoint past one holds it. */
+    const layOutsideLayersBefore = (index: number) => {
+      for (const layer of outsideFrames) {
+        if (layer.groupIndex !== index || layer.event < from) continue;
+        save(layer.event, false, null);
+        if (!layer.visibility) continue;
+        layOutsideLayer(encoder, layer);
+        outsideLaidAt = layer.event;
+      }
     };
     if (start) checkpoints.restore(encoder, start);
     else drawPaper(encoder);
     for (const [index, groupFrame] of groups.entries()) {
+      layOutsideLayersBefore(index);
       const { group, marks: drawing, visibility, layVaries, paintAt } = groupFrame;
       const { first, end } = groupEvents[index];
       // A checkpoint at a group's end within it holds it painted, not laid: only its lay is left.
@@ -2123,6 +2152,7 @@ function rendererOnSurface(
       if (layVaries) save(end, true, painted);
       if (painted) layGroup(encoder, index, groupFrame, painted);
     }
+    layOutsideLayersBefore(groups.length);
     save(events.length, false, null);
     const out = encoder.beginRenderPass({ colorAttachments: [{ view: surface.frameTexture().createView(), loadOp: 'clear', storeOp: 'store' }] });
     out.setPipeline(outputPipeline);
@@ -2139,9 +2169,9 @@ function rendererOnSurface(
   // A frame's own read-back buffers are the surface's, made and destroyed by the frame.
   const { queue } = surface.device;
   return {
-    draw: async (t, state) => {
+    draw: async (t, state, outside) => {
       if (disposed) return;
-      await surface.checked(`drawing the painting at ${t} s`, () => queue.submit([draw(t, { state }).finish()]));
+      await surface.checked(`drawing the painting at ${t} s`, () => queue.submit([draw(t, { state, outside }).finish()]));
     },
     trace: async (t, requests, state) => {
       if (disposed) throw new Error('stamp paint: a disposed renderer traces nothing');

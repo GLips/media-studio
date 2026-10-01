@@ -16,6 +16,7 @@ import type { PaintMedium, PaintStackedLayering } from '#lib/paint/materials/mod
 import { STAMP_PIGMENT_GROUP_SLOTS, stampPigmentAmountsAt, stampPigmentGroupLayers, type StampPigmentPaint, type StampPigmentUnderpaint } from '../models/stamp-pigment-paint.ts';
 import { STAMP_LIFT_STAIN_FIBRES, STAMP_LIFT_WET_STAIN_HOLD, STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
 import { STAMP_OPAQUE_COVER, type CompiledStampDeposit } from '../models/stamp-paint-recipe.ts';
+import { stampLightLiftBasis } from '../models/stamp-light-lift.ts';
 import type { StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
@@ -211,6 +212,7 @@ ${media.map((_, m) => `    case ${m === 0 ? '0u, default' : `${m}u`}: { ${name}$
   const components = upload(componentData), palettes = upload(paletteData), stains = upload(stainData);
 
   const paperRgb = paintHexToLinear(paperColor);
+  const lift = stampLightLiftBasis(bands);
   const bandWgsl = /* wgsl */ `
 ${PAINT_KUBELKA_MUNK_WGSL}
 const BAND_VEC4S = ${V}u;
@@ -529,6 +531,20 @@ ${bandWgsl}
 fn layPaper(pixel: vec2u, color: vec3f) {
   for (var i = 0u; i < BAND_VEC4S; i++) { textureStore(painting, pixel, i, paperReflectance(i, color)); }
   for (var r = 0u; r < ${underLayers}u; r++) { textureStore(painting, pixel, BAND_VEC4S + r, vec4f(0.0)); }
+}`,
+    outside: /* wgsl */ `
+${bandWgsl}
+const LIFT_R = array<vec4f, ${V}>(${vec4s(lift[0], V)});
+const LIFT_G = array<vec4f, ${V}>(${vec4s(lift[1], V)});
+const LIFT_B = array<vec4f, ${V}>(${vec4s(lift[2], V)});
+// The light lifted into the bands (stampLightLiftBasis) laid over the painting's reflectance by its alpha, as screenColor
+// shows it: linear, so it shows as the colour rendered. It covers the pigment kept behind for a knockout as much.
+fn layOutside(pixel: vec2u, over: vec4f) {
+  for (var i = 0u; i < BAND_VEC4S; i++) {
+    let lifted = LIFT_R[i] * over.r + LIFT_G[i] * over.g + LIFT_B[i] * over.b;
+    textureStore(painting, pixel, i, lifted + textureLoad(painting, pixel, i) * (1.0 - over.a));
+  }
+  for (var r = 0u; r < ${underLayers}u; r++) { textureStore(painting, pixel, BAND_VEC4S + r, textureLoad(painting, pixel, BAND_VEC4S + r) * (1.0 - over.a)); }
 }`,
     output: /* wgsl */ `
 ${bandWgsl}
