@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { stampPolygonDistance, type StampRegion } from '#lib/paint/painting/models/stamp-region.ts';
+import { paintFigurePartRegion } from './paint-figure-shapes.ts';
 import { posedFigureShapes, posedPrimitiveFigure, type PaintFigureView } from './posed-primitive-figure.ts';
 
 // A big ball in front of a small one set behind it and off to the right, and a pebble wholly hidden behind the ball.
@@ -18,17 +19,16 @@ const points = (region: StampRegion | undefined) => (region?.kind === 'polygon' 
 
 test('a part behind another is clipped by it, and a part wholly hidden has no region', () => {
   const shapes = posedFigureShapes(balls, {}, view);
-  const back = points(shapes.parts.back.region);
+  const back = points(paintFigurePartRegion(shapes.parts.back));
   assert.ok(back.length > 0);
   // The front ball's disc is radius 100 about (200, 200): nothing of the back ball shows inside it.
   for (const p of back) assert.ok(Math.hypot(p.x - 200, p.y - 200) > 99, `(${p.x}, ${p.y}) shows through the front ball`);
   assert.ok(back.some((p) => p.x > 270), 'the back ball still shows past the front one');
-  assert.equal(shapes.parts.pebble.region, undefined);
-  assert.equal(shapes.parts.pebble.pieces.length, 0);
+  assert.equal(shapes.parts.pebble.kind, 'hidden');
   // Turned round to look from behind, the back ball is the nearer and cuts into the front one instead.
   const behind = posedFigureShapes(balls, {}, { ...view, yaw: 180 });
   const centre = { x: 200 - 120, y: 200 };
-  assert.ok(stampPolygonDistance(points(behind.parts.back.region), centre.x, centre.y) > 0, 'seen from behind, the back ball is whole');
+  assert.ok(stampPolygonDistance(points(paintFigurePartRegion(behind.parts.back)), centre.x, centre.y) > 0, 'seen from behind, the back ball is whole');
 });
 
 test('the same figure, pose and view give a byte-identical value, whatever was evaluated between', () => {

@@ -119,24 +119,30 @@ elements, which is what keeps objects from showing through each other.
 3. **Decide how each part's marks live** (`PaintMarks`):
    - `'stuck'` (the default): the painted layer is moved or bent. Use it for nearly rigid motion: sway, breath, a
      limb.
-   - `'live'`: the group is re-painted from the posed figure at each held pose. Use it for a part that changes
-     shape, like a throat puffing. Bending would thicken and soften its lines. Compile only that group, with the
-     written group's id, passes and deposit ids, and keep it by the pose's key.
-   - `{ boil: { every: 2 } }`: the lines wobble on twos once drawn, and the texture stays put.
-4. **Write the motion as data.**
-   - `buildPaintMotion({ nodes, plays })` takes one `PaintMotionNode` per group, with `parent` for parts that follow
-     another (ink under body), and `pins`: `{ at, reach }` radial, or `{ part }` owning a region.
+   - `{ live: (pose) => group }`: the group is re-painted at each pose of its own pins. Use it for a part that
+     changes shape, like a throat puffing; bending would thicken and soften its lines. The poser compiles only that
+     group, with the written group's id, passes and deposit ids, from `pose.pins` (a pin at rest is left out). Motion
+     keeps each pose's marks by key, and at rest the group draws as written. A parent's bend reaches a live part
+     as its warp, so a breathing body carries its live throat.
+   - `{ boil: { every: 2 } }`: the lines wobble on twos once the group's last stroke is drawn, and the texture
+     stays put. A group boils as one: strokes that should boil apart need groups of their own.
+4. **Write the motion as data, over the compiled painting.**
+   - `buildPaintMotion(painting, { nodes, plays, foldCheck })` takes one `PaintMotionNode` per moving group, its
+     `id` the group's, with `parent` for parts that follow another (ink and throat under the body), `clock:
+     { hold: 2 }`, and `pins`: `{ at, reach }` radial, or `{ part }` owning a region. Each group's painted box and
+     reveal end come from the painting.
    - Each play is `paintMotionPlay(node, clip, { clock, origin })`. Clips are `poses` (keyed pin moves), `breathe`,
-     `sway`, `flutter` and `place`. A clock is steps outermost first, e.g. `[{ kind: 'hold', frames: 2 },
-     { kind: 'at', start: cue }, { kind: 'loop', period: 3, mode: 'repeat' }]`. Start every play at a cue from
-     `timeline.ts`.
-   - Read `problems` and throw: they name two writers on one pin, a hold that isn't whole frames, or a pose that
-     folds.
-5. **Each frame,** `paintMotionFrameAt(motion, s.t)` gives `state` and `live`. Compile each live pose's group, put it
-   into the state as `live: { marks, key }`, and render
-   `<StampPainting painting={painting} style={style} t={s.t} frame={state} />`.
+     `sway`, `flutter` and `place`. A clock is parts: `{ at: cue, rate?, loop?: { period, mode?, times? }, hold?,
+     until? }`, or `{ at, freeze }`. Start every play at a cue from `timeline.ts`. A finished clip holds its last
+     drawing.
+   - It returns `{ ok: false, problems }` naming two writers on one pin, a node that isn't a group, a hold that
+     isn't whole frames, a boil or pose that folds; throw them.
+   - A point goes through its own bend and placement, then its parent's, and so up, as a rig nests.
+5. **Each frame,** `paintMotionFrameAt(motion, s.t)` gives the frame state, live marks included:
+   `<StampPainting painting={painting} style={style} t={s.t} frame={paintMotionFrameAt(motion, s.t)} />`.
 
-Hold motion on twos (`hold: 2`, at `PAINT_ANIMATION_FPS`) and let the paint-in run on ones. Run `studio repeatable`
+Hold motion on twos (`clock: { hold: 2 }` on the node, at `PAINT_ANIMATION_FPS`) and let the paint-in run on ones: a
+node's hold never reaches its reveal. Run `studio repeatable`
 inside a hold and across one.
 
 Look at what you paint: `studio look` gives a sheet of chosen frames, mid-reveal and finished; compare the brushes
