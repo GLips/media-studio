@@ -30,7 +30,10 @@ const GRAIN_SIGMA = 2.5;
  */
 const CONTOUR_SIGMA = 2.5;
 
-/** How far in from the edge, px, its hardness compares the paint's coverage: just inside it, and past a soft brush's rim. */
+/**
+ * How far in from the edge, px, its hardness compares the paint's coverage: just inside it, and past a soft brush's
+ * rim, or the rim's band if wider.
+ */
 const EDGE_DEPTHS = [4, 14] as const;
 
 /**
@@ -275,12 +278,13 @@ fn reaches(field: texture_2d<f32>, origin: vec2f, toward: vec2f, level: f32, mos
   let edge = seed + toward * reaches(closed, seed, toward, 0.5, 4);
   let inward = d - distance(seed, edge);
   // How abruptly the paint ends, from the smoothed coverage just inside the edge and well in, each averaged over a
-  // few pixels: a fringe's step a pixel nearer or further then moves it by degrees.
+  // few pixels: a fringe's step a pixel nearer or further then moves it by degrees. Well in is at least the band: a
+  // wet-in-wet edge feathers over tens of pixels, and judged nearer it reads half-hard, its line in stray commas.
   var edgeCover = 0.0;
   var innerCover = 0.0;
   for (var k = -2; k <= 2; k++) {
     edgeCover += 0.2 * fieldAt(contour, edge + toward * f32(${EDGE_DEPTHS[0]} + k));
-    innerCover += 0.2 * fieldAt(contour, edge + toward * f32(${EDGE_DEPTHS[1]} + k));
+    innerCover += 0.2 * fieldAt(contour, edge + toward * (max(${EDGE_DEPTHS[1]}.0, band) + f32(k)));
   }
   let hardness = dryingRimHardness(edgeCover, innerCover);
   // How far in from where the paint is half there the pixel is, by its nearest edge.

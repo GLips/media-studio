@@ -9,6 +9,7 @@
 // - rimmed: a drying puddle's edge gathers pigment, a seam wet together doesn't;
 // - bloomed: a drop blooms though paint landed elsewhere first;
 // - unlined: a backrun lays no line along its wash's edge;
+// - unrimmed: a feathered edge dries with no line;
 // - paler: lifted tints read paler (stamp-gate-lift-colour.ts).
 //
 // Each case paints into its last group, read back.
@@ -49,6 +50,7 @@ export type StampGateWashCase = {
   | { property: 'unlined' }
   // Reads the frame, not its last group.
   | { property: 'paler'; read: (rgba: ArrayLike<number>) => StampGateWashCheck }
+  | { property: 'unrimmed' }
 );
 
 /** How far a pigment's total may drift from the same wash's without the ops under test: its layer's half-float rounding summed over a few thousand pixels. */
@@ -61,6 +63,8 @@ const END = Number.MAX_VALUE, MID = 1.5;
 const PAPER: StampPaintPaper = { color: '#f6f1e6' };
 const ROUND = stampGateBrush('Round', { flow: 0.5 });
 const SOFT = stampGateBrush('Soft', { flow: 0.3 });
+/** A tip fading from its middle to its edge, which on wet paper lays a feathered edge as wide as a rim's band. */
+const FEATHER = stampGateBrush('Feather', { flow: 0.3, tip: { image: { style: 'gate', pack: 'gate', file: 'contact.png' }, roundness: 1, sampling: 'isotropic' } });
 
 /** One pigment at full strength, so no white joins it in a medium that lightens with white. */
 const pure = (pigment: PaintPigmentAppearance): PaintMaterial => ({ kind: 'mixture', parts: [{ pigment, amount: 1 }], strength: 1 });
@@ -112,6 +116,14 @@ const BACKRUN_EDGE = { x: 100, rows: [20, 100] as const };
  * share of without's, on average. A backrun pushes a little paint toward the edge; a lip there would be a dark line.
  */
 export const STAMP_GATE_UNLINED_MOST = 0.15;
+
+/** The unrimmed case's wash's left edge, feathered on wet paper, by column; the columns of its interior; its rows. */
+const SOFT_EDGE = { from: 2, to: 30, interior: [60, 100] as const, rows: [20, 100] as const };
+/**
+ * The most the drying rim may darken the unrimmed case's feathered edge, at its darkest row by row, on average, as a
+ * share of the wash's interior: a puddle's edge gains about 0.7.
+ */
+export const STAMP_GATE_UNRIMMED_MOST = 0.03;
 
 /** Every wash case, by ID. */
 function washCases(): StampGateWashCase[] {
@@ -230,6 +242,12 @@ function washCases(): StampGateWashCase[] {
         wash.wait('damp');
         wash.stroke('side', { brush: ROUND, diameter: 22, water: 1, material: pure(W.cerulean), path: [{ x: BACKRUN_EDGE.x - 10, y: 14 }, { x: BACKRUN_EDGE.x - 12, y: 106 }], ...shown(1) });
       }),
+    },
+    // A wash flooded to the edge of the paper wetted for it: on wet paper its edge feathers out, and dries with no line.
+    // Against the same painting without the drying rim.
+    {
+      id: 'wash/soft-edge', mid: MID, property: 'unrimmed',
+      subject: washPainting('watercolour', true, (wash) => wash.fill('sky', { brush: FEATHER, diameter: 80, application: { kind: 'flood' }, region: SKY, material: pure(W.ultramarine), ...shown(0) })),
     },
     // Against the same paint that doesn't flow, so neither moves nor rims.
     { id: 'wash/rim', mid: MID, property: 'rimmed', subject: washPainting('watercolour', false, puddles), without: washPainting('watercolour', false, puddles, true) },
@@ -428,6 +446,31 @@ export function checkStampGateRimmed(id: string, pigments: readonly string[], su
   return {
     id: `${id}: rimmed`, passed: !problems.length,
     detail: `${problems.length ? `${problems.join('; ')}. ` : ''}the puddle's edge ${rimmed.edge.toFixed(3)} of its interior, ${still.edge.toFixed(3)} still (under +${STAMP_GATE_RIM.least} fails); the seam ${rimmed.seam.toFixed(3)}, ${still.seam.toFixed(3)} still (past +${STAMP_GATE_RIM.seamMost} fails); least ${least}; ${conserved.detail}`,
+  };
+}
+
+/**
+ * Whether the drying rim darkens `subject`'s feathered edge by at most STAMP_GATE_UNRIMMED_MOST of its interior, at
+ * its darkest row by row, against `withoutRim`, and each pigment's total holds.
+ */
+export function checkStampGateUnrimmed(id: string, pigments: readonly string[], subject: StampGateLayer, withoutRim: StampGateLayer): StampGateWashCheck {
+  const sum = (layer: StampGateLayer) => {
+    const slots = Array.from({ length: pigments.length }, (_, slot) => slotAmounts(layer, slot));
+    return (i: number) => slots.reduce((t, amounts) => t + amounts[i], 0);
+  };
+  const rimmed = sum(subject), plain = sum(withoutRim);
+  const [y0, y1] = SOFT_EDGE.rows, [x0, x1] = SOFT_EDGE.interior;
+  let gained = 0;
+  for (let y = y0; y < y1; y++) {
+    let interior = 0, most = 0;
+    for (let x = x0; x < x1; x++) interior += plain(y * subject.width + x) / (x1 - x0);
+    for (let x = SOFT_EDGE.from; x < SOFT_EDGE.to; x++) most = Math.max(most, rimmed(y * subject.width + x) - plain(y * subject.width + x));
+    gained += most / interior / (y1 - y0);
+  }
+  const conserved = checkStampGateConserved(id, pigments, subject, withoutRim);
+  return {
+    id: `${id}: unrimmed`, passed: gained <= STAMP_GATE_UNRIMMED_MOST && conserved.passed,
+    detail: `its feathered edge's darkest gains ${(gained * 100).toFixed(1)}% of its interior from the rim (past ${STAMP_GATE_UNRIMMED_MOST * 100}% fails); ${conserved.detail}`,
   };
 }
 
