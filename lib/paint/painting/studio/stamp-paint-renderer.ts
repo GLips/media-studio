@@ -991,6 +991,8 @@ export type StampPaintRendererOptions = {
    * painting's groups may bring in from off the frame.
    */
   margin?: number;
+  /** The most bytes its cached settled layers hold (stamp-paint-layer-cache.ts); 0 keeps none, to measure what they save. */
+  layerCacheBudget?: number;
 };
 
 /** The most lattice cells a frame lays `group` through: a warp's most, a move's one, none still. */
@@ -1003,7 +1005,7 @@ const latticeCellsMost = ({ lay, warp }: StampGroupFrame) => (warp ? STAMP_WARP_
  */
 export async function createStampPaintRenderer(
   surface: StampPaintSurface, painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing,
-  { profile, wetStages = STAMP_WET_STAGES, outsideLayers = [], margin = 0 }: StampPaintRendererOptions = {},
+  { profile, wetStages = STAMP_WET_STAGES, outsideLayers = [], margin = 0, layerCacheBudget }: StampPaintRendererOptions = {},
 ): Promise<StampPaintRenderer> {
   const span = profile ?? (() => () => {});
   const stage = stampStage({ width: surface.width, height: surface.height }, margin);
@@ -1029,7 +1031,7 @@ export async function createStampPaintRenderer(
   const scope = surface.scope();
   try {
     const loading = surface.checked('loading the painting onto the GPU', () =>
-      rendererOnSurface(surface, stage, scope, compositorOn, wetnessOf, mediumOf, painting, paper, image, bound, tipLevels, wetStages, outsideLayers, span));
+      rendererOnSurface(surface, stage, scope, compositorOn, wetnessOf, mediumOf, painting, paper, image, bound, tipLevels, wetStages, outsideLayers, layerCacheBudget, span));
     // The load itself ran within the call: what's left is WebGPU's check of it.
     done = span('stamp paint gpu check load');
     const renderer = await loading;
@@ -1070,7 +1072,8 @@ function rendererOnSurface(
   surface: StampPaintSurface, stage: StampStage, scope: StampPaintGpuScope, compositorOn: (device: StampPaintDevice) => StampPaintCompositor,
   wetnessOf: ((groups: CompiledStampPaint) => StampWetness) | null, mediumOf: ((group: Pick<CompiledStampGroup, 'id'>) => PaintMedium) | null, painting: CompiledStampPaint, paper: StampPaintPaper,
   image: (source: StampBrushImageSource) => StampPaintImage, bound: ReadonlyMap<CompiledStampDeposit, StampBrush<StampPaintImage>>,
-  tipLevels: ReadonlyMap<StampPaintImage, StampTipLevel[]>, wetStages: readonly StampWetStage[], outsideLayers: readonly StampOutsideLayer[], span: FrameProfileStart,
+  tipLevels: ReadonlyMap<StampPaintImage, StampTipLevel[]>, wetStages: readonly StampWetStage[], outsideLayers: readonly StampOutsideLayer[], layerCacheBudget: number | undefined,
+  span: FrameProfileStart,
 ): StampPaintRenderer {
   const { width, height, frame, margin } = stage, { format } = surface, { device } = scope;
   const outsidePlaces = stampOutsideLayerPlaces(painting, outsideLayers);
@@ -2136,7 +2139,7 @@ function rendererOnSurface(
   const checkpoints = stampPaintCheckpoints(surface.device, { painting: targets.painting.texture, layer: targets.layer.texture, clip: targets.clip.texture, light: () => lightTarget().texture });
   const groupEvents = stampGroupEvents(painting);
   // Settled groups' painted layers, so a frame laying them elsewhere copies them back rather than painting them again.
-  const layerCache = stampPaintLayerCache(surface.device, targets.layer.texture);
+  const layerCache = stampPaintLayerCache(surface.device, targets.layer.texture, layerCacheBudget);
   /** The layer cached under `key` copied back into the layer target, timed when it's there. */
   function restoreGroupLayer(encoder: GPUCommandEncoder, key: string) {
     const restored = span('stamp paint layer restore');

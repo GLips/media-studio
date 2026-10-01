@@ -13,6 +13,8 @@ import { extname, join, normalize, sep } from 'node:path';
 import { build } from 'esbuild';
 import { inRenderBrowser } from './render-browser.ts';
 
+/** Fonts and sounds a module imports (through `#studio`, say), inlined: nothing serves them. */
+const INLINED_ASSETS = { '.ttf': 'dataurl', '.wav': 'dataurl' } as const;
 const CONTENT_TYPES: Readonly<Record<string, string>> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.json': 'application/json' };
 
 /** Calls the module's `globalThis[name](...args)` in the page, and resolves with what it returns (serialized). */
@@ -33,9 +35,12 @@ export async function bundledSourceFiles(root: string, entry: string, platform: 
 /**
  * Opens `entry` (bundled for the browser) in a page of the render browser, with `filesDir` served at `/files/`, and
  * hands `use` a way to call what the module put on globalThis. The page, server and browser close when `use` settles.
+ * `alias`: bare imports the bundle resolves to files, as the studio's bundle resolves `@stamp-paint-styles`.
  */
-export async function withBrowserModulePage<T>({ entry, filesDir }: { entry: string; filesDir: string }, use: (call: BrowserModuleCall) => Promise<T>): Promise<T> {
-  const bundled = await build({ entryPoints: [entry], bundle: true, write: false, format: 'iife', platform: 'browser', target: 'chrome120', logLevel: 'silent' });
+export async function withBrowserModulePage<T>(
+  { entry, filesDir, alias }: { entry: string; filesDir: string; alias?: Readonly<Record<string, string>> }, use: (call: BrowserModuleCall) => Promise<T>,
+): Promise<T> {
+  const bundled = await build({ entryPoints: [entry], bundle: true, write: false, format: 'iife', platform: 'browser', target: 'chrome120', logLevel: 'silent', loader: INLINED_ASSETS, ...(alias && { alias: { ...alias } }) });
   const script = bundled.outputFiles[0].contents;
   const root = normalize(filesDir) + sep;
   const server = createServer((request, response) => {
