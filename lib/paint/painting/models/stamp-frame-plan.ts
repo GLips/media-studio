@@ -50,8 +50,9 @@ export type StampFramePlan = {
    */
   checkpointKey: (event: number) => string;
   /**
-   * The events after which a frame starting from event `from` saves a checkpoint: its settled prefix, and the state
-   * before the first group that moves, boils or recolours, which later frames share; none holding a state this frame's alone.
+   * The events after which a frame starting from event `from` saves a checkpoint: its settled prefix, the state before
+   * the first group that moves, boils or recolours, and each group placed afresh painted but not laid, which later
+   * frames share; none holding a state this frame's alone.
    */
   checkpointSaves: (from: number) => ReadonlySet<number>;
 };
@@ -79,15 +80,21 @@ export function stampFramePlan(painting: CompiledStampPaint, groupEvents: readon
   const marks = groups.map(({ epoch, paintAt }) => `${epoch}${paintAt === null ? '' : `~${paintAt}`}`);
   // A warp's field is a pure function of its time, so its time names its lay.
   const laid = groups.map(({ moved, warpAt }, index) => `${marks[index]}${moved ? `@${moved.x},${moved.y},${moved.rotation},${moved.scale}` : ''}${warpAt === null ? '' : `^${warpAt}`}`);
-  /** Each group with events that begin before `event`: laid by then, or partway through. A group with none draws nothing. */
-  const reached = (event: number) => groupEvents.flatMap(({ first, end }, index) => (first < event && first < end ? [{ index, laid: end <= event }] : []));
+  /**
+   * Each group with events that begin before `event`: laid by then, or partway through. A group whose placement is this
+   * frame's own stands at its last event painted but not laid, a state frames placing it elsewhere share. A group with
+   * no events draws nothing.
+   */
+  const reached = (event: number) => groupEvents.flatMap(({ first, end }, index) => (first < event && first < end ? [{ index, laid: end < event || (end === event && !groups[index].ownPlacement), painted: end === event }] : []));
   const worthSaving = (event: number) => reached(event).every(({ index, laid: isLaid }) => !groups[index].ownMarks && !(isLaid && groups[index].ownPlacement));
   const settled = stampSettledEventCount(events, t);
+  // Where a group placed afresh this frame is painted, before its lay: what every frame placing it shares.
+  const paintedEnds = groupEvents.flatMap(({ end }, index) => (groups[index].ownPlacement && !groups[index].ownMarks ? [end] : []));
   const varyingFrom = groupEvents.find((_, index) => stampGroupVaries(painting.groups[index]))?.first ?? events.length;
   return {
     groups,
     settled,
-    checkpointKey: (event) => reached(event).map(({ index, laid: isLaid }) => (isLaid ? laid[index] : marks[index])).join('|'),
-    checkpointSaves: (from) => new Set([settled, Math.min(settled, varyingFrom)].filter((event) => event > from && worthSaving(event))),
+    checkpointKey: (event) => reached(event).map(({ index, laid: isLaid, painted }) => (isLaid ? laid[index] : `${marks[index]}${painted ? '#painted' : ''}`)).join('|'),
+    checkpointSaves: (from) => new Set([settled, Math.min(settled, varyingFrom), ...paintedEnds.filter((end) => end <= settled)].filter((event) => event > from && worthSaving(event))),
   };
 }

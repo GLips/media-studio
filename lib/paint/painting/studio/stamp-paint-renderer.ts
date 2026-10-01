@@ -1961,15 +1961,17 @@ function rendererOnSurface(
     const start = whole ? null : checkpoints.latest(settled, checkpointKey);
     const from = start?.event ?? 0;
     const saves = whole ? new Set<number>() : checkpointSaves(from);
+    // A group placed afresh at the last event is saved there painted, before its lay; the store keeps the first save of a key.
     const save = (event: number, inGroup: boolean, painted: Box | null) => {
       if (saves.has(event)) checkpoints.save(encoder, { event, key: checkpointKey(event), inGroup, painted });
     };
     if (start) checkpoints.restore(encoder, start);
     else drawPaper(encoder);
-    for (const [index, { group, moved, warpAt, epoch }] of groups.entries()) {
+    for (const [index, { group, moved, warpAt, epoch, ownPlacement }] of groups.entries()) {
       const { marks, bank } = epochOf(group, epoch);
       const { first, end } = groupEvents[index];
-      if (end <= from) continue;
+      // A checkpoint at a group's end within it holds it painted, not laid: only its lay is left.
+      if (end < from || (end === from && !start?.inGroup)) continue;
       save(first, false, null);
       if (first >= from) for (const view of targets.layer.layers) clear(encoder, view);
       let painted: Box | null = start && from > first ? start.painted : null;
@@ -1991,6 +1993,7 @@ function rendererOnSurface(
           for (const stage of stages) if (stage.after === 'drying') painted = unionOf(painted, stage.running.encode(encoder, { drying, seed }));
         }
       }
+      if (ownPlacement) save(end, true, painted);
       if (painted) layGroup(encoder, index, group, painted, moved, warpAt);
     }
     save(events.length, false, null);
