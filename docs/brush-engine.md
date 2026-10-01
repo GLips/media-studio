@@ -78,6 +78,14 @@ long enough) and one at the wash's end, each `StampWashRecord.dryings`, which th
 read. A drying is the whole wash's, never a region's. A graded material lays each pigment
 of either end, its amount graded on the GPU. A plain pass lands as it always has. Flat colour has no washes.
 
+**Capabilities.** A `PaintMedium` declares what it can do besides lay paint (`PaintCapability`): `'wet-history'`,
+`'wet-conditions'`, `'lift'`, `'burnish'`. Watercolour and gouache declare the first three; crayon `lift` (its eraser)
+and `burnish`; flat colour, in no medium, none. Every medium has `wetting` and a sheen, so nothing is read off them:
+`checkPaintCapability` is the one check (a burnish, a lift). Which law lays a deposit is `stampDepositionLaw`, per
+deposit: water, a lift, and paint from a wet brush in a medium with wet history land in the wash's history
+(`landDeposit`); any other paint, a dry-media brush's or crayon's in a wash too, is laid by the dry law (`layDeposit`:
+pressure, the tooth, a burnish).
+
 **Fields.** A material, a fill's load and a preparation's wetness are each a `StampPaintField`
 (`stamp-paint-field.ts`): constant, linear, radial, or noise, two octaves of seeded value noise at a feature size in
 painting pixels, their lattices turned off the painting's axes. Every reader reads one share (`paintFieldShare` on the

@@ -3,8 +3,25 @@
 // brush's water stops at a hard edge on dry paper, however soft its tip, and so does a flood's outside a wash, its
 // paper dry. The laws are WGSL only: the renderer is where they run.
 
-import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
+import { paintMediumCan, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import type { CompiledStampAction } from './stamp-paint-action.ts';
+
+/**
+ * Which law lays a deposit (`wash`, the compositor's landDeposit, into the paper's wetness: firm, as workable as the
+ * paper is; `dry`, layDeposit: its stamps' pressure, the tooth, a burnish), decided per deposit, `history` whether its
+ * passage keeps the paper's wetness. Water and a lift act on it; paint lands in it only from a wet brush in a
+ * 'wet-history' medium.
+ */
+export type StampDepositionLaw = 'wash' | 'dry';
+export function stampDepositionLaw(
+  deposit: { action: Pick<CompiledStampAction, 'kind'>; brush: Pick<StampBrush, 'media'> }, medium: PaintMedium | null, history: boolean,
+): StampDepositionLaw {
+  if (!history) return 'dry';
+  if (deposit.action.kind !== 'paint') return 'wash';
+  // A dry brush skips the tooth wherever it's laid, a crayon in a wash too.
+  return deposit.brush.media !== 'dry' && paintMediumCan(medium, 'wet-history') ? 'wash' : 'dry';
+}
 
 /**
  * Whether a flood laid outside a wash carries water, and so stops at a hard edge on the dry paper (wetLandCover).

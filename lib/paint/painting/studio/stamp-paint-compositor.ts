@@ -8,6 +8,7 @@
 // `glaze` multiplies at its opacity. Colours mix gamma-encoded, as Photoshop does with RGB blend gamma off: nothing
 // decodes to linear light.
 
+import { checkPaintCapability } from '#lib/paint/materials/models/paint-medium.ts';
 import type { StampBlend } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampKeySpanAt, type StampKeyList } from '../models/stamp-scene-keys.ts';
 import { STAMP_OPAQUE_COVER, type CompiledStampDeposit, type CompiledStampPaint } from '../models/stamp-paint-recipe-compile.ts';
@@ -174,7 +175,7 @@ export function flatStampPaintCompositor(painting: CompiledStampPaint): StampPai
   for (const deposit of deposits) {
     const { action, brush } = deposit;
     if (action.material.kind !== 'constant') throw new Error(`stamp paint: ${deposit.id} grades its material, which only a style that paints in pigment can lay`);
-    if (action.burnish) throw new Error(`stamp paint: ${deposit.id} burnishes, which only a style that paints in a dry medium can`);
+    if (action.burnish) checkPaintCapability(null, 'burnish', `${deposit.id}'s burnish`);
     const material = action.material.value;
     const keys = material.kind === 'keys' ? material.keys : [{ at: 0, material }] as const;
     const colors = keys.map(({ material: m }) => {

@@ -24,7 +24,7 @@ import type { StampPaintPaper } from '../models/stamp-paint-recipe-types.ts';
 import { compileStampPigmentPaint, stampGrainDepthIn, type StampPaintMixing } from '../models/stamp-pigment-paint.ts';
 import { compileStampWetness, STAMP_WET_CELL, type StampWetLanding, type StampWetness } from '../models/stamp-wetness.ts';
 import { stampWetReport, stampWetReportWarnings } from '../models/stamp-wet-report.ts';
-import { STAMP_WET_LAND_WGSL, stampFloodCarriesWater } from '../models/stamp-wet-landing.ts';
+import { STAMP_WET_LAND_WGSL, stampDepositionLaw, stampFloodCarriesWater } from '../models/stamp-wet-landing.ts';
 import { PAINT_DRY_BURNISHED_PRESS, paintPigmentSeed } from '#lib/paint/materials/models/paint-paper.ts';
 import { PAINT_BANDS } from '#lib/paint/materials/models/paint-spectrum.ts';
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
@@ -798,7 +798,10 @@ type LoadedDeposit = {
    */
   identity: CompiledStampDeposit;
   stampBuffer: GPUBuffer; tintBuffer: GPUBuffer; binBuffer: GPUBuffer;
-  /** A wash deposit's landing and where its grids start in the painting's wet grid buffer; null outside a wash. */
+  /**
+   * A deposit laid by the wash law (stampDepositionLaw): its landing, and where its grids start in the painting's wet
+   * grid buffer; null for one its medium's dry law lays, outside a wash or in it.
+   */
   landing: StampWetLanding | null; wetFirst: number | null;
   /** Its brush with each image bound to its texture, and which of its layers' stages are active. */
   brush: StampBrush<StampPaintImage>;
@@ -1059,10 +1062,15 @@ function rendererOnSurface(
       stampBuffer, tintBuffer, binBuffer,
       ...(written
         ? (({ landing, wetFirst }) => ({ landing, wetFirst }))(written.deposits.get(identity)!)
-        : { landing: wetness?.landings.get(deposit) ?? null, wetFirst: grids.firsts.get(deposit) ?? null }),
+        : { landing: washLanding(deposit, wetness), wetFirst: grids.firsts.get(deposit) ?? null }),
     }]));
     const owned = written ? [stampBuffer, tintBuffer, binBuffer] : [stampBuffer, tintBuffer, binBuffer, grids.buffer];
     return { deposits, wetness: written?.wetness ?? wetness, grids, destroy: () => owned.forEach((b) => b.destroy()) };
+  }
+  /** `deposit`'s landing in `wetness` where the wash law lays it, else null (LoadedDeposit's `landing`): a wash keeps a history, landing each deposit. */
+  function washLanding(deposit: CompiledStampDeposit, wetness: StampWetness | null): StampWetLanding | null {
+    const landing = wetness?.landings.get(deposit) ?? null;
+    return landing && stampDepositionLaw(deposit, wetMedium, true) === 'wash' ? landing : null;
   }
   /**
    * Every wash deposit's landing grids in one upload, each its wetness, workable and settled one after another (the
@@ -1288,20 +1296,20 @@ function rendererOnSurface(
   /** Each wash drying by the deposit it ends after, as written. */
   const dryingsByLast = new Map([...wetness?.washes.values() ?? []].flatMap((record) => record.dryings).map((drying) => [drying.deposits.at(-1)!, drying]));
   /**
-   * How far past its stamps' reach a deposit resolves: its edges' blur, and for a wash deposit its stages' reach and
-   * two lattice cells more, so the box holds every pixel whose settled paint its landing would leave unzeroed.
+   * How far past its stamps' reach a deposit resolves: its edges' blur, and for one the wash law lays its stages'
+   * reach and two lattice cells more, so the box holds every pixel whose settled paint its landing would leave unzeroed.
    */
-  const depositPad = (identity: CompiledStampDeposit, loadedDeposit: LoadedDeposit, pass: CompiledStampPass) => {
+  const depositPad = (loadedDeposit: LoadedDeposit) => {
     const sigma = loadedDeposit.active.edgeSigma;
-    return (sigma > 0 ? sigma * 3 : 2) + (pass.kind === 'wash' ? stampWetStageReach(wetStages, identity, wetMedium!) + 2 * STAMP_WET_CELL : 0);
+    return (sigma > 0 ? sigma * 3 : 2) + (loadedDeposit.landing ? stampWetStageReach(wetStages, loadedDeposit.identity, wetMedium!) + 2 * STAMP_WET_CELL : 0);
   };
-  /** Readies every stage for each of `groups`' wash deposits' whole boxes, between frames (StampLoadedWetStage.reserve). */
+  /** Readies every stage for the whole box of each of `groups`' deposits the wash law lays, between frames (StampLoadedWetStage.reserve). */
   const reserveWashBoxes = (groups: readonly CompiledStampGroup[], bank: DepositBank) => {
     for (const pass of groups.flatMap((group) => group.passes)) {
-      if (pass.kind !== 'wash') continue;
       for (const deposit of stampPassDeposits(pass)) {
         const loadedDeposit = bank.deposits.get(deposit)!;
-        const box = depositBox(deposit, loadedDeposit, deposit.stamps.length, deposit.dualStamps.length, depositPad(loadedDeposit.identity, loadedDeposit, pass));
+        if (!loadedDeposit.landing) continue;
+        const box = depositBox(deposit, loadedDeposit, deposit.stamps.length, deposit.dualStamps.length, depositPad(loadedDeposit));
         if (box) for (const { running } of stages) running.reserve?.(box);
       }
     }
@@ -1879,7 +1887,7 @@ function rendererOnSurface(
     const dualCount = visibleStampCountAt(deposit, t, 'dualStamps');
     // The rim is where the mask stands above a blur as wide as its edge.
     const sigma = loadedDeposit.active.edgeSigma, blurred = sigma > 0;
-    const box = depositBox(deposit, loadedDeposit, count, dualCount, depositPad(loadedDeposit.identity, loadedDeposit, pass));
+    const box = depositBox(deposit, loadedDeposit, count, dualCount, depositPad(loadedDeposit));
     if (!box) return null;
     drawStamps(encoder, deposit, loadedDeposit, count, dualCount, box);
     if (!loadedDeposit.landing) {

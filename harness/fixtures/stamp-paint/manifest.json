@@ -156,28 +156,28 @@
     "painting/pigment-crayon": {
       "file": "painting/pigment-crayon.png",
       "output": "000cd132ad1f2796df151ad7b6f0d2461fbade190da9b3caf3bcb6f5a8961fbe",
-      "inputs": "32efdf611d8fe78a0cba6537538a4145eb5a34bc908a79738d5d389420ed3d16",
-      "reason": "vid-114 merged with main (vid-135, vid-133, vid-122): inputs only, the inputs print moved with vid-114's sheen wetting and compiled within (StampArea), fill patterns as objects and seeded load fields; pixels identical",
+      "inputs": "91aea84a85283d76d053fbee77aeb41be71bc3cd026b695455886069b0a4bbf4",
+      "reason": "vid-114 passage layer step 4: inputs only, each PaintMedium now declares its capabilities (watercolour and gouache wet-history, wet-conditions, lift; crayon lift, burnish), which the inputs print holds; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "25ba801",
+      "acceptedOver": "5eb1a3f",
       "adapter": "apple metal-3"
     },
     "painting/pigment-gouache": {
       "file": "painting/pigment-gouache.png",
       "output": "edbe3666bfc5c42fb109ec6be4abb9a209c4118f2c33e69b5b7338dd673bfedc",
-      "inputs": "e70bc23ba89bb5983d4b73d9b0f85697d249def67cedc6d0398c5cd1f8f1e1f5",
-      "reason": "vid-114 merged with main (vid-135, vid-133, vid-122): inputs only, the inputs print moved with vid-114's sheen wetting and compiled within (StampArea), fill patterns as objects and seeded load fields; pixels identical",
+      "inputs": "d165644d38c214142191f824dc040b454706f17bf71a09de0511a36bef44ad93",
+      "reason": "vid-114 passage layer step 4: inputs only, each PaintMedium now declares its capabilities (watercolour and gouache wet-history, wet-conditions, lift; crayon lift, burnish), which the inputs print holds; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "25ba801",
+      "acceptedOver": "5eb1a3f",
       "adapter": "apple metal-3"
     },
     "painting/pigment-watercolour": {
       "file": "painting/pigment-watercolour.png",
       "output": "804c638367f7b971fff0937af5e80288568473edeb2bfe057e0072c66f9199cf",
-      "inputs": "8ea82a4104b203202b00d611456e9ff760118b5b1c456a5cf27799ff609acac8",
-      "reason": "vid-114 stream M merged: inputs only, as on M: PaintWetting.damp moves into PaintWetting.sheen { shiny, damp }, the bloom's merging reading sheen.shiny, equal to brushWater in every medium that blooms; pixels identical",
+      "inputs": "48e041d4959079c315bf3eb2b8d1539e4b0e35cb12e95e6649edc514a5a07c22",
+      "reason": "vid-114 passage layer step 4: inputs only, each PaintMedium now declares its capabilities (watercolour and gouache wet-history, wet-conditions, lift; crayon lift, burnish), which the inputs print holds; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "1b221f5",
+      "acceptedOver": "5eb1a3f",
       "adapter": "apple metal-3"
     },
     "painting/regions": {

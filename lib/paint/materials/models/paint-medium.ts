@@ -56,7 +56,25 @@ export type PaintMedium = {
    */
   pickup: number;
   wetting: PaintWetting;
+  /** What it can do besides lay paint (PaintCapability), each named here, never read off the numbers above. */
+  capabilities: readonly PaintCapability[];
 };
+
+/**
+ * What a medium can do besides lay paint, declared, as every medium has `wetting`, crayon's too. `wet-history`: its
+ * paint lands into the paper's wetness (the wash law). `wet-conditions`: it has a sheen to wait for ('shiny',
+ * 'damp'). `lift`: paint comes back up (a sponge, an eraser). `burnish`: pressed into every valley of the tooth.
+ */
+export type PaintCapability = 'wet-history' | 'wet-conditions' | 'lift' | 'burnish';
+
+/** Whether `medium` declares `capability`; flat colour (null, painting in no medium) declares none. */
+export const paintMediumCan = (medium: PaintMedium | null, capability: PaintCapability) => !!medium?.capabilities.includes(capability);
+
+/** Throws, naming `what` asked, unless `medium` declares `capability`: the one place a painting is held to its medium. */
+export function checkPaintCapability(medium: PaintMedium | null, capability: PaintCapability, what: string): void {
+  if (paintMediumCan(medium, capability)) return;
+  throw new Error(`stamp paint: ${what} needs '${capability}', which ${medium ? medium.name : 'flat colour, in no medium,'} doesn't declare`);
+}
 
 /**
  * A masstone medium's colours: each the paint's own, thick. `cover` is what a full load of a perfect white reflects
@@ -107,6 +125,7 @@ export const PAINT_MEDIA = {
   watercolour: {
     name: 'watercolour', color: { kind: 'glaze', hiding: 0.02 }, body: 1, lightening: { kind: 'water' }, granulation: 0.7, paperContact: { kind: 'valleys' }, layering: { kind: 'mixes' }, dryingScatter: 0.1, pickup: 0.5,
     wetting: { spread: 0.5, drying: 240, openTime: 0, rewetting: 0.35, brushWater: 0.7, sheen: { shiny: 0.7, damp: 0.35 } },
+    capabilities: ['wet-history', 'wet-conditions', 'lift'],
   },
   // Tuned by eye (vid-109), not measured: a stroke mostly lays its own paint over wet paint, darks dry lighter and
   // matte, and a dark colour holds its hue into tints with white. A stroke is about twenty washes thick and one coat
@@ -116,6 +135,7 @@ export const PAINT_MEDIA = {
     paperContact: { kind: 'valleys' }, layering: { kind: 'mixes' }, dryingScatter: 0.4, pickup: 0.2,
     // A first guess (vid-117): it barely travels, dries fast and re-dissolves once dry.
     wetting: { spread: 0.1, drying: 120, openTime: 0, rewetting: 0.9, brushWater: 0.4, sheen: { shiny: 0.4, damp: 0.35 } },
+    capabilities: ['wet-history', 'wet-conditions', 'lift'],
   },
   // Tuned by eye (vid-109, vid-124), not measured: a firm hand skips the paper below 85% of its mean height; about
   // five layers fill the tooth. Wax lays about fifteen washes thick and one coat of white nearly hides black, so a
@@ -127,6 +147,8 @@ export const PAINT_MEDIA = {
     // No water and no spread. A lift is an eraser, taking the wax off the tooth's peaks but not what's pressed in (vid-117).
     // Its sheen only times a wait: with no spread, no bloom or rim reads it.
     wetting: { spread: 0, drying: 1, openTime: 0, rewetting: 0.85, brushWater: 0, sheen: { shiny: 0.7, damp: 0.35 } },
+    // Laid by its own law, pressure and tooth, never the wash's; its eraser lifts.
+    capabilities: ['lift', 'burnish'],
   },
 } as const satisfies Record<string, PaintMedium>;
 
