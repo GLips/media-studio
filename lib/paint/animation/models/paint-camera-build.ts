@@ -8,12 +8,13 @@
 // Negative space: a backdrop is checked through the camera alone. Its own placement or warp isn't inverted, as
 // backdrops hold still; one that moves is checked as if it didn't.
 
+import { stampStageExtent, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import {
   paintCameraClipProblem, paintCameraFocusAt, paintCameraPoseAt, paintPlaneSimilarity, paintStageCentre,
-  type PaintAnchor, type PaintCamera, type PaintCameraFocusClip, type PaintCameraMoveClip, type PaintCameraPlay, type PaintStage,
+  type PaintAnchor, type PaintCamera, type PaintCameraFocusClip, type PaintCameraMoveClip, type PaintCameraPlay,
 } from './paint-camera.ts';
 import { paintChannelConflicts, type PaintChannelWriter } from './paint-channels.ts';
 import {
@@ -32,7 +33,7 @@ export const PAINT_CAMERA_NEAREST = 1e-3;
  * backdrops and focus over besides its plays' own span.
  */
 export type PaintCameraOptions = {
-  readonly stage: PaintStage;
+  readonly stage: StampStage;
   readonly anchors: ReadonlyMap<string, PaintAnchor>;
   readonly backdrops?: readonly string[];
   readonly plays: readonly PaintCameraPlay[];
@@ -45,9 +46,8 @@ export type PaintCameraBuild = { readonly ok: true; readonly camera: PaintCamera
 
 const MOVE_LANE = 'the camera\'s move', FOCUS_LANE = 'the camera\'s focus';
 
-function stageProblem({ width, height, margin }: PaintStage): string | null {
-  return width > 0 && height > 0 && Number.isFinite(width) && Number.isFinite(height) && margin >= 0 && Number.isFinite(margin)
-    ? null : `the stage needs a positive width and height and a margin of 0 or more, not ${width}×${height} and ${margin}`;
+function stageProblem({ frame: { width, height } }: StampStage): string | null {
+  return width > 0 && height > 0 && Number.isFinite(width) && Number.isFinite(height) ? null : `the stage's frame needs a positive width and height, not ${width}×${height}`;
 }
 
 /** One loop of `clock`, scene seconds: 0 for one that doesn't loop. */
@@ -74,8 +74,8 @@ const pointText = (p: StampPoint) => `(${p.x.toFixed(0)}, ${p.y.toFixed(0)})`;
 
 /** The first time the camera shows `id`'s plane past the stage or past its paint, named; null if it never does. */
 function backdropProblem(camera: PaintCamera, id: string, painted: StampBox | null, times: readonly SceneSeconds[]): string | null {
-  const { width, height, margin } = camera.stage, depth = camera.planes.get(id);
-  const stage = { x0: -margin, y0: -margin, x1: width + margin, y1: height + margin };
+  const { frame: { width, height }, margin } = camera.stage, depth = camera.planes.get(id);
+  const stage = stampStageExtent(camera.stage);
   const corners = [{ x: 0, y: 0 }, { x: width, y: 0 }, { x: 0, y: height }, { x: width, y: height }];
   for (const t of depth === undefined ? [sceneSeconds(0)] : times) {
     const back = depth === undefined ? (p: StampPoint) => p : (p: StampPoint) => paintSimilarityApply(paintSimilarityInverse(paintPlaneSimilarity(paintCameraPoseAt(camera, t), depth, paintStageCentre(camera.stage))), p);

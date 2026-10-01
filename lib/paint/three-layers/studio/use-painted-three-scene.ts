@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useDelayRender } from 'remotion';
 import { useFrameProfile } from '#lib/picture/profiling/studio/frame-profile.ts';
+import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { loadPaintedThreeScene, type PaintedThreeFrame, type PaintedThreeScene, type PaintedThreeSpec } from './painted-three-gpu.ts';
 
 /**
@@ -15,7 +16,7 @@ export function usePaintedThreeScene(spec: PaintedThreeSpec, { t, frame, pose, l
   const { delayRender, continueRender, cancelRender } = useDelayRender();
   const profile = useFrameProfile();
   const { painting, style, stage, fov, threeLayers, paintedTextures } = spec;
-  const { width, height, margin } = stage;
+  const { frame: { width, height }, margin } = stage;
 
   useLayoutEffect(() => {
     const handle = delayRender('loading the painted three.js scene: one device, its paintings and three.js');
@@ -28,7 +29,7 @@ export function usePaintedThreeScene(spec: PaintedThreeSpec, { t, frame, pose, l
     Object.assign(canvas.style, { position: 'absolute', inset: '0', width: '100%', height: '100%' });
     holder.current!.append(canvas);
     const timedLoad = profile?.('painted three load');
-    loadPaintedThreeScene(canvas, { painting, style, stage: { width, height, margin }, fov, threeLayers, paintedTextures }, profile).then((scene) => {
+    loadPaintedThreeScene(canvas, { painting, style, stage: stampStage({ width, height }, margin), fov, threeLayers, paintedTextures }, profile).then((scene) => {
       timedLoad?.();
       ready = scene;
       if (!live) return scene.dispose();

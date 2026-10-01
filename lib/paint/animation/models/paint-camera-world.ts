@@ -7,7 +7,8 @@
 // The fov sets how deep the 3D world looks, never where a plane lands. Plain numbers: models never import three.
 
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import { paintStageCentre, type PaintCameraPose, type PaintStage } from './paint-camera.ts';
+import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
+import { paintStageCentre, type PaintCameraPose } from './paint-camera.ts';
 
 /** A length in the 3D world: one unit is a px at depth 1, as seen through the camera at rest. */
 export type PaintWorldUnits = number & { readonly unit: 'world units (px at depth 1)' };
@@ -20,11 +21,11 @@ export type PaintWorldPoint = { readonly x: PaintWorldUnits; readonly y: PaintWo
  * The world a scene's 3D layers share with its planes: its `stage`, the vertical field of view over the frame at rest
  * (`fov`, degrees), and `depthUnit`, how far depth 1 lies from the camera's rest: (frame height / 2) / tan(fov / 2).
  */
-export type PaintCameraWorld = { readonly stage: PaintStage; readonly fov: number; readonly depthUnit: PaintWorldUnits };
+export type PaintCameraWorld = { readonly stage: StampStage; readonly fov: number; readonly depthUnit: PaintWorldUnits };
 
-export function paintCameraWorld(stage: PaintStage, { fov }: { readonly fov: number }): PaintCameraWorld {
+export function paintCameraWorld(stage: StampStage, { fov }: { readonly fov: number }): PaintCameraWorld {
   if (!(fov > 0 && fov < 180)) throw new Error(`paint camera: a field of view is between 0 and 180 degrees, not ${fov}`);
-  return { stage, fov, depthUnit: worldUnits(stage.height / 2 / Math.tan((fov * Math.PI) / 360)) };
+  return { stage, fov, depthUnit: worldUnits(stage.frame.height / 2 / Math.tan((fov * Math.PI) / 360)) };
 }
 
 /** Where a plane's anchor point `point` (px) at `depth` lies in the world. */
@@ -41,7 +42,7 @@ export function paintPlaneWorldPoint({ stage, depthUnit }: PaintCameraWorld, poi
 export function paintCameraPerspectiveAt({ stage, depthUnit }: PaintCameraWorld, { pan, dolly, zoom, roll }: PaintCameraPose): {
   readonly position: PaintWorldPoint; readonly rotationZ: number; readonly fov: number; readonly aspect: number;
 } {
-  const width = stage.width + 2 * stage.margin, height = stage.height + 2 * stage.margin;
+  const { width, height } = stage;
   return {
     position: { x: worldUnits(pan.x), y: worldUnits(-pan.y), z: worldUnits(-dolly * depthUnit) },
     // A rotation.z of −roll in three's y-up world turns the picture by −roll in the painting's y-down angles.

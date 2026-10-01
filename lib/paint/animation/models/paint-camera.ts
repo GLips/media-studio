@@ -8,6 +8,7 @@
 // Unless a play holds it, the camera is on ones: each render frame gets a new pose and each plane a new lay, which
 // the renderer's per-group layer cache makes cheap.
 
+import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { StampGroupFrameState, StampGroupLay, StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { paintLanePlayAt, paintPlayClipTimeAt, sceneSeconds, type PaintLane, type PaintPlayClock } from './paint-clock.ts';
@@ -17,13 +18,8 @@ import {
   paintPlacementOfSimilarity, paintSimilarityAfter, paintSimilarityOf, paintSimilarityScale, type PaintSimilarity,
 } from './paint-similarity.ts';
 
-/**
- * The painting's stage: the frame, `width` by `height` px from (0, 0), and `margin` px the renderer paints past each
- * side of it (the same margin the scene gives the renderer), so a camera can bring in what lies just off the frame.
- */
-export type PaintStage = { readonly width: number; readonly height: number; readonly margin: number };
-
-export const paintStageCentre = ({ width, height }: PaintStage): StampPoint => ({ x: width / 2, y: height / 2 });
+/** The frame's centre on `stage` (the renderer's: the frame and the margin it paints past it), what planes scale about. */
+export const paintStageCentre = ({ frame }: StampStage): StampPoint => ({ x: frame.width / 2, y: frame.height / 2 });
 
 /**
  * What a group's rest coordinates are relative to. `canvas`: the stage itself, untouched by the camera (a title card).
@@ -67,7 +63,7 @@ export const paintCameraPlay = (clip: PaintCameraClip, timing: { readonly clock:
  * lane per thing they write.
  */
 export type PaintCamera = {
-  readonly stage: PaintStage;
+  readonly stage: StampStage;
   readonly animationFps: number;
   readonly planes: ReadonlyMap<string, number>;
   readonly move: PaintLane<PaintCameraMoveClip>;

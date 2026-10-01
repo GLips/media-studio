@@ -10,7 +10,8 @@
 import { HalfFloatType, PerspectiveCamera, RenderTarget, WebGPUBackend, WebGPURenderer, ExternalTexture, type Scene } from 'three/webgpu';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { paintCameraPerspectiveAt, paintCameraWorld, type PaintCameraWorld } from '#lib/paint/animation/models/paint-camera-world.ts';
-import { PAINT_CAMERA_REST, paintPlaneDefocus, type PaintCameraFocus, type PaintCameraPose, type PaintStage } from '#lib/paint/animation/models/paint-camera.ts';
+import { PAINT_CAMERA_REST, paintPlaneDefocus, type PaintCameraFocus, type PaintCameraPose } from '#lib/paint/animation/models/paint-camera.ts';
+import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { StampOutsideLayerSlot, StampOutsideLayerState } from '#lib/paint/painting/models/stamp-outside-layer.ts';
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
@@ -68,7 +69,7 @@ export type PaintedThreeLayer = StampOutsideLayerSlot & {
 export type PaintedThreeSpec = {
   painting: CompiledStampPaint;
   style: PaintedThreeStyle;
-  stage: PaintStage;
+  stage: StampStage;
   fov: number;
   threeLayers: readonly PaintedThreeLayer[];
   paintedTextures: readonly PaintedThreeTexture[];
@@ -178,7 +179,7 @@ export async function loadPaintedThreeScene(canvas: HTMLCanvasElement, spec: Pai
     }));
 
     const world = paintCameraWorld(stage, { fov: spec.fov });
-    const stageWidth = stage.width + 2 * stage.margin, stageHeight = stage.height + 2 * stage.margin;
+    const { width: stageWidth, height: stageHeight } = stage;
     const { three, layers } = await timed(profile, device, 'three load', () => checkedOnPaintedThreeDevice(device, 'loading three.js and its layers', async () => {
       const renderer = new WebGPURenderer({ device, antialias: false, alpha: true });
       made.push(renderer);
@@ -211,7 +212,7 @@ export async function loadPaintedThreeScene(canvas: HTMLCanvasElement, spec: Pai
     }));
 
     const main = await timed(profile, device, 'stamp paint load', async () => {
-      const surface = await createStampPaintSurface({ canvas, width: stage.width, height: stage.height, device }, stampPaintAssetUrl);
+      const surface = await createStampPaintSurface({ canvas, width: stage.frame.width, height: stage.frame.height, device }, stampPaintAssetUrl);
       made.push(surface);
       const renderer = await createStampPaintRenderer(surface, spec.painting, spec.style.paper, spec.style.mixing, {
         profile, margin: stage.margin, outsideLayers: layers.map(({ layer: { id, beneath }, texture }) => ({ id, beneath, texture })),

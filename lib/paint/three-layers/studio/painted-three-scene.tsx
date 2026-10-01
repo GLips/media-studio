@@ -7,6 +7,7 @@ import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { PAINT_CAMERA_REST, paintCameraFocusAt, paintCameraPoseAt, type PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import { useStampStyleContent } from '#lib/paint/style/studio/stamp-painting.tsx';
 import type { PaintedThreeLayer, PaintedThreeStyle, PaintedThreeTexture } from './painted-three-gpu.ts';
@@ -19,27 +20,28 @@ const NO_PAINTED_TEXTURES: readonly PaintedThreeTexture[] = [];
 
 /**
  * Draws `painting` in `style` over the frame at `t`, its groups in `frame`'s state (the camera's view in it), with
- * `three`'s layers laid in its order. `camera` poses three's camera (at rest without one); its stage is the frame's
- * with `margin`, the outside textures' size. Memoise `three`: a new array loads the scene anew.
+ * `three`'s layers laid in its order. `camera` poses three's camera (at rest without one); its stage, margin and
+ * all, is the renderer's (with no camera, the frame alone). Memoise `three`: a new array loads the scene anew.
  */
-export function PaintedThreeScene({ painting, style, t, frame, camera, margin = 0, three }: {
+export function PaintedThreeScene({ painting, style, t, frame, camera, three }: {
   painting: CompiledStampPaint;
   style: PaintedThreeStyle;
   t: number;
   frame?: StampPaintFrameState;
   camera?: PaintCamera;
-  margin?: number;
   three: PaintedThreeContent;
 }) {
   const paper = useStampStyleContent(style.paper), mixing = useStampStyleContent(style.mixing);
   const { width, height } = useVideoFormat();
   const kept = useMemo(() => ({ paper, mixing }), [paper, mixing]);
-  if (camera && (camera.stage.width !== width || camera.stage.height !== height || camera.stage.margin !== margin)) {
-    throw new Error(`painted three: the camera's stage is ${JSON.stringify(camera.stage)}, and the frame ${width} × ${height} with a margin of ${margin}`);
+  // The camera's stage is the renderer's: its margin is the one the camera's checks held a backdrop to.
+  const stage = camera?.stage ?? stampStage({ width, height });
+  if (stage.frame.width !== width || stage.frame.height !== height) {
+    throw new Error(`painted three: the camera's frame is ${stage.frame.width} × ${stage.frame.height}, and the video's ${width} × ${height}`);
   }
   const pose = camera ? paintCameraPoseAt(camera, t) : PAINT_CAMERA_REST, lens = camera ? paintCameraFocusAt(camera, t) : null;
   const holder = usePaintedThreeScene(
-    { painting, style: kept, stage: { width, height, margin }, fov: three.fov, threeLayers: three.layers, paintedTextures: three.paintedTextures ?? NO_PAINTED_TEXTURES },
+    { painting, style: kept, stage, fov: three.fov, threeLayers: three.layers, paintedTextures: three.paintedTextures ?? NO_PAINTED_TEXTURES },
     { t, frame, pose, lens },
   );
   return <div ref={holder} {...unmeasuredAttrs('painted three scene')} style={{ position: 'absolute', inset: 0 }} />;

@@ -7,7 +7,8 @@ import { STAMP_WARP_CELL, stampWarpCells, stampWarpTriangles } from '#lib/paint/
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
-import type { PaintCameraPlay, PaintStage } from './paint-camera.ts';
+import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
+import type { PaintCameraPlay } from './paint-camera.ts';
 import { compilePaintCamera } from './paint-camera-build.ts';
 import { paintAnimationFrameStart, type AnimationFrame } from './paint-clock.ts';
 import { paintDeformMap, paintDeformShifts, paintWarpChainKey, paintWarpChainMap, type PaintWarpChain } from './paint-deform.ts';
@@ -81,7 +82,7 @@ export function buildPaintMotion(
   painting: CompiledStampPaint,
   o: {
     nodes: readonly PaintMotionNode[]; plays: readonly PaintMotionPlay[]; animationFps?: number; foldCheck?: { from: number; to: number };
-    camera?: { stage: PaintStage; plays: readonly PaintCameraPlay[] };
+    camera?: { stage: StampStage; plays: readonly PaintCameraPlay[] };
   },
 ): PaintMotionBuild {
   const problems: string[] = [], animationFps = o.animationFps ?? PAINT_ANIMATION_FPS;

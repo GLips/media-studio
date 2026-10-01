@@ -1,3 +1,4 @@
+import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
@@ -28,7 +29,7 @@ const paintingOf = (groups: readonly { id: string; box: StampBox }[]) => compile
     paint.group(id, { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) => pass.stroke('s', stroke)));
   }
 }));
-const stage = { width: 800, height: 600, margin: 100 };
+const stage = stampStage({ width: 800, height: 600 }, 100);
 const across = { x0: 0, y0: 0, x1: 800, y1: 600 };
 
 const built = (build: PaintMotionBuild): PaintMotion => {
@@ -114,7 +115,7 @@ test('a point on a plane, rendered through the perspective camera three.js is gi
   ];
   for (const pose of poses) {
     const camera = paintCameraPerspectiveAt(world, pose), focal = 1 / Math.tan((camera.fov * Math.PI) / 360);
-    const targetHeight = stage.height + 2 * stage.margin;
+    const targetHeight = stage.height;
     for (const depth of [0.6, 1, 3.5]) {
       for (const point of [{ x: 120, y: 90 }, { x: 790, y: 560 }, { x: -80, y: 640 }]) {
         // three: the view is the camera's inverse (a turn about z by rotationZ after its position), then its projection.
