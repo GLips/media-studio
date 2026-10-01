@@ -254,8 +254,8 @@ an error. A frame held on twos gives every group the keys it had, so it repaints
   `paintMotionFrameAt(motion, t)` is pure in `t`, and writes each group's `StampGroupFrameState`.
 - **Planes and the camera** (`painting/models/stamp-plane.ts`, `paint-camera.ts`, `paint-camera-build.ts`): a scene
   is planes, each `{ id, depth, source }`, laid far to near. The back, the farthest, is paper to the stage's edge.
-  Every nearer painted plane is clear film: its opaque groups' paint covers what's behind as far as it's laid, so
-  coverage moves, warps and fades with the group, and its glaze groups' paint filters what's behind. A three
+  Every nearer painted plane is clear film: its paint, opaque or glazed, hides and filters what's behind as it would
+  on one sheet, moving, warping and fading with its group. A three
   plane is a three.js render. A painted plane's picture doesn't depend on the camera and is kept on the device while
   its groups hold. The camera is one description: its plays key `move` (pan, dolly, zoom, roll) and `focus` (focus
   depth, aperture), plus `fov` and a lens with one `bloom`. `paintCameraLensAt` gives each plane's view (a
@@ -267,11 +267,12 @@ an error. A frame held on twos gives every group the keys it had, so it repaints
 **Planes on the GPU** (`stamp-paint-renderer.ts`, `stamp-paint-plane-passes.ts`). One owner holds a device
 (`stamp-paint-gpu-owner.ts`): its images, pipelines' targets and one cache budget, shared by films, pictures and
 blurred pictures. A surface is one output on it. One painted plane at rest, sharp and not glowing is drawn straight
-to the output, as a still always was. Otherwise each plane's picture is painted (paper, its groups, on a clear plane
-each opaque group's cover as laid, max-joined into its coverage, and each glowing group's light past its threshold
+to the output, as a still always was. Otherwise each plane's picture is painted (paper, its groups, and each glowing group's light past its threshold
 into the plane's emission), defocused, and composited into a frame-sized target, its emission beside it, so paint a
-nearer plane covers doesn't glow. A clear plane's picture also holds its glaze, what its paint takes from the light
-behind, so laying it filters what's behind and then adds its colour (`over` where nothing glazes).
+nearer plane covers doesn't glow. A clear plane's groups are laid twice, on its paper and on black (its films kept
+from the first lay). Over any backing its light is what it adds plus what it lets through of the backing, per
+channel, so the two lays and the two papers' own light give both. Its picture holds what it adds and its glaze, what
+it takes from the light behind, so laying it filters what's behind and then adds its colour (`over` for the back).
 The output blooms the emission once (`lens.bloom`), adds it in linear light, and encodes. Texture contracts:
 pictures, three sources and the composite are rgba16float, premultiplied linear; a painted texture three samples is
 rgba16float, gamma-encoded and opaque, decoded by `paintedThreeColorNode`. A glowing frame drawn without a lens is

@@ -243,9 +243,10 @@ elements, which is what keeps objects from showing through each other.
 
 **Planes and the camera (multiplane).** A scene is planes `{ id, depth, source }`, 1 being where a pan's pixels are
 measured and nearer under 1. Every group is on exactly one painted plane (`{ kind: 'painted', groups }`). The
-farthest is paper to the stage's edge. Every nearer painted plane is clear film: an `opaque` group's paint hides
-what's behind as far as it's laid, moving, bending and fading with the group (a swaying tuft, a drifting butterfly, a
-puffing sac), and a `glaze` group's paint (an ink line, a shadow) filters what's behind. Paint each plane the size it should look before the camera moves: at rest nothing changes. Build the
+farthest is paper to the stage's edge. Every nearer painted plane is clear film: its paint shows over what's behind as it
+would on one sheet (it's laid on its paper and on black, and what it adds and lets through come from the two), so an
+`opaque` group's paint hides what's behind, a `glaze` group's (an ink line, a shadow) filters it, and both move, bend
+and fade with the group (a swaying tuft, a drifting butterfly, a puffing sac). Paint each plane the size it should look before the camera moves: at rest nothing changes. Build the
 camera with `buildPaintCamera(painting, { stage: stampStage({ width, height }, margin), fov, planes, lens: { bloom },
 plays })`. Plays are `paintCameraPlay({ kind: 'move', keys: [{ at, pan?: { x, y }, dolly?, zoom?, roll?, ease? }] },
 { clock, origin })`, and `{ kind: 'focus', keys: [{ at, focus, aperture }] }` for depth of field: `focus` is the depth

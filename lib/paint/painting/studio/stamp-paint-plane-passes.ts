@@ -1,11 +1,10 @@
 // stamp-paint-plane-passes.ts: the renderer's passes from a plane's paint to the frame (stamp-plane.ts). Each painted
-// plane's picture (light times coverage, premultiplied; a clear plane's glaze; emission) is defocused and laid over
-// the planes behind where the camera puts it. The output blooms the emission once, adds it, and encodes.
+// plane's picture (its colour, premultiplied; a clear plane's glaze; emission) is defocused and laid over the planes
+// behind where the camera puts it. The output blooms the emission once, adds it, and encodes.
 //
-// A nearer plane is clear film. Its coverage is its opaque groups' cover as laid, hiding what's behind as that paint
-// would on one sheet; elsewhere its paint glazes, passing the share of light it leaves of its own paper's (kept as
-// the share taken, so a gaussian fades it to clear). Laying a picture filters what's behind by that, per channel,
-// then adds its colour. Textures between passes are rgba16float, premultiplied.
+// A nearer plane is clear film, laid on its paper and on black. Over any backing its light is what it adds plus what
+// it lets through of the backing, per channel, so the two lays and papers give both, whatever paint, glaze or lift
+// made it. Laying a picture filters what's behind, then adds its colour. Textures between passes are rgba16float.
 
 import type { StampStage } from '../models/stamp-stage.ts';
 import { stampStageWgsl } from '../models/stamp-stage.ts';
@@ -63,24 +62,22 @@ export const STAMP_GLOW_SOURCE = stampUniformLayout('GlowSource', [['threshold',
 /** Where a laid group's cover is read: its layer as laid still, or through its lattice's rest map. */
 export type StampLaidGroupCover = 'group' | 'moved group';
 
-/** A rest map's value where no lattice covers a pixel: the renderer's STAMP_NO_REST, halved as its group pass tests it. */
-const restMissing = (noRest: number) => `${noRest / 2}.0`;
-
 const targetType = (target: StampPaintTarget) => (target.kind === 'array' ? 'texture_2d_array<f32>' : 'texture_2d<f32>');
 
 /**
- * WGSL for `coverAt(pixel)`: how much of a stage pixel a group's layer (bound as `source`) covers as laid, by
- * `groupCover(layer0, glaze)`, `glaze` a WGSL bool. A moved group reads it bilinearly at the rest point its lattice's
- * rest map (bound at `restBinding`) shows there, as its paint is laid. Needs the stage's WGSL and the compositor's cover.
+ * The glow source pass's WGSL for `compositor` on `stage`: binds its uniform (0), the painting (1), the plane's
+ * emission, added to (2), the group's layer (3) and, for a moved group, its rest map (4), its cover then read
+ * bilinearly at the rest point its lattice shows.
  */
-function stampLaidGroupCoverWgsl(layer: StampPaintTarget, cover: StampLaidGroupCover, glaze: string, restBinding: number, noRest: number) {
+export function stampGlowSourceWgsl(compositor: StampPaintCompositor, cover: StampLaidGroupCover, stage: StampStage, noRest: number, workgroup: number) {
+  const { layer, painting } = compositor.targets;
   const firstLayer = (texel: string) => (layer.kind === 'array' ? `textureLoad(source, ${texel}, 0u, 0)` : `textureLoad(source, ${texel}, 0)`);
-  if (cover === 'group') return `fn coverAt(pixel: vec2u) -> f32 { return groupCover(${firstLayer('pixel')}, ${glaze}); }`;
-  return /* wgsl */ `
-@group(0) @binding(${restBinding}) var rest: texture_2d<f32>;
+  // A rest map's value where no lattice covers a pixel: STAMP_NO_REST, halved as the group pass tests it.
+  const coverAt = cover === 'group' ? `fn coverAt(pixel: vec2u) -> f32 { return groupCover(${firstLayer('pixel')}, u.glaze == 1u); }` : /* wgsl */ `
+@group(0) @binding(4) var rest: texture_2d<f32>;
 fn coverAt(pixel: vec2u) -> f32 {
   let q = textureLoad(rest, pixel, 0).xy - 0.5;
-  if (q.x < ${restMissing(noRest)}) { return 0.0; }
+  if (q.x < ${noRest / 2}.0) { return 0.0; }
   let base = floor(q);
   let f = q - base;
   var covered = 0.0;
@@ -89,19 +86,10 @@ fn coverAt(pixel: vec2u) -> f32 {
     let w = select(1.0 - f.x, f.x, corner.x == 1u) * select(1.0 - f.y, f.y, corner.y == 1u);
     let tap = vec2i(base) + STAGE_MARGIN + vec2i(corner);
     if (w == 0.0 || any(tap < vec2i(0)) || any(tap >= vec2i(textureDimensions(source)))) { continue; }
-    covered += w * groupCover(${firstLayer('vec2u(tap)')}, ${glaze});
+    covered += w * groupCover(${firstLayer('vec2u(tap)')}, u.glaze == 1u);
   }
   return covered;
 }`;
-}
-
-/**
- * The glow source pass's WGSL for `compositor` on `stage`: binds its uniform (0), the painting (1), the plane's
- * emission, added to (2), the group's layer (3) and, for a moved group, its rest map (4).
- */
-export function stampGlowSourceWgsl(compositor: StampPaintCompositor, cover: StampLaidGroupCover, stage: StampStage, noRest: number, workgroup: number) {
-  const { layer, painting } = compositor.targets;
-  const coverAt = stampLaidGroupCoverWgsl(layer, cover, 'u.glaze == 1u', 4, noRest);
   return /* wgsl */ `
 ${stampStageWgsl(stage)}
 ${STAMP_SRGB_WGSL}
@@ -125,40 +113,8 @@ ${coverAt}
 }`;
 }
 
-/**
- * An opaque group's cover joined into its clear plane's coverage over `origin` `extent` (stage texels): as much as
- * its layer covers as laid, times `strength` (its opacity and visibility), joined by max as one sheet's paint hides.
- */
-export const STAMP_PLANE_COVER = stampUniformLayout('PlaneCover', [['strength', 'f32'], ['origin', 'vec2u'], ['extent', 'vec2u']]);
-
-/**
- * The plane cover pass's WGSL for `compositor` on `stage`: binds its uniform (0), the plane's coverage, joined into
- * (1), the group's layer (2) and, for a moved group, its rest map (3).
- */
-export function stampPlaneCoverWgsl(compositor: StampPaintCompositor, cover: StampLaidGroupCover, stage: StampStage, noRest: number, workgroup: number) {
-  return /* wgsl */ `
-${stampStageWgsl(stage)}
-${STAMP_PLANE_COVER.wgsl}
-@group(0) @binding(0) var<uniform> u: PlaneCover;
-@group(0) @binding(1) var coverage: texture_storage_2d<rgba16float, read_write>;
-@group(0) @binding(2) var source: ${targetType(compositor.targets.layer)};
-${compositor.group.cover}
-${stampLaidGroupCoverWgsl(compositor.targets.layer, cover, 'false', 3, noRest)}
-@compute @workgroup_size(${workgroup}, ${workgroup}) fn planeCover(@builtin(global_invocation_id) id: vec3u) {
-  if (any(id.xy >= u.extent)) { return; }
-  let pixel = u.origin + id.xy;
-  let covered = clamp(coverAt(pixel), 0.0, 1.0) * u.strength;
-  if (covered <= 0.0) { return; }
-  let was = textureLoad(coverage, pixel);
-  textureStore(coverage, pixel, vec4f(max(was.r, covered), 0.0, 0.0, 0.0));
-}`;
-}
-
-/**
- * A picture over `extent` texels, its first at painting point `origin` (whole): the painting's light times the plane's
- * coverage there when `cut` (a clear plane's; else 1).
- */
-export const STAMP_PLANE_PICTURE = stampUniformLayout('PlanePicture', [['origin', 'vec2f'], ['extent', 'vec2u'], ['cut', 'u32']]);
+/** A picture over `extent` texels, its first at stage texel `origin`. */
+export const STAMP_PLANE_PICTURE = stampUniformLayout('PlanePicture', [['origin', 'vec2u'], ['extent', 'vec2u']]);
 
 /** A picture's array layers: its colour, then its glaze when its plane is clear, then its emission when it glows. */
 export function stampPlanePictureLayers(glazes: boolean, emits: boolean) {
@@ -166,50 +122,59 @@ export function stampPlanePictureLayers(glazes: boolean, emits: boolean) {
   return { glaze, emission: emits ? 1 + Number(glazes) : null, count: 1 + Number(glazes) + Number(emits) };
 }
 
+/** The painting's linear light over `extent` stage texels from `origin`, written from the target's first texel into array layer `layer`. */
+export const STAMP_PLANE_LIGHT = stampUniformLayout('PlaneLight', [['origin', 'vec2u'], ['extent', 'vec2u'], ['layer', 'u32']]);
+
 /**
- * The paper's own light pass's WGSL: binds the painting (0), just its paper, and the paper's light written (1), so a
- * clear plane's picture can tell how much its paint lets through.
+ * The light pass's WGSL: binds its uniform (0), the painting (1) and the target written (2), an array. It measures a
+ * paper's own light and a clear plane's light on its paper, which the picture pass reads after the lay on black.
  */
-export function stampPaperLightWgsl(compositor: StampPaintCompositor, workgroup: number) {
+export function stampPlaneLightWgsl(compositor: StampPaintCompositor, workgroup: number) {
   return /* wgsl */ `
 ${STAMP_SRGB_WGSL}
-@group(0) @binding(0) var painting: ${targetType(compositor.targets.painting)};
-@group(0) @binding(1) var paperLight: texture_storage_2d<rgba16float, write>;
+${STAMP_PLANE_LIGHT.wgsl}
+@group(0) @binding(0) var<uniform> u: PlaneLight;
+@group(0) @binding(1) var painting: ${targetType(compositor.targets.painting)};
+@group(0) @binding(2) var light: texture_storage_2d_array<rgba16float, write>;
 ${compositor.output}
-@compute @workgroup_size(${workgroup}, ${workgroup}) fn paperLightPass(@builtin(global_invocation_id) id: vec3u) {
-  if (any(id.xy >= textureDimensions(paperLight))) { return; }
-  textureStore(paperLight, id.xy, vec4f(linearLight(id.xy), 1.0));
+@compute @workgroup_size(${workgroup}, ${workgroup}) fn planeLight(@builtin(global_invocation_id) id: vec3u) {
+  if (any(id.xy >= u.extent)) { return; }
+  textureStore(light, id.xy, u.layer, vec4f(linearLight(u.origin + id.xy), 1.0));
 }`;
 }
 
 /**
- * The picture pass's WGSL: binds its uniform (0), the painting (1), the plane's coverage, stage-sized (2), its
- * emission (3), the picture written (4) and, for a clear plane (`glazes`), its paper's light (5). Colour and emission
- * are times coverage; the glaze, what's taken from the light behind, is all of it where covered, else what paint
- * takes from paper.
+ * The picture pass's WGSL: binds its uniform (0), the painting (1), its emission (2), the picture (3) and, for a clear
+ * plane (`glazes`), its paper's light, stage-sized (4). A clear plane's painting is its lay on black; its picture
+ * holds its light on paper (layer 0) and the black paper's (the glaze layer), read and replaced here.
  */
-export function stampPlanePictureWgsl(compositor: StampPaintCompositor, stage: StampStage, glazes: boolean, emits: boolean, workgroup: number) {
+export function stampPlanePictureWgsl(compositor: StampPaintCompositor, glazes: boolean, emits: boolean, workgroup: number) {
   const layers = stampPlanePictureLayers(glazes, emits);
+  // Light over backing b is C + T·b per channel, so the two lays give T = ΔL / Δpaper, and C what black leaves past
+  // T·black. Where the papers' light barely differs, T is clamped rather than trusted.
+  const clear = /* wgsl */ `
+  let onPaper = textureLoad(picture, id.xy, 0u).rgb;
+  let blackPaper = textureLoad(picture, id.xy, ${layers.glaze}u).rgb;
+  let paper = textureLoad(paperLight, texel, 0).rgb;
+  let through = clamp((onPaper - light) / max(paper - blackPaper, vec3f(1e-4)), vec3f(0.0), vec3f(1.0));
+  textureStore(picture, id.xy, 0u, vec4f(max(light - through * blackPaper, vec3f(0.0)), 1.0 - (through.r + through.g + through.b) / 3.0));
+  textureStore(picture, id.xy, ${layers.glaze}u, vec4f(1.0 - through, 0.0));`;
   return /* wgsl */ `
-${stampStageWgsl(stage)}
 ${STAMP_SRGB_WGSL}
 ${STAMP_PLANE_PICTURE.wgsl}
 @group(0) @binding(0) var<uniform> u: PlanePicture;
 @group(0) @binding(1) var painting: ${targetType(compositor.targets.painting)};
-@group(0) @binding(2) var coverage: texture_2d<f32>;
-${emits ? '@group(0) @binding(3) var emission: texture_2d<f32>;' : ''}
-@group(0) @binding(4) var picture: texture_storage_2d_array<rgba16float, write>;
-${glazes ? '@group(0) @binding(5) var paperLight: texture_2d<f32>;' : ''}
+${emits ? '@group(0) @binding(2) var emission: texture_2d<f32>;' : ''}
+@group(0) @binding(3) var picture: texture_storage_2d_array<rgba16float, ${glazes ? 'read_write' : 'write'}>;
+${glazes ? '@group(0) @binding(4) var paperLight: texture_2d<f32>;' : ''}
 ${compositor.output}
 @compute @workgroup_size(${workgroup}, ${workgroup}) fn planePicture(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
-  let texel = vec2u(vec2i(u.origin) + vec2i(id.xy) + STAGE_MARGIN);
-  let covered = select(1.0, textureLoad(coverage, texel, 0).r, u.cut == 1u);
-  let light = linearLight(texel);
-  textureStore(picture, id.xy, 0u, vec4f(light * covered, covered));${glazes ? `
-  let through = clamp(light / max(textureLoad(paperLight, texel, 0).rgb, vec3f(1e-4)), vec3f(0.0), vec3f(1.0));
-  textureStore(picture, id.xy, ${layers.glaze}u, vec4f(1.0 - (1.0 - covered) * through, 0.0));` : ''}${emits ? `
-  textureStore(picture, id.xy, ${layers.emission}u, vec4f(textureLoad(emission, texel, 0).rgb * covered, 0.0));` : ''}
+  let texel = u.origin + id.xy;
+  let light = linearLight(texel);${glazes ? clear : `
+  textureStore(picture, id.xy, 0u, vec4f(light, 1.0));`}${emits ? `
+  // The glow source weighed each group's light by its cover already.
+  textureStore(picture, id.xy, ${layers.emission}u, vec4f(textureLoad(emission, texel, 0).rgb, 0.0));` : ''}
 }`;
 }
 

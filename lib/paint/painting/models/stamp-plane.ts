@@ -2,10 +2,9 @@
 // groups: one picture, independent of the camera. A three source is a three.js render
 // handed in each frame. The renderer lays the pictures far to near, each where the camera puts it.
 //
-// The farthest plane is paper to the stage's edge, the back. Every nearer painted plane is clear film: its opaque
-// groups' paint hides what's behind as far as it covers, as it would on one sheet, so the plane's coverage moves,
-// warps and fades with its groups. Its glaze groups' paint filters what's behind. A group's knockout, lift or glaze
-// still reads only its own plane's paint.
+// The farthest plane is paper to the stage's edge, the back. Every nearer painted plane is clear film: laid on its
+// paper and on black, the two give what its paint adds and lets through, so it hides and filters what's behind as on
+// one sheet. A group's knockout, lift or glaze reads only its own plane's paint.
 
 import type { CompiledStampPaint } from './stamp-paint-recipe-compile.ts';
 

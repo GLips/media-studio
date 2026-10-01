@@ -490,13 +490,15 @@ fn layGroup(pixel: vec2u, glaze: bool, opacity: f32) {
   let cover = min(1.0, coverage * ${STAMP_OPAQUE_COVER.toFixed(1)}) * opacity;
   var bare = vec3f(0.0);
   if (!glaze || taken.x > 0.0) { bare = paperColor(photograph, photographSampler, u.paper, groupPaperAt(pixel)); }
+  // Opaque paint lies on its paper, but a reserve shows what's behind it: black, laid on black (u.blackBacking).
+  let reserved = select(bare, vec3f(0.0), u.blackBacking == 1u);
 ${underpaint ? `  var behind: array<vec4f, UNDER_LAYERS>;
   for (var r = 0u; r < UNDER_LAYERS; r++) { behind[r] = groupUnderAt(pixel, BAND_VEC4S + r); }
   var left = behind;
   // The paint behind was laid over the painting's paper, wherever this group's own lies.
   var ground = vec3f(0.0);
   if (lifts) {
-    ground = paperColor(photograph, photographSampler, u.paper, groupGroundAt(pixel));
+    ground = select(paperColor(photograph, photographSampler, u.paper, groupGroundAt(pixel)), vec3f(0.0), u.blackBacking == 1u);
     left = liftedUnderpaint(behind, vec3f(1.0) - taken.yzw);
   }
 ` : ''}  let base = u.group * PALETTE;
@@ -513,7 +515,7 @@ ${underpaint ? `  var behind: array<vec4f, UNDER_LAYERS>;
     var covered = groupUnderAt(pixel, i);
 ${underpaint ? `    if (lifts) { covered = liftedUnder(i, covered, behind, left, paperReflectance(i, ground)); }
 ` : ''}    // A reserve's edge covers what's there with the group's paper.
-    let under = mix(covered, paperReflectance(i, bare), taken.x);
+    let under = mix(covered, paperReflectance(i, reserved), taken.x);
     var laid = kubelkaMunkOver(film, under);
     if (!glaze) { laid = under + (kubelkaMunkOver(film, paperReflectance(i, bare)) - under) * cover; }
     groupLaid(pixel, i, clamp(laid, vec4f(0.0), vec4f(1.0)));
