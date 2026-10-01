@@ -1,19 +1,19 @@
 // stamp-gate-washes.ts: the GPU gate's washes, held to what paint must do, not a baseline:
 //
-// - any frame order: a frame drawn fresh or after another matches;
-// - conserved: water, softening, blooms and wet paper only move pigment;
+// - any frame order: fresh or after another, a frame matches;
+// - conserved: wet effects only move pigment;
 // - lifted: a lift is bounded and spares a stain;
-// - spread: flow leaves overlapping strokes no less even;
-// - set: dried paint wetted again lifts only by its rewetting;
-// - fenced: no paint moves under masking fluid or out of a `within`;
-// - rimmed: a drying puddle's edge gathers pigment, a seam wet together doesn't;
-// - bloomed: a drop blooms though paint landed elsewhere first;
-// - unlined: a backrun lays no line along its wash's edge;
+// - spread: flow leaves overlaps no less even;
+// - set: rewetted dry paint lifts only by its rewetting;
+// - fenced: nothing crosses masking fluid or a `within`;
+// - rimmed: a puddle's edge gathers pigment, a seam doesn't;
+// - bloomed: paint elsewhere first doesn't stop a bloom;
+// - unlined: a backrun leaves its wash's edge unlined;
 // - unrimmed: a feathered edge dries with no line;
-// - lipped, unlipped: a drop lips all round in damp paint, not in wet;
+// - lipped, unlipped: damp paint lips a bloom all round, wet doesn't;
 // - paler: lifted tints read paler (stamp-gate-lift-colour.ts).
 //
-// Each case paints into its last group, read back.
+// Each case's last group is read back.
 
 import { PAINT_BANDS } from '#lib/paint/materials/models/paint-spectrum.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
