@@ -18,7 +18,7 @@ export const STAMP_DRYING_RIM_MOST_BAND = 32;
  * The most of its open pigment a pixel in the band gives up to the rim, where the wash was a standing puddle of paint
  * that spreads freely. Staining holds none back: a stain's fine particles travel to a rim as readily as any.
  */
-export const STAMP_DRYING_RIM_MOST_TAKE = 0.6;
+export const STAMP_DRYING_RIM_MOST_TAKE = 0.22;
 
 /**
  * The medium's `spread` (brush diameters paint runs on flooded paper) from which its paint is free enough for a rim
@@ -98,23 +98,28 @@ export function stampDryingWettest(drying: StampWashDrying, wetness: StampWetnes
 }
 
 /**
- * The rim at a pixel `d` px inside the wash's edge. `dryingRimLine`: its share of the gathered pigment, most on the
- * edge. `dryingRimDraw`: the share it gives up, most just inside the line, none past `band`. `dryingRimHardness`: how
- * abruptly the paint ends; a feathered fringe doesn't rim. WetShare and band twin the CPU helpers.
+ * The rim at a pixel `x` px in from where its line starts (where the paint at the edge is half there, plus a wavering
+ * inset). WetShare and band twin the CPU helpers.
  */
 export const STAMP_DRYING_RIM_WGSL = /* wgsl */ `
 fn dryingRimWetShare(wettest: f32, damp: f32) -> f32 { return clamp((wettest - damp) / max(1e-3, 1.0 - damp), 0.0, 1.0); }
 fn dryingRimBand(spread: f32, diameter: f32, wetShare: f32) -> f32 {
   return min(${STAMP_DRYING_RIM_MOST_BAND.toFixed(1)}, spread * diameter * clamp(wetShare, 0.0, 1.0));
 }
-fn dryingRimLine(d: f32, width: f32) -> f32 {
-  let x = max(0.0, d - 1.0) / max(width, 0.5);
-  return exp(-x * x);
+// Its share of the gathered pigment: most on the line's outer edge, crisp outside it and fading in.
+fn dryingRimLine(x: f32, width: f32) -> f32 {
+  return select(exp(-x * x / 0.5), exp(-x / max(width, 0.5)), x >= 0.0);
 }
-fn dryingRimDraw(d: f32, band: f32, width: f32) -> f32 {
-  let x = clamp(d / max(band, 1.0), 0.0, 1.0);
-  return smoothstep(width, 2.5 * width, d) * (1.0 - x) * (1.0 - x);
+// The share it gives up, about evenly over the band, so the inside pales without a pale stripe of its own.
+fn dryingRimDraw(x: f32, band: f32, width: f32) -> f32 {
+  let y = clamp(x / max(band, 1.0), 0.0, 1.0);
+  return smoothstep(width, 3.0 * width, x) * (1.0 - y * y);
 }
+// Whether the line is there at all, from two noises along the edge, so it breaks into islands.
+fn dryingRimPresence(broad: f32, fine: f32) -> f32 {
+  return smoothstep(0.3, 0.55, 0.7 * broad + 0.3 * fine);
+}
+// How abruptly the paint ends: a feathered fringe doesn't rim.
 fn dryingRimHardness(edge: f32, inner: f32) -> f32 {
   return smoothstep(0.3, 0.7, edge / max(inner, 1e-3));
 }

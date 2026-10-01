@@ -82,7 +82,7 @@ its sigma rather than its water's share of it.
 symmetric, so the passes in reverse order are exactly Gᵀ) and a normalised scatter: N = Gᵀ(receiver weight),
 send = give / N, delivered = weight · G(send · paint). What's delivered totals what's given, per pigment, and goes only
 where the paper lets it: a stage supplies the paper (wet, open), the bloom the deposit's wetness over its medium's damp
-and where paint may land, the rim open wherever it isn't paper at the grain's scale.
+and where paint may land, the rim open wherever it isn't bare paper at the grain's scale.
 
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants
 of `procreate-reading.ts`), and the stroke Procreate draws its previews along. Its `engine/` reads binary plists and

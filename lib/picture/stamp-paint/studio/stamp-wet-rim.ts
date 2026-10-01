@@ -26,6 +26,9 @@ const GRAIN_SIGMA = 2.5;
 /** How far in from the edge, px, its hardness compares the paint's coverage: just inside it, and past a soft brush's rim. */
 const EDGE_DEPTHS = [4, 14] as const;
 
+/** How far in from the edge, px, the line looks for where the paint is half there: a mask's softest edge. */
+const HALF_DEPTH = 6;
+
 /** The jump flood's first step, px: every pixel within the widest band finds its nearest edge. */
 const FLOOD_FIRST_STEP = 2 ** Math.ceil(Math.log2(STAMP_DRYING_RIM_MOST_BAND));
 
@@ -82,13 +85,15 @@ const GRAIN_ROWS_WGSL = /* wgsl */ `${PRELUDE}
   textureStore(grainRows, local(p), vec4f(sum / weight));
 }`;
 
-// The edge's seeds: paper that's paper at the grain's scale too, so a hole finer than the grain is no edge. A seed
-// holds its own pixel; any other pixel, none (-1). The transport's paper is closed at a seed and open elsewhere.
+// The edge's seeds: paper at the grain's scale too (a finer hole is no edge), and bare in the layer: where the water
+// ends over the group's earlier paint, the lattice's staircase is no edge. A seed holds its own pixel, any other none
+// (-1). The transport's paper is closed at a seed and open elsewhere.
 const SEEDS_WGSL = /* wgsl */ `${PRELUDE}
 @group(0) @binding(1) var domain: texture_2d<f32>;
 @group(0) @binding(2) var grainRows: texture_2d<f32>;
 @group(0) @binding(3) var seeds: texture_storage_2d<rg32float, write>;
 @group(0) @binding(4) var transportPaper: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(5) var layer: texture_2d_array<f32>;
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   let p = pixelOf(id);
   if (p.x < 0) { return; }
@@ -99,7 +104,7 @@ const SEEDS_WGSL = /* wgsl */ `${PRELUDE}
     weight += grainAt(d);
     if (inside(q)) { sum += grainAt(d) * textureLoad(grainRows, local(q), 0).r; }
   }
-  let paper = textureLoad(domain, local(p), 0).r < 0.5 && sum / weight < 0.5;
+  let paper = textureLoad(domain, local(p), 0).r < 0.5 && sum / weight < 0.5 && textureLoad(layer, p, 0, 0).x < ${DOMAIN_COVERAGE[1]};
   textureStore(seeds, local(p), select(vec4f(-1.0), vec4f(vec2f(p), 0.0, 0.0), paper));
   textureStore(transportPaper, local(p), vec4f(1.0, select(1.0, 0.0, paper), 0.0, 0.0));
 }`;
@@ -168,18 +173,24 @@ fn coverageIn(seed: vec2f, toward: vec2f, depth: f32) -> f32 {
   let toward = select(vec2f(0.0), (vec2f(p) - seed) / d, d > 0.5);
   let wetShare = dryingRimWetShare(gridAt(vec2f(p) + 0.5, u.lattice.xyz, u.size, u.first), u.damp);
   let band = dryingRimBand(u.spread, u.diameter, wetShare);
-  // The line wavers in width and strength along the edge, by noise at the edge point (so across the band alike) in
-  // the painting's own pixels, keyed to the wash's seed.
+  // The line wavers along the edge in width, strength and how far in it sits, and breaks off in stretches, by noise at
+  // the edge point (so across the band alike) in the painting's own pixels, keyed to the wash's seed.
   let width = u.width * (0.6 + 0.8 * paintValueNoise(seed.x / 6.0, seed.y / 6.0, u.seed));
-  let strength = 0.3 + 0.7 * paintValueNoise(seed.x / 40.0, seed.y / 40.0, u.seed ^ 0x9e3779u);
-  // An edge pixel the paint only partly covers takes its share of the line, so the line keeps the paint's edge.
+  let present = dryingRimPresence(paintValueNoise(seed.x / 45.0, seed.y / 45.0, u.seed ^ 0x9e3779u), paintValueNoise(seed.x / 12.0, seed.y / 12.0, u.seed ^ 0x51ed27u));
+  let strength = present * (0.55 + 0.45 * paintValueNoise(seed.x / 20.0, seed.y / 20.0, u.seed ^ 0x2545f4u));
+  let inset = 1.2 * paintValueNoise(seed.x / 9.0, seed.y / 9.0, u.seed ^ 0x68e31du);
   let edgeCover = coverageIn(seed, toward, ${EDGE_DEPTHS[0]}.0);
+  // The line starts where the paint is half there: a masked or cut wash fades in over the mask's soft edge, which it
+  // shares with whatever is painted the other side, and a line out in that fringe would ring the neighbour too.
+  var start = 1.0;
+  for (var k = 1; k <= ${HALF_DEPTH}; k++) { start += select(0.0, 1.0, coverageIn(seed, toward, f32(k)) < 0.5 * edgeCover); }
+  // An edge pixel the paint only partly covers takes its share of the line, so the line keeps the paint's edge.
   let covered = clamp(textureLoad(layer, p, 0, 0).x / max(edgeCover, 1e-3), 0.0, 1.0);
-  let line = paint * covered * dryingRimLine(d, width);
+  let line = paint * covered * present * dryingRimLine(d - start - inset, width);
   let hardness = dryingRimHardness(edgeCover, coverageIn(seed, toward, ${EDGE_DEPTHS[1]}.0));
   var held: array<vec4f, ${layers}>;
   for (var l = 0; l < ${layers}; l++) { held[l] = textureLoad(layer, p, l, 0); }
-  let take = paint * hardness * dryingRimDraw(d, band, u.width) * dryingRimTake(u.spread, wetShare, strength) * clamp(washOpen(held), 0.0, 1.0);
+  let take = paint * hardness * dryingRimDraw(d - start - inset, band, u.width) * dryingRimTake(u.spread, wetShare, strength) * clamp(washOpen(held), 0.0, 1.0);
   textureStore(weights, local(p), vec4f(line, take, 0.0, 0.0));
   textureStore(lineOut, local(p), 0, vec4f(line, 0.0, 0.0, 0.0));
 }`;
@@ -284,7 +295,7 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     put('spread', spread);
     put('damp', damp);
     put('diameter', diameter);
-    put('width', Math.min(2.2, 0.8 + band / 20));
+    put('width', Math.min(1.1, 0.5 + band / 50));
     const uniform = device.createBuffer({ size: RIM.words * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const writeSeed = (seed: number) => {
       put('seed', seed);
@@ -337,7 +348,7 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     return [drying, [
       step(passes.domain, [u, { buffer: grid }, layer.view, domain]),
       step(passes.grainRows, [u, domain, grainRows]),
-      step(passes.seeds, [u, domain, grainRows, seeds[0], transport.paper]),
+      step(passes.seeds, [u, domain, grainRows, seeds[0], transport.paper, layer.view]),
       ...jumps.map((jump, k) => step(passes.flood, [u, { buffer: jump }, seeds[k % 2], seeds[(k + 1) % 2]])),
       step(own.weights, [u, { buffer: grid }, domain, seeds[jumps.length % 2], layer.view, weights, transport.values[1]]),
       ...spreads.steps(0, transport),
