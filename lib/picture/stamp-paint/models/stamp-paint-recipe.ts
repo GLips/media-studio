@@ -20,6 +20,10 @@ import {
 import type { StampEdge, StampPoint, StampRegion } from './stamp-region.ts';
 import { checkStampGroupMotion, type StampGroupBoil, type StampGroupMotion, type StampGroupPaper } from './stamp-group-motion.ts';
 import { stampMaterialKeysSpan, type CompiledStampMaterialKeys, type StampMaterialKeys } from './stamp-material-keys.ts';
+import type { StampMark } from './stamp-marks.ts';
+import {
+  checkedStampWashWait, stampChargeTouches, stampWashWaits, type StampBackrunSettings, type StampChargeSettings, type StampWaitOptions, type StampWaitEffect, type StampWashWait, type StampWrittenWait,
+} from './stamp-wash-effects.ts';
 
 export type StampPaintColor = `#${string}`;
 
@@ -113,13 +117,15 @@ export type StampLiftSettings = StampToolSettings & StampDepositGeometry & { str
 /** A damp brush drawn along an edge to soften it: a water stroke carrying `water` (STAMP_SOFTEN_WATER when left out). */
 export type StampSoftenSettings = StampToolSettings & StampStrokeGeometry & { water?: number };
 /**
- * Water dropped into a drying wash, a bloom: the wash waits until the paper under the drop is damp (StampBloomWait),
+ * Water dropped into a drying wash, a bloom: the wash waits until the paper under the drop is damp (wait('damp')),
  * then these placements land, `water` (1 when left out) each.
  */
 export type StampBloomSettings = StampToolSettings & StampPlacementGeometry & { water?: number };
-/** A wash waiting in painting time: until its wettest paper is `damp` (PaintWetting's damp) or `dry`, or for `seconds`. */
-export type StampWashWait = 'damp' | 'dry' | { seconds: number };
-
+/**
+ * Paint from a mark (StampMark): its brush, diameter and geometry are the mark's, and it's placed from the mark's
+ * key, so whatever else is built from that mark lands the same stamps.
+ */
+export type StampMarkPaintSettings = { mark: StampMark; material: StampPaintMaterial; blend?: StampBlend; secondaryColor?: StampPaintColor; opacity?: number } & StampDepositReveal;
 /** How much water a softening stroke carries unless it says: a damp brush, which moves an edge without flooding it. */
 export const STAMP_SOFTEN_WATER = 0.3;
 
@@ -188,12 +194,14 @@ export type StampKnockoutOptions = Pick<StampWashOptions, 'preparation'>;
  */
 export type StampKnockoutScope = StampMasking & Pick<StampWashScope, 'water' | 'lift' | 'wait'>;
 export type StampPassScope = StampMasking & {
+  mark: (id: string, settings: StampMarkPaintSettings) => void;
   stroke: (id: string, settings: StampStrokeSettings) => void;
   stamps: (id: string, settings: StampPlacementSettings) => void;
   fill: (id: string, settings: StampFillSettings) => void;
 };
-/** A wash's scope: its paint carries water; it can wet, lift, soften, bloom, and wait for itself to dry. */
+/** A wash's scope: its paint carries water; it can wet, lift, soften, bloom, charge, backrun, and wait for itself to dry. */
 export type StampWashScope = StampMasking & {
+  mark: (id: string, settings: StampMarkPaintSettings & StampWashWater) => void;
   stroke: (id: string, settings: StampStrokeSettings & StampWashWater) => void;
   stamps: (id: string, settings: StampPlacementSettings & StampWashWater) => void;
   fill: (id: string, settings: StampFillSettings & StampWashWater) => void;
@@ -201,7 +209,9 @@ export type StampWashScope = StampMasking & {
   lift: (id: string, settings: StampLiftSettings) => void;
   soften: (id: string, settings: StampSoftenSettings) => void;
   bloom: (id: string, settings: StampBloomSettings) => void;
-  wait: (until: StampWashWait) => void;
+  charge: (id: string, settings: StampChargeSettings) => void;
+  backrun: (id: string, settings: StampBackrunSettings) => void;
+  wait: (until: StampWashWait, options?: StampWaitOptions) => void;
 };
 
 /** The fluid as it stands: the latest op, over the fluid before it; null when there's none. */
@@ -220,13 +230,10 @@ export type StampPaintRecipeDeposit<A extends StampRecipeWashAction = StampRecip
   tool: { brush: StampBrush; diameter: number; opacity?: number; appliedAt?: number; drawnOver?: number };
   action: A;
   mask: StampPaintRecipeMask;
+  /** The mark it's built from, whose key places it; absent for a deposit placed from its own ID. */
+  mark?: StampMark;
 };
-/**
- * A bloom's wait: until the paper under the drop that follows it is damp, not the whole wash, so paint laid elsewhere
- * in the meantime doesn't hold the drop back until the paper under it has set.
- */
-export type StampBloomWait = { kind: 'wait'; until: 'damp'; under: 'drop' };
-type StampPaintRecipeStep = StampPaintRecipeDeposit | { kind: 'wait'; until: StampWashWait } | StampBloomWait;
+type StampPaintRecipeStep = StampPaintRecipeDeposit | StampWrittenWait;
 type StampPaintRecipePass = { id: string; clipped: boolean; within?: StampRegion } & (
   | { wash: null; steps: readonly StampPaintRecipeDeposit<StampRecipePaint>[] }
   | { wash: { preparation?: StampWashOptions['preparation']; knockout: boolean }; steps: readonly StampPaintRecipeStep[] }
@@ -274,43 +281,61 @@ export function stampPaintRecipe(body: (paint: StampPaintScope) => void): StampP
     const action: StampRecipePaint = { kind: 'paint', material, ...(blend && { blend }), ...(secondaryColor && { secondaryColor }), ...(burnish && { burnish }) };
     return { deposit: { kind: 'deposit' as const, id, geometry, tool, mask: fluid, action }, water };
   };
+  /** Paint from a mark as written: its brush, diameter and geometry the mark's. */
+  const markDeposit = (id: string, { mark, material, blend, secondaryColor, opacity, appliedAt, drawnOver }: StampMarkPaintSettings) => ({
+    kind: 'deposit' as const, id, geometry: mark.geometry, mark, mask: fluid,
+    tool: { brush: mark.brush, diameter: mark.diameter, ...(opacity !== undefined && { opacity }), ...(appliedAt !== undefined && { appliedAt, ...(drawnOver !== undefined && { drawnOver }) }) },
+    action: { kind: 'paint' as const, material, ...(blend && { blend }), ...(secondaryColor && { secondaryColor }) },
+  });
   /** A dry pass's scope writing into `steps`: paint only. */
   const dryScope = (scope: readonly string[], steps: StampPaintRecipeDeposit<StampRecipePaint>[]): StampPassScope => {
     const paint = (kind: StampDepositGeometry['kind']) => (id: string, settings: PaintSettings) => steps.push(paintDeposit(kind, id, settings).deposit);
-    return { ...masking(scope), stroke: paint('stroke'), stamps: paint('stamps'), fill: paint('fill') };
+    return { ...masking(scope), mark: (id, settings) => steps.push(markDeposit(id, settings)), stroke: paint('stroke'), stamps: paint('stamps'), fill: paint('fill') };
   };
-  /** A wash's scope writing into `steps`. */
-  const washScope = (scope: readonly string[], steps: StampPaintRecipeStep[]): StampWashScope => {
+  /** A wash's scope writing into `steps`, and `ended`, which refuses a wait left with nothing after it to judge. */
+  const washScope = (scope: readonly string[], steps: StampPaintRecipeStep[]): { wash: StampWashScope; ended: () => void } => {
+    const { applied, waitUnder, wait, ended } = stampWashWaits(scope, steps);
     const paint = (kind: StampDepositGeometry['kind']) => (id: string, settings: PaintSettings) => {
       const { deposit, water } = paintDeposit(kind, id, settings);
       steps.push({ ...deposit, action: { ...deposit.action, ...(water !== undefined && { water }) } });
     };
     const water = (id: string, geometry: StampDepositGeometry, tool: StampPaintRecipeDeposit['tool'], amount: number) =>
       steps.push({ kind: 'deposit', id, geometry, tool, action: { kind: 'water', water: amount }, mask: fluid });
-    return {
-      ...masking(scope),
-      stroke: paint('stroke'),
-      stamps: paint('stamps'),
-      fill: paint('fill'),
-      water: (id, { water: amount = 1, ...settings }) => {
+    const markPaint = (id: string, { water: carried, ...settings }: StampMarkPaintSettings & StampWashWater) => {
+      const deposit = markDeposit(id, settings);
+      steps.push({ ...deposit, action: { ...deposit.action, ...(carried !== undefined && { water: carried }) } });
+    };
+    const wash: StampWashScope = {
+      ...masking(scope), wait, mark: applied(markPaint),
+      stroke: applied(paint('stroke')), stamps: applied(paint('stamps')), fill: applied(paint('fill')),
+      water: applied((id, { water: amount = 1, ...settings }) => {
         const { geometry, rest } = splitGeometry(settings.kind, settings);
         water(id, geometry, withoutKind(rest), amount);
-      },
-      lift: (id, { strength, ...settings }) => {
+      }),
+      lift: applied((id, { strength, ...settings }) => {
         const { geometry, rest } = splitGeometry(settings.kind, settings);
         steps.push({ kind: 'deposit', id, geometry, tool: withoutKind(rest), action: { kind: 'lift', ...(strength !== undefined && { strength }) }, mask: fluid });
-      },
-      soften: (id, { water: amount = STAMP_SOFTEN_WATER, ...settings }) => {
+      }),
+      soften: applied((id, { water: amount = STAMP_SOFTEN_WATER, ...settings }) => {
         const { geometry, rest } = splitGeometry('stroke', settings);
         water(id, geometry, rest, amount);
-      },
-      bloom: (id, { water: amount = 1, ...settings }) => {
-        steps.push({ kind: 'wait', until: 'damp', under: 'drop' });
+      }),
+      bloom: applied((id, { water: amount = 1, ...settings }) => {
+        waitUnder(1, 'bloom', id);
         const { geometry, rest } = splitGeometry('stamps', settings);
         water(id, geometry, rest, amount);
-      },
-      wait: (until) => steps.push({ kind: 'wait', until }),
+      }),
+      charge: applied((id, settings) => {
+        const touches = stampChargeTouches([...scope, id].join('/'), settings);
+        if (settings.when === 'damp') waitUnder(touches.length, 'charge', id);
+        for (const touch of touches) markPaint(`${id}${touch.suffix}`, touch.settings);
+      }),
+      backrun: applied((id, { along, hand, water: amount = 1, ...tool }) => {
+        waitUnder(1, 'backrun', id);
+        water(id, { kind: 'stroke', path: along, hand: hand ?? { profile: 'taper' } }, tool, amount);
+      }),
     };
+    return { wash, ended };
   };
   body({
     ...masking([]),
@@ -329,14 +354,19 @@ export function stampPaintRecipe(body: (paint: StampPaintScope) => void): StampP
           const steps: StampPaintRecipeStep[] = [];
           passes.push({ ...writtenPass(passId, {}), wash: { ...(preparation && { preparation }), knockout: true }, steps });
           scoped(() => {
-            const { mask, unmask, water, lift, wait } = washScope([id, passId], steps);
+            const { wash: { mask, unmask, water, lift, wait }, ended } = washScope([id, passId], steps);
             knockoutBody({ mask, unmask, water, lift, wait });
+            ended();
           });
         },
         wash: (passId, { preparation, ...passOptions }, washBody) => {
           const steps: StampPaintRecipeStep[] = [];
           passes.push({ ...writtenPass(passId, passOptions), wash: { ...(preparation && { preparation }), knockout: false }, steps });
-          scoped(() => washBody(washScope([id, passId], steps)));
+          scoped(() => {
+            const { wash, ended } = washScope([id, passId], steps);
+            washBody(wash);
+            ended();
+          });
         },
       }));
     },
@@ -404,7 +434,12 @@ export type CompiledStampWash = {
   preparation: { polygon: readonly StampPoint[]; wetness: StampPaintField<number> } | null;
   schedule: readonly CompiledStampWashStep[];
 };
-export type CompiledStampWashStep = { kind: 'deposit'; deposit: CompiledStampDeposit } | { kind: 'wait'; until: StampWashWait } | StampBloomWait;
+/**
+ * A wait in a wash's schedule: until `until`, judging the whole wash's wettest paper, the paper under the `next`
+ * deposits after it (waits between skipped), or a region's, traced; `effect` when a wet effect asked for it.
+ */
+export type CompiledStampWashWait = { kind: 'wait'; until: StampWashWait; under: 'wash' | { next: number } | { region: readonly StampPoint[] }; effect?: StampWaitEffect };
+export type CompiledStampWashStep = { kind: 'deposit'; deposit: CompiledStampDeposit } | CompiledStampWashWait;
 
 /** A pass painted `dry`, its deposits all paint (each lands as vid-83's paint does), or as a `wash`. */
 export type CompiledStampPass = {
@@ -466,6 +501,13 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
     seen.add(full);
     return full;
   };
+  const marks = new Map<string, StampMark>();
+  /** A mark's key held to one mark: two alike would land the same stamps. */
+  const claimMark = (mark: StampMark) => {
+    if (!mark.key || mark.key.includes('|')) throw new Error(`stamp paint: "${mark.key}" isn't a mark's key: a key is non-empty and holds no "|"`);
+    if ((marks.get(mark.key) ?? mark) !== mark) throw new Error(`stamp paint: two marks share the key ${mark.key}, and would land the same stamps`);
+    marks.set(mark.key, mark);
+  };
   const masks = new Map<NonNullable<StampPaintRecipeMask>, CompiledStampMask>();
   for (const node of recipe.masks) {
     const { path, op, under } = node;
@@ -501,10 +543,11 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
       const clipTo = pass.clipped ? clipBase : undefined;
       // A knockout holds no paint of the group's, so nothing clips to it.
       if (!pass.clipped && !pass.wash?.knockout) clipBase = passId;
-      /** `step` compiled, its action by `action` from the colour jitter drawn for it. */
+      /** `step` compiled, its action by `action` from the colour jitter drawn for it, placed from its mark's key or its own ID. */
       const deposit = <W extends StampRecipeWashAction, A extends CompiledStampAction>(step: StampPaintRecipeDeposit<W>, action: (full: string, draws: readonly number[]) => A) => {
         const full = named(step.id, passId);
-        return compileDeposit(full, step, (draws) => action(full, draws), step.mask && masks.get(step.mask)!, stampBoilSeed(full, epoch));
+        if (step.mark && !epoch) claimMark(step.mark);
+        return compileDeposit(full, step, (draws) => action(full, draws), step.mask && masks.get(step.mask)!, stampBoilSeed(step.mark?.key ?? full, epoch));
       };
       const common = { id: passId, ...(clipTo && { clipTo }), within: pass.within ? checkedStampPolygon(pass.within, passId) : null };
       if (!pass.wash) {
@@ -513,7 +556,11 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
       }
       const schedule = pass.steps.map((step): CompiledStampWashStep => {
         if (step.kind === 'deposit') return { kind: 'deposit', deposit: deposit(step, (full, draws) => compileWashAction(full, step.action, step.tool.brush, draws)) };
-        return 'under' in step ? step : { kind: 'wait', until: checkedWait(step.until, passId) };
+        const { until, under, effect } = step;
+        return {
+          kind: 'wait', until: checkedStampWashWait(until, passId), under: typeof under === 'object' && 'region' in under ? { region: checkedStampPolygon(under.region, passId) } : under,
+          ...(effect && { effect: { ...effect, id: `${passId}/${effect.id}` } }),
+        };
       });
       const { preparation, knockout } = pass.wash;
       let prepared: CompiledStampWash['preparation'] = null;
@@ -550,9 +597,4 @@ function stampGroupRecolours(passes: readonly CompiledStampPass[]): CompiledStam
     return [first, second].flatMap((end) => (end.kind === 'keys' ? [stampMaterialKeysSpan(end)] : []));
   });
   return spans.length ? { from: Math.min(...spans.map(({ from }) => from)), to: Math.max(...spans.map(({ to }) => to)) } : null;
-}
-
-function checkedWait(until: StampWashWait, passId: string): StampWashWait {
-  if (typeof until === 'object' && !(until.seconds >= 0 && Number.isFinite(until.seconds))) throw new Error(`stamp paint: ${passId} waits ${until.seconds}s, and a wait takes a finite 0 or more`);
-  return until;
 }

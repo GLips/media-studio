@@ -78,6 +78,24 @@ its sigma rather than its water's share of it.
 - Moves are f32 and the layer takes them in one f16 store: this GPU truncates f16 stores, and a store per pass lost
   a tenth of a percent of the pigment.
 
+**Marks, charges and the wet report.** `stamp-marks.ts` is the scatter core (`stampScatterMarks`: candidates over
+an area, weighted, or along a path, each drawn from `${key}|${k}` alone, so a bigger count keeps the first ones) and
+`StampMark`, a brush's geometry with a placement key. A deposit built from a mark (`pass.mark`, `wash.mark`, every
+`wash.charge` touch) is placed by `stampMarkStamps` from the mark's key, the one path a stroke or placement deposit is
+placed by, so anything else built from the mark lands the same stamps. `stamp-material-set.ts` is a weighted set of
+materials a generator picks from by key (`pickStampMaterial`); a deposit's own material is never a set.
+`wash.charge` writes ordinary strokes (`${id}-${k}`), geometry and material from separate streams.
+
+**Waits.** A wash waits for a sheen state, `'shiny'` or `'damp'` (the medium's `PaintSheen` thresholds, which the
+bloom's merging reads too), or `'dry'` (water gone and no paint workable, a drying: it rims), or for `{ seconds }`.
+A shiny or damp wait judges the wettest lattice point under the next application written after it (its compiled
+`under: { next: n }`, the n deposits after it, waits skipped; a charge's touches together), the whole wash
+(`under: 'wash'`) or a region; already past, it takes 0 s. `bloom`, `backrun` and a charge `when: 'damp'` write one,
+carrying the effect that asked for it, which `stamp-wet-report.ts` reads: per wash each wait's paper before and after,
+each effect's touches with the paper under them and the bloom stage's own verdict (`stampBloomVerdict`, with its
+reason), and each drying's estimated band. The renderer lists effects that certainly won't act as it loads
+(`wetWarnings`); `assertStampWetEffects` throws on them for a test.
+
 **The transport.** Bloom and rim move what they move along the same ways, as a linear spread G (each pass
 symmetric, so the passes in reverse order are exactly Gᵀ) and a normalised scatter: N = Gᵀ(receiver weight),
 send = give / N, delivered = weight · G(send · paint). What's delivered totals what's given, per pigment, and goes only

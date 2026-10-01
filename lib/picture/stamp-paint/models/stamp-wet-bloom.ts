@@ -44,10 +44,10 @@ export function stampBloomReach(deposit: CompiledStampDeposit, medium: PaintMedi
 
 /**
  * How much of its surplus a landing's water pushes into paper as wet as `wettest`: all of it on damp paper, none on a
- * wash that still has its shine (as wet as a brush lays it), where water merges. A painter's "wait for the shine to go".
+ * wash at or past `shiny` (PaintSheen), where water merges. A painter's "wait for the shine to go".
  */
-export function stampBloomBelowShine(wettest: number, { damp, brushWater }: Pick<PaintWetting, 'damp' | 'brushWater'>): number {
-  const t = Math.min(1, Math.max(0, (wettest - damp) / Math.max(1e-3, brushWater - damp)));
+export function stampBloomBelowShine(wettest: number, { sheen: { shiny, damp } }: Pick<PaintWetting, 'sheen'>): number {
+  const t = Math.min(1, Math.max(0, (wettest - damp) / Math.max(1e-3, shiny - damp)));
   return 1 - t * t * (3 - 2 * t);
 }
 
@@ -63,10 +63,17 @@ function stampBloomDrive(surplus: number): number {
  * paint is workable, and how far (`sigma`), by its most surplus there, in a medium's `wetting` and a brush `diameter`
  * wide. Null when it merges or lands on dry paper. It reads the paper as the stage's paperThroughout does.
  */
-export function stampBloomSizing({ before, after }: StampWetLanding, wetting: PaintWetting, diameter: number): { drive: number; sigma: number } | null {
+export const stampBloomSizing = (landing: StampWetLanding, wetting: PaintWetting, diameter: number) => stampBloomVerdict(landing, wetting, diameter).sizing;
+
+/**
+ * stampBloomSizing's answer, and when it's null, why: the first of the bloom's conditions to fail, in the order its
+ * surplus is cut down (its water over the paper's, the paper's shine, the paint's workability), then its spread.
+ */
+export function stampBloomVerdict({ before, after }: StampWetLanding, wetting: PaintWetting, diameter: number): { sizing: { drive: number; sigma: number }; reason: null } | { sizing: null; reason: string } {
   const { columns, rows } = before.window, { wetness, workable } = before;
   const at = (i: number, j: number) => Math.min(rows - 1, Math.max(0, j)) * columns + Math.min(columns - 1, Math.max(0, i));
-  let driven = 0, surplus = 0;
+  // Each a bound on the next: the water's surplus, then past the shine, then where the paint is workable.
+  let raw = 0, unshined = 0, driven = 0, surplus = 0;
   for (let j = 0; j + 1 < rows; j++) {
     for (let i = 0; i + 1 < columns; i++) {
       let wettest = 0;
@@ -74,14 +81,24 @@ export function stampBloomSizing({ before, after }: StampWetLanding, wetting: Pa
       const corners = [at(i, j), at(i + 1, j), at(i, j + 1), at(i + 1, j + 1)];
       const throughout = Math.min(...corners.map((k) => workable[k]));
       for (const k of corners) {
-        const lands = Math.max(0, after.wetness[k] - wettest) * stampBloomBelowShine(wettest, wetting);
+        const over = Math.max(0, after.wetness[k] - wettest), lands = over * stampBloomBelowShine(wettest, wetting);
+        raw = Math.max(raw, over);
+        unshined = Math.max(unshined, lands);
         driven = Math.max(driven, lands * throughout);
         if (throughout > 0) surplus = Math.max(surplus, lands);
       }
     }
   }
   const drive = stampBloomDrive(driven), sigma = stampBloomSigma(wetting.spread, diameter, surplus);
-  return drive > 0 && sigma >= 0.5 ? { drive, sigma } : null;
+  if (drive > 0 && sigma >= 0.5) return { sizing: { drive, sigma }, reason: null };
+  const { least } = STAMP_BLOOM_SURPLUS;
+  const failed: readonly [boolean, string][] = [
+    [raw <= least, `its water is at most ${raw.toFixed(2)} wetter than the paper there, and a bloom needs over ${least}`],
+    [unshined <= least, 'the paper there still has its shine, so its water merges'],
+    [driven <= least, 'the paint there has set (or the paper was dry)'],
+    [wetting.spread <= 0, "its medium's water doesn't spread"],
+  ];
+  return { sizing: null, reason: failed.find(([fails]) => fails)?.[1] ?? `its water spreads ${sigma.toFixed(2)} px, under half a pixel` };
 }
 
 /**
@@ -119,7 +136,7 @@ const BLOOM_FRONT_LEVEL = 0.08;
 fn bloomSurplus(before: f32, after: f32, workable: f32, damp: f32, shine: f32) -> f32 {
   return max(0.0, after - before) * clamp(workable, 0.0, 1.0) * (1.0 - bloomMerging(before, damp, shine));
 }
-// How far paper as wet as \`before\` still has its shine, 0 (damp) to 1 (as wet as a brush lays it): water meeting it
+// How far paper as wet as \`before\` still has its shine, 0 (damp) to 1 (shiny, PaintSheen): water meeting it
 // merges rather than pushing.
 fn bloomMerging(before: f32, damp: f32, shine: f32) -> f32 {
   return smoothstep(0.0, 1.0, clamp((before - damp) / max(1e-3, shine - damp), 0.0, 1.0));

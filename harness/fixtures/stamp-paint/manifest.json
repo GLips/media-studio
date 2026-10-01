@@ -156,28 +156,28 @@
     "painting/pigment-crayon": {
       "file": "painting/pigment-crayon.png",
       "output": "d675dbafcc644b0c4a3aded283a7ff8f7be4c91973f272933b776e8c111a53ff",
-      "inputs": "eea38f75c06dc5655fd602e073662daeb5d97bff3b8e7fcf682976f630718285",
-      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
+      "inputs": "e7179b4ad769e5657618058900e7ca82a60efab49fee68e37edf98c9b181f8e2",
+      "reason": "vid-114 Stream M: PaintWetting.damp moves into PaintWetting.sheen { shiny, damp } (watercolour 0.7/0.35, gouache 0.4/0.35, crayon 0.7/0.35), and the bloom's merging reads sheen.shiny where it read brushWater, equal in every medium that blooms; inputs only, every frame must hold at max 0",
       "accepted": "2026-10-01",
-      "acceptedOver": "cb831b9",
+      "acceptedOver": "5512ae6",
       "adapter": "apple metal-3"
     },
     "painting/pigment-gouache": {
       "file": "painting/pigment-gouache.png",
       "output": "489991c94e4f2786463251314b2037a2513f5fe82bcefea53b970a86f71f70a6",
-      "inputs": "978688ccea7182c31211543beaff9b45789ed585beeb9bc357f0f0f2f7545feb",
-      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
+      "inputs": "dac4c48ae7dff6eb9614ea3a530efb84fa0d3a493f523afde904a1c2c60c26ea",
+      "reason": "vid-114 Stream M: PaintWetting.damp moves into PaintWetting.sheen { shiny, damp } (watercolour 0.7/0.35, gouache 0.4/0.35, crayon 0.7/0.35), and the bloom's merging reads sheen.shiny where it read brushWater, equal in every medium that blooms; inputs only, every frame must hold at max 0",
       "accepted": "2026-10-01",
-      "acceptedOver": "cb831b9",
+      "acceptedOver": "5512ae6",
       "adapter": "apple metal-3"
     },
     "painting/pigment-watercolour": {
       "file": "painting/pigment-watercolour.png",
       "output": "b598d20bade4cb0f55a65795a077e3ee4d411252edbefcac2d8097b2995c62c8",
-      "inputs": "7812cc74ca6fcdba1e24e9bfed5fd559eca772308992f81ae2e2be73386cfdcf",
-      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
+      "inputs": "3ce59095d727f272f18c35fa472e05fa032005ab3ca0db723b7d189c3f77bde8",
+      "reason": "vid-114 Stream M: PaintWetting.damp moves into PaintWetting.sheen { shiny, damp } (watercolour 0.7/0.35, gouache 0.4/0.35, crayon 0.7/0.35), and the bloom's merging reads sheen.shiny where it read brushWater, equal in every medium that blooms; inputs only, every frame must hold at max 0",
       "accepted": "2026-10-01",
-      "acceptedOver": "cb831b9",
+      "acceptedOver": "5512ae6",
       "adapter": "apple metal-3"
     },
     "painting/regions": {

@@ -11,7 +11,8 @@
 import type { PaintMedium, PaintWetting } from '#lib/picture/paint/models/paint-medium.ts';
 import { stampPaintFieldAt } from './stamp-paint-field.ts';
 import type { PlacedStamp } from './stamp-placement.ts';
-import type { CompiledStampDeposit, CompiledStampMask, CompiledStampPaint, CompiledStampPass, StampPaintPaper, StampWashWait } from './stamp-paint-recipe.ts';
+import type { CompiledStampDeposit, CompiledStampMask, CompiledStampPaint, CompiledStampPass, CompiledStampWashStep, CompiledStampWashWait, StampPaintPaper } from './stamp-paint-recipe.ts';
+import type { StampWashWait } from './stamp-wash-effects.ts';
 import type { StampGrid, StampPoint } from './stamp-region.ts';
 
 /** A window of the lattice: its first point (px), spacing (STAMP_WET_CELL) and points across and down. */
@@ -33,8 +34,23 @@ export const stampWetGrid = (state: StampWetState, field: 'wetness' | 'workable'
  */
 export type StampWetLanding = { tau: number; before: StampWetState; after: StampWetState; water: number };
 
-/** A wash's record: how many painting seconds it took, its waits included, and the paper as it's left, over the whole lattice. */
-export type StampWashRecord = { duration: number; end: StampWetState };
+/** The least and most of a value over some lattice points. */
+export type StampWetRange = { least: number; most: number };
+
+/**
+ * A wait of a wash's: its step, the painting seconds it began and ended at, and the paper it judged (`points` of the
+ * lattice; for the whole wash, those holding water as it began), its wetness and workable as it began and ended.
+ */
+export type StampWashWaitRecord = {
+  step: CompiledStampWashWait; from: number; to: number; points: number;
+  wetness: { before: StampWetRange; after: StampWetRange }; workable: { before: StampWetRange; after: StampWetRange };
+};
+
+/**
+ * A wash's record: how many painting seconds it took, its waits included, each wait in painting order, and the paper
+ * as it's left, over the whole lattice.
+ */
+export type StampWashRecord = { duration: number; waits: readonly StampWashWaitRecord[]; end: StampWetState };
 
 export type StampWetness = {
   landings: ReadonlyMap<CompiledStampDeposit, StampWetLanding>;
@@ -56,13 +72,13 @@ const FOOTPRINT_SAMPLES = 2;
 
 /**
  * How paper dries, from its medium and itself: water leaves at `rate` of a full wash a second, evenly, as standing
- * water evaporates and soaks in; `openTime` and `damp` are the medium's (PaintWetting).
+ * water evaporates and soaks in; `openTime`, and `shiny` and `damp` (its sheen), are the medium's (PaintWetting).
  */
-export type StampDrying = { rate: number; openTime: number; damp: number };
+export type StampDrying = { rate: number; openTime: number; shiny: number; damp: number };
 
 /** A soft, unsized paper drinks a wash sooner than a hard-sized one: at absorbency 0.5, a full wash dries in `drying` s. */
 export function stampDrying(wetting: PaintWetting, paper: StampPaintPaper): StampDrying {
-  return { rate: (0.5 + (paper.absorbency ?? STAMP_PAPER_ABSORBENCY)) / wetting.drying, openTime: wetting.openTime, damp: wetting.damp };
+  return { rate: (0.5 + (paper.absorbency ?? STAMP_PAPER_ABSORBENCY)) / wetting.drying, openTime: wetting.openTime, ...wetting.sheen };
 }
 
 /** Wetness at painting time `tau` of paper wetted to `level` at `at`. */
@@ -107,18 +123,24 @@ export function compileStampWetness(
       forSpan(wash, lattice, (k, w, x, y) => { wash.level[k] = cover[w] * stampPaintFieldAt(preparation.wetness, x, y); });
     }
     let tau = 0;
+    const waits: StampWashWaitRecord[] = [];
     for (const [index, step] of schedule.entries()) {
       if (step.kind === 'wait') {
-        // A bloom's drop is the step after its wait, as the recipe's bloom lays them.
-        const drop = 'under' in step ? schedule[index + 1] : undefined;
-        tau += stampWashWaitSeconds(wash, tau, step.until, drying, drop?.kind === 'deposit' ? pointsUnder(wash, drop.deposit, pass.within) : null);
+        const { under } = step;
+        let target: Set<number> | null = null;
+        if (under !== 'wash') target = 'next' in under ? pointsUnder(wash, stampWaitDeposits(schedule, index), pass.within) : regionPoints(wash, under.region);
+        const judged = target ?? wetPoints(wash, tau, drying);
+        const from = tau, before = rangesOver(wash, judged, from, drying);
+        tau += stampWashWaitSeconds(wash, tau, step.until, drying, target);
+        const after = rangesOver(wash, judged, tau, drying);
+        waits.push({ step, from, to: tau, points: judged.size, wetness: { before: before.wetness, after: after.wetness }, workable: { before: before.workable, after: after.workable } });
         continue;
       }
       const { deposit } = step, { action } = deposit;
       const water = action.kind === 'lift' ? 0 : action.water ?? wetting.brushWater;
       const span = depositSpan(deposit, lattice, margin(deposit));
       const before = wetStateOver(wash, span, tau, drying);
-      const cover = footprintCover(span, deposit.stamps, deposit.kind === 'flood' ? [deposit.flood.polygon] : [], pass.within, deposit.mask);
+      const cover = depositCover(span, deposit, pass.within);
       forSpan(wash, span, (k, w) => {
         const now = stampWetnessAt(wash.level[k], wash.at[k], tau, drying), c = cover[w];
         // The landing set the paint here to none open where the paper had settled, so it starts afresh from what water does.
@@ -131,19 +153,19 @@ export function compileStampWetness(
       });
       landings.set(deposit, { tau, before, after: wetStateOver(wash, span, tau, drying), water });
     }
-    washes.set(pass, { duration: tau, end: wetStateOver(wash, lattice, tau, drying) });
+    washes.set(pass, { duration: tau, waits, end: wetStateOver(wash, lattice, tau, drying) });
   }
   return { landings, washes };
 }
 
 /**
- * Painting seconds from `tau` until `until`: 'damp' once the wettest paper is no wetter than damp, 'dry' once no paint
- * is workable (its open time run out too), over the lattice points `under` (a bloom's drop), or the whole wash when
- * null. Each point's moment comes in closed form; the wait lasts to the latest.
+ * Painting seconds from `tau` until `until`: 'shiny' or 'damp' once the wettest paper is no wetter than that, 'dry'
+ * once no paint is workable, over the lattice points `under`, or the whole wash when null. Each point's moment comes
+ * in closed form; the wait lasts to the latest, 0 if all are past it.
  */
-function stampWashWaitSeconds(wash: StampWashPaper, tau: number, until: StampWashWait, { rate, openTime, damp }: StampDrying, under: readonly number[] | null): number {
+function stampWashWaitSeconds(wash: StampWashPaper, tau: number, until: StampWashWait, { rate, openTime, shiny, damp }: StampDrying, under: ReadonlySet<number> | null): number {
   if (typeof until === 'object') return until.seconds;
-  const floor = until === 'damp' ? damp : 0, lag = until === 'damp' ? 0 : openTime;
+  const floor = { shiny, damp, dry: 0 }[until], lag = until === 'dry' ? openTime : 0;
   let latest = tau;
   for (const k of under ?? wash.level.keys()) {
     if (wash.level[k] > floor) latest = Math.max(latest, wash.at[k] + lag + (wash.level[k] - floor) / rate);
@@ -151,13 +173,71 @@ function stampWashWaitSeconds(wash: StampWashPaper, tau: number, until: StampWas
   return latest - tau;
 }
 
-/** The lattice points `deposit` wets any of, as its landing's cover reads them. */
-function pointsUnder(wash: StampWashPaper, deposit: CompiledStampDeposit, within: readonly StampPoint[] | null): number[] {
-  const span = depositSpan(deposit, wash.lattice, 0);
-  const cover = footprintCover(span, deposit.stamps, deposit.kind === 'flood' ? [deposit.flood.polygon] : [], within, deposit.mask);
-  const points: number[] = [];
-  forSpan(wash, span, (k, w) => { if (cover[w] > 0) points.push(k); });
+/** The deposits a wait at `index` of `schedule` judging the next ones judges: its `next` deposits after it, waits between skipped. */
+export function stampWaitDeposits(schedule: readonly CompiledStampWashStep[], index: number): CompiledStampDeposit[] {
+  const step = schedule[index], deposits: CompiledStampDeposit[] = [];
+  const next = step.kind === 'wait' && typeof step.under === 'object' && 'next' in step.under ? step.under.next : 0;
+  for (const later of schedule.slice(index + 1)) {
+    if (deposits.length >= next) break;
+    if (later.kind === 'deposit') deposits.push(later.deposit);
+  }
+  return deposits;
+}
+
+/** The lattice points inside `region`'s cells, as a footprint's cover reads a polygon. */
+function regionPoints(wash: StampWashPaper, region: readonly StampPoint[]): Set<number> {
+  const { lattice } = wash, cells = (from: number, to: number, count: number) => {
+    const first = Math.min(count - 2, Math.max(0, Math.floor(from / STAMP_WET_CELL) - 1));
+    return [first, Math.max(first + 2, Math.min(count, Math.ceil(to / STAMP_WET_CELL) + 2)) - first] as const;
+  };
+  const xs = region.map(({ x }) => x), ys = region.map(({ y }) => y);
+  const [i0, columns] = cells(Math.min(...xs), Math.max(...xs), lattice.columns), [j0, rows] = cells(Math.min(...ys), Math.max(...ys), lattice.rows);
+  const span = { i0, j0, columns, rows }, cover = footprintCover(span, [], [region], null, null), points = new Set<number>();
+  forSpan(wash, span, (k, w) => { if (cover[w] > 0) points.add(k); });
   return points;
+}
+
+/** The lattice points holding any water at `tau`: the paper a whole-wash wait judges, for its record. */
+function wetPoints(wash: StampWashPaper, tau: number, drying: StampDrying): Set<number> {
+  const points = new Set<number>();
+  for (const k of wash.level.keys()) if (stampWetnessAt(wash.level[k], wash.at[k], tau, drying) > 0) points.add(k);
+  return points;
+}
+
+/** The wetness and workable over `points` at `tau`; 0 to 0 for none. */
+function rangesOver(wash: StampWashPaper, points: ReadonlySet<number>, tau: number, drying: StampDrying) {
+  const wetness = { least: Infinity, most: 0 }, workable = { least: Infinity, most: 0 };
+  for (const k of points) {
+    const wet = stampWetnessAt(wash.level[k], wash.at[k], tau, drying), open = stampWorkableAt(wash.level[k], wash.at[k], tau, drying);
+    wetness.least = Math.min(wetness.least, wet); wetness.most = Math.max(wetness.most, wet);
+    workable.least = Math.min(workable.least, open); workable.most = Math.max(workable.most, open);
+  }
+  if (!points.size) wetness.least = workable.least = 0;
+  return { wetness, workable };
+}
+
+/** The lattice points the deposits of `steps` wet any of, as their landings' covers read them. */
+function pointsUnder(wash: StampWashPaper, deposits: readonly CompiledStampDeposit[], within: readonly StampPoint[] | null): Set<number> {
+  const points = new Set<number>();
+  for (const deposit of deposits) {
+    const span = depositSpan(deposit, wash.lattice, 0);
+    const cover = depositCover(span, deposit, within);
+    forSpan(wash, span, (k, w) => { if (cover[w] > 0) points.add(k); });
+  }
+  return points;
+}
+
+/** How much of each point's cell of `span` a deposit's water reaches, as footprintCover reads it. */
+const depositCover = (span: StampWetSpan, deposit: CompiledStampDeposit, within: readonly StampPoint[] | null) =>
+  footprintCover(span, deposit.stamps, deposit.kind === 'flood' ? [deposit.flood.polygon] : [], within, deposit.mask);
+
+/**
+ * How much of each point of `landed` (a landing's window) `deposit` covers in `pass`, 0..1, as its landing read it:
+ * for reading the paper under a deposit off its landing's states.
+ */
+export function stampLandingCover(deposit: CompiledStampDeposit, landed: StampWetWindow, pass: CompiledStampPass): Float32Array {
+  const span = { i0: landed.x0 / STAMP_WET_CELL, j0: landed.y0 / STAMP_WET_CELL, columns: landed.columns, rows: landed.rows };
+  return depositCover(span, deposit, pass.within);
 }
 
 /** Calls `visit` for each point of `span`: its index in the wash's lattice and in the span, and where it is, px. */

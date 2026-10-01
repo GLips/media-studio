@@ -389,7 +389,7 @@ type LoadedRim = {
 };
 
 function loadDryingRim({ device, painting, medium, wetness, width, height, layer, wash }: StampWetStageContext): StampLoadedWetStage<StampWetDryingMoment> {
-  const { spread, damp } = medium.wetting;
+  const { spread, sheen: { damp } } = medium.wetting;
   const dryings = painting.groups.flatMap((group) => group.passes).flatMap(stampWashDryings);
   if (spread <= 0 || !dryings.length) return { encode: () => null };
 

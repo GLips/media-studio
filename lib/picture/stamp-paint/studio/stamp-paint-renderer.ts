@@ -22,6 +22,7 @@ import { stampDepositShowsAt, stampFloodProgressAt, visibleStampCountAt } from '
 import { stampBoilSeed, stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampMask, type CompiledStampMaskArea, type CompiledStampPaint, type CompiledStampPass, type StampPaintPaper } from '../models/stamp-paint-recipe.ts';
 import { compileStampPigmentPaint, stampGrainDepthIn, type StampPaintMixing } from '../models/stamp-pigment-paint.ts';
 import { compileStampWetness, STAMP_WET_CELL, type StampWetLanding, type StampWetness } from '../models/stamp-wetness.ts';
+import { stampWetReport, stampWetReportWarnings } from '../models/stamp-wet-report.ts';
 import { STAMP_WET_LAND_WGSL } from '../models/stamp-wet-landing.ts';
 import { PAINT_DRY_BURNISHED_PRESS, paintPigmentSeed } from '#lib/picture/paint/models/paint-paper.ts';
 import { PAINT_BANDS } from '#lib/picture/paint/models/paint-spectrum.ts';
@@ -850,6 +851,11 @@ export type StampPaintRenderer = {
   readLayer: (t: number) => Promise<StampLayerReadback>;
   /** Frees what the painting loaded; its surface stays for the next. */
   dispose: () => void;
+  /**
+   * The wet effects (a bloom, a backrun, a damp charge) that certainly won't act, a line each, worked out as it loaded
+   * (stampWetReportWarnings): none for a painting without washes.
+   */
+  wetWarnings: readonly string[];
 };
 
 /**
@@ -1070,6 +1076,7 @@ function rendererOnSurface(
   }
   done = span('stamp paint bank load');
   const writtenBank = loadBank(painting.groups);
+  const wetWarnings = writtenBank.wetness && wetMedium ? stampWetReportWarnings(stampWetReport(painting, writtenBank.wetness, wetMedium)) : [];
   done();
   done = span('stamp paint pipelines load');
   const wetness = writtenBank.wetness;
@@ -1972,6 +1979,7 @@ function rendererOnSurface(
   // A frame's own read-back buffers are the surface's, made and destroyed by the frame.
   const { queue } = surface.device;
   return {
+    wetWarnings,
     draw: async (t) => {
       if (disposed) return;
       await surface.checked(`drawing the painting at ${t} s`, () => queue.submit([draw(t).finish()]));
