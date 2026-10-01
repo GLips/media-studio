@@ -14,12 +14,13 @@ import { stampLinearDynamics, type StampBrush, type StampBrushAsset, type StampB
 import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint, type StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { PaintMaterial, StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampPaintMixing } from '#lib/paint/painting/models/stamp-pigment-paint.ts';
+import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampRegion } from '#lib/paint/painting/models/stamp-region.ts';
 
 /** A grey image as a pack holds one: `size` texels square, a byte each, dark is paint. */
 export type StampGateImage = { size: number; pixels: Uint8Array };
 
-/** A painting the gate paints: drawn at `t` seconds, its images by file. */
+/** A painting the gate paints: drawn at `t` seconds, its images by file, each frame in the state `frameAt` gives it. */
 export type StampGatePainting = {
   painting: CompiledStampPaint;
   paper: StampPaintPaper;
@@ -28,6 +29,7 @@ export type StampGatePainting = {
   height: number;
   t: number;
   images: Readonly<Record<string, StampGateImage>>;
+  frameAt?: (t: number) => StampPaintFrameState;
 };
 
 const asset = (file: string): StampBrushAsset => ({ style: 'gate', pack: 'gate', file });

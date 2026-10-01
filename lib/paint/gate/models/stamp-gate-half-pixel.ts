@@ -5,6 +5,7 @@ import { stampLinearDynamics } from '#lib/paint/brush/models/stamp-brush.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { compileStampPaintRecipe, stampPaintRecipe, type StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
 import type { StampGateWashCheck } from './stamp-gate-washes.ts';
 
@@ -27,18 +28,20 @@ export const STAMP_GATE_HALF_PIXEL_SPECKS = { kept: 0.75, least: 0.05 };
  */
 export const STAMP_GATE_HALF_PIXEL_LIGHT = 0.5;
 
+/** The shifted patch's frame: its layer bent half a pixel each way. */
+const halfPixelShift = (): StampPaintFrameState => new Map([['patch', { warp: { map: ({ x, y }) => ({ x: x + 0.5, y: y + 0.5 }), key: 'half a pixel' } }]]);
+
 /**
- * Crayon on grained paper, an opaque patch, left still or shifted half a pixel each way by a warp: where a resample
+ * Crayon on grained paper, an opaque patch, left still or shifted half a pixel each way by its frame's warp: where a resample
  * is softest, as a drift in whole pixels never is.
  */
 export function stampGateHalfPixelPainting(shifted: boolean): StampGatePainting {
   const { x0, x1, y0, y1 } = HALF_PIXEL_PATCH;
-  const carriage = shifted ? { warp: { at: () => (p: { x: number; y: number }) => ({ x: p.x + 0.5, y: p.y + 0.5 }), from: 0, to: 0 } } : {};
-  const painting = compileStampPaintRecipe(stampPaintRecipe((p) => p.group('patch', { composite: 'opaque', ...carriage }, (g) => g.pass('p', {}, (pass) => pass.fill('patch', {
+  const painting = compileStampPaintRecipe(stampPaintRecipe((p) => p.group('patch', { composite: 'opaque' }, (g) => g.pass('p', {}, (pass) => pass.fill('patch', {
     brush: GRAINED, diameter: 6, application: { kind: 'strokes', pattern: 'hatch', spacing: 1.5, variation: 0.6 }, direction: 0.6,
     material: { kind: 'mixture', parts: [{ pigment: W.ultramarine, amount: 1 }, { pigment: W.burntSienna, amount: 1 }], strength: 0.6 }, region: stampGatePolygon(x0, y0, x1, y0, x1, y1, x0, y1),
   })))));
-  return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.crayon, pigments: W }, ...SIZE, t: 0, images: STAMP_GATE_IMAGES };
+  return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.crayon, pigments: W }, ...SIZE, t: 0, images: STAMP_GATE_IMAGES, ...(shifted && { frameAt: halfPixelShift }) };
 }
 
 const linearLight = (v: number) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);

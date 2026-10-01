@@ -2,9 +2,10 @@
 // painted (its rest space), and each frame a lattice over its painted box is mapped to where the field takes it; the
 // renderer rasterises that mesh, so each scene pixel learns which rest point it shows, and resamples the layer there.
 // Everything in the layer rides along: paint, its wet state, rims and blooms, masks, clips and reserves. A placement
-// (stamp-group-motion.ts) is the one-cell case: an affine map needs no more.
+// (stamp-group-motion.ts) is the one-cell case: an affine map needs no more. A warp arrives as frame data
+// (stamp-paint-frame-state.ts), never inside the compiled painting.
 //
-// Negative space: the field is authored on the CPU (pins, poses, sway), never on the GPU; the GPU sees only a lattice.
+// Negative space: the field is authored on the CPU; the GPU sees only a lattice.
 
 import { stampGroupSceneFromLayer, type StampGroupPlacement } from './stamp-group-motion.ts';
 import type { StampPoint } from './stamp-region.ts';
@@ -12,27 +13,11 @@ import type { StampPoint } from './stamp-region.ts';
 /** Where a point of a group's own layer (its rest space) lies in the scene. */
 export type StampWarpMap = (rest: StampPoint) => StampPoint;
 
-/**
- * A group bent over its scene: `at(t)`, a pure function of scene time, maps its rest space to the scene. It changes
- * only from `from` to `to` seconds and holds at either end beyond them, so frames there share a checkpoint. `cell`:
- * the lattice's spacing in px (16 when left out), coarser where the box would need more than STAMP_WARP_MOST_CELLS.
- */
-export type StampGroupWarp = { at: (t: number) => StampWarpMap; from: number; to: number; cell?: number };
-
-export type CompiledStampGroupWarp = Required<StampGroupWarp>;
+/** A warp lattice's spacing in px when its frame state names none: coarser where a box would need more than STAMP_WARP_MOST_CELLS. */
+export const STAMP_WARP_CELL = 16;
 
 /** The most cells a lattice has along a side, so a big group's lattice stays a few thousand triangles. */
 export const STAMP_WARP_MOST_CELLS = 64;
-
-/** `warp` checked: a finite span, from no later than to, and a positive cell. */
-export function compileStampGroupWarp({ at, from, to, cell = 16 }: StampGroupWarp, groupId: string): CompiledStampGroupWarp {
-  if (!(Number.isFinite(from) && Number.isFinite(to) && from <= to)) throw new Error(`stamp paint: ${groupId}'s warp changes from ${from} s to ${to} s, which isn't a span`);
-  if (!(cell > 0)) throw new Error(`stamp paint: ${groupId}'s warp lattice needs a positive cell, not ${cell}`);
-  return { at, from, to, cell };
-}
-
-/** The scene time `warp`'s field is read at for a frame at `t`: held to its span. */
-export const stampWarpTimeAt = ({ from, to }: CompiledStampGroupWarp, t: number) => Math.min(to, Math.max(from, t));
 
 /** A rigid placement about `pivot` as a map: the affine a one-cell lattice carries exactly. */
 export const stampPlacementWarpMap = (placement: StampGroupPlacement, pivot?: StampPoint): StampWarpMap => (rest) => stampGroupSceneFromLayer(placement, rest, pivot);
