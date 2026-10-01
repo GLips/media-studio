@@ -155,11 +155,11 @@
     },
     "painting/pigment-crayon": {
       "file": "painting/pigment-crayon.png",
-      "output": "b22f3870191a327143d9fcfc4a2c85f42e4bcaaf0cbe372571f562c186d393a6",
-      "inputs": "c8eee2b4dbbfcea4eeb93edbfb21cbdce012846f0e25e4a5085a0eb73d05919f",
-      "reason": "vid-124: a dry medium's wax stacks, its tooth fills from the wax held round each pixel, and its stamps' pressure (and burnish) sets how far it reaches into the tooth: paintDryContact gains press and filled; the deposit uniform gains press and a dry compositor binds pressure and the layer before it. Crayon moves by intent; every other painting must hold at max 0",
+      "output": "546fe60637928509ab06d06e1bd5d4ac2696eb526951ea1592131fbb7da95a83",
+      "inputs": "cb1e8a919f929f0daeb7948b52d70b5c87ab433afccb41b8a7b01066e76de6b5",
+      "reason": "vid-124: crayon's tooth retuned with the passage sheet drawn at a painting's paper scale: tooth 0.85, fill 0.6 (five layers close it)",
       "accepted": "2026-10-01",
-      "acceptedOver": "870ac6f",
+      "acceptedOver": "92d75fe",
       "adapter": "apple metal-3"
     },
     "painting/pigment-gouache": {

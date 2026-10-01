@@ -92,11 +92,12 @@ export const PAINT_MEDIA = {
     // A first guess (vid-117): it barely travels, dries fast and re-dissolves once dry.
     wetting: { spread: 0.1, drying: 120, openTime: 0, rewetting: 0.9, brushWater: 0.4, damp: 0.35 },
   },
-  // Tuned by eye (vid-109, vid-124), not measured: a firm hand skips the paper below 95% of its mean height, so the
-  // tooth reads bare; the tooth holds two full loads, and its wax fills the valleys 40% of the way.
+  // Tuned by eye (vid-109, vid-124), not measured: a firm hand skips the paper below 85% of its mean height; about
+  // five layers fill the tooth. Its paper wants a depth of 1: wax hides even thinly, so a valley given any share
+  // reads filled.
   crayon: {
     name: 'crayon', color: { kind: 'masstone', scatter: 0.05 }, body: 1.5, lightening: { kind: 'white', white: { id: 'waxWhite', name: 'wax white', overWhite: '#f7f6f1', overBlack: '#9d9c97' } },
-    granulation: 0, paperContact: { kind: 'peaks', tooth: 0.95, holds: 2, fill: 0.4 }, dryingScatter: 0, pickup: 0,
+    granulation: 0, paperContact: { kind: 'peaks', tooth: 0.85, holds: 2, fill: 0.6 }, dryingScatter: 0, pickup: 0,
     // No water and no spread. A lift is an eraser, taking the wax off the tooth's peaks but not what's pressed in (vid-117).
     wetting: { spread: 0, drying: 1, openTime: 0, rewetting: 0.85, brushWater: 0, damp: 0.35 },
   },

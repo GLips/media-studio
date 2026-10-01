@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { withBrowserModulePage } from '#lib/output/render/engine/browser-module-page.ts';
 import { resolveStampPaintStyle, type StampPaintStyle } from '#lib/picture/stamp-styles/models/style.ts';
 import { brushFidelityPackKey } from '../models/brush-fidelity-pack-urls.ts';
-import type { DryPassageBrushes, DryPassagePainted, DryPassageSheetMedium } from '../models/dry-passages.ts';
+import { DRY_PASSAGE_CELL, DRY_PASSAGE_PAINTING_WIDTH, type DryPassageBrushes, type DryPassagePainted, type DryPassageSheetMedium } from '../models/dry-passages.ts';
 import { readBrushFidelityPack } from './brush-fidelity-targets.ts';
 
 const SHEET_PAGE = fileURLToPath(new URL('../studio/dry-passage-sheet-page.ts', import.meta.url));
@@ -28,9 +28,11 @@ async function dryPassageMedium(stylesDir: string, name: string, roles: Readonly
     if (!brush) throw new Error(`dry passages: ${name} has no brush ${role}`);
     return brush;
   };
+  const { grain } = resolved.paper;
   return {
     brushes: { stick: brushOf(roles.stick), side: brushOf(roles.side) },
-    paper: resolved.paper, mixing: resolved.mixing,
+    paper: { ...resolved.paper, ...(grain && { grain: { ...grain, scale: (grain.scale * DRY_PASSAGE_PAINTING_WIDTH) / DRY_PASSAGE_CELL.width } }) },
+    mixing: resolved.mixing,
     packUrls: Object.fromEntries(packs.map(({ pack, url }) => [brushFidelityPackKey(name, pack), url])),
   };
 }

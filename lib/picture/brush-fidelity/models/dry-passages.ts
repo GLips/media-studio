@@ -14,6 +14,11 @@ import type { BrushFidelityPackUrls } from './brush-fidelity-pack-urls.ts';
 
 /** A dry passage's cell, in pixels. */
 export const DRY_PASSAGE_CELL = { width: 480, height: 300 };
+/**
+ * How wide a painting a passage stands for (vid-121's still life): a paper's grain spans its painting's width, so a
+ * cell draws it at this painting's size; squeezed into the cell, its valleys would average away.
+ */
+export const DRY_PASSAGE_PAINTING_WIDTH = 1280;
 
 /** The brushes a dry medium draws its passages with: `stick`, a hard point for hatching; `side`, a stick laid on its side. */
 export type DryPassageBrushes = { stick: StampBrush; side: StampBrush };
