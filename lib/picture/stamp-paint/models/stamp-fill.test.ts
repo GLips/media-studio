@@ -60,7 +60,7 @@ test("a fill in strokes lays marks whose edges reach the outline, past it only w
     assert.ok(reach > 115 && reach < 122, `${pattern} reaches ${reach}`);
   }
   // Reaching over, its marks' middles run out to the outline, round the disc's shape, not its box.
-  const over = compiledFill(disc, 30, { application: { kind: 'strokes', pattern: { kind: 'backAndForth' }, variation: 0, reach: 'over' } });
+  const over = compiledFill(disc, 30, { application: { kind: 'strokes', pattern: { kind: 'backAndForth' }, variation: 0, reach: { past: 0 } } });
   const centres = over.stamps.map(({ x, y }) => Math.hypot(x - 200, y - 200));
   assert.ok(Math.max(...centres) > 114 && Math.max(...centres) < 122, `centres reach ${Math.max(...centres)}`);
   // A region shorter than a shading stroke is still shaded, not left to a neighbouring patch it hasn't got.

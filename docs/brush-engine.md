@@ -36,8 +36,9 @@ hand lays it in, and `stampFillStrokePath` joins them, lifting between, into one
 forth, zigzag, shading, scribble) share one hand's random walk, so their keys are their order; a `contour`'s rings
 (inset level sets of the region's distance grid, closed) and a `guided` fill's marks (blended by arc length between
 consecutive authored cross-sections) draw from their own keys, so adding a guide leaves the other pairs' marks where
-they were. Every mark ends where its edge meets the outline; `extend` runs open marks on past it, which only a
-`within` clips. `stamp-form.ts` is a rounded form's guides (`stampRoundedForm`): over an ellipsoid, given or fitted
+they were. Every mark ends where its edge meets the outline unless its `reach` runs it past (`{ past }`, diameters
+its centres may lie outside: rows run out across and along the shape, guided marks' ends on past the outline, a
+contour's first ring out there), which only a clip (`clipped`, `within`) trims. `stamp-form.ts` is a rounded form's guides (`stampRoundedForm`): over an ellipsoid, given or fitted
 to the outline by its moments (an artistic assumption, its depth the shorter radius), Lambert's law gives the shade's
 regions (contoured on a grid with the outline), the core (the shade's edge inside the form) and the lit stretches of
 the outline. They're geometry: a style decides how to paint them.

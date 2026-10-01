@@ -46,20 +46,22 @@ Everything is from `#studio`.
       paper is dry, so wet paint stops there hard, keeping the tip's broken outline (a dry-media brush keeps its tip's
       edge); for a soft edge, flood it in a wash into wetted paper (`preparation`), or in flat colour, which has no
       washes, fill with strokes. It costs what its edge does, not its area.
-    - `{ kind: 'strokes', pattern, spacing?, variation?, hand?, extend?, reach? }`: real strokes of the brush, the marks
+    - `{ kind: 'strokes', pattern, spacing?, variation?, hand?, reach? }`: real strokes of the brush, the marks
       and the paper between them showing. `pattern` is an object by `kind`: `'shading'`, `'zigzag'`, `'backAndForth'`,
       `'hatch'`, `'crossHatch'`, `'scribble'`, `'contour'` or `'guided'`; `spacing` is diameters between rows (over 1
       leaves paper); `variation` (0..1, 0.3) is how unevenly a hand lays them. A pattern that turns back (shading,
       zigzag, back and forth) eases nearly to lifting at each turn (`{ kind: 'shading', turns: 'eased' }`, the
       default, as a crayon shades); `turns: 'pressed'` keeps the brush down, for body colour covering a shape to its
-      outline. Its marks stay inside the outline; `reach: 'over'` runs them out over it, for a texture in a `clipped`
-      pass over its silhouette, which trims them there. It costs what its strokes do.
+      outline. It costs what its strokes do.
     - `{ kind: 'contour' }` rings the shape in closed loops, outline first, each `spacing` inside the last.
       `{ kind: 'guided', guides }` lays marks that wrap round a form, as cross-contour hatching does: `guides` are a
       few curves across the shape, in order, all running the same way, each starting and ending outside it; marks
       are blended between each guide and the next. Crossing or branching guides aren't matched: split the passage.
-    - `extend` (diameters) runs each open mark's ends past the outline, so its taper and lift fall outside and the
-      edge stays crisp and full. The marks then cross the outline: put the pass or wash `within` the same region.
+    - Its marks stay inside the outline. `reach: { past }` runs them past it: their centres may lie up to `past`
+      diameters outside (rows run out across and along the shape, guided marks' ends run on, a contour's first ring
+      lies out there). `{ past: 0 }` takes their middles to the outline, a texture in a `clipped` pass over its
+      silhouette; `{ past: 1 }` or so puts each mark's taper and lift outside, so the edge stays crisp and full. The
+      marks then cross the outline: clip them, the pass `clipped` or it or its wash `within` the same region.
     - `stampFillMarks(region, diameter, direction, strokes, seed)` gives the marks themselves (each keyed), for when
       you need them outside a fill.
     - Left out, the brush's media decides: a wet brush washes, a dry one (pencil, crayon) shades. Override it for a

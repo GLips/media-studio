@@ -11,7 +11,8 @@ const bowed = (y: number, bow = 30): StampPoint[] => Array.from({ length: 29 }, 
   const x = 60 + i * 10, u = (x - 200) / 140;
   return { x, y: y + bow * (1 - u * u) };
 });
-const length = (path: readonly StampPoint[]) => path.reduce((sum, p, i) => sum + (i ? Math.hypot(p.x - path[i - 1].x, p.y - path[i - 1].y) : 0), 0);
+/** A straight guide across the disc at height `y`, ending just outside it. */
+const straight = (y: number): StampPoint[] => [{ x: 95, y }, { x: 200, y }, { x: 305, y }];
 const guided = (guides: StampPoint[][], extra: Partial<StampFillStrokes> = {}): StampFillStrokes => ({ pattern: { kind: 'guided', guides }, variation: 0, hand: {}, ...extra });
 
 test("a contour fill rings its region in closed loops a spacing apart inward, the outer one's edge on the outline", () => {
@@ -22,10 +23,12 @@ test("a contour fill rings its region in closed loops a spacing apart inward, th
     // Ring k's centres lie half a diameter in, then 30 px further in each ring.
     for (const point of path) assert.ok(Math.abs(fromCentre(point) - (90 - 30 * patch!)) < 2, `ring ${patch} at ${fromCentre(point).toFixed(1)}`);
   });
-  assert.throws(() => stampFillMarks(disc, 20, 0, { pattern: { kind: 'contour' }, extend: 1 }, 'rings'), /closed loops/);
+  // Reaching a diameter past the outline, the outer ring's centres lie there.
+  const past = stampFillMarks(disc, 20, 0, { pattern: { kind: 'contour' }, spacing: 1.5, variation: 0, hand: {}, reach: { past: 1 } }, 'rings');
+  for (const point of past.find(({ patch }) => patch === 0)!.path) assert.ok(Math.abs(fromCentre(point) - 120) < 2, `the outer ring at ${fromCentre(point).toFixed(1)}`);
 });
 
-test('a guided fill lays marks bent as its guides are, between them, ending at the outline or run past it by `extend`', () => {
+test('a guided fill lays marks bent as its guides are, between them, ending at the outline or run past it as far as they reach', () => {
   const guides = [bowed(80), bowed(200), bowed(290)];
   const marks = stampFillMarks(disc, 20, 0, guided(guides), 'bowed');
   assert.ok(marks.length > 6, `${marks.length} marks`);
@@ -36,13 +39,14 @@ test('a guided fill lays marks bent as its guides are, between them, ending at t
     // Its ends are where its centre may lie, half a diameter in from the outline.
     for (const end of [path[0], path.at(-1)!]) assert.ok(Math.abs(fromCentre(end) - 90) < 1.5, `an end at ${fromCentre(end).toFixed(1)}`);
   }
-  for (const { key, path } of stampFillMarks(disc, 20, 0, guided(guides, { extend: 1 }), 'bowed')) {
-    const short = marks.find((mark) => mark.key === key)!;
-    assert.ok(Math.abs(length(path) - length(short.path) - 40) < 0.5 && fromCentre(path[0]) > 100 && fromCentre(path.at(-1)!) > 100, `${key} isn't run a diameter past each end`);
+  // Reaching a diameter past the outline, each mark runs on to there, though its guides end just outside the disc.
+  for (const { key, path } of stampFillMarks(disc, 20, 0, guided([straight(150), straight(250)], { reach: { past: 1 } }), 'past')) {
+    for (const end of [path[0], path.at(-1)!]) assert.ok(Math.abs(fromCentre(end) - 120) < 1.5, `${key} ends at ${fromCentre(end).toFixed(1)}`);
   }
-  // A row pattern's marks run on along their rows: the middle row's ends a diameter past where its edge met the outline.
-  const hatch = stampFillMarks(disc, 20, 0, { pattern: { kind: 'hatch' }, variation: 0, hand: {}, extend: 1 }, 'rows').flatMap(({ path }) => path);
-  assert.ok(Math.abs(Math.max(...hatch.map(fromCentre)) - 110) < 1.5, `a hatch reaches ${Math.max(...hatch.map(fromCentre)).toFixed(1)}`);
+  // A row pattern's rows run on out across the shape and along it, their centres a diameter past the outline.
+  const hatch = stampFillMarks(disc, 20, 0, { pattern: { kind: 'hatch' }, variation: 0, hand: {}, reach: { past: 1 } }, 'rows').flatMap(({ path }) => path);
+  assert.ok(Math.abs(Math.max(...hatch.map(fromCentre)) - 120) < 1.5, `a hatch reaches ${Math.max(...hatch.map(fromCentre)).toFixed(1)}`);
+  assert.ok(Math.max(...hatch.map(({ y }) => y)) > 315, 'its rows run out past the bottom of the disc');
   assert.throws(() => stampFillMarks(disc, 20, 0, guided([bowed(80), bowed(200).slice(0, 10)]), 'short'), /ends inside the region/);
   assert.throws(() => stampFillMarks(disc, 20, 0, guided([bowed(80), bowed(200).toReversed()]), 'against'), /runs against/);
 });

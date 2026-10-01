@@ -3,7 +3,7 @@
 // stroke deposit, lifting between them (stampFillStrokePath).
 //
 // Rows, contours and guided curves all end where a mark's edge meets the outline, half a diameter in, or down the
-// middle where the region is thinner than the brush; an extended mark runs on past it, for a `within` to clip.
+// middle where the region is thinner than the brush; reaching past it, they run on outside it, for a clip to trim.
 
 import { lerp } from '#lib/picture/motion/models/motion.ts';
 import { seededRandom } from '#lib/picture/motion/models/random.ts';
@@ -46,22 +46,16 @@ export type StampFillStrokes = {
   spacing?: number;
   variation?: number;
   hand?: StampStrokeHand;
-  /**
-   * Diameters (0 when left out) each mark's ends run on past where its edge meets the outline, so a hand's taper and
-   * lift fall outside the shape and its edge is crisp and full. The marks then cross the outline: the pass or wash
-   * goes `within` the region to clip them. A contour's loops have no ends to extend.
-   */
-  extend?: number;
   /** StampFillReach. */
   reach?: StampFillReach;
 };
 
 /**
- * How far a strokes fill's marks reach. `inside` (when left out): within its outline. `over`: their middles run out
- * to it and their paint past it, as a brush runs past a shape whose clip trims it; for a clipped texture over its
- * silhouette, which inside stops short of the edge (a mark is narrower than its tip).
+ * How far a strokes fill's marks reach. `inside` (when left out): their edges meet the outline. `past`: their centres
+ * run out to `past` diameters beyond it, for a clip (`clipped`, `within`) to trim. At 0 their middles reach the
+ * outline; at a diameter or so a hand's taper and lift fall outside, so the clipped edge is crisp and full.
  */
-export type StampFillReach = 'inside' | 'over';
+export type StampFillReach = 'inside' | { past: number };
 
 /**
  * Where a back and forth, zigzag or shading turns back. `eased` (when left out): the hand nearly lifts, as a crayon or
@@ -114,17 +108,16 @@ type LaidMark = { key?: string; patch?: number; path: StampStrokePoint[] };
 /**
  * `region` in `strokes` at `diameter`, mark by mark, each painted by its hand, seeded by `seed` and its key. Rows run
  * along `direction` (radians, 0 left and right); contours and guides follow the shape. A mark's edge meets the
- * outline (or runs `extend` past it); in a region thinner than a diameter the marks run down its middle.
+ * outline (or runs past it, as `reach` says); in a region thinner than a diameter the marks run down its middle.
  */
 export function stampFillMarks(region: StampRegion, diameter: number, direction: number, strokes: StampFillStrokes, seed: string): StampFillMark[] {
-  const { pattern, variation = 0.3, extend = 0, reach: reaching = 'inside' } = strokes;
+  const { pattern, variation = 0.3, reach = 'inside' } = strokes;
   const { spacing, hand } = { ...STAMP_FILL_PATTERNS[pattern.kind], ...strokes };
   if (!(spacing > 0) || !(variation >= 0 && variation <= 1)) throw new Error(`stamp paint: a strokes fill needs a positive spacing and a variation of 0..1, not ${spacing} and ${variation}`);
-  if (!(extend >= 0 && Number.isFinite(extend))) throw new Error(`stamp paint: a strokes fill extends its marks a finite 0 or more diameters, not ${extend}`);
-  if (pattern.kind === 'contour' && extend > 0) throw new Error(`stamp paint: a contour fill's marks are closed loops, with no ends to extend ${extend} diameters`);
-  const room = strokeRoom(region, diameter, reaching), random = seededRandom(`${seed}|fill strokes`);
-  const step = spacing * diameter, reach = extend * diameter;
-  const rows = (angle: number, extra = 0) => fillRows(room, angle, step, variation, extra, reach, random);
+  if (reach !== 'inside' && !(reach.past >= 0 && Number.isFinite(reach.past))) throw new Error(`stamp paint: a strokes fill reaches a finite 0 or more diameters past its outline, not ${reach.past}`);
+  const room = strokeRoom(region, diameter, reach), random = seededRandom(`${seed}|fill strokes`);
+  const step = spacing * diameter;
+  const rows = (angle: number, extra = 0) => fillRows(room, angle, step, variation, extra, random);
   const unkeyed = (paths: StampStrokePoint[][], patch?: number) => paths.map((path): LaidMark => ({ path, ...(patch !== undefined && { patch }) }));
   let laid: LaidMark[];
   switch (pattern.kind) {
@@ -133,7 +126,7 @@ export function stampFillMarks(region: StampRegion, diameter: number, direction:
     // A scribble's loops are a row apart wide, so each overlaps the next row's, and wider than the brush, so they read.
     case 'scribble': laid = unkeyed(chainRows(rows(direction, step)).map((chain) => scribbled(serpentine(chain), step, variation, random))); break;
     case 'contour': laid = contourMarks(room, step, variation, seed); break;
-    case 'guided': laid = guidedMarks(room, pattern.guides, diameter, step, variation, reach, seed); break;
+    case 'guided': laid = guidedMarks(room, pattern.guides, diameter, step, variation, seed); break;
     case 'backAndForth': case 'zigzag': case 'shading': {
       const turn = REVERSAL_PRESSURE[pattern.turns ?? 'eased'];
       const legs = (path: readonly StampStrokePoint[]) => reversalLegs(path, turn, diameter, variation, random);
@@ -157,15 +150,17 @@ export function stampFillStrokePath(region: StampRegion, diameter: number, direc
 }
 
 /**
- * Where a mark's centre may lie in `region`: half a diameter inside, or down the middle where it's thinner; anywhere
- * inside when its marks reach over the outline.
+ * Where a mark's centre may lie in `region`: at least `inset` px inside its outline (half a diameter, or down the
+ * middle where it's thinner), or as far as `-inset` px outside it when its marks reach past. `distance` covers the
+ * reach.
  */
 type StrokeRoom = { polygon: readonly StampPoint[]; distance: StampGrid; cell: number; inset: number; inside: (x: number, y: number, extra: number) => boolean };
 
 function strokeRoom(region: StampRegion, diameter: number, reach: StampFillReach): StrokeRoom {
-  const polygon = stampRegionPolygon(region), inset = reach === 'over' ? 0 : diameter / 2, cell = Math.max(1, diameter / 8);
-  const distance = stampDistanceGrid(polygon, stampPolygonBox(polygon, 2 * cell), cell);
-  const thickness = stampGridLocalMax(distance, inset);
+  const polygon = stampRegionPolygon(region), inset = reach === 'inside' ? diameter / 2 : -reach.past * diameter, cell = Math.max(1, diameter / 8);
+  const distance = stampDistanceGrid(polygon, stampPolygonBox(polygon, 2 * cell - Math.min(0, inset)), cell);
+  // Past the outline the room is the distance alone: thickness at radius 0 is the distance itself, never the lesser.
+  const thickness = stampGridLocalMax(distance, Math.max(0, inset));
   return { polygon, distance, cell, inset, inside: (x, y, extra) => stampGridAt(distance, x, y) > Math.min(inset, stampGridAt(thickness, x, y) / 2) + extra };
 }
 
@@ -173,11 +168,11 @@ function strokeRoom(region: StampRegion, diameter: number, reach: StampFillReach
 type FillRow = { start: StampPoint; end: StampPoint }[];
 
 /**
- * Rows `step` apart across `room` along `angle`, the first and last half a diameter in from its extremes, each split
- * into spans where a mark's centre (`extra` further in) may lie, then run on `reach` px past each end. `variation`
- * moves each inner row and tilts and shortens each span, never past the room's ends.
+ * Rows `step` apart across `room` along `angle`, the first and last at its inset from the region's extremes, each split
+ * into spans where a mark's centre (`extra` further in) may lie. `variation` moves each inner row and tilts and
+ * shortens each span, never past the room's ends; a span reaching past the outline isn't shortened: the clip ends it.
  */
-function fillRows({ polygon, cell, inset, inside }: StrokeRoom, angle: number, step: number, variation: number, extra: number, reach: number, random: () => number): FillRow[] {
+function fillRows({ polygon, cell, inset, inside }: StrokeRoom, angle: number, step: number, variation: number, extra: number, random: () => number): FillRow[] {
   const cos = Math.cos(angle), sin = Math.sin(angle);
   const local = polygon.map(({ x, y }) => ({ x: x * cos + y * sin, y: -x * sin + y * cos }));
   const toPainting = (x: number, y: number) => ({ x: x * cos - y * sin, y: x * sin + y * cos });
@@ -188,11 +183,11 @@ function fillRows({ polygon, cell, inset, inside }: StrokeRoom, angle: number, s
   return Array.from({ length: count }, (_, k) => {
     const y = count === 1 ? (first + last) / 2 : first + ((last - first) * k) / (count - 1);
     const row = k > 0 && k < count - 1 ? y + shake(0.25 * step) : y;
-    return rowSpans(local, angle, row, inset + extra + cell, cell, (x, yy) => inside(x, yy, extra)).map(([a, b]) => {
-      const pull = Math.min((b - a) / 3, 0.35 * inset * 2 * variation);
+    return rowSpans(local, angle, row, Math.abs(inset) + extra + cell, cell, (x, yy) => inside(x, yy, extra)).map(([a, b]) => {
+      const pull = Math.min((b - a) / 3, 0.35 * Math.max(0, inset) * 2 * variation);
       // Start before end, each end's pull before its tilt: the order of draws every fill's marks were laid by.
-      const start = toPainting(a + random() * pull - reach, row + shake(0.12 * step));
-      return { start, end: toPainting(b - random() * pull + reach, row + shake(0.12 * step)) };
+      const start = toPainting(a + random() * pull, row + shake(0.12 * step));
+      return { start, end: toPainting(b - random() * pull, row + shake(0.12 * step)) };
     });
   });
 }
@@ -328,8 +323,9 @@ function scribbled(path: readonly StampStrokePoint[], radius: number, variation:
 }
 
 /**
- * Rings `step` apart inward from where a mark's edge meets the outline, levels of the region's distance, closed and
- * outer first; a region thinner than the brush gets one down its middle. `variation` moves each inner ring in or out,
+ * Rings `step` apart inward from the room's edge (half a diameter in, or as far out as the marks reach past the
+ * outline), levels of the region's distance, closed and outer first; a region thinner than the brush gets one down its
+ * middle. `variation` moves each inner ring in or out,
  * drawn from its own key.
  */
 function contourMarks({ distance, inset }: StrokeRoom, step: number, variation: number, seed: string): LaidMark[] {
@@ -347,11 +343,11 @@ function contourMarks({ distance, inset }: StrokeRoom, step: number, variation: 
 const GUIDE_POINTS = 2000;
 
 /**
- * StampFillGuides' marks, each cut to where its centre may lie and run on `reach` px past each end. `variation` moves
- * each inner mark between its pair, drawn from its key. A pair's marks read only its two guides, resampled alike, so
- * a guide added elsewhere leaves them be.
+ * StampFillGuides' marks, each cut to where its centre may lie. Reaching past the outline, each blended curve first runs
+ * on straight as far as the reach, since guides need only end outside the outline. `variation` moves each inner mark
+ * between its pair, drawn from its key. A pair's marks read only their two guides, so adding one leaves them be.
  */
-function guidedMarks(room: StrokeRoom, guides: StampFillGuides['guides'], diameter: number, step: number, variation: number, reach: number, seed: string): LaidMark[] {
+function guidedMarks(room: StrokeRoom, guides: StampFillGuides['guides'], diameter: number, step: number, variation: number, seed: string): LaidMark[] {
   checkGuides(room.polygon, guides);
   const marks: LaidMark[] = [];
   for (let g = 0; g + 1 < guides.length; g++) {
@@ -364,7 +360,7 @@ function guidedMarks(room: StrokeRoom, guides: StampFillGuides['guides'], diamet
     for (let k = 0; k <= (g + 2 === guides.length ? count : count - 1); k++) {
       const share = k / count + (k > 0 && k < count ? ((seededRandom(`${seed}|guided ${g}.${k}`)() * 2 - 1) * 0.25 * variation) / count : 0);
       const curve = a.map((p, i) => ({ x: lerp(p.x, b[i].x, share), y: lerp(p.y, b[i].y, share) }));
-      insideRuns(curve, room).forEach((run, piece) => marks.push({ key: `guided ${g}.${k}.${piece}`, patch: g, path: extendedEnds(run, reach) }));
+      insideRuns(extendedEnds(curve, -room.inset), room).forEach((run, piece) => marks.push({ key: `guided ${g}.${k}.${piece}`, patch: g, path: run }));
     }
   }
   return marks;
@@ -436,7 +432,7 @@ function insideRuns(curve: readonly StampPoint[], room: StrokeRoom): StampStroke
   return runs.filter((points) => points.length > 1);
 }
 
-/** `run` with a straight piece `reach` px long on each end, along its end's own heading. */
+/** `run` with a straight piece `reach` px long on each end, along its end's own heading; as it is for no reach. */
 function extendedEnds(run: StampStrokePoint[], reach: number): StampStrokePoint[] {
   if (!(reach > 0)) return run;
   const beyond = (end: StampPoint, inward: StampPoint) => {
