@@ -107,9 +107,11 @@ export function compileStampWetness(
       forSpan(wash, lattice, (k, w, x, y) => { wash.level[k] = cover[w] * stampPaintFieldAt(preparation.wetness, x, y); });
     }
     let tau = 0;
-    for (const step of schedule) {
+    for (const [index, step] of schedule.entries()) {
       if (step.kind === 'wait') {
-        tau += stampWashWaitSeconds(wash, tau, step.until, drying);
+        // A bloom's drop is the step after its wait, as the recipe's bloom lays them.
+        const drop = 'under' in step ? schedule[index + 1] : undefined;
+        tau += stampWashWaitSeconds(wash, tau, step.until, drying, drop?.kind === 'deposit' ? pointsUnder(wash, drop.deposit, pass.within) : null);
         continue;
       }
       const { deposit } = step, { action } = deposit;
@@ -136,16 +138,26 @@ export function compileStampWetness(
 
 /**
  * Painting seconds from `tau` until `until`: 'damp' once the wettest paper is no wetter than damp, 'dry' once no paint
- * is workable (its open time run out too). Each point's moment comes in closed form; the wait lasts to the latest.
+ * is workable (its open time run out too), over the lattice points `under` (a bloom's drop), or the whole wash when
+ * null. Each point's moment comes in closed form; the wait lasts to the latest.
  */
-function stampWashWaitSeconds(wash: StampWashPaper, tau: number, until: StampWashWait, { rate, openTime, damp }: StampDrying): number {
+function stampWashWaitSeconds(wash: StampWashPaper, tau: number, until: StampWashWait, { rate, openTime, damp }: StampDrying, under: readonly number[] | null): number {
   if (typeof until === 'object') return until.seconds;
   const floor = until === 'damp' ? damp : 0, lag = until === 'damp' ? 0 : openTime;
   let latest = tau;
-  wash.level.forEach((level, k) => {
-    if (level > floor) latest = Math.max(latest, wash.at[k] + lag + (level - floor) / rate);
-  });
+  for (const k of under ?? wash.level.keys()) {
+    if (wash.level[k] > floor) latest = Math.max(latest, wash.at[k] + lag + (wash.level[k] - floor) / rate);
+  }
   return latest - tau;
+}
+
+/** The lattice points `deposit` wets any of, as its landing's cover reads them. */
+function pointsUnder(wash: StampWashPaper, deposit: CompiledStampDeposit, within: readonly StampPoint[] | null): number[] {
+  const span = depositSpan(deposit, wash.lattice, 0);
+  const cover = footprintCover(span, deposit.stamps, deposit.kind === 'flood' ? [deposit.flood.polygon] : [], within, deposit.mask);
+  const points: number[] = [];
+  forSpan(wash, span, (k, w) => { if (cover[w] > 0) points.push(k); });
+  return points;
 }
 
 /** Calls `visit` for each point of `span`: its index in the wash's lattice and in the span, and where it is, px. */

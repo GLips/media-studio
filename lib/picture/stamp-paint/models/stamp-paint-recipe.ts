@@ -112,7 +112,10 @@ export type StampWaterSettings = StampToolSettings & StampDepositGeometry & { wa
 export type StampLiftSettings = StampToolSettings & StampDepositGeometry & { strength?: number };
 /** A damp brush drawn along an edge to soften it: a water stroke carrying `water` (STAMP_SOFTEN_WATER when left out). */
 export type StampSoftenSettings = StampToolSettings & StampStrokeGeometry & { water?: number };
-/** Water dropped into a drying wash, a bloom: the wash waits until it's damp, then these placements land, `water` (1 when left out) each. */
+/**
+ * Water dropped into a drying wash, a bloom: the wash waits until the paper under the drop is damp (StampBloomWait),
+ * then these placements land, `water` (1 when left out) each.
+ */
 export type StampBloomSettings = StampToolSettings & StampPlacementGeometry & { water?: number };
 /** A wash waiting in painting time: until its wettest paper is `damp` (PaintWetting's damp) or `dry`, or for `seconds`. */
 export type StampWashWait = 'damp' | 'dry' | { seconds: number };
@@ -218,7 +221,12 @@ export type StampPaintRecipeDeposit<A extends StampRecipeWashAction = StampRecip
   action: A;
   mask: StampPaintRecipeMask;
 };
-type StampPaintRecipeStep = StampPaintRecipeDeposit | { kind: 'wait'; until: StampWashWait };
+/**
+ * A bloom's wait: until the paper under the drop that follows it is damp, not the whole wash, so paint laid elsewhere
+ * in the meantime doesn't hold the drop back until the paper under it has set.
+ */
+export type StampBloomWait = { kind: 'wait'; until: 'damp'; under: 'drop' };
+type StampPaintRecipeStep = StampPaintRecipeDeposit | { kind: 'wait'; until: StampWashWait } | StampBloomWait;
 type StampPaintRecipePass = { id: string; clipped: boolean; within?: StampRegion } & (
   | { wash: null; steps: readonly StampPaintRecipeDeposit<StampRecipePaint>[] }
   | { wash: { preparation?: StampWashOptions['preparation']; knockout: boolean }; steps: readonly StampPaintRecipeStep[] }
@@ -297,7 +305,7 @@ export function stampPaintRecipe(body: (paint: StampPaintScope) => void): StampP
         water(id, geometry, rest, amount);
       },
       bloom: (id, { water: amount = 1, ...settings }) => {
-        steps.push({ kind: 'wait', until: 'damp' });
+        steps.push({ kind: 'wait', until: 'damp', under: 'drop' });
         const { geometry, rest } = splitGeometry('stamps', settings);
         water(id, geometry, rest, amount);
       },
@@ -396,7 +404,7 @@ export type CompiledStampWash = {
   preparation: { polygon: readonly StampPoint[]; wetness: StampPaintField<number> } | null;
   schedule: readonly CompiledStampWashStep[];
 };
-export type CompiledStampWashStep = { kind: 'deposit'; deposit: CompiledStampDeposit } | { kind: 'wait'; until: StampWashWait };
+export type CompiledStampWashStep = { kind: 'deposit'; deposit: CompiledStampDeposit } | { kind: 'wait'; until: StampWashWait } | StampBloomWait;
 
 /** A pass painted `dry`, its deposits all paint (each lands as vid-83's paint does), or as a `wash`. */
 export type CompiledStampPass = {
@@ -503,9 +511,10 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
         // Deposits before kind, as the stamp gate's input prints have held a dry pass since vid-117's Phase 0.
         return { ...common, deposits: pass.steps.map((step) => deposit(step, (full, draws) => compilePaintAction(full, step.action, step.tool.brush, draws))), kind: 'dry' };
       }
-      const schedule = pass.steps.map((step): CompiledStampWashStep => (step.kind === 'wait'
-        ? { kind: 'wait', until: checkedWait(step.until, passId) }
-        : { kind: 'deposit', deposit: deposit(step, (full, draws) => compileWashAction(full, step.action, step.tool.brush, draws)) }));
+      const schedule = pass.steps.map((step): CompiledStampWashStep => {
+        if (step.kind === 'deposit') return { kind: 'deposit', deposit: deposit(step, (full, draws) => compileWashAction(full, step.action, step.tool.brush, draws)) };
+        return 'under' in step ? step : { kind: 'wait', until: checkedWait(step.until, passId) };
+      });
       const { preparation, knockout } = pass.wash;
       let prepared: CompiledStampWash['preparation'] = null;
       if (preparation) {

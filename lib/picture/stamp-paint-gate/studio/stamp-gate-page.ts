@@ -43,7 +43,7 @@ import { stampGatePrivatePainting, type StampGatePrivateCase } from '../models/s
 import { checkStampGateStripe, STAMP_GATE_STRIPE_SIZE, stampGateStripeCase, stampGateStripeLayer, stampGateStripePainting } from '../models/stamp-gate-stripe.ts';
 import { stampGateFrameDifference, stampGateFramePasses, type StampGateFrameDifference } from '../models/stamp-gate-frames.ts';
 import {
-  checkStampGateConserved, checkStampGateFenced, checkStampGateRimmed, checkStampGateLifted, checkStampGateSet, checkStampGateSpread, stampGateLastGroupPigments, stampGateWashCase, type StampGateWashCheck,
+  checkStampGateBloomed, checkStampGateConserved, checkStampGateFenced, checkStampGateRimmed, checkStampGateLifted, checkStampGateSet, checkStampGateSpread, stampGateLastGroupPigments, stampGateWashCase, type StampGateWashCheck,
 } from '../models/stamp-gate-washes.ts';
 import { stampGatePainting, stampGateTracePainting, type StampGateImage, type StampGatePainting } from '../models/stamp-gate-paintings.ts';
 
@@ -248,6 +248,7 @@ async function checkStampGateWash(id: string): Promise<StampGateWashCheck[]> {
   const without = await withGateRenderer(washCase.without, url, (renderer) => renderer.readLayer(end));
   if (washCase.property === 'conserved') return [...checks, checkStampGateConserved(id, pigments, painted.layer, without)];
   if (washCase.property === 'rimmed') return [...checks, checkStampGateRimmed(id, pigments, painted.layer, without)];
+  if (washCase.property === 'bloomed') return [...checks, checkStampGateBloomed(id, pigments, painted.layer, without)];
   if (washCase.property === 'spread') return [...checks, checkStampGateSpread(id, pigments, painted.layer, without)];
   if (washCase.property === 'set') {
     const layerOf = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), (renderer) => renderer.readLayer(end));

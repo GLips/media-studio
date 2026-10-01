@@ -1,14 +1,15 @@
-// stamp-gate-washes.ts: the washes the GPU gate paints, each held to what paint must do, not a baseline:
+// stamp-gate-washes.ts: the washes the GPU gate paints, held to what paint must do, not a baseline:
 //
-// - any frame order: a frame drawn fresh or after another is the same;
-// - conserved: water, softening, a bloom or wet paper moves pigment, never making or losing it;
+// - any frame order: a frame drawn fresh or after another matches;
+// - conserved: water, softening, a bloom or wet paper only moves pigment;
 // - lifted: a lift never raises a total nor leaves less than none, and takes less of a stain;
 // - spread: flow never leaves overlapping strokes less even;
-// - set: dried paint wetted again lifts only by the medium's rewetting;
+// - set: dried paint wetted again lifts only by its rewetting;
 // - fenced: no paint moves under masking fluid or out of a pass's `within`;
-// - rimmed: a drying puddle's edge gathers pigment; a seam of patches wet together doesn't.
+// - rimmed: a drying puddle's edge gathers pigment; a seam of patches wet together doesn't;
+// - bloomed: a drop blooms though paint landed elsewhere first.
 //
-// Each case paints into its last group, the layer readLayer reads.
+// Each case paints into its last group, which readLayer reads.
 
 import { PAINT_BANDS } from '#lib/picture/paint/models/paint-spectrum.ts';
 import { PAINT_MEDIA } from '#lib/picture/paint/models/paint-medium.ts';
@@ -40,6 +41,7 @@ export type StampGateWashCase = {
   | { property: 'set'; without: StampGatePainting; fresh: { subject: StampGatePainting; without: StampGatePainting }; rewetting: number }
   | { property: 'fenced'; fenced: (x: number, y: number) => boolean }
   | { property: 'rimmed'; without: StampGatePainting }
+  | { property: 'bloomed'; without: StampGatePainting }
 );
 
 /** How far a pigment's total may drift from the same wash's without the ops under test: its layer's half-float rounding summed over a few thousand pixels. */
@@ -92,6 +94,10 @@ const RIM = { puddleTo: 60, seam: 115 };
  */
 export const STAMP_GATE_RIM = { least: 0.1, seamMost: 0.02 };
 
+/** The bloomed case's drop, and how much of the paint round it must move, as a share of what lies there without it. */
+const BLOOM_DROP = { x: 45, y: 60, radius: 30 };
+export const STAMP_GATE_BLOOMED_LEAST = 0.02;
+
 /** Every wash case, by ID. */
 function washCases(): StampGateWashCase[] {
   const media: readonly StampGateWashMedium[] = ['watercolour', 'gouache', 'crayon'];
@@ -143,6 +149,13 @@ function washCases(): StampGateWashCase[] {
     patch('seam-left', 80, RIM.seam);
     patch('seam-right', RIM.seam, 150);
   };
+  // A sky, then fresh paint far from where the bloom drops, laid as the sky nears damp: the drop waits for the sky
+  // under it, not for this, which would hold it back until that sky had all but set.
+  const paintedElsewhere = (wash: StampWashScope) => {
+    sky(wash);
+    wash.wait({ seconds: 80 });
+    wash.stroke('elsewhere', { brush: ROUND, diameter: 24, material: pure(W.quinacridoneRose), path: [{ x: 132, y: 15 }, { x: 136, y: 105 }], ...shown(1) });
+  };
   const overlapping = (wash: StampWashScope) => [30, 52, 74, 96].forEach((x, k) => wash.stroke(`stroke-${k}`, {
     brush: ROUND, diameter: 36, material: pure(W.ultramarine), path: [{ x, y: 10 }, { x: x + 4, y: 110 }], ...shown(k / 2),
   }));
@@ -184,6 +197,13 @@ function washCases(): StampGateWashCase[] {
       subject: washPainting('watercolour', true, (wash) => {
         sky(wash);
         wash.bloom('bloom', { brush: SOFT, diameter: 24, at: [{ x: 50, y: 50 }, { x: 110, y: 70 }], ...shown(1) });
+      }),
+    },
+    {
+      id: 'wash/bloom-after-paint', mid: MID, property: 'bloomed', without: washPainting('watercolour', false, paintedElsewhere),
+      subject: washPainting('watercolour', false, (wash) => {
+        paintedElsewhere(wash);
+        wash.bloom('bloom', { brush: SOFT, diameter: 24, at: [{ x: BLOOM_DROP.x, y: BLOOM_DROP.y }], ...shown(1) });
       }),
     },
     // Against the same paint that doesn't flow, so neither moves nor rims.
@@ -338,6 +358,27 @@ function rimShares(layer: StampGateLayer, slot: number) {
   return {
     edge: most(RIM.puddleTo - 10, RIM.puddleTo + 6) / mean([25, 45]),
     seam: most(RIM.seam - 7, RIM.seam + 7) / mean([88, 102], [128, 142]),
+  };
+}
+
+/**
+ * Whether `subject`'s bloom moved at least STAMP_GATE_BLOOMED_LEAST of the paint within BLOOM_DROP's radius from where
+ * `without` left it, every pigment summed, and each pigment's total held: a drop landing on paint already set moves none.
+ */
+export function checkStampGateBloomed(id: string, pigments: readonly string[], subject: StampGateLayer, without: StampGateLayer): StampGateWashCheck {
+  let moved = 0, there = 0;
+  pigments.forEach((_, slot) => {
+    const after = slotAmounts(subject, slot), before = slotAmounts(without, slot);
+    for (let i = 0; i < after.length; i++) {
+      if (Math.hypot((i % subject.width) + 0.5 - BLOOM_DROP.x, Math.floor(i / subject.width) + 0.5 - BLOOM_DROP.y) >= BLOOM_DROP.radius) continue;
+      moved += Math.abs(after[i] - before[i]);
+      there += before[i];
+    }
+  });
+  const share = there > 0 ? moved / there : 0, conserved = checkStampGateConserved(id, pigments, subject, without);
+  return {
+    id: `${id}: bloomed`, passed: share >= STAMP_GATE_BLOOMED_LEAST && conserved.passed,
+    detail: `${(share * 100).toFixed(2)}% of the paint round the drop moved (under ${STAMP_GATE_BLOOMED_LEAST * 100}% fails); ${conserved.detail}`,
   };
 }
 
