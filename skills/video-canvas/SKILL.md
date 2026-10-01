@@ -104,6 +104,38 @@ Paint in the order a painter would: background glazes first, then each element a
 shading and ~30% texture clipped to it, blooms stamped inside), then lines. Separate groups give hard edges between
 elements, which is what keeps objects from showing through each other.
 
+### Animating a painting (a character that moves)
+
+`work/projects/2026-10-frog/` is the worked example.
+
+1. **Get the shapes from a figure, never typed coordinates.** `posedPrimitiveFigure` gives named 3D parts on
+   joints, and `posedFigureShapes(figure, pose, view)` gives their regions, silhouette, interior lines and anchors.
+   A pose is a few numbers (the frog's throat is one). `constructedFigureShapes` builds a figure from circles and
+   capsules; `svgFigureShapes` reads SVG paths.
+2. **Make every part that moves its own group**, painted from those shapes.
+3. **Decide how each part's marks live** (`PaintMarks`):
+   - `'stuck'` (the default): the painted layer is moved or bent. Use it for nearly rigid motion: sway, breath, a
+     limb.
+   - `'live'`: the group is re-painted from the posed figure at each held pose. Use it for a part that changes
+     shape, like a throat puffing. Bending would thicken and soften its lines. Compile only that group, with the
+     written group's id, passes and deposit ids, and keep it by the pose's key.
+   - `{ boil: { every: 2 } }`: the lines wobble on twos once drawn, and the texture stays put.
+4. **Write the motion as data.**
+   - `buildPaintMotion({ nodes, plays })` takes one `PaintMotionNode` per group, with `parent` for parts that follow
+     another (ink under body), and `pins`: `{ at, reach }` radial, or `{ part }` owning a region.
+   - Each play is `paintMotionPlay(node, clip, { clock, origin })`. Clips are `poses` (keyed pin moves), `breathe`,
+     `sway`, `flutter` and `place`. A clock is steps outermost first, e.g. `[{ kind: 'hold', frames: 2 },
+     { kind: 'at', start: cue }, { kind: 'loop', period: 3, mode: 'repeat' }]`. Start every play at a cue from
+     `timeline.ts`.
+   - Read `problems` and throw: they name two writers on one pin, a hold that isn't whole frames, or a pose that
+     folds.
+5. **Each frame,** `paintMotionFrameAt(motion, s.t)` gives `state` and `live`. Compile each live pose's group, put it
+   into the state as `live: { marks, key }`, and render
+   `<StampPainting painting={painting} style={style} t={s.t} frame={state} />`.
+
+Hold motion on twos (`hold: 2`, at `PAINT_ANIMATION_FPS`) and let the paint-in run on ones. Run `studio repeatable`
+inside a hold and across one.
+
 Look at what you paint: `studio look` gives a sheet of chosen frames, mid-reveal and finished; compare the brushes
 against the pack's `previews/`, or for a Photoshop pack its `reference/`, Photoshop's own strokes, which
 `npm run photoshop -- references` captures (docs/photoshop-capture.md). What the renderer doesn't do yet is ticketed: varied washes, pooled and lost edges and bleeding (vid-81),

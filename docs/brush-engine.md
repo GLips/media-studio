@@ -6,6 +6,7 @@ painted brush comes to the app's own, the studies a person judges, and the gate 
 feature under `lib/paint/`, each importing only those below it:
 
 ```
+animation          → painting
 brush-fidelity     → brush-packs, photoshop-brushes, procreate-brushes, painting, brush
 studies            → style, brush-packs, painting, materials, brush
 gate               → brush-packs, painting, materials, brush
@@ -97,6 +98,37 @@ symmetric, so the passes in reverse order are exactly Gᵀ) and a normalised sca
 send = give / N, delivered = weight · G(send · paint). What's delivered totals what's given, per pigment, and goes only
 where the paper lets it: a stage supplies the paper (wet, open), the bloom the deposit's wetness over its medium's damp
 and where paint may land, the rim open wherever it isn't bare paper at the grain's scale.
+
+**Frame state.** Everything about a group that varies with time reaches the renderer as data, per frame:
+`renderer.draw(t, frame)`, and `StampPainting`'s `frame` prop, take a `StampPaintFrameState`
+(`stamp-paint-frame-state.ts`). It holds each group's:
+- placement about its pivot;
+- warp, a rest-to-scene map with a key naming it, sampled on a lattice over the group's painted layer;
+- boil epoch;
+- visibility;
+- for a **live** group, its marks compiled for this frame.
+
+The compiled painting holds no functions of time, and a checkpoint is keyed by values and those keys, so equal keys
+must mean equal maps and marks. A group's paint lives one of three ways:
+- **Stuck:** its layer is carried, rigidly or bent by the warp. It's cheap, and blooms and edges ride along, but a
+  bend magnifies what it carries.
+- **Live:** it is re-placed from its posed geometry and drawn alone, everything before it restored from a checkpoint.
+  Line width and grain stay true at any stretch. Its marks must be the written group re-placed
+  (`stampLiveGroupProblem`).
+- **Boiling:** its rest space is wobbled on a stepped epoch, under its warp.
+
+A moved or bent layer is laid at four texels, then blended, so crayon keeps its tooth under sub-pixel motion. A
+recipe's own `motion` and `boil` are evaluated into the same shape (`stamp-frame-plan.ts`).
+
+**animation** writes that frame state, and the renderer never sees a scene, a pose or a clock.
+- **Shape sources** (`models/figure/`): a posed primitive figure, a construction of circles and capsules, or SVG paths.
+  Each gives named parts, a silhouette, interior lines and anchors as regions.
+- **Motion** (`paint-motion-frame.ts`): a tree of nodes, one per group, each with pins and how its marks live. Plays
+  of clips (`paint-motion-clips.ts`: poses, breathe, sway, flutter, place) are put on nodes through writers' clocks
+  (`paint-clock.ts`: at, rate, loop, hold, freeze, on a 24 fps animation clock).
+- **Checks:** `buildPaintMotion` checks the tree, the clocks, one writer per channel and target
+  (`paint-channels.ts`), and poses that fold. `paintMotionFrameAt(motion, t)` is pure in `t`, and gives each group's
+  state and each live node's pose for its caller to re-place.
 
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants
 of `procreate-reading.ts`), and the stroke Procreate draws its previews along. Its `engine/` reads binary plists and
