@@ -123,9 +123,14 @@ from an M1 Max under a shared load.
 
 **Short answer.** The pipeline holds. Blended shapes mesh into one closed skin. Regions written as fields trace
 smooth edges, and an ID image traced on the CPU gives the painter fills, light zones and lines within a third of a
-pixel of the exact lines, the same in any render order. What doesn't hold yet: the painted line boils as the rock
-turns (its geometry holds, but its stamps are re-placed each drawing), a re-traced object costs about 270 ms a frame
-because the whole painting reloads, and the frog's throat patch is the wrong shape (an authoring problem).
+pixel of the exact lines, the same in any render order. A second pass looked at the three gaps the first one left. None
+of them needs a spike:
+- **The boil** is mostly the outline's real change of shape as the rock turns, plus folds that pop in and out.
+- **The throat** was a field written as a half-space. An oval field fixes it, and that fix is on the branch.
+- **The flat values** come from tuning constants.
+
+What does cost is time: a new drawing still takes about 590 ms at 1080p, most of it compiling the moving groups' flood
+placement.
 
 **1. One skin; size and time.** Yes. `Manifold.levelSet` over a smooth union gives one closed mesh (genus 0) for the
 rock and the frog's body. The critic found no crease where the throat meets the chin. The seam it saw is the throat
@@ -180,10 +185,28 @@ the viewer) and turned into world space, so a turning rock turns under still lig
 to 0.11, and a rim where the rim light's term is over 0.15 and N·V under 0.42.
 
 **5. Outlines as the rock turns.** Their geometry holds, measured above and confirmed by the critic. The painted line
-boils: its breaks, density and the flecks beside it land differently every drawing (critic: FAIL on line texture),
-because a stroke's stamps are placed along its path from the path's start, and the path is new each drawing. The
-fills' textures (the crystals strokes) re-place in the same way. On twos it reads like a drawn boil, not crawl, but
-it isn't Graham's "lines stay painted at their width" yet.
+boils (critic: FAIL on line texture). The second pass measured it in an outline lab (`scenes/outline-lab.tsx`, 5 s,
+lossless frames, 11 drawing pairs, `tools/boil-measure.ts`), with each pair's ink compared both in place and forgiving
+motion within 4 px:
+
+| outline | line moves (px) | in place: mean / pixels flickering | forgiven: mean / pixels flickering |
+| --- | --- | --- | --- |
+| turning, π/72 a drawing | 0.90 | 0.183 / 31.7% | 0.043 / 6.0% |
+| still rock, re-drawn (0.05°) | 0.04 | 0.018 / 2.4% | 0.004 / 0.1% |
+| plan 1's re-seed boil | 0.07 | 0.045 / 6.2% | 0.009 / 0.0% |
+| plan 1's wobble boil | 0.23 | 0.111 / 15.7% | 0.010 / 0.0% |
+| runs cut by fixed sectors | 0.85 | 0.174 / 30.3% | 0.040 / 5.6% |
+| an even line on the same geometry | — | 0.353 / 44.0% | 0.037 / 4.7% |
+
+Seed jitter alone is small. Most of the turning rock's change survives the 4 px forgiveness, and an even line drawn on
+the same geometry boils as much, so it is the outline's own shape:
+- The silhouette is re-traced and really changes as the rock's bumps turn past the edge (`model-shapes.ts:173`).
+- Folds come and go at a threshold with no hysteresis (`model-shapes.ts:196`).
+- Placing stamps by step from the run's start (`stamp-placement.ts:180–219`) adds a little. Runs cut at fixed sectors,
+  which hold the stamps' start, gained nothing.
+
+In the full rock scene, drawings 24 to 25 flicker on 1.8% of outline pixels (forgiven). This is a small fix in the
+project: steady the folds or drop them, and pick the turn rate. Stamps keyed to the surface aren't needed for it.
 
 **Gaps hand-crafted in the toy** (each is phase 2's to build or name):
 1. The skins are baked into base64 modules (`models/*-glb.ts`, 3.7 MB), since a scene can't wait for WASM or load a
@@ -193,8 +216,10 @@ it isn't Graham's "lines stay painted at their width" yet.
    ellipsoid. There is no scene light list yet.
 4. The CPU rasteriser, the field tracing, the zone thresholds and route A are all in the project
    (`model-shapes.ts`, `model-lines.ts`). `cyclicRuns` is copied from `stamp-form.ts`, which doesn't export it.
-5. The turning rock recompiles its whole painting per drawing in a `useMemo` keyed by a drawing index stepped on twos
-   by hand (`floor(t × 24 / 2)`, on a 30 fps video, so holds are uneven).
+5. The turning rock compiles its written painting once and hands its moving groups (`rock`, `rock-ink`) in each
+   drawing as live marks through frame state, keyed by a drawing index stepped on twos by hand (`floor(t × 24 / 2)`,
+   on a 30 fps video, so holds are uneven). Live marks need a fixed deposit count, so every traced kind has a fixed
+   number of slots (`ROCK_SLOTS`), and a spare slot is a tiny piece off the frame.
 6. The value scheme is hand-written in the project: a half-tone (lit masked out, the silhouette glazed), the shade, a
    core band and strokes along the terminator, and the rim kept by a mask in every passage after the lightest
    (`keepRim`). A style or technique should own it; `stampChargedForm` already takes faces with a facing.
@@ -203,26 +228,56 @@ it isn't Graham's "lines stay painted at their width" yet.
    the same.
 
 **Needs in `lib/paint` and the renderer (for vid-140; nothing built here):**
-- **A group whose marks change each drawing without reloading the painting.** Today a new `CompiledStampPaint`
-  reloads everything: on the rock, about 60 ms of load (57 ms of it the stamp bank) and 67 ms of draw each drawing.
-  The whole render runs about 270 ms a frame in one tab against 42 ms for the held frog. vid-140's per-group cache by
-  marks key is what this needs; the model group's key is its drawing.
-- **Stamps that stay put on a line that moves a little.** Placing a stroke's stamps by arc length from a stable
-  anchor (or by a surface parameter, which route A's chains carry) would keep breaks and density where they were.
-  Fills need the same for their marks.
+- **Live marks work and help less than hoped.** The rock's moving groups were moved to live marks. The table gives
+  1080p in one tab, from file-write gaps (`tools/frame-times.ts`):
+
+  | | new drawings: median / p90 | held frames: median |
+  | --- | --- | --- |
+  | whole painting rebuilt | 664 / 815 ms | 47 ms |
+  | live marks | 588 / 683 ms | 46 ms |
+
+  - A back-to-back run under a heavier load gave 716 / 892 against 584 / 653 ms.
+  - Each live group reloads in about 22 ms against 59 ms for the whole painting.
+  - What remains is compiling the moving groups, about 390 ms. Of that, 65% is `placeStampFlood`, mostly
+    `stampDistanceGrid` (`stamp-region.ts:69`), and tracing is about 80 ms.
+- **Cheaper flood placement** is the need this exposes. A re-traced object can't hold 30 fps while it compiles its
+  regions' floods each drawing.
 - **A live group whose deposit count can change.** Region pieces split and merge as the rock turns (the moss), so the
-  written-group-re-placed rule (`stampLiveGroupProblem`) can't hold.
+  written-group-re-placed rule (`stampLiveGroupProblem`) can't hold. The toy fixes the count with spare slots (none
+  ran out over 72 drawings). vid-140 notes that letting it vary is local to `loadBank`.
 - **A region given as a sampled field** (a grid with an iso level), which areas and masks could read directly. The ID
   image already is one, so masks and `within` would skip tracing and keep sub-pixel edges.
 - Later, the device-sharing question: whether guide renders can stay on the stamp renderer's device.
 
-**New questions and follow-on spikes:**
-- **Stable marks on moving lines:** stamps keyed to a surface parameter, on vid-140's live groups. The boil is the
-  biggest gap to the look.
-- **Region authoring:** a 2D shape projected from a chosen view onto the skin, distance on the surface from painted
-  points, or fields. The throat bib is the test.
-- **Value and contrast as style:** the zone thresholds, the core's darkness and the rim's strength. The critic's
-  third gap is value.
+**The throat and the values (second pass).**
+- **The throat** was `min(x − (0.02 + 0.6(z/0.9)²), 1.98 − headY)`. That is a half-space cut by a parabola, so its
+  edge ran straight down the flank. It is now an oval bib narrowing toward the chin (`frog-body-model.ts`, `throat`),
+  re-baked into `frog-body-glb.ts`. It is a small authoring fix, on the workspace branch. Writing regions as fields
+  holds up, so region authoring isn't a spike.
+- **The values.** The body's lightness (CIE L*) was measured against a hand-traced outline of the reference's frog
+  (`tools/value-sheet.ts`):
+
+  | | body L* p5 / p25 / median / p75 / p95 | ground median |
+  | --- | --- | --- |
+  | model frog | 55 / 67 / 73 / 85 / 92 | 45 |
+  | reference | 31 / 44 / 66 / 76 / 96 | 21 |
+
+  The model's range is 37 against the reference's 64. The ink reaches L* 18–33, so the darks are there to use. The
+  constants that set this are in `model-painting.ts`:
+  - the ground wash (radial inner 0.45, line 116)
+  - the half-tone at opacity 0.3 (165), the shade at 0.7 (169) and the core at 0.45 (172)
+  - the frog's green, mostly yellow (229)
+  - the shade mix at 0.68 (251)
+
+  It is a tuning fix, not applied. Whether a style or a technique owns these values (gap 6) is still open.
+
+**Look notes, for later (Graham):** the lighting model, and how transparent some fills read, the frog's green
+especially.
+
+**New questions and follow-ons:**
+- **Steady folds:** hysteresis on the fold threshold, or no folds while turning, and the turn rate. This is the
+  boil's small fix.
+- **Values:** retune the constants above against the reference's spread.
 - **Cheaper tracing:** typed-array contouring, or the GPU ID image (10 ms) feeding field regions.
 - **Mesh density:** field regions don't need the finest mesh (face IDs did), so edge 0.06 halves the frog's build;
   check its silhouette.
