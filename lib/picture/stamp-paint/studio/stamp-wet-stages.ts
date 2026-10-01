@@ -32,12 +32,14 @@ export type StampWetStageContext = {
   fresh: { texture: GPUTexture; view: GPUTextureView; layers: readonly GPUTextureView[] };
   /** Every landing's paper before it, uploaded once: its wetness, workable and settled, one after another from its first. */
   grids: { buffer: GPUBuffer; firsts: ReadonlyMap<CompiledStampDeposit, number> };
+  /** How deep the paper's tooth takes paint (its grain's depth), 0 for a paper without. */
+  paperDepth: number;
 };
 
 /**
- * What a stage encodes after: a deposit landed over `box`, the footprint holding the coverage it laid (r) and where
- * paint may land (g); or a wash done. Its deposit and pass are as written, even in a
- * boil's epoch; `seed`, a stage's randomness, is the epoch's own, so its marks re-roll at the authored rate.
+ * What a stage encodes after: a deposit landed over `box`, the footprint holding the coverage it laid (r), where
+ * paint may land (g), and the paper's tooth there and its mean (ba); or a wash done. Deposit and pass are as written,
+ * even in a boil's epoch; `seed`, a stage's randomness, is the epoch's own, re-rolling at the authored rate.
  */
 export type StampWetStageMoment =
   | { kind: 'deposit'; deposit: CompiledStampDeposit; pass: CompiledStampPass; landing: StampWetLanding; box: StampPixelBox; seed: number }

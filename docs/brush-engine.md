@@ -55,11 +55,14 @@ and is wetted again moves or lifts only by the medium's rewetting.
 **The flow stage.** Two populations move: the deposit's fresh paint (what `landDeposit` laid, left in `fresh`),
 freely, and the paint already there, as far as the deposit's water stirs it (workable and open, where its brush
 touched). Each is a conserved diffusion of sigma = spread × diameter / 2 at full wetness, narrower as drier. Paper is as
-wet as it was, or as the brush's water where it touched, so paint on dry paper keeps a hard edge.
+wet as it was, or as the brush's water where it touched, so paint on dry paper keeps a hard edge. A water stroke's
+brush drags paint along where it touches, however damp, so there paint moves as on flooded paper: a soften reaches
+its sigma rather than its water's share of it.
 - After a lift there's no fresh paint: the paint round it runs back in, as loose as the lift would find it, a pair
   trading only as far as the lift reached either of it, at sigma = spread × diameter / 3, at most 16 px.
-- It works one array layer of the group at a time, so its scratch is the same for any palette: about 96 bytes a pixel
-  of the largest wash deposit's box, reserved as the painting (or a boil's epoch) loads.
+- It works one array layer of the group at a time, so its scratch is the same for any palette: 100 bytes a pixel of
+  the largest wash deposit's box (about 207 MB for a whole 1080p frame), reserved as the painting (or a boil's epoch)
+  loads.
 - What moved is open paint, and coverage grows by the share of a full film a pixel gained (the compositor's
   `washMoved`, which every stage uses).
 - It runs as passes at strides growing by about √2 (1, 2, 3, 4, 6, 8, 11, …), x then y, each a three-tap exchange
@@ -67,9 +70,11 @@ wet as it was, or as the brush's water where it touched, so paint on dry paper k
   sigma needs. Doubling strides left ripples a stride apart.
 - Two pixels trade only as freely as the driest, least open pixel between them (a way, built per stride from the
   last's), so paint never jumps a reserve or a dry gap.
-- What diffuses is each population's potential, its amounts averaged over 8 × 8 pixels, so granulation neither drives
-  paint nor is smoothed away. The layer takes the potential's net move, so texture stays where paint stays. A pixel
-  gives as its paint fills its potential, so never more than it holds.
+- What evens out, per pixel, is each pigment's whole amount (fresh and old) over the pixel's hold: how much of it the
+  paper takes there against its mean, by the compositor's `washHold` (the paper's tooth, a pigment's granulation and
+  clumps, as it lays paint). So moved paint settles into the tooth as laid paint does, a stroke's own texture holds
+  still, and a seam finer than a stroke evens out. A pair trades through the lesser hold, each population as freely
+  as it's stirred and holds of the pixel's paint, so a pixel never gives more than it holds.
 - Moves are f32 and the layer takes them in one f16 store: this GPU truncates f16 stores, and a store per pass lost
   a tenth of a percent of the pigment.
 

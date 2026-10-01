@@ -339,14 +339,14 @@ fn wetBodyAt(pixel: vec2u, here: f32) -> f32 {
 // paper's tooth, which break the hardened stroke as they would any.
 const WET_HARDEN_COVER_WGSL = /* wgsl */ `let landing = wetLandingAt(at);
   raw.x = wetLandCover(raw.x, wetBodyAt(pixel, raw.x), landing.water, landing.wetness);`;
-// A wash deposit lands, and leaves its footprint for the stages after it (StampWetStageMoment): what it laid, and
-// where paint may land at all.
+// A wash deposit lands, and leaves its footprint for the stages after it (StampWetStageMoment): what it laid, where
+// paint may land at all, and the paper's tooth.
 const WET_LAND_WGSL = /* wgsl */ `landDeposit(pixel, coverage, rims, tooth, at, landing);
   var allowed = 1.0;
   if ((u.flags & MASKED) != 0u) { allowed *= 1.0 - regionAt(fluid, k.fluid, pixel); }
   if ((u.flags & WITHIN) != 0u) { allowed *= regionAt(within, k.within, pixel); }
   if ((u.flags & CLIPPED) != 0u) { allowed *= clamp(clipped.r, 0.0, 1.0); }
-  textureStore(footprint, pixel, vec4f(coverage, allowed, 0.0, 0.0));`;
+  textureStore(footprint, pixel, vec4f(coverage, allowed, tooth));`;
 const DEPOSIT_FLAGS_WGSL = Object.entries(DEPOSIT_FLAGS).map(([flag, bit]) => `const ${flag.replace(/[A-Z]/g, (c) => `_${c}`).toUpperCase()} = ${bit}u;`).join('\n');
 
 /**
@@ -1201,7 +1201,7 @@ async function rendererOnDevice(
   const stages = wetness?.landings.size
     ? STAMP_WET_STAGES.map((stage) => Object.assign(stage.load({
       device, painting, medium: wetMedium!, wetness, width, height, layer: targets.layer, wash: compositor.wash!,
-      footprint: targets.footprint!, fresh: targets.fresh!, grids: writtenBank.grids,
+      footprint: targets.footprint!, fresh: targets.fresh!, grids: writtenBank.grids, paperDepth: paper.grain?.depth ?? 0,
     }), { after: stage.after }))
     : [];
   /**

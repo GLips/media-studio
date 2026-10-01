@@ -257,6 +257,11 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
   throw new Error(`stamp gate: no animation case ${JSON.stringify(id)}; the gate animates ${STAMP_GATE_ANIMATION_IDS.join(', ')}`);
 }
 
+const STAMP_GATE_FLOW_HOLD_WGSL = /* wgsl */ `
+fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f) -> vec4f {
+  return vec4f(1.0 + 0.6 * sin(0.9 * at.x) * cos(0.7 * at.y));
+}`;
+
 /**
  * Flow case `id` (stamp-gate-flow.ts): its layer written, the flow stage run once after its fresh deposit, the layer
  * read back before and after.
@@ -294,9 +299,10 @@ async function checkStampGateFlowCase(id: string): Promise<StampGateWashCheck> {
     device.pushErrorScope('validation');
     const stage = STAMP_WET_FLOW_STAGE.load({
       device, painting, medium, wetness, width, height, layer: arrayViews(layer),
-      wash: { layersOf: () => layers, movedWgsl: (n) => stampWashMovedWgsl(n, medium.body) },
+      // A hold rippling across the case, so paint is held to its sums however unevenly the paper takes it.
+      wash: { layersOf: () => layers, movedWgsl: (n) => stampWashMovedWgsl(n, medium.body), holdWgsl: () => STAMP_GATE_FLOW_HOLD_WGSL },
       footprint: { texture: footprint, view: footprint.createView({ dimension: '2d' }) }, fresh: arrayViews(texture(layers, written.fresh)),
-      grids: { buffer: gridBuffer, firsts: new Map([[deposit, 0]]) },
+      grids: { buffer: gridBuffer, firsts: new Map([[deposit, 0]]) }, paperDepth: 0,
     });
     const box = { x: 0, y: 0, w: width, h: height };
     stage.reserve?.(box);

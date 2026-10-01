@@ -74,6 +74,12 @@ export type StampWashLayer = {
    * moved its pigment total from `wasPigment` to `now`'s, its other channels as before the move.
    */
   movedWgsl: (layers: number) => string;
+  /**
+   * WGSL for `deposit`'s group: `washHold(l, at, tooth, depth, held)`, how much of each of layer `l`'s channels the
+   * paper holds at `at` against its mean (1), as the compositor lays paint there; `tooth` the paper's paint here and
+   * its mean, `depth` the paper's, `held` the layer's amounts. Moved paint evens out per unit of it.
+   */
+  holdWgsl: (deposit: CompiledStampDeposit) => string;
 };
 
 const BLENDS: readonly StampBlend[] = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'colorBurn'];

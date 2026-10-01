@@ -1,8 +1,7 @@
-// stamp-wet-flow.ts: how wet paint moves once a wash deposit lands (the flow stage, studio/stamp-wet-flow.ts): its
-// fresh paint feathers into water on the paper, soft the wetter it is and hard on dry paper, and paint already there
-// evens out as its water stirs it, so strokes in one wash merge rather than band; after a lift, the wet paint round it
-// runs back in across its edge. Each is a conserved diffusion that never crosses a dry gap or where paint may not
-// land. docs/brush-engine.md ("The flow stage") has the scheme: potentials, ways, and strides growing by about √2.
+// stamp-wet-flow.ts: how wet paint moves once a wash deposit lands (the flow stage, studio/stamp-wet-flow.ts): fresh
+// paint feathers into water, and paint already there evens out as the water stirs it, so strokes in one wash merge;
+// after a lift, wet paint runs back in. Each is a conserved diffusion of paint per unit of the paper's hold, never
+// crossing a dry gap or where paint may not land. docs/brush-engine.md ("The flow stage") has the scheme.
 //
 // WGSL only, apart from planning the passes: the renderer is the one place it runs.
 
@@ -67,16 +66,18 @@ fn flowLiftPair(lifted: f32, partnerLifted: f32) -> f32 {
 fn flowConductance(sigma: f32, stride: f32, before: f32, wet: f32, open: f32) -> f32 {
   return 0.25 * flowLevelShare(sigma * clamp(wet, 0.0, 1.0), stride, before) * clamp(open, 0.0, 1.0);
 }
-// How freely a pixel's paint moves: as stirred, and as much as it holds of its potential, so it never gives more.
-fn flowFree(stirred: f32, held: vec4f, potential: vec4f) -> vec4f {
-  return clamp(stirred, 0.0, 1.0) * select(vec4f(0.0), clamp(held / potential, vec4f(0.0), vec4f(1.0)), potential > vec4f(0.0));
+// How freely a population's paint moves: as stirred, and as much of the pixel's paint as it holds, so the populations
+// together never give more than the pixel has.
+fn flowFree(stirred: f32, held: vec4f, whole: vec4f) -> vec4f {
+  return clamp(stirred, 0.0, 1.0) * select(vec4f(0.0), clamp(held / whole, vec4f(0.0), vec4f(1.0)), whole > vec4f(0.0));
 }
-// What a potential gains from its partner's (negative for a loss): the higher gives by the difference, as free as it
-// is. Both of a pair call it alike, so what one loses the other gains; with k <= 1/4 and two partners, a pixel gives
-// at most half of what it holds.
-fn flowOut(high: vec4f, low: vec4f, free: vec4f, k: f32) -> vec4f { return k * (high - low) * free; }
-fn flowInto(here: vec4f, there: vec4f, freeHere: vec4f, freeThere: vec4f, k: f32) -> vec4f {
-  let gained = select(vec4f(0.0), flowOut(there, here, freeThere, k), there > here);
-  let lost = select(vec4f(0.0), flowOut(here, there, freeHere, k), here > there);
+// What a pixel gains from its partner (negative for a loss). Paint runs down the gradient of its amount per unit of
+// hold (\`here\`, \`there\`), through the lesser hold of the pair, as free as the giver's is. Both of a pair call it
+// alike, so what one loses the other gains; as paint over hold through the lesser hold is at most what the giver has,
+// with k <= 1/4 and two partners a pixel gives at most half of it.
+fn flowInto(here: vec4f, there: vec4f, holdHere: vec4f, holdThere: vec4f, freeHere: vec4f, freeThere: vec4f, k: f32) -> vec4f {
+  let through = k * min(holdHere, holdThere);
+  let gained = select(vec4f(0.0), through * (there - here) * freeThere, there > here);
+  let lost = select(vec4f(0.0), through * (here - there) * freeHere, here > there);
   return gained - lost;
 }`;

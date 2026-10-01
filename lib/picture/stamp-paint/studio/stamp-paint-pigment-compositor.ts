@@ -9,7 +9,7 @@
 // toward its mixture rather than adding less pigment.
 
 import { PAINT_KUBELKA_MUNK_WGSL } from '#lib/picture/paint/models/paint-kubelka-munk.ts';
-import { PAINT_PAPER_WGSL } from '#lib/picture/paint/models/paint-paper.ts';
+import { PAINT_PAPER_WGSL, paintPigmentSeed } from '#lib/picture/paint/models/paint-paper.ts';
 import { paintHexToLinear } from '#lib/picture/paint/models/paint-spectrum.ts';
 import { STAMP_PIGMENT_GROUP_SLOTS, type StampPigmentPaint } from '../models/stamp-pigment-paint.ts';
 import { STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
@@ -127,9 +127,16 @@ fn paperReflectance(i: u32, color: vec3f) -> vec4f {
   return clamp(PAPER[i] + MOVE_R[i] * d.r + MOVE_G[i] * d.g + MOVE_B[i] * d.b, vec4f(0.001), vec4f(0.999));
 }`;
 
-  const contact = medium.paperContact.kind === 'peaks'
-    ? `paintDryContact(h, meanHeight, ${f32(medium.paperContact.tooth)}, u.paperDepth)`
-    : 'paintWetSettle(valley, u.paperDepth, c.granulation, amount)';
+  // Where the medium meets the paper, from the paper's height `h`, its mean and valley, by a pigment's granulation and load.
+  const contactOf = (depth: string, granulation: string, load: string) => (medium.paperContact.kind === 'peaks'
+    ? `paintDryContact(h, meanHeight, ${f32(medium.paperContact.tooth)}, ${depth})`
+    : `paintWetSettle(valley, ${depth}, ${granulation}, ${load})`);
+  const contact = contactOf('u.paperDepth', 'c.granulation', 'amount');
+  const groupOf = (deposit: CompiledStampDeposit) => {
+    const group = paint.deposits.get(deposit)?.group;
+    if (group === undefined) throw new Error(`stamp paint: ${deposit.id} isn't in the painting its pigment compositor was made for`);
+    return group;
+  };
 
   return {
     targets: { layer: { kind: 'array', layers }, painting: { kind: 'array', layers: V } },
@@ -244,12 +251,30 @@ fn landDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f
       resources: ({ wet }) => [{ buffer: components }, ...(wet ? [{ buffer: stains }] : [])],
     },
     wash: {
-      layersOf: (deposit) => {
-        const group = paint.deposits.get(deposit)?.group;
-        if (group === undefined) throw new Error(`stamp paint: ${deposit.id} isn't in the painting its pigment compositor was made for`);
-        return paint.groups[group].layers;
-      },
+      layersOf: (deposit) => paint.groups[groupOf(deposit)].layers,
       movedWgsl: (washLayers) => stampWashMovedWgsl(washLayers, medium.body),
+      holdWgsl: (deposit) => {
+        const group = paint.groups[groupOf(deposit)];
+        // Per channel of the group's layers: its pigment's granulation, flocculation and seed; none for coverage and the open share.
+        const habits = Array.from({ length: group.layers * 4 }, (_, channel) => {
+          const pigment = group.palette[channel - 1];
+          return pigment && channel > 0 ? [pigment.granulation * medium.granulation, pigment.flocculation, paintPigmentSeed(pigment.id)] : [0, 0, 0];
+        });
+        return /* wgsl */ `
+${PAINT_PAPER_WGSL}
+const WASH_HABITS = array<vec3f, ${habits.length}>(${habits.map((habit) => `vec3f(${habit.map(f32).join(', ')})`).join(', ')});
+fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f) -> vec4f {
+  let h = 1.0 - tooth.x;
+  let meanHeight = 1.0 - tooth.y;
+  let valley = paintValley(h, meanHeight);
+  var hold = vec4f(1.0);
+  for (var i = 0u; i < 4u; i++) {
+    let habit = WASH_HABITS[4u * l + i];
+    hold[i] = max(0.0, ${contactOf('depth', 'habit.x', 'held[i]')} * paintClumps(habit.y, at.x, at.y, u32(habit.z)));
+  }
+  return hold;
+}`;
+      },
     },
     group: {
       wgsl: /* wgsl */ `
