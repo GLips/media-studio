@@ -1,15 +1,14 @@
 // stamp-wet-bloom.ts: the wet stage for blooms and backruns (models/stamp-wet-bloom.ts). A wash deposit's surplus
-// water spreads over the wet paper, stalls at a ragged front, and the paint it loosens inside is carried there, over
-// the deposit's box, which the stage's reach widens. Both move by the shared transport (stamp-wet-transport.ts), so
+// water spreads over the wet paper the wash's paint reaches, stalls at a lobed front, and the paint it loosens inside
+// is carried there, over the deposit's box, which the stage's reach widens. Both move by the shared transport (stamp-wet-transport.ts), so
 // neither crosses masking fluid, a `within`'s edge or a dry gap.
 //
-// Carrying is the transport's normalised scatter: a pixel sends what it loosens to the band through the spread, in
+// Carrying is the normalised scatter: a pixel sends what it loosens to the band through the spread, in
 // proportion to the band's weight there, so what one gives up is exactly what the band gains, per pigment.
 //
-// Negative space: the spreading water isn't written back into the wash's wetness, so later deposits don't see it.
+// Negative space: the spreading water isn't written back into the wash's wetness; later deposits don't see it.
 
 import { STAMP_BLOOM_BAND_WIDTH, STAMP_BLOOM_CARRY_SPREAD, STAMP_WET_BLOOM_WGSL, stampBloomReach, stampBloomSizing } from '../models/stamp-wet-bloom.ts';
-import { STAMP_WET_FLOW_WETNESS_WGSL } from '../models/stamp-wet-flow.ts';
 import { STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
 import { STAMP_GRID_AT_WGSL } from '../models/stamp-region.ts';
 import type { StampWetWindow } from '../models/stamp-wetness.ts';
@@ -78,17 +77,30 @@ fn paperThroughout(p: vec2i) -> vec2f {
   }
   return vec2f(wettest, workable);
 }
+fn wetnessBeforeAt(p: vec2i) -> f32 { return gridAt(vec2f(p) + 0.5, u.lattice.xyz, u.size, u.first); }
 `;
 
-// The surplus water the deposit left, per pixel, into the transport's values; and the paper it spreads over: as wet
-// as the deposit left it (flowWetness; damp conducts fully, drier less) and open where paint may land (footprint g:
-// never under fluid, outside \`within\` or the clip).
+// Whether the bloom's water reaches p (bloomContact), by the wash's paint over the 5 x 5 px round it: a grain-fine
+// fringe would speckle the front where the wash's own edge stops it.
+const CONTACT_WGSL = /* wgsl */ `
+fn contactAt(p: vec2i) -> f32 {
+  var coverage = 0.0;
+  for (var j = -2; j <= 2; j += 2) {
+    for (var i = -2; i <= 2; i += 2) { coverage += textureLoad(layer, clamp(p + vec2i(i, j), vec2i(0), vec2i(textureDimensions(layer)) - 1), 0, 0).x; }
+  }
+  return bloomContact(wetnessBeforeAt(p), coverage / 9.0);
+}`;
+
+// The surplus water the deposit left, per pixel, into the transport's values; and the paper it spreads over: how
+// readily the water runs there (bloomEase, by the paper before the deposit, only where it reaches: bloomContact), and
+// open where paint may land (footprint g: never under fluid, outside \`within\` or the clip).
 const SURPLUS_WGSL = /* wgsl */ `${PRELUDE}${GRID_WGSL}
 ${STAMP_WET_BLOOM_WGSL}
-${STAMP_WET_FLOW_WETNESS_WGSL}
 @group(0) @binding(3) var footprint: texture_2d<f32>;
 @group(0) @binding(4) var surplus: texture_storage_2d_array<rgba32float, write>;
 @group(0) @binding(5) var paper: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(6) var layer: texture_2d_array<f32>;
+${CONTACT_WGSL}
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   let local = localOf(id);
   if (local.x < 0) { return; }
@@ -97,8 +109,9 @@ ${STAMP_WET_FLOW_WETNESS_WGSL}
   let wetness = wetnessAfterAt(p);
   textureStore(surplus, local, 0, vec4f(bloomSurplus(at.x, wetness, at.y, u.damp, u.shine), 0.0, 0.0, 0.0));
   let landed = textureLoad(footprint, p, 0);
-  let wet = flowWetness(gridAt(vec2f(p) + 0.5, u.lattice.xyz, u.size, u.first), u.water, landed.r);
-  textureStore(paper, local, vec4f(clamp(wet / max(u.damp, 1e-3), 0.0, 1.0), clamp(landed.g, 0.0, 1.0), 0.0, 0.0));
+  let contact = contactAt(p);
+  let ease = bloomEase(wetnessBeforeAt(p), u.damp);
+  textureStore(paper, local, vec4f(contact * ease, clamp(landed.g, 0.0, 1.0), 0.0, 0.0));
 }`;
 
 // Where each pixel stands to the front: its band weight (x) and the share of its paint loosened (y), as free as it is
@@ -111,6 +124,7 @@ ${movedWgsl}
 @group(0) @binding(4) var water: texture_2d_array<f32>;
 @group(0) @binding(5) var front: texture_storage_2d<rg32float, write>;
 @group(0) @binding(6) var layer: texture_2d_array<f32>;
+${CONTACT_WGSL}
 @group(0) @binding(7) var band: texture_storage_2d_array<rgba32float, write>;
 fn waterAt(local: vec2i) -> f32 { return textureLoad(water, clamp(local, vec2i(0), vec2i(u.extent) - 1), 0, 0).r; }
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
@@ -120,13 +134,16 @@ fn waterAt(local: vec2i) -> f32 { return textureLoad(water, clamp(local, vec2i(0
   // Read over two pixels either side: the transport's ladder leaves a pixel-scale ripple in the water, and a gradient
   // read from it would ripple the distance and the lobes' direction.
   let gradient = 0.25 * vec2f(waterAt(local + vec2i(2, 0)) - waterAt(local - vec2i(2, 0)), waterAt(local + vec2i(0, 2)) - waterAt(local - vec2i(0, 2)));
-  let d = bloomFrontDistance(vec2f(p) + 0.5, waterAt(local), gradient, u.seed, u.sigma);
+  let before = wetnessBeforeAt(p);
+  let at = bloomFront(vec2f(p) + 0.5, waterAt(local), gradient, bloomEase(before, u.damp), u.seed, u.sigma);
+  let streak = bloomStreak(at.foot, at.d, u.seed, u.sigma);
   let allowed = clamp(textureLoad(footprint, p, 0).g, 0.0, 1.0);
-  let weight = bloomBand(d, bloomFrontLine(vec2f(p) + 0.5, u.seed, u.sigma)) * allowed * smoothstep(0.0, 0.1, wetnessAfterAt(p));
-  var held: array<vec4f, ${layers}>;
-  for (var l = 0; l < ${layers}; l++) { held[l] = textureLoad(layer, p, l, 0); }
-  let free = liftFree(workableAt(p), washOpen(held));
-  textureStore(front, local, vec4f(weight, bloomLoosened(vec2f(p) + 0.5, d, free, u.drive, u.seed, u.sigma) * allowed, 0.0, 0.0));
+  var paint: array<vec4f, ${layers}>;
+  for (var l = 0; l < ${layers}; l++) { paint[l] = textureLoad(layer, p, l, 0); }
+  let line = bloomFrontLine(at.held, bloomMerging(before, u.damp, u.shine));
+  let weight = bloomBand(at.d, line, streak) * allowed * contactAt(p);
+  let free = liftFree(workableAt(p), washOpen(paint));
+  textureStore(front, local, vec4f(weight, bloomLoosened(at.d, free, u.drive, streak) * allowed, 0.0, 0.0));
   textureStore(band, local, 0, vec4f(weight, 0.0, 0.0, 0.0));
 }`;
 
@@ -297,13 +314,14 @@ function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: S
   const bloomSteps = (plan: BloomPlan, textures: BloomScratch): BloomStep[] => {
     const { paper, values, front, send } = textures;
     const { pipelines, spreads } = plan, u = { buffer: plan.uniform }, g = { buffer: grids.buffer }, a = { buffer: after };
-    const step = (pipeline: GPUComputePipeline, resources: GPUBindingResource[]): BloomStep => ({
-      pipeline, bindGroup: device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: resources.map((resource, binding) => ({ binding, resource })) }),
+    // A null leaves its binding out: a pass whose shader never reads it has none in its layout.
+    const step = (pipeline: GPUComputePipeline, resources: (GPUBindingResource | null)[]): BloomStep => ({
+      pipeline, bindGroup: device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: resources.flatMap((resource, binding) => (resource ? [{ binding, resource }] : [])) }),
     });
     return [
-      step(pipelines.surplus, [u, g, a, footprint.view, values[0], paper]),
+      step(pipelines.surplus, [u, g, a, footprint.view, values[0], paper, layer.view]),
       ...spreads.steps(WATER, textures),
-      step(pipelines.front, [u, g, a, footprint.view, values[0], front, layer.view, values[1]]),
+      step(pipelines.front, [u, g, null, footprint.view, values[0], front, layer.view, values[1]]),
       ...spreads.steps(REACHED, textures),
       step(pipelines.send, [u, front, values[1], send]),
       step(pipelines.sent, [u, layer.view, send, values[0]]),
