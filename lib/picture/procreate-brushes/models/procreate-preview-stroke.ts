@@ -9,7 +9,8 @@
 // range by a rule it doesn't document; the sheet fits the diameter to the preview's thickness instead.
 
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import type { StampStrokePoint } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 
 /** A Procreate brush preview's size, in pixels. */

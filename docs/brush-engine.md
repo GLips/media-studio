@@ -27,8 +27,8 @@ studio runs it off the GPU too (Kubelka–Munk, `stampPaintFieldAt`, a region's 
 declares `needsDual` rather than having the CPU run its combine. The GPU's resolve order and mode switches are generated from the tables. How the GPU lays a
 layer's stamps is a plan (`stampAccumulationPlan`): a fixed blend where stamp order can't change the build, and
 otherwise, for a `buildToOpacity` whose opacity falls (Photoshop never lowers what's built), each pixel walks its
-stamps in order and lays each by the table's `lay`. `stamp-paint-recipe.ts` is the painting a scene writes, with its
-paper. `studio/` is the WebGPU renderer, its uniform layout and the compositor.
+stamps in order and lays each by the table's `lay`. `stamp-paint-recipe.ts` writes the painting a scene paints, with its
+paper; `stamp-paint-recipe-types.ts` holds what it writes, and `stamp-paint-recipe-compile.ts` checks it and places its stamps. `studio/` is the WebGPU renderer, its uniform layout and the compositor.
 
 **Fills and forms.** A fill floods its region (`stamp-fill.ts`) or lays it in strokes (`stamp-fill-strokes.ts`): a
 pattern (`StampFillPattern`, each an object by `kind`) makes marks, `stampFillMarks`, each with a key and the patch a

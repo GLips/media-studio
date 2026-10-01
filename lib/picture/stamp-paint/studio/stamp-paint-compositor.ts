@@ -10,7 +10,7 @@
 
 import type { StampBlend } from '../models/stamp-brush.ts';
 import { stampKeySpanAt, type StampKeyList } from '../models/stamp-material-keys.ts';
-import { STAMP_OPAQUE_COVER, type CompiledStampDeposit, type CompiledStampPaint } from '../models/stamp-paint-recipe.ts';
+import { STAMP_OPAQUE_COVER, type CompiledStampDeposit, type CompiledStampPaint } from '../models/stamp-paint-recipe-compile.ts';
 import { stampUniformLayout, stampUniformWriter, type StampUniformField, type StampUniformLayout, type StampUniformViews } from './stamp-uniform-layout.ts';
 
 /** A texture the compositor keeps its paint in: four channels, or an array of `layers` of four. */

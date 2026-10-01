@@ -3,7 +3,7 @@
 // its own on the style's paper, so a passage the renderer refuses leaves the others painted, and each animation check's
 // frames (models/wet-animations.ts). Images are served at /files/ (brush-fidelity-pack-urls.ts).
 
-import { compileStampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-compile.ts';
 import { createStampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface } from '#lib/picture/stamp-paint/studio/stamp-paint-surface.ts';
 import { brushFidelityAssetUrl } from '../models/brush-fidelity-pack-urls.ts';

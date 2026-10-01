@@ -14,7 +14,7 @@ import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
 import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { useFrameProfile } from '#lib/picture/profiling/studio/frame-profile.ts';
-import type { CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import type { CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-compile.ts';
 import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/picture/stamp-paint/studio/stamp-paint-surface.ts';
 import type { ResolvedStampPaintStyle } from '../models/style.ts';

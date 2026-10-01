@@ -16,7 +16,7 @@ import type { PhotoshopKnownTip } from '#lib/picture/photoshop-brushes/models/ph
 import type { StampPixelBox } from '#lib/picture/stamp-paint/models/stamp-blur-region.ts';
 import type { StampResolveStage } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
 import type { StampBrushAsset } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
-import type { CompiledStampDeposit, CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import type { CompiledStampDeposit, CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-compile.ts';
 import type { CompiledStampPaintAction } from '#lib/picture/stamp-paint/models/stamp-paint-action.ts';
 import { placeStrokeStamps } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 

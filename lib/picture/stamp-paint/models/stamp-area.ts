@@ -8,7 +8,7 @@
 
 import { checkedStampPolygon } from './stamp-deposit-compile.ts';
 import { stampRegionSeed } from './stamp-fill.ts';
-import type { CompiledStampMask } from './stamp-paint-recipe.ts';
+import type { CompiledStampMask } from './stamp-paint-recipe-compile.ts';
 import { stampEdgeReach, stampEdgeWidth, stampPolygonBox, stampPolygonDistance, type StampBox, type StampEdge, type StampPoint, type StampRegion } from './stamp-region.ts';
 
 /**

@@ -8,7 +8,7 @@
 // what the author names.
 
 import { STAMP_WET_CELL, stampWetGrid, type StampWetness } from './stamp-wetness.ts';
-import type { CompiledStampDeposit, CompiledStampPass } from './stamp-paint-recipe.ts';
+import type { CompiledStampDeposit, CompiledStampPass } from './stamp-paint-recipe-compile.ts';
 import { stampGridLocalMax, type StampGrid } from './stamp-region.ts';
 
 /** The widest band a rim draws pigment from, px: past it the kernels' taps grow and a real rim's band is no wider. */

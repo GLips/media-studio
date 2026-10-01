@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PAINT_MEDIA } from '#lib/picture/paint/models/paint-medium.ts';
 import { stampLinearDynamics, type StampBrush } from './stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type StampWashScope } from './stamp-paint-recipe.ts';
+import { compileStampPaintRecipe } from './stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from './stamp-paint-recipe.ts';
+import type { StampWashScope } from './stamp-paint-recipe-types.ts';
 import { assertStampWetEffects, stampWetReport, stampWetReportWarnings } from './stamp-wet-report.ts';
 import { compileStampWetness } from './stamp-wetness.ts';
 

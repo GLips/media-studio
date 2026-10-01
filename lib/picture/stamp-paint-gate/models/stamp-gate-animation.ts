@@ -16,7 +16,9 @@ import type { PaintPigmentAppearance } from '#lib/picture/paint/models/paint-pig
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/picture/paint/models/paint-watercolour-pigments.ts';
 import { stampLinearDynamics } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from '#lib/picture/stamp-paint/models/stamp-group-motion.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type PaintMaterial, type StampPaintMaterial, type StampPaintPaper } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import type { PaintMaterial, StampPaintMaterial, StampPaintPaper } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-types.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
 import type { StampGateWashCheck } from './stamp-gate-washes.ts';
 

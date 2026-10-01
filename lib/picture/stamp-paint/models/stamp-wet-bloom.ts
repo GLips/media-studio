@@ -6,7 +6,7 @@
 // studio/stamp-wet-bloom.ts, plus its CPU sizing.
 
 import type { PaintMedium, PaintWetting } from '#lib/picture/paint/models/paint-medium.ts';
-import type { CompiledStampDeposit } from './stamp-paint-recipe.ts';
+import type { CompiledStampDeposit } from './stamp-paint-recipe-compile.ts';
 import type { StampWetLanding } from './stamp-wetness.ts';
 
 /**

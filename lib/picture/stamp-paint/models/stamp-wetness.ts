@@ -11,7 +11,8 @@
 import type { PaintMedium, PaintWetting } from '#lib/picture/paint/models/paint-medium.ts';
 import { stampPaintFieldAt } from './stamp-paint-field.ts';
 import type { PlacedStamp } from './stamp-placement.ts';
-import type { CompiledStampDeposit, CompiledStampMask, CompiledStampPaint, CompiledStampPass, StampPaintPaper } from './stamp-paint-recipe.ts';
+import type { CompiledStampDeposit, CompiledStampMask, CompiledStampPaint, CompiledStampPass } from './stamp-paint-recipe-compile.ts';
+import type { StampPaintPaper } from './stamp-paint-recipe-types.ts';
 import type { CompiledStampWashStep, CompiledStampWashWait, StampWashWait } from './stamp-wash-effects.ts';
 import { stampEdgeReach, type StampGrid, type StampPoint } from './stamp-region.ts';
 import { stampAreaBox, stampAreaCoverageAt, type CompiledStampArea } from './stamp-area.ts';

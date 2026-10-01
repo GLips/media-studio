@@ -19,7 +19,8 @@ import {
 import { STAMP_FLOOD_FRONT_SHARE_WGSL } from '../models/stamp-fill.ts';
 import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
 import { stampDepositShowsAt, stampFloodProgressAt, visibleStampCountAt } from '../models/stamp-deposit-reveal.ts';
-import { stampBoilSeed, stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampMask, type CompiledStampPaint, type CompiledStampPass, type StampPaintPaper } from '../models/stamp-paint-recipe.ts';
+import { stampBoilSeed, stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampMask, type CompiledStampPaint, type CompiledStampPass } from '../models/stamp-paint-recipe-compile.ts';
+import type { StampPaintPaper } from '../models/stamp-paint-recipe-types.ts';
 import { compileStampPigmentPaint, stampGrainDepthIn, type StampPaintMixing } from '../models/stamp-pigment-paint.ts';
 import { compileStampWetness, STAMP_WET_CELL, type StampWetLanding, type StampWetness } from '../models/stamp-wetness.ts';
 import { stampWetReport, stampWetReportWarnings } from '../models/stamp-wet-report.ts';

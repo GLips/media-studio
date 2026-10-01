@@ -3,7 +3,9 @@
 // with a stroke under a state of the fluid built on the flood's. Its baselines sit in ignored work/validation/.
 
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type StampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import type { StampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-types.ts';
 import type { StampGatePainting } from './stamp-gate-paintings.ts';
 
 export const STAMP_GATE_PRIVATE_CASES = ['stroke', 'flood', 'within', 'load', 'front'] as const;

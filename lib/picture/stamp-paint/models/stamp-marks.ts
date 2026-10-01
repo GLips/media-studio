@@ -11,7 +11,7 @@ import { placeAuthoredStamps, placeStrokeStamps, type PlacedStamp, type StampPla
 import { handStampStroke } from './stamp-stroke-hand.ts';
 import { stampPaintFieldAt, stampPaintFieldProblem, stampSeededPaintField, type StampPaintField } from './stamp-paint-field.ts';
 import { stampPolygonBox, stampPolygonDistance, stampRegionPolygon, type StampPoint, type StampRegion } from './stamp-region.ts';
-import type { StampPlacementGeometry, StampStrokeGeometry } from './stamp-paint-recipe.ts';
+import type { StampPlacementGeometry, StampStrokeGeometry } from './stamp-paint-recipe-types.ts';
 
 /**
  * Where scattered marks go: inside `region`, more where `weight` (0..1, 1 when left out) is higher, a noise weight

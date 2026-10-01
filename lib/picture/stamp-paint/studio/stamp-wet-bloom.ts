@@ -13,7 +13,7 @@ import { STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
 import { STAMP_GRID_AT_WGSL } from '../models/stamp-region.ts';
 import type { StampWetWindow } from '../models/stamp-wetness.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
-import type { CompiledStampDeposit } from '../models/stamp-paint-recipe.ts';
+import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampLoadedWetStage, StampWetDepositMoment, StampWetStage, StampWetStageContext } from './stamp-wet-stages.ts';
 import { stampUniformLayout, stampUniformWriter } from './stamp-uniform-layout.ts';
 import { encodeStampWetTransportSteps, stampWetSpreads, type StampWetTransportStep } from './stamp-wet-transport.ts';

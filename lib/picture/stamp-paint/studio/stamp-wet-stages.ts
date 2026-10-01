@@ -9,7 +9,7 @@
 import type { PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
 import type { StampWetLanding, StampWetness } from '../models/stamp-wetness.ts';
 import type { StampWashDrying } from '../models/stamp-wet-rim.ts';
-import type { CompiledStampDeposit, CompiledStampPaint, CompiledStampPass } from '../models/stamp-paint-recipe.ts';
+import type { CompiledStampDeposit, CompiledStampPaint, CompiledStampPass } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { StampWashLayer } from './stamp-paint-compositor.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';

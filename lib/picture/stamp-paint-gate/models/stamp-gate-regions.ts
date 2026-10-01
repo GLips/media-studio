@@ -6,7 +6,9 @@
 // - stands-before: the far range stops `overlap` inside the near hill's shape, and with the hill painted no paper
 //   shows anywhere between them.
 
-import { compileStampPaintRecipe, stampPaintRecipe, type StampGroupScope, type StampPaintScope, type StampPassOptions } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import type { StampGroupScope, StampPaintScope, StampPassOptions } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-types.ts';
 import { stampPolygonDistance, stampRegionPolygon, type StampRegion } from '#lib/picture/stamp-paint/models/stamp-region.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
 import type { StampGateWashCheck } from './stamp-gate-washes.ts';

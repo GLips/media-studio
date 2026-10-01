@@ -11,7 +11,8 @@ import type { PhotoshopPressureContext } from '#lib/picture/photoshop-brushes/mo
 import { photoshopPressuredPath } from '#lib/picture/photoshop-brushes/models/photoshop-stroke-pressure.ts';
 import type { StampBrush, StampBrushLayer } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { stampDualNeedsDual } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import type { StampStrokePoint } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 
 /**

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { stampLinearDynamics, type StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import type { PlacedStamp } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 import { diffStampPaintingPrints, printStampPainting } from './stamp-paint-guard.ts';
 

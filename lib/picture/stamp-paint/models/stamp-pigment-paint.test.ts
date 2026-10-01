@@ -4,7 +4,9 @@ import { PAINT_MEDIA } from '#lib/picture/paint/models/paint-medium.ts';
 import { PAINT_BANDS } from '#lib/picture/paint/models/paint-spectrum.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/picture/paint/models/paint-watercolour-pigments.ts';
 import { stampLinearDynamics, type StampBrush } from './stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type PaintMaterial, type StampPaintMaterial } from './stamp-paint-recipe.ts';
+import { compileStampPaintRecipe } from './stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from './stamp-paint-recipe.ts';
+import type { PaintMaterial, StampPaintMaterial } from './stamp-paint-recipe-types.ts';
 import { compileStampPigmentPaint, STAMP_PIGMENT_GROUP_SLOTS, stampGrainDepthIn, stampPigmentAmountsAt, type StampPigmentMixing } from './stamp-pigment-paint.ts';
 import { placeStrokeStamps } from './stamp-placement.ts';
 

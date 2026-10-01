@@ -8,7 +8,7 @@
 import { stampBrushImages, type StampBrush, type StampBrushAsset, type StampBrushMedia } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import type { PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
 import type { PaintPigmentAppearance } from '#lib/picture/paint/models/paint-pigment.ts';
-import type { StampPaintColor, StampPaintPaper } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import type { StampPaintColor, StampPaintPaper } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-types.ts';
 import type { StampPaintMixing, StampPigmentMixing } from '#lib/picture/stamp-paint/models/stamp-pigment-paint.ts';
 import { resolveStampPaintPackBrush, type StampPaintPack } from './stamp-paint-pack.ts';
 

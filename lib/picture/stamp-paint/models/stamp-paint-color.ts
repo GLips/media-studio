@@ -1,7 +1,7 @@
 // stamp-paint-color.ts: a painting's colours moved in HSL, as a brush's colour jitter moves them.
 
 import type { StampBrushColorDynamics } from './stamp-brush.ts';
-import type { StampPaintColor } from './stamp-paint-recipe.ts';
+import type { StampPaintColor } from './stamp-paint-recipe-types.ts';
 
 /** `color` moved by a brush's stroke colour jitter, from four draws (each 0..1). */
 export function jitterStampStrokeColor(color: StampPaintColor, jitter: StampBrushColorDynamics['stroke'], draws: readonly number[]): StampPaintColor {

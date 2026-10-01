@@ -7,7 +7,8 @@
 
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import type { StampStrokePoint } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
-import { stampPaintRecipe, type PaintMaterial, type StampPaintPaper, type StampPaintRecipe, type StampPassScope } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import { stampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import type { PaintMaterial, StampPaintPaper, StampPaintRecipe, StampPassScope } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-types.ts';
 import type { StampRegion } from '#lib/picture/stamp-paint/models/stamp-region.ts';
 import type { StampPigmentMixing } from '#lib/picture/stamp-paint/models/stamp-pigment-paint.ts';
 import type { BrushFidelityPackUrls } from './brush-fidelity-pack-urls.ts';

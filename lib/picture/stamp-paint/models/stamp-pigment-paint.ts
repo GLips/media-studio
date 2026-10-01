@@ -14,7 +14,8 @@ import type { PaintBands } from '#lib/picture/paint/models/paint-spectrum.ts';
 import type { PlacedStamp } from './stamp-placement.ts';
 import { stampPaintFieldEnds } from './stamp-paint-field.ts';
 import { mapStampKeyList, stampKeySpanAt, type StampKeyList } from './stamp-material-keys.ts';
-import { stampGroupKnocksOut, stampPassDeposits, type CompiledStampDeposit, type CompiledStampKeyedMaterial, type CompiledStampPaint, type PaintMaterial, type StampPaintColor } from './stamp-paint-recipe.ts';
+import { stampGroupKnocksOut, stampPassDeposits, type CompiledStampDeposit, type CompiledStampPaint } from './stamp-paint-recipe-compile.ts';
+import type { CompiledStampKeyedMaterial, PaintMaterial, StampPaintColor } from './stamp-paint-recipe-types.ts';
 
 /**
  * Paint as pigment in a `medium`, mixed and dried with Kubelka–Munk. `pigments`, keyed by id, are the ones a mixture

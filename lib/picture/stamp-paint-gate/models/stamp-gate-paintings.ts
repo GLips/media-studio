@@ -11,7 +11,9 @@ import { PAINT_MEDIA } from '#lib/picture/paint/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/picture/paint/models/paint-watercolour-pigments.ts';
 import { PHOTOSHOP_POOLING } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import { stampLinearDynamics, type StampBrush, type StampBrushAsset, type StampBrushGrain, type StampBrushLayer, type StampGrainLook } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint, type PaintMaterial, type StampPaintColor, type StampPaintPaper } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import type { PaintMaterial, StampPaintColor, StampPaintPaper } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-types.ts';
 import type { StampPaintMixing } from '#lib/picture/stamp-paint/models/stamp-pigment-paint.ts';
 import type { StampRegion } from '#lib/picture/stamp-paint/models/stamp-region.ts';
 

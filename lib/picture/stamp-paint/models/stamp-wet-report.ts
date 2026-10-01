@@ -5,7 +5,7 @@
 // still be faint, and a drying's band here is an estimate, as the rim's real reach is a GPU fact (where paint went).
 
 import type { PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
-import type { CompiledStampDeposit, CompiledStampPaint, CompiledStampPass } from './stamp-paint-recipe.ts';
+import type { CompiledStampDeposit, CompiledStampPaint, CompiledStampPass } from './stamp-paint-recipe-compile.ts';
 import type { CompiledStampWashWait, StampWaitEffect, StampWashWait, StampWetEffectKind } from './stamp-wash-effects.ts';
 import { stampBloomVerdict } from './stamp-wet-bloom.ts';
 import { stampDryingRimBand, stampDryingRimWetShare, stampDryingWettest } from './stamp-wet-rim.ts';

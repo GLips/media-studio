@@ -5,7 +5,8 @@
 // Negative space: no strip is a video. A few frames side by side show what the eye would judge in motion.
 
 import type { StampGroupBoil } from '#lib/picture/stamp-paint/models/stamp-group-motion.ts';
-import { stampPaintRecipe, type StampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import { stampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import type { StampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-types.ts';
 import type { StampRegion } from '#lib/picture/stamp-paint/models/stamp-region.ts';
 import { WET_PASSAGE_CELL, wetPassageMixture, type WetPassageKit } from './wet-passages.ts';
 

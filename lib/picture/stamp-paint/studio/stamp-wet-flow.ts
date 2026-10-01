@@ -11,7 +11,7 @@
 import { STAMP_GRID_AT_WGSL } from '../models/stamp-region.ts';
 import { STAMP_WET_FLOW_WGSL, stampWetFlowSigma } from '../models/stamp-wet-flow.ts';
 import { stampWetTransportReach, stampWetTransportStrides } from '../models/stamp-wet-transport.ts';
-import type { CompiledStampDeposit } from '../models/stamp-paint-recipe.ts';
+import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampLoadedWetStage, StampWetDepositMoment, StampWetStage, StampWetStageContext } from './stamp-wet-stages.ts';
 import { stampUniformLayout, stampUniformWriter } from './stamp-uniform-layout.ts';
 import { putStampWetTransportSlot, stampWetTransportPipelines, stampWetTransportSlotBinding } from './stamp-wet-transport.ts';

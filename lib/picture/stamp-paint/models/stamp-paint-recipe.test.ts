@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { stampLinearDynamics, type StampBrush } from './stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, stampPassDeposits, type CompiledStampMask, type PaintMaterial } from './stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampMask } from './stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from './stamp-paint-recipe.ts';
+import type { PaintMaterial } from './stamp-paint-recipe-types.ts';
 import { visibleStampCountAt } from './stamp-deposit-reveal.ts';
 import type { StampRegion } from './stamp-region.ts';
 

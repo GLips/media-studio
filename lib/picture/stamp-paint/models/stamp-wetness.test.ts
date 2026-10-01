@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PAINT_MEDIA, type PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
 import { stampLinearDynamics, type StampBrush } from './stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, stampPassDeposits, type CompiledStampPass, type StampWashOptions, type StampWashScope } from './stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampPass } from './stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from './stamp-paint-recipe.ts';
+import type { StampWashOptions, StampWashScope } from './stamp-paint-recipe-types.ts';
 import { compileStampWetness, stampDrying, STAMP_WET_CELL, stampWetGrid, type StampWetState, type StampWetness } from './stamp-wetness.ts';
 import { stampGridAt } from './stamp-region.ts';
 

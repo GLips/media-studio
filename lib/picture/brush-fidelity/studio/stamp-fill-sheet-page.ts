@@ -5,7 +5,8 @@
 
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { stampSmoothRegion, type StampFillApplication } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, stampPassDeposits } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, stampPassDeposits } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import { createStampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface } from '#lib/picture/stamp-paint/studio/stamp-paint-surface.ts';
 import { brushFidelityAssetUrl, type BrushFidelityPackUrls } from '../models/brush-fidelity-pack-urls.ts';

@@ -11,7 +11,9 @@
 import { stampLinearDynamics } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/picture/paint/models/paint-watercolour-pigments.ts';
 import type { PaintPigmentAppearance } from '#lib/picture/paint/models/paint-pigment.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint, type PaintMaterial } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import type { PaintMaterial } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-types.ts';
 import { STAMP_GATE_FLOW_TOLERANCE, type StampGateFlowMedium } from './stamp-gate-flow.ts';
 import { stampGateBrush, stampGatePolygon } from './stamp-gate-paintings.ts';
 import type { StampGateWashCheck } from './stamp-gate-washes.ts';

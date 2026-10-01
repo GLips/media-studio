@@ -4,7 +4,9 @@ import { PAINT_MEDIA } from '#lib/picture/paint/models/paint-medium.ts';
 import { stampLinearDynamics, type StampBrush } from './stamp-brush.ts';
 import { stampAreaCoverageAt } from './stamp-area.ts';
 import { stampRegionSeed } from './stamp-fill.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, stampPassDeposits, type CompiledStampMask, type PaintMaterial, type StampPaintScope } from './stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampMask } from './stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from './stamp-paint-recipe.ts';
+import type { PaintMaterial, StampPaintScope } from './stamp-paint-recipe-types.ts';
 import { stampGridAt, type StampRegion } from './stamp-region.ts';
 import { compileStampWetness, stampWetGrid } from './stamp-wetness.ts';
 

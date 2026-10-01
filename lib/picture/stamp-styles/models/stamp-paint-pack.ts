@@ -14,7 +14,7 @@ import { parsePhotoshopDescriptor } from '#lib/picture/photoshop-brushes/models/
 import { photoshopPaintablePreset, readPhotoshopPreset, type PhotoshopPresetTip } from '#lib/picture/photoshop-brushes/models/photoshop-preset.ts';
 import { normalizeProcreateBrush, type ProcreateBrushSource } from '#lib/picture/procreate-brushes/models/procreate-brush.ts';
 import type { StampBrush, StampBrushAsset, StampBrushSupportNote } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
-import type { StampPaintColor } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import type { StampPaintColor } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-types.ts';
 
 /**
  * The version of the imported assets this studio reads. An import writes it into each pack's manifest; when the

@@ -10,7 +10,8 @@ import { stampFillStrokePath } from './stamp-fill-strokes.ts';
 import { stampPaintFieldAt, stampPaintFieldProblem, stampSeededPaintField } from './stamp-paint-field.ts';
 import type { CompiledStampAction } from './stamp-paint-action.ts';
 import { stampRegionPolygon, type StampPoint, type StampRegion } from './stamp-region.ts';
-import type { CompiledStampDeposit, CompiledStampMask, StampPaintRecipeDeposit } from './stamp-paint-recipe.ts';
+import type { CompiledStampDeposit, CompiledStampMask } from './stamp-paint-recipe-compile.ts';
+import type { StampPaintRecipeDeposit } from './stamp-paint-recipe-types.ts';
 
 /**
  * `region` traced, `what` naming it: refused unless it's at least 3 finite points enclosing some area, as the

@@ -3,7 +3,9 @@ import { test } from 'node:test';
 import { PAINT_MEDIA } from '#lib/picture/paint/models/paint-medium.ts';
 import { stampLinearDynamics, type StampBrush } from './stamp-brush.ts';
 import { stampPaintFieldAt, type StampPaintField } from './stamp-paint-field.ts';
-import { compileStampPaintRecipe, stampPassDeposits, stampPaintRecipe, type CompiledStampDeposit, type PaintMaterial } from './stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampDeposit } from './stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from './stamp-paint-recipe.ts';
+import type { PaintMaterial } from './stamp-paint-recipe-types.ts';
 import { compileStampWetness, stampWetGrid } from './stamp-wetness.ts';
 import { stampGridAt } from './stamp-region.ts';
 

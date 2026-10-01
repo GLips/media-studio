@@ -5,7 +5,7 @@
 
 import { procreatePreviewPainting } from '#lib/picture/procreate-brushes/models/procreate-preview-stroke.ts';
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
-import type { CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import type { CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-compile.ts';
 import { photoshopReferencePainting, type PhotoshopForeignPaint, type PhotoshopReferenceStroke } from './photoshop-reference-stroke.ts';
 
 /** `image` is the preview's file in its pack's folder. */

@@ -6,7 +6,7 @@ import type { StampBlend, StampBrush } from './stamp-brush.ts';
 import { jitterStampStrokeColor } from './stamp-paint-color.ts';
 import { stampPaintFieldEnds, stampPaintFieldProblem, stampSeededPaintField, type StampPaintField, type StampSeededPaintField } from './stamp-paint-field.ts';
 import { compileStampMaterialKeys, everyStampKey, mapStampKeyList, stampMaterialKeysProblem, type CompiledStampMaterialKeys, type StampMaterialKey } from './stamp-material-keys.ts';
-import type { CompiledStampKeyedMaterial, PaintMaterial, StampKeyedMaterial, StampPaintColor, StampPaintMaterial } from './stamp-paint-recipe.ts';
+import type { CompiledStampKeyedMaterial, PaintMaterial, StampKeyedMaterial, StampPaintColor, StampPaintMaterial } from './stamp-paint-recipe-types.ts';
 
 /** Paint as written: what a dry pass's deposits all do. */
 export type StampRecipePaint = { kind: 'paint'; material: StampPaintMaterial; blend?: StampBlend; secondaryColor?: StampPaintColor; burnish?: boolean };

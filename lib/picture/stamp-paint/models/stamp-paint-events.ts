@@ -3,7 +3,7 @@
 // at `t` is the painting's first events all settled, then whatever of the rest shows at `t`; so a frame may start
 // from a saved state of its settled prefix rather than from bare paper, and is the same whichever frame came before.
 
-import { stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampPaint, type CompiledStampPass } from './stamp-paint-recipe.ts';
+import { stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampPaint, type CompiledStampPass } from './stamp-paint-recipe-compile.ts';
 
 /** A deposit and the scene seconds from which it's settled: wholly shown, -Infinity for one there throughout. */
 export type StampPaintEvent = { group: CompiledStampGroup; pass: CompiledStampPass; deposit: CompiledStampDeposit; settledAt: number };

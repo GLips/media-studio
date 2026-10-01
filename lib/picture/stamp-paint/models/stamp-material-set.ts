@@ -2,7 +2,7 @@
 // A set is drawn from by generators (a charge, per touch); a single deposit's material stays a material or a field.
 
 import { seededRandom } from '#lib/picture/motion/models/random.ts';
-import type { StampPaintMaterial } from './stamp-paint-recipe.ts';
+import type { StampPaintMaterial } from './stamp-paint-recipe-types.ts';
 
 /** A well: its `id`, unique in its set, its material, and how often it's picked against the others (`weight`, from 0). */
 export type StampMaterialSetEntry = { id: string; material: StampPaintMaterial; weight: number };

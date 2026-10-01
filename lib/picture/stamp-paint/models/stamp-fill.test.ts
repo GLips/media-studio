@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import { stampLinearDynamics, type StampBrush, type StampBrushMedia } from './stamp-brush.ts';
 import type { StampFillApplication } from './stamp-fill.ts';
 import { stampFillStrokePath } from './stamp-fill-strokes.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, stampPassDeposits } from './stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, stampPassDeposits } from './stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampRegion } from './stamp-region.ts';
 
 const brush: StampBrush = {

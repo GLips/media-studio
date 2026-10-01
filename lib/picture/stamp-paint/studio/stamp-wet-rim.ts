@@ -11,7 +11,7 @@ import { PAINT_PAPER_WGSL } from '#lib/picture/paint/models/paint-paper.ts';
 import { STAMP_DRYING_RIM_MOST_BAND, STAMP_DRYING_RIM_WGSL, stampDryingRimBand, stampDryingRimWetShare, stampDryingWettest, stampWashDryings, type StampWashDrying } from '../models/stamp-wet-rim.ts';
 import { STAMP_GRID_AT_WGSL, type StampGrid } from '../models/stamp-region.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
-import type { CompiledStampDeposit } from '../models/stamp-paint-recipe.ts';
+import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampLoadedWetStage, StampWetDryingMoment, StampWetStage, StampWetStageContext } from './stamp-wet-stages.ts';
 import { stampUniformLayout, stampUniformWriter } from './stamp-uniform-layout.ts';
 import { encodeStampWetTransportSteps, stampWetSpreads } from './stamp-wet-transport.ts';

@@ -8,7 +8,7 @@
 import { photoshopProbes } from '#lib/picture/photoshop-brushes/models/photoshop-probes.ts';
 import type { PhotoshopCaptureSheet } from '#lib/picture/photoshop-brushes/models/photoshop-capture-plan.ts';
 import type { StampResolveStage } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
-import type { CompiledStampDeposit } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import type { CompiledStampDeposit } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-compile.ts';
 import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/picture/stamp-paint/studio/stamp-paint-surface.ts';
 import { photoshopProbeSheetPainting, type PhotoshopProbeCellRequest, type PhotoshopProbeCellTrace, type PhotoshopProbeGrayImage, type PhotoshopProbeOpacity, type PhotoshopProbePlane } from '../models/photoshop-probe-painting.ts';

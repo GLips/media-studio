@@ -17,7 +17,7 @@ import {
   type ProcreatePackBrush, type StampPaintPack, type StampPaintPackPaper, type StampPaintPackPreview,
 } from '../models/stamp-paint-pack.ts';
 import type { StampBrushSupportNote } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
-import type { StampPaintColor } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import type { StampPaintColor } from '#lib/picture/stamp-paint/models/stamp-paint-recipe-types.ts';
 import { parseBinaryPlist, unarchiveKeyedPlist } from '#lib/picture/procreate-brushes/engine/binary-plist.ts';
 import { readProcreateComposite } from '#lib/picture/procreate-brushes/engine/procreate-canvas.ts';
 import {
