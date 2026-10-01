@@ -235,6 +235,25 @@ fn floodBody(sd: f32, thickness: f32, c: f32) -> f32 {
   return smoothstep(lo, hi, sd);
 }`;
 
+/** Cells a grown outline's grid spans across its longer side, at most: its corners round to a few px of a sky's. */
+const GROWN_CELLS = 400;
+
+/**
+ * `polygon` grown `by` px outward, concavities and all, as its distance's level set at `-by`: corners round, as a
+ * brush rounds them. Where the growth would enclose a hole (a C closing on itself), the hole is filled: only the
+ * outer loop is kept, as what a grown fill covers is clipped anyway.
+ */
+export function stampGrownPolygon(polygon: readonly StampPoint[], by: number): readonly StampPoint[] {
+  if (!(by > 0)) return polygon;
+  const box = stampPolygonBox(polygon), side = Math.max(box.x1 - box.x0, box.y1 - box.y0);
+  const cell = Math.max(1, by / 4, side / GROWN_CELLS);
+  const loops = stampGridContours(stampDistanceGrid(polygon, stampPolygonBox(polygon, by + 2 * cell), cell), -by);
+  return loops.reduce((outer, loop) => (loopArea(loop) > loopArea(outer) ? loop : outer));
+}
+
+/** A closed loop's area, twice over, by the shoelace sum: only ever compared. */
+const loopArea = (loop: readonly StampPoint[]) => Math.abs(loop.reduce((sum, a, i) => sum + a.x * loop[(i + 1) % loop.length].y - loop[(i + 1) % loop.length].x * a.y, 0));
+
 /** An edge's width: 1 px, antialiased, unless it's soft. */
 export const stampEdgeWidth = (edge?: StampEdge) => Math.max(1, edge?.soft ?? 0);
 

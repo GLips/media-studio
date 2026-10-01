@@ -41,7 +41,7 @@ function compiledFlood(region: StampRegion, diameter: number, colored?: StampBru
   return deposit;
 }
 
-test("a flood's edge stroke puts its stamps' edges on the outline, round a disc and into a concave notch's corners, never across it", () => {
+test("a flood's edge stroke puts its stamps' edges on the outline, round a disc and into a concave notch's corners, never across it, or as far past as it reaches", () => {
   const disc = compiledFlood({ kind: 'ellipse', x: 200, y: 200, radiusX: 120, radiusY: 120 }, 50);
   // Untapered at full size, each stamp's centre half a diameter in, so its edge touches the outline all the way round.
   assert.ok(disc.stamps.length > 50);
@@ -53,6 +53,13 @@ test("a flood's edge stroke puts its stamps' edges on the outline, round a disc 
   const u = compiledFlood(polygon(0, 0, 100, 0, 100, 200, 300, 200, 300, 0, 400, 0, 400, 300, 0, 300), 40);
   assert.deepEqual(u.stamps.filter(({ x, y }) => x > 100 && x < 300 && y < 200), []);
   for (const [x, y] of [[80, 20], [320, 20], [120, 220], [280, 220]]) assert.ok(u.stamps.some((s) => Math.hypot(s.x - x, s.y - y) < 6), `no stamp near ${x},${y}`);
+  // Reaching half a diameter past, the flood lays the shape grown by that: its edge stamps' centres on the outline, and
+  // the notch narrowed by as much from each side, not the shape scaled.
+  const past = compiledFill(polygon(0, 0, 100, 0, 100, 200, 300, 200, 300, 0, 400, 0, 400, 300, 0, 300), 40, { application: { kind: 'flood', reach: { past: 0.5 } } });
+  if (past.kind !== 'flood') throw new Error(`a flood compiled to a ${past.kind}`);
+  for (const [x, y] of [[0, 150], [200, 300], [100, 100], [300, 100], [200, 200]]) assert.ok(past.stamps.some((s) => Math.hypot(s.x - x, s.y - y) < 4), `no stamp near ${x},${y}`);
+  assert.deepEqual(past.stamps.filter(({ x, y }) => x > 125 && x < 275 && y < 175), []);
+  assert.throws(() => compiledFill(polygon(0, 0, 100, 0, 100, 100), 40, { application: { kind: 'flood', reach: { past: -1 } } }), /0 or more diameters/);
 });
 
 test("a fill in strokes lays marks whose edges reach the outline, past it only when it reaches over, and a wide hatch leaves paper between", () => {

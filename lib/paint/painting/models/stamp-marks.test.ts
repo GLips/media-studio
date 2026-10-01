@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampMarkStamps, stampScatterMarks, type StampMark } from './stamp-marks.ts';
-import type { StampMaterialSet } from './stamp-material-set.ts';
+import { stampMaterialSet, type StampMaterialSet } from './stamp-material-set.ts';
 import { compileStampPaintRecipe, stampPassDeposits } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment, StampPassageScope } from './stamp-paint-recipe-types.ts';
@@ -33,9 +33,9 @@ const brush: StampBrush = {
 };
 const field: StampRegion = { kind: 'polygon', points: [{ x: 100, y: 100 }, { x: 700, y: 100 }, { x: 700, y: 300 }, { x: 100, y: 300 }] };
 const color = (value: `#${string}`): PaintMaterial => ({ kind: 'color', color: value });
-const wells: StampMaterialSet = { kind: 'set', entries: [{ id: 'blue', material: color('#2244aa'), weight: 2 }, { id: 'rose', material: color('#cc5577'), weight: 1 }, { id: 'none', material: color('#000000'), weight: 0 }] };
+const wells = stampMaterialSet({ blue: { material: color('#2244aa'), weight: 2 }, rose: color('#cc5577'), none: { material: color('#000000'), weight: 0 } });
 
-test('a scatter keeps its first marks where they were as it asks for more, inside its area and its weight', () => {
+test('a scatter keeps its first marks where they were as it asks for more, inside its area or along its path, and its weight', () => {
   const half = { kind: 'linear' as const, from: { x: 399, y: 0, value: 0 }, to: { x: 401, y: 0, value: 1 } };
   const scatter = (count: number) => stampScatterMarks({ kind: 'area', region: field, weight: half }, { count, length: [20, 40], diameter: [10, 20], key: 'sky' });
   const few = scatter(5), more = scatter(40);
@@ -54,6 +54,10 @@ test('a scatter keeps its first marks where they were as it asks for more, insid
     const across = angle === 0 ? Math.abs(center.y) : Math.abs(center.x - 100);
     assert.ok([0, Math.PI / 2].includes(angle) && across <= 5);
   }
+  // Weighted along it, none land where the weight is 0: past x = 50 on the first leg, nor on the second.
+  const early = { kind: 'linear' as const, from: { x: 49, y: 0, value: 1 }, to: { x: 51, y: 0, value: 0 } };
+  const weighted = stampScatterMarks({ kind: 'along', path: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }], spread: 5, weight: early }, { count: 30, length: [5, 5], diameter: [4, 4], key: 'edge' });
+  for (const { center, angle } of weighted) assert.ok(center.x < 51 && angle === 0, `a mark at ${center.x}, ${center.y}`);
 });
 
 test('a deposit built from a mark is placed from the mark, whatever its ID, and a key names one mark', () => {
@@ -93,6 +97,7 @@ test('a charge lays its touches as strokes in order, each loaded from its set by
   const rewelled = touches({ kind: 'set', entries: [...wells.entries, { id: 'ochre', material: color('#cc9944'), weight: 1 }] });
   assert.deepEqual(rewelled.map(({ stamps }) => stamps), laid.map(({ stamps }) => stamps));
   assert.throws(() => touches({ kind: 'set', entries: [{ id: 'a', material: color('#000000'), weight: 0 }] }), /every entry weighs 0/);
+  assert.throws(() => stampMaterialSet({ a: { material: color('#000000'), weight: 0 } }), /every entry weighs 0/);
 });
 
 test("a charge when damp waits for the paper under its touches, not for wetter paint elsewhere in the wash", () => {

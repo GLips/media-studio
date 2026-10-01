@@ -13,7 +13,9 @@ const bowed = (y: number, bow = 30): StampPoint[] => Array.from({ length: 29 }, 
 });
 /** A straight guide across the disc at height `y`, ending just outside it. */
 const straight = (y: number): StampPoint[] => [{ x: 95, y }, { x: 200, y }, { x: 305, y }];
-const guided = (guides: StampPoint[][], extra: Partial<StampFillStrokes> = {}): StampFillStrokes => ({ pattern: { kind: 'guided', guides }, variation: 0, hand: {}, ...extra });
+/** A guided fill over `paths`, each guide named by its first point's height. */
+const guided = (paths: StampPoint[][], extra: Partial<StampFillStrokes> = {}): StampFillStrokes =>
+  ({ pattern: { kind: 'guided', guides: paths.map((path) => ({ id: `at${path[0].y}`, path })) }, variation: 0, hand: {}, ...extra });
 
 test("a contour fill rings its region in closed loops a spacing apart inward, the outer one's edge on the outline", () => {
   const marks = stampFillMarks(disc, 20, 0, { pattern: { kind: 'contour' }, spacing: 1.5, variation: 0, hand: {} }, 'rings');
@@ -49,15 +51,20 @@ test('a guided fill lays marks bent as its guides are, between them, ending at t
   assert.ok(Math.max(...hatch.map(({ y }) => y)) > 315, 'its rows run out past the bottom of the disc');
   assert.throws(() => stampFillMarks(disc, 20, 0, guided([bowed(80), bowed(200).slice(0, 10)]), 'short'), /ends inside the region/);
   assert.throws(() => stampFillMarks(disc, 20, 0, guided([bowed(80), bowed(200).toReversed()]), 'against'), /runs against/);
+  const twins = { pattern: { kind: 'guided' as const, guides: [{ id: 'a', path: bowed(80) }, { id: 'a', path: bowed(200) }] }, variation: 0, hand: {} };
+  assert.throws(() => stampFillMarks(disc, 20, 0, twins, 'twins'), /an ID of its own/);
 });
 
-test("a fill's marks keep their keys and places as guides are added, and its stroke path is its marks, lifting between", () => {
+test("a fill's marks keep their keys and places as guides are added, before or after, and its stroke path is its marks, lifting between", () => {
   const two = stampFillMarks(disc, 20, 0, guided([bowed(80), bowed(160)], { variation: 0.8, hand: { wobble: { pressure: 0.2, position: 0.1 } } }), 'kept');
   const three = stampFillMarks(disc, 20, 0, guided([bowed(80), bowed(160), bowed(290)], { variation: 0.8, hand: { wobble: { pressure: 0.2, position: 0.1 } } }), 'kept');
   // The first pair's marks, but for the second guide's own, which only the last pair lays.
   const firstPair = three.filter(({ patch }) => patch === 0);
   assert.ok(firstPair.length > 2);
   assert.deepEqual(two.filter(({ key }) => firstPair.some((mark) => mark.key === key)), firstPair);
+  // A guide added before the others leaves their marks as they were: marks are keyed by their guides' IDs, not places.
+  const before = stampFillMarks(disc, 20, 0, guided([bowed(40), bowed(80), bowed(160)], { variation: 0.8, hand: { wobble: { pressure: 0.2, position: 0.1 } } }), 'kept');
+  assert.deepEqual(before.filter(({ key }) => two.some((mark) => mark.key === key)).map(({ key, path }) => ({ key, path })), two.map(({ key, path }) => ({ key, path })));
   assert.equal(new Set(three.map(({ key }) => key)).size, three.length);
   const path = stampFillStrokePath(disc, 20, 0, guided([bowed(80), bowed(160)]), 'joined');
   const marks = stampFillMarks(disc, 20, 0, guided([bowed(80), bowed(160)]), 'joined');

@@ -7,7 +7,7 @@ import { placeStampDeposit } from './stamp-deposit-placement.ts';
 import type { StampFillApplication } from './stamp-fill.ts';
 import { stampPaintFieldProblem, stampSeededPaintField } from './stamp-paint-field.ts';
 import type { CompiledStampAction } from './stamp-paint-action.ts';
-import { stampRegionPolygon, type StampPoint, type StampRegion } from './stamp-region.ts';
+import { stampGrownPolygon, stampRegionPolygon, type StampPoint, type StampRegion } from './stamp-region.ts';
 import type { CompiledStampDeposit, CompiledStampMask } from './stamp-paint-recipe-compile.ts';
 import type { CompiledStampArea } from './stamp-area.ts';
 import type { StampPaintRecipeDeposit } from './stamp-paint-recipe-types.ts';
@@ -60,5 +60,9 @@ export function compileDeposit<A extends CompiledStampAction>(
   if (problem) throw new Error(`stamp paint: ${full}'s load can't be painted: ${problem}`);
   const application = geometry.application ?? (brush.media && STAMP_MEDIA_FILLS[brush.media]);
   if (!application) throw new Error(`stamp paint: ${full} fills with ${JSON.stringify(brush.name)}, whose media no style declares, so it states its application`);
-  return { ...common, ...placeStampDeposit({ ...geometry, application, load }, brush, diameter, seed) };
+  const reach = application.kind === 'flood' ? application.reach : undefined;
+  if (reach && reach !== 'inside' && !(reach.past >= 0 && Number.isFinite(reach.past))) throw new Error(`stamp paint: ${full} floods a finite 0 or more diameters past its outline, not ${reach.past}`);
+  // A reaching flood is placed over its grown region, so its body and its edge stroke both lie past the outline.
+  const region = reach && reach !== 'inside' && reach.past > 0 ? { kind: 'polygon' as const, points: stampGrownPolygon(stampRegionPolygon(geometry.region), reach.past * diameter) } : geometry.region;
+  return { ...common, ...placeStampDeposit({ ...geometry, region, application, load }, brush, diameter, seed) };
 }

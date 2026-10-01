@@ -56,8 +56,9 @@ pattern (`StampFillPattern`, each an object by `kind`) makes marks, `stampFillMa
 hand lays it in, and `stampFillStrokePath` joins them, lifting between, into one stroke deposit. Rows (hatch, back and
 forth, zigzag, shading, scribble) share one hand's random walk, so their keys are their order; a `contour`'s rings
 (inset level sets of the region's distance grid, closed) and a `guided` fill's marks (blended by arc length between
-consecutive authored cross-sections) draw from their own keys, so adding a guide leaves the other pairs' marks where
-they were. Every mark ends where its edge meets the outline unless its `reach` runs it past (`{ past }`, diameters
+consecutive authored cross-sections, keyed by the pair's guide IDs) draw from their own keys, so adding a guide
+anywhere leaves the other pairs' marks where they were. A flood's `reach` lays the region grown by its distance grid
+(`stampGrownPolygon`), not scaled. Every mark ends where its edge meets the outline unless its `reach` runs it past (`{ past }`, diameters
 its centres may lie outside: rows run out across and along the shape, guided marks' ends on past the outline, a
 contour's first ring out there), which only a clip (`clipTo`, `within`) trims. `stamp-form.ts` is a rounded form's
 guides (`stampRoundedForm`): over an ellipsoid, given or fitted to the outline by its moments (an artistic assumption, its depth the shorter radius), Lambert's law gives the shade's
