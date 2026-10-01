@@ -17,6 +17,7 @@ import type { StampPixelBox } from '#lib/picture/stamp-paint/models/stamp-blur-r
 import type { StampResolveStage } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
 import type { StampBrushAsset } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import type { CompiledStampDeposit, CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import type { CompiledStampPaintAction } from '#lib/picture/stamp-paint/models/stamp-paint-action.ts';
 import { placeStrokeStamps } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 
 /** A probe image as a pack holds it: grey, row by row, dark where it paints. */
@@ -150,7 +151,7 @@ const cellPressure = (cell: PhotoshopCaptureCell): PhotoshopStrokePressure => {
  */
 export function photoshopProbeSheetPainting({ sheet, probes, opacity, tipMax }: {
   sheet: PhotoshopCaptureSheet; probes: readonly PhotoshopProbe[]; opacity: PhotoshopProbeOpacity; tipMax: number;
-}): { painting: CompiledStampPaint; images: Map<string, PhotoshopProbeGrayImage>; cells: CompiledStampDeposit[][] } {
+}): { painting: CompiledStampPaint; images: Map<string, PhotoshopProbeGrayImage>; cells: CompiledStampDeposit<CompiledStampPaintAction>[][] } {
   const byName = new Map(probes.map((p) => [p.name, p]));
   const images = new Map<string, PhotoshopProbeGrayImage>(), drawn = new Set<string>();
   // Items posed on this sheet so far, whose overrides linger until the next sheet applies them afresh.
@@ -164,7 +165,7 @@ export function photoshopProbeSheetPainting({ sheet, probes, opacity, tipMax }: 
     const brush = photoshopProbeBrush(probe, { lingeringPose: posed.has(cell.item) });
     const diameter = probe.preset.tip.geometry.diameter, pressure = cellPressure(cell), toolOpacity = byte(probe.preset.tool.opacity / 100);
     // Each stroke finishes and lays over the ones before it, as separate strokes do.
-    return cell.strokes.map((stroke, s): CompiledStampDeposit => {
+    return cell.strokes.map((stroke, s): CompiledStampDeposit<CompiledStampPaintAction> => {
       const path = photoshopPressuredPath(stroke, pressure), seed = `${probe.name}|${s}`;
       const stamps = placeStrokeStamps(path, brush, diameter, seed);
       // In the build, each stamp's opacity carries the deposit's, which then lays at full. The stamps are this

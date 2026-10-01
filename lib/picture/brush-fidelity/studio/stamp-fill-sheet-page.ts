@@ -5,7 +5,7 @@
 
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { stampSmoothRegion, type StampFillApplication } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
-import { compileStampPaintRecipe, stampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, stampPaintRecipe, stampPassDeposits } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import { createStampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
 import { brushFidelityAssetUrl, type BrushFidelityPackUrls } from '../models/brush-fidelity-pack-urls.ts';
 
@@ -36,7 +36,7 @@ async function drawStampFillSheet(brush: StampBrush, diameter: number, packUrls:
   const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => ROWS.forEach(({ appliedAt }, row) => APPLICATIONS.forEach(({ application }, column) => paint.group(`r${row}c${column}`, { composite: 'glaze', opacity: 1 }, (group) => group.pass('p', {}, (pass) => {
     pass.fill('fill', { brush, material, diameter, application, direction: 0.35, region: cellRegion(column * CELL.width, top(row)), appliedAt, drawnOver: DRAWN_OVER });
   }))))));
-  const stamps = painting.groups.map(({ passes }) => passes[0].deposits[0].stamps.length);
+  const stamps = painting.groups.map(({ passes }) => stampPassDeposits(passes[0])[0].stamps.length);
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
   const context = canvas.getContext('2d')!;
   const paintCanvas = Object.assign(document.createElement('canvas'), { width, height });

@@ -19,7 +19,7 @@ import {
 import { STAMP_FLOOD_FRONT_SHARE_WGSL } from '../models/stamp-fill.ts';
 import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
 import { stampDepositShowsAt, stampFloodProgressAt, visibleStampCountAt } from '../models/stamp-deposit-reveal.ts';
-import type { CompiledStampDeposit, CompiledStampGroup, CompiledStampMask, CompiledStampMaskArea, CompiledStampPaint, CompiledStampPass, StampPaintPaper } from '../models/stamp-paint-recipe.ts';
+import { stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampMask, type CompiledStampMaskArea, type CompiledStampPaint, type CompiledStampPass, type StampPaintPaper } from '../models/stamp-paint-recipe.ts';
 import { compileStampPigmentPaint, type StampPaintMixing } from '../models/stamp-pigment-paint.ts';
 import { compileStampWetness, type StampWetLanding, type StampWetness } from '../models/stamp-wetness.ts';
 import { PAINT_BANDS } from '#lib/picture/paint/models/paint-spectrum.ts';
@@ -620,7 +620,7 @@ const assetKey = ({ style, pack, file }: StampBrushAsset) => `${style}/${pack}/$
 
 /** Every image a painting and its paper need, each once, with how it wraps: a grain tiles, a tip or photograph doesn't. */
 function paintingImages(painting: CompiledStampPaint, paper: StampPaintPaper): [StampBrushAsset, 'tile' | 'clamp'][] {
-  const assets = painting.groups.flatMap((group) => group.passes.flatMap((pass) => pass.deposits.flatMap(({ brush }) =>
+  const assets = painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).flatMap(({ brush }) =>
     stampBrushImages(brush).map(({ image, wrap }): [StampBrushAsset, 'tile' | 'clamp'] => [image, wrap]))));
   if (paper.image) assets.push([paper.image, 'clamp']);
   if (paper.grain) assets.push([paper.grain.image, 'tile']);
@@ -862,7 +862,7 @@ async function rendererOnDevice(
     }
     return tipImagesByKey.get(source.key)!;
   };
-  const bound = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => pass.deposits.map((deposit) =>
+  const bound = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).map((deposit) =>
     [deposit, bindStampBrushImages(deposit.brush, deposit.diameter, image)] as const))));
 
   // Each tip's paint at every mip level, for its hulls.
@@ -903,9 +903,9 @@ async function rendererOnDevice(
 
   // A frame's uniform slots: a group's lay and its move; each deposit's stamps and dual's, a flood's body, two blur
   // passes, and its resolve, where it's kept, its paint and a wash's landing. A boil's epoch has its group's deposits.
-  const slotsPerFrame = 1 + painting.groups.reduce((sum, group) => sum + 2 + group.passes.reduce((n, pass) => n + pass.deposits.length * (pass.kind === 'wash' ? 9 : 8), 0), 0);
+  const slotsPerFrame = 1 + painting.groups.reduce((sum, group) => sum + 2 + group.passes.reduce((n, pass) => n + stampPassDeposits(pass).length * (pass.kind === 'wash' ? 9 : 8), 0), 0);
   const tilesX = Math.ceil(width / ORDERED_TILE), tilesY = Math.ceil(height / ORDERED_TILE);
-  const asWritten = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => pass.deposits.map((deposit) => [deposit.id, deposit] as const))));
+  const asWritten = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).map((deposit) => [deposit.id, deposit] as const))));
 
   /**
    * `groups`' deposits on the GPU: stamps, tints, ordered bins and washes' landings. The painting's own bank is loaded
@@ -919,7 +919,7 @@ async function rendererOnDevice(
       return plan.kind === 'ordered' ? { kind: 'ordered', bins: binOrderedStamps(stamps, reachSpanOf(layer), tilesX, tilesY, binData) } : plan;
     };
     let total = 0, tints = 0;
-    const placed = groups.flatMap((group) => group.passes.flatMap((pass) => pass.deposits)).map((deposit) => {
+    const placed = groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass))).map((deposit) => {
       // A boil's epoch places its marks afresh, but its brush, paint and regions are the deposit's as written.
       const identity = asWritten.get(deposit.id)!, brush = bound.get(identity)!;
       const at = {
@@ -1174,7 +1174,7 @@ async function rendererOnDevice(
    */
   function loadRegions() {
     const passes = painting.groups.flatMap((group) => group.passes);
-    const all = passes.flatMap((pass) => pass.deposits);
+    const all = passes.flatMap((pass) => stampPassDeposits(pass));
     // Every polygon once, each flood's thickness grid and every op of the fluid, in storage buffers.
     const points: number[] = [], placed = new Map<readonly StampPoint[], [number, number]>();
     const pointsOf = (polygon: readonly StampPoint[]) => {
@@ -1629,7 +1629,7 @@ async function rendererOnDevice(
     let at = 0;
     return painting.groups.map((group) => {
       const first = at;
-      at += group.passes.reduce((n, pass) => n + pass.deposits.length + (pass.kind === 'wash' ? 1 : 0), 0);
+      at += group.passes.reduce((n, pass) => n + stampPassDeposits(pass).length + (pass.kind === 'wash' ? 1 : 0), 0);
       return { first, end: at };
     });
   })();
@@ -1708,7 +1708,7 @@ async function rendererOnDevice(
       for (const [p, pass] of group.passes.entries()) {
         const drawnPass = marks.passes[p];
         if (!pass.clipTo && event >= from) clear(encoder, targets.clip.view);
-        for (const deposit of drawnPass.deposits) {
+        for (const deposit of stampPassDeposits(drawnPass)) {
           if (event > first) save(event, true, painted);
           if (event++ < from || !stampDepositShowsAt(deposit, t)) continue;
           const count = visibleStampCountAt(deposit, t);

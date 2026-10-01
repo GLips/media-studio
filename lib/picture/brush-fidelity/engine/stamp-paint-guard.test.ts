@@ -28,7 +28,9 @@ const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group
 
 /** `painting` with its one deposit's stamps passed through `edit`. */
 function withStamps(edit: (stamps: PlacedStamp[]) => void): CompiledStampPaint {
-  const [group] = painting.groups, [pass] = group.passes, [deposit] = pass.deposits;
+  const [group] = painting.groups, [pass] = group.passes;
+  if (pass.kind !== 'dry') throw new Error('the painting is one dry pass');
+  const [deposit] = pass.deposits;
   const stamps = deposit.stamps.map((stamp) => ({ ...stamp }));
   edit(stamps);
   return { groups: [{ ...group, passes: [{ ...pass, deposits: [{ ...deposit, stamps }] }] }] };

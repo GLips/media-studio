@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { stampLinearDynamics, type StampBrush, type StampBrushMedia } from './stamp-brush.ts';
 import type { StampFillApplication } from './stamp-fill.ts';
-import { compileStampPaintRecipe, stampPaintRecipe } from './stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, stampPaintRecipe, stampPassDeposits } from './stamp-paint-recipe.ts';
 import type { StampRegion } from './stamp-region.ts';
 
 const brush: StampBrush = {
@@ -26,8 +26,8 @@ const polygon = (...xy: number[]): StampRegion => ({ kind: 'polygon', points: xy
 
 /** `region` filled at `diameter` by a brush of `media`, as `settings` say. */
 function compiledFill(region: StampRegion, diameter: number, settings: { application?: StampFillApplication }, media?: StampBrushMedia) {
-  return compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) =>
-    pass.fill('fill', { brush: { ...brush, ...(media && { media }) }, material: { kind: 'color', color: '#406585' }, diameter, region, ...settings }))))).groups[0].passes[0].deposits[0];
+  return stampPassDeposits(compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) =>
+    pass.fill('fill', { brush: { ...brush, ...(media && { media }) }, material: { kind: 'color', color: '#406585' }, diameter, region, ...settings }))))).groups[0].passes[0])[0];
 }
 
 function compiledFlood(region: StampRegion, diameter: number) {

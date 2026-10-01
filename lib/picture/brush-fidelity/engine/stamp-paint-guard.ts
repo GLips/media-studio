@@ -12,7 +12,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, stampPaintRecipe, stampPassDeposits, type CompiledStampDeposit, type CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import type { PlacedStamp } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 import { resolveStampPaintPackBrushes, type StampPaintPack } from '#lib/picture/stamp-styles/models/stamp-paint-pack.ts';
 import { readImportedStampPaintPack } from '#lib/picture/stamp-styles/engine/stamp-paint-pack-files.ts';
@@ -75,11 +75,14 @@ function stampColumns(stamps: readonly PlacedStamp[]): Record<string, unknown[]>
   return columns;
 }
 
+/** A deposit as printed: its brush left out, its stamps in columns. */
+function printedStampDeposit({ brush: _brush, stamps, dualStamps, ...deposit }: CompiledStampDeposit) {
+  return { ...deposit, stamps: stampColumns(stamps), dualStamps: stampColumns(dualStamps) };
+}
+
 /** A painting's print. Its deposits go through JSON so they compare as a file read back would hold them. */
 export function printStampPainting(painting: CompiledStampPaint): StampPaintingPrint {
-  const deposits = painting.groups.flatMap((group) => group.passes.flatMap((pass) => pass.deposits.map(({ brush: _brush, stamps, dualStamps, ...deposit }) => ({
-    ...deposit, stamps: stampColumns(stamps), dualStamps: stampColumns(dualStamps),
-  }))));
+  const deposits = painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).map((deposit) => printedStampDeposit(deposit))));
   const json = JSON.stringify(deposits);
   return { hash: createHash('sha256').update(json).digest('hex').slice(0, 16), deposits: JSON.parse(json) };
 }

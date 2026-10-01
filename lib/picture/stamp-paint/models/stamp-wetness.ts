@@ -104,7 +104,7 @@ export function compileStampWetness(painting: CompiledStampPaint, medium: PaintM
         continue;
       }
       const { deposit } = step, { action } = deposit;
-      const water = action.kind === 'lift' ? 0 : step.water ?? wetting.brushWater;
+      const water = action.kind === 'lift' ? 0 : action.water ?? wetting.brushWater;
       const span = depositSpan(deposit, lattice);
       const before = wetStateOver(wash, span, tau, drying);
       const cover = footprintCover(span, deposit.stamps, deposit.kind === 'flood' ? [deposit.flood.polygon] : [], pass.within, deposit.mask);

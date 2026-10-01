@@ -7,7 +7,7 @@
 // Negative space: a stroke inside a wash that dries before the next is laid doesn't rim here; it's one domain.
 
 import { STAMP_WET_CELL, type StampWetness } from './stamp-wetness.ts';
-import type { CompiledStampPass } from './stamp-paint-recipe.ts';
+import { stampPassDeposits, type CompiledStampPass } from './stamp-paint-recipe.ts';
 import { stampGridLocalMax, type StampGrid } from './stamp-region.ts';
 
 /** The widest band a rim draws pigment from, px: past it the kernels' taps grow and a real rim's band is no wider. */
@@ -36,7 +36,7 @@ export const stampDryingRimWetShare = (wettest: number, damp: number) => Math.mi
  * the lattice dilutes the points along a wash's edge, where its rim is.
  */
 export function stampWashWettest(pass: CompiledStampPass, wetness: StampWetness): StampGrid | null {
-  const landings = pass.deposits.flatMap((deposit) => wetness.landings.get(deposit) ?? []);
+  const landings = stampPassDeposits(pass).flatMap((deposit) => wetness.landings.get(deposit) ?? []);
   if (!landings.length) return null;
   const grids = landings.flatMap(({ before, after }) => [before.wetness, after.wetness]);
   const i0 = Math.min(...grids.map((g) => g.x0 / STAMP_WET_CELL)), j0 = Math.min(...grids.map((g) => g.y0 / STAMP_WET_CELL));
