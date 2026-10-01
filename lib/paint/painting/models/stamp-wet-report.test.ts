@@ -33,7 +33,7 @@ function reported(body: (wash: StampWashScope) => void) {
     wash.fill('sky', { brush, diameter: 40, application: { kind: 'flood' }, region: sky, material: { kind: 'color', color: '#4466aa' }, appliedAt: 0 });
     body(wash);
   }))));
-  return stampWetReport(painting, compileStampWetness(painting, medium, { color: '#ffffff' }, { width: 800, height: 400 }), medium);
+  return stampWetReport(painting, compileStampWetness(painting, () => medium, { color: '#ffffff' }, { width: 800, height: 400 }));
 }
 
 test('a bloom into damp paint and a backrun along a junction act; the report gives their waits and the drying', () => {

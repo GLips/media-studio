@@ -4,7 +4,6 @@
 // It predicts eligibility by the engine's own rules (stampBloomVerdict), not a visible result: an eligible bloom can
 // still be faint, and a drying's band here is an estimate, as the rim's real reach is a GPU fact (where paint went).
 
-import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { CompiledStampDeposit, CompiledStampPaint, CompiledStampPass } from './stamp-paint-recipe-compile.ts';
 import type { CompiledStampWashWait, StampWaitEffect, StampWashWait, StampWetEffectKind } from './stamp-wash-effects.ts';
 import { stampBloomVerdict } from './stamp-wet-bloom.ts';
@@ -45,26 +44,26 @@ export type StampWetReportDrying = { closes: 'wait' | 'end'; at: number; deposit
 export type StampWetReportWash = { id: string; duration: number; waits: readonly StampWetReportWait[]; effects: readonly StampWetReportEffect[]; dryings: readonly StampWetReportDrying[] };
 export type StampWetReport = { washes: readonly StampWetReportWash[] };
 
-/** Every wash of `painting`, as `wetness` (compileStampWetness's, for the same painting) lands it in `medium`. */
-export function stampWetReport(painting: CompiledStampPaint, wetness: StampWetness, medium: PaintMedium): StampWetReport {
+/** Every wash of `painting`, as `wetness` (compileStampWetness's, for the same painting) lands it, each in its group's medium. */
+export function stampWetReport(painting: CompiledStampPaint, wetness: StampWetness): StampWetReport {
   const washes = painting.groups.flatMap((group) => group.passes).flatMap((pass) => {
     const record = wetness.washes.get(pass);
-    return pass.kind === 'wash' && record ? [washReport(pass, wetness, medium)] : [];
+    return pass.kind === 'wash' && record ? [washReport(pass, wetness)] : [];
   });
   return { washes };
 }
 
-function washReport(pass: Extract<CompiledStampPass, { kind: 'wash' }>, wetness: StampWetness, medium: PaintMedium): StampWetReportWash {
+function washReport(pass: Extract<CompiledStampPass, { kind: 'wash' }>, wetness: StampWetness): StampWetReportWash {
   const { schedule } = pass.wash, record = wetness.washes.get(pass)!, { duration } = record;
   const waits = record.waits.map(({ step: { until, under, effect }, ...judged }): StampWetReportWait => ({
     until, under: underKind(under), effect: effect ?? null, ...judged,
     seconds: judged.to - judged.from, alreadyDrier: (until === 'shiny' || until === 'damp') && judged.to === judged.from && judged.points > 0,
   }));
   const effects = schedule.flatMap((step, index) => step.kind === 'wait' && step.effect
-    ? [effectReport(step.effect, stampWaitDeposits(schedule, index).map((deposit) => touchReport(deposit, pass, wetness, medium)))]
+    ? [effectReport(step.effect, stampWaitDeposits(schedule, index).map((deposit) => touchReport(deposit, pass, wetness)))]
     : []);
   const dryings = record.dryings.flatMap((drying): StampWetReportDrying[] => {
-    const sizing = stampDryingRimSizing(drying, wetness, medium.wetting.spread, medium.wetting.sheen.damp);
+    const sizing = stampDryingRimSizing(drying, wetness);
     if (!sizing) return [];
     const { closes, at, deposits, rim } = drying;
     return [{ closes: closes === 'end' ? 'end' : 'wait', at, deposits: deposits.length, wetShare: sizing.wetShare, band: sizing.band, rim }];
@@ -77,7 +76,7 @@ function underKind(under: CompiledStampWashWait['under']): StampWetReportWait['u
   return 'next' in under ? 'next' : 'region';
 }
 
-function touchReport(deposit: CompiledStampDeposit, pass: CompiledStampPass, wetness: StampWetness, medium: PaintMedium): StampWetReportTouch {
+function touchReport(deposit: CompiledStampDeposit, pass: CompiledStampPass, wetness: StampWetness): StampWetReportTouch {
   const landing = wetness.landings.get(deposit)!, { before } = landing;
   const cover = stampLandingCover(deposit, before.window, pass);
   const wet: StampWetRange = { least: Infinity, most: 0 }, workable: StampWetRange = { least: Infinity, most: 0 };
@@ -90,7 +89,7 @@ function touchReport(deposit: CompiledStampDeposit, pass: CompiledStampPass, wet
     workable.least = Math.min(workable.least, before.workable[w]); workable.most = Math.max(workable.most, before.workable[w]);
   });
   if (!covered) wet.least = workable.least = 0;
-  const verdict = stampBloomVerdict(landing, medium.wetting, deposit.diameter);
+  const verdict = stampBloomVerdict(landing, landing.medium.wetting, deposit.diameter);
   return { id: deposit.id, tau: landing.tau, wetness: wet, workable, dryShare: covered ? dry / covered : 1, bloom: verdict.sizing ? { acts: true, ...verdict.sizing } : { acts: false, reason: verdict.reason } };
 }
 

@@ -8,6 +8,7 @@
 //
 // Negative space: the spreading water isn't written back into the wash's wetness; later deposits don't see it.
 
+import type { PaintWetting } from '#lib/paint/materials/models/paint-medium.ts';
 import { STAMP_BLOOM_BAND_WIDTH, STAMP_BLOOM_CARRY_SPREAD, STAMP_WET_BLOOM_WGSL, stampBloomReach, stampBloomSizing } from '../models/stamp-wet-bloom.ts';
 import { STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
 import { STAMP_GRID_AT_WGSL } from '../models/stamp-region.ts';
@@ -112,7 +113,8 @@ fn contactAt(p: vec2i) -> f32 { return bloomContact(wetnessBeforeAt(p), coverage
 
 // The surplus water the deposit left, per pixel, into the transport's values; and the paper it spreads over: how
 // readily the water runs there (bloomEase, by the paper before the deposit, only where it reaches: bloomContact), and
-// open where paint may land (footprint g: never under fluid, outside \`within\` or the clip).
+// open where paint may land (footprint g: never under fluid, outside \`within\` or the clip); and (z) the contact
+// alone, for the front.
 const SURPLUS_WGSL = /* wgsl */ `${PRELUDE}${GRID_WGSL}
 ${STAMP_WET_BLOOM_WGSL}
 @group(0) @binding(3) var footprint: texture_2d<f32>;
@@ -130,7 +132,7 @@ ${CONTACT_WGSL}
   let landed = textureLoad(footprint, p, 0);
   let contact = contactAt(p);
   let ease = bloomEase(wetnessBeforeAt(p), u.damp);
-  textureStore(paper, local, vec4f(contact * ease, clamp(landed.g, 0.0, 1.0), 0.0, 0.0));
+  textureStore(paper, local, vec4f(contact * ease, clamp(landed.g, 0.0, 1.0), contact, 0.0));
 }`;
 
 // Where each pixel stands to the front: its band weight (x) and the share of its paint loosened (y), as free as it is
@@ -145,21 +147,52 @@ ${movedWgsl}
 @group(0) @binding(6) var layer: texture_2d_array<f32>;
 ${CONTACT_WGSL}
 @group(0) @binding(7) var band: texture_storage_2d_array<rgba32float, write>;
+@group(0) @binding(8) var paper: texture_2d<f32>;
 fn waterAt(local: vec2i) -> f32 { return textureLoad(water, clamp(local, vec2i(0), vec2i(u.extent) - 1), 0, 0).r; }
-// The water's level (x) and its gradient (yz) round a pixel, binomially smoothed over 5 x 5 taps 2 px apart: the
-// transport's ladder leaves a pixel-scale ripple in the water, and where it lies nearly flat (held along a wash's
-// edge), a front read from single taps breaks its lip into pixel-sized specks.
-fn waterRound(local: vec2i) -> vec3f {
+fn contactOf(local: vec2i) -> f32 { return select(0.0, textureLoad(paper, local, 0).z, all(local >= vec2i(0)) && all(local < vec2i(u.extent))); }
+// The water round a pixel (BloomWater), binomially smoothed over 5 x 5 taps a quarter of its sigma apart (2 px at
+// least): the transport's ladder leaves steps in the water a few pixels apart, worst along a wash's edge, and a front
+// and its sag read from them knot. Only taps the water reaches (bloomContact, the paper's z) count: counted as dry,
+// the rest would slope the water down to the wash's edge.
+fn waterRound(local: vec2i) -> BloomWater {
   let even = array<f32, 5>(1.0, 4.0, 6.0, 4.0, 1.0);
   let slope = array<f32, 5>(-1.0, -2.0, 0.0, 2.0, 1.0);
-  var round = vec3f(0.0);
+  let bend = array<f32, 5>(1.0, 0.0, -2.0, 0.0, 1.0);
+  let h = i32(clamp(floor(u.sigma / 4.0 + 0.5), 2.0, 6.0));
+  // Level, x and y slopes; then xx, yy and xy curvature; each over the taps in reach, and the reach alone.
+  var first = vec3f(0.0);
+  var second = vec3f(0.0);
+  var reachedFirst = vec3f(0.0);
+  var reachedSecond = vec3f(0.0);
   for (var j = 0; j < 5; j++) {
     for (var i = 0; i < 5; i++) {
-      let w = waterAt(local + 2 * vec2i(i - 2, j - 2));
-      round += w * vec3f(even[i] * even[j], slope[i] * even[j], even[i] * slope[j]);
+      let q = local + h * vec2i(i - 2, j - 2);
+      let k1 = vec3f(even[i] * even[j], slope[i] * even[j], even[i] * slope[j]);
+      let k2 = vec3f(bend[i] * even[j], even[i] * bend[j], slope[i] * slope[j]);
+      let c = contactOf(q);
+      let w = c * waterAt(q);
+      first += w * k1;
+      second += w * k2;
+      reachedFirst += c * k1;
+      reachedSecond += c * k2;
     }
   }
-  return round / vec3f(256.0, 256.0, 256.0);
+  if (reachedFirst.x <= 1e-3) { return BloomWater(0.0, vec2f(0.0), 0.0, 0.0); }
+  // The wash round, on a ring a lobe and a half out.
+  let ring = 1.5 * bloomLobeCell(u.sigma);
+  var inWash = 0.0;
+  for (var k = 0; k < 12; k++) {
+    let a = f32(k) * 0.5235988;
+    let q = clamp(vec2i(u.origin) + local + vec2i(round(ring * vec2f(cos(a), sin(a)))), vec2i(0), vec2i(textureDimensions(layer)) - 1);
+    inWash += bloomLipPaint(textureLoad(layer, q, 0, 0).x) / 12.0;
+  }
+  // Normalised, each derivative with the reach's own taken out (to first order).
+  let level = first.x / reachedFirst.x;
+  let gradient = (first.yz - level * reachedFirst.yz) / reachedFirst.x * (2.0 / f32(h));
+  let d2 = (second - level * reachedSecond) / reachedFirst.x * (4.0 / f32(h * h));
+  let g2 = max(dot(gradient, gradient), 1e-12);
+  let sag = (d2.x * gradient.x * gradient.x + 2.0 * d2.z * gradient.x * gradient.y + d2.y * gradient.y * gradient.y) / g2;
+  return BloomWater(level, gradient, sag, inWash);
 }
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   let local = localOf(id);
@@ -167,16 +200,16 @@ fn waterRound(local: vec2i) -> vec3f {
   let p = local + vec2i(u.origin);
   let water = waterRound(local);
   let before = wetnessBeforeAt(p);
-  let at = bloomFront(vec2f(p) + 0.5, water.x, water.yz, bloomEase(before, u.damp), u.seed, u.sigma);
+  let at = bloomFront(vec2f(p) + 0.5, water, bloomGrip(before, u.damp, u.shine), u.seed, u.sigma);
   let streak = bloomStreak(at.foot, at.d, u.seed, u.sigma);
   let allowed = clamp(textureLoad(footprint, p, 0).g, 0.0, 1.0);
   var paint: array<vec4f, ${layers}>;
   for (var l = 0; l < ${layers}; l++) { paint[l] = textureLoad(layer, p, l, 0); }
   let open = bloomPastFront(waterAt(vec2i(floor(at.past)) - vec2i(u.origin)));
   let line = bloomFrontLine(at.held, bloomMerging(before, u.damp, u.shine));
-  let weight = bloomBand(at.d, line, streak) * allowed * contactAt(p) * bloomLipPaint(coverageRound(p)) * open;
+  let weight = bloomBand(at.d, line, streak) * allowed * contactAt(p) * bloomLipPaint(coverageRound(p)) * open * bloomInside(water.inWash);
   let free = liftFree(workableAt(p), washOpen(paint));
-  textureStore(front, local, vec4f(weight, bloomLoosened(at.d, free, u.drive, streak) * allowed, 0.0, 0.0));
+  textureStore(front, local, vec4f(weight, bloomLoosened(at.d, line, free, u.drive, streak) * allowed, 0.0, 0.0));
   textureStore(band, local, 0, vec4f(weight, 0.0, 0.0, 0.0));
 }`;
 
@@ -239,7 +272,7 @@ type BloomPipelines = Record<'surplus' | 'front' | 'send' | 'sent' | 'land', GPU
 const WATER = 0, REACHED = 1, SENT = 2;
 /** A landing's bloom, sized as the painting loads. */
 type BloomPlan = {
-  water: number; first: number; afterFirst: number; sigma: number; drive: number; lattice: StampWetWindow; pipelines: BloomPipelines; uniform: GPUBuffer;
+  water: number; wetting: PaintWetting; first: number; afterFirst: number; sigma: number; drive: number; lattice: StampWetWindow; pipelines: BloomPipelines; uniform: GPUBuffer;
   spreads: ReturnType<typeof stampWetSpreads>;
 };
 /** A pipeline and what it's bound to, as one dispatch of a bloom runs it. */
@@ -253,27 +286,26 @@ type BloomScratch = {
   paper: GPUTextureView; paths: [GPUTextureView, GPUTextureView]; values: [GPUTextureView, GPUTextureView]; front: GPUTextureView; send: GPUTextureView;
 };
 
-function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: StampWetStageContext): StampLoadedWetStage<StampWetDepositMoment> {
-  const { spread } = medium.wetting;
-  if (spread <= 0) return { encode: () => null };
+function loadBloom({ device, wetness, layer, footprint, grids, wash }: StampWetStageContext): StampLoadedWetStage<StampWetDepositMoment> {
+  // A medium that doesn't spread blooms nowhere.
   const sized = [...wetness.landings].flatMap(([deposit, landing]) => {
-    const bloom = deposit.action.kind === 'lift' ? null : stampBloomSizing(landing, medium.wetting, deposit.diameter);
+    const bloom = deposit.action.kind === 'lift' || landing.medium.wetting.spread <= 0 ? null : stampBloomSizing(landing, landing.medium.wetting, deposit.diameter);
     return bloom && bloom.sigma >= 0.5 ? [{ deposit, landing, ...bloom }] : [];
   });
   if (!sized.length) return { encode: () => null };
 
-  // Compiled per layer count, the wash layer's WGSL being the group's.
-  const pipelinesFor = new Map<number, BloomPipelines>();
-  const pipelinesOf = (layers: number) => {
-    let found = pipelinesFor.get(layers);
+  // Compiled per group's wash layer WGSL (its layer count and medium): groups alike share one.
+  const pipelinesFor = new Map<string, BloomPipelines>();
+  const pipelinesOf = (deposit: CompiledStampDeposit) => {
+    const layers = wash.layersOf(deposit), moved = wash.movedWgsl(deposit);
+    let found = pipelinesFor.get(moved);
     if (!found) {
-      const moved = wash.movedWgsl(layers);
       const pipeline = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }), entryPoint: 'run' } });
       found = {
         surplus: pipeline(SURPLUS_WGSL), front: pipeline(frontWgsl(layers, moved)), send: pipeline(SEND_WGSL),
         sent: pipeline(sentWgsl(layers, moved)), land: pipeline(landWgsl(layers, moved)),
       };
-      pipelinesFor.set(layers, found);
+      pipelinesFor.set(moved, found);
     }
     return found;
   };
@@ -288,7 +320,9 @@ function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: S
     const spreads = stampWetSpreads(device, [
       { sigma, order: 'forward', layers: 1, from: 0 }, { sigma: carry, order: 'transposed', layers: 1, from: 1 }, { sigma: carry, order: 'forward', layers, from: 0 },
     ]);
-    const plan = { water: landing.water, first: grids.firsts.get(deposit)!, afterFirst, sigma, drive, lattice: landing.before.window, pipelines: pipelinesOf(layers), uniform, spreads };
+    const plan = {
+      water: landing.water, wetting: landing.medium.wetting, first: grids.firsts.get(deposit)!, afterFirst, sigma, drive, lattice: landing.before.window, pipelines: pipelinesOf(deposit), uniform, spreads,
+    };
     afterFirst += landing.after.wetness.length;
     return [deposit, plan];
   }));
@@ -329,8 +363,8 @@ function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: S
     put('drive', plan.drive);
     put('sigma', sigma);
     put('water', plan.water);
-    put('damp', medium.wetting.sheen.damp);
-    put('shine', medium.wetting.sheen.shiny);
+    put('damp', plan.wetting.sheen.damp);
+    put('shine', plan.wetting.sheen.shiny);
     put('sendFloor', (STAMP_BLOOM_SEND_FLOOR * STAMP_BLOOM_BAND_WIDTH) / (Math.sqrt(2 * Math.PI) * STAMP_BLOOM_CARRY_SPREAD * sigma));
     device.queue.writeBuffer(plan.uniform, 0, words);
     plan.spreads.write(box);
@@ -354,7 +388,7 @@ function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: S
     return [
       step(pipelines.surplus, [u, g, a, footprint.view, values[0], paper, layer.view]),
       ...spreads.steps(WATER, textures),
-      step(pipelines.front, [u, g, null, footprint.view, values[0], front, layer.view, values[1]]),
+      step(pipelines.front, [u, g, null, footprint.view, values[0], front, layer.view, values[1], paper]),
       ...spreads.steps(REACHED, textures),
       step(pipelines.send, [u, front, values[1], send]),
       step(pipelines.sent, [u, layer.view, send, values[0]]),

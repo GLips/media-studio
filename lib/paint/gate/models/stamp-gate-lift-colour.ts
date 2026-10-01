@@ -13,7 +13,8 @@ import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-
 import { type StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
-import type { StampGateWashCase, StampGateWashCheck, StampGateWashMedium } from './stamp-gate-washes.ts';
+import type { StampGateWashCase, StampGateWashMedium } from './stamp-gate-washes.ts';
+import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 
 /** The media lightened with white, whose tints a lift should thin toward the paper. */
 export type StampGateLiftColourMedium = Exclude<StampGateWashMedium, 'watercolour'>;

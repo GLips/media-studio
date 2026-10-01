@@ -7,7 +7,7 @@
 // them (a hand's pressure curve) is keyed by identity, as its content can't be read: it must answer alike each time.
 
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import { placeStrokeStamps, stampExpectedTint, type FrozenPlacedStamp, type StampPlacementBrush } from '#lib/paint/brush/models/stamp-placement.ts';
+import { placeStrokeStamps, stampExpectedTint, stampFrozenMarks, type FrozenStampMarks, type PlacedStamp, type StampPlacementBrush } from '#lib/paint/brush/models/stamp-placement.ts';
 import type { StampPressureCurve } from '#lib/paint/brush/models/stamp-stroke-hand.ts';
 import { STAMP_ACCUMULATIONS } from './stamp-deposit-stages.ts';
 import { placeStampFlood, stampFloodBodyLevels, stampFloodFront, stampFloodProbe, type StampFillApplication } from './stamp-fill.ts';
@@ -23,17 +23,22 @@ import type { StampDepositGeometry } from './stamp-paint-recipe-types.ts';
  */
 export type StampPlacingGeometry = Exclude<StampDepositGeometry, { kind: 'fill' }> | (Extract<StampDepositGeometry, { kind: 'fill' }> & { application: StampFillApplication; load: StampSeededPaintField<number> });
 
-/** A deposit's marks: every stamp in reveal order, its dual's, and a flood's body and front. */
-export type StampDepositPlacement = { stamps: readonly FrozenPlacedStamp[]; dualStamps: readonly FrozenPlacedStamp[] } & ({ kind: 'stroke' | 'stamps' } | { kind: 'flood'; flood: CompiledStampFlood });
+/** A deposit's marks, `M`: every stamp in reveal order, its dual's, and a flood's body and front. */
+type StampDepositMarks<M> = { stamps: M; dualStamps: M } & ({ kind: 'stroke' | 'stamps' } | { kind: 'flood'; flood: CompiledStampFlood });
+/** A deposit's marks as compiled paintings share them, frozen. */
+export type StampDepositPlacement = StampDepositMarks<FrozenStampMarks>;
 
 /**
  * The most bytes the remembered placements hold, least recently asked for given up first: three or four paintings of
- * a full 720p landscape (60 to 75 thousand stamps each, about 320 bytes a stamp). One larger is placed, not kept.
+ * a full 720p landscape (60 to 75 thousand stamps each, about 400 bytes a stamp). One larger is placed, not kept.
  */
 export const STAMP_PLACEMENTS_KEPT_BYTES = 80 * 2 ** 20;
 
-/** What a placement holds, in bytes, roughly: its stamps, a flood's grid and outline, and its key. */
-const STAMP_BYTES = 320, POINT_BYTES = 64, ENTRY_BYTES = 1024;
+/**
+ * What a placement holds, in bytes, roughly: its stamps (each about 320, and 80 more for what loading works out from
+ * it, kept as long as it is: stamp-mark-load.ts), a flood's grid and outline, and its key.
+ */
+const STAMP_BYTES = 400, POINT_BYTES = 64, ENTRY_BYTES = 1024;
 const bytesOf = ({ stamps, dualStamps, ...placement }: StampDepositPlacement, key: string) => ENTRY_BYTES + 2 * key.length + STAMP_BYTES * (stamps.length + dualStamps.length)
   + (placement.kind === 'flood' ? placement.flood.thickness.values.byteLength + POINT_BYTES * placement.flood.polygon.length : 0);
 
@@ -64,14 +69,12 @@ export function placeStampDeposit(geometry: StampPlacingGeometry, brush: StampBr
 }
 
 /**
- * `placement` frozen, through every stamp and a flood's body and tint, its outline and load copied from the caller's region
- * and field. Its thickness grid's values stay writable: a typed array with elements can't be frozen.
+ * `placement` frozen, through every stamp and a flood's body and tint, its outline and load copied from the caller's
+ * region and field. Its thickness grid's values stay writable: a typed array with elements can't be frozen.
  */
-function frozenPlacement(placement: StampDepositPlacement): StampDepositPlacement {
-  for (const stamp of [...placement.stamps, ...placement.dualStamps]) Object.freeze(Object.freeze(stamp).tint);
-  Object.freeze(placement.stamps);
-  Object.freeze(placement.dualStamps);
-  if (placement.kind !== 'flood') return Object.freeze(placement);
+function frozenPlacement(placement: StampDepositMarks<PlacedStamp[]>): StampDepositPlacement {
+  const stamps = stampFrozenMarks(placement.stamps), dualStamps = stampFrozenMarks(placement.dualStamps);
+  if (placement.kind !== 'flood') return Object.freeze({ kind: placement.kind, stamps, dualStamps });
   const { flood } = placement, { load, front } = flood;
   const owned = Object.freeze({
     ...flood,
@@ -80,7 +83,7 @@ function frozenPlacement(placement: StampDepositPlacement): StampDepositPlacemen
     front: Object.freeze({ ...front, normal: Object.freeze(front.normal) }),
     box: Object.freeze({ ...flood.box }), levels: Object.freeze({ ...flood.levels }), tint: Object.freeze({ ...flood.tint }), thickness: Object.freeze({ ...flood.thickness }),
   });
-  return Object.freeze({ ...placement, flood: owned });
+  return Object.freeze({ kind: 'flood', flood: owned, stamps, dualStamps });
 }
 
 /** A copy of the caller's `load`, its points frozen with it. */
@@ -90,7 +93,7 @@ function ownedLoad(load: StampSeededPaintField<number>): StampSeededPaintField<n
   return { ...load, center: Object.freeze({ ...load.center }) };
 }
 
-function placeNow(geometry: StampPlacingGeometry, brush: StampBrush, diameter: number, seed: string): StampDepositPlacement {
+function placeNow(geometry: StampPlacingGeometry, brush: StampBrush, diameter: number, seed: string): StampDepositMarks<PlacedStamp[]> {
   if (geometry.kind === 'fill') {
     const { region, application, direction = 0, load } = geometry;
     if (application.kind === 'flood') {

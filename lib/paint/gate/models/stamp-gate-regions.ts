@@ -11,7 +11,7 @@ import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.
 import type { StampGroupScope, StampPaintScope, StampPassOptions } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import { stampPolygonDistance, stampRegionPolygon, type StampRegion } from '#lib/paint/painting/models/stamp-region.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
-import type { StampGateWashCheck } from './stamp-gate-washes.ts';
+import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 
 export const STAMP_GATE_REGION_IDS = ['region/ragged-within', 'region/inset-reserve', 'region/stands-before'] as const;
 export type StampGateRegionId = (typeof STAMP_GATE_REGION_IDS)[number];

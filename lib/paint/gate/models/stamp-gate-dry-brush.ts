@@ -9,7 +9,8 @@ import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.
 import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import { STAMP_GATE_IMAGES, stampGateAsset, stampGateBrush, stampGateGrainHeight, type StampGatePainting } from './stamp-gate-paintings.ts';
-import type { StampGateWashCase, StampGateWashCheck } from './stamp-gate-washes.ts';
+import type { StampGateWashCase } from './stamp-gate-washes.ts';
+import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 
 /** What the strokes are held to: Pearson correlations, over the cells, of paint's darkness with the paper's height. */
 export const STAMP_GATE_DRY_BRUSH = {

@@ -16,7 +16,7 @@ import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import { STAMP_GATE_FLOW_TOLERANCE, type StampGateFlowMedium } from './stamp-gate-flow.ts';
 import { stampGateBrush, stampGatePolygon } from './stamp-gate-paintings.ts';
-import type { StampGateWashCheck } from './stamp-gate-washes.ts';
+import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 
 export const STAMP_GATE_STRIPE_SIZE = { width: 192, height: 128 };
 /** The layer's array layers: coverage, two pigments, and the open share in the last channel. */

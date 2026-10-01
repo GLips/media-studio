@@ -18,7 +18,7 @@ import type { StampResolveStage } from '#lib/paint/painting/models/stamp-deposit
 import type { StampBrushAsset } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { CompiledStampDeposit, CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { CompiledStampPaintAction } from '#lib/paint/painting/models/stamp-paint-action.ts';
-import { placeStrokeStamps } from '#lib/paint/brush/models/stamp-placement.ts';
+import { placeStrokeStamps, stampFrozenMarks } from '#lib/paint/brush/models/stamp-placement.ts';
 
 /** A probe image as a pack holds it: grey, row by row, dark where it paints. */
 export type PhotoshopProbeGrayImage = { width: number; height: number; pixels: Uint8Array };
@@ -174,8 +174,8 @@ export function photoshopProbeSheetPainting({ sheet, probes, opacity, tipMax }: 
       return {
         kind: 'stroke', id: `probes/cells/${c}-${s}`, brush, action: { kind: 'paint', material: { kind: 'constant', value: { kind: 'color', color: '#000000' } }, burnish: false }, diameter, blend: brush.blend, mask: null,
         opacity: opacity === 'last' ? toolOpacity : 1,
-        stamps,
-        dualStamps: brush.dual ? placeStrokeStamps(path, brush.dual, diameter * brush.dual.scale, `${seed}|dual`) : [],
+        stamps: stampFrozenMarks(stamps),
+        dualStamps: stampFrozenMarks(brush.dual ? placeStrokeStamps(path, brush.dual, diameter * brush.dual.scale, `${seed}|dual`) : []),
         // The pattern is fixed to the sheet, whose pixels these are.
         grainOffset: { main: [0, 0], dual: [0, 0] },
       };

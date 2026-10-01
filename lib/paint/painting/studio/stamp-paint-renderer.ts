@@ -14,15 +14,15 @@ import { bindStampBrushImages, stampBrushImages, type StampBrush, type StampBrus
 import { COVERAGE_FORMULAS_WGSL, stampDualModeIndex, stampGrainModeIndex } from '#lib/paint/brush/models/coverage-formulas.ts';
 import {
   STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL, STAMP_ACCUMULATIONS, STAMP_BLUR_LEVELS, STAMP_RESOLVE_ORDERS, STAMP_RESOLVE_PLANS, stampAccumulationBuild, stampAccumulationIndex,
-  stampAccumulationPlan, stampActiveLayers, stampResolveOrderIndex, stampResolveOrdersWgsl, stampResolvePlan, type StampAccumulationPlan, type StampActiveLayer, type StampResolveStage,
+  stampActiveLayers, stampResolveOrderIndex, stampResolveOrdersWgsl, stampResolvePlan, type StampAccumulationPlan, type StampActiveLayer, type StampResolveStage,
 } from '../models/stamp-deposit-stages.ts';
 import { STAMP_FLOOD_FRONT_SHARE_WGSL } from '../models/stamp-fill.ts';
 import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
 import { stampDepositShowsAt, stampFloodProgressAt, visibleStampCountAt } from '../models/stamp-deposit-reveal.ts';
 import { stampBoilSeed, stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampMask, type CompiledStampPaint, type CompiledStampPass } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPaintPaper } from '../models/stamp-paint-recipe-types.ts';
-import { compileStampPigmentPaint, stampGrainDepthIn, type StampPaintMixing } from '../models/stamp-pigment-paint.ts';
-import { compileStampWetness, STAMP_WET_CELL, type StampWetLanding, type StampWetness } from '../models/stamp-wetness.ts';
+import { compileStampPigmentPaint, stampGrainDepthSourceIn, stampPigmentGroupMedium, type StampPaintMixing } from '../models/stamp-pigment-paint.ts';
+import { compileStampWetness, STAMP_WET_CELL, type StampWashDrying, type StampWetLanding, type StampWetness } from '../models/stamp-wetness.ts';
 import { stampWetReport, stampWetReportWarnings } from '../models/stamp-wet-report.ts';
 import { STAMP_WET_LAND_WGSL, stampDepositionLaw, stampFloodCarriesWater } from '../models/stamp-wet-landing.ts';
 import { PAINT_DRY_BURNISHED_PRESS, paintPigmentSeed } from '#lib/paint/materials/models/paint-paper.ts';
@@ -30,10 +30,11 @@ import { PAINT_BANDS } from '#lib/paint/materials/models/paint-spectrum.ts';
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { STAMP_GRID_AT_WGSL, STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL, stampEdgeWidth, type StampBox, type StampPoint } from '../models/stamp-region.ts';
 import { STAMP_AREA_COVERAGE_WGSL, stampAreaBox, type CompiledStampArea } from '../models/stamp-area.ts';
-import type { PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
+import type { FrozenStampMarks } from '#lib/paint/brush/models/stamp-placement.ts';
+import { STAMP_FLOATS, STAMP_ORDERED_TILE, stampBinsAppended, stampInstanceFloats, stampMarksExtremes, stampMarksOrderedBins, stampMarksPlan, stampMarksReachOfFirst, stampTintFloats, TINT_FLOATS } from '../models/stamp-mark-load.ts';
 import { stampBlurRegion, type StampPixelBox } from '../models/stamp-blur-region.ts';
 import { coarsestStampTipLevel, STAMP_TIP_HULL_SIDES, type StampTipHull, type StampTipLevel } from '../models/stamp-tip-hull.ts';
-import { flatStampPaintCompositor, type StampPaintCompositor, type StampPaintTarget } from './stamp-paint-compositor.ts';
+import { flatStampPaintCompositor, type StampPaintCompositor, type StampPaintTarget, type StampWashLayer } from './stamp-paint-compositor.ts';
 import { stampPigmentCompositor } from './stamp-paint-pigment-compositor.ts';
 import { FULL_FRAME_WGSL, type StampPaintDevice, type StampPaintImage } from './stamp-paint-gpu.ts';
 import type { StampPaintGpuScope, StampPaintSurface } from './stamp-paint-surface.ts';
@@ -42,16 +43,9 @@ import { STAMP_WET_STAGES, stampWetStageReach, type StampLoadedWetStage, type St
 import { stampPaintCheckpoints } from './stamp-paint-checkpoints.ts';
 import { stampPaintEvents } from '../models/stamp-paint-events.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
-import { stampGroupLayerFromScene, stampGroupSceneFromLayer, type StampGroupPlacement } from '../models/stamp-group-motion.ts';
-import { stampFramePlan, stampGroupEvents } from '../models/stamp-frame-plan.ts';
-
-/**
- * Floats per stamp in the instance buffer: x, y, diameter, rotation, then alpha, blur, grain turn and flips (x 1, y 2),
- * then opacity, roundness, grain depth and pressure.
- */
-const STAMP_FLOATS = 12;
-/** Floats per stamp in the tint buffer, for a brush with colour dynamics: hue, saturation, lightness, secondary. */
-const TINT_FLOATS = 4;
+import { stampPlacementWarpMap, stampWarpCells, stampWarpTriangles, STAMP_WARP_MOST_CELLS } from '../models/stamp-group-warp.ts';
+import { stampFramePlan, stampGroupEvents, type StampGroupFrame } from '../models/stamp-frame-plan.ts';
+import type { StampGroupMarks, StampPaintFrameState } from '../models/stamp-paint-frame-state.ts';
 
 /** Bytes per uniform slot: every draw's uniforms sit at an offset WebGPU allows binding at (256). */
 const SLOT = 256;
@@ -163,9 +157,6 @@ fn covered(corner: Corner) -> vec2f {
 // pressure 0 still shows (StampPaintCompositor's reads.press).
 @fragment fn pressOf(corner: Corner) -> @location(0) vec4f { return vec4f(select(0.0, 1.0 + corner.pressure, covered(corner).x > 0.0)); }`;
 
-/** Pixels a side of the tiles an `ordered` layer's stamps are binned by (binOrderedStamps). */
-const ORDERED_TILE = 32;
-
 // An `ordered` layer is one triangle over the deposit's box: each pixel walks its tile's stamps in order, laying each
 // by its accumulation's lay. A stamp's tip place inverts the fixed path's vertex transform; tip and rolling grain are
 // sampled at that path's interpolated gradients, the tip's grown by its blur as the fixed path's bias grows it.
@@ -192,7 +183,7 @@ ${TURNED_WGSL}
 ${STAMP_ACCUMULATION_LAY_WGSL}
 struct Laid { built: f32, tintA: vec4f, tintB: vec4f }
 fn laidInOrder(p: vec2f, tinted: bool) -> Laid {
-  let cell = u.bins + (u32(p.y) / ${ORDERED_TILE}u) * u.tilesX + u32(p.x) / ${ORDERED_TILE}u;
+  let cell = u.bins + (u32(p.y) / ${STAMP_ORDERED_TILE}u) * u.tilesX + u32(p.x) / ${STAMP_ORDERED_TILE}u;
   var laid = Laid(0.0, vec4f(0.0), vec4f(0.0));
   var mean = 0.0;
   if (u.rolling == 1u) { mean = grainMean(grain, tile); }
@@ -558,52 +549,98 @@ ${PAPER_COLOR_WGSL}
   layPaper(id.xy, paperColor(image, linearClamp, u, vec2f(id.xy) + 0.5, size));
 }`;
 
-// \`group\` is its index in the painting, and \`paper\` the paper under it, for a compositor that lays a group on bare paper;
-// \`paperFromScene\` (rows of an affine map) is where a scene pixel reads that paper: the pixel itself unless the group
-// carries its own paper as it moves (StampGroupPaper).
+/** A scene pixel's rest point where no moved or warped group's lattice covers it: outside any layer. */
+const STAMP_NO_REST = -65536;
+
+// \`group\` is its index in the painting, and \`paper\` the paper under it, for a compositor that lays a group on bare paper.
+// A scene pixel reads that paper where it is, unless the group carries its own paper as it moves or warps
+// (StampGroupPaper, \`paperFromRest\`): then where the layer's texel it lays was painted.
 const GROUP = stampUniformLayout('Group', [
-  ['opacity', 'f32'], ['glaze', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'], ['group', 'u32'], ['paper', stampUniformStruct(PAPER)],
-  ['paperFromSceneX', 'vec4f'], ['paperFromSceneY', 'vec4f'],
+  ['opacity', 'f32'], ['glaze', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'], ['group', 'u32'], ['paper', stampUniformStruct(PAPER)], ['paperFromRest', 'u32'],
 ]);
-const groupWgsl = (compositor: StampPaintCompositor) => /* wgsl */ `
-${stampPaintTargetWgsl('layer', 1, compositor.targets.layer, null)}
-${stampPaintTargetWgsl('painting', 2, compositor.targets.painting, 'read_write')}
-${compositor.group.wgsl}
+/** Where the moved group pass binds the rest point of each scene pixel, past any compositor's own bindings. */
+const GROUP_REST_BINDING = 16;
+const groupWgsl = (compositor: StampPaintCompositor, moved: boolean) => {
+  const { layer, painting } = compositor.targets;
+  const layerAt = (texel: string) => (layer.kind === 'array' ? `textureLoad(layer, ${texel}, l, 0)` : `textureLoad(layer, ${texel}, 0)`);
+  const paintingAt = painting.kind === 'array' ? 'textureLoad(painting, pixel, i)' : 'textureLoad(painting, pixel)';
+  const store = (value: string) => (painting.kind === 'array' ? `textureStore(painting, pixel, i, ${value})` : `textureStore(painting, pixel, ${value})`);
+  const paintingLayers = painting.kind === 'array' ? painting.layers : 1;
+  const common = /* wgsl */ `
+${stampPaintTargetWgsl('layer', 1, layer, null)}
+${stampPaintTargetWgsl('painting', 2, painting, 'read_write')}
 ${PAPER_COLOR_WGSL}
 ${GROUP.wgsl}
 @group(0) @binding(0) var<uniform> u: Group;
-fn groupPaperAt(pixel: vec2u) -> vec2f {
-  let p = vec3f(vec2f(pixel) + 0.5, 1.0);
-  return vec2f(dot(u.paperFromSceneX.xyz, p), dot(u.paperFromSceneY.xyz, p));
-}
+fn groupUnderAt(pixel: vec2u, i: u32) -> vec4f { return ${paintingAt}; }`;
+  if (!moved) return /* wgsl */ `${common}
+fn groupLayerAt(pixel: vec2u, l: u32) -> vec4f { return ${layerAt('pixel')}; }
+fn groupLaid(pixel: vec2u, i: u32, value: vec4f) { ${store('value')}; }
+fn groupPaperAt(pixel: vec2u) -> vec2f { return vec2f(pixel) + 0.5; }
+${compositor.group.wgsl}
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn group(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
   layGroup(u.origin + id.xy, u.glaze == 1u, u.opacity);
 }`;
-
-// A moving group's layer resampled to where it's placed: each scene pixel reads the layer where the inverse placement
-// (stampGroupLayerFromScene) takes it, bilinearly. Beyond the layer there's no paint, rather than its clamped edge.
-const GROUP_MOVE = stampUniformLayout('GroupMove', [['fromSceneX', 'vec4f'], ['fromSceneY', 'vec4f'], ['origin', 'vec2u'], ['extent', 'vec2u']]);
-const groupMoveWgsl = (layer: StampPaintTarget) => /* wgsl */ `
-${GROUP_MOVE.wgsl}
-@group(0) @binding(0) var<uniform> u: GroupMove;
-${stampPaintTargetWgsl('source', 1, layer, null)}
-${stampPaintTargetWgsl('moved', 2, layer, 'write')}
-@group(0) @binding(3) var linearClamp: sampler;
-@compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn placeGroup(@builtin(global_invocation_id) id: vec3u) {
+  // Each of the four texels round a pixel's rest point is laid as it would be unmoved, and the laid paint blended
+  // bilinearly. Blending amounts before the lay instead fills a dry medium's tooth: KM isn't linear in its films.
+  return /* wgsl */ `${common}
+@group(0) @binding(${GROUP_REST_BINDING}) var rest: texture_2d<f32>;
+var<private> tapTexel: vec2i;
+var<private> tapLaid: array<vec4f, ${paintingLayers}>;
+fn groupLayerAt(pixel: vec2u, l: u32) -> vec4f {
+  if (any(tapTexel < vec2i(0)) || any(tapTexel >= vec2i(textureDimensions(layer)))) { return vec4f(0.0); }
+  return ${layerAt('vec2u(tapTexel)')};
+}
+fn groupLaid(pixel: vec2u, i: u32, value: vec4f) { tapLaid[i] = value; }
+fn groupPaperAt(pixel: vec2u) -> vec2f {
+  if (u.paperFromRest == 1u) { return vec2f(tapTexel) + 0.5; }
+  return vec2f(pixel) + 0.5;
+}
+${compositor.group.wgsl}
+@compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn group(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
   let pixel = u.origin + id.xy;
-  let p = vec3f(vec2f(pixel) + 0.5, 1.0);
-  let q = vec2f(dot(u.fromSceneX.xyz, p), dot(u.fromSceneY.xyz, p));
-  let size = vec2f(textureDimensions(source));
-  let inside = all(q >= vec2f(0.0)) && all(q <= size);
+  let q = textureLoad(rest, pixel, 0).xy - 0.5;
+  if (q.x < ${STAMP_NO_REST / 2}.0) { return; }
+  let base = floor(q);
+  let f = q - base;
+  var blended: array<vec4f, ${paintingLayers}>;
+  for (var k = 0u; k < 4u; k++) {
+    let corner = vec2u(k & 1u, k >> 1u);
+    let w = select(1.0 - f.x, f.x, corner.x == 1u) * select(1.0 - f.y, f.y, corner.y == 1u);
+    if (w == 0.0) { continue; }
+    tapTexel = vec2i(base) + vec2i(corner);
+    for (var i = 0u; i < ${paintingLayers}u; i++) { tapLaid[i] = groupUnderAt(pixel, i); }
+    layGroup(pixel, u.glaze == 1u, u.opacity);
+    for (var i = 0u; i < ${paintingLayers}u; i++) { blended[i] += w * tapLaid[i]; }
+  }
+  for (var i = 0u; i < ${paintingLayers}u; i++) { ${store('blended[i]')}; }
+}`;
+};
+
+// A moved or warped group's lattice (stamp-group-warp.ts) rasterised into \`rest\`: each scene pixel it covers learns the
+// rest point it shows, inverting the field for free; the rest keep STAMP_NO_REST, outside any layer. Where the field
+// folds, a later triangle covers an earlier one unless its rest point holds nothing: bare lattice mustn't hide paint.
+const groupLatticeWgsl = (layer: StampPaintTarget) => /* wgsl */ `
+${stampPaintTargetWgsl('source', 0, layer, null)}
+@group(0) @binding(1) var linearClamp: sampler;
+struct LatticePoint { @builtin(position) at: vec4f, @location(0) rest: vec2f };
+@vertex fn latticeVertex(@location(0) clip: vec2f, @location(1) rest: vec2f) -> LatticePoint { return LatticePoint(vec4f(clip, 0.0, 1.0), rest); }
+@fragment fn latticeRest(point: LatticePoint) -> @location(0) vec4f {
+  let uv = point.rest / vec2f(textureDimensions(source));
+  var held = vec4f(0.0);
   ${layer.kind === 'array'
-    ? `for (var l = 0u; l < ${layer.layers}u; l++) { textureStore(moved, pixel, l, select(vec4f(0.0), textureSampleLevel(source, linearClamp, q / size, l, 0.0), inside)); }`
-    : 'textureStore(moved, pixel, select(vec4f(0.0), textureSampleLevel(source, linearClamp, q / size, 0.0), inside));'}
+    ? `for (var l = 0u; l < ${layer.layers}u; l++) { held += abs(textureSampleLevel(source, linearClamp, uv, l, 0.0)); }`
+    : 'held = abs(textureSampleLevel(source, linearClamp, uv, 0.0));'}
+  if (all(held == vec4f(0.0))) { discard; }
+  return vec4f(point.rest, 0.0, 1.0);
 }`;
 
 /** A boiling group's epochs kept on the GPU besides its first: the one drawing, and a couple a scrub returns to. */
 const STAMP_BOIL_EPOCHS_KEPT = 3;
+/** A live group's marks kept on the GPU: the frame drawing's, and the last, which a hold on twos draws again. */
+const STAMP_LIVE_MARKS_KEPT = 2;
 
 const outputWgsl = (compositor: StampPaintCompositor, dithered: boolean) => /* wgsl */ `
 ${FULL_FRAME_WGSL}
@@ -728,64 +765,7 @@ const aspectOf = (layer: BoundLayer) => layer.tip.image.height / layer.tip.image
 /** How many diameters a layer's stamp spans along its image's longer side, which bounds how far it reaches. */
 const reachSpanOf = (layer: BoundLayer) => spanOf(layer) * Math.max(1, aspectOf(layer));
 
-/** Stamps whose bounds are kept together: a box is found from the chunks before it and the stamps within its own. */
-const REACH_CHUNK = 256;
-
-/**
- * How far `stamps` reach, for each whole chunk of them from the first: x0, y0, x1, y1 of stamps 0 to the chunk's end.
- * A stamp's corners reach 0.75 of its tip image's longer side (`span` diameters) from its centre, however it's turned.
- */
-function stampReach(stamps: readonly PlacedStamp[], span: number): Float64Array {
-  const chunks = new Float64Array(Math.floor(stamps.length / REACH_CHUNK) * 4);
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (let i = 0; i < chunks.length / 4 * REACH_CHUNK; i++) {
-    const s = stamps[i], r = s.diameter * span * 0.75;
-    x0 = Math.min(x0, s.x - r); y0 = Math.min(y0, s.y - r); x1 = Math.max(x1, s.x + r); y1 = Math.max(y1, s.y + r);
-    if ((i + 1) % REACH_CHUNK === 0) chunks.set([x0, y0, x1, y1], ((i + 1) / REACH_CHUNK - 1) * 4);
-  }
-  return chunks;
-}
-
-/** Grows `into` (x0, y0, x1, y1) by where the first `count` of `stamps` reach, from their chunks and the rest. */
-function reachOfFirst(stamps: readonly PlacedStamp[], chunks: Float64Array, count: number, span: number, into: number[]) {
-  const whole = Math.floor(count / REACH_CHUNK);
-  if (whole) {
-    const at = (whole - 1) * 4;
-    into[0] = Math.min(into[0], chunks[at]); into[1] = Math.min(into[1], chunks[at + 1]);
-    into[2] = Math.max(into[2], chunks[at + 2]); into[3] = Math.max(into[3], chunks[at + 3]);
-  }
-  for (let i = whole * REACH_CHUNK; i < count; i++) {
-    const s = stamps[i], r = s.diameter * span * 0.75;
-    into[0] = Math.min(into[0], s.x - r); into[1] = Math.min(into[1], s.y - r); into[2] = Math.max(into[2], s.x + r); into[3] = Math.max(into[3], s.y + r);
-  }
-}
-
 type LoadedPlan = Exclude<StampAccumulationPlan, { kind: 'ordered' }> | { kind: 'ordered'; bins: number };
-
-/**
- * Appends an `ordered` layer's bins to `into` and returns where they start: for each tile ORDERED_TILE pixels a side,
- * `tilesX` across the painting, row by row, the entry its stamps start at (and one past the last tile's), then each
- * tile's stamps, by index in order, that reach into it (0.75 of the tip's width from the centre, as stampReach).
- */
-function binOrderedStamps(stamps: readonly PlacedStamp[], span: number, tilesX: number, tilesY: number, into: number[]): number {
-  const tiles = Array.from({ length: tilesX * tilesY }, (): number[] => []);
-  const tileOf = (v: number, count: number) => Math.min(count - 1, Math.max(0, Math.floor(v / ORDERED_TILE)));
-  stamps.forEach((s, i) => {
-    const r = s.diameter * span * 0.75;
-    for (let ty = tileOf(s.y - r, tilesY); ty <= tileOf(s.y + r, tilesY); ty++) {
-      for (let tx = tileOf(s.x - r, tilesX); tx <= tileOf(s.x + r, tilesX); tx++) tiles[ty * tilesX + tx].push(i);
-    }
-  });
-  const table = into.length;
-  let entry = table + tiles.length + 1;
-  for (const tile of tiles) {
-    into.push(entry);
-    entry += tile.length;
-  }
-  into.push(entry);
-  for (const tile of tiles) for (const i of tile) into.push(i);
-  return table;
-}
 
 /**
  * A deposit as the GPU holds it: where its stamps and dual stamps start in its bank's instance buffer, where its tints
@@ -793,10 +773,16 @@ function binOrderedStamps(stamps: readonly PlacedStamp[], span: number, tilesX: 
  */
 type LoadedDeposit = {
   /**
-   * The deposit as written: itself, or for a boil's epoch the deposit it re-seeds, whose paint, fill body and trace
-   * it shares.
+   * The deposit as written: itself, or for a boil's epoch or live marks the deposit it re-places, whose brush, paint
+   * and trace it shares.
    */
   identity: CompiledStampDeposit;
+  /**
+   * The deposit its bank's regions and wet stages know (BankHome): as written, but for live marks itself, whose fill
+   * body, fluid and landing are its own pose's.
+   */
+  staged: CompiledStampDeposit;
+  home: BankHome;
   stampBuffer: GPUBuffer; tintBuffer: GPUBuffer; binBuffer: GPUBuffer;
   /**
    * A deposit laid by the wash law (stampDepositionLaw): its landing, and where its grids start in the painting's wet
@@ -809,22 +795,33 @@ type LoadedDeposit = {
   main: number; dual: number; tint: number | null;
   /** Writes its compositor's PaintDeposit at scene time `t` into a uniform slot. */
   writePaint: (views: StampUniformViews, t: number) => void;
-  mainReach: Float64Array; dualReach: Float64Array;
   mainHull: StampTipHull; dualHull: StampTipHull | null;
-  /** How each layer's stamps are laid, and an `ordered` layer's bins' table in the bin buffer (binOrderedStamps). */
+  /** How each layer's stamps are laid, and an `ordered` layer's bins' table in the bin buffer (stampMarksOrderedBins). */
   mainPlan: LoadedPlan; dualPlan: LoadedPlan | null;
   /** Its plan's order's case in the resolve (stampResolveOrderIndex). */
   resolveOrder: number;
 };
 
 /**
- * A set of deposits on the GPU (loadBank), their washes' wetness, every landing's grids (the painting's own bank holds
- * them; a boil's epoch shares them), and how to free them.
+ * What a bank's deposits are drawn with beyond their stamps: every landing's grids, the regions worked out for them
+ * (fill bodies, fluid, `within`), the wet stages loaded for their washes, and each wash drying by the deposit it ends
+ * after. The painting's own bank has one; a boil's epoch shares it, landing as written; live marks have their own.
  */
-type DepositBank = {
-  deposits: Map<CompiledStampDeposit, LoadedDeposit>; wetness: StampWetness | null;
-  grids: { buffer: GPUBuffer; firsts: ReadonlyMap<CompiledStampDeposit, number> }; destroy: () => void;
+type BankHome = {
+  grids: { buffer: GPUBuffer; firsts: ReadonlyMap<CompiledStampDeposit, number> };
+  regions: LoadedRegions;
+  stages: readonly LoadedWetStage[];
+  dryingsByLast: ReadonlyMap<CompiledStampDeposit, StampWashDrying>;
 };
+
+/**
+ * A set of deposits on the GPU (loadBank), their washes' wetness, what they're drawn with (`home`), and how to free
+ * them. `own`: its home knows its own deposits and passes (live marks), not those as written.
+ */
+type DepositBank = { deposits: Map<CompiledStampDeposit, LoadedDeposit>; wetness: StampWetness | null; home: BankHome; own: boolean; destroy: () => void };
+
+/** How a bank is loaded: the painting as written, its wetness worked out; a boil's epoch of it; or a group's live marks. */
+type BankSource = { kind: 'written'; wetness: StampWetness | null } | { kind: 'epoch'; written: DepositBank } | { kind: 'live' };
 
 /**
  * A deposit to trace in a frame: the pixels to record, and the order its stages run in, its brush's plan's unless a
@@ -845,24 +842,32 @@ type FrameTrace = { deposits: Map<CompiledStampDeposit, { request: StampDepositT
 /** A region worked out at load (a flood's body, a state of the fluid, a `within`): its texture and its box on the painting. */
 type RegionTexture = { view: GPUTextureView; box: Box };
 
+/** A bank's regions: each flood's body by its deposit, each state of the fluid a deposit lands under, each pass's `within`. */
+type LoadedRegions = {
+  bodies: ReadonlyMap<CompiledStampDeposit, RegionTexture | null>;
+  fluids: ReadonlyMap<CompiledStampMask, RegionTexture | null>;
+  withins: ReadonlyMap<CompiledStampPass, RegionTexture | null>;
+};
+
 export type StampPaintRenderer = {
   /**
-   * Draws `painting` as it stands `t` seconds into its scene. Resolves once WebGPU has checked the draw, or rejects
-   * with its error: hold the frame until then, so a broken draw fails its own frame.
+   * Draws `painting` as it stands `t` seconds into its scene, each group in the state `frame` gives it (as painted
+   * where it gives none). Resolves once WebGPU has checked the draw, or rejects with its error: hold the frame until
+   * then, so a broken draw fails its own frame.
    */
-  draw: (t: number) => Promise<void>;
+  draw: (t: number, frame?: StampPaintFrameState) => Promise<void>;
   /** Resolves once the GPU has finished what's been drawn: for timing a draw, which a render never needs. */
   finish: () => Promise<void>;
   /**
    * Draws the frame at `t` as `draw` does, recording each requested deposit's resolve stage by stage, read back once:
    * for diagnosing a brush against a capture, not for rendering. Throws on a deposit not in the painting or asked for twice.
    */
-  trace: (t: number, requests: readonly StampDepositTraceRequest[]) => Promise<StampDepositTrace[]>;
+  trace: (t: number, requests: readonly StampDepositTraceRequest[], frame?: StampPaintFrameState) => Promise<StampDepositTrace[]>;
   /**
    * Draws the frame at `t` as `draw` does and reads back the layer its last group left, before that group dried
    * into the painting: for checking what the compositor laid (the GPU gate's pigment checks), not for rendering.
    */
-  readLayer: (t: number) => Promise<StampLayerReadback>;
+  readLayer: (t: number, frame?: StampPaintFrameState) => Promise<StampLayerReadback>;
   /** Frees what the painting loaded; its surface stays for the next. */
   dispose: () => void;
   /**
@@ -887,27 +892,27 @@ function halfFloat(bits: number): number {
 }
 
 export type StampPaintRendererOptions = {
-  fps?: number;
   /** Times the load's parts, for `studio profile`. */
   profile?: FrameProfileStart | null;
   /** The wet stages its washes run: every one, but for a check measuring what some do. */
   wetStages?: readonly StampWetStage[];
 };
 
+/** The most lattice cells a frame lays `group` through: a warp's most, a move's one, none still. */
+const latticeCellsMost = ({ lay, warp }: StampGroupFrame) => (warp ? STAMP_WARP_MOST_CELLS ** 2 : Number(!!lay));
+
 /**
- * A renderer for one painting on `surface`, mixed as `mixing` says; `fps` counts a boiling group's epochs (required
- * for one); `profile` times the load's parts. Refuses a painting it can't mix. A frame may round a few pixels a level
- * differently between draws (docs/private-styles.md, "Same pixels").
+ * A renderer for one painting on `surface`, mixed as `mixing` says; `profile` times the load's parts. Refuses a
+ * painting it can't mix. A frame may round a few pixels a level differently between draws (docs/private-styles.md,
+ * "Same pixels"). No render fps reaches it: a boil counts animation frames (stampBoilEpoch).
  */
 export async function createStampPaintRenderer(
   surface: StampPaintSurface, painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing,
-  { fps, profile, wetStages = STAMP_WET_STAGES }: StampPaintRendererOptions = {},
+  { profile, wetStages = STAMP_WET_STAGES }: StampPaintRendererOptions = {},
 ): Promise<StampPaintRenderer> {
   const span = profile ?? (() => () => {});
-  const boiling = painting.groups.find((group) => group.boil);
-  if (boiling && !(fps && fps > 0)) throw new Error(`stamp paint: ${boiling.id} boils every ${boiling.boil!.every} frames, so its renderer needs the scene's fps`);
   let done = span('stamp paint compositor load');
-  const { compositorOn, wetnessOf, medium } = compositorFor(painting, paper, mixing, { width: surface.width, height: surface.height }, wetStages);
+  const { compositorOn, wetnessOf, mediumOf } = compositorFor(painting, paper, mixing, { width: surface.width, height: surface.height }, wetStages);
   done();
 
   done = span('stamp paint images load');
@@ -928,7 +933,7 @@ export async function createStampPaintRenderer(
   const scope = surface.scope();
   try {
     const loading = surface.checked('loading the painting onto the GPU', () =>
-      rendererOnSurface(surface, scope, compositorOn, wetnessOf, medium, painting, paper, image, bound, tipLevels, wetStages, fps ?? 0, span));
+      rendererOnSurface(surface, scope, compositorOn, wetnessOf, mediumOf, painting, paper, image, bound, tipLevels, wetStages, span));
     // The load itself ran within the call: what's left is WebGPU's check of it.
     done = span('stamp paint gpu check load');
     const renderer = await loading;
@@ -941,18 +946,23 @@ export async function createStampPaintRenderer(
 }
 
 /**
- * How `mixing` composites `painting`, and how wet a set of its groups' washes land, worked out before anything is
- * loaded, so a painting it can't mix fails first. Only pigment has washes: the flat compositor refuses one.
+ * How `mixing` composites `painting`, how wet a set of its groups' washes land, and the medium each group (by its
+ * ID) paints in, worked out before anything is loaded, so a painting it can't mix fails first. Only pigment has
+ * washes or media: the flat compositor refuses a wash, and a group naming a mixing of its own.
  */
 function compositorFor(painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, size: { width: number; height: number }, wetStages: readonly StampWetStage[]) {
   if (mixing.kind === 'pigment') {
     const paint = compileStampPigmentPaint(painting, mixing, PAINT_BANDS);
-    const margin = (deposit: CompiledStampDeposit) => stampWetStageReach(wetStages, deposit, mixing.medium);
-    const wetnessOf = (groups: CompiledStampPaint) => compileStampWetness(groups, mixing.medium, paper, size, margin);
-    return { compositorOn: (device: StampPaintDevice) => stampPigmentCompositor(device, paint, paper.color), wetnessOf, medium: mixing.medium };
+    const mediumOf = (group: Pick<CompiledStampGroup, 'id'>) => stampPigmentGroupMedium(paint, painting, group);
+    const margin = (deposit: CompiledStampDeposit, medium: PaintMedium) => stampWetStageReach(wetStages, deposit, medium);
+    const wetnessOf = (groups: CompiledStampPaint) => compileStampWetness(groups, mediumOf, paper, size, margin);
+    return { compositorOn: (device: StampPaintDevice) => stampPigmentCompositor(device, paint, paper.color), wetnessOf, mediumOf };
+  }
+  for (const { id, mixing: own } of painting.groups) {
+    if (own) throw new Error(`stamp paint: group ${id} paints in ${own.medium.name}, but its style mixes in flat colour, which has no media; paint it in a pigment style`);
   }
   const flat = flatStampPaintCompositor(painting);
-  return { compositorOn: () => flat, wetnessOf: null, medium: null };
+  return { compositorOn: () => flat, wetnessOf: null, mediumOf: null };
 }
 
 /**
@@ -961,9 +971,9 @@ function compositorFor(painting: CompiledStampPaint, paper: StampPaintPaper, mix
  */
 function rendererOnSurface(
   surface: StampPaintSurface, scope: StampPaintGpuScope, compositorOn: (device: StampPaintDevice) => StampPaintCompositor,
-  wetnessOf: ((groups: CompiledStampPaint) => StampWetness) | null, wetMedium: PaintMedium | null, painting: CompiledStampPaint, paper: StampPaintPaper,
+  wetnessOf: ((groups: CompiledStampPaint) => StampWetness) | null, mediumOf: ((group: Pick<CompiledStampGroup, 'id'>) => PaintMedium) | null, painting: CompiledStampPaint, paper: StampPaintPaper,
   image: (source: StampBrushImageSource) => StampPaintImage, bound: ReadonlyMap<CompiledStampDeposit, StampBrush<StampPaintImage>>,
-  tipLevels: ReadonlyMap<StampPaintImage, StampTipLevel[]>, wetStages: readonly StampWetStage[], fps: number, span: FrameProfileStart,
+  tipLevels: ReadonlyMap<StampPaintImage, StampTipLevel[]>, wetStages: readonly StampWetStage[], span: FrameProfileStart,
 ): StampPaintRenderer {
   const { width, height, format } = surface, { device } = scope;
   let done = span('stamp paint compositor gpu load');
@@ -973,12 +983,13 @@ function rendererOnSurface(
   done();
 
   /** The hull `layer`'s tip is drawn in, for the coarsest level its smallest or most blurred stamp reads. */
-  function tipHull(layer: BoundLayer, stamps: readonly PlacedStamp[]): StampTipHull {
+  function tipHull(layer: BoundLayer, stamps: FrozenStampMarks): StampTipHull {
+    const marks = stampMarksExtremes(stamps);
     // The tip's texels spread over its span, so its pixels per texel go by the image's width, not the diameter.
-    const smallest = stamps.reduce((least, s) => Math.min(least, s.diameter), Infinity) * spanOf(layer);
-    const blurred = Math.ceil(stamps.reduce((most, s) => Math.max(most, s.blur), 0) * STAMP_BLUR_LEVELS);
+    const smallest = marks.smallest * spanOf(layer);
+    const blurred = Math.ceil(marks.blurred * STAMP_BLUR_LEVELS);
     const levels = tipLevels.get(layer.tip.image)!;
-    const squashed = layer.tip.roundness * (levels[0].height / levels[0].width) * stamps.reduce((least, s) => Math.min(least, s.roundness), 1);
+    const squashed = layer.tip.roundness * (levels[0].height / levels[0].width) * marks.roundest;
     const coarsest = Math.min(levels.length - 1, coarsestStampTipLevel(levels[0], smallest, squashed, levels.length) + blurred);
     return surface.tipHull(layer.tip.image, coarsest);
   }
@@ -1007,24 +1018,27 @@ function rendererOnSurface(
   // pressure for a compositor that reads it. A boil's epoch has its group's deposits.
   const depositSlots = (wash: boolean) => 9 + (wash || compositor.reads.press ? 1 : 0);
   const slotsPerFrame = 1 + painting.groups.reduce((sum, group) => sum + 2 + group.passes.reduce((n, pass) => n + stampPassDeposits(pass).length * depositSlots(pass.kind === 'wash'), 0), 0);
-  const tilesX = Math.ceil(width / ORDERED_TILE), tilesY = Math.ceil(height / ORDERED_TILE);
+  const tilesX = Math.ceil(width / STAMP_ORDERED_TILE), tilesY = Math.ceil(height / STAMP_ORDERED_TILE);
   const asWritten = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).map((deposit) => [deposit.id, deposit] as const))));
+  // Each deposit's medium by its ID, its group's as written (an epoch's and live marks' alike); none in flat colour.
+  const depositMedia = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).map((deposit) => [deposit.id, mediumOf?.(group) ?? null] as const))));
+  const mediumOfDeposit = (deposit: CompiledStampDeposit): PaintMedium | null => depositMedia.get(deposit.id) ?? null;
 
   /**
-   * `groups`' deposits on the GPU: stamps, tints, ordered bins and washes' landings. A boil epoch loads its own
-   * (epochOf), landing as the deposits as `written` do: the paper is wet where the author's stroke wets it. It's made
-   * outside the painting's scope, destroyed as the epoch is given up or the painting disposed.
+   * `groups`' deposits on the GPU, and what they're drawn with. A boil epoch (epochOf) lands as the deposits as
+   * written do, wet where the author's stroke wets it; live marks (liveOf) load their own wetness, regions and wet
+   * stages, as their pose lands. Either is scoped, destroyed as it's given up or the painting disposed.
    */
-  function loadBank(groups: readonly CompiledStampGroup[], written?: DepositBank): DepositBank {
-    const on = written ? surface.device : device;
+  function loadBank(groups: readonly CompiledStampGroup[], source: BankSource): DepositBank {
+    const bankScope = source.kind === 'written' ? null : surface.scope(), on = bankScope?.device ?? device;
     const binData: number[] = [];
-    const loadPlan = (layer: BoundLayer, stamps: readonly PlacedStamp[]): LoadedPlan => {
-      const plan = stampAccumulationPlan(layer.accumulation, stamps);
-      return plan.kind === 'ordered' ? { kind: 'ordered', bins: binOrderedStamps(stamps, reachSpanOf(layer), tilesX, tilesY, binData) } : plan;
+    const loadPlan = (layer: BoundLayer, stamps: FrozenStampMarks): LoadedPlan => {
+      const plan = stampMarksPlan(stamps, layer.accumulation);
+      return plan.kind === 'ordered' ? { kind: 'ordered', bins: stampBinsAppended(stampMarksOrderedBins(stamps, reachSpanOf(layer), tilesX, tilesY), binData) } : plan;
     };
     let total = 0, tints = 0;
     const placed = groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass))).map((deposit) => {
-      // A boil's epoch places its marks afresh, but its brush, paint and regions are the deposit's as written.
+      // An epoch or live marks place their marks afresh, but their brush and paint are the deposit's as written.
       const identity = asWritten.get(deposit.id)!, brush = bound.get(identity)!;
       const at = {
         deposit, identity, brush, main: total, dual: total + deposit.stamps.length, tint: compositor.readsStampTints && deposit.brush.color ? tints : null,
@@ -1038,46 +1052,65 @@ function rendererOnSurface(
       throw new Error(`stamp paint: the painting's ${total.toLocaleString()} stamps need ${Math.round((total * STAMP_FLOATS * 4) / 2 ** 20)} MB, over this GPU's ${Math.round(device.limits.maxBufferSize / 2 ** 20)} MB buffer`);
     }
     const stampData = new Float32Array(Math.max(1, total) * STAMP_FLOATS), tintData = new Float32Array(Math.max(1, tints) * TINT_FLOATS);
-    const write = (stamps: readonly PlacedStamp[], at: number) => stamps.forEach((s, i) => stampData.set(
-      [s.x, s.y, s.diameter, s.rotation, s.alpha, s.blur, s.grainTurn, (s.flipX ? 1 : 0) + (s.flipY ? 2 : 0), s.opacity, s.roundness, stampGrainDepthIn(s, wetMedium), s.pressure], (at + i) * STAMP_FLOATS,
-    ));
     for (const { deposit, main, dual, tint } of placed) {
-      write(deposit.stamps, main);
-      write(deposit.dualStamps, dual);
-      if (tint !== null) deposit.stamps.forEach(({ tint: t }, i) => tintData.set([t.hue, t.saturation, t.lightness, t.secondary], (tint + i) * TINT_FLOATS));
+      const grainDepthSource = stampGrainDepthSourceIn(mediumOfDeposit(deposit));
+      stampData.set(stampInstanceFloats(deposit.stamps, grainDepthSource), main * STAMP_FLOATS);
+      stampData.set(stampInstanceFloats(deposit.dualStamps, grainDepthSource), dual * STAMP_FLOATS);
+      if (tint !== null) tintData.set(stampTintFloats(deposit.stamps), tint * TINT_FLOATS);
     }
     // A layer laid in order reads its stamps and tints as storage.
     const stampBuffer = buffer(stampData, GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE, on), tintBuffer = buffer(tintData, GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE, on);
     const binBuffer = buffer(new Uint32Array(binData.length ? binData : [0]), GPUBufferUsage.STORAGE, on);
-    const wet = span('stamp paint wetness load');
-    const wetness = written ? null : wetnessOf?.({ groups }) ?? null;
-    wet();
-    const grids = written?.grids ?? wetGridsOf(wetness);
-    const deposits = new Map(placed.map(({ deposit, identity, brush, main, dual, tint, mainPlan, dualPlan }): [CompiledStampDeposit, LoadedDeposit] => [deposit, {
-      identity, brush, active: stampActiveLayers(brush, deposit.diameter), main, dual, tint,
-      writePaint: compositor.deposit.writerFor(identity),
-      mainReach: stampReach(deposit.stamps, reachSpanOf(brush)), dualReach: stampReach(deposit.dualStamps, brush.dual ? reachSpanOf(brush.dual) : 1),
-      mainHull: tipHull(brush, deposit.stamps), dualHull: brush.dual ? tipHull(brush.dual, deposit.dualStamps) : null,
-      mainPlan, dualPlan, resolveOrder: stampResolveOrderIndex(STAMP_RESOLVE_PLANS[stampResolvePlan(brush.dual)]),
-      stampBuffer, tintBuffer, binBuffer,
-      ...(written
-        ? (({ landing, wetFirst }) => ({ landing, wetFirst }))(written.deposits.get(identity)!)
-        : { landing: washLanding(deposit, wetness), wetFirst: grids.firsts.get(deposit) ?? null }),
-    }]));
-    const owned = written ? [stampBuffer, tintBuffer, binBuffer] : [stampBuffer, tintBuffer, binBuffer, grids.buffer];
-    return { deposits, wetness: written?.wetness ?? wetness, grids, destroy: () => owned.forEach((b) => b.destroy()) };
+    const own = source.kind === 'live';
+    const wetness = bankWetness(groups, source);
+    const home = source.kind === 'epoch' ? source.written.home : loadHome(groups, wetness, on);
+    const deposits = new Map(placed.map(({ deposit, identity, brush, main, dual, tint, mainPlan, dualPlan }): [CompiledStampDeposit, LoadedDeposit] => {
+      const staged = own ? deposit : identity;
+      return [deposit, {
+        identity, staged, home, brush, active: stampActiveLayers(brush, deposit.diameter), main, dual, tint,
+        writePaint: compositor.deposit.writerFor(identity),
+        mainHull: tipHull(brush, deposit.stamps), dualHull: brush.dual ? tipHull(brush.dual, deposit.dualStamps) : null,
+        mainPlan, dualPlan, resolveOrder: stampResolveOrderIndex(STAMP_RESOLVE_PLANS[stampResolvePlan(brush.dual)]),
+        stampBuffer, tintBuffer, binBuffer, landing: washLanding(identity, staged, wetness), wetFirst: home.grids.firsts.get(staged) ?? null,
+      }];
+    }));
+    const bank: DepositBank = { deposits, wetness, home, own, destroy: () => bankScope?.destroy() };
+    reserveWashBoxes(groups, bank);
+    return bank;
   }
-  /** `deposit`'s landing in `wetness` where the wash law lays it, else null (LoadedDeposit's `landing`): a wash keeps a history, landing each deposit. */
-  function washLanding(deposit: CompiledStampDeposit, wetness: StampWetness | null): StampWetLanding | null {
-    const landing = wetness?.landings.get(deposit) ?? null;
-    return landing && stampDepositionLaw(deposit, wetMedium, true) === 'wash' ? landing : null;
+  /** Where `groups`' washes land: as written for an epoch's re-seeded marks, as posed for live ones. */
+  function bankWetness(groups: readonly CompiledStampGroup[], source: BankSource): StampWetness | null {
+    if (source.kind === 'written') return source.wetness;
+    if (source.kind === 'epoch') return source.written.wetness;
+    return wetnessOf?.({ groups }) ?? null;
+  }
+  /** What `groups`' deposits are drawn with, made through `on`: their landings' grids, regions and wet stages. */
+  function loadHome(groups: readonly CompiledStampGroup[], wetness: StampWetness | null, on: StampPaintDevice): BankHome {
+    const grids = wetGridsOf(wetness, on);
+    let loaded = span('stamp paint regions load');
+    const regions = loadRegions(groups, on);
+    loaded();
+    loaded = span('stamp paint wet stages load');
+    const stages: LoadedWetStage[] = [];
+    if (wetness?.landings.size) {
+      const wetContext: StampWetStageContext = {
+        device: on, painting: { groups }, wetness, width, height, layer: targets.layer, wash: stageWash!,
+        footprint: targets.footprint!, fresh: targets.fresh!, grids, paperDepth: paper.grain?.depth ?? 0,
+      };
+      for (const stage of wetStages) {
+        stages.push(stage.after === 'deposit' ? { after: 'deposit', settled: !!stage.settled, running: stage.load(wetContext) } : { after: 'drying', running: stage.load(wetContext) });
+      }
+    }
+    loaded();
+    const dryingsByLast = new Map([...wetness?.washes.values() ?? []].flatMap((record) => record.dryings).map((drying) => [drying.deposits.at(-1)!, drying]));
+    return { grids, regions, stages, dryingsByLast };
   }
   /**
    * Every wash deposit's landing grids in one upload, each its wetness, workable and settled one after another (the
    * renderer and every stage read this one buffer). Each is a window of the painting's lattice round the deposit
    * (stamp-wetness.ts), so the upload grows with what the deposits cover, 12 bytes a lattice point.
    */
-  function wetGridsOf(wetness: StampWetness | null): DepositBank['grids'] {
+  function wetGridsOf(wetness: StampWetness | null, on: StampPaintDevice): BankHome['grids'] {
     const firsts = new Map<CompiledStampDeposit, number>();
     let floats = 0;
     for (const [deposit, { before }] of wetness?.landings ?? []) {
@@ -1091,14 +1124,13 @@ function rendererOnSurface(
       values.set(before.workable, first + n);
       values.set(before.settled, first + 2 * n);
     }
-    return { buffer: buffer(values, GPUBufferUsage.STORAGE), firsts };
+    return { buffer: buffer(values, GPUBufferUsage.STORAGE, on), firsts };
   }
-  done = span('stamp paint bank load');
-  const writtenBank = loadBank(painting.groups);
-  const wetWarnings = writtenBank.wetness && wetMedium ? stampWetReportWarnings(stampWetReport(painting, writtenBank.wetness, wetMedium)) : [];
+  done = span('stamp paint wetness load');
+  const wetness = wetnessOf?.(painting) ?? null;
+  const wetWarnings = wetness ? stampWetReportWarnings(stampWetReport(painting, wetness)) : [];
   done();
   done = span('stamp paint pipelines load');
-  const wetness = writtenBank.wetness;
   // The fan's triangles, by corner: indexed, so each corner is shaded once a stamp, not once for each triangle it's in.
   const fanBuffer = buffer(new Uint16Array(Array.from({ length: STAMP_TIP_HULL_SIDES - 2 }, (_, i) => [0, i + 1, i + 2]).flat()), GPUBufferUsage.INDEX);
 
@@ -1115,6 +1147,10 @@ function rendererOnSurface(
     fill({ floats: stagedFloats.subarray(word, word + words), ints: stagedInts.subarray(word, word + words), words: stagedWords.subarray(word, word + words) });
     return { buffer: uniforms, offset, size: SLOT };
   };
+
+  // Each frame's lattice triangles, uploaded with its uniforms, in room grown for the most a frame has laid through
+  // one (latticeRoom).
+  let latticeStaging = new Float32Array(0), latticeVertices: GPUBuffer | null = null, latticeUsed = 0;
 
   const linearClamp = device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear' });
   // For a tip resampled anisotropically (StampBrushTip's sampling): squashing blurs it only across the squash.
@@ -1189,8 +1225,35 @@ function rendererOnSurface(
     }
     return depositPipelines.get(key)!;
   };
-  const pipelines = { blur: computePipeline(BLUR_WGSL), group: computePipeline(groupWgsl(compositor)), paper: computePipeline(paperWgsl(compositor)) };
-  const movePipeline = painting.groups.some((group) => group.motion) ? computePipeline(groupMoveWgsl(compositor.targets.layer)) : null;
+  const pipelines = { blur: computePipeline(BLUR_WGSL), group: computePipeline(groupWgsl(compositor, false)), paper: computePipeline(paperWgsl(compositor)) };
+  /**
+   * What laying a group through a lattice takes, made the first time a frame moves or warps one: its pipelines, and
+   * each scene pixel's rest point.
+   */
+  let latticeLay: { movedGroupPipeline: GPUComputePipeline; latticePipeline: GPURenderPipeline; rest: ReturnType<typeof target> } | null = null;
+  const latticeLayOf = () => {
+    if (latticeLay) return latticeLay;
+    const latticeModule = device.createShaderModule({ code: groupLatticeWgsl(compositor.targets.layer) });
+    latticeLay = {
+      movedGroupPipeline: computePipeline(groupWgsl(compositor, true)),
+      latticePipeline: device.createRenderPipeline({
+        layout: 'auto',
+        vertex: { module: latticeModule, buffers: [{ arrayStride: 16, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x2' }, { shaderLocation: 1, offset: 8, format: 'float32x2' }] }] },
+        fragment: { module: latticeModule, targets: [{ format: 'rg32float' }] },
+      }),
+      rest: target('rest', width, height, GPUTextureUsage.RENDER_ATTACHMENT, 'rg32float'),
+    };
+    return latticeLay;
+  };
+  /** Room for a frame laying `groups` through lattices: a moved group's one cell, a warped group's most. */
+  const latticeRoom = (groups: readonly StampGroupFrame[]) => {
+    const floats = groups.reduce((sum, group) => sum + 24 * latticeCellsMost(group), 0);
+    if (floats <= latticeStaging.length) return;
+    latticeStaging = new Float32Array(floats);
+    // Destroyed once the frames that drew from it are done.
+    latticeVertices?.destroy();
+    latticeVertices = device.createBuffer({ size: floats * 4, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
+  };
   depositPipeline(false, false);
   if (wetness?.landings.size) {
     if (!compositor.deposit.wet) throw new Error('stamp paint: the painting has washes, and its compositor lays none');
@@ -1246,13 +1309,11 @@ function rendererOnSurface(
   // What a checkpoint saves and restores (stamp-paint-checkpoints.ts).
   const SAVED = GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST;
   const halfW = Math.ceil(width / 2), halfH = Math.ceil(height / 2);
-  const laysTints = [...writtenBank.deposits.values()].some(({ tint }) => tint !== null);
+  const laysTints = compositor.readsStampTints && painting.groups.some((group) => group.passes.some((pass) => stampPassDeposits(pass).some((deposit) => deposit.brush.color)));
   const targets = {
     painting: layered('painting', compositor.targets.painting, STORAGE | SAVED),
     // Saved by checkpoints, and copied out by readLayer for the GPU gate's pigment checks.
     layer: layered('layer', compositor.targets.layer, STORAGE | RENDER | SAVED),
-    // A moving group's layer resampled to where it's placed, for its lay; only a painting with one has it.
-    moved: painting.groups.some((group) => group.motion) ? layered('moved', compositor.targets.layer, STORAGE) : null,
     mask: target('mask', width, height, RENDER, 'rg16float'),
     cap: target('cap', width, height, RENDER, 'rgba16float'),
     blurA: target('blurA', halfW, halfH, STORAGE),
@@ -1278,52 +1339,46 @@ function rendererOnSurface(
     pass.end();
   };
 
-  done();
-  done = span('stamp paint regions load');
-  const regions = loadRegions();
-  done();
-  done = span('stamp paint wet stages load');
-  const stages: LoadedWetStage[] = [];
-  if (wetness?.landings.size) {
-    const wetContext: StampWetStageContext = {
-      device, painting, medium: wetMedium!, wetness, width, height, layer: targets.layer, wash: compositor.wash!,
-      footprint: targets.footprint!, fresh: targets.fresh!, grids: writtenBank.grids, paperDepth: paper.grain?.depth ?? 0,
-    };
-    for (const stage of wetStages) {
-      stages.push(stage.after === 'deposit' ? { after: 'deposit', settled: !!stage.settled, running: stage.load(wetContext) } : { after: 'drying', running: stage.load(wetContext) });
-    }
-  }
-  /** Each wash drying by the deposit it ends after, as written. */
-  const dryingsByLast = new Map([...wetness?.washes.values() ?? []].flatMap((record) => record.dryings).map((drying) => [drying.deposits.at(-1)!, drying]));
   /**
    * How far past its stamps' reach a deposit resolves: its edges' blur, and for one the wash law lays its stages'
    * reach and two lattice cells more, so the box holds every pixel whose settled paint its landing would leave unzeroed.
    */
   const depositPad = (loadedDeposit: LoadedDeposit) => {
     const sigma = loadedDeposit.active.edgeSigma;
-    return (sigma > 0 ? sigma * 3 : 2) + (loadedDeposit.landing ? stampWetStageReach(wetStages, loadedDeposit.identity, wetMedium!) + 2 * STAMP_WET_CELL : 0);
+    // Only a wash's deposits land, each in its group's medium.
+    const { landing, identity } = loadedDeposit;
+    return (sigma > 0 ? sigma * 3 : 2) + (landing ? stampWetStageReach(wetStages, identity, landing.medium) + 2 * STAMP_WET_CELL : 0);
   };
-  /** Readies every stage for the whole box of each of `groups`' deposits the wash law lays, between frames (StampLoadedWetStage.reserve). */
+  /** Readies every stage `bank` draws with for each of `groups`' wash deposits' whole boxes (StampLoadedWetStage.reserve). */
   const reserveWashBoxes = (groups: readonly CompiledStampGroup[], bank: DepositBank) => {
     for (const pass of groups.flatMap((group) => group.passes)) {
       for (const deposit of stampPassDeposits(pass)) {
         const loadedDeposit = bank.deposits.get(deposit)!;
         if (!loadedDeposit.landing) continue;
         const box = depositBox(deposit, loadedDeposit, deposit.stamps.length, deposit.dualStamps.length, depositPad(loadedDeposit));
-        if (box) for (const { running } of stages) running.reserve?.(box);
+        if (box) for (const { running } of bank.home.stages) running.reserve?.(box);
       }
     }
   };
-  reserveWashBoxes(painting.groups, writtenBank);
+  // A wet stage asks the compositor about the deposits it knows; live marks' own are painted as the deposit as written.
+  const stageWash: StampWashLayer | undefined = compositor.wash && {
+    ...compositor.wash,
+    layersOf: (deposit) => compositor.wash!.layersOf(asWritten.get(deposit.id)!),
+    movedWgsl: (deposit) => compositor.wash!.movedWgsl(asWritten.get(deposit.id)!),
+    holdWgsl: (deposit) => compositor.wash!.holdWgsl(asWritten.get(deposit.id)!),
+  };
+  done();
+  done = span('stamp paint bank load');
+  const writtenBank = loadBank(painting.groups, { kind: 'written', wetness });
   done();
 
   /**
-   * Works out, once, what of the painting doesn't change with time: each flood's body, each state of the fluid a
-   * deposit lands under, each pass's `within`, as cropped textures (none for an empty state). All are planned and held
-   * to STAMP_REGION_BUDGET, refused past it naming what's there, before any is made.
+   * Works out, once a bank, what of `groups` doesn't change with time: each flood's body, each state of the fluid a
+   * deposit lands under, each pass's `within`, as cropped textures made through `on` (none for an empty state). All
+   * are planned and held to STAMP_REGION_BUDGET, refused past it naming what's there, before any is made.
    */
-  function loadRegions() {
-    const passes = painting.groups.flatMap((group) => group.passes);
+  function loadRegions(groups: readonly CompiledStampGroup[], on: StampPaintDevice): LoadedRegions {
+    const passes = groups.flatMap((group) => group.passes);
     const all = passes.flatMap((pass) => stampPassDeposits(pass));
     // Every polygon once, each flood's thickness grid and every op of the fluid, in storage buffers.
     const points: number[] = [], placed = new Map<readonly StampPoint[], [number, number]>();
@@ -1434,7 +1489,7 @@ function rendererOnSurface(
       throw new Error(`stamp paint: the painting's fills, masking fluid and within regions need ${Math.round(bytes / 2 ** 20)} MB, over ${STAMP_REGION_BUDGET / 2 ** 20} MB: ${bodies.size} fill bodies, ${[...fluids.values()].filter(Boolean).length} states of the fluid, ${withins.size} within regions; share masks between deposits or crop them`);
     }
     const made = new Map(steps.map((step): [Step, RegionTexture] => {
-      const texture = device.createTexture({ size: [step.box.w, step.box.h], format: STAMP_REGION_FORMAT, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+      const texture = on.createTexture({ size: [step.box.w, step.box.h], format: STAMP_REGION_FORMAT, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
       return [step, { view: texture.createView(), box: step.box }];
     }));
     if (steps.length) {
@@ -1444,9 +1499,9 @@ function rendererOnSurface(
         opInts.set(words, i * MASK_OP_WORDS + floats.length);
         opFloats[i * MASK_OP_WORDS + floats.length + words.length] = inset;
       });
-      const pointBuffer = buffer(new Float32Array(points.length ? points : [0, 0]), GPUBufferUsage.STORAGE), gridBuffer = buffer(new Float32Array(grids.length ? grids : [0]), GPUBufferUsage.STORAGE);
-      const opBuffer = buffer(opFloats, GPUBufferUsage.STORAGE);
-      const words = new ArrayBuffer(steps.length * SLOT), uniformBuffer = device.createBuffer({ size: steps.length * SLOT, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      const pointBuffer = buffer(new Float32Array(points.length ? points : [0, 0]), GPUBufferUsage.STORAGE, on), gridBuffer = buffer(new Float32Array(grids.length ? grids : [0]), GPUBufferUsage.STORAGE, on);
+      const opBuffer = buffer(opFloats, GPUBufferUsage.STORAGE, on);
+      const words = new ArrayBuffer(steps.length * SLOT), uniformBuffer = on.createBuffer({ size: steps.length * SLOT, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
       const encoder = device.createCommandEncoder();
       // In the order planned, so a state of the fluid is drawn after the state it's built on.
       steps.forEach((step, i) => {
@@ -1623,7 +1678,7 @@ function rendererOnSurface(
     stamp(loadedDeposit.brush, loadedDeposit.active.main, loadedDeposit.mainPlan, loadedDeposit.main, count, loadedDeposit.mainHull, 0);
     if (loadedDeposit.brush.dual && loadedDeposit.active.dual && loadedDeposit.dualPlan) stamp(loadedDeposit.brush.dual, loadedDeposit.active.dual, loadedDeposit.dualPlan, loadedDeposit.dual, dualCount, loadedDeposit.dualHull!, 1);
     // A flood's body joins the build its edge stamps laid, before any rim blurs it, so rims see the whole flood.
-    const body = regions.bodies.get(loadedDeposit.identity);
+    const body = loadedDeposit.home.regions.bodies.get(loadedDeposit.staged);
     if (deposit.kind === 'flood' && body) {
       const { kind } = loadedDeposit.brush.accumulation, { towardFull, keepsCap } = STAMP_ACCUMULATIONS[kind];
       const pipeline = bodyPipeline(towardFull, keepsCap, tinted);
@@ -1664,15 +1719,19 @@ function rendererOnSurface(
     blur(targets.blurA.view, [halfW, halfH], targets.blurB.view, [0, 1], half);
   }
 
-  function resolveDeposit(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loadedDeposit: LoadedDeposit, pass: CompiledStampPass, t: number, blurred: boolean, box: Box, frameTrace?: FrameTrace) {
-    const trace = frameTrace?.deposits.get(loadedDeposit.identity);
+  /**
+   * `pass`: the pass as `loadedDeposit`'s bank's regions know it (LoadedDeposit's `staged`). Its paint is read at
+   * `paintAt`, the frame state's, which a recipe's keyed paint holds to its keys' span: the same paint as at `t`.
+   */
+  function resolveDeposit(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loadedDeposit: LoadedDeposit, pass: CompiledStampPass, { t, paintAt }: { t: number; paintAt: number }, blurred: boolean, box: Box, frameTrace?: FrameTrace) {
+    const trace = frameTrace?.deposits.get(loadedDeposit.identity), { regions, stages } = loadedDeposit.home;
     const clipped = !!pass.clipTo, fluid = deposit.mask ? regions.fluids.get(deposit.mask) ?? null : null;
     // A pass within a region wholly off the painting lands nowhere: its `within` is an empty texture, read as none.
     const within = pass.within ? regions.withins.get(pass) ?? null : null;
     const { brush, active, landing } = loadedDeposit;
     // Where a stage rims the deposit's drying (the drying rim, stamp-wet-rim.ts), a brush's own wet edges would rim
     // each stroke again. Its Procreate rim goes, and Photoshop's pooling keeps its body, not its peak.
-    const washRims = !!landing && stages.some(({ running }) => running.ownsWetEdges?.(loadedDeposit.identity));
+    const washRims = !!landing && stages.some(({ running }) => running.ownsWetEdges?.(loadedDeposit.staged));
     const edgesOf = (layer?: StampActiveLayer<StampPaintImage>): [number, number, number, number] => (blurred && layer
       ? [washRims ? 0 : layer.rim?.rim ?? 0, layer.rim?.sharpness ?? 0, layer.burntEdge?.strength ?? 0, layer.burntEdge?.sharpness ?? 0] : [0, 0, 0, 0]);
     const mainGrain = active.main.canvasGrain, dualGrain = active.dual?.canvasGrain;
@@ -1687,7 +1746,7 @@ function rendererOnSurface(
       ...(mainGrain ? ['canvasGrain' as const] : []), ...(brush.dual ? ['dual' as const] : []), ...(dualGrain ? ['dualCanvasGrain' as const] : []),
       ...(tooth ? ['paper' as const] : []), ...(fluid ? ['masked' as const] : []), ...(pass.within ? ['within' as const] : []),
       ...(deposit.kind === 'flood' ? ['flood' as const] : []),
-      ...(deposit.kind === 'flood' && !landing && stampFloodCarriesWater(brush, wetMedium) ? ['floodWater' as const] : []),
+      ...(deposit.kind === 'flood' && !landing && stampFloodCarriesWater(brush, mediumOfDeposit(deposit)) ? ['floodWater' as const] : []),
       // Only paint makes a clip base: water and a lift leave where a pass holds paint as it was.
       ...(clipped ? ['clipped' as const] : []), ...(!clipped && deposit.action.kind === 'paint' ? ['clips' as const] : []),
       ...(active.main.pooling ? ['pooled' as const] : []), ...(active.dual?.pooling ? ['dualPooled' as const] : []),
@@ -1748,8 +1807,8 @@ function rendererOnSurface(
         put('bodyLevels', [deposit.flood.levels.built, deposit.flood.levels.densest]);
       }),
       within?.view ?? targets.blank.view,
-      slot((views) => loadedDeposit.writePaint(views, t)),
-      landing && { buffer: writtenBank.grids.buffer },
+      slot((views) => loadedDeposit.writePaint(views, paintAt)),
+      landing && { buffer: loadedDeposit.home.grids.buffer },
       landing && slot((views) => {
         const put = stampUniformWriter(WET_OP, views);
         const { window } = landing.before, { action } = deposit;
@@ -1770,8 +1829,8 @@ function rendererOnSurface(
   function depositBox(deposit: CompiledStampDeposit, loadedDeposit: LoadedDeposit, count: number, dualCount: number, pad: number): Box | null {
     const reach = [Infinity, Infinity, -Infinity, -Infinity];
     const { brush } = loadedDeposit;
-    reachOfFirst(deposit.stamps, loadedDeposit.mainReach, count, reachSpanOf(brush), reach);
-    if (brush.dual) reachOfFirst(deposit.dualStamps, loadedDeposit.dualReach, dualCount, reachSpanOf(brush.dual), reach);
+    stampMarksReachOfFirst(deposit.stamps, reachSpanOf(brush), count, reach);
+    if (brush.dual) stampMarksReachOfFirst(deposit.dualStamps, reachSpanOf(brush.dual), dualCount, reach);
     if (deposit.kind === 'flood') {
       const { x0, y0, x1, y1 } = deposit.flood.box;
       reach.splice(0, 4, Math.min(reach[0], x0), Math.min(reach[1], y0), Math.max(reach[2], x1), Math.max(reach[3], y1));
@@ -1793,51 +1852,69 @@ function rendererOnSurface(
     put('lod', Math.max(0, Math.log2(1 / fit)));
   };
   const groupResources = compositor.group.resources({ photograph: photograph?.view ?? targets.blank.view, sampler: linearClamp });
+  /** The moved group pass's bindings from after the compositor's up to GROUP_REST_BINDING: the rest points. */
+  const groupRest = (rest: GPUTextureView): (GPUBindingResource | null)[] => [...Array<null>(GROUP_REST_BINDING - 3 - groupResources.length).fill(null), rest];
 
   function drawPaper(encoder: GPUCommandEncoder) {
     dispatch(encoder, pipelines.paper, [slot((views) => writePaper(views, 0)), photograph?.view ?? targets.blank.view, targets.painting.view, linearClamp], width, height);
   }
 
+  /** Each warped group's last lattice, by its index: a frame warping it alike over the same box samples its map no more. */
+  const lattices = new Map<number, { key: string; triangles: Float32Array }>();
   /**
-   * Lays group `index`'s layer over `painted` onto the painting: where it's painted, or resampled to where it's `moved`,
-   * its own paper read where it's painted, too.
+   * Lays group `index`'s layer over `painted` onto the painting at its frame's visibility: where it's painted, or
+   * resampled to where its frame's warp bends it and its placement puts it, its own paper read where it's painted, too.
    */
-  function layGroup(encoder: GPUCommandEncoder, index: number, group: CompiledStampGroup, painted: Box, moved: StampGroupPlacement | null) {
-    let box: Box | null = painted, layer = targets.layer.view, paperFromScene = [1, 0, 0, 0, 1, 0];
-    if (moved) {
-      const pivot = group.motion!.pivot;
-      const corners = [[0, 0], [1, 0], [0, 1], [1, 1]].map(([u, v]) => stampGroupSceneFromLayer(moved, { x: painted.x + u * painted.w, y: painted.y + v * painted.h }, pivot));
-      // A pixel past the corners, for the bilinear read's reach.
-      box = inPainting(Math.min(...corners.map((c) => c.x)) - 1, Math.min(...corners.map((c) => c.y)) - 1, Math.max(...corners.map((c) => c.x)) + 1, Math.max(...corners.map((c) => c.y)) + 1);
+  function layGroup(encoder: GPUCommandEncoder, index: number, { group, lay: laidAt, warp, visibility }: StampGroupFrame, painted: Box) {
+    let box: Box | null = painted, lay: ReturnType<typeof latticeLayOf> | null = null;
+    const placed = laidAt && stampPlacementWarpMap(laidAt.placement, laidAt.pivot);
+    if (warp || placed) {
+      // A pixel past the painted box, for the bilinear read's reach. A placement is affine, so one cell carries it exactly.
+      const rest = { x: painted.x - 1, y: painted.y - 1, w: painted.w + 2, h: painted.h + 2 };
+      let triangles: Float32Array;
+      if (warp) {
+        const at = laidAt && { ...laidAt.placement, pivot: laidAt.pivot };
+        const key = `${JSON.stringify(warp.key)}|${warp.cell}|${at ? JSON.stringify(at) : ''}|${rest.x},${rest.y},${rest.w},${rest.h}`;
+        const kept = lattices.get(index);
+        if (kept?.key === key) triangles = kept.triangles;
+        else {
+          const { columns, rows } = stampWarpCells(rest.w, rest.h, warp.cell);
+          triangles = stampWarpTriangles(placed ? (point) => placed(warp.map(point)) : warp.map, rest, columns, rows);
+          lattices.set(index, { key, triangles });
+        }
+      } else triangles = stampWarpTriangles(placed!, rest, 1, 1);
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (let v = 0; v < triangles.length; v += 4) {
+        x0 = Math.min(x0, triangles[v]); x1 = Math.max(x1, triangles[v]);
+        y0 = Math.min(y0, triangles[v + 1]); y1 = Math.max(y1, triangles[v + 1]);
+        // To clip space, y up.
+        latticeStaging.set([(triangles[v] / width) * 2 - 1, 1 - (triangles[v + 1] / height) * 2, triangles[v + 2], triangles[v + 3]], latticeUsed + v);
+      }
+      box = inPainting(x0, y0, x1, y1);
       if (!box) return;
-      const into = box, fromScene = stampGroupLayerFromScene(moved, pivot);
-      if (group.paper === 'own') paperFromScene = fromScene;
-      dispatch(encoder, movePipeline!, [
-        slot((views) => {
-          const put = stampUniformWriter(GROUP_MOVE, views);
-          put('fromSceneX', [fromScene[0], fromScene[1], fromScene[2], 0]);
-          put('fromSceneY', [fromScene[3], fromScene[4], fromScene[5], 0]);
-          put('origin', [into.x, into.y]);
-          put('extent', [into.w, into.h]);
-        }),
-        targets.layer.view, targets.moved!.view, linearClamp,
-      ], into.w, into.h);
-      layer = targets.moved!.view;
+      lay = latticeLayOf();
+      const first = latticeUsed;
+      latticeUsed += triangles.length;
+      const pass = encoder.beginRenderPass({ colorAttachments: [{ view: lay.rest.view, loadOp: 'clear', clearValue: [STAMP_NO_REST, STAMP_NO_REST, 0, 0], storeOp: 'store' }] });
+      pass.setPipeline(lay.latticePipeline);
+      pass.setBindGroup(0, bindGroup(lay.latticePipeline, [targets.layer.view, linearClamp]));
+      pass.setVertexBuffer(0, latticeVertices, first * 4, triangles.length * 4);
+      pass.draw(triangles.length / 4);
+      pass.end();
     }
     const at = box;
-    dispatch(encoder, pipelines.group, [
+    dispatch(encoder, lay ? lay.movedGroupPipeline : pipelines.group, [
       slot((views) => {
         const put = stampUniformWriter(GROUP, views);
-        put('opacity', group.opacity);
+        put('opacity', group.opacity * visibility);
         put('glaze', group.composite === 'glaze' ? 1 : 0);
         put('origin', [at.x, at.y]);
         put('extent', [at.w, at.h]);
         put('group', index);
         writePaper(views, GROUP.at.paper);
-        put('paperFromSceneX', [paperFromScene[0], paperFromScene[1], paperFromScene[2], 0]);
-        put('paperFromSceneY', [paperFromScene[3], paperFromScene[4], paperFromScene[5], 0]);
+        put('paperFromRest', lay && group.paper === 'own' ? 1 : 0);
       }),
-      layer, targets.painting.view, ...groupResources,
+      targets.layer.view, targets.painting.view, ...groupResources, ...(lay ? groupRest(lay.rest.view) : []),
     ], at.w, at.h);
   }
 
@@ -1870,19 +1947,43 @@ function rendererOnSurface(
         kept.delete(oldest);
       }
       const marks = group.boil!.reseeded(epoch);
-      found = { marks, bank: loadBank([marks], writtenBank), used: 0 };
-      reserveWashBoxes([marks], found.bank);
+      found = { marks, bank: loadBank([marks], { kind: 'epoch', written: writtenBank }), used: 0 };
       kept.set(epoch, found);
     }
     found.used = ++epochClock;
     return found;
   }
 
+  // Each live group's recently drawn marks, by their key, kept on the GPU: the frame drawing, and one a hold returns to.
+  const lives = new Map<CompiledStampGroup, Map<string, { marks: CompiledStampGroup; bank: DepositBank; used: number }>>();
   /**
-   * Draws a shown deposit of `pass` and runs the deposit stages after it, returning the pixels changed. `settled`: the
-   * deposit is wholly shown at `t`.
+   * `group`'s `live` marks and the bank holding them, with their own wetness, regions and wet stages: loaded once while
+   * kept under their key, which names them (equal keys, equal marks), so a frame repeating one draws the marks loaded.
    */
-  function drawDeposit(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loadedDeposit: LoadedDeposit, pass: CompiledStampPass, t: number, epoch: number, settled: boolean, frameTrace?: FrameTrace): Box | null {
+  function liveOf(group: CompiledStampGroup, live: Extract<StampGroupMarks, { kind: 'live' }>): { marks: CompiledStampGroup; bank: DepositBank } {
+    const kept = lives.get(group) ?? new Map<string, { marks: CompiledStampGroup; bank: DepositBank; used: number }>();
+    lives.set(group, kept);
+    let found = kept.get(live.key);
+    if (!found) {
+      if (kept.size >= STAMP_LIVE_MARKS_KEPT) {
+        const [oldest, { bank }] = [...kept].reduce((a, b) => (b[1].used < a[1].used ? b : a));
+        bank.destroy();
+        kept.delete(oldest);
+      }
+      const loaded = span('stamp paint live load');
+      found = { marks: live.marks, bank: loadBank([live.marks], { kind: 'live' }), used: 0 };
+      loaded();
+      kept.set(live.key, found);
+    }
+    found.used = ++epochClock;
+    return found;
+  }
+
+  /**
+   * Draws a shown deposit of `pass` (as its bank's home knows it) and runs the deposit stages after it, returning the
+   * pixels changed. `settled`: the deposit is wholly shown at `t`.
+   */
+  function drawDeposit(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loadedDeposit: LoadedDeposit, pass: CompiledStampPass, { t, paintAt, epoch }: { t: number; paintAt: number; epoch: number }, settled: boolean, frameTrace?: FrameTrace): Box | null {
     const count = visibleStampCountAt(deposit, t);
     const dualCount = visibleStampCountAt(deposit, t, 'dualStamps');
     // The rim is where the mask stands above a blur as wide as its edge.
@@ -1895,15 +1996,15 @@ function rendererOnSurface(
       before?.copy(encoder, box);
     }
     if (blurred) blurMask(encoder, sigma, box);
-    resolveDeposit(encoder, deposit, loadedDeposit, pass, t, blurred, box, frameTrace);
+    resolveDeposit(encoder, deposit, loadedDeposit, pass, { t, paintAt }, blurred, box, frameTrace);
     let painted: Box = box;
-    // A stage knows each deposit as written; a boil's epoch lands as its deposit as written does (loadBank), and draws
-    // its randomness from the epoch's seed.
-    const { landing, identity } = loadedDeposit;
+    // A stage knows each deposit as its bank's home does (`staged`); a boil's epoch lands as its deposit as written does
+    // (loadBank), and draws its randomness from the epoch's seed.
+    const { landing, identity, staged, home } = loadedDeposit;
     if (!landing) return painted;
     const seed = paintPigmentSeed(stampBoilSeed(identity.id, epoch));
-    for (const stage of stages) {
-      if (stage.after === 'deposit' && (settled || !stage.settled)) painted = unionOf(painted, stage.running.encode(encoder, { deposit: identity, pass, landing, box, seed }))!;
+    for (const stage of home.stages) {
+      if (stage.after === 'deposit' && (settled || !stage.settled)) painted = unionOf(painted, stage.running.encode(encoder, { deposit: staged, pass, landing, box, seed }))!;
     }
     return painted;
   }
@@ -1912,45 +2013,56 @@ function rendererOnSurface(
    * Encodes the frame at `t`. `whole` draws it from bare paper, neither restoring nor saving a checkpoint: a traced
    * frame, so every deposit it asks for is resolved in it, and a read-back layer, which a checkpoint may skip past.
    */
-  function draw(t: number, { frameTrace, whole = frameTrace !== undefined }: { frameTrace?: FrameTrace; whole?: boolean } = {}) {
+  function draw(t: number, { frameTrace, whole = frameTrace !== undefined, state }: { frameTrace?: FrameTrace; whole?: boolean; state?: StampPaintFrameState } = {}) {
     surface.assertLive();
+    const { groups, settled, checkpointKey, checkpointSaves } = stampFramePlan(painting, groupEvents, events, t, state);
     slots = 0;
+    latticeUsed = 0;
+    latticeRoom(groups);
     const encoder = device.createCommandEncoder();
-    const { groups, settled, checkpointKey, checkpointSaves } = stampFramePlan(painting, groupEvents, events, t, fps);
     const start = whole ? null : checkpoints.latest(settled, checkpointKey);
     const from = start?.event ?? 0;
-    const saves = whole ? new Set<number>() : checkpointSaves(from);
+    const saves: ReadonlyMap<number, boolean> = whole ? new Map() : checkpointSaves(from);
+    // A group whose lay varies is saved at its end painted, before its lay, never laid: the plan says which a save holds.
     const save = (event: number, inGroup: boolean, painted: Box | null) => {
-      if (saves.has(event)) checkpoints.save(encoder, { event, key: checkpointKey(event), inGroup, painted });
+      if (saves.get(event) === inGroup) checkpoints.save(encoder, { event, key: checkpointKey(event), inGroup, painted });
     };
     if (start) checkpoints.restore(encoder, start);
     else drawPaper(encoder);
-    for (const [index, { group, moved, epoch }] of groups.entries()) {
-      const { marks, bank } = epochOf(group, epoch);
+    for (const [index, groupFrame] of groups.entries()) {
+      const { group, marks: drawing, visibility, layVaries, paintAt } = groupFrame;
       const { first, end } = groupEvents[index];
-      if (end <= from) continue;
+      // A checkpoint at a group's end within it holds it painted, not laid: only its lay is left.
+      if (end < from || (end === from && !start?.inGroup)) continue;
       save(first, false, null);
+      // Hidden, none of it is drawn or loaded; the plan keys it so, and saves nothing within it.
+      if (!visibility) continue;
+      const epoch = drawing.kind === 'written' ? drawing.epoch : 0;
+      const { marks, bank } = drawing.kind === 'live' ? liveOf(group, drawing) : epochOf(group, epoch);
+      const at = { t, paintAt: paintAt ?? t, epoch };
       if (first >= from) for (const view of targets.layer.layers) clear(encoder, view);
       let painted: Box | null = start && from > first ? start.painted : null;
       let event = first;
       for (const [p, pass] of group.passes.entries()) {
-        const drawnPass = marks.passes[p];
+        // Live marks' regions and stages know their own passes; an epoch's know those as written.
+        const drawnPass = marks.passes[p], stagedPass = bank.own ? drawnPass : pass;
         if (!pass.clipTo && event >= from) clear(encoder, targets.clip.view);
         const passFirst = event;
         for (const deposit of stampPassDeposits(drawnPass)) {
           if (event > first) save(event, true, painted);
           if (event++ < from) continue;
           const loadedDeposit = bank.deposits.get(deposit)!;
-          if (stampDepositShowsAt(deposit, t)) painted = unionOf(painted, drawDeposit(encoder, deposit, loadedDeposit, pass, t, epoch, events[event - 1].settledAt <= t, frameTrace));
+          if (stampDepositShowsAt(deposit, t)) painted = unionOf(painted, drawDeposit(encoder, deposit, loadedDeposit, stagedPass, at, events[event - 1].settledAt <= t, frameTrace));
           // A drying waits until every deposit in its wash so far is wholly shown, so no rim forms round paint still
           // being revealed: the same wait a checkpoint past it makes.
-          const drying = dryingsByLast.get(loadedDeposit.identity);
+          const drying = loadedDeposit.home.dryingsByLast.get(loadedDeposit.staged);
           if (!drying || events.slice(passFirst, event).some((settling) => settling.settledAt > t)) continue;
           const seed = paintPigmentSeed(stampBoilSeed(drying.id, epoch));
-          for (const stage of stages) if (stage.after === 'drying') painted = unionOf(painted, stage.running.encode(encoder, { drying, seed }));
+          for (const stage of loadedDeposit.home.stages) if (stage.after === 'drying') painted = unionOf(painted, stage.running.encode(encoder, { drying, seed }));
         }
       }
-      if (painted) layGroup(encoder, index, group, painted, moved);
+      if (layVaries) save(end, true, painted);
+      if (painted) layGroup(encoder, index, groupFrame, painted);
     }
     save(events.length, false, null);
     const out = encoder.beginRenderPass({ colorAttachments: [{ view: surface.frameTexture().createView(), loadOp: 'clear', storeOp: 'store' }] });
@@ -1959,6 +2071,7 @@ function rendererOnSurface(
     out.draw(3);
     out.end();
     device.queue.writeBuffer(uniforms, 0, staging, 0, slots * SLOT);
+    if (latticeUsed) device.queue.writeBuffer(latticeVertices!, 0, latticeStaging, 0, latticeUsed);
     return encoder;
   }
 
@@ -1968,11 +2081,11 @@ function rendererOnSurface(
   const { queue } = surface.device;
   return {
     wetWarnings,
-    draw: async (t) => {
+    draw: async (t, state) => {
       if (disposed) return;
-      await surface.checked(`drawing the painting at ${t} s`, () => queue.submit([draw(t).finish()]));
+      await surface.checked(`drawing the painting at ${t} s`, () => queue.submit([draw(t, { state }).finish()]));
     },
-    trace: async (t, requests) => {
+    trace: async (t, requests, state) => {
       if (disposed) throw new Error('stamp paint: a disposed renderer traces nothing');
       const traced: FrameTrace['deposits'] = new Map();
       let floats = 0;
@@ -1989,7 +2102,7 @@ function rendererOnSurface(
       const read = surface.device.createBuffer({ size: bytes, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
       try {
         await surface.checked(`tracing the painting at ${t} s`, () => {
-          const encoder = draw(t, { frameTrace: { deposits: traced, buffer: traceBuffer } });
+          const encoder = draw(t, { frameTrace: { deposits: traced, buffer: traceBuffer }, state });
           encoder.copyBufferToBuffer(traceBuffer, 0, read, 0, bytes);
           queue.submit([encoder.finish()]);
         });
@@ -2006,13 +2119,13 @@ function rendererOnSurface(
         read.destroy();
       }
     },
-    readLayer: async (t) => {
+    readLayer: async (t, state) => {
       if (disposed) throw new Error('stamp paint: a disposed renderer reads back nothing');
       const layers = targets.layer.layers.length, rowBytes = Math.ceil((width * 8) / 256) * 256;
       const read = surface.device.createBuffer({ size: rowBytes * height * layers, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
       try {
         await surface.checked(`reading back the layer at ${t} s`, () => {
-          const encoder = draw(t, { whole: true });
+          const encoder = draw(t, { whole: true, state });
           encoder.copyTextureToBuffer({ texture: targets.layer.texture }, { buffer: read, bytesPerRow: rowBytes, rowsPerImage: height }, [width, height, layers]);
           queue.submit([encoder.finish()]);
         });
@@ -2034,7 +2147,7 @@ function rendererOnSurface(
     dispose() {
       disposed = true;
       // Destroyed once submitted work is done with them; the surface and its targets stay for the next painting.
-      for (const kept of epochs.values()) for (const { bank } of kept.values()) bank.destroy();
+      for (const kept of [...epochs.values(), ...lives.values()]) for (const { bank } of kept.values()) bank.destroy();
       checkpoints.dispose();
       scope.destroy();
     },
@@ -2057,6 +2170,15 @@ function writeGrain(views: StampUniformViews, at: number, grain: StampBrushGrain
   put('layer', grain.blend.family === 'layer' ? 1 : 0);
   put('aboutMean', grain.contrastPivot === 'mean' ? 1 : 0);
   put('mirror', grain.tiling === 'mirror' ? 1 : 0);
+}
+
+/**
+ * `staged`'s landing in `wetness` where the wash law of its group's medium lays `identity`, the deposit as written,
+ * else null (LoadedDeposit's `landing`): a wash keeps a history, landing each deposit.
+ */
+function washLanding(identity: CompiledStampDeposit, staged: CompiledStampDeposit, wetness: StampWetness | null): StampWetLanding | null {
+  const landing = wetness?.landings.get(staged) ?? null;
+  return landing && stampDepositionLaw(identity, landing.medium, true) === 'wash' ? landing : null;
 }
 
 /** A box as a uniform's four words; an empty box for none, whose region reads 0 everywhere. */

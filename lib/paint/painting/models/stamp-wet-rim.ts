@@ -65,17 +65,19 @@ export function stampDryingWettest(drying: Pick<StampWashDrying, 'deposits'>, we
 }
 
 /**
- * How the rim stage sizes `drying`'s rim in a medium whose paint spreads `spread` and is damp at `damp`: its wettest
- * grid, its paint deposits, how far above damp it got, their mean diameter and the band, px; null for no paint. The
- * wet report reads the same, so it estimates what the stage would do.
+ * How the rim stage sizes `drying`'s rim in the medium its paint landed in: its wettest grid, its paint deposits, the
+ * medium's spread, how far above damp it got, their mean diameter and the band, px; null for no paint. The wet report
+ * reads the same, so it estimates what the stage would do.
  */
-export function stampDryingRimSizing(drying: Pick<StampWashDrying, 'deposits'>, wetness: StampWetness, spread: number, damp: number) {
+export function stampDryingRimSizing(drying: Pick<StampWashDrying, 'deposits'>, wetness: StampWetness) {
   const grid = stampDryingWettest(drying, wetness);
   const painted = drying.deposits.filter((deposit) => deposit.action.kind === 'paint');
   if (!grid || !painted.length) return null;
+  // A wash is one group's, so its paint is in one medium.
+  const { spread, sheen: { damp } } = wetness.landings.get(painted[0])!.medium.wetting;
   const wetShare = stampDryingRimWetShare(grid.values.reduce((most, value) => Math.max(most, value), 0), damp);
   const diameter = painted.reduce((sum, deposit) => sum + deposit.diameter, 0) / painted.length;
-  return { grid, painted, wetShare, diameter, band: stampDryingRimBand(spread, diameter, wetShare) };
+  return { grid, painted, spread, damp, wetShare, diameter, band: stampDryingRimBand(spread, diameter, wetShare) };
 }
 
 /**

@@ -81,7 +81,7 @@ test("noise spreads smoothly over nearly all of its range, in a fill's load and 
   assert.ok(steepest < 0.1, `a pixel's step ${steepest}`);
   // The paper lies as wet as the field before any paint lands, and each stroke stamp's opacity follows its load.
   const [sky] = stampPassDeposits(pass);
-  const before = compileStampWetness(painting, PAINT_MEDIA.watercolour, { color: '#ffffff' }, { width: 400, height: 300 }).landings.get(sky)!.before;
+  const before = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, { color: '#ffffff' }, { width: 400, height: 300 }).landings.get(sky)!.before;
   for (const [x, y] of [[96, 104], [200, 152], [304, 200]]) assert.ok(Math.abs(stampGridAt(stampWetGrid(before, 'wetness'), x, y) - stampPaintFieldAt(prepared, x, y)) < 1e-6);
   const opacities = sky.stamps.map(({ opacity }) => opacity);
   assert.ok(Math.min(...opacities) < 0.1 && Math.max(...opacities) > 0.9, `stamp opacities ${Math.min(...opacities)}..${Math.max(...opacities)}`);

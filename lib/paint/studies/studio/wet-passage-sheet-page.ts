@@ -51,7 +51,7 @@ async function drawWetAnimation(animation: WetAnimation, { brushes, paper, mixin
     const takes = animation.takes({ brushes, pigments: mixing.pigments });
     const frames = await takes.reduce<Promise<{ caption: string; png: string }[]>>(async (done, { recipe, frames: shown }) => {
       const before = await done;
-      const renderer = await createStampPaintRenderer(surface, compileStampPaintRecipe(recipe), paper, mixing, { fps: WET_ANIMATION_FPS });
+      const renderer = await createStampPaintRenderer(surface, compileStampPaintRecipe(recipe), paper, mixing);
       try {
         return [...before, ...await shown.reduce<Promise<{ caption: string; png: string }[]>>(async (drawn, { frame, caption }) => {
           const earlier = await drawn;

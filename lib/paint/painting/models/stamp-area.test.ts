@@ -61,7 +61,7 @@ test("a group standing before earlier groups reserves its shape from them, inset
   assert.ok(sky.mask?.kind === 'mask' && sky.mask.area.inset === 3);
   assert.deepEqual(ids(hill.mask), []);
 
-  const wetness = compileStampWetness(painting, PAINT_MEDIA.watercolour, { color: '#ffffff' }, { width: 200, height: 120 });
+  const wetness = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, { color: '#ffffff' }, { width: 200, height: 120 });
   const wet = stampWetGrid(wetness.landings.get(sky)!.after, 'wetness');
   assert.equal(stampGridAt(wet, 100, 88), 0);
   assert.equal(stampGridAt(wet, 24, 88), 1);

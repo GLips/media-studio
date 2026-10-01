@@ -69,6 +69,21 @@ export type StampTint = { hue: number; saturation: number; lightness: number; se
 /** A placed stamp as a compiled painting holds it: shared by every painting placed alike (stamp-deposit-placement.ts), so frozen. */
 export type FrozenPlacedStamp = Readonly<Omit<PlacedStamp, 'tint'>> & { readonly tint: Readonly<StampTint> };
 
+declare const frozenStampMarks: unique symbol;
+
+/**
+ * A deposit's marks as a compiled painting holds them, frozen through every stamp and tint (only stampFrozenMarks
+ * makes one): shared between paintings, and what loading remembers its work against (stamp-mark-load.ts).
+ */
+export type FrozenStampMarks = readonly FrozenPlacedStamp[] & { readonly [frozenStampMarks]: true };
+
+/** `stamps` frozen in place, through every stamp and its tint: no one may change them after. */
+export function stampFrozenMarks(stamps: readonly PlacedStamp[]): FrozenStampMarks {
+  for (const stamp of stamps) Object.freeze(Object.freeze(stamp).tint);
+  // SAFETY: the brand's one maker, and every stamp and the array are frozen just above, as the brand says.
+  return Object.freeze(stamps) as FrozenStampMarks;
+}
+
 /** The stamping a placement reads: a brush's own stamps, and its colour dynamics when it's a main brush that has them. */
 // Placement reads no image, so a brush places alike whatever its images are bound to, a bristle tip bound or not.
 export type StampPlacementBrush = Omit<StampBrushStamping<unknown>, 'tip'> & { tip: Pick<StampBrushTip<unknown>, 'roundness' | 'sampling' | 'pixels'>; color?: StampBrushColorDynamics };

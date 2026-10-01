@@ -3,17 +3,18 @@
 // images, pipelines, targets) lasts while it's mounted at one size. A frame is held until WebGPU has checked its draw
 // for errors, never for the drawing itself: the screenshot waits for the GPU.
 //
-// A new painting object loads only its own stamps, regions and wet stages, and starts with no checkpoints: a group
-// that moves, boils or recolours does so within one painting, drawn from its checkpoints. A style is held by its
+// A new painting object loads anew, with no checkpoints: a group that moves, boils, recolours, bends or is drawn live
+// does so within one painting, through `frame` (its frame state), which reloads nothing. A style is held by its
 // content, so one resolved anew each render loads nothing again.
 
 import { useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { useDelayRender, useVideoConfig } from 'remotion';
+import { useDelayRender } from 'remotion';
 import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
 import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { useFrameProfile } from '#lib/picture/profiling/studio/frame-profile.ts';
+import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
@@ -21,21 +22,21 @@ import type { ResolvedStampPaintStyle } from '../models/style.ts';
 import { stampPaintAssetUrl } from './stamp-paint-styles.ts';
 
 /**
- * Draws `painting` in `style` (on its paper, its paint mixed as it mixes) as it stands `t` seconds in (a scene's `s.t`: its deposits' `appliedAt` and `drawnOver`
- * count on it), `width` by `height` of its own pixels (the frame's size unless given), stretched over `box` (the whole
- * frame unless given).
+ * Draws `painting` in `style` (its paper and mixing) as it stands `t` seconds in (a scene's `s.t`: its deposits'
+ * `appliedAt` and `drawnOver` count on it), each group in `frame`'s state (as painted when left out), `width` by
+ * `height` of its own pixels (the frame's size unless given), stretched over `box` (the whole frame unless given).
  */
-export function StampPainting({ painting, style, t, width, height, box: given }: {
+export function StampPainting({ painting, style, t, frame, width, height, box: given }: {
   painting: CompiledStampPaint;
   style: Pick<ResolvedStampPaintStyle, 'paper' | 'mixing'>;
   t: number;
+  frame?: StampPaintFrameState;
   width?: number;
   height?: number;
   box?: { x: number; y: number; w: number; h: number };
 }) {
   const paper = useStyleContent(style.paper), mixing = useStyleContent(style.mixing);
   const format = useVideoFormat();
-  const { fps } = useVideoConfig();
   const box = given ?? fullFrameRect(format);
   const w = Math.round(width ?? box.w), h = Math.round(height ?? box.h);
   const holder = useRef<HTMLDivElement>(null);
@@ -84,7 +85,7 @@ export function StampPainting({ painting, style, t, width, height, box: given }:
     };
     const loaded = profile?.('stamp paint load');
     // A load given up as its surface goes may fail for want of the device; only a live one's failure is the frame's.
-    createStampPaintRenderer(surface, painting, paper, mixing, { fps, profile }).then((ready) => {
+    createStampPaintRenderer(surface, painting, paper, mixing, { profile }).then((ready) => {
       loaded?.();
       made = ready;
       if (!live) return ready.dispose();
@@ -99,16 +100,16 @@ export function StampPainting({ painting, style, t, width, height, box: given }:
       setRenderer(null);
       release();
     };
-  }, [surface, painting, paper, mixing, fps, profile, delayRender, continueRender, cancelRender]);
+  }, [surface, painting, paper, mixing, profile, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!renderer) return;
     const handle = delayRender('checking the stamp painting drew without a GPU error');
     const drawn = profile?.('stamp paint');
-    const checked = renderer.draw(t);
+    const checked = renderer.draw(t, frame);
     // Profiling also holds the frame until the GPU is done, to time the drawing rather than its queueing.
     (drawn ? checked.then(() => renderer.finish()).then(drawn) : checked).then(() => continueRender(handle), cancelRender);
-  }, [renderer, t, profile, delayRender, continueRender, cancelRender]);
+  }, [renderer, t, frame, profile, delayRender, continueRender, cancelRender]);
 
   return <div ref={holder} {...unmeasuredAttrs('stamp painting')} style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h }} />;
 }

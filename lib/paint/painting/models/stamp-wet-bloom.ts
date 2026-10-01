@@ -108,11 +108,15 @@ export function stampBloomVerdict({ before, after }: StampWetLanding, wetting: P
 export const STAMP_BLOOM_CARRY_SPREAD = 2;
 
 /**
- * The lip carried paint dries into, inside the front: darkest for `plateau` px past its crisp outer edge, fading in
- * over `lineDecay` px (`fingers` of that more or less along the push), weighing `least` where the water crept on to
- * `most` where held back, with `lineShare` of the paint; and a paler zone over `zoneDecay` px.
+ * The lip carried paint dries into, inside the front: darkest `plateau` px past its crisp outer edge, fading in over
+ * `lineDecay` px (`fingers` of that more or less along the push), weighing `least` where the water crept on to `most`
+ * where held, with `lineShare` of the paint; a paler zone over `zoneDecay` px.
  */
-const STAMP_BLOOM_BAND = { least: 0.05, most: 1.8, plateau: 1, lineDecay: 4.5, fingers: 0.35, zoneDecay: 6, lineShare: 0.75 };
+const STAMP_BLOOM_BAND = {
+  least: 0.8, most: 1.8, plateau: 1, lineDecay: 4.5, fingers: 0.35, zoneDecay: 6, lineShare: 0.75,
+  // On paper as wet as the drop, the edge is this many px softer, and the paling fades in over this many more.
+  wetSoftness: 8, wetFeather: 20,
+};
 
 /**
  * About `bloomBand`'s integral across a front, px, at the line's mean weight. The studio sizes the floor below which a
@@ -207,38 +211,65 @@ fn bloomLobeHeight(foot: vec2f, tangent: vec2f, normal: vec2f, cell: f32, tallne
   }
   return height;
 }
-// How hard the paper held a bloom's water back round \`p\`, 0..1: drier paper (\`ease\` low, bloomEase) holds it,
-// and over a few big patches a bloom across, the paper's sizing does. Where it's held, the front stalls short and
-// dries a heavy lip; where it isn't, the water runs on and its edge is faint.
-fn bloomHeld(p: vec2f, ease: f32, seed: u32, sigma: f32) -> f32 {
+// How firmly paper as wet as \`before\` grips a bloom's water, added to how held it is (bloomHeld): drier than damp,
+// more (bloomEase); wetter, less, as far as it still has its shine (bloomMerging). Water dropped into paint still wet
+// runs on, its edge soft and open; only into paint about damp does it stall in a crisp, crinkled lip.
+fn bloomGrip(before: f32, damp: f32, shine: f32) -> f32 {
+  return 1.2 * (1.0 - bloomEase(before, damp)) - 3.0 * bloomMerging(before, damp, shine);
+}
+// How hard the paper held a bloom's water back round \`p\`, 0..1: as its wetness grips it (\`grip\`, bloomGrip), and
+// over a few big patches a bloom across, as the paper's sizing does. Where it's held, the front stalls short and dries
+// a heavy lip; where it isn't, the water runs on and its edge is faint.
+fn bloomHeld(p: vec2f, grip: f32, seed: u32, sigma: f32) -> f32 {
   let patches = bloomValue(p / (${STAMP_BLOOM_LOBES.big.toFixed(3)} * sigma + 4.0), seed ^ 0x3c6ef372u);
-  return clamp(0.5 + 1.6 * (patches - 0.5) + 1.2 * (1.0 - clamp(ease, 0.0, 1.0)), 0.0, 1.0);
+  return clamp(0.5 + 1.6 * (patches - 0.5) + grip, 0.0, 1.0);
 }
 // Where a pixel stands to a bloom's front: how far inside it, px (d); the stretch of front it lies behind, as a point
 // on the stall (foot), so anything keyed to it runs straight along the push, inward from the front; and how hard the
 // paper held the water back there (held, bloomHeld); and a point a little past where the water's level falls to its
 // front level, before any lobe (past, for bloomPastFront).
 struct BloomFront { d: f32, foot: vec2f, held: f32, past: vec2f }
-// From the spread water's \`level\` and its \`gradient\` (pointing in) at p, on paper as ready to let it run as
-// \`ease\` (bloomEase). The water stalls where its level falls to BLOOM_FRONT_LEVEL, short of that where it was held (a
-// few big lobes); the front stands out past it in scallops and smaller ones on them (cauliflower), keyed to \`seed\` in
-// the painting's pixels, a slow warp keeping them from lining up. Every shift is measured from the stall along its
-// normal, so the front never leaves an island of its own.
-fn bloomFront(p: vec2f, level: f32, gradient: vec2f, ease: f32, seed: u32, sigma: f32) -> BloomFront {
+// The spread water round a pixel, smoothed: its level, its gradient (pointing in), how its slope changes along that
+// (\`sag\`, its second derivative there), and the share of the paper round it the wash covers (\`inWash\`).
+struct BloomWater { level: f32, gradient: vec2f, sag: f32, inWash: f32 }
+// How far in from where the water falls to BLOOM_FRONT_LEVEL a pixel is, px, by the water's level, slope and sag
+// there: to second order, as the water's profile curves. Read from the slope alone, a pixel where the water flattens
+// (pooled against a wash's edge) would seem near the front, smearing its lip far inside. None in reach: far inside.
+fn bloomStall(water: BloomWater, most: f32) -> f32 {
+  let above = water.level - BLOOM_FRONT_LEVEL;
+  let slope = max(length(water.gradient), 1e-5);
+  // Where the profile never reaches the level, the root goes on growing as it would (diverging), not jumping to none.
+  let reaches = slope * slope - 2.0 * water.sag * above;
+  let toward = slope + sign(reaches) * sqrt(abs(reaches));
+  return select(sign(above) * most, clamp(2.0 * above / toward, -most, most), toward > 1e-5);
+}
+// How far a front keeps its own lobes and lip by the share of the paper a lobe and a half round it that the wash's
+// paint covers (\`inWash\`): wholly, well inside the wash; none at its edge, which is the drying rim's. A front
+// reaching the edge then just ends there, rather than knotting into it.
+fn bloomInside(inWash: f32) -> f32 {
+  return smoothstep(0.75, 0.97, inWash);
+}
+// From the spread \`water\` round p (BloomWater), on paper gripping it as firmly as \`grip\` (bloomGrip). The water
+// stalls where its level falls to BLOOM_FRONT_LEVEL (bloomStall), short of that where it was held (a few big lobes);
+// the front stands out past it in scallops and smaller ones on them (cauliflower), keyed to \`seed\` in the painting's
+// pixels, a slow warp keeping them from lining up. Every shift is measured from the stall along its normal.
+fn bloomFront(p: vec2f, water: BloomWater, grip: f32, seed: u32, sigma: f32) -> BloomFront {
+  let level = water.level;
+  let gradient = water.gradient;
   let slope = max(length(gradient), 1e-5);
-  let stall = clamp((level - BLOOM_FRONT_LEVEL) / slope, -4.0 * sigma - 4.0, 4.0 * sigma + 4.0);
+  let stall = bloomStall(water, 4.0 * sigma + 4.0);
   let normal = gradient / slope;
   let tangent = vec2f(-normal.y, normal.x);
   let foot = p - normal * stall;
   // Held, the front stops short; let run, it goes on: the big lobes, as a shift along the stall's normal.
-  let held = bloomHeld(foot, ease, seed, sigma);
+  let held = bloomHeld(foot, grip, seed, sigma);
   let cell = bloomLobeCell(sigma);
   let amount = ${STAMP_BLOOM_LOBES.held.toFixed(3)} * sigma;
   let big = amount * (0.5 - held);
   // The scallops stand on the big lobes' own edge, measured along its normal: on the stall's, they'd shear into
   // spikes where a big lobe's side runs steeply out.
   let e = 0.5 * cell;
-  let steep = amount * (bloomHeld(foot - tangent * e, ease, seed, sigma) - bloomHeld(foot + tangent * e, ease, seed, sigma)) / (2.0 * e);
+  let steep = amount * (bloomHeld(foot - tangent * e, grip, seed, sigma) - bloomHeld(foot + tangent * e, grip, seed, sigma)) / (2.0 * e);
   let lobed = normalize(normal + tangent * steep);
   let along = vec2f(-lobed.y, lobed.x);
   let edge = stall + big;
@@ -256,9 +287,11 @@ fn bloomFront(p: vec2f, level: f32, gradient: vec2f, ease: f32, seed: u32, sigma
   // Along the front the lobing comes and goes, over a few lobes: deep cauliflower in one stretch, a gentle wave in the next.
   let depth = 0.35 + 1.1 * bloomValue(warped / (4.0 * cell), seed ^ 0x1b873593u);
   let shift = depth * (lobes - 0.3 * cell * (1.0 + crinkle * ${(STAMP_BLOOM_LOBES.ratio * STAMP_BLOOM_LOBES.weight + STAMP_BLOOM_LOBES.fine * STAMP_BLOOM_LOBES.fineWeight).toFixed(3)}));
-  // Well outside, the lobes fade: a front reaching far past the water would leave rings of its own on the paper.
+  // Well outside, the lobes fade: a front reaching far past the water would leave rings of its own on the paper. Well
+  // inside too: there the stall's normal wanders, and lobes read from where it points would speckle a ghost of the lip.
   let reach = 0.75 * sigma + 2.0;
-  return BloomFront(stall + (big + shift) * smoothstep(-2.0 * reach, -reach, stall), base, held, p - normal * (stall + BLOOM_PAST_FRONT));
+  let lobing = bloomInside(water.inWash) * smoothstep(-2.0 * reach, -reach, stall) * (1.0 - smoothstep(0.75 * reach, 1.5 * reach, stall));
+  return BloomFront(stall + (big + shift) * lobing, base, held, p - normal * (stall + BLOOM_PAST_FRONT));
 }
 // Streaks running in from the front along the push, 0..1, \`d\` px inside it: keyed to a point of the stall (foot), fine
 // across the push and slowly bending along it, so the edge of the inside feathers; they fade to an even 0.5 deeper in.
@@ -268,26 +301,31 @@ fn bloomStreak(foot: vec2f, d: f32, seed: u32, sigma: f32) -> f32 {
   let streak = 0.6 * bloomValue(foot / (0.6 * cell) + bend, seed ^ 0x51ed270bu) + 0.4 * bloomValue(foot / (0.3 * cell + 2.0) + 2.0 * bend, seed ^ 0x5be0cd19u);
   return mix(0.5, streak, exp(-max(d, 0.0) / (2.0 * cell)));
 }
-// How the lip lies along the front, as (weight, softness px): heavy with a crisp outer edge where the water was
-// \`held\`, faint and soft where it ran on. Crisp is still about a pixel and a half: any less and the edge is a
-// threshold, stepping along every slant; none where the paper round was nearly as wet as the drop (\`merging\`, 0..1),
-// which leaves the front open on that side.
-fn bloomFrontLine(held: f32, merging: f32) -> vec2f {
+// How the lip lies along the front, as (weight, softness px, feather px): heavy with a crisp outer edge where the
+// water was \`held\`, lighter and softer where it ran on, which still stalls against the paint. Crisp is still about a
+// pixel and a half: any less and the edge is a threshold, stepping along every slant. The wetter the paper round
+// (\`merging\`, 0 damp, 1 as wet as the drop), the fainter and softer, the paler inside fading in over more (feather);
+// none at 1, which leaves the front open there.
+fn bloomFrontLine(held: f32, merging: f32) -> vec3f {
   let stalled = smoothstep(0.3, 0.8, held);
-  return vec2f(mix(${STAMP_BLOOM_BAND.least.toFixed(3)}, ${STAMP_BLOOM_BAND.most.toFixed(3)}, stalled) * (1.0 - clamp(merging, 0.0, 1.0)), mix(1.6, 0.75, stalled));
+  let wet = clamp(merging, 0.0, 1.0);
+  return vec3f(
+    mix(${STAMP_BLOOM_BAND.least.toFixed(3)}, ${STAMP_BLOOM_BAND.most.toFixed(3)}, stalled) * (1.0 - wet), mix(1.6 + ${STAMP_BLOOM_BAND.wetSoftness.toFixed(1)} * wet, 0.75, stalled),
+    3.0 + ${STAMP_BLOOM_BAND.wetFeather.toFixed(1)} * wet * (1.0 - stalled));
 }
 // Where carried paint settles at distance \`d\` inside the front: a lip a few pixels wide, darkest at its crisp outer
 // edge and fingering in along the \`streak\`, as heavy and as crisp as \`line\` says, and a paler zone within.
-fn bloomBand(d: f32, line: vec2f, streak: f32) -> f32 {
+fn bloomBand(d: f32, line: vec3f, streak: f32) -> f32 {
   let inside = max(d - line.y - ${STAMP_BLOOM_BAND.plateau.toFixed(1)}, 0.0);
   let decay = ${STAMP_BLOOM_BAND.lineDecay.toFixed(3)} * (1.0 + ${STAMP_BLOOM_BAND.fingers.toFixed(3)} * (2.0 * smoothstep(0.3, 0.8, streak) - 1.0));
   return smoothstep(-line.y, line.y, d) * (${STAMP_BLOOM_BAND.lineShare.toFixed(3)} * line.x * exp(-inside / decay) + ${(1 - STAMP_BLOOM_BAND.lineShare).toFixed(3)} * exp(-inside / ${STAMP_BLOOM_BAND.zoneDecay.toFixed(3)}));
 }
 // The share of a pixel's paint the water carries away, as \`free\` as it is (liftFree: workable, and never set):
-// unevenly along the \`streak\`, so the inside dries paler and feathered, still the wash's tint; bloomLand is its
+// unevenly along the \`streak\`, so the inside dries paler and feathered, still the wash's tint, fading in from the
+// front over the \`line\`'s feather (bloomFrontLine); bloomLand is its
 // amounts after, \`gathered\` having reached it.
-fn bloomLoosened(d: f32, free: f32, drive: f32, streak: f32) -> f32 {
-  return ${STAMP_BLOOM_CARRY.toFixed(3)} * drive * clamp(free, 0.0, 1.0) * smoothstep(0.5, 3.0, d) * mix(0.1, 1.0, smoothstep(0.25, 0.75, streak));
+fn bloomLoosened(d: f32, line: vec3f, free: f32, drive: f32, streak: f32) -> f32 {
+  return ${STAMP_BLOOM_CARRY.toFixed(3)} * drive * clamp(free, 0.0, 1.0) * smoothstep(0.5, line.z, d) * mix(0.1, 1.0, smoothstep(0.25, 0.75, streak));
 }
 fn bloomLand(was: vec4f, loosened: f32, band: f32, gathered: vec4f) -> vec4f {
   return max(was * (1.0 - loosened) + band * gathered, vec4f(0.0));

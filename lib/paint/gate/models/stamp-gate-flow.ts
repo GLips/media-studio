@@ -12,7 +12,7 @@ import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-wat
 import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import { stampGateBrush, stampGatePolygon } from './stamp-gate-paintings.ts';
-import type { StampGateWashCheck } from './stamp-gate-washes.ts';
+import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 
 /** How far a channel's sum may drift, relative to it: the layer's half-float store of the moves. */
 export const STAMP_GATE_FLOW_TOLERANCE = 1e-3;

@@ -130,11 +130,15 @@ Everything is from `#studio`.
   - **Marks**: a `StampMark` (`{ key, brush, diameter, geometry }`) paints with `pass.mark` / `wash.mark`, placed from
     its key, so every use lands the same stamps. `stampScatterMarks(placement, { count, length, diameter, key })`
     lays out candidates; asking for more keeps the first ones where they were.
-  - **Will the bloom bloom?** `stampWetReport(painting, compileStampWetness(painting, medium, paper, size), medium)`
-    (`medium` is the style's `mixing.medium`) gives each wait's paper before and after, and each bloom, backrun and
-    damp charge's verdict, with why one won't act (the paint had set, the paper still shone).
+  - **Will the bloom bloom?** `stampWetReport(painting, compileStampWetness(painting, mediumOf, paper, size))`
+    (`mediumOf(group)`: the style's `mixing.medium`, or a group's own `mixing`'s) gives each wait's paper before and
+    after, and each bloom, backrun and damp charge's verdict, with why one won't act (the paint had set, the paper
+    still shone).
     `assertStampWetEffects(report)` in the project's test throws on any that certainly won't. Eligible isn't visible:
     look at the render.
+  - **`mixing: otherStyle.mixing`** paints a group in another style's medium and pigments, gouache butterflies in a
+    watercolour, with that style's brushes. The painting keeps its own paper. Its paint meets the groups under it
+    set and lies over them as that medium does: gouache covers a dark, a watercolour glazes it.
 - `stampSmoothRegion(points)` turns a few control points into a smooth silhouette; `stampRegionOutline(region)` traces
   its edge.
 - **A rounded form** (an apple, a stone, a cheek): `stampRoundedForm({ outline, light: { direction, elevation },
@@ -143,7 +147,10 @@ Everything is from `#studio`.
   (outline stretches facing the light, to soften or lose) and `light(x, y)`, 0..1. `direction` points toward the
   light in the picture (y down); `elevation` is how far it comes from the viewer (π/2 is frontal and leaves no
   shade). The ellipsoid is an assumption: check the shade reads right on a form that isn't egg-shaped.
-- `compileStampPaintRecipe(recipe)` once, at scene definition, never in render: a new painting each frame reloads it.
+- `compileStampPaintRecipe(recipe)` at scene definition when the painting doesn't change. Where its shapes do (a
+  cloud drifting through a wash, a shape morphing), compile it in render: deposits whose shape, brush, size and seed
+  are unchanged reuse their marks, so a rebuilt frame pays for what changed plus a reload of a few ms. It also loses
+  the checkpoints a still painting draws from, so prefer `motion` or keyed materials where they can express the change.
 - **Colour that changes over the scene** (a sunset's sky): key the material rather than recompiling, as `motion` keys
   a group: `material: { kind: 'keys', keys: [{ at: 0.3, material: afternoon }, { at: 3.7, material: dusk }] }`, in
   scene seconds. Between keys each pigment's amount eases (flat colour, its channels); a graded field's ends are each
@@ -157,6 +164,44 @@ Everything is from `#studio`.
 Paint in the order a painter would: background glazes first, then each element as an opaque group (a solid base, its
 shading and ~30% texture clipped to it, blooms stamped inside), then lines. Separate groups give hard edges between
 elements, which is what keeps objects from showing through each other.
+
+### Animating a painting (a character that moves)
+
+`work/projects/2026-10-frog/` is the worked example.
+
+1. **Get the shapes from a figure, never typed coordinates.** `posedPrimitiveFigure` gives named 3D parts on
+   joints, and `posedFigureShapes(figure, pose, view)` gives their regions, silhouette, interior lines and anchors.
+   A pose is a few numbers (the frog's throat is one). `constructedFigureShapes` builds a figure from circles and
+   capsules; `svgFigureShapes` reads SVG paths.
+2. **Make every part that moves its own group**, painted from those shapes.
+3. **Decide how each part's marks live** (`PaintMarks`):
+   - `'stuck'` (the default): the painted layer is moved or bent. Use it for nearly rigid motion: sway, breath, a
+     limb.
+   - `{ live: (pose) => group }`: the group is re-painted at each pose of its own pins. Use it for a part that
+     changes shape, like a throat puffing; bending would thicken and soften its lines. The poser compiles only that
+     group, with the written group's id, passes and deposit ids, from `pose.pins` (a pin at rest is left out). Motion
+     keeps each pose's marks by key, and at rest the group draws as written. A parent's bend reaches a live part
+     as its warp, so a breathing body carries its live throat.
+   - `{ boil: { every: 2 } }`: the lines wobble on twos once the group's last stroke is drawn, and the texture
+     stays put. A group boils as one: strokes that should boil apart need groups of their own.
+4. **Write the motion as data, over the compiled painting.**
+   - `buildPaintMotion(painting, { nodes, plays, foldCheck })` takes one `PaintMotionNode` per moving group, its
+     `id` the group's, with `parent` for parts that follow another (ink and throat under the body), `clock:
+     { hold: 2 }`, and `pins`: `{ at, reach }` radial, or `{ part }` owning a region. Each group's painted box and
+     reveal end come from the painting.
+   - Each play is `paintMotionPlay(node, clip, { clock, origin })`. Clips are `poses` (keyed pin moves), `breathe`,
+     `sway`, `flutter` and `place`. A clock is parts: `{ at: cue, rate?, loop?: { period, mode?, times? }, hold?,
+     until? }`, or `{ at, freeze }`. Start every play at a cue from `timeline.ts`. A finished clip holds its last
+     drawing.
+   - It returns `{ ok: false, problems }` naming two writers on one pin, a node that isn't a group, a hold that
+     isn't whole frames, a boil or pose that folds; throw them.
+   - A point goes through its own bend and placement, then its parent's, and so up, as a rig nests.
+5. **Each frame,** `paintMotionFrameAt(motion, s.t)` gives the frame state, live marks included:
+   `<StampPainting painting={painting} style={style} t={s.t} frame={paintMotionFrameAt(motion, s.t)} />`.
+
+Hold motion on twos (`clock: { hold: 2 }` on the node, at `PAINT_ANIMATION_FPS`) and let the paint-in run on ones: a
+node's hold never reaches its reveal. Run `studio repeatable`
+inside a hold and across one.
 
 Look at what you paint: `studio look` gives a sheet of chosen frames, mid-reveal and finished; compare the brushes
 against the pack's `previews/`, or for a Photoshop pack its `reference/`, Photoshop's own strokes, which

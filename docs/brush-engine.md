@@ -6,6 +6,7 @@ painted brush comes to the app's own, the studies a person judges, and the gate 
 feature under `lib/paint/`, each importing only those below it:
 
 ```
+animation          → painting
 brush-fidelity     → brush-packs, photoshop-brushes, procreate-brushes, painting, brush
 studies            → style, brush-packs, painting, materials, brush
 gate               → brush-packs, painting, materials, brush
@@ -106,6 +107,17 @@ eligibility are the medium's. At 0 the stage loads nothing for the drying but st
 (`ownsWetEdges`), so their brushes' own rims stay off: a drying with no rim is a soft-edged wash, not a brush's ring.
 `stamp-paint-events.ts` is the painting in painting order, each deposit with the time it's settled by.
 
+**Media.** A painting in pigment has a mixing (a medium and the pigments its mixtures may name), and any group may
+name its own (`mixing` in its options, a style's `mixing`): gouache butterflies in a watercolour. Paper stays the
+painting's. `compileStampPigmentPaint` fits each group's palette in its group's medium, so one pigment id in gouache
+and in watercolour is two pigments, each with its medium's masstone scatter, white and granulation. Whatever a medium
+decides is per group: the pigment compositor writes its WGSL once per medium the painting holds, each pass reaching
+its group's by a switch on `GROUP_MEDIA` (a painting in one medium has neither); drying, a stage's reach, spread, damp
+and rewetting come from the landing's medium (`StampWetLanding`), a stamp's grain depth and a flood's water from its
+group's. Where media meet there's no new law: washes share no water, so a gouache group laid over a watercolour wash,
+wet or not, meets it set and stacks over it by Kubelka–Munk, a gouache film's scatter covering the dark under it as
+body colour does. A flat painting refuses a group naming a mixing.
+
 **Wet state.** The lattice holds the paper: per landing, its `wetness`, `workable` and `settled` (1 where the paper
 has dried since it last took water, and at a wash's start), uploaded once for the renderer and every stage. The paint's
 own history is in the group's layer: a group with a wash keeps, in its last channel, each pixel's open share, how
@@ -169,6 +181,45 @@ send = give / N, delivered = weight · G(send · paint). What's delivered totals
 where the paper lets it: a stage supplies the paper (wet, open), the bloom the deposit's wetness over its medium's damp
 and where paint may land, the rim open wherever it isn't bare paper at the grain's scale.
 
+**Frame state.** Everything about a group that varies with time reaches the renderer as data, per frame:
+`renderer.draw(t, frame)`, and `StampPainting`'s `frame` prop, take a `StampPaintFrameState`
+(`stamp-paint-frame-state.ts`). It holds each group's:
+- `lay`: a placement about its pivot;
+- `warp`: a rest-to-scene map with a key naming it, sampled on a lattice over the group's painted layer;
+- `marks`: `written` at a boil epoch (0 is as written), or `live`, compiled for this frame, with a key naming them;
+- `paintAt`: the time its keyed paint reads;
+- `visibility`: 0 draws none of it.
+
+The compiled painting holds no functions of time, and a checkpoint is keyed by values and those keys, so equal keys
+must mean equal maps and marks. A group's paint lives one of three ways:
+- **Stuck:** its layer is carried, rigidly or bent by the warp. It's cheap, and blooms and edges ride along, but a
+  bend magnifies what it carries.
+- **Live:** it is re-placed from its posed geometry and drawn alone, everything before it restored from a checkpoint.
+  Line width and grain stay true at any stretch. Its marks must be the written group re-placed
+  (`stampLiveGroupProblem`).
+- **Boiling:** its rest space is wobbled on a stepped epoch, under its warp.
+
+A moved or bent layer is laid at four texels, then blended, so crayon keeps its tooth under sub-pixel motion. A
+recipe's own `motion`, `boil` (on the 24 fps animation clock, `PAINT_ANIMATION_FPS`) and keyed paint are evaluated
+into the same shape (`stampPaintFrameStateAt`): given marks replace a recipe's boil, and any other field both write is
+an error. Checkpoints go by keys alone: a frame held on twos gives every group the keys it had and restores the whole
+painting; a group laid apart is also saved painted but not laid, which frames laying it otherwise share.
+
+**animation** writes that frame state, and the renderer never sees a scene, a pose or a clock.
+- **Shape sources** (`models/figure/`): a posed primitive figure, a construction of circles and capsules, or SVG paths.
+  Each gives named parts, a silhouette, interior lines and anchors as regions.
+- **Motion** (`paint-motion.ts`, `paint-motion-compile.ts`): a node per moving group, built over the compiled
+  painting, which gives each group's painted box and reveal end. A node has pins and how its marks live; a live node
+  registers a poser, and motion keeps its posed marks by key. Plays of clips (`paint-motion-clips.ts`: poses,
+  breathe, sway, flutter, place) run through clocks written as parts (`paint-clock.ts`: at, rate, loop, hold,
+  freeze, until, on a 24 fps animation clock), compiled to steps in one order.
+- **Deformation as data** (`paint-deform.ts`): each bend a node's paint goes through in a frame is a value with every
+  spatial parameter and its rounded amount; its map and its key are both read from it. A point goes through its own
+  bend and placement, then its parent's, as a rig nests.
+- **Checks:** the build checks the tree, the groups, the clocks, the boil's wobble, one writer per lane
+  (`paint-channels.ts`), and every frame's emitted warp for folds on the renderer's own lattice.
+  `paintMotionFrameAt(motion, t)` is pure in `t`, and writes each group's `StampGroupFrameState`.
+
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants
 of `procreate-reading.ts`), and the stroke Procreate draws its previews along. Its `engine/` reads binary plists and
 `.procreate` canvases.
@@ -199,7 +250,8 @@ reading registered for fitting (`brush-readings.ts`). `npm run brushes:sheet`, `
 
 **gate** holds the GPU renderer to accepted output (`npm run stamp:gate -- run`): every rendering formula over a grid,
 each runtime twin against its CPU side, synthetic paintings that walk every path the renderer takes, and a traced
-resolve against its frame. Pre-commit runs it on the staged tree when a path it covers changes; no adapter, a timeout
+resolve against its frame; `media/mixed` holds each group of a three-medium painting to itself painted alone in its
+own medium (max 0), and gouache glazed over a dark watercolour wash to covering it. Pre-commit runs it on the staged tree when a path it covers changes; no adapter, a timeout
 or a difference fails the commit. Public baselines live in `harness/fixtures/stamp-paint/`, a pack's brushes' in
 `work/validation/stamp-paint/` (`stamp:gate -- private run`). A baseline changes only by `update <ids> --reason …`,
 which writes candidates with their differences, then `accept <ids>`.

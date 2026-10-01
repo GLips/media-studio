@@ -57,7 +57,11 @@ export type StampPaintCompositor = {
     resources: (bound: { tints: { a: GPUTextureView; b: GPUTextureView }; wet: boolean }) => GPUBindingResource[];
   };
   group: {
-    /** Its bindings from 3; `layGroup(pixel, glaze, opacity)`. */
+    /**
+     * Its bindings from 3; `layGroup(pixel, glaze, opacity)`, reading the group's layer by `groupLayerAt(pixel, l)` and
+     * the painting under it by `groupUnderAt(pixel, i)`, writing by `groupLaid(pixel, i, value)`, never `layer` or
+     * `painting` themselves: a moved group is laid once per bilinear tap of its layer, the laid paint then blended.
+     */
     wgsl: string;
     /** What it binds from 3, given the paper's photograph (a blank texture if it has none) and a sampler. */
     resources: (paper: { photograph: GPUTextureView; sampler: GPUSampler }) => GPUBindingResource[];
@@ -78,11 +82,12 @@ export type StampWashLayer = {
   /** Layers of four channels `deposit`'s group keeps, from the first: a stage reads and writes no more. */
   layersOf: (deposit: CompiledStampDeposit) => number;
   /**
-   * WGSL for a group of `layers` layers: `washPigmentMask(l)`, 1 on layer `l`'s pigment channels; `washPigmentTotal(v)`
-   * and `washOpen(v)`, a pixel's pigment and open share; and `washMoved(now, wasPigment)`, the pixel once a stage has
-   * moved its pigment total from `wasPigment` to `now`'s, its other channels as before the move.
+   * WGSL for `deposit`'s group, of layersOf(deposit) layers in its medium: `washPigmentMask(l)`, 1 on layer `l`'s
+   * pigment channels; `washPigmentTotal(v)` and `washOpen(v)`, a pixel's pigment and open share; and
+   * `washMoved(now, wasPigment)`, the pixel once a stage has moved its pigment total from `wasPigment` to `now`'s, its
+   * other channels as before the move.
    */
-  movedWgsl: (layers: number) => string;
+  movedWgsl: (deposit: CompiledStampDeposit) => string;
   /**
    * WGSL for `deposit`'s group: `washHold(l, at, tooth, depth, held)`, how much of each of layer `l`'s channels the
    * paper holds at `at` against its mean (1), as the compositor lays paint there; `tooth` the paper's paint here and
@@ -238,11 +243,11 @@ fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f,
 ${FLAT_WGSL}
 /** A finished group's layer laid onto the painting: glazed (multiplied) or opaque. */
 fn layGroup(pixel: vec2u, glaze: bool, opacity: f32) {
-  let layer = textureLoad(layer, pixel, 0);
+  let layer = groupLayerAt(pixel, 0u);
   // Raising coverage keeps the paint's own colour: premultiplied, its colour scales with it.
   let cover = select(${STAMP_OPAQUE_COVER.toFixed(1)}, 1.0, glaze);
   let over = layer * min(cover, 1.0 / max(layer.a, 0.001)) * opacity;
-  textureStore(painting, pixel, laidOver(textureLoad(painting, pixel), over, select(0, 1, glaze)));
+  groupLaid(pixel, 0u, laidOver(groupUnderAt(pixel, 0u), over, select(0, 1, glaze)));
 }`,
       resources: () => [],
     },

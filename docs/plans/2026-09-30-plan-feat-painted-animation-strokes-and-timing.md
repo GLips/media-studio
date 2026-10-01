@@ -1,7 +1,7 @@
 ---
 title: "feat: Painted animation, part 1: strokes that deform, and the timing layer"
 type: feat
-status: draft
+status: active (2026-10-01: phases 1.0, 1.1, 2a, 3 and 4 done, reviewed by Codex and Claude; 2b waits for vid-114's step 5)
 date: 2026-09-30
 revised: 2026-09-30 (after vid-112, vid-116, vid-117 and vid-125; folds in vid-126)
 dependsOn: [the paint-engine tickets in flight (vid-118, vid-123, vid-124, vid-127) landing first; the spikes don't wait]
@@ -47,7 +47,7 @@ What plans 2 and 3 need from this plan:
 - **Stamp identity is assigned once at rest,** keyed by rest position (today the placement ordinal on the rest stroke). Plan 3 reuses it with rest positions on a mesh.
 - **A source is evaluated at `t` and may return different strokes each frame** (plan 3's silhouettes). A stroke a source creates after its part's reveal has finished starts fully revealed.
 - **Visibility is a per-frame mask, separate from reveal,** fully visible by default. Only the slot is built here.
-- **The engine doesn't own its GPU device or assume one canvas-sized target.** Plan 2 shares the device with three.js's WebGPU renderer and renders groups to their own layers.
+- **The engine doesn't own its GPU device or assume one canvas-sized target.** Plan 2 shares the device with three.js's WebGPU renderer and renders groups to their own layers. *Status, 2026-10-01:* the device half holds on main. `stamp-paint-surface.ts` takes a lent device and draws into a handed texture (vid-129, then vid-123). Rendering a group to a layer target of its own is plan 2's work.
 
 ### Out of scope
 - Planes at depth, a camera, post and three.js compositing: plan 2.
@@ -69,9 +69,19 @@ What plans 2 and 3 need from this plan:
 ## New concepts
 
 - **`lib/paint/animation/`**, a new feature above `paint/style` and `paint/painting`. It holds the painting tree a scene writes, timing channels, scoped style resolution, deformation, and the component that draws it. The name is still a working one; "shot" collides with capture's shots. `paint/painting` stays unaware of scenes, poses and channels: it takes a painting as it stands at a moment, plus group placements, warps, boil epochs and visibility. Brush fidelity and the gate keep using it directly.
-- **A deformation** is a coarse warp field per group, in rest space: a lattice or pins with falloff, chosen by spike 1.1. It replaces the rigid placement as the general case, rigid being the warp with one affine cell. It is keyed into the checkpoint key, as vid-117's note proposes.
+- **A deformation** comes in two kinds per part, chosen by the scene (spike 1.0's verdict):
+  - a **layer warp**: a coarse lattice in rest space, sampled from a rest-to-scene map, which carries the group's painted layer, rigid placement being its one-cell case;
+  - **live**: the part's geometry posed anew and re-painted.
+
+  A warp reaches the renderer as each frame's data, keyed into the checkpoint key.
 
 ## Phase 1.0: Deforming painted strokes (spike: toy experiment)
+
+**Done, 2026-10-01.** Findings: the spike findings doc, "Plan 1, phase 1.0".
+- **Verdict:** near-rigid parts (limbs, sway, small squash, boil) bend the group's layer. Parts that change shape (the
+  puff) are live. Stamps aren't carried.
+- **Kept from the spike:** the layer warp in the renderer, and the four-texel lay that fixes crayon under sub-pixel
+  motion. They land in phase 2, with the warp as each frame's data.
 
 ### Goal
 We know how a deformation should carry paint (stamps, wet state, masks) under stuck, boil and live, what it costs per frame, and where it breaks.
@@ -98,6 +108,12 @@ We know how a deformation should carry paint (stamps, wet state, masks) under st
 - The warp choice (layer, stamps or both) is recommended with evidence.
 
 ## Phase 1.1: Authoring the frog (spike: toy experiment)
+
+**Done, 2026-10-01.** Findings: the spike findings doc, "Plan 1, phase 1.1".
+- **Chosen form:** anatomy as vid-114's groups and passages; motion as plays on typed handles; pins, radial or owned
+  by a part; how marks live as a node option.
+- **Shapes:** from sources naming parts and anchors, built in `paint/animation/models/figure/`.
+- **Graham's sign-off is pending.** Engine work that doesn't hang on the form goes ahead.
 
 ### Goal
 We know what the scene-level API should look like for an AI agent writing painted animation, and where a frog's shapes come from, well enough to reshape phases 2–4.
@@ -130,6 +146,46 @@ We know what the scene-level API should look like for an AI agent writing painte
 ### Goal
 Scenes paint through the new model only. The recipe's authoring API is gone, the watercolor-paintings and vid-121 scenes are ported, and still paintings look as they did.
 
+### Reshaped after the spikes (2026-10-01)
+
+Phase 2 splits in two, because vid-114 builds the passage layer that the authoring half stands on.
+
+**2a, the engine's frame seam.** Engine-side, building now; independent of vid-114's cut-over. `paint/painting`'s
+renderer draws a frame from the compiled painting plus each group's state for that frame, given as data:
+- its placement;
+- its warp: a lattice sampled from a rest-to-scene map, with a key naming it;
+- its boil epoch;
+- its visibility;
+- for a **live** group, its marks compiled for this frame.
+
+The compiled painting holds no functions of time.
+- The layer warp and the four-texel lay come from spike 1.0.
+- **The live seam:** a live group's marks are placed, uploaded and drawn alone each frame. What is painted before it
+  is restored from a checkpoint, so a frame costs its moving share and not a full repaint.
+- Group `motion` and `boil` stay as recipe fields until 2b replaces them. Internally they become frame state, so the
+  renderer reads one shape whichever writes it.
+
+*2a done (vid-130, 0ac1c40 and 426c35d, merged 7ec3157).*
+- **Engine:** `StampPaintFrameState` (`stamp-paint-frame-state.ts`) feeds `draw(t, frame?)`. A live group's marks
+  must be the written group re-placed (`stampLiveGroupProblem`).
+- **Motion:** `paint/animation` evaluates pins, clips and the rest-space boil into frame state (`buildPaintMotion`,
+  `paintMotionFrameAt`).
+- **Frog at 1080p, watercolour:** a live frame takes 46 ms to draw and 92.6 ms whole, against 235 and 351 ms for a
+  full reload. The layer warp takes 27 ms.
+- **Gate:** the new animation/live check passes at max 0.
+- **Not built:** a layer cache per group. A group drawn after a varying one repaints each frame; plan 2's planes are
+  where layers get cached.
+
+**2b, the authoring model.** Waits for vid-114's step 5. Plan 1's additions go on vid-114's tree, per spike 1.1:
+- plays on typed handles;
+- pins;
+- `marks: stuck | boil | live`;
+- looks (scoped style);
+- `anchor`;
+- figure shapes.
+
+Ported scenes, and the deletions below, follow.
+
 ### Approach
 - **`paint/painting` keeps one contract:** a painting as it stands at one moment (groups, passes and deposits with their placed stamps, washes and masks), plus per-group placement, warp, boil epoch and visibility. `paint/animation` and brush fidelity feed it. Scenes never write it, and `#studio` exports only the new model for painting.
 - **The recipe's compile work stays in `paint/painting` as time-free deposit preparation:** id validation, hierarchical seeding, fills and masks, with hand evaluation and main and dual placement called from `paint/brush`. Both `paint/animation` and brush fidelity call it; brush fidelity never imports animation.
@@ -155,6 +211,14 @@ Scenes paint through the new model only. The recipe's authoring API is gone, the
 
 ## Phase 3: The timing layer (sketched)
 
+*Built (vid-130), as amended below after review:*
+- **Clocks and channels:** `lib/paint/animation/models/paint-clock.ts` (play clocks written as parts, node clocks,
+  branded scene, clip and frame times) and `paint-channels.ts`.
+- **Deformation as data:** `paint-deform.ts`, from which each map, key and fold check derive.
+- **Motion over the compiled painting:** `paint-motion.ts` and `paint-motion-compile.ts`, evaluated purely by
+  `paint-motion-frame.ts`.
+- **Not built:** the colour channel. A recipe's material keys still recolour.
+
 ### Goal
 Reveal, placement, deformation, boil, holds and colour run as pure timing channels on the new model, each a registered operation.
 
@@ -170,7 +234,69 @@ Reveal, placement, deformation, boil, holds and colour run as pure timing channe
 - **Conflicts are judged after selections expand to concrete targets, per overlapping interval.** A finished clip's held pose persists until the next clip on that target starts.
 - **The timing contract is written before implementation:** clock nesting, each stroke's local boil phase, behaviour at interval endpoints, and overlap detection.
 - **A separate animation clock** at 24 fps by default, apart from the render rate. "On twos" means 2/24 s at any output rate, and `StampGroupBoil.every` moves onto it.
-- **Boil** re-seeds per epoch, as built. A stroke boils only after its own reveal finishes, and its displacement is applied in anchor space after `deform`, so plan 2's moving planes don't break it.
+- **Boil** is a stepped displacement of rest space, under `deform` (spike 1.0 and phase 2a). A group boils only after its own reveal finishes.
+
+### The timing contract (written 2026-10-01, before implementation)
+
+**Times.**
+- Scene time `t` is in seconds, from the scene's clock (`s.t`).
+- Cues are numbers in scene seconds. The project resolves them from its timeline and passes them in, so neither imports the other (vid-114's rule).
+- The animation clock counts frames at `animationFps`, 24 unless the scene says otherwise. A time's animation frame is `⌊t · animationFps + 1e-6⌋`; the epsilon is there so that 2/24 s lands on frame 2, not 1.
+- Render fps never enters timing. A 30 or 60 fps render samples the same held drawings.
+
+**Who owns what.**
+- vid-114's score owns reveal allocation: which interval each deposit reveals over, from weights and cues. It resolves to scene seconds.
+- Plan 1 adds channels beside the lookup. Reveal stays `progress(deposit, t)` on scene time. Plan 1 never re-allocates the score.
+
+*Amended after review (2026-10-01):* a part's holds and freezes no longer reach its reveal. Wet paint's order is the painting's, so one held group can't reveal on a time of its own while its neighbours settle on scene time. A part's clock governs its writers and its boil.
+
+**Clocks belong to writers.** Each play (a pose clip, a sway, a placement, a boil) has a clock: a chain of transforms from scene time to the clip's own local time `τ`. A part, a group or the painting carries only `hold` and `freeze`, which every writer under it reads through. *Why (spike 1.1):* a looping chain in front of the reveal lookup would un-draw and redraw the part on every loop, and repeat its boil epochs. Each transform is data, `{ kind, …params }`, evaluated by a registered pure function. *Amended after review:* a play's clock is written from parts (`{ at, rate?, loop?, hold? }`) and compiled to the chain, so its order can't be wrong. The interval it writes over is derived from those parts exactly, and a finished clip holds its final clip value. `hold(loop(clip))` placed at a cue is the chain `[hold(2), at(cue), loop(…)]`, outermost first. The hold sees the parent's time, the `at` makes the clip's own time, and the loop wraps it (`paint/animation/models/paint-clock.ts`).
+
+| Kind | Maps input time `τ` to | Notes |
+|---|---|---|
+| `at(start)` | `τ − start` | Places a clip; `start` is a cue plus an offset. |
+| `rate(r)` | `τ · r`, with `r > 0` | Slow-motion or speed-up. |
+| `loop(period, 'repeat' \| 'pingpong')` | `τ mod period` (positive modulo), or reflected on odd cycles | Below 0 it reads 0; it never runs backwards into negative time. |
+| `hold(n)` | `⌊F(τ) / n⌋ · n / animationFps`, where `F` is the animation frame of its input | Holds on `n`s. |
+| `freeze(τ0)` | `τ0` | A held drawing, Grease Pencil's Fixed Frame. |
+
+**How a hold quantises.** A hold quantises the time *it is given*, on that time's own frame grid:
+- Outermost on a part, as `hold(…)` usually is, it steps on the scene's global animation grid. Everything held on twos changes on the same frame, as cels do.
+- A cue off the grid shows its first held drawing at the next grid step at or after the cue, up to `n/24` s late. This is intended: it's what drawing on twos means.
+- Inside a `rate(0.5)`, a `hold(2)` steps every 4 scene frames. That is what was asked, and it's written that way.
+
+**Interval endpoints.** Every timed thing has the half-open interval `[start, end)`:
+- At `start`, its progress is 0. From `end` on, it is 1, and its final value holds.
+- Before `start`, it reads its value at 0: a pose clip shows its first key, and a reveal shows nothing drawn.
+- A loop's interval is `[start, ∞)` unless it says `times`.
+
+**Channels and conflicts.**
+- A writer is a (channel, concrete target, interval). Selections (a role, a subtree) expand to concrete targets at compile.
+- Two writers on one channel and one target whose intervals overlap are a compile error that names both.
+- A finished clip's final value persists until the next writer on that target starts, and that isn't an overlap.
+- Different targets never conflict, ancestors included: deformation composes.
+
+**Composition per frame, for one stroke:**
+1. rest geometry in anchor space;
+2. `boil` displacement, in rest space, so the wobble travels with the part rather than swimming as it moves;
+3. its part's `deform`, then its part's `place`;
+4. each ancestor's `deform` then `place`, nearest first;
+5. the camera step (the identity in plan 1);
+6. screen.
+
+*Amended after review:* every deform was applied before every placement. Per level is how a rigger composes: a child
+moved inside a deforming parent gets the parent's deform where the child is, not at its rest point.
+
+*Amended in phase 2a:* boil was after `place`. In rest space it rides any plane plan 2 adds, too.
+
+Reveal is measured on the rest stroke (step 1), so no later step changes how much has been drawn.
+
+**Boil, per group.** *Amended after review:* the wobble is a warp of the group's layer, so a group boils as one, from the last reveal end of its deposits. A scene wanting strokes to boil apart gives them separate groups.
+- A group's epoch is 0 (its rest seed, as written) while it's drawn. After its reveal ends at `end`, it is `⌊F(τ)/every⌋ − ⌊F(end)/every⌋`. So it stays as drawn until the next grid step, rather than popping to a new seed on the frame it finishes, and then steps on the global grid, so every boiling stroke in a part changes on the same frame.
+- A re-seeding boil's seed is `hash(restId, epoch)`. A given epoch, 0 included, replaces the recipe's boil, and a recipe boil counts animation frames.
+- `stuck` is always epoch 0. `live` re-places every evaluated frame: under a hold, every held frame, never between them.
+
+**Purity and keys.** A frame is a pure function of (compiled painting, `t`, cues, `animationFps`). Everything that varies goes into the checkpoint key: each part's time after its holds, each writer's clock value, its warp, its epoch and its placement. Two frames inside one hold step share a key, which is what makes holds cheap. *Amended after review:* a key is the canonical form of the deformation's data (every spatial parameter and its quantised amount), from which the map and the fold check also derive. A checkpoint is shared wherever the lay keys are unchanged, whoever wrote them.
 
 ## Phase 4: The frog scene (sketched)
 
@@ -180,3 +306,16 @@ A frog-style painted scene renders in a real project: painted in on a cue, then 
 ### Approach
 - A new project from `studio new`.
 - `docs/brush-engine.md` and `skills/video-canvas/SKILL.md` describe the new model and nothing of the recipe.
+
+*Built (vid-130, workspace `projects/2026-10-frog`, f6711f0; studio 32146d1).*
+- **Shapes:** every frog shape comes from the posed figure, and the set is placed from its rest silhouette.
+- **Groups:** each moving part is its own group.
+- **Paint-in:** it runs on the timeline's cues, on ones.
+- **From cue `alive`:** the body breathes with its ink as a child node, the ink boils in rest space, the tufts sway,
+  and the butterflies flutter and drift.
+- **The sac is live:** compiled alone from the figure posed at each held scale, and kept by pose key.
+- **Frame rate:** held on twos at 24 fps.
+- **Repeatability:** `studio repeatable` is identical at 8 times.
+- **Cost, 1080p:** draw median 33 ms, whole frame 62.5 ms.
+- **Not done:** the authoring surface (2b) waits for vid-114, so the scene uses today's recipe plus frame state.
+  vid-114's step 5 moves it.

@@ -24,7 +24,6 @@ import { STAMP_DRYING_RIM_STAGE } from './stamp-wet-rim.ts';
 export type StampWetStageContext = {
   device: StampPaintDevice;
   painting: CompiledStampPaint;
-  medium: PaintMedium;
   wetness: StampWetness;
   width: number;
   height: number;

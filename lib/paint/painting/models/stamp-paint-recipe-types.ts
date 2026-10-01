@@ -20,6 +20,7 @@ import type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from './stamp-
 import type { CompiledStampMaterialKeys, StampMaterialKeys } from './stamp-material-keys.ts';
 import type { StampMark } from './stamp-marks.ts';
 import type { StampDepositName } from './stamp-deposit-identity.ts';
+import type { StampPigmentMixing } from './stamp-pigment-paint.ts';
 import type { StampBackrunSettings, StampChargeSettings, StampWaitOptions, StampWashWait, StampWrittenWait } from './stamp-wash-effects.ts';
 
 /**
@@ -136,6 +137,11 @@ export type StampGroupOptions = ({ composite: 'opaque' } | { composite: 'glaze';
   order?: number;
   /** The painting's (`ground`, when left out) or its own, a collage's (StampGroupPaper). */
   paper?: StampGroupPaper;
+  /**
+   * The medium and pigments it paints in, when not the painting's: gouache butterflies in a watercolour. Only a
+   * painting in pigment takes one. Its paint meets the groups under it dry, as any group's does (stamp-wetness.ts).
+   */
+  mixing?: StampPigmentMixing;
   motion?: StampGroupMotion;
   boil?: StampGroupBoil;
   /** Groups painted earlier that this one's `shape` is reserved from, as a near hill from the far range (StampStandsBefore). */

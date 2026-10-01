@@ -3,7 +3,7 @@
 // with it rather than swimming under it (stuck). A boiling group is painted afresh every few frames, on purpose.
 // The paper's photograph moves with a group only if the group lies on its own paper, a cut-out (StampGroupPaper).
 //
-// Negative space: a group moves rigidly. Deforming one (a raised arm) would warp its layer by a field, not a placement.
+// A placement is laid as a warp's one-cell lattice (stamp-group-warp.ts); a group that bends has a warp of its own.
 
 import type { StampPoint } from './stamp-region.ts';
 import { mapStampKeyList, stampKeyList, stampKeySpanAt, stampKeyTimesProblem, type StampKeyList } from './stamp-scene-keys.ts';
@@ -31,13 +31,23 @@ export type StampGroupMotion = {
 export type StampGroupPaper = 'ground' | 'own';
 
 /**
- * A group painted anew every `every` frames, each time with its marks' randomness seeded afresh, as hand-drawn
- * animation boils on twos (`every: 2`). Between, it holds.
+ * Frames per second of the animation clock unless a scene says otherwise: "on twos" is 2/24 s at any render rate.
+ * Painted animation counts drawings on it (a recipe's boil here, paint/animation's writers' clocks), never in render
+ * frames, so a 30 or 60 fps render samples the same drawings.
+ */
+export const PAINT_ANIMATION_FPS = 24;
+
+/** The animation frame scene-or-local time `t` falls in; the epsilon puts 2/24 s on frame 2, not 1. */
+export const paintAnimationFrameAt = (t: number, animationFps: number) => Math.floor(t * animationFps + 1e-6);
+
+/**
+ * A group painted anew every `every` animation frames (PAINT_ANIMATION_FPS), each time with its marks' randomness
+ * seeded afresh, as hand-drawn animation boils on twos (`every: 2`). Between, it holds.
  */
 export type StampGroupBoil = { every: number };
 
-/** The boil epoch of frame `frame` for a group boiling every `every` frames. */
-export const stampBoilEpoch = (frame: number, { every }: StampGroupBoil) => Math.floor(frame / every);
+/** The boil epoch `t` seconds into the scene for a group boiling every `every` animation frames. */
+export const stampBoilEpoch = (t: number, { every }: StampGroupBoil) => Math.floor(paintAnimationFrameAt(t, PAINT_ANIMATION_FPS) / every);
 
 /** A group's motion as compiled (compileStampGroupMotion): at least one whole placement, at finite increasing times. */
 export type CompiledStampGroupMotion = { keys: StampKeyList<{ at: number } & StampGroupPlacement>; pivot?: StampPoint };
@@ -59,17 +69,6 @@ export function stampGroupPlacementAt({ keys }: CompiledStampGroupMotion, t: num
   const { from, to, share } = stampKeySpanAt(keys, t), a = keys[from], b = keys[to];
   const eased = (u: number, v: number) => u + (v - u) * share;
   return { x: eased(a.x, b.x), y: eased(a.y, b.y), rotation: eased(a.rotation, b.rotation), scale: eased(a.scale, b.scale) };
-}
-
-/**
- * Where a pixel of the scene reads its group's own layer from, for a group placed at `placement` about `pivot`: the
- * inverse placement as rows [a, b, c] and [d, e, f], so the layer's point is (a·x + b·y + c, d·x + e·y + f).
- */
-export function stampGroupLayerFromScene({ x, y, rotation, scale }: StampGroupPlacement, pivot: StampPoint = { x: 0, y: 0 }): [number, number, number, number, number, number] {
-  const cos = Math.cos(rotation) / scale, sin = Math.sin(rotation) / scale;
-  // Scene point p = pivot + (x, y) + R·s·(q − pivot); so q = pivot + R⁻¹(p − pivot − (x, y)) / s.
-  const ox = pivot.x + x, oy = pivot.y + y;
-  return [cos, sin, pivot.x - cos * ox - sin * oy, -sin, cos, pivot.y + sin * ox - cos * oy];
 }
 
 /** Where a point of the group's own layer lands in the scene, placed at `placement` about `pivot`. */

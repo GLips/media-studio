@@ -32,7 +32,7 @@ const washOf = (body: (wash: StampWashScope) => void) =>
 
 /** The wetness of `painting` in watercolour, and its one wash's dryings. */
 function dried(painting: ReturnType<typeof washOf>) {
-  const wetness = compileStampWetness(painting, PAINT_MEDIA.watercolour, { color: '#ffffff' }, { width: 800, height: 400 });
+  const wetness = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, { color: '#ffffff' }, { width: 800, height: 400 });
   return { wetness, dryings: wetness.washes.get(painting.groups[0].passes[0])!.dryings };
 }
 

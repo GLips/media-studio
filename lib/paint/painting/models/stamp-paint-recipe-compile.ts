@@ -4,7 +4,7 @@
 // Randomness comes from IDs, never order: each deposit is seeded by its ID, so adding a stroke changes no other.
 
 import type { StampBlend, StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import type { FrozenPlacedStamp, StampTint } from '#lib/paint/brush/models/stamp-placement.ts';
+import type { FrozenStampMarks, StampTint } from '#lib/paint/brush/models/stamp-placement.ts';
 import { checkedStampPolygon, compileDeposit } from './stamp-deposit-compile.ts';
 import type { StampFloodBody, StampFloodBodyLevels, StampFloodFront } from './stamp-fill.ts';
 import { stampPaintFieldEnds, stampPaintFieldProblem, stampSeededPaintField, type StampSeededPaintField } from './stamp-paint-field.ts';
@@ -12,6 +12,7 @@ import { compilePaintAction, compileWashAction, type CompiledStampAction, type C
 import { compileStampArea, stampFluidHolder, stampStandsBeforeExclusions, type CompiledStampArea } from './stamp-area.ts';
 import { compileStampGroupMotion, type CompiledStampGroupMotion, type StampGroupBoil, type StampGroupPaper } from './stamp-group-motion.ts';
 import { stampKeysSpan } from './stamp-scene-keys.ts';
+import type { StampPigmentMixing } from './stamp-pigment-paint.ts';
 import type { StampMark } from './stamp-marks.ts';
 import { checkedStampIdSegment, stampDepositNameText } from './stamp-deposit-identity.ts';
 import type { StampPaintRecipe, StampPaintRecipeDeposit, StampPaintRecipeGroup, StampPaintRecipeMask } from './stamp-paint-recipe-types.ts';
@@ -53,9 +54,9 @@ type CompiledStampDepositCommon<A extends CompiledStampAction> = {
   /** When it shows (StampDepositReveal): from `at` seconds, drawn over `over` (0 lands whole); none, there throughout. */
   reveal?: { at: number; over: number };
   /** Every stamp of the finished deposit, in reveal order: a flood's are its edge stroke's. */
-  stamps: readonly FrozenPlacedStamp[];
+  stamps: FrozenStampMarks;
   /** The brush's dual stamps, placed by its own settings along the same stroke, in reveal order; none without one. */
-  dualStamps: readonly FrozenPlacedStamp[];
+  dualStamps: FrozenStampMarks;
 };
 
 /**
@@ -92,6 +93,8 @@ export const STAMP_OPAQUE_COVER = 2;
 
 export type CompiledStampGroup = {
   id: string; composite: 'opaque' | 'glaze'; opacity: number; paper: StampGroupPaper; passes: readonly CompiledStampPass[];
+  /** Absent for a group in the painting's mixing. */
+  mixing?: StampPigmentMixing;
   /** Absent for a group that stays where it's painted. */
   motion?: CompiledStampGroupMotion;
   /** The scene seconds over which its paint changes (a keyed material's first key to its last); absent for paint that doesn't. */
@@ -203,7 +206,8 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
     const written = { id, options, passes };
     const recolours = stampGroupRecolours(compiledPasses);
     return {
-      id: groupId, composite: options.composite, opacity, paper: options.paper ?? 'ground', passes: compiledPasses, ...(motion && { motion }), ...(recolours && { recolours }),
+      id: groupId, composite: options.composite, opacity, paper: options.paper ?? 'ground', passes: compiledPasses, ...(options.mixing && { mixing: options.mixing }),
+      ...(motion && { motion }), ...(recolours && { recolours }),
       ...(boil && { boil: { every: boil.every, epoch, reseeded: (next: number) => compileGroup(written, next) } }),
     };
   };

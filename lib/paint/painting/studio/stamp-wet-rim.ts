@@ -32,7 +32,10 @@ const GRAIN_SIGMA = 2.5;
  */
 const CONTOUR_SIGMA = 2.5;
 
-/** How far in from the edge, px, its hardness compares the paint's coverage: just inside it, and past a soft brush's rim. */
+/**
+ * How far in from the edge, px, its hardness compares the paint's coverage: just inside it, and past a soft brush's
+ * rim, or the rim's band if wider.
+ */
 const EDGE_DEPTHS = [4, 14] as const;
 
 /**
@@ -277,12 +280,13 @@ fn reaches(field: texture_2d<f32>, origin: vec2f, toward: vec2f, level: f32, mos
   let edge = seed + toward * reaches(closed, seed, toward, 0.5, 4);
   let inward = d - distance(seed, edge);
   // How abruptly the paint ends, from the smoothed coverage just inside the edge and well in, each averaged over a
-  // few pixels: a fringe's step a pixel nearer or further then moves it by degrees.
+  // few pixels: a fringe's step a pixel nearer or further then moves it by degrees. Well in is at least the band: a
+  // wet-in-wet edge feathers over tens of pixels, and judged nearer it reads half-hard, its line in stray commas.
   var edgeCover = 0.0;
   var innerCover = 0.0;
   for (var k = -2; k <= 2; k++) {
     edgeCover += 0.2 * fieldAt(contour, edge + toward * f32(${EDGE_DEPTHS[0]} + k));
-    innerCover += 0.2 * fieldAt(contour, edge + toward * f32(${EDGE_DEPTHS[1]} + k));
+    innerCover += 0.2 * fieldAt(contour, edge + toward * (max(${EDGE_DEPTHS[1]}.0, band) + f32(k)));
   }
   let hardness = dryingRimHardness(edgeCover, innerCover);
   // How far in from where the paint is half there the pixel is, by its nearest edge.
@@ -389,13 +393,12 @@ function gridBox(grid: StampGrid, width: number, height: number): StampPixelBox 
  */
 type LoadedRim = {
   grid: StampGrid; first: number; box: StampPixelBox; uniform: GPUBuffer; writeSeed: (seed: number) => void;
-  layers: number; spreads: ReturnType<typeof stampWetSpreads>;
+  layers: number; moved: string; spreads: ReturnType<typeof stampWetSpreads>;
 };
 
-function loadDryingRim({ device, medium, wetness, width, height, layer, wash }: StampWetStageContext): StampLoadedWetStage<StampWetDryingMoment> {
-  const { spread, sheen: { damp } } = medium.wetting;
+function loadDryingRim({ device, wetness, width, height, layer, wash }: StampWetStageContext): StampLoadedWetStage<StampWetDryingMoment> {
   const dryings = [...wetness.washes.values()].flatMap((record) => record.dryings);
-  if (spread <= 0 || !dryings.length) return { encode: () => null };
+  if (!dryings.length) return { encode: () => null };
 
   const rims = new Map<StampWashDrying, LoadedRim>();
   // Every deposit of a drying the medium would rim, whose brushes' own wet edges would rim it again: a drying at
@@ -404,9 +407,9 @@ function loadDryingRim({ device, medium, wetness, width, height, layer, wash }: 
   const ownsWetEdges = (deposit: CompiledStampDeposit) => rimmed.has(deposit);
   let points = 0;
   for (const drying of dryings) {
-    const sizing = stampDryingRimSizing(drying, wetness, spread, damp);
-    if (!sizing) continue;
-    const { grid, painted, diameter, band } = sizing;
+    const sizing = stampDryingRimSizing(drying, wetness);
+    if (!sizing || sizing.spread <= 0) continue;
+    const { grid, painted, spread, damp, diameter, band } = sizing;
     // A band under a pixel or two is a rim no one sees: damp brushwork, or a medium that barely spreads.
     if (band < 1.5) continue;
     const box = gridBox(grid, width, height);
@@ -435,7 +438,7 @@ function loadDryingRim({ device, medium, wetness, width, height, layer, wash }: 
       put('seed', seed);
       device.queue.writeBuffer(uniform, 0, words);
     };
-    rims.set(drying, { grid, first: points, box, uniform, writeSeed, layers, spreads });
+    rims.set(drying, { grid, first: points, box, uniform, writeSeed, layers, moved: wash.movedWgsl(painted[0]), spreads });
     points += grid.values.length;
   }
   if (!rims.size) return { encode: () => null, ownsWetEdges };
@@ -468,18 +471,16 @@ function loadDryingRim({ device, medium, wetness, width, height, layer, wash }: 
     domain: compile(DOMAIN_WGSL), grainRows: compile(GRAIN_ROWS_WGSL), seeds: compile(SEEDS_WGSL), flood: compile(FLOOD_WGSL),
     send: compile(SEND_WGSL), contourRows: compile(CONTOUR_ROWS_WGSL), contour: compile(CONTOUR_WGSL), levelRows: compile(LEVEL_ROWS_WGSL),
   };
-  // Compiled per group layer count, which places the group's open share and bounds what's gathered.
-  const groupPasses = new Map([...new Set([...rims.values()].map((rim) => rim.layers))].map((n): [number, Record<'weights' | 'sent' | 'rim', GPUComputePipeline>] => {
-    const moved = wash.movedWgsl(n);
-    return [n, { weights: compile(weightsWgsl(n, moved)), sent: compile(sentWgsl(n, moved)), rim: compile(rimWgsl(n, moved)) }];
-  }));
+  // Compiled per group's wash layer WGSL: its layer count places its open share and bounds what's gathered.
+  const groupPasses = new Map([...new Map([...rims.values()].map((rim) => [rim.moved, rim.layers])).entries()].map(([moved, n]): [string, Record<'weights' | 'sent' | 'rim', GPUComputePipeline>] =>
+    [moved, { weights: compile(weightsWgsl(n, moved)), sent: compile(sentWgsl(n, moved)), rim: compile(rimWgsl(n, moved)) }]));
 
   // Each rim's dispatches, in order, bound once: the scratch textures are sized for every rim at load.
-  const rimSteps = new Map([...rims].map(([drying, { uniform, layers: groupLayers, spreads }]): [StampWashDrying, { pipeline: GPUComputePipeline; bindGroup: GPUBindGroup }[]] => {
+  const rimSteps = new Map([...rims].map(([drying, { uniform, moved, spreads }]): [StampWashDrying, { pipeline: GPUComputePipeline; bindGroup: GPUBindGroup }[]] => {
     const step = (pipeline: GPUComputePipeline, resources: GPUBindingResource[]) => ({
       pipeline, bindGroup: device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: resources.map((resource, binding) => ({ binding, resource })) }),
     });
-    const u = { buffer: uniform }, own = groupPasses.get(groupLayers)!;
+    const u = { buffer: uniform }, own = groupPasses.get(moved)!;
     return [drying, [
       step(passes.domain, [u, { buffer: grid }, layer.view, domain]),
       step(passes.grainRows, [u, domain, grainRows]),
