@@ -1,10 +1,10 @@
 ---
 title: "feat: Painted animation, part 2: planes at depth, a camera, and compositing with 3D"
 type: feat
-status: draft
+status: done (2026-10-01: spike 1.0 in vid-129; phases 2–4 reshaped against plan 1 and built in vid-136; deferred items below)
 date: 2026-09-30
 dependsOn: [docs/plans/2026-09-30-plan-feat-painted-animation-strokes-and-timing.md (phases 2–4 only; spike 1.0 stands alone and can start now)]
-updated: 2026-09-30 (against main after vid-116, vid-117 and vid-125)
+updated: 2026-10-01 (built in vid-136; see "As built" at the end)
 relatesTo: [docs/plans/2026-09-30-plan-feat-painted-animation-painterly-3d.md, vid-129 (spike 1.0), vid-117, vid-125]
 ---
 
@@ -14,7 +14,7 @@ relatesTo: [docs/plans/2026-09-30-plan-feat-painted-animation-painterly-3d.md, v
 
 Plan 1 makes strokes move and gives them a timing layer, on one flat canvas. The PolyPaint Grease Pencil look Graham wants goes further. It's mostly hand-drawn strokes on painted planes at different depths under a moving camera (multiplane), with glow and depth of field over the result. Graham's collage idea also needs painted layers to sit beside three.js layers in one frame: a painted character over a 3D set, or a painted texture on a 3D object.
 
-This is plan 2 of three, and it is deliberately thin: **seams, not features.** It names what it needs from plan 1's seams, runs one tracer spike across the riskiest seam, and sketches the rest. The sketched phases get reshaped when a video actually calls for multiplane or 3D compositing. Plan 3 (painterly 3D) builds on this plan's device-sharing and paint-to-texture seam.
+This is plan 2 of three. It was drafted thin (**seams, not features**); phases 2–4 were reshaped against plan 1 as built on 2026-10-01, in "Reshaped against plan 1 as built" below, which replaces the sketches. Plan 3 (painterly 3D) builds on this plan's device-sharing and paint-to-texture seam.
 
 It uses plan 1's terms as written there: rest pose, channel, anchor, scoped style, bake, and the feature `paint/animation`. Research is in `~/research/2026-09-29-painted-animation/reading-3d-compositing.md` (plan 2 recommendations) and `~/research/2026-09-29-painting-in-3d-projection.md`.
 
@@ -92,46 +92,175 @@ We know whether the stamp engine and three's `WebGPURenderer` can share one `GPU
 - Don't build multiplane, a camera or post here. Everything on the far side of the seam is sketched below for a reason.
 - If sharing the device fails outright, stop and raise it before trying a fallback. A copy through a canvas each frame is a fallback, not the seam. It changes plan 3's cost too.
 
-## Phase 2: Multiplane painted scenes (sketched)
+## Reshaped against plan 1 as built (vid-136, 2026-10-01)
 
-Waits on plan 1's phases 2–3 and a video that needs multiplane, not on spike 1.0.
+Phases 2–4 were sketched before plan 1 existed. Plan 1 has landed (main aba3337): `paint/painting` draws a frame from
+the compiled painting plus each group's frame state (lay, warp, marks, paint time, visibility), `paint/animation`
+evaluates pins, clips, boil and holds into that state, and the frog scene runs on it. This section replaces the
+sketches. What changed, in short:
+
+- **A plane is not a renderer concept.** Every painted plane stays a group (or several) in one painting. The camera
+  is evaluated in `paint/animation` and reaches the renderer as each group's lay. The renderer gains what any moving
+  group needs: room past the frame's edge, a cached layer per group, a blur and a glow.
+- **No transparent painted layers.** The sketch stacked a painting per plane, which needs pigment lifted off its
+  paper (vid-129's follow-on 1, unsolved for Kubelka–Munk). One painting holding every plane keeps pigment mixing
+  exact across planes, keeps one paper and needs no alpha. A 3D render enters the painting instead, as an outside
+  layer in the group order.
+- **Post lives in the renderer**, per group (blur, glow), not in a separate layer stack. three.js still enters only
+  when a scene has a 3D layer.
+
+### Coordinate spaces
+
+Five spaces, each named once. Plan 1's composition order (rest → boil → deform and place per level → camera →
+screen) runs through them in this order.
+
+1. **Rest space.** A group's own pixels, where it's painted. Stamps, wet state, masks and the group's layer live
+   here. Boil, pins, sway and placement map rest space onward (plan 1).
+2. **Anchor space.** What rest coordinates are relative to, set on a motion node and inherited by its children:
+   - `canvas`: the stage itself, untouched by the camera. A title card, or a scene with no camera.
+   - `plane(depth)`: the plane's own 2D space, **as it appears through the camera at rest.** This is the multiplane
+     stand's convention: each level is painted the size it looks, and its depth only says how it moves. A painting
+     authored flat becomes multiplane by giving its groups depths, with no coordinate rewritten.
+   - Plan 3 adds `surface(object)`.
+3. **Stage.** The painting's pixel space: the frame plus a **margin** past each side, so a camera can bring in what
+   lies just off the frame. Coordinates keep the frame's origin, so the margin is at negative coordinates and past
+   the frame's width and height. Every target is the stage's size. Ground paper is fixed to the stage; a group on its
+   own paper carries it.
+4. **Layer bounds.** A group's painted box in rest space: what the renderer paints, caches and lays. Under a camera
+   it is laid through the group's lay, and clipped to the stage.
+5. **Screen.** The frame: the stage's window from (0, 0), the frame's size. The output pass reads that window, and
+   glow is added there.
+
+### The camera
+
+A multiplane camera, as data on plan 1's clocks:
+- **Pose:** `pan` (x, y px, measured at depth 1), `dolly` (toward the planes, in depth units), `zoom` (the lens, 1 at
+  rest) and `roll` (radians), all eased between keys.
+- **Projection:** a plane at depth `d` (from the camera's rest position) is laid onto the stage by a similarity about
+  the frame's centre: scale `zoom · d / (d − dolly)`, shifted by `−pan · zoom / (d − dolly)`, turned by `−roll`. At
+  rest it is the identity, so a plane shows as painted. A pan of 100 px moves a plane at depth 2 by 50 px and one
+  at depth 0.5 by 200 px: parallax.
+- **Focus:** a focus depth and an aperture, giving each plane a defocus blur (below). A thin lens's circle of
+  confusion, `aperture · |1 − focus / distance|`, with distance `d − dolly`.
+- **Where it composes:** after each group's own deform and placement and its ancestors' (plan 1's step 5, the
+  identity until now). The camera's similarity folds into the group's lay, so a warped group keeps its warp under
+  the move.
+- **Timing:** the camera has its own clock, on ones by default: a camera move held on twos judders. Planes' drawings
+  still change on twos.
+- A `canvas` group ignores the camera. A group with no node is `canvas`.
+
+### What the renderer adds
+
+- **The stage margin.** The renderer's targets cover the frame plus the margin; the output pass shows the frame's
+  window. At margin 0 every pixel is as before, so the gate's goldens can't move.
+- **A cached layer per group.** Today a group drawn after a moving one repaints every frame (2a's note), so a camera
+  move, which moves every plane, would repaint the whole painting. Instead each group whose lay varies keeps its
+  painted layer (over its layer bounds) under its marks' key once its paint has settled, and a frame restores it and
+  only lays it. A frame then costs the lays, not the painting. Bounded by a byte budget, least recently used given up.
+- **Defocus (`defocus` in frame state):** a gaussian over the group's layer before it's laid, its sigma given in stage
+  pixels and divided by the lay's scale into rest pixels. It blurs the paint film (coverage and pigment, or flat
+  colour), not the light. For flat colour that is exactly a defocused layer; for pigment it is a defocused film laid
+  over a sharp backdrop, which reads right and keeps mixing exact.
+- **Glow (`glow` in frame state):** the light a group gives off. Its laid paint brighter than a threshold, in linear
+  light, is blurred and added over the whole frame at the output, so it spills over what stands in front, as a bloom
+  does. The amount, sigma and threshold are the group's; the light gathered by a frame is part of what a checkpoint
+  holds.
+- **Outside layers:** a slot in the group order whose pixels arrive each frame as a texture on the renderer's device
+  (linear light, premultiplied), with a key naming its content. It takes the frame state a group takes (defocus, glow,
+  visibility). The flat compositor lays it over. The pigment compositor first lifts its colour into the painting's
+  bands by a basis worked out from the compositor's own display conversion, so the colour shown is the colour
+  three.js rendered.
+
+### Invariants this adds
+
+- Every frame-state field is data with a key, so frames that agree share checkpoints and cached layers.
+- At margin 0, with no defocus, glow or outside layer, the renderer draws exactly what it drew before.
+- A cached layer is a pure function of its key: a frame restoring one draws what painting it afresh would have.
+
+## Phase 2: Multiplane painted scenes
 
 ### Goal
 
-A painted scene places groups on planes at depth under an animated camera, and gets parallax from the camera's moves. The frog scene from plan 1 gains its background, midground and foreground planes and a slow camera drift, with no three.js involved.
+A painted scene places groups on planes at depth under an animated camera, with parallax. Each plane's paint and boil
+travel with it. No three.js.
 
 ### Approach
 
-- Start from vid-117's moving groups, which already paint a group in its own coordinates and resample it into place, and vid-125's cut-out groups, which carry their own paper. A plane adds a depth, its own target, and a camera's projection in place of the group's 2D placement.
-- Add the `plane` anchor value and fill in plan 1's camera step. Camera values are channels on plan 1's timing layer.
-- Each plane renders to its own layer target, and the layer stack orders them by depth.
-- Stamps and the hand stay computed at rest in anchor space (plan 1's invariant). The camera projects each plane's carried stamps to screen and they're re-rasterised each frame, so paint stays sharp on a dolly or zoom and texture doesn't crawl. Caching a plane as a raster is an optimisation, valid only while its reveal, deformation, sampling and effects are all still; it isn't part of the plane contract.
-- Paper and grain become per layer, in `space: layer` or `space: screen` by the plane's setting.
+- **Engine (`paint/painting`):** the stage margin and the cached layer per group, each held by the GPU gate (a pan
+  that brings the margin in; a layer restored from cache matching one painted afresh, in any frame order).
+- **Motion (`paint/animation`):** `anchor` on motion nodes; the camera's keys and clock; the camera step folded into
+  each group's lay; build-time checks (a plane behind the camera, a node anchoring inside an anchored parent, a pan
+  that shows past the margin).
+- Boil wobbles in rest space and placement follows, so a plane's boil travels with it (plan 1's order).
 
-## Phase 3: Painted-layer post (sketched)
-
-Waits on phase 2, not on spike 1.0.
+## Phase 3: Painted-layer post
 
 ### Goal
 
-Painted layers get depth of field, bloom and a shared paper look from the layer stack, each effect in `space: screen` or `space: layer`, with amounts set by the scoped style and the scene.
+Painted layers take depth of field and glow, each set by the scene, its amounts available to scoped style.
 
 ### Approach
 
-- Depth of field on painted planes is a per-layer blur by distance from focus. It builds on the renderer's separable gaussian pass (the wet-edge mask blur), run full-frame per layer.
-- Bloom is threshold-and-blur over the composite.
-- One paper rule over every layer type, three.js layers included, so a mixed scene sits on one paper. The candidate is WYSIWYG NPR's paper transfer (a height field remapping alpha), or the engine's own paper model generalised.
-- Amounts come from the scoped style; whether an effect is on, and when it changes, is the scene's call (plan 1: a style never introduces motion).
+- Defocus and glow in the renderer, as above; the gate holds a blurred and a glowing group to their CPU twins.
+- Depth of field is the camera's: `paint/animation` writes each plane's defocus from its focus distance.
+- Glow is a node option (`glow: { amount, sigma, threshold }`), and any frame-state writer may animate it.
+- **Deferred:** one paper over a mixed stack (paper over a 3D layer), and a rim light. Neither is asked for by the
+  frog proof; each gets a ticket when a shot needs it.
 
-## Phase 4: 3D layers in a painted scene (sketched)
+## Phase 4: 3D layers in a painted scene
 
 ### Goal
 
-A scene mixes painted layers with three.js layers in one frame, in both directions: a painted texture on a 3D object, and a 3D render as a layer between painted planes. 3D layers use three's own post.
+A three.js layer sits in a painted scene, and a painting sits on a 3D object, on one shared device.
 
 ### Approach
 
-- The device ownership and texture seam are as spike 1.0 settled them.
-- A 3D layer is a layer-stack entry with one depth, like a painted plane, and its camera follows the scene's camera. One depth per layer gives ordered cards, not mutual occlusion: a painted plane passing through a 3D object needs depth-aware composition or split layers, added when a shot needs it.
-- 3D layers adopt three's WebGPU `RenderPipeline` with TSL `BloomNode`, gaussian blur and DOF, rather than reimplementing them.
-- The WebGL `three-stage.tsx` stays as it is until maintaining both renderers causes a demonstrated problem or a video needs it.
+- **The renderer's outside layer slot**, as above.
+- **`paint/three-layers` (new, studio):** vid-129's round trip, lifted out of the spike project.
+  - One device owned by the scene, lent to every stamp renderer and to three's `WebGPURenderer`.
+  - A painting drawn into a texture three samples (sRGB decoded in the material, as the spike found).
+  - A three.js scene rendered into the outside layer's texture, its camera following the multiplane camera, so a 3D
+    layer at depth `d` moves like a plane there.
+- **One depth per 3D layer** gives ordered cards, not mutual occlusion, as the sketch said.
+- **Deferred:** three's own post (`RenderPipeline`, TSL bloom) inside a 3D layer, until a shot needs it. Our blur
+  and glow apply to the 3D layer as to any group.
+
+## The proof
+
+A sibling of plan 1's frog scene, in the frog project, built as the PolyPaint tutorial's last steps are:
+- background, midground and foreground planes, the foreground a dark silhouette of plants, as the reference's;
+- a slow camera push and drift;
+- the background and foreground out of focus, the frog sharp;
+- a soft glow on the frog and the light;
+- a painted 3D object among the planes.
+
+It must be identical in any frame order and pass `studio repeatable`, with its frame time reported by `studio profile`.
+
+## As built (vid-136, 2026-10-01)
+
+Phases 2–4 are built as reshaped above. The proof is the frog project's `frogDepth` scene: the frog's painting and
+motion, unchanged, on planes at depth 3, 1, 0.85 and 0.42 under a push and drift. It has defocus focused on the frog,
+glow on the frog and rays, dark foreground silhouettes, and a watercolour leaf falling as a three.js layer at depth
+0.8. The round trip (vid-129's spike) is rebuilt on `paint/three-layers`, and the spike's pipeline is deleted. Both
+pass `studio repeatable`.
+
+- **The stage is one value.** `stampStage(frame, margin)` is the only way to make one. The camera holds it, and
+  `<StampPainting stage>`, the renderer and `PaintedThreeScene` take the camera's.
+- **One camera step.** `paintCameraDepthLook` gives a thing at depth d its similarity, its defocus and its glow
+  sigma, for planes and 3D layers alike. `PaintedThreeScene` applies it to the frame state and to three's camera,
+  so the two can't disagree.
+- **Frame state:** `defocus` (sigma in stage px) and `glow` (`amount`, `sigma`, `threshold`).
+- **Layer cache.** A group whose lay varies keeps its settled painted layer, and its defocused copy (sigma stepped
+  2%). One budget per device.
+- **Cost at 1080p on an M1 Max.** frogDepth's paint takes 40.6 ms a frame under the camera; the flat frog scene
+  takes 2.1 ms. Without the cache, a pan took about 240 ms. What remains is laying every group through the pigment
+  compositor each frame. A per-plane flattening would be cheaper, but it isn't exact in Kubelka–Munk.
+
+Deferred, each to a ticket when a shot needs it:
+- one paper over a mixed stack;
+- a rim light;
+- three's own post;
+- depth of field per pixel inside a 3D layer, from its depth buffer, which plan 3's single 3D model will want;
+- a downsampled defocus for large sigmas (cost grows with sigma);
+- backdrop coverage checked on every evaluation, not only at samples and key times.
+

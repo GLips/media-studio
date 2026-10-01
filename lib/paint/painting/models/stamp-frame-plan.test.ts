@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampFramePlan, stampGroupEvents } from './stamp-frame-plan.ts';
 import { stampPaintEvents } from './stamp-paint-events.ts';
+import { stampOutsideLayerPlaces } from './stamp-outside-layer.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import { compileStampPaintRecipe } from './stamp-paint-recipe-compile.ts';
 import type { StampPaintFrameState } from './stamp-paint-frame-state.ts';
@@ -103,4 +104,29 @@ test('a live group is kept under its marks\' key, so a frame held at that key re
   // Marks that aren't the group re-placed can't stand in for it.
   assert.throws(() => at(new Map([['sac', { marks: { kind: 'live', marks: sacPainting(60, 'b').groups[1], key: 'renamed' } }]])), /isn't sac\/body\/a as written/);
   assert.throws(() => at(new Map([['moon', { visibility: 0.5 }]])), /no group of/);
+});
+
+test('an outside layer is keyed into the checkpoints after it only, and what lies under it is saved', () => {
+  const sac = sacPainting();
+  const places = stampOutsideLayerPlaces(sac, [{ id: 'card', beneath: 'sky' }]);
+  const at = (content: string, visibility = 1) => stampFramePlan(sac, stampGroupEvents(sac), stampPaintEvents(sac), 1, undefined, { places, state: new Map([['card', { content, visibility }]]) });
+  const underCard = 2, all = 3;
+  assert.equal(at('turn 0.1').outside[0].event, underCard);
+  assert.equal(at('turn 0.1').checkpointKey(underCard), at('turn 0.2').checkpointKey(underCard));
+  assert.notEqual(at('turn 0.1').checkpointKey(all), at('turn 0.2').checkpointKey(all));
+  assert.equal(at('turn 0.1', 0).checkpointKey(all), at('turn 0.2', 0).checkpointKey(all));
+  assert.deepEqual([...at('turn 0.1').checkpointSaves(0)].toSorted(([a], [b]) => a - b), [[underCard, false], [all, false]]);
+  assert.throws(() => stampFramePlan(sac, stampGroupEvents(sac), stampPaintEvents(sac), 1, undefined, { places, state: new Map() }), /card has no state this frame/);
+  assert.throws(() => stampOutsideLayerPlaces(sac, [{ id: 'card', beneath: 'sea' }]), /no group of/);
+});
+
+test("a group's defocus and glow key the checkpoints after its lay, a glow of amount 0 keying as none, and are checked", () => {
+  const sac = sacPainting(), sacPlan = (state: StampPaintFrameState) => stampFramePlan(sac, stampGroupEvents(sac), stampPaintEvents(sac), 9, state);
+  const after = stampGroupEvents(sac)[1].end + 1;
+  const glow = { amount: 1, sigma: 4, threshold: 0.5 };
+  assert.notEqual(sacPlan(new Map([['sac', { defocus: 2 }]])).checkpointKey(after), sacPlan(new Map([['sac', { defocus: 3 }]])).checkpointKey(after));
+  assert.notEqual(sacPlan(new Map([['sac', { glow }]])).checkpointKey(after), sacPlan(new Map([['sac', {}]])).checkpointKey(after));
+  assert.equal(sacPlan(new Map([['sac', { glow: { ...glow, amount: 0 }, defocus: 0 }]])).checkpointKey(after), sacPlan(new Map([['sac', {}]])).checkpointKey(after));
+  assert.throws(() => sacPlan(new Map([['sac', { defocus: -1 }]])), /sac's defocus is -1/);
+  assert.throws(() => sacPlan(new Map([['sac', { glow: { ...glow, threshold: 2 } }]])), /sac's glow/);
 });

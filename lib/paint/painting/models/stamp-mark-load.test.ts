@@ -17,9 +17,9 @@ test('an ordered layer\'s bins read the same wherever in the bin buffer they lan
   const first = stampFrozenMarks([stampAt(10, 10), stampAt(70, 40)]);
   const second = stampFrozenMarks([stampAt(100, 80), stampAt(40, 40), stampAt(50, 45)]);
   const alone: number[] = [], shared: number[] = [];
-  stampBinsAppended(stampMarksOrderedBins(second, 1, tilesX, tilesY), alone);
-  stampBinsAppended(stampMarksOrderedBins(first, 1, tilesX, tilesY), shared);
-  const at = stampBinsAppended(stampMarksOrderedBins(second, 1, tilesX, tilesY), shared);
+  stampBinsAppended(stampMarksOrderedBins(second, 1, tilesX, tilesY, 0), alone);
+  stampBinsAppended(stampMarksOrderedBins(first, 1, tilesX, tilesY, 0), shared);
+  const at = stampBinsAppended(stampMarksOrderedBins(second, 1, tilesX, tilesY, 0), shared);
   assert.ok(at > 0);
   assert.deepEqual(tilesRead(shared, at, tiles), tilesRead(alone, 0, tiles));
   assert.ok(tilesRead(alone, 0, tiles).some((tile) => tile.length > 1));

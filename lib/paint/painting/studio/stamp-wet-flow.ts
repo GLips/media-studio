@@ -13,6 +13,7 @@ import { STAMP_WET_FLOW_WGSL, stampWetFlowSigma } from '../models/stamp-wet-flow
 import { stampWetTransportReach, stampWetTransportStrides } from '../models/stamp-wet-transport.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampWetLanding } from '../models/stamp-wetness.ts';
+import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import type { StampLoadedWetStage, StampWetDepositMoment, StampWetStage, StampWetStageContext } from './stamp-wet-stages.ts';
 import { stampUniformLayout, stampUniformWriter } from './stamp-uniform-layout.ts';
 import { putStampWetTransportSlot, stampWetTransportPipelines, stampWetTransportSlotBinding } from './stamp-wet-transport.ts';
@@ -43,8 +44,9 @@ type FlowPassOwn = Partial<Record<(typeof FLOW_PASS_OWN)[number], number>>;
 const LEAST_HOLD = 0.1;
 
 // Moves hold a layer's two populations, the fresh paint's then the paint already there's; every scratch texture is
-// box-local.
-const flowWgsl = (layers: number, movedWgsl: string, holdWgsl: string) => /* wgsl */ `
+// box-local. A pixel \`p\` is a stage texel; grids and holds read its painting point.
+const flowWgsl = (layers: number, movedWgsl: string, holdWgsl: string, stage: StampStage) => /* wgsl */ `
+${stampStageWgsl(stage)}
 ${FLOW_PASS.wgsl}
 ${STAMP_WET_FLOW_WGSL}
 ${STAMP_GRID_AT_WGSL}
@@ -106,7 +108,7 @@ fn holdAt(p: vec2i) -> vec4f { return textureLoad(hold, boxLocal(p), 0); }
   let own = washPigmentTotal(laid);
   let there = total - own;
   let open = select(0.0, clamp((washOpen(held) * total - own) / there, 0.0, 1.0), there > 0.0);
-  let at = vec2f(p) + 0.5;
+  let at = stagePoint(p);
   let points = f.size.x * f.size.y;
   let wetness = gridAt(at, f.lattice.xyz, f.size, f.first);
   let workable = gridAt(at, f.lattice.xyz, f.size, f.first + points);
@@ -127,7 +129,7 @@ fn holdAt(p: vec2i) -> vec4f { return textureLoad(hold, boxLocal(p), 0); }
   let p = vec2i(f.origin + id.xy);
   let held = textureLoad(paint, p, f.chunk, 0);
   let landed = textureLoad(footprint, p, 0);
-  let hold = washHold(f.chunk, vec2f(p) + 0.5, landed.ba, f.depth, held);
+  let hold = washHold(f.chunk, stagePoint(p), landed.ba, f.depth, held);
   textureStore(holdOut, id.xy, max(hold, vec4f(${LEAST_HOLD.toFixed(3)})) * max(landed.g, 0.001));
 }
 
@@ -215,12 +217,12 @@ export const STAMP_WET_FLOW_STAGE = {
 } satisfies StampWetStage;
 
 function flowOnDevice(context: StampWetStageContext, flowing: readonly (readonly [CompiledStampDeposit, StampWetLanding])[]): StampLoadedWetStage<StampWetDepositMoment> {
-  const { device, layer, footprint, fresh, grids, wash, paperDepth } = context;
+  const { device, layer, footprint, fresh, grids, wash, paperDepth, stage } = context;
   const transport = stampWetTransportPipelines(device);
   // Compiled per group, its holds being its palette's: groups alike share one.
   const pipelinesFor = new Map<string, FlowPipelines>();
   const pipelinesOf = (deposit: CompiledStampDeposit) => {
-    const layers = wash.layersOf(deposit), code = flowWgsl(layers, wash.movedWgsl(deposit), wash.holdWgsl(deposit));
+    const layers = wash.layersOf(deposit), code = flowWgsl(layers, wash.movedWgsl(deposit), wash.holdWgsl(deposit), stage);
     let found = pipelinesFor.get(code);
     if (!found) {
       const module = device.createShaderModule({ code });

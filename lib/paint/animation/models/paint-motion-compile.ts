@@ -7,14 +7,15 @@
 // apart go in groups of their own.
 
 import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group-motion.ts';
-import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import type { StampGroupGlow, StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampPassDeposits, type CompiledStampGroup, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import type { PaintAnchor, PaintCamera } from './paint-camera.ts';
 import { PAINT_BOIL_WOBBLE, paintBoilWobbleProblem, type PaintBoilWobble } from './paint-boil-displacement.ts';
 import { paintChannelConflicts, type PaintChannelWriter } from './paint-channels.ts';
 import {
-  compilePaintPlayClock, paintNodeClockProblem, paintNodeClockStep, paintPlayClockProblem, paintPlayInterval, sceneSeconds,
-  type CompiledPaintPlayClock, type PaintNodeClock, type PaintPlayClock, type PaintPlayInterval, type PaintSceneStep, type SceneSeconds,
+  compilePaintPlayClock, paintLaneByStart, paintNodeClockProblem, paintNodeClockStep, paintPlayClockProblem, paintPlayInterval, sceneSeconds,
+  type CompiledPaintPlay, type PaintLane, type PaintNodeClock, type PaintPlayClock, type PaintSceneStep, type SceneSeconds,
 } from './paint-clock.ts';
 import {
   paintIdPhase, paintMotionClipLength, paintMotionClipPins, paintMotionClipProblem,
@@ -55,6 +56,15 @@ export type PaintMotionNode<P extends string = string> = {
   readonly pins?: PaintPinRig<P>;
   readonly marks?: PaintMarks<P>;
   readonly clock?: PaintNodeClock;
+  /** Its whole tree's, so set on a root only; canvas when left out. */
+  readonly anchor?: PaintAnchor;
+  /** Its paint must fill the frame wherever the camera goes. */
+  readonly backdrop?: true;
+  /**
+   * The light it gives off, its radius in rest px. Its descendants share it unless they say otherwise (`'none'`): a
+   * character glows as one, and the threshold already picks which of its paint is bright enough.
+   */
+  readonly glow?: StampGroupGlow | 'none';
 };
 
 /** A clip played on a node through its clock; `origin` names it in errors. */
@@ -64,12 +74,6 @@ export type PaintMotionPlay = { readonly target: string; readonly clip: PaintMot
 export function paintMotionPlay<P extends string>(target: PaintMotionNode<P>, clip: PaintMotionClip<NoInfer<P>>, timing: { readonly clock: PaintPlayClock; readonly origin: string }): PaintMotionPlay {
   return { target: target.id, clip, ...timing };
 }
-
-/** A play compiled: its clip, its clock under its node's, and the interval it writes over. */
-export type CompiledPaintPlay<C> = { readonly clip: C; readonly clock: CompiledPaintPlayClock; readonly interval: PaintPlayInterval; readonly origin: string };
-
-/** Plays writing one thing on one node, sorted by start. */
-export type PaintLane<C> = readonly CompiledPaintPlay<C>[];
 
 /** The most poses a live node keeps compiled, least recently drawn given up first. */
 export const PAINT_LIVE_POSES_KEPT = 48;
@@ -82,10 +86,14 @@ export type CompiledPaintMarks =
 
 /**
  * A node checked and compiled. `levels`: its id, then each ancestor's, nearest first. `clock`: its ancestors' steps
- * and its own, outermost first. `box`: its group's painted extent, rest px (null when it paints nothing).
+ * and its own, outermost first. `box`: its group's painted extent, rest px (null when it paints nothing). `anchor`:
+ * its root's. `glow`: its own or its nearest ancestor's, null for none.
  */
 export type CompiledPaintNode = {
   readonly id: string;
+  readonly anchor: PaintAnchor;
+  readonly backdrop: boolean;
+  readonly glow: StampGroupGlow | null;
   readonly group: CompiledStampGroup;
   readonly levels: readonly string[];
   readonly pivot: StampPoint;
@@ -104,6 +112,8 @@ export type CompiledPaintNode = {
 export type PaintMotion = {
   readonly nodes: ReadonlyMap<string, CompiledPaintNode>;
   readonly animationFps: number;
+  /** The camera its plane-anchored nodes are shown through (paint-camera-build.ts); null for a flat scene. */
+  readonly camera: PaintCamera | null;
   /** The last frame asked for: a scene may render one frame's tree twice, and the same t hands back the same state. */
   readonly remembered: { last?: { readonly t: number; readonly state: StampPaintFrameState } };
 };
@@ -146,6 +156,16 @@ function compileMarks(node: PaintMotionNode, group: CompiledStampGroup, problems
   return { kind: 'wobble', every, wobble };
 }
 
+const glowProblem = ({ amount, sigma, threshold }: StampGroupGlow) =>
+  amount >= 0 && Number.isFinite(amount) && sigma > 0 && Number.isFinite(sigma) && threshold >= 0 && threshold <= 1
+    ? null : `its glow needs an amount of 0 or more, a positive sigma and a threshold in 0..1, not ${amount}, ${sigma} and ${threshold}`;
+
+/** The glow `levels` give their first: the nearest that says, `'none'` none. */
+function inheritedGlow(levels: readonly string[], byId: ReadonlyMap<string, PaintMotionNode>): StampGroupGlow | null {
+  const glow = levels.map((id) => byId.get(id)?.glow).find((said) => said !== undefined);
+  return glow && glow !== 'none' && !glowProblem(glow) ? glow : null;
+}
+
 /** Each node's ancestors, nearest first, or the problem with its line. */
 function nodeLevels(node: PaintMotionNode, byId: ReadonlyMap<string, PaintMotionNode>, problems: string[]): string[] {
   const levels = [node.id];
@@ -177,6 +197,9 @@ function compileNodes(painting: CompiledStampPaint, nodes: readonly PaintMotionN
     const levels = nodeLevels(node, byId, problems);
     const clockProblem = node.clock && paintNodeClockProblem(node.clock);
     if (clockProblem) problems.push(`${node.id}: ${clockProblem}`);
+    if (node.anchor !== undefined && node.parent !== undefined) problems.push(`${node.id} sets its anchor, but it hangs from ${node.parent}, whose tree's anchor it takes; anchor its root`);
+    const glow = node.glow && node.glow !== 'none' && glowProblem(node.glow);
+    if (glow) problems.push(`${node.id}: ${glow}`);
     const pins = new Map<string, { pin: CompiledPaintPin; lane: CompiledPaintPlay<PaintPinClip<string>>[] }>();
     for (const [name, pin] of Object.entries(node.pins ?? {})) {
       const problem = paintPinProblem(pin);
@@ -184,7 +207,7 @@ function compileNodes(painting: CompiledStampPaint, nodes: readonly PaintMotionN
       else pins.set(name, { pin: compilePaintPin(pin), lane: [] });
     }
     compiled.set(node.id, {
-      id: node.id, group, levels, pivot: node.pivot ?? { x: 0, y: 0 }, phase: paintIdPhase(node.id),
+      id: node.id, anchor: byId.get(levels.at(-1)!)?.anchor ?? 'canvas', backdrop: node.backdrop === true, glow: inheritedGlow(levels, byId), group, levels, pivot: node.pivot ?? { x: 0, y: 0 }, phase: paintIdPhase(node.id),
       box: paintGroupPaintedBox(group), revealEnd: paintGroupRevealEnd(group),
       clock: levels.toReversed().flatMap((id) => { const clock = byId.get(id)?.clock; return clock && !paintNodeClockProblem(clock) ? [paintNodeClockStep(clock)] : []; }),
       marks: compileMarks(node, group, problems),
@@ -222,8 +245,6 @@ function filePlay(node: MutableNode, play: PaintMotionPlay, writers: PaintChanne
   }
 }
 
-const byStart = <C>(lane: PaintLane<C>) => lane.toSorted((a, b) => a.interval.start - b.interval.start);
-
 /**
  * `nodes` and `plays` checked and compiled over `painting`. Problems: a node that isn't one of its groups, nodes that
  * don't make a tree, pins that can't weigh paint, a boil that can fold or can't re-seed, plays on missing nodes or
@@ -243,8 +264,8 @@ export function compilePaintMotion(painting: CompiledStampPaint, o: { nodes: rea
   problems.push(...paintChannelConflicts(writers));
   const sorted = new Map([...nodes].map(([id, node]): [string, CompiledPaintNode] => [id, {
     ...node,
-    pins: new Map([...node.pins].map(([name, { pin, lane }]) => [name, { pin, lane: byStart(lane) }])),
-    sway: byStart(node.sway), flutter: byStart(node.flutter), place: byStart(node.place),
+    pins: new Map([...node.pins].map(([name, { pin, lane }]) => [name, { pin, lane: paintLaneByStart(lane) }])),
+    sway: paintLaneByStart(node.sway), flutter: paintLaneByStart(node.flutter), place: paintLaneByStart(node.place),
   }]));
-  return { nodes: sorted, animationFps: o.animationFps, remembered: {} };
+  return { nodes: sorted, animationFps: o.animationFps, camera: null, remembered: {} };
 }

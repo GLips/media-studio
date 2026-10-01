@@ -13,13 +13,13 @@ import { STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL } from '#l
 import { STAMP_FLOOD_FRONT_SHARE_WGSL } from '#lib/paint/painting/models/stamp-fill.ts';
 import { STAMP_PAINT_FIELD_SHARE } from '#lib/paint/painting/models/stamp-paint-field.ts';
 import { stampPassDeposits, type CompiledStampDeposit, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
-import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { STAMP_WET_LAND_WGSL } from '#lib/paint/painting/models/stamp-wet-landing.ts';
 import { STAMP_WET_LIFT_WGSL } from '#lib/paint/painting/models/stamp-wet-lift.ts';
 import { STAMP_GRID_AT_WGSL, STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL } from '#lib/paint/painting/models/stamp-region.ts';
 import { STAMP_AREA_COVERAGE_WGSL } from '#lib/paint/painting/models/stamp-area.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { compileStampWetness } from '#lib/paint/painting/models/stamp-wetness.ts';
+import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { createStampPaintDevice } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import { STAMP_WET_FLOW_STAGE } from '#lib/paint/painting/studio/stamp-wet-flow.ts';
 import { STAMP_BLOOM_STAGE } from '#lib/paint/painting/studio/stamp-wet-bloom.ts';
@@ -28,8 +28,8 @@ import { STAMP_WET_STAGES, type StampWetStageContext } from '#lib/paint/painting
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampWashMovedWgsl } from '#lib/paint/painting/studio/stamp-paint-pigment-compositor.ts';
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
-import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
+import { createStampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
+import { createStampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import { checkStampGateHalfPixel, stampGateHalfPixelPainting } from '#lib/paint/gate/models/stamp-gate-half-pixel.ts';
 import { STAMP_GATE_BEND, stampGateBendPainting } from '#lib/paint/gate/models/stamp-gate-bend.ts';
 import { checkStampGateLive, STAMP_GATE_LIVE_POSE, stampGateLivePainting, stampGateLiveState } from '#lib/paint/gate/models/stamp-gate-live.ts';
@@ -45,6 +45,11 @@ import {
   checkStampGateFlow, STAMP_GATE_FLOW_SIZE, stampGateFlowCase, stampGateFlowLayer, stampGateFlowPainting, stampGateHalfBits, stampGateHalfValue,
 } from '../models/stamp-gate-flow.ts';
 import { stampGatePrivatePainting, type StampGatePrivateCase } from '../models/stamp-gate-private-cases.ts';
+import { drawn, drawnImages, gateRenderer, withGateRenderer, withGateSurface } from './stamp-gate-page-surface.ts';
+import { checkStampGateStageCase } from './stamp-gate-stage-page.ts';
+import {
+  checkStampGateOutsideLayer, STAMP_GATE_OUTSIDE_IDS, STAMP_GATE_OUTSIDE_SLOT, stampGateOutsideContent, stampGateOutsideKind, stampGateOutsidePainting,
+} from '../models/stamp-gate-outside-layer.ts';
 import { checkStampGateRegion, stampGateRegionPaintings, type StampGateRegionId } from '../models/stamp-gate-regions.ts';
 import {
   checkStampGateRimStrength, checkStampGateStripe, STAMP_GATE_RIM_STRENGTHS, STAMP_GATE_STRIPE_SIZE, stampGateStripeCase, stampGateStripeLayer, stampGateStripePainting,
@@ -54,7 +59,7 @@ import {
   checkStampGateBloomed, checkStampGateFenced, checkStampGateRimmed, checkStampGateUnlined, checkStampGateUnrimmed, checkStampGateUnlipped, checkStampGateLipped, checkStampGateLifted, checkStampGateSet, checkStampGateSpread, stampGateLastGroupPigments, stampGateWashCase,
 } from '../models/stamp-gate-washes.ts';
 import { checkStampGateConserved, type StampGateWashCheck } from '../models/stamp-gate-layer.ts';
-import { stampGatePainting, stampGateTracePainting, type StampGateImage, type StampGatePainting } from '../models/stamp-gate-paintings.ts';
+import { stampGatePainting, stampGateTracePainting, type StampGatePainting } from '../models/stamp-gate-paintings.ts';
 
 const WORKGROUP = 64;
 
@@ -122,49 +127,10 @@ async function runStampGateFormulas(grids: readonly PageGrid[]): Promise<number[
   }
 }
 
-/** A grey image as a PNG data URL, lossless, so the GPU samples the bytes drawn. */
-function imageUrl({ size, pixels }: StampGateImage): string {
-  const canvas = Object.assign(document.createElement('canvas'), { width: size, height: size });
-  const context = canvas.getContext('2d')!, image = context.createImageData(size, size);
-  pixels.forEach((v, i) => image.data.set([v, v, v, 255], i * 4));
-  context.putImageData(image, 0, 0);
-  return canvas.toDataURL('image/png');
-}
-
-/** A surface of its own `width` × `height`, its images at `url`, handed to `use` with what reads its frame; disposed after. */
-async function withGateSurface<T>({ width, height }: { width: number; height: number }, url: (file: string) => string, use: (surface: StampPaintSurface, frame: () => Uint8ClampedArray) => Promise<T>): Promise<T> {
-  const canvas = Object.assign(document.createElement('canvas'), { width, height });
-  const surface = await createStampPaintSurface({ canvas, width, height }, ({ file }) => url(file));
-  const frame = () => {
-    const context = Object.assign(document.createElement('canvas'), { width, height }).getContext('2d')!;
-    context.drawImage(canvas, 0, 0);
-    return context.getImageData(0, 0, width, height).data;
-  };
-  try {
-    return await use(surface, frame);
-  } finally {
-    surface.dispose();
-  }
-}
-
-const gateRenderer = ({ painting }: Omit<StampGatePainting, 'images'>, surface: StampPaintSurface, wetStages = STAMP_WET_STAGES) =>
-  createStampPaintRenderer(surface, painting, { wetStages });
-
-/** `gate` on a renderer and surface of its own, its images at `url`, handed to `use`; disposed after. */
-const withGateRenderer = <T,>(
-  gate: Omit<StampGatePainting, 'images'>, url: (file: string) => string, use: (renderer: StampPaintRenderer, frame: () => Uint8ClampedArray) => Promise<T>,
-  wetStages = STAMP_WET_STAGES,
-) => withGateSurface(gate, url, async (surface, frame) => use(await gateRenderer(gate, surface, wetStages), frame));
-
-const drawnImages = (gate: StampGatePainting) => {
-  const urls = Object.fromEntries(Object.entries(gate.images).map(([file, image]) => [file, imageUrl(image)]));
-  return (file: string) => urls[file];
-};
-
 /** `gate` drawn at its time: its frame as RGB bytes, row by row, in base64. */
 function paintedFrame(gate: Omit<StampGatePainting, 'images'>, url: (file: string) => string): Promise<string> {
   return withGateRenderer(gate, url, async (renderer, frame) => {
-    await renderer.draw(gate.t, gate.frameAt?.(gate.t));
+    await renderer.draw({ t: gate.t, state: gate.frameAt?.(gate.t) });
     await renderer.finish();
     const rgba = frame(), rgb = new Uint8Array(gate.width * gate.height * 3);
     for (let i = 0; i < gate.width * gate.height; i++) rgb.set(rgba.subarray(i * 4, i * 4 + 3), i * 3);
@@ -209,10 +175,10 @@ async function traceStampGate(): Promise<{ worst: number; mean: number; ordinary
   const { width, height } = gate;
   return withGateRenderer(gate, drawnImages(gate), async (renderer, frame) => {
     const deposits = gate.painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass)));
-    const traces = await renderer.trace(gate.t, deposits.map((deposit) => ({ deposit, crop: { x: 0, y: 0, w: width, h: height } })));
+    const traces = await renderer.trace({ t: gate.t }, deposits.map((deposit) => ({ deposit, crop: { x: 0, y: 0, w: width, h: height } })));
     await renderer.finish();
     const traced = frame();
-    await renderer.draw(gate.t);
+    await renderer.draw({ t: gate.t });
     await renderer.finish();
     const ordinary = stampGateFrameDifference(traced, frame());
     let worst = 0, sum = 0;
@@ -227,13 +193,6 @@ async function traceStampGate(): Promise<{ worst: number; mean: number; ordinary
   });
 }
 
-/** `renderer`'s frame at `t` in frame state `state`, once the GPU has drawn it. */
-async function drawn(renderer: StampPaintRenderer, frame: () => Uint8ClampedArray, t: number, state?: StampPaintFrameState) {
-  await renderer.draw(t, state);
-  await renderer.finish();
-  return frame();
-}
-
 /**
  * Wash case `id`: its frames the same whichever came first, and, against the same painting without the ops under
  * test, its pigment conserved or its lift bounded, read from the last group's layer at its end.
@@ -242,7 +201,7 @@ async function checkStampGateWash(id: string): Promise<StampGateWashCheck[]> {
   const washCase = stampGateWashCase(id), { subject, mid } = washCase, url = drawnImages(subject);
   const end = subject.t;
   const painted = await withGateRenderer(subject, url, async (renderer, frame) => ({
-    end: await drawn(renderer, frame, end), mid: await drawn(renderer, frame, mid), again: await drawn(renderer, frame, end), layer: await renderer.readLayer(end),
+    end: await drawn(renderer, frame, end), mid: await drawn(renderer, frame, mid), again: await drawn(renderer, frame, end), layer: await renderer.readLayer({ t: end }),
   }));
   const fresh = await withGateRenderer(subject, url, (renderer, frame) => drawn(renderer, frame, mid));
   const ends = stampGateFrameDifference(painted.end, painted.again), mids = stampGateFrameDifference(fresh, painted.mid);
@@ -255,15 +214,15 @@ async function checkStampGateWash(id: string): Promise<StampGateWashCheck[]> {
   const pigments = stampGateLastGroupPigments(subject);
   if (washCase.property === 'fenced') return [...checks, checkStampGateFenced(id, pigments, painted.layer, washCase.fenced)];
   if (washCase.property === 'unlined') {
-    const withoutBlooms = await withGateRenderer(subject, url, (renderer) => renderer.readLayer(end), STAMP_WET_STAGES.filter((stage) => stage.id !== 'bloom'));
+    const withoutBlooms = await withGateRenderer(subject, url, (renderer) => renderer.readLayer({ t: end }), { wetStages: STAMP_WET_STAGES.filter((stage) => stage.id !== 'bloom') });
     return [...checks, checkStampGateUnlined(id, pigments, painted.layer, withoutBlooms)];
   }
   if (washCase.property === 'unrimmed') {
-    const withoutRim = await withGateRenderer(subject, url, (renderer) => renderer.readLayer(end), STAMP_WET_STAGES.filter((stage) => stage.id !== 'drying-rim'));
+    const withoutRim = await withGateRenderer(subject, url, (renderer) => renderer.readLayer({ t: end }), { wetStages: STAMP_WET_STAGES.filter((stage) => stage.id !== 'drying-rim') });
     return [...checks, checkStampGateUnrimmed(id, pigments, painted.layer, withoutRim)];
   }
   if (stampGateLastGroupPigments(washCase.without).join() !== pigments.join()) throw new Error(`stamp gate: ${id} and its painting without the ops under test lay different pigments`);
-  const without = await withGateRenderer(washCase.without, url, (renderer) => renderer.readLayer(end));
+  const without = await withGateRenderer(washCase.without, url, (renderer) => renderer.readLayer({ t: end }));
   if (washCase.property === 'conserved') return [...checks, checkStampGateConserved(id, pigments, painted.layer, without)];
   if (washCase.property === 'rimmed') return [...checks, checkStampGateRimmed(id, pigments, painted.layer, without)];
   if (washCase.property === 'bloomed') return [...checks, checkStampGateBloomed(id, pigments, painted.layer, without)];
@@ -271,7 +230,7 @@ async function checkStampGateWash(id: string): Promise<StampGateWashCheck[]> {
   if (washCase.property === 'lipped') return [...checks, checkStampGateLipped(id, pigments, painted.layer, without)];
   if (washCase.property === 'spread') return [...checks, checkStampGateSpread(id, pigments, painted.layer, without)];
   if (washCase.property === 'set') {
-    const layerOf = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), (renderer) => renderer.readLayer(end));
+    const layerOf = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), (renderer) => renderer.readLayer({ t: end }));
     const wet = { subject: await layerOf(washCase.fresh.subject), without: await layerOf(washCase.fresh.without) };
     return [...checks, checkStampGateSet(id, pigments, washCase.rewetting, { subject: painted.layer, without }, wet)];
   }
@@ -280,6 +239,21 @@ async function checkStampGateWash(id: string): Promise<StampGateWashCheck[]> {
 
 /** Frame `k`'s time at the animations' frame rate. */
 const frameAt = (k: number) => k / STAMP_GATE_ANIMATION_FPS;
+/** Each deposit's traced coverage of `gate` at its time, on a renderer of its own. */
+const tracedCoverages = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), async (renderer) => {
+  const deposits = gate.painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass)));
+  const traces = await renderer.trace({ t: gate.t }, deposits.map((deposit) => ({ deposit, crop: { x: 0, y: 0, w: gate.width, h: gate.height } })));
+  return traces.map((trace) => trace.coverage);
+});
+/** The coverage channel of `gate`'s last group's layer at its time, drawn with `stages`. */
+async function lastLayerCoverage(gate: StampGatePainting, stages = STAMP_WET_STAGES) {
+  const { layers, values } = await withGateRenderer(gate, drawnImages(gate), (renderer) => renderer.readLayer({ t: gate.t }), { wetStages: stages });
+  return Float32Array.from({ length: values.length / 4 / layers }, (_, i) => values[i * 4]);
+}
+/** `gate`'s frame at its time, on a renderer of its own. */
+const frameAtItsTime = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), (renderer, frame) => drawn(renderer, frame, gate.t));
+/** `gate`'s first frame, in its frame state then, on a renderer of its own. */
+const firstFrame = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), (renderer, frame) => drawn(renderer, frame, 0, gate.frameAt?.(0)));
 
 /** Animation case `id` (stamp-gate-animation.ts), drawn frame by frame on one renderer and held to its property. */
 async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> {
@@ -307,22 +281,13 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
       await [0, 1, 2].reduce<Promise<Uint8ClampedArray[]>>(async (done, k) => [...await done, await drawn(renderer, frame, frameAt(k))], Promise.resolve([]))));
   }
   if (id === 'animation/sunset') {
-    const traced = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), async (renderer) => {
-      const deposits = gate.painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass)));
-      const traces = await renderer.trace(gate.t, deposits.map((deposit) => ({ deposit, crop: { x: 0, y: 0, w: gate.width, h: gate.height } })));
-      return traces.map((trace) => trace.coverage);
-    });
-    return checkStampGateSunset(await traced(stampGateSunsetPainting('day')), await traced(stampGateSunsetPainting('dusk')));
+    return checkStampGateSunset(await tracedCoverages(stampGateSunsetPainting('day')), await tracedCoverages(stampGateSunsetPainting('dusk')));
   }
   if (id === 'animation/effects-sunset') {
     const effectless = STAMP_WET_STAGES.filter((stage) => stage.id !== 'bloom' && stage.id !== 'drying-rim');
-    const coverage = async (gate: StampGatePainting, stages = STAMP_WET_STAGES) => {
-      const { layers, values } = await withGateRenderer(gate, drawnImages(gate), (renderer) => renderer.readLayer(gate.t), stages);
-      return Float32Array.from({ length: values.length / 4 / layers }, (_, i) => values[i * 4]);
-    };
     const hours = await STAMP_GATE_EFFECTS_SUNSET_HOURS.reduce<Promise<{ on: Float32Array; off: Float32Array }[]>>(async (done, hour) => {
       const before = await done, gate = stampGateEffectsSunsetPainting(hour);
-      return [...before, { on: await coverage(gate), off: await coverage(gate, effectless) }];
+      return [...before, { on: await lastLayerCoverage(gate), off: await lastLayerCoverage(gate, effectless) }];
     }, Promise.resolve([]));
     return checkStampGateEffectsSunset(hours);
   }
@@ -338,7 +303,6 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
       });
     });
   }
-  const firstFrame = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), (renderer, frame) => drawn(renderer, frame, 0, gate.frameAt?.(0)));
   const drift = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), async (renderer, frame) => {
     const frames = await STAMP_GATE_DRIFT_FRAMES.reduce<Promise<{ frame: number; rgba: Uint8ClampedArray }[]>>(
       async (done, k) => [...await done, { frame: k, rgba: await drawn(renderer, frame, frameAt(k), gate.frameAt?.(frameAt(k))) }], Promise.resolve([]));
@@ -408,7 +372,7 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
       const frame = texture('rgba8unorm');
       const surface = await createStampPaintSurface({ device, frame }, ({ file }) => url(file));
       const renderer = await gateRenderer(gate, surface);
-      await renderer.draw(frameAt(2));
+      await renderer.draw({ t: frameAt(2) });
       const lent = await readGateTexture(device, frame);
       surface.dispose();
       // An error scope the surface left open would catch this one's error, and the pop below would report none.
@@ -439,8 +403,8 @@ async function runStampGateStage(
   id: string, painting: CompiledStampPaint, medium: PaintMedium, landed: CompiledStampDeposit, written: StampGateWritten,
   run: (context: StampWetStageContext, encoder: GPUCommandEncoder) => void,
 ): Promise<{ before: Float32Array; after: Float32Array }> {
-  const { width, height } = written, layers = written.layer.length;
-  const wetness = compileStampWetness(painting, () => medium, { width, height });
+  const { width, height } = written, layers = written.layer.length, stage = stampStage({ width, height });
+  const wetness = compileStampWetness(painting, () => medium, stage);
   const device = await createStampPaintDevice();
   try {
     const texture = (count: number, arrays: readonly Float32Array[]) => {
@@ -466,7 +430,7 @@ async function runStampGateStage(
     device.queue.writeBuffer(gridBuffer, 0, Float32Array.from([...grids.wetness, ...grids.workable, ...grids.settled]));
     device.pushErrorScope('validation');
     const context: StampWetStageContext = {
-      device, painting, wetness, width, height, layer: arrayViews(layer),
+      device, painting, wetness, stage, layer: arrayViews(layer),
       // A hold rippling across the case, so paint is held to its sums however unevenly the paper takes it.
       wash: { layersOf: () => layers, movedWgsl: () => stampWashMovedWgsl(layers, medium.body), holdWgsl: () => STAMP_GATE_FLOW_HOLD_WGSL },
       footprint: { texture: footprint, view: footprint.createView({ dimension: '2d' }) },
@@ -542,12 +506,42 @@ async function checkStampGateRegionCase(id: StampGateRegionId): Promise<StampGat
 /** Media case `id` (stamp-gate-media.ts): the painting of three media against each group painted alone in its own. */
 async function checkStampGateMediaCase(id: string): Promise<StampGateWashCheck[]> {
   if (id !== 'media/mixed') throw new Error(`stamp gate: no media case ${JSON.stringify(id)}; the gate has ${STAMP_GATE_MEDIA_IDS.join(', ')}`);
-  const frameOf = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), (renderer, frame) => drawn(renderer, frame, gate.t));
   return checkStampGateMedia({
-    together: await frameOf(stampGateMediaPainting(STAMP_GATE_MEDIA_GROUPS)),
-    alone: { wash: await frameOf(stampGateMediaPainting(['wash'], { alone: true })), body: await frameOf(stampGateMediaPainting(['body'], { alone: true })), wax: await frameOf(stampGateMediaPainting(['wax'], { alone: true })) },
-    bare: await frameOf(stampGateMediaPainting([])),
-    glazed: await frameOf(stampGateMediaPainting(STAMP_GATE_MEDIA_GROUPS, { bodyIn: 'watercolour' })),
+    together: await frameAtItsTime(stampGateMediaPainting(STAMP_GATE_MEDIA_GROUPS)),
+    alone: { wash: await frameAtItsTime(stampGateMediaPainting(['wash'], { alone: true })), body: await frameAtItsTime(stampGateMediaPainting(['body'], { alone: true })), wax: await frameAtItsTime(stampGateMediaPainting(['wax'], { alone: true })) },
+    bare: await frameAtItsTime(stampGateMediaPainting([])),
+    glazed: await frameAtItsTime(stampGateMediaPainting(STAMP_GATE_MEDIA_GROUPS, { bodyIn: 'watercolour' })),
+  });
+}
+
+/**
+ * Outside layer case `id` (stamp-gate-outside-layer.ts), on one surface: the painting with no outside layer; content
+ * a, b, a and a hidden on one renderer, its texture written before each frame; and b on a renderer of its own.
+ */
+async function checkStampGateOutsideCase(id: string): Promise<StampGateWashCheck[]> {
+  const kind = stampGateOutsideKind(id);
+  if (!kind) throw new Error(`stamp gate: no outside layer case ${JSON.stringify(id)}; the gate has ${STAMP_GATE_OUTSIDE_IDS.join(', ')}`);
+  const gate = stampGateOutsidePainting(kind), { width, height } = gate;
+  const halves = { a: Uint16Array.from(stampGateOutsideContent('a'), stampGateHalfBits), b: Uint16Array.from(stampGateOutsideContent('b'), stampGateHalfBits) };
+  return withGateSurface(gate, drawnImages(gate), async (surface, frame) => {
+    const plainRenderer = await gateRenderer(gate, surface), plain = await drawn(plainRenderer, frame, gate.t);
+    plainRenderer.dispose();
+    const texture = surface.device.createTexture({ size: [width, height], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+    const framesOf = async (order: readonly { content: 'a' | 'b'; visibility: number }[]) => {
+      const renderer = await createStampPaintRenderer(surface, gate.painting, { outsideLayers: [{ ...STAMP_GATE_OUTSIDE_SLOT, texture }] });
+      const frames = await order.reduce<Promise<Uint8ClampedArray[]>>(async (done, { content, visibility }) => {
+        const before = await done;
+        surface.device.queue.writeTexture({ texture }, halves[content], { bytesPerRow: width * 8 }, [width, height]);
+        await renderer.draw({ t: gate.t, outside: new Map([[STAMP_GATE_OUTSIDE_SLOT.id, { content, visibility }]]) });
+        await renderer.finish();
+        return [...before, frame()];
+      }, Promise.resolve([]));
+      renderer.dispose();
+      return frames;
+    };
+    const [a, b, aAgain, hidden] = await framesOf([{ content: 'a', visibility: 1 }, { content: 'b', visibility: 1 }, { content: 'a', visibility: 1 }, { content: 'a', visibility: 0 }]);
+    const [bFresh] = await framesOf([{ content: 'b', visibility: 1 }]);
+    return checkStampGateOutsideLayer(kind, { plain, a, b, aAgain, hidden, bFresh });
   });
 }
 
@@ -561,5 +555,5 @@ async function stampGateAdapter(): Promise<string> {
 
 Object.assign(globalThis, {
   runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, checkStampGateAnimation, checkStampGateFlowCase, checkStampGateStripeCase, checkStampGateRegionCase,
-  checkStampGateMediaCase, stampGateAdapter,
+  checkStampGateMediaCase, checkStampGateOutsideCase, checkStampGateStageCase, stampGateAdapter,
 });

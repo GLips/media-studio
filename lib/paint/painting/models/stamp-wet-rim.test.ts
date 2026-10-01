@@ -6,6 +6,7 @@ import { compileStampPaintRecipe } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment, StampPassageScope } from './stamp-paint-recipe-types.ts';
 import { compileStampWetness } from './stamp-wetness.ts';
+import { stampStage } from './stamp-stage.ts';
 import { stampGridAt } from './stamp-region.ts';
 import { stampDryingWettest } from './stamp-wet-rim.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
@@ -35,7 +36,7 @@ const washOf = (body: (wash: StampPassageScope) => void) =>
 
 /** The wetness of `painting` in watercolour, and its one wash's dryings. */
 function dried(painting: ReturnType<typeof washOf>) {
-  const wetness = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, { width: 800, height: 400 });
+  const wetness = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, stampStage({ width: 800, height: 400 }));
   return { wetness, dryings: wetness.washes.get(painting.groups[0].passes[0])!.dryings };
 }
 

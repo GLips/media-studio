@@ -9,6 +9,7 @@ import { assertStampWetEffects, stampWetReport, stampWetReportWarnings } from '.
 import { compileStampWetness } from './stamp-wetness.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { stampBloom, stampCharge, stampBackrun } from './stamp-wet-techniques.ts';
+import { stampStage } from './stamp-stage.ts';
 
 const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 
@@ -37,7 +38,7 @@ function reported(body: (wash: StampPassageScope) => void) {
     wash.fill('sky', { brush, size: 40, application: { kind: 'flood' }, region: sky, well: { paint: { kind: 'color', color: '#4466aa' } }, reveal: { at: 0, over: 0 } });
     body(wash);
   }))));
-  return stampWetReport(painting, compileStampWetness(painting, () => medium, { width: 800, height: 400 }));
+  return stampWetReport(painting, compileStampWetness(painting, () => medium, stampStage({ width: 800, height: 400 })));
 }
 
 test('a bloom into damp paint and a backrun along a junction act; the report gives their waits and the drying', () => {

@@ -58,11 +58,11 @@ const assetKey = ({ style, pack, file }: StampBrushAsset) => `${style}/${pack}/$
 type StampDescriptorValue = GPUShaderModule | string | number | boolean | null | undefined | readonly StampDescriptorValue[] | { [field: string]: StampDescriptorValue };
 
 /**
- * Where a surface draws: a canvas of its own `width` × `height`, on a device the surface makes and destroys; or `frame`
- * on a lent `device` (createStampPaintDevice's, which three.js may share), which the surface never destroys, freeing
- * only what it made on it. `frame` gets the canvas's colour, gamma-encoded and opaque, dithered only into bytes.
+ * Where a surface draws: a canvas of its own `width` × `height`, on a device it makes unless lent one (`device`); or
+ * `frame` on a lent `device`. A lent device (createStampPaintDevice's, which three.js may share) is never destroyed
+ * here. `frame` gets the canvas's colour, gamma-encoded and opaque, dithered only into bytes.
  */
-export type StampPaintSurfaceOutput = { canvas: HTMLCanvasElement; width: number; height: number } | { device: GPUDevice; frame: GPUTexture };
+export type StampPaintSurfaceOutput = { canvas: HTMLCanvasElement; width: number; height: number; device?: GPUDevice } | { device: GPUDevice; frame: GPUTexture };
 
 /**
  * The output pass writes encoded colour to one 2D image it renders to: an -srgb format would encode it twice, and an
@@ -79,7 +79,8 @@ function checkStampPaintFrameTexture(frame: GPUTexture) {
 /** A surface drawing to `output`, fetching each image from `imageUrl`. */
 export async function createStampPaintSurface(output: StampPaintSurfaceOutput, imageUrl: (asset: StampBrushAsset) => string): Promise<StampPaintSurface> {
   if ('frame' in output) checkStampPaintFrameTexture(output.frame);
-  const raw = 'device' in output ? output.device : await createStampPaintDevice();
+  const lent = output.device !== undefined;
+  const raw = output.device ?? await createStampPaintDevice();
   let lost: string | null = null;
   void raw.lost.then(({ reason, message }) => (lost ??= reason === 'destroyed' ? null : message));
 
@@ -101,7 +102,7 @@ export async function createStampPaintSurface(output: StampPaintSurfaceOutput, i
   // Everything the surface makes, freed on dispose: on a lent device, that's all it may free.
   const surfaceGpu = stampPaintGpuScope(cachingStampPaintDevice(raw));
   const { device } = surfaceGpu;
-  const { frameTexture, format, release } = 'frame' in output ? lentOutput(output.frame) : await canvasOutput(raw, output.canvas, checked);
+  const { frameTexture, format, release } = 'frame' in output ? lentOutput(output.frame) : await canvasOutput(raw, lent, output.canvas, checked);
   const { width, height } = 'frame' in output ? output.frame : output;
 
   const images = new Map<string, Promise<StampPaintImage>>();
@@ -173,14 +174,18 @@ type StampPaintSurfaceTarget = { frameTexture: () => GPUTexture; format: GPUText
 
 const lentOutput = (frame: GPUTexture): StampPaintSurfaceTarget => ({ frameTexture: () => frame, format: frame.format, release: () => {} });
 
-async function canvasOutput(raw: GPUDevice, canvas: HTMLCanvasElement, checked: <T>(what: string, work: () => T) => Promise<T>): Promise<StampPaintSurfaceTarget> {
+/** `canvas` configured on `raw`, which the surface destroys with it unless it's `lent`. */
+async function canvasOutput(raw: GPUDevice, lent: boolean, canvas: HTMLCanvasElement, checked: <T>(what: string, work: () => T) => Promise<T>): Promise<StampPaintSurfaceTarget> {
   // SAFETY: the canvas is the surface's alone, so it has no other kind of context to refuse 'webgpu' for.
   const context = canvas.getContext('webgpu') as GPUCanvasContext;
   const format: GPUTextureFormat = 'rgba8unorm';
+  const destroyOwn = () => {
+    if (!lent) raw.destroy();
+  };
   try {
     await checked('configuring the canvas', () => context.configure({ device: raw, format, alphaMode: 'opaque' }));
   } catch (error) {
-    raw.destroy();
+    destroyOwn();
     throw error;
   }
   return {
@@ -188,7 +193,7 @@ async function canvasOutput(raw: GPUDevice, canvas: HTMLCanvasElement, checked: 
     format,
     release: () => {
       context.unconfigure();
-      raw.destroy();
+      destroyOwn();
     },
   };
 }
