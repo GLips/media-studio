@@ -42,12 +42,21 @@ Everything is from `#studio`.
   - A **fill** covers a `region`, reaching its outline, laid by its `application`:
     - `{ kind: 'flood' }`: solid inside, the brush's own edge at the outline, however small a spike. It costs what its
       edge does, not its area.
-    - `{ kind: 'strokes', pattern, spacing?, variation?, hand?, turns? }`: real strokes of the brush, the marks and the
-      paper between them showing. `pattern` is `'shading'`, `'zigzag'`, `'backAndForth'`, `'hatch'`, `'crossHatch'` or
-      `'scribble'`; `spacing` is diameters between rows (over 1 leaves paper); `variation` (0..1, 0.3) is how unevenly
-      a hand lays them. A pattern that turns back (shading, zigzag, back and forth) eases nearly to lifting at each
-      turn (`turns: 'eased'`, the default, as a crayon shades); `turns: 'pressed'` keeps the brush down, for body
-      colour covering a shape to its outline. It costs what its strokes do.
+    - `{ kind: 'strokes', pattern, spacing?, variation?, hand?, extend? }`: real strokes of the brush, the marks and
+      the paper between them showing. `pattern` is an object by `kind`: `'shading'`, `'zigzag'`, `'backAndForth'`,
+      `'hatch'`, `'crossHatch'`, `'scribble'`, `'contour'` or `'guided'`; `spacing` is diameters between rows (over 1
+      leaves paper); `variation` (0..1, 0.3) is how unevenly a hand lays them. A pattern that turns back (shading,
+      zigzag, back and forth) eases nearly to lifting at each turn (`{ kind: 'shading', turns: 'eased' }`, the
+      default, as a crayon shades); `turns: 'pressed'` keeps the brush down, for body colour covering a shape to its
+      outline. It costs what its strokes do.
+    - `{ kind: 'contour' }` rings the shape in closed loops, outline first, each `spacing` inside the last.
+      `{ kind: 'guided', guides }` lays marks that wrap round a form, as cross-contour hatching does: `guides` are a
+      few curves across the shape, in order, all running the same way, each starting and ending outside it; marks
+      are blended between each guide and the next. Crossing or branching guides aren't matched: split the passage.
+    - `extend` (diameters) runs each open mark's ends past the outline, so its taper and lift fall outside and the
+      edge stays crisp and full. The marks then cross the outline: put the pass or wash `within` the same region.
+    - `stampFillMarks(region, diameter, direction, strokes, seed)` gives the marks themselves (each keyed), for when
+      you need them outside a fill.
     - Left out, the brush's media decides: a wet brush washes, a dry one (pencil, crayon) shades. Override it for a
       hatched shadow in watercolour, or a wash of a brush whose media no style declares.
     - `direction` (radians) is the way its rows run, and it reveals across them as `drawnOver` runs; `load` grades how
@@ -93,6 +102,12 @@ Everything is from `#studio`.
     fine.
 - `stampSmoothRegion(points)` turns a few control points into a smooth silhouette; `stampRegionOutline(region)` traces
   its edge.
+- **A rounded form** (an apple, a stone, a cheek): `stampRoundedForm({ outline, light: { direction, elevation },
+  ellipse?, terminator? })` assumes an ellipsoid over the outline (fitted to it unless you give one) and returns
+  `shade` (regions, to glaze), `core` (paths along the shade's inner edge, for the darkest, firmest marks), `lit`
+  (outline stretches facing the light, to soften or lose) and `light(x, y)`, 0..1. `direction` points toward the
+  light in the picture (y down); `elevation` is how far it comes from the viewer (π/2 is frontal and leaves no
+  shade). The ellipsoid is an assumption: check the shade reads right on a form that isn't egg-shaped.
 - `compileStampPaintRecipe(recipe)` once, at scene definition, never in render: a new painting each frame reloads it.
 - **Colour that changes over the scene** (a sunset's sky): key the material rather than recompiling, as `motion` keys
   a group: `material: { kind: 'keys', keys: [{ at: 0.3, material: afternoon }, { at: 3.7, material: dusk }] }`, in

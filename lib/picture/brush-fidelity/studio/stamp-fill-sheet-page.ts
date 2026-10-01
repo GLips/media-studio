@@ -14,12 +14,12 @@ const CELL = { width: 330, height: 300 }, LABEL = 56, DRAWN_OVER = 2;
 
 const APPLICATIONS: readonly { label: string; application: StampFillApplication }[] = [
   { label: 'flood', application: { kind: 'flood' } },
-  { label: 'zigzag', application: { kind: 'strokes', pattern: 'zigzag' } },
-  { label: 'back and forth', application: { kind: 'strokes', pattern: 'backAndForth' } },
-  { label: 'hatch', application: { kind: 'strokes', pattern: 'hatch' } },
-  { label: 'cross-hatch', application: { kind: 'strokes', pattern: 'crossHatch' } },
-  { label: 'scribble', application: { kind: 'strokes', pattern: 'scribble' } },
-  { label: 'shading', application: { kind: 'strokes', pattern: 'shading' } },
+  { label: 'zigzag', application: { kind: 'strokes', pattern: { kind: 'zigzag' } } },
+  { label: 'back and forth', application: { kind: 'strokes', pattern: { kind: 'backAndForth' } } },
+  { label: 'hatch', application: { kind: 'strokes', pattern: { kind: 'hatch' } } },
+  { label: 'cross-hatch', application: { kind: 'strokes', pattern: { kind: 'crossHatch' } } },
+  { label: 'scribble', application: { kind: 'strokes', pattern: { kind: 'scribble' } } },
+  { label: 'shading', application: { kind: 'strokes', pattern: { kind: 'shading' } } },
 ];
 
 /** Each row's fills start drawing at `appliedAt`; the sheet is drawn at DRAWN_OVER, when the first row's are laid. */

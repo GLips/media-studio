@@ -45,7 +45,7 @@ function dryPassagePigment(kit: DryPassageKit, id: string, amount: number): Pain
 const { width: W, height: H } = DRY_PASSAGE_CELL;
 const rect = (x0: number, y0: number, x1: number, y1: number): StampRegion => ({ kind: 'polygon', points: [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }] });
 /** Close hatching, laid unevenly, as the crayon style draws an area (work/styles/crayon/crayon.md). */
-const HATCH = { kind: 'strokes', pattern: 'hatch', spacing: 0.7, variation: 0.6 } as const;
+const HATCH = { kind: 'strokes', pattern: { kind: 'hatch' }, spacing: 0.7, variation: 0.6 } as const;
 /** Each layer's pigment, amount and direction: light to dark, each turned from the one under it. */
 const LAYERS = [
   { pigment: 'yellowOchre', amount: 0.6, direction: -0.55 },
@@ -114,7 +114,7 @@ function burnished(kit: DryPassageKit): StampPaintRecipe {
     hatchLayers(pass, kit, 'layer', rect(16, 30, W - 16, H - 30), 3, true);
     pass.fill('burnished', {
       brush: kit.brushes.stick, diameter: 14, region: rect(W / 2, 30, W - 16, H - 30), direction: 0.2, material: dryPassagePigment(kit, 'ultramarine', 0.45),
-      application: { kind: 'strokes', pattern: 'shading' }, burnish: true,
+      application: { kind: 'strokes', pattern: { kind: 'shading' } }, burnish: true,
     });
   })));
 }
@@ -124,9 +124,9 @@ function fillTurns(kit: DryPassageKit): StampPaintRecipe {
   const swatch = (k: number) => rect(16 + k * 156, 20, 16 + k * 156 + 136, H - 20);
   const material = dryPassagePigment(kit, 'cadmiumRed', 0.55);
   return stampPaintRecipe((paint) => paint.group('fills', { composite: 'opaque' }, (group) => group.pass('fills', {}, (pass) => {
-    pass.fill('zigzag', { brush: kit.brushes.stick, diameter: 16, region: swatch(0), application: { kind: 'strokes', pattern: 'zigzag', spacing: 0.8, variation: 0.4 }, direction: 0.5, material });
-    pass.fill('back-and-forth', { brush: kit.brushes.stick, diameter: 16, region: swatch(1), application: { kind: 'strokes', pattern: 'backAndForth', spacing: 0.8, variation: 0.4 }, direction: 0.5, material });
-    pass.fill('shading', { brush: kit.brushes.stick, diameter: 16, region: swatch(2), application: { kind: 'strokes', pattern: 'shading', variation: 0.6 }, direction: 0.5, material });
+    pass.fill('zigzag', { brush: kit.brushes.stick, diameter: 16, region: swatch(0), application: { kind: 'strokes', pattern: { kind: 'zigzag' }, spacing: 0.8, variation: 0.4 }, direction: 0.5, material });
+    pass.fill('back-and-forth', { brush: kit.brushes.stick, diameter: 16, region: swatch(1), application: { kind: 'strokes', pattern: { kind: 'backAndForth' }, spacing: 0.8, variation: 0.4 }, direction: 0.5, material });
+    pass.fill('shading', { brush: kit.brushes.stick, diameter: 16, region: swatch(2), application: { kind: 'strokes', pattern: { kind: 'shading' }, variation: 0.6 }, direction: 0.5, material });
   })));
 }
 
