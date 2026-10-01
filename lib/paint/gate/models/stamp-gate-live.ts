@@ -54,14 +54,17 @@ export function stampGateLivePainting(pose = { x: 0, y: 0 }): StampGatePainting 
 export const stampGateLiveState = (): StampPaintFrameState => new Map([['sac', { live: { marks: stampGateLivePainting(STAMP_GATE_LIVE_POSE).painting.groups[1], key: 'posed' } }]]);
 
 /**
- * Whether the rest painting with its sac live and posed draws the posed painting's frame (`live` against `posed`), and
- * drawn as written after that, its first frame again (`again` against `rest`), each within a frame's tolerance; and
- * whether the pose moved anything, so the check bites.
+ * Whether the rest painting with its sac live and posed draws the posed painting's frame (`live` against `posed`); drawn
+ * at the same live key again, restored from its checkpoint, exactly that (`held`); and drawn as written after, its
+ * first frame again (`again` against `rest`); and whether the pose moved anything, so the check bites.
  */
-export function checkStampGateLive({ rest, live, again, posed }: { rest: Rgba; live: Rgba; again: Rgba; posed: Rgba }): StampGateWashCheck {
-  const asPosed = stampGateFrameDifference(live, posed), asBefore = stampGateFrameDifference(again, rest), moved = stampGateFrameDifference(rest, posed);
+export function checkStampGateLive({ rest, live, held, again, posed }: { rest: Rgba; live: Rgba; held: Rgba; again: Rgba; posed: Rgba }): StampGateWashCheck {
+  const asPosed = stampGateFrameDifference(live, posed), asHeld = stampGateFrameDifference(held, live);
+  const asBefore = stampGateFrameDifference(again, rest), moved = stampGateFrameDifference(rest, posed);
   return {
-    id: 'animation/live: live marks draw as the painting compiled with them, and leave the painting as written', passed: stampGateFramePasses(asPosed) && stampGateFramePasses(asBefore) && moved.max > 20,
-    detail: `live against compiled posed: max ${asPosed.max}, mean ${asPosed.mean.toFixed(4)}; as written after it against before: max ${asBefore.max}, mean ${asBefore.mean.toFixed(4)}; the pose moves up to ${moved.max} levels (20 or less fails)`,
+    id: 'animation/live: live marks draw as the painting compiled with them, restore as drawn, and leave the painting as written',
+    passed: stampGateFramePasses(asPosed) && asHeld.max === 0 && stampGateFramePasses(asBefore) && moved.max > 20,
+    detail: `live against compiled posed: max ${asPosed.max}, mean ${asPosed.mean.toFixed(4)}; held at its key against live: max ${asHeld.max} (over 0 fails); `
+      + `as written after it against before: max ${asBefore.max}, mean ${asBefore.mean.toFixed(4)}; the pose moves up to ${moved.max} levels (20 or less fails)`,
   };
 }

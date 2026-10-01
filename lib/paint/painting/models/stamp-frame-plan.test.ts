@@ -73,14 +73,16 @@ test('a group warped by its frame state is keyed by its warp\'s key, and its pai
   assert.deepEqual([...at(puffed(1.5)).checkpointSaves(0)].toSorted((a, b) => a - b), [ground, sacPainted]);
 });
 
-test('a live group is drawn from its marks\' key, restored up to, and never kept past', () => {
+test('a live group is kept under its marks\' key, so a frame held at that key restores it', () => {
   const sac = sacPainting(), posed = (y: number) => sacPainting(y).groups[1];
   const live = (y: number): StampPaintFrameState => new Map([['sac', { live: { marks: posed(y), key: `pose ${y}` } }]]);
   const at = (state?: StampPaintFrameState) => stampFramePlan(sac, stampGroupEvents(sac), stampPaintEvents(sac), 1, 30, state);
   const ground = 1, all = 3;
   assert.notEqual(at(live(60)).checkpointKey(all), at(live(70)).checkpointKey(all));
   assert.equal(at(live(60)).checkpointKey(ground), at().checkpointKey(ground));
-  assert.deepEqual([...at(live(60)).checkpointSaves(0)], [ground]);
+  // Saved before it and after it, under its key: a frame on twos holding pose 60 restores the whole painting.
+  assert.deepEqual([...at(live(60)).checkpointSaves(0)].toSorted((a, b) => a - b), [ground, all]);
+  assert.equal(at(live(60)).checkpointKey(all), at(new Map([['sac', { live: { marks: posed(60), key: 'pose 60' } }]])).checkpointKey(all));
   // Marks that aren't the group re-placed can't stand in for it.
   assert.throws(() => at(new Map([['sac', { live: { marks: sacPainting(60, 'b').groups[1], key: 'renamed' } }]])), /isn't sac\/body\/a as written/);
   assert.throws(() => at(new Map([['moon', { visibility: 0.5 }]])), /no group of/);
