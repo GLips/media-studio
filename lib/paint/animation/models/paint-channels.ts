@@ -6,7 +6,7 @@
 // Negative space: an ancestor and its descendant never conflict. Their deformations compose (own first, then each
 // ancestor's), so a throat puffing inside a swaying body is two writers on two targets.
 
-import { paintAnimationFrameAt } from './paint-clock.ts';
+import { paintAnimationFrameAt } from '#lib/paint/painting/models/stamp-group-motion.ts';
 
 /** What an animation writes, each read by its own step of a frame (the contract's composition order). */
 export type PaintChannel = 'reveal' | 'place' | 'deform' | 'boil' | 'color' | 'clock';

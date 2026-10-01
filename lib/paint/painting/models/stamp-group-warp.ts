@@ -50,27 +50,3 @@ export function stampWarpTriangles(map: StampWarpMap, box: { x: number; y: numbe
 export const stampWarpCells = (w: number, h: number, cell: number) => ({
   columns: Math.min(STAMP_WARP_MOST_CELLS, Math.max(1, Math.ceil(w / cell))), rows: Math.min(STAMP_WARP_MOST_CELLS, Math.max(1, Math.ceil(h / cell))),
 });
-
-/**
- * A handle of a warp: a placement about `pivot`, weighted at each rest point by `weight` (0..1). Pins with falloff, a
- * limb about its joint, a sac about the edge it hangs from: each is a handle and its weight.
- */
-export type StampWarpHandle = { placement: StampGroupPlacement; pivot: StampPoint; weight: (rest: StampPoint) => number };
-
-/**
- * The map moving each rest point by its handles' moves, blended by weight (linear blend skinning), the rest of the way
- * held still. Weights summing past 1 at a point are scaled to 1 there.
- */
-export function stampWarpHandles(handles: readonly StampWarpHandle[]): StampWarpMap {
-  return (rest) => {
-    const weights = handles.map(({ weight }) => Math.max(0, weight(rest)));
-    const total = weights.reduce((a, b) => a + b, 0), scale = total > 1 ? 1 / total : 1;
-    let x = rest.x, y = rest.y;
-    handles.forEach(({ placement, pivot }, i) => {
-      const moved = stampGroupSceneFromLayer(placement, rest, pivot), w = weights[i] * scale;
-      x += (moved.x - rest.x) * w;
-      y += (moved.y - rest.y) * w;
-    });
-    return { x, y };
-  };
-}

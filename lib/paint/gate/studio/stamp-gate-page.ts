@@ -31,6 +31,7 @@ import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import { checkStampGateHalfPixel, stampGateHalfPixelPainting } from '#lib/paint/gate/models/stamp-gate-half-pixel.ts';
+import { STAMP_GATE_BEND, stampGateBendPainting } from '#lib/paint/gate/models/stamp-gate-bend.ts';
 import { checkStampGateLive, STAMP_GATE_LIVE_POSE, stampGateLivePainting, stampGateLiveState } from '#lib/paint/gate/models/stamp-gate-live.ts';
 import { checkStampGateMedia, STAMP_GATE_MEDIA_GROUPS, STAMP_GATE_MEDIA_IDS, stampGateMediaPainting } from '#lib/paint/gate/models/stamp-gate-media.ts';
 import {
@@ -143,7 +144,7 @@ async function withGateSurface<T>({ width, height }: { width: number; height: nu
 }
 
 const gateRenderer = ({ painting, paper, mixing }: Omit<StampGatePainting, 'images'>, surface: StampPaintSurface, wetStages = STAMP_WET_STAGES) =>
-  createStampPaintRenderer(surface, painting, paper, mixing, { fps: STAMP_GATE_ANIMATION_FPS, wetStages });
+  createStampPaintRenderer(surface, painting, paper, mixing, { wetStages });
 
 /** `gate` on a renderer and surface of its own, its images at `url`, handed to `use`; disposed after. */
 const withGateRenderer = <T,>(
@@ -342,7 +343,14 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
     const unbent = await (['own', 'ground'] as const).reduce<Promise<{ warped: Uint8ClampedArray; still: Uint8ClampedArray }[]>>(async (done, paper) => [
       ...await done, { warped: await firstFrame(stampGateCutOutPainting(paper, 'still-warp')), still: await firstFrame(stampGateCutOutPainting(paper, 'still')) },
     ], Promise.resolve([]));
-    return checkStampGateWarp({ own: await drift(own), ground: await drift(stampGateCutOutPainting('ground', 'warp')), unbent, width: own.width });
+    // The bend and the other bend on one renderer, the other's lattice and checkpoints warm under another key; then fresh.
+    const bend = stampGateBendPainting(STAMP_GATE_BEND.shift), other = stampGateBendPainting(-STAMP_GATE_BEND.shift);
+    const bent = await withGateRenderer(bend, drawnImages(bend), async (renderer, frame) => {
+      const atFirst = await drawn(renderer, frame, 0, bend.frameAt?.(0)), cached = await drawn(renderer, frame, 0, other.frameAt?.(0));
+      return { bent: atFirst, cached, again: await drawn(renderer, frame, 0, bend.frameAt?.(0)) };
+    });
+    const bendCheck = { still: await firstFrame(stampGateBendPainting(null)), bent: bent.bent, other: { cached: bent.cached, cold: await firstFrame(other) }, again: bent.again };
+    return checkStampGateWarp({ own: await drift(own), ground: await drift(stampGateCutOutPainting('ground', 'warp')), unbent, bend: bendCheck, width: own.width });
   }
   if (id === 'animation/half-pixel') {
     return checkStampGateHalfPixel({ still: await firstFrame(stampGateHalfPixelPainting(false)), shifted: await firstFrame(stampGateHalfPixelPainting(true)) });

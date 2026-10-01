@@ -4,13 +4,10 @@
 // on twos, frozen. A part carries only holds and freezes, so a loop never un-draws its reveal. Steps are data, so a
 // scene's timing can be checked and keyed before anything renders.
 //
-// Negative space: render fps never enters here. A 30 or 60 fps render samples the same held drawings.
+// Negative space: render fps never enters here. A 30 or 60 fps render samples the same held drawings. The clock's
+// rate and frame (PAINT_ANIMATION_FPS, paintAnimationFrameAt) are painting's, which a recipe's boil counts on too.
 
-/** Frames per second of the animation clock unless a scene says otherwise: "on twos" is 2/24 s at any render rate. */
-export const PAINT_ANIMATION_FPS = 24;
-
-/** The animation frame scene-or-local time `t` falls in; the epsilon puts 2/24 s on frame 2, not 1. */
-export const paintAnimationFrameAt = (t: number, animationFps: number) => Math.floor(t * animationFps + 1e-6);
+import { paintAnimationFrameAt } from '#lib/paint/painting/models/stamp-group-motion.ts';
 
 /**
  * One step of a clock, from the time it's given to the time it hands on. `at` places a clip at `start` (a cue plus an

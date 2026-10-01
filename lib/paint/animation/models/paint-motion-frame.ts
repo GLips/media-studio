@@ -13,7 +13,8 @@ import type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.t
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { PAINT_BOIL_WOBBLE, paintBoilDisplacementMap } from './paint-boil-displacement.ts';
 import { paintChannelConflicts, paintStrokeBoilEpoch, type PaintChannelWriter } from './paint-channels.ts';
-import { PAINT_ANIMATION_FPS, paintClockStepProblem, paintClockTimeAt, type PaintClock, type PaintClockStep } from './paint-clock.ts';
+import { paintClockStepProblem, paintClockTimeAt, type PaintClock, type PaintClockStep } from './paint-clock.ts';
+import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { StampGroupFrameState, StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import {
   paintBreatheScaleAt, paintFlutterMap, paintFlutterSpreadAt, paintIdPhase, paintMotionClipDuration, paintMotionClipPins, paintMotionClipProblem,
@@ -267,8 +268,9 @@ function nodeFrame(motion: PaintMotion, node: CompiledNode, t: number): { state:
   const warp = deform && wobble ? { map: (rest: StampPoint) => deform.map(wobble.map(rest)), key: `${wobble.key}|${deform.key}` } : (deform ?? wobble);
   const state: StampGroupFrameState = {
     // A placement at rest is left out: a group handed one is re-laid every frame, though it lies as painted.
-    ...(placement && !paintPlacementIsRest(placement) && { placement, ...(node.pivot && { pivot: node.pivot }) }),
-    ...(boil?.reseed && epoch > 0 && { epoch }),
+    ...(placement && !paintPlacementIsRest(placement) && { lay: { placement, pivot: node.pivot ?? { x: 0, y: 0 } } }),
+    // Always written, epoch 0 too: given marks replace the recipe's boil, which would count epochs of its own.
+    ...(boil?.reseed && { marks: { kind: 'written' as const, epoch } }),
     ...(warp && node.marks !== 'live' && { warp: { map: warp.map, key: warp.key } }),
   };
   if (node.marks !== 'live') return { state };

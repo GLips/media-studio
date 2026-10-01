@@ -3,11 +3,11 @@
 // - drift: a moving group's texture travels with it;
 // - boil: on twos, a group holds within an epoch, changes across them;
 // - boil-wash: a boiling wash flows as far each epoch;
-// - bloom-boil: a bloom holds within an epoch and re-rolls its front at the next;
+// - bloom-boil: a bloom re-rolls its front each epoch;
 // - sunset: two palettes lay the same coverage;
-// - effects-sunset: a bloom and rim change coverage alike each hour;
+// - effects-sunset: bloom and rim change coverage alike each hour;
 // - recolour: keyed paint is the halfway paint halfway, in any order;
-// - cut-out, warp: a group moved or bent carries its paper;
+// - cut-out, warp: moved or bent, a group carries its paper and wet paint, no cached bend another;
 // - half-pixel (stamp-gate-half-pixel.ts): crayon moved half a pixel keeps its light;
 // - knockout: what a group takes from behind moves with it;
 // - live (stamp-gate-live.ts): live marks.
@@ -17,15 +17,16 @@ import { paintMixtureAmounts } from '#lib/paint/materials/models/paint-mixture.t
 import type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-pigment.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { stampLinearDynamics } from '#lib/paint/brush/models/stamp-brush.ts';
-import type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from '#lib/paint/painting/models/stamp-group-motion.ts';
+import { PAINT_ANIMATION_FPS, type StampGroupBoil, type StampGroupMotion, type StampGroupPaper } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { compileStampPaintRecipe, stampPaintRecipe, type StampPaintMaterial, type StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
+import { stampGateBendCarried } from './stamp-gate-bend.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
 import type { StampGateWashCheck } from './stamp-gate-washes.ts';
 
-/** The scene's frame rate the animations are drawn at. */
-export const STAMP_GATE_ANIMATION_FPS = 30;
+/** The frame rate the animations are drawn at: the animation clock's, so a boil on twos repaints every second frame drawn. */
+export const STAMP_GATE_ANIMATION_FPS = PAINT_ANIMATION_FPS;
 /** How far a drifted frame may sit from frame 0 moved as far, in levels: the output's dither. */
 export const STAMP_GATE_DRIFT_TOLERANCE = 1;
 /**
@@ -323,27 +324,35 @@ export function checkStampGateCutOut({ own, ground, width }: {
 }
 
 /**
- * Whether a warped cut-out carries its own paper and not the ground's, as a moved one does (checkStampGateCutOut), and
- * whether a field that moves nothing draws, on either paper, the cut-out left still. A lattice's rest points are
- * interpolated, not exact texel centres, so both hold within the dither, as the drift does.
+ * Whether a warped cut-out carries its own paper, not the ground's (checkStampGateCutOut); a field moving nothing
+ * draws it still; a bend carries its wet paint, bloom and reserve; and a bend drawn after another (that one's lattice
+ * and checkpoints warm) is the bend drawn fresh. Lattice rest points are interpolated, so carrying holds within the dither.
  */
-export function checkStampGateWarp({ own, ground, unbent, width }: {
+export function checkStampGateWarp({ own, ground, unbent, bend, width }: {
   own: { frames: readonly { frame: number; rgba: Rgba }[]; again: Rgba }; ground: { frames: readonly { frame: number; rgba: Rgba }[] };
-  unbent: readonly { warped: Rgba; still: Rgba }[]; width: number;
+  unbent: readonly { warped: Rgba; still: Rgba }[];
+  bend: { still: Rgba; bent: Rgba; other: { cached: Rgba; cold: Rgba }; again: Rgba }; width: number;
 }): StampGateWashCheck {
   const [first, ...rest] = own.frames;
   const drift = Math.max(...rest.map((drawn) => cutOutDrift(first.rgba, drawn, width)));
   const groundDrift = Math.max(...ground.frames.slice(1).map((drawn) => cutOutDrift(ground.frames[0].rgba, drawn, width)));
   const again = mostApart(own.again, first.rgba), unbentApart = Math.max(...unbent.map(({ warped, still }) => mostApart(warped, still)));
+  const carried = stampGateBendCarried(bend.still, bend.bent, width), bendShows = mostApart(bend.bent, bend.still);
+  const cached = mostApart(bend.other.cached, bend.other.cold), bentAgain = mostApart(bend.again, bend.bent);
   const problems = [
     ...(drift > STAMP_GATE_DRIFT_TOLERANCE ? [`its own paper drifts by up to ${drift} levels (past ${STAMP_GATE_DRIFT_TOLERANCE} fails)`] : []),
     ...(groundDrift <= STAMP_GATE_DRIFT_TOLERANCE ? [`on the ground's paper it drifts by only ${groundDrift}, so the check can't bite`] : []),
     ...(again > 0 ? [`frame 0 drawn again after the rest differs by ${again}`] : []),
     ...(unbentApart > STAMP_GATE_DRIFT_TOLERANCE ? [`a field moving nothing differs from no warp by ${unbentApart}`] : []),
+    ...(Math.max(carried.left, carried.right) > STAMP_GATE_DRIFT_TOLERANCE ? [`the bend's wet paint differs from still by ${carried.left} where it isn't moved and ${carried.right} moved back`] : []),
+    ...(bendShows <= STAMP_GATE_DRIFT_TOLERANCE ? [`the bend differs from still by only ${bendShows}, so the check can't bite`] : []),
+    ...(cached > 0 ? [`a bend drawn after another differs from drawn fresh by ${cached}`] : []),
+    ...(bentAgain > 0 ? [`the first bend drawn again after the other differs by ${bentAgain}`] : []),
   ];
   return {
     id: 'animation/warp: it carries its paper, and bending nothing changes nothing', passed: !problems.length,
-    detail: problems.length ? problems.join('; ') : `its own paper drifts within ${drift} (the ground's: ${groundDrift}); frame 0 again identical; a field moving nothing against no warp: max ${unbentApart}`,
+    detail: problems.length ? problems.join('; ') : `its own paper drifts within ${drift} (the ground's: ${groundDrift}); frame 0 again identical; a field moving nothing against no warp: max ${unbentApart}; `
+      + `a bend carries its wet paint and reserve within ${carried.left} unmoved and ${carried.right} moved back (it differs from still by ${bendShows}); after another bend, as drawn fresh: max ${cached}; drawn again: max ${bentAgain}`,
   };
 }
 

@@ -113,11 +113,11 @@ and where paint may land, the rim open wherever it isn't bare paper at the grain
 **Frame state.** Everything about a group that varies with time reaches the renderer as data, per frame:
 `renderer.draw(t, frame)`, and `StampPainting`'s `frame` prop, take a `StampPaintFrameState`
 (`stamp-paint-frame-state.ts`). It holds each group's:
-- placement about its pivot;
-- warp, a rest-to-scene map with a key naming it, sampled on a lattice over the group's painted layer;
-- boil epoch;
-- visibility;
-- for a **live** group, its marks compiled for this frame.
+- `lay`: a placement about its pivot;
+- `warp`: a rest-to-scene map with a key naming it, sampled on a lattice over the group's painted layer;
+- `marks`: `written` at a boil epoch (0 is as written), or `live`, compiled for this frame, with a key naming them;
+- `paintAt`: the time its keyed paint reads;
+- `visibility`: 0 draws none of it.
 
 The compiled painting holds no functions of time, and a checkpoint is keyed by values and those keys, so equal keys
 must mean equal maps and marks. A group's paint lives one of three ways:
@@ -129,7 +129,10 @@ must mean equal maps and marks. A group's paint lives one of three ways:
 - **Boiling:** its rest space is wobbled on a stepped epoch, under its warp.
 
 A moved or bent layer is laid at four texels, then blended, so crayon keeps its tooth under sub-pixel motion. A
-recipe's own `motion` and `boil` are evaluated into the same shape (`stamp-frame-plan.ts`).
+recipe's own `motion`, `boil` (on the 24 fps animation clock, `PAINT_ANIMATION_FPS`) and keyed paint are evaluated
+into the same shape (`stampPaintFrameStateAt`): given marks replace a recipe's boil, and any other field both write is
+an error. Checkpoints go by keys alone: a frame held on twos gives every group the keys it had and restores the whole
+painting; a group laid apart is also saved painted but not laid, which frames laying it otherwise share.
 
 **animation** writes that frame state, and the renderer never sees a scene, a pose or a clock.
 - **Shape sources** (`models/figure/`): a posed primitive figure, a construction of circles and capsules, or SVG paths.

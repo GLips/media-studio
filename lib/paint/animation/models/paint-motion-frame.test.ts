@@ -43,8 +43,8 @@ test('a node bends by its own warp first, then its ancestors\', and placements c
   // Own scale ×2 about the origin, then the parent's 10 px shift: (10, 0) → (20, 0) → (30, 0). The other way, (40, 0).
   const bent = state.warp!.map({ x: 10, y: 0 });
   assert.ok(Math.abs(bent.x - 30) < 1e-6 && Math.abs(bent.y) < 1e-6, `${bent.x}, ${bent.y}`);
-  assert.deepEqual(state.pivot, child.pivot);
-  const placed = stampGroupSceneFromLayer(state.placement!, { x: 7, y: 3 }, state.pivot);
+  assert.deepEqual(state.lay!.pivot, child.pivot);
+  const placed = stampGroupSceneFromLayer(state.lay!.placement, { x: 7, y: 3 }, state.lay!.pivot);
   const twice = stampGroupSceneFromLayer({ x: 5, y: 0, rotation: 0, scale: 3 }, stampGroupSceneFromLayer({ x: 0, y: 0, rotation: Math.PI / 2, scale: 1 }, { x: 7, y: 3 }, child.pivot), parent.pivot);
   assert.ok(Math.hypot(placed.x - twice.x, placed.y - twice.y) < 1e-9);
 });

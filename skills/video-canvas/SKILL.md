@@ -133,7 +133,7 @@ elements, which is what keeps objects from showing through each other.
    - Read `problems` and throw: they name two writers on one pin, a hold that isn't whole frames, or a pose that
      folds.
 5. **Each frame,** `paintMotionFrameAt(motion, s.t)` gives `state` and `live`. Compile each live pose's group, put it
-   into the state as `live: { marks, key }`, and render
+   into the state as `marks: { kind: 'live', marks, key }`, and render
    `<StampPainting painting={painting} style={style} t={s.t} frame={state} />`.
 
 Hold motion on twos (`hold: 2`, at `PAINT_ANIMATION_FPS`) and let the paint-in run on ones. Run `studio repeatable`

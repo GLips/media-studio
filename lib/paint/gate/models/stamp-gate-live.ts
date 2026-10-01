@@ -51,7 +51,7 @@ export function stampGateLivePainting(pose = { x: 0, y: 0 }): StampGatePainting 
 }
 
 /** The frame state drawing the rest painting's sac live, posed STAMP_GATE_LIVE_POSE. */
-export const stampGateLiveState = (): StampPaintFrameState => new Map([['sac', { live: { marks: stampGateLivePainting(STAMP_GATE_LIVE_POSE).painting.groups[1], key: 'posed' } }]]);
+export const stampGateLiveState = (): StampPaintFrameState => new Map([['sac', { marks: { kind: 'live', marks: stampGateLivePainting(STAMP_GATE_LIVE_POSE).painting.groups[1], key: 'posed' } }]]);
 
 /**
  * Whether the rest painting with its sac live and posed draws the posed painting's frame (`live` against `posed`); drawn

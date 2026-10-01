@@ -135,6 +135,9 @@ fn layDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: ve
   }
 }`;
 
+/** The suffix of medium `m`'s own WGSL functions (`incomingAtM0`), which a switch on GROUP_MEDIA reaches. */
+const mediumSuffix = (m: number) => `M${m}`;
+
 /** The compositor for `paint` on `device`: every deposit's components and every group's palette uploaded once. */
 export function stampPigmentCompositor(device: StampPaintDevice, paint: StampPigmentPaint, paperColor: StampPaintColor): StampPaintCompositor {
   const { bands, media } = paint;
@@ -146,19 +149,20 @@ export function stampPigmentCompositor(device: StampPaintDevice, paint: StampPig
   const groupsOrNone = paint.groups.length ? paint.groups : [{ sheetLayer: null, palette: [], medium: 0 }];
   const groupCount = groupsOrNone.length;
   // What a group's medium decides is WGSL with its numbers written in, once per medium (`M<m>` its functions'
-  // suffix), each pass reaching its group's by a switch on GROUP_MEDIA. A painting in one medium has neither.
-  const one = media.length === 1, suffix = (m: number) => (one ? '' : `M${m}`);
-  const groupMediaWgsl = one ? '' : `const GROUP_MEDIA = array<u32, ${groupCount}>(${groupsOrNone.map(({ medium }) => `${medium}u`).join(', ')});`;
-  /** `fn name(params)` calling its group's medium's own, `nameM<m>(args)`: nothing in a painting of one medium. */
-  const dispatched = (name: string, params: string, args: string) => (one ? '' : /* wgsl */ `
+  // suffix), each pass reaching its group's by a switch on GROUP_MEDIA, a painting in one medium as much as in many.
+  const groupMediaWgsl = `const GROUP_MEDIA = array<u32, ${groupCount}>(${groupsOrNone.map(({ medium }) => `${medium}u`).join(', ')});`;
+  /**
+   * `fn name(params)` calling its group's medium's own, `nameM<m>(args)`. WGSL's switch needs a default: no group
+   * reaches it, and it lays as medium 0 rather than nothing.
+   */
+  const dispatched = (name: string, params: string, args: string) => /* wgsl */ `
 fn ${name}(${params}) {
   switch GROUP_MEDIA[paint.group] {
-${media.map((_, m) => `    case ${m}u: { ${name}${suffix(m)}(${args}); }`).join('\n')}
-    default: {}
+${media.map((_, m) => `    case ${m === 0 ? '0u, default' : `${m}u`}: { ${name}${mediumSuffix(m)}(${args}); }`).join('\n')}
   }
-}`);
+}`;
   /** WGSL written once per medium, `perMedium(medium, suffix)`, each in turn. */
-  const eachMedium = (perMedium: (medium: PaintMedium, s: string) => string) => media.map((medium, m) => perMedium(medium, suffix(m))).join('\n');
+  const eachMedium = (perMedium: (medium: PaintMedium, s: string) => string) => media.map((medium, m) => perMedium(medium, mediumSuffix(m))).join('\n');
   const mediumOfGroup = (group: number) => media[paint.groups[group].medium];
 
   const writers = new Map<CompiledStampDeposit, (views: StampUniformViews, t: number) => void>();
@@ -244,16 +248,7 @@ const UNDER_S = array<vec4f, ${count * V}>(${bandsOf('S')});
 const UNDER_STAINS = array<f32, ${count}>(${pigments.length ? pigments.map(({ staining }) => f32(staining)).join(', ') : '0.0'});
 const UNDER_SLOTS = array<u32, ${slotWords.length}>(${slotWords.join(', ')});
 const UNDER_WRITES = array<u32, ${groupCount}>(${groupsOrNone.map((_, g) => (writes[g] ? '1u' : '0u')).join(', ')});
-${one ? /* wgsl */ `fn underpaintOver(i: u32, films: array<vec4f, UNDER_LAYERS>, paper: vec4f) -> vec4f {
-  var absorb = vec4f(0.0);
-  var scatter = vec4f(0.0);
-  for (var p = 0u; p < UNDERPAINT; p++) {
-    let w = films[p / 4u][p % 4u];
-    absorb += w * UNDER_K[p * BAND_VEC4S + i];
-    scatter += w * UNDER_S[p * BAND_VEC4S + i];
-  }
-  return kubelkaMunkOver(kubelkaMunkFilm(absorb, scatter * ${f32(1 + media[0].dryingScatter)}), paper);
-}` : /* wgsl */ `// Each medium's pigments scatter as much more dry as it says.
+// Each medium's pigments scatter as much more dry as it says.
 const UNDER_MEDIA = array<u32, ${count}>(${pigments.length ? pigmentMedia.map((m) => `${m}u`).join(', ') : '0u'});
 fn underpaintOver(i: u32, films: array<vec4f, UNDER_LAYERS>, paper: vec4f) -> vec4f {
   var absorb = vec4f(0.0);
@@ -264,7 +259,7 @@ fn underpaintOver(i: u32, films: array<vec4f, UNDER_LAYERS>, paper: vec4f) -> ve
     scatter[UNDER_MEDIA[p]] += w * UNDER_S[p * BAND_VEC4S + i];
   }
   return kubelkaMunkOver(kubelkaMunkFilm(absorb, ${media.map((medium, m) => `scatter[${m}] * ${f32(1 + medium.dryingScatter)}`).join(' + ')}), paper);
-}`}
+}
 // \`behind\` after lifts leaving \`left\` of a thin film of staining 0, ½ and 1, each staining between them read off the
 // parabola through the three.
 fn liftedUnderpaint(behind: array<vec4f, UNDER_LAYERS>, left: vec3f) -> array<vec4f, UNDER_LAYERS> {
@@ -467,8 +462,8 @@ const PALETTE = ${STAMP_PIGMENT_GROUP_SLOTS * 2 * V}u;
 // Each group's sheet layer, 0 for a group without a knockout, and how many palette slots it fills.
 const SHEETS = array<u32, ${groupCount}>(${groupsOrNone.map(({ sheetLayer }) => `${sheetLayer ?? 0}u`).join(', ')});
 const PALETTE_SIZES = array<u32, ${groupCount}>(${groupsOrNone.map(({ palette }) => `${palette.length}u`).join(', ')});
-${one ? '' : `// How much more each group's film scatters dry than wet, by its medium.
-const GROUP_DRYING = array<f32, ${groupCount}>(${groupsOrNone.map(({ medium }) => f32(1 + media[medium].dryingScatter)).join(', ')});`}
+// How much more each group's film scatters dry than wet, by its medium.
+const GROUP_DRYING = array<f32, ${groupCount}>(${groupsOrNone.map(({ medium }) => f32(1 + media[medium].dryingScatter)).join(', ')});
 ${underpaint ? underpaintWgsl(underpaint) : ''}
 // A group's film glazed over what's there or, opaque, laid over bare paper. A group that knocks out first takes its
 // sheet out of what's there: its reserve covers it with its paper, its lifts thin each pigment behind (liftedUnder).
@@ -504,7 +499,7 @@ ${underpaint ? `  var behind: array<vec4f, UNDER_LAYERS>;
       absorb += amount * palettes[base + s * 2u * BAND_VEC4S + i];
       scatter += amount * palettes[base + (s * 2u + 1u) * BAND_VEC4S + i];
     }
-    let film = kubelkaMunkFilm(absorb * thickness, scatter * ${one ? f32(1 + media[0].dryingScatter) : 'GROUP_DRYING[u.group]'} * thickness);
+    let film = kubelkaMunkFilm(absorb * thickness, scatter * GROUP_DRYING[u.group] * thickness);
     var covered = groupUnderAt(pixel, i);
 ${underpaint ? `    if (lifts) { covered = liftedUnder(i, covered, behind, left, paperReflectance(i, ground)); }
 ` : ''}    // A reserve's edge covers what's there with the group's paper.

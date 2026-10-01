@@ -2,9 +2,9 @@
 // stand for (stamp-paint-events.ts) instead of bare paper. A checkpoint is the painting after its first `event` events
 // and, partway through a group, that group's layer, clip base and painted box.
 //
-// A checkpoint is keyed by what else it depends on (a laid group's placement, a boiling one's epoch, a recolouring
-// one's paint); a frame reuses one only under the same key, and restoring copies it back exactly, so a frame never
-// depends on frames before it.
+// A checkpoint is keyed by what else it depends on (a group's lay and warp, its epoch or live marks, its paint's time);
+// a frame reuses one only under the same key, and restoring copies it back exactly, so a frame never depends on frames
+// before it.
 // STAMP_CHECKPOINTS_MOST and STAMP_CHECKPOINT_BUDGET bound memory, each checkpoint admitted by the textures it holds,
 // least recently used given up first. One that can't fit isn't saved.
 
@@ -18,8 +18,8 @@ import type { StampPaintDevice } from './stamp-paint-gpu.ts';
  */
 export const STAMP_CHECKPOINT_BUDGET = 384 * 1024 * 1024;
 /**
- * The most checkpoints a renderer keeps: one rolling with a render's settled prefix, one before the first group that
- * moves, boils or recolours, and a couple for scrubbing back.
+ * The most checkpoints a renderer keeps: one rolling with a render's settled prefix (a held frame's whole painting),
+ * one before the first group with frame state, one with the first group laid apart painted, and one for scrubbing back.
  */
 export const STAMP_CHECKPOINTS_MOST = 4;
 
@@ -75,7 +75,12 @@ export function stampPaintCheckpoints(device: StampPaintDevice, targets: StampCh
       copyWholeTexture(encoder, found.group.clip, targets.clip);
     },
     save(encoder, checkpoint) {
-      if (kept.some((c) => sameCheckpoint(c, checkpoint))) return;
+      // Saved again, it's asked for again: kept from being given up as least recently used.
+      const again = kept.find((c) => sameCheckpoint(c, checkpoint));
+      if (again) {
+        again.used = ++clock;
+        return;
+      }
       const needs = bytesOf(checkpoint);
       const givable = kept.filter((c) => c.encoder !== encoder).toSorted((a, b) => a.used - b.used);
       let held = kept.reduce((sum, c) => sum + bytesOf(c), 0), count = kept.length;

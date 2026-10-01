@@ -31,13 +31,23 @@ export type StampGroupMotion = {
 export type StampGroupPaper = 'ground' | 'own';
 
 /**
- * A group painted anew every `every` frames, each time with its marks' randomness seeded afresh, as hand-drawn
- * animation boils on twos (`every: 2`). Between, it holds.
+ * Frames per second of the animation clock unless a scene says otherwise: "on twos" is 2/24 s at any render rate.
+ * Painted animation counts drawings on it (a recipe's boil here, paint/animation's writers' clocks), never in render
+ * frames, so a 30 or 60 fps render samples the same drawings.
+ */
+export const PAINT_ANIMATION_FPS = 24;
+
+/** The animation frame scene-or-local time `t` falls in; the epsilon puts 2/24 s on frame 2, not 1. */
+export const paintAnimationFrameAt = (t: number, animationFps: number) => Math.floor(t * animationFps + 1e-6);
+
+/**
+ * A group painted anew every `every` animation frames (PAINT_ANIMATION_FPS), each time with its marks' randomness
+ * seeded afresh, as hand-drawn animation boils on twos (`every: 2`). Between, it holds.
  */
 export type StampGroupBoil = { every: number };
 
-/** The boil epoch of frame `frame` for a group boiling every `every` frames. */
-export const stampBoilEpoch = (frame: number, { every }: StampGroupBoil) => Math.floor(frame / every);
+/** The boil epoch `t` seconds into the scene for a group boiling every `every` animation frames. */
+export const stampBoilEpoch = (t: number, { every }: StampGroupBoil) => Math.floor(paintAnimationFrameAt(t, PAINT_ANIMATION_FPS) / every);
 
 /** A group's motion as compiled (compileStampGroupMotion): at least one whole placement, at finite increasing times. */
 export type CompiledStampGroupMotion = { keys: StampKeyList<{ at: number } & StampGroupPlacement>; pivot?: StampPoint };
