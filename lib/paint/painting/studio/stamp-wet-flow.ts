@@ -12,6 +12,7 @@ import { STAMP_GRID_AT_WGSL } from '../models/stamp-region.ts';
 import { STAMP_WET_FLOW_WGSL, stampWetFlowSigma } from '../models/stamp-wet-flow.ts';
 import { stampWetTransportReach, stampWetTransportStrides } from '../models/stamp-wet-transport.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe.ts';
+import type { StampWetLanding } from '../models/stamp-wetness.ts';
 import type { StampLoadedWetStage, StampWetDepositMoment, StampWetStage, StampWetStageContext } from './stamp-wet-stages.ts';
 import { stampUniformLayout, stampUniformWriter } from './stamp-uniform-layout.ts';
 import { putStampWetTransportSlot, stampWetTransportPipelines, stampWetTransportSlotBinding } from './stamp-wet-transport.ts';
@@ -207,19 +208,19 @@ export const STAMP_WET_FLOW_STAGE = {
   reach: (deposit, medium) => stampWetTransportReach(stampWetFlowSigma(deposit, medium)),
   load: (context) => {
     // Deposits that move paint: landing wet somewhere, or carrying water, in a medium that spreads.
-    const flowing = [...context.wetness.landings].filter(([deposit, landing]) => stampWetTransportStrides(stampWetFlowSigma(deposit, context.medium)).length > 0
+    const flowing = [...context.wetness.landings].filter(([deposit, landing]) => stampWetTransportStrides(stampWetFlowSigma(deposit, landing.medium)).length > 0
       && (landing.water > 0 || landing.before.wetness.some((v) => v > 0)));
-    return flowing.length ? flowOnDevice(context, flowing.map(([deposit]) => deposit)) : { encode: () => null };
+    return flowing.length ? flowOnDevice(context, flowing) : { encode: () => null };
   },
 } satisfies StampWetStage;
 
-function flowOnDevice(context: StampWetStageContext, flowing: readonly CompiledStampDeposit[]): StampLoadedWetStage<StampWetDepositMoment> {
-  const { device, medium, layer, footprint, fresh, grids, wash, paperDepth } = context;
+function flowOnDevice(context: StampWetStageContext, flowing: readonly (readonly [CompiledStampDeposit, StampWetLanding])[]): StampLoadedWetStage<StampWetDepositMoment> {
+  const { device, layer, footprint, fresh, grids, wash, paperDepth } = context;
   const transport = stampWetTransportPipelines(device);
   // Compiled per group, its holds being its palette's: groups alike share one.
   const pipelinesFor = new Map<string, FlowPipelines>();
   const pipelinesOf = (deposit: CompiledStampDeposit) => {
-    const layers = wash.layersOf(deposit), code = flowWgsl(layers, wash.movedWgsl(layers), wash.holdWgsl(deposit));
+    const layers = wash.layersOf(deposit), code = flowWgsl(layers, wash.movedWgsl(deposit), wash.holdWgsl(deposit));
     let found = pipelinesFor.get(code);
     if (!found) {
       const module = device.createShaderModule({ code });
@@ -231,7 +232,7 @@ function flowOnDevice(context: StampWetStageContext, flowing: readonly CompiledS
   };
 
   // Each deposit's passes, a uniform slot each: prepare and close, and per layer its holds, settle, and three a stride.
-  const planned = new Map(flowing.map((deposit): [CompiledStampDeposit, FlowPlan] => {
+  const planned = new Map(flowing.map(([deposit, { medium }]): [CompiledStampDeposit, FlowPlan] => {
     const layers = wash.layersOf(deposit), sigma = stampWetFlowSigma(deposit, medium), strides = stampWetTransportStrides(sigma);
     const slots = 2 + layers * (2 + 3 * strides.length);
     const uniforms = device.createBuffer({ size: slots * SLOT, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
@@ -282,7 +283,7 @@ function flowOnDevice(context: StampWetStageContext, flowing: readonly CompiledS
       put('first', plan.first);
       put('sigma', plan.sigma);
       put('water', landing.water);
-      put('rewetting', medium.wetting.rewetting);
+      put('rewetting', landing.medium.wetting.rewetting);
       put('action', ACTIONS[deposit.action.kind]);
       put('depth', paperDepth);
       for (const field of FLOW_PASS_OWN) {

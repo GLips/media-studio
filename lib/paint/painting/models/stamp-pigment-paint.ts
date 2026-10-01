@@ -1,10 +1,10 @@
 // stamp-pigment-paint.ts: a stamp painting's paint when its style paints in pigment, worked out once on the CPU for
 // the GPU's pigment compositor (stamp-paint-pigment-compositor.ts), which lays and dries it per pixel.
 //
-// Each group's palette is every pigment its deposits lay (a colour fitted as a pigment of its own). Its layer holds
-// each palette pigment's amount per pixel, so a pigment stays itself to the pixel, where a lift needs it. A graded
-// material (a graded wash) lays each pigment of either end at an amount the GPU grades between the two, so a wash
-// passes from one colour to another by pigment amounts, never by rendered colour; a keyed one over the scene too.
+// Each group's palette is every pigment its deposits lay (a colour fitted as a pigment of its own), fitted in the
+// group's medium: one pigment id in gouache and in watercolour is two pigments. Its layer holds each one's amount per
+// pixel, so a pigment stays itself to the pixel, where a lift needs it. A graded material lays each pigment of either
+// end at an amount the GPU grades between the two, never by rendered colour; a keyed one over the scene too.
 
 import { paintPigmentFromColor, paintPigmentInMedium, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { paintMixtureComponents } from '#lib/paint/materials/models/paint-mixture.ts';
@@ -14,7 +14,7 @@ import type { PaintBands } from '#lib/paint/materials/models/paint-spectrum.ts';
 import type { PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
 import { stampPaintFieldEnds } from './stamp-paint-field.ts';
 import { mapStampKeyList, stampKeySpanAt, type StampKeyList } from './stamp-scene-keys.ts';
-import { stampGroupKnocksOut, stampPassDeposits, type CompiledStampDeposit, type CompiledStampKeyedMaterial, type CompiledStampPaint } from './stamp-paint-recipe.ts';
+import { stampGroupKnocksOut, stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampKeyedMaterial, type CompiledStampPaint } from './stamp-paint-recipe.ts';
 import type { PaintMaterial, StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 
 /**
@@ -63,6 +63,8 @@ export function stampPigmentAmountsAt({ ends }: StampPigmentComponent, t: number
 export type StampPigmentGrade = { kind: 0 | 1 | 2; geometry: readonly [number, number, number, number] };
 
 export type StampPigmentGroup = {
+  /** Its medium's index in the painting's media (StampPigmentPaint's `media`): its palette is fitted in it. */
+  medium: number;
   /** Its palette, a slot each. */
   palette: readonly PaintPigment[];
   /**
@@ -86,7 +88,8 @@ export type StampPigmentGroup = {
 export const stampPigmentGroupLayers = ({ paintLayers, sheetLayer }: StampPigmentGroup) => paintLayers + (sheetLayer === null ? 0 : 1);
 
 export type StampPigmentPaint = {
-  medium: PaintMedium;
+  /** Every medium a group paints in, each once, in the order groups first name them. */
+  media: readonly PaintMedium[];
   bands: PaintBands;
   groups: readonly StampPigmentGroup[];
   /** Each deposit's group, by index, its components (none for water or a lift) and where its material grades. */
@@ -96,11 +99,11 @@ export type StampPigmentPaint = {
 };
 
 /**
- * The paint on each pixel, pigment by pigment, as the painting keeps it for a knockout to lift by each pigment's
- * staining: `pigments`, every pigment a group laid before the last knockout lays; `slots`, each group's palette slot's
- * index among them; `writes`, whether a group adds its film (one laid before the last knockout does).
+ * The paint on each pixel, pigment by pigment, as kept for a knockout to lift by each pigment's staining: `pigments`,
+ * every pigment a group laid before the last knockout lays, `media` each one's medium's index; `slots`, each group's
+ * palette slot's index among them; `writes`, whether a group adds its film (one before the last knockout does).
  */
-export type StampPigmentUnderpaint = { pigments: readonly PaintPigment[]; slots: readonly (readonly number[])[]; writes: readonly boolean[] };
+export type StampPigmentUnderpaint = { pigments: readonly PaintPigment[]; media: readonly number[]; slots: readonly (readonly number[])[]; writes: readonly boolean[] };
 
 /** The most pigments a painting's underpaint keeps: four layers of the painting's. */
 export const STAMP_PIGMENT_UNDERPAINT_SLOTS = 16;
@@ -117,19 +120,41 @@ const amountAtEnd = (laid: readonly { pigment: PaintPigment; amount: number }[],
 export const stampPigmentLayers = (slots: number, washes: boolean) => Math.ceil((slots + 1 + (washes ? 1 : 0)) / 4);
 
 /**
- * `painting`'s paint as `mixing` mixes it, a graded material's pigments from both its ends. Throws on a mixture
- * naming a pigment `mixing` lacks, two different pigments with one id anywhere in the painting, or a group that mixes
- * more than STAMP_PIGMENT_GROUP_SLOTS pigments.
+ * The mixing `group` paints in: its own (a group naming another medium, StampGroupOptions' `mixing`), else the
+ * painting's.
+ */
+export const stampGroupMixing = (group: CompiledStampGroup, painting: StampPigmentMixing): StampPigmentMixing => group.mixing ?? painting;
+
+/** What a medium's pigments are fitted as: each by id, the colours each colour names, and the ids its mixtures may name. */
+type StampMediumFits = { medium: PaintMedium; known: Map<string, PaintPigment>; byColor: Map<StampPaintColor, PaintPigment>; named: Set<string> };
+
+/**
+ * `painting`'s paint, each group mixed as its mixing says (stampGroupMixing), a graded material's pigments from both
+ * its ends, each pigment fitted in its group's medium. Throws on a mixture naming a pigment its mixing lacks, two
+ * different pigments with one id in one medium, two media of one name that differ, or a group that mixes more than
+ * STAMP_PIGMENT_GROUP_SLOTS pigments.
  */
 export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: StampPigmentMixing, bands: PaintBands): StampPigmentPaint {
-  const { medium } = mixing;
-  const byColor = new Map<StampPaintColor, PaintPigment>();
-  // Each pigment the painting lays, by id, painting-wide: the style's first, so a mixture can't name another by one of theirs.
-  const known = new Map(Object.values(mixing.pigments).map((appearance) => [appearance.id, paintPigmentInMedium(appearance, medium, bands)]));
-  const named = new Set(known.keys());
-  const white = medium.lightening.kind === 'white' ? medium.lightening.white.id : null;
+  const media: StampMediumFits[] = [];
+  /** `of`'s medium's index among `media`, its pigments fitted: the first mixing's first, so a mixture can't name another by one of theirs. */
+  const fitsOf = (of: StampPigmentMixing) => {
+    let index = media.findIndex(({ medium }) => medium.name === of.medium.name);
+    if (index < 0) index = media.push({ medium: of.medium, known: new Map(), byColor: new Map(), named: new Set() }) - 1;
+    const fits = media[index];
+    if (fits.medium !== of.medium && JSON.stringify(fits.medium) !== JSON.stringify(of.medium)) throw new Error(`stamp paint: two media named ${of.medium.name} differ; name each its own`);
+    for (const appearance of Object.values(of.pigments)) {
+      if (fits.named.has(appearance.id)) continue;
+      fits.named.add(appearance.id);
+      fits.known.set(appearance.id, paintPigmentInMedium(appearance, fits.medium, bands));
+    }
+    return { index, fits };
+  };
   const deposits = new Map<CompiledStampDeposit, StampPigmentDeposit>();
   const groups = painting.groups.map((group, g): StampPigmentGroup => {
+    const groupMixing = stampGroupMixing(group, mixing);
+    const { index, fits: { medium, known, byColor } } = fitsOf(groupMixing);
+    const named = new Set(Object.values(groupMixing.pigments).map(({ id }) => id));
+    const white = medium.lightening.kind === 'white' ? medium.lightening.white.id : null;
     const palette: PaintPigment[] = [];
     for (const [pass, deposit] of group.passes.flatMap((written) => stampPassDeposits(written).map((laid) => [written, laid] as const))) {
       const { action } = deposit;
@@ -140,7 +165,7 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
       }
       if (action.burnish && medium.paperContact.kind !== 'peaks') throw new Error(`stamp paint: ${deposit.id} burnishes, and ${medium.name} isn't a dry medium`);
       const { first, second, kind, geometry } = stampPaintFieldEnds(action.material);
-      /** What a full stroke of `material` lays, each pigment the painting's one of its id. */
+      /** What a full stroke of `material` lays, each pigment its medium's one of its id. */
       const laidOf = (material: PaintMaterial) => {
         const laid = material.kind === 'mixture'
           ? paintMixtureComponents(material, medium, bands)
@@ -150,7 +175,7 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
             throw new Error(`stamp paint: ${deposit.id} mixes ${pigment.id}, which isn't among its style's pigments (${[...named].join(', ')})`);
           }
           const kept = known.get(pigment.id) ?? known.set(pigment.id, pigment).get(pigment.id)!;
-          if (!samePigment(kept, pigment)) throw new Error(`stamp paint: ${deposit.id} lays a pigment named ${pigment.id} unlike the painting's other ${pigment.id}`);
+          if (!samePigment(kept, pigment)) throw new Error(`stamp paint: ${deposit.id} lays a pigment named ${pigment.id} unlike the painting's other ${pigment.id} in ${medium.name}`);
           return { pigment: kept, amount };
         });
       };
@@ -177,9 +202,18 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
       throw new Error(`stamp paint: ${group.id} mixes ${palette.length} pigments, over the ${STAMP_PIGMENT_GROUP_SLOTS} a wash holds, counting every key and end of its materials; split it into two groups, or key fewer pigments (${palette.map(({ id }) => id).join(', ')})`);
     }
     const washes = group.passes.some((pass) => pass.kind === 'wash'), paintLayers = stampPigmentLayers(palette.length, washes);
-    return { palette, paintLayers, open: washes ? 4 * paintLayers - 1 : null, sheetLayer: stampGroupKnocksOut(group) ? paintLayers : null };
+    return { medium: index, palette, paintLayers, open: washes ? 4 * paintLayers - 1 : null, sheetLayer: stampGroupKnocksOut(group) ? paintLayers : null };
   });
-  return { medium, bands, groups, deposits, underpaint: stampPigmentUnderpaint(painting, groups) };
+  // A painting of no groups still has a medium to compile its passes in.
+  if (!media.length) fitsOf(mixing);
+  return { media: media.map(({ medium }) => medium), bands, groups, deposits, underpaint: stampPigmentUnderpaint(painting, groups) };
+}
+
+/** The medium `group` (by its ID, as written, boiled or live) paints in. */
+export function stampPigmentGroupMedium(paint: StampPigmentPaint, painting: CompiledStampPaint, group: Pick<CompiledStampGroup, 'id'>): PaintMedium {
+  const g = painting.groups.findIndex(({ id }) => id === group.id);
+  if (g < 0) throw new Error(`stamp paint: ${group.id} isn't a group of the painting its paint was compiled for`);
+  return paint.media[paint.groups[g].medium];
 }
 
 /**
@@ -199,13 +233,15 @@ const samePigment = (a: PaintPigment, b: PaintPigment) =>
 function stampPigmentUnderpaint(painting: CompiledStampPaint, groups: readonly StampPigmentGroup[]): StampPigmentUnderpaint | null {
   const last = painting.groups.findLastIndex(stampGroupKnocksOut);
   if (last < 0) return null;
-  const pigments: PaintPigment[] = [];
-  const slots = groups.map(({ palette }, g) => (g < last ? palette.map((pigment) => {
-    const at = pigments.findIndex(({ id }) => id === pigment.id);
-    return at < 0 ? pigments.push(pigment) - 1 : at;
+  const pigments: PaintPigment[] = [], media: number[] = [];
+  const slots = groups.map(({ palette, medium }, g) => (g < last ? palette.map((pigment) => {
+    const at = pigments.findIndex(({ id }, p) => id === pigment.id && media[p] === medium);
+    if (at >= 0) return at;
+    media.push(medium);
+    return pigments.push(pigment) - 1;
   }) : []));
   if (pigments.length > STAMP_PIGMENT_UNDERPAINT_SLOTS) {
     throw new Error(`stamp paint: ${painting.groups[last].id} knocks out of ${pigments.length} pigments, over the ${STAMP_PIGMENT_UNDERPAINT_SLOTS} a painting keeps for it (${pigments.map(({ id }) => id).join(', ')})`);
   }
-  return { pigments, slots, writes: groups.map((_, g) => g < last) };
+  return { pigments, media, slots, writes: groups.map((_, g) => g < last) };
 }

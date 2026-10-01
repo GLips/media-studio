@@ -20,6 +20,7 @@ import type { StampEdge, StampPoint, StampRegion } from './stamp-region.ts';
 import { compileStampGroupMotion, type CompiledStampGroupMotion, type StampGroupBoil, type StampGroupMotion, type StampGroupPaper } from './stamp-group-motion.ts';
 import type { PaintMaterial, StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 import type { CompiledStampMaterialKeys, StampMaterialKeys } from './stamp-material-keys.ts';
+import type { StampPigmentMixing } from './stamp-pigment-paint.ts';
 import { stampKeysSpan } from './stamp-scene-keys.ts';
 
 /**
@@ -136,6 +137,11 @@ export type StampGroupOptions = ({ composite: 'opaque' } | { composite: 'glaze';
   order?: number;
   /** The painting's (`ground`, when left out) or its own, a collage's (StampGroupPaper). */
   paper?: StampGroupPaper;
+  /**
+   * The medium and pigments it paints in, when not the painting's: gouache butterflies in a watercolour. Only a
+   * painting in pigment takes one. Its paint meets the groups under it dry, as any group's does (stamp-wetness.ts).
+   */
+  mixing?: StampPigmentMixing;
   motion?: StampGroupMotion;
   boil?: StampGroupBoil;
 };
@@ -430,6 +436,8 @@ export const STAMP_OPAQUE_COVER = 2;
 
 export type CompiledStampGroup = {
   id: string; composite: 'opaque' | 'glaze'; opacity: number; paper: StampGroupPaper; passes: readonly CompiledStampPass[];
+  /** Absent for a group in the painting's mixing. */
+  mixing?: StampPigmentMixing;
   /** Absent for a group that stays where it's painted. */
   motion?: CompiledStampGroupMotion;
   /** The scene seconds over which its paint changes (a keyed material's first key to its last); absent for paint that doesn't. */
@@ -527,7 +535,8 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
     const written = { id, options, passes };
     const recolours = stampGroupRecolours(compiledPasses);
     return {
-      id: groupId, composite: options.composite, opacity, paper: options.paper ?? 'ground', passes: compiledPasses, ...(motion && { motion }), ...(recolours && { recolours }),
+      id: groupId, composite: options.composite, opacity, paper: options.paper ?? 'ground', passes: compiledPasses, ...(options.mixing && { mixing: options.mixing }),
+      ...(motion && { motion }), ...(recolours && { recolours }),
       ...(boil && { boil: { every: boil.every, epoch, reseeded: (next: number) => compileGroup(written, next) } }),
     };
   };

@@ -81,11 +81,12 @@ export type StampWashLayer = {
   /** Layers of four channels `deposit`'s group keeps, from the first: a stage reads and writes no more. */
   layersOf: (deposit: CompiledStampDeposit) => number;
   /**
-   * WGSL for a group of `layers` layers: `washPigmentMask(l)`, 1 on layer `l`'s pigment channels; `washPigmentTotal(v)`
-   * and `washOpen(v)`, a pixel's pigment and open share; and `washMoved(now, wasPigment)`, the pixel once a stage has
-   * moved its pigment total from `wasPigment` to `now`'s, its other channels as before the move.
+   * WGSL for `deposit`'s group, of layersOf(deposit) layers in its medium: `washPigmentMask(l)`, 1 on layer `l`'s
+   * pigment channels; `washPigmentTotal(v)` and `washOpen(v)`, a pixel's pigment and open share; and
+   * `washMoved(now, wasPigment)`, the pixel once a stage has moved its pigment total from `wasPigment` to `now`'s, its
+   * other channels as before the move.
    */
-  movedWgsl: (layers: number) => string;
+  movedWgsl: (deposit: CompiledStampDeposit) => string;
   /**
    * WGSL for `deposit`'s group: `washHold(l, at, tooth, depth, held)`, how much of each of layer `l`'s channels the
    * paper holds at `at` against its mean (1), as the compositor lays paint there; `tooth` the paper's paint here and

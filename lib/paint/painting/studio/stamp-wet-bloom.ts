@@ -8,6 +8,7 @@
 //
 // Negative space: the spreading water isn't written back into the wash's wetness; later deposits don't see it.
 
+import type { PaintWetting } from '#lib/paint/materials/models/paint-medium.ts';
 import { STAMP_BLOOM_BAND_WIDTH, STAMP_BLOOM_CARRY_SPREAD, STAMP_WET_BLOOM_WGSL, stampBloomReach, stampBloomSizing } from '../models/stamp-wet-bloom.ts';
 import { STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
 import { STAMP_GRID_AT_WGSL } from '../models/stamp-region.ts';
@@ -239,7 +240,7 @@ type BloomPipelines = Record<'surplus' | 'front' | 'send' | 'sent' | 'land', GPU
 const WATER = 0, REACHED = 1, SENT = 2;
 /** A landing's bloom, sized as the painting loads. */
 type BloomPlan = {
-  water: number; first: number; afterFirst: number; sigma: number; drive: number; lattice: StampWetWindow; pipelines: BloomPipelines; uniform: GPUBuffer;
+  water: number; wetting: PaintWetting; first: number; afterFirst: number; sigma: number; drive: number; lattice: StampWetWindow; pipelines: BloomPipelines; uniform: GPUBuffer;
   spreads: ReturnType<typeof stampWetSpreads>;
 };
 /** A pipeline and what it's bound to, as one dispatch of a bloom runs it. */
@@ -253,27 +254,26 @@ type BloomScratch = {
   paper: GPUTextureView; paths: [GPUTextureView, GPUTextureView]; values: [GPUTextureView, GPUTextureView]; front: GPUTextureView; send: GPUTextureView;
 };
 
-function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: StampWetStageContext): StampLoadedWetStage<StampWetDepositMoment> {
-  const { spread } = medium.wetting;
-  if (spread <= 0) return { encode: () => null };
+function loadBloom({ device, wetness, layer, footprint, grids, wash }: StampWetStageContext): StampLoadedWetStage<StampWetDepositMoment> {
+  // A medium that doesn't spread blooms nowhere.
   const sized = [...wetness.landings].flatMap(([deposit, landing]) => {
-    const bloom = deposit.action.kind === 'lift' ? null : stampBloomSizing(landing, medium.wetting, deposit.diameter);
+    const bloom = deposit.action.kind === 'lift' || landing.medium.wetting.spread <= 0 ? null : stampBloomSizing(landing, landing.medium.wetting, deposit.diameter);
     return bloom && bloom.sigma >= 0.5 ? [{ deposit, landing, ...bloom }] : [];
   });
   if (!sized.length) return { encode: () => null };
 
-  // Compiled per layer count, the wash layer's WGSL being the group's.
-  const pipelinesFor = new Map<number, BloomPipelines>();
-  const pipelinesOf = (layers: number) => {
-    let found = pipelinesFor.get(layers);
+  // Compiled per group's wash layer WGSL (its layer count and medium): groups alike share one.
+  const pipelinesFor = new Map<string, BloomPipelines>();
+  const pipelinesOf = (deposit: CompiledStampDeposit) => {
+    const layers = wash.layersOf(deposit), moved = wash.movedWgsl(deposit);
+    let found = pipelinesFor.get(moved);
     if (!found) {
-      const moved = wash.movedWgsl(layers);
       const pipeline = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }), entryPoint: 'run' } });
       found = {
         surplus: pipeline(SURPLUS_WGSL), front: pipeline(frontWgsl(layers, moved)), send: pipeline(SEND_WGSL),
         sent: pipeline(sentWgsl(layers, moved)), land: pipeline(landWgsl(layers, moved)),
       };
-      pipelinesFor.set(layers, found);
+      pipelinesFor.set(moved, found);
     }
     return found;
   };
@@ -288,7 +288,9 @@ function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: S
     const spreads = stampWetSpreads(device, [
       { sigma, order: 'forward', layers: 1, from: 0 }, { sigma: carry, order: 'transposed', layers: 1, from: 1 }, { sigma: carry, order: 'forward', layers, from: 0 },
     ]);
-    const plan = { water: landing.water, first: grids.firsts.get(deposit)!, afterFirst, sigma, drive, lattice: landing.before.window, pipelines: pipelinesOf(layers), uniform, spreads };
+    const plan = {
+      water: landing.water, wetting: landing.medium.wetting, first: grids.firsts.get(deposit)!, afterFirst, sigma, drive, lattice: landing.before.window, pipelines: pipelinesOf(deposit), uniform, spreads,
+    };
     afterFirst += landing.after.wetness.length;
     return [deposit, plan];
   }));
@@ -329,8 +331,8 @@ function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: S
     put('drive', plan.drive);
     put('sigma', sigma);
     put('water', plan.water);
-    put('damp', medium.wetting.damp);
-    put('shine', medium.wetting.brushWater);
+    put('damp', plan.wetting.damp);
+    put('shine', plan.wetting.brushWater);
     put('sendFloor', (STAMP_BLOOM_SEND_FLOOR * STAMP_BLOOM_BAND_WIDTH) / (Math.sqrt(2 * Math.PI) * STAMP_BLOOM_CARRY_SPREAD * sigma));
     device.queue.writeBuffer(plan.uniform, 0, words);
     plan.spreads.write(box);
