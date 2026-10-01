@@ -1,9 +1,9 @@
 // node harness/dry-passage-sheet.ts paint --out <dir> (npm run dry:passages -- --out <dir>): the dry passage sheet,
 // layered hatching, strokes that turn and burnishing drawn in a dry workspace style
-// (lib/picture/brush-fidelity/engine/dry-passage-sheet.ts), a PNG a passage.
+// (lib/paint/studies/engine/dry-passage-sheet.ts), a PNG a passage.
 import { defineCommand } from 'citty';
 import { relative, resolve } from 'node:path';
-import { writeDryPassageSheet } from '#lib/picture/brush-fidelity/engine/dry-passage-sheet.ts';
+import { writeDryPassageSheet } from '#lib/paint/studies/engine/dry-passage-sheet.ts';
 import { STUDIO_ROOT, STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { runHarnessCommand } from './run-harness-command.ts';
 

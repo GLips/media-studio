@@ -1,0 +1,10 @@
+{
+  "lib/paint/painting": "A painting places its deposits' stamps with the brush, along the stroke its hand moves.",
+  "lib/paint/photoshop-brushes": "A Photoshop preset is normalized into a StampBrush, the engine's brush.",
+  "lib/paint/procreate-brushes": "A Procreate brush's settings are read into a StampBrush, the engine's brush.",
+  "lib/paint/brush-packs": "A pack's importer writes each brush it reads as a StampBrush.",
+  "lib/paint/style": "A style names the brushes its paintings use.",
+  "lib/paint/brush-fidelity": "A target is read and measured as a StampBrush paints, its reach and dual taken from the brush.",
+  "lib/paint/studies": "A study paints its passages with a style's brushes.",
+  "lib/paint/gate": "The GPU gate paints with brushes, synthetic and a pack's, to hold the renderer to its baselines."
+}

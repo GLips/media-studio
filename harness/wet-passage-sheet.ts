@@ -1,10 +1,10 @@
 // node harness/wet-passage-sheet.ts paint --out <dir> (npm run wet:passages -- --out <dir>): the reference-passages sheet,
 // wet paint's six passages painted in watercolour, gouache and crayon from the workspace's styles, and a page to judge
-// them by (lib/picture/brush-fidelity/engine/wet-passage-sheet.ts). Notes on what's rough live in <dir>/notes.json.
+// them by (lib/paint/studies/engine/wet-passage-sheet.ts). Notes on what's rough live in <dir>/notes.json.
 import { defineCommand } from 'citty';
 import { existsSync, readdirSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
-import { writeWetPassageSheet } from '#lib/picture/brush-fidelity/engine/wet-passage-sheet.ts';
+import { writeWetPassageSheet } from '#lib/paint/studies/engine/wet-passage-sheet.ts';
 import { STUDIO_ROOT, STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { runHarnessCommand } from './run-harness-command.ts';
 

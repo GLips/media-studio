@@ -1,6 +1,6 @@
 {
   "arch(no-chained-type-assertions)": {
-    "lib/output/render/engine/browser-module-page.ts": {
+    "lib/platform/browser/engine/browser-module-page.ts": {
       "(fn: string, list: unknown[]) => (globalThis as unknown as Record<string, (...a: unknown[]) => unknown>)[fn](...list),": 1
     },
     "lib/timing/sound/engine/sfx-files.ts": {
@@ -23,10 +23,10 @@
     "lib/picture/motion/models/motion.ts": {
       "/**": 1
     },
-    "lib/picture/photoshop-brushes/models/photoshop-preset.ts": {
+    "lib/paint/photoshop-brushes/models/photoshop-preset.ts": {
       "// photoshop-preset.ts: a Photoshop brush preset as the studio types it, derived from the one table of its fields that": 1
     },
-    "lib/picture/photoshop-brushes/models/photoshop-probes.ts": {
+    "lib/paint/photoshop-brushes/models/photoshop-probes.ts": {
       "// photoshop-probes.ts: the probes that read Photoshop's brush engine out one setting at a time, for vid-97 to identify": 1,
       "/**": 1
     }
@@ -55,16 +55,16 @@
     "lib/footage/previs/studio/blockout.tsx": {
       "export type BlockoutShape = 'box' | 'sphere' | 'cylinder' | 'cone' | 'figure' | 'card';": 1
     },
-    "lib/picture/brush-fidelity/engine/stamp-paint-guard.ts": {
+    "lib/paint/brush-fidelity/engine/stamp-paint-guard.ts": {
       "const isPlainObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);": 1
     },
-    "lib/picture/photoshop-brushes/models/photoshop-computed-tip.ts": {
+    "lib/paint/photoshop-brushes/models/photoshop-computed-tip.ts": {
       "const SHAPE: [number, number, number][] = [": 1
     },
-    "lib/picture/photoshop-brushes/models/photoshop-descriptor.ts": {
+    "lib/paint/photoshop-brushes/models/photoshop-descriptor.ts": {
       "const isJsonObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);": 1
     },
-    "lib/picture/photoshop-brushes/models/photoshop-probes.ts": {
+    "lib/paint/photoshop-brushes/models/photoshop-probes.ts": {
       "const shape = (d: { size?: PhotoshopDynamic; minimumDiameter?: number; angle?: PhotoshopDynamic; roundness?: PhotoshopDynamic; minimumRoundness?: number }): ProbeParts => ({": 1
     },
     "lib/picture/reel/models/bounce-shape.ts": {
@@ -130,7 +130,7 @@
       "const inMove = values.slice(a, b + 1) as number[];": 1,
       "}).map((m) => Object.fromEntries(Object.entries(m).filter(([, v]) => v !== undefined)) as ChannelMove);": 1
     },
-    "lib/output/render/engine/browser-module-page.ts": {
+    "lib/platform/browser/engine/browser-module-page.ts": {
       "const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;": 1,
       "return await use(<R>(name: string, ...args: unknown[]) => page.evaluate(": 1,
       "(fn: string, list: unknown[]) => (globalThis as unknown as Record<string, (...a: unknown[]) => unknown>)[fn](...list),": 2,
@@ -145,7 +145,7 @@
     "lib/output/render/engine/project-clock.ts": {
       "const { timeline } = (await import(pathToFileURL(file).href)) as { timeline?: Timeline };": 1
     },
-    "lib/output/render/engine/render-browser.ts": {
+    "lib/platform/browser/engine/render-browser.ts": {
       "await page.goto({ url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`, timeout: 30_000 });": 1
     },
     "lib/output/render/engine/render-pipeline.ts": {
@@ -182,18 +182,18 @@
     "lib/picture/brand/engine/project-brand.ts": {
       "const requireDefault = <T>(file: string) => (createRequire(file)(file) as { default: T }).default;": 1
     },
-    "lib/picture/brush-fidelity/engine/brush-fidelity-sheet.ts": {
+    "lib/paint/brush-fidelity/engine/brush-fidelity-sheet.ts": {
       "return existsSync(file) ? (await import(pathToFileURL(file).href) as { default: StampPaintStyleFidelity }).default : {};": 1
     },
-    "lib/picture/brush-fidelity/engine/photoshop-reference-target.ts": {
+    "lib/paint/brush-fidelity/engine/photoshop-reference-target.ts": {
       "const manifest = JSON.parse(readFileSync(manifestFile, 'utf8')) as PhotoshopCaptureManifest;": 1
     },
-    "lib/picture/brush-fidelity/engine/stamp-paint-guard.ts": {
+    "lib/paint/brush-fidelity/engine/stamp-paint-guard.ts": {
       "const format = JSON.parse(text.toString('utf8', 0, start)) as { stampPaintFingerprints?: unknown };": 1,
       "const end = text.indexOf(10, start), print = JSON.parse(text.toString('utf8', start, end)) as StampPaintBrushPrint;": 1,
       "return keys.flatMap((key) => jsonDifferences((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key], `${path}.${key}`));": 2
     },
-    "lib/picture/brush-fidelity/models/brush-fidelity-report.ts": {
+    "lib/paint/brush-fidelity/models/brush-fidelity-report.ts": {
       "const record = (value: unknown, at: string) => (value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : fail(`${at} isn't an object`));": 1,
       "return Object.fromEntries(keys.map((key) => [key, num(r[key], `${at}.${key}`)])) as Record<K, number>;": 1,
       "terms: numbers(c.terms, Object.keys(STROKE_SCORE_WEIGHTS) as (keyof typeof STROKE_SCORE_WEIGHTS)[], `${at}.terms`),": 1,
@@ -219,34 +219,34 @@
       "return JSON.parse(raw) as T;": 1,
       "const { event, fromNow, request, volume } = JSON.parse(el.dataset.sfxEvent!) as SfxMarkAttr;": 1
     },
-    "lib/picture/photoshop-brushes/engine/photoshop-abr.ts": {
+    "lib/paint/photoshop-brushes/engine/photoshop-abr.ts": {
       "const items = readPhotoshopDescriptor(r).hierarchy as PhotoshopDescriptor[] | undefined;": 1,
       "out.presets = ((readPhotoshopDescriptor(r).Brsh ?? []) as PhotoshopDescriptor[]).map((descriptor) => ({ descriptor }));": 1,
       "const brush = tool.Brsh as PhotoshopDescriptor | undefined;": 1
     },
-    "lib/picture/photoshop-brushes/engine/photoshop-capture.ts": {
+    "lib/paint/photoshop-brushes/engine/photoshop-capture.ts": {
       "return JSON.parse(runPhotoshopScript(`${CAPTURE_JSX}\\n${entry}();`, { data, timeoutSeconds: 3600 })) as T;": 1,
       "const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as PhotoshopCaptureManifest;": 1
     },
-    "lib/picture/photoshop-brushes/engine/photoshop-descriptor-codec.ts": {
+    "lib/paint/photoshop-brushes/engine/photoshop-descriptor-codec.ts": {
       "return writePhotoshopDescriptor(w, v as PhotoshopDescriptor);": 1
     },
-    "lib/picture/photoshop-brushes/models/photoshop-capture-plan.ts": {
+    "lib/paint/photoshop-brushes/models/photoshop-capture-plan.ts": {
       "return [box.x + box.width * 0.15 + c * (t - Math.PI) - r * Math.sin(t), box.y + box.height / 2 - r * Math.cos(t)] as [number, number];": 1
     },
-    "lib/picture/photoshop-brushes/models/photoshop-preset.ts": {
+    "lib/paint/photoshop-brushes/models/photoshop-preset.ts": {
       "return value as PhotoshopPresetValue<F>;": 1
     },
-    "lib/picture/procreate-brushes/engine/binary-plist.ts": {
+    "lib/paint/procreate-brushes/engine/binary-plist.ts": {
       "const archive = parseBinaryPlist(bytes) as { $objects: PlistValue[]; $top: { root: PlistUid } };": 1,
       "const keys = object['NS.keys'] as PlistValue[], values = object['NS.objects'] as PlistValue[];": 2,
       "for (const item of object['NS.objects'] as PlistValue[]) list.push(resolve(item));": 1,
       "return resolve(archive.$top.root) as Record<string, unknown>;": 1
     },
-    "lib/picture/procreate-brushes/engine/procreate-canvas.ts": {
+    "lib/paint/procreate-brushes/engine/procreate-canvas.ts": {
       "const tileSize = Number(root.tileSize), composite = root.composite as { UUID: string } | null;": 1
     },
-    "lib/picture/procreate-brushes/models/procreate-brush.ts": {
+    "lib/paint/procreate-brushes/models/procreate-brush.ts": {
       "const points = (s[curve] as { points?: unknown[] } | null)?.points;": 1
     },
     "lib/picture/reel/engine/reel-study-files.ts": {
@@ -268,26 +268,26 @@
       "for (const role of Object.keys(INK_ALPHA.light) as HudInkRole[]) {": 1,
       "for (const tone of Object.keys(weights) as ReelHudTone[]) {": 1
     },
-    "lib/picture/stamp-paint/studio/stamp-paint-gpu.ts": {
+    "lib/paint/painting/studio/stamp-paint-gpu.ts": {
       "const TIER2 = 'texture-formats-tier2' as GPUFeatureName;": 1
     },
-    "lib/picture/stamp-paint/studio/stamp-paint-renderer.ts": {
+    "lib/paint/painting/studio/stamp-paint-renderer.ts": {
       "const stampPipelines = Object.fromEntries((['glaze', 'build'] as const).map((accumulation) => {": 1
     },
-    "lib/picture/stamp-styles/engine/import-procreate-pack.ts": {
+    "lib/paint/brush-packs/engine/import-procreate-pack.ts": {
       "const root = parseBinaryPlist(plist) as { name?: string; brushes: string[] };": 1,
       "const json = JSON.parse(zip.read('Swatches.json').toString('utf8')) as { name: string; swatches: ({ hue: number; saturation: number; brightness: number } | null)[] };": 1,
       "const color = `#${mean.map((sum) => Math.round(sum / pixels).toString(16).padStart(2, '0')).join('')}` as StampPaintColor;": 1,
       "const settings = unarchiveKeyedPlist(brushset.read(`${folder}/Brush.archive`)) as ProcreateBrushSettings;": 1,
       "const hasDual = has(`${folder}/Sub01/Brush.archive`), dualSettings = hasDual ? unarchiveKeyedPlist(brushset.read(`${folder}/Sub01/Brush.archive`)) as ProcreateBrushSettings : undefined;": 1
     },
-    "lib/picture/stamp-styles/engine/node-stamp-paint-styles.ts": {
+    "lib/paint/style/engine/node-stamp-paint-styles.ts": {
       "const style = (await import(pathToFileURL(join(dir, 'style.ts')).href) as { default: StampPaintStyle }).default;": 1
     },
-    "lib/picture/stamp-styles/engine/project-styles.ts": {
+    "lib/paint/style/engine/project-styles.ts": {
       "const requireDefault = <T>(file: string) => (createRequire(file)(file) as { default: T }).default;": 1
     },
-    "lib/picture/stamp-styles/studio/stamp-paint-styles.ts": {
+    "lib/paint/style/studio/stamp-paint-styles.ts": {
       "return resolveStampPaintStyle(name, style as S, packs);": 1
     },
     "lib/picture/stills/studio/stills.tsx": {
@@ -606,27 +606,27 @@
       "const sink = await draw(composition, still, drawn, format);": 1,
       "await draw(composition, { ...still, ground: true }, groundFile, 'png');": 1
     },
-    "lib/picture/brush-fidelity/engine/brush-fidelity-score.ts": {
+    "lib/paint/brush-fidelity/engine/brush-fidelity-score.ts": {
       "painted = await paint(diameter);": 1
     },
-    "lib/picture/brush-fidelity/engine/brush-fidelity-sheet.ts": {
+    "lib/paint/brush-fidelity/engine/brush-fidelity-sheet.ts": {
       "const measured = src ? await measureBrushFidelityTarget(call, target, src) : null;": 1,
       "const scored = await scoreBrushFidelity(call, brush, target, measured, true, packUrls), outcome = brushFidelityOutcome(scored);": 1,
       "const rowPng = await call<string>('drawStampBrushSheetRow', { target: src && { src, label }, ours: scored.png, lines, grade });": 1
     },
-    "lib/picture/brush-fidelity/engine/brush-reading-diagnostic.ts": {
+    "lib/paint/brush-fidelity/engine/brush-reading-diagnostic.ts": {
       "for (const value of values) scores.push(await score(subject, { ...reading.reading, [key]: value }));": 1
     },
-    "lib/picture/brush-fidelity/engine/brush-reading-fit.ts": {
+    "lib/paint/brush-fidelity/engine/brush-reading-fit.ts": {
       "for (const s of training) each.push(await score(s, candidate));": 1
     },
-    "lib/picture/brush-fidelity/engine/brush-reading-subjects.ts": {
+    "lib/paint/brush-fidelity/engine/brush-reading-subjects.ts": {
       "const measured = await measureBrushFidelityTarget(call, brush.target, brushFidelityTargetSrc(brush.target, brush.packUrl));": 1
     },
-    "lib/picture/brush-fidelity/engine/stamp-stroke-hand-sheet.ts": {
+    "lib/paint/studies/engine/stamp-stroke-hand-sheet.ts": {
       "const png = await call<string>('drawStampStrokeHandSheet', painted[name], diameter, packUrls);": 1
     },
-    "lib/picture/brush-fidelity/models/brush-reading-search.ts": {
+    "lib/paint/brush-fidelity/models/brush-reading-search.ts": {
       "const t = await score({ ...reading, [key]: value });": 1
     },
     "lib/picture/stills/studio/still-probe.tsx": {
@@ -762,13 +762,13 @@
       "const row = (cells: string[]) => cells.map((c, i) => (i === 0 ? c.padEnd(widths[0]) : i < widths.length ? c.padStart(widths[i]) : c)).join('  ').trimEnd();": 1,
       "lines.push(!empty.length ? `Empty beats (${where}): none`": 1
     },
-    "lib/picture/brush-fidelity/engine/brush-fidelity-sheet.ts": {
+    "lib/paint/brush-fidelity/engine/brush-fidelity-sheet.ts": {
       "`${name}  ·  ${grade ? grade.toUpperCase() : outcome.kind === 'unmeasurableTarget' ? 'NOT MEASURED' : 'NO TARGET'}${note ? `: ${note}` : ''}`,": 1
     },
-    "lib/picture/brush-fidelity/engine/brush-fidelity-targets.ts": {
+    "lib/paint/brush-fidelity/engine/brush-fidelity-targets.ts": {
       "return [name, preview ? { kind: 'procreatePreview', image: preview.image, shows: preview.shows }": 1
     },
-    "lib/picture/brush-fidelity/models/stroke-measure.ts": {
+    "lib/paint/brush-fidelity/models/stroke-measure.ts": {
       "export const strokeFidelityGrade = (score: number): StrokeFidelityGrade => (score <= STROKE_SCORE_GRADES.close ? 'close' : score <= STROKE_SCORE_GRADES.rough ? 'rough' : 'off');": 1
     },
     "lib/picture/kit/studio/kit.tsx": {
@@ -790,13 +790,13 @@
       "standard: (k) => { k = clamp(k); return k === 0 || k === 1 ? k : k < 0.5 ? Math.pow(2, 20 * k - 10) / 2 : (2 - Math.pow(2, -20 * k + 10)) / 2; },": 1,
       "const at = (t: number) => (t <= 0 ? 0 : t >= settled ? 1 : 1 - gap(t));": 1
     },
-    "lib/picture/photoshop-brushes/models/photoshop-preset.ts": {
+    "lib/paint/photoshop-brushes/models/photoshop-preset.ts": {
       "const scriptKey = ({ key, id }: Named) => (id ? `S:${id}` : key.length === 4 && key !== 'flow' ? `C:${key}` : `S:${key}`);": 1
     },
-    "lib/picture/procreate-brushes/engine/binary-plist.ts": {
+    "lib/paint/procreate-brushes/engine/binary-plist.ts": {
       "case 0x0: return info === 0x8 ? false : info === 0x9 ? true : null;": 1
     },
-    "lib/picture/procreate-brushes/models/procreate-brush.ts": {
+    "lib/paint/procreate-brushes/models/procreate-brush.ts": {
       "const glazeBuild = modulated && maxTransfer ? reading.glazeBuildHeavy : maxTransfer ? reading.glazeBuildIntense": 2
     },
     "lib/picture/reel/models/bounce.ts": {
@@ -825,13 +825,13 @@
       "const anchorX = x + (align === 'center' ? 0.5 : align === 'right' ? 1 : 0) * spacing * set.size;": 1,
       "textAnchor={align === 'center' ? 'middle' : align === 'right' ? 'end' : 'start'}": 1
     },
-    "lib/picture/stamp-paint/models/stamp-tip-hull.ts": {
+    "lib/paint/painting/models/stamp-tip-hull.ts": {
       "const snapToSquare = (v: number) => (Math.abs(v) < 1e-5 ? 0 : Math.abs(v - 1) < 1e-5 ? 1 : v);": 1
     },
-    "lib/picture/stamp-paint/studio/stamp-paint-renderer.ts": {
+    "lib/paint/painting/studio/stamp-paint-renderer.ts": {
       "{ format: 'rgba16float', blend: maxBlend, writeMask: glaze ? (channel === 0 ? GPUColorWrite.RED | GPUColorWrite.BLUE : GPUColorWrite.GREEN | GPUColorWrite.ALPHA) : 0 },": 1
     },
-    "lib/picture/stamp-styles/engine/import-photoshop-pack.ts": {
+    "lib/paint/brush-packs/engine/import-photoshop-pack.ts": {
       "let name = shown in brushes || shown in skipped ? (group ? `${shown} (${group})` : shown) : shown;": 1
     },
     "lib/picture/type/studio/fonts.ts": {
@@ -955,7 +955,7 @@
     }
   },
   "eslint(no-unmodified-loop-condition)": {
-    "lib/picture/brush-fidelity/engine/brush-fidelity-score.ts": {
+    "lib/paint/brush-fidelity/engine/brush-fidelity-score.ts": {
       "for (let fit = 0; brushFidelityFitsDiameter(target) && measured && painted.profile && fit < DIAMETER_FITS; fit++) {": 1
     }
   },
@@ -982,7 +982,7 @@
     "lib/picture/kit/studio/kit.tsx": {
       "size": 1
     },
-    "lib/picture/stamp-paint/studio/stamp-paint-renderer.ts": {
+    "lib/paint/painting/studio/stamp-paint-renderer.ts": {
       "size": 1
     },
     "lib/picture/type/models/archivo-metrics.ts": {
@@ -1001,7 +1001,7 @@
     "lib/footage/capture/engine/capture.ts": {
       "fromSetup: unknown": 1
     },
-    "lib/output/render/engine/browser-module-page.ts": {
+    "lib/platform/browser/engine/browser-module-page.ts": {
       "args: unknown[]": 2,
       "a: unknown[]": 1,
       "list: unknown[]": 1
@@ -1012,44 +1012,44 @@
     "lib/picture/brand/models/brand.ts": {
       "values: object | undefined": 1
     },
-    "lib/picture/brush-fidelity/engine/stamp-paint-guard.ts": {
+    "lib/paint/brush-fidelity/engine/stamp-paint-guard.ts": {
       "leaf: unknown": 1,
       "value: unknown": 1,
       "a: unknown": 2,
       "b: unknown": 2
     },
-    "lib/picture/brush-fidelity/models/brush-fidelity-report.ts": {
+    "lib/paint/brush-fidelity/models/brush-fidelity-report.ts": {
       "value: unknown": 9
     },
     "lib/picture/film/studio/three-stage.tsx": {
       "value: unknown": 1
     },
-    "lib/picture/photoshop-brushes/engine/photoshop-capture.ts": {
+    "lib/paint/photoshop-brushes/engine/photoshop-capture.ts": {
       "data: unknown": 1
     },
-    "lib/picture/photoshop-brushes/models/photoshop-descriptor.ts": {
+    "lib/paint/photoshop-brushes/models/photoshop-descriptor.ts": {
       "v: unknown": 2
     },
-    "lib/picture/photoshop-brushes/models/photoshop-preset.ts": {
+    "lib/paint/photoshop-brushes/models/photoshop-preset.ts": {
       "v: unknown": 1,
       "asked: unknown": 1,
       "got: unknown": 1
     },
-    "lib/picture/stamp-paint/studio/stamp-uniform-layout.ts": {
+    "lib/paint/painting/studio/stamp-uniform-layout.ts": {
       "value: unknown": 1
     },
-    "lib/picture/stamp-styles/engine/import-photoshop-pack.test.ts": {
+    "lib/paint/brush-packs/engine/import-photoshop-pack.test.ts": {
       "m: ReturnType<typeof stored>": 1
     },
-    "lib/picture/stamp-styles/engine/project-styles.test.ts": {
+    "lib/paint/style/engine/project-styles.test.ts": {
       "brushes: object": 1,
       "paper: object": 1,
       "manifest: object": 1
     },
-    "lib/picture/stamp-styles/engine/stamp-paint-pack-files.ts": {
+    "lib/paint/brush-packs/engine/stamp-paint-pack-files.ts": {
       "error: unknown": 1
     },
-    "lib/picture/stamp-styles/models/stamp-paint-pack.ts": {
+    "lib/paint/brush-packs/models/stamp-paint-pack.ts": {
       "value: unknown": 17,
       "v: unknown": 2
     },
@@ -1123,42 +1123,42 @@
     "lib/output/render/engine/render-session.ts": {
       "Record<string, unknown>": 1
     },
-    "lib/picture/brush-fidelity/engine/stamp-paint-guard.ts": {
+    "lib/paint/brush-fidelity/engine/stamp-paint-guard.ts": {
       "Record<string, unknown>": 3,
       "Record<string, unknown[]>": 2
     },
-    "lib/picture/brush-fidelity/models/brush-fidelity-report.ts": {
+    "lib/paint/brush-fidelity/models/brush-fidelity-report.ts": {
       "Record<string, unknown>": 1
     },
-    "lib/picture/photoshop-brushes/engine/photoshop-capture.ts": {
+    "lib/paint/photoshop-brushes/engine/photoshop-capture.ts": {
       "Record<string, unknown>": 5
     },
-    "lib/picture/photoshop-brushes/models/photoshop-capture-plan.ts": {
+    "lib/paint/photoshop-brushes/models/photoshop-capture-plan.ts": {
       "Record<string, unknown>": 2
     },
-    "lib/picture/photoshop-brushes/models/photoshop-descriptor.ts": {
+    "lib/paint/photoshop-brushes/models/photoshop-descriptor.ts": {
       "Record<string, unknown>": 1
     },
-    "lib/picture/photoshop-brushes/models/photoshop-preset.test.ts": {
+    "lib/paint/photoshop-brushes/models/photoshop-preset.test.ts": {
       "Record<string, unknown>": 2
     },
-    "lib/picture/photoshop-brushes/models/photoshop-preset.ts": {
+    "lib/paint/photoshop-brushes/models/photoshop-preset.ts": {
       "Readonly<Record<string, unknown>>": 1,
       "Record<string, unknown>": 1
     },
-    "lib/picture/procreate-brushes/engine/binary-plist.ts": {
+    "lib/paint/procreate-brushes/engine/binary-plist.ts": {
       "Record<string, unknown>": 4
     },
-    "lib/picture/procreate-brushes/models/procreate-brush.ts": {
+    "lib/paint/procreate-brushes/models/procreate-brush.ts": {
       "Readonly<Record<string, unknown>>": 1
     },
-    "lib/picture/stamp-paint/studio/stamp-uniform-layout.ts": {
+    "lib/paint/painting/studio/stamp-uniform-layout.ts": {
       "Readonly<Record<string, unknown>>": 1
     },
-    "lib/picture/stamp-styles/models/stamp-paint-pack.ts": {
+    "lib/paint/brush-packs/models/stamp-paint-pack.ts": {
       "Record<string, unknown>": 1
     },
-    "lib/picture/stamp-styles/models/style.ts": {
+    "lib/paint/style/models/style.ts": {
       "Readonly<Record<string, unknown>>": 1
     },
     "lib/platform/paid-generation/engine/paid-generation.ts": {
@@ -1176,14 +1176,14 @@
     "lib/picture/brand/models/brand.ts": {
       "typeof v": 2
     },
-    "lib/picture/brush-fidelity/engine/stamp-paint-guard.ts": {
+    "lib/paint/brush-fidelity/engine/stamp-paint-guard.ts": {
       "typeof a": 1,
       "typeof b": 1
     },
-    "lib/picture/brush-fidelity/models/brush-fidelity-report.ts": {
+    "lib/paint/brush-fidelity/models/brush-fidelity-report.ts": {
       "typeof value": 3
     },
-    "lib/picture/photoshop-brushes/models/photoshop-descriptor.ts": {
+    "lib/paint/photoshop-brushes/models/photoshop-descriptor.ts": {
       "typeof v": 3,
       "typeof v._unit": 1,
       "typeof v.value": 2,
@@ -1195,20 +1195,20 @@
       "typeof v._class": 1,
       "typeof value": 1
     },
-    "lib/picture/procreate-brushes/models/procreate-brush.ts": {
+    "lib/paint/procreate-brushes/models/procreate-brush.ts": {
       "typeof s[key]": 1,
       "typeof s.bundledGrainPath": 1
     },
-    "lib/picture/stamp-paint/studio/stamp-uniform-layout.ts": {
+    "lib/paint/painting/studio/stamp-uniform-layout.ts": {
       "typeof value": 1
     },
-    "lib/picture/stamp-styles/engine/import-procreate-pack.ts": {
+    "lib/paint/brush-packs/engine/import-procreate-pack.ts": {
       "typeof value": 3
     },
-    "lib/picture/stamp-styles/engine/stamp-paint-pack-files.ts": {
+    "lib/paint/brush-packs/engine/stamp-paint-pack-files.ts": {
       "typeof error.code": 1
     },
-    "lib/picture/stamp-styles/models/stamp-paint-pack.ts": {
+    "lib/paint/brush-packs/models/stamp-paint-pack.ts": {
       "typeof value": 2
     },
     "lib/platform/web/engine/studio-app-server.ts": {
@@ -1264,13 +1264,13 @@
     "lib/footage/capture/engine/capture.ts": {
       "(): Promise<unknown>": 5
     },
-    "lib/output/render/engine/browser-module-page.ts": {
+    "lib/platform/browser/engine/browser-module-page.ts": {
       "(): unknown": 1
     },
     "lib/output/render/engine/host-module-resolution.ts": {
       "parseJsonc(): unknown": 1
     },
-    "lib/picture/procreate-brushes/engine/binary-plist.ts": {
+    "lib/paint/procreate-brushes/engine/binary-plist.ts": {
       "(): unknown": 1
     },
     "lib/platform/paid-generation/engine/paid-generation.ts": {
@@ -1278,12 +1278,12 @@
     }
   },
   "no-widen-then-assert": {
-    "lib/picture/photoshop-brushes/models/photoshop-preset.ts": {
+    "lib/paint/photoshop-brushes/models/photoshop-preset.ts": {
       "value as PhotoshopPresetValue<F>": 1
     }
   },
   "oxc(no-accumulating-spread)": {
-    "lib/picture/brush-fidelity/models/brush-reading-search.ts": {
+    "lib/paint/brush-fidelity/models/brush-reading-search.ts": {
       "let reading = { ...start }, total = await score(reading);": 1
     }
   },
@@ -1325,7 +1325,7 @@
     "lib/output/sfx-cues/models/cues.test.ts": {
       "const now = [...events.map((e) => (e.id === 'scene:b' ? { ...e, at: 5.5 } : e)).filter((e) => e.id !== 'click:a:3' && e.id !== 'move:d:1'), click('click:a:4', 3)];": 1
     },
-    "lib/picture/brush-fidelity/models/brush-fidelity-report.ts": {
+    "lib/paint/brush-fidelity/models/brush-fidelity-report.ts": {
       "entries: entries.map((rawEntry, i): BrushFidelityReportEntry => {": 1
     },
     "lib/picture/captions/models/caption-pages.test.ts": {
@@ -1357,7 +1357,7 @@
     "lib/picture/reel/studio/type-slant.tsx": {
       "const dots = dotsAt(m, pose.scale).map((d) => ({ ...d, swap: tittle?.(d) }));": 1
     },
-    "lib/picture/stamp-paint/models/stamp-stroke-hand.ts": {
+    "lib/paint/brush/models/stamp-stroke-hand.ts": {
       "return points.map((point, i) => {": 1
     },
     "lib/picture/video/studio/video.ts": {
@@ -1462,33 +1462,33 @@
     }
   },
   "typescript(consistent-return)": {
-    "lib/output/render/engine/browser-module-page.ts": {
+    "lib/platform/browser/engine/browser-module-page.ts": {
       "const server = createServer((request, response) => {": 1
     },
     "lib/output/sfx-cues/models/cues.ts": {
       "function sfxEventOptions(event: SfxEvent, clickStyle: SfxClickStyle): SfxRequest[] {": 1
     },
-    "lib/picture/brush-fidelity/engine/brush-fidelity-score.ts": {
+    "lib/paint/brush-fidelity/engine/brush-fidelity-score.ts": {
       "export function brushFidelityOutcome(scored: BrushFidelityScore): BrushFidelityOutcome {": 1
     },
-    "lib/picture/brush-fidelity/engine/brush-fidelity-sheet.ts": {
+    "lib/paint/brush-fidelity/engine/brush-fidelity-sheet.ts": {
       "function describeOutcome(outcome: BrushFidelityOutcome): string {": 1
     },
-    "lib/picture/brush-fidelity/engine/brush-fidelity-targets.ts": {
+    "lib/paint/brush-fidelity/engine/brush-fidelity-targets.ts": {
       "export function brushFidelityTargetSrc(target: BrushFidelityMeasurableTarget, packUrl: string): string {": 1,
       "return new Map(Object.keys(manifest.brushes).flatMap((name): [string, number][] => {": 1
     },
-    "lib/picture/brush-fidelity/engine/brush-reading-subjects.ts": {
+    "lib/paint/brush-fidelity/engine/brush-reading-subjects.ts": {
       "return async (subject: BrushReadingSubject<Source>, candidate: R): Promise<number> => {": 1
     },
-    "lib/picture/brush-fidelity/models/brush-fidelity-report.ts": {
+    "lib/paint/brush-fidelity/models/brush-fidelity-report.ts": {
       "export function brushFidelityOutcomeScore(outcome: BrushFidelityOutcome): number | undefined {": 1
     },
-    "lib/picture/brush-fidelity/models/brush-fidelity-target.ts": {
+    "lib/paint/brush-fidelity/models/brush-fidelity-target.ts": {
       "export function brushFidelityDiameter(target: BrushFidelityTarget): number {": 1,
       "export function brushFidelityPainting(brush: StampBrush, target: BrushFidelityTarget, diameter: number): CompiledStampPaint {": 1
     },
-    "lib/picture/brush-fidelity/models/brush-readings.ts": {
+    "lib/paint/brush-fidelity/models/brush-readings.ts": {
       "uses: (key, { preset }) => {": 1
     },
     "lib/picture/measurement/studio/motion-tag.ts": {
@@ -1497,10 +1497,10 @@
     "lib/picture/measurement/studio/screen-rect.ts": {
       "return release;": 1
     },
-    "lib/picture/photoshop-brushes/models/photoshop-capture-plan.ts": {
+    "lib/paint/photoshop-brushes/models/photoshop-capture-plan.ts": {
       "export function photoshopMarkStrokes(mark: PhotoshopMarkKind, box: PhotoshopBox, diameter: number): PhotoshopStroke[] {": 1
     },
-    "lib/picture/photoshop-brushes/models/photoshop-preset.ts": {
+    "lib/paint/photoshop-brushes/models/photoshop-preset.ts": {
       "function readControl(d: PhotoshopDescriptor): PhotoshopControl {": 1,
       "function tipParts(tip: PhotoshopKnownTip) {": 1
     },
@@ -1533,7 +1533,7 @@
       "const brand: import('#lib/picture/brand/studio/brand.tsx').StudioBrand;": 1,
       "export const footage: Readonly<Record<string, import('#lib/footage/previs/studio/previs.ts').PrevisFootage>>;": 1,
       "const cues: readonly import('#lib/timing/sound/studio/sfx.tsx').SfxCueSound[] | null;": 1,
-      "const styles: import('#lib/picture/stamp-styles/models/style.ts').BundledStampPaintStyles;": 1
+      "const styles: import('#lib/paint/style/models/style.ts').BundledStampPaintStyles;": 1
     }
   },
   "typescript(no-base-to-string)": {
@@ -1543,22 +1543,22 @@
     "lib/output/render/engine/render-stills.ts": {
       "const values = (key: keyof StillProps) => [...new Set(all.map((c) => (c.defaultProps as StillProps)[key]))].join(', ');": 1
     },
-    "lib/picture/brush-fidelity/engine/stamp-paint-guard.ts": {
+    "lib/paint/brush-fidelity/engine/stamp-paint-guard.ts": {
       "throw new Error(`brushes guard: ${file} is fingerprint format ${String(format.stampPaintFingerprints ?? 'none')}, and the guard reads ${STAMP_PAINT_FINGERPRINT_VERSION}; write it again with a checkout of the engine it was meant to hold`);": 1
     },
-    "lib/picture/brush-fidelity/models/brush-fidelity-report.ts": {
+    "lib/paint/brush-fidelity/models/brush-fidelity-report.ts": {
       "if (r.version !== BRUSH_FIDELITY_REPORT_VERSION) fail(`it's report version ${String(r.version ?? 'none')}, and the studio reads version ${BRUSH_FIDELITY_REPORT_VERSION}`);": 1
     },
-    "lib/picture/photoshop-brushes/engine/photoshop-abr.ts": {
+    "lib/paint/photoshop-brushes/engine/photoshop-abr.ts": {
       "group = displayName(String(item['Nm  '] ?? ''));": 1
     },
-    "lib/picture/procreate-brushes/engine/binary-plist.ts": {
+    "lib/paint/procreate-brushes/engine/binary-plist.ts": {
       "for (let i = 0; i < length; i++) entries[String(read(uint(start + i * refSize, refSize)))] = read(uint(start + (length + i) * refSize, refSize));": 1
     },
-    "lib/picture/stamp-styles/engine/import-photoshop-pack.ts": {
+    "lib/paint/brush-packs/engine/import-photoshop-pack.ts": {
       "const shown = displayName(String(preset['Nm  '] ?? '')).trim() || 'Untitled';": 1
     },
-    "lib/picture/stamp-styles/engine/import-procreate-pack.ts": {
+    "lib/paint/brush-packs/engine/import-procreate-pack.ts": {
       "const name = String(settings.name ?? '').trim();": 1
     },
     "lib/platform/paid-generation/engine/paid-generation.test.ts": {
@@ -1647,7 +1647,7 @@
     }
   },
   "typescript(no-unnecessary-type-assertion)": {
-    "lib/picture/stamp-styles/engine/import-procreate-pack.ts": {
+    "lib/paint/brush-packs/engine/import-procreate-pack.ts": {
       "const color = `#${mean.map((sum) => Math.round(sum / pixels).toString(16).padStart(2, '0')).join('')}` as StampPaintColor;": 1
     },
     "lint/structural/checks/no-known-value-widening.ts": {
@@ -1681,10 +1681,10 @@
     "lib/picture/measurement/studio/probe.tsx": {
       "function parseAttr<T>(el: Element, attr: string, problems: FrameMotion['problems'], id: string): T | undefined {": 1
     },
-    "lib/picture/photoshop-brushes/engine/photoshop-capture.ts": {
+    "lib/paint/photoshop-brushes/engine/photoshop-capture.ts": {
       "function captureScript<T>(entry: string, data: unknown): T {": 1
     },
-    "lib/picture/stamp-styles/engine/project-styles.ts": {
+    "lib/paint/style/engine/project-styles.ts": {
       "const requireDefault = <T>(file: string) => (createRequire(file)(file) as { default: T }).default;": 1
     },
     "lib/platform/host/engine/hosts.ts": {
@@ -1744,7 +1744,7 @@
     "lib/output/sound-check/engine/sound-check.ts": {
       "const video: VideoDef = (await import(pathToFileURL(join(project, 'video.tsx')).href)).default;": 1
     },
-    "lib/picture/brush-fidelity/engine/brush-fidelity-sheet.ts": {
+    "lib/paint/brush-fidelity/engine/brush-fidelity-sheet.ts": {
       "const all: StampPaintStyleGrades = existsSync(scores) ? JSON.parse(readFileSync(scores, 'utf8')) : {};": 1
     },
     "lib/picture/composition/studio/Video.tsx": {
@@ -1753,7 +1753,7 @@
     "lib/picture/reel/engine/reel-study-files.ts": {
       "const probe = JSON.parse(runFfprobe(['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height,r_frame_rate:format=duration', '-of', 'json', video]).toString());": 1
     },
-    "lib/picture/stamp-styles/engine/import-photoshop-pack.test.ts": {
+    "lib/paint/brush-packs/engine/import-photoshop-pack.test.ts": {
       "const m = stored();": 1
     },
     "lib/platform/paid-generation/engine/openrouter.ts": {
@@ -1835,7 +1835,7 @@
       "const [num, den] = String(probe.streams[0].r_frame_rate).split('/').map(Number);": 1,
       "return { fps: num / (den || 1), duration: Number(probe.format.duration), width: probe.streams[0].width as number, height: probe.streams[0].height as number };": 3
     },
-    "lib/picture/stamp-styles/engine/import-photoshop-pack.test.ts": {
+    "lib/paint/brush-packs/engine/import-photoshop-pack.test.ts": {
       "refused((m) => void (m.previews.bad = 42), /previews\\.bad isn't an object/);": 1,
       "refused((m) => void (m.brushes.Chalk.pattern.width = 'wrong'), /brushes\\.Chalk\\.pattern\\.width/);": 1,
       "refused((m) => void (m.brushes.Chalk.tip.kind = 'round'), /brushes\\.Chalk\\.tip\\.kind is \"round\", not one of sampled/);": 1,
@@ -1874,13 +1874,13 @@
       "construct: (target, args, newTarget) => Reflect.construct(target, args.length ? args : [pinned], newTarget),": 1,
       "get: (target, key) => (key === 'now' ? () => pinned : Reflect.get(target, key)),": 1
     },
-    "lib/picture/stamp-styles/engine/import-photoshop-pack.test.ts": {
+    "lib/paint/brush-packs/engine/import-photoshop-pack.test.ts": {
       "const stored = () => JSON.parse(readFileSync(join(readStampPaintPackGeneration(join(dir, 'styles/sketch/brushes/chalk')).dir, 'manifest.json'), 'utf8'));": 1
     },
-    "lib/picture/stamp-styles/engine/import-photoshop-pack.ts": {
+    "lib/paint/brush-packs/engine/import-photoshop-pack.ts": {
       "return JSON.parse(JSON.stringify(preset, (key, value) => (key === 'dtipsErodibleTipHeightMap' ? undefined : value)));": 2
     },
-    "lib/picture/stamp-styles/engine/node-stamp-paint-styles.ts": {
+    "lib/paint/style/engine/node-stamp-paint-styles.ts": {
       "return Object.fromEntries(await Promise.all(names.map(async (name) => {": 1
     },
     "lib/platform/paid-generation/engine/openrouter.ts": {
@@ -1926,7 +1926,7 @@
     "lib/picture/reel/models/lens.test.ts": {
       "assert.ok(decay.every((px, i) => px < (i ? decay[i - 1] : 2.5) && px > 0.5), `falls away over the next frames: ${decay}`);": 1
     },
-    "lib/picture/stamp-paint/models/stamp-paint-recipe.test.ts": {
+    "lib/paint/painting/models/stamp-paint-recipe.test.ts": {
       "assert.ok(sizes[0] < Math.max(...sizes), `${sizes}`);": 1,
       "assert.ok(counts[1] > 0 && counts[3] > counts[1] && counts[3] < whole.stamps.length, `a partial stroke: ${counts}`);": 1
     },
@@ -1986,13 +1986,13 @@
     "lib/output/sound-check/engine/sound-check.ts": {
       "export function formatVideoSoundCheck({ fps, sounds, emptyBeats }: VideoSoundCheck): string[] {": 1
     },
-    "lib/output/stills/engine/still-sheet.test.ts": {
+    "lib/output/review/engine/still-sheet.test.ts": {
       "const look = (headline: number, crop: number) => new Uint8Array(16).fill(headline + crop);": 1
     },
-    "lib/picture/brush-fidelity/engine/stamp-paint-guard.ts": {
+    "lib/paint/brush-fidelity/engine/stamp-paint-guard.ts": {
       "export function diffStampBrushSheetReports(before: BrushFidelityReport, after: BrushFidelityReport): { moved: string[]; drift: number } {": 1
     },
-    "lib/picture/brush-fidelity/models/stroke-measure.ts": {
+    "lib/paint/brush-fidelity/models/stroke-measure.ts": {
       "export function compareStrokeProfiles(preview: StrokeCoverageProfile, ours: StrokeCoverageProfile): StrokeProfileComparison {": 1
     },
     "lib/picture/captions/models/caption-sidecar.ts": {
@@ -2007,7 +2007,7 @@
     "lib/picture/motion/models/motion.test.ts": {
       "const peak = (ease: (k: number) => number) => Math.max(...Array.from({ length: 10001 }, (_, i) => ease(i / 10000)));": 1
     },
-    "lib/picture/photoshop-brushes/models/photoshop-brush.ts": {
+    "lib/paint/photoshop-brushes/models/photoshop-brush.ts": {
       "const pct = (value: number | undefined, unset: number) => Math.round(value ?? unset);": 1
     },
     "lib/picture/reel/models/capture-plane.test.ts": {
@@ -2056,13 +2056,13 @@
     "lib/picture/reel/studio/type.tsx": {
       "export function SelectionBox({": 1
     },
-    "lib/picture/stamp-paint/models/stamp-tip-hull.ts": {
+    "lib/paint/painting/models/stamp-tip-hull.ts": {
       "function strictlyConvex(points: [number, number][]): [number, number][] {": 1
     },
-    "lib/picture/stamp-styles/engine/import-photoshop-pack.ts": {
+    "lib/paint/brush-packs/engine/import-photoshop-pack.ts": {
       "function readBrushFiles(archive: string): { name: string; file: PhotoshopBrushFile }[] {": 1
     },
-    "lib/picture/stamp-styles/engine/import-procreate-pack.ts": {
+    "lib/paint/brush-packs/engine/import-procreate-pack.ts": {
       "function readSwatches(bytes: Buffer, label: string): { name: string; colors: StampPaintColor[] } {": 1
     },
     "lib/platform/ffmpeg/engine/loudness.ts": {

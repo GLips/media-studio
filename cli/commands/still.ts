@@ -37,10 +37,10 @@ export default defineCommand({
         ? `still check: ${failed.length} of ${stills.length} failed${args.check ? '' : ', not written'}: ${failed.map((s) => stillName(s.still)).join(', ')}`
         : `still check ✓ (${stills.length} still${stills.length > 1 ? 's' : ''})`);
       if (failed.length) process.exitCode = 1;
-      const { describeLookAlikeAxis, stillAxesThatLookAlike } = await import('#lib/output/stills/engine/still-sheet.ts');
+      const { describeLookAlikeAxis, stillAxesThatLookAlike } = await import('#lib/output/review/engine/still-sheet.ts');
       for (const alike of stillAxesThatLookAlike(stills)) console.error(`⚠ ${describeLookAlikeAxis(alike)}`);
       if (drawnDir) {
-        const { renderStillSheets } = await import('#lib/output/stills/engine/still-sheet.ts');
+        const { renderStillSheets } = await import('#lib/output/review/engine/still-sheet.ts');
         for (const sheet of await renderStillSheets(stills, { outDir: join(project, 'out', 'still-sheets'), workDir: drawnDir, project })) console.log(sheet);
       }
     };

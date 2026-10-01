@@ -1,4 +1,4 @@
-// node harness/stamp-paint-gate.ts run (npm run stamp:gate -- run): the GPU gate (lib/picture/stamp-paint-gate). It
+// node harness/stamp-paint-gate.ts run (npm run stamp:gate -- run): the GPU gate (lib/paint/gate). It
 // runs the renderer's formulas, paints synthetic paintings and traces a resolve on the GPU, and holds each to its
 // accepted baseline (harness/fixtures/stamp-paint/), its CPU twin or its frame. `update <ids> --reason` writes
 // candidates with their differences; `accept <ids>` replaces the baselines with them. `staged` is what pre-commit runs; it runs `staged-tree` inside the written-out index.
@@ -6,11 +6,11 @@
 import { defineCommand } from 'citty';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { acceptStampGateCandidates, STAMP_GATE_PUBLIC_STORE } from '#lib/picture/stamp-paint-gate/engine/stamp-gate-store.ts';
-import { runStampGatePrivate, updateStampGatePrivate } from '#lib/picture/stamp-paint-gate/engine/stamp-gate-private.ts';
-import { runStagedStampGate } from '#lib/picture/stamp-paint-gate/engine/stamp-gate-staged.ts';
-import { stampGateImportedFiles, stampGateReachedBy } from '#lib/picture/stamp-paint-gate/engine/stamp-gate-reach.ts';
-import { runStampGate, STAMP_GATE_PAGE, stampGateBaselineIds, updateStampGate, type StampGateCheck } from '#lib/picture/stamp-paint-gate/engine/stamp-gate.ts';
+import { acceptStampGateCandidates, STAMP_GATE_PUBLIC_STORE } from '#lib/paint/gate/engine/stamp-gate-store.ts';
+import { runStampGatePrivate, updateStampGatePrivate } from '#lib/paint/gate/engine/stamp-gate-private.ts';
+import { runStagedStampGate } from '#lib/paint/gate/engine/stamp-gate-staged.ts';
+import { stampGateImportedFiles, stampGateReachedBy } from '#lib/paint/gate/engine/stamp-gate-reach.ts';
+import { runStampGate, STAMP_GATE_PAGE, stampGateBaselineIds, updateStampGate, type StampGateCheck } from '#lib/paint/gate/engine/stamp-gate.ts';
 import { STUDIO_STYLES_DIR, STUDIO_WORKSPACE_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { runHarnessCommand } from './run-harness-command.ts';
 

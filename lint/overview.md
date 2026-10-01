@@ -51,7 +51,7 @@ Studio: the checks written for this repo's own shape. All structural, all over t
 | model-purity | a model reaches no render, I/O or browser code through any chain |
 | frame-determinism | a frame never reads a clock or randomness |
 | capability-match | a project binds what its capability declares |
-| sdk-containment | each SDK is reached from its one owner (policy/sdk-owners.ts) |
+| sdk-containment | each SDK is reached only from its declared owners, each a distinct use (policy/sdk-owners.ts) |
 | no-scratch, studio-temp, render-snapshot, brush-assets | no tracked file names scratch/; temp folders come from studio-temp; a render is read through its own snapshot; bought brush packs stay out of git |
 | folder-width (advisory) | a lib folder past 15 source files groups them |
 

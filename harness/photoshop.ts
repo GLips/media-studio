@@ -1,10 +1,10 @@
 // node harness/photoshop.ts <check|probes|references|restore> (npm run photoshop -- <verb>): Photoshop 2026's own
 // renders of brushes, captured by script as ground truth for the stamp renderer
-// (lib/picture/photoshop-brushes/engine/photoshop-capture.ts; docs/photoshop-capture.md).
+// (lib/paint/photoshop-brushes/engine/photoshop-capture.ts; docs/photoshop-capture.md).
 import { defineCommand } from 'citty';
 import { join, relative, resolve } from 'node:path';
-import { capturePhotoshopProbes, capturePhotoshopReferences } from '#lib/picture/photoshop-brushes/engine/photoshop-capture.ts';
-import { PHOTOSHOP_REPEAT_SAMPLE } from '#lib/picture/photoshop-brushes/models/photoshop-probes.ts';
+import { capturePhotoshopProbes, capturePhotoshopReferences } from '#lib/paint/photoshop-brushes/engine/photoshop-capture.ts';
+import { PHOTOSHOP_REPEAT_SAMPLE } from '#lib/paint/photoshop-brushes/models/photoshop-probes.ts';
 import { checkPhotoshop, restorePendingPhotoshopSettings } from '#lib/platform/photoshop/engine/photoshop-app.ts';
 import { STUDIO_ROOT, STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { runHarnessCommand } from './run-harness-command.ts';
@@ -23,7 +23,7 @@ const checkCommand = defineCommand({
 const probesCommand = defineCommand({
   meta: {
     name: 'probes',
-    description: "Have Photoshop paint the probe set (lib/picture/photoshop-brushes/models/photoshop-probes.ts): a plain round brush varied one setting at a time, on 16-bit transparent sheets saved as PNG, into work/styles/<style>/brushes/photoshop-probes/<run>/ with manifest.json (each probe's settings as read back, every cell's geometry, Photoshop's version and colour settings). Launches its own Photoshop in the background, and quits it and puts its settings back byte for byte after. Prints the run time and the repeat check.",
+    description: "Have Photoshop paint the probe set (lib/paint/photoshop-brushes/models/photoshop-probes.ts): a plain round brush varied one setting at a time, on 16-bit transparent sheets saved as PNG, into work/styles/<style>/brushes/photoshop-probes/<run>/ with manifest.json (each probe's settings as read back, every cell's geometry, Photoshop's version and colour settings). Launches its own Photoshop in the background, and quits it and puts its settings back byte for byte after. Prints the run time and the repeat check.",
   },
   args: {
     style: { type: 'string', default: 'watercolor', description: 'The style whose brushes/photoshop-probes/ holds the runs' },

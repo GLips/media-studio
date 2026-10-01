@@ -12,7 +12,7 @@ import { basename, join, relative } from 'node:path';
 import { generatePaidMedia } from '#lib/platform/paid-generation/engine/paid-generation.ts';
 import { readPrevisFootageList, writePrevisFootageEntry } from '#lib/footage/previs/engine/previs-footage.ts';
 import { blockoutSlug } from './project-bundle.ts';
-import { RENDER_CHROMIUM } from './render-browser.ts';
+import { RENDER_CHROMIUM } from '#lib/platform/browser/engine/render-browser.ts';
 import type { RenderSession } from './render-session.ts';
 import { PREVIS_BLOCKOUT_SHORT_SIDE, PREVIS_MODEL_NAMES, PREVIS_MODELS, previsAspectRatio, previsShotSeconds, type PrevisModelName } from '#lib/footage/previs/models/previs-models.ts';
 import { probeMediaSeconds } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';

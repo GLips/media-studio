@@ -1,0 +1,6 @@
+{
+  "lib/paint/style": "StampPainting paints a style's paintings with the renderer, on the paper and with the mixing the style sets.",
+  "lib/paint/brush-fidelity": "A brush is painted by the engine, along its target's stroke, to be measured against its app's target.",
+  "lib/paint/studies": "A study is a painting of small passages, painted by the engine for a person to judge.",
+  "lib/paint/gate": "The GPU gate runs the renderer's formulas and paintings, held to accepted baselines and their CPU twins."
+}

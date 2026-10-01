@@ -3,7 +3,7 @@
 // preset; a kit piece that reads useVideoFormat fits the still's frame too.
 //
 // Root.tsx registers one composition per design × preset × variant; `studio still` renders them (lib/output/render/engine/render-stills.ts),
-// and `studio still --sheet` lays a design's variants out by their axes (lib/output/stills/engine/still-sheet.ts).
+// and `studio still --sheet` lays a design's variants out by their axes (lib/output/review/engine/still-sheet.ts).
 
 import { createContext, useContext, useLayoutEffect, useRef, useState, type ComponentType, type CSSProperties } from 'react';
 import { Artifact, Img, useDelayRender, useVideoConfig } from 'remotion';

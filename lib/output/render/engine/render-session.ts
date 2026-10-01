@@ -22,7 +22,7 @@ import { writeRenderSnapshot, type RenderSnapshot } from './render-snapshot.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { readProjectClock } from './project-clock.ts';
 import { renderVoiceOf } from '#lib/timing/voice/engine/voice-project.ts';
-import { inRenderBrowser, RENDER_CHROMIUM } from './render-browser.ts';
+import { inRenderBrowser, RENDER_CHROMIUM } from '#lib/platform/browser/engine/render-browser.ts';
 import type { MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
 import type { CompositionRenderSettings, ReplayProps, VideoProps } from '#lib/picture/video/models/composition-props.ts';
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';

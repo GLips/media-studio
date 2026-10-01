@@ -1,4 +1,4 @@
-// studio brushes: a private style's brush assets, imported from packs you bought (lib/picture/stamp-styles/engine/import-stamp-paint-pack.ts).
+// studio brushes: a private style's brush assets, imported from packs you bought (lib/paint/brush-packs/engine/import-stamp-paint-pack.ts).
 import { defineCommand } from 'citty';
 
 const importBrushesCommand = defineCommand({
@@ -15,8 +15,8 @@ const importBrushesCommand = defineCommand({
     const { existsSync } = await import('node:fs');
     const { join, relative } = await import('node:path');
     const { STUDIO_ROOT, STUDIO_STYLES_DIR } = await import('#lib/platform/project/engine/studio-project.ts');
-    const { importStampPaintPack } = await import('#lib/picture/stamp-styles/engine/import-stamp-paint-pack.ts');
-    const { resolveStampPaintPackBrushes, stampPaintPackSupport } = await import('#lib/picture/stamp-styles/models/stamp-paint-pack.ts');
+    const { importStampPaintPack } = await import('#lib/paint/brush-packs/engine/import-stamp-paint-pack.ts');
+    const { resolveStampPaintPackBrushes, stampPaintPackSupport } = await import('#lib/paint/brush-packs/models/stamp-paint-pack.ts');
     const { dir, manifest } = importStampPaintPack({ archive: args.archive, stylesDir: STUDIO_STYLES_DIR, style: args.style, pack: args.pack });
     const brushes = resolveStampPaintPackBrushes(manifest);
     for (const [name, notes] of Object.entries(stampPaintPackSupport(manifest))) {
