@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
-import type { PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
+import { stampFrozenMarks, type PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
 import { diffStampPaintingPrints, printStampPainting } from './stamp-paint-guard.ts';
 
 const brush: StampBrush = {
@@ -33,7 +33,7 @@ function withStamps(edit: (stamps: PlacedStamp[]) => void): CompiledStampPaint {
   const [deposit] = pass.deposits;
   const stamps = deposit.stamps.map((stamp) => ({ ...stamp }));
   edit(stamps);
-  return { groups: [{ ...group, passes: [{ ...pass, deposits: [{ ...deposit, stamps }] }] }] };
+  return { groups: [{ ...group, passes: [{ ...pass, deposits: [{ ...deposit, stamps: stampFrozenMarks(stamps) }] }] }] };
 }
 
 const before = printStampPainting(painting);

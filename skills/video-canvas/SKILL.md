@@ -92,7 +92,10 @@ Everything is from `#studio`.
     set and lies over them as that medium does: gouache covers a dark, a watercolour glazes it.
 - `stampSmoothRegion(points)` turns a few control points into a smooth silhouette; `stampRegionOutline(region)` traces
   its edge.
-- `compileStampPaintRecipe(recipe)` once, at scene definition, never in render: a new painting each frame reloads it.
+- `compileStampPaintRecipe(recipe)` at scene definition when the painting doesn't change. Where its shapes do (a
+  cloud drifting through a wash, a shape morphing), compile it in render: deposits whose shape, brush, size and seed
+  are unchanged reuse their marks, so a rebuilt frame pays for what changed plus a reload of a few ms. It also loses
+  the checkpoints a still painting draws from, so prefer `motion` or keyed materials where they can express the change.
 - **Colour that changes over the scene** (a sunset's sky): key the material rather than recompiling, as `motion` keys
   a group: `material: { kind: 'keys', keys: [{ at: 0.3, material: afternoon }, { at: 3.7, material: dusk }] }`, in
   scene seconds. Between keys each pigment's amount eases (flat colour, its channels); a graded field's ends are each

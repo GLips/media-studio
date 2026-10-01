@@ -8,7 +8,7 @@
 // Randomness comes from IDs, never order: each deposit is seeded by its ID, so adding a stroke changes no other.
 
 import type { StampBlend, StampBrush, StampBrushAsset } from '#lib/paint/brush/models/stamp-brush.ts';
-import type { FrozenPlacedStamp, StampPlacement, StampStrokePoint, StampTint } from '#lib/paint/brush/models/stamp-placement.ts';
+import type { FrozenStampMarks, StampPlacement, StampStrokePoint, StampTint } from '#lib/paint/brush/models/stamp-placement.ts';
 import type { StampStrokeHand } from '#lib/paint/brush/models/stamp-stroke-hand.ts';
 import { checkedStampPolygon, compileDeposit } from './stamp-deposit-compile.ts';
 import { stampRegionSeed, type StampFillApplication, type StampFloodBody, type StampFloodBodyLevels, type StampFloodFront } from './stamp-fill.ts';
@@ -387,9 +387,9 @@ type CompiledStampDepositCommon<A extends CompiledStampAction> = {
   /** When it shows (StampDepositReveal): from `at` seconds, drawn over `over` (0 lands whole); none, there throughout. */
   reveal?: { at: number; over: number };
   /** Every stamp of the finished deposit, in reveal order: a flood's are its edge stroke's. */
-  stamps: readonly FrozenPlacedStamp[];
+  stamps: FrozenStampMarks;
   /** The brush's dual stamps, placed by its own settings along the same stroke, in reveal order; none without one. */
-  dualStamps: readonly FrozenPlacedStamp[];
+  dualStamps: FrozenStampMarks;
 };
 
 /**

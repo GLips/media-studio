@@ -222,8 +222,15 @@ export function stampPigmentGroupMedium(paint: StampPigmentPaint, painting: Comp
  * pressure against the tooth itself (paintDryContact), so the brush's grain depth by pressure, Photoshop's model of
  * the same, is set aside: kept, Kyle's Nupastel laid nothing at half pressure in crayon. A lift's stamps go alike.
  */
-export const stampGrainDepthIn = (stamp: PlacedStamp, medium: PaintMedium | null): number =>
-  stamp.grainDepth * (medium?.paperContact.kind === 'peaks' ? 1 : stamp.grainDepthByPressure);
+export const stampGrainDepthIn = (stamp: PlacedStamp, medium: PaintMedium | null): number => stampGrainDepthBy(stamp, stampGrainDepthSourceIn(medium));
+
+/** Where a stamp's grain depth by pressure comes from: the paper's tooth, or the brush (stampGrainDepthIn). */
+export type StampGrainDepthSource = 'tooth' | 'brush';
+/** Where `medium` (null: flat paint) takes a stamp's grain depth by pressure from: the tooth where it catches the peaks. */
+export const stampGrainDepthSourceIn = (medium: PaintMedium | null): StampGrainDepthSource => (medium?.paperContact.kind === 'peaks' ? 'tooth' : 'brush');
+/** `stamp`'s share of its grain's depth, its pressure's share taken from `source`. */
+export const stampGrainDepthBy = (stamp: PlacedStamp, source: StampGrainDepthSource): number =>
+  stamp.grainDepth * (source === 'tooth' ? 1 : stamp.grainDepthByPressure);
 
 /** Whether two pigments are one: the same absorption, scattering and habits. A name is only for people. */
 const samePigment = (a: PaintPigment, b: PaintPigment) =>
