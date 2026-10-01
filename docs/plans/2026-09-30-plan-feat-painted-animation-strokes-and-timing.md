@@ -215,7 +215,7 @@ Reveal, placement, deformation, boil, holds and colour run as pure timing channe
 - **Conflicts are judged after selections expand to concrete targets, per overlapping interval.** A finished clip's held pose persists until the next clip on that target starts.
 - **The timing contract is written before implementation:** clock nesting, each stroke's local boil phase, behaviour at interval endpoints, and overlap detection.
 - **A separate animation clock** at 24 fps by default, apart from the render rate. "On twos" means 2/24 s at any output rate, and `StampGroupBoil.every` moves onto it.
-- **Boil** re-seeds per epoch, as built. A stroke boils only after its own reveal finishes, and its displacement is applied in anchor space after `deform`, so plan 2's moving planes don't break it.
+- **Boil** is a stepped displacement of rest space, under `deform` (spike 1.0 and phase 2a). A stroke boils only after its own reveal finishes.
 
 ### The timing contract (written 2026-10-01, before implementation)
 
@@ -257,12 +257,14 @@ Reveal, placement, deformation, boil, holds and colour run as pure timing channe
 
 **Composition per frame, for one stroke:**
 1. rest geometry in anchor space;
-2. its part's `deform`;
-3. each ancestor's `deform`, nearest first;
-4. its group's `place` (rigid);
-5. `boil` displacement, in anchor space;
+2. `boil` displacement, in rest space, so the wobble travels with the part rather than swimming as it moves;
+3. its part's `deform`;
+4. each ancestor's `deform`, nearest first;
+5. its group's `place` (rigid), its own and then its ancestors', composed as one placement;
 6. the camera step (the identity in plan 1);
 7. screen.
+
+*Amended in phase 2a:* boil was after `place`. In rest space it rides any plane plan 2 adds, too.
 
 Reveal is measured on the rest stroke (step 1), so no later step changes how much has been drawn.
 
