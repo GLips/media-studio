@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { stampLinearDynamics, type StampBrush } from './stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampMask, type PaintMaterial } from './stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, stampPaintRecipe, stampPassDeposits, type CompiledStampMask, type PaintMaterial } from './stamp-paint-recipe.ts';
 import { visibleStampCountAt } from './stamp-deposit-reveal.ts';
 import type { StampRegion } from './stamp-region.ts';
 
@@ -53,7 +53,7 @@ test('a clipped pass clips to the nearest unclipped pass before it; a deposit la
     ['sky/glints', 'sky/blotches', false],
   ]);
   const [base, texture, blotches] = sky.passes;
-  assert.deepEqual([base.deposits[0], ...texture.deposits, blotches.deposits[0], land.passes[0].deposits[0]].map((deposit) => [deposit.id, fluid(deposit.mask)]), [
+  assert.deepEqual([stampPassDeposits(base)[0], ...stampPassDeposits(texture), stampPassDeposits(blotches)[0], stampPassDeposits(land.passes[0])[0]].map((deposit) => [deposit.id, fluid(deposit.mask)]), [
     ['sky/base/fill', ['frame', 'sky/sun']],
     ['sky/texture/before', ['frame', 'sky/sun']],
     ['sky/texture/after', ['frame', 'sky/sun', 'sky/texture/lift']],
@@ -62,7 +62,7 @@ test('a clipped pass clips to the nearest unclipped pass before it; a deposit la
     ['land/wash/s', ['frame']],
   ]);
   // Deposits under the same fluid share it, so it's worked out once.
-  assert.equal(base.deposits[0].mask, blotches.deposits[0].mask);
+  assert.equal(stampPassDeposits(base)[0].mask, stampPassDeposits(blotches)[0].mask);
 
   assert.throws(
     () => compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', { clipped: true }, () => {})))),
@@ -105,8 +105,8 @@ test('a stroke tapers at both ends however short, and turns with its direction f
   const still = { ...brush, dynamics: stampLinearDynamics({ size: { pressure: 0.5 }, opacity: { pressure: 0.5 }, rotation: { direction: 1 } }), scatter: { count: 1, radius: 0, lateral: 0 } };
   // A pen often repeats its first point.
   const stroke = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 19 }];
-  const [deposit] = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) =>
-    group.pass('p', {}, (pass) => pass.stroke('dab', { brush: { ...still, spacing: 0.5 }, material: ochre, diameter: 10, path: stroke }))))).groups[0].passes[0].deposits;
+  const [deposit] = stampPassDeposits(compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) =>
+    group.pass('p', {}, (pass) => pass.stroke('dab', { brush: { ...still, spacing: 0.5 }, material: ochre, diameter: 10, path: stroke }))))).groups[0].passes[0]);
   const sizes = deposit.stamps.map((stamp) => stamp.diameter);
   assert.equal(sizes[0], sizes.at(-1));
   assert.ok(sizes[0] < Math.max(...sizes), `${sizes}`);
@@ -116,8 +116,8 @@ test('a stroke tapers at both ends however short, and turns with its direction f
 test('a stroke partway drawn shows a prefix of the finished stroke\'s stamps, the same every compile', () => {
   const recipe = (drawnOver?: number) => stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) =>
     group.pass('p', {}, (pass) => pass.stroke('line', { brush, material: ochre, diameter: 40, path, appliedAt: 2, drawnOver }))));
-  const whole = compileStampPaintRecipe(recipe()).groups[0].passes[0].deposits[0];
-  const drawn = compileStampPaintRecipe(recipe(4)).groups[0].passes[0].deposits[0];
+  const whole = stampPassDeposits(compileStampPaintRecipe(recipe()).groups[0].passes[0])[0];
+  const drawn = stampPassDeposits(compileStampPaintRecipe(recipe(4)).groups[0].passes[0])[0];
   assert.deepEqual(drawn.stamps, whole.stamps);
 
   assert.equal(visibleStampCountAt(whole, 1.9), 0);
@@ -135,10 +135,10 @@ test('a stroke partway drawn shows a prefix of the finished stroke\'s stamps, th
 test("a dual brush's stamps are its scale times the deposit's diameter, stroked or placed", () => {
   const still = { ...brush, dynamics: stampLinearDynamics({ size: { pressure: 0.5 }, opacity: { pressure: 0.5 }, rotation: { direction: 1, random: 0.5 } }), scatter: { ...brush.scatter, lateral: 0 }, taper: { ...brush.taper, start: 0, end: 0, size: 1, opacity: 1 } };
   const dualed = { ...still, dual: { ...still, accumulation: { kind: 'build' as const }, blend: { family: 'layer' as const, mode: 'multiply' as const }, scale: 1.5 } };
-  const [stroke, placed] = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) => {
+  const [stroke, placed] = stampPassDeposits(compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) => {
     pass.stroke('s', { brush: dualed, material: ochre, diameter: 20, path: [{ x: 0, y: 0 }, { x: 300, y: 0 }] });
     pass.stamps('d', { brush: dualed, material: ochre, diameter: 20, at: [{ x: 0, y: 0, diameter: 8 }] });
-  })))).groups[0].passes[0].deposits;
+  })))).groups[0].passes[0]);
   assert.ok(stroke.dualStamps.length > 0 && stroke.dualStamps.every((stamp) => stamp.diameter === 30));
   assert.ok(stroke.stamps.every((stamp) => stamp.diameter === 20));
   assert.equal(placed.stamps[0].diameter, 8);
@@ -159,10 +159,10 @@ test("a wash keeps its deposits and waits in painting order, a bloom waiting unt
   const [dry, wet] = washed.passes;
   assert.equal(dry.kind, 'dry');
   assert.ok(wet.kind === 'wash' && wet.wash.preparation);
-  assert.deepEqual(wet.wash.schedule.map((step) => (step.kind === 'wait' ? ['wait', step.until] : [step.deposit.id, step.deposit.action.kind, step.water])), [
-    ['sky/wet/blue', 'paint', 0.8], ['sky/wet/edge', 'water', 0.3], ['wait', { seconds: 30 }], ['sky/wet/cloud', 'lift', null], ['wait', 'damp'], ['sky/wet/drop', 'water', 1],
+  assert.deepEqual(wet.wash.schedule.map((step) => (step.kind === 'wait' ? ['wait', step.until] : [step.deposit.id, step.deposit.action.kind, step.deposit.action.kind === 'lift' ? step.deposit.action.strength : step.deposit.action.water])), [
+    ['sky/wet/blue', 'paint', 0.8], ['sky/wet/edge', 'water', 0.3], ['wait', { seconds: 30 }], ['sky/wet/cloud', 'lift', 0.6], ['wait', 'damp'], ['sky/wet/drop', 'water', 1],
   ]);
-  assert.deepEqual(wet.deposits.map(({ id }) => id), ['sky/wet/blue', 'sky/wet/edge', 'sky/wet/cloud', 'sky/wet/drop']);
+  assert.deepEqual(stampPassDeposits(wet).map(({ id }) => id), ['sky/wet/blue', 'sky/wet/edge', 'sky/wet/cloud', 'sky/wet/drop']);
   assert.throws(() => compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) =>
     group.wash('w', {}, (wash) => wash.stroke('s', { brush, material: ochre, diameter: 30, path, water: 2 }))))), /carries 2 water/);
 });
@@ -175,9 +175,9 @@ test("a boil's epoch re-seeds only its own group's marks, keeping their IDs and 
   }));
   const [cloud, hill] = painting.groups;
   assert.equal(hill.boil, undefined);
-  assert.equal(cloud.boil!.reseeded(0).passes[0].deposits[0].stamps.length, cloud.passes[0].deposits[0].stamps.length);
-  assert.deepEqual(cloud.boil!.reseeded(0).passes[0].deposits[0].stamps, cloud.passes[0].deposits[0].stamps);
-  const [puff0, puff1] = [0, 1].map((epoch) => cloud.boil!.reseeded(epoch).passes[0].deposits[0]);
+  assert.equal(stampPassDeposits(cloud.boil!.reseeded(0).passes[0])[0].stamps.length, stampPassDeposits(cloud.passes[0])[0].stamps.length);
+  assert.deepEqual(stampPassDeposits(cloud.boil!.reseeded(0).passes[0])[0].stamps, stampPassDeposits(cloud.passes[0])[0].stamps);
+  const [puff0, puff1] = [0, 1].map((epoch) => stampPassDeposits(cloud.boil!.reseeded(epoch).passes[0])[0]);
   assert.notDeepEqual(puff1.stamps, puff0.stamps);
   assert.equal(puff1.id, puff0.id);
   assert.deepEqual(puff1.action, puff0.action);
@@ -185,9 +185,9 @@ test("a boil's epoch re-seeds only its own group's marks, keeping their IDs and 
 
 test('a colour change reshapes nothing: every mark lands where and as it did, only its paint differs', () => {
   const jittery: StampBrush = { ...brush, color: { stamp: { hue: 0.1, saturation: 0.1, lightness: 0.1, darkness: 0 }, stroke: { hue: 0, saturation: 0, lightness: 0, darkness: 0 }, pressure: { hue: 0, saturation: 0, lightness: 0, secondary: 0 } } };
-  const lit = (color: `#${string}`) => compileStampPaintRecipe(stampPaintRecipe((paint) => {
+  const lit = (color: `#${string}`) => stampPassDeposits(compileStampPaintRecipe(stampPaintRecipe((paint) => {
     paint.group('sky', { composite: 'glaze', opacity: 1 }, (group) => group.pass('p', {}, (pass) => pass.stroke('glow', { brush: jittery, material: { kind: 'color', color }, diameter: 30, path })));
-  })).groups[0].passes[0].deposits[0];
+  })).groups[0].passes[0])[0];
   const [day, dusk] = [lit('#c8902f'), lit('#b0402a')];
   assert.deepEqual(dusk.stamps, day.stamps);
   assert.deepEqual(dusk.dualStamps, day.dualStamps);

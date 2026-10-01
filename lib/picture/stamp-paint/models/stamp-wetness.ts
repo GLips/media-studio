@@ -1,12 +1,12 @@
-// stamp-wetness.ts: how wet the paper is where each of a wash's deposits lands, worked out once as a painting loads,
-// from the recipe alone, so a frame never depends on the frames before it. Painting time starts at 0 with each wash
-// and only its waits advance it.
+// stamp-wetness.ts: how wet the paper is where each of a wash's deposits lands, worked out once from the recipe, so a
+// frame never depends on the frames before it. Painting time starts at 0 with each wash; only its waits advance it.
 //
 // Each wash keeps, per point of a coarse lattice (STAMP_WET_CELL), the level its water last went to and when; wetness
-// later follows in closed form, so no time is stepped. A deposit's water is its footprint rasterised onto the lattice.
+// follows in closed form. How much paint has set lives in the group's layer (its open share); the lattice keeps only
+// the paper's `settled`, by which a landing sets that share to none.
 //
 // Negative space: washes share no water, water doesn't spread past its brush, and a clipped pass wets wherever its
-// brush goes, its clip known only on the GPU.
+// brush goes.
 
 import type { PaintMedium, PaintWetting } from '#lib/picture/paint/models/paint-medium.ts';
 import { stampPaintFieldAt } from './stamp-paint-field.ts';
@@ -14,12 +14,18 @@ import type { PlacedStamp } from './stamp-placement.ts';
 import type { CompiledStampDeposit, CompiledStampMask, CompiledStampPaint, CompiledStampPass, StampPaintPaper, StampWashWait } from './stamp-paint-recipe.ts';
 import type { StampGrid, StampPoint } from './stamp-region.ts';
 
+/** A window of the lattice: its first point (px), spacing (STAMP_WET_CELL) and points across and down. */
+export type StampWetWindow = Omit<StampGrid, 'values'>;
+
 /**
- * The paper at a moment: `wetness`, 0 (dry) to 1 (a standing wash); `workable`, how freely paint there would move, 0
- * (set) to 1; `dried`, the share of its paint that has set since laid, however wet again. All on one window of the
- * lattice (STAMP_WET_CELL), held at its border beyond it, as the GPU's gridAt reads.
+ * The paper at a moment, per point of `window` (held at its border, as gridAt reads): `wetness`, 0 (dry) to 1 (a
+ * standing wash); `workable`, 0 (set) to 1; `settled`, 1 where the paper has dried since it last took water, and at a
+ * wash's start, as an earlier pass's paint has set.
  */
-export type StampWetState = { wetness: StampGrid; workable: StampGrid; dried: StampGrid };
+export type StampWetState = { window: StampWetWindow; wetness: Float32Array; workable: Float32Array; settled: Float32Array };
+
+/** One of `state`'s values as a grid, for reading on the CPU (stampGridAt). */
+export const stampWetGrid = (state: StampWetState, field: 'wetness' | 'workable' | 'settled'): StampGrid => ({ ...state.window, values: state[field] });
 
 /**
  * A wash's deposit landing: `tau`, painting seconds into its wash; the paper `before` it and `after` its own water,
@@ -75,15 +81,18 @@ type StampWetSpan = { i0: number; j0: number; columns: number; rows: number };
 
 /**
  * A wash's paper on its lattice, per point: the level its water last went to, the painting time it went there, and
- * how much of the paint there had set by then (StampWetState's `dried`).
+ * whether it had dried out since by the last time it was read (StampWetState's `settled`).
  */
-type StampWashPaper = { lattice: StampWetSpan; level: Float64Array; at: Float64Array; dried: Float64Array };
+type StampWashPaper = { lattice: StampWetSpan; level: Float64Array; at: Float64Array; settled: Uint8Array };
 
 /**
  * Every wash deposit's landing in `painting`, `size` px, its paint in `medium` on `paper`, each wash starting from
- * dry paper (or its preparation) at painting time 0.
+ * dry paper (or its preparation) at painting time 0. A landing's window reaches `margin(deposit)` px past what its
+ * water covers, and a cell more: as far as a stage reads round it (StampWetStage's `reach`).
  */
-export function compileStampWetness(painting: CompiledStampPaint, medium: PaintMedium, paper: StampPaintPaper, size: { width: number; height: number }): StampWetness {
+export function compileStampWetness(
+  painting: CompiledStampPaint, medium: PaintMedium, paper: StampPaintPaper, size: { width: number; height: number }, margin: (deposit: CompiledStampDeposit) => number = () => 0,
+): StampWetness {
   const { wetting } = medium, drying = stampDrying(wetting, paper);
   const lattice = { i0: 0, j0: 0, columns: Math.ceil(size.width / STAMP_WET_CELL) + 1, rows: Math.ceil(size.height / STAMP_WET_CELL) + 1 };
   const landings = new Map<CompiledStampDeposit, StampWetLanding>(), washes = new Map<CompiledStampPass, StampWashRecord>();
@@ -92,7 +101,7 @@ export function compileStampWetness(painting: CompiledStampPaint, medium: PaintM
     const { preparation, schedule } = pass.wash;
     const points = lattice.columns * lattice.rows;
     // Paint an earlier pass left has set: washes share no water.
-    const wash: StampWashPaper = { lattice, level: new Float64Array(points), at: new Float64Array(points), dried: new Float64Array(points).fill(1) };
+    const wash: StampWashPaper = { lattice, level: new Float64Array(points), at: new Float64Array(points), settled: new Uint8Array(points).fill(1) };
     if (preparation) {
       const cover = footprintCover(lattice, [], [preparation.polygon], pass.within, null);
       forSpan(wash, lattice, (k, w, x, y) => { wash.level[k] = cover[w] * stampPaintFieldAt(preparation.wetness, x, y); });
@@ -104,15 +113,14 @@ export function compileStampWetness(painting: CompiledStampPaint, medium: PaintM
         continue;
       }
       const { deposit } = step, { action } = deposit;
-      const water = action.kind === 'lift' ? 0 : step.water ?? wetting.brushWater;
-      const span = depositSpan(deposit, lattice);
+      const water = action.kind === 'lift' ? 0 : action.water ?? wetting.brushWater;
+      const span = depositSpan(deposit, lattice, margin(deposit));
       const before = wetStateOver(wash, span, tau, drying);
       const cover = footprintCover(span, deposit.stamps, deposit.kind === 'flood' ? [deposit.flood.polygon] : [], pass.within, deposit.mask);
       forSpan(wash, span, (k, w) => {
-        wash.dried[k] = driedAt(wash, k, tau, drying);
-        // Fresh paint covers what had set, by the share of the cell it covers.
-        if (action.kind === 'paint') wash.dried[k] *= 1 - cover[w];
         const now = stampWetnessAt(wash.level[k], wash.at[k], tau, drying), c = cover[w];
+        // The landing set the paint here to none open where the paper had settled, so it starts afresh from what water does.
+        wash.settled[k] = c > 0 && water > 0 && action.kind !== 'lift' ? 0 : settledAt(wash, k, tau, drying);
         // A brush leaves paper at least as wet as itself (the area it covers of the point's cell); a thirsty one soaks it up.
         const next = action.kind === 'lift' ? now * (1 - c * action.strength) : now + c * (Math.max(now, water) - now);
         if (next === now) return;
@@ -149,29 +157,31 @@ function forSpan(wash: StampWashPaper, span: StampWetSpan, visit: (k: number, w:
   }
 }
 
-/** How much of the paint at point `k` has set by `tau`: all of it once it stopped being workable, which only water undoes. */
-const driedAt = (wash: StampWashPaper, k: number, tau: number, drying: StampDrying) =>
-  (stampWorkableAt(wash.level[k], wash.at[k], tau, drying) <= 0 ? 1 : wash.dried[k]);
+/** Whether point `k`'s paper has dried out by `tau` since it last took water: once it's no longer workable, until water comes. */
+const settledAt = (wash: StampWashPaper, k: number, tau: number, drying: StampDrying) =>
+  (stampWorkableAt(wash.level[k], wash.at[k], tau, drying) <= 0 ? 1 : wash.settled[k]);
 
-/** `wash`'s paper at `tau` over `span`, as grids. */
+/** `wash`'s paper at `tau` over `span`. */
 function wetStateOver(wash: StampWashPaper, span: StampWetSpan, tau: number, drying: StampDrying): StampWetState {
-  const grid = (): StampGrid => ({
-    x0: span.i0 * STAMP_WET_CELL, y0: span.j0 * STAMP_WET_CELL, cell: STAMP_WET_CELL, columns: span.columns, rows: span.rows, values: new Float32Array(span.columns * span.rows),
-  });
-  const wetness = grid(), workable = grid(), dried = grid();
+  const points = span.columns * span.rows;
+  const state: StampWetState = {
+    window: { x0: span.i0 * STAMP_WET_CELL, y0: span.j0 * STAMP_WET_CELL, cell: STAMP_WET_CELL, columns: span.columns, rows: span.rows },
+    wetness: new Float32Array(points), workable: new Float32Array(points), settled: new Float32Array(points),
+  };
   forSpan(wash, span, (k, w) => {
-    wetness.values[w] = stampWetnessAt(wash.level[k], wash.at[k], tau, drying);
-    workable.values[w] = stampWorkableAt(wash.level[k], wash.at[k], tau, drying);
-    dried.values[w] = driedAt(wash, k, tau, drying);
+    state.wetness[w] = stampWetnessAt(wash.level[k], wash.at[k], tau, drying);
+    state.workable[w] = stampWorkableAt(wash.level[k], wash.at[k], tau, drying);
+    state.settled[w] = settledAt(wash, k, tau, drying);
   });
-  return { wetness, workable, dried };
+  return state;
 }
 
 /**
- * The window of `lattice` a deposit's water can reach: its stamps and a flood's body, and a cell round them, so the
- * GPU's reads past its stamps' edges (a blurred edge, a rim) hold values from beside them. At least 2 × 2, as gridAt reads.
+ * The window of `lattice` a deposit's water can reach: its stamps and a flood's body, `margin` px round them and a
+ * cell more, so the GPU's reads past its stamps' edges (a blurred edge, a rim, a stage's reach) hold values from
+ * beside them. At least 2 × 2, as gridAt reads.
  */
-function depositSpan(deposit: CompiledStampDeposit, lattice: StampWetSpan): StampWetSpan {
+function depositSpan(deposit: CompiledStampDeposit, lattice: StampWetSpan, margin: number): StampWetSpan {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const stamps of [deposit.stamps, deposit.dualStamps]) {
     for (const { x, y, diameter } of stamps) {
@@ -182,9 +192,10 @@ function depositSpan(deposit: CompiledStampDeposit, lattice: StampWetSpan): Stam
     const { box } = deposit.flood;
     x0 = Math.min(x0, box.x0); y0 = Math.min(y0, box.y0); x1 = Math.max(x1, box.x1); y1 = Math.max(y1, box.y1);
   }
+  const cells = Math.ceil(margin / STAMP_WET_CELL) + 1;
   const cellsOver = (from: number, to: number, count: number) => {
-    const first = Math.min(count - 2, Math.max(0, Math.floor(from / STAMP_WET_CELL) - 1));
-    return [first, Math.max(first + 2, Math.min(count, Math.ceil(to / STAMP_WET_CELL) + 2)) - first] as const;
+    const first = Math.min(count - 2, Math.max(0, Math.floor(from / STAMP_WET_CELL) - cells));
+    return [first, Math.max(first + 2, Math.min(count, Math.ceil(to / STAMP_WET_CELL) + 1 + cells)) - first] as const;
   };
   const [i0, columns] = cellsOver(x0, x1, lattice.columns), [j0, rows] = cellsOver(y0, y1, lattice.rows);
   return { i0, j0, columns, rows };

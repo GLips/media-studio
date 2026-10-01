@@ -156,28 +156,28 @@
     "painting/pigment-crayon": {
       "file": "painting/pigment-crayon.png",
       "output": "bf9341d63d4a49f2885f70f19966a304a15b92a7b76031f15acf3c3d2d7e305b",
-      "inputs": "b86d258510b4585ad07c8c516868dabb6471b99c5c170006784ecce932c98611",
-      "reason": "vid-117 lift: crayon's rewetting 0.3 -> 0.85 (a lift is an eraser), inputs only; nothing painted moves (max 0), as no gate painting has a wash",
-      "accepted": "2026-09-30",
-      "acceptedOver": "0bd05fa",
+      "inputs": "5c8b6a429d447221809d79186efb10cc717e0bc0341a53ca8ac6c6d5270a49bc",
+      "reason": "vid-117 fix-wet: PaintWetting.flow renamed spread, inputs only; nothing painted moves (no gate painting has a wash)",
+      "accepted": "2026-10-01",
+      "acceptedOver": "b7e2afb",
       "adapter": "apple metal-3"
     },
     "painting/pigment-gouache": {
       "file": "painting/pigment-gouache.png",
       "output": "489991c94e4f2786463251314b2037a2513f5fe82bcefea53b970a86f71f70a6",
-      "inputs": "ec9ba859d9dfe91ac72506dbb28f1b3c73771c218d35781dd7095a95d7b1bf04",
-      "reason": "vid-117 Phase 0, inputs only: a fill's wash application is renamed flood (washBody→floodBody, washFrontShare→floodFrontShare, outputs as before), a compiled deposit's material moves into its action, a pass says it's dry, a medium carries its wetting. Nothing painted moves: every painting max 0 against 792c100's render (the pigment ones' max 1 against their baselines is 792c100's own, vid-120).",
-      "accepted": "2026-09-30",
-      "acceptedOver": "792c100",
+      "inputs": "9e7286dfe7e8e3eb82e232bd29a156582e66e8029a4c68795050cfe8aa30d06c",
+      "reason": "vid-117 fix-wet: PaintWetting.flow renamed spread, inputs only; nothing painted moves (no gate painting has a wash)",
+      "accepted": "2026-10-01",
+      "acceptedOver": "b7e2afb",
       "adapter": "apple metal-3"
     },
     "painting/pigment-watercolour": {
       "file": "painting/pigment-watercolour.png",
       "output": "b598d20bade4cb0f55a65795a077e3ee4d411252edbefcac2d8097b2995c62c8",
-      "inputs": "886acb3f2f22037995cdedec157ec3a4522002f4a169f1f72ef2a9fdf7b72e0c",
-      "reason": "vid-117 Phase 0, inputs only: a fill's wash application is renamed flood (washBody→floodBody, washFrontShare→floodFrontShare, outputs as before), a compiled deposit's material moves into its action, a pass says it's dry, a medium carries its wetting. Nothing painted moves: every painting max 0 against 792c100's render (the pigment ones' max 1 against their baselines is 792c100's own, vid-120).",
-      "accepted": "2026-09-30",
-      "acceptedOver": "792c100",
+      "inputs": "a7398eb739781554fcde66186a2b728ace2fa07b8bb772aad366b47310250615",
+      "reason": "vid-117 fix-wet: PaintWetting.flow renamed spread, inputs only; nothing painted moves (no gate painting has a wash)",
+      "accepted": "2026-10-01",
+      "acceptedOver": "b7e2afb",
       "adapter": "apple metal-3"
     },
     "painting/regions": {

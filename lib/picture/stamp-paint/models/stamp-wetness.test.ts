@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PAINT_MEDIA, type PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
 import { stampLinearDynamics, type StampBrush } from './stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPass, type StampWashOptions, type StampWashScope } from './stamp-paint-recipe.ts';
-import { compileStampWetness, stampDrying, STAMP_WET_CELL, type StampWetness } from './stamp-wetness.ts';
+import { compileStampPaintRecipe, stampPaintRecipe, stampPassDeposits, type CompiledStampPass, type StampWashOptions, type StampWashScope } from './stamp-paint-recipe.ts';
+import { compileStampWetness, stampDrying, STAMP_WET_CELL, stampWetGrid, type StampWetState, type StampWetness } from './stamp-wetness.ts';
 import { stampGridAt } from './stamp-region.ts';
 
 const brush: StampBrush = {
@@ -35,8 +35,10 @@ function washed(body: (wash: StampWashScope) => void, options: StampWashOptions 
   const pass = painting.groups[0].passes[0];
   return { pass, wetness: compileStampWetness(painting, medium, paper, size) };
 }
+/** `state`'s wetness, workable or settled at (x, y). */
+const at = (state: StampWetState, field: 'wetness' | 'workable' | 'settled', x: number, y: number) => stampGridAt(stampWetGrid(state, field), x, y);
 /** The landing of `pass`'s deposit `id`. */
-const landing = (wetness: StampWetness, pass: CompiledStampPass, id: string) => wetness.landings.get(pass.deposits.find((deposit) => deposit.id === `g/w/${id}`)!)!;
+const landing = (wetness: StampWetness, pass: CompiledStampPass, id: string) => wetness.landings.get(stampPassDeposits(pass).find((deposit) => deposit.id === `g/w/${id}`)!)!;
 
 test('water raises wetness only where its footprint goes, and the paper it leaves covers the painting', () => {
   const { pass, wetness } = washed((wash) => {
@@ -44,21 +46,21 @@ test('water raises wetness only where its footprint goes, and the paper it leave
     wash.stamps('far', { ...drop({ x: 600, y: 300 }), material: { kind: 'color', color: '#336699' } });
   });
   const { before, after } = landing(wetness, pass, 'drop');
-  assert.equal(stampGridAt(before.wetness, 200, 100), 0);
-  assert.equal(stampGridAt(after.wetness, 200, 100), 1);
+  assert.equal(at(before, 'wetness', 200, 100), 0);
+  assert.equal(at(after, 'wetness', 200, 100), 1);
   // Its window holds its footprint and a cell round it, not the painting.
-  assert.ok(after.wetness.x0 <= 170 - STAMP_WET_CELL && after.wetness.x0 + (after.wetness.columns - 1) * STAMP_WET_CELL >= 230 + STAMP_WET_CELL);
-  assert.ok(after.wetness.columns < 20);
+  assert.ok(after.window.x0 <= 170 - STAMP_WET_CELL && after.window.x0 + (after.window.columns - 1) * STAMP_WET_CELL >= 230 + STAMP_WET_CELL);
+  assert.ok(after.window.columns < 20);
   const far = landing(wetness, pass, 'far');
-  assert.equal(stampGridAt(far.before.wetness, 600, 300), 0);
+  assert.equal(at(far.before, 'wetness', 600, 300), 0);
   assert.equal(far.water, watercolour.wetting.brushWater);
   const { end } = wetness.washes.get(pass)!;
-  assert.deepEqual([end.wetness.x0, end.wetness.y0], [0, 0]);
-  assert.ok((end.wetness.columns - 1) * STAMP_WET_CELL >= size.width && (end.wetness.rows - 1) * STAMP_WET_CELL >= size.height);
-  assert.equal(stampGridAt(end.wetness, 200, 100), 1);
-  assert.ok(Math.abs(stampGridAt(end.wetness, 600, 300) - watercolour.wetting.brushWater) < 1e-6);
-  assert.equal(stampGridAt(end.wetness, 400, 200), 0);
-  assert.equal(stampGridAt(end.wetness, 200, 300), 0);
+  assert.deepEqual([end.window.x0, end.window.y0], [0, 0]);
+  assert.ok((end.window.columns - 1) * STAMP_WET_CELL >= size.width && (end.window.rows - 1) * STAMP_WET_CELL >= size.height);
+  assert.equal(at(end, 'wetness', 200, 100), 1);
+  assert.ok(Math.abs(at(end, 'wetness', 600, 300) - watercolour.wetting.brushWater) < 1e-6);
+  assert.equal(at(end, 'wetness', 400, 200), 0);
+  assert.equal(at(end, 'wetness', 200, 300), 0);
 });
 
 test('paper dries in closed form: two waits are one wait as long, and a thirsty lift soaks water up', () => {
@@ -73,8 +75,8 @@ test('paper dries in closed form: two waits are one wait as long, and a thirsty 
   const once = probe([60]), twice = probe([20, 40]);
   assert.equal(once.tau, 60);
   assert.deepEqual(twice.before, once.before);
-  assert.ok(Math.abs(stampGridAt(once.before.wetness, 200, 100) - (1 - 60 * rate)) < 1e-6);
-  assert.ok(Math.abs(stampGridAt(once.after.wetness, 200, 100) - (1 - 60 * rate) / 2) < 1e-6);
+  assert.ok(Math.abs(at(once.before, 'wetness', 200, 100) - (1 - 60 * rate)) < 1e-6);
+  assert.ok(Math.abs(at(once.after, 'wetness', 200, 100) - (1 - 60 * rate) / 2) < 1e-6);
 });
 
 test("wait('damp') lasts until the wettest paper is damp, and wait('dry') until no paint is workable, open time included", () => {
@@ -88,8 +90,8 @@ test("wait('damp') lasts until the wettest paper is damp, and wait('dry') until 
   }, { preparation: { region: sheet } });
   const atDamp = landing(wetness, pass, 'damp');
   assert.ok(Math.abs(atDamp.tau - (1 - damp) / rate) < 1e-6);
-  assert.ok(Math.abs(stampGridAt(atDamp.before.wetness, 600, 300) - damp) < 1e-5);
-  assert.ok(Math.abs(stampGridAt(atDamp.before.workable, 600, 300) - 1) < 1e-5);
+  assert.ok(Math.abs(at(atDamp.before, 'wetness', 600, 300) - damp) < 1e-5);
+  assert.ok(Math.abs(at(atDamp.before, 'workable', 600, 300) - 1) < 1e-5);
   // The damp drop is 1 wet and dries last.
   assert.ok(Math.abs(landing(wetness, pass, 'dry').tau - (atDamp.tau + 1 / rate)) < 1e-6);
   const open: PaintMedium = { ...watercolour, wetting: { ...watercolour.wetting, openTime: 500 } };
@@ -101,24 +103,30 @@ test("wait('damp') lasts until the wettest paper is damp, and wait('dry') until 
     wash.water('set', drop({ x: 600, y: 300 }));
   }, {}, open);
   const dried = landing(slow.wetness, slow.pass, 'dry');
-  assert.equal(stampGridAt(dried.before.wetness, 100, 100), 0);
-  assert.equal(stampGridAt(dried.before.workable, 100, 100), 1);
+  assert.equal(at(dried.before, 'wetness', 100, 100), 0);
+  assert.equal(at(dried.before, 'workable', 100, 100), 1);
   assert.ok(Math.abs(landing(slow.wetness, slow.pass, 'set').tau - (1 / rate + 500 + 1 / rate)) < 1e-6);
 });
 
-test('paint that has dried stays dried when water wets it again, until fresh paint covers it', () => {
+test('paper settles once it dries out, and stays settled until water comes, however a lift soaks it', () => {
   const { pass, wetness } = washed((wash) => {
     wash.stamps('sky', { ...drop({ x: 100, y: 100 }), material: { kind: 'color', color: '#3355aa' } });
     wash.lift('blot', drop({ x: 100, y: 100 }));
     wash.wait('dry');
+    wash.lift('dry', drop({ x: 100, y: 100 }));
     wash.water('rewet', drop({ x: 100, y: 100 }));
     wash.lift('scrub', drop({ x: 100, y: 100 }));
-    wash.stamps('again', { ...drop({ x: 100, y: 100 }), material: { kind: 'color', color: '#3355aa' } });
-    wash.lift('fresh', drop({ x: 100, y: 100 }));
   });
-  const at = (id: string) => landing(wetness, pass, id).before;
-  assert.equal(stampGridAt(at('blot').dried, 100, 100), 0);
-  assert.equal(stampGridAt(at('scrub').workable, 100, 100), 1);
-  assert.equal(stampGridAt(at('scrub').dried, 100, 100), 1);
-  assert.equal(stampGridAt(at('fresh').dried, 100, 100), 0);
+  const settled = (id: string) => at(landing(wetness, pass, id).before, 'settled', 100, 100);
+  // An earlier pass's paint has set: the wash starts settled.
+  assert.deepEqual(['sky', 'blot', 'dry', 'rewet', 'scrub'].map(settled), [1, 0, 1, 1, 0]);
+  assert.equal(at(landing(wetness, pass, 'scrub').before, 'workable', 100, 100), 1);
+});
+
+test("a landing's window reaches as far past its water as it's asked", () => {
+  const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => group.wash('w', {}, (wash) => wash.water('drop', drop({ x: 400, y: 200 }))))));
+  const [deposit] = stampPassDeposits(painting.groups[0].passes[0]);
+  const windowOf = (margin: number) => compileStampWetness(painting, watercolour, paper, size, () => margin).landings.get(deposit)!.before.window;
+  const near = windowOf(0), far = windowOf(40);
+  assert.ok(near.x0 - far.x0 >= 40 && far.columns - near.columns >= 10);
 });

@@ -6,8 +6,8 @@
 //
 // Negative space: a stroke inside a wash that dries before the next is laid doesn't rim here; it's one domain.
 
-import { STAMP_WET_CELL, type StampWetness } from './stamp-wetness.ts';
-import type { CompiledStampPass } from './stamp-paint-recipe.ts';
+import { STAMP_WET_CELL, stampWetGrid, type StampWetness } from './stamp-wetness.ts';
+import { stampPassDeposits, type CompiledStampPass } from './stamp-paint-recipe.ts';
 import { stampGridLocalMax, type StampGrid } from './stamp-region.ts';
 
 /** The widest band a rim draws pigment from, px: past it the kernels' taps grow and a real rim's band is no wider. */
@@ -20,11 +20,11 @@ export const STAMP_DRYING_RIM_MOST_BAND = 32;
 export const STAMP_DRYING_RIM_MOST_TAKE = 0.6;
 
 /**
- * How wide a wash's rim band is, px: as far as its medium's paint flows by itself (`flow`, in diameters of the
+ * How wide a wash's rim band is, px: as far as its medium's paint spreads by itself (`spread`, in diameters of the
  * wash's brushes), as far above damp as the paper was wet (`wetShare`, 0..1), at most STAMP_DRYING_RIM_MOST_BAND.
  */
-export function stampDryingRimBand(flow: number, diameter: number, wetShare: number): number {
-  return Math.min(STAMP_DRYING_RIM_MOST_BAND, flow * diameter * Math.min(1, Math.max(0, wetShare)));
+export function stampDryingRimBand(spread: number, diameter: number, wetShare: number): number {
+  return Math.min(STAMP_DRYING_RIM_MOST_BAND, spread * diameter * Math.min(1, Math.max(0, wetShare)));
 }
 
 /** How far above damp paper wetted to `wettest` was, 0 (damp or drier) to 1 (a standing wash): what makes a rim. */
@@ -36,9 +36,9 @@ export const stampDryingRimWetShare = (wettest: number, damp: number) => Math.mi
  * the lattice dilutes the points along a wash's edge, where its rim is.
  */
 export function stampWashWettest(pass: CompiledStampPass, wetness: StampWetness): StampGrid | null {
-  const landings = pass.deposits.flatMap((deposit) => wetness.landings.get(deposit) ?? []);
+  const landings = stampPassDeposits(pass).flatMap((deposit) => wetness.landings.get(deposit) ?? []);
   if (!landings.length) return null;
-  const grids = landings.flatMap(({ before, after }) => [before.wetness, after.wetness]);
+  const grids = landings.flatMap(({ before, after }) => [stampWetGrid(before, 'wetness'), stampWetGrid(after, 'wetness')]);
   const i0 = Math.min(...grids.map((g) => g.x0 / STAMP_WET_CELL)), j0 = Math.min(...grids.map((g) => g.y0 / STAMP_WET_CELL));
   const i1 = Math.max(...grids.map((g) => g.x0 / STAMP_WET_CELL + g.columns)), j1 = Math.max(...grids.map((g) => g.y0 / STAMP_WET_CELL + g.rows));
   const columns = i1 - i0, rows = j1 - j0, values = new Float32Array(columns * rows);
@@ -61,8 +61,8 @@ export function stampWashWettest(pass: CompiledStampPass, wetness: StampWetness)
  */
 export const STAMP_DRYING_RIM_WGSL = /* wgsl */ `
 fn dryingRimWetShare(wettest: f32, damp: f32) -> f32 { return clamp((wettest - damp) / max(1e-3, 1.0 - damp), 0.0, 1.0); }
-fn dryingRimBand(flow: f32, diameter: f32, wetShare: f32) -> f32 {
-  return min(${STAMP_DRYING_RIM_MOST_BAND.toFixed(1)}, flow * diameter * clamp(wetShare, 0.0, 1.0));
+fn dryingRimBand(spread: f32, diameter: f32, wetShare: f32) -> f32 {
+  return min(${STAMP_DRYING_RIM_MOST_BAND.toFixed(1)}, spread * diameter * clamp(wetShare, 0.0, 1.0));
 }
 fn dryingRimLine(d: f32, width: f32) -> f32 {
   let x = max(0.0, d - 1.0) / max(width, 0.5);
@@ -75,8 +75,8 @@ fn dryingRimDraw(d: f32, band: f32, width: f32) -> f32 {
 fn dryingRimHardness(edge: f32, inner: f32) -> f32 {
   return smoothstep(0.3, 0.7, edge / max(inner, 1e-3));
 }
-fn dryingRimTake(flow: f32, wetShare: f32, strength: f32) -> f32 {
-  return min(${STAMP_DRYING_RIM_MOST_TAKE.toFixed(3)}, flow) * clamp(wetShare, 0.0, 1.0) * clamp(strength, 0.0, 1.0);
+fn dryingRimTake(spread: f32, wetShare: f32, strength: f32) -> f32 {
+  return min(${STAMP_DRYING_RIM_MOST_TAKE.toFixed(3)}, spread) * clamp(wetShare, 0.0, 1.0) * clamp(strength, 0.0, 1.0);
 }
 // Every pixel gives up \`take\` of its amounts, spread over the line within reach as its kernel and the line weigh it
 // (normalised per giver), so a pixel on the line gains \`line\` times the gathered \`pulled\`: pigment is conserved,

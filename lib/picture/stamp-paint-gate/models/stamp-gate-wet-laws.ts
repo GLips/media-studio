@@ -1,8 +1,8 @@
-// stamp-gate-wet-laws.ts: the GPU gate's grids over a wash's per-pixel laws, wetLand (stamp-wet-landing.ts) and
-// wetLift (stamp-wet-lift.ts). The laws are still being tuned, so their grids are held to properties a painter would
-// swear to, not to a baseline: paint landing never takes paint away nor lays more than the brush carries; a lift
-// never adds pigment, never leaves less than none, takes at most its cover times strength of any, and takes less of a
-// staining pigment than of one that isn't.
+// stamp-gate-wet-laws.ts: the GPU gate's grids over a wash's per-pixel laws (stamp-wet-landing.ts, stamp-wet-lift.ts).
+// The laws are still being tuned, so their grids are held to properties a painter would swear to, not to a baseline:
+// landing paint lies between the paint there and the stroke, or on workable paper adds to it; a brush's water hardens
+// its edge only on paper drier than it; a lift never adds pigment nor leaves less than none, takes at most its cover
+// times strength, and takes less of a staining pigment.
 //
 // A row is one lane of a law's four amounts, so a property can compare lanes the law worked out together.
 
@@ -44,7 +44,7 @@ const vec = (v: Vec4) => `(${v.join(', ')})`;
 
 /**
  * wetLift over layers whose four amounts are equal and stain more lane by lane, and over uneven amounts some of them
- * none: each lane at every cover, strength and workability, fresh, half set and set, set paint loosening by none,
+ * none: each lane at every cover, strength and workability, open, half set and set, set paint loosening by none,
  * some and all.
  */
 function wetLiftGrid(): StampGateFormulaGrid {
@@ -52,9 +52,9 @@ function wetLiftGrid(): StampGateFormulaGrid {
     { was: [0.8, 0.8, 0.8, 0.8], stain: [0, 0.3, 0.6, 0.9] },
     { was: [0.5, 1.5, 0.125, 0], stain: [0.25, 0.25, 0.25, 0.25] },
   ];
-  const entries = layers.flatMap(({ was, stain }, k) => COARSE.flatMap((cover) => COARSE.flatMap((strength) => COARSE.flatMap((workable) => [0, 0.5, 1].flatMap((dried) => [0, 0.375, 1].flatMap((rewetting) => LANES.map((lane): LawRow => ({
-    label: `was ${vec(was)} stain ${vec(stain)} cover ${cover} strength ${strength} workable ${workable} dried ${dried} rewetting ${rewetting} lane ${lane}`,
-    inputs: [...was, cover, strength, workable, dried, rewetting, ...stain, lane], lane, was, cover, bound: k === 0 ? 1 : 0,
+  const entries = layers.flatMap(({ was, stain }, k) => COARSE.flatMap((cover) => COARSE.flatMap((strength) => COARSE.flatMap((workable) => [0, 0.5, 1].flatMap((open) => [0, 0.375, 1].flatMap((rewetting) => LANES.map((lane): LawRow => ({
+    label: `was ${vec(was)} stain ${vec(stain)} cover ${cover} strength ${strength} workable ${workable} open ${open} rewetting ${rewetting} lane ${lane}`,
+    inputs: [...was, cover, strength, workable, open, rewetting, ...stain, lane], lane, was, cover, bound: k === 0 ? 1 : 0,
   }))))))));
   // Rows come four lanes at a time, so a lane's neighbour below is the one staining less, in the evenly laid layer.
   return propertyGrid('wetLift', 'wetLift(vec4f(x(0), x(1), x(2), x(3)), x(4), x(5), x(6), x(7), x(8), vec4f(x(9), x(10), x(11), x(12)))[u32(x(13))]', 14, entries, (row, out, gpu, i) => {
@@ -68,22 +68,41 @@ function wetLiftGrid(): StampGateFormulaGrid {
   });
 }
 
-/** wetLand over bare and painted layers, of an even and an uneven stroke, each lane at every cover, wetness and workability. */
+/**
+ * wetLand over bare and painted layers, of an even and an uneven stroke, each lane at every cover and workability,
+ * under paint covering none, half and all of the pixel that picks up none or half.
+ */
 function wetLandGrid(): StampGateFormulaGrid {
   const layers: readonly Vec4[] = [[0, 0, 0, 0], [0.5, 0.25, 0, 1]];
   const strokes: readonly Vec4[] = [[0.625, 0, 0.3125, 1], [0.25, 0.25, 0.25, 0.25]];
-  const entries = layers.flatMap((was) => strokes.flatMap((incoming) => COARSE.flatMap((cover) => COARSE.flatMap((wetness) => COARSE.flatMap((workable) => LANES.map((lane): LawRow => ({
-    label: `was ${vec(was)} incoming ${vec(incoming)} cover ${cover} wetness ${wetness} workable ${workable} lane ${lane}`,
-    inputs: [...was, ...incoming, cover, wetness, workable, lane], lane, was, cover, bound: incoming[lane],
-  })))))));
-  return propertyGrid('wetLand', 'wetLand(vec4f(x(0), x(1), x(2), x(3)), vec4f(x(4), x(5), x(6), x(7)), x(8), x(9), x(10))[u32(x(11))]', 12, entries, (row, out) => {
-    const was = row.was[row.lane];
-    if (out < was - TOL) return `landing paint took pigment away (was ${was})`;
+  const entries = layers.flatMap((was) => strokes.flatMap((incoming) => COARSE.flatMap((cover) => [0, 0.5, 1].flatMap((under) => [0, 0.5].flatMap((pickup) => COARSE.flatMap((workable) => LANES.map((lane): LawRow => ({
+    label: `was ${vec(was)} incoming ${vec(incoming)} cover ${cover} under ${under} pickup ${pickup} workable ${workable} lane ${lane}`,
+    inputs: [...was, ...incoming, cover, under, pickup, workable, lane], lane, was, cover, bound: incoming[lane],
+  }))))))));
+  return propertyGrid('wetLand', 'wetLand(vec4f(x(0), x(1), x(2), x(3)), vec4f(x(4), x(5), x(6), x(7)), x(8), x(9), x(10), x(11))[u32(x(12))]', 13, entries, (row, out) => {
+    const was = row.was[row.lane], workable = row.inputs[11];
+    if (out < Math.min(was, row.bound) - TOL) return `landing left less than the paint there or the stroke (was ${was}, stroke ${row.bound})`;
     if (out > was + row.bound + TOL) return `landing laid more than a full stroke carries (was ${was}, stroke ${row.bound})`;
+    if (workable === 1 && out < was - TOL) return `landing on workable paper took pigment away (was ${was})`;
     if (row.cover === 0 && Math.abs(out - was) > TOL) return `paint that doesn't reach here moved it (was ${was})`;
     return null;
   });
 }
 
+/** wetLandCover at every cover of a light and a full body, for a brush with no water, some and plenty, on paper dry, damp and wet. */
+function wetLandCoverGrid(): StampGateFormulaGrid {
+  const covers = Array.from({ length: 21 }, (_, k) => k / 20);
+  const entries = [0.4, 1].flatMap((body) => [0, 0.5, 1].flatMap((water) => [0, 0.5, 1].flatMap((wetness) => covers.map((cover): LawRow => ({
+    label: `cover ${cover} body ${body} water ${water} wetness ${wetness}`, inputs: [cover, body, water, wetness], lane: 0, was: [0, 0, 0, 0], cover, bound: body,
+  })))));
+  return propertyGrid('wetLandCover', 'wetLandCover(x(0), x(1), x(2), x(3))', 4, entries, (row, out, gpu, i) => {
+    const [cover, , water, wetness] = row.inputs;
+    if (out < -TOL || out > Math.max(cover, row.bound) + TOL) return 'coverage past the stroke\'s body';
+    if (water <= wetness && Math.abs(out - cover) > TOL) return 'paper as wet as the brush hardened its edge';
+    if (cover > 0 && out < gpu[i - 1] - TOL) return 'more of the tip landed less';
+    return null;
+  });
+}
+
 /** The wet laws' property grids. */
-export const stampGateWetLawGrids = (): StampGateFormulaGrid[] => [wetLandGrid(), wetLiftGrid()];
+export const stampGateWetLawGrids = (): StampGateFormulaGrid[] => [wetLandCoverGrid(), wetLandGrid(), wetLiftGrid()];

@@ -35,8 +35,8 @@ export type StampPaintCompositor = {
     wgsl: string;
     /**
      * For a compositor that lays washes: `landDeposit(pixel, coverage, rims, tooth, at, wet)`, a wash's deposit laid as
-     * its WetLanding says (the renderer declares it, and WET_PAINT, WET_WATER and WET_LIFT for its action). Absent,
-     * the compositor refuses a wash as it's made.
+     * its WetLanding says, coverage hardened already. The renderer declares WetLanding (with `settled`), the landing
+     * laws (stamp-wet-landing.ts), and WET_PAINT, WET_WATER and WET_LIFT. Absent, a painting with a wash is refused.
      */
     wet?: string;
     /** The writer of `deposit`'s PaintDeposit, made once as the renderer loads it. */
@@ -53,10 +53,33 @@ export type StampPaintCompositor = {
     /** What it binds from 3, given the paper's photograph (a blank texture if it has none) and a sampler. */
     resources: (paper: { photograph: GPUTextureView; sampler: GPUSampler }) => GPUBindingResource[];
   };
+  /** For a compositor that lays washes, how a wash group's layer is kept, for the stages that move its paint. */
+  wash?: StampWashLayer;
   /** `layPaper(pixel, color)`, `color` gamma-encoded. */
   paper: string;
   /** `screenColor(pixel)`, gamma-encoded. */
   output: string;
+};
+
+/**
+ * How a compositor keeps a wash group's layer, for a stage (stamp-wet-stages.ts) that moves paint about within it.
+ * A stage moves pigment channels only; what the rest becomes is the compositor's one rule, `washMoved`.
+ */
+export type StampWashLayer = {
+  /** Layers of four channels `deposit`'s group keeps, from the first: a stage reads and writes no more. */
+  layersOf: (deposit: CompiledStampDeposit) => number;
+  /**
+   * WGSL for a group of `layers` layers: `washPigmentMask(l)`, 1 on layer `l`'s pigment channels; `washPigmentTotal(v)`
+   * and `washOpen(v)`, a pixel's pigment and open share; and `washMoved(now, wasPigment)`, the pixel once a stage has
+   * moved its pigment total from `wasPigment` to `now`'s, its other channels as before the move.
+   */
+  movedWgsl: (layers: number) => string;
+  /**
+   * WGSL for `deposit`'s group: `washHold(l, at, tooth, depth, held)`, how much of each of layer `l`'s channels the
+   * paper holds at `at` against its mean (1), as the compositor lays paint there; `tooth` the paper's paint here and
+   * its mean, `depth` the paper's, `held` the layer's amounts. Moved paint evens out per unit of it.
+   */
+  holdWgsl: (deposit: CompiledStampDeposit) => string;
 };
 
 const BLENDS: readonly StampBlend[] = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'colorBurn'];
@@ -125,12 +148,13 @@ const hexRgb = (color: string): [number, number, number] => [byteAt(color, 1), b
  */
 export function flatStampPaintCompositor(painting: CompiledStampPaint): StampPaintCompositor {
   const writers = new Map<CompiledStampDeposit, (views: StampUniformViews) => void>();
-  const wash = painting.groups.flatMap((group) => group.passes).find((pass) => pass.kind === 'wash');
-  if (wash) throw new Error(`stamp paint: ${wash.id} is a wash, and wet paint needs a style that paints in pigment`);
-  for (const deposit of painting.groups.flatMap((group) => group.passes.flatMap((pass) => pass.deposits))) {
+  const passes = painting.groups.flatMap((group) => group.passes);
+  const deposits = passes.flatMap((pass) => {
+    if (pass.kind === 'wash') throw new Error(`stamp paint: ${pass.id} is a wash, and wet paint needs a style that paints in pigment`);
+    return pass.deposits;
+  });
+  for (const deposit of deposits) {
     const { action, brush } = deposit;
-    // Only a wash's deposits wet or lift, and a wash was refused above.
-    if (action.kind !== 'paint') throw new Error(`stamp paint: ${deposit.id} ${action.kind === 'water' ? 'wets' : 'lifts'} outside a wash`);
     if (action.material.kind !== 'constant') throw new Error(`stamp paint: ${deposit.id} grades its material, which only a style that paints in pigment can lay`);
     const material = action.material.value;
     if (material.kind === 'mixture') throw new Error(`stamp paint: ${deposit.id} lays a mixture of pigments, which only a style that paints in pigment can lay`);
