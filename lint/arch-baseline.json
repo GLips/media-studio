@@ -268,9 +268,6 @@
       "for (const role of Object.keys(INK_ALPHA.light) as HudInkRole[]) {": 1,
       "for (const tone of Object.keys(weights) as ReelHudTone[]) {": 1
     },
-    "lib/picture/stamp-paint/models/stamp-dynamics.ts": {
-      "return Object.fromEntries(STAMP_DRAW_SLOTS.map((slot) => [slot, placing === 'authored' && STROKE_ONLY_DRAWS.has(slot) ? 0 : random()])) as StampDraws;": 1
-    },
     "lib/picture/stamp-paint/studio/stamp-paint-gpu.ts": {
       "const TIER2 = 'texture-formats-tier2' as GPUFeatureName;": 1
     },
