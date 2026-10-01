@@ -87,7 +87,8 @@ export function resolveStampPaintStyle<S extends StampPaintStyle>(name: string, 
   const brushes = Object.fromEntries(Object.entries(style.brushes).map(([key, { pack, brush, media }]) => {
     const found = packs[pack] && resolveStampPaintPackBrush(packs[pack], brush);
     if (!found) throw new Error(`stamp paint: ${name}'s brush ${key} is ${pack}'s ${JSON.stringify(brush)}, which its manifest lacks`);
-    return [key, { ...found.brush, media: media ?? style.packs[pack].media }];
+    const read = style.paint?.medium.paperContact.kind === 'peaks' ? stampBrushOnTooth(found.brush) : found.brush;
+    return [key, { ...read, media: media ?? style.packs[pack].media }];
   }));
   const { color, image, grain } = style.paper;
   const paper: StampPaintPaper = {
@@ -103,6 +104,22 @@ export function resolveStampPaintStyle<S extends StampPaintStyle>(name: string, 
     name, brushes: resolved, palette: style.palette, paper,
     mixing: mixingOf(style),
   };
+}
+
+/**
+ * `brush` on a medium that catches the paper's peaks: its contact (paintDryContact) reads pressure against the tooth,
+ * so the brush's grain depth by pressure, Photoshop's model of the same, goes; kept, a crayon stroke at half pressure
+ * laid nothing. An eraser's goes too, though a lift reads no contact: its light ends lift from the peaks at full depth.
+ */
+export function stampBrushOnTooth(brush: StampBrush): StampBrush {
+  const { dual, ...main } = brush;
+  return { ...withoutPressedGrain(main), ...(dual && { dual: withoutPressedGrain(dual) }) };
+}
+
+/** A brush layer with no grain depth by pressure, its other grain depth bindings kept. */
+function withoutPressedGrain<L extends Pick<StampBrush, 'dynamics'>>(layer: L): L {
+  const { grainDepth: { pressure: _, ...grainDepth } = {}, ...others } = layer.dynamics;
+  return { ...layer, dynamics: Object.keys(grainDepth).length ? { ...others, grainDepth } : others };
 }
 
 /** Every image a style paints with, by pack and file, each once: its brushes' tips and grains, their duals', its paper's. */
