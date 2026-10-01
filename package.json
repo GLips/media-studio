@@ -79,6 +79,7 @@
     "effect": "4.0.0-rc.111",
     "esbuild": "0.28.1",
     "lucide-react": "1.41.0",
+    "manifold-3d": "^3.5.3",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "remotion": "4.0.525",
