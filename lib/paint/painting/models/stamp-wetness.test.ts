@@ -5,6 +5,7 @@ import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/st
 import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampPass } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment, StampPassageOptions, StampPassageScope } from './stamp-paint-recipe-types.ts';
+import { stampStage } from './stamp-stage.ts';
 import { compileStampWetness, stampDrying, STAMP_WET_CELL, stampWetGrid, type StampWetState, type StampWetness } from './stamp-wetness.ts';
 import { stampGridAt } from './stamp-region.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
@@ -28,7 +29,7 @@ const brush: StampBrush = {
   flow: 1,
 };
 const watercolour = PAINT_MEDIA.watercolour;
-const size = { width: 800, height: 400 };
+const size = stampStage({ width: 800, height: 400 });
 const paper = { color: '#ffffff' } as const;
 const rate = stampDrying(watercolour.wetting, paper).rate;
 const drop = (at: { x: number; y: number }) => ({ kind: 'stamps' as const, brush, size: 60, at: [at] });

@@ -13,6 +13,7 @@ import { STAMP_WET_FLOW_WGSL, stampWetFlowSigma } from '../models/stamp-wet-flow
 import { stampWetTransportReach, stampWetTransportStrides } from '../models/stamp-wet-transport.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampWetLanding } from '../models/stamp-wetness.ts';
+import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import type { StampLoadedWetStage, StampWetDepositMoment, StampWetStage, StampWetStageContext } from './stamp-wet-stages.ts';
 import { stampUniformLayout, stampUniformWriter } from './stamp-uniform-layout.ts';
 import { putStampWetTransportSlot, stampWetTransportPipelines, stampWetTransportSlotBinding } from './stamp-wet-transport.ts';
@@ -43,8 +44,9 @@ type FlowPassOwn = Partial<Record<(typeof FLOW_PASS_OWN)[number], number>>;
 const LEAST_HOLD = 0.1;
 
 // Moves hold a layer's two populations, the fresh paint's then the paint already there's; every scratch texture is
-// box-local.
-const flowWgsl = (layers: number, movedWgsl: string, holdWgsl: string) => /* wgsl */ `
+// box-local. A pixel \`p\` is a stage texel; grids and holds read its painting point.
+const flowWgsl = (layers: number, movedWgsl: string, holdWgsl: string, stage: StampStage) => /* wgsl */ `
+${stampStageWgsl(stage)}
 ${FLOW_PASS.wgsl}
 ${STAMP_WET_FLOW_WGSL}
 ${STAMP_GRID_AT_WGSL}
@@ -90,6 +92,8 @@ fn pathAt(p: vec2i) -> vec4f { return select(vec4f(0.0), textureLoad(path, boxLo
 fn movedAt(p: vec2i, pop: u32) -> vec4f { return select(textureLoad(moved, boxLocal(p), pop, 0), vec4f(0.0), f.start == 1u); }
 fn heldAt(p: vec2i, pop: u32) -> vec4f { return laidAt(p, pop) + movedAt(p, pop); }
 fn holdAt(p: vec2i) -> vec4f { return textureLoad(hold, boxLocal(p), 0); }
+// How much of \`p\` the wash's paint covers: its layer's first channel, which only \`close\` moves.
+fn coveredAt(p: vec2i) -> f32 { return textureLoad(paint, p, 0, 0).x; }
 
 // Each pixel's paper and stirring, and its pigment. The paint already there is open as the pixel's open share was
 // before its fresh paint, all of it open, joined it.
@@ -106,7 +110,7 @@ fn holdAt(p: vec2i) -> vec4f { return textureLoad(hold, boxLocal(p), 0); }
   let own = washPigmentTotal(laid);
   let there = total - own;
   let open = select(0.0, clamp((washOpen(held) * total - own) / there, 0.0, 1.0), there > 0.0);
-  let at = vec2f(p) + 0.5;
+  let at = stagePoint(p);
   let points = f.size.x * f.size.y;
   let wetness = gridAt(at, f.lattice.xyz, f.size, f.first);
   let workable = gridAt(at, f.lattice.xyz, f.size, f.first + points);
@@ -127,14 +131,15 @@ fn holdAt(p: vec2i) -> vec4f { return textureLoad(hold, boxLocal(p), 0); }
   let p = vec2i(f.origin + id.xy);
   let held = textureLoad(paint, p, f.chunk, 0);
   let landed = textureLoad(footprint, p, 0);
-  let hold = washHold(f.chunk, vec2f(p) + 0.5, landed.ba, f.depth, held);
+  let hold = washHold(f.chunk, stagePoint(p), landed.ba, f.depth, held);
   textureStore(holdOut, id.xy, max(hold, vec4f(${LEAST_HOLD.toFixed(3)})) * max(landed.g, 0.001));
 }
 
 // Each pixel's exchange with the pixels a stride either side along the pass's axis, through the way between. Paint
 // runs down the gradient of each pigment's whole amount per unit of hold, fresh and old together, so fresh paint
 // never darkens paint already there as strong; each population carries the share of it that's free to move, the old
-// as stirred. After a lift, a pair trades only as far as the lift reached either of it.
+// as stirred. After a lift, a pair trades only as far as the lift reached either of it, and paint runs back only where
+// the wash covers (flowRefill).
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn exchange(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= f.extent)) { return; }
   let q = vec2i(f.origin + id.xy);
@@ -157,17 +162,21 @@ fn holdAt(p: vec2i) -> vec4f { return textureLoad(hold, boxLocal(p), 0); }
   if (k[0] > 0.0 || k[1] > 0.0) {
     let wholeHere = held[0] + held[1];
     let holdHere = holdAt(q);
+    let lift = f.action == LIFT;
+    let coveredHere = coveredAt(q);
     for (var i = 0; i < 2; i++) {
       if (k[i] <= 0.0) { continue; }
       let p = partners[i];
       let heldThere = array<vec4f, 2>(heldAt(p, 0u), heldAt(p, 1u));
       let wholeThere = heldThere[0] + heldThere[1];
       let holdThere = holdAt(p);
+      let coveredThere = coveredAt(p);
       for (var pop = 0u; pop < 2u; pop++) {
         let isFresh = pop == 0u;
         let freeHere = flowFree(select(here.z, 1.0, isFresh), held[pop], wholeHere);
         let freeThere = flowFree(select(stirred[i], 1.0, isFresh), heldThere[pop], wholeThere);
-        moved[pop] += flowInto(wholeHere / holdHere, wholeThere / holdThere, holdHere, holdThere, freeHere, freeThere, k[i]);
+        let into = flowInto(wholeHere / holdHere, wholeThere / holdThere, holdHere, holdThere, freeHere, freeThere, k[i]);
+        moved[pop] += select(into, flowRefill(into, coveredHere, coveredThere), lift);
       }
     }
   }
@@ -215,12 +224,12 @@ export const STAMP_WET_FLOW_STAGE = {
 } satisfies StampWetStage;
 
 function flowOnDevice(context: StampWetStageContext, flowing: readonly (readonly [CompiledStampDeposit, StampWetLanding])[]): StampLoadedWetStage<StampWetDepositMoment> {
-  const { device, layer, footprint, fresh, grids, wash, paperDepth } = context;
+  const { device, layer, footprint, fresh, grids, wash, paperDepth, stage } = context;
   const transport = stampWetTransportPipelines(device);
   // Compiled per group, its holds being its palette's: groups alike share one.
   const pipelinesFor = new Map<string, FlowPipelines>();
   const pipelinesOf = (deposit: CompiledStampDeposit) => {
-    const layers = wash.layersOf(deposit), code = flowWgsl(layers, wash.movedWgsl(deposit), wash.holdWgsl(deposit));
+    const layers = wash.layersOf(deposit), code = flowWgsl(layers, wash.movedWgsl(deposit), wash.holdWgsl(deposit), stage);
     let found = pipelinesFor.get(code);
     if (!found) {
       const module = device.createShaderModule({ code });

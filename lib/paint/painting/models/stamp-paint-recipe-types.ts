@@ -149,10 +149,16 @@ export type StampLiftOptions = StampOperation & StampDepositGeometry & { strengt
 export type StampMarkPaintOptions = StampApplicationOptions & StampConditioned & Omit<StampLoadOptions, 'burnish'> & { mark: StampMark; opacity?: number; escape?: string };
 
 /**
- * Masking fluid over an area (StampArea): no deposit declared after it in its scope lands under it, until an unmask
- * lifts it. Paint already there stays.
+ * Masking fluid over an area (StampArea), or brushed on by `marks`: what their brush tips cover, grain and all, as the
+ * same marks would paint (stamp-brushed-mask.ts). No deposit declared after it in its scope lands under it, until an
+ * unmask lifts it. Paint already there stays.
  */
-export type StampMaskSettings = StampArea;
+export type StampMaskSettings = StampArea | { marks: readonly StampMark[] };
+/**
+ * Wax laid by `marks`, catching the paper's peaks: `amount` (0..1, 1 when left out) of what its brush covers there.
+ * Every passage of its group declared after it is held off the wax; no unmask lifts it, and it ends with the group.
+ */
+export type StampResistSettings = { marks: readonly StampMark[]; amount?: number };
 /**
  * Lifts `amount` (0..1, 1 when left out) of the fluid within an area, or everywhere without one, for deposits
  * declared after it in its scope.
@@ -231,6 +237,8 @@ export type StampMasking = { mask: (id: string, settings: StampMaskSettings) => 
 
 export type StampPaintScope = StampMasking & { group: (id: string, options: StampGroupOptions, body: (group: StampGroupScope) => void) => void };
 export type StampGroupScope = StampMasking & {
+  /** Wax resist (StampResistSettings), for the paint of the group's passages after it. */
+  resist: (id: string, settings: StampResistSettings) => void;
   /**
    * What the group takes out of everything painted before it, declared first and once: its masking fluid crossed by
    * its water is a reserve (paper the paint behind never reached: crisp, white), its lifts take that paint up by the
@@ -285,6 +293,8 @@ export type StampPaintRecipeMask = {
   op: ({ kind: 'mask' } & StampMaskSettings) | ({ kind: 'unmask' } & StampUnmaskSettings);
   under: StampPaintRecipeMask | null;
 } | null;
+/** A group's wax as it stands: its latest resist, over those before it; null for none. */
+export type StampPaintRecipeResist = { path: readonly string[]; settings: StampResistSettings; under: StampPaintRecipeResist } | null;
 /** An application's `within` as a deposit lands under it: its area, its ragged edge seeded by `seed`. */
 export type StampDepositWithin = { area: StampWithin; seed: string };
 /** A deposit as written: compileDeposit checks it and places its stamps. */
@@ -299,6 +309,8 @@ export type StampPaintRecipeDeposit<A extends StampRecipeWashAction = StampRecip
   tool: { brush: StampBrush; diameter: number; opacity?: number };
   action: A;
   mask: StampPaintRecipeMask;
+  /** Its group's wax as it was written; absent for none. */
+  resist?: NonNullable<StampPaintRecipeResist>;
   /** When it shows, as the score allotted it; absent, it's there from the start. */
   reveal?: StampAllocatedReveal;
   /** The areas of the applications it was written under, outermost first; absent for none. Deposits of one share it. */
@@ -309,12 +321,17 @@ export type StampPaintRecipeDeposit<A extends StampRecipeWashAction = StampRecip
   escape?: string;
 };
 export type StampPaintRecipeStep = StampPaintRecipeDeposit | StampWrittenWait;
-/** A passage as written: without wet history all paint (`wash` null), with it a schedule of deposits and waits. */
-export type StampPaintRecipePass = { id: string; clipTo?: string; within?: StampWithin } & (
+/**
+ * A passage as written: without wet history all paint (`wash` null), with it a schedule of deposits and waits.
+ * `resist`: its group's wax as it began, which its preparation's water doesn't wet; absent for none.
+ */
+export type StampPaintRecipePass = { id: string; clipTo?: string; within?: StampWithin; resist?: NonNullable<StampPaintRecipeResist> } & (
   | { wash: null; steps: readonly StampPaintRecipeDeposit<StampRecipePaint>[] }
   | { wash: { preparation?: { region: StampRegion; wetness?: StampPaintField<number> }; rim?: number; knockout: boolean; strict?: true }; steps: readonly StampPaintRecipeStep[] }
 );
 export type StampPaintRecipeGroup = { id: string; options: StampGroupOptions; passes: readonly StampPaintRecipePass[] };
 
 /** A recipe as written, IDs unchecked: `compileStampPaintRecipe` checks it. */
-export type StampPaintRecipe = { environment: StampPaintEnvironment; groups: readonly StampPaintRecipeGroup[]; masks: readonly NonNullable<StampPaintRecipeMask>[] };
+export type StampPaintRecipe = {
+  environment: StampPaintEnvironment; groups: readonly StampPaintRecipeGroup[]; masks: readonly NonNullable<StampPaintRecipeMask>[]; resists: readonly NonNullable<StampPaintRecipeResist>[];
+};

@@ -115,7 +115,12 @@ Everything is from `#studio`.
     for everything declared after it in that scope, until the scope ends; `unmask(id, { region, edge, inset, amount })`
     lifts all or part of it. `edge`: `{ soft: px }` or `{ ragged: { amount, scale } }`, else a clean antialiased
     line; `inset` (px) moves it inward. Paint already there stays: a mask is for highlights, glints and reserves, not
-    erasing.
+    erasing. Brush it on with `mask(id, { marks })`: it covers just what those `StampMark`s would paint, grain and
+    all (a dry-brush sparkle of fluid), and water laid over it wets only the paper it left open.
+  - **Wax resist**: `group.resist(id, { marks, amount? })` lays wax on the paper's peaks under its marks, so later
+    washes break over the tooth and fill the valleys. It holds for the rest of the group, through unmasks and
+    passages, and is never lifted; a knockout ignores it. Needs a paper with grain to look like wax: on a smooth
+    sheet it covers the whole mark.
   - **A near shape in front of far paint** (hills before a range): give the near group `standsBefore: { groups:
     ['far-range'], shape: hills, overlap: 3 }`. The named groups, which must paint before it, land as if under fluid
     over `shape` inset by `overlap` px, past any unmask of theirs and their water too; the near group paints its own
@@ -231,6 +236,31 @@ elements, which is what keeps objects from showing through each other.
    - A point goes through its own bend and placement, then its parent's, and so up, as a rig nests.
 5. **Each frame,** `paintMotionFrameAt(motion, s.t)` gives the frame state, live marks included:
    `<StampPainting painting={painting} t={s.t} frame={paintMotionFrameAt(motion, s.t)} />`.
+
+**Planes and the camera (multiplane).** Give a root node `anchor: { plane: depth }` to stand its tree on a plane
+that far from the camera (1 is where a pan's pixels are measured; nearer is under 1). Paint each plane the size it
+should look before the camera moves: at rest nothing changes. Pass `camera: { stage: stampStage({ width, height },
+margin), plays }` to `buildPaintMotion`, and its stage to the painting, `<StampPainting stage={motion.camera.stage}>`
+(it refuses a stage whose frame isn't its own size): the renderer paints that far past the frame, so a camera move
+brings in paint, not paper's edge. Plays are
+`paintCameraPlay({ kind: 'move', keys: [{ at, pan?: { x, y }, dolly?, zoom?, roll?, ease? }] }, { clock, origin })`,
+and `{ kind: 'focus', keys: [{ at, focus, aperture }] }` for depth of field: `focus` is the depth held sharp,
+`aperture` the defocus (px of gaussian sigma) a plane at infinity gets. A pan of 100 moves a plane at depth 2 by 50
+and one at 0.5 by 200; a dolly grows near planes more than far ones. Keep the camera on ones: held on twos it judders.
+Mark the background `backdrop: true` and the build fails if the camera would show past it; give the frog
+`glow: { amount, sigma, threshold }` for a soft light. A frame state's own `defocus` and a glow's `sigma` are px of
+gaussian sigma, grown with the plane. Untouched groups and `anchor: 'canvas'` (titles) never move with the camera.
+
+**3D layers in a painting.** `<PaintedThreeScene painting t frame camera three={{ fov, layers, paintedTextures }}>`
+lays a three.js scene into the painting's group order, `beneath` a group, on the painting's own GPU device. It applies
+the camera itself, to the planes and to three's camera alike, so give it `frame` as it stands before the camera step
+(not `paintCameraFrameStateAt`'s). A layer has a `depth`, and the camera is built with it
+(`buildPaintCamera(painting, { ..., outsideLayers: three.layers })`), which holds it in front of the camera; it moves
+and defocuses as a plane there. A layer's `build` gets the world, its own `plane` (`plane.point(px)` places a mesh,
+`plane.length(px)` sizes it, both at the layer's depth) and the painted textures, each a painting drawn every frame
+for a material (`paintedThreeColorNode`). `poseAt` returns a key of what it shows: it must change whenever the render
+does, or a frame restores a stale one. Memoise `three`: a new array reloads the device. The frog project's
+`frogDepth` and the round-trip project are worked examples.
 
 Hold motion on twos (`clock: { hold: 2 }` on the node, at `PAINT_ANIMATION_FPS`) and let the paint-in run on ones: a
 node's hold never reaches its reveal. Run `studio repeatable`

@@ -16,6 +16,13 @@ import { paintKeyNumbers, type CompiledPaintPin, type PaintPinMove } from './pai
 const PX_STEP = 1e-3, RATIO_STEP = 1e-6;
 const rounded = (value: number, step: number) => Math.round(value / step) * step;
 
+/** `px` rounded to the step a key holds pixels in. */
+export const paintPxRounded = (px: number) => rounded(px, PX_STEP);
+/** A ratio, an angle or a depth rounded to the step a key holds them in. */
+export const paintRatioRounded = (value: number) => rounded(value, RATIO_STEP);
+/** A sigma, px, that must stay above 0, rounded: never below one step, which the renderer would refuse as 0. */
+export const paintSigmaRounded = (px: number) => Math.max(PX_STEP, paintPxRounded(px));
+
 /** One pin moved: its name (for blame), the pin and its move, rounded (paintPlacementRounded). */
 export type PaintPinMoved = { readonly name: string; readonly pin: CompiledPaintPin; readonly move: StampGroupPlacement };
 

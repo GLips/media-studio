@@ -129,3 +129,7 @@ export type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-p
 export { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 export { stampPaintStyle } from '#lib/paint/style/studio/stamp-paint-styles.ts';
 export { StampPainting } from '#lib/paint/style/studio/stamp-painting.tsx';
+// three.js in a painting (vid-136): its scenes laid in the group order as outside layers, seen through the paint camera.
+export { PaintedThreeScene, type PaintedThreeContent } from '#lib/paint/three-layers/studio/painted-three-scene.tsx';
+export type { PaintedThreeLayer, PaintedThreeLayerScene, PaintedThreeLayerTools, PaintedThreeTexture } from '#lib/paint/three-layers/studio/painted-three-gpu.ts';
+export { paintedThreeColorNode } from '#lib/paint/three-layers/studio/painted-three-material.ts';

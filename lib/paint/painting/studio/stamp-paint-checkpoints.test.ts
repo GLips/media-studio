@@ -22,8 +22,9 @@ const device = {
 const frame = () => ({ copyTextureToTexture: () => {} }) as unknown as GPUCommandEncoder;
 
 // 800 bytes a layer: the painting 2 layers (1600), the layer 4 and the clip 1 (4000 more).
-const targets = { painting: texture(2), layer: texture(4), clip: texture(1) } as unknown as Parameters<typeof stampPaintCheckpoints>[1];
-const at = (event: number, inGroup: boolean): StampPaintCheckpoint => ({ event, key: '', inGroup, painted: null });
+const light = texture(1);
+const targets = { painting: texture(2), layer: texture(4), clip: texture(1), light: () => light } as unknown as Parameters<typeof stampPaintCheckpoints>[1];
+const at = (event: number, inGroup: boolean): StampPaintCheckpoint => ({ event, key: '', inGroup, painted: null, lit: false });
 
 test('a budget too small for a checkpoint partway through a group keeps none of those, but keeps those between groups', () => {
   made.length = 0;

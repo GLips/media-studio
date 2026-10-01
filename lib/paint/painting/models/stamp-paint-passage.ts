@@ -17,7 +17,7 @@ import type { StampWithin } from './stamp-area.ts';
 import type { StampPoint, StampRegion } from './stamp-region.ts';
 import type {
   StampApplicationOptions, StampDepositGeometry, StampDepositWithin, StampFillOptions, StampLiftOptions, StampMarkPaintOptions, StampMasking, StampPaintEnvironment,
-  StampPaintRecipeDeposit, StampPaintRecipeMask, StampPaintRecipePass, StampPaintRecipeStep, StampPassageDefaults, StampPassageOptions, StampPassageScope, StampPlacementOptions,
+  StampPaintRecipeDeposit, StampPaintRecipeMask, StampPaintRecipePass, StampPaintRecipeResist, StampPaintRecipeStep, StampPassageDefaults, StampPassageOptions, StampPassageScope, StampPlacementOptions,
   StampResolvedGeometry, StampStrokeOptions, StampWaterOptions, StampWell,
 } from './stamp-paint-recipe-types.ts';
 import type { StampCondition, StampWaitEffect, StampWashWait, StampWetEffectKind } from './stamp-wash-effects.ts';
@@ -28,6 +28,8 @@ export type StampPassageHost = {
   medium: PaintMedium | null;
   group: string;
   fluid: () => StampPaintRecipeMask;
+  /** Its group's wax as it stands. */
+  resist: () => StampPaintRecipeResist;
   /** Masking in the scope `path` names (its group's ID, its passage's, the name's segments). */
   masking: (path: (id: string) => readonly string[]) => StampMasking;
 };
@@ -128,8 +130,9 @@ const layeredDefaults = (base: StampPassageDefaults, over: StampPassageDefaults 
 
 /** Writes deposit `id`, under the fluid as it stands. */
 function lay(writer: StampPassageWriter, node: StampScoreNode<StampPaintRecipeDeposit>, id: string, written: Pick<StampPaintRecipeDeposit, 'geometry' | 'tool' | 'action'> & { mark?: StampMark }) {
+  const resist = writer.state.host.resist();
   const deposit: StampPaintRecipeDeposit = {
-    kind: 'deposit', name: writer.namer.name(id), provenance: writer.provenance, ...written, mask: writer.state.host.fluid(), ...(writer.within && { within: writer.within }),
+    kind: 'deposit', name: writer.namer.name(id), provenance: writer.provenance, ...written, mask: writer.state.host.fluid(), ...(resist && { resist }), ...(writer.within && { within: writer.within }),
     ...(writer.escape && { escape: writer.escape }),
   };
   node.deposits.push(deposit);
@@ -346,7 +349,8 @@ export function writeStampPassage(host: StampPassageHost, id: string, options: S
     const reveal = reveals.get(step);
     return [reveal ? { ...step, reveal } : step];
   });
-  const common = { id, ...(options.clipTo && { clipTo: options.clipTo }), ...(options.within && { within: options.within }) };
+  const resist = host.resist();
+  const common = { id, ...(options.clipTo && { clipTo: options.clipTo }), ...(options.within && { within: options.within }), ...(resist && { resist }) };
   if (!history) return { ...common, wash: null, steps: steps.filter((step): step is StampPaintRecipeDeposit<StampRecipePaint> => step.kind === 'deposit' && step.action.kind === 'paint') };
   let prepared: { region: StampRegion; wetness?: NonNullable<Exclude<typeof preparation, 'area'>>['wetness'] } | undefined;
   if (preparation === 'area') {
