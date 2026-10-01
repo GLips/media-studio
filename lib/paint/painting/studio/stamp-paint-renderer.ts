@@ -1045,9 +1045,9 @@ function rendererOnSurface(
     }
     const stampData = new Float32Array(Math.max(1, total) * STAMP_FLOATS), tintData = new Float32Array(Math.max(1, tints) * TINT_FLOATS);
     for (const { deposit, main, dual, tint } of placed) {
-      const source = stampGrainDepthSourceIn(mediumOfDeposit(deposit));
-      stampData.set(stampInstanceFloats(deposit.stamps, source), main * STAMP_FLOATS);
-      stampData.set(stampInstanceFloats(deposit.dualStamps, source), dual * STAMP_FLOATS);
+      const grainDepthSource = stampGrainDepthSourceIn(mediumOfDeposit(deposit));
+      stampData.set(stampInstanceFloats(deposit.stamps, grainDepthSource), main * STAMP_FLOATS);
+      stampData.set(stampInstanceFloats(deposit.dualStamps, grainDepthSource), dual * STAMP_FLOATS);
       if (tint !== null) tintData.set(stampTintFloats(deposit.stamps), tint * TINT_FLOATS);
     }
     // A layer laid in order reads its stamps and tints as storage.
