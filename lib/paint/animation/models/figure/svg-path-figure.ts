@@ -18,9 +18,31 @@ const IDENTITY_PLACEMENT: SvgPathPlacement = { x: 0, y: 0, scale: 1 };
 /** How far a flattened curve's chords may stray from it, px. */
 const CURVE_TOLERANCE = 0.2;
 
+/** Path data read as it's written: a command letter, or a finite number. */
+type SvgPathToken = { readonly kind: 'command'; readonly letter: string } | { readonly kind: 'number'; readonly value: number };
+
+const SVG_COMMAND = /[MmLlHhVvCcSsQqTtZzAa]/y, SVG_NUMBER = /[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/y, SVG_SEPARATOR = /[\s,]+/y;
+
+/** `d` as tokens; throws where it holds anything else, naming where. */
+function svgPathTokens(d: string): SvgPathToken[] {
+  const tokens: SvgPathToken[] = [];
+  const at = (pattern: RegExp, from: number) => { pattern.lastIndex = from; return pattern.exec(d)?.[0]; };
+  for (let i = 0; i < d.length;) {
+    const separator = at(SVG_SEPARATOR, i), letter = separator ? undefined : at(SVG_COMMAND, i), number = separator || letter ? undefined : at(SVG_NUMBER, i);
+    if (letter) tokens.push({ kind: 'command', letter });
+    else if (number !== undefined) {
+      const value = Number(number);
+      if (!Number.isFinite(value)) throw new Error(`svgPathRegions: "${number}" at ${i} isn't a finite number`);
+      tokens.push({ kind: 'number', value });
+    } else if (!separator) throw new Error(`svgPathRegions: "${d.slice(i, i + 12)}" at ${i} isn't path data`);
+    i += (separator ?? letter ?? number ?? '').length;
+  }
+  return tokens;
+}
+
 /** The subpaths of SVG path data, flattened to px: each its points, and whether a Z closed it. */
 function svgSubpaths(d: string, placement: SvgPathPlacement): { points: StampPoint[]; closed: boolean }[] {
-  const tokens = d.match(/[MmLlHhVvCcSsQqTtZzAa]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g) ?? [];
+  const tokens = svgPathTokens(d);
   const subpaths: { points: StampPoint[]; closed: boolean }[] = [];
   const px = (x: number, y: number): StampPoint => ({ x: placement.x + x * placement.scale, y: placement.y + y * placement.scale });
   let index = 0, command = '', x = 0, y = 0, startX = 0, startY = 0;
@@ -29,8 +51,8 @@ function svgSubpaths(d: string, placement: SvgPathPlacement): { points: StampPoi
   let current: { points: StampPoint[]; closed: boolean } | undefined;
   const number = () => {
     const token = tokens[index++];
-    if (token === undefined || /[a-z]/i.test(token)) throw new Error(`svgPathRegions: path data ends or breaks where a number should be, in "${d.slice(0, 60)}"`);
-    return Number(token);
+    if (token?.kind !== 'number') throw new Error(`svgPathRegions: path data ends or breaks where a number should be, in "${d.slice(0, 60)}"`);
+    return token.value;
   };
   const lineTo = (nx: number, ny: number) => { current?.points.push(px(nx, ny)); x = nx; y = ny; };
   const curve = (controls: { x: number; y: number }[], nx: number, ny: number) => {
@@ -48,8 +70,9 @@ function svgSubpaths(d: string, placement: SvgPathPlacement): { points: StampPoi
     x = nx; y = ny;
   };
   while (index < tokens.length) {
-    if (/[a-z]/i.test(tokens[index])) command = tokens[index++];
-    else if (!command) throw new Error(`svgPathRegions: path data must start with a command, not "${tokens[index]}"`);
+    const token = tokens[index];
+    if (token.kind === 'command') { command = token.letter; index++; }
+    else if (!command) throw new Error(`svgPathRegions: path data must start with a command, not ${token.value}`);
     const relative = command === command.toLowerCase(), ox = relative ? x : 0, oy = relative ? y : 0;
     const upper = command.toUpperCase();
     let control: typeof lastControl;

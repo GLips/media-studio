@@ -134,12 +134,18 @@ recipe's own `motion` and `boil` are evaluated into the same shape (`stamp-frame
 **animation** writes that frame state, and the renderer never sees a scene, a pose or a clock.
 - **Shape sources** (`models/figure/`): a posed primitive figure, a construction of circles and capsules, or SVG paths.
   Each gives named parts, a silhouette, interior lines and anchors as regions.
-- **Motion** (`paint-motion-frame.ts`): a tree of nodes, one per group, each with pins and how its marks live. Plays
-  of clips (`paint-motion-clips.ts`: poses, breathe, sway, flutter, place) are put on nodes through writers' clocks
-  (`paint-clock.ts`: at, rate, loop, hold, freeze, on a 24 fps animation clock).
-- **Checks:** `buildPaintMotion` checks the tree, the clocks, one writer per channel and target
-  (`paint-channels.ts`), and poses that fold. `paintMotionFrameAt(motion, t)` is pure in `t`, and gives each group's
-  state and each live node's pose for its caller to re-place.
+- **Motion** (`paint-motion.ts`, `paint-motion-compile.ts`): a node per moving group, built over the compiled
+  painting, which gives each group's painted box and reveal end. A node has pins and how its marks live; a live node
+  registers a poser, and motion keeps its posed marks by key. Plays of clips (`paint-motion-clips.ts`: poses,
+  breathe, sway, flutter, place) run through clocks written as parts (`paint-clock.ts`: at, rate, loop, hold,
+  freeze, until, on a 24 fps animation clock), compiled to steps in one order.
+- **Deformation as data** (`paint-deform.ts`): each bend a node's paint goes through in a frame is a value with every
+  spatial parameter and its rounded amount; its map and its key are both read from it. A point goes through its own
+  bend and placement, then its parent's, as a rig nests.
+- **Checks:** the build checks the tree, the groups, the clocks, the boil's wobble, one writer per lane
+  (`paint-channels.ts`), and every frame's emitted warp for folds on the renderer's own lattice.
+  `paintMotionFrameAt(motion, t)` is pure in `t`, and writes each group's state through one function
+  (`paint-group-frame-state.ts`).
 
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants
 of `procreate-reading.ts`), and the stroke Procreate draws its previews along. Its `engine/` reads binary plists and

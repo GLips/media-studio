@@ -1,14 +1,14 @@
 // paint-motion-clips.ts: what a play plays, as typed data over the clip's own time (seconds, from 0): pose clips
 // (pins' moves keyed and eased), breathe (a pin's scale on a period), sway (a part bending from its root), flutter (a
-// part narrowing across an axis and opening again) and place (a group's rigid placement keyed). Each is read by a pure function of its time; the writer's clock (paint-clock.ts)
-// makes that time.
+// part narrowing across an axis and opening again) and place (a group's rigid placement keyed). Each is read by a
+// pure function of its time; the play's clock (paint-clock.ts) makes that time, and paint-deform.ts the bend.
 //
 // Before its first key a clip reads its first; past its last, its last. A time below 0 reads as 0, so a clip waiting
 // for its cue shows its first drawing.
 
 import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group-motion.ts';
-import type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import { clipSeconds, type ClipSeconds } from './paint-clock.ts';
 import type { PaintPinMove } from './paint-pins.ts';
 
 /** How a key is reached from the one before: evenly, slow then fast (`in`), fast then slow (`out`), or both. */
@@ -51,12 +51,13 @@ export type PaintPlaceClip = {
   readonly keys: readonly ({ readonly at: number; readonly x: number; readonly y: number; readonly rotation?: number; readonly scale?: number; readonly ease?: PaintEase })[];
 };
 
-export type PaintDeformClip<P extends string> = PaintPoseClip<P> | PaintBreatheClip<P> | PaintSwayClip | PaintFlutterClip;
-export type PaintMotionClip<P extends string> = PaintDeformClip<P> | PaintPlaceClip;
+/** A clip moving pins: what a node's pin lane holds. */
+export type PaintPinClip<P extends string> = PaintPoseClip<P> | PaintBreatheClip<P>;
+export type PaintMotionClip<P extends string> = PaintPinClip<P> | PaintSwayClip | PaintFlutterClip | PaintPlaceClip;
 
 /** The clip's length in its own seconds: its last key, or Infinity for a generator, which never finishes. */
-export const paintMotionClipDuration = (clip: PaintMotionClip<string>) =>
-  clip.kind === 'poses' || clip.kind === 'place' ? (clip.keys.at(-1)?.at ?? 0) : Infinity;
+export const paintMotionClipLength = (clip: PaintMotionClip<string>): ClipSeconds =>
+  clipSeconds(clip.kind === 'poses' || clip.kind === 'place' ? (clip.keys.at(-1)?.at ?? 0) : Infinity);
 
 /** The pins a clip moves. */
 export function paintMotionClipPins<P extends string>(clip: PaintMotionClip<P>): P[] {
@@ -106,7 +107,7 @@ const restMove: Required<PaintPinMove> = { x: 0, y: 0, rotation: 0, scale: 1 };
 const between = (a: number, b: number, share: number) => a + (b - a) * share;
 
 /** Each pin `clip` moves, as it stands time s into the clip: a pin a key leaves out is at rest there. */
-export function paintPoseClipAt<P extends string>(clip: PaintPoseClip<P>, time: number): Map<P, Required<PaintPinMove>> {
+export function paintPoseClipAt<P extends string>(clip: PaintPoseClip<P>, time: ClipSeconds): Map<P, Required<PaintPinMove>> {
   const { from, to, share } = keySpanAt(clip.keys, Math.max(0, time));
   const whole = (move: PaintPinMove | undefined): Required<PaintPinMove> => ({ ...restMove, ...move });
   return new Map(paintMotionClipPins(clip).map((pin) => {
@@ -116,10 +117,16 @@ export function paintPoseClipAt<P extends string>(clip: PaintPoseClip<P>, time: 
 }
 
 /** The breathing pin's scale time s into the clip: 1 at its start and every period, 1 + amount half way. */
-export const paintBreatheScaleAt = ({ amount, period }: PaintBreatheClip<string>, time: number) => 1 + amount * (1 - Math.cos((2 * Math.PI * Math.max(0, time)) / period)) / 2;
+export const paintBreatheScaleAt = ({ amount, period }: PaintBreatheClip<string>, time: ClipSeconds) => 1 + amount * (1 - Math.cos((2 * Math.PI * Math.max(0, time)) / period)) / 2;
+
+/** How `pin` moves time s into a clip moving pins: at rest where the clip leaves it out. */
+export function paintPinClipMoveAt<P extends string>(clip: PaintPinClip<P>, pin: P, time: ClipSeconds): PaintPinMove {
+  if (clip.kind === 'breathe') return { scale: paintBreatheScaleAt(clip, time) };
+  return paintPoseClipAt(clip, time).get(pin) ?? {};
+}
 
 /** The group's placement time s into a place clip. */
-export function paintPlaceClipAt(clip: PaintPlaceClip, time: number): StampGroupPlacement {
+export function paintPlaceClipAt(clip: PaintPlaceClip, time: ClipSeconds): StampGroupPlacement {
   const { from, to, share } = keySpanAt(clip.keys, Math.max(0, time));
   const a = clip.keys[from], b = clip.keys[to];
   return { x: between(a.x, b.x, share), y: between(a.y, b.y, share), rotation: between(a.rotation ?? 0, b.rotation ?? 0, share), scale: between(a.scale ?? 1, b.scale ?? 1, share) };
@@ -136,37 +143,13 @@ export function paintIdHash(text: string): number {
 export const paintIdPhase = (id: string) => (paintIdHash(id) % 10007) / 10007;
 
 /** How far the sway has turned its tip, radians, time s in, for a target of phase `phase`. */
-export function paintSwayAngleAt({ amount, length, period }: PaintSwayClip, phase: number, time: number): number {
+export function paintSwayAngleAt({ amount, length, period }: PaintSwayClip, phase: number, time: ClipSeconds): number {
   const t = Math.max(0, time), ramp = Math.min(1, (2 * t) / period), easeIn = ramp * ramp * (3 - 2 * ramp);
   return (amount / length) * easeIn * Math.sin(2 * Math.PI * (t / period + phase));
 }
 
-/**
- * The bend a sway makes when its tip has turned `angle`: each rest point turns about `root` by `angle` times how far
- * it lies along the axis, 0 at the root and all of it from the tip on, so a blade curls rather than shears and keeps
- * its length. Paint behind the root stays put.
- */
-export function paintSwayMap({ root, direction, length }: PaintSwayClip, angle: number): StampWarpMap {
-  const ax = Math.cos(direction), ay = Math.sin(direction);
-  return (rest) => {
-    const dx = rest.x - root.x, dy = rest.y - root.y, along = Math.min(1, Math.max(0, (dx * ax + dy * ay) / length));
-    if (along === 0) return rest;
-    const turn = angle * along, cos = Math.cos(turn), sin = Math.sin(turn);
-    return { x: root.x + cos * dx - sin * dy, y: root.y + sin * dx + cos * dy };
-  };
-}
-
 /** How open a flutter is, time s in, for a target of phase `phase`: 1 open, `least` closed. */
-export function paintFlutterSpreadAt({ least, period }: PaintFlutterClip, phase: number, time: number): number {
+export function paintFlutterSpreadAt({ least, period }: PaintFlutterClip, phase: number, time: ClipSeconds): number {
   const t = Math.max(0, time), ramp = Math.min(1, t / period), easeIn = ramp * ramp * (3 - 2 * ramp);
   return 1 - ((1 - least) * easeIn * (1 - Math.cos(2 * Math.PI * (t / period + phase)))) / 2;
-}
-
-/** The squeeze a flutter makes when it's `spread` open: each rest point's distance across the axis times `spread`. */
-export function paintFlutterMap({ at, direction }: PaintFlutterClip, spread: number): StampWarpMap {
-  const ax = Math.cos(direction), ay = Math.sin(direction);
-  return (rest) => {
-    const dx = rest.x - at.x, dy = rest.y - at.y, along = dx * ax + dy * ay, across = (dy * ax - dx * ay) * spread;
-    return { x: at.x + along * ax - across * ay, y: at.y + along * ay + across * ax };
-  };
 }

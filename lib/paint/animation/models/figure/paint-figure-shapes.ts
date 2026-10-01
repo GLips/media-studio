@@ -9,12 +9,14 @@
 import { stampGridAt, type StampGrid, type StampPoint, type StampRegion } from '#lib/paint/painting/models/stamp-region.ts';
 import { PAINT_FIGURE_TRACE_DEFAULTS, tracePaintFigurePieces, type PaintFigureTraceSettings } from './paint-figure-trace.ts';
 
-/** One part as it shows: every visible piece, largest first (empty when the view hides it all), and the largest. */
-export type PaintFigurePart = {
-  /** The largest visible piece, holes filled; undefined when the part is hidden in this pose and view. */
-  readonly region: StampRegion | undefined;
-  readonly pieces: readonly StampRegion[];
-};
+/** One part as it shows: hidden in this pose and view, or shown as its visible pieces, largest first, holes filled. */
+export type PaintFigurePart = { readonly kind: 'hidden' } | { readonly kind: 'shown'; readonly pieces: readonly [StampRegion, ...StampRegion[]] };
+
+/** The part's largest visible piece, or undefined when its pose and view hide it. */
+export const paintFigurePartRegion = (part: PaintFigurePart): StampRegion | undefined => (part.kind === 'shown' ? part.pieces[0] : undefined);
+
+/** The part's visible pieces, largest first: none when it's hidden. */
+export const paintFigurePartPieces = (part: PaintFigurePart): readonly StampRegion[] => (part.kind === 'shown' ? part.pieces : []);
 
 /** The figure's outer edge: its largest piece as a region, every piece, and that region's loop closed as a path to stroke. */
 export type PaintFigureSilhouette = {
@@ -106,7 +108,7 @@ export function paintFigureShapesFromFields<P extends string, A extends string>(
   const traced = fields.parts.map((part, k) => ({ name: part.name, pieces: tracePaintFigurePieces(grids[k].visible, trace) }));
   // SAFETY: filled below from fields.parts, which a source builds with every name its declaration has, once each.
   const parts = {} as Record<P, PaintFigurePart>;
-  for (const { name, pieces } of traced) parts[name] = { region: pieces.length ? polygon(pieces[0]) : undefined, pieces: pieces.map(polygon) };
+  for (const { name, pieces: [largest, ...rest] } of traced) parts[name] = largest ? { kind: 'shown', pieces: [polygon(largest), ...rest.map(polygon)] } : { kind: 'hidden' };
   const lines = traced.flatMap(({ pieces }, k) => pieces.flatMap((loop) => partLines(loop, k, fields.sampling.cell, union, grids)));
   return {
     parts,

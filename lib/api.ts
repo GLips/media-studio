@@ -89,16 +89,18 @@ export type { StampBlend, StampBrush, StampBrushMedia } from '#lib/paint/brush/m
 export type { ResolvedStampPaintStyle } from '#lib/paint/style/models/style.ts';
 // Figure shapes (plan 1's shape sources): a figure's named parts, silhouette, interior lines and anchors, as regions and
 // paths a painting fills, clips and pins with, from posed 3D primitives, named 2D construction or SVG path data.
-export type { PaintFigurePart, PaintFigureShapes, PaintFigureSilhouette } from '#lib/paint/animation/models/figure/paint-figure-shapes.ts';
+export { paintFigurePartPieces, paintFigurePartRegion, type PaintFigurePart, type PaintFigureShapes, type PaintFigureSilhouette } from '#lib/paint/animation/models/figure/paint-figure-shapes.ts';
 export { posedFigureShapes, posedPrimitiveFigure, type PaintFigurePose, type PaintFigureView, type PosedPrimitiveFigure } from '#lib/paint/animation/models/figure/posed-primitive-figure.ts';
 export { constructedFigureShapes, figureConstructionChain, type ConstructedFigure, type PaintFigureConstruction } from '#lib/paint/animation/models/figure/constructed-figure.ts';
 export { svgFigureShapes, svgPathRegions, type SvgPathFigure, type SvgPathPlacement } from '#lib/paint/animation/models/figure/svg-path-figure.ts';
-// Painted motion (plan 1): nodes with pins and how their marks live, clips played through writers' clocks, evaluated
-// per frame into StampPainting's `frame`.
-export { buildPaintMotion, paintMotionFrameAt, paintMotionPlay, type PaintLivePose, type PaintMarks, type PaintMotion, type PaintMotionFrame, type PaintMotionNode, type PaintMotionPlay, type PaintNodeClockStep } from '#lib/paint/animation/models/paint-motion-frame.ts';
+// Painted motion (plan 1): nodes over a compiled painting's groups, with pins and how their marks live (a live node
+// registers its poser), clips played through clocks written as parts, evaluated per frame into StampPainting's `frame`.
+export { buildPaintMotion, type PaintMotionBuild } from '#lib/paint/animation/models/paint-motion.ts';
+export { paintMotionPlay, type PaintBoilMarks, type PaintLivePose, type PaintLivePoser, type PaintMarks, type PaintMotion, type PaintMotionNode, type PaintMotionPlay } from '#lib/paint/animation/models/paint-motion-compile.ts';
+export { paintMotionFrameAt } from '#lib/paint/animation/models/paint-motion-frame.ts';
 export { paintIdHash, paintIdPhase, type PaintEase, type PaintMotionClip, type PaintPose, type PaintPoseClip } from '#lib/paint/animation/models/paint-motion-clips.ts';
 export type { PaintPartPin, PaintPin, PaintPinMove, PaintPinRig, PaintRadialPin } from '#lib/paint/animation/models/paint-pins.ts';
-export { PAINT_ANIMATION_FPS, type PaintClock, type PaintClockStep } from '#lib/paint/animation/models/paint-clock.ts';
+export { PAINT_ANIMATION_FPS, type PaintNodeClock, type PaintPlayClock, type PaintPlayLoop } from '#lib/paint/animation/models/paint-clock.ts';
 // Pigment paint: a style that paints in pigment names its medium and pigments; a deposit lays a colour or a mixture.
 export { PAINT_MEDIA, TITANIUM_WHITE, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 export type { PaintMixture, PaintMixturePart } from '#lib/paint/materials/models/paint-mixture.ts';

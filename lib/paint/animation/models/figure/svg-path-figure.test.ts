@@ -18,3 +18,10 @@ test('relative path data reads as its absolute twin, every command, and an open 
   assert.deepEqual(pa[0], { x: 25, y: 17 });
   assert.throws(() => svgPathRegions('M0 0 A10 10 0 0 1 20 0'), /arcs/);
 });
+
+test('numbers read in exponent notation, and anything that isn\'t path data is refused', () => {
+  assert.deepEqual(svgPathRegions('M 1e2 0 L 110 10 L 100 20 Z'), svgPathRegions('M 100 0 L 110 10 L 100 20 Z'));
+  assert.deepEqual(flat(svgPathRegions('M0,0L-1.5e1-2E0')), [{ x: 0, y: 0 }, { x: -15, y: -2 }]);
+  assert.throws(() => svgPathRegions('M 0 0 L 10 x 20'), /"x 20" at 11 isn't path data/);
+  assert.throws(() => svgPathRegions('M 0 0 L 10'), /ends or breaks where a number should be/);
+});
