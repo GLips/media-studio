@@ -4,6 +4,7 @@ import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/st
 import { stampFramePlan, stampGroupEvents } from './stamp-frame-plan.ts';
 import { stampPaintEvents } from './stamp-paint-events.ts';
 import { compileStampPaintRecipe, stampPaintRecipe } from './stamp-paint-recipe.ts';
+import type { StampPaintFrameState } from './stamp-paint-frame-state.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 
 const brush: StampBrush = {
@@ -49,21 +50,38 @@ test('a moving group\'s checkpoints are saved only where another frame would res
   assert.equal(planAt(3.5).checkpointKey(laid), planAt(9).checkpointKey(laid));
 });
 
-test('a warping group\'s lay is keyed by its field\'s time, and its paint shared while the field changes', () => {
-  const warped = compileStampPaintRecipe(stampPaintRecipe((paint) => {
-    paint.group('ground', { composite: 'glaze', opacity: 1 }, (group) => group.pass('wash', {}, (pass) => pass.stroke('a', { brush, material: ink, diameter: 10, path: [{ x: 0, y: 0 }, { x: 50, y: 0 }] })));
-    // A sac puffing from 1 s to 3 s.
-    paint.group('sac', { composite: 'glaze', opacity: 1, warp: { at: (t) => (p) => ({ x: p.x, y: p.y * (1 + t) }), from: 1, to: 3 } }, (group) => group.pass('body', {}, (pass) => {
-      pass.stroke('a', { brush, material: ink, diameter: 10, path: [{ x: 0, y: 50 }, { x: 50, y: 50 }] });
-    }));
+/** A ground, a sac whose stroke lies at `sacY`, and a sky after it, each one stroke. */
+const sacPainting = (sacY = 50, sacStroke = 'a') => compileStampPaintRecipe(stampPaintRecipe((paint) => {
+  paint.group('ground', { composite: 'glaze', opacity: 1 }, (group) => group.pass('wash', {}, (pass) => pass.stroke('a', { brush, material: ink, diameter: 10, path: [{ x: 0, y: 0 }, { x: 50, y: 0 }] })));
+  paint.group('sac', { composite: 'glaze', opacity: 1 }, (group) => group.pass('body', {}, (pass) => {
+    pass.stroke(sacStroke, { brush, material: ink, diameter: 10, path: [{ x: 0, y: sacY }, { x: 50, y: sacY }] });
   }));
-  const at = (t: number) => stampFramePlan(warped, stampGroupEvents(warped), stampPaintEvents(warped), t, 30);
-  const laid = 2, ground = 1;
-  // While it puffs, its lay is this frame's own, and it's saved painted, not laid; held past its span, frames share its lay.
-  assert.equal(at(2).checkpointKey(laid), at(2.5).checkpointKey(laid));
-  assert.deepEqual([...at(2).checkpointSaves(0)].toSorted((a, b) => a - b), [ground, laid]);
-  assert.notEqual(at(2).checkpointKey(laid), at(3.5).checkpointKey(laid));
-  assert.equal(at(3.5).checkpointKey(laid), at(9).checkpointKey(laid));
-  assert.equal(at(0).checkpointKey(laid), at(0.5).checkpointKey(laid));
-  assert.notEqual(at(0).checkpointKey(laid), at(9).checkpointKey(laid));
+  paint.group('sky', { composite: 'glaze', opacity: 1 }, (group) => group.pass('wash', {}, (pass) => pass.stroke('a', { brush, material: ink, diameter: 10, path: [{ x: 0, y: 90 }, { x: 50, y: 90 }] })));
+}));
+
+const puffed = (by: number): StampPaintFrameState => new Map([['sac', { warp: { map: (p) => ({ x: p.x, y: p.y * by }), key: `puff ${by}` } }]]);
+
+test('a group warped by its frame state is keyed by its warp\'s key, and its paint shared whatever the warp', () => {
+  const sac = sacPainting();
+  const at = (state?: StampPaintFrameState) => stampFramePlan(sac, stampGroupEvents(sac), stampPaintEvents(sac), 1, 30, state);
+  const ground = 1, sacPainted = 2, all = 3;
+  assert.equal(at(puffed(1.5)).checkpointKey(all), at(puffed(1.5)).checkpointKey(all));
+  assert.notEqual(at(puffed(1.5)).checkpointKey(all), at(puffed(2)).checkpointKey(all));
+  assert.notEqual(at().checkpointKey(all), at(puffed(1.5)).checkpointKey(all));
+  // Warped, it's saved painted, not laid, which every warp shares; nothing after its lay is kept.
+  assert.equal(at(puffed(1.5)).checkpointKey(sacPainted), at(puffed(2)).checkpointKey(sacPainted));
+  assert.deepEqual([...at(puffed(1.5)).checkpointSaves(0)].toSorted((a, b) => a - b), [ground, sacPainted]);
+});
+
+test('a live group is drawn from its marks\' key, restored up to, and never kept past', () => {
+  const sac = sacPainting(), posed = (y: number) => sacPainting(y).groups[1];
+  const live = (y: number): StampPaintFrameState => new Map([['sac', { live: { marks: posed(y), key: `pose ${y}` } }]]);
+  const at = (state?: StampPaintFrameState) => stampFramePlan(sac, stampGroupEvents(sac), stampPaintEvents(sac), 1, 30, state);
+  const ground = 1, all = 3;
+  assert.notEqual(at(live(60)).checkpointKey(all), at(live(70)).checkpointKey(all));
+  assert.equal(at(live(60)).checkpointKey(ground), at().checkpointKey(ground));
+  assert.deepEqual([...at(live(60)).checkpointSaves(0)], [ground]);
+  // Marks that aren't the group re-placed can't stand in for it.
+  assert.throws(() => at(new Map([['sac', { live: { marks: sacPainting(60, 'b').groups[1], key: 'renamed' } }]])), /isn't sac\/body\/a as written/);
+  assert.throws(() => at(new Map([['moon', { visibility: 0.5 }]])), /no group of/);
 });

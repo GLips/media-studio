@@ -80,7 +80,8 @@ export { STAMP_FILL_PATTERNS, stampRegionOutline, stampSmoothRegion, type StampF
 export type { StampEdge, StampPoint, StampRegion } from '#lib/paint/painting/models/stamp-region.ts';
 export type { StampPaintField } from '#lib/paint/painting/models/stamp-paint-field.ts';
 export type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from '#lib/paint/painting/models/stamp-group-motion.ts';
-export { stampWarpHandles, type StampGroupWarp, type StampWarpHandle, type StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
+export { stampWarpHandles, type StampWarpHandle, type StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
+export type { StampGroupFrameState, StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 export type { StampMaterialKeys } from '#lib/paint/painting/models/stamp-material-keys.ts';
 export type { StampStrokePoint, StampPlacement } from '#lib/paint/brush/models/stamp-placement.ts';
 export { STAMP_PRESSURE_PROFILES, type StampPressureCurve, type StampPressureProfileName, type StampStrokeHand } from '#lib/paint/brush/models/stamp-stroke-hand.ts';

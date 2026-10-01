@@ -1,15 +1,16 @@
 // stamp-gate-animation.ts: the GPU gate's animated paintings and the properties their frames are held to:
 //
 // - drift: a moving group's texture travels with it;
-// - boil: boiling on twos, a group holds within an epoch and changes across them;
+// - boil: on twos, a group holds within an epoch, changes across them;
 // - boil-wash: a boiling wash flows as far each epoch;
 // - bloom-boil: a bloom holds within an epoch and re-rolls its front at the next;
 // - sunset: two palettes lay the same coverage;
-// - effects-sunset: a bloom and rim change coverage alike at every hour;
+// - effects-sunset: a bloom and rim change coverage alike each hour;
 // - recolour: keyed paint is the halfway paint halfway, in any order;
 // - cut-out, warp: a group moved or bent carries its paper;
 // - half-pixel (stamp-gate-half-pixel.ts): crayon moved half a pixel keeps its light;
-// - knockout: what a group takes from behind moves with it.
+// - knockout: what a group takes from behind moves with it;
+// - live (stamp-gate-live.ts): live marks.
 
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { paintMixtureAmounts } from '#lib/paint/materials/models/paint-mixture.ts';
@@ -17,7 +18,7 @@ import type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-p
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { stampLinearDynamics } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from '#lib/paint/painting/models/stamp-group-motion.ts';
-import type { StampGroupWarp } from '#lib/paint/painting/models/stamp-group-warp.ts';
+import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { compileStampPaintRecipe, stampPaintRecipe, type StampPaintMaterial, type StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
@@ -260,19 +261,22 @@ const gatePainting = (painting: StampGatePainting['painting']): StampGatePaintin
 const drifting: StampGroupMotion = { keys: [{ at: 0, x: 0, y: 0 }, { at: 1, x: STAMP_GATE_DRIFT_STEP * STAMP_GATE_ANIMATION_FPS, y: 0 }] };
 
 /**
- * The drift as a warp: a field moving every point as far as `drifting` does, laid through a lattice of many cells
- * rather than a placement's one; or, `still`, a field moving nothing.
+ * The drift as each frame's warp of the cut-out: a field moving every point as far as `drifting` does, laid through a
+ * lattice of many cells rather than a placement's one; or, `still`, a field moving nothing. Held from 1 s, as `drifting` is.
  */
-const driftingWarp = (still = false): StampGroupWarp => ({ at: (t) => (p) => ({ x: p.x + (still ? 0 : STAMP_GATE_DRIFT_STEP * STAMP_GATE_ANIMATION_FPS * t), y: p.y }), from: 0, to: 1, cell: 16 });
+const driftingWarp = (still: boolean) => (t: number): StampPaintFrameState => {
+  const dx = still ? 0 : STAMP_GATE_DRIFT_STEP * STAMP_GATE_ANIMATION_FPS * Math.min(1, Math.max(0, t));
+  return new Map([['cut-out', { warp: { map: (p) => ({ x: p.x + dx, y: p.y }), key: `drift ${dx}` } }]]);
+};
 
 /**
  * A granulating sky glazed over the paper's photograph, under an opaque, granulating hull drifting on `paper`: moved,
- * warped by a field drifting as far, warped by a field that leaves it still, or left still.
+ * warped each frame by a field drifting as far, warped by a field that leaves it still, or left still.
  */
 export function stampGateCutOutPainting(paper: StampGroupPaper, carried: 'motion' | 'warp' | 'still-warp' | 'still' = 'motion'): StampGatePainting {
-  const carriages = { motion: { motion: drifting }, warp: { warp: driftingWarp() }, 'still-warp': { warp: driftingWarp(true) }, still: {} };
-  const carriage = carriages[carried];
-  return gatePainting(compileStampPaintRecipe(stampPaintRecipe((p) => {
+  const carriage = carried === 'motion' ? { motion: drifting } : {};
+  const frameAt = carried === 'warp' || carried === 'still-warp' ? { frameAt: driftingWarp(carried === 'still-warp') } : {};
+  return { ...frameAt, ...gatePainting(compileStampPaintRecipe(stampPaintRecipe((p) => {
     p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.pass('wash', {}, (pass) => pass.fill('sky', {
       brush: steadyBrush(), diameter: 40, application: { kind: 'flood' }, material: mixture({ pigment: W.ultramarine, amount: 1 }), region: stampGatePolygon(0, 0, 240, 0, 240, 160, 0, 160),
     })));
@@ -280,7 +284,7 @@ export function stampGateCutOutPainting(paper: StampGroupPaper, carried: 'motion
       brush: steadyBrush(), diameter: 24, application: { kind: 'flood' }, material: mixture({ pigment: W.ultramarine, amount: 1 }, { pigment: W.burntSienna, amount: 1 }),
       region: { kind: 'ellipse', ...CUT_OUT_HULL },
     })));
-  })));
+  }))) };
 }
 
 /** The most a drifted frame, moved back by its motion, differs from frame 0 where the cut-out wholly covers the sky, in levels. */
@@ -394,7 +398,7 @@ export function stampGateKnockoutPainting({ sky = true, knockout = true, painted
 }
 
 export const STAMP_GATE_ANIMATION_IDS = [
-  'animation/drift', 'animation/boil', 'animation/boil-wash', 'animation/bloom-boil', 'animation/sunset', 'animation/effects-sunset', 'animation/recolour', 'animation/cut-out', 'animation/warp', 'animation/half-pixel', 'animation/repaint', 'animation/lent', 'animation/knockout',
+  'animation/drift', 'animation/boil', 'animation/boil-wash', 'animation/bloom-boil', 'animation/sunset', 'animation/effects-sunset', 'animation/recolour', 'animation/cut-out', 'animation/warp', 'animation/half-pixel', 'animation/repaint', 'animation/lent', 'animation/knockout', 'animation/live',
 ];
 
 type Rgba = ArrayLike<number>;
