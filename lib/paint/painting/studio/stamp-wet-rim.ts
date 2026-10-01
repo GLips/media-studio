@@ -11,6 +11,7 @@ import { PAINT_PAPER_WGSL } from '#lib/paint/materials/models/paint-paper.ts';
 import { STAMP_DRYING_RIM_MOST_BAND, STAMP_DRYING_RIM_WGSL, stampDryingRimBand, stampDryingRimWetShare, stampDryingWettest, stampWashDryings, type StampWashDrying } from '../models/stamp-wet-rim.ts';
 import { STAMP_GRID_AT_WGSL, type StampGrid } from '../models/stamp-region.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
+import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import type { StampLoadedWetStage, StampWetDryingMoment, StampWetStage, StampWetStageContext } from './stamp-wet-stages.ts';
 import { stampUniformLayout, stampUniformWriter } from './stamp-uniform-layout.ts';
 import { encodeStampWetTransportSteps, stampWetSpreads } from './stamp-wet-transport.ts';
@@ -72,8 +73,9 @@ fn contourKernel(d: i32) -> f32 { return exp(-f32(d * d) / ${(2 * CONTOUR_SIGMA 
 fn grainAt(d: i32) -> f32 { return exp(-f32(d * d) / ${(2 * GRAIN_SIGMA * GRAIN_SIGMA).toFixed(3)}); }
 `;
 
-// The wash's domain: its paint, where its water went.
-const DOMAIN_WGSL = /* wgsl */ `${PRELUDE}
+// The wash's domain: its paint, where its water went. A pixel \`p\` is a stage texel, its grid read at its painting point.
+const domainWgsl = (stage: StampStage) => /* wgsl */ `${PRELUDE}
+${stampStageWgsl(stage)}
 @group(0) @binding(1) var<storage, read> grid: array<f32>;
 ${STAMP_GRID_AT_WGSL}
 @group(0) @binding(2) var layer: texture_2d_array<f32>;
@@ -81,7 +83,7 @@ ${STAMP_GRID_AT_WGSL}
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   let p = pixelOf(id);
   if (p.x < 0) { return; }
-  let wettest = gridAt(vec2f(p) + 0.5, u.lattice.xyz, u.size, u.first);
+  let wettest = gridAt(stagePoint(p), u.lattice.xyz, u.size, u.first);
   let paint = smoothstep(${DOMAIN_COVERAGE[0]}, ${DOMAIN_COVERAGE[1]}, textureLoad(layer, p, 0, 0).x);
   textureStore(domain, local(p), vec4f(select(0.0, paint, wettest > 0.001)));
 }`;
@@ -206,7 +208,8 @@ const FLOOD_WGSL = /* wgsl */ `${PRELUDE}
 // Each pixel's line (also for Gᵀ) and take, from its distance to the edge, how wet the wash was
 // there and how much of its paint is open. The gate is the open share, not the paper's workable at the wash's end: a
 // wash left to dry ends with none workable, and that drying is what rims it.
-const weightsWgsl = (layers: number, movedWgsl: string) => /* wgsl */ `${PRELUDE}
+const weightsWgsl = (layers: number, movedWgsl: string, stage: StampStage) => /* wgsl */ `${PRELUDE}
+${stampStageWgsl(stage)}
 ${STAMP_DRYING_RIM_WGSL}
 ${PAINT_PAPER_WGSL}
 ${movedWgsl}
@@ -267,7 +270,7 @@ fn reaches(field: texture_2d<f32>, origin: vec2f, toward: vec2f, level: f32, mos
   let d = distance(seed, vec2f(p));
   // Every pixel judges its nearest stretch of edge alike, from the same two points along the way in.
   let toward = select(vec2f(0.0), (vec2f(p) - seed) / d, d > 0.5);
-  let wetShare = dryingRimWetShare(gridAt(vec2f(p) + 0.5, u.lattice.xyz, u.size, u.first), u.damp);
+  let wetShare = dryingRimWetShare(gridAt(stagePoint(p), u.lattice.xyz, u.size, u.first), u.damp);
   let band = dryingRimBand(u.spread, u.diameter, wetShare);
   // The edge to the sub-pixel: where the paint, closed at the grain's scale, starts on the way in from the nearest
   // seed. Warning: the seed is a thresholded pixel, and a fringe's coverage shifts a little with the paint's pigments;
@@ -302,7 +305,7 @@ fn reaches(field: texture_2d<f32>, origin: vec2f, toward: vec2f, level: f32, mos
   // The line wavers along the edge in width, strength and how far in it sits, and breaks off in stretches, by noise at
   // the edge (so across the band alike) in the painting's own pixels, keyed to the wash's seed.
   let sloped = nearby * smoothstep(0.01, 0.04, slope);
-  let start = mix(edge + toward * half, vec2f(p) - gradient / max(slope, 1e-3) * (near + 0.5), sloped);
+  let start = mix(edge + toward * half, vec2f(p) - gradient / max(slope, 1e-3) * (near + 0.5), sloped) - vec2f(STAGE_MARGIN);
   let width = u.width * (0.6 + 0.8 * paintValueNoise(start.x / 6.0, start.y / 6.0, u.seed));
   let present = dryingRimPresence(paintValueNoise(start.x / 45.0, start.y / 45.0, u.seed ^ 0x9e3779u), paintValueNoise(start.x / 12.0, start.y / 12.0, u.seed ^ 0x51ed27u));
   let strength = present * (0.55 + 0.45 * paintValueNoise(start.x / 20.0, start.y / 20.0, u.seed ^ 0x2545f4u));
@@ -373,10 +376,10 @@ ${movedWgsl}
   for (var l = 0; l < ${layers}; l++) { textureStore(layer, p, l, moved[l]); }
 }`;
 
-/** The pixels `grid` spans, within the painting. */
-function gridBox(grid: StampGrid, width: number, height: number): StampPixelBox {
-  const x = Math.max(0, grid.x0), y = Math.max(0, grid.y0);
-  return { x, y, w: Math.min(width, grid.x0 + (grid.columns - 1) * grid.cell) - x, h: Math.min(height, grid.y0 + (grid.rows - 1) * grid.cell) - y };
+/** The stage's texels `grid` (in painting points) spans. */
+function gridBox(grid: StampGrid, { margin, width, height }: StampStage): StampPixelBox {
+  const x = Math.max(0, grid.x0 + margin), y = Math.max(0, grid.y0 + margin);
+  return { x, y, w: Math.min(width, grid.x0 + (grid.columns - 1) * grid.cell + margin) - x, h: Math.min(height, grid.y0 + (grid.rows - 1) * grid.cell + margin) - y };
 }
 
 /**
@@ -388,7 +391,7 @@ type LoadedRim = {
   layers: number; moved: string; spreads: ReturnType<typeof stampWetSpreads>;
 };
 
-function loadDryingRim({ device, painting, wetness, width, height, layer, wash }: StampWetStageContext): StampLoadedWetStage<StampWetDryingMoment> {
+function loadDryingRim({ device, painting, wetness, stage, layer, wash }: StampWetStageContext): StampLoadedWetStage<StampWetDryingMoment> {
   const dryings = painting.groups.flatMap((group) => group.passes).flatMap(stampWashDryings);
   if (!dryings.length) return { encode: () => null };
 
@@ -406,7 +409,7 @@ function loadDryingRim({ device, painting, wetness, width, height, layer, wash }
     const band = stampDryingRimBand(spread, diameter, wetShare);
     // A band under a pixel or two is a rim no one sees: damp brushwork, or a medium that barely spreads.
     if (band < 1.5) continue;
-    const box = gridBox(grid, width, height);
+    const box = gridBox(grid, stage);
     if (box.w <= 0 || box.h <= 0) continue;
     const sigma = band / 2, layers = wash.layersOf(painted[0]);
     // The line, laid in values[1], spreads back there; what's sent spreads in values[0].
@@ -458,12 +461,12 @@ function loadDryingRim({ device, painting, wetness, width, height, layer, wash }
   const seeds = [scratch('rg32float'), scratch('rg32float')], weights = scratch('rg32float');
   const compile = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }), entryPoint: 'run' } });
   const passes = {
-    domain: compile(DOMAIN_WGSL), grainRows: compile(GRAIN_ROWS_WGSL), seeds: compile(SEEDS_WGSL), flood: compile(FLOOD_WGSL),
+    domain: compile(domainWgsl(stage)), grainRows: compile(GRAIN_ROWS_WGSL), seeds: compile(SEEDS_WGSL), flood: compile(FLOOD_WGSL),
     send: compile(SEND_WGSL), contourRows: compile(CONTOUR_ROWS_WGSL), contour: compile(CONTOUR_WGSL), levelRows: compile(LEVEL_ROWS_WGSL),
   };
   // Compiled per group's wash layer WGSL: its layer count places its open share and bounds what's gathered.
   const groupPasses = new Map([...new Map([...rims.values()].map((rim) => [rim.moved, rim.layers])).entries()].map(([moved, n]): [string, Record<'weights' | 'sent' | 'rim', GPUComputePipeline>] =>
-    [moved, { weights: compile(weightsWgsl(n, moved)), sent: compile(sentWgsl(n, moved)), rim: compile(rimWgsl(n, moved)) }]));
+    [moved, { weights: compile(weightsWgsl(n, moved, stage)), sent: compile(sentWgsl(n, moved)), rim: compile(rimWgsl(n, moved)) }]));
 
   // Each rim's dispatches, in order, bound once: the scratch textures are sized for every rim at load.
   const rimSteps = new Map([...rims].map(([drying, { uniform, moved, spreads }]): [StampWashDrying, { pipeline: GPUComputePipeline; bindGroup: GPUBindGroup }[]] => {

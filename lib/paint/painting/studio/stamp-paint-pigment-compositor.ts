@@ -481,14 +481,14 @@ fn layGroup(pixel: vec2u, glaze: bool, opacity: f32) {
   let thickness = select(1.0 / max(coverage, 0.001), opacity, glaze);
   let cover = min(1.0, coverage * ${STAMP_OPAQUE_COVER.toFixed(1)}) * opacity;
   var bare = vec3f(0.0);
-  if (!glaze || taken.x > 0.0) { bare = paperColor(photograph, photographSampler, u.paper, groupPaperAt(pixel), textureDimensions(painting)); }
+  if (!glaze || taken.x > 0.0) { bare = paperColor(photograph, photographSampler, u.paper, groupPaperAt(pixel)); }
 ${underpaint ? `  var behind: array<vec4f, UNDER_LAYERS>;
   for (var r = 0u; r < UNDER_LAYERS; r++) { behind[r] = groupUnderAt(pixel, BAND_VEC4S + r); }
   var left = behind;
   // The paint behind was laid over the painting's paper, wherever this group's own lies.
   var ground = vec3f(0.0);
   if (lifts) {
-    ground = paperColor(photograph, photographSampler, u.paper, vec2f(pixel) + 0.5, textureDimensions(painting));
+    ground = paperColor(photograph, photographSampler, u.paper, groupGroundAt(pixel));
     left = liftedUnderpaint(behind, vec3f(1.0) - taken.yzw);
   }
 ` : ''}  let base = u.group * PALETTE;

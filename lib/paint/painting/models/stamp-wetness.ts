@@ -13,6 +13,7 @@ import { stampPaintFieldAt } from './stamp-paint-field.ts';
 import type { PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
 import type { CompiledStampDeposit, CompiledStampGroup, CompiledStampMask, CompiledStampPaint, CompiledStampPass, StampPaintPaper, StampWashWait } from './stamp-paint-recipe.ts';
 import type { StampGrid, StampPoint } from './stamp-region.ts';
+import { stampStageExtent, type StampStage } from './stamp-stage.ts';
 
 /** A window of the lattice: its first point (px), spacing (STAMP_WET_CELL) and points across and down. */
 export type StampWetWindow = Omit<StampGrid, 'values'>;
@@ -77,7 +78,7 @@ export function stampWorkableAt(level: number, at: number, tau: number, { rate, 
   return Math.min(1, Math.max(0, level - rate * Math.max(0, tau - at - openTime)) / damp);
 }
 
-/** A share of the painting's lattice: `columns` × `rows` points from point (i0, j0). */
+/** A share of the painting's lattice: `columns` × `rows` points from point (i0, j0), point (0, 0) at the frame's origin. */
 type StampWetSpan = { i0: number; j0: number; columns: number; rows: number };
 
 /**
@@ -87,15 +88,16 @@ type StampWetSpan = { i0: number; j0: number; columns: number; rows: number };
 type StampWashPaper = { lattice: StampWetSpan; level: Float64Array; at: Float64Array; settled: Uint8Array };
 
 /**
- * Every wash deposit's landing in `painting`, `size` px, on `paper`, each group's paint in its `mediumOf`, each wash
+ * Every wash deposit's landing in `painting`, over `stage`, on `paper`, each group's paint in its `mediumOf`, each wash
  * starting from dry paper (or its preparation) at painting time 0. A landing's window reaches `margin(deposit,
  * medium)` px past what its water covers, and a cell more: as far as a stage reads round it (StampWetStage's `reach`).
  */
 export function compileStampWetness(
-  painting: CompiledStampPaint, mediumOf: (group: CompiledStampGroup) => PaintMedium, paper: StampPaintPaper, size: { width: number; height: number },
+  painting: CompiledStampPaint, mediumOf: (group: CompiledStampGroup) => PaintMedium, paper: StampPaintPaper, stage: StampStage,
   margin: (deposit: CompiledStampDeposit, medium: PaintMedium) => number = () => 0,
 ): StampWetness {
-  const lattice = { i0: 0, j0: 0, columns: Math.ceil(size.width / STAMP_WET_CELL) + 1, rows: Math.ceil(size.height / STAMP_WET_CELL) + 1 };
+  const { x0, y0, x1, y1 } = stampStageExtent(stage), i0 = Math.floor(x0 / STAMP_WET_CELL), j0 = Math.floor(y0 / STAMP_WET_CELL);
+  const lattice = { i0, j0, columns: Math.ceil(x1 / STAMP_WET_CELL) + 1 - i0, rows: Math.ceil(y1 / STAMP_WET_CELL) + 1 - j0 };
   const landings = new Map<CompiledStampDeposit, StampWetLanding>(), washes = new Map<CompiledStampPass, StampWashRecord>();
   for (const [group, pass] of painting.groups.flatMap((each) => each.passes.map((laid) => [each, laid] as const))) {
     if (pass.kind !== 'wash') continue;
@@ -166,7 +168,7 @@ function pointsUnder(wash: StampWashPaper, deposit: CompiledStampDeposit, within
 function forSpan(wash: StampWashPaper, span: StampWetSpan, visit: (k: number, w: number, x: number, y: number) => void) {
   for (let j = 0; j < span.rows; j++) {
     for (let i = 0; i < span.columns; i++) {
-      visit((span.j0 + j) * wash.lattice.columns + span.i0 + i, j * span.columns + i, (span.i0 + i) * STAMP_WET_CELL, (span.j0 + j) * STAMP_WET_CELL);
+      visit((span.j0 + j - wash.lattice.j0) * wash.lattice.columns + span.i0 + i - wash.lattice.i0, j * span.columns + i, (span.i0 + i) * STAMP_WET_CELL, (span.j0 + j) * STAMP_WET_CELL);
     }
   }
 }
@@ -207,11 +209,11 @@ function depositSpan(deposit: CompiledStampDeposit, lattice: StampWetSpan, margi
     x0 = Math.min(x0, box.x0); y0 = Math.min(y0, box.y0); x1 = Math.max(x1, box.x1); y1 = Math.max(y1, box.y1);
   }
   const cells = Math.ceil(margin / STAMP_WET_CELL) + 1;
-  const cellsOver = (from: number, to: number, count: number) => {
-    const first = Math.min(count - 2, Math.max(0, Math.floor(from / STAMP_WET_CELL) - cells));
-    return [first, Math.max(first + 2, Math.min(count, Math.ceil(to / STAMP_WET_CELL) + 1 + cells)) - first] as const;
+  const cellsOver = (from: number, to: number, start: number, count: number) => {
+    const first = Math.min(start + count - 2, Math.max(start, Math.floor(from / STAMP_WET_CELL) - cells));
+    return [first, Math.max(first + 2, Math.min(start + count, Math.ceil(to / STAMP_WET_CELL) + 1 + cells)) - first] as const;
   };
-  const [i0, columns] = cellsOver(x0, x1, lattice.columns), [j0, rows] = cellsOver(y0, y1, lattice.rows);
+  const [i0, columns] = cellsOver(x0, x1, lattice.i0, lattice.columns), [j0, rows] = cellsOver(y0, y1, lattice.j0, lattice.rows);
   return { i0, j0, columns, rows };
 }
 

@@ -22,17 +22,18 @@ import type { ResolvedStampPaintStyle } from '../models/style.ts';
 import { stampPaintAssetUrl } from './stamp-paint-styles.ts';
 
 /**
- * Draws `painting` in `style` (its paper and mixing) as it stands `t` seconds in (a scene's `s.t`: its deposits'
- * `appliedAt` and `drawnOver` count on it), each group in `frame`'s state (as painted when left out), `width` by
- * `height` of its own pixels (the frame's size unless given), stretched over `box` (the whole frame unless given).
+ * Draws `painting` in `style` (its paper and mixing) as it stands `t` seconds in (a scene's `s.t`), each group in
+ * `frame`'s state, `width` by `height` of its own pixels (the frame's size unless given), stretched over `box` (the
+ * whole frame unless given). `margin`: even px of stage past each side (stamp-stage.ts), as far as lays bring in.
  */
-export function StampPainting({ painting, style, t, frame, width, height, box: given }: {
+export function StampPainting({ painting, style, t, frame, width, height, margin = 0, box: given }: {
   painting: CompiledStampPaint;
   style: Pick<ResolvedStampPaintStyle, 'paper' | 'mixing'>;
   t: number;
   frame?: StampPaintFrameState;
   width?: number;
   height?: number;
+  margin?: number;
   box?: { x: number; y: number; w: number; h: number };
 }) {
   const paper = useStampStyleContent(style.paper), mixing = useStampStyleContent(style.mixing);
@@ -85,7 +86,7 @@ export function StampPainting({ painting, style, t, frame, width, height, box: g
     };
     const loaded = profile?.('stamp paint load');
     // A load given up as its surface goes may fail for want of the device; only a live one's failure is the frame's.
-    createStampPaintRenderer(surface, painting, paper, mixing, { profile }).then((ready) => {
+    createStampPaintRenderer(surface, painting, paper, mixing, { profile, margin }).then((ready) => {
       loaded?.();
       made = ready;
       if (!live) return ready.dispose();
@@ -100,7 +101,7 @@ export function StampPainting({ painting, style, t, frame, width, height, box: g
       setRenderer(null);
       release();
     };
-  }, [surface, painting, paper, mixing, profile, delayRender, continueRender, cancelRender]);
+  }, [surface, painting, paper, mixing, margin, profile, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!renderer) return;

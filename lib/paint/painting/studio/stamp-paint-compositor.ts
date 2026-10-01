@@ -18,9 +18,9 @@ export type StampPaintTarget = { kind: 'plain' } | { kind: 'array'; layers: numb
 
 /**
  * A way of mixing paint: WGSL for four passes, each defining the functions its pass calls and binding its own
- * resources. The renderer declares `layer` and `painting` from `targets`, and in the deposit pass
- * `paint`, the compositor's PaintDeposit, and `u.paperDepth`; in the group pass `u.group` (its index) and `u.paper`,
- * for `paperColor(image, sampler, u.paper, groupPaperAt(pixel), size)`: its paper (StampGroupPaper).
+ * resources. The renderer declares `layer` and `painting` from `targets`, and in the deposit pass `paint`, the
+ * compositor's PaintDeposit, and `u.paperDepth`; in the group pass `u.group` (its index) and `u.paper`, for
+ * `paperColor(image, sampler, u.paper, at)` at `groupPaperAt(pixel)` (its paper) or `groupGroundAt(pixel)`.
  */
 export type StampPaintCompositor = {
   targets: { layer: StampPaintTarget; painting: StampPaintTarget };

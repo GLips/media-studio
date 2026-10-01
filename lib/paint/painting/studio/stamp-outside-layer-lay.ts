@@ -6,6 +6,7 @@
 // and reads it only within the frame it's laid in, so an outside layer can't make a frame depend on an earlier one.
 
 import type { StampOutsideLayerSlot } from '../models/stamp-outside-layer.ts';
+import type { StampStage } from '../models/stamp-stage.ts';
 import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
 import { stampUniformLayout } from './stamp-uniform-layout.ts';
 
@@ -15,12 +16,12 @@ export type StampOutsideLayer = StampOutsideLayerSlot & { texture: GPUTexture };
 /** Float formats an outside layer may arrive in: linear light in 8 bits would band in the dark. */
 const STAMP_OUTSIDE_LAYER_FORMATS: ReadonlySet<GPUTextureFormat> = new Set(['rgba16float', 'rgba32float']);
 
-/** Throws unless `layer`'s texture is one the lay pass reads whole: one 2D float image, sampled, the stage's size. */
-export function checkStampOutsideLayerTexture({ id, texture }: StampOutsideLayer, width: number, height: number) {
+/** Throws unless `layer`'s texture is one the lay pass reads whole: one 2D float image, sampled, `stage`'s size (frame and margin). */
+export function checkStampOutsideLayerTexture({ id, texture }: StampOutsideLayer, { width, height, margin }: StampStage) {
   if (!(texture.usage & GPUTextureUsage.TEXTURE_BINDING)) throw new Error(`stamp paint: outside layer ${id}'s texture needs TEXTURE_BINDING usage`);
   if (!STAMP_OUTSIDE_LAYER_FORMATS.has(texture.format)) throw new Error(`stamp paint: outside layer ${id} arrives in ${[...STAMP_OUTSIDE_LAYER_FORMATS].join(' or ')}, not ${texture.format}`);
   if (texture.dimension !== '2d' || texture.depthOrArrayLayers !== 1 || texture.sampleCount !== 1) throw new Error(`stamp paint: outside layer ${id} arrives as one single-sampled 2D image`);
-  if (texture.width !== width || texture.height !== height) throw new Error(`stamp paint: outside layer ${id} is ${texture.width} × ${texture.height}, and the stage ${width} × ${height}`);
+  if (texture.width !== width || texture.height !== height) throw new Error(`stamp paint: outside layer ${id} is ${texture.width} × ${texture.height}, and the stage ${width} × ${height} (a ${margin} px margin each side)`);
 }
 
 export const STAMP_OUTSIDE_LAY = stampUniformLayout('OutsideLay', [['visibility', 'f32']]);

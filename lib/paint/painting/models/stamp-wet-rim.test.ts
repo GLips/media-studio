@@ -4,6 +4,7 @@ import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { compileStampPaintRecipe, stampPaintRecipe, type StampWashScope } from './stamp-paint-recipe.ts';
 import { compileStampWetness } from './stamp-wetness.ts';
+import { stampStage } from './stamp-stage.ts';
 import { stampGridAt } from './stamp-region.ts';
 import { stampDryingWettest, stampWashDryings } from './stamp-wet-rim.ts';
 
@@ -32,7 +33,7 @@ const washOf = (body: (wash: StampWashScope) => void) =>
 function wettestOf(body: (wash: StampWashScope) => void) {
   const painting = washOf(body);
   const [drying] = stampWashDryings(painting.groups[0].passes[0]);
-  return stampDryingWettest(drying, compileStampWetness(painting, () => PAINT_MEDIA.watercolour, { color: '#ffffff' }, { width: 800, height: 400 }));
+  return stampDryingWettest(drying, compileStampWetness(painting, () => PAINT_MEDIA.watercolour, { color: '#ffffff' }, stampStage({ width: 800, height: 400 })));
 }
 
 test('a puddle reads as wet as it was right up to its edge, and damp brushwork beside it as its own brush', () => {
