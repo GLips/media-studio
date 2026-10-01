@@ -91,25 +91,25 @@ export function stampBloomSizing({ before, after }: StampWetLanding, wetting: Pa
 export const STAMP_BLOOM_CARRY_SPREAD = 2;
 
 /**
- * The lip carried paint dries into, inside the front: a dark line, crisp on the outside and fading in over
- * `lineDecay` px (fingering in to `fingers` times that along the push), its weight from `least` where the water crept
- * on to `most` where it was held back, holding `lineShare` of the paint; and a paler zone over `zoneDecay` px.
+ * The lip carried paint dries into, inside the front: darkest for `plateau` px past its crisp outer edge, fading in
+ * over `lineDecay` px (`fingers` of that more or less along the push), weighing `least` where the water crept on to
+ * `most` where held back, with `lineShare` of the paint; and a paler zone over `zoneDecay` px.
  */
-const STAMP_BLOOM_BAND = { least: 0.05, most: 1.8, lineDecay: 2.2, fingers: 2.5, zoneDecay: 6, lineShare: 0.75 };
+const STAMP_BLOOM_BAND = { least: 0.05, most: 1.8, plateau: 1, lineDecay: 4.5, fingers: 0.35, zoneDecay: 6, lineShare: 0.75 };
 
 /**
  * About `bloomBand`'s integral across a front, px, at the line's mean weight. The studio sizes the floor below which a
  * pixel is too far from any front to give paint up against it.
  */
 export const STAMP_BLOOM_BAND_WIDTH =
-  STAMP_BLOOM_BAND.lineShare * STAMP_BLOOM_BAND.lineDecay * ((STAMP_BLOOM_BAND.least + STAMP_BLOOM_BAND.most) / 2) + (1 - STAMP_BLOOM_BAND.lineShare) * STAMP_BLOOM_BAND.zoneDecay;
+  STAMP_BLOOM_BAND.lineShare * (STAMP_BLOOM_BAND.plateau + STAMP_BLOOM_BAND.lineDecay) * ((STAMP_BLOOM_BAND.least + STAMP_BLOOM_BAND.most) / 2) + (1 - STAMP_BLOOM_BAND.lineShare) * STAMP_BLOOM_BAND.zoneDecay;
 
 /**
- * The cauliflower at three scales. Big lobes: the front moves up to `held` / 2 sigmas in or out as the paper held the
- * water back or let it run, over patches `big` sigmas across. On them, scallops `share` of the sigma (`least`..`most`
- * px), smaller ones at `ratio` and `weight`, a crinkle at `fine` and `fineWeight`.
+ * The cauliflower at three scales. Big lobes: the front moves up to `held` / 2 sigmas as the paper held the water or
+ * let it run, over patches `big` sigmas across. On them, scallops `share` of the sigma (`least`..`most` px), smaller
+ * ones at `ratio` and `weight`, a crinkle at `fine` and `fineWeight`, at least `fineLeast` px: finer reads as pixels.
  */
-const STAMP_BLOOM_LOBES = { big: 1.0, held: 0.9, share: 0.45, least: 5, most: 14, ratio: 0.35, weight: 0.7, fine: 0.12, fineWeight: 0.6 };
+const STAMP_BLOOM_LOBES = { big: 1.0, held: 0.9, share: 0.45, least: 5, most: 14, ratio: 0.35, weight: 0.7, fine: 0.12, fineWeight: 0.6, fineLeast: 4 };
 
 /** The front and the carry, in WGSL. */
 export const STAMP_WET_BLOOM_WGSL = /* wgsl */ `
@@ -231,7 +231,7 @@ fn bloomFront(p: vec2f, level: f32, gradient: vec2f, ease: f32, seed: u32, sigma
   let small = ${STAMP_BLOOM_LOBES.ratio.toFixed(3)} * cell;
   let lobes = bloomLobeHeight(warped, along, lobed, cell, seed)
     + ${STAMP_BLOOM_LOBES.weight.toFixed(3)} * bloomLobeHeight(warped, along, lobed, small, seed ^ 0x9e3779b9u)
-    + ${STAMP_BLOOM_LOBES.fineWeight.toFixed(3)} * bloomLobeHeight(warped, along, lobed, max(2.5, ${STAMP_BLOOM_LOBES.fine.toFixed(3)} * cell), seed ^ 0x7f4a7c15u);
+    + ${STAMP_BLOOM_LOBES.fineWeight.toFixed(3)} * bloomLobeHeight(warped, along, lobed, max(${STAMP_BLOOM_LOBES.fineLeast.toFixed(1)}, ${STAMP_BLOOM_LOBES.fine.toFixed(3)} * cell), seed ^ 0x7f4a7c15u);
   // Lobes stand out about half their size on average: held back by that, the bloom keeps the water's size.
   // Along the front the lobing comes and goes, over a few lobes: deep cauliflower in one stretch, a gentle wave in the next.
   let depth = 0.35 + 1.1 * bloomValue(warped / (4.0 * cell), seed ^ 0x1b873593u);
@@ -249,17 +249,18 @@ fn bloomStreak(foot: vec2f, d: f32, seed: u32, sigma: f32) -> f32 {
   return mix(0.5, streak, exp(-max(d, 0.0) / (2.0 * cell)));
 }
 // How the lip lies along the front, as (weight, softness px): heavy with a crisp outer edge where the water was
-// \`held\`, faint and soft where it ran on; none where the paper round was nearly as wet as the drop (\`merging\`, 0..1),
+// \`held\`, faint and soft where it ran on. Crisp is still about a pixel and a half: any less and the edge is a
+// threshold, stepping along every slant; none where the paper round was nearly as wet as the drop (\`merging\`, 0..1),
 // which leaves the front open on that side.
 fn bloomFrontLine(held: f32, merging: f32) -> vec2f {
   let stalled = smoothstep(0.3, 0.8, held);
-  return vec2f(mix(${STAMP_BLOOM_BAND.least.toFixed(3)}, ${STAMP_BLOOM_BAND.most.toFixed(3)}, stalled) * (1.0 - clamp(merging, 0.0, 1.0)), mix(1.2, 0.4, stalled));
+  return vec2f(mix(${STAMP_BLOOM_BAND.least.toFixed(3)}, ${STAMP_BLOOM_BAND.most.toFixed(3)}, stalled) * (1.0 - clamp(merging, 0.0, 1.0)), mix(1.6, 0.75, stalled));
 }
-// Where carried paint settles at distance \`d\` inside the front: a lip, darkest at its crisp outer edge and fingering
-// in along the \`streak\`, as heavy and as crisp as \`line\` says, and a paler zone within.
+// Where carried paint settles at distance \`d\` inside the front: a lip a few pixels wide, darkest at its crisp outer
+// edge and fingering in along the \`streak\`, as heavy and as crisp as \`line\` says, and a paler zone within.
 fn bloomBand(d: f32, line: vec2f, streak: f32) -> f32 {
-  let inside = max(d, 0.0);
-  let decay = ${STAMP_BLOOM_BAND.lineDecay.toFixed(3)} * mix(0.5, ${STAMP_BLOOM_BAND.fingers.toFixed(3)}, smoothstep(0.3, 0.8, streak));
+  let inside = max(d - line.y - ${STAMP_BLOOM_BAND.plateau.toFixed(1)}, 0.0);
+  let decay = ${STAMP_BLOOM_BAND.lineDecay.toFixed(3)} * (1.0 + ${STAMP_BLOOM_BAND.fingers.toFixed(3)} * (2.0 * smoothstep(0.3, 0.8, streak) - 1.0));
   return smoothstep(-line.y, line.y, d) * (${STAMP_BLOOM_BAND.lineShare.toFixed(3)} * line.x * exp(-inside / decay) + ${(1 - STAMP_BLOOM_BAND.lineShare).toFixed(3)} * exp(-inside / ${STAMP_BLOOM_BAND.zoneDecay.toFixed(3)}));
 }
 // The share of a pixel's paint the water carries away, as \`free\` as it is (liftFree: workable, and never set):
