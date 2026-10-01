@@ -1,5 +1,5 @@
-// wet-passage-sheet.ts: the reference-passages sheet (vid-117): every passage in models/wet-passages.ts painted in
-// watercolour, gouache and a dry medium, each in its workspace style's own brushes, paper and pigments, on the GPU by
+// wet-passage-sheet.ts: the reference-passages sheet (vid-117): every passage in models/wet-passages.ts and every
+// animation check in models/wet-animations.ts painted in watercolour, gouache and a dry medium, each in its workspace style's own brushes, paper and pigments, on the GPU by
 // studio/wet-passage-sheet-page.ts; then the page for the person judging them (wet-passage-sheet-html.ts), with the
 // notes kept beside it. `npm run wet:passages` runs it.
 
@@ -10,6 +10,7 @@ import { withBrowserModulePage } from '#lib/output/render/engine/browser-module-
 import { resolveStampPaintStyle, type StampPaintStyle } from '#lib/picture/stamp-styles/models/style.ts';
 import { brushFidelityPackKey } from '../models/brush-fidelity-pack-urls.ts';
 import { wetPassageSheetHtml, type WetPassageSheetColumn, type WetPassageSheetNotes } from '../models/wet-passage-sheet-html.ts';
+import type { WetAnimationPainted } from '../models/wet-animations.ts';
 import type { WetPassageBrushes, WetPassagePainted, WetPassageSheetMedium } from '../models/wet-passages.ts';
 import { readBrushFidelityPack } from './brush-fidelity-targets.ts';
 
@@ -24,13 +25,13 @@ const WET_PASSAGE_MEDIA: readonly { label: string; style: string; brushes: Reado
 
 const isText = (value: unknown): value is string => typeof value === 'string';
 const isOptionalText = (value: unknown): value is string | undefined => value === undefined || isText(value);
+const isOptionalTextById = (value: unknown): value is Readonly<Record<string, string>> | undefined => value === undefined || (typeof value === 'object' && value !== null && Object.values(value).every(isText));
 
-/** Whether `value`, a parsed notes.json, is notes: each field text or left out, and passages' text by ID. */
+/** Whether `value`, a parsed notes.json, is notes: each field text or left out, and passages' and animations' text by ID. */
 function isWetPassageSheetNotes(value: unknown): value is WetPassageSheetNotes {
   if (typeof value !== 'object' || value === null) return false;
   const fields = new Map<string, unknown>(Object.entries(value)), passages = fields.get('passages');
-  const passagesHeld = passages === undefined || (typeof passages === 'object' && passages !== null && Object.values(passages).every(isText));
-  return passagesHeld && ['intro', 'animation', 'landscape'].every((name) => isOptionalText(fields.get(name)));
+  return isOptionalTextById(passages) && isOptionalTextById(fields.get('animations')) && ['intro', 'animation', 'landscape'].every((name) => isOptionalText(fields.get(name)));
 }
 
 /** A medium's style, read from `stylesDir`, as the page paints with it. */
@@ -56,33 +57,41 @@ async function wetPassageMedium(stylesDir: string, { style: name, brushes: roles
 }
 
 /**
- * Paints the sheet into `out`: passages/<passage>-<style>.png and index.html, which shows the images of `landscape/`
+ * Paints the sheet into `out`: passages/<passage>-<style>.png, animations/<animation>-<style>-<n>.png and index.html, which shows the images of `landscape/`
  * in `out` in name order (a leading `<n>-` orders them, left out of the caption) and links each of `references` by its
  * absolute path. Reads `out`/notes.json (WetPassageSheetNotes) when there is one. Returns the files written.
  */
 export async function writeWetPassageSheet({ stylesDir, out, references }: { stylesDir: string; out: string; references: readonly string[] }): Promise<string[]> {
   const inputs = await Promise.all(WET_PASSAGE_MEDIA.map((medium) => wetPassageMedium(stylesDir, medium)));
   mkdirSync(join(out, 'passages'), { recursive: true });
+  mkdirSync(join(out, 'animations'), { recursive: true });
   const written: string[] = [];
-  /** A medium's column, each passage it painted written as passages/<passage>-<style>.png. */
-  const column = ({ label, style }: (typeof WET_PASSAGE_MEDIA)[number], painted: readonly WetPassagePainted[]): WetPassageSheetColumn => {
-    const passages: WetPassageSheetColumn['passages'] = {};
-    for (const each of painted) {
-      if ('refused' in each) {
-        passages[each.passage] = { refused: each.refused };
-        continue;
-      }
-      const file = `passages/${each.passage}-${style}.png`;
-      writeFileSync(join(out, file), Buffer.from(each.png.slice(each.png.indexOf(',') + 1), 'base64'));
-      written.push(join(out, file));
-      passages[each.passage] = { file };
-    }
-    return { label, passages };
+  const writePng = (file: string, png: string) => {
+    writeFileSync(join(out, file), Buffer.from(png.slice(png.indexOf(',') + 1), 'base64'));
+    written.push(join(out, file));
+    return file;
   };
-  // One medium at a time: each passage holds the GPU while it paints.
+  /**
+   * A medium's column, each passage it painted written as passages/<passage>-<style>.png and each animation's frames as
+   * animations/<animation>-<style>-<n>.png.
+   */
+  const column = ({ label, style }: (typeof WET_PASSAGE_MEDIA)[number], painted: readonly WetPassagePainted[], animated: readonly WetAnimationPainted[]): WetPassageSheetColumn => {
+    const passages: WetPassageSheetColumn['passages'] = {}, animations: WetPassageSheetColumn['animations'] = {};
+    for (const each of painted) {
+      passages[each.passage] = 'refused' in each ? { refused: each.refused } : { file: writePng(`passages/${each.passage}-${style}.png`, each.png) };
+    }
+    for (const each of animated) {
+      animations[each.animation] = 'refused' in each
+        ? { refused: each.refused }
+        : { frames: each.frames.map(({ caption, png }, n) => ({ caption, file: writePng(`animations/${each.animation}-${style}-${n + 1}.png`, png) })) };
+    }
+    return { label, passages, animations };
+  };
+  // One medium at a time: each painting holds the GPU while it paints.
   const columns = await withBrowserModulePage({ entry: SHEET_PAGE, filesDir: stylesDir }, (call) => WET_PASSAGE_MEDIA.reduce<Promise<WetPassageSheetColumn[]>>(async (done, medium, m) => {
     const before = await done;
-    return [...before, column(medium, await call<WetPassagePainted[]>('drawWetPassages', inputs[m]))];
+    const painted = await call<WetPassagePainted[]>('drawWetPassages', inputs[m]);
+    return [...before, column(medium, painted, await call<WetAnimationPainted[]>('drawWetAnimations', inputs[m]))];
   }, Promise.resolve([])));
   const notesFile = join(out, 'notes.json');
   const notes: unknown = existsSync(notesFile) ? JSON.parse(readFileSync(notesFile, 'utf8')) : {};

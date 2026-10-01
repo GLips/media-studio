@@ -1,12 +1,13 @@
-// stamp-gate-washes.ts: the washes the GPU gate paints and the physical properties it holds them to. A wash's look
-// is still being tuned, so none has a baseline; each is held to what paint must do:
+// stamp-gate-washes.ts: the washes the GPU gate paints, each held to what paint must do rather than to a baseline:
 //
-// - any frame order: a frame is the same drawn fresh or after another frame;
+// - any frame order: a frame drawn fresh or after another is the same;
 // - conserved: water, softening, a bloom or wet paper moves pigment, never making or losing it;
 // - lifted: a lift never raises a pigment's total nor leaves less than none, and takes a smaller share of a staining
-//   pigment. A pixel may gain as wet paint runs back in; that the law never adds is property/wetLift's.
+//   pigment. A pixel may gain as wet paint runs back in;
+// - spread: flow never leaves overlapping strokes in one wash less even than without it. Paint added into wet paint
+//   deepens it, so evenness, not darkness, is what's held.
 //
-// Each case paints its subject into its painting's last group, whose layer the renderer reads back (readLayer).
+// Each case paints into its last group, whose layer readLayer reads back.
 
 import { PAINT_BANDS } from '#lib/picture/paint/models/paint-spectrum.ts';
 import { PAINT_MEDIA } from '#lib/picture/paint/models/paint-medium.ts';
@@ -33,6 +34,7 @@ export type StampGateWashCase = {
   | { property: 'order' }
   | { property: 'conserved'; without: StampGatePainting }
   | { property: 'lifted'; without: StampGatePainting; pigments: readonly [string, string] }
+  | { property: 'spread'; without: StampGatePainting }
 );
 
 /** How far a pigment's total may drift from the same wash's without the ops under test: its layer's half-float rounding summed over a few thousand pixels. */
@@ -54,16 +56,18 @@ const shown = (k: number) => ({ appliedAt: k, drawnOver: 1 });
 
 /**
  * A painting in `medium`: an earlier dry group (so the subject's layer isn't the painting's only one), then the
- * subject's wash, prepared over the sky when `wetPaper`.
+ * subject's wash, prepared over the sky when `wetPaper`. `still`: the medium's paint doesn't flow.
  */
-function washPainting(medium: StampGateWashMedium, wetPaper: boolean, body: (wash: StampWashScope) => void): StampGatePainting {
+function washPainting(medium: StampGateWashMedium, wetPaper: boolean, body: (wash: StampWashScope) => void, still = false): StampGatePainting {
   const painting = compileStampPaintRecipe(stampPaintRecipe((p) => {
     p.group('under', { composite: 'glaze', opacity: 1 }, (g) => g.pass('dry', {}, (pass) => {
       pass.stroke('band', { brush: ROUND, diameter: 30, material: pure(W.yellowOchre), path: [{ x: 0, y: 100 }, { x: 160, y: 96 }] });
     }));
     p.group('subject', { composite: 'glaze', opacity: 1 }, (g) => g.wash('wash', wetPaper ? { preparation: { region: SKY } } : {}, body));
   }));
-  return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA[medium], pigments: W }, ...SIZE, t: END, images: STAMP_GATE_IMAGES };
+  const flowing = PAINT_MEDIA[medium];
+  const paint = still ? { ...flowing, wetting: { ...flowing.wetting, flow: 0 } } : flowing;
+  return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: paint, pigments: W }, ...SIZE, t: END, images: STAMP_GATE_IMAGES };
 }
 
 const sky = (wash: StampWashScope) => wash.fill('sky', { brush: ROUND, diameter: 40, application: { kind: 'flood' }, region: SKY, material: pure(W.ultramarine), ...shown(0) });
@@ -104,9 +108,13 @@ function washCases(): StampGateWashCase[] {
     sky(wash);
     wash.stroke('drop', { brush: SOFT, diameter: 30, material: pure(W.quinacridoneRose), path: [{ x: 20, y: 70 }, { x: 140, y: 64 }], ...shown(1) });
   };
+  const overlapping = (wash: StampWashScope) => [30, 52, 74, 96].forEach((x, k) => wash.stroke(`stroke-${k}`, {
+    brush: ROUND, diameter: 36, material: pure(W.ultramarine), path: [{ x, y: 10 }, { x: x + 4, y: 110 }], ...shown(k / 2),
+  }));
   return [
     ...water,
     ...lifted,
+    { id: 'wash/merge', mid: MID, property: 'spread', subject: washPainting('watercolour', false, overlapping), without: washPainting('watercolour', false, overlapping, true) },
     {
       id: 'wash/lift-neighbourhood', mid: MID, property: 'conserved', without: washPainting('watercolour', true, meeting),
       subject: washPainting('watercolour', true, (wash) => {
@@ -211,5 +219,23 @@ export function checkStampGateLifted(id: string, pigments: readonly string[], st
   return {
     id: `${id}: lifted`, passed: !problems.length,
     detail: `${staining[0]} lost ${(loose * 100).toFixed(2)}%, ${staining[1]} ${(stained * 100).toFixed(2)}%${problems.length ? `; ${problems.join('; ')}` : '; bounded'}`,
+  };
+}
+
+/** A pigment's variance over the pixels either layer holds any paint at. */
+function variance(amounts: Float32Array, union: readonly number[]): number {
+  const mean = union.reduce((sum, i) => sum + amounts[i], 0) / union.length;
+  return union.reduce((sum, i) => sum + (amounts[i] - mean) ** 2, 0) / union.length;
+}
+
+/** Whether, over the strokes' union, each pigment's amounts in `subject` vary no more than in `without`, its paint still. */
+export function checkStampGateSpread(id: string, pigments: readonly string[], subject: StampGateLayer, without: StampGateLayer): StampGateWashCheck {
+  const slots = pigments.map((_, slot) => ({ subject: slotAmounts(subject, slot), without: slotAmounts(without, slot) }));
+  const union = Array.from({ length: subject.width * subject.height }, (_, i) => i)
+    .filter((i) => slots.some((s) => s.subject[i] > STAMP_GATE_LAYER_TOLERANCE || s.without[i] > STAMP_GATE_LAYER_TOLERANCE));
+  const spreads = pigments.map((pigment, slot) => ({ pigment, flowing: variance(slots[slot].subject, union), still: variance(slots[slot].without, union) }));
+  return {
+    id: `${id}: flow evens it`, passed: spreads.every(({ flowing, still }) => flowing <= still * (1 + STAMP_GATE_CONSERVED_TOLERANCE)),
+    detail: `over ${union.length} pixels, ` + spreads.map(({ pigment, flowing, still }) => `${pigment}'s variance ${still.toFixed(5)} still, ${flowing.toFixed(5)} flowing`).join(', '),
   };
 }
