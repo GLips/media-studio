@@ -255,10 +255,11 @@ const disc = ({ x, y }: { x: number; y: number }, r: number) => ({ kind: 'ellips
 
 /**
  * A granulating sky glazed over the paper's photograph, under a group drifting STAMP_GATE_DRIFT_STEP pixels a frame on
- * `paper`: an opaque, granulating hull, a light lifted beside it and one reserved by fluid a water stroke crossed.
- * Without the `sky`, its lights' cores are bare paper.
+ * `paper`: an opaque, granulating hull, a light lifted out of wetted paper beside it and one reserved by fluid a water stroke
+ * crossed.
+ * Without the `sky`, its lights' cores are bare paper; without its `lights`, it's the hull alone.
  */
-export function stampGateCutOutPainting(paper: StampGroupPaper, { sky = true } = {}): StampGatePainting {
+export function stampGateCutOutPainting(paper: StampGroupPaper, { sky = true, lights = true } = {}): StampGatePainting {
   const steady = stampGateBrush('Steady', { flow: 0.6 });
   const second = STAMP_GATE_DRIFT_STEP * STAMP_GATE_ANIMATION_FPS;
   const painting = compileStampPaintRecipe(stampPaintRecipe((p) => {
@@ -267,11 +268,12 @@ export function stampGateCutOutPainting(paper: StampGroupPaper, { sky = true } =
         brush: steady, diameter: 40, application: { kind: 'flood' }, material: mixture({ pigment: W.ultramarine, amount: 1 }), region: stampGatePolygon(0, 0, 240, 0, 240, 160, 0, 160),
       })));
     }
-    p.group('cut-out', { composite: 'opaque', paper, motion: { keys: [{ at: 0, x: 0, y: 0 }, { at: 1, x: second, y: 0 }] } }, (g) => g.wash('boat', {}, (w) => {
+    p.group('cut-out', { composite: 'opaque', paper, motion: { keys: [{ at: 0, x: 0, y: 0 }, { at: 1, x: second, y: 0 }] } }, (g) => g.wash('boat', { preparation: { region: disc(CUT_OUT_LIGHTS.lift, 22) } }, (w) => {
       w.fill('hull', {
         brush: steady, diameter: 24, application: { kind: 'flood' }, material: mixture({ pigment: W.ultramarine, amount: 1 }, { pigment: W.burntSienna, amount: 1 }),
         region: { kind: 'ellipse', ...CUT_OUT_HULL },
       });
+      if (!lights) return;
       w.lift('light', { kind: 'fill', brush: steady, diameter: 20, application: { kind: 'flood' }, region: disc(CUT_OUT_LIGHTS.lift, 18) });
       w.mask('fluid', { region: disc(CUT_OUT_LIGHTS.reserve, 14) });
       w.water('wet', { kind: 'fill', brush: steady, diameter: 20, application: { kind: 'flood' }, region: disc(CUT_OUT_LIGHTS.reserve, 24) });
@@ -400,27 +402,31 @@ function coreDifference(a: Rgba, b: Rgba, { x: cx, y: cy, r }: { x: number; y: n
 
 /**
  * Whether a cut-out on its own paper drifts with its paper (each frame moved back is frame 0 within the dither), shows
- * bare paper in its lights' cores over the sky, and draws frame 0 again the same; and whether on the ground's paper
- * it doesn't, so the check bites.
+ * bare paper in its lights' cores over the sky, and draws frame 0 again the same; whether on the ground's paper it
+ * doesn't, so the check bites; and whether, unmoved and unlit, it's the ground's exactly.
  */
-export function checkStampGateCutOut(
-  own: { frames: readonly { frame: number; rgba: Rgba }[]; again: Rgba }, ground: { frames: readonly { frame: number; rgba: Rgba }[] }, bare: Rgba, width: number,
-): StampGateWashCheck {
+export function checkStampGateCutOut({ own, ground, bare, unlit, width }: {
+  own: { frames: readonly { frame: number; rgba: Rgba }[]; again: Rgba }; ground: { frames: readonly { frame: number; rgba: Rgba }[] }; bare: Rgba;
+  unlit: { own: Rgba; ground: Rgba }; width: number;
+}): StampGateWashCheck {
   const [first, ...rest] = own.frames;
   const drift = Math.max(...rest.map((drawn) => cutOutDrift(first.rgba, drawn, width)));
   const groundDrift = Math.max(...ground.frames.slice(1).map((drawn) => cutOutDrift(ground.frames[0].rgba, drawn, width)));
   const lights = Object.entries(CUT_OUT_LIGHTS).map(([name, core]) => ({ name, own: coreDifference(first.rgba, bare, core, width), ground: coreDifference(ground.frames[0].rgba, bare, core, width) }));
   let again = 0;
   for (let i = 0; i < first.rgba.length; i++) again = Math.max(again, Math.abs(own.again[i] - first.rgba[i]));
+  let papers = 0;
+  for (let i = 0; i < unlit.own.length; i++) papers = Math.max(papers, Math.abs(unlit.own[i] - unlit.ground[i]));
   const problems = [
     ...(drift > STAMP_GATE_DRIFT_TOLERANCE ? [`its own paper drifts by up to ${drift} levels (past ${STAMP_GATE_DRIFT_TOLERANCE} fails)`] : []),
     ...(groundDrift <= STAMP_GATE_DRIFT_TOLERANCE ? [`on the ground's paper it drifts by only ${groundDrift}, so the photograph doesn't show under it and the check can't bite`] : []),
     ...lights.filter((light) => light.own > STAMP_GATE_LIGHT_TOLERANCE).map((light) => `its ${light.name} differs from bare paper by ${light.own.toFixed(2)} on average (past ${STAMP_GATE_LIGHT_TOLERANCE} fails)`),
     ...lights.filter((light) => light.ground < STAMP_GATE_SKY_LEAST).map((light) => `on the ground's paper its ${light.name} is within ${light.ground.toFixed(2)} of bare paper, so the sky doesn't show and the check can't bite`),
     ...(again > 0 ? [`frame 0 drawn again after the rest differs by ${again}`] : []),
+    ...(papers > 0 ? [`unmoved and unlit, its own paper differs from the ground's by ${papers}`] : []),
   ];
   return {
     id: 'animation/cut-out: it carries its paper and its lights', passed: !problems.length,
-    detail: problems.length ? problems.join('; ') : `drifts within ${drift} (the ground's paper: ${groundDrift}); lights against bare paper ${lights.map((l) => `${l.name} ${l.own.toFixed(2)} (the ground's paper: ${l.ground.toFixed(2)})`).join(', ')}; frame 0 again identical`,
+    detail: problems.length ? problems.join('; ') : `drifts within ${drift} (the ground's paper: ${groundDrift}); lights against bare paper ${lights.map((l) => `${l.name} ${l.own.toFixed(2)} (the ground's paper: ${l.ground.toFixed(2)})`).join(', ')}; frame 0 again identical; unlit, the ground's exactly`,
   };
 }

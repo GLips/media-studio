@@ -64,21 +64,24 @@ export type StampPigmentGroup = {
   /** Its palette, a slot each. */
   palette: readonly PaintPigment[];
   /**
-   * Layers of four channels its pixels need: coverage, then a channel per slot, in a group with a wash its open share,
-   * and in a group on its own paper a layer more for its sheet.
+   * Layers of four channels its paint needs, all a wet stage moves: coverage, then a channel per slot, and in a group
+   * with a wash its open share.
    */
-  layers: number;
+  paintLayers: number;
   /**
-   * In a group with a wash, the channel holding each pixel's open share, the last before any sheet: how much of its
-   * paint hasn't set (stamp-paint-pigment-compositor.ts). Null in a group without, which pays nothing for it.
+   * In a group with a wash, the channel holding each pixel's open share, its paint's last: how much of its paint
+   * hasn't set (stamp-paint-pigment-compositor.ts). Null in a group without, which pays nothing for it.
    */
   open: number | null;
   /**
-   * In a group on its own paper (StampGroupPaper), the channel holding how much of its own paper shows over what's
-   * under it: the first of a layer of its own, past every channel a wet stage moves. Null in a group on the ground's.
+   * In a group on its own paper (StampGroupPaper), the layer after its paint whose first channel holds how much of its
+   * paper shows over what's under it, which no wet stage moves. Null in a group on the ground's.
    */
-  sheet: number | null;
+  sheetLayer: number | null;
 };
+
+/** Layers of four channels a group's pixels need: its paint's, and its sheet's if it has one. */
+export const stampPigmentGroupLayers = ({ paintLayers, sheetLayer }: StampPigmentGroup) => paintLayers + (sheetLayer === null ? 0 : 1);
 
 export type StampPigmentPaint = {
   medium: PaintMedium;
@@ -156,9 +159,8 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
     if (palette.length > STAMP_PIGMENT_GROUP_SLOTS) {
       throw new Error(`stamp paint: ${group.id} mixes ${palette.length} pigments, over the ${STAMP_PIGMENT_GROUP_SLOTS} a wash holds; split it into two groups (${palette.map(({ id }) => id).join(', ')})`);
     }
-    const washes = group.passes.some((pass) => pass.kind === 'wash'), layers = stampPigmentLayers(palette.length, washes);
-    const ownPaper = group.paper === 'own';
-    return { palette, layers: layers + (ownPaper ? 1 : 0), open: washes ? 4 * layers - 1 : null, sheet: ownPaper ? 4 * layers : null };
+    const washes = group.passes.some((pass) => pass.kind === 'wash'), paintLayers = stampPigmentLayers(palette.length, washes);
+    return { palette, paintLayers, open: washes ? 4 * paintLayers - 1 : null, sheetLayer: group.paper === 'own' ? paintLayers : null };
   });
   return { medium, bands, groups, deposits };
 }

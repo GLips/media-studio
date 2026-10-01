@@ -304,8 +304,11 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
     });
     const bare = stampGateCutOutPainting('own', { sky: false });
     const own = stampGateCutOutPainting('own');
-    const bareFrame = await withGateRenderer(bare, drawnImages(bare), (renderer, frame) => drawn(renderer, frame, 0));
-    return checkStampGateCutOut(await drift(own), await drift(stampGateCutOutPainting('ground')), bareFrame, own.width);
+    const first = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), (renderer, frame) => drawn(renderer, frame, 0));
+    return checkStampGateCutOut({
+      own: await drift(own), ground: await drift(stampGateCutOutPainting('ground')), bare: await first(bare), width: own.width,
+      unlit: { own: await first(stampGateCutOutPainting('own', { lights: false })), ground: await first(stampGateCutOutPainting('ground', { lights: false })) },
+    });
   }
   throw new Error(`stamp gate: no animation case ${JSON.stringify(id)}; the gate animates ${STAMP_GATE_ANIMATION_IDS.join(', ')}`);
 }

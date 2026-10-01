@@ -23,9 +23,9 @@ export type StampGroupMotion = {
 };
 
 /**
- * The paper a group lies on. `ground`: the painting's, which stays put; its lifts and reserves lighten only its own
- * paint. `own`: a sheet of its own, a cut-out, carried as it moves. Under its opaque paint and wherever it lifted or
- * reserved, its paper shows, as far as the lift took or the fluid held paint off.
+ * The paper a group lies on. `ground`: the painting's; its lights lighten only its own paint. `own`: a cut-out's,
+ * carried as it moves (still, the same paper), showing over what's under it beneath its opaque paint, as far as its
+ * lifts loosened, and where its fluid held a brush off: fluid no brush crossed shows nothing.
  */
 export type StampGroupPaper = 'ground' | 'own';
 
