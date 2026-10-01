@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  clipSeconds, compilePaintPlayClock, paintBoilEpochAt, paintPlayClipTimeAt, paintPlayInterval, sceneSeconds, type PaintPlayClock,
+  clipSeconds, compilePaintPlayClock, paintPlayClipTimeAt, paintPlayInterval, sceneSeconds, type PaintPlayClock,
 } from './paint-clock.ts';
 
 const FPS = 24;
@@ -18,7 +18,6 @@ test('a loop held on twos and placed at an off-grid cue steps on the scene grid 
 });
 
 const twice = (mode: 'repeat' | 'pingpong'): PaintPlayClock => ({ at: 0, loop: { period: 1, mode, times: 2 } });
-const epochAt = (frame: number, revealEnd: number) => paintBoilEpochAt(sceneSeconds(frame / 24), sceneSeconds(revealEnd), 2, 24);
 
 test('a play\'s interval follows from its parts, and once it ends it holds its final clip time', () => {
   // Codex's case: held on twos from 0.03 s, a 1 s clip. Its last held drawing before 1.03 s is 0.97 in; it must go on to its end.
@@ -38,8 +37,3 @@ test('a play\'s interval follows from its parts, and once it ends it holds its f
   assert.equal(clipAt(cut, 5), clipAt(cut, 0.1));
 });
 
-test('a group keeps its drawn seed through its reveal and up to the next grid step, then boils on the grid', () => {
-  assert.deepEqual([9, 10, 11, 12, 13, 14].map((frame) => epochAt(frame, 10.5 / 24)), [0, 0, 0, 1, 1, 2]);
-  // A group that finished earlier steps on the same frames.
-  assert.deepEqual([11, 12, 13, 14].map((frame) => epochAt(frame, 3 / 24) - epochAt(frame - 1, 3 / 24)), [0, 1, 0, 1]);
-});

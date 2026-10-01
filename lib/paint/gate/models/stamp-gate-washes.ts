@@ -34,15 +34,14 @@ import { stampBloom, stampSoften } from '#lib/paint/painting/models/stamp-wet-te
 export type StampGateWashMedium = 'watercolour' | 'gouache' | 'crayon';
 
 /**
- * A wash case: its painting `subject`, drawn at `mid` and at its end in both orders; and what it's held to against
+ * A wash case: its painting `subject`, drawn twice the same; and what it's held to against
  * `without`, the same painting less the ops under test. `pigments` are the lifted case's, least staining first.
  */
 export type StampGateWashCase = {
   id: string;
   subject: StampGatePainting;
-  mid: number;
 } & (
-  | { property: 'order' }
+  | { property: 'drawn' }
   | { property: 'conserved'; without: StampGatePainting }
   | { property: 'lifted'; without: StampGatePainting; pigments: readonly [string, string] }
   | { property: 'spread'; without: StampGatePainting }
@@ -62,7 +61,7 @@ export type StampGateWashCase = {
 export const STAMP_GATE_LAYER_TOLERANCE = 2e-3;
 
 const SIZE = { width: 160, height: 120 };
-const END = Number.MAX_VALUE, MID = 1.5;
+const END = Number.MAX_VALUE;
 const PAPER: StampPaintPaper = { color: '#f6f1e6' };
 const ROUND = stampGateBrush('Round', { flow: 0.5 });
 const SOFT = stampGateBrush('Soft', { flow: 0.3 });
@@ -72,8 +71,6 @@ const FEATHER = stampGateBrush('Feather', { flow: 0.3, tip: { image: { style: 'g
 /** One pigment at full strength, so no white joins it in a medium that lightens with white. */
 const pure = (pigment: PaintPigmentAppearance): PaintMaterial => ({ kind: 'mixture', parts: [{ pigment, amount: 1 }], strength: 1 });
 const SKY = stampGatePolygon(10, 10, 150, 10, 150, 110, 10, 110);
-/** Deposit `k` of a case shows over its second of scene time, so MID catches the second half drawn. */
-const shown = (k: number) => ({ reveal: { at: k, over: 1 } });
 
 /**
  * A painting in `medium`: an earlier dry group (so the subject's layer isn't the painting's only one), then the
@@ -97,8 +94,8 @@ const FLUID = { x: 60, y: 62, radius: 16 };
 const WITHIN_TO = 110;
 const fenced = (x: number, y: number) => Math.hypot(x + 0.5 - FLUID.x, y + 0.5 - FLUID.y) < FLUID.radius - 2 || x >= WITHIN_TO + 2;
 
-const sky = (wash: StampPassageScope) => wash.fill('sky', { brush: ROUND, size: 40, application: { kind: 'flood' }, region: SKY, well: { paint: pure(W.ultramarine) }, ...shown(0) });
-const stroke = (wash: StampPassageScope) => wash.stroke('stroke', { brush: ROUND, size: 36, well: { paint: pure(W.ultramarine) }, path: [{ x: 20, y: 40 }, { x: 140, y: 50 }], ...shown(0) });
+const sky = (wash: StampPassageScope) => wash.fill('sky', { brush: ROUND, size: 40, application: { kind: 'flood' }, region: SKY, well: { paint: pure(W.ultramarine) } });
+const stroke = (wash: StampPassageScope) => wash.stroke('stroke', { brush: ROUND, size: 36, well: { paint: pure(W.ultramarine) }, path: [{ x: 20, y: 40 }, { x: 140, y: 50 }] });
 
 /** The rim case's puddle's right edge and its patches' seam, by column. */
 const RIM = { puddleTo: 60, seam: 115 };
@@ -151,23 +148,23 @@ function washCases(): StampGateWashCase[] {
   const media: readonly StampGateWashMedium[] = ['watercolour', 'gouache', 'crayon'];
   // Clean water needs a wet history, which crayon hasn't.
   const water = media.filter((medium) => paintMediumCan(PAINT_MEDIA[medium], 'wet-history')).map((medium): StampGateWashCase => ({
-    id: `wash/water-${medium}`, mid: MID, property: 'conserved',
+    id: `wash/water-${medium}`, property: 'conserved',
     subject: washPainting(medium, false, (wash) => {
       stroke(wash);
-      wash.water('water', { kind: 'stroke', brush: SOFT, size: 30, path: [{ x: 80, y: 10 }, { x: 70, y: 110 }], ...shown(1) });
+      wash.water('water', { kind: 'stroke', brush: SOFT, size: 30, path: [{ x: 80, y: 10 }, { x: 70, y: 110 }] });
     }),
     without: washPainting(medium, false, stroke),
   }));
   const lifted = media.map((medium): StampGateWashCase => {
     const patches = (wash: StampPassageScope) => {
-      wash.fill('left', { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(10, 10, 78, 10, 78, 110, 10, 110), well: { paint: pure(W.ultramarine) }, ...shown(0) });
-      wash.fill('right', { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(82, 10, 150, 10, 150, 110, 82, 110), well: { paint: pure(W.phthaloBlue) }, ...shown(0) });
+      wash.fill('left', { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(10, 10, 78, 10, 78, 110, 10, 110), well: { paint: pure(W.ultramarine) } });
+      wash.fill('right', { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(82, 10, 150, 10, 150, 110, 82, 110), well: { paint: pure(W.phthaloBlue) } });
     };
     return {
-      id: `wash/lift-${medium}`, mid: MID, property: 'lifted', pigments: [W.ultramarine.id, W.phthaloBlue.id],
+      id: `wash/lift-${medium}`, property: 'lifted', pigments: [W.ultramarine.id, W.phthaloBlue.id],
       subject: washPainting(medium, false, (wash) => {
         patches(wash);
-        wash.lift('lift', { kind: 'stroke', brush: SOFT, size: 34, path: [{ x: 15, y: 60 }, { x: 145, y: 55 }], ...shown(1) });
+        wash.lift('lift', { kind: 'stroke', brush: SOFT, size: 34, path: [{ x: 15, y: 60 }, { x: 145, y: 55 }] });
       }),
       without: washPainting(medium, false, patches),
     };
@@ -175,24 +172,24 @@ function washCases(): StampGateWashCase[] {
   // Two wet patches meeting, and a lift that takes nothing drawn across them: whatever works over a lift's
   // neighbourhood (the lift's run-back) only moves the paint about.
   const meeting = (wash: StampPassageScope) => {
-    wash.fill('left', { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(10, 10, 84, 10, 84, 110, 10, 110), well: { paint: pure(W.ultramarine) }, ...shown(0) });
-    wash.fill('right', { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(76, 10, 150, 10, 150, 110, 76, 110), well: { paint: pure(W.burntSienna) }, ...shown(0) });
+    wash.fill('left', { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(10, 10, 84, 10, 84, 110, 10, 110), well: { paint: pure(W.ultramarine) } });
+    wash.fill('right', { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(76, 10, 150, 10, 150, 110, 76, 110), well: { paint: pure(W.burntSienna) } });
   };
   const dropped = (wash: StampPassageScope) => {
     sky(wash);
-    wash.stroke('drop', { brush: SOFT, size: 30, well: { paint: pure(W.quinacridoneRose) }, path: [{ x: 20, y: 70 }, { x: 140, y: 64 }], ...shown(1) });
+    wash.stroke('drop', { brush: SOFT, size: 30, well: { paint: pure(W.quinacridoneRose) }, path: [{ x: 20, y: 70 }, { x: 140, y: 64 }] });
   };
   // Dried paint wetted again by a water stroke and lifted, against the same lift while the paint is still wet.
   const rewetted = (dried: boolean, withLift: boolean) => washPainting('watercolour', false, (wash) => {
-    wash.fill('sky', { brush: ROUND, size: 40, application: { kind: 'flood' }, region: SKY, well: { paint: pure(W.ultramarine) }, ...shown(0) });
+    wash.fill('sky', { brush: ROUND, size: 40, application: { kind: 'flood' }, region: SKY, well: { paint: pure(W.ultramarine) } });
     if (dried) wash.wait('set');
-    wash.water('rewet', { kind: 'stroke', brush: ROUND, size: 40, path: [{ x: 15, y: 60 }, { x: 145, y: 58 }], ...shown(1) });
-    if (withLift) wash.lift('lift', { kind: 'stroke', brush: SOFT, size: 30, path: [{ x: 20, y: 60 }, { x: 140, y: 58 }], ...shown(1) });
+    wash.water('rewet', { kind: 'stroke', brush: ROUND, size: 40, path: [{ x: 15, y: 60 }, { x: 145, y: 58 }] });
+    if (withLift) wash.lift('lift', { kind: 'stroke', brush: SOFT, size: 30, path: [{ x: 20, y: 60 }, { x: 140, y: 58 }] });
   });
   // A puddle, and two patches meeting at RIM.seam, all wetted together and left to dry.
   const puddles = (wash: StampPassageScope) => {
     const patch = (id: string, x0: number, x1: number) => wash.fill(id, {
-      brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(x0, 10, x1, 10, x1, 110, x0, 110), well: { paint: pure(W.ultramarine), water: 1 }, ...shown(0),
+      brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(x0, 10, x1, 10, x1, 110, x0, 110), well: { paint: pure(W.ultramarine), water: 1 },
     });
     patch('puddle', 10, RIM.puddleTo);
     patch('seam-left', 80, RIM.seam);
@@ -203,122 +200,122 @@ function washCases(): StampGateWashCase[] {
   const paintedElsewhere = (wash: StampPassageScope) => {
     sky(wash);
     wash.wait({ seconds: 80 });
-    wash.stroke('elsewhere', { brush: ROUND, size: 24, well: { paint: pure(W.quinacridoneRose) }, path: [{ x: 132, y: 15 }, { x: 136, y: 105 }], ...shown(1) });
+    wash.stroke('elsewhere', { brush: ROUND, size: 24, well: { paint: pure(W.quinacridoneRose) }, path: [{ x: 132, y: 15 }, { x: 136, y: 105 }] });
   };
   const overlapping = (wash: StampPassageScope) => [30, 52, 74, 96].forEach((x, k) => wash.stroke(`stroke-${k}`, {
-    brush: ROUND, size: 36, well: { paint: pure(W.ultramarine) }, path: [{ x, y: 10 }, { x: x + 4, y: 110 }], ...shown(k / 2),
+    brush: ROUND, size: 36, well: { paint: pure(W.ultramarine) }, path: [{ x, y: 10 }, { x: x + 4, y: 110 }],
   }));
   return [
     ...water,
     ...lifted,
-    { id: 'wash/merge', mid: MID, property: 'spread', subject: washPainting('watercolour', false, overlapping), without: washPainting('watercolour', false, overlapping, true) },
+    { id: 'wash/merge', property: 'spread', subject: washPainting('watercolour', false, overlapping), without: washPainting('watercolour', false, overlapping, true) },
     {
-      id: 'wash/lift-neighbourhood', mid: MID, property: 'conserved', without: washPainting('watercolour', true, meeting),
+      id: 'wash/lift-neighbourhood', property: 'conserved', without: washPainting('watercolour', true, meeting),
       subject: washPainting('watercolour', true, (wash) => {
         meeting(wash);
-        wash.lift('nothing', { kind: 'stroke', brush: SOFT, size: 34, path: [{ x: 20, y: 60 }, { x: 140, y: 55 }], strength: 0, ...shown(1) });
+        wash.lift('nothing', { kind: 'stroke', brush: SOFT, size: 34, path: [{ x: 20, y: 60 }, { x: 140, y: 55 }], strength: 0 });
       }),
     },
     {
-      id: 'wash/lift-set', mid: MID, property: 'set', subject: rewetted(true, true), without: rewetted(true, false),
+      id: 'wash/lift-set', property: 'set', subject: rewetted(true, true), without: rewetted(true, false),
       fresh: { subject: rewetted(false, true), without: rewetted(false, false) }, rewetting: PAINT_MEDIA.watercolour.wetting.rewetting,
     },
     {
-      id: 'wash/fenced', mid: MID, property: 'fenced', fenced,
+      id: 'wash/fenced', property: 'fenced', fenced,
       subject: washPainting('watercolour', true, (wash) => {
         wash.mask('fluid', { region: { kind: 'ellipse', x: FLUID.x, y: FLUID.y, radiusX: FLUID.radius, radiusY: FLUID.radius } });
         sky(wash);
-        wash.stroke('feather', { brush: SOFT, size: 30, well: { paint: pure(W.quinacridoneRose) }, path: [{ x: 40, y: 30 }, { x: 150, y: 34 }], ...shown(1) });
-        wash.lift('lift', { kind: 'stroke', brush: SOFT, size: 30, path: [{ x: 20, y: 64 }, { x: 140, y: 60 }], ...shown(1) });
+        wash.stroke('feather', { brush: SOFT, size: 30, well: { paint: pure(W.quinacridoneRose) }, path: [{ x: 40, y: 30 }, { x: 150, y: 34 }] });
+        wash.lift('lift', { kind: 'stroke', brush: SOFT, size: 30, path: [{ x: 20, y: 64 }, { x: 140, y: 60 }] });
       }, false, stampGatePolygon(0, 0, WITHIN_TO, 0, WITHIN_TO, SIZE.height, 0, SIZE.height)),
     },
     // Against the same wet paper with paint that doesn't flow: on dry paper the brush's water would harden its edge.
-    { id: 'wash/wet-in-wet', mid: MID, property: 'conserved', subject: washPainting('watercolour', true, dropped), without: washPainting('watercolour', true, dropped, true) },
+    { id: 'wash/wet-in-wet', property: 'conserved', subject: washPainting('watercolour', true, dropped), without: washPainting('watercolour', true, dropped, true) },
     {
-      id: 'wash/soften', mid: MID, property: 'conserved', without: washPainting('watercolour', false, stroke),
+      id: 'wash/soften', property: 'conserved', without: washPainting('watercolour', false, stroke),
       subject: washPainting('watercolour', false, (wash) => {
         stroke(wash);
-        stampSoften(wash, 'edge', { brush: SOFT, size: 16, along: [{ x: 20, y: 58 }, { x: 140, y: 68 }], ...shown(1) });
+        stampSoften(wash, 'edge', { brush: SOFT, size: 16, along: [{ x: 20, y: 58 }, { x: 140, y: 68 }] });
       }),
     },
     {
-      id: 'wash/bloom', mid: MID, property: 'conserved', without: washPainting('watercolour', true, sky),
+      id: 'wash/bloom', property: 'conserved', without: washPainting('watercolour', true, sky),
       subject: washPainting('watercolour', true, (wash) => {
         sky(wash);
-        stampBloom(wash, 'bloom', { brush: SOFT, size: 24, at: [{ x: 50, y: 50 }, { x: 110, y: 70 }], ...shown(1) });
+        stampBloom(wash, 'bloom', { brush: SOFT, size: 24, at: [{ x: 50, y: 50 }, { x: 110, y: 70 }] });
       }),
     },
     {
-      id: 'wash/bloom-after-paint', mid: MID, property: 'bloomed', without: washPainting('watercolour', false, paintedElsewhere),
+      id: 'wash/bloom-after-paint', property: 'bloomed', without: washPainting('watercolour', false, paintedElsewhere),
       subject: washPainting('watercolour', false, (wash) => {
         paintedElsewhere(wash);
-        stampBloom(wash, 'bloom', { brush: SOFT, size: 24, at: [{ x: BLOOM_DROP.x, y: BLOOM_DROP.y }], ...shown(1) });
+        stampBloom(wash, 'bloom', { brush: SOFT, size: 24, at: [{ x: BLOOM_DROP.x, y: BLOOM_DROP.y }] });
       }),
     },
     // A wash left until damp, a wetter stroke laid inside its right edge: its backrun runs left into the damp paint
     // and reaches the edge on its right. Against the same painting without the bloom stage.
     {
-      id: 'wash/backrun-edge', mid: MID, property: 'unlined',
+      id: 'wash/backrun-edge', property: 'unlined',
       subject: washPainting('watercolour', false, (wash) => {
-        wash.fill('wash', { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(10, 10, BACKRUN_EDGE.x, 10, BACKRUN_EDGE.x, 110, 10, 110), well: { paint: pure(W.cerulean) }, ...shown(0) });
+        wash.fill('wash', { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(10, 10, BACKRUN_EDGE.x, 10, BACKRUN_EDGE.x, 110, 10, 110), well: { paint: pure(W.cerulean) } });
         wash.wait('damp');
-        wash.stroke('side', { brush: ROUND, size: 22, well: { paint: pure(W.cerulean), water: 1 }, path: [{ x: BACKRUN_EDGE.x - 10, y: 14 }, { x: BACKRUN_EDGE.x - 12, y: 106 }], ...shown(1) });
+        wash.stroke('side', { brush: ROUND, size: 22, well: { paint: pure(W.cerulean), water: 1 }, path: [{ x: BACKRUN_EDGE.x - 10, y: 14 }, { x: BACKRUN_EDGE.x - 12, y: 106 }] });
       }),
     },
     // A wash flooded to the edge of the paper wetted for it: on wet paper its edge feathers out, and dries with no line.
     // Against the same painting without the drying rim.
     {
-      id: 'wash/soft-edge', mid: MID, property: 'unrimmed',
-      subject: washPainting('watercolour', true, (wash) => wash.fill('sky', { brush: FEATHER, size: 80, application: { kind: 'flood' }, region: SKY, well: { paint: pure(W.ultramarine) }, ...shown(0) })),
+      id: 'wash/soft-edge', property: 'unrimmed',
+      subject: washPainting('watercolour', true, (wash) => wash.fill('sky', { brush: FEATHER, size: 80, application: { kind: 'flood' }, region: SKY, well: { paint: pure(W.ultramarine) } })),
     },
     // A sky not yet damp, water dropped in it: on paper this wet the water runs on, its edge soft and open. Against
     // the same sky without it.
     {
-      id: 'wash/bloom-wet', mid: MID, property: 'unlipped', without: washPainting('watercolour', false, sky),
+      id: 'wash/bloom-wet', property: 'unlipped', without: washPainting('watercolour', false, sky),
       subject: washPainting('watercolour', false, (wash) => {
         sky(wash);
         wash.wait({ seconds: WET_DROP.seconds });
-        wash.water('drop', { kind: 'stamps', brush: SOFT, size: 30, at: [{ x: WET_DROP.x, y: WET_DROP.y }], ...shown(1) });
+        wash.water('drop', { kind: 'stamps', brush: SOFT, size: 30, at: [{ x: WET_DROP.x, y: WET_DROP.y }] });
       }),
     },
     // The same drop into the sky at damp, all the sky's paper as wet: it stalls all round, and lips all round.
     {
-      id: 'wash/bloom-damp', mid: MID, property: 'lipped', without: washPainting('watercolour', false, sky),
+      id: 'wash/bloom-damp', property: 'lipped', without: washPainting('watercolour', false, sky),
       subject: washPainting('watercolour', false, (wash) => {
         sky(wash);
-        stampBloom(wash, 'drop', { brush: SOFT, size: 30, at: [{ x: WET_DROP.x, y: WET_DROP.y }], ...shown(1) });
+        stampBloom(wash, 'drop', { brush: SOFT, size: 30, at: [{ x: WET_DROP.x, y: WET_DROP.y }] });
       }),
     },
     // Against the same paint that doesn't flow, so neither moves nor rims.
-    { id: 'wash/rim', mid: MID, property: 'rimmed', subject: washPainting('watercolour', false, puddles), without: washPainting('watercolour', false, puddles, true) },
+    { id: 'wash/rim', property: 'rimmed', subject: washPainting('watercolour', false, puddles), without: washPainting('watercolour', false, puddles, true) },
     // Crayon sets as it lands, so its lifts are only ever of set wax.
-    stampGateLiftColourCase('wash/lift-paler-gouache-wet', MID, 'gouache', false),
-    stampGateLiftColourCase('wash/lift-paler-gouache-dry', MID, 'gouache', true),
-    stampGateLiftColourCase('wash/lift-paler-crayon', MID, 'crayon', false),
+    stampGateLiftColourCase('wash/lift-paler-gouache-wet', 'gouache', false),
+    stampGateLiftColourCase('wash/lift-paler-gouache-dry', 'gouache', true),
+    stampGateLiftColourCase('wash/lift-paler-crayon', 'crayon', false),
     // A dry brush and a wet one in watercolour, read against the paper's grain.
-    stampGateDryBrushCase('wash/dry-brush', MID),
+    stampGateDryBrushCase('wash/dry-brush'),
     {
-      id: 'wash/wait', mid: MID, property: 'order',
+      id: 'wash/wait', property: 'drawn',
       subject: washPainting('watercolour', false, (wash) => {
-        wash.fill('first', { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(10, 10, 100, 10, 100, 110, 10, 110), well: { paint: pure(W.cerulean) }, ...shown(0) });
+        wash.fill('first', { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(10, 10, 100, 10, 100, 110, 10, 110), well: { paint: pure(W.cerulean) } });
         wash.wait('set');
-        wash.fill('second', { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(60, 10, 150, 10, 150, 110, 60, 110), well: { paint: pure(W.burntSienna) }, ...shown(1) });
+        wash.fill('second', { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(60, 10, 150, 10, 150, 110, 60, 110), well: { paint: pure(W.burntSienna) } });
       }),
     },
     {
-      id: 'wash/graded', mid: MID, property: 'order',
+      id: 'wash/graded', property: 'drawn',
       subject: washPainting('watercolour', true, (wash) => wash.fill('graded', {
         brush: ROUND, size: 40, application: { kind: 'flood' }, region: SKY, well: { paint: pure(W.ultramarine) },
-        load: { kind: 'linear', from: { x: 0, y: 10, value: 1 }, to: { x: 0, y: 110, value: 0.2 } }, reveal: { at: 0, over: 3 },
+        load: { kind: 'linear', from: { x: 0, y: 10, value: 1 }, to: { x: 0, y: 110, value: 0.2 } },
       })),
     },
     // Noise on the GPU's field readers: a flood's load, and a material two deposits share as one passage.
     {
-      id: 'wash/mottled', mid: MID, property: 'order',
+      id: 'wash/mottled', property: 'drawn',
       subject: washPainting('watercolour', false, (wash) => {
         const mottled = { kind: 'noise' as const, scale: 18, seed: 'passage', a: pure(W.ultramarine), b: pure(W.burntSienna) };
-        wash.fill('left', { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(10, 10, 80, 10, 80, 110, 10, 110), well: { paint: mottled }, load: { kind: 'noise', scale: 30, a: 1, b: 0.3 }, ...shown(0) });
-        wash.fill('right', { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(80, 10, 150, 10, 150, 110, 80, 110), well: { paint: mottled }, ...shown(1) });
+        wash.fill('left', { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(10, 10, 80, 10, 80, 110, 10, 110), well: { paint: mottled }, load: { kind: 'noise', scale: 30, a: 1, b: 0.3 } });
+        wash.fill('right', { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(80, 10, 150, 10, 150, 110, 80, 110), well: { paint: mottled } });
       }),
     },
   ];

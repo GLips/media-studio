@@ -1,7 +1,7 @@
 // stamp-paint-passage.ts: writing one passage. Its scope (StampPassageScope) writes deposits and waits into the
-// passage's history in painting order and, beside it, the tree of applications the score shares scene time over
-// (stamp-paint-score.ts); a technique (stamp-technique.ts) is one application whose ops write through a scope bound
-// to it. Ending the passage allots each deposit its reveal and settles whether it keeps a wet history.
+// passage's history in painting order and, beside it, the tree of applications that wrote them; a technique
+// (stamp-technique.ts) is one application whose ops write through a scope bound to it. Ending the passage settles
+// whether it keeps a wet history.
 //
 // Randomness comes from names, never order or organisation: an application's ID enters provenance only.
 
@@ -11,7 +11,6 @@ import type { StampRecipePaint, StampRecipeWashAction } from './stamp-paint-acti
 import { checkedStampIdSegment, stampDepositId, stampDepositNameText, type StampDepositName, type StampPassageIdentity } from './stamp-deposit-identity.ts';
 import { pickStampMaterial } from './stamp-material-set.ts';
 import type { StampMark } from './stamp-marks.ts';
-import { allocateStampScore, type StampChildTiming, type StampScoreNode, type StampScoreOptions } from './stamp-paint-score.ts';
 import { stampSizePx, stampSizeRangePx, type StampSize, type StampSizeRange } from './stamp-paint-sizes.ts';
 import type { StampWithin } from './stamp-area.ts';
 import type { StampPoint, StampRegion } from './stamp-region.ts';
@@ -59,11 +58,14 @@ type StampPassageState = {
   lifts: boolean;
 };
 
+/** An application as written: its path in its passage, the deposits it laid itself, and the applications under it. */
+type StampApplicationNode = { path: string; deposits: StampPaintRecipeDeposit[]; children: StampApplicationNode[] };
+
 /** Where a scope writes: its passage, its namer, the application its calls are children of, and what they inherit. */
 type StampPassageWriter = {
   state: StampPassageState;
   namer: StampNamer;
-  node: StampScoreNode<StampPaintRecipeDeposit>;
+  node: StampApplicationNode;
   provenance: readonly string[];
   within: readonly StampDepositWithin[] | undefined;
   defaults: StampPassageDefaults;
@@ -83,10 +85,10 @@ function checkWetHistory({ host, options, knockout }: StampPassageState, what: s
 }
 
 /** A new application `id` under `writer`'s, refused if a sibling has its ID. */
-function application(writer: StampPassageWriter, id: string, score: StampScoreOptions, kind: StampScoreNode<unknown>['kind'], own: { weight?: number; timing?: StampChildTiming } = {}) {
+function application(writer: StampPassageWriter, id: string) {
   const path = `${writer.node.path}/${checkedStampIdSegment(id)}`;
   if (writer.node.children.some((child) => child.path === path)) throw new Error(`stamp paint: two applications are named ${path}; an application's ID is unique among its siblings`);
-  const node: StampScoreNode<StampPaintRecipeDeposit> = { path, score, kind, deposits: [], children: [], ...own };
+  const node: StampApplicationNode = { path, deposits: [], children: [] };
   writer.node.children.push(node);
   return node;
 }
@@ -98,7 +100,7 @@ function checkMerges(state: StampPassageState, within: StampWithin | undefined, 
 }
 
 /** `writer` for `node`'s calls: their within narrowed by `within`, seeded by the application's name. */
-function under(writer: StampPassageWriter, node: StampScoreNode<StampPaintRecipeDeposit>, id: string, within: StampApplicationOptions['within']): StampPassageWriter {
+function under(writer: StampPassageWriter, node: StampApplicationNode, id: string, within: StampApplicationOptions['within']): StampPassageWriter {
   const seed = `${writer.state.full}|${stampDepositNameText(writer.namer.name(id))}`;
   checkMerges(writer.state, within, node.path);
   return { ...writer, node, provenance: [...writer.provenance, id], ...(within && { within: [...(writer.within ?? []), { area: within, seed }] }) };
@@ -141,7 +143,7 @@ const layeredDefaults = (base: StampPassageDefaults, over: StampPassageDefaults 
   (over ? { ...base, ...over, ...((base.wells || over.wells) && { wells: { ...base.wells, ...over.wells } }) } : base);
 
 /** Writes deposit `id`, under the fluid as it stands. */
-function lay(writer: StampPassageWriter, node: StampScoreNode<StampPaintRecipeDeposit>, id: string, written: Pick<StampPaintRecipeDeposit, 'geometry' | 'tool' | 'action'> & { mark?: StampMark }) {
+function lay(writer: StampPassageWriter, node: StampApplicationNode, id: string, written: Pick<StampPaintRecipeDeposit, 'geometry' | 'tool' | 'action'> & { mark?: StampMark }) {
   const resist = writer.state.host.resist();
   const deposit: StampPaintRecipeDeposit = {
     kind: 'deposit', name: writer.namer.name(id), provenance: writer.provenance, ...written, mask: writer.state.host.fluid(), ...(resist && { resist }), ...(writer.within && { within: writer.within }),
@@ -169,13 +171,9 @@ function resolvedGeometry({ state }: StampPassageWriter, full: string, geometry:
   return { kind: 'fill', region, ...(laid && { application: laid }), ...(direction !== undefined && { direction }), ...(load && { load }) };
 }
 
-const splitScore = ({ weight, reveal, children }: StampScoreOptions): StampScoreOptions => ({
-  ...(weight !== undefined && { weight }), ...(reveal && { reveal }), ...(children && { children }),
-});
-
 /** A raw op `id`, a singleton application: `write` lays its deposit through the writer bound to it. */
 function rawOp(writer: StampPassageWriter, id: string, options: StampApplicationOptions & { when?: StampCondition; escape?: string }, write: (bound: StampPassageWriter, full: string) => void) {
-  const node = application(writer, id, splitScore(options), 'op'), bound = under(writer, node, id, options.within);
+  const node = application(writer, id), bound = under(writer, node, id, options.within);
   const full = stampDepositId(writer.state.identity, writer.namer.name(id)), { escape } = options;
   if (escape !== undefined && (writer.technique || !escape.trim())) {
     throw new Error(`stamp paint: ${full} escapes ${writer.technique ? `inside the ${writer.technique} technique, whose own ops are no one's escape` : 'with no reason; an escape says why'}`);
@@ -229,14 +227,14 @@ function passageScope(writer: StampPassageWriter): StampPassageScope {
       state.steps.push({ kind: 'wait', until, under: region ? { region } : 'wash', ...(rim !== undefined && { rim }), ...(typeof until === 'string' && until !== 'set' && { authored: true as const }) });
     },
     apply: (id, options, body) => {
-      const node = application(writer, id, splitScore(options), 'apply');
+      const node = application(writer, id);
       body(passageScope(under(writer, node, id, options.within)));
     },
     each: (key, items, body) => {
-      const node = application(writer, key, {}, 'apply'), iteration = under(writer, node, key, undefined);
+      const node = application(writer, key), iteration = under(writer, node, key, undefined);
       for (const item of items) {
         const itemKey = checkedStampIdSegment(item.id);
-        const itemNode = application(iteration, itemKey, {}, 'apply');
+        const itemNode = application(iteration, itemKey);
         body(passageScope({ ...under(iteration, itemNode, itemKey, undefined), namer: writer.namer.item(key, itemKey) }), item);
       }
     },
@@ -246,11 +244,11 @@ function passageScope(writer: StampPassageWriter): StampPassageScope {
 }
 
 /**
- * A technique's options as a call gives them, and how it's made: its `name` (for provenance and messages), default
- * `weight` and child timing, the capabilities it `requires`, the wet `effect` its conditions ask for, its defaults.
+ * How a technique is made: its `name` (for provenance and messages), the capabilities it `requires`, the wet
+ * `effect` its conditions ask for, its defaults.
  */
 export type StampTechniqueSpec = {
-  name: string; weight: number; requires: readonly PaintCapability[]; effect?: StampWetEffectKind; children?: StampChildTiming; defaults?: StampPassageDefaults;
+  name: string; requires: readonly PaintCapability[]; effect?: StampWetEffectKind; defaults?: StampPassageDefaults;
   /** The condition it waits for where a call gives none (a bloom's damp); left out, none. */
   when?: StampCondition;
 };
@@ -298,8 +296,8 @@ export type StampFootprint = {
 export type StampTechniqueHandle = { application: StampApplicationRef; deposits: readonly StampDepositRef[]; footprint: StampFootprint };
 
 /**
- * Makes a technique: an imported function `(p, id, options) => handle`. A call is one application, weighing `weight`
- * unless it says, whatever it lays; it checks what the technique `requires` against the passage's medium, then runs
+ * Makes a technique: an imported function `(p, id, options) => handle`. A call is one application, whatever it
+ * lays; it checks what the technique `requires` against the passage's medium, then runs
  * `expand` with a scope bound to it. Techniques nest: one called on a context's `p` is a child application.
  */
 export function defineStampTechnique<O, H extends object = Record<never, never>>(definition: StampTechniqueSpec & { expand: (context: StampTechniqueContext, options: O) => H }) {
@@ -311,7 +309,7 @@ export function defineStampTechnique<O, H extends object = Record<never, never>>
 function invokeStampTechnique<H extends object>(p: StampPassageScope, spec: StampTechniqueSpec, id: string, options: StampApplicationOptions, expand: (context: StampTechniqueContext) => H): H & StampTechniqueHandle {
   const writer = writers.get(p);
   if (!writer) throw new Error(`stamp paint: ${spec.name} ${id} was called on something that isn't a passage's scope`);
-  const node = application(writer, id, splitScore(options), 'technique', { weight: spec.weight, ...(spec.children && { timing: spec.children }) });
+  const node = application(writer, id);
   const name = writer.namer.name(id), full = stampDepositId(writer.state.identity, name);
   for (const capability of spec.requires) {
     if (capability === 'wet-history' || capability === 'wet-conditions') checkWetHistory(writer.state, `${full}, a ${spec.name},`, capability);
@@ -331,7 +329,7 @@ function invokeStampTechnique<H extends object>(p: StampPassageScope, spec: Stam
     conditioned: (when, write) => conditioned(bound, asked(when), effect, full, write),
   });
   const laid: StampPaintRecipeDeposit[] = [];
-  const collect = (each: StampScoreNode<StampPaintRecipeDeposit>): void => {
+  const collect = (each: StampApplicationNode): void => {
     laid.push(...each.deposits);
     each.children.forEach(collect);
   };
@@ -362,15 +360,10 @@ export function writeStampPassage(host: StampPassageHost, id: string, options: S
   if (rim !== undefined) checkWetHistory(state, `${full}'s rim`);
   if (options.strict) checkWetHistory(state, `${full}'s strict, which holds its wet history's conditions,`);
   checkMerges(state, options.within, full);
-  const root: StampScoreNode<StampPaintRecipeDeposit> = { path: full, score: splitScore(options), kind: 'apply', deposits: [], children: [] };
+  const root: StampApplicationNode = { path: full, deposits: [], children: [] };
   body(passageScope({ state, namer: passageNamer([]), node: root, provenance: [], within: undefined, defaults: options.defaults ?? {} }));
-  const reveals = allocateStampScore(root);
   const history = knockout || state.lifts || (paintMediumCan(host.medium, 'wet-history') && options.wetHistory !== false);
-  const steps = state.steps.flatMap((step): StampPaintRecipeStep[] => {
-    if (step.kind === 'wait') return history ? [step] : [];
-    const reveal = reveals.get(step);
-    return [reveal ? { ...step, reveal } : step];
-  });
+  const steps = state.steps.filter((step) => step.kind === 'deposit' || history);
   const resist = host.resist();
   const common = { id, ...(options.clipTo && { clipTo: options.clipTo }), ...(options.within && { within: options.within }), ...(resist && { resist }) };
   if (!history) return { ...common, wash: null, steps: steps.filter((step): step is StampPaintRecipeDeposit<StampRecipePaint> => step.kind === 'deposit' && step.action.kind === 'paint') };

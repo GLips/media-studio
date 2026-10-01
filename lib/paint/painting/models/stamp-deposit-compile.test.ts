@@ -27,15 +27,11 @@ const brush: StampBrush = {
   falloff: 0, flow: 1,
 };
 
-test('in a recipe, a hand stroke thins by its profile and its reveal slows through the corner', () => {
+test('in a recipe, a hand stroke thins by its profile', () => {
   const [even, handed] = stampPassDeposits(compileStampPaintRecipe(stampPaintRecipe(FLAT, (paint) => paint.group('g', { composite: 'opaque' }, (group) => group.passage('p', {}, (pass) => {
     pass.stroke('even', { brush, well: { paint: { kind: 'color', color: '#000000' } }, size: D, path: corner });
     pass.stroke('hand', { brush, well: { paint: { kind: 'color', color: '#000000' } }, size: D, path: corner, hand: { profile: 'swell', curvature: 0.3 } });
   })))).groups[0].passes[0]);
   assert.ok(even.stamps.every((s) => s.diameter === D));
   assert.ok(handed.stamps[0].diameter < 0.5 * D && nearest(handed.stamps, 400, 0).diameter > 0.9 * D);
-  // The reveal it takes to cross 80 px through the corner against 80 px of the straight before it.
-  const crossing = (stamps: typeof even.stamps) => (nearest(stamps, 400, 40).reveal - nearest(stamps, 360, 0).reveal) / (nearest(stamps, 240, 0).reveal - nearest(stamps, 160, 0).reveal);
-  assert.ok(Math.abs(crossing(even.stamps) - 1) < 0.05);
-  assert.ok(crossing(handed.stamps) > 1.3, `the corner takes ${crossing(handed.stamps)} times as long`);
 });

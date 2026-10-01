@@ -54,15 +54,6 @@
       "acceptedOver": "792c100",
       "adapter": "apple metal-3"
     },
-    "formula/floodFrontShare": {
-      "file": "formula/floodFrontShare.f32",
-      "output": "73c09736bdbefca2f0b9cb050d30041b9300d7c6657de5d8c0a821ea9606ae0a",
-      "inputs": "6524d65ed3025decaa51ca11548d86468e60b2db4d2fa6d2041da4f0eae18cf5",
-      "reason": "vid-117 Phase 0, inputs only: a fill's wash application is renamed flood (washBody→floodBody, washFrontShare→floodFrontShare, outputs as before), a compiled deposit's material moves into its action, a pass says it's dry, a medium carries its wetting. Nothing painted moves: every painting max 0 against 792c100's render (the pigment ones' max 1 against their baselines is 792c100's own, vid-120).",
-      "accepted": "2026-09-30",
-      "acceptedOver": "792c100",
-      "adapter": "apple metal-3"
-    },
     "formula/grainCut": {
       "file": "formula/grainCut.f32",
       "output": "d852956fb229c12c352bad675b80a101398385fbcbedf77259bac0f75424ea1a",
@@ -147,73 +138,73 @@
     "painting/colour-groups": {
       "file": "painting/colour-groups.png",
       "output": "bde06513865dc9dcb85e459916ac306be3052bc887955311a647cddb0db95971",
-      "inputs": "736ae26ef0420da1d9a2b51676a6dd5d7c20474bce4afa9751e3867029943f06",
-      "reason": "vid-114 passage layer step 5: inputs only, the compiled painting carries its paper and mixing (stampPaintRecipe writes against its environment), which the inputs print holds; pixels identical",
+      "inputs": "ca6cacb9f2a0f05184377ff720ba7b519d9c1c28f51d3e23cfb8d721d4e5f670",
+      "reason": "vid-140: painting-in removed. Stamps and flood fronts carry no reveal, so every painting's inputs print changes; strokes-accumulations loses its half-drawn stroke and regions' front flood is drawn whole (both were painting-in states at t 1); the rest are the same pixels",
       "accepted": "2026-10-01",
-      "acceptedOver": "96ca480",
+      "acceptedOver": "1b49397",
       "adapter": "apple metal-3"
     },
     "painting/pigment-crayon": {
       "file": "painting/pigment-crayon.png",
       "output": "000cd132ad1f2796df151ad7b6f0d2461fbade190da9b3caf3bcb6f5a8961fbe",
-      "inputs": "8270d19ea5ef02657c977fc67d5f479018c066499dda3ef50f08acd0e77eac9e",
-      "reason": "vid-114 passage layer step 5: inputs only, the compiled painting carries its paper and mixing (stampPaintRecipe writes against its environment), which the inputs print holds; pixels identical",
+      "inputs": "b10121ae521e5e6e9b1e652cfdd28ba8987ccbe5fdc3db9556a43347d7c246d2",
+      "reason": "vid-140: painting-in removed. Stamps and flood fronts carry no reveal, so every painting's inputs print changes; strokes-accumulations loses its half-drawn stroke and regions' front flood is drawn whole (both were painting-in states at t 1); the rest are the same pixels",
       "accepted": "2026-10-01",
-      "acceptedOver": "96ca480",
+      "acceptedOver": "1b49397",
       "adapter": "apple metal-3"
     },
     "painting/pigment-gouache": {
       "file": "painting/pigment-gouache.png",
       "output": "edbe3666bfc5c42fb109ec6be4abb9a209c4118f2c33e69b5b7338dd673bfedc",
-      "inputs": "7361080783f20efd29fd7aaaf87dcc465c45a9c36adf51cdcf27725f5bfe411c",
-      "reason": "vid-114 passage layer step 5: inputs only, the compiled painting carries its paper and mixing (stampPaintRecipe writes against its environment), which the inputs print holds; pixels identical",
+      "inputs": "953c3c0d24a8839489951eb5621402b23fc60edcd2c2d86abccd0c11e36df4a4",
+      "reason": "vid-140: painting-in removed. Stamps and flood fronts carry no reveal, so every painting's inputs print changes; strokes-accumulations loses its half-drawn stroke and regions' front flood is drawn whole (both were painting-in states at t 1); the rest are the same pixels",
       "accepted": "2026-10-01",
-      "acceptedOver": "96ca480",
+      "acceptedOver": "1b49397",
       "adapter": "apple metal-3"
     },
     "painting/pigment-watercolour": {
       "file": "painting/pigment-watercolour.png",
       "output": "804c638367f7b971fff0937af5e80288568473edeb2bfe057e0072c66f9199cf",
-      "inputs": "c03302b88c13c1318b69e3dc2968974b2996b89f5181df1afaa0b24d034b10dd",
-      "reason": "vid-114 passage layer step 5: inputs only, the compiled painting carries its paper and mixing (stampPaintRecipe writes against its environment), which the inputs print holds; pixels identical",
+      "inputs": "642b60ea0da5edd2f46b69ddb49827fe7daa954a2cb8f098532080c19a9c6465",
+      "reason": "vid-140: painting-in removed. Stamps and flood fronts carry no reveal, so every painting's inputs print changes; strokes-accumulations loses its half-drawn stroke and regions' front flood is drawn whole (both were painting-in states at t 1); the rest are the same pixels",
       "accepted": "2026-10-01",
-      "acceptedOver": "96ca480",
+      "acceptedOver": "1b49397",
       "adapter": "apple metal-3"
     },
     "painting/regions": {
       "file": "painting/regions.png",
-      "output": "0490a54814080c5f7b948972e0e942dad928342c0f6c0b541135207d5ced0cb3",
-      "inputs": "06e7ab340ba6d7defe6a6347f4db69bb1c754299df5c21c4a84a72f3df707768",
-      "reason": "vid-114 passage layer step 5: inputs only, the compiled painting carries its paper and mixing (stampPaintRecipe writes against its environment), which the inputs print holds; pixels identical",
+      "output": "064cd76a1cca83f9d8479838ea67e3d294429a0384f097f00ecda5cf92eb6c00",
+      "inputs": "ef2dfb0a79dde0c8cff9495c8266dfcf80de21e5f8f9a30561066f1b1e6e5279",
+      "reason": "vid-140: painting-in removed. Stamps and flood fronts carry no reveal, so every painting's inputs print changes; strokes-accumulations loses its half-drawn stroke and regions' front flood is drawn whole (both were painting-in states at t 1); the rest are the same pixels",
       "accepted": "2026-10-01",
-      "acceptedOver": "96ca480",
+      "acceptedOver": "1b49397",
       "adapter": "apple metal-3"
     },
     "painting/strokes-accumulations": {
       "file": "painting/strokes-accumulations.png",
-      "output": "b966c30b82ea398f672223552a08a56bf7949b08fce70a837872e3bb3dcc5dc2",
-      "inputs": "20b9fe4f46d5d2e04698d64ee908bd5642ccc3f92466e3dc563dc0047ac0ae86",
-      "reason": "vid-114 passage layer step 5: inputs only, the compiled painting carries its paper and mixing (stampPaintRecipe writes against its environment), which the inputs print holds; pixels identical",
+      "output": "eb4c2eb1d12fdcdd72be01b5194584fd401cbba29abf685a3ec151fa7fb78af2",
+      "inputs": "902fd7b1c6b5b7495f37a761f15377697c645e2ed4f698a26a56df039f1abd41",
+      "reason": "vid-140: painting-in removed. Stamps and flood fronts carry no reveal, so every painting's inputs print changes; strokes-accumulations loses its half-drawn stroke and regions' front flood is drawn whole (both were painting-in states at t 1); the rest are the same pixels",
       "accepted": "2026-10-01",
-      "acceptedOver": "96ca480",
+      "acceptedOver": "1b49397",
       "adapter": "apple metal-3"
     },
     "painting/strokes-duals-edges": {
       "file": "painting/strokes-duals-edges.png",
       "output": "e7524a071ff5922cc93b97cc854166e3c284f4e8b7d57100c100dbf41ae31d13",
-      "inputs": "548273b1d253ea283900e9504702088794a93c47f7ac1fe099e6a1e008def644",
-      "reason": "vid-114 passage layer step 5: inputs only, the compiled painting carries its paper and mixing (stampPaintRecipe writes against its environment), which the inputs print holds; pixels identical",
+      "inputs": "5fb73c277c6cf40d5e83f0ff999c49b5aec2f006d223f6aee1bdea40bae94c8e",
+      "reason": "vid-140: painting-in removed. Stamps and flood fronts carry no reveal, so every painting's inputs print changes; strokes-accumulations loses its half-drawn stroke and regions' front flood is drawn whole (both were painting-in states at t 1); the rest are the same pixels",
       "accepted": "2026-10-01",
-      "acceptedOver": "96ca480",
+      "acceptedOver": "1b49397",
       "adapter": "apple metal-3"
     },
     "painting/strokes-grains": {
       "file": "painting/strokes-grains.png",
       "output": "2bd6658e2a199c017b7816f41d90b448a96ef0936b95e082626e28e81b1d9ad6",
-      "inputs": "433402a92e8591e78082a7e07e8c057b3362f5b8be9b5e738e47c566bc87af48",
-      "reason": "vid-114 passage layer step 5: inputs only, the compiled painting carries its paper and mixing (stampPaintRecipe writes against its environment), which the inputs print holds; pixels identical",
+      "inputs": "f5d92af2398be745eabdcba413b8f6532baa79c2966fcc750c1fe446cae84b2f",
+      "reason": "vid-140: painting-in removed. Stamps and flood fronts carry no reveal, so every painting's inputs print changes; strokes-accumulations loses its half-drawn stroke and regions' front flood is drawn whole (both were painting-in states at t 1); the rest are the same pixels",
       "accepted": "2026-10-01",
-      "acceptedOver": "96ca480",
+      "acceptedOver": "1b49397",
       "adapter": "apple metal-3"
     }
   }

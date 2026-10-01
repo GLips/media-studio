@@ -38,21 +38,20 @@ const STAMP_MEDIA_FILLS: Record<StampBrushMedia, StampFillApplication> = { wet: 
  * deposit built from one), its colour jitter drawn from `full`.
  */
 export function compileDeposit<A extends CompiledStampAction>(
-  full: string, { geometry, tool, action, reveal }: StampPaintRecipeDeposit, compiledAction: (colorDraws: readonly number[]) => A, mask: CompiledStampMask | null, seed: string,
+  full: string, { geometry, tool, action }: StampPaintRecipeDeposit, compiledAction: (colorDraws: readonly number[]) => A, mask: CompiledStampMask | null, seed: string,
   within: readonly CompiledStampArea[] | undefined,
 ): CompiledStampDeposit<A> {
   const { brush, opacity = 1, diameter } = tool;
   if (!(diameter > 0) || !Number.isFinite(diameter)) throw new Error(`stamp paint: ${full} has diameter ${diameter}, and a stamp needs a positive one`);
   if (geometry.kind !== 'fill' && !(geometry.kind === 'stroke' ? geometry.path : geometry.at).length) throw new Error(`stamp paint: ${full} has no points to stamp`);
   if (geometry.kind === 'fill') checkedStampPolygon(geometry.region, full);
-  if (geometry.kind === 'stroke' && geometry.path.some(({ speed }) => speed !== undefined && !(speed > 0))) throw new Error(`stamp paint: ${full} has a point whose speed isn't positive`);
   // Four draws place the grains, four jitter the colour. A boil's epoch draws only its grains afresh: colour is the
   // author's palette, which an epoch mustn't flicker; nor is it a mark's, so it's drawn from the deposit's own ID.
   const jitter = stampDepositDraws(full).slice(4);
   const blend = (action.kind === 'paint' && action.blend) || brush.blend;
   const common = {
     id: full, brush, action: compiledAction(jitter), grainOffset: stampGrainOffsets(brush, seed), diameter, blend, opacity, mask,
-    ...(reveal && { reveal }), ...(within && { within }),
+    ...(within && { within }),
   };
   if (geometry.kind !== 'fill') return { ...common, ...placeStampDeposit(geometry, brush, diameter, seed) };
   const load = stampSeededPaintField(geometry.load ?? { kind: 'constant' as const, value: 1 }, full);

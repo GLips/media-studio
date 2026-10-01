@@ -60,7 +60,7 @@ export type StampGradedWashOptions = StampToolOptions & {
   | { well?: StampWell; load: { along: readonly [StampPoint, StampPoint]; from: number; to: number } }
 );
 export const stampGradedWash = defineStampTechnique<StampGradedWashOptions, { junctions: { readonly [name: string]: readonly StampPoint[] } }>({
-  name: 'gradedWash', weight: 3, requires: [],
+  name: 'gradedWash', requires: [],
   expand: (context, options) => {
     const { p, full, area, well } = context;
     const region = options.region ?? area;
@@ -107,7 +107,7 @@ export type StampGuidedMarksOptions = Omit<StampToolOptions, 'size'> & {
   when?: StampCondition;
 };
 export const stampGuidedMarks = defineStampTechnique<StampGuidedMarksOptions, { marks: readonly StampMark[] }>({
-  name: 'guidedMarks', weight: 2, requires: [],
+  name: 'guidedMarks', requires: [],
   expand: ({ p, full, brush, well, sizeRange, conditioned }, options) => {
     const { perGuide, length, spread = 0, weight, lean, hand = { profile: 'pressFlick' }, anchor, when, opacity } = options;
     const guides = stampCheckedGuides(options.guides, full);
@@ -171,7 +171,7 @@ export function stampFaceValues(faces: readonly StampFormFace[], light: StampFor
 }
 
 export const stampChargedForm = defineStampTechnique<StampChargedFormOptions, { faces: readonly { id: string; light: number; value: StampFormValue }[]; core: readonly (readonly StampPoint[])[] }>({
-  name: 'chargedForm', weight: 4, requires: ['wet-history'],
+  name: 'chargedForm', requires: ['wet-history'],
   when: 'shiny',
   expand: (context, options) => {
     const { p, full, roleWell, conditioned } = context;
@@ -220,7 +220,7 @@ export type StampBlotOptions = StampToolOptions & {
   when?: StampCondition | false;
 };
 export const stampBlot = defineStampTechnique<StampBlotOptions>({
-  name: 'blot', weight: 1, requires: ['lift'],
+  name: 'blot', requires: ['lift'],
   effect: 'lift', when: 'damp',
   expand: ({ p, full, conditioned }, { shapes, repeat = 1, strength, irregular = 0, when, brush, size, opacity }) => {
     if (!(Number.isInteger(repeat) && repeat >= 1)) throw new Error(`stamp paint: ${full} blots ${repeat} times, and a blot presses a whole number from 1`);
@@ -245,7 +245,7 @@ export const stampBlot = defineStampTechnique<StampBlotOptions>({
  */
 export type StampDrawnLineOptions = StampToolOptions & Omit<StampLoadOptions, 'burnish'> & { path: readonly StampStrokePoint[]; hand?: StampStrokeHand; when?: StampCondition };
 export const stampDrawnLine = defineStampTechnique<StampDrawnLineOptions>({
-  name: 'drawnLine', weight: 1, requires: [],
+  name: 'drawnLine', requires: [],
   expand: ({ p, id, conditioned }, { path, hand = { profile: 'taper' }, brush, size, opacity, well, blend, secondaryColor, when }) => {
     conditioned(when, () => p.stroke(id, { path, hand, brush, size, opacity, well, blend, secondaryColor }));
     return {};

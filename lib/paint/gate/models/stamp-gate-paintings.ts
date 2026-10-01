@@ -153,8 +153,7 @@ function strokesDualsEdges(): StampGatePainting {
 }
 
 /**
- * Accumulations: a falling opacity laid in order, and tinted; glaze stamps blurred; build scattered; placed stamps; and
- * a stroke half drawn at `t`.
+ * Accumulations: a falling opacity laid in order, and tinted; glaze stamps blurred; build scattered; placed stamps.
  */
 function strokesAccumulations(): StampGatePainting {
   const falling = stampGateBrush('Falling', {
@@ -171,9 +170,8 @@ function strokesAccumulations(): StampGatePainting {
     pass.stroke('blurred', { brush: blurred, size: 40, well: { paint: color('#305030') }, path: line(20, 300, 90) });
     pass.stroke('scattered', { brush: scattered, size: 30, well: { paint: color('#303080') }, path: line(20, 300, 140) });
     pass.stamps('placed', { brush: falling, size: 30, well: { paint: color('#806030') }, at: [{ x: 40, y: 200 }, { x: 70, y: 205, diameter: 40, rotation: 1 }, { x: 100, y: 195, pressure: 0.3 }] });
-    pass.stroke('half-drawn', { brush: scattered, size: 30, well: { paint: color('#208080') }, path: line(140, 300, 200), reveal: { at: 0, over: 2 } });
   }))));
-  return { painting, width: 320, height: 240, t: 1, images: STAMP_GATE_IMAGES };
+  return { painting, width: 320, height: 240, t: Number.MAX_VALUE, images: STAMP_GATE_IMAGES };
 }
 
 /** Blends over paint, an opaque group over a glaze, a clipped pass, on toothed paper. */
@@ -198,8 +196,8 @@ function colourGroups(): StampGatePainting {
 }
 
 /**
- * Regions on a photographed paper: masking fluid ragged and soft, lifted partly, a pass within an ellipse, a flood
- * graded by its load and another half across its front, a neck thinner than the brush, a hatch and a cross-hatch.
+ * Regions on a photographed paper: masking fluid ragged and soft, lifted partly, a pass within an ellipse, floods
+ * graded by a radial and a linear load, a neck thinner than the brush, a hatch and a cross-hatch.
  */
 function regions(): StampGatePainting {
   const wet = stampGateBrush('Wet', { media: 'wet', flow: 0.6, wetEdges: PHOTOSHOP_POOLING });
@@ -218,7 +216,7 @@ function regions(): StampGatePainting {
     p.group('fronts', { composite: 'glaze', opacity: 1 }, (g) => {
       g.passage('front', {}, (pass) => pass.fill('front', {
         brush: wet, size: 30, application: { kind: 'flood' }, well: { paint: color('#a04030') }, region: { kind: 'ellipse', x: 260, y: 60, radiusX: 50, radiusY: 45 },
-        direction: 0.5, load: { kind: 'linear', from: { x: 210, y: 0, value: 1 }, to: { x: 310, y: 0, value: 0.4 } }, reveal: { at: 0, over: 2 },
+        direction: 0.5, load: { kind: 'linear', from: { x: 210, y: 0, value: 1 }, to: { x: 310, y: 0, value: 0.4 } },
       }));
       g.passage('neck', {}, (pass) => pass.fill('neck', { brush: wet, size: 40, application: { kind: 'flood' }, well: { paint: color('#305030') }, region: stampGatePolygon(10, 230, 50, 230, 55, 130, 60, 230, 110, 230, 110, 238, 10, 238) }));
       g.passage('within', { within: { region: { kind: 'ellipse', x: 160, y: 185, radiusX: 40, radiusY: 25 } } }, (pass) => {
@@ -230,7 +228,7 @@ function regions(): StampGatePainting {
       });
     });
   }));
-  return { painting, width: 320, height: 240, t: 1, images: STAMP_GATE_IMAGES };
+  return { painting, width: 320, height: 240, t: Number.MAX_VALUE, images: STAMP_GATE_IMAGES };
 }
 
 /**

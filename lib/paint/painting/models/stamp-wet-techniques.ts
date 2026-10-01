@@ -32,7 +32,7 @@ export type StampChargeOptions = Omit<StampToolOptions, 'size'> & {
   when?: StampCondition;
 };
 export const stampCharge = defineStampTechnique<StampChargeOptions, { marks: readonly StampMark[] }>({
-  name: 'charge', weight: 1, requires: ['wet-history'], effect: 'charge',
+  name: 'charge', requires: ['wet-history'], effect: 'charge',
   expand: ({ p, full, brush, well, sizeRange, conditioned }, options) => {
     const { placement, touches, length, angle, hand = { profile: 'swell' }, anchor, when } = options;
     if (!(Number.isInteger(touches) && touches >= 1)) throw new Error(`stamp paint: ${full} charges ${touches} touches, and a charge lays a whole number from 1`);
@@ -51,7 +51,7 @@ export const stampCharge = defineStampTechnique<StampChargeOptions, { marks: rea
 /** Water dropped into a drying wash, a bloom: once the paper under the drops is `when` (damp, left out), they land, `amount` (1) each. */
 export type StampBloomOptions = StampToolOptions & { at: readonly StampPlacement[]; amount?: number; when?: StampCondition };
 export const stampBloom = defineStampTechnique<StampBloomOptions>({
-  name: 'bloom', weight: 1, requires: ['wet-history'], effect: 'bloom',
+  name: 'bloom', requires: ['wet-history'], effect: 'bloom',
   when: 'damp',
   expand: ({ p, id, conditioned }, { at, amount, brush, size, opacity, when }) => {
     conditioned(when, () => p.water(id, { kind: 'stamps', at, brush, size, opacity, amount }));
@@ -66,7 +66,7 @@ export const stampBloom = defineStampTechnique<StampBloomOptions>({
  */
 export type StampBackrunOptions = StampToolOptions & { along: readonly StampStrokePoint[]; hand?: StampStrokeHand; amount?: number; when?: StampCondition };
 export const stampBackrun = defineStampTechnique<StampBackrunOptions>({
-  name: 'backrun', weight: 1, requires: ['wet-history', 'wet-conditions'], effect: 'backrun',
+  name: 'backrun', requires: ['wet-history', 'wet-conditions'], effect: 'backrun',
   when: 'damp',
   expand: ({ p, id, conditioned }, { along, hand, amount, brush, size, opacity, when }) => {
     conditioned(when, () => p.water(id, { kind: 'stroke', path: along, hand: hand ?? { profile: 'taper' }, brush, size, opacity, amount }));
@@ -77,7 +77,7 @@ export const stampBackrun = defineStampTechnique<StampBackrunOptions>({
 /** A damp brush drawn `along` an edge to soften it: a water stroke carrying `amount` (STAMP_SOFTEN_WATER when left out). */
 export type StampSoftenOptions = StampToolOptions & { along: readonly StampStrokePoint[]; hand?: StampStrokeHand; amount?: number; when?: StampCondition };
 export const stampSoften = defineStampTechnique<StampSoftenOptions>({
-  name: 'soften', weight: 1, requires: ['wet-history'],
+  name: 'soften', requires: ['wet-history'],
   effect: 'soften',
   expand: ({ p, id, conditioned }, { along, hand, amount = STAMP_SOFTEN_WATER, brush, size, opacity, when }) => {
     conditioned(when, () => p.water(id, { kind: 'stroke', path: along, ...(hand && { hand }), brush, size, opacity, amount }));

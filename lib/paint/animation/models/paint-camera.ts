@@ -6,7 +6,7 @@
 // group, or one with no anchor, never sees the camera.
 //
 // Unless a play holds it, the camera is on ones: each render frame gets a new pose and each plane a new lay, which
-// the renderer's per-group layer cache makes cheap.
+// the renderer's group films make cheap.
 
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { StampGroupFrameState, StampGroupGlow, StampGroupLay, StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';

@@ -14,7 +14,7 @@ import { STAMP_GATE_REGION_IDS, stampGateRegionPaintings } from './stamp-gate-re
 import { STAMP_GATE_WASH_IDS, stampGateWashCase } from './stamp-gate-washes.ts';
 import { stampGateFrameDifference, stampGateFramePasses, type StampGateFrameDifference } from './stamp-gate-frames.ts';
 
-export const STAMP_GATE_STAGE_IDS = ['stage/margin', 'stage/pan', 'stage/layer-cache'];
+export const STAMP_GATE_STAGE_IDS = ['stage/margin', 'stage/pan', 'stage/film-cache'];
 
 /** The margin the stage cases draw with: past any gate painting's reach over its frame's edge, and even. */
 export const STAMP_GATE_STAGE_MARGIN = 48;
@@ -135,8 +135,7 @@ const mixture = (pigment: (typeof W)[keyof typeof W]) => ({ kind: 'mixture' as c
 
 /**
  * Three groups under a camera panning and pushing in, each laid by its depth every frame: a far wash with a bloom
- * boiling on twos (its key's epoch changing), mid strokes painted over frames 1 to 3 and a near flood over 4 and 5
- * (frames drawn before they settle, which a cached layer must not stand for).
+ * boiling on twos (its key's epoch changing), mid strokes and a near flood.
  */
 export function stampGateParallaxPainting(): StampGatePainting {
   const steady = stampGateBrush('Steady', { flow: 0.6 });
@@ -147,11 +146,11 @@ export function stampGateParallaxPainting(): StampGatePainting {
     }));
     p.group('mid', { composite: 'glaze', opacity: 1 }, (g) => g.passage('reeds', { wetHistory: false }, (pass) => {
       for (const [k, x] of [40, 110, 180].entries()) {
-        pass.stroke(`reed${k}`, { brush: steady, size: 10, well: { paint: mixture(W.burntSienna) }, path: [{ x, y: 150 }, { x: x + 8, y: 70 }], reveal: { at: frameAt(1), over: frameAt(2) } });
+        pass.stroke(`reed${k}`, { brush: steady, size: 10, well: { paint: mixture(W.burntSienna) }, path: [{ x, y: 150 }, { x: x + 8, y: 70 }] });
       }
     }));
     p.group('near', { composite: 'opaque' }, (g) => g.passage('leaf', { wetHistory: false }, (pass) => pass.fill('leaf', {
-      brush: steady, size: 20, application: { kind: 'flood' }, well: { paint: mixture(W.phthaloBlue) }, region: { kind: 'ellipse', x: 200, y: 130, radiusX: 40, radiusY: 22 }, reveal: { at: frameAt(4), over: frameAt(1) },
+      brush: steady, size: 20, application: { kind: 'flood' }, well: { paint: mixture(W.phthaloBlue) }, region: { kind: 'ellipse', x: 200, y: 130, radiusX: 40, radiusY: 22 },
     })));
   }));
   const depths = { far: 0.2, mid: 0.6, near: 1 };
@@ -165,11 +164,11 @@ export function stampGateParallaxPainting(): StampGatePainting {
  * Whether every parallax frame one renderer drew in scrambled order, its settled groups' layers from its cache, is the
  * frame a fresh renderer draws, exactly, and the cache stood for some of them (`restores`).
  */
-export function checkStampGateLayerCache(frames: readonly { frame: number; difference: StampGateFrameDifference }[], restores: number): StampGateWashCheck {
+export function checkStampGateFilmCache(frames: readonly { frame: number; difference: StampGateFrameDifference }[], restores: number): StampGateWashCheck {
   const worst = frames.reduce((most, f) => (f.difference.max > most.difference.max ? f : most));
   return {
-    id: 'stage/layer-cache: a frame laying cached layers is the frame drawn fresh, in any order', passed: worst.difference.max === 0 && restores > 0,
+    id: 'stage/film-cache: a frame laying cached films is the frame drawn fresh, in any order', passed: worst.difference.max === 0 && restores > 0,
     detail: `${frames.length} frames in order ${STAMP_GATE_PARALLAX_ORDER.join(',')}: worst frame ${worst.frame}, max ${worst.difference.max}, mean ${worst.difference.mean.toFixed(4)} (past 0 fails); `
-      + `${restores} layers copied back from the cache (none fails)`,
+      + `${restores} films copied back from the cache (none fails)`,
   };
 }

@@ -6,7 +6,7 @@
 import type { StampBlend, StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { FrozenStampMarks, StampTint } from '#lib/paint/brush/models/stamp-placement.ts';
 import { checkedStampPolygon, compileDeposit } from './stamp-deposit-compile.ts';
-import type { StampFloodBody, StampFloodBodyLevels, StampFloodFront } from './stamp-fill.ts';
+import type { StampFloodBody, StampFloodBodyLevels } from './stamp-fill.ts';
 import { stampPaintFieldEnds, stampPaintFieldProblem, stampSeededPaintField, type StampSeededPaintField } from './stamp-paint-field.ts';
 import { compilePaintAction, compileWashAction, type CompiledStampAction, type CompiledStampPaintAction, type StampRecipeWashAction } from './stamp-paint-action.ts';
 import { compileStampArea, stampFluidHolder, stampStandsBeforeExclusions, type CompiledStampArea } from './stamp-area.ts';
@@ -34,11 +34,11 @@ export type CompiledStampMask = {
 } & ({ kind: 'mask'; area: CompiledStampArea } | { kind: 'brushed'; brushed: CompiledStampBrushedMask } | { kind: 'unmask'; amount: number; area: CompiledStampArea | null });
 
 /**
- * A flood's placed body and how its front crosses it (stamp-fill.ts). `tint`: what its brush's stamps average to
+ * A flood's placed body (stamp-fill.ts). `tint`: what its brush's stamps average to
  * (stampExpectedTint), which the body lays as its stamps lay theirs, so where the edge stroke's stamps give out the
  * colour carries on rather than stepping back to the deposit's own.
  */
-export type CompiledStampFlood = StampFloodBody & { load: StampSeededPaintField<number>; levels: StampFloodBodyLevels; tint: StampTint; front: StampFloodFront };
+export type CompiledStampFlood = StampFloodBody & { load: StampSeededPaintField<number>; levels: StampFloodBodyLevels; tint: StampTint };
 
 type CompiledStampDepositCommon<A extends CompiledStampAction> = {
   /** `<group>/<pass>/<deposit>`, unique in the painting: the seed of every stamp in it. */
@@ -53,13 +53,11 @@ type CompiledStampDepositCommon<A extends CompiledStampAction> = {
   opacity: number;
   /** The fluid it lands under. */
   mask: CompiledStampMask | null;
-  /** When it shows, as the score allotted it: from `at` seconds, drawn over `over` (0 lands whole); none, there throughout. */
-  reveal?: { at: number; over: number };
   /** The areas of the applications it was written under, its pass's `within` apart; absent for none. */
   within?: readonly CompiledStampArea[];
-  /** Every stamp of the finished deposit, in reveal order: a flood's are its edge stroke's. */
+  /** Every stamp of the deposit, in the order laid: a flood's are its edge stroke's. */
   stamps: FrozenStampMarks;
-  /** The brush's dual stamps, placed by its own settings along the same stroke, in reveal order; none without one. */
+  /** The brush's dual stamps, placed by its own settings along the same stroke, in the order laid; none without one. */
   dualStamps: FrozenStampMarks;
 };
 
@@ -105,8 +103,8 @@ export type CompiledStampGroup = {
   recolours?: { from: number; to: number };
   /**
    * Absent for a group painted once. `epoch`: which of its boil's paintings this is (0, as written); `reseeded`
-   * compiles this group alone at another epoch, each deposit's randomness drawn afresh and its ID, fluid, colour and
-   * reveal kept, so an epoch reshapes marks but never repaints the palette.
+   * compiles this group alone at another epoch, each deposit's randomness drawn afresh and its ID, fluid and colour
+   * kept, so an epoch reshapes marks but never repaints the palette.
    */
   boil?: StampGroupBoil & { epoch: number; reseeded: (epoch: number) => CompiledStampGroup };
 };
@@ -269,7 +267,7 @@ function stampGroupRecolours(passes: readonly CompiledStampPass[]): CompiledStam
 }
 
 /**
- * Everything a render reads of `painting`, as text: each stamp and draw, reveal, fluid and wash schedule, and each
+ * Everything a render reads of `painting`, as text: each stamp and draw, fluid and wash schedule, and each
  * boiled group's next epoch. Two paintings printing alike paint alike, wetness too, which compileStampWetness works
  * out from nothing else: how a check proves that organising a recipe moved none of it.
  */

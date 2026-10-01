@@ -10,7 +10,7 @@ import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { placeStrokeStamps, stampExpectedTint, stampFrozenMarks, type FrozenStampMarks, type PlacedStamp, type StampPlacementBrush } from '#lib/paint/brush/models/stamp-placement.ts';
 import type { StampPressureCurve } from '#lib/paint/brush/models/stamp-stroke-hand.ts';
 import { STAMP_ACCUMULATIONS } from './stamp-deposit-stages.ts';
-import { placeStampFlood, stampFloodBodyLevels, stampFloodFront, stampFloodProbe, type StampFillApplication } from './stamp-fill.ts';
+import { placeStampFlood, stampFloodBodyLevels, stampFloodProbe, type StampFillApplication } from './stamp-fill.ts';
 import { stampFillStrokePath } from './stamp-fill-strokes.ts';
 import { stampMarkStamps } from './stamp-marks.ts';
 import { stampPaintFieldAt, type StampSeededPaintField } from './stamp-paint-field.ts';
@@ -23,7 +23,7 @@ import type { StampResolvedGeometry } from './stamp-paint-recipe-types.ts';
  */
 export type StampPlacingGeometry = Exclude<StampResolvedGeometry, { kind: 'fill' }> | (Extract<StampResolvedGeometry, { kind: 'fill' }> & { application: StampFillApplication; load: StampSeededPaintField<number> });
 
-/** A deposit's marks, `M`: every stamp in reveal order, its dual's, and a flood's body and front. */
+/** A deposit's marks, `M`: every stamp in the order laid, its dual's, and a flood's body. */
 type StampDepositMarks<M> = { stamps: M; dualStamps: M } & ({ kind: 'stroke' | 'stamps' } | { kind: 'flood'; flood: CompiledStampFlood });
 /** A deposit's marks as compiled paintings share them, frozen. */
 export type StampDepositPlacement = StampDepositMarks<FrozenStampMarks>;
@@ -75,12 +75,11 @@ export function placeStampDeposit(geometry: StampPlacingGeometry, brush: StampBr
 function frozenPlacement(placement: StampDepositMarks<PlacedStamp[]>): StampDepositPlacement {
   const stamps = stampFrozenMarks(placement.stamps), dualStamps = stampFrozenMarks(placement.dualStamps);
   if (placement.kind !== 'flood') return Object.freeze({ kind: placement.kind, stamps, dualStamps });
-  const { flood } = placement, { load, front } = flood;
+  const { flood } = placement, { load } = flood;
   const owned = Object.freeze({
     ...flood,
     polygon: Object.freeze(flood.polygon.map(({ x, y }) => Object.freeze({ x, y }))),
     load: Object.freeze(ownedLoad(load)),
-    front: Object.freeze({ ...front, normal: Object.freeze(front.normal) }),
     box: Object.freeze({ ...flood.box }), levels: Object.freeze({ ...flood.levels }), tint: Object.freeze({ ...flood.tint }), thickness: Object.freeze({ ...flood.thickness }),
   });
   return Object.freeze({ kind: 'flood', flood: owned, stamps, dualStamps });
@@ -99,7 +98,7 @@ function placeNow(geometry: StampPlacingGeometry, brush: StampBrush, diameter: n
     if (application.kind === 'flood') {
       const { body, stamps, dualStamps } = placeStampFlood(region, brush, diameter, direction, seed);
       const levels = stampFloodBodyLevels(STAMP_ACCUMULATIONS[brush.accumulation.kind].towardFull, stampFloodProbe(brush, diameter, `${seed}|probe`));
-      const flood = { ...body, load, levels, tint: stampExpectedTint(brush.color), front: stampFloodFront(body.polygon, [...stamps, ...dualStamps], direction, diameter) };
+      const flood = { ...body, load, levels, tint: stampExpectedTint(brush.color) };
       return { kind: 'flood', flood, stamps, dualStamps };
     }
     const strokes = stampFillStrokePath(region, diameter, direction, application, seed);

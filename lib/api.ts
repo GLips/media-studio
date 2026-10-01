@@ -83,7 +83,6 @@ export type {
 export { defineStampTechnique, type StampApplicationRef, type StampDepositRef, type StampFootprint, type StampTechniqueContext, type StampTechniqueHandle, type StampTechniqueSpec } from '#lib/paint/painting/models/stamp-paint-passage.ts';
 export { stampBlot, stampChargedForm, stampDrawnLine, stampFaceValues, stampGradedWash, stampGuidedMarks, type StampBlotOptions, type StampChargedFormOptions, type StampDrawnLineOptions, type StampFormFace, type StampFormValue, type StampGradedWashOptions, type StampGuidedMarksOptions } from '#lib/paint/painting/models/stamp-technique-catalogue.ts';
 export { STAMP_SOFTEN_WATER, stampBackrun, stampBloom, stampCharge, stampSoften, type StampBackrunOptions, type StampBloomOptions, type StampChargeOptions, type StampSoftenOptions } from '#lib/paint/painting/models/stamp-wet-techniques.ts';
-export type { StampChildTiming, StampReveal, StampScoreOptions } from '#lib/paint/painting/models/stamp-paint-score.ts';
 export { stampSizeToken, type StampSheet, type StampSize, type StampSizeRange, type StampSizeToken } from '#lib/paint/painting/models/stamp-paint-sizes.ts';
 export type { PaintMaterial, StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 export type { StampCondition, StampSheen, StampWaitEffect, StampWashWait, StampWetEffectKind } from '#lib/paint/painting/models/stamp-wash-effects.ts';
@@ -91,7 +90,6 @@ export { stampMarkStamps, stampScatteredStrokePath, stampScatterMarks, type Stam
 export { pickStampMaterial, stampMaterialSet, stampMaterialSetProblem, type StampMaterialSet, type StampMaterialSetEntry } from '#lib/paint/painting/models/stamp-material-set.ts';
 export { compileStampWetness, type StampWetRange } from '#lib/paint/painting/models/stamp-wetness.ts';
 export { assertStampWetEffects, stampWetReport, stampWetReportStrictFailures, stampWetReportWarnings, type StampWetReport, type StampWetReportDrying, type StampWetReportEffect, type StampWetReportTouch, type StampWetReportWait, type StampWetReportWash } from '#lib/paint/painting/models/stamp-wet-report.ts';
-export { visibleStampCountAt } from '#lib/paint/painting/models/stamp-deposit-reveal.ts';
 export { stampRegionOutline, stampSmoothRegion, type StampFillApplication } from '#lib/paint/painting/models/stamp-fill.ts';
 export { STAMP_FILL_PATTERNS, stampFillMarks, stampFillStrokePath, type StampFillGuides, type StampFillMark, type StampFillPattern, type StampFillReach, type StampFillStrokes, type StampFillTurns, type StampGuide } from '#lib/paint/painting/models/stamp-fill-strokes.ts';
 export { stampFittedEllipse, stampRoundedForm, type StampFormEllipse, type StampFormLight, type StampRoundedForm, type StampRoundedFormSettings } from '#lib/paint/painting/models/stamp-form.ts';

@@ -98,33 +98,6 @@ export function stampFloodProbe(brush: StampBrush, diameter: number, seed: strin
 }
 
 /**
- * A fill's front along the normal to `direction`: its paint at (x, y) as a share, 0 ahead and 1 a diameter behind.
- * It runs from `from` to `to`, the ends of all it paints, a scattered stamp's reach past the outline too, so
- * `progress` 0 shows none of it and 1 all.
- */
-export type StampFloodFront = { normal: readonly [number, number]; from: number; to: number; soft: number };
-
-export function stampFloodFront(polygon: readonly StampPoint[], stamps: readonly PlacedStamp[], direction: number, diameter: number): StampFloodFront {
-  const normal = [-Math.sin(direction), Math.cos(direction)] as const;
-  let from = Infinity, to = -Infinity;
-  const reach = (x: number, y: number, r: number) => {
-    const along = x * normal[0] + y * normal[1];
-    from = Math.min(from, along - r);
-    to = Math.max(to, along + r);
-  };
-  for (const { x, y } of polygon) reach(x, y, 0);
-  // A diameter from its centre: past a square tip's corners at any turn.
-  for (const { x, y, diameter: d } of stamps) reach(x, y, d);
-  return { normal, from, to, soft: diameter };
-}
-
-/** The share of a fill's paint at `p` shown with its front (StampFloodFront) at `progress`, in WGSL. */
-export const STAMP_FLOOD_FRONT_SHARE_WGSL = /* wgsl */ `fn floodFrontShare(p: vec2f, normal: vec2f, start: f32, end: f32, soft: f32, progress: f32) -> f32 {
-  let at = start + progress * (end - start + soft);
-  return clamp((at - dot(p, normal)) / soft, 0.0, 1.0);
-}`;
-
-/**
  * How a fill lays its paint. `flood`: a converged body under the brush's edge (placeStampFlood), as wet paint floods a
  * shape; reaching `{ past }`, over the region grown that many diameters (stampGrownPolygon), so a `within` cuts it
  * solid to its own edge. `strokes`: real strokes of the brush in a pattern, as a crayon or a pencil fills one

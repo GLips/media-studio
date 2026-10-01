@@ -87,9 +87,6 @@ function renderingGrids(): StampGateFormulaGrid[] {
   const edgeCoverage = steps(64).map((u) => u * 12 - 6).flatMap((sd) => [1, 4, 12.5].map((width) => ({ label: `sd ${sd} width ${width}`, inputs: [sd, width] })));
   const edgeNoise = [-3.5, 0, 0.25, 1.5, 7.75, 100.125].flatMap((x) => [-40.5, 0, 0.75, 3.25, 250.5].flatMap((y) => [0, 12345, 4000000].map((seed) => ({ label: `x ${x} y ${y} seed ${seed}`, inputs: [x, y, seed] }))));
   const floodBody = steps(64).map((u) => u * 64 - 8).flatMap((sd) => [2, 10, 20, 37.5, 60].map((thickness) => ({ label: `sd ${sd} thickness ${thickness} c 25`, inputs: [sd, thickness, 25] })));
-  const floodFrontShare = ([[0, 1], [1, 0], [-0.6, 0.8]] as const).flatMap((normal) => [0, 0.25, 0.5, 1].flatMap((progress) => [0, 120.5, 300].flatMap((x) => [0, 80, 260.25].map((y) => ({
-    label: `normal ${normal.join(',')} progress ${progress} at ${x},${y}`, inputs: [x, y, normal[0], normal[1], -20, 280, 50, progress],
-  })))));
   const settle = UNIT.flatMap((h) => [0.25, 0.5].flatMap((mean) => COARSE.flatMap((depth) => [0, 0.5].flatMap((granulation) => [0.25, 1].map((load) => ({
     label: `h ${h} mean ${mean} depth ${depth} granulation ${granulation} load ${load}`, inputs: [h, mean, depth, granulation, load],
   }))))));
@@ -104,7 +101,6 @@ function renderingGrids(): StampGateFormulaGrid[] {
     baselineGrid('edgeCoverage', 'edgeCoverage(x(0), x(1))', 2, edgeCoverage),
     baselineGrid('edgeNoise', 'edgeNoise(x(0), x(1), u32(x(2)))', 3, edgeNoise),
     baselineGrid('floodBody', 'floodBody(x(0), x(1), x(2))', 3, floodBody),
-    baselineGrid('floodFrontShare', 'floodFrontShare(vec2f(x(0), x(1)), vec2f(x(2), x(3)), x(4), x(5), x(6), x(7))', 8, floodFrontShare),
     baselineGrid('paintWetSettle', 'paintWetSettle(paintValley(x(0), x(1)), x(2), x(3), x(4))', 5, settle),
     baselineGrid('paintDryContact', 'paintDryContact(x(0), x(1), x(2), x(3), x(4), x(5))', 6, contact),
     baselineGrid('paintClumps', 'paintClumps(x(0), x(1), x(2), u32(x(3)))', 4, clumps),

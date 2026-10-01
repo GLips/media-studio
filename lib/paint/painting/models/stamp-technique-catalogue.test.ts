@@ -112,7 +112,7 @@ test("an author's raw op may say why it escapes the techniques, which its deposi
   const { deposits } = written((p) => p.stroke('accent', { path: [{ x: 0, y: 0 }, { x: 50, y: 0 }], well: { paint: mixture('quinacridoneRose') }, escape: 'one warm accent no technique lays' }));
   assert.equal(deposits[0].escape, 'one warm accent no technique lays');
   assert.throws(() => written((p) => p.stroke('accent', { path: [{ x: 0, y: 0 }, { x: 50, y: 0 }], well: { paint: mixture('quinacridoneRose') }, escape: ' ' })), /with no reason/);
-  const sneaky = defineStampTechnique<object>({ name: 'sneaky', weight: 1, requires: [], expand: ({ p }) => (p.stroke('line', { path: [{ x: 0, y: 0 }, { x: 50, y: 0 }], well: { paint: mixture('quinacridoneRose') }, escape: 'mine' }), {}) });
+  const sneaky = defineStampTechnique<object>({ name: 'sneaky', requires: [], expand: ({ p }) => (p.stroke('line', { path: [{ x: 0, y: 0 }, { x: 50, y: 0 }], well: { paint: mixture('quinacridoneRose') }, escape: 'mine' }), {}) });
   assert.throws(() => written((p) => sneaky(p, 'it', {})), /inside the sneaky technique/);
 });
 

@@ -4,9 +4,9 @@
 // checks and places.
 //
 // A recipe is ordered groups of ordered passages, each one physical history, of deposits under the masking fluid
-// declared before each; a passage with wet history may wet, lift and wait for its paint to set. Scene time says when
-// a deposit shows (stamp-paint-score.ts); painting time, advanced by waits and conditions, how wet the paper was as
-// it landed (stamp-wetness.ts).
+// declared before each; a passage with wet history may wet, lift and wait for its paint to set. A painting is whole at
+// every scene time: painting time, advanced by waits and conditions, says only how wet the paper was as each deposit
+// landed (stamp-wetness.ts).
 
 import type { PaintMaterial, StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampBlend, StampBrush, StampBrushAsset } from '#lib/paint/brush/models/stamp-brush.ts';
@@ -23,7 +23,6 @@ import type { StampMaterialSet } from './stamp-material-set.ts';
 import type { StampMark } from './stamp-marks.ts';
 import type { StampDepositName } from './stamp-deposit-identity.ts';
 import type { StampPaintMixing, StampPigmentMixing } from './stamp-pigment-paint.ts';
-import type { StampAllocatedReveal, StampChildTiming, StampReveal, StampScoreOptions } from './stamp-paint-score.ts';
 import type { StampSheet, StampSize } from './stamp-paint-sizes.ts';
 import type { StampCondition, StampSheen, StampWrittenWait } from './stamp-wash-effects.ts';
 
@@ -71,8 +70,8 @@ export type StampWell = { paint: StampPaintMaterial | StampMaterialSet; water?: 
  */
 export type StampPassageDefaults = { brush?: StampBrush; well?: StampWell; size?: StampSize; wells?: { readonly [role: string]: StampWell } };
 
-/** What every application takes: its place in the score, and an area its deposits land within besides its passage's. */
-export type StampApplicationOptions = StampScoreOptions & {
+/** What every application takes: an area its deposits land within besides its passage's. */
+export type StampApplicationOptions = {
   /**
    * Narrows where this application's deposits land, within its passage's `within` and its enclosing applications':
    * a stretch it merges opens its own edge only, never theirs.
@@ -111,15 +110,15 @@ export type StampStrokeGeometry = {
   /**
    * How a hand paints the path: a pressure profile, pressure and speed from its turns, and wobble (stamp-stroke-hand.ts),
    * composed with any pressure its points carry, and seeded by the deposit's ID. Left out, the points' pressure is all
-   * there is and the stroke reveals at an even pace.
+   * there is.
    */
   hand?: StampStrokeHand;
 };
 export type StampPlacementGeometry = { at: readonly StampPlacement[] };
 /**
  * Over `region`, its passage's `area` when left out, reaching its edges (stamp-fill.ts). `application`: a flood or
- * strokes, by default as its brush's media lays it. `direction`: radians its rows run along (0: left to right); a
- * drawn fill reveals across them. `load`: how much it lays, 0..1, across the region (1 when left out).
+ * strokes, by default as its brush's media lays it. `direction`: radians its rows run along (0: left to right), laid
+ * one after another across them. `load`: how much it lays, 0..1, across the region (1 when left out).
  */
 export type StampFillGeometry = { region?: StampRegion; application?: StampFillApplication; direction?: number; load?: StampPaintField<number> };
 /** Where a deposit goes: along a stroke, at placements, or over a region. */
@@ -209,9 +208,6 @@ export type StampPassageOptions = {
   preparation?: StampPreparation;
   /** 0..2, 1 the medium's: how strongly each drying rims, its end's too, unless its wait('set') says. */
   rim?: number;
-  /** No reveal here or on an application means it's static: there from the scene's start. */
-  reveal?: StampReveal;
-  children?: StampChildTiming;
   defaults?: StampPassageDefaults;
   /**
    * `false`: in a medium with wet history, this passage keeps none. Its paint lands by the direct law, with no flow,
@@ -231,7 +227,7 @@ export type StampKnockoutOptions = { preparation?: Exclude<StampPreparation, 'ar
 /**
  * Masks and unmasks, in any scope. Each changes the fluid for what's declared after it in its scope and the scopes
  * inside it; leaving a group or passage puts back the fluid it began with, so an element's reserve never leaks into
- * the next (an application never does). Masks aren't applications: they take no weight and no reveal.
+ * the next (an application never does). Masks aren't applications.
  */
 export type StampMasking = { mask: (id: string, settings: StampMaskSettings) => void; unmask: (id: string, settings: StampUnmaskSettings) => void };
 
@@ -260,8 +256,7 @@ export type StampPassageWait = {
 };
 
 /**
- * A passage's scope. Raw ops are singleton applications, each one deposit whose ID is unique in its passage, timed
- * by the score. Water, a lift, a condition and a state wait need the passage's history, and its medium's capability.
+ * A passage's scope. Raw ops are singleton applications, each one deposit whose ID is unique in its passage. Water, a lift, a condition and a state wait need the passage's history, and its medium's capability.
  */
 export type StampPassageScope = StampMasking & {
   mark: (id: string, options: StampMarkPaintOptions) => void;
@@ -272,8 +267,8 @@ export type StampPassageScope = StampMasking & {
   lift: (id: string, options: StampLiftOptions) => void;
   wait: StampPassageWait;
   /**
-   * Organises calls under one application: one share of the score, one provenance node. Changes nothing else: no
-   * identity, random draw or mask lifetime, and with no score options of its own, no interval.
+   * Organises calls under one application: one provenance node, narrowing where they land by its `within`. Changes
+   * nothing else: no identity, random draw or mask lifetime.
    */
   apply: (id: string, options: StampApplicationOptions, body: (p: StampPassageScope) => void) => void;
   /**
@@ -311,8 +306,6 @@ export type StampPaintRecipeDeposit<A extends StampRecipeWashAction = StampRecip
   mask: StampPaintRecipeMask;
   /** Its group's wax as it was written; absent for none. */
   resist?: NonNullable<StampPaintRecipeResist>;
-  /** When it shows, as the score allotted it; absent, it's there from the start. */
-  reveal?: StampAllocatedReveal;
   /** The areas of the applications it was written under, outermost first; absent for none. Deposits of one share it. */
   within?: readonly StampDepositWithin[];
   /** The mark it's built from, whose key places it; absent for a deposit placed from its own ID. */

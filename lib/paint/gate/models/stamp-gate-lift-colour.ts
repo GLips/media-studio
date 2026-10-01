@@ -61,12 +61,12 @@ function stampGateLiftColourPainting(medium: StampGateLiftColourMedium, dried: b
   const painting = compileStampPaintRecipe(stampPaintRecipe({ paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA[medium], pigments: W } }, (p) => p.group('tints', { composite: 'glaze', opacity: 1 }, (g) => g.passage('wash', {}, (wash) => {
     TINTS.forEach((t, r) => {
       const { y0, y1 } = ROW(r);
-      wash.fill(`tint-${r}`, { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(4, y0, 196, y0, 196, y1, 4, y1), well: { paint: tint(t) }, reveal: { at: 0, over: 1 } });
+      wash.fill(`tint-${r}`, { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(4, y0, 196, y0, 196, y1, 4, y1), well: { paint: tint(t) } });
     });
     if (dried) wash.wait('set');
     STAMP_GATE_LIFT_STRENGTHS.forEach((strength, k) => {
       const [x0, x1] = COLUMNS[k + 1];
-      wash.lift(`lift-${k}`, { kind: 'stroke', brush: ROUND, size: 36, path: [{ x: (x0 + x1) / 2, y: 0 }, { x: (x0 + x1) / 2, y: 122 }], strength, reveal: { at: 1, over: 1 } });
+      wash.lift(`lift-${k}`, { kind: 'stroke', brush: ROUND, size: 36, path: [{ x: (x0 + x1) / 2, y: 0 }, { x: (x0 + x1) / 2, y: 122 }], strength });
     });
   }))));
   return { painting, ...SIZE, t: Number.MAX_VALUE, images: STAMP_GATE_IMAGES };
@@ -84,8 +84,8 @@ function meanLinear(rgba: ArrayLike<number>, width: number, { x0, x1, y0, y1 }: 
 }
 
 /** The gate case painting the lifted tints and reading its frame, so the painting and its reading share one layout. */
-export function stampGateLiftColourCase(id: string, mid: number, medium: StampGateLiftColourMedium, dried: boolean): StampGateWashCase {
-  return { id, mid, property: 'frame', subject: stampGateLiftColourPainting(medium, dried), read: (rgba) => checkStampGateLiftColour(id, rgba) };
+export function stampGateLiftColourCase(id: string, medium: StampGateLiftColourMedium, dried: boolean): StampGateWashCase {
+  return { id, property: 'frame', subject: stampGateLiftColourPainting(medium, dried), read: (rgba) => checkStampGateLiftColour(id, rgba) };
 }
 
 /** Whether every tint in `rgba` holds STAMP_GATE_LIFT_PALER lift by lift. */

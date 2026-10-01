@@ -1,6 +1,7 @@
 // stamp-paint-surface.ts: what lasts while one output shows stamp paintings, so a new painting loads only its own
 // (stamp-paint-renderer.ts): the device (its own, or lent) and where frames go (a canvas, or a handed texture), the
-// images, each tip's mip levels and hulls, modules, pipelines and samplers, and the targets.
+// images, each tip's mip levels and hulls, modules, pipelines and samplers, the targets, and the GPU cache
+// (stamp-paint-gpu-cache.ts). A surface is its device's one owner of stamp painting's resources.
 //
 // A painting's buffers and textures go in a scope (StampPaintGpuScope) freed with it. Targets are shared: a frame
 // never depends on what an earlier one left in them (vid-117's rule), whichever painting drew it. Error scopes wrap
@@ -8,6 +9,7 @@
 
 import type { StampBrushAsset } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampTipHull, type StampTipHull, type StampTipLevel } from '../models/stamp-tip-hull.ts';
+import { stampPaintGpuCache, type StampPaintGpuCache } from './stamp-paint-gpu-cache.ts';
 import {
   createStampPaintDevice, fetchStampPaintBitmaps, readStampTipLevels, type StampPaintDevice, type StampPaintImage, uploadStampPaintBitmaps, uploadStampPaintGreyImages,
 } from './stamp-paint-gpu.ts';
@@ -47,6 +49,8 @@ export type StampPaintSurface = {
   tipLevels: (tip: StampPaintImage) => Promise<StampTipLevel[]>;
   /** `tip`'s hull at mip level `coarsest`, once its levels are read (tipLevels). */
   tipHull: (tip: StampPaintImage, coarsest: number) => StampTipHull;
+  /** What frames keep between them on the device, under one budget: films, pictures, pictures blurred. */
+  cache: StampPaintGpuCache;
   /** The texture `descriptor` makes, made once a surface for each `name` (its role): a painting's targets. */
   target: (name: string, descriptor: GPUTextureDescriptor) => GPUTexture;
   dispose: () => void;
@@ -110,6 +114,7 @@ export async function createStampPaintSurface(output: StampPaintSurfaceOutput, i
   const levels = new Map<StampPaintImage, Promise<StampTipLevel[]>>(), levelsRead = new Map<StampPaintImage, StampTipLevel[]>();
   const hulls = new Map<StampPaintImage, Map<number, StampTipHull>>();
   const targets = new Map<string, GPUTexture>();
+  const cache = stampPaintGpuCache(device);
 
   return {
     width, height, device, format, frameTexture,
@@ -153,6 +158,7 @@ export async function createStampPaintSurface(output: StampPaintSurfaceOutput, i
       if (!byLevel.has(coarsest)) byLevel.set(coarsest, stampTipHull(levelsRead.get(tip)!, coarsest));
       return byLevel.get(coarsest)!;
     },
+    cache,
     target: (name, descriptor) => {
       // Kept by shape too: paintings of other palettes may take turns on one surface, each binding its own.
       const key = `${name}|${JSON.stringify(descriptor)}`;
@@ -164,6 +170,7 @@ export async function createStampPaintSurface(output: StampPaintSurfaceOutput, i
       return texture;
     },
     dispose: () => {
+      cache.dispose();
       surfaceGpu.destroy();
       release();
     },

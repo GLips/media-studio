@@ -1,8 +1,8 @@
 // stamp-placement.ts: where each stamp of a deposit lands, how big, turned how far and how much paint it carries.
 //
 // Each stamp's randomness comes from its own stream, keyed by the deposit's seed and the stamp's index, so a stamp
-// never depends on how many stamps come before or after it. That is what makes a stroke's reveal a true prefix: the
-// stamps shown partway through are the same stamps, in the same places, as the finished stroke's.
+// never depends on how many stamps come before or after it: a boil's epoch or a live pose re-places a stroke's
+// stamps without one moving another.
 
 import { lerp } from '#lib/picture/motion/models/motion.ts';
 import { seededRandom, seededRandomAfter } from '#lib/picture/motion/models/random.ts';
@@ -12,11 +12,10 @@ import {
 } from './stamp-dynamics.ts';
 
 /**
- * A stroke's point in painting pixels. `pressure` 0..1 and `speed` (the hand's, relative, positive; a reveal lingers
- * where it's slow) default to 1. `lift`: no stamp lands since the point before, though length, reveal and taper
- * count the gap; still one deposit, so its parts never build on each other.
+ * A stroke's point in painting pixels. `pressure` 0..1 defaults to 1. `lift`: no stamp lands since the point
+ * before, though length and taper count the gap; still one deposit, so its parts never build on each other.
  */
-export type StampStrokePoint = { x: number; y: number; pressure?: number; speed?: number; lift?: boolean };
+export type StampStrokePoint = { x: number; y: number; pressure?: number; lift?: boolean };
 
 /** A stamp the author places by hand: its own diameter and turn, or the deposit's. */
 export type StampPlacement = { x: number; y: number; diameter?: number; rotation?: number; pressure?: number };
@@ -57,11 +56,6 @@ export type PlacedStamp = {
    * lightness each −1..1, and the share of the deposit's secondary colour, 0..1. Zero for a brush without them.
    */
   tint: StampTint;
-  /**
-   * The deposit's progress, 0..1, at which this stamp appears: the fraction of the stroke's length it sits at, or of
-   * the placements before it. Stamps come in this order.
-   */
-  reveal: number;
 };
 
 export type StampTint = { hue: number; saturation: number; lightness: number; secondary: number };
@@ -133,7 +127,7 @@ const depositTurn = (brush: StampPlacementBrush, seed: string) => (brush.rotatio
  * authored stamp).
  */
 /** `full`: the size a spread of it folds back under. */
-type StampPlace = { x: number; y: number; size: number; full: number; turn: number; taperOpacity: number; fade: number; grainTurn: number; reveal: number };
+type StampPlace = { x: number; y: number; size: number; full: number; turn: number; taperOpacity: number; fade: number; grainTurn: number };
 
 /** The one rule a stamp is built by, placed along a stroke or by the author: its place, then its context's dynamics. */
 function buildStamp(place: StampPlace, stamp: StampContext, brush: StampPlacementBrush, startTurn: number): PlacedStamp {
@@ -154,7 +148,6 @@ function buildStamp(place: StampPlace, stamp: StampContext, brush: StampPlacemen
     grainDepthByPressure: stampPressureShare(dynamics, 'grainDepth', stamp),
     pressure: 1 - stamp.pressureThrough * (1 - stamp.pressure),
     tint: tintOf(brush.color, draws, stamp.pressure),
-    reveal: place.reveal,
   };
 }
 
@@ -181,7 +174,6 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
   const lengths = [0];
   for (let i = 1; i < path.length; i++) lengths.push(lengths[i - 1] + Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y));
   const length = lengths.at(-1)!;
-  const reveal = revealAlong(path, lengths);
   const headings = segmentHeadings(path), initialHeading = headings[0] ?? 0;
   const { countGrowth, distribution } = brush.scatter;
   const count = Math.max(1, Math.round(brush.scatter.count * (countGrowth ? (diameter / countGrowth.diameter) ** countGrowth.exponent : 1)));
@@ -211,7 +203,7 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
       heading: headings[Math.min(segment, headings.length - 1)] ?? 0, initialHeading, step: index, distance: arc, countDraw: 0,
     };
     const size = diameter * lerp(taper.size, 1, ramp) * stampStepShare(dynamics, 'size', step);
-    return { along, segment, k, a, b, ramp, size, step, lifted: b.lift === true && k > 0 && k < 1 };
+    return { k, a, b, ramp, size, step, lifted: b.lift === true && k > 0 && k < 1 };
   };
   const places: ReturnType<typeof at>[] = [];
   if (brush.stepping === 'spread') {
@@ -229,7 +221,7 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
     }
   }
   const stamps: PlacedStamp[] = [];
-  places.forEach(({ along, segment, k, a, b, ramp, size, step: where, lifted }, i) => {
+  places.forEach(({ k, a, b, ramp, size, step: where, lifted }, i) => {
     const fade = (1 - brush.falloff) ** (where.distance / diameter / FALLOFF_SPAN);
     // The count draw is the step's own stream's, drawn only for a brush whose count reads it.
     const step: StampStepContext = { ...where, countDraw: dynamics.count?.random ? streamOf(`${i}|count`)() : 0 };
@@ -248,23 +240,10 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
         y: lerp(a.y, b.y, k) + Math.cos(step.heading) * lateral + Math.sin(scatterTurn) * scatterReach,
         size, full: diameter, turn: 0, taperOpacity: lerp(taper.opacity, 1, ramp), fade,
         grainTurn: brush.grain?.kind === 'rolling' ? step.heading * brush.grain.rotation : 0,
-        reveal: reveal(segment, k, along),
       }, { ...step, stamp: c, draws }, brush, startTurn));
     }
   });
   return stamps;
-}
-
-/**
- * A stroke's reveal at a place on it (segment `segment`, `k` of the way along it, `along` of the whole length): the
- * share of the hand's travel time spent reaching it, from its points' speeds. Without speeds that's `along` itself.
- */
-function revealAlong(path: readonly StampStrokePoint[], lengths: readonly number[]): (segment: number, k: number, along: number) => number {
-  if (!path.some((point) => point.speed !== undefined)) return (_segment, _k, along) => along;
-  const times = [0];
-  for (let i = 1; i < path.length; i++) times.push(times[i - 1] + (lengths[i] - lengths[i - 1]) / (((path[i - 1].speed ?? 1) + (path[i].speed ?? 1)) / 2));
-  const total = times.at(-1)!;
-  return (segment, k) => (total > 0 ? lerp(times[segment], times[Math.min(segment + 1, path.length - 1)], k) / total : 0);
 }
 
 /** The author's placements in order, each a step of its own under the brush's dynamics, seeded by `seed`. */
@@ -277,7 +256,6 @@ export function placeAuthoredStamps(at: readonly StampPlacement[], brush: StampP
       y: placement.y,
       size: (placement.diameter ?? diameter) * stampStepShare(brush.dynamics, 'size', step), full: placement.diameter ?? diameter,
       turn: placement.rotation ?? 0, taperOpacity: 1, fade: 1, grainTurn: 0,
-      reveal: at.length > 1 ? i / (at.length - 1) : 0,
     }, { ...step, stamp: 0, draws: drawStampSlots(seededRandom(`${seed}|${i}|0`), 'authored') }, brush, startTurn);
   });
 }

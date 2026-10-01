@@ -10,7 +10,6 @@ import { PAINT_KUBELKA_MUNK_WGSL } from '#lib/paint/materials/models/paint-kubel
 import { PAINT_PAPER_WGSL } from '#lib/paint/materials/models/paint-paper.ts';
 import { COVERAGE_FORMULAS_WGSL } from '#lib/paint/brush/models/coverage-formulas.ts';
 import { STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL } from '#lib/paint/painting/models/stamp-deposit-stages.ts';
-import { STAMP_FLOOD_FRONT_SHARE_WGSL } from '#lib/paint/painting/models/stamp-fill.ts';
 import { STAMP_PAINT_FIELD_SHARE } from '#lib/paint/painting/models/stamp-paint-field.ts';
 import { stampPassDeposits, type CompiledStampDeposit, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { STAMP_WET_LAND_WGSL } from '#lib/paint/painting/models/stamp-wet-landing.ts';
@@ -75,7 +74,6 @@ ${STAMP_ACCUMULATION_LAY_WGSL}
 ${STAMP_ACCUMULATION_RESOLVE_WGSL}
 ${STAMP_REGION_WGSL}
 ${STAMP_PAINT_FIELD_SHARE.wgsl}
-${STAMP_FLOOD_FRONT_SHARE_WGSL}
 ${STAMP_WET_LAND_WGSL}
 ${STAMP_WET_LIFT_WGSL}
 @group(0) @binding(0) var<storage, read> inputs: array<f32>;
@@ -196,22 +194,21 @@ async function traceStampGate(): Promise<{ worst: number; mean: number; ordinary
 }
 
 /**
- * Wash case `id`: its frames the same whichever came first, and, against the same painting without the ops under
+ * Wash case `id`: its frame the same drawn twice, and, against the same painting without the ops under
  * test, its pigment conserved or its lift bounded, read from the last group's layer at its end.
  */
 async function checkStampGateWash(id: string): Promise<StampGateWashCheck[]> {
-  const washCase = stampGateWashCase(id), { subject, mid } = washCase, url = drawnImages(subject);
+  const washCase = stampGateWashCase(id), { subject } = washCase, url = drawnImages(subject);
   const end = subject.t;
   const painted = await withGateRenderer(subject, url, async (renderer, frame) => ({
-    end: await drawn(renderer, frame, end), mid: await drawn(renderer, frame, mid), again: await drawn(renderer, frame, end), layer: await renderer.readLayer({ t: end }),
+    end: await drawn(renderer, frame, end), again: await drawn(renderer, frame, end), layer: await renderer.readLayer({ t: end }),
   }));
-  const fresh = await withGateRenderer(subject, url, (renderer, frame) => drawn(renderer, frame, mid));
-  const ends = stampGateFrameDifference(painted.end, painted.again), mids = stampGateFrameDifference(fresh, painted.mid);
+  const ends = stampGateFrameDifference(painted.end, painted.again);
   const checks: StampGateWashCheck[] = [{
-    id: `${id}: any frame order`, passed: stampGateFramePasses(ends) && stampGateFramePasses(mids),
-    detail: `its end drawn again after ${mid} s: max ${ends.max}, mean ${ends.mean.toFixed(4)}; ${mid} s drawn fresh against after its end: max ${mids.max}, mean ${mids.mean.toFixed(4)}`,
+    id: `${id}: drawn again`, passed: stampGateFramePasses(ends),
+    detail: `its end drawn again: max ${ends.max}, mean ${ends.mean.toFixed(4)}`,
   }];
-  if (washCase.property === 'order') return checks;
+  if (washCase.property === 'drawn') return checks;
   if (washCase.property === 'frame') return [...checks, washCase.read(painted.end)];
   const pigments = stampGateLastGroupPigments(subject);
   if (washCase.property === 'fenced') return [...checks, checkStampGateFenced(id, pigments, painted.layer, washCase.fenced)];
@@ -319,7 +316,7 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
     const unbent = await (['own', 'ground'] as const).reduce<Promise<{ warped: Uint8ClampedArray; still: Uint8ClampedArray }[]>>(async (done, paper) => [
       ...await done, { warped: await firstFrame(stampGateCutOutPainting(paper, 'still-warp')), still: await firstFrame(stampGateCutOutPainting(paper, 'still')) },
     ], Promise.resolve([]));
-    // The bend and the other bend on one renderer, the other's lattice and checkpoints warm under another key; then fresh.
+    // The bend and the other bend on one renderer, the other's lattice and films warm under another key; then fresh.
     const bend = stampGateBendPainting(STAMP_GATE_BEND.shift), other = stampGateBendPainting(-STAMP_GATE_BEND.shift);
     const bent = await withGateRenderer(bend, drawnImages(bend), async (renderer, frame) => {
       const atFirst = await drawn(renderer, frame, 0, bend.frameAt?.(0)), cached = await drawn(renderer, frame, 0, other.frameAt?.(0));
@@ -332,11 +329,11 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
     return checkStampGateHalfPixel({ still: await firstFrame(stampGateHalfPixelPainting(false)), shifted: await firstFrame(stampGateHalfPixelPainting(true)) });
   }
   if (id === 'animation/live') {
-    // The rest frame first, so the live frame restores the sky from a checkpoint the painting as written saved.
+    // The rest frame first, so the live frame lays the sky from the film the painting as written kept.
     const rest = stampGateLivePainting();
     const frames = await withGateRenderer(rest, drawnImages(rest), async (renderer, frame) => {
       const atRest = await drawn(renderer, frame, 0), live = await drawn(renderer, frame, 0, stampGateLiveState());
-      // The same key again restores the live frame from the checkpoint it saved.
+      // The same key again lays the live group from the film it kept.
       const held = await drawn(renderer, frame, 0, stampGateLiveState());
       return { rest: atRest, live, held, again: await drawn(renderer, frame, 0) };
     });

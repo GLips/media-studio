@@ -3,7 +3,7 @@
 // images, pipelines, targets) lasts while it's mounted at one size. A frame is held until WebGPU has checked its draw
 // for errors, never for the drawing itself: the screenshot waits for the GPU.
 //
-// A new painting object loads anew, with no checkpoints: a group that moves, boils, recolours, bends or is drawn live
+// A new painting object loads anew, with no films kept: a group that moves, boils, recolours, bends or is drawn live
 // does so within one painting, through `frame` (its frame state), which reloads nothing. The painting carries its
 // paper and mixing, as its recipe was written against them.
 

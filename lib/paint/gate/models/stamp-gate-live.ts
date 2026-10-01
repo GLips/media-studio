@@ -58,7 +58,7 @@ export const stampGateLiveState = (): StampPaintFrameState => new Map([['sac', {
 
 /**
  * Whether the rest painting with its sac live and posed draws the posed painting's frame (`live` against `posed`); drawn
- * at the same live key again, restored from its checkpoint, exactly that (`held`); and drawn as written after, its
+ * at the same live key again, laid from its film, exactly that (`held`); and drawn as written after, its
  * first frame again (`again` against `rest`); and whether the pose moved anything, so the check bites.
  */
 export function checkStampGateLive({ rest, live, held, again, posed }: { rest: Rgba; live: Rgba; held: Rgba; again: Rgba; posed: Rgba }): StampGateWashCheck {

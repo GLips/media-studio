@@ -1,10 +1,9 @@
 // paint-motion-compile.ts: a scene's motion as written (a node per group that moves, plays of clips on them) checked
 // and compiled over the painting it moves. What the painting already says is read from it, never restated: each
-// node's painted box (where folds are checked) and its group's reveal end (where its boil starts). Each node's plays
-// are filed in lanes typed by what they write: a lane per pin, its sway, its flutter, its placement.
+// node's painted box (where folds are checked). Each node's plays are filed in lanes typed by what they write: a lane
+// per pin, its sway, its flutter, its placement.
 //
-// Revealing and boiling are per group: a group boils from its last deposit's reveal end. Strokes that should boil
-// apart go in groups of their own.
+// Boiling is per group: strokes that should boil apart go in groups of their own.
 
 import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { StampGroupGlow, StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
@@ -14,8 +13,8 @@ import type { PaintAnchor, PaintCamera } from './paint-camera.ts';
 import { PAINT_BOIL_WOBBLE, paintBoilWobbleProblem, type PaintBoilWobble } from './paint-boil-displacement.ts';
 import { paintChannelConflicts, type PaintChannelWriter } from './paint-channels.ts';
 import {
-  compilePaintPlayClock, paintLaneByStart, paintNodeClockProblem, paintNodeClockStep, paintPlayClockProblem, paintPlayInterval, sceneSeconds,
-  type CompiledPaintPlay, type PaintLane, type PaintNodeClock, type PaintPlayClock, type PaintSceneStep, type SceneSeconds,
+  compilePaintPlayClock, paintLaneByStart, paintNodeClockProblem, paintNodeClockStep, paintPlayClockProblem, paintPlayInterval,
+  type CompiledPaintPlay, type PaintLane, type PaintNodeClock, type PaintPlayClock, type PaintSceneStep,
 } from './paint-clock.ts';
 import {
   paintIdPhase, paintMotionClipLength, paintMotionClipPins, paintMotionClipProblem,
@@ -35,7 +34,7 @@ export type PaintLivePose<P extends string> = { readonly pins: Partial<Readonly<
  */
 export type PaintLivePoser<P extends string> = (pose: PaintLivePose<P>) => CompiledStampGroup;
 
-/** A boil: every `every` animation frames once its group's reveal ends, wobbled as a layer warp, or with `reseed`, re-rolled. */
+/** A boil: every `every` animation frames on its node's time, wobbled as a layer warp, or with `reseed`, re-rolled. */
 export type PaintBoilMarks = { readonly every: number; readonly amount?: number; readonly scale?: number; readonly reseed?: true };
 
 /**
@@ -99,7 +98,6 @@ export type CompiledPaintNode = {
   readonly pivot: StampPoint;
   readonly phase: number;
   readonly box: StampBox | null;
-  readonly revealEnd: SceneSeconds;
   readonly clock: readonly PaintSceneStep[];
   readonly marks: CompiledPaintMarks;
   readonly pins: ReadonlyMap<string, { readonly pin: CompiledPaintPin; readonly lane: PaintLane<PaintPinClip<string>> }>;
@@ -135,10 +133,6 @@ export function paintGroupPaintedBox(group: CompiledStampGroup): StampBox | null
   }
   return x0 <= x1 ? { x0: x0 - PAINTED_BOX_PAD, y0: y0 - PAINTED_BOX_PAD, x1: x1 + PAINTED_BOX_PAD, y1: y1 + PAINTED_BOX_PAD } : null;
 }
-
-/** When `group`'s last deposit finishes revealing, scene seconds: 0 for a group shown from the start. */
-export const paintGroupRevealEnd = (group: CompiledStampGroup) =>
-  sceneSeconds(Math.max(0, ...group.passes.flatMap(stampPassDeposits).map(({ reveal }) => (reveal ? reveal.at + reveal.over : 0))));
 
 function compileMarks(node: PaintMotionNode, group: CompiledStampGroup, problems: string[]): CompiledPaintMarks {
   const marks = node.marks ?? 'stuck';
@@ -208,7 +202,7 @@ function compileNodes(painting: CompiledStampPaint, nodes: readonly PaintMotionN
     }
     compiled.set(node.id, {
       id: node.id, anchor: byId.get(levels.at(-1)!)?.anchor ?? 'canvas', backdrop: node.backdrop === true, glow: inheritedGlow(levels, byId), group, levels, pivot: node.pivot ?? { x: 0, y: 0 }, phase: paintIdPhase(node.id),
-      box: paintGroupPaintedBox(group), revealEnd: paintGroupRevealEnd(group),
+      box: paintGroupPaintedBox(group),
       clock: levels.toReversed().flatMap((id) => { const clock = byId.get(id)?.clock; return clock && !paintNodeClockProblem(clock) ? [paintNodeClockStep(clock)] : []; }),
       marks: compileMarks(node, group, problems),
       pins, sway: [], flutter: [], place: [],

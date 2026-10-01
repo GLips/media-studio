@@ -19,18 +19,15 @@ test('a profile shapes a long stroke fully and a short one only in proportion to
   assert.ok(flick[0].pressure! > 0.75 && nearest(flick, 20 * D, 0).pressure! < 0.4, 'a flick lands heavy and has faded by halfway');
 });
 
-test("the path's turns slow the hand and press harder, and it eases in from its start", () => {
+test("the path's turns press harder", () => {
   const points = handStampStroke(corner, { curvature: 0.5 }, D, 's');
   const straight = nearest(points, 200, 0), turn = nearest(points, 400, 0);
   assert.ok(turn.pressure! > 0.8 && straight.pressure! <= 0.55, `corner ${turn.pressure}, straight ${straight.pressure}`);
-  assert.ok(turn.speed! < 0.7 * straight.speed!, `corner ${turn.speed}, straight ${straight.speed}`);
-  assert.ok(points[0].speed! < 0.5 * straight.speed!, 'the hand starts slow');
-  // No curvature leaves pressure alone, though the speed still follows the path.
+  // No curvature leaves pressure alone.
   assert.ok(handStampStroke(corner, {}, D, 's').every((p) => p.pressure === 1));
-  // A repeated point on a straight line is no turn, and a point's own speed is multiplied in.
-  const repeated = handStampStroke([{ x: 0, y: 0 }, { x: 0, y: 200, speed: 0.5 }, { x: 0, y: 200, speed: 0.5 }, { x: 0, y: 400, speed: 0.5 }], { curvature: 0.5 }, D, 's');
+  // A repeated point on a straight line is no turn.
+  const repeated = handStampStroke([{ x: 0, y: 0 }, { x: 0, y: 200 }, { x: 0, y: 200 }, { x: 0, y: 400 }], { curvature: 0.5 }, D, 's');
   assert.equal(nearest(repeated, 0, 200).pressure, 0.5);
-  assert.equal(nearest(repeated, 0, 300).speed, 0.5);
 });
 
 test('wobble is seeded per stroke, stays within its reach and keeps the lifts', () => {

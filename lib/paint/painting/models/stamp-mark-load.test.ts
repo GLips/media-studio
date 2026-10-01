@@ -5,7 +5,7 @@ import { stampBinsAppended, stampMarksOrderedBins } from './stamp-mark-load.ts';
 
 const stampAt = (x: number, y: number): PlacedStamp => ({
   x, y, diameter: 20, rotation: 0, roundness: 1, alpha: 1, opacity: 1, flipX: false, flipY: false, blur: 0, grainTurn: 0,
-  grainDepth: 1, grainDepthByPressure: 1, pressure: 1, reveal: 0, tint: { hue: 0, saturation: 0, lightness: 0, secondary: 0 },
+  grainDepth: 1, grainDepthByPressure: 1, pressure: 1, tint: { hue: 0, saturation: 0, lightness: 0, secondary: 0 },
 });
 
 /** Each tile's stamps as the shader reads them from `buffer`'s table at `at`. */

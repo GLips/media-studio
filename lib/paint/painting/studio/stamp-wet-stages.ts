@@ -3,8 +3,8 @@
 // bloom's cauliflower edge, pigment gathering at a drying rim. The renderer runs every stage after each wash deposit
 // it lands (`after: 'deposit'`) or as each of a wash's dryings ends (`after: 'drying'`), in the order listed.
 //
-// Warning: a stage keeps nothing from one moment to the next but what it writes into the group's layer. A frame may
-// start partway through a group from a checkpoint (stamp-paint-checkpoints.ts), which restores the layer alone.
+// Warning: a stage keeps nothing from one moment to the next but what it writes into the group's layer, which is
+// all a group's film keeps.
 
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { StampWashDrying, StampWetLanding, StampWetness } from '../models/stamp-wetness.ts';
@@ -63,13 +63,12 @@ export type StampLoadedWetStage<Moment> = {
 /**
  * A stage run after each wash deposit lands, or after each drying. `reach`: how far past a deposit's stamps it reads
  * and writes, px, so its landing window (compileStampWetness's margin) and resolve reach that far; static, as wetness
- * is worked out before any stage loads. `settled`: it waits for its deposit to be wholly shown.
+ * is worked out before any stage loads.
  */
 export type StampWetStage = { id: string } & (
   | {
     after: 'deposit';
     reach?: (deposit: CompiledStampDeposit, medium: PaintMedium) => number;
-    settled?: boolean;
     load: (context: StampWetStageContext) => StampLoadedWetStage<StampWetDepositMoment>;
   }
   | { after: 'drying'; load: (context: StampWetStageContext) => StampLoadedWetStage<StampWetDryingMoment> }

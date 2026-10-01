@@ -21,12 +21,12 @@ const brush: StampBrush = {
   taper: { start: 0, end: 0, size: 1, opacity: 1, shape: 0, pressure: 0 }, falloff: 0, flow: 1,
 };
 
-/** A group painted as one diagonal stroke from `from` to `to`, revealed from `at` over `over` seconds if given. */
-type GroupSketch = { id: string; from: StampPoint; to: StampPoint; options?: Omit<StampGroupOptions, 'composite'>; reveal?: { at: number; over: number } };
+/** A group painted as one diagonal stroke from `from` to `to`. */
+type GroupSketch = { id: string; from: StampPoint; to: StampPoint; options?: Omit<StampGroupOptions, 'composite'> };
 const paintingOf = (groups: readonly GroupSketch[]) => compileStampPaintRecipe(stampPaintRecipe(FLAT, (paint) => {
-  for (const { id, from, to, options, reveal } of groups) {
+  for (const { id, from, to, options } of groups) {
     const stroke = { brush, well: { paint: { kind: 'color', color: '#203040' } }, size: 10, path: [from, to] } as const;
-    paint.group(id, { composite: 'opaque', ...options }, (group) => group.passage('p', {}, (pass) => pass.stroke('s', reveal ? { ...stroke, reveal } : stroke)));
+    paint.group(id, { composite: 'opaque', ...options }, (group) => group.passage('p', {}, (pass) => pass.stroke('s', stroke)));
   }
 }));
 const square = (id: string, extra: Partial<GroupSketch> = {}): GroupSketch => ({ id, from: { x: 0, y: 0 }, to: { x: 400, y: 400 }, ...extra });
@@ -43,7 +43,7 @@ const outline = { id: 'frog-ink', parent: 'frog', marks: { boil: { every: 2 } } 
 const puff: PaintPoseClip<'chest'> = { kind: 'poses', keys: [{ at: 0, pose: {} }, { at: 0.4, pose: { chest: { scale: 1.3 } }, ease: 'out' }, { at: 1, pose: {} }] };
 
 test('a frame is the same in any order, render frames inside one hold share keys, and a key names one map', () => {
-  const painting = paintingOf([square('frog'), square('frog-ink', { reveal: { at: 0, over: 0.5 } })]);
+  const painting = paintingOf([square('frog'), square('frog-ink')]);
   const build = () => built(buildPaintMotion(painting, { nodes: [body, outline], plays: [paintMotionPlay(body, puff, { clock: { at: 0.1, loop: { period: 1 } }, origin: 'puff' })], foldCheck: { from: 0, to: 3 } }));
   const probe = { x: 260, y: 180 };
   const read = (motion: PaintMotion, t: number) => [...paintMotionFrameAt(motion, t)].map(([id, s]) => `${id} ${s.warp?.key} ${JSON.stringify(s.warp?.map(probe))}`).join('\n');
@@ -61,8 +61,7 @@ test('a frame is the same in any order, render frames inside one hold share keys
     maps.set(`${id} ${key}`, at);
   }
   const wobbled = paintMotionFrameAt(forwards, 0.8).get('frog-ink')!.warp!;
-  assert.match(wobbled.key, /^wobble\("frog-ink",3,2\.2,45\)>pins\[radial/, 'the ink wobbles in its rest space, then bends with the body');
-  assert.equal(paintMotionFrameAt(forwards, 0.4).get('frog-ink')?.warp?.key.includes('wobble'), false, 'it boils only after its reveal ends');
+  assert.match(wobbled.key, /^wobble\("frog-ink",9,2\.2,45\)>pins\[radial/, 'the ink wobbles in its rest space, then bends with the body');
 });
 
 test('a point goes through its own bend and placement, then its parent\'s, as a rigger nests them', () => {
@@ -124,13 +123,12 @@ test('two flutters with crossed axes give different keys for different maps, eve
   assert.notEqual(a.key, b.key, 'so their keys do');
 });
 
-test('a re-seeding group always has its epoch, 0 through its reveal; a stuck one over a boil is held at 0', () => {
+test('a re-seeding group always has its epoch; a stuck one over a boil is held at 0', () => {
   const reseeded = { id: 'ink', marks: { boil: { every: 2, reseed: true } } } satisfies PaintMotionNode;
   const still = { id: 'rock' } satisfies PaintMotionNode;
-  const painting = paintingOf([square('ink', { options: { boil: { every: 2 } }, reveal: { at: 0, over: 1 } }), square('rock', { options: { boil: { every: 2 } } })]);
+  const painting = paintingOf([square('ink', { options: { boil: { every: 2 } } }), square('rock', { options: { boil: { every: 2 } } })]);
   const motion = built(buildPaintMotion(painting, { nodes: [reseeded, still], plays: [] }));
-  assert.deepEqual(paintMotionFrameAt(motion, 0.5).get('ink')?.marks, { kind: 'written', epoch: 0 }, 'mid-reveal it is written as drawn, not left to the recipe');
-  assert.deepEqual(paintMotionFrameAt(motion, 1.5).get('ink')?.marks, { kind: 'written', epoch: 6 });
+  assert.deepEqual(paintMotionFrameAt(motion, 1.5).get('ink')?.marks, { kind: 'written', epoch: 18 });
   assert.deepEqual(paintMotionFrameAt(motion, 1.5).get('rock')?.marks, { kind: 'written', epoch: 0 });
   const unboiled = buildPaintMotion(paintingOf([square('ink')]), { nodes: [reseeded], plays: [] });
   assert.match(problemsOf(unboiled)[0], /^ink re-seeds its marks, but its group is compiled without a boil/);

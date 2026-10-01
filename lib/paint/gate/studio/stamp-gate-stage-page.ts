@@ -13,7 +13,7 @@ import {
 import { STAMP_GATE_OUTSIDE_SLOT, stampGateOutsideContent, stampGateOutsidePainting } from '../models/stamp-gate-outside-layer.ts';
 import type { StampGatePainting } from '../models/stamp-gate-paintings.ts';
 import {
-  checkStampGateLayerCache, checkStampGateMargin, checkStampGatePan, STAMP_GATE_PARALLAX_ORDER, STAMP_GATE_STAGE_IDS, STAMP_GATE_STAGE_MARGIN, stampGateInsetDifference, stampGateMarginSubjects,
+  checkStampGateFilmCache, checkStampGateMargin, checkStampGatePan, STAMP_GATE_PARALLAX_ORDER, STAMP_GATE_STAGE_IDS, STAMP_GATE_STAGE_MARGIN, stampGateInsetDifference, stampGateMarginSubjects,
   stampGatePanPainting, stampGateParallaxPainting, stampGateParallaxTime,
 } from '../models/stamp-gate-stage.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
@@ -86,11 +86,11 @@ export async function checkStampGateStageCase(id: string): Promise<StampGateWash
     const shown = await frameWithMargin(panned, panned.t, STAMP_GATE_STAGE_MARGIN), there = await frameWithMargin(onFrame, onFrame.t, 0);
     return [checkStampGatePan({ panned: shown, onFrame: there, bare: await frameWithMargin(panned, panned.t, 0), difference: stampGateFrameDifference(shown, there) })];
   }
-  if (id === 'stage/layer-cache') {
+  if (id === 'stage/film-cache') {
     const gate = stampGateParallaxPainting(), url = drawnImages(gate), margin = STAMP_GATE_STAGE_MARGIN;
     let restores = 0;
     const profile = (label: string) => () => {
-      if (label === 'stamp paint layer restore') restores++;
+      if (label === 'stamp paint film restore') restores++;
     };
     const scrambled = await withGateRenderer(gate, url, (renderer, frame) => STAMP_GATE_PARALLAX_ORDER.reduce<Promise<{ frame: number; rgba: Uint8ClampedArray }[]>>(async (done, k) => {
       const t = stampGateParallaxTime(k);
@@ -99,7 +99,7 @@ export async function checkStampGateStageCase(id: string): Promise<StampGateWash
     const frames = await scrambled.reduce<Promise<{ frame: number; difference: StampGateFrameDifference }[]>>(async (done, { frame: k, rgba }) => [
       ...await done, { frame: k, difference: stampGateFrameDifference(await frameWithMargin(gate, stampGateParallaxTime(k), margin), rgba) },
     ], Promise.resolve([]));
-    return [checkStampGateLayerCache(frames, restores)];
+    return [checkStampGateFilmCache(frames, restores)];
   }
   throw new Error(`stamp gate: no stage case ${JSON.stringify(id)}; the gate holds ${STAMP_GATE_STAGE_IDS.join(', ')}`);
 }

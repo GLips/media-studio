@@ -62,10 +62,10 @@ function ownPlacementAt(motion: PaintMotion, node: CompiledPaintNode, t: SceneSe
   return paintPlacementIsRest(placement) ? null : { owner: node.id, kind: 'place', placement, pivot: node.pivot };
 }
 
-/** `node`'s boil epoch at `t`: 0 unless it boils and its group's reveal has ended, on its own time. */
+/** `node`'s boil epoch at `t`, on its own time: 0 unless it boils. */
 function epochAt(motion: PaintMotion, node: CompiledPaintNode, t: SceneSeconds): number {
   if (node.marks.kind !== 'wobble' && node.marks.kind !== 'reseed') return 0;
-  return paintBoilEpochAt(paintNodeTimeAt(node.clock, t, motion.animationFps), node.revealEnd, node.marks.every, motion.animationFps);
+  return paintBoilEpochAt(paintNodeTimeAt(node.clock, t, motion.animationFps), node.marks.every, motion.animationFps);
 }
 
 /** Rigid placements, innermost first, as one placement about `pivot`: one already about it is handed on as it is. */

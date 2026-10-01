@@ -9,7 +9,7 @@ import { createStampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-
 import { stampPaintPackAssetUrl } from '#lib/paint/brush-packs/models/stamp-paint-pack-urls.ts';
 import { DRY_PASSAGE_CELL, DRY_PASSAGES, type DryPassage, type DryPassagePainted, type DryPassageSheetMedium } from '../models/dry-passages.ts';
 
-/** `passage` drawn in one style, or why it couldn't be. None reveals over time, so it's drawn at any scene time. */
+/** `passage` drawn in one style, or why it couldn't be. None changes over time, so it's drawn at any scene time. */
 async function drawDryPassage(passage: DryPassage, { brushes, paper, mixing, packUrls }: DryPassageSheetMedium): Promise<DryPassagePainted> {
   const { width, height } = DRY_PASSAGE_CELL;
   const canvas = Object.assign(document.createElement('canvas'), { width, height });

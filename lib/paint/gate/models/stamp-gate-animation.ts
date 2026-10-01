@@ -332,7 +332,7 @@ export function checkStampGateCutOut({ own, ground, width }: {
 /**
  * Whether a warped cut-out carries its own paper, not the ground's (checkStampGateCutOut); a field moving nothing
  * draws it still; a bend carries its wet paint, bloom and reserve; and a bend drawn after another (that one's lattice
- * and checkpoints warm) is the bend drawn fresh. Lattice rest points are interpolated, so carrying holds within the dither.
+ * and films warm) is the bend drawn fresh. Lattice rest points are interpolated, so carrying holds within the dither.
  */
 export function checkStampGateWarp({ own, ground, unbent, bend, width }: {
   own: { frames: readonly { frame: number; rgba: Rgba }[]; again: Rgba }; ground: { frames: readonly { frame: number; rgba: Rgba }[] };

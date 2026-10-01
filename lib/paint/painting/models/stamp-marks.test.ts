@@ -83,16 +83,15 @@ test('a deposit built from a mark is placed from the mark, whatever its ID, and 
 
 /** A charge into a wash over the sky, its painting compiled. */
 const charged = (charge: (wash: StampPassageScope) => void) => compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => group.passage('w', {}, (wash) => {
-  wash.fill('sky', { brush, size: 40, application: { kind: 'flood' }, region: field, well: { paint: color('#88aacc') }, reveal: { at: 0, over: 0 } });
+  wash.fill('sky', { brush, size: 40, application: { kind: 'flood' }, region: field, well: { paint: color('#88aacc') } });
   charge(wash);
 }))));
 
 test('a charge lays its touches as strokes in order, each loaded from its set by its own key, a new well moving none of them', () => {
-  const settings = { placement: { kind: 'area', region: field } as const, touches: 12, brush, size: [20, 30] as const, length: [30, 60] as const, reveal: { at: 1, over: 1.2 } };
+  const settings = { placement: { kind: 'area', region: field } as const, touches: 12, brush, size: [20, 30] as const, length: [30, 60] as const };
   const touches = (mixtures: StampMaterialSet) => stampPassDeposits(charged((wash) => stampCharge(wash, 'warm', { ...settings, well: { paint: mixtures } })).groups[0].passes[0]).slice(1);
   const laid = touches(wells);
   assert.deepEqual(laid.map(({ id }) => id), Array.from({ length: 12 }, (_, k) => `g/w/warm-${k}`));
-  assert.deepEqual(laid.map(({ reveal }) => reveal!.at), Array.from({ length: 12 }, (_, k) => 1 + (1.2 * k) / 12));
   const colours = new Set(laid.map(({ action }) => (action.kind === 'paint' && action.material.kind === 'constant' && action.material.value.kind === 'color' ? action.material.value.color : null)));
   assert.ok(colours.has('#2244aa') && colours.has('#cc5577') && !colours.has('#000000'));
   const rewelled = touches({ kind: 'set', entries: [...wells.entries, { id: 'ochre', material: color('#cc9944'), weight: 1 }] });
@@ -103,8 +102,8 @@ test('a charge lays its touches as strokes in order, each loaded from its set by
 
 test("a charge when damp waits for the paper under its touches, not for wetter paint elsewhere in the wash", () => {
   const painting = charged((wash) => {
-    wash.stamps('puddle', { brush, size: 60, at: [{ x: 600, y: 200 }], well: { paint: color('#223366'), water: 1 }, reveal: { at: 0, over: 0 } });
-    stampCharge(wash, 'cool', { placement: { kind: 'along', path: [{ x: 150, y: 200 }, { x: 300, y: 200 }], spread: 10 }, touches: 4, well: { paint: wells }, brush, size: [16, 16], length: [20, 30], when: 'damp', reveal: { at: 1, over: 0.5 } });
+    wash.stamps('puddle', { brush, size: 60, at: [{ x: 600, y: 200 }], well: { paint: color('#223366'), water: 1 } });
+    stampCharge(wash, 'cool', { placement: { kind: 'along', path: [{ x: 150, y: 200 }, { x: 300, y: 200 }], spread: 10 }, touches: 4, well: { paint: wells }, brush, size: [16, 16], length: [20, 30], when: 'damp' });
   });
   const [pass] = painting.groups[0].passes;
   const { wetting } = PAINT_MEDIA.watercolour, paper = { color: '#ffffff' } as const;

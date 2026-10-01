@@ -38,9 +38,9 @@ const sky = () => stampPaintRecipe(WET, (paint) => {
   paint.group('sky', { composite: 'glaze', opacity: 1 }, (group) => {
     group.mask('sun', { region: { kind: 'ellipse', x: 400, y: 150, radiusX: 40, radiusY: 40 }, edge: { ragged: { amount: 3, scale: 12 } } });
     group.passage('w', { preparation: { region: field } }, (wash) => {
-      wash.fill('body', { brush, size: 40, application: { kind: 'flood' }, region: field, well: { paint: color('#88aacc') }, reveal: { at: 0, over: 1 } });
-      stampCharge(wash, 'warm', { placement: { kind: 'area', region: field }, touches: 3, well: { paint: wells }, brush, size: [16, 24], length: [20, 40], when: 'damp', reveal: { at: 1, over: 1 } });
-      stampBloom(wash, 'drop', { brush, size: 20, at: [{ x: 300, y: 200 }], reveal: { at: 2, over: 0 } });
+      wash.fill('body', { brush, size: 40, application: { kind: 'flood' }, region: field, well: { paint: color('#88aacc') } });
+      stampCharge(wash, 'warm', { placement: { kind: 'area', region: field }, touches: 3, well: { paint: wells }, brush, size: [16, 24], length: [20, 40], when: 'damp' });
+      stampBloom(wash, 'drop', { brush, size: 20, at: [{ x: 300, y: 200 }] });
       wash.wait('set');
     });
   });
@@ -76,7 +76,7 @@ test("a generated child's keys are segments of its name: each refused holding a 
   const slashed = rewritten(sky(), (deposit) => (deposit.name.keys.length ? { ...deposit, name: { ...deposit.name, keys: ['0/1'] } } : deposit));
   assert.throws(() => compileStampPaintRecipe(slashed), /"0\/1" isn't an ID/);
   const spelt = stampPaintRecipe(WET, (paint) => paint.group('sky', { composite: 'glaze', opacity: 1 }, (group) => group.passage('w', {}, (wash) => {
-    stampCharge(wash, 'warm', { placement: { kind: 'area', region: field }, touches: 2, well: { paint: wells }, brush, size: [16, 24], length: [20, 40], reveal: { at: 0, over: 1 } });
+    stampCharge(wash, 'warm', { placement: { kind: 'area', region: field }, touches: 2, well: { paint: wells }, brush, size: [16, 24], length: [20, 40] });
     wash.stroke('warm-1', { brush, size: 10, well: { paint: color('#336633') }, path: [{ x: 100, y: 100 }, { x: 200, y: 120 }] });
   })));
   assert.throws(() => compileStampPaintRecipe(spelt), /IDs used twice.*sky\/w\/warm-1/);

@@ -31,8 +31,7 @@ export const paintAnimationFrameStart = (frame: AnimationFrame, animationFps: nu
 
 /**
  * A node's clock, read by its writers and its boil inside its ancestors': `hold` shows a new drawing every `hold`
- * animation frames on the scene's grid; `freeze` stops it at scene second `freeze`. Never its reveal: revealing is
- * the score's (vid-114) on scene time, as wet paint lands in the painting's order.
+ * animation frames on the scene's grid; `freeze` stops it at scene second `freeze`.
  */
 export type PaintNodeClock = { readonly hold: number } | { readonly freeze: number };
 
@@ -170,14 +169,11 @@ export function paintPlayClipTimeAt(clock: CompiledPaintPlayClock, t: SceneSecon
 }
 
 /**
- * A group's boil epoch at its node's time `time`: 0, its seed as written, until the first grid step after its reveal
- * ends at `revealEnd`, so it doesn't pop to a new seed as it finishes; then one more every `every` animation frames,
- * on the grid, so boiling groups change together.
+ * A group's boil epoch at its node's time `time`: 0, its seed as written, then one more every `every` animation
+ * frames, on the grid, so boiling groups change together.
  */
-export function paintBoilEpochAt(time: SceneSeconds, revealEnd: SceneSeconds, every: number, animationFps: number): number {
-  if (time < revealEnd) return 0;
-  return Math.floor(paintAnimationFrameOf(time, animationFps) / every) - Math.floor(paintAnimationFrameOf(revealEnd, animationFps) / every);
-}
+export const paintBoilEpochAt = (time: SceneSeconds, every: number, animationFps: number) =>
+  Math.max(0, Math.floor(paintAnimationFrameOf(time, animationFps) / every));
 
 /** A play compiled: its clip, its clock under its node's, and the interval it writes over. */
 export type CompiledPaintPlay<C> = { readonly clip: C; readonly clock: CompiledPaintPlayClock; readonly interval: PaintPlayInterval; readonly origin: string };

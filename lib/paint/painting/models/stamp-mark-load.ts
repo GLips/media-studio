@@ -21,8 +21,6 @@ export const STAMP_FLOATS = 12;
 export const TINT_FLOATS = 4;
 /** Pixels a side of the tiles an `ordered` layer's stamps are binned by (stampMarksOrderedBins). */
 export const STAMP_ORDERED_TILE = 32;
-/** Stamps whose bounds are kept together: a box is found from the chunks before it and the stamps within its own. */
-const REACH_CHUNK = 256;
 
 /** `make()` for `marks`, worked out the first time it's asked for. */
 function rememberedOnce<V>(cache: WeakMap<StampMarks, V>, marks: StampMarks, make: () => V): V {
@@ -72,34 +70,21 @@ export const stampMarksExtremes = (marks: StampMarks): StampMarksExtremes => rem
   roundest: marks.reduce((least, s) => Math.min(least, s.roundness), 1),
 }));
 
-const reaches = new WeakMap<StampMarks, Map<number, Float64Array>>();
+const reaches = new WeakMap<StampMarks, Map<number, readonly [number, number, number, number]>>();
 /**
- * How far `marks` reach, for each whole chunk of them from the first: x0, y0, x1, y1 of stamps 0 to the chunk's end.
- * A stamp's corners reach 0.75 of its tip image's longer side (`span` diameters) from its centre, however it's turned.
+ * Grows `into` (x0, y0, x1, y1) by where `marks` reach at `span`. A stamp's corners reach 0.75 of its tip image's
+ * longer side (`span` diameters) from its centre, however it's turned.
  */
-const reachChunks = (marks: StampMarks, span: number) => rememberedFor(reaches, marks, span, () => {
-  const chunks = new Float64Array(Math.floor(marks.length / REACH_CHUNK) * 4);
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (let i = 0; i < chunks.length / 4 * REACH_CHUNK; i++) {
-    const s = marks[i], r = s.diameter * span * 0.75;
-    x0 = Math.min(x0, s.x - r); y0 = Math.min(y0, s.y - r); x1 = Math.max(x1, s.x + r); y1 = Math.max(y1, s.y + r);
-    if ((i + 1) % REACH_CHUNK === 0) chunks.set([x0, y0, x1, y1], ((i + 1) / REACH_CHUNK - 1) * 4);
-  }
-  return chunks;
-});
-
-/** Grows `into` (x0, y0, x1, y1) by where the first `count` of `marks` reach at `span`, from their chunks and the rest. */
-export function stampMarksReachOfFirst(marks: StampMarks, span: number, count: number, into: number[]) {
-  const whole = Math.floor(count / REACH_CHUNK), chunks = reachChunks(marks, span);
-  if (whole) {
-    const at = (whole - 1) * 4;
-    into[0] = Math.min(into[0], chunks[at]); into[1] = Math.min(into[1], chunks[at + 1]);
-    into[2] = Math.max(into[2], chunks[at + 2]); into[3] = Math.max(into[3], chunks[at + 3]);
-  }
-  for (let i = whole * REACH_CHUNK; i < count; i++) {
-    const s = marks[i], r = s.diameter * span * 0.75;
-    into[0] = Math.min(into[0], s.x - r); into[1] = Math.min(into[1], s.y - r); into[2] = Math.max(into[2], s.x + r); into[3] = Math.max(into[3], s.y + r);
-  }
+export function stampMarksReach(marks: StampMarks, span: number, into: number[]) {
+  const [x0, y0, x1, y1] = rememberedFor(reaches, marks, span, () => {
+    let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
+    for (const s of marks) {
+      const r = s.diameter * span * 0.75;
+      a = Math.min(a, s.x - r); b = Math.min(b, s.y - r); c = Math.max(c, s.x + r); d = Math.max(d, s.y + r);
+    }
+    return [a, b, c, d] as const;
+  });
+  into[0] = Math.min(into[0], x0); into[1] = Math.min(into[1], y0); into[2] = Math.max(into[2], x1); into[3] = Math.max(into[3], y1);
 }
 
 const orderedBins = new WeakMap<StampMarks, Map<string, Uint32Array>>();

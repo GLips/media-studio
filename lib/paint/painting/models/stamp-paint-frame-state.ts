@@ -4,7 +4,7 @@
 // evaluated into the same shape (stampPaintFrameStateAt), so the frame plan reads one, whoever wrote it.
 //
 // Keys name what a function or a compiled group can't show by value: two frames giving one group equal keys must give
-// it equal maps or marks. The checkpoint key is built from them, so a wrong key restores the wrong paint.
+// it equal maps or marks. A film's key is built from them, so a wrong key lays the wrong paint.
 
 import { stampBoilEpoch, stampGroupPlacementAt, type StampGroupPlacement } from './stamp-group-motion.ts';
 import type { StampWarpMap } from './stamp-group-warp.ts';
@@ -90,8 +90,8 @@ export function stampPaintFrameStateAt(painting: CompiledStampPaint, t: number, 
 }
 
 /**
- * Why `marks` can't stand in for `written` live, or null: another id, other passes or deposits, or a deposit revealed
- * differently (a frame's events, and so its checkpoints, are the written painting's).
+ * Why `marks` can't stand in for `written` live, or null: another id, other passes or deposits. Its paint, brushes
+ * and wet stages are the written group's, by deposit.
  */
 export function stampLiveGroupProblem(written: CompiledStampGroup, marks: CompiledStampGroup): string | null {
   if (marks.id !== written.id) return `its live marks are group ${marks.id}`;
@@ -100,9 +100,8 @@ export function stampLiveGroupProblem(written: CompiledStampGroup, marks: Compil
     const drawn = marks.passes[p], deposits = stampPassDeposits(pass), drawnDeposits = stampPassDeposits(drawn);
     if (drawn.id !== pass.id || drawn.kind !== pass.kind || drawnDeposits.length !== deposits.length) return `its live pass ${drawn.id} isn't ${pass.id} as written`;
     for (const [d, deposit] of deposits.entries()) {
-      const { id, reveal } = drawnDeposits[d];
+      const { id } = drawnDeposits[d];
       if (id !== deposit.id) return `its live deposit ${id} isn't ${deposit.id} as written`;
-      if (reveal?.at !== deposit.reveal?.at || reveal?.over !== deposit.reveal?.over) return `its live deposit ${id} is revealed differently from as written`;
     }
   }
   return null;

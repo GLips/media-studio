@@ -43,8 +43,8 @@ function stampGateDryBrushPainting(): StampGatePainting {
 }
 
 /** The case painting both strokes and reading its frame. */
-export function stampGateDryBrushCase(id: string, mid: number): StampGateWashCase {
-  return { id, mid, property: 'frame', subject: stampGateDryBrushPainting(), read: (rgba) => checkStampGateDryBrush(id, rgba) };
+export function stampGateDryBrushCase(id: string): StampGateWashCase {
+  return { id, property: 'frame', subject: stampGateDryBrushPainting(), read: (rgba) => checkStampGateDryBrush(id, rgba) };
 }
 
 const correlation = (pairs: readonly (readonly [number, number])[]) => {

@@ -10,7 +10,7 @@ import { stampPaintPackAssetUrl } from '#lib/paint/brush-packs/models/stamp-pain
 import { WET_ANIMATION_FPS, WET_ANIMATIONS, type WetAnimation, type WetAnimationPainted } from '../models/wet-animations.ts';
 import { WET_PASSAGE_CELL, WET_PASSAGES, type WetPassage, type WetPassagePainted, type WetPassageSheetMedium } from '../models/wet-passages.ts';
 
-/** The scene time every passage is drawn at: none reveals over time, so any would do. */
+/** The scene time every passage is drawn at: none changes over time, so any would do. */
 const SHOWN = 1;
 
 /** `passage` painted in one medium, or why it couldn't be. */

@@ -204,8 +204,7 @@ Painted layers take depth of field and glow, each set by the scene, its amounts 
 - Defocus and glow in the renderer, as above; the gate holds a blurred and a glowing group to their CPU twins.
 - Depth of field is the camera's: `paint/animation` writes each plane's defocus from its focus distance.
 - Glow is a node option (`glow: { amount, sigma, threshold }`), and any frame-state writer may animate it.
-- **Deferred:** one paper over a mixed stack (paper over a 3D layer), and a rim light. Neither is asked for by the
-  frog proof; each gets a ticket when a shot needs it.
+- **Deferred:** a rim light. The frog proof doesn't ask for it; it gets a ticket when a shot needs it.
 
 ## Phase 4: 3D layers in a painted scene
 
@@ -257,7 +256,6 @@ pass `studio repeatable`.
   compositor each frame. A per-plane flattening would be cheaper, but it isn't exact in Kubelka–Munk.
 
 Deferred, each to a ticket when a shot needs it:
-- one paper over a mixed stack;
 - a rim light;
 - three's own post;
 - depth of field per pixel inside a 3D layer, from its depth buffer, which plan 3's single 3D model will want;

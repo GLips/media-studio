@@ -27,15 +27,13 @@ const painted = (body: (p: StampPassageScope) => void, options: StampPassageOpti
   compileStampPaintRecipe(stampPaintRecipe(environment, (paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) =>
     group.passage('p', { defaults: { brush, well: { paint: blue } }, ...options }, body))));
 const depositsOf = (painting: CompiledStampPaint) => stampPassDeposits(painting.groups[0].passes[0]);
-const reveals = (painting: CompiledStampPaint) => Object.fromEntries(depositsOf(painting).map(({ id, reveal }) => [id, reveal && [reveal.at, reveal.over]]));
 
 test('wrapping calls in an apply changes no deposit, and an item of p.each keeps its deposits as others are added or reordered', () => {
   const strokes = (p: StampPassageScope) => {
     p.stroke('sky', { size: 30, path: line(40) });
     stampCharge(p, 'warm', { placement: { kind: 'area', region: { kind: 'ellipse', x: 200, y: 60, radiusX: 80, radiusY: 30 } }, touches: 3, size: [10, 16], length: [20, 30] });
   };
-  const reveal = { at: 1, over: 4 };
-  assert.deepEqual(painted((p) => p.apply('sky', {}, strokes), { reveal }).groups, painted(strokes, { reveal }).groups);
+  assert.deepEqual(painted((p) => p.apply('sky', {}, strokes)).groups, painted(strokes).groups);
 
   const leaves = (ids: readonly string[]) => painted((p) => p.each('leaf', ids.map((id, k) => ({ id, y: 100 + k })), (q, { y }) => q.stroke('dab', { size: 12, path: line(y) })));
   const [a, b] = depositsOf(leaves(['a', 'b']));
@@ -44,33 +42,6 @@ test('wrapping calls in an apply changes no deposit, and an item of p.each keeps
   // Their paths moved with their place in the list; their seeds didn't, so each lays the same stamps along its own.
   assert.deepEqual(more.find(({ id }) => id === a.id)!.stamps.map(({ rotation }) => rotation), a.stamps.map(({ rotation }) => rotation));
   assert.throws(() => leaves(['a', 'a']), /two applications are named/);
-});
-
-test('retiming an application moves its reveals only: every stamp lands where it did', () => {
-  const body = (at: number) => (p: StampPassageScope) => p.apply('hill', { reveal: { at, over: 2 } }, (q) => {
-    q.stroke('near', { size: 30, path: line(200) });
-    q.stroke('far', { size: 30, path: line(160) });
-  });
-  const [early, late] = [painted(body(1)), painted(body(5))];
-  assert.deepEqual(reveals(early), { 'g/p/near': [1, 1], 'g/p/far': [2, 1] });
-  assert.deepEqual(reveals(late), { 'g/p/near': [5, 1], 'g/p/far': [6, 1] });
-  assert.deepEqual(depositsOf(late).map(({ stamps }) => stamps), depositsOf(early).map(({ stamps }) => stamps));
-  // With no reveal anywhere above it, a deposit is there from the start.
-  assert.deepEqual(reveals(painted((p) => p.stroke('still', { size: 30, path: line(40) }))), { 'g/p/still': undefined });
-});
-
-test('children share an interval by weight in sequence, together or overlapping, and an exact reveal takes no share', () => {
-  const scored = (children: StampPassageOptions['children']) => reveals(painted((p) => {
-    p.stroke('a', { size: 20, path: line(40), weight: 3 });
-    p.stroke('b', { size: 20, path: line(80) });
-    p.stroke('pinned', { size: 20, path: line(120), reveal: { at: 0.5, over: 0.25 } });
-  }, { reveal: { at: 2, over: 8 }, children }));
-  assert.deepEqual(scored('sequence'), { 'g/p/a': [2, 6], 'g/p/b': [8, 2], 'g/p/pinned': [0.5, 0.25] });
-  assert.deepEqual(scored('together'), { 'g/p/a': [2, 8], 'g/p/b': [2, 8], 'g/p/pinned': [0.5, 0.25] });
-  // Starting by weight as in sequence, each drawn over twice its share (6 and 2 of 4), all scaled so the latest to
-  // end, a's, ends with the interval: b starts halfway and overlaps a's second half.
-  assert.deepEqual(scored({ overlap: 2 }), { 'g/p/a': [2, 8], 'g/p/b': [6, 8 / 3], 'g/p/pinned': [0.5, 0.25] });
-  assert.throws(() => scored({ overlap: 0 }), /overlap by 0/);
 });
 
 test("a condition in a medium that can't judge one is refused as it's written, naming the medium", () => {

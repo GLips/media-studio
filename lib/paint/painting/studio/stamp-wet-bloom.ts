@@ -408,4 +408,4 @@ function loadBloom({ device, wetness, layer, footprint, grids, wash, stage }: St
  * Blooms and backruns, after each wash deposit that lands wetter than the damp, workable paint round it: once wholly
  * shown, as its front is worked out from the whole landing's water.
  */
-export const STAMP_BLOOM_STAGE = { id: 'bloom', after: 'deposit', reach: stampBloomReach, settled: true, load: loadBloom } satisfies StampWetStage;
+export const STAMP_BLOOM_STAGE = { id: 'bloom', after: 'deposit', reach: stampBloomReach, load: loadBloom } satisfies StampWetStage;

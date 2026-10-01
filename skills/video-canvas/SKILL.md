@@ -54,11 +54,9 @@ Everything is from `#studio`.
     `region` covers. `strict: true` fails the render where a condition judged paper with no water or a wet effect
     won't act (the wet report), instead of warning. A raw op's `escape: 'why'` marks it as reaching past the
     techniques, for the report to count; a technique's own ops can't.
-  - **Timing**: an operation's `reveal: { at, over }` (seconds) is exactly when it's drawn. Give a passage or a
-    `p.apply(id, { reveal, children }, (q) => …)` a reveal instead and its operations share it by `weight` (1 each),
-    `children: 'sequence'` (the default), `'together'` or `{ overlap: 2 }`. With no reveal anywhere above it, paint
-    is there from the start. `p.each(key, items, (q, item) => …)` paints per item, each named by its `id`, so
-    adding or reordering items moves none of the others.
+  - A painting is always drawn finished: nothing paints itself in over time. To have a part appear, make it its own
+    group and fade it in by `visibility` in the frame state (see Animating a painting). `p.each(key, items, (q,
+    item) => …)` paints per item, each named by its `id`, so adding or reordering items moves none of the others.
   - A **fill** covers a `region`, reaching its outline, laid by its `application`:
     - `{ kind: 'flood' }`: solid inside, the brush's own edge at the outline, however small a spike. Outside a wash its
       paper is dry, so wet paint stops there hard, keeping the tip's broken outline (a dry-media brush keeps its tip's
@@ -86,10 +84,10 @@ Everything is from `#studio`.
       you need them outside a fill.
     - Left out, the brush's media decides: a wet brush washes, a dry one (pencil, crayon) shades. Override it for a
       hatched shadow in watercolour, or a wash of a brush whose media no style declares.
-    - `direction` (radians) is the way its rows run, and it reveals across them as its reveal runs; `load` grades how
+    - `direction` (radians) is the way its rows run, laid one after another across them; `load` grades how
       much paint it lays (`{ kind: 'linear', from, to }`), or mottles it (`{ kind: 'noise', scale, a, b }`).
   - A **stroke** is a brush along a path; **stamps** are single placements (blooms, flowers). Each has a `well`
-    (`{ paint: { kind: 'color', color }, water? }`, `water` 0..1 in a wash), `size` px, `opacity` and `reveal`.
+    (`{ paint: { kind: 'color', color }, water? }`, `water` 0..1 in a wash), `size` px and `opacity`.
   - **Mottled colour** (a sky, water, a distant mass): `well: { paint: { kind: 'noise', scale: 60, seed: 'sky', a, b } }`
     lays a broad, uneven passage between two mixtures, `scale` px its patches' size. Deposits sharing a `seed` share
     one continuous passage; left out, each deposit mottles on its own. The same field mottles a fill's `load` and a
@@ -107,8 +105,7 @@ Everything is from `#studio`.
       share, as a hand does when it slows into a corner.
     - `wobble: { pressure: 0.1, position: 0.1 }` adds seeded unsteadiness (a share of the pressure; diameters sideways),
       so strokes along one path differ. It's seeded by the deposit's ID, so a frame still depends only on its time.
-    - Every `hand` stroke also gets a speed: it eases in and slows through turns, and its reveal draws it at that
-      pace rather than an even one. A point's own `pressure` (and `speed`) still counts, multiplied in.
+    - A point's own `pressure` still counts, multiplied in.
     - `npm run brushes:hand -- --style <style> --pack <pack> --brush <name> --out <dir>` paints one path under each profile, with and without curvature and wobble, beside constant pressure: see how a
       brush answers before choosing.
   - **Masking fluid**: `mask(id, { region, edge, inset })` on the painting, a group or a passage keeps paper bare there
@@ -149,7 +146,7 @@ Everything is from `#studio`.
     for a real shine. A medium that can't (crayon has no wet conditions) refuses as the recipe is written, naming
     itself.
   - **Colour charged into a wet wash**: `stampCharge(p, id, { placement, touches, well: { paint: set }, brush,
-    size: [min, max], length: [min, max], angle?, when?, reveal })` lays `touches` short swelling strokes, each
+    size: [min, max], length: [min, max], angle?, when? })` lays `touches` short swelling strokes, each
     loaded from a weighted set (`stampMaterialSet({ blue: material, rose: { material, weight: 2 } })`, checked as
     written), so neighbours differ. `placement` is `{ kind: 'along', path, spread, weight? }` (down a slope, a shadow
     side, a colour passage) or `{ kind: 'area', region, weight? }`, a weight field 0..1 read where each mark lands; prefer a path or a weighted area to an even scatter, which reads as
@@ -169,7 +166,7 @@ Everything is from `#studio`.
     drew, each with a `facing`, so moving `light` relights them; `stampBlot(p, id, { shapes: [{ id, region }],
     repeat?, irregular? })`, a tissue pressed when damp, crumpled afresh each press. A within's merged stretches are
     softened by the technique laying the shape.
-  - **A backrun on purpose**: `stampBackrun(p, id, { along, brush, size, reveal })` lays clean water along a
+  - **A backrun on purpose**: `stampBackrun(p, id, { along, brush, size })` lays clean water along a
     junction you choose once the paper under it is damp. Both sides must be in the same passage: passages share no
     water.
   - **Marks**: a `StampMark` (`{ key, brush, diameter, geometry }`) paints with `p.mark`, placed from its key, so
@@ -203,8 +200,8 @@ Everything is from `#studio`.
   whole draw.
 - Render `<StampPainting painting={painting} t={s.t} />` in a scene: the painting carries its paper and medium. It
   draws with WebGPU, which the render browser and `studio preview`'s Chrome have; a browser without it fails loudly
-  rather than drawing blank. `t` is the scene's time, which reveals count on, so the painting paints itself in; hold
-  a reveal's `at` to a cue from `timeline.ts` (`sceneCueSeconds(clock)`) to paint an element in on a word.
+  rather than drawing blank. `t` is the scene's time, which keyed paint and the recipe's own motion read. To bring an
+  element in on a word, fade its group's `visibility` from a cue in `timeline.ts` (`sceneCueSeconds(clock)`).
 
 Paint in the order a painter would: background glazes first, then each element as an opaque group (a solid base, its
 shading and ~30% texture clipped to it, blooms stamped inside), then lines. Separate groups give hard edges between
@@ -227,13 +224,13 @@ elements, which is what keeps objects from showing through each other.
      group, with the written group's id, passes and deposit ids, from `pose.pins` (a pin at rest is left out). Motion
      keeps each pose's marks by key, and at rest the group draws as written. A parent's bend reaches a live part
      as its warp, so a breathing body carries its live throat.
-   - `{ boil: { every: 2 } }`: the lines wobble on twos once the group's last stroke is drawn, and the texture
+   - `{ boil: { every: 2 } }`: the lines wobble on twos, and the texture
      stays put. A group boils as one: strokes that should boil apart need groups of their own.
 4. **Write the motion as data, over the compiled painting.**
    - `buildPaintMotion(painting, { nodes, plays, foldCheck })` takes one `PaintMotionNode` per moving group, its
      `id` the group's, with `parent` for parts that follow another (ink and throat under the body), `clock:
-     { hold: 2 }`, and `pins`: `{ at, reach }` radial, or `{ part }` owning a region. Each group's painted box and
-     reveal end come from the painting.
+     { hold: 2 }`, and `pins`: `{ at, reach }` radial, or `{ part }` owning a region. Each group's painted box
+     comes from the painting.
    - Each play is `paintMotionPlay(node, clip, { clock, origin })`. Clips are `poses` (keyed pin moves), `breathe`,
      `sway`, `flutter` and `place`. A clock is parts: `{ at: cue, rate?, loop?: { period, mode?, times? }, hold?,
      until? }`, or `{ at, freeze }`. Start every play at a cue from `timeline.ts`. A finished clip holds its last
@@ -269,11 +266,10 @@ for a material (`paintedThreeColorNode`). `poseAt` returns a key of what it show
 does, or a frame restores a stale one. Memoise `three`: a new array reloads the device. The frog project's
 `frogDepth` and the round-trip project are worked examples.
 
-Hold motion on twos (`clock: { hold: 2 }` on the node, at `PAINT_ANIMATION_FPS`) and let the paint-in run on ones: a
-node's hold never reaches its reveal. Run `studio repeatable`
-inside a hold and across one.
+Hold motion on twos (`clock: { hold: 2 }` on the node, at `PAINT_ANIMATION_FPS`); fades can run on ones. Run
+`studio repeatable` inside a hold and across one.
 
-Look at what you paint: `studio look` gives a sheet of chosen frames, mid-reveal and finished; compare the brushes
+Look at what you paint: `studio look` gives a sheet of chosen frames; compare the brushes
 against the pack's `previews/`, or for a Photoshop pack its `reference/`, Photoshop's own strokes, which
 `npm run photoshop -- references` captures (docs/photoshop-capture.md). What the renderer doesn't do yet is ticketed: varied washes, pooled and lost edges and bleeding (vid-81),
 granulation, pigment mixing and true glazing (vid-83), the brush settings the importer drops (vid-84). Don't fake those
@@ -292,7 +288,7 @@ each frame is redrawn from paper.
 - **Flush deferred drawing at the end of every layer**, so one frame's marks never turn up in the next.
 - **Prove it:** `studio repeatable <p> <times>` renders chosen times fresh, again after other frames in one tab, and
   again beside other frames in several tabs, and fails if any differ. Run it on every painted scene, at times
-  mid-reveal and after. A painting passes over 50 dB like any GPU scene; a few pixels a level apart is rounding, not a bug (docs/private-styles.md, "Same pixels").
+  mid-fade and after. A painting passes over 50 dB like any GPU scene; a few pixels a level apart is rounding, not a bug (docs/private-styles.md, "Same pixels").
 - **Time it:** `studio profile <p> --frames a:b` says what a painting's draw costs a frame and what the whole render
   does. A dense 1080p landscape paints in about 67 ms a frame on an M1 Max.
 

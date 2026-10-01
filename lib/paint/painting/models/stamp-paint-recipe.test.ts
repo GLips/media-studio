@@ -4,7 +4,6 @@ import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/st
 import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampMask } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
-import { visibleStampCountAt } from './stamp-deposit-reveal.ts';
 import type { StampRegion } from './stamp-region.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
@@ -139,10 +138,9 @@ test('a recipe that would seed or draw wrongly is refused when it compiles, nami
   });
   assert.throws(() => compileStampPaintRecipe(recipe), (error: Error) => error.message.includes(': sky') && !error.message.includes('sky/glaze/s1'));
 
-  const oneStroke = (settings: { size: number } | { size: number; reveal: { at: number; over: number } }) => () => compileStampPaintRecipe(stampPaintRecipe(FLAT, (paint) =>
+  const oneStroke = (settings: { size: number }) => () => compileStampPaintRecipe(stampPaintRecipe(FLAT, (paint) =>
     paint.group('g', { composite: 'opaque' }, (group) => group.passage('p', {}, (pass) => pass.stroke('s', { brush, well: { paint: ochre }, path, ...settings })))));
   assert.throws(oneStroke({ size: 0 }), /g\/p\/s has diameter 0/);
-  assert.throws(oneStroke({ size: 40, reveal: { at: 1, over: -3 } }), /reveals over -3s, and a reveal takes a finite 0 or more/);
 });
 
 test('a stroke tapers at both ends however short, and turns with its direction from its first stamp', () => {
@@ -155,25 +153,6 @@ test('a stroke tapers at both ends however short, and turns with its direction f
   assert.equal(sizes[0], sizes.at(-1));
   assert.ok(sizes[0] < Math.max(...sizes), `${sizes}`);
   assert.ok(deposit.stamps.every((stamp) => Math.abs(stamp.rotation - Math.PI / 2) < 1e-9));
-});
-
-test('a stroke partway drawn shows a prefix of the finished stroke\'s stamps, the same every compile', () => {
-  const recipe = (drawnOver = 0) => stampPaintRecipe(FLAT, (paint) => paint.group('g', { composite: 'opaque' }, (group) =>
-    group.passage('p', {}, (pass) => pass.stroke('line', { brush, well: { paint: ochre }, size: 40, path, reveal: { at: 2, over: drawnOver } }))));
-  const whole = stampPassDeposits(compileStampPaintRecipe(recipe()).groups[0].passes[0])[0];
-  const drawn = stampPassDeposits(compileStampPaintRecipe(recipe(4)).groups[0].passes[0])[0];
-  assert.deepEqual(drawn.stamps, whole.stamps);
-
-  assert.equal(visibleStampCountAt(whole, 1.9), 0);
-  assert.equal(visibleStampCountAt(whole, 2), whole.stamps.length);
-  const counts = [1.99, 2, 3, 4, 5, 6, 7].map((t) => visibleStampCountAt(drawn, t));
-  assert.deepEqual(counts, counts.toSorted((a, b) => a - b));
-  assert.equal(counts[0], 0);
-  assert.ok(counts[1] > 0 && counts[3] > counts[1] && counts[3] < whole.stamps.length, `a partial stroke: ${counts}`);
-  assert.equal(counts.at(-1), whole.stamps.length);
-  // Halfway through its time, halfway along its length: the stamps shown are those in the first half.
-  const halfway = drawn.stamps.slice(0, counts[3]);
-  assert.ok(halfway.every((stamp) => stamp.reveal <= 0.5) && drawn.stamps[counts[3]].reveal > 0.5);
 });
 
 test("a dual brush's stamps are its scale times the deposit's diameter, stroked or placed", () => {
