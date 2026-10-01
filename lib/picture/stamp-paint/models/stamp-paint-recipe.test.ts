@@ -70,6 +70,34 @@ test('a clipped pass clips to the nearest unclipped pass before it; a deposit la
   );
 });
 
+test("a group knocks out first and once: its knockout's fluid is its own, and nothing clips to it", () => {
+  const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('cloud', { composite: 'glaze', opacity: 1 }, (group) => {
+    group.knockout('lights', {}, (knockout) => {
+      knockout.mask('fluid', { region: sun });
+      knockout.water('wash', { kind: 'fill', brush, diameter: 20, application: { kind: 'flood' }, region: sun });
+    });
+    group.pass('body', {}, (pass) => pass.fill('puff', { brush, material: ochre, diameter: 20, application: { kind: 'flood' }, region: sun }));
+  })));
+  const [knockout, body] = painting.groups[0].passes;
+  assert.equal(knockout.kind === 'wash' && knockout.knockout, true);
+  assert.deepEqual(fluid(stampPassDeposits(knockout)[0].mask), ['cloud/lights/fluid']);
+  assert.equal(stampPassDeposits(body)[0].mask, null);
+  assert.throws(
+    () => compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => {
+      group.knockout('k', {}, () => {});
+      group.pass('p', { clipped: true }, () => {});
+    }))),
+    /g\/p is clipped, but no unclipped pass comes before it/,
+  );
+  assert.throws(
+    () => stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => {
+      group.pass('p', {}, () => {});
+      group.knockout('k', {}, () => {});
+    })),
+    /a group knocks out once, before it paints/,
+  );
+});
+
 test('groups paint far to near by depth, an order overrides depth, and ties keep the order written', () => {
   const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => {
     paint.group('figure', { composite: 'opaque', depth: 1 }, () => {});

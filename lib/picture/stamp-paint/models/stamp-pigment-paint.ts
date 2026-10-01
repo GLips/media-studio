@@ -14,7 +14,7 @@ import type { PaintBands } from '#lib/picture/paint/models/paint-spectrum.ts';
 import type { PlacedStamp } from './stamp-placement.ts';
 import { stampPaintFieldEnds } from './stamp-paint-field.ts';
 import { stampKeySpanAt } from './stamp-material-keys.ts';
-import { stampPassDeposits, type CompiledStampDeposit, type CompiledStampPaint, type PaintMaterial, type StampKeyedMaterial, type StampPaintColor } from './stamp-paint-recipe.ts';
+import { stampGroupKnocksOut, stampPassDeposits, type CompiledStampDeposit, type CompiledStampPaint, type PaintMaterial, type StampKeyedMaterial, type StampPaintColor } from './stamp-paint-recipe.ts';
 
 /**
  * Paint as pigment in a `medium`, mixed and dried with Kubelka–Munk. `pigments`, keyed by id, are the ones a mixture
@@ -75,8 +75,8 @@ export type StampPigmentGroup = {
    */
   open: number | null;
   /**
-   * In a group on its own paper (StampGroupPaper), the layer after its paint whose first channel holds how much of its
-   * paper shows over what's under it, which no wet stage moves. Null in a group on the ground's.
+   * In a group with a knockout, the layer after its paint holding what the knockout took out of the paint behind it
+   * (stamp-paint-pigment-compositor.ts), which no wet stage moves. Null in a group without.
    */
   sheetLayer: number | null;
 };
@@ -92,7 +92,8 @@ export type StampPigmentPaint = {
   deposits: ReadonlyMap<CompiledStampDeposit, StampPigmentDeposit>;
 };
 
-export type StampPigmentDeposit = { group: number; components: readonly StampPigmentComponent[]; grade: StampPigmentGrade };
+/** `knockout`: whether it's in its group's knockout, taking from the paint behind the group rather than laying its own. */
+export type StampPigmentDeposit = { group: number; components: readonly StampPigmentComponent[]; grade: StampPigmentGrade; knockout: boolean };
 
 const UNGRADED: StampPigmentGrade = { kind: 0, geometry: [0, 0, 0, 0] };
 
@@ -117,11 +118,11 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
   const deposits = new Map<CompiledStampDeposit, StampPigmentDeposit>();
   const groups = painting.groups.map((group, g): StampPigmentGroup => {
     const palette: PaintPigment[] = [];
-    for (const deposit of group.passes.flatMap((pass) => stampPassDeposits(pass))) {
+    for (const [pass, deposit] of group.passes.flatMap((written) => stampPassDeposits(written).map((laid) => [written, laid] as const))) {
       const { action } = deposit;
       // Water and a lift lay no pigment of their own.
       if (action.kind !== 'paint') {
-        deposits.set(deposit, { group: g, components: [], grade: UNGRADED });
+        deposits.set(deposit, { group: g, components: [], grade: UNGRADED, knockout: pass.kind === 'wash' && pass.knockout });
         continue;
       }
       if (action.burnish && medium.paperContact.kind !== 'peaks') throw new Error(`stamp paint: ${deposit.id} burnishes, and ${medium.name} isn't a dry medium`);
@@ -146,6 +147,7 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
       const pigments = [...atFirst, ...atSecond].flatMap(({ laid }) => laid.map(({ pigment }) => pigment)).filter((pigment, i, all) => all.findIndex(({ id }) => id === pigment.id) === i);
       deposits.set(deposit, {
         group: g,
+        knockout: false,
         grade: kind === 0 ? UNGRADED : { kind, geometry },
         components: pigments.map((pigment) => {
           let slot = palette.findIndex(({ id }) => id === pigment.id);
@@ -162,7 +164,7 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
       throw new Error(`stamp paint: ${group.id} mixes ${palette.length} pigments, over the ${STAMP_PIGMENT_GROUP_SLOTS} a wash holds; split it into two groups (${palette.map(({ id }) => id).join(', ')})`);
     }
     const washes = group.passes.some((pass) => pass.kind === 'wash'), paintLayers = stampPigmentLayers(palette.length, washes);
-    return { palette, paintLayers, open: washes ? 4 * paintLayers - 1 : null, sheetLayer: group.paper === 'own' ? paintLayers : null };
+    return { palette, paintLayers, open: washes ? 4 * paintLayers - 1 : null, sheetLayer: stampGroupKnocksOut(group) ? paintLayers : null };
   });
   return { medium, bands, groups, deposits };
 }

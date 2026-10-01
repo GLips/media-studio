@@ -2,7 +2,8 @@
 //
 // A group's layer holds coverage, each palette pigment's amount (stamp-pigment-paint.ts) and, with a wash, last, its
 // open share: how much of the paint hasn't set. A wash's deposit lands, wets or lifts as its landing is
-// (stamp-wet-landing.ts, stamp-wet-lift.ts). A group dries as a Kubelka–Munk film, glazed or opaque.
+// (stamp-wet-landing.ts, stamp-wet-lift.ts), a knockout's into its sheet (knockOut). A group dries as a Kubelka–Munk
+// film, glazed or opaque.
 //
 // Negative space: a deposit's blend and a stamp's tint are colour operations with no pigment meaning, so neither
 // applies; a burnt rim only shapes coverage. A plain pass's fill `load` is coverage: over paint it moves the paint
@@ -13,7 +14,7 @@ import { PAINT_PAPER_WGSL, paintPigmentSeed } from '#lib/picture/paint/models/pa
 import { paintHexToLinear } from '#lib/picture/paint/models/paint-spectrum.ts';
 import type { PaintStackedLayering } from '#lib/picture/paint/models/paint-medium.ts';
 import { STAMP_PIGMENT_GROUP_SLOTS, stampPigmentAmountsAt, stampPigmentGroupLayers, type StampPigmentPaint } from '../models/stamp-pigment-paint.ts';
-import { STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
+import { STAMP_LIFT_STAIN_FIBRES, STAMP_LIFT_WET_STAIN_HOLD, STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
 import { STAMP_OPAQUE_COVER, type CompiledStampDeposit, type StampPaintColor } from '../models/stamp-paint-recipe.ts';
 import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
@@ -23,13 +24,13 @@ import { stampUniformLayout, stampUniformWriter, type StampUniformViews } from '
 const COMPONENT_WORDS = 4;
 
 /**
- * A deposit's components (first and count), its group, where its material grades (StampPigmentGrade), the
- * channel of its group's open share and the layer of its sheet (each 0, coverage's, in a group without one), and each
- * component's amounts at its material's two ends, two to a vec4f: written each frame, at its time, so a
- * recolour uploads no more.
+ * A deposit's components (first and count), its group, where its material grades (StampPigmentGrade), its group's
+ * open-share channel and sheet layer (0 for none), 1 if it's in its group's knockout, and each component's amounts at
+ * its material's ends, two to a vec4f: written each frame, at its time, so a recolour uploads no more.
  */
 const PIGMENT_PAINT_DEPOSIT = stampUniformLayout('PaintDeposit', [
-  ['first', 'u32'], ['count', 'u32'], ['group', 'u32'], ['gradeKind', 'i32'], ['grade', 'vec4f'], ['open', 'u32'], ['sheetLayer', 'u32'], ['amounts', { vec4fArray: STAMP_PIGMENT_GROUP_SLOTS / 2 }],
+  ['first', 'u32'], ['count', 'u32'], ['group', 'u32'], ['gradeKind', 'i32'], ['grade', 'vec4f'], ['open', 'u32'], ['sheetLayer', 'u32'], ['knockout', 'u32'],
+  ['amounts', { vec4fArray: STAMP_PIGMENT_GROUP_SLOTS / 2 }],
 ]);
 
 /** A number as a WGSL f32 literal, to the precision an f32 holds. */
@@ -72,8 +73,7 @@ fn washMoved(now: array<vec4f, ${layers}>, wasPigment: f32) -> array<vec4f, ${la
  * where two washes meet they mix rather than one replacing the other.
  */
 const mixedLay = (pickup: number) => /* wgsl */ `
-fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32, press: f32) {
-  laySheet(pixel, reserved, 0.0);
+fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32) {
   let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
   if (cover <= 0.0) { return; }
   let incoming = incomingAt(tooth, at, press, 0.0);
@@ -110,8 +110,7 @@ fn heldAround(pixel: vec2u) -> f32 {
   }
   return held / 9.0;
 }
-fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32, press: f32) {
-  laySheet(pixel, reserved, 0.0);
+fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32) {
   let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
   if (cover <= 0.0) { return; }
   var was: array<vec4f, LAYERS>;
@@ -140,10 +139,12 @@ export function stampPigmentCompositor(device: StampPaintDevice, paint: StampPig
   const { bands, medium } = paint;
   const V = Math.ceil(bands.count / 4);
   const layers = Math.max(1, ...paint.groups.map(stampPigmentGroupLayers));
+  // The record of the paint on each pixel, a layer past the bands, kept only for a painting where a group knocks out.
+  const records = paint.groups.some(({ sheetLayer }) => sheetLayer !== null);
 
   const writers = new Map<CompiledStampDeposit, (views: StampUniformViews, t: number) => void>();
   const componentWords: number[] = [];
-  for (const [deposit, { group, components, grade }] of paint.deposits) {
+  for (const [deposit, { group, components, grade, knockout }] of paint.deposits) {
     const first = componentWords.length / COMPONENT_WORDS;
     const amounts = new Float32Array(STAMP_PIGMENT_GROUP_SLOTS * 2);
     writers.set(deposit, (views, t) => {
@@ -155,6 +156,7 @@ export function stampPigmentCompositor(device: StampPaintDevice, paint: StampPig
       put('grade', [...grade.geometry]);
       put('open', paint.groups[group].open ?? 0);
       put('sheetLayer', paint.groups[group].sheetLayer ?? 0);
+      put('knockout', knockout ? 1 : 0);
       components.forEach((component, i) => amounts.set(stampPigmentAmountsAt(component, t), i * 2));
       put('amounts', amounts);
     });
@@ -219,7 +221,7 @@ fn paperReflectance(i: u32, color: vec3f) -> vec4f {
   };
 
   return {
-    targets: { layer: { kind: 'array', layers }, painting: { kind: 'array', layers: V } },
+    targets: { layer: { kind: 'array', layers }, painting: { kind: 'array', layers: V + (records ? 1 : 0) } },
     readsStampTints: false,
     reads: { press: paperContact.kind === 'peaks', before: layering.kind === 'stacks' ? { reach: STACKED_FILL_REACH } : null },
     deposit: {
@@ -256,30 +258,34 @@ fn incomingAt(tooth: vec2f, at: vec2f, press: f32, filled: f32) -> array<vec4f, 
   }
   return incoming;
 }
-// The layer holding a group's sheet, which only laySheet writes: a group on the ground's paper has none.
+// The layer holding a group's sheet, which only a knockout writes: a group without one has none.
 fn isSheet(l: u32) -> bool { return paint.sheetLayer != 0u && l == paint.sheetLayer; }
-// A group on its own paper shows it over what's under it: x, as far as its fluid held a brush off (\`reserved\`), a
-// cover; y, as far as its lifts took (\`lifted\`), a thinning. A reserve is the fluid's, so another brush over the same
-// fluid shows no more of it; each lift adds, as a second blot takes more.
-fn laySheet(pixel: vec2u, reserved: f32, lifted: f32) {
-  if (paint.sheetLayer == 0u || max(reserved, lifted) <= 0.0) { return; }
-  let was = textureLoad(layer, pixel, paint.sheetLayer);
-  let shown = vec2f(max(was.x, clamp(reserved, 0.0, 1.0)), 1.0 - (1.0 - was.y) * (1.0 - clamp(lifted, 0.0, 1.0)));
-  textureStore(layer, pixel, paint.sheetLayer, vec4f(shown, 0.0, 0.0));
-}
 ${layering.kind === 'stacks' ? stackedLay(layering) : mixedLay(medium.pickup)}`,
       wet: /* wgsl */ `
 ${STAMP_WET_LIFT_WGSL}
 @group(0) @binding(25) var<storage, read> stains: array<vec4f>;
+// A knockout's sheet: x, where its fluid held its brushes off, the paint behind never reaching (a cover: another
+// brush over the same fluid reserves no more); y, how much of the paint behind its lifts take, each adding as a
+// second blot takes more; z, how free that paint was, as fresh as the wettest lift's landing (wetLift's \`free\`), for
+// how much of its stain it holds. The paint behind is laid and dried already, so its open share and its pigments
+// aren't known here: the group reads its record as it's laid (layGroup).
+fn knockOut(pixel: vec2u, cover: f32, reserved: f32, wet: WetLanding) {
+  let free = liftFree(wet.workable, 1.0);
+  let lifted = select(0.0, clamp(cover * wet.strength, 0.0, 1.0) * liftLoose(free, ${f32(medium.wetting.rewetting)}), wet.action == WET_LIFT);
+  if (max(reserved, lifted) <= 0.0) { return; }
+  let was = textureLoad(layer, pixel, paint.sheetLayer);
+  let now = vec3f(max(was.x, clamp(reserved, 0.0, 1.0)), 1.0 - (1.0 - was.y) * (1.0 - lifted), select(was.z, max(was.z, free), lifted > 0.0));
+  textureStore(layer, pixel, paint.sheetLayer, vec4f(now, 0.0));
+}
 // Water leaves the pigment where it is: moving it is the neighbourhood's (stamp-wet-stages.ts). Every landing first
 // sets the open share to none wherever the paper has settled since it last took water, so whatever reads it after
 // (this landing, the stages, a later landing) reads the paint there as set.
 fn landDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32, wet: WetLanding) {
   let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
-  // A lift shows the group's own paper as far as it loosens what's under it, taken as paint as fresh as this landing
-  // is wet: what lies under a cut-out isn't its group's, so neither its open share nor its staining is known here.
-  let loosened = liftLoose(liftFree(wet.workable, 1.0), ${f32(medium.wetting.rewetting)});
-  laySheet(pixel, reserved, select(0.0, cover * wet.strength * loosened, wet.action == WET_LIFT));
+  if (paint.knockout != 0u) {
+    knockOut(pixel, cover, reserved, wet);
+    return;
+  }
   var was: array<vec4f, LAYERS>;
   for (var l = 0u; l < LAYERS; l++) { was[l] = textureLoad(layer, pixel, l); }
   let o = vec2u(paint.open / 4u, paint.open % 4u);
@@ -371,18 +377,29 @@ ${bandWgsl}
 @group(0) @binding(4) var photographSampler: sampler;
 @group(0) @binding(5) var<storage, read> palettes: array<vec4f>;
 const PALETTE = ${STAMP_PIGMENT_GROUP_SLOTS * 2 * V}u;
-// Each group's sheet layer, 0 for a group on the ground's paper.
+// Each group's sheet layer, 0 for a group without a knockout.
 const SHEETS = array<u32, ${Math.max(1, paint.groups.length)}>(${(paint.groups.length ? paint.groups : [{ sheetLayer: null }]).map(({ sheetLayer }) => `${sheetLayer ?? 0}u`).join(', ')});
-// A group's film glazed over what's there or, opaque, laid over bare paper. A group on its own paper first shows
-// that paper over what's there as far as its sheet holds: its lifted and reserved lights.
+@group(0) @binding(6) var<storage, read> stains: array<vec4f>;
+// The painting's record (x: unit films of paint on the pixel; y: of them, what the fibres hold as stain), its layer
+// past the bands; none where no group knocks out.
+const RECORDS = ${records};
+// A group's film glazed over what's there or, opaque, laid over bare paper. A group that knocks out first takes its
+// sheet out of what's there: its reserve covers it with paper, its lift thins it as wetLift thins paint, stain kept.
 fn layGroup(pixel: vec2u, glaze: bool, opacity: f32) {
   var amounts: array<vec4f, LAYERS>;
   for (var l = 0u; l < LAYERS; l++) { amounts[l] = textureLoad(layer, pixel, l, 0); }
   let coverage = amounts[0].x;
   let sheet = SHEETS[u.group];
-  // Reserved (x) and lifted (y), at the group's opacity as its paint is: a group half there shows its paper half.
-  let shown = select(vec2f(0.0), clamp(amounts[sheet].xy, vec2f(0.0), vec2f(1.0)), sheet != 0u) * opacity;
+  let taken = select(vec3f(0.0), clamp(amounts[sheet].xyz, vec3f(0.0), vec3f(1.0)), sheet != 0u);
+  // Reserved (x) and lifted (y), at the group's opacity as its paint is: a group half there takes half.
+  let shown = taken.xy * opacity;
   if (coverage <= 0.0 && max(shown.x, shown.y) <= 0.0) { return; }
+  var record = vec2f(0.0);
+  if (RECORDS) { record = textureLoad(painting, pixel, BAND_VEC4S).xy; }
+  // wetLift on the paint behind as a whole: it keeps its stain's held share and loses \`shown.y\` of the rest.
+  let stain = record.y * mix(1.0, ${f32(STAMP_LIFT_WET_STAIN_HOLD)}, taken.z);
+  let lifted = vec2f(stain + (1.0 - shown.y) * (record.x - stain), stain + (1.0 - shown.y) * (record.y - stain));
+  let left = select(1.0 - shown.y, lifted.x / max(record.x, 1e-6), record.x > 1e-6);
   let thickness = select(1.0 / max(coverage, 0.001), opacity, glaze);
   let cover = min(1.0, coverage * ${STAMP_OPAQUE_COVER.toFixed(1)}) * opacity;
   var bare = vec3f(0.0);
@@ -399,21 +416,34 @@ fn layGroup(pixel: vec2u, glaze: bool, opacity: f32) {
       scatter += amount * palettes[base + (s * 2u + 1u) * BAND_VEC4S + i];
     }
     let film = kubelkaMunkFilm(absorb * thickness, scatter * ${f32(1 + medium.dryingScatter)} * thickness);
-    // A reserve's edge covers what's under it; a lift thins it, so its share goes in optical density, not reflectance.
+    // A reserve's edge covers what's there; a lift thins it, so what it left goes in optical density, not reflectance.
     let paper = paperReflectance(i, bare);
-    let covered = mix(textureLoad(painting, pixel, i), paper, shown.x);
-    let under = select(covered, paper * pow(max(covered, vec4f(1e-4)) / max(paper, vec4f(1e-4)), vec4f(1.0 - shown.y)), shown.y > 0.0);
+    let thinned = select(textureLoad(painting, pixel, i), paper * pow(max(textureLoad(painting, pixel, i), vec4f(1e-4)) / max(paper, vec4f(1e-4)), vec4f(left)), shown.y > 0.0);
+    let under = mix(thinned, paper, shown.x);
     var laid = kubelkaMunkOver(film, under);
     if (!glaze) { laid = under + (kubelkaMunkOver(film, paperReflectance(i, bare)) - under) * cover; }
     textureStore(painting, pixel, i, clamp(laid, vec4f(0.0), vec4f(1.0)));
   }
+  if (RECORDS) {
+    // The film's own: its unit films, and the share of each pigment's first STAMP_LIFT_STAIN_FIBRES its staining holds.
+    var own = vec2f(0.0);
+    for (var s = 0u; s < ${STAMP_PIGMENT_GROUP_SLOTS}u; s++) {
+      let channel = s + 1u;
+      if (channel / 4u >= LAYERS) { break; }
+      let films = amounts[channel / 4u][channel % 4u] * thickness;
+      own += vec2f(films, stains[u.group * LAYERS + channel / 4u][channel % 4u] * min(films, ${f32(STAMP_LIFT_STAIN_FIBRES)}));
+    }
+    let behind = lifted * (1.0 - shown.x);
+    textureStore(painting, pixel, BAND_VEC4S, vec4f(select(mix(behind, own, cover), behind + own, glaze), 0.0, 0.0));
+  }
 }`,
-      resources: ({ photograph, sampler }) => [photograph, sampler, { buffer: palettes }],
+      resources: ({ photograph, sampler }) => [photograph, sampler, { buffer: palettes }, { buffer: stains }],
     },
     paper: /* wgsl */ `
 ${bandWgsl}
 fn layPaper(pixel: vec2u, color: vec3f) {
   for (var i = 0u; i < BAND_VEC4S; i++) { textureStore(painting, pixel, i, paperReflectance(i, color)); }
+  if (${records}) { textureStore(painting, pixel, BAND_VEC4S, vec4f(0.0)); }
 }`,
     output: /* wgsl */ `
 ${bandWgsl}

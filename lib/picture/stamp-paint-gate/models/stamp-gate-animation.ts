@@ -2,12 +2,13 @@
 //
 // - drift: a moving group's texture travels with it;
 // - boil: a group boiling on twos holds within an epoch and changes across them;
-// - boil-wash: a boiling wash with nothing random in its marks flows as far each epoch;
+// - boil-wash: a boiling wash without random marks flows as far each epoch;
 // - bloom-boil: a bloom holds within an epoch and re-rolls its front at the next;
 // - sunset: one painting in two palettes lays the same coverage deposit by deposit;
-// - effects-sunset: a sky's bloom and rim change its coverage alike at every hour;
+// - effects-sunset: a bloom and rim change coverage alike at every hour;
 // - recolour: keyed day to dusk, it's the halfway paint halfway, in any frame order;
-// - cut-out: a group carries its own paper and lights.
+// - cut-out: a group carries its own paper;
+// - knockout: what a group takes from behind moves with it.
 
 import { PAINT_MEDIA } from '#lib/picture/paint/models/paint-medium.ts';
 import { paintMixtureAmounts } from '#lib/picture/paint/models/paint-mixture.ts';
@@ -242,49 +243,110 @@ export function checkStampGateEffectsSunset(hours: readonly { on: ArrayLike<numb
 
 /** The cut-out's hull in frame 0, and its lights' cores, where the lift takes all and the fluid holds all off. */
 const CUT_OUT_HULL = { x: 80, y: 108, radiusX: 52, radiusY: 16 };
-const CUT_OUT_LIGHTS = { lift: { x: 55, y: 60, r: 7 }, reserve: { x: 108, y: 60, r: 6 } };
-/** Where the cut-out wholly covers the sky in frame 0, as a test of a pixel: its hull's body and its lights' cores. */
-const coveredByCutOut = (x: number, y: number) => ((x - CUT_OUT_HULL.x) / (CUT_OUT_HULL.radiusX - 20)) ** 2 + ((y - CUT_OUT_HULL.y) / (CUT_OUT_HULL.radiusY - 8)) ** 2 <= 1
-  || Object.values(CUT_OUT_LIGHTS).some((core) => Math.hypot(x - core.x, y - core.y) <= core.r);
-/** The most a light's core may differ from bare paper on average, levels; and the least the sky must, so the check bites. */
-export const STAMP_GATE_LIGHT_TOLERANCE = 2;
-export const STAMP_GATE_SKY_LEAST = 10;
+/** Where the cut-out wholly covers the sky in frame 0, as a test of a pixel: its hull's body. */
+const coveredByCutOut = (x: number, y: number) => ((x - CUT_OUT_HULL.x) / (CUT_OUT_HULL.radiusX - 20)) ** 2 + ((y - CUT_OUT_HULL.y) / (CUT_OUT_HULL.radiusY - 8)) ** 2 <= 1;
 
 /** A circle of radius `r` about a point, as a region. */
 const disc = ({ x, y }: { x: number; y: number }, r: number) => ({ kind: 'ellipse' as const, x, y, radiusX: r, radiusY: r });
+const steadyBrush = () => stampGateBrush('Steady', { flow: 0.6 });
+const flood = (region: ReturnType<typeof disc>) => ({ kind: 'fill' as const, brush: steadyBrush(), diameter: 20, application: { kind: 'flood' as const }, region });
+const gatePainting = (painting: StampGatePainting['painting']): StampGatePainting => ({
+  painting, paper: { ...PAPER, image: { style: 'gate', pack: 'gate', file: 'photograph.png' } }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t: 0, images: STAMP_GATE_IMAGES,
+});
+/** Moving STAMP_GATE_DRIFT_STEP pixels a frame. */
+const drifting: StampGroupMotion = { keys: [{ at: 0, x: 0, y: 0 }, { at: 1, x: STAMP_GATE_DRIFT_STEP * STAMP_GATE_ANIMATION_FPS, y: 0 }] };
 
-/**
- * A granulating sky glazed over the paper's photograph, under a group drifting STAMP_GATE_DRIFT_STEP pixels a frame on
- * `paper`: an opaque, granulating hull, a light lifted out of wetted paper beside it and one reserved by fluid a water stroke
- * crossed.
- * Without the `sky`, its lights' cores are bare paper; without its `lights`, it's the hull alone.
- */
-export function stampGateCutOutPainting(paper: StampGroupPaper, { sky = true, lights = true } = {}): StampGatePainting {
-  const steady = stampGateBrush('Steady', { flow: 0.6 });
-  const second = STAMP_GATE_DRIFT_STEP * STAMP_GATE_ANIMATION_FPS;
-  const painting = compileStampPaintRecipe(stampPaintRecipe((p) => {
-    if (sky) {
-      p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.pass('wash', {}, (pass) => pass.fill('sky', {
-        brush: steady, diameter: 40, application: { kind: 'flood' }, material: mixture({ pigment: W.ultramarine, amount: 1 }), region: stampGatePolygon(0, 0, 240, 0, 240, 160, 0, 160),
-      })));
-    }
-    p.group('cut-out', { composite: 'opaque', paper, motion: { keys: [{ at: 0, x: 0, y: 0 }, { at: 1, x: second, y: 0 }] } }, (g) => g.wash('boat', { preparation: { region: disc(CUT_OUT_LIGHTS.lift, 22) } }, (w) => {
-      w.fill('hull', {
-        brush: steady, diameter: 24, application: { kind: 'flood' }, material: mixture({ pigment: W.ultramarine, amount: 1 }, { pigment: W.burntSienna, amount: 1 }),
-        region: { kind: 'ellipse', ...CUT_OUT_HULL },
-      });
-      if (!lights) return;
-      w.lift('light', { kind: 'fill', brush: steady, diameter: 20, application: { kind: 'flood' }, region: disc(CUT_OUT_LIGHTS.lift, 18) });
-      w.mask('fluid', { region: disc(CUT_OUT_LIGHTS.reserve, 14) });
-      w.water('wet', { kind: 'fill', brush: steady, diameter: 20, application: { kind: 'flood' }, region: disc(CUT_OUT_LIGHTS.reserve, 24) });
-    }));
-  }));
-  return { painting, paper: { ...PAPER, image: { style: 'gate', pack: 'gate', file: 'photograph.png' } }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t: 0, images: STAMP_GATE_IMAGES };
+/** A granulating sky glazed over the paper's photograph, under an opaque, granulating hull drifting on `paper`. */
+export function stampGateCutOutPainting(paper: StampGroupPaper): StampGatePainting {
+  return gatePainting(compileStampPaintRecipe(stampPaintRecipe((p) => {
+    p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.pass('wash', {}, (pass) => pass.fill('sky', {
+      brush: steadyBrush(), diameter: 40, application: { kind: 'flood' }, material: mixture({ pigment: W.ultramarine, amount: 1 }), region: stampGatePolygon(0, 0, 240, 0, 240, 160, 0, 160),
+    })));
+    p.group('cut-out', { composite: 'opaque', paper, motion: drifting }, (g) => g.wash('boat', {}, (w) => w.fill('hull', {
+      brush: steadyBrush(), diameter: 24, application: { kind: 'flood' }, material: mixture({ pigment: W.ultramarine, amount: 1 }, { pigment: W.burntSienna, amount: 1 }),
+      region: { kind: 'ellipse', ...CUT_OUT_HULL },
+    })));
+  })));
 }
 
+/** The most a drifted frame, moved back by its motion, differs from frame 0 where the cut-out wholly covers the sky, in levels. */
+function cutOutDrift(first: Rgba, { frame, rgba }: { frame: number; rgba: Rgba }, width: number) {
+  const dx = frame * STAMP_GATE_DRIFT_STEP;
+  let max = 0;
+  for (let y = 0; y < SIZE.height; y++) for (let x = 0; x < width - dx; x++) {
+    if (!coveredByCutOut(x, y)) continue;
+    for (let c = 0; c < 3; c++) max = Math.max(max, Math.abs(rgba[(y * width + x + dx) * 4 + c] - first[(y * width + x) * 4 + c]));
+  }
+  return max;
+}
+
+/**
+ * Whether a cut-out on its own paper drifts with its paper (each frame moved back is frame 0 within the dither) and
+ * draws frame 0 again the same; whether on the ground's paper it doesn't, so the check bites; and whether, unmoved,
+ * it's the ground's exactly.
+ */
+export function checkStampGateCutOut({ own, ground, width }: {
+  own: { frames: readonly { frame: number; rgba: Rgba }[]; again: Rgba }; ground: { frames: readonly { frame: number; rgba: Rgba }[] }; width: number;
+}): StampGateWashCheck {
+  const [first, ...rest] = own.frames;
+  const drift = Math.max(...rest.map((drawn) => cutOutDrift(first.rgba, drawn, width)));
+  const groundDrift = Math.max(...ground.frames.slice(1).map((drawn) => cutOutDrift(ground.frames[0].rgba, drawn, width)));
+  const again = mostApart(own.again, first.rgba), papers = mostApart(first.rgba, ground.frames[0].rgba);
+  const problems = [
+    ...(drift > STAMP_GATE_DRIFT_TOLERANCE ? [`its own paper drifts by up to ${drift} levels (past ${STAMP_GATE_DRIFT_TOLERANCE} fails)`] : []),
+    ...(groundDrift <= STAMP_GATE_DRIFT_TOLERANCE ? [`on the ground's paper it drifts by only ${groundDrift}, so the photograph doesn't show under it and the check can't bite`] : []),
+    ...(again > 0 ? [`frame 0 drawn again after the rest differs by ${again}`] : []),
+    ...(papers > 0 ? [`unmoved, its own paper differs from the ground's by ${papers}`] : []),
+  ];
+  return {
+    id: 'animation/cut-out: it carries its paper', passed: !problems.length,
+    detail: problems.length ? problems.join('; ') : `drifts within ${drift} (the ground's paper: ${groundDrift}); frame 0 again identical; unmoved, the ground's exactly`,
+  };
+}
+
+/**
+ * The knockout's reserve and lift: the reserve's fluid, its water reaching past it; the lift out of paper its
+ * preparation wets, its core over the ultramarine at frame 0 and over the phthalo at STAMP_GATE_KNOCKOUT_FAR.
+ */
+const KNOCKOUT = { reserve: { x: 40, y: 110, r: 6 }, lift: { x: 60, y: 50, r: 7 } };
+/** Where the sky turns from ultramarine (low staining) to phthalo blue (high). */
+const KNOCKOUT_SKY_SPLIT = 120;
+/** A frame far enough on that the lift lies over the phthalo and the reserve has left its first place. */
+export const STAMP_GATE_KNOCKOUT_FAR = 12;
+/** The most a reserve's core may differ from bare paper on average, levels; and the least the sky must, so the check bites. */
+export const STAMP_GATE_KNOCKOUT_PAPER = 2;
+export const STAMP_GATE_SKY_LEAST = 10;
+/** The most of the ultramarine a lift may leave, and the least more of the phthalo it must: the stain it can't take. */
+export const STAMP_GATE_LIFT_LEAVES = 0.35;
+export const STAMP_GATE_STAIN_MORE = 0.1;
+
+/**
+ * A sky of ultramarine then phthalo blue glazed over the paper's photograph, under a group drifting
+ * STAMP_GATE_DRIFT_STEP pixels a frame that knocks out a reserve and a lift. Without the `sky`, bare paper; without the
+ * `knockout`, the sky alone; `painted`, the group lays a dab over its reserve after.
+ */
+export function stampGateKnockoutPainting({ sky = true, knockout = true, painted = false } = {}): StampGatePainting {
+  return gatePainting(compileStampPaintRecipe(stampPaintRecipe((p) => {
+    if (sky) {
+      p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.pass('wash', {}, (pass) => {
+        pass.fill('ultramarine', { ...flood(disc({ x: 0, y: 0 }, 1)), diameter: 40, material: mixture({ pigment: W.ultramarine, amount: 1 }), region: stampGatePolygon(0, 0, KNOCKOUT_SKY_SPLIT, 0, KNOCKOUT_SKY_SPLIT, 160, 0, 160) });
+        pass.fill('phthalo', { ...flood(disc({ x: 0, y: 0 }, 1)), diameter: 40, material: mixture({ pigment: W.phthaloBlue, amount: 1 }), region: stampGatePolygon(KNOCKOUT_SKY_SPLIT, 0, 240, 0, 240, 160, KNOCKOUT_SKY_SPLIT, 160) });
+      }));
+    }
+    if (!knockout) return;
+    p.group('cloud', { composite: 'glaze', opacity: 1, motion: drifting }, (g) => {
+      g.knockout('lights', { preparation: { region: disc(KNOCKOUT.lift, 22) } }, (k) => {
+        k.lift('blot', flood(disc(KNOCKOUT.lift, 18)));
+        k.mask('fluid', { region: disc(KNOCKOUT.reserve, 14) });
+        k.water('wash', flood(disc(KNOCKOUT.reserve, 24)));
+      });
+      if (painted) g.pass('dab', {}, (pass) => pass.fill('dab', { ...flood(disc(KNOCKOUT.reserve, 12)), material: mixture({ pigment: W.burntSienna, amount: 1 }) }));
+    });
+  })));
+}
 
 export const STAMP_GATE_ANIMATION_IDS = [
-  'animation/drift', 'animation/boil', 'animation/boil-wash', 'animation/bloom-boil', 'animation/sunset', 'animation/effects-sunset', 'animation/recolour', 'animation/cut-out', 'animation/repaint', 'animation/lent',
+  'animation/drift', 'animation/boil', 'animation/boil-wash', 'animation/bloom-boil', 'animation/sunset', 'animation/effects-sunset', 'animation/recolour', 'animation/cut-out', 'animation/repaint', 'animation/lent', 'animation/knockout',
 ];
 
 type Rgba = ArrayLike<number>;
@@ -403,55 +465,44 @@ export function checkStampGateLent({ onCanvas, lent, refusesSrgb, scopesBalanced
   };
 }
 
-/** The most a drifted frame, moved back by its motion, differs from frame 0 where the cut-out wholly covers the sky, in levels. */
-function cutOutDrift(first: Rgba, { frame, rgba }: { frame: number; rgba: Rgba }, width: number) {
-  const dx = frame * STAMP_GATE_DRIFT_STEP;
-  let max = 0;
-  for (let y = 0; y < SIZE.height; y++) for (let x = 0; x < width - dx; x++) {
-    if (!coveredByCutOut(x, y)) continue;
-    for (let c = 0; c < 3; c++) max = Math.max(max, Math.abs(rgba[(y * width + x + dx) * 4 + c] - first[(y * width + x) * 4 + c]));
-  }
-  return max;
-}
-
-/** The mean difference over a light's core between two frames, in levels. */
-function coreDifference(a: Rgba, b: Rgba, { x: cx, y: cy, r }: { x: number; y: number; r: number }, width: number) {
+/** The mean of `measure` over a disc's pixels, a pixel at `dx` on for each. */
+function overCore({ x: cx, y: cy, r }: { x: number; y: number; r: number }, dx: number, measure: (i: number) => number) {
   let sum = 0, n = 0;
   for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) {
     if (Math.hypot(x - cx, y - cy) > r) continue;
-    for (let c = 0; c < 3; c++) sum += Math.abs(a[(y * width + x) * 4 + c] - b[(y * width + x) * 4 + c]);
-    n += 3;
+    sum += measure((y * SIZE.width + x + dx) * 4);
+    n++;
   }
   return sum / n;
 }
+/** The mean difference over a core between two frames, in levels. */
+const coreApart = (a: Rgba, b: Rgba, core: { x: number; y: number; r: number }, dx = 0) =>
+  overCore(core, dx, (i) => (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2])) / 3);
+/** How much of the sky's darkening a core keeps, against bare paper, over the red channel (where blue darkens most). */
+const skyLeft = (lifted: Rgba, sky: Rgba, bare: Rgba, dx: number) =>
+  overCore(KNOCKOUT.lift, dx, (i) => bare[i] - lifted[i]) / overCore(KNOCKOUT.lift, dx, (i) => bare[i] - sky[i]);
 
 /**
- * Whether a cut-out on its own paper drifts with its paper (each frame moved back is frame 0 within the dither), shows
- * bare paper in its lights' cores over the sky, and draws frame 0 again the same; whether on the ground's paper it
- * doesn't, so the check bites; and whether, unmoved and unlit, it's the ground's exactly.
+ * Whether a knockout's reserve is bare paper where it lies and the sky again where it left, as it drifts; whether its
+ * lift leaves little of the ultramarine and more of the phthalo, the stain it can't take; whether the group's paint
+ * lands over its reserve; and whether frame 0 drawn again after the far frame is the same.
  */
-export function checkStampGateCutOut({ own, ground, bare, unlit, width }: {
-  own: { frames: readonly { frame: number; rgba: Rgba }[]; again: Rgba }; ground: { frames: readonly { frame: number; rgba: Rgba }[] }; bare: Rgba;
-  unlit: { own: Rgba; ground: Rgba }; width: number;
-}): StampGateWashCheck {
-  const [first, ...rest] = own.frames;
-  const drift = Math.max(...rest.map((drawn) => cutOutDrift(first.rgba, drawn, width)));
-  const groundDrift = Math.max(...ground.frames.slice(1).map((drawn) => cutOutDrift(ground.frames[0].rgba, drawn, width)));
-  const lights = Object.entries(CUT_OUT_LIGHTS).map(([name, core]) => ({ name, own: coreDifference(first.rgba, bare, core, width), ground: coreDifference(ground.frames[0].rgba, bare, core, width) }));
-  let again = 0;
-  for (let i = 0; i < first.rgba.length; i++) again = Math.max(again, Math.abs(own.again[i] - first.rgba[i]));
-  let papers = 0;
-  for (let i = 0; i < unlit.own.length; i++) papers = Math.max(papers, Math.abs(unlit.own[i] - unlit.ground[i]));
+export function checkStampGateKnockout({ first, far, again, sky, bare, painted }: Record<'first' | 'far' | 'again' | 'sky' | 'bare' | 'painted', Rgba>): StampGateWashCheck {
+  const moved = STAMP_GATE_KNOCKOUT_FAR * STAMP_GATE_DRIFT_STEP;
+  const reserve = { here: coreApart(first, bare, KNOCKOUT.reserve), moved: coreApart(far, bare, KNOCKOUT.reserve, moved), left: coreApart(far, bare, KNOCKOUT.reserve) };
+  const ultramarine = skyLeft(first, sky, bare, 0), phthalo = skyLeft(far, sky, bare, moved);
+  const dab = coreApart(painted, bare, KNOCKOUT.reserve), repeat = mostApart(again, first);
   const problems = [
-    ...(drift > STAMP_GATE_DRIFT_TOLERANCE ? [`its own paper drifts by up to ${drift} levels (past ${STAMP_GATE_DRIFT_TOLERANCE} fails)`] : []),
-    ...(groundDrift <= STAMP_GATE_DRIFT_TOLERANCE ? [`on the ground's paper it drifts by only ${groundDrift}, so the photograph doesn't show under it and the check can't bite`] : []),
-    ...lights.filter((light) => light.own > STAMP_GATE_LIGHT_TOLERANCE).map((light) => `its ${light.name} differs from bare paper by ${light.own.toFixed(2)} on average (past ${STAMP_GATE_LIGHT_TOLERANCE} fails)`),
-    ...lights.filter((light) => light.ground < STAMP_GATE_SKY_LEAST).map((light) => `on the ground's paper its ${light.name} is within ${light.ground.toFixed(2)} of bare paper, so the sky doesn't show and the check can't bite`),
-    ...(again > 0 ? [`frame 0 drawn again after the rest differs by ${again}`] : []),
-    ...(papers > 0 ? [`unmoved and unlit, its own paper differs from the ground's by ${papers}`] : []),
+    ...(Math.max(reserve.here, reserve.moved) > STAMP_GATE_KNOCKOUT_PAPER ? [`its reserve differs from bare paper by ${reserve.here.toFixed(2)}, and moved by ${reserve.moved.toFixed(2)} (past ${STAMP_GATE_KNOCKOUT_PAPER} fails)`] : []),
+    ...(reserve.left < STAMP_GATE_SKY_LEAST ? [`where its reserve was, the sky is within ${reserve.left.toFixed(2)} of bare paper: it didn't move off`] : []),
+    ...(ultramarine > STAMP_GATE_LIFT_LEAVES ? [`its lift leaves ${ultramarine.toFixed(2)} of the ultramarine (past ${STAMP_GATE_LIFT_LEAVES} fails)`] : []),
+    ...(phthalo < ultramarine + STAMP_GATE_STAIN_MORE ? [`its lift leaves ${phthalo.toFixed(2)} of the phthalo, under ${STAMP_GATE_STAIN_MORE} more than of the ultramarine`] : []),
+    ...(dab < STAMP_GATE_SKY_LEAST ? [`its paint over its reserve is within ${dab.toFixed(2)} of bare paper: the knockout's fluid held it off`] : []),
+    ...(repeat > 0 ? [`frame 0 drawn again after frame ${STAMP_GATE_KNOCKOUT_FAR} differs by ${repeat}`] : []),
   ];
   return {
-    id: 'animation/cut-out: it carries its paper and its lights', passed: !problems.length,
-    detail: problems.length ? problems.join('; ') : `drifts within ${drift} (the ground's paper: ${groundDrift}); lights against bare paper ${lights.map((l) => `${l.name} ${l.own.toFixed(2)} (the ground's paper: ${l.ground.toFixed(2)})`).join(', ')}; frame 0 again identical; unlit, the ground's exactly`,
+    id: 'animation/knockout: its reserve and lift move with it, the lift leaving its stain', passed: !problems.length,
+    detail: `reserve against bare paper ${reserve.here.toFixed(2)}, moved ${reserve.moved.toFixed(2)}, where it left ${reserve.left.toFixed(2)}; the lift leaves ${ultramarine.toFixed(2)} of the ultramarine, ${phthalo.toFixed(2)} of the phthalo; paint over the reserve ${dab.toFixed(2)} from paper`
+      + (problems.length ? `; ${problems.join('; ')}` : '; frame 0 again identical'),
   };
 }

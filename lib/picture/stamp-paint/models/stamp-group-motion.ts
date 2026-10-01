@@ -23,9 +23,9 @@ export type StampGroupMotion = {
 };
 
 /**
- * The paper a group lies on. `ground`: the painting's; its lights lighten only its own paint. `own`: a cut-out's,
- * carried as it moves (still, the same paper), showing over what's under it beneath its opaque paint, as far as its
- * lifts loosened, and where its fluid held a brush off: fluid no brush crossed shows nothing.
+ * The paper a group's paint shows: `ground`, the painting's, staying put as the group moves; `own`, a collage's piece
+ * of paper, carried with it (still, the same paper). Either way its lights lighten only its own paint; what it takes
+ * out of the paint behind it is its knockout's (StampGroupScope's `knockout`).
  */
 export type StampGroupPaper = 'ground' | 'own';
 

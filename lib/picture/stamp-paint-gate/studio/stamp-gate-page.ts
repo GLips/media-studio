@@ -30,9 +30,10 @@ import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts'
 import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/picture/stamp-paint/studio/stamp-paint-surface.ts';
 import {
-  checkStampGateBloomBoil, checkStampGateBoil, checkStampGateBoilWash, checkStampGateCutOut, checkStampGateDrift, checkStampGateEffectsSunset, checkStampGateLent, checkStampGateRecolour, checkStampGateRepaint,
-  checkStampGateSunset, STAMP_GATE_ANIMATION_FPS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_DRIFT_FRAMES, STAMP_GATE_EFFECTS_SUNSET_HOURS, STAMP_GATE_RECOLOUR_KEYS, stampGateBloomBoilPainting,
-  stampGateBoilPainting, stampGateBoilWashPainting, stampGateCutOutPainting, stampGateDriftPainting, stampGateEffectsSunsetPainting, stampGateRecolourPainting,
+  checkStampGateBloomBoil, checkStampGateBoil, checkStampGateBoilWash, checkStampGateCutOut, checkStampGateDrift, checkStampGateEffectsSunset, checkStampGateKnockout, checkStampGateLent,
+  checkStampGateRecolour, checkStampGateRepaint, checkStampGateSunset, STAMP_GATE_ANIMATION_FPS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_DRIFT_FRAMES, STAMP_GATE_EFFECTS_SUNSET_HOURS,
+  STAMP_GATE_KNOCKOUT_FAR, STAMP_GATE_RECOLOUR_KEYS, stampGateBloomBoilPainting, stampGateBoilPainting, stampGateBoilWashPainting, stampGateCutOutPainting, stampGateDriftPainting,
+  stampGateEffectsSunsetPainting, stampGateKnockoutPainting, stampGateRecolourPainting,
   stampGateSunsetPainting,
 } from '../models/stamp-gate-animation.ts';
 import {
@@ -316,18 +317,25 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
       });
     });
   }
+  const firstFrame = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), (renderer, frame) => drawn(renderer, frame, 0));
   if (id === 'animation/cut-out') {
     const drift = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), async (renderer, frame) => {
       const frames = await STAMP_GATE_DRIFT_FRAMES.reduce<Promise<{ frame: number; rgba: Uint8ClampedArray }[]>>(
         async (done, k) => [...await done, { frame: k, rgba: await drawn(renderer, frame, frameAt(k)) }], Promise.resolve([]));
       return { frames, again: await drawn(renderer, frame, 0) };
     });
-    const bare = stampGateCutOutPainting('own', { sky: false });
     const own = stampGateCutOutPainting('own');
-    const first = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), (renderer, frame) => drawn(renderer, frame, 0));
-    return checkStampGateCutOut({
-      own: await drift(own), ground: await drift(stampGateCutOutPainting('ground')), bare: await first(bare), width: own.width,
-      unlit: { own: await first(stampGateCutOutPainting('own', { lights: false })), ground: await first(stampGateCutOutPainting('ground', { lights: false })) },
+    return checkStampGateCutOut({ own: await drift(own), ground: await drift(stampGateCutOutPainting('ground')), width: own.width });
+  }
+  if (id === 'animation/knockout') {
+    const knockout = stampGateKnockoutPainting();
+    const { first: drawnFirst, far, again } = await withGateRenderer(knockout, drawnImages(knockout), async (renderer, frame) => {
+      const atFirst = await drawn(renderer, frame, 0), atFar = await drawn(renderer, frame, frameAt(STAMP_GATE_KNOCKOUT_FAR));
+      return { first: atFirst, far: atFar, again: await drawn(renderer, frame, 0) };
+    });
+    return checkStampGateKnockout({
+      first: drawnFirst, far, again, sky: await firstFrame(stampGateKnockoutPainting({ knockout: false })), bare: await firstFrame(stampGateKnockoutPainting({ sky: false, knockout: false })),
+      painted: await firstFrame(stampGateKnockoutPainting({ painted: true })),
     });
   }
   if (id === 'animation/repaint') {

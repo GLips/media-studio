@@ -512,13 +512,13 @@ fn rimOf(a: f32, soft: f32, sharpness: f32) -> f32 { return clamp((a - soft) * s
     reach *= inClip;
   }
   let coverage = clamp(m, 0.0, 1.0) * keep * u.opacity;
-  // What the fluid held off this brush here: where a group on its own paper shows it (laySheet).
+  // What the fluid held off this brush here: in a knockout, its reserve.
   let reserved = clamp(m, 0.0, 1.0) * reach * held * u.opacity;
   traced(${TRACE_SLOTS - 1}u, coverage);
   // A burnt rim burns into paint already there, the group's or the deposit's own (its stamps laid over one another).
   let burnable = max(layerCoverage(pixel), clamp(m, 0.0, 1.0)) * keep * u.opacity;
   let rims = vec2f(clamp(burnt, 0.0, 1.0) * burnable, clamp(dualBurnt, 0.0, 1.0) * burnable);
-  ${wet ? WET_LAND_WGSL : `layDeposit(pixel, coverage, rims, tooth, at, reserved, ${compositor.reads.press ? 'pressAt(pixel)' : '1.0'});`}
+  ${wet ? WET_LAND_WGSL : `layDeposit(pixel, coverage, rims, tooth, at, ${compositor.reads.press ? 'pressAt(pixel)' : '1.0'});`}
   if ((u.flags & CLIPS) != 0u) { textureStore(clip, pixel, vec4f(coverage) + clipped * (1.0 - coverage)); }
 }`;
 
