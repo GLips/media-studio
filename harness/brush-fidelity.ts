@@ -2,24 +2,24 @@
 // brushes:diagnose / brushes:hand / brushes:fills / brushes:probes): how close an imported pack's brushes paint to
 // their targets, fitting an app's reading to close the gap, the per-brush diagnostic of a reading, how a brush answers
 // each stroke hand, how it fills a region, and a Photoshop probe run scored cell by cell against the GPU renderer's
-// stage trace (lib/picture/brush-fidelity/engine/brush-fidelity-sheet.ts, brush-reading-fit.ts,
+// stage trace (lib/paint/brush-fidelity/engine/brush-fidelity-sheet.ts, brush-reading-fit.ts,
 // brush-reading-diagnostic.ts, stamp-stroke-hand-sheet.ts, stamp-fill-sheet.ts, photoshop-probe-scoring.ts;
 // docs/private-styles.md).
 import { defineCommand } from 'citty';
 import { readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
-import { writeBrushFidelitySheet } from '#lib/picture/brush-fidelity/engine/brush-fidelity-sheet.ts';
-import { diagnoseBrushReading } from '#lib/picture/brush-fidelity/engine/brush-reading-diagnostic.ts';
-import { fitBrushReading } from '#lib/picture/brush-fidelity/engine/brush-reading-fit.ts';
-import { scorePhotoshopProbeRun } from '#lib/picture/brush-fidelity/engine/photoshop-probe-scoring.ts';
-import { writeStampFillSheet } from '#lib/picture/brush-fidelity/engine/stamp-fill-sheet.ts';
-import { writeStampStrokeHandSheet } from '#lib/picture/brush-fidelity/engine/stamp-stroke-hand-sheet.ts';
-import type { PhotoshopProbeOpacity } from '#lib/picture/brush-fidelity/models/photoshop-probe-painting.ts';
-import { strokeFidelityGrade } from '#lib/picture/brush-fidelity/models/stroke-measure.ts';
-import type { PhotoshopCaptureManifest } from '#lib/picture/photoshop-brushes/models/photoshop-capture-plan.ts';
-import { photoshopPresetMismatches } from '#lib/picture/photoshop-brushes/models/photoshop-preset.ts';
-import { photoshopProbes } from '#lib/picture/photoshop-brushes/models/photoshop-probes.ts';
-import { STAMP_RESOLVE_ORDERS } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
+import { writeBrushFidelitySheet } from '#lib/paint/brush-fidelity/engine/brush-fidelity-sheet.ts';
+import { diagnoseBrushReading } from '#lib/paint/brush-fidelity/engine/brush-reading-diagnostic.ts';
+import { fitBrushReading } from '#lib/paint/brush-fidelity/engine/brush-reading-fit.ts';
+import { scorePhotoshopProbeRun } from '#lib/paint/brush-fidelity/engine/photoshop-probe-scoring.ts';
+import { writeStampFillSheet } from '#lib/paint/studies/engine/stamp-fill-sheet.ts';
+import { writeStampStrokeHandSheet } from '#lib/paint/studies/engine/stamp-stroke-hand-sheet.ts';
+import type { PhotoshopProbeOpacity } from '#lib/paint/brush-fidelity/models/photoshop-probe-painting.ts';
+import { strokeFidelityGrade } from '#lib/paint/brush-fidelity/models/stroke-measure.ts';
+import type { PhotoshopCaptureManifest } from '#lib/paint/photoshop-brushes/models/photoshop-capture-plan.ts';
+import { photoshopPresetMismatches } from '#lib/paint/photoshop-brushes/models/photoshop-preset.ts';
+import { photoshopProbes } from '#lib/paint/photoshop-brushes/models/photoshop-probes.ts';
+import { STAMP_RESOLVE_ORDERS } from '#lib/paint/painting/models/stamp-deposit-stages.ts';
 import { STUDIO_ROOT, STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { runHarnessCommand } from './run-harness-command.ts';
 
@@ -69,7 +69,7 @@ const sheetCommand = defineCommand({
 const fitCommand = defineCommand({
   meta: {
     name: 'fit',
-    description: "Fit an app's reading (lib/picture/brush-fidelity/models/brush-readings.ts): the Procreate one's grain tile, brightness and contrast, rim width, sharpness and darkness, taper share, flow and depth curves and dual size, or the Photoshop one's scatter span, angle jitter span and dual size, against every targeted training brush of the packs given at once (all of one app), by the brush fidelity sheet's summed score, and write it into the app's reading module (procreate-reading.ts or photoshop-reading.ts). Deterministic: the same packs and starting reading take the same steps. Prints each step, each brush's score before and after and which constants moved. A style reads its brushes by the reading when it resolves them, so nothing is imported again; re-draw the sheets after.",
+    description: "Fit an app's reading (lib/paint/brush-fidelity/models/brush-readings.ts): the Procreate one's grain tile, brightness and contrast, rim width, sharpness and darkness, taper share, flow and depth curves and dual size, or the Photoshop one's scatter span, angle jitter span and dual size, against every targeted training brush of the packs given at once (all of one app), by the brush fidelity sheet's summed score, and write it into the app's reading module (procreate-reading.ts or photoshop-reading.ts). Deterministic: the same packs and starting reading take the same steps. Prints each step, each brush's score before and after and which constants moved. A style reads its brushes by the reading when it resolves them, so nothing is imported again; re-draw the sheets after.",
   },
   args: {
     packs: { type: 'string', required: true, valueHint: 'watercolor/vvds', description: 'The packs to fit against, each <style>/<pack>, comma-separated, all of one app' },
@@ -91,7 +91,7 @@ const fitCommand = defineCommand({
 const diagnoseCommand = defineCommand({
   meta: {
     name: 'diagnose',
-    description: "The per-brush diagnostic of an app's reading (lib/picture/brush-fidelity/models/brush-readings.ts): each constant tried on every targeted brush that uses it at candidates about its value, in half and whole strides of its registered range's factor or step, clamped to the range, with today's value among them (marked 'now'), scored against its Procreate preview or Photoshop reference, each brush's best printed with whether the training brushes cluster (tight, bimodal, scattered), and the training and held-out totals by candidate. Writes nothing.",
+    description: "The per-brush diagnostic of an app's reading (lib/paint/brush-fidelity/models/brush-readings.ts): each constant tried on every targeted brush that uses it at candidates about its value, in half and whole strides of its registered range's factor or step, clamped to the range, with today's value among them (marked 'now'), scored against its Procreate preview or Photoshop reference, each brush's best printed with whether the training brushes cluster (tight, bimodal, scattered), and the training and held-out totals by candidate. Writes nothing.",
   },
   args: {
     packs: { type: 'string', required: true, valueHint: 'watercolor/photoshop-legacy,watercolor/kyle-gouache', description: 'Packs with previews or references, each <style>/<pack>, comma-separated, all of one app' },

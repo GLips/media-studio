@@ -3,7 +3,7 @@
 The stamp renderer's constants are guesses until something paints the same brush and the studio measures the gap.
 Photoshop can paint by script, so on the Mac it's that reference: `npm run photoshop` (harness/photoshop.ts) launches its own Photoshop 2026
 in the background, paints probes or a pack's brushes onto 16-bit transparent sheets, saves them as lossless PNG and
-quits, unattended. Its code is `lib/picture/photoshop-brushes/` (what to paint, where, and reading it back) over
+quits, unattended. Its code is `lib/paint/photoshop-brushes/` (what to paint, where, and reading it back) over
 `lib/platform/photoshop/engine/` (driving Photoshop, and putting its settings back).
 
 ```sh
@@ -92,7 +92,7 @@ bar 112 × 48), with one thing changed:
 half the diameter at half the opacity. The `pressure …` probes and a pack's reference lines at 0.25 and 0.5 are read
 that way. **Simulated pressure** goes by the share of the path's length: it rises straight from 0 to full at the
 middle and falls to 0 at the end, but is read at 51 even pieces of each anchor-to-anchor segment, straight between
-(lib/picture/photoshop-brushes/models/photoshop-stroke-pressure.ts). So a two-anchor line peaks at 50/51, 0.98, held
+(lib/paint/photoshop-brushes/models/photoshop-stroke-pressure.ts). So a two-anchor line peaks at 50/51, 0.98, held
 from 49% to 51% (run 20260930-084651 fits the ramp at rms 0.004), while the S-curve, 115 anchors 7 px apart, all but
 reaches full: its paint peaks at 0.996–0.998 where a line's holds at 0.98 (`pressure size`), and colour burn over it,
 which a pose at 0.98 leaves at 0.27 where no dual lands, is 0.87 there (`dual colorBurn tiny posed`, rms 0.54 → 0.07).

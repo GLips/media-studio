@@ -16,15 +16,15 @@ Plan 1 makes strokes move and gives them a timing layer, on one flat canvas. The
 
 This is plan 2 of three, and it is deliberately thin: **seams, not features.** It names what it needs from plan 1's seams, runs one tracer spike across the riskiest seam, and sketches the rest. The sketched phases get reshaped when a video actually calls for multiplane or 3D compositing. Plan 3 (painterly 3D) builds on this plan's device-sharing and paint-to-texture seam.
 
-It uses plan 1's terms as written there: rest pose, channel, anchor, scoped style, bake, and the working feature name `stamp-animation`. Research is in `~/research/2026-09-29-painted-animation/reading-3d-compositing.md` (plan 2 recommendations) and `~/research/2026-09-29-painting-in-3d-projection.md`.
+It uses plan 1's terms as written there: rest pose, channel, anchor, scoped style, bake, and the feature `paint/animation`. Research is in `~/research/2026-09-29-painted-animation/reading-3d-compositing.md` (plan 2 recommendations) and `~/research/2026-09-29-painting-in-3d-projection.md`.
 
 **The load-bearing finding: painting and 3D use different graphics APIs today.** Checked against main on 2026-09-30, after vid-116, vid-117 and vid-125:
 - The 3D stage (`lib/picture/film/studio/three-stage.tsx`) is `THREE.WebGLRenderer` with `UnrealBloomPass`, and so is previs's `blockout.tsx`.
-- The stamp engine is WebGPU on a device it makes itself. `createStampPaintDevice` (`lib/picture/stamp-paint/studio/stamp-paint-gpu.ts`) asks for `texture-formats-tier2` and the adapter's whole `maxBufferSize`, and `stamp-paint-surface.ts` owns the device and the canvas it configures (`alphaMode: 'opaque'`), and disposes both.
+- The stamp engine is WebGPU on a device it makes itself. `createStampPaintDevice` (`lib/paint/painting/studio/stamp-paint-gpu.ts`) asks for `texture-formats-tier2` and the adapter's whole `maxBufferSize`, and `stamp-paint-surface.ts` owns the device and the canvas it configures (`alphaMode: 'opaque'`), and disposes both.
 - The installed three is 0.186.0. Its `WebGPUBackend` takes `parameters.device`, and it exports `ExternalTexture`.
 - **Paint has two compositors now** (vid-83): `stamp-paint-compositor.ts` mixes flat colour, gamma-encoded and never decoded to linear light, as Photoshop does; `stamp-paint-pigment-compositor.ts` mixes pigments with Kubelka–Munk and holds the painting as reflectance in eight bands, shown through sRGB. Three's `WebGPURenderer` works in linear light, so each direction of the round trip converts, from either compositor's output.
 - The compositors only mix paint: a deposit onto its group, a group onto the painting, the paper under it. Nothing stacks layers by depth or takes an outside layer; that is new work, the **layer stack**, a scene concept. The renderer's separable blur passes (wet edges, and vid-118's bloom) are the reusable piece for a layer blur.
-- **There is no CPU renderer** (vid-116). The GPU is the only renderer, held by a GPU gate in pre-commit with golden fixtures under `harness/fixtures/stamp-paint/`. Any change to `stamp-paint` this plan makes passes that gate unchanged.
+- **There is no CPU renderer** (vid-116). The GPU is the only renderer, held by a GPU gate in pre-commit with golden fixtures under `harness/fixtures/stamp-paint/`. Any change to `paint/painting` this plan makes passes that gate unchanged.
 - **First steps toward planes already exist.** vid-117's moving groups (`models/stamp-group-motion.ts`) paint a group in its own coordinates and resample it into place each frame, with checkpoints keeping still parts cached. vid-125's group paper (`paper: 'own'`, pigment only) makes a group a cut-out that carries its own paper. A plane is roughly a moving group, rendered to its own target, at a depth, under a camera.
 
 So a zero-copy seam exists, but only under three's `WebGPURenderer`. It is not yet shown to work end to end: sharing the device, `ExternalTexture` wrapping a stamp target, determinism in a headless Remotion render, and three's device needs alongside `tier2` are all unverified.
@@ -75,7 +75,7 @@ We know whether the stamp engine and three's `WebGPURenderer` can share one `GPU
 
 ### Approach
 
-- The demonstration lives outside `lib/`, in one Remotion composition. The spike may make narrow, reviewable changes to `stamp-paint` (accept a device, expose the target texture, take an external layer), since the device-taking path is private today; those changes are part of its deliverable. Other sessions are editing `stamp-paint` (wet stages, per-frame cost, crayon, group paper), so keep the changes small, land them separately from the demonstration, rebase before landing, and pass the GPU gate with no golden moving.
+- The demonstration lives outside `lib/`, in one Remotion composition. The spike may make narrow, reviewable changes to `paint/painting` (accept a device, expose the target texture, take an external layer), since the device-taking path is private today; those changes are part of its deliverable. Other sessions are editing `paint/painting` (wet stages, per-frame cost, crayon, group paper), so keep the changes small, land them separately from the demonstration, rebase before landing, and pass the GPU gate with no golden moving.
 - The texture seam's contracts are part of the findings: transparent paint output (today paper stores alpha one, `layPaper` in `stamp-paint-compositor.ts`, and the surface's canvas is configured `alphaMode: 'opaque'`) with paper presentation optional, texture lifetime, disposal of a borrowed device (today the surface makes the device and destroys it on dispose), submission ordering, and premultiplication across the colour conversion.
 - Use the real stamp renderer and a real brush from an installed style, not a mock, because the colour and format questions are about actual paint.
 - The round trip is the point: paint → three.js material on a rotating plane → rendered → back into the layer stack as a layer → blurred. Each hop is one of the seams plans 2 and 3 stand on.
@@ -85,7 +85,7 @@ We know whether the stamp engine and three's `WebGPURenderer` can share one `GPU
 ### Done when
 
 - Every question is answered in `docs/plans/2026-09-30-painted-animation-spike-findings.md` (its own section; plan 1's spikes may add theirs later), with the render linked. New questions are answered or named as follow-on spikes.
-- The findings name how the device is owned and passed (who creates it, what `stamp-paint` must accept), and whether the seam is zero-copy or needs a conversion pass.
+- The findings name how the device is owned and passed (who creates it, what `paint/painting` must accept), and whether the seam is zero-copy or needs a conversion pass.
 
 ### Warnings
 

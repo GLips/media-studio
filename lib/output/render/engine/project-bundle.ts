@@ -2,7 +2,7 @@
 // `@video` and `@stills`, which this aliases to the project's video.tsx and stills.tsx, or to a null module for the one
 // it doesn't have. A project's designs import its brand kit as `@brand` (lib/picture/brand/engine/project-brand.ts), and
 // the private styles its project.ts names, whose brushes are checked before each bundle and served as
-// `@stamp-paint-styles` (lib/picture/stamp-styles/engine/project-styles.ts).
+// `@stamp-paint-styles` (lib/paint/style/engine/project-styles.ts).
 //
 // One project per bundle on purpose: captures and audio are gitignored and imported, so a project that hasn't been
 // captured yet would break every other project's Studio and render if they shared a bundle.
@@ -14,7 +14,7 @@ import { webpack, type WebpackOverrideFn } from '@remotion/bundler';
 import { HostImportPlugin, HostModuleStubPlugin, HostTsconfigPathsPlugin } from './host-module-resolution.ts';
 import { previsFootageModuleFor, writePrevisFootageModule } from '#lib/footage/previs/engine/previs-footage.ts';
 import { writeProjectBrandModule } from '#lib/picture/brand/engine/project-brand.ts';
-import { writeProjectStylesModule } from '#lib/picture/stamp-styles/engine/project-styles.ts';
+import { writeProjectStylesModule } from '#lib/paint/style/engine/project-styles.ts';
 import { projectHostLink, readProjectHostSpec } from '#lib/platform/host/engine/project-host-spec.ts';
 import { writeSfxCueModule } from '#lib/output/sfx-cues/engine/cue-module.ts';
 

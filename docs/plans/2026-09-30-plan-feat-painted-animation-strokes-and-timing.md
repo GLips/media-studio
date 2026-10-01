@@ -68,7 +68,7 @@ What plans 2 and 3 need from this plan:
 
 ## New concepts
 
-- **`lib/picture/stamp-animation/`**, a new feature above `stamp-styles`. It holds the painting tree a scene writes, timing channels, scoped style resolution, deformation, and the component that draws it. The name is still a working one; "shot" collides with capture's shots. `stamp-paint` stays unaware of scenes, poses and channels: it takes a painting as it stands at a moment, plus group placements, warps, boil epochs and visibility. Brush fidelity and the gate keep using it directly.
+- **`lib/paint/animation/`**, a new feature above `paint/style` and `paint/painting`. It holds the painting tree a scene writes, timing channels, scoped style resolution, deformation, and the component that draws it. The name is still a working one; "shot" collides with capture's shots. `paint/painting` stays unaware of scenes, poses and channels: it takes a painting as it stands at a moment, plus group placements, warps, boil epochs and visibility. Brush fidelity and the gate keep using it directly.
 - **A deformation** is a coarse warp field per group, in rest space: a lattice or pins with falloff, chosen by spike 1.1. It replaces the rigid placement as the general case, rigid being the warp with one affine cell. It is keyed into the checkpoint key, as vid-117's note proposes.
 
 ## Phase 1.0: Deforming painted strokes (spike: toy experiment)
@@ -131,8 +131,8 @@ We know what the scene-level API should look like for an AI agent writing painte
 Scenes paint through the new model only. The recipe's authoring API is gone, the watercolor-paintings and vid-121 scenes are ported, and still paintings look as they did.
 
 ### Approach
-- **`stamp-paint` keeps one contract:** a painting as it stands at one moment (groups, passes and deposits with their placed stamps, washes and masks), plus per-group placement, warp, boil epoch and visibility. `stamp-animation` and brush fidelity feed it. Scenes never write it, and `#studio` exports only the new model for painting.
-- **The recipe's compile work stays in `stamp-paint` as time-free deposit preparation:** id validation, hierarchical seeding, hand evaluation, main and dual placement, fills and masks. Both `stamp-animation` and brush fidelity call it; brush fidelity never imports animation.
+- **`paint/painting` keeps one contract:** a painting as it stands at one moment (groups, passes and deposits with their placed stamps, washes and masks), plus per-group placement, warp, boil epoch and visibility. `paint/animation` and brush fidelity feed it. Scenes never write it, and `#studio` exports only the new model for painting.
+- **The recipe's compile work stays in `paint/painting` as time-free deposit preparation:** id validation, hierarchical seeding, fills and masks, with hand evaluation and main and dual placement called from `paint/brush`. Both `paint/animation` and brush fidelity call it; brush fidelity never imports animation.
 - **The renderer separates assets from frame-varying data.** Brush images, tips and paper load once per painting; placements, warps and live stamps upload per frame. vid-123 builds most of this. This phase finishes it for warps and live parts.
 - **Delete:**
   - `stampPaintRecipe` and `compileStampPaintRecipe` as scene-facing API;

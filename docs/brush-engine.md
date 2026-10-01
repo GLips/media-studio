@@ -1,34 +1,48 @@
 # The brush engine
 
-Stamp painting is split by body of knowledge: what a brush is and how it paints, what each app's brushes mean, the
-styles that carry a pack into a project, and how close a painted brush comes to the app's own. Each is a feature under
-`lib/picture/`, each importing only those below it:
+Stamp painting is split by body of knowledge: what paint is, what a brush is and how a hand lays it, how a painting
+lands, what each app's brushes mean, the packs they come in, the styles that carry a pack into a project, how close a
+painted brush comes to the app's own, the studies a person judges, and the gate that holds the renderer. Each is a
+feature under `lib/paint/`, each importing only those below it:
 
 ```
-brush-fidelity     → stamp-styles, photoshop-brushes, procreate-brushes, stamp-paint
-stamp-paint-gate   → stamp-styles, stamp-paint, paint
-stamp-styles       → photoshop-brushes, procreate-brushes, stamp-paint, platform/zip
-photoshop-brushes  → procreate-brushes, stamp-paint
-procreate-brushes  → stamp-paint, platform/zip
-stamp-paint
+brush-fidelity     → brush-packs, photoshop-brushes, procreate-brushes, painting, brush
+studies            → style, brush-packs, painting, materials, brush
+gate               → brush-packs, painting, materials, brush
+style              → brush-packs, painting, materials, brush
+brush-packs        → photoshop-brushes, procreate-brushes, materials, brush, platform/zip
+photoshop-brushes  → procreate-brushes, brush
+procreate-brushes  → brush, platform/zip
+painting           → materials, brush
+materials
+brush
 ```
 
-**stamp-paint** is the engine, and knows no app. `models/stamp-brush.ts` is the brush (`StampBrush`: a tip, spacing,
-dynamics keyed by target and sensor, scatter, rotation, grain, dual, edges, accumulation). Its tip is an image or a
-bristle tip (`stamp-bristle-tip.ts`), drawn at the diameter a deposit paints at: `bindStampBrushImages` binds either
-at that diameter, and each renderer caches what it draws by key. `stamp-placement.ts`
-places its stamps along a stroke by one rule (`buildStamp`), reading dynamics through `stamp-dynamics.ts` (each
-step's and stamp's context, what each sensor reads from it, each response); a new sensor or target is an entry in
-`StampTargetSensors`, its parameters (`StampSensorParams`) and its signal there. `coverage-formulas.ts` and
-`stamp-deposit-stages.ts` are the one registry of every blend, grain adjustment, pooling and accumulation, the plans a
-deposit's stages resolve in, and which of a brush's stages are active (`stampActiveLayers`). Rendering maths lives
-only in WGSL, generated from those tables; the GPU is the one renderer. A function keeps a CPU twin only where the
-studio runs it off the GPU too (Kubelka–Munk, `stampPaintFieldAt`, a region's distance and grid), and a dual mode
-declares `needsDual` rather than having the CPU run its combine. The GPU's resolve order and mode switches are generated from the tables. How the GPU lays a
-layer's stamps is a plan (`stampAccumulationPlan`): a fixed blend where stamp order can't change the build, and
+**materials** is paint itself, and knows no brush: spectra and the screen's colours (`paint-spectrum.ts`),
+Kubelka–Munk (`paint-kubelka-munk.ts`), pigments, the mixture a painter makes on the palette, the medium that carries
+it, the paper it meets (`paint-paper.ts`), and a deposit's material, a colour or a mixture (`paint-material.ts`).
+
+**brush** is what a brush is and how a hand lays it, and knows no app. `stamp-brush.ts` is the brush (`StampBrush`: a
+tip, spacing, dynamics keyed by target and sensor, scatter, rotation, grain, dual, edges, accumulation). Its tip is an
+image or a bristle tip (`stamp-bristle-tip.ts`), drawn at the diameter a deposit paints at: `bindStampBrushImages`
+binds either at that diameter, and each renderer caches what it draws by key. `stamp-placement.ts` places its stamps
+along a stroke by one rule (`buildStamp`), reading dynamics through `stamp-dynamics.ts` (each step's and stamp's
+context, what each sensor reads from it, each response); a new sensor or target is an entry in `StampTargetSensors`,
+its parameters (`StampSensorParams`) and its signal there. `stamp-stroke-hand.ts` is the hand: the pressure and speed
+a painter moves along an authored stroke. `coverage-formulas.ts` is the one registry of every blend, grain
+adjustment, pooling and accumulation, and their WGSL: a brush's modes and the maths they paint by are one table.
+
+**painting** is the engine. `stamp-paint-recipe.ts` is the painting a scene writes, with its paper;
+`stamp-deposit-compile.ts` prepares its deposits, `stamp-fill.ts` fills a region, and `stamp-region.ts` and
+`stamp-blur-region.ts` mask one. `stamp-deposit-stages.ts` holds the plans a deposit's stages resolve in and which of
+a brush's stages are active (`stampActiveLayers`). Rendering maths lives only in WGSL, generated from those tables
+and brush's; the GPU is the one renderer. A function keeps a CPU twin only where the studio runs it off the GPU too
+(Kubelka–Munk, `stampPaintFieldAt`, a region's distance and grid), and a dual mode declares `needsDual` rather than
+having the CPU run its combine. The GPU's resolve order and mode switches are generated from the tables. How the GPU
+lays a layer's stamps is a plan (`stampAccumulationPlan`): a fixed blend where stamp order can't change the build, and
 otherwise, for a `buildToOpacity` whose opacity falls (Photoshop never lowers what's built), each pixel walks its
-stamps in order and lays each by the table's `lay`. `stamp-paint-recipe.ts` is the painting a scene writes, with its
-paper. `studio/` is the WebGPU renderer, its uniform layout and the compositor.
+stamps in order and lays each by the table's `lay`. `studio/` is the WebGPU renderer, its uniform layout and the
+compositors.
 
 Wet paint is a wash, a pass painted wet (`group.wash`): its deposits paint, wet (`water`, `soften`, `bloom`) or lift,
 and it can `wait` in painting time, which only its waits advance. `stamp-wetness.ts` works out, once as a painting
@@ -94,9 +108,13 @@ the brush's, the options bar's and a lingering pose's, into the brush's dynamics
 tips, and the capture rig that has Photoshop paint probes and references (docs/photoshop-capture.md). It imports
 procreate-brushes only for the S-curve its references are painted along, Procreate's preview stroke.
 
-**stamp-styles** is a pack on disk and a style in a project: the manifest (`stamp-paint-pack.ts`), `StampPaintStyle`,
-the importers, the bundle's styles and `StampPainting`. It is its own feature because a pack and its importer read
-both apps' brushes; inside either app's feature, that app would import the other back.
+**brush-packs** is a pack on disk: the manifest (`stamp-paint-pack.ts`), the files an importer writes under
+`work/styles/<style>/brushes/<pack>/`, the three importers, and the URLs a browser page finds a served pack's files
+at (`stamp-paint-pack-urls.ts`, read back by `readServedStampPaintPack`). It is its own feature because a pack and its
+importer read both apps' brushes; inside either app's feature, that app would import the other back.
+
+**style** is a style in a project: `StampPaintStyle` (`style.ts`), the styles a project names, checked before a bundle
+(`project-styles.ts`), the bundle's styles module (`@stamp-paint-styles`) and `StampPainting`, a painting in a scene.
 
 **brush-fidelity** holds a painted brush against its target, a Procreate preview or a Photoshop reference capture
 (`brush-fidelity-target.ts`): one measure (`stroke-measure.ts`), one scorer (`brush-fidelity-score.ts`) that the
@@ -104,12 +122,17 @@ sheet, the fit, the diagnostic and the guard all use, one versioned report of a 
 naming the source, reading and scorer it was drawn under) that the fit's baselines and the guard read, and each app's
 reading registered for fitting (`brush-readings.ts`). `npm run brushes:sheet`, `brushes:fit` and `brushes:diagnose` run it (docs/private-styles.md).
 
-**stamp-paint-gate** holds the GPU renderer to accepted output (`npm run stamp:gate -- run`): every rendering
-formula over a grid, each runtime twin against its CPU side, synthetic paintings that walk every path the renderer
-takes, and a traced resolve against its frame. Pre-commit runs it on the staged tree when a path it covers changes;
-no adapter, a timeout or a difference fails the commit. Public baselines live in `harness/fixtures/stamp-paint/`, a
-pack's brushes' in `work/validation/stamp-paint/` (`stamp:gate -- private run`). A baseline changes only by
-`update <ids> --reason …`, which writes candidates with their differences, then `accept <ids>`.
+**studies** are passages painted for a person to judge, not scored: the wet and dry passage sheets
+(`npm run wet:passages`, `dry:passages`), the fill sheet and the stroke hand sheet (`brushes:fills`,
+`brushes:hand`), each a Node side over a browser page.
 
-`lib/platform/zip/` reads the zips packs come in. `lint/policy/studio-tree.ts` declares the areas; check:arch holds
-each feature to its roles and refuses a cycle between features.
+**gate** holds the GPU renderer to accepted output (`npm run stamp:gate -- run`): every rendering formula over a grid,
+each runtime twin against its CPU side, synthetic paintings that walk every path the renderer takes, and a traced
+resolve against its frame. Pre-commit runs it on the staged tree when a path it covers changes; no adapter, a timeout
+or a difference fails the commit. Public baselines live in `harness/fixtures/stamp-paint/`, a pack's brushes' in
+`work/validation/stamp-paint/` (`stamp:gate -- private run`). A baseline changes only by `update <ids> --reason …`,
+which writes candidates with their differences, then `accept <ids>`.
+
+`lib/platform/zip/` reads the zips packs come in; `lib/platform/browser/` runs the fidelity, study and gate pages.
+`lint/policy/studio-tree.ts` declares the areas; check:arch holds each feature to its roles and refuses a cycle
+between features.

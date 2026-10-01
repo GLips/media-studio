@@ -7,7 +7,7 @@ import type { VideoConfig } from 'remotion';
 import { copyFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { bundleStudioProject } from './studio-bundle.ts';
-import { inRenderBrowser, RENDER_CHROMIUM } from './render-browser.ts';
+import { inRenderBrowser, RENDER_CHROMIUM } from '#lib/platform/browser/engine/render-browser.ts';
 import { artifactSink } from './render-session.ts';
 import { stillProblems, type StillMeasure, type StillPixels, type StillProblem } from '#lib/picture/stills/models/still-check.ts';
 import { isStillFitArtifact, STILL_MEASURE_ARTIFACT, STILL_UI_ZONES, stillName, type StillFitReport, type StillProps, type StillRenderProps } from '#lib/picture/stills/models/still-presets.ts';
@@ -20,7 +20,7 @@ export type StillSelection = { designs?: readonly string[]; presets?: readonly s
 /**
  * One still, checked. `file` is where it was written: absent when it failed, or when only checking. `drawn` is the
  * still as drawn, pass or fail, when the caller asked to keep it (`drawnDir`). `look` is the still as drawn at
- * STILL_LOOK_SIZE, grey, which says whether two variants look alike (lib/output/stills/engine/still-sheet.ts).
+ * STILL_LOOK_SIZE, grey, which says whether two variants look alike (lib/output/review/engine/still-sheet.ts).
  */
 export type RenderedStill = { file?: string; drawn?: string; still: StillProps; fits: StillFitReport[]; problems: StillProblem[]; look: Uint8Array };
 
@@ -39,7 +39,7 @@ function decodeRgb(file: string, w: number, h: number): StillPixels {
 
 /**
  * Renders and checks the chosen stills. `check` writes none, only reporting; otherwise each still that passes is
- * written in `format`. `drawnDir` keeps every still as drawn there, failures too, for a sheet (lib/output/stills/engine/still-sheet.ts).
+ * written in `format`. `drawnDir` keeps every still as drawn there, failures too, for a sheet (lib/output/review/engine/still-sheet.ts).
  */
 export async function renderProjectStills(project: string, selection: StillSelection, { format, check, drawnDir }: { format: 'png' | 'jpeg'; check: boolean; drawnDir?: string }): Promise<RenderedStill[]> {
   const serveUrl = await bundleStudioProject(project);

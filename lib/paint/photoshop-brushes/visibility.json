@@ -1,0 +1,4 @@
+{
+  "lib/paint/brush-fidelity": "A Photoshop reference capture is one fidelity target, cropped and read by Photoshop's own reading.",
+  "lib/paint/brush-packs": "A Photoshop pack is imported and its brushes resolved through Photoshop's reader."
+}

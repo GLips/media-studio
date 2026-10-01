@@ -91,7 +91,7 @@ export type LibRole = 'models' | 'studio' | 'engine';
 const LIB_ROLES: readonly LibRole[] = ['models', 'studio', 'engine'];
 const isLibRole = (folder: string): folder is LibRole => LIB_ROLES.some((role) => role === folder);
 /** lib/'s areas, each a group of features. A new area is declared here, which keeps lib/'s top level a short list. */
-export const LIB_AREAS: readonly string[] = ['timing', 'picture', 'footage', 'output', 'platform'];
+export const LIB_AREAS: readonly string[] = ['timing', 'picture', 'paint', 'footage', 'output', 'platform'];
 
 /**
  * lib's foundations, in layers, lowest first. A foundation (`<area>/<feature>`) imports only foundations of its own
@@ -104,7 +104,7 @@ export const LIB_LAYERS: readonly LibLayer[] = [
     name: 'platform',
     features: [
       'platform/temp', 'platform/git', 'platform/zip', 'platform/wav', 'platform/ffmpeg', 'platform/raster', 'platform/paid-generation',
-      'platform/photoshop', 'platform/project', 'platform/host', 'platform/web',
+      'platform/photoshop', 'platform/project', 'platform/host', 'platform/web', 'platform/browser',
     ],
   },
   { name: 'vocabulary', features: ['picture/frame', 'picture/motion', 'picture/type', 'picture/color'] },
@@ -146,7 +146,7 @@ export const TERMINAL_PROGRAM_GLOBS: readonly string[] = ['cli/**', 'harness/**'
  * for the `@stamp-paint-styles` module, and lint's oxlint plugin. oxlint's no-default-export is off in them.
  */
 export const DEFAULT_EXPORT_MODULE_GLOBS: readonly string[] = [
-  'cli/commands/*.ts', 'lint/oxlint/plugin.ts', 'lib/picture/stamp-styles/engine/node-stamp-paint-styles.ts',
+  'cli/commands/*.ts', 'lint/oxlint/plugin.ts', 'lib/paint/style/engine/node-stamp-paint-styles.ts',
   'work/projects/*/project.ts', 'work/projects/*/capture.ts', 'work/projects/*/brand.ts', 'work/projects/*/sfx/*.ts',
   'work/brands/*/brand.ts', 'work/styles/*/style.ts', 'work/styles/*/fidelity.ts',
 ];

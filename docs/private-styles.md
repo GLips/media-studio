@@ -6,7 +6,7 @@ in `work/projects/` can paint with it, and a project can use several.
 
 ```
 work/styles/<name>/
-  style.ts     the style: `export default { … } satisfies StampPaintStyle` (lib/picture/stamp-styles/models/style.ts)
+  style.ts     the style: `export default { … } satisfies StampPaintStyle` (lib/paint/style/models/style.ts)
   <name>.md    how to paint in this style; guidance about the pack's brushes stays here, private
   fidelity.ts  a note per brush on how and why it differs from its Procreate preview
   fidelity-grades.json  each brush's score and grade (close, rough, off), written by npm run brushes:sheet
@@ -19,7 +19,7 @@ to: a wet brush washes a region, a dry one strokes it); the brushes it paints wi
 brush in a pack, with `media` of its own when it differs from its pack's; its palette; and its paper:
 
 ```ts
-import type { StampPaintStyle } from '#lib/picture/stamp-styles/models/style.ts';
+import type { StampPaintStyle } from '#lib/paint/style/models/style.ts';
 
 export default {
   packs: { vvds: { source: 'VVDS Realistic Watercolor Studio, bought on Creative Market (E13434.zip)', media: 'wet' } },
@@ -88,7 +88,7 @@ Photoshop (True Grit's does). Photoshop's own sets: `Legacy Brushes.abr` and `Co
 `Adobe Photoshop 2026.app/Contents/Required/`.
 
 The manifest holds the asset version, the files, and each brush normalized into the studio's brush definition
-(`StampBrush`, lib/picture/stamp-paint/models/stamp-brush.ts; docs/brush-engine.md says where each part of the
+(`StampBrush`, lib/paint/brush/models/stamp-brush.ts; docs/brush-engine.md says where each part of the
 engine lives), keyed by its name in the pack. It also records the
 archive's hash, the previews, the zip's `.swatches` palettes, the papers (each with its mean colour), and per brush
 every setting that was approximated or dropped (`support`); the import prints a line per brush of those. Copy colours
@@ -99,11 +99,11 @@ renderer along the stroke Procreate drew its preview with (one stamp, for a brus
 diameter whose thickness matches the preview's, and sets it beside that preview. A brush without a preview (every
 Photoshop brush) is measured instead against its `reference/` capture, painted as Photoshop painted it: the same
 stroke at the reference's own diameter, under Photoshop's simulated pressure, through the brush's dynamics or the
-overrides a Brush Pose left (lib/picture/brush-fidelity/models/brush-fidelity-target.ts). The row's left column says
+overrides a Brush Pose left (lib/paint/brush-fidelity/models/brush-fidelity-target.ts). The row's left column says
 which target it is. It writes a row per brush (`rows/<brush>.png`), the rows stacked at half size (`sheet.jpg`, or
 `sheet-1.jpg` on past 120 brushes) and `report.json` into `brushes/<pack>/fidelity/`,
 out of git because the rows hold the pack's previews. Each row and the report measure both strokes alike
-(lib/picture/brush-fidelity/models/stroke-measure.ts): a coverage map in 8-pixel cells, length, thickness along
+(lib/paint/brush-fidelity/models/stroke-measure.ts): a coverage map in 8-pixel cells, length, thickness along
 the stroke, where each end reaches 80% of its peak, density, how dark the rim is against the body, grain size, edge
 width (pixels from a fifth to four fifths of its density), mottle in the body (fine and coarse), and fill (a hollow
 line against a solid one). Their gaps weigh into one score per brush, 0 for a perfect match, and the score grades it:
@@ -116,7 +116,7 @@ line against a solid one). Their gaps weigh into one score per brush, 0 for a pe
 
 A gap anyone would call plain adds about 0.1 (`STROKE_SCORE_WEIGHTS` says how much each measure counts), and a brush
 that paints nothing against its target scores 2. The sheet, the fit and the diagnostic all score a brush this one way
-(lib/picture/brush-fidelity/engine/brush-fidelity-score.ts). A whole pack
+(lib/paint/brush-fidelity/engine/brush-fidelity-score.ts). A whole pack
 drawn to its own `fidelity/` also writes each brush's score and grade into the style's `fidelity-grades.json`, which
 git keeps. `--brush a,b` draws only those; `--out <dir>` writes elsewhere, to keep a sheet from before a change to the
 renderer or the importer and compare.
@@ -124,7 +124,7 @@ renderer or the importer and compare.
 The style's `fidelity.ts`, which git keeps, holds a note per brush on how and why it differs, which a score can't say:
 
 ```ts
-import type { StampPaintStyleFidelity } from '#lib/picture/brush-fidelity/models/brush-fidelity-style.ts';
+import type { StampPaintStyleFidelity } from '#lib/paint/brush-fidelity/models/brush-fidelity-style.ts';
 
 export default {
   vvds: { 'Pigment Dark Brush': 'an even dark scaly texture in Procreate, which comes from wet mixing' },
@@ -135,11 +135,11 @@ Re-draw after changing how a brush is painted or read, and re-read the notes of 
 
 **Fitting the importer.** Where Procreate's meaning isn't known (how big a grain's tile is, how wide and dark a wet
 rim, how far each glaze mode builds within its stroke, how flow and depth curve), the importer reads a setting by a
-constant of its `ProcreateReading`, checked in as `lib/picture/procreate-brushes/models/procreate-reading.ts`.
+constant of its `ProcreateReading`, checked in as `lib/paint/procreate-brushes/models/procreate-reading.ts`.
 Photoshop's pipeline was identified stage by stage from probe captures (vid-97), so its importer reads almost every
 setting exactly; what's left, how far 100% scatter strays and how far 100% angle jitter turns (at least a whole turn
-each way), sits in its `PhotoshopReading`, `lib/picture/photoshop-brushes/models/photoshop-reading.ts`. Each reading's
-ranges, which brushes a constant touches and which are held out are in `lib/picture/brush-fidelity/models/brush-readings.ts`.
+each way), sits in its `PhotoshopReading`, `lib/paint/photoshop-brushes/models/photoshop-reading.ts`. Each reading's
+ranges, which brushes a constant touches and which are held out are in `lib/paint/brush-fidelity/models/brush-readings.ts`.
 
 `npm run brushes:fit -- --packs watercolor/vvds` fits every constant of the packs' app at once against every targeted
 training brush of the packs given (all of one app), by the sheet's summed score, with each brush that ends up further
@@ -167,7 +167,7 @@ what's promised depends on where it renders:
   and WebGPU's adapter), and `studio render --join` refuses slices from more than one.
 
 A render's browser must have a hardware WebGPU adapter as well as hardware GL, and a render fails without one
-(lib/output/render/engine/render-browser.ts). WebGPU exists only in a secure context: Remotion's `http://localhost`
+(lib/platform/browser/engine/render-browser.ts). WebGPU exists only in a secure context: Remotion's `http://localhost`
 page is one, `about:blank` isn't. The renderer needs the adapter's `texture-formats-tier2` feature (its compute passes
 read and write half-float targets in place).
 

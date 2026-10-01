@@ -73,21 +73,22 @@ export { ThreeStage, softboxEnvironment, type ThreeBloom, type ThreeEnvironment,
 export { addVec3, crossVec3, dotVec3, lengthVec3, lerpVec3, scaleVec3, subVec3, unitVec3, type Vec3 } from '#lib/picture/frame/models/vec3.ts';
 // Stamp painting: a recipe of opaque and glaze groups of passes of deposits, painted on the GPU with a private style's
 // brushes (docs/private-styles.md, skills/video-canvas/SKILL.md).
-export { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint, type PaintMaterial, type StampBloomSettings, type StampFillSettings, type StampGroupOptions, type StampGroupScope, type StampLiftSettings, type StampMaskSettings, type StampKeyedMaterial, type StampPaintColor, type StampPaintMaterial, type StampPaintPaper, type StampPaintRecipe, type StampPaintScope, type StampPassOptions, type StampPassScope, type StampSoftenSettings, type StampUnmaskSettings, type StampWashOptions, type StampWashScope, type StampWashWait, type StampWaterSettings } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
-export { visibleStampCountAt } from '#lib/picture/stamp-paint/models/stamp-deposit-reveal.ts';
-export { STAMP_FILL_PATTERNS, stampRegionOutline, stampSmoothRegion, type StampFillApplication, type StampFillPattern, type StampFillReach, type StampFillStrokes, type StampFillTurns } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
-export type { StampEdge, StampPoint, StampRegion } from '#lib/picture/stamp-paint/models/stamp-region.ts';
-export type { StampPaintField } from '#lib/picture/stamp-paint/models/stamp-paint-field.ts';
-export type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from '#lib/picture/stamp-paint/models/stamp-group-motion.ts';
-export type { StampMaterialKeys } from '#lib/picture/stamp-paint/models/stamp-material-keys.ts';
-export type { StampStrokePoint, StampPlacement } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
-export { STAMP_PRESSURE_PROFILES, type StampPressureCurve, type StampPressureProfileName, type StampStrokeHand } from '#lib/picture/stamp-paint/models/stamp-stroke-hand.ts';
-export type { StampBlend, StampBrush, StampBrushMedia } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
-export type { ResolvedStampPaintStyle } from '#lib/picture/stamp-styles/models/style.ts';
+export { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint, type StampBloomSettings, type StampFillSettings, type StampGroupOptions, type StampGroupScope, type StampLiftSettings, type StampMaskSettings, type StampKeyedMaterial, type StampPaintMaterial, type StampPaintPaper, type StampPaintRecipe, type StampPaintScope, type StampPassOptions, type StampPassScope, type StampSoftenSettings, type StampUnmaskSettings, type StampWashOptions, type StampWashScope, type StampWashWait, type StampWaterSettings } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+export type { PaintMaterial, StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
+export { visibleStampCountAt } from '#lib/paint/painting/models/stamp-deposit-reveal.ts';
+export { STAMP_FILL_PATTERNS, stampRegionOutline, stampSmoothRegion, type StampFillApplication, type StampFillPattern, type StampFillReach, type StampFillStrokes, type StampFillTurns } from '#lib/paint/painting/models/stamp-fill.ts';
+export type { StampEdge, StampPoint, StampRegion } from '#lib/paint/painting/models/stamp-region.ts';
+export type { StampPaintField } from '#lib/paint/painting/models/stamp-paint-field.ts';
+export type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from '#lib/paint/painting/models/stamp-group-motion.ts';
+export type { StampMaterialKeys } from '#lib/paint/painting/models/stamp-material-keys.ts';
+export type { StampStrokePoint, StampPlacement } from '#lib/paint/brush/models/stamp-placement.ts';
+export { STAMP_PRESSURE_PROFILES, type StampPressureCurve, type StampPressureProfileName, type StampStrokeHand } from '#lib/paint/brush/models/stamp-stroke-hand.ts';
+export type { StampBlend, StampBrush, StampBrushMedia } from '#lib/paint/brush/models/stamp-brush.ts';
+export type { ResolvedStampPaintStyle } from '#lib/paint/style/models/style.ts';
 // Pigment paint: a style that paints in pigment names its medium and pigments; a deposit lays a colour or a mixture.
-export { PAINT_MEDIA, TITANIUM_WHITE, type PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
-export type { PaintMixture, PaintMixturePart } from '#lib/picture/paint/models/paint-mixture.ts';
-export type { PaintPigmentAppearance } from '#lib/picture/paint/models/paint-pigment.ts';
-export { WATERCOLOUR_PIGMENTS } from '#lib/picture/paint/models/paint-watercolour-pigments.ts';
-export { stampPaintStyle } from '#lib/picture/stamp-styles/studio/stamp-paint-styles.ts';
-export { StampPainting } from '#lib/picture/stamp-styles/studio/stamp-painting.tsx';
+export { PAINT_MEDIA, TITANIUM_WHITE, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
+export type { PaintMixture, PaintMixturePart } from '#lib/paint/materials/models/paint-mixture.ts';
+export type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-pigment.ts';
+export { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
+export { stampPaintStyle } from '#lib/paint/style/studio/stamp-paint-styles.ts';
+export { StampPainting } from '#lib/paint/style/studio/stamp-painting.tsx';

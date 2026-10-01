@@ -1,0 +1,428 @@
+// stamp-fill.ts: how a fill covers its region, flooded or in strokes (StampFillApplication).
+//
+// Wet paint's build converges inside a region, and only its edge shows the brush. So a flood is a body worked out
+// per pixel (floodBody) under one stroke of the real brush along the contour half a diameter inside, where its
+// stamps' edges touch the outline; a neck narrower than a diameter is the body's alone. The brush's dual is stamped
+// along the contour and in rows over the region.
+//
+// A crayon or a pencil never converges: its marks and the paper between them are the look. So strokes are real
+// strokes of the brush in a pattern (stampFillStrokePath), a stroke deposit like any other.
+
+import { seededRandom } from '#lib/picture/motion/models/random.ts';
+import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { placeStrokeStamps, type PlacedStamp, type StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
+import { handStampStroke, type StampStrokeHand } from '#lib/paint/brush/models/stamp-stroke-hand.ts';
+import {
+  stampDistanceGrid, stampGridAt, stampGridContours, stampGridLocalMax, stampPolygonBox, stampRegionPolygon, type StampBox, type StampGrid, type StampPoint, type StampRegion,
+} from './stamp-region.ts';
+
+/** Rows of a flood's dual, a quarter diameter apart: close enough that a tip's own falloff doesn't band. */
+const DUAL_ROWS = 0.25;
+
+/**
+ * A region through `points`, closed and smoothed (a Catmull–Rom curve through each, `steps` points a span), for a
+ * silhouette drawn from a few control points.
+ */
+export function stampSmoothRegion(points: readonly StampPoint[], steps = 8): StampRegion {
+  const n = points.length, at = (i: number) => points[((i % n) + n) % n];
+  const curve = points.flatMap((_, i) => Array.from({ length: steps }, (_slot, k) => {
+    const u = k / steps, u2 = u * u, u3 = u2 * u;
+    const [p0, p1, p2, p3] = [at(i - 1), at(i), at(i + 1), at(i + 2)];
+    const along = (a: number, b: number, c: number, d: number) => 0.5 * (2 * b + (c - a) * u + (2 * a - 5 * b + 4 * c - d) * u2 + (3 * b - a - 3 * c + d) * u3);
+    return { x: along(p0.x, p1.x, p2.x, p3.x), y: along(p0.y, p1.y, p2.y, p3.y) };
+  }));
+  return { kind: 'polygon', points: curve };
+}
+
+/** The region's edge, closed (its first point repeated at the end), to stroke along. */
+export function stampRegionOutline(region: StampRegion): StampStrokePoint[] {
+  const polygon = stampRegionPolygon(region);
+  return [...polygon, polygon[0]].map(({ x, y }) => ({ x, y }));
+}
+
+/** A flood's body as the renderer lays it (STAMP_REGION_WGSL's floodBody). */
+export type StampFloodBody = {
+  /** The region, traced (stampRegionPolygon). */
+  polygon: readonly StampPoint[];
+  /** The body's box: the region's own. */
+  box: StampBox;
+  /** How thick the region is near each point (stampGridLocalMax of its distance), which narrows the body's edge. */
+  thickness: StampGrid;
+  /** Half the diameter: where the edge stroke runs inside the outline. */
+  inset: number;
+};
+
+/** A fill's stamps and body, placed once. */
+export type StampFloodPlacement = { body: StampFloodBody; stamps: PlacedStamp[]; dualStamps: PlacedStamp[] };
+
+/**
+ * Places a fill of `region` by `brush` at `diameter`: its body, its edge stroke (untapered and unfading, so the
+ * contour is as dense at its end as its start) and its dual's stamps, along the contour and in rows along `direction`
+ * (radians) wherever the region comes within half a diameter.
+ */
+export function placeStampFlood(region: StampRegion, brush: StampBrush, diameter: number, direction: number, seed: string): StampFloodPlacement {
+  const polygon = stampRegionPolygon(region), inset = diameter / 2;
+  // A quarter of the inset: the contour's corners are exact to a few pixels, which the brush's own edge hides.
+  const cell = Math.max(1, inset / 4);
+  const distance = stampDistanceGrid(polygon, stampPolygonBox(polygon, inset + 2 * cell), cell);
+  const edge = stampGridContours(distance, inset).flatMap((loop, i) =>
+    [...loop, loop[0]].map(({ x, y }, k): StampStrokePoint => (i > 0 && k === 0 ? { x, y, lift: true } : { x, y })));
+  const untapered = { ...brush, taper: { ...brush.taper, start: 0, end: 0, size: 1, opacity: 1 }, falloff: 0 };
+  const stamps = edge.length ? placeStrokeStamps(edge, untapered, diameter, seed) : [];
+  let dualStamps: PlacedStamp[] = [];
+  if (brush.dual) {
+    const rows = rowRuns(polygon, direction, Math.max(1, DUAL_ROWS * diameter), (points, y) => rowSpans(points, direction, y, inset + cell, cell, (x, yy) => stampGridAt(distance, x, yy) > -inset));
+    const path = edge.length && rows.length ? [...edge, { ...rows[0], lift: true }, ...rows.slice(1)] : [...edge, ...rows];
+    dualStamps = path.length ? placeStrokeStamps(path, brush.dual, diameter * brush.dual.scale, `${seed}|dual`) : [];
+  }
+  const thickness = stampGridLocalMax(distance, inset);
+  return { body: { polygon, box: stampPolygonBox(polygon), thickness, inset }, stamps, dualStamps };
+}
+
+/**
+ * A flood body's paint: its brush's converged build, read off a straight stroke (`probe`). Toward full it has built
+ * to 1; a buildToOpacity to the strongest opacity a stamp brought. `densest`: a glaze's densest stamp, its cap too, as
+ * a body has no tip to take off.
+ */
+export type StampFloodBodyLevels = { built: number; densest: number };
+
+export function stampFloodBodyLevels(towardFull: boolean, probe: readonly PlacedStamp[]): StampFloodBodyLevels {
+  const densest = probe.reduce((most, s) => Math.max(most, s.alpha * s.opacity), 0);
+  return { built: towardFull ? 1 : probe.reduce((most, s) => Math.max(most, s.opacity), 0), densest };
+}
+
+/** A straight stroke of `brush` four diameters long, for its converged build (stampFloodBodyLevels). */
+export function stampFloodProbe(brush: StampBrush, diameter: number, seed: string): PlacedStamp[] {
+  const untapered = { ...brush, taper: { ...brush.taper, start: 0, end: 0, size: 1, opacity: 1 }, falloff: 0 };
+  return placeStrokeStamps([{ x: 0, y: 0 }, { x: diameter * 4, y: 0 }], untapered, diameter, seed);
+}
+
+/**
+ * A fill's front along the normal to `direction`: its paint at (x, y) as a share, 0 ahead and 1 a diameter behind.
+ * It runs from `from` to `to`, the ends of all it paints, a scattered stamp's reach past the outline too, so
+ * `progress` 0 shows none of it and 1 all.
+ */
+export type StampFloodFront = { normal: readonly [number, number]; from: number; to: number; soft: number };
+
+export function stampFloodFront(polygon: readonly StampPoint[], stamps: readonly PlacedStamp[], direction: number, diameter: number): StampFloodFront {
+  const normal = [-Math.sin(direction), Math.cos(direction)] as const;
+  let from = Infinity, to = -Infinity;
+  const reach = (x: number, y: number, r: number) => {
+    const along = x * normal[0] + y * normal[1];
+    from = Math.min(from, along - r);
+    to = Math.max(to, along + r);
+  };
+  for (const { x, y } of polygon) reach(x, y, 0);
+  // A diameter from its centre: past a square tip's corners at any turn.
+  for (const { x, y, diameter: d } of stamps) reach(x, y, d);
+  return { normal, from, to, soft: diameter };
+}
+
+/** The share of a fill's paint at `p` shown with its front (StampFloodFront) at `progress`, in WGSL. */
+export const STAMP_FLOOD_FRONT_SHARE_WGSL = /* wgsl */ `fn floodFrontShare(p: vec2f, normal: vec2f, start: f32, end: f32, soft: f32, progress: f32) -> f32 {
+  let at = start + progress * (end - start + soft);
+  return clamp((at - dot(p, normal)) / soft, 0.0, 1.0);
+}`;
+
+/**
+ * How a fill lays its paint. `flood`: a converged body under the brush's edge (placeStampFlood), as wet paint floods a
+ * shape. `strokes`: real strokes of the brush in a pattern, as a crayon or a pencil fills one (stampFillStrokePath).
+ */
+export type StampFillApplication = { kind: 'flood' } | ({ kind: 'strokes' } & StampFillStrokes);
+
+/**
+ * `backAndForth`: a stroke turning at each row's end. `zigzag`: a stroke running diagonally side to side. `hatch`:
+ * parallel marks, each lifted. `crossHatch`: a hatch, then another across it. `scribble`: a stroke looping back and
+ * forth. `shading`: short wrist-swing strokes in overlapping patches, lifting every few, as a crayon shades.
+ */
+export type StampFillPattern = 'backAndForth' | 'zigzag' | 'hatch' | 'crossHatch' | 'scribble' | 'shading';
+
+/**
+ * A strokes fill. `spacing`: diameters between rows, centre to centre (the pattern's own when left out), past 1
+ * leaving paper between marks. `variation`, 0..1 (0.3): how unevenly a hand lays them, each row's place and tilt and
+ * each mark's ends. `hand`: how each mark is painted (the pattern's own). `turns`: StampFillTurns. `reach`:
+ * StampFillReach.
+ */
+export type StampFillStrokes = { pattern: StampFillPattern; spacing?: number; variation?: number; hand?: StampStrokeHand; turns?: StampFillTurns; reach?: StampFillReach };
+
+/**
+ * How far a strokes fill's marks reach. `inside` (when left out): within its outline. `over`: their middles run out
+ * to it and their paint past it, as a brush runs past a shape whose clip trims it; for a clipped texture over its
+ * silhouette, which inside stops short of the edge (a mark is narrower than its tip).
+ */
+export type StampFillReach = 'inside' | 'over';
+
+/**
+ * Where a back and forth, zigzag or shading turns back. `eased` (when left out): the hand nearly lifts, as a crayon or
+ * pencil shading does, so a turn is the mark's lightest part. `pressed`: the brush stays pressed through the turn, as
+ * one covering a shape in body colour does; a pressure-sized brush eased there would leave the outline bare.
+ */
+export type StampFillTurns = 'eased' | 'pressed';
+
+/**
+ * A hatch mark's pressure: firm at its ends, a little fuller midway. A taper would shrink its ends short of the
+ * outline, where a fill's marks must reach.
+ */
+const HATCH_PRESSURE = (along: number) => 0.8 + 0.2 * Math.sin(Math.PI * along);
+
+/**
+ * Each pattern's spacing and hand: a hatch mark swells a little. A pattern that turns back (back and forth, zigzag,
+ * shading) is pressed at each reversal as its `turns` say (reversalLegs), so its hand names no curvature: that presses
+ * into tight turns and lightens runs, as a brush rounding a corner does, and leaves a fill a hollow frame.
+ */
+export const STAMP_FILL_PATTERNS: Record<StampFillPattern, { spacing: number; hand: StampStrokeHand }> = {
+  backAndForth: { spacing: 0.9, hand: { wobble: { pressure: 0.15, position: 0.04 } } },
+  zigzag: { spacing: 1, hand: { wobble: { pressure: 0.15, position: 0.04 } } },
+  shading: { spacing: 0.5, hand: { wobble: { pressure: 0.2, position: 0.05 } } },
+  hatch: { spacing: 1.2, hand: { profile: HATCH_PRESSURE, wobble: { pressure: 0.1, position: 0.03 } } },
+  crossHatch: { spacing: 1.5, hand: { profile: HATCH_PRESSURE, wobble: { pressure: 0.1, position: 0.03 } } },
+  scribble: { spacing: 1.5, hand: { curvature: 0.3, wobble: { pressure: 0.15, position: 0.03 } } },
+};
+
+/** A cross-hatch's second layer turns this far from the first: square reads as a grid, not a hand's. */
+const CROSS_HATCH_TURN = Math.PI / 3;
+
+/**
+ * `region` in `strokes` at `diameter`: one path, lifting between marks, each already painted by its hand, its rows
+ * along `direction` (radians, 0 left and right) laid one after another. A mark's edge meets the outline; where the
+ * region is thinner than a diameter the marks run down its middle, and may spill past its sides.
+ */
+export function stampFillStrokePath(region: StampRegion, diameter: number, direction: number, strokes: StampFillStrokes, seed: string): StampStrokePoint[] {
+  const { pattern, variation = 0.3, turns = 'eased', reach = 'inside' } = strokes;
+  const { spacing, hand } = { ...STAMP_FILL_PATTERNS[pattern], ...strokes };
+  if (!(spacing > 0) || !(variation >= 0 && variation <= 1)) throw new Error(`stamp paint: a strokes fill needs a positive spacing and a variation of 0..1, not ${spacing} and ${variation}`);
+  const inside = strokeRoom(region, diameter, reach), random = seededRandom(`${seed}|fill strokes`);
+  const step = spacing * diameter;
+  const rows = (angle: number, extra = 0) => fillRows(inside, angle, step, variation, extra, random);
+  let marks: StampStrokePoint[][];
+  switch (pattern) {
+    case 'hatch': marks = hatchMarks(rows(direction)); break;
+    case 'crossHatch': marks = [...hatchMarks(rows(direction)), ...hatchMarks(rows(direction + CROSS_HATCH_TURN))]; break;
+    // A scribble's loops are a row apart wide, so each overlaps the next row's, and wider than the brush, so they read.
+    case 'scribble': marks = chainRows(rows(direction, step)).map((chain) => scribbled(serpentine(chain), step, variation, random)); break;
+    case 'backAndForth': case 'zigzag': case 'shading': {
+      const reversing = pattern === 'shading' ? shadingPatches(rows(direction), direction, diameter, variation, random).map(serpentine) : chainRows(rows(direction)).map(pattern === 'zigzag' ? zigzag : serpentine);
+      marks = reversing.map((legs) => reversalLegs(legs, REVERSAL_PRESSURE[turns], diameter, variation, random));
+    }
+  }
+  const path: StampStrokePoint[] = [];
+  marks.filter((mark) => mark.length > 1).forEach((mark, i) => {
+    const [first, ...rest] = handStampStroke(mark, hand, diameter, `${seed}|mark ${i}`);
+    path.push(i > 0 ? { ...first, lift: true } : first, ...rest);
+  });
+  return path;
+}
+
+/**
+ * Where a mark's centre may lie in `region`: half a diameter inside, or down the middle where it's thinner; anywhere
+ * inside when its marks reach over the outline.
+ */
+type StrokeRoom = { polygon: readonly StampPoint[]; cell: number; inset: number; inside: (x: number, y: number, extra: number) => boolean };
+
+function strokeRoom(region: StampRegion, diameter: number, reach: StampFillReach): StrokeRoom {
+  const polygon = stampRegionPolygon(region), inset = reach === 'over' ? 0 : diameter / 2, cell = Math.max(1, diameter / 8);
+  const distance = stampDistanceGrid(polygon, stampPolygonBox(polygon, 2 * cell), cell);
+  const thickness = stampGridLocalMax(distance, inset);
+  return { polygon, cell, inset, inside: (x, y, extra) => stampGridAt(distance, x, y) > Math.min(inset, stampGridAt(thickness, x, y) / 2) + extra };
+}
+
+/** A row of a strokes fill: its spans, each from its start to its end, in painting coordinates. */
+type FillRow = { start: StampPoint; end: StampPoint }[];
+
+/**
+ * Rows `step` apart across `room` along `angle`, the first and last half a diameter in from its extremes, each split
+ * into spans where a mark's centre (`extra` further in) may lie. `variation` moves each inner row and tilts and
+ * shortens each span, never past the room's ends.
+ */
+function fillRows({ polygon, cell, inset, inside }: StrokeRoom, angle: number, step: number, variation: number, extra: number, random: () => number): FillRow[] {
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  const local = polygon.map(({ x, y }) => ({ x: x * cos + y * sin, y: -x * sin + y * cos }));
+  const toPainting = (x: number, y: number) => ({ x: x * cos - y * sin, y: x * sin + y * cos });
+  const top = Math.min(...local.map((p) => p.y)), bottom = Math.max(...local.map((p) => p.y));
+  const margin = Math.min(inset + extra + cell, (bottom - top) / 2), first = top + margin, last = bottom - margin;
+  const count = Math.max(1, Math.round((last - first) / step) + 1);
+  const shake = (amount: number) => (random() * 2 - 1) * amount * variation;
+  return Array.from({ length: count }, (_, k) => {
+    const y = count === 1 ? (first + last) / 2 : first + ((last - first) * k) / (count - 1);
+    const row = k > 0 && k < count - 1 ? y + shake(0.25 * step) : y;
+    return rowSpans(local, angle, row, inset + extra + cell, cell, (x, yy) => inside(x, yy, extra)).map(([a, b]) => {
+      const pull = Math.min((b - a) / 3, 0.35 * inset * 2 * variation);
+      return { start: toPainting(a + random() * pull, row + shake(0.12 * step)), end: toPainting(b - random() * pull, row + shake(0.12 * step)) };
+    });
+  });
+}
+
+/** Each span a mark of its own, all laid the same way. */
+const hatchMarks = (rows: readonly FillRow[]) => rows.flatMap((row) => row.map(({ start, end }): StampStrokePoint[] => [start, end]));
+
+/** How far along the line from `p` to `q` point `r` lies, as a share of it. */
+const shareAlong = (p: StampPoint, q: StampPoint, r: StampPoint) => ((r.x - p.x) * (q.x - p.x) + (r.y - p.y) * (q.y - p.y)) / ((q.x - p.x) ** 2 + (q.y - p.y) ** 2 || 1);
+
+/**
+ * The rows' spans joined into chains a continuous stroke can follow: each span into the first unused span of the next
+ * row that overlaps it along the row, a new chain where none does, as a hand goes on across a shape and comes back for
+ * what it passed.
+ */
+function chainRows(rows: readonly FillRow[]): FillRow[] {
+  const used = rows.map((row) => row.map(() => false)), chains: FillRow[] = [];
+  rows.forEach((row, k) => row.forEach((span, j) => {
+    if (used[k][j]) return;
+    const chain = [span];
+    used[k][j] = true;
+    for (let r = k + 1, last = span; r < rows.length; r++) {
+      // Overlapping along the row: the next span's ends, measured along this one, don't both fall off one side.
+      const next = rows[r].findIndex((other, i) => !used[r][i] && Math.max(shareAlong(last.start, last.end, other.start), shareAlong(last.start, last.end, other.end)) > 0 && Math.min(shareAlong(last.start, last.end, other.start), shareAlong(last.start, last.end, other.end)) < 1);
+      if (next < 0) break;
+      used[r][next] = true;
+      last = rows[r][next];
+      chain.push(last);
+    }
+    chains.push(chain);
+  }));
+  return chains;
+}
+
+/** A chain as one stroke along each span in turn, turning back at each end. */
+const serpentine = (chain: FillRow): StampStrokePoint[] => chain.flatMap(({ start, end }, i) => (i % 2 ? [end, start] : [start, end]));
+
+/** A chain as one stroke from one side to the other and back, a corner on each row; a lone span is run along. */
+const zigzag = (chain: FillRow): StampStrokePoint[] => (chain.length < 2 ? serpentine(chain) : chain.map(({ start, end }, i) => (i % 2 ? end : start)));
+
+/** A shading stroke's length, in diameters: a wrist's swing, the hand moving on along the patch between swings. */
+const SHADING_STROKE = 6;
+/** How far a shading patch reaches into its neighbour's, as a share of its stroke, so patches meet without a seam. */
+const SHADING_OVERLAP = 0.2;
+/** Strokes a hand lays before it lifts and starts again: from the first to the second, at random. */
+const SHADING_RUN = [4, 9] as const;
+
+/**
+ * Rows cut into patches a shading stroke long along them, each patch its rows' pieces in turn, a run of a few strokes
+ * before the hand lifts. Each row's cuts move at random, so seams don't line up; each piece reaches past its cut into
+ * the next patch, its eased ends (reversalLegs) blending in.
+ */
+function shadingPatches(rows: readonly FillRow[], angle: number, diameter: number, variation: number, random: () => number): FillRow[] {
+  const along = (p: StampPoint) => p.x * Math.cos(angle) + p.y * Math.sin(angle);
+  const stroke = SHADING_STROKE * diameter, reach = SHADING_OVERLAP * stroke;
+  const found: { column: number; row: number; piece: FillRow[number]; short: boolean }[] = [];
+  rows.forEach((row, r) => {
+    const phase = (random() * 2 - 1) * 0.25 * stroke * variation;
+    for (const { start, end } of row) {
+      const a = along(start), b = along(end), at = (x: number) => {
+        const k = Math.min(1, Math.max(0, (x - a) / (b - a || 1)));
+        return { x: start.x + (end.x - start.x) * k, y: start.y + (end.y - start.y) * k };
+      };
+      const [lo, hi] = a < b ? [a, b] : [b, a];
+      for (let column = Math.floor((lo - phase) / stroke); column * stroke + phase < hi; column++) {
+        const from = Math.max(lo, column * stroke + phase - reach), to = Math.min(hi, (column + 1) * stroke + phase + reach);
+        found.push({ column, row: r, piece: { start: at(from), end: at(to) }, short: to - from < 1.5 * diameter });
+      }
+    }
+  });
+  // A short piece (a sliver at a row's end, or a corner's short row) lies under its neighbours' stamps, and drawn
+  // would spill its stamp past the outline; only a region with no longer piece is drawn in short ones.
+  const kept = found.some(({ short }) => !short) ? found.filter(({ short }) => !short) : found;
+  const columns = new Map<number, { row: number; piece: FillRow[number] }[]>();
+  for (const { column, row, piece } of kept) (columns.get(column) ?? columns.set(column, []).get(column)!).push({ row, piece });
+  const patches: FillRow[] = [];
+  for (const pieces of columns.values()) {
+    let patch: FillRow = [], last = -2, run = 0;
+    for (const { row, piece } of pieces) {
+      if (row !== last + 1 || patch.length >= run) {
+        if (patch.length) patches.push(patch);
+        patch = [];
+        run = SHADING_RUN[0] + Math.floor(random() * (SHADING_RUN[1] - SHADING_RUN[0] + 1));
+      }
+      patch.push(piece);
+      last = row;
+    }
+    if (patch.length) patches.push(patch);
+  }
+  return patches;
+}
+
+/**
+ * A reversing stroke's legs (a path turning back at each point) with the pressure a hand gives them: firm through the
+ * middle, at `turn` at each turn and end. Eased, a turnaround is a stroke's lightest part, never a bead where it doubles
+ * back. `variation` presses each leg a little harder or lighter.
+ */
+function reversalLegs(path: readonly StampStrokePoint[], turn: number, diameter: number, variation: number, random: () => number): StampStrokePoint[] {
+  const out: StampStrokePoint[] = [];
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i], length = Math.hypot(b.x - a.x, b.y - a.y);
+    const firm = 1 - 0.35 * variation * random(), ease = Math.min(0.35 * length, 2 * diameter) / (length || 1);
+    const point = (k: number, pressure: number) => ({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, pressure });
+    if (i === 1) out.push(point(0, turn));
+    // A leg shorter than a stroke's ease either side is the turn itself, the step from one row to the next.
+    if (length >= 1.5 * diameter) out.push(point(ease, firm), point(1 - ease, firm));
+    out.push(point(1, turn));
+  }
+  return out;
+}
+
+/** The pressure at a turn: eased, the stick or brush nearly lifts; pressed, it doesn't. */
+const REVERSAL_PRESSURE: Record<StampFillTurns, number> = { eased: 0.25, pressed: 1 };
+
+/**
+ * `path` with loops of about `radius` wound along it, turning one way, each advancing about its radius:
+ * a scribble's coil. `variation` swells and shrinks them. The path lies `radius` inside where a mark may, so they stay in.
+ */
+function scribbled(path: readonly StampStrokePoint[], radius: number, variation: number, random: () => number): StampStrokePoint[] {
+  const out: StampStrokePoint[] = [];
+  // Sampled every 10° of a loop, so it reads round.
+  const turn = (2 * Math.PI) / radius, step = radius / 36;
+  let travelled = 0, size = radius;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i], span = Math.hypot(b.x - a.x, b.y - a.y);
+    for (let d = 0; d < span; d += step, travelled += step) {
+      if (Math.floor((travelled + step) * turn / (2 * Math.PI)) > Math.floor(travelled * turn / (2 * Math.PI))) size = radius * (1 + (random() * 2 - 1) * 0.3 * variation);
+      const k = d / span, phase = travelled * turn;
+      out.push({ x: a.x + (b.x - a.x) * k + size * Math.cos(phase), y: a.y + (b.y - a.y) * k + size * Math.sin(phase) });
+    }
+  }
+  return out;
+}
+
+/**
+ * Rows `step` apart across `polygon` along `angle`, each split into runs by `spans` (in the rows' frame, where each
+ * row is horizontal), joined back and forth into one path that lifts between runs.
+ */
+function rowRuns(polygon: readonly StampPoint[], angle: number, step: number, spans: (local: readonly StampPoint[], y: number) => [number, number][]): StampStrokePoint[] {
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  const local = polygon.map(({ x, y }) => ({ x: x * cos + y * sin, y: -x * sin + y * cos }));
+  const toPainting = (x: number, y: number) => ({ x: x * cos - y * sin, y: x * sin + y * cos });
+  const top = Math.min(...local.map((p) => p.y)), bottom = Math.max(...local.map((p) => p.y));
+  const path: StampStrokePoint[] = [];
+  let rightward = true;
+  for (let y = top + step / 2; y < bottom; y += step) {
+    const runs = spans(local, y);
+    for (const [a, b] of rightward ? runs : runs.toReversed()) {
+      const [start, end] = rightward ? [a, b] : [b, a];
+      path.push({ ...toPainting(start, y), ...(path.length && { lift: true }) }, toPainting(end, y));
+    }
+    rightward = !rightward;
+  }
+  return path;
+}
+
+/**
+ * Where the row at `y`, in the frame turned by `angle`, is `inside`, as spans in that frame: walked `step` px at a time
+ * from `reach` before the region's leftmost point to `reach` past its rightmost.
+ */
+function rowSpans(local: readonly StampPoint[], angle: number, y: number, reach: number, step: number, inside: (x: number, y: number) => boolean): [number, number][] {
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  const x0 = Math.min(...local.map((p) => p.x)) - reach, x1 = Math.max(...local.map((p) => p.x)) + reach;
+  const spans: [number, number][] = [];
+  let start: number | null = null;
+  for (let x = x0; x <= x1 + step; x += step) {
+    const within = x <= x1 && inside(x * cos - y * sin, x * sin + y * cos);
+    if (within && start === null) start = x;
+    if (!within && start !== null) {
+      spans.push([start, x - step]);
+      start = null;
+    }
+  }
+  return spans.filter(([a, b]) => b > a);
+}
+
+/** A seed for a region's ragged edge from its ID, as a u32 the renderer's noise reads. */
+export const stampRegionSeed = (id: string) => Math.floor(seededRandom(`${id}|region`)() * 0x100000000) >>> 0;

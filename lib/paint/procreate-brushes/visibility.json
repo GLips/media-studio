@@ -1,0 +1,5 @@
+{
+  "lib/paint/brush-fidelity": "A Procreate preview is one fidelity target, read by Procreate's own reading.",
+  "lib/paint/photoshop-brushes": "Photoshop's references are painted along Procreate's preview stroke, the S-curve both apps are compared on.",
+  "lib/paint/brush-packs": "A Procreate pack is imported and its brushes resolved through Procreate's reader."
+}

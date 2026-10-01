@@ -14,8 +14,10 @@ export const SDK_OWNERS: readonly SdkOwner[] = [
   // Driving a product's site to capture it, and rasterizing the studio's own drawings and pages.
   { sdk: 'playwright', owners: ['lib/footage/capture/engine/', 'lib/platform/raster/engine/'], packages: ['playwright', 'playwright-core', '@playwright/test'] },
   { sdk: 'ffmpeg', owners: ['lib/platform/ffmpeg/engine/'], binaries: ['ffmpeg', 'ffprobe'] },
-  { sdk: '@remotion/renderer', owners: ['lib/output/render/engine/'], packages: ['@remotion/renderer'] },
+  // Rendering a project, and (platform/browser) opening the headless browser every render and every GPU page runs in.
+  { sdk: '@remotion/renderer', owners: ['lib/output/render/engine/', 'lib/platform/browser/engine/'], packages: ['@remotion/renderer'] },
   { sdk: '@remotion/bundler', owners: ['lib/output/render/engine/'], packages: ['@remotion/bundler'] },
-  { sdk: 'esbuild', owners: ['lib/output/render/engine/'], packages: ['esbuild'] },
+  // The render's tsx hooks, and (platform/browser) a studio module bundled for a page or a node run.
+  { sdk: 'esbuild', owners: ['lib/output/render/engine/', 'lib/platform/browser/engine/'], packages: ['esbuild'] },
   { sdk: 'vite', owners: ['lib/platform/web/engine/'], packages: ['vite'] },
 ];

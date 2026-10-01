@@ -7,7 +7,7 @@
 //     the session's tabs, timed here from the frames' arrival. Its first frame, which loads everything, is left out.
 import { renderFrames, type HeadlessBrowser } from '@remotion/renderer';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
-import { RENDER_CHROMIUM } from './render-browser.ts';
+import { RENDER_CHROMIUM } from '#lib/platform/browser/engine/render-browser.ts';
 import type { RenderSession } from './render-session.ts';
 import { FRAME_PROFILE_LOG_PREFIX, type FrameProfileEntry } from '#lib/picture/profiling/models/frame-profile-entry.ts';
 
