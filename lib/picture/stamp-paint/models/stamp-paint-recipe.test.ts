@@ -96,6 +96,13 @@ test("a group knocks out first and once: its knockout's fluid is its own, and no
     })),
     /a group knocks out once, before it paints/,
   );
+  // A recipe is a plain value: one reordered by hand is refused as it compiles.
+  const written = stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => {
+    group.knockout('k', {}, () => {});
+    group.pass('p', {}, () => {});
+  }));
+  const [{ passes }] = written.groups;
+  assert.throws(() => compileStampPaintRecipe({ ...written, groups: [{ ...written.groups[0], passes: [passes[1], passes[0]] }] }), /g\/k is a knockout after g's first pass/);
 });
 
 test('groups paint far to near by depth, an order overrides depth, and ties keep the order written', () => {

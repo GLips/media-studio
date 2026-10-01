@@ -512,8 +512,9 @@ fn rimOf(a: f32, soft: f32, sharpness: f32) -> f32 { return clamp((a - soft) * s
     reach *= inClip;
   }
   let coverage = clamp(m, 0.0, 1.0) * keep * u.opacity;
-  // What the fluid held off this brush here: in a knockout, its reserve.
-  let reserved = clamp(m, 0.0, 1.0) * reach * held * u.opacity;
+  // In a knockout, its reserve: the fluid within the deposit's reach, however its brush's marks cover, as the paint
+  // behind is whole and only the fluid kept it off.
+  let reserved = reach * held * u.opacity;
   traced(${TRACE_SLOTS - 1}u, coverage);
   // A burnt rim burns into paint already there, the group's or the deposit's own (its stamps laid over one another).
   let burnable = max(layerCoverage(pixel), clamp(m, 0.0, 1.0)) * keep * u.opacity;

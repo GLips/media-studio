@@ -72,6 +72,18 @@ Everything is from `#studio`.
     everything declared after it in that scope, until the scope ends; `unmask(id, { region, amount })` lifts all or
     part of it. `edge`: `{ soft: px }` or `{ ragged: { amount, scale } }`, else a clean antialiased line. Paint
     already there stays: a mask is for highlights, glints and reserves, not erasing.
+  - **A moving light out of a still sky** (a cloud drifting over a wash): make the cloud its own group with
+    `motion`, and declare first `group.knockout(id, { preparation? }, (k) => …)`. It takes out of everything painted
+    before the group, and travels with it. Then paint the cloud's own passes over it.
+    - A **reserve**: `k.mask(…)`, then `k.water(…)` across it, as the sky's wash went over the fluid. The result is crisp,
+      pure paper.
+    - A **lift**: `k.lift(…)`, blotting the paint behind by the lift law. Its edge is soft, and it leaves a ghost as
+      strong as the pigments there stain (phthalo stays, ultramarine comes clean). `preparation` is how wet that paint
+      still is; without it, the paint has set and lifts only a little. Blot more than once, a little offset each time,
+      with a soft brush flooded over each puff: one blot of an exact ellipse reads as a sticker.
+  - **`paper: 'own'`** on a moving group is a collage's piece of paper. Its grain moves with it rather than sliding
+    through it. Leave it out for paint on the painting's paper; a moving granulating shape's slight shimmer is usually
+    fine.
 - `stampSmoothRegion(points)` turns a few control points into a smooth silhouette; `stampRegionOutline(region)` traces
   its edge.
 - `compileStampPaintRecipe(recipe)` once, at scene definition, never in render: a new painting each frame reloads it.

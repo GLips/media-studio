@@ -481,8 +481,13 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
     const named = epoch ? (child: string, parent?: string) => (parent ? `${parent}/${child}` : child) : claim;
     const groupId = named(id);
     let clipBase: string | undefined;
-    const compiledPasses = passes.map((pass): CompiledStampPass => {
+    const compiledPasses = passes.map((pass, index): CompiledStampPass => {
       const passId = named(pass.id, groupId);
+      if (pass.wash?.knockout) {
+        if (index > 0) throw new Error(`stamp paint: ${passId} is a knockout after ${groupId}'s first pass; a group knocks out once, before it paints`);
+        const painted = pass.steps.flatMap((step) => (step.kind === 'deposit' && step.action.kind === 'paint' ? [step] : []))[0];
+        if (painted) throw new Error(`stamp paint: ${passId} is a knockout and ${painted.id} paints in it; a knockout only reserves and lifts`);
+      }
       if (pass.clipped && !clipBase) throw new Error(`stamp paint: ${passId} is clipped, but no unclipped pass comes before it in ${groupId}`);
       const clipTo = pass.clipped ? clipBase : undefined;
       // A knockout holds no paint of the group's, so nothing clips to it.

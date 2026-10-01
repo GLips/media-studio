@@ -309,16 +309,21 @@ export function checkStampGateCutOut({ own, ground, width }: {
  * preparation wets, its core over the ultramarine at frame 0 and over the phthalo at STAMP_GATE_KNOCKOUT_FAR.
  */
 const KNOCKOUT = { reserve: { x: 40, y: 110, r: 6 }, lift: { x: 60, y: 50, r: 7 } };
-/** Where the sky turns from ultramarine (low staining) to phthalo blue (high). */
+/** Where the sky turns from ultramarine (low staining) to phthalo blue (high) mixed with yellow ochre (low). */
 const KNOCKOUT_SKY_SPLIT = 120;
 /** A frame far enough on that the lift lies over the phthalo and the reserve has left its first place. */
 export const STAMP_GATE_KNOCKOUT_FAR = 12;
 /** The most a reserve's core may differ from bare paper on average, levels; and the least the sky must, so the check bites. */
 export const STAMP_GATE_KNOCKOUT_PAPER = 2;
 export const STAMP_GATE_SKY_LEAST = 10;
-/** The most of the ultramarine a lift may leave, and the least more of the phthalo it must: the stain it can't take. */
-export const STAMP_GATE_LIFT_LEAVES = 0.35;
-export const STAMP_GATE_STAIN_MORE = 0.1;
+/** The most of the ultramarine a lift may leave, and the least of the phthalo mixture: the stain it can't take. */
+export const STAMP_GATE_LIFT_LEAVES = 0.15;
+export const STAMP_GATE_STAIN_LEAST = 0.5;
+/**
+ * How much redder than the sky's the lifted ghost's darkening must be (red's share of red and blue): the phthalo
+ * stains, the ochre lifts, so the ghost is the phthalo's blue rather than the mixture's green.
+ */
+export const STAMP_GATE_GHOST_BLUER = 0.15;
 
 /**
  * A sky of ultramarine then phthalo blue glazed over the paper's photograph, under a group drifting
@@ -328,9 +333,13 @@ export const STAMP_GATE_STAIN_MORE = 0.1;
 export function stampGateKnockoutPainting({ sky = true, knockout = true, painted = false } = {}): StampGatePainting {
   return gatePainting(compileStampPaintRecipe(stampPaintRecipe((p) => {
     if (sky) {
-      p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.pass('wash', {}, (pass) => {
-        pass.fill('ultramarine', { ...flood(disc({ x: 0, y: 0 }, 1)), diameter: 40, material: mixture({ pigment: W.ultramarine, amount: 1 }), region: stampGatePolygon(0, 0, KNOCKOUT_SKY_SPLIT, 0, KNOCKOUT_SKY_SPLIT, 160, 0, 160) });
-        pass.fill('phthalo', { ...flood(disc({ x: 0, y: 0 }, 1)), diameter: 40, material: mixture({ pigment: W.phthaloBlue, amount: 1 }), region: stampGatePolygon(KNOCKOUT_SKY_SPLIT, 0, 240, 0, 240, 160, KNOCKOUT_SKY_SPLIT, 160) });
+      // A wash, so the record must leave out its open share.
+      p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.wash('wash', {}, (wash) => {
+        wash.fill('ultramarine', { ...flood(disc({ x: 0, y: 0 }, 1)), diameter: 40, material: mixture({ pigment: W.ultramarine, amount: 1 }), region: stampGatePolygon(0, 0, KNOCKOUT_SKY_SPLIT, 0, KNOCKOUT_SKY_SPLIT, 160, 0, 160) });
+        wash.fill('phthalo', {
+          ...flood(disc({ x: 0, y: 0 }, 1)), diameter: 40, material: mixture({ pigment: W.phthaloBlue, amount: 1 }, { pigment: W.yellowOchre, amount: 1 }),
+          region: stampGatePolygon(KNOCKOUT_SKY_SPLIT, 0, 240, 0, 240, 160, KNOCKOUT_SKY_SPLIT, 160),
+        });
       }));
     }
     if (!knockout) return;
@@ -481,28 +490,35 @@ const coreApart = (a: Rgba, b: Rgba, core: { x: number; y: number; r: number }, 
 /** How much of the sky's darkening a core keeps, against bare paper, over the red channel (where blue darkens most). */
 const skyLeft = (lifted: Rgba, sky: Rgba, bare: Rgba, dx: number) =>
   overCore(KNOCKOUT.lift, dx, (i) => bare[i] - lifted[i]) / overCore(KNOCKOUT.lift, dx, (i) => bare[i] - sky[i]);
+/** Red's share of a core's darkening against bare paper, red and blue alone. */
+const redShare = (drawn: Rgba, bare: Rgba, dx: number) => {
+  const red = overCore(KNOCKOUT.lift, dx, (i) => bare[i] - drawn[i]), blue = overCore(KNOCKOUT.lift, dx, (i) => bare[i + 2] - drawn[i + 2]);
+  return red / (red + blue);
+};
 
 /**
  * Whether a knockout's reserve is bare paper where it lies and the sky again where it left, as it drifts; whether its
- * lift leaves little of the ultramarine and more of the phthalo, the stain it can't take; whether the group's paint
+ * lift leaves little of the ultramarine and more of the phthalo mixture, its ghost the phthalo's hue; whether the group's paint
  * lands over its reserve; and whether frame 0 drawn again after the far frame is the same.
  */
 export function checkStampGateKnockout({ first, far, again, sky, bare, painted }: Record<'first' | 'far' | 'again' | 'sky' | 'bare' | 'painted', Rgba>): StampGateWashCheck {
   const moved = STAMP_GATE_KNOCKOUT_FAR * STAMP_GATE_DRIFT_STEP;
   const reserve = { here: coreApart(first, bare, KNOCKOUT.reserve), moved: coreApart(far, bare, KNOCKOUT.reserve, moved), left: coreApart(far, bare, KNOCKOUT.reserve) };
   const ultramarine = skyLeft(first, sky, bare, 0), phthalo = skyLeft(far, sky, bare, moved);
+  const hue = { ghost: redShare(far, bare, moved), sky: redShare(sky, bare, moved) };
   const dab = coreApart(painted, bare, KNOCKOUT.reserve), repeat = mostApart(again, first);
   const problems = [
     ...(Math.max(reserve.here, reserve.moved) > STAMP_GATE_KNOCKOUT_PAPER ? [`its reserve differs from bare paper by ${reserve.here.toFixed(2)}, and moved by ${reserve.moved.toFixed(2)} (past ${STAMP_GATE_KNOCKOUT_PAPER} fails)`] : []),
     ...(reserve.left < STAMP_GATE_SKY_LEAST ? [`where its reserve was, the sky is within ${reserve.left.toFixed(2)} of bare paper: it didn't move off`] : []),
     ...(ultramarine > STAMP_GATE_LIFT_LEAVES ? [`its lift leaves ${ultramarine.toFixed(2)} of the ultramarine (past ${STAMP_GATE_LIFT_LEAVES} fails)`] : []),
-    ...(phthalo < ultramarine + STAMP_GATE_STAIN_MORE ? [`its lift leaves ${phthalo.toFixed(2)} of the phthalo, under ${STAMP_GATE_STAIN_MORE} more than of the ultramarine`] : []),
+    ...(phthalo < STAMP_GATE_STAIN_LEAST ? [`its lift leaves ${phthalo.toFixed(2)} of the phthalo mixture (under ${STAMP_GATE_STAIN_LEAST} fails)`] : []),
+    ...(hue.ghost < hue.sky + STAMP_GATE_GHOST_BLUER ? [`its ghost's darkening is ${hue.ghost.toFixed(3)} red against the sky's ${hue.sky.toFixed(3)}: it kept the mixture's hue, not the phthalo's`] : []),
     ...(dab < STAMP_GATE_SKY_LEAST ? [`its paint over its reserve is within ${dab.toFixed(2)} of bare paper: the knockout's fluid held it off`] : []),
     ...(repeat > 0 ? [`frame 0 drawn again after frame ${STAMP_GATE_KNOCKOUT_FAR} differs by ${repeat}`] : []),
   ];
   return {
     id: 'animation/knockout: its reserve and lift move with it, the lift leaving its stain', passed: !problems.length,
-    detail: `reserve against bare paper ${reserve.here.toFixed(2)}, moved ${reserve.moved.toFixed(2)}, where it left ${reserve.left.toFixed(2)}; the lift leaves ${ultramarine.toFixed(2)} of the ultramarine, ${phthalo.toFixed(2)} of the phthalo; paint over the reserve ${dab.toFixed(2)} from paper`
+    detail: `reserve against bare paper ${reserve.here.toFixed(2)}, moved ${reserve.moved.toFixed(2)}, where it left ${reserve.left.toFixed(2)}; the lift leaves ${ultramarine.toFixed(2)} of the ultramarine, ${phthalo.toFixed(2)} of the phthalo mixture, its ghost ${hue.ghost.toFixed(3)} red to the sky's ${hue.sky.toFixed(3)}; paint over the reserve ${dab.toFixed(2)} from paper`
       + (problems.length ? `; ${problems.join('; ')}` : '; frame 0 again identical'),
   };
 }

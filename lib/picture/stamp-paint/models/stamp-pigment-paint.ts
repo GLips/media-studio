@@ -90,7 +90,19 @@ export type StampPigmentPaint = {
   groups: readonly StampPigmentGroup[];
   /** Each deposit's group, by index, its components (none for water or a lift) and where its material grades. */
   deposits: ReadonlyMap<CompiledStampDeposit, StampPigmentDeposit>;
+  /** What a knockout reads of the paint behind it; null in a painting where no group knocks out. */
+  underpaint: StampPigmentUnderpaint | null;
 };
+
+/**
+ * The paint on each pixel, pigment by pigment, as the painting keeps it for a knockout to lift by each pigment's
+ * staining: `pigments`, every pigment a group laid before the last knockout lays; `slots`, each group's palette slot's
+ * index among them; `writes`, whether a group adds its film (one laid before the last knockout does).
+ */
+export type StampPigmentUnderpaint = { pigments: readonly PaintPigment[]; slots: readonly (readonly number[])[]; writes: readonly boolean[] };
+
+/** The most pigments a painting's underpaint keeps: four layers of the painting's. */
+export const STAMP_PIGMENT_UNDERPAINT_SLOTS = 16;
 
 /** `knockout`: whether it's in its group's knockout, taking from the paint behind the group rather than laying its own. */
 export type StampPigmentDeposit = { group: number; components: readonly StampPigmentComponent[]; grade: StampPigmentGrade; knockout: boolean };
@@ -166,7 +178,7 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
     const washes = group.passes.some((pass) => pass.kind === 'wash'), paintLayers = stampPigmentLayers(palette.length, washes);
     return { palette, paintLayers, open: washes ? 4 * paintLayers - 1 : null, sheetLayer: stampGroupKnocksOut(group) ? paintLayers : null };
   });
-  return { medium, bands, groups, deposits };
+  return { medium, bands, groups, deposits, underpaint: stampPigmentUnderpaint(painting, groups) };
 }
 
 /**
@@ -181,3 +193,18 @@ export const stampGrainDepthIn = (stamp: PlacedStamp, medium: PaintMedium | null
 const samePigment = (a: PaintPigment, b: PaintPigment) =>
   a.K.every((k, i) => k === b.K[i]) && a.S.every((s, i) => s === b.S[i])
   && a.granulation === b.granulation && a.flocculation === b.flocculation && a.staining === b.staining;
+
+/** `painting`'s underpaint (StampPigmentUnderpaint), null with no knockout. Throws past STAMP_PIGMENT_UNDERPAINT_SLOTS. */
+function stampPigmentUnderpaint(painting: CompiledStampPaint, groups: readonly StampPigmentGroup[]): StampPigmentUnderpaint | null {
+  const last = painting.groups.findLastIndex(stampGroupKnocksOut);
+  if (last < 0) return null;
+  const pigments: PaintPigment[] = [];
+  const slots = groups.map(({ palette }, g) => (g < last ? palette.map((pigment) => {
+    const at = pigments.findIndex(({ id }) => id === pigment.id);
+    return at < 0 ? pigments.push(pigment) - 1 : at;
+  }) : []));
+  if (pigments.length > STAMP_PIGMENT_UNDERPAINT_SLOTS) {
+    throw new Error(`stamp paint: ${painting.groups[last].id} knocks out of ${pigments.length} pigments, over the ${STAMP_PIGMENT_UNDERPAINT_SLOTS} a painting keeps for it (${pigments.map(({ id }) => id).join(', ')})`);
+  }
+  return { pigments, slots, writes: groups.map((_, g) => g < last) };
+}
