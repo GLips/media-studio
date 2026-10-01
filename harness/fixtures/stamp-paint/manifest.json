@@ -156,37 +156,37 @@
     "painting/pigment-crayon": {
       "file": "painting/pigment-crayon.png",
       "output": "d675dbafcc644b0c4a3aded283a7ff8f7be4c91973f272933b776e8c111a53ff",
-      "inputs": "eea38f75c06dc5655fd602e073662daeb5d97bff3b8e7fcf682976f630718285",
-      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
+      "inputs": "6a21f5f6bf87642ba08c9b40dea2decc2756adcf58ad9a9e36daf959b077224c",
+      "reason": "vid-127: a flood's body lays its brush's expected tint (flat), and outside a wash a flood carrying water lands as wet paint on dry paper (wetLandCover), hard at its water's edge",
       "accepted": "2026-10-01",
-      "acceptedOver": "cb831b9",
+      "acceptedOver": "a43272d",
       "adapter": "apple metal-3"
     },
     "painting/pigment-gouache": {
       "file": "painting/pigment-gouache.png",
-      "output": "489991c94e4f2786463251314b2037a2513f5fe82bcefea53b970a86f71f70a6",
-      "inputs": "978688ccea7182c31211543beaff9b45789ed585beeb9bc357f0f0f2f7545feb",
-      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
+      "output": "a5b0118fbd60ec3865dd96433e97406dda135b65bf1874e4bb6790b5f2a9f574",
+      "inputs": "f0b86af2bdecb404eaa9bc6c8041f69c7b9b5f7ca7f4554b56523cf3ff8b5f35",
+      "reason": "vid-127: a flood's body lays its brush's expected tint (flat), and outside a wash a flood carrying water lands as wet paint on dry paper (wetLandCover), hard at its water's edge",
       "accepted": "2026-10-01",
-      "acceptedOver": "cb831b9",
+      "acceptedOver": "a43272d",
       "adapter": "apple metal-3"
     },
     "painting/pigment-watercolour": {
       "file": "painting/pigment-watercolour.png",
-      "output": "b598d20bade4cb0f55a65795a077e3ee4d411252edbefcac2d8097b2995c62c8",
-      "inputs": "7812cc74ca6fcdba1e24e9bfed5fd559eca772308992f81ae2e2be73386cfdcf",
-      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
+      "output": "804c638367f7b971fff0937af5e80288568473edeb2bfe057e0072c66f9199cf",
+      "inputs": "2da5000b3ded38ad7ec730a7b36e0406f632d08653c421ecce0b22fbf6c741b6",
+      "reason": "vid-127: a flood's body lays its brush's expected tint (flat), and outside a wash a flood carrying water lands as wet paint on dry paper (wetLandCover), hard at its water's edge",
       "accepted": "2026-10-01",
-      "acceptedOver": "cb831b9",
+      "acceptedOver": "a43272d",
       "adapter": "apple metal-3"
     },
     "painting/regions": {
       "file": "painting/regions.png",
-      "output": "97e55753165a57bd526beb6bcca07b71f045fbc31c36217ee14d949a7923dcdb",
-      "inputs": "d23bac38e83cd00a65a23796efc83785fe76bfd64ab005c935923054ad7ba349",
-      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
+      "output": "0490a54814080c5f7b948972e0e942dad928342c0f6c0b541135207d5ced0cb3",
+      "inputs": "7138de13b1858e6a716874b640da1033713fc1c973d61d7d94d969a71e2e7999",
+      "reason": "vid-127: a flood's body lays its brush's expected tint (flat), and outside a wash a flood carrying water lands as wet paint on dry paper (wetLandCover), hard at its water's edge",
       "accepted": "2026-10-01",
-      "acceptedOver": "cb831b9",
+      "acceptedOver": "a43272d",
       "adapter": "apple metal-3"
     },
     "painting/strokes-accumulations": {

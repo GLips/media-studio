@@ -25,13 +25,13 @@ const brush: StampBrush = {
 const polygon = (...xy: number[]): StampRegion => ({ kind: 'polygon', points: xy.flatMap((v, i) => (i % 2 ? [] : [{ x: v, y: xy[i + 1] }])) });
 
 /** `region` filled at `diameter` by a brush of `media`, as `settings` say. */
-function compiledFill(region: StampRegion, diameter: number, settings: { application?: StampFillApplication }, media?: StampBrushMedia) {
+function compiledFill(region: StampRegion, diameter: number, settings: { application?: StampFillApplication }, media?: StampBrushMedia, color?: StampBrush['color']) {
   return stampPassDeposits(compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) =>
-    pass.fill('fill', { brush: { ...brush, ...(media && { media }) }, material: { kind: 'color', color: '#406585' }, diameter, region, ...settings }))))).groups[0].passes[0])[0];
+    pass.fill('fill', { brush: { ...brush, ...(media && { media }), ...(color && { color }) }, material: { kind: 'color', color: '#406585' }, diameter, region, ...settings }))))).groups[0].passes[0])[0];
 }
 
-function compiledFlood(region: StampRegion, diameter: number) {
-  const deposit = compiledFill(region, diameter, { application: { kind: 'flood' } });
+function compiledFlood(region: StampRegion, diameter: number, colored?: StampBrush['color']) {
+  const deposit = compiledFill(region, diameter, { application: { kind: 'flood' } }, undefined, colored);
   if (deposit.kind !== 'flood') throw new Error(`a flood compiled to a ${deposit.kind}`);
   return deposit;
 }
@@ -93,4 +93,12 @@ test('every fill that doubles back eases off there unless pressed, its own hand 
     const typical = pressures.toSorted((a, b) => a - b)[Math.floor(pressures.length / 2)];
     assert.ok(typical > 0.8, `${pattern} runs at ${typical.toFixed(2)}`);
   }
+});
+
+test("a flood's body is coloured as its edge stamps average, so where they give out the colour carries on", () => {
+  const color = { stamp: { hue: 0.1, saturation: 0.3, lightness: 0.4, darkness: 0.1 }, stroke: { hue: 0, saturation: 0, lightness: 0, darkness: 0 }, pressure: { hue: 0, saturation: 0, lightness: 0, secondary: 0.8 } };
+  const flood = compiledFlood({ kind: 'ellipse', x: 400, y: 400, radiusX: 300, radiusY: 300 }, 40, color);
+  const mean = (key: 'hue' | 'saturation' | 'lightness' | 'secondary') => flood.stamps.reduce((sum, s) => sum + s.tint[key], 0) / flood.stamps.length;
+  for (const key of ['hue', 'saturation', 'lightness', 'secondary'] as const) assert.ok(Math.abs(flood.flood.tint[key] - mean(key)) < 0.01, `${key}: body ${flood.flood.tint[key]}, stamps ${mean(key)}`);
+  assert.ok(flood.flood.tint.lightness > 0.1, 'the stamps lighten on average, and so does the body');
 });

@@ -40,8 +40,9 @@ Everything is from `#studio`.
   - A **pass** is one layer of paint inside it. `clipped: true` keeps it inside the last unclipped pass: texture and
     shading that can't leave the silhouette. `within: region` keeps it inside a region (a reflection in its water).
   - A **fill** covers a `region`, reaching its outline, laid by its `application`:
-    - `{ kind: 'flood' }`: solid inside, the brush's own edge at the outline, however small a spike. It costs what its
-      edge does, not its area.
+    - `{ kind: 'flood' }`: solid inside, the brush's own edge at the outline, however small a spike. Outside a wash its
+      paper is dry, so wet paint stops there hard, keeping the tip's broken outline; for a soft edge, flood it in a
+      wash into wetted paper (`preparation`). It costs what its edge does, not its area.
     - `{ kind: 'strokes', pattern, spacing?, variation?, hand?, turns? }`: real strokes of the brush, the marks and the
       paper between them showing. `pattern` is `'shading'`, `'zigzag'`, `'backAndForth'`, `'hatch'`, `'crossHatch'` or
       `'scribble'`; `spacing` is diameters between rows (over 1 leaves paper); `variation` (0..1, 0.3) is how unevenly
