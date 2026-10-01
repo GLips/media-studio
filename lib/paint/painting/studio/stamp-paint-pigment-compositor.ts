@@ -439,7 +439,7 @@ ${underpaint ? underpaintWgsl(underpaint) : ''}
 // sheet out of what's there: its reserve covers it with its paper, its lifts thin each pigment behind (liftedUnder).
 fn layGroup(pixel: vec2u, glaze: bool, opacity: f32) {
   var amounts: array<vec4f, LAYERS>;
-  for (var l = 0u; l < LAYERS; l++) { amounts[l] = textureLoad(layer, pixel, l, 0); }
+  for (var l = 0u; l < LAYERS; l++) { amounts[l] = groupLayerAt(pixel, l); }
   let coverage = amounts[0].x;
   let sheet = SHEETS[u.group];
   // Reserved (x) and taken at stainings 0, ½ and 1 (yzw), at the group's opacity as its paint is: a group half there takes half.
@@ -451,7 +451,7 @@ fn layGroup(pixel: vec2u, glaze: bool, opacity: f32) {
   var bare = vec3f(0.0);
   if (!glaze || taken.x > 0.0) { bare = paperColor(photograph, photographSampler, u.paper, groupPaperAt(pixel), textureDimensions(painting)); }
 ${underpaint ? `  var behind: array<vec4f, UNDER_LAYERS>;
-  for (var r = 0u; r < UNDER_LAYERS; r++) { behind[r] = textureLoad(painting, pixel, BAND_VEC4S + r); }
+  for (var r = 0u; r < UNDER_LAYERS; r++) { behind[r] = groupUnderAt(pixel, BAND_VEC4S + r); }
   var left = behind;
   // The paint behind was laid over the painting's paper, wherever this group's own lies.
   var ground = vec3f(0.0);
@@ -470,13 +470,13 @@ ${underpaint ? `  var behind: array<vec4f, UNDER_LAYERS>;
       scatter += amount * palettes[base + (s * 2u + 1u) * BAND_VEC4S + i];
     }
     let film = kubelkaMunkFilm(absorb * thickness, scatter * ${f32(1 + medium.dryingScatter)} * thickness);
-    var covered = textureLoad(painting, pixel, i);
+    var covered = groupUnderAt(pixel, i);
 ${underpaint ? `    if (lifts) { covered = liftedUnder(i, covered, behind, left, paperReflectance(i, ground)); }
 ` : ''}    // A reserve's edge covers what's there with the group's paper.
     let under = mix(covered, paperReflectance(i, bare), taken.x);
     var laid = kubelkaMunkOver(film, under);
     if (!glaze) { laid = under + (kubelkaMunkOver(film, paperReflectance(i, bare)) - under) * cover; }
-    textureStore(painting, pixel, i, clamp(laid, vec4f(0.0), vec4f(1.0)));
+    groupLaid(pixel, i, clamp(laid, vec4f(0.0), vec4f(1.0)));
   }
 ${underpaint ? `  if (UNDER_WRITES[u.group] != 0u) {
     // What's behind after the knockout, under this group's film: glazed over it, or covering it as far as it's opaque.
@@ -488,7 +488,7 @@ ${underpaint ? `  if (UNDER_WRITES[u.group] != 0u) {
     }
     for (var r = 0u; r < UNDER_LAYERS; r++) {
       let kept = left[r] * (1.0 - taken.x);
-      textureStore(painting, pixel, BAND_VEC4S + r, select(mix(kept, own[r], cover), kept + own[r], glaze));
+      groupLaid(pixel, BAND_VEC4S + r, select(mix(kept, own[r], cover), kept + own[r], glaze));
     }
   }
 ` : ''}}`,

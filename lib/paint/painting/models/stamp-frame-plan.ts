@@ -1,9 +1,10 @@
 // stamp-frame-plan.ts: what a painting's frame at `t` draws, group by group (its boil epoch, where it's moved to, the
-// time its paint reads), and the key a checkpoint saved partway through the frame is held under
+// time its warp and its paint read), and the key a checkpoint saved partway through the frame is held under
 // (stamp-paint-checkpoints.ts). What a checkpoint depends on is named here alone: the renderer saves and restores by
 // this key, so a frame restores only a state it would have drawn itself.
 
 import { stampBoilEpoch, stampGroupPlacementAt, type StampGroupPlacement } from './stamp-group-motion.ts';
+import { stampWarpTimeAt } from './stamp-group-warp.ts';
 import { stampSettledEventCount, type StampPaintEvent } from './stamp-paint-events.ts';
 import { stampPassDeposits, type CompiledStampGroup, type CompiledStampPaint } from './stamp-paint-recipe.ts';
 import { stampKeysSpan } from './stamp-scene-keys.ts';
@@ -21,18 +22,19 @@ export function stampGroupEvents(painting: CompiledStampPaint): StampGroupEvents
   });
 }
 
-/** Whether `group` may draw differently in two frames once its events are settled: it moves, boils or recolours. */
-const stampGroupVaries = (group: CompiledStampGroup) => !!(group.motion || group.boil || group.recolours);
+/** Whether `group` may draw differently in two frames once its events are settled: it moves, warps, boils or recolours. */
+const stampGroupVaries = (group: CompiledStampGroup) => !!(group.motion || group.warp || group.boil || group.recolours);
 
 /**
- * A group as a frame draws it: its boil `epoch` (0, as written), where it's `moved` to (null where it's painted) and
- * `paintAt`, its paint's scene time held to its keys (null for paint that doesn't change). `ownMarks`, `ownPlacement`:
- * its marks (epoch and paint) or placement are this frame's alone.
+ * A group as a frame draws it: its boil `epoch` (0, as written), where it's `moved` to (null where it's painted),
+ * `warpAt` and `paintAt`, the scene times its warp's field and its paint read, held to their spans (null for none).
+ * `ownMarks`, `ownPlacement`: its marks (epoch and paint) or placement (move and warp) are this frame's alone.
  */
 export type StampGroupFrame = {
   group: CompiledStampGroup;
   epoch: number;
   moved: StampGroupPlacement | null;
+  warpAt: number | null;
   paintAt: number | null;
   ownMarks: boolean;
   ownPlacement: boolean;
@@ -48,8 +50,9 @@ export type StampFramePlan = {
    */
   checkpointKey: (event: number) => string;
   /**
-   * The events after which a frame starting from event `from` saves a checkpoint: its settled prefix, and the state
-   * before the first group that moves, boils or recolours, which later frames share; none holding a state this frame's alone.
+   * The events after which a frame starting from event `from` saves a checkpoint: its settled prefix, the state before
+   * the first group that moves, boils or recolours, and each group placed afresh painted but not laid, which later
+   * frames share; none holding a state this frame's alone.
    */
   checkpointSaves: (from: number) => ReadonlySet<number>;
 };
@@ -63,27 +66,35 @@ export function stampFramePlan(painting: CompiledStampPaint, groupEvents: readon
   const groups = painting.groups.map((group): StampGroupFrame => {
     const placement = group.motion ? stampGroupPlacementAt(group.motion, t) : null;
     const still = !placement || (placement.x === 0 && placement.y === 0 && placement.rotation === 0 && placement.scale === 1);
-    const { recolours, boil, motion } = group;
+    const { recolours, boil, motion, warp } = group;
     return {
       group,
       epoch: boil ? stampBoilEpoch(frame, boil) : 0,
       moved: still ? null : placement,
+      warpAt: warp ? stampWarpTimeAt(warp, t) : null,
       paintAt: recolours ? Math.min(recolours.to, Math.max(recolours.from, t)) : null,
       ownMarks: (!!recolours && changingAt(recolours, t)) || boil?.every === 1,
-      ownPlacement: !!motion && changingAt(stampKeysSpan(motion.keys), t),
+      ownPlacement: (!!motion && changingAt(stampKeysSpan(motion.keys), t)) || (!!warp && changingAt(warp, t)),
     };
   });
   const marks = groups.map(({ epoch, paintAt }) => `${epoch}${paintAt === null ? '' : `~${paintAt}`}`);
-  const laid = groups.map(({ moved }, index) => `${marks[index]}${moved ? `@${moved.x},${moved.y},${moved.rotation},${moved.scale}` : ''}`);
-  /** Each group with events that begin before `event`: laid by then, or partway through. A group with none draws nothing. */
-  const reached = (event: number) => groupEvents.flatMap(({ first, end }, index) => (first < event && first < end ? [{ index, laid: end <= event }] : []));
+  // A warp's field is a pure function of its time, so its time names its lay.
+  const laid = groups.map(({ moved, warpAt }, index) => `${marks[index]}${moved ? `@${moved.x},${moved.y},${moved.rotation},${moved.scale}` : ''}${warpAt === null ? '' : `^${warpAt}`}`);
+  /**
+   * Each group with events that begin before `event`: laid by then, or partway through. A group whose placement is this
+   * frame's own stands at its last event painted but not laid, a state frames placing it elsewhere share. A group with
+   * no events draws nothing.
+   */
+  const reached = (event: number) => groupEvents.flatMap(({ first, end }, index) => (first < event && first < end ? [{ index, laid: end < event || (end === event && !groups[index].ownPlacement), painted: end === event }] : []));
   const worthSaving = (event: number) => reached(event).every(({ index, laid: isLaid }) => !groups[index].ownMarks && !(isLaid && groups[index].ownPlacement));
   const settled = stampSettledEventCount(events, t);
+  // Where a group placed afresh this frame is painted, before its lay: what every frame placing it shares.
+  const paintedEnds = groupEvents.flatMap(({ end }, index) => (groups[index].ownPlacement && !groups[index].ownMarks ? [end] : []));
   const varyingFrom = groupEvents.find((_, index) => stampGroupVaries(painting.groups[index]))?.first ?? events.length;
   return {
     groups,
     settled,
-    checkpointKey: (event) => reached(event).map(({ index, laid: isLaid }) => (isLaid ? laid[index] : marks[index])).join('|'),
-    checkpointSaves: (from) => new Set([settled, Math.min(settled, varyingFrom)].filter((event) => event > from && worthSaving(event))),
+    checkpointKey: (event) => reached(event).map(({ index, laid: isLaid, painted }) => (isLaid ? laid[index] : `${marks[index]}${painted ? '#painted' : ''}`)).join('|'),
+    checkpointSaves: (from) => new Set([settled, Math.min(settled, varyingFrom), ...paintedEnds.filter((end) => end <= settled)].filter((event) => event > from && worthSaving(event))),
   };
 }

@@ -39,12 +39,31 @@ const planAt = (t: number) => stampFramePlan(painting, stampGroupEvents(painting
 
 test('a moving group\'s checkpoints are saved only where another frame would restore them', () => {
   const sailing = planAt(2), laid = 4, partway = 3, ground = 2;
-  // Laid while it sails, the boat is where this frame alone has it; the ground before it never moves.
-  assert.deepEqual([...sailing.checkpointSaves(0)], [ground]);
-  // Partway through the boat, its layer isn't laid yet, so its placement isn't in the key.
+  // While it sails, the boat is saved painted, not laid, which every sailing frame shares; the ground never moves.
+  assert.deepEqual([...sailing.checkpointSaves(0)].toSorted((a, b) => a - b), [ground, laid]);
   assert.equal(sailing.checkpointKey(partway), planAt(2.5).checkpointKey(partway));
-  assert.notEqual(sailing.checkpointKey(laid), planAt(2.5).checkpointKey(laid));
+  assert.equal(sailing.checkpointKey(laid), planAt(2.5).checkpointKey(laid));
+  assert.notEqual(sailing.checkpointKey(laid), planAt(3.5).checkpointKey(laid));
   // Moored past its last key, every frame has it in the same place.
   assert.deepEqual([...planAt(3.5).checkpointSaves(0)].toSorted((a, b) => a - b), [ground, laid]);
   assert.equal(planAt(3.5).checkpointKey(laid), planAt(9).checkpointKey(laid));
+});
+
+test('a warping group\'s lay is keyed by its field\'s time, and its paint shared while the field changes', () => {
+  const warped = compileStampPaintRecipe(stampPaintRecipe((paint) => {
+    paint.group('ground', { composite: 'glaze', opacity: 1 }, (group) => group.pass('wash', {}, (pass) => pass.stroke('a', { brush, material: ink, diameter: 10, path: [{ x: 0, y: 0 }, { x: 50, y: 0 }] })));
+    // A sac puffing from 1 s to 3 s.
+    paint.group('sac', { composite: 'glaze', opacity: 1, warp: { at: (t) => (p) => ({ x: p.x, y: p.y * (1 + t) }), from: 1, to: 3 } }, (group) => group.pass('body', {}, (pass) => {
+      pass.stroke('a', { brush, material: ink, diameter: 10, path: [{ x: 0, y: 50 }, { x: 50, y: 50 }] });
+    }));
+  }));
+  const at = (t: number) => stampFramePlan(warped, stampGroupEvents(warped), stampPaintEvents(warped), t, 30);
+  const laid = 2, ground = 1;
+  // While it puffs, its lay is this frame's own, and it's saved painted, not laid; held past its span, frames share its lay.
+  assert.equal(at(2).checkpointKey(laid), at(2.5).checkpointKey(laid));
+  assert.deepEqual([...at(2).checkpointSaves(0)].toSorted((a, b) => a - b), [ground, laid]);
+  assert.notEqual(at(2).checkpointKey(laid), at(3.5).checkpointKey(laid));
+  assert.equal(at(3.5).checkpointKey(laid), at(9).checkpointKey(laid));
+  assert.equal(at(0).checkpointKey(laid), at(0.5).checkpointKey(laid));
+  assert.notEqual(at(0).checkpointKey(laid), at(9).checkpointKey(laid));
 });
