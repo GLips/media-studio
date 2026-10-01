@@ -234,7 +234,7 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
   }
   if (id === 'animation/sunset') {
     const traced = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), async (renderer) => {
-      const deposits = gate.painting.groups.flatMap((group) => group.passes.flatMap((pass) => pass.deposits));
+      const deposits = gate.painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass)));
       const traces = await renderer.trace(gate.t, deposits.map((deposit) => ({ deposit, crop: { x: 0, y: 0, w: gate.width, h: gate.height } })));
       return traces.map((trace) => trace.coverage);
     });
@@ -250,7 +250,7 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
 async function checkStampGateFlowCase(id: string): Promise<StampGateWashCheck> {
   const { medium: name, kind } = stampGateFlowCase(id), medium = PAINT_MEDIA[name];
   const { width, height } = STAMP_GATE_FLOW_SIZE, layers = STAMP_GATE_FLOW_LAYERS;
-  const painting = stampGateFlowPainting(kind), pass = painting.groups[0].passes[0], deposit = pass.deposits[1];
+  const painting = stampGateFlowPainting(kind), pass = painting.groups[0].passes[0], deposit = stampPassDeposits(pass)[1];
   const wetness = compileStampWetness(painting, medium, { color: '#ffffff' }, { width, height });
   const written = stampGateFlowLayer(kind);
   const device = await createStampPaintDevice();
