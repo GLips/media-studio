@@ -18,7 +18,7 @@ export const STAMP_GATE_FLOW_TOLERANCE = 1e-3;
 
 export const STAMP_GATE_FLOW_SIZE = { width: 256, height: 192 };
 /** The layer's array layers: coverage, six pigment channels and the open share. */
-export const STAMP_GATE_FLOW_LAYERS = 2;
+const STAMP_GATE_FLOW_LAYERS = 2;
 /** The open share's channel, the layer's last. */
 const OPEN = 4 * STAMP_GATE_FLOW_LAYERS - 1;
 /** The columns the footprint closes to paint, and past which nothing may change. */

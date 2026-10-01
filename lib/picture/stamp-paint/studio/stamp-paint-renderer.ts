@@ -1693,7 +1693,7 @@ async function rendererOnDevice(
     let at = 0;
     return painting.groups.map((group) => {
       const first = at;
-      at += group.passes.reduce((n, pass) => n + stampPassDeposits(pass).length + (pass.kind === 'wash' ? 1 : 0), 0);
+      at += group.passes.reduce((n, pass) => n + stampPassDeposits(pass).length, 0);
       return { first, end: at };
     });
   })();
@@ -1812,10 +1812,6 @@ async function rendererOnDevice(
           const seed = paintPigmentSeed(stampBoilSeed(drying.id, epoch));
           for (const stage of stages) if (stage.after === 'drying') painted = unionOf(painted, stage.running.encode(encoder, { drying, seed }));
         }
-        // A wash's end is an event of its own, though its last drying ran with its last deposit.
-        if (drawnPass.kind !== 'wash') continue;
-        if (event > first) save(event, true, painted);
-        event++;
       }
       if (painted) layGroup(encoder, index, group, painted, moved);
     }
