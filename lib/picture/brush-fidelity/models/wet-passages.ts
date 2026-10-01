@@ -73,15 +73,21 @@ function softenedEdge(kit: WetPassageKit): StampPaintRecipe {
   })));
 }
 
-/** A blue shape laid and let dry, then a rose one across it: where they overlap, both edges stay sharp. */
+/**
+ * A blue shape laid and let dry, then a rose one across it: where they overlap, both edges stay sharp. The rose is a
+ * group of its own, as a glaze is: within one group, paint landing on dried paint mixes with it (the dry law).
+ */
 function hardEdge(kit: WetPassageKit): StampPaintRecipe {
   const { fill, drop } = kit.brushes;
-  return stampPaintRecipe((paint) => paint.group('shapes', { composite: 'glaze', opacity: 1 }, (group) => group.wash('shapes', {}, (wash) => {
-    wash.fill('blue', { brush: fill, diameter: 50, ...flood, region: rect(30, 30, 210, 200), material: wetPassageMixture(kit, { cerulean: 0.35 }) });
-    wash.wait('dry');
-    wash.fill('rose', { brush: fill, diameter: 50, ...flood, region: { kind: 'ellipse', x: 230, y: 150, radiusX: 100, radiusY: 70 }, material: wetPassageMixture(kit, { quinacridoneRose: 0.3 }) });
-    wash.stroke('line', { brush: drop, diameter: 14, material: wetPassageMixture(kit, { burntSienna: 0.5 }), path: [{ x: 40, y: 235 }, { x: 320, y: 225 }] });
-  })));
+  return stampPaintRecipe((paint) => {
+    paint.group('blue', { composite: 'glaze', opacity: 1 }, (group) => group.wash('blue', {}, (wash) => {
+      wash.fill('blue', { brush: fill, diameter: 50, ...flood, region: rect(30, 30, 210, 200), material: wetPassageMixture(kit, { cerulean: 0.35 }) });
+    }));
+    paint.group('rose', { composite: 'glaze', opacity: 1 }, (group) => group.wash('rose', {}, (wash) => {
+      wash.fill('rose', { brush: fill, diameter: 50, ...flood, region: { kind: 'ellipse', x: 230, y: 150, radiusX: 100, radiusY: 70 }, material: wetPassageMixture(kit, { quinacridoneRose: 0.3 }) });
+      wash.stroke('line', { brush: drop, diameter: 14, material: wetPassageMixture(kit, { burntSienna: 0.5 }), path: [{ x: 40, y: 235 }, { x: 320, y: 225 }] });
+    }));
+  });
 }
 
 /**
