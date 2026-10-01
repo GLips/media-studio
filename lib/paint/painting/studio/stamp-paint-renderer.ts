@@ -38,12 +38,14 @@ import { stampUniformLayout, stampUniformStruct, stampUniformWriter, type StampU
 import { STAMP_WET_STAGES, stampWetStageReach, type StampLoadedWetStage, type StampWetStage, type StampWetDepositMoment, type StampWetDryingMoment, type StampWetStageContext } from './stamp-wet-stages.ts';
 import { stampWashDryings, type StampWashDrying } from '../models/stamp-wet-rim.ts';
 import { stampPaintCheckpoints } from './stamp-paint-checkpoints.ts';
-import { stampPaintLayerCache } from './stamp-paint-layer-cache.ts';
+import { STAMP_LAYER_CACHE_READ_REACH, stampPaintLayerCache } from './stamp-paint-layer-cache.ts';
+import { STAMP_GAUSSIAN_PASS, STAMP_GLOW_SOURCE, STAMP_SRGB_WGSL, stampGaussianPassWgsl, stampGlowSourceWgsl, type StampGlowCover } from './stamp-paint-defocus-glow.ts';
+import { stampGaussianReach, stampGrownBox, stampLayScale } from '../models/stamp-defocus.ts';
 import { stampPaintEvents } from '../models/stamp-paint-events.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { stampPlacementWarpMap, stampWarpCells, stampWarpTriangles, STAMP_WARP_MOST_CELLS } from '../models/stamp-group-warp.ts';
 import { stampFramePlan, stampGroupEvents, type StampGroupFrame, type StampOutsideLayerFrame } from '../models/stamp-frame-plan.ts';
-import type { StampGroupMarks, StampPaintFrameState } from '../models/stamp-paint-frame-state.ts';
+import type { StampGroupGlow, StampGroupMarks, StampPaintFrameState } from '../models/stamp-paint-frame-state.ts';
 import { stampOutsideLayerPlaces, type StampOutsideFrameState } from '../models/stamp-outside-layer.ts';
 import { checkStampOutsideLayerTexture, STAMP_OUTSIDE_LAY, stampOutsideLayWgsl, type StampOutsideLayer } from './stamp-outside-layer-lay.ts';
 import { stampStage, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
@@ -58,6 +60,8 @@ const TINT_FLOATS = 4;
 
 /** Bytes per uniform slot: every draw's uniforms sit at an offset WebGPU allows binding at (256). */
 const SLOT = 256;
+/** The uniform slots a laid thing's defocus (a gaussian's two passes) and glow (its source and two passes) take. */
+const LENS_SLOTS = 5;
 
 /** A compute pass's workgroup is 8 × 8 pixels. */
 const WORKGROUP = 8;
@@ -663,15 +667,22 @@ const STAMP_BOIL_EPOCHS_KEPT = 3;
 /** A live group's marks kept on the GPU: the frame drawing's, and the last, which a hold on twos draws again. */
 const STAMP_LIVE_MARKS_KEPT = 2;
 
-// The frame's window of the stage: an output pixel is the stage's texel a margin in.
-const outputWgsl = (compositor: StampPaintCompositor, dithered: boolean, stage: StampStage) => /* wgsl */ `
+// The frame's window of the stage: an output pixel is the stage's texel a margin in. \`glowing\`: the frame's light
+// (stamp-paint-defocus-glow.ts) is added in linear light first; a frame nothing glows in binds none.
+const outputWgsl = (compositor: StampPaintCompositor, dithered: boolean, stage: StampStage, glowing: boolean) => /* wgsl */ `
 ${stampStageWgsl(stage)}
 ${FULL_FRAME_WGSL}
 ${stampPaintTargetWgsl('painting', 0, compositor.targets.painting, null)}
 ${compositor.output}
+${glowing ? `${STAMP_SRGB_WGSL}
+@group(0) @binding(1) var light: texture_2d<f32>;` : ''}
 @fragment fn output(@builtin(position) at: vec4f) -> @location(0) vec4f {
   let pixel = vec2u(at.xy);
-  let color = screenColor(pixel + vec2u(STAGE_MARGIN));
+  let painted = screenColor(pixel + vec2u(STAGE_MARGIN));
+  var color = painted;${glowing ? `
+  // Where nothing glows the painting's colour passes as it is, not round its decoding.
+  let glowed = max(textureLoad(light, pixel + vec2u(STAGE_MARGIN), 0).rgb, vec3f(0.0));
+  if (any(glowed > vec3f(0.0))) { color = srgbEncoded(srgbDecoded(clamp(painted, vec3f(0.0), vec3f(1.0))) + glowed); }` : ''}
   // An ordered dither, the same each frame, so a smooth flood doesn't band when the half floats become bytes.
   let dither = ${dithered ? '(fract(dot(vec2f(pixel), vec2f(0.7548776662, 0.5698402910))) - 0.5) / 255.0' : '0.0'};
   return vec4f(clamp(color + dither, vec3f(0.0), vec3f(1.0)), 1.0);
@@ -1104,7 +1115,8 @@ function rendererOnSurface(
   // passes, and its resolve, where it's kept, its paint and its trace; then a wash's landing, or a dry deposit's
   // pressure for a compositor that reads it. A boil's epoch has its group's deposits.
   const depositSlots = (wash: boolean) => 9 + (wash || compositor.reads.press ? 1 : 0);
-  const slotsPerFrame = 1 + outsideLayers.length + painting.groups.reduce((sum, group) => sum + 2 + group.passes.reduce((n, pass) => n + stampPassDeposits(pass).length * depositSlots(pass.kind === 'wash'), 0), 0);
+  // Each group and outside layer's defocus (two) and glow (three) slots besides its lay's.
+  const slotsPerFrame = 1 + outsideLayers.length * (1 + LENS_SLOTS) + painting.groups.reduce((sum, group) => sum + 2 + LENS_SLOTS + group.passes.reduce((n, pass) => n + stampPassDeposits(pass).length * depositSlots(pass.kind === 'wash'), 0), 0);
   const tilesX = Math.ceil(width / ORDERED_TILE), tilesY = Math.ceil(height / ORDERED_TILE);
   const asWritten = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).map((deposit) => [deposit.id, deposit] as const))));
   // Each deposit's medium by its ID, its group's as written (an epoch's and live marks' alike); none in flat colour.
@@ -1351,8 +1363,14 @@ function rendererOnSurface(
   const outsidePipeline = outsideLayers.length
     ? computePipeline(stampOutsideLayWgsl(compositor, stampPaintTargetWgsl('painting', 2, compositor.targets.painting, 'read_write'), WORKGROUP)) : null;
   const outsideViews = outsideLayers.map(({ texture }) => texture.createView());
-  const outputModule = device.createShaderModule({ code: outputWgsl(compositor, format.endsWith('8unorm'), stage) });
-  const outputPipeline = device.createRenderPipeline({ layout: 'auto', vertex: { module: outputModule }, fragment: { module: outputModule, targets: [{ format }] } });
+  const outsideArrayViews = outsideLayers.map(({ texture }) => texture.createView({ dimension: '2d-array' }));
+  const outputPipelineOf = (glowing: boolean) => {
+    const module = device.createShaderModule({ code: outputWgsl(compositor, format.endsWith('8unorm'), stage, glowing) });
+    return device.createRenderPipeline({ layout: 'auto', vertex: { module }, fragment: { module, targets: [{ format }] } });
+  };
+  // A frame something glows in adds its light at the output, through a pipeline made when one first does.
+  const outputPipeline = outputPipelineOf(false);
+  let glowingOutputPipeline: GPURenderPipeline | null = null;
   const regionPipeline = (code: string, entryPoint: string) => {
     const module = device.createShaderModule({ code });
     return device.createRenderPipeline({ layout: 'auto', vertex: { module }, fragment: { module, entryPoint, targets: [{ format: STAMP_REGION_FORMAT }] } });
@@ -1959,9 +1977,10 @@ function rendererOnSurface(
   const lattices = new Map<number, { key: string; triangles: Float32Array }>();
   /**
    * Lays group `index`'s layer over `painted` onto the painting at its frame's visibility: where it's painted, or
-   * resampled to where its frame's warp bends it and its placement puts it, its own paper read where it's painted, too.
+   * resampled to where its warp and placement put it, its own paper read where it's painted. Returns the stage box
+   * laid over and its rest map (moved or warped), or null for none.
    */
-  function layGroup(encoder: GPUCommandEncoder, index: number, { group, lay: laidAt, warp, visibility }: StampGroupFrame, painted: Box) {
+  function layGroup(encoder: GPUCommandEncoder, index: number, { group, lay: laidAt, warp, visibility }: StampGroupFrame, painted: Box): { box: Box; rest: GPUTextureView | null } | null {
     let box: Box | null = painted, lay: ReturnType<typeof latticeLayOf> | null = null;
     const placed = laidAt && stampPlacementWarpMap(laidAt.placement, laidAt.pivot);
     if (warp || placed) {
@@ -1988,7 +2007,7 @@ function rendererOnSurface(
         latticeStaging.set([((triangles[v] + margin) / width) * 2 - 1, 1 - ((triangles[v + 1] + margin) / height) * 2, triangles[v + 2], triangles[v + 3]], latticeUsed + v);
       }
       box = onStage(x0, y0, x1, y1);
-      if (!box) return;
+      if (!box) return null;
       lay = latticeLayOf();
       const first = latticeUsed;
       latticeUsed += triangles.length;
@@ -2013,11 +2032,91 @@ function rendererOnSurface(
       }),
       targets.layer.view, targets.painting.view, ...groupResources, ...(lay ? groupRest(lay.rest.view) : []),
     ], at.w, at.h);
+    return { box: at, rest: lay ? lay.rest.view : null };
   }
 
-  /** Lays outside layer `layer` over the painting at its visibility (stamp-outside-layer-lay.ts). */
-  function layOutsideLayer(encoder: GPUCommandEncoder, layer: StampOutsideLayerFrame) {
-    dispatch(encoder, outsidePipeline!, [slot((views) => stampUniformWriter(STAMP_OUTSIDE_LAY, views)('visibility', layer.visibility)), outsideViews[layer.slot], targets.painting.view], width, height);
+  /** Lays outside layer `layer`, its pixels in `view` (its own texture, or defocused), over the painting at its visibility (stamp-outside-layer-lay.ts). */
+  function layOutsideLayer(encoder: GPUCommandEncoder, layer: StampOutsideLayerFrame, view: GPUTextureView) {
+    dispatch(encoder, outsidePipeline!, [slot((views) => stampUniformWriter(STAMP_OUTSIDE_LAY, views)('visibility', layer.visibility)), view, targets.painting.view], width, height);
+  }
+
+  // Defocus and glow (stamp-paint-defocus-glow.ts): pipelines and stage-sized scratch made when a frame first asks.
+  const lensPipelines = new Map<string, GPUComputePipeline>();
+  const lensPipeline = (key: string, code: () => string) => {
+    if (!lensPipelines.has(key)) lensPipelines.set(key, computePipeline(code()));
+    return lensPipelines.get(key)!;
+  };
+  const layerArray = arrayView(targets.layer.texture), layerLayers = targets.layer.texture.depthOrArrayLayers;
+  const lensTargets = new Map<string, { texture: GPUTexture; view: GPUTextureView; array: GPUTextureView }>();
+  /** A plain stage-sized scratch target, both as a storage image and as an array of one for a gaussian. */
+  const lensTarget = (name: string, usage = 0) => {
+    if (!lensTargets.has(name)) {
+      const made = target(name, width, height, STORAGE | usage);
+      lensTargets.set(name, { texture: made.texture, view: made.view, array: arrayView(made.texture) });
+    }
+    return lensTargets.get(name)!;
+  };
+  let defocusScratch: GPUTextureView | null = null;
+  /** The frame's light: what glows adds, the output adds in turn. Copied by checkpoints, cleared by a frame's first glow. */
+  const lightTarget = () => lensTarget('light', RENDER | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST);
+  /** One direction of a gaussian of `sigma` px from `source` (read within `read`) into `into` over `box`, added `gain` times when `accumulate`. */
+  function gaussianPass(encoder: GPUCommandEncoder, { source, into, layers, axis, sigma, read, box, accumulate = false, gain = 1 }: {
+    source: GPUTextureView; into: GPUTextureView; layers: number; axis: 0 | 1; sigma: number; read: Box; box: Box; accumulate?: boolean; gain?: number;
+  }) {
+    const pipeline = lensPipeline(`gaussian|${layers}|${accumulate}`, () => stampGaussianPassWgsl(layers, accumulate, WORKGROUP));
+    dispatch(encoder, pipeline, [slot((views) => {
+      const put = stampUniformWriter(STAMP_GAUSSIAN_PASS, views);
+      put('sigma', sigma);
+      put('reach', stampGaussianReach(sigma));
+      put('axis', axis);
+      put('gain', gain);
+      put('readOrigin', [read.x, read.y]);
+      put('readExtent', [read.w, read.h]);
+      put('origin', [box.x, box.y]);
+      put('extent', [box.w, box.h]);
+    }), source, into], box.w, box.h);
+  }
+  /**
+   * Defocuses the layer target's paint over `painted` by `sigma` layer px; returns the box it now covers. The second
+   * pass writes the lay's read reach past that box too, clear, as a fresh layer holds it.
+   */
+  function defocusGroupLayer(encoder: GPUCommandEncoder, sigma: number, painted: Box): Box {
+    const grown = stampGrownBox(painted, stampGaussianReach(sigma), width, height);
+    const scratch = (defocusScratch ??= arrayView(layered('defocus', compositor.targets.layer, STORAGE).texture));
+    gaussianPass(encoder, { source: layerArray, into: scratch, layers: layerLayers, axis: 0, sigma, read: painted, box: grown });
+    gaussianPass(encoder, { source: scratch, into: layerArray, layers: layerLayers, axis: 1, sigma, read: grown, box: stampGrownBox(grown, STAMP_LAYER_CACHE_READ_REACH, width, height) });
+    return grown;
+  }
+  /** The sigma, layer px, group `groupFrame`'s defocus takes over its layer painted over `painted`: its blur over the lay's scale there. */
+  function defocusSigma({ blur, lay, warp }: StampGroupFrame, painted: Box) {
+    return blur / stampLayScale(lay, warp, { x: painted.x - margin + painted.w / 2, y: painted.y - margin + painted.h / 2 });
+  }
+  /** Outside layer `layer`'s texture defocused by its blur over the stage, into a scratch target; returns its view. */
+  function defocusOutsideLayer(encoder: GPUCommandEncoder, layer: StampOutsideLayerFrame): GPUTextureView {
+    const whole = { x: 0, y: 0, w: width, h: height }, across = lensTarget('lensA'), defocused = lensTarget('lensB');
+    gaussianPass(encoder, { source: outsideArrayViews[layer.slot], into: across.array, layers: 1, axis: 0, sigma: layer.blur, read: whole, box: whole });
+    gaussianPass(encoder, { source: across.array, into: defocused.array, layers: 1, axis: 1, sigma: layer.blur, read: whole, box: whole });
+    return defocused.view;
+  }
+  /**
+   * Adds `glow` of what was just laid over `box` to the frame's light: its source (glowSource, from `cover` bound with
+   * `resources`) blurred by its radius on the stage. `lit` says whether the light holds this frame's glow yet.
+   */
+  function addGlow(encoder: GPUCommandEncoder, glow: StampGroupGlow, box: Box, lit: boolean, source: { cover: StampGlowCover; strength: number; glaze: boolean; resources: GPUBindingResource[] }) {
+    const light = lightTarget(), sourced = lensTarget('lensA'), across = lensTarget('lensB');
+    if (!lit) clear(encoder, light.view);
+    const pipeline = lensPipeline(`glow|${source.cover}`, () => stampGlowSourceWgsl(compositor, source.cover, stage, STAMP_NO_REST, WORKGROUP));
+    dispatch(encoder, pipeline, [slot((views) => {
+      const put = stampUniformWriter(STAMP_GLOW_SOURCE, views);
+      put('threshold', glow.threshold);
+      put('strength', source.strength);
+      put('glaze', source.glaze ? 1 : 0);
+      put('origin', [box.x, box.y]);
+      put('extent', [box.w, box.h]);
+    }), targets.painting.view, sourced.view, ...source.resources], box.w, box.h);
+    const grown = stampGrownBox(box, stampGaussianReach(glow.radius), width, height);
+    gaussianPass(encoder, { source: sourced.array, into: across.array, layers: 1, axis: 0, sigma: glow.radius, read: box, box: grown });
+    gaussianPass(encoder, { source: across.array, into: light.array, layers: 1, axis: 1, sigma: glow.radius, read: grown, box: grown, accumulate: true, gain: glow.amount });
   }
 
   /** The stage's whole texels within painting points x0..x1, y0..y1, or null for none. */
@@ -2034,7 +2133,7 @@ function rendererOnSurface(
   // Frames start from the latest checkpoint their settled events stand for (stamp-paint-checkpoints.ts).
   const events = stampPaintEvents(painting);
   // Made on the surface's device: they come and go as frames save them, and dispose destroys what's left.
-  const checkpoints = stampPaintCheckpoints(surface.device, { painting: targets.painting.texture, layer: targets.layer.texture, clip: targets.clip.texture });
+  const checkpoints = stampPaintCheckpoints(surface.device, { painting: targets.painting.texture, layer: targets.layer.texture, clip: targets.clip.texture, light: () => lightTarget().texture });
   const groupEvents = stampGroupEvents(painting);
   // Settled groups' painted layers, so a frame laying them elsewhere copies them back rather than painting them again.
   const layerCache = stampPaintLayerCache(surface.device, targets.layer.texture);
@@ -2142,9 +2241,12 @@ function rendererOnSurface(
     const saves: ReadonlyMap<number, boolean> = whole ? new Map() : checkpointSaves(from);
     // The event an outside layer was last laid at: the plan keys a checkpoint there as standing before it.
     let outsideLaidAt = -1;
+    // Whether the frame's light holds glow yet: a checkpoint saved past a glow holds it, and the plan keys glows.
+    let lit = start?.lit ?? false;
     // A group whose lay varies is saved at its end painted, before its lay, never laid: the plan says which a save holds.
+    const savesAt = (event: number, inGroup: boolean) => event !== outsideLaidAt && saves.get(event) === inGroup;
     const save = (event: number, inGroup: boolean, painted: Box | null) => {
-      if (event !== outsideLaidAt && saves.get(event) === inGroup) checkpoints.save(encoder, { event, key: checkpointKey(event), inGroup, painted });
+      if (savesAt(event, inGroup)) checkpoints.save(encoder, { event, key: checkpointKey(event), inGroup, painted, lit });
     };
     /** Lays the outside layers just before group `index`, saving what's under them first; a checkpoint past one holds it. */
     const layOutsideLayersBefore = (index: number) => {
@@ -2152,9 +2254,33 @@ function rendererOnSurface(
         if (layer.groupIndex !== index || layer.event < from) continue;
         save(layer.event, false, null);
         if (!layer.visibility) continue;
-        layOutsideLayer(encoder, layer);
+        const view = layer.blur ? defocusOutsideLayer(encoder, layer) : outsideViews[layer.slot];
+        layOutsideLayer(encoder, layer, view);
+        if (layer.glow) {
+          addGlow(encoder, layer.glow, { x: 0, y: 0, w: width, h: height }, lit, { cover: 'outside', strength: layer.visibility, glaze: false, resources: [view] });
+          lit = true;
+        }
         outsideLaidAt = layer.event;
       }
+    };
+    /**
+     * Lays group `index` from its layer over `painted` as its frame state looks: defocused (unless `defocused` already,
+     * then cached under `blurredKey`), laid, and glowing.
+     */
+    const layGroupLooked = (index: number, groupFrame: StampGroupFrame, painted: Box | null, blurredKey: string | null, defocused: boolean) => {
+      if (!painted) return;
+      const { group, blur, glow, visibility } = groupFrame;
+      let laidFrom = painted;
+      if (blur && !defocused) {
+        laidFrom = defocusGroupLayer(encoder, defocusSigma(groupFrame, painted), painted);
+        if (blurredKey !== null) layerCache.save(encoder, blurredKey, laidFrom);
+      }
+      const laid = layGroup(encoder, index, groupFrame, laidFrom);
+      if (!laid || !glow) return;
+      addGlow(encoder, glow, laid.box, lit, {
+        cover: laid.rest ? 'moved group' : 'group', strength: group.opacity * visibility, glaze: group.composite === 'glaze', resources: [targets.layer.view, ...(laid.rest ? [laid.rest] : [])],
+      });
+      lit = true;
     };
     if (start) checkpoints.restore(encoder, start);
     else drawPaper(encoder);
@@ -2170,10 +2296,19 @@ function rendererOnSurface(
       // Painted from its start and settled, its layer is its paintKey's alone (stamp-paint-layer-cache.ts). No checkpoint
       // falls within such a group, so skipping its events skips no save.
       const layerKey = !whole && first >= from && end <= settled ? `${index}|${groupFrame.paintKey}` : null;
+      // Its defocused layer is keyed by what its sigma in the layer comes from. A frame saving a checkpoint at its end
+      // needs its layer sharp, so doesn't start from that one.
+      const { blur, lay, warp } = groupFrame;
+      const blurredKey = layerKey !== null && blur ? `${layerKey}|blur${blur}x${lay?.placement.scale ?? 1}${warp ? `^${JSON.stringify(warp.key)}` : ''}` : null;
+      const defocused = blurredKey !== null && !(layVaries && savesAt(end, true)) ? restoreGroupLayer(encoder, blurredKey) : null;
+      if (defocused) {
+        layGroupLooked(index, groupFrame, defocused.painted, null, true);
+        continue;
+      }
       const cached = layerKey === null ? null : restoreGroupLayer(encoder, layerKey);
       if (cached) {
         if (layVaries) save(end, true, cached.painted);
-        if (cached.painted) layGroup(encoder, index, groupFrame, cached.painted);
+        layGroupLooked(index, groupFrame, cached.painted, blurredKey, false);
         continue;
       }
       const epoch = drawing.kind === 'written' ? drawing.epoch : 0;
@@ -2202,13 +2337,14 @@ function rendererOnSurface(
       }
       if (layerKey !== null) layerCache.save(encoder, layerKey, painted);
       if (layVaries) save(end, true, painted);
-      if (painted) layGroup(encoder, index, groupFrame, painted);
+      layGroupLooked(index, groupFrame, painted, blurredKey, false);
     }
     layOutsideLayersBefore(groups.length);
     save(events.length, false, null);
     const out = encoder.beginRenderPass({ colorAttachments: [{ view: surface.frameTexture().createView(), loadOp: 'clear', storeOp: 'store' }] });
-    out.setPipeline(outputPipeline);
-    out.setBindGroup(0, bindGroup(outputPipeline, [targets.painting.view]));
+    const output = lit ? (glowingOutputPipeline ??= outputPipelineOf(true)) : outputPipeline;
+    out.setPipeline(output);
+    out.setBindGroup(0, bindGroup(output, [targets.painting.view, ...(lit ? [lightTarget().view] : [])]));
     out.draw(3);
     out.end();
     device.queue.writeBuffer(uniforms, 0, staging, 0, slots * SLOT);
@@ -2297,6 +2433,8 @@ function rendererOnSurface(
 }
 
 
+/** `texture` viewed as an array, as a gaussian pass binds a plain target and an array one alike. */
+const arrayView = (texture: GPUTexture) => texture.createView({ dimension: '2d-array' });
 const clear = (encoder: GPUCommandEncoder, view: GPUTextureView) => encoder.beginRenderPass({ colorAttachments: [{ view, loadOp: 'clear', storeOp: 'store' }] }).end();
 const channel = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16) / 255;
 const rgb = (hex: string): [number, number, number] => [channel(hex, 1), channel(hex, 3), channel(hex, 5)];

@@ -455,6 +455,7 @@ fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f) -> vec4f {
       },
     },
     group: {
+      cover: `fn groupCover(layer0: vec4f, glaze: bool) -> f32 { return min(1.0, max(layer0.x, 0.0) * select(${STAMP_OPAQUE_COVER.toFixed(1)}, 1.0, glaze)); }`,
       wgsl: /* wgsl */ `
 ${bandWgsl}
 @group(0) @binding(3) var photograph: texture_2d<f32>;

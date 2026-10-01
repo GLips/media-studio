@@ -9,7 +9,9 @@
 
 import type { StampGroupPlacement } from './stamp-group-motion.ts';
 import { STAMP_WARP_CELL, type StampWarpMap } from './stamp-group-warp.ts';
-import { stampLiveGroupProblem, stampPaintFrameStateAt, type StampGroupFrameState, type StampGroupLay, type StampGroupMarks, type StampPaintFrameState } from './stamp-paint-frame-state.ts';
+import {
+  stampLiveGroupProblem, stampPaintFrameStateAt, type StampGroupFrameState, type StampGroupGlow, type StampGroupLay, type StampGroupMarks, type StampPaintFrameState,
+} from './stamp-paint-frame-state.ts';
 import { stampSettledEventCount, type StampPaintEvent } from './stamp-paint-events.ts';
 import type { StampOutsideFrameState, StampOutsideLayerPlace } from './stamp-outside-layer.ts';
 import { stampPassDeposits, type CompiledStampGroup, type CompiledStampPaint } from './stamp-paint-recipe.ts';
@@ -29,8 +31,8 @@ export function stampGroupEvents(painting: CompiledStampPaint): StampGroupEvents
 
 /**
  * A group as a frame draws it, its frame state resolved: `lay` null where it lies as painted; `paintAt` null for paint
- * that doesn't change. `layVaries`: laid apart from where it's painted (a lay, a warp, part visible), so the checkpoint
- * at its end holds it painted, not laid, which frames laying it otherwise share.
+ * that doesn't change. `layVaries`: laid otherwise than as painted (moved, warped, part visible, defocused, glowing),
+ * so the checkpoint at its end holds it painted, not laid, which frames laying it otherwise share.
  */
 export type StampGroupFrame = {
   /** What its painted layer depends on besides how much is shown: its marks and paint's time; 'hidden' drawn not at all. */
@@ -41,6 +43,10 @@ export type StampGroupFrame = {
   warp: { map: StampWarpMap; key: string; cell: number } | null;
   visibility: number;
   paintAt: number | null;
+  /** Its defocus, gaussian sigma in stage px; 0 sharp. */
+  blur: number;
+  /** The light it gives off; null for none, as a glow of amount 0 is. */
+  glow: StampGroupGlow | null;
   layVaries: boolean;
 };
 
@@ -48,7 +54,7 @@ export type StampGroupFrame = {
  * An outside layer as a frame lays it (stamp-outside-layer.ts): before the events from `event` on, so a checkpoint
  * after `event` events stands before it and one after more holds it, under `key` (its content and how it's laid).
  */
-export type StampOutsideLayerFrame = StampOutsideLayerPlace & { event: number; key: string; visibility: number };
+export type StampOutsideLayerFrame = StampOutsideLayerPlace & { event: number; key: string; visibility: number; blur: number; glow: StampGroupGlow | null };
 
 /** The outside layers a painting is drawn with: where each lies, and each one's state this frame. */
 export type StampOutsideLayersAt = { places: readonly StampOutsideLayerPlace[]; state: StampOutsideFrameState };
@@ -77,6 +83,21 @@ const hasEvents = ({ first, end }: StampGroupEvents) => first < end;
 
 const isStill = ({ x, y, rotation, scale }: StampGroupPlacement) => x === 0 && y === 0 && rotation === 0 && scale === 1;
 
+/** `id`'s defocus and glow as drawn, checked: no blur is 0, and no glow (or one of amount 0) null, so equal looks key equal. */
+function stampLayLight(id: string, { blur = 0, glow }: Pick<StampGroupFrameState, 'blur' | 'glow'>): { blur: number; glow: StampGroupGlow | null } {
+  if (!(Number.isFinite(blur) && blur >= 0)) throw new Error(`stamp paint: ${id}'s blur is ${blur}; a defocus is a sigma of 0 px or more`);
+  if (glow) {
+    const { amount, radius, threshold } = glow;
+    if (!(Number.isFinite(amount) && amount >= 0 && Number.isFinite(radius) && radius > 0 && threshold >= 0 && threshold <= 1)) {
+      throw new Error(`stamp paint: ${id}'s glow ${JSON.stringify(glow)} needs an amount from 0, a radius past 0 px and a threshold within 0..1`);
+    }
+  }
+  return { blur, glow: glow && glow.amount > 0 ? { amount: glow.amount, radius: glow.radius, threshold: glow.threshold } : null };
+}
+
+/** The part of a laid key its defocus and glow write: empty for neither. */
+const layLightKey = ({ blur, glow }: { blur: number; glow: StampGroupGlow | null }) => `${blur ? `~blur${blur}` : ''}${glow ? `~glow${glow.amount},${glow.radius},${glow.threshold}` : ''}`;
+
 /** `group`'s frame from its frame state, checked: throws on state it can't draw. */
 function stampGroupFrame(group: CompiledStampGroup, state: StampGroupFrameState): StampGroupFrame {
   const { lay, warp, marks = { kind: 'written', epoch: 0 }, paintAt, visibility = 1 } = state;
@@ -93,11 +114,12 @@ function stampGroupFrame(group: CompiledStampGroup, state: StampGroupFrameState)
     if (![x, y, rotation, scale, pivot.x, pivot.y].every(Number.isFinite) || !(scale > 0)) throw new Error(`stamp paint: ${group.id}'s lay needs finite values and a positive scale`);
   }
   const moved = lay && !isStill(lay.placement) ? lay : null;
+  const { blur, glow } = stampLayLight(group.id, state);
   // A hidden group draws nothing, whatever its marks or lay.
   const paintKey = visibility === 0 ? 'hidden' : `${marks.kind === 'live' ? `*${JSON.stringify(marks.key)}` : marks.epoch}${paintAt === undefined ? '' : `~${paintAt}`}`;
   return {
     paintKey, group, marks, lay: moved, warp: warp ? { map: warp.map, key: warp.key, cell: warp.cell ?? STAMP_WARP_CELL } : null, visibility,
-    paintAt: paintAt ?? null, layVaries: visibility > 0 && !!(moved || warp || visibility < 1),
+    paintAt: paintAt ?? null, blur, glow, layVaries: visibility > 0 && !!(moved || warp || visibility < 1 || blur || glow),
   };
 }
 
@@ -111,8 +133,9 @@ function stampOutsideLayerFrames(groupEvents: readonly StampGroupEvents[], event
     const { content, visibility = 1 } = given;
     if (!(visibility >= 0 && visibility <= 1)) throw new Error(`stamp paint: outside layer ${place.id}'s visibility is ${visibility}, outside 0..1`);
     // Built here, not left to the caller: whatever changes what's laid is in it.
-    const key = visibility === 0 ? 'hidden' : `${JSON.stringify(content)}${visibility < 1 ? `%${visibility}` : ''}${given.blur ? `~blur${given.blur}` : ''}${given.glow ? `~glow${JSON.stringify(given.glow)}` : ''}`;
-    return { ...place, event: groupEvents[place.groupIndex]?.first ?? eventCount, key, visibility };
+    const light = stampLayLight(place.id, given);
+    const key = visibility === 0 ? 'hidden' : `${JSON.stringify(content)}${visibility < 1 ? `%${visibility}` : ''}${layLightKey(light)}`;
+    return { ...place, event: groupEvents[place.groupIndex]?.first ?? eventCount, key, visibility, ...light };
   });
 }
 
@@ -129,10 +152,10 @@ export function stampFramePlan(
   const groups = painting.groups.map((group) => stampGroupFrame(group, state.get(group.id) ?? {}));
   const outsideLayers = stampOutsideLayerFrames(groupEvents, events.length, outside);
   const marks = groups.map(({ paintKey }) => paintKey);
-  const laid = groups.map(({ lay, warp, visibility }, index) => (visibility === 0 ? marks[index] : marks[index]
-    + (lay ? `@${lay.placement.x},${lay.placement.y},${lay.placement.rotation},${lay.placement.scale}:${lay.pivot.x},${lay.pivot.y}` : '')
-    + (warp ? `^${warp.cell}${JSON.stringify(warp.key)}` : '')
-    + (visibility < 1 ? `%${visibility}` : '')));
+  const laid = groups.map((group, index) => (group.visibility === 0 ? marks[index] : marks[index]
+    + (group.lay ? `@${group.lay.placement.x},${group.lay.placement.y},${group.lay.placement.rotation},${group.lay.placement.scale}:${group.lay.pivot.x},${group.lay.pivot.y}` : '')
+    + (group.warp ? `^${group.warp.cell}${JSON.stringify(group.warp.key)}` : '')
+    + (group.visibility < 1 ? `%${group.visibility}` : '') + layLightKey(group)));
   /**
    * Each group with events that begin before `event`: laid by then, or partway through. A group whose lay varies
    * stands at its last event painted but not laid. A group with no events draws nothing.

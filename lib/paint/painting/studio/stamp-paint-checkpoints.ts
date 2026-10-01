@@ -1,12 +1,11 @@
 // stamp-paint-checkpoints.ts: the renderer's saved states, so a frame starts from the latest one its settled events
-// stand for (stamp-paint-events.ts) instead of bare paper. A checkpoint is the painting after its first `event` events
-// and, partway through a group, that group's layer, clip base and painted box.
+// stand for (stamp-paint-events.ts) instead of bare paper. A checkpoint is the painting after its first `event` events,
+// the frame's light once something has glowed, and partway through a group its layer, clip base and painted box.
 //
 // A checkpoint is keyed by what else it depends on (a group's lay and warp, its epoch or live marks, its paint's time);
 // a frame reuses one only under the same key, and restoring copies it back exactly, so a frame never depends on frames
 // before it.
-// STAMP_CHECKPOINTS_MOST and STAMP_CHECKPOINT_BUDGET bound memory, each checkpoint admitted by the textures it holds,
-// least recently used given up first. One that can't fit isn't saved.
+// STAMP_CHECKPOINTS_MOST and STAMP_CHECKPOINT_BUDGET bound memory, least recently used given up first.
 
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
@@ -23,14 +22,22 @@ export const STAMP_CHECKPOINT_BUDGET = 384 * 1024 * 1024;
  */
 export const STAMP_CHECKPOINTS_MOST = 4;
 
-/** The textures a checkpoint copies: the painting, the group layer and the clip base, all rgba16float. */
-export type StampCheckpointTargets = { painting: GPUTexture; layer: GPUTexture; clip: GPUTexture };
+/**
+ * The textures a checkpoint copies: the painting, the group layer and the clip base, all rgba16float; and the frame's
+ * light, the painting's size, made only when a frame first glows.
+ */
+export type StampCheckpointTargets = { painting: GPUTexture; layer: GPUTexture; clip: GPUTexture; light: () => GPUTexture };
 
-/** A saved state: after `event` events under `key`; `inGroup` when partway through a group, whose layer and clip it holds. */
-export type StampPaintCheckpoint = { event: number; key: string; inGroup: boolean; painted: StampPixelBox | null };
+/**
+ * A saved state: after `event` events under `key`; `inGroup` when partway through a group, whose layer and clip it
+ * holds; `lit` once something before it has glowed, so it holds the light too.
+ */
+export type StampPaintCheckpoint = { event: number; key: string; inGroup: boolean; painted: StampPixelBox | null; lit: boolean };
 
 /** `encoder`: the last frame's to copy into or out of it, whose commands may be unsubmitted yet. */
-type Kept = StampPaintCheckpoint & { painting: GPUTexture; group: { layer: GPUTexture; clip: GPUTexture } | null; used: number; encoder: GPUCommandEncoder };
+type Kept = StampPaintCheckpoint & {
+  painting: GPUTexture; group: { layer: GPUTexture; clip: GPUTexture } | null; light: GPUTexture | null; used: number; encoder: GPUCommandEncoder;
+};
 
 const texelBytes = (texture: GPUTexture) => texture.width * texture.height * texture.depthOrArrayLayers * 8;
 const copyWholeTexture = (encoder: GPUCommandEncoder, from: GPUTexture, to: GPUTexture) => encoder.copyTextureToTexture({ texture: from }, { texture: to }, [from.width, from.height, from.depthOrArrayLayers]);
@@ -53,7 +60,9 @@ export type StampPaintCheckpoints = {
  */
 export function stampPaintCheckpoints(device: StampPaintDevice, targets: StampCheckpointTargets, budget = STAMP_CHECKPOINT_BUDGET): StampPaintCheckpoints {
   const paintingBytes = texelBytes(targets.painting), groupBytes = texelBytes(targets.layer) + texelBytes(targets.clip);
-  const bytesOf = ({ inGroup }: StampPaintCheckpoint) => paintingBytes + (inGroup ? groupBytes : 0);
+  // The light is one plain layer of the painting's size.
+  const lightBytes = targets.painting.width * targets.painting.height * 8;
+  const bytesOf = ({ inGroup, lit }: StampPaintCheckpoint) => paintingBytes + (inGroup ? groupBytes : 0) + (lit ? lightBytes : 0);
   const kept: Kept[] = [];
   let clock = 0;
   const twin = (texture: GPUTexture) => device.createTexture({
@@ -70,6 +79,7 @@ export function stampPaintCheckpoints(device: StampPaintDevice, targets: StampCh
       if (!found) throw new Error(`stamp paint: no checkpoint at event ${checkpoint.event} to restore`);
       found.encoder = encoder;
       copyWholeTexture(encoder, found.painting, targets.painting);
+      if (found.light) copyWholeTexture(encoder, found.light, targets.light());
       if (!found.group) return;
       copyWholeTexture(encoder, found.group.layer, targets.layer);
       copyWholeTexture(encoder, found.group.clip, targets.clip);
@@ -95,14 +105,16 @@ export function stampPaintCheckpoints(device: StampPaintDevice, targets: StampCh
       if (!fits()) return;
       for (const c of given) kept.splice(kept.indexOf(c), 1);
       // What's given up is reused where it fits; the rest is destroyed, its last copies already submitted.
-      const paintings = given.map((c) => c.painting), groups = given.flatMap((c) => (c.group ? [c.group] : []));
+      const paintings = given.map((c) => c.painting), groups = given.flatMap((c) => (c.group ? [c.group] : [])), lights = given.flatMap((c) => (c.light ? [c.light] : []));
       const saved: Kept = {
         ...checkpoint, used: ++clock, encoder,
         painting: paintings.pop() ?? twin(targets.painting),
         group: checkpoint.inGroup ? groups.pop() ?? { layer: twin(targets.layer), clip: twin(targets.clip) } : null,
+        light: checkpoint.lit ? lights.pop() ?? twin(targets.light()) : null,
       };
-      for (const texture of [...paintings, ...groups.flatMap(({ layer, clip }) => [layer, clip])]) texture.destroy();
+      for (const texture of [...paintings, ...groups.flatMap(({ layer, clip }) => [layer, clip]), ...lights]) texture.destroy();
       copyWholeTexture(encoder, targets.painting, saved.painting);
+      if (saved.light) copyWholeTexture(encoder, targets.light(), saved.light);
       if (saved.group) {
         copyWholeTexture(encoder, targets.layer, saved.group.layer);
         copyWholeTexture(encoder, targets.clip, saved.group.clip);
@@ -110,7 +122,7 @@ export function stampPaintCheckpoints(device: StampPaintDevice, targets: StampCh
       kept.push(saved);
     },
     dispose() {
-      for (const { painting, group } of kept.splice(0)) for (const texture of [painting, ...(group ? [group.layer, group.clip] : [])]) texture.destroy();
+      for (const { painting, group, light } of kept.splice(0)) for (const texture of [painting, ...(group ? [group.layer, group.clip] : []), ...(light ? [light] : [])]) texture.destroy();
     },
   };
 }

@@ -214,7 +214,7 @@ export async function loadPaintedThreeScene(canvas: HTMLCanvasElement, spec: Pai
       const surface = await createStampPaintSurface({ canvas, width: stage.width, height: stage.height, device }, stampPaintAssetUrl);
       made.push(surface);
       const renderer = await createStampPaintRenderer(surface, spec.painting, spec.style.paper, spec.style.mixing, {
-        profile, outsideLayers: layers.map(({ layer: { id, beneath }, texture }) => ({ id, beneath, texture })),
+        profile, margin: stage.margin, outsideLayers: layers.map(({ layer: { id, beneath }, texture }) => ({ id, beneath, texture })),
       });
       made.push(renderer);
       return renderer;

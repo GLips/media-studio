@@ -64,6 +64,11 @@ export type StampPaintCompositor = {
     wgsl: string;
     /** What it binds from 3, given the paper's photograph (a blank texture if it has none) and a sampler. */
     resources: (paper: { photograph: GPUTextureView; sampler: GPUSampler }) => GPUBindingResource[];
+    /**
+     * `groupCover(layer0, glaze)`: how much of a pixel a group's layer covers as laid, 0..1 before its opacity, from its
+     * first layer's texel alone. A glow weighs the light it takes by it. Binds nothing.
+     */
+    cover: string;
   };
   /** For a compositor that lays washes, how a wash group's layer is kept, for the stages that move its paint. */
   wash?: StampWashLayer;
@@ -243,6 +248,7 @@ fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f,
       resources: ({ tints: { a, b } }) => [a, b],
     },
     group: {
+      cover: `fn groupCover(layer0: vec4f, glaze: bool) -> f32 { return min(1.0, layer0.a * select(${STAMP_OPAQUE_COVER.toFixed(1)}, 1.0, glaze)); }`,
       wgsl: /* wgsl */ `
 ${FLAT_WGSL}
 /** A finished group's layer laid onto the painting: glazed (multiplied) or opaque. */

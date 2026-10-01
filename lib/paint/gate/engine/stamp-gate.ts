@@ -17,6 +17,7 @@ import { STAMP_GATE_FLOW_IDS } from '../models/stamp-gate-flow.ts';
 import { STAMP_GATE_MEDIA_IDS } from '../models/stamp-gate-media.ts';
 import { STAMP_GATE_OUTSIDE_IDS } from '../models/stamp-gate-outside-layer.ts';
 import { STAMP_GATE_STAGE_IDS } from '../models/stamp-gate-stage.ts';
+import { STAMP_GATE_LENS_IDS } from '../models/stamp-gate-lens.ts';
 import { STAMP_GATE_STRIPE_IDS } from '../models/stamp-gate-stripe.ts';
 import { STAMP_GATE_WASH_IDS, type StampGateWashCheck } from '../models/stamp-gate-washes.ts';
 import { readStampGateBaseline, stampGateFrame, stampGateInputsHash, writeStampGateCandidate, type StampGateOutput } from './stamp-gate-store.ts';
@@ -137,7 +138,7 @@ function checkTrace({ trace }: Collected): StampGateCheck {
 
 /** The whole gate against the baselines in `store`: every formula, twin, property grid, painting, the trace, every wash, animation, flow, stripe, media, outside layer and stage case. */
 export async function runStampGate(store: string): Promise<StampGateCheck[]> {
-  const collected = await collectStampGate(STAMP_GATE_PAINTING_IDS, STAMP_GATE_WASH_IDS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_FLOW_IDS, STAMP_GATE_STRIPE_IDS, STAMP_GATE_MEDIA_IDS, STAMP_GATE_OUTSIDE_IDS, STAMP_GATE_STAGE_IDS);
+  const collected = await collectStampGate(STAMP_GATE_PAINTING_IDS, STAMP_GATE_WASH_IDS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_FLOW_IDS, STAMP_GATE_STRIPE_IDS, STAMP_GATE_MEDIA_IDS, STAMP_GATE_OUTSIDE_IDS, [...STAMP_GATE_STAGE_IDS, ...STAMP_GATE_LENS_IDS]);
   return [
     ...formulaSubjects(collected).map((subject) => checkStampGateSubject(store, subject, collected.adapter)),
     ...checkTwins(collected),
