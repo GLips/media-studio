@@ -31,12 +31,12 @@ const FLOOD_FIRST_STEP = 2 ** Math.ceil(Math.log2(STAMP_DRYING_RIM_MOST_BAND));
 
 /**
  * A wash's rim: its wettest grid's lattice, size and first value in the grid buffer; the pixels it works over; its
- * medium's flow and damp, its brushes' mean diameter; its line's width; the gathering kernel's sigma, reach and sum;
+ * medium's spread and damp, its brushes' mean diameter; its line's width; the gathering kernel's sigma, reach and sum;
  * and the seed its line's unevenness is drawn from.
  */
 const RIM = stampUniformLayout('Rim', [
   ['lattice', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['seed', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'],
-  ['flow', 'f32'], ['damp', 'f32'], ['diameter', 'f32'], ['width', 'f32'], ['sigma', 'f32'], ['reach', 'u32'], ['norm', 'f32'],
+  ['spread', 'f32'], ['damp', 'f32'], ['diameter', 'f32'], ['width', 'f32'], ['sigma', 'f32'], ['reach', 'u32'], ['norm', 'f32'],
 ]);
 
 const PRELUDE = /* wgsl */ `
@@ -158,7 +158,7 @@ fn coverageIn(seed: vec2f, toward: vec2f, depth: f32) -> f32 {
   // Every pixel judges its nearest stretch of edge alike, from the same two points along the way in.
   let toward = select(vec2f(0.0), (vec2f(p) - seed) / d, d > 0.5);
   let wetShare = dryingRimWetShare(gridAt(vec2f(p) + 0.5, u.lattice.xyz, u.size, u.first), u.damp);
-  let band = dryingRimBand(u.flow, u.diameter, wetShare);
+  let band = dryingRimBand(u.spread, u.diameter, wetShare);
   // The line wavers in width and strength along the edge, by noise at the edge point (so across the band alike) in
   // the painting's own pixels, keyed to the wash's seed.
   let width = u.width * (0.6 + 0.8 * paintValueNoise(seed.x / 6.0, seed.y / 6.0, u.seed));
@@ -168,7 +168,7 @@ fn coverageIn(seed: vec2f, toward: vec2f, depth: f32) -> f32 {
   let covered = clamp(textureLoad(layer, p, 0, 0).x / max(edgeCover, 1e-3), 0.0, 1.0);
   let line = paint * covered * dryingRimLine(d, width);
   let hardness = dryingRimHardness(edgeCover, coverageIn(seed, toward, ${EDGE_DEPTHS[1]}.0));
-  let take = paint * hardness * dryingRimDraw(d, band, u.width) * dryingRimTake(u.flow, wetShare, strength);
+  let take = paint * hardness * dryingRimDraw(d, band, u.width) * dryingRimTake(u.spread, wetShare, strength);
   textureStore(weights, local(p), vec4f(line, take, 0.0, 0.0));
 }`;
 
@@ -270,9 +270,9 @@ function gridBox(grid: StampGrid, width: number, height: number): StampPixelBox 
 type LoadedRim = { grid: StampGrid; first: number; box: StampPixelBox; uniform: GPUBuffer };
 
 function loadDryingRim({ device, painting, medium, wetness, width, height, layer }: StampWetStageContext) {
-  const { flow, damp } = medium.wetting;
+  const { spread, damp } = medium.wetting;
   const washes = painting.groups.flatMap((group) => group.passes).filter((pass) => pass.kind === 'wash');
-  if (flow <= 0 || !washes.length) return { encode: () => null };
+  if (spread <= 0 || !washes.length) return { encode: () => null };
 
   const rims = new Map<CompiledStampPass, LoadedRim>(), values: number[] = [];
   for (const pass of washes) {
@@ -281,8 +281,8 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     if (!grid || !painted.length) continue;
     const wetShare = stampDryingRimWetShare(Math.max(...grid.values), damp);
     const diameter = painted.reduce((sum, deposit) => sum + deposit.diameter, 0) / painted.length;
-    const band = stampDryingRimBand(flow, diameter, wetShare);
-    // A band under a pixel or two is a rim no one sees: damp brushwork, or a medium that barely flows.
+    const band = stampDryingRimBand(spread, diameter, wetShare);
+    // A band under a pixel or two is a rim no one sees: damp brushwork, or a medium that barely spreads.
     if (band < 1.5) continue;
     const box = gridBox(grid, width, height);
     if (box.w <= 0 || box.h <= 0) continue;
@@ -297,7 +297,7 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     put('seed', paintPigmentSeed(pass.id));
     put('origin', [box.x, box.y]);
     put('extent', [box.w, box.h]);
-    put('flow', flow);
+    put('spread', spread);
     put('damp', damp);
     put('diameter', diameter);
     put('width', Math.min(2.2, 0.8 + band / 20));

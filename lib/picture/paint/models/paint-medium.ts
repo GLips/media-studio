@@ -48,12 +48,12 @@ export type PaintMedium = {
  */
 export type PaintWetting = {
   /** How far paint landing on flooded paper spreads by itself, in diameters of the brush laying it; 0 never spreads. */
-  flow: number;
+  spread: number;
   /** Seconds flooded paper of middling absorbency takes to dry, its wetness falling evenly from 1 to 0. */
   drying: number;
   /**
    * Seconds paint sets behind its water: it stays as workable as the paper was that long before. Watercolour's is
-   * none. An oil would be a brush carrying its liquid medium as water (brushWater 1), no flow, and an open time of days.
+   * none. An oil would be a brush carrying its liquid medium as water (brushWater 1), no spread, and an open time of days.
    */
   openTime: number;
   /**
@@ -76,7 +76,7 @@ export const PAINT_MEDIA = {
   // first guess (vid-117): paint travels, a sheet dries in minutes, unstaining pigment lifts some way.
   watercolour: {
     name: 'watercolour', color: { kind: 'glaze', hiding: 0.02 }, body: 1, lightening: { kind: 'water' }, granulation: 0.7, paperContact: { kind: 'valleys' }, dryingScatter: 0.1, pickup: 0.5,
-    wetting: { flow: 0.5, drying: 240, openTime: 0, rewetting: 0.35, brushWater: 0.7, damp: 0.35 },
+    wetting: { spread: 0.5, drying: 240, openTime: 0, rewetting: 0.35, brushWater: 0.7, damp: 0.35 },
   },
   // Tuned by eye (vid-109), not measured: a stroke mostly lays its own paint over wet paint, darks dry lighter and
   // matte, and a dark colour holds its hue into tints with white.
@@ -84,14 +84,14 @@ export const PAINT_MEDIA = {
     name: 'gouache', color: { kind: 'masstone', scatter: 0.05 }, body: 2, lightening: { kind: 'white', white: TITANIUM_WHITE }, granulation: 0.1,
     paperContact: { kind: 'valleys' }, dryingScatter: 0.4, pickup: 0.2,
     // A first guess (vid-117): it barely travels, dries fast and re-dissolves once dry.
-    wetting: { flow: 0.1, drying: 120, openTime: 0, rewetting: 0.9, brushWater: 0.4, damp: 0.35 },
+    wetting: { spread: 0.1, drying: 120, openTime: 0, rewetting: 0.9, brushWater: 0.4, damp: 0.35 },
   },
   // Tuned by eye (vid-109), not measured: skips the paper below 85% of its mean height, so the tooth reads bare.
   crayon: {
     name: 'crayon', color: { kind: 'masstone', scatter: 0.05 }, body: 1.5, lightening: { kind: 'white', white: { id: 'waxWhite', name: 'wax white', overWhite: '#f7f6f1', overBlack: '#9d9c97' } },
     granulation: 0, paperContact: { kind: 'peaks', tooth: 0.85 }, dryingScatter: 0, pickup: 0,
-    // No water and no flow. A lift is an eraser, taking the wax off the tooth's peaks but not what's pressed in (vid-117).
-    wetting: { flow: 0, drying: 1, openTime: 0, rewetting: 0.85, brushWater: 0, damp: 0.35 },
+    // No water and no spread. A lift is an eraser, taking the wax off the tooth's peaks but not what's pressed in (vid-117).
+    wetting: { spread: 0, drying: 1, openTime: 0, rewetting: 0.85, brushWater: 0, damp: 0.35 },
   },
 } as const satisfies Record<string, PaintMedium>;
 

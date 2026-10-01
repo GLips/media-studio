@@ -36,10 +36,10 @@ fn wetLift(was: vec4f, cover: f32, strength: f32, workable: f32, dried: f32, rew
 
 /**
  * How far wet paint runs back into a lift, as a Gaussian's sigma in pixels: a third of how far the medium's paint
- * spreads by itself (`flow`, in diameters of the lifting brush), as wet as the paper is.
+ * spreads by itself (`spread`, in diameters of the lifting brush), as wet as the paper is.
  */
-export function stampLiftRunBackSigma(flow: number, diameter: number, wetness: number): number {
-  return (flow * diameter * Math.min(1, Math.max(0, wetness))) / 3;
+export function stampLiftRunBackSigma(spread: number, diameter: number, wetness: number): number {
+  return (spread * diameter * Math.min(1, Math.max(0, wetness))) / 3;
 }
 
 /**

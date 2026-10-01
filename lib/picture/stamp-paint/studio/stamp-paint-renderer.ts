@@ -1454,7 +1454,7 @@ async function rendererOnDevice(
     const { brush, active, landing } = loadedDeposit;
     // In a wash whose paint flows, the drying-rim stage (stamp-wet-rim.ts) rims the wash as one: a brush's own wet
     // edges would rim each stroke again. Its Procreate rim goes, and Photoshop's pooling keeps its body, not its peak.
-    const washRims = !!landing && (wetMedium?.wetting.flow ?? 0) > 0;
+    const washRims = !!landing && (wetMedium?.wetting.spread ?? 0) > 0;
     const edgesOf = (layer?: StampActiveLayer<StampPaintImage>): [number, number, number, number] => (blurred && layer
       ? [washRims ? 0 : layer.rim?.rim ?? 0, layer.rim?.sharpness ?? 0, layer.burntEdge?.strength ?? 0, layer.burntEdge?.sharpness ?? 0] : [0, 0, 0, 0]);
     const mainGrain = active.main.canvasGrain, dualGrain = active.dual?.canvasGrain;

@@ -144,7 +144,7 @@ function stampGridMostOver(grid: StampGrid, box: StampPixelBox): number {
 
 function loadLiftRunBack({ device, medium, wetness, width, height, layer, footprint }: StampWetStageContext) {
   const lifts = [...wetness.landings].filter(([deposit]) => deposit.action.kind === 'lift');
-  if (!lifts.length || medium.wetting.flow <= 0) return { encode: () => null };
+  if (!lifts.length || medium.wetting.spread <= 0) return { encode: () => null };
 
   // Every lift's grids (wetness, workable, dried, on one lattice), one after another, each lift with a uniform
   // buffer of its own, as a frame may hold several.
@@ -174,7 +174,7 @@ function loadLiftRunBack({ device, medium, wetness, width, height, layer, footpr
 
   const encode = (encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, lift: StampPixelBox): StampPixelBox | null => {
     const landing = wetness.landings.get(deposit)!, { wetness: wet } = landing.before;
-    const sigma = Math.min(STAMP_LIFT_RUN_BACK_MOST_SIGMA, stampLiftRunBackSigma(medium.wetting.flow, deposit.diameter, stampGridMostOver(wet, lift)));
+    const sigma = Math.min(STAMP_LIFT_RUN_BACK_MOST_SIGMA, stampLiftRunBackSigma(medium.wetting.spread, deposit.diameter, stampGridMostOver(wet, lift)));
     if (sigma < 0.5) return null;
     const reach = Math.ceil(3 * sigma);
     const x = Math.max(0, lift.x - reach), y = Math.max(0, lift.y - reach);

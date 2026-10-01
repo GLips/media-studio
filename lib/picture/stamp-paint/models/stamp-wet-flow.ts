@@ -9,7 +9,7 @@
 import type { PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
 
 /** How far a deposit's paint moves on flooded paper, as a diffusion's sigma in px: its medium's flow of its diameter, reaching about 2 sigma. */
-export const stampWetFlowSigma = (medium: PaintMedium, diameter: number) => (medium.wetting.flow * diameter) / 2;
+export const stampWetFlowSigma = (medium: PaintMedium, diameter: number) => (medium.wetting.spread * diameter) / 2;
 
 /**
  * The passes a diffusion of up to `sigma` px takes: each's stride, and the variance the passes before it lay when

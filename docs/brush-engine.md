@@ -41,7 +41,7 @@ of either end, its amount graded on the GPU. A plain pass lands as it always has
 
 **The flow stage.** Two populations move: the deposit's fresh paint (what `landDeposit` laid, left in `fresh`),
 freely, and the paint already there, as far as the deposit's water stirs it (workable, not `dried`, where its brush
-touched). Each is a conserved diffusion of sigma = flow × diameter / 2 at full wetness, narrower as drier. Paper is as
+touched). Each is a conserved diffusion of sigma = spread × diameter / 2 at full wetness, narrower as drier. Paper is as
 wet as it was, or as the brush's water where it touched, so paint on dry paper keeps a hard edge.
 - It runs as passes at strides growing by about √2 (1, 2, 3, 4, 6, 8, 11, …), x then y, each a three-tap exchange
   with the pixels a stride away. A pass adds variance of up to stride² / 2, and a pair takes the share of it its own

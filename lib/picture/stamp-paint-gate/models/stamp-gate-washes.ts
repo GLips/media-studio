@@ -66,7 +66,7 @@ function washPainting(medium: StampGateWashMedium, wetPaper: boolean, body: (was
     p.group('subject', { composite: 'glaze', opacity: 1 }, (g) => g.wash('wash', wetPaper ? { preparation: { region: SKY } } : {}, body));
   }));
   const flowing = PAINT_MEDIA[medium];
-  const paint = still ? { ...flowing, wetting: { ...flowing.wetting, flow: 0 } } : flowing;
+  const paint = still ? { ...flowing, wetting: { ...flowing.wetting, spread: 0 } } : flowing;
   return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: paint, pigments: W }, ...SIZE, t: END, images: STAMP_GATE_IMAGES };
 }
 
