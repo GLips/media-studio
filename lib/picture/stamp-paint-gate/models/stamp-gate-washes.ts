@@ -1,13 +1,14 @@
-// stamp-gate-washes.ts: the washes the GPU gate paints, each held to what paint must do rather than to a baseline:
+// stamp-gate-washes.ts: the washes the GPU gate paints, each held to what paint must do, not a baseline:
 //
 // - any frame order: a frame drawn fresh or after another is the same;
 // - conserved: water, softening, a bloom or wet paper moves pigment, never making or losing it;
-// - lifted: a lift never raises a pigment's total nor leaves less than none, and takes less of a staining pigment;
-// - spread: flow never leaves overlapping strokes less even than without it (evenness, as wet paint deepens);
-// - set: dried paint lifts only by the medium's rewetting, though wetted again;
-// - fenced: no paint moves under masking fluid or out of a pass's `within`.
+// - lifted: a lift never raises a total nor leaves less than none, and takes less of a stain;
+// - spread: flow never leaves overlapping strokes less even;
+// - set: dried paint wetted again lifts only by the medium's rewetting;
+// - fenced: no paint moves under masking fluid or out of a pass's `within`;
+// - rimmed: a drying puddle's edge gathers pigment; a seam of patches wet together doesn't.
 //
-// Each case paints into its last group, whose layer readLayer reads back.
+// Each case paints into its last group, the layer readLayer reads.
 
 import { PAINT_BANDS } from '#lib/picture/paint/models/paint-spectrum.ts';
 import { PAINT_MEDIA } from '#lib/picture/paint/models/paint-medium.ts';
@@ -38,6 +39,7 @@ export type StampGateWashCase = {
   | { property: 'spread'; without: StampGatePainting }
   | { property: 'set'; without: StampGatePainting; fresh: { subject: StampGatePainting; without: StampGatePainting }; rewetting: number }
   | { property: 'fenced'; fenced: (x: number, y: number) => boolean }
+  | { property: 'rimmed'; without: StampGatePainting }
 );
 
 /** How far a pigment's total may drift from the same wash's without the ops under test: its layer's half-float rounding summed over a few thousand pixels. */
@@ -82,6 +84,14 @@ const fenced = (x: number, y: number) => Math.hypot(x + 0.5 - FLUID.x, y + 0.5 -
 const sky = (wash: StampWashScope) => wash.fill('sky', { brush: ROUND, diameter: 40, application: { kind: 'flood' }, region: SKY, material: pure(W.ultramarine), ...shown(0) });
 const stroke = (wash: StampWashScope) => wash.stroke('stroke', { brush: ROUND, diameter: 36, material: pure(W.ultramarine), path: [{ x: 20, y: 40 }, { x: 140, y: 50 }], ...shown(0) });
 
+/** The rim case's puddle's right edge and its patches' seam, by column. */
+const RIM = { puddleTo: 60, seam: 115 };
+/**
+ * How much more its rim must gather at the puddle's edge than the paint left still has there, as a share of the
+ * interior; and how much more than still paint a seam may hold, flow evening it.
+ */
+export const STAMP_GATE_RIM = { least: 0.1, seamMost: 0.02 };
+
 /** Every wash case, by ID. */
 function washCases(): StampGateWashCase[] {
   const media: readonly StampGateWashMedium[] = ['watercolour', 'gouache', 'crayon'];
@@ -124,6 +134,15 @@ function washCases(): StampGateWashCase[] {
     wash.water('rewet', { kind: 'stroke', brush: ROUND, diameter: 40, path: [{ x: 15, y: 60 }, { x: 145, y: 58 }], ...shown(1) });
     if (withLift) wash.lift('lift', { kind: 'stroke', brush: SOFT, diameter: 30, path: [{ x: 20, y: 60 }, { x: 140, y: 58 }], ...shown(1) });
   });
+  // A puddle, and two patches meeting at RIM.seam, all wetted together and left to dry.
+  const puddles = (wash: StampWashScope) => {
+    const patch = (id: string, x0: number, x1: number) => wash.fill(id, {
+      brush: ROUND, diameter: 30, application: { kind: 'flood' }, region: stampGatePolygon(x0, 10, x1, 10, x1, 110, x0, 110), material: pure(W.ultramarine), water: 1, ...shown(0),
+    });
+    patch('puddle', 10, RIM.puddleTo);
+    patch('seam-left', 80, RIM.seam);
+    patch('seam-right', RIM.seam, 150);
+  };
   const overlapping = (wash: StampWashScope) => [30, 52, 74, 96].forEach((x, k) => wash.stroke(`stroke-${k}`, {
     brush: ROUND, diameter: 36, material: pure(W.ultramarine), path: [{ x, y: 10 }, { x: x + 4, y: 110 }], ...shown(k / 2),
   }));
@@ -167,6 +186,8 @@ function washCases(): StampGateWashCase[] {
         wash.bloom('bloom', { brush: SOFT, diameter: 24, at: [{ x: 50, y: 50 }, { x: 110, y: 70 }], ...shown(1) });
       }),
     },
+    // Against the same paint that doesn't flow, so neither moves nor rims.
+    { id: 'wash/rim', mid: MID, property: 'rimmed', subject: washPainting('watercolour', false, puddles), without: washPainting('watercolour', false, puddles, true) },
     {
       id: 'wash/wait', mid: MID, property: 'order',
       subject: washPainting('watercolour', false, (wash) => {
@@ -299,5 +320,43 @@ export function checkStampGateSpread(id: string, pigments: readonly string[], su
   return {
     id: `${id}: flow evens it`, passed: spreads.every(({ flowing, still }) => flowing <= still * (1 + STAMP_GATE_CONSERVED_TOLERANCE)),
     detail: `over ${union.length} pixels, ` + spreads.map(({ pigment, flowing, still }) => `${pigment}'s variance ${still.toFixed(5)} still, ${flowing.toFixed(5)} flowing`).join(', '),
+  };
+}
+
+/**
+ * Over the rim case's rows: the puddle's edge (the most within a few pixels of it) and the seam (the most across it),
+ * each over its interior's mean amount of `slot`.
+ */
+function rimShares(layer: StampGateLayer, slot: number) {
+  const amounts = slotAmounts(layer, slot), rows = Array.from({ length: 60 }, (_, k) => 30 + k);
+  const at = (x: number, y: number) => amounts[y * layer.width + x];
+  const most = (x0: number, x1: number) => rows.reduce((sum, y) => sum + Math.max(...Array.from({ length: x1 - x0 }, (_, k) => at(x0 + k, y))), 0) / rows.length;
+  const mean = (...spans: [number, number][]) => {
+    const xs = spans.flatMap(([x0, x1]) => Array.from({ length: x1 - x0 }, (_, k) => x0 + k));
+    return rows.reduce((sum, y) => sum + xs.reduce((s, x) => s + at(x, y), 0), 0) / (rows.length * xs.length);
+  };
+  return {
+    edge: most(RIM.puddleTo - 10, RIM.puddleTo + 6) / mean([25, 45]),
+    seam: most(RIM.seam - 7, RIM.seam + 7) / mean([88, 102], [128, 142]),
+  };
+}
+
+/**
+ * Whether `subject`'s puddle gathers at its edge STAMP_GATE_RIM.least more than `without`'s, its seam holds no more
+ * than STAMP_GATE_RIM.seamMost more, no pixel holds less than none, and each pigment's total holds.
+ */
+export function checkStampGateRimmed(id: string, pigments: readonly string[], subject: StampGateLayer, without: StampGateLayer): StampGateWashCheck {
+  const rimmed = rimShares(subject, 0), still = rimShares(without, 0);
+  const least = subject.values.reduce((low, v) => Math.min(low, v), Infinity);
+  const conserved = checkStampGateConserved(id, pigments, subject, without);
+  const problems = [
+    ...(rimmed.edge < still.edge + STAMP_GATE_RIM.least ? ['the puddle has no rim'] : []),
+    ...(rimmed.seam > still.seam + STAMP_GATE_RIM.seamMost ? ['the seam rims'] : []),
+    ...(least < -STAMP_GATE_LAYER_TOLERANCE ? [`a pixel holds ${least}`] : []),
+    ...(conserved.passed ? [] : ['a pigment\'s total drifted']),
+  ];
+  return {
+    id: `${id}: rimmed`, passed: !problems.length,
+    detail: `${problems.length ? `${problems.join('; ')}. ` : ''}the puddle's edge ${rimmed.edge.toFixed(3)} of its interior, ${still.edge.toFixed(3)} still (under +${STAMP_GATE_RIM.least} fails); the seam ${rimmed.seam.toFixed(3)}, ${still.seam.toFixed(3)} still (past +${STAMP_GATE_RIM.seamMost} fails); least ${least}; ${conserved.detail}`,
   };
 }

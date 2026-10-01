@@ -1,11 +1,9 @@
-// stamp-gate-animation.ts: the paintings the GPU gate animates and the properties it holds their frames to, none a
-// baseline:
+// stamp-gate-animation.ts: the paintings the GPU gate animates and the properties their frames are held to:
 //
-// - drift: a moving group's texture travels with it (stuck), so frame k moved back by its motion is frame 0;
-// - boil: a group boiling on twos holds within an epoch, changes across epochs, leaves a still group alone, and
-//   frame 0 drawn again is frame 0;
-// - boil-wash: a boiling wash whose marks have nothing random to re-roll draws every epoch as frame 0 but for its
-//   drying rim's line, which re-rolls, its paint flowing as far into the wet paper whichever epoch lays it;
+// - drift: a moving group's texture travels with it, so frame k moved back by its motion is frame 0;
+// - boil: a group boiling on twos holds within an epoch, changes across them, leaves a still group alone;
+// - boil-wash: a boiling wash with nothing random in its marks flows as far each epoch, only its rim's line re-rolling;
+// - bloom-boil: a bloom in it holds within an epoch and re-rolls its front at the next (the epoch's seed);
 // - sunset: one painting in two palettes lays the same coverage deposit by deposit; only its colour changes.
 
 import { PAINT_MEDIA } from '#lib/picture/paint/models/paint-medium.ts';
@@ -85,6 +83,43 @@ export function stampGateBoilWashPainting(): StampGatePainting {
   return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t: 0, images: STAMP_GATE_IMAGES };
 }
 
+/** Where the bloom-boil's front lies, its wash's edges (and the drying rim's re-rolled line) well outside. */
+export const STAMP_GATE_BLOOM_BOX = { x0: 70, x1: 170, y0: 45, y1: 115 };
+
+/**
+ * A drop of water into a damp wash, boiling on twos, its brushes with nothing random: only the bloom's (and the rim's)
+ * seed re-rolls.
+ */
+export function stampGateBloomBoilPainting(): StampGatePainting {
+  const steady = stampGateBrush('Steady', { flow: 0.6 });
+  const painting = compileStampPaintRecipe(stampPaintRecipe((p) => {
+    p.group('bloom', { composite: 'glaze', opacity: 1, boil: { every: 2 } }, (g) => g.wash('wash', {}, (w) => {
+      w.fill('sky', { brush: steady, diameter: 40, application: { kind: 'flood' }, region: stampGatePolygon(10, 10, 230, 10, 230, 150, 10, 150), material: mixture({ pigment: W.ultramarine, amount: 1 }) });
+      w.bloom('drop', { brush: steady, diameter: 30, at: [{ x: 120, y: 80 }] });
+    }));
+  }));
+  return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t: 0, images: STAMP_GATE_IMAGES };
+}
+
+/**
+ * Whether frames 0 and 1 of the bloom-boil (one epoch) are the same, and frame 2 (the next) moves its front: at least
+ * STAMP_GATE_BOIL_CHANGE of the bloom's box past 2 levels.
+ */
+export function checkStampGateBloomBoil([first, same, next]: readonly Rgba[]): StampGateWashCheck {
+  const { x0, x1, y0, y1 } = STAMP_GATE_BLOOM_BOX;
+  let held = 0, changed = 0;
+  for (let i = 0; i < first.length; i++) if (i % 4 !== 3) held = Math.max(held, Math.abs(same[i] - first[i]));
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+    const i = (y * SIZE.width + x) * 4;
+    if ([0, 1, 2].some((c) => Math.abs(next[i + c] - first[i + c]) > 2)) changed++;
+  }
+  const share = changed / ((x1 - x0) * (y1 - y0));
+  return {
+    id: 'animation/bloom-boil: its front re-rolls each epoch', passed: held === 0 && share >= STAMP_GATE_BOIL_CHANGE,
+    detail: `frames 0 and 1 differ by ${held} (past 0 fails); frame 2 changes ${(share * 100).toFixed(2)}% of the bloom's box past 2 levels (under ${STAMP_GATE_BOIL_CHANGE * 100}% fails)`,
+  };
+}
+
 /** Whether each of a boiling wash's frames (one an epoch) is frame 0, within the output's dither. */
 export function checkStampGateBoilWash(frames: readonly Rgba[]): StampGateWashCheck {
   const pixels = frames[0].length / 4;
@@ -117,7 +152,7 @@ export function stampGateSunsetPainting(hour: 'day' | 'dusk'): StampGatePainting
   return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t: 1, images: STAMP_GATE_IMAGES };
 }
 
-export const STAMP_GATE_ANIMATION_IDS = ['animation/drift', 'animation/boil', 'animation/boil-wash', 'animation/sunset'];
+export const STAMP_GATE_ANIMATION_IDS = ['animation/drift', 'animation/boil', 'animation/boil-wash', 'animation/bloom-boil', 'animation/sunset'];
 
 type Rgba = ArrayLike<number>;
 

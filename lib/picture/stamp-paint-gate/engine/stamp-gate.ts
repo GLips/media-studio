@@ -14,6 +14,7 @@ import { STAMP_GATE_TRACE_TOLERANCE, stampGateFrameDifference, stampGateFramePas
 import { STAMP_GATE_PAINTING_IDS, STAMP_GATE_TRACE_ORDERS, stampGatePainting, stampGatePaintingInputs } from '../models/stamp-gate-paintings.ts';
 import { STAMP_GATE_ANIMATION_IDS } from '../models/stamp-gate-animation.ts';
 import { STAMP_GATE_FLOW_IDS } from '../models/stamp-gate-flow.ts';
+import { STAMP_GATE_STRIPE_IDS } from '../models/stamp-gate-stripe.ts';
 import { STAMP_GATE_WASH_IDS, type StampGateWashCheck } from '../models/stamp-gate-washes.ts';
 import { readStampGateBaseline, stampGateFrame, stampGateInputsHash, writeStampGateCandidate, type StampGateOutput } from './stamp-gate-store.ts';
 
@@ -35,8 +36,8 @@ export const stampGateBaselineIds = () => [
   ...STAMP_GATE_PAINTING_IDS.map((id) => `painting/${id}`),
 ];
 
-/** Runs the page: every formula grid, the paintings named, the trace, and the wash, animation and flow cases named. */
-async function collectStampGate(paintings: readonly string[], washes: readonly string[] = [], animations: readonly string[] = [], flows: readonly string[] = []) {
+/** Runs the page: every formula grid, the paintings named, the trace, and the wash, animation, flow and stripe cases named. */
+async function collectStampGate(paintings: readonly string[], washes: readonly string[] = [], animations: readonly string[] = [], flows: readonly string[] = [], stripes: readonly string[] = []) {
   const grids = stampGateFormulaGrids();
   const gates = paintings.map((id) => ({ id, gate: stampGatePainting(id) }));
   // The page loads no files; it's served its own folder only because the page server serves one.
@@ -56,7 +57,8 @@ async function collectStampGate(paintings: readonly string[], washes: readonly s
     const washChecks = await washes.reduce<Promise<StampGateWashCheck[]>>(async (done, id) => [...await done, ...await call<StampGateWashCheck[]>('checkStampGateWash', id)], Promise.resolve([]));
     const animationChecks = await animations.reduce<Promise<StampGateWashCheck[]>>(async (done, id) => [...await done, await call<StampGateWashCheck>('checkStampGateAnimation', id)], Promise.resolve([]));
     const flowChecks = await flows.reduce<Promise<StampGateWashCheck[]>>(async (done, id) => [...await done, await call<StampGateWashCheck>('checkStampGateFlowCase', id)], Promise.resolve([]));
-    return { adapter, grids: grids.map((grid, g) => ({ grid, gpu: Float32Array.from(values[g]) })), frames, trace, washChecks: [...washChecks, ...animationChecks, ...flowChecks] };
+    const stripeChecks = await stripes.reduce<Promise<StampGateWashCheck[]>>(async (done, id) => [...await done, await call<StampGateWashCheck>('checkStampGateStripeCase', id)], Promise.resolve([]));
+    return { adapter, grids: grids.map((grid, g) => ({ grid, gpu: Float32Array.from(values[g]) })), frames, trace, washChecks: [...washChecks, ...animationChecks, ...flowChecks, ...stripeChecks] };
   });
 }
 
@@ -121,9 +123,9 @@ function checkTrace({ trace }: Collected): StampGateCheck {
   };
 }
 
-/** The whole gate against the baselines in `store`: every formula, twin, property grid, painting, the trace, every wash, animation and flow case. */
+/** The whole gate against the baselines in `store`: every formula, twin, property grid, painting, the trace, every wash, animation, flow and stripe case. */
 export async function runStampGate(store: string): Promise<StampGateCheck[]> {
-  const collected = await collectStampGate(STAMP_GATE_PAINTING_IDS, STAMP_GATE_WASH_IDS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_FLOW_IDS);
+  const collected = await collectStampGate(STAMP_GATE_PAINTING_IDS, STAMP_GATE_WASH_IDS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_FLOW_IDS, STAMP_GATE_STRIPE_IDS);
   return [
     ...formulaSubjects(collected).map((subject) => checkStampGateSubject(store, subject, collected.adapter)),
     ...checkTwins(collected),
