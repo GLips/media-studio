@@ -11,7 +11,7 @@
 import { seededRandom } from '#lib/picture/motion/models/random.ts';
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { placeStrokeStamps, type PlacedStamp, type StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
-import { rowSpans, type StampFillStrokes } from './stamp-fill-strokes.ts';
+import { rowSpans, type StampFillReach, type StampFillStrokes } from './stamp-fill-strokes.ts';
 import {
   stampDistanceGrid, stampGridAt, stampGridContours, stampGridLocalMax, stampPolygonBox, stampRegionPolygon, type StampBox, type StampGrid, type StampPoint, type StampRegion,
 } from './stamp-region.ts';
@@ -126,9 +126,11 @@ export const STAMP_FLOOD_FRONT_SHARE_WGSL = /* wgsl */ `fn floodFrontShare(p: ve
 
 /**
  * How a fill lays its paint. `flood`: a converged body under the brush's edge (placeStampFlood), as wet paint floods a
- * shape. `strokes`: real strokes of the brush in a pattern, as a crayon or a pencil fills one (stampFillStrokePath).
+ * shape; reaching `{ past }`, over the region grown that many diameters (stampGrownPolygon), so a `within` cuts it
+ * solid to its own edge. `strokes`: real strokes of the brush in a pattern, as a crayon or a pencil fills one
+ * (stampFillStrokePath).
  */
-export type StampFillApplication = { kind: 'flood' } | ({ kind: 'strokes' } & StampFillStrokes);
+export type StampFillApplication = { kind: 'flood'; reach?: StampFillReach } | ({ kind: 'strokes' } & StampFillStrokes);
 
 /**
  * Rows `step` apart across `polygon` along `angle`, each split into runs by `spans` (in the rows' frame, where each

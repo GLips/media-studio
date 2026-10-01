@@ -30,11 +30,17 @@ export type StampFillPattern =
   | ({ kind: 'guided' } & StampFillGuides);
 
 /**
+ * A curve an author draws for marks to follow, `id` unique among its fellows: what its marks are keyed by, so adding
+ * or reordering guides leaves the others' marks where they were.
+ */
+export type StampGuide = { id: string; path: readonly StampPoint[] };
+
+/**
  * A guided fill's curves: cross-sections in order across the shape, all running the same way, each from outside the
  * region to outside it again, so every mark spans it. Marks are blended between each guide and the next by arc
- * length, `spacing` apart where the pair lie furthest apart. Crossing or branching guides aren't matched up.
+ * length, `spacing` apart where the pair lie furthest apart, keyed by the pair's IDs. Crossing guides aren't matched.
  */
-export type StampFillGuides = { guides: readonly (readonly StampPoint[])[] };
+export type StampFillGuides = { guides: readonly StampGuide[] };
 
 /**
  * A strokes fill. `spacing`: diameters between rows, centre to centre (the pattern's own when left out), past 1
@@ -351,33 +357,45 @@ function guidedMarks(room: StrokeRoom, guides: StampFillGuides['guides'], diamet
   checkGuides(room.polygon, guides);
   const marks: LaidMark[] = [];
   for (let g = 0; g + 1 < guides.length; g++) {
-    const arcs = [arcLengths(guides[g]), arcLengths(guides[g + 1])];
+    const pair = `${guides[g].id}~${guides[g + 1].id}`, [from, to] = [guides[g].path, guides[g + 1].path];
+    const arcs = [arcLengths(from), arcLengths(to)];
     const samples = Math.min(GUIDE_POINTS, Math.max(2, Math.ceil(Math.max(arcs[0].at(-1)!, arcs[1].at(-1)!) / (diameter / 4)) + 1));
-    const a = resampledGuide(guides[g], arcs[0], samples), b = resampledGuide(guides[g + 1], arcs[1], samples);
+    const a = resampledGuide(from, arcs[0], samples), b = resampledGuide(to, arcs[1], samples);
     const widest = a.reduce((most, p, i) => Math.max(most, Math.hypot(b[i].x - p.x, b[i].y - p.y)), 0);
     const count = Math.max(1, Math.ceil(widest / step));
     // The pair's second guide is the next pair's first; only the last pair lays it.
     for (let k = 0; k <= (g + 2 === guides.length ? count : count - 1); k++) {
-      const share = k / count + (k > 0 && k < count ? ((seededRandom(`${seed}|guided ${g}.${k}`)() * 2 - 1) * 0.25 * variation) / count : 0);
+      const share = k / count + (k > 0 && k < count ? ((seededRandom(`${seed}|guided ${pair}.${k}`)() * 2 - 1) * 0.25 * variation) / count : 0);
       const curve = a.map((p, i) => ({ x: lerp(p.x, b[i].x, share), y: lerp(p.y, b[i].y, share) }));
-      insideRuns(extendedEnds(curve, -room.inset), room).forEach((run, piece) => marks.push({ key: `guided ${g}.${k}.${piece}`, patch: g, path: run }));
+      insideRuns(extendedEnds(curve, -room.inset), room).forEach((run, piece) => marks.push({ key: `guided ${pair}.${k}.${piece}`, patch: g, path: run }));
     }
   }
   return marks;
 }
 
-/** Refuses guides that can't lay a fill: fewer than two, a guide of one point, one ending inside the shape, or one running against the last. */
+/** Refuses guides that can't lay a fill: fewer than two, one ending inside the shape, or one running against the last. */
 function checkGuides(polygon: readonly StampPoint[], guides: StampFillGuides['guides']) {
   if (guides.length < 2) throw new Error(`stamp paint: a guided fill needs at least two guides to lay marks between, not ${guides.length}`);
-  guides.forEach((guide, g) => {
-    if (guide.length < 2 || !guide.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y))) throw new Error(`stamp paint: a guided fill's guide ${g} needs at least two finite points`);
-    for (const end of [guide[0], guide.at(-1)!]) {
-      if (stampPolygonDistance(polygon, end.x, end.y) > 0) throw new Error(`stamp paint: a guided fill's guide ${g} ends inside the region at ${end.x}, ${end.y}; guides span the shape, from outside it to outside it`);
+  stampCheckedGuides(guides, 'a guided fill');
+  guides.forEach(({ id, path }, g) => {
+    for (const end of [path[0], path.at(-1)!]) {
+      if (stampPolygonDistance(polygon, end.x, end.y) > 0) throw new Error(`stamp paint: a guided fill's guide ${id} ends inside the region at ${end.x}, ${end.y}; guides span the shape, from outside it to outside it`);
     }
     if (g === 0) return;
-    const [ax, ay] = guideWay(guides[g - 1]), [bx, by] = guideWay(guide);
-    if (ax * bx + ay * by <= 0) throw new Error(`stamp paint: a guided fill's guide ${g} runs against guide ${g - 1}; guides all run the same way`);
+    const [ax, ay] = guideWay(guides[g - 1].path), [bx, by] = guideWay(path);
+    if (ax * bx + ay * by <= 0) throw new Error(`stamp paint: a guided fill's guide ${id} runs against guide ${guides[g - 1].id}; guides all run the same way`);
   });
+}
+
+/** `guides` refused, for `what`, unless each has a unique ID (non-empty, no "|", "/" or "~") and two finite points or more. */
+export function stampCheckedGuides(guides: readonly StampGuide[], what: string): readonly StampGuide[] {
+  const ids = new Set<string>();
+  for (const { id, path } of guides) {
+    if (!id || /[|/~]/.test(id) || ids.has(id)) throw new Error(`stamp paint: ${what}'s guide ${JSON.stringify(id)} needs an ID of its own: non-empty, unique, no "|", "/" or "~"`);
+    ids.add(id);
+    if (path.length < 2 || !path.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y))) throw new Error(`stamp paint: ${what}'s guide ${id} needs at least two finite points`);
+  }
+  return guides;
 }
 
 /** The way `guide` runs, from its first point to its last. */

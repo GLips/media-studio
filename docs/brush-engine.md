@@ -35,8 +35,10 @@ adjustment, pooling and accumulation, and their WGSL: a brush's modes and the ma
 
 **painting** is the engine. `stamp-paint-recipe.ts` writes the painting a scene paints against its environment (its
 paper and mixing; a resolved style is one): groups, each of passages, each a tree of applications
-(`stamp-paint-passage.ts`: `p.apply`, `p.each`, the techniques `defineStampTechnique` makes) over the operations
-that write deposits. Every operation is checked against its medium's capabilities as it's written, so a recipe a
+(`stamp-paint-passage.ts`: `p.apply`, `p.each`, the techniques `defineStampTechnique` makes, the wet touches in
+`stamp-wet-techniques.ts` and the catalogue in `stamp-technique-catalogue.ts`) over the operations that write
+deposits. A technique's handle carries its footprint (the regions, paths and places its deposits went, as
+written); its defaults layer the style's (`StampPaintEnvironment.techniques`) over its own over its passage's. Every operation is checked against its medium's capabilities as it's written, so a recipe a
 medium can't paint never compiles. Timing is a score (`stamp-paint-score.ts`): an exact `reveal` or a share of its
 nearest scored ancestor's by weight, in sequence, together or overlapping; none at all is paint there from the start.
 `stamp-paint-recipe-types.ts` holds what it writes, and `stamp-paint-recipe-compile.ts` checks it and places its
@@ -56,8 +58,9 @@ pattern (`StampFillPattern`, each an object by `kind`) makes marks, `stampFillMa
 hand lays it in, and `stampFillStrokePath` joins them, lifting between, into one stroke deposit. Rows (hatch, back and
 forth, zigzag, shading, scribble) share one hand's random walk, so their keys are their order; a `contour`'s rings
 (inset level sets of the region's distance grid, closed) and a `guided` fill's marks (blended by arc length between
-consecutive authored cross-sections) draw from their own keys, so adding a guide leaves the other pairs' marks where
-they were. Every mark ends where its edge meets the outline unless its `reach` runs it past (`{ past }`, diameters
+consecutive authored cross-sections, keyed by the pair's guide IDs) draw from their own keys, so adding a guide
+anywhere leaves the other pairs' marks where they were. A flood's `reach` lays the region grown by its distance grid
+(`stampGrownPolygon`), not scaled. Every mark ends where its edge meets the outline unless its `reach` runs it past (`{ past }`, diameters
 its centres may lie outside: rows run out across and along the shape, guided marks' ends on past the outline, a
 contour's first ring out there), which only a clip (`clipTo`, `within`) trims. `stamp-form.ts` is a rounded form's
 guides (`stampRoundedForm`): over an ellipsoid, given or fitted to the outline by its moments (an artistic assumption, its depth the shorter radius), Lambert's law gives the shade's
@@ -71,6 +74,13 @@ The renderer works out each state of the fluid and each `within` once, as croppe
 the same coverage per sample (`stampAreaCoverageAt`, the GPU's twin), scanning an edge narrower than half a sample
 hard. A group's `standsBefore` compiles into one more mask over the fluid of each deposit of the groups it names,
 last, so it joins their fluid by max and none of their unmasks lifts it; a knockout's fluid is left alone.
+A `within` may treat named stretches of its outline (`StampWithin.boundaries`, `stamp-area-boundaries.ts`): `keep`,
+`feather` (coverage falls from full `reach` px inside to none at the outline) or `merge` (the edge opens `reach` px
+outward, and the technique laying the shape lays water along it in the same history). A treatment holds where a
+point's nearest piece of outline lies on its stretch and fades over its reach past the stretch's ends, so stretches
+meet at a point without a notch; two running along each other treated differently are refused. Each `within` is
+intersected with its ancestors', so a child's merge never opens an ancestor's cut. `boundaryShift` is the WGSL twin of
+`stampBoundaryShift`, held by the gate's `areaCoverage boundaries` grid.
 
 **Brushed masks.** Fluid can be brushed on, `mask(id, { marks })`, and a group can lay wax, `resist(id, { marks,
 amount })` (`stamp-brushed-mask.ts`). A mark is placed from its key by the one path paint is (`placeStampDeposit`),

@@ -64,8 +64,8 @@ async function collectStampGate(
     const cases = <R>(name: string, ids: readonly string[]) => Promise.all(ids.map((id) => call<R | R[]>(name, id))).then((checks) => checks.flatMap((check) => check));
     const [adapter, values, frames, trace, ...checks] = await Promise.all([
       call<string>('stampGateAdapter'),
-      call<number[][]>('runStampGateFormulas', grids.map(({ call: wgsl, width, rows, points, grid }) => ({
-        call: wgsl, width, rows: Array.from(rows), ...(points && { points: Array.from(points) }), ...(grid && { grid: Array.from(grid) }),
+      call<number[][]>('runStampGateFormulas', grids.map(({ call: wgsl, width, rows, points, grid, boundaries }) => ({
+        call: wgsl, width, rows: Array.from(rows), ...(points && { points: Array.from(points) }), ...(grid && { grid: Array.from(grid) }), ...(boundaries && { boundaries: Array.from(boundaries) }),
       }))),
       Promise.all(gates.map(async ({ id, gate }): Promise<StampGateSubject> => {
         const rgb = Buffer.from(await call<string>('paintStampGate', id), 'base64');

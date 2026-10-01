@@ -44,8 +44,16 @@ Everything is from `#studio`.
     shading that can't leave the silhouette. `within: { region, edge?, inset? }` keeps it inside an area (a
     reflection in its water): `edge` as masking fluid's, a ragged one breaking the cut line of a padded wash
     (seeded by the passage's ID; keep its amount under the brush's radius); `inset` px moves the edge inward.
-    `defaults: { brush, well, size }` serve any operation that doesn't say; `area` is what a fill with no `region`
-    covers.
+    `boundaries: { ridge: { path, treatment: 'keep' }, foot: { path, treatment: 'merge', reach: 10 } }` treats
+    named stretches of the outline (their points on it): `feather` fades the paint over `reach` px inside, `merge`
+    opens the edge `reach` px for the technique's water to carry wet paint out (wet passages only). Stretches meet
+    at points; overlapping ones treated differently throw.
+    `defaults: { brush, well, size, wells }` serve any operation that doesn't say (`wells` by role, `lit`, `shade`,
+    for techniques that ask by role; a missing role is refused, never made from `well`); a technique's defaults (the
+    style's, `environment.techniques[name]`, then its own) come before the passage's. `area` is what a fill with no
+    `region` covers. `strict: true` fails the render where a condition judged paper with no water or a wet effect
+    won't act (the wet report), instead of warning. A raw op's `escape: 'why'` marks it as reaching past the
+    techniques, for the report to count; a technique's own ops can't.
   - **Timing**: an operation's `reveal: { at, over }` (seconds) is exactly when it's drawn. Give a passage or a
     `p.apply(id, { reveal, children }, (q) => …)` a reveal instead and its operations share it by `weight` (1 each),
     `children: 'sequence'` (the default), `'together'` or `{ overlap: 2 }`. With no reveal anywhere above it, paint
@@ -55,7 +63,8 @@ Everything is from `#studio`.
     - `{ kind: 'flood' }`: solid inside, the brush's own edge at the outline, however small a spike. Outside a wash its
       paper is dry, so wet paint stops there hard, keeping the tip's broken outline (a dry-media brush keeps its tip's
       edge); for a soft edge, flood it in a wash into wetted paper (`preparation`), or in flat colour, which has no
-      washes, fill with strokes. It costs what its edge does, not its area.
+      washes, fill with strokes. It costs what its edge does, not its area. `reach: { past }` floods the region grown
+      by `past` diameters all round (a notch narrows, the shape isn't scaled), for a wash that runs past a clip.
     - `{ kind: 'strokes', pattern, spacing?, variation?, hand?, reach? }`: real strokes of the brush, the marks
       and the paper between them showing. `pattern` is an object by `kind`: `'shading'`, `'zigzag'`, `'backAndForth'`,
       `'hatch'`, `'crossHatch'`, `'scribble'`, `'contour'` or `'guided'`; `spacing` is diameters between rows (over 1
@@ -65,8 +74,9 @@ Everything is from `#studio`.
       outline. It costs what its strokes do.
     - `{ kind: 'contour' }` rings the shape in closed loops, outline first, each `spacing` inside the last.
       `{ kind: 'guided', guides }` lays marks that wrap round a form, as cross-contour hatching does: `guides` are a
-      few curves across the shape, in order, all running the same way, each starting and ending outside it; marks
-      are blended between each guide and the next. Crossing or branching guides aren't matched: split the passage.
+      few curves across the shape (`{ id, path }`, IDs unique), in order, all running the same way, each starting and
+      ending outside it; marks are blended between each guide and the next and keyed by the pair's IDs, so adding a
+      guide anywhere moves no other pair's marks. Crossing or branching guides aren't matched: split the passage.
     - Its marks stay inside the outline. `reach: { past }` runs them past it: their centres may lie up to `past`
       diameters outside (rows run out across and along the shape, guided marks' ends run on, a contour's first ring
       lies out there). `{ past: 0 }` takes their middles to the outline, a texture in a clipped passage over its
@@ -137,11 +147,21 @@ Everything is from `#studio`.
     recipe is written, naming itself.
   - **Colour charged into a wet wash**: `stampCharge(p, id, { placement, touches, well: { paint: set }, brush,
     size: [min, max], length: [min, max], angle?, when?, reveal })` lays `touches` short swelling strokes, each
-    loaded from a weighted set (`{ kind: 'set', entries: [{ id, material, weight }] }`), so neighbours differ.
-    `placement` is `{ kind: 'along', path, spread }` (down a slope, a shadow side, a colour passage) or
-    `{ kind: 'area', region, weight? }`; prefer a path or a weighted area to an even scatter, which reads as
+    loaded from a weighted set (`stampMaterialSet({ blue: material, rose: { material, weight: 2 } })`, checked as
+    written), so neighbours differ. `placement` is `{ kind: 'along', path, spread, weight? }` (down a slope, a shadow
+    side, a colour passage) or `{ kind: 'area', region, weight? }`, a weight field 0..1 read where each mark lands; prefer a path or a weighted area to an even scatter, which reads as
     ornament. `when: 'damp'` waits once, until the paper under the touches has lost its shine. In the watercolor
     style, `brush` is `brushes.charge`.
+  - **The catalogue** (`stamp-technique-catalogue.ts`), each returning `{ application, deposits, footprint }` plus
+    its own geometry: `stampGradedWash(p, id, { from, to, along: [a, b] } | { well, load: { along, from, to } },
+    region?, reach?, variety? })`, a continuous grade between single materials (a set is refused), flooded;
+    `stampGuidedMarks(p, id, { guides: [{ id, path }], perGuide, length, size, well, spread?, weight?, lean: {
+    toward, share }, hand? })`, marks along guides (a pine's tiers), turned toward an absolute way; `stampChargedForm(p,
+    id, { model, light, wells: { lit, half?, shade, core, undercut? }, core?, undercut? })`, a body in the lit well
+    with half and shade charged in when shiny, the model an ellipsoid (derived shade and core) or `faces` the caller
+    drew, each with a `facing`, so moving `light` relights them; `stampBlot(p, id, { shapes: [{ id, region }],
+    repeat?, irregular? })`, a tissue pressed when damp, crumpled afresh each press. A within's merged stretches are
+    softened by the technique laying the shape.
   - **A backrun on purpose**: `stampBackrun(p, id, { along, brush, size, reveal })` lays clean water along a
     junction you choose once the paper under it is damp. Both sides must be in the same passage: passages share no
     water.

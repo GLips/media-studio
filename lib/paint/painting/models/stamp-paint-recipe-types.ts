@@ -16,7 +16,7 @@ import type { StampFillApplication } from './stamp-fill.ts';
 import type { StampPaintField } from './stamp-paint-field.ts';
 import type { StampRecipePaint, StampRecipeWashAction } from './stamp-paint-action.ts';
 import type { StampRegion } from './stamp-region.ts';
-import type { StampArea, StampStandsBefore } from './stamp-area.ts';
+import type { StampArea, StampStandsBefore, StampWithin } from './stamp-area.ts';
 import type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from './stamp-group-motion.ts';
 import type { CompiledStampMaterialKeys, StampMaterialKeys } from './stamp-material-keys.ts';
 import type { StampMaterialSet } from './stamp-material-set.ts';
@@ -40,11 +40,11 @@ export type StampPaintPaper = {
 };
 
 /**
- * What a recipe is written against: the paper, how its paint mixes (the medium whose capabilities it's checked
- * against), and the sheet a style's named sizes are measured on. A resolved style is one (ResolvedStampPaintStyle),
- * as is any fixture holding the three.
+ * What a recipe is written against: the paper, how its paint mixes (the medium it's checked against), the sheet
+ * named sizes are measured on, and a style's defaults per technique by name (a graded wash's brush), beneath a
+ * call's own. A resolved style is one (ResolvedStampPaintStyle), as is any fixture holding the first two.
  */
-export type StampPaintEnvironment = { paper: StampPaintPaper; mixing: StampPaintMixing; sheet?: StampSheet };
+export type StampPaintEnvironment = { paper: StampPaintPaper; mixing: StampPaintMixing; sheet?: StampSheet; techniques?: { readonly [technique: string]: StampPassageDefaults } };
 
 /** A material that may change over the scene: one throughout, or keyed over scene time (stamp-material-keys.ts); compiled, its keys checked. */
 export type StampKeyedMaterial = PaintMaterial | StampMaterialKeys<PaintMaterial>;
@@ -64,13 +64,20 @@ export type StampPaintMaterial = StampKeyedMaterial | StampPaintField<StampKeyed
  */
 export type StampWell = { paint: StampPaintMaterial | StampMaterialSet; water?: number };
 
-/** A passage's defaults, for any operation that doesn't say: its own, then a technique's, then these. */
-export type StampPassageDefaults = { brush?: StampBrush; well?: StampWell; size?: StampSize };
+/**
+ * Defaults for any operation that doesn't say: its own, then its technique's (the style's for it, then the
+ * technique's built-in), then its passage's. `wells` by role (`lit`, `shade`) for techniques that ask by role: a
+ * missing role is refused, never filled from `well`.
+ */
+export type StampPassageDefaults = { brush?: StampBrush; well?: StampWell; size?: StampSize; wells?: { readonly [role: string]: StampWell } };
 
 /** What every application takes: its place in the score, and an area its deposits land within besides its passage's. */
 export type StampApplicationOptions = StampScoreOptions & {
-  /** Narrows where this application's deposits land, within its passage's `within` and its enclosing applications'. */
-  within?: StampArea;
+  /**
+   * Narrows where this application's deposits land, within its passage's `within` and its enclosing applications':
+   * a stretch it merges opens its own edge only, never theirs.
+   */
+  within?: StampWithin;
 };
 
 /**
@@ -120,7 +127,11 @@ export type StampDepositGeometry = ({ kind: 'stroke' } & StampStrokeGeometry) | 
 /** A geometry as compiled reads it: a fill's region resolved. */
 export type StampResolvedGeometry = Exclude<StampDepositGeometry, { kind: 'fill' }> | ({ kind: 'fill'; region: StampRegion } & StampFillGeometry);
 
-type StampOperation = StampApplicationOptions & StampConditioned & StampToolOptions;
+/**
+ * `escape`: why an author reached past the techniques for a raw op here, a reason the paint report counts. Inside a
+ * technique it's refused: a technique's own ops are no one's escape.
+ */
+type StampOperation = StampApplicationOptions & StampConditioned & StampToolOptions & { escape?: string };
 export type StampStrokeOptions = StampOperation & StampLoadOptions & StampStrokeGeometry;
 export type StampPlacementOptions = StampOperation & StampLoadOptions & StampPlacementGeometry;
 export type StampFillOptions = StampOperation & StampLoadOptions & StampFillGeometry;
@@ -135,7 +146,7 @@ export type StampLiftOptions = StampOperation & StampDepositGeometry & { strengt
  * Paint from a mark (StampMark): its brush, size and geometry are the mark's, and it's placed from the mark's key, so
  * whatever else is built from that mark lands the same stamps. Defaults never change its footprint.
  */
-export type StampMarkPaintOptions = StampApplicationOptions & StampConditioned & Omit<StampLoadOptions, 'burnish'> & { mark: StampMark; opacity?: number };
+export type StampMarkPaintOptions = StampApplicationOptions & StampConditioned & Omit<StampLoadOptions, 'burnish'> & { mark: StampMark; opacity?: number; escape?: string };
 
 /**
  * Masking fluid over an area (StampArea), or brushed on by `marks`: what their brush tips cover, grain and all, as the
@@ -185,8 +196,11 @@ export type StampPreparation = 'area' | { region: StampRegion; wetness?: StampPa
 export type StampPassageOptions = {
   /** What a fill with no region of its own covers, and a preparation of `'area'`. */
   area?: StampRegion;
-  /** Where its deposits may land (StampArea): a reflection kept to its water; a ragged edge there seeded by its ID. */
-  within?: StampArea;
+  /**
+   * Where its deposits may land (StampWithin): a reflection kept to its water; a ragged edge there seeded by its ID;
+   * named stretches kept, feathered, or merged (which needs its wet history).
+   */
+  within?: StampWithin;
   /**
    * An earlier passage of its group whose paint clips it, as a Procreate clipping mask clips to the layer under it:
    * texture inside a silhouette. That passage is itself unclipped, and only passages clipped to it come between.
@@ -204,6 +218,11 @@ export type StampPassageOptions = {
    * landing or rim, as line work or paint that mustn't gather wet edges does. Left out, the medium's.
    */
   wetHistory?: false;
+  /**
+   * Holds its wet history to what it asks: rendering it fails where a condition judges paper with no water to wait
+   * on, or a wet effect has no touch the engine will act on (stamp-wet-report.ts), instead of warning.
+   */
+  strict?: boolean;
 };
 
 /** A knockout's water, wetting the paint behind the group as a passage's `preparation` wets its paper, for a lift. */
@@ -277,7 +296,7 @@ export type StampPaintRecipeMask = {
 /** A group's wax as it stands: its latest resist, over those before it; null for none. */
 export type StampPaintRecipeResist = { path: readonly string[]; settings: StampResistSettings; under: StampPaintRecipeResist } | null;
 /** An application's `within` as a deposit lands under it: its area, its ragged edge seeded by `seed`. */
-export type StampDepositWithin = { area: StampArea; seed: string };
+export type StampDepositWithin = { area: StampWithin; seed: string };
 /** A deposit as written: compileDeposit checks it and places its stamps. */
 export type StampPaintRecipeDeposit<A extends StampRecipeWashAction = StampRecipeWashAction> = {
   kind: 'deposit';
@@ -298,13 +317,17 @@ export type StampPaintRecipeDeposit<A extends StampRecipeWashAction = StampRecip
   within?: readonly StampDepositWithin[];
   /** The mark it's built from, whose key places it; absent for a deposit placed from its own ID. */
   mark?: StampMark;
+  /** Its raw op's reason for escaping the techniques; absent for any other. */
+  escape?: string;
 };
 export type StampPaintRecipeStep = StampPaintRecipeDeposit | StampWrittenWait;
-/** A passage as written: without wet history all paint (`wash` null), with it a schedule of deposits and waits. */
-/** `resist`: its group's wax as it began, which its preparation's water doesn't wet; absent for none. */
-export type StampPaintRecipePass = { id: string; clipTo?: string; within?: StampArea; resist?: NonNullable<StampPaintRecipeResist> } & (
+/**
+ * A passage as written: without wet history all paint (`wash` null), with it a schedule of deposits and waits.
+ * `resist`: its group's wax as it began, which its preparation's water doesn't wet; absent for none.
+ */
+export type StampPaintRecipePass = { id: string; clipTo?: string; within?: StampWithin; resist?: NonNullable<StampPaintRecipeResist> } & (
   | { wash: null; steps: readonly StampPaintRecipeDeposit<StampRecipePaint>[] }
-  | { wash: { preparation?: { region: StampRegion; wetness?: StampPaintField<number> }; rim?: number; knockout: boolean }; steps: readonly StampPaintRecipeStep[] }
+  | { wash: { preparation?: { region: StampRegion; wetness?: StampPaintField<number> }; rim?: number; knockout: boolean; strict?: true }; steps: readonly StampPaintRecipeStep[] }
 );
 export type StampPaintRecipeGroup = { id: string; options: StampGroupOptions; passes: readonly StampPaintRecipePass[] };
 

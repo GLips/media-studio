@@ -11,12 +11,12 @@ import { stampDryingRimSizing } from './stamp-wet-rim.ts';
 import { stampLandingCover, stampWaitDeposits, type StampWashWaitRecord, type StampWetness, type StampWetRange } from './stamp-wetness.ts';
 
 /**
- * A wait: what it waits for, what it judged (the whole passage, the deposits a condition stands before, a region), the effect that asked
- * for it, the painting seconds it spans and the paper it judged as it began and ended (StampWashWaitRecord).
- * `alreadyDrier`: a shiny or damp wait whose paper was already past its target, so it took no time.
+ * A wait: what it waits for and judged (the passage, a condition's deposits, a region), the effect that asked, its
+ * painting seconds and the paper it judged (StampWashWaitRecord). `alreadyDrier`: a condition's paper was already
+ * past its target. `attained`: false where a condition's paper held no water, so it never was shiny or damp.
  */
 export type StampWetReportWait = Omit<StampWashWaitRecord, 'step'> & {
-  until: StampWashWait; under: 'wash' | 'deposits' | 'region'; effect: StampWaitEffect | null; seconds: number; alreadyDrier: boolean;
+  until: StampWashWait; under: 'wash' | 'deposits' | 'region'; effect: StampWaitEffect | null; seconds: number; alreadyDrier: boolean; attained: boolean;
 };
 
 /**
@@ -41,7 +41,8 @@ export type StampWetReportEffect = { kind: StampWetEffectKind; id: string; actin
  */
 export type StampWetReportDrying = { closes: 'wait' | 'end'; at: number; deposits: number; wetShare: number; band: number; rim: number };
 
-export type StampWetReportWash = { id: string; duration: number; waits: readonly StampWetReportWait[]; effects: readonly StampWetReportEffect[]; dryings: readonly StampWetReportDrying[] };
+/** A wash's report; `strict` when its passage holds it to it (stampWetReportStrictFailures). */
+export type StampWetReportWash = { id: string; duration: number; waits: readonly StampWetReportWait[]; effects: readonly StampWetReportEffect[]; dryings: readonly StampWetReportDrying[]; strict: boolean };
 export type StampWetReport = { washes: readonly StampWetReportWash[] };
 
 /** Every wash of `painting`, as `wetness` (compileStampWetness's, for the same painting) lands it, each in its group's medium. */
@@ -55,10 +56,14 @@ export function stampWetReport(painting: CompiledStampPaint, wetness: StampWetne
 
 function washReport(pass: Extract<CompiledStampPass, { kind: 'wash' }>, wetness: StampWetness): StampWetReportWash {
   const { schedule } = pass.wash, record = wetness.washes.get(pass)!, { duration } = record;
-  const waits = record.waits.map(({ step: { until, under, effect }, ...judged }): StampWetReportWait => ({
-    until, under: underKind(under), effect: effect ?? null, ...judged,
-    seconds: judged.to - judged.from, alreadyDrier: (until === 'shiny' || until === 'damp') && judged.to === judged.from && judged.points > 0,
-  }));
+  const waits = record.waits.map(({ step: { until, under, effect }, ...judged }): StampWetReportWait => {
+    const condition = until === 'shiny' || until === 'damp';
+    return {
+      until, under: underKind(under), effect: effect ?? null, ...judged,
+      seconds: judged.to - judged.from, alreadyDrier: condition && judged.to === judged.from && judged.points > 0,
+      attained: !condition || (judged.points > 0 && judged.wetness.before.most > 0),
+    };
+  });
   const effects = schedule.flatMap((step, index) => step.kind === 'wait' && step.effect
     ? [effectReport(step.effect, stampWaitDeposits(schedule, index).map((deposit) => touchReport(deposit, pass, wetness)))]
     : []);
@@ -68,7 +73,7 @@ function washReport(pass: Extract<CompiledStampPass, { kind: 'wash' }>, wetness:
     const { closes, at, deposits, rim } = drying;
     return [{ closes: closes === 'end' ? 'end' : 'wait', at, deposits: deposits.length, wetShare: sizing.wetShare, band: sizing.band, rim }];
   });
-  return { id: pass.id, duration, waits, effects, dryings };
+  return { id: pass.id, duration, waits, effects, dryings, strict: pass.wash.strict === true };
 }
 
 function underKind(under: CompiledStampWashWait['under']): StampWetReportWait['under'] {
@@ -110,6 +115,16 @@ function effectReport({ kind, id }: StampWaitEffect, touches: readonly StampWetR
 export function stampWetReportWarnings(report: StampWetReport): string[] {
   const verb: Record<StampWetEffectKind, string> = { bloom: "won't bloom", backrun: "won't backrun", charge: "won't mingle" };
   return report.washes.flatMap((wash) => wash.effects.filter((effect) => effect.acting === 'none').map((effect) => `stamp paint: ${effect.id} (${effect.kind}) ${verb[effect.kind]}: ${effect.reason}`));
+}
+
+/**
+ * What fails a strict wash (StampPassageOptions' `strict`), a line each: a condition that judged paper with no water,
+ * or an effect none of whose touches the engine will act on. Only strict washes; none for a report without them.
+ */
+export function stampWetReportStrictFailures(report: StampWetReport): string[] {
+  return report.washes.filter(({ strict }) => strict).flatMap((wash) => wash.waits
+    .flatMap(({ until, effect, attained }) => (attained || typeof until !== 'string' ? [] : [`stamp paint: ${wash.id}'s wait until ${until}${effect ? ` (for ${effect.id})` : ''} judged paper with no water: it was never ${until}`]))
+    .concat(stampWetReportWarnings({ washes: [wash] })));
 }
 
 /** Throws, listing them, when any effect `report` holds certainly won't act (stampWetReportWarnings): for a test to hold a painting to its effects. */

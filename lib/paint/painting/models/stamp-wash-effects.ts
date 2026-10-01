@@ -39,6 +39,8 @@ export type CompiledStampWash = {
   preparation: { polygon: readonly StampPoint[]; wetness: StampSeededPaintField<number>; held?: CompiledStampMask } | null;
   schedule: readonly CompiledStampWashStep[];
   rim?: number;
+  /** Its passage's `strict`: the wet report's failures in it fail the render. Absent when it only warns. */
+  strict?: true;
 };
 /**
  * A wait in a schedule: until `until`, judging the whole passage's wettest paper, the paper under the deposits it

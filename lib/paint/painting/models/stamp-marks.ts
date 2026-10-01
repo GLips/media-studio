@@ -14,12 +14,13 @@ import { stampPolygonBox, stampPolygonDistance, stampRegionPolygon, type StampPo
 import type { StampPlacementGeometry, StampStrokeGeometry } from './stamp-paint-recipe-types.ts';
 
 /**
- * Where scattered marks go: inside `region`, more where `weight` (0..1, 1 when left out) is higher, a noise weight
- * seeded by the scatter's key unless it names its own; or along `path`, up to `spread` px either side of it.
+ * Where scattered marks go: inside `region`, or along `path`, up to `spread` px either side of it. Either way more
+ * where `weight` (0..1, 1 when left out), read at a mark's place, is higher, a noise weight seeded by the scatter's
+ * key unless it names its own.
  */
 export type StampScatterPlacement =
   | { kind: 'area'; region: StampRegion; weight?: StampPaintField<number> }
-  | { kind: 'along'; path: readonly StampPoint[]; spread: number };
+  | { kind: 'along'; path: readonly StampPoint[]; spread: number; weight?: StampPaintField<number> };
 
 /**
  * Which way a mark runs: radians, `'along'` its path where it sits (only along one), or drawn from [min, max].
@@ -52,7 +53,7 @@ export function stampScatterMarks(placement: StampScatterPlacement, options: Sta
   const angle = options.angle ?? (placement.kind === 'along' ? 'along' : [0, Math.PI]);
   if (angle === 'along' && placement.kind !== 'along') throw new Error(`${what}: an angle 'along' an area, and only a path has a way along it`);
   if (typeof angle === 'object' && !stampScatterRanged(angle, -Infinity)) throw new Error(`${what}: an angle of [${angle.join(', ')}], and an angle range runs [min, max]`);
-  const place = placement.kind === 'area' ? areaPlacer(placement, key, what) : alongPlacer(placement, what);
+  const place = placement.kind === 'area' ? areaPlacer(placement, key, what) : alongPlacer(placement, key, what);
   return Array.from({ length: count }, (_, k) => {
     const random = seededRandom(`${key}|${k}`);
     // Size first, then place: a mark keeps its size when only where it may go changes.
@@ -66,13 +67,20 @@ export function stampScatterMarks(placement: StampScatterPlacement, options: Sta
   });
 }
 
+/** A placement's weight seeded by `key`, or null when it has none. Throws on one that can't be read as 0..1. */
+function scatterWeight(written: StampPaintField<number> | undefined, key: string, what: string) {
+  if (!written) return null;
+  const weight = stampSeededPaintField(written, key);
+  const problem = stampPaintFieldProblem(weight, (value) => (value >= 0 && value <= 1 ? null : `a weight of ${value}, outside 0..1`));
+  if (problem) throw new Error(`${what}: its weight can't be read: ${problem}`);
+  return weight;
+}
+
 /** A place inside the area, by rejection: a point of its box, kept as its weight's chance where it's inside. */
 function areaPlacer({ region, weight: written }: Extract<StampScatterPlacement, { kind: 'area' }>, key: string, what: string) {
-  const weight = written && stampSeededPaintField(written, key);
+  const weight = scatterWeight(written, key, what);
   const polygon = stampRegionPolygon(region);
   if (polygon.length < 3 || !polygon.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y))) throw new Error(`${what}: its region isn't a shape`);
-  const problem = weight && stampPaintFieldProblem(weight, (value) => (value >= 0 && value <= 1 ? null : `a weight of ${value}, outside 0..1`));
-  if (problem) throw new Error(`${what}: its weight can't be read: ${problem}`);
   const box = stampPolygonBox(polygon);
   return (random: () => number) => {
     for (let tries = 0; tries < AREA_TRIES; tries++) {
@@ -83,20 +91,32 @@ function areaPlacer({ region, weight: written }: Extract<StampScatterPlacement, 
   };
 }
 
-/** A place along the path, by arc length, and the path's heading there. */
-function alongPlacer({ path, spread }: Extract<StampScatterPlacement, { kind: 'along' }>, what: string) {
+/**
+ * A place along the path, by arc length, and the path's heading there; with a weight, kept as its chance there, by
+ * rejection. Unweighted, it draws only the place, so a weight added later leaves no other scatter's marks moved.
+ */
+function alongPlacer({ path, spread, weight: written }: Extract<StampScatterPlacement, { kind: 'along' }>, key: string, what: string) {
+  const weight = scatterWeight(written, key, what);
   const lengths = [0];
   for (let i = 1; i < path.length; i++) lengths.push(lengths[i - 1] + Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y));
   const total = lengths.at(-1) ?? 0;
   if (!(total > 0) || !Number.isFinite(total)) throw new Error(`${what}: its path has no length to scatter along`);
   if (!(spread >= 0) || !Number.isFinite(spread)) throw new Error(`${what}: a spread of ${spread} px, and a spread is finite from 0`);
-  return (random: () => number) => {
+  const placeAt = (random: () => number) => {
     const arc = random() * total, side = (random() * 2 - 1) * spread;
     let i = 1;
     while (i < path.length - 1 && lengths[i] < arc) i++;
     const a = path[i - 1], b = path[i], span = lengths[i] - lengths[i - 1], t = span > 0 ? (arc - lengths[i - 1]) / span : 0;
     const heading = Math.atan2(b.y - a.y, b.x - a.x);
     return { center: { x: a.x + (b.x - a.x) * t - Math.sin(heading) * side, y: a.y + (b.y - a.y) * t + Math.cos(heading) * side }, heading };
+  };
+  if (!weight) return placeAt;
+  return (random: () => number) => {
+    for (let tries = 0; tries < AREA_TRIES; tries++) {
+      const placed = placeAt(random);
+      if (random() < stampPaintFieldAt(weight, placed.center.x, placed.center.y)) return placed;
+    }
+    throw new Error(`${what}: no place found along its path in ${AREA_TRIES} tries; its weight is about 0 all along it`);
   };
 }
 

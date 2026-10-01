@@ -8,6 +8,20 @@ import type { StampPaintMaterial } from './stamp-paint-recipe-types.ts';
 export type StampMaterialSetEntry = { id: string; material: StampPaintMaterial; weight: number };
 export type StampMaterialSet = { kind: 'set'; entries: readonly StampMaterialSetEntry[] };
 
+/**
+ * A set of wells by ID: each a material, picked as often as the others, or a material with its own `weight`. Throws
+ * where stampMaterialSetProblem would refuse it, so a bad set fails where it's written, not where it's drawn from.
+ */
+export function stampMaterialSet(wells: { readonly [id: string]: StampPaintMaterial | { material: StampPaintMaterial; weight: number } }): StampMaterialSet {
+  const set: StampMaterialSet = {
+    kind: 'set',
+    entries: Object.entries(wells).map(([id, well]) => ('material' in well ? { id, material: well.material, weight: well.weight } : { id, material: well, weight: 1 })),
+  };
+  const problem = stampMaterialSetProblem(set);
+  if (problem) throw new Error(`stamp paint: a material set can't be drawn from: ${problem}`);
+  return set;
+}
+
 /** Why `set` can't be drawn from, or null: it needs an entry, unique IDs, finite weights from 0 and some weight in all. */
 export function stampMaterialSetProblem({ entries }: StampMaterialSet): string | null {
   if (!entries.length) return 'it has no entries';

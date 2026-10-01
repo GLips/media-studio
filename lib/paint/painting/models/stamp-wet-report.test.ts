@@ -5,7 +5,7 @@ import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/st
 import { compileStampPaintRecipe } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment, StampPassageScope } from './stamp-paint-recipe-types.ts';
-import { assertStampWetEffects, stampWetReport, stampWetReportWarnings } from './stamp-wet-report.ts';
+import { assertStampWetEffects, stampWetReport, stampWetReportStrictFailures, stampWetReportWarnings } from './stamp-wet-report.ts';
 import { compileStampWetness } from './stamp-wetness.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { stampBloom, stampCharge, stampBackrun } from './stamp-wet-techniques.ts';
@@ -32,9 +32,9 @@ const brush: StampBrush = {
 const medium = PAINT_MEDIA.watercolour;
 const sky = { kind: 'polygon' as const, points: [{ x: 40, y: 40 }, { x: 760, y: 40 }, { x: 760, y: 360 }, { x: 40, y: 360 }] };
 
-/** The wet report of one wash over a sky, painted by `body`. */
-function reported(body: (wash: StampPassageScope) => void) {
-  const painting = compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => group.passage('w', {}, (wash) => {
+/** The wet report of one wash over a sky, painted by `body`, strict if `strict`. */
+function reported(body: (wash: StampPassageScope) => void, strict?: boolean) {
+  const painting = compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => group.passage('w', { ...(strict && { strict }) }, (wash) => {
     wash.fill('sky', { brush, size: 40, application: { kind: 'flood' }, region: sky, well: { paint: { kind: 'color', color: '#4466aa' } }, reveal: { at: 0, over: 0 } });
     body(wash);
   }))));
@@ -75,11 +75,17 @@ test("an operation's condition judges the paper under its own deposits, and one 
 
 test("an effect that certainly won't act is warned of, with the bloom stage's reason, and the strict check throws", () => {
   // Dropped and charged once the sky has dried: nothing there is workable.
-  const report = reported((wash) => {
+  const late = (wash: StampPassageScope) => {
     wash.wait('set');
     stampBloom(wash, 'late', { brush, size: 50, at: [{ x: 300, y: 200 }], reveal: { at: 1, over: 0 } });
     stampCharge(wash, 'late-charge', { placement: { kind: 'area', region: sky }, touches: 3, well: { paint: { kind: 'set', entries: [{ id: 'a', material: { kind: 'color', color: '#aa4422' }, weight: 1 }] } }, brush, size: [20, 20], length: [30, 30], when: 'damp', reveal: { at: 1, over: 0.3 } });
-  });
+  };
+  const report = reported(late);
+  // A strict passage fails on them, and on the waits that judged paper with no water, which never was damp.
+  assert.deepEqual(stampWetReportStrictFailures(report), []);
+  const strict = stampWetReportStrictFailures(reported(late, true));
+  assert.equal(strict.length, 4);
+  assert.deepEqual(strict.slice(0, 2), ['g/w/late', 'g/w/late-charge'].map((id) => `stamp paint: g/w's wait until damp (for ${id}) judged paper with no water: it was never damp`));
   const warnings = stampWetReportWarnings(report);
   assert.deepEqual(warnings, [
     "stamp paint: g/w/late (bloom) won't bloom: the paint there has set (or the paper was dry)",

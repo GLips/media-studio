@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import { stampAreaCoverageAt } from './stamp-area.ts';
+import { stampAreaCoverageAt, type StampWithin } from './stamp-area.ts';
 import { stampRegionSeed } from './stamp-fill.ts';
 import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampMask } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
@@ -80,4 +80,44 @@ test('a group stands only before groups that exist, other than itself, painted b
     paint.group('later', { composite: 'glaze', opacity: 1, depth: -1 }, () => {});
     paint.group('front', { composite: 'glaze', opacity: 1, standsBefore: { groups: ['later'], shape: square(0, 0, 10, 10), overlap: 0 } }, () => {});
   })), /front stands before later, which paints after it/);
+});
+
+/** A passage within the square 0..100 whose left side is treated by `boundaries`, compiled, its within read back. */
+const treatedWithin = (boundaries: NonNullable<StampWithin['boundaries']>, environment = WET) => {
+  const painting = compileStampPaintRecipe(stampPaintRecipe(environment, (paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) =>
+    group.passage('p', { within: { region: square(0, 0, 100, 100), boundaries } }, (pass) => pass.stamps('dot', { brush, well: { paint: ochre }, size: 10, at: [{ x: 50, y: 50 }] })))));
+  return painting.groups[0].passes[0].within!;
+};
+
+test("a within's merged stretch opens its edge by its reach and a feathered one ramps inside it, each fading past its ends, the kept edge as it was", () => {
+  const within = treatedWithin({
+    top: { path: [{ x: 0, y: 0 }, { x: 0, y: 50 }], treatment: 'merge', reach: 10 },
+    foot: { path: [{ x: 0, y: 50 }, { x: 0, y: 100 }], treatment: 'feather', reach: 12 },
+    rest: { path: [{ x: 0, y: 100 }, { x: 100, y: 100 }, { x: 100, y: 0 }, { x: 0, y: 0 }], treatment: 'keep' },
+  });
+  // Merged: paint reaches 9 px past the side, halfway at its reach; nothing past it.
+  assert.equal(stampAreaCoverageAt(within, -4, 25), 1);
+  assert.ok(Math.abs(stampAreaCoverageAt(within, -10, 25) - 0.5) < 1e-9);
+  assert.equal(stampAreaCoverageAt(within, -11, 25), 0);
+  // Feathered: none at the side, half 6 px in, full from 12 px.
+  assert.equal(stampAreaCoverageAt(within, 0, 80), 0);
+  assert.ok(Math.abs(stampAreaCoverageAt(within, 6, 80) - 0.5) < 1e-9);
+  assert.equal(stampAreaCoverageAt(within, 12, 80), 1);
+  // The kept top and right sides cut as an untreated within does: half on the line.
+  assert.ok(Math.abs(stampAreaCoverageAt(within, 50, 0) - 0.5) < 1e-9);
+  // Along the kept top side, 3 px above it, the merge at its corner fades out over its reach rather than stepping.
+  const fading = [0, 3, 6, 9, 12].map((x) => stampAreaCoverageAt(within, x, -3));
+  assert.ok(fading.every((c, i) => i === 0 || c <= fading[i - 1]));
+  assert.deepEqual([fading[0], fading[3] > 0 && fading[3] < 1, fading[4] < 0.01], [1, true, true]);
+});
+
+test('stretches meet at points: overlapping ones treated differently, a point off the outline and a merge without wet history are refused', () => {
+  const side = [{ x: 0, y: 0 }, { x: 0, y: 60 }];
+  assert.throws(() => treatedWithin({ a: { path: side, treatment: 'merge', reach: 8 }, b: { path: [{ x: 0, y: 40 }, { x: 0, y: 100 }], treatment: 'keep' } }), /boundaries a \(merge\) and b \(keep\) run along the same stretch/);
+  assert.throws(() => treatedWithin({ a: { path: [{ x: 0, y: 0 }, { x: 8, y: 60 }], treatment: 'keep' } }), /point at 8, 60 off its area's outline/);
+  assert.throws(() => treatedWithin({ a: { path: side, treatment: 'feather' } }), /a feather, which needs a positive reach/);
+  const DRY: StampPaintEnvironment = { ...WET, mixing: { kind: 'pigment', medium: PAINT_MEDIA.crayon, pigments: WATERCOLOUR_PIGMENTS } };
+  assert.throws(() => treatedWithin({ a: { path: side, treatment: 'merge', reach: 8 } }, DRY), /merged boundary a/);
+  // A feather needs no wet history: it's coverage alone.
+  assert.equal(treatedWithin({ a: { path: side, treatment: 'feather', reach: 8 } }, DRY).boundaries?.length, 1);
 });
