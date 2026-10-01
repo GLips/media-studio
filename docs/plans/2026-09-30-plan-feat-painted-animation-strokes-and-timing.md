@@ -172,6 +172,62 @@ Reveal, placement, deformation, boil, holds and colour run as pure timing channe
 - **A separate animation clock** at 24 fps by default, apart from the render rate. "On twos" means 2/24 s at any output rate, and `StampGroupBoil.every` moves onto it.
 - **Boil** re-seeds per epoch, as built. A stroke boils only after its own reveal finishes, and its displacement is applied in anchor space after `deform`, so plan 2's moving planes don't break it.
 
+### The timing contract (written 2026-10-01, before implementation)
+
+**Times.**
+- Scene time `t` is in seconds, from the scene's clock (`s.t`).
+- Cues are numbers in scene seconds. The project resolves them from its timeline and passes them in, so neither imports the other (vid-114's rule).
+- The animation clock counts frames at `animationFps`, 24 unless the scene says otherwise. A time's animation frame is `⌊t · animationFps + 1e-6⌋`; the epsilon is there so that 2/24 s lands on frame 2, not 1.
+- Render fps never enters timing. A 30 or 60 fps render samples the same held drawings.
+
+**Who owns what.**
+- vid-114's score owns reveal allocation: which interval each deposit reveals over, from weights and cues. It resolves to scene seconds.
+- Plan 1 adds clocks in front of the lookup and channels beside it. Reveal stays `progress(deposit, τ)`, where `τ` is the deposit's part's clock time. Plan 1 never re-allocates the score.
+
+**Clock transforms.** Each part (and each group, and the painting) has a clock: a chain of transforms from its parent's time to its own local time `τ`. Each transform is data, `{ kind, …params }`, evaluated by a registered pure function. `hold(loop(clip))` placed at a cue is the chain `[hold(2), at(cue), loop(…)]`, outermost first. The hold sees the parent's time, the `at` makes the clip's own time, and the loop wraps it (`paint/animation/models/paint-clock.ts`).
+
+| Kind | Maps input time `τ` to | Notes |
+|---|---|---|
+| `at(start)` | `τ − start` | Places a clip; `start` is a cue plus an offset. |
+| `rate(r)` | `τ · r`, with `r > 0` | Slow-motion or speed-up. |
+| `loop(period, 'repeat' \| 'pingpong')` | `τ mod period` (positive modulo), or reflected on odd cycles | Below 0 it reads 0; it never runs backwards into negative time. |
+| `hold(n)` | `⌊F(τ) / n⌋ · n / animationFps`, where `F` is the animation frame of its input | Holds on `n`s. |
+| `freeze(τ0)` | `τ0` | A held drawing, Grease Pencil's Fixed Frame. |
+
+**How a hold quantises.** A hold quantises the time *it is given*, on that time's own frame grid:
+- Outermost on a part, as `hold(…)` usually is, it steps on the scene's global animation grid. Everything held on twos changes on the same frame, as cels do.
+- A cue off the grid shows its first held drawing at the next grid step at or after the cue, up to `n/24` s late. This is intended: it's what drawing on twos means.
+- Inside a `rate(0.5)`, a `hold(2)` steps every 4 scene frames. That is what was asked, and it's written that way.
+
+**Interval endpoints.** Every timed thing has the half-open interval `[start, end)`:
+- At `start`, its progress is 0. From `end` on, it is 1, and its final value holds.
+- Before `start`, it reads its value at 0: a pose clip shows its first key, and a reveal shows nothing drawn.
+- A loop's interval is `[start, ∞)` unless it says `times`.
+
+**Channels and conflicts.**
+- A writer is a (channel, concrete target, interval). Selections (a role, a subtree) expand to concrete targets at compile.
+- Two writers on one channel and one target whose intervals overlap are a compile error that names both.
+- A finished clip's final value persists until the next writer on that target starts, and that isn't an overlap.
+- Different targets never conflict, ancestors included: deformation composes.
+
+**Composition per frame, for one stroke:**
+1. rest geometry in anchor space;
+2. its part's `deform`;
+3. each ancestor's `deform`, nearest first;
+4. its group's `place` (rigid);
+5. `boil` displacement, in anchor space;
+6. the camera step (the identity in plan 1);
+7. screen.
+
+Reveal is measured on the rest stroke (step 1), so no later step changes how much has been drawn.
+
+**Boil, per stroke.**
+- A stroke's epoch is 0 (its rest seed, as written) while it's drawn. After its reveal ends at `end`, it is `⌊F(τ)/every⌋ − ⌊F(end)/every⌋`. So it stays as drawn until the next grid step, rather than popping to a new seed on the frame it finishes, and then steps on the global grid, so every boiling stroke in a part changes on the same frame.
+- The seed is `hash(restId, epoch)`.
+- `stuck` is always epoch 0. `live` re-places every evaluated frame: under a hold, every held frame, never between them.
+
+**Purity and keys.** A frame is a pure function of (compiled painting, `t`, cues, `animationFps`). Everything that varies goes into the checkpoint key: each part's clock value after its holds, its warp, its epoch and its placement. Two frames inside one hold step share a key, which is what makes holds cheap.
+
 ## Phase 4: The frog scene (sketched)
 
 ### Goal
