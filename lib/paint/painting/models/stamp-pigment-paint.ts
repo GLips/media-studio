@@ -6,7 +6,7 @@
 // pixel, so a pigment stays itself to the pixel, where a lift needs it. A graded material lays each pigment of either
 // end at an amount the GPU grades between the two, never by rendered colour; a keyed one over the scene too.
 
-import { checkPaintCapability, paintPigmentFromColor, paintPigmentInMedium, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
+import { paintPigmentFromColor, paintPigmentInMedium, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { paintMixtureComponents } from '#lib/paint/materials/models/paint-mixture.ts';
 import { paintPigmentSeed } from '#lib/paint/materials/models/paint-paper.ts';
 import type { PaintPigment, PaintPigmentAppearance } from '#lib/paint/materials/models/paint-pigment.ts';
@@ -166,11 +166,9 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
       const { action } = deposit;
       // Water and a lift lay no pigment of their own.
       if (action.kind !== 'paint') {
-        if (action.kind === 'lift') checkPaintCapability(medium, 'lift', `${deposit.id}'s lift`);
         deposits.set(deposit, { group: g, components: [], grade: UNGRADED, knockout: pass.kind === 'wash' && pass.knockout, dryBrush: false });
         continue;
       }
-      if (action.burnish) checkPaintCapability(medium, 'burnish', `${deposit.id}'s burnish`);
       const { first, second, kind, geometry } = stampPaintFieldEnds(action.material);
       /** What a full stroke of `material` lays, each pigment its medium's one of its id. */
       const laidOf = (material: PaintMaterial) => {

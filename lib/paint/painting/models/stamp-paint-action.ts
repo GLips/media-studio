@@ -10,10 +10,10 @@ import { everyStampKey, mapStampKeyList } from './stamp-scene-keys.ts';
 import type { CompiledStampKeyedMaterial, StampKeyedMaterial, StampPaintMaterial } from './stamp-paint-recipe-types.ts';
 import type { PaintMaterial, StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 
-/** Paint as written: what a dry pass's deposits all do. */
+/** Paint as written: what a dry passage's deposits all do. */
 export type StampRecipePaint = { kind: 'paint'; material: StampPaintMaterial; blend?: StampBlend; secondaryColor?: StampPaintColor; burnish?: boolean };
-/** What a wash's deposit does as written: paints, carrying `water` (its medium's when left out), wets, or lifts. */
-export type StampRecipeWashAction = (Omit<StampRecipePaint, 'burnish'> & { water?: number }) | { kind: 'water'; water: number } | { kind: 'lift'; strength?: number };
+/** What a wet passage's deposit does as written: paints, carrying `water` (its medium's when left out), wets, or lifts. */
+export type StampRecipeWashAction = (StampRecipePaint & { water?: number }) | { kind: 'water'; water: number } | { kind: 'lift'; strength?: number };
 
 /**
  * Paint laid where a deposit's stamps land: each colour (each key's) jittered by the brush's stroke colour jitter,

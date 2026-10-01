@@ -19,11 +19,11 @@ async function drawWetPassage(passage: WetPassage, { brushes, paper, mixing, pac
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
   const copy = Object.assign(document.createElement('canvas'), { width, height });
   try {
-    const painting = compileStampPaintRecipe(passage.recipe({ brushes, pigments: mixing.pigments }));
+    const painting = compileStampPaintRecipe(passage.recipe({ brushes, paper, mixing }));
     const surface = await createStampPaintSurface({ canvas, width, height }, (asset) => stampPaintPackAssetUrl(packUrls, asset));
     // Copied before the surface is disposed, which unconfigures its canvas and clears it.
     try {
-      const renderer = await createStampPaintRenderer(surface, painting, paper, mixing);
+      const renderer = await createStampPaintRenderer(surface, painting);
       await renderer.draw(SHOWN);
       copy.getContext('2d')!.drawImage(canvas, 0, 0);
     } finally {
@@ -48,10 +48,10 @@ async function drawWetAnimation(animation: WetAnimation, { brushes, paper, mixin
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
   const surface = await createStampPaintSurface({ canvas, width, height }, (asset) => stampPaintPackAssetUrl(packUrls, asset));
   try {
-    const takes = animation.takes({ brushes, pigments: mixing.pigments });
+    const takes = animation.takes({ brushes, paper, mixing });
     const frames = await takes.reduce<Promise<{ caption: string; png: string }[]>>(async (done, { recipe, frames: shown }) => {
       const before = await done;
-      const renderer = await createStampPaintRenderer(surface, compileStampPaintRecipe(recipe), paper, mixing);
+      const renderer = await createStampPaintRenderer(surface, compileStampPaintRecipe(recipe));
       try {
         return [...before, ...await shown.reduce<Promise<{ caption: string; png: string }[]>>(async (drawn, { frame, caption }) => {
           const earlier = await drawn;

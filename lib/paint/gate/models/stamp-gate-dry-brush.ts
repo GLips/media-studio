@@ -31,15 +31,15 @@ const COLUMNS = Array.from({ length: 12 }, (_, k) => k + 2);
 const INSET = 2;
 
 function stampGateDryBrushPainting(): StampGatePainting {
-  const painting = compileStampPaintRecipe(stampPaintRecipe((p) => p.group('strokes', { composite: 'glaze', opacity: 1 }, (g) => g.pass('strokes', {}, (pass) => {
+  const painting = compileStampPaintRecipe(stampPaintRecipe({ paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W } }, (p) => p.group('strokes', { composite: 'glaze', opacity: 1 }, (g) => g.passage('strokes', { wetHistory: false }, (pass) => {
     for (const { media, y } of STROKES) {
       pass.stroke(media, {
-        brush: stampGateBrush(media, { media, flow: 0.8 }), diameter: 44, material: { kind: 'mixture', parts: [{ pigment: W.ultramarine, amount: 1 }], strength: 1 },
+        brush: stampGateBrush(media, { media, flow: 0.8 }), size: 44, well: { paint: { kind: 'mixture', parts: [{ pigment: W.ultramarine, amount: 1 }], strength: 1 } },
         path: [{ x: 0, y }, { x: 160, y }],
       });
     }
   }))));
-  return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t: Number.MAX_VALUE, images: STAMP_GATE_IMAGES };
+  return { painting, ...SIZE, t: Number.MAX_VALUE, images: STAMP_GATE_IMAGES };
 }
 
 /** The case painting both strokes and reading its frame. */

@@ -11,12 +11,12 @@ import { stampDryingRimSizing } from './stamp-wet-rim.ts';
 import { stampLandingCover, stampWaitDeposits, type StampWashWaitRecord, type StampWetness, type StampWetRange } from './stamp-wetness.ts';
 
 /**
- * A wait: what it waits for, what it judged (the whole wash, the next application, a region), the effect that asked
+ * A wait: what it waits for, what it judged (the whole passage, the deposits a condition stands before, a region), the effect that asked
  * for it, the painting seconds it spans and the paper it judged as it began and ended (StampWashWaitRecord).
  * `alreadyDrier`: a shiny or damp wait whose paper was already past its target, so it took no time.
  */
 export type StampWetReportWait = Omit<StampWashWaitRecord, 'step'> & {
-  until: StampWashWait; under: 'wash' | 'next' | 'region'; effect: StampWaitEffect | null; seconds: number; alreadyDrier: boolean;
+  until: StampWashWait; under: 'wash' | 'deposits' | 'region'; effect: StampWaitEffect | null; seconds: number; alreadyDrier: boolean;
 };
 
 /**
@@ -73,7 +73,7 @@ function washReport(pass: Extract<CompiledStampPass, { kind: 'wash' }>, wetness:
 
 function underKind(under: CompiledStampWashWait['under']): StampWetReportWait['under'] {
   if (under === 'wash') return 'wash';
-  return 'next' in under ? 'next' : 'region';
+  return 'deposits' in under ? 'deposits' : 'region';
 }
 
 function touchReport(deposit: CompiledStampDeposit, pass: CompiledStampPass, wetness: StampWetness): StampWetReportTouch {

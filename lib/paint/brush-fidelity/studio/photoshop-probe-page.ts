@@ -38,7 +38,7 @@ async function openPhotoshopProbeSheet({ sheet, opacity, order, tipMax }: { shee
   const urls = new Map([...images].map(([file, image]) => [file, grayImageUrl(image)]));
   const canvas = Object.assign(document.createElement('canvas'), { width: sheet.width, height: sheet.height });
   const surface = await createStampPaintSurface({ canvas, width: sheet.width, height: sheet.height }, ({ file }) => urls.get(file)!);
-  open = { sheet, cells, surface, renderer: await createStampPaintRenderer(surface, painting, { color: '#ffffff' }, { kind: 'flat' }), order };
+  open = { sheet, cells, surface, renderer: await createStampPaintRenderer(surface, painting), order };
 }
 
 /** `plane` (`crop.w` wide) over `box`, both in sheet pixels. */

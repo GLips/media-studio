@@ -15,11 +15,11 @@ async function drawDryPassage(passage: DryPassage, { brushes, paper, mixing, pac
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
   const copy = Object.assign(document.createElement('canvas'), { width, height });
   try {
-    const painting = compileStampPaintRecipe(passage.recipe({ brushes, pigments: mixing.pigments }));
+    const painting = compileStampPaintRecipe(passage.recipe({ brushes, paper, mixing }));
     const surface = await createStampPaintSurface({ canvas, width, height }, (asset) => stampPaintPackAssetUrl(packUrls, asset));
     // Copied before the surface is disposed, which unconfigures its canvas and clears it.
     try {
-      const renderer = await createStampPaintRenderer(surface, painting, paper, mixing);
+      const renderer = await createStampPaintRenderer(surface, painting);
       await renderer.draw(1);
       copy.getContext('2d')!.drawImage(canvas, 0, 0);
     } finally {

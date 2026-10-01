@@ -4,9 +4,14 @@ import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/st
 import type { StampMaterialSet } from './stamp-material-set.ts';
 import { compileStampPaintRecipe, stampCompiledPaintPrint, stampPassDeposits } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
-import type { StampPaintRecipe, StampPaintRecipeDeposit, StampPaintRecipePass, StampPaintRecipeStep } from './stamp-paint-recipe-types.ts';
+import type { StampPaintEnvironment, StampPaintRecipe, StampPaintRecipeDeposit, StampPaintRecipePass, StampPaintRecipeStep } from './stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampRegion } from './stamp-region.ts';
+import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
+import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
+import { stampBloom, stampCharge } from './stamp-wet-techniques.ts';
+
+const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 
 const brush: StampBrush = {
   name: 'Round',
@@ -29,18 +34,18 @@ const color = (value: `#${string}`): PaintMaterial => ({ kind: 'color', color: v
 const wells: StampMaterialSet = { kind: 'set', entries: [{ id: 'blue', material: color('#2244aa'), weight: 1 }, { id: 'rose', material: color('#cc5577'), weight: 1 }] };
 
 /** A sky washed, charged and bloomed under a ragged reserve, then a boiled pass of grass: every kind of seed a recipe draws. */
-const sky = () => stampPaintRecipe((paint) => {
+const sky = () => stampPaintRecipe(WET, (paint) => {
   paint.group('sky', { composite: 'glaze', opacity: 1 }, (group) => {
     group.mask('sun', { region: { kind: 'ellipse', x: 400, y: 150, radiusX: 40, radiusY: 40 }, edge: { ragged: { amount: 3, scale: 12 } } });
-    group.wash('w', { preparation: { region: field } }, (wash) => {
-      wash.fill('body', { brush, diameter: 40, application: { kind: 'flood' }, region: field, material: color('#88aacc'), appliedAt: 0, drawnOver: 1 });
-      wash.charge('warm', { placement: { kind: 'area', region: field }, touches: 3, mixtures: wells, brush, diameter: [16, 24], length: [20, 40], when: 'damp', appliedAt: 1, drawnOver: 1 });
-      wash.bloom('drop', { brush, diameter: 20, at: [{ x: 300, y: 200 }], appliedAt: 2 });
-      wash.wait('dry');
+    group.passage('w', { preparation: { region: field } }, (wash) => {
+      wash.fill('body', { brush, size: 40, application: { kind: 'flood' }, region: field, well: { paint: color('#88aacc') }, reveal: { at: 0, over: 1 } });
+      stampCharge(wash, 'warm', { placement: { kind: 'area', region: field }, touches: 3, well: { paint: wells }, brush, size: [16, 24], length: [20, 40], when: 'damp', reveal: { at: 1, over: 1 } });
+      stampBloom(wash, 'drop', { brush, size: 20, at: [{ x: 300, y: 200 }], reveal: { at: 2, over: 0 } });
+      wash.wait('set');
     });
   });
-  paint.group('grass', { composite: 'opaque', boil: { every: 2 } }, (group) => group.pass('blades', {}, (pass) => {
-    pass.stroke('blade', { brush, diameter: 8, material: color('#446633'), path: [{ x: 100, y: 380 }, { x: 120, y: 330 }], hand: { profile: 'swell', wobble: { pressure: 0.1, position: 0.2 } } });
+  paint.group('grass', { composite: 'opaque', boil: { every: 2 } }, (group) => group.passage('blades', { wetHistory: false }, (pass) => {
+    pass.stroke('blade', { brush, size: 8, well: { paint: color('#446633') }, path: [{ x: 100, y: 380 }, { x: 120, y: 330 }], hand: { profile: 'swell', wobble: { pressure: 0.1, position: 0.2 } } });
   }));
 });
 
@@ -70,9 +75,9 @@ test("a generated child's keys are segments of its name: each refused holding a 
   assert.deepEqual(stampPassDeposits(washed).map(({ id }) => id), ['sky/w/body', 'sky/w/warm-0', 'sky/w/warm-1', 'sky/w/warm-2', 'sky/w/drop']);
   const slashed = rewritten(sky(), (deposit) => (deposit.name.keys.length ? { ...deposit, name: { ...deposit.name, keys: ['0/1'] } } : deposit));
   assert.throws(() => compileStampPaintRecipe(slashed), /"0\/1" isn't an ID/);
-  const spelt = stampPaintRecipe((paint) => paint.group('sky', { composite: 'glaze', opacity: 1 }, (group) => group.wash('w', {}, (wash) => {
-    wash.charge('warm', { placement: { kind: 'area', region: field }, touches: 2, mixtures: wells, brush, diameter: [16, 24], length: [20, 40], appliedAt: 0, drawnOver: 1 });
-    wash.stroke('warm-1', { brush, diameter: 10, material: color('#336633'), path: [{ x: 100, y: 100 }, { x: 200, y: 120 }] });
+  const spelt = stampPaintRecipe(WET, (paint) => paint.group('sky', { composite: 'glaze', opacity: 1 }, (group) => group.passage('w', {}, (wash) => {
+    stampCharge(wash, 'warm', { placement: { kind: 'area', region: field }, touches: 2, well: { paint: wells }, brush, size: [16, 24], length: [20, 40], reveal: { at: 0, over: 1 } });
+    wash.stroke('warm-1', { brush, size: 10, well: { paint: color('#336633') }, path: [{ x: 100, y: 100 }, { x: 200, y: 120 }] });
   })));
   assert.throws(() => compileStampPaintRecipe(spelt), /IDs used twice.*sky\/w\/warm-1/);
 });

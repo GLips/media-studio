@@ -6,10 +6,13 @@ import { stampAreaCoverageAt } from './stamp-area.ts';
 import { stampRegionSeed } from './stamp-fill.ts';
 import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampMask } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
-import type { StampPaintScope } from './stamp-paint-recipe-types.ts';
+import type { StampPaintEnvironment, StampPaintScope } from './stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import { stampGridAt, type StampRegion } from './stamp-region.ts';
 import { compileStampWetness, stampWetGrid } from './stamp-wetness.ts';
+import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
+
+const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 
 const brush: StampBrush = {
   name: 'Round', blend: 'normal', media: 'wet',
@@ -24,10 +27,10 @@ const square = (x0: number, y0: number, x1: number, y1: number): StampRegion => 
 const ids = (mask: CompiledStampMask | null): string[] => (mask ? [...ids(mask.under), mask.id] : []);
 
 test("an area's inset moves its edge inward by its distance, and a pass's ragged within is seeded by the pass's ID", () => {
-  const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => {
-    group.pass('p', { within: { region: square(0, 0, 100, 100), edge: { ragged: { amount: 3, scale: 10 } } } }, (pass) => pass.stamps('dot', { brush, material: ochre, diameter: 10, at: [{ x: 50, y: 50 }] }));
+  const painting = compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => {
+    group.passage('p', { within: { region: square(0, 0, 100, 100), edge: { ragged: { amount: 3, scale: 10 } } }, wetHistory: false }, (pass) => pass.stamps('dot', { brush, well: { paint: ochre }, size: 10, at: [{ x: 50, y: 50 }] }));
     group.mask('reserve', { region: square(0, 0, 100, 100), inset: 6, edge: { soft: 4 } });
-    group.pass('q', {}, (pass) => pass.stamps('dot', { brush, material: ochre, diameter: 10, at: [{ x: 50, y: 50 }] }));
+    group.passage('q', { wetHistory: false }, (pass) => pass.stamps('dot', { brush, well: { paint: ochre }, size: 10, at: [{ x: 50, y: 50 }] }));
   })));
   const [p, q] = painting.groups[0].passes;
   assert.equal(p.within?.seed, stampRegionSeed('g/p'));
@@ -38,40 +41,40 @@ test("an area's inset moves its edge inward by its distance, and a pass's ragged
   assert.ok(Math.abs(stampAreaCoverageAt(reserve.area, 6, 50) - 0.5) < 1e-9);
   assert.equal(stampAreaCoverageAt(reserve.area, 0.5, 50), 0);
   assert.equal(stampAreaCoverageAt(reserve.area, 9, 50), 1);
-  assert.throws(() => compileStampPaintRecipe(stampPaintRecipe((paint) => paint.mask('m', { region: square(0, 0, 10, 10), inset: -1 }))), /m is inset -1 px/);
+  assert.throws(() => compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.mask('m', { region: square(0, 0, 10, 10), inset: -1 }))), /m is inset -1 px/);
 });
 
 /** A far range on wet paper, then a near hill standing before it: the far's fluid opened by an unmask before it paints. */
 const range = (paint: StampPaintScope, standsBefore = ['far']) => {
-  paint.group('far', { composite: 'glaze', opacity: 1, depth: 2 }, (group) => group.wash('w', { preparation: { region: square(0, 0, 200, 120) } }, (wash) => {
+  paint.group('far', { composite: 'glaze', opacity: 1, depth: 2 }, (group) => group.passage('w', { preparation: { region: square(0, 0, 200, 120) } }, (wash) => {
     wash.mask('glint', { region: square(10, 10, 20, 20) });
     wash.unmask('open', {});
-    wash.fill('sky', { brush, material: ochre, diameter: 30, application: { kind: 'flood' }, region: square(0, 0, 200, 120), water: 1 });
+    wash.fill('sky', { brush, well: { paint: ochre, water: 1 }, size: 30, application: { kind: 'flood' }, region: square(0, 0, 200, 120) });
   }));
-  paint.group('near', { composite: 'glaze', opacity: 1, standsBefore: { groups: standsBefore, shape: square(60, 40, 140, 120), overlap: 3 } }, (group) => group.pass('p', {}, (pass) => {
-    pass.fill('hill', { brush, material: ochre, diameter: 20, application: { kind: 'flood' }, region: square(60, 40, 140, 120) });
+  paint.group('near', { composite: 'glaze', opacity: 1, standsBefore: { groups: standsBefore, shape: square(60, 40, 140, 120), overlap: 3 } }, (group) => group.passage('p', { wetHistory: false }, (pass) => {
+    pass.fill('hill', { brush, well: { paint: ochre }, size: 20, application: { kind: 'flood' }, region: square(60, 40, 140, 120) });
   }));
 };
 
 test("a group standing before earlier groups reserves its shape from them, inset by its overlap, past any unmask of theirs, and their water doesn't land there", () => {
-  const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => range(paint)));
+  const painting = compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => range(paint)));
   const [far, near] = painting.groups;
   const sky = stampPassDeposits(far.passes[0])[0], hill = stampPassDeposits(near.passes[0])[0];
   assert.deepEqual(ids(sky.mask), ['far/w/glint', 'far/w/open', 'near/stands-before']);
   assert.ok(sky.mask?.kind === 'mask' && sky.mask.area.inset === 3);
   assert.deepEqual(ids(hill.mask), []);
 
-  const wetness = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, { color: '#ffffff' }, { width: 200, height: 120 });
+  const wetness = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, { width: 200, height: 120 });
   const wet = stampWetGrid(wetness.landings.get(sky)!.after, 'wetness');
   assert.equal(stampGridAt(wet, 100, 88), 0);
   assert.equal(stampGridAt(wet, 24, 88), 1);
 });
 
 test('a group stands only before groups that exist, other than itself, painted before it', () => {
-  const compile = (standsBefore: string[]) => () => compileStampPaintRecipe(stampPaintRecipe((paint) => range(paint, standsBefore)));
+  const compile = (standsBefore: string[]) => () => compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => range(paint, standsBefore)));
   assert.throws(compile(['hills']), /near stands before "hills", which isn't a group/);
   assert.throws(compile(['near']), /near stands before itself/);
-  assert.throws(() => compileStampPaintRecipe(stampPaintRecipe((paint) => {
+  assert.throws(() => compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => {
     range(paint, []);
     paint.group('later', { composite: 'glaze', opacity: 1, depth: -1 }, () => {});
     paint.group('front', { composite: 'glaze', opacity: 1, standsBefore: { groups: ['later'], shape: square(0, 0, 10, 10), overlap: 0 } }, () => {});

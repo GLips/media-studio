@@ -13,8 +13,8 @@ import { PROCREATE_PREVIEW_SIZE, procreatePreviewStrokePath } from '#lib/paint/p
  */
 export function procreatePreviewPainting(brush: StampBrush, diameter: number, preview: 'stroke' | 'stamp'): CompiledStampPaint {
   const material = { kind: 'color', color: '#000000' } as const;
-  return compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('preview', { composite: 'glaze', opacity: 1 }, (group) => group.pass('stroke', {}, (pass) => {
-    if (preview === 'stamp') pass.stamps('stamp', { brush, material, diameter, at: [{ x: PROCREATE_PREVIEW_SIZE.width / 2, y: PROCREATE_PREVIEW_SIZE.height / 2 }] });
-    else pass.stroke('stroke', { brush, material, diameter, path: procreatePreviewStrokePath() });
+  return compileStampPaintRecipe(stampPaintRecipe({ paper: { color: '#ffffff' }, mixing: { kind: 'flat' } }, (paint) => paint.group('preview', { composite: 'glaze', opacity: 1 }, (group) => group.passage('stroke', {}, (pass) => {
+    if (preview === 'stamp') pass.stamps('stamp', { brush, well: { paint: material }, size: diameter, at: [{ x: PROCREATE_PREVIEW_SIZE.width / 2, y: PROCREATE_PREVIEW_SIZE.height / 2 }] });
+    else pass.stroke('stroke', { brush, well: { paint: material }, size: diameter, path: procreatePreviewStrokePath() });
   }))));
 }

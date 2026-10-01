@@ -15,13 +15,13 @@ import { stampFillStrokePath } from './stamp-fill-strokes.ts';
 import { stampMarkStamps } from './stamp-marks.ts';
 import { stampPaintFieldAt, type StampSeededPaintField } from './stamp-paint-field.ts';
 import type { CompiledStampFlood } from './stamp-paint-recipe-compile.ts';
-import type { StampDepositGeometry } from './stamp-paint-recipe-types.ts';
+import type { StampResolvedGeometry } from './stamp-paint-recipe-types.ts';
 
 /**
  * Where a deposit goes, a fill's application settled (its brush's media's when the author left it out) and its load
  * seeded (stampSeededPaintField).
  */
-export type StampPlacingGeometry = Exclude<StampDepositGeometry, { kind: 'fill' }> | (Extract<StampDepositGeometry, { kind: 'fill' }> & { application: StampFillApplication; load: StampSeededPaintField<number> });
+export type StampPlacingGeometry = Exclude<StampResolvedGeometry, { kind: 'fill' }> | (Extract<StampResolvedGeometry, { kind: 'fill' }> & { application: StampFillApplication; load: StampSeededPaintField<number> });
 
 /** A deposit's marks, `M`: every stamp in reveal order, its dual's, and a flood's body and front. */
 type StampDepositMarks<M> = { stamps: M; dualStamps: M } & ({ kind: 'stroke' | 'stamps' } | { kind: 'flood'; flood: CompiledStampFlood });

@@ -13,6 +13,7 @@ import type { StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-rec
 import { stampGateFrameDifference, stampGateFramePasses } from './stamp-gate-frames.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
 import type { StampGateWashCheck } from './stamp-gate-layer.ts';
+import { stampBloom } from '#lib/paint/painting/models/stamp-wet-techniques.ts';
 
 type Rgba = ArrayLike<number>;
 const SIZE = { width: 240, height: 160 };
@@ -28,28 +29,28 @@ export const STAMP_GATE_LIVE_POSE = { x: 14, y: 9 };
  */
 export function stampGateLivePainting(pose = { x: 0, y: 0 }): StampGatePainting {
   const steady = stampGateBrush('Steady', { flow: 0.6 }), x = 110 + pose.x, y = 76 + pose.y;
-  const painting = compileStampPaintRecipe(stampPaintRecipe((p) => {
-    p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.pass('wash', {}, (pass) => pass.fill('sky', {
-      brush: steady, diameter: 40, application: { kind: 'flood' }, material: mixture({ pigment: W.ultramarine, amount: 0.6 }), region: stampGatePolygon(0, 0, 240, 0, 240, 160, 0, 160),
+  const painting = compileStampPaintRecipe(stampPaintRecipe({ paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W } }, (p) => {
+    p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.passage('wash', { wetHistory: false }, (pass) => pass.fill('sky', {
+      brush: steady, size: 40, application: { kind: 'flood' }, well: { paint: mixture({ pigment: W.ultramarine, amount: 0.6 }) }, region: stampGatePolygon(0, 0, 240, 0, 240, 160, 0, 160),
     })));
     p.group('sac', { composite: 'opaque' }, (g) => {
       g.mask('glint', { region: { kind: 'ellipse', x: x - 18, y: y - 10, radiusX: 9, radiusY: 6 }, edge: { soft: 2 } });
-      g.wash('skin', {}, (w) => {
+      g.passage('skin', {}, (w) => {
         w.fill('skin', {
-          brush: steady, diameter: 24, application: { kind: 'flood' }, material: mixture({ pigment: W.yellowOchre, amount: 0.7 }, { pigment: W.burntSienna, amount: 0.3 }),
+          brush: steady, size: 24, application: { kind: 'flood' }, well: { paint: mixture({ pigment: W.yellowOchre, amount: 0.7 }, { pigment: W.burntSienna, amount: 0.3 }) },
           region: { kind: 'ellipse', x, y, radiusX: 52, radiusY: 34 },
         });
-        w.bloom('drop', { brush: steady, diameter: 22, at: [{ x: x + 16, y: y + 8 }] });
+        stampBloom(w, 'drop', { brush: steady, size: 22, at: [{ x: x + 16, y: y + 8 }] });
       });
-      g.pass('shade', { within: { region: { kind: 'ellipse', x, y, radiusX: 52, radiusY: 34 } } }, (pass) => pass.stroke('shade', {
-        brush: steady, diameter: 14, material: mixture({ pigment: W.burntSienna, amount: 1 }), path: [{ x: x - 60, y: y + 22 }, { x: x + 60, y: y + 28 }],
+      g.passage('shade', { within: { region: { kind: 'ellipse', x, y, radiusX: 52, radiusY: 34 } }, wetHistory: false }, (pass) => pass.stroke('shade', {
+        brush: steady, size: 14, well: { paint: mixture({ pigment: W.burntSienna, amount: 1 }) }, path: [{ x: x - 60, y: y + 22 }, { x: x + 60, y: y + 28 }],
       }));
     });
-    p.group('over', { composite: 'glaze', opacity: 0.8 }, (g) => g.pass('line', {}, (pass) => pass.stroke('line', {
-      brush: steady, diameter: 8, material: mixture({ pigment: W.ultramarine, amount: 1 }, { pigment: W.burntSienna, amount: 1 }), path: [{ x: 20, y: 130 }, { x: 220, y: 40 }],
+    p.group('over', { composite: 'glaze', opacity: 0.8 }, (g) => g.passage('line', { wetHistory: false }, (pass) => pass.stroke('line', {
+      brush: steady, size: 8, well: { paint: mixture({ pigment: W.ultramarine, amount: 1 }, { pigment: W.burntSienna, amount: 1 }) }, path: [{ x: 20, y: 130 }, { x: 220, y: 40 }],
     })));
   }));
-  return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t: 0, images: STAMP_GATE_IMAGES };
+  return { painting, ...SIZE, t: 0, images: STAMP_GATE_IMAGES };
 }
 
 /** The frame state drawing the rest painting's sac live, posed STAMP_GATE_LIVE_POSE. */

@@ -61,19 +61,19 @@ const tint = ({ pigment, strength }: (typeof TINTS)[number]): PaintMaterial => (
  * back into a lift evens the paper a wash left showing, which is the flow's to answer for, not the lift's.
  */
 function stampGateLiftColourPainting(medium: StampGateLiftColourMedium, dried: boolean): StampGatePainting {
-  const painting = compileStampPaintRecipe(stampPaintRecipe((p) => p.group('tints', { composite: 'glaze', opacity: 1 }, (g) => g.wash('wash', {}, (wash) => {
+  const still: PaintMedium = { ...PAINT_MEDIA[medium], wetting: { ...PAINT_MEDIA[medium].wetting, spread: 0 } };
+  const painting = compileStampPaintRecipe(stampPaintRecipe({ paper: PAPER, mixing: { kind: 'pigment', medium: still, pigments: W } }, (p) => p.group('tints', { composite: 'glaze', opacity: 1 }, (g) => g.passage('wash', {}, (wash) => {
     TINTS.forEach((t, r) => {
       const { y0, y1 } = ROW(r);
-      wash.fill(`tint-${r}`, { brush: ROUND, diameter: 30, application: { kind: 'flood' }, region: stampGatePolygon(4, y0, 196, y0, 196, y1, 4, y1), material: tint(t), appliedAt: 0, drawnOver: 1 });
+      wash.fill(`tint-${r}`, { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(4, y0, 196, y0, 196, y1, 4, y1), well: { paint: tint(t) }, reveal: { at: 0, over: 1 } });
     });
-    if (dried) wash.wait('dry');
+    if (dried) wash.wait('set');
     STAMP_GATE_LIFT_STRENGTHS.forEach((strength, k) => {
       const [x0, x1] = COLUMNS[k + 1];
-      wash.lift(`lift-${k}`, { kind: 'stroke', brush: ROUND, diameter: 36, path: [{ x: (x0 + x1) / 2, y: 0 }, { x: (x0 + x1) / 2, y: 122 }], strength, appliedAt: 1, drawnOver: 1 });
+      wash.lift(`lift-${k}`, { kind: 'stroke', brush: ROUND, size: 36, path: [{ x: (x0 + x1) / 2, y: 0 }, { x: (x0 + x1) / 2, y: 122 }], strength, reveal: { at: 1, over: 1 } });
     });
   }))));
-  const still: PaintMedium = { ...PAINT_MEDIA[medium], wetting: { ...PAINT_MEDIA[medium].wetting, spread: 0 } };
-  return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: still, pigments: W }, ...SIZE, t: Number.MAX_VALUE, images: STAMP_GATE_IMAGES };
+  return { painting, ...SIZE, t: Number.MAX_VALUE, images: STAMP_GATE_IMAGES };
 }
 
 const linear = (v: number) => (v <= 10.31475 ? v / 3294.6 : ((v / 255 + 0.055) / 1.055) ** 2.4);

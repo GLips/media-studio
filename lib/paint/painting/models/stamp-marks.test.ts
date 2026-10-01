@@ -6,10 +6,14 @@ import { stampMarkStamps, stampScatterMarks, type StampMark } from './stamp-mark
 import type { StampMaterialSet } from './stamp-material-set.ts';
 import { compileStampPaintRecipe, stampPassDeposits } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
-import type { StampWashScope } from './stamp-paint-recipe-types.ts';
+import type { StampPaintEnvironment, StampPassageScope } from './stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import { stampPolygonDistance, stampRegionPolygon, type StampRegion } from './stamp-region.ts';
 import { compileStampWetness, stampDrying } from './stamp-wetness.ts';
+import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
+import { stampCharge } from './stamp-wet-techniques.ts';
+
+const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 
 const brush: StampBrush = {
   name: 'Round',
@@ -54,9 +58,9 @@ test('a scatter keeps its first marks where they were as it asks for more, insid
 
 test('a deposit built from a mark is placed from the mark, whatever its ID, and a key names one mark', () => {
   const mark: StampMark = { key: 'leaf', brush, diameter: 30, geometry: { kind: 'stroke', path: [{ x: 50, y: 50 }, { x: 200, y: 80 }], hand: { profile: 'swell', wobble: { pressure: 0.1, position: 0.2 } } } };
-  const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => {
-    group.pass('dry', {}, (pass) => pass.mark('a', { mark, material: color('#336633') }));
-    group.wash('wet', {}, (wash) => wash.mark('b', { mark, material: color('#663333'), water: 0.6 }));
+  const painting = compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => {
+    group.passage('dry', { wetHistory: false }, (pass) => pass.mark('a', { mark, well: { paint: color('#336633') } }));
+    group.passage('wet', {}, (wash) => wash.mark('b', { mark, well: { paint: color('#663333'), water: 0.6 } }));
   })));
   const [a, b] = painting.groups[0].passes.flatMap(stampPassDeposits);
   const placed = stampMarkStamps(mark, mark.key);
@@ -65,22 +69,22 @@ test('a deposit built from a mark is placed from the mark, whatever its ID, and 
     assert.deepEqual(deposit.grainOffset, placed.grainOffset);
   }
   assert.equal(b.action.kind === 'paint' && b.action.water, 0.6);
-  const twice = () => compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) => {
-    pass.mark('a', { mark, material: color('#336633') });
-    pass.mark('b', { mark: { ...mark }, material: color('#336633') });
+  const twice = () => compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.group('g', { composite: 'opaque' }, (group) => group.passage('p', { wetHistory: false }, (pass) => {
+    pass.mark('a', { mark, well: { paint: color('#336633') } });
+    pass.mark('b', { mark: { ...mark }, well: { paint: color('#336633') } });
   }))));
   assert.throws(twice, /two marks share the key leaf/);
 });
 
 /** A charge into a wash over the sky, its painting compiled. */
-const charged = (charge: (wash: StampWashScope) => void) => compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => group.wash('w', {}, (wash) => {
-  wash.fill('sky', { brush, diameter: 40, application: { kind: 'flood' }, region: field, material: color('#88aacc'), appliedAt: 0 });
+const charged = (charge: (wash: StampPassageScope) => void) => compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => group.passage('w', {}, (wash) => {
+  wash.fill('sky', { brush, size: 40, application: { kind: 'flood' }, region: field, well: { paint: color('#88aacc') }, reveal: { at: 0, over: 0 } });
   charge(wash);
 }))));
 
 test('a charge lays its touches as strokes in order, each loaded from its set by its own key, a new well moving none of them', () => {
-  const settings = { placement: { kind: 'area', region: field } as const, touches: 12, brush, diameter: [20, 30] as const, length: [30, 60] as const, appliedAt: 1, drawnOver: 1.2 };
-  const touches = (mixtures: StampMaterialSet) => stampPassDeposits(charged((wash) => wash.charge('warm', { ...settings, mixtures })).groups[0].passes[0]).slice(1);
+  const settings = { placement: { kind: 'area', region: field } as const, touches: 12, brush, size: [20, 30] as const, length: [30, 60] as const, reveal: { at: 1, over: 1.2 } };
+  const touches = (mixtures: StampMaterialSet) => stampPassDeposits(charged((wash) => stampCharge(wash, 'warm', { ...settings, well: { paint: mixtures } })).groups[0].passes[0]).slice(1);
   const laid = touches(wells);
   assert.deepEqual(laid.map(({ id }) => id), Array.from({ length: 12 }, (_, k) => `g/w/warm-${k}`));
   assert.deepEqual(laid.map(({ reveal }) => reveal!.at), Array.from({ length: 12 }, (_, k) => 1 + (1.2 * k) / 12));
@@ -93,13 +97,13 @@ test('a charge lays its touches as strokes in order, each loaded from its set by
 
 test("a charge when damp waits for the paper under its touches, not for wetter paint elsewhere in the wash", () => {
   const painting = charged((wash) => {
-    wash.stamps('puddle', { brush, diameter: 60, at: [{ x: 600, y: 200 }], material: color('#223366'), water: 1, appliedAt: 0 });
-    wash.charge('cool', { placement: { kind: 'along', path: [{ x: 150, y: 200 }, { x: 300, y: 200 }], spread: 10 }, touches: 4, mixtures: wells, brush, diameter: [16, 16], length: [20, 30], when: 'damp', appliedAt: 1, drawnOver: 0.5 });
+    wash.stamps('puddle', { brush, size: 60, at: [{ x: 600, y: 200 }], well: { paint: color('#223366'), water: 1 }, reveal: { at: 0, over: 0 } });
+    stampCharge(wash, 'cool', { placement: { kind: 'along', path: [{ x: 150, y: 200 }, { x: 300, y: 200 }], spread: 10 }, touches: 4, well: { paint: wells }, brush, size: [16, 16], length: [20, 30], when: 'damp', reveal: { at: 1, over: 0.5 } });
   });
   const [pass] = painting.groups[0].passes;
   const { wetting } = PAINT_MEDIA.watercolour, paper = { color: '#ffffff' } as const;
-  const { waits: [local] } = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, paper, { width: 800, height: 400 }).washes.get(pass)!;
-  assert.deepEqual(local.step, { kind: 'wait', until: 'damp', under: { next: 4 }, effect: { kind: 'charge', id: 'g/w/cool' } });
+  const { waits: [local] } = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, { width: 800, height: 400 }).washes.get(pass)!;
+  assert.deepEqual(local.step, { kind: 'wait', until: 'damp', under: { deposits: ['g/w/cool-0', 'g/w/cool-1', 'g/w/cool-2', 'g/w/cool-3'] }, effect: { kind: 'charge', id: 'g/w/cool' } });
   // Until the sky's water under the touches is damp, not the puddle's, which is wetter.
   const { rate } = stampDrying(wetting, paper);
   assert.ok(Math.abs(local.to - local.from - (wetting.brushWater - wetting.sheen.damp) / rate) < 1e-6);

@@ -147,8 +147,8 @@ async function withGateSurface<T>({ width, height }: { width: number; height: nu
   }
 }
 
-const gateRenderer = ({ painting, paper, mixing }: Omit<StampGatePainting, 'images'>, surface: StampPaintSurface, wetStages = STAMP_WET_STAGES) =>
-  createStampPaintRenderer(surface, painting, paper, mixing, { wetStages });
+const gateRenderer = ({ painting }: Omit<StampGatePainting, 'images'>, surface: StampPaintSurface, wetStages = STAMP_WET_STAGES) =>
+  createStampPaintRenderer(surface, painting, { wetStages });
 
 /** `gate` on a renderer and surface of its own, its images at `url`, handed to `use`; disposed after. */
 const withGateRenderer = <T,>(
@@ -440,7 +440,7 @@ async function runStampGateStage(
   run: (context: StampWetStageContext, encoder: GPUCommandEncoder) => void,
 ): Promise<{ before: Float32Array; after: Float32Array }> {
   const { width, height } = written, layers = written.layer.length;
-  const wetness = compileStampWetness(painting, () => medium, { color: '#ffffff' }, { width, height });
+  const wetness = compileStampWetness(painting, () => medium, { width, height });
   const device = await createStampPaintDevice();
   try {
     const texture = (count: number, arrays: readonly Float32Array[]) => {

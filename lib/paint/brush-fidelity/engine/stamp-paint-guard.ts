@@ -46,11 +46,11 @@ const TOTAL_DRIFT = 0.01;
 /** Placed stamps at their own sizes, turns and pressures, and a hand-drawn stroke with a lift. */
 function probePainting(brush: StampBrush): CompiledStampPaint {
   const material = { kind: 'color', color: '#6a4c93' } as const;
-  return compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('probe', { composite: 'glaze', opacity: 0.8 }, (group) => group.pass('probe', {}, (pass) => {
-    pass.stamps('placed', { brush, material, diameter: 70, secondaryColor: '#e0b040', at: [
+  return compileStampPaintRecipe(stampPaintRecipe({ paper: { color: '#ffffff' }, mixing: { kind: 'flat' } }, (paint) => paint.group('probe', { composite: 'glaze', opacity: 0.8 }, (group) => group.passage('probe', {}, (pass) => {
+    pass.stamps('placed', { brush, well: { paint: material }, size: 70, secondaryColor: '#e0b040', at: [
       { x: 100, y: 120 }, { x: 260, y: 140, diameter: 40, rotation: 0.7 }, { x: 420, y: 110, pressure: 0.3 }, { x: 600, y: 150, diameter: 110, pressure: 0.8, rotation: -1.2 },
     ] });
-    pass.stroke('hand', { brush, material, diameter: 55, hand: { profile: 'taper' }, path: [
+    pass.stroke('hand', { brush, well: { paint: material }, size: 55, hand: { profile: 'taper' }, path: [
       { x: 60, y: 260 }, { x: 300, y: 200, pressure: 0.6 }, { x: 520, y: 280, speed: 0.5 }, { x: 700, y: 230, lift: true }, { x: 960, y: 250, pressure: 0.2 },
     ] });
   }))));

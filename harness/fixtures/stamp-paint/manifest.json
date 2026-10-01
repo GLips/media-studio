@@ -147,73 +147,73 @@
     "painting/colour-groups": {
       "file": "painting/colour-groups.png",
       "output": "bde06513865dc9dcb85e459916ac306be3052bc887955311a647cddb0db95971",
-      "inputs": "ffecc627e5b0598d1d77a7b3217b93df9e79f649a6df90b684ac4fb131ca862f",
-      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
+      "inputs": "736ae26ef0420da1d9a2b51676a6dd5d7c20474bce4afa9751e3867029943f06",
+      "reason": "vid-114 passage layer step 5: inputs only, the compiled painting carries its paper and mixing (stampPaintRecipe writes against its environment), which the inputs print holds; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "cb831b9",
+      "acceptedOver": "96ca480",
       "adapter": "apple metal-3"
     },
     "painting/pigment-crayon": {
       "file": "painting/pigment-crayon.png",
       "output": "000cd132ad1f2796df151ad7b6f0d2461fbade190da9b3caf3bcb6f5a8961fbe",
-      "inputs": "91aea84a85283d76d053fbee77aeb41be71bc3cd026b695455886069b0a4bbf4",
-      "reason": "vid-114 passage layer step 4: inputs only, each PaintMedium now declares its capabilities (watercolour and gouache wet-history, wet-conditions, lift; crayon lift, burnish), which the inputs print holds; pixels identical",
+      "inputs": "8270d19ea5ef02657c977fc67d5f479018c066499dda3ef50f08acd0e77eac9e",
+      "reason": "vid-114 passage layer step 5: inputs only, the compiled painting carries its paper and mixing (stampPaintRecipe writes against its environment), which the inputs print holds; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "5eb1a3f",
+      "acceptedOver": "96ca480",
       "adapter": "apple metal-3"
     },
     "painting/pigment-gouache": {
       "file": "painting/pigment-gouache.png",
       "output": "edbe3666bfc5c42fb109ec6be4abb9a209c4118f2c33e69b5b7338dd673bfedc",
-      "inputs": "d165644d38c214142191f824dc040b454706f17bf71a09de0511a36bef44ad93",
-      "reason": "vid-114 passage layer step 4: inputs only, each PaintMedium now declares its capabilities (watercolour and gouache wet-history, wet-conditions, lift; crayon lift, burnish), which the inputs print holds; pixels identical",
+      "inputs": "7361080783f20efd29fd7aaaf87dcc465c45a9c36adf51cdcf27725f5bfe411c",
+      "reason": "vid-114 passage layer step 5: inputs only, the compiled painting carries its paper and mixing (stampPaintRecipe writes against its environment), which the inputs print holds; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "5eb1a3f",
+      "acceptedOver": "96ca480",
       "adapter": "apple metal-3"
     },
     "painting/pigment-watercolour": {
       "file": "painting/pigment-watercolour.png",
       "output": "804c638367f7b971fff0937af5e80288568473edeb2bfe057e0072c66f9199cf",
-      "inputs": "fe72924d650d0d62d8366afbda37dff6953a0c178996a2dbe22fc3aa43df8006",
-      "reason": "vid-114 step 4b: inputs only, watercolour declares a dry-brush contact (paperContact valleys, dryBrush tooth 0.85) for its dry-media brushes, which the inputs print holds; this painting lays no dry-media brush",
+      "inputs": "c03302b88c13c1318b69e3dc2968974b2996b89f5181df1afaa0b24d034b10dd",
+      "reason": "vid-114 passage layer step 5: inputs only, the compiled painting carries its paper and mixing (stampPaintRecipe writes against its environment), which the inputs print holds; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "afc9694",
+      "acceptedOver": "96ca480",
       "adapter": "apple metal-3"
     },
     "painting/regions": {
       "file": "painting/regions.png",
       "output": "0490a54814080c5f7b948972e0e942dad928342c0f6c0b541135207d5ced0cb3",
-      "inputs": "1be4454ee5177ccf809da1b86c79b4f1baa1bd9a5d42120418e9cfdf2b774249",
-      "reason": "vid-114 merged with main (vid-127, vid-118): inputs only, the compiled within (StampArea), fill patterns as objects and noise-seeded load fields change the serialised inputs; pixels identical",
+      "inputs": "06e7ab340ba6d7defe6a6347f4db69bb1c754299df5c21c4a84a72f3df707768",
+      "reason": "vid-114 passage layer step 5: inputs only, the compiled painting carries its paper and mixing (stampPaintRecipe writes against its environment), which the inputs print holds; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "e659e6e",
+      "acceptedOver": "96ca480",
       "adapter": "apple metal-3"
     },
     "painting/strokes-accumulations": {
       "file": "painting/strokes-accumulations.png",
       "output": "b966c30b82ea398f672223552a08a56bf7949b08fce70a837872e3bb3dcc5dc2",
-      "inputs": "7a6111b496002e4e7a767803bc88ab922c61f71898a9a5fc0eb646c544fd03ae",
-      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
+      "inputs": "20b9fe4f46d5d2e04698d64ee908bd5642ccc3f92466e3dc563dc0047ac0ae86",
+      "reason": "vid-114 passage layer step 5: inputs only, the compiled painting carries its paper and mixing (stampPaintRecipe writes against its environment), which the inputs print holds; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "cb831b9",
+      "acceptedOver": "96ca480",
       "adapter": "apple metal-3"
     },
     "painting/strokes-duals-edges": {
       "file": "painting/strokes-duals-edges.png",
       "output": "e7524a071ff5922cc93b97cc854166e3c284f4e8b7d57100c100dbf41ae31d13",
-      "inputs": "3272b4663bfbbe12b2e97f5a0a5a748111cdfc0ff76e84b9ec07985257ad1dbe",
-      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
+      "inputs": "548273b1d253ea283900e9504702088794a93c47f7ac1fe099e6a1e008def644",
+      "reason": "vid-114 passage layer step 5: inputs only, the compiled painting carries its paper and mixing (stampPaintRecipe writes against its environment), which the inputs print holds; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "cb831b9",
+      "acceptedOver": "96ca480",
       "adapter": "apple metal-3"
     },
     "painting/strokes-grains": {
       "file": "painting/strokes-grains.png",
       "output": "2bd6658e2a199c017b7816f41d90b448a96ef0936b95e082626e28e81b1d9ad6",
-      "inputs": "b2baebad832afc94725ec050e3534a54516ba0bf265741ba83854fe1719e622f",
-      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
+      "inputs": "433402a92e8591e78082a7e07e8c057b3362f5b8be9b5e738e47c566bc87af48",
+      "reason": "vid-114 passage layer step 5: inputs only, the compiled painting carries its paper and mixing (stampPaintRecipe writes against its environment), which the inputs print holds; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "cb831b9",
+      "acceptedOver": "96ca480",
       "adapter": "apple metal-3"
     }
   }

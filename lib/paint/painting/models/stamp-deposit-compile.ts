@@ -9,6 +9,7 @@ import { stampPaintFieldProblem, stampSeededPaintField } from './stamp-paint-fie
 import type { CompiledStampAction } from './stamp-paint-action.ts';
 import { stampRegionPolygon, type StampPoint, type StampRegion } from './stamp-region.ts';
 import type { CompiledStampDeposit, CompiledStampMask } from './stamp-paint-recipe-compile.ts';
+import type { CompiledStampArea } from './stamp-area.ts';
 import type { StampPaintRecipeDeposit } from './stamp-paint-recipe-types.ts';
 
 /**
@@ -33,15 +34,15 @@ const STAMP_MEDIA_FILLS: Record<StampBrushMedia, StampFillApplication> = { wet: 
 
 /**
  * A deposit checked and its stamps placed, `full` its ID, its action by `compiledAction` from its colour jitter, under the
- * fluid `mask`, its stamps and grains placed from `seed` (its mark's, for a deposit built from one), its colour jitter
- * drawn from `full`.
+ * fluid `mask` and `within` its applications' areas, its stamps and grains placed from `seed` (its mark's, for a
+ * deposit built from one), its colour jitter drawn from `full`.
  */
 export function compileDeposit<A extends CompiledStampAction>(
-  full: string, { geometry, tool, action }: StampPaintRecipeDeposit, compiledAction: (colorDraws: readonly number[]) => A, mask: CompiledStampMask | null, seed: string,
+  full: string, { geometry, tool, action, reveal }: StampPaintRecipeDeposit, compiledAction: (colorDraws: readonly number[]) => A, mask: CompiledStampMask | null, seed: string,
+  within: readonly CompiledStampArea[] | undefined,
 ): CompiledStampDeposit<A> {
-  const { brush, opacity = 1, appliedAt, drawnOver, diameter } = tool;
+  const { brush, opacity = 1, diameter } = tool;
   if (!(diameter > 0) || !Number.isFinite(diameter)) throw new Error(`stamp paint: ${full} has diameter ${diameter}, and a stamp needs a positive one`);
-  if (drawnOver !== undefined && drawnOver < 0) throw new Error(`stamp paint: ${full} draws over ${drawnOver}s, and a draw takes no less than 0`);
   if (geometry.kind !== 'fill' && !(geometry.kind === 'stroke' ? geometry.path : geometry.at).length) throw new Error(`stamp paint: ${full} has no points to stamp`);
   if (geometry.kind === 'fill') checkedStampPolygon(geometry.region, full);
   if (geometry.kind === 'stroke' && geometry.path.some(({ speed }) => speed !== undefined && !(speed > 0))) throw new Error(`stamp paint: ${full} has a point whose speed isn't positive`);
@@ -51,7 +52,7 @@ export function compileDeposit<A extends CompiledStampAction>(
   const blend = (action.kind === 'paint' && action.blend) || brush.blend;
   const common = {
     id: full, brush, action: compiledAction(jitter), grainOffset: stampGrainOffsets(brush, seed), diameter, blend, opacity, mask,
-    ...(appliedAt !== undefined && { reveal: { at: appliedAt, over: drawnOver ?? 0 } }),
+    ...(reveal && { reveal }), ...(within && { within }),
   };
   if (geometry.kind !== 'fill') return { ...common, ...placeStampDeposit(geometry, brush, diameter, seed) };
   const load = stampSeededPaintField(geometry.load ?? { kind: 'constant' as const, value: 1 }, full);

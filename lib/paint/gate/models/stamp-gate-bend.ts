@@ -11,6 +11,7 @@ import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
+import { stampBloom } from '#lib/paint/painting/models/stamp-wet-techniques.ts';
 
 type Rgba = ArrayLike<number>;
 const SIZE = { width: 240, height: 160 };
@@ -38,17 +39,17 @@ const bentBy = (shift: number) => (): StampPaintFrameState => new Map([['cut-out
  * Bent `shift` px by STAMP_GATE_BEND's shear, or left still.
  */
 export function stampGateBendPainting(shift: number | null): StampGatePainting {
-  const painting = compileStampPaintRecipe(stampPaintRecipe((p) => {
-    p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.pass('wash', {}, (pass) => pass.fill('sky', {
-      brush: steadyBrush(), diameter: 40, application: { kind: 'flood' }, material: mixture({ pigment: W.ultramarine, amount: 1 }), region: stampGatePolygon(0, 0, 240, 0, 240, 160, 0, 160),
+  const painting = compileStampPaintRecipe(stampPaintRecipe({ paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W } }, (p) => {
+    p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.passage('wash', { wetHistory: false }, (pass) => pass.fill('sky', {
+      brush: steadyBrush(), size: 40, application: { kind: 'flood' }, well: { paint: mixture({ pigment: W.ultramarine, amount: 1 }) }, region: stampGatePolygon(0, 0, 240, 0, 240, 160, 0, 160),
     })));
-    p.group('cut-out', { composite: 'opaque', paper: 'own' }, (g) => g.wash('wet', {}, (w) => {
+    p.group('cut-out', { composite: 'opaque', paper: 'own' }, (g) => g.passage('wet', {}, (w) => {
       w.mask('reserve', { region: disc(BEND_RESERVE, 9) });
-      w.fill('hull', { brush: steadyBrush(), diameter: 24, application: { kind: 'flood' }, region: { kind: 'ellipse', ...BEND_HULL }, material: mixture({ pigment: W.ultramarine, amount: 1 }, { pigment: W.burntSienna, amount: 1 }) });
-      w.bloom('drop', { brush: steadyBrush(), diameter: 20, at: [{ x: 45, y: 78 }] });
+      w.fill('hull', { brush: steadyBrush(), size: 24, application: { kind: 'flood' }, region: { kind: 'ellipse', ...BEND_HULL }, well: { paint: mixture({ pigment: W.ultramarine, amount: 1 }, { pigment: W.burntSienna, amount: 1 }) } });
+      stampBloom(w, 'drop', { brush: steadyBrush(), size: 20, at: [{ x: 45, y: 78 }] });
     }));
   }));
-  return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t: 0, images: STAMP_GATE_IMAGES, ...(shift !== null && { frameAt: bentBy(shift) }) };
+  return { painting, ...SIZE, t: 0, images: STAMP_GATE_IMAGES, ...(shift !== null && { frameAt: bentBy(shift) }) };
 }
 
 /**

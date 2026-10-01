@@ -112,7 +112,7 @@ export function photoshopReferenceStrokePath(): StampStrokePoint[] {
  */
 export function photoshopReferencePainting(brush: StampBrush, diameter: number, opacity: number): CompiledStampPaint {
   const material = { kind: 'color', color: '#000000' } as const;
-  return compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('reference', { composite: 'glaze', opacity }, (group) => group.pass('stroke', {}, (pass) => {
-    pass.stroke('stroke', { brush, material, diameter, path: photoshopReferenceStrokePath() });
+  return compileStampPaintRecipe(stampPaintRecipe({ paper: { color: '#ffffff' }, mixing: { kind: 'flat' } }, (paint) => paint.group('reference', { composite: 'glaze', opacity }, (group) => group.passage('stroke', {}, (pass) => {
+    pass.stroke('stroke', { brush, well: { paint: material }, size: diameter, path: photoshopReferenceStrokePath() });
   }))));
 }

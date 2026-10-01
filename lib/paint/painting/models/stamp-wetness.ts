@@ -52,7 +52,7 @@ export type StampWashWaitRecord = {
 /**
  * One drying of a wash: the deposits laid since the last, drying and rimming as one, closed at painting second `at`
  * by a wait the whole wash had set by, or its end. `id` names it, seeding its rim: the wash's own ID for its first.
- * `rim`, 0..2: its wait('dry')'s, else its wash's, else 1.
+ * `rim`, 0..2: its wait('set')'s, else its wash's, else 1.
  */
 export type StampWashDrying = {
   pass: CompiledStampPass; id: string; deposits: readonly CompiledStampDeposit[]; rim: number; at: number; closes: CompiledStampWashWait | 'end';
@@ -70,7 +70,7 @@ export type StampWetness = {
 };
 
 /**
- * Painting seconds a wash may still have to go and count as set: a seconds wait as long as wait('dry') would take
+ * Painting seconds a wash may still have to go and count as set: a seconds wait as long as wait('set') would take
  * lands within rounding of the moment, not on it.
  */
 const STAMP_SET_SLACK = 1e-6;
@@ -125,9 +125,10 @@ type StampWashPaper = { lattice: StampWetSpan; level: Float64Array; at: Float64A
  * medium)` px past what its water covers, and a cell more: as far as a stage reads round it (StampWetStage's `reach`).
  */
 export function compileStampWetness(
-  painting: CompiledStampPaint, mediumOf: (group: CompiledStampGroup) => PaintMedium, paper: StampPaintPaper, size: { width: number; height: number },
+  painting: CompiledStampPaint, mediumOf: (group: CompiledStampGroup) => PaintMedium, size: { width: number; height: number },
   margin: (deposit: CompiledStampDeposit, medium: PaintMedium) => number = () => 0,
 ): StampWetness {
+  const { paper } = painting;
   const lattice = { i0: 0, j0: 0, columns: Math.ceil(size.width / STAMP_WET_CELL) + 1, rows: Math.ceil(size.height / STAMP_WET_CELL) + 1 };
   const landings = new Map<CompiledStampDeposit, StampWetLanding>(), washes = new Map<CompiledStampPass, StampWashRecord>();
   for (const [group, pass] of painting.groups.flatMap((each) => each.passes.map((laid) => [each, laid] as const))) {
@@ -138,7 +139,7 @@ export function compileStampWetness(
     // Paint an earlier pass left has set: washes share no water.
     const wash: StampWashPaper = { lattice, level: new Float64Array(points), at: new Float64Array(points), settled: new Uint8Array(points).fill(1) };
     if (preparation) {
-      const cover = footprintCover(lattice, [], [preparation.polygon], pass.within, preparation.held ?? null);
+      const cover = footprintCover(lattice, [], [preparation.polygon], pass.within ? [pass.within] : [], preparation.held ?? null);
       forSpan(wash, lattice, (k, w, x, y) => { wash.level[k] = cover[w] * stampPaintFieldAt(preparation.wetness, x, y); });
     }
     let tau = 0;
@@ -153,14 +154,14 @@ export function compileStampWetness(
       if (step.kind === 'wait') {
         const { under } = step;
         let target: Set<number> | null = null;
-        if (under !== 'wash') target = 'next' in under ? pointsUnder(wash, stampWaitDeposits(schedule, index), pass.within) : regionPoints(wash, under.region);
+        if (under !== 'wash') target = 'deposits' in under ? pointsUnder(wash, stampWaitDeposits(schedule, index), pass.within) : regionPoints(wash, under.region);
         const judged = target ?? wetPoints(wash, tau, drying);
         const from = tau, before = rangesOver(wash, judged, from, drying);
         tau += stampWashWaitSeconds(wash, tau, step.until, drying, target);
         const after = rangesOver(wash, judged, tau, drying);
         waits.push({ step, from, to: tau, points: judged.size, wetness: { before: before.wetness, after: after.wetness }, workable: { before: before.workable, after: after.workable } });
-        // The paper decides, not the token: any wait the whole wash has set by closes its drying, as wait('dry') does.
-        if (step.until === 'dry' || stampWashWaitSeconds(wash, tau, 'dry', drying, null) <= STAMP_SET_SLACK) dry(step, step.rim ?? washRim);
+        // The paper decides, not the token: any wait the whole wash has set by closes its drying, as wait('set') does.
+        if (step.until === 'set' || stampWashWaitSeconds(wash, tau, 'set', drying, null) <= STAMP_SET_SLACK) dry(step, step.rim ?? washRim);
         continue;
       }
       const { deposit } = step, { action } = deposit;
@@ -188,13 +189,13 @@ export function compileStampWetness(
 }
 
 /**
- * Painting seconds from `tau` until `until`: 'shiny' or 'damp' once the wettest paper is no wetter than that, 'dry'
+ * Painting seconds from `tau` until `until`: 'shiny' or 'damp' once the wettest paper is no wetter than that, 'set'
  * once no paint is workable, over the lattice points `under`, or the whole wash when null. Each point's moment comes
  * in closed form; the wait lasts to the latest, 0 if all are past it.
  */
 function stampWashWaitSeconds(wash: StampWashPaper, tau: number, until: StampWashWait, { rate, openTime, shiny, damp }: StampDrying, under: ReadonlySet<number> | null): number {
   if (typeof until === 'object') return until.seconds;
-  const floor = { shiny, damp, dry: 0 }[until], lag = until === 'dry' ? openTime : 0;
+  const floor = { shiny, damp, set: 0 }[until], lag = until === 'set' ? openTime : 0;
   let latest = tau;
   for (const k of under ?? wash.level.keys()) {
     if (wash.level[k] > floor) latest = Math.max(latest, wash.at[k] + lag + (wash.level[k] - floor) / rate);
@@ -202,15 +203,11 @@ function stampWashWaitSeconds(wash: StampWashPaper, tau: number, until: StampWas
   return latest - tau;
 }
 
-/** The deposits a wait at `index` of `schedule` judging the next ones judges: its `next` deposits after it, waits between skipped. */
+/** The deposits a condition at `index` of `schedule` judges: those it names, as they're laid after it. */
 export function stampWaitDeposits(schedule: readonly CompiledStampWashStep[], index: number): CompiledStampDeposit[] {
-  const step = schedule[index], deposits: CompiledStampDeposit[] = [];
-  const next = step.kind === 'wait' && typeof step.under === 'object' && 'next' in step.under ? step.under.next : 0;
-  for (const later of schedule.slice(index + 1)) {
-    if (deposits.length >= next) break;
-    if (later.kind === 'deposit') deposits.push(later.deposit);
-  }
-  return deposits;
+  const step = schedule[index];
+  const named = new Set(step.kind === 'wait' && typeof step.under === 'object' && 'deposits' in step.under ? step.under.deposits : []);
+  return schedule.slice(index + 1).flatMap((later) => (later.kind === 'deposit' && named.has(later.deposit.id) ? [later.deposit] : []));
 }
 
 /** The lattice points inside `region`'s cells, as a footprint's cover reads a polygon. */
@@ -221,7 +218,7 @@ function regionPoints(wash: StampWashPaper, region: readonly StampPoint[]): Set<
   };
   const xs = region.map(({ x }) => x), ys = region.map(({ y }) => y);
   const [i0, columns] = cells(Math.min(...xs), Math.max(...xs), lattice.columns), [j0, rows] = cells(Math.min(...ys), Math.max(...ys), lattice.rows);
-  const span = { i0, j0, columns, rows }, cover = footprintCover(span, [], [region], null, null), points = new Set<number>();
+  const span = { i0, j0, columns, rows }, cover = footprintCover(span, [], [region], [], null), points = new Set<number>();
   forSpan(wash, span, (k, w) => { if (cover[w] > 0) points.add(k); });
   return points;
 }
@@ -258,7 +255,7 @@ function pointsUnder(wash: StampWashPaper, deposits: readonly CompiledStampDepos
 
 /** How much of each point's cell of `span` a deposit's water reaches, as footprintCover reads it. */
 const depositCover = (span: StampWetSpan, deposit: CompiledStampDeposit, within: CompiledStampArea | null) =>
-  footprintCover(span, deposit.stamps, deposit.kind === 'flood' ? [deposit.flood.polygon] : [], within, deposit.mask);
+  footprintCover(span, deposit.stamps, deposit.kind === 'flood' ? [deposit.flood.polygon] : [], [...(within ? [within] : []), ...(deposit.within ?? [])], deposit.mask);
 
 /**
  * How much of each point of `landed` (a landing's window) `deposit` covers in `pass`, 0..1, as its landing read it:
@@ -324,9 +321,9 @@ function depositSpan(deposit: CompiledStampDeposit, lattice: StampWetSpan, margi
 
 /**
  * How much of each point's cell of `span` is wetted, 0..1: the discs of `stamps` and the `polygons`, less what's
- * outside `within` or under the masking fluid `mask` (areaOnto), averaged from samples finer than the lattice.
+ * outside any of `within` or under the masking fluid `mask` (areaOnto), averaged from samples finer than the lattice.
  */
-function footprintCover(span: StampWetSpan, stamps: readonly PlacedStamp[], polygons: readonly (readonly StampPoint[])[], within: CompiledStampArea | null, mask: CompiledStampMask | null): Float32Array {
+function footprintCover(span: StampWetSpan, stamps: readonly PlacedStamp[], polygons: readonly (readonly StampPoint[])[], within: readonly CompiledStampArea[], mask: CompiledStampMask | null): Float32Array {
   const step = STAMP_WET_CELL / FOOTPRINT_SAMPLES, columns = span.columns * FOOTPRINT_SAMPLES, rows = span.rows * FOOTPRINT_SAMPLES;
   // Sample (a, b) sits at the centre of its share of the cell round lattice point (i0 + a / 4, j0 + b / 4).
   const ox = (span.i0 - 0.5) * STAMP_WET_CELL + step / 2, oy = (span.j0 - 0.5) * STAMP_WET_CELL + step / 2;
@@ -334,9 +331,9 @@ function footprintCover(span: StampWetSpan, stamps: readonly PlacedStamp[], poly
   const wet = new Float32Array(columns * rows);
   for (const { x, y, diameter } of stamps) stampDiscOnto(wet, fine, x, y, diameter / 2);
   for (const polygon of polygons) scanPolygon(polygon, fine, (s) => { wet[s] = 1; });
-  if (within) {
+  for (const area of within) {
     const inside = new Float32Array(wet.length);
-    areaOnto(within, fine, (s, r) => { inside[s] = r; });
+    areaOnto(area, fine, (s, r) => { inside[s] = r; });
     for (let s = 0; s < wet.length; s++) wet[s] *= inside[s];
   }
   const chain: CompiledStampMask[] = [];

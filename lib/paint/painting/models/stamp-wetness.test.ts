@@ -4,9 +4,12 @@ import { PAINT_MEDIA, type PaintMedium } from '#lib/paint/materials/models/paint
 import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampPass } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
-import type { StampWashOptions, StampWashScope } from './stamp-paint-recipe-types.ts';
+import type { StampPaintEnvironment, StampPassageOptions, StampPassageScope } from './stamp-paint-recipe-types.ts';
 import { compileStampWetness, stampDrying, STAMP_WET_CELL, stampWetGrid, type StampWetState, type StampWetness } from './stamp-wetness.ts';
 import { stampGridAt } from './stamp-region.ts';
+import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
+
+const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 
 const brush: StampBrush = {
   name: 'Round',
@@ -28,14 +31,14 @@ const watercolour = PAINT_MEDIA.watercolour;
 const size = { width: 800, height: 400 };
 const paper = { color: '#ffffff' } as const;
 const rate = stampDrying(watercolour.wetting, paper).rate;
-const drop = (at: { x: number; y: number }) => ({ kind: 'stamps' as const, brush, diameter: 60, at: [at] });
+const drop = (at: { x: number; y: number }) => ({ kind: 'stamps' as const, brush, size: 60, at: [at] });
 const sheet = { kind: 'polygon' as const, points: [{ x: 0, y: 0 }, { x: 800, y: 0 }, { x: 800, y: 400 }, { x: 0, y: 400 }] };
 
 /** One wash painted by `body`, its wetness in `medium`, and the wash's compiled pass. */
-function washed(body: (wash: StampWashScope) => void, options: StampWashOptions = {}, medium: PaintMedium = watercolour) {
-  const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => group.wash('w', options, body))));
+function washed(body: (wash: StampPassageScope) => void, options: StampPassageOptions = {}, medium: PaintMedium = watercolour) {
+  const painting = compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => group.passage('w', options, body))));
   const pass = painting.groups[0].passes[0];
-  return { pass, wetness: compileStampWetness(painting, () => medium, paper, size) };
+  return { pass, wetness: compileStampWetness(painting, () => medium, size) };
 }
 /** `state`'s wetness, workable or settled at (x, y). */
 const at = (state: StampWetState, field: 'wetness' | 'workable' | 'settled', x: number, y: number) => stampGridAt(stampWetGrid(state, field), x, y);
@@ -45,7 +48,7 @@ const landing = (wetness: StampWetness, pass: CompiledStampPass, id: string) => 
 test('water raises wetness only where its footprint goes, and the paper it leaves covers the painting', () => {
   const { pass, wetness } = washed((wash) => {
     wash.water('drop', drop({ x: 200, y: 100 }));
-    wash.stamps('far', { ...drop({ x: 600, y: 300 }), material: { kind: 'color', color: '#336699' } });
+    wash.stamps('far', { ...drop({ x: 600, y: 300 }), well: { paint: { kind: 'color', color: '#336699' } } });
   });
   const { before, after } = landing(wetness, pass, 'drop');
   assert.equal(at(before, 'wetness', 200, 100), 0);
@@ -81,13 +84,13 @@ test('paper dries in closed form: two waits are one wait as long, and a thirsty 
   assert.ok(Math.abs(at(once.after, 'wetness', 200, 100) - (1 - 60 * rate) / 2) < 1e-6);
 });
 
-test("wait('damp') lasts until the wettest paper is damp, and wait('dry') until no paint is workable, open time included", () => {
+test("wait('damp') lasts until the wettest paper is damp, and wait('set') until no paint is workable, open time included", () => {
   const { damp } = watercolour.wetting.sheen;
   const { pass, wetness } = washed((wash) => {
-    wash.stamps('wet', { ...drop({ x: 600, y: 300 }), material: { kind: 'color', color: '#336699' }, water: 1 });
-    wash.wait('damp', { under: 'wash' });
+    wash.stamps('wet', { ...drop({ x: 600, y: 300 }), well: { paint: { kind: 'color', color: '#336699' }, water: 1 } });
+    wash.wait('damp');
     wash.water('damp', drop({ x: 100, y: 100 }));
-    wash.wait('dry');
+    wash.wait('set');
     wash.water('dry', drop({ x: 100, y: 100 }));
   }, { preparation: { region: sheet } });
   const atDamp = landing(wetness, pass, 'damp');
@@ -101,7 +104,7 @@ test("wait('damp') lasts until the wettest paper is damp, and wait('dry') until 
     wash.water('wet', drop({ x: 100, y: 100 }));
     wash.wait({ seconds: 1 / rate });
     wash.water('dry', drop({ x: 130, y: 100 }));
-    wash.wait('dry');
+    wash.wait('set');
     wash.water('set', drop({ x: 600, y: 300 }));
   }, {}, open);
   const dried = landing(slow.wetness, slow.pass, 'dry');
@@ -112,9 +115,9 @@ test("wait('damp') lasts until the wettest paper is damp, and wait('dry') until 
 
 test('paper settles once it dries out, and stays settled until water comes, however a lift soaks it', () => {
   const { pass, wetness } = washed((wash) => {
-    wash.stamps('sky', { ...drop({ x: 100, y: 100 }), material: { kind: 'color', color: '#3355aa' } });
+    wash.stamps('sky', { ...drop({ x: 100, y: 100 }), well: { paint: { kind: 'color', color: '#3355aa' } } });
     wash.lift('blot', drop({ x: 100, y: 100 }));
-    wash.wait('dry');
+    wash.wait('set');
     wash.lift('dry', drop({ x: 100, y: 100 }));
     wash.water('rewet', drop({ x: 100, y: 100 }));
     wash.lift('scrub', drop({ x: 100, y: 100 }));
@@ -126,9 +129,9 @@ test('paper settles once it dries out, and stays settled until water comes, howe
 });
 
 test("a landing's window reaches as far past its water as it's asked", () => {
-  const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => group.wash('w', {}, (wash) => wash.water('drop', drop({ x: 400, y: 200 }))))));
+  const painting = compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => group.passage('w', {}, (wash) => wash.water('drop', drop({ x: 400, y: 200 }))))));
   const [deposit] = stampPassDeposits(painting.groups[0].passes[0]);
-  const windowOf = (margin: number) => compileStampWetness(painting, () => watercolour, paper, size, () => margin).landings.get(deposit)!.before.window;
+  const windowOf = (margin: number) => compileStampWetness(painting, () => watercolour, size, () => margin).landings.get(deposit)!.before.window;
   const near = windowOf(0), far = windowOf(40);
   assert.ok(near.x0 - far.x0 >= 40 && far.columns - near.columns >= 10);
 });

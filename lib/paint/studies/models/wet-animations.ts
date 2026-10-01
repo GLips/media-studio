@@ -39,13 +39,13 @@ const HOURS: readonly { caption: string; sky: Record<string, number>; sun: Recor
 /** A sky wetted and washed in, a sun dropped into it, and a hill on dry paper; its paint at `hour`. */
 function sunsetAt(kit: WetPassageKit, hour: (typeof HOURS)[number]): StampPaintRecipe {
   const { fill, drop } = kit.brushes;
-  return stampPaintRecipe((paint) => {
-    paint.group('sky', { composite: 'glaze', opacity: 1 }, (group) => group.wash('sky', { preparation: { region: SKY } }, (wash) => {
-      wash.fill('sky', { brush: fill, diameter: 90, ...flood, region: SKY, material: wetPassageMixture(kit, hour.sky) });
-      wash.stamps('sun', { brush: drop, diameter: 70, material: wetPassageMixture(kit, hour.sun), at: [{ x: 250, y: 130 }] });
+  return stampPaintRecipe(kit, (paint) => {
+    paint.group('sky', { composite: 'glaze', opacity: 1 }, (group) => group.passage('sky', { preparation: { region: SKY } }, (wash) => {
+      wash.fill('sky', { brush: fill, size: 90, ...flood, region: SKY, well: { paint: wetPassageMixture(kit, hour.sky) } });
+      wash.stamps('sun', { brush: drop, size: 70, well: { paint: wetPassageMixture(kit, hour.sun) }, at: [{ x: 250, y: 130 }] });
     }));
-    paint.group('hill', { composite: 'glaze', opacity: 1 }, (group) => group.wash('hill', {}, (wash) => {
-      wash.fill('hill', { brush: fill, diameter: 60, ...flood, region: HILL, material: wetPassageMixture(kit, hour.hill) });
+    paint.group('hill', { composite: 'glaze', opacity: 1 }, (group) => group.passage('hill', {}, (wash) => {
+      wash.fill('hill', { brush: fill, size: 60, ...flood, region: HILL, well: { paint: wetPassageMixture(kit, hour.hill) } });
     }));
   });
 }
@@ -58,14 +58,14 @@ const STRIP = [0, 1, 2, 3];
 function driftingCloud(kit: WetPassageKit, boil?: StampGroupBoil): StampPaintRecipe {
   const { fill, drop } = kit.brushes;
   const puff: StampRegion = { kind: 'ellipse', x: 110, y: 100, radiusX: 70, radiusY: 34 };
-  return stampPaintRecipe((paint) => {
-    paint.group('sky', { composite: 'glaze', opacity: 1 }, (group) => group.wash('sky', {}, (wash) => {
-      wash.fill('sky', { brush: fill, diameter: 90, ...flood, region: polygon(12, 12, W - 12, 12, W - 12, H - 12, 12, H - 12), material: wetPassageMixture(kit, { cerulean: 0.2 }) });
+  return stampPaintRecipe(kit, (paint) => {
+    paint.group('sky', { composite: 'glaze', opacity: 1 }, (group) => group.passage('sky', {}, (wash) => {
+      wash.fill('sky', { brush: fill, size: 90, ...flood, region: polygon(12, 12, W - 12, 12, W - 12, H - 12, 12, H - 12), well: { paint: wetPassageMixture(kit, { cerulean: 0.2 }) } });
     }));
     const motion = { keys: [{ at: 0, x: 0, y: 0 }, { at: 1, x: DRIFT * WET_ANIMATION_FPS, y: 0 }] };
-    paint.group('cloud', { composite: 'glaze', opacity: 1, motion, ...(boil && { boil }) }, (group) => group.wash('cloud', { preparation: { region: { ...puff, radiusX: 80, radiusY: 42 } } }, (wash) => {
-      wash.fill('cloud', { brush: fill, diameter: 40, region: puff, material: wetPassageMixture(kit, { ultramarine: 0.15, burntSienna: 0.08, quinacridoneRose: 0.03 }) });
-      wash.stamps('shadow', { brush: drop, diameter: 36, material: wetPassageMixture(kit, { ultramarine: 0.25, burntSienna: 0.12 }), at: [{ x: 85, y: 112 }, { x: 135, y: 116 }] });
+    paint.group('cloud', { composite: 'glaze', opacity: 1, motion, ...(boil && { boil }) }, (group) => group.passage('cloud', { preparation: { region: { ...puff, radiusX: 80, radiusY: 42 } } }, (wash) => {
+      wash.fill('cloud', { brush: fill, size: 40, region: puff, well: { paint: wetPassageMixture(kit, { ultramarine: 0.15, burntSienna: 0.08, quinacridoneRose: 0.03 }) } });
+      wash.stamps('shadow', { brush: drop, size: 36, well: { paint: wetPassageMixture(kit, { ultramarine: 0.25, burntSienna: 0.12 }) }, at: [{ x: 85, y: 112 }, { x: 135, y: 116 }] });
     }));
   });
 }

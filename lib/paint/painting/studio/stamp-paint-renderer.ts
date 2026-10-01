@@ -655,8 +655,8 @@ ${compositor.output}
 }`;
 
 // A state of the masking fluid over its box: the state it's built on (`parent`, width 0 for none), then `opCount` ops
-// from `firstOp`, a mask joining its area by max, an unmask lifting its amount, everywhere without a region
-// (`count` 0). An op's area is worked out only within its `reach`, beyond which it's 0.
+// from `firstOp`: a mask joins its area by max, an unmask lifts its amount (everywhere for `count` 0), a clip keeps
+// only its area (an application's `within`). An op's area is worked out only within its `reach`.
 const MASK_STEP = stampUniformLayout('MaskStep', [['box', 'vec4f'], ['parent', 'vec4f'], ['firstOp', 'u32'], ['opCount', 'u32']]);
 /** A MaskOp's words: its thirteen, padded to its vec4f's alignment. */
 const MASK_OP_WORDS = 16;
@@ -684,7 +684,7 @@ ${STAMP_AREA_COVERAGE_WGSL}
       r = 0.0;
       if (all(p >= op.reach.xy) && all(p <= op.reach.zw)) { r = areaCoverage(p, op.first, op.count, op.inset, op.ragged, op.width, op.seed); }
     }
-    fluid = select(fluid * (1.0 - op.amount * r), max(fluid, r), op.kind == 0u);
+    if (op.kind == 2u) { fluid *= r; } else { fluid = select(fluid * (1.0 - op.amount * r), max(fluid, r), op.kind == 0u); }
   }
   return vec4f(fluid);
 }`;
@@ -842,11 +842,11 @@ type FrameTrace = { deposits: Map<CompiledStampDeposit, { request: StampDepositT
 /** A region worked out at load (a flood's body, a state of the fluid, a `within`): its texture and its box on the painting. */
 type RegionTexture = { view: GPUTextureView; box: Box };
 
-/** A bank's regions: each flood's body by its deposit, each state of the fluid a deposit lands under, each pass's `within`. */
+/** A bank's regions: each flood's body by its deposit, each state of the fluid a deposit lands under, each deposit's `within`. */
 type LoadedRegions = {
   bodies: ReadonlyMap<CompiledStampDeposit, RegionTexture | null>;
   fluids: ReadonlyMap<CompiledStampMask, RegionTexture | null>;
-  withins: ReadonlyMap<CompiledStampPass, RegionTexture | null>;
+  withins: ReadonlyMap<CompiledStampDeposit, RegionTexture | null>;
 };
 
 export type StampPaintRenderer = {
@@ -902,14 +902,14 @@ export type StampPaintRendererOptions = {
 const latticeCellsMost = ({ lay, warp }: StampGroupFrame) => (warp ? STAMP_WARP_MOST_CELLS ** 2 : Number(!!lay));
 
 /**
- * A renderer for one painting on `surface`, mixed as `mixing` says; `profile` times the load's parts. Refuses a
+ * A renderer for one painting on `surface`, on its paper and mixed as its mixing says; `profile` times the load's parts. Refuses a
  * painting it can't mix. A frame may round a few pixels a level differently between draws (docs/private-styles.md,
  * "Same pixels"). No render fps reaches it: a boil counts animation frames (stampBoilEpoch).
  */
 export async function createStampPaintRenderer(
-  surface: StampPaintSurface, painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing,
-  { profile, wetStages = STAMP_WET_STAGES }: StampPaintRendererOptions = {},
+  surface: StampPaintSurface, painting: CompiledStampPaint, { profile, wetStages = STAMP_WET_STAGES }: StampPaintRendererOptions = {},
 ): Promise<StampPaintRenderer> {
+  const { paper, mixing } = painting;
   const span = profile ?? (() => () => {});
   let done = span('stamp paint compositor load');
   const { compositorOn, wetnessOf, mediumOf } = compositorFor(painting, paper, mixing, { width: surface.width, height: surface.height }, wetStages);
@@ -955,7 +955,7 @@ function compositorFor(painting: CompiledStampPaint, paper: StampPaintPaper, mix
     const paint = compileStampPigmentPaint(painting, mixing, PAINT_BANDS);
     const mediumOf = (group: Pick<CompiledStampGroup, 'id'>) => stampPigmentGroupMedium(paint, painting, group);
     const margin = (deposit: CompiledStampDeposit, medium: PaintMedium) => stampWetStageReach(wetStages, deposit, medium);
-    const wetnessOf = (groups: CompiledStampPaint) => compileStampWetness(groups, mediumOf, paper, size, margin);
+    const wetnessOf = (groups: CompiledStampPaint) => compileStampWetness(groups, mediumOf, size, margin);
     return { compositorOn: (device: StampPaintDevice) => stampPigmentCompositor(device, paint, paper.color), wetnessOf, mediumOf };
   }
   for (const { id, mixing: own } of painting.groups) {
@@ -1082,7 +1082,7 @@ function rendererOnSurface(
   function bankWetness(groups: readonly CompiledStampGroup[], source: BankSource): StampWetness | null {
     if (source.kind === 'written') return source.wetness;
     if (source.kind === 'epoch') return source.written.wetness;
-    return wetnessOf?.({ groups }) ?? null;
+    return wetnessOf?.({ ...painting, groups }) ?? null;
   }
   /** What `groups`' deposits are drawn with, made through `on`: their landings' grids, regions and wet stages. */
   function loadHome(groups: readonly CompiledStampGroup[], wetness: StampWetness | null, on: StampPaintDevice): BankHome {
@@ -1094,7 +1094,7 @@ function rendererOnSurface(
     const stages: LoadedWetStage[] = [];
     if (wetness?.landings.size) {
       const wetContext: StampWetStageContext = {
-        device: on, painting: { groups }, wetness, width, height, layer: targets.layer, wash: stageWash!,
+        device: on, painting: { ...painting, groups }, wetness, width, height, layer: targets.layer, wash: stageWash!,
         footprint: targets.footprint!, fresh: targets.fresh!, grids, paperDepth: paper.grain?.depth ?? 0,
       };
       for (const stage of wetStages) {
@@ -1374,7 +1374,7 @@ function rendererOnSurface(
 
   /**
    * Works out, once a bank, what of `groups` doesn't change with time: each flood's body, each state of the fluid a
-   * deposit lands under, each pass's `within`, as cropped textures made through `on` (none for an empty state). All
+   * deposit lands under, each deposit's `within`, as cropped textures made through `on` (none for an empty state). All
    * are planned and held to STAMP_REGION_BUDGET, refused past it naming what's there, before any is made.
    */
   function loadRegions(groups: readonly CompiledStampGroup[], on: StampPaintDevice): LoadedRegions {
@@ -1399,11 +1399,11 @@ function rendererOnSurface(
       return w > 0 && h > 0 ? { x, y, w, h } : null;
     };
     /** An op of the fluid, over its area or everywhere, as a MaskOp; its index. */
-    const opOf = (kind: 'mask' | 'unmask', amount: number, area: CompiledStampArea | null) => {
+    const opOf = (kind: 'mask' | 'unmask' | 'clip', amount: number, area: CompiledStampArea | null) => {
       const [first, count] = area ? pointsOf(area.polygon) : [0, 0], reach = area ? stampAreaBox(area) : null, ragged = area?.edge?.ragged;
       opWords.push({
         floats: [reach?.x0 ?? 0, reach?.y0 ?? 0, reach?.x1 ?? 0, reach?.y1 ?? 0, ragged?.amount ?? 0, ragged?.scale ?? 0, stampEdgeWidth(area?.edge), amount],
-        words: [first, count, kind === 'mask' ? 0 : 1, area?.seed ?? 0],
+        words: [first, count, { mask: 0, unmask: 1, clip: 2 }[kind], area?.seed ?? 0],
         inset: area?.inset ?? 0,
       });
       return opWords.length - 1;
@@ -1471,22 +1471,30 @@ function rendererOnSurface(
     };
     for (const mask of read) fluidOf(mask);
 
-    // A pass's `within` is a state of its own: one mask of its area on no fluid.
-    const withins = new Map<CompiledStampPass, Step | null>();
+    // A deposit's `within` is a state of its own on no fluid: its pass's area, clipped to each of its applications'.
+    // Deposits of a pass under the same applications share it.
+    const withins = new Map<CompiledStampDeposit, Step | null>();
     for (const pass of passes) {
-      if (!pass.within) continue;
-      const box = inPainting(stampAreaBox(pass.within));
-      const step = box && maskStep(box, null, opWords.length, 1);
-      if (step) {
-        opOf('mask', 1, pass.within);
-        steps.push(step);
+      const shared = new Map<CompiledStampDeposit['within'], Step | null>();
+      for (const deposit of stampPassDeposits(pass)) {
+        const areas = [...(pass.within ? [pass.within] : []), ...(deposit.within ?? [])];
+        if (!areas.length) continue;
+        if (!shared.has(deposit.within)) {
+          const box = inPainting(stampAreaBox(areas[0]));
+          const step = box && maskStep(box, null, opWords.length, areas.length);
+          if (step) {
+            areas.forEach((area, i) => opOf(i ? 'clip' : 'mask', 1, area));
+            steps.push(step);
+          }
+          shared.set(deposit.within, step);
+        }
+        withins.set(deposit, shared.get(deposit.within)!);
       }
-      withins.set(pass, step);
     }
 
     const bytes = steps.reduce((sum, { box }) => sum + box.w * box.h * STAMP_REGION_TEXEL_BYTES, 0);
     if (bytes > STAMP_REGION_BUDGET) {
-      throw new Error(`stamp paint: the painting's fills, masking fluid and within regions need ${Math.round(bytes / 2 ** 20)} MB, over ${STAMP_REGION_BUDGET / 2 ** 20} MB: ${bodies.size} fill bodies, ${[...fluids.values()].filter(Boolean).length} states of the fluid, ${withins.size} within regions; share masks between deposits or crop them`);
+      throw new Error(`stamp paint: the painting's fills, masking fluid and within regions need ${Math.round(bytes / 2 ** 20)} MB, over ${STAMP_REGION_BUDGET / 2 ** 20} MB: ${bodies.size} fill bodies, ${[...fluids.values()].filter(Boolean).length} states of the fluid, ${new Set(withins.values()).size} within regions; share masks between deposits or crop them`);
     }
     const made = new Map(steps.map((step): [Step, RegionTexture] => {
       const texture = on.createTexture({ size: [step.box.w, step.box.h], format: STAMP_REGION_FORMAT, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
@@ -1726,8 +1734,8 @@ function rendererOnSurface(
   function resolveDeposit(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loadedDeposit: LoadedDeposit, pass: CompiledStampPass, { t, paintAt }: { t: number; paintAt: number }, blurred: boolean, box: Box, frameTrace?: FrameTrace) {
     const trace = frameTrace?.deposits.get(loadedDeposit.identity), { regions, stages } = loadedDeposit.home;
     const clipped = !!pass.clipTo, fluid = deposit.mask ? regions.fluids.get(deposit.mask) ?? null : null;
-    // A pass within a region wholly off the painting lands nowhere: its `within` is an empty texture, read as none.
-    const within = pass.within ? regions.withins.get(pass) ?? null : null;
+    // A deposit within a region wholly off the painting lands nowhere: its `within` is an empty texture, read as none.
+    const within = regions.withins.get(deposit) ?? null, isWithin = !!pass.within || !!deposit.within;
     const { brush, active, landing } = loadedDeposit;
     // Where a stage rims the deposit's drying (the drying rim, stamp-wet-rim.ts), a brush's own wet edges would rim
     // each stroke again. Its Procreate rim goes, and Photoshop's pooling keeps its body, not its peak.
@@ -1744,7 +1752,7 @@ function rendererOnSurface(
     const tinted = loadedDeposit.tint !== null;
     const flags: (keyof typeof DEPOSIT_FLAGS)[] = [
       ...(mainGrain ? ['canvasGrain' as const] : []), ...(brush.dual ? ['dual' as const] : []), ...(dualGrain ? ['dualCanvasGrain' as const] : []),
-      ...(tooth ? ['paper' as const] : []), ...(fluid ? ['masked' as const] : []), ...(pass.within ? ['within' as const] : []),
+      ...(tooth ? ['paper' as const] : []), ...(fluid ? ['masked' as const] : []), ...(isWithin ? ['within' as const] : []),
       ...(deposit.kind === 'flood' ? ['flood' as const] : []),
       ...(deposit.kind === 'flood' && !landing && stampFloodCarriesWater(brush, mediumOfDeposit(deposit)) ? ['floodWater' as const] : []),
       // Only paint makes a clip base: water and a lift leave where a pass holds paint as it was.

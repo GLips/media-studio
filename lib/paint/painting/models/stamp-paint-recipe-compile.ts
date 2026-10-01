@@ -12,10 +12,10 @@ import { compilePaintAction, compileWashAction, type CompiledStampAction, type C
 import { compileStampArea, stampFluidHolder, stampStandsBeforeExclusions, type CompiledStampArea } from './stamp-area.ts';
 import { compileStampGroupMotion, type CompiledStampGroupMotion, type StampGroupBoil, type StampGroupPaper } from './stamp-group-motion.ts';
 import { stampKeysSpan } from './stamp-scene-keys.ts';
-import type { StampPigmentMixing } from './stamp-pigment-paint.ts';
+import type { StampPaintMixing, StampPigmentMixing } from './stamp-pigment-paint.ts';
 import type { StampMark } from './stamp-marks.ts';
 import { checkedStampIdSegment, stampDepositNameText } from './stamp-deposit-identity.ts';
-import type { StampPaintRecipe, StampPaintRecipeDeposit, StampPaintRecipeGroup, StampPaintRecipeMask } from './stamp-paint-recipe-types.ts';
+import type { StampDepositWithin, StampPaintPaper, StampPaintRecipe, StampPaintRecipeDeposit, StampPaintRecipeGroup, StampPaintRecipeMask } from './stamp-paint-recipe-types.ts';
 import { checkedStampRim, compileStampWashWait, type CompiledStampWash, type CompiledStampWashStep } from './stamp-wash-effects.ts';
 
 /**
@@ -51,8 +51,10 @@ type CompiledStampDepositCommon<A extends CompiledStampAction> = {
   opacity: number;
   /** The fluid it lands under. */
   mask: CompiledStampMask | null;
-  /** When it shows (StampDepositReveal): from `at` seconds, drawn over `over` (0 lands whole); none, there throughout. */
+  /** When it shows, as the score allotted it: from `at` seconds, drawn over `over` (0 lands whole); none, there throughout. */
   reveal?: { at: number; over: number };
+  /** The areas of the applications it was written under, its pass's `within` apart; absent for none. */
+  within?: readonly CompiledStampArea[];
   /** Every stamp of the finished deposit, in reveal order: a flood's are its edge stroke's. */
   stamps: FrozenStampMarks;
   /** The brush's dual stamps, placed by its own settings along the same stroke, in reveal order; none without one. */
@@ -65,7 +67,7 @@ type CompiledStampDepositCommon<A extends CompiledStampAction> = {
  */
 export type CompiledStampDeposit<A extends CompiledStampAction = CompiledStampAction> = CompiledStampDepositCommon<A> & ({ kind: 'stroke' | 'stamps' } | { kind: 'flood'; flood: CompiledStampFlood });
 
-/** A pass painted `dry`, its deposits all paint (each lands as vid-83's paint does), or as a `wash`. */
+/** A passage without wet history, `dry`, its deposits all paint (each lands as vid-83's paint does), or with one, a `wash`. */
 export type CompiledStampPass = {
   /** `<group>/<pass>`. */
   id: string;
@@ -110,18 +112,20 @@ export type CompiledStampGroup = {
 /** Whether `group` takes out of the paint behind it: its first pass is a knockout, as only a first may be. */
 export const stampGroupKnocksOut = ({ passes: [first] }: CompiledStampGroup) => first?.kind === 'wash' && first.knockout;
 
-/** A checked recipe with every stamp placed, its groups in the order they paint. */
-export type CompiledStampPaint = { groups: readonly CompiledStampGroup[] };
+/** A checked recipe with every stamp placed, its groups in the order they paint, and the paper and mixing it's painted in. */
+export type CompiledStampPaint = { paper: StampPaintPaper; mixing: StampPaintMixing; groups: readonly CompiledStampGroup[] };
 
 /**
  * Checks `recipe` and places every stamp. Throws on an ID used twice at one level (it would seed two deposits alike)
- * or holding `/` or `|` (the seed's separators), a clipped pass with nothing before it, a deposit with no points or
- * diameter, a region that isn't a shape, or any number out of its range.
+ * or holding `/` or `|` (the seed's separators), a pass clipped to one it can't be (clipTo), a deposit with no points
+ * or diameter, a region that isn't a shape, or any number out of its range.
  */
 export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStampPaint {
   const seen = new Set<string>(), duplicates = new Set<string>();
+  /** `id` claimed under `parent`, each of its segments checked (a deposit's name has its iterations' segments). */
   const claim = (id: string, parent?: string) => {
-    const full = parent ? `${parent}/${checkedStampIdSegment(id)}` : checkedStampIdSegment(id);
+    id.split('/').forEach(checkedStampIdSegment);
+    const full = parent ? `${parent}/${id}` : id;
     if (seen.has(full)) duplicates.add(full);
     seen.add(full);
     return full;
@@ -158,7 +162,14 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
   const compileGroup = ({ id, options, passes }: StampPaintRecipeGroup, epoch: number): CompiledStampGroup => {
     const named = epoch ? (child: string, parent?: string) => (parent ? `${parent}/${child}` : child) : claim;
     const groupId = named(id), held = holders.get(id)!;
-    let clipBase: string | undefined;
+    const compiledWithin = new Map<readonly StampDepositWithin[], readonly CompiledStampArea[]>();
+    /** An application's areas, compiled once for every deposit written under it. */
+    const withinOf = (within: readonly StampDepositWithin[] | undefined) => {
+      if (!within) return undefined;
+      let compiled = compiledWithin.get(within);
+      if (!compiled) compiledWithin.set(within, (compiled = within.map(({ area, seed }) => compileStampArea(area, seed))));
+      return compiled;
+    };
     const compiledPasses = passes.map((pass, index): CompiledStampPass => {
       const passId = named(pass.id, groupId);
       if (pass.wash?.knockout) {
@@ -166,18 +177,16 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
         const painted = pass.steps.flatMap((step) => (step.kind === 'deposit' && step.action.kind === 'paint' ? [step] : []))[0];
         if (painted) throw new Error(`stamp paint: ${passId} is a knockout and ${stampDepositNameText(painted.name)} paints in it; a knockout only reserves and lifts`);
       }
-      if (pass.clipped && !clipBase) throw new Error(`stamp paint: ${passId} is clipped, but no unclipped pass comes before it in ${groupId}`);
-      const clipTo = pass.clipped ? clipBase : undefined;
-      // A knockout holds no paint of the group's, so nothing clips to it.
-      if (!pass.clipped && !pass.wash?.knockout) clipBase = passId;
+      const clipTo = pass.clipTo && `${groupId}/${checkedClipBase(passes, index, groupId)}`;
       /** `step` compiled, its action by `action` from the colour jitter drawn for it, placed from its mark's key or its own ID. */
       const deposit = <W extends StampRecipeWashAction, A extends CompiledStampAction>(step: StampPaintRecipeDeposit<W>, action: (full: string, draws: readonly number[]) => A) => {
         // Its name seeds it and its provenance never does: wrapping it in an application moves nothing.
-        if (!epoch) step.name.keys.forEach(checkedStampIdSegment);
+        if (!epoch) [...step.name.items, step.name.id, ...step.name.keys].forEach(checkedStampIdSegment);
         const full = named(stampDepositNameText(step.name), passId), fluid = step.mask && masks.get(step.mask)!;
         if (step.mark && !epoch) claimMark(step.mark);
         // A knockout acts on the paint behind the group, which a standing before doesn't hold off.
-        return compileDeposit(full, step, (draws) => action(full, draws), pass.wash?.knockout ? fluid : held(fluid), stampBoilSeed(step.mark?.key ?? full, epoch));
+        const reserved = pass.wash?.knockout ? fluid : held(fluid);
+        return compileDeposit(full, step, (draws) => action(full, draws), reserved, stampBoilSeed(step.mark?.key ?? full, epoch), withinOf(step.within));
       };
       const common = { id: passId, ...(clipTo && { clipTo }), within: pass.within ? compileStampArea(pass.within, passId) : null };
       if (!pass.wash) {
@@ -213,7 +222,23 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
   };
   const groups = resolved.map(({ group }) => compileGroup(group, 0));
   if (duplicates.size) throw new Error(`stamp paint: IDs used twice, which would seed two deposits alike: ${[...duplicates].join(', ')}`);
-  return { groups };
+  const { paper, mixing } = recipe.environment;
+  return { paper, mixing, groups };
+}
+
+/**
+ * The pass `passes[index]` is clipped to, by its ID, checked: an earlier pass of its group, unclipped and no knockout
+ * (which holds none of the group's paint), with only passes clipped to it between, as the renderer keeps one clip's
+ * coverage at a time.
+ */
+function checkedClipBase(passes: StampPaintRecipeGroup['passes'], index: number, groupId: string): string {
+  const pass = passes[index], base = pass.clipTo!, at = passes.findIndex(({ id }) => id === base);
+  const refused = (why: string) => new Error(`stamp paint: ${groupId}/${pass.id} is clipped to ${base}, ${why}`);
+  if (at < 0 || at >= index) throw refused(`which isn't a pass of ${groupId} before it`);
+  if (passes[at].clipTo || passes[at].wash?.knockout) throw refused('and a pass clips only to an unclipped one that paints');
+  const between = passes.slice(at + 1, index).find((other) => other.clipTo !== base);
+  if (between) throw refused(`and ${between.id} comes between unclipped to it`);
+  return base;
 }
 
 /** The scene seconds over which `passes`' paint changes, every keyed material's span joined; null for none. */

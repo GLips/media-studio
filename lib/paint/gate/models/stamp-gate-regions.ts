@@ -8,7 +8,7 @@
 
 import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
-import type { StampGroupScope, StampPaintScope, StampPassOptions } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
+import type { StampGroupScope, StampPaintScope, StampPassageOptions } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import { stampPolygonDistance, stampRegionPolygon, type StampRegion } from '#lib/paint/painting/models/stamp-region.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
 import type { StampGateWashCheck } from './stamp-gate-layer.ts';
@@ -32,11 +32,11 @@ const OVERLAP = 3;
 
 /** A black flood past the whole painting, so only areas bound it. */
 const PAST = stampGatePolygon(-30, -30, 230, -30, 230, 170, -30, 170);
-const flood = (group: StampGroupScope, id: string, options: StampPassOptions = {}) =>
-  group.pass(id, options, (pass) => pass.fill(id, { brush: ROUND, diameter: 30, application: { kind: 'flood' }, material: { kind: 'color', color: '#000000' }, region: PAST }));
+const flood = (group: StampGroupScope, id: string, options: StampPassageOptions = {}) =>
+  group.passage(id, options, (pass) => pass.fill(id, { brush: ROUND, size: 30, application: { kind: 'flood' }, well: { paint: { kind: 'color', color: '#000000' } }, region: PAST }));
 
 const gatePainting = (body: (paint: StampPaintScope) => void): StampGatePainting => ({
-  painting: compileStampPaintRecipe(stampPaintRecipe(body)), paper: { color: '#ffffff' }, mixing: FLAT, ...SIZE, t: 0, images: STAMP_GATE_IMAGES,
+  painting: compileStampPaintRecipe(stampPaintRecipe({ paper: { color: '#ffffff' }, mixing: FLAT }, body)), ...SIZE, t: 0, images: STAMP_GATE_IMAGES,
 });
 
 /**
@@ -60,7 +60,7 @@ export function stampGateRegionPaintings(id: StampGateRegionId): StampGatePainti
       flood(g, 'flood');
     });
     p.group('near', { composite: 'opaque', standsBefore: { groups: ['far'], shape: HILL, overlap: OVERLAP } }, (g) => {
-      if (hill) g.pass('hill', { within: { region: HILL } }, (pass) => pass.fill('hill', { brush: ROUND, diameter: 30, application: { kind: 'flood' }, material: { kind: 'color', color: '#808080' }, region: HILL }));
+      if (hill) g.passage('hill', { within: { region: HILL } }, (pass) => pass.fill('hill', { brush: ROUND, size: 30, application: { kind: 'flood' }, well: { paint: { kind: 'color', color: '#808080' } }, region: HILL }));
     });
   });
   return [range(false), range(true)];

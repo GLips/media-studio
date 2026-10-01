@@ -14,9 +14,10 @@ import type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-p
 import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
-import { STAMP_GATE_FLOW_TOLERANCE, type StampGateFlowMedium } from './stamp-gate-flow.ts';
+import { STAMP_GATE_FLOW_TOLERANCE, STAMP_GATE_STAGE_ENVIRONMENT, type StampGateFlowMedium } from './stamp-gate-flow.ts';
 import { stampGateBrush, stampGatePolygon } from './stamp-gate-paintings.ts';
 import type { StampGateWashCheck } from './stamp-gate-layer.ts';
+import { stampBloom } from '#lib/paint/painting/models/stamp-wet-techniques.ts';
 
 export const STAMP_GATE_STRIPE_SIZE = { width: 192, height: 128 };
 /** The layer's array layers: coverage, two pigments, and the open share in the last channel. */
@@ -55,12 +56,12 @@ const pure = (pigment: PaintPigmentAppearance): PaintMaterial => ({ kind: 'mixtu
  */
 export function stampGateStripePainting(rim?: number): CompiledStampPaint {
   const { y0, y1, left, right } = PATCH;
-  return compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => {
-    group.wash('w', { ...(rim !== undefined && { rim }) }, (wash) => {
+  return compileStampPaintRecipe(stampPaintRecipe(STAMP_GATE_STAGE_ENVIRONMENT, (paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => {
+    group.passage('w', { ...(rim !== undefined && { rim }) }, (wash) => {
       wash.mask('stripe', { region: stampGatePolygon(STRIPE.x0, 0, STRIPE.x1, 0, STRIPE.x1, 128, STRIPE.x0, 128) });
-      wash.fill('left', { brush: BRUSH, diameter: 30, application: { kind: 'flood' }, region: stampGatePolygon(left, y0, STRIPE.x0, y0, STRIPE.x0, y1, left, y1), material: pure(W.ultramarine), water: 1 });
-      wash.fill('right', { brush: BRUSH, diameter: 30, application: { kind: 'flood' }, region: stampGatePolygon(STRIPE.x1, y0, right, y0, right, y1, STRIPE.x1, y1), material: pure(W.burntSienna), water: 1 });
-      wash.bloom('drop', { brush: BRUSH, diameter: DROP.diameter, at: [DROP] });
+      wash.fill('left', { brush: BRUSH, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(left, y0, STRIPE.x0, y0, STRIPE.x0, y1, left, y1), well: { paint: pure(W.ultramarine), water: 1 } });
+      wash.fill('right', { brush: BRUSH, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(STRIPE.x1, y0, right, y0, right, y1, STRIPE.x1, y1), well: { paint: pure(W.burntSienna), water: 1 } });
+      stampBloom(wash, 'drop', { brush: BRUSH, size: DROP.diameter, at: [DROP] });
     });
   })));
 }

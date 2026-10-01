@@ -21,11 +21,12 @@ import { PAINT_ANIMATION_FPS, type StampGroupBoil, type StampGroupMotion, type S
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
-import type { StampPaintMaterial, StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
+import type { StampPaintEnvironment, StampPaintMaterial, StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import { stampGateBendCarried } from './stamp-gate-bend.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
 import type { StampGateWashCheck } from './stamp-gate-layer.ts';
+import { stampBloom } from '#lib/paint/painting/models/stamp-wet-techniques.ts';
 
 /** The frame rate the animations are drawn at: the animation clock's, so a boil on twos repaints every second frame drawn. */
 export const STAMP_GATE_ANIMATION_FPS = PAINT_ANIMATION_FPS;
@@ -50,6 +51,9 @@ export const STAMP_GATE_GROUND_FROM_ROW = 132;
 
 // A grained paper, so a cloud whose texture swam over it would show.
 const PAPER: StampPaintPaper = { color: '#fbf7ee', grain: { image: { style: 'gate', pack: 'gate', file: 'grain.png' }, scale: 0.2, depth: 0.7 } };
+const WATERCOLOUR: StampPaintEnvironment = { paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W } };
+/** The grained paper's photograph under it, for a cut-out's own paper to stand apart from. */
+const PHOTOGRAPHED: StampPaintEnvironment = { ...WATERCOLOUR, paper: { ...PAPER, image: { style: 'gate', pack: 'gate', file: 'photograph.png' } } };
 /** A brush whose marks are drawn at random, so a boil's re-seeding shows. */
 const RANDOM = stampGateBrush('Random', {
   media: 'wet',
@@ -60,16 +64,16 @@ const mixture = (...parts: { pigment: PaintPigmentAppearance; amount: number }[]
 
 /** A cloud, a wash on paper wetted about it, over a still ground; the cloud moving by `motion` or boiling. */
 function cloudPainting(cloud: { motion?: StampGroupMotion; boil?: StampGroupBoil }): StampGatePainting {
-  const painting = compileStampPaintRecipe(stampPaintRecipe((p) => {
-    p.group('cloud', { composite: 'glaze', opacity: 1, ...cloud }, (g) => g.wash('puff', { preparation: { region: { kind: 'ellipse', x: 80, y: 70, radiusX: 62, radiusY: 38 } } }, (w) => {
-      w.fill('body', { brush: RANDOM, diameter: 24, material: mixture({ pigment: W.ultramarine, amount: 1 }), region: { kind: 'ellipse', x: 80, y: 70, radiusX: 48, radiusY: 24 } });
-      w.stamps('dab', { brush: RANDOM, diameter: 22, material: mixture({ pigment: W.burntSienna, amount: 1 }), at: [{ x: 62, y: 64 }, { x: 98, y: 76 }] });
+  const painting = compileStampPaintRecipe(stampPaintRecipe(WATERCOLOUR, (p) => {
+    p.group('cloud', { composite: 'glaze', opacity: 1, ...cloud }, (g) => g.passage('puff', { preparation: { region: { kind: 'ellipse', x: 80, y: 70, radiusX: 62, radiusY: 38 } } }, (w) => {
+      w.fill('body', { brush: RANDOM, size: 24, well: { paint: mixture({ pigment: W.ultramarine, amount: 1 }) }, region: { kind: 'ellipse', x: 80, y: 70, radiusX: 48, radiusY: 24 } });
+      w.stamps('dab', { brush: RANDOM, size: 22, well: { paint: mixture({ pigment: W.burntSienna, amount: 1 }) }, at: [{ x: 62, y: 64 }, { x: 98, y: 76 }] });
     }));
-    p.group('ground', { composite: 'glaze', opacity: 1 }, (g) => g.pass('p', {}, (pass) => pass.stroke('line', {
-      brush: RANDOM, diameter: 14, material: mixture({ pigment: W.burntSienna, amount: 1 }), path: [{ x: 5, y: 146 }, { x: 235, y: 142 }],
+    p.group('ground', { composite: 'glaze', opacity: 1 }, (g) => g.passage('p', { wetHistory: false }, (pass) => pass.stroke('line', {
+      brush: RANDOM, size: 14, well: { paint: mixture({ pigment: W.burntSienna, amount: 1 }) }, path: [{ x: 5, y: 146 }, { x: 235, y: 142 }],
     })));
   }));
-  return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t: 0, images: STAMP_GATE_IMAGES };
+  return { painting, ...SIZE, t: 0, images: STAMP_GATE_IMAGES };
 }
 
 /** The cloud drifting STAMP_GATE_DRIFT_STEP pixels a frame to the right. */
@@ -87,12 +91,12 @@ export const stampGateBoilPainting = () => cloudPainting({ boil: { every: 2 } })
  */
 export function stampGateBoilWashPainting(): StampGatePainting {
   const steady = stampGateBrush('Steady', { flow: 0.6 });
-  const painting = compileStampPaintRecipe(stampPaintRecipe((p) => {
-    p.group('dabs', { composite: 'glaze', opacity: 1, boil: { every: 2 } }, (g) => g.wash('wet', { preparation: { region: stampGatePolygon(0, 0, 240, 0, 240, 160, 0, 160) } }, (w) => {
-      w.stamps('dabs', { brush: steady, diameter: 40, material: mixture({ pigment: W.ultramarine, amount: 1 }), at: [{ x: 60, y: 80 }, { x: 170, y: 70 }] });
+  const painting = compileStampPaintRecipe(stampPaintRecipe(WATERCOLOUR, (p) => {
+    p.group('dabs', { composite: 'glaze', opacity: 1, boil: { every: 2 } }, (g) => g.passage('wet', { preparation: { region: stampGatePolygon(0, 0, 240, 0, 240, 160, 0, 160) } }, (w) => {
+      w.stamps('dabs', { brush: steady, size: 40, well: { paint: mixture({ pigment: W.ultramarine, amount: 1 }) }, at: [{ x: 60, y: 80 }, { x: 170, y: 70 }] });
     }));
   }));
-  return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t: 0, images: STAMP_GATE_IMAGES };
+  return { painting, ...SIZE, t: 0, images: STAMP_GATE_IMAGES };
 }
 
 /** Where the bloom-boil's front lies, its wash's edges (and the drying rim's re-rolled line) well outside. */
@@ -104,13 +108,13 @@ export const STAMP_GATE_BLOOM_BOX = { x0: 70, x1: 170, y0: 45, y1: 115 };
  */
 export function stampGateBloomBoilPainting(): StampGatePainting {
   const steady = stampGateBrush('Steady', { flow: 0.6 });
-  const painting = compileStampPaintRecipe(stampPaintRecipe((p) => {
-    p.group('bloom', { composite: 'glaze', opacity: 1, boil: { every: 2 } }, (g) => g.wash('wash', {}, (w) => {
-      w.fill('sky', { brush: steady, diameter: 40, application: { kind: 'flood' }, region: stampGatePolygon(10, 10, 230, 10, 230, 150, 10, 150), material: mixture({ pigment: W.ultramarine, amount: 1 }) });
-      w.bloom('drop', { brush: steady, diameter: 30, at: [{ x: 120, y: 80 }] });
+  const painting = compileStampPaintRecipe(stampPaintRecipe(WATERCOLOUR, (p) => {
+    p.group('bloom', { composite: 'glaze', opacity: 1, boil: { every: 2 } }, (g) => g.passage('wash', {}, (w) => {
+      w.fill('sky', { brush: steady, size: 40, application: { kind: 'flood' }, region: stampGatePolygon(10, 10, 230, 10, 230, 150, 10, 150), well: { paint: mixture({ pigment: W.ultramarine, amount: 1 }) } });
+      stampBloom(w, 'drop', { brush: steady, size: 30, at: [{ x: 120, y: 80 }] });
     }));
   }));
-  return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t: 0, images: STAMP_GATE_IMAGES };
+  return { painting, ...SIZE, t: 0, images: STAMP_GATE_IMAGES };
 }
 
 /**
@@ -182,16 +186,16 @@ export function stampGateRecolourPainting(paint: 'keyed' | 'halfway'): StampGate
 
 /** The sunset's sky wash, with drops of the ground's paint, over an opaque hill, drawn at `t`. */
 function sunsetPainting(sky: StampPaintMaterial, ground: StampPaintMaterial, t: number): StampGatePainting {
-  const painting = compileStampPaintRecipe(stampPaintRecipe((p) => {
-    p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.wash('wash', { preparation: { region: stampGatePolygon(0, 0, 240, 0, 240, 100, 0, 100) } }, (w) => {
-      w.fill('body', { brush: RANDOM, diameter: 30, material: sky, region: stampGatePolygon(6, 6, 234, 6, 234, 96, 6, 96) });
-      w.stamps('drops', { brush: RANDOM, diameter: 22, material: ground, at: [{ x: 60, y: 40 }, { x: 150, y: 60 }] });
+  const painting = compileStampPaintRecipe(stampPaintRecipe(WATERCOLOUR, (p) => {
+    p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.passage('wash', { preparation: { region: stampGatePolygon(0, 0, 240, 0, 240, 100, 0, 100) } }, (w) => {
+      w.fill('body', { brush: RANDOM, size: 30, well: { paint: sky }, region: stampGatePolygon(6, 6, 234, 6, 234, 96, 6, 96) });
+      w.stamps('drops', { brush: RANDOM, size: 22, well: { paint: ground }, at: [{ x: 60, y: 40 }, { x: 150, y: 60 }] });
     }));
-    p.group('hill', { composite: 'opaque' }, (g) => g.pass('p', {}, (pass) => pass.fill('ground', {
-      brush: RANDOM, diameter: 20, material: ground, region: stampGatePolygon(0, 160, 0, 115, 120, 95, 240, 110, 240, 160),
+    p.group('hill', { composite: 'opaque' }, (g) => g.passage('p', { wetHistory: false }, (pass) => pass.fill('ground', {
+      brush: RANDOM, size: 20, well: { paint: ground }, region: stampGatePolygon(0, 160, 0, 115, 120, 95, 240, 110, 240, 160),
     })));
   }));
-  return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t, images: STAMP_GATE_IMAGES };
+  return { painting, ...SIZE, t, images: STAMP_GATE_IMAGES };
 }
 
 type Parts = readonly (readonly [PaintPigmentAppearance, number])[];
@@ -216,14 +220,14 @@ export const STAMP_GATE_EFFECTS_SUNSET_TOLERANCE = 0.01;
  */
 export function stampGateEffectsSunsetPainting({ sky, sun }: (typeof STAMP_GATE_EFFECTS_SUNSET_HOURS)[number]): StampGatePainting {
   const steady = stampGateBrush('Steady', { flow: 0.6 });
-  const painting = compileStampPaintRecipe(stampPaintRecipe((p) => {
-    p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.wash('sky', {}, (w) => {
-      w.fill('sky', { brush: steady, diameter: 40, application: { kind: 'flood' }, region: stampGatePolygon(16, 16, 224, 12, 226, 144, 14, 140), material: partsPaint(sky), water: 1 });
-      w.stroke('glow', { brush: steady, diameter: 30, material: partsPaint(sun), path: [{ x: 30, y: 110 }, { x: 90, y: 104 }, { x: 150, y: 112 }, { x: 210, y: 106 }] });
-      w.bloom('sun', { brush: steady, diameter: 36, at: [{ x: 160, y: 60 }] });
+  const painting = compileStampPaintRecipe(stampPaintRecipe(WATERCOLOUR, (p) => {
+    p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.passage('sky', {}, (w) => {
+      w.fill('sky', { brush: steady, size: 40, application: { kind: 'flood' }, region: stampGatePolygon(16, 16, 224, 12, 226, 144, 14, 140), well: { paint: partsPaint(sky), water: 1 } });
+      w.stroke('glow', { brush: steady, size: 30, well: { paint: partsPaint(sun) }, path: [{ x: 30, y: 110 }, { x: 90, y: 104 }, { x: 150, y: 112 }, { x: 210, y: 106 }] });
+      stampBloom(w, 'sun', { brush: steady, size: 36, at: [{ x: 160, y: 60 }] });
     }));
   }));
-  return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t: 1, images: STAMP_GATE_IMAGES };
+  return { painting, ...SIZE, t: 1, images: STAMP_GATE_IMAGES };
 }
 
 /**
@@ -256,9 +260,9 @@ const coveredByCutOut = (x: number, y: number) => ((x - CUT_OUT_HULL.x) / (CUT_O
 /** A circle of radius `r` about a point, as a region. */
 const disc = ({ x, y }: { x: number; y: number }, r: number) => ({ kind: 'ellipse' as const, x, y, radiusX: r, radiusY: r });
 const steadyBrush = () => stampGateBrush('Steady', { flow: 0.6 });
-const flood = (region: ReturnType<typeof disc>) => ({ kind: 'fill' as const, brush: steadyBrush(), diameter: 20, application: { kind: 'flood' as const }, region });
+const flood = (region: ReturnType<typeof disc>) => ({ kind: 'fill' as const, brush: steadyBrush(), size: 20, application: { kind: 'flood' as const }, region });
 const gatePainting = (painting: StampGatePainting['painting']): StampGatePainting => ({
-  painting, paper: { ...PAPER, image: { style: 'gate', pack: 'gate', file: 'photograph.png' } }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t: 0, images: STAMP_GATE_IMAGES,
+  painting, ...SIZE, t: 0, images: STAMP_GATE_IMAGES,
 });
 /** Moving STAMP_GATE_DRIFT_STEP pixels a frame. */
 const drifting: StampGroupMotion = { keys: [{ at: 0, x: 0, y: 0 }, { at: 1, x: STAMP_GATE_DRIFT_STEP * STAMP_GATE_ANIMATION_FPS, y: 0 }] };
@@ -279,12 +283,12 @@ const driftingWarp = (still: boolean) => (t: number): StampPaintFrameState => {
 export function stampGateCutOutPainting(paper: StampGroupPaper, carried: 'motion' | 'warp' | 'still-warp' | 'still' = 'motion'): StampGatePainting {
   const carriage = carried === 'motion' ? { motion: drifting } : {};
   const frameAt = carried === 'warp' || carried === 'still-warp' ? { frameAt: driftingWarp(carried === 'still-warp') } : {};
-  return { ...frameAt, ...gatePainting(compileStampPaintRecipe(stampPaintRecipe((p) => {
-    p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.pass('wash', {}, (pass) => pass.fill('sky', {
-      brush: steadyBrush(), diameter: 40, application: { kind: 'flood' }, material: mixture({ pigment: W.ultramarine, amount: 1 }), region: stampGatePolygon(0, 0, 240, 0, 240, 160, 0, 160),
+  return { ...frameAt, ...gatePainting(compileStampPaintRecipe(stampPaintRecipe(PHOTOGRAPHED, (p) => {
+    p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.passage('wash', { wetHistory: false }, (pass) => pass.fill('sky', {
+      brush: steadyBrush(), size: 40, application: { kind: 'flood' }, well: { paint: mixture({ pigment: W.ultramarine, amount: 1 }) }, region: stampGatePolygon(0, 0, 240, 0, 240, 160, 0, 160),
     })));
-    p.group('cut-out', { composite: 'opaque', paper, ...carriage }, (g) => g.wash('boat', {}, (w) => w.fill('hull', {
-      brush: steadyBrush(), diameter: 24, application: { kind: 'flood' }, material: mixture({ pigment: W.ultramarine, amount: 1 }, { pigment: W.burntSienna, amount: 1 }),
+    p.group('cut-out', { composite: 'opaque', paper, ...carriage }, (g) => g.passage('boat', {}, (w) => w.fill('hull', {
+      brush: steadyBrush(), size: 24, application: { kind: 'flood' }, well: { paint: mixture({ pigment: W.ultramarine, amount: 1 }, { pigment: W.burntSienna, amount: 1 }) },
       region: { kind: 'ellipse', ...CUT_OUT_HULL },
     })));
   }))) };
@@ -385,13 +389,13 @@ export const STAMP_GATE_GHOST_BLUER = 0.15;
  * `knockout`, the sky alone; `painted`, the group lays a dab over its reserve after.
  */
 export function stampGateKnockoutPainting({ sky = true, knockout = true, painted = false } = {}): StampGatePainting {
-  return gatePainting(compileStampPaintRecipe(stampPaintRecipe((p) => {
+  return gatePainting(compileStampPaintRecipe(stampPaintRecipe(PHOTOGRAPHED, (p) => {
     if (sky) {
       // A wash, so the record must leave out its open share.
-      p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.wash('wash', {}, (wash) => {
-        wash.fill('ultramarine', { ...flood(disc({ x: 0, y: 0 }, 1)), diameter: 40, material: mixture({ pigment: W.ultramarine, amount: 1 }), region: stampGatePolygon(0, 0, KNOCKOUT_SKY_SPLIT, 0, KNOCKOUT_SKY_SPLIT, 160, 0, 160) });
+      p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.passage('wash', {}, (wash) => {
+        wash.fill('ultramarine', { ...flood(disc({ x: 0, y: 0 }, 1)), size: 40, well: { paint: mixture({ pigment: W.ultramarine, amount: 1 }) }, region: stampGatePolygon(0, 0, KNOCKOUT_SKY_SPLIT, 0, KNOCKOUT_SKY_SPLIT, 160, 0, 160) });
         wash.fill('phthalo', {
-          ...flood(disc({ x: 0, y: 0 }, 1)), diameter: 40, material: mixture({ pigment: W.phthaloBlue, amount: 1 }, { pigment: W.yellowOchre, amount: 1 }),
+          ...flood(disc({ x: 0, y: 0 }, 1)), size: 40, well: { paint: mixture({ pigment: W.phthaloBlue, amount: 1 }, { pigment: W.yellowOchre, amount: 1 }) },
           region: stampGatePolygon(KNOCKOUT_SKY_SPLIT, 0, 240, 0, 240, 160, KNOCKOUT_SKY_SPLIT, 160),
         });
       }));
@@ -403,7 +407,7 @@ export function stampGateKnockoutPainting({ sky = true, knockout = true, painted
         k.mask('fluid', { region: disc(KNOCKOUT.reserve, 14) });
         k.water('wash', flood(disc(KNOCKOUT.reserve, 24)));
       });
-      if (painted) g.pass('dab', {}, (pass) => pass.fill('dab', { ...flood(disc(KNOCKOUT.reserve, 12)), material: mixture({ pigment: W.burntSienna, amount: 1 }) }));
+      if (painted) g.passage('dab', { wetHistory: false }, (pass) => pass.fill('dab', { ...flood(disc(KNOCKOUT.reserve, 12)), well: { paint: mixture({ pigment: W.burntSienna, amount: 1 }) } }));
     });
   })));
 }

@@ -3,6 +3,9 @@ import { test } from 'node:test';
 import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import { compileStampPaintRecipe, stampPassDeposits } from './stamp-paint-recipe-compile.ts';
+import type { StampPaintEnvironment } from './stamp-paint-recipe-types.ts';
+
+const FLAT: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'flat' } };
 
 const D = 20;
 /** Right along the top, then a sharp turn down: a corner at (400, 0). */
@@ -25,9 +28,9 @@ const brush: StampBrush = {
 };
 
 test('in a recipe, a hand stroke thins by its profile and its reveal slows through the corner', () => {
-  const [even, handed] = stampPassDeposits(compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) => {
-    pass.stroke('even', { brush, material: { kind: 'color', color: '#000000' }, diameter: D, path: corner });
-    pass.stroke('hand', { brush, material: { kind: 'color', color: '#000000' }, diameter: D, path: corner, hand: { profile: 'swell', curvature: 0.3 } });
+  const [even, handed] = stampPassDeposits(compileStampPaintRecipe(stampPaintRecipe(FLAT, (paint) => paint.group('g', { composite: 'opaque' }, (group) => group.passage('p', {}, (pass) => {
+    pass.stroke('even', { brush, well: { paint: { kind: 'color', color: '#000000' } }, size: D, path: corner });
+    pass.stroke('hand', { brush, well: { paint: { kind: 'color', color: '#000000' } }, size: D, path: corner, hand: { profile: 'swell', curvature: 0.3 } });
   })))).groups[0].passes[0]);
   assert.ok(even.stamps.every((s) => s.diameter === D));
   assert.ok(handed.stamps[0].diameter < 0.5 * D && nearest(handed.stamps, 400, 0).diameter > 0.9 * D);

@@ -7,6 +7,11 @@ import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import { compileStampPaintRecipe } from './stamp-paint-recipe-compile.ts';
 import type { StampPaintFrameState } from './stamp-paint-frame-state.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
+import type { StampPaintEnvironment } from './stamp-paint-recipe-types.ts';
+import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
+import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
+
+const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 
 const brush: StampBrush = {
   name: 'Round',
@@ -27,14 +32,14 @@ const brush: StampBrush = {
 const ink: PaintMaterial = { kind: 'color', color: '#203040' };
 
 /** A still ground, then a boat sailing 100 px right from 1 s to 3 s, each two strokes. */
-const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => {
-  paint.group('ground', { composite: 'glaze', opacity: 1 }, (group) => group.pass('wash', {}, (pass) => {
-    pass.stroke('a', { brush, material: ink, diameter: 10, path: [{ x: 0, y: 0 }, { x: 50, y: 0 }] });
-    pass.stroke('b', { brush, material: ink, diameter: 10, path: [{ x: 0, y: 20 }, { x: 50, y: 20 }] });
+const painting = compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => {
+  paint.group('ground', { composite: 'glaze', opacity: 1 }, (group) => group.passage('wash', { wetHistory: false }, (pass) => {
+    pass.stroke('a', { brush, well: { paint: ink }, size: 10, path: [{ x: 0, y: 0 }, { x: 50, y: 0 }] });
+    pass.stroke('b', { brush, well: { paint: ink }, size: 10, path: [{ x: 0, y: 20 }, { x: 50, y: 20 }] });
   }));
-  paint.group('boat', { composite: 'opaque', motion: { keys: [{ at: 1, x: 0, y: 0 }, { at: 3, x: 100, y: 0 }] } }, (group) => group.pass('hull', {}, (pass) => {
-    pass.stroke('a', { brush, material: ink, diameter: 10, path: [{ x: 0, y: 50 }, { x: 50, y: 50 }] });
-    pass.stroke('b', { brush, material: ink, diameter: 10, path: [{ x: 0, y: 60 }, { x: 50, y: 60 }] });
+  paint.group('boat', { composite: 'opaque', motion: { keys: [{ at: 1, x: 0, y: 0 }, { at: 3, x: 100, y: 0 }] } }, (group) => group.passage('hull', { wetHistory: false }, (pass) => {
+    pass.stroke('a', { brush, well: { paint: ink }, size: 10, path: [{ x: 0, y: 50 }, { x: 50, y: 50 }] });
+    pass.stroke('b', { brush, well: { paint: ink }, size: 10, path: [{ x: 0, y: 60 }, { x: 50, y: 60 }] });
   }));
 }));
 const planAt = (t: number, state?: StampPaintFrameState) => stampFramePlan(painting, stampGroupEvents(painting), stampPaintEvents(painting), t, state);
@@ -51,12 +56,12 @@ test('a moving group is saved painted, not laid, which every frame laying it sha
 });
 
 /** A ground, a sac whose stroke lies at `sacY`, and a sky after it, each one stroke; the sky boiling when `boil`. */
-const sacPainting = (sacY = 50, sacStroke = 'a', boil = false) => compileStampPaintRecipe(stampPaintRecipe((paint) => {
-  paint.group('ground', { composite: 'glaze', opacity: 1 }, (group) => group.pass('wash', {}, (pass) => pass.stroke('a', { brush, material: ink, diameter: 10, path: [{ x: 0, y: 0 }, { x: 50, y: 0 }] })));
-  paint.group('sac', { composite: 'glaze', opacity: 1 }, (group) => group.pass('body', {}, (pass) => {
-    pass.stroke(sacStroke, { brush, material: ink, diameter: 10, path: [{ x: 0, y: sacY }, { x: 50, y: sacY }] });
+const sacPainting = (sacY = 50, sacStroke = 'a', boil = false) => compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => {
+  paint.group('ground', { composite: 'glaze', opacity: 1 }, (group) => group.passage('wash', { wetHistory: false }, (pass) => pass.stroke('a', { brush, well: { paint: ink }, size: 10, path: [{ x: 0, y: 0 }, { x: 50, y: 0 }] })));
+  paint.group('sac', { composite: 'glaze', opacity: 1 }, (group) => group.passage('body', { wetHistory: false }, (pass) => {
+    pass.stroke(sacStroke, { brush, well: { paint: ink }, size: 10, path: [{ x: 0, y: sacY }, { x: 50, y: sacY }] });
   }));
-  paint.group('sky', { composite: 'glaze', opacity: 1, ...(boil && { boil: { every: 2 } }) }, (group) => group.pass('wash', {}, (pass) => pass.stroke('a', { brush, material: ink, diameter: 10, path: [{ x: 0, y: 90 }, { x: 50, y: 90 }] })));
+  paint.group('sky', { composite: 'glaze', opacity: 1, ...(boil && { boil: { every: 2 } }) }, (group) => group.passage('wash', { wetHistory: false }, (pass) => pass.stroke('a', { brush, well: { paint: ink }, size: 10, path: [{ x: 0, y: 90 }, { x: 50, y: 90 }] })));
 }));
 
 const puffed = (by: number): StampPaintFrameState => new Map([['sac', { warp: { map: (p) => ({ x: p.x, y: p.y * by }), key: `puff ${by}` } }]]);

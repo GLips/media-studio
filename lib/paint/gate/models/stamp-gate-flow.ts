@@ -8,9 +8,11 @@
 // - crayon, which has no water, changes nothing; a medium that flows moves some paint.
 
 import { stampLinearDynamics } from '#lib/paint/brush/models/stamp-brush.ts';
+import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import type { StampPaintEnvironment } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import { stampGateBrush, stampGatePolygon } from './stamp-gate-paintings.ts';
 import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 
@@ -42,17 +44,23 @@ const BRUSH = stampGateBrush('Flow', { flow: 1, spacing: 0.25, dynamics: stampLi
 const material = { kind: 'mixture', parts: [{ pigment: W.ultramarine, amount: 1 }], strength: 1 } as const;
 
 /**
+ * What a stage case's painting is written in: watercolour, as only a wet medium can hold its wash. The stage under
+ * test reads the case's own medium (the gate page's runStampGateStage), never the painting's, so crayon's runs too.
+ */
+export const STAMP_GATE_STAGE_ENVIRONMENT: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W } };
+
+/**
  * The painting the stage is loaded for: in one wetted wash, the old paint laid first (so it's still workable), then
- * the fresh deposit, its second, that the stage runs after.
+ * the fresh deposit, its second, that the stage runs after; on white.
  */
 export function stampGateFlowPainting(kind: StampGateFlowKind): CompiledStampPaint {
   const { width, height } = STAMP_GATE_FLOW_SIZE;
-  return compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => {
-    group.wash('w', { preparation: { region: stampGatePolygon(0, 0, width, 0, width, height, 0, height) } }, (wash) => {
-      wash.stamps('old', { brush: BRUSH, material, diameter: 200, at: [{ x: 40, y: 96 }] });
-      if (kind === 'paint') wash.stamps('fresh', { brush: BRUSH, material, diameter: 2 * DISC.radius, at: [DISC] });
-      else if (kind === 'water') wash.water('fresh', { kind: 'stamps', brush: BRUSH, diameter: 2 * DISC.radius, at: [DISC] });
-      else wash.lift('fresh', { kind: 'stamps', brush: BRUSH, diameter: 2 * DISC.radius, at: [DISC] });
+  return compileStampPaintRecipe(stampPaintRecipe(STAMP_GATE_STAGE_ENVIRONMENT, (paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => {
+    group.passage('w', { preparation: { region: stampGatePolygon(0, 0, width, 0, width, height, 0, height) } }, (wash) => {
+      wash.stamps('old', { brush: BRUSH, well: { paint: material }, size: 200, at: [{ x: 40, y: 96 }] });
+      if (kind === 'paint') wash.stamps('fresh', { brush: BRUSH, well: { paint: material }, size: 2 * DISC.radius, at: [DISC] });
+      else if (kind === 'water') wash.water('fresh', { kind: 'stamps', brush: BRUSH, size: 2 * DISC.radius, at: [DISC] });
+      else wash.lift('fresh', { kind: 'stamps', brush: BRUSH, size: 2 * DISC.radius, at: [DISC] });
     });
   })));
 }

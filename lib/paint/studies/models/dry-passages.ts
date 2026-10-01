@@ -8,7 +8,7 @@
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
-import type { StampPaintPaper, StampPaintRecipe, StampPassScope } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
+import type { StampPaintPaper, StampPaintRecipe, StampPassageScope } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampRegion } from '#lib/paint/painting/models/stamp-region.ts';
 import type { StampPigmentMixing } from '#lib/paint/painting/models/stamp-pigment-paint.ts';
@@ -25,11 +25,11 @@ export const DRY_PASSAGE_PAINTING_WIDTH = 1280;
 /** The brushes a dry medium draws its passages with: `stick`, a hard point for hatching; `side`, a stick laid on its side. */
 export type DryPassageBrushes = { stick: StampBrush; side: StampBrush };
 
-/** What a passage draws with: its style's brushes by role and pigments by id. */
-export type DryPassageKit = { brushes: DryPassageBrushes; pigments: StampPigmentMixing['pigments'] };
+/** What a passage draws with: its style's brushes by role, and its paper and paint, the environment its recipe is written against. */
+export type DryPassageKit = { brushes: DryPassageBrushes; paper: StampPaintPaper; mixing: StampPigmentMixing };
 
-/** A dry style as the sheet's page is handed it: its brushes by role, paper and paint, and its packs' URLs. */
-export type DryPassageSheetMedium = { brushes: DryPassageBrushes; paper: StampPaintPaper; mixing: StampPigmentMixing; packUrls: StampPaintPackUrls };
+/** A dry style as the sheet's page is handed it: its kit and its packs' URLs. */
+export type DryPassageSheetMedium = DryPassageKit & { packUrls: StampPaintPackUrls };
 
 /** A passage drawn, as a PNG data URL, or why it couldn't be. */
 export type DryPassagePainted = { passage: string } & ({ png: string } | { refused: string });
@@ -39,7 +39,7 @@ export type DryPassage = { id: string; title: string; shows: string; lookFor: st
 
 /** One pigment of the kit's at `amount` of a full load. */
 function dryPassagePigment(kit: DryPassageKit, id: string, amount: number): PaintMaterial {
-  const pigment = kit.pigments[id];
+  const pigment = kit.mixing.pigments[id];
   if (!pigment) throw new Error(`dry passages: the style has no pigment ${id}`);
   return { kind: 'mixture', parts: [{ pigment, amount }], strength: amount };
 }
@@ -58,20 +58,20 @@ const LAYERS = [
 ] as const;
 
 /** `count` layers of hatching over `region`: the same blue each time when `colours` is false, else LAYERS in turn. */
-function hatchLayers(pass: StampPassScope, kit: DryPassageKit, id: string, region: StampRegion, count: number, colours: boolean) {
+function hatchLayers(pass: StampPassageScope, kit: DryPassageKit, id: string, region: StampRegion, count: number, colours: boolean) {
   for (let k = 0; k < count; k++) {
     const layer = colours ? LAYERS[k] : { pigment: 'ultramarine', amount: 0.3, direction: LAYERS[k].direction };
-    pass.fill(`${id}-${k}`, { brush: kit.brushes.stick, diameter: 14, region, application: HATCH, direction: layer.direction, material: dryPassagePigment(kit, layer.pigment, layer.amount) });
+    pass.fill(`${id}-${k}`, { brush: kit.brushes.stick, size: 14, region, application: HATCH, direction: layer.direction, well: { paint: dryPassagePigment(kit, layer.pigment, layer.amount) } });
   }
 }
 
 /** Five swatches, one to five layers of hatching: the same blue along the top, five colours light to dark along the bottom. */
 function layeredTooth(kit: DryPassageKit): StampPaintRecipe {
   const swatch = (k: number, y0: number, y1: number) => rect(16 + k * 92, y0, 16 + k * 92 + 80, y1);
-  return stampPaintRecipe((paint) => {
+  return stampPaintRecipe(kit, (paint) => {
     for (let k = 0; k < 5; k++) {
-      paint.group(`blue-${k}`, { composite: 'opaque' }, (group) => group.pass('layers', {}, (pass) => hatchLayers(pass, kit, 'blue', swatch(k, 16, 140), k + 1, false)));
-      paint.group(`colours-${k}`, { composite: 'opaque' }, (group) => group.pass('layers', {}, (pass) => hatchLayers(pass, kit, 'colours', swatch(k, 160, 284), k + 1, true)));
+      paint.group(`blue-${k}`, { composite: 'opaque' }, (group) => group.passage('layers', {}, (pass) => hatchLayers(pass, kit, 'blue', swatch(k, 16, 140), k + 1, false)));
+      paint.group(`colours-${k}`, { composite: 'opaque' }, (group) => group.passage('layers', {}, (pass) => hatchLayers(pass, kit, 'colours', swatch(k, 160, 284), k + 1, true)));
     }
   });
 }
@@ -90,19 +90,19 @@ function curvedStrokes(kit: DryPassageKit): StampPaintRecipe {
   const { stick, side } = kit.brushes;
   const hand = { profile: 'taper', wobble: { pressure: 0.25, position: 0.06 } } as const;
   const blue = dryPassagePigment(kit, 'ultramarine', 0.5), red = dryPassagePigment(kit, 'cadmiumRed', 0.6);
-  return stampPaintRecipe((paint) => paint.group('curves', { composite: 'opaque' }, (group) => group.pass('curves', {}, (pass) => {
-    pass.stroke('circle', { brush: stick, diameter: 14, material: blue, hand, path: curve((u) => [90 + 62 * Math.cos(u * 2 * Math.PI * 0.95), 90 + 62 * Math.sin(u * 2 * Math.PI * 0.95)], 40) });
-    pass.stroke('s-curve', { brush: stick, diameter: 14, material: blue, hand, path: curve((u) => [190 + 120 * u, 40 + 100 * u + 34 * Math.sin(u * 2 * Math.PI)]) });
+  return stampPaintRecipe(kit, (paint) => paint.group('curves', { composite: 'opaque' }, (group) => group.passage('curves', {}, (pass) => {
+    pass.stroke('circle', { brush: stick, size: 14, well: { paint: blue }, hand, path: curve((u) => [90 + 62 * Math.cos(u * 2 * Math.PI * 0.95), 90 + 62 * Math.sin(u * 2 * Math.PI * 0.95)], 40) });
+    pass.stroke('s-curve', { brush: stick, size: 14, well: { paint: blue }, hand, path: curve((u) => [190 + 120 * u, 40 + 100 * u + 34 * Math.sin(u * 2 * Math.PI)]) });
     // Arcs across a round form, bowed as its cross-section is, as the crayon still life hatches its jug.
     for (let k = 0; k < 9; k++) {
       const y = 30 + k * 13, half = 62 * Math.sqrt(1 - ((y - 84) / 64) ** 2);
-      pass.stroke(`arc-${k}`, { brush: stick, diameter: 12, material: red, hand, path: curve((u) => [400 + half * (2 * u - 1), y + 0.18 * half * Math.sqrt(Math.max(0, 1 - (2 * u - 1) ** 2))], 12) });
+      pass.stroke(`arc-${k}`, { brush: stick, size: 12, well: { paint: red }, hand, path: curve((u) => [400 + half * (2 * u - 1), y + 0.18 * half * Math.sqrt(Math.max(0, 1 - (2 * u - 1) ** 2))], 12) });
     }
-    pass.stroke('side-arc', { brush: side, diameter: 26, material: blue, hand, path: curve((u) => [30 + 250 * u, 260 - 70 * Math.sin(u * Math.PI)]) });
+    pass.stroke('side-arc', { brush: side, size: 26, well: { paint: blue }, hand, path: curve((u) => [30 + 250 * u, 260 - 70 * Math.sin(u * Math.PI)]) });
     // Short, fine arcs down a form's shaded side, as the jug's core is hatched: each the far end of a bowed cross-section.
     for (let k = 0; k < 10; k++) {
       const y = 180 + k * 10;
-      pass.stroke(`core-${k}`, { brush: stick, diameter: 7, material: blue, hand, path: curve((u) => [320 + 130 * (0.7 + 0.25 * u), y + 30 * Math.sqrt(Math.max(0, 1 - (2 * (0.7 + 0.25 * u) - 1) ** 2))], 6) });
+      pass.stroke(`core-${k}`, { brush: stick, size: 7, well: { paint: blue }, hand, path: curve((u) => [320 + 130 * (0.7 + 0.25 * u), y + 30 * Math.sqrt(Math.max(0, 1 - (2 * (0.7 + 0.25 * u) - 1) ** 2))], 6) });
     }
   })));
 }
@@ -112,10 +112,10 @@ function curvedStrokes(kit: DryPassageKit): StampPaintRecipe {
  * hard: what a coloured-pencil artist does last to burnish the wax into a smooth layer.
  */
 function burnished(kit: DryPassageKit): StampPaintRecipe {
-  return stampPaintRecipe((paint) => paint.group('swatch', { composite: 'opaque' }, (group) => group.pass('layers', {}, (pass) => {
+  return stampPaintRecipe(kit, (paint) => paint.group('swatch', { composite: 'opaque' }, (group) => group.passage('layers', {}, (pass) => {
     hatchLayers(pass, kit, 'layer', rect(16, 30, W - 16, H - 30), 3, true);
     pass.fill('burnished', {
-      brush: kit.brushes.stick, diameter: 14, region: rect(W / 2, 30, W - 16, H - 30), direction: 0.2, material: dryPassagePigment(kit, 'ultramarine', 0.45),
+      brush: kit.brushes.stick, size: 14, region: rect(W / 2, 30, W - 16, H - 30), direction: 0.2, well: { paint: dryPassagePigment(kit, 'ultramarine', 0.45) },
       application: { kind: 'strokes', pattern: { kind: 'shading' } }, burnish: true,
     });
   })));
@@ -125,10 +125,10 @@ function burnished(kit: DryPassageKit): StampPaintRecipe {
 function fillTurns(kit: DryPassageKit): StampPaintRecipe {
   const swatch = (k: number) => rect(16 + k * 156, 20, 16 + k * 156 + 136, H - 20);
   const material = dryPassagePigment(kit, 'cadmiumRed', 0.55);
-  return stampPaintRecipe((paint) => paint.group('fills', { composite: 'opaque' }, (group) => group.pass('fills', {}, (pass) => {
-    pass.fill('zigzag', { brush: kit.brushes.stick, diameter: 16, region: swatch(0), application: { kind: 'strokes', pattern: { kind: 'zigzag' }, spacing: 0.8, variation: 0.4 }, direction: 0.5, material });
-    pass.fill('back-and-forth', { brush: kit.brushes.stick, diameter: 16, region: swatch(1), application: { kind: 'strokes', pattern: { kind: 'backAndForth' }, spacing: 0.8, variation: 0.4 }, direction: 0.5, material });
-    pass.fill('shading', { brush: kit.brushes.stick, diameter: 16, region: swatch(2), application: { kind: 'strokes', pattern: { kind: 'shading' }, variation: 0.6 }, direction: 0.5, material });
+  return stampPaintRecipe(kit, (paint) => paint.group('fills', { composite: 'opaque' }, (group) => group.passage('fills', {}, (pass) => {
+    pass.fill('zigzag', { brush: kit.brushes.stick, size: 16, region: swatch(0), application: { kind: 'strokes', pattern: { kind: 'zigzag' }, spacing: 0.8, variation: 0.4 }, direction: 0.5, well: { paint: material } });
+    pass.fill('back-and-forth', { brush: kit.brushes.stick, size: 16, region: swatch(1), application: { kind: 'strokes', pattern: { kind: 'backAndForth' }, spacing: 0.8, variation: 0.4 }, direction: 0.5, well: { paint: material } });
+    pass.fill('shading', { brush: kit.brushes.stick, size: 16, region: swatch(2), application: { kind: 'strokes', pattern: { kind: 'shading' }, variation: 0.6 }, direction: 0.5, well: { paint: material } });
   })));
 }
 

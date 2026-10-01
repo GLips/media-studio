@@ -48,33 +48,33 @@ const LEAST_COMPARED = 400;
 export function stampGateMediaPainting(groups: readonly StampGateMediaGroup[], { alone = false, bodyIn = 'gouache' }: { alone?: boolean; bodyIn?: keyof typeof PAINT_MEDIA } = {}): StampGatePainting {
   const round = stampGateBrush('Round', { flow: 0.5 });
   const own = (group: StampGateMediaGroup, medium: keyof typeof PAINT_MEDIA = GROUP_MEDIA[group]) => (alone ? {} : { mixing: mixingIn(PAINT_MEDIA[medium]) });
-  const painting = compileStampPaintRecipe(stampPaintRecipe((p) => {
+  const medium = alone && groups.length === 1 ? PAINT_MEDIA[GROUP_MEDIA[groups[0]]] : PAINT_MEDIA.watercolour;
+  const painting = compileStampPaintRecipe(stampPaintRecipe({ paper: PAPER, mixing: mixingIn(medium) }, (p) => {
     if (groups.includes('wash')) {
       p.group('wash', { composite: 'glaze', opacity: 1 }, (g) => {
-        g.wash('dark', {}, (w) => w.fill('dark', {
-          brush: round, diameter: 30, application: { kind: 'flood' }, region: stampGatePolygon(10, 20, 130, 20, 130, 140, 10, 140),
-          material: mixture(1, { pigment: W.ultramarine, amount: 1 }, { pigment: W.burntUmber, amount: 1 }),
+        g.passage('dark', {}, (w) => w.fill('dark', {
+          brush: round, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(10, 20, 130, 20, 130, 140, 10, 140),
+          well: { paint: mixture(1, { pigment: W.ultramarine, amount: 1 }, { pigment: W.burntUmber, amount: 1 }) },
         }));
-        g.pass('line', {}, (pass) => pass.stroke('line', { brush: round, diameter: 10, material: mixture(1, { pigment: W.burntSienna, amount: 1 }), path: [{ x: 20, y: 130 }, { x: 80, y: 30 }] }));
+        g.passage('line', { wetHistory: false }, (pass) => pass.stroke('line', { brush: round, size: 10, well: { paint: mixture(1, { pigment: W.burntSienna, amount: 1 }) }, path: [{ x: 20, y: 130 }, { x: 80, y: 30 }] }));
       });
     }
     if (groups.includes('body')) {
       p.group('body', { composite: 'glaze', opacity: 1, ...own('body', bodyIn) }, (g) => {
-        g.wash('light', {}, (w) => w.fill('light', {
-          brush: round, diameter: 30, application: { kind: 'flood' }, region: stampGatePolygon(90, 30, 170, 30, 170, 130, 90, 130),
-          material: mixture(0.3, { pigment: W.yellowOchre, amount: 1 }),
+        g.passage('light', {}, (w) => w.fill('light', {
+          brush: round, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(90, 30, 170, 30, 170, 130, 90, 130),
+          well: { paint: mixture(0.3, { pigment: W.yellowOchre, amount: 1 }) },
         }));
-        g.pass('dab', {}, (pass) => pass.stroke('dab', { brush: round, diameter: 12, material: mixture(0.4, { pigment: W.cerulean, amount: 1 }), path: [{ x: 140, y: 50 }, { x: 160, y: 110 }] }));
+        g.passage('dab', { wetHistory: false }, (pass) => pass.stroke('dab', { brush: round, size: 12, well: { paint: mixture(0.4, { pigment: W.cerulean, amount: 1 }) }, path: [{ x: 140, y: 50 }, { x: 160, y: 110 }] }));
       });
     }
     if (groups.includes('wax')) {
-      p.group('wax', { composite: 'glaze', opacity: 1, ...own('wax') }, (g) => g.pass('stick', {}, (pass) => pass.stroke('stick', {
-        brush: round, diameter: 16, material: mixture(0.8, { pigment: W.burntSienna, amount: 1 }), path: [{ x: 200, y: 30 }, { x: 215, y: 130 }],
+      p.group('wax', { composite: 'glaze', opacity: 1, ...own('wax') }, (g) => g.passage('stick', {}, (pass) => pass.stroke('stick', {
+        brush: round, size: 16, well: { paint: mixture(0.8, { pigment: W.burntSienna, amount: 1 }) }, path: [{ x: 200, y: 30 }, { x: 215, y: 130 }],
       })));
     }
   }));
-  const medium = alone && groups.length === 1 ? PAINT_MEDIA[GROUP_MEDIA[groups[0]]] : PAINT_MEDIA.watercolour;
-  return { painting, paper: PAPER, mixing: mixingIn(medium), ...SIZE, t: Number.MAX_VALUE, images: STAMP_GATE_IMAGES };
+  return { painting, ...SIZE, t: Number.MAX_VALUE, images: STAMP_GATE_IMAGES };
 }
 
 type Rgba = ArrayLike<number>;

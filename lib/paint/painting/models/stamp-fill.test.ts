@@ -6,6 +6,9 @@ import { stampFillStrokePath } from './stamp-fill-strokes.ts';
 import { compileStampPaintRecipe, stampPassDeposits } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampRegion } from './stamp-region.ts';
+import type { StampPaintEnvironment } from './stamp-paint-recipe-types.ts';
+
+const FLAT: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'flat' } };
 
 const brush: StampBrush = {
   name: 'Wash',
@@ -28,8 +31,8 @@ const polygon = (...xy: number[]): StampRegion => ({ kind: 'polygon', points: xy
 
 /** `region` filled at `diameter` by a brush of `media`, as `settings` say. */
 function compiledFill(region: StampRegion, diameter: number, settings: { application?: StampFillApplication }, media?: StampBrushMedia, color?: StampBrush['color']) {
-  return stampPassDeposits(compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) =>
-    pass.fill('fill', { brush: { ...brush, ...(media && { media }), ...(color && { color }) }, material: { kind: 'color', color: '#406585' }, diameter, region, ...settings }))))).groups[0].passes[0])[0];
+  return stampPassDeposits(compileStampPaintRecipe(stampPaintRecipe(FLAT, (paint) => paint.group('g', { composite: 'opaque' }, (group) => group.passage('p', {}, (pass) =>
+    pass.fill('fill', { brush: { ...brush, ...(media && { media }), ...(color && { color }) }, well: { paint: { kind: 'color', color: '#406585' } }, size: diameter, region, ...settings }))))).groups[0].passes[0])[0];
 }
 
 function compiledFlood(region: StampRegion, diameter: number, colored?: StampBrush['color']) {

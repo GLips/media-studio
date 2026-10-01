@@ -36,8 +36,8 @@ function sheetPath(top: number): StampStrokePoint[] {
 async function drawStampStrokeHandSheet(brush: StampBrush, diameter: number, packUrls: StampPaintPackUrls): Promise<string> {
   const width = LABEL + PAINT + PLOT, height = ROW * VARIANTS.length;
   const material = { kind: 'color', color: '#1d2a44' } as const;
-  const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => VARIANTS.forEach(({ hand }, row) => paint.group(`row-${row}`, { composite: 'glaze', opacity: 1 }, (group) => group.pass('stroke', {}, (pass) => {
-    pass.stroke('stroke', { brush, material, diameter, path: sheetPath(row * ROW), hand });
+  const painting = compileStampPaintRecipe(stampPaintRecipe({ paper: { color: '#ffffff' }, mixing: { kind: 'flat' } }, (paint) => VARIANTS.forEach(({ hand }, row) => paint.group(`row-${row}`, { composite: 'glaze', opacity: 1 }, (group) => group.passage('stroke', {}, (pass) => {
+    pass.stroke('stroke', { brush, well: { paint: material }, size: diameter, path: sheetPath(row * ROW), hand });
   })))));
   const paintCanvas = Object.assign(document.createElement('canvas'), { width: PAINT, height });
   const surface = await createStampPaintSurface({ canvas: paintCanvas, width: PAINT, height }, (asset) => stampPaintPackAssetUrl(packUrls, asset));
@@ -47,7 +47,7 @@ async function drawStampStrokeHandSheet(brush: StampBrush, diameter: number, pac
   context.fillRect(0, 0, width, height);
   // Copied before the surface is disposed, which unconfigures its canvas and clears it.
   try {
-    const renderer = await createStampPaintRenderer(surface, painting, { color: '#ffffff' }, { kind: 'flat' });
+    const renderer = await createStampPaintRenderer(surface, painting);
     await renderer.draw(0);
     context.drawImage(paintCanvas, LABEL, 0);
   } finally {

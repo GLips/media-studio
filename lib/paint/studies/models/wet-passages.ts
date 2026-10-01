@@ -7,12 +7,14 @@
 // into a wet sky; what the engine makes of them is what's judged.
 
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { paintMediumCan } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { StampPaintPaper, StampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampRegion } from '#lib/paint/painting/models/stamp-region.ts';
 import type { StampPigmentMixing } from '#lib/paint/painting/models/stamp-pigment-paint.ts';
 import type { StampPaintPackUrls } from '#lib/paint/brush-packs/models/stamp-paint-pack-urls.ts';
+import { stampSoften } from '#lib/paint/painting/models/stamp-wet-techniques.ts';
 
 /** A passage's cell, in pixels. */
 export const WET_PASSAGE_CELL = { width: 360, height: 260 };
@@ -23,11 +25,11 @@ export const WET_PASSAGE_CELL = { width: 360, height: 260 };
  */
 export type WetPassageBrushes = { fill: StampBrush; drop: StampBrush; water: StampBrush; lift: StampBrush };
 
-/** What a passage paints with: its brushes and its style's pigments, by id. */
-export type WetPassageKit = { brushes: WetPassageBrushes; pigments: StampPigmentMixing['pigments'] };
+/** What a passage paints with: its style's brushes by role, and its paper and paint, the environment its recipe is written against. */
+export type WetPassageKit = { brushes: WetPassageBrushes; paper: StampPaintPaper; mixing: StampPigmentMixing };
 
-/** A medium's passages as the sheet's page is handed them: its style's brushes by role, paper and paint, and its packs' URLs. */
-export type WetPassageSheetMedium = { brushes: WetPassageBrushes; paper: StampPaintPaper; mixing: StampPigmentMixing; packUrls: StampPaintPackUrls };
+/** A medium's passages as the sheet's page is handed them: its kit and its packs' URLs. */
+export type WetPassageSheetMedium = WetPassageKit & { packUrls: StampPaintPackUrls };
 
 /** A passage painted, as a PNG data URL, or why it couldn't be. */
 export type WetPassagePainted = { passage: string } & ({ png: string } | { refused: string });
@@ -38,7 +40,7 @@ export type WetPassage = { id: string; title: string; shows: string; lookFor: st
 /** A mixture of the kit's pigments by id, each by how much a full load holds; their sum is its strength. */
 export function wetPassageMixture(kit: WetPassageKit, amounts: Readonly<Record<string, number>>): PaintMaterial {
   const parts = Object.entries(amounts).map(([id, amount]) => {
-    const pigment = kit.pigments[id];
+    const pigment = kit.mixing.pigments[id];
     if (!pigment) throw new Error(`wet passages: the style has no pigment ${id}`);
     return { pigment, amount };
   });
@@ -55,12 +57,12 @@ const flood = { application: { kind: 'flood' } } as const;
 /** The paper wetted, a pale graded sky laid in, stronger blue dropped in at the top, a warm glow at the horizon, grey under two clouds. */
 function wetInWetSky(kit: WetPassageKit): StampPaintRecipe {
   const { fill, drop } = kit.brushes;
-  return stampPaintRecipe((paint) => paint.group('sky', { composite: 'glaze', opacity: 1 }, (group) => group.wash('sky', { preparation: { region: PAGE } }, (wash) => {
-    wash.fill('sky', { brush: fill, diameter: 90, ...flood, region: PAGE, material: wetPassageMixture(kit, { cerulean: 0.3 }), load: { kind: 'linear', from: { x: 0, y: 20, value: 1 }, to: { x: 0, y: H - 20, value: 0.25 } } });
-    wash.stroke('overhead', { brush: drop, diameter: 70, material: wetPassageMixture(kit, { ultramarine: 0.4 }), path: across(40) });
-    wash.stroke('glow', { brush: drop, diameter: 60, material: wetPassageMixture(kit, { quinacridoneRose: 0.12, hansaYellow: 0.04 }), path: across(H - 50) });
+  return stampPaintRecipe(kit, (paint) => paint.group('sky', { composite: 'glaze', opacity: 1 }, (group) => group.passage('sky', { preparation: { region: PAGE } }, (wash) => {
+    wash.fill('sky', { brush: fill, size: 90, ...flood, region: PAGE, well: { paint: wetPassageMixture(kit, { cerulean: 0.3 }) }, load: { kind: 'linear', from: { x: 0, y: 20, value: 1 }, to: { x: 0, y: H - 20, value: 0.25 } } });
+    wash.stroke('overhead', { brush: drop, size: 70, well: { paint: wetPassageMixture(kit, { ultramarine: 0.4 }) }, path: across(40) });
+    wash.stroke('glow', { brush: drop, size: 60, well: { paint: wetPassageMixture(kit, { quinacridoneRose: 0.12, hansaYellow: 0.04 }) }, path: across(H - 50) });
     for (const [k, x] of [110, 250].entries()) {
-      wash.stroke(`cloud-${k}`, { brush: drop, diameter: 36, material: wetPassageMixture(kit, { ultramarine: 0.2, quinacridoneRose: 0.06, burntSienna: 0.05 }), path: across(130 + k * 30, x - 60, x + 60, 3) });
+      wash.stroke(`cloud-${k}`, { brush: drop, size: 36, well: { paint: wetPassageMixture(kit, { ultramarine: 0.2, quinacridoneRose: 0.06, burntSienna: 0.05 }) }, path: across(130 + k * 30, x - 60, x + 60, 3) });
     }
   })));
 }
@@ -69,9 +71,9 @@ function wetInWetSky(kit: WetPassageKit): StampPaintRecipe {
 function softenedEdge(kit: WetPassageKit): StampPaintRecipe {
   const { fill, water } = kit.brushes;
   const hill: StampRegion = { kind: 'polygon', points: [{ x: 30, y: 230 }, { x: 60, y: 120 }, { x: 150, y: 60 }, { x: 240, y: 90 }, { x: 330, y: 170 }, { x: 330, y: 230 }] };
-  return stampPaintRecipe((paint) => paint.group('hill', { composite: 'glaze', opacity: 1 }, (group) => group.wash('hill', {}, (wash) => {
-    wash.fill('hill', { brush: fill, diameter: 60, ...flood, region: hill, material: wetPassageMixture(kit, { ultramarine: 0.3, burntSienna: 0.2 }) });
-    wash.soften('shoulder', { brush: water, diameter: 30, path: [{ x: 150, y: 60 }, { x: 240, y: 90 }, { x: 330, y: 170 }] });
+  return stampPaintRecipe(kit, (paint) => paint.group('hill', { composite: 'glaze', opacity: 1 }, (group) => group.passage('hill', {}, (wash) => {
+    wash.fill('hill', { brush: fill, size: 60, ...flood, region: hill, well: { paint: wetPassageMixture(kit, { ultramarine: 0.3, burntSienna: 0.2 }) } });
+    stampSoften(wash, 'shoulder', { brush: water, size: 30, along: [{ x: 150, y: 60 }, { x: 240, y: 90 }, { x: 330, y: 170 }] });
   })));
 }
 
@@ -81,13 +83,13 @@ function softenedEdge(kit: WetPassageKit): StampPaintRecipe {
  */
 function hardEdge(kit: WetPassageKit): StampPaintRecipe {
   const { fill, drop } = kit.brushes;
-  return stampPaintRecipe((paint) => {
-    paint.group('blue', { composite: 'glaze', opacity: 1 }, (group) => group.wash('blue', {}, (wash) => {
-      wash.fill('blue', { brush: fill, diameter: 50, ...flood, region: rect(30, 30, 210, 200), material: wetPassageMixture(kit, { cerulean: 0.35 }) });
+  return stampPaintRecipe(kit, (paint) => {
+    paint.group('blue', { composite: 'glaze', opacity: 1 }, (group) => group.passage('blue', {}, (wash) => {
+      wash.fill('blue', { brush: fill, size: 50, ...flood, region: rect(30, 30, 210, 200), well: { paint: wetPassageMixture(kit, { cerulean: 0.35 }) } });
     }));
-    paint.group('rose', { composite: 'glaze', opacity: 1 }, (group) => group.wash('rose', {}, (wash) => {
-      wash.fill('rose', { brush: fill, diameter: 50, ...flood, region: { kind: 'ellipse', x: 230, y: 150, radiusX: 100, radiusY: 70 }, material: wetPassageMixture(kit, { quinacridoneRose: 0.3 }) });
-      wash.stroke('line', { brush: drop, diameter: 14, material: wetPassageMixture(kit, { burntSienna: 0.5 }), path: [{ x: 40, y: 235 }, { x: 320, y: 225 }] });
+    paint.group('rose', { composite: 'glaze', opacity: 1 }, (group) => group.passage('rose', {}, (wash) => {
+      wash.fill('rose', { brush: fill, size: 50, ...flood, region: { kind: 'ellipse', x: 230, y: 150, radiusX: 100, radiusY: 70 }, well: { paint: wetPassageMixture(kit, { quinacridoneRose: 0.3 }) } });
+      wash.stroke('line', { brush: drop, size: 14, well: { paint: wetPassageMixture(kit, { burntSienna: 0.5 }) }, path: [{ x: 40, y: 235 }, { x: 320, y: 225 }] });
     }));
   });
 }
@@ -101,12 +103,12 @@ function mergedStrokes(kit: WetPassageKit): StampPaintRecipe {
   const material = wetPassageMixture(kit, { ultramarine: 0.25, burntSienna: 0.1 });
   // Rows closer than any of the brushes' marks are wide, so each overlaps the last.
   const rows = (x0: number, x1: number) => Array.from({ length: 7 }, (_, k) => across(55 + k * 24, x0, x1, 3));
-  return stampPaintRecipe((paint) => {
-    rows(20, W / 2 - 20).forEach((path, k) => paint.group(`dry-${k}`, { composite: 'glaze', opacity: 1 }, (group) => group.pass('dry', {}, (pass) => {
-      pass.stroke('row', { brush: fill, diameter: 64, material, path });
+  return stampPaintRecipe(kit, (paint) => {
+    rows(20, W / 2 - 20).forEach((path, k) => paint.group(`dry-${k}`, { composite: 'glaze', opacity: 1 }, (group) => group.passage('dry', paintMediumCan(kit.mixing.medium, 'wet-history') ? { wetHistory: false } : {}, (pass) => {
+      pass.stroke('row', { brush: fill, size: 64, well: { paint: material }, path });
     })));
-    paint.group('wet', { composite: 'glaze', opacity: 1 }, (group) => group.wash('wet', {}, (wash) => rows(W / 2 + 20, W - 20).forEach((path, k) => {
-      wash.stroke(`row-${k}`, { brush: fill, diameter: 64, material, path });
+    paint.group('wet', { composite: 'glaze', opacity: 1 }, (group) => group.passage('wet', {}, (wash) => rows(W / 2 + 20, W - 20).forEach((path, k) => {
+      wash.stroke(`row-${k}`, { brush: fill, size: 64, well: { paint: material }, path });
     })));
   });
 }
@@ -114,10 +116,10 @@ function mergedStrokes(kit: WetPassageKit): StampPaintRecipe {
 /** One wash graded in its pigment, ultramarine overhead turning to burnt sienna below, on wetted paper. */
 function gradedWash(kit: WetPassageKit): StampPaintRecipe {
   const { fill } = kit.brushes;
-  return stampPaintRecipe((paint) => paint.group('graded', { composite: 'glaze', opacity: 1 }, (group) => group.wash('graded', { preparation: { region: PAGE } }, (wash) => {
+  return stampPaintRecipe(kit, (paint) => paint.group('graded', { composite: 'glaze', opacity: 1 }, (group) => group.passage('graded', { preparation: { region: PAGE } }, (wash) => {
     wash.fill('graded', {
-      brush: fill, diameter: 90, ...flood, region: PAGE,
-      material: { kind: 'linear', from: { x: 0, y: 30, value: wetPassageMixture(kit, { ultramarine: 0.4 }) }, to: { x: 0, y: H - 30, value: wetPassageMixture(kit, { burntSienna: 0.35 }) } },
+      brush: fill, size: 90, ...flood, region: PAGE,
+      well: { paint: { kind: 'linear', from: { x: 0, y: 30, value: wetPassageMixture(kit, { ultramarine: 0.4 }) }, to: { x: 0, y: H - 30, value: wetPassageMixture(kit, { burntSienna: 0.35 }) } } },
     });
   })));
 }
@@ -129,10 +131,10 @@ function gradedWash(kit: WetPassageKit): StampPaintRecipe {
 function liftedCloud(kit: WetPassageKit): StampPaintRecipe {
   const { fill, lift } = kit.brushes;
   const cloud: StampRegion = { kind: 'polygon', points: [[90, 160], [100, 125], [135, 110], [160, 80], [205, 78], [230, 100], [270, 102], [295, 130], [290, 160]].map(([x, y]) => ({ x, y })) };
-  return stampPaintRecipe((paint) => paint.group('sky', { composite: 'glaze', opacity: 1 }, (group) => group.wash('sky', { preparation: { region: PAGE } }, (wash) => {
-    wash.fill('sky', { brush: fill, diameter: 90, ...flood, region: PAGE, material: wetPassageMixture(kit, { ultramarine: 0.35, cerulean: 0.1 }) });
-    wash.lift('cloud', { kind: 'fill', brush: lift, diameter: 50, ...flood, region: cloud, strength: 0.9 });
-    wash.lift('base', { kind: 'stroke', brush: lift, diameter: 30, path: [{ x: 100, y: 165 }, { x: 290, y: 162 }], strength: 0.7 });
+  return stampPaintRecipe(kit, (paint) => paint.group('sky', { composite: 'glaze', opacity: 1 }, (group) => group.passage('sky', { preparation: { region: PAGE } }, (wash) => {
+    wash.fill('sky', { brush: fill, size: 90, ...flood, region: PAGE, well: { paint: wetPassageMixture(kit, { ultramarine: 0.35, cerulean: 0.1 }) } });
+    wash.lift('cloud', { kind: 'fill', brush: lift, size: 50, ...flood, region: cloud, strength: 0.9 });
+    wash.lift('base', { kind: 'stroke', brush: lift, size: 30, path: [{ x: 100, y: 165 }, { x: 290, y: 162 }], strength: 0.7 });
   })));
 }
 

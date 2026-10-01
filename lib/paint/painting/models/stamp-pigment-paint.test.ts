@@ -19,11 +19,11 @@ const brush: StampBrush = {
   taper: { start: 0, end: 0, size: 1, opacity: 1, shape: 0, pressure: 0 }, falloff: 0, flow: 1,
 };
 
-const washOf = (materials: StampPaintMaterial[]) => compileStampPaintRecipe(stampPaintRecipe((p) => p.group('wash', { composite: 'glaze', opacity: 1 }, (g) => g.pass('strokes', {}, (pass) => {
-  materials.forEach((material, i) => pass.stamps(`s${i}`, { brush, material, diameter: 10, at: [{ x: 5, y: 5 }] }));
-}))));
-
 const watercolour: StampPigmentMixing = { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W };
+
+const washOf = (materials: StampPaintMaterial[]) => compileStampPaintRecipe(stampPaintRecipe({ paper: { color: '#ffffff' }, mixing: watercolour }, (p) => p.group('wash', { composite: 'glaze', opacity: 1 }, (g) => g.passage('strokes', { wetHistory: false }, (pass) => {
+  materials.forEach((material, i) => pass.stamps(`s${i}`, { brush, well: { paint: material }, size: 10, at: [{ x: 5, y: 5 }] }));
+}))));
 
 test("a wash's palette holds each pigment once, whichever deposits lay it, and refuses one its style lacks or more than a wash holds", () => {
   const paint = compileStampPigmentPaint(washOf([
@@ -99,8 +99,8 @@ test("a medium on the paper's tooth sets aside a brush's grain depth by pressure
 test('a group naming its own medium fits its palette in it, a pigment of one id two pigments in two media', () => {
   const blue: PaintMaterial = { kind: 'mixture', parts: [{ pigment: W.ultramarine, amount: 1 }], strength: 0.5 };
   const gouache: StampPigmentMixing = { kind: 'pigment', medium: PAINT_MEDIA.gouache, pigments: W };
-  const painting = compileStampPaintRecipe(stampPaintRecipe((p) => ['sky', 'wings', 'sea'].forEach((id) => p.group(id, { composite: 'glaze', opacity: 1, ...(id === 'wings' && { mixing: gouache }) }, (g) => g.pass('paint', {}, (pass) => {
-    pass.stamps('dab', { brush, material: blue, diameter: 10, at: [{ x: 5, y: 5 }] });
+  const painting = compileStampPaintRecipe(stampPaintRecipe({ paper: { color: '#ffffff' }, mixing: watercolour }, (p) => ['sky', 'wings', 'sea'].forEach((id) => p.group(id, { composite: 'glaze', opacity: 1, ...(id === 'wings' && { mixing: gouache }) }, (g) => g.passage('paint', { wetHistory: false }, (pass) => {
+    pass.stamps('dab', { brush, well: { paint: blue }, size: 10, at: [{ x: 5, y: 5 }] });
   })))));
   const paint = compileStampPigmentPaint(painting, watercolour, PAINT_BANDS);
   assert.deepEqual(paint.media.map(({ name }) => name), ['watercolour', 'gouache']);

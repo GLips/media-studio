@@ -8,6 +8,10 @@ import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import { compileStampWetness, stampWetGrid } from './stamp-wetness.ts';
 import { stampGridAt } from './stamp-region.ts';
+import type { StampPaintEnvironment } from './stamp-paint-recipe-types.ts';
+import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
+
+const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 
 const brush: StampBrush = {
   name: 'Round',
@@ -39,11 +43,11 @@ function materialShare(deposit: CompiledStampDeposit, x: number, y: number): num
 test('deposits naming one seed share a passage of noise; unseeded, each mottles by its own ID, whatever its boil epoch', () => {
   const passage = { kind: 'noise' as const, scale: 24, seed: 'sky', a: blue, b: rose };
   const own = { kind: 'noise' as const, scale: 24, a: blue, b: rose };
-  const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'glaze', opacity: 1, boil: { every: 2 } }, (group) => group.pass('p', {}, (pass) => {
-    pass.stroke('left', { brush, diameter: 30, material: passage, path });
-    pass.stroke('right', { brush, diameter: 30, material: passage, path });
-    pass.stroke('a', { brush, diameter: 30, material: own, path });
-    pass.stroke('b', { brush, diameter: 30, material: own, path });
+  const painting = compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.group('g', { composite: 'glaze', opacity: 1, boil: { every: 2 } }, (group) => group.passage('p', { wetHistory: false }, (pass) => {
+    pass.stroke('left', { brush, size: 30, well: { paint: passage }, path });
+    pass.stroke('right', { brush, size: 30, well: { paint: passage }, path });
+    pass.stroke('a', { brush, size: 30, well: { paint: own }, path });
+    pass.stroke('b', { brush, size: 30, well: { paint: own }, path });
   }))));
   const [group] = painting.groups;
   const [left, right, a, b] = stampPassDeposits(group.passes[0]);
@@ -60,9 +64,9 @@ const shading: StampBrush = { ...brush, media: 'dry' };
 
 test("noise spreads smoothly over nearly all of its range, in a fill's load and a preparation's wetness alike", () => {
   const wetness: StampPaintField<number> = { kind: 'noise', scale: 20, a: 0.2, b: 1 };
-  const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => group.wash('w', {
+  const painting = compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => group.passage('w', {
     preparation: { region: { kind: 'polygon', points: [{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 300 }, { x: 0, y: 300 }] }, wetness },
-  }, (wash) => wash.fill('sky', { brush: shading, diameter: 30, region: { kind: 'ellipse', x: 200, y: 150, radiusX: 150, radiusY: 100 }, material: blue, load: { kind: 'noise', scale: 30, a: 0, b: 1 } })))));
+  }, (wash) => wash.fill('sky', { brush: shading, size: 30, region: { kind: 'ellipse', x: 200, y: 150, radiusX: 150, radiusY: 100 }, well: { paint: blue }, load: { kind: 'noise', scale: 30, a: 0, b: 1 } })))));
   const pass = painting.groups[0].passes[0];
   assert.equal(pass.kind, 'wash');
   const prepared = pass.wash.preparation!.wetness;
@@ -81,7 +85,7 @@ test("noise spreads smoothly over nearly all of its range, in a fill's load and 
   assert.ok(steepest < 0.1, `a pixel's step ${steepest}`);
   // The paper lies as wet as the field before any paint lands, and each stroke stamp's opacity follows its load.
   const [sky] = stampPassDeposits(pass);
-  const before = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, { color: '#ffffff' }, { width: 400, height: 300 }).landings.get(sky)!.before;
+  const before = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, { width: 400, height: 300 }).landings.get(sky)!.before;
   for (const [x, y] of [[96, 104], [200, 152], [304, 200]]) assert.ok(Math.abs(stampGridAt(stampWetGrid(before, 'wetness'), x, y) - stampPaintFieldAt(prepared, x, y)) < 1e-6);
   const opacities = sky.stamps.map(({ opacity }) => opacity);
   assert.ok(Math.min(...opacities) < 0.1 && Math.max(...opacities) > 0.9, `stamp opacities ${Math.min(...opacities)}..${Math.max(...opacities)}`);

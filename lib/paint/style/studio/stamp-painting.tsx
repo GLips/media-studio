@@ -4,8 +4,8 @@
 // for errors, never for the drawing itself: the screenshot waits for the GPU.
 //
 // A new painting object loads anew, with no checkpoints: a group that moves, boils, recolours, bends or is drawn live
-// does so within one painting, through `frame` (its frame state), which reloads nothing. A style is held by its
-// content, so one resolved anew each render loads nothing again.
+// does so within one painting, through `frame` (its frame state), which reloads nothing. The painting carries its
+// paper and mixing, as its recipe was written against them.
 
 import { useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
@@ -18,24 +18,21 @@ import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-pain
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
-import type { ResolvedStampPaintStyle } from '../models/style.ts';
 import { stampPaintAssetUrl } from './stamp-paint-styles.ts';
 
 /**
- * Draws `painting` in `style` (its paper and mixing) as it stands `t` seconds in (a scene's `s.t`: its deposits'
- * `appliedAt` and `drawnOver` count on it), each group in `frame`'s state (as painted when left out), `width` by
- * `height` of its own pixels (the frame's size unless given), stretched over `box` (the whole frame unless given).
+ * Draws `painting` on its paper as it stands `t` seconds in (a scene's `s.t`: its deposits' reveals count on it),
+ * each group in `frame`'s state (as painted when left out), `width` by `height` of its own pixels (the frame's size
+ * unless given), stretched over `box` (the whole frame unless given).
  */
-export function StampPainting({ painting, style, t, frame, width, height, box: given }: {
+export function StampPainting({ painting, t, frame, width, height, box: given }: {
   painting: CompiledStampPaint;
-  style: Pick<ResolvedStampPaintStyle, 'paper' | 'mixing'>;
   t: number;
   frame?: StampPaintFrameState;
   width?: number;
   height?: number;
   box?: { x: number; y: number; w: number; h: number };
 }) {
-  const paper = useStyleContent(style.paper), mixing = useStyleContent(style.mixing);
   const format = useVideoFormat();
   const box = given ?? fullFrameRect(format);
   const w = Math.round(width ?? box.w), h = Math.round(height ?? box.h);
@@ -85,7 +82,7 @@ export function StampPainting({ painting, style, t, frame, width, height, box: g
     };
     const loaded = profile?.('stamp paint load');
     // A load given up as its surface goes may fail for want of the device; only a live one's failure is the frame's.
-    createStampPaintRenderer(surface, painting, paper, mixing, { profile }).then((ready) => {
+    createStampPaintRenderer(surface, painting, { profile }).then((ready) => {
       loaded?.();
       made = ready;
       if (!live) return ready.dispose();
@@ -100,7 +97,7 @@ export function StampPainting({ painting, style, t, frame, width, height, box: g
       setRenderer(null);
       release();
     };
-  }, [surface, painting, paper, mixing, profile, delayRender, continueRender, cancelRender]);
+  }, [surface, painting, profile, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!renderer) return;
@@ -112,16 +109,4 @@ export function StampPainting({ painting, style, t, frame, width, height, box: g
   }, [renderer, t, frame, profile, delayRender, continueRender, cancelRender]);
 
   return <div ref={holder} {...unmeasuredAttrs('stamp painting')} style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h }} />;
-}
-
-/**
- * `value`, or the first equal one this painting was given: a reload throws away the renderer's checkpoints, so a
- * new-but-equal paper or mixing mustn't cause one. Equal by their JSON, as a style's paper and mixing are plain data.
- */
-function useStyleContent<T>(value: T): T {
-  const content = JSON.stringify(value);
-  const [kept, setKept] = useState({ content, value });
-  if (kept.content === content) return kept.value;
-  setKept({ content, value });
-  return value;
 }

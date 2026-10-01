@@ -4,12 +4,14 @@ import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/st
 import { stampGroupSceneFromLayer } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
-import type { StampGroupOptions } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
+import type { StampGroupOptions, StampPaintEnvironment } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { paintMotionPlay, type PaintMotion, type PaintMotionNode } from './paint-motion-compile.ts';
 import type { PaintPoseClip } from './paint-motion-clips.ts';
 import { paintMotionFrameAt } from './paint-motion-frame.ts';
 import { buildPaintMotion, type PaintMotionBuild } from './paint-motion.ts';
+
+const FLAT: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'flat' } };
 
 const brush: StampBrush = {
   name: 'Round', blend: 'normal', accumulation: { kind: 'glaze', build: 0 },
@@ -21,10 +23,10 @@ const brush: StampBrush = {
 
 /** A group painted as one diagonal stroke from `from` to `to`, revealed from `at` over `over` seconds if given. */
 type GroupSketch = { id: string; from: StampPoint; to: StampPoint; options?: Omit<StampGroupOptions, 'composite'>; reveal?: { at: number; over: number } };
-const paintingOf = (groups: readonly GroupSketch[]) => compileStampPaintRecipe(stampPaintRecipe((paint) => {
+const paintingOf = (groups: readonly GroupSketch[]) => compileStampPaintRecipe(stampPaintRecipe(FLAT, (paint) => {
   for (const { id, from, to, options, reveal } of groups) {
-    const stroke = { brush, material: { kind: 'color', color: '#203040' }, diameter: 10, path: [from, to] } as const;
-    paint.group(id, { composite: 'opaque', ...options }, (group) => group.pass('p', {}, (pass) => pass.stroke('s', reveal ? { ...stroke, appliedAt: reveal.at, drawnOver: reveal.over } : stroke)));
+    const stroke = { brush, well: { paint: { kind: 'color', color: '#203040' } }, size: 10, path: [from, to] } as const;
+    paint.group(id, { composite: 'opaque', ...options }, (group) => group.passage('p', {}, (pass) => pass.stroke('s', reveal ? { ...stroke, reveal } : stroke)));
   }
 }));
 const square = (id: string, extra: Partial<GroupSketch> = {}): GroupSketch => ({ id, from: { x: 0, y: 0 }, to: { x: 400, y: 400 }, ...extra });

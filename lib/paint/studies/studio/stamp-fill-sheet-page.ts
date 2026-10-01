@@ -36,8 +36,8 @@ async function drawStampFillSheet(brush: StampBrush, diameter: number, packUrls:
   const width = CELL.width * APPLICATIONS.length, height = (LABEL + CELL.height) * ROWS.length;
   const material = { kind: 'color', color: '#1d2a44' } as const;
   const top = (row: number) => row * (LABEL + CELL.height) + LABEL;
-  const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => ROWS.forEach(({ appliedAt }, row) => APPLICATIONS.forEach(({ application }, column) => paint.group(`r${row}c${column}`, { composite: 'glaze', opacity: 1 }, (group) => group.pass('p', {}, (pass) => {
-    pass.fill('fill', { brush, material, diameter, application, direction: 0.35, region: cellRegion(column * CELL.width, top(row)), appliedAt, drawnOver: DRAWN_OVER });
+  const painting = compileStampPaintRecipe(stampPaintRecipe({ paper: { color: '#ffffff' }, mixing: { kind: 'flat' } }, (paint) => ROWS.forEach(({ appliedAt }, row) => APPLICATIONS.forEach(({ application }, column) => paint.group(`r${row}c${column}`, { composite: 'glaze', opacity: 1 }, (group) => group.passage('p', {}, (pass) => {
+    pass.fill('fill', { brush, well: { paint: material }, size: diameter, application, direction: 0.35, region: cellRegion(column * CELL.width, top(row)), reveal: { at: appliedAt, over: DRAWN_OVER } });
   }))))));
   const stamps = painting.groups.map(({ passes }) => stampPassDeposits(passes[0])[0].stamps.length);
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
@@ -46,7 +46,7 @@ async function drawStampFillSheet(brush: StampBrush, diameter: number, packUrls:
   const surface = await createStampPaintSurface({ canvas: paintCanvas, width, height }, (asset) => stampPaintPackAssetUrl(packUrls, asset));
   // Copied before the surface is disposed, which unconfigures its canvas and clears it.
   try {
-    const renderer = await createStampPaintRenderer(surface, painting, { color: '#ffffff' }, { kind: 'flat' });
+    const renderer = await createStampPaintRenderer(surface, painting);
     await renderer.draw(DRAWN_OVER);
     context.drawImage(paintCanvas, 0, 0);
   } finally {

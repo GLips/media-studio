@@ -5,6 +5,9 @@ import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/paint/pai
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import { stampFrozenMarks, type PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
 import { diffStampPaintingPrints, printStampPainting } from './stamp-paint-guard.ts';
+import type { StampPaintEnvironment } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
+
+const FLAT: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'flat' } };
 
 const brush: StampBrush = {
   name: 'Guarded',
@@ -23,8 +26,8 @@ const brush: StampBrush = {
   flow: 0.4,
 };
 
-const painting = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) => {
-  pass.stroke('s', { brush, material: { kind: 'color', color: '#000000' }, diameter: 40, path: [{ x: 0, y: 0 }, { x: 400, y: 60 }] });
+const painting = compileStampPaintRecipe(stampPaintRecipe(FLAT, (paint) => paint.group('g', { composite: 'opaque' }, (group) => group.passage('p', {}, (pass) => {
+  pass.stroke('s', { brush, well: { paint: { kind: 'color', color: '#000000' } }, size: 40, path: [{ x: 0, y: 0 }, { x: 400, y: 60 }] });
 }))));
 
 /** `painting` with its one deposit's stamps passed through `edit`. */
@@ -34,7 +37,7 @@ function withStamps(edit: (stamps: PlacedStamp[]) => void): CompiledStampPaint {
   const [deposit] = pass.deposits;
   const stamps = deposit.stamps.map((stamp) => ({ ...stamp }));
   edit(stamps);
-  return { groups: [{ ...group, passes: [{ ...pass, deposits: [{ ...deposit, stamps: stampFrozenMarks(stamps) }] }] }] };
+  return { ...painting, groups: [{ ...group, passes: [{ ...pass, deposits: [{ ...deposit, stamps: stampFrozenMarks(stamps) }] }] }] };
 }
 
 const before = printStampPainting(painting);
