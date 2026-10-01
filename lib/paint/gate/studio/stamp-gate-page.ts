@@ -56,7 +56,8 @@ import {
 } from '../models/stamp-gate-washes.ts';
 import { stampGatePainting, stampGateTracePainting, type StampGateImage, type StampGatePainting } from '../models/stamp-gate-paintings.ts';
 import {
-  checkStampGateMargin, checkStampGatePan, STAMP_GATE_STAGE_IDS, STAMP_GATE_STAGE_MARGIN, stampGateInsetDifference, stampGateMarginSubjects, stampGatePanPainting,
+  checkStampGateLayerCache, checkStampGateMargin, checkStampGatePan, STAMP_GATE_PARALLAX_ORDER, STAMP_GATE_STAGE_IDS, STAMP_GATE_STAGE_MARGIN, stampGateInsetDifference, stampGateMarginSubjects,
+  stampGatePanPainting, stampGateParallaxPainting, stampGateParallaxTime,
 } from '../models/stamp-gate-stage.ts';
 
 const WORKGROUP = 64;
@@ -150,13 +151,13 @@ async function withGateSurface<T>({ width, height }: { width: number; height: nu
   }
 }
 
-const gateRenderer = ({ painting, paper, mixing }: Omit<StampGatePainting, 'images'>, surface: StampPaintSurface, options: Omit<StampPaintRendererOptions, 'profile'> = {}) =>
+const gateRenderer = ({ painting, paper, mixing }: Omit<StampGatePainting, 'images'>, surface: StampPaintSurface, options: StampPaintRendererOptions = {}) =>
   createStampPaintRenderer(surface, painting, paper, mixing, options);
 
 /** `gate` on a renderer (made with `options`) and surface of its own, its images at `url`, handed to `use`; disposed after. */
 const withGateRenderer = <T,>(
   gate: Omit<StampGatePainting, 'images'>, url: (file: string) => string, use: (renderer: StampPaintRenderer, frame: () => Uint8ClampedArray) => Promise<T>,
-  options: Omit<StampPaintRendererOptions, 'profile'> = {},
+  options: StampPaintRendererOptions = {},
 ) => withGateSurface(gate, url, async (surface, frame) => use(await gateRenderer(gate, surface, options), frame));
 
 const drawnImages = (gate: StampGatePainting) => {
@@ -572,6 +573,21 @@ async function checkStampGateStageCase(id: string): Promise<StampGateWashCheck[]
     const panned = stampGatePanPainting('off-frame'), onFrame = stampGatePanPainting('on-frame');
     const shown = await frameOf(panned, panned.t, STAMP_GATE_STAGE_MARGIN), there = await frameOf(onFrame, onFrame.t, 0);
     return [checkStampGatePan({ panned: shown, onFrame: there, bare: await frameOf(panned, panned.t, 0), difference: stampGateFrameDifference(shown, there) })];
+  }
+  if (id === 'stage/layer-cache') {
+    const gate = stampGateParallaxPainting(), url = drawnImages(gate), margin = STAMP_GATE_STAGE_MARGIN;
+    let restores = 0;
+    const profile = (label: string) => () => {
+      if (label === 'stamp paint layer restore') restores++;
+    };
+    const scrambled = await withGateRenderer(gate, url, (renderer, frame) => STAMP_GATE_PARALLAX_ORDER.reduce<Promise<{ frame: number; rgba: Uint8ClampedArray }[]>>(async (done, k) => {
+      const t = stampGateParallaxTime(k);
+      return [...await done, { frame: k, rgba: await drawn(renderer, frame, t, gate.frameAt?.(t)) }];
+    }, Promise.resolve([])), { margin, profile });
+    const frames = await scrambled.reduce<Promise<{ frame: number; difference: StampGateFrameDifference }[]>>(async (done, { frame: k, rgba }) => [
+      ...await done, { frame: k, difference: stampGateFrameDifference(await frameOf(gate, stampGateParallaxTime(k), margin), rgba) },
+    ], Promise.resolve([]));
+    return [checkStampGateLayerCache(frames, restores)];
   }
   throw new Error(`stamp gate: no stage case ${JSON.stringify(id)}; the gate holds ${STAMP_GATE_STAGE_IDS.join(', ')}`);
 }

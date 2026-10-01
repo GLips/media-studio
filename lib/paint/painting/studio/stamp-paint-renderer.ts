@@ -38,6 +38,7 @@ import { stampUniformLayout, stampUniformStruct, stampUniformWriter, type StampU
 import { STAMP_WET_STAGES, stampWetStageReach, type StampLoadedWetStage, type StampWetStage, type StampWetDepositMoment, type StampWetDryingMoment, type StampWetStageContext } from './stamp-wet-stages.ts';
 import { stampWashDryings, type StampWashDrying } from '../models/stamp-wet-rim.ts';
 import { stampPaintCheckpoints } from './stamp-paint-checkpoints.ts';
+import { stampPaintLayerCache } from './stamp-paint-layer-cache.ts';
 import { stampPaintEvents } from '../models/stamp-paint-events.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { stampPlacementWarpMap, stampWarpCells, stampWarpTriangles, STAMP_WARP_MOST_CELLS } from '../models/stamp-group-warp.ts';
@@ -2035,6 +2036,15 @@ function rendererOnSurface(
   // Made on the surface's device: they come and go as frames save them, and dispose destroys what's left.
   const checkpoints = stampPaintCheckpoints(surface.device, { painting: targets.painting.texture, layer: targets.layer.texture, clip: targets.clip.texture });
   const groupEvents = stampGroupEvents(painting);
+  // Settled groups' painted layers, so a frame laying them elsewhere copies them back rather than painting them again.
+  const layerCache = stampPaintLayerCache(surface.device, targets.layer.texture);
+  /** The layer cached under `key` copied back into the layer target, timed when it's there. */
+  function restoreGroupLayer(encoder: GPUCommandEncoder, key: string) {
+    const restored = span('stamp paint layer restore');
+    const cached = layerCache.restore(encoder, key);
+    if (cached) restored();
+    return cached;
+  }
 
   // A boiling group's epochs other than 0 (the painting as written), each group's recently drawn ones kept on the GPU.
   const epochs = new Map<CompiledStampGroup, Map<number, { marks: CompiledStampGroup; bank: DepositBank; used: number }>>();
@@ -2157,6 +2167,15 @@ function rendererOnSurface(
       save(first, false, null);
       // Hidden, none of it is drawn or loaded; the plan keys it so, and saves nothing within it.
       if (!visibility) continue;
+      // Painted from its start and settled, its layer is its paintKey's alone (stamp-paint-layer-cache.ts). No checkpoint
+      // falls within such a group, so skipping its events skips no save.
+      const layerKey = !whole && first >= from && end <= settled ? `${index}|${groupFrame.paintKey}` : null;
+      const cached = layerKey === null ? null : restoreGroupLayer(encoder, layerKey);
+      if (cached) {
+        if (layVaries) save(end, true, cached.painted);
+        if (cached.painted) layGroup(encoder, index, groupFrame, cached.painted);
+        continue;
+      }
       const epoch = drawing.kind === 'written' ? drawing.epoch : 0;
       const { marks, bank } = drawing.kind === 'live' ? liveOf(group, drawing) : epochOf(group, epoch);
       const at = { t, paintAt: paintAt ?? t, epoch };
@@ -2181,6 +2200,7 @@ function rendererOnSurface(
           for (const wetStage of loadedDeposit.home.stages) if (wetStage.after === 'drying') painted = unionOf(painted, wetStage.running.encode(encoder, { drying, seed }));
         }
       }
+      if (layerKey !== null) layerCache.save(encoder, layerKey, painted);
       if (layVaries) save(end, true, painted);
       if (painted) layGroup(encoder, index, groupFrame, painted);
     }
@@ -2270,6 +2290,7 @@ function rendererOnSurface(
       // Destroyed once submitted work is done with them; the surface and its targets stay for the next painting.
       for (const kept of [...epochs.values(), ...lives.values()]) for (const { bank } of kept.values()) bank.destroy();
       checkpoints.dispose();
+      layerCache.dispose();
       scope.destroy();
     },
   };

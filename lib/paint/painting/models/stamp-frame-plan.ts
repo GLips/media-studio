@@ -33,6 +33,8 @@ export function stampGroupEvents(painting: CompiledStampPaint): StampGroupEvents
  * at its end holds it painted, not laid, which frames laying it otherwise share.
  */
 export type StampGroupFrame = {
+  /** What its painted layer depends on besides how much is shown: its marks and paint's time; 'hidden' drawn not at all. */
+  paintKey: string;
   group: CompiledStampGroup;
   marks: StampGroupMarks;
   lay: StampGroupLay | null;
@@ -91,8 +93,10 @@ function stampGroupFrame(group: CompiledStampGroup, state: StampGroupFrameState)
     if (![x, y, rotation, scale, pivot.x, pivot.y].every(Number.isFinite) || !(scale > 0)) throw new Error(`stamp paint: ${group.id}'s lay needs finite values and a positive scale`);
   }
   const moved = lay && !isStill(lay.placement) ? lay : null;
+  // A hidden group draws nothing, whatever its marks or lay.
+  const paintKey = visibility === 0 ? 'hidden' : `${marks.kind === 'live' ? `*${JSON.stringify(marks.key)}` : marks.epoch}${paintAt === undefined ? '' : `~${paintAt}`}`;
   return {
-    group, marks, lay: moved, warp: warp ? { map: warp.map, key: warp.key, cell: warp.cell ?? STAMP_WARP_CELL } : null, visibility,
+    paintKey, group, marks, lay: moved, warp: warp ? { map: warp.map, key: warp.key, cell: warp.cell ?? STAMP_WARP_CELL } : null, visibility,
     paintAt: paintAt ?? null, layVaries: visibility > 0 && !!(moved || warp || visibility < 1),
   };
 }
@@ -124,9 +128,7 @@ export function stampFramePlan(
   const state = stampPaintFrameStateAt(painting, t, given);
   const groups = painting.groups.map((group) => stampGroupFrame(group, state.get(group.id) ?? {}));
   const outsideLayers = stampOutsideLayerFrames(groupEvents, events.length, outside);
-  // A hidden group draws nothing, whatever its marks or lay.
-  const marks = groups.map(({ marks: drawn, paintAt, visibility }) => (visibility === 0 ? 'hidden'
-    : `${drawn.kind === 'live' ? `*${JSON.stringify(drawn.key)}` : drawn.epoch}${paintAt === null ? '' : `~${paintAt}`}`));
+  const marks = groups.map(({ paintKey }) => paintKey);
   const laid = groups.map(({ lay, warp, visibility }, index) => (visibility === 0 ? marks[index] : marks[index]
     + (lay ? `@${lay.placement.x},${lay.placement.y},${lay.placement.rotation},${lay.placement.scale}:${lay.pivot.x},${lay.pivot.y}` : '')
     + (warp ? `^${warp.cell}${JSON.stringify(warp.key)}` : '')
