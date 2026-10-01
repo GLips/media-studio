@@ -294,3 +294,16 @@ A frog-style painted scene renders in a real project: painted in on a cue, then 
 ### Approach
 - A new project from `studio new`.
 - `docs/brush-engine.md` and `skills/video-canvas/SKILL.md` describe the new model and nothing of the recipe.
+
+*Built (vid-130, workspace `projects/2026-10-frog`, f6711f0; studio 32146d1).*
+- **Shapes:** every frog shape comes from the posed figure, and the set is placed from its rest silhouette.
+- **Groups:** each moving part is its own group.
+- **Paint-in:** it runs on the timeline's cues, on ones.
+- **From cue `alive`:** the body breathes with its ink as a child node, the ink boils in rest space, the tufts sway,
+  and the butterflies flutter and drift.
+- **The sac is live:** compiled alone from the figure posed at each held scale, and kept by pose key.
+- **Frame rate:** held on twos at 24 fps.
+- **Repeatability:** `studio repeatable` is identical at 8 times.
+- **Cost, 1080p:** draw median 33 ms, whole frame 62.5 ms.
+- **Not done:** the authoring surface (2b) waits for vid-114, so the scene uses today's recipe plus frame state.
+  vid-114's step 5 moves it.
