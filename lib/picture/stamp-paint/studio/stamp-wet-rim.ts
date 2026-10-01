@@ -1,8 +1,8 @@
 // stamp-wet-rim.ts: the wet stage that leaves a drying rim (models/stamp-wet-rim.ts) once each wash is done. Its
 // domain is the wash's paint, the layer's coverage where its water went, with holes finer than the paper's grain
 // closed: grain and seams between strokes don't rim. Distance to the edge comes by jump flooding over the wash's box;
-// each pixel in the band gives a share of its open pigment to the line, by a Gaussian normalised per giver; then
-// the compositor's washMoved.
+// each band pixel gives a share of its open pigment to the line by the transport's scatter (stamp-wet-transport.ts),
+// closed where it's paper at the grain's scale, so nothing crosses masking fluid or a gap; then washMoved.
 //
 // Negative space: the group's earlier paint under the wash is its domain too, so no rim falls along it; being set,
 // none of it is drawn to the rim.
@@ -14,6 +14,7 @@ import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import { stampPassDeposits, type CompiledStampPass } from '../models/stamp-paint-recipe.ts';
 import type { StampLoadedWetStage, StampWetStage, StampWetStageContext, StampWetStageMoment } from './stamp-wet-stages.ts';
 import { stampUniformLayout, stampUniformWriter } from './stamp-uniform-layout.ts';
+import { encodeStampWetTransportSteps, stampWetSpreads } from './stamp-wet-transport.ts';
 
 const WORKGROUP = 8;
 
@@ -31,12 +32,12 @@ const FLOOD_FIRST_STEP = 2 ** Math.ceil(Math.log2(STAMP_DRYING_RIM_MOST_BAND));
 
 /**
  * A wash's rim: its wettest grid's lattice, size and first value in the grid buffer; the pixels it works over; its
- * medium's spread and damp, its brushes' mean diameter; its line's width; the gathering kernel's sigma, reach and sum;
- * and the seed its line's unevenness is drawn from.
+ * medium's spread and damp, its brushes' mean diameter; its line's width; and the seed its line's unevenness is drawn
+ * from.
  */
 const RIM = stampUniformLayout('Rim', [
   ['lattice', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['seed', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'],
-  ['spread', 'f32'], ['damp', 'f32'], ['diameter', 'f32'], ['width', 'f32'], ['sigma', 'f32'], ['reach', 'u32'], ['norm', 'f32'],
+  ['spread', 'f32'], ['damp', 'f32'], ['diameter', 'f32'], ['width', 'f32'],
 ]);
 
 const PRELUDE = /* wgsl */ `
@@ -47,7 +48,6 @@ fn local(p: vec2i) -> vec2i { return p - vec2i(u.origin); }
 fn inside(p: vec2i) -> bool { return all(p >= vec2i(u.origin)) && all(p < vec2i(u.origin + u.extent)); }
 // The pixel an invocation works on, or none past the box.
 fn pixelOf(id: vec3u) -> vec2i { return select(vec2i(-1), vec2i(u.origin + id.xy), all(id.xy < u.extent)); }
-fn kernelAt(d: i32) -> f32 { return exp(-f32(d * d) / (2.0 * u.sigma * u.sigma)) / u.norm; }
 const GRAIN_REACH = ${Math.ceil(3 * GRAIN_SIGMA)};
 fn grainAt(d: i32) -> f32 { return exp(-f32(d * d) / ${(2 * GRAIN_SIGMA * GRAIN_SIGMA).toFixed(3)}); }
 `;
@@ -84,11 +84,12 @@ const GRAIN_ROWS_WGSL = /* wgsl */ `${PRELUDE}
 }`;
 
 // The edge's seeds: paper that's paper at the grain's scale too, so a hole finer than the grain is no edge. A seed
-// holds its own pixel; any other pixel, none (-1).
+// holds its own pixel; any other pixel, none (-1). The transport's paper is closed at a seed and open elsewhere.
 const SEEDS_WGSL = /* wgsl */ `${PRELUDE}
 @group(0) @binding(1) var domain: texture_2d<f32>;
 @group(0) @binding(2) var grainRows: texture_2d<f32>;
 @group(0) @binding(3) var seeds: texture_storage_2d<rg32float, write>;
+@group(0) @binding(4) var transportPaper: texture_storage_2d<rgba16float, write>;
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   let p = pixelOf(id);
   if (p.x < 0) { return; }
@@ -101,6 +102,7 @@ const SEEDS_WGSL = /* wgsl */ `${PRELUDE}
   }
   let paper = textureLoad(domain, local(p), 0).r < 0.5 && sum / weight < 0.5;
   textureStore(seeds, local(p), select(vec4f(-1.0), vec4f(vec2f(p), 0.0, 0.0), paper));
+  textureStore(transportPaper, local(p), vec4f(1.0, select(1.0, 0.0, paper), 0.0, 0.0));
 }`;
 
 // One jump of the flood: each pixel keeps the nearest seed among its own and those \`jump\` away.
@@ -126,9 +128,9 @@ const FLOOD_WGSL = /* wgsl */ `${PRELUDE}
   textureStore(seedsOut, local(p), vec4f(best, 0.0, 0.0));
 }`;
 
-// Each pixel's line and take, from its distance to the edge, how wet the wash was there and how much of its paint is
-// open. The open share is the gate rather than the paper's workable at the wash's end: a wash left to dry ends with
-// none workable, and that drying is what rims it.
+// Each pixel's line (also for Gᵀ) and take, from its distance to the edge, how wet the wash was
+// there and how much of its paint is open. The gate is the open share, not the paper's workable at the wash's end: a
+// wash left to dry ends with none workable, and that drying is what rims it.
 const weightsWgsl = (layers: number, movedWgsl: string) => /* wgsl */ `${PRELUDE}
 ${STAMP_DRYING_RIM_WGSL}
 ${PAINT_PAPER_WGSL}
@@ -139,6 +141,7 @@ ${STAMP_GRID_AT_WGSL}
 @group(0) @binding(3) var seeds: texture_2d<f32>;
 @group(0) @binding(4) var layer: texture_2d_array<f32>;
 @group(0) @binding(5) var weights: texture_storage_2d<rg32float, write>;
+@group(0) @binding(6) var lineOut: texture_storage_2d_array<rgba32float, write>;
 // The paint's coverage \`depth\` px in from the edge point \`seed\`, toward \`p\`, bilinear (a seed steps a pixel
 // at a time along a slanted edge, and a nearest read there would chequer the band), held to the box.
 fn coverageIn(seed: vec2f, toward: vec2f, depth: f32) -> f32 {
@@ -156,7 +159,11 @@ fn coverageIn(seed: vec2f, toward: vec2f, depth: f32) -> f32 {
   if (p.x < 0) { return; }
   let paint = textureLoad(domain, local(p), 0).r;
   let seed = textureLoad(seeds, local(p), 0).xy;
-  if (paint <= 0.0 || seed.x < 0.0) { textureStore(weights, local(p), vec4f(0.0)); return; }
+  if (paint <= 0.0 || seed.x < 0.0) {
+    textureStore(weights, local(p), vec4f(0.0));
+    textureStore(lineOut, local(p), 0, vec4f(0.0));
+    return;
+  }
   let d = distance(seed, vec2f(p));
   // Every pixel judges its nearest stretch of edge alike, from the same two points along the way in.
   let toward = select(vec2f(0.0), (vec2f(p) - seed) / d, d > 0.5);
@@ -175,64 +182,36 @@ fn coverageIn(seed: vec2f, toward: vec2f, depth: f32) -> f32 {
   for (var l = 0; l < ${layers}; l++) { held[l] = textureLoad(layer, p, l, 0); }
   let take = paint * hardness * dryingRimDraw(d, band, u.width) * dryingRimTake(u.spread, wetShare, strength) * clamp(washOpen(held), 0.0, 1.0);
   textureStore(weights, local(p), vec4f(line, take, 0.0, 0.0));
+  textureStore(lineOut, local(p), 0, vec4f(line, 0.0, 0.0, 0.0));
 }`;
 
-// The line blurred along rows by the gathering kernel: half of each giver's normaliser.
-const NORM_ROWS_WGSL = /* wgsl */ `${PRELUDE}
+const LEAST_REACHED = 1e-5;
+
+// Each giver's send (x): the share of its amounts it gives (y), over the line its paint would reach (N, the line spread
+// back). A giver with no line in reach gives nothing.
+const SEND_WGSL = /* wgsl */ `${PRELUDE}
 @group(0) @binding(1) var weights: texture_2d<f32>;
-@group(0) @binding(2) var normRows: texture_storage_2d<r32float, write>;
+@group(0) @binding(2) var reached: texture_2d_array<f32>;
+@group(0) @binding(3) var send: texture_storage_2d<rg32float, write>;
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   let p = pixelOf(id);
   if (p.x < 0) { return; }
-  var sum = 0.0;
-  for (var d = -i32(u.reach); d <= i32(u.reach); d++) {
-    let q = p + vec2i(d, 0);
-    if (inside(q)) { sum += kernelAt(d) * textureLoad(weights, local(q), 0).x; }
-  }
-  textureStore(normRows, local(p), vec4f(sum));
+  let n = textureLoad(reached, local(p), 0, 0).r;
+  let take = select(0.0, textureLoad(weights, local(p), 0).y, n > ${LEAST_REACHED});
+  textureStore(send, local(p), vec4f(select(0.0, take / n, take > 0.0), take, 0.0, 0.0));
 }`;
 
-// Each giver's normaliser: the line within its reach, by the kernel. A giver with no line in reach gives nothing.
-const NORM_WGSL = /* wgsl */ `${PRELUDE}
-@group(0) @binding(1) var normRows: texture_2d<f32>;
-@group(0) @binding(2) var norm: texture_storage_2d<r32float, write>;
-@compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
-  let p = pixelOf(id);
-  if (p.x < 0) { return; }
-  var sum = 0.0;
-  for (var d = -i32(u.reach); d <= i32(u.reach); d++) {
-    let q = p + vec2i(0, d);
-    if (inside(q)) { sum += kernelAt(d) * textureLoad(normRows, local(q), 0).r; }
-  }
-  textureStore(norm, local(p), vec4f(sum));
-}`;
-
-const GIVES_WGSL = /* wgsl */ `
-const LEAST_NORM = 1e-5;
-// The share of its amounts pixel \`q\` gives, over its normaliser: none where no line is in reach.
-fn givenShare(q: vec2i) -> f32 {
-  let n = textureLoad(norm, local(q), 0).r;
-  return select(0.0, textureLoad(weights, local(q), 0).y / n, n > LEAST_NORM);
-}`;
-
-const pulledRowsWgsl = (layers: number) => /* wgsl */ `${PRELUDE}
+// What each giver sends of its pigment channels, for the transport to spread.
+const sentWgsl = (layers: number, movedWgsl: string) => /* wgsl */ `${PRELUDE}
+${movedWgsl}
 @group(0) @binding(1) var layer: texture_2d_array<f32>;
-@group(0) @binding(2) var weights: texture_2d<f32>;
-@group(0) @binding(3) var norm: texture_2d<f32>;
-@group(0) @binding(4) var pulledRows: texture_storage_2d_array<rgba32float, write>;
-${GIVES_WGSL}
+@group(0) @binding(2) var send: texture_2d<f32>;
+@group(0) @binding(3) var sent: texture_storage_2d_array<rgba32float, write>;
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   let p = pixelOf(id);
   if (p.x < 0) { return; }
-  var pulled: array<vec4f, ${layers}>;
-  for (var d = -i32(u.reach); d <= i32(u.reach); d++) {
-    let q = p + vec2i(d, 0);
-    if (!inside(q)) { continue; }
-    let w = kernelAt(d) * givenShare(q);
-    if (w <= 0.0) { continue; }
-    for (var l = 0; l < ${layers}; l++) { pulled[l] += w * textureLoad(layer, q, l, 0); }
-  }
-  for (var l = 0; l < ${layers}; l++) { textureStore(pulledRows, local(p), l, pulled[l]); }
+  let share = textureLoad(send, local(p), 0).x;
+  for (var l = 0; l < ${layers}; l++) { textureStore(sent, local(p), l, share * textureLoad(layer, p, l, 0) * washPigmentMask(u32(l))); }
 }`;
 
 // The exchange, in the pigment channels; the rest of each pixel is the compositor's washMoved.
@@ -241,28 +220,19 @@ ${STAMP_DRYING_RIM_WGSL}
 ${movedWgsl}
 @group(0) @binding(1) var layer: texture_storage_2d_array<rgba16float, read_write>;
 @group(0) @binding(2) var weights: texture_2d<f32>;
-@group(0) @binding(3) var norm: texture_2d<f32>;
-@group(0) @binding(4) var pulledRows: texture_2d_array<f32>;
+@group(0) @binding(3) var send: texture_2d<f32>;
+@group(0) @binding(4) var pulled: texture_2d_array<f32>;
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   let p = pixelOf(id);
   if (p.x < 0) { return; }
-  let w = textureLoad(weights, local(p), 0).xy;
-  let take = select(0.0, w.y, textureLoad(norm, local(p), 0).r > 1e-5);
-  if (w.x <= 0.0 && take <= 0.0) { return; }
-  var pulled: array<vec4f, ${layers}>;
-  if (w.x > 0.0) {
-    for (var d = -i32(u.reach); d <= i32(u.reach); d++) {
-      let q = p + vec2i(0, d);
-      if (!inside(q)) { continue; }
-      let k = kernelAt(d);
-      for (var l = 0; l < ${layers}; l++) { pulled[l] += k * textureLoad(pulledRows, local(q), l, 0); }
-    }
-  }
+  let line = textureLoad(weights, local(p), 0).x;
+  let take = textureLoad(send, local(p), 0).y;
+  if (line <= 0.0 && take <= 0.0) { return; }
   var was: array<vec4f, ${layers}>;
   var now: array<vec4f, ${layers}>;
   for (var l = 0; l < ${layers}; l++) {
     was[l] = textureLoad(layer, p, l);
-    now[l] = mix(was[l], dryingRimExchange(was[l], take, w.x, pulled[l]), washPigmentMask(u32(l)));
+    now[l] = mix(was[l], dryingRimExchange(was[l], take, line, textureLoad(pulled, local(p), l, 0)), washPigmentMask(u32(l)));
   }
   let moved = washMoved(now, washPigmentTotal(was));
   for (var l = 0; l < ${layers}; l++) { textureStore(layer, p, l, moved[l]); }
@@ -274,8 +244,8 @@ function gridBox(grid: StampGrid, width: number, height: number): StampPixelBox 
   return { x, y, w: Math.min(width, grid.x0 + (grid.columns - 1) * grid.cell) - x, h: Math.min(height, grid.y0 + (grid.rows - 1) * grid.cell) - y };
 }
 
-/** A wash's rim as loaded: its wettest grid's place in the grid buffer, its box, uniform and whether it rims at all. */
-type LoadedRim = { grid: StampGrid; first: number; box: StampPixelBox; uniform: GPUBuffer; layers: number };
+/** A wash's rim as loaded: its wettest grid's place in the grid buffer, its box, uniform, the group's layer count, and its transport's spreads (Gᵀ of the line, then of what's sent). */
+type LoadedRim = { grid: StampGrid; first: number; box: StampPixelBox; uniform: GPUBuffer; layers: number; spreads: ReturnType<typeof stampWetSpreads> };
 
 function loadDryingRim({ device, painting, medium, wetness, width, height, layer, wash }: StampWetStageContext): StampLoadedWetStage {
   const { spread, damp } = medium.wetting;
@@ -295,9 +265,10 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     if (band < 1.5) continue;
     const box = gridBox(grid, width, height);
     if (box.w <= 0 || box.h <= 0) continue;
-    const sigma = band / 2, reach = Math.ceil(3 * sigma);
-    let norm = 0;
-    for (let d = -reach; d <= reach; d++) norm += Math.exp(-(d * d) / (2 * sigma * sigma));
+    const sigma = band / 2, layers = wash.layersOf(painted[0]);
+    // The line, laid in values[1], spreads back there; what's sent spreads in values[0].
+    const spreads = stampWetSpreads(device, [{ sigma, order: 'transposed', layers: 1, from: 1 }, { sigma, order: 'forward', layers, from: 0 }]);
+    spreads.write(box);
     const words = new ArrayBuffer(RIM.words * 4);
     const put = stampUniformWriter(RIM, { floats: new Float32Array(words), ints: new Int32Array(words), words: new Uint32Array(words) });
     put('lattice', [grid.x0, grid.y0, grid.cell, 0]);
@@ -310,12 +281,9 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     put('damp', damp);
     put('diameter', diameter);
     put('width', Math.min(2.2, 0.8 + band / 20));
-    put('sigma', sigma);
-    put('reach', reach);
-    put('norm', norm);
     const uniform = device.createBuffer({ size: RIM.words * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     device.queue.writeBuffer(uniform, 0, words);
-    rims.set(pass, { grid, first: points, box, uniform, layers: wash.layersOf(painted[0]) });
+    rims.set(pass, { grid, first: points, box, uniform, layers, spreads });
     points += grid.values.length;
   }
   if (!rims.size) return { encode: () => null };
@@ -337,23 +305,24 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     device.createTexture({ size: [most.w, most.h, depth], format, usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING })
       .createView({ dimension: depth > 1 ? '2d-array' : '2d' });
   // A one-layer array still binds as an array.
-  const pulledRows = device.createTexture({ size: [most.w, most.h, layers], format: 'rgba32float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING })
+  const valuesTexture = () => device.createTexture({ size: [most.w, most.h, layers], format: 'rgba32float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING })
     .createView({ dimension: '2d-array' });
-  const domain = scratch('r32float'), grainRows = scratch('r32float'), normRows = scratch('r32float'), norm = scratch('r32float');
+  const transport = { paper: scratch('rgba16float'), paths: [scratch('rgba16float'), scratch('rgba16float')], values: [valuesTexture(), valuesTexture()] } as const;
+  const domain = scratch('r32float'), grainRows = scratch('r32float'), send = scratch('rg32float');
   const seeds = [scratch('rg32float'), scratch('rg32float')], weights = scratch('rg32float');
   const compile = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }), entryPoint: 'run' } });
   const passes = {
     domain: compile(DOMAIN_WGSL), grainRows: compile(GRAIN_ROWS_WGSL), seeds: compile(SEEDS_WGSL), flood: compile(FLOOD_WGSL),
-    normRows: compile(NORM_ROWS_WGSL), norm: compile(NORM_WGSL),
+    send: compile(SEND_WGSL),
   };
   // Compiled per group layer count, which places the group's open share and bounds what's gathered.
-  const groupPasses = new Map([...new Set([...rims.values()].map((rim) => rim.layers))].map((n): [number, Record<'weights' | 'pulledRows' | 'rim', GPUComputePipeline>] => {
+  const groupPasses = new Map([...new Set([...rims.values()].map((rim) => rim.layers))].map((n): [number, Record<'weights' | 'sent' | 'rim', GPUComputePipeline>] => {
     const moved = wash.movedWgsl(n);
-    return [n, { weights: compile(weightsWgsl(n, moved)), pulledRows: compile(pulledRowsWgsl(n)), rim: compile(rimWgsl(n, moved)) }];
+    return [n, { weights: compile(weightsWgsl(n, moved)), sent: compile(sentWgsl(n, moved)), rim: compile(rimWgsl(n, moved)) }];
   }));
 
   // Each rim's dispatches, in order, bound once: the scratch textures are sized for every rim at load.
-  const rimSteps = new Map([...rims].map(([pass, { uniform, layers: groupLayers }]): [CompiledStampPass, { pipeline: GPUComputePipeline; bindGroup: GPUBindGroup }[]] => {
+  const rimSteps = new Map([...rims].map(([pass, { uniform, layers: groupLayers, spreads }]): [CompiledStampPass, { pipeline: GPUComputePipeline; bindGroup: GPUBindGroup }[]] => {
     const step = (pipeline: GPUComputePipeline, resources: GPUBindingResource[]) => ({
       pipeline, bindGroup: device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: resources.map((resource, binding) => ({ binding, resource })) }),
     });
@@ -361,24 +330,19 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     return [pass, [
       step(passes.domain, [u, { buffer: grid }, layer.view, domain]),
       step(passes.grainRows, [u, domain, grainRows]),
-      step(passes.seeds, [u, domain, grainRows, seeds[0]]),
+      step(passes.seeds, [u, domain, grainRows, seeds[0], transport.paper]),
       ...jumps.map((jump, k) => step(passes.flood, [u, { buffer: jump }, seeds[k % 2], seeds[(k + 1) % 2]])),
-      step(own.weights, [u, { buffer: grid }, domain, seeds[jumps.length % 2], layer.view, weights]),
-      step(passes.normRows, [u, weights, normRows]),
-      step(passes.norm, [u, normRows, norm]),
-      step(own.pulledRows, [u, layer.view, weights, norm, pulledRows]),
-      step(own.rim, [u, layer.view, weights, norm, pulledRows]),
+      step(own.weights, [u, { buffer: grid }, domain, seeds[jumps.length % 2], layer.view, weights, transport.values[1]]),
+      ...spreads.steps(0, transport),
+      step(passes.send, [u, weights, transport.values[1], send]),
+      step(own.sent, [u, layer.view, send, transport.values[0]]),
+      ...spreads.steps(1, transport),
+      step(own.rim, [u, layer.view, weights, send, transport.values[0]]),
     ]];
   }));
 
   const encode = (encoder: GPUCommandEncoder, pass: CompiledStampPass, { box }: LoadedRim): StampPixelBox => {
-    for (const { pipeline, bindGroup } of rimSteps.get(pass)!) {
-      const compute = encoder.beginComputePass();
-      compute.setPipeline(pipeline);
-      compute.setBindGroup(0, bindGroup);
-      compute.dispatchWorkgroups(Math.ceil(box.w / WORKGROUP), Math.ceil(box.h / WORKGROUP));
-      compute.end();
-    }
+    encodeStampWetTransportSteps(encoder, rimSteps.get(pass)!, box);
     return box;
   };
   return {

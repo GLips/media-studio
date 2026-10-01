@@ -65,9 +65,9 @@ its sigma rather than its water's share of it.
   loads.
 - What moved is open paint, and coverage grows by the share of a full film a pixel gained (the compositor's
   `washMoved`, which every stage uses).
-- It runs as passes at strides growing by about √2 (1, 2, 3, 4, 6, 8, 11, …), x then y, each a three-tap exchange
-  with the pixels a stride away. A pass adds variance of up to stride² / 2, and a pair takes the share of it its own
-  sigma needs. Doubling strides left ripples a stride apart.
+- It runs on the shared transport (`stamp-wet-transport.ts`): passes at strides growing by about √2 (1, 2, 3, 4, 6,
+  8, 11, …), x then y, each a three-tap exchange with the pixels a stride away. A pass adds variance of up to
+  stride² / 2, and a pair takes the share of it its own sigma needs. Doubling strides left ripples a stride apart.
 - Two pixels trade only as freely as the driest, least open pixel between them (a way, built per stride from the
   last's), so paint never jumps a reserve or a dry gap.
 - What evens out, per pixel, is each pigment's whole amount (fresh and old) over the pixel's hold: how much of it the
@@ -77,6 +77,12 @@ its sigma rather than its water's share of it.
   as it's stirred and holds of the pixel's paint, so a pixel never gives more than it holds.
 - Moves are f32 and the layer takes them in one f16 store: this GPU truncates f16 stores, and a store per pass lost
   a tenth of a percent of the pigment.
+
+**The transport.** Bloom and rim move what they move along the same ways, as a linear spread G (each pass
+symmetric, so the passes in reverse order are exactly Gᵀ) and a normalised scatter: N = Gᵀ(receiver weight),
+send = give / N, delivered = weight · G(send · paint). What's delivered totals what's given, per pigment, and goes only
+where the paper lets it: a stage supplies the paper (wet, open), the bloom the deposit's wetness over its medium's damp
+and where paint may land, the rim open wherever it isn't paper at the grain's scale.
 
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants
 of `procreate-reading.ts`), and the stroke Procreate draws its previews along. Its `engine/` reads binary plists and

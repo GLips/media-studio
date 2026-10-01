@@ -1,13 +1,15 @@
 // stamp-wet-bloom.ts: the wet stage for blooms and backruns (models/stamp-wet-bloom.ts). A wash deposit's surplus
-// water spreads (a Gaussian, rows then columns), stalls at a ragged front, and the paint it loosens inside is carried
-// there, over the deposit's box, which the stage's reach widens.
+// water spreads over the wet paper, stalls at a ragged front, and the paint it loosens inside is carried there, over
+// the deposit's box, which the stage's reach widens. Both move by the shared transport (stamp-wet-transport.ts), so
+// neither crosses masking fluid, a `within`'s edge or a dry gap.
 //
-// Carrying is a normalised scatter: a pixel sends what it loosens to the band pixels within the transport kernel, in
-// proportion to their weight, so what one gives up is exactly what the band gains, per pigment.
+// Carrying is the transport's normalised scatter: a pixel sends what it loosens to the band through the spread, in
+// proportion to the band's weight there, so what one gives up is exactly what the band gains, per pigment.
 //
 // Negative space: the spreading water isn't written back into the wash's wetness, so later deposits don't see it.
 
 import { STAMP_BLOOM_BAND_WIDTH, STAMP_BLOOM_CARRY_SPREAD, STAMP_WET_BLOOM_WGSL, stampBloomReach, stampBloomSizing } from '../models/stamp-wet-bloom.ts';
+import { STAMP_WET_FLOW_WETNESS_WGSL } from '../models/stamp-wet-flow.ts';
 import { STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
 import { STAMP_GRID_AT_WGSL } from '../models/stamp-region.ts';
 import type { StampWetWindow } from '../models/stamp-wetness.ts';
@@ -15,36 +17,31 @@ import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe.ts';
 import type { StampLoadedWetStage, StampWetStage, StampWetStageContext, StampWetStageMoment } from './stamp-wet-stages.ts';
 import { stampUniformLayout, stampUniformWriter } from './stamp-uniform-layout.ts';
+import { encodeStampWetTransportSteps, stampWetSpreads, type StampWetTransportStep } from './stamp-wet-transport.ts';
 
 const WORKGROUP = 8;
 
 /**
  * A pixel gives its paint up fully only as near a front as `STAMP_BLOOM_SEND_FLOOR` of a straight front's reach
- * (the band blurred by the transport kernel), less further out: a pixel with a sliver of front in reach would pour
+ * (the band spread as far as paint is carried), less further out: a pixel with a sliver of front in reach would pour
  * all it loosens into that sliver.
  */
 const STAMP_BLOOM_SEND_FLOOR = 0.2;
 
 /**
  * A bloom: its lattice; where its paper before starts in the painting's grids and its wetness after in the stage's;
- * its box; seed; drive; the medium's damp and shine (brushWater); the water's and the transport's Gaussians (sigma,
- * reach, the 1-D kernel's sum); the send floor.
+ * its box; seed; drive; the water's spread (sigma); the medium's damp and shine (brushWater); the send floor.
  */
 const BLOOM = stampUniformLayout('Bloom', [
   ['lattice', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['afterFirst', 'u32'],
   ['origin', 'vec2u'], ['extent', 'vec2u'],
-  ['seed', 'u32'], ['drive', 'f32'], ['sigma', 'f32'], ['damp', 'f32'], ['shine', 'f32'],
-  ['reach', 'u32'], ['norm', 'f32'], ['carrySigma', 'f32'], ['carryReach', 'u32'],
-  ['carryNorm', 'f32'], ['sendFloor', 'f32'],
+  ['seed', 'u32'], ['drive', 'f32'], ['sigma', 'f32'], ['water', 'f32'], ['damp', 'f32'], ['shine', 'f32'], ['sendFloor', 'f32'],
 ]);
 
 // Scratch textures are indexed from the bloom's origin, so they're only as big as the largest box.
 const PRELUDE = /* wgsl */ `
 ${BLOOM.wgsl}
 @group(0) @binding(0) var<uniform> u: Bloom;
-fn waterKernel(d: i32) -> f32 { return exp(-f32(d * d) / (2.0 * u.sigma * u.sigma)) / u.norm; }
-fn carryKernel(d: i32) -> f32 { return exp(-f32(d * d) / (2.0 * u.carrySigma * u.carrySigma)) / u.carryNorm; }
-fn inBox(local: vec2i) -> bool { return all(local >= vec2i(0)) && all(local < vec2i(u.extent)); }
 // The scratch texel an invocation works on, or none past the bloom's extent.
 fn localOf(id: vec3u) -> vec2i { return select(vec2i(-1), vec2i(id.xy), all(id.xy < u.extent)); }
 `;
@@ -83,59 +80,39 @@ fn paperThroughout(p: vec2i) -> vec2f {
 }
 `;
 
-// The surplus water the deposit left, per pixel. It's where the wetness record puts the brush's water (its stamps'
-// discs), not the paint's coverage: a soft brush's single stamp lays little paint but all its water.
+// The surplus water the deposit left, per pixel, into the transport's values; and the paper it spreads over: as wet
+// as the deposit left it (flowWetness; damp conducts fully, drier less) and open where paint may land (footprint g:
+// never under fluid, outside \`within\` or the clip).
 const SURPLUS_WGSL = /* wgsl */ `${PRELUDE}${GRID_WGSL}
 ${STAMP_WET_BLOOM_WGSL}
-@group(0) @binding(3) var surplus: texture_storage_2d<r32float, write>;
+${STAMP_WET_FLOW_WETNESS_WGSL}
+@group(0) @binding(3) var footprint: texture_2d<f32>;
+@group(0) @binding(4) var surplus: texture_storage_2d_array<rgba32float, write>;
+@group(0) @binding(5) var paper: texture_storage_2d<rgba16float, write>;
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   let local = localOf(id);
   if (local.x < 0) { return; }
   let p = local + vec2i(u.origin);
-  let paper = paperThroughout(p);
-  textureStore(surplus, local, vec4f(bloomSurplus(paper.x, wetnessAfterAt(p), paper.y, u.damp, u.shine)));
-}`;
-
-// The surplus spread along rows.
-const WATER_ROWS_WGSL = /* wgsl */ `${PRELUDE}
-@group(0) @binding(1) var surplus: texture_2d<f32>;
-@group(0) @binding(2) var rows: texture_storage_2d<r32float, write>;
-@compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
-  let local = localOf(id);
-  if (local.x < 0) { return; }
-  var sum = 0.0;
-  for (var d = -i32(u.reach); d <= i32(u.reach); d++) {
-    let q = local + vec2i(d, 0);
-    if (inBox(q)) { sum += waterKernel(d) * textureLoad(surplus, q, 0).r; }
-  }
-  textureStore(rows, local, vec4f(sum));
-}`;
-
-const WATER_COLUMNS_WGSL = /* wgsl */ `${PRELUDE}
-@group(0) @binding(1) var rows: texture_2d<f32>;
-@group(0) @binding(2) var water: texture_storage_2d<r32float, write>;
-@compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
-  let local = localOf(id);
-  if (local.x < 0) { return; }
-  var sum = 0.0;
-  for (var d = -i32(u.reach); d <= i32(u.reach); d++) {
-    let q = local + vec2i(0, d);
-    if (inBox(q)) { sum += waterKernel(d) * textureLoad(rows, q, 0).r; }
-  }
-  textureStore(water, local, vec4f(sum));
+  let at = paperThroughout(p);
+  let wetness = wetnessAfterAt(p);
+  textureStore(surplus, local, 0, vec4f(bloomSurplus(at.x, wetness, at.y, u.damp, u.shine), 0.0, 0.0, 0.0));
+  let landed = textureLoad(footprint, p, 0);
+  let wet = flowWetness(gridAt(vec2f(p) + 0.5, u.lattice.xyz, u.size, u.first), u.water, landed.r);
+  textureStore(paper, local, vec4f(clamp(wet / max(u.damp, 1e-3), 0.0, 1.0), clamp(landed.g, 0.0, 1.0), 0.0, 0.0));
 }`;
 
 // Where each pixel stands to the front: its band weight (x) and the share of its paint loosened (y), as free as it is
-// (workable, and open), only where paint may land (footprint g: never under fluid, outside \`within\` or the clip).
+// (workable, and open), only where paint may land. The band goes to the transport too, to be spread back (Gᵀ).
 const frontWgsl = (layers: number, movedWgsl: string) => /* wgsl */ `${PRELUDE}${GRID_WGSL}
 ${STAMP_WET_BLOOM_WGSL}
 ${STAMP_WET_LIFT_WGSL}
 ${movedWgsl}
 @group(0) @binding(3) var footprint: texture_2d<f32>;
-@group(0) @binding(4) var water: texture_2d<f32>;
+@group(0) @binding(4) var water: texture_2d_array<f32>;
 @group(0) @binding(5) var front: texture_storage_2d<rg32float, write>;
 @group(0) @binding(6) var layer: texture_2d_array<f32>;
-fn waterAt(local: vec2i) -> f32 { return textureLoad(water, clamp(local, vec2i(0), vec2i(u.extent) - 1), 0).r; }
+@group(0) @binding(7) var band: texture_storage_2d_array<rgba32float, write>;
+fn waterAt(local: vec2i) -> f32 { return textureLoad(water, clamp(local, vec2i(0), vec2i(u.extent) - 1), 0, 0).r; }
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   let local = localOf(id);
   if (local.x < 0) { return; }
@@ -144,118 +121,85 @@ fn waterAt(local: vec2i) -> f32 { return textureLoad(water, clamp(local, vec2i(0
   let shift = bloomFrontShift(vec2f(p) + 0.5, u.seed, u.sigma);
   let d = bloomFrontDistance(waterAt(local), slope, shift, u.sigma);
   let allowed = clamp(textureLoad(footprint, p, 0).g, 0.0, 1.0);
-  let band = bloomBand(d, bloomFrontLine(vec2f(p) + 0.5, u.seed, u.sigma)) * allowed * smoothstep(0.0, 0.1, wetnessAfterAt(p));
+  let weight = bloomBand(d, bloomFrontLine(vec2f(p) + 0.5, u.seed, u.sigma)) * allowed * smoothstep(0.0, 0.1, wetnessAfterAt(p));
   var held: array<vec4f, ${layers}>;
   for (var l = 0; l < ${layers}; l++) { held[l] = textureLoad(layer, p, l, 0); }
   let free = liftFree(workableAt(p), washOpen(held));
-  textureStore(front, local, vec4f(band, bloomLoosened(d, free, u.drive) * allowed, 0.0, 0.0));
+  textureStore(front, local, vec4f(weight, bloomLoosened(d, free, u.drive) * allowed, 0.0, 0.0));
+  textureStore(band, local, 0, vec4f(weight, 0.0, 0.0, 0.0));
 }`;
 
-const BAND_ROWS_WGSL = /* wgsl */ `${PRELUDE}
-@group(0) @binding(1) var front: texture_2d<f32>;
-@group(0) @binding(2) var rows: texture_storage_2d<r32float, write>;
-@compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
-  let local = localOf(id);
-  if (local.x < 0) { return; }
-  var sum = 0.0;
-  for (var d = -i32(u.carryReach); d <= i32(u.carryReach); d++) {
-    let q = local + vec2i(d, 0);
-    if (inBox(q)) { sum += carryKernel(d) * textureLoad(front, q, 0).x; }
-  }
-  textureStore(rows, local, vec4f(sum));
-}`;
-
-// Each pixel's send (x): the share of its paint it gives up (y), over the band within its reach, so that the band,
-// gathering what's sent through the same kernel, gains exactly what's given up.
+// Each pixel's send (x): the share of its paint it gives up (y), over the band its paint would reach (N, the band
+// spread back), so that the band, gathering what's sent through the spread, gains exactly what's given up.
 const SEND_WGSL = /* wgsl */ `${PRELUDE}
 @group(0) @binding(1) var front: texture_2d<f32>;
-@group(0) @binding(2) var rows: texture_2d<f32>;
+@group(0) @binding(2) var reached: texture_2d_array<f32>;
 @group(0) @binding(3) var send: texture_storage_2d<rg32float, write>;
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   let local = localOf(id);
   if (local.x < 0) { return; }
-  var reach = 0.0;
-  for (var d = -i32(u.carryReach); d <= i32(u.carryReach); d++) {
-    let q = local + vec2i(0, d);
-    if (inBox(q)) { reach += carryKernel(d) * textureLoad(rows, q, 0).r; }
-  }
+  let reach = textureLoad(reached, local, 0, 0).r;
   let given = textureLoad(front, local, 0).y * smoothstep(0.0, u.sendFloor, reach);
   textureStore(send, local, vec4f(select(0.0, given / reach, reach > 1e-12 && given > 0.0), given, 0.0, 0.0));
 }`;
 
-// What each pixel sends of its pigment channels, blurred along rows.
-const sentRowsWgsl = (layers: number, movedWgsl: string) => /* wgsl */ `${PRELUDE}
+// What each pixel sends of its pigment channels, for the transport to spread.
+const sentWgsl = (layers: number, movedWgsl: string) => /* wgsl */ `${PRELUDE}
 ${movedWgsl}
 @group(0) @binding(1) var layer: texture_2d_array<f32>;
 @group(0) @binding(2) var send: texture_2d<f32>;
-@group(0) @binding(3) var sentRows: texture_storage_2d_array<rgba32float, write>;
+@group(0) @binding(3) var sent: texture_storage_2d_array<rgba32float, write>;
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   let local = localOf(id);
   if (local.x < 0) { return; }
-  var sent: array<vec4f, ${layers}>;
-  for (var d = -i32(u.carryReach); d <= i32(u.carryReach); d++) {
-    let q = local + vec2i(d, 0);
-    if (!inBox(q)) { continue; }
-    let w = carryKernel(d) * textureLoad(send, q, 0).x;
-    if (w <= 0.0) { continue; }
-    for (var l = 0; l < ${layers}; l++) { sent[l] += w * textureLoad(layer, q + vec2i(u.origin), l, 0) * washPigmentMask(u32(l)); }
-  }
-  for (var l = 0; l < ${layers}; l++) { textureStore(sentRows, local, l, sent[l]); }
+  let p = local + vec2i(u.origin);
+  let share = textureLoad(send, local, 0).x;
+  for (var l = 0; l < ${layers}; l++) { textureStore(sent, local, l, share * textureLoad(layer, p, l, 0) * washPigmentMask(u32(l))); }
 }`;
 
-// The carry, written back: each pixel keeps what it didn't give up and gains what its band weight gathers, in its
-// pigment channels; the rest of it is the compositor's washMoved.
+// The carry, written back: each pixel keeps what it didn't give up and gains what its band weight gathers of what was
+// sent and spread, in its pigment channels; the rest of it is the compositor's washMoved.
 const landWgsl = (layers: number, movedWgsl: string) => /* wgsl */ `${PRELUDE}
 ${STAMP_WET_BLOOM_WGSL}
 ${movedWgsl}
 @group(0) @binding(1) var layer: texture_storage_2d_array<rgba16float, read_write>;
 @group(0) @binding(2) var front: texture_2d<f32>;
 @group(0) @binding(3) var send: texture_2d<f32>;
-@group(0) @binding(4) var sentRows: texture_2d_array<f32>;
+@group(0) @binding(4) var gathered: texture_2d_array<f32>;
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   let local = localOf(id);
   if (local.x < 0) { return; }
   let band = textureLoad(front, local, 0).x;
   let given = textureLoad(send, local, 0).y;
   if (band <= 0.0 && given <= 0.0) { return; }
-  var gathered: array<vec4f, ${layers}>;
-  if (band > 0.0) {
-    for (var d = -i32(u.carryReach); d <= i32(u.carryReach); d++) {
-      let q = local + vec2i(0, d);
-      if (!inBox(q)) { continue; }
-      let k = carryKernel(d);
-      for (var l = 0; l < ${layers}; l++) { gathered[l] += k * textureLoad(sentRows, q, l, 0); }
-    }
-  }
   let p = local + vec2i(u.origin);
   var was: array<vec4f, ${layers}>;
   var now: array<vec4f, ${layers}>;
   for (var l = 0; l < ${layers}; l++) {
     was[l] = textureLoad(layer, p, l);
-    now[l] = mix(was[l], bloomLand(was[l], given, band, gathered[l]), washPigmentMask(u32(l)));
+    now[l] = mix(was[l], bloomLand(was[l], given, band, textureLoad(gathered, local, l, 0)), washPigmentMask(u32(l)));
   }
   let moved = washMoved(now, washPigmentTotal(was));
   for (var l = 0; l < ${layers}; l++) { textureStore(layer, p, l, moved[l]); }
 }`;
 
-type BloomPipelines = Record<'surplus' | 'waterRows' | 'waterColumns' | 'front' | 'bandRows' | 'send' | 'sentRows' | 'land', GPUComputePipeline>;
+type BloomPipelines = Record<'surplus' | 'front' | 'send' | 'sent' | 'land', GPUComputePipeline>;
+/** The transport's three spreads a bloom runs: its water, the band spread back (N), what's sent. */
+const WATER = 0, REACHED = 1, SENT = 2;
 /** A landing's bloom, sized as the painting loads. */
-type BloomPlan = { first: number; afterFirst: number; sigma: number; drive: number; lattice: StampWetWindow; pipelines: BloomPipelines; uniform: GPUBuffer };
+type BloomPlan = {
+  water: number; first: number; afterFirst: number; sigma: number; drive: number; lattice: StampWetWindow; pipelines: BloomPipelines; uniform: GPUBuffer;
+  spreads: ReturnType<typeof stampWetSpreads>;
+};
 /** A pipeline and what it's bound to, as one dispatch of a bloom runs it. */
-type BloomStep = { pipeline: GPUComputePipeline; bindGroup: GPUBindGroup };
+type BloomStep = StampWetTransportStep;
 /**
  * The scratch textures, as big as the largest box reserved, and each plan's steps bound to them: a new set of
  * textures binds afresh.
  */
 type BloomScratch = {
   w: number; h: number; textures: GPUTexture[]; steps: Map<BloomPlan, BloomStep[]>;
-  surplus: GPUTextureView; rows: GPUTextureView; water: GPUTextureView; front: GPUTextureView; send: GPUTextureView; sentRows: GPUTextureView;
-};
-
-const kernelSum = (sigma: number, reach: number) => {
-  let sum = 0;
-  for (let d = -reach; d <= reach; d++) sum += Math.exp(-(d * d) / (2 * sigma * sigma));
-  return sum;
+  paper: GPUTextureView; paths: [GPUTextureView, GPUTextureView]; values: [GPUTextureView, GPUTextureView]; front: GPUTextureView; send: GPUTextureView;
 };
 
 function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: StampWetStageContext): StampLoadedWetStage {
@@ -275,8 +219,8 @@ function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: S
       const moved = wash.movedWgsl(layers);
       const pipeline = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }), entryPoint: 'run' } });
       found = {
-        surplus: pipeline(SURPLUS_WGSL), waterRows: pipeline(WATER_ROWS_WGSL), waterColumns: pipeline(WATER_COLUMNS_WGSL), front: pipeline(frontWgsl(layers, moved)),
-        bandRows: pipeline(BAND_ROWS_WGSL), send: pipeline(SEND_WGSL), sentRows: pipeline(sentRowsWgsl(layers, moved)), land: pipeline(landWgsl(layers, moved)),
+        surplus: pipeline(SURPLUS_WGSL), front: pipeline(frontWgsl(layers, moved)), send: pipeline(SEND_WGSL),
+        sent: pipeline(sentWgsl(layers, moved)), land: pipeline(landWgsl(layers, moved)),
       };
       pipelinesFor.set(layers, found);
     }
@@ -288,7 +232,12 @@ function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: S
   const plans = new Map(sized.map(({ deposit, landing, sigma, drive }): [CompiledStampDeposit, BloomPlan] => {
     afterValues.set(landing.after.wetness, afterFirst);
     const uniform = device.createBuffer({ size: BLOOM.words * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    const plan = { first: grids.firsts.get(deposit)!, afterFirst, sigma, drive, lattice: landing.before.window, pipelines: pipelinesOf(wash.layersOf(deposit)), uniform };
+    const layers = wash.layersOf(deposit), carry = STAMP_BLOOM_CARRY_SPREAD * sigma;
+    // The water spreads from values[0]; the band, laid in values[1], spreads back there; what's sent spreads in values[0].
+    const spreads = stampWetSpreads(device, [
+      { sigma, order: 'forward', layers: 1, from: 0 }, { sigma: carry, order: 'transposed', layers: 1, from: 1 }, { sigma: carry, order: 'forward', layers, from: 0 },
+    ]);
+    const plan = { water: landing.water, first: grids.firsts.get(deposit)!, afterFirst, sigma, drive, lattice: landing.before.window, pipelines: pipelinesOf(layers), uniform, spreads };
     afterFirst += landing.after.wetness.length;
     return [deposit, plan];
   }));
@@ -308,14 +257,15 @@ function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: S
       textures.push(texture);
       return texture.createView({ dimension: depth === undefined ? '2d' : '2d-array' });
     };
-    scratch = { ...size, textures, steps: new Map(), surplus: view('r32float'), rows: view('r32float'), water: view('r32float'), front: view('rg32float'), send: view('rg32float'), sentRows: view('rgba32float', layers) };
+    scratch = {
+      ...size, textures, steps: new Map(), paper: view('rgba16float'), paths: [view('rgba16float'), view('rgba16float')],
+      values: [view('rgba32float', layers), view('rgba32float', layers)], front: view('rg32float'), send: view('rg32float'),
+    };
   };
 
   const encode = (encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, { box, seed }: Extract<StampWetStageMoment, { kind: 'deposit' }>): StampPixelBox => {
     const plan = plans.get(deposit)!, { sigma, lattice } = plan;
     if (!scratch || box.w > scratch.w || box.h > scratch.h) throw new Error(`stamp paint: the bloom stage was given ${deposit.id}'s box unreserved`);
-    const reach = Math.ceil(3 * sigma);
-    const carrySigma = STAMP_BLOOM_CARRY_SPREAD * sigma, carryReach = Math.min(Math.ceil(3 * carrySigma), Math.max(box.w, box.h));
     const words = new ArrayBuffer(BLOOM.words * 4);
     const put = stampUniformWriter(BLOOM, { floats: new Float32Array(words), ints: new Int32Array(words), words: new Uint32Array(words) });
     put('lattice', [lattice.x0, lattice.y0, lattice.cell, 0]);
@@ -327,45 +277,37 @@ function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: S
     put('seed', seed);
     put('drive', plan.drive);
     put('sigma', sigma);
+    put('water', plan.water);
     put('damp', medium.wetting.damp);
     put('shine', medium.wetting.brushWater);
-    put('reach', reach);
-    put('norm', kernelSum(sigma, reach));
-    put('carrySigma', carrySigma);
-    put('carryReach', carryReach);
-    put('carryNorm', kernelSum(carrySigma, carryReach));
-    put('sendFloor', (STAMP_BLOOM_SEND_FLOOR * STAMP_BLOOM_BAND_WIDTH) / (Math.sqrt(2 * Math.PI) * carrySigma));
+    put('sendFloor', (STAMP_BLOOM_SEND_FLOOR * STAMP_BLOOM_BAND_WIDTH) / (Math.sqrt(2 * Math.PI) * STAMP_BLOOM_CARRY_SPREAD * sigma));
     device.queue.writeBuffer(plan.uniform, 0, words);
+    plan.spreads.write(box);
 
     let steps = scratch.steps.get(plan);
     if (!steps) {
       steps = bloomSteps(plan, scratch);
       scratch.steps.set(plan, steps);
     }
-    for (const { pipeline, bindGroup } of steps) {
-      const compute = encoder.beginComputePass();
-      compute.setPipeline(pipeline);
-      compute.setBindGroup(0, bindGroup);
-      compute.dispatchWorkgroups(Math.ceil(box.w / WORKGROUP), Math.ceil(box.h / WORKGROUP));
-      compute.end();
-    }
+    encodeStampWetTransportSteps(encoder, steps, box);
     return box;
   };
   // A plan's dispatches, in order, bound to one generation of scratch textures.
-  const bloomSteps = (plan: BloomPlan, { surplus, rows, water, front, send, sentRows }: BloomScratch): BloomStep[] => {
-    const { pipelines } = plan, u = { buffer: plan.uniform }, g = { buffer: grids.buffer }, a = { buffer: after };
+  const bloomSteps = (plan: BloomPlan, textures: BloomScratch): BloomStep[] => {
+    const { paper, values, front, send } = textures;
+    const { pipelines, spreads } = plan, u = { buffer: plan.uniform }, g = { buffer: grids.buffer }, a = { buffer: after };
     const step = (pipeline: GPUComputePipeline, resources: GPUBindingResource[]): BloomStep => ({
       pipeline, bindGroup: device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: resources.map((resource, binding) => ({ binding, resource })) }),
     });
     return [
-      step(pipelines.surplus, [u, g, a, surplus]),
-      step(pipelines.waterRows, [u, surplus, rows]),
-      step(pipelines.waterColumns, [u, rows, water]),
-      step(pipelines.front, [u, g, a, footprint.view, water, front, layer.view]),
-      step(pipelines.bandRows, [u, front, rows]),
-      step(pipelines.send, [u, front, rows, send]),
-      step(pipelines.sentRows, [u, layer.view, send, sentRows]),
-      step(pipelines.land, [u, layer.view, front, send, sentRows]),
+      step(pipelines.surplus, [u, g, a, footprint.view, values[0], paper]),
+      ...spreads.steps(WATER, textures),
+      step(pipelines.front, [u, g, a, footprint.view, values[0], front, layer.view, values[1]]),
+      ...spreads.steps(REACHED, textures),
+      step(pipelines.send, [u, front, values[1], send]),
+      step(pipelines.sent, [u, layer.view, send, values[0]]),
+      ...spreads.steps(SENT, textures),
+      step(pipelines.land, [u, layer.view, front, send, values[0]]),
     ];
   };
   return {
