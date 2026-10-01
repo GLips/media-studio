@@ -222,7 +222,7 @@ function washCases(): StampGateWashCase[] {
       id: 'wash/backrun-edge', mid: MID, property: 'unlined',
       subject: washPainting('watercolour', false, (wash) => {
         wash.fill('wash', { brush: ROUND, diameter: 30, application: { kind: 'flood' }, region: stampGatePolygon(10, 10, BACKRUN_EDGE.x, 10, BACKRUN_EDGE.x, 110, 10, 110), material: pure(W.cerulean), ...shown(0) });
-        wash.wait('damp');
+        wash.wait('damp', { under: 'wash' });
         wash.stroke('side', { brush: ROUND, diameter: 22, water: 1, material: pure(W.cerulean), path: [{ x: BACKRUN_EDGE.x - 10, y: 14 }, { x: BACKRUN_EDGE.x - 12, y: 106 }], ...shown(1) });
       }),
     },

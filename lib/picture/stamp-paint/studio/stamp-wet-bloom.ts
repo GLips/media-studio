@@ -29,7 +29,7 @@ const STAMP_BLOOM_SEND_FLOOR = 0.2;
 
 /**
  * A bloom: its lattice; where its paper before starts in the painting's grids and its wetness after in the stage's;
- * its box; seed; drive; the water's spread (sigma); the medium's damp and shine (brushWater); the send floor.
+ * its box; seed; drive; the water's spread (sigma); the medium's damp and shiny (PaintSheen); the send floor.
  */
 const BLOOM = stampUniformLayout('Bloom', [
   ['lattice', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['afterFirst', 'u32'],
@@ -329,8 +329,8 @@ function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: S
     put('drive', plan.drive);
     put('sigma', sigma);
     put('water', plan.water);
-    put('damp', medium.wetting.damp);
-    put('shine', medium.wetting.brushWater);
+    put('damp', medium.wetting.sheen.damp);
+    put('shine', medium.wetting.sheen.shiny);
     put('sendFloor', (STAMP_BLOOM_SEND_FLOOR * STAMP_BLOOM_BAND_WIDTH) / (Math.sqrt(2 * Math.PI) * STAMP_BLOOM_CARRY_SPREAD * sigma));
     device.queue.writeBuffer(plan.uniform, 0, words);
     plan.spreads.write(box);

@@ -112,6 +112,29 @@ Everything is from `#studio`.
   - **`paper: 'own'`** on a moving group is a collage's piece of paper. Its grain moves with it rather than sliding
     through it. Leave it out for paint on the painting's paper; a moving granulating shape's slight shimmer is usually
     fine.
+  - **A wash** (`group.wash`) is a pass painted wet: its paint carries water, and it can `water`, `lift`, `soften`,
+    `bloom`, `charge`, `backrun` and `wait`. Wait for a state of the paper's sheen: `wait('shiny')` (the standing
+    shine has gone, water dropped in starts to push), `wait('damp')` (the shine has gone), judged under the next thing
+    you paint after it by default (`{ under: 'wash' }` for the whole wash's wettest paper, `{ under: { region } }`
+    for a region); `wait('dry')` lets the whole wash dry and rims its edges. `wait({ seconds })` is for drying a set
+    time further, no state in mind.
+  - **Colour charged into a wet wash**: `wash.charge(id, { placement, touches, mixtures, brush, diameter: [min, max],
+    length: [min, max], angle?, water?, when?, appliedAt, drawnOver })` lays `touches` short swelling strokes, each
+    loaded from `mixtures`, a weighted set (`{ kind: 'set', entries: [{ id, material, weight }] }`), so neighbours
+    differ. `placement` is `{ kind: 'along', path, spread }` (down a slope, a shadow side, a colour passage) or
+    `{ kind: 'area', region, weight? }`; prefer a path or a weighted area to an even scatter, which reads as
+    ornament. `when: 'damp'` waits once, until the paper under the touches has lost its shine. In the watercolor
+    style, `brush` is `brushes.charge`.
+  - **A backrun on purpose**: `wash.backrun(id, { along, brush, diameter, appliedAt })` lays clean water along a
+    junction you choose once the paper under it is damp. Both passages must be in the same wash: washes share no water.
+  - **Marks**: a `StampMark` (`{ key, brush, diameter, geometry }`) paints with `pass.mark` / `wash.mark`, placed from
+    its key, so every use lands the same stamps. `stampScatterMarks(placement, { count, length, diameter, key })`
+    lays out candidates; asking for more keeps the first ones where they were.
+  - **Will the bloom bloom?** `stampWetReport(painting, compileStampWetness(painting, medium, paper, size), medium)`
+    (`medium` is the style's `mixing.medium`) gives each wait's paper before and after, and each bloom, backrun and
+    damp charge's verdict, with why one won't act (the paint had set, the paper still shone).
+    `assertStampWetEffects(report)` in the project's test throws on any that certainly won't. Eligible isn't visible:
+    look at the render.
 - `stampSmoothRegion(points)` turns a few control points into a smooth silhouette; `stampRegionOutline(region)` traces
   its edge.
 - **A rounded form** (an apple, a stone, a cheek): `stampRoundedForm({ outline, light: { direction, elevation },

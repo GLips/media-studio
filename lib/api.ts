@@ -73,7 +73,12 @@ export { ThreeStage, softboxEnvironment, type ThreeBloom, type ThreeEnvironment,
 export { addVec3, crossVec3, dotVec3, lengthVec3, lerpVec3, scaleVec3, subVec3, unitVec3, type Vec3 } from '#lib/picture/frame/models/vec3.ts';
 // Stamp painting: a recipe of opaque and glaze groups of passes of deposits, painted on the GPU with a private style's
 // brushes (docs/private-styles.md, skills/video-canvas/SKILL.md).
-export { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint, type PaintMaterial, type StampBloomSettings, type StampFillSettings, type StampGroupOptions, type StampGroupScope, type StampLiftSettings, type StampMaskSettings, type StampKeyedMaterial, type StampPaintColor, type StampPaintMaterial, type StampPaintPaper, type StampPaintRecipe, type StampPaintScope, type StampPassOptions, type StampPassScope, type StampSoftenSettings, type StampUnmaskSettings, type StampWashOptions, type StampWashScope, type StampWashWait, type StampWashWaitOptions, type StampWaterSettings } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+export { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint, type PaintMaterial, type StampBloomSettings, type StampFillSettings, type StampGroupOptions, type StampGroupScope, type StampLiftSettings, type StampMarkPaintSettings, type StampMaskSettings, type StampKeyedMaterial, type StampPaintColor, type StampPaintMaterial, type StampPaintPaper, type StampPaintRecipe, type StampPaintScope, type StampPassOptions, type StampPassScope, type StampSoftenSettings, type StampUnmaskSettings, type StampWashOptions, type StampWashScope, type StampWaterSettings } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+export type { StampBackrunSettings, StampChargeSettings, StampWaitEffect, StampWaitOptions, StampWaitTarget, StampWashWait, StampWetEffectKind } from '#lib/picture/stamp-paint/models/stamp-wash-effects.ts';
+export { stampMarkStamps, stampScatteredStrokePath, stampScatterMarks, type StampMark, type StampMarkGeometry, type StampScatterAngle, type StampScatteredMark, type StampScatterOptions, type StampScatterPlacement } from '#lib/picture/stamp-paint/models/stamp-marks.ts';
+export { pickStampMaterial, stampMaterialSetProblem, type StampMaterialSet, type StampMaterialSetEntry } from '#lib/picture/stamp-paint/models/stamp-material-set.ts';
+export { compileStampWetness, type StampWetRange } from '#lib/picture/stamp-paint/models/stamp-wetness.ts';
+export { assertStampWetEffects, stampWetReport, stampWetReportWarnings, type StampWetReport, type StampWetReportDrying, type StampWetReportEffect, type StampWetReportTouch, type StampWetReportWait, type StampWetReportWash } from '#lib/picture/stamp-paint/models/stamp-wet-report.ts';
 export { visibleStampCountAt } from '#lib/picture/stamp-paint/models/stamp-deposit-reveal.ts';
 export { stampRegionOutline, stampSmoothRegion, type StampFillApplication } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
 export { STAMP_FILL_PATTERNS, stampFillMarks, stampFillStrokePath, type StampFillGuides, type StampFillMark, type StampFillPattern, type StampFillReach, type StampFillStrokes, type StampFillTurns } from '#lib/picture/stamp-paint/models/stamp-fill-strokes.ts';
@@ -88,7 +93,7 @@ export { STAMP_PRESSURE_PROFILES, type StampPressureCurve, type StampPressurePro
 export type { StampBlend, StampBrush, StampBrushMedia } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 export type { ResolvedStampPaintStyle } from '#lib/picture/stamp-styles/models/style.ts';
 // Pigment paint: a style that paints in pigment names its medium and pigments; a deposit lays a colour or a mixture.
-export { PAINT_MEDIA, TITANIUM_WHITE, type PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
+export { PAINT_MEDIA, TITANIUM_WHITE, type PaintMedium, type PaintSheen } from '#lib/picture/paint/models/paint-medium.ts';
 export type { PaintMixture, PaintMixturePart } from '#lib/picture/paint/models/paint-mixture.ts';
 export type { PaintPigmentAppearance } from '#lib/picture/paint/models/paint-pigment.ts';
 export { WATERCOLOUR_PIGMENTS } from '#lib/picture/paint/models/paint-watercolour-pigments.ts';

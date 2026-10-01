@@ -80,10 +80,10 @@ test('paper dries in closed form: two waits are one wait as long, and a thirsty 
 });
 
 test("wait('damp') lasts until the wettest paper is damp, and wait('dry') until no paint is workable, open time included", () => {
-  const { damp } = watercolour.wetting;
+  const { damp } = watercolour.wetting.sheen;
   const { pass, wetness } = washed((wash) => {
     wash.stamps('wet', { ...drop({ x: 600, y: 300 }), material: { kind: 'color', color: '#336699' }, water: 1 });
-    wash.wait('damp');
+    wash.wait('damp', { under: 'wash' });
     wash.water('damp', drop({ x: 100, y: 100 }));
     wash.wait('dry');
     wash.water('dry', drop({ x: 100, y: 100 }));

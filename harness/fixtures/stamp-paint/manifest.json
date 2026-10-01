@@ -156,28 +156,28 @@
     "painting/pigment-crayon": {
       "file": "painting/pigment-crayon.png",
       "output": "d675dbafcc644b0c4a3aded283a7ff8f7be4c91973f272933b776e8c111a53ff",
-      "inputs": "5dc57797ac1da0ed2c3ba013ca7e399639e7116423064fb01bca042e61176a71",
-      "reason": "vid-114 merged with main (vid-127, vid-118): inputs only, the compiled within (StampArea), fill patterns as objects and noise-seeded load fields change the serialised inputs; pixels identical",
+      "inputs": "662b931493c5a8369cb34b08497c3383986001f910ac45e9b79f6759ddce1d21",
+      "reason": "vid-114 stream M merged: inputs only, as on M: PaintWetting.damp moves into PaintWetting.sheen { shiny, damp }, the bloom's merging reading sheen.shiny, equal to brushWater in every medium that blooms; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "e659e6e",
+      "acceptedOver": "1b221f5",
       "adapter": "apple metal-3"
     },
     "painting/pigment-gouache": {
       "file": "painting/pigment-gouache.png",
       "output": "a5b0118fbd60ec3865dd96433e97406dda135b65bf1874e4bb6790b5f2a9f574",
-      "inputs": "bc1b6f8d7da0eda2d072a879e78d746b4a4f606d2571bd5ef51bf6441e434656",
-      "reason": "vid-114 merged with main (vid-127, vid-118): inputs only, the compiled within (StampArea), fill patterns as objects and noise-seeded load fields change the serialised inputs; pixels identical",
+      "inputs": "5a8aad474ae28691c65d0d4ee42471c76a543fd804f3e3dea382bc0259046e6b",
+      "reason": "vid-114 stream M merged: inputs only, as on M: PaintWetting.damp moves into PaintWetting.sheen { shiny, damp }, the bloom's merging reading sheen.shiny, equal to brushWater in every medium that blooms; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "e659e6e",
+      "acceptedOver": "1b221f5",
       "adapter": "apple metal-3"
     },
     "painting/pigment-watercolour": {
       "file": "painting/pigment-watercolour.png",
       "output": "804c638367f7b971fff0937af5e80288568473edeb2bfe057e0072c66f9199cf",
-      "inputs": "b3f443b9d6b365723c84d425d0fb16835333889113610a9683b9105311a7b133",
-      "reason": "vid-114 merged with main (vid-127, vid-118): inputs only, the compiled within (StampArea), fill patterns as objects and noise-seeded load fields change the serialised inputs; pixels identical",
+      "inputs": "8ea82a4104b203202b00d611456e9ff760118b5b1c456a5cf27799ff609acac8",
+      "reason": "vid-114 stream M merged: inputs only, as on M: PaintWetting.damp moves into PaintWetting.sheen { shiny, damp }, the bloom's merging reading sheen.shiny, equal to brushWater in every medium that blooms; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "e659e6e",
+      "acceptedOver": "1b221f5",
       "adapter": "apple metal-3"
     },
     "painting/regions": {

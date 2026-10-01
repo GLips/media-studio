@@ -75,7 +75,7 @@ export function stampWashDryings(pass: CompiledStampPass): readonly StampWashDry
  * a drying that landed nothing. Each point reads the wettest within a cell and a half, as a footprint averaged onto
  * the lattice dilutes the points along a wash's edge, where its rim is.
  */
-export function stampDryingWettest(drying: StampWashDrying, wetness: StampWetness): StampGrid | null {
+export function stampDryingWettest(drying: Pick<StampWashDrying, 'deposits'>, wetness: StampWetness): StampGrid | null {
   const landings = drying.deposits.flatMap((deposit) => wetness.landings.get(deposit) ?? []);
   if (!landings.length) return null;
   const grids = landings.flatMap(({ before, after }) => [stampWetGrid(before, 'wetness'), stampWetGrid(after, 'wetness')]);
