@@ -1,18 +1,19 @@
 // stamp-gate-animation.ts: the paintings the GPU gate animates and the properties their frames are held to:
 //
 // - drift: a moving group's texture travels with it, so frame k moved back by its motion is frame 0;
-// - boil: a group boiling on twos holds within an epoch, changes across them, leaves a still group alone;
-// - boil-wash: a boiling wash with nothing random in its marks flows as far each epoch, only its rim's line re-rolling;
+// - boil: a group boiling on twos holds within an epoch and changes across them;
+// - boil-wash: a boiling wash with nothing random in its marks flows as far each epoch;
 // - bloom-boil: a bloom in it holds within an epoch and re-rolls its front at the next (the epoch's seed);
 // - sunset: one painting in two palettes lays the same coverage deposit by deposit;
-// - recolour: keyed day to dusk, it's the halfway paint halfway, in any frame order.
+// - recolour: keyed day to dusk, it's the halfway paint halfway, in any frame order;
+// - cut-out: a group carries its own paper and lights.
 
 import { PAINT_MEDIA } from '#lib/picture/paint/models/paint-medium.ts';
 import { paintMixtureAmounts } from '#lib/picture/paint/models/paint-mixture.ts';
 import type { PaintPigmentAppearance } from '#lib/picture/paint/models/paint-pigment.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/picture/paint/models/paint-watercolour-pigments.ts';
 import { stampLinearDynamics } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
-import type { StampGroupBoil, StampGroupMotion } from '#lib/picture/stamp-paint/models/stamp-group-motion.ts';
+import type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from '#lib/picture/stamp-paint/models/stamp-group-motion.ts';
 import { compileStampPaintRecipe, stampPaintRecipe, type PaintMaterial, type StampPaintMaterial, type StampPaintPaper } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
 import type { StampGateWashCheck } from './stamp-gate-washes.ts';
@@ -184,7 +185,47 @@ function sunsetPainting(sky: StampPaintMaterial, ground: StampPaintMaterial, t: 
   return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t, images: STAMP_GATE_IMAGES };
 }
 
-export const STAMP_GATE_ANIMATION_IDS = ['animation/drift', 'animation/boil', 'animation/boil-wash', 'animation/bloom-boil', 'animation/sunset', 'animation/recolour'];
+/** The cut-out's hull in frame 0, and its lights' cores, where the lift takes all and the fluid holds all off. */
+const CUT_OUT_HULL = { x: 80, y: 108, radiusX: 52, radiusY: 16 };
+const CUT_OUT_LIGHTS = { lift: { x: 55, y: 60, r: 7 }, reserve: { x: 108, y: 60, r: 6 } };
+/** Where the cut-out wholly covers the sky in frame 0, as a test of a pixel: its hull's body and its lights' cores. */
+const coveredByCutOut = (x: number, y: number) => ((x - CUT_OUT_HULL.x) / (CUT_OUT_HULL.radiusX - 20)) ** 2 + ((y - CUT_OUT_HULL.y) / (CUT_OUT_HULL.radiusY - 8)) ** 2 <= 1
+  || Object.values(CUT_OUT_LIGHTS).some((core) => Math.hypot(x - core.x, y - core.y) <= core.r);
+/** The most a light's core may differ from bare paper on average, levels; and the least the sky must, so the check bites. */
+export const STAMP_GATE_LIGHT_TOLERANCE = 2;
+export const STAMP_GATE_SKY_LEAST = 10;
+
+/** A circle of radius `r` about a point, as a region. */
+const disc = ({ x, y }: { x: number; y: number }, r: number) => ({ kind: 'ellipse' as const, x, y, radiusX: r, radiusY: r });
+
+/**
+ * A granulating sky glazed over the paper's photograph, under a group drifting STAMP_GATE_DRIFT_STEP pixels a frame on
+ * `paper`: an opaque, granulating hull, a light lifted beside it and one reserved by fluid a water stroke crossed.
+ * Without the `sky`, its lights' cores are bare paper.
+ */
+export function stampGateCutOutPainting(paper: StampGroupPaper, { sky = true } = {}): StampGatePainting {
+  const steady = stampGateBrush('Steady', { flow: 0.6 });
+  const second = STAMP_GATE_DRIFT_STEP * STAMP_GATE_ANIMATION_FPS;
+  const painting = compileStampPaintRecipe(stampPaintRecipe((p) => {
+    if (sky) {
+      p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.pass('wash', {}, (pass) => pass.fill('sky', {
+        brush: steady, diameter: 40, application: { kind: 'flood' }, material: mixture({ pigment: W.ultramarine, amount: 1 }), region: stampGatePolygon(0, 0, 240, 0, 240, 160, 0, 160),
+      })));
+    }
+    p.group('cut-out', { composite: 'opaque', paper, motion: { keys: [{ at: 0, x: 0, y: 0 }, { at: 1, x: second, y: 0 }] } }, (g) => g.wash('boat', {}, (w) => {
+      w.fill('hull', {
+        brush: steady, diameter: 24, application: { kind: 'flood' }, material: mixture({ pigment: W.ultramarine, amount: 1 }, { pigment: W.burntSienna, amount: 1 }),
+        region: { kind: 'ellipse', ...CUT_OUT_HULL },
+      });
+      w.lift('light', { kind: 'fill', brush: steady, diameter: 20, application: { kind: 'flood' }, region: disc(CUT_OUT_LIGHTS.lift, 18) });
+      w.mask('fluid', { region: disc(CUT_OUT_LIGHTS.reserve, 14) });
+      w.water('wet', { kind: 'fill', brush: steady, diameter: 20, application: { kind: 'flood' }, region: disc(CUT_OUT_LIGHTS.reserve, 24) });
+    }));
+  }));
+  return { painting, paper: { ...PAPER, image: { style: 'gate', pack: 'gate', file: 'photograph.png' } }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t: 0, images: STAMP_GATE_IMAGES };
+}
+
+export const STAMP_GATE_ANIMATION_IDS = ['animation/drift', 'animation/boil', 'animation/boil-wash', 'animation/bloom-boil', 'animation/sunset', 'animation/recolour', 'animation/cut-out'];
 
 type Rgba = ArrayLike<number>;
 
@@ -274,5 +315,54 @@ export function checkStampGateRecolour(frames: Record<'still' | 'halfway' | 'fre
   return {
     id: 'animation/recolour: keyed paint is the eased paint, in any frame order', passed: painted <= STAMP_GATE_DRIFT_TOLERANCE && orders.every((max) => max === 0),
     detail: `halfway against painted still in the halfway paint: max ${painted} (past ${STAMP_GATE_DRIFT_TOLERANCE} fails); against drawn first, its end after halfway, halfway after its end and past its last key: max ${orders.join(', ')} (past 0 fails)`,
+  };
+}
+
+/** The most a drifted frame, moved back by its motion, differs from frame 0 where the cut-out wholly covers the sky, in levels. */
+function cutOutDrift(first: Rgba, { frame, rgba }: { frame: number; rgba: Rgba }, width: number) {
+  const dx = frame * STAMP_GATE_DRIFT_STEP;
+  let max = 0;
+  for (let y = 0; y < SIZE.height; y++) for (let x = 0; x < width - dx; x++) {
+    if (!coveredByCutOut(x, y)) continue;
+    for (let c = 0; c < 3; c++) max = Math.max(max, Math.abs(rgba[(y * width + x + dx) * 4 + c] - first[(y * width + x) * 4 + c]));
+  }
+  return max;
+}
+
+/** The mean difference over a light's core between two frames, in levels. */
+function coreDifference(a: Rgba, b: Rgba, { x: cx, y: cy, r }: { x: number; y: number; r: number }, width: number) {
+  let sum = 0, n = 0;
+  for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) {
+    if (Math.hypot(x - cx, y - cy) > r) continue;
+    for (let c = 0; c < 3; c++) sum += Math.abs(a[(y * width + x) * 4 + c] - b[(y * width + x) * 4 + c]);
+    n += 3;
+  }
+  return sum / n;
+}
+
+/**
+ * Whether a cut-out on its own paper drifts with its paper (each frame moved back is frame 0 within the dither), shows
+ * bare paper in its lights' cores over the sky, and draws frame 0 again the same; and whether on the ground's paper
+ * it doesn't, so the check bites.
+ */
+export function checkStampGateCutOut(
+  own: { frames: readonly { frame: number; rgba: Rgba }[]; again: Rgba }, ground: { frames: readonly { frame: number; rgba: Rgba }[] }, bare: Rgba, width: number,
+): StampGateWashCheck {
+  const [first, ...rest] = own.frames;
+  const drift = Math.max(...rest.map((drawn) => cutOutDrift(first.rgba, drawn, width)));
+  const groundDrift = Math.max(...ground.frames.slice(1).map((drawn) => cutOutDrift(ground.frames[0].rgba, drawn, width)));
+  const lights = Object.entries(CUT_OUT_LIGHTS).map(([name, core]) => ({ name, own: coreDifference(first.rgba, bare, core, width), ground: coreDifference(ground.frames[0].rgba, bare, core, width) }));
+  let again = 0;
+  for (let i = 0; i < first.rgba.length; i++) again = Math.max(again, Math.abs(own.again[i] - first.rgba[i]));
+  const problems = [
+    ...(drift > STAMP_GATE_DRIFT_TOLERANCE ? [`its own paper drifts by up to ${drift} levels (past ${STAMP_GATE_DRIFT_TOLERANCE} fails)`] : []),
+    ...(groundDrift <= STAMP_GATE_DRIFT_TOLERANCE ? [`on the ground's paper it drifts by only ${groundDrift}, so the photograph doesn't show under it and the check can't bite`] : []),
+    ...lights.filter((light) => light.own > STAMP_GATE_LIGHT_TOLERANCE).map((light) => `its ${light.name} differs from bare paper by ${light.own.toFixed(2)} on average (past ${STAMP_GATE_LIGHT_TOLERANCE} fails)`),
+    ...lights.filter((light) => light.ground < STAMP_GATE_SKY_LEAST).map((light) => `on the ground's paper its ${light.name} is within ${light.ground.toFixed(2)} of bare paper, so the sky doesn't show and the check can't bite`),
+    ...(again > 0 ? [`frame 0 drawn again after the rest differs by ${again}`] : []),
+  ];
+  return {
+    id: 'animation/cut-out: it carries its paper and its lights', passed: !problems.length,
+    detail: problems.length ? problems.join('; ') : `drifts within ${drift} (the ground's paper: ${groundDrift}); lights against bare paper ${lights.map((l) => `${l.name} ${l.own.toFixed(2)} (the ground's paper: ${l.ground.toFixed(2)})`).join(', ')}; frame 0 again identical`,
   };
 }

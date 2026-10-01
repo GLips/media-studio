@@ -29,8 +29,9 @@ import { stampWashMovedWgsl } from '#lib/picture/stamp-paint/studio/stamp-paint-
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
 import {
-  checkStampGateBloomBoil, checkStampGateBoil, checkStampGateBoilWash, checkStampGateDrift, checkStampGateRecolour, checkStampGateSunset, STAMP_GATE_ANIMATION_FPS, STAMP_GATE_ANIMATION_IDS,
-  STAMP_GATE_DRIFT_FRAMES, STAMP_GATE_RECOLOUR_KEYS, stampGateBloomBoilPainting, stampGateBoilPainting, stampGateBoilWashPainting, stampGateDriftPainting, stampGateRecolourPainting,
+  checkStampGateBloomBoil, checkStampGateBoil, checkStampGateBoilWash, checkStampGateCutOut, checkStampGateDrift, checkStampGateRecolour, checkStampGateSunset,
+  STAMP_GATE_ANIMATION_FPS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_DRIFT_FRAMES, STAMP_GATE_RECOLOUR_KEYS, stampGateBloomBoilPainting, stampGateBoilPainting,
+  stampGateBoilWashPainting, stampGateCutOutPainting, stampGateDriftPainting, stampGateRecolourPainting,
   stampGateSunsetPainting,
 } from '../models/stamp-gate-animation.ts';
 import {
@@ -279,6 +280,17 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
         still: stillFrame, halfway, freshEnd, end, halfwayAgain: await drawn(renderer, frame, middle), past: await drawn(renderer, frame, to + 2),
       });
     });
+  }
+  if (id === 'animation/cut-out') {
+    const drift = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), async (renderer, frame) => {
+      const frames = await STAMP_GATE_DRIFT_FRAMES.reduce<Promise<{ frame: number; rgba: Uint8ClampedArray }[]>>(
+        async (done, k) => [...await done, { frame: k, rgba: await drawn(renderer, frame, frameAt(k)) }], Promise.resolve([]));
+      return { frames, again: await drawn(renderer, frame, 0) };
+    });
+    const bare = stampGateCutOutPainting('own', { sky: false });
+    const own = stampGateCutOutPainting('own');
+    const bareFrame = await withGateRenderer(bare, drawnImages(bare), (renderer, frame) => drawn(renderer, frame, 0));
+    return checkStampGateCutOut(await drift(own), await drift(stampGateCutOutPainting('ground')), bareFrame, own.width);
   }
   throw new Error(`stamp gate: no animation case ${JSON.stringify(id)}; the gate animates ${STAMP_GATE_ANIMATION_IDS.join(', ')}`);
 }

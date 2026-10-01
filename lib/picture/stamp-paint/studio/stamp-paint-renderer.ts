@@ -342,7 +342,7 @@ const WET_HARDEN_COVER_WGSL = /* wgsl */ `let landing = wetLandingAt(at);
   raw.x = wetLandCover(raw.x, wetBodyAt(pixel, raw.x), landing.water, landing.wetness);`;
 // A wash deposit lands, and leaves its footprint for the stages after it (StampWetDepositMoment): what it laid, where
 // paint may land at all, and the paper's tooth.
-const WET_LAND_WGSL = /* wgsl */ `landDeposit(pixel, coverage, rims, tooth, at, landing);
+const WET_LAND_WGSL = /* wgsl */ `landDeposit(pixel, coverage, rims, tooth, at, reserved, landing);
   var allowed = 1.0;
   if ((u.flags & MASKED) != 0u) { allowed *= 1.0 - regionAt(fluid, k.fluid, pixel); }
   if ((u.flags & WITHIN) != 0u) { allowed *= regionAt(within, k.within, pixel); }
@@ -459,37 +459,58 @@ fn rimOf(a: f32, soft: f32, sharpness: f32) -> f32 { return clamp((a - soft) * s
   if ((u.flags & CANVAS_GRAIN) != 0u) { wet = texturized(grain, at, wet, u.grain); }
   m += wet;
   var keep = 1.0;
+  // What \`keep\` would be without the fluid, and how much the fluid held off (\`held\`), for reserved below.
+  var reach = 1.0;
+  var held = 0.0;
   // No tooth reads as an even paper: its paint and mean alike.
   var tooth = vec2f(0.5);
   // A paper's tooth tiles mirrored, a photograph not being seamless; its mean is its smallest mip.
   if ((u.flags & PAPER) != 0u) {
     tooth = vec2f(1.0 - textureSampleLevel(paperGrain, mirrorTile, at / u.view.zw, u.paperLod).r, 1.0 - textureSampleLevel(paperGrain, tile, vec2f(0.5), 16.0).r);
     keep *= paperKept(tooth.x, tooth.y, u.paperDepth);
+    reach = keep;
   }
-  if ((u.flags & MASKED) != 0u) { keep *= 1.0 - regionAt(fluid, k.fluid, pixel); }
-  if ((u.flags & WITHIN) != 0u) { keep *= regionAt(within, k.within, pixel); }
+  if ((u.flags & MASKED) != 0u) {
+    held = regionAt(fluid, k.fluid, pixel);
+    keep *= 1.0 - held;
+  }
+  if ((u.flags & WITHIN) != 0u) {
+    let inside = regionAt(within, k.within, pixel);
+    keep *= inside;
+    reach *= inside;
+  }
   // A fill's load is how much paint it lays, and its front how much of it shows yet: burnt edges and a clip base alike.
   if ((u.flags & FLOOD) != 0u) {
-    keep *= clamp(mix(k.loadEnds.x, k.loadEnds.y, paintFieldShare(at, k.loadKind, k.load)), 0.0, 1.0);
-    keep *= floodFrontShare(at, k.front.xy, k.front.z, k.front.w, k.frontShape.x, k.frontShape.y);
+    let load = clamp(mix(k.loadEnds.x, k.loadEnds.y, paintFieldShare(at, k.loadKind, k.load)), 0.0, 1.0);
+    keep *= load;
+    reach *= load;
+    let front = floodFrontShare(at, k.front.xy, k.front.z, k.front.w, k.frontShape.x, k.frontShape.y);
+    keep *= front;
+    reach *= front;
   }
   let clipped = textureLoad(clip, pixel);
-  if ((u.flags & CLIPPED) != 0u) { keep *= clamp(clipped.r, 0.0, 1.0); }
+  if ((u.flags & CLIPPED) != 0u) {
+    let inClip = clamp(clipped.r, 0.0, 1.0);
+    keep *= inClip;
+    reach *= inClip;
+  }
   let coverage = clamp(m, 0.0, 1.0) * keep * u.opacity;
+  // What the fluid held off this brush here: where a group on its own paper shows it (laySheet).
+  let reserved = clamp(m, 0.0, 1.0) * reach * held * u.opacity;
   traced(${TRACE_SLOTS - 1}u, coverage);
   // A burnt rim burns into paint already there, the group's or the deposit's own (its stamps laid over one another).
   let burnable = max(layerCoverage(pixel), clamp(m, 0.0, 1.0)) * keep * u.opacity;
   let rims = vec2f(clamp(burnt, 0.0, 1.0) * burnable, clamp(dualBurnt, 0.0, 1.0) * burnable);
-  ${wet ? WET_LAND_WGSL : 'layDeposit(pixel, coverage, rims, tooth, at);'}
+  ${wet ? WET_LAND_WGSL : 'layDeposit(pixel, coverage, rims, tooth, at, reserved);'}
   if ((u.flags & CLIPS) != 0u) { textureStore(clip, pixel, vec4f(coverage) + clipped * (1.0 - coverage)); }
 }`;
 
 const PAPER = stampUniformLayout('Paper', [['color', 'vec3f'], ['hasImage', 'u32'], ['cover', 'vec2f'], ['lod', 'f32']]);
 const PAPER_COLOR_WGSL = /* wgsl */ `
 ${PAPER.wgsl}
-// The paper's gamma-encoded colour at \`pixel\` of a painting \`size\` big: its photograph's, covering the painting, or its colour.
-fn paperColor(image: texture_2d<f32>, paperSampler: sampler, p: Paper, pixel: vec2u, size: vec2u) -> vec3f {
-  let uv = (vec2f(pixel) + 0.5) / vec2f(size);
+// The paper's gamma-encoded colour at point \`at\` of a painting \`size\` big: its photograph's, covering the painting, or its colour.
+fn paperColor(image: texture_2d<f32>, paperSampler: sampler, p: Paper, at: vec2f, size: vec2u) -> vec3f {
+  let uv = at / vec2f(size);
   if (p.hasImage == 1u) { return textureSampleLevel(image, paperSampler, (uv - 0.5) * p.cover + 0.5, p.lod).rgb; }
   return p.color;
 }`;
@@ -503,11 +524,16 @@ ${PAPER_COLOR_WGSL}
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn paper(@builtin(global_invocation_id) id: vec3u) {
   let size = textureDimensions(painting);
   if (any(id.xy >= size)) { return; }
-  layPaper(id.xy, paperColor(image, linearClamp, u, id.xy, size));
+  layPaper(id.xy, paperColor(image, linearClamp, u, vec2f(id.xy) + 0.5, size));
 }`;
 
-// \`group\` is its index in the painting, and \`paper\` the paper under it, for a compositor that lays a group on bare paper.
-const GROUP = stampUniformLayout('Group', [['opacity', 'f32'], ['glaze', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'], ['group', 'u32'], ['paper', stampUniformStruct(PAPER)]]);
+// \`group\` is its index in the painting, and \`paper\` the paper under it, for a compositor that lays a group on bare paper;
+// \`paperFromScene\` (rows of an affine map) is where a scene pixel reads that paper: the pixel itself unless the group
+// carries its own paper as it moves (StampGroupPaper).
+const GROUP = stampUniformLayout('Group', [
+  ['opacity', 'f32'], ['glaze', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'], ['group', 'u32'], ['paper', stampUniformStruct(PAPER)],
+  ['paperFromSceneX', 'vec4f'], ['paperFromSceneY', 'vec4f'],
+]);
 const groupWgsl = (compositor: StampPaintCompositor) => /* wgsl */ `
 ${stampPaintTargetWgsl('layer', 1, compositor.targets.layer, null)}
 ${stampPaintTargetWgsl('painting', 2, compositor.targets.painting, 'read_write')}
@@ -515,6 +541,10 @@ ${compositor.group.wgsl}
 ${PAPER_COLOR_WGSL}
 ${GROUP.wgsl}
 @group(0) @binding(0) var<uniform> u: Group;
+fn groupPaperAt(pixel: vec2u) -> vec2f {
+  let p = vec3f(vec2f(pixel) + 0.5, 1.0);
+  return vec2f(dot(u.paperFromSceneX.xyz, p), dot(u.paperFromSceneY.xyz, p));
+}
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn group(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
   layGroup(u.origin + id.xy, u.glaze == 1u, u.opacity);
@@ -1641,9 +1671,12 @@ async function rendererOnDevice(
     dispatch(encoder, pipelines.paper, [slot((views) => writePaper(views, 0)), photograph?.view ?? targets.blank.view, targets.painting.view, linearClamp], width, height);
   }
 
-  /** Lays group `index`'s layer over `painted` onto the painting: where it's painted, or resampled to where it's `moved`. */
+  /**
+   * Lays group `index`'s layer over `painted` onto the painting: where it's painted, or resampled to where it's `moved`,
+   * its own paper read where it's painted, too.
+   */
   function layGroup(encoder: GPUCommandEncoder, index: number, group: CompiledStampGroup, painted: Box, moved: StampGroupPlacement | null) {
-    let box: Box | null = painted, layer = targets.layer.view;
+    let box: Box | null = painted, layer = targets.layer.view, paperFromScene = [1, 0, 0, 0, 1, 0];
     if (moved) {
       const pivot = group.motion!.pivot;
       const corners = [[0, 0], [1, 0], [0, 1], [1, 1]].map(([u, v]) => stampGroupSceneFromLayer(moved, { x: painted.x + u * painted.w, y: painted.y + v * painted.h }, pivot));
@@ -1651,6 +1684,7 @@ async function rendererOnDevice(
       box = inPainting(Math.min(...corners.map((c) => c.x)) - 1, Math.min(...corners.map((c) => c.y)) - 1, Math.max(...corners.map((c) => c.x)) + 1, Math.max(...corners.map((c) => c.y)) + 1);
       if (!box) return;
       const into = box, fromScene = stampGroupLayerFromScene(moved, pivot);
+      if (group.paper === 'own') paperFromScene = fromScene;
       dispatch(encoder, movePipeline!, [
         slot((views) => {
           const put = stampUniformWriter(GROUP_MOVE, views);
@@ -1673,6 +1707,8 @@ async function rendererOnDevice(
         put('extent', [at.w, at.h]);
         put('group', index);
         writePaper(views, GROUP.at.paper);
+        put('paperFromSceneX', [paperFromScene[0], paperFromScene[1], paperFromScene[2], 0]);
+        put('paperFromSceneY', [paperFromScene[3], paperFromScene[4], paperFromScene[5], 0]);
       }),
       layer, targets.painting.view, ...groupResources,
     ], at.w, at.h);

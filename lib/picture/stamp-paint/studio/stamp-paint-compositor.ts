@@ -17,10 +17,10 @@ import { stampUniformLayout, stampUniformWriter, type StampUniformField, type St
 export type StampPaintTarget = { kind: 'plain' } | { kind: 'array'; layers: number };
 
 /**
- * A way of mixing paint: WGSL for four passes, each defining the functions its pass calls (named per piece below)
- * and binding its own resources. The renderer declares `layer` and `painting` from `targets`, and in the deposit pass
+ * A way of mixing paint: WGSL for four passes, each defining the functions its pass calls and binding its own
+ * resources. The renderer declares `layer` and `painting` from `targets`, and in the deposit pass
  * `paint`, the compositor's PaintDeposit, and `u.paperDepth`; in the group pass `u.group` (its index) and `u.paper`,
- * for `paperColor(image, sampler, u.paper, pixel, size)`.
+ * for `paperColor(image, sampler, u.paper, groupPaperAt(pixel), size)`: its paper (StampGroupPaper).
  */
 export type StampPaintCompositor = {
   targets: { layer: StampPaintTarget; painting: StampPaintTarget };
@@ -31,11 +31,12 @@ export type StampPaintCompositor = {
     layout: StampUniformLayout<readonly StampUniformField[]>;
     /**
      * Its bindings from 24; `paperKept(tooth, mean, depth)`, `layerCoverage(pixel)` and `layDeposit(pixel, coverage,
-     * rims, tooth, at)`: `rims` the main and dual burnt rims apart, `tooth` the paper's paint here and its mean.
+     * rims, tooth, at, reserved)`: `rims` the main and dual burnt rims apart, `tooth` the paper's paint here and its
+     * mean, `reserved` the coverage masking fluid held off, where a group on its own paper shows it.
      */
     wgsl: string;
     /**
-     * For a compositor that lays washes: `landDeposit(pixel, coverage, rims, tooth, at, wet)`, a wash's deposit laid as
+     * For a compositor that lays washes: `landDeposit(pixel, coverage, rims, tooth, at, reserved, wet)`, a wash's deposit laid as
      * its WetLanding says, coverage hardened already. The renderer declares WetLanding (with `settled`), the landing
      * laws (stamp-wet-landing.ts), and WET_PAINT, WET_WATER and WET_LIFT. Absent, a painting with a wash is refused.
      */
@@ -145,10 +146,13 @@ const hexRgb = (color: string): [number, number, number] => [byteAt(color, 1), b
 
 /**
  * The flat compositor for `painting`: each deposit's colour and blends worked out once. Throws on a mixture of
- * pigments, a graded material or a wash: flat colour has no pigment to grade or water to carry it.
+ * pigments, a graded material or a wash: flat colour has no pigment to grade or water to carry it; and on a group on
+ * its own paper: flat colour lays no paper under a group, so it has none to carry.
  */
 export function flatStampPaintCompositor(painting: CompiledStampPaint): StampPaintCompositor {
   const writers = new Map<CompiledStampDeposit, (views: StampUniformViews, t: number) => void>();
+  const cutOut = painting.groups.find((group) => group.paper === 'own');
+  if (cutOut) throw new Error(`stamp paint: ${cutOut.id} lies on its own paper, and a group carries paper only in a style that paints in pigment`);
   const passes = painting.groups.flatMap((group) => group.passes);
   const deposits = passes.flatMap((pass) => {
     if (pass.kind === 'wash') throw new Error(`stamp paint: ${pass.id} is a wash, and wet paint needs a style that paints in pigment`);
@@ -193,7 +197,7 @@ fn layerCoverage(pixel: vec2u) -> f32 { return textureLoad(layer, pixel).a; }
 fn depositPaint(under: vec4f, color: vec3f, blend: i32, coverage: f32) -> vec4f {
   return laidOver(under, vec4f(color, 1.0) * clamp(coverage, 0.0, 1.0), blend);
 }
-fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f) {
+fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32) {
   var color = paint.color;
   if (paint.tinted == 1u) { color = tinted(color, pixel); }
   var over = depositPaint(textureLoad(layer, pixel), color, paint.blend, coverage);

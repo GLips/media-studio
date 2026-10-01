@@ -21,7 +21,7 @@ import {
   compilePaintAction, compileWashAction, type CompiledStampAction, type CompiledStampPaintAction, type StampRecipePaint, type StampRecipeWashAction,
 } from './stamp-paint-action.ts';
 import { stampRegionPolygon, type StampEdge, type StampPoint, type StampRegion } from './stamp-region.ts';
-import { checkStampGroupMotion, type StampGroupBoil, type StampGroupMotion } from './stamp-group-motion.ts';
+import { checkStampGroupMotion, type StampGroupBoil, type StampGroupMotion, type StampGroupPaper } from './stamp-group-motion.ts';
 import { stampMaterialKeysSpan, type StampMaterialKeys } from './stamp-material-keys.ts';
 
 export type StampPaintColor = `#${string}`;
@@ -139,6 +139,8 @@ export type StampUnmaskSettings = { amount?: number } & ({ region: StampRegion; 
 export type StampGroupOptions = ({ composite: 'opaque' } | { composite: 'glaze'; opacity: number }) & {
   depth?: number;
   order?: number;
+  /** The painting's (`ground`, when left out) or its own, a cut-out (StampGroupPaper). */
+  paper?: StampGroupPaper;
   motion?: StampGroupMotion;
   boil?: StampGroupBoil;
 };
@@ -400,7 +402,7 @@ export function stampPassDeposits(pass: CompiledStampPass): readonly CompiledSta
 export const STAMP_OPAQUE_COVER = 2;
 
 export type CompiledStampGroup = {
-  id: string; composite: 'opaque' | 'glaze'; opacity: number; passes: readonly CompiledStampPass[];
+  id: string; composite: 'opaque' | 'glaze'; opacity: number; paper: StampGroupPaper; passes: readonly CompiledStampPass[];
   /** Absent for a group that stays where it's painted. */
   motion?: StampGroupMotion;
   /** The scene seconds over which its paint changes (a keyed material's first key to its last); absent for paint that doesn't. */
@@ -489,7 +491,7 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
     const written = { id, options, passes };
     const recolours = stampGroupRecolours(compiledPasses);
     return {
-      id: groupId, composite: options.composite, opacity, passes: compiledPasses, ...(motion && { motion }), ...(recolours && { recolours }),
+      id: groupId, composite: options.composite, opacity, paper: options.paper ?? 'ground', passes: compiledPasses, ...(motion && { motion }), ...(recolours && { recolours }),
       ...(boil && { boil: { every: boil.every, epoch, reseeded: (next: number) => compileGroup(written, next) } }),
     };
   };
