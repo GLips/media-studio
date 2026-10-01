@@ -1,7 +1,7 @@
 ---
 title: "feat: Painted animation, part 1: strokes that deform, and the timing layer"
 type: feat
-status: active (phases 1.0 and 1.1 done, 2026-10-01; phase 2 building engine-side)
+status: active (2026-10-01: phases 1.0, 1.1, 2a, 3 and 4 done, reviewed by Codex and Claude; 2b waits for vid-114's step 5)
 date: 2026-09-30
 revised: 2026-09-30 (after vid-112, vid-116, vid-117 and vid-125; folds in vid-126)
 dependsOn: [the paint-engine tickets in flight (vid-118, vid-123, vid-124, vid-127) landing first; the spikes don't wait]
@@ -210,6 +210,14 @@ Ported scenes, and the deletions below, follow.
 - **"Look as they did" is measured by the GPU gate's goldens and the fidelity sheets,** which must not move. Ported scenes may reseed where their ids change: compare them side by side and report drift.
 
 ## Phase 3: The timing layer (sketched)
+
+*Built (vid-130), as amended below after review:*
+- **Clocks and channels:** `lib/paint/animation/models/paint-clock.ts` (play clocks written as parts, node clocks,
+  branded scene, clip and frame times) and `paint-channels.ts`.
+- **Deformation as data:** `paint-deform.ts`, from which each map, key and fold check derive.
+- **Motion over the compiled painting:** `paint-motion.ts` and `paint-motion-compile.ts`, evaluated purely by
+  `paint-motion-frame.ts`.
+- **Not built:** the colour channel. A recipe's material keys still recolour.
 
 ### Goal
 Reveal, placement, deformation, boil, holds and colour run as pure timing channels on the new model, each a registered operation.
