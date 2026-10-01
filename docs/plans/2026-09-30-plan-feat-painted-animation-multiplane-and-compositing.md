@@ -1,10 +1,10 @@
 ---
 title: "feat: Painted animation, part 2: planes at depth, a camera, and compositing with 3D"
 type: feat
-status: active (2026-10-01: spike 1.0 done (vid-129); phases 2–4 reshaped against plan 1 as built and building in vid-136)
+status: done (2026-10-01: spike 1.0 in vid-129; phases 2–4 reshaped against plan 1 and built in vid-136; deferred items below)
 date: 2026-09-30
 dependsOn: [docs/plans/2026-09-30-plan-feat-painted-animation-strokes-and-timing.md (phases 2–4 only; spike 1.0 stands alone and can start now)]
-updated: 2026-10-01 (phases 2–4 reshaped against plan 1 as built, main aba3337)
+updated: 2026-10-01 (built in vid-136; see "As built" at the end)
 relatesTo: [docs/plans/2026-09-30-plan-feat-painted-animation-painterly-3d.md, vid-129 (spike 1.0), vid-117, vid-125]
 ---
 
@@ -235,3 +235,32 @@ A sibling of plan 1's frog scene, in the frog project, built as the PolyPaint tu
 - a painted 3D object among the planes.
 
 It must be identical in any frame order and pass `studio repeatable`, with its frame time reported by `studio profile`.
+
+## As built (vid-136, 2026-10-01)
+
+Phases 2–4 are built as reshaped above. The proof is the frog project's `frogDepth` scene: the frog's painting and
+motion, unchanged, on planes at depth 3, 1, 0.85 and 0.42 under a push and drift. It has defocus focused on the frog,
+glow on the frog and rays, dark foreground silhouettes, and a watercolour leaf falling as a three.js layer at depth
+0.8. The round trip (vid-129's spike) is rebuilt on `paint/three-layers`, and the spike's pipeline is deleted. Both
+pass `studio repeatable`.
+
+- **The stage is one value.** `stampStage(frame, margin)` is the only way to make one. The camera holds it, and
+  `<StampPainting stage>`, the renderer and `PaintedThreeScene` take the camera's.
+- **One camera step.** `paintCameraDepthLook` gives a thing at depth d its similarity, its defocus and its glow
+  sigma, for planes and 3D layers alike. `PaintedThreeScene` applies it to the frame state and to three's camera,
+  so the two can't disagree.
+- **Frame state:** `defocus` (sigma in stage px) and `glow` (`amount`, `sigma`, `threshold`).
+- **Layer cache.** A group whose lay varies keeps its settled painted layer, and its defocused copy (sigma stepped
+  2%). One budget per device.
+- **Cost at 1080p on an M1 Max.** frogDepth's paint takes 40.6 ms a frame under the camera; the flat frog scene
+  takes 2.1 ms. Without the cache, a pan took about 240 ms. What remains is laying every group through the pigment
+  compositor each frame. A per-plane flattening would be cheaper, but it isn't exact in Kubelka–Munk.
+
+Deferred, each to a ticket when a shot needs it:
+- one paper over a mixed stack;
+- a rim light;
+- three's own post;
+- depth of field per pixel inside a 3D layer, from its depth buffer, which plan 3's single 3D model will want;
+- a downsampled defocus for large sigmas (cost grows with sigma);
+- backdrop coverage checked on every evaluation, not only at samples and key times.
+
