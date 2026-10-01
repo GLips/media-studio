@@ -92,6 +92,8 @@ fn pathAt(p: vec2i) -> vec4f { return select(vec4f(0.0), textureLoad(path, boxLo
 fn movedAt(p: vec2i, pop: u32) -> vec4f { return select(textureLoad(moved, boxLocal(p), pop, 0), vec4f(0.0), f.start == 1u); }
 fn heldAt(p: vec2i, pop: u32) -> vec4f { return laidAt(p, pop) + movedAt(p, pop); }
 fn holdAt(p: vec2i) -> vec4f { return textureLoad(hold, boxLocal(p), 0); }
+// How much of \`p\` the wash's paint covers: its layer's first channel, which only \`close\` moves.
+fn coveredAt(p: vec2i) -> f32 { return textureLoad(paint, p, 0, 0).x; }
 
 // Each pixel's paper and stirring, and its pigment. The paint already there is open as the pixel's open share was
 // before its fresh paint, all of it open, joined it.
@@ -136,7 +138,8 @@ fn holdAt(p: vec2i) -> vec4f { return textureLoad(hold, boxLocal(p), 0); }
 // Each pixel's exchange with the pixels a stride either side along the pass's axis, through the way between. Paint
 // runs down the gradient of each pigment's whole amount per unit of hold, fresh and old together, so fresh paint
 // never darkens paint already there as strong; each population carries the share of it that's free to move, the old
-// as stirred. After a lift, a pair trades only as far as the lift reached either of it.
+// as stirred. After a lift, a pair trades only as far as the lift reached either of it, and paint runs back only where
+// the wash covers (flowRefill).
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn exchange(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= f.extent)) { return; }
   let q = vec2i(f.origin + id.xy);
@@ -159,17 +162,21 @@ fn holdAt(p: vec2i) -> vec4f { return textureLoad(hold, boxLocal(p), 0); }
   if (k[0] > 0.0 || k[1] > 0.0) {
     let wholeHere = held[0] + held[1];
     let holdHere = holdAt(q);
+    let lift = f.action == LIFT;
+    let coveredHere = coveredAt(q);
     for (var i = 0; i < 2; i++) {
       if (k[i] <= 0.0) { continue; }
       let p = partners[i];
       let heldThere = array<vec4f, 2>(heldAt(p, 0u), heldAt(p, 1u));
       let wholeThere = heldThere[0] + heldThere[1];
       let holdThere = holdAt(p);
+      let coveredThere = coveredAt(p);
       for (var pop = 0u; pop < 2u; pop++) {
         let isFresh = pop == 0u;
         let freeHere = flowFree(select(here.z, 1.0, isFresh), held[pop], wholeHere);
         let freeThere = flowFree(select(stirred[i], 1.0, isFresh), heldThere[pop], wholeThere);
-        moved[pop] += flowInto(wholeHere / holdHere, wholeThere / holdThere, holdHere, holdThere, freeHere, freeThere, k[i]);
+        let into = flowInto(wholeHere / holdHere, wholeThere / holdThere, holdHere, holdThere, freeHere, freeThere, k[i]);
+        moved[pop] += select(into, flowRefill(into, coveredHere, coveredThere), lift);
       }
     }
   }

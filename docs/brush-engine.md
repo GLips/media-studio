@@ -143,7 +143,9 @@ wet as it was, or as the brush's water where it touched, so paint on dry paper k
 brush drags paint along where it touches, however damp, so there paint moves as on flooded paper: a soften reaches
 its sigma rather than its water's share of it.
 - After a lift there's no fresh paint: the paint round it runs back in, as loose as the lift would find it, a pair
-  trading only as far as the lift reached either of it, at sigma = spread × diameter / 3, at most 16 px.
+  trading only as far as the lift reached either of it, at sigma = spread × diameter / 3, at most 16 px. Paint runs
+  into a pixel only as far as the wash covers it (`flowRefill`), so a lift's water never carries paint onto paper the
+  wash left bare, such as a flood's specks where its tip broke: filled, they even the wash darker than it was.
 - It works one array layer of the group at a time, so its scratch is the same for any palette: 100 bytes a pixel of
   the largest wash deposit's box (about 207 MB for a whole 1080p frame), reserved as the painting (or a boil's epoch)
   loads.

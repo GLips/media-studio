@@ -5,7 +5,8 @@
 // - every pigment channel's sum holds within STAMP_GATE_FLOW_TOLERANCE;
 // - no pixel holds less than none;
 // - nothing changes on the closed stripe or past it;
-// - crayon, which has no water, changes nothing; a medium that flows moves some paint.
+// - crayon, which has no water, changes nothing; a medium that flows moves some paint;
+// - after a lift, no paint runs onto paper the wash left bare (its coverage none).
 
 import { stampLinearDynamics } from '#lib/paint/brush/models/stamp-brush.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
@@ -83,7 +84,9 @@ export function stampGateFlowLayer(kind: StampGateFlowKind): { layer: Float32Arr
     const inDisc = Math.hypot(x - DISC.x, y - DISC.y) < DISC.radius ? 1 : 0;
     const old = x < 90 + 10 * Math.sin(y / 9) ? 0.6 * (0.7 + 0.6 * hashed(x >> 1, y >> 1)) : 0;
     const laid = kind === 'paint' ? inDisc * 0.9 * (0.6 + 0.8 * hashed(x, y)) : 0;
-    layer[0].set([Math.min(1, (old > 0 ? 0.8 : 0) + inDisc * 0.9), old + laid, old * 0.5, 0.2 * hashed(x, y)], i);
+    // A lift thins paint where it is, so covers nothing the band didn't: the disc past the band stays bare paper.
+    const covered = (old > 0 ? 0.8 : 0) + (kind === 'lift' ? 0 : inDisc * 0.9);
+    layer[0].set([Math.min(1, covered), old + laid, old * 0.5, 0.2 * hashed(x, y)], i);
     layer[1].set([laid * 0.3, x > 180 ? 0.7 : 0, 0, old + laid > 0 || x > 180 ? 1 : 0], i);
     fresh[0].set([inDisc * 0.9 * (old > 0 ? 0.2 : 1), laid, 0, 0], i);
     fresh[1].set([laid * 0.3, 0, 0, 0], i);
@@ -114,9 +117,9 @@ export function stampGateHalfValue(bits: number): number {
  * RGBA per pixel), to the properties; in crayon, whether it changed nothing.
  */
 export function checkStampGateFlow(id: string, before: ArrayLike<number>, after: ArrayLike<number>): StampGateWashCheck {
-  const { width, height } = STAMP_GATE_FLOW_SIZE, pixels = width * height, { medium } = stampGateFlowCase(id);
+  const { width, height } = STAMP_GATE_FLOW_SIZE, pixels = width * height, { medium, kind } = stampGateFlowCase(id);
   const sums = Array.from({ length: STAMP_GATE_FLOW_LAYERS * 4 }, () => ({ before: 0, after: 0 }));
-  let least = Infinity, fenced = 0, moved = 0;
+  let least = Infinity, fenced = 0, moved = 0, spilled = 0;
   for (let l = 0; l < STAMP_GATE_FLOW_LAYERS; l++) for (let p = 0; p < pixels; p++) for (let c = 0; c < 4; c++) {
     const i = (l * pixels + p) * 4 + c, change = Math.abs(after[i] - before[i]);
     sums[l * 4 + c].before += before[i];
@@ -124,6 +127,8 @@ export function checkStampGateFlow(id: string, before: ArrayLike<number>, after:
     least = Math.min(least, after[i]);
     moved += change;
     if (p % width >= STRIPE.x0) fenced = Math.max(fenced, change);
+    const pigment = l * 4 + c !== 0 && l * 4 + c !== OPEN, bare = before[p * 4] <= 0;
+    if (kind === 'lift' && pigment && bare) spilled = Math.max(spilled, after[i] - before[i]);
   }
   // Pigment channels only: coverage and the open share follow what moved, by the compositor's rule.
   const pigments = sums.filter((_, channel) => channel !== 0 && channel !== OPEN);
@@ -135,6 +140,7 @@ export function checkStampGateFlow(id: string, before: ArrayLike<number>, after:
     ...(medium === 'crayon' && moved > 0 ? [`crayon's flow moved ${moved.toFixed(3)} in all`] : []),
     // So a stage that moves nothing can't pass.
     ...(medium !== 'crayon' && moved === 0 ? ['nothing moved'] : []),
+    ...(spilled > 0 ? [`the lift's run-back put ${spilled} onto bare paper`] : []),
   ];
   return {
     id: `${id}: conserved and fenced`, passed: !problems.length,
