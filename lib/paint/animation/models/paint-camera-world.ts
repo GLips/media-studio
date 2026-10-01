@@ -34,6 +34,13 @@ export function paintPlaneWorldPoint({ stage, depthUnit }: PaintCameraWorld, poi
   return { x: worldUnits((point.x - centre.x) * depth), y: worldUnits(-(point.y - centre.y) * depth), z: worldUnits(-depth * depthUnit) };
 }
 
+/** A plane at `depth` in a world: where its anchor points (px) lie, and how long its px are, in world units. */
+export type PaintWorldPlane = { readonly depth: number; readonly point: (point: StampPoint) => PaintWorldPoint; readonly length: (px: number) => PaintWorldUnits };
+
+/** `world`'s plane at `depth`, so whatever lies on it is placed and sized by its depth stated once. */
+export const paintWorldPlane = (world: PaintCameraWorld, depth: number): PaintWorldPlane =>
+  ({ depth, point: (point) => paintPlaneWorldPoint(world, point, depth), length: (px) => worldUnits(px * depth) });
+
 /**
  * A three.js PerspectiveCamera's settings for `pose`, rendering a stage-sized target (frame and margin; a margin of 0
  * for the frame alone): `position`; `rotationZ`, its rotation.z (x and y 0); `fov`, vertical degrees over the

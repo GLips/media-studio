@@ -24,7 +24,7 @@ async function drawWetPassage(passage: WetPassage, { brushes, paper, mixing, pac
     // Copied before the surface is disposed, which unconfigures its canvas and clears it.
     try {
       const renderer = await createStampPaintRenderer(surface, painting, paper, mixing);
-      await renderer.draw(SHOWN);
+      await renderer.draw({ t: SHOWN });
       copy.getContext('2d')!.drawImage(canvas, 0, 0);
     } finally {
       surface.dispose();
@@ -55,7 +55,7 @@ async function drawWetAnimation(animation: WetAnimation, { brushes, paper, mixin
       try {
         return [...before, ...await shown.reduce<Promise<{ caption: string; png: string }[]>>(async (drawn, { frame, caption }) => {
           const earlier = await drawn;
-          await renderer.draw(frame / WET_ANIMATION_FPS);
+          await renderer.draw({ t: frame / WET_ANIMATION_FPS });
           await renderer.finish();
           const copy = Object.assign(document.createElement('canvas'), { width, height });
           copy.getContext('2d')!.drawImage(canvas, 0, 0);

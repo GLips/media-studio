@@ -1,40 +1,42 @@
-// paint-camera-build.ts: a camera's plays and its planes checked over the painting it shows. buildPaintCamera stands
-// alone, so a scene can put a camera over frame state some other motion wrote (paintCameraFrameStateAt);
-// buildPaintMotion builds the same camera from its nodes' anchors, so there is one camera step.
+// paint-camera-build.ts: a camera's plays and planes checked over the painting it shows. buildPaintCamera stands alone
+// for frame state other motion wrote; buildPaintMotion builds the same camera from its nodes' anchors.
 //
-// Checked: the stage, each plane's group and depth, the clips and clocks, one writer per lane at once, a plane at or
-// behind the camera, a focus behind it, and a backdrop the camera shows past.
+// Checked: planes' and outside layers' depths, clips and clocks (values as rounded), one writer per lane at once, a
+// plane or focus at or behind the camera, a backdrop shown past, at every key's time and the animation grid. Between
+// those, evaluation throws on a plane or focus behind (paintCameraDepthLook); a backdrop is held at those times alone.
 //
-// Negative space: a backdrop is checked through the camera alone. Its own placement or warp isn't inverted, as
-// backdrops hold still; one that moves is checked as if it didn't.
+// Negative space: a backdrop is checked through the camera alone (backdrops hold still), and the stage not at all:
+// stampStage refused any it can't draw.
 
 import { stampStageExtent, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import {
-  paintCameraClipProblem, paintCameraFocusAt, paintCameraPoseAt, paintPlaneSimilarity, paintStageCentre,
+  PAINT_CAMERA_NEAREST, paintCameraClipProblem, paintCameraFocusAt, paintCameraPoseAt, paintPlaneSimilarity, paintStageCentre,
   type PaintAnchor, type PaintCamera, type PaintCameraFocusClip, type PaintCameraMoveClip, type PaintCameraPlay,
 } from './paint-camera.ts';
 import { paintChannelConflicts, type PaintChannelWriter } from './paint-channels.ts';
 import {
-  clipSeconds, compilePaintPlayClock, paintLaneByStart, paintPlayClockProblem, paintPlayInterval, sceneSeconds,
+  clipSeconds, compilePaintPlayClock, paintLaneByStart, paintPlayClipSceneTimes, paintPlayClockProblem, paintPlayInterval, sceneSeconds,
   type CompiledPaintPlay, type CompiledPaintPlayClock, type SceneSeconds,
 } from './paint-clock.ts';
+import { paintRatioRounded } from './paint-deform.ts';
 import { paintGroupPaintedBox } from './paint-motion-compile.ts';
 import { paintSimilarityApply, paintSimilarityInverse } from './paint-similarity.ts';
 
-/** How near the camera a plane or its focus may come, depth units: nearer, its scale runs off toward infinity. */
-export const PAINT_CAMERA_NEAREST = 1e-3;
+/** An outside layer (a 3D layer) the camera shows as a plane at `depth`, by its id in the painting's order. */
+export type PaintCameraOutsideLayer = { readonly id: string; readonly depth: number };
 
 /**
  * A camera as written: the `stage` it shows, the groups on planes (`anchors`, by group id; a group left out is on the
- * canvas), the groups that must fill the frame (`backdrops`) and its plays. `check`: scene seconds to check
- * backdrops and focus over besides its plays' own span.
+ * canvas), the outside layers it shows at a depth (`outsideLayers`), the groups that must fill the frame (`backdrops`)
+ * and its plays. `check`: scene seconds to check backdrops and focus over besides its plays' own span.
  */
 export type PaintCameraOptions = {
   readonly stage: StampStage;
   readonly anchors: ReadonlyMap<string, PaintAnchor>;
+  readonly outsideLayers?: readonly PaintCameraOutsideLayer[];
   readonly backdrops?: readonly string[];
   readonly plays: readonly PaintCameraPlay[];
   readonly animationFps?: number;
@@ -46,10 +48,6 @@ export type PaintCameraBuild = { readonly ok: true; readonly camera: PaintCamera
 
 const MOVE_LANE = 'the camera\'s move', FOCUS_LANE = 'the camera\'s focus';
 
-function stageProblem({ frame: { width, height } }: StampStage): string | null {
-  return width > 0 && height > 0 && Number.isFinite(width) && Number.isFinite(height) ? null : `the stage's frame needs a positive width and height, not ${width}×${height}`;
-}
-
 /** One loop of `clock`, scene seconds: 0 for one that doesn't loop. */
 const loopCycle = (clock: CompiledPaintPlayClock) =>
   clock.clip.reduce((length, step) => (step.kind === 'loop' ? step.period : length), 0) / clock.clip.reduce((rate, step) => (step.kind === 'rate' ? step.rate : rate), 1);
@@ -59,9 +57,9 @@ function laneSpans(lane: readonly CompiledPaintPlay<unknown>[]): { from: number;
   return lane.map(({ clock, interval }) => ({ from: interval.start, to: Number.isFinite(interval.end) ? interval.end : interval.start + loopCycle(clock) }));
 }
 
-/** Every animation frame inside `spans`, and each span's ends: where a camera's extremes are looked for. */
-function checkTimes(spans: readonly { from: number; to: number }[], fps: number): SceneSeconds[] {
-  const times = new Set<number>();
+/** Every animation frame inside `spans`, each span's ends, and `keyed`: where a camera's extremes are looked for. */
+function checkTimes(spans: readonly { from: number; to: number }[], keyed: readonly SceneSeconds[], fps: number): SceneSeconds[] {
+  const times = new Set<number>(keyed);
   for (const { from, to } of spans) {
     times.add(from).add(to);
     for (let frame = Math.ceil(from * fps - 1e-6); frame / fps <= to; frame++) times.add(frame / fps);
@@ -90,9 +88,7 @@ function backdropProblem(camera: PaintCamera, id: string, painted: StampBox | nu
 /** `o` checked and compiled over `painting` into `problems` (see the file's head for what's checked). */
 export function compilePaintCamera(painting: CompiledStampPaint, o: PaintCameraOptions, problems: string[]): PaintCamera {
   const fps = o.animationFps ?? PAINT_ANIMATION_FPS, groups = new Map(painting.groups.map((group) => [group.id, group])), before = problems.length;
-  const stage = stageProblem(o.stage);
-  if (stage) problems.push(stage);
-  const planes = new Map<string, number>();
+  const planes = new Map<string, number>(), outsidePlanes = new Map<string, number>();
   for (const [id, anchor] of o.anchors) {
     if (!groups.has(id)) problems.push(`${id} is anchored, but isn't a group of the painting`);
     else if (anchor === 'canvas') continue;
@@ -100,6 +96,12 @@ export function compilePaintCamera(painting: CompiledStampPaint, o: PaintCameraO
     // The recipe's motion writes the group's lay too, and frame state takes one writer per field.
     else if (groups.get(id)!.motion) problems.push(`${id} is on a plane, but moves by its recipe's motion; move it with a place play, which the camera composes after`);
     else planes.set(id, anchor.plane);
+  }
+  for (const { id, depth } of o.outsideLayers ?? []) {
+    if (groups.has(id)) problems.push(`outside layer ${id} has a painted group's id`);
+    else if (outsidePlanes.has(id)) problems.push(`two outside layers are called ${id}`);
+    else if (!(depth > 0 && Number.isFinite(depth))) problems.push(`outside layer ${id} is at depth ${depth}; a plane's depth is above 0`);
+    else outsidePlanes.set(id, depth);
   }
   const move: CompiledPaintPlay<PaintCameraMoveClip>[] = [], focus: CompiledPaintPlay<PaintCameraFocusClip>[] = [], writers: PaintChannelWriter[] = [];
   for (const play of o.plays) {
@@ -111,16 +113,19 @@ export function compilePaintCamera(painting: CompiledStampPaint, o: PaintCameraO
     writers.push({ channel: 'camera', target: play.clip.kind === 'move' ? MOVE_LANE : FOCUS_LANE, ...interval, origin: play.origin });
   }
   problems.push(...paintChannelConflicts(writers));
-  const camera: PaintCamera = { stage: o.stage, animationFps: fps, planes, move: paintLaneByStart(move), focus: paintLaneByStart(focus) };
+  const camera: PaintCamera = { stage: o.stage, animationFps: fps, planes, outsidePlanes, move: paintLaneByStart(move), focus: paintLaneByStart(focus) };
 
-  // Easing never overshoots a key, so the camera comes nearest each plane at a key.
+  // Easing never overshoots a key, so the camera comes nearest each plane at a key, its dolly as evaluation rounds it.
+  const depths = [...planes, ...[...outsidePlanes].map(([id, depth]) => [`outside layer ${id}`, depth] as const)];
   for (const { clip, origin } of move) {
-    for (const [i, { dolly = 0 }] of clip.keys.entries()) {
-      for (const [id, depth] of planes) if (depth - dolly <= PAINT_CAMERA_NEAREST) problems.push(`${origin} dollies the camera ${dolly} at key ${i}, at or past ${id}'s plane at depth ${depth}; a plane stays in front of the camera`);
+    for (const [i, key] of clip.keys.entries()) {
+      const { dolly = 0 } = key;
+      for (const [id, depth] of depths) if (depth - paintRatioRounded(dolly) <= PAINT_CAMERA_NEAREST) problems.push(`${origin} dollies the camera ${dolly} at key ${i}, at or past ${id}'s plane at depth ${depth}; a plane stays in front of the camera`);
     }
   }
   if (problems.length > before) return camera;
-  const times = checkTimes([{ from: 0, to: 0 }, ...laneSpans(move), ...laneSpans(focus), ...(o.check ? [o.check] : [])], fps);
+  const keyed = [...move, ...focus].flatMap(({ clip, clock }) => paintPlayClipSceneTimes(clock, clip.keys.map((key) => key.at)));
+  const times = checkTimes([{ from: 0, to: 0 }, ...laneSpans(move), ...laneSpans(focus), ...(o.check ? [o.check] : [])], keyed, fps);
   for (const t of focus.length ? times : []) {
     const lens = paintCameraFocusAt(camera, t), { dolly } = paintCameraPoseAt(camera, t);
     if (lens && lens.focus - dolly <= PAINT_CAMERA_NEAREST) { problems.push(`at ${t.toFixed(3)}s the camera focuses at depth ${lens.focus}, at or behind itself (dollied ${dolly})`); break; }

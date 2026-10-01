@@ -7,7 +7,7 @@
 
 import type { StampOutsideLayerSlot } from '../models/stamp-outside-layer.ts';
 import type { StampStage } from '../models/stamp-stage.ts';
-import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
+import { STAMP_SRGB_WGSL, type StampPaintCompositor } from './stamp-paint-compositor.ts';
 import { stampUniformLayout } from './stamp-uniform-layout.ts';
 
 /** An outside layer as a renderer is made with: its slot, and the texture its pixels arrive in each frame. */
@@ -36,6 +36,7 @@ ${STAMP_OUTSIDE_LAY.wgsl}
 @group(0) @binding(0) var<uniform> u: OutsideLay;
 @group(0) @binding(1) var outside: texture_2d<f32>;
 ${paintingDeclaration}
+${STAMP_SRGB_WGSL}
 ${compositor.outside}
 @compute @workgroup_size(${workgroup}, ${workgroup}) fn layOutsideLayer(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= textureDimensions(outside))) { return; }

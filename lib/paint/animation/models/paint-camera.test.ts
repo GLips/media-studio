@@ -7,7 +7,9 @@ import type { StampGroupFrameState } from '#lib/paint/painting/models/stamp-pain
 import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import { paintCameraFrameStateAt, paintCameraPlay, paintPlaneSimilarity, paintStageCentre, type PaintCameraMoveKey, type PaintCameraPlay, type PaintCameraPose } from './paint-camera.ts';
+import {
+  paintCameraDepthLook, paintCameraFrameStateAt, paintCameraPlay, paintPlaneSimilarity, paintStageCentre, type PaintCameraMoveKey, type PaintCameraPlay, type PaintCameraPose,
+} from './paint-camera.ts';
 import { buildPaintCamera } from './paint-camera-build.ts';
 import { paintCameraPerspectiveAt, paintCameraWorld, paintPlaneWorldPoint } from './paint-camera-world.ts';
 import { paintMotionPlay, type PaintMotion, type PaintMotionNode } from './paint-motion-compile.ts';
@@ -45,7 +47,7 @@ const move = (keys: readonly PaintCameraMoveKey[], clock: PaintCameraPlay['clock
 test('a pan parallaxes planes by depth, a dolly grows the near more, and a focus blurs each plane by its distance', () => {
   const planes = [['far', 2], ['mid', 1], ['near', 0.5]] as const;
   const motion = built(buildPaintMotion(paintingOf(planes.map(([id]) => ({ id, box: across }))), {
-    nodes: planes.map(([id, plane]) => ({ id, anchor: { plane }, ...(id === 'near' && { glow: { amount: 0.5, radius: 10, threshold: 0.6 } }) })), plays: [],
+    nodes: planes.map(([id, plane]) => ({ id, anchor: { plane }, ...(id === 'near' && { glow: { amount: 0.5, sigma: 10, threshold: 0.6 } }) })), plays: [],
     camera: {
       stage,
       plays: [
@@ -61,9 +63,9 @@ test('a pan parallaxes planes by depth, a dolly grows the near more, and a focus
   const centre = paintStageCentre(stage), at2 = paintMotionFrameAt(motion, 2);
   for (const [id, depth] of planes) close(laidAt(at2.get(id), { x: centre.x + 100, y: centre.y }), { x: centre.x + 100 * depth / (depth - 0.25), y: centre.y }, `${id} dollied`, 1e-3);
   // Focused at depth 1 with aperture 4: depth 2 blurs 4·|1 − 1/2|, depth 0.5 4·|1 − 2|; dollied, distances shrink alike.
-  assert.deepEqual(planes.map(([id]) => at1.get(id)?.blur), [2, undefined, 4]);
-  assert.equal(at2.get('near')?.glow?.radius, 20, 'a glow grows with its plane, its radius in rest px');
-  assert.deepEqual(planes.map(([id]) => at2.get(id)?.blur), [Math.round(4000 * (1 - 0.75 / 1.75)) / 1000, undefined, 8]);
+  assert.deepEqual(planes.map(([id]) => at1.get(id)?.defocus), [2, undefined, 4]);
+  assert.equal(at2.get('near')?.glow?.sigma, 20, 'a glow grows with its plane, its sigma in rest px');
+  assert.deepEqual(planes.map(([id]) => at2.get(id)?.defocus), [Math.round(4000 * (1 - 0.75 / 1.75)) / 1000, undefined, 8]);
 });
 
 test('the camera composes after a swaying tuft\'s own warp and placement, and laying flat motion after the fact is the same step', () => {
@@ -142,7 +144,7 @@ test('the build names a plane behind the camera, an anchor on a child, a lens th
   };
   assert.deepEqual(problems([move([{ at: 0 }, { at: 2, dolly: 1, zoom: 0 }], { at: 0 }, 'push'), move([{ at: 1, pan: { x: 10, y: 0 } }], { at: 1 }, 'drift')]), [
     'ink sets its anchor, but it hangs from frog, whose tree\'s anchor it takes; anchor its root',
-    'push: key 1 zooms to 0; a zoom must be above 0 (1 at rest)',
+    'push: key 1 zooms to 0; a zoom must be above 0 (1 at rest) as rounded to a millionth',
   ]);
   const flat = buildPaintMotion(painting, { nodes: nodes.slice(0, 2), plays: [] });
   assert.deepEqual(flat.ok ? [] : flat.problems, ['sky, frog are on a plane or a backdrop, but the motion has no camera; give it one with the stage']);
@@ -158,4 +160,24 @@ test('the build names a plane behind the camera, an anchor on a child, a lens th
   // The sky at depth 4 moves a quarter of a pan at depth 1: 900 px brings in 225, past its 100 px margin and its paint.
   const panned = buildPaintCamera(painting, { stage, anchors: new Map([['sky', { plane: 4 }]]), backdrops: ['sky'], plays: [move([{ at: 0 }, { at: 1, pan: { x: 900, y: 0 } }], { at: 0 }, 'whip')] });
   assert.match(panned.ok ? '' : panned.problems.join('\n'), /^sky must fill the frame, but at 0\.\d+s the frame's corner shows \(9\d\d, 0\) of its plane, past the stage's 100 px margin$/);
+});
+
+test('a built camera yields only what evaluation accepts: keys checked between grid samples and as rounded, 3D layers held in front, and evaluation refusing a plane behind', () => {
+  const painting = paintingOf([{ id: 'frog', box: across }]);
+  const problems = (plays: readonly PaintCameraPlay[], outsideLayers = [{ id: 'leaf', depth: 0.8 }]) => {
+    const build = buildPaintCamera(painting, { stage, anchors: new Map([['frog', { plane: 1 }]]), outsideLayers, plays });
+    return build.ok ? [] : build.problems;
+  };
+  const dollied = move([{ at: 0, dolly: 0.1 }]);
+  // The focus dips behind the camera at a key a 60th in, between the 30 fps grid's samples.
+  const pull = paintCameraPlay({ kind: 'focus', keys: [{ at: 0, focus: 1, aperture: 4 }, { at: 1 / 60, focus: 0.05, aperture: 4 }, { at: 2 / 60, focus: 1, aperture: 4 }] }, { clock: { at: 0 }, origin: 'pull' });
+  assert.match(problems([dollied, pull]).join('\n'), /^at 0\.017s the camera focuses at depth 0\.0\d+, at or behind itself/);
+  // A zoom that rounds to 0 would lay a plane at scale 0.
+  assert.deepEqual(problems([move([{ at: 0, zoom: 1e-7 }], { at: 0 }, 'tiny')]), ['tiny: key 0 zooms to 1e-7; a zoom must be above 0 (1 at rest) as rounded to a millionth']);
+  assert.deepEqual(problems([move([{ at: 0 }, { at: 1, dolly: 0.9 }], { at: 0 }, 'push')]), [
+    'push dollies the camera 0.9 at key 1, at or past outside layer leaf\'s plane at depth 0.8; a plane stays in front of the camera',
+  ]);
+  assert.deepEqual(problems([], [{ id: 'frog', depth: 1 }, { id: 'card', depth: -1 }]), ['outside layer frog has a painted group\'s id', 'outside layer card is at depth -1; a plane\'s depth is above 0']);
+  const pose: PaintCameraPose = { pan: { x: 0, y: 0 }, dolly: 1.2, zoom: 1, roll: 0 };
+  assert.throws(() => paintCameraDepthLook({ t: 3, pose, lens: null, centre: paintStageCentre(stage) }, 'leaf', 1, {}), /at 3s the camera, dollied 1\.2, is at or past leaf's plane at depth 1/);
 });

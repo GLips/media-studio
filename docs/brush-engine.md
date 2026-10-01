@@ -182,7 +182,7 @@ where the paper lets it: a stage supplies the paper (wet, open), the bloom the d
 and where paint may land, the rim open wherever it isn't bare paper at the grain's scale.
 
 **Frame state.** Everything about a group that varies with time reaches the renderer as data, per frame:
-`renderer.draw(t, frame)`, and `StampPainting`'s `frame` prop, take a `StampPaintFrameState`
+`renderer.draw({ t, state })`, and `StampPainting`'s `frame` prop, take a `StampPaintFrameState`
 (`stamp-paint-frame-state.ts`). It holds each group's:
 - `lay`: a placement about its pivot;
 - `warp`: a rest-to-scene map with a key naming it, sampled on a lattice over the group's painted layer;

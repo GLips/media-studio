@@ -157,16 +157,16 @@ A multiplane camera, as data on plan 1's clocks:
   move, which moves every plane, would repaint the whole painting. Instead each group whose lay varies keeps its
   painted layer (over its layer bounds) under its marks' key once its paint has settled, and a frame restores it and
   only lays it. A frame then costs the lays, not the painting. Bounded by a byte budget, least recently used given up.
-- **Defocus (`blur` in frame state):** a gaussian over the group's layer before it's laid, its sigma given in stage
+- **Defocus (`defocus` in frame state):** a gaussian over the group's layer before it's laid, its sigma given in stage
   pixels and divided by the lay's scale into rest pixels. It blurs the paint film (coverage and pigment, or flat
   colour), not the light. For flat colour that is exactly a defocused layer; for pigment it is a defocused film laid
   over a sharp backdrop, which reads right and keeps mixing exact.
 - **Glow (`glow` in frame state):** the light a group gives off. Its laid paint brighter than a threshold, in linear
   light, is blurred and added over the whole frame at the output, so it spills over what stands in front, as a bloom
-  does. The amount, radius and threshold are the group's; the light gathered by a frame is part of what a checkpoint
+  does. The amount, sigma and threshold are the group's; the light gathered by a frame is part of what a checkpoint
   holds.
 - **Outside layers:** a slot in the group order whose pixels arrive each frame as a texture on the renderer's device
-  (linear light, premultiplied), with a key naming its content. It takes the frame state a group takes (blur, glow,
+  (linear light, premultiplied), with a key naming its content. It takes the frame state a group takes (defocus, glow,
   visibility). The flat compositor lays it over. The pigment compositor first lifts its colour into the painting's
   bands by a basis worked out from the compositor's own display conversion, so the colour shown is the colour
   three.js rendered.
@@ -174,7 +174,7 @@ A multiplane camera, as data on plan 1's clocks:
 ### Invariants this adds
 
 - Every frame-state field is data with a key, so frames that agree share checkpoints and cached layers.
-- At margin 0, with no blur, glow or outside layer, the renderer draws exactly what it drew before.
+- At margin 0, with no defocus, glow or outside layer, the renderer draws exactly what it drew before.
 - A cached layer is a pure function of its key: a frame restoring one draws what painting it afresh would have.
 
 ## Phase 2: Multiplane painted scenes
@@ -202,8 +202,8 @@ Painted layers take depth of field and glow, each set by the scene, its amounts 
 ### Approach
 
 - Defocus and glow in the renderer, as above; the gate holds a blurred and a glowing group to their CPU twins.
-- Depth of field is the camera's: `paint/animation` writes each plane's blur from its focus distance.
-- Glow is a node option (`glow: { amount, radius, threshold }`), and any frame-state writer may animate it.
+- Depth of field is the camera's: `paint/animation` writes each plane's defocus from its focus distance.
+- Glow is a node option (`glow: { amount, sigma, threshold }`), and any frame-state writer may animate it.
 - **Deferred:** one paper over a mixed stack (paper over a 3D layer), and a rim light. Neither is asked for by the
   frog proof; each gets a ticket when a shot needs it.
 

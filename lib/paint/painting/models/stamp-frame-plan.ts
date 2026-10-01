@@ -44,7 +44,7 @@ export type StampGroupFrame = {
   visibility: number;
   paintAt: number | null;
   /** Its defocus, gaussian sigma in stage px; 0 sharp. */
-  blur: number;
+  defocus: number;
   /** The light it gives off; null for none, as a glow of amount 0 is. */
   glow: StampGroupGlow | null;
   layVaries: boolean;
@@ -54,7 +54,7 @@ export type StampGroupFrame = {
  * An outside layer as a frame lays it (stamp-outside-layer.ts): before the events from `event` on, so a checkpoint
  * after `event` events stands before it and one after more holds it, under `key` (its content and how it's laid).
  */
-export type StampOutsideLayerFrame = StampOutsideLayerPlace & { event: number; key: string; visibility: number; blur: number; glow: StampGroupGlow | null };
+export type StampOutsideLayerFrame = StampOutsideLayerPlace & { event: number; key: string; visibility: number; defocus: number; glow: StampGroupGlow | null };
 
 /** The outside layers a painting is drawn with: where each lies, and each one's state this frame. */
 export type StampOutsideLayersAt = { places: readonly StampOutsideLayerPlace[]; state: StampOutsideFrameState };
@@ -83,20 +83,20 @@ const hasEvents = ({ first, end }: StampGroupEvents) => first < end;
 
 const isStill = ({ x, y, rotation, scale }: StampGroupPlacement) => x === 0 && y === 0 && rotation === 0 && scale === 1;
 
-/** `id`'s defocus and glow as drawn, checked: no blur is 0, and no glow (or one of amount 0) null, so equal looks key equal. */
-function stampLayLight(id: string, { blur = 0, glow }: Pick<StampGroupFrameState, 'blur' | 'glow'>): { blur: number; glow: StampGroupGlow | null } {
-  if (!(Number.isFinite(blur) && blur >= 0)) throw new Error(`stamp paint: ${id}'s blur is ${blur}; a defocus is a sigma of 0 px or more`);
+/** `id`'s defocus and glow as drawn, checked: no defocus is 0, and no glow (or one of amount 0) null, so equal looks key equal. */
+function stampLayLight(id: string, { defocus = 0, glow }: Pick<StampGroupFrameState, 'defocus' | 'glow'>): { defocus: number; glow: StampGroupGlow | null } {
+  if (!(Number.isFinite(defocus) && defocus >= 0)) throw new Error(`stamp paint: ${id}'s defocus is ${defocus}; a defocus is a sigma of 0 px or more`);
   if (glow) {
-    const { amount, radius, threshold } = glow;
-    if (!(Number.isFinite(amount) && amount >= 0 && Number.isFinite(radius) && radius > 0 && threshold >= 0 && threshold <= 1)) {
-      throw new Error(`stamp paint: ${id}'s glow ${JSON.stringify(glow)} needs an amount from 0, a radius past 0 px and a threshold within 0..1`);
+    const { amount, sigma, threshold } = glow;
+    if (!(Number.isFinite(amount) && amount >= 0 && Number.isFinite(sigma) && sigma > 0 && threshold >= 0 && threshold <= 1)) {
+      throw new Error(`stamp paint: ${id}'s glow ${JSON.stringify(glow)} needs an amount from 0, a sigma past 0 px and a threshold within 0..1`);
     }
   }
-  return { blur, glow: glow && glow.amount > 0 ? { amount: glow.amount, radius: glow.radius, threshold: glow.threshold } : null };
+  return { defocus, glow: glow && glow.amount > 0 ? { amount: glow.amount, sigma: glow.sigma, threshold: glow.threshold } : null };
 }
 
 /** The part of a laid key its defocus and glow write: empty for neither. */
-const layLightKey = ({ blur, glow }: { blur: number; glow: StampGroupGlow | null }) => `${blur ? `~blur${blur}` : ''}${glow ? `~glow${glow.amount},${glow.radius},${glow.threshold}` : ''}`;
+const layLightKey = ({ defocus, glow }: { defocus: number; glow: StampGroupGlow | null }) => `${defocus ? `~defocus${defocus}` : ''}${glow ? `~glow${glow.amount},${glow.sigma},${glow.threshold}` : ''}`;
 
 /** `group`'s frame from its frame state, checked: throws on state it can't draw. */
 function stampGroupFrame(group: CompiledStampGroup, state: StampGroupFrameState): StampGroupFrame {
@@ -114,12 +114,12 @@ function stampGroupFrame(group: CompiledStampGroup, state: StampGroupFrameState)
     if (![x, y, rotation, scale, pivot.x, pivot.y].every(Number.isFinite) || !(scale > 0)) throw new Error(`stamp paint: ${group.id}'s lay needs finite values and a positive scale`);
   }
   const moved = lay && !isStill(lay.placement) ? lay : null;
-  const { blur, glow } = stampLayLight(group.id, state);
+  const { defocus, glow } = stampLayLight(group.id, state);
   // A hidden group draws nothing, whatever its marks or lay.
   const paintKey = visibility === 0 ? 'hidden' : `${marks.kind === 'live' ? `*${JSON.stringify(marks.key)}` : marks.epoch}${paintAt === undefined ? '' : `~${paintAt}`}`;
   return {
     paintKey, group, marks, lay: moved, warp: warp ? { map: warp.map, key: warp.key, cell: warp.cell ?? STAMP_WARP_CELL } : null, visibility,
-    paintAt: paintAt ?? null, blur, glow, layVaries: visibility > 0 && !!(moved || warp || visibility < 1 || blur || glow),
+    paintAt: paintAt ?? null, defocus, glow, layVaries: visibility > 0 && !!(moved || warp || visibility < 1 || defocus || glow),
   };
 }
 

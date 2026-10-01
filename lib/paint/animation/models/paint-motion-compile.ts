@@ -156,9 +156,9 @@ function compileMarks(node: PaintMotionNode, group: CompiledStampGroup, problems
   return { kind: 'wobble', every, wobble };
 }
 
-const glowProblem = ({ amount, radius, threshold }: StampGroupGlow) =>
-  amount >= 0 && Number.isFinite(amount) && radius > 0 && Number.isFinite(radius) && threshold >= 0 && threshold <= 1
-    ? null : `its glow needs an amount of 0 or more, a positive radius and a threshold in 0..1, not ${amount}, ${radius} and ${threshold}`;
+const glowProblem = ({ amount, sigma, threshold }: StampGroupGlow) =>
+  amount >= 0 && Number.isFinite(amount) && sigma > 0 && Number.isFinite(sigma) && threshold >= 0 && threshold <= 1
+    ? null : `its glow needs an amount of 0 or more, a positive sigma and a threshold in 0..1, not ${amount}, ${sigma} and ${threshold}`;
 
 /** The glow `levels` give their first: the nearest that says, `'none'` none. */
 function inheritedGlow(levels: readonly string[], byId: ReadonlyMap<string, PaintMotionNode>): StampGroupGlow | null {

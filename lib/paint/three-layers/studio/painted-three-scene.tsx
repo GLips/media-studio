@@ -5,7 +5,7 @@
 import { useMemo } from 'react';
 import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
-import { PAINT_CAMERA_REST, paintCameraFocusAt, paintCameraPoseAt, type PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
+import type { PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
@@ -19,9 +19,9 @@ export type PaintedThreeContent = { fov: number; layers: readonly PaintedThreeLa
 const NO_PAINTED_TEXTURES: readonly PaintedThreeTexture[] = [];
 
 /**
- * Draws `painting` in `style` over the frame at `t`, its groups in `frame`'s state (the camera's view in it), with
- * `three`'s layers laid in its order. `camera` poses three's camera (at rest without one); its stage, margin and
- * all, is the renderer's (with no camera, the frame alone). Memoise `three`: a new array loads the scene anew.
+ * Draws `painting` in `style` at `t`, its groups in `frame`'s state before the camera step, `three`'s layers laid in
+ * its order, all seen through `camera` (its stage the renderer's); without one, at rest and sharp on the frame alone.
+ * Memoise `three`: a new array loads the scene anew.
  */
 export function PaintedThreeScene({ painting, style, t, frame, camera, three }: {
   painting: CompiledStampPaint;
@@ -39,10 +39,13 @@ export function PaintedThreeScene({ painting, style, t, frame, camera, three }: 
   if (stage.frame.width !== width || stage.frame.height !== height) {
     throw new Error(`painted three: the camera's frame is ${stage.frame.width} × ${stage.frame.height}, and the video's ${width} × ${height}`);
   }
-  const pose = camera ? paintCameraPoseAt(camera, t) : PAINT_CAMERA_REST, lens = camera ? paintCameraFocusAt(camera, t) : null;
+  for (const { id, depth } of camera ? three.layers : []) {
+    const seen = camera!.outsidePlanes.get(id);
+    if (seen !== depth) throw new Error(`painted three: 3D layer ${id} lies at depth ${depth}, and the camera ${seen === undefined ? 'wasn\'t built with it (buildPaintCamera\'s outsideLayers)' : `holds it at ${seen}`}`);
+  }
   const holder = usePaintedThreeScene(
     { painting, style: kept, stage, fov: three.fov, threeLayers: three.layers, paintedTextures: three.paintedTextures ?? NO_PAINTED_TEXTURES },
-    { t, frame, pose, lens },
+    { t, frame, camera: camera ?? null },
   );
   return <div ref={holder} {...unmeasuredAttrs('painted three scene')} style={{ position: 'absolute', inset: 0 }} />;
 }

@@ -120,6 +120,18 @@ export function paintPlayInterval(clock: CompiledPaintPlayClock, length: ClipSec
   return { start: clock.start, end: sceneSeconds(clock.start + clipEnd / rate) };
 }
 
+/**
+ * The scene seconds `clock` first hands its clip each of `clipTimes` (within one loop's cycle, which every other
+ * repeats), within the interval it writes; a frozen clock hands one time throughout, so its start stands for all.
+ * A hold shows the drawing at the grid frame before, which the grid's own samples cover.
+ */
+export function paintPlayClipSceneTimes(clock: CompiledPaintPlayClock, clipTimes: readonly number[]): SceneSeconds[] {
+  if (clock.clip.some((step) => step.kind === 'freeze')) return [clock.start];
+  const rate = clock.clip.reduce((r, step) => (step.kind === 'rate' ? step.rate : r), 1);
+  const period = clock.clip.reduce((p, step) => (step.kind === 'loop' ? step.period : p), Infinity);
+  return clipTimes.filter((k) => k >= 0 && k <= period).map((k) => sceneSeconds(clock.start + k / rate)).filter((t) => t <= clock.until);
+}
+
 /** The time a scene step hands on. */
 function sceneStepTime(step: PaintSceneStep, time: SceneSeconds, animationFps: number): SceneSeconds {
   if (step.kind === 'freeze') return step.time;

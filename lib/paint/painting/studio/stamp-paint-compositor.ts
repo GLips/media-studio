@@ -18,6 +18,14 @@ import { stampUniformLayout, stampUniformWriter, type StampUniformField, type St
 export type StampPaintTarget = { kind: 'plain' } | { kind: 'array'; layers: number };
 
 /**
+ * sRGB's transfer, both ways, the one copy in WGSL: a compositor's paper, group, outside and output pieces call
+ * srgbDecoded and srgbEncoded, and every module assembling them (or adding light, as glow does) declares this once.
+ */
+export const STAMP_SRGB_WGSL = /* wgsl */ `
+fn srgbDecoded(c: vec3f) -> vec3f { return select(pow((c + 0.055) / 1.055, vec3f(2.4)), c / 12.92, c <= vec3f(0.04045)); }
+fn srgbEncoded(c: vec3f) -> vec3f { return select(1.055 * pow(c, vec3f(1.0 / 2.4)) - 0.055, c * 12.92, c <= vec3f(0.0031308)); }`;
+
+/**
  * A way of mixing paint: WGSL for four passes, each defining the functions its pass calls and binding its own
  * resources. The renderer declares `layer` and `painting` from `targets`, and in the deposit pass `paint`, the
  * compositor's PaintDeposit, and `u.paperDepth`; in the group pass `u.group` (its index) and `u.paper`, for
@@ -266,12 +274,10 @@ fn layGroup(pixel: vec2u, glaze: bool, opacity: f32) {
     // Laid in linear light, as three composites it, though flat paint mixes gamma-encoded: an outside layer's
     // antialiased edge is coverage of light, and an opaque pixel comes out the colour rendered either way.
     outside: /* wgsl */ `
-fn outsideDecoded(c: vec3f) -> vec3f { return select(pow((c + 0.055) / 1.055, vec3f(2.4)), c / 12.92, c <= vec3f(0.04045)); }
-fn outsideEncoded(c: vec3f) -> vec3f { return select(1.055 * pow(c, vec3f(1.0 / 2.4)) - 0.055, c * 12.92, c <= vec3f(0.0031308)); }
 fn layOutside(pixel: vec2u, over: vec4f) {
   let under = textureLoad(painting, pixel);
-  let light = over.rgb + outsideDecoded(under.rgb) * (1.0 - over.a);
-  textureStore(painting, pixel, vec4f(outsideEncoded(clamp(light, vec3f(0.0), vec3f(1.0))), over.a + under.a * (1.0 - over.a)));
+  let light = over.rgb + srgbDecoded(under.rgb) * (1.0 - over.a);
+  textureStore(painting, pixel, vec4f(srgbEncoded(clamp(light, vec3f(0.0), vec3f(1.0))), over.a + under.a * (1.0 - over.a)));
 }`,
     output: /* wgsl */ `fn screenColor(pixel: vec2u) -> vec3f { return textureLoad(painting, pixel, 0).rgb; }`,
   };

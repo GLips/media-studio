@@ -47,7 +47,7 @@ export const drawnImages = (gate: StampGatePainting) => {
 
 /** `renderer`'s frame at `t` in frame state `state`, once the GPU has drawn it. */
 export async function drawn(renderer: StampPaintRenderer, frame: () => Uint8ClampedArray, t: number, state?: StampPaintFrameState) {
-  await renderer.draw(t, state);
+  await renderer.draw({ t, state });
   await renderer.finish();
   return frame();
 }

@@ -51,7 +51,7 @@ async function paintAndMeasure(painting: CompiledStampPaint, foreign: PhotoshopF
   const surface = await createStampPaintSurface({ canvas, width: W, height: H }, (asset) => stampPaintPackAssetUrl(packUrls, asset));
   try {
     const renderer = await createStampPaintRenderer(surface, painting, { color: '#ffffff' }, { kind: 'flat' });
-    await renderer.draw(0);
+    await renderer.draw({ t: 0 });
     return { ...(withPng && { png: canvas.toDataURL('image/png') }), profile: measureStrokeCoverage(clearPhotoshopForeignPaint(paintedCoverage(canvas), W, H, foreign), W, H) };
   } finally {
     surface.dispose();

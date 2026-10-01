@@ -202,21 +202,27 @@ elements, which is what keeps objects from showing through each other.
 **Planes and the camera (multiplane).** Give a root node `anchor: { plane: depth }` to stand its tree on a plane
 that far from the camera (1 is where a pan's pixels are measured; nearer is under 1). Paint each plane the size it
 should look before the camera moves: at rest nothing changes. Pass `camera: { stage: stampStage({ width, height },
-margin), plays }` to `buildPaintMotion`, and the same margin to `<StampPainting margin>`: the renderer paints that far
-past the frame, so a camera move brings in paint, not paper's edge. Plays are
+margin), plays }` to `buildPaintMotion`, and its stage to the painting, `<StampPainting stage={motion.camera.stage}>`
+(it refuses a stage whose frame isn't its own size): the renderer paints that far past the frame, so a camera move
+brings in paint, not paper's edge. Plays are
 `paintCameraPlay({ kind: 'move', keys: [{ at, pan?: { x, y }, dolly?, zoom?, roll?, ease? }] }, { clock, origin })`,
 and `{ kind: 'focus', keys: [{ at, focus, aperture }] }` for depth of field: `focus` is the depth held sharp,
-`aperture` the blur (px sigma) a far plane gets. A pan of 100 moves a plane at depth 2 by 50 and one at 0.5 by 200;
-a dolly grows near planes more than far ones. Keep the camera on ones: held on twos it judders. Mark the
-background `backdrop: true` and the build fails if the camera would show past it; give the frog `glow: { amount,
-radius, threshold }` for a soft light. Untouched groups and `anchor: 'canvas'` (titles) never move with the camera.
+`aperture` the defocus (px of gaussian sigma) a plane at infinity gets. A pan of 100 moves a plane at depth 2 by 50
+and one at 0.5 by 200; a dolly grows near planes more than far ones. Keep the camera on ones: held on twos it judders.
+Mark the background `backdrop: true` and the build fails if the camera would show past it; give the frog
+`glow: { amount, sigma, threshold }` for a soft light. A frame state's own `defocus` and a glow's `sigma` are px of
+gaussian sigma, grown with the plane. Untouched groups and `anchor: 'canvas'` (titles) never move with the camera.
 
 **3D layers in a painting.** `<PaintedThreeScene painting style t frame camera three={{ fov, layers, paintedTextures }}>`
-lays a three.js scene into the painting's group order, `beneath` a group, on the painting's own GPU device; its camera
-follows the paint camera, so a layer at `depth` moves as a plane there, and takes its defocus. A layer's `build` gets
-the world (`paintPlaneWorldPoint(world, px, depth)` places a mesh; a px on a plane at depth d is d units) and the
-painted textures, each a painting drawn every frame for a material (`paintedThreeColorNode`). Memoise `three`: a new
-array reloads the device. The frog project's `frogDepth` and the round-trip project are worked examples.
+lays a three.js scene into the painting's group order, `beneath` a group, on the painting's own GPU device. It applies
+the camera itself, to the planes and to three's camera alike, so give it `frame` as it stands before the camera step
+(not `paintCameraFrameStateAt`'s). A layer has a `depth`, and the camera is built with it
+(`buildPaintCamera(painting, { ..., outsideLayers: three.layers })`), which holds it in front of the camera; it moves
+and defocuses as a plane there. A layer's `build` gets the world, its own `plane` (`plane.point(px)` places a mesh,
+`plane.length(px)` sizes it, both at the layer's depth) and the painted textures, each a painting drawn every frame
+for a material (`paintedThreeColorNode`). `poseAt` returns a key of what it shows: it must change whenever the render
+does, or a frame restores a stale one. Memoise `three`: a new array reloads the device. The frog project's
+`frogDepth` and the round-trip project are worked examples.
 
 Hold motion on twos (`clock: { hold: 2 }` on the node, at `PAINT_ANIMATION_FPS`) and let the paint-in run on ones: a
 node's hold never reaches its reveal. Run `studio repeatable`

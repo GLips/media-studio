@@ -12,10 +12,10 @@ import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group
 import { stampLiveGroupProblem, type StampGroupFrameState, type StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { CompiledStampGroup } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import { paintCameraFrameStateAt } from './paint-camera.ts';
+import { paintCameraFrameStateAt, paintGlowScaled } from './paint-camera.ts';
 import { paintBoilEpochAt, paintLanePlayAt, paintNodeTimeAt, paintPlayClipTimeAt, sceneSeconds, type SceneSeconds } from './paint-clock.ts';
 import {
-  paintPlacementIsRest, paintPlacementRounded, paintPxRounded, paintRatioSteps, paintWarpChainKey, paintWarpChainMap,
+  paintPlacementIsRest, paintPlacementRounded, paintRatioSteps, paintWarpChainKey, paintWarpChainMap,
   type PaintDeform, type PaintPinMoved, type PaintWarpChain,
 } from './paint-deform.ts';
 import { paintKeyNumbers } from './paint-pins.ts';
@@ -116,8 +116,8 @@ function nodeFrameAt(motion: PaintMotion, node: CompiledPaintNode, t: SceneSecon
   const laid = lay && !paintPlacementIsRest(lay) ? lay : null;
   return {
     ...(laid && { lay: { placement: laid, pivot: node.pivot } }),
-    // A glow's radius is in rest px: it grows with the group's lay, and the camera step grows it on.
-    ...(node.glow && { glow: { ...node.glow, radius: paintPxRounded(node.glow.radius * (laid?.scale ?? 1)) } }),
+    // A glow's sigma is in rest px: it grows with the group's lay, and the camera step grows it on.
+    ...(node.glow && { glow: paintGlowScaled(node.glow, laid?.scale ?? 1) }),
     ...(warp.length && { warp: { map: paintWarpChainMap(warp), key: paintWarpChainKey(warp) } }),
     ...(live ? { marks: { kind: 'live', ...live } } : node.group.boil && { marks: { kind: 'written', epoch } }),
   };

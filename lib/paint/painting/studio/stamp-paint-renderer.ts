@@ -34,7 +34,7 @@ import type { FrozenStampMarks } from '#lib/paint/brush/models/stamp-placement.t
 import { STAMP_FLOATS, STAMP_ORDERED_TILE, stampBinsAppended, stampInstanceFloats, stampMarksExtremes, stampMarksOrderedBins, stampMarksPlan, stampMarksReachOfFirst, stampTintFloats, TINT_FLOATS } from '../models/stamp-mark-load.ts';
 import { stampBlurRegion, type StampPixelBox } from '../models/stamp-blur-region.ts';
 import { coarsestStampTipLevel, STAMP_TIP_HULL_SIDES, type StampTipHull, type StampTipLevel } from '../models/stamp-tip-hull.ts';
-import { flatStampPaintCompositor, type StampPaintCompositor, type StampPaintTarget, type StampWashLayer } from './stamp-paint-compositor.ts';
+import { flatStampPaintCompositor, STAMP_SRGB_WGSL, type StampPaintCompositor, type StampPaintTarget, type StampWashLayer } from './stamp-paint-compositor.ts';
 import { stampPigmentCompositor } from './stamp-paint-pigment-compositor.ts';
 import { FULL_FRAME_WGSL, type StampPaintDevice, type StampPaintImage } from './stamp-paint-gpu.ts';
 import type { StampPaintGpuScope, StampPaintSurface } from './stamp-paint-surface.ts';
@@ -42,7 +42,7 @@ import { stampUniformLayout, stampUniformStruct, stampUniformWriter, type StampU
 import { STAMP_WET_STAGES, stampWetStageReach, type StampLoadedWetStage, type StampWetStage, type StampWetDepositMoment, type StampWetDryingMoment, type StampWetStageContext } from './stamp-wet-stages.ts';
 import { stampPaintCheckpoints } from './stamp-paint-checkpoints.ts';
 import { STAMP_LAYER_CACHE_READ_REACH, stampPaintLayerCache } from './stamp-paint-layer-cache.ts';
-import { STAMP_GAUSSIAN_PASS, STAMP_GLOW_SOURCE, STAMP_SRGB_WGSL, stampGaussianPassWgsl, stampGlowSourceWgsl, type StampGlowCover } from './stamp-paint-defocus-glow.ts';
+import { STAMP_GAUSSIAN_PASS, STAMP_GLOW_SOURCE, stampGaussianPassWgsl, stampGlowSourceWgsl, type StampGlowCover } from './stamp-paint-defocus-glow.ts';
 import { stampDefocusSigmaStepped, stampGaussianReach, stampGrownBox, stampLayScale } from '../models/stamp-defocus.ts';
 import { stampPaintEvents } from '../models/stamp-paint-events.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
@@ -553,6 +553,7 @@ fn paperColor(image: texture_2d<f32>, paperSampler: sampler, p: Paper, at: vec2f
 const paperWgsl = (compositor: StampPaintCompositor, stage: StampStage) => /* wgsl */ `
 ${stampStageWgsl(stage)}
 ${stampPaintTargetWgsl('painting', 2, compositor.targets.painting, 'write')}
+${STAMP_SRGB_WGSL}
 ${compositor.paper}
 ${PAPER_COLOR_WGSL}
 @group(0) @binding(0) var<uniform> u: Paper;
@@ -585,6 +586,7 @@ ${stampStageWgsl(stage)}
 ${stampPaintTargetWgsl('layer', 1, layer, null)}
 ${stampPaintTargetWgsl('painting', 2, painting, 'read_write')}
 ${PAPER_COLOR_WGSL}
+${STAMP_SRGB_WGSL}
 ${GROUP.wgsl}
 @group(0) @binding(0) var<uniform> u: Group;
 fn groupUnderAt(pixel: vec2u, i: u32) -> vec4f { return ${paintingAt}; }
@@ -665,9 +667,9 @@ const outputWgsl = (compositor: StampPaintCompositor, dithered: boolean, stage: 
 ${stampStageWgsl(stage)}
 ${FULL_FRAME_WGSL}
 ${stampPaintTargetWgsl('painting', 0, compositor.targets.painting, null)}
+${STAMP_SRGB_WGSL}
 ${compositor.output}
-${glowing ? `${STAMP_SRGB_WGSL}
-@group(0) @binding(1) var light: texture_2d<f32>;` : ''}
+${glowing ? '@group(0) @binding(1) var light: texture_2d<f32>;' : ''}
 @fragment fn output(@builtin(position) at: vec4f) -> @location(0) vec4f {
   let pixel = vec2u(at.xy);
   let painted = screenColor(pixel + vec2u(STAGE_MARGIN));
@@ -875,27 +877,32 @@ type LoadedRegions = {
   withins: ReadonlyMap<CompiledStampPass, RegionTexture | null>;
 };
 
-export type StampPaintRenderer = {
+/** A frame of a painting: `t` seconds into its scene, each group in `state` (as painted where it gives none). */
+export type StampPaintFrame = { t: number; state?: StampPaintFrameState };
+/** A frame of a painting drawn with outside layers: each one's state too, every one, its texture filled for it. */
+export type StampOutsideLayeredFrame = StampPaintFrame & { outside: StampOutsideFrameState };
+
+/** A frame either renderer takes: the one implementation behind both. */
+type AnyStampPaintFrame = StampPaintFrame & { outside?: StampOutsideFrameState };
+
+/** A renderer drawing frames as `Frame` gives them: a renderer made with outside layers takes their state in each. */
+export type StampPaintRenderer<Frame extends StampPaintFrame = StampPaintFrame> = {
   /** The stage it paints on: its targets' size, and the frame its output shows. */
   stage: StampStage;
-  /**
-   * Draws `painting` at `t` seconds into its scene, each group in `frame`'s state (as painted where it gives none),
-   * each outside layer in `outside`'s (every one needs one), its texture filled for this frame. Resolves once WebGPU
-   * has checked the draw, or rejects with its error: hold the frame until then.
-   */
-  draw: (t: number, frame?: StampPaintFrameState, outside?: StampOutsideFrameState) => Promise<void>;
+  /** Draws `frame`. Resolves once WebGPU has checked the draw, or rejects with its error: hold the frame until then. */
+  draw: (frame: Frame) => Promise<void>;
   /** Resolves once the GPU has finished what's been drawn: for timing a draw, which a render never needs. */
   finish: () => Promise<void>;
   /**
-   * Draws the frame at `t` as `draw` does, recording each requested deposit's resolve stage by stage, read back once:
-   * for diagnosing a brush against a capture, not for rendering. Throws on a deposit not in the painting or asked for twice.
+   * Draws `frame` as `draw` does, recording each requested deposit's resolve stage by stage, read back once: for
+   * diagnosing a brush against a capture, not for rendering. Throws on a deposit not in the painting or asked for twice.
    */
-  trace: (t: number, requests: readonly StampDepositTraceRequest[], frame?: StampPaintFrameState) => Promise<StampDepositTrace[]>;
+  trace: (frame: Frame, requests: readonly StampDepositTraceRequest[]) => Promise<StampDepositTrace[]>;
   /**
-   * Draws the frame at `t` as `draw` does and reads back the layer its last group left, before that group dried
-   * into the painting: for checking what the compositor laid (the GPU gate's pigment checks), not for rendering.
+   * Draws `frame` as `draw` does and reads back the layer its last group left, before that group dried into the
+   * painting: for checking what the compositor laid (the GPU gate's pigment checks), not for rendering.
    */
-  readLayer: (t: number, frame?: StampPaintFrameState) => Promise<StampLayerReadback>;
+  readLayer: (frame: Frame) => Promise<StampLayerReadback>;
   /** Frees what the painting loaded; its surface stays for the next. */
   dispose: () => void;
   /**
@@ -924,16 +931,17 @@ export type StampPaintRendererOptions = {
   profile?: FrameProfileStart | null;
   /** The wet stages its washes run: every one, but for a check measuring what some do. */
   wetStages?: readonly StampWetStage[];
-  /** Layers rendered by someone else and laid in the painting's order (stamp-outside-layer.ts), on the surface's device. */
-  outsideLayers?: readonly StampOutsideLayer[];
   /**
-   * Px of stage past each side of the frame (stamp-stage.ts), even, 0 by default: as far as a camera moving the
-   * painting's groups may bring in from off the frame.
+   * The stage it paints on (stamp-stage.ts), its frame the surface's size: as far past the frame as a camera moving
+   * the painting's groups may bring in. The frame alone, no margin, when left out.
    */
-  margin?: number;
-  /** The most bytes its cached settled layers hold (stamp-paint-layer-cache.ts); 0 keeps none, to measure what they save. */
-  layerCacheBudget?: number;
+  stage?: StampStage;
+  /** Whether it keeps settled layers for frames laying them elsewhere (stamp-paint-layer-cache.ts); false to measure what they save. */
+  cachesLayers?: boolean;
 };
+
+/** A renderer's options with layers rendered by someone else, laid in the painting's order (stamp-outside-layer.ts), on the surface's device. */
+export type StampOutsideLayeredRendererOptions = StampPaintRendererOptions & { outsideLayers: readonly StampOutsideLayer[] };
 
 /** The most lattice cells a frame lays `group` through: a warp's most, a move's one, none still. */
 const latticeCellsMost = ({ lay, warp }: StampGroupFrame) => (warp ? STAMP_WARP_MOST_CELLS ** 2 : Number(!!lay));
@@ -944,11 +952,20 @@ const latticeCellsMost = ({ lay, warp }: StampGroupFrame) => (warp ? STAMP_WARP_
  * "Same pixels"). No render fps reaches it: a boil counts animation frames (stampBoilEpoch).
  */
 export async function createStampPaintRenderer(
+  surface: StampPaintSurface, painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, options: StampOutsideLayeredRendererOptions,
+): Promise<StampPaintRenderer<StampOutsideLayeredFrame>>;
+export async function createStampPaintRenderer(
+  surface: StampPaintSurface, painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, options?: StampPaintRendererOptions & { outsideLayers?: never },
+): Promise<StampPaintRenderer>;
+export async function createStampPaintRenderer(
   surface: StampPaintSurface, painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing,
-  { profile, wetStages = STAMP_WET_STAGES, outsideLayers = [], margin = 0, layerCacheBudget }: StampPaintRendererOptions = {},
-): Promise<StampPaintRenderer> {
+  { profile, wetStages = STAMP_WET_STAGES, outsideLayers = [], stage: given, cachesLayers = true }: StampPaintRendererOptions & { outsideLayers?: readonly StampOutsideLayer[] } = {},
+): Promise<StampPaintRenderer<AnyStampPaintFrame>> {
   const span = profile ?? (() => () => {});
-  const stage = stampStage({ width: surface.width, height: surface.height }, margin);
+  const stage = given ?? stampStage({ width: surface.width, height: surface.height });
+  if (stage.frame.width !== surface.width || stage.frame.height !== surface.height) {
+    throw new Error(`stamp paint: the stage's frame is ${stage.frame.width} × ${stage.frame.height}, and its surface ${surface.width} × ${surface.height}`);
+  }
   let done = span('stamp paint compositor load');
   const { compositorOn, wetnessOf, mediumOf } = compositorFor(painting, paper, mixing, stage, wetStages);
   done();
@@ -971,7 +988,7 @@ export async function createStampPaintRenderer(
   const scope = surface.scope();
   try {
     const loading = surface.checked('loading the painting onto the GPU', () =>
-      rendererOnSurface(surface, stage, scope, compositorOn, wetnessOf, mediumOf, painting, paper, image, bound, tipLevels, wetStages, outsideLayers, layerCacheBudget, span));
+      rendererOnSurface(surface, stage, scope, compositorOn, wetnessOf, mediumOf, painting, paper, image, bound, tipLevels, wetStages, outsideLayers, cachesLayers, span));
     // The load itself ran within the call: what's left is WebGPU's check of it.
     done = span('stamp paint gpu check load');
     const renderer = await loading;
@@ -1012,9 +1029,9 @@ function rendererOnSurface(
   surface: StampPaintSurface, stage: StampStage, scope: StampPaintGpuScope, compositorOn: (device: StampPaintDevice) => StampPaintCompositor,
   wetnessOf: ((groups: CompiledStampPaint) => StampWetness) | null, mediumOf: ((group: Pick<CompiledStampGroup, 'id'>) => PaintMedium) | null, painting: CompiledStampPaint, paper: StampPaintPaper,
   image: (source: StampBrushImageSource) => StampPaintImage, bound: ReadonlyMap<CompiledStampDeposit, StampBrush<StampPaintImage>>,
-  tipLevels: ReadonlyMap<StampPaintImage, StampTipLevel[]>, wetStages: readonly StampWetStage[], outsideLayers: readonly StampOutsideLayer[], layerCacheBudget: number | undefined,
+  tipLevels: ReadonlyMap<StampPaintImage, StampTipLevel[]>, wetStages: readonly StampWetStage[], outsideLayers: readonly StampOutsideLayer[], cachesLayers: boolean,
   span: FrameProfileStart,
-): StampPaintRenderer {
+): StampPaintRenderer<AnyStampPaintFrame> {
   const { width, height, frame, margin } = stage, { format } = surface, { device } = scope;
   const outsidePlaces = stampOutsideLayerPlaces(painting, outsideLayers);
   for (const layer of outsideLayers) checkStampOutsideLayerTexture(layer, stage);
@@ -2031,22 +2048,22 @@ function rendererOnSurface(
     gaussianPass(encoder, { source: scratch, into: layerArray, layers: layerLayers, axis: 1, sigma, read: grown, box: stampGrownBox(grown, STAMP_LAYER_CACHE_READ_REACH, width, height) });
     return grown;
   }
-  /** The sigma, layer px, group `groupFrame`'s defocus takes over its layer painted over `painted`: its blur over the lay's scale there, stepped. */
-  function defocusSigma({ blur, lay, warp }: StampGroupFrame, painted: Box) {
-    return stampDefocusSigmaStepped(blur / stampLayScale(lay, warp, { x: painted.x - margin + painted.w / 2, y: painted.y - margin + painted.h / 2 }));
+  /** The sigma, layer px, group `groupFrame`'s defocus takes over its layer painted over `painted`: its stage sigma over the lay's scale there, stepped. */
+  function defocusSigma({ defocus, lay, warp }: StampGroupFrame, painted: Box) {
+    return stampDefocusSigmaStepped(defocus / stampLayScale(lay, warp, { x: painted.x - margin + painted.w / 2, y: painted.y - margin + painted.h / 2 }));
   }
   /** The key of the layer cached under `layerKey` defocused for `groupFrame`: its sigma names it whatever lay gave it. */
   const defocusedLayerKey = (layerKey: string, groupFrame: StampGroupFrame, painted: Box) => `${layerKey}|sigma${defocusSigma(groupFrame, painted)}`;
-  /** Outside layer `layer`'s texture defocused by its blur over the stage, into a scratch target; returns its view. */
+  /** Outside layer `layer`'s texture defocused by its sigma over the stage, into a scratch target; returns its view. */
   function defocusOutsideLayer(encoder: GPUCommandEncoder, layer: StampOutsideLayerFrame): GPUTextureView {
     const whole = { x: 0, y: 0, w: width, h: height }, across = lensTarget('lensA'), defocused = lensTarget('lensB');
-    gaussianPass(encoder, { source: outsideArrayViews[layer.slot], into: across.array, layers: 1, axis: 0, sigma: layer.blur, read: whole, box: whole });
-    gaussianPass(encoder, { source: across.array, into: defocused.array, layers: 1, axis: 1, sigma: layer.blur, read: whole, box: whole });
+    gaussianPass(encoder, { source: outsideArrayViews[layer.slot], into: across.array, layers: 1, axis: 0, sigma: layer.defocus, read: whole, box: whole });
+    gaussianPass(encoder, { source: across.array, into: defocused.array, layers: 1, axis: 1, sigma: layer.defocus, read: whole, box: whole });
     return defocused.view;
   }
   /**
    * Adds `glow` of what was just laid over `box` to the frame's light: its source (glowSource, from `cover` bound with
-   * `resources`) blurred by its radius on the stage. `lit` says whether the light holds this frame's glow yet.
+   * `resources`) blurred by its sigma on the stage. `lit` says whether the light holds this frame's glow yet.
    */
   function addGlow(encoder: GPUCommandEncoder, glow: StampGroupGlow, box: Box, lit: boolean, source: { cover: StampGlowCover; strength: number; glaze: boolean; resources: GPUBindingResource[] }) {
     const light = lightTarget(), sourced = lensTarget('lensA'), across = lensTarget('lensB');
@@ -2060,9 +2077,9 @@ function rendererOnSurface(
       put('origin', [box.x, box.y]);
       put('extent', [box.w, box.h]);
     }), targets.painting.view, sourced.view, ...source.resources], box.w, box.h);
-    const grown = stampGrownBox(box, stampGaussianReach(glow.radius), width, height);
-    gaussianPass(encoder, { source: sourced.array, into: across.array, layers: 1, axis: 0, sigma: glow.radius, read: box, box: grown });
-    gaussianPass(encoder, { source: across.array, into: light.array, layers: 1, axis: 1, sigma: glow.radius, read: grown, box: grown, accumulate: true, gain: glow.amount });
+    const grown = stampGrownBox(box, stampGaussianReach(glow.sigma), width, height);
+    gaussianPass(encoder, { source: sourced.array, into: across.array, layers: 1, axis: 0, sigma: glow.sigma, read: box, box: grown });
+    gaussianPass(encoder, { source: across.array, into: light.array, layers: 1, axis: 1, sigma: glow.sigma, read: grown, box: grown, accumulate: true, gain: glow.amount });
   }
 
   /** The stage's whole texels within painting points x0..x1, y0..y1, or null for none. */
@@ -2081,8 +2098,8 @@ function rendererOnSurface(
   // Made on the surface's device: they come and go as frames save them, and dispose destroys what's left.
   const checkpoints = stampPaintCheckpoints(surface.device, { painting: targets.painting.texture, layer: targets.layer.texture, clip: targets.clip.texture, light: () => lightTarget().texture });
   const groupEvents = stampGroupEvents(painting);
-  // Settled groups' painted layers, so a frame laying them elsewhere copies them back rather than painting them again.
-  const layerCache = stampPaintLayerCache(surface.device, targets.layer.texture, layerCacheBudget);
+  // Settled layers of groups whose lay varies, so a frame laying them elsewhere copies them back rather than painting them again.
+  const layerCache = stampPaintLayerCache(surface.device, targets.layer.texture, cachesLayers);
   /** The layer cached under `key` copied back into the layer target, timed when it's there. */
   function restoreGroupLayer(encoder: GPUCommandEncoder, key: string) {
     const restored = span('stamp paint layer restore');
@@ -2200,7 +2217,7 @@ function rendererOnSurface(
         if (layer.groupIndex !== index || layer.event < from) continue;
         save(layer.event, false, null);
         if (!layer.visibility) continue;
-        const view = layer.blur ? defocusOutsideLayer(encoder, layer) : outsideViews[layer.slot];
+        const view = layer.defocus ? defocusOutsideLayer(encoder, layer) : outsideViews[layer.slot];
         layOutsideLayer(encoder, layer, view);
         if (layer.glow) {
           addGlow(encoder, layer.glow, { x: 0, y: 0, w: width, h: height }, lit, { cover: 'outside', strength: layer.visibility, glaze: false, resources: [view] });
@@ -2215,9 +2232,9 @@ function rendererOnSurface(
      */
     const layGroupLooked = (index: number, groupFrame: StampGroupFrame, painted: Box | null, layerKey: string | null, defocused: boolean) => {
       if (!painted) return;
-      const { group, blur, glow, visibility } = groupFrame;
+      const { group, defocus, glow, visibility } = groupFrame;
       let laidFrom = painted;
-      if (blur && !defocused) {
+      if (defocus && !defocused) {
         laidFrom = defocusGroupLayer(encoder, defocusSigma(groupFrame, painted), painted);
         if (layerKey !== null) layerCache.save(encoder, defocusedLayerKey(layerKey, groupFrame, painted), laidFrom);
       }
@@ -2239,12 +2256,13 @@ function rendererOnSurface(
       save(first, false, null);
       // Hidden, none of it is drawn or loaded; the plan keys it so, and saves nothing within it.
       if (!visibility) continue;
-      // Painted from its start and settled, its layer is its paintKey's alone (stamp-paint-layer-cache.ts). No checkpoint
-      // falls within such a group, so skipping its events skips no save.
-      const layerKey = !whole && first >= from && end <= settled ? `${index}|${groupFrame.paintKey}` : null;
+      // Painted from its start and settled, its layer is its paintKey's alone (stamp-paint-layer-cache.ts). Kept only
+      // when the plan says it's laid otherwise than as painted: a still group after a moving one repaints instead. No
+      // checkpoint falls within such a group, so skipping its events skips no save.
+      const layerKey = !whole && layVaries && first >= from && end <= settled ? `${index}|${groupFrame.paintKey}` : null;
       // Its defocused layer is keyed by its sigma in the layer, which needs its sharp layer's box. A frame saving a
       // checkpoint at its end needs its layer sharp, so doesn't start from that one.
-      const sharp = layerKey !== null && groupFrame.blur && !(layVaries && savesAt(end, true)) ? layerCache.peek(layerKey) : null;
+      const sharp = layerKey !== null && groupFrame.defocus && !savesAt(end, true) ? layerCache.peek(layerKey) : null;
       const defocused = layerKey !== null && sharp?.painted ? restoreGroupLayer(encoder, defocusedLayerKey(layerKey, groupFrame, sharp.painted)) : null;
       if (defocused) {
         layGroupLooked(index, groupFrame, defocused.painted, null, true);
@@ -2252,7 +2270,7 @@ function rendererOnSurface(
       }
       const cached = layerKey === null ? null : restoreGroupLayer(encoder, layerKey);
       if (cached) {
-        if (layVaries) save(end, true, cached.painted);
+        save(end, true, cached.painted);
         layGroupLooked(index, groupFrame, cached.painted, layerKey, false);
         continue;
       }
@@ -2304,11 +2322,11 @@ function rendererOnSurface(
   return {
     stage,
     wetWarnings,
-    draw: async (t, state, outside) => {
+    draw: async ({ t, state, outside }) => {
       if (disposed) return;
       await surface.checked(`drawing the painting at ${t} s`, () => queue.submit([draw(t, { state, outside }).finish()]));
     },
-    trace: async (t, requests, state) => {
+    trace: async ({ t, state, outside }, requests) => {
       if (disposed) throw new Error('stamp paint: a disposed renderer traces nothing');
       const traced: FrameTrace['deposits'] = new Map();
       let floats = 0;
@@ -2325,7 +2343,7 @@ function rendererOnSurface(
       const read = surface.device.createBuffer({ size: bytes, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
       try {
         await surface.checked(`tracing the painting at ${t} s`, () => {
-          const encoder = draw(t, { frameTrace: { deposits: traced, buffer: traceBuffer }, state });
+          const encoder = draw(t, { frameTrace: { deposits: traced, buffer: traceBuffer }, state, outside });
           encoder.copyBufferToBuffer(traceBuffer, 0, read, 0, bytes);
           queue.submit([encoder.finish()]);
         });
@@ -2342,13 +2360,13 @@ function rendererOnSurface(
         read.destroy();
       }
     },
-    readLayer: async (t, state) => {
+    readLayer: async ({ t, state, outside }) => {
       if (disposed) throw new Error('stamp paint: a disposed renderer reads back nothing');
       const layers = targets.layer.layers.length, rowBytes = Math.ceil((width * 8) / 256) * 256;
       const read = surface.device.createBuffer({ size: rowBytes * height * layers, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
       try {
         await surface.checked(`reading back the layer at ${t} s`, () => {
-          const encoder = draw(t, { whole: true, state });
+          const encoder = draw(t, { whole: true, state, outside });
           encoder.copyTextureToBuffer({ texture: targets.layer.texture }, { buffer: read, bytesPerRow: rowBytes, rowsPerImage: height }, [width, height, layers]);
           queue.submit([encoder.finish()]);
         });

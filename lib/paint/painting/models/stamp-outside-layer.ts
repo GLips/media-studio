@@ -16,7 +16,7 @@ export type StampOutsideLayerSlot = { id: string; beneath: string | null };
  * An outside layer's state for one frame: `content` names its pixels (equal keys, equal pixels: the checkpoints after
  * it are held under it), and it takes a group's visibility, defocus and glow.
  */
-export type StampOutsideLayerState = Pick<StampGroupFrameState, 'visibility' | 'blur' | 'glow'> & { content: string };
+export type StampOutsideLayerState = Pick<StampGroupFrameState, 'visibility' | 'defocus' | 'glow'> & { content: string };
 
 /** Each outside layer's state by its id. Every declared outside layer needs one, every frame. */
 export type StampOutsideFrameState = ReadonlyMap<string, StampOutsideLayerState>;

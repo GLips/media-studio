@@ -226,10 +226,9 @@ const MOVE_G = array<vec4f, ${V}>(${vec4s(bands.correctionBasis[1], V)});
 const MOVE_B = array<vec4f, ${V}>(${vec4s(bands.correctionBasis[2], V)});
 const PAPER = array<vec4f, ${V}>(${vec4s(bands.reflectanceOf(paperRgb), V)});
 const PAPER_RGB = vec3f(${paperRgb.map(f32).join(', ')});
-fn paperLinear(c: vec3f) -> vec3f { return select(pow((c + 0.055) / 1.055, vec3f(2.4)), c / 12.92, c <= vec3f(0.04045)); }
 // The paper's reflectance in band vec4 \`i\`: its written colour's, moved as far as a photograph's pixel \`color\` differs (stampPigmentPaper).
 fn paperReflectance(i: u32, color: vec3f) -> vec4f {
-  let d = paperLinear(color) - PAPER_RGB;
+  let d = srgbDecoded(color) - PAPER_RGB;
   return clamp(PAPER[i] + MOVE_R[i] * d.r + MOVE_G[i] * d.g + MOVE_B[i] * d.b, vec4f(0.001), vec4f(0.999));
 }`;
 
@@ -565,8 +564,7 @@ fn screenColor(pixel: vec2u) -> vec3f {
     let R = textureLoad(painting, pixel, i, 0);
     rgb += vec3f(dot(TO_R[i], R), dot(TO_G[i], R), dot(TO_B[i], R));
   }
-  let c = clamp(rgb, vec3f(0.0), vec3f(1.0));
-  return select(1.055 * pow(c, vec3f(1.0 / 2.4)) - 0.055, c * 12.92, c <= vec3f(0.0031308));
+  return srgbEncoded(clamp(rgb, vec3f(0.0), vec3f(1.0)));
 }`,
   };
 }

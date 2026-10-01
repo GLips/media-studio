@@ -10,7 +10,7 @@ import { loadPaintedThreeScene, type PaintedThreeFrame, type PaintedThreeScene, 
  * then draws `frame` into it, each frame held until it's drawn and checked. Any new part of `spec` loads it anew, so
  * a scene memoises its layers and textures.
  */
-export function usePaintedThreeScene(spec: PaintedThreeSpec, { t, frame, pose, lens }: PaintedThreeFrame) {
+export function usePaintedThreeScene(spec: PaintedThreeSpec, { t, frame, camera }: PaintedThreeFrame) {
   const holder = useRef<HTMLDivElement>(null);
   const [loaded, setLoaded] = useState<PaintedThreeScene | null>(null);
   const { delayRender, continueRender, cancelRender } = useDelayRender();
@@ -51,8 +51,8 @@ export function usePaintedThreeScene(spec: PaintedThreeSpec, { t, frame, pose, l
   useLayoutEffect(() => {
     if (!loaded) return;
     const handle = delayRender('drawing the painted three.js scene and checking it for GPU errors');
-    loaded.draw({ t, frame, pose, lens }).then(() => continueRender(handle), cancelRender);
-  }, [loaded, t, frame, pose, lens, delayRender, continueRender, cancelRender]);
+    loaded.draw({ t, frame, camera }).then(() => continueRender(handle), cancelRender);
+  }, [loaded, t, frame, camera, delayRender, continueRender, cancelRender]);
 
   return holder;
 }

@@ -8,7 +8,7 @@
 
 import type { StampStage } from '../models/stamp-stage.ts';
 import { stampStageWgsl } from '../models/stamp-stage.ts';
-import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
+import { STAMP_SRGB_WGSL, type StampPaintCompositor } from './stamp-paint-compositor.ts';
 import { stampUniformLayout } from './stamp-uniform-layout.ts';
 
 /**
@@ -64,11 +64,6 @@ export type StampGlowCover = 'group' | 'moved group' | 'outside';
 
 /** A rest map's value where no lattice covers a pixel: the renderer's STAMP_NO_REST, halved as its group pass tests it. */
 const restMissing = (noRest: number) => `${noRest / 2}.0`;
-
-/** sRGB's transfer, both ways: screenColor is gamma-encoded, and light adds linearly. */
-export const STAMP_SRGB_WGSL = /* wgsl */ `
-fn srgbDecoded(c: vec3f) -> vec3f { return select(pow((c + 0.055) / 1.055, vec3f(2.4)), c / 12.92, c <= vec3f(0.04045)); }
-fn srgbEncoded(c: vec3f) -> vec3f { return select(1.055 * pow(c, vec3f(1.0 / 2.4)) - 0.055, c * 12.92, c <= vec3f(0.0031308)); }`;
 
 /**
  * The glow source pass's WGSL for `compositor` on `stage`: binds its uniform (0), the painting sampled (1), the glow

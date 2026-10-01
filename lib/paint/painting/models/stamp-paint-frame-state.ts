@@ -29,10 +29,10 @@ export type StampGroupMarks = { kind: 'written'; epoch: number } | { kind: 'live
 
 /**
  * The light a group gives off: its laid paint brighter than `threshold` (0..1, linear light), blurred by a gaussian of
- * `radius` px sigma on the stage and added `amount` times over the whole frame at the output, so it spills over what
- * stands in front of it, as a bloom does.
+ * `sigma` px on the stage and added `amount` times over the whole frame at the output, so it spills over what stands
+ * in front of it, as a bloom does.
  */
-export type StampGroupGlow = { amount: number; radius: number; threshold: number };
+export type StampGroupGlow = { amount: number; sigma: number; threshold: number };
 
 /**
  * One group's state for one frame; a field left out is as painted. A live group may be warped too: whatever bends
@@ -47,10 +47,10 @@ export type StampGroupFrameState = {
   /** 0..1, multiplying the group's lay; 0 draws none of it. */
   visibility?: number;
   /**
-   * Defocus: a gaussian of this sigma in stage px over the group's painted layer before it's laid (the film, not the
-   * light: exact for flat colour, a defocused film over a sharp backdrop for pigment). 0 or left out is sharp.
+   * A gaussian of this sigma in stage px over the group's painted layer before it's laid (the film, not the light:
+   * exact for flat colour, a defocused film over a sharp backdrop for pigment). 0 or left out is sharp.
    */
-  blur?: number;
+  defocus?: number;
   glow?: StampGroupGlow;
 };
 
@@ -80,7 +80,7 @@ export function stampPaintFrameStateAt(painting: CompiledStampPaint, t: number, 
   const merged = new Map<string, StampGroupFrameState>();
   for (const group of painting.groups) {
     const own = stampRecipeGroupState(group, t), written = given.get(group.id) ?? {};
-    for (const field of ['lay', 'warp', 'paintAt', 'visibility', 'blur', 'glow'] as const) {
+    for (const field of ['lay', 'warp', 'paintAt', 'visibility', 'defocus', 'glow'] as const) {
       if (own[field] !== undefined && written[field] !== undefined) throw new Error(`stamp paint: ${group.id}'s frame state gives its ${field}, and so does its recipe; one writes it`);
     }
     const state: StampGroupFrameState = Object.fromEntries(Object.entries({ ...own, ...written }).filter(([, value]) => value !== undefined));

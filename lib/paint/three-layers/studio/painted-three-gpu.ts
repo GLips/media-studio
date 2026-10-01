@@ -1,16 +1,18 @@
-// painted-three-gpu.ts: a painted scene with three.js in it, on one GPU device (vid-129's round trip, as lib). The
-// scene owns the device (createStampPaintDevice: stamp paint's needs are the stricter) and lends it to every stamp
-// renderer and to three. Each frame: painted textures are drawn; each three layer is posed, seen
-// through the paint camera and rendered into its outside layer's texture (setXRRenderTargetTextures); then the
-// painting is drawn onto the canvas, three's layers laid in its order. Nothing is read from an earlier frame.
+// painted-three-gpu.ts: a painted scene with three.js in it, on one GPU device (vid-129's round trip, as lib), which
+// the scene makes (stamp paint's needs are the stricter) and lends to every stamp renderer and to three. Each frame:
+// painted textures are drawn; each three layer is posed and rendered into its outside layer's texture
+// (setXRRenderTargetTextures); then the painting is drawn, three's layers laid in its order, planes and layers seen
+// through one camera step (paintCameraDepthLook). No frame reads an earlier one.
 //
 // Warning: error scopes are one stack per device. Every step pushes, works and pops before the next starts, loads run
 // one after another, and frames go through one queue, which dispose drains before letting anything go.
 
 import { HalfFloatType, PerspectiveCamera, RenderTarget, WebGPUBackend, WebGPURenderer, ExternalTexture, type Scene } from 'three/webgpu';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
-import { paintCameraPerspectiveAt, paintCameraWorld, type PaintCameraWorld } from '#lib/paint/animation/models/paint-camera-world.ts';
-import { PAINT_CAMERA_REST, paintPlaneDefocus, type PaintCameraFocus, type PaintCameraPose } from '#lib/paint/animation/models/paint-camera.ts';
+import { paintCameraPerspectiveAt, paintCameraWorld, paintWorldPlane, type PaintCameraWorld, type PaintWorldPlane } from '#lib/paint/animation/models/paint-camera-world.ts';
+import {
+  PAINT_CAMERA_REST, paintCameraDepthLook, paintCameraFrameStateAt, paintCameraViewAt, type PaintCamera, type PaintCameraPose,
+} from '#lib/paint/animation/models/paint-camera.ts';
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { StampOutsideLayerSlot, StampOutsideLayerState } from '#lib/paint/painting/models/stamp-outside-layer.ts';
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
@@ -44,24 +46,28 @@ export type PaintedThreeTexture = {
   frameAt?: (t: number) => StampPaintFrameState;
 };
 
-/** What a three layer's scene is built with: the world it shares with the planes, and each painted texture by id. */
-export type PaintedThreeLayerTools = { world: PaintCameraWorld; textures: ReadonlyMap<string, ExternalTexture> };
+/**
+ * What a three layer's scene is built with: the world it shares with the planes, its own plane there (at the layer's
+ * depth: place and size what it shows by it), and each painted texture by id.
+ */
+export type PaintedThreeLayerTools = { world: PaintCameraWorld; plane: PaintWorldPlane; textures: ReadonlyMap<string, ExternalTexture> };
 
 /**
- * A three layer's scene, built once at load. `poseAt` poses it at scene time t and returns its content's key: equal
- * keys, equal renders, the camera's pose and painted textures aside (the layer adds those). Materials are opaque, or
- * transparent with NormalBlending, so the render stays premultiplied (vid-129). `dispose` frees what it made.
+ * A three layer's scene, built once at load. `poseAt` poses it at scene time t and returns its content's key (the
+ * camera's pose and painted textures aside). Warning: it must change whenever the render does, or a checkpoint past
+ * the layer restores a stale frame; nothing checks it. Materials are opaque, or NormalBlending transparent: the
+ * render stays premultiplied.
  */
 export type PaintedThreeLayerScene = { scene: Scene; poseAt: (t: number) => string; dispose: () => void };
 
 /**
  * A three.js layer in the painted scene: an outside layer (its `id`, and the group it lies `beneath`) whose scene
- * `build` makes. At `depth` (a plane's depth units), the camera's focus defocuses it as it would a plane there.
- * `stateAt`: its visibility, blur or glow at t, beside the camera's defocus.
+ * `build` makes, on a plane at `depth`, which the camera is built with (buildPaintCamera's outsideLayers) and shows as
+ * a plane there. `stateAt`: its own visibility, defocus or glow at t, in anchor px, which the camera grows.
  */
 export type PaintedThreeLayer = StampOutsideLayerSlot & {
   build: (tools: PaintedThreeLayerTools) => PaintedThreeLayerScene;
-  depth?: number;
+  depth: number;
   stateAt?: (t: number) => Omit<StampOutsideLayerState, 'content'>;
 };
 
@@ -75,8 +81,11 @@ export type PaintedThreeSpec = {
   paintedTextures: readonly PaintedThreeTexture[];
 };
 
-/** One frame: scene time `t`, the painting's groups in `frame`'s state, and the multiplane camera's pose and focus. */
-export type PaintedThreeFrame = { t: number; frame?: StampPaintFrameState; pose: PaintCameraPose; lens: PaintCameraFocus | null };
+/**
+ * One frame: scene time `t`, the painting's groups in `frame`'s state before the camera step, and the multiplane
+ * `camera` the planes and three's layers are seen through (null for none: at rest, all sharp).
+ */
+export type PaintedThreeFrame = { t: number; frame?: StampPaintFrameState; camera: PaintCamera | null };
 
 /** A loaded painted three scene: frames drawn one at a time in the order asked; dispose waits for the one in hand. */
 export type PaintedThreeScene = { draw: (frame: PaintedThreeFrame) => Promise<void>; dispose: () => Promise<void> };
@@ -193,7 +202,7 @@ export async function loadPaintedThreeScene(canvas: HTMLCanvasElement, spec: Pai
         return [texture.id, external] as const;
       }));
       const loaded = await oneAfterAnother(threeLayers, async (layer): Promise<LoadedThreeLayer> => {
-        const built = layer.build({ world, textures });
+        const built = layer.build({ world, plane: paintWorldPlane(world, layer.depth), textures });
         made.push(built);
         const camera = new PerspectiveCamera();
         setPaintedThreeCamera(camera, world, PAINT_CAMERA_REST);
@@ -215,33 +224,34 @@ export async function loadPaintedThreeScene(canvas: HTMLCanvasElement, spec: Pai
       const surface = await createStampPaintSurface({ canvas, width: stage.frame.width, height: stage.frame.height, device }, stampPaintAssetUrl);
       made.push(surface);
       const renderer = await createStampPaintRenderer(surface, spec.painting, spec.style.paper, spec.style.mixing, {
-        profile, margin: stage.margin, outsideLayers: layers.map(({ layer: { id, beneath }, texture }) => ({ id, beneath, texture })),
+        profile, stage, outsideLayers: layers.map(({ layer: { id, beneath }, texture }) => ({ id, beneath, texture })),
       });
       made.push(renderer);
       return renderer;
     });
 
-    const drawFrame = async ({ t, frame, pose, lens }: PaintedThreeFrame) => {
+    const drawFrame = async ({ t, frame, camera }: PaintedThreeFrame) => {
+      const view = camera && paintCameraViewAt(camera, t), pose: PaintCameraPose = view?.pose ?? PAINT_CAMERA_REST;
       await timed(profile, device, 'painted textures', async () => {
-        await oneAfterAnother(painted, ({ texture, renderer }) => renderer.draw(t, texture.frameAt?.(t)));
+        await oneAfterAnother(painted, ({ texture, renderer }) => renderer.draw({ t, state: texture.frameAt?.(t) }));
       });
       // The painted textures' paint changes with t: a layer that reads one is keyed by it.
       const paintedKey = painted.length ? `|painted@${t}` : '';
-      const outside = await timed(profile, device, 'three render', async () => new Map(await oneAfterAnother(layers, async ({ layer, built, camera, target }) => {
+      const outside = await timed(profile, device, 'three render', async () => new Map(await oneAfterAnother(layers, async ({ layer, built, camera: threeCamera, target }) => {
         const content = `${built.poseAt(t)}|camera ${JSON.stringify(pose)}${paintedKey}`;
-        setPaintedThreeCamera(camera, world, pose);
+        setPaintedThreeCamera(threeCamera, world, pose);
         await checkedOnPaintedThreeDevice(device, `three.js rendering layer ${layer.id}`, () => {
           three.setRenderTarget(target);
-          three.render(built.scene, camera);
+          three.render(built.scene, threeCamera);
           three.setRenderTarget(null);
         });
-        const own = layer.stateAt?.(t) ?? {};
-        const defocus = lens && layer.depth !== undefined ? paintPlaneDefocus(lens, pose.dolly, layer.depth) : 0;
-        const blur = Math.hypot(own.blur ?? 0, defocus);
-        const state: StampOutsideLayerState = { ...own, ...(blur > 0 && { blur }), content };
+        const { defocus: ownDefocus = 0, glow: ownGlow, ...own } = layer.stateAt?.(t) ?? {};
+        const { defocus, glow } = view ? paintCameraDepthLook(view, `3D layer ${layer.id}`, layer.depth, { defocus: ownDefocus, glow: ownGlow }) : { defocus: ownDefocus, glow: ownGlow };
+        const state: StampOutsideLayerState = { ...own, ...(defocus > 0 && { defocus }), ...(glow && { glow }), content };
         return [layer.id, state] as const;
       })));
-      await timed(profile, device, 'stamp paint', () => main.draw(t, frame, outside));
+      const state = camera ? paintCameraFrameStateAt(camera, frame ?? new Map(), t) : frame;
+      await timed(profile, device, 'stamp paint', () => main.draw({ t, state, outside }));
     };
 
     let frames = Promise.resolve(), closed = false;

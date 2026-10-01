@@ -16,30 +16,34 @@ import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { useFrameProfile } from '#lib/picture/profiling/studio/frame-profile.ts';
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { stampStage, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import type { ResolvedStampPaintStyle } from '../models/style.ts';
 import { stampPaintAssetUrl } from './stamp-paint-styles.ts';
 
 /**
- * Draws `painting` in `style` (its paper and mixing) as it stands `t` seconds in (a scene's `s.t`), each group in
- * `frame`'s state, `width` by `height` of its own pixels (the frame's size unless given), stretched over `box` (the
- * whole frame unless given). `margin`: even px of stage past each side (stamp-stage.ts), as far as lays bring in.
+ * Draws `painting` in `style` as it stands `t` seconds in (a scene's `s.t`), each group in `frame`'s state, `width`
+ * by `height` of its own pixels (the frame's size unless given), stretched over `box` (the whole frame unless given).
+ * `stage`: a camera's (camera.stage), its frame those pixels, so the margin is the one its checks held a backdrop to.
  */
-export function StampPainting({ painting, style, t, frame, width, height, margin = 0, box: given }: {
+export function StampPainting({ painting, style, t, frame, width, height, stage, box: given }: {
   painting: CompiledStampPaint;
   style: Pick<ResolvedStampPaintStyle, 'paper' | 'mixing'>;
   t: number;
   frame?: StampPaintFrameState;
   width?: number;
   height?: number;
-  margin?: number;
+  stage?: StampStage;
   box?: { x: number; y: number; w: number; h: number };
 }) {
   const paper = useStampStyleContent(style.paper), mixing = useStampStyleContent(style.mixing);
   const format = useVideoFormat();
   const box = given ?? fullFrameRect(format);
   const w = Math.round(width ?? box.w), h = Math.round(height ?? box.h);
+  if (stage && (stage.frame.width !== w || stage.frame.height !== h)) throw new Error(`stamp painting: its stage's frame is ${stage.frame.width} × ${stage.frame.height}, and its pixels ${w} × ${h}`);
+  // A stage is its frame and margin alone, so the margin keys the load: a new but equal stage loads nothing again.
+  const margin = stage?.margin ?? 0;
   const holder = useRef<HTMLDivElement>(null);
   const [surface, setSurface] = useState<StampPaintSurface | null>(null);
   const [renderer, setRenderer] = useState<StampPaintRenderer | null>(null);
@@ -86,7 +90,7 @@ export function StampPainting({ painting, style, t, frame, width, height, margin
     };
     const loaded = profile?.('stamp paint load');
     // A load given up as its surface goes may fail for want of the device; only a live one's failure is the frame's.
-    createStampPaintRenderer(surface, painting, paper, mixing, { profile, margin }).then((ready) => {
+    createStampPaintRenderer(surface, painting, paper, mixing, { profile, stage: stampStage({ width: surface.width, height: surface.height }, margin) }).then((ready) => {
       loaded?.();
       made = ready;
       if (!live) return ready.dispose();
@@ -107,7 +111,7 @@ export function StampPainting({ painting, style, t, frame, width, height, margin
     if (!renderer) return;
     const handle = delayRender('checking the stamp painting drew without a GPU error');
     const drawn = profile?.('stamp paint');
-    const checked = renderer.draw(t, frame);
+    const checked = renderer.draw({ t, state: frame });
     // Profiling also holds the frame until the GPU is done, to time the drawing rather than its queueing.
     (drawn ? checked.then(() => renderer.finish()).then(drawn) : checked).then(() => continueRender(handle), cancelRender);
   }, [renderer, t, frame, profile, delayRender, continueRender, cancelRender]);

@@ -118,10 +118,10 @@ test('an outside layer is keyed into the checkpoints after it only, and what lie
 test("a group's defocus and glow key the checkpoints after its lay, a glow of amount 0 keying as none, and are checked", () => {
   const sac = sacPainting(), sacPlan = (state: StampPaintFrameState) => stampFramePlan(sac, stampGroupEvents(sac), stampPaintEvents(sac), 9, state);
   const after = stampGroupEvents(sac)[1].end + 1;
-  const glow = { amount: 1, radius: 4, threshold: 0.5 };
-  assert.notEqual(sacPlan(new Map([['sac', { blur: 2 }]])).checkpointKey(after), sacPlan(new Map([['sac', { blur: 3 }]])).checkpointKey(after));
+  const glow = { amount: 1, sigma: 4, threshold: 0.5 };
+  assert.notEqual(sacPlan(new Map([['sac', { defocus: 2 }]])).checkpointKey(after), sacPlan(new Map([['sac', { defocus: 3 }]])).checkpointKey(after));
   assert.notEqual(sacPlan(new Map([['sac', { glow }]])).checkpointKey(after), sacPlan(new Map([['sac', {}]])).checkpointKey(after));
-  assert.equal(sacPlan(new Map([['sac', { glow: { ...glow, amount: 0 }, blur: 0 }]])).checkpointKey(after), sacPlan(new Map([['sac', {}]])).checkpointKey(after));
-  assert.throws(() => sacPlan(new Map([['sac', { blur: -1 }]])), /sac's blur is -1/);
+  assert.equal(sacPlan(new Map([['sac', { glow: { ...glow, amount: 0 }, defocus: 0 }]])).checkpointKey(after), sacPlan(new Map([['sac', {}]])).checkpointKey(after));
+  assert.throws(() => sacPlan(new Map([['sac', { defocus: -1 }]])), /sac's defocus is -1/);
   assert.throws(() => sacPlan(new Map([['sac', { glow: { ...glow, threshold: 2 } }]])), /sac's glow/);
 });

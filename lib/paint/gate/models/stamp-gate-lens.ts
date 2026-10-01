@@ -13,7 +13,7 @@ import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 export const STAMP_GATE_LENS_IDS = ['lens/defocus', 'lens/glow', 'lens/outside'];
 
 const LENS_SIZE = { width: 160, height: 100 };
-/** The defocus case's blur, stage px, and the scale it's also laid at: its layer then blurs by the blur over it. */
+/** The defocus case's sigma, stage px, and the scale it's also laid at: its layer then blurs by the sigma over it. */
 export const STAMP_GATE_DEFOCUS_SIGMA = 4;
 export const STAMP_GATE_DEFOCUS_SCALE = 1.5;
 /**
@@ -38,10 +38,10 @@ export function stampGateDefocusPainting(): StampGatePainting {
   return { painting, paper: STAMP_GATE_WHITE, mixing: { kind: 'flat' }, ...LENS_SIZE, t: Number.MAX_VALUE, images: STAMP_GATE_IMAGES };
 }
 
-/** The defocus case's frame state: `blur` (none left out) and the lay's `scale` about the frame's centre. */
-export function stampGateDefocusState(blur: number | undefined, scale = 1): StampPaintFrameState {
+/** The defocus case's frame state: `defocus` (none left out) and the lay's `scale` about the frame's centre. */
+export function stampGateDefocusState(defocus: number | undefined, scale = 1): StampPaintFrameState {
   const lay = scale === 1 ? {} : { lay: { placement: { x: 0, y: 0, rotation: 0, scale }, pivot: { x: LENS_SIZE.width / 2, y: LENS_SIZE.height / 2 } } };
-  return new Map([['patch', { ...lay, ...(blur !== undefined && { blur }) }]]);
+  return new Map([['patch', { ...lay, ...(defocus !== undefined && { defocus }) }]]);
 }
 
 /**
@@ -95,7 +95,7 @@ export function checkStampGateDefocus({ sharp, zero, blurred, scaledSharp, scale
 }
 
 /** The glow case's glow, and the threshold its pale patch's light is past and its grey patch's isn't. */
-export const STAMP_GATE_GLOW: StampGroupGlow = { amount: 1, radius: 5, threshold: 0.5 };
+export const STAMP_GATE_GLOW: StampGroupGlow = { amount: 1, sigma: 5, threshold: 0.5 };
 const GLOW_PALE = { x0: 20, x1: 60, y0: 30, y1: 70 }, GLOW_GREY = { x0: 100, x1: 140, y0: 30, y1: 70 };
 /** How far past the pale patch the spill is read, px. */
 const GLOW_SPILL = 4;
@@ -155,8 +155,8 @@ export function checkStampGateGlow({ plain, grey, zero, pale, paleAgain, paleAft
   };
 }
 
-/** The outside layer's blur in the lens case, px. */
-export const STAMP_GATE_OUTSIDE_BLUR = 3;
+/** The outside layer's defocus in the lens case, px. */
+export const STAMP_GATE_OUTSIDE_DEFOCUS = 3;
 
 /**
  * Whether an outside layer blurred on the GPU lays as its content blurred on the CPU and laid sharp, within a defocus's
@@ -172,7 +172,7 @@ export function checkStampGateOutsideLens({ blurred, cpuBlurred, sharp, glowing 
   return {
     id: 'lens/outside: an outside layer defocuses and glows as a group does',
     passed: twin.max <= STAMP_GATE_DEFOCUS_TOLERANCE && shown.max > 40 && least >= 0 && most >= 8,
-    detail: `blurred ${STAMP_GATE_OUTSIDE_BLUR} px against its content blurred on the CPU: max ${twin.max} (past ${STAMP_GATE_DEFOCUS_TOLERANCE} fails), against sharp ${shown.max} (40 or under fails); `
+    detail: `blurred ${STAMP_GATE_OUTSIDE_DEFOCUS} px against its content blurred on the CPU: max ${twin.max} (past ${STAMP_GATE_DEFOCUS_TOLERANCE} fails), against sharp ${shown.max} (40 or under fails); `
       + `glowing rises ${most} at most (under 8 fails), least ${least} (under 0 fails)`,
   };
 }
