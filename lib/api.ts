@@ -75,7 +75,9 @@ export { addVec3, crossVec3, dotVec3, lengthVec3, lerpVec3, scaleVec3, subVec3, 
 // brushes (docs/private-styles.md, skills/video-canvas/SKILL.md).
 export { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint, type PaintMaterial, type StampBloomSettings, type StampFillSettings, type StampGroupOptions, type StampGroupScope, type StampLiftSettings, type StampMaskSettings, type StampKeyedMaterial, type StampPaintColor, type StampPaintMaterial, type StampPaintPaper, type StampPaintRecipe, type StampPaintScope, type StampPassOptions, type StampPassScope, type StampSoftenSettings, type StampUnmaskSettings, type StampWashOptions, type StampWashScope, type StampWashWait, type StampWaterSettings } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 export { visibleStampCountAt } from '#lib/picture/stamp-paint/models/stamp-deposit-reveal.ts';
-export { STAMP_FILL_PATTERNS, stampRegionOutline, stampSmoothRegion, type StampFillApplication, type StampFillPattern, type StampFillStrokes, type StampFillTurns } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
+export { stampRegionOutline, stampSmoothRegion, type StampFillApplication } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
+export { STAMP_FILL_PATTERNS, stampFillMarks, stampFillStrokePath, type StampFillGuides, type StampFillMark, type StampFillPattern, type StampFillStrokes, type StampFillTurns } from '#lib/picture/stamp-paint/models/stamp-fill-strokes.ts';
+export { stampFittedEllipse, stampRoundedForm, type StampFormEllipse, type StampFormLight, type StampRoundedForm, type StampRoundedFormSettings } from '#lib/picture/stamp-paint/models/stamp-form.ts';
 export type { StampEdge, StampPoint, StampRegion } from '#lib/picture/stamp-paint/models/stamp-region.ts';
 export type { StampPaintField } from '#lib/picture/stamp-paint/models/stamp-paint-field.ts';
 export type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from '#lib/picture/stamp-paint/models/stamp-group-motion.ts';

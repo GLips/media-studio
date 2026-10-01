@@ -6,7 +6,8 @@ import type { StampBrushLayer, StampBrushMedia } from './stamp-brush.ts';
 import { placeAuthoredStamps, placeStrokeStamps, type StampPlacementBrush, type StampStrokePoint } from './stamp-placement.ts';
 import { handStampStroke } from './stamp-stroke-hand.ts';
 import { STAMP_ACCUMULATIONS } from './stamp-deposit-stages.ts';
-import { placeStampFlood, stampFillStrokePath, stampFloodBodyLevels, stampFloodFront, stampFloodProbe, type StampFillApplication } from './stamp-fill.ts';
+import { placeStampFlood, stampFloodBodyLevels, stampFloodFront, stampFloodProbe, type StampFillApplication } from './stamp-fill.ts';
+import { stampFillStrokePath } from './stamp-fill-strokes.ts';
 import { stampPaintFieldAt, stampPaintFieldProblem } from './stamp-paint-field.ts';
 import type { CompiledStampAction } from './stamp-paint-action.ts';
 import { stampRegionPolygon, type StampPoint, type StampRegion } from './stamp-region.ts';
@@ -30,7 +31,7 @@ export function checkedStampPolygon(region: StampRegion, what: string): readonly
 }
 
 /** How a fill of wet or dry media is laid unless it says: wet paint floods a shape; a crayon shades it in short strokes. */
-const STAMP_MEDIA_FILLS: Record<StampBrushMedia, StampFillApplication> = { wet: { kind: 'flood' }, dry: { kind: 'strokes', pattern: 'shading' } };
+const STAMP_MEDIA_FILLS: Record<StampBrushMedia, StampFillApplication> = { wet: { kind: 'flood' }, dry: { kind: 'strokes', pattern: { kind: 'shading' } } };
 
 /** A deposit's eight draws from `seed`: its grains' offsets, then its colour jitter. */
 function stampDepositDraws(seed: string) {

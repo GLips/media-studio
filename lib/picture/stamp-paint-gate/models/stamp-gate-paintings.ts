@@ -219,8 +219,8 @@ function regions(): StampGatePainting {
         pass.stroke('across', { brush: wet, diameter: 30, material: color('#806020'), path: [{ x: 110, y: 170 }, { x: 210, y: 200 }] });
       });
       g.pass('hatch', {}, (pass) => {
-        pass.fill('hatch', { brush: dry, diameter: 8, application: { kind: 'strokes', pattern: 'hatch', spacing: 1.8 }, material: color('#202020'), region: stampGatePolygon(220, 130, 310, 130, 310, 180, 220, 180) });
-        pass.fill('cross', { brush: dry, diameter: 8, material: color('#402060'), application: { kind: 'strokes', pattern: 'crossHatch', spacing: 2 }, direction: 0.3, region: { kind: 'ellipse', x: 265, y: 210, radiusX: 45, radiusY: 22 } });
+        pass.fill('hatch', { brush: dry, diameter: 8, application: { kind: 'strokes', pattern: { kind: 'hatch' }, spacing: 1.8 }, material: color('#202020'), region: stampGatePolygon(220, 130, 310, 130, 310, 180, 220, 180) });
+        pass.fill('cross', { brush: dry, diameter: 8, material: color('#402060'), application: { kind: 'strokes', pattern: { kind: 'crossHatch' }, spacing: 2 }, direction: 0.3, region: { kind: 'ellipse', x: 265, y: 210, radiusX: 45, radiusY: 22 } });
       });
     });
   }));
