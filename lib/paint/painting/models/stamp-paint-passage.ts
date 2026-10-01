@@ -14,7 +14,7 @@ import type { StampMark } from './stamp-marks.ts';
 import { allocateStampScore, type StampChildTiming, type StampScoreNode, type StampScoreOptions } from './stamp-paint-score.ts';
 import { stampSizePx, stampSizeRangePx, type StampSize, type StampSizeRange } from './stamp-paint-sizes.ts';
 import type { StampWithin } from './stamp-area.ts';
-import type { StampRegion } from './stamp-region.ts';
+import type { StampPoint, StampRegion } from './stamp-region.ts';
 import type {
   StampApplicationOptions, StampDepositGeometry, StampDepositWithin, StampFillOptions, StampLiftOptions, StampMarkPaintOptions, StampMasking, StampPaintEnvironment,
   StampPaintRecipeDeposit, StampPaintRecipeMask, StampPaintRecipePass, StampPaintRecipeStep, StampPassageDefaults, StampPassageOptions, StampPassageScope, StampPlacementOptions,
@@ -62,6 +62,10 @@ type StampPassageWriter = {
   provenance: readonly string[];
   within: readonly StampDepositWithin[] | undefined;
   defaults: StampPassageDefaults;
+  /** The technique its calls are inside, by name; absent in the passage's own body. */
+  technique?: string;
+  /** The reason its raw op escapes the techniques, for the deposit it lays. */
+  escape?: string;
 };
 
 const writers = new WeakMap<object, StampPassageWriter>();
@@ -113,14 +117,20 @@ const missing = (full: string, what: string): never => {
 const resolvers = (writer: StampPassageWriter, full: string) => ({
   brush: (given: StampBrush | undefined) => given ?? writer.defaults.brush ?? missing(full, 'brush'),
   well: (given: StampWell | undefined) => given ?? writer.defaults.well ?? missing(full, 'well'),
+  roleWell: (role: string, given: StampWell | undefined) => given ?? writer.defaults.wells?.[role] ?? missing(full, `${role} well`),
   size: (given: StampSize | undefined) => stampSizePx(given ?? writer.defaults.size ?? missing(full, 'size'), writer.state.host.environment.sheet, full),
   sizeRange: (given: StampSizeRange | undefined) => stampSizeRangePx(given ?? writer.defaults.size ?? missing(full, 'size'), writer.state.host.environment.sheet, full),
 });
+
+/** Defaults `over` laid over `under`, field by field, their wells role by role. */
+const layeredDefaults = (base: StampPassageDefaults, over: StampPassageDefaults | undefined): StampPassageDefaults =>
+  (over ? { ...base, ...over, ...((base.wells || over.wells) && { wells: { ...base.wells, ...over.wells } }) } : base);
 
 /** Writes deposit `id`, under the fluid as it stands. */
 function lay(writer: StampPassageWriter, node: StampScoreNode<StampPaintRecipeDeposit>, id: string, written: Pick<StampPaintRecipeDeposit, 'geometry' | 'tool' | 'action'> & { mark?: StampMark }) {
   const deposit: StampPaintRecipeDeposit = {
     kind: 'deposit', name: writer.namer.name(id), provenance: writer.provenance, ...written, mask: writer.state.host.fluid(), ...(writer.within && { within: writer.within }),
+    ...(writer.escape && { escape: writer.escape }),
   };
   node.deposits.push(deposit);
   writer.state.steps.push(deposit);
@@ -149,10 +159,13 @@ const splitScore = ({ weight, reveal, children }: StampScoreOptions): StampScore
 });
 
 /** A raw op `id`, a singleton application: `write` lays its deposit through the writer bound to it. */
-function rawOp(writer: StampPassageWriter, id: string, options: StampApplicationOptions & { when?: StampCondition }, write: (bound: StampPassageWriter, full: string) => void) {
+function rawOp(writer: StampPassageWriter, id: string, options: StampApplicationOptions & { when?: StampCondition; escape?: string }, write: (bound: StampPassageWriter, full: string) => void) {
   const node = application(writer, id, splitScore(options), 'op'), bound = under(writer, node, id, options.within);
-  const full = stampDepositId(writer.state.identity, writer.namer.name(id));
-  conditioned(bound, options.when, undefined, full, () => write({ ...bound, provenance: writer.provenance }, full));
+  const full = stampDepositId(writer.state.identity, writer.namer.name(id)), { escape } = options;
+  if (escape !== undefined && (writer.technique || !escape.trim())) {
+    throw new Error(`stamp paint: ${full} escapes ${writer.technique ? `inside the ${writer.technique} technique, whose own ops are no one's escape` : 'with no reason; an escape says why'}`);
+  }
+  conditioned(bound, options.when, undefined, full, () => write({ ...bound, provenance: writer.provenance, ...(escape && { escape }) }, full));
 }
 
 /** The scope `writer` writes through. */
@@ -237,18 +250,31 @@ export type StampTechniqueContext = {
   well: (given: StampWell | undefined) => StampWell;
   size: (given: StampSize | undefined) => number;
   sizeRange: (given: StampSizeRange | undefined) => readonly [number, number];
+  /** The well for `role` (a lit face's, a core's): `given`, else the defaults' wells by that role; refused when neither. */
+  roleWell: (role: string, given: StampWell | undefined) => StampWell;
   /** Runs `write`, its deposits standing after a wait until `when`, judged together and named for the technique's effect. */
   conditioned: (when: StampCondition | undefined, write: () => void) => void;
   /** The passage's area: a technique's default geometry. */
   area: StampRegion | undefined;
+  /** The stretches its own `within` merges, by name: where it lays its wet treatment, so the opened edge runs on. */
+  merges: readonly { name: string; path: readonly StampPoint[]; reach: number }[];
 };
 
 /** A deposit by full ID (`group/passage/name`). */
 export type StampDepositRef = { readonly kind: 'deposit'; readonly id: string };
 /** An application by its path in its passage: its enclosing applications' IDs, then its own. */
 export type StampApplicationRef = { readonly kind: 'application'; readonly path: readonly string[] };
-/** What every technique call returns besides its own: its application and the deposits it wrote. */
-export type StampTechniqueHandle = { application: StampApplicationRef; deposits: readonly StampDepositRef[] };
+/**
+ * Where a technique's deposits went, as written: the regions it filled, the paths it stroked and the places it
+ * stamped, each with its brush's diameter. Placement jitter and a fill's reach past its region aren't in it.
+ */
+export type StampFootprint = {
+  regions: readonly StampRegion[];
+  strokes: readonly { path: readonly StampPoint[]; diameter: number }[];
+  stamps: readonly { at: readonly StampPoint[]; diameter: number }[];
+};
+/** What every technique call returns besides its own: its application, the deposits it wrote, and where they went. */
+export type StampTechniqueHandle = { application: StampApplicationRef; deposits: readonly StampDepositRef[]; footprint: StampFootprint };
 
 /**
  * Makes a technique: an imported function `(p, id, options) => handle`. A call is one application, weighing `weight`
@@ -270,20 +296,32 @@ function invokeStampTechnique<H extends object>(p: StampPassageScope, spec: Stam
     if (capability === 'wet-history' || capability === 'wet-conditions') checkWetHistory(writer.state, `${full}, a ${spec.name},`, capability);
     else checkPaintCapability(writer.state.host.medium, capability, `${full}, a ${spec.name},`);
   }
-  const bound: StampPassageWriter = { ...under(writer, node, id, options.within), namer: keyedNamer(name, id), defaults: { ...writer.defaults, ...spec.defaults } };
+  const defaults = layeredDefaults(layeredDefaults(writer.defaults, spec.defaults), writer.state.host.environment.techniques?.[spec.name]);
+  const bound: StampPassageWriter = { ...under(writer, node, id, options.within), namer: keyedNamer(name, id), defaults, technique: spec.name };
   const effect = spec.effect && { kind: spec.effect, id: stampDepositNameText(name) };
   const take = resolvers(bound, full);
+  const merges = Object.entries(options.within?.boundaries ?? {}).flatMap(([boundary, { path, treatment, reach }]) => (treatment === 'merge' && reach ? [{ name: boundary, path, reach }] : []));
   const made = expand({
-    p: passageScope(bound), id, full, ...take, area: writer.state.options.area,
+    p: passageScope(bound), id, full, ...take, area: writer.state.options.area, merges,
     conditioned: (when, write) => conditioned(bound, when, effect, full, write),
   });
-  const deposits: StampDepositRef[] = [];
+  const laid: StampPaintRecipeDeposit[] = [];
   const collect = (each: StampScoreNode<StampPaintRecipeDeposit>): void => {
-    for (const laid of each.deposits) deposits.push({ kind: 'deposit', id: stampDepositId(writer.state.identity, laid.name) });
+    laid.push(...each.deposits);
     each.children.forEach(collect);
   };
   collect(node);
-  return { ...made, application: { kind: 'application', path: bound.provenance }, deposits };
+  const deposits = laid.map((deposit): StampDepositRef => ({ kind: 'deposit', id: stampDepositId(writer.state.identity, deposit.name) }));
+  return { ...made, application: { kind: 'application', path: bound.provenance }, deposits, footprint: stampFootprintOf(laid) };
+}
+
+/** Where `deposits` went (StampFootprint). */
+function stampFootprintOf(deposits: readonly StampPaintRecipeDeposit[]): StampFootprint {
+  return {
+    regions: deposits.flatMap(({ geometry }) => (geometry.kind === 'fill' ? [geometry.region] : [])),
+    strokes: deposits.flatMap(({ geometry, tool: { diameter } }) => (geometry.kind === 'stroke' ? [{ path: geometry.path, diameter }] : [])),
+    stamps: deposits.flatMap(({ geometry, tool: { diameter } }) => (geometry.kind === 'stamps' ? [{ at: geometry.at, diameter }] : [])),
+  };
 }
 
 /**
@@ -297,6 +335,7 @@ export function writeStampPassage(host: StampPassageHost, id: string, options: S
   const { preparation, rim } = options;
   if (preparation) checkWetHistory(state, `${full}'s preparation`);
   if (rim !== undefined) checkWetHistory(state, `${full}'s rim`);
+  if (options.strict) checkWetHistory(state, `${full}'s strict, which holds its wet history's conditions,`);
   checkMerges(state, options.within, full);
   const root: StampScoreNode<StampPaintRecipeDeposit> = { path: full, score: splitScore(options), kind: 'apply', deposits: [], children: [] };
   body(passageScope({ state, namer: passageNamer([]), node: root, provenance: [], within: undefined, defaults: options.defaults ?? {} }));
@@ -314,5 +353,5 @@ export function writeStampPassage(host: StampPassageHost, id: string, options: S
     if (!options.area) throw new Error(`stamp paint: ${full} prepares its area, and it has none`);
     prepared = { region: options.area };
   } else prepared = preparation;
-  return { ...common, wash: { ...(prepared && { preparation: prepared }), ...(rim !== undefined && { rim }), knockout }, steps };
+  return { ...common, wash: { ...(prepared && { preparation: prepared }), ...(rim !== undefined && { rim }), knockout, ...(options.strict && { strict: true as const }) }, steps };
 }

@@ -48,8 +48,12 @@ Everything is from `#studio`.
     named stretches of the outline (their points on it): `feather` fades the paint over `reach` px inside, `merge`
     opens the edge `reach` px for the technique's water to carry wet paint out (wet passages only). Stretches meet
     at points; overlapping ones treated differently throw.
-    `defaults: { brush, well, size }` serve any operation that doesn't say; `area` is what a fill with no `region`
-    covers.
+    `defaults: { brush, well, size, wells }` serve any operation that doesn't say (`wells` by role, `lit`, `shade`,
+    for techniques that ask by role; a missing role is refused, never made from `well`); a technique's defaults (the
+    style's, `environment.techniques[name]`, then its own) come before the passage's. `area` is what a fill with no
+    `region` covers. `strict: true` fails the render where a condition judged paper with no water or a wet effect
+    won't act (the wet report), instead of warning. A raw op's `escape: 'why'` marks it as reaching past the
+    techniques, for the report to count; a technique's own ops can't.
   - **Timing**: an operation's `reveal: { at, over }` (seconds) is exactly when it's drawn. Give a passage or a
     `p.apply(id, { reveal, children }, (q) => …)` a reveal instead and its operations share it by `weight` (1 each),
     `children: 'sequence'` (the default), `'together'` or `{ overlap: 2 }`. With no reveal anywhere above it, paint
@@ -143,6 +147,16 @@ Everything is from `#studio`.
     side, a colour passage) or `{ kind: 'area', region, weight? }`, a weight field 0..1 read where each mark lands; prefer a path or a weighted area to an even scatter, which reads as
     ornament. `when: 'damp'` waits once, until the paper under the touches has lost its shine. In the watercolor
     style, `brush` is `brushes.charge`.
+  - **The catalogue** (`stamp-technique-catalogue.ts`), each returning `{ application, deposits, footprint }` plus
+    its own geometry: `stampGradedWash(p, id, { from, to, along: [a, b] } | { well, load: { along, from, to } },
+    region?, reach?, variety? })`, a continuous grade between single materials (a set is refused), flooded;
+    `stampGuidedMarks(p, id, { guides: [{ id, path }], perGuide, length, size, well, spread?, weight?, lean: {
+    toward, share }, hand? })`, marks along guides (a pine's tiers), turned toward an absolute way; `stampChargedForm(p,
+    id, { model, light, wells: { lit, half?, shade, core, undercut? }, core?, undercut? })`, a body in the lit well
+    with half and shade charged in when shiny, the model an ellipsoid (derived shade and core) or `faces` the caller
+    drew, each with a `facing`, so moving `light` relights them; `stampBlot(p, id, { shapes: [{ id, region }],
+    repeat?, irregular? })`, a tissue pressed when damp, crumpled afresh each press. A within's merged stretches are
+    softened by the technique laying the shape.
   - **A backrun on purpose**: `stampBackrun(p, id, { along, brush, size, reveal })` lays clean water along a
     junction you choose once the paper under it is damp. Both sides must be in the same passage: passages share no
     water.

@@ -35,8 +35,10 @@ adjustment, pooling and accumulation, and their WGSL: a brush's modes and the ma
 
 **painting** is the engine. `stamp-paint-recipe.ts` writes the painting a scene paints against its environment (its
 paper and mixing; a resolved style is one): groups, each of passages, each a tree of applications
-(`stamp-paint-passage.ts`: `p.apply`, `p.each`, the techniques `defineStampTechnique` makes) over the operations
-that write deposits. Every operation is checked against its medium's capabilities as it's written, so a recipe a
+(`stamp-paint-passage.ts`: `p.apply`, `p.each`, the techniques `defineStampTechnique` makes, the wet touches in
+`stamp-wet-techniques.ts` and the catalogue in `stamp-technique-catalogue.ts`) over the operations that write
+deposits. A technique's handle carries its footprint (the regions, paths and places its deposits went, as
+written); its defaults layer the style's (`StampPaintEnvironment.techniques`) over its own over its passage's. Every operation is checked against its medium's capabilities as it's written, so a recipe a
 medium can't paint never compiles. Timing is a score (`stamp-paint-score.ts`): an exact `reveal` or a share of its
 nearest scored ancestor's by weight, in sequence, together or overlapping; none at all is paint there from the start.
 `stamp-paint-recipe-types.ts` holds what it writes, and `stamp-paint-recipe-compile.ts` checks it and places its

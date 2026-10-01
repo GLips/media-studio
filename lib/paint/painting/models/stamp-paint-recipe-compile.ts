@@ -197,7 +197,7 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
         if (step.kind === 'deposit') return { kind: 'deposit', deposit: deposit(step, (full, draws) => compileWashAction(full, step.action, step.tool.brush, draws)) };
         return compileStampWashWait(step, passId);
       });
-      const { preparation, rim, knockout } = pass.wash;
+      const { preparation, rim, knockout, strict } = pass.wash;
       if (rim !== undefined) checkedStampRim(rim, passId);
       let prepared: CompiledStampWash['preparation'] = null;
       if (preparation) {
@@ -207,7 +207,7 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
         const reserved = knockout ? null : held(null);
         prepared = { polygon: checkedStampPolygon(preparation.region, passId), wetness: stampSeededPaintField(wetness, passId), ...(reserved && { held: reserved }) };
       }
-      return { ...common, kind: 'wash', wash: { preparation: prepared, schedule, ...(rim !== undefined && { rim }) }, knockout };
+      return { ...common, kind: 'wash', wash: { preparation: prepared, schedule, ...(rim !== undefined && { rim }), ...(strict && { strict }) }, knockout };
     });
     const opacity = options.composite === 'glaze' ? options.opacity : 1;
     const { boil } = options, motion = options.motion && compileStampGroupMotion(options.motion, groupId);

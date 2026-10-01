@@ -23,7 +23,7 @@ import { stampBoilSeed, stampPassDeposits, type CompiledStampDeposit, type Compi
 import type { StampPaintPaper } from '../models/stamp-paint-recipe-types.ts';
 import { compileStampPigmentPaint, stampGrainDepthSourceIn, stampPigmentGroupMedium, type StampPaintMixing } from '../models/stamp-pigment-paint.ts';
 import { compileStampWetness, STAMP_WET_CELL, type StampWashDrying, type StampWetLanding, type StampWetness } from '../models/stamp-wetness.ts';
-import { stampWetReport, stampWetReportWarnings } from '../models/stamp-wet-report.ts';
+import { stampWetReport, stampWetReportStrictFailures, stampWetReportWarnings } from '../models/stamp-wet-report.ts';
 import { STAMP_WET_LAND_WGSL, stampDepositionLaw, stampFloodCarriesWater } from '../models/stamp-wet-landing.ts';
 import { PAINT_DRY_BURNISHED_PRESS, paintPigmentSeed } from '#lib/paint/materials/models/paint-paper.ts';
 import { PAINT_BANDS } from '#lib/paint/materials/models/paint-spectrum.ts';
@@ -1129,7 +1129,10 @@ function rendererOnSurface(
   }
   done = span('stamp paint wetness load');
   const wetness = wetnessOf?.(painting) ?? null;
-  const wetWarnings = wetness ? stampWetReportWarnings(stampWetReport(painting, wetness)) : [];
+  const wetReport = wetness && stampWetReport(painting, wetness);
+  const strictFailures = wetReport ? stampWetReportStrictFailures(wetReport) : [];
+  if (strictFailures.length) throw new Error(`stamp paint: ${strictFailures.length} strict failure(s):\n${strictFailures.join('\n')}`);
+  const wetWarnings = wetReport ? stampWetReportWarnings(wetReport) : [];
   done();
   done = span('stamp paint pipelines load');
   // The fan's triangles, by corner: indexed, so each corner is shaded once a stamp, not once for each triangle it's in.
