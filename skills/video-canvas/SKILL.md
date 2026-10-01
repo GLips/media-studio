@@ -44,6 +44,10 @@ Everything is from `#studio`.
     shading that can't leave the silhouette. `within: { region, edge?, inset? }` keeps it inside an area (a
     reflection in its water): `edge` as masking fluid's, a ragged one breaking the cut line of a padded wash
     (seeded by the passage's ID; keep its amount under the brush's radius); `inset` px moves the edge inward.
+    `boundaries: { ridge: { path, treatment: 'keep' }, foot: { path, treatment: 'merge', reach: 10 } }` treats
+    named stretches of the outline (their points on it): `feather` fades the paint over `reach` px inside, `merge`
+    opens the edge `reach` px for the technique's water to carry wet paint out (wet passages only). Stretches meet
+    at points; overlapping ones treated differently throw.
     `defaults: { brush, well, size }` serve any operation that doesn't say; `area` is what a fill with no `region`
     covers.
   - **Timing**: an operation's `reveal: { at, over }` (seconds) is exactly when it's drawn. Give a passage or a

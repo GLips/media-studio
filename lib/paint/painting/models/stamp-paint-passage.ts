@@ -13,6 +13,7 @@ import { pickStampMaterial } from './stamp-material-set.ts';
 import type { StampMark } from './stamp-marks.ts';
 import { allocateStampScore, type StampChildTiming, type StampScoreNode, type StampScoreOptions } from './stamp-paint-score.ts';
 import { stampSizePx, stampSizeRangePx, type StampSize, type StampSizeRange } from './stamp-paint-sizes.ts';
+import type { StampWithin } from './stamp-area.ts';
 import type { StampRegion } from './stamp-region.ts';
 import type {
   StampApplicationOptions, StampDepositGeometry, StampDepositWithin, StampFillOptions, StampLiftOptions, StampMarkPaintOptions, StampMasking, StampPaintEnvironment,
@@ -81,9 +82,16 @@ function application(writer: StampPassageWriter, id: string, score: StampScoreOp
   return node;
 }
 
+/** Throws, naming `what`, if `within` merges a stretch where the passage keeps no wet history to merge it in. */
+function checkMerges(state: StampPassageState, within: StampWithin | undefined, what: string) {
+  const merged = Object.entries(within?.boundaries ?? {}).find(([, { treatment }]) => treatment === 'merge');
+  if (merged) checkWetHistory(state, `${what}'s merged boundary ${merged[0]}`);
+}
+
 /** `writer` for `node`'s calls: their within narrowed by `within`, seeded by the application's name. */
 function under(writer: StampPassageWriter, node: StampScoreNode<StampPaintRecipeDeposit>, id: string, within: StampApplicationOptions['within']): StampPassageWriter {
   const seed = `${writer.state.full}|${stampDepositNameText(writer.namer.name(id))}`;
+  checkMerges(writer.state, within, node.path);
   return { ...writer, node, provenance: [...writer.provenance, id], ...(within && { within: [...(writer.within ?? []), { area: within, seed }] }) };
 }
 
@@ -289,6 +297,7 @@ export function writeStampPassage(host: StampPassageHost, id: string, options: S
   const { preparation, rim } = options;
   if (preparation) checkWetHistory(state, `${full}'s preparation`);
   if (rim !== undefined) checkWetHistory(state, `${full}'s rim`);
+  checkMerges(state, options.within, full);
   const root: StampScoreNode<StampPaintRecipeDeposit> = { path: full, score: splitScore(options), kind: 'apply', deposits: [], children: [] };
   body(passageScope({ state, namer: passageNamer([]), node: root, provenance: [], within: undefined, defaults: options.defaults ?? {} }));
   const reveals = allocateStampScore(root);

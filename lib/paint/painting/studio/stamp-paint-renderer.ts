@@ -658,18 +658,19 @@ ${compositor.output}
 // from `firstOp`: a mask joins its area by max, an unmask lifts its amount (everywhere for `count` 0), a clip keeps
 // only its area (an application's `within`). An op's area is worked out only within its `reach`.
 const MASK_STEP = stampUniformLayout('MaskStep', [['box', 'vec4f'], ['parent', 'vec4f'], ['firstOp', 'u32'], ['opCount', 'u32']]);
-/** A MaskOp's words: its thirteen, padded to its vec4f's alignment. */
+/** A MaskOp's words: its fifteen, padded to its vec4f's alignment. */
 const MASK_OP_WORDS = 16;
 const MASK_STEP_WGSL = /* wgsl */ `
 ${COVERAGE_FORMULAS_WGSL}
 ${STAMP_REGION_WGSL}
 ${FULL_FRAME_WGSL}
 ${MASK_STEP.wgsl}
-struct MaskOp { reach: vec4f, ragged: vec2f, width: f32, amount: f32, first: u32, count: u32, kind: u32, seed: u32, inset: f32 }
+struct MaskOp { reach: vec4f, ragged: vec2f, width: f32, amount: f32, first: u32, count: u32, kind: u32, seed: u32, inset: f32, boundaryFirst: u32, boundaryCount: u32 }
 @group(0) @binding(0) var<uniform> u: MaskStep;
 @group(0) @binding(1) var<storage, read> points: array<vec2f>;
 @group(0) @binding(2) var parent: texture_2d<f32>;
 @group(0) @binding(3) var<storage, read> ops: array<MaskOp>;
+@group(0) @binding(4) var<storage, read> boundaries: array<vec4f>;
 ${STAMP_POLYGON_DISTANCE_WGSL}
 ${STAMP_AREA_COVERAGE_WGSL}
 @fragment fn maskStep(@builtin(position) at: vec4f) -> @location(0) vec4f {
@@ -682,7 +683,7 @@ ${STAMP_AREA_COVERAGE_WGSL}
     var r = 1.0;
     if (op.count > 0u) {
       r = 0.0;
-      if (all(p >= op.reach.xy) && all(p <= op.reach.zw)) { r = areaCoverage(p, op.first, op.count, op.inset, op.ragged, op.width, op.seed); }
+      if (all(p >= op.reach.xy) && all(p <= op.reach.zw)) { r = areaCoverage(p, op.first, op.count, op.inset, op.ragged, op.width, op.seed, op.boundaryFirst, op.boundaryCount); }
     }
     if (op.kind == 2u) { fluid *= r; } else { fluid = select(fluid * (1.0 - op.amount * r), max(fluid, r), op.kind == 0u); }
   }
@@ -1390,7 +1391,14 @@ function rendererOnSurface(
       return placed.get(polygon)!;
     };
     const grids: number[] = [];
-    const opWords: { floats: number[]; words: number[]; inset: number }[] = [];
+    const opWords: { floats: number[]; words: number[]; inset: number; boundaries: [number, number] }[] = [];
+    // A within's treated stretches, each a vec4f: its path's first point and count in `points`, merge or feather, reach.
+    const boundaryFloats: number[] = [];
+    const boundariesOf = (area: CompiledStampArea | null): [number, number] => {
+      const treated = area?.boundaries ?? [], first = boundaryFloats.length / 4;
+      for (const { path, treatment, reach } of treated) boundaryFloats.push(...pointsOf(path), treatment === 'merge' ? 1 : 0, reach);
+      return [first, treated.length];
+    };
     type Step = { box: Box; draw: (views: StampUniformViews) => GPURenderPipeline; parent?: Step | null; grid?: boolean };
     const steps: Step[] = [];
     const inPainting = (box: StampBox): Box | null => {
@@ -1405,6 +1413,7 @@ function rendererOnSurface(
         floats: [reach?.x0 ?? 0, reach?.y0 ?? 0, reach?.x1 ?? 0, reach?.y1 ?? 0, ragged?.amount ?? 0, ragged?.scale ?? 0, stampEdgeWidth(area?.edge), amount],
         words: [first, count, { mask: 0, unmask: 1, clip: 2 }[kind], area?.seed ?? 0],
         inset: area?.inset ?? 0,
+        boundaries: boundariesOf(area),
       });
       return opWords.length - 1;
     };
@@ -1502,13 +1511,14 @@ function rendererOnSurface(
     }));
     if (steps.length) {
       const opBytes = new ArrayBuffer(Math.max(1, opWords.length) * MASK_OP_WORDS * 4), opFloats = new Float32Array(opBytes), opInts = new Uint32Array(opBytes);
-      opWords.forEach(({ floats, words, inset }, i) => {
+      opWords.forEach(({ floats, words, inset, boundaries }, i) => {
         opFloats.set(floats, i * MASK_OP_WORDS);
         opInts.set(words, i * MASK_OP_WORDS + floats.length);
         opFloats[i * MASK_OP_WORDS + floats.length + words.length] = inset;
+        opInts.set(boundaries, i * MASK_OP_WORDS + floats.length + words.length + 1);
       });
       const pointBuffer = buffer(new Float32Array(points.length ? points : [0, 0]), GPUBufferUsage.STORAGE, on), gridBuffer = buffer(new Float32Array(grids.length ? grids : [0]), GPUBufferUsage.STORAGE, on);
-      const opBuffer = buffer(opFloats, GPUBufferUsage.STORAGE, on);
+      const opBuffer = buffer(opFloats, GPUBufferUsage.STORAGE, on), boundaryBuffer = buffer(new Float32Array(boundaryFloats.length ? boundaryFloats : [0, 0, 0, 0]), GPUBufferUsage.STORAGE, on);
       const words = new ArrayBuffer(steps.length * SLOT), uniformBuffer = on.createBuffer({ size: steps.length * SLOT, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
       const encoder = device.createCommandEncoder();
       // In the order planned, so a state of the fluid is drawn after the state it's built on.
@@ -1519,7 +1529,7 @@ function rendererOnSurface(
         pass.setPipeline(pipeline);
         pass.setBindGroup(0, bindGroup(pipeline, step.grid
           ? [{ buffer: uniformBuffer, offset: i * SLOT, size: SLOT }, { buffer: pointBuffer }, { buffer: gridBuffer }]
-          : [{ buffer: uniformBuffer, offset: i * SLOT, size: SLOT }, { buffer: pointBuffer }, step.parent ? made.get(step.parent)!.view : targets.blank.view, { buffer: opBuffer }]));
+          : [{ buffer: uniformBuffer, offset: i * SLOT, size: SLOT }, { buffer: pointBuffer }, step.parent ? made.get(step.parent)!.view : targets.blank.view, { buffer: opBuffer }, { buffer: boundaryBuffer }]));
         pass.draw(3);
         pass.end();
       });

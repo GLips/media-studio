@@ -4,8 +4,10 @@
 // An area's coverage at a point is its region's signed distance less its inset, moved by its ragged noise, ramped over
 // its edge's width (STAMP_AREA_COVERAGE_WGSL on the GPU, stampAreaCoverageAt on the CPU, twins the gate holds
 // together), so an inset moves the edge inward without offsetting the polygon. An inset may erase a narrow feature:
-// that is what was asked for, not something to clamp.
+// that is what was asked for, not something to clamp. A `within`'s named stretches may be feathered or merged
+// (stamp-area-boundaries.ts).
 
+import { compileStampBoundaries, STAMP_BOUNDARY_WGSL, stampBoundariesReach, stampBoundaryShift, type CompiledStampBoundary, type StampBoundaries } from './stamp-area-boundaries.ts';
 import { checkedStampPolygon } from './stamp-deposit-compile.ts';
 import { stampRegionSeed } from './stamp-fill.ts';
 import type { CompiledStampMask } from './stamp-paint-recipe-compile.ts';
@@ -17,22 +19,31 @@ import { stampEdgeReach, stampEdgeWidth, stampPolygonBox, stampPolygonDistance, 
  */
 export type StampArea = { region: StampRegion; edge?: StampEdge; inset?: number };
 
-/** An area checked: its region traced, its edge, its inset (absent for none), and its ragged edge's seed (stampRegionSeed of its owner's ID). */
-export type CompiledStampArea = { polygon: readonly StampPoint[]; edge?: StampEdge; inset?: number; seed: number };
+/** Where an application's deposits may land: an area, its named stretches kept, feathered or merged (StampBoundary). */
+export type StampWithin = StampArea & { boundaries?: StampBoundaries };
+
+/**
+ * An area checked: its region traced, its edge, its inset (absent for none), its ragged edge's seed (stampRegionSeed
+ * of its owner's ID), and a within's feathered and merged stretches (absent for none).
+ */
+export type CompiledStampArea = { polygon: readonly StampPoint[]; edge?: StampEdge; inset?: number; seed: number; boundaries?: readonly CompiledStampBoundary[] };
 
 /**
  * `area` checked and traced for `what` (a mask's or a pass's full ID), its ragged edge seeded from `what`. Throws on a
- * region that isn't a shape, a negative soft width, a ragged edge without a positive scale, or a negative inset.
+ * region that isn't a shape, a negative soft width, a ragged edge without a positive scale, a negative inset, or a
+ * boundary compileStampBoundaries refuses.
  */
-export function compileStampArea({ region, edge, inset = 0 }: StampArea, what: string): CompiledStampArea {
+export function compileStampArea({ region, edge, inset = 0, boundaries }: StampWithin, what: string): CompiledStampArea {
   const { soft = 0, ragged } = edge ?? {};
   if (!(soft >= 0) || (ragged && !(ragged.amount >= 0 && ragged.scale > 0))) throw new Error(`stamp paint: ${what}'s edge needs a soft width of 0 or more, and a ragged amount of 0 or more at a positive scale`);
   if (!(inset >= 0 && Number.isFinite(inset))) throw new Error(`stamp paint: ${what} is inset ${inset} px, and an area is inset a finite 0 or more`);
-  return { polygon: checkedStampPolygon(region, what), ...(edge && { edge }), ...(inset > 0 && { inset }), seed: stampRegionSeed(what) };
+  const polygon = checkedStampPolygon(region, what), treated = boundaries && compileStampBoundaries(boundaries, polygon, what);
+  return { polygon, ...(edge && { edge }), ...(inset > 0 && { inset }), seed: stampRegionSeed(what), ...(treated?.length && { boundaries: treated }) };
 }
 
-/** The box beyond which `area` covers nothing: its outline's, grown by how far its edge reaches, less its inset, and a pixel. */
-export const stampAreaBox = (area: CompiledStampArea): StampBox => stampPolygonBox(area.polygon, stampEdgeReach(area.edge) - (area.inset ?? 0) + 1);
+/** The box beyond which `area` covers nothing: its outline's, grown by how far its edge reaches and merges open, less its inset, and a pixel. */
+export const stampAreaBox = (area: CompiledStampArea): StampBox =>
+  stampPolygonBox(area.polygon, stampEdgeReach(area.edge) + stampBoundariesReach(area.boundaries) - (area.inset ?? 0) + 1);
 
 /** The PCG hash tipNoiseAt is built on, in u32 arithmetic. */
 function pcgHash(v: number): number {
@@ -68,18 +79,24 @@ export function stampEdgeCoverage(sd: number, width: number): number {
 export function stampAreaCoverageAt(area: CompiledStampArea, x: number, y: number): number {
   const ragged = area.edge?.ragged;
   const moved = ragged && ragged.scale > 0 ? ragged.amount * stampEdgeNoise(x / ragged.scale, y / ragged.scale, area.seed) : 0;
-  return stampEdgeCoverage(stampPolygonDistance(area.polygon, x, y) - (area.inset ?? 0) + moved, stampEdgeWidth(area.edge));
+  const sd = stampPolygonDistance(area.polygon, x, y);
+  const { open, feather } = area.boundaries ? stampBoundaryShift(area.boundaries, sd, x, y) : { open: 0, feather: 0 };
+  return stampEdgeCoverage(sd + open - feather / 2 - (area.inset ?? 0) + moved, Math.max(stampEdgeWidth(area.edge), feather));
 }
 
 /**
  * An area's coverage per pixel in WGSL, after STAMP_REGION_WGSL and STAMP_POLYGON_DISTANCE_WGSL: the polygon's `count`
- * points from `first`, its inset, its ragged amount and scale (scale 0 for none), its edge's width and seed.
+ * points from `first`, its inset, its ragged amount and scale (scale 0 for none), its edge's width and seed, and its
+ * `boundaryCount` treated stretches from `boundaryFirst` (STAMP_BOUNDARY_WGSL's `boundaries`).
  */
 export const STAMP_AREA_COVERAGE_WGSL = /* wgsl */ `
-fn areaCoverage(p: vec2f, first: u32, count: u32, inset: f32, ragged: vec2f, width: f32, seed: u32) -> f32 {
+${STAMP_BOUNDARY_WGSL}
+fn areaCoverage(p: vec2f, first: u32, count: u32, inset: f32, ragged: vec2f, width: f32, seed: u32, boundaryFirst: u32, boundaryCount: u32) -> f32 {
   var moved = 0.0;
   if (ragged.y > 0.0) { moved = ragged.x * edgeNoise(p.x / ragged.y, p.y / ragged.y, seed); }
-  return edgeCoverage(polygonDistance(p, first, count) - inset + moved, width);
+  let sd = polygonDistance(p, first, count);
+  let shift = boundaryShift(p, sd, boundaryFirst, boundaryCount);
+  return edgeCoverage(sd + shift.x - 0.5 * shift.y - inset + moved, max(width, shift.y));
 }`;
 
 /**

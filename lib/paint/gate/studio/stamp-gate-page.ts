@@ -59,7 +59,7 @@ import { stampGatePainting, stampGateTracePainting, type StampGateImage, type St
 const WORKGROUP = 64;
 
 /** A formula grid as the page is handed it: its call, row width and rows, and the storage its call reads. */
-type PageGrid = { call: string; width: number; rows: number[]; points?: number[]; grid?: number[] };
+type PageGrid = { call: string; width: number; rows: number[]; points?: number[]; grid?: number[]; boundaries?: number[] };
 
 const kernel = ({ call, width, points, grid }: PageGrid) => /* wgsl */ `
 ${COVERAGE_FORMULAS_WGSL}
@@ -74,7 +74,7 @@ ${STAMP_WET_LAND_WGSL}
 ${STAMP_WET_LIFT_WGSL}
 @group(0) @binding(0) var<storage, read> inputs: array<f32>;
 @group(0) @binding(1) var<storage, read_write> outputs: array<f32>;
-${points ? `@group(0) @binding(2) var<storage, read> points: array<vec2f>;\n${STAMP_POLYGON_DISTANCE_WGSL}\n${STAMP_AREA_COVERAGE_WGSL}` : ''}
+${points ? `@group(0) @binding(2) var<storage, read> points: array<vec2f>;\n@group(0) @binding(4) var<storage, read> boundaries: array<vec4f>;\n${STAMP_POLYGON_DISTANCE_WGSL}\n${STAMP_AREA_COVERAGE_WGSL}` : ''}
 ${grid ? `@group(0) @binding(3) var<storage, read> grid: array<f32>;\n${STAMP_GRID_AT_WGSL}` : ''}
 var<private> row: u32;
 fn x(i: u32) -> f32 { return inputs[row * ${width}u + i]; }
@@ -103,6 +103,7 @@ async function runStampGateFormulas(grids: readonly PageGrid[]): Promise<number[
       const entries: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: storage(grid.rows) } }, { binding: 1, resource: { buffer: output } }];
       if (grid.points) entries.push({ binding: 2, resource: { buffer: storage(grid.points) } });
       if (grid.grid) entries.push({ binding: 3, resource: { buffer: storage(grid.grid) } });
+      if (grid.boundaries) entries.push({ binding: 4, resource: { buffer: storage(grid.boundaries) } });
       const encoder = device.createCommandEncoder();
       const pass = encoder.beginComputePass();
       pass.setPipeline(pipeline);

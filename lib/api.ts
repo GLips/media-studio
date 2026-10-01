@@ -95,7 +95,8 @@ export { stampRegionOutline, stampSmoothRegion, type StampFillApplication } from
 export { STAMP_FILL_PATTERNS, stampFillMarks, stampFillStrokePath, type StampFillGuides, type StampFillMark, type StampFillPattern, type StampFillReach, type StampFillStrokes, type StampFillTurns } from '#lib/paint/painting/models/stamp-fill-strokes.ts';
 export { stampFittedEllipse, stampRoundedForm, type StampFormEllipse, type StampFormLight, type StampRoundedForm, type StampRoundedFormSettings } from '#lib/paint/painting/models/stamp-form.ts';
 export type { StampEdge, StampPoint, StampRegion } from '#lib/paint/painting/models/stamp-region.ts';
-export type { StampArea, StampStandsBefore } from '#lib/paint/painting/models/stamp-area.ts';
+export type { StampArea, StampStandsBefore, StampWithin } from '#lib/paint/painting/models/stamp-area.ts';
+export type { StampBoundaries, StampBoundary, StampBoundaryTreatment } from '#lib/paint/painting/models/stamp-area-boundaries.ts';
 export type { StampNoiseField, StampPaintField } from '#lib/paint/painting/models/stamp-paint-field.ts';
 export type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from '#lib/paint/painting/models/stamp-group-motion.ts';
 export type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';

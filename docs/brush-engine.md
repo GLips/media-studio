@@ -71,6 +71,13 @@ The renderer works out each state of the fluid and each `within` once, as croppe
 the same coverage per sample (`stampAreaCoverageAt`, the GPU's twin), scanning an edge narrower than half a sample
 hard. A group's `standsBefore` compiles into one more mask over the fluid of each deposit of the groups it names,
 last, so it joins their fluid by max and none of their unmasks lifts it; a knockout's fluid is left alone.
+A `within` may treat named stretches of its outline (`StampWithin.boundaries`, `stamp-area-boundaries.ts`): `keep`,
+`feather` (coverage falls from full `reach` px inside to none at the outline) or `merge` (the edge opens `reach` px
+outward, and the technique laying the shape lays water along it in the same history). A treatment holds where a
+point's nearest piece of outline lies on its stretch and fades over its reach past the stretch's ends, so stretches
+meet at a point without a notch; two running along each other treated differently are refused. Each `within` is
+intersected with its ancestors', so a child's merge never opens an ancestor's cut. `boundaryShift` is the WGSL twin of
+`stampBoundaryShift`, held by the gate's `areaCoverage boundaries` grid.
 
 Wet paint is a wash, a passage with a wetness history (`group.passage` in a medium with `'wet-history'`, unless it
 says `wetHistory: false`): its deposits paint, wet (`water`, `stampSoften`, `stampBloom`) or lift, and it can `wait` in painting time, which only its waits advance. `stamp-wetness.ts` works out, once as a painting

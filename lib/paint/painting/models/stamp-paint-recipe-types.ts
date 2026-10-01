@@ -16,7 +16,7 @@ import type { StampFillApplication } from './stamp-fill.ts';
 import type { StampPaintField } from './stamp-paint-field.ts';
 import type { StampRecipePaint, StampRecipeWashAction } from './stamp-paint-action.ts';
 import type { StampRegion } from './stamp-region.ts';
-import type { StampArea, StampStandsBefore } from './stamp-area.ts';
+import type { StampArea, StampStandsBefore, StampWithin } from './stamp-area.ts';
 import type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from './stamp-group-motion.ts';
 import type { CompiledStampMaterialKeys, StampMaterialKeys } from './stamp-material-keys.ts';
 import type { StampMaterialSet } from './stamp-material-set.ts';
@@ -69,8 +69,11 @@ export type StampPassageDefaults = { brush?: StampBrush; well?: StampWell; size?
 
 /** What every application takes: its place in the score, and an area its deposits land within besides its passage's. */
 export type StampApplicationOptions = StampScoreOptions & {
-  /** Narrows where this application's deposits land, within its passage's `within` and its enclosing applications'. */
-  within?: StampArea;
+  /**
+   * Narrows where this application's deposits land, within its passage's `within` and its enclosing applications':
+   * a stretch it merges opens its own edge only, never theirs.
+   */
+  within?: StampWithin;
 };
 
 /**
@@ -179,8 +182,11 @@ export type StampPreparation = 'area' | { region: StampRegion; wetness?: StampPa
 export type StampPassageOptions = {
   /** What a fill with no region of its own covers, and a preparation of `'area'`. */
   area?: StampRegion;
-  /** Where its deposits may land (StampArea): a reflection kept to its water; a ragged edge there seeded by its ID. */
-  within?: StampArea;
+  /**
+   * Where its deposits may land (StampWithin): a reflection kept to its water; a ragged edge there seeded by its ID;
+   * named stretches kept, feathered, or merged (which needs its wet history).
+   */
+  within?: StampWithin;
   /**
    * An earlier passage of its group whose paint clips it, as a Procreate clipping mask clips to the layer under it:
    * texture inside a silhouette. That passage is itself unclipped, and only passages clipped to it come between.
@@ -267,7 +273,7 @@ export type StampPaintRecipeMask = {
   under: StampPaintRecipeMask | null;
 } | null;
 /** An application's `within` as a deposit lands under it: its area, its ragged edge seeded by `seed`. */
-export type StampDepositWithin = { area: StampArea; seed: string };
+export type StampDepositWithin = { area: StampWithin; seed: string };
 /** A deposit as written: compileDeposit checks it and places its stamps. */
 export type StampPaintRecipeDeposit<A extends StampRecipeWashAction = StampRecipeWashAction> = {
   kind: 'deposit';
@@ -289,7 +295,7 @@ export type StampPaintRecipeDeposit<A extends StampRecipeWashAction = StampRecip
 };
 export type StampPaintRecipeStep = StampPaintRecipeDeposit | StampWrittenWait;
 /** A passage as written: without wet history all paint (`wash` null), with it a schedule of deposits and waits. */
-export type StampPaintRecipePass = { id: string; clipTo?: string; within?: StampArea } & (
+export type StampPaintRecipePass = { id: string; clipTo?: string; within?: StampWithin } & (
   | { wash: null; steps: readonly StampPaintRecipeDeposit<StampRecipePaint>[] }
   | { wash: { preparation?: { region: StampRegion; wetness?: StampPaintField<number> }; rim?: number; knockout: boolean }; steps: readonly StampPaintRecipeStep[] }
 );

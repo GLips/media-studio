@@ -49,8 +49,8 @@ async function collectStampGate(
   // The page loads no files; it's served its own folder only because the page server serves one.
   return withBrowserModulePage({ entry: STAMP_GATE_PAGE, filesDir: dirname(STAMP_GATE_PAGE) }, async (call) => {
     const adapter = await call<string>('stampGateAdapter');
-    const values = await call<number[][]>('runStampGateFormulas', grids.map(({ call: wgsl, width, rows, points, grid }) => ({
-      call: wgsl, width, rows: Array.from(rows), ...(points && { points: Array.from(points) }), ...(grid && { grid: Array.from(grid) }),
+    const values = await call<number[][]>('runStampGateFormulas', grids.map(({ call: wgsl, width, rows, points, grid, boundaries }) => ({
+      call: wgsl, width, rows: Array.from(rows), ...(points && { points: Array.from(points) }), ...(grid && { grid: Array.from(grid) }), ...(boundaries && { boundaries: Array.from(boundaries) }),
     })));
     // One painting at a time: each asks for a device of its own.
     const frames = await gates.reduce<Promise<StampGateSubject[]>>(async (done, { id, gate }) => {

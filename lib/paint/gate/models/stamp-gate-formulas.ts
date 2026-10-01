@@ -14,6 +14,7 @@ import { PHOTOSHOP_POOLING, STAMP_DUAL_BLENDS, STAMP_GRAIN_BLENDS, stampDualMode
 import { STAMP_ACCUMULATION_KINDS, stampAccumulationIndex } from '#lib/paint/painting/models/stamp-deposit-stages.ts';
 import { STAMP_PAINT_FIELD_SHARE } from '#lib/paint/painting/models/stamp-paint-field.ts';
 import { stampAreaCoverageAt } from '#lib/paint/painting/models/stamp-area.ts';
+import type { CompiledStampBoundary } from '#lib/paint/painting/models/stamp-area-boundaries.ts';
 import { stampDistanceGrid, stampGridAt, stampPolygonBox, stampPolygonDistance, stampRegionPolygon, type StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { stampGateWetLawGrids, type StampGatePropertyResult } from './stamp-gate-wet-laws.ts';
 
@@ -30,6 +31,8 @@ export type StampGateFormulaGrid = {
   labels: string[];
   points?: Float32Array;
   grid?: Float32Array;
+  /** The storage array boundaryShift reads: a vec4f a boundary (its path's first point and count, merge, reach). */
+  boundaries?: Float32Array;
   expected: { kind: 'baseline' } | { kind: 'twin'; values: Float64Array } | { kind: 'property'; check: (gpu: ArrayLike<number>) => StampGatePropertyResult };
 };
 
@@ -47,7 +50,7 @@ function baselineGrid(formula: string, call: string, width: number, entries: rea
   return { formula, call, width, rows, labels: entries.map((e) => e.label), expected: { kind: 'baseline' } };
 }
 
-function twinGrid(formula: string, call: string, width: number, entries: readonly (Row & { expected: number })[], storage: Pick<StampGateFormulaGrid, 'points' | 'grid'> = {}): StampGateFormulaGrid {
+function twinGrid(formula: string, call: string, width: number, entries: readonly (Row & { expected: number })[], storage: Pick<StampGateFormulaGrid, 'points' | 'grid' | 'boundaries'> = {}): StampGateFormulaGrid {
   return { ...baselineGrid(formula, call, width, entries), ...storage, expected: { kind: 'twin', values: Float64Array.from(entries, (e) => e.expected) } };
 }
 
@@ -130,6 +133,9 @@ const fieldRow = ([kind, geometry]: readonly [number, readonly [number, number, 
   label: `kind ${kind} [${geometry.join(',')}] at ${x},${y}`, inputs: [x, y, kind, ...geometry], expected: STAMP_PAINT_FIELD_SHARE.cpu(x, y, kind, geometry),
 });
 
+/** areaCoverage over a row: a point, its polygon's first and count, inset, ragged amount and scale, width, seed, boundaries' first and count. */
+const AREA_COVERAGE_CALL = 'areaCoverage(vec2f(x(0), x(1)), u32(x(2)), u32(x(3)), x(4), vec2f(x(5), x(6)), x(7), u32(x(8)), u32(x(9)), u32(x(10)))';
+
 /** The runtime twins, each over its grid, held to their CPU sides; and each dual mode's needsDual, held to its WGSL. */
 function twinGrids(): StampGateFormulaGrid[] {
   const fieldGeometry: [number, readonly [number, number, number, number]][] = [[0, [0, 0, 0, 0]], [1, [100, 50, 300, 250]], [1, [0, 0, 0, 400]], [2, [200, 150, 120, 0]]];
@@ -154,6 +160,25 @@ function twinGrids(): StampGateFormulaGrid[] {
     firsts.push(points.length / 2);
     for (const { x, y } of polygon) points.push(x, y);
   }
+  // Treated stretches: the square's left side merged above (20, 80) and feathered below it, meeting there; a merge
+  // along the ellipse's left end. Each path's points follow the polygons'.
+  const ellipse = TWIN_POLYGONS[3], leftmost = ellipse.findIndex(({ x }) => x === Math.min(...ellipse.map((p) => p.x)));
+  const treated: { polygon: number; boundaries: CompiledStampBoundary[] }[] = [
+    { polygon: 0, boundaries: [
+      { name: 'top', path: [{ x: 20, y: 20 }, { x: 20, y: 80 }], treatment: 'merge', reach: 10 },
+      { name: 'foot', path: [{ x: 20, y: 80 }, { x: 20, y: 140 }], treatment: 'feather', reach: 12 },
+    ] },
+    { polygon: 3, boundaries: [{ name: 'end', path: [-4, -3, -2, -1, 0, 1, 2, 3, 4].map((k) => ellipse[(leftmost + k + ellipse.length) % ellipse.length]), treatment: 'merge', reach: 7.5 }] },
+  ];
+  const boundaryFloats: number[] = [];
+  const boundaryFirsts = treated.map(({ boundaries }) => {
+    const first = boundaryFloats.length / 4;
+    for (const { path, treatment, reach } of boundaries) {
+      boundaryFloats.push(points.length / 2, path.length, treatment === 'merge' ? 1 : 0, reach);
+      for (const { x, y } of path) points.push(x, y);
+    }
+    return first;
+  });
   const at = [-10.25, 0.25, 60.75, 150.25, 199.75, 250.25, 410.75];
   const polygonDistance = TWIN_POLYGONS.flatMap((polygon, k) => at.flatMap((x) => at.map((y) => ({
     label: `polygon ${k} at ${x},${y}`, inputs: [x, y, firsts[k], polygon.length], expected: stampPolygonDistance(polygon, x, y),
@@ -170,9 +195,19 @@ function twinGrids(): StampGateFormulaGrid[] {
     const left = k === 0 ? 20 : 60;
     return [-8.25, -0.25, 0.75, 2.25, 4.5, 9.75, 14.25, 30.5].flatMap((dx) => [80.25, 101.5, 121.75].map((y) => ({
       label: `polygon ${k} inset ${inset} ragged ${amount}/${scale} width ${width} seed ${seed} at ${left + dx},${y}`,
-      inputs: [left + dx, y, firsts[k], TWIN_POLYGONS[k].length, inset, amount, scale, width, seed], expected: stampAreaCoverageAt(area, left + dx, y),
+      inputs: [left + dx, y, firsts[k], TWIN_POLYGONS[k].length, inset, amount, scale, width, seed, 0, 0], expected: stampAreaCoverageAt(area, left + dx, y),
     })));
   })));
+  // Across each treated stretch, its ends and where two meet, from outside its reach to well inside.
+  const boundaryCoverage = treated.flatMap(({ polygon: k, boundaries }, b) => [0, 3.5].flatMap((inset) => {
+    const area = { polygon: TWIN_POLYGONS[k], inset, seed: 777, boundaries };
+    const x0 = Math.min(...TWIN_POLYGONS[k].map((p) => p.x));
+    const ys = k === 0 ? [10.25, 24.5, 61.75, 79.5, 86.25, 101.5, 139.75, 150.25] : [96.5, 108.25, 119.75, 131.5, 143.25];
+    return [-14.25, -8.5, -3.75, -0.25, 0.75, 4.5, 9.25, 15.75, 30.5].flatMap((dx) => ys.map((y) => ({
+      label: `polygon ${k} boundaries ${boundaries.map(({ name }) => name).join('+')} inset ${inset} at ${x0 + dx},${y}`,
+      inputs: [x0 + dx, y, firsts[k], TWIN_POLYGONS[k].length, inset, 0, 0, 1, 777, boundaryFirsts[b], boundaries.length], expected: stampAreaCoverageAt(area, x0 + dx, y),
+    })));
+  }));
   // A mode that needs the dual paints nothing where the dual has none, whatever the tip; one that doesn't paints a full tip.
   const needsDual = STAMP_DUAL_BLENDS.flatMap((blend) => (stampDualNeedsDual(blend) ? UNIT : [1]).map((tip) => ({
     label: `${blendName(blend)} tip ${tip}`, inputs: [stampDualModeIndex(blend), blend.family === 'layer' ? 1 : 0, tip], expected: stampDualNeedsDual(blend) ? 1 : 0,
@@ -182,7 +217,8 @@ function twinGrids(): StampGateFormulaGrid[] {
     twinGrid('kubelkaMunkOver', 'kubelkaMunkOver(kubelkaMunkFilm(vec4f(x(0)), vec4f(x(1))), vec4f(x(2))).x', 3, film),
     twinGrid('kubelkaMunkFilm T', 'kubelkaMunkFilm(vec4f(x(0)), vec4f(x(1))).T.x', 2, filmT),
     twinGrid('polygonDistance', 'polygonDistance(vec2f(x(0), x(1)), u32(x(2)), u32(x(3)))', 4, polygonDistance, { points: new Float32Array(points) }),
-    twinGrid('areaCoverage', 'areaCoverage(vec2f(x(0), x(1)), u32(x(2)), u32(x(3)), x(4), vec2f(x(5), x(6)), x(7), u32(x(8)))', 9, areaCoverage, { points: new Float32Array(points) }),
+    twinGrid('areaCoverage', AREA_COVERAGE_CALL, 11, areaCoverage, { points: new Float32Array(points), boundaries: new Float32Array(boundaryFloats) }),
+    twinGrid('areaCoverage boundaries', AREA_COVERAGE_CALL, 11, boundaryCoverage, { points: new Float32Array(points), boundaries: new Float32Array(boundaryFloats) }),
     twinGrid('gridAt', `gridAt(vec2f(x(0), x(1)), vec3f(${distance.x0}, ${distance.y0}, ${distance.cell}), vec2u(${distance.columns}u, ${distance.rows}u), 0u)`, 2, gridAt, { grid: distance.values }),
     twinGrid('dualNeedsDual', 'select(0.0, 1.0, dualCombine(x(2), 0.0, i32(x(0)), x(1) > 0.5) == 0.0)', 3, needsDual),
   ];
