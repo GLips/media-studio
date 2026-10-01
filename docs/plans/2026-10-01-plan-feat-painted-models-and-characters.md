@@ -115,6 +115,120 @@ outlines reach the stamp painter well enough to paint a rock and the frog's body
   named as follow-on spikes.
 - The findings choose how regions reach the painter, so phase 2 can be shaped.
 
+### Findings (vid-144, 2026-10-01)
+
+The toy is `work/projects/2026-10-model-spike/` (workspace branch vid144); clips, frames beside the reference and
+numbers are at `~/research/2026-10-01-vid-144/index.html`. Studio branch vid144 adds only `manifold-3d`. Numbers are
+from an M1 Max under a shared load.
+
+**Short answer.** The pipeline holds. Blended shapes mesh into one closed skin. Regions written as fields trace
+smooth edges, and an ID image traced on the CPU gives the painter fills, light zones and lines within a third of a
+pixel of the exact lines, the same in any render order. What doesn't hold yet: the painted line boils as the rock
+turns (its geometry holds, but its stamps are re-placed each drawing), a re-traced object costs about 270 ms a frame
+because the whole painting reloads, and the frog's throat patch is the wrong shape (an authoring problem).
+
+**1. One skin; size and time.** Yes. `Manifold.levelSet` over a smooth union gives one closed mesh (genus 0) for the
+rock and the frog's body. The critic found no crease where the throat meets the chin. The seam it saw is the throat
+region's straight edge, not the skin.
+
+| skin | edge | verts / tris | Node | browser | .glb |
+| --- | --- | --- | --- | --- | --- |
+| rock | 0.045 | 16,001 / 31,998 | about 490 ms | 318 ms | 814 KB |
+| frog body | 0.06 | 16,595 / 33,186 | 290 ms | — | — |
+| frog body | 0.04 | 37,581 / 75,158 | 0.9–1.2 s | 611 ms | 2.0 MB |
+
+The WASM loads in 10–35 ms. The time goes on the JS distance callback, which the browser runs faster than Node.
+Meshing is a build step, not a per-frame cost. A rough rock wants two normals: light read across the form
+(`formScale`, the gradient over 0.22 units), else noise breaks the light into islands, and the mesh's own normals for
+contours, else the contour misses the bumps by several px.
+
+**2. Regions.** A region is a field over space sampled at each vertex, so its edge is the field's zero set
+interpolated across the triangles. Per-face IDs (a region per triangle, as a Blender material would assign it) were
+also traced to compare. The field edges are clean enough to paint and to draw: 0.15 px mean from the exact edge on the
+mesh, moving p95 0.20 px between drawings 0.05° apart. Face-ID edges zigzag: 1.0 px mean, p95 4 px off,
+moving p95 0.9 px and up to 4 px, which can't be drawn as a line (route overlay). So regions are fields; face IDs exist only for
+glTF's materials (the .glb carries both, the fields as `_REGION_<NAME>` vertex attributes). Writing a good region as
+a field is hard: the throat's "front of the body and below the jaw" came out as a rectangle with a vertical edge
+down the flank, where the reference has a curved bib (the critic's second gap).
+
+**3. How regions and zones reach the painter: route B, the ID image traced.** It's chosen for phase 2.
+- **Route B** z-buffers the skin into an ID image (front triangle, normal, eye vector and region fields per sample,
+  2 px cells, on the CPU through three.js's camera) and contours each field with marching squares
+  (`stampGridContours`, the figure sources' `tracePaintFigurePieces`). Self-occlusion falls out of the z-buffer.
+  Every fill, zone and line comes from it.
+- **Route A** chains the zero crossings of N·V (the smooth contour) and of each region field through the mesh's
+  edges, projects them, and keeps what the ID image's depth shows. It gives lines only: a region's visible fill would
+  need hidden-surface removal by polygon booleans each frame, which is route B again.
+- **Agreement:** B's silhouette lies 0.29 px mean (p95 0.6) from A's on the rock over a half turn and on the frog.
+- **Holding still:** at 0.05° a drawing, B's silhouette moves p95 0.36 px, A's contour p95 0.13 px.
+- **Same in any order:** the shapes hash the same computed forward and backward, and `studio repeatable` passes
+  at 2.0, 4.5, 7.0 and 13.5 s (identical, or 116 dB PSNR).
+- **Cost** a drawing at cell 2 is about 70 ms in Node and in the browser alike: the raster 14–30 ms, the tracing
+  50–60 ms (Map-based marching squares and polygon distances, unoptimised). Cell 4 takes 20 ms and cell 1 270 ms.
+  Route A takes 20–30 ms.
+- **On the GPU,** three.js renders the same ID image at 1080p into a float target and reads it back in 10 ms. The
+  CPU tracing would remain.
+
+**4. Light zones against `stampRoundedForm`.** The model's zones win on the frog. Its Lambert term differs from the
+ellipsoid's by 0.21 on average, and 15.5% of the body is lit by one and in shade by the other: under the chin, round
+the haunch and along the flank. Painted side by side, the critic found the model's frog "clearly rounder", with a lit
+oval on the belly, shade under the chin and a band round the base, while the ellipsoid's reads "as a cutout". Both
+frogs were too low in contrast: the core is barely darker than the shade, and the rim is faint (a value choice, not a
+pipeline one). The zones are written once as the key light and a rim light in the camera's terms (left, up, toward
+the viewer) and turned into world space, so a turning rock turns under still light. The same key, read as a
+`StampFormLight`, lit the ellipsoid. Zones (cell 2): lit above 0.55 Lambert, shade below 0, a core band from -0.22
+to 0.11, and a rim where the rim light's term is over 0.15 and N·V under 0.42.
+
+**5. Outlines as the rock turns.** Their geometry holds, measured above and confirmed by the critic. The painted line
+boils: its breaks, density and the flecks beside it land differently every drawing (critic: FAIL on line texture),
+because a stroke's stamps are placed along its path from the path's start, and the path is new each drawing. The
+fills' textures (the crystals strokes) re-place in the same way. On twos it reads like a drawn boil, not crawl, but
+it isn't Graham's "lines stay painted at their width" yet.
+
+**Gaps hand-crafted in the toy** (each is phase 2's to build or name):
+1. The skins are baked into base64 modules (`models/*-glb.ts`, 3.7 MB), since a scene can't wait for WASM or load a
+   .glb synchronously. The .glb writer and reader are written by hand, for the subset the toy writes.
+2. three.js's `PerspectiveCamera` and `setViewOffset` are used directly (vid-142's camera description replaces them).
+3. The lights are a list in camera terms (`model-stage.ts`), hand-converted to a `StampFormLight` for the
+   ellipsoid. There is no scene light list yet.
+4. The CPU rasteriser, the field tracing, the zone thresholds and route A are all in the project
+   (`model-shapes.ts`, `model-lines.ts`). `cyclicRuns` is copied from `stamp-form.ts`, which doesn't export it.
+5. The turning rock recompiles its whole painting per drawing in a `useMemo` keyed by a drawing index stepped on twos
+   by hand (`floor(t × 24 / 2)`, on a 30 fps video, so holds are uneven).
+6. The value scheme is hand-written in the project: a half-tone (lit masked out, the silhouette glazed), the shade, a
+   core band and strokes along the terminator, and the rim kept by a mask in every passage after the lightest
+   (`keepRim`). A style or technique should own it; `stampChargedForm` already takes faces with a facing.
+7. Regions are authored as analytic fields over space, with no tool to place one on the surface.
+8. To bundle `manifold-3d` for the browser, its `node:` imports are aliased to a stub. Remotion's webpack would need
+   the same.
+
+**Needs in `lib/paint` and the renderer (for vid-140; nothing built here):**
+- **A group whose marks change each drawing without reloading the painting.** Today a new `CompiledStampPaint`
+  reloads everything: on the rock, about 60 ms of load (57 ms of it the stamp bank) and 67 ms of draw each drawing.
+  The whole render runs about 270 ms a frame in one tab against 42 ms for the held frog. vid-140's per-group cache by
+  marks key is what this needs; the model group's key is its drawing.
+- **Stamps that stay put on a line that moves a little.** Placing a stroke's stamps by arc length from a stable
+  anchor (or by a surface parameter, which route A's chains carry) would keep breaks and density where they were.
+  Fills need the same for their marks.
+- **A live group whose deposit count can change.** Region pieces split and merge as the rock turns (the moss), so the
+  written-group-re-placed rule (`stampLiveGroupProblem`) can't hold.
+- **A region given as a sampled field** (a grid with an iso level), which areas and masks could read directly. The ID
+  image already is one, so masks and `within` would skip tracing and keep sub-pixel edges.
+- Later, the device-sharing question: whether guide renders can stay on the stamp renderer's device.
+
+**New questions and follow-on spikes:**
+- **Stable marks on moving lines:** stamps keyed to a surface parameter, on vid-140's live groups. The boil is the
+  biggest gap to the look.
+- **Region authoring:** a 2D shape projected from a chosen view onto the skin, distance on the surface from painted
+  points, or fields. The throat bib is the test.
+- **Value and contrast as style:** the zone thresholds, the core's darkness and the rim's strength. The critic's
+  third gap is value.
+- **Cheaper tracing:** typed-array contouring, or the GPU ID image (10 ms) feeding field regions.
+- **Mesh density:** field regions don't need the finest mesh (face IDs did), so edge 0.06 halves the frog's build;
+  check its silhouette.
+- **A .glb in a scene:** a loader and `delayRender` in the bundle, or a build step that writes a module, as this toy's
+  bake does.
+
 ## Phase 2: Still objects painted from a model (sketched)
 
 ### Goal
