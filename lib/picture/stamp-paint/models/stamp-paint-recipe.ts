@@ -19,7 +19,7 @@ import {
 } from './stamp-paint-action.ts';
 import type { StampEdge, StampPoint, StampRegion } from './stamp-region.ts';
 import { checkStampGroupMotion, type StampGroupBoil, type StampGroupMotion, type StampGroupPaper } from './stamp-group-motion.ts';
-import { stampMaterialKeysSpan, type StampMaterialKeys } from './stamp-material-keys.ts';
+import { stampMaterialKeysSpan, type CompiledStampMaterialKeys, type StampMaterialKeys } from './stamp-material-keys.ts';
 
 export type StampPaintColor = `#${string}`;
 
@@ -42,8 +42,9 @@ export type StampPaintPaper = {
  */
 export type PaintMaterial = { kind: 'color'; color: StampPaintColor } | ({ kind: 'mixture' } & PaintMixture);
 
-/** A material that may change over the scene: one throughout, or keyed over scene time (stamp-material-keys.ts). */
+/** A material that may change over the scene: one throughout, or keyed over scene time (stamp-material-keys.ts); compiled, its keys checked. */
 export type StampKeyedMaterial = PaintMaterial | StampMaterialKeys<PaintMaterial>;
+export type CompiledStampKeyedMaterial = PaintMaterial | CompiledStampMaterialKeys<PaintMaterial>;
 
 /**
  * A material across the painting: one throughout, or graded between two (stamp-paint-field.ts), as a graded wash

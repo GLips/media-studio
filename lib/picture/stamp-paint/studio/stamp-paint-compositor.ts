@@ -9,7 +9,7 @@
 // decodes to linear light.
 
 import type { StampBlend } from '../models/stamp-brush.ts';
-import { stampKeySpanAt } from '../models/stamp-material-keys.ts';
+import { stampKeySpanAt, type StampKeyList } from '../models/stamp-material-keys.ts';
 import { STAMP_OPAQUE_COVER, type CompiledStampDeposit, type CompiledStampPaint } from '../models/stamp-paint-recipe.ts';
 import { stampUniformLayout, stampUniformWriter, type StampUniformField, type StampUniformLayout, type StampUniformViews } from './stamp-uniform-layout.ts';
 
@@ -150,6 +150,13 @@ fn tinted(color: vec3f, pixel: vec2u) -> vec3f {
 const byteAt = (color: string, i: number) => parseInt(color.slice(i, i + 2), 16) / 255;
 const hexRgb = (color: string): [number, number, number] => [byteAt(color, 1), byteAt(color, 3), byteAt(color, 5)];
 
+/** Keyed colour at `t`, eased between its keys' `colors` gamma-encoded, as flat colour mixes. */
+function easedGammaColor(keys: StampKeyList<{ at: number }>, colors: readonly (readonly [number, number, number])[], t: number): [number, number, number] {
+  const { from, to, share } = stampKeySpanAt(keys, t);
+  const eased = (i: 0 | 1 | 2) => colors[from][i] + (colors[to][i] - colors[from][i]) * share;
+  return [eased(0), eased(1), eased(2)];
+}
+
 /**
  * The flat compositor for `painting`: each deposit's colour and blends worked out once. Throws on a mixture of
  * pigments, a graded material or a wash: flat colour has no pigment to grade or water to carry it; and on a group on
@@ -169,22 +176,23 @@ export function flatStampPaintCompositor(painting: CompiledStampPaint): StampPai
     if (action.material.kind !== 'constant') throw new Error(`stamp paint: ${deposit.id} grades its material, which only a style that paints in pigment can lay`);
     if (action.burnish) throw new Error(`stamp paint: ${deposit.id} burnishes, which only a style that paints in a dry medium can`);
     const material = action.material.value;
-    const keys = material.kind === 'keys' ? material.keys : [{ at: 0, material }];
+    const keys = material.kind === 'keys' ? material.keys : [{ at: 0, material }] as const;
     const colors = keys.map(({ material: m }) => {
       if (m.kind === 'mixture') throw new Error(`stamp paint: ${deposit.id} lays a mixture of pigments, which only a style that paints in pigment can lay`);
       return hexRgb(m.color);
     });
+    // Flat paint is colour throughout, and a colour material always has a secondary (CompiledStampPaintAction).
+    const { secondaryColor } = action;
+    if (!secondaryColor) throw new Error(`stamp paint: ${deposit.id} lays colour with no secondary colour`);
+    const secondaries = typeof secondaryColor === 'object' ? secondaryColor.keys : [{ at: 0, material: secondaryColor }] as const;
+    const secondaryColors = secondaries.map(({ material: c }) => hexRgb(c));
     const burntBlend = (brush.burntEdge ?? brush.dual?.burntEdge)?.blend ?? 'colorBurn';
     const dualBurntBlend = brush.dual?.burntEdge?.blend ?? burntBlend;
     writers.set(deposit, (views, t) => {
       const put = stampUniformWriter(FLAT_PAINT_DEPOSIT, views);
-      // Keyed colour eases gamma-encoded, as flat colour mixes; a secondary colour left out follows it.
-      const { from, to, share } = stampKeySpanAt(keys, t);
-      const eased = (i: 0 | 1 | 2) => colors[from][i] + (colors[to][i] - colors[from][i]) * share;
-      const color: [number, number, number] = [eased(0), eased(1), eased(2)];
-      put('color', color);
+      put('color', easedGammaColor(keys, colors, t));
       put('blend', blendIndex(deposit.blend));
-      put('secondary', action.secondaryColor ? hexRgb(action.secondaryColor) : color);
+      put('secondary', easedGammaColor(secondaries, secondaryColors, t));
       put('tinted', brush.color ? 1 : 0);
       put('burntBlend', blendIndex(burntBlend));
       put('dualBurntBlend', blendIndex(dualBurntBlend));

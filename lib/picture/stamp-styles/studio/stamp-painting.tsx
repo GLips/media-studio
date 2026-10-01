@@ -7,7 +7,7 @@
 // that moves, boils or recolours does so within one painting, drawn from its checkpoints. A style is held by its
 // content, so one resolved anew each render loads nothing again.
 
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useDelayRender, useVideoConfig } from 'remotion';
 import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
@@ -114,11 +114,13 @@ export function StampPainting({ painting, style, t, width, height, box: given }:
 }
 
 /**
- * `value` as plain data, the same object for as long as its content is: a reload throws away the renderer's
- * checkpoints, so a new-but-equal paper or mixing mustn't cause one. A style's paper and mixing are JSON-shaped.
+ * `value`, or the first equal one this painting was given: a reload throws away the renderer's checkpoints, so a
+ * new-but-equal paper or mixing mustn't cause one. Equal by their JSON, as a style's paper and mixing are plain data.
  */
 function useStyleContent<T>(value: T): T {
   const content = JSON.stringify(value);
-  // SAFETY: `content` is `value` as JSON, which a style's plain data round-trips through.
-  return useMemo(() => JSON.parse(content) as T, [content]);
+  const [kept, setKept] = useState({ content, value });
+  if (kept.content === content) return kept.value;
+  setKept({ content, value });
+  return value;
 }

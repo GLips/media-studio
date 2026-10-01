@@ -227,3 +227,17 @@ test('a colour change reshapes nothing: every mark lands where and as it did, on
   assert.deepEqual(dusk.stamps, day.stamps);
   assert.deepEqual(dusk.dualStamps, day.dualStamps);
 });
+
+test('a colour keyed to itself paints as the colour does: each key jittered alike, its own colour still the secondary', () => {
+  const jittery: StampBrush = { ...brush, color: { stamp: { hue: 0, saturation: 0, lightness: 0, darkness: 0 }, stroke: { hue: 0.2, saturation: 0.2, lightness: 0.2, darkness: 0 }, pressure: { hue: 0, saturation: 0, lightness: 0, secondary: 0.5 } } };
+  const red: PaintMaterial = { kind: 'color', color: '#c03020' };
+  const glow = (material: PaintMaterial | { kind: 'keys'; keys: { at: number; material: PaintMaterial }[] }) => stampPassDeposits(compileStampPaintRecipe(stampPaintRecipe((paint) => {
+    paint.group('sky', { composite: 'glaze', opacity: 1 }, (group) => group.pass('p', {}, (pass) => pass.stroke('glow', { brush: jittery, material, diameter: 30, path })));
+  })).groups[0].passes[0])[0].action;
+  const still = glow(red), keyed = glow({ kind: 'keys', keys: [{ at: 0, material: red }, { at: 2, material: red }] });
+  assert.ok(still.kind === 'paint' && keyed.kind === 'paint' && still.material.kind === 'constant' && keyed.material.kind === 'constant');
+  assert.notEqual(still.material.value, red, 'the stroke jitter moved the colour');
+  assert.deepEqual(keyed.material.value, { kind: 'keys', keys: [{ at: 0, material: still.material.value }, { at: 2, material: still.material.value }] });
+  assert.equal(still.secondaryColor, red.color);
+  assert.deepEqual(keyed.secondaryColor, { kind: 'keys', keys: [{ at: 0, material: red.color }, { at: 2, material: red.color }] });
+});

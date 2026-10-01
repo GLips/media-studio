@@ -13,8 +13,8 @@ import type { PaintPigment, PaintPigmentAppearance } from '#lib/picture/paint/mo
 import type { PaintBands } from '#lib/picture/paint/models/paint-spectrum.ts';
 import type { PlacedStamp } from './stamp-placement.ts';
 import { stampPaintFieldEnds } from './stamp-paint-field.ts';
-import { stampKeySpanAt } from './stamp-material-keys.ts';
-import { stampGroupKnocksOut, stampPassDeposits, type CompiledStampDeposit, type CompiledStampPaint, type PaintMaterial, type StampKeyedMaterial, type StampPaintColor } from './stamp-paint-recipe.ts';
+import { mapStampKeyList, stampKeySpanAt, type StampKeyList } from './stamp-material-keys.ts';
+import { stampGroupKnocksOut, stampPassDeposits, type CompiledStampDeposit, type CompiledStampKeyedMaterial, type CompiledStampPaint, type PaintMaterial, type StampPaintColor } from './stamp-paint-recipe.ts';
 
 /**
  * Paint as pigment in a `medium`, mixed and dried with Kubelka–Munk. `pigments`, keyed by id, are the ones a mixture
@@ -39,7 +39,7 @@ export const STAMP_PIGMENT_GROUP_SLOTS = 12;
  * A pigment's amount at one end of a material over scene time: a full stroke's (unit films) at each key, eased
  * between them and held beyond (stamp-material-keys.ts); a single key for paint that doesn't change.
  */
-export type StampPigmentAmountKeys = readonly { at: number; amount: number }[];
+export type StampPigmentAmountKeys = StampKeyList<{ at: number; amount: number }>;
 
 /**
  * One pigment of a deposit's paint: its slot in its group's palette, its amounts at its material's first end and at
@@ -154,7 +154,7 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
         });
       };
       /** Each key of a material's end with what it lays: a material that doesn't change is one key. */
-      const keysOf = (end: StampKeyedMaterial) => (end.kind === 'keys' ? end.keys : [{ at: 0, material: end }]).map(({ at, material }) => ({ at, laid: laidOf(material) }));
+      const keysOf = (end: CompiledStampKeyedMaterial) => mapStampKeyList(end.kind === 'keys' ? end.keys : [{ at: 0, material: end }], ({ at, material }) => ({ at, laid: laidOf(material) }));
       const atFirst = keysOf(first), atSecond = kind === 0 ? atFirst : keysOf(second);
       const pigments = [...atFirst, ...atSecond].flatMap(({ laid }) => laid.map(({ pigment }) => pigment)).filter((pigment, i, all) => all.findIndex(({ id }) => id === pigment.id) === i);
       deposits.set(deposit, {
@@ -164,7 +164,7 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
         components: pigments.map((pigment) => {
           let slot = palette.findIndex(({ id }) => id === pigment.id);
           if (slot < 0) slot = palette.push(pigment) - 1;
-          const amounts = (keys: typeof atFirst) => keys.map(({ at, laid }) => ({ at, amount: amountAtEnd(laid, pigment.id) }));
+          const amounts = (keys: typeof atFirst) => mapStampKeyList(keys, ({ at, laid }) => ({ at, amount: amountAtEnd(laid, pigment.id) }));
           return {
             slot, ends: [amounts(atFirst), amounts(atSecond)],
             granulation: pigment.granulation * medium.granulation, flocculation: pigment.flocculation, seed: paintPigmentSeed(pigment.id),
@@ -173,7 +173,7 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
       });
     }
     if (palette.length > STAMP_PIGMENT_GROUP_SLOTS) {
-      throw new Error(`stamp paint: ${group.id} mixes ${palette.length} pigments, over the ${STAMP_PIGMENT_GROUP_SLOTS} a wash holds; split it into two groups (${palette.map(({ id }) => id).join(', ')})`);
+      throw new Error(`stamp paint: ${group.id} mixes ${palette.length} pigments, over the ${STAMP_PIGMENT_GROUP_SLOTS} a wash holds, counting every key and end of its materials; split it into two groups, or key fewer pigments (${palette.map(({ id }) => id).join(', ')})`);
     }
     const washes = group.passes.some((pass) => pass.kind === 'wash'), paintLayers = stampPigmentLayers(palette.length, washes);
     return { palette, paintLayers, open: washes ? 4 * paintLayers - 1 : null, sheetLayer: stampGroupKnocksOut(group) ? paintLayers : null };

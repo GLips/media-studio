@@ -308,7 +308,7 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
   if (id === 'animation/recolour') {
     const [from, to] = STAMP_GATE_RECOLOUR_KEYS, middle = (from + to) / 2;
     const still = stampGateRecolourPainting('halfway'), keyed = stampGateRecolourPainting('keyed');
-    const stillFrame = await withGateRenderer(still, drawnImages(still), (renderer, frame) => drawn(renderer, frame, from));
+    const stillFrame = await withGateRenderer(still, drawnImages(still), (renderer, frame) => drawn(renderer, frame, middle));
     const freshEnd = await withGateRenderer(keyed, drawnImages(keyed), (renderer, frame) => drawn(renderer, frame, to));
     return withGateRenderer(keyed, drawnImages(keyed), async (renderer, frame) => {
       const halfway = await drawn(renderer, frame, middle), end = await drawn(renderer, frame, to);

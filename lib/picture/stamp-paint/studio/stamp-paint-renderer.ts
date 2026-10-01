@@ -1860,7 +1860,8 @@ function rendererOnSurface(
   /**
    * What the frame at `t` draws: each group at its boil epoch and placement (null where it's painted), how many
    * events are settled, and the key a checkpoint after `event` events is saved under: each laid group's epoch, paint
-   * and placement, and a group partway through's epoch and paint.
+   * and placement, and a group partway through's epoch and paint. `passing`: it holds a group mid-recolour, which
+   * no other `t` shares.
    */
   function framePlan(t: number) {
     const frame = Math.round(t * fps);
@@ -1877,7 +1878,9 @@ function rendererOnSurface(
       if (end <= event && end > first) return [laid[index]];
       return first < event && event < end ? [`${drawn[index].epoch}${paintKeys[index]}`] : [];
     }).join('|');
-    return { drawn, keyAt, settled: stampSettledEventCount(events, t) };
+    const recolouring = painting.groups.map(({ recolours }) => !!recolours && recolours.from < t && t < recolours.to);
+    const passing = (event: number) => groupEvents.some(({ first }, index) => recolouring[index] && first < event);
+    return { drawn, keyAt, passing, settled: stampSettledEventCount(events, t) };
   }
 
   /**
@@ -1918,13 +1921,13 @@ function rendererOnSurface(
     surface.assertLive();
     slots = 0;
     const encoder = device.createCommandEncoder();
-    const { drawn, keyAt, settled } = framePlan(t);
+    const { drawn, keyAt, passing, settled } = framePlan(t);
     const start = whole ? null : checkpoints.latest(settled, keyAt);
     const from = start?.event ?? 0;
     // Saved: the settled prefix, and the state before the first group that moves, boils or recolours, which later frames share.
     const saves = new Set(whole ? [] : [settled, Math.min(settled, varyingFrom)].filter((event) => event > from));
     const save = (event: number, inGroup: boolean, painted: Box | null) => {
-      if (saves.has(event)) checkpoints.save(encoder, { event, key: keyAt(event), inGroup, painted });
+      if (saves.has(event) && !passing(event)) checkpoints.save(encoder, { event, key: keyAt(event), inGroup, painted });
     };
     if (start) checkpoints.restore(encoder, start);
     else drawPaper(encoder);
