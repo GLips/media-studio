@@ -351,7 +351,9 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
     const rest = stampGateLivePainting();
     const frames = await withGateRenderer(rest, drawnImages(rest), async (renderer, frame) => {
       const atRest = await drawn(renderer, frame, 0), live = await drawn(renderer, frame, 0, stampGateLiveState());
-      return { rest: atRest, live, again: await drawn(renderer, frame, 0) };
+      // The same key again restores the live frame from the checkpoint it saved.
+      const held = await drawn(renderer, frame, 0, stampGateLiveState());
+      return { rest: atRest, live, held, again: await drawn(renderer, frame, 0) };
     });
     return checkStampGateLive({ ...frames, posed: await firstFrame(stampGateLivePainting(STAMP_GATE_LIVE_POSE)) });
   }

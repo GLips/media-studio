@@ -94,7 +94,8 @@ function stampGroupFrame(group: CompiledStampGroup, given: StampGroupFrameState 
     warp: warp ? { map: warp.map, key: warp.key, cell: warp.cell ?? STAMP_WARP_CELL } : null,
     visibility,
     paintAt: recolours ? Math.min(recolours.to, Math.max(recolours.from, t)) : null,
-    ownMarks: !!live || (!!recolours && changingAt(recolours, t)) || authoredBoil?.every === 1,
+    // Live marks are kept like any others: equal live keys mean equal marks, so a frame held on twos restores them.
+    ownMarks: (!!recolours && changingAt(recolours, t)) || authoredBoil?.every === 1,
     // A recipe's motion is shared beyond its keys; a lay given in frame state is taken to be the frame's own.
     ownPlacement: motion ? changingAt(stampKeysSpan(motion.keys), t) : !!(moved || warp || visibility < 1),
   };
