@@ -9,16 +9,16 @@ import { stampMaterialKeysProblem } from './stamp-material-keys.ts';
 import type { PaintMaterial, StampKeyedMaterial, StampPaintColor, StampPaintMaterial } from './stamp-paint-recipe.ts';
 
 /** Paint as written: what a dry pass's deposits all do. */
-export type StampRecipePaint = { kind: 'paint'; material: StampPaintMaterial; blend?: StampBlend; secondaryColor?: StampPaintColor };
+export type StampRecipePaint = { kind: 'paint'; material: StampPaintMaterial; blend?: StampBlend; secondaryColor?: StampPaintColor; burnish?: boolean };
 /** What a wash's deposit does as written: paints, carrying `water` (its medium's when left out), wets, or lifts. */
 export type StampRecipeWashAction = (StampRecipePaint & { water?: number }) | { kind: 'water'; water: number } | { kind: 'lift'; strength?: number };
 
 /**
  * Paint laid where a deposit's stamps land: its material, each colour (each key's) moved by the brush's stroke colour
  * jitter; its `secondaryColor` is none for a mixture, as a brush's colour dynamics move a colour, not pigments, and
- * none unless written for keyed colour, which then follows its colour as it changes. All a dry pass does.
+ * none unless written for keyed colour, which then follows its colour as it changes. `burnish`: StampPaintSettings'.
  */
-export type CompiledStampPaintAction = { kind: 'paint'; material: StampPaintField<StampKeyedMaterial>; secondaryColor?: StampPaintColor };
+export type CompiledStampPaintAction = { kind: 'paint'; material: StampPaintField<StampKeyedMaterial>; secondaryColor?: StampPaintColor; burnish: boolean };
 
 /**
  * What a wash's deposit does: paint carrying `water` (0..1; left out, its medium's PaintWetting.brushWater), clean
@@ -67,5 +67,5 @@ export function compilePaintAction(full: string, action: StampRecipePaint, brush
   const { first } = stampPaintFieldEnds(field);
   const colour = first.kind === 'keys' ? first.keys[0].material.kind === 'color' : first.kind === 'color';
   const secondaryColor = colour ? action.secondaryColor ?? (first.kind === 'color' ? first.color : undefined) : undefined;
-  return { kind: 'paint', material, ...(secondaryColor && { secondaryColor }) };
+  return { kind: 'paint', material, ...(secondaryColor && { secondaryColor }), burnish: action.burnish ?? false };
 }

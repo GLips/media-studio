@@ -107,9 +107,9 @@ function curvedStrokes(kit: DryPassageKit): StampPaintRecipe {
 function burnished(kit: DryPassageKit): StampPaintRecipe {
   return stampPaintRecipe((paint) => paint.group('swatch', { composite: 'opaque' }, (group) => group.pass('layers', {}, (pass) => {
     hatchLayers(pass, kit, 'layer', rect(16, 30, W - 16, H - 30), 3, true);
-    pass.fill('pressed', {
+    pass.fill('burnished', {
       brush: kit.brushes.stick, diameter: 14, region: rect(W / 2, 30, W - 16, H - 30), direction: 0.2, material: dryPassagePigment(kit, 'ultramarine', 0.45),
-      application: { ...HATCH, spacing: 0.5, hand: { profile: () => 1 } },
+      application: { kind: 'strokes', pattern: 'shading' }, burnish: true,
     });
   })));
 }
@@ -143,7 +143,7 @@ export const DRY_PASSAGES: readonly DryPassage[] = [
   },
   {
     id: 'burnished', title: 'Burnishing', recipe: burnished,
-    shows: 'Three layers of hatching across the swatch (ochre, rose, blue). Over the right half the blue goes on again, pressed hard.',
+    shows: 'Three layers of hatching across the swatch (ochre, rose, blue). Over the right half the blue goes on again, burnished: pressed beyond drawing.',
     lookFor: 'The right half should be burnished: the wax pressed flat into the tooth, smooth and saturated, the paper no longer speckling through. The left half stays grainy.',
   },
 ];

@@ -12,6 +12,13 @@ import { paintHexToLinear, type PaintBands } from './paint-spectrum.ts';
 /** How a medium lightens a paint: `water` thins its film so the paper shows; `white` mixes white in, at full body. */
 export type PaintLightening = { kind: 'water' } | { kind: 'white'; white: PaintPigmentAppearance };
 
+/**
+ * How a dry medium meets the paper: a firm hand leaves bare the paper below `tooth` of its mean height, a light one
+ * more. Its layers stack until the tooth holds `holds` full loads, then trade. Wax held fills the valleys `fill`
+ * (0..1) of the way, so paper shows through several layers.
+ */
+export type PaintDryContact = { kind: 'peaks'; tooth: number; holds: number; fill: number };
+
 export type PaintMedium = {
   name: string;
   /**
@@ -27,10 +34,9 @@ export type PaintMedium = {
   granulation: number;
   /**
    * Where the paint meets the paper's tooth: a wet medium pools into the valleys (`valleys`, as deep as the paper is,
-   * and further by granulation); a dry one catches on the peaks (`peaks`), leaving bare the paper lower than `tooth`
-   * of its mean height.
+   * and further by granulation); a dry one catches on the peaks (PaintDryContact).
    */
-  paperContact: { kind: 'valleys' } | { kind: 'peaks'; tooth: number };
+  paperContact: { kind: 'valleys' } | PaintDryContact;
   /** How much more a film scatters dry than wet: air between the particles, where water was. Watercolour dries lighter. */
   dryingScatter: number;
   /**
@@ -86,10 +92,11 @@ export const PAINT_MEDIA = {
     // A first guess (vid-117): it barely travels, dries fast and re-dissolves once dry.
     wetting: { spread: 0.1, drying: 120, openTime: 0, rewetting: 0.9, brushWater: 0.4, damp: 0.35 },
   },
-  // Tuned by eye (vid-109), not measured: skips the paper below 85% of its mean height, so the tooth reads bare.
+  // Tuned by eye (vid-109, vid-124), not measured: a firm hand skips the paper below 95% of its mean height, so the
+  // tooth reads bare; the tooth holds two full loads, and its wax fills the valleys 40% of the way.
   crayon: {
     name: 'crayon', color: { kind: 'masstone', scatter: 0.05 }, body: 1.5, lightening: { kind: 'white', white: { id: 'waxWhite', name: 'wax white', overWhite: '#f7f6f1', overBlack: '#9d9c97' } },
-    granulation: 0, paperContact: { kind: 'peaks', tooth: 0.85 }, dryingScatter: 0, pickup: 0,
+    granulation: 0, paperContact: { kind: 'peaks', tooth: 0.95, holds: 2, fill: 0.4 }, dryingScatter: 0, pickup: 0,
     // No water and no spread. A lift is an eraser, taking the wax off the tooth's peaks but not what's pressed in (vid-117).
     wetting: { spread: 0, drying: 1, openTime: 0, rewetting: 0.85, brushWater: 0, damp: 0.35 },
   },

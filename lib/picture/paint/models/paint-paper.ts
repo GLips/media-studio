@@ -9,6 +9,11 @@
 /** How far a granulating pigment's load deepens its pooling: at full load a granulation of 2/3 pools all the way. */
 const GRANULATION_SETTLE = 1.5;
 
+/** How much higher, as a share of the mean height, the paper must stand for a feather-light hand to catch it than a firm one. */
+const DRY_LIGHT_REACH = 0.3;
+/** How far the paper rises, as a share of its mean height, from where a dry stick first touches it to where it lays fully. */
+const DRY_CATCH = 0.15;
+
 /** A pigment's seed for its clumps, from its id (FNV-1a): the same clumps wherever it's laid, apart from other pigments'. */
 export function paintPigmentSeed(id: string): number {
   let h = 0x811c9dc5;
@@ -18,9 +23,9 @@ export function paintPigmentSeed(id: string): number {
 }
 
 /**
- * The paper in WGSL. Each share averages 1 over the paper: `paintWetSettle` is linear in the valley's relative depth,
- * steeper by granulation × load; `paintDryContact` catches nothing below `tooth` of the mean height; `paintClumps` is
- * value noise in clumps of about 2.5 and 1.2 pixels, its lattice wrapping at 2²⁴ so it stays exact in f32.
+ * The paper in WGSL. `paintWetSettle` is linear in the valley's relative depth, steeper by granulation × load.
+ * `paintDryContact`: see its own note. `paintClumps` is value noise in clumps of about 2.5 and 1.2 pixels, its lattice
+ * wrapping at 2²⁴ so it stays exact in f32.
  */
 export const PAINT_PAPER_WGSL = /* wgsl */ `
 fn paintValley(h: f32, meanHeight: f32) -> f32 { return (1.0 - h) / max(1.0 - meanHeight, 0.01); }
@@ -28,9 +33,13 @@ fn paintWetSettle(valley: f32, paperDepth: f32, granulation: f32, load: f32) -> 
   let a = clamp(paperDepth + granulation * ${GRANULATION_SETTLE.toFixed(4)} * load, 0.0, 1.0);
   return 1.0 + a * (valley - 1.0);
 }
-fn paintDryContact(h: f32, meanHeight: f32, tooth: f32, paperDepth: f32) -> f32 {
-  let contact = clamp((h - tooth * meanHeight) / max(meanHeight * (1.0 - tooth), 0.01), 0.0, 1.0);
-  return 1.0 + paperDepth * (contact - 1.0);
+// Catches nothing below \`tooth\` of the mean height at \`press\` 1, less at 0, everything at 2 (burnished), the
+// valleys raised \`filled\` of the way by wax.
+fn paintDryContact(h: f32, meanHeight: f32, tooth: f32, paperDepth: f32, press: f32, filled: f32) -> f32 {
+  let surface = h + (1.0 - h) * clamp(filled, 0.0, 1.0);
+  let reach = tooth + ${DRY_LIGHT_REACH.toFixed(4)} * (1.0 - clamp(press, 0.0, 1.0));
+  let contact = clamp((surface - reach * meanHeight) / (${DRY_CATCH.toFixed(4)} * meanHeight), 0.0, 1.0);
+  return 1.0 + paperDepth * (1.0 - clamp(press - 1.0, 0.0, 1.0)) * (contact - 1.0);
 }
 fn paintHash01(x: u32, y: u32, seed: u32) -> f32 {
   let v = (x * 0x27d4eb2du) ^ (y * 0x165667b1u) ^ seed;

@@ -69,6 +69,8 @@ type StampPaintSettings = StampToolSettings & {
   blend?: StampBlend;
   /** The colour a brush whose colour follows pressure moves toward (StampBrushColorDynamics); a colour material's own if left out. */
   secondaryColor?: StampPaintColor;
+  /** Pressed beyond drawing, as a crayon burnishes: a dry medium's wax reaches every valley and lies flat. Wet media ignore it. */
+  burnish?: boolean;
 };
 
 /**
@@ -248,8 +250,8 @@ export function stampPaintRecipe(body: (paint: StampPaintScope) => void): StampP
   type PaintSettings = StampPaintSettings & StampWashWater & Partial<StampStrokeGeometry & StampPlacementGeometry & StampFillGeometry>;
   /** A paint deposit as written, and the water its brush carries in a wash (undefined: its medium's); a dry pass drops it. */
   const paintDeposit = (kind: StampDepositGeometry['kind'], id: string, settings: PaintSettings) => {
-    const { geometry, rest: { material, blend, secondaryColor, water, ...tool } } = splitGeometry(kind, settings);
-    const action: StampRecipePaint = { kind: 'paint', material, ...(blend && { blend }), ...(secondaryColor && { secondaryColor }) };
+    const { geometry, rest: { material, blend, secondaryColor, burnish, water, ...tool } } = splitGeometry(kind, settings);
+    const action: StampRecipePaint = { kind: 'paint', material, ...(blend && { blend }), ...(secondaryColor && { secondaryColor }), ...(burnish && { burnish }) };
     return { deposit: { kind: 'deposit' as const, id, geometry, tool, mask: fluid, action }, water };
   };
   /** A dry pass's scope writing into `steps`: paint only. */

@@ -153,7 +153,9 @@ fn covered(corner: Corner) -> vec2f {
 @fragment fn coverTinted(corner: Corner) -> Stamp {
   let a = covered(corner);
   return Stamp(vec4f(vec3f(corner.toward), a.x), a.yyxx, vec4f(corner.tint.xyz * a.x, a.x), vec4f(corner.tint.w * a.x, 0.0, 0.0, a.x));
-}`;
+}
+// The stamp's pressure wherever it lays paint, kept by max: how hard the hand pressed there (StampPaintCompositor's press).
+@fragment fn pressOf(corner: Corner) -> @location(0) vec4f { return vec4f(select(0.0, corner.pressure, covered(corner).x > 0.001)); }`;
 
 /** Pixels a side of the tiles an `ordered` layer's stamps are binned by (binOrderedStamps). */
 const ORDERED_TILE = 32;
@@ -277,8 +279,14 @@ const DEPOSIT = stampUniformLayout('Deposit', [
   ['view', 'vec4f'], ['edges', 'vec4f'], ['dualEdges', 'vec4f'],
   ['grain', stampUniformStruct(GRAIN)], ['dualGrain', stampUniformStruct(GRAIN)], ['paperDepth', 'f32'], ['paperLod', 'f32'], ['opacity', 'f32'],
   ['dualBlend', 'i32'], ['flags', 'u32'], ['resolveOrder', 'i32'], ['origin', 'vec2u'], ['extent', 'vec2u'],
-  ['build', 'vec2f'], ['accumulation', 'vec2u'], ['pooling', 'vec4f'],
+  ['build', 'vec2f'], ['accumulation', 'vec2u'], ['pooling', 'vec4f'], ['press', 'f32'],
 ]);
+
+/** How far past a dry deposit's box its layer is copied for its tooth's fill (StampPaintCompositor's laysDry): as far as it reads round a pixel. */
+const DRY_BEFORE_PAD = 4;
+
+/** How hard a burnishing deposit presses (StampPaintSettings' burnish), past a drawing hand's full 1: the wax reaches every valley. */
+const STAMP_BURNISH_PRESS = 2;
 
 /** What a deposit's resolve does, a bit each in its `flags`, and a WGSL constant each of the same name in capitals. */
 const DEPOSIT_FLAGS = {
@@ -350,6 +358,15 @@ const WET_LAND_WGSL = /* wgsl */ `landDeposit(pixel, coverage, rims, tooth, at, 
   textureStore(footprint, pixel, vec4f(coverage, allowed, tooth));`;
 const DEPOSIT_FLAGS_WGSL = Object.entries(DEPOSIT_FLAGS).map(([flag, bit]) => `const ${flag.replace(/[A-Z]/g, (c) => `_${c}`).toUpperCase()} = ${bit}u;`).join('\n');
 
+// The layer as a dry deposit found it (StampPaintCompositor's laysDry), sampled round each pixel.
+const beforeWgsl = (layer: StampPaintTarget) => `@group(0) @binding(23) var before: ${layer.kind === 'array' ? 'texture_2d_array<f32>' : 'texture_2d<f32>'};`;
+// How hard a deposit pressed at a pixel: its stamps' pressure there, firm where none laid it (a flood's body), by its own press.
+const PRESS_AT_WGSL = /* wgsl */ `@group(0) @binding(22) var pressed: texture_2d<f32>;
+fn pressAt(pixel: vec2u) -> f32 {
+  let p = textureLoad(pressed, pixel, 0).r;
+  return select(p, 1.0, p <= 0.0) * u.press;
+}`;
+
 /**
  * Each resolve stage on the main layer's coverage `m`: `d` is the dual's, cut and pooled already, `at` the pixel. A
  * traced resolve records `m` after each (traced), so what a diagnosis reads is what the frame lays.
@@ -383,6 +400,7 @@ ${TRACE_CROP.wgsl}
 ${STAMP_PAINT_FIELD_SHARE.wgsl}
 ${STAMP_FLOOD_FRONT_SHARE_WGSL}
 ${wet ? `${WET_WGSL}\n${stampPaintTargetWgsl('fresh', 21, compositor.targets.layer, 'write')}\n${compositor.deposit.wet}` : ''}
+${compositor.laysDry ? `${PRESS_AT_WGSL}\n${beforeWgsl(compositor.targets.layer)}` : ''}
 // The diagnostic variant (StampPaintRenderer's trace): the same resolve, recording each stage's coverage as it goes.
 override TRACE: bool = false;
 var<private> tracedPixel: vec2u;
@@ -501,7 +519,7 @@ fn rimOf(a: f32, soft: f32, sharpness: f32) -> f32 { return clamp((a - soft) * s
   // A burnt rim burns into paint already there, the group's or the deposit's own (its stamps laid over one another).
   let burnable = max(layerCoverage(pixel), clamp(m, 0.0, 1.0)) * keep * u.opacity;
   let rims = vec2f(clamp(burnt, 0.0, 1.0) * burnable, clamp(dualBurnt, 0.0, 1.0) * burnable);
-  ${wet ? WET_LAND_WGSL : 'layDeposit(pixel, coverage, rims, tooth, at, reserved);'}
+  ${wet ? WET_LAND_WGSL : `layDeposit(pixel, coverage, rims, tooth, at, reserved, ${compositor.laysDry ? 'pressAt(pixel)' : 'u.press'});`}
   if ((u.flags & CLIPS) != 0u) { textureStore(clip, pixel, vec4f(coverage) + clipped * (1.0 - coverage)); }
 }`;
 
@@ -1090,15 +1108,16 @@ async function rendererOnDevice(
    * A stamp pipeline: its accumulation's blend into the brush's channel or its dual's; in a tinted pass (a brush with
    * colour dynamics) with the two tint targets too, which only the brush's own stamps write.
    */
+  const stampVertex = (tintStride: number): GPUVertexState => ({
+    module: stampModule,
+    buffers: [
+      { arrayStride: STAMP_FLOATS * 4, stepMode: 'instance', attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }, { shaderLocation: 1, offset: 16, format: 'float32x4' }, { shaderLocation: 3, offset: 32, format: 'float32x4' }] },
+      { arrayStride: tintStride, stepMode: 'instance', attributes: [{ shaderLocation: 2, offset: 0, format: 'float32x4' }] },
+    ],
+  });
   const stampPipeline = (glaze: boolean, channel: 0 | 1, tinted: boolean) => device.createRenderPipeline({
     layout: 'auto',
-    vertex: {
-      module: stampModule,
-      buffers: [
-        { arrayStride: STAMP_FLOATS * 4, stepMode: 'instance', attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }, { shaderLocation: 1, offset: 16, format: 'float32x4' }, { shaderLocation: 3, offset: 32, format: 'float32x4' }] },
-        { arrayStride: tinted && channel === 0 ? TINT_FLOATS * 4 : 0, stepMode: 'instance', attributes: [{ shaderLocation: 2, offset: 0, format: 'float32x4' }] },
-      ],
-    },
+    vertex: stampVertex(tinted && channel === 0 ? TINT_FLOATS * 4 : 0),
     fragment: {
       module: stampModule,
       entryPoint: tinted && channel === 0 ? 'coverTinted' : 'cover',
@@ -1113,6 +1132,12 @@ async function rendererOnDevice(
     const glaze = accumulation === 'glaze';
     return [accumulation, { plain: [stampPipeline(glaze, 0, false), stampPipeline(glaze, 1, false)], tinted: [stampPipeline(glaze, 0, true), stampPipeline(glaze, 1, true)] }];
   })) as Record<'glaze' | 'build', Record<'plain' | 'tinted', [GPURenderPipeline, GPURenderPipeline]>>;
+  // Each stamp's pressure kept by max, which is order-free, so a layer laid in order lays it so too.
+  const pressPipeline = compositor.laysDry ? device.createRenderPipeline({
+    layout: 'auto',
+    vertex: stampVertex(0),
+    fragment: { module: stampModule, entryPoint: 'pressOf', targets: [{ format: 'r16float', blend: maxBlend, writeMask: GPUColorWrite.RED }] },
+  }) : null;
   const orderedModule = device.createShaderModule({ code: ORDERED_WGSL });
   /** An ordered pipeline: it writes the layer's channel whole, and a tinted pass's tints, which only the brush's own stamps write. */
   const orderedPipeline = (channel: 0 | 1, tinted: boolean) => device.createRenderPipeline({
@@ -1211,6 +1236,9 @@ async function rendererOnDevice(
     // Only a painting with colour dynamics lays tints, and only for a compositor that reads them.
     tintA: laysTints ? target(width, height, RENDER) : null,
     tintB: laysTints ? target(width, height, RENDER) : null,
+    // Only a compositor laying a dry medium has each deposit's pressure laid, and the layer as the deposit found it.
+    press: compositor.laysDry ? target(width, height, RENDER, 'r16float') : null,
+    before: compositor.laysDry ? layered(compositor.targets.layer, GPUTextureUsage.COPY_DST) : null,
     // Only a painting with washes leaves footprints, and what each wash deposit laid (`fresh`, shaped as the layer).
     footprint: wetness?.landings.size ? target(width, height, STORAGE) : null,
     fresh: wetness?.landings.size ? layered(compositor.targets.layer, STORAGE) : null,
@@ -1422,6 +1450,71 @@ async function rendererOnDevice(
     writeGrain(views, at, grain, [size, size * (grain.image.height / grain.image.width)], offset, grainLod(grain.image, size));
   };
 
+  /** What drawing `layer`'s stamps binds, the main brush's (`stampChannel` 0) or its dual's. */
+  const stampInputs = (deposit: CompiledStampDeposit, layer: BoundLayer, active: StampActiveLayer<StampPaintImage>, stampChannel: 0 | 1) => {
+    const { rollingGrain: rolling, diameter } = active;
+    const { pressed } = layer.tip;
+    const center: [number, number] = [layer.tip.center?.[0] ?? 0.5, layer.tip.center?.[1] ?? 0.5];
+    const pressedWords: [number, number, number, number] = pressed ? [pressed.softness, ...pressed.range, pressed.diameter ?? 0] : [0, 0, 0, 0];
+    return {
+      rolling, diameter, offset: deposit.grainOffset[stampChannel === 0 ? 'main' : 'dual'], center, pressedWords,
+      textures: [layer.tip.image.view, rolling ? rolling.image.view : targets.blank.view, layer.tip.sampling === 'anisotropic' ? anisotropicClamp : linearClamp, rolling?.tiling === 'mirror' ? mirrorTile : tile],
+      contact: pressed ? pressed.contact.view : targets.blank.view,
+    };
+  };
+  /** The fixed path's bindings (STAMP_WGSL) for `layer`'s stamps, each laid toward full or its opacity. */
+  const fixedStampResources = (deposit: CompiledStampDeposit, layer: BoundLayer, active: StampActiveLayer<StampPaintImage>, hull: StampTipHull, stampChannel: 0 | 1, towardFull: boolean) => {
+    const { rolling, diameter, offset, textures, center, contact, pressedWords } = stampInputs(deposit, layer, active, stampChannel);
+    return [
+      slot((views) => {
+        const put = stampUniformWriter(STAMP_DRAW, views);
+        put('resolution', [width, height]);
+        put('roundness', layer.tip.roundness * aspectOf(layer));
+        put('rolling', rolling ? 1 : 0);
+        if (rolling) {
+          const size = rolling.scale * diameter;
+          writeGrain(views, STAMP_DRAW.at.grain, rolling, [size, size * (rolling.image.height / rolling.image.width)], offset, 0);
+          put('diameter', diameter);
+          put('zoom', rolling.zoom);
+          put('movement', rolling.movement);
+        }
+        // A hull has as many corners as stayed convex, up to the array's; the fan draws only those, and the rest are zeros.
+        const hullWords = new Float32Array(STAMP_TIP_HULL_SIDES * 2);
+        hullWords.set(hull);
+        put('hull', hullWords);
+        put('span', spanOf(layer));
+        put('towardFull', towardFull ? 1 : 0);
+        put('center', center);
+        put('noise', layer.tip.noise ?? 0);
+        put('pressed', pressedWords);
+      }),
+      ...textures, contact,
+    ];
+  };
+
+  /** Lays each of the deposit's first `count` stamps' pressure where it lays paint, kept by max, for a compositor that reads it. */
+  function drawPress(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loadedDeposit: LoadedDeposit, count: number, box: Box) {
+    const pass = encoder.beginRenderPass({ colorAttachments: [{ view: targets.press!.view, loadOp: 'clear', storeOp: 'store' }] });
+    pass.setScissorRect(box.x, box.y, box.w, box.h);
+    if (count) {
+      pass.setIndexBuffer(fanBuffer, 'uint16');
+      pass.setPipeline(pressPipeline!);
+      pass.setBindGroup(0, bindGroup(pressPipeline!, fixedStampResources(deposit, loadedDeposit.brush, loadedDeposit.active.main, loadedDeposit.mainHull, 0, true)));
+      pass.setVertexBuffer(0, loadedDeposit.stampBuffer, loadedDeposit.main * STAMP_FLOATS * 4);
+      pass.setVertexBuffer(1, noTintBuffer);
+      pass.drawIndexed((loadedDeposit.mainHull.length / 2 - 2) * 3, count);
+    }
+    pass.end();
+  }
+
+  /** Copies the layer under `box` and a pixel past it, as far as a dry medium's tooth fills from, into `before`. */
+  function copyBefore(encoder: GPUCommandEncoder, box: Box) {
+    const x = Math.max(0, box.x - DRY_BEFORE_PAD), y = Math.max(0, box.y - DRY_BEFORE_PAD);
+    const w = Math.min(width, box.x + box.w + DRY_BEFORE_PAD) - x, h = Math.min(height, box.y + box.h + DRY_BEFORE_PAD) - y;
+    const layers = compositor.targets.layer.kind === 'array' ? compositor.targets.layer.layers : 1;
+    encoder.copyTextureToTexture({ texture: targets.layer.texture, origin: { x, y, z: 0 } }, { texture: targets.before!.texture, origin: { x, y, z: 0 } }, [w, h, layers]);
+  }
+
   function drawStamps(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loadedDeposit: LoadedDeposit, count: number, dualCount: number, box: Box) {
     const tinted = loadedDeposit.tint !== null;
     const pass = encoder.beginRenderPass({
@@ -1431,13 +1524,8 @@ async function rendererOnDevice(
     pass.setIndexBuffer(fanBuffer, 'uint16');
     const stamp = (layer: BoundLayer, active: StampActiveLayer<StampPaintImage>, plan: LoadedPlan, first: number, n: number, hull: StampTipHull, stampChannel: 0 | 1) => {
       if (!n) return;
-      const { rollingGrain: rolling, diameter } = active;
-      const offset = deposit.grainOffset[stampChannel === 0 ? 'main' : 'dual'];
-      const textures = [layer.tip.image.view, rolling ? rolling.image.view : targets.blank.view, layer.tip.sampling === 'anisotropic' ? anisotropicClamp : linearClamp, rolling?.tiling === 'mirror' ? mirrorTile : tile];
+      const { rolling, diameter, offset, textures, center, contact, pressedWords } = stampInputs(deposit, layer, active, stampChannel);
       const tintBinding = stampChannel === 0 && tinted ? { buffer: loadedDeposit.tintBuffer, at: loadedDeposit.tint! } : { buffer: noTintBuffer, at: 0 };
-      const center: [number, number] = [layer.tip.center?.[0] ?? 0.5, layer.tip.center?.[1] ?? 0.5];
-      const { pressed } = layer.tip, contact = pressed ? pressed.contact.view : targets.blank.view;
-      const pressedWords: [number, number, number, number] = pressed ? [pressed.softness, ...pressed.range, pressed.diameter ?? 0] : [0, 0, 0, 0];
       if (plan.kind === 'ordered') {
         // Only this layer's stamps and tints are bound, so no painting's whole buffer meets the storage binding limit.
         const stampSlice = storageSlice(loadedDeposit.stampBuffer, first, n, STAMP_FLOATS), tintSlice = storageSlice(tintBinding.buffer, tintBinding.at, tinted ? n : 1, TINT_FLOATS);
@@ -1473,31 +1561,7 @@ async function rendererOnDevice(
       }
       const pipeline = stampPipelines[STAMP_ACCUMULATIONS[layer.accumulation.kind].keepsCap ? 'glaze' : 'build'][tinted ? 'tinted' : 'plain'][stampChannel];
       pass.setPipeline(pipeline);
-      pass.setBindGroup(0, bindGroup(pipeline, [
-        slot((views) => {
-          const put = stampUniformWriter(STAMP_DRAW, views);
-          put('resolution', [width, height]);
-          put('roundness', layer.tip.roundness * aspectOf(layer));
-          put('rolling', rolling ? 1 : 0);
-          if (rolling) {
-            const size = rolling.scale * diameter;
-            writeGrain(views, STAMP_DRAW.at.grain, rolling, [size, size * (rolling.image.height / rolling.image.width)], offset, 0);
-            put('diameter', diameter);
-            put('zoom', rolling.zoom);
-            put('movement', rolling.movement);
-          }
-          // A hull has as many corners as stayed convex, up to the array's; the fan draws only those, and the rest are zeros.
-          const hullWords = new Float32Array(STAMP_TIP_HULL_SIDES * 2);
-          hullWords.set(hull);
-          put('hull', hullWords);
-          put('span', spanOf(layer));
-          put('towardFull', plan.toward === 'full' ? 1 : 0);
-          put('center', center);
-          put('noise', layer.tip.noise ?? 0);
-          put('pressed', pressedWords);
-        }),
-        ...textures, contact,
-      ]));
+      pass.setBindGroup(0, bindGroup(pipeline, fixedStampResources(deposit, layer, active, hull, stampChannel, plan.toward === 'full')));
       pass.setVertexBuffer(0, loadedDeposit.stampBuffer, first * STAMP_FLOATS * 4);
       pass.setVertexBuffer(1, tintBinding.buffer, tintBinding.at * TINT_FLOATS * 4);
       pass.drawIndexed((hull.length / 2 - 2) * 3, n);
@@ -1596,6 +1660,7 @@ async function rendererOnDevice(
         const { pooling } = active.main, dualPooling = active.dual?.pooling;
         const peakOf = (edges?: { peak: number; body: number }) => (washRims ? edges?.body : edges?.peak) ?? 0;
         put('pooling', [peakOf(pooling), pooling?.body ?? 0, peakOf(dualPooling), dualPooling?.body ?? 0]);
+        put('press', deposit.action.kind === 'paint' && deposit.action.burnish ? STAMP_BURNISH_PRESS : 1);
       }),
       targets.mask.view, blurred ? targets.blurB.view : targets.mask.view,
       mainGrain ? mainGrain.image.view : targets.blank.view,
@@ -1638,7 +1703,7 @@ async function rendererOnDevice(
         put('bodyReach', WET_BODY_REACH * deposit.diameter);
         put('action', WET_ACTIONS[action.kind]);
       }),
-      landing && targets.footprint!.view, landing && targets.fresh!.view, null, null,
+      landing && targets.footprint!.view, landing && targets.fresh!.view, !landing && targets.press ? targets.press.view : null, !landing && targets.before ? targets.before.view : null,
       ...compositor.deposit.resources({ tints: { a: tinted ? targets.tintA!.view : targets.blank.view, b: tinted ? targets.tintB!.view : targets.blank.view }, wet: !!landing }),
     ], box.w, box.h);
   }
@@ -1799,6 +1864,8 @@ async function rendererOnDevice(
     const box = depositBox(deposit, loadedDeposit, count, dualCount, depositPad(loadedDeposit.identity, loadedDeposit, pass));
     if (!box) return null;
     drawStamps(encoder, deposit, loadedDeposit, count, dualCount, box);
+    if (pressPipeline) drawPress(encoder, deposit, loadedDeposit, count, box);
+    if (targets.before && !loadedDeposit.landing) copyBefore(encoder, box);
     if (blurred) blurMask(encoder, sigma, box);
     resolveDeposit(encoder, deposit, loadedDeposit, pass, t, blurred, box, frameTrace);
     let painted: Box = box;

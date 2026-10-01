@@ -88,9 +88,9 @@ function renderingGrids(): StampGateFormulaGrid[] {
   const settle = UNIT.flatMap((h) => [0.25, 0.5].flatMap((mean) => COARSE.flatMap((depth) => [0, 0.5].flatMap((granulation) => [0.25, 1].map((load) => ({
     label: `h ${h} mean ${mean} depth ${depth} granulation ${granulation} load ${load}`, inputs: [h, mean, depth, granulation, load],
   }))))));
-  const contact = UNIT.flatMap((h) => [0.25, 0.5].flatMap((mean) => [0.5, 0.875].flatMap((tooth) => COARSE.map((depth) => ({
-    label: `h ${h} mean ${mean} tooth ${tooth} depth ${depth}`, inputs: [h, mean, tooth, depth],
-  })))));
+  const contact = UNIT.flatMap((h) => [0.25, 0.5].flatMap((mean) => [0.5, 0.875].flatMap((tooth) => COARSE.flatMap((depth) => [0, 0.5, 1, 1.5, 2].flatMap((press) => [0, 0.5].map((filled) => ({
+    label: `h ${h} mean ${mean} tooth ${tooth} depth ${depth} press ${press} filled ${filled}`, inputs: [h, mean, tooth, depth, press, filled],
+  })))))));
   // Pixel centres and 24-bit seeds, which f32 holds exactly.
   const clumps = [0, 0.5, 1].flatMap((flocculation) => [0.5, 3.5, 17.5, 1023.5].flatMap((x) => [0.5, 9.5, 700.5].flatMap((y) => [0, 12345, 0xabcdef].map((seed) => ({
     label: `flocculation ${flocculation} x ${x} y ${y} seed ${seed}`, inputs: [flocculation, x, y, seed],
@@ -101,7 +101,7 @@ function renderingGrids(): StampGateFormulaGrid[] {
     baselineGrid('floodBody', 'floodBody(x(0), x(1), x(2))', 3, floodBody),
     baselineGrid('floodFrontShare', 'floodFrontShare(vec2f(x(0), x(1)), vec2f(x(2), x(3)), x(4), x(5), x(6), x(7))', 8, floodFrontShare),
     baselineGrid('paintWetSettle', 'paintWetSettle(paintValley(x(0), x(1)), x(2), x(3), x(4))', 5, settle),
-    baselineGrid('paintDryContact', 'paintDryContact(x(0), x(1), x(2), x(3))', 4, contact),
+    baselineGrid('paintDryContact', 'paintDryContact(x(0), x(1), x(2), x(3), x(4), x(5))', 6, contact),
     baselineGrid('paintClumps', 'paintClumps(x(0), x(1), x(2), u32(x(3)))', 4, clumps),
     baselineGrid('pressedTip', 'pressedTip(x(0), x(1), x(2), x(3), x(4), x(5), x(6))', 7, pressedTip),
     baselineGrid('tipNoise', 'tipNoise(x(0), x(1), x(2))', 3, tipNoise),

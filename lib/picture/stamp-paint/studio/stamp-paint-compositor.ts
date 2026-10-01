@@ -26,13 +26,20 @@ export type StampPaintCompositor = {
   targets: { layer: StampPaintTarget; painting: StampPaintTarget };
   /** Whether a stamp's own tint (a brush's colour dynamics) moves its paint: the renderer lays tints only for one that reads them. */
   readsStampTints: boolean;
+  /**
+   * Whether it lays as a dry medium does: as hard as its stamps press (`press`), its tooth filled by the wax held round
+   * each pixel, read from `before` (the layer as the deposit found it). The renderer lays both only for one that does;
+   * for any other, `press` is the deposit's own.
+   */
+  laysDry: boolean;
   deposit: {
     /** Its PaintDeposit, the renderer's `paint`. */
     layout: StampUniformLayout<readonly StampUniformField[]>;
     /**
      * Its bindings from 24; `paperKept(tooth, mean, depth)`, `layerCoverage(pixel)` and `layDeposit(pixel, coverage,
-     * rims, tooth, at, reserved)`: `rims` the main and dual burnt rims apart, `tooth` the paper's paint here and its
-     * mean, `reserved` the coverage masking fluid held off, where a group on its own paper shows it.
+     * rims, tooth, at, reserved, press)`: `rims` the main and dual burnt rims apart, `tooth` the paper's paint here and
+     * its mean, `reserved` what masking fluid held off (a group on its own paper shows it there), `press` 0..1 drawn,
+     * up to 2 burnished.
      */
     wgsl: string;
     /**
@@ -186,6 +193,7 @@ export function flatStampPaintCompositor(painting: CompiledStampPaint): StampPai
   return {
     targets: { layer: { kind: 'plain' }, painting: { kind: 'plain' } },
     readsStampTints: true,
+    laysDry: false,
     deposit: {
       layout: FLAT_PAINT_DEPOSIT,
       wgsl: /* wgsl */ `
@@ -197,7 +205,7 @@ fn layerCoverage(pixel: vec2u) -> f32 { return textureLoad(layer, pixel).a; }
 fn depositPaint(under: vec4f, color: vec3f, blend: i32, coverage: f32) -> vec4f {
   return laidOver(under, vec4f(color, 1.0) * clamp(coverage, 0.0, 1.0), blend);
 }
-fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32) {
+fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32, press: f32) {
   var color = paint.color;
   if (paint.tinted == 1u) { color = tinted(color, pixel); }
   var over = depositPaint(textureLoad(layer, pixel), color, paint.blend, coverage);

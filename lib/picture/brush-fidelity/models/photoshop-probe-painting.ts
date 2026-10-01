@@ -172,7 +172,7 @@ export function photoshopProbeSheetPainting({ sheet, probes, opacity, tipMax }: 
       // stroke's own, fresh from placement.
       if (opacity === 'inBuild') for (const stamp of stamps) stamp.opacity *= toolOpacity;
       return {
-        kind: 'stroke', id: `probes/cells/${c}-${s}`, brush, action: { kind: 'paint', material: { kind: 'constant', value: { kind: 'color', color: '#000000' } } }, diameter, blend: brush.blend, mask: null,
+        kind: 'stroke', id: `probes/cells/${c}-${s}`, brush, action: { kind: 'paint', material: { kind: 'constant', value: { kind: 'color', color: '#000000' } }, burnish: false }, diameter, blend: brush.blend, mask: null,
         opacity: opacity === 'last' ? toolOpacity : 1,
         stamps,
         dualStamps: brush.dual ? placeStrokeStamps(path, brush.dual, diameter * brush.dual.scale, `${seed}|dual`) : [],
