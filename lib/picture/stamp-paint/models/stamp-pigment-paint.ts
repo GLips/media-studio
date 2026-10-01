@@ -28,8 +28,8 @@ export type StampPigmentMixing<P extends Readonly<Record<string, PaintPigmentApp
 export type StampPaintMixing = { kind: 'flat' } | StampPigmentMixing;
 
 /**
- * The most pigments one group can mix: its layer holds a channel each and one for coverage, and 12 fill four
- * rgba16float layers. A wash of more is two washes.
+ * The most pigments one group can mix: its layer holds a channel each, one for coverage and, in a group with a wash,
+ * one for its open share, so 12 fit four rgba16float layers either way. A wash of more is two washes.
  */
 export const STAMP_PIGMENT_GROUP_SLOTS = 12;
 
@@ -45,8 +45,13 @@ export type StampPigmentGrade = { kind: 0 | 1 | 2; geometry: readonly [number, n
 export type StampPigmentGroup = {
   /** Its palette, a slot each. */
   palette: readonly PaintPigment[];
-  /** Layers of four channels its pixels need: coverage, then a channel per slot. */
+  /** Layers of four channels its pixels need: coverage, then a channel per slot, and in a group with a wash its open share. */
   layers: number;
+  /**
+   * In a group with a wash, the channel holding each pixel's open share, the last of its layers: how much of its paint
+   * hasn't set (stamp-paint-pigment-compositor.ts). Null in a group without, which pays nothing for it.
+   */
+  open: number | null;
 };
 
 export type StampPigmentPaint = {
@@ -64,7 +69,8 @@ const UNGRADED: StampPigmentGrade = { kind: 0, geometry: [0, 0, 0, 0] };
 /** How much of pigment `id` an end of a material lays: none if it lacks it. */
 const amountAtEnd = (laid: readonly { pigment: PaintPigment; amount: number }[], id: string) => laid.find(({ pigment }) => pigment.id === id)?.amount ?? 0;
 
-export const stampPigmentLayers = (slots: number) => Math.ceil((slots + 1) / 4);
+/** Layers of four channels a group of `slots` pigments needs: coverage, a channel each, and an open share if it `washes`. */
+export const stampPigmentLayers = (slots: number, washes: boolean) => Math.ceil((slots + 1 + (washes ? 1 : 0)) / 4);
 
 /**
  * `painting`'s paint as `mixing` mixes it, a graded material's pigments from both its ends. Throws on a mixture
@@ -121,7 +127,8 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
     if (palette.length > STAMP_PIGMENT_GROUP_SLOTS) {
       throw new Error(`stamp paint: ${group.id} mixes ${palette.length} pigments, over the ${STAMP_PIGMENT_GROUP_SLOTS} a wash holds; split it into two groups (${palette.map(({ id }) => id).join(', ')})`);
     }
-    return { palette, layers: stampPigmentLayers(palette.length) };
+    const washes = group.passes.some((pass) => pass.kind === 'wash'), layers = stampPigmentLayers(palette.length, washes);
+    return { palette, layers, open: washes ? 4 * layers - 1 : null };
   });
   return { medium, bands, groups, deposits };
 }

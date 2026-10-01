@@ -35,14 +35,33 @@ and it can `wait` in painting time, which only its waits advance. `stamp-wetness
 loads, how wet the paper is where each lands, on coarse grids; the pigment compositor's `landDeposit` lays it by the
 laws in `stamp-wet-landing.ts` and `stamp-wet-lift.ts`, and `studio/stamp-wet-stages.ts` lists what then works over
 the neighbourhood: the flow stage (`stamp-wet-flow.ts`), where a deposit's fresh paint feathers into water on the
-paper and the workable paint its water stirs evens out, and a lift's run-back. A graded material lays each pigment
+paper and the workable paint its water stirs evens out, or paint runs back into a lift, and the drying rim
+(`stamp-wet-rim.ts`) once a wash is done. A graded material lays each pigment
 of either end, its amount graded on the GPU. A plain pass lands as it always has. Flat colour has no washes.
 `stamp-paint-events.ts` is the painting in painting order, each deposit with the time it's settled by.
 
+**Wet state.** The lattice holds the paper: per landing, its `wetness`, `workable` and `settled` (1 where the paper
+has dried since it last took water, and at a wash's start), uploaded once for the renderer and every stage. The paint's
+own history is in the group's layer: a group with a wash keeps, in its last channel, each pixel's open share, how
+much of its paint hasn't set, mixed by amount as paint lands or moves. Every landing first sets it to none where the
+paper has settled, over its whole box, which reaches two lattice cells past its window's points; so paint that dried
+and is wetted again moves or lifts only by the medium's rewetting.
+- Landing (`wetLand`): on dry, set paper as `layDeposit` lays, toward the stroke less what the paint there picks up;
+  on wet paper adding; between, as workable as the paper is. A wash brush's water hardens its tip's coverage to an
+  edge (`wetLandCover`, smoothstep 0.15–0.45) as far as the paper is drier than the brush.
+- Each stage declares its static reach (`reach(deposit, medium)`); a deposit's landing window and its resolve box widen
+  by the most of them, as a boil's epoch lands as its deposit as written does.
+
 **The flow stage.** Two populations move: the deposit's fresh paint (what `landDeposit` laid, left in `fresh`),
-freely, and the paint already there, as far as the deposit's water stirs it (workable, not `dried`, where its brush
+freely, and the paint already there, as far as the deposit's water stirs it (workable and open, where its brush
 touched). Each is a conserved diffusion of sigma = spread × diameter / 2 at full wetness, narrower as drier. Paper is as
 wet as it was, or as the brush's water where it touched, so paint on dry paper keeps a hard edge.
+- After a lift there's no fresh paint: the paint round it runs back in, as loose as the lift would find it, a pair
+  trading only as far as the lift reached either of it, at sigma = spread × diameter / 3, at most 16 px.
+- It works one array layer of the group at a time, so its scratch is the same for any palette: about 96 bytes a pixel
+  of the largest wash deposit's box, reserved as the painting (or a boil's epoch) loads.
+- What moved is open paint, and coverage grows by the share of a full film a pixel gained (the compositor's
+  `washMoved`, which every stage uses).
 - It runs as passes at strides growing by about √2 (1, 2, 3, 4, 6, 8, 11, …), x then y, each a three-tap exchange
   with the pixels a stride away. A pass adds variance of up to stride² / 2, and a pair takes the share of it its own
   sigma needs. Doubling strides left ripples a stride apart.

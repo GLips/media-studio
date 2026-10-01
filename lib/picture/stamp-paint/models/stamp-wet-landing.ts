@@ -1,14 +1,33 @@
-// stamp-wet-landing.ts: how a wash's paint lands in pigment, per pixel, as wet as its landing is
-// (stamp-wetness.ts). A plain pass lands by the pigment compositor's own law, which moves the paint there toward the
-// incoming as a stroke over a dried wash does; a wash's paint joins the water already there, so its pigment adds.
-//
-// WGSL only: the renderer is the one place it runs. The GPU gate holds it to a formula grid of its own.
+// stamp-wet-landing.ts: how a wash's paint lands, per pixel, as the paper is (stamp-wetness.ts): on dry, set paper as
+// a plain pass's does (layDeposit); on wet paper its pigment adds; between, as workable as the paper is. A wash
+// brush's water stops at a hard edge on dry paper, however soft its tip. WGSL only: the renderer is where it runs.
 
 /**
- * `wetLand(was, incoming, cover, wetness, workable)`: a layer of four pigment amounts after `incoming` (a full
- * stroke's amounts) lands at `cover` on paper `wetness` wet whose paint moves `workable` freely.
+ * Where a wash brush's water stops on dry paper: about where its tip lays a third of its paint, so a soft tip's thin
+ * fringe goes and its body fills. Low, as water carries pigment into the gaps of a grainy tip rather than leaving them.
  */
+export const STAMP_WET_WATER_EDGE = [0.15, 0.45] as const;
+
+/** The landing's laws, each as its comment says; the renderer hardens a wash's coverage, the compositor lands its paint. */
 export const STAMP_WET_LAND_WGSL = /* wgsl */ `
-fn wetLand(was: vec4f, incoming: vec4f, cover: f32, wetness: f32, workable: f32) -> vec4f {
-  return was + cover * incoming;
+// The coverage a brush carrying \`water\` lands at where its tip covers \`cover\`, on paper \`wetness\` wet: hardened
+// to its water's edge as far as the paper is drier than the brush. A brush with no water (a lift, crayon) keeps its tip.
+fn wetLandCover(cover: f32, water: f32, wetness: f32) -> f32 {
+  let hard = smoothstep(${STAMP_WET_WATER_EDGE[0].toFixed(3)}, ${STAMP_WET_WATER_EDGE[1].toFixed(3)}, cover);
+  let drier = clamp(water - wetness, 0.0, 1.0) / max(water, 1e-3);
+  return mix(cover, hard, drier);
+}
+// Four pigment amounts after \`incoming\` (a full stroke's) lands at \`cover\` over paint covering \`under\` of the pixel:
+// as the dry law lands it where the paper isn't \`workable\` (toward \`incoming\`, less what the paint there picks up),
+// adding where it is.
+fn wetLand(was: vec4f, incoming: vec4f, cover: f32, under: f32, pickup: f32, workable: f32) -> vec4f {
+  let dry = was + cover * (1.0 - pickup * under) * (incoming - was);
+  let wet = was + cover * incoming;
+  return mix(dry, wet, clamp(workable, 0.0, 1.0));
+}
+// A pixel's open share after a landing, mixed by amount: the paint it \`kept\`, \`open\` of it unset, and what it
+// \`gained\`, all of it fresh. As 1 less the set share, so all-open paint stays exactly open in a half float.
+fn wetLandOpen(open: f32, kept: f32, gained: f32) -> f32 {
+  let total = kept + gained;
+  return select(open, clamp(1.0 - (1.0 - open) * kept / total, 0.0, 1.0), total > 0.0);
 }`;

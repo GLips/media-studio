@@ -6,7 +6,7 @@
 //
 // Negative space: a stroke inside a wash that dries before the next is laid doesn't rim here; it's one domain.
 
-import { STAMP_WET_CELL, type StampWetness } from './stamp-wetness.ts';
+import { STAMP_WET_CELL, stampWetGrid, type StampWetness } from './stamp-wetness.ts';
 import { stampPassDeposits, type CompiledStampPass } from './stamp-paint-recipe.ts';
 import { stampGridLocalMax, type StampGrid } from './stamp-region.ts';
 
@@ -38,7 +38,7 @@ export const stampDryingRimWetShare = (wettest: number, damp: number) => Math.mi
 export function stampWashWettest(pass: CompiledStampPass, wetness: StampWetness): StampGrid | null {
   const landings = stampPassDeposits(pass).flatMap((deposit) => wetness.landings.get(deposit) ?? []);
   if (!landings.length) return null;
-  const grids = landings.flatMap(({ before, after }) => [before.wetness, after.wetness]);
+  const grids = landings.flatMap(({ before, after }) => [stampWetGrid(before, 'wetness'), stampWetGrid(after, 'wetness')]);
   const i0 = Math.min(...grids.map((g) => g.x0 / STAMP_WET_CELL)), j0 = Math.min(...grids.map((g) => g.y0 / STAMP_WET_CELL));
   const i1 = Math.max(...grids.map((g) => g.x0 / STAMP_WET_CELL + g.columns)), j1 = Math.max(...grids.map((g) => g.y0 / STAMP_WET_CELL + g.rows));
   const columns = i1 - i0, rows = j1 - j0, values = new Float32Array(columns * rows);

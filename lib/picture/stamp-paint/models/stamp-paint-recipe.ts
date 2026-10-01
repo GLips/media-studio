@@ -381,6 +381,9 @@ export type CompiledStampPass = {
 
 const washDeposits = new WeakMap<CompiledStampWash, readonly CompiledStampDeposit[]>();
 
+/** What seeds deposit `id`'s randomness at boil `epoch`: its ID as written at 0, and a seed of the epoch's own after. */
+export const stampBoilSeed = (id: string, epoch: number) => (epoch ? `${id}|boil${epoch}` : id);
+
 /** `pass`'s deposits in painting order: a wash's are its schedule's, worked out once per wash. */
 export function stampPassDeposits(pass: CompiledStampPass): readonly CompiledStampDeposit[] {
   if (pass.kind === 'dry') return pass.deposits;
@@ -453,7 +456,7 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
       /** `step` compiled, its action by `action` from the colour jitter drawn for it. */
       const deposit = <W extends StampRecipeWashAction, A extends CompiledStampAction>(step: StampPaintRecipeDeposit<W>, action: (full: string, draws: readonly number[]) => A) => {
         const full = named(step.id, passId);
-        return compileDeposit(full, step, (draws) => action(full, draws), step.mask && masks.get(step.mask)!, epoch ? `${full}|boil${epoch}` : full);
+        return compileDeposit(full, step, (draws) => action(full, draws), step.mask && masks.get(step.mask)!, stampBoilSeed(full, epoch));
       };
       const common = { id: passId, ...(clipTo && { clipTo }), within: pass.within ? checkedStampPolygon(pass.within, passId) : null };
       if (!pass.wash) {

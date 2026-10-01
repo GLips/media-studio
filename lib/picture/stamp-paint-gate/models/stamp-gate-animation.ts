@@ -4,6 +4,8 @@
 // - drift: a moving group's texture travels with it (stuck), so frame k moved back by its motion is frame 0;
 // - boil: a group boiling on twos holds within an epoch, changes across epochs, leaves a still group alone, and
 //   frame 0 drawn again is frame 0;
+// - boil-wash: a boiling wash whose marks have nothing random to re-roll draws every epoch as frame 0, its paint
+//   flowing as far into the wet paper whichever epoch lays it;
 // - sunset: one painting in two palettes lays the same coverage deposit by deposit; only its colour changes.
 
 import { PAINT_MEDIA } from '#lib/picture/paint/models/paint-medium.ts';
@@ -64,6 +66,33 @@ export function stampGateDriftPainting(): StampGatePainting {
 /** The cloud boiling on twos. */
 export const stampGateBoilPainting = () => cloudPainting({ boil: { every: 2 } });
 
+/**
+ * Wide dabs of paint into a wet wash, boiling on twos, its brush with nothing random: each dab's paint flows well past
+ * where its stamps reach.
+ */
+export function stampGateBoilWashPainting(): StampGatePainting {
+  const steady = stampGateBrush('Steady', { flow: 0.6 });
+  const painting = compileStampPaintRecipe(stampPaintRecipe((p) => {
+    p.group('dabs', { composite: 'glaze', opacity: 1, boil: { every: 2 } }, (g) => g.wash('wet', { preparation: { region: stampGatePolygon(0, 0, 240, 0, 240, 160, 0, 160) } }, (w) => {
+      w.stamps('dabs', { brush: steady, diameter: 40, material: mixture({ pigment: W.ultramarine, amount: 1 }), at: [{ x: 60, y: 80 }, { x: 170, y: 70 }] });
+    }));
+  }));
+  return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t: 0, images: STAMP_GATE_IMAGES };
+}
+
+/** Whether each of a boiling wash's frames (one an epoch) is frame 0, within the output's dither. */
+export function checkStampGateBoilWash(frames: readonly Rgba[]): StampGateWashCheck {
+  const worst = frames.slice(1).map((rgba) => {
+    let max = 0;
+    for (let i = 0; i < rgba.length; i++) if (i % 4 !== 3) max = Math.max(max, Math.abs(rgba[i] - frames[0][i]));
+    return max;
+  });
+  return {
+    id: 'animation/boil-wash: each epoch flows as far', passed: worst.every((max) => max <= STAMP_GATE_DRIFT_TOLERANCE),
+    detail: `epochs 1 to ${worst.length} against frame 0: most ${worst.join(', ')} levels (past ${STAMP_GATE_DRIFT_TOLERANCE} fails)`,
+  };
+}
+
 /** A sky and hill at `hour`: every deposit the same, only its paint changed. */
 export function stampGateSunsetPainting(hour: 'day' | 'dusk'): StampGatePainting {
   const sky: PaintMaterial = hour === 'day' ? { kind: 'color', color: '#6fa8dc' } : { kind: 'color', color: '#e0703a' };
@@ -80,7 +109,7 @@ export function stampGateSunsetPainting(hour: 'day' | 'dusk'): StampGatePainting
   return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t: 1, images: STAMP_GATE_IMAGES };
 }
 
-export const STAMP_GATE_ANIMATION_IDS = ['animation/drift', 'animation/boil', 'animation/sunset'];
+export const STAMP_GATE_ANIMATION_IDS = ['animation/drift', 'animation/boil', 'animation/boil-wash', 'animation/sunset'];
 
 type Rgba = ArrayLike<number>;
 

@@ -1,9 +1,8 @@
 // stamp-paint-pigment-compositor.ts: the StampPaintCompositor for a style that paints in pigment (vid-83).
 //
-// A group's layer holds coverage, then each palette pigment's amount (stamp-pigment-paint.ts). A deposit lays its
-// components where paper and habits put them, mixing by volume; a wash's lands, wets or lifts as wet as its landing
-// is (stamp-wet-landing.ts, stamp-wet-lift.ts). A group dries as a Kubelka–Munk film, glazed over what's there or,
-// opaque, on paper kept for it. The painting holds reflectance per band.
+// A group's layer holds coverage, each palette pigment's amount (stamp-pigment-paint.ts) and, with a wash, last, its
+// open share: how much of the paint hasn't set. A wash's deposit lands, wets or lifts as its landing is
+// (stamp-wet-landing.ts, stamp-wet-lift.ts). A group dries as a Kubelka–Munk film, glazed or opaque.
 //
 // Negative space: a deposit's blend and a stamp's tint are colour operations with no pigment meaning, so neither
 // applies; a burnt rim only shapes coverage. A plain pass's fill `load` is coverage: over paint it moves the paint
@@ -13,7 +12,6 @@ import { PAINT_KUBELKA_MUNK_WGSL } from '#lib/picture/paint/models/paint-kubelka
 import { PAINT_PAPER_WGSL } from '#lib/picture/paint/models/paint-paper.ts';
 import { paintHexToLinear } from '#lib/picture/paint/models/paint-spectrum.ts';
 import { STAMP_PIGMENT_GROUP_SLOTS, type StampPigmentPaint } from '../models/stamp-pigment-paint.ts';
-import { STAMP_WET_LAND_WGSL } from '../models/stamp-wet-landing.ts';
 import { STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
 import { STAMP_OPAQUE_COVER, type CompiledStampDeposit, type StampPaintColor } from '../models/stamp-paint-recipe.ts';
 import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
@@ -22,13 +20,46 @@ import { stampUniformLayout, stampUniformWriter, type StampUniformViews } from '
 /** Words per component in the component buffer: slot, seed, amount at the material's first end and its second, granulation, flocculation. */
 const COMPONENT_WORDS = 6;
 
-/** A deposit's components (the first and how many), its group, and where its material grades (StampPigmentGrade). */
-const PIGMENT_PAINT_DEPOSIT = stampUniformLayout('PaintDeposit', [['first', 'u32'], ['count', 'u32'], ['group', 'u32'], ['gradeKind', 'i32'], ['grade', 'vec4f']]);
+/**
+ * A deposit's components (the first and how many), its group, where its material grades (StampPigmentGrade), and the
+ * channel holding its group's open share (0, coverage's, in a group without a wash).
+ */
+const PIGMENT_PAINT_DEPOSIT = stampUniformLayout('PaintDeposit', [['first', 'u32'], ['count', 'u32'], ['group', 'u32'], ['gradeKind', 'i32'], ['grade', 'vec4f'], ['open', 'u32']]);
 
 /** A number as a WGSL f32 literal, to the precision an f32 holds. */
 const f32 = (value: number) => value.toPrecision(9);
 const vec4s = (values: ArrayLike<number>, count: number) =>
   Array.from({ length: count }, (_, i) => `vec4f(${[0, 1, 2, 3].map((j) => f32(values[i * 4 + j] ?? 0)).join(', ')})`).join(', ');
+
+/**
+ * The wash layer's WGSL for a group of `layers` (StampWashLayer). After a move a pixel's coverage grows by the share
+ * of a full stroke's film (`body`) it gained and keeps what it had as it thins, and what moved was loose, wet paint:
+ * it arrives open and leaves the giver's set paint behind.
+ */
+export function stampWashMovedWgsl(layers: number, body: number): string {
+  const channel = 4 * layers - 1, at = `[${Math.floor(channel / 4)}][${channel % 4}]`;
+  return /* wgsl */ `
+fn washPigmentMask(l: u32) -> vec4f {
+  let channel = vec4u(4u * l) + vec4u(0u, 1u, 2u, 3u);
+  return select(vec4f(1.0), vec4f(0.0), (channel == vec4u(0u)) | (channel == vec4u(${channel}u)));
+}
+fn washPigmentTotal(v: array<vec4f, ${layers}>) -> f32 {
+  var total = 0.0;
+  for (var l = 0u; l < ${layers}u; l++) { total += dot(v[l], washPigmentMask(l)); }
+  return total;
+}
+fn washOpen(v: array<vec4f, ${layers}>) -> f32 { return v${at}; }
+fn washMoved(now: array<vec4f, ${layers}>, wasPigment: f32) -> array<vec4f, ${layers}> {
+  var moved = now;
+  let total = washPigmentTotal(now);
+  let gained = total - wasPigment;
+  moved[0].x = now[0].x + (1.0 - now[0].x) * clamp(gained / ${f32(body)}, 0.0, 1.0);
+  // As 1 less the set share, so all-open paint stays exactly open through the half-float store, which truncates.
+  let open = clamp(washOpen(now), 0.0, 1.0);
+  moved${at} = select(open, clamp(1.0 - (1.0 - open) * wasPigment / total, 0.0, 1.0), total > 0.0 && gained != 0.0);
+  return moved;
+}`;
+}
 
 /** The compositor for `paint` on `device`: every deposit's components and every group's palette uploaded once. */
 export function stampPigmentCompositor(device: GPUDevice, paint: StampPigmentPaint, paperColor: StampPaintColor): StampPaintCompositor {
@@ -47,6 +78,7 @@ export function stampPigmentCompositor(device: GPUDevice, paint: StampPigmentPai
       put('group', group);
       put('gradeKind', grade.kind);
       put('grade', [...grade.geometry]);
+      put('open', paint.groups[group].open ?? 0);
     });
     for (const { slot, seed, amounts, granulation, flocculation } of components) componentWords.push(slot, seed, ...amounts, granulation, flocculation);
   }
@@ -144,33 +176,62 @@ fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f)
   }
 }`,
       wet: /* wgsl */ `
-${STAMP_WET_LAND_WGSL}
 ${STAMP_WET_LIFT_WGSL}
 @group(0) @binding(25) var<storage, read> stains: array<vec4f>;
-// Water leaves the pigment where it is: moving it is the neighbourhood's (stamp-wet-stages.ts).
+// 1 on a pigment's channel of layer \`l\`: not coverage's, nor the open share's.
+fn pigmentMask(l: u32) -> vec4f {
+  let channel = vec4u(4u * l) + vec4u(0u, 1u, 2u, 3u);
+  return select(vec4f(1.0), vec4f(0.0), (channel == vec4u(0u)) | (channel == vec4u(paint.open)));
+}
+// Water leaves the pigment where it is: moving it is the neighbourhood's (stamp-wet-stages.ts). Every landing first
+// sets the open share to none wherever the paper has settled since it last took water, so whatever reads it after
+// (this landing, the stages, a later landing) reads the paint there as set.
 fn landDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, wet: WetLanding) {
+  var was: array<vec4f, LAYERS>;
+  for (var l = 0u; l < LAYERS; l++) { was[l] = textureLoad(layer, pixel, l); }
+  let o = vec2u(paint.open / 4u, paint.open % 4u);
+  let open = was[o.x][o.y] * (1.0 - clamp(wet.settled, 0.0, 1.0));
   let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
-  if (cover <= 0.0 || wet.action == WET_WATER) { return; }
-  let under = textureLoad(layer, pixel, 0u).x;
+  if (cover <= 0.0 || wet.action == WET_WATER) {
+    if (wet.settled > 0.0) {
+      var kept = was[o.x];
+      kept[o.y] = open;
+      textureStore(layer, pixel, o.x, kept);
+    }
+    return;
+  }
+  let under = was[0].x;
+  var had = 0.0;
+  var has = 0.0;
+  var now: array<vec4f, LAYERS>;
   // A lift thins the film where it is rather than shrinking it, so coverage stays: the group dries what's left over
   // that coverage, and a later stroke there meets paint, however little.
   if (wet.action == WET_LIFT) {
     for (var l = 0u; l < LAYERS; l++) {
-      var now = wetLift(textureLoad(layer, pixel, l), cover, wet.strength, wet.workable, wet.dried, ${f32(medium.wetting.rewetting)}, stains[paint.group * LAYERS + l]);
-      if (l == 0u) { now.x = under; }
-      textureStore(layer, pixel, l, now);
+      now[l] = wetLift(was[l], cover, wet.strength, wet.workable, open, ${f32(medium.wetting.rewetting)}, stains[paint.group * LAYERS + l]);
+      had += dot(was[l], pigmentMask(l));
+      has += dot(now[l], pigmentMask(l));
     }
+    now[0].x = under;
+    now[o.x][o.y] = liftOpen(open, wet.workable, ${f32(medium.wetting.rewetting)}, had, has);
+    for (var l = 0u; l < LAYERS; l++) { textureStore(layer, pixel, l, now[l]); }
     return;
   }
   let incoming = incomingAt(tooth, at);
+  var kept = 0.0;
+  var gained = 0.0;
   for (var l = 0u; l < LAYERS; l++) {
-    let was = textureLoad(layer, pixel, l);
-    var now = wetLand(was, incoming[l], cover, wet.wetness, wet.workable);
-    if (l == 0u) { now.x = cover + under * (1.0 - cover); }
-    textureStore(layer, pixel, l, now);
+    now[l] = wetLand(was[l], incoming[l], cover, under, ${f32(medium.pickup)}, wet.workable);
+    let mask = pigmentMask(l);
+    let laid = max(now[l] - was[l], vec4f(0.0)) * mask;
+    kept += dot(min(was[l], now[l]), mask);
+    gained += dot(laid, mask);
     // What it laid, which the flow stage moves (stamp-wet-flow.ts).
-    textureStore(fresh, pixel, l, now - was);
+    textureStore(fresh, pixel, l, laid);
   }
+  now[0].x = cover + under * (1.0 - cover);
+  now[o.x][o.y] = wetLandOpen(open, kept, gained);
+  for (var l = 0u; l < LAYERS; l++) { textureStore(layer, pixel, l, now[l]); }
 }`,
       writerFor: (deposit) => {
         const writer = writers.get(deposit);
@@ -178,6 +239,14 @@ fn landDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f
         return writer;
       },
       resources: ({ wet }) => [{ buffer: components }, ...(wet ? [{ buffer: stains }] : [])],
+    },
+    wash: {
+      layersOf: (deposit) => {
+        const group = paint.deposits.get(deposit)?.group;
+        if (group === undefined) throw new Error(`stamp paint: ${deposit.id} isn't in the painting its pigment compositor was made for`);
+        return paint.groups[group].layers;
+      },
+      movedWgsl: (washLayers) => stampWashMovedWgsl(washLayers, medium.body),
     },
     group: {
       wgsl: /* wgsl */ `

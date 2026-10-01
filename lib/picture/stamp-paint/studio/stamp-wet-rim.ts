@@ -1,18 +1,17 @@
 // stamp-wet-rim.ts: the wet stage that leaves a drying rim (models/stamp-wet-rim.ts) once each wash is done. Its
 // domain is the wash's paint, the layer's coverage where its water went, with holes finer than the paper's grain
 // closed: grain and seams between strokes don't rim. Distance to the edge comes by jump flooding over the wash's box;
-// each pixel in the band gives up a share of its pigment, gathered onto the line by a Gaussian normalised per giver
-// (two separable blurs of the line, two of the pigment).
+// each pixel in the band gives a share of its pigment to the line, by a Gaussian normalised per giver.
 //
-// Negative space: coverage stays, as a rim moves pigment within the film. Where the wash lies over its group's
-// earlier paint, that paint is part of its domain, so no rim falls there.
+// Negative space: coverage and the open share stay, as a rim moves pigment within the film. Where the wash lies over
+// its group's earlier paint, that paint is its domain too, so no rim falls there.
 
 import { PAINT_PAPER_WGSL, paintPigmentSeed } from '#lib/picture/paint/models/paint-paper.ts';
 import { STAMP_DRYING_RIM_MOST_BAND, STAMP_DRYING_RIM_WGSL, stampDryingRimBand, stampDryingRimWetShare, stampWashWettest } from '../models/stamp-wet-rim.ts';
 import { STAMP_GRID_AT_WGSL, type StampGrid } from '../models/stamp-region.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import { stampPassDeposits, type CompiledStampPass } from '../models/stamp-paint-recipe.ts';
-import type { StampWetStage, StampWetStageContext, StampWetStageMoment } from './stamp-wet-stages.ts';
+import type { StampLoadedWetStage, StampWetStage, StampWetStageContext, StampWetStageMoment } from './stamp-wet-stages.ts';
 import { stampUniformLayout, stampUniformWriter } from './stamp-uniform-layout.ts';
 
 const WORKGROUP = 8;
@@ -230,9 +229,10 @@ ${GIVES_WGSL}
   for (var l = 0; l < ${layers}; l++) { textureStore(pulledRows, local(p), l, pulled[l]); }
 }`;
 
-// The exchange, written back: coverage (layer 0's x) stays, as a rim moves pigment within the film.
-const rimWgsl = (layers: number) => /* wgsl */ `${PRELUDE}
+// The exchange, written back to the pigment channels alone.
+const rimWgsl = (layers: number, movedWgsl: string) => /* wgsl */ `${PRELUDE}
 ${STAMP_DRYING_RIM_WGSL}
+${movedWgsl}
 @group(0) @binding(1) var layer: texture_storage_2d_array<rgba16float, read_write>;
 @group(0) @binding(2) var weights: texture_2d<f32>;
 @group(0) @binding(3) var norm: texture_2d<f32>;
@@ -254,9 +254,7 @@ ${STAMP_DRYING_RIM_WGSL}
   }
   for (var l = 0; l < ${layers}; l++) {
     let was = textureLoad(layer, p, l);
-    var now = dryingRimExchange(was, take, w.x, pulled[l]);
-    if (l == 0) { now.x = was.x; }
-    textureStore(layer, p, l, now);
+    textureStore(layer, p, l, mix(was, dryingRimExchange(was, take, w.x, pulled[l]), washPigmentMask(u32(l))));
   }
 }`;
 
@@ -267,9 +265,9 @@ function gridBox(grid: StampGrid, width: number, height: number): StampPixelBox 
 }
 
 /** A wash's rim as loaded: its wettest grid's place in the grid buffer, its box, uniform and whether it rims at all. */
-type LoadedRim = { grid: StampGrid; first: number; box: StampPixelBox; uniform: GPUBuffer };
+type LoadedRim = { grid: StampGrid; first: number; box: StampPixelBox; uniform: GPUBuffer; layers: number };
 
-function loadDryingRim({ device, painting, medium, wetness, width, height, layer }: StampWetStageContext) {
+function loadDryingRim({ device, painting, medium, wetness, width, height, layer, wash }: StampWetStageContext): StampLoadedWetStage {
   const { spread, damp } = medium.wetting;
   const washes = painting.groups.flatMap((group) => group.passes).filter((pass) => pass.kind === 'wash');
   if (spread <= 0 || !washes.length) return { encode: () => null };
@@ -306,7 +304,7 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     put('norm', norm);
     const uniform = device.createBuffer({ size: RIM.words * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     device.queue.writeBuffer(uniform, 0, words);
-    rims.set(pass, { grid, first: values.length, box, uniform });
+    rims.set(pass, { grid, first: values.length, box, uniform, layers: wash.layersOf(painted[0]) });
     values.push(...grid.values);
   }
   if (!rims.size) return { encode: () => null };
@@ -334,10 +332,12 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
   const passes = {
     domain: pipeline(DOMAIN_WGSL), grainRows: pipeline(GRAIN_ROWS_WGSL), seeds: pipeline(SEEDS_WGSL), flood: pipeline(FLOOD_WGSL),
     weights: pipeline(WEIGHTS_WGSL), normRows: pipeline(NORM_ROWS_WGSL), norm: pipeline(NORM_WGSL),
-    pulledRows: pipeline(pulledRowsWgsl(layers)), rim: pipeline(rimWgsl(layers)),
+    pulledRows: pipeline(pulledRowsWgsl(layers)),
   };
+  // Each group's own layer count places its open share.
+  const rimPasses = new Map([...new Set([...rims.values()].map((rim) => rim.layers))].map((n) => [n, pipeline(rimWgsl(n, wash.movedWgsl(n)))]));
 
-  const encode = (encoder: GPUCommandEncoder, { box, uniform }: LoadedRim): StampPixelBox => {
+  const encode = (encoder: GPUCommandEncoder, { box, uniform, layers: groupLayers }: LoadedRim): StampPixelBox => {
     const dispatch = (pass: GPUComputePipeline, resources: GPUBindingResource[]) => {
       const compute = encoder.beginComputePass();
       compute.setPipeline(pass);
@@ -353,7 +353,7 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     dispatch(passes.normRows, [{ buffer: uniform }, weights, normRows]);
     dispatch(passes.norm, [{ buffer: uniform }, normRows, norm]);
     dispatch(passes.pulledRows, [{ buffer: uniform }, layer.view, weights, norm, pulledRows]);
-    dispatch(passes.rim, [{ buffer: uniform }, layer.view, weights, norm, pulledRows]);
+    dispatch(rimPasses.get(groupLayers)!, [{ buffer: uniform }, layer.view, weights, norm, pulledRows]);
     return box;
   };
   return {

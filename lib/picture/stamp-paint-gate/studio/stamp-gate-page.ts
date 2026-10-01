@@ -19,18 +19,21 @@ import { PAINT_MEDIA } from '#lib/picture/paint/models/paint-medium.ts';
 import { compileStampWetness } from '#lib/picture/stamp-paint/models/stamp-wetness.ts';
 import { createStampPaintDevice } from '#lib/picture/stamp-paint/studio/stamp-paint-gpu.ts';
 import { STAMP_WET_FLOW_STAGE } from '#lib/picture/stamp-paint/studio/stamp-wet-flow.ts';
+import { stampWashMovedWgsl } from '#lib/picture/stamp-paint/studio/stamp-paint-pigment-compositor.ts';
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
 import {
-  checkStampGateBoil, checkStampGateDrift, checkStampGateSunset, STAMP_GATE_ANIMATION_FPS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_DRIFT_FRAMES,
-  stampGateBoilPainting, stampGateDriftPainting, stampGateSunsetPainting,
+  checkStampGateBoil, checkStampGateBoilWash, checkStampGateDrift, checkStampGateSunset, STAMP_GATE_ANIMATION_FPS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_DRIFT_FRAMES,
+  stampGateBoilPainting, stampGateBoilWashPainting, stampGateDriftPainting, stampGateSunsetPainting,
 } from '../models/stamp-gate-animation.ts';
 import {
   checkStampGateFlow, STAMP_GATE_FLOW_LAYERS, STAMP_GATE_FLOW_SIZE, stampGateFlowCase, stampGateFlowLayer, stampGateFlowPainting, stampGateHalfBits, stampGateHalfValue,
 } from '../models/stamp-gate-flow.ts';
 import { stampGatePrivatePainting, type StampGatePrivateCase } from '../models/stamp-gate-private-cases.ts';
 import { stampGateFrameDifference, stampGateFramePasses, type StampGateFrameDifference } from '../models/stamp-gate-frames.ts';
-import { checkStampGateConserved, checkStampGateLifted, checkStampGateSpread, stampGateLastGroupPigments, stampGateWashCase, type StampGateWashCheck } from '../models/stamp-gate-washes.ts';
+import {
+  checkStampGateConserved, checkStampGateFenced, checkStampGateLifted, checkStampGateSet, checkStampGateSpread, stampGateLastGroupPigments, stampGateWashCase, type StampGateWashCheck,
+} from '../models/stamp-gate-washes.ts';
 import { stampGatePainting, stampGateTracePainting, type StampGateImage, type StampGatePainting } from '../models/stamp-gate-paintings.ts';
 
 const WORKGROUP = 64;
@@ -207,10 +210,16 @@ async function checkStampGateWash(id: string): Promise<StampGateWashCheck[]> {
   }];
   if (washCase.property === 'order') return checks;
   const pigments = stampGateLastGroupPigments(subject);
+  if (washCase.property === 'fenced') return [...checks, checkStampGateFenced(id, pigments, painted.layer, washCase.fenced)];
   if (stampGateLastGroupPigments(washCase.without).join() !== pigments.join()) throw new Error(`stamp gate: ${id} and its painting without the ops under test lay different pigments`);
   const without = await withGateRenderer(washCase.without, url, (renderer) => renderer.readLayer(end));
   if (washCase.property === 'conserved') return [...checks, checkStampGateConserved(id, pigments, painted.layer, without)];
   if (washCase.property === 'spread') return [...checks, checkStampGateSpread(id, pigments, painted.layer, without)];
+  if (washCase.property === 'set') {
+    const layerOf = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), (renderer) => renderer.readLayer(end));
+    const wet = { subject: await layerOf(washCase.fresh.subject), without: await layerOf(washCase.fresh.without) };
+    return [...checks, checkStampGateSet(id, pigments, washCase.rewetting, { subject: painted.layer, without }, wet)];
+  }
   return [...checks, checkStampGateLifted(id, pigments, washCase.pigments, painted.layer, without)];
 }
 
@@ -231,6 +240,11 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
       const frames = await [0, 1, 2, 3, 4, 5].reduce<Promise<Uint8ClampedArray[]>>(async (done, k) => [...await done, await drawn(renderer, frame, frameAt(k))], Promise.resolve([]));
       return checkStampGateBoil(frames, await drawn(renderer, frame, 0), gate.width, gate.height);
     });
+  }
+  if (id === 'animation/boil-wash') {
+    const gate = stampGateBoilWashPainting();
+    return withGateRenderer(gate, drawnImages(gate), async (renderer, frame) => checkStampGateBoilWash(
+      await [0, 2, 4].reduce<Promise<Uint8ClampedArray[]>>(async (done, k) => [...await done, await drawn(renderer, frame, frameAt(k))], Promise.resolve([]))));
   }
   if (id === 'animation/sunset') {
     const traced = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), async (renderer) => {
@@ -273,14 +287,22 @@ async function checkStampGateFlowCase(id: string): Promise<StampGateWashCheck> {
       await buffer.mapAsync(GPUMapMode.READ);
       return Float32Array.from(new Uint16Array(buffer.getMappedRange().slice(0)), stampGateHalfValue);
     };
+    // The fresh deposit's landing grids alone, as the renderer uploads every landing's.
+    const landing = wetness.landings.get(deposit)!, { before: grids } = landing;
+    const gridBuffer = device.createBuffer({ size: 12 * grids.wetness.length, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    device.queue.writeBuffer(gridBuffer, 0, Float32Array.from([...grids.wetness, ...grids.workable, ...grids.settled]));
     device.pushErrorScope('validation');
     const stage = STAMP_WET_FLOW_STAGE.load({
       device, painting, medium, wetness, width, height, layer: arrayViews(layer),
+      wash: { layersOf: () => layers, movedWgsl: (n) => stampWashMovedWgsl(n, medium.body) },
       footprint: { texture: footprint, view: footprint.createView({ dimension: '2d' }) }, fresh: arrayViews(texture(layers, written.fresh)),
+      grids: { buffer: gridBuffer, firsts: new Map([[deposit, 0]]) },
     });
+    const box = { x: 0, y: 0, w: width, h: height };
+    stage.reserve?.(box);
     const before = await read();
     const encoder = device.createCommandEncoder();
-    stage.encode(encoder, { kind: 'deposit', deposit, pass, landing: wetness.landings.get(deposit)!, box: { x: 0, y: 0, w: width, h: height } });
+    stage.encode(encoder, { kind: 'deposit', deposit, pass, landing, box, seed: 0 });
     device.queue.submit([encoder.finish()]);
     const error = await device.popErrorScope();
     if (error) throw new Error(`stamp gate: ${id}: ${error.message}`);

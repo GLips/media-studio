@@ -2,10 +2,10 @@
 //
 // - any frame order: a frame drawn fresh or after another is the same;
 // - conserved: water, softening, a bloom or wet paper moves pigment, never making or losing it;
-// - lifted: a lift never raises a pigment's total nor leaves less than none, and takes a smaller share of a staining
-//   pigment. A pixel may gain as wet paint runs back in;
-// - spread: flow never leaves overlapping strokes in one wash less even than without it. Paint added into wet paint
-//   deepens it, so evenness, not darkness, is what's held.
+// - lifted: a lift never raises a pigment's total nor leaves less than none, and takes less of a staining pigment;
+// - spread: flow never leaves overlapping strokes less even than without it (evenness, as wet paint deepens);
+// - set: dried paint lifts only by the medium's rewetting, though wetted again;
+// - fenced: no paint moves under masking fluid or out of a pass's `within`.
 //
 // Each case paints into its last group, whose layer readLayer reads back.
 
@@ -15,6 +15,7 @@ import { WATERCOLOUR_PIGMENTS as W } from '#lib/picture/paint/models/paint-water
 import type { PaintPigmentAppearance } from '#lib/picture/paint/models/paint-pigment.ts';
 import { compileStampPaintRecipe, stampPaintRecipe, type PaintMaterial, type StampPaintPaper, type StampWashScope } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import { compileStampPigmentPaint } from '#lib/picture/stamp-paint/models/stamp-pigment-paint.ts';
+import type { StampRegion } from '#lib/picture/stamp-paint/models/stamp-region.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
 
 /** A layer as the renderer reads one back (StampLayerReadback), restated so models needn't import the studio. */
@@ -35,6 +36,8 @@ export type StampGateWashCase = {
   | { property: 'conserved'; without: StampGatePainting }
   | { property: 'lifted'; without: StampGatePainting; pigments: readonly [string, string] }
   | { property: 'spread'; without: StampGatePainting }
+  | { property: 'set'; without: StampGatePainting; fresh: { subject: StampGatePainting; without: StampGatePainting }; rewetting: number }
+  | { property: 'fenced'; fenced: (x: number, y: number) => boolean }
 );
 
 /** How far a pigment's total may drift from the same wash's without the ops under test: its layer's half-float rounding summed over a few thousand pixels. */
@@ -56,19 +59,25 @@ const shown = (k: number) => ({ appliedAt: k, drawnOver: 1 });
 
 /**
  * A painting in `medium`: an earlier dry group (so the subject's layer isn't the painting's only one), then the
- * subject's wash, prepared over the sky when `wetPaper`. `still`: the medium's paint doesn't flow.
+ * subject's wash, prepared over the sky when `wetPaper`, and `within` a region if given. `still`: the medium's paint
+ * doesn't flow.
  */
-function washPainting(medium: StampGateWashMedium, wetPaper: boolean, body: (wash: StampWashScope) => void, still = false): StampGatePainting {
+function washPainting(medium: StampGateWashMedium, wetPaper: boolean, body: (wash: StampWashScope) => void, still = false, within?: StampRegion): StampGatePainting {
   const painting = compileStampPaintRecipe(stampPaintRecipe((p) => {
     p.group('under', { composite: 'glaze', opacity: 1 }, (g) => g.pass('dry', {}, (pass) => {
       pass.stroke('band', { brush: ROUND, diameter: 30, material: pure(W.yellowOchre), path: [{ x: 0, y: 100 }, { x: 160, y: 96 }] });
     }));
-    p.group('subject', { composite: 'glaze', opacity: 1 }, (g) => g.wash('wash', wetPaper ? { preparation: { region: SKY } } : {}, body));
+    p.group('subject', { composite: 'glaze', opacity: 1 }, (g) => g.wash('wash', { ...(wetPaper && { preparation: { region: SKY } }), ...(within && { within }) }, body));
   }));
   const flowing = PAINT_MEDIA[medium];
   const paint = still ? { ...flowing, wetting: { ...flowing.wetting, spread: 0 } } : flowing;
   return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: paint, pigments: W }, ...SIZE, t: END, images: STAMP_GATE_IMAGES };
 }
+
+/** The fenced case's masking fluid and its `within`'s edge, and the pixels held clear of both, a couple of pixels in. */
+const FLUID = { x: 60, y: 62, radius: 16 };
+const WITHIN_TO = 110;
+const fenced = (x: number, y: number) => Math.hypot(x + 0.5 - FLUID.x, y + 0.5 - FLUID.y) < FLUID.radius - 2 || x >= WITHIN_TO + 2;
 
 const sky = (wash: StampWashScope) => wash.fill('sky', { brush: ROUND, diameter: 40, application: { kind: 'flood' }, region: SKY, material: pure(W.ultramarine), ...shown(0) });
 const stroke = (wash: StampWashScope) => wash.stroke('stroke', { brush: ROUND, diameter: 36, material: pure(W.ultramarine), path: [{ x: 20, y: 40 }, { x: 140, y: 50 }], ...shown(0) });
@@ -108,6 +117,13 @@ function washCases(): StampGateWashCase[] {
     sky(wash);
     wash.stroke('drop', { brush: SOFT, diameter: 30, material: pure(W.quinacridoneRose), path: [{ x: 20, y: 70 }, { x: 140, y: 64 }], ...shown(1) });
   };
+  // Dried paint wetted again by a water stroke and lifted, against the same lift while the paint is still wet.
+  const rewetted = (dried: boolean, withLift: boolean) => washPainting('watercolour', false, (wash) => {
+    wash.fill('sky', { brush: ROUND, diameter: 40, application: { kind: 'flood' }, region: SKY, material: pure(W.ultramarine), ...shown(0) });
+    if (dried) wash.wait('dry');
+    wash.water('rewet', { kind: 'stroke', brush: ROUND, diameter: 40, path: [{ x: 15, y: 60 }, { x: 145, y: 58 }], ...shown(1) });
+    if (withLift) wash.lift('lift', { kind: 'stroke', brush: SOFT, diameter: 30, path: [{ x: 20, y: 60 }, { x: 140, y: 58 }], ...shown(1) });
+  });
   const overlapping = (wash: StampWashScope) => [30, 52, 74, 96].forEach((x, k) => wash.stroke(`stroke-${k}`, {
     brush: ROUND, diameter: 36, material: pure(W.ultramarine), path: [{ x, y: 10 }, { x: x + 4, y: 110 }], ...shown(k / 2),
   }));
@@ -122,7 +138,21 @@ function washCases(): StampGateWashCase[] {
         wash.lift('nothing', { kind: 'stroke', brush: SOFT, diameter: 34, path: [{ x: 20, y: 60 }, { x: 140, y: 55 }], strength: 0, ...shown(1) });
       }),
     },
-    { id: 'wash/wet-in-wet', mid: MID, property: 'conserved', subject: washPainting('watercolour', true, dropped), without: washPainting('watercolour', false, dropped) },
+    {
+      id: 'wash/lift-set', mid: MID, property: 'set', subject: rewetted(true, true), without: rewetted(true, false),
+      fresh: { subject: rewetted(false, true), without: rewetted(false, false) }, rewetting: PAINT_MEDIA.watercolour.wetting.rewetting,
+    },
+    {
+      id: 'wash/fenced', mid: MID, property: 'fenced', fenced,
+      subject: washPainting('watercolour', true, (wash) => {
+        wash.mask('fluid', { region: { kind: 'ellipse', x: FLUID.x, y: FLUID.y, radiusX: FLUID.radius, radiusY: FLUID.radius } });
+        sky(wash);
+        wash.stroke('feather', { brush: SOFT, diameter: 30, material: pure(W.quinacridoneRose), path: [{ x: 40, y: 30 }, { x: 150, y: 34 }], ...shown(1) });
+        wash.lift('lift', { kind: 'stroke', brush: SOFT, diameter: 30, path: [{ x: 20, y: 64 }, { x: 140, y: 60 }], ...shown(1) });
+      }, false, stampGatePolygon(0, 0, WITHIN_TO, 0, WITHIN_TO, SIZE.height, 0, SIZE.height)),
+    },
+    // Against the same wet paper with paint that doesn't flow: on dry paper the brush's water would harden its edge.
+    { id: 'wash/wet-in-wet', mid: MID, property: 'conserved', subject: washPainting('watercolour', true, dropped), without: washPainting('watercolour', true, dropped, true) },
     {
       id: 'wash/soften', mid: MID, property: 'conserved', without: washPainting('watercolour', false, stroke),
       subject: washPainting('watercolour', false, (wash) => {
@@ -219,6 +249,38 @@ export function checkStampGateLifted(id: string, pigments: readonly string[], st
   return {
     id: `${id}: lifted`, passed: !problems.length,
     detail: `${staining[0]} lost ${(loose * 100).toFixed(2)}%, ${staining[1]} ${(stained * 100).toFixed(2)}%${problems.length ? `; ${problems.join('; ')}` : '; bounded'}`,
+  };
+}
+
+/**
+ * Whether dried paint wetted again lifted, as a share of what it held, no more than the medium's `rewetting` of what
+ * the same lift took while the paint was wet, and the wet lift took some.
+ */
+export function checkStampGateSet(id: string, pigments: readonly string[], rewetting: number, dried: { subject: StampGateLayer; without: StampGateLayer }, wet: { subject: StampGateLayer; without: StampGateLayer }): StampGateWashCheck {
+  const share = ({ subject, without }: typeof dried, slot: number) => {
+    const had = total(slotAmounts(without, slot));
+    return had > 0 ? (had - total(slotAmounts(subject, slot))) / had : 0;
+  };
+  const shares = pigments.map((pigment, slot) => ({ pigment, dried: share(dried, slot), wet: share(wet, slot) }));
+  const passed = shares.every((s) => s.wet > STAMP_GATE_CONSERVED_TOLERANCE && s.dried <= rewetting * s.wet + STAMP_GATE_CONSERVED_TOLERANCE);
+  return {
+    id: `${id}: set paint lifts by rewetting`, passed,
+    detail: shares.map((s) => `${s.pigment} lost ${(s.dried * 100).toFixed(2)}% dried, ${(s.wet * 100).toFixed(2)}% wet (dried past ${(rewetting * 100).toFixed(0)}% of wet fails)`).join(', '),
+  };
+}
+
+/** Whether `layer` holds no pigment, past a half-float's step, wherever `fenced` says paint may not go. */
+export function checkStampGateFenced(id: string, pigments: readonly string[], layer: StampGateLayer, fencedAt: (x: number, y: number) => boolean): StampGateWashCheck {
+  let most = 0, over = 0, inFence = 0;
+  pigments.forEach((_, slot) => slotAmounts(layer, slot).forEach((v, i) => {
+    if (!fencedAt(i % layer.width, Math.floor(i / layer.width))) return;
+    inFence++;
+    most = Math.max(most, v);
+    if (v > STAMP_GATE_LAYER_TOLERANCE) over++;
+  }));
+  return {
+    id: `${id}: fenced`, passed: over === 0 && inFence > 0,
+    detail: `${inFence} fenced pixel-pigments, ${over} holding paint, the most ${most.toFixed(4)} (past ${STAMP_GATE_LAYER_TOLERANCE} fails)`,
   };
 }
 

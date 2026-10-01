@@ -35,8 +35,8 @@ export type StampPaintCompositor = {
     wgsl: string;
     /**
      * For a compositor that lays washes: `landDeposit(pixel, coverage, rims, tooth, at, wet)`, a wash's deposit laid as
-     * its WetLanding says (the renderer declares it, and WET_PAINT, WET_WATER and WET_LIFT for its action). Absent,
-     * the compositor refuses a wash as it's made.
+     * its WetLanding says, coverage hardened already. The renderer declares WetLanding (with `settled`), the landing
+     * laws (stamp-wet-landing.ts), and WET_PAINT, WET_WATER and WET_LIFT. Absent, a painting with a wash is refused.
      */
     wet?: string;
     /** The writer of `deposit`'s PaintDeposit, made once as the renderer loads it. */
@@ -53,10 +53,27 @@ export type StampPaintCompositor = {
     /** What it binds from 3, given the paper's photograph (a blank texture if it has none) and a sampler. */
     resources: (paper: { photograph: GPUTextureView; sampler: GPUSampler }) => GPUBindingResource[];
   };
+  /** For a compositor that lays washes, how a wash group's layer is kept, for the stages that move its paint. */
+  wash?: StampWashLayer;
   /** `layPaper(pixel, color)`, `color` gamma-encoded. */
   paper: string;
   /** `screenColor(pixel)`, gamma-encoded. */
   output: string;
+};
+
+/**
+ * How a compositor keeps a wash group's layer, for a stage (stamp-wet-stages.ts) that moves paint about within it.
+ * A stage moves pigment channels only; what the rest becomes is the compositor's one rule, `washMoved`.
+ */
+export type StampWashLayer = {
+  /** Layers of four channels `deposit`'s group keeps, from the first: a stage reads and writes no more. */
+  layersOf: (deposit: CompiledStampDeposit) => number;
+  /**
+   * WGSL for a group of `layers` layers: `washPigmentMask(l)`, 1 on layer `l`'s pigment channels; `washPigmentTotal(v)`
+   * and `washOpen(v)`, a pixel's pigment and open share; and `washMoved(now, wasPigment)`, the pixel once a stage has
+   * moved its pigment total from `wasPigment` to `now`'s, its other channels as before the move.
+   */
+  movedWgsl: (layers: number) => string;
 };
 
 const BLENDS: readonly StampBlend[] = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'colorBurn'];

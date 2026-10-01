@@ -1,8 +1,8 @@
 // stamp-gate-flow.ts: the flow stage (stamp-wet-flow.ts) run alone over a layer the gate writes: grainy workable
-// paint in a wetted wash, a fresh disc of paint or water beside it, and a stripe the footprint closes to paint. Its
-// look is still being tuned, so it's held to properties:
+// paint in a wetted wash, a fresh disc of paint, water or a lift beside it, and a stripe the footprint closes to
+// paint. Its look is still being tuned, so it's held to properties:
 //
-// - every channel's sum holds within STAMP_GATE_FLOW_TOLERANCE;
+// - every pigment channel's sum holds within STAMP_GATE_FLOW_TOLERANCE;
 // - no pixel holds less than none;
 // - nothing changes on the closed stripe or past it;
 // - crayon, which has no water, changes nothing; a medium that flows moves some paint.
@@ -17,19 +17,21 @@ import type { StampGateWashCheck } from './stamp-gate-washes.ts';
 export const STAMP_GATE_FLOW_TOLERANCE = 1e-3;
 
 export const STAMP_GATE_FLOW_SIZE = { width: 256, height: 192 };
-/** The layer's array layers: coverage and seven pigment channels. */
+/** The layer's array layers: coverage, six pigment channels and the open share. */
 export const STAMP_GATE_FLOW_LAYERS = 2;
+/** The open share's channel, the layer's last. */
+const OPEN = 4 * STAMP_GATE_FLOW_LAYERS - 1;
 /** The columns the footprint closes to paint, and past which nothing may change. */
 const STRIPE = { x0: 170, x1: 176 };
 const DISC = { x: 110, y: 96, radius: 30 };
 
 export type StampGateFlowMedium = 'watercolour' | 'gouache' | 'crayon';
-export type StampGateFlowKind = 'paint' | 'water';
-export const STAMP_GATE_FLOW_IDS = (['watercolour', 'gouache', 'crayon'] as const).flatMap((medium) => (['paint', 'water'] as const).map((kind) => `flow/${medium}-${kind}`));
+export type StampGateFlowKind = 'paint' | 'water' | 'lift';
+export const STAMP_GATE_FLOW_IDS = (['watercolour', 'gouache', 'crayon'] as const).flatMap((medium) => (['paint', 'water', 'lift'] as const).map((kind) => `flow/${medium}-${kind}`));
 
 /** A flow case's medium and what its fresh deposit lays, from its ID. */
 export function stampGateFlowCase(id: string): { medium: StampGateFlowMedium; kind: StampGateFlowKind } {
-  const match = /^flow\/(watercolour|gouache|crayon)-(paint|water)$/.exec(id);
+  const match = /^flow\/(watercolour|gouache|crayon)-(paint|water|lift)$/.exec(id);
   if (!match) throw new Error(`stamp gate: no flow case ${JSON.stringify(id)}; the gate runs ${STAMP_GATE_FLOW_IDS.join(', ')}`);
   // SAFETY: the pattern admits only these words.
   return { medium: match[1] as StampGateFlowMedium, kind: match[2] as StampGateFlowKind };
@@ -48,7 +50,8 @@ export function stampGateFlowPainting(kind: StampGateFlowKind): CompiledStampPai
     group.wash('w', { preparation: { region: stampGatePolygon(0, 0, width, 0, width, height, 0, height) } }, (wash) => {
       wash.stamps('old', { brush: BRUSH, material, diameter: 200, at: [{ x: 40, y: 96 }] });
       if (kind === 'paint') wash.stamps('fresh', { brush: BRUSH, material, diameter: 2 * DISC.radius, at: [DISC] });
-      else wash.water('fresh', { kind: 'stamps', brush: BRUSH, diameter: 2 * DISC.radius, at: [DISC] });
+      else if (kind === 'water') wash.water('fresh', { kind: 'stamps', brush: BRUSH, diameter: 2 * DISC.radius, at: [DISC] });
+      else wash.lift('fresh', { kind: 'stamps', brush: BRUSH, diameter: 2 * DISC.radius, at: [DISC] });
     });
   })));
 }
@@ -72,7 +75,7 @@ export function stampGateFlowLayer(kind: StampGateFlowKind): { layer: Float32Arr
     const old = x < 90 + 10 * Math.sin(y / 9) ? 0.6 * (0.7 + 0.6 * hashed(x >> 1, y >> 1)) : 0;
     const laid = kind === 'paint' ? inDisc * 0.9 * (0.6 + 0.8 * hashed(x, y)) : 0;
     layer[0].set([Math.min(1, (old > 0 ? 0.8 : 0) + inDisc * 0.9), old + laid, old * 0.5, 0.2 * hashed(x, y)], i);
-    layer[1].set([laid * 0.3, x > 180 ? 0.7 : 0, 0, 0], i);
+    layer[1].set([laid * 0.3, x > 180 ? 0.7 : 0, 0, old + laid > 0 || x > 180 ? 1 : 0], i);
     fresh[0].set([inDisc * 0.9 * (old > 0 ? 0.2 : 1), laid, 0, 0], i);
     fresh[1].set([laid * 0.3, 0, 0, 0], i);
     footprint.set([inDisc, x >= STRIPE.x0 && x < STRIPE.x1 ? 0 : 1, 0, 0], i);
@@ -113,7 +116,9 @@ export function checkStampGateFlow(id: string, before: ArrayLike<number>, after:
     moved += change;
     if (p % width >= STRIPE.x0) fenced = Math.max(fenced, change);
   }
-  const drift = Math.max(...sums.map((s) => (s.before > 0 ? Math.abs(s.after - s.before) / s.before : s.after)));
+  // Pigment channels only: coverage and the open share follow what moved, by the compositor's rule.
+  const pigments = sums.filter((_, channel) => channel !== 0 && channel !== OPEN);
+  const drift = Math.max(...pigments.map((s) => (s.before > 0 ? Math.abs(s.after - s.before) / s.before : s.after)));
   const problems = [
     ...(drift > STAMP_GATE_FLOW_TOLERANCE ? [`a channel's sum drifted ${drift.toExponential(2)}`] : []),
     ...(least < 0 ? [`a pixel holds ${least}`] : []),
