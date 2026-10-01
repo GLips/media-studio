@@ -226,7 +226,7 @@ Reveal, placement, deformation, boil, holds and colour run as pure timing channe
 - **Conflicts are judged after selections expand to concrete targets, per overlapping interval.** A finished clip's held pose persists until the next clip on that target starts.
 - **The timing contract is written before implementation:** clock nesting, each stroke's local boil phase, behaviour at interval endpoints, and overlap detection.
 - **A separate animation clock** at 24 fps by default, apart from the render rate. "On twos" means 2/24 s at any output rate, and `StampGroupBoil.every` moves onto it.
-- **Boil** is a stepped displacement of rest space, under `deform` (spike 1.0 and phase 2a). A stroke boils only after its own reveal finishes.
+- **Boil** is a stepped displacement of rest space, under `deform` (spike 1.0 and phase 2a). A group boils only after its own reveal finishes.
 
 ### The timing contract (written 2026-10-01, before implementation)
 
@@ -238,9 +238,11 @@ Reveal, placement, deformation, boil, holds and colour run as pure timing channe
 
 **Who owns what.**
 - vid-114's score owns reveal allocation: which interval each deposit reveals over, from weights and cues. It resolves to scene seconds.
-- Plan 1 adds channels beside the lookup, and holds in front of it. Reveal stays `progress(deposit, τ)`, where `τ` is the scene's time through the part's holds and freezes only. Plan 1 never re-allocates the score.
+- Plan 1 adds channels beside the lookup. Reveal stays `progress(deposit, t)` on scene time. Plan 1 never re-allocates the score.
 
-**Clocks belong to writers.** Each play (a pose clip, a sway, a placement, a boil) has a clock: a chain of transforms from scene time to the clip's own local time `τ`. A part, a group or the painting carries only `hold` and `freeze`, which every writer under it and its reveal read through. *Why (spike 1.1):* a looping chain in front of the reveal lookup would un-draw and redraw the part on every loop, and repeat its boil epochs. Each transform is data, `{ kind, …params }`, evaluated by a registered pure function. `hold(loop(clip))` placed at a cue is the chain `[hold(2), at(cue), loop(…)]`, outermost first. The hold sees the parent's time, the `at` makes the clip's own time, and the loop wraps it (`paint/animation/models/paint-clock.ts`).
+*Amended after review (2026-10-01):* a part's holds and freezes no longer reach its reveal. Wet paint's order is the painting's, so one held group can't reveal on a time of its own while its neighbours settle on scene time. A part's clock governs its writers and its boil.
+
+**Clocks belong to writers.** Each play (a pose clip, a sway, a placement, a boil) has a clock: a chain of transforms from scene time to the clip's own local time `τ`. A part, a group or the painting carries only `hold` and `freeze`, which every writer under it reads through. *Why (spike 1.1):* a looping chain in front of the reveal lookup would un-draw and redraw the part on every loop, and repeat its boil epochs. Each transform is data, `{ kind, …params }`, evaluated by a registered pure function. *Amended after review:* a play's clock is written from parts (`{ at, rate?, loop?, hold? }`) and compiled to the chain, so its order can't be wrong. The interval it writes over is derived from those parts exactly, and a finished clip holds its final clip value. `hold(loop(clip))` placed at a cue is the chain `[hold(2), at(cue), loop(…)]`, outermost first. The hold sees the parent's time, the `at` makes the clip's own time, and the loop wraps it (`paint/animation/models/paint-clock.ts`).
 
 | Kind | Maps input time `τ` to | Notes |
 |---|---|---|
@@ -269,22 +271,24 @@ Reveal, placement, deformation, boil, holds and colour run as pure timing channe
 **Composition per frame, for one stroke:**
 1. rest geometry in anchor space;
 2. `boil` displacement, in rest space, so the wobble travels with the part rather than swimming as it moves;
-3. its part's `deform`;
-4. each ancestor's `deform`, nearest first;
-5. its group's `place` (rigid), its own and then its ancestors', composed as one placement;
-6. the camera step (the identity in plan 1);
-7. screen.
+3. its part's `deform`, then its part's `place`;
+4. each ancestor's `deform` then `place`, nearest first;
+5. the camera step (the identity in plan 1);
+6. screen.
+
+*Amended after review:* every deform was applied before every placement. Per level is how a rigger composes: a child
+moved inside a deforming parent gets the parent's deform where the child is, not at its rest point.
 
 *Amended in phase 2a:* boil was after `place`. In rest space it rides any plane plan 2 adds, too.
 
 Reveal is measured on the rest stroke (step 1), so no later step changes how much has been drawn.
 
-**Boil, per stroke.**
-- A stroke's epoch is 0 (its rest seed, as written) while it's drawn. After its reveal ends at `end`, it is `⌊F(τ)/every⌋ − ⌊F(end)/every⌋`. So it stays as drawn until the next grid step, rather than popping to a new seed on the frame it finishes, and then steps on the global grid, so every boiling stroke in a part changes on the same frame.
-- The seed is `hash(restId, epoch)`.
+**Boil, per group.** *Amended after review:* the wobble is a warp of the group's layer, so a group boils as one, from the last reveal end of its deposits. A scene wanting strokes to boil apart gives them separate groups.
+- A group's epoch is 0 (its rest seed, as written) while it's drawn. After its reveal ends at `end`, it is `⌊F(τ)/every⌋ − ⌊F(end)/every⌋`. So it stays as drawn until the next grid step, rather than popping to a new seed on the frame it finishes, and then steps on the global grid, so every boiling stroke in a part changes on the same frame.
+- A re-seeding boil's seed is `hash(restId, epoch)`. A given epoch, 0 included, replaces the recipe's boil, and a recipe boil counts animation frames.
 - `stuck` is always epoch 0. `live` re-places every evaluated frame: under a hold, every held frame, never between them.
 
-**Purity and keys.** A frame is a pure function of (compiled painting, `t`, cues, `animationFps`). Everything that varies goes into the checkpoint key: each part's time after its holds, each writer's clock value, its warp, its epoch and its placement. Two frames inside one hold step share a key, which is what makes holds cheap.
+**Purity and keys.** A frame is a pure function of (compiled painting, `t`, cues, `animationFps`). Everything that varies goes into the checkpoint key: each part's time after its holds, each writer's clock value, its warp, its epoch and its placement. Two frames inside one hold step share a key, which is what makes holds cheap. *Amended after review:* a key is the canonical form of the deformation's data (every spatial parameter and its quantised amount), from which the map and the fold check also derive. A checkpoint is shared wherever the lay keys are unchanged, whoever wrote them.
 
 ## Phase 4: The frog scene (sketched)
 
