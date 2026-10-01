@@ -78,7 +78,7 @@ function underKind(under: CompiledStampWashWait['under']): StampWetReportWait['u
 
 function touchReport(deposit: CompiledStampDeposit, pass: CompiledStampPass, wetness: StampWetness): StampWetReportTouch {
   const landing = wetness.landings.get(deposit)!, { before } = landing;
-  const cover = stampLandingCover(deposit, before.window, pass);
+  const cover = stampLandingCover(deposit, before.window, pass, wetness);
   const wet: StampWetRange = { least: Infinity, most: 0 }, workable: StampWetRange = { least: Infinity, most: 0 };
   let covered = 0, dry = 0;
   cover.forEach((share, w) => {

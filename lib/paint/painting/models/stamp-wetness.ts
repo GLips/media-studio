@@ -16,6 +16,7 @@ import type { StampPaintPaper } from './stamp-paint-recipe-types.ts';
 import type { CompiledStampWashStep, CompiledStampWashWait, StampWashWait } from './stamp-wash-effects.ts';
 import { stampEdgeReach, type StampGrid, type StampPoint } from './stamp-region.ts';
 import { stampAreaBox, stampAreaCoverageAt, type CompiledStampArea } from './stamp-area.ts';
+import type { CompiledStampBrushedMask } from './stamp-brushed-mask.ts';
 
 /** A window of the lattice: its first point (px), spacing (STAMP_WET_CELL) and points across and down. */
 export type StampWetWindow = Omit<StampGrid, 'values'>;
@@ -64,9 +65,14 @@ export type StampWashDrying = {
  */
 export type StampWashRecord = { duration: number; waits: readonly StampWashWaitRecord[]; dryings: readonly StampWashDrying[]; end: StampWetState };
 
+/** Each brushed mask's coverage, as the renderer measured it on the painting's footprint samples (stampCoverageSamples). */
+export type StampBrushedCoverage = ReadonlyMap<CompiledStampBrushedMask, StampCoverageSamples>;
+
+/** `brushed`: the coverage it was worked out with, which reading the paper under a deposit (stampLandingCover) needs again. */
 export type StampWetness = {
   landings: ReadonlyMap<CompiledStampDeposit, StampWetLanding>;
   washes: ReadonlyMap<CompiledStampPass, StampWashRecord>;
+  brushed: StampBrushedCoverage;
 };
 
 /**
@@ -123,10 +129,11 @@ type StampWashPaper = { lattice: StampWetSpan; level: Float64Array; at: Float64A
  * Every wash deposit's landing in `painting`, `size` px, on `paper`, each group's paint in its `mediumOf`, each wash
  * starting from dry paper (or its preparation) at painting time 0. A landing's window reaches `margin(deposit,
  * medium)` px past what its water covers, and a cell more: as far as a stage reads round it (StampWetStage's `reach`).
+ * `brushed`: each brushed mask's coverage.
  */
 export function compileStampWetness(
   painting: CompiledStampPaint, mediumOf: (group: CompiledStampGroup) => PaintMedium, size: { width: number; height: number },
-  margin: (deposit: CompiledStampDeposit, medium: PaintMedium) => number = () => 0,
+  margin: (deposit: CompiledStampDeposit, medium: PaintMedium) => number = () => 0, brushed: StampBrushedCoverage = new Map(),
 ): StampWetness {
   const { paper } = painting;
   const lattice = { i0: 0, j0: 0, columns: Math.ceil(size.width / STAMP_WET_CELL) + 1, rows: Math.ceil(size.height / STAMP_WET_CELL) + 1 };
@@ -139,7 +146,7 @@ export function compileStampWetness(
     // Paint an earlier pass left has set: washes share no water.
     const wash: StampWashPaper = { lattice, level: new Float64Array(points), at: new Float64Array(points), settled: new Uint8Array(points).fill(1) };
     if (preparation) {
-      const cover = footprintCover(lattice, [], [preparation.polygon], pass.within ? [pass.within] : [], preparation.held ?? null);
+      const cover = footprintCover(lattice, [], [preparation.polygon], pass.within ? [pass.within] : [], preparation.held ?? null, brushed);
       forSpan(wash, lattice, (k, w, x, y) => { wash.level[k] = cover[w] * stampPaintFieldAt(preparation.wetness, x, y); });
     }
     let tau = 0;
@@ -154,7 +161,7 @@ export function compileStampWetness(
       if (step.kind === 'wait') {
         const { under } = step;
         let target: Set<number> | null = null;
-        if (under !== 'wash') target = 'deposits' in under ? pointsUnder(wash, stampWaitDeposits(schedule, index), pass.within) : regionPoints(wash, under.region);
+        if (under !== 'wash') target = 'deposits' in under ? pointsUnder(wash, stampWaitDeposits(schedule, index), pass.within, brushed) : regionPoints(wash, under.region);
         const judged = target ?? wetPoints(wash, tau, drying);
         const from = tau, before = rangesOver(wash, judged, from, drying);
         tau += stampWashWaitSeconds(wash, tau, step.until, drying, target);
@@ -168,7 +175,7 @@ export function compileStampWetness(
       const water = action.kind === 'lift' ? 0 : action.water ?? wetting.brushWater;
       const span = depositSpan(deposit, lattice, margin(deposit, medium));
       const before = wetStateOver(wash, span, tau, drying);
-      const cover = depositCover(span, deposit, pass.within);
+      const cover = depositCover(span, deposit, pass.within, brushed);
       forSpan(wash, span, (k, w) => {
         const now = stampWetnessAt(wash.level[k], wash.at[k], tau, drying), c = cover[w];
         // The landing set the paint here to none open where the paper had settled, so it starts afresh from what water does.
@@ -185,7 +192,7 @@ export function compileStampWetness(
     dry('end', washRim);
     washes.set(pass, { duration: tau, waits, dryings, end: wetStateOver(wash, lattice, tau, drying) });
   }
-  return { landings, washes };
+  return { landings, washes, brushed };
 }
 
 /**
@@ -218,7 +225,7 @@ function regionPoints(wash: StampWashPaper, region: readonly StampPoint[]): Set<
   };
   const xs = region.map(({ x }) => x), ys = region.map(({ y }) => y);
   const [i0, columns] = cells(Math.min(...xs), Math.max(...xs), lattice.columns), [j0, rows] = cells(Math.min(...ys), Math.max(...ys), lattice.rows);
-  const span = { i0, j0, columns, rows }, cover = footprintCover(span, [], [region], [], null), points = new Set<number>();
+  const span = { i0, j0, columns, rows }, cover = footprintCover(span, [], [region], [], null, new Map()), points = new Set<number>();
   forSpan(wash, span, (k, w) => { if (cover[w] > 0) points.add(k); });
   return points;
 }
@@ -243,27 +250,27 @@ function rangesOver(wash: StampWashPaper, points: ReadonlySet<number>, tau: numb
 }
 
 /** The lattice points the deposits of `steps` wet any of, as their landings' covers read them. */
-function pointsUnder(wash: StampWashPaper, deposits: readonly CompiledStampDeposit[], within: CompiledStampArea | null): Set<number> {
+function pointsUnder(wash: StampWashPaper, deposits: readonly CompiledStampDeposit[], within: CompiledStampArea | null, brushed: StampBrushedCoverage): Set<number> {
   const points = new Set<number>();
   for (const deposit of deposits) {
     const span = depositSpan(deposit, wash.lattice, 0);
-    const cover = depositCover(span, deposit, within);
+    const cover = depositCover(span, deposit, within, brushed);
     forSpan(wash, span, (k, w) => { if (cover[w] > 0) points.add(k); });
   }
   return points;
 }
 
 /** How much of each point's cell of `span` a deposit's water reaches, as footprintCover reads it. */
-const depositCover = (span: StampWetSpan, deposit: CompiledStampDeposit, within: CompiledStampArea | null) =>
-  footprintCover(span, deposit.stamps, deposit.kind === 'flood' ? [deposit.flood.polygon] : [], [...(within ? [within] : []), ...(deposit.within ?? [])], deposit.mask);
+const depositCover = (span: StampWetSpan, deposit: CompiledStampDeposit, within: CompiledStampArea | null, brushed: StampBrushedCoverage) =>
+  footprintCover(span, deposit.stamps, deposit.kind === 'flood' ? [deposit.flood.polygon] : [], [...(within ? [within] : []), ...(deposit.within ?? [])], deposit.mask, brushed);
 
 /**
- * How much of each point of `landed` (a landing's window) `deposit` covers in `pass`, 0..1, as its landing read it:
- * for reading the paper under a deposit off its landing's states.
+ * How much of each point of `landed` (a landing's window) `deposit` covers in `pass`, 0..1, as its landing in
+ * `wetness` read it: for reading the paper under a deposit off its landing's states.
  */
-export function stampLandingCover(deposit: CompiledStampDeposit, landed: StampWetWindow, pass: CompiledStampPass): Float32Array {
+export function stampLandingCover(deposit: CompiledStampDeposit, landed: StampWetWindow, pass: CompiledStampPass, wetness: StampWetness): Float32Array {
   const span = { i0: landed.x0 / STAMP_WET_CELL, j0: landed.y0 / STAMP_WET_CELL, columns: landed.columns, rows: landed.rows };
-  return depositCover(span, deposit, pass.within);
+  return depositCover(span, deposit, pass.within, wetness.brushed);
 }
 
 /** Calls `visit` for each point of `span`: its index in the wash's lattice and in the span, and where it is, px. */
@@ -321,9 +328,13 @@ function depositSpan(deposit: CompiledStampDeposit, lattice: StampWetSpan, margi
 
 /**
  * How much of each point's cell of `span` is wetted, 0..1: the discs of `stamps` and the `polygons`, less what's
- * outside any of `within` or under the masking fluid `mask` (areaOnto), averaged from samples finer than the lattice.
+ * outside any of `within` or under the masking fluid `mask` (areaOnto; a brushed mask by its `brushed` coverage),
+ * averaged from samples finer than the lattice.
  */
-function footprintCover(span: StampWetSpan, stamps: readonly PlacedStamp[], polygons: readonly (readonly StampPoint[])[], within: readonly CompiledStampArea[], mask: CompiledStampMask | null): Float32Array {
+function footprintCover(
+  span: StampWetSpan, stamps: readonly PlacedStamp[], polygons: readonly (readonly StampPoint[])[], within: readonly CompiledStampArea[], mask: CompiledStampMask | null,
+  brushed: StampBrushedCoverage,
+): Float32Array {
   const step = STAMP_WET_CELL / FOOTPRINT_SAMPLES, columns = span.columns * FOOTPRINT_SAMPLES, rows = span.rows * FOOTPRINT_SAMPLES;
   // Sample (a, b) sits at the centre of its share of the cell round lattice point (i0 + a / 4, j0 + b / 4).
   const ox = (span.i0 - 0.5) * STAMP_WET_CELL + step / 2, oy = (span.j0 - 0.5) * STAMP_WET_CELL + step / 2;
@@ -342,6 +353,7 @@ function footprintCover(span: StampWetSpan, stamps: readonly PlacedStamp[], poly
     const fluid = new Float32Array(wet.length);
     for (const op of chain) {
       if (op.kind === 'mask') areaOnto(op.area, fine, (s, r) => { fluid[s] = Math.max(fluid[s], r); });
+      else if (op.kind === 'brushed') samplesOnto(brushedSamples(brushed, op.brushed), fine, (s, r) => { fluid[s] = Math.max(fluid[s], r); });
       else if (op.area) areaOnto(op.area, fine, (s, r) => { fluid[s] *= 1 - op.amount * r; });
       else for (let s = 0; s < fluid.length; s++) fluid[s] *= 1 - op.amount;
     }
@@ -360,15 +372,35 @@ function footprintCover(span: StampWetSpan, stamps: readonly PlacedStamp[], poly
  */
 type StampWetRaster = { columns: number; rows: number; ox: number; oy: number; step: number; a0: number; b0: number };
 
-/** An area's coverage on the painting's grid of samples over its box: from sample (a0, b0), `columns` × `rows`. */
-type StampAreaSamples = { a0: number; b0: number; columns: number; rows: number; values: Float32Array };
-const areaSamples = new WeakMap<CompiledStampArea, StampAreaSamples>();
+/** A coverage on the painting's grid of samples over its box: from sample (a0, b0), `columns` × `rows`. */
+export type StampCoverageSamples = { a0: number; b0: number; columns: number; rows: number; values: Float32Array };
+const areaSamples = new WeakMap<CompiledStampArea, StampCoverageSamples>();
+
+/** The painting's footprint sample grid's spacing, px: sample k sits at 4k − 2, the mean of pixels 4k − 4 to 4k − 1. */
+export const STAMP_COVERAGE_SAMPLE_STEP = STAMP_WET_CELL / FOOTPRINT_SAMPLES;
+
+/**
+ * The painting's samples that read any pixel of `box`: from sample (a0, b0), `columns` × `rows`. Sample k is the mean
+ * of pixels STAMP_COVERAGE_SAMPLE_STEP · (k − 1) on, those outside the box none: a brushed mask's as the renderer
+ * measures it.
+ */
+export function stampCoverageSampleGrid(box: { x: number; y: number; w: number; h: number }): Omit<StampCoverageSamples, 'values'> {
+  const step = STAMP_COVERAGE_SAMPLE_STEP, a0 = Math.floor(box.x / step) + 1, b0 = Math.floor(box.y / step) + 1;
+  return { a0, b0, columns: Math.floor((box.x + box.w - 1) / step) + 2 - a0, rows: Math.floor((box.y + box.h - 1) / step) + 2 - b0 };
+}
+
+/** `mask`'s measured coverage in `brushed`; refused when it wasn't measured, as only the renderer that draws it can. */
+function brushedSamples(brushed: StampBrushedCoverage, mask: CompiledStampBrushedMask): StampCoverageSamples {
+  const samples = brushed.get(mask);
+  if (!samples) throw new Error(`stamp paint: ${mask.id} is brushed on, and its coverage wasn't measured: the renderer drawing the painting measures it as it loads`);
+  return samples;
+}
 
 /** `area`'s coverage at every sample of the painting's grid within its box, worked out once, as many footprints read it. */
-function samplesOf(area: CompiledStampArea): StampAreaSamples {
+function samplesOf(area: CompiledStampArea): StampCoverageSamples {
   const known = areaSamples.get(area);
   if (known) return known;
-  const step = STAMP_WET_CELL / FOOTPRINT_SAMPLES, at = (k: number) => (k - FOOTPRINT_SAMPLES / 2) * step + step / 2;
+  const step = STAMP_COVERAGE_SAMPLE_STEP, at = (k: number) => (k - FOOTPRINT_SAMPLES / 2) * step + step / 2;
   const box = stampAreaBox(area), a0 = Math.ceil((box.x0 - at(0)) / step), b0 = Math.ceil((box.y0 - at(0)) / step);
   const columns = Math.max(0, Math.floor((box.x1 - at(0)) / step) - a0 + 1), rows = Math.max(0, Math.floor((box.y1 - at(0)) / step) - b0 + 1);
   const values = new Float32Array(columns * rows);
@@ -402,7 +434,12 @@ function areaOnto(area: CompiledStampArea, fine: StampWetRaster, visit: (sample:
     scanPolygon(area.polygon, fine, (s) => visit(s, 1));
     return;
   }
-  const samples = samplesOf(area), da = samples.a0 - fine.a0, db = samples.b0 - fine.b0;
+  samplesOnto(samplesOf(area), fine, visit);
+}
+
+/** Calls `visit` with each sample of `fine` that `samples` covers any of, and how much. */
+function samplesOnto(samples: StampCoverageSamples, fine: StampWetRaster, visit: (sample: number, coverage: number) => void) {
+  const da = samples.a0 - fine.a0, db = samples.b0 - fine.b0;
   for (let b = Math.max(0, db); b < Math.min(fine.rows, db + samples.rows); b++) {
     for (let a = Math.max(0, da); a < Math.min(fine.columns, da + samples.columns); a++) {
       const r = samples.values[(b - db) * samples.columns + a - da];
