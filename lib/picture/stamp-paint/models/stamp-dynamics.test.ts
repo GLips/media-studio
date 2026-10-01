@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { StampDynamics } from './stamp-brush.ts';
+import { drawStampSlots, STAMP_DRAW_SLOTS } from './stamp-dynamics.ts';
 import { placeAuthoredStamps, placeStrokeStamps, type StampPlacementBrush } from './stamp-placement.ts';
 
 const brushWith = (dynamics: StampDynamics): StampPlacementBrush => ({
@@ -49,4 +50,15 @@ test('an `around` jitter spreads size either side of what pressure gives it, fol
   for (const stamp of placeStrokeStamps([{ x: 0, y: 0 }, { x: 20000, y: 0 }], counted, 100, 'around')) perStep.set(Math.round(stamp.x), (perStep.get(Math.round(stamp.x)) ?? 0) + 1);
   const counts = [...perStep.values()], mean = counts.reduce((a, b) => a + b, 0) / 401;
   assert.ok(Math.max(...counts) === 8 && perStep.size < 401 && Math.abs(mean - 4) < 0.4, `max ${Math.max(...counts)}, ${perStep.size} steps laid, mean ${mean}`);
+});
+
+test("a stamp's draws are its stream's, one a slot in STAMP_DRAW_SLOTS' order, an authored stamp drawing none for the stroke's own", () => {
+  // Every painting's randomness hangs on this order: a slot drawn out of turn reseeds every stamp after it.
+  let n = 0;
+  const counting = () => ++n;
+  assert.deepEqual(Object.entries(drawStampSlots(counting, 'stroke')), STAMP_DRAW_SLOTS.map((slot, i) => [slot, i + 1]));
+  n = 0;
+  const strokeOnly = new Set(['lateral', 'scatterTurn', 'scatterReach']);
+  let drawn = 0;
+  assert.deepEqual(Object.entries(drawStampSlots(counting, 'authored')), STAMP_DRAW_SLOTS.map((slot) => [slot, strokeOnly.has(slot) ? 0 : ++drawn]));
 });

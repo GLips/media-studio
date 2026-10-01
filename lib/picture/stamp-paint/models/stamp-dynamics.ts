@@ -22,12 +22,19 @@ export const STAMP_DRAW_SLOTS = [
 ] as const;
 export type StampDrawSlot = (typeof STAMP_DRAW_SLOTS)[number];
 export type StampDraws = Record<StampDrawSlot, number>;
-const STROKE_ONLY_DRAWS: ReadonlySet<StampDrawSlot> = new Set(['lateral', 'scatterTurn', 'scatterReach']);
 
-/** A stamp's draws, each 0..1; an authored stamp's stroke-only slots read 0, undrawn. */
+/**
+ * A stamp's draws, each 0..1; an authored stamp's stroke-only slots read 0, undrawn. Written out slot by slot in
+ * STAMP_DRAW_SLOTS' order (a literal's fields are evaluated in order; stamp-dynamics.test.ts holds the two together):
+ * a painting draws this for every stamp, and building it from the list was half its compile.
+ */
 export function drawStampSlots(random: () => number, placing: 'stroke' | 'authored'): StampDraws {
-  // fromEntries can't carry the slots' keys into its type; every slot is written, in order.
-  return Object.fromEntries(STAMP_DRAW_SLOTS.map((slot) => [slot, placing === 'authored' && STROKE_ONLY_DRAWS.has(slot) ? 0 : random()])) as StampDraws;
+  const stroke = placing === 'stroke';
+  return {
+    lateral: stroke ? random() : 0, scatterTurn: stroke ? random() : 0, scatterReach: stroke ? random() : 0,
+    size: random(), opacity: random(), rotation: random(), flipX: random(), flipY: random(), blur: random(), flow: random(), hue: random(),
+    saturation: random(), lightness: random(), darkness: random(), roundness: random(), grainDepth: random(),
+  };
 }
 
 /**
