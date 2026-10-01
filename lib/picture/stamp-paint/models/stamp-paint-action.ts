@@ -5,7 +5,8 @@ import { paintMixtureProblem } from '#lib/picture/paint/models/paint-mixture.ts'
 import type { StampBlend, StampBrush } from './stamp-brush.ts';
 import { jitterStampStrokeColor } from './stamp-paint-color.ts';
 import { stampPaintFieldEnds, stampPaintFieldProblem, type StampPaintField } from './stamp-paint-field.ts';
-import { compileStampMaterialKeys, everyStampKey, mapStampKeyList, stampMaterialKeysProblem, type CompiledStampMaterialKeys, type StampMaterialKey } from './stamp-material-keys.ts';
+import { compileStampMaterialKeys, stampMaterialKeysProblem, type CompiledStampMaterialKeys, type StampMaterialKey } from './stamp-material-keys.ts';
+import { everyStampKey, mapStampKeyList } from './stamp-scene-keys.ts';
 import type { CompiledStampKeyedMaterial, PaintMaterial, StampKeyedMaterial, StampPaintColor, StampPaintMaterial } from './stamp-paint-recipe.ts';
 
 /** Paint as written: what a dry pass's deposits all do. */

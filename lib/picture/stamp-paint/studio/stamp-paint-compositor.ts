@@ -9,7 +9,7 @@
 // decodes to linear light.
 
 import type { StampBlend } from '../models/stamp-brush.ts';
-import { stampKeySpanAt, type StampKeyList } from '../models/stamp-material-keys.ts';
+import { stampKeySpanAt, type StampKeyList } from '../models/stamp-scene-keys.ts';
 import { STAMP_OPAQUE_COVER, type CompiledStampDeposit, type CompiledStampPaint } from '../models/stamp-paint-recipe.ts';
 import { stampUniformLayout, stampUniformWriter, type StampUniformField, type StampUniformLayout, type StampUniformViews } from './stamp-uniform-layout.ts';
 

@@ -1,13 +1,11 @@
-// stamp-deposit-compile.ts: a deposit as written (stamp-paint-recipe.ts) checked and its stamps placed, seeded by
-// its ID so adding a stroke changes no other.
+// stamp-deposit-compile.ts: a deposit as written (stamp-paint-recipe.ts) checked and its stamps placed
+// (stamp-deposit-placement.ts), seeded by its ID so adding a stroke changes no other.
 
 import { seededRandom } from '#lib/picture/motion/models/random.ts';
 import type { StampBrushLayer, StampBrushMedia } from './stamp-brush.ts';
-import { placeAuthoredStamps, placeStrokeStamps, stampExpectedTint, type StampPlacementBrush, type StampStrokePoint } from './stamp-placement.ts';
-import { handStampStroke } from './stamp-stroke-hand.ts';
-import { STAMP_ACCUMULATIONS } from './stamp-deposit-stages.ts';
-import { placeStampFlood, stampFillStrokePath, stampFloodBodyLevels, stampFloodFront, stampFloodProbe, type StampFillApplication } from './stamp-fill.ts';
-import { stampPaintFieldAt, stampPaintFieldProblem } from './stamp-paint-field.ts';
+import { placeStampDeposit } from './stamp-deposit-placement.ts';
+import type { StampFillApplication } from './stamp-fill.ts';
+import { stampPaintFieldProblem } from './stamp-paint-field.ts';
 import type { CompiledStampAction } from './stamp-paint-action.ts';
 import { stampRegionPolygon, type StampPoint, type StampRegion } from './stamp-region.ts';
 import type { CompiledStampDeposit, CompiledStampMask, StampPaintRecipeDeposit } from './stamp-paint-recipe.ts';
@@ -64,30 +62,10 @@ export function compileDeposit<A extends CompiledStampAction>(
     id: full, brush, action: compiledAction(jitter), grainOffset, diameter, blend, opacity, mask,
     ...(appliedAt !== undefined && { reveal: { at: appliedAt, over: drawnOver ?? 0 } }),
   };
-  if (geometry.kind === 'fill') {
-    const direction = geometry.direction ?? 0;
-    const load = geometry.load ?? { kind: 'constant' as const, value: 1 };
-    const problem = stampPaintFieldProblem(load, (value) => (value >= 0 && value <= 1 ? null : `a load of ${value}, outside 0..1`));
-    if (problem) throw new Error(`stamp paint: ${full}'s load can't be painted: ${problem}`);
-    const application = geometry.application ?? (brush.media && STAMP_MEDIA_FILLS[brush.media]);
-    if (!application) throw new Error(`stamp paint: ${full} fills with ${JSON.stringify(brush.name)}, whose media no style declares, so it states its application`);
-    if (application.kind === 'flood') {
-      const { body, stamps, dualStamps } = placeStampFlood(geometry.region, brush, diameter, direction, seed);
-      const levels = stampFloodBodyLevels(STAMP_ACCUMULATIONS[brush.accumulation.kind].towardFull, stampFloodProbe(brush, diameter, `${seed}|probe`));
-      const flood = { ...body, load, levels, tint: stampExpectedTint(brush.color), front: stampFloodFront(body.polygon, [...stamps, ...dualStamps], direction, diameter) };
-      return { ...common, kind: 'flood', flood, stamps, dualStamps };
-    }
-    const strokes = stampFillStrokePath(geometry.region, diameter, direction, application, seed);
-    const place = (stamping: StampPlacementBrush, scale: number, placing: string) => (strokes.length ? placeStrokeStamps(strokes, stamping, diameter * scale, placing) : []);
-    const stamps = place(brush, 1, seed);
-    for (const stamp of stamps) stamp.opacity *= stampPaintFieldAt(load, stamp.x, stamp.y);
-    return { ...common, kind: 'stroke', stamps, dualStamps: brush.dual ? place(brush.dual, brush.dual.scale, `${seed}|dual`) : [] };
-  }
-  // The hand's path is worked out once, so the main stamps and the dual's follow the same wobble.
-  let path: readonly StampStrokePoint[] = [];
-  if (geometry.kind === 'stroke') path = geometry.hand ? handStampStroke(geometry.path, geometry.hand, diameter, `${seed}|hand`) : geometry.path;
-  const place = (stamping: StampPlacementBrush, scale: number, placing: string) => geometry.kind === 'stroke'
-    ? placeStrokeStamps(path, stamping, diameter * scale, placing)
-    : placeAuthoredStamps(geometry.at.map((at) => (at.diameter === undefined ? at : { ...at, diameter: at.diameter * scale })), stamping, diameter * scale, placing);
-  return { ...common, kind: geometry.kind, stamps: place(brush, 1, seed), dualStamps: brush.dual ? place(brush.dual, brush.dual.scale, `${seed}|dual`) : [] };
+  if (geometry.kind !== 'fill') return { ...common, ...placeStampDeposit(geometry, brush, diameter, seed) };
+  const problem = geometry.load && stampPaintFieldProblem(geometry.load, (value) => (value >= 0 && value <= 1 ? null : `a load of ${value}, outside 0..1`));
+  if (problem) throw new Error(`stamp paint: ${full}'s load can't be painted: ${problem}`);
+  const application = geometry.application ?? (brush.media && STAMP_MEDIA_FILLS[brush.media]);
+  if (!application) throw new Error(`stamp paint: ${full} fills with ${JSON.stringify(brush.name)}, whose media no style declares, so it states its application`);
+  return { ...common, ...placeStampDeposit({ ...geometry, application }, brush, diameter, seed) };
 }

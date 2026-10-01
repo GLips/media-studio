@@ -38,9 +38,10 @@ import { stampUniformLayout, stampUniformStruct, stampUniformWriter, type StampU
 import { STAMP_WET_STAGES, stampWetStageReach, type StampLoadedWetStage, type StampWetStage, type StampWetDepositMoment, type StampWetDryingMoment, type StampWetStageContext } from './stamp-wet-stages.ts';
 import { stampWashDryings } from '../models/stamp-wet-rim.ts';
 import { stampPaintCheckpoints } from './stamp-paint-checkpoints.ts';
-import { stampPaintEvents, stampSettledEventCount } from '../models/stamp-paint-events.ts';
+import { stampPaintEvents } from '../models/stamp-paint-events.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
-import { stampBoilEpoch, stampGroupLayerFromScene, stampGroupPlacementAt, stampGroupSceneFromLayer, type StampGroupPlacement } from '../models/stamp-group-motion.ts';
+import { stampGroupLayerFromScene, stampGroupSceneFromLayer, type StampGroupPlacement } from '../models/stamp-group-motion.ts';
+import { stampFramePlan, stampGroupEvents, stampGroupVaries } from '../models/stamp-frame-plan.ts';
 
 /**
  * Floats per stamp in the instance buffer: x, y, diameter, rotation, then alpha, blur, grain turn and flips (x 1, y 2),
@@ -1835,17 +1836,9 @@ function rendererOnSurface(
   const events = stampPaintEvents(painting);
   // Made on the surface's device: they come and go as frames save them, and dispose destroys what's left.
   const checkpoints = stampPaintCheckpoints(surface.device, { painting: targets.painting.texture, layer: targets.layer.texture, clip: targets.clip.texture });
-  /** Each group's events, as indices into `events`: from `first`, up to `end`. */
-  const groupEvents = (() => {
-    let at = 0;
-    return painting.groups.map((group) => {
-      const first = at;
-      at += group.passes.reduce((n, pass) => n + stampPassDeposits(pass).length, 0);
-      return { first, end: at };
-    });
-  })();
+  const groupEvents = stampGroupEvents(painting);
   // Where frames may differ though their events are settled: at the first group that moves, boils or recolours.
-  const varyingFrom = groupEvents.find((_, index) => painting.groups[index].motion || painting.groups[index].boil || painting.groups[index].recolours)?.first ?? events.length;
+  const varyingFrom = groupEvents.find((_, index) => stampGroupVaries(painting.groups[index]))?.first ?? events.length;
 
   // A boiling group's epochs other than 0 (the painting as written), each group's recently drawn ones kept on the GPU.
   const epochs = new Map<CompiledStampGroup, Map<number, { marks: CompiledStampGroup; bank: DepositBank; used: number }>>();
@@ -1869,32 +1862,6 @@ function rendererOnSurface(
     }
     found.used = ++epochClock;
     return found;
-  }
-
-  /**
-   * What the frame at `t` draws: each group at its boil epoch and placement (null where it's painted), how many
-   * events are settled, and the key a checkpoint after `event` events is saved under: each laid group's epoch, paint
-   * and placement, and a group partway through's epoch and paint. `passing`: it holds a group mid-recolour, which
-   * no other `t` shares.
-   */
-  function framePlan(t: number) {
-    const frame = Math.round(t * fps);
-    const drawn = painting.groups.map((group) => {
-      const placement = group.motion ? stampGroupPlacementAt(group.motion, t) : null;
-      const still = !placement || (placement.x === 0 && placement.y === 0 && placement.rotation === 0 && placement.scale === 1);
-      const epoch = group.boil ? stampBoilEpoch(frame, group.boil) : 0;
-      return { group, epoch, moved: still ? null : placement, ...epochOf(group, epoch) };
-    });
-    // A recolouring group's paint is as it stands at `t` held to its keys' span, so frames past its last key share it.
-    const paintKeys = painting.groups.map(({ recolours }) => (recolours ? `~${Math.min(recolours.to, Math.max(recolours.from, t))}` : ''));
-    const laid = drawn.map(({ epoch, moved }, index) => `${epoch}${paintKeys[index]}${moved ? `@${moved.x},${moved.y},${moved.rotation},${moved.scale}` : ''}`);
-    const keyAt = (event: number) => groupEvents.flatMap(({ first, end }, index) => {
-      if (end <= event && end > first) return [laid[index]];
-      return first < event && event < end ? [`${drawn[index].epoch}${paintKeys[index]}`] : [];
-    }).join('|');
-    const recolouring = painting.groups.map(({ recolours }) => !!recolours && recolours.from < t && t < recolours.to);
-    const passing = (event: number) => groupEvents.some(({ first }, index) => recolouring[index] && first < event);
-    return { drawn, keyAt, passing, settled: stampSettledEventCount(events, t) };
   }
 
   /**
@@ -1935,17 +1902,18 @@ function rendererOnSurface(
     surface.assertLive();
     slots = 0;
     const encoder = device.createCommandEncoder();
-    const { drawn, keyAt, passing, settled } = framePlan(t);
-    const start = whole ? null : checkpoints.latest(settled, keyAt);
+    const { groups, settled, checkpointKey, worthSaving } = stampFramePlan(painting, groupEvents, events, t, fps);
+    const start = whole ? null : checkpoints.latest(settled, checkpointKey);
     const from = start?.event ?? 0;
     // Saved: the settled prefix, and the state before the first group that moves, boils or recolours, which later frames share.
     const saves = new Set(whole ? [] : [settled, Math.min(settled, varyingFrom)].filter((event) => event > from));
     const save = (event: number, inGroup: boolean, painted: Box | null) => {
-      if (saves.has(event) && !passing(event)) checkpoints.save(encoder, { event, key: keyAt(event), inGroup, painted });
+      if (saves.has(event) && worthSaving(event)) checkpoints.save(encoder, { event, key: checkpointKey(event), inGroup, painted });
     };
     if (start) checkpoints.restore(encoder, start);
     else drawPaper(encoder);
-    for (const [index, { group, marks, bank, moved, epoch }] of drawn.entries()) {
+    for (const [index, { group, moved, epoch }] of groups.entries()) {
+      const { marks, bank } = epochOf(group, epoch);
       const { first, end } = groupEvents[index];
       if (end <= from) continue;
       save(first, false, null);

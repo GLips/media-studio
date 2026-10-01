@@ -13,7 +13,7 @@ import type { PaintPigment, PaintPigmentAppearance } from '#lib/picture/paint/mo
 import type { PaintBands } from '#lib/picture/paint/models/paint-spectrum.ts';
 import type { PlacedStamp } from './stamp-placement.ts';
 import { stampPaintFieldEnds } from './stamp-paint-field.ts';
-import { mapStampKeyList, stampKeySpanAt, type StampKeyList } from './stamp-material-keys.ts';
+import { mapStampKeyList, stampKeySpanAt, type StampKeyList } from './stamp-scene-keys.ts';
 import { stampGroupKnocksOut, stampPassDeposits, type CompiledStampDeposit, type CompiledStampKeyedMaterial, type CompiledStampPaint, type PaintMaterial, type StampPaintColor } from './stamp-paint-recipe.ts';
 
 /**

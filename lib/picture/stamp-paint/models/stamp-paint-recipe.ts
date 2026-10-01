@@ -18,8 +18,9 @@ import {
   compilePaintAction, compileWashAction, type CompiledStampAction, type CompiledStampPaintAction, type StampRecipePaint, type StampRecipeWashAction,
 } from './stamp-paint-action.ts';
 import type { StampEdge, StampPoint, StampRegion } from './stamp-region.ts';
-import { checkStampGroupMotion, type StampGroupBoil, type StampGroupMotion, type StampGroupPaper } from './stamp-group-motion.ts';
-import { stampMaterialKeysSpan, type CompiledStampMaterialKeys, type StampMaterialKeys } from './stamp-material-keys.ts';
+import { compileStampGroupMotion, type CompiledStampGroupMotion, type StampGroupBoil, type StampGroupMotion, type StampGroupPaper } from './stamp-group-motion.ts';
+import type { CompiledStampMaterialKeys, StampMaterialKeys } from './stamp-material-keys.ts';
+import { stampKeysSpan } from './stamp-scene-keys.ts';
 
 export type StampPaintColor = `#${string}`;
 
@@ -439,7 +440,7 @@ export const STAMP_OPAQUE_COVER = 2;
 export type CompiledStampGroup = {
   id: string; composite: 'opaque' | 'glaze'; opacity: number; paper: StampGroupPaper; passes: readonly CompiledStampPass[];
   /** Absent for a group that stays where it's painted. */
-  motion?: StampGroupMotion;
+  motion?: CompiledStampGroupMotion;
   /** The scene seconds over which its paint changes (a keyed material's first key to its last); absent for paint that doesn't. */
   recolours?: { from: number; to: number };
   /**
@@ -530,8 +531,7 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
       return { ...common, kind: 'wash', wash: { preparation: prepared, schedule }, knockout };
     });
     const opacity = options.composite === 'glaze' ? options.opacity : 1;
-    const { motion, boil } = options;
-    if (motion) checkStampGroupMotion(motion, groupId);
+    const { boil } = options, motion = options.motion && compileStampGroupMotion(options.motion, groupId);
     if (boil && !(Number.isInteger(boil.every) && boil.every >= 1)) throw new Error(`stamp paint: ${groupId} boils every ${boil.every} frames, and a boil repaints every whole number of frames from 1`);
     const written = { id, options, passes };
     const recolours = stampGroupRecolours(compiledPasses);
@@ -551,7 +551,7 @@ function stampGroupRecolours(passes: readonly CompiledStampPass[]): CompiledStam
   const spans = passes.flatMap((pass) => stampPassDeposits(pass)).flatMap(({ action }) => {
     if (action.kind !== 'paint') return [];
     const { first, second } = stampPaintFieldEnds(action.material);
-    return [first, second].flatMap((end) => (end.kind === 'keys' ? [stampMaterialKeysSpan(end)] : []));
+    return [first, second].flatMap((end) => (end.kind === 'keys' ? [stampKeysSpan(end.keys)] : []));
   });
   return spans.length ? { from: Math.min(...spans.map(({ from }) => from)), to: Math.max(...spans.map(({ to }) => to)) } : null;
 }
