@@ -4,7 +4,8 @@
 // - boil: a group boiling on twos holds within an epoch, changes across them, leaves a still group alone;
 // - boil-wash: a boiling wash with nothing random in its marks flows as far each epoch, only its rim's line re-rolling;
 // - bloom-boil: a bloom in it holds within an epoch and re-rolls its front at the next (the epoch's seed);
-// - sunset: one painting in two palettes lays the same coverage deposit by deposit; only its colour changes.
+// - sunset: one painting in two palettes lays the same coverage deposit by deposit;
+// - effects-sunset: a sky's bloom and rim change its coverage alike at every hour.
 
 import { PAINT_MEDIA } from '#lib/picture/paint/models/paint-medium.ts';
 import type { PaintPigmentAppearance } from '#lib/picture/paint/models/paint-pigment.ts';
@@ -152,7 +153,56 @@ export function stampGateSunsetPainting(hour: 'day' | 'dusk'): StampGatePainting
   return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t: 1, images: STAMP_GATE_IMAGES };
 }
 
-export const STAMP_GATE_ANIMATION_IDS = ['animation/drift', 'animation/boil', 'animation/boil-wash', 'animation/bloom-boil', 'animation/sunset'];
+type Parts = readonly (readonly [PaintPigmentAppearance, number])[];
+/** The effects sunset's hours: each element's paint as strong at every one, only its hue moving toward dusk. */
+export const STAMP_GATE_EFFECTS_SUNSET_HOURS: readonly { hour: string; sky: Parts; sun: Parts }[] = [
+  { hour: 'afternoon', sky: [[W.cerulean, 0.3]], sun: [[W.hansaYellow, 0.3]] },
+  { hour: 'sunset', sky: [[W.quinacridoneRose, 0.15], [W.hansaYellow, 0.15]], sun: [[W.quinacridoneRose, 0.15], [W.hansaYellow, 0.15]] },
+  { hour: 'dusk', sky: [[W.ultramarine, 0.18], [W.quinacridoneRose, 0.12]], sun: [[W.quinacridoneRose, 0.22], [W.burntSienna, 0.08]] },
+];
+const partsPaint = (parts: Parts): PaintMaterial => ({
+  kind: 'mixture', parts: parts.map(([pigment, amount]) => ({ pigment, amount })), strength: parts.reduce((sum, [, amount]) => sum + amount, 0),
+});
+export const STAMP_GATE_EFFECTS_SUNSET_TOLERANCE = 0.01;
+
+/**
+ * A sky puddled on dry paper, so it rims, its sun's glow stroked in and water dropped in at damp, a bloom, at an hour:
+ * every deposit the same, only its pigments changed.
+ */
+export function stampGateEffectsSunsetPainting({ sky, sun }: (typeof STAMP_GATE_EFFECTS_SUNSET_HOURS)[number]): StampGatePainting {
+  const steady = stampGateBrush('Steady', { flow: 0.6 });
+  const painting = compileStampPaintRecipe(stampPaintRecipe((p) => {
+    p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.wash('sky', {}, (w) => {
+      w.fill('sky', { brush: steady, diameter: 40, application: { kind: 'flood' }, region: stampGatePolygon(16, 16, 224, 12, 226, 144, 14, 140), material: partsPaint(sky), water: 1 });
+      w.stroke('glow', { brush: steady, diameter: 30, material: partsPaint(sun), path: [{ x: 30, y: 110 }, { x: 90, y: 104 }, { x: 150, y: 112 }, { x: 210, y: 106 }] });
+      w.bloom('sun', { brush: steady, diameter: 36, at: [{ x: 160, y: 60 }] });
+    }));
+  }));
+  return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t: 1, images: STAMP_GATE_IMAGES };
+}
+
+/**
+ * Whether the bloom and drying rim change the sky's coverage alike at every hour: each hour's coverage with them less
+ * its coverage without, against the first hour's, within STAMP_GATE_EFFECTS_SUNSET_TOLERANCE.
+ */
+export function checkStampGateEffectsSunset(hours: readonly { on: ArrayLike<number>; off: ArrayLike<number> }[]): StampGateWashCheck {
+  const [first, ...rest] = hours;
+  let peak = 0;
+  for (let i = 0; i < first.on.length; i++) peak = Math.max(peak, Math.abs(first.on[i] - first.off[i]));
+  const worst = rest.map(({ on, off }) => {
+    let max = 0;
+    for (let i = 0; i < on.length; i++) max = Math.max(max, Math.abs(on[i] - off[i] - (first.on[i] - first.off[i])));
+    return max;
+  });
+  return {
+    id: 'animation/effects-sunset: blooms and rims hold their shape as the colour changes',
+    // An effect that changed no coverage would hold its shape trivially.
+    passed: peak > 0.05 && worst.every((max) => max <= STAMP_GATE_EFFECTS_SUNSET_TOLERANCE),
+    detail: `the effects change coverage by up to ${peak.toFixed(3)} (0.05 or less fails); against ${STAMP_GATE_EFFECTS_SUNSET_HOURS[0].hour}, ${worst.map((max, k) => `${STAMP_GATE_EFFECTS_SUNSET_HOURS[k + 1].hour} differs by ${max.toFixed(4)}`).join(', ')} (past ${STAMP_GATE_EFFECTS_SUNSET_TOLERANCE} fails)`,
+  };
+}
+
+export const STAMP_GATE_ANIMATION_IDS = ['animation/drift', 'animation/boil', 'animation/boil-wash', 'animation/bloom-boil', 'animation/sunset', 'animation/effects-sunset'];
 
 type Rgba = ArrayLike<number>;
 

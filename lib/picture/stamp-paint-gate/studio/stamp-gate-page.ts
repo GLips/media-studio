@@ -22,15 +22,16 @@ import { createStampPaintDevice } from '#lib/picture/stamp-paint/studio/stamp-pa
 import { STAMP_WET_FLOW_STAGE } from '#lib/picture/stamp-paint/studio/stamp-wet-flow.ts';
 import { STAMP_BLOOM_STAGE } from '#lib/picture/stamp-paint/studio/stamp-wet-bloom.ts';
 import { STAMP_DRYING_RIM_STAGE } from '#lib/picture/stamp-paint/studio/stamp-wet-rim.ts';
-import type { StampWetStageContext } from '#lib/picture/stamp-paint/studio/stamp-wet-stages.ts';
+import { STAMP_WET_STAGES, type StampWetStage, type StampWetStageContext } from '#lib/picture/stamp-paint/studio/stamp-wet-stages.ts';
 import { stampWashDryings } from '#lib/picture/stamp-paint/models/stamp-wet-rim.ts';
 import type { PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
 import { stampWashMovedWgsl } from '#lib/picture/stamp-paint/studio/stamp-paint-pigment-compositor.ts';
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
 import {
-  checkStampGateBloomBoil, checkStampGateBoil, checkStampGateBoilWash, checkStampGateDrift, checkStampGateSunset, STAMP_GATE_ANIMATION_FPS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_DRIFT_FRAMES,
-  stampGateBloomBoilPainting, stampGateBoilPainting, stampGateBoilWashPainting, stampGateDriftPainting, stampGateSunsetPainting,
+  checkStampGateBloomBoil, checkStampGateBoil, checkStampGateBoilWash, checkStampGateDrift, checkStampGateEffectsSunset, checkStampGateSunset, STAMP_GATE_ANIMATION_FPS, STAMP_GATE_ANIMATION_IDS,
+  STAMP_GATE_DRIFT_FRAMES, STAMP_GATE_EFFECTS_SUNSET_HOURS, stampGateBloomBoilPainting, stampGateBoilPainting, stampGateBoilWashPainting, stampGateDriftPainting, stampGateEffectsSunsetPainting,
+  stampGateSunsetPainting,
 } from '../models/stamp-gate-animation.ts';
 import {
   checkStampGateFlow, STAMP_GATE_FLOW_SIZE, stampGateFlowCase, stampGateFlowLayer, stampGateFlowPainting, stampGateHalfBits, stampGateHalfValue,
@@ -267,7 +268,35 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
     });
     return checkStampGateSunset(await traced(stampGateSunsetPainting('day')), await traced(stampGateSunsetPainting('dusk')));
   }
+  if (id === 'animation/effects-sunset') {
+    const coverage = async (gate: StampGatePainting) => {
+      const { layers, values } = await withGateRenderer(gate, drawnImages(gate), (renderer) => renderer.readLayer(gate.t));
+      return Float32Array.from({ length: values.length / 4 / layers }, (_, i) => values[i * 4]);
+    };
+    // One after another: withoutStages holds the stage list out from under any renderer made meanwhile.
+    const hours = await STAMP_GATE_EFFECTS_SUNSET_HOURS.reduce<Promise<{ on: Float32Array; off: Float32Array }[]>>(async (done, hour) => {
+      const before = await done, gate = stampGateEffectsSunsetPainting(hour);
+      return [...before, { on: await coverage(gate), off: await withoutStages(['bloom', 'drying-rim'], () => coverage(gate)) }];
+    }, Promise.resolve([]));
+    return checkStampGateEffectsSunset(hours);
+  }
   throw new Error(`stamp gate: no animation case ${JSON.stringify(id)}; the gate animates ${STAMP_GATE_ANIMATION_IDS.join(', ')}`);
+}
+
+/**
+ * `body` run with the wet stages `ids` left out of every renderer it makes, the stages put back after. Warning: a
+ * renderer loads the stages when it's made, and nothing else offers to leave one out, so this edits the shared list:
+ * nothing else may make a renderer meanwhile.
+ */
+async function withoutStages<T>(ids: readonly string[], body: () => Promise<T>): Promise<T> {
+  // SAFETY: STAMP_WET_STAGES is a plain array (stamp-wet-stages.ts), readonly only to its users; it's put back below.
+  const stages = STAMP_WET_STAGES as StampWetStage[], all = [...stages];
+  stages.splice(0, stages.length, ...all.filter((stage) => !ids.includes(stage.id)));
+  try {
+    return await body();
+  } finally {
+    stages.splice(0, stages.length, ...all);
+  }
 }
 
 const STAMP_GATE_FLOW_HOLD_WGSL = /* wgsl */ `
