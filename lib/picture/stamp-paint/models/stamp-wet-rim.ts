@@ -110,10 +110,12 @@ fn dryingRimBand(spread: f32, diameter: f32, wetShare: f32) -> f32 {
 fn dryingRimLine(x: f32, width: f32) -> f32 {
   return select(exp(-x * x / 0.5), exp(-x / max(width, 0.5)), x >= 0.0);
 }
-// The share it gives up, about evenly over the band, so the inside pales without a pale stripe of its own.
-fn dryingRimDraw(x: f32, band: f32, width: f32) -> f32 {
-  let y = clamp(x / max(band, 1.0), 0.0, 1.0);
-  return smoothstep(width, 3.0 * width, x) * (1.0 - y * y);
+// The share it gives up, about evenly over the band, so the inside pales without a pale stripe of its own: none on
+// the line (\`near\`, how far inside the line's start, read finely by the edge) and fading out by the band's end
+// (\`far\`, read by the nearest edge).
+fn dryingRimDraw(near: f32, far: f32, band: f32, width: f32) -> f32 {
+  let y = clamp(far / max(band, 1.0), 0.0, 1.0);
+  return smoothstep(width, 3.0 * width, near) * (1.0 - y * y);
 }
 // Whether the line is there at all, from two noises along the edge, so it breaks into islands.
 fn dryingRimPresence(broad: f32, fine: f32) -> f32 {
@@ -122,6 +124,10 @@ fn dryingRimPresence(broad: f32, fine: f32) -> f32 {
 // How abruptly the paint ends: a feathered fringe doesn't rim.
 fn dryingRimHardness(edge: f32, inner: f32) -> f32 {
   return smoothstep(0.3, 0.7, edge / max(inner, 1e-3));
+}
+// Whether a pixel stands where the paint has risen to its level (\`near\`, round it, against \`further\` round it).
+fn dryingRimSteep(near: f32, further: f32) -> f32 {
+  return smoothstep(0.6, 0.9, near / max(further, 1e-3));
 }
 // The share of its open pigment a band pixel can give up, by how freely its medium's paint runs (spread, in
 // diameters, mapped linearly up to STAMP_DRYING_RIM_FREE_SPREAD), how wet the wash was and the line's strength here.

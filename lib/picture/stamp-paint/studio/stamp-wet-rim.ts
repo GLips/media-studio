@@ -23,10 +23,26 @@ const DOMAIN_COVERAGE = [0.01, 0.06] as const;
 /** The paper's grain, as a Gaussian's sigma in pixels: a hole in the paint this fine is closed, and grows no rim. */
 const GRAIN_SIGMA = 2.5;
 
+/**
+ * The coverage the rim's line and hardness read, smoothed over this sigma, px: a fringe's pixel-scale texture shifts
+ * with the paint's pigments (a flow evens each pigment by its own granulation), and the line, a pixel or two wide,
+ * would shift with it; smoothed, a sunset's hours rim alike.
+ */
+const CONTOUR_SIGMA = 2.5;
+
 /** How far in from the edge, px, its hardness compares the paint's coverage: just inside it, and past a soft brush's rim. */
 const EDGE_DEPTHS = [4, 14] as const;
 
-/** How far in from the edge, px, the line looks for where the paint is half there: a mask's softest edge. */
+/**
+ * How far in from the edge, px, the line reads the smoothed coverage round each pixel, fading over to its nearest
+ * edge's distance by the second: the line has died away by then.
+ */
+const NEAR_EDGE = [4, 8] as const;
+
+/**
+ * How far round a pixel, px, the paint's level is read, and how far in from the edge the line looks for where the
+ * paint is half that: a mask's softest edge.
+ */
 const HALF_DEPTH = 6;
 
 /** The jump flood's first step, px: every pixel within the widest band finds its nearest edge. */
@@ -51,6 +67,8 @@ fn inside(p: vec2i) -> bool { return all(p >= vec2i(u.origin)) && all(p < vec2i(
 // The pixel an invocation works on, or none past the box.
 fn pixelOf(id: vec3u) -> vec2i { return select(vec2i(-1), vec2i(u.origin + id.xy), all(id.xy < u.extent)); }
 const GRAIN_REACH = ${Math.ceil(3 * GRAIN_SIGMA)};
+const CONTOUR_REACH = ${Math.ceil(3 * CONTOUR_SIGMA)};
+fn contourKernel(d: i32) -> f32 { return exp(-f32(d * d) / ${(2 * CONTOUR_SIGMA * CONTOUR_SIGMA).toFixed(3)}); }
 fn grainAt(d: i32) -> f32 { return exp(-f32(d * d) / ${(2 * GRAIN_SIGMA * GRAIN_SIGMA).toFixed(3)}); }
 `;
 
@@ -66,6 +84,54 @@ ${STAMP_GRID_AT_WGSL}
   let wettest = gridAt(vec2f(p) + 0.5, u.lattice.xyz, u.size, u.first);
   let paint = smoothstep(${DOMAIN_COVERAGE[0]}, ${DOMAIN_COVERAGE[1]}, textureLoad(layer, p, 0, 0).x);
   textureStore(domain, local(p), vec4f(select(0.0, paint, wettest > 0.001)));
+}`;
+
+// The coverage smoothed (CONTOUR_SIGMA), along rows, then columns: what the line and hardness read.
+const CONTOUR_ROWS_WGSL = /* wgsl */ `${PRELUDE}
+@group(0) @binding(1) var layer: texture_2d_array<f32>;
+@group(0) @binding(2) var contourRows: texture_storage_2d<r32float, write>;
+@compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
+  let p = pixelOf(id);
+  if (p.x < 0) { return; }
+  var sum = 0.0;
+  var weight = 0.0;
+  for (var d = -CONTOUR_REACH; d <= CONTOUR_REACH; d++) {
+    let q = p + vec2i(d, 0);
+    if (inside(q)) { sum += contourKernel(d) * textureLoad(layer, q, 0, 0).x; weight += contourKernel(d); }
+  }
+  textureStore(contourRows, local(p), vec4f(sum / weight));
+}`;
+const CONTOUR_WGSL = /* wgsl */ `${PRELUDE}
+@group(0) @binding(1) var contourRows: texture_2d<f32>;
+@group(0) @binding(2) var contour: texture_storage_2d<r32float, write>;
+@compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
+  let p = pixelOf(id);
+  if (p.x < 0) { return; }
+  var sum = 0.0;
+  var weight = 0.0;
+  for (var d = -CONTOUR_REACH; d <= CONTOUR_REACH; d++) {
+    let q = p + vec2i(0, d);
+    if (inside(q)) { sum += contourKernel(d) * textureLoad(contourRows, local(q), 0).r; weight += contourKernel(d); }
+  }
+  textureStore(contour, local(p), vec4f(sum / weight));
+}`;
+
+// The smoothed coverage's most along each row, within HALF_DEPTH (r) and EDGE_DEPTHS[1] (g): the first half of the
+// paint's level round a pixel, near and further round.
+const LEVEL_ROWS_WGSL = /* wgsl */ `${PRELUDE}
+@group(0) @binding(1) var contour: texture_2d<f32>;
+@group(0) @binding(2) var levelRows: texture_storage_2d<rg32float, write>;
+@compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
+  let p = pixelOf(id);
+  if (p.x < 0) { return; }
+  var most = vec2f(0.0);
+  for (var d = -${EDGE_DEPTHS[1]}; d <= ${EDGE_DEPTHS[1]}; d++) {
+    let q = p + vec2i(d, 0);
+    if (!inside(q)) { continue; }
+    let here = textureLoad(contour, local(q), 0).r;
+    most = vec2f(select(most.x, max(most.x, here), abs(d) <= ${HALF_DEPTH}), max(most.y, here));
+  }
+  textureStore(levelRows, local(p), vec4f(most, 0.0, 0.0));
 }`;
 
 // The domain blurred along rows at the grain's scale.
@@ -87,13 +153,14 @@ const GRAIN_ROWS_WGSL = /* wgsl */ `${PRELUDE}
 
 // The edge's seeds: paper at the grain's scale too (a finer hole is no edge), and bare in the layer: where the water
 // ends over the group's earlier paint, the lattice's staircase is no edge. A seed holds its own pixel, any other none
-// (-1). The transport's paper is closed at a seed and open elsewhere.
+// (-1). The transport's paper is closed at a seed and open on paint.
 const SEEDS_WGSL = /* wgsl */ `${PRELUDE}
 @group(0) @binding(1) var domain: texture_2d<f32>;
 @group(0) @binding(2) var grainRows: texture_2d<f32>;
 @group(0) @binding(3) var seeds: texture_storage_2d<rg32float, write>;
 @group(0) @binding(4) var transportPaper: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(5) var layer: texture_2d_array<f32>;
+@group(0) @binding(6) var closed: texture_storage_2d<r32float, write>;
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   let p = pixelOf(id);
   if (p.x < 0) { return; }
@@ -106,7 +173,11 @@ const SEEDS_WGSL = /* wgsl */ `${PRELUDE}
   }
   let paper = textureLoad(domain, local(p), 0).r < 0.5 && sum / weight < 0.5 && textureLoad(layer, p, 0, 0).x < ${DOMAIN_COVERAGE[1]};
   textureStore(seeds, local(p), select(vec4f(-1.0), vec4f(vec2f(p), 0.0, 0.0), paper));
-  textureStore(transportPaper, local(p), vec4f(1.0, select(1.0, 0.0, paper), 0.0, 0.0));
+  textureStore(closed, local(p), vec4f(sum / weight));
+  // Closed at a seed, but by degrees: a fringe pixel's coverage shifts a little with the paint's pigments, and a
+  // barrier that flipped with it would reroute what reaches the line.
+  let painted = max(max(smoothstep(0.4, 0.6, textureLoad(domain, local(p), 0).r), smoothstep(0.4, 0.6, sum / weight)), smoothstep(${(DOMAIN_COVERAGE[1] - 0.01).toFixed(3)}, ${(DOMAIN_COVERAGE[1] + 0.01).toFixed(3)}, textureLoad(layer, p, 0, 0).x));
+  textureStore(transportPaper, local(p), vec4f(1.0, painted, 0.0, 0.0));
 }`;
 
 // One jump of the flood: each pixel keeps the nearest seed among its own and those \`jump\` away.
@@ -146,17 +217,42 @@ ${STAMP_GRID_AT_WGSL}
 @group(0) @binding(4) var layer: texture_2d_array<f32>;
 @group(0) @binding(5) var weights: texture_storage_2d<rg32float, write>;
 @group(0) @binding(6) var lineOut: texture_storage_2d_array<rgba32float, write>;
-// The paint's coverage \`depth\` px in from the edge point \`seed\`, toward \`p\`, bilinear (a seed steps a pixel
-// at a time along a slanted edge, and a nearest read there would chequer the band), held to the box.
-fn coverageIn(seed: vec2f, toward: vec2f, depth: f32) -> f32 {
-  let at = clamp(seed + toward * depth, vec2f(u.origin), vec2f(u.origin + u.extent) - 1.001);
-  let i = vec2i(floor(at));
+@group(0) @binding(7) var contour: texture_2d<f32>;
+@group(0) @binding(8) var levelRows: texture_2d<f32>;
+fn contourAt(q: vec2i) -> f32 { return textureLoad(contour, clamp(q, vec2i(0), vec2i(u.extent) - 1), 0).r; }
+// The paint's level round a pixel: the most of the smoothed coverage within HALF_DEPTH (x) and EDGE_DEPTHS[1] (y),
+// rows' most then columns'.
+fn levelAt(q: vec2i) -> vec2f {
+  var most = vec2f(0.0);
+  for (var d = -${EDGE_DEPTHS[1]}; d <= ${EDGE_DEPTHS[1]}; d++) {
+    let here = textureLoad(levelRows, clamp(q + vec2i(0, d), vec2i(0), vec2i(u.extent) - 1), 0).xy;
+    most = vec2f(select(most.x, max(most.x, here.x), abs(d) <= ${HALF_DEPTH}), max(most.y, here.y));
+  }
+  return most;
+}
+@group(0) @binding(9) var closed: texture_2d<f32>;
+// A field at a point, bilinear (a seed steps a pixel at a time along a slanted edge, and a nearest read there would
+// chequer the band), held to the box.
+fn fieldAt(field: texture_2d<f32>, point: vec2f) -> f32 {
+  let at = clamp(point, vec2f(u.origin), vec2f(u.origin + u.extent) - 1.001);
+  let i = local(vec2i(floor(at)));
   let f = at - floor(at);
-  let a = textureLoad(layer, i, 0, 0).x;
-  let b = textureLoad(layer, i + vec2i(1, 0), 0, 0).x;
-  let c = textureLoad(layer, i + vec2i(0, 1), 0, 0).x;
-  let e = textureLoad(layer, i + vec2i(1, 1), 0, 0).x;
+  let a = textureLoad(field, i, 0).r;
+  let b = textureLoad(field, i + vec2i(1, 0), 0).r;
+  let c = textureLoad(field, i + vec2i(0, 1), 0).r;
+  let e = textureLoad(field, i + vec2i(1, 1), 0).r;
   return mix(mix(a, b, f.x), mix(c, e, f.x), f.y);
+}
+// Where \`field\` first reaches \`level\` going \`toward\` from \`origin\`, px, to the sub-pixel; \`most\` if not by then.
+fn reaches(field: texture_2d<f32>, origin: vec2f, toward: vec2f, level: f32, most: i32) -> f32 {
+  var below = fieldAt(field, origin);
+  if (below >= level) { return 0.0; }
+  for (var k = 1; k <= most; k++) {
+    let here = fieldAt(field, origin + toward * f32(k));
+    if (here >= level) { return f32(k - 1) + clamp((level - below) / max(here - below, 1e-6), 0.0, 1.0); }
+    below = here;
+  }
+  return f32(most);
 }
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   let p = pixelOf(id);
@@ -173,24 +269,53 @@ fn coverageIn(seed: vec2f, toward: vec2f, depth: f32) -> f32 {
   let toward = select(vec2f(0.0), (vec2f(p) - seed) / d, d > 0.5);
   let wetShare = dryingRimWetShare(gridAt(vec2f(p) + 0.5, u.lattice.xyz, u.size, u.first), u.damp);
   let band = dryingRimBand(u.spread, u.diameter, wetShare);
-  // The line wavers along the edge in width, strength and how far in it sits, and breaks off in stretches, by noise at
-  // the edge point (so across the band alike) in the painting's own pixels, keyed to the wash's seed.
-  let width = u.width * (0.6 + 0.8 * paintValueNoise(seed.x / 6.0, seed.y / 6.0, u.seed));
-  let present = dryingRimPresence(paintValueNoise(seed.x / 45.0, seed.y / 45.0, u.seed ^ 0x9e3779u), paintValueNoise(seed.x / 12.0, seed.y / 12.0, u.seed ^ 0x51ed27u));
-  let strength = present * (0.55 + 0.45 * paintValueNoise(seed.x / 20.0, seed.y / 20.0, u.seed ^ 0x2545f4u));
-  let inset = 1.2 * paintValueNoise(seed.x / 9.0, seed.y / 9.0, u.seed ^ 0x68e31du);
-  let edgeCover = coverageIn(seed, toward, ${EDGE_DEPTHS[0]}.0);
+  // The edge to the sub-pixel: where the paint, closed at the grain's scale, starts on the way in from the nearest
+  // seed. Warning: the seed is a thresholded pixel, and a fringe's coverage shifts a little with the paint's pigments;
+  // whatever is read from the edge, read from the seed itself, would jump a pixel with the colour.
+  let edge = seed + toward * reaches(closed, seed, toward, 0.5, 4);
+  let inward = d - distance(seed, edge);
+  // How abruptly the paint ends, from the smoothed coverage just inside the edge and well in, each averaged over a
+  // few pixels: a fringe's step a pixel nearer or further then moves it by degrees.
+  var edgeCover = 0.0;
+  var innerCover = 0.0;
+  for (var k = -2; k <= 2; k++) {
+    edgeCover += 0.2 * fieldAt(contour, edge + toward * f32(${EDGE_DEPTHS[0]} + k));
+    innerCover += 0.2 * fieldAt(contour, edge + toward * f32(${EDGE_DEPTHS[1]} + k));
+  }
+  let hardness = dryingRimHardness(edgeCover, innerCover);
+  // How far in from where the paint is half there the pixel is, by its nearest edge.
+  let half = reaches(contour, edge, toward, 0.5 * edgeCover, ${HALF_DEPTH});
+  let far = inward - half - 0.5;
+  let at = local(p);
+  let levels = levelAt(at);
+  let level = levels.x;
   // The line starts where the paint is half there: a masked or cut wash fades in over the mask's soft edge, which it
   // shares with whatever is painted the other side, and a line out in that fringe would ring the neighbour too.
-  var start = 1.0;
-  for (var k = 1; k <= ${HALF_DEPTH}; k++) { start += select(0.0, 1.0, coverageIn(seed, toward, f32(k)) < 0.5 * edgeCover); }
+  // Warning: near the edge, how far in comes from the smoothed coverage round the pixel itself, not its nearest edge
+  // pixel's. That edge is a thresholded pixel, and a fringe's coverage shifts a little with the paint's pigments, so
+  // which pixel it is (and so the line, a pixel wide) would shift with the colour.
+  let gradient = 0.5 * vec2f(contourAt(at + vec2i(1, 0)) - contourAt(at - vec2i(1, 0)), contourAt(at + vec2i(0, 1)) - contourAt(at - vec2i(0, 1)));
+  let slope = length(gradient);
+  let nearby = 1.0 - smoothstep(${NEAR_EDGE[0]}.0, ${NEAR_EDGE[1]}.0, far);
+  // On paint as even as a plateau, the slope says nothing: there it's well in, and its edge the nearest edge's.
+  let near = clamp((contourAt(at) - 0.5 * level) / max(slope, 1e-3) - 0.5, -${NEAR_EDGE[0]}.0, ${NEAR_EDGE[1]}.0);
+  // The line wavers along the edge in width, strength and how far in it sits, and breaks off in stretches, by noise at
+  // the edge (so across the band alike) in the painting's own pixels, keyed to the wash's seed.
+  let sloped = nearby * smoothstep(0.01, 0.04, slope);
+  let start = mix(edge + toward * half, vec2f(p) - gradient / max(slope, 1e-3) * (near + 0.5), sloped);
+  let width = u.width * (0.6 + 0.8 * paintValueNoise(start.x / 6.0, start.y / 6.0, u.seed));
+  let present = dryingRimPresence(paintValueNoise(start.x / 45.0, start.y / 45.0, u.seed ^ 0x9e3779u), paintValueNoise(start.x / 12.0, start.y / 12.0, u.seed ^ 0x51ed27u));
+  let strength = present * (0.55 + 0.45 * paintValueNoise(start.x / 20.0, start.y / 20.0, u.seed ^ 0x2545f4u));
+  let inset = 1.2 * paintValueNoise(start.x / 9.0, start.y / 9.0, u.seed ^ 0x68e31du);
   // An edge pixel the paint only partly covers takes its share of the line, so the line keeps the paint's edge.
-  let covered = clamp(textureLoad(layer, p, 0, 0).x / max(edgeCover, 1e-3), 0.0, 1.0);
-  let line = paint * covered * present * dryingRimLine(d - start - inset, width);
-  let hardness = dryingRimHardness(edgeCover, coverageIn(seed, toward, ${EDGE_DEPTHS[1]}.0));
+  let covered = clamp(textureLoad(layer, p, 0, 0).x / max(level, 1e-3), 0.0, 1.0);
+  // A feathered fringe has no line: half-there contours wandering through one would gather the band's paint.
+  // Nor, on an abrupt edge, does the faint fringe outside its step: there the paint round a pixel is well below the
+  // paint further round, and its line would follow the fringe's own small steps, which a colour shifts.
+  let line = paint * covered * present * nearby * dryingRimSteep(level, levels.y) * dryingRimLine(near - inset, width);
   var held: array<vec4f, ${layers}>;
   for (var l = 0; l < ${layers}; l++) { held[l] = textureLoad(layer, p, l, 0); }
-  let take = paint * hardness * dryingRimDraw(d - start - inset, band, u.width) * dryingRimTake(u.spread, wetShare, strength) * clamp(washOpen(held), 0.0, 1.0);
+  let take = paint * hardness * dryingRimDraw(mix(far, near, nearby) - inset, far - inset, band, u.width) * dryingRimTake(u.spread, wetShare, strength) * clamp(washOpen(held), 0.0, 1.0);
   textureStore(weights, local(p), vec4f(line, take, 0.0, 0.0));
   textureStore(lineOut, local(p), 0, vec4f(line, 0.0, 0.0, 0.0));
 }`;
@@ -327,11 +452,12 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     .createView({ dimension: '2d-array' });
   const transport = { paper: scratch('rgba16float'), paths: [scratch('rgba16float'), scratch('rgba16float')], values: [valuesTexture(), valuesTexture()] } as const;
   const domain = scratch('r32float'), grainRows = scratch('r32float'), send = scratch('rg32float');
+  const contourRows = scratch('r32float'), contour = scratch('r32float'), levelRows = scratch('rg32float'), closed = scratch('r32float');
   const seeds = [scratch('rg32float'), scratch('rg32float')], weights = scratch('rg32float');
   const compile = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }), entryPoint: 'run' } });
   const passes = {
     domain: compile(DOMAIN_WGSL), grainRows: compile(GRAIN_ROWS_WGSL), seeds: compile(SEEDS_WGSL), flood: compile(FLOOD_WGSL),
-    send: compile(SEND_WGSL),
+    send: compile(SEND_WGSL), contourRows: compile(CONTOUR_ROWS_WGSL), contour: compile(CONTOUR_WGSL), levelRows: compile(LEVEL_ROWS_WGSL),
   };
   // Compiled per group layer count, which places the group's open share and bounds what's gathered.
   const groupPasses = new Map([...new Set([...rims.values()].map((rim) => rim.layers))].map((n): [number, Record<'weights' | 'sent' | 'rim', GPUComputePipeline>] => {
@@ -348,9 +474,12 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     return [drying, [
       step(passes.domain, [u, { buffer: grid }, layer.view, domain]),
       step(passes.grainRows, [u, domain, grainRows]),
-      step(passes.seeds, [u, domain, grainRows, seeds[0], transport.paper, layer.view]),
+      step(passes.seeds, [u, domain, grainRows, seeds[0], transport.paper, layer.view, closed]),
       ...jumps.map((jump, k) => step(passes.flood, [u, { buffer: jump }, seeds[k % 2], seeds[(k + 1) % 2]])),
-      step(own.weights, [u, { buffer: grid }, domain, seeds[jumps.length % 2], layer.view, weights, transport.values[1]]),
+      step(passes.contourRows, [u, layer.view, contourRows]),
+      step(passes.contour, [u, contourRows, contour]),
+      step(passes.levelRows, [u, contour, levelRows]),
+      step(own.weights, [u, { buffer: grid }, domain, seeds[jumps.length % 2], layer.view, weights, transport.values[1], contour, levelRows, closed]),
       ...spreads.steps(0, transport),
       step(passes.send, [u, weights, transport.values[1], send]),
       step(own.sent, [u, layer.view, send, transport.values[0]]),
