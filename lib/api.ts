@@ -77,6 +77,7 @@ export { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint, typ
 export { visibleStampCountAt } from '#lib/picture/stamp-paint/models/stamp-deposit-reveal.ts';
 export { STAMP_FILL_PATTERNS, stampRegionOutline, stampSmoothRegion, type StampFillApplication, type StampFillPattern, type StampFillStrokes, type StampFillTurns } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
 export type { StampEdge, StampPoint, StampRegion } from '#lib/picture/stamp-paint/models/stamp-region.ts';
+export type { StampArea, StampStandsBefore } from '#lib/picture/stamp-paint/models/stamp-area.ts';
 export type { StampPaintField } from '#lib/picture/stamp-paint/models/stamp-paint-field.ts';
 export type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from '#lib/picture/stamp-paint/models/stamp-group-motion.ts';
 export type { StampMaterialKeys } from '#lib/picture/stamp-paint/models/stamp-material-keys.ts';

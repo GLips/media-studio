@@ -215,7 +215,7 @@ function regions(): StampGatePainting {
         direction: 0.5, load: { kind: 'linear', from: { x: 210, y: 0, value: 1 }, to: { x: 310, y: 0, value: 0.4 } }, appliedAt: 0, drawnOver: 2,
       }));
       g.pass('neck', {}, (pass) => pass.fill('neck', { brush: wet, diameter: 40, application: { kind: 'flood' }, material: color('#305030'), region: stampGatePolygon(10, 230, 50, 230, 55, 130, 60, 230, 110, 230, 110, 238, 10, 238) }));
-      g.pass('within', { within: { kind: 'ellipse', x: 160, y: 185, radiusX: 40, radiusY: 25 } }, (pass) => {
+      g.pass('within', { within: { region: { kind: 'ellipse', x: 160, y: 185, radiusX: 40, radiusY: 25 } } }, (pass) => {
         pass.stroke('across', { brush: wet, diameter: 30, material: color('#806020'), path: [{ x: 110, y: 170 }, { x: 210, y: 200 }] });
       });
       g.pass('hatch', {}, (pass) => {
@@ -267,7 +267,7 @@ function pigment(mediumName: (typeof STAMP_GATE_PIGMENT_MEDIA)[number]): StampGa
       pass.stroke('green', { brush: round, diameter: 60, material: { kind: 'mixture', parts: [{ pigment: W.phthaloBlue, amount: 1 }, { pigment: W.hansaYellow, amount: 2 }], strength: 1 }, path: [{ x: 20, y: 140 }, { x: 300, y: 120 }] });
       pass.stroke('rose', { brush: round, diameter: 40, material: color('#c8305f'), path: [{ x: 60, y: 190 }, { x: 250, y: 30 }] });
     }));
-    p.group('patch', { composite: 'opaque' }, (g) => g.pass('cover', { within: { kind: 'ellipse', x: 260, y: 162, radiusX: 34, radiusY: 16 } }, (pass) => {
+    p.group('patch', { composite: 'opaque' }, (g) => g.pass('cover', { within: { region: { kind: 'ellipse', x: 260, y: 162, radiusX: 34, radiusY: 16 } } }, (pass) => {
       pass.stroke('cerulean', { brush: round, diameter: 50, material: { kind: 'mixture', parts: [{ pigment: W.cerulean, amount: 1 }], strength: 0.7 }, path: [{ x: 230, y: 150 }, { x: 290, y: 175 }] });
     }));
     // Each pigment at full strength, so no white joins them, and two colours: overlapping swatches, mixing wet.

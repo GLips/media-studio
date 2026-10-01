@@ -71,7 +71,7 @@ function washPainting(medium: StampGateWashMedium, wetPaper: boolean, body: (was
     p.group('under', { composite: 'glaze', opacity: 1 }, (g) => g.pass('dry', {}, (pass) => {
       pass.stroke('band', { brush: ROUND, diameter: 30, material: pure(W.yellowOchre), path: [{ x: 0, y: 100 }, { x: 160, y: 96 }] });
     }));
-    p.group('subject', { composite: 'glaze', opacity: 1 }, (g) => g.wash('wash', { ...(wetPaper && { preparation: { region: SKY } }), ...(within && { within }) }, body));
+    p.group('subject', { composite: 'glaze', opacity: 1 }, (g) => g.wash('wash', { ...(wetPaper && { preparation: { region: SKY } }), ...(within && { within: { region: within } }) }, body));
   }));
   const flowing = PAINT_MEDIA[medium];
   const paint = still ? { ...flowing, wetting: { ...flowing.wetting, spread: 0 } } : flowing;

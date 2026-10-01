@@ -23,12 +23,20 @@ step's and stamp's context, what each sensor reads from it, each response); a ne
 `stamp-deposit-stages.ts` are the one registry of every blend, grain adjustment, pooling and accumulation, the plans a
 deposit's stages resolve in, and which of a brush's stages are active (`stampActiveLayers`). Rendering maths lives
 only in WGSL, generated from those tables; the GPU is the one renderer. A function keeps a CPU twin only where the
-studio runs it off the GPU too (Kubelka–Munk, `stampPaintFieldAt`, a region's distance and grid), and a dual mode
+studio runs it off the GPU too (Kubelka–Munk, `stampPaintFieldAt`, a region's distance and grid, an area's coverage), and a dual mode
 declares `needsDual` rather than having the CPU run its combine. The GPU's resolve order and mode switches are generated from the tables. How the GPU lays a
 layer's stamps is a plan (`stampAccumulationPlan`): a fixed blend where stamp order can't change the build, and
 otherwise, for a `buildToOpacity` whose opacity falls (Photoshop never lowers what's built), each pixel walks its
 stamps in order and lays each by the table's `lay`. `stamp-paint-recipe.ts` is the painting a scene writes, with its
 paper. `studio/` is the WebGPU renderer, its uniform layout and the compositor.
+
+**Areas.** A pass's `within`, masking fluid and an unmask act over a `StampArea` (`stamp-area.ts`): a region, its
+edge (soft, ragged) and an inset. Its coverage is the region's signed distance less the inset, moved by the edge's
+noise, ramped over its width, so an inset moves the edge without offsetting the polygon (a narrow feature can vanish).
+The renderer works out each state of the fluid and each `within` once, as cropped textures; the wetness compile reads
+the same coverage per sample (`stampAreaCoverageAt`, the GPU's twin), scanning an edge narrower than half a sample
+hard. A group's `standsBefore` compiles into one more mask over the fluid of each deposit of the groups it names,
+last, so it joins their fluid by max and none of their unmasks lifts it; a knockout's fluid is left alone.
 
 Wet paint is a wash, a pass painted wet (`group.wash`): its deposits paint, wet (`water`, `soften`, `bloom`) or lift,
 and it can `wait` in painting time, which only its waits advance. `stamp-wetness.ts` works out, once as a painting
