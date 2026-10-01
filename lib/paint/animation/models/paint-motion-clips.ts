@@ -96,7 +96,7 @@ export function paintMotionClipProblem(clip: PaintMotionClip<string>): string | 
 }
 
 /** Where `keys` stand at time: the key before and after, and the eased share of the way between, held beyond them. */
-function keySpanAt(keys: readonly { at: number; ease?: PaintEase }[], time: number): { from: number; to: number; share: number } {
+export function paintKeySpanAt(keys: readonly { at: number; ease?: PaintEase }[], time: number): { from: number; to: number; share: number } {
   const next = keys.findIndex((key) => key.at > time);
   if (next === 0) return { from: 0, to: 0, share: 0 };
   if (next < 0) return { from: keys.length - 1, to: keys.length - 1, share: 0 };
@@ -108,7 +108,7 @@ const between = (a: number, b: number, share: number) => a + (b - a) * share;
 
 /** Each pin `clip` moves, as it stands time s into the clip: a pin a key leaves out is at rest there. */
 export function paintPoseClipAt<P extends string>(clip: PaintPoseClip<P>, time: ClipSeconds): Map<P, Required<PaintPinMove>> {
-  const { from, to, share } = keySpanAt(clip.keys, Math.max(0, time));
+  const { from, to, share } = paintKeySpanAt(clip.keys, Math.max(0, time));
   const whole = (move: PaintPinMove | undefined): Required<PaintPinMove> => ({ ...restMove, ...move });
   return new Map(paintMotionClipPins(clip).map((pin) => {
     const a = whole(clip.keys[from].pose[pin]), b = whole(clip.keys[to].pose[pin]);
@@ -127,7 +127,7 @@ export function paintPinClipMoveAt<P extends string>(clip: PaintPinClip<P>, pin:
 
 /** The group's placement time s into a place clip. */
 export function paintPlaceClipAt(clip: PaintPlaceClip, time: ClipSeconds): StampGroupPlacement {
-  const { from, to, share } = keySpanAt(clip.keys, Math.max(0, time));
+  const { from, to, share } = paintKeySpanAt(clip.keys, Math.max(0, time));
   const a = clip.keys[from], b = clip.keys[to];
   return { x: between(a.x, b.x, share), y: between(a.y, b.y, share), rotation: between(a.rotation ?? 0, b.rotation ?? 0, share), scale: between(a.scale ?? 1, b.scale ?? 1, share) };
 }

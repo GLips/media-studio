@@ -166,3 +166,17 @@ export function paintBoilEpochAt(time: SceneSeconds, revealEnd: SceneSeconds, ev
   if (time < revealEnd) return 0;
   return Math.floor(paintAnimationFrameOf(time, animationFps) / every) - Math.floor(paintAnimationFrameOf(revealEnd, animationFps) / every);
 }
+
+/** A play compiled: its clip, its clock under its node's, and the interval it writes over. */
+export type CompiledPaintPlay<C> = { readonly clip: C; readonly clock: CompiledPaintPlayClock; readonly interval: PaintPlayInterval; readonly origin: string };
+
+/** Plays writing one thing on one target, sorted by start. */
+export type PaintLane<C> = readonly CompiledPaintPlay<C>[];
+
+/** The play writing `lane` at its target's time `time`: the latest to have started, or before any has, the first. */
+export function paintLanePlayAt<C>(lane: PaintLane<C>, time: SceneSeconds): CompiledPaintPlay<C> | undefined {
+  return lane.findLast((play) => play.interval.start <= time) ?? lane[0];
+}
+
+/** `lane` sorted by start, as a lane is kept. */
+export const paintLaneByStart = <C>(lane: PaintLane<C>) => lane.toSorted((a, b) => a.interval.start - b.interval.start);

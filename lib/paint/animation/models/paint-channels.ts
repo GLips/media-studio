@@ -8,8 +8,8 @@
 
 import type { PaintPlayInterval } from './paint-clock.ts';
 
-/** What a play writes: a node's deform (a pin, its sway, its flutter) or its rigid placement. */
-export type PaintChannel = 'place' | 'deform';
+/** What a play writes: a node's deform (a pin, its sway, its flutter), its rigid placement, or the camera's move or focus. */
+export type PaintChannel = 'place' | 'deform' | 'camera';
 
 /**
  * One writer: `channel` of `target` (a node's id, and for a pin its name) over its interval, `end` Infinity for one

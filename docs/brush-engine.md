@@ -148,6 +148,16 @@ painting; a group laid apart is also saved painted but not laid, which frames la
 - **Checks:** the build checks the tree, the groups, the clocks, the boil's wobble, one writer per lane
   (`paint-channels.ts`), and every frame's emitted warp for folds on the renderer's own lattice.
   `paintMotionFrameAt(motion, t)` is pure in `t`, and writes each group's `StampGroupFrameState`.
+- **Planes and the camera** (`paint-camera.ts`, `paint-camera-build.ts`): a root node's `anchor` puts its tree on
+  the canvas (the default, never moved by the camera) or on a plane at a depth (`{ plane: 2 }`, from the camera's
+  rest; pan is measured at 1). A plane is painted the size it looks at rest, so a flat painting goes multiplane by
+  giving groups depths. The camera's plays key `move` (pan, dolly, zoom, roll) and `focus` (focus depth and
+  aperture) on its own clock, on ones unless held. Its step comes after every bend and placement: it folds a
+  plane's view into the group's lay, keeps its warp, and writes its defocus `blur` (a thin lens's circle of
+  confusion, as gaussian sigma) and scales its `glow`. `buildPaintCamera` and `paintCameraFrameStateAt` put the same
+  step over frame state another motion wrote. The build names a plane at or behind the camera, a zoom not above 0, an
+  anchor on a child, and a `backdrop` the camera shows past the stage's margin or its paint.
+  `paint-camera-world.ts` gives three.js the perspective camera that lands a 3D point where the plane step lays it.
 
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants
 of `procreate-reading.ts`), and the stroke Procreate draws its previews along. Its `engine/` reads binary plists and

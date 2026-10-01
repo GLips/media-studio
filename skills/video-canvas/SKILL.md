@@ -141,6 +141,17 @@ elements, which is what keeps objects from showing through each other.
 5. **Each frame,** `paintMotionFrameAt(motion, s.t)` gives the frame state, live marks included:
    `<StampPainting painting={painting} style={style} t={s.t} frame={paintMotionFrameAt(motion, s.t)} />`.
 
+**Planes and the camera (multiplane).** Give a root node `anchor: { plane: depth }` to stand its tree on a plane
+that far from the camera (1 is where a pan's pixels are measured; nearer is under 1). Paint each plane the size it
+should look before the camera moves: at rest nothing changes. Pass `camera: { stage: { width, height, margin },
+plays }` to `buildPaintMotion`, the stage being the frame and the renderer's margin. Plays are
+`paintCameraPlay({ kind: 'move', keys: [{ at, pan?: { x, y }, dolly?, zoom?, roll?, ease? }] }, { clock, origin })`,
+and `{ kind: 'focus', keys: [{ at, focus, aperture }] }` for depth of field: `focus` is the depth held sharp,
+`aperture` the blur (px sigma) a far plane gets. A pan of 100 moves a plane at depth 2 by 50 and one at 0.5 by 200;
+a dolly grows near planes more than far ones. Keep the camera on ones: held on twos it judders. Mark the
+background `backdrop: true` and the build fails if the camera would show past it; give the frog `glow: { amount,
+radius, threshold }` for a soft light. Untouched groups and `anchor: 'canvas'` (titles) never move with the camera.
+
 Hold motion on twos (`clock: { hold: 2 }` on the node, at `PAINT_ANIMATION_FPS`) and let the paint-in run on ones: a
 node's hold never reaches its reveal. Run `studio repeatable`
 inside a hold and across one.
