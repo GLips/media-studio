@@ -241,7 +241,16 @@ ${movedWgsl}
 type BloomPipelines = Record<'surplus' | 'waterRows' | 'waterColumns' | 'front' | 'bandRows' | 'send' | 'sentRows' | 'land', GPUComputePipeline>;
 /** A landing's bloom, sized as the painting loads. */
 type BloomPlan = { first: number; afterFirst: number; sigma: number; drive: number; lattice: StampWetWindow; pipelines: BloomPipelines; uniform: GPUBuffer };
-type BloomScratch = { w: number; h: number; textures: GPUTexture[]; surplus: GPUTextureView; rows: GPUTextureView; water: GPUTextureView; front: GPUTextureView; send: GPUTextureView; sentRows: GPUTextureView };
+/** A pipeline and what it's bound to, as one dispatch of a bloom runs it. */
+type BloomStep = { pipeline: GPUComputePipeline; bindGroup: GPUBindGroup };
+/**
+ * The scratch textures, as big as the largest box reserved, and each plan's steps bound to them: a new set of
+ * textures binds afresh.
+ */
+type BloomScratch = {
+  w: number; h: number; textures: GPUTexture[]; steps: Map<BloomPlan, BloomStep[]>;
+  surplus: GPUTextureView; rows: GPUTextureView; water: GPUTextureView; front: GPUTextureView; send: GPUTextureView; sentRows: GPUTextureView;
+};
 
 const kernelSum = (sigma: number, reach: number) => {
   let sum = 0;
@@ -299,7 +308,7 @@ function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: S
       textures.push(texture);
       return texture.createView({ dimension: depth === undefined ? '2d' : '2d-array' });
     };
-    scratch = { ...size, textures, surplus: view('r32float'), rows: view('r32float'), water: view('r32float'), front: view('rg32float'), send: view('rg32float'), sentRows: view('rgba32float', layers) };
+    scratch = { ...size, textures, steps: new Map(), surplus: view('r32float'), rows: view('r32float'), water: view('r32float'), front: view('rg32float'), send: view('rg32float'), sentRows: view('rgba32float', layers) };
   };
 
   const encode = (encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, { box, seed }: Extract<StampWetStageMoment, { kind: 'deposit' }>): StampPixelBox => {
@@ -328,24 +337,36 @@ function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: S
     put('sendFloor', (STAMP_BLOOM_SEND_FLOOR * STAMP_BLOOM_BAND_WIDTH) / (Math.sqrt(2 * Math.PI) * carrySigma));
     device.queue.writeBuffer(plan.uniform, 0, words);
 
-    const dispatch = (pass: GPUComputePipeline, resources: GPUBindingResource[]) => {
+    let steps = scratch.steps.get(plan);
+    if (!steps) {
+      steps = bloomSteps(plan, scratch);
+      scratch.steps.set(plan, steps);
+    }
+    for (const { pipeline, bindGroup } of steps) {
       const compute = encoder.beginComputePass();
-      compute.setPipeline(pass);
-      compute.setBindGroup(0, device.createBindGroup({ layout: pass.getBindGroupLayout(0), entries: resources.map((resource, binding) => ({ binding, resource })) }));
+      compute.setPipeline(pipeline);
+      compute.setBindGroup(0, bindGroup);
       compute.dispatchWorkgroups(Math.ceil(box.w / WORKGROUP), Math.ceil(box.h / WORKGROUP));
       compute.end();
-    };
-    const { surplus, rows, water, front, send, sentRows } = scratch, { pipelines } = plan;
-    const u = { buffer: plan.uniform }, g = { buffer: grids.buffer }, a = { buffer: after };
-    dispatch(pipelines.surplus, [u, g, a, surplus]);
-    dispatch(pipelines.waterRows, [u, surplus, rows]);
-    dispatch(pipelines.waterColumns, [u, rows, water]);
-    dispatch(pipelines.front, [u, g, a, footprint.view, water, front, layer.view]);
-    dispatch(pipelines.bandRows, [u, front, rows]);
-    dispatch(pipelines.send, [u, front, rows, send]);
-    dispatch(pipelines.sentRows, [u, layer.view, send, sentRows]);
-    dispatch(pipelines.land, [u, layer.view, front, send, sentRows]);
+    }
     return box;
+  };
+  // A plan's dispatches, in order, bound to one generation of scratch textures.
+  const bloomSteps = (plan: BloomPlan, { surplus, rows, water, front, send, sentRows }: BloomScratch): BloomStep[] => {
+    const { pipelines } = plan, u = { buffer: plan.uniform }, g = { buffer: grids.buffer }, a = { buffer: after };
+    const step = (pipeline: GPUComputePipeline, resources: GPUBindingResource[]): BloomStep => ({
+      pipeline, bindGroup: device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: resources.map((resource, binding) => ({ binding, resource })) }),
+    });
+    return [
+      step(pipelines.surplus, [u, g, a, surplus]),
+      step(pipelines.waterRows, [u, surplus, rows]),
+      step(pipelines.waterColumns, [u, rows, water]),
+      step(pipelines.front, [u, g, a, footprint.view, water, front, layer.view]),
+      step(pipelines.bandRows, [u, front, rows]),
+      step(pipelines.send, [u, front, rows, send]),
+      step(pipelines.sentRows, [u, layer.view, send, sentRows]),
+      step(pipelines.land, [u, layer.view, front, send, sentRows]),
+    ];
   };
   return {
     reserve,

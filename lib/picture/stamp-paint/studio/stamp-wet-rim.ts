@@ -324,14 +324,14 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
   for (const rim of rims.values()) values.set(rim.grid.values, rim.first);
   const grid = device.createBuffer({ size: values.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
   device.queue.writeBuffer(grid, 0, values);
-  const steps: GPUBuffer[] = [];
+  const jumps: GPUBuffer[] = [];
   for (let step = FLOOD_FIRST_STEP; step >= 1; step /= 2) {
     const buffer = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     device.queue.writeBuffer(buffer, 0, new Uint32Array([step, 0, 0, 0]));
-    steps.push(buffer);
+    jumps.push(buffer);
   }
 
-  const layers = layer.layers.length;
+  const layers = [...rims.values()].reduce((most, rim) => Math.max(most, rim.layers), 1);
   const most = [...rims.values()].reduce((size, { box }) => ({ w: Math.max(size.w, box.w), h: Math.max(size.h, box.h) }), { w: 0, h: 0 });
   const scratch = (format: GPUTextureFormat, depth = 1) =>
     device.createTexture({ size: [most.w, most.h, depth], format, usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING })
@@ -341,41 +341,50 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     .createView({ dimension: '2d-array' });
   const domain = scratch('r32float'), grainRows = scratch('r32float'), normRows = scratch('r32float'), norm = scratch('r32float');
   const seeds = [scratch('rg32float'), scratch('rg32float')], weights = scratch('rg32float');
-  const pipeline = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }), entryPoint: 'run' } });
+  const compile = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }), entryPoint: 'run' } });
   const passes = {
-    domain: pipeline(DOMAIN_WGSL), grainRows: pipeline(GRAIN_ROWS_WGSL), seeds: pipeline(SEEDS_WGSL), flood: pipeline(FLOOD_WGSL),
-    normRows: pipeline(NORM_ROWS_WGSL), norm: pipeline(NORM_WGSL),
-    pulledRows: pipeline(pulledRowsWgsl(layers)),
+    domain: compile(DOMAIN_WGSL), grainRows: compile(GRAIN_ROWS_WGSL), seeds: compile(SEEDS_WGSL), flood: compile(FLOOD_WGSL),
+    normRows: compile(NORM_ROWS_WGSL), norm: compile(NORM_WGSL),
   };
-  // Each group's own layer count places its open share.
-  const groupPasses = new Map([...new Set([...rims.values()].map((rim) => rim.layers))].map((n): [number, Record<'weights' | 'rim', GPUComputePipeline>] => {
+  // Compiled per group layer count, which places the group's open share and bounds what's gathered.
+  const groupPasses = new Map([...new Set([...rims.values()].map((rim) => rim.layers))].map((n): [number, Record<'weights' | 'pulledRows' | 'rim', GPUComputePipeline>] => {
     const moved = wash.movedWgsl(n);
-    return [n, { weights: pipeline(weightsWgsl(n, moved)), rim: pipeline(rimWgsl(n, moved)) }];
+    return [n, { weights: compile(weightsWgsl(n, moved)), pulledRows: compile(pulledRowsWgsl(n)), rim: compile(rimWgsl(n, moved)) }];
   }));
 
-  const encode = (encoder: GPUCommandEncoder, { box, uniform, layers: groupLayers }: LoadedRim): StampPixelBox => {
-    const dispatch = (pass: GPUComputePipeline, resources: GPUBindingResource[]) => {
+  // Each rim's dispatches, in order, bound once: the scratch textures are sized for every rim at load.
+  const rimSteps = new Map([...rims].map(([pass, { uniform, layers: groupLayers }]): [CompiledStampPass, { pipeline: GPUComputePipeline; bindGroup: GPUBindGroup }[]] => {
+    const step = (pipeline: GPUComputePipeline, resources: GPUBindingResource[]) => ({
+      pipeline, bindGroup: device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: resources.map((resource, binding) => ({ binding, resource })) }),
+    });
+    const u = { buffer: uniform }, own = groupPasses.get(groupLayers)!;
+    return [pass, [
+      step(passes.domain, [u, { buffer: grid }, layer.view, domain]),
+      step(passes.grainRows, [u, domain, grainRows]),
+      step(passes.seeds, [u, domain, grainRows, seeds[0]]),
+      ...jumps.map((jump, k) => step(passes.flood, [u, { buffer: jump }, seeds[k % 2], seeds[(k + 1) % 2]])),
+      step(own.weights, [u, { buffer: grid }, domain, seeds[jumps.length % 2], layer.view, weights]),
+      step(passes.normRows, [u, weights, normRows]),
+      step(passes.norm, [u, normRows, norm]),
+      step(own.pulledRows, [u, layer.view, weights, norm, pulledRows]),
+      step(own.rim, [u, layer.view, weights, norm, pulledRows]),
+    ]];
+  }));
+
+  const encode = (encoder: GPUCommandEncoder, pass: CompiledStampPass, { box }: LoadedRim): StampPixelBox => {
+    for (const { pipeline, bindGroup } of rimSteps.get(pass)!) {
       const compute = encoder.beginComputePass();
-      compute.setPipeline(pass);
-      compute.setBindGroup(0, device.createBindGroup({ layout: pass.getBindGroupLayout(0), entries: resources.map((resource, binding) => ({ binding, resource })) }));
+      compute.setPipeline(pipeline);
+      compute.setBindGroup(0, bindGroup);
       compute.dispatchWorkgroups(Math.ceil(box.w / WORKGROUP), Math.ceil(box.h / WORKGROUP));
       compute.end();
-    };
-    dispatch(passes.domain, [{ buffer: uniform }, { buffer: grid }, layer.view, domain]);
-    dispatch(passes.grainRows, [{ buffer: uniform }, domain, grainRows]);
-    dispatch(passes.seeds, [{ buffer: uniform }, domain, grainRows, seeds[0]]);
-    steps.forEach((step, k) => dispatch(passes.flood, [{ buffer: uniform }, { buffer: step }, seeds[k % 2], seeds[(k + 1) % 2]]));
-    dispatch(groupPasses.get(groupLayers)!.weights, [{ buffer: uniform }, { buffer: grid }, domain, seeds[steps.length % 2], layer.view, weights]);
-    dispatch(passes.normRows, [{ buffer: uniform }, weights, normRows]);
-    dispatch(passes.norm, [{ buffer: uniform }, normRows, norm]);
-    dispatch(passes.pulledRows, [{ buffer: uniform }, layer.view, weights, norm, pulledRows]);
-    dispatch(groupPasses.get(groupLayers)!.rim, [{ buffer: uniform }, layer.view, weights, norm, pulledRows]);
+    }
     return box;
   };
   return {
     encode: (encoder: GPUCommandEncoder, moment: StampWetStageMoment) => {
       const rim = moment.kind === 'wash' ? rims.get(moment.pass) : undefined;
-      return rim ? encode(encoder, rim) : null;
+      return rim ? encode(encoder, moment.pass, rim) : null;
     },
   };
 }

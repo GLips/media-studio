@@ -14,10 +14,16 @@ import { stampGridLocalMax, type StampGrid } from './stamp-region.ts';
 export const STAMP_DRYING_RIM_MOST_BAND = 32;
 
 /**
- * The most of its pigment a pixel in the band gives up to the rim, where the wash was a standing puddle. Staining
- * holds none back: a stain's fine particles travel to a rim as readily as any.
+ * The most of its open pigment a pixel in the band gives up to the rim, where the wash was a standing puddle of paint
+ * that spreads freely. Staining holds none back: a stain's fine particles travel to a rim as readily as any.
  */
 export const STAMP_DRYING_RIM_MOST_TAKE = 0.6;
+
+/**
+ * The medium's `spread` (brush diameters paint runs on flooded paper) from which its paint is free enough for a rim
+ * to take STAMP_DRYING_RIM_MOST_TAKE: watercolour (0.5) gives up nearly that, gouache (0.1) a sixth of it.
+ */
+export const STAMP_DRYING_RIM_FREE_SPREAD = 0.6;
 
 /**
  * How wide a wash's rim band is, px: as far as its medium's paint spreads by itself (`spread`, in diameters of the
@@ -80,8 +86,13 @@ fn dryingRimDraw(d: f32, band: f32, width: f32) -> f32 {
 fn dryingRimHardness(edge: f32, inner: f32) -> f32 {
   return smoothstep(0.3, 0.7, edge / max(inner, 1e-3));
 }
+// The share of its open pigment a band pixel can give up, by how freely its medium's paint runs (spread, in
+// diameters, mapped linearly up to STAMP_DRYING_RIM_FREE_SPREAD), how wet the wash was and the line's strength here.
+fn dryingRimMobility(spread: f32) -> f32 {
+  return ${STAMP_DRYING_RIM_MOST_TAKE.toFixed(3)} * clamp(spread / ${STAMP_DRYING_RIM_FREE_SPREAD.toFixed(3)}, 0.0, 1.0);
+}
 fn dryingRimTake(spread: f32, wetShare: f32, strength: f32) -> f32 {
-  return min(${STAMP_DRYING_RIM_MOST_TAKE.toFixed(3)}, spread) * clamp(wetShare, 0.0, 1.0) * clamp(strength, 0.0, 1.0);
+  return dryingRimMobility(spread) * clamp(wetShare, 0.0, 1.0) * clamp(strength, 0.0, 1.0);
 }
 // Every pixel gives up \`take\` of its amounts, spread over the line within reach as its kernel and the line weigh it
 // (normalised per giver), so a pixel on the line gains \`line\` times the gathered \`pulled\`: pigment is conserved,

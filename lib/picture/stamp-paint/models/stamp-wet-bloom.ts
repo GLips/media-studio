@@ -90,10 +90,17 @@ export function stampBloomSizing({ before, after }: StampWetLanding, wetting: Pa
 export const STAMP_BLOOM_CARRY_SPREAD = 2;
 
 /**
- * The band the carried paint settles in, integrated across the front, px: `bloomBand`'s integral. The studio sizes the
- * floor below which a pixel is too far from any front to give paint up against it.
+ * The band carried paint settles in: a dark line, its weight wavering between `least` and `most` along the front,
+ * falling off over `lineDecay` px, and a paler zone over `zoneDecay` px, each holding half of the paint.
  */
-export const STAMP_BLOOM_BAND_WIDTH = 0.5 * 1.6 + 0.5 * 7;
+const STAMP_BLOOM_BAND = { least: 0.1, most: 1.7, lineDecay: 1.6, zoneDecay: 7 };
+
+/**
+ * About `bloomBand`'s integral across a front, px, at the line's mean weight (its stall is noise even about ½); its
+ * soft start gains about what it loses across the front. The studio sizes the floor below which a pixel is too far
+ * from any front to give paint up against it.
+ */
+export const STAMP_BLOOM_BAND_WIDTH = 0.5 * STAMP_BLOOM_BAND.lineDecay * ((STAMP_BLOOM_BAND.least + STAMP_BLOOM_BAND.most) / 2) + 0.5 * STAMP_BLOOM_BAND.zoneDecay;
 
 /** The front and the carry, in WGSL. */
 export const STAMP_WET_BLOOM_WGSL = /* wgsl */ `
@@ -150,7 +157,7 @@ fn bloomFrontShift(p: vec2f, seed: u32, sigma: f32) -> f32 {
 // line; where it slowed and crept on, a faint, soft one.
 fn bloomFrontLine(p: vec2f, seed: u32, sigma: f32) -> vec2f {
   let stall = smoothstep(-0.45, 0.45, bloomNoise(p / max(4.0, 1.2 * sigma), seed ^ 0x2545f491u));
-  return vec2f(0.1 + 1.6 * stall, mix(3.5, 0.6, stall));
+  return vec2f(mix(${STAMP_BLOOM_BAND.least.toFixed(3)}, ${STAMP_BLOOM_BAND.most.toFixed(3)}, stall), mix(3.5, 0.6, stall));
 }
 // How far inside the front a pixel is, px, from the spread water's level and slope there.
 fn bloomFrontDistance(level: f32, slope: f32, shift: f32, sigma: f32) -> f32 {
@@ -163,7 +170,7 @@ fn bloomFrontDistance(level: f32, slope: f32, shift: f32, sigma: f32) -> f32 {
 // crisp as \`line\` says, and a paler zone within.
 fn bloomBand(d: f32, line: vec2f) -> f32 {
   let inside = max(d, 0.0);
-  return smoothstep(-line.y, line.y, d) * (0.5 * line.x * exp(-inside / 1.6) + 0.5 * exp(-inside / 7.0));
+  return smoothstep(-line.y, line.y, d) * (0.5 * line.x * exp(-inside / ${STAMP_BLOOM_BAND.lineDecay.toFixed(3)}) + 0.5 * exp(-inside / ${STAMP_BLOOM_BAND.zoneDecay.toFixed(3)}));
 }
 // The share of a pixel's paint the water carries away, as \`free\` as it is (liftFree: workable, and never set);
 // bloomLand is its amounts after, \`gathered\` having reached it.
