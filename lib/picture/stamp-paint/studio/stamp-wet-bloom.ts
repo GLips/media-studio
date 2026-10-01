@@ -146,15 +146,28 @@ ${movedWgsl}
 ${CONTACT_WGSL}
 @group(0) @binding(7) var band: texture_storage_2d_array<rgba32float, write>;
 fn waterAt(local: vec2i) -> f32 { return textureLoad(water, clamp(local, vec2i(0), vec2i(u.extent) - 1), 0, 0).r; }
+// The water's level (x) and its gradient (yz) round a pixel, binomially smoothed over 5 x 5 taps 2 px apart: the
+// transport's ladder leaves a pixel-scale ripple in the water, and where it lies nearly flat (held along a wash's
+// edge), a front read from single taps breaks its lip into pixel-sized specks.
+fn waterRound(local: vec2i) -> vec3f {
+  let even = array<f32, 5>(1.0, 4.0, 6.0, 4.0, 1.0);
+  let slope = array<f32, 5>(-1.0, -2.0, 0.0, 2.0, 1.0);
+  var round = vec3f(0.0);
+  for (var j = 0; j < 5; j++) {
+    for (var i = 0; i < 5; i++) {
+      let w = waterAt(local + 2 * vec2i(i - 2, j - 2));
+      round += w * vec3f(even[i] * even[j], slope[i] * even[j], even[i] * slope[j]);
+    }
+  }
+  return round / vec3f(256.0, 256.0, 256.0);
+}
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   let local = localOf(id);
   if (local.x < 0) { return; }
   let p = local + vec2i(u.origin);
-  // Read over two pixels either side: the transport's ladder leaves a pixel-scale ripple in the water, and a gradient
-  // read from it would ripple the distance and the lobes' direction.
-  let gradient = 0.25 * vec2f(waterAt(local + vec2i(2, 0)) - waterAt(local - vec2i(2, 0)), waterAt(local + vec2i(0, 2)) - waterAt(local - vec2i(0, 2)));
+  let water = waterRound(local);
   let before = wetnessBeforeAt(p);
-  let at = bloomFront(vec2f(p) + 0.5, waterAt(local), gradient, bloomEase(before, u.damp), u.seed, u.sigma);
+  let at = bloomFront(vec2f(p) + 0.5, water.x, water.yz, bloomEase(before, u.damp), u.seed, u.sigma);
   let streak = bloomStreak(at.foot, at.d, u.seed, u.sigma);
   let allowed = clamp(textureLoad(footprint, p, 0).g, 0.0, 1.0);
   var paint: array<vec4f, ${layers}>;

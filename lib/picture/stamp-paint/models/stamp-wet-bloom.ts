@@ -109,7 +109,7 @@ export const STAMP_BLOOM_BAND_WIDTH =
  * let it run, over patches `big` sigmas across. On them, scallops `share` of the sigma (`least`..`most` px), smaller
  * ones at `ratio` and `weight`, a crinkle at `fine` and `fineWeight`, at least `fineLeast` px: finer reads as pixels.
  */
-const STAMP_BLOOM_LOBES = { big: 1.0, held: 0.9, share: 0.45, least: 5, most: 14, ratio: 0.35, weight: 0.7, fine: 0.12, fineWeight: 0.6, fineLeast: 4 };
+const STAMP_BLOOM_LOBES = { big: 1.0, held: 0.9, share: 0.45, least: 5, most: 14, ratio: 0.35, weight: 0.7, fine: 0.12, fineWeight: 0.6, fineLeast: 4, squat: 0.5 };
 
 /** The front and the carry, in WGSL. */
 export const STAMP_WET_BLOOM_WGSL = /* wgsl */ `
@@ -171,7 +171,7 @@ fn bloomLobeCell(sigma: f32) -> f32 {
 // (p brought onto it), running along \`tangent\`. Lobes sit on the stall, one about every cell along it, each a
 // half-disk; where two meet the front folds in to a cusp. Each lobe's size fades as its centre leaves the stall, so
 // one doesn't pop in or out along it, and every lobe reaching p lies in the 5x5 cells round its foot.
-fn bloomLobeHeight(foot: vec2f, tangent: vec2f, normal: vec2f, cell: f32, seed: u32) -> f32 {
+fn bloomLobeHeight(foot: vec2f, tangent: vec2f, normal: vec2f, cell: f32, tallness: f32, seed: u32) -> f32 {
   let home = vec2i(floor(foot / cell));
   var height = 0.0;
   for (var j = -2; j <= 2; j++) {
@@ -183,7 +183,7 @@ fn bloomLobeHeight(foot: vec2f, tangent: vec2f, normal: vec2f, cell: f32, seed: 
       let size = bloomHash01(c, seed ^ 0x165667b1u);
       // Some cells grow no lobe, and the front runs flatter there; the rest are half-ellipses, some squat, some tall.
       let radius = cell * (0.35 + 0.45 * size) * onStall * step(0.15, size);
-      let tall = 0.8 + 0.5 * bloomHash01(c, seed ^ 0x85ebca6bu);
+      let tall = tallness * (0.8 + 0.5 * bloomHash01(c, seed ^ 0x85ebca6bu));
       let t = dot(off, tangent);
       height = max(height, tall * sqrt(max(0.0, radius * radius - t * t)));
     }
@@ -228,14 +228,17 @@ fn bloomFront(p: vec2f, level: f32, gradient: vec2f, ease: f32, seed: u32, sigma
   let base = p - lobed * edge;
   let warp = vec2f(bloomValue(base / (3.0 * cell), seed ^ 0x68e31da4u), bloomValue(base / (3.0 * cell) + 17.3, seed ^ 0xb5297a4du)) - 0.5;
   let warped = base + 1.2 * cell * warp;
-  let small = ${STAMP_BLOOM_LOBES.ratio.toFixed(3)} * cell;
-  let lobes = bloomLobeHeight(warped, along, lobed, cell, seed)
-    + ${STAMP_BLOOM_LOBES.weight.toFixed(3)} * bloomLobeHeight(warped, along, lobed, small, seed ^ 0x9e3779b9u)
-    + ${STAMP_BLOOM_LOBES.fineWeight.toFixed(3)} * bloomLobeHeight(warped, along, lobed, max(${STAMP_BLOOM_LOBES.fineLeast.toFixed(1)}, ${STAMP_BLOOM_LOBES.fine.toFixed(3)} * cell), seed ^ 0x7f4a7c15u);
+  let small = max(${STAMP_BLOOM_LOBES.fineLeast.toFixed(1)}, ${STAMP_BLOOM_LOBES.ratio.toFixed(3)} * cell);
+  // Only where the paper held the water does its edge crinkle: where it ran on, the front thins out in the scallops
+  // alone, as a backrun's open side feathers; finer lobes there, on a faint, soft edge, read as hairs.
+  let crinkle = smoothstep(0.25, 0.7, held);
+  let lobes = bloomLobeHeight(warped, along, lobed, cell, 1.0, seed) + crinkle * (
+    ${STAMP_BLOOM_LOBES.weight.toFixed(3)} * bloomLobeHeight(warped, along, lobed, small, ${STAMP_BLOOM_LOBES.squat.toFixed(3)}, seed ^ 0x9e3779b9u)
+    + ${STAMP_BLOOM_LOBES.fineWeight.toFixed(3)} * bloomLobeHeight(warped, along, lobed, max(${STAMP_BLOOM_LOBES.fineLeast.toFixed(1)}, ${STAMP_BLOOM_LOBES.fine.toFixed(3)} * cell), ${STAMP_BLOOM_LOBES.squat.toFixed(3)}, seed ^ 0x7f4a7c15u));
   // Lobes stand out about half their size on average: held back by that, the bloom keeps the water's size.
   // Along the front the lobing comes and goes, over a few lobes: deep cauliflower in one stretch, a gentle wave in the next.
   let depth = 0.35 + 1.1 * bloomValue(warped / (4.0 * cell), seed ^ 0x1b873593u);
-  let shift = depth * (lobes - 0.3 * cell * (1.0 + ${(STAMP_BLOOM_LOBES.ratio * STAMP_BLOOM_LOBES.weight + STAMP_BLOOM_LOBES.fine * STAMP_BLOOM_LOBES.fineWeight).toFixed(3)}));
+  let shift = depth * (lobes - 0.3 * cell * (1.0 + crinkle * ${(STAMP_BLOOM_LOBES.ratio * STAMP_BLOOM_LOBES.weight + STAMP_BLOOM_LOBES.fine * STAMP_BLOOM_LOBES.fineWeight).toFixed(3)}));
   // Well outside, the lobes fade: a front reaching far past the water would leave rings of its own on the paper.
   let reach = 0.75 * sigma + 2.0;
   return BloomFront(stall + (big + shift) * smoothstep(-2.0 * reach, -reach, stall), base, held, p - normal * (stall + BLOOM_PAST_FRONT));
@@ -245,7 +248,7 @@ fn bloomFront(p: vec2f, level: f32, gradient: vec2f, ease: f32, seed: u32, sigma
 fn bloomStreak(foot: vec2f, d: f32, seed: u32, sigma: f32) -> f32 {
   let cell = bloomLobeCell(sigma);
   let bend = vec2f(max(d, 0.0) / (2.5 * cell));
-  let streak = 0.6 * bloomValue(foot / (0.6 * cell) + bend, seed ^ 0x51ed270bu) + 0.4 * bloomValue(foot / (0.2 * cell + 1.0) + 2.0 * bend, seed ^ 0x5be0cd19u);
+  let streak = 0.6 * bloomValue(foot / (0.6 * cell) + bend, seed ^ 0x51ed270bu) + 0.4 * bloomValue(foot / (0.3 * cell + 2.0) + 2.0 * bend, seed ^ 0x5be0cd19u);
   return mix(0.5, streak, exp(-max(d, 0.0) / (2.0 * cell)));
 }
 // How the lip lies along the front, as (weight, softness px): heavy with a crisp outer edge where the water was
