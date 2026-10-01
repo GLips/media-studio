@@ -77,19 +77,38 @@ fn paperThroughout(p: vec2i) -> vec2f {
   }
   return vec2f(wettest, workable);
 }
-fn wetnessBeforeAt(p: vec2i) -> f32 { return gridAt(vec2f(p) + 0.5, u.lattice.xyz, u.size, u.first); }
+// The paper's wetness before the deposit, each lattice point read as the wettest of those round it. Read plainly, a
+// wash's wetness falls to none a cell inside its soft fringe, which the same wet brush laid; a bloom's water held
+// there would dry its lip as a straight seam through the paint. So the paint's own edge (bloomContact) ends the water.
+fn wettestRound(at: vec2u) -> f32 {
+  var wettest = 0.0;
+  for (var j = -1; j <= 1; j++) {
+    for (var i = -1; i <= 1; i++) {
+      let q = vec2u(clamp(vec2i(at) + vec2i(i, j), vec2i(0), vec2i(u.size) - 1));
+      wettest = max(wettest, grid[u.first + q.y * u.size.x + q.x]);
+    }
+  }
+  return wettest;
+}
+fn wetnessBeforeAt(p: vec2i) -> f32 {
+  let uv = clamp((vec2f(p) + 0.5 - u.lattice.xy) / u.lattice.z, vec2f(0.0), vec2f(u.size) - 1.0);
+  let cell = min(vec2u(floor(uv)), u.size - 2u);
+  let f = uv - vec2f(cell);
+  return mix(mix(wettestRound(cell), wettestRound(cell + vec2u(1u, 0u)), f.x), mix(wettestRound(cell + vec2u(0u, 1u)), wettestRound(cell + vec2u(1u, 1u)), f.x), f.y);
+}
 `;
 
 // Whether the bloom's water reaches p (bloomContact), by the wash's paint over the 5 x 5 px round it: a grain-fine
 // fringe would speckle the front where the wash's own edge stops it.
 const CONTACT_WGSL = /* wgsl */ `
-fn contactAt(p: vec2i) -> f32 {
+fn coverageRound(p: vec2i) -> f32 {
   var coverage = 0.0;
   for (var j = -2; j <= 2; j += 2) {
     for (var i = -2; i <= 2; i += 2) { coverage += textureLoad(layer, clamp(p + vec2i(i, j), vec2i(0), vec2i(textureDimensions(layer)) - 1), 0, 0).x; }
   }
-  return bloomContact(wetnessBeforeAt(p), coverage / 9.0);
-}`;
+  return coverage / 9.0;
+}
+fn contactAt(p: vec2i) -> f32 { return bloomContact(wetnessBeforeAt(p), coverageRound(p)); }`;
 
 // The surplus water the deposit left, per pixel, into the transport's values; and the paper it spreads over: how
 // readily the water runs there (bloomEase, by the paper before the deposit, only where it reaches: bloomContact), and
@@ -140,8 +159,9 @@ fn waterAt(local: vec2i) -> f32 { return textureLoad(water, clamp(local, vec2i(0
   let allowed = clamp(textureLoad(footprint, p, 0).g, 0.0, 1.0);
   var paint: array<vec4f, ${layers}>;
   for (var l = 0; l < ${layers}; l++) { paint[l] = textureLoad(layer, p, l, 0); }
+  let open = bloomPastFront(waterAt(vec2i(floor(at.past)) - vec2i(u.origin)));
   let line = bloomFrontLine(at.held, bloomMerging(before, u.damp, u.shine));
-  let weight = bloomBand(at.d, line, streak) * allowed * contactAt(p);
+  let weight = bloomBand(at.d, line, streak) * allowed * contactAt(p) * bloomLipPaint(coverageRound(p)) * open;
   let free = liftFree(workableAt(p), washOpen(paint));
   textureStore(front, local, vec4f(weight, bloomLoosened(at.d, free, u.drive, streak) * allowed, 0.0, 0.0));
   textureStore(band, local, 0, vec4f(weight, 0.0, 0.0, 0.0));

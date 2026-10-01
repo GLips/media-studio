@@ -1,15 +1,16 @@
 // stamp-gate-washes.ts: the washes the GPU gate paints, held to what paint must do, not a baseline:
 //
 // - any frame order: a frame drawn fresh or after another matches;
-// - conserved: water, softening, a bloom or wet paper only moves pigment;
-// - lifted: a lift never raises a total nor leaves less than none, and takes less of a stain;
-// - spread: flow never leaves overlapping strokes less even;
+// - conserved: water, softening, blooms and wet paper only move pigment;
+// - lifted: a lift is bounded, and takes less of a stain;
+// - spread: flow leaves overlapping strokes no less even;
 // - set: dried paint wetted again lifts only by its rewetting;
-// - fenced: no paint moves under masking fluid or out of a pass's `within`;
-// - rimmed: a drying puddle's edge gathers pigment; a seam of patches wet together doesn't;
-// - bloomed: a drop blooms though paint landed elsewhere first.
+// - fenced: no paint moves under masking fluid or out of a `within`;
+// - rimmed: a drying puddle's edge gathers pigment, a seam of patches wet together doesn't;
+// - bloomed: a drop blooms though paint landed elsewhere first;
+// - unlined: a backrun lays no line along its wash's edge.
 //
-// Each case paints into its last group, which readLayer reads.
+// Each case paints into its last group, read back.
 
 import { PAINT_BANDS } from '#lib/picture/paint/models/paint-spectrum.ts';
 import { PAINT_MEDIA } from '#lib/picture/paint/models/paint-medium.ts';
@@ -42,6 +43,7 @@ export type StampGateWashCase = {
   | { property: 'fenced'; fenced: (x: number, y: number) => boolean }
   | { property: 'rimmed'; without: StampGatePainting }
   | { property: 'bloomed'; without: StampGatePainting }
+  | { property: 'unlined' }
 );
 
 /** How far a pigment's total may drift from the same wash's without the ops under test: its layer's half-float rounding summed over a few thousand pixels. */
@@ -97,6 +99,14 @@ export const STAMP_GATE_RIM = { least: 0.1, seamMost: 0.02 };
 /** The bloomed case's drop, and how much of the paint round it must move, as a share of what lies there without it. */
 const BLOOM_DROP = { x: 45, y: 60, radius: 30 };
 export const STAMP_GATE_BLOOMED_LEAST = 0.02;
+
+/** The unlined case's wash's right edge, by column, and its rows. */
+const BACKRUN_EDGE = { x: 100, rows: [20, 100] as const };
+/**
+ * How much darker than without blooms the unlined case's wash's edge may get: each row's most pigment near it, as a
+ * share of without's, on average. A backrun pushes a little paint toward the edge; a lip there would be a dark line.
+ */
+export const STAMP_GATE_UNLINED_MOST = 0.15;
 
 /** Every wash case, by ID. */
 function washCases(): StampGateWashCase[] {
@@ -204,6 +214,16 @@ function washCases(): StampGateWashCase[] {
       subject: washPainting('watercolour', false, (wash) => {
         paintedElsewhere(wash);
         wash.bloom('bloom', { brush: SOFT, diameter: 24, at: [{ x: BLOOM_DROP.x, y: BLOOM_DROP.y }], ...shown(1) });
+      }),
+    },
+    // A wash left until damp, a wetter stroke laid inside its right edge: its backrun runs left into the damp paint
+    // and reaches the edge on its right. Against the same painting without the bloom stage.
+    {
+      id: 'wash/backrun-edge', mid: MID, property: 'unlined',
+      subject: washPainting('watercolour', false, (wash) => {
+        wash.fill('wash', { brush: ROUND, diameter: 30, application: { kind: 'flood' }, region: stampGatePolygon(10, 10, BACKRUN_EDGE.x, 10, BACKRUN_EDGE.x, 110, 10, 110), material: pure(W.cerulean), ...shown(0) });
+        wash.wait('damp');
+        wash.stroke('side', { brush: ROUND, diameter: 22, water: 1, material: pure(W.cerulean), path: [{ x: BACKRUN_EDGE.x - 10, y: 14 }, { x: BACKRUN_EDGE.x - 12, y: 106 }], ...shown(1) });
       }),
     },
     // Against the same paint that doesn't flow, so neither moves nor rims.
@@ -399,5 +419,31 @@ export function checkStampGateRimmed(id: string, pigments: readonly string[], su
   return {
     id: `${id}: rimmed`, passed: !problems.length,
     detail: `${problems.length ? `${problems.join('; ')}. ` : ''}the puddle's edge ${rimmed.edge.toFixed(3)} of its interior, ${still.edge.toFixed(3)} still (under +${STAMP_GATE_RIM.least} fails); the seam ${rimmed.seam.toFixed(3)}, ${still.seam.toFixed(3)} still (past +${STAMP_GATE_RIM.seamMost} fails); least ${least}; ${conserved.detail}`,
+  };
+}
+
+/** Each of the unlined case's rows' most pigment, every pigment summed, within a few pixels of its wash's edge, on average. */
+function edgeMost(layer: StampGateLayer, pigments: number): number {
+  const slots = Array.from({ length: pigments }, (_, slot) => slotAmounts(layer, slot));
+  const [y0, y1] = BACKRUN_EDGE.rows;
+  let sum = 0;
+  for (let y = y0; y < y1; y++) {
+    let most = 0;
+    for (let x = BACKRUN_EDGE.x - 6; x < BACKRUN_EDGE.x + 16; x++) most = Math.max(most, slots.reduce((t, amounts) => t + amounts[y * layer.width + x], 0));
+    sum += most;
+  }
+  return sum / (y1 - y0);
+}
+
+/**
+ * Whether `subject`'s wash's edge holds at most STAMP_GATE_UNLINED_MOST more pigment at its darkest, row by row, than
+ * `withoutBlooms`'s, and each pigment's total holds.
+ */
+export function checkStampGateUnlined(id: string, pigments: readonly string[], subject: StampGateLayer, withoutBlooms: StampGateLayer): StampGateWashCheck {
+  const share = edgeMost(subject, pigments.length) / edgeMost(withoutBlooms, pigments.length) - 1;
+  const conserved = checkStampGateConserved(id, pigments, subject, withoutBlooms);
+  return {
+    id: `${id}: unlined`, passed: share <= STAMP_GATE_UNLINED_MOST && conserved.passed,
+    detail: `its edge's darkest ${share >= 0 ? '+' : ''}${(share * 100).toFixed(1)}% on without blooms (past +${STAMP_GATE_UNLINED_MOST * 100}% fails); ${conserved.detail}`,
   };
 }

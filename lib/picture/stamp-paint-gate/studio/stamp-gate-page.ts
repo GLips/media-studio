@@ -43,7 +43,7 @@ import { stampGatePrivatePainting, type StampGatePrivateCase } from '../models/s
 import { checkStampGateStripe, STAMP_GATE_STRIPE_SIZE, stampGateStripeCase, stampGateStripeLayer, stampGateStripePainting } from '../models/stamp-gate-stripe.ts';
 import { stampGateFrameDifference, stampGateFramePasses, type StampGateFrameDifference } from '../models/stamp-gate-frames.ts';
 import {
-  checkStampGateBloomed, checkStampGateConserved, checkStampGateFenced, checkStampGateRimmed, checkStampGateLifted, checkStampGateSet, checkStampGateSpread, stampGateLastGroupPigments, stampGateWashCase, type StampGateWashCheck,
+  checkStampGateBloomed, checkStampGateConserved, checkStampGateFenced, checkStampGateRimmed, checkStampGateUnlined, checkStampGateLifted, checkStampGateSet, checkStampGateSpread, stampGateLastGroupPigments, stampGateWashCase, type StampGateWashCheck,
 } from '../models/stamp-gate-washes.ts';
 import { stampGatePainting, stampGateTracePainting, type StampGateImage, type StampGatePainting } from '../models/stamp-gate-paintings.ts';
 
@@ -244,6 +244,10 @@ async function checkStampGateWash(id: string): Promise<StampGateWashCheck[]> {
   if (washCase.property === 'order') return checks;
   const pigments = stampGateLastGroupPigments(subject);
   if (washCase.property === 'fenced') return [...checks, checkStampGateFenced(id, pigments, painted.layer, washCase.fenced)];
+  if (washCase.property === 'unlined') {
+    const withoutBlooms = await withGateRenderer(subject, url, (renderer) => renderer.readLayer(end), STAMP_WET_STAGES.filter((stage) => stage.id !== 'bloom'));
+    return [...checks, checkStampGateUnlined(id, pigments, painted.layer, withoutBlooms)];
+  }
   if (stampGateLastGroupPigments(washCase.without).join() !== pigments.join()) throw new Error(`stamp gate: ${id} and its painting without the ops under test lay different pigments`);
   const without = await withGateRenderer(washCase.without, url, (renderer) => renderer.readLayer(end));
   if (washCase.property === 'conserved') return [...checks, checkStampGateConserved(id, pigments, painted.layer, without)];
