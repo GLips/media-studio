@@ -85,6 +85,12 @@ export type { StampStrokePoint, StampPlacement } from '#lib/paint/brush/models/s
 export { STAMP_PRESSURE_PROFILES, type StampPressureCurve, type StampPressureProfileName, type StampStrokeHand } from '#lib/paint/brush/models/stamp-stroke-hand.ts';
 export type { StampBlend, StampBrush, StampBrushMedia } from '#lib/paint/brush/models/stamp-brush.ts';
 export type { ResolvedStampPaintStyle } from '#lib/paint/style/models/style.ts';
+// Figure shapes (plan 1's shape sources): a figure's named parts, silhouette, interior lines and anchors, as regions and
+// paths a painting fills, clips and pins with, from posed 3D primitives, named 2D construction or SVG path data.
+export type { PaintFigurePart, PaintFigureShapes, PaintFigureSilhouette } from '#lib/paint/animation/models/figure/paint-figure-shapes.ts';
+export { posedFigureShapes, posedPrimitiveFigure, type PaintFigurePose, type PaintFigureView, type PosedPrimitiveFigure } from '#lib/paint/animation/models/figure/posed-primitive-figure.ts';
+export { constructedFigureShapes, figureConstructionChain, type ConstructedFigure, type PaintFigureConstruction } from '#lib/paint/animation/models/figure/constructed-figure.ts';
+export { svgFigureShapes, svgPathRegions, type SvgPathFigure, type SvgPathPlacement } from '#lib/paint/animation/models/figure/svg-path-figure.ts';
 // Pigment paint: a style that paints in pigment names its medium and pigments; a deposit lays a colour or a mixture.
 export { PAINT_MEDIA, TITANIUM_WHITE, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 export type { PaintMixture, PaintMixturePart } from '#lib/paint/materials/models/paint-mixture.ts';
