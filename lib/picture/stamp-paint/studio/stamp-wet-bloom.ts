@@ -117,15 +117,16 @@ fn waterAt(local: vec2i) -> f32 { return textureLoad(water, clamp(local, vec2i(0
   let local = localOf(id);
   if (local.x < 0) { return; }
   let p = local + vec2i(u.origin);
-  let slope = 0.5 * length(vec2f(waterAt(local + vec2i(1, 0)) - waterAt(local - vec2i(1, 0)), waterAt(local + vec2i(0, 1)) - waterAt(local - vec2i(0, 1))));
-  let shift = bloomFrontShift(vec2f(p) + 0.5, u.seed, u.sigma);
-  let d = bloomFrontDistance(waterAt(local), slope, shift, u.sigma);
+  // Read over two pixels either side: the transport's ladder leaves a pixel-scale ripple in the water, and a gradient
+  // read from it would ripple the distance and the lobes' direction.
+  let gradient = 0.25 * vec2f(waterAt(local + vec2i(2, 0)) - waterAt(local - vec2i(2, 0)), waterAt(local + vec2i(0, 2)) - waterAt(local - vec2i(0, 2)));
+  let d = bloomFrontDistance(vec2f(p) + 0.5, waterAt(local), gradient, u.seed, u.sigma);
   let allowed = clamp(textureLoad(footprint, p, 0).g, 0.0, 1.0);
   let weight = bloomBand(d, bloomFrontLine(vec2f(p) + 0.5, u.seed, u.sigma)) * allowed * smoothstep(0.0, 0.1, wetnessAfterAt(p));
   var held: array<vec4f, ${layers}>;
   for (var l = 0; l < ${layers}; l++) { held[l] = textureLoad(layer, p, l, 0); }
   let free = liftFree(workableAt(p), washOpen(held));
-  textureStore(front, local, vec4f(weight, bloomLoosened(d, free, u.drive) * allowed, 0.0, 0.0));
+  textureStore(front, local, vec4f(weight, bloomLoosened(vec2f(p) + 0.5, d, free, u.drive, u.seed, u.sigma) * allowed, 0.0, 0.0));
   textureStore(band, local, 0, vec4f(weight, 0.0, 0.0, 0.0));
 }`;
 
