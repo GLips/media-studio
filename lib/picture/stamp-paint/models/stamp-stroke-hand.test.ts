@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { stampLinearDynamics, type StampBrush } from './stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe } from './stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, stampPaintRecipe, stampPassDeposits } from './stamp-paint-recipe.ts';
 import { handStampStroke } from './stamp-stroke-hand.ts';
 
 const D = 20;
@@ -62,10 +62,10 @@ const brush: StampBrush = {
 };
 
 test('in a recipe, a hand stroke thins by its profile and its reveal slows through the corner', () => {
-  const [even, handed] = compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) => {
+  const [even, handed] = stampPassDeposits(compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) => {
     pass.stroke('even', { brush, material: { kind: 'color', color: '#000000' }, diameter: D, path: corner });
     pass.stroke('hand', { brush, material: { kind: 'color', color: '#000000' }, diameter: D, path: corner, hand: { profile: 'swell', curvature: 0.3 } });
-  })))).groups[0].passes[0].deposits;
+  })))).groups[0].passes[0]);
   assert.ok(even.stamps.every((s) => s.diameter === D));
   assert.ok(handed.stamps[0].diameter < 0.5 * D && nearest(handed.stamps, 400, 0).diameter > 0.9 * D);
   // The reveal it takes to cross 80 px through the corner against 80 px of the straight before it.

@@ -4,7 +4,7 @@
 // at `t`; so a frame may start from a saved state of its settled prefix rather than from bare paper, and is the same
 // whichever frame came before it.
 
-import type { CompiledStampDeposit, CompiledStampGroup, CompiledStampPaint, CompiledStampPass } from './stamp-paint-recipe.ts';
+import { stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampPaint, type CompiledStampPass } from './stamp-paint-recipe.ts';
 
 /**
  * A deposit, or the end of a wash, and the scene seconds from which it's settled: a deposit wholly shown (-Infinity
@@ -18,7 +18,7 @@ export type StampPaintEvent = { group: CompiledStampGroup; pass: CompiledStampPa
 /** `painting`'s events in the order it paints them. */
 export function stampPaintEvents(painting: CompiledStampPaint): StampPaintEvent[] {
   return painting.groups.flatMap((group) => group.passes.flatMap((pass): StampPaintEvent[] => {
-    const deposits = pass.deposits.map((deposit): StampPaintEvent => ({
+    const deposits = stampPassDeposits(pass).map((deposit): StampPaintEvent => ({
       kind: 'deposit', group, pass, deposit, settledAt: deposit.reveal ? deposit.reveal.at + deposit.reveal.over : -Infinity,
     }));
     if (pass.kind !== 'wash') return deposits;

@@ -125,12 +125,13 @@ const hexRgb = (color: string): [number, number, number] => [byteAt(color, 1), b
  */
 export function flatStampPaintCompositor(painting: CompiledStampPaint): StampPaintCompositor {
   const writers = new Map<CompiledStampDeposit, (views: StampUniformViews) => void>();
-  const wash = painting.groups.flatMap((group) => group.passes).find((pass) => pass.kind === 'wash');
-  if (wash) throw new Error(`stamp paint: ${wash.id} is a wash, and wet paint needs a style that paints in pigment`);
-  for (const deposit of painting.groups.flatMap((group) => group.passes.flatMap((pass) => pass.deposits))) {
+  const passes = painting.groups.flatMap((group) => group.passes);
+  const deposits = passes.flatMap((pass) => {
+    if (pass.kind === 'wash') throw new Error(`stamp paint: ${pass.id} is a wash, and wet paint needs a style that paints in pigment`);
+    return pass.deposits;
+  });
+  for (const deposit of deposits) {
     const { action, brush } = deposit;
-    // Only a wash's deposits wet or lift, and a wash was refused above.
-    if (action.kind !== 'paint') throw new Error(`stamp paint: ${deposit.id} ${action.kind === 'water' ? 'wets' : 'lifts'} outside a wash`);
     if (action.material.kind !== 'constant') throw new Error(`stamp paint: ${deposit.id} grades its material, which only a style that paints in pigment can lay`);
     const material = action.material.value;
     if (material.kind === 'mixture') throw new Error(`stamp paint: ${deposit.id} lays a mixture of pigments, which only a style that paints in pigment can lay`);

@@ -10,6 +10,7 @@ import { COVERAGE_FORMULAS_WGSL } from '#lib/picture/stamp-paint/models/coverage
 import { STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
 import { STAMP_FLOOD_FRONT_SHARE_WGSL } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
 import { STAMP_PAINT_FIELD_SHARE } from '#lib/picture/stamp-paint/models/stamp-paint-field.ts';
+import { stampPassDeposits } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import { STAMP_WET_LAND_WGSL } from '#lib/picture/stamp-paint/models/stamp-wet-landing.ts';
 import { STAMP_WET_LIFT_WGSL } from '#lib/picture/stamp-paint/models/stamp-wet-lift.ts';
 import { STAMP_GRID_AT_WGSL, STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL } from '#lib/picture/stamp-paint/models/stamp-region.ts';
@@ -151,7 +152,7 @@ async function traceStampGate(): Promise<{ worst: number; mean: number; ordinary
   const gate = stampGateTracePainting();
   const { width, height } = gate;
   return withGateRenderer(gate, drawnImages(gate), async (renderer, frame) => {
-    const deposits = gate.painting.groups.flatMap((group) => group.passes.flatMap((pass) => pass.deposits));
+    const deposits = gate.painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass)));
     const traces = await renderer.trace(gate.t, deposits.map((deposit) => ({ deposit, crop: { x: 0, y: 0, w: width, h: height } })));
     await renderer.finish();
     const traced = frame();

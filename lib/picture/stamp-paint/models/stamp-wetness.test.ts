@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PAINT_MEDIA, type PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
 import { stampLinearDynamics, type StampBrush } from './stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPass, type StampWashOptions, type StampWashScope } from './stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, stampPaintRecipe, stampPassDeposits, type CompiledStampPass, type StampWashOptions, type StampWashScope } from './stamp-paint-recipe.ts';
 import { compileStampWetness, stampDrying, STAMP_WET_CELL, type StampWetness } from './stamp-wetness.ts';
 import { stampGridAt } from './stamp-region.ts';
 
@@ -36,7 +36,7 @@ function washed(body: (wash: StampWashScope) => void, options: StampWashOptions 
   return { pass, wetness: compileStampWetness(painting, medium, paper, size) };
 }
 /** The landing of `pass`'s deposit `id`. */
-const landing = (wetness: StampWetness, pass: CompiledStampPass, id: string) => wetness.landings.get(pass.deposits.find((deposit) => deposit.id === `g/w/${id}`)!)!;
+const landing = (wetness: StampWetness, pass: CompiledStampPass, id: string) => wetness.landings.get(stampPassDeposits(pass).find((deposit) => deposit.id === `g/w/${id}`)!)!;
 
 test('water raises wetness only where its footprint goes, and the paper it leaves covers the painting', () => {
   const { pass, wetness } = washed((wash) => {

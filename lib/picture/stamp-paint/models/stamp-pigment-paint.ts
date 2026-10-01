@@ -12,7 +12,7 @@ import { paintPigmentSeed } from '#lib/picture/paint/models/paint-paper.ts';
 import type { PaintPigment, PaintPigmentAppearance } from '#lib/picture/paint/models/paint-pigment.ts';
 import type { PaintBands } from '#lib/picture/paint/models/paint-spectrum.ts';
 import { stampPaintFieldEnds } from './stamp-paint-field.ts';
-import type { CompiledStampDeposit, CompiledStampPaint, PaintMaterial, StampPaintColor } from './stamp-paint-recipe.ts';
+import { stampPassDeposits, type CompiledStampDeposit, type CompiledStampPaint, type PaintMaterial, type StampPaintColor } from './stamp-paint-recipe.ts';
 
 /**
  * Paint as pigment in a `medium`, mixed and dried with Kubelka–Munk. `pigments`, keyed by id, are the ones a mixture
@@ -81,7 +81,7 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
   const deposits = new Map<CompiledStampDeposit, StampPigmentDeposit>();
   const groups = painting.groups.map((group, g): StampPigmentGroup => {
     const palette: PaintPigment[] = [];
-    for (const deposit of group.passes.flatMap((pass) => pass.deposits)) {
+    for (const deposit of group.passes.flatMap((pass) => stampPassDeposits(pass))) {
       const { action } = deposit;
       // Water and a lift lay no pigment of their own.
       if (action.kind !== 'paint') {

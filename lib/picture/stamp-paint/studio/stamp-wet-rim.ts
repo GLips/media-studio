@@ -11,7 +11,7 @@ import { PAINT_PAPER_WGSL, paintPigmentSeed } from '#lib/picture/paint/models/pa
 import { STAMP_DRYING_RIM_MOST_BAND, STAMP_DRYING_RIM_WGSL, stampDryingRimBand, stampDryingRimWetShare, stampWashWettest } from '../models/stamp-wet-rim.ts';
 import { STAMP_GRID_AT_WGSL, type StampGrid } from '../models/stamp-region.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
-import type { CompiledStampPass } from '../models/stamp-paint-recipe.ts';
+import { stampPassDeposits, type CompiledStampPass } from '../models/stamp-paint-recipe.ts';
 import type { StampWetStage, StampWetStageContext, StampWetStageMoment } from './stamp-wet-stages.ts';
 import { stampUniformLayout, stampUniformWriter } from './stamp-uniform-layout.ts';
 
@@ -277,7 +277,7 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
   const rims = new Map<CompiledStampPass, LoadedRim>(), values: number[] = [];
   for (const pass of washes) {
     const grid = stampWashWettest(pass, wetness);
-    const painted = pass.deposits.filter((deposit) => deposit.action.kind === 'paint');
+    const painted = stampPassDeposits(pass).filter((deposit) => deposit.action.kind === 'paint');
     if (!grid || !painted.length) continue;
     const wetShare = stampDryingRimWetShare(Math.max(...grid.values), damp);
     const diameter = painted.reduce((sum, deposit) => sum + deposit.diameter, 0) / painted.length;
