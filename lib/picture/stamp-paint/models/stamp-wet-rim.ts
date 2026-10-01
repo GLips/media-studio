@@ -39,8 +39,13 @@ export function stampWashWettest(pass: CompiledStampPass, wetness: StampWetness)
   const landings = stampPassDeposits(pass).flatMap((deposit) => wetness.landings.get(deposit) ?? []);
   if (!landings.length) return null;
   const grids = landings.flatMap(({ before, after }) => [stampWetGrid(before, 'wetness'), stampWetGrid(after, 'wetness')]);
-  const i0 = Math.min(...grids.map((g) => g.x0 / STAMP_WET_CELL)), j0 = Math.min(...grids.map((g) => g.y0 / STAMP_WET_CELL));
-  const i1 = Math.max(...grids.map((g) => g.x0 / STAMP_WET_CELL + g.columns)), j1 = Math.max(...grids.map((g) => g.y0 / STAMP_WET_CELL + g.rows));
+  let i0 = Infinity, j0 = Infinity, i1 = -Infinity, j1 = -Infinity;
+  for (const g of grids) {
+    i0 = Math.min(i0, g.x0 / STAMP_WET_CELL);
+    j0 = Math.min(j0, g.y0 / STAMP_WET_CELL);
+    i1 = Math.max(i1, g.x0 / STAMP_WET_CELL + g.columns);
+    j1 = Math.max(j1, g.y0 / STAMP_WET_CELL + g.rows);
+  }
   const columns = i1 - i0, rows = j1 - j0, values = new Float32Array(columns * rows);
   for (const g of grids) {
     const di = g.x0 / STAMP_WET_CELL - i0, dj = g.y0 / STAMP_WET_CELL - j0;

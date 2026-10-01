@@ -265,16 +265,18 @@ function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: S
     return found;
   };
 
-  const afterValues: number[] = [];
+  const afterValues = new Float32Array(sized.reduce((sum, { landing }) => sum + landing.after.wetness.length, 0));
+  let afterFirst = 0;
   const plans = new Map(sized.map(({ deposit, landing, sigma, drive }): [CompiledStampDeposit, BloomPlan] => {
-    const afterFirst = afterValues.length;
-    afterValues.push(...landing.after.wetness);
+    afterValues.set(landing.after.wetness, afterFirst);
     const uniform = device.createBuffer({ size: BLOOM.words * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    return [deposit, { first: grids.firsts.get(deposit)!, afterFirst, sigma, drive, lattice: landing.before.window, pipelines: pipelinesOf(wash.layersOf(deposit)), uniform }];
+    const plan = { first: grids.firsts.get(deposit)!, afterFirst, sigma, drive, lattice: landing.before.window, pipelines: pipelinesOf(wash.layersOf(deposit)), uniform };
+    afterFirst += landing.after.wetness.length;
+    return [deposit, plan];
   }));
-  const after = device.createBuffer({ size: afterValues.length * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-  device.queue.writeBuffer(after, 0, new Float32Array(afterValues));
-  const layers = Math.max(...sized.map(({ deposit }) => wash.layersOf(deposit)));
+  const after = device.createBuffer({ size: afterValues.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+  device.queue.writeBuffer(after, 0, afterValues);
+  const layers = sized.reduce((most, { deposit }) => Math.max(most, wash.layersOf(deposit)), 1);
 
   let scratch: BloomScratch | null = null;
   const reserve = ({ w, h }: { w: number; h: number }) => {

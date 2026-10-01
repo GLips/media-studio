@@ -272,12 +272,13 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
   const washes = painting.groups.flatMap((group) => group.passes).filter((pass) => pass.kind === 'wash');
   if (spread <= 0 || !washes.length) return { encode: () => null };
 
-  const rims = new Map<CompiledStampPass, LoadedRim>(), values: number[] = [];
+  const rims = new Map<CompiledStampPass, LoadedRim>();
+  let points = 0;
   for (const pass of washes) {
     const grid = stampWashWettest(pass, wetness);
     const painted = stampPassDeposits(pass).filter((deposit) => deposit.action.kind === 'paint');
     if (!grid || !painted.length) continue;
-    const wetShare = stampDryingRimWetShare(Math.max(...grid.values), damp);
+    const wetShare = stampDryingRimWetShare(grid.values.reduce((most, value) => Math.max(most, value), 0), damp);
     const diameter = painted.reduce((sum, deposit) => sum + deposit.diameter, 0) / painted.length;
     const band = stampDryingRimBand(spread, diameter, wetShare);
     // A band under a pixel or two is a rim no one sees: damp brushwork, or a medium that barely spreads.
@@ -291,7 +292,7 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     const put = stampUniformWriter(RIM, { floats: new Float32Array(words), ints: new Int32Array(words), words: new Uint32Array(words) });
     put('lattice', [grid.x0, grid.y0, grid.cell, 0]);
     put('size', [grid.columns, grid.rows]);
-    put('first', values.length);
+    put('first', points);
     put('seed', paintPigmentSeed(pass.id));
     put('origin', [box.x, box.y]);
     put('extent', [box.w, box.h]);
@@ -304,13 +305,15 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     put('norm', norm);
     const uniform = device.createBuffer({ size: RIM.words * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     device.queue.writeBuffer(uniform, 0, words);
-    rims.set(pass, { grid, first: values.length, box, uniform, layers: wash.layersOf(painted[0]) });
-    values.push(...grid.values);
+    rims.set(pass, { grid, first: points, box, uniform, layers: wash.layersOf(painted[0]) });
+    points += grid.values.length;
   }
   if (!rims.size) return { encode: () => null };
 
-  const grid = device.createBuffer({ size: values.length * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-  device.queue.writeBuffer(grid, 0, new Float32Array(values));
+  const values = new Float32Array(points);
+  for (const rim of rims.values()) values.set(rim.grid.values, rim.first);
+  const grid = device.createBuffer({ size: values.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+  device.queue.writeBuffer(grid, 0, values);
   const steps: GPUBuffer[] = [];
   for (let step = FLOOD_FIRST_STEP; step >= 1; step /= 2) {
     const buffer = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
@@ -319,7 +322,7 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
   }
 
   const layers = layer.layers.length;
-  const most = { w: Math.max(...[...rims.values()].map(({ box }) => box.w)), h: Math.max(...[...rims.values()].map(({ box }) => box.h)) };
+  const most = [...rims.values()].reduce((size, { box }) => ({ w: Math.max(size.w, box.w), h: Math.max(size.h, box.h) }), { w: 0, h: 0 });
   const scratch = (format: GPUTextureFormat, depth = 1) =>
     device.createTexture({ size: [most.w, most.h, depth], format, usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING })
       .createView({ dimension: depth > 1 ? '2d-array' : '2d' });
