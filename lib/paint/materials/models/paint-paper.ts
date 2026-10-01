@@ -31,9 +31,11 @@ export function paintPigmentSeed(id: string): number {
  */
 export const PAINT_PAPER_WGSL = /* wgsl */ `
 fn paintValley(h: f32, meanHeight: f32) -> f32 { return (1.0 - h) / max(1.0 - meanHeight, 0.01); }
+fn paintSettleDepth(paperDepth: f32, granulation: f32, load: f32) -> f32 {
+  return clamp(paperDepth + granulation * ${GRANULATION_SETTLE.toFixed(4)} * load, 0.0, 1.0);
+}
 fn paintWetSettle(valley: f32, paperDepth: f32, granulation: f32, load: f32) -> f32 {
-  let a = clamp(paperDepth + granulation * ${GRANULATION_SETTLE.toFixed(4)} * load, 0.0, 1.0);
-  return 1.0 + a * (valley - 1.0);
+  return 1.0 + paintSettleDepth(paperDepth, granulation, load) * (valley - 1.0);
 }
 // Catches nothing below \`tooth\` of the mean height at \`press\` 1, less at 0, everything burnished, the
 // valleys raised \`filled\` of the way by wax.

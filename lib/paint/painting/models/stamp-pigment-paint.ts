@@ -106,8 +106,12 @@ export type StampPigmentUnderpaint = { pigments: readonly PaintPigment[]; slots:
 /** The most pigments a painting's underpaint keeps: four layers of the painting's. */
 export const STAMP_PIGMENT_UNDERPAINT_SLOTS = 16;
 
-/** `knockout`: whether it's in its group's knockout, taking from the paint behind the group rather than laying its own. */
-export type StampPigmentDeposit = { group: number; components: readonly StampPigmentComponent[]; grade: StampPigmentGrade; knockout: boolean };
+/**
+ * `knockout`: whether it's in its group's knockout, taking from the paint behind the group rather than laying its own.
+ * `dryBrush`: whether its paint catches the paper's peaks as a dry brush does in its medium (PaintMedium's
+ * `paperContact.dryBrush`): a dry-media brush in a medium that says how.
+ */
+export type StampPigmentDeposit = { group: number; components: readonly StampPigmentComponent[]; grade: StampPigmentGrade; knockout: boolean; dryBrush: boolean };
 
 const UNGRADED: StampPigmentGrade = { kind: 0, geometry: [0, 0, 0, 0] };
 
@@ -137,7 +141,7 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
       // Water and a lift lay no pigment of their own.
       if (action.kind !== 'paint') {
         if (action.kind === 'lift') checkPaintCapability(medium, 'lift', `${deposit.id}'s lift`);
-        deposits.set(deposit, { group: g, components: [], grade: UNGRADED, knockout: pass.kind === 'wash' && pass.knockout });
+        deposits.set(deposit, { group: g, components: [], grade: UNGRADED, knockout: pass.kind === 'wash' && pass.knockout, dryBrush: false });
         continue;
       }
       if (action.burnish) checkPaintCapability(medium, 'burnish', `${deposit.id}'s burnish`);
@@ -163,6 +167,7 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
       deposits.set(deposit, {
         group: g,
         knockout: false,
+        dryBrush: deposit.brush.media === 'dry' && medium.paperContact.kind === 'valleys' && !!medium.paperContact.dryBrush,
         grade: kind === 0 ? UNGRADED : { kind, geometry },
         components: pigments.map((pigment) => {
           let slot = palette.findIndex(({ id }) => id === pigment.id);

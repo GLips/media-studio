@@ -88,7 +88,7 @@ function meanLinear(rgba: ArrayLike<number>, width: number, { x0, x1, y0, y1 }: 
 
 /** The gate case painting the lifted tints and reading its frame, so the painting and its reading share one layout. */
 export function stampGateLiftColourCase(id: string, mid: number, medium: StampGateLiftColourMedium, dried: boolean): StampGateWashCase {
-  return { id, mid, property: 'paler', subject: stampGateLiftColourPainting(medium, dried), read: (rgba) => checkStampGateLiftColour(id, rgba) };
+  return { id, mid, property: 'frame', subject: stampGateLiftColourPainting(medium, dried), read: (rgba) => checkStampGateLiftColour(id, rgba) };
 }
 
 /** Whether every tint in `rgba` holds STAMP_GATE_LIFT_PALER lift by lift. */

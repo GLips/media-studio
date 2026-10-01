@@ -174,10 +174,10 @@
     "painting/pigment-watercolour": {
       "file": "painting/pigment-watercolour.png",
       "output": "804c638367f7b971fff0937af5e80288568473edeb2bfe057e0072c66f9199cf",
-      "inputs": "48e041d4959079c315bf3eb2b8d1539e4b0e35cb12e95e6649edc514a5a07c22",
-      "reason": "vid-114 passage layer step 4: inputs only, each PaintMedium now declares its capabilities (watercolour and gouache wet-history, wet-conditions, lift; crayon lift, burnish), which the inputs print holds; pixels identical",
+      "inputs": "fe72924d650d0d62d8366afbda37dff6953a0c178996a2dbe22fc3aa43df8006",
+      "reason": "vid-114 step 4b: inputs only, watercolour declares a dry-brush contact (paperContact valleys, dryBrush tooth 0.85) for its dry-media brushes, which the inputs print holds; this painting lays no dry-media brush",
       "accepted": "2026-10-01",
-      "acceptedOver": "5eb1a3f",
+      "acceptedOver": "afc9694",
       "adapter": "apple metal-3"
     },
     "painting/regions": {

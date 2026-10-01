@@ -9,7 +9,7 @@
 // - rimmed: a drying puddle's edge gathers pigment, a seam wet together doesn't;
 // - bloomed: a drop blooms though paint landed elsewhere first;
 // - unlined: a backrun lays no line along its wash's edge;
-// - paler: lifted tints read paler (stamp-gate-lift-colour.ts).
+// - frame: read whole (stamp-gate-lift-colour.ts, stamp-gate-dry-brush.ts).
 //
 // Each case paints into its last group, read back.
 
@@ -24,6 +24,7 @@ import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.t
 import { compileStampPigmentPaint } from '#lib/paint/painting/models/stamp-pigment-paint.ts';
 import type { StampRegion } from '#lib/paint/painting/models/stamp-region.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
+import { stampGateDryBrushCase } from './stamp-gate-dry-brush.ts';
 import { stampGateLiftColourCase } from './stamp-gate-lift-colour.ts';
 
 /** A layer as the renderer reads one back (StampLayerReadback), restated so models needn't import the studio. */
@@ -50,7 +51,7 @@ export type StampGateWashCase = {
   | { property: 'bloomed'; without: StampGatePainting }
   | { property: 'unlined' }
   // Reads the frame, not its last group.
-  | { property: 'paler'; read: (rgba: ArrayLike<number>) => StampGateWashCheck }
+  | { property: 'frame'; read: (rgba: ArrayLike<number>) => StampGateWashCheck }
 );
 
 /** How far a pigment's total may drift from the same wash's without the ops under test: its layer's half-float rounding summed over a few thousand pixels. */
@@ -239,6 +240,8 @@ function washCases(): StampGateWashCase[] {
     stampGateLiftColourCase('wash/lift-paler-gouache-wet', MID, 'gouache', false),
     stampGateLiftColourCase('wash/lift-paler-gouache-dry', MID, 'gouache', true),
     stampGateLiftColourCase('wash/lift-paler-crayon', MID, 'crayon', false),
+    // A dry brush and a wet one in watercolour, read against the paper's grain.
+    stampGateDryBrushCase('wash/dry-brush', MID),
     {
       id: 'wash/wait', mid: MID, property: 'order',
       subject: washPainting('watercolour', false, (wash) => {

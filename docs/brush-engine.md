@@ -86,6 +86,12 @@ deposit: water, a lift, and paint from a wet brush in a medium with wet history 
 (`landDeposit`); any other paint, a dry-media brush's or crayon's in a wash too, is laid by the dry law (`layDeposit`:
 pressure, the tooth, a burnish).
 
+**Dry brush.** Where paint meets the tooth is the medium's `paperContact`: a wet medium pools into the valleys, a dry
+one catches on the peaks. Watercolour also declares a `dryBrush` tooth: its dry-media brushes drag over the sheet and
+catch only the peaks above it, their valleys left as bare as wet paint would settle into them deep, while the paint
+stays watercolour's (it glazes and mixes, stacking no wax). The gate's `wash/dry-brush` holds a dry stroke darker
+where the paper stands higher, and a wet one not. Gouache declares none, so its dry brush still settles.
+
 **Fields.** A material, a fill's load and a preparation's wetness are each a `StampPaintField`
 (`stamp-paint-field.ts`): constant, linear, radial, or noise, two octaves of seeded value noise at a feature size in
 painting pixels, their lattices turned off the painting's axes. Every reader reads one share (`paintFieldShare` on the
