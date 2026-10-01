@@ -1,0 +1,182 @@
+---
+title: "feat: Painted animation, part 1: strokes that deform, and the timing layer"
+type: feat
+status: draft
+date: 2026-09-30
+revised: 2026-09-30 (after vid-112, vid-116, vid-117 and vid-125; folds in vid-126)
+dependsOn: [the paint-engine tickets in flight (vid-118, vid-123, vid-124, vid-127) landing first; the spikes don't wait]
+relatesTo: [vid-44, vid-45, vid-55, vid-114, vid-121, vid-123]
+---
+
+# Painted animation, part 1: strokes that deform, and the timing layer
+
+## Context
+
+Graham wants Grease-Pencil-style painted animation, as in the PolyPaint frog video. Strokes paint themselves in on a cue, outlines boil, parts tween between poses, and everything holds on twos. Later the same engine should serve a scene per style (a collage video) or one character per style (a scratchy pen figure among painterly ones).
+
+This is plan 1 of three. Plan 2 (multiplane and compositing) and plan 3 (painterly 3D) depend on this plan's seams.
+
+**Already built, since this plan was drafted.** This plan doesn't redo any of it:
+- **Frame purity.** A frame is a function of the painting and `t`, identical in any order. Checkpoints restore the layer alone (vid-117, `studio/stamp-paint-checkpoints.ts`).
+- **Stable randomness.** Randomness is keyed to hierarchical ids. Boil re-seeds a group per epoch: `StampGroupBoil { every }` and `stampBoilSeed(id, epoch)`.
+- **Rigid group motion with stuck texture** (`models/stamp-group-motion.ts`): keys `{at, x, y, rotation?, scale?}` about a pivot. The group is painted once in its own coordinates and resampled into place. It lies on the ground's paper, or on its own as a cut-out (vid-125, `StampGroupPaper`).
+- **Fills supplied as patterns.** A fill is a flood or strokes (zigzag, hatch and the rest), by the brush's media (vid-112, `stamp-fill.ts`). Clipping to a region (`within`) and masking fluid with soft or ragged edges are vid-112's too.
+- **Pigment and wet paint.** Pigment mixing (vid-83), washes, wetness over painting time, lifting (vid-117), and blooms and rims (vid-118).
+- **Two clocks.** Painting time sets wetness; scene time only reveals (vid-117).
+- **One renderer.** The GPU is the only renderer, held by a gate of goldens (vid-116).
+
+**What's missing, and what this plan builds:**
+- **Deformation.** Groups move only rigidly. Nothing bends, puffs or raises an arm. `stamp-group-motion.ts` names the gap: "Deforming one … would warp its layer by a field".
+- **A timing layer.** Motion keys are linear and in seconds. Boil counts render frames. There are no holds, loops, retimes, easing, poses or cue-relative timing, and "on twos" changes meaning with the output frame rate.
+- **Scoped style.** A scene names brushes directly. It can't say "outline role, palette colour 3" and let the style answer, or override settings per part.
+- **Shape sources.** Every shape is typed by hand as coordinates.
+- **An authoring API an agent writes well,** proven on a real scene.
+
+Research is in `~/research/2026-09-29-painted-animation/`: `reading-timing.md`, `reading-tweening.md`, `api-synthesis.md` (five model-authored API designs, reconciled) and `design-notes-shapes-fills.md`. vid-121's clips and their findings are at `~/research/2026-09-30-evening-showcase/` (clips 2, 3 and 5).
+
+**Re-placing is a first-class choice, not a defect.** The draft treated re-placing stamps each frame as an opt-in for crawl. In vid-121, Graham's favourite clips were the ones repainted every frame: the clouds' texture lives and changes. So a moving part has three settings, all first-class:
+- **stuck:** placed once at rest and carried;
+- **boil:** re-seeded every n animation frames;
+- **live:** re-placed every frame, texture crawling with the motion.
+
+The scene picks one per part. The style supplies only amounts. vid-123 makes a recompile per frame cheap, which `live` needs.
+
+What plans 2 and 3 need from this plan:
+- **Anchor is a field on grouping nodes.** Only `canvas` is built here. Plan 2 adds `plane`; plan 3 adds `surface(object)`, so the field mustn't assume a 2D rest space.
+- **Strokes pass through a camera step.** It's the identity here; plan 2 fills it in.
+- **Stamp identity is assigned once at rest,** keyed by rest position (today the placement ordinal on the rest stroke). Plan 3 reuses it with rest positions on a mesh.
+- **A source is evaluated at `t` and may return different strokes each frame** (plan 3's silhouettes). A stroke a source creates after its part's reveal has finished starts fully revealed.
+- **Visibility is a per-frame mask, separate from reveal,** fully visible by default. Only the slot is built here.
+- **The engine doesn't own its GPU device or assume one canvas-sized target.** Plan 2 shares the device with three.js's WebGPU renderer and renders groups to their own layers.
+
+### Out of scope
+- Planes at depth, a camera, post and three.js compositing: plan 2.
+- 3D sources, surface anchors and projection: plan 3.
+- Building the bake. Only its invariant is kept (below).
+- Tweening between separately redrawn poses (correspondence by stroke id, cross-fades), unless spike 1.1 shows the frog needs it.
+- Realistic reveals (sketch, block-in, layers): vid-128. This plan keeps reveal as it is and makes it a timing channel.
+- vid-44 (onion skins and trails), vid-45 (squash and stretch) and vid-55 (shape morphs) stay their own tickets. Each is a later timing or deform operation on this model.
+
+## Invariants
+
+- **A frame is a pure function of the compiled painting, `t`, and the scene's cues and frame rates.** This is vid-117's rule, extended to deformation and timing. History-dependent inputs (tracking, simulation) enter only as an immutable input computed before rendering, keyed by a hash of its inputs.
+- **Randomness is keyed by hierarchical id, by each stamp's rest identity, or by the boil epoch; never by this frame's order or geometry, except under `live`.** Stamps, and the hand's pressure and speed, are computed once on the rest stroke and carried by every deformation in `stuck` and `boil`. *Why:* adding a stroke reseeds nothing else, and a stuck part neither crawls nor flickers. `live` re-places by choice, still as a pure function of `t`.
+- **Clips, masks and reserves follow the geometry they're attached to.** A deforming throat's `within` region and masking fluid deform with it, as vid-125 carries a cut-out's lifts and reserves. *Why:* otherwise a spike "succeeds" with a moving throat under a stationary mask.
+- **Wet state deforms with its paint.** A wash's wetness lattice and its rims and blooms live in the group's rest space and are warped with it, never recomputed in screen space. *Why:* a raised arm keeps its blooms.
+- **Timing is typed data, evaluated by registered pure operations on named channels.** A closure is allowed only through an explicit escape hatch that opts out of compile-time checks, and never out of frame purity. *Why:* data can be validated before rendering (a missing cue, two writers on one channel) and hashed as a checkpoint or bake key.
+- **A style never introduces motion.** Whether anything boils, deforms or reveals is the scene's call; the style supplies only how much and how fast. *Why:* restyling a finished still scene mustn't set it moving.
+
+## New concepts
+
+- **`lib/picture/stamp-animation/`**, a new feature above `stamp-styles`. It holds the painting tree a scene writes, timing channels, scoped style resolution, deformation, and the component that draws it. The name is still a working one; "shot" collides with capture's shots. `stamp-paint` stays unaware of scenes, poses and channels: it takes a painting as it stands at a moment, plus group placements, warps, boil epochs and visibility. Brush fidelity and the gate keep using it directly.
+- **A deformation** is a coarse warp field per group, in rest space: a lattice or pins with falloff, chosen by spike 1.1. It replaces the rigid placement as the general case, rigid being the warp with one affine cell. It is keyed into the checkpoint key, as vid-117's note proposes.
+
+## Phase 1.0: Deforming painted strokes (spike: toy experiment)
+
+### Goal
+We know how a deformation should carry paint (stamps, wet state, masks) under stuck, boil and live, what it costs per frame, and where it breaks.
+
+### Questions
+- **Warp the layer or the stamps?** Two candidates:
+  - resample the group's painted layer through the warp, which extends today's rigid resample and keeps wet stages untouched;
+  - carry stamp centres and footprints through the warp and repaint, which keeps strokes sharp under stretch.
+
+  Which reads right at the size of a throat puff, a grass sway and a raised arm? At what local stretch does each break (blurred texture vs gaps and pile-ups)?
+- **What a stamp carries:** under stamp warping, how do footprint, rotation, scatter and grain coordinates transform: a local frame per stamp, or per stroke?
+- **Wet state:** does warping vid-117's lattice and vid-118's rims and blooms with the paint read right? Does anything computed once per deposit assume the deposit never deforms, such as `grainOffset`, the dual brush or flow scratch?
+- **Live under deformation:** with every frame re-placed (vid-121's favourite), does a deforming part read as lively or as noise? Is a bounded crawl rate useful as a dial?
+- **Boil as a stepped displacement of the rest path,** with stamps carried: does it read like Grease Pencil's noise boil, the line wobbling while the texture stays?
+- **Cost per frame at 1080p** for a frog-scale painting (several thousand stamps, a handful deforming), on top of vid-123's numbers. Which dominates: warp, upload, wet stages or draw?
+
+### Approach
+- Throwaway code outside `lib/`, painting with the real renderer and real brushes from an installed style, in pigment watercolour and in crayon.
+- Compare clips side by side, since crawl and shimmer only show in motion. Show Graham the clips on a page.
+- Check frame order: render forwards, reversed and shuffled around boil and hold boundaries. The evaluated data must match exactly, and GPU images meet `studio repeatable`'s bar.
+
+### Done when
+- Every question is answered in `docs/plans/2026-09-30-painted-animation-spike-findings.md`, with clips linked. New questions are answered or named as follow-on spikes.
+- The warp choice (layer, stamps or both) is recommended with evidence.
+
+## Phase 1.1: Authoring the frog (spike: toy experiment)
+
+### Goal
+We know what the scene-level API should look like for an AI agent writing painted animation, and where a frog's shapes come from, well enough to reshape phases 2–4.
+
+### Questions
+- **Where timing is written:** as options on nodes, or as tracks aimed at named parts (`play(target, clip, {at})`)? Both compile to the same channels.
+- **How a pose is written:** pins with falloff, or named controls on a small lattice? ARAP only if big bends collapse.
+- **Stuck, boil or live:** where does a scene say which, and what's the default per role?
+- **How a reveal is paced:** fit to a fixed `over`, or sequenced child durations?
+- **Holds:** which channels hold on twos by default, on the 24 fps animation clock?
+- **References:** typed handles from the builder, or string ids? What does writing the scene get wrong with each?
+- **Shapes:** where does an organic shape come from? Try at least two candidates beyond hand-typed coordinates: SVG path data from a traced image (an image model's frog, for one), font glyph outlines, a posed simple 3D model's silhouette.
+- **Scoped style:** does naming a role and a palette colour, with overrides per part, cover the frog? Does it help vid-114's colour-variety question (a fill drawing from a set of mixtures)?
+- **Porting:** does a ported watercolor-paintings scene read as well or better in the new form?
+
+### Approach
+- Write the frog scene, and one ported watercolor scene, in two candidate forms, typechecked against stub types. The measure is the scene text: its length, what was mistyped or misremembered, and which mistakes a compile-time check would catch. Rendering isn't required.
+- The frog scene is the whole target: painted in stroke by stroke from a cue, outline boiling once drawn, throat puffing on a loop, grass swaying, held on twos, one part in a different style.
+- Start from `api-synthesis.md` §3's sketch and its "let the spike decide" list. Don't reopen the seams it marks "decide now".
+
+### Done when
+- The findings give the chosen form for each question, with the frog scene and the ported scene written in it, and the shape sources tried with what each produced.
+- Graham has signed off on the chosen form before phase 2 is reshaped.
+
+### Warnings
+- Every design in the research typed the frog's coordinates by hand. That is the weak case Graham flagged, not a template.
+
+## Phase 2: One painting model replaces the recipe (sketched)
+
+### Goal
+Scenes paint through the new model only. The recipe's authoring API is gone, the watercolor-paintings and vid-121 scenes are ported, and still paintings look as they did.
+
+### Approach
+- **`stamp-paint` keeps one contract:** a painting as it stands at one moment (groups, passes and deposits with their placed stamps, washes and masks), plus per-group placement, warp, boil epoch and visibility. `stamp-animation` and brush fidelity feed it. Scenes never write it, and `#studio` exports only the new model for painting.
+- **The recipe's compile work stays in `stamp-paint` as time-free deposit preparation:** id validation, hierarchical seeding, hand evaluation, main and dual placement, fills and masks. Both `stamp-animation` and brush fidelity call it; brush fidelity never imports animation.
+- **The renderer separates assets from frame-varying data.** Brush images, tips and paper load once per painting; placements, warps and live stamps upload per frame. vid-123 builds most of this. This phase finishes it for warps and live parts.
+- **Delete:**
+  - `stampPaintRecipe` and `compileStampPaintRecipe` as scene-facing API;
+  - group `motion` and `boil` as recipe fields (they become channels);
+  - the deposit reveal fields, replaced by the reveal channel;
+  - `stampFillPath`, `stampRegionOutline` and the like as scene-facing exports (they become shape constructors);
+  - the watercolor style's `paintWatercolorElement` helper. Its stroke generation becomes the style's fill choices, its composition a reusable part builder, and its timing moves to the scene.
+- **Shapes are values.** One named shape serves fill, `within`, masking fluid and reserves. Sources are polygon, ellipse, smooth closed curve and SVG path data, plus whatever spike 1.1 adds.
+- **Style is scoped:** painting, group, part, with the nearest setting winning field by field. It carries:
+  - roles (brush, mixture, diameter, hand);
+  - a palette of pigment mixtures;
+  - paper and medium;
+  - fill application per role;
+  - stuck/boil/live amounts;
+  - role muting (a style can drop outlines).
+
+  Scenes name a role and a palette colour. Naming a brush directly is the escape hatch. The private `StampPaintStyle` in `work/styles/<name>/style.ts` grows these fields.
+- **Anchor is a field on grouping nodes**, and only `canvas` is built.
+- **"Look as they did" is measured by the GPU gate's goldens and the fidelity sheets,** which must not move. Ported scenes may reseed where their ids change: compare them side by side and report drift.
+
+## Phase 3: The timing layer (sketched)
+
+### Goal
+Reveal, placement, deformation, boil, holds and colour run as pure timing channels on the new model, each a registered operation.
+
+### Approach
+- **Channels:**
+  - `reveal`: how much of each stroke is drawn, measured on the rest stroke.
+  - `place`: a group's rigid placement (today's motion keys, with easing).
+  - `deform`: a target's warp. One writer per target per time interval: a pose or tween, or a procedural generator (sway, breathe).
+  - `boil`: the stuck/boil/live choice and the boil rate, in animation frames.
+  - `color`: a mixture's pigments over time, for sunsets. It recolours without recompiling, through vid-123's path.
+  - `clock`: retime, hold and loop, composed as nested clock transforms, so `hold(loop(…))` is well defined.
+- **Deformation composes down the hierarchy:** a target's own warp first, then its ancestors'. A throat that puffs inside a body that sways is two writers on two targets, not a conflict.
+- **Conflicts are judged after selections expand to concrete targets, per overlapping interval.** A finished clip's held pose persists until the next clip on that target starts.
+- **The timing contract is written before implementation:** clock nesting, each stroke's local boil phase, behaviour at interval endpoints, and overlap detection.
+- **A separate animation clock** at 24 fps by default, apart from the render rate. "On twos" means 2/24 s at any output rate, and `StampGroupBoil.every` moves onto it.
+- **Boil** re-seeds per epoch, as built. A stroke boils only after its own reveal finishes, and its displacement is applied in anchor space after `deform`, so plan 2's moving planes don't break it.
+
+## Phase 4: The frog scene (sketched)
+
+### Goal
+A frog-style painted scene renders in a real project: painted in on a cue, then boiling, breathing and swaying, held on twos, with one part in a second style and one part live. The docs and the video-canvas skill teach the new model.
+
+### Approach
+- A new project from `studio new`.
+- `docs/brush-engine.md` and `skills/video-canvas/SKILL.md` describe the new model and nothing of the recipe.
