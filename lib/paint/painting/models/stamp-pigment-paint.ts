@@ -131,17 +131,18 @@ type StampMediumFits = { medium: PaintMedium; known: Map<string, PaintPigment>; 
 /**
  * `painting`'s paint, each group mixed as its mixing says (stampGroupMixing), a graded material's pigments from both
  * its ends, each pigment fitted in its group's medium. Throws on a mixture naming a pigment its mixing lacks, two
- * different pigments with one id in one medium, two media of one name that differ, or a group that mixes more than
+ * different pigments with one id in one medium, two medium objects of one name, or a group that mixes more than
  * STAMP_PIGMENT_GROUP_SLOTS pigments.
  */
 export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: StampPigmentMixing, bands: PaintBands): StampPigmentPaint {
   const media: StampMediumFits[] = [];
   /** `of`'s medium's index among `media`, its pigments fitted: the first mixing's first, so a mixture can't name another by one of theirs. */
   const fitsOf = (of: StampPigmentMixing) => {
-    let index = media.findIndex(({ medium }) => medium.name === of.medium.name);
+    // A medium is one object: a copy is another medium, and two of one name couldn't be told apart in the WGSL or an error.
+    let index = media.findIndex(({ medium }) => medium === of.medium);
+    if (index < 0 && media.some(({ medium }) => medium.name === of.medium.name)) throw new Error(`stamp paint: two media are named ${of.medium.name}; a medium is one object, so name each its own`);
     if (index < 0) index = media.push({ medium: of.medium, known: new Map(), byColor: new Map(), named: new Set() }) - 1;
     const fits = media[index];
-    if (fits.medium !== of.medium && JSON.stringify(fits.medium) !== JSON.stringify(of.medium)) throw new Error(`stamp paint: two media named ${of.medium.name} differ; name each its own`);
     for (const appearance of Object.values(of.pigments)) {
       if (fits.named.has(appearance.id)) continue;
       fits.named.add(appearance.id);

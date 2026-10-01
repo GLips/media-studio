@@ -9,7 +9,7 @@
 
 import { useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { useDelayRender, useVideoConfig } from 'remotion';
+import { useDelayRender } from 'remotion';
 import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
 import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
@@ -37,7 +37,6 @@ export function StampPainting({ painting, style, t, frame, width, height, box: g
 }) {
   const paper = useStyleContent(style.paper), mixing = useStyleContent(style.mixing);
   const format = useVideoFormat();
-  const { fps } = useVideoConfig();
   const box = given ?? fullFrameRect(format);
   const w = Math.round(width ?? box.w), h = Math.round(height ?? box.h);
   const holder = useRef<HTMLDivElement>(null);
@@ -86,7 +85,7 @@ export function StampPainting({ painting, style, t, frame, width, height, box: g
     };
     const loaded = profile?.('stamp paint load');
     // A load given up as its surface goes may fail for want of the device; only a live one's failure is the frame's.
-    createStampPaintRenderer(surface, painting, paper, mixing, { fps, profile }).then((ready) => {
+    createStampPaintRenderer(surface, painting, paper, mixing, { profile }).then((ready) => {
       loaded?.();
       made = ready;
       if (!live) return ready.dispose();
@@ -101,7 +100,7 @@ export function StampPainting({ painting, style, t, frame, width, height, box: g
       setRenderer(null);
       release();
     };
-  }, [surface, painting, paper, mixing, fps, profile, delayRender, continueRender, cancelRender]);
+  }, [surface, painting, paper, mixing, profile, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!renderer) return;

@@ -107,4 +107,6 @@ test('a group naming its own medium fits its palette in it, a pigment of one id 
   assert.equal(sky[0], sea[0], 'one medium, one pigment');
   assert.notDeepEqual(wings.map(({ id }) => id), sky.map(({ id }) => id), 'gouache lightens with white');
   assert.notDeepEqual(wings.find(({ id }) => id === 'ultramarine')!.S, sky[0].S, 'fitted as masstone in gouache');
+  // A medium is one object: a copy under the same name beside it, however alike, is refused rather than merged.
+  assert.throws(() => compileStampPigmentPaint(painting, { ...gouache, medium: { ...PAINT_MEDIA.gouache } }, PAINT_BANDS), /two media are named gouache/);
 });

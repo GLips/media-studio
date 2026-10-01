@@ -16,7 +16,6 @@ import {
   paintPlacementIsRest, paintPlacementRounded, paintRatioSteps, paintWarpChainKey, paintWarpChainMap,
   type PaintDeform, type PaintPinMoved, type PaintWarpChain,
 } from './paint-deform.ts';
-import { stampGroupFrameStateOf, type PaintGroupFrame } from './paint-group-frame-state.ts';
 import { paintKeyNumbers } from './paint-pins.ts';
 import { PAINT_LIVE_POSES_KEPT, type CompiledPaintNode, type CompiledPaintPlay, type PaintLane, type PaintMotion } from './paint-motion-compile.ts';
 import { paintFlutterSpreadAt, paintPinClipMoveAt, paintPlaceClipAt, paintSwayAngleAt } from './paint-motion-clips.ts';
@@ -126,7 +125,7 @@ function liveMarksAt(motion: PaintMotion, node: CompiledPaintNode, t: SceneSecon
 }
 
 /** `node`'s group's frame at `t`. */
-function nodeFrameAt(motion: PaintMotion, node: CompiledPaintNode, t: SceneSeconds): PaintGroupFrame {
+function nodeFrameAt(motion: PaintMotion, node: CompiledPaintNode, t: SceneSeconds): StampGroupFrameState {
   const { warp, lay } = paintNodeWarpAt(motion, node, t), live = liveMarksAt(motion, node, t);
   const epoch = node.marks.kind === 'reseed' ? epochAt(motion, node, t) : 0;
   return {
@@ -142,8 +141,8 @@ export function paintMotionFrameAt(motion: PaintMotion, t: number): StampPaintFr
   if (last?.t === t) return last.state;
   const state = new Map<string, StampGroupFrameState>();
   for (const node of motion.nodes.values()) {
-    const groupState = stampGroupFrameStateOf(nodeFrameAt(motion, node, sceneSeconds(t)));
-    if (groupState) state.set(node.id, groupState);
+    const groupState = nodeFrameAt(motion, node, sceneSeconds(t));
+    if (groupState.lay || groupState.warp || groupState.marks) state.set(node.id, groupState);
   }
   motion.remembered.last = { t, state };
   return state;

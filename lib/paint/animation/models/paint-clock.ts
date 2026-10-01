@@ -4,7 +4,10 @@
 //
 // Scene seconds, clip seconds and animation frames are kept apart by type where interval arithmetic crosses them.
 //
-// Negative space: render fps never enters here. A 30 or 60 fps render samples the same held drawings.
+// Negative space: render fps never enters here. A 30 or 60 fps render samples the same held drawings. The clock's
+// rate and frame rule (PAINT_ANIMATION_FPS, paintAnimationFrameAt) are painting's, which a recipe's boil counts on too.
+
+import { paintAnimationFrameAt } from '#lib/paint/painting/models/stamp-group-motion.ts';
 
 /** Seconds of the scene's clock, or of a node's time through its holds and freezes, which steps on the same grid. */
 export type SceneSeconds = number & { readonly unit: 'scene seconds' };
@@ -20,11 +23,8 @@ export const clipSeconds = (seconds: number) => seconds as ClipSeconds;
 // SAFETY: as sceneSeconds, for a whole count of frames.
 const animationFrame = (frame: number) => frame as AnimationFrame;
 
-/** Frames per second of the animation clock unless a scene says otherwise: "on twos" is 2/24 s at any render rate. */
-export const PAINT_ANIMATION_FPS = 24;
-
-/** The animation frame scene time `t` falls in; the epsilon puts 2/24 s on frame 2, not 1. */
-export const paintAnimationFrameAt = (t: SceneSeconds, animationFps: number) => animationFrame(Math.floor(t * animationFps + 1e-6));
+/** The animation frame scene time `t` falls in, by painting's rule. */
+export const paintAnimationFrameOf = (t: SceneSeconds, animationFps: number) => animationFrame(paintAnimationFrameAt(t, animationFps));
 
 /** When animation frame `frame` starts, in scene seconds. */
 export const paintAnimationFrameStart = (frame: AnimationFrame, animationFps: number) => sceneSeconds(frame / animationFps);
@@ -123,7 +123,7 @@ export function paintPlayInterval(clock: CompiledPaintPlayClock, length: ClipSec
 /** The time a scene step hands on. */
 function sceneStepTime(step: PaintSceneStep, time: SceneSeconds, animationFps: number): SceneSeconds {
   if (step.kind === 'freeze') return step.time;
-  const frame = paintAnimationFrameAt(time, animationFps);
+  const frame = paintAnimationFrameOf(time, animationFps);
   return paintAnimationFrameStart(animationFrame(Math.floor(frame / step.frames) * step.frames), animationFps);
 }
 
@@ -164,5 +164,5 @@ export function paintPlayClipTimeAt(clock: CompiledPaintPlayClock, t: SceneSecon
  */
 export function paintBoilEpochAt(time: SceneSeconds, revealEnd: SceneSeconds, every: number, animationFps: number): number {
   if (time < revealEnd) return 0;
-  return Math.floor(paintAnimationFrameAt(time, animationFps) / every) - Math.floor(paintAnimationFrameAt(revealEnd, animationFps) / every);
+  return Math.floor(paintAnimationFrameOf(time, animationFps) / every) - Math.floor(paintAnimationFrameOf(revealEnd, animationFps) / every);
 }

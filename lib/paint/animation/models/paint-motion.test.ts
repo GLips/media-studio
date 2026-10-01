@@ -76,7 +76,7 @@ test('a point goes through its own bend and placement, then its parent\'s, as a 
   const state = paintMotionFrameAt(motion, 0).get('c')!;
   // Placed first, the child's (0, 0) lands at (300, 0), where the parent's bend takes it 20 px further.
   close(state.warp!.map({ x: 0, y: 0 }), { x: 320, y: 0 }, 'the child bends where it is placed');
-  assert.equal(state.placement, undefined, 'its placement is inside the parent\'s bend, so it is in the warp');
+  assert.equal(state.lay, undefined, 'its placement is inside the parent\'s bend, so it is in the warp');
 });
 
 test('placements outside every bend compose into one lay about the node\'s pivot', () => {
@@ -96,7 +96,7 @@ test('placements outside every bend compose into one lay about the node\'s pivot
   // The child's own scale ×2 about the origin is its warp; its turn and the parent's zoom, both rigid, its lay.
   const grown = { x: 14, y: 6 };
   close(state.warp!.map(rest), grown, 'the warp is the child\'s own bend');
-  const laid = stampGroupSceneFromLayer(state.placement!, grown, state.pivot);
+  const laid = stampGroupSceneFromLayer(state.lay!.placement, grown, state.lay!.pivot);
   const twice = stampGroupSceneFromLayer({ x: 5, y: 0, rotation: 0, scale: 3 }, stampGroupSceneFromLayer({ x: 0, y: 0, rotation: Math.PI / 2, scale: 1 }, grown, child.pivot), parent.pivot);
   // A turn is rounded to a millionth of a radian, which moves paint 192 px out by 1e-4 px.
   close(laid, twice, 'the lay is the turn, then the zoom', 1e-3);
@@ -125,9 +125,9 @@ test('a re-seeding group always has its epoch, 0 through its reveal; a stuck one
   const still = { id: 'rock' } satisfies PaintMotionNode;
   const painting = paintingOf([square('ink', { options: { boil: { every: 2 } }, reveal: { at: 0, over: 1 } }), square('rock', { options: { boil: { every: 2 } } })]);
   const motion = built(buildPaintMotion(painting, { nodes: [reseeded, still], plays: [] }));
-  assert.equal(paintMotionFrameAt(motion, 0.5).get('ink')?.epoch, 0, 'mid-reveal it is written as drawn, not left to the recipe');
-  assert.equal(paintMotionFrameAt(motion, 1.5).get('ink')?.epoch, 6);
-  assert.equal(paintMotionFrameAt(motion, 1.5).get('rock')?.epoch, 0);
+  assert.deepEqual(paintMotionFrameAt(motion, 0.5).get('ink')?.marks, { kind: 'written', epoch: 0 }, 'mid-reveal it is written as drawn, not left to the recipe');
+  assert.deepEqual(paintMotionFrameAt(motion, 1.5).get('ink')?.marks, { kind: 'written', epoch: 6 });
+  assert.deepEqual(paintMotionFrameAt(motion, 1.5).get('rock')?.marks, { kind: 'written', epoch: 0 });
   const unboiled = buildPaintMotion(paintingOf([square('ink')]), { nodes: [reseeded], plays: [] });
   assert.match(problemsOf(unboiled)[0], /^ink re-seeds its marks, but its group is compiled without a boil/);
 });
@@ -149,12 +149,13 @@ test('a live child is posed by its own pins alone, and its parent\'s breath reac
   }));
   assert.equal(paintMotionFrameAt(motion, 0).get('sac'), undefined, 'at rest it draws as written');
   const puffed = paintMotionFrameAt(motion, 1).get('sac')!;
-  assert.ok(puffed.live, 'puffed, it is re-placed');
-  assert.equal(puffed.live.marks.passes[0].id, 'sac/p');
-  assert.match(puffed.live.key, /^sac\{puff=0,0,0,1\.9\}$/);
+  assert.ok(puffed.marks?.kind === 'live', 'puffed, it is re-placed');
+  assert.equal(puffed.marks.marks.passes[0].id, 'sac/p');
+  const puffedKey = puffed.marks.key;
+  assert.match(puffedKey, /^sac\{puff=0,0,0,1\.9\}$/);
   assert.match(puffed.warp!.key, /^pins\[radial\(200,200;300\)=0,0,0,1\.05\]$/, 'the breath, at its fullest, bends the sac too');
   paintMotionFrameAt(motion, 3);
-  assert.equal(poses.filter((key) => key === puffed.live?.key).length, 1, 'each pose is compiled once');
+  assert.equal(poses.filter((key) => key === puffedKey).length, 1, 'each pose is compiled once');
 });
 
 test('the build names conflicts, missing pins and groups, keys out of order, a hold in seconds, a boil that folds and a pose that folds', () => {
