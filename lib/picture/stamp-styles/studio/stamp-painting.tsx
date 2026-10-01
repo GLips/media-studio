@@ -4,9 +4,10 @@
 // the screenshot waits for the GPU.
 //
 // Compile the recipe once, where the scene is defined, not while it renders: a painting that is a new object each
-// frame is loaded afresh each frame. A group that moves or boils does so within one painting, at the video's fps.
+// frame is loaded afresh each frame. A group that moves, boils or recolours does so within one painting. A style is
+// held by its content, so one resolved anew each render loads nothing again.
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useDelayRender, useVideoConfig } from 'remotion';
 import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
@@ -23,7 +24,7 @@ import { stampPaintAssetUrl } from './stamp-paint-styles.ts';
  * count on it), `width` by `height` of its own pixels (the frame's size unless given), stretched over `box` (the whole
  * frame unless given).
  */
-export function StampPainting({ painting, style: { paper, mixing }, t, width, height, box: given }: {
+export function StampPainting({ painting, style, t, width, height, box: given }: {
   painting: CompiledStampPaint;
   style: Pick<ResolvedStampPaintStyle, 'paper' | 'mixing'>;
   t: number;
@@ -31,6 +32,7 @@ export function StampPainting({ painting, style: { paper, mixing }, t, width, he
   height?: number;
   box?: { x: number; y: number; w: number; h: number };
 }) {
+  const paper = useStyleContent(style.paper), mixing = useStyleContent(style.mixing);
   const format = useVideoFormat();
   const { fps } = useVideoConfig();
   const box = given ?? fullFrameRect(format);
@@ -79,4 +81,14 @@ export function StampPainting({ painting, style: { paper, mixing }, t, width, he
   }, [renderer, t, profile, delayRender, continueRender, cancelRender]);
 
   return <div ref={holder} {...unmeasuredAttrs('stamp painting')} style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h }} />;
+}
+
+/**
+ * `value` as plain data, the same object for as long as its content is: a reload throws away the renderer's
+ * checkpoints, so a new-but-equal paper or mixing mustn't cause one. A style's paper and mixing are JSON-shaped.
+ */
+function useStyleContent<T>(value: T): T {
+  const content = JSON.stringify(value);
+  // SAFETY: `content` is `value` as JSON, which a style's plain data round-trips through.
+  return useMemo(() => JSON.parse(content) as T, [content]);
 }

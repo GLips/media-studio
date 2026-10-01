@@ -2,8 +2,9 @@
 // stand for (stamp-paint-events.ts) instead of bare paper. A checkpoint is the painting after its first `event` events
 // and, partway through a group, that group's layer, clip base and painted box.
 //
-// A checkpoint is keyed by what else it depends on (a laid group's placement, a boiling one's epoch); a frame reuses
-// one only under the same key, and restoring copies it back exactly, so a frame never depends on frames before it.
+// A checkpoint is keyed by what else it depends on (a laid group's placement, a boiling one's epoch, a recolouring
+// one's paint); a frame reuses one only under the same key, and restoring copies it back exactly, so a frame never
+// depends on frames before it.
 // STAMP_CHECKPOINTS_MOST and STAMP_CHECKPOINT_BUDGET bound memory, each checkpoint admitted by the textures it holds,
 // least recently used given up first. One that can't fit isn't saved.
 
@@ -17,7 +18,7 @@ import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 export const STAMP_CHECKPOINT_BUDGET = 384 * 1024 * 1024;
 /**
  * The most checkpoints a renderer keeps: one rolling with a render's settled prefix, one before the first group that
- * moves or boils, and a couple for scrubbing back.
+ * moves, boils or recolours, and a couple for scrubbing back.
  */
 export const STAMP_CHECKPOINTS_MOST = 4;
 

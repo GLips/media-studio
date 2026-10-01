@@ -181,5 +181,5 @@ export function photoshopProbeSheetPainting({ sheet, probes, opacity, tipMax }: 
       };
     });
   });
-  return { painting: { groups: [{ id: 'probes', composite: 'glaze', opacity: 1, passes: [{ id: 'probes/cells', kind: 'dry', within: null, deposits: cells.flat() }] }] }, images, cells };
+  return { painting: { groups: [{ id: 'probes', composite: 'glaze', opacity: 1, paper: 'ground', passes: [{ id: 'probes/cells', kind: 'dry', within: null, deposits: cells.flat() }] }] }, images, cells };
 }

@@ -16,12 +16,13 @@ import { STAMP_ACCUMULATIONS } from './stamp-deposit-stages.ts';
 import {
   placeStampFlood, stampFillStrokePath, stampFloodBodyLevels, stampFloodFront, stampFloodProbe, stampRegionSeed, type StampFillApplication, type StampFloodBody, type StampFloodBodyLevels, type StampFloodFront,
 } from './stamp-fill.ts';
-import { stampPaintFieldAt, stampPaintFieldProblem, type StampPaintField } from './stamp-paint-field.ts';
+import { stampPaintFieldAt, stampPaintFieldEnds, stampPaintFieldProblem, type StampPaintField } from './stamp-paint-field.ts';
 import {
   compilePaintAction, compileWashAction, type CompiledStampAction, type CompiledStampPaintAction, type StampRecipePaint, type StampRecipeWashAction,
 } from './stamp-paint-action.ts';
 import { stampRegionPolygon, type StampEdge, type StampPoint, type StampRegion } from './stamp-region.ts';
-import { checkStampGroupMotion, type StampGroupBoil, type StampGroupMotion } from './stamp-group-motion.ts';
+import { checkStampGroupMotion, type StampGroupBoil, type StampGroupMotion, type StampGroupPaper } from './stamp-group-motion.ts';
+import { stampMaterialKeysSpan, type StampMaterialKeys } from './stamp-material-keys.ts';
 
 export type StampPaintColor = `#${string}`;
 
@@ -44,12 +45,15 @@ export type StampPaintPaper = {
  */
 export type PaintMaterial = { kind: 'color'; color: StampPaintColor } | ({ kind: 'mixture' } & PaintMixture);
 
+/** A material that may change over the scene: one throughout, or keyed over scene time (stamp-material-keys.ts). */
+export type StampKeyedMaterial = PaintMaterial | StampMaterialKeys<PaintMaterial>;
+
 /**
  * A material across the painting: one throughout, or graded between two (stamp-paint-field.ts), as a graded wash
  * runs from a sky's ultramarine to its horizon's rose. Only a style that paints in pigment grades one, by amounts of
- * pigment, never by rendered colour.
+ * pigment, never by rendered colour. Each may be keyed over scene time; a graded one's ends are keyed apart.
  */
-export type StampPaintMaterial = PaintMaterial | StampPaintField<PaintMaterial>;
+export type StampPaintMaterial = StampKeyedMaterial | StampPaintField<StampKeyedMaterial>;
 
 /** What every deposit has: its brush, its stamp's diameter at full size in the painting's pixels, and when it shows. */
 type StampToolSettings = {
@@ -135,6 +139,8 @@ export type StampUnmaskSettings = { amount?: number } & ({ region: StampRegion; 
 export type StampGroupOptions = ({ composite: 'opaque' } | { composite: 'glaze'; opacity: number }) & {
   depth?: number;
   order?: number;
+  /** The painting's (`ground`, when left out) or its own, a cut-out (StampGroupPaper). */
+  paper?: StampGroupPaper;
   motion?: StampGroupMotion;
   boil?: StampGroupBoil;
 };
@@ -396,9 +402,11 @@ export function stampPassDeposits(pass: CompiledStampPass): readonly CompiledSta
 export const STAMP_OPAQUE_COVER = 2;
 
 export type CompiledStampGroup = {
-  id: string; composite: 'opaque' | 'glaze'; opacity: number; passes: readonly CompiledStampPass[];
+  id: string; composite: 'opaque' | 'glaze'; opacity: number; paper: StampGroupPaper; passes: readonly CompiledStampPass[];
   /** Absent for a group that stays where it's painted. */
   motion?: StampGroupMotion;
+  /** The scene seconds over which its paint changes (a keyed material's first key to its last); absent for paint that doesn't. */
+  recolours?: { from: number; to: number };
   /**
    * Absent for a group painted once. `epoch`: which of its boil's paintings this is (0, as written); `reseeded`
    * compiles this group alone at another epoch, each deposit's randomness drawn afresh and its ID, fluid, colour and
@@ -481,8 +489,9 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
     if (motion) checkStampGroupMotion(motion, groupId);
     if (boil && !(Number.isInteger(boil.every) && boil.every >= 1)) throw new Error(`stamp paint: ${groupId} boils every ${boil.every} frames, and a boil repaints every whole number of frames from 1`);
     const written = { id, options, passes };
+    const recolours = stampGroupRecolours(compiledPasses);
     return {
-      id: groupId, composite: options.composite, opacity, passes: compiledPasses, ...(motion && { motion }),
+      id: groupId, composite: options.composite, opacity, paper: options.paper ?? 'ground', passes: compiledPasses, ...(motion && { motion }), ...(recolours && { recolours }),
       ...(boil && { boil: { every: boil.every, epoch, reseeded: (next: number) => compileGroup(written, next) } }),
     };
   };
@@ -490,6 +499,16 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
   if (duplicates.size) throw new Error(`stamp paint: IDs used twice, which would seed two deposits alike: ${[...duplicates].join(', ')}`);
   groups.sort((a, b) => a.order - b.order || b.depth - a.depth || a.written - b.written);
   return { groups: groups.map(({ group }) => group) };
+}
+
+/** The scene seconds over which `passes`' paint changes, every keyed material's span joined; null for none. */
+function stampGroupRecolours(passes: readonly CompiledStampPass[]): CompiledStampGroup['recolours'] | null {
+  const spans = passes.flatMap((pass) => stampPassDeposits(pass)).flatMap(({ action }) => {
+    if (action.kind !== 'paint') return [];
+    const { first, second } = stampPaintFieldEnds(action.material);
+    return [first, second].flatMap((end) => (end.kind === 'keys' ? [stampMaterialKeysSpan(end)] : []));
+  });
+  return spans.length ? { from: Math.min(...spans.map(({ from }) => from)), to: Math.max(...spans.map(({ to }) => to)) } : null;
 }
 
 function checkedWait(until: StampWashWait, passId: string): StampWashWait {

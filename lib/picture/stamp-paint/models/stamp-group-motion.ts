@@ -1,6 +1,7 @@
 // stamp-group-motion.ts: a group that moves or boils over its scene. A moving group is painted once in its own place,
 // its paper's grain, its brushes' grain and its randomness with it, and laid where it's moved to: its texture travels
 // with it rather than swimming under it (stuck). A boiling group is painted afresh every few frames, on purpose.
+// The paper's photograph moves with a group only if the group lies on its own paper, a cut-out (StampGroupPaper).
 //
 // Negative space: a group moves rigidly. Deforming one (a raised arm) would warp its layer by a field, not a placement.
 
@@ -20,6 +21,13 @@ export type StampGroupMotion = {
   keys: readonly ({ at: number; x: number; y: number } & Partial<Pick<StampGroupPlacement, 'rotation' | 'scale'>>)[];
   pivot?: StampPoint;
 };
+
+/**
+ * The paper a group lies on. `ground`: the painting's, which stays put; its lifts and reserves lighten only its own
+ * paint. `own`: a sheet of its own, a cut-out, carried as it moves. Under its opaque paint and wherever it lifted or
+ * reserved, its paper shows, as far as the lift took or the fluid held paint off.
+ */
+export type StampGroupPaper = 'ground' | 'own';
 
 /**
  * A group painted anew every `every` frames, each time with its marks' randomness seeded afresh, as hand-drawn
