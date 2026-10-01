@@ -34,7 +34,7 @@ import { flatStampPaintCompositor, type StampPaintCompositor, type StampPaintTar
 import { stampPigmentCompositor } from './stamp-paint-pigment-compositor.ts';
 import { createStampPaintDevice, FULL_FRAME_WGSL, loadStampPaintImages, readStampTipLevels, type StampPaintImage, uploadStampPaintGreyImages } from './stamp-paint-gpu.ts';
 import { stampUniformLayout, stampUniformStruct, stampUniformWriter, type StampUniformViews } from './stamp-uniform-layout.ts';
-import { STAMP_WET_STAGES, stampWetStageReach, type StampLoadedWetStage, type StampWetDepositMoment, type StampWetDryingMoment, type StampWetStageContext } from './stamp-wet-stages.ts';
+import { STAMP_WET_STAGES, stampWetStageReach, type StampLoadedWetStage, type StampWetStage, type StampWetDepositMoment, type StampWetDryingMoment, type StampWetStageContext } from './stamp-wet-stages.ts';
 import { stampWashDryings } from '../models/stamp-wet-rim.ts';
 import { stampPaintCheckpoints } from './stamp-paint-checkpoints.ts';
 import { stampPaintEvents, stampSettledEventCount } from '../models/stamp-paint-events.ts';
@@ -855,14 +855,18 @@ function halfFloat(bits: number): number {
  */
 export async function createStampPaintRenderer(
   canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string,
-  { fps }: { fps?: number } = {},
+  { fps, wetStages = STAMP_WET_STAGES }: {
+    fps?: number;
+    /** The wet stages its washes run: every one, but for a check measuring what some do. */
+    wetStages?: readonly StampWetStage[];
+  } = {},
 ): Promise<StampPaintRenderer> {
   const boiling = painting.groups.find((group) => group.boil);
   if (boiling && !(fps && fps > 0)) throw new Error(`stamp paint: ${boiling.id} boils every ${boiling.boil!.every} frames, so its renderer needs the scene's fps`);
-  const { compositorOn, wetnessOf, medium } = compositorFor(painting, paper, mixing, { width, height });
+  const { compositorOn, wetnessOf, medium } = compositorFor(painting, paper, mixing, { width, height }, wetStages);
   const device = await createStampPaintDevice();
   try {
-    return await rendererOnDevice(device, compositorOn, wetnessOf, medium, canvas, painting, paper, width, height, imageUrl, fps ?? 0);
+    return await rendererOnDevice(device, compositorOn, wetnessOf, medium, wetStages, canvas, painting, paper, width, height, imageUrl, fps ?? 0);
   } catch (error) {
     // Destroying the device frees every texture and buffer made on it, and unconfigures the canvas.
     device.destroy();
@@ -874,10 +878,10 @@ export async function createStampPaintRenderer(
  * How `mixing` composites `painting`, and how wet a set of its groups' washes land, worked out before a device is
  * asked for, so a painting it can't mix fails first. Only pigment has washes: the flat compositor refuses one.
  */
-function compositorFor(painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, size: { width: number; height: number }) {
+function compositorFor(painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, size: { width: number; height: number }, wetStages: readonly StampWetStage[]) {
   if (mixing.kind === 'pigment') {
     const paint = compileStampPigmentPaint(painting, mixing, PAINT_BANDS);
-    const margin = (deposit: CompiledStampDeposit) => stampWetStageReach(deposit, mixing.medium);
+    const margin = (deposit: CompiledStampDeposit) => stampWetStageReach(wetStages, deposit, mixing.medium);
     const wetnessOf = (groups: CompiledStampPaint) => compileStampWetness(groups, mixing.medium, paper, size, margin);
     return { compositorOn: (device: GPUDevice) => stampPigmentCompositor(device, paint, paper.color), wetnessOf, medium: mixing.medium };
   }
@@ -887,7 +891,7 @@ function compositorFor(painting: CompiledStampPaint, paper: StampPaintPaper, mix
 
 async function rendererOnDevice(
   device: GPUDevice, compositorOn: (device: GPUDevice) => StampPaintCompositor, wetnessOf: ((groups: CompiledStampPaint) => StampWetness) | null, wetMedium: PaintMedium | null,
-  canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string, fps: number,
+  wetStages: readonly StampWetStage[], canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string, fps: number,
 ): Promise<StampPaintRenderer> {
   // Loading and each draw are checked for any error WebGPU would otherwise report only later, unasked. A lost device
   // isn't an error a scope catches, so the draw after it throws.
@@ -1235,7 +1239,7 @@ async function rendererOnDevice(
       device, painting, medium: wetMedium!, wetness, width, height, layer: targets.layer, wash: compositor.wash!,
       footprint: targets.footprint!, fresh: targets.fresh!, grids: writtenBank.grids, paperDepth: paper.grain?.depth ?? 0,
     };
-    for (const stage of STAMP_WET_STAGES) {
+    for (const stage of wetStages) {
       stages.push(stage.after === 'deposit' ? { after: 'deposit', settled: !!stage.settled, running: stage.load(wetContext) } : { after: 'drying', running: stage.load(wetContext) });
     }
   }
@@ -1247,7 +1251,7 @@ async function rendererOnDevice(
    */
   const depositPad = (identity: CompiledStampDeposit, loadedDeposit: LoadedDeposit, pass: CompiledStampPass) => {
     const sigma = loadedDeposit.active.edgeSigma;
-    return (sigma > 0 ? sigma * 3 : 2) + (pass.kind === 'wash' ? stampWetStageReach(identity, wetMedium!) + 2 * STAMP_WET_CELL : 0);
+    return (sigma > 0 ? sigma * 3 : 2) + (pass.kind === 'wash' ? stampWetStageReach(wetStages, identity, wetMedium!) + 2 * STAMP_WET_CELL : 0);
   };
   /** Readies every stage for each of `groups`' wash deposits' whole boxes, between frames (StampLoadedWetStage.reserve). */
   const reserveWashBoxes = (groups: readonly CompiledStampGroup[], bank: DepositBank) => {

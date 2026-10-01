@@ -22,7 +22,7 @@ import { createStampPaintDevice } from '#lib/picture/stamp-paint/studio/stamp-pa
 import { STAMP_WET_FLOW_STAGE } from '#lib/picture/stamp-paint/studio/stamp-wet-flow.ts';
 import { STAMP_BLOOM_STAGE } from '#lib/picture/stamp-paint/studio/stamp-wet-bloom.ts';
 import { STAMP_DRYING_RIM_STAGE } from '#lib/picture/stamp-paint/studio/stamp-wet-rim.ts';
-import { STAMP_WET_STAGES, type StampWetStage, type StampWetStageContext } from '#lib/picture/stamp-paint/studio/stamp-wet-stages.ts';
+import { STAMP_WET_STAGES, type StampWetStageContext } from '#lib/picture/stamp-paint/studio/stamp-wet-stages.ts';
 import { stampWashDryings } from '#lib/picture/stamp-paint/models/stamp-wet-rim.ts';
 import type { PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
 import { stampWashMovedWgsl } from '#lib/picture/stamp-paint/studio/stamp-paint-pigment-compositor.ts';
@@ -121,10 +121,13 @@ function imageUrl({ size, pixels }: StampGateImage): string {
 }
 
 /** `gate` on a renderer of its own, its images at `url`, handed to `use`; disposed after. */
-async function withGateRenderer<T>(gate: Omit<StampGatePainting, 'images'>, url: (file: string) => string, use: (renderer: StampPaintRenderer, frame: () => Uint8ClampedArray) => Promise<T>): Promise<T> {
+async function withGateRenderer<T>(
+  gate: Omit<StampGatePainting, 'images'>, url: (file: string) => string, use: (renderer: StampPaintRenderer, frame: () => Uint8ClampedArray) => Promise<T>,
+  wetStages = STAMP_WET_STAGES,
+): Promise<T> {
   const { painting, paper, mixing, width, height } = gate;
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
-  const renderer = await createStampPaintRenderer(canvas, painting, paper, mixing, width, height, ({ file }) => url(file), { fps: STAMP_GATE_ANIMATION_FPS });
+  const renderer = await createStampPaintRenderer(canvas, painting, paper, mixing, width, height, ({ file }) => url(file), { fps: STAMP_GATE_ANIMATION_FPS, wetStages });
   const frame = () => {
     const context = Object.assign(document.createElement('canvas'), { width, height }).getContext('2d')!;
     context.drawImage(canvas, 0, 0);
@@ -270,14 +273,14 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
     return checkStampGateSunset(await traced(stampGateSunsetPainting('day')), await traced(stampGateSunsetPainting('dusk')));
   }
   if (id === 'animation/effects-sunset') {
-    const coverage = async (gate: StampGatePainting) => {
-      const { layers, values } = await withGateRenderer(gate, drawnImages(gate), (renderer) => renderer.readLayer(gate.t));
+    const effectless = STAMP_WET_STAGES.filter((stage) => stage.id !== 'bloom' && stage.id !== 'drying-rim');
+    const coverage = async (gate: StampGatePainting, stages = STAMP_WET_STAGES) => {
+      const { layers, values } = await withGateRenderer(gate, drawnImages(gate), (renderer) => renderer.readLayer(gate.t), stages);
       return Float32Array.from({ length: values.length / 4 / layers }, (_, i) => values[i * 4]);
     };
-    // One after another: withoutStages holds the stage list out from under any renderer made meanwhile.
     const hours = await STAMP_GATE_EFFECTS_SUNSET_HOURS.reduce<Promise<{ on: Float32Array; off: Float32Array }[]>>(async (done, hour) => {
       const before = await done, gate = stampGateEffectsSunsetPainting(hour);
-      return [...before, { on: await coverage(gate), off: await withoutStages(['bloom', 'drying-rim'], () => coverage(gate)) }];
+      return [...before, { on: await coverage(gate), off: await coverage(gate, effectless) }];
     }, Promise.resolve([]));
     return checkStampGateEffectsSunset(hours);
   }
@@ -305,22 +308,6 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
     return checkStampGateCutOut(await drift(own), await drift(stampGateCutOutPainting('ground')), bareFrame, own.width);
   }
   throw new Error(`stamp gate: no animation case ${JSON.stringify(id)}; the gate animates ${STAMP_GATE_ANIMATION_IDS.join(', ')}`);
-}
-
-/**
- * `body` run with the wet stages `ids` left out of every renderer it makes, the stages put back after. Warning: a
- * renderer loads the stages when it's made, and nothing else offers to leave one out, so this edits the shared list:
- * nothing else may make a renderer meanwhile.
- */
-async function withoutStages<T>(ids: readonly string[], body: () => Promise<T>): Promise<T> {
-  // SAFETY: STAMP_WET_STAGES is a plain array (stamp-wet-stages.ts), readonly only to its users; it's put back below.
-  const stages = STAMP_WET_STAGES as StampWetStage[], all = [...stages];
-  stages.splice(0, stages.length, ...all.filter((stage) => !ids.includes(stage.id)));
-  try {
-    return await body();
-  } finally {
-    stages.splice(0, stages.length, ...all);
-  }
 }
 
 const STAMP_GATE_FLOW_HOLD_WGSL = /* wgsl */ `

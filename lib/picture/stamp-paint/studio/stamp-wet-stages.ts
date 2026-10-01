@@ -79,6 +79,6 @@ export type StampWetStage = { id: string } & (
 /** Every stage, in the order each moment runs them. */
 export const STAMP_WET_STAGES: readonly StampWetStage[] = [STAMP_WET_FLOW_STAGE, STAMP_BLOOM_STAGE, STAMP_DRYING_RIM_STAGE];
 
-/** How far past `deposit`'s stamps any stage reaches, px: its landing window's margin and its resolve's. */
-export const stampWetStageReach = (deposit: CompiledStampDeposit, medium: PaintMedium) =>
-  Math.max(0, ...STAMP_WET_STAGES.map((stage) => (stage.after === 'deposit' ? stage.reach?.(deposit, medium) ?? 0 : 0)));
+/** How far past `deposit`'s stamps any of `stages` reaches, px: its landing window's margin and its resolve's. */
+export const stampWetStageReach = (stages: readonly StampWetStage[], deposit: CompiledStampDeposit, medium: PaintMedium) =>
+  Math.max(0, ...stages.map((stage) => (stage.after === 'deposit' ? stage.reach?.(deposit, medium) ?? 0 : 0)));
