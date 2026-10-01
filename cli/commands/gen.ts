@@ -1,23 +1,33 @@
 // studio gen: paid generation through OpenRouter (lib/platform/paid-generation/engine/paid-generation.ts), one verb per kind of media. Every result is
 // cached, so asking again costs nothing.
 import { defineCommand } from 'citty';
+import { PREVIS_MODEL_NAMES, PREVIS_MODELS } from '#lib/footage/previs/models/previs-models.ts';
 import { openStudioRenderSession, studioProjectArg } from '../project-arg.ts';
 
 const video = defineCommand({
   meta: {
     name: 'video',
-    description: 'Render a previs scene (one whose binding declares `previs`) into footage with Seedance 2.5: its blockout alone to generated/blockout-<scene>-<hash>.mp4, sent as the reference video with the scene\'s stills. The scene then plays the footage, until this is run again. About $0.28 per second of footage. Prints the blockout, then the footage. Needs OPENROUTER_API_KEY and the STUDIO_UPLOAD_S3_* bucket settings.',
+    description: 'Render a previs scene (one whose binding declares `previs`) into footage: its blockout alone to generated/blockout-<scene>-<hash>.mp4, sent as the reference video (with the scene\'s stills, for a model that takes them) to the --model you choose. The scene then plays the footage, until this is run again. Prints the blockout, then the footage; --dry prints what the shot would cost with each model. Needs OPENROUTER_API_KEY and the STUDIO_UPLOAD_S3_* bucket settings.',
   },
   args: {
     project: studioProjectArg,
     scene: { type: 'positional', required: true, description: 'The scene\'s id' },
-    dry: { type: 'boolean', description: 'Render the blockout and print the prompt without paying, and say if the footage the scene plays is from an earlier blockout' },
+    model: {
+      type: 'enum',
+      options: [...PREVIS_MODEL_NAMES],
+      required: true,
+      description: PREVIS_MODEL_NAMES.map((name) => {
+        const { label, seconds, resolution, usdPerSecond, takesStills } = PREVIS_MODELS[name];
+        return `${name}: ${label}, ${seconds.min}–${seconds.max}s at ${resolution}, about $${usdPerSecond}/s${takesStills ? '' : ', no stills'}`;
+      }).join('. '),
+    },
+    dry: { type: 'boolean', description: 'Render the blockout and print the prompt and each model\'s cost without paying, and say if the footage the scene plays is from an earlier blockout' },
   },
   async run({ args }) {
     const { renderPrevisFootage } = await import('#lib/output/render/engine/previs-render.ts');
     const session = await openStudioRenderSession(args.project);
-    const { blockout, footage, prompt, stale } = await renderPrevisFootage(session, args.scene, { dry: Boolean(args.dry) });
-    if (args.dry) console.error(`prompt:\n${prompt}`);
+    const { blockout, footage, prompt, stale, estimates } = await renderPrevisFootage(session, args.scene, { model: args.model, dry: Boolean(args.dry) });
+    if (args.dry) console.error(`prompt:\n${prompt}\n\ncost:\n${estimates.join('\n')}`);
     if (stale) console.error(`scene ${args.scene} still plays footage of an earlier blockout: run this without --dry to render this one`);
     console.log(blockout);
     if (footage) console.log(footage);
@@ -52,6 +62,6 @@ const image = defineCommand({
 });
 
 export default defineCommand({
-  meta: { name: 'gen', description: 'Paid generation through OpenRouter, cached by request: `studio gen image <project> <prompt> --name <name>`, `studio gen video <project> <scene>`.' },
+  meta: { name: 'gen', description: 'Paid generation through OpenRouter, cached by request: `studio gen image <project> <prompt> --name <name>`, `studio gen video <project> <scene> --model <model>`.' },
   subCommands: { image, video },
 });

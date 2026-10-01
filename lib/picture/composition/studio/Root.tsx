@@ -7,7 +7,7 @@ import { Composition, Folder, Freeze, useCurrentFrame } from 'remotion';
 import stills from '@stills';
 import video from '@video';
 import { DEFAULT_VIDEO_FORMAT } from '#lib/picture/frame/models/frame.ts';
-import { assertPrevisSpanFits, previsSpan } from '#lib/footage/previs/studio/previs.ts';
+import { previsSpan } from '#lib/footage/previs/studio/previs.ts';
 import { StillProbe } from '#lib/picture/stills/studio/still-probe.tsx';
 import { STILL_PRESETS, stillName, type StillProps, type StillRenderProps } from '#lib/picture/stills/models/still-presets.ts';
 import { StillPresetContext, type StillsDef } from '#lib/picture/stills/studio/stills.tsx';
@@ -78,6 +78,7 @@ function VideoCompositions({ video }: { video: VideoDef }) {
   const { fps, width, height } = videoFormatOf(video);
   const { frames } = tl;
   const settings: CompositionRenderSettings = video.renderWorkers === undefined ? {} : { renderWorkers: video.renderWorkers };
+  const firstPrevis = tl.scenes.find((scene) => scene.previs)?.id;
   return (
     <>
       <Composition
@@ -100,7 +101,7 @@ function VideoCompositions({ video }: { video: VideoDef }) {
         calculateMetadata={({ props }) => ({ durationInFrames: Math.max(frames, props.order.length) })}
         defaultProps={{ captions: false, probe: false, blockouts: false, order: [0], ...settings } satisfies ReplayProps & CompositionRenderSettings}
       />
-      {tl.scenes.some((scene) => scene.previs) && (
+      {firstPrevis && (
         <Composition
           id={BLOCKOUT_SLUG}
           component={ProjectBlockout}
@@ -108,12 +109,8 @@ function VideoCompositions({ video }: { video: VideoDef }) {
           height={height}
           fps={fps}
           durationInFrames={fps * 4}
-          calculateMetadata={({ props }) => {
-            const span = previsSpan(tl, props.scene);
-            assertPrevisSpanFits(props.scene, span);
-            return { durationInFrames: span.duration * fps };
-          }}
-          defaultProps={{ scene: tl.scenes.find((scene) => scene.previs)!.id, ...settings } satisfies BlockoutSoloProps & CompositionRenderSettings}
+          calculateMetadata={({ props }) => ({ durationInFrames: props.seconds * fps })}
+          defaultProps={{ scene: firstPrevis, seconds: previsSpan(tl, firstPrevis).duration, ...settings } satisfies BlockoutSoloProps & CompositionRenderSettings}
         />
       )}
     </>

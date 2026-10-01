@@ -1,6 +1,6 @@
 ---
 name: video-gen
-description: Generated footage for a scene, made the film previs way: block the shot in 3D (or flat, for a 2D shot), get the blockout approved, then pay for one Seedance render with `studio gen video`. Use when a scene needs footage no capture or kit shot can give (a product in use, a place, people), or for notes on generated footage.
+description: Generated footage for a scene, made the film previs way: block the shot in 3D (or flat, for a 2D shot), get the blockout approved, then pay for one render with `studio gen video`, on the model the user picks (Seedance 2.5 or HeyGen Video 1). Use when a scene needs footage no capture or kit shot can give (a product in use, a place, people), or for notes on generated footage.
 ---
 
 # Previs
@@ -9,8 +9,8 @@ Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it.
 
 Generated footage is made the way film **previs** is: block the shot, get it approved, then pay for one render.
 The blockout is the draft. Every decision (subjects, where they stand, the camera move, how long it runs) is made and
-approved there, where changes are free. The render only dresses it. There are no cheap-model video drafts: they look
-bad and don't predict what Seedance does.
+approved there, where changes are free. The render only dresses it. Neither model is a draft of the other: a render on
+one doesn't predict what the other makes of the same blockout.
 
 ## 1. Block it
 
@@ -53,14 +53,14 @@ blockout's.
 - **The camera really moves.** `orbitMove`, `pushInMove` and `dollyMove` return a pose for 0..1 progress; drive them
   with `seg(s.t, a, b)`. Move the camera and keep `fov` fixed. A 3D blockout gives the model real perspective and
   parallax to copy, which is why its moves don't come back as zooms. A change of `fov` does come back as a zoom.
-- **Block the set, not just the subjects.** Seedance follows the camera path, the easing and where each subject
+- **Block the set, not just the subjects.** The model follows the camera path, the easing and where each subject
   stands closely, but around bare subjects on the empty grid it frames them tighter than blocked. Walls, a window and
   a counter (big boxes and cards, tinted and named in the prompt) hold the framing: a kitchen blocked with its walls, window
   and counter came back framed as blocked.
 - **Subjects can move too.** Compute them from `s.t`, like the pose.
 - **Time the move to its scene's cues** (its words or beats), like any scene (the `video-motion` skill). The footage covers the
-  scene's whole time on screen, crossfades included, rounded up to whole seconds between 4 and 30. A longer scene
-  has to be split.
+  scene's whole time on screen, crossfades included, rounded up to whole seconds within the model's range (4–30 on
+  Seedance, 5–15 on HeyGen). A longer scene has to be split.
 
 Done when `studio look` strips show the move landing on its cues, and the user has approved the blockout in
 `studio preview`.
@@ -74,7 +74,7 @@ Done when `studio look` strips show the move landing on its cues, and the user h
 
 `studio gen video` puts a preamble ahead of it, worded for a 3D or a 2D blockout, that asks for a new video
 referencing `@Video1`, the blockout. Never
-word the prompt as changing the blockout ("turn the box into…", "replace", "restyle"): Seedance reads the task type
+word the prompt as changing the blockout ("turn the box into…", "replace", "restyle"): the model reads the task type
 from the prompt, and a request that reads as an edit of `@Video1` fails, since OpenRouter can't send what an edit
 needs.
 
@@ -83,18 +83,26 @@ needs.
 Leave `audio` off unless the shot's own sound matters: the voice and music carry a video's sound, and footage with
 sound can't be retimed.
 
-## 3. Render once
+## 3. Pick a model, render once
+
+Two models can render a blockout. **Ask the user which one before every paid render**, quoting each one's length
+and price for this shot (`--dry` prints them). Don't choose for them, and don't carry an earlier answer over to a new
+shot.
+
+| `--model` | | Length | Price | Notes |
+|---|---|---|---|---|
+| `seedance` | Seedance 2.5 | 4–30 s, 720p | **$0.28/s** ($1.40 for 5 s): it bills the blockout's seconds as well as the footage's | Takes `previs.references` stills; `audio` is honoured |
+| `heygen` | HeyGen Video 1 | 5–15 s, 768p | **about $0.03/s** ($0.18 for 6 s) | No stills: a scene with references is refused. It always makes sound, which the scene mutes unless `audio` is on |
 
 ```sh
-studio gen video <project> <scene> --dry     # renders the blockout and prints the full prompt, free
-"$(studio home)/bin/studio-secrets" studio gen video <project> <scene>
+studio gen video <project> <scene> --model seedance --dry   # renders the blockout, prints the full prompt and each model's cost, free
+"$(studio home)/bin/studio-secrets" studio gen video <project> <scene> --model <the user's pick>
 ```
 
-A render costs **$0.28 per second** at 720p ($1.39 for a 5 s shot): Seedance bills the blockout's seconds as well as
-the footage's. The shot takes the video's shape (16:9, 9:16, 1:1, 4:3, 3:4 or 21:9); a video of any other shape
-can't have one. Never render without the user's explicit yes to the cost. The request is cached by its blockout,
-prompt and stills: asking again for an unchanged scene costs nothing, and changing a subject, the move or the prompt
-pays again.
+The shot takes the video's shape (16:9, 9:16, 1:1, 4:3, 3:4 or 21:9); a video of any other shape
+can't have one. Never render without the user's explicit yes to the model and its cost. The request is cached by its
+model, blockout, prompt and stills: asking again for an unchanged scene costs nothing, and changing the model, a
+subject, the move or the prompt pays again.
 
 From then on the scene plays its footage, even after its blockout changes, until `studio gen video` runs again.
 Pass `blockouts: true` in the Studio's props panel to see the blockout; `--dry` says when the footage is stale.

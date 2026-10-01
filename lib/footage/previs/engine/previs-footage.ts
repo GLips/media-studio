@@ -6,8 +6,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-/** One scene's footage: its file (relative to generated/), where it starts in scene time, and the blockout it's from. */
-export type PrevisFootageEntry = { file: string; from: number; duration: number; blockout: string };
+/** One scene's footage: its file (relative to generated/), where it starts in scene time, the blockout it's from and the OpenRouter model that made it. */
+export type PrevisFootageEntry = { file: string; from: number; duration: number; blockout: string; model: string };
 
 const generatedDirFor = (project: string) => join(resolve(project), 'generated');
 export const previsFootageModuleFor = (project: string) => join(generatedDirFor(project), 'footage.ts');

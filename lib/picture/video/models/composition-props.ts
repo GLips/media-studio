@@ -14,8 +14,8 @@ export type VideoProps = {
   profile?: boolean;
 };
 
-/** One previs scene's blockout alone (BlockoutSolo), for `studio gen video`. */
-export type BlockoutSoloProps = { scene: string };
+/** One previs scene's blockout alone (BlockoutSolo), for `studio gen video`, run for the chosen model's `seconds`. */
+export type BlockoutSoloProps = { scene: string; seconds: number };
 
 export type ReplayProps = VideoProps & { order: number[] };
 
