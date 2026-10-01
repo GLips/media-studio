@@ -108,7 +108,7 @@ export const stampGuidedMarks = defineStampTechnique<StampGuidedMarksOptions, { 
     const guides = stampCheckedGuides(options.guides, full);
     if (lean && !(lean.share >= 0 && lean.share <= 1 && Number.isFinite(lean.toward))) throw new Error(`stamp paint: ${full} leans ${lean.share} of the way toward ${lean.toward}; a lean is a finite direction and a share of 0..1`);
     const { paint, water } = well(options.well), laid = brush(options.brush), diameter = sizeRange(options.size);
-    const placed = guides.flatMap(({ id, path }) => stampScatterMarks({ kind: 'along', path, spread, ...(weight && { weight }) }, { count: perGuide, length, diameter, key: `${full}|${id}` })
+    const placed = guides.flatMap(({ id, path }) => stampScatterMarks({ kind: 'along', path, spread, ...(weight && { weight }) }, { count: perGuide, length, diameter, key: `${full}/${id}` })
       .map((scattered, k) => {
         // The turn toward the lean goes the short way round, so a lean of π/2 bends a mark heading left and one heading right both down.
         const turn = lean ? Math.atan2(Math.sin(lean.toward - scattered.angle), Math.cos(lean.toward - scattered.angle)) * lean.share : 0;

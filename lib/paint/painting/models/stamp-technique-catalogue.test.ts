@@ -54,7 +54,8 @@ test('guided marks run along their guides, leaned toward an absolute way, and a 
   const tier = { id: 'low', path: [{ x: 100, y: 100 }, { x: 300, y: 100 }] };
   const marksOf = (guides: { id: string; path: { x: number; y: number }[] }[]) => {
     let marks: ReturnType<typeof stampGuidedMarks>['marks'] = [];
-    written((p) => ({ marks } = stampGuidedMarks(p, 'needles', { guides, perGuide: 6, length: [20, 20], size: 4, well: { paint: mixture('phthaloBlue') }, lean: { toward: Math.PI / 2, share: 0.5 }, spread: 3 })));
+    const { recipe } = written((p) => ({ marks } = stampGuidedMarks(p, 'needles', { guides, perGuide: 6, length: [20, 20], size: 4, well: { paint: mixture('phthaloBlue') }, lean: { toward: Math.PI / 2, share: 0.5 }, spread: 3 })));
+    compileStampPaintRecipe(recipe);
     return marks;
   };
   const one = marksOf([tier]);
@@ -66,7 +67,7 @@ test('guided marks run along their guides, leaned toward an absolute way, and a 
     assert.ok(Math.abs(Math.atan2(b.y - a.y, b.x - a.x) - Math.PI / 4) < 1e-9);
   }
   const two = marksOf([{ id: 'high', path: [{ x: 120, y: 60 }, { x: 280, y: 60 }] }, tier]);
-  assert.deepEqual(two.filter(({ key }) => key.includes('|low-')), one);
+  assert.deepEqual(two.filter(({ key }) => key.includes('/low-')), one);
   assert.throws(() => marksOf([tier, tier]), /an ID of its own/);
 });
 
