@@ -25,7 +25,7 @@ import type { StampDepositName } from './stamp-deposit-identity.ts';
 import type { StampPaintMixing, StampPigmentMixing } from './stamp-pigment-paint.ts';
 import type { StampAllocatedReveal, StampChildTiming, StampReveal, StampScoreOptions } from './stamp-paint-score.ts';
 import type { StampSheet, StampSize } from './stamp-paint-sizes.ts';
-import type { StampCondition, StampWrittenWait } from './stamp-wash-effects.ts';
+import type { StampCondition, StampSheen, StampWrittenWait } from './stamp-wash-effects.ts';
 
 /**
  * What a painting is laid on: a style's paper with each image named in full, as a painting is laid on it.
@@ -82,8 +82,8 @@ export type StampApplicationOptions = StampScoreOptions & {
 
 /**
  * `when`: just before the operation, the passage waits until the wettest paper under its deposits is no wetter than
- * its medium's `shiny` or `damp` (PaintSheen). The whole passage's painting time advances. Only in a passage with
- * wet history, in a medium with 'wet-conditions'.
+ * its medium's `shiny` or `damp` (PaintSheen), in a medium with 'wet-conditions', or until the whole passage is
+ * `set`. The whole passage's painting time advances. Only in a passage with wet history.
  */
 export type StampConditioned = { when?: StampCondition };
 
@@ -256,7 +256,7 @@ export type StampGroupScope = StampMasking & {
 export type StampPassageWait = {
   (until: 'set', options?: { rim?: number }): void;
   (until: { seconds: number }): void;
-  (until: StampCondition, options?: { region?: StampRegion }): void;
+  (until: StampSheen, options?: { region?: StampRegion }): void;
 };
 
 /**

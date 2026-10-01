@@ -9,7 +9,7 @@ import { compileStampPaintRecipe, stampPassDeposits } from './stamp-paint-recipe
 import { defineStampTechnique } from './stamp-paint-passage.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment, StampPaintRecipeDeposit, StampPassageOptions, StampPassageScope } from './stamp-paint-recipe-types.ts';
-import { stampBlot, stampChargedForm, stampGradedWash, stampGuidedMarks, type StampFormFace } from './stamp-technique-catalogue.ts';
+import { stampBlot, stampChargedForm, stampDrawnLine, stampGradedWash, stampGuidedMarks, type StampFormFace } from './stamp-technique-catalogue.ts';
 
 const brush = (name: string): StampBrush => ({
   name, blend: 'normal', accumulation: { kind: 'glaze', build: 0 },
@@ -114,4 +114,25 @@ test("an author's raw op may say why it escapes the techniques, which its deposi
   assert.throws(() => written((p) => p.stroke('accent', { path: [{ x: 0, y: 0 }, { x: 50, y: 0 }], well: { paint: mixture('quinacridoneRose') }, escape: ' ' })), /with no reason/);
   const sneaky = defineStampTechnique<object>({ name: 'sneaky', weight: 1, requires: [], expand: ({ p }) => (p.stroke('line', { path: [{ x: 0, y: 0 }, { x: 50, y: 0 }], well: { paint: mixture('quinacridoneRose') }, escape: 'mine' }), {}) });
   assert.throws(() => written((p) => sneaky(p, 'it', {})), /inside the sneaky technique/);
+});
+
+test('a drawn line lays the stroke a raw op would, tapering unless it says, its deposit named by its own ID', () => {
+  const path = [{ x: 20, y: 20 }, { x: 120, y: 60 }, { x: 220, y: 40 }], well = { paint: mixture('ultramarine') };
+  const drawn = written((p) => stampDrawnLine(p, 'fold', { path, well, size: 8 }));
+  const raw = written((p) => p.stroke('fold', { path, well, size: 8, hand: { profile: 'taper' }, escape: 'the same line' }));
+  assert.deepEqual(named(drawn.deposits), ['fold']);
+  assert.deepEqual(stampPassDeposits(compileStampPaintRecipe(drawn.recipe).groups[0].passes[0]), stampPassDeposits(compileStampPaintRecipe(raw.recipe).groups[0].passes[0]));
+  // Into shiny paint, it waits first, judged as a charge.
+  const shiny = written((p) => stampDrawnLine(p, 'fold', { path, well, when: 'shiny' }));
+  assert.deepEqual(shiny.steps[0], { kind: 'wait', until: 'shiny', under: { deposits: [drawn.deposits[0].name] }, effect: { kind: 'charge', id: 'fold' }, authored: true });
+});
+
+test('guided marks hang from their guide when anchored at their start, rather than straddling it', () => {
+  const marksOf = (anchor?: 'start') => {
+    let marks: ReturnType<typeof stampGuidedMarks>['marks'] = [];
+    written((p) => ({ marks } = stampGuidedMarks(p, 'reflections', { guides: [{ id: 'shore', path: [{ x: 0, y: 100 }, { x: 400, y: 100 }] }], perGuide: 8, length: [20, 40], size: 4, well: { paint: mixture('phthaloBlue') }, lean: { toward: Math.PI / 2, share: 1 }, ...(anchor && { anchor }) })));
+    return marks.map(({ geometry }) => (geometry.kind === 'stroke' ? geometry.path.map(({ y }) => y) : []));
+  };
+  for (const ys of marksOf('start')) assert.ok(Math.abs(ys[0] - 100) < 1e-9 && ys.every((y) => y >= 100 - 1e-9) && ys[2] > 110);
+  for (const ys of marksOf()) assert.ok(ys[0] < 100 && ys[2] > 100);
 });

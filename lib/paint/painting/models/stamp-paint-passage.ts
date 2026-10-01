@@ -22,6 +22,9 @@ import type {
 } from './stamp-paint-recipe-types.ts';
 import type { StampCondition, StampWaitEffect, StampWashWait, StampWetEffectKind } from './stamp-wash-effects.ts';
 
+/** A condition as a call gave it (`authored`), or a technique's default. */
+type StampAskedCondition = { when: StampCondition; authored: boolean };
+
 /** What a passage is written in: its painting's environment, its group's medium (null for flat colour) and fluid. */
 export type StampPassageHost = {
   environment: StampPaintEnvironment;
@@ -101,14 +104,23 @@ function under(writer: StampPassageWriter, node: StampScoreNode<StampPaintRecipe
   return { ...writer, node, provenance: [...writer.provenance, id], ...(within && { within: [...(writer.within ?? []), { area: within, seed }] }) };
 }
 
-/** Runs `write`, then stands a wait until `when` before what it wrote, judging those deposits by name. */
-function conditioned(writer: StampPassageWriter, when: StampCondition | undefined, effect: StampWaitEffect | undefined, what: string, write: () => void) {
-  if (!when) return write();
-  const { steps } = writer.state, first = steps.length;
+/**
+ * Runs `write`, then stands a wait until `asked`'s condition before what it wrote: a sheen judging those deposits by
+ * name, for `effect`; `set`, the whole passage, as wait('set') does, with no wet effect to judge.
+ */
+function conditioned(writer: StampPassageWriter, asked: StampAskedCondition | undefined, effect: StampWaitEffect | undefined, what: string, write: () => void) {
+  if (!asked) return write();
+  const { steps } = writer.state, first = steps.length, { when, authored } = asked;
+  const mark = authored ? { authored: true as const } : {};
+  if (when === 'set') {
+    checkWetHistory(writer.state, `${what}'s condition (when: 'set')`);
+    steps.push({ kind: 'wait', until: 'set', under: 'wash', ...mark });
+    return write();
+  }
   checkWetHistory(writer.state, `${what}'s condition (when: '${when}')`, 'wet-conditions');
   write();
   const deposits = steps.slice(first).flatMap((step) => (step.kind === 'deposit' ? [step.name] : []));
-  steps.splice(first, 0, { kind: 'wait', until: when, under: { deposits }, ...(effect && { effect }) });
+  steps.splice(first, 0, { kind: 'wait', until: when, under: { deposits }, ...(effect && { effect }), ...mark });
 }
 
 const missing = (full: string, what: string): never => {
@@ -168,7 +180,8 @@ function rawOp(writer: StampPassageWriter, id: string, options: StampApplication
   if (escape !== undefined && (writer.technique || !escape.trim())) {
     throw new Error(`stamp paint: ${full} escapes ${writer.technique ? `inside the ${writer.technique} technique, whose own ops are no one's escape` : 'with no reason; an escape says why'}`);
   }
-  conditioned(bound, options.when, undefined, full, () => write({ ...bound, provenance: writer.provenance, ...(escape && { escape }) }, full));
+  const asked = options.when && { when: options.when, authored: true };
+  conditioned(bound, asked, undefined, full, () => write({ ...bound, provenance: writer.provenance, ...(escape && { escape }) }, full));
 }
 
 /** The scope `writer` writes through. */
@@ -213,7 +226,7 @@ function passageScope(writer: StampPassageWriter): StampPassageScope {
       if (until === 'set') checkWetHistory(state, what);
       else if (typeof until === 'string') checkWetHistory(state, what, 'wet-conditions');
       const region = options?.region, rim = options?.rim;
-      state.steps.push({ kind: 'wait', until, under: region ? { region } : 'wash', ...(rim !== undefined && { rim }) });
+      state.steps.push({ kind: 'wait', until, under: region ? { region } : 'wash', ...(rim !== undefined && { rim }), ...(typeof until === 'string' && until !== 'set' && { authored: true as const }) });
     },
     apply: (id, options, body) => {
       const node = application(writer, id, splitScore(options), 'apply');
@@ -238,6 +251,8 @@ function passageScope(writer: StampPassageWriter): StampPassageScope {
  */
 export type StampTechniqueSpec = {
   name: string; weight: number; requires: readonly PaintCapability[]; effect?: StampWetEffectKind; children?: StampChildTiming; defaults?: StampPassageDefaults;
+  /** The condition it waits for where a call gives none (a bloom's damp); left out, none. */
+  when?: StampCondition;
 };
 
 /**
@@ -255,8 +270,11 @@ export type StampTechniqueContext = {
   sizeRange: (given: StampSizeRange | undefined) => readonly [number, number];
   /** The well for `role` (a lit face's, a core's): `given`, else the defaults' wells by that role; refused when neither. */
   roleWell: (role: string, given: StampWell | undefined) => StampWell;
-  /** Runs `write`, its deposits standing after a wait until `when`, judged together and named for the technique's effect. */
-  conditioned: (when: StampCondition | undefined, write: () => void) => void;
+  /**
+   * Runs `write`, its deposits standing after a wait until `when`, judged together and named for the technique's
+   * effect (a charge unless its spec says). Left out, its spec's `when`; `false`, none.
+   */
+  conditioned: (when: StampCondition | false | undefined, write: () => void) => void;
   /** The passage's area: a technique's default geometry. */
   area: StampRegion | undefined;
   /** The stretches its own `within` merges, by name: where it lays its wet treatment, so the opened edge runs on. */
@@ -301,12 +319,16 @@ function invokeStampTechnique<H extends object>(p: StampPassageScope, spec: Stam
   }
   const defaults = layeredDefaults(layeredDefaults(writer.defaults, spec.defaults), writer.state.host.environment.techniques?.[spec.name]);
   const bound: StampPassageWriter = { ...under(writer, node, id, options.within), namer: keyedNamer(name, id), defaults, technique: spec.name };
-  const effect = spec.effect && { kind: spec.effect, id: stampDepositNameText(name) };
+  const effect = { kind: spec.effect ?? 'charge', id: stampDepositNameText(name) };
+  const asked = (when: StampCondition | false | undefined): StampAskedCondition | undefined => {
+    if (when === undefined) return spec.when && { when: spec.when, authored: false };
+    return when === false ? undefined : { when, authored: true };
+  };
   const take = resolvers(bound, full);
   const merges = Object.entries(options.within?.boundaries ?? {}).flatMap(([boundary, { path, treatment, reach }]) => (treatment === 'merge' && reach ? [{ name: boundary, path, reach }] : []));
   const made = expand({
     p: passageScope(bound), id, full, ...take, area: writer.state.options.area, merges,
-    conditioned: (when, write) => conditioned(bound, when, effect, full, write),
+    conditioned: (when, write) => conditioned(bound, asked(when), effect, full, write),
   });
   const laid: StampPaintRecipeDeposit[] = [];
   const collect = (each: StampScoreNode<StampPaintRecipeDeposit>): void => {

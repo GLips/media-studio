@@ -199,11 +199,13 @@ bloom's merging reads too), or `'set'` (water gone and no paint workable, a dryi
 wash has set by its end).
 A shiny or damp `p.wait` judges the wettest lattice point of the whole wash (compiled `under: 'wash'`) or a region; an
 operation's or application's `when` judges its own deposits (`under: { deposits }`; a charge's touches together).
-Already past, it takes 0 s. `stampBloom`, `stampBackrun` and a charge `when: 'damp'` write one,
-carrying the effect that asked for it, which `stamp-wet-report.ts` reads: per wash each wait's paper before and after,
-each effect's touches with the paper under them and the bloom stage's own verdict (`stampBloomVerdict`, with its
-reason), and each drying's estimated band. The renderer lists effects that certainly won't act as it loads
-(`wetWarnings`); `assertStampWetEffects` throws on them for a test.
+Already past, it takes 0 s. A `when: 'set'` is a wash wait for `'set'` before the call. Every technique's `when`
+writes one, carrying the effect that asked for it (its spec's `effect`, a charge unless it says) and, when the author
+wrote it rather than the technique defaulting it, `authored`. `stamp-wet-report.ts` reads them: per wash each wait's
+paper before and after, each effect's touches with the paper under them and the bloom stage's own verdict
+(`stampBloomVerdict`, with its reason), and each drying's estimated band. The renderer lists, as it loads
+(`wetWarnings`), effects that certainly won't act and authored waits that do nothing (no paper, no water, or already
+drier: 0 s); a strict wash fails on them, and `assertStampWetEffects` throws on them for a test.
 
 **The transport.** Bloom and rim move what they move along the same ways, as a linear spread G (each pass
 symmetric, so the passes in reverse order are exactly Gᵀ) and a normalised scatter: N = Gᵀ(receiver weight),

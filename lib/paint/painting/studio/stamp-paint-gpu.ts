@@ -26,8 +26,10 @@ export async function createStampPaintDevice(): Promise<GPUDevice> {
   if (!adapter) throw new Error('stamp paint: this browser has no WebGPU adapter');
   if (adapter.info.isFallbackAdapter) throw new Error('stamp paint: this browser\'s WebGPU adapter is a software fallback');
   if (!adapter.features.has(TIER2)) throw new Error(`stamp paint: this GPU can't read and write half-float storage textures (${TIER2})`);
-  // A painting's stamps sit in one buffer, which a large painting takes past WebGPU's default 256 MiB.
-  return adapter.requestDevice({ requiredFeatures: [TIER2], requiredLimits: { maxBufferSize: adapter.limits.maxBufferSize } });
+  // A painting's stamps sit in one buffer, bound whole as storage, which a large painting takes past WebGPU's
+  // defaults (256 MiB a buffer, 128 MiB a binding): ask for what the adapter offers.
+  const { maxBufferSize, maxStorageBufferBindingSize } = adapter.limits;
+  return adapter.requestDevice({ requiredFeatures: [TIER2], requiredLimits: { maxBufferSize, maxStorageBufferBindingSize } });
 }
 
 /** Covers the target with one triangle, no buffers: a fragment pass reads its pixel from its position. */

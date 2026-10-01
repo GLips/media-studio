@@ -11,12 +11,14 @@ import { stampDryingRimSizing } from './stamp-wet-rim.ts';
 import { stampLandingCover, stampWaitDeposits, type StampWashWaitRecord, type StampWetness, type StampWetRange } from './stamp-wetness.ts';
 
 /**
- * A wait: what it waits for and judged (the passage, a condition's deposits, a region), the effect that asked, its
- * painting seconds and the paper it judged (StampWashWaitRecord). `alreadyDrier`: a condition's paper was already
- * past its target. `attained`: false where a condition's paper held no water, so it never was shiny or damp.
+ * A wait: what it waits for and judged, what it stood before (the effect that asked, else its one deposit), its
+ * seconds and paper (StampWashWaitRecord). `alreadyDrier`: a sheen's paper was already past it. `attained`: false
+ * where that paper held no water. `inert`: why a sheen wait changed nothing, else null. `authored`: a call asked
+ * for it (StampWrittenWait).
  */
 export type StampWetReportWait = Omit<StampWashWaitRecord, 'step'> & {
-  until: StampWashWait; under: 'wash' | 'deposits' | 'region'; effect: StampWaitEffect | null; seconds: number; alreadyDrier: boolean; attained: boolean;
+  until: StampWashWait; under: 'wash' | 'deposits' | 'region'; effect: StampWaitEffect | null; before: string | null; seconds: number;
+  alreadyDrier: boolean; attained: boolean; inert: string | null; authored: boolean;
 };
 
 /**
@@ -29,8 +31,9 @@ export type StampWetReportTouch = {
 };
 
 /**
- * An effect asked for: a bloom or a backrun is `acting` where the bloom stage acts on its deposits; a charge into
- * damp paint where the paint under it is still workable, so it mingles. `all`, `some` or `none` of its touches.
+ * An effect asked for: a bloom or a backrun is `acting` where the bloom stage acts on its deposits; a charge, a
+ * soften or a lift where the paint under it is still workable, so it mingles, moves or comes up. `all`, `some` or
+ * `none` of its touches.
  */
 export type StampWetReportEffect = { kind: StampWetEffectKind; id: string; acting: 'all' | 'some' | 'none'; reason: string | null; touches: readonly StampWetReportTouch[] };
 
@@ -56,12 +59,17 @@ export function stampWetReport(painting: CompiledStampPaint, wetness: StampWetne
 
 function washReport(pass: Extract<CompiledStampPass, { kind: 'wash' }>, wetness: StampWetness): StampWetReportWash {
   const { schedule } = pass.wash, record = wetness.washes.get(pass)!, { duration } = record;
-  const waits = record.waits.map(({ step: { until, under, effect }, ...judged }): StampWetReportWait => {
-    const condition = until === 'shiny' || until === 'damp';
+  const waits = record.waits.map(({ step: { until, under, effect, authored }, ...judged }): StampWetReportWait => {
+    const sheen = until === 'shiny' || until === 'damp';
+    const alreadyDrier = sheen && judged.to === judged.from && judged.points > 0, attained = !sheen || (judged.points > 0 && judged.wetness.before.most > 0);
+    let inert: string | null = null;
+    if (sheen && !judged.points) inert = 'it judged no paper: its deposits land off the painting';
+    else if (sheen && !attained) inert = `the paper under it held no water, so it was never ${until}`;
+    else if (alreadyDrier) inert = `the paper under it was already no wetter than ${until}, so it waited 0 s; only paper wetter than that (prepared, or watered) waits`;
+    const deposits = under !== 'wash' && 'deposits' in under ? under.deposits : [];
     return {
-      until, under: underKind(under), effect: effect ?? null, ...judged,
-      seconds: judged.to - judged.from, alreadyDrier: condition && judged.to === judged.from && judged.points > 0,
-      attained: !condition || (judged.points > 0 && judged.wetness.before.most > 0),
+      until, under: underKind(under), effect: effect ?? null, before: effect?.id ?? (deposits.length === 1 ? deposits[0] : null), ...judged,
+      seconds: judged.to - judged.from, alreadyDrier, attained, inert, authored: authored === true,
     };
   });
   const effects = schedule.flatMap((step, index) => step.kind === 'wait' && step.effect
@@ -100,8 +108,8 @@ function touchReport(deposit: CompiledStampDeposit, pass: CompiledStampPass, wet
 
 function effectReport({ kind, id }: StampWaitEffect, touches: readonly StampWetReportTouch[]): StampWetReportEffect {
   const failure = ({ workable, bloom }: StampWetReportTouch): string | null => {
-    if (kind === 'charge') return workable.most > 0 ? null : 'the paint under it had set';
-    return bloom.acts ? null : bloom.reason;
+    if (kind === 'bloom' || kind === 'backrun') return bloom.acts ? null : bloom.reason;
+    return workable.most > 0 ? null : 'the paint under it had set';
   };
   const failures = touches.map(failure), count = failures.filter((reason) => reason === null).length;
   let acting: StampWetReportEffect['acting'] = 'some';
@@ -111,24 +119,33 @@ function effectReport({ kind, id }: StampWaitEffect, touches: readonly StampWetR
   return { kind, id, acting, reason: acting === 'all' ? null : reasons.join('; '), touches };
 }
 
-/** One line per effect that certainly won't act, for a console on load: none of its touches will. */
+/**
+ * One line per thing a wash asked for that certainly does nothing, for a console on load: an effect none of whose
+ * touches will act, and an authored sheen wait or `when` that changed nothing (StampWetReportWait's `inert`).
+ */
 export function stampWetReportWarnings(report: StampWetReport): string[] {
-  const verb: Record<StampWetEffectKind, string> = { bloom: "won't bloom", backrun: "won't backrun", charge: "won't mingle" };
-  return report.washes.flatMap((wash) => wash.effects.filter((effect) => effect.acting === 'none').map((effect) => `stamp paint: ${effect.id} (${effect.kind}) ${verb[effect.kind]}: ${effect.reason}`));
+  const verb: Record<StampWetEffectKind, string> = { bloom: "won't bloom", backrun: "won't backrun", charge: "won't mingle", soften: "won't soften", lift: 'lifts little' };
+  return report.washes.flatMap((wash) => [
+    ...wash.waits.flatMap(({ until, before, inert, authored }) => (inert && authored && typeof until === 'string' ? [`stamp paint: ${before ?? wash.id}'s wait until ${until} does nothing: ${inert}`] : [])),
+    ...wash.effects.filter((effect) => effect.acting === 'none').map((effect) => `stamp paint: ${effect.id} (${effect.kind}) ${verb[effect.kind]}: ${effect.reason}`),
+  ]);
 }
 
 /**
- * What fails a strict wash (StampPassageOptions' `strict`), a line each: a condition that judged paper with no water,
- * or an effect none of whose touches the engine will act on. Only strict washes; none for a report without them.
+ * What fails a strict wash (StampPassageOptions' `strict`), a line each: its warnings (stampWetReportWarnings), and
+ * a technique's own sheen condition that judged paper with no water. Only strict washes; none for a report without them.
  */
 export function stampWetReportStrictFailures(report: StampWetReport): string[] {
   return report.washes.filter(({ strict }) => strict).flatMap((wash) => wash.waits
-    .flatMap(({ until, effect, attained }) => (attained || typeof until !== 'string' ? [] : [`stamp paint: ${wash.id}'s wait until ${until}${effect ? ` (for ${effect.id})` : ''} judged paper with no water: it was never ${until}`]))
+    .flatMap(({ until, before, attained, authored }) => (attained || authored || typeof until !== 'string' ? [] : [`stamp paint: ${wash.id}'s wait until ${until}${before ? ` (for ${before})` : ''} judged paper with no water: it was never ${until}`]))
     .concat(stampWetReportWarnings({ washes: [wash] })));
 }
 
-/** Throws, listing them, when any effect `report` holds certainly won't act (stampWetReportWarnings): for a test to hold a painting to its effects. */
+/**
+ * Throws, listing them, when `report` warns (stampWetReportWarnings): an effect that certainly won't act, or a wait
+ * that does nothing. For a test to hold a painting to what it asks of its paint.
+ */
 export function assertStampWetEffects(report: StampWetReport): void {
   const warnings = stampWetReportWarnings(report);
-  if (warnings.length) throw new Error(`stamp paint: ${warnings.length} wet effect(s) won't act:\n${warnings.join('\n')}`);
+  if (warnings.length) throw new Error(`stamp paint: ${warnings.length} wet warning(s):\n${warnings.join('\n')}`);
 }

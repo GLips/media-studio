@@ -143,20 +143,27 @@ Everything is from `#studio`.
     shine has gone) waits first until the paper under its own deposits is that dry; `p.wait('damp')` waits for the
     whole passage's wettest paper (`{ region }` for a region's). `p.wait('set')` lets the whole passage dry and rims
     its edges. `p.wait({ seconds })` is for drying a set time further, no state in mind; if the whole passage has set
-    by then, it rims just as `wait('set')` would. A medium that can't (crayon has no wet conditions) refuses as the
-    recipe is written, naming itself.
+    by then, it rims just as `wait('set')` would. `when: 'set'` is `p.wait('set')` before the call; every catalogue
+    technique takes `when`. A `when` you write that does nothing (no water under it, or the paper already drier:
+    `shiny` after a flood on dry paper) is a wet warning, which a strict wash refuses; prepare or water the paper
+    for a real shine. A medium that can't (crayon has no wet conditions) refuses as the recipe is written, naming
+    itself.
   - **Colour charged into a wet wash**: `stampCharge(p, id, { placement, touches, well: { paint: set }, brush,
     size: [min, max], length: [min, max], angle?, when?, reveal })` lays `touches` short swelling strokes, each
     loaded from a weighted set (`stampMaterialSet({ blue: material, rose: { material, weight: 2 } })`, checked as
     written), so neighbours differ. `placement` is `{ kind: 'along', path, spread, weight? }` (down a slope, a shadow
     side, a colour passage) or `{ kind: 'area', region, weight? }`, a weight field 0..1 read where each mark lands; prefer a path or a weighted area to an even scatter, which reads as
-    ornament. `when: 'damp'` waits once, until the paper under the touches has lost its shine. In the watercolor
-    style, `brush` is `brushes.charge`.
+    ornament. `when: 'damp'` waits once, until the paper under the touches has lost its shine. `hand` shapes each
+    touch (a swell unless it says: `{ profile: 'pressFlick' }` for a flick), `anchor: 'start'` hangs it from its
+    place rather than centring it there. In the watercolor style, `brush` is `brushes.charge`.
   - **The catalogue** (`stamp-technique-catalogue.ts`), each returning `{ application, deposits, footprint }` plus
     its own geometry: `stampGradedWash(p, id, { from, to, along: [a, b] } | { well, load: { along, from, to } },
     region?, reach?, variety? })`, a continuous grade between single materials (a set is refused), flooded;
     `stampGuidedMarks(p, id, { guides: [{ id, path }], perGuide, length, size, well, spread?, weight?, lean: {
-    toward, share }, hand? })`, marks along guides (a pine's tiers), turned toward an absolute way; `stampChargedForm(p,
+    toward, share }, hand?, anchor? })`, marks along guides (a pine's tiers), turned toward an absolute way, centred
+    on the guide or (`anchor: 'start'`) hanging from it, as reflections from a waterline; `stampDrawnLine(p, id, {
+    path, well, size?, brush?, hand? })`, one stroke along a line you drew (a fold, a strand, a bird), tapered unless
+    `hand` says; `stampChargedForm(p,
     id, { model, light, wells: { lit, half?, shade, core, undercut? }, core?, undercut? })`, a body in the lit well
     with half and shade charged in when shiny, the model an ellipsoid (derived shade and core) or `faces` the caller
     drew, each with a `facing`, so moving `light` relights them; `stampBlot(p, id, { shapes: [{ id, region }],

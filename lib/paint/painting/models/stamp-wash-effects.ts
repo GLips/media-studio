@@ -8,25 +8,34 @@ import type { CompiledStampDeposit, CompiledStampMask } from './stamp-paint-reci
 import type { StampSeededPaintField } from './stamp-paint-field.ts';
 import type { StampPoint, StampRegion } from './stamp-region.ts';
 
-/** A sheen an operation may wait for (PaintSheen): its paper no wetter than its medium's `shiny`, or `damp`. */
-export type StampCondition = 'shiny' | 'damp';
+/** A sheen the paper may be waited for (PaintSheen): no wetter than its medium's `shiny`, or `damp`. */
+export type StampSheen = 'shiny' | 'damp';
+/**
+ * What an operation's `when` waits for first: a sheen, judged under its own deposits, or `set`, the whole passage
+ * (a drying, as `wait('set')` is: drying is passage-wide).
+ */
+export type StampCondition = StampSheen | 'set';
 /**
  * A passage waiting in painting time: until the paper it judges is no wetter than its medium's `shiny` or `damp`;
  * until the whole passage is `set`, its water gone and no paint workable, a drying (it rims); or for `seconds`, a
  * drying too if the whole passage has set by then.
  */
-export type StampWashWait = StampCondition | 'set' | { seconds: number };
+export type StampWashWait = StampCondition | { seconds: number };
 
-/** A wet effect a technique asks for, which the wet report (stamp-wet-report.ts) judges. */
-export type StampWetEffectKind = 'bloom' | 'backrun' | 'charge';
+/**
+ * A wet effect a technique's condition asks for, which the wet report (stamp-wet-report.ts) judges: a bloom's drop,
+ * a backrun, a `charge` of paint into paint still workable (to mingle), a damp brush's `soften`, a tissue's `lift`.
+ */
+export type StampWetEffectKind = 'bloom' | 'backrun' | 'charge' | 'soften' | 'lift';
 /** A wet effect's own wait: what asked for it, its ID full once compiled, so a report can tell a bloom's drop from plain water. */
 export type StampWaitEffect = { kind: StampWetEffectKind; id: string };
 /**
  * A wait as written, judging the whole passage (`wash`), the deposits a condition stands before, by name, or a
- * region; a wait('set') may carry its drying's `rim`.
+ * region; a wait('set') may carry its drying's `rim`. `authored`: a call asked for it, not a technique's default
+ * condition, so the wet report warns when it changes nothing (stampWetReportWarnings).
  */
 export type StampWrittenWait = {
-  kind: 'wait'; until: StampWashWait; under: 'wash' | { deposits: readonly StampDepositName[] } | { region: StampRegion }; rim?: number; effect?: StampWaitEffect;
+  kind: 'wait'; until: StampWashWait; under: 'wash' | { deposits: readonly StampDepositName[] } | { region: StampRegion }; rim?: number; effect?: StampWaitEffect; authored?: true;
 };
 
 /**
@@ -44,10 +53,11 @@ export type CompiledStampWash = {
 };
 /**
  * A wait in a schedule: until `until`, judging the whole passage's wettest paper, the paper under the deposits it
- * stands before (by ID), or a region's, traced; `rim` a wait('set')'s own; `effect` when a wet effect asked for it.
+ * stands before (by ID), or a region's, traced; `rim` a wait('set')'s own; `effect` when a wet effect asked for it;
+ * `authored` as written (StampWrittenWait).
  */
 export type CompiledStampWashWait = {
-  kind: 'wait'; until: StampWashWait; under: 'wash' | { deposits: readonly string[] } | { region: readonly StampPoint[] }; rim?: number; effect?: StampWaitEffect;
+  kind: 'wait'; until: StampWashWait; under: 'wash' | { deposits: readonly string[] } | { region: readonly StampPoint[] }; rim?: number; effect?: StampWaitEffect; authored?: true;
 };
 export type CompiledStampWashStep = { kind: 'deposit'; deposit: CompiledStampDeposit } | CompiledStampWashWait;
 
@@ -55,7 +65,7 @@ export type CompiledStampWashStep = { kind: 'deposit'; deposit: CompiledStampDep
  * A written wait as compiled into passage `passId`: a seconds wait finite from 0, its region traced, its deposits and
  * its effect named in full, its rim checked.
  */
-export function compileStampWashWait({ until, under, rim, effect }: StampWrittenWait, passId: string): CompiledStampWashWait {
+export function compileStampWashWait({ until, under, rim, effect, authored }: StampWrittenWait, passId: string): CompiledStampWashWait {
   if (typeof until === 'object' && !(until.seconds >= 0 && Number.isFinite(until.seconds))) throw new Error(`stamp paint: ${passId} waits ${until.seconds}s, and a wait takes a finite 0 or more`);
   const full = (name: StampDepositName) => `${passId}/${stampDepositNameText(name)}`;
   const judged = (): CompiledStampWashWait['under'] => {
@@ -64,7 +74,7 @@ export function compileStampWashWait({ until, under, rim, effect }: StampWritten
   };
   return {
     kind: 'wait', until, under: judged(),
-    ...(rim !== undefined && { rim: checkedStampRim(rim, passId) }), ...(effect && { effect: { ...effect, id: `${passId}/${effect.id}` } }),
+    ...(rim !== undefined && { rim: checkedStampRim(rim, passId) }), ...(effect && { effect: { ...effect, id: `${passId}/${effect.id}` } }), ...(authored && { authored }),
   };
 }
 

@@ -120,9 +120,16 @@ function alongPlacer({ path, spread, weight: written }: Extract<StampScatterPlac
   };
 }
 
-/** A scattered mark as a short straight stroke through its centre, the way it runs. */
-export function stampScatteredStrokePath({ center, angle, length }: StampScatteredMark): StampStrokePoint[] {
+/**
+ * Where a scattered mark's stroke sits on its place: through it (`centre`), or starting from it (`start`), so marks
+ * hang from their guide, as reflections hang from a waterline.
+ */
+export type StampMarkAnchor = 'centre' | 'start';
+
+/** A scattered mark as a short straight stroke the way it runs, anchored on its place by `anchor` (`centre`). */
+export function stampScatteredStrokePath({ center, angle, length }: StampScatteredMark, anchor: StampMarkAnchor = 'centre'): StampStrokePoint[] {
   const dx = (Math.cos(angle) * length) / 2, dy = (Math.sin(angle) * length) / 2;
+  if (anchor === 'start') return [{ x: center.x, y: center.y }, { x: center.x + dx, y: center.y + dy }, { x: center.x + 2 * dx, y: center.y + 2 * dy }];
   return [{ x: center.x - dx, y: center.y - dy }, { x: center.x, y: center.y }, { x: center.x + dx, y: center.y + dy }];
 }
 

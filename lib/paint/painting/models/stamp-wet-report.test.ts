@@ -4,10 +4,11 @@ import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { compileStampPaintRecipe } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
-import type { StampPaintEnvironment, StampPassageScope } from './stamp-paint-recipe-types.ts';
+import type { StampPaintEnvironment, StampPassageScope, StampWell } from './stamp-paint-recipe-types.ts';
 import { assertStampWetEffects, stampWetReport, stampWetReportStrictFailures, stampWetReportWarnings } from './stamp-wet-report.ts';
 import { compileStampWetness } from './stamp-wetness.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
+import { stampDrawnLine, stampGradedWash } from './stamp-technique-catalogue.ts';
 import { stampBloom, stampCharge, stampBackrun } from './stamp-wet-techniques.ts';
 import { stampStage } from './stamp-stage.ts';
 
@@ -85,13 +86,16 @@ test("an effect that certainly won't act is warned of, with the bloom stage's re
   assert.deepEqual(stampWetReportStrictFailures(report), []);
   const strict = stampWetReportStrictFailures(reported(late, true));
   assert.equal(strict.length, 4);
-  assert.deepEqual(strict.slice(0, 2), ['g/w/late', 'g/w/late-charge'].map((id) => `stamp paint: g/w's wait until damp (for ${id}) judged paper with no water: it was never damp`));
+  // The bloom's damp is its own default, the charge's its author's: only the author's is warned of as doing nothing.
+  assert.equal(strict[0], "stamp paint: g/w's wait until damp (for g/w/late) judged paper with no water: it was never damp");
   const warnings = stampWetReportWarnings(report);
   assert.deepEqual(warnings, [
+    "stamp paint: g/w/late-charge's wait until damp does nothing: the paper under it held no water, so it was never damp",
     "stamp paint: g/w/late (bloom) won't bloom: the paint there has set (or the paper was dry)",
     "stamp paint: g/w/late-charge (charge) won't mingle: the paint under it had set",
   ]);
-  assert.throws(() => assertStampWetEffects(report), /2 wet effect\(s\) won't act/);
+  assert.deepEqual(strict.slice(1), warnings);
+  assert.throws(() => assertStampWetEffects(report), /3 wet warning\(s\)/);
 });
 
 test("the report's dryings are the wash's own, closed where the paper set, whatever the wait was written as", () => {
@@ -103,4 +107,44 @@ test("the report's dryings are the wash's own, closed where the paper set, whate
   assert.deepEqual(dryings((wash) => wash.wait('set')), whenSet);
   assert.deepEqual(dryings((wash) => wash.wait({ seconds: 3600 })), whenSet);
   assert.deepEqual(dryings((wash) => wash.wait({ seconds: 1 })), [{ closes: 'end', deposits: 2, rim: 1 }]);
+});
+
+test("an authored when that can't act is warned of, and strict fails on it; a technique's own default condition isn't", () => {
+  const well: StampWell = { paint: { kind: 'color', color: '#aa4422' } };
+  const touches = { placement: { kind: 'area' as const, region: sky }, touches: 3, well, brush, size: [20, 20] as const, length: [30, 30] as const };
+  // A flood on dry paper lands at the brush's water, already no shinier than shiny: the condition waits 0 s.
+  const inert = (wash: StampPassageScope) => stampCharge(wash, 'grey', { ...touches, when: 'shiny' });
+  const [wait] = reported(inert).washes[0].waits;
+  assert.ok(wait.seconds === 0 && wait.authored && wait.inert?.includes('already no wetter than shiny'));
+  assert.deepEqual(stampWetReportWarnings(reported(inert)), [
+    "stamp paint: g/w/grey's wait until shiny does nothing: the paper under it was already no wetter than shiny, so it waited 0 s; only paper wetter than that (prepared, or watered) waits",
+  ]);
+  assert.equal(stampWetReportStrictFailures(reported(inert, true)).length, 1);
+  // Under paper wetter than shiny it waits, and nothing is said.
+  assert.deepEqual(stampWetReportWarnings(reported((wash) => {
+    wash.water('wet', { kind: 'fill', region: sky, brush, size: 40, amount: 1, application: { kind: 'flood' } });
+    inert(wash);
+  })), []);
+  // A bloom's damp is its own default: on paper already damp it waits 0 s, and its effect's verdict is what counts.
+  const late = reported((wash) => {
+    wash.wait('damp');
+    stampBloom(wash, 'drop', { brush, size: 50, at: [{ x: 300, y: 200 }] });
+  });
+  assert.ok(late.washes[0].waits[1].inert && !late.washes[0].waits[1].authored);
+  assert.ok(!stampWetReportWarnings(late).some((line) => line.includes('does nothing')));
+});
+
+test("when: 'set' dries the whole passage before the operation, as wait('set') does, in any technique", () => {
+  const line = [{ x: 100, y: 100 }, { x: 300, y: 140 }];
+  const report = (body: (wash: StampPassageScope) => void) => {
+    const { waits, dryings } = reported(body).washes[0];
+    return { waits: waits.map(({ until, under, seconds }) => ({ until, under, seconds })), dryings: dryings.map(({ closes, at, deposits }) => ({ closes, at, deposits })) };
+  };
+  const waited = report((wash) => {
+    wash.wait('set');
+    stampDrawnLine(wash, 'gully', { path: line, brush, size: 12, well: { paint: { kind: 'color', color: '#223344' } } });
+  });
+  assert.equal(waited.waits[0].until, 'set');
+  assert.deepEqual(report((wash) => stampDrawnLine(wash, 'gully', { path: line, brush, size: 12, well: { paint: { kind: 'color', color: '#223344' } }, when: 'set' })), waited);
+  assert.deepEqual(report((wash) => stampGradedWash(wash, 'glaze', { region: sky, brush, size: 40, well: { paint: { kind: 'color', color: '#223344' } }, load: { along: [{ x: 0, y: 40 }, { x: 0, y: 360 }], from: 1, to: 0 }, when: 'set' })).waits[0].until, 'set');
 });

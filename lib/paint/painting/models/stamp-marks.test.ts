@@ -109,7 +109,7 @@ test("a charge when damp waits for the paper under its touches, not for wetter p
   const [pass] = painting.groups[0].passes;
   const { wetting } = PAINT_MEDIA.watercolour, paper = { color: '#ffffff' } as const;
   const { waits: [local] } = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, stampStage({ width: 800, height: 400 })).washes.get(pass)!;
-  assert.deepEqual(local.step, { kind: 'wait', until: 'damp', under: { deposits: ['g/w/cool-0', 'g/w/cool-1', 'g/w/cool-2', 'g/w/cool-3'] }, effect: { kind: 'charge', id: 'g/w/cool' } });
+  assert.deepEqual(local.step, { kind: 'wait', until: 'damp', under: { deposits: ['g/w/cool-0', 'g/w/cool-1', 'g/w/cool-2', 'g/w/cool-3'] }, effect: { kind: 'charge', id: 'g/w/cool' }, authored: true });
   // Until the sky's water under the touches is damp, not the puddle's, which is wetter.
   const { rate } = stampDrying(wetting, paper);
   assert.ok(Math.abs(local.to - local.from - (wetting.brushWater - wetting.sheen.damp) / rate) < 1e-6);

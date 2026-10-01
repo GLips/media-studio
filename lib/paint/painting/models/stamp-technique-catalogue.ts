@@ -1,20 +1,21 @@
 // stamp-technique-catalogue.ts: the passage layer's techniques beyond the wet touches (stamp-wet-techniques.ts): a
-// graded wash, marks laid along guides, a form charged wet over a model the caller states, and a tissue's blot. Each
-// is made by defineStampTechnique, called as an imported function on a passage's scope, one application however many
-// deposits it lays, and states the capabilities it needs.
+// graded wash, marks laid along guides, a line the author drew, a form charged wet over a model the caller states,
+// and a tissue's blot. Each is made by defineStampTechnique, called as an imported function on a passage's scope, one
+// application however many deposits it lays, and states the capabilities it needs.
 //
 // Negative space: nothing here infers geometry. Guides, faces, a core and merged stretches are the caller's.
 
 import { seededRandom } from '#lib/picture/motion/models/random.ts';
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import type { StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
 import type { StampStrokeHand } from '#lib/paint/brush/models/stamp-stroke-hand.ts';
 import { stampCheckedGuides, type StampFillReach, type StampGuide } from './stamp-fill-strokes.ts';
 import { stampRoundedForm, type StampFormEllipse, type StampFormLight } from './stamp-form.ts';
 import { pickStampMaterial } from './stamp-material-set.ts';
-import { stampScatteredStrokePath, stampScatterMarks, type StampMark } from './stamp-marks.ts';
+import { stampScatteredStrokePath, stampScatterMarks, type StampMark, type StampMarkAnchor } from './stamp-marks.ts';
 import type { StampPaintField } from './stamp-paint-field.ts';
 import { defineStampTechnique, type StampTechniqueContext } from './stamp-paint-passage.ts';
-import type { StampKeyedMaterial, StampToolOptions, StampWell } from './stamp-paint-recipe-types.ts';
+import type { StampKeyedMaterial, StampLoadOptions, StampToolOptions, StampWell } from './stamp-paint-recipe-types.ts';
 import type { StampSize, StampSizeRange } from './stamp-paint-sizes.ts';
 import { stampRegionPolygon, type StampPoint, type StampRegion } from './stamp-region.ts';
 import type { StampCondition } from './stamp-wash-effects.ts';
@@ -43,11 +44,13 @@ function singleMaterial({ paint }: StampWell, what: string): StampKeyedMaterial 
 
 /**
  * A wash flooded over `region` (the passage's area), graded between the points `along`: from one well's material to
- * another's, or one well's load `from` to `to`. `variety` mottles a second load of it over the first, up to `amount`
- * in patches `scale` px across. Named `junctions` come back on the handle. Deposits `body`, `variety`.
+ * another's, or one well's load `from` to `to`. `variety` mottles a second load over the first, up to `amount` in
+ * patches `scale` px across. With `when`, it waits first. Named `junctions` come back on the handle. Deposits
+ * `body`, `variety`.
  */
 export type StampGradedWashOptions = StampToolOptions & {
   region?: StampRegion;
+  when?: StampCondition;
   reach?: StampFillReach;
   direction?: number;
   variety?: { amount: number; scale: number };
@@ -73,13 +76,13 @@ export const stampGradedWash = defineStampTechnique<StampGradedWashOptions, { ju
       load = { kind: 'linear', from: { ...a, value: options.load.from }, to: { ...b, value: options.load.to } };
     }
     const { brush, size, opacity, direction, reach, variety } = options;
+    if (variety && !(variety.amount > 0 && variety.amount <= 1 && variety.scale > 0 && Number.isFinite(variety.scale))) throw new Error(`stamp paint: ${full}'s variety needs an amount of 0..1 and a positive scale, px`);
     const fill = { region, brush, size, opacity, well: laid, application: { kind: 'flood' as const, ...(reach && { reach }) }, ...(direction !== undefined && { direction }) };
-    p.fill('body', { ...fill, ...(load && { load }) });
-    if (variety) {
-      if (!(variety.amount > 0 && variety.amount <= 1 && variety.scale > 0 && Number.isFinite(variety.scale))) throw new Error(`stamp paint: ${full}'s variety needs an amount of 0..1 and a positive scale, px`);
-      p.fill('variety', { ...fill, load: { kind: 'noise', scale: variety.scale, a: 0, b: variety.amount } });
-    }
-    softenStampMerges(context, undefined);
+    context.conditioned(options.when, () => {
+      p.fill('body', { ...fill, ...(load && { load }) });
+      if (variety) p.fill('variety', { ...fill, load: { kind: 'noise', scale: variety.scale, a: 0, b: variety.amount } });
+      softenStampMerges(context, undefined);
+    });
     return { junctions: options.junctions ?? {} };
   },
 });
@@ -87,7 +90,8 @@ export const stampGradedWash = defineStampTechnique<StampGradedWashOptions, { ju
 /**
  * Marks along guides (a pine's tiers), `perGuide` each, up to `spread` px off, more where `weight` is higher. Each
  * runs the guide's way, turned `lean.share` of the way toward the absolute `lean.toward`, by `hand` (press and
- * flick), loaded per mark from a set. A guided fill's marks run between guides instead. Keyed `${guide.id}-${k}`.
+ * flick), loaded per mark from a set; `anchor: 'start'` hangs it from its place. A guided fill's marks run between
+ * guides instead. Keyed `${guide.id}-${k}`.
  */
 export type StampGuidedMarksOptions = Omit<StampToolOptions, 'size'> & {
   guides: readonly StampGuide[];
@@ -99,12 +103,13 @@ export type StampGuidedMarksOptions = Omit<StampToolOptions, 'size'> & {
   weight?: StampPaintField<number>;
   lean?: { toward: number; share: number };
   hand?: StampStrokeHand;
+  anchor?: StampMarkAnchor;
   when?: StampCondition;
 };
 export const stampGuidedMarks = defineStampTechnique<StampGuidedMarksOptions, { marks: readonly StampMark[] }>({
   name: 'guidedMarks', weight: 2, requires: [],
   expand: ({ p, full, brush, well, sizeRange, conditioned }, options) => {
-    const { perGuide, length, spread = 0, weight, lean, hand = { profile: 'pressFlick' }, when, opacity } = options;
+    const { perGuide, length, spread = 0, weight, lean, hand = { profile: 'pressFlick' }, anchor, when, opacity } = options;
     const guides = stampCheckedGuides(options.guides, full);
     if (lean && !(lean.share >= 0 && lean.share <= 1 && Number.isFinite(lean.toward))) throw new Error(`stamp paint: ${full} leans ${lean.share} of the way toward ${lean.toward}; a lean is a finite direction and a share of 0..1`);
     const { paint, water } = well(options.well), laid = brush(options.brush), diameter = sizeRange(options.size);
@@ -112,7 +117,7 @@ export const stampGuidedMarks = defineStampTechnique<StampGuidedMarksOptions, { 
       .map((scattered, k) => {
         // The turn toward the lean goes the short way round, so a lean of π/2 bends a mark heading left and one heading right both down.
         const turn = lean ? Math.atan2(Math.sin(lean.toward - scattered.angle), Math.cos(lean.toward - scattered.angle)) * lean.share : 0;
-        const mark: StampMark = { key: scattered.key, brush: laid, diameter: scattered.diameter, geometry: { kind: 'stroke', path: stampScatteredStrokePath({ ...scattered, angle: scattered.angle + turn }), hand } };
+        const mark: StampMark = { key: scattered.key, brush: laid, diameter: scattered.diameter, geometry: { kind: 'stroke', path: stampScatteredStrokePath({ ...scattered, angle: scattered.angle + turn }, anchor), hand } };
         return { id: `${id}-${k}`, mark };
       }));
     conditioned(when, () => placed.forEach(({ id, mark }) => p.mark(id, {
@@ -167,9 +172,10 @@ export function stampFaceValues(faces: readonly StampFormFace[], light: StampFor
 
 export const stampChargedForm = defineStampTechnique<StampChargedFormOptions, { faces: readonly { id: string; light: number; value: StampFormValue }[]; core: readonly (readonly StampPoint[])[] }>({
   name: 'chargedForm', weight: 4, requires: ['wet-history'],
+  when: 'shiny',
   expand: (context, options) => {
     const { p, full, roleWell, conditioned } = context;
-    const { model, light, brush, size, opacity, when = 'shiny' } = options;
+    const { model, light, brush, size, opacity, when } = options;
     const tool = { brush, size, opacity, application: { kind: 'flood' as const } };
     let parts: { id: string; region: StampRegion; value: Exclude<StampFormValue, 'lit'> }[], faces: ReturnType<typeof stampFaceValues> = [], core = options.core ?? [];
     if (model.kind === 'faces') {
@@ -215,11 +221,12 @@ export type StampBlotOptions = StampToolOptions & {
 };
 export const stampBlot = defineStampTechnique<StampBlotOptions>({
   name: 'blot', weight: 1, requires: ['lift'],
-  expand: ({ p, full, conditioned }, { shapes, repeat = 1, strength, irregular = 0, when = 'damp', brush, size, opacity }) => {
+  effect: 'lift', when: 'damp',
+  expand: ({ p, full, conditioned }, { shapes, repeat = 1, strength, irregular = 0, when, brush, size, opacity }) => {
     if (!(Number.isInteger(repeat) && repeat >= 1)) throw new Error(`stamp paint: ${full} blots ${repeat} times, and a blot presses a whole number from 1`);
     if (!(irregular >= 0 && Number.isFinite(irregular))) throw new Error(`stamp paint: ${full}'s irregular is ${irregular} px, and it's finite from 0`);
     if (new Set(shapes.map(({ id }) => id)).size !== shapes.length) throw new Error(`stamp paint: ${full} blots two shapes of one ID; each shape's ID is its own`);
-    conditioned(when || undefined, () => {
+    conditioned(when, () => {
       for (let press = 0; press < repeat; press++) {
         for (const { id, region } of shapes) {
           const random = seededRandom(`${full}|${id}|${press}`);
@@ -228,6 +235,19 @@ export const stampBlot = defineStampTechnique<StampBlotOptions>({
         }
       }
     });
+    return {};
+  },
+});
+
+/**
+ * A line the author drew, stroked once along `path` by `hand` (a taper unless it says): a fold, a strand, a feature,
+ * a gully, a bird. With `when`, it waits first, a line drawn into shiny paint feathering. Its one deposit is its own ID.
+ */
+export type StampDrawnLineOptions = StampToolOptions & Omit<StampLoadOptions, 'burnish'> & { path: readonly StampStrokePoint[]; hand?: StampStrokeHand; when?: StampCondition };
+export const stampDrawnLine = defineStampTechnique<StampDrawnLineOptions>({
+  name: 'drawnLine', weight: 1, requires: [],
+  expand: ({ p, id, conditioned }, { path, hand = { profile: 'taper' }, brush, size, opacity, well, blend, secondaryColor, when }) => {
+    conditioned(when, () => p.stroke(id, { path, hand, brush, size, opacity, well, blend, secondaryColor }));
     return {};
   },
 });
