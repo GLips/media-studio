@@ -1,10 +1,11 @@
 // stamp-wet-rim.ts: the wet stage that leaves a drying rim (models/stamp-wet-rim.ts) once each wash is done. Its
 // domain is the wash's paint, the layer's coverage where its water went, with holes finer than the paper's grain
 // closed: grain and seams between strokes don't rim. Distance to the edge comes by jump flooding over the wash's box;
-// each pixel in the band gives a share of its pigment to the line, by a Gaussian normalised per giver.
+// each pixel in the band gives a share of its open pigment to the line, by a Gaussian normalised per giver; then
+// the compositor's washMoved.
 //
-// Negative space: coverage and the open share stay, as a rim moves pigment within the film. Where the wash lies over
-// its group's earlier paint, that paint is its domain too, so no rim falls there.
+// Negative space: the group's earlier paint under the wash is its domain too, so no rim falls along it; being set,
+// none of it is drawn to the rim.
 
 import { PAINT_PAPER_WGSL, paintPigmentSeed } from '#lib/picture/paint/models/paint-paper.ts';
 import { STAMP_DRYING_RIM_MOST_BAND, STAMP_DRYING_RIM_WGSL, stampDryingRimBand, stampDryingRimWetShare, stampWashWettest } from '../models/stamp-wet-rim.ts';
@@ -125,10 +126,13 @@ const FLOOD_WGSL = /* wgsl */ `${PRELUDE}
   textureStore(seedsOut, local(p), vec4f(best, 0.0, 0.0));
 }`;
 
-// Each pixel's line and take, from its distance to the edge and how wet the wash was there.
-const WEIGHTS_WGSL = /* wgsl */ `${PRELUDE}
+// Each pixel's line and take, from its distance to the edge, how wet the wash was there and how much of its paint is
+// open. The open share is the gate rather than the paper's workable at the wash's end: a wash left to dry ends with
+// none workable, and that drying is what rims it.
+const weightsWgsl = (layers: number, movedWgsl: string) => /* wgsl */ `${PRELUDE}
 ${STAMP_DRYING_RIM_WGSL}
 ${PAINT_PAPER_WGSL}
+${movedWgsl}
 @group(0) @binding(1) var<storage, read> grid: array<f32>;
 ${STAMP_GRID_AT_WGSL}
 @group(0) @binding(2) var domain: texture_2d<f32>;
@@ -167,7 +171,9 @@ fn coverageIn(seed: vec2f, toward: vec2f, depth: f32) -> f32 {
   let covered = clamp(textureLoad(layer, p, 0, 0).x / max(edgeCover, 1e-3), 0.0, 1.0);
   let line = paint * covered * dryingRimLine(d, width);
   let hardness = dryingRimHardness(edgeCover, coverageIn(seed, toward, ${EDGE_DEPTHS[1]}.0));
-  let take = paint * hardness * dryingRimDraw(d, band, u.width) * dryingRimTake(u.spread, wetShare, strength);
+  var held: array<vec4f, ${layers}>;
+  for (var l = 0; l < ${layers}; l++) { held[l] = textureLoad(layer, p, l, 0); }
+  let take = paint * hardness * dryingRimDraw(d, band, u.width) * dryingRimTake(u.spread, wetShare, strength) * clamp(washOpen(held), 0.0, 1.0);
   textureStore(weights, local(p), vec4f(line, take, 0.0, 0.0));
 }`;
 
@@ -229,7 +235,7 @@ ${GIVES_WGSL}
   for (var l = 0; l < ${layers}; l++) { textureStore(pulledRows, local(p), l, pulled[l]); }
 }`;
 
-// The exchange, written back to the pigment channels alone.
+// The exchange, in the pigment channels; the rest of each pixel is the compositor's washMoved.
 const rimWgsl = (layers: number, movedWgsl: string) => /* wgsl */ `${PRELUDE}
 ${STAMP_DRYING_RIM_WGSL}
 ${movedWgsl}
@@ -252,10 +258,14 @@ ${movedWgsl}
       for (var l = 0; l < ${layers}; l++) { pulled[l] += k * textureLoad(pulledRows, local(q), l, 0); }
     }
   }
+  var was: array<vec4f, ${layers}>;
+  var now: array<vec4f, ${layers}>;
   for (var l = 0; l < ${layers}; l++) {
-    let was = textureLoad(layer, p, l);
-    textureStore(layer, p, l, mix(was, dryingRimExchange(was, take, w.x, pulled[l]), washPigmentMask(u32(l))));
+    was[l] = textureLoad(layer, p, l);
+    now[l] = mix(was[l], dryingRimExchange(was[l], take, w.x, pulled[l]), washPigmentMask(u32(l)));
   }
+  let moved = washMoved(now, washPigmentTotal(was));
+  for (var l = 0; l < ${layers}; l++) { textureStore(layer, p, l, moved[l]); }
 }`;
 
 /** The pixels `grid` spans, within the painting. */
@@ -334,11 +344,14 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
   const pipeline = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }), entryPoint: 'run' } });
   const passes = {
     domain: pipeline(DOMAIN_WGSL), grainRows: pipeline(GRAIN_ROWS_WGSL), seeds: pipeline(SEEDS_WGSL), flood: pipeline(FLOOD_WGSL),
-    weights: pipeline(WEIGHTS_WGSL), normRows: pipeline(NORM_ROWS_WGSL), norm: pipeline(NORM_WGSL),
+    normRows: pipeline(NORM_ROWS_WGSL), norm: pipeline(NORM_WGSL),
     pulledRows: pipeline(pulledRowsWgsl(layers)),
   };
   // Each group's own layer count places its open share.
-  const rimPasses = new Map([...new Set([...rims.values()].map((rim) => rim.layers))].map((n) => [n, pipeline(rimWgsl(n, wash.movedWgsl(n)))]));
+  const groupPasses = new Map([...new Set([...rims.values()].map((rim) => rim.layers))].map((n): [number, Record<'weights' | 'rim', GPUComputePipeline>] => {
+    const moved = wash.movedWgsl(n);
+    return [n, { weights: pipeline(weightsWgsl(n, moved)), rim: pipeline(rimWgsl(n, moved)) }];
+  }));
 
   const encode = (encoder: GPUCommandEncoder, { box, uniform, layers: groupLayers }: LoadedRim): StampPixelBox => {
     const dispatch = (pass: GPUComputePipeline, resources: GPUBindingResource[]) => {
@@ -352,11 +365,11 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     dispatch(passes.grainRows, [{ buffer: uniform }, domain, grainRows]);
     dispatch(passes.seeds, [{ buffer: uniform }, domain, grainRows, seeds[0]]);
     steps.forEach((step, k) => dispatch(passes.flood, [{ buffer: uniform }, { buffer: step }, seeds[k % 2], seeds[(k + 1) % 2]]));
-    dispatch(passes.weights, [{ buffer: uniform }, { buffer: grid }, domain, seeds[steps.length % 2], layer.view, weights]);
+    dispatch(groupPasses.get(groupLayers)!.weights, [{ buffer: uniform }, { buffer: grid }, domain, seeds[steps.length % 2], layer.view, weights]);
     dispatch(passes.normRows, [{ buffer: uniform }, weights, normRows]);
     dispatch(passes.norm, [{ buffer: uniform }, normRows, norm]);
     dispatch(passes.pulledRows, [{ buffer: uniform }, layer.view, weights, norm, pulledRows]);
-    dispatch(rimPasses.get(groupLayers)!, [{ buffer: uniform }, layer.view, weights, norm, pulledRows]);
+    dispatch(groupPasses.get(groupLayers)!.rim, [{ buffer: uniform }, layer.view, weights, norm, pulledRows]);
     return box;
   };
   return {
