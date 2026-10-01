@@ -138,11 +138,18 @@ export type StampFillApplication = { kind: 'flood' } | ({ kind: 'strokes' } & St
 export type StampFillPattern = 'backAndForth' | 'zigzag' | 'hatch' | 'crossHatch' | 'scribble' | 'shading';
 
 /**
- * A strokes fill. `spacing`: diameters between rows, centre to centre (STAMP_FILL_PATTERNS' when left out), past 1
- * leaving paper between the marks. `variation`, 0..1 (0.3 when left out): how unevenly a hand lays them, each row's
- * place and tilt and each mark's ends. `hand`: how each mark is painted (the pattern's own when left out).
+ * A strokes fill. `spacing`: diameters between rows, centre to centre (the pattern's own when left out), past 1
+ * leaving paper between marks. `variation`, 0..1 (0.3): how unevenly a hand lays them, each row's place and tilt and
+ * each mark's ends. `hand`: how each mark is painted (the pattern's own). `turns`: StampFillTurns.
  */
-export type StampFillStrokes = { pattern: StampFillPattern; spacing?: number; variation?: number; hand?: StampStrokeHand };
+export type StampFillStrokes = { pattern: StampFillPattern; spacing?: number; variation?: number; hand?: StampStrokeHand; turns?: StampFillTurns };
+
+/**
+ * Where a back and forth, zigzag or shading turns back. `eased` (when left out): the hand nearly lifts, as a crayon or
+ * pencil shading does, so a turn is the mark's lightest part. `pressed`: the brush stays pressed through the turn, as
+ * one covering a shape in body colour does; a pressure-sized brush eased there would leave the outline bare.
+ */
+export type StampFillTurns = 'eased' | 'pressed';
 
 /**
  * A hatch mark's pressure: firm at its ends, a little fuller midway. A taper would shrink its ends short of the
@@ -151,11 +158,12 @@ export type StampFillStrokes = { pattern: StampFillPattern; spacing?: number; va
 const HATCH_PRESSURE = (along: number) => 0.8 + 0.2 * Math.sin(Math.PI * along);
 
 /**
- * Each pattern's spacing and hand: a hatch mark swells a little; a brush going back and forth presses into its turns.
- * A zigzag's and a shading's legs ease off at each reversal instead (easedReversalLegs), so their hands leave turns alone.
+ * Each pattern's spacing and hand: a hatch mark swells a little. A pattern that turns back (back and forth, zigzag,
+ * shading) is pressed at each reversal as its `turns` say (reversalLegs), so its hand names no curvature: that presses
+ * into tight turns and lightens runs, as a brush rounding a corner does, and leaves a fill a hollow frame.
  */
 export const STAMP_FILL_PATTERNS: Record<StampFillPattern, { spacing: number; hand: StampStrokeHand }> = {
-  backAndForth: { spacing: 0.9, hand: { curvature: 0.4, wobble: { pressure: 0.15, position: 0.04 } } },
+  backAndForth: { spacing: 0.9, hand: { wobble: { pressure: 0.15, position: 0.04 } } },
   zigzag: { spacing: 1, hand: { wobble: { pressure: 0.15, position: 0.04 } } },
   shading: { spacing: 0.5, hand: { wobble: { pressure: 0.2, position: 0.05 } } },
   hatch: { spacing: 1.2, hand: { profile: HATCH_PRESSURE, wobble: { pressure: 0.1, position: 0.03 } } },
@@ -172,20 +180,23 @@ const CROSS_HATCH_TURN = Math.PI / 3;
  * region is thinner than a diameter the marks run down its middle, and may spill past its sides.
  */
 export function stampFillStrokePath(region: StampRegion, diameter: number, direction: number, strokes: StampFillStrokes, seed: string): StampStrokePoint[] {
-  const { pattern, variation = 0.3 } = strokes;
+  const { pattern, variation = 0.3, turns = 'eased' } = strokes;
   const { spacing, hand } = { ...STAMP_FILL_PATTERNS[pattern], ...strokes };
   if (!(spacing > 0) || !(variation >= 0 && variation <= 1)) throw new Error(`stamp paint: a strokes fill needs a positive spacing and a variation of 0..1, not ${spacing} and ${variation}`);
   const inside = strokeRoom(region, diameter), random = seededRandom(`${seed}|fill strokes`);
   const step = spacing * diameter;
   const rows = (angle: number, extra = 0) => fillRows(inside, angle, step, variation, extra, random);
   let marks: StampStrokePoint[][];
-  if (pattern === 'hatch') marks = hatchMarks(rows(direction));
-  else if (pattern === 'crossHatch') marks = [...hatchMarks(rows(direction)), ...hatchMarks(rows(direction + CROSS_HATCH_TURN))];
-  // A scribble's loops are a row apart wide, so each overlaps the next row's, and wider than the brush, so they read.
-  else if (pattern === 'scribble') marks = chainRows(rows(direction, step)).map((chain) => scribbled(serpentine(chain), step, variation, random));
-  else if (pattern === 'shading') marks = shadingPatches(rows(direction), direction, diameter, variation, random).map((patch) => easedReversalLegs(serpentine(patch), diameter, variation, random));
-  else if (pattern === 'zigzag') marks = chainRows(rows(direction)).map((chain) => easedReversalLegs(zigzag(chain), diameter, variation, random));
-  else marks = chainRows(rows(direction)).map(serpentine);
+  switch (pattern) {
+    case 'hatch': marks = hatchMarks(rows(direction)); break;
+    case 'crossHatch': marks = [...hatchMarks(rows(direction)), ...hatchMarks(rows(direction + CROSS_HATCH_TURN))]; break;
+    // A scribble's loops are a row apart wide, so each overlaps the next row's, and wider than the brush, so they read.
+    case 'scribble': marks = chainRows(rows(direction, step)).map((chain) => scribbled(serpentine(chain), step, variation, random)); break;
+    case 'backAndForth': case 'zigzag': case 'shading': {
+      const reversing = pattern === 'shading' ? shadingPatches(rows(direction), direction, diameter, variation, random).map(serpentine) : chainRows(rows(direction)).map(pattern === 'zigzag' ? zigzag : serpentine);
+      marks = reversing.map((legs) => reversalLegs(legs, REVERSAL_PRESSURE[turns], diameter, variation, random));
+    }
+  }
   const path: StampStrokePoint[] = [];
   marks.filter((mark) => mark.length > 1).forEach((mark, i) => {
     const [first, ...rest] = handStampStroke(mark, hand, diameter, `${seed}|mark ${i}`);
@@ -276,7 +287,7 @@ const SHADING_RUN = [4, 9] as const;
 /**
  * Rows cut into patches a shading stroke long along them, each patch its rows' pieces in turn, a run of a few strokes
  * before the hand lifts. Each row's cuts move at random, so seams don't line up; each piece reaches past its cut into
- * the next patch, its eased ends (easedReversalLegs) blending in.
+ * the next patch, its eased ends (reversalLegs) blending in.
  */
 function shadingPatches(rows: readonly FillRow[], angle: number, diameter: number, variation: number, random: () => number): FillRow[] {
   const along = (p: StampPoint) => p.x * Math.cos(angle) + p.y * Math.sin(angle);
@@ -319,26 +330,26 @@ function shadingPatches(rows: readonly FillRow[], angle: number, diameter: numbe
 }
 
 /**
- * A shading stroke's legs (a path turning back at each point) with the pressure a hand gives them: firm through the
- * middle, nearly lifted at each turn and end, so a turnaround is a stroke's lightest part, never a bead where it doubles
+ * A reversing stroke's legs (a path turning back at each point) with the pressure a hand gives them: firm through the
+ * middle, at `turn` at each turn and end. Eased, a turnaround is a stroke's lightest part, never a bead where it doubles
  * back. `variation` presses each leg a little harder or lighter.
  */
-function easedReversalLegs(path: readonly StampStrokePoint[], diameter: number, variation: number, random: () => number): StampStrokePoint[] {
+function reversalLegs(path: readonly StampStrokePoint[], turn: number, diameter: number, variation: number, random: () => number): StampStrokePoint[] {
   const out: StampStrokePoint[] = [];
   for (let i = 1; i < path.length; i++) {
     const a = path[i - 1], b = path[i], length = Math.hypot(b.x - a.x, b.y - a.y);
     const firm = 1 - 0.35 * variation * random(), ease = Math.min(0.35 * length, 2 * diameter) / (length || 1);
     const point = (k: number, pressure: number) => ({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, pressure });
-    if (i === 1) out.push(point(0, SHADING_TURN_PRESSURE));
+    if (i === 1) out.push(point(0, turn));
     // A leg shorter than a stroke's ease either side is the turn itself, the step from one row to the next.
     if (length >= 1.5 * diameter) out.push(point(ease, firm), point(1 - ease, firm));
-    out.push(point(1, SHADING_TURN_PRESSURE));
+    out.push(point(1, turn));
   }
   return out;
 }
 
-/** The pressure a hand eases to where a shading stroke turns back: the stick nearly lifts. */
-const SHADING_TURN_PRESSURE = 0.25;
+/** The pressure at a turn: eased, the stick or brush nearly lifts; pressed, it doesn't. */
+const REVERSAL_PRESSURE: Record<StampFillTurns, number> = { eased: 0.25, pressed: 1 };
 
 /**
  * `path` with loops of about `radius` wound along it, turning one way, each advancing about its radius:

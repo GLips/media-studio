@@ -40,13 +40,15 @@ Everything is from `#studio`.
   - A **pass** is one layer of paint inside it. `clipped: true` keeps it inside the last unclipped pass: texture and
     shading that can't leave the silhouette. `within: region` keeps it inside a region (a reflection in its water).
   - A **fill** covers a `region`, reaching its outline, laid by its `application`:
-    - `{ kind: 'wash' }`: solid inside, the brush's own edge at the outline, however small a spike. It costs what its
+    - `{ kind: 'flood' }`: solid inside, the brush's own edge at the outline, however small a spike. It costs what its
       edge does, not its area.
-    - `{ kind: 'strokes', pattern, spacing?, variation?, hand? }`: real strokes of the brush, the marks and the paper
-      between them showing. `pattern` is `'zigzag'`, `'backAndForth'`, `'hatch'`, `'crossHatch'` or `'scribble'`;
-      `spacing` is diameters between rows (over 1 leaves paper); `variation` (0..1, 0.3) is how unevenly a hand lays
-      them. It costs what its strokes do.
-    - Left out, the brush's media decides: a wet brush washes, a dry one (pencil, crayon) zigzags. Override it for a
+    - `{ kind: 'strokes', pattern, spacing?, variation?, hand?, turns? }`: real strokes of the brush, the marks and the
+      paper between them showing. `pattern` is `'shading'`, `'zigzag'`, `'backAndForth'`, `'hatch'`, `'crossHatch'` or
+      `'scribble'`; `spacing` is diameters between rows (over 1 leaves paper); `variation` (0..1, 0.3) is how unevenly
+      a hand lays them. A pattern that turns back (shading, zigzag, back and forth) eases nearly to lifting at each
+      turn (`turns: 'eased'`, the default, as a crayon shades); `turns: 'pressed'` keeps the brush down, for body
+      colour covering a shape to its outline. It costs what its strokes do.
+    - Left out, the brush's media decides: a wet brush washes, a dry one (pencil, crayon) shades. Override it for a
       hatched shadow in watercolour, or a wash of a brush whose media no style declares.
     - `direction` (radians) is the way its rows run, and it reveals across them as `drawnOver` runs; `load` grades how
       much paint it lays (`{ kind: 'linear', from, to }`).

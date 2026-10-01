@@ -74,18 +74,23 @@ test("a fill is laid as its brush's media lays it unless it says, and refused wh
   assert.throws(() => compiledFill(square, 30, {}), /states its application/);
 });
 
-test('a zigzag or shading fill eases off where it doubles back, so its turns are its lightest marks', () => {
+test('every fill that doubles back eases off there unless pressed, its own hand too, and is firm through its runs', () => {
   const square: StampRegion = { kind: 'polygon', points: [{ x: 0, y: 0 }, { x: 300, y: 0 }, { x: 300, y: 200 }, { x: 0, y: 200 }] };
-  for (const pattern of ['zigzag', 'shading'] as const) {
-    const path = stampFillStrokePath(square, 16, 0, { pattern, variation: 0, hand: {} }, 'turns');
+  for (const pattern of ['backAndForth', 'zigzag', 'shading'] as const) for (const turns of ['eased', 'pressed'] as const) {
+    const path = stampFillStrokePath(square, 16, 0, { pattern, variation: 0, turns }, 'turns');
     const pressures = path.map((p) => p.pressure ?? 1), firm = Math.max(...pressures);
     // A corner of a reversal: the way in and the way out more than 60° apart (a shading's U-turn is two of them).
-    const turns = path.flatMap((p, i) => {
+    const corners = path.flatMap((p, i) => {
       if (i === 0 || i === path.length - 1 || p.lift || path[i + 1].lift) return [];
       const a = Math.atan2(p.y - path[i - 1].y, p.x - path[i - 1].x), b = Math.atan2(path[i + 1].y - p.y, path[i + 1].x - p.x);
       return Math.abs(Math.atan2(Math.sin(b - a), Math.cos(b - a))) > Math.PI / 3 ? [pressures[i]] : [];
     });
-    assert.ok(turns.length > 5, `${pattern} turns ${turns.length} times`);
-    assert.ok(turns.every((p) => p < 0.4 * firm), `${pattern} presses ${Math.max(...turns).toFixed(2)} at a turn against ${firm.toFixed(2)}`);
+    assert.ok(corners.length > 5, `${pattern} turns ${corners.length} times`);
+    if (turns === 'eased') assert.ok(corners.every((p) => p < 0.4 * firm), `${pattern} presses ${Math.max(...corners).toFixed(2)} at a turn against ${firm.toFixed(2)}`);
+    // Pressed, a covering brush's turns reach the outline at full size.
+    else assert.ok(corners.every((p) => p > 0.8 * firm), `${pattern} pressed turns at ${Math.min(...corners).toFixed(2)}`);
+    // Firm through its runs: a hand that lightens straight runs leaves a crayon fill a hollow frame.
+    const typical = pressures.toSorted((a, b) => a - b)[Math.floor(pressures.length / 2)];
+    assert.ok(typical > 0.8, `${pattern} runs at ${typical.toFixed(2)}`);
   }
 });
