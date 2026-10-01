@@ -1,6 +1,6 @@
 // paint-motion-clips.ts: what a play plays, as typed data over the clip's own time (seconds, from 0): pose clips
-// (pins' moves keyed and eased), breathe (a pin's scale on a period), sway (a part bending from its root) and place (a
-// group's rigid placement keyed). Each is read by a pure function of its time; the writer's clock (paint-clock.ts)
+// (pins' moves keyed and eased), breathe (a pin's scale on a period), sway (a part bending from its root), flutter (a
+// part narrowing across an axis and opening again) and place (a group's rigid placement keyed). Each is read by a pure function of its time; the writer's clock (paint-clock.ts)
 // makes that time.
 //
 // Before its first key a clip reads its first; past its last, its last. A time below 0 reads as 0, so a clip waiting
@@ -39,13 +39,19 @@ export type PaintBreatheClip<P extends string> = { readonly kind: 'breathe'; rea
  * sway apart. It eases in over its first half period, so it starts from rest.
  */
 export type PaintSwayClip = { readonly kind: 'sway'; readonly root: StampPoint; readonly direction: number; readonly length: number; readonly amount: number; readonly period: number };
+/**
+ * Deform: wings beating, seen from above. Paint's distance across the axis (the line through `at` along `direction`,
+ * radians) narrows to `least` of itself (0..1) and opens again every `period` s; along the axis nothing moves. Its
+ * phase comes from the target's id, so two fliers beat apart, and it eases in over its first period from open.
+ */
+export type PaintFlutterClip = { readonly kind: 'flutter'; readonly at: StampPoint; readonly direction: number; readonly least: number; readonly period: number };
 /** Place: a group's rigid placement about its pivot, keyed: offsets px, rotation radians, scale. */
 export type PaintPlaceClip = {
   readonly kind: 'place';
   readonly keys: readonly ({ readonly at: number; readonly x: number; readonly y: number; readonly rotation?: number; readonly scale?: number; readonly ease?: PaintEase })[];
 };
 
-export type PaintDeformClip<P extends string> = PaintPoseClip<P> | PaintBreatheClip<P> | PaintSwayClip;
+export type PaintDeformClip<P extends string> = PaintPoseClip<P> | PaintBreatheClip<P> | PaintSwayClip | PaintFlutterClip;
 export type PaintMotionClip<P extends string> = PaintDeformClip<P> | PaintPlaceClip;
 
 /** The clip's length in its own seconds: its last key, or Infinity for a generator, which never finishes. */
@@ -83,6 +89,7 @@ export function paintMotionClipProblem(clip: PaintMotionClip<string>): string | 
     case 'place': return paintKeysProblem(clip.keys, (i) => [clip.keys[i]]);
     case 'breathe': return clip.period > 0 && clip.amount > -1 && Number.isFinite(clip.amount) ? null : `its breathe needs a positive period and an amount above −1, not ${clip.period}s and ${clip.amount}`;
     case 'sway': return clip.period > 0 && clip.length > 0 && finite(clip.amount, clip.direction, clip.root.x, clip.root.y) ? null : `its sway needs a positive period and length, not ${clip.period}s and ${clip.length} px`;
+    case 'flutter': return clip.period > 0 && clip.least > 0 && clip.least <= 1 && finite(clip.direction, clip.at.x, clip.at.y) ? null : `its flutter needs a positive period and a least spread in (0, 1], not ${clip.period}s and ${clip.least}`;
     default: return clip satisfies never;
   }
 }
@@ -125,8 +132,8 @@ export function paintIdHash(text: string): number {
   return h;
 }
 
-/** A phase in [0, 1) from `id`, so each target sways on its own beat. */
-export const paintSwayPhase = (id: string) => (paintIdHash(id) % 10007) / 10007;
+/** A phase in [0, 1) from `id`, so each target sways or flutters on its own beat. */
+export const paintIdPhase = (id: string) => (paintIdHash(id) % 10007) / 10007;
 
 /** How far the sway has turned its tip, radians, time s in, for a target of phase `phase`. */
 export function paintSwayAngleAt({ amount, length, period }: PaintSwayClip, phase: number, time: number): number {
@@ -146,5 +153,20 @@ export function paintSwayMap({ root, direction, length }: PaintSwayClip, angle: 
     if (along === 0) return rest;
     const turn = angle * along, cos = Math.cos(turn), sin = Math.sin(turn);
     return { x: root.x + cos * dx - sin * dy, y: root.y + sin * dx + cos * dy };
+  };
+}
+
+/** How open a flutter is, time s in, for a target of phase `phase`: 1 open, `least` closed. */
+export function paintFlutterSpreadAt({ least, period }: PaintFlutterClip, phase: number, time: number): number {
+  const t = Math.max(0, time), ramp = Math.min(1, t / period), easeIn = ramp * ramp * (3 - 2 * ramp);
+  return 1 - ((1 - least) * easeIn * (1 - Math.cos(2 * Math.PI * (t / period + phase)))) / 2;
+}
+
+/** The squeeze a flutter makes when it's `spread` open: each rest point's distance across the axis times `spread`. */
+export function paintFlutterMap({ at, direction }: PaintFlutterClip, spread: number): StampWarpMap {
+  const ax = Math.cos(direction), ay = Math.sin(direction);
+  return (rest) => {
+    const dx = rest.x - at.x, dy = rest.y - at.y, along = dx * ax + dy * ay, across = (dy * ax - dx * ay) * spread;
+    return { x: at.x + along * ax - across * ay, y: at.y + along * ay + across * ax };
   };
 }
