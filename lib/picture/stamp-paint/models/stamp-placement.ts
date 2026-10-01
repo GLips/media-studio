@@ -5,7 +5,7 @@
 // stamps shown partway through are the same stamps, in the same places, as the finished stroke's.
 
 import { lerp } from '#lib/picture/motion/models/motion.ts';
-import { seededRandom } from '#lib/picture/motion/models/random.ts';
+import { seededRandom, seededRandomAfter } from '#lib/picture/motion/models/random.ts';
 import type { StampBrushColorDynamics, StampBrushStamping, StampBrushTip } from './stamp-brush.ts';
 import {
   drawStampSlots, stampOwnShare, stampOwnSize, stampOwnTurn, stampResponseCurve, stampStepCount, stampStepShare, stampStepTurn, type StampContext, type StampDraws, type StampStepContext,
@@ -153,13 +153,18 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
   const headings = segmentHeadings(path), initialHeading = headings[0] ?? 0;
   const { countGrowth, distribution } = brush.scatter;
   const count = Math.max(1, Math.round(brush.scatter.count * (countGrowth ? (diameter / countGrowth.diameter) ** countGrowth.exponent : 1)));
-  const startTurn = depositTurn(brush, seed);
+  const startTurn = depositTurn(brush, seed), streamOf = seededRandomAfter(`${seed}|`);
   const { taper, dynamics } = brush;
-  /** Where on the path `arc` falls, as step `index`, and what the stroke is doing there, before any stamp's randomness. */
+  // Steps only go forward along the path, so the segment a step falls in is sought on from the last one's.
+  let reached = 0;
+  /**
+   * Where on the path `arc` falls, as step `index`, and what the stroke is doing there, before any stamp's
+   * randomness. `arc` never falls below the last step's.
+   */
   const at = (arc: number, index: number) => {
     const along = length > 0 ? arc / length : 0;
-    let segment = 0;
-    while (segment < path.length - 2 && lengths[segment + 1] < arc) segment++;
+    while (reached < path.length - 2 && lengths[reached + 1] < arc) reached++;
+    const segment = reached;
     const a = path[segment], b = path[Math.min(segment + 1, path.length - 1)];
     const span = lengths[Math.min(segment + 1, path.length - 1)] - lengths[segment];
     const k = span > 0 ? (arc - lengths[segment]) / span : 0;
@@ -186,7 +191,7 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
     // in floating point fall a hair short of it, hence the tolerance.
     for (let arc = 0, first = true; first || arc < length - 1e-6; first = false) {
       const place = at(arc, places.length);
-      const draws = drawStampSlots(seededRandom(`${seed}|${places.length}|0`), 'stroke');
+      const draws = drawStampSlots(streamOf(`${places.length}|0`), 'stroke');
       places.push(place);
       arc += Math.max(1, brush.spacing * stampOwnSize(dynamics, place.size, diameter, { ...place.step, stamp: 0, draws }));
     }
@@ -195,10 +200,10 @@ export function placeStrokeStamps(path: readonly StampStrokePoint[], brush: Stam
   places.forEach(({ along, segment, k, a, b, ramp, size, step: where, lifted }, i) => {
     const fade = (1 - brush.falloff) ** (where.distance / diameter / FALLOFF_SPAN);
     // The count draw is the step's own stream's, drawn only for a brush whose count reads it.
-    const step: StampStepContext = { ...where, countDraw: dynamics.count?.random ? seededRandom(`${seed}|${i}|count`)() : 0 };
+    const step: StampStepContext = { ...where, countDraw: dynamics.count?.random ? streamOf(`${i}|count`)() : 0 };
     const kept = stampStepCount(dynamics, count, step), reach = stampStepShare(dynamics, 'scatter', step);
     for (let c = 0; c < Math.max(count, kept); c++) {
-      const draws = drawStampSlots(seededRandom(`${seed}|${i}|${c}`), 'stroke');
+      const draws = drawStampSlots(streamOf(`${i}|${c}`), 'stroke');
       if (lifted || c >= kept) continue;
       const unit = brush.scatter.reachIn === 'stamp' ? stampOwnSize(dynamics, size, diameter, { ...step, stamp: c, draws }) : diameter;
       const lateral = (draws.lateral * 2 - 1) * brush.scatter.lateral * reach * unit;

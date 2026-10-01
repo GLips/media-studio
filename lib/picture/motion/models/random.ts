@@ -18,8 +18,20 @@ export const hashRandom = (...key: (string | number)[]) => seededRandom(key.join
 
 /** A 32-bit seed for a number or any string (FNV-1a), e.g. an event id a sound is seeded from. */
 export function randomSeedFromKey(key: number | string): number {
-  if (typeof key === 'number') return key >>> 0;
-  let h = 2166136261;
-  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619);
+  return typeof key === 'number' ? key >>> 0 : fnvOnward(2166136261, key);
+}
+
+/** FNV-1a's hash `h` carried on over `text`. */
+function fnvOnward(h: number, text: string): number {
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
   return h >>> 0;
+}
+
+/**
+ * `seededRandom(prefix + rest)` for each `rest`, the long `prefix` hashed once: FNV-1a reads a key in order, so the
+ * prefix's hash carries on over the rest. For a stream per item under one seed (a stroke's stamps).
+ */
+export function seededRandomAfter(prefix: string): (rest: string) => () => number {
+  const h = fnvOnward(2166136261, prefix);
+  return (rest) => seededRandom(fnvOnward(h, rest));
 }
