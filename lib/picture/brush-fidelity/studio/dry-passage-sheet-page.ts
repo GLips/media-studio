@@ -5,6 +5,7 @@
 
 import { compileStampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import { createStampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
+import { createStampPaintSurface } from '#lib/picture/stamp-paint/studio/stamp-paint-surface.ts';
 import { brushFidelityAssetUrl } from '../models/brush-fidelity-pack-urls.ts';
 import { DRY_PASSAGE_CELL, DRY_PASSAGES, type DryPassage, type DryPassagePainted, type DryPassageSheetMedium } from '../models/dry-passages.ts';
 
@@ -15,13 +16,14 @@ async function drawDryPassage(passage: DryPassage, { brushes, paper, mixing, pac
   const copy = Object.assign(document.createElement('canvas'), { width, height });
   try {
     const painting = compileStampPaintRecipe(passage.recipe({ brushes, pigments: mixing.pigments }));
-    const renderer = await createStampPaintRenderer(canvas, painting, paper, mixing, width, height, (asset) => brushFidelityAssetUrl(packUrls, asset));
-    // Copied before the renderer's disposed, which unconfigures its canvas and clears it.
+    const surface = await createStampPaintSurface({ canvas, width, height }, (asset) => brushFidelityAssetUrl(packUrls, asset));
+    // Copied before the surface is disposed, which unconfigures its canvas and clears it.
     try {
+      const renderer = await createStampPaintRenderer(surface, painting, paper, mixing);
       await renderer.draw(1);
       copy.getContext('2d')!.drawImage(canvas, 0, 0);
     } finally {
-      renderer.dispose();
+      surface.dispose();
     }
     return { passage: passage.id, png: copy.toDataURL('image/png') };
   } catch (error) {

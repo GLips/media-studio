@@ -1,11 +1,11 @@
-// stamp-painting.tsx: a stamp painting in a scene. It holds the frame until every image the painting uses is on the
-// GPU, then draws the painting as it stands at the scene's time (stamp-paint-renderer.ts, WebGPU), and destroys its GPU
-// device when it unmounts. A frame is held until WebGPU has checked its draw for errors, never for the drawing itself:
-// the screenshot waits for the GPU.
+// stamp-painting.tsx: a stamp painting in a scene. It holds the frame until the painting is on the GPU, then draws it
+// as it stands at the scene's time (stamp-paint-renderer.ts, WebGPU). Its surface (stamp-paint-surface.ts: the device,
+// images, pipelines, targets) lasts while it's mounted at one size. A frame is held until WebGPU has checked its draw
+// for errors, never for the drawing itself: the screenshot waits for the GPU.
 //
-// Compile the recipe once, where the scene is defined, not while it renders: a painting that is a new object each
-// frame is loaded afresh each frame. A group that moves, boils or recolours does so within one painting. A style is
-// held by its content, so one resolved anew each render loads nothing again.
+// A new painting object loads only its own stamps, regions and wet stages, and starts with no checkpoints: a group
+// that moves, boils or recolours does so within one painting, drawn from its checkpoints. A style is held by its
+// content, so one resolved anew each render loads nothing again.
 
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
@@ -16,6 +16,7 @@ import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { useFrameProfile } from '#lib/picture/profiling/studio/frame-profile.ts';
 import type { CompiledStampPaint } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
+import { createStampPaintSurface, type StampPaintSurface } from '#lib/picture/stamp-paint/studio/stamp-paint-surface.ts';
 import type { ResolvedStampPaintStyle } from '../models/style.ts';
 import { stampPaintAssetUrl } from './stamp-paint-styles.ts';
 
@@ -38,15 +39,16 @@ export function StampPainting({ painting, style, t, width, height, box: given }:
   const box = given ?? fullFrameRect(format);
   const w = Math.round(width ?? box.w), h = Math.round(height ?? box.h);
   const holder = useRef<HTMLDivElement>(null);
+  const [surface, setSurface] = useState<StampPaintSurface | null>(null);
   const [renderer, setRenderer] = useState<StampPaintRenderer | null>(null);
   const { delayRender, continueRender, cancelRender } = useDelayRender();
   const profile = useFrameProfile();
 
-  // Each renderer gets a canvas of its own, made here and removed with it, so a renderer still loading when its
-  // painting changes never shares a canvas with the next.
+  // Each surface gets a canvas of its own, made here and removed with it, so a surface still loading when the size
+  // changes never shares a canvas with the next.
   useLayoutEffect(() => {
-    const handle = delayRender('loading the stamp painting\'s images onto the GPU');
-    let open = true, live = true, made: StampPaintRenderer | null = null;
+    const handle = delayRender('making the stamp painting\'s GPU surface');
+    let open = true, live = true, made: StampPaintSurface | null = null;
     const release = () => {
       if (open) continueRender(handle);
       open = false;
@@ -54,22 +56,50 @@ export function StampPainting({ painting, style, t, width, height, box: given }:
     const canvas = Object.assign(document.createElement('canvas'), { width: w, height: h });
     Object.assign(canvas.style, { position: 'absolute', inset: '0', width: '100%', height: '100%' });
     holder.current!.append(canvas);
-    const loaded = profile?.('stamp paint load');
-    createStampPaintRenderer(canvas, painting, paper, mixing, w, h, stampPaintAssetUrl, { fps }).then((ready) => {
+    const loaded = profile?.('stamp paint surface load');
+    createStampPaintSurface({ canvas, width: w, height: h }, stampPaintAssetUrl).then((ready) => {
       loaded?.();
       made = ready;
       if (!live) return ready.dispose();
-      flushSync(() => setRenderer(ready));
+      // Set within the hold, so the painting's load holds the frame before this one lets it go.
+      flushSync(() => setSurface(ready));
       return release();
     }, cancelRender);
     return () => {
       live = false;
       made?.dispose();
       canvas.remove();
+      setSurface(null);
+      release();
+    };
+  }, [w, h, profile, delayRender, continueRender, cancelRender]);
+
+  useLayoutEffect(() => {
+    if (!surface) return undefined;
+    const handle = delayRender('loading the stamp painting onto the GPU');
+    let open = true, live = true, made: StampPaintRenderer | null = null;
+    const release = () => {
+      if (open) continueRender(handle);
+      open = false;
+    };
+    const loaded = profile?.('stamp paint load');
+    // A load given up as its surface goes may fail for want of the device; only a live one's failure is the frame's.
+    createStampPaintRenderer(surface, painting, paper, mixing, { fps, profile }).then((ready) => {
+      loaded?.();
+      made = ready;
+      if (!live) return ready.dispose();
+      flushSync(() => setRenderer(ready));
+      return release();
+    }, (error: Error) => {
+      if (live) cancelRender(error);
+    });
+    return () => {
+      live = false;
+      made?.dispose();
       setRenderer(null);
       release();
     };
-  }, [painting, paper, mixing, w, h, fps, profile, delayRender, continueRender, cancelRender]);
+  }, [surface, painting, paper, mixing, fps, profile, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!renderer) return;

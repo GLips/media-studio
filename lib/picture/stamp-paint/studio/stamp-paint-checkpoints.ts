@@ -9,6 +9,7 @@
 // least recently used given up first. One that can't fit isn't saved.
 
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
+import type { StampPaintDevice } from './stamp-paint-gpu.ts';
 
 /**
  * The most a renderer's checkpoints hold, bytes. A 1080p pigment painting (two painting layers, four layer, one clip)
@@ -35,7 +36,6 @@ const texelBytes = (texture: GPUTexture) => texture.width * texture.height * tex
 const copyWholeTexture = (encoder: GPUCommandEncoder, from: GPUTexture, to: GPUTexture) => encoder.copyTextureToTexture({ texture: from }, { texture: to }, [from.width, from.height, from.depthOrArrayLayers]);
 const sameCheckpoint = (a: StampPaintCheckpoint, b: StampPaintCheckpoint) => a.event === b.event && a.key === b.key;
 
-/** No `dispose`: the textures are the renderer's device's, and destroying the device frees them with all else it made. */
 export type StampPaintCheckpoints = {
   /** The checkpoint furthest in at or before event `settled` whose key is `keyAt` its event, or null. */
   latest: (settled: number, keyAt: (event: number) => string) => StampPaintCheckpoint | null;
@@ -43,13 +43,15 @@ export type StampPaintCheckpoints = {
   restore: (encoder: GPUCommandEncoder, checkpoint: StampPaintCheckpoint) => void;
   /** Saves the targets as they'll stand at this point in `encoder` as `checkpoint`, unless it's kept already or can't fit. */
   save: (encoder: GPUCommandEncoder, checkpoint: StampPaintCheckpoint) => void;
+  /** Destroys every checkpoint's textures, once the frames that copied them are submitted. */
+  dispose: () => void;
 };
 
 /**
  * Checkpoints of `targets` on `device`, within `budget` bytes. Each frame's encoder is submitted before the next one
  * is made, so a checkpoint the current encoder doesn't touch can be given up, its textures reused or destroyed.
  */
-export function stampPaintCheckpoints(device: GPUDevice, targets: StampCheckpointTargets, budget = STAMP_CHECKPOINT_BUDGET): StampPaintCheckpoints {
+export function stampPaintCheckpoints(device: StampPaintDevice, targets: StampCheckpointTargets, budget = STAMP_CHECKPOINT_BUDGET): StampPaintCheckpoints {
   const paintingBytes = texelBytes(targets.painting), groupBytes = texelBytes(targets.layer) + texelBytes(targets.clip);
   const bytesOf = ({ inGroup }: StampPaintCheckpoint) => paintingBytes + (inGroup ? groupBytes : 0);
   const kept: Kept[] = [];
@@ -101,6 +103,9 @@ export function stampPaintCheckpoints(device: GPUDevice, targets: StampCheckpoin
         copyWholeTexture(encoder, targets.clip, saved.group.clip);
       }
       kept.push(saved);
+    },
+    dispose() {
+      for (const { painting, group } of kept.splice(0)) for (const texture of [painting, ...(group ? [group.layer, group.clip] : [])]) texture.destroy();
     },
   };
 }

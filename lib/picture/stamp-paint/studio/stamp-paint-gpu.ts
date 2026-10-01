@@ -7,6 +7,15 @@
 
 import type { StampTipLevel } from '../models/stamp-tip-hull.ts';
 
+/**
+ * What stamp painting makes its GPU resources through: a device, or a surface's cache or a painting's scope of one
+ * (stamp-paint-surface.ts).
+ */
+export type StampPaintDevice = Pick<
+  GPUDevice,
+  'createBuffer' | 'createTexture' | 'createShaderModule' | 'createComputePipeline' | 'createRenderPipeline' | 'createBindGroup' | 'createCommandEncoder' | 'createSampler' | 'queue' | 'limits'
+>;
+
 // Newer than TypeScript's DOM lib.
 const TIER2 = 'texture-formats-tier2' as GPUFeatureName;
 
@@ -39,18 +48,23 @@ ${FULL_FRAME_WGSL}
 
 export type StampPaintImage = { texture: GPUTexture; view: GPUTextureView; width: number; height: number };
 
-/**
- * Loads each image as a mipmapped texture of its red channel alone (a grey tip or grain) or its colour (a paper). A
- * tip is sampled across a frame's whole stamp area, so a quarter of the bytes is a large part of a frame's time.
- */
-export async function loadStampPaintImages(device: GPUDevice, images: readonly { url: string; channels: 'red' | 'colour' }[]): Promise<StampPaintImage[]> {
-  const bitmaps = await Promise.all(images.map(async ({ url }) => {
+/** Each image at `urls`, decoded as stored: no colour conversion, no premultiplying. */
+export function fetchStampPaintBitmaps(urls: readonly string[]): Promise<ImageBitmap[]> {
+  return Promise.all(urls.map(async (url) => {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`stamp paint: ${url} answered ${response.status}`);
     return createImageBitmap(await response.blob(), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
   }));
-  return mipmappedTextures(device, images.map(({ channels }, i) => {
-    const bitmap = bitmaps[i], { width, height } = bitmap;
+}
+
+/**
+ * Uploads each bitmap as a mipmapped texture of its red channel alone (a grey tip or grain) or its colour (a paper),
+ * closing it. A tip is sampled across a frame's whole stamp area, so a quarter of the bytes is a large part of a
+ * frame's time.
+ */
+export function uploadStampPaintBitmaps(device: StampPaintDevice, bitmaps: readonly { bitmap: ImageBitmap; channels: 'red' | 'colour' }[]): StampPaintImage[] {
+  return mipmappedTextures(device, bitmaps.map(({ bitmap, channels }) => {
+    const { width, height } = bitmap;
     return {
       width, height, format: channels === 'red' ? 'r8unorm' : 'rgba8unorm',
       fill: (texture: GPUTexture) => {
@@ -63,7 +77,7 @@ export async function loadStampPaintImages(device: GPUDevice, images: readonly {
 }
 
 /** Uploads grey images drawn in memory (a bristle tip's), a byte a texel, as mipmapped textures of their red channel. */
-export function uploadStampPaintGreyImages(device: GPUDevice, images: readonly { width: number; height: number; pixels: Uint8Array }[]): StampPaintImage[] {
+export function uploadStampPaintGreyImages(device: StampPaintDevice, images: readonly { width: number; height: number; pixels: Uint8Array }[]): StampPaintImage[] {
   return mipmappedTextures(device, images.map(({ width, height, pixels }) => ({
     width, height, format: 'r8unorm' as const,
     fill: (texture: GPUTexture) => device.queue.writeTexture({ texture }, pixels, { bytesPerRow: width }, [width, height]),
@@ -74,7 +88,7 @@ export function uploadStampPaintGreyImages(device: GPUDevice, images: readonly {
  * A texture for each image, its top level filled by `fill`, then each level below. WebGPU makes no mipmaps: each
  * level averages four texels of the one above it.
  */
-function mipmappedTextures(device: GPUDevice, images: readonly { width: number; height: number; format: GPUTextureFormat; fill: (texture: GPUTexture) => void }[]): StampPaintImage[] {
+function mipmappedTextures(device: StampPaintDevice, images: readonly { width: number; height: number; format: GPUTextureFormat; fill: (texture: GPUTexture) => void }[]): StampPaintImage[] {
   const module = device.createShaderModule({ code: MIP_WGSL });
   const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
   const pipelines = new Map<GPUTextureFormat, GPURenderPipeline>();
@@ -106,7 +120,7 @@ function mipmappedTextures(device: GPUDevice, images: readonly { width: number; 
 }
 
 /** A tip's paint at every mip level, read back from the GPU as it samples it: a texel holds paint where it isn't white. */
-export async function readStampTipLevels(device: GPUDevice, tip: StampPaintImage): Promise<StampTipLevel[]> {
+export async function readStampTipLevels(device: StampPaintDevice, tip: StampPaintImage): Promise<StampTipLevel[]> {
   const levels = tip.texture.mipLevelCount;
   const encoder = device.createCommandEncoder();
   const reads = Array.from({ length: levels }, (_, level) => {

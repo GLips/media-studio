@@ -12,6 +12,7 @@ import type { StampWashDrying } from '../models/stamp-wet-rim.ts';
 import type { CompiledStampDeposit, CompiledStampPaint, CompiledStampPass } from '../models/stamp-paint-recipe.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { StampWashLayer } from './stamp-paint-compositor.ts';
+import type { StampPaintDevice } from './stamp-paint-gpu.ts';
 import { STAMP_BLOOM_STAGE } from './stamp-wet-bloom.ts';
 import { STAMP_WET_FLOW_STAGE } from './stamp-wet-flow.ts';
 import { STAMP_DRYING_RIM_STAGE } from './stamp-wet-rim.ts';
@@ -22,7 +23,7 @@ import { STAMP_DRYING_RIM_STAGE } from './stamp-wet-rim.ts';
  * layer, is what a paint deposit laid where footprint r > 0.
  */
 export type StampWetStageContext = {
-  device: GPUDevice;
+  device: StampPaintDevice;
   painting: CompiledStampPaint;
   medium: PaintMedium;
   wetness: StampWetness;

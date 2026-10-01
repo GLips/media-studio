@@ -1,11 +1,11 @@
-// stamp-paint-renderer.ts: draws a compiled stamp painting through WebGPU. Each frame repaints every
-// group on bare paper; only images and stamp buffers persist.
+// stamp-paint-renderer.ts: draws a compiled stamp painting through WebGPU on a surface (stamp-paint-surface.ts), which
+// holds what outlasts it; a painting loads its own stamps, regions, wet stages and checkpoints.
 //
 // A deposit paints within its visible stamps' box in Photoshop's order: a render pass stamps its coverage mask and
 // joins a flood's body to it, compute passes blur it, and a compute pass resolves it onto its group's layer.
 //
-// What doesn't change with time is worked out once, at load, into cropped single-channel textures: each flood's body,
-// the masking fluid under each deposit, each pass's `within` region.
+// What doesn't change with time is worked out at load into cropped single-channel textures: each flood's body, the
+// masking fluid under each deposit, each pass's `within`.
 //
 // Formulas and stage orders are generated from the models' WGSL registries and held by the GPU gate
 // (lib/picture/stamp-paint-gate), which also traces a resolve stage by stage (trace).
@@ -29,15 +29,17 @@ import type { PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
 import { STAMP_GRID_AT_WGSL, STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL, stampEdgeReach, stampEdgeWidth, stampPolygonBox, type StampBox, type StampPoint } from '../models/stamp-region.ts';
 import type { PlacedStamp } from '../models/stamp-placement.ts';
 import { stampBlurRegion, type StampPixelBox } from '../models/stamp-blur-region.ts';
-import { coarsestStampTipLevel, STAMP_TIP_HULL_SIDES, stampTipHull, type StampTipHull, type StampTipLevel } from '../models/stamp-tip-hull.ts';
+import { coarsestStampTipLevel, STAMP_TIP_HULL_SIDES, type StampTipHull, type StampTipLevel } from '../models/stamp-tip-hull.ts';
 import { flatStampPaintCompositor, type StampPaintCompositor, type StampPaintTarget } from './stamp-paint-compositor.ts';
 import { stampPigmentCompositor } from './stamp-paint-pigment-compositor.ts';
-import { createStampPaintDevice, FULL_FRAME_WGSL, loadStampPaintImages, readStampTipLevels, type StampPaintImage, uploadStampPaintGreyImages } from './stamp-paint-gpu.ts';
+import { FULL_FRAME_WGSL, type StampPaintDevice, type StampPaintImage } from './stamp-paint-gpu.ts';
+import type { StampPaintGpuScope, StampPaintSurface } from './stamp-paint-surface.ts';
 import { stampUniformLayout, stampUniformStruct, stampUniformWriter, type StampUniformViews } from './stamp-uniform-layout.ts';
 import { STAMP_WET_STAGES, stampWetStageReach, type StampLoadedWetStage, type StampWetStage, type StampWetDepositMoment, type StampWetDryingMoment, type StampWetStageContext } from './stamp-wet-stages.ts';
 import { stampWashDryings } from '../models/stamp-wet-rim.ts';
 import { stampPaintCheckpoints } from './stamp-paint-checkpoints.ts';
 import { stampPaintEvents, stampSettledEventCount } from '../models/stamp-paint-events.ts';
+import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { stampBoilEpoch, stampGroupLayerFromScene, stampGroupPlacementAt, stampGroupSceneFromLayer, type StampGroupPlacement } from '../models/stamp-group-motion.ts';
 
 /**
@@ -845,6 +847,7 @@ export type StampPaintRenderer = {
    * into the painting: for checking what the compositor laid (the GPU gate's pigment checks), not for rendering.
    */
   readLayer: (t: number) => Promise<StampLayerReadback>;
+  /** Frees what the painting loaded; its surface stays for the next. */
   dispose: () => void;
 };
 
@@ -864,200 +867,90 @@ function halfFloat(bits: number): number {
 
 export type StampPaintRendererOptions = {
   fps?: number;
+  /** Times the load's parts, for `studio profile`. */
+  profile?: FrameProfileStart | null;
   /** The wet stages its washes run: every one, but for a check measuring what some do. */
   wetStages?: readonly StampWetStage[];
 };
 
 /**
- * A renderer for one painting on `canvas`, its paint mixed as `mixing` says; `fps`, the scene's frame rate, counts a
- * boiling group's epochs (required for a painting with one). Resolves once every image is on the GPU; refuses a
- * painting it can't mix. A frame may round a few pixels a level differently between draws
- * (docs/private-styles.md, "Same pixels").
+ * A renderer for one painting on `surface`, mixed as `mixing` says; `fps` counts a boiling group's epochs (required
+ * for one); `profile` times the load's parts. Refuses a painting it can't mix. A frame may round a few pixels a level
+ * differently between draws (docs/private-styles.md, "Same pixels").
  */
 export async function createStampPaintRenderer(
-  canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string,
-  options: StampPaintRendererOptions = {},
+  surface: StampPaintSurface, painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing,
+  { fps, profile, wetStages = STAMP_WET_STAGES }: StampPaintRendererOptions = {},
 ): Promise<StampPaintRenderer> {
-  const prepared = prepareStampPainting(painting, paper, mixing, { width, height }, options);
-  const device = await createStampPaintDevice();
-  const context = canvas.getContext('webgpu') as GPUCanvasContext;
-  const format: GPUTextureFormat = 'rgba8unorm';
-  device.pushErrorScope('validation');
-  context.configure({ device, format, alphaMode: 'opaque' });
-  const refused = await device.popErrorScope();
-  if (refused) {
-    device.destroy();
-    throw new Error(`stamp paint: configuring the canvas failed: ${refused.message}`);
-  }
-  return rendererOnOutput({
-    device, texture: () => context.getCurrentTexture(), format,
-    // Destroying the device frees every texture and buffer made on it.
-    release: () => {
-      context.unconfigure();
-      device.destroy();
-    },
-  }, prepared, painting, paper, width, height, imageUrl);
-}
-
-/**
- * A renderer on a lent device (createStampPaintDevice's, which three.js may share), drawing each frame into `frame`,
- * sized as the painting. It never destroys the device. `frame` gets the canvas's colour, gamma-encoded and opaque,
- * dithered only into bytes. Its load and draws hold error scopes across awaits: nothing else may push one meanwhile.
- */
-export async function createStampPaintRendererOnDevice(
-  device: GPUDevice, frame: GPUTexture, painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, imageUrl: (asset: StampBrushAsset) => string,
-  options: StampPaintRendererOptions = {},
-): Promise<StampPaintRenderer> {
-  checkStampPaintFrameTexture(frame);
-  const { width, height } = frame;
-  const prepared = prepareStampPainting(painting, paper, mixing, { width, height }, options);
-  const lent = lentStampPaintDevice(device);
-  return rendererOnOutput({ device: lent.device, texture: () => frame, format: frame.format, release: lent.release }, prepared, painting, paper, width, height, imageUrl);
-}
-
-/** What a renderer works out before it touches a device, so a painting it can't paint or mix fails first. */
-function prepareStampPainting(painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, size: { width: number; height: number }, { fps, wetStages = STAMP_WET_STAGES }: StampPaintRendererOptions) {
+  const span = profile ?? (() => () => {});
   const boiling = painting.groups.find((group) => group.boil);
   if (boiling && !(fps && fps > 0)) throw new Error(`stamp paint: ${boiling.id} boils every ${boiling.boil!.every} frames, so its renderer needs the scene's fps`);
-  return { ...compositorFor(painting, paper, mixing, size, wetStages), wetStages, fps: fps ?? 0 };
-}
+  let done = span('stamp paint compositor load');
+  const { compositorOn, wetnessOf, medium } = compositorFor(painting, paper, mixing, { width: surface.width, height: surface.height }, wetStages);
+  done();
 
-async function rendererOnOutput(
-  output: StampPaintOutput, { compositorOn, wetnessOf, medium, wetStages, fps }: ReturnType<typeof prepareStampPainting>,
-  painting: CompiledStampPaint, paper: StampPaintPaper, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string,
-): Promise<StampPaintRenderer> {
+  done = span('stamp paint images load');
+  const assets = paintingImages(painting, paper);
+  // The paper's photograph is the one image whose colour is read.
+  const isPhotograph = (asset: StampBrushAsset) => !!paper.image && assetKey(asset) === assetKey(paper.image);
+  const loaded = await surface.images(assets.map(([asset]) => ({ asset, channels: isPhotograph(asset) ? 'colour' : 'red' })));
+  const images = new Map(assets.map(([asset], i) => [assetKey(asset), loaded[i]]));
+  // A bristle tip's images are drawn for each diameter it's painted at, once a surface.
+  const image = (source: StampBrushImageSource) => ('draw' in source ? surface.drawnImage(source.key, source.draw) : images.get(assetKey(source))!);
+  const bound = await surface.checked('drawing the brushes\' bristle tips', () => new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).map((deposit) =>
+    [deposit, bindStampBrushImages(deposit.brush, deposit.diameter, image)] as const)))));
+  // Each tip's paint at every mip level, for its hulls.
+  const tips = new Set([...bound.values()].flatMap((brush) => (brush.dual ? [brush.tip.image, brush.dual.tip.image] : [brush.tip.image])));
+  const tipLevels = new Map<StampPaintImage, StampTipLevel[]>(await Promise.all([...tips].map(async (tip) => [tip, await surface.tipLevels(tip)] as const)));
+  done();
+
+  const scope = surface.scope();
   try {
-    return await rendererOnDevice(output, compositorOn, wetnessOf, medium, wetStages, painting, paper, width, height, imageUrl, fps);
+    const loading = surface.checked('loading the painting onto the GPU', () =>
+      rendererOnSurface(surface, scope, compositorOn, wetnessOf, medium, painting, paper, image, bound, tipLevels, wetStages, fps ?? 0, span));
+    // The load itself ran within the call: what's left is WebGPU's check of it.
+    done = span('stamp paint gpu check load');
+    const renderer = await loading;
+    done();
+    return renderer;
   } catch (error) {
-    output.release();
+    scope.destroy();
     throw error;
   }
 }
 
 /**
- * The output pass writes encoded colour to one 2D image it renders to: an -srgb format would encode it twice, and an
- * integer one can't hold it.
- */
-const STAMP_PAINT_FRAME_FORMATS: ReadonlySet<GPUTextureFormat> = new Set(['rgba8unorm', 'bgra8unorm', 'rgba16float', 'rgba32float']);
-
-function checkStampPaintFrameTexture(frame: GPUTexture) {
-  if (!(frame.usage & GPUTextureUsage.RENDER_ATTACHMENT)) throw new Error('stamp paint: the texture a painting is drawn into needs RENDER_ATTACHMENT usage');
-  if (!STAMP_PAINT_FRAME_FORMATS.has(frame.format)) throw new Error(`stamp paint: a painting is drawn into ${[...STAMP_PAINT_FRAME_FORMATS].join(', ')}, not ${frame.format}`);
-  if (frame.dimension !== '2d' || frame.depthOrArrayLayers !== 1 || frame.sampleCount !== 1) throw new Error('stamp paint: a painting is drawn into one single-sampled 2D image');
-}
-
-/**
- * Where a renderer draws: the device it makes everything on, the texture each frame goes into and its format, and
- * how to free what it made (destroying a device of its own, or only its own buffers and textures on a lent one).
- */
-type StampPaintOutput = { device: GPUDevice; texture: () => GPUTexture; format: GPUTextureFormat; release: () => void };
-
-/**
- * `device` as a renderer sees it, keeping every buffer and texture made through it, so `release` frees them and
- * leaves the device to its owner. A proxy, since the renderer and its compositors make their resources in many
- * places; it's never handed to WebGPU as a device (as a canvas's configure would), only called.
- */
-function lentStampPaintDevice(device: GPUDevice): { device: GPUDevice; release: () => void } {
-  const made: { destroy: () => void }[] = [];
-  // Scopes a failed load left pushed, popped on release so they don't swallow the owner's errors.
-  let open = 0;
-  const pushErrorScope = (filter: GPUErrorFilter) => {
-    open++;
-    device.pushErrorScope(filter);
-  };
-  const popErrorScope = () => {
-    open--;
-    return device.popErrorScope();
-  };
-  const keep = <T extends { destroy: () => void }>(resource: T) => {
-    made.push(resource);
-    return resource;
-  };
-  const createBuffer = (descriptor: GPUBufferDescriptor) => keep(device.createBuffer(descriptor));
-  const createTexture = (descriptor: GPUTextureDescriptor) => keep(device.createTexture(descriptor));
-  const lent = new Proxy(device, {
-    get: (target, key) => {
-      if (key === 'createBuffer') return createBuffer;
-      if (key === 'createTexture') return createTexture;
-      if (key === 'pushErrorScope') return pushErrorScope;
-      if (key === 'popErrorScope') return popErrorScope;
-      if (!isDeviceMember(target, key)) return undefined;
-      const value = target[key];
-      // A device's methods check their receiver, so each is called on the device itself.
-      return typeof value === 'function' ? value.bind(target) : value;
-    },
-  });
-  return {
-    device: lent,
-    release: () => {
-      for (; open > 0; open--) void device.popErrorScope();
-      for (const resource of made.splice(0)) resource.destroy();
-    },
-  };
-}
-
-const isDeviceMember = (device: GPUDevice, key: PropertyKey): key is keyof GPUDevice => key in device;
-
-/**
- * How `mixing` composites `painting`, and how wet a set of its groups' washes land, worked out before a device is
- * asked for, so a painting it can't mix fails first. Only pigment has washes: the flat compositor refuses one.
+ * How `mixing` composites `painting`, and how wet a set of its groups' washes land, worked out before anything is
+ * loaded, so a painting it can't mix fails first. Only pigment has washes: the flat compositor refuses one.
  */
 function compositorFor(painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, size: { width: number; height: number }, wetStages: readonly StampWetStage[]) {
   if (mixing.kind === 'pigment') {
     const paint = compileStampPigmentPaint(painting, mixing, PAINT_BANDS);
     const margin = (deposit: CompiledStampDeposit) => stampWetStageReach(wetStages, deposit, mixing.medium);
     const wetnessOf = (groups: CompiledStampPaint) => compileStampWetness(groups, mixing.medium, paper, size, margin);
-    return { compositorOn: (device: GPUDevice) => stampPigmentCompositor(device, paint, paper.color), wetnessOf, medium: mixing.medium };
+    return { compositorOn: (device: StampPaintDevice) => stampPigmentCompositor(device, paint, paper.color), wetnessOf, medium: mixing.medium };
   }
   const flat = flatStampPaintCompositor(painting);
   return { compositorOn: () => flat, wetnessOf: null, medium: null };
 }
 
-async function rendererOnDevice(
-  output: StampPaintOutput, compositorOn: (device: GPUDevice) => StampPaintCompositor, wetnessOf: ((groups: CompiledStampPaint) => StampWetness) | null, wetMedium: PaintMedium | null,
-  wetStages: readonly StampWetStage[], painting: CompiledStampPaint, paper: StampPaintPaper, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string, fps: number,
-): Promise<StampPaintRenderer> {
-  const { device, format } = output;
-  // Loading and each draw are checked for any error WebGPU would otherwise report only later, unasked. A lost device
-  // isn't an error a scope catches, so the draw after it throws.
-  const checking = () => {
-    for (const scope of GPU_ERROR_SCOPES) device.pushErrorScope(scope);
-  };
-  const checked = async (what: string) => {
-    // Popped together, so none is left on a lent device when one reports an error.
-    const error = (await Promise.all(GPU_ERROR_SCOPES.map(() => device.popErrorScope()))).find(Boolean);
-    if (error) throw new Error(`stamp paint: ${what} failed: ${error.message}`);
-  };
-  checking();
-  // Made inside the error scopes, so a buffer it can't make fails the load.
+/**
+ * The renderer for `painting` on `surface`, its own buffers and textures made in `scope`. Runs within one of the
+ * surface's checks, so it never awaits.
+ */
+function rendererOnSurface(
+  surface: StampPaintSurface, scope: StampPaintGpuScope, compositorOn: (device: StampPaintDevice) => StampPaintCompositor,
+  wetnessOf: ((groups: CompiledStampPaint) => StampWetness) | null, wetMedium: PaintMedium | null, painting: CompiledStampPaint, paper: StampPaintPaper,
+  image: (source: StampBrushImageSource) => StampPaintImage, bound: ReadonlyMap<CompiledStampDeposit, StampBrush<StampPaintImage>>,
+  tipLevels: ReadonlyMap<StampPaintImage, StampTipLevel[]>, wetStages: readonly StampWetStage[], fps: number, span: FrameProfileStart,
+): StampPaintRenderer {
+  const { width, height, format } = surface, { device } = scope;
+  let done = span('stamp paint compositor gpu load');
   const compositor = compositorOn(device);
   const paintBytes = compositor.deposit.layout.words * 4;
   if (paintBytes > SLOT) throw new Error(`stamp paint: a compositor's ${compositor.deposit.layout.name} takes ${paintBytes} bytes, over a uniform slot's ${SLOT}`);
-  let lost: string | null = null;
-  void device.lost.then((info) => { if (info.reason !== 'destroyed') lost ??= info.message; });
+  done();
 
-  const assets = paintingImages(painting, paper);
-  // The paper's photograph is the one image whose colour is read.
-  const isPhotograph = (asset: StampBrushAsset) => !!paper.image && assetKey(asset) === assetKey(paper.image);
-  const loaded = await loadStampPaintImages(device, assets.map(([asset]) => ({ url: imageUrl(asset), channels: isPhotograph(asset) ? 'colour' : 'red' })));
-  const images = new Map(assets.map(([asset], i) => [assetKey(asset), loaded[i]]));
-  // A bristle tip's images are drawn for each diameter it's painted at, once a key.
-  const tipImagesByKey = new Map<string, StampPaintImage>();
-  const image = (source: StampBrushImageSource) => {
-    if (!('draw' in source)) return images.get(assetKey(source))!;
-    if (!tipImagesByKey.has(source.key)) {
-      const { size, pixels } = source.draw();
-      tipImagesByKey.set(source.key, uploadStampPaintGreyImages(device, [{ width: size, height: size, pixels }])[0]);
-    }
-    return tipImagesByKey.get(source.key)!;
-  };
-  const bound = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).map((deposit) =>
-    [deposit, bindStampBrushImages(deposit.brush, deposit.diameter, image)] as const))));
-
-  // Each tip's paint at every mip level, for its hulls.
-  const tips = new Set([...bound.values()].flatMap((brush) => (brush.dual ? [brush.tip.image, brush.dual.tip.image] : [brush.tip.image])));
-  const tipLevels = new Map<StampPaintImage, StampTipLevel[]>(await Promise.all([...tips].map(async (tip) => [tip, await readStampTipLevels(device, tip)] as const)));
-  const hulls = new Map<StampPaintImage, Map<number, StampTipHull>>();
   /** The hull `layer`'s tip is drawn in, for the coarsest level its smallest or most blurred stamp reads. */
   function tipHull(layer: BoundLayer, stamps: readonly PlacedStamp[]): StampTipHull {
     // The tip's texels spread over its span, so its pixels per texel go by the image's width, not the diameter.
@@ -1066,14 +959,12 @@ async function rendererOnDevice(
     const levels = tipLevels.get(layer.tip.image)!;
     const squashed = layer.tip.roundness * (levels[0].height / levels[0].width) * stamps.reduce((least, s) => Math.min(least, s.roundness), 1);
     const coarsest = Math.min(levels.length - 1, coarsestStampTipLevel(levels[0], smallest, squashed, levels.length) + blurred);
-    const byLevel = hulls.get(layer.tip.image) ?? new Map<number, StampTipHull>();
-    hulls.set(layer.tip.image, byLevel);
-    if (!byLevel.has(coarsest)) byLevel.set(coarsest, stampTipHull(levels, coarsest));
-    return byLevel.get(coarsest)!;
+    return surface.tipHull(layer.tip.image, coarsest);
   }
 
-  const buffer = (data: Float32Array | Uint16Array | Uint32Array, usage: number) => {
-    const made = device.createBuffer({ size: Math.max(16, Math.ceil(data.byteLength / 4) * 4), usage: usage | GPUBufferUsage.COPY_DST });
+  /** `data` in a new buffer on `on`: the painting's scope, unless made at a frame and destroyed by its maker. */
+  const buffer = (data: Float32Array | Uint16Array | Uint32Array, usage: number, on: StampPaintDevice = device) => {
+    const made = on.createBuffer({ size: Math.max(16, Math.ceil(data.byteLength / 4) * 4), usage: usage | GPUBufferUsage.COPY_DST });
     device.queue.writeBuffer(made, 0, data.buffer, data.byteOffset, Math.ceil(data.byteLength / 4) * 4);
     return made;
   };
@@ -1099,11 +990,12 @@ async function rendererOnDevice(
   const asWritten = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).map((deposit) => [deposit.id, deposit] as const))));
 
   /**
-   * `groups`' deposits on the GPU: stamps, tints, ordered bins and washes' landings. The painting's own bank is loaded
-   * once; a boil epoch loads one of its own (epochOf) that lands as the painting's own deposits do (`written`): the
-   * paper is wet where the author's stroke wets it, whatever the epoch's marks.
+   * `groups`' deposits on the GPU: stamps, tints, ordered bins and washes' landings. A boil epoch loads its own
+   * (epochOf), landing as the deposits as `written` do: the paper is wet where the author's stroke wets it. It's made
+   * outside the painting's scope, destroyed as the epoch is given up or the painting disposed.
    */
   function loadBank(groups: readonly CompiledStampGroup[], written?: DepositBank): DepositBank {
+    const on = written ? surface.device : device;
     const binData: number[] = [];
     const loadPlan = (layer: BoundLayer, stamps: readonly PlacedStamp[]): LoadedPlan => {
       const plan = stampAccumulationPlan(layer.accumulation, stamps);
@@ -1134,9 +1026,11 @@ async function rendererOnDevice(
       if (tint !== null) deposit.stamps.forEach(({ tint: t }, i) => tintData.set([t.hue, t.saturation, t.lightness, t.secondary], (tint + i) * TINT_FLOATS));
     }
     // A layer laid in order reads its stamps and tints as storage.
-    const stampBuffer = buffer(stampData, GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE), tintBuffer = buffer(tintData, GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE);
-    const binBuffer = buffer(new Uint32Array(binData.length ? binData : [0]), GPUBufferUsage.STORAGE);
+    const stampBuffer = buffer(stampData, GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE, on), tintBuffer = buffer(tintData, GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE, on);
+    const binBuffer = buffer(new Uint32Array(binData.length ? binData : [0]), GPUBufferUsage.STORAGE, on);
+    const wet = span('stamp paint wetness load');
     const wetness = written ? null : wetnessOf?.({ groups }) ?? null;
+    wet();
     const grids = written?.grids ?? wetGridsOf(wetness);
     const deposits = new Map(placed.map(({ deposit, identity, brush, main, dual, tint, mainPlan, dualPlan }): [CompiledStampDeposit, LoadedDeposit] => [deposit, {
       identity, brush, active: stampActiveLayers(brush, deposit.diameter), main, dual, tint,
@@ -1173,7 +1067,10 @@ async function rendererOnDevice(
     }
     return { buffer: buffer(values, GPUBufferUsage.STORAGE), firsts };
   }
+  done = span('stamp paint bank load');
   const writtenBank = loadBank(painting.groups);
+  done();
+  done = span('stamp paint pipelines load');
   const wetness = writtenBank.wetness;
   // The fan's triangles, by corner: indexed, so each corner is shaded once a stamp, not once for each triangle it's in.
   const fanBuffer = buffer(new Uint16Array(Array.from({ length: STAMP_TIP_HULL_SIDES - 2 }, (_, i) => [0, i + 1, i + 2]).flat()), GPUBufferUsage.INDEX);
@@ -1302,14 +1199,17 @@ async function rendererOnDevice(
     return bodyPipelines.get(key)!;
   };
 
-  const target = (w: number, h: number, usage: number, targetFormat: GPUTextureFormat = 'rgba16float') => {
-    const texture = device.createTexture({ size: [w, h], format: targetFormat, usage: usage | GPUTextureUsage.TEXTURE_BINDING });
+  done();
+  done = span('stamp paint targets load');
+  // Targets are the surface's, shared with every painting drawn on it: a frame overwrites all it reads of them.
+  const target = (name: string, w: number, h: number, usage: number, targetFormat: GPUTextureFormat = 'rgba16float') => {
+    const texture = surface.target(name, { size: [w, h], format: targetFormat, usage: usage | GPUTextureUsage.TEXTURE_BINDING });
     return { texture, view: texture.createView(), layers: [texture.createView()] };
   };
   /** A compositor's target, an array's layers each cleared through a view of its own. */
-  const layered = (shape: StampPaintTarget, usage: number) => {
-    if (shape.kind === 'plain') return target(width, height, usage);
-    const texture = device.createTexture({ size: [width, height, shape.layers], format: 'rgba16float', usage: usage | GPUTextureUsage.TEXTURE_BINDING });
+  const layered = (name: string, shape: StampPaintTarget, usage: number) => {
+    if (shape.kind === 'plain') return target(name, width, height, usage);
+    const texture = surface.target(name, { size: [width, height, shape.layers], format: 'rgba16float', usage: usage | GPUTextureUsage.TEXTURE_BINDING });
     return {
       texture, view: texture.createView({ dimension: '2d-array' }),
       layers: Array.from({ length: shape.layers }, (_, layer) => texture.createView({ dimension: '2d', baseArrayLayer: layer, arrayLayerCount: 1 })),
@@ -1321,29 +1221,28 @@ async function rendererOnDevice(
   const halfW = Math.ceil(width / 2), halfH = Math.ceil(height / 2);
   const laysTints = [...writtenBank.deposits.values()].some(({ tint }) => tint !== null);
   const targets = {
-    painting: layered(compositor.targets.painting, STORAGE | SAVED),
+    painting: layered('painting', compositor.targets.painting, STORAGE | SAVED),
     // Saved by checkpoints, and copied out by readLayer for the GPU gate's pigment checks.
-    layer: layered(compositor.targets.layer, STORAGE | RENDER | SAVED),
+    layer: layered('layer', compositor.targets.layer, STORAGE | RENDER | SAVED),
     // A moving group's layer resampled to where it's placed, for its lay; only a painting with one has it.
-    moved: painting.groups.some((group) => group.motion) ? layered(compositor.targets.layer, STORAGE) : null,
-    mask: target(width, height, RENDER, 'rg16float'),
-    cap: target(width, height, RENDER, 'rgba16float'),
-    blurA: target(halfW, halfH, STORAGE),
-    blurB: target(halfW, halfH, STORAGE),
-    clip: target(width, height, STORAGE | RENDER | SAVED),
-    blank: target(1, 1, 0, 'r8unorm'),
+    moved: painting.groups.some((group) => group.motion) ? layered('moved', compositor.targets.layer, STORAGE) : null,
+    mask: target('mask', width, height, RENDER, 'rg16float'),
+    cap: target('cap', width, height, RENDER, 'rgba16float'),
+    blurA: target('blurA', halfW, halfH, STORAGE),
+    blurB: target('blurB', halfW, halfH, STORAGE),
+    clip: target('clip', width, height, STORAGE | RENDER | SAVED),
+    blank: target('blank', 1, 1, 0, 'r8unorm'),
     // Only a painting with colour dynamics lays tints, and only for a compositor that reads them.
-    tintA: laysTints ? target(width, height, RENDER) : null,
-    tintB: laysTints ? target(width, height, RENDER) : null,
+    tintA: laysTints ? target('tintA', width, height, RENDER) : null,
+    tintB: laysTints ? target('tintB', width, height, RENDER) : null,
     // Only a painting with washes leaves footprints, and what each wash deposit laid (`fresh`, shaped as the layer).
-    footprint: wetness?.landings.size ? target(width, height, STORAGE) : null,
-    fresh: wetness?.landings.size ? layered(compositor.targets.layer, STORAGE) : null,
+    footprint: wetness?.landings.size ? target('footprint', width, height, STORAGE) : null,
+    fresh: wetness?.landings.size ? layered('fresh', compositor.targets.layer, STORAGE) : null,
   };
 
   /** Binds each of `resources` at its index; a null is a binding the pipeline doesn't have. */
   const bindGroup = (pipeline: GPURenderPipeline | GPUComputePipeline, resources: (GPUBindingResource | null)[]) =>
     device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: resources.flatMap((resource, binding) => (resource ? [{ binding, resource }] : [])) });
-  const clear = (encoder: GPUCommandEncoder, view: GPUTextureView) => encoder.beginRenderPass({ colorAttachments: [{ view, loadOp: 'clear', storeOp: 'store' }] }).end();
   const dispatch = (encoder: GPUCommandEncoder, pipeline: GPUComputePipeline, resources: (GPUBindingResource | null)[], w: number, h: number) => {
     const pass = encoder.beginComputePass();
     pass.setPipeline(pipeline);
@@ -1351,12 +1250,12 @@ async function rendererOnDevice(
     pass.dispatchWorkgroups(Math.ceil(w / WORKGROUP), Math.ceil(h / WORKGROUP));
     pass.end();
   };
-  const channel = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16) / 255;
-  const rgb = (hex: string): [number, number, number] => [channel(hex, 1), channel(hex, 3), channel(hex, 5)];
-  /** The mip level a grain `texture` tiled `tileW` pixels across reads: texels per pixel, as a fragment's derivatives would say. */
-  const grainLod = (texture: StampPaintImage, tileW: number) => Math.max(0, Math.log2(texture.width / tileW));
 
+  done();
+  done = span('stamp paint regions load');
   const regions = loadRegions();
+  done();
+  done = span('stamp paint wet stages load');
   const stages: LoadedWetStage[] = [];
   if (wetness?.landings.size) {
     const wetContext: StampWetStageContext = {
@@ -1389,6 +1288,7 @@ async function rendererOnDevice(
     }
   };
   reserveWashBoxes(painting.groups, writtenBank);
+  done();
 
   /**
    * Works out, once, what of the painting doesn't change with time: each flood's body, each state of the fluid a
@@ -1599,7 +1499,7 @@ async function rendererOnDevice(
       vertex: stampVertex(0),
       fragment: { module: stampModule, entryPoint: 'pressOf', targets: [{ format: 'r16float', blend: maxBlend, writeMask: GPUColorWrite.RED }] },
     });
-    const { view } = target(width, height, RENDER, 'r16float');
+    const { view } = target('press', width, height, RENDER, 'r16float');
     return {
       view,
       /** Lays the deposit's first `count` stamps' pressure in `box`. */
@@ -1628,7 +1528,7 @@ async function rendererOnDevice(
   function beforeLaying(texels: number) {
     const tooth = paper.grain;
     const reach = tooth ? (texels * tooth.scale * width) / image(tooth.image).width : 0, pad = Math.ceil(reach);
-    const { texture, view } = layered(compositor.targets.layer, GPUTextureUsage.COPY_DST);
+    const { texture, view } = layered('before', compositor.targets.layer, GPUTextureUsage.COPY_DST);
     const layers = compositor.targets.layer.kind === 'array' ? compositor.targets.layer.layers : 1;
     return {
       view, reach,
@@ -1918,7 +1818,8 @@ async function rendererOnDevice(
 
   // Frames start from the latest checkpoint their settled events stand for (stamp-paint-checkpoints.ts).
   const events = stampPaintEvents(painting);
-  const checkpoints = stampPaintCheckpoints(device, { painting: targets.painting.texture, layer: targets.layer.texture, clip: targets.clip.texture });
+  // Made on the surface's device: they come and go as frames save them, and dispose destroys what's left.
+  const checkpoints = stampPaintCheckpoints(surface.device, { painting: targets.painting.texture, layer: targets.layer.texture, clip: targets.clip.texture });
   /** Each group's events, as indices into `events`: from `first`, up to `end`. */
   const groupEvents = (() => {
     let at = 0;
@@ -2013,7 +1914,7 @@ async function rendererOnDevice(
    * frame, so every deposit it asks for is resolved in it, and a read-back layer, which a checkpoint may skip past.
    */
   function draw(t: number, { frameTrace, whole = frameTrace !== undefined }: { frameTrace?: FrameTrace; whole?: boolean } = {}) {
-    if (lost) throw new Error(`stamp paint: the GPU device was lost: ${lost}`);
+    surface.assertLive();
     slots = 0;
     const encoder = device.createCommandEncoder();
     const { drawn, keyAt, settled } = framePlan(t);
@@ -2053,7 +1954,7 @@ async function rendererOnDevice(
       if (painted) layGroup(encoder, index, group, painted, moved);
     }
     save(events.length, false, null);
-    const out = encoder.beginRenderPass({ colorAttachments: [{ view: output.texture().createView(), loadOp: 'clear', storeOp: 'store' }] });
+    const out = encoder.beginRenderPass({ colorAttachments: [{ view: surface.frameTexture().createView(), loadOp: 'clear', storeOp: 'store' }] });
     out.setPipeline(outputPipeline);
     out.setBindGroup(0, bindGroup(outputPipeline, [targets.painting.view]));
     out.draw(3);
@@ -2062,20 +1963,14 @@ async function rendererOnDevice(
     return encoder;
   }
 
-  await checked('loading the painting onto the GPU');
-
   // A painting whose inputs change in the same commit as its time is disposed before its last draw is asked for.
   let disposed = false;
+  // A frame's own read-back buffers are the surface's, made and destroyed by the frame.
+  const { queue } = surface.device;
   return {
     draw: async (t) => {
       if (disposed) return;
-      checking();
-      try {
-        device.queue.submit([draw(t).finish()]);
-      } finally {
-        // A disposed device's scopes resolve with no error.
-        await checked(`drawing the painting at ${t} s`);
-      }
+      await surface.checked(`drawing the painting at ${t} s`, () => queue.submit([draw(t).finish()]));
     },
     trace: async (t, requests) => {
       if (disposed) throw new Error('stamp paint: a disposed renderer traces nothing');
@@ -2090,17 +1985,14 @@ async function rendererOnDevice(
         floats += crop.w * crop.h * TRACE_SLOTS;
       }
       const bytes = Math.max(4, floats * 4);
-      checking();
-      const traceBuffer = device.createBuffer({ size: bytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
-      const read = device.createBuffer({ size: bytes, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+      const traceBuffer = surface.device.createBuffer({ size: bytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+      const read = surface.device.createBuffer({ size: bytes, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
       try {
-        try {
+        await surface.checked(`tracing the painting at ${t} s`, () => {
           const encoder = draw(t, { frameTrace: { deposits: traced, buffer: traceBuffer } });
           encoder.copyBufferToBuffer(traceBuffer, 0, read, 0, bytes);
-          device.queue.submit([encoder.finish()]);
-        } finally {
-          await checked(`tracing the painting at ${t} s`);
-        }
+          queue.submit([encoder.finish()]);
+        });
         await read.mapAsync(GPUMapMode.READ);
         const all = new Float32Array(read.getMappedRange().slice(0));
         read.unmap();
@@ -2117,16 +2009,13 @@ async function rendererOnDevice(
     readLayer: async (t) => {
       if (disposed) throw new Error('stamp paint: a disposed renderer reads back nothing');
       const layers = targets.layer.layers.length, rowBytes = Math.ceil((width * 8) / 256) * 256;
-      const read = device.createBuffer({ size: rowBytes * height * layers, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+      const read = surface.device.createBuffer({ size: rowBytes * height * layers, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
       try {
-        checking();
-        try {
+        await surface.checked(`reading back the layer at ${t} s`, () => {
           const encoder = draw(t, { whole: true });
           encoder.copyTextureToBuffer({ texture: targets.layer.texture }, { buffer: read, bytesPerRow: rowBytes, rowsPerImage: height }, [width, height, layers]);
-          device.queue.submit([encoder.finish()]);
-        } finally {
-          await checked(`reading back the layer at ${t} s`);
-        }
+          queue.submit([encoder.finish()]);
+        });
         await read.mapAsync(GPUMapMode.READ);
         const halves = new Uint16Array(read.getMappedRange()), values = new Float32Array(width * height * 4 * layers);
         for (let l = 0; l < layers; l++) {
@@ -2141,15 +2030,23 @@ async function rendererOnDevice(
         read.destroy();
       }
     },
-    finish: () => (disposed ? Promise.resolve() : device.queue.onSubmittedWorkDone()),
+    finish: () => (disposed ? Promise.resolve() : queue.onSubmittedWorkDone()),
     dispose() {
       disposed = true;
-      output.release();
+      // Destroyed once submitted work is done with them; the surface and its targets stay for the next painting.
+      for (const kept of epochs.values()) for (const { bank } of kept.values()) bank.destroy();
+      checkpoints.dispose();
+      scope.destroy();
     },
   };
 }
 
-const GPU_ERROR_SCOPES = ['validation', 'out-of-memory', 'internal'] as const;
+
+const clear = (encoder: GPUCommandEncoder, view: GPUTextureView) => encoder.beginRenderPass({ colorAttachments: [{ view, loadOp: 'clear', storeOp: 'store' }] }).end();
+const channel = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16) / 255;
+const rgb = (hex: string): [number, number, number] => [channel(hex, 1), channel(hex, 3), channel(hex, 5)];
+/** The mip level a grain `texture` tiled `tileW` pixels across reads: texels per pixel, as a fragment's derivatives would say. */
+const grainLod = (texture: StampPaintImage, tileW: number) => Math.max(0, Math.log2(texture.width / tileW));
 
 /** Writes a Grain at word `at`: its tile in pixels, its offset in tiles, its mip level and how it reads. */
 function writeGrain(views: StampUniformViews, at: number, grain: StampBrushGrain<StampPaintImage>, tile: readonly [number, number], offset: readonly [number, number], lod: number) {

@@ -284,7 +284,7 @@ export function stampGateCutOutPainting(paper: StampGroupPaper, { sky = true, li
 
 
 export const STAMP_GATE_ANIMATION_IDS = [
-  'animation/drift', 'animation/boil', 'animation/boil-wash', 'animation/bloom-boil', 'animation/sunset', 'animation/effects-sunset', 'animation/recolour', 'animation/cut-out',
+  'animation/drift', 'animation/boil', 'animation/boil-wash', 'animation/bloom-boil', 'animation/sunset', 'animation/effects-sunset', 'animation/recolour', 'animation/cut-out', 'animation/repaint', 'animation/lent',
 ];
 
 type Rgba = ArrayLike<number>;
@@ -375,6 +375,31 @@ export function checkStampGateRecolour(frames: Record<'still' | 'halfway' | 'fre
   return {
     id: 'animation/recolour: keyed paint is the eased paint, in any frame order', passed: painted <= STAMP_GATE_DRIFT_TOLERANCE && orders.every((max) => max === 0),
     detail: `halfway against painted still in the halfway paint: max ${painted} (past ${STAMP_GATE_DRIFT_TOLERANCE} fails); against drawn first, its end after halfway, halfway after its end and past its last key: max ${orders.join(', ')} (past 0 fails)`,
+  };
+}
+
+/**
+ * Whether a painting loaded onto a surface another painting has drawn on (its targets holding that one's last frame)
+ * draws a frame just as it does on a fresh surface.
+ */
+export function checkStampGateRepaint(fresh: Rgba, after: Rgba): StampGateWashCheck {
+  const max = mostApart(fresh, after);
+  return {
+    id: 'animation/repaint: a painting drawn on a surface after another is drawn as on a fresh one', passed: max === 0,
+    detail: `the drift at frame 2 after the bloom-boil at frame 1, against drawn fresh: max ${max} (past 0 fails)`,
+  };
+}
+
+/**
+ * A painting on a lent device, drawn into a texture it's handed, against the same frame on a canvas: the same bytes;
+ * an -srgb texture refused; and once its surface is disposed, no error scope of its left open on the device.
+ */
+export function checkStampGateLent({ onCanvas, lent, refusesSrgb, scopesBalanced }: { onCanvas: Rgba; lent: Rgba; refusesSrgb: boolean; scopesBalanced: boolean }): StampGateWashCheck {
+  const max = mostApart(onCanvas, lent);
+  return {
+    id: 'animation/lent: a painting on a lent device draws into its texture as on a canvas, and leaves the device as it found it',
+    passed: max === 0 && refusesSrgb && scopesBalanced,
+    detail: `the drift at frame 2: max ${max} from the canvas's (past 0 fails); an -srgb texture ${refusesSrgb ? 'refused' : 'accepted'}; error scopes ${scopesBalanced ? 'balanced' : 'left open'}`,
   };
 }
 

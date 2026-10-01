@@ -84,6 +84,13 @@ export async function profileFrames(session: RenderSession, { from, end }: { fro
   };
 }
 
+/** A load's times: each, when there are few; else the first (which fills caches) apart from the spread of the rest. */
+function formatLoads(times: readonly number[], ms: (n: number) => string): string {
+  if (times.length <= 3) return times.map(ms).join(', ');
+  const { median, p90, max } = spreadOf(times.slice(1));
+  return `${times.length} loads: the first ${ms(times[0])}, then median ${ms(median)}, p90 ${ms(p90)}, max ${ms(max)}`;
+}
+
 export function formatFrameProfile(report: FrameProfileReport): string[] {
   const ms = (n: number) => `${n.toFixed(1)} ms`;
   const { frames, size, gpu } = report;
@@ -91,7 +98,7 @@ export function formatFrameProfile(report: FrameProfileReport): string[] {
     `frames ${frames.from}–${frames.end - 1} at ${size.width}×${size.height}, GPU ${gpu}`,
     'drawing, per frame, waited for on the GPU (1 tab, no screenshot):',
     ...(report.drawn.length ? report.drawn.map(({ label, frames: n, spread: s }) => `  ${label}: median ${ms(s.median)}, p90 ${ms(s.p90)}, max ${ms(s.max)} over ${n} frames`) : ['  nothing in these frames offers its work to be timed']),
-    ...report.loads.map(({ label, ms: times }) => `  ${label}: ${times.map(ms).join(', ')}`),
+    ...report.loads.map(({ label, ms: times }) => `  ${label}: ${formatLoads(times, ms)}`),
     'whole render, per frame, steady state (JPEG frames, no encode):',
     ...report.whole.map(({ tabs, msPerFrame }) => `  ${tabs} tab${tabs > 1 ? 's' : ''}: ${ms(msPerFrame)}`),
   ];

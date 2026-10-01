@@ -7,6 +7,7 @@ import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts'
 import { stampSmoothRegion, type StampFillApplication } from '#lib/picture/stamp-paint/models/stamp-fill.ts';
 import { compileStampPaintRecipe, stampPaintRecipe, stampPassDeposits } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import { createStampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
+import { createStampPaintSurface } from '#lib/picture/stamp-paint/studio/stamp-paint-surface.ts';
 import { brushFidelityAssetUrl, type BrushFidelityPackUrls } from '../models/brush-fidelity-pack-urls.ts';
 
 const CELL = { width: 330, height: 300 }, LABEL = 56, DRAWN_OVER = 2;
@@ -41,13 +42,14 @@ async function drawStampFillSheet(brush: StampBrush, diameter: number, packUrls:
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
   const context = canvas.getContext('2d')!;
   const paintCanvas = Object.assign(document.createElement('canvas'), { width, height });
-  const renderer = await createStampPaintRenderer(paintCanvas, painting, { color: '#ffffff' }, { kind: 'flat' }, width, height, (asset) => brushFidelityAssetUrl(packUrls, asset));
-  // Copied before the renderer's disposed, which unconfigures its canvas and clears it.
+  const surface = await createStampPaintSurface({ canvas: paintCanvas, width, height }, (asset) => brushFidelityAssetUrl(packUrls, asset));
+  // Copied before the surface is disposed, which unconfigures its canvas and clears it.
   try {
+    const renderer = await createStampPaintRenderer(surface, painting, { color: '#ffffff' }, { kind: 'flat' });
     await renderer.draw(DRAWN_OVER);
     context.drawImage(paintCanvas, 0, 0);
   } finally {
-    renderer.dispose();
+    surface.dispose();
   }
   ROWS.forEach(({ label }, row) => APPLICATIONS.forEach(({ label: applied }, column) => {
     const x = column * CELL.width, y = top(row) - LABEL;

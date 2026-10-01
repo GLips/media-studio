@@ -16,6 +16,7 @@ import { STAMP_PIGMENT_GROUP_SLOTS, stampPigmentAmountsAt, stampPigmentGroupLaye
 import { STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
 import { STAMP_OPAQUE_COVER, type CompiledStampDeposit, type StampPaintColor } from '../models/stamp-paint-recipe.ts';
 import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
+import type { StampPaintDevice } from './stamp-paint-gpu.ts';
 import { stampUniformLayout, stampUniformWriter, type StampUniformViews } from './stamp-uniform-layout.ts';
 
 /** Words per component in the component buffer: slot, seed, granulation, flocculation. */
@@ -135,7 +136,7 @@ fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f,
 }`;
 
 /** The compositor for `paint` on `device`: every deposit's components and every group's palette uploaded once. */
-export function stampPigmentCompositor(device: GPUDevice, paint: StampPigmentPaint, paperColor: StampPaintColor): StampPaintCompositor {
+export function stampPigmentCompositor(device: StampPaintDevice, paint: StampPigmentPaint, paperColor: StampPaintColor): StampPaintCompositor {
   const { bands, medium } = paint;
   const V = Math.ceil(bands.count / 4);
   const layers = Math.max(1, ...paint.groups.map(stampPigmentGroupLayers));

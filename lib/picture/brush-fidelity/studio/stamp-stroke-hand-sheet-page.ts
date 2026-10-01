@@ -9,6 +9,7 @@ import { compileStampPaintRecipe, stampPaintRecipe } from '#lib/picture/stamp-pa
 import type { StampStrokePoint } from '#lib/picture/stamp-paint/models/stamp-placement.ts';
 import { handStampStroke, type StampStrokeHand } from '#lib/picture/stamp-paint/models/stamp-stroke-hand.ts';
 import { createStampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
+import { createStampPaintSurface } from '#lib/picture/stamp-paint/studio/stamp-paint-surface.ts';
 import { brushFidelityAssetUrl, type BrushFidelityPackUrls } from '../models/brush-fidelity-pack-urls.ts';
 
 const ROW = 200, LABEL = 250, PAINT = 900, PLOT = 220;
@@ -38,17 +39,18 @@ async function drawStampStrokeHandSheet(brush: StampBrush, diameter: number, pac
     pass.stroke('stroke', { brush, material, diameter, path: sheetPath(row * ROW), hand });
   })))));
   const paintCanvas = Object.assign(document.createElement('canvas'), { width: PAINT, height });
-  const renderer = await createStampPaintRenderer(paintCanvas, painting, { color: '#ffffff' }, { kind: 'flat' }, PAINT, height, (asset) => brushFidelityAssetUrl(packUrls, asset));
+  const surface = await createStampPaintSurface({ canvas: paintCanvas, width: PAINT, height }, (asset) => brushFidelityAssetUrl(packUrls, asset));
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
   const context = canvas.getContext('2d')!;
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, width, height);
-  // Copied before the renderer's disposed, which unconfigures its canvas and clears it.
+  // Copied before the surface is disposed, which unconfigures its canvas and clears it.
   try {
+    const renderer = await createStampPaintRenderer(surface, painting, { color: '#ffffff' }, { kind: 'flat' });
     await renderer.draw(0);
     context.drawImage(paintCanvas, LABEL, 0);
   } finally {
-    renderer.dispose();
+    surface.dispose();
   }
   VARIANTS.forEach(({ label, hand }, row) => {
     const top = row * ROW;

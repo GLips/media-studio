@@ -28,10 +28,11 @@ import type { PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
 import { stampWashMovedWgsl } from '#lib/picture/stamp-paint/studio/stamp-paint-pigment-compositor.ts';
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
+import { createStampPaintSurface, type StampPaintSurface } from '#lib/picture/stamp-paint/studio/stamp-paint-surface.ts';
 import {
-  checkStampGateBloomBoil, checkStampGateBoil, checkStampGateBoilWash, checkStampGateCutOut, checkStampGateDrift, checkStampGateEffectsSunset, checkStampGateRecolour, checkStampGateSunset,
-  STAMP_GATE_ANIMATION_FPS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_DRIFT_FRAMES, STAMP_GATE_EFFECTS_SUNSET_HOURS, STAMP_GATE_RECOLOUR_KEYS, stampGateBloomBoilPainting, stampGateBoilPainting,
-  stampGateBoilWashPainting, stampGateCutOutPainting, stampGateDriftPainting, stampGateEffectsSunsetPainting, stampGateRecolourPainting,
+  checkStampGateBloomBoil, checkStampGateBoil, checkStampGateBoilWash, checkStampGateCutOut, checkStampGateDrift, checkStampGateEffectsSunset, checkStampGateLent, checkStampGateRecolour, checkStampGateRepaint,
+  checkStampGateSunset, STAMP_GATE_ANIMATION_FPS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_DRIFT_FRAMES, STAMP_GATE_EFFECTS_SUNSET_HOURS, STAMP_GATE_RECOLOUR_KEYS, stampGateBloomBoilPainting,
+  stampGateBoilPainting, stampGateBoilWashPainting, stampGateCutOutPainting, stampGateDriftPainting, stampGateEffectsSunsetPainting, stampGateRecolourPainting,
   stampGateSunsetPainting,
 } from '../models/stamp-gate-animation.ts';
 import {
@@ -120,25 +121,30 @@ function imageUrl({ size, pixels }: StampGateImage): string {
   return canvas.toDataURL('image/png');
 }
 
-/** `gate` on a renderer of its own, its images at `url`, handed to `use`; disposed after. */
-async function withGateRenderer<T>(
-  gate: Omit<StampGatePainting, 'images'>, url: (file: string) => string, use: (renderer: StampPaintRenderer, frame: () => Uint8ClampedArray) => Promise<T>,
-  wetStages = STAMP_WET_STAGES,
-): Promise<T> {
-  const { painting, paper, mixing, width, height } = gate;
+/** A surface of its own `width` × `height`, its images at `url`, handed to `use` with what reads its frame; disposed after. */
+async function withGateSurface<T>({ width, height }: { width: number; height: number }, url: (file: string) => string, use: (surface: StampPaintSurface, frame: () => Uint8ClampedArray) => Promise<T>): Promise<T> {
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
-  const renderer = await createStampPaintRenderer(canvas, painting, paper, mixing, width, height, ({ file }) => url(file), { fps: STAMP_GATE_ANIMATION_FPS, wetStages });
+  const surface = await createStampPaintSurface({ canvas, width, height }, ({ file }) => url(file));
   const frame = () => {
     const context = Object.assign(document.createElement('canvas'), { width, height }).getContext('2d')!;
     context.drawImage(canvas, 0, 0);
     return context.getImageData(0, 0, width, height).data;
   };
   try {
-    return await use(renderer, frame);
+    return await use(surface, frame);
   } finally {
-    renderer.dispose();
+    surface.dispose();
   }
 }
+
+const gateRenderer = ({ painting, paper, mixing }: Omit<StampGatePainting, 'images'>, surface: StampPaintSurface, wetStages = STAMP_WET_STAGES) =>
+  createStampPaintRenderer(surface, painting, paper, mixing, { fps: STAMP_GATE_ANIMATION_FPS, wetStages });
+
+/** `gate` on a renderer and surface of its own, its images at `url`, handed to `use`; disposed after. */
+const withGateRenderer = <T,>(
+  gate: Omit<StampGatePainting, 'images'>, url: (file: string) => string, use: (renderer: StampPaintRenderer, frame: () => Uint8ClampedArray) => Promise<T>,
+  wetStages = STAMP_WET_STAGES,
+) => withGateSurface(gate, url, async (surface, frame) => use(await gateRenderer(gate, surface, wetStages), frame));
 
 const drawnImages = (gate: StampGatePainting) => {
   const urls = Object.fromEntries(Object.entries(gate.images).map(([file, image]) => [file, imageUrl(image)]));
@@ -156,6 +162,20 @@ function paintedFrame(gate: Omit<StampGatePainting, 'images'>, url: (file: strin
     for (let i = 0; i < rgb.length; i += 0x8000) binary += String.fromCharCode(...rgb.subarray(i, i + 0x8000));
     return btoa(binary);
   });
+}
+
+/** `texture`'s rgba8unorm pixels, row by row without padding. */
+async function readGateTexture(device: GPUDevice, texture: GPUTexture): Promise<Uint8ClampedArray> {
+  const { width, height } = texture, row = Math.ceil((width * 4) / 256) * 256;
+  const buffer = device.createBuffer({ size: row * height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+  const encoder = device.createCommandEncoder();
+  encoder.copyTextureToBuffer({ texture }, { buffer, bytesPerRow: row }, [width, height]);
+  device.queue.submit([encoder.finish()]);
+  await buffer.mapAsync(GPUMapMode.READ);
+  const padded = new Uint8Array(buffer.getMappedRange()), rgba = new Uint8ClampedArray(width * height * 4);
+  for (let y = 0; y < height; y++) rgba.set(padded.subarray(y * row, y * row + width * 4), y * width * 4);
+  buffer.destroy();
+  return rgba;
 }
 
 /** The gate painting `id`, as paintedFrame gives it. */
@@ -309,6 +329,39 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
       own: await drift(own), ground: await drift(stampGateCutOutPainting('ground')), bare: await first(bare), width: own.width,
       unlit: { own: await first(stampGateCutOutPainting('own', { lights: false })), ground: await first(stampGateCutOutPainting('ground', { lights: false })) },
     });
+  }
+  if (id === 'animation/repaint') {
+    // The bloom-boil leaves a wash's footprint, its bloom and rim scratch and a layer of paint in the shared targets.
+    const first = stampGateBloomBoilPainting(), then = stampGateDriftPainting();
+    const fresh = await withGateRenderer(then, drawnImages(then), (renderer, frame) => drawn(renderer, frame, frameAt(2)));
+    return withGateSurface(then, drawnImages(then), async (surface, frame) => {
+      const before = await gateRenderer(first, surface);
+      await drawn(before, frame, frameAt(1));
+      before.dispose();
+      return checkStampGateRepaint(fresh, await drawn(await gateRenderer(then, surface), frame, frameAt(2)));
+    });
+  }
+  if (id === 'animation/lent') {
+    const gate = stampGateDriftPainting(), url = drawnImages(gate), { width, height } = gate;
+    const onCanvas = await withGateRenderer(gate, url, (renderer, frame) => drawn(renderer, frame, frameAt(2)));
+    const device = await createStampPaintDevice();
+    try {
+      const texture = (format: GPUTextureFormat) => device.createTexture({ size: [width, height], format, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
+      const refusesSrgb = await createStampPaintSurface({ device, frame: texture('rgba8unorm-srgb') }, ({ file }) => url(file)).then(() => false, () => true);
+      const frame = texture('rgba8unorm');
+      const surface = await createStampPaintSurface({ device, frame }, ({ file }) => url(file));
+      const renderer = await gateRenderer(gate, surface);
+      await renderer.draw(frameAt(2));
+      const lent = await readGateTexture(device, frame);
+      surface.dispose();
+      // An error scope the surface left open would catch this one's error, and the pop below would report none.
+      device.pushErrorScope('validation');
+      device.createTexture({ size: [1, 1], format: 'rgba8unorm', usage: 0 });
+      const caught = await device.popErrorScope();
+      return checkStampGateLent({ onCanvas, lent, refusesSrgb, scopesBalanced: caught !== null });
+    } finally {
+      device.destroy();
+    }
   }
   throw new Error(`stamp gate: no animation case ${JSON.stringify(id)}; the gate animates ${STAMP_GATE_ANIMATION_IDS.join(', ')}`);
 }

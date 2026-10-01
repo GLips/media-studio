@@ -9,6 +9,7 @@
 
 import { STAMP_WET_TRANSPORT_WGSL, stampWetTransportStrides } from '../models/stamp-wet-transport.ts';
 import { stampUniformLayout, stampUniformWriter } from './stamp-uniform-layout.ts';
+import type { StampPaintDevice } from './stamp-paint-gpu.ts';
 
 const WORKGROUP = 8;
 /** A uniform slot's bytes: WebGPU's minimum uniform offset alignment. */
@@ -129,9 +130,9 @@ fn pathAt(q: vec2i) -> vec4f { return select(vec4f(0.0), textureLoad(path, q, 0)
 /** The transport's pipelines on a device: ways, and a spread per layer count. */
 export type StampWetTransportPipelines = { ways: GPUComputePipeline; spread: (layers: number) => GPUComputePipeline };
 
-const compiled = new WeakMap<GPUDevice, StampWetTransportPipelines>();
+const compiled = new WeakMap<StampPaintDevice, StampWetTransportPipelines>();
 /** The transport's pipelines on `device`, compiled once for every stage that runs it. */
-export function stampWetTransportPipelines(device: GPUDevice): StampWetTransportPipelines {
+export function stampWetTransportPipelines(device: StampPaintDevice): StampWetTransportPipelines {
   const found = compiled.get(device);
   if (found) return found;
   const compile = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }), entryPoint: 'run' } });
@@ -167,7 +168,7 @@ export type StampWetTransportStep = { pipeline: GPUComputePipeline; bindGroup: G
  * A stage's spreads, their uniform slots one after another in one buffer of their own (a buffer per plan, as two
  * plans encoded in one frame each write theirs before it's submitted).
  */
-export function stampWetSpreads(device: GPUDevice, spreads: readonly StampWetSpread[]) {
+export function stampWetSpreads(device: StampPaintDevice, spreads: readonly StampWetSpread[]) {
   const pipelines = stampWetTransportPipelines(device);
   const passes = spreads.map((spread) => stampWetSpreadPasses(spread.sigma, spread.order));
   const firsts = passes.map((_, s) => passes.slice(0, s).reduce((sum, list) => sum + list.length, 0));

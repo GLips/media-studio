@@ -272,7 +272,6 @@
       "const TIER2 = 'texture-formats-tier2' as GPUFeatureName;": 1
     },
     "lib/picture/stamp-paint/studio/stamp-paint-renderer.ts": {
-      "const context = canvas.getContext('webgpu') as GPUCanvasContext;": 1,
       "const stampPipelines = Object.fromEntries((['glaze', 'build'] as const).map((accumulation) => {": 1
     },
     "lib/picture/stamp-styles/engine/import-procreate-pack.ts": {
@@ -1381,9 +1380,6 @@
     "lib/picture/measurement/studio/screen-rect.ts": {
       "whenLaidOut(layer).then(() => {": 1
     },
-    "lib/picture/stamp-paint/studio/stamp-paint-renderer.ts": {
-      "void device.lost.then((info) => { if (info.reason !== 'destroyed') lost ??= info.message; });": 1
-    },
     "lib/picture/stills/studio/still-probe.tsx": {
       "whenStillSettled(root.current!).then(() => {": 1
     },
@@ -2062,9 +2058,6 @@
     },
     "lib/picture/stamp-paint/models/stamp-tip-hull.ts": {
       "function strictlyConvex(points: [number, number][]): [number, number][] {": 1
-    },
-    "lib/picture/stamp-paint/studio/stamp-paint-renderer.ts": {
-      "async function rendererOnDevice(": 3
     },
     "lib/picture/stamp-styles/engine/import-photoshop-pack.ts": {
       "function readBrushFiles(archive: string): { name: string; file: PhotoshopBrushFile }[] {": 1
