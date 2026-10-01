@@ -27,11 +27,11 @@ export type StampPaintCompositor = {
   /** Whether a stamp's own tint (a brush's colour dynamics) moves its paint: the renderer lays tints only for one that reads them. */
   readsStampTints: boolean;
   /**
-   * Whether it lays as a dry medium does: as hard as its stamps press (`press`), its tooth filled by the wax held round
-   * each pixel, read from `before` (the layer as the deposit found it). The renderer lays both only for one that does;
-   * for any other, `press` is the deposit's own.
+   * What its lay reads besides the stamps' mask, the renderer laying each only for a compositor that reads it. `press`:
+   * how hard the stamps pressed at a pixel, a dry medium's contact. `before`: the layer as the deposit found it, read
+   * as far as `reach` texels of the paper's grain round a pixel (`u.beforeReach`, in pixels), a stacking medium's fill.
    */
-  laysDry: boolean;
+  reads: { press: boolean; before: { reach: number } | null };
   deposit: {
     /** Its PaintDeposit, the renderer's `paint`. */
     layout: StampUniformLayout<readonly StampUniformField[]>;
@@ -39,7 +39,7 @@ export type StampPaintCompositor = {
      * Its bindings from 24; `paperKept(tooth, mean, depth)`, `layerCoverage(pixel)` and `layDeposit(pixel, coverage,
      * rims, tooth, at, reserved, press)`: `rims` the main and dual burnt rims apart, `tooth` the paper's paint here and
      * its mean, `reserved` what masking fluid held off (a group on its own paper shows it there), `press` 0..1 drawn,
-     * up to 2 burnished.
+     * PAINT_DRY_BURNISHED_PRESS burnished, 1 unread.
      */
     wgsl: string;
     /**
@@ -168,6 +168,7 @@ export function flatStampPaintCompositor(painting: CompiledStampPaint): StampPai
   for (const deposit of deposits) {
     const { action, brush } = deposit;
     if (action.material.kind !== 'constant') throw new Error(`stamp paint: ${deposit.id} grades its material, which only a style that paints in pigment can lay`);
+    if (action.burnish) throw new Error(`stamp paint: ${deposit.id} burnishes, which only a style that paints in a dry medium can`);
     const material = action.material.value;
     const keys = material.kind === 'keys' ? material.keys : [{ at: 0, material }];
     const colors = keys.map(({ material: m }) => {
@@ -193,7 +194,7 @@ export function flatStampPaintCompositor(painting: CompiledStampPaint): StampPai
   return {
     targets: { layer: { kind: 'plain' }, painting: { kind: 'plain' } },
     readsStampTints: true,
-    laysDry: false,
+    reads: { press: false, before: null },
     deposit: {
       layout: FLAT_PAINT_DEPOSIT,
       wgsl: /* wgsl */ `

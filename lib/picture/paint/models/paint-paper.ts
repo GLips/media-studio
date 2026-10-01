@@ -13,6 +13,8 @@ const GRANULATION_SETTLE = 1.5;
 const DRY_LIGHT_REACH = 0.3;
 /** How far the paper rises, as a share of its mean height, from where a dry stick first touches it to where it lays fully. */
 const DRY_CATCH = 0.15;
+/** A burnishing hand's press, past a drawing hand's full 1: a dry stick pressed this hard reaches every valley. */
+export const PAINT_DRY_BURNISHED_PRESS = 2;
 
 /** A pigment's seed for its clumps, from its id (FNV-1a): the same clumps wherever it's laid, apart from other pigments'. */
 export function paintPigmentSeed(id: string): number {
@@ -33,13 +35,14 @@ fn paintWetSettle(valley: f32, paperDepth: f32, granulation: f32, load: f32) -> 
   let a = clamp(paperDepth + granulation * ${GRANULATION_SETTLE.toFixed(4)} * load, 0.0, 1.0);
   return 1.0 + a * (valley - 1.0);
 }
-// Catches nothing below \`tooth\` of the mean height at \`press\` 1, less at 0, everything at 2 (burnished), the
+// Catches nothing below \`tooth\` of the mean height at \`press\` 1, less at 0, everything burnished, the
 // valleys raised \`filled\` of the way by wax.
 fn paintDryContact(h: f32, meanHeight: f32, tooth: f32, paperDepth: f32, press: f32, filled: f32) -> f32 {
   let surface = h + (1.0 - h) * clamp(filled, 0.0, 1.0);
   let reach = tooth + ${DRY_LIGHT_REACH.toFixed(4)} * (1.0 - clamp(press, 0.0, 1.0));
   let contact = clamp((surface - reach * meanHeight) / (${DRY_CATCH.toFixed(4)} * meanHeight), 0.0, 1.0);
-  return 1.0 + paperDepth * (1.0 - clamp(press - 1.0, 0.0, 1.0)) * (contact - 1.0);
+  let burnished = clamp((press - 1.0) / ${(PAINT_DRY_BURNISHED_PRESS - 1).toFixed(4)}, 0.0, 1.0);
+  return 1.0 + paperDepth * (1.0 - burnished) * (contact - 1.0);
 }
 fn paintHash01(x: u32, y: u32, seed: u32) -> f32 {
   let v = (x * 0x27d4eb2du) ^ (y * 0x165667b1u) ^ seed;

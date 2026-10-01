@@ -11,6 +11,7 @@
 import { PAINT_KUBELKA_MUNK_WGSL } from '#lib/picture/paint/models/paint-kubelka-munk.ts';
 import { PAINT_PAPER_WGSL, paintPigmentSeed } from '#lib/picture/paint/models/paint-paper.ts';
 import { paintHexToLinear } from '#lib/picture/paint/models/paint-spectrum.ts';
+import type { PaintStackedLayering } from '#lib/picture/paint/models/paint-medium.ts';
 import { STAMP_PIGMENT_GROUP_SLOTS, stampPigmentAmountsAt, stampPigmentGroupLayers, type StampPigmentPaint } from '../models/stamp-pigment-paint.ts';
 import { STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
 import { STAMP_OPAQUE_COVER, type CompiledStampDeposit, type StampPaintColor } from '../models/stamp-paint-recipe.ts';
@@ -66,7 +67,7 @@ fn washMoved(now: array<vec4f, ${layers}>, wasPigment: f32) -> array<vec4f, ${la
 }
 
 /**
- * A wet medium's lay: each stroke moves the paint toward its own, carrying `pickup` of the wet paint under it, so
+ * A mixing medium's lay: each stroke moves the paint toward its own, carrying `pickup` of the wet paint under it, so
  * where two washes meet they mix rather than one replacing the other.
  */
 const mixedLay = (pickup: number) => /* wgsl */ `
@@ -86,23 +87,23 @@ fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f,
   }
 }`;
 
-/** How far round a pixel, in pixels, a dry medium's tooth fills from: about a valley of the paper's across. */
-const DRY_FILL_REACH = 3;
+/** How far round a pixel a stacking medium's tooth fills from, in texels of the paper's grain: about a valley across. */
+const STACKED_FILL_REACH = 6;
 
 /**
- * A dry medium's lay: its wax stacks, each layer adding its pigment to what the tooth holds, as crossing crayon
- * layers mix. Past `holds` full loads a stroke trades its wax for what's there, its own on top. Wax held fills the
- * valleys `fill` of the way, so each later layer reaches further into them.
+ * A stacking medium's lay (PaintStackedLayering): each layer adds its pigment to what the tooth holds, as crossing
+ * crayon layers mix. Past `holds` unit films a stroke trades its wax for what's there, its own on top. Wax held fills
+ * the valleys `fill` of the way, so each later layer reaches further into them.
  */
-const stackedLay = ({ holds, fill }: { holds: number; fill: number }) => /* wgsl */ `
-// The wax held round \`pixel\` before this deposit, a ring of DRY_FILL_REACH pixels and the pixel: a valley fills with
+const stackedLay = ({ holds, fill }: PaintStackedLayering) => /* wgsl */ `
+// The wax held round \`pixel\` before this deposit, a ring u.beforeReach pixels out and the pixel: a valley fills with
 // wax pressed in from the peaks round it, never having caught any itself.
 fn heldAround(pixel: vec2u) -> f32 {
   let last = vec2i(textureDimensions(before)) - 1;
   var held = 0.0;
   for (var k = 0; k < 9; k++) {
     let angle = f32(k) * 0.7854;
-    let offset = select(vec2i(round(${f32(DRY_FILL_REACH)} * vec2f(cos(angle), sin(angle)))), vec2i(0), k == 8);
+    let offset = select(vec2i(round(u.beforeReach * vec2f(cos(angle), sin(angle)))), vec2i(0), k == 8);
     let q = vec2u(clamp(vec2i(pixel) + offset, vec2i(0), last));
     for (var l = 0u; l < LAYERS; l++) { if (!isSheet(l)) { held += dot(textureLoad(before, q, l, 0), pigmentMask(l)); } }
   }
@@ -205,7 +206,7 @@ fn paperReflectance(i: u32, color: vec3f) -> vec4f {
 
   // Where the medium meets the paper, from the paper's height `h`, its mean and valley, by a pigment's granulation and
   // load; a dry medium's by how hard it's pressed and how far wax already fills the tooth.
-  const { paperContact } = medium;
+  const { paperContact, layering } = medium;
   const contactOf = (depth: string, granulation: string, load: string, press: string, filled: string) => (paperContact.kind === 'peaks'
     ? `paintDryContact(h, meanHeight, ${f32(paperContact.tooth)}, ${depth}, ${press}, ${filled})`
     : `paintWetSettle(valley, ${depth}, ${granulation}, ${load})`);
@@ -219,7 +220,7 @@ fn paperReflectance(i: u32, color: vec3f) -> vec4f {
   return {
     targets: { layer: { kind: 'array', layers }, painting: { kind: 'array', layers: V } },
     readsStampTints: false,
-    laysDry: paperContact.kind === 'peaks',
+    reads: { press: paperContact.kind === 'peaks', before: layering.kind === 'stacks' ? { reach: STACKED_FILL_REACH } : null },
     deposit: {
       layout: PIGMENT_PAINT_DEPOSIT,
       wgsl: /* wgsl */ `
@@ -265,7 +266,7 @@ fn laySheet(pixel: vec2u, reserved: f32, lifted: f32) {
   let shown = vec2f(max(was.x, clamp(reserved, 0.0, 1.0)), 1.0 - (1.0 - was.y) * (1.0 - clamp(lifted, 0.0, 1.0)));
   textureStore(layer, pixel, paint.sheetLayer, vec4f(shown, 0.0, 0.0));
 }
-${paperContact.kind === 'peaks' ? stackedLay(paperContact) : mixedLay(medium.pickup)}`,
+${layering.kind === 'stacks' ? stackedLay(layering) : mixedLay(medium.pickup)}`,
       wet: /* wgsl */ `
 ${STAMP_WET_LIFT_WGSL}
 @group(0) @binding(25) var<storage, read> stains: array<vec4f>;

@@ -107,7 +107,7 @@ function curvedStrokes(kit: DryPassageKit): StampPaintRecipe {
 
 /**
  * Three layers of hatching across the cell (ochre, rose, blue), then over the right half the blue again, pressed
- * hard: what a coloured-pencil artist does last to burnish the wax into a smooth, saturated layer.
+ * hard: what a coloured-pencil artist does last to burnish the wax into a smooth layer.
  */
 function burnished(kit: DryPassageKit): StampPaintRecipe {
   return stampPaintRecipe((paint) => paint.group('swatch', { composite: 'opaque' }, (group) => group.pass('layers', {}, (pass) => {
@@ -149,6 +149,6 @@ export const DRY_PASSAGES: readonly DryPassage[] = [
   {
     id: 'burnished', title: 'Burnishing', recipe: burnished,
     shows: 'Three layers of hatching across the swatch (ochre, rose, blue). Over the right half the blue goes on again, burnished: pressed beyond drawing.',
-    lookFor: 'The right half should be burnished: the wax pressed flat into the tooth, smooth and saturated, the paper no longer speckling through. The left half stays grainy.',
+    lookFor: 'The right half should be burnished: the wax pressed flat into the tooth, smooth, the paper no longer speckling through. The left half stays grainy.',
   },
 ];

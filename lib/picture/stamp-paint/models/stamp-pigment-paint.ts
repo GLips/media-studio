@@ -123,6 +123,7 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
         deposits.set(deposit, { group: g, components: [], grade: UNGRADED });
         continue;
       }
+      if (action.burnish && medium.paperContact.kind !== 'peaks') throw new Error(`stamp paint: ${deposit.id} burnishes, and ${medium.name} isn't a dry medium`);
       const { first, second, kind, geometry } = stampPaintFieldEnds(action.material);
       /** What a full stroke of `material` lays, each pigment the painting's one of its id. */
       const laidOf = (material: PaintMaterial) => {

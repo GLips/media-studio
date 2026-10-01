@@ -58,6 +58,8 @@ test("a fill in strokes lays marks whose edges reach the outline, never past it,
     const reach = Math.max(...fill.stamps.map(({ x, y }) => Math.hypot(x - 200, y - 200) + 15));
     assert.ok(reach > 115 && reach < 122, `${pattern} reaches ${reach}`);
   }
+  // A region shorter than a shading stroke is still shaded, not left to a neighbouring patch it hasn't got.
+  assert.ok(stampFillStrokePath(polygon(0, 0, 40, 0, 40, 40, 0, 40), 20, 0, { pattern: 'shading', variation: 0, hand: {} }, 'small').length > 0);
   // Rows about two diameters apart: every stamp's centre lies within a few px of a row, and between rows lies paper.
   const hatch = compiledFill(disc, 30, { application: { kind: 'strokes', pattern: 'hatch', spacing: 2, variation: 0 } });
   const rows = hatch.stamps.map(({ y }) => y).toSorted((a, b) => a - b).filter((y, i, ys) => i === 0 || y - ys[i - 1] > 10);

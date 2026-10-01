@@ -11,7 +11,7 @@ import type { PaintMaterial, StampKeyedMaterial, StampPaintColor, StampPaintMate
 /** Paint as written: what a dry pass's deposits all do. */
 export type StampRecipePaint = { kind: 'paint'; material: StampPaintMaterial; blend?: StampBlend; secondaryColor?: StampPaintColor; burnish?: boolean };
 /** What a wash's deposit does as written: paints, carrying `water` (its medium's when left out), wets, or lifts. */
-export type StampRecipeWashAction = (StampRecipePaint & { water?: number }) | { kind: 'water'; water: number } | { kind: 'lift'; strength?: number };
+export type StampRecipeWashAction = (Omit<StampRecipePaint, 'burnish'> & { water?: number }) | { kind: 'water'; water: number } | { kind: 'lift'; strength?: number };
 
 /**
  * Paint laid where a deposit's stamps land: its material, each colour (each key's) moved by the brush's stroke colour

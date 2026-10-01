@@ -13,11 +13,12 @@ import { paintHexToLinear, type PaintBands } from './paint-spectrum.ts';
 export type PaintLightening = { kind: 'water' } | { kind: 'white'; white: PaintPigmentAppearance };
 
 /**
- * How a dry medium meets the paper: a firm hand leaves bare the paper below `tooth` of its mean height, a light one
- * more. Its layers stack until the tooth holds `holds` full loads, then trade. Wax held fills the valleys `fill`
- * (0..1) of the way, so paper shows through several layers.
+ * How a medium's layers combine. `mixes`: each stroke moves the paint toward its own, carrying `pickup` of what's
+ * under it. `stacks`: each layer adds its pigment to what the tooth holds, trading for it only past `holds` unit films;
+ * wax held round a pixel fills its valleys `fill` (0..1) of the way per film, so paper shows through several layers.
  */
-export type PaintDryContact = { kind: 'peaks'; tooth: number; holds: number; fill: number };
+export type PaintLayering = { kind: 'mixes' } | PaintStackedLayering;
+export type PaintStackedLayering = { kind: 'stacks'; holds: number; fill: number };
 
 export type PaintMedium = {
   name: string;
@@ -34,15 +35,17 @@ export type PaintMedium = {
   granulation: number;
   /**
    * Where the paint meets the paper's tooth: a wet medium pools into the valleys (`valleys`, as deep as the paper is,
-   * and further by granulation); a dry one catches on the peaks (PaintDryContact).
+   * and further by granulation); a dry one catches on the peaks above `tooth` of the paper's mean height at a firm
+   * hand's pressure, further down as it presses harder.
    */
-  paperContact: { kind: 'valleys' } | PaintDryContact;
+  paperContact: { kind: 'valleys' } | { kind: 'peaks'; tooth: number };
+  layering: PaintLayering;
   /** How much more a film scatters dry than wet: air between the particles, where water was. Watercolour dries lighter. */
   dryingScatter: number;
   /**
-   * How much of the wet paint under a loaded stroke the stroke carries and lays mixed with its own, 0..1: where two
-   * wet washes meet they mix rather than one replacing the other. A dry medium picks up nothing; its layers only
-   * stack. A lift isn't a loaded stroke: how much it takes is its own strength (stamp-wet-lift.ts).
+   * How much of the wet paint under a loaded stroke the stroke carries and lays mixed with its own, 0..1, in a wash
+   * and in a medium whose layers mix: where two wet washes meet they mix rather than one replacing the other. A lift
+   * isn't a loaded stroke: how much it takes is its own strength (stamp-wet-lift.ts).
    */
   pickup: number;
   wetting: PaintWetting;
@@ -81,23 +84,23 @@ export const PAINT_MEDIA = {
   // darks deep, granulation reads as speckle rather than sandpaper, drying lightens only a little. Its wetting is a
   // first guess (vid-117): paint travels, a sheet dries in minutes, unstaining pigment lifts some way.
   watercolour: {
-    name: 'watercolour', color: { kind: 'glaze', hiding: 0.02 }, body: 1, lightening: { kind: 'water' }, granulation: 0.7, paperContact: { kind: 'valleys' }, dryingScatter: 0.1, pickup: 0.5,
+    name: 'watercolour', color: { kind: 'glaze', hiding: 0.02 }, body: 1, lightening: { kind: 'water' }, granulation: 0.7, paperContact: { kind: 'valleys' }, layering: { kind: 'mixes' }, dryingScatter: 0.1, pickup: 0.5,
     wetting: { spread: 0.5, drying: 240, openTime: 0, rewetting: 0.35, brushWater: 0.7, damp: 0.35 },
   },
   // Tuned by eye (vid-109), not measured: a stroke mostly lays its own paint over wet paint, darks dry lighter and
   // matte, and a dark colour holds its hue into tints with white.
   gouache: {
     name: 'gouache', color: { kind: 'masstone', scatter: 0.05 }, body: 2, lightening: { kind: 'white', white: TITANIUM_WHITE }, granulation: 0.1,
-    paperContact: { kind: 'valleys' }, dryingScatter: 0.4, pickup: 0.2,
+    paperContact: { kind: 'valleys' }, layering: { kind: 'mixes' }, dryingScatter: 0.4, pickup: 0.2,
     // A first guess (vid-117): it barely travels, dries fast and re-dissolves once dry.
     wetting: { spread: 0.1, drying: 120, openTime: 0, rewetting: 0.9, brushWater: 0.4, damp: 0.35 },
   },
   // Tuned by eye (vid-109, vid-124), not measured: a firm hand skips the paper below 85% of its mean height; about
-  // five layers fill the tooth. Its paper wants a depth of 1: wax hides even thinly, so a valley given any share
-  // reads filled.
+  // five layers fill the tooth.
   crayon: {
     name: 'crayon', color: { kind: 'masstone', scatter: 0.05 }, body: 1.5, lightening: { kind: 'white', white: { id: 'waxWhite', name: 'wax white', overWhite: '#f7f6f1', overBlack: '#9d9c97' } },
-    granulation: 0, paperContact: { kind: 'peaks', tooth: 0.85, holds: 2, fill: 0.6 }, dryingScatter: 0, pickup: 0,
+    granulation: 0, paperContact: { kind: 'peaks', tooth: 0.85 }, layering: { kind: 'stacks', holds: 2, fill: 0.6 }, dryingScatter: 0,
+    pickup: 0,
     // No water and no spread. A lift is an eraser, taking the wax off the tooth's peaks but not what's pressed in (vid-117).
     wetting: { spread: 0, drying: 1, openTime: 0, rewetting: 0.85, brushWater: 0, damp: 0.35 },
   },

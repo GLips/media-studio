@@ -155,29 +155,29 @@
     },
     "painting/pigment-crayon": {
       "file": "painting/pigment-crayon.png",
-      "output": "546fe60637928509ab06d06e1bd5d4ac2696eb526951ea1592131fbb7da95a83",
-      "inputs": "cb1e8a919f929f0daeb7948b52d70b5c87ab433afccb41b8a7b01066e76de6b5",
-      "reason": "vid-124: crayon's tooth retuned with the passage sheet drawn at a painting's paper scale: tooth 0.85, fill 0.6 (five layers close it)",
+      "output": "d675dbafcc644b0c4a3aded283a7ff8f7be4c91973f272933b776e8c111a53ff",
+      "inputs": "6233235ab8830855e121f2ca22bbb2123b3d8ff1de363abd1602d95063160d8a",
+      "reason": "vid-124 review fixes: a medium's layering (mixes | stacks) is its own field, apart from paper contact; the compositor declares what its lay reads (press, before with a reach in paper-grain texels); a stamp's press is laid as 1 + pressure so pressure 0 isn't 'no stamp'; burnish sets the press outright. Watercolour and gouache must hold at max 0; crayon moves (fill reach now 6 grain texels, as wide as the gate's paper is drawn)",
       "accepted": "2026-10-01",
-      "acceptedOver": "92d75fe",
+      "acceptedOver": "aa6e540",
       "adapter": "apple metal-3"
     },
     "painting/pigment-gouache": {
       "file": "painting/pigment-gouache.png",
       "output": "489991c94e4f2786463251314b2037a2513f5fe82bcefea53b970a86f71f70a6",
-      "inputs": "0b0d6265f9445c45fb5e2433a449e784700535444f166706ad9f69b95c34dda8",
-      "reason": "vid-124: a dry medium's wax stacks, its tooth fills from the wax held round each pixel, and its stamps' pressure (and burnish) sets how far it reaches into the tooth: paintDryContact gains press and filled; the deposit uniform gains press and a dry compositor binds pressure and the layer before it. Crayon moves by intent; every other painting must hold at max 0",
+      "inputs": "8dc751bfe3ca9abe43c1d243bf75c66e574341537edcbbd3fcd07e95324c65d1",
+      "reason": "vid-124 review fixes: a medium's layering (mixes | stacks) is its own field, apart from paper contact; the compositor declares what its lay reads (press, before with a reach in paper-grain texels); a stamp's press is laid as 1 + pressure so pressure 0 isn't 'no stamp'; burnish sets the press outright. Watercolour and gouache must hold at max 0; crayon moves (fill reach now 6 grain texels, as wide as the gate's paper is drawn)",
       "accepted": "2026-10-01",
-      "acceptedOver": "870ac6f",
+      "acceptedOver": "aa6e540",
       "adapter": "apple metal-3"
     },
     "painting/pigment-watercolour": {
       "file": "painting/pigment-watercolour.png",
       "output": "b598d20bade4cb0f55a65795a077e3ee4d411252edbefcac2d8097b2995c62c8",
-      "inputs": "0e47aaf6734cbb0a126146191895bba485320beae909fbebc7fea8f8b8e8d9de",
-      "reason": "vid-124: a dry medium's wax stacks, its tooth fills from the wax held round each pixel, and its stamps' pressure (and burnish) sets how far it reaches into the tooth: paintDryContact gains press and filled; the deposit uniform gains press and a dry compositor binds pressure and the layer before it. Crayon moves by intent; every other painting must hold at max 0",
+      "inputs": "ec527c545f19da01d0b7d71ed2d8d77c19160619df71fec764b16022c94aca33",
+      "reason": "vid-124 review fixes: a medium's layering (mixes | stacks) is its own field, apart from paper contact; the compositor declares what its lay reads (press, before with a reach in paper-grain texels); a stamp's press is laid as 1 + pressure so pressure 0 isn't 'no stamp'; burnish sets the press outright. Watercolour and gouache must hold at max 0; crayon moves (fill reach now 6 grain texels, as wide as the gate's paper is drawn)",
       "accepted": "2026-10-01",
-      "acceptedOver": "870ac6f",
+      "acceptedOver": "aa6e540",
       "adapter": "apple metal-3"
     },
     "painting/regions": {

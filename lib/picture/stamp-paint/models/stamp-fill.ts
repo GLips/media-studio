@@ -152,7 +152,7 @@ const HATCH_PRESSURE = (along: number) => 0.8 + 0.2 * Math.sin(Math.PI * along);
 
 /**
  * Each pattern's spacing and hand: a hatch mark swells a little; a brush going back and forth presses into its turns.
- * A zigzag's and a shading's legs ease off at each reversal instead (shadingLegs), so their hands leave turns alone.
+ * A zigzag's and a shading's legs ease off at each reversal instead (easedReversalLegs), so their hands leave turns alone.
  */
 export const STAMP_FILL_PATTERNS: Record<StampFillPattern, { spacing: number; hand: StampStrokeHand }> = {
   backAndForth: { spacing: 0.9, hand: { curvature: 0.4, wobble: { pressure: 0.15, position: 0.04 } } },
@@ -183,8 +183,8 @@ export function stampFillStrokePath(region: StampRegion, diameter: number, direc
   else if (pattern === 'crossHatch') marks = [...hatchMarks(rows(direction)), ...hatchMarks(rows(direction + CROSS_HATCH_TURN))];
   // A scribble's loops are a row apart wide, so each overlaps the next row's, and wider than the brush, so they read.
   else if (pattern === 'scribble') marks = chainRows(rows(direction, step)).map((chain) => scribbled(serpentine(chain), step, variation, random));
-  else if (pattern === 'shading') marks = shadingPatches(rows(direction), direction, diameter, variation, random).map((patch) => shadingLegs(serpentine(patch), diameter, variation, random));
-  else if (pattern === 'zigzag') marks = chainRows(rows(direction)).map((chain) => shadingLegs(zigzag(chain), diameter, variation, random));
+  else if (pattern === 'shading') marks = shadingPatches(rows(direction), direction, diameter, variation, random).map((patch) => easedReversalLegs(serpentine(patch), diameter, variation, random));
+  else if (pattern === 'zigzag') marks = chainRows(rows(direction)).map((chain) => easedReversalLegs(zigzag(chain), diameter, variation, random));
   else marks = chainRows(rows(direction)).map(serpentine);
   const path: StampStrokePoint[] = [];
   marks.filter((mark) => mark.length > 1).forEach((mark, i) => {
@@ -276,12 +276,12 @@ const SHADING_RUN = [4, 9] as const;
 /**
  * Rows cut into patches a shading stroke long along them, each patch its rows' pieces in turn, a run of a few strokes
  * before the hand lifts. Each row's cuts move at random, so seams don't line up; each piece reaches past its cut into
- * the next patch, its eased ends (shadingLegs) blending in.
+ * the next patch, its eased ends (easedReversalLegs) blending in.
  */
 function shadingPatches(rows: readonly FillRow[], angle: number, diameter: number, variation: number, random: () => number): FillRow[] {
   const along = (p: StampPoint) => p.x * Math.cos(angle) + p.y * Math.sin(angle);
   const stroke = SHADING_STROKE * diameter, reach = SHADING_OVERLAP * stroke;
-  const columns = new Map<number, { row: number; piece: FillRow[number] }[]>();
+  const found: { column: number; row: number; piece: FillRow[number]; short: boolean }[] = [];
   rows.forEach((row, r) => {
     const phase = (random() * 2 - 1) * 0.25 * stroke * variation;
     for (const { start, end } of row) {
@@ -292,13 +292,15 @@ function shadingPatches(rows: readonly FillRow[], angle: number, diameter: numbe
       const [lo, hi] = a < b ? [a, b] : [b, a];
       for (let column = Math.floor((lo - phase) / stroke); column * stroke + phase < hi; column++) {
         const from = Math.max(lo, column * stroke + phase - reach), to = Math.min(hi, (column + 1) * stroke + phase + reach);
-        // A sliver at the region's edge is the next patch's to cover, not a stroke of its own.
-        if (to - from < 1.5 * diameter) continue;
-        const pieces = columns.get(column) ?? columns.set(column, []).get(column)!;
-        pieces.push({ row: r, piece: { start: at(from), end: at(to) } });
+        found.push({ column, row: r, piece: { start: at(from), end: at(to) }, short: to - from < 1.5 * diameter });
       }
     }
   });
+  // A short piece (a sliver at a row's end, or a corner's short row) lies under its neighbours' stamps, and drawn
+  // would spill its stamp past the outline; only a region with no longer piece is drawn in short ones.
+  const kept = found.some(({ short }) => !short) ? found.filter(({ short }) => !short) : found;
+  const columns = new Map<number, { row: number; piece: FillRow[number] }[]>();
+  for (const { column, row, piece } of kept) (columns.get(column) ?? columns.set(column, []).get(column)!).push({ row, piece });
   const patches: FillRow[] = [];
   for (const pieces of columns.values()) {
     let patch: FillRow = [], last = -2, run = 0;
@@ -321,7 +323,7 @@ function shadingPatches(rows: readonly FillRow[], angle: number, diameter: numbe
  * middle, nearly lifted at each turn and end, so a turnaround is a stroke's lightest part, never a bead where it doubles
  * back. `variation` presses each leg a little harder or lighter.
  */
-function shadingLegs(path: readonly StampStrokePoint[], diameter: number, variation: number, random: () => number): StampStrokePoint[] {
+function easedReversalLegs(path: readonly StampStrokePoint[], diameter: number, variation: number, random: () => number): StampStrokePoint[] {
   const out: StampStrokePoint[] = [];
   for (let i = 1; i < path.length; i++) {
     const a = path[i - 1], b = path[i], length = Math.hypot(b.x - a.x, b.y - a.y);
