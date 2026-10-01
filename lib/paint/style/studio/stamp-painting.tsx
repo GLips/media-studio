@@ -35,7 +35,7 @@ export function StampPainting({ painting, style, t, frame, width, height, box: g
   height?: number;
   box?: { x: number; y: number; w: number; h: number };
 }) {
-  const paper = useStyleContent(style.paper), mixing = useStyleContent(style.mixing);
+  const paper = useStampStyleContent(style.paper), mixing = useStampStyleContent(style.mixing);
   const format = useVideoFormat();
   const box = given ?? fullFrameRect(format);
   const w = Math.round(width ?? box.w), h = Math.round(height ?? box.h);
@@ -118,7 +118,7 @@ export function StampPainting({ painting, style, t, frame, width, height, box: g
  * `value`, or the first equal one this painting was given: a reload throws away the renderer's checkpoints, so a
  * new-but-equal paper or mixing mustn't cause one. Equal by their JSON, as a style's paper and mixing are plain data.
  */
-function useStyleContent<T>(value: T): T {
+export function useStampStyleContent<T>(value: T): T {
   const content = JSON.stringify(value);
   const [kept, setKept] = useState({ content, value });
   if (kept.content === content) return kept.value;

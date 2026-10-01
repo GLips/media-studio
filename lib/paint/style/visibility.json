@@ -1,4 +1,5 @@
 {
   "lib/output/render": "A project's bundle includes its styles module (`@stamp-paint-styles`), which the style feature writes.",
-  "lib/paint/studies": "A study paints in a style, resolved with its medium and pigments."
+  "lib/paint/studies": "A study paints in a style, resolved with its medium and pigments.",
+  "lib/paint/three-layers": "A painted three.js scene paints in a style's paper and mixing, and loads its brushes through the style's asset urls."
 }
