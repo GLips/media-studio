@@ -61,7 +61,7 @@ const acceptCommand = defineCommand({
 });
 
 const stagedCommand = defineCommand({
-  meta: { name: 'staged', description: "Pre-commit's gate: write out the index and run its own staged-tree verb on it, all within 60 s." },
+  meta: { name: 'staged', description: "Pre-commit's gate: write out the index and run its own staged-tree verb on it, all within its deadline." },
   run() {
     const { passed, seconds } = runStagedStampGate(process.cwd());
     if (!passed) console.log(`stamp gate: FAILED on the staged tree after ${seconds.toFixed(1)} s`);

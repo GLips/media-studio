@@ -10,7 +10,7 @@ import { stampBrushImages } from '#lib/paint/brush/models/stamp-brush.ts';
 import { resolveStampPaintPackBrushes } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
 import { stampGatePaintingInputs } from '../models/stamp-gate-paintings.ts';
 import { STAMP_GATE_PRIVATE_CASES, STAMP_GATE_PRIVATE_SIZE, stampGatePrivatePainting, type StampGatePrivateCase } from '../models/stamp-gate-private-cases.ts';
-import { checkStampGateSubject, compareStampGateOutputs, STAMP_GATE_PAGE, type StampGateCheck, type StampGateSubject } from './stamp-gate.ts';
+import { checkStampGateSubject, compareStampGateOutputs, STAMP_GATE_PAGE, STAMP_GATE_PAGES, type StampGateCheck, type StampGateSubject } from './stamp-gate.ts';
 import { readStampGateBaseline, stampGateFrame, stampGateInputsHash, writeStampGateCandidate } from './stamp-gate-store.ts';
 
 /** A pack's brush by its name in the pack. */
@@ -32,15 +32,15 @@ async function paintPrivate(stylesDir: string, brushes: readonly StampGatePrivat
   const paintings = loaded.flatMap((brush) => STAMP_GATE_PRIVATE_CASES.map((privateCase) => ({
     loaded: brush, privateCase, inputs: stampGateInputsHash(`${stampGatePaintingInputs(stampGatePrivatePainting(brush.resolved, privateCase))}|${brush.images.join(',')}`),
   })));
-  // One painting at a time: each asks for a device of its own.
-  return withBrowserModulePage({ entry: STAMP_GATE_PAGE, filesDir: stylesDir }, async (call) => {
-    const adapter = await call<string>('stampGateAdapter');
-    const subjects = await paintings.reduce<Promise<StampGateSubject[]>>(async (done, { loaded: { brush, resolved, url }, privateCase, inputs }) => {
-      const painted = await done;
-      const rgb = Buffer.from(await call<string>('paintStampGatePrivate', resolved, url, privateCase), 'base64');
-      const output = stampGateFrame(new Uint8Array(rgb), STAMP_GATE_PRIVATE_SIZE.width, STAMP_GATE_PRIVATE_SIZE.height);
-      return [...painted, { id: privateId(brush, privateCase), inputs, output }];
-    }, Promise.resolve([]));
+  // All at once, on the gate's pages: each painting asks for a device of its own. Promise.all keeps the order.
+  return withBrowserModulePage({ entry: STAMP_GATE_PAGE, filesDir: stylesDir, pages: STAMP_GATE_PAGES }, async (call) => {
+    const [adapter, subjects] = await Promise.all([
+      call<string>('stampGateAdapter'),
+      Promise.all(paintings.map(async ({ loaded: { brush, resolved, url }, privateCase, inputs }): Promise<StampGateSubject> => {
+        const rgb = Buffer.from(await call<string>('paintStampGatePrivate', resolved, url, privateCase), 'base64');
+        return { id: privateId(brush, privateCase), inputs, output: stampGateFrame(new Uint8Array(rgb), STAMP_GATE_PRIVATE_SIZE.width, STAMP_GATE_PRIVATE_SIZE.height) };
+      })),
+    ]);
     return { adapter, subjects };
   });
 }

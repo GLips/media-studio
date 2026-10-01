@@ -6,6 +6,7 @@
 // Negative space: nothing here skips or retries. No adapter, a missing feature or a failed draw is an error, and an
 // error fails the gate as a difference does.
 
+import { availableParallelism } from 'node:os';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { withBrowserModulePage } from '#lib/platform/browser/engine/browser-module-page.ts';
@@ -26,6 +27,12 @@ import { readStampGateBaseline, stampGateFrame, stampGateInputsHash, writeStampG
 
 /** The gate's browser side, which the private run loads too. */
 export const STAMP_GATE_PAGE = fileURLToPath(new URL('../studio/stamp-gate-page.ts', import.meta.url));
+
+/**
+ * How many pages of the one browser paint the gate's cases at once. Every page shares the one GPU, so past four a
+ * case waits on it, not on its page: on an M-series Mac two pages took the gate to 15 s, four to 13, eight to 12.
+ */
+export const STAMP_GATE_PAGES = Math.min(4, availableParallelism());
 
 /** One thing the gate held, and how it came out. */
 export type StampGateCheck = { id: string; passed: boolean; detail: string };
@@ -50,31 +57,30 @@ async function collectStampGate(
   const grids = stampGateFormulaGrids();
   const gates = paintings.map((id) => ({ id, gate: stampGatePainting(id) }));
   // The page loads no files; it's served its own folder only because the page server serves one.
-  return withBrowserModulePage({ entry: STAMP_GATE_PAGE, filesDir: dirname(STAMP_GATE_PAGE) }, async (call) => {
-    const adapter = await call<string>('stampGateAdapter');
-    const values = await call<number[][]>('runStampGateFormulas', grids.map(({ call: wgsl, width, rows, points, grid }) => ({
-      call: wgsl, width, rows: Array.from(rows), ...(points && { points: Array.from(points) }), ...(grid && { grid: Array.from(grid) }),
-    })));
-    // One painting at a time: each asks for a device of its own.
-    const frames = await gates.reduce<Promise<StampGateSubject[]>>(async (done, { id, gate }) => {
-      const painted = await done;
-      const rgb = Buffer.from(await call<string>('paintStampGate', id), 'base64');
-      const output = stampGateFrame(new Uint8Array(rgb), gate.width, gate.height);
-      return [...painted, { id: `painting/${id}`, output, inputs: stampGateInputsHash(stampGatePaintingInputs(gate)) }];
-    }, Promise.resolve([]));
-    const trace = await call<{ worst: number; mean: number; ordinary: StampGateFrameDifference; orders: string[] }>('traceStampGate');
-    const washChecks = await washes.reduce<Promise<StampGateWashCheck[]>>(async (done, id) => [...await done, ...await call<StampGateWashCheck[]>('checkStampGateWash', id)], Promise.resolve([]));
-    const animationChecks = await animations.reduce<Promise<StampGateWashCheck[]>>(async (done, id) => [...await done, await call<StampGateWashCheck>('checkStampGateAnimation', id)], Promise.resolve([]));
-    const flowChecks = await flows.reduce<Promise<StampGateWashCheck[]>>(async (done, id) => [...await done, await call<StampGateWashCheck>('checkStampGateFlowCase', id)], Promise.resolve([]));
-    const stripeChecks = await stripes.reduce<Promise<StampGateWashCheck[]>>(async (done, id) => [...await done, await call<StampGateWashCheck>('checkStampGateStripeCase', id)], Promise.resolve([]));
-    const regionChecks = await regions.reduce<Promise<StampGateWashCheck[]>>(async (done, id) => [...await done, await call<StampGateWashCheck>('checkStampGateRegionCase', id)], Promise.resolve([]));
-    const mediaChecks = await media.reduce<Promise<StampGateWashCheck[]>>(async (done, id) => [...await done, ...await call<StampGateWashCheck[]>('checkStampGateMediaCase', id)], Promise.resolve([]));
-    const outsideChecks = await outside.reduce<Promise<StampGateWashCheck[]>>(async (done, id) => [...await done, ...await call<StampGateWashCheck[]>('checkStampGateOutsideCase', id)], Promise.resolve([]));
-    const stageChecks = await stages.reduce<Promise<StampGateWashCheck[]>>(async (done, id) => [...await done, ...await call<StampGateWashCheck[]>('checkStampGateStageCase', id)], Promise.resolve([]));
-    return {
-      adapter, grids: grids.map((grid, g) => ({ grid, gpu: Float32Array.from(values[g]) })), frames, trace,
-      washChecks: [...washChecks, ...animationChecks, ...flowChecks, ...stripeChecks, ...regionChecks, ...mediaChecks, ...outsideChecks, ...stageChecks],
-    };
+  return withBrowserModulePage({ entry: STAMP_GATE_PAGE, filesDir: dirname(STAMP_GATE_PAGE), pages: STAMP_GATE_PAGES }, async (call) => {
+    // Every call is issued at once and runs on the first page free; each painting asks for a device of its own, so
+    // which page a case lands on, or what ran there before it, can't change what it draws. Promise.all keeps the order.
+    const cases = <R>(name: string, ids: readonly string[]) => Promise.all(ids.map((id) => call<R | R[]>(name, id))).then((checks) => checks.flatMap((check) => check));
+    const [adapter, values, frames, trace, ...checks] = await Promise.all([
+      call<string>('stampGateAdapter'),
+      call<number[][]>('runStampGateFormulas', grids.map(({ call: wgsl, width, rows, points, grid }) => ({
+        call: wgsl, width, rows: Array.from(rows), ...(points && { points: Array.from(points) }), ...(grid && { grid: Array.from(grid) }),
+      }))),
+      Promise.all(gates.map(async ({ id, gate }): Promise<StampGateSubject> => {
+        const rgb = Buffer.from(await call<string>('paintStampGate', id), 'base64');
+        return { id: `painting/${id}`, output: stampGateFrame(new Uint8Array(rgb), gate.width, gate.height), inputs: stampGateInputsHash(stampGatePaintingInputs(gate)) };
+      })),
+      call<{ worst: number; mean: number; ordinary: StampGateFrameDifference; orders: string[] }>('traceStampGate'),
+      cases<StampGateWashCheck>('checkStampGateWash', washes),
+      cases<StampGateWashCheck>('checkStampGateAnimation', animations),
+      cases<StampGateWashCheck>('checkStampGateFlowCase', flows),
+      cases<StampGateWashCheck>('checkStampGateStripeCase', stripes),
+      cases<StampGateWashCheck>('checkStampGateRegionCase', regions),
+      cases<StampGateWashCheck>('checkStampGateMediaCase', media),
+      cases<StampGateWashCheck>('checkStampGateOutsideCase', outside),
+      cases<StampGateWashCheck>('checkStampGateStageCase', stages),
+    ]);
+    return { adapter, grids: grids.map((grid, g) => ({ grid, gpu: Float32Array.from(values[g]) })), frames, trace, washChecks: checks.flat() };
   });
 }
 

@@ -131,10 +131,7 @@
       "}).map((m) => Object.fromEntries(Object.entries(m).filter(([, v]) => v !== undefined)) as ChannelMove);": 1
     },
     "lib/platform/browser/engine/browser-module-page.ts": {
-      "const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;": 1,
-      "return await use(<R>(name: string, ...args: unknown[]) => page.evaluate(": 1,
-      "(fn: string, list: unknown[]) => (globalThis as unknown as Record<string, (...a: unknown[]) => unknown>)[fn](...list),": 2,
-      "name, args as never,": 1
+      "const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;": 1
     },
     "lib/output/render/engine/host-module-resolution.ts": {
       "const json = parseJsonc(readFileSync(configPath, 'utf8')) as TsconfigJson;": 1

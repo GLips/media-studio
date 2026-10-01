@@ -11,6 +11,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { extname, join, normalize, sep } from 'node:path';
 import { build } from 'esbuild';
+import type { HeadlessBrowser } from '@remotion/renderer';
 import { inRenderBrowser } from './render-browser.ts';
 
 /** Fonts and sounds a module imports (through `#studio`, say), inlined: nothing serves them. */
@@ -19,6 +20,8 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = { '.png': 'image/png', '
 
 /** Calls the module's `globalThis[name](...args)` in the page, and resolves with what it returns (serialized). */
 export type BrowserModuleCall = <T>(name: string, ...args: unknown[]) => Promise<T>;
+
+type BrowserModulePage = Awaited<ReturnType<HeadlessBrowser['newPage']>>;
 
 /**
  * The files under `root` that `entry` imports, itself among them, bundled for `platform` as the studio bundles it, as
@@ -33,12 +36,13 @@ export async function bundledSourceFiles(root: string, entry: string, platform: 
 }
 
 /**
- * Opens `entry` (bundled for the browser) in a page of the render browser, with `filesDir` served at `/files/`, and
- * hands `use` a way to call what the module put on globalThis. The page, server and browser close when `use` settles.
- * `alias`: bare imports the bundle resolves to files, as the studio's bundle resolves `@stamp-paint-styles`.
+ * Opens `entry` (bundled for the browser) in `pages` pages of the render browser, `filesDir` served at `/files/`, and
+ * hands `use` a call into what the module put on globalThis. A call runs on the first page free, so calls issued
+ * together run at once and none may rely on state an earlier one left. `alias`: bare imports the bundle resolves.
  */
 export async function withBrowserModulePage<T>(
-  { entry, filesDir, alias }: { entry: string; filesDir: string; alias?: Readonly<Record<string, string>> }, use: (call: BrowserModuleCall) => Promise<T>,
+  { entry, filesDir, alias, pages = 1 }: { entry: string; filesDir: string; alias?: Readonly<Record<string, string>>; pages?: number },
+  use: (call: BrowserModuleCall) => Promise<T>,
 ): Promise<T> {
   const bundled = await build({ entryPoints: [entry], bundle: true, write: false, format: 'iife', platform: 'browser', target: 'chrome120', logLevel: 'silent', loader: INLINED_ASSETS, ...(alias && { alias: { ...alias } }) });
   const script = bundled.outputFiles[0].contents;
@@ -59,15 +63,26 @@ export async function withBrowserModulePage<T>(
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   try {
     const { result } = await inRenderBrowser(async (browser) => {
-      const page = await browser.newPage({ context: () => null, logLevel: 'error', indent: false, pageIndex: 0, onBrowserLog: null, onLog: () => {} });
+      const opened = await Promise.all(Array.from({ length: pages }, () => browser.newPage({ context: () => null, logLevel: 'error', indent: false, pageIndex: 0, onBrowserLog: null, onLog: () => {} })));
       try {
-        await page.goto({ url: `${origin}/`, timeout: 30_000 });
-        return await use(<R>(name: string, ...args: unknown[]) => page.evaluate(
-          (fn: string, list: unknown[]) => (globalThis as unknown as Record<string, (...a: unknown[]) => unknown>)[fn](...list),
-          name, args as never,
-        ) as Promise<R>);
+        await Promise.all(opened.map((page) => page.goto({ url: `${origin}/`, timeout: 30_000 })));
+        // The free pages, and the calls waiting for one, first come first served.
+        const free = [...opened], waiting: ((page: BrowserModulePage) => void)[] = [];
+        const release = (page: BrowserModulePage) => (waiting.length ? waiting.shift()!(page) : free.push(page));
+        return await use(async <R>(name: string, ...args: unknown[]) => {
+          const page = free.pop() ?? await new Promise<BrowserModulePage>((resolve) => waiting.push(resolve));
+          try {
+            // SAFETY: the caller names what the module's function returns; evaluate hands back its serialized value.
+            return await page.evaluate(
+              (fn: string, list: unknown[]) => (globalThis as unknown as Record<string, (...a: unknown[]) => unknown>)[fn](...list),
+              name, args as never,
+            ) as R;
+          } finally {
+            release(page);
+          }
+        });
       } finally {
-        await page.close();
+        await Promise.all(opened.map((page) => page.close()));
       }
     });
     return result;
