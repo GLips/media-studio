@@ -3,7 +3,7 @@
 
 import { seededRandom } from '#lib/picture/motion/models/random.ts';
 import type { StampBrushLayer, StampBrushMedia } from './stamp-brush.ts';
-import { placeAuthoredStamps, placeStrokeStamps, type StampPlacementBrush, type StampStrokePoint } from './stamp-placement.ts';
+import { placeAuthoredStamps, placeStrokeStamps, stampExpectedTint, type StampPlacementBrush, type StampStrokePoint } from './stamp-placement.ts';
 import { handStampStroke } from './stamp-stroke-hand.ts';
 import { STAMP_ACCUMULATIONS } from './stamp-deposit-stages.ts';
 import { placeStampFlood, stampFloodBodyLevels, stampFloodFront, stampFloodProbe, type StampFillApplication } from './stamp-fill.ts';
@@ -75,7 +75,7 @@ export function compileDeposit<A extends CompiledStampAction>(
     if (application.kind === 'flood') {
       const { body, stamps, dualStamps } = placeStampFlood(geometry.region, brush, diameter, direction, seed);
       const levels = stampFloodBodyLevels(STAMP_ACCUMULATIONS[brush.accumulation.kind].towardFull, stampFloodProbe(brush, diameter, `${seed}|probe`));
-      const flood = { ...body, load, levels, front: stampFloodFront(body.polygon, [...stamps, ...dualStamps], direction, diameter) };
+      const flood = { ...body, load, levels, tint: stampExpectedTint(brush.color), front: stampFloodFront(body.polygon, [...stamps, ...dualStamps], direction, diameter) };
       return { ...common, kind: 'flood', flood, stamps, dualStamps };
     }
     const strokes = stampFillStrokePath(geometry.region, diameter, direction, application, seed);

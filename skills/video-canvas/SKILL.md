@@ -42,15 +42,18 @@ Everything is from `#studio`.
     reflection in its water): `edge` as masking fluid's, a ragged one breaking the cut line of a padded wash
     (seeded by the pass's ID; keep its amount under the brush's radius); `inset` px moves the edge inward.
   - A **fill** covers a `region`, reaching its outline, laid by its `application`:
-    - `{ kind: 'flood' }`: solid inside, the brush's own edge at the outline, however small a spike. It costs what its
-      edge does, not its area.
-    - `{ kind: 'strokes', pattern, spacing?, variation?, hand?, extend? }`: real strokes of the brush, the marks and
-      the paper between them showing. `pattern` is an object by `kind`: `'shading'`, `'zigzag'`, `'backAndForth'`,
+    - `{ kind: 'flood' }`: solid inside, the brush's own edge at the outline, however small a spike. Outside a wash its
+      paper is dry, so wet paint stops there hard, keeping the tip's broken outline (a dry-media brush keeps its tip's
+      edge); for a soft edge, flood it in a wash into wetted paper (`preparation`), or in flat colour, which has no
+      washes, fill with strokes. It costs what its edge does, not its area.
+    - `{ kind: 'strokes', pattern, spacing?, variation?, hand?, extend?, reach? }`: real strokes of the brush, the marks
+      and the paper between them showing. `pattern` is an object by `kind`: `'shading'`, `'zigzag'`, `'backAndForth'`,
       `'hatch'`, `'crossHatch'`, `'scribble'`, `'contour'` or `'guided'`; `spacing` is diameters between rows (over 1
       leaves paper); `variation` (0..1, 0.3) is how unevenly a hand lays them. A pattern that turns back (shading,
       zigzag, back and forth) eases nearly to lifting at each turn (`{ kind: 'shading', turns: 'eased' }`, the
       default, as a crayon shades); `turns: 'pressed'` keeps the brush down, for body colour covering a shape to its
-      outline. It costs what its strokes do.
+      outline. Its marks stay inside the outline; `reach: 'over'` runs them out over it, for a texture in a `clipped`
+      pass over its silhouette, which trims them there. It costs what its strokes do.
     - `{ kind: 'contour' }` rings the shape in closed loops, outline first, each `spacing` inside the last.
       `{ kind: 'guided', guides }` lays marks that wrap round a form, as cross-contour hatching does: `guides` are a
       few curves across the shape, in order, all running the same way, each starting and ending outside it; marks

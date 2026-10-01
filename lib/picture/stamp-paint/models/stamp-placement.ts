@@ -81,8 +81,10 @@ export const STAMP_MIN_SPACING = 0.02;
 
 const NO_TINT: StampTint = { hue: 0, saturation: 0, lightness: 0, secondary: 0 };
 
-/** A stamp's tint from its draws and pressure. */
-function tintOf(color: StampBrushColorDynamics | undefined, draws: StampDraws, pressure: number): StampTint {
+type StampTintDraws = Pick<StampDraws, 'hue' | 'saturation' | 'lightness' | 'darkness'>;
+
+/** A stamp's tint from its draws and pressure. Linear in the draws, so their mean gives the mean tint. */
+function tintOf(color: StampBrushColorDynamics | undefined, draws: StampTintDraws, pressure: number): StampTint {
   if (!color) return NO_TINT;
   const { stamp, pressure: by } = color, light = 1 - pressure;
   return {
@@ -91,6 +93,14 @@ function tintOf(color: StampBrushColorDynamics | undefined, draws: StampDraws, p
     lightness: draws.lightness * stamp.lightness - draws.darkness * stamp.darkness + light * by.lightness,
     secondary: light * by.secondary,
   };
+}
+
+/**
+ * The tint `color`'s stamps average to at full pressure: what paint built from many of them shows, as a flood's body
+ * does beside its untapered edge stroke. Their draws are uniform, so each averages a half.
+ */
+export function stampExpectedTint(color: StampBrushColorDynamics | undefined): StampTint {
+  return tintOf(color, { hue: 0.5, saturation: 0.5, lightness: 0.5, darkness: 0.5 }, 1);
 }
 
 /**

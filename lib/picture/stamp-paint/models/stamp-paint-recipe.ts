@@ -9,7 +9,7 @@
 
 import type { PaintMixture } from '#lib/picture/paint/models/paint-mixture.ts';
 import type { StampBlend, StampBrush, StampBrushAsset } from './stamp-brush.ts';
-import type { PlacedStamp, StampPlacement, StampStrokePoint } from './stamp-placement.ts';
+import type { PlacedStamp, StampPlacement, StampStrokePoint, StampTint } from './stamp-placement.ts';
 import type { StampStrokeHand } from './stamp-stroke-hand.ts';
 import { checkedStampPolygon, compileDeposit } from './stamp-deposit-compile.ts';
 import type { StampFillApplication, StampFloodBody, StampFloodBodyLevels, StampFloodFront } from './stamp-fill.ts';
@@ -380,8 +380,12 @@ export type CompiledStampMask = {
   under: CompiledStampMask | null;
 } & ({ kind: 'mask'; area: CompiledStampArea } | { kind: 'unmask'; amount: number; area: CompiledStampArea | null });
 
-/** A flood's placed body and how its front crosses it (stamp-fill.ts). */
-export type CompiledStampFlood = StampFloodBody & { load: StampSeededPaintField<number>; levels: StampFloodBodyLevels; front: StampFloodFront };
+/**
+ * A flood's placed body and how its front crosses it (stamp-fill.ts). `tint`: what its brush's stamps average to
+ * (stampExpectedTint), which the body lays as its stamps lay theirs, so where the edge stroke's stamps give out the
+ * colour carries on rather than stepping back to the deposit's own.
+ */
+export type CompiledStampFlood = StampFloodBody & { load: StampSeededPaintField<number>; levels: StampFloodBodyLevels; tint: StampTint; front: StampFloodFront };
 
 type CompiledStampDepositCommon<A extends CompiledStampAction> = {
   /** `<group>/<pass>/<deposit>`, unique in the painting: the seed of every stamp in it. */

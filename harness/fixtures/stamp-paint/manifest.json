@@ -156,37 +156,37 @@
     "painting/pigment-crayon": {
       "file": "painting/pigment-crayon.png",
       "output": "d675dbafcc644b0c4a3aded283a7ff8f7be4c91973f272933b776e8c111a53ff",
-      "inputs": "19e89ab62ce8461ecf7120808d6b06e9396201a1a129e5de2ad6e902ae6fb41b",
-      "reason": "vid-114 Stream R: a pass's within is compiled as an area (polygon, edge, inset, seed from the pass's ID), so these paintings' inputs print differently; no painting uses an edge or inset on its within, so every frame must hold at max 0",
+      "inputs": "5dc57797ac1da0ed2c3ba013ca7e399639e7116423064fb01bca042e61176a71",
+      "reason": "vid-114 merged with main (vid-127, vid-118): inputs only, the compiled within (StampArea), fill patterns as objects and noise-seeded load fields change the serialised inputs; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "5512ae6",
+      "acceptedOver": "e659e6e",
       "adapter": "apple metal-3"
     },
     "painting/pigment-gouache": {
       "file": "painting/pigment-gouache.png",
-      "output": "489991c94e4f2786463251314b2037a2513f5fe82bcefea53b970a86f71f70a6",
-      "inputs": "66984797fde8d1ed7671c5042ecd0b0806767f6094e7c504e2b69b2bb9e354f4",
-      "reason": "vid-114 Stream R: a pass's within is compiled as an area (polygon, edge, inset, seed from the pass's ID), so these paintings' inputs print differently; no painting uses an edge or inset on its within, so every frame must hold at max 0",
+      "output": "a5b0118fbd60ec3865dd96433e97406dda135b65bf1874e4bb6790b5f2a9f574",
+      "inputs": "bc1b6f8d7da0eda2d072a879e78d746b4a4f606d2571bd5ef51bf6441e434656",
+      "reason": "vid-114 merged with main (vid-127, vid-118): inputs only, the compiled within (StampArea), fill patterns as objects and noise-seeded load fields change the serialised inputs; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "5512ae6",
+      "acceptedOver": "e659e6e",
       "adapter": "apple metal-3"
     },
     "painting/pigment-watercolour": {
       "file": "painting/pigment-watercolour.png",
-      "output": "b598d20bade4cb0f55a65795a077e3ee4d411252edbefcac2d8097b2995c62c8",
-      "inputs": "a9ce8fbbd7af37d087dd5cd9d47baed0a918ef7d1457444f6158b724ba3dd910",
-      "reason": "vid-114 Stream R: a pass's within is compiled as an area (polygon, edge, inset, seed from the pass's ID), so these paintings' inputs print differently; no painting uses an edge or inset on its within, so every frame must hold at max 0",
+      "output": "804c638367f7b971fff0937af5e80288568473edeb2bfe057e0072c66f9199cf",
+      "inputs": "b3f443b9d6b365723c84d425d0fb16835333889113610a9683b9105311a7b133",
+      "reason": "vid-114 merged with main (vid-127, vid-118): inputs only, the compiled within (StampArea), fill patterns as objects and noise-seeded load fields change the serialised inputs; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "5512ae6",
+      "acceptedOver": "e659e6e",
       "adapter": "apple metal-3"
     },
     "painting/regions": {
       "file": "painting/regions.png",
-      "output": "97e55753165a57bd526beb6bcca07b71f045fbc31c36217ee14d949a7923dcdb",
-      "inputs": "73f77ecba30a256f8fe8c1f4e3c85574fe676de8414a2c59113cab5671254c3a",
-      "reason": "vid-114 Stream R: a pass's within is compiled as an area (polygon, edge, inset, seed from the pass's ID), so these paintings' inputs print differently; no painting uses an edge or inset on its within, so every frame must hold at max 0",
+      "output": "0490a54814080c5f7b948972e0e942dad928342c0f6c0b541135207d5ced0cb3",
+      "inputs": "1be4454ee5177ccf809da1b86c79b4f1baa1bd9a5d42120418e9cfdf2b774249",
+      "reason": "vid-114 merged with main (vid-127, vid-118): inputs only, the compiled within (StampArea), fill patterns as objects and noise-seeded load fields change the serialised inputs; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "5512ae6",
+      "acceptedOver": "e659e6e",
       "adapter": "apple metal-3"
     },
     "painting/strokes-accumulations": {

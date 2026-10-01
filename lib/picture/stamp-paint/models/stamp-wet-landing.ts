@@ -1,6 +1,19 @@
 // stamp-wet-landing.ts: how a wash's paint lands, per pixel, as the paper is (stamp-wetness.ts): on dry, set paper as
 // a plain pass's does (layDeposit); on wet paper its pigment adds; between, as workable as the paper is. A wash
-// brush's water stops at a hard edge on dry paper, however soft its tip. WGSL only: the renderer is where it runs.
+// brush's water stops at a hard edge on dry paper, however soft its tip, and so does a flood's outside a wash, its
+// paper dry. The laws are WGSL only: the renderer is where they run.
+
+import type { PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
+import type { StampBrush } from './stamp-brush.ts';
+
+/**
+ * Whether a flood laid outside a wash carries water, and so stops at a hard edge on the dry paper (wetLandCover).
+ * A dry-media brush never does; any other does if its medium's brush holds water. Flat colour has no medium but
+ * floods as wet paint, a flood being a wet application; its soft-edged fill is a strokes one.
+ */
+export function stampFloodCarriesWater(brush: Pick<StampBrush, 'media'>, medium: PaintMedium | null): boolean {
+  return brush.media !== 'dry' && (!medium || medium.wetting.brushWater > 0);
+}
 
 /**
  * Where a wash brush's water stops on dry paper, as a share of the stroke's body: about where its tip lays a third of

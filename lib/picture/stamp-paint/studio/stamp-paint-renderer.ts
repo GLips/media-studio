@@ -22,7 +22,7 @@ import { stampDepositShowsAt, stampFloodProgressAt, visibleStampCountAt } from '
 import { stampBoilSeed, stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampMask, type CompiledStampPaint, type CompiledStampPass, type StampPaintPaper } from '../models/stamp-paint-recipe.ts';
 import { compileStampPigmentPaint, stampGrainDepthIn, type StampPaintMixing } from '../models/stamp-pigment-paint.ts';
 import { compileStampWetness, STAMP_WET_CELL, type StampWetLanding, type StampWetness } from '../models/stamp-wetness.ts';
-import { STAMP_WET_LAND_WGSL } from '../models/stamp-wet-landing.ts';
+import { STAMP_WET_LAND_WGSL, stampFloodCarriesWater } from '../models/stamp-wet-landing.ts';
 import { PAINT_DRY_BURNISHED_PRESS, paintPigmentSeed } from '#lib/picture/paint/models/paint-paper.ts';
 import { PAINT_BANDS } from '#lib/picture/paint/models/paint-spectrum.ts';
 import type { PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
@@ -289,26 +289,28 @@ const DEPOSIT = stampUniformLayout('Deposit', [
 /** What a deposit's resolve does, a bit each in its `flags`, and a WGSL constant each of the same name in capitals. */
 const DEPOSIT_FLAGS = {
   canvasGrain: 1, dual: 2, dualCanvasGrain: 4, paper: 8, masked: 16, clipped: 32, clips: 64,
-  pooled: 128, dualPooled: 256, dualLayer: 512, within: 1024, flood: 2048,
+  pooled: 128, dualPooled: 256, dualLayer: 512, within: 1024, flood: 2048, floodWater: 4096,
 } as const;
 
 /**
- * Where a deposit's paint is kept, beside its Deposit (whose slot is full): the boxes of its masking fluid's texture
- * and its pass's `within` region (x, y, width, height in the painting's pixels), and a fill's load field (its kind,
- * geometry and ends, STAMP_PAINT_FIELD_SHARE) and front (its normal, from and to, softness and progress).
+ * Where a deposit's paint is kept, beside its Deposit (whose slot is full): its fluid's and `within`'s boxes (x, y,
+ * width, height), and a fill's load field (STAMP_PAINT_FIELD_SHARE), front (normal, from, to, softness, progress)
+ * and body levels as it lands outside a wash (FLOOD_LAND_COVER_WGSL); how far round a pixel its stroke's body is
+ * looked for, where its coverage hardens (strokeBodyAt).
  */
 const KEEP = stampUniformLayout('Keep', [
-  ['fluid', 'vec4f'], ['within', 'vec4f'], ['load', 'vec4f'], ['front', 'vec4f'], ['loadEnds', 'vec2f'], ['frontShape', 'vec2f'], ['loadKind', 'i32'],
+  ['fluid', 'vec4f'], ['within', 'vec4f'], ['load', 'vec4f'], ['front', 'vec4f'], ['loadEnds', 'vec2f'], ['frontShape', 'vec2f'], ['loadKind', 'i32'], ['bodyReach', 'f32'],
+  ['bodyLevels', 'vec2f'],
 ]);
 /**
  * A wash deposit's landing (StampWetLanding): its grids' lattice (x0, y0, cell) and size, where its wetness starts in
  * the wet grid buffer (workable and settled follow it), its painting time, its brush's water, a lift's strength, and
- * what it does, and how far round a pixel its stroke's body is looked for.
+ * what it does.
  */
 const WET_OP = stampUniformLayout('WetOp', [
-  ['lattice', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['tau', 'f32'], ['water', 'f32'], ['strength', 'f32'], ['action', 'u32'], ['bodyReach', 'f32'],
+  ['lattice', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['tau', 'f32'], ['water', 'f32'], ['strength', 'f32'], ['action', 'u32'],
 ]);
-/** How far round a pixel a wash's resolve looks for its stroke's body (wetBodyAt), as a share of the deposit's diameter: past a soft tip's shoulder. */
+/** How far round a pixel a wash's resolve looks for its stroke's body (strokeBodyAt), as a share of the deposit's diameter: past a soft tip's shoulder. */
 const WET_BODY_REACH = 0.2;
 const WET_ACTIONS = { paint: 0, water: 1, lift: 2 } as const;
 const WET_WGSL = /* wgsl */ `
@@ -317,7 +319,6 @@ ${WET_OP.wgsl}
 @group(0) @binding(19) var<uniform> wet: WetOp;
 @group(0) @binding(20) var footprint: texture_storage_2d<rgba16float, write>;
 ${STAMP_GRID_AT_WGSL}
-${STAMP_WET_LAND_WGSL}
 ${Object.entries(WET_ACTIONS).map(([action, index]) => `const WET_${action.toUpperCase()} = ${index}u;`).join('\n')}
 struct WetLanding { wetness: f32, workable: f32, settled: f32, tau: f32, water: f32, strength: f32, action: u32 }
 fn wetLandingAt(at: vec2f) -> WetLanding {
@@ -327,25 +328,18 @@ fn wetLandingAt(at: vec2f) -> WetLanding {
     gridAt(at, wet.lattice.xyz, wet.size, wet.first + 2u * points), wet.tau, wet.water, wet.strength, wet.action,
   );
 }
-// The stroke's body near \`pixel\`: the most its build reaches within bodyReach, in the deposit's box, so a hardened edge
-// keeps the stroke's own density.
-fn wetBodyAt(pixel: vec2u, here: f32) -> f32 {
-  var body = here;
-  let lo = vec2f(u.origin);
-  let hi = vec2f(u.origin + u.extent) - 1.0;
-  for (var k = 0; k < 12; k++) {
-    let outer = k < 8;
-    let angle = select(f32(k - 8) * 1.5708 + 0.3927, f32(k) * 0.7854, outer);
-    let q = vec2u(clamp(vec2f(pixel) + select(0.5, 1.0, outer) * wet.bodyReach * vec2f(cos(angle), sin(angle)), lo, hi));
-    let kept = textureLoad(cap, q, 0);
-    body = max(body, accumulationResolve(textureLoad(mask, q, 0).r, kept.b, kept.r, u.build.x, i32(u.accumulation.x)));
-  }
-  return body;
-}`;
+`;
 // On paper drier than its water a wash brush's stroke stops at a hard edge (wetLandCover), before its grain and the
 // paper's tooth, which break the hardened stroke as they would any.
 const WET_HARDEN_COVER_WGSL = /* wgsl */ `let landing = wetLandingAt(at);
-  raw.x = wetLandCover(raw.x, wetBodyAt(pixel, raw.x), landing.water, landing.wetness);`;
+  raw.x = wetLandCover(raw.x, strokeBodyAt(pixel, raw.x, k.bodyReach), landing.water, landing.wetness);`;
+// Outside a wash a flood carrying water (stampFloodCarriesWater) lands on dry paper: hardened to its water's edge
+// (wetLandCover), as a wash's would be there. Only its fringe looks round for its body: none lands where nothing
+// covers, and paint its body has built to is its own body (a body's pixel resolves as laid() lays it).
+const FLOOD_LAND_COVER_WGSL = /* wgsl */ `if ((u.flags & FLOOD_WATER) != 0u && raw.x > 0.0
+    && raw.x < accumulationResolve(k.bodyLevels.x, k.bodyLevels.y, k.bodyLevels.y, u.build.x, i32(u.accumulation.x))) {
+    raw.x = wetLandCover(raw.x, strokeBodyAt(pixel, raw.x, k.bodyReach), 1.0, 0.0);
+  }`;
 // A wash deposit lands, and leaves its footprint for the stages after it (StampWetDepositMoment): what it laid, where
 // paint may land at all, and the paper's tooth.
 const WET_LAND_WGSL = /* wgsl */ `landDeposit(pixel, coverage, rims, tooth, at, reserved, landing);
@@ -398,6 +392,7 @@ ${KEEP.wgsl}
 ${TRACE_CROP.wgsl}
 ${STAMP_PAINT_FIELD_SHARE.wgsl}
 ${STAMP_FLOOD_FRONT_SHARE_WGSL}
+${STAMP_WET_LAND_WGSL}
 ${wet ? `${WET_WGSL}\n${stampPaintTargetWgsl('fresh', 21, compositor.targets.layer, 'write')}\n${compositor.deposit.wet}` : ''}
 ${compositor.reads.press ? PRESS_AT_WGSL : ''}
 ${compositor.reads.before ? beforeWgsl(compositor.targets.layer) : ''}
@@ -442,6 +437,21 @@ fn texturized(g: texture_2d<f32>, at: vec2f, a: f32, p: Grain) -> f32 {
 
 // Where the mask stands above its blur, as steeply as the edge's sharpness says.
 fn rimOf(a: f32, soft: f32, sharpness: f32) -> f32 { return clamp((a - soft) * sharpness, 0.0, 1.0); }
+// The stroke's body near \`pixel\`: the most its build reaches within \`reach\`, in the deposit's box, so a hardened edge
+// keeps the stroke's own density.
+fn strokeBodyAt(pixel: vec2u, here: f32, reach: f32) -> f32 {
+  var body = here;
+  let lo = vec2f(u.origin);
+  let hi = vec2f(u.origin + u.extent) - 1.0;
+  for (var i = 0; i < 12; i++) {
+    let outer = i < 8;
+    let angle = select(f32(i - 8) * 1.5708 + 0.3927, f32(i) * 0.7854, outer);
+    let q = vec2u(clamp(vec2f(pixel) + select(0.5, 1.0, outer) * reach * vec2f(cos(angle), sin(angle)), lo, hi));
+    let kept = textureLoad(cap, q, 0);
+    body = max(body, accumulationResolve(textureLoad(mask, q, 0).r, kept.b, kept.r, u.build.x, i32(u.accumulation.x)));
+  }
+  return body;
+}
 
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn deposit(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
@@ -467,7 +477,7 @@ fn rimOf(a: f32, soft: f32, sharpness: f32) -> f32 { return clamp((a - soft) * s
     if ((u.flags & DUAL_POOLED) != 0u) { d = pooled(d, u.pooling.z, u.pooling.w); }
     dualBurnt = rimOf(raw.g, soft.g, u.dualEdges.w) * u.dualEdges.z * step(0.0001, raw.r);
   }
-  ${wet ? WET_HARDEN_COVER_WGSL : ''}
+  ${wet ? WET_HARDEN_COVER_WGSL : FLOOD_LAND_COVER_WGSL}
   // The stages in the order of the brush's plan (STAMP_RESOLVE_PLANS), or a diagnosis's.
   traced(0u, raw.r);
   var m = resolveStages(raw.r, d, at, u.resolveOrder);
@@ -658,10 +668,10 @@ ${STAMP_GRID_AT_WGSL}
   return vec4f(floodBody(polygonDistance(p, u.first, u.count), gridAt(p, u.grid.xyz, u.gridSize, u.gridFirst), u.inset));
 }`;
 
-// A flood's body joined to its stamps' build, in the stamps' render pass, before rims blur it: its box (x, y, width,
-// height) and its levels (stampFloodBodyLevels: built, densest). The pipeline's blend joins it as the brush's
-// accumulation lays paint: toward full by screen, toward an opacity by max; a glaze's cap and densest by max.
-const BODY_DRAW = stampUniformLayout('BodyDraw', [['box', 'vec4f'], ['levels', 'vec2f']]);
+// A flood's body joined to its stamps' build, in the stamps' render pass, before rims blur it: its box, levels
+// (stampFloodBodyLevels) and tint (CompiledStampFlood's). Its blend joins it as the accumulation lays paint: screen
+// toward full, else max; a glaze's cap by max; its tint over the stamps', so inside it their jitter evens to its mean.
+const BODY_DRAW = stampUniformLayout('BodyDraw', [['box', 'vec4f'], ['tint', 'vec4f'], ['levels', 'vec2f']]);
 const BODY_DRAW_WGSL = /* wgsl */ `
 ${FULL_FRAME_WGSL}
 ${BODY_DRAW.wgsl}
@@ -669,17 +679,18 @@ ${BODY_DRAW.wgsl}
 @group(0) @binding(1) var body: texture_2d<f32>;
 struct Covered { @location(0) mask: vec4f, @location(1) cap: vec4f }
 struct Stamp { @location(0) mask: vec4f, @location(1) cap: vec4f, @location(2) tintA: vec4f, @location(3) tintB: vec4f }
-fn laid(at: vec4f) -> Covered {
+fn bodyAt(at: vec4f) -> f32 {
   let q = floor(at.xy) - u.box.xy;
-  var b = 0.0;
-  if (all(q >= vec2f(0.0)) && all(q < u.box.zw)) { b = textureLoad(body, vec2u(q), 0).r; }
-  return Covered(vec4f(b * u.levels.x), vec4f(b * u.levels.y, 0.0, b * u.levels.y, 0.0));
+  if (any(q < vec2f(0.0)) || any(q >= u.box.zw)) { return 0.0; }
+  return textureLoad(body, vec2u(q), 0).r;
 }
-@fragment fn laidBody(@builtin(position) at: vec4f) -> Covered { return laid(at); }
-// A tinted pass has tint targets, which the body leaves as they are: it carries no stamp's tint.
+fn laid(b: f32) -> Covered { return Covered(vec4f(b * u.levels.x), vec4f(b * u.levels.y, 0.0, b * u.levels.y, 0.0)); }
+@fragment fn laidBody(@builtin(position) at: vec4f) -> Covered { return laid(bodyAt(at)); }
+// A tinted pass's body lays its stamps' mean tint, premultiplied by the body, as coverTinted lays a stamp's.
 @fragment fn laidBodyTinted(@builtin(position) at: vec4f) -> Stamp {
-  let c = laid(at);
-  return Stamp(c.mask, c.cap, vec4f(0.0), vec4f(0.0));
+  let b = bodyAt(at);
+  let c = laid(b);
+  return Stamp(c.mask, c.cap, vec4f(u.tint.xyz * b, b), vec4f(u.tint.w * b, 0.0, 0.0, b));
 }`;
 
 /** The most a painting's region textures (fill bodies, masking fluid, `within` regions) may take, bytes. */
@@ -1180,7 +1191,7 @@ function rendererOnSurface(
   // B ← b + B(1 − b): a toward-full build's lay (STAMP_ACCUMULATIONS) of a body laid whole.
   const screenBlend: GPUBlendState = { color: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } };
   const bodyPipelines = new Map<string, GPURenderPipeline>();
-  /** The pipeline joining a flood's body to its build: toward full by screen, else by max; a glaze's cap too; a tinted pass's tints left alone. */
+  /** The pipeline joining a flood's body to its build: toward full by screen, else by max; a glaze's cap too; a tinted pass's tints over. */
   const bodyPipeline = (towardFull: boolean, glaze: boolean, tinted: boolean) => {
     const key = `${towardFull}|${glaze}|${tinted}`;
     if (!bodyPipelines.has(key)) {
@@ -1191,7 +1202,7 @@ function rendererOnSurface(
           targets: [
             { format: 'rg16float', blend: towardFull ? screenBlend : maxBlend, writeMask: GPUColorWrite.RED },
             { format: 'rgba16float', blend: maxBlend, writeMask: glaze ? GPUColorWrite.RED | GPUColorWrite.BLUE : 0 },
-            ...(tinted ? [0, 1].map(() => ({ format: 'rgba16float' as const, writeMask: 0 })) : []),
+            ...(tinted ? [0, 1].map(() => ({ format: 'rgba16float' as const, blend: overBlend })) : []),
           ],
         },
       }));
@@ -1604,7 +1615,8 @@ function rendererOnSurface(
       pass.setBindGroup(0, bindGroup(pipeline, [slot((views) => {
         const put = stampUniformWriter(BODY_DRAW, views);
         put('box', [body.box.x, body.box.y, body.box.w, body.box.h]);
-        const { levels } = deposit.flood;
+        const { levels, tint } = deposit.flood;
+        put('tint', [tint.hue, tint.saturation, tint.lightness, tint.secondary]);
         put('levels', [levels.built, levels.densest]);
       }), body.view]));
       pass.draw(3);
@@ -1659,6 +1671,7 @@ function rendererOnSurface(
       ...(mainGrain ? ['canvasGrain' as const] : []), ...(brush.dual ? ['dual' as const] : []), ...(dualGrain ? ['dualCanvasGrain' as const] : []),
       ...(tooth ? ['paper' as const] : []), ...(fluid ? ['masked' as const] : []), ...(pass.within ? ['within' as const] : []),
       ...(deposit.kind === 'flood' ? ['flood' as const] : []),
+      ...(deposit.kind === 'flood' && !landing && stampFloodCarriesWater(brush, wetMedium) ? ['floodWater' as const] : []),
       // Only paint makes a clip base: water and a lift leave where a pass holds paint as it was.
       ...(clipped ? ['clipped' as const] : []), ...(!clipped && deposit.action.kind === 'paint' ? ['clips' as const] : []),
       ...(active.main.pooling ? ['pooled' as const] : []), ...(active.dual?.pooling ? ['dualPooled' as const] : []),
@@ -1708,6 +1721,7 @@ function rendererOnSurface(
         const put = stampUniformWriter(KEEP, views);
         put('fluid', boxWords(fluid?.box));
         put('within', boxWords(within?.box));
+        put('bodyReach', WET_BODY_REACH * deposit.diameter);
         if (deposit.kind !== 'flood') return;
         const { load, front } = deposit.flood, ends = stampPaintFieldEnds(load);
         put('load', ends.geometry);
@@ -1715,6 +1729,7 @@ function rendererOnSurface(
         put('loadKind', ends.kind);
         put('front', [front.normal[0], front.normal[1], front.from, front.to]);
         put('frontShape', [front.soft, stampFloodProgressAt(deposit, t)]);
+        put('bodyLevels', [deposit.flood.levels.built, deposit.flood.levels.densest]);
       }),
       within?.view ?? targets.blank.view,
       slot((views) => loadedDeposit.writePaint(views, t)),
@@ -1728,7 +1743,6 @@ function rendererOnSurface(
         put('tau', landing.tau);
         put('water', landing.water);
         put('strength', action.kind === 'lift' ? action.strength : 0);
-        put('bodyReach', WET_BODY_REACH * deposit.diameter);
         put('action', WET_ACTIONS[action.kind]);
       }),
       landing && targets.footprint!.view, landing && targets.fresh!.view, !landing && pressing ? pressing.view : null, !landing && before ? before.view : null,

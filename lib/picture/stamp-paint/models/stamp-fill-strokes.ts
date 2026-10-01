@@ -52,7 +52,16 @@ export type StampFillStrokes = {
    * goes `within` the region to clip them. A contour's loops have no ends to extend.
    */
   extend?: number;
+  /** StampFillReach. */
+  reach?: StampFillReach;
 };
+
+/**
+ * How far a strokes fill's marks reach. `inside` (when left out): within its outline. `over`: their middles run out
+ * to it and their paint past it, as a brush runs past a shape whose clip trims it; for a clipped texture over its
+ * silhouette, which inside stops short of the edge (a mark is narrower than its tip).
+ */
+export type StampFillReach = 'inside' | 'over';
 
 /**
  * Where a back and forth, zigzag or shading turns back. `eased` (when left out): the hand nearly lifts, as a crayon or
@@ -108,12 +117,12 @@ type LaidMark = { key?: string; patch?: number; path: StampStrokePoint[] };
  * outline (or runs `extend` past it); in a region thinner than a diameter the marks run down its middle.
  */
 export function stampFillMarks(region: StampRegion, diameter: number, direction: number, strokes: StampFillStrokes, seed: string): StampFillMark[] {
-  const { pattern, variation = 0.3, extend = 0 } = strokes;
+  const { pattern, variation = 0.3, extend = 0, reach: reaching = 'inside' } = strokes;
   const { spacing, hand } = { ...STAMP_FILL_PATTERNS[pattern.kind], ...strokes };
   if (!(spacing > 0) || !(variation >= 0 && variation <= 1)) throw new Error(`stamp paint: a strokes fill needs a positive spacing and a variation of 0..1, not ${spacing} and ${variation}`);
   if (!(extend >= 0 && Number.isFinite(extend))) throw new Error(`stamp paint: a strokes fill extends its marks a finite 0 or more diameters, not ${extend}`);
   if (pattern.kind === 'contour' && extend > 0) throw new Error(`stamp paint: a contour fill's marks are closed loops, with no ends to extend ${extend} diameters`);
-  const room = strokeRoom(region, diameter), random = seededRandom(`${seed}|fill strokes`);
+  const room = strokeRoom(region, diameter, reaching), random = seededRandom(`${seed}|fill strokes`);
   const step = spacing * diameter, reach = extend * diameter;
   const rows = (angle: number, extra = 0) => fillRows(room, angle, step, variation, extra, reach, random);
   const unkeyed = (paths: StampStrokePoint[][], patch?: number) => paths.map((path): LaidMark => ({ path, ...(patch !== undefined && { patch }) }));
@@ -147,11 +156,14 @@ export function stampFillStrokePath(region: StampRegion, diameter: number, direc
   return path;
 }
 
-/** Where a mark's centre may lie in `region`: half a diameter inside, or down the middle where it's thinner. */
+/**
+ * Where a mark's centre may lie in `region`: half a diameter inside, or down the middle where it's thinner; anywhere
+ * inside when its marks reach over the outline.
+ */
 type StrokeRoom = { polygon: readonly StampPoint[]; distance: StampGrid; cell: number; inset: number; inside: (x: number, y: number, extra: number) => boolean };
 
-function strokeRoom(region: StampRegion, diameter: number): StrokeRoom {
-  const polygon = stampRegionPolygon(region), inset = diameter / 2, cell = Math.max(1, inset / 4);
+function strokeRoom(region: StampRegion, diameter: number, reach: StampFillReach): StrokeRoom {
+  const polygon = stampRegionPolygon(region), inset = reach === 'over' ? 0 : diameter / 2, cell = Math.max(1, diameter / 8);
   const distance = stampDistanceGrid(polygon, stampPolygonBox(polygon, 2 * cell), cell);
   const thickness = stampGridLocalMax(distance, inset);
   return { polygon, distance, cell, inset, inside: (x, y, extra) => stampGridAt(distance, x, y) > Math.min(inset, stampGridAt(thickness, x, y) / 2) + extra };
