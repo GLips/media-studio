@@ -10,6 +10,7 @@
 // - bloomed: a drop blooms though paint landed elsewhere first;
 // - unlined: a backrun lays no line along its wash's edge;
 // - unrimmed: a feathered edge dries with no line;
+// - unlipped: a drop into wet paint blooms open, unlipped.
 // - paler: lifted tints read paler (stamp-gate-lift-colour.ts).
 //
 // Each case paints into its last group, read back.
@@ -51,6 +52,7 @@ export type StampGateWashCase = {
   // Reads the frame, not its last group.
   | { property: 'paler'; read: (rgba: ArrayLike<number>) => StampGateWashCheck }
   | { property: 'unrimmed' }
+  | { property: 'unlipped'; without: StampGatePainting }
 );
 
 /** How far a pigment's total may drift from the same wash's without the ops under test: its layer's half-float rounding summed over a few thousand pixels. */
@@ -124,6 +126,18 @@ const SOFT_EDGE = { from: 2, to: 30, interior: [60, 100] as const, rows: [20, 10
  * share of the wash's interior: a puddle's edge gains about 0.7.
  */
 export const STAMP_GATE_UNRIMMED_MOST = 0.03;
+
+/**
+ * The unlipped case's drop, and the seconds its sky waits for it: about halfway from its shine to damp (a bloom op
+ * would wait for damp). A lip is read against the bloom within LIP_REACH px round it.
+ */
+const WET_DROP = { x: 80, y: 60, radius: 34, seconds: 50 };
+const LIP_REACH = 4;
+/**
+ * How far the unlipped case's lip may stand above the bloom round it: its 2% most-raised pixels, on average, as a
+ * share of the paint round the drop. The same drop at damp stands about 0.48 above.
+ */
+export const STAMP_GATE_UNLIPPED_MOST = 0.15;
 
 /** Every wash case, by ID. */
 function washCases(): StampGateWashCase[] {
@@ -248,6 +262,16 @@ function washCases(): StampGateWashCase[] {
     {
       id: 'wash/soft-edge', mid: MID, property: 'unrimmed',
       subject: washPainting('watercolour', true, (wash) => wash.fill('sky', { brush: FEATHER, diameter: 80, application: { kind: 'flood' }, region: SKY, material: pure(W.ultramarine), ...shown(0) })),
+    },
+    // A sky not yet damp, water dropped in it: on paper this wet the water runs on, its edge soft and open. Against
+    // the same sky without it.
+    {
+      id: 'wash/bloom-wet', mid: MID, property: 'unlipped', without: washPainting('watercolour', false, sky),
+      subject: washPainting('watercolour', false, (wash) => {
+        sky(wash);
+        wash.wait({ seconds: WET_DROP.seconds });
+        wash.water('drop', { kind: 'stamps', brush: SOFT, diameter: 30, at: [{ x: WET_DROP.x, y: WET_DROP.y }], ...shown(1) });
+      }),
     },
     // Against the same paint that doesn't flow, so neither moves nor rims.
     { id: 'wash/rim', mid: MID, property: 'rimmed', subject: washPainting('watercolour', false, puddles), without: washPainting('watercolour', false, puddles, true) },
@@ -471,6 +495,37 @@ export function checkStampGateUnrimmed(id: string, pigments: readonly string[], 
   return {
     id: `${id}: unrimmed`, passed: gained <= STAMP_GATE_UNRIMMED_MOST && conserved.passed,
     detail: `its feathered edge's darkest gains ${(gained * 100).toFixed(1)}% of its interior from the rim (past ${STAMP_GATE_UNRIMMED_MOST * 100}% fails); ${conserved.detail}`,
+  };
+}
+
+/**
+ * Whether `subject`'s drop moved at least STAMP_GATE_BLOOMED_LEAST of the paint round it, raising none of it more
+ * than STAMP_GATE_UNLIPPED_MOST above the bloom round it, against `without`, and each pigment's total holds.
+ */
+export function checkStampGateUnlipped(id: string, pigments: readonly string[], subject: StampGateLayer, without: StampGateLayer): StampGateWashCheck {
+  const sum = (layer: StampGateLayer) => {
+    const slots = pigments.map((_, slot) => slotAmounts(layer, slot));
+    return (x: number, y: number) => slots.reduce((t, amounts) => t + amounts[y * layer.width + x], 0);
+  };
+  const after = sum(subject), before = sum(without), gain = (x: number, y: number) => after(x, y) - before(x, y);
+  const ridges: number[] = [];
+  let moved = 0, there = 0;
+  for (let y = 0; y < subject.height; y++) {
+    for (let x = 0; x < subject.width; x++) {
+      if (Math.hypot(x + 0.5 - WET_DROP.x, y + 0.5 - WET_DROP.y) >= WET_DROP.radius) continue;
+      moved += Math.abs(gain(x, y));
+      there += before(x, y);
+      let round = 0;
+      for (let dy = -LIP_REACH; dy <= LIP_REACH; dy++) for (let dx = -LIP_REACH; dx <= LIP_REACH; dx++) round += gain(x + dx, y + dy);
+      ridges.push(gain(x, y) - round / (2 * LIP_REACH + 1) ** 2);
+    }
+  }
+  const darkest = ridges.toSorted((a, b) => b - a).slice(0, Math.ceil(ridges.length * 0.02));
+  const lip = darkest.reduce((t, g) => t + g, 0) / darkest.length / (there / ridges.length), share = moved / there;
+  const conserved = checkStampGateConserved(id, pigments, subject, without);
+  return {
+    id: `${id}: unlipped`, passed: share >= STAMP_GATE_BLOOMED_LEAST && lip <= STAMP_GATE_UNLIPPED_MOST && conserved.passed,
+    detail: `${(share * 100).toFixed(2)}% of the paint round the drop moved (under ${STAMP_GATE_BLOOMED_LEAST * 100}% fails); its lip stands ${(lip * 100).toFixed(1)}% above the bloom round it (past ${STAMP_GATE_UNLIPPED_MOST * 100}% fails); ${conserved.detail}`,
   };
 }
 

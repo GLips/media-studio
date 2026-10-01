@@ -200,7 +200,7 @@ fn waterRound(local: vec2i) -> BloomWater {
   let p = local + vec2i(u.origin);
   let water = waterRound(local);
   let before = wetnessBeforeAt(p);
-  let at = bloomFront(vec2f(p) + 0.5, water, bloomEase(before, u.damp), u.seed, u.sigma);
+  let at = bloomFront(vec2f(p) + 0.5, water, bloomGrip(before, u.damp, u.shine), u.seed, u.sigma);
   let streak = bloomStreak(at.foot, at.d, u.seed, u.sigma);
   let allowed = clamp(textureLoad(footprint, p, 0).g, 0.0, 1.0);
   var paint: array<vec4f, ${layers}>;
@@ -209,7 +209,7 @@ fn waterRound(local: vec2i) -> BloomWater {
   let line = bloomFrontLine(at.held, bloomMerging(before, u.damp, u.shine));
   let weight = bloomBand(at.d, line, streak) * allowed * contactAt(p) * bloomLipPaint(coverageRound(p)) * open * bloomInside(water.inWash);
   let free = liftFree(workableAt(p), washOpen(paint));
-  textureStore(front, local, vec4f(weight, bloomLoosened(at.d, free, u.drive, streak) * allowed, 0.0, 0.0));
+  textureStore(front, local, vec4f(weight, bloomLoosened(at.d, line, free, u.drive, streak) * allowed, 0.0, 0.0));
   textureStore(band, local, 0, vec4f(weight, 0.0, 0.0, 0.0));
 }`;
 
