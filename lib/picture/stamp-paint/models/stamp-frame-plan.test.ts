@@ -38,13 +38,12 @@ const planAt = (t: number) => stampFramePlan(painting, stampGroupEvents(painting
 
 test('a moving group\'s checkpoints are saved only where another frame would restore them', () => {
   const sailing = planAt(2), laid = 4, partway = 3, ground = 2;
-  // Laid while it sails, the boat is where this frame alone has it; partway it isn't laid yet, and the ground never moves.
-  assert.equal(sailing.worthSaving(laid), false);
-  assert.equal(sailing.worthSaving(partway), true);
-  assert.equal(sailing.worthSaving(ground), true);
+  // Laid while it sails, the boat is where this frame alone has it; the ground before it never moves.
+  assert.deepEqual([...sailing.checkpointSaves(0)], [ground]);
+  // Partway through the boat, its layer isn't laid yet, so its placement isn't in the key.
   assert.equal(sailing.checkpointKey(partway), planAt(2.5).checkpointKey(partway));
   assert.notEqual(sailing.checkpointKey(laid), planAt(2.5).checkpointKey(laid));
   // Moored past its last key, every frame has it in the same place.
-  assert.equal(planAt(3.5).worthSaving(laid), true);
+  assert.deepEqual([...planAt(3.5).checkpointSaves(0)].toSorted((a, b) => a - b), [ground, laid]);
   assert.equal(planAt(3.5).checkpointKey(laid), planAt(9).checkpointKey(laid));
 });

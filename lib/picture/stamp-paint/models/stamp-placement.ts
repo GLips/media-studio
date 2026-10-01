@@ -66,6 +66,9 @@ export type PlacedStamp = {
 
 export type StampTint = { hue: number; saturation: number; lightness: number; secondary: number };
 
+/** A placed stamp as a compiled painting holds it: shared by every painting placed alike (stamp-deposit-placement.ts), so frozen. */
+export type FrozenPlacedStamp = Readonly<Omit<PlacedStamp, 'tint'>> & { readonly tint: Readonly<StampTint> };
+
 /** The stamping a placement reads: a brush's own stamps, and its colour dynamics when it's a main brush that has them. */
 // Placement reads no image, so a brush places alike whatever its images are bound to, a bristle tip bound or not.
 export type StampPlacementBrush = Omit<StampBrushStamping<unknown>, 'tip'> & { tip: Pick<StampBrushTip<unknown>, 'roundness' | 'sampling' | 'pixels'>; color?: StampBrushColorDynamics };

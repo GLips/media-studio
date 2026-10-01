@@ -9,7 +9,7 @@
 
 import type { PaintMixture } from '#lib/picture/paint/models/paint-mixture.ts';
 import type { StampBlend, StampBrush, StampBrushAsset } from './stamp-brush.ts';
-import type { PlacedStamp, StampPlacement, StampStrokePoint, StampTint } from './stamp-placement.ts';
+import type { FrozenPlacedStamp, StampPlacement, StampStrokePoint, StampTint } from './stamp-placement.ts';
 import type { StampStrokeHand } from './stamp-stroke-hand.ts';
 import { checkedStampPolygon, compileDeposit } from './stamp-deposit-compile.ts';
 import { stampRegionSeed, type StampFillApplication, type StampFloodBody, type StampFloodBodyLevels, type StampFloodFront } from './stamp-fill.ts';
@@ -390,9 +390,9 @@ type CompiledStampDepositCommon<A extends CompiledStampAction> = {
   /** When it shows (StampDepositReveal): from `at` seconds, drawn over `over` (0 lands whole); none, there throughout. */
   reveal?: { at: number; over: number };
   /** Every stamp of the finished deposit, in reveal order: a flood's are its edge stroke's. */
-  stamps: readonly PlacedStamp[];
+  stamps: readonly FrozenPlacedStamp[];
   /** The brush's dual stamps, placed by its own settings along the same stroke, in reveal order; none without one. */
-  dualStamps: readonly PlacedStamp[];
+  dualStamps: readonly FrozenPlacedStamp[];
 };
 
 /**

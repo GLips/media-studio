@@ -6,7 +6,7 @@
 // Negative space: a group moves rigidly. Deforming one (a raised arm) would warp its layer by a field, not a placement.
 
 import type { StampPoint } from './stamp-region.ts';
-import { stampKeyList, stampKeySpanAt, stampKeyTimesProblem, type StampKeyList } from './stamp-scene-keys.ts';
+import { mapStampKeyList, stampKeyList, stampKeySpanAt, stampKeyTimesProblem, type StampKeyList } from './stamp-scene-keys.ts';
 
 /**
  * A group's placement at a key: `at` seconds into the scene, moved `x`, `y` pixels from where it's painted, turned
@@ -39,8 +39,8 @@ export type StampGroupBoil = { every: number };
 /** The boil epoch of frame `frame` for a group boiling every `every` frames. */
 export const stampBoilEpoch = (frame: number, { every }: StampGroupBoil) => Math.floor(frame / every);
 
-/** A group's motion as compiled (compileStampGroupMotion): at least one key, each finite at an increasing time. */
-export type CompiledStampGroupMotion = { keys: StampKeyList<StampGroupMotion['keys'][number]>; pivot?: StampPoint };
+/** A group's motion as compiled (compileStampGroupMotion): at least one whole placement, at finite increasing times. */
+export type CompiledStampGroupMotion = { keys: StampKeyList<{ at: number } & StampGroupPlacement>; pivot?: StampPoint };
 
 /** `motion` checked: keys finite at increasing times (stamp-scene-keys.ts) with a positive scale, and a finite pivot. */
 export function compileStampGroupMotion({ keys, pivot }: StampGroupMotion, groupId: string): CompiledStampGroupMotion {
@@ -50,14 +50,15 @@ export function compileStampGroupMotion({ keys, pivot }: StampGroupMotion, group
   keys.forEach((key, i) => {
     if (![key.x, key.y, key.rotation ?? 0, key.scale ?? 1].every(Number.isFinite) || !((key.scale ?? 1) > 0)) throw new Error(`stamp paint: ${groupId}'s motion key ${i} needs finite values and a positive scale`);
   });
-  return { keys: stampKeyList(keys, `${groupId}'s motion`), ...(pivot && { pivot }) };
+  const placements = mapStampKeyList(stampKeyList(keys, `${groupId}'s motion`), ({ at, x, y, rotation = 0, scale = 1 }) => ({ at, x, y, rotation, scale }));
+  return { keys: placements, ...(pivot && { pivot }) };
 }
 
 /** Where `motion` places its group `t` seconds into the scene: each of its key's offsets, turn and size eased. */
 export function stampGroupPlacementAt({ keys }: CompiledStampGroupMotion, t: number): StampGroupPlacement {
   const { from, to, share } = stampKeySpanAt(keys, t), a = keys[from], b = keys[to];
   const eased = (u: number, v: number) => u + (v - u) * share;
-  return { x: eased(a.x, b.x), y: eased(a.y, b.y), rotation: eased(a.rotation ?? 0, b.rotation ?? 0), scale: eased(a.scale ?? 1, b.scale ?? 1) };
+  return { x: eased(a.x, b.x), y: eased(a.y, b.y), rotation: eased(a.rotation, b.rotation), scale: eased(a.scale, b.scale) };
 }
 
 /**

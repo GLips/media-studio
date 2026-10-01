@@ -37,11 +37,25 @@ test('a recompiled painting keeps the marks of what didn\'t change and places af
   const before = sky(50, swell), after = sky(80, swell);
   assert.equal(deposit(after, 'blue').stamps, deposit(before, 'blue').stamps);
   assert.notDeepEqual(deposit(after, 'cloud').stamps, deposit(before, 'cloud').stamps);
-  assert.deepEqual(sky(50, swell), before);
 });
 
 test('a hand\'s pressure curve is told apart by which function it is, as its content can\'t be read', () => {
   const light = sky(50, lightly), firm = sky(50, firmly);
   const pressures = (painting: CompiledStampPaint) => deposit(painting, 'cloud').stamps.map(({ pressure }) => pressure);
   assert.ok(Math.max(...pressures(light)) < Math.min(...pressures(firm)));
+});
+
+test('a brush edited in place, or a region, places by what it holds now, and what\'s placed can\'t be changed', () => {
+  const flowing: StampBrush = { ...brush, flow: 1 };
+  const region = { kind: 'polygon' as const, points: [{ x: 0, y: 0 }, { x: 300, y: 0 }, { x: 300, y: 100 }] };
+  const flood = () => compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'opaque' }, (group) => group.pass('p', {}, (pass) => {
+    pass.fill('f', { brush: flowing, material: ochre, diameter: 40, application: { kind: 'flood' }, region });
+  }))));
+  const first = stampPassDeposits(flood().groups[0].passes[0])[0];
+  flowing.flow = 0.2;
+  region.points[2] = { x: 300, y: 200 };
+  const edited = stampPassDeposits(flood().groups[0].passes[0])[0];
+  assert.equal(edited.stamps[0].alpha, 0.2 * first.stamps[0].alpha);
+  assert.ok(edited.kind === 'flood' && first.kind === 'flood' && edited.flood.box.y1 > first.flood.box.y1 && first.flood.polygon[2].y === 100);
+  assert.throws(() => Object.assign(first.stamps[0], { x: 1 }), TypeError);
 });

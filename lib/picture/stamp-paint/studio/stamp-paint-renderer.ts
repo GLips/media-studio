@@ -41,7 +41,7 @@ import { stampPaintCheckpoints } from './stamp-paint-checkpoints.ts';
 import { stampPaintEvents } from '../models/stamp-paint-events.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { stampGroupLayerFromScene, stampGroupSceneFromLayer, type StampGroupPlacement } from '../models/stamp-group-motion.ts';
-import { stampFramePlan, stampGroupEvents, stampGroupVaries } from '../models/stamp-frame-plan.ts';
+import { stampFramePlan, stampGroupEvents } from '../models/stamp-frame-plan.ts';
 
 /**
  * Floats per stamp in the instance buffer: x, y, diameter, rotation, then alpha, blur, grain turn and flips (x 1, y 2),
@@ -1837,8 +1837,6 @@ function rendererOnSurface(
   // Made on the surface's device: they come and go as frames save them, and dispose destroys what's left.
   const checkpoints = stampPaintCheckpoints(surface.device, { painting: targets.painting.texture, layer: targets.layer.texture, clip: targets.clip.texture });
   const groupEvents = stampGroupEvents(painting);
-  // Where frames may differ though their events are settled: at the first group that moves, boils or recolours.
-  const varyingFrom = groupEvents.find((_, index) => stampGroupVaries(painting.groups[index]))?.first ?? events.length;
 
   // A boiling group's epochs other than 0 (the painting as written), each group's recently drawn ones kept on the GPU.
   const epochs = new Map<CompiledStampGroup, Map<number, { marks: CompiledStampGroup; bank: DepositBank; used: number }>>();
@@ -1902,13 +1900,12 @@ function rendererOnSurface(
     surface.assertLive();
     slots = 0;
     const encoder = device.createCommandEncoder();
-    const { groups, settled, checkpointKey, worthSaving } = stampFramePlan(painting, groupEvents, events, t, fps);
+    const { groups, settled, checkpointKey, checkpointSaves } = stampFramePlan(painting, groupEvents, events, t, fps);
     const start = whole ? null : checkpoints.latest(settled, checkpointKey);
     const from = start?.event ?? 0;
-    // Saved: the settled prefix, and the state before the first group that moves, boils or recolours, which later frames share.
-    const saves = new Set(whole ? [] : [settled, Math.min(settled, varyingFrom)].filter((event) => event > from));
+    const saves = whole ? new Set<number>() : checkpointSaves(from);
     const save = (event: number, inGroup: boolean, painted: Box | null) => {
-      if (saves.has(event) && worthSaving(event)) checkpoints.save(encoder, { event, key: checkpointKey(event), inGroup, painted });
+      if (saves.has(event)) checkpoints.save(encoder, { event, key: checkpointKey(event), inGroup, painted });
     };
     if (start) checkpoints.restore(encoder, start);
     else drawPaper(encoder);

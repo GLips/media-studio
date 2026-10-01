@@ -22,7 +22,7 @@ export function stampGroupEvents(painting: CompiledStampPaint): StampGroupEvents
 }
 
 /** Whether `group` may draw differently in two frames once its events are settled: it moves, boils or recolours. */
-export const stampGroupVaries = (group: CompiledStampGroup) => !!(group.motion || group.boil || group.recolours);
+const stampGroupVaries = (group: CompiledStampGroup) => !!(group.motion || group.boil || group.recolours);
 
 /**
  * A group as a frame draws it: its boil `epoch` (0, as written), where it's `moved` to (null where it's painted) and
@@ -47,8 +47,11 @@ export type StampFramePlan = {
    * a group partway through at its marks (its layer isn't laid yet, so its placement doesn't reach the checkpoint).
    */
   checkpointKey: (event: number) => string;
-  /** Whether a checkpoint after `event` events is worth saving: not when it holds a state this frame's alone. */
-  worthSaving: (event: number) => boolean;
+  /**
+   * The events after which a frame starting from event `from` saves a checkpoint: its settled prefix, and the state
+   * before the first group that moves, boils or recolours, which later frames share; none holding a state this frame's alone.
+   */
+  checkpointSaves: (from: number) => ReadonlySet<number>;
 };
 
 /** Whether `t` is strictly inside the span from `from` to `to`, where what's keyed is still changing. */
@@ -74,10 +77,13 @@ export function stampFramePlan(painting: CompiledStampPaint, groupEvents: readon
   const laid = groups.map(({ moved }, index) => `${marks[index]}${moved ? `@${moved.x},${moved.y},${moved.rotation},${moved.scale}` : ''}`);
   /** Each group with events that begin before `event`: laid by then, or partway through. A group with none draws nothing. */
   const reached = (event: number) => groupEvents.flatMap(({ first, end }, index) => (first < event && first < end ? [{ index, laid: end <= event }] : []));
+  const worthSaving = (event: number) => reached(event).every(({ index, laid: isLaid }) => !groups[index].ownMarks && !(isLaid && groups[index].ownPlacement));
+  const settled = stampSettledEventCount(events, t);
+  const varyingFrom = groupEvents.find((_, index) => stampGroupVaries(painting.groups[index]))?.first ?? events.length;
   return {
     groups,
-    settled: stampSettledEventCount(events, t),
+    settled,
     checkpointKey: (event) => reached(event).map(({ index, laid: isLaid }) => (isLaid ? laid[index] : marks[index])).join('|'),
-    worthSaving: (event) => reached(event).every(({ index, laid: isLaid }) => !groups[index].ownMarks && !(isLaid && groups[index].ownPlacement)),
+    checkpointSaves: (from) => new Set([settled, Math.min(settled, varyingFrom)].filter((event) => event > from && worthSaving(event))),
   };
 }
