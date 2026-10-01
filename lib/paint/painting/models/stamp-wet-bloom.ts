@@ -202,14 +202,35 @@ fn bloomHeld(p: vec2f, ease: f32, seed: u32, sigma: f32) -> f32 {
 // paper held the water back there (held, bloomHeld); and a point a little past where the water's level falls to its
 // front level, before any lobe (past, for bloomPastFront).
 struct BloomFront { d: f32, foot: vec2f, held: f32, past: vec2f }
-// From the spread water's \`level\` and its \`gradient\` (pointing in) at p, on paper as ready to let it run as
-// \`ease\` (bloomEase). The water stalls where its level falls to BLOOM_FRONT_LEVEL, short of that where it was held (a
-// few big lobes); the front stands out past it in scallops and smaller ones on them (cauliflower), keyed to \`seed\` in
-// the painting's pixels, a slow warp keeping them from lining up. Every shift is measured from the stall along its
-// normal, so the front never leaves an island of its own.
-fn bloomFront(p: vec2f, level: f32, gradient: vec2f, ease: f32, seed: u32, sigma: f32) -> BloomFront {
+// The spread water round a pixel, smoothed: its level, its gradient (pointing in), how its slope changes along that
+// (\`sag\`, its second derivative there), and the share of the paper round it the wash covers (\`inWash\`).
+struct BloomWater { level: f32, gradient: vec2f, sag: f32, inWash: f32 }
+// How far in from where the water falls to BLOOM_FRONT_LEVEL a pixel is, px, by the water's level, slope and sag
+// there: to second order, as the water's profile curves. Read from the slope alone, a pixel where the water flattens
+// (pooled against a wash's edge) would seem near the front, smearing its lip far inside. None in reach: far inside.
+fn bloomStall(water: BloomWater, most: f32) -> f32 {
+  let above = water.level - BLOOM_FRONT_LEVEL;
+  let slope = max(length(water.gradient), 1e-5);
+  // Where the profile never reaches the level, the root goes on growing as it would (diverging), not jumping to none.
+  let reaches = slope * slope - 2.0 * water.sag * above;
+  let toward = slope + sign(reaches) * sqrt(abs(reaches));
+  return select(sign(above) * most, clamp(2.0 * above / toward, -most, most), toward > 1e-5);
+}
+// How far a front keeps its own lobes and lip by the share of the paper a lobe and a half round it that the wash's
+// paint covers (\`inWash\`): wholly, well inside the wash; none at its edge, which is the drying rim's. A front
+// reaching the edge then just ends there, rather than knotting into it.
+fn bloomInside(inWash: f32) -> f32 {
+  return smoothstep(0.75, 0.97, inWash);
+}
+// From the spread \`water\` round p (BloomWater), on paper as ready to let it run as \`ease\` (bloomEase). The water
+// stalls where its level falls to BLOOM_FRONT_LEVEL (bloomStall), short of that where it was held (a few big lobes);
+// the front stands out past it in scallops and smaller ones on them (cauliflower), keyed to \`seed\` in the painting's
+// pixels, a slow warp keeping them from lining up. Every shift is measured from the stall along its normal.
+fn bloomFront(p: vec2f, water: BloomWater, ease: f32, seed: u32, sigma: f32) -> BloomFront {
+  let level = water.level;
+  let gradient = water.gradient;
   let slope = max(length(gradient), 1e-5);
-  let stall = clamp((level - BLOOM_FRONT_LEVEL) / slope, -4.0 * sigma - 4.0, 4.0 * sigma + 4.0);
+  let stall = bloomStall(water, 4.0 * sigma + 4.0);
   let normal = gradient / slope;
   let tangent = vec2f(-normal.y, normal.x);
   let foot = p - normal * stall;
@@ -239,9 +260,11 @@ fn bloomFront(p: vec2f, level: f32, gradient: vec2f, ease: f32, seed: u32, sigma
   // Along the front the lobing comes and goes, over a few lobes: deep cauliflower in one stretch, a gentle wave in the next.
   let depth = 0.35 + 1.1 * bloomValue(warped / (4.0 * cell), seed ^ 0x1b873593u);
   let shift = depth * (lobes - 0.3 * cell * (1.0 + crinkle * ${(STAMP_BLOOM_LOBES.ratio * STAMP_BLOOM_LOBES.weight + STAMP_BLOOM_LOBES.fine * STAMP_BLOOM_LOBES.fineWeight).toFixed(3)}));
-  // Well outside, the lobes fade: a front reaching far past the water would leave rings of its own on the paper.
+  // Well outside, the lobes fade: a front reaching far past the water would leave rings of its own on the paper. Well
+  // inside too: there the stall's normal wanders, and lobes read from where it points would speckle a ghost of the lip.
   let reach = 0.75 * sigma + 2.0;
-  return BloomFront(stall + (big + shift) * smoothstep(-2.0 * reach, -reach, stall), base, held, p - normal * (stall + BLOOM_PAST_FRONT));
+  let lobing = bloomInside(water.inWash) * smoothstep(-2.0 * reach, -reach, stall) * (1.0 - smoothstep(0.75 * reach, 1.5 * reach, stall));
+  return BloomFront(stall + (big + shift) * lobing, base, held, p - normal * (stall + BLOOM_PAST_FRONT));
 }
 // Streaks running in from the front along the push, 0..1, \`d\` px inside it: keyed to a point of the stall (foot), fine
 // across the push and slowly bending along it, so the edge of the inside feathers; they fade to an even 0.5 deeper in.
