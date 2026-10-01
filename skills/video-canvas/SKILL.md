@@ -105,7 +105,12 @@ Everything is from `#studio`.
     for everything declared after it in that scope, until the scope ends; `unmask(id, { region, edge, inset, amount })`
     lifts all or part of it. `edge`: `{ soft: px }` or `{ ragged: { amount, scale } }`, else a clean antialiased
     line; `inset` (px) moves it inward. Paint already there stays: a mask is for highlights, glints and reserves, not
-    erasing.
+    erasing. Brush it on with `mask(id, { marks })`: it covers just what those `StampMark`s would paint, grain and
+    all (a dry-brush sparkle of fluid), and water laid over it wets only the paper it left open.
+  - **Wax resist**: `group.resist(id, { marks, amount? })` lays wax on the paper's peaks under its marks, so later
+    washes break over the tooth and fill the valleys. It holds for the rest of the group, through unmasks and
+    passages, and is never lifted; a knockout ignores it. Needs a paper with grain to look like wax: on a smooth
+    sheet it covers the whole mark.
   - **A near shape in front of far paint** (hills before a range): give the near group `standsBefore: { groups:
     ['far-range'], shape: hills, overlap: 3 }`. The named groups, which must paint before it, land as if under fluid
     over `shape` inset by `overlap` px, past any unmask of theirs and their water too; the near group paints its own

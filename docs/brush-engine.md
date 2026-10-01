@@ -72,6 +72,18 @@ the same coverage per sample (`stampAreaCoverageAt`, the GPU's twin), scanning a
 hard. A group's `standsBefore` compiles into one more mask over the fluid of each deposit of the groups it names,
 last, so it joins their fluid by max and none of their unmasks lifts it; a knockout's fluid is left alone.
 
+**Brushed masks.** Fluid can be brushed on, `mask(id, { marks })`, and a group can lay wax, `resist(id, { marks,
+amount })` (`stamp-brushed-mask.ts`). A mark is placed from its key by the one path paint is (`placeStampDeposit`),
+so the same mark painted elsewhere lands the same footprint. The renderer draws each brushed mask once as it loads:
+each mark's stamps resolved as a deposit's coverage is (builds, grain, dual, pooling), never pigment, joined by max
+into a texture a step of the fluid reads. It then averages that texture onto the wetness's 4 px samples and reads them
+back, and the wetness compile reads those samples where an area mask's polygon would be, so water lands only where a
+sparse brush left paper open. Wax keeps only what catches the paper's peaks (`paintDryContact`, at the paper's depth)
+× `amount`; it lies over every deposit of its group declared after it, past every unmask and passage, and ends with
+the group. A knockout ignores it, as it does `standsBefore`. Only the painting as loaded is measured: live marks
+bringing a brushed mask of their own are refused. Cost at 1080p: about 0.3 ms of load a mark, and a frame reads it as it reads an
+area's.
+
 Wet paint is a wash, a passage with a wetness history (`group.passage` in a medium with `'wet-history'`, unless it
 says `wetHistory: false`): its deposits paint, wet (`water`, `stampSoften`, `stampBloom`) or lift, and it can `wait` in painting time, which only its waits advance. `stamp-wetness.ts` works out, once as a painting
 loads, how wet the paper is where each lands, on coarse grids; the pigment compositor's `landDeposit` lays it by the
