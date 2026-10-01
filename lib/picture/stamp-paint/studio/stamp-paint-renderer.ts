@@ -862,6 +862,12 @@ function halfFloat(bits: number): number {
   return sign * (1 + fraction / 1024) * 2 ** (exponent - 15);
 }
 
+export type StampPaintRendererOptions = {
+  fps?: number;
+  /** The wet stages its washes run: every one, but for a check measuring what some do. */
+  wetStages?: readonly StampWetStage[];
+};
+
 /**
  * A renderer for one painting on `canvas`, its paint mixed as `mixing` says; `fps`, the scene's frame rate, counts a
  * boiling group's epochs (required for a painting with one). Resolves once every image is on the GPU; refuses a
@@ -870,23 +876,87 @@ function halfFloat(bits: number): number {
  */
 export async function createStampPaintRenderer(
   canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string,
-  { fps, wetStages = STAMP_WET_STAGES }: {
-    fps?: number;
-    /** The wet stages its washes run: every one, but for a check measuring what some do. */
-    wetStages?: readonly StampWetStage[];
-  } = {},
+  { fps, wetStages = STAMP_WET_STAGES }: StampPaintRendererOptions = {},
 ): Promise<StampPaintRenderer> {
   const boiling = painting.groups.find((group) => group.boil);
   if (boiling && !(fps && fps > 0)) throw new Error(`stamp paint: ${boiling.id} boils every ${boiling.boil!.every} frames, so its renderer needs the scene's fps`);
   const { compositorOn, wetnessOf, medium } = compositorFor(painting, paper, mixing, { width, height }, wetStages);
   const device = await createStampPaintDevice();
+  const context = canvas.getContext('webgpu') as GPUCanvasContext;
+  const format: GPUTextureFormat = 'rgba8unorm';
+  context.configure({ device, format, alphaMode: 'opaque' });
+  const output: StampPaintOutput = {
+    device, texture: () => context.getCurrentTexture(), format,
+    // Destroying the device frees every texture and buffer made on it.
+    release: () => {
+      context.unconfigure();
+      device.destroy();
+    },
+  };
   try {
-    return await rendererOnDevice(device, compositorOn, wetnessOf, medium, wetStages, canvas, painting, paper, width, height, imageUrl, fps ?? 0);
+    return await rendererOnDevice(output, compositorOn, wetnessOf, medium, wetStages, painting, paper, width, height, imageUrl, fps ?? 0);
   } catch (error) {
-    // Destroying the device frees every texture and buffer made on it, and unconfigures the canvas.
-    device.destroy();
+    output.release();
     throw error;
   }
+}
+
+/**
+ * A renderer on a device it's lent (one createStampPaintDevice made, which three.js may share), drawing each frame
+ * into `frame`, whose size is the painting's. It never destroys the device; dispose frees what it made on it. `frame`
+ * gets what the canvas would: gamma-encoded sRGB, opaque on its paper, dithered. Otherwise as createStampPaintRenderer.
+ */
+export async function createStampPaintRendererOnDevice(
+  device: GPUDevice, frame: GPUTexture, painting: CompiledStampPaint, paper: StampPaintPaper, mixing: StampPaintMixing, imageUrl: (asset: StampBrushAsset) => string,
+  { fps, wetStages = STAMP_WET_STAGES }: StampPaintRendererOptions = {},
+): Promise<StampPaintRenderer> {
+  if (!(frame.usage & GPUTextureUsage.RENDER_ATTACHMENT)) throw new Error('stamp paint: the texture a painting is drawn into needs RENDER_ATTACHMENT usage');
+  const { width, height } = frame;
+  const boiling = painting.groups.find((group) => group.boil);
+  if (boiling && !(fps && fps > 0)) throw new Error(`stamp paint: ${boiling.id} boils every ${boiling.boil!.every} frames, so its renderer needs the scene's fps`);
+  const { compositorOn, wetnessOf, medium } = compositorFor(painting, paper, mixing, { width, height }, wetStages);
+  const lent = lentStampPaintDevice(device);
+  const output: StampPaintOutput = { device: lent.device, texture: () => frame, format: frame.format, release: lent.release };
+  try {
+    return await rendererOnDevice(output, compositorOn, wetnessOf, medium, wetStages, painting, paper, width, height, imageUrl, fps ?? 0);
+  } catch (error) {
+    output.release();
+    throw error;
+  }
+}
+
+/**
+ * Where a renderer draws: the device it makes everything on, the texture each frame goes into and its format, and
+ * how to free what it made (destroying a device of its own, or only its own buffers and textures on a lent one).
+ */
+type StampPaintOutput = { device: GPUDevice; texture: () => GPUTexture; format: GPUTextureFormat; release: () => void };
+
+/**
+ * `device` as a renderer sees it, keeping every buffer and texture made through it, so `release` frees them and
+ * leaves the device to its owner. A proxy, since the renderer and its compositors make their resources in many
+ * places; it's never handed to WebGPU as a device (as a canvas's configure would), only called.
+ */
+const isDeviceMember = (device: GPUDevice, key: PropertyKey): key is keyof GPUDevice => key in device;
+
+function lentStampPaintDevice(device: GPUDevice): { device: GPUDevice; release: () => void } {
+  const made: { destroy: () => void }[] = [];
+  const keep = <T extends { destroy: () => void }>(resource: T) => {
+    made.push(resource);
+    return resource;
+  };
+  const createBuffer = (descriptor: GPUBufferDescriptor) => keep(device.createBuffer(descriptor));
+  const createTexture = (descriptor: GPUTextureDescriptor) => keep(device.createTexture(descriptor));
+  const lent = new Proxy(device, {
+    get: (target, key) => {
+      if (key === 'createBuffer') return createBuffer;
+      if (key === 'createTexture') return createTexture;
+      if (!isDeviceMember(target, key)) return undefined;
+      const value = target[key];
+      // A device's methods check their receiver, so each is called on the device itself.
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+  return { device: lent, release: () => { for (const resource of made.splice(0)) resource.destroy(); } };
 }
 
 /**
@@ -905,9 +975,10 @@ function compositorFor(painting: CompiledStampPaint, paper: StampPaintPaper, mix
 }
 
 async function rendererOnDevice(
-  device: GPUDevice, compositorOn: (device: GPUDevice) => StampPaintCompositor, wetnessOf: ((groups: CompiledStampPaint) => StampWetness) | null, wetMedium: PaintMedium | null,
-  wetStages: readonly StampWetStage[], canvas: HTMLCanvasElement, painting: CompiledStampPaint, paper: StampPaintPaper, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string, fps: number,
+  output: StampPaintOutput, compositorOn: (device: GPUDevice) => StampPaintCompositor, wetnessOf: ((groups: CompiledStampPaint) => StampWetness) | null, wetMedium: PaintMedium | null,
+  wetStages: readonly StampWetStage[], painting: CompiledStampPaint, paper: StampPaintPaper, width: number, height: number, imageUrl: (asset: StampBrushAsset) => string, fps: number,
 ): Promise<StampPaintRenderer> {
+  const { device, format } = output;
   // Loading and each draw are checked for any error WebGPU would otherwise report only later, unasked. A lost device
   // isn't an error a scope catches, so the draw after it throws.
   const checking = () => {
@@ -926,9 +997,6 @@ async function rendererOnDevice(
   if (paintBytes > SLOT) throw new Error(`stamp paint: a compositor's ${compositor.deposit.layout.name} takes ${paintBytes} bytes, over a uniform slot's ${SLOT}`);
   let lost: string | null = null;
   void device.lost.then((info) => { if (info.reason !== 'destroyed') lost ??= info.message; });
-  const context = canvas.getContext('webgpu') as GPUCanvasContext;
-  const format: GPUTextureFormat = 'rgba8unorm';
-  context.configure({ device, format, alphaMode: 'opaque' });
 
   const assets = paintingImages(painting, paper);
   // The paper's photograph is the one image whose colour is read.
@@ -1947,7 +2015,7 @@ async function rendererOnDevice(
       if (painted) layGroup(encoder, index, group, painted, moved);
     }
     save(events.length, false, null);
-    const out = encoder.beginRenderPass({ colorAttachments: [{ view: context.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store' }] });
+    const out = encoder.beginRenderPass({ colorAttachments: [{ view: output.texture().createView(), loadOp: 'clear', storeOp: 'store' }] });
     out.setPipeline(outputPipeline);
     out.setBindGroup(0, bindGroup(outputPipeline, [targets.painting.view]));
     out.draw(3);
@@ -2038,8 +2106,7 @@ async function rendererOnDevice(
     finish: () => (disposed ? Promise.resolve() : device.queue.onSubmittedWorkDone()),
     dispose() {
       disposed = true;
-      context.unconfigure();
-      device.destroy();
+      output.release();
     },
   };
 }
