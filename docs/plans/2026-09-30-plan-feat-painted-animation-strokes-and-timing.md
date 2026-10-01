@@ -165,6 +165,17 @@ The compiled painting holds no functions of time.
 - Group `motion` and `boil` stay as recipe fields until 2b replaces them. Internally they become frame state, so the
   renderer reads one shape whichever writes it.
 
+*2a done (vid-130, 0ac1c40 and 426c35d, merged 7ec3157).*
+- **Engine:** `StampPaintFrameState` (`stamp-paint-frame-state.ts`) feeds `draw(t, frame?)`. A live group's marks
+  must be the written group re-placed (`stampLiveGroupProblem`).
+- **Motion:** `paint/animation` evaluates pins, clips and the rest-space boil into frame state (`buildPaintMotion`,
+  `paintMotionFrameAt`).
+- **Frog at 1080p, watercolour:** a live frame takes 46 ms to draw and 92.6 ms whole, against 235 and 351 ms for a
+  full reload. The layer warp takes 27 ms.
+- **Gate:** the new animation/live check passes at max 0.
+- **Not built:** a layer cache per group. A group drawn after a varying one repaints each frame; plan 2's planes are
+  where layers get cached.
+
 **2b, the authoring model.** Waits for vid-114's step 5. Plan 1's additions go on vid-114's tree, per spike 1.1:
 - plays on typed handles;
 - pins;
