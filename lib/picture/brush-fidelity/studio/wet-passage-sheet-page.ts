@@ -1,11 +1,12 @@
 // wet-passage-sheet-page.ts: the passage sheet's browser side, run by engine/wet-passage-sheet.ts through
 // withBrowserModulePage. It paints each reference passage (models/wet-passages.ts) in one medium, each as a painting of
-// its own on the style's paper, so a passage the renderer refuses leaves the others painted. Images are served at
-// /files/ (brush-fidelity-pack-urls.ts).
+// its own on the style's paper, so a passage the renderer refuses leaves the others painted, and each animation check's
+// frames (models/wet-animations.ts). Images are served at /files/ (brush-fidelity-pack-urls.ts).
 
 import { compileStampPaintRecipe } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import { createStampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
 import { brushFidelityAssetUrl } from '../models/brush-fidelity-pack-urls.ts';
+import { WET_ANIMATION_FPS, WET_ANIMATIONS, type WetAnimation, type WetAnimationPainted } from '../models/wet-animations.ts';
 import { WET_PASSAGE_CELL, WET_PASSAGES, type WetPassage, type WetPassagePainted, type WetPassageSheetMedium } from '../models/wet-passages.ts';
 
 /** The scene time every passage is drawn at: none reveals over time, so any would do. */
@@ -39,4 +40,39 @@ const drawWetPassages = (medium: WetPassageSheetMedium) => WET_PASSAGES.reduce<P
   return [...before, await drawWetPassage(passage, medium)];
 }, Promise.resolve([]));
 
-Object.assign(globalThis, { drawWetPassages });
+/** `animation`'s frames in one medium, each take on a renderer of its own, or why it couldn't be painted. */
+async function drawWetAnimation(animation: WetAnimation, { brushes, paper, mixing, packUrls }: WetPassageSheetMedium): Promise<WetAnimationPainted> {
+  const { width, height } = WET_PASSAGE_CELL;
+  const canvas = Object.assign(document.createElement('canvas'), { width, height });
+  try {
+    const takes = animation.takes({ brushes, pigments: mixing.pigments });
+    const frames = await takes.reduce<Promise<{ caption: string; png: string }[]>>(async (done, { recipe, frames: shown }) => {
+      const before = await done;
+      const renderer = await createStampPaintRenderer(canvas, compileStampPaintRecipe(recipe), paper, mixing, width, height, (asset) => brushFidelityAssetUrl(packUrls, asset), { fps: WET_ANIMATION_FPS });
+      try {
+        return [...before, ...await shown.reduce<Promise<{ caption: string; png: string }[]>>(async (drawn, { frame, caption }) => {
+          const earlier = await drawn;
+          await renderer.draw(frame / WET_ANIMATION_FPS);
+          await renderer.finish();
+          const copy = Object.assign(document.createElement('canvas'), { width, height });
+          copy.getContext('2d')!.drawImage(canvas, 0, 0);
+          return [...earlier, { caption, png: copy.toDataURL('image/png') }];
+        }, Promise.resolve([]))];
+      } finally {
+        renderer.dispose();
+      }
+    }, Promise.resolve([]));
+    return { animation: animation.id, frames };
+  } catch (error) {
+    // As a passage's: a refusal is the sheet's to show.
+    return { animation: animation.id, refused: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/** Every animation in one medium, one at a time. */
+const drawWetAnimations = (medium: WetPassageSheetMedium) => WET_ANIMATIONS.reduce<Promise<WetAnimationPainted[]>>(async (done, animation) => {
+  const before = await done;
+  return [...before, await drawWetAnimation(animation, medium)];
+}, Promise.resolve([]));
+
+Object.assign(globalThis, { drawWetPassages, drawWetAnimations });
