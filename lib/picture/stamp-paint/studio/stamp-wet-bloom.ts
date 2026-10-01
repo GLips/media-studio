@@ -83,21 +83,30 @@ fn paperThroughout(p: vec2i) -> vec2f {
 }
 `;
 
-// The surplus water the deposit left, blurred along rows. It's where the wetness record puts the brush's water (its
-// stamps' discs), not the paint's coverage: a soft brush's single stamp lays little paint but all its water.
-const SURPLUS_ROWS_WGSL = /* wgsl */ `${PRELUDE}${GRID_WGSL}
+// The surplus water the deposit left, per pixel. It's where the wetness record puts the brush's water (its stamps'
+// discs), not the paint's coverage: a soft brush's single stamp lays little paint but all its water.
+const SURPLUS_WGSL = /* wgsl */ `${PRELUDE}${GRID_WGSL}
 ${STAMP_WET_BLOOM_WGSL}
-@group(0) @binding(3) var rows: texture_storage_2d<r32float, write>;
+@group(0) @binding(3) var surplus: texture_storage_2d<r32float, write>;
+@compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
+  let local = localOf(id);
+  if (local.x < 0) { return; }
+  let p = local + vec2i(u.origin);
+  let paper = paperThroughout(p);
+  textureStore(surplus, local, vec4f(bloomSurplus(paper.x, wetnessAfterAt(p), paper.y, u.damp, u.shine)));
+}`;
+
+// The surplus spread along rows.
+const WATER_ROWS_WGSL = /* wgsl */ `${PRELUDE}
+@group(0) @binding(1) var surplus: texture_2d<f32>;
+@group(0) @binding(2) var rows: texture_storage_2d<r32float, write>;
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   let local = localOf(id);
   if (local.x < 0) { return; }
   var sum = 0.0;
   for (var d = -i32(u.reach); d <= i32(u.reach); d++) {
     let q = local + vec2i(d, 0);
-    let p = q + vec2i(u.origin);
-    if (!inBox(q)) { continue; }
-    let paper = paperThroughout(p);
-    sum += waterKernel(d) * bloomSurplus(paper.x, wetnessAfterAt(p), paper.y, u.damp, u.shine);
+    if (inBox(q)) { sum += waterKernel(d) * textureLoad(surplus, q, 0).r; }
   }
   textureStore(rows, local, vec4f(sum));
 }`;
@@ -229,10 +238,10 @@ ${movedWgsl}
   for (var l = 0; l < ${layers}; l++) { textureStore(layer, p, l, moved[l]); }
 }`;
 
-type BloomPipelines = Record<'surplusRows' | 'waterColumns' | 'front' | 'bandRows' | 'send' | 'sentRows' | 'land', GPUComputePipeline>;
+type BloomPipelines = Record<'surplus' | 'waterRows' | 'waterColumns' | 'front' | 'bandRows' | 'send' | 'sentRows' | 'land', GPUComputePipeline>;
 /** A landing's bloom, sized as the painting loads. */
 type BloomPlan = { first: number; afterFirst: number; sigma: number; drive: number; lattice: StampWetWindow; pipelines: BloomPipelines; uniform: GPUBuffer };
-type BloomScratch = { w: number; h: number; textures: GPUTexture[]; rows: GPUTextureView; water: GPUTextureView; front: GPUTextureView; send: GPUTextureView; sentRows: GPUTextureView };
+type BloomScratch = { w: number; h: number; textures: GPUTexture[]; surplus: GPUTextureView; rows: GPUTextureView; water: GPUTextureView; front: GPUTextureView; send: GPUTextureView; sentRows: GPUTextureView };
 
 const kernelSum = (sigma: number, reach: number) => {
   let sum = 0;
@@ -257,7 +266,7 @@ function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: S
       const moved = wash.movedWgsl(layers);
       const pipeline = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }), entryPoint: 'run' } });
       found = {
-        surplusRows: pipeline(SURPLUS_ROWS_WGSL), waterColumns: pipeline(WATER_COLUMNS_WGSL), front: pipeline(frontWgsl(layers, moved)),
+        surplus: pipeline(SURPLUS_WGSL), waterRows: pipeline(WATER_ROWS_WGSL), waterColumns: pipeline(WATER_COLUMNS_WGSL), front: pipeline(frontWgsl(layers, moved)),
         bandRows: pipeline(BAND_ROWS_WGSL), send: pipeline(SEND_WGSL), sentRows: pipeline(sentRowsWgsl(layers, moved)), land: pipeline(landWgsl(layers, moved)),
       };
       pipelinesFor.set(layers, found);
@@ -290,7 +299,7 @@ function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: S
       textures.push(texture);
       return texture.createView({ dimension: depth === undefined ? '2d' : '2d-array' });
     };
-    scratch = { ...size, textures, rows: view('r32float'), water: view('r32float'), front: view('rg32float'), send: view('rg32float'), sentRows: view('rgba32float', layers) };
+    scratch = { ...size, textures, surplus: view('r32float'), rows: view('r32float'), water: view('r32float'), front: view('rg32float'), send: view('rg32float'), sentRows: view('rgba32float', layers) };
   };
 
   const encode = (encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, { box, seed }: Extract<StampWetStageMoment, { kind: 'deposit' }>): StampPixelBox => {
@@ -326,9 +335,10 @@ function loadBloom({ device, medium, wetness, layer, footprint, grids, wash }: S
       compute.dispatchWorkgroups(Math.ceil(box.w / WORKGROUP), Math.ceil(box.h / WORKGROUP));
       compute.end();
     };
-    const { rows, water, front, send, sentRows } = scratch, { pipelines } = plan;
+    const { surplus, rows, water, front, send, sentRows } = scratch, { pipelines } = plan;
     const u = { buffer: plan.uniform }, g = { buffer: grids.buffer }, a = { buffer: after };
-    dispatch(pipelines.surplusRows, [u, g, a, rows]);
+    dispatch(pipelines.surplus, [u, g, a, surplus]);
+    dispatch(pipelines.waterRows, [u, surplus, rows]);
     dispatch(pipelines.waterColumns, [u, rows, water]);
     dispatch(pipelines.front, [u, g, a, footprint.view, water, front, layer.view]);
     dispatch(pipelines.bandRows, [u, front, rows]);
