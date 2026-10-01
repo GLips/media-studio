@@ -46,6 +46,7 @@ import {
 } from '../models/stamp-gate-flow.ts';
 import { stampGatePrivatePainting, type StampGatePrivateCase } from '../models/stamp-gate-private-cases.ts';
 import { checkStampGateRegion, stampGateRegionPaintings, type StampGateRegionId } from '../models/stamp-gate-regions.ts';
+import { checkStampGateMask, stampGateMaskPaintings, type StampGateMaskId } from '../models/stamp-gate-masks.ts';
 import {
   checkStampGateRimStrength, checkStampGateStripe, STAMP_GATE_RIM_STRENGTHS, STAMP_GATE_STRIPE_SIZE, stampGateStripeCase, stampGateStripeLayer, stampGateStripePainting,
 } from '../models/stamp-gate-stripe.ts';
@@ -539,6 +540,22 @@ async function checkStampGateRegionCase(id: StampGateRegionId): Promise<StampGat
   return checkStampGateRegion(id, frames);
 }
 
+/**
+ * Mask case `id` (stamp-gate-masks.ts): each of its paintings drawn at its time, and for fluid-dry-paper its wet
+ * painting's one landing, the water, as its renderer worked it out, held to its property.
+ */
+async function checkStampGateMaskCase(id: StampGateMaskId): Promise<StampGateWashCheck> {
+  const { frames: paintings, wet } = stampGateMaskPaintings(id);
+  const frames = await paintings.reduce<Promise<Uint8ClampedArray[]>>(async (done, gate) => [
+    ...await done, await withGateRenderer(gate, drawnImages(gate), (renderer, frame) => drawn(renderer, frame, gate.t)),
+  ], Promise.resolve([]));
+  const landing = wet && await withGateRenderer(wet, drawnImages(wet), async (renderer) => {
+    const [water] = renderer.wetness!.landings.values(), { x0, y0, cell, columns, rows } = water.after.window;
+    return { x0, y0, cell, columns, rows, after: water.after.wetness, water: water.water };
+  });
+  return checkStampGateMask(id, frames, landing);
+}
+
 /** Media case `id` (stamp-gate-media.ts): the painting of three media against each group painted alone in its own. */
 async function checkStampGateMediaCase(id: string): Promise<StampGateWashCheck[]> {
   if (id !== 'media/mixed') throw new Error(`stamp gate: no media case ${JSON.stringify(id)}; the gate has ${STAMP_GATE_MEDIA_IDS.join(', ')}`);
@@ -561,5 +578,5 @@ async function stampGateAdapter(): Promise<string> {
 
 Object.assign(globalThis, {
   runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, checkStampGateAnimation, checkStampGateFlowCase, checkStampGateStripeCase, checkStampGateRegionCase,
-  checkStampGateMediaCase, stampGateAdapter,
+  checkStampGateMaskCase, checkStampGateMediaCase, stampGateAdapter,
 });
