@@ -20,7 +20,7 @@ milliseconds a frame at 1080p.
 - **The render:** `~/research/2026-09-30-vid-129/round-trip.mp4` (6 s, 1920×1080), on a page at
   `~/research/2026-09-30-vid-129/index.html`.
 - **The demonstration:** the project `work/projects/2026-09-paint-on-3d-round-trip/`, scene `roundTrip`; the
-  pipeline is in `scenes/round-trip/round-trip-frame.tsx`.
+  pipeline is in `scenes/round-trip/round-trip-gpu.ts`.
 - **The `stamp-paint` change:** `createStampPaintRendererOnDevice` in `stamp-paint-renderer.ts`. It borrows a device,
   draws each frame into a texture it's handed, and on dispose frees only what it made.
 
