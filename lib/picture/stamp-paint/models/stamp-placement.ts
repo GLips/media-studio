@@ -8,7 +8,7 @@ import { lerp } from '#lib/picture/motion/models/motion.ts';
 import { seededRandom, seededRandomAfter } from '#lib/picture/motion/models/random.ts';
 import type { StampBrushColorDynamics, StampBrushStamping, StampBrushTip } from './stamp-brush.ts';
 import {
-  drawStampSlots, stampOwnShare, stampOwnSize, stampOwnTurn, stampResponseCurve, stampStepCount, stampStepShare, stampStepTurn, type StampContext, type StampDraws, type StampStepContext,
+  drawStampSlots, stampFadeShare, stampOwnShare, stampOwnSize, stampOwnTurn, stampPressureShare, stampResponseCurve, stampStepCount, stampStepShare, stampStepTurn, type StampContext, type StampDraws, type StampStepContext,
 } from './stamp-dynamics.ts';
 
 /**
@@ -45,8 +45,11 @@ export type PlacedStamp = {
   /**
    * How much of a rolling grain's cut it takes, 0..1, mixed toward its uncut paint: below 1 only under grain depth
    * dynamics. A mix, not a shallower depth, since a height grain's depth is a relief's, which paints nothing at 0.
+   * Without its pressure binding's share, grainDepthByPressure; stampGrainDepthIn puts them together for a medium.
    */
   grainDepth: number;
+  /** The share of grainDepth its brush's pressure binding keeps, which a medium on the paper's tooth sets aside. */
+  grainDepthByPressure: number;
   /** The pen's pressure at it, 0..1, as its taper lets it through: what a pressed tip touches by. */
   pressure: number;
   /**
@@ -119,7 +122,8 @@ function buildStamp(place: StampPlace, stamp: StampContext, brush: StampPlacemen
     flipY: brush.flip.y && draws.flipY < 0.5,
     blur: brush.blur.amount * (1 - draws.blur * brush.blur.jitter),
     grainTurn: place.grainTurn,
-    grainDepth: stampStepShare(dynamics, 'grainDepth', stamp) * stampOwnShare(dynamics, 'grainDepth', stamp),
+    grainDepth: stampFadeShare(dynamics, 'grainDepth', stamp) * stampOwnShare(dynamics, 'grainDepth', stamp),
+    grainDepthByPressure: stampPressureShare(dynamics, 'grainDepth', stamp),
     pressure: 1 - stamp.pressureThrough * (1 - stamp.pressure),
     tint: tintOf(brush.color, draws, stamp.pressure),
     reveal: place.reveal,

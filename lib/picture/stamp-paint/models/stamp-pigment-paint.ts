@@ -11,6 +11,7 @@ import { paintMixtureComponents } from '#lib/picture/paint/models/paint-mixture.
 import { paintPigmentSeed } from '#lib/picture/paint/models/paint-paper.ts';
 import type { PaintPigment, PaintPigmentAppearance } from '#lib/picture/paint/models/paint-pigment.ts';
 import type { PaintBands } from '#lib/picture/paint/models/paint-spectrum.ts';
+import type { PlacedStamp } from './stamp-placement.ts';
 import { stampPaintFieldEnds } from './stamp-paint-field.ts';
 import { stampKeySpanAt } from './stamp-material-keys.ts';
 import { stampPassDeposits, type CompiledStampDeposit, type CompiledStampPaint, type PaintMaterial, type StampKeyedMaterial, type StampPaintColor } from './stamp-paint-recipe.ts';
@@ -165,6 +166,14 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
   });
   return { medium, bands, groups, deposits };
 }
+
+/**
+ * `stamp`'s share of its grain's depth in `medium` (null: flat paint). A medium that catches the paper's peaks reads
+ * pressure against the tooth itself (paintDryContact), so the brush's grain depth by pressure, Photoshop's model of
+ * the same, is set aside: kept, Kyle's Nupastel laid nothing at half pressure in crayon. A lift's stamps go alike.
+ */
+export const stampGrainDepthIn = (stamp: PlacedStamp, medium: PaintMedium | null): number =>
+  stamp.grainDepth * (medium?.paperContact.kind === 'peaks' ? 1 : stamp.grainDepthByPressure);
 
 /** Whether two pigments are one: the same absorption, scattering and habits. A name is only for people. */
 const samePigment = (a: PaintPigment, b: PaintPigment) =>

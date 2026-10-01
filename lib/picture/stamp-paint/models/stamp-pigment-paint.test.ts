@@ -5,7 +5,8 @@ import { PAINT_BANDS } from '#lib/picture/paint/models/paint-spectrum.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/picture/paint/models/paint-watercolour-pigments.ts';
 import { stampLinearDynamics, type StampBrush } from './stamp-brush.ts';
 import { compileStampPaintRecipe, stampPaintRecipe, type PaintMaterial, type StampPaintMaterial } from './stamp-paint-recipe.ts';
-import { compileStampPigmentPaint, STAMP_PIGMENT_GROUP_SLOTS, stampPigmentAmountsAt, type StampPigmentMixing } from './stamp-pigment-paint.ts';
+import { compileStampPigmentPaint, STAMP_PIGMENT_GROUP_SLOTS, stampGrainDepthIn, stampPigmentAmountsAt, type StampPigmentMixing } from './stamp-pigment-paint.ts';
+import { placeStrokeStamps } from './stamp-placement.ts';
 
 const brush: StampBrush = {
   name: 'Round', blend: 'normal', accumulation: { kind: 'buildToOpacity' },
@@ -75,4 +76,19 @@ test('a keyed material lays, between its keys, what a mixture of the eased amoun
   for (const id of ['ultramarine', 'burntSienna']) assert.ok(Math.abs(between[id] - half[id]) < 1e-12, `${id} halfway is the even mixture's`);
   assert.deepEqual(laidAt(9), { ...still(mixture(0, 1)), ultramarine: 0 }, 'held after its last');
   assert.equal(washOf([mixture(1, 0)]).groups[0].recolours, undefined);
+});
+
+test("a medium on the paper's tooth sets aside a brush's grain depth by pressure, and only that", () => {
+  const stick = {
+    tip: { roundness: 1, sampling: 'isotropic' }, spacing: 0.5, stepping: 'spread', scatter: { count: 1, radius: 0, lateral: 0 },
+    dynamics: { grainDepth: { pressure: { kind: 'linear', amount: 1 }, fade: { kind: 'linear', amount: 0.5, steps: 1 } } },
+    rotation: { angle: 0, randomStart: false }, flip: { x: false, y: false }, blur: { amount: 0, jitter: 0 },
+    taper: { start: 0, end: 0, size: 1, opacity: 1, shape: 0, pressure: 0 }, falloff: 0, flow: 1,
+  } as const;
+  // Past the first step, a half-pressure stroke's grain depth is half by pressure and half by fade.
+  for (const stamp of placeStrokeStamps([{ x: 0, y: 0, pressure: 0.5 }, { x: 200, y: 0, pressure: 0.5 }], stick, 20, 'tooth').slice(1)) {
+    assert.ok(Math.abs(stampGrainDepthIn(stamp, PAINT_MEDIA.crayon) - 0.5) < 1e-9);
+    assert.ok(Math.abs(stampGrainDepthIn(stamp, PAINT_MEDIA.watercolour) - 0.25) < 1e-9);
+    assert.ok(Math.abs(stampGrainDepthIn(stamp, null) - 0.25) < 1e-9);
+  }
 });

@@ -94,8 +94,19 @@ type StampRandomTarget = { [T in StampScaleTarget]: 'random' extends StampTarget
 
 /** The share of `target` its step-read bindings keep (pressure, then fade), composed by product. */
 export function stampStepShare(dynamics: StampDynamics, target: StampScaleTarget, step: StampStepContext): number {
-  const { pressure, fade } = dynamics[target] ?? {};
-  return (pressure ? scaleShare(pressure, pressureLoss(pressure, step)) : 1) * (fade ? scaleShare(fade, fadeLoss(fade, step)) : 1);
+  return stampPressureShare(dynamics, target, step) * stampFadeShare(dynamics, target, step);
+}
+
+/** The share of `target` its pressure binding alone keeps. */
+export function stampPressureShare(dynamics: StampDynamics, target: StampScaleTarget, step: StampStepContext): number {
+  const pressure = dynamics[target]?.pressure;
+  return pressure ? scaleShare(pressure, pressureLoss(pressure, step)) : 1;
+}
+
+/** The share of `target` its fade binding alone keeps. */
+export function stampFadeShare(dynamics: StampDynamics, target: StampScaleTarget, step: StampStepContext): number {
+  const fade = dynamics[target]?.fade;
+  return fade ? scaleShare(fade, fadeLoss(fade, step)) : 1;
 }
 
 /** The share of a stamp's `target` its stamp-read bindings keep (random: the stamp's own draw for the target). */

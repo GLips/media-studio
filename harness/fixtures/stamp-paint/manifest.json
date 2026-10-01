@@ -147,73 +147,73 @@
     "painting/colour-groups": {
       "file": "painting/colour-groups.png",
       "output": "bde06513865dc9dcb85e459916ac306be3052bc887955311a647cddb0db95971",
-      "inputs": "fd7404a9e225a97755c3ea97828e62fc9d0c8e864bbaddbe4bd16eb610ba3f67",
-      "reason": "vid-124: a dry medium's wax stacks, its tooth fills from the wax held round each pixel, and its stamps' pressure (and burnish) sets how far it reaches into the tooth: paintDryContact gains press and filled; the deposit uniform gains press and a dry compositor binds pressure and the layer before it. Crayon moves by intent; every other painting must hold at max 0",
+      "inputs": "ffecc627e5b0598d1d77a7b3217b93df9e79f649a6df90b684ac4fb131ca862f",
+      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
       "accepted": "2026-10-01",
-      "acceptedOver": "870ac6f",
+      "acceptedOver": "cb831b9",
       "adapter": "apple metal-3"
     },
     "painting/pigment-crayon": {
       "file": "painting/pigment-crayon.png",
       "output": "d675dbafcc644b0c4a3aded283a7ff8f7be4c91973f272933b776e8c111a53ff",
-      "inputs": "6233235ab8830855e121f2ca22bbb2123b3d8ff1de363abd1602d95063160d8a",
-      "reason": "vid-124 review fixes: a medium's layering (mixes | stacks) is its own field, apart from paper contact; the compositor declares what its lay reads (press, before with a reach in paper-grain texels); a stamp's press is laid as 1 + pressure so pressure 0 isn't 'no stamp'; burnish sets the press outright. Watercolour and gouache must hold at max 0; crayon moves (fill reach now 6 grain texels, as wide as the gate's paper is drawn)",
+      "inputs": "eea38f75c06dc5655fd602e073662daeb5d97bff3b8e7fcf682976f630718285",
+      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
       "accepted": "2026-10-01",
-      "acceptedOver": "aa6e540",
+      "acceptedOver": "cb831b9",
       "adapter": "apple metal-3"
     },
     "painting/pigment-gouache": {
       "file": "painting/pigment-gouache.png",
       "output": "489991c94e4f2786463251314b2037a2513f5fe82bcefea53b970a86f71f70a6",
-      "inputs": "8dc751bfe3ca9abe43c1d243bf75c66e574341537edcbbd3fcd07e95324c65d1",
-      "reason": "vid-124 review fixes: a medium's layering (mixes | stacks) is its own field, apart from paper contact; the compositor declares what its lay reads (press, before with a reach in paper-grain texels); a stamp's press is laid as 1 + pressure so pressure 0 isn't 'no stamp'; burnish sets the press outright. Watercolour and gouache must hold at max 0; crayon moves (fill reach now 6 grain texels, as wide as the gate's paper is drawn)",
+      "inputs": "978688ccea7182c31211543beaff9b45789ed585beeb9bc357f0f0f2f7545feb",
+      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
       "accepted": "2026-10-01",
-      "acceptedOver": "aa6e540",
+      "acceptedOver": "cb831b9",
       "adapter": "apple metal-3"
     },
     "painting/pigment-watercolour": {
       "file": "painting/pigment-watercolour.png",
       "output": "b598d20bade4cb0f55a65795a077e3ee4d411252edbefcac2d8097b2995c62c8",
-      "inputs": "ec527c545f19da01d0b7d71ed2d8d77c19160619df71fec764b16022c94aca33",
-      "reason": "vid-124 review fixes: a medium's layering (mixes | stacks) is its own field, apart from paper contact; the compositor declares what its lay reads (press, before with a reach in paper-grain texels); a stamp's press is laid as 1 + pressure so pressure 0 isn't 'no stamp'; burnish sets the press outright. Watercolour and gouache must hold at max 0; crayon moves (fill reach now 6 grain texels, as wide as the gate's paper is drawn)",
+      "inputs": "7812cc74ca6fcdba1e24e9bfed5fd559eca772308992f81ae2e2be73386cfdcf",
+      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
       "accepted": "2026-10-01",
-      "acceptedOver": "aa6e540",
+      "acceptedOver": "cb831b9",
       "adapter": "apple metal-3"
     },
     "painting/regions": {
       "file": "painting/regions.png",
       "output": "97e55753165a57bd526beb6bcca07b71f045fbc31c36217ee14d949a7923dcdb",
-      "inputs": "e441e3a175bf40c2d20d7bea8233c2385305b222574c8d188e335b73c25ed060",
-      "reason": "vid-124: a dry medium's wax stacks, its tooth fills from the wax held round each pixel, and its stamps' pressure (and burnish) sets how far it reaches into the tooth: paintDryContact gains press and filled; the deposit uniform gains press and a dry compositor binds pressure and the layer before it. Crayon moves by intent; every other painting must hold at max 0",
+      "inputs": "d23bac38e83cd00a65a23796efc83785fe76bfd64ab005c935923054ad7ba349",
+      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
       "accepted": "2026-10-01",
-      "acceptedOver": "870ac6f",
+      "acceptedOver": "cb831b9",
       "adapter": "apple metal-3"
     },
     "painting/strokes-accumulations": {
       "file": "painting/strokes-accumulations.png",
       "output": "b966c30b82ea398f672223552a08a56bf7949b08fce70a837872e3bb3dcc5dc2",
-      "inputs": "7df379058024f4939c8a37cd1136c361ea61449a6942696d5eec5c0379f23bc1",
-      "reason": "vid-124: a dry medium's wax stacks, its tooth fills from the wax held round each pixel, and its stamps' pressure (and burnish) sets how far it reaches into the tooth: paintDryContact gains press and filled; the deposit uniform gains press and a dry compositor binds pressure and the layer before it. Crayon moves by intent; every other painting must hold at max 0",
+      "inputs": "7a6111b496002e4e7a767803bc88ab922c61f71898a9a5fc0eb646c544fd03ae",
+      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
       "accepted": "2026-10-01",
-      "acceptedOver": "870ac6f",
+      "acceptedOver": "cb831b9",
       "adapter": "apple metal-3"
     },
     "painting/strokes-duals-edges": {
       "file": "painting/strokes-duals-edges.png",
       "output": "e7524a071ff5922cc93b97cc854166e3c284f4e8b7d57100c100dbf41ae31d13",
-      "inputs": "186180365ecaeff6457c67d2080d9f2143b608ae848849c7a2a9d05d14ce35cc",
-      "reason": "vid-124: a dry medium's wax stacks, its tooth fills from the wax held round each pixel, and its stamps' pressure (and burnish) sets how far it reaches into the tooth: paintDryContact gains press and filled; the deposit uniform gains press and a dry compositor binds pressure and the layer before it. Crayon moves by intent; every other painting must hold at max 0",
+      "inputs": "3272b4663bfbbe12b2e97f5a0a5a748111cdfc0ff76e84b9ec07985257ad1dbe",
+      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
       "accepted": "2026-10-01",
-      "acceptedOver": "870ac6f",
+      "acceptedOver": "cb831b9",
       "adapter": "apple metal-3"
     },
     "painting/strokes-grains": {
       "file": "painting/strokes-grains.png",
       "output": "2bd6658e2a199c017b7816f41d90b448a96ef0936b95e082626e28e81b1d9ad6",
-      "inputs": "b806a5c85744bad6834a747d2bf12eb432f9368d1980c9748b87ce640e1ae37e",
-      "reason": "vid-124: a dry medium's wax stacks, its tooth fills from the wax held round each pixel, and its stamps' pressure (and burnish) sets how far it reaches into the tooth: paintDryContact gains press and filled; the deposit uniform gains press and a dry compositor binds pressure and the layer before it. Crayon moves by intent; every other painting must hold at max 0",
+      "inputs": "b2baebad832afc94725ec050e3534a54516ba0bf265741ba83854fe1719e622f",
+      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
       "accepted": "2026-10-01",
-      "acceptedOver": "870ac6f",
+      "acceptedOver": "cb831b9",
       "adapter": "apple metal-3"
     }
   }
