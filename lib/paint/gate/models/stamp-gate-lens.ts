@@ -2,7 +2,7 @@
 // (stamp-paint-defocus-glow.ts). A defocus is held to a gaussian worked out here on the CPU; a glow to adding light
 // only past its threshold, nothing at amount 0, and the same frame when a checkpoint holding its light is restored.
 
-import { stampGaussianReach } from '#lib/paint/painting/models/stamp-defocus.ts';
+import { stampDefocusSigmaStepped, stampGaussianReach } from '#lib/paint/painting/models/stamp-defocus.ts';
 import { compileStampPaintRecipe, stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { StampGroupGlow, StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { STAMP_GATE_IMAGES, STAMP_GATE_WHITE, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
@@ -80,8 +80,10 @@ function fromGaussian(frame: ArrayLike<number>, expected: ArrayLike<number>) {
 export function checkStampGateDefocus({ sharp, zero, blurred, scaledSharp, scaledBlurred }: Record<'sharp' | 'zero' | 'blurred' | 'scaledSharp' | 'scaledBlurred', ArrayLike<number>>): StampGateWashCheck {
   const { width, height } = LENS_SIZE;
   const none = stampGateFrameDifference(sharp, zero);
-  const still = fromGaussian(blurred, stampGateGaussian(sharp, width, height, 4, STAMP_GATE_DEFOCUS_SIGMA, 255));
-  const scaled = fromGaussian(scaledBlurred, stampGateGaussian(scaledSharp, width, height, 4, STAMP_GATE_DEFOCUS_SIGMA, 255));
+  // The renderer holds a layer's sigma to its steps, so the stage's is the step nearest the sigma over the scale, rescaled.
+  const stageSigma = (scale: number) => scale * stampDefocusSigmaStepped(STAMP_GATE_DEFOCUS_SIGMA / scale);
+  const still = fromGaussian(blurred, stampGateGaussian(sharp, width, height, 4, stageSigma(1), 255));
+  const scaled = fromGaussian(scaledBlurred, stampGateGaussian(scaledSharp, width, height, 4, stageSigma(STAMP_GATE_DEFOCUS_SCALE), 255));
   const shown = stampGateFrameDifference(sharp, blurred).max;
   return {
     id: `lens/defocus: a defocus is a ${STAMP_GATE_DEFOCUS_SIGMA} px gaussian on the stage, laid still or scaled, and none at 0`,

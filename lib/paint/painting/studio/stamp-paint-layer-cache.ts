@@ -24,6 +24,8 @@ type Entry = { key: string; painted: StampPixelBox | null; held: StampPixelBox |
 export type StampPaintLayerCache = {
   /** Copies the entry under `key` back into the layer target and returns it, or null for none. */
   restore: (encoder: GPUCommandEncoder, key: string) => StampCachedLayer | null;
+  /** The entry under `key`, copying nothing, or null for none. */
+  peek: (key: string) => StampCachedLayer | null;
   /** Keeps the layer target, as it'll stand at this point in `encoder`, under `key`: its `painted` box and the reach a lay reads. */
   save: (encoder: GPUCommandEncoder, key: string, painted: StampPixelBox | null) => void;
   /** Destroys every entry's texture, once the frames that copied them are submitted. */
@@ -55,6 +57,10 @@ export function stampPaintLayerCache(device: StampPaintDevice, layer: GPUTexture
         encoder.copyTextureToTexture({ texture: found.texture }, { texture: layer, origin: { x, y, z: 0 } }, [w, h, layers]);
       }
       return { painted: found.painted };
+    },
+    peek(key) {
+      const found = entries.get(key);
+      return found ? { painted: found.painted } : null;
     },
     save(encoder, key, painted) {
       const again = entries.get(key);

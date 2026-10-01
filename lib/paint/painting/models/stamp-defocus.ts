@@ -13,6 +13,13 @@ export const STAMP_GAUSSIAN_SIGMAS = 3;
 /** How far a gaussian of `sigma` px reaches each side, whole px: 0 for none. */
 export const stampGaussianReach = (sigma: number) => (sigma > 0 ? Math.ceil(STAMP_GAUSSIAN_SIGMAS * sigma) : 0);
 
+/**
+ * A layer's defocus sigma held to steps 2% apart, finer than an eye tells a blur's width by. A camera moving in
+ * rescales a plane every frame, so its exact sigma is new each frame; held to a step, frames share one defocused layer.
+ */
+export const STAMP_DEFOCUS_SIGMA_STEP = 1.02;
+export const stampDefocusSigmaStepped = (sigma: number) => (sigma > 0 ? STAMP_DEFOCUS_SIGMA_STEP ** Math.round(Math.log(sigma) / Math.log(STAMP_DEFOCUS_SIGMA_STEP)) : 0);
+
 /** `box` grown by `by` px each side, held to a `width` × `height` target. */
 export function stampGrownBox(box: StampPixelBox, by: number, width: number, height: number): StampPixelBox {
   const x = Math.max(0, box.x - by), y = Math.max(0, box.y - by);

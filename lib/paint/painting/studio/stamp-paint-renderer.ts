@@ -40,7 +40,7 @@ import { stampWashDryings, type StampWashDrying } from '../models/stamp-wet-rim.
 import { stampPaintCheckpoints } from './stamp-paint-checkpoints.ts';
 import { STAMP_LAYER_CACHE_READ_REACH, stampPaintLayerCache } from './stamp-paint-layer-cache.ts';
 import { STAMP_GAUSSIAN_PASS, STAMP_GLOW_SOURCE, STAMP_SRGB_WGSL, stampGaussianPassWgsl, stampGlowSourceWgsl, type StampGlowCover } from './stamp-paint-defocus-glow.ts';
-import { stampGaussianReach, stampGrownBox, stampLayScale } from '../models/stamp-defocus.ts';
+import { stampDefocusSigmaStepped, stampGaussianReach, stampGrownBox, stampLayScale } from '../models/stamp-defocus.ts';
 import { stampPaintEvents } from '../models/stamp-paint-events.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { stampPlacementWarpMap, stampWarpCells, stampWarpTriangles, STAMP_WARP_MOST_CELLS } from '../models/stamp-group-warp.ts';
@@ -2090,10 +2090,12 @@ function rendererOnSurface(
     gaussianPass(encoder, { source: scratch, into: layerArray, layers: layerLayers, axis: 1, sigma, read: grown, box: stampGrownBox(grown, STAMP_LAYER_CACHE_READ_REACH, width, height) });
     return grown;
   }
-  /** The sigma, layer px, group `groupFrame`'s defocus takes over its layer painted over `painted`: its blur over the lay's scale there. */
+  /** The sigma, layer px, group `groupFrame`'s defocus takes over its layer painted over `painted`: its blur over the lay's scale there, stepped. */
   function defocusSigma({ blur, lay, warp }: StampGroupFrame, painted: Box) {
-    return blur / stampLayScale(lay, warp, { x: painted.x - margin + painted.w / 2, y: painted.y - margin + painted.h / 2 });
+    return stampDefocusSigmaStepped(blur / stampLayScale(lay, warp, { x: painted.x - margin + painted.w / 2, y: painted.y - margin + painted.h / 2 }));
   }
+  /** The key of the layer cached under `layerKey` defocused for `groupFrame`: its sigma names it whatever lay gave it. */
+  const defocusedLayerKey = (layerKey: string, groupFrame: StampGroupFrame, painted: Box) => `${layerKey}|sigma${defocusSigma(groupFrame, painted)}`;
   /** Outside layer `layer`'s texture defocused by its blur over the stage, into a scratch target; returns its view. */
   function defocusOutsideLayer(encoder: GPUCommandEncoder, layer: StampOutsideLayerFrame): GPUTextureView {
     const whole = { x: 0, y: 0, w: width, h: height }, across = lensTarget('lensA'), defocused = lensTarget('lensB');
@@ -2268,15 +2270,15 @@ function rendererOnSurface(
     };
     /**
      * Lays group `index` from its layer over `painted` as its frame state looks: defocused (unless `defocused` already,
-     * then cached under `blurredKey`), laid, and glowing.
+     * then cached beside its sharp layer's `layerKey`, if it has one), laid, and glowing.
      */
-    const layGroupLooked = (index: number, groupFrame: StampGroupFrame, painted: Box | null, blurredKey: string | null, defocused: boolean) => {
+    const layGroupLooked = (index: number, groupFrame: StampGroupFrame, painted: Box | null, layerKey: string | null, defocused: boolean) => {
       if (!painted) return;
       const { group, blur, glow, visibility } = groupFrame;
       let laidFrom = painted;
       if (blur && !defocused) {
         laidFrom = defocusGroupLayer(encoder, defocusSigma(groupFrame, painted), painted);
-        if (blurredKey !== null) layerCache.save(encoder, blurredKey, laidFrom);
+        if (layerKey !== null) layerCache.save(encoder, defocusedLayerKey(layerKey, groupFrame, painted), laidFrom);
       }
       const laid = layGroup(encoder, index, groupFrame, laidFrom);
       if (!laid || !glow) return;
@@ -2299,11 +2301,10 @@ function rendererOnSurface(
       // Painted from its start and settled, its layer is its paintKey's alone (stamp-paint-layer-cache.ts). No checkpoint
       // falls within such a group, so skipping its events skips no save.
       const layerKey = !whole && first >= from && end <= settled ? `${index}|${groupFrame.paintKey}` : null;
-      // Its defocused layer is keyed by what its sigma in the layer comes from. A frame saving a checkpoint at its end
-      // needs its layer sharp, so doesn't start from that one.
-      const { blur, lay, warp } = groupFrame;
-      const blurredKey = layerKey !== null && blur ? `${layerKey}|blur${blur}x${lay?.placement.scale ?? 1}${warp ? `^${JSON.stringify(warp.key)}` : ''}` : null;
-      const defocused = blurredKey !== null && !(layVaries && savesAt(end, true)) ? restoreGroupLayer(encoder, blurredKey) : null;
+      // Its defocused layer is keyed by its sigma in the layer, which needs its sharp layer's box. A frame saving a
+      // checkpoint at its end needs its layer sharp, so doesn't start from that one.
+      const sharp = layerKey !== null && groupFrame.blur && !(layVaries && savesAt(end, true)) ? layerCache.peek(layerKey) : null;
+      const defocused = layerKey !== null && sharp?.painted ? restoreGroupLayer(encoder, defocusedLayerKey(layerKey, groupFrame, sharp.painted)) : null;
       if (defocused) {
         layGroupLooked(index, groupFrame, defocused.painted, null, true);
         continue;
@@ -2311,7 +2312,7 @@ function rendererOnSurface(
       const cached = layerKey === null ? null : restoreGroupLayer(encoder, layerKey);
       if (cached) {
         if (layVaries) save(end, true, cached.painted);
-        layGroupLooked(index, groupFrame, cached.painted, blurredKey, false);
+        layGroupLooked(index, groupFrame, cached.painted, layerKey, false);
         continue;
       }
       const epoch = drawing.kind === 'written' ? drawing.epoch : 0;
@@ -2340,7 +2341,7 @@ function rendererOnSurface(
       }
       if (layerKey !== null) layerCache.save(encoder, layerKey, painted);
       if (layVaries) save(end, true, painted);
-      layGroupLooked(index, groupFrame, painted, blurredKey, false);
+      layGroupLooked(index, groupFrame, painted, layerKey, false);
     }
     layOutsideLayersBefore(groups.length);
     save(events.length, false, null);
