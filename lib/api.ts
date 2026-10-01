@@ -79,6 +79,7 @@ export { stampRegionOutline, stampSmoothRegion, type StampFillApplication } from
 export { STAMP_FILL_PATTERNS, stampFillMarks, stampFillStrokePath, type StampFillGuides, type StampFillMark, type StampFillPattern, type StampFillStrokes, type StampFillTurns } from '#lib/picture/stamp-paint/models/stamp-fill-strokes.ts';
 export { stampFittedEllipse, stampRoundedForm, type StampFormEllipse, type StampFormLight, type StampRoundedForm, type StampRoundedFormSettings } from '#lib/picture/stamp-paint/models/stamp-form.ts';
 export type { StampEdge, StampPoint, StampRegion } from '#lib/picture/stamp-paint/models/stamp-region.ts';
+export type { StampArea, StampStandsBefore } from '#lib/picture/stamp-paint/models/stamp-area.ts';
 export type { StampNoiseField, StampPaintField } from '#lib/picture/stamp-paint/models/stamp-paint-field.ts';
 export type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from '#lib/picture/stamp-paint/models/stamp-group-motion.ts';
 export type { StampMaterialKeys } from '#lib/picture/stamp-paint/models/stamp-material-keys.ts';

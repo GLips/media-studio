@@ -3,8 +3,8 @@
 // (stamp-gate-paintings.ts) with the studio's renderer, holds a traced resolve to the frame it draws, and paints each
 // wash case, reading its layer back for the properties it's held to (stamp-gate-washes.ts), animates the animation
 // cases (stamp-gate-animation.ts) and runs the flow, bloom and rim stages alone over layers it writes
-// (stamp-gate-flow.ts, stamp-gate-stripe.ts). Paintings are built here, as a compiled painting's typed arrays don't
-// survive the trip from Node.
+// (stamp-gate-flow.ts, stamp-gate-stripe.ts), and draws the region cases (stamp-gate-regions.ts). Paintings are built
+// here, as a compiled painting's typed arrays don't survive the trip from Node.
 
 import { PAINT_KUBELKA_MUNK_WGSL } from '#lib/picture/paint/models/paint-kubelka-munk.ts';
 import { PAINT_PAPER_WGSL } from '#lib/picture/paint/models/paint-paper.ts';
@@ -16,6 +16,7 @@ import { stampPassDeposits, type CompiledStampDeposit, type CompiledStampPaint }
 import { STAMP_WET_LAND_WGSL } from '#lib/picture/stamp-paint/models/stamp-wet-landing.ts';
 import { STAMP_WET_LIFT_WGSL } from '#lib/picture/stamp-paint/models/stamp-wet-lift.ts';
 import { STAMP_GRID_AT_WGSL, STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL } from '#lib/picture/stamp-paint/models/stamp-region.ts';
+import { STAMP_AREA_COVERAGE_WGSL } from '#lib/picture/stamp-paint/models/stamp-area.ts';
 import { PAINT_MEDIA } from '#lib/picture/paint/models/paint-medium.ts';
 import { compileStampWetness } from '#lib/picture/stamp-paint/models/stamp-wetness.ts';
 import { createStampPaintDevice } from '#lib/picture/stamp-paint/studio/stamp-paint-gpu.ts';
@@ -40,6 +41,7 @@ import {
   checkStampGateFlow, STAMP_GATE_FLOW_SIZE, stampGateFlowCase, stampGateFlowLayer, stampGateFlowPainting, stampGateHalfBits, stampGateHalfValue,
 } from '../models/stamp-gate-flow.ts';
 import { stampGatePrivatePainting, type StampGatePrivateCase } from '../models/stamp-gate-private-cases.ts';
+import { checkStampGateRegion, stampGateRegionPaintings, type StampGateRegionId } from '../models/stamp-gate-regions.ts';
 import {
   checkStampGateRimStrength, checkStampGateStripe, STAMP_GATE_RIM_STRENGTHS, STAMP_GATE_STRIPE_SIZE, stampGateStripeCase, stampGateStripeLayer, stampGateStripePainting,
 } from '../models/stamp-gate-stripe.ts';
@@ -67,7 +69,7 @@ ${STAMP_WET_LAND_WGSL}
 ${STAMP_WET_LIFT_WGSL}
 @group(0) @binding(0) var<storage, read> inputs: array<f32>;
 @group(0) @binding(1) var<storage, read_write> outputs: array<f32>;
-${points ? `@group(0) @binding(2) var<storage, read> points: array<vec2f>;\n${STAMP_POLYGON_DISTANCE_WGSL}` : ''}
+${points ? `@group(0) @binding(2) var<storage, read> points: array<vec2f>;\n${STAMP_POLYGON_DISTANCE_WGSL}\n${STAMP_AREA_COVERAGE_WGSL}` : ''}
 ${grid ? `@group(0) @binding(3) var<storage, read> grid: array<f32>;\n${STAMP_GRID_AT_WGSL}` : ''}
 var<private> row: u32;
 fn x(i: u32) -> f32 { return inputs[row * ${width}u + i]; }
@@ -485,6 +487,14 @@ async function checkStampGateStripeCase(id: string): Promise<StampGateWashCheck>
   return checkStampGateStripe(id, before, after);
 }
 
+/** Region case `id` (stamp-gate-regions.ts): each of its paintings drawn at its time, held to its property. */
+async function checkStampGateRegionCase(id: StampGateRegionId): Promise<StampGateWashCheck> {
+  const frames = await stampGateRegionPaintings(id).reduce<Promise<Uint8ClampedArray[]>>(async (done, gate) => [
+    ...await done, await withGateRenderer(gate, drawnImages(gate), (renderer, frame) => drawn(renderer, frame, gate.t)),
+  ], Promise.resolve([]));
+  return checkStampGateRegion(id, frames);
+}
+
 /** The GPU the gate draws on, as a baseline records it. */
 async function stampGateAdapter(): Promise<string> {
   const adapter = await navigator.gpu.requestAdapter();
@@ -493,4 +503,4 @@ async function stampGateAdapter(): Promise<string> {
   return [vendor, architecture, device, description].filter(Boolean).join(' ');
 }
 
-Object.assign(globalThis, { runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, checkStampGateAnimation, checkStampGateFlowCase, checkStampGateStripeCase, stampGateAdapter });
+Object.assign(globalThis, { runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, checkStampGateAnimation, checkStampGateFlowCase, checkStampGateStripeCase, checkStampGateRegionCase, stampGateAdapter });

@@ -38,7 +38,9 @@ Everything is from `#studio`.
   - A **group** is one element. `opaque` covers what's under it; `glaze` tints it, like a transparent wash (a sky, a
     ground, a shadow).
   - A **pass** is one layer of paint inside it. `clipped: true` keeps it inside the last unclipped pass: texture and
-    shading that can't leave the silhouette. `within: region` keeps it inside a region (a reflection in its water).
+    shading that can't leave the silhouette. `within: { region, edge?, inset? }` keeps it inside an area (a
+    reflection in its water): `edge` as masking fluid's, a ragged one breaking the cut line of a padded wash
+    (seeded by the pass's ID; keep its amount under the brush's radius); `inset` px moves the edge inward.
   - A **fill** covers a `region`, reaching its outline, laid by its `application`:
     - `{ kind: 'flood' }`: solid inside, the brush's own edge at the outline, however small a spike. It costs what its
       edge does, not its area.
@@ -84,10 +86,15 @@ Everything is from `#studio`.
       pace rather than an even one. A point's own `pressure` (and `speed`) still counts, multiplied in.
     - `npm run brushes:hand -- --style <style> --pack <pack> --brush <name> --out <dir>` paints one path under each profile, with and without curvature and wobble, beside constant pressure: see how a
       brush answers before choosing.
-  - **Masking fluid**: `mask(id, { region, edge })` on the painting, a group or a pass keeps paper bare there for
-    everything declared after it in that scope, until the scope ends; `unmask(id, { region, amount })` lifts all or
-    part of it. `edge`: `{ soft: px }` or `{ ragged: { amount, scale } }`, else a clean antialiased line. Paint
-    already there stays: a mask is for highlights, glints and reserves, not erasing.
+  - **Masking fluid**: `mask(id, { region, edge, inset })` on the painting, a group or a pass keeps paper bare there
+    for everything declared after it in that scope, until the scope ends; `unmask(id, { region, edge, inset, amount })`
+    lifts all or part of it. `edge`: `{ soft: px }` or `{ ragged: { amount, scale } }`, else a clean antialiased
+    line; `inset` (px) moves it inward. Paint already there stays: a mask is for highlights, glints and reserves, not
+    erasing.
+  - **A near shape in front of far paint** (hills before a range): give the near group `standsBefore: { groups:
+    ['far-range'], shape: hills, overlap: 3 }`. The named groups, which must paint before it, land as if under fluid
+    over `shape` inset by `overlap` px, past any unmask of theirs and their water too; the near group paints its own
+    shape over the seam, so no paper line opens. Say the shape: it isn't read from the near group's paint.
   - **A moving light out of a still sky** (a cloud drifting over a wash): make the cloud its own group with
     `motion`, and declare first `group.knockout(id, { preparation? }, (k) => …)`. It takes out of everything painted
     before the group, and travels with it. Then paint the cloud's own passes over it.

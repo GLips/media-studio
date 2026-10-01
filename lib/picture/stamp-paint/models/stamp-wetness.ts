@@ -12,7 +12,8 @@ import type { PaintMedium, PaintWetting } from '#lib/picture/paint/models/paint-
 import { stampPaintFieldAt } from './stamp-paint-field.ts';
 import type { PlacedStamp } from './stamp-placement.ts';
 import type { CompiledStampDeposit, CompiledStampMask, CompiledStampPaint, CompiledStampPass, StampPaintPaper, StampWashWait } from './stamp-paint-recipe.ts';
-import type { StampGrid, StampPoint } from './stamp-region.ts';
+import { stampEdgeReach, type StampGrid, type StampPoint } from './stamp-region.ts';
+import { stampAreaBox, stampAreaCoverageAt, type CompiledStampArea } from './stamp-area.ts';
 
 /** A window of the lattice: its first point (px), spacing (STAMP_WET_CELL) and points across and down. */
 export type StampWetWindow = Omit<StampGrid, 'values'>;
@@ -103,7 +104,7 @@ export function compileStampWetness(
     // Paint an earlier pass left has set: washes share no water.
     const wash: StampWashPaper = { lattice, level: new Float64Array(points), at: new Float64Array(points), settled: new Uint8Array(points).fill(1) };
     if (preparation) {
-      const cover = footprintCover(lattice, [], [preparation.polygon], pass.within, null);
+      const cover = footprintCover(lattice, [], [preparation.polygon], pass.within, preparation.held ?? null);
       forSpan(wash, lattice, (k, w, x, y) => { wash.level[k] = cover[w] * stampPaintFieldAt(preparation.wetness, x, y); });
     }
     let tau = 0;
@@ -152,7 +153,7 @@ function stampWashWaitSeconds(wash: StampWashPaper, tau: number, until: StampWas
 }
 
 /** The lattice points `deposit` wets any of, as its landing's cover reads them. */
-function pointsUnder(wash: StampWashPaper, deposit: CompiledStampDeposit, within: readonly StampPoint[] | null): number[] {
+function pointsUnder(wash: StampWashPaper, deposit: CompiledStampDeposit, within: CompiledStampArea | null): number[] {
   const span = depositSpan(deposit, wash.lattice, 0);
   const cover = footprintCover(span, deposit.stamps, deposit.kind === 'flood' ? [deposit.flood.polygon] : [], within, deposit.mask);
   const points: number[] = [];
@@ -215,20 +216,19 @@ function depositSpan(deposit: CompiledStampDeposit, lattice: StampWetSpan, margi
 
 /**
  * How much of each point's cell of `span` is wetted, 0..1: the discs of `stamps` and the `polygons`, less what's
- * outside `within` or under the masking fluid `mask`, averaged from samples finer than the lattice. Hard-edged: a mask's
- * soft or ragged edge is finer than a cell.
+ * outside `within` or under the masking fluid `mask` (areaOnto), averaged from samples finer than the lattice.
  */
-function footprintCover(span: StampWetSpan, stamps: readonly PlacedStamp[], polygons: readonly (readonly StampPoint[])[], within: readonly StampPoint[] | null, mask: CompiledStampMask | null): Float32Array {
+function footprintCover(span: StampWetSpan, stamps: readonly PlacedStamp[], polygons: readonly (readonly StampPoint[])[], within: CompiledStampArea | null, mask: CompiledStampMask | null): Float32Array {
   const step = STAMP_WET_CELL / FOOTPRINT_SAMPLES, columns = span.columns * FOOTPRINT_SAMPLES, rows = span.rows * FOOTPRINT_SAMPLES;
   // Sample (a, b) sits at the centre of its share of the cell round lattice point (i0 + a / 4, j0 + b / 4).
   const ox = (span.i0 - 0.5) * STAMP_WET_CELL + step / 2, oy = (span.j0 - 0.5) * STAMP_WET_CELL + step / 2;
-  const fine = { columns, rows, ox, oy, step };
+  const fine = { columns, rows, ox, oy, step, a0: span.i0 * FOOTPRINT_SAMPLES, b0: span.j0 * FOOTPRINT_SAMPLES };
   const wet = new Float32Array(columns * rows);
   for (const { x, y, diameter } of stamps) stampDiscOnto(wet, fine, x, y, diameter / 2);
   for (const polygon of polygons) scanPolygon(polygon, fine, (s) => { wet[s] = 1; });
   if (within) {
-    const inside = new Uint8Array(wet.length);
-    scanPolygon(within, fine, (s) => { inside[s] = 1; });
+    const inside = new Float32Array(wet.length);
+    areaOnto(within, fine, (s, r) => { inside[s] = r; });
     for (let s = 0; s < wet.length; s++) wet[s] *= inside[s];
   }
   const chain: CompiledStampMask[] = [];
@@ -236,8 +236,8 @@ function footprintCover(span: StampWetSpan, stamps: readonly PlacedStamp[], poly
   if (chain.length) {
     const fluid = new Float32Array(wet.length);
     for (const op of chain) {
-      if (op.kind === 'mask') scanPolygon(op.area.polygon, fine, (s) => { fluid[s] = 1; });
-      else if (op.area) scanPolygon(op.area.polygon, fine, (s) => { fluid[s] *= 1 - op.amount; });
+      if (op.kind === 'mask') areaOnto(op.area, fine, (s, r) => { fluid[s] = Math.max(fluid[s], r); });
+      else if (op.area) areaOnto(op.area, fine, (s, r) => { fluid[s] *= 1 - op.amount * r; });
       else for (let s = 0; s < fluid.length; s++) fluid[s] *= 1 - op.amount;
     }
     for (let s = 0; s < wet.length; s++) wet[s] *= 1 - fluid[s];
@@ -249,8 +249,29 @@ function footprintCover(span: StampWetSpan, stamps: readonly PlacedStamp[], poly
   return cover;
 }
 
-/** A raster of samples `step` px apart, the first at (ox, oy). */
-type StampWetRaster = { columns: number; rows: number; ox: number; oy: number; step: number };
+/**
+ * A raster of samples `step` px apart, the first at (ox, oy). Every footprint's samples lie on one grid over the
+ * painting, which its first is sample (a0, b0) of: sample k of the grid sits at (k - FOOTPRINT_SAMPLES / 2) · step + step / 2.
+ */
+type StampWetRaster = { columns: number; rows: number; ox: number; oy: number; step: number; a0: number; b0: number };
+
+/** An area's coverage on the painting's grid of samples over its box: from sample (a0, b0), `columns` × `rows`. */
+type StampAreaSamples = { a0: number; b0: number; columns: number; rows: number; values: Float32Array };
+const areaSamples = new WeakMap<CompiledStampArea, StampAreaSamples>();
+
+/** `area`'s coverage at every sample of the painting's grid within its box, worked out once, as many footprints read it. */
+function samplesOf(area: CompiledStampArea): StampAreaSamples {
+  const known = areaSamples.get(area);
+  if (known) return known;
+  const step = STAMP_WET_CELL / FOOTPRINT_SAMPLES, at = (k: number) => (k - FOOTPRINT_SAMPLES / 2) * step + step / 2;
+  const box = stampAreaBox(area), a0 = Math.ceil((box.x0 - at(0)) / step), b0 = Math.ceil((box.y0 - at(0)) / step);
+  const columns = Math.max(0, Math.floor((box.x1 - at(0)) / step) - a0 + 1), rows = Math.max(0, Math.floor((box.y1 - at(0)) / step) - b0 + 1);
+  const values = new Float32Array(columns * rows);
+  for (let b = 0; b < rows; b++) for (let a = 0; a < columns; a++) values[b * columns + a] = stampAreaCoverageAt(area, at(a0 + a), at(b0 + b));
+  const samples = { a0, b0, columns, rows, values };
+  areaSamples.set(area, samples);
+  return samples;
+}
 
 /** Marks the samples within `radius` of (x, y); a disc too small to reach one lays its area's share on the nearest. */
 function stampDiscOnto(wet: Float32Array, fine: StampWetRaster, x: number, y: number, radius: number) {
@@ -264,6 +285,24 @@ function stampDiscOnto(wet: Float32Array, fine: StampWetRaster, x: number, y: nu
   for (let b = Math.max(0, Math.ceil(v - r)); b <= Math.min(rows - 1, Math.floor(v + r)); b++) {
     const half = Math.sqrt(Math.max(0, r * r - (b - v) ** 2));
     for (let a = Math.max(0, Math.ceil(u - half)); a <= Math.min(columns - 1, Math.floor(u + half)); a++) wet[b * columns + a] = 1;
+  }
+}
+
+/**
+ * Calls `visit` with each sample of `fine` `area` covers any of and how much, as the GPU reads it (stampAreaCoverageAt).
+ * An edge reaching no more than half a sample from its line, uninset, is finer than the samples: it's scanned hard.
+ */
+function areaOnto(area: CompiledStampArea, fine: StampWetRaster, visit: (sample: number, coverage: number) => void) {
+  if (!area.inset && stampEdgeReach(area.edge) <= fine.step / 2) {
+    scanPolygon(area.polygon, fine, (s) => visit(s, 1));
+    return;
+  }
+  const samples = samplesOf(area), da = samples.a0 - fine.a0, db = samples.b0 - fine.b0;
+  for (let b = Math.max(0, db); b < Math.min(fine.rows, db + samples.rows); b++) {
+    for (let a = Math.max(0, da); a < Math.min(fine.columns, da + samples.columns); a++) {
+      const r = samples.values[(b - db) * samples.columns + a - da];
+      if (r > 0) visit(b * fine.columns + a, r);
+    }
   }
 }
 

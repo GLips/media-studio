@@ -19,14 +19,15 @@ import {
 import { STAMP_FLOOD_FRONT_SHARE_WGSL } from '../models/stamp-fill.ts';
 import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
 import { stampDepositShowsAt, stampFloodProgressAt, visibleStampCountAt } from '../models/stamp-deposit-reveal.ts';
-import { stampBoilSeed, stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampMask, type CompiledStampMaskArea, type CompiledStampPaint, type CompiledStampPass, type StampPaintPaper } from '../models/stamp-paint-recipe.ts';
+import { stampBoilSeed, stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampMask, type CompiledStampPaint, type CompiledStampPass, type StampPaintPaper } from '../models/stamp-paint-recipe.ts';
 import { compileStampPigmentPaint, stampGrainDepthIn, type StampPaintMixing } from '../models/stamp-pigment-paint.ts';
 import { compileStampWetness, STAMP_WET_CELL, type StampWetLanding, type StampWetness } from '../models/stamp-wetness.ts';
 import { STAMP_WET_LAND_WGSL } from '../models/stamp-wet-landing.ts';
 import { PAINT_DRY_BURNISHED_PRESS, paintPigmentSeed } from '#lib/picture/paint/models/paint-paper.ts';
 import { PAINT_BANDS } from '#lib/picture/paint/models/paint-spectrum.ts';
 import type { PaintMedium } from '#lib/picture/paint/models/paint-medium.ts';
-import { STAMP_GRID_AT_WGSL, STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL, stampEdgeReach, stampEdgeWidth, stampPolygonBox, type StampBox, type StampPoint } from '../models/stamp-region.ts';
+import { STAMP_GRID_AT_WGSL, STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL, stampEdgeWidth, type StampBox, type StampPoint } from '../models/stamp-region.ts';
+import { STAMP_AREA_COVERAGE_WGSL, stampAreaBox, type CompiledStampArea } from '../models/stamp-area.ts';
 import type { PlacedStamp } from '../models/stamp-placement.ts';
 import { stampBlurRegion, type StampPixelBox } from '../models/stamp-blur-region.ts';
 import { coarsestStampTipLevel, STAMP_TIP_HULL_SIDES, type StampTipHull, type StampTipLevel } from '../models/stamp-tip-hull.ts';
@@ -605,21 +606,23 @@ ${compositor.output}
 }`;
 
 // A state of the masking fluid over its box: the state it's built on (`parent`, width 0 for none), then `opCount` ops
-// from `firstOp`, a mask joining its region by max, an unmask lifting its amount, everywhere without a region
-// (`count` 0). An op's region is worked out only within its `reach`, beyond which it's 0.
+// from `firstOp`, a mask joining its area by max, an unmask lifting its amount, everywhere without a region
+// (`count` 0). An op's area is worked out only within its `reach`, beyond which it's 0.
 const MASK_STEP = stampUniformLayout('MaskStep', [['box', 'vec4f'], ['parent', 'vec4f'], ['firstOp', 'u32'], ['opCount', 'u32']]);
-const MASK_OP_WORDS = 12;
+/** A MaskOp's words: its thirteen, padded to its vec4f's alignment. */
+const MASK_OP_WORDS = 16;
 const MASK_STEP_WGSL = /* wgsl */ `
 ${COVERAGE_FORMULAS_WGSL}
 ${STAMP_REGION_WGSL}
 ${FULL_FRAME_WGSL}
 ${MASK_STEP.wgsl}
-struct MaskOp { reach: vec4f, ragged: vec2f, width: f32, amount: f32, first: u32, count: u32, kind: u32, seed: u32 }
+struct MaskOp { reach: vec4f, ragged: vec2f, width: f32, amount: f32, first: u32, count: u32, kind: u32, seed: u32, inset: f32 }
 @group(0) @binding(0) var<uniform> u: MaskStep;
 @group(0) @binding(1) var<storage, read> points: array<vec2f>;
 @group(0) @binding(2) var parent: texture_2d<f32>;
 @group(0) @binding(3) var<storage, read> ops: array<MaskOp>;
 ${STAMP_POLYGON_DISTANCE_WGSL}
+${STAMP_AREA_COVERAGE_WGSL}
 @fragment fn maskStep(@builtin(position) at: vec4f) -> @location(0) vec4f {
   let p = at.xy + u.box.xy;
   var fluid = 0.0;
@@ -630,11 +633,7 @@ ${STAMP_POLYGON_DISTANCE_WGSL}
     var r = 1.0;
     if (op.count > 0u) {
       r = 0.0;
-      if (all(p >= op.reach.xy) && all(p <= op.reach.zw)) {
-        var moved = 0.0;
-        if (op.ragged.y > 0.0) { moved = op.ragged.x * edgeNoise(p.x / op.ragged.y, p.y / op.ragged.y, op.seed); }
-        r = edgeCoverage(polygonDistance(p, op.first, op.count) + moved, op.width);
-      }
+      if (all(p >= op.reach.xy) && all(p <= op.reach.zw)) { r = areaCoverage(p, op.first, op.count, op.inset, op.ragged, op.width, op.seed); }
     }
     fluid = select(fluid * (1.0 - op.amount * r), max(fluid, r), op.kind == 0u);
   }
@@ -1309,7 +1308,7 @@ function rendererOnSurface(
       return placed.get(polygon)!;
     };
     const grids: number[] = [];
-    const opWords: { floats: number[]; words: number[] }[] = [];
+    const opWords: { floats: number[]; words: number[]; inset: number }[] = [];
     type Step = { box: Box; draw: (views: StampUniformViews) => GPURenderPipeline; parent?: Step | null; grid?: boolean };
     const steps: Step[] = [];
     const inPainting = (box: StampBox): Box | null => {
@@ -1317,12 +1316,13 @@ function rendererOnSurface(
       const w = Math.min(width, Math.ceil(box.x1)) - x, h = Math.min(height, Math.ceil(box.y1)) - y;
       return w > 0 && h > 0 ? { x, y, w, h } : null;
     };
-    /** An op of the fluid, its region's area or everywhere, as a MaskOp; its index. */
-    const opOf = (kind: 'mask' | 'unmask', amount: number, area: CompiledStampMaskArea | null) => {
-      const [first, count] = area ? pointsOf(area.polygon) : [0, 0], reach = area ? areaBox(area) : null, ragged = area?.edge?.ragged;
+    /** An op of the fluid, over its area or everywhere, as a MaskOp; its index. */
+    const opOf = (kind: 'mask' | 'unmask', amount: number, area: CompiledStampArea | null) => {
+      const [first, count] = area ? pointsOf(area.polygon) : [0, 0], reach = area ? stampAreaBox(area) : null, ragged = area?.edge?.ragged;
       opWords.push({
         floats: [reach?.x0 ?? 0, reach?.y0 ?? 0, reach?.x1 ?? 0, reach?.y1 ?? 0, ragged?.amount ?? 0, ragged?.scale ?? 0, stampEdgeWidth(area?.edge), amount],
         words: [first, count, kind === 'mask' ? 0 : 1, area?.seed ?? 0],
+        inset: area?.inset ?? 0,
       });
       return opWords.length - 1;
     };
@@ -1376,7 +1376,7 @@ function rendererOnSurface(
       const parent = base ? fluidOf(base) : null;
       let box = parent?.box ?? null;
       for (const op of between) {
-        const own = op.kind === 'mask' ? inPainting(areaBox(op.area)) : null;
+        const own = op.kind === 'mask' ? inPainting(stampAreaBox(op.area)) : null;
         if (own) box = box ? union(box, own) : own;
       }
       const step = box && maskStep(box, parent, opWords.length, between.length);
@@ -1389,14 +1389,14 @@ function rendererOnSurface(
     };
     for (const mask of read) fluidOf(mask);
 
-    // A pass's `within` is a state of its own: one mask of its region on no fluid.
+    // A pass's `within` is a state of its own: one mask of its area on no fluid.
     const withins = new Map<CompiledStampPass, Step | null>();
     for (const pass of passes) {
       if (!pass.within) continue;
-      const area = { polygon: pass.within, seed: 0 }, box = inPainting(areaBox(area));
+      const box = inPainting(stampAreaBox(pass.within));
       const step = box && maskStep(box, null, opWords.length, 1);
       if (step) {
-        opOf('mask', 1, area);
+        opOf('mask', 1, pass.within);
         steps.push(step);
       }
       withins.set(pass, step);
@@ -1412,9 +1412,10 @@ function rendererOnSurface(
     }));
     if (steps.length) {
       const opBytes = new ArrayBuffer(Math.max(1, opWords.length) * MASK_OP_WORDS * 4), opFloats = new Float32Array(opBytes), opInts = new Uint32Array(opBytes);
-      opWords.forEach(({ floats, words }, i) => {
+      opWords.forEach(({ floats, words, inset }, i) => {
         opFloats.set(floats, i * MASK_OP_WORDS);
         opInts.set(words, i * MASK_OP_WORDS + floats.length);
+        opFloats[i * MASK_OP_WORDS + floats.length + words.length] = inset;
       });
       const pointBuffer = buffer(new Float32Array(points.length ? points : [0, 0]), GPUBufferUsage.STORAGE), gridBuffer = buffer(new Float32Array(grids.length ? grids : [0]), GPUBufferUsage.STORAGE);
       const opBuffer = buffer(opFloats, GPUBufferUsage.STORAGE);
@@ -2062,9 +2063,6 @@ function writeGrain(views: StampUniformViews, at: number, grain: StampBrushGrain
   put('aboutMean', grain.contrastPivot === 'mean' ? 1 : 0);
   put('mirror', grain.tiling === 'mirror' ? 1 : 0);
 }
-
-/** Where a mask's region can cover anything: its box grown by how far its edge reaches. */
-const areaBox = (area: CompiledStampMaskArea) => stampPolygonBox(area.polygon, stampEdgeReach(area.edge) + 1);
 
 /** A box as a uniform's four words; an empty box for none, whose region reads 0 everywhere. */
 const boxWords = (box: Box | undefined): [number, number, number, number] => (box ? [box.x, box.y, box.w, box.h] : [0, 0, 0, 0]);

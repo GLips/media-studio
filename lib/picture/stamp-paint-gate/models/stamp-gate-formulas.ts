@@ -2,7 +2,8 @@
 // one row of inputs at a time; the page (stamp-gate-page.ts) runs every row on the GPU in f32.
 //
 // A rendering formula lives only in WGSL, so its grid is held to an accepted baseline (engine/stamp-gate-store.ts).
-// A runtime twin has a CPU side the studio also runs (Kubelka–Munk, a paint field, a region's distance and grid), so
+// A runtime twin has a CPU side the studio also runs (Kubelka–Munk, a paint field, a region's distance and grid, an
+// area's coverage), so
 // its grid is held to that; so is each dual mode's needsDual. A law still being tuned (stamp-gate-wet-laws.ts) is held
 // to properties.
 //
@@ -12,6 +13,7 @@ import { kubelkaMunkFilm, kubelkaMunkOver } from '#lib/picture/paint/models/pain
 import { PHOTOSHOP_POOLING, STAMP_DUAL_BLENDS, STAMP_GRAIN_BLENDS, stampDualModeIndex, stampDualNeedsDual, stampGrainModeIndex } from '#lib/picture/stamp-paint/models/coverage-formulas.ts';
 import { STAMP_ACCUMULATION_KINDS, stampAccumulationIndex } from '#lib/picture/stamp-paint/models/stamp-deposit-stages.ts';
 import { STAMP_PAINT_FIELD_SHARE } from '#lib/picture/stamp-paint/models/stamp-paint-field.ts';
+import { stampAreaCoverageAt } from '#lib/picture/stamp-paint/models/stamp-area.ts';
 import { stampDistanceGrid, stampGridAt, stampPolygonBox, stampPolygonDistance, stampRegionPolygon, type StampPoint } from '#lib/picture/stamp-paint/models/stamp-region.ts';
 import { stampGateWetLawGrids, type StampGatePropertyResult } from './stamp-gate-wet-laws.ts';
 
@@ -161,6 +163,16 @@ function twinGrids(): StampGateFormulaGrid[] {
   const gridAt = [-40.25, -3.5, 0.25, 97.75, 200.5, 333.25, 450.75].flatMap((x) => [-30.5, 0, 12.75, 199.25, 320.5].map((y) => ({
     label: `grid at ${x},${y}`, inputs: [x, y], expected: stampGridAt(distance, x, y),
   })));
+  // An area's coverage across the square's left side and the ellipse's, plain, inset, soft and ragged.
+  const edges = [{ inset: 0, ragged: [0, 0], width: 1 }, { inset: 3.5, ragged: [0, 0], width: 6 }, { inset: 12, ragged: [4, 6], width: 1 }, { inset: 2, ragged: [7.5, 14], width: 4 }];
+  const areaCoverage = [0, 3].flatMap((k) => edges.flatMap(({ inset, ragged: [amount, scale], width }) => [12345, 4000000].flatMap((seed) => {
+    const area = { polygon: TWIN_POLYGONS[k], edge: { soft: width, ...(scale > 0 && { ragged: { amount, scale } }) }, inset, seed };
+    const left = k === 0 ? 20 : 60;
+    return [-8.25, -0.25, 0.75, 2.25, 4.5, 9.75, 14.25, 30.5].flatMap((dx) => [80.25, 101.5, 121.75].map((y) => ({
+      label: `polygon ${k} inset ${inset} ragged ${amount}/${scale} width ${width} seed ${seed} at ${left + dx},${y}`,
+      inputs: [left + dx, y, firsts[k], TWIN_POLYGONS[k].length, inset, amount, scale, width, seed], expected: stampAreaCoverageAt(area, left + dx, y),
+    })));
+  })));
   // A mode that needs the dual paints nothing where the dual has none, whatever the tip; one that doesn't paints a full tip.
   const needsDual = STAMP_DUAL_BLENDS.flatMap((blend) => (stampDualNeedsDual(blend) ? UNIT : [1]).map((tip) => ({
     label: `${blendName(blend)} tip ${tip}`, inputs: [stampDualModeIndex(blend), blend.family === 'layer' ? 1 : 0, tip], expected: stampDualNeedsDual(blend) ? 1 : 0,
@@ -170,6 +182,7 @@ function twinGrids(): StampGateFormulaGrid[] {
     twinGrid('kubelkaMunkOver', 'kubelkaMunkOver(kubelkaMunkFilm(vec4f(x(0)), vec4f(x(1))), vec4f(x(2))).x', 3, film),
     twinGrid('kubelkaMunkFilm T', 'kubelkaMunkFilm(vec4f(x(0)), vec4f(x(1))).T.x', 2, filmT),
     twinGrid('polygonDistance', 'polygonDistance(vec2f(x(0), x(1)), u32(x(2)), u32(x(3)))', 4, polygonDistance, { points: new Float32Array(points) }),
+    twinGrid('areaCoverage', 'areaCoverage(vec2f(x(0), x(1)), u32(x(2)), u32(x(3)), x(4), vec2f(x(5), x(6)), x(7), u32(x(8)))', 9, areaCoverage, { points: new Float32Array(points) }),
     twinGrid('gridAt', `gridAt(vec2f(x(0), x(1)), vec3f(${distance.x0}, ${distance.y0}, ${distance.cell}), vec2u(${distance.columns}u, ${distance.rows}u), 0u)`, 2, gridAt, { grid: distance.values }),
     twinGrid('dualNeedsDual', 'select(0.0, 1.0, dualCombine(x(2), 0.0, i32(x(0)), x(1) > 0.5) == 0.0)', 3, needsDual),
   ];

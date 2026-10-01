@@ -35,7 +35,7 @@ test('a clipped pass clips to the nearest unclipped pass before it; a deposit la
     paint.group('sky', { composite: 'opaque' }, (group) => {
       group.mask('sun', { region: sun, edge: { ragged: { amount: 3, scale: 12 } } });
       group.pass('base', {}, (pass) => pass.stroke('fill', { brush, material: ochre, diameter: 60, path }));
-      group.pass('texture', { clipped: true, within: sun }, (pass) => {
+      group.pass('texture', { clipped: true, within: { region: sun } }, (pass) => {
         pass.stroke('before', { brush, material: ochre, diameter: 30, path });
         pass.unmask('lift', { amount: 0.5 });
         pass.stroke('after', { brush, material: ochre, diameter: 30, path });

@@ -156,37 +156,37 @@
     "painting/pigment-crayon": {
       "file": "painting/pigment-crayon.png",
       "output": "d675dbafcc644b0c4a3aded283a7ff8f7be4c91973f272933b776e8c111a53ff",
-      "inputs": "eea38f75c06dc5655fd602e073662daeb5d97bff3b8e7fcf682976f630718285",
-      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
+      "inputs": "19e89ab62ce8461ecf7120808d6b06e9396201a1a129e5de2ad6e902ae6fb41b",
+      "reason": "vid-114 Stream R: a pass's within is compiled as an area (polygon, edge, inset, seed from the pass's ID), so these paintings' inputs print differently; no painting uses an edge or inset on its within, so every frame must hold at max 0",
       "accepted": "2026-10-01",
-      "acceptedOver": "cb831b9",
+      "acceptedOver": "5512ae6",
       "adapter": "apple metal-3"
     },
     "painting/pigment-gouache": {
       "file": "painting/pigment-gouache.png",
       "output": "489991c94e4f2786463251314b2037a2513f5fe82bcefea53b970a86f71f70a6",
-      "inputs": "978688ccea7182c31211543beaff9b45789ed585beeb9bc357f0f0f2f7545feb",
-      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
+      "inputs": "66984797fde8d1ed7671c5042ecd0b0806767f6094e7c504e2b69b2bb9e354f4",
+      "reason": "vid-114 Stream R: a pass's within is compiled as an area (polygon, edge, inset, seed from the pass's ID), so these paintings' inputs print differently; no painting uses an edge or inset on its within, so every frame must hold at max 0",
       "accepted": "2026-10-01",
-      "acceptedOver": "cb831b9",
+      "acceptedOver": "5512ae6",
       "adapter": "apple metal-3"
     },
     "painting/pigment-watercolour": {
       "file": "painting/pigment-watercolour.png",
       "output": "b598d20bade4cb0f55a65795a077e3ee4d411252edbefcac2d8097b2995c62c8",
-      "inputs": "7812cc74ca6fcdba1e24e9bfed5fd559eca772308992f81ae2e2be73386cfdcf",
-      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
+      "inputs": "a9ce8fbbd7af37d087dd5cd9d47baed0a918ef7d1457444f6158b724ba3dd910",
+      "reason": "vid-114 Stream R: a pass's within is compiled as an area (polygon, edge, inset, seed from the pass's ID), so these paintings' inputs print differently; no painting uses an edge or inset on its within, so every frame must hold at max 0",
       "accepted": "2026-10-01",
-      "acceptedOver": "cb831b9",
+      "acceptedOver": "5512ae6",
       "adapter": "apple metal-3"
     },
     "painting/regions": {
       "file": "painting/regions.png",
       "output": "97e55753165a57bd526beb6bcca07b71f045fbc31c36217ee14d949a7923dcdb",
-      "inputs": "d23bac38e83cd00a65a23796efc83785fe76bfd64ab005c935923054ad7ba349",
-      "reason": "vid-132: a placed stamp keeps its grain depth by pressure apart (grainDepthByPressure), and stampGrainDepthIn sets it aside in a medium on the paper's tooth; no gate painting's brush pairs pressure grain depth with a peaks medium, so every frame must hold at max 0",
+      "inputs": "73f77ecba30a256f8fe8c1f4e3c85574fe676de8414a2c59113cab5671254c3a",
+      "reason": "vid-114 Stream R: a pass's within is compiled as an area (polygon, edge, inset, seed from the pass's ID), so these paintings' inputs print differently; no painting uses an edge or inset on its within, so every frame must hold at max 0",
       "accepted": "2026-10-01",
-      "acceptedOver": "cb831b9",
+      "acceptedOver": "5512ae6",
       "adapter": "apple metal-3"
     },
     "painting/strokes-accumulations": {
