@@ -16,8 +16,9 @@ import {
 } from '../models/stamp-gate-three-plane.ts';
 import type { StampGatePainting } from '../models/stamp-gate-paintings.ts';
 import {
-  checkStampGateFilmCache, checkStampGateMargin, checkStampGatePan, checkStampGatePictureCache, STAMP_GATE_PARALLAX_ORDER, STAMP_GATE_PLANES_IDS, STAMP_GATE_STAGE_IDS, STAMP_GATE_STAGE_MARGIN,
-  stampGateInsetDifference, stampGateMarginSubjects, stampGatePanPainting, stampGateParallaxPainting, stampGateParallaxTime, stampGatePlanesLens, stampGatePlanesOf, stampGatePlanesPainting,
+  checkStampGateFilmCache, checkStampGateMargin, checkStampGateOneSheet, checkStampGatePan, checkStampGatePictureCache, STAMP_GATE_PARALLAX_ORDER, STAMP_GATE_PLANES_IDS, STAMP_GATE_STAGE_IDS,
+  STAMP_GATE_STAGE_MARGIN, stampGateInsetDifference, stampGateMarginSubjects, stampGateOneSheetPainting, stampGateOneSheetPlanes, stampGatePanPainting, stampGateParallaxPainting,
+  stampGateParallaxTime, stampGatePlanesLens, stampGatePlanesOf, stampGatePlanesPainting,
 } from '../models/stamp-gate-stage.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { stampGateHalfBits } from '../models/stamp-gate-flow.ts';
@@ -84,6 +85,8 @@ async function checkStampGateLensCase(id: string): Promise<StampGateWashCheck[]>
       plain: await frameIn(stampGateGlowState([], 0)), grey: await frameIn(stampGateGlowState(['grey'], 0)), zero: await frameIn(stampGateGlowState(['pale'], 0, { glow: { ...STAMP_GATE_GLOW, amount: 0 } })),
       pale: held.first, paleAgain: held.again, paleAfterMove: held.afterMove, paleFresh: await frameIn(paleMoved),
       covered: await frameIn(stampGateGlowState(['pale'], 0, { greyX }), covering), coveredPlain: await frameIn(stampGateGlowState([], 0, { greyX }), covering),
+      // The grey, laid after the pale on the one plane, glows under its threshold: drawn the way the glowing frame is.
+      onSheet: await frameIn(stampGateGlowState(['pale'], 0, { greyX })), onSheetDim: await frameIn(stampGateGlowState(['grey'], 0, { greyX })),
     })];
   }
   throw new Error(`stamp gate: no lens case ${JSON.stringify(id)}`);
@@ -154,6 +157,11 @@ export async function checkStampGateStageCase(id: string): Promise<StampGateWash
     const restores = stampGateSpanCounter('stamp paint picture restore');
     const scrambled = await framesInOrder(gate, STAMP_GATE_PARALLAX_ORDER, { ...options, profile: restores.profile }, stampGatePlanesLens);
     return [checkStampGatePictureCache(await againstFresh(gate, scrambled, options, stampGatePlanesLens), restores.spans)];
+  }
+  if (id === 'planes/one-sheet') {
+    const gate = stampGateOneSheetPainting(), url = drawnImages(gate);
+    const frameOn = (options: StampPaintRendererOptions) => withGateRenderer(gate, url, (renderer, frame) => drawn(renderer, frame, gate.t), options);
+    return [checkStampGateOneSheet({ planes: await frameOn({ planes: stampGateOneSheetPlanes(gate.painting) }), sheet: await frameOn({}) })];
   }
   throw new Error(`stamp gate: no stage case ${JSON.stringify(id)}; the gate holds ${[...STAMP_GATE_STAGE_IDS, ...STAMP_GATE_PLANES_IDS].join(', ')}`);
 }

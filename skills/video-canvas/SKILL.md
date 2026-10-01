@@ -243,19 +243,21 @@ elements, which is what keeps objects from showing through each other.
 
 **Planes and the camera (multiplane).** A scene is planes `{ id, depth, source }`, 1 being where a pan's pixels are
 measured and nearer under 1. Every group is on exactly one painted plane (`{ kind: 'painted', groups }`). The
-farthest is paper to the stage's edge. Every nearer painted plane is clear film: its paint shows over what's behind as it
-would on one sheet (it's laid on its paper and on black, and what it adds and lets through come from the two), so an
-`opaque` group's paint hides what's behind, a `glaze` group's (an ink line, a shadow) filters it, and both move, bend
-and fade with the group (a swaying tuft, a drifting butterfly, a puffing sac). Paint each plane the size it should look before the camera moves: at rest nothing changes. Build the
-camera with `buildPaintCamera(painting, { stage: stampStage({ width, height }, margin), fov, planes, lens: { bloom },
-plays })`. Plays are `paintCameraPlay({ kind: 'move', keys: [{ at, pan?: { x, y }, dolly?, zoom?, roll?, ease? }] },
+farthest is paper to the stage's edge. Every nearer painted plane is clear film: an `opaque` group's paint hides
+what's behind, a `glaze` group's (an ink line, a shadow) filters it, and both move, bend and fade with the group (a swaying tuft, a drifting butterfly, a puffing sac). It's measured on white and black, so over other paint it's close to one sheet, not exact: a strongly coloured glaze
+(phthalo, rose) over coloured paint behind comes out lighter than painted on one sheet, so put such a glaze on the
+plane of what it tints. Paint each plane the size it should look before the camera moves: at rest nothing changes. Build the
+camera with `buildPaintCamera(painting, { stage: stampStage({ width, height }, margin), motion, fov, planes, lens: { bloom },
+plays })`, `motion` the scene's built motion (null when nothing moves a group). Plays are `paintCameraPlay({ kind: 'move', keys: [{ at, pan?: { x, y }, dolly?, zoom?, roll?, ease? }] },
 { clock, origin })`, and `{ kind: 'focus', keys: [{ at, focus, aperture }] }` for depth of field: `focus` is the depth
 held sharp, `aperture` the defocus (px of gaussian sigma) a plane at infinity gets. A pan of 100 moves a plane at
 depth 2 by 50 and one at 0.5 by 200; a dolly grows near planes more than far ones. The build proves each plane's
-picture holds what the camera shows of it over the whole shot (widen the margin when it says so) and reports each
+picture holds what the camera shows of it over the whole shot (widen the margin when it says so): a nearer plane
+wherever its groups' motion can lay their paint, and everywhere the frame looks once a group's marks are live or
+re-seeded and reports each
 plane's greatest magnification (past about 1.3, its paint looks soft). Keep the camera on ones: held on twos it
 judders. Give a group `glow: { amount, threshold }` in its frame state for a soft light; the lens blooms all glow
-once, at `lens.bloom` px of sigma, and a nearer plane covering glowing paint stops its glow. Show it with
+once, at `lens.bloom` px of sigma, and opaque paint covering glowing paint, laid after it on its plane or on a nearer one, stops its glow. Show it with
 `<StampPainting painting t frame camera />`; a glowing frame without a camera is refused.
 
 **3D in a painting.** A three.js scene is a plane of its own, `{ id, depth, source: { kind: 'three' } }`, rendered on

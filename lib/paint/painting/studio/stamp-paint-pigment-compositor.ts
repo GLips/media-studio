@@ -490,15 +490,15 @@ fn layGroup(pixel: vec2u, glaze: bool, opacity: f32) {
   let cover = min(1.0, coverage * ${STAMP_OPAQUE_COVER.toFixed(1)}) * opacity;
   var bare = vec3f(0.0);
   if (!glaze || taken.x > 0.0) { bare = paperColor(photograph, photographSampler, u.paper, groupPaperAt(pixel)); }
-  // Opaque paint lies on its paper, but a reserve shows what's behind it: black, laid on black (u.blackBacking).
-  let reserved = select(bare, vec3f(0.0), u.blackBacking == 1u);
+  // Opaque paint lies on its paper, but a reserve shows what's behind it: on a clear plane, its measuring backing.
+  let reserved = groupBackingShown(bare);
 ${underpaint ? `  var behind: array<vec4f, UNDER_LAYERS>;
   for (var r = 0u; r < UNDER_LAYERS; r++) { behind[r] = groupUnderAt(pixel, BAND_VEC4S + r); }
   var left = behind;
   // The paint behind was laid over the painting's paper, wherever this group's own lies.
   var ground = vec3f(0.0);
   if (lifts) {
-    ground = select(paperColor(photograph, photographSampler, u.paper, groupGroundAt(pixel)), vec3f(0.0), u.blackBacking == 1u);
+    ground = groupBackingShown(paperColor(photograph, photographSampler, u.paper, groupGroundAt(pixel)));
     left = liftedUnderpaint(behind, vec3f(1.0) - taken.yzw);
   }
 ` : ''}  let base = u.group * PALETTE;

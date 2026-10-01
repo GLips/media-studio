@@ -254,25 +254,35 @@ an error. A frame held on twos gives every group the keys it had, so it repaints
   `paintMotionFrameAt(motion, t)` is pure in `t`, and writes each group's `StampGroupFrameState`.
 - **Planes and the camera** (`painting/models/stamp-plane.ts`, `paint-camera.ts`, `paint-camera-build.ts`): a scene
   is planes, each `{ id, depth, source }`, laid far to near. The back, the farthest, is paper to the stage's edge.
-  Every nearer painted plane is clear film: its paint, opaque or glazed, hides and filters what's behind as it would
-  on one sheet, moving, warping and fading with its group. A three
+  Every nearer painted plane is clear film: its paint, opaque or glazed, hides and filters what's behind, moving,
+  warping and fading with its group; as on one sheet over white and black, and close to it over other paint (see
+  Planes on the GPU). A three
   plane is a three.js render. A painted plane's picture doesn't depend on the camera and is kept on the device while
   its groups hold. The camera is one description: its plays key `move` (pan, dolly, zoom, roll) and `focus` (focus
   depth, aperture), plus `fov` and a lens with one `bloom`. `paintCameraLensAt` gives each plane's view (a
   similarity) and defocus (a thin lens's circle of confusion, as gaussian sigma) at a time. The build proves every
-  plane's extent over the whole shot (not sampled times; a nearer plane only as far as its groups are painted), reports each plane's greatest magnification, and names
-  bad planes. `paint-camera-world.ts` gives three.js the perspective camera that lands a 3D point where the plane
+  plane's extent over the whole shot, not at sampled times: the back everywhere the frame looks; a nearer plane where
+  its groups' paint can be laid (`paint-motion-reach.ts`: the painted box grown by the most each step of the
+  `motion` it's given and the recipe's own motion can move it), or everywhere the frame looks once a group's marks
+  are live or re-seeded. A frame state from anything but that `motion` isn't covered. It reports each plane's
+  greatest magnification and names bad planes. `paint-camera-world.ts` gives three.js the perspective camera that lands a 3D point where the plane
   step lays its depth.
 
 **Planes on the GPU** (`stamp-paint-renderer.ts`, `stamp-paint-plane-passes.ts`). One owner holds a device
 (`stamp-paint-gpu-owner.ts`): its images, pipelines' targets and one cache budget, shared by films, pictures and
 blurred pictures. A surface is one output on it. One painted plane at rest, sharp and not glowing is drawn straight
 to the output, as a still always was. Otherwise each plane's picture is painted (paper, its groups, and each glowing group's light past its threshold
-into the plane's emission), defocused, and composited into a frame-sized target, its emission beside it, so paint a
-nearer plane covers doesn't glow. A clear plane's groups are laid twice, on its paper and on black (its films kept
-from the first lay). Over any backing its light is what it adds plus what it lets through of the backing, per
-channel, so the two lays and the two papers' own light give both. Its picture holds what it adds and its glaze, what
-it takes from the light behind, so laying it filters what's behind and then adds its colour (`over` for the back).
+into the plane's emission, which each later opaque group on the plane dims by its cover; a glaze leaves it), defocused,
+and composited into a frame-sized target, its emission beside it, so paint a nearer plane covers doesn't glow. A clear
+plane's groups are laid twice, on plain white and on black whatever the paper (its films kept from the first lay):
+opaque paint lies on its own paper, and only reserves and lifts show the measuring backing. Its light is taken as
+affine in its backing, what it adds plus what it lets through, per RGB channel, from the two lays and the backings'
+own light, measured once per renderer. That's exact over white and black; over other paint it's a two-point
+linearisation of pigment's KM, which isn't affine (R + T²·b/(1 − R·b)) and works per spectral band. A semi-opaque
+film over a mid-tone comes out a few levels light; a strongly coloured glaze over coloured paint, filtering its bands
+unevenly, far lighter (the gate's `planes/one-sheet`: a phthalo glaze over mid-grey up to 76 levels). Its picture
+holds what it adds and its taken share, what it takes from the light behind, so laying it filters what's behind and
+then adds its colour (`over` for the back).
 The output blooms the emission once (`lens.bloom`), adds it in linear light, and encodes. Texture contracts:
 pictures, three sources and the composite are rgba16float, premultiplied linear; a painted texture three samples is
 rgba16float, gamma-encoded and opaque, decoded by `paintedThreeColorNode`. A glowing frame drawn without a lens is

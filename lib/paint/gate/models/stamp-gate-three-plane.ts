@@ -107,7 +107,7 @@ export function stampGateThreePlanes(painting: CompiledStampPaint, { card }: { c
     { id: 'front', depth: 0.8, source: { kind: 'painted', groups: ['front'] } },
   ];
   const compiled = compileStampPlanes(painting, planes, problems);
-  if (problems.length) throw new Error(`stamp gate: the three-plane case's planes: ${problems.join('; ')}`);
+  if (!compiled || problems.length) throw new Error(`stamp gate: the three-plane case's planes: ${problems.join('; ')}`);
   return compiled;
 }
 

@@ -27,7 +27,7 @@ fn srgbEncoded(c: vec3f) -> vec3f { return select(1.055 * pow(c, vec3f(1.0 / 2.4
 /**
  * A way of mixing paint: WGSL for four passes, each binding its own resources. The renderer declares `layer` and `painting` from `targets`; in the deposit pass `paint` (a
  * PaintDeposit) and `u.paperDepth`; in the group pass `u.group`, `u.paper` for `paperColor(image, sampler, u.paper,
- * at)` at `groupPaperAt(pixel)` or `groupGroundAt(pixel)`, and `u.blackBacking`, 1 where a reserve or lift shows black.
+ * at)` at `groupPaperAt(pixel)` or `groupGroundAt(pixel)`, and `groupBackingShown(paper)`, what a reserve or lift shows there.
  */
 export type StampPaintCompositor = {
   targets: { layer: StampPaintTarget; painting: StampPaintTarget };

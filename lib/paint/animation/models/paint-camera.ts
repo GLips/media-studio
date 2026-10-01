@@ -7,7 +7,7 @@
 // at rest, so at rest every plane's similarity is the identity. Unless a play holds it, the camera is on ones.
 
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import type { CompiledStampPlanes, StampLensFrame, StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
+import { stampPlanesFarthestFirst, type CompiledStampPlanes, type StampLensFrame, type StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { paintLanePlayAt, paintPlayClipTimeAt, sceneSeconds, type PaintLane, type PaintPlayClock } from './paint-clock.ts';
 import { paintPxRounded, paintRatioRounded } from './paint-deform.ts';
@@ -157,7 +157,7 @@ export function paintCameraLensAt(camera: PaintCamera, t: number): StampLensFram
   const pose = paintCameraPoseAt(camera, t), lens = paintCameraFocusAt(camera, t), centre = paintStageCentre(camera.stage);
   if (lens && lens.focus - pose.dolly <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${t}s the camera focuses at depth ${lens.focus}, at or behind itself (dollied ${pose.dolly})`);
   const planes = new Map<string, StampPlaneLook>();
-  for (const { id, depth } of camera.planes) {
+  for (const { id, depth } of stampPlanesFarthestFirst(camera.planes)) {
     if (depth - pose.dolly <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${t}s the camera, dollied ${pose.dolly}, is at or past plane ${id} at depth ${depth}`);
     planes.set(id, { view: paintPlaneSimilarity(pose, depth, centre), defocus: lens ? paintPlaneDefocus(lens, pose.dolly, depth) : 0 });
   }

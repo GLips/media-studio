@@ -1,7 +1,7 @@
 // stamp-gate-lens.ts: the gate's lens cases, what a frame's lens does to a plane (stamp-plane.ts,
 // stamp-paint-plane-passes.ts). A plane's defocus is held to a gaussian worked out here on the CPU in linear light; a
-// glow to adding light only past its threshold, nothing at amount 0, nothing under a nearer plane's opaque paint, and the
-// same frame when the picture holding its light is restored.
+// glow to adding light only past its threshold, nothing at amount 0, nothing under opaque paint laid after it on its
+// plane or on a nearer one, and the same frame when the picture holding its light is restored.
 
 import { stampDefocusSigmaStepped, stampGaussianReach } from '#lib/paint/painting/models/stamp-defocus.ts';
 import { linearToSrgb, srgbToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
@@ -169,7 +169,7 @@ export function stampGateGlowCoverPlanes(painting: CompiledStampPaint): Compiled
     { id: 'back', depth: 1, source: { kind: 'painted', groups: ['ground', 'pale', 'mark'] } },
     { id: 'cover', depth: 0.8, source: { kind: 'painted', groups: ['grey'] } },
   ], problems);
-  if (problems.length) throw new Error(`stamp gate: the glow's planes: ${problems.join('; ')}`);
+  if (!planes || problems.length) throw new Error(`stamp gate: the glow's planes: ${problems.join('; ')}`);
   return planes;
 }
 
@@ -190,12 +190,12 @@ function rise(frame: ArrayLike<number>, base: ArrayLike<number>, { box, by = 0, 
 }
 
 /**
- * Whether a glow adds light only past its threshold (the grey patch glowing changes nothing; the pale one brightens
- * itself and spills past its edge, darkening nothing), changes nothing at amount 0, gives off none nearer opaque
- * paint covers, and draws the same frame again from the picture that holds its light, and after a frame moving the mark.
+ * Whether a glow adds light only past its threshold (the pale patch brightens and spills, darkening nothing; the grey
+ * changes nothing), none at amount 0, none under opaque paint laid after it (`onSheet` against `onSheetDim`) or
+ * nearer, and draws the same frame again from its picture, and after a frame moving the mark.
  */
-export function checkStampGateGlow({ plain, grey, zero, pale, paleAgain, paleAfterMove, paleFresh, covered, coveredPlain }: Record<
-  'plain' | 'grey' | 'zero' | 'pale' | 'paleAgain' | 'paleAfterMove' | 'paleFresh' | 'covered' | 'coveredPlain', ArrayLike<number>
+export function checkStampGateGlow({ plain, grey, zero, pale, paleAgain, paleAfterMove, paleFresh, covered, coveredPlain, onSheet, onSheetDim }: Record<
+  'plain' | 'grey' | 'zero' | 'pale' | 'paleAgain' | 'paleAfterMove' | 'paleFresh' | 'covered' | 'coveredPlain' | 'onSheet' | 'onSheetDim', ArrayLike<number>
 >): StampGateWashCheck {
   // With nothing glowing, one plane at rest is output as painted; anything glowing goes round linear light and the
   // planes' composite, which rounds a level differently here and there. So grey glowing may sit a level off plain,
@@ -205,13 +205,15 @@ export function checkStampGateGlow({ plain, grey, zero, pale, paleAgain, paleAft
   const again: StampGateFrameDifference = stampGateFrameDifference(pale, paleAgain), shifted = stampGateFrameDifference(paleFresh, paleAfterMove);
   // The bloom spreads what glows past the cover's edge into it, so the cover is read only past the bloom's reach.
   const reach = stampGaussianReach(STAMP_GATE_BLOOM);
-  const under = rise(covered, coveredPlain, { within: { x0: GLOW_COVER.x0 + reach, x1: GLOW_COVER.x1 - reach, y0: GLOW_COVER.y0 + reach, y1: GLOW_COVER.y1 - reach } });
+  const inside = { x0: GLOW_COVER.x0 + reach, x1: GLOW_COVER.x1 - reach, y0: GLOW_COVER.y0 + reach, y1: GLOW_COVER.y1 - reach };
+  const under = rise(covered, coveredPlain, { within: inside }), laidOver = rise(onSheet, onSheetDim, { within: inside });
   return {
-    id: 'lens/glow: a glow adds light past its threshold alone, none at amount 0 or under nearer opaque paint, and keeps through the picture cache',
-    passed: dim.max <= 1 && none.max === 0 && lit.least >= 0 && lit.most >= 20 && lit.around >= 8 && under.most <= 1 && again.max === 0 && shifted.max === 0,
+    id: 'lens/glow: a glow adds light past its threshold alone, none at amount 0 or under opaque paint laid after it or nearer, and keeps through the picture cache',
+    passed: dim.max <= 1 && none.max === 0 && lit.least >= 0 && lit.most >= 20 && lit.around >= 8 && under.most <= 1 && laidOver.most === 0 && again.max === 0 && shifted.max === 0,
     detail: `grey patch (under the threshold) glowing, through the planes' composite, against none, as painted: max ${dim.max} (past 1 fails); amount 0: max ${none.max} (past 0 fails); `
       + `pale patch glowing: rises ${lit.most} at most (under 20 fails), ${lit.around} within ${GLOW_SPILL} px past it (under 8 fails), least ${lit.least} (under 0 fails); `
       + `pale glowing under a nearer plane's paint, ${reach} px in from its edge: rises ${under.most} at most (past 1 fails); `
+      + `under opaque paint laid after it on its own plane: rises ${laidOver.most} at most (past 0 fails); `
       + `drawn again from its picture: max ${again.max}; after a frame moving the mark against fresh: max ${shifted.max} (past 0 fails)`,
   };
 }

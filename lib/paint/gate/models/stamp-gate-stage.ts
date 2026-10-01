@@ -18,7 +18,7 @@ import { STAMP_GATE_WASH_IDS, stampGateWashCase } from './stamp-gate-washes.ts';
 import { stampGateFrameDifference, stampGateFramePasses, type StampGateFrameDifference } from './stamp-gate-frames.ts';
 
 export const STAMP_GATE_STAGE_IDS = ['stage/margin', 'stage/pan', 'stage/film-cache'];
-export const STAMP_GATE_PLANES_IDS = ['planes/cache'];
+export const STAMP_GATE_PLANES_IDS = ['planes/cache', 'planes/one-sheet'];
 
 /** The margin the stage cases draw with: past any gate painting's reach over its frame's edge, and even. */
 export const STAMP_GATE_STAGE_MARGIN = 48;
@@ -206,7 +206,7 @@ export function stampGatePlanesOf(painting: CompiledStampPaint): CompiledStampPl
     { id: 'back', depth: 2, source: { kind: 'painted', groups: ['far'] } },
     { id: 'near', depth: 1, source: { kind: 'painted', groups: ['near'] } },
   ], problems);
-  if (problems.length) throw new Error(`stamp gate: the planes case's planes: ${problems.join('; ')}`);
+  if (!planes || problems.length) throw new Error(`stamp gate: the planes case's planes: ${problems.join('; ')}`);
   return planes;
 }
 
@@ -235,5 +235,94 @@ export function checkStampGatePictureCache(frames: readonly { frame: number; dif
     id: `planes/cache: a camera's frame laying cached pictures is the frame drawn fresh, in any order`, passed: frames.every(({ difference }) => stampGateFramePasses(difference)) && restores > 0,
     detail: `${frames.length} frames in order ${STAMP_GATE_PARALLAX_ORDER.join(',')}: worst frame ${worst.frame}, max ${worst.difference.max}, mean ${worst.difference.mean.toFixed(4)}; `
       + `${restores} pictures restored from the cache (none fails)`,
+  };
+}
+
+type SheetBox = { x0: number; x1: number; y0: number; y1: number };
+
+/** The one-sheet case's backs, a mid-grey and a saturated red side by side, and its films, each crossing both. */
+const SHEET_BACKS = { grey: { x0: -30, x1: 120, y0: -30, y1: 190 }, red: { x0: 120, x1: 270, y0: -30, y1: 190 } } as const;
+const SHEET_FILMS = { glaze: { x0: 30, x1: 210, y0: 18, y1: 68 }, gouache: { x0: 30, x1: 210, y0: 92, y1: 142 } } as const;
+/** Where between the films nothing of the near plane's lies. */
+const SHEET_BARE: SheetBox = { x0: 40, x1: 200, y0: 77, y1: 83 };
+/** How far in from a flood's edge the case reads, past its soft edge and its neighbour's. */
+const SHEET_INSET = 10;
+const SHEET_SIZE = { width: 240, height: 160 };
+
+/**
+ * A back plane of watercolour floods, mid-grey and saturated red, and nearer, a clear phthalo glaze and a thin,
+ * semi-opaque ochre gouache film across both. `planes/one-sheet` draws it on two planes and on one sheet.
+ */
+export function stampGateOneSheetPainting(): StampGatePainting {
+  const steady = stampGateBrush('Steady', { flow: 0.6 });
+  const flood = (box: SheetBox, paint: ReturnType<typeof mixture>) => ({
+    brush: steady, size: 20, application: { kind: 'flood' as const }, region: stampGatePolygon(box.x0, box.y0, box.x1, box.y0, box.x1, box.y1, box.x0, box.y1), well: { paint },
+  });
+  const grey = { kind: 'mixture' as const, parts: [{ pigment: W.ultramarine, amount: 1 }, { pigment: W.burntUmber, amount: 1 }], strength: 0.45 };
+  const painting = compileStampPaintRecipe(stampPaintRecipe({ paper: STAMP_GATE_WHITE, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W } }, (p) => {
+    p.group('grey', { composite: 'glaze', opacity: 1 }, (g) => g.passage('p', { wetHistory: false }, (pass) => pass.fill('grey', flood(SHEET_BACKS.grey, grey))));
+    p.group('red', { composite: 'glaze', opacity: 1 }, (g) => g.passage('p', { wetHistory: false }, (pass) => pass.fill('red', flood(SHEET_BACKS.red, mixture(W.cadmiumRed)))));
+    p.group('glaze', { composite: 'glaze', opacity: 1 }, (g) => g.passage('p', { wetHistory: false }, (pass) => pass.fill('glaze', flood(SHEET_FILMS.glaze, { ...mixture(W.phthaloBlue), strength: 0.3 }))));
+    p.group('gouache', { composite: 'glaze', opacity: 0.3, mixing: { kind: 'pigment', medium: PAINT_MEDIA.gouache, pigments: W } }, (g) => g.passage('p', { wetHistory: false }, (pass) => (
+      pass.fill('gouache', flood(SHEET_FILMS.gouache, { ...mixture(W.yellowOchre), strength: 0.2 }))
+    )));
+  }));
+  return { painting, ...SHEET_SIZE, t: 0, images: STAMP_GATE_IMAGES };
+}
+
+/** The one-sheet case's planes: the backs at depth 2, the films on a clear plane at 1. */
+export function stampGateOneSheetPlanes(painting: CompiledStampPaint): CompiledStampPlanes {
+  const problems: string[] = [];
+  const planes = compileStampPlanes(painting, [
+    { id: 'back', depth: 2, source: { kind: 'painted', groups: ['grey', 'red'] } },
+    { id: 'films', depth: 1, source: { kind: 'painted', groups: ['glaze', 'gouache'] } },
+  ], problems);
+  if (!planes || problems.length) throw new Error(`stamp gate: the one-sheet case's planes: ${problems.join('; ')}`);
+  return planes;
+}
+
+/**
+ * The most levels each film over each back, drawn as planes, may lie from the same groups on one sheet. The
+ * two-backing measure is exact over white and black only; per RGB channel it misses how a strongly coloured glaze
+ * filters coloured paint band by band. Measured 76, 29, 4 and 8 when set: kept visible, and from growing.
+ */
+export const STAMP_GATE_ONE_SHEET_BOUNDS = {
+  glaze: { grey: 90, red: 40 },
+  gouache: { grey: 8, red: 14 },
+} as const satisfies Record<keyof typeof SHEET_FILMS, Record<keyof typeof SHEET_BACKS, number>>;
+
+/** `a` against `b` (RGBA frames `width` wide) over `box`, RGB: the most and mean levels apart. */
+function boxDifference(a: ArrayLike<number>, b: ArrayLike<number>, width: number, { x0, x1, y0, y1 }: SheetBox) {
+  let max = 0, sum = 0, n = 0;
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) for (let c = 0; c < 3; c++) {
+    const i = (y * width + x) * 4 + c, d = Math.abs(a[i] - b[i]);
+    max = Math.max(max, d);
+    sum += d;
+    n++;
+  }
+  return { max, mean: sum / n };
+}
+
+/** Where `a` and `b` meet on the frame, SHEET_INSET in from each edge. */
+const insetMeet = (a: SheetBox, b: SheetBox): SheetBox => ({
+  x0: Math.max(a.x0, b.x0, 0) + SHEET_INSET, x1: Math.min(a.x1, b.x1, SHEET_SIZE.width) - SHEET_INSET,
+  y0: Math.max(a.y0, b.y0, 0) + SHEET_INSET, y1: Math.min(a.y1, b.y1, SHEET_SIZE.height) - SHEET_INSET,
+});
+
+/**
+ * Whether the films drawn as a clear plane over the backs (`planes`) are the same groups on one sheet (`sheet`) where
+ * the plane is bare (a level of rounding), and within STAMP_GATE_ONE_SHEET_BOUNDS over each back.
+ */
+export function checkStampGateOneSheet({ planes, sheet }: { planes: ArrayLike<number>; sheet: ArrayLike<number> }): StampGateWashCheck {
+  const { width } = SHEET_SIZE, bare = boxDifference(planes, sheet, width, SHEET_BARE);
+  const rows = (['glaze', 'gouache'] as const).flatMap((film) => (['grey', 'red'] as const).map((back) => {
+    const { max, mean } = boxDifference(planes, sheet, width, insetMeet(SHEET_FILMS[film], SHEET_BACKS[back]));
+    return { film, back, bound: STAMP_GATE_ONE_SHEET_BOUNDS[film][back], max, mean };
+  }));
+  return {
+    id: 'planes/one-sheet: a clear plane over paint is its groups on one sheet where bare, and within bounds where its films lie',
+    passed: bare.max <= 1 && rows.every(({ max, bound }) => max <= bound),
+    detail: `bare: max ${bare.max}, mean ${bare.mean.toFixed(3)} (past 1 fails); `
+      + rows.map(({ film, back, max, mean, bound }) => `${film} over ${back}: max ${max}, mean ${mean.toFixed(2)} (past ${bound} fails)`).join('; '),
   };
 }
