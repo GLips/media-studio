@@ -13,6 +13,7 @@ import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import { STAMP_BLOOM_STAGE } from './stamp-wet-bloom.ts';
 import { STAMP_WET_FLOW_STAGE } from './stamp-wet-flow.ts';
 import { STAMP_LIFT_RUN_BACK_STAGE } from './stamp-wet-lift-run-back.ts';
+import { STAMP_DRYING_RIM_STAGE } from './stamp-wet-rim.ts';
 
 /**
  * What a stage is given as a painting loads: its device, size, medium and wetness; the group layer it works on
@@ -55,4 +56,4 @@ export type StampWetStage = {
 };
 
 /** Every stage, in the order each moment runs them. */
-export const STAMP_WET_STAGES: readonly StampWetStage[] = [STAMP_WET_FLOW_STAGE, STAMP_LIFT_RUN_BACK_STAGE, STAMP_BLOOM_STAGE];
+export const STAMP_WET_STAGES: readonly StampWetStage[] = [STAMP_LIFT_RUN_BACK_STAGE, STAMP_WET_FLOW_STAGE, STAMP_BLOOM_STAGE, STAMP_DRYING_RIM_STAGE];
