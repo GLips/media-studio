@@ -557,35 +557,79 @@ ${PAPER_COLOR_WGSL}
   layPaper(id.xy, paperColor(image, linearClamp, u, vec2f(id.xy) + 0.5, size));
 }`;
 
+/** A scene pixel's rest point where no moved or warped group's lattice covers it: outside any layer. */
+const STAMP_NO_REST = -65536;
+
 // \`group\` is its index in the painting, and \`paper\` the paper under it, for a compositor that lays a group on bare paper.
 // A scene pixel reads that paper where it is, unless the group carries its own paper as it moves or warps
-// (StampGroupPaper, \`paperFromRest\`): then where the pixel's rest point is (\`paperRest\`, the lattice's).
+// (StampGroupPaper, \`paperFromRest\`): then where the layer's texel it lays was painted.
 const GROUP = stampUniformLayout('Group', [
   ['opacity', 'f32'], ['glaze', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'], ['group', 'u32'], ['paper', stampUniformStruct(PAPER)], ['paperFromRest', 'u32'],
 ]);
-/** Where the group pass binds the rest point of each scene pixel, past any compositor's own bindings. */
-const GROUP_PAPER_REST_BINDING = 16;
-const groupWgsl = (compositor: StampPaintCompositor) => /* wgsl */ `
-${stampPaintTargetWgsl('layer', 1, compositor.targets.layer, null)}
-${stampPaintTargetWgsl('painting', 2, compositor.targets.painting, 'read_write')}
-${compositor.group.wgsl}
+/** Where the moved group pass binds the rest point of each scene pixel, past any compositor's own bindings. */
+const GROUP_REST_BINDING = 16;
+const groupWgsl = (compositor: StampPaintCompositor, moved: boolean) => {
+  const { layer, painting } = compositor.targets;
+  const layerAt = (texel: string) => (layer.kind === 'array' ? `textureLoad(layer, ${texel}, l, 0)` : `textureLoad(layer, ${texel}, 0)`);
+  const paintingAt = painting.kind === 'array' ? 'textureLoad(painting, pixel, i)' : 'textureLoad(painting, pixel)';
+  const store = (value: string) => (painting.kind === 'array' ? `textureStore(painting, pixel, i, ${value})` : `textureStore(painting, pixel, ${value})`);
+  const paintingLayers = painting.kind === 'array' ? painting.layers : 1;
+  const common = /* wgsl */ `
+${stampPaintTargetWgsl('layer', 1, layer, null)}
+${stampPaintTargetWgsl('painting', 2, painting, 'read_write')}
 ${PAPER_COLOR_WGSL}
 ${GROUP.wgsl}
 @group(0) @binding(0) var<uniform> u: Group;
-@group(0) @binding(${GROUP_PAPER_REST_BINDING}) var paperRest: texture_2d<f32>;
-fn groupPaperAt(pixel: vec2u) -> vec2f {
-  if (u.paperFromRest == 1u) { return textureLoad(paperRest, pixel, 0).xy; }
-  return vec2f(pixel) + 0.5;
-}
+fn groupUnderAt(pixel: vec2u, i: u32) -> vec4f { return ${paintingAt}; }`;
+  if (!moved) return /* wgsl */ `${common}
+fn groupLayerAt(pixel: vec2u, l: u32) -> vec4f { return ${layerAt('pixel')}; }
+fn groupLaid(pixel: vec2u, i: u32, value: vec4f) { ${store('value')}; }
+fn groupPaperAt(pixel: vec2u) -> vec2f { return vec2f(pixel) + 0.5; }
+${compositor.group.wgsl}
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn group(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
   layGroup(u.origin + id.xy, u.glaze == 1u, u.opacity);
 }`;
+  // Each of the four texels round a pixel's rest point is laid as it would be unmoved, and the laid paint blended
+  // bilinearly. Blending amounts before the lay instead fills a dry medium's tooth: KM isn't linear in its films.
+  return /* wgsl */ `${common}
+@group(0) @binding(${GROUP_REST_BINDING}) var rest: texture_2d<f32>;
+var<private> tapTexel: vec2i;
+var<private> tapLaid: array<vec4f, ${paintingLayers}>;
+fn groupLayerAt(pixel: vec2u, l: u32) -> vec4f {
+  if (any(tapTexel < vec2i(0)) || any(tapTexel >= vec2i(textureDimensions(layer)))) { return vec4f(0.0); }
+  return ${layerAt('vec2u(tapTexel)')};
+}
+fn groupLaid(pixel: vec2u, i: u32, value: vec4f) { tapLaid[i] = value; }
+fn groupPaperAt(pixel: vec2u) -> vec2f {
+  if (u.paperFromRest == 1u) { return vec2f(tapTexel) + 0.5; }
+  return vec2f(pixel) + 0.5;
+}
+${compositor.group.wgsl}
+@compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn group(@builtin(global_invocation_id) id: vec3u) {
+  if (any(id.xy >= u.extent)) { return; }
+  let pixel = u.origin + id.xy;
+  let q = textureLoad(rest, pixel, 0).xy - 0.5;
+  if (q.x < ${STAMP_NO_REST / 2}.0) { return; }
+  let base = floor(q);
+  let f = q - base;
+  var blended: array<vec4f, ${paintingLayers}>;
+  for (var k = 0u; k < 4u; k++) {
+    let corner = vec2u(k & 1u, k >> 1u);
+    let w = select(1.0 - f.x, f.x, corner.x == 1u) * select(1.0 - f.y, f.y, corner.y == 1u);
+    if (w == 0.0) { continue; }
+    tapTexel = vec2i(base) + vec2i(corner);
+    for (var i = 0u; i < ${paintingLayers}u; i++) { tapLaid[i] = groupUnderAt(pixel, i); }
+    layGroup(pixel, u.glaze == 1u, u.opacity);
+    for (var i = 0u; i < ${paintingLayers}u; i++) { blended[i] += w * tapLaid[i]; }
+  }
+  for (var i = 0u; i < ${paintingLayers}u; i++) { ${store('blended[i]')}; }
+}`;
+};
 
 // A moved or warped group's lattice (stamp-group-warp.ts) rasterised into \`rest\`: each scene pixel it covers learns the
 // rest point it shows, inverting the field for free; the rest keep STAMP_NO_REST, outside any layer. Where the field
 // folds, a later triangle covers an earlier one unless its rest point holds nothing: bare lattice mustn't hide paint.
-const STAMP_NO_REST = -65536;
 const groupLatticeWgsl = (layer: StampPaintTarget) => /* wgsl */ `
 ${stampPaintTargetWgsl('source', 0, layer, null)}
 @group(0) @binding(1) var linearClamp: sampler;
@@ -599,27 +643,6 @@ struct LatticePoint { @builtin(position) at: vec4f, @location(0) rest: vec2f };
     : 'held = abs(textureSampleLevel(source, linearClamp, uv, 0.0));'}
   if (all(held == vec4f(0.0))) { discard; }
   return vec4f(point.rest, 0.0, 1.0);
-}`;
-
-// A moved or warped group's layer resampled to where it lies: each scene pixel reads the layer at its rest point,
-// bilinearly. Beyond the layer there's no paint, rather than its clamped edge.
-const GROUP_MOVE = stampUniformLayout('GroupMove', [['origin', 'vec2u'], ['extent', 'vec2u']]);
-const groupMoveWgsl = (layer: StampPaintTarget) => /* wgsl */ `
-${GROUP_MOVE.wgsl}
-@group(0) @binding(0) var<uniform> u: GroupMove;
-${stampPaintTargetWgsl('source', 1, layer, null)}
-${stampPaintTargetWgsl('moved', 2, layer, 'write')}
-@group(0) @binding(3) var linearClamp: sampler;
-@group(0) @binding(4) var rest: texture_2d<f32>;
-@compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn placeGroup(@builtin(global_invocation_id) id: vec3u) {
-  if (any(id.xy >= u.extent)) { return; }
-  let pixel = u.origin + id.xy;
-  let q = textureLoad(rest, pixel, 0).xy;
-  let size = vec2f(textureDimensions(source));
-  let inside = all(q >= vec2f(0.0)) && all(q <= size);
-  ${layer.kind === 'array'
-    ? `for (var l = 0u; l < ${layer.layers}u; l++) { textureStore(moved, pixel, l, select(vec4f(0.0), textureSampleLevel(source, linearClamp, q / size, l, 0.0), inside)); }`
-    : 'textureStore(moved, pixel, select(vec4f(0.0), textureSampleLevel(source, linearClamp, q / size, 0.0), inside));'}
 }`;
 
 /** A boiling group's epochs kept on the GPU besides its first: the one drawing, and a couple a scrub returns to. */
@@ -1206,8 +1229,8 @@ function rendererOnSurface(
     }
     return depositPipelines.get(key)!;
   };
-  const pipelines = { blur: computePipeline(BLUR_WGSL), group: computePipeline(groupWgsl(compositor)), paper: computePipeline(paperWgsl(compositor)) };
-  const movePipeline = latticed.length ? computePipeline(groupMoveWgsl(compositor.targets.layer)) : null;
+  const pipelines = { blur: computePipeline(BLUR_WGSL), group: computePipeline(groupWgsl(compositor, false)), paper: computePipeline(paperWgsl(compositor)) };
+  const movedGroupPipeline = latticed.length ? computePipeline(groupWgsl(compositor, true)) : null;
   const latticeModule = latticed.length ? device.createShaderModule({ code: groupLatticeWgsl(compositor.targets.layer) }) : null;
   const latticePipeline = latticeModule && device.createRenderPipeline({
     layout: 'auto',
@@ -1274,8 +1297,7 @@ function rendererOnSurface(
     painting: layered('painting', compositor.targets.painting, STORAGE | SAVED),
     // Saved by checkpoints, and copied out by readLayer for the GPU gate's pigment checks.
     layer: layered('layer', compositor.targets.layer, STORAGE | RENDER | SAVED),
-    // A moved or warped group's layer resampled to where it lies, for its lay, and each scene pixel's rest point.
-    moved: latticed.length ? layered('moved', compositor.targets.layer, STORAGE) : null,
+    // Each scene pixel's rest point, for a moved or warped group's lay.
     rest: latticed.length ? target('rest', width, height, RENDER, 'rg32float') : null,
     mask: target('mask', width, height, RENDER, 'rg16float'),
     cap: target('cap', width, height, RENDER, 'rgba16float'),
@@ -1815,10 +1837,8 @@ function rendererOnSurface(
     put('lod', Math.max(0, Math.log2(1 / fit)));
   };
   const groupResources = compositor.group.resources({ photograph: photograph?.view ?? targets.blank.view, sampler: linearClamp });
-  /** The group pass's bindings from after the compositor's up to GROUP_PAPER_REST_BINDING: the rest points, for a compositor that reads its paper. */
-  const groupPaperRest = (fromRest: boolean): (GPUBindingResource | null)[] => (compositor.group.readsPaper
-    ? [...Array<null>(GROUP_PAPER_REST_BINDING - 3 - groupResources.length).fill(null), fromRest ? targets.rest!.view : targets.blank.view]
-    : []);
+  /** The moved group pass's bindings from after the compositor's up to GROUP_REST_BINDING: the rest points. */
+  const groupRest = (): (GPUBindingResource | null)[] => [...Array<null>(GROUP_REST_BINDING - 3 - groupResources.length).fill(null), targets.rest!.view];
 
   function drawPaper(encoder: GPUCommandEncoder) {
     dispatch(encoder, pipelines.paper, [slot((views) => writePaper(views, 0)), photograph?.view ?? targets.blank.view, targets.painting.view, linearClamp], width, height);
@@ -1829,7 +1849,7 @@ function rendererOnSurface(
    * `warpAt` bends it and its placement `moved` puts it, its own paper read where it's painted, too.
    */
   function layGroup(encoder: GPUCommandEncoder, index: number, group: CompiledStampGroup, painted: Box, moved: StampGroupPlacement | null, warpAt: number | null) {
-    let box: Box | null = painted, layer = targets.layer.view, paperFromRest = false;
+    let box: Box | null = painted, laidFromRest = false;
     const bent = warpAt === null ? null : group.warp!.at(warpAt), placed = moved && stampPlacementWarpMap(moved, group.motion!.pivot);
     const map: StampWarpMap | null = bent && placed ? (rest) => placed(bent(rest)) : bent ?? placed;
     if (map) {
@@ -1846,7 +1866,7 @@ function rendererOnSurface(
       }
       box = inPainting(x0, y0, x1, y1);
       if (!box) return;
-      const into = box, first = latticeUsed;
+      const first = latticeUsed;
       latticeUsed += triangles.length;
       const pass = encoder.beginRenderPass({ colorAttachments: [{ view: targets.rest!.view, loadOp: 'clear', clearValue: [STAMP_NO_REST, STAMP_NO_REST, 0, 0], storeOp: 'store' }] });
       pass.setPipeline(latticePipeline!);
@@ -1854,19 +1874,10 @@ function rendererOnSurface(
       pass.setVertexBuffer(0, latticeVertices, first * 4, triangles.length * 4);
       pass.draw(triangles.length / 4);
       pass.end();
-      paperFromRest = group.paper === 'own';
-      dispatch(encoder, movePipeline!, [
-        slot((views) => {
-          const put = stampUniformWriter(GROUP_MOVE, views);
-          put('origin', [into.x, into.y]);
-          put('extent', [into.w, into.h]);
-        }),
-        targets.layer.view, targets.moved!.view, linearClamp, targets.rest!.view,
-      ], into.w, into.h);
-      layer = targets.moved!.view;
+      laidFromRest = true;
     }
     const at = box;
-    dispatch(encoder, pipelines.group, [
+    dispatch(encoder, laidFromRest ? movedGroupPipeline! : pipelines.group, [
       slot((views) => {
         const put = stampUniformWriter(GROUP, views);
         put('opacity', group.opacity);
@@ -1875,9 +1886,9 @@ function rendererOnSurface(
         put('extent', [at.w, at.h]);
         put('group', index);
         writePaper(views, GROUP.at.paper);
-        put('paperFromRest', paperFromRest ? 1 : 0);
+        put('paperFromRest', laidFromRest && group.paper === 'own' ? 1 : 0);
       }),
-      layer, targets.painting.view, ...groupResources, ...groupPaperRest(paperFromRest),
+      targets.layer.view, targets.painting.view, ...groupResources, ...(laidFromRest ? groupRest() : []),
     ], at.w, at.h);
   }
 

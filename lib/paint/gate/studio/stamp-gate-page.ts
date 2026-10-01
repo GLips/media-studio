@@ -29,6 +29,7 @@ import { stampWashMovedWgsl } from '#lib/paint/painting/studio/stamp-paint-pigme
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
+import { checkStampGateHalfPixel, stampGateHalfPixelPainting } from '#lib/paint/gate/models/stamp-gate-half-pixel.ts';
 import {
   checkStampGateBloomBoil, checkStampGateBoil, checkStampGateBoilWash, checkStampGateCutOut, checkStampGateDrift, checkStampGateWarp, checkStampGateEffectsSunset, checkStampGateKnockout, checkStampGateLent,
   checkStampGateRecolour, checkStampGateRepaint, checkStampGateSunset, STAMP_GATE_ANIMATION_FPS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_DRIFT_FRAMES, STAMP_GATE_EFFECTS_SUNSET_HOURS,
@@ -339,6 +340,9 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
       ...await done, { warped: await firstFrame(stampGateCutOutPainting(paper, 'still-warp')), still: await firstFrame(stampGateCutOutPainting(paper, 'still')) },
     ], Promise.resolve([]));
     return checkStampGateWarp({ own: await drift(own), ground: await drift(stampGateCutOutPainting('ground', 'warp')), unbent, width: own.width });
+  }
+  if (id === 'animation/half-pixel') {
+    return checkStampGateHalfPixel({ still: await firstFrame(stampGateHalfPixelPainting(false)), shifted: await firstFrame(stampGateHalfPixelPainting(true)) });
   }
   if (id === 'animation/knockout') {
     const knockout = stampGateKnockoutPainting();

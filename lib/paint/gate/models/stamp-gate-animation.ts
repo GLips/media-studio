@@ -1,13 +1,14 @@
 // stamp-gate-animation.ts: the GPU gate's animated paintings and the properties their frames are held to:
 //
 // - drift: a moving group's texture travels with it;
-// - boil: a group boiling on twos holds within an epoch and changes across them;
-// - boil-wash: a boiling wash without random marks flows as far each epoch;
+// - boil: boiling on twos, a group holds within an epoch and changes across them;
+// - boil-wash: a boiling wash flows as far each epoch;
 // - bloom-boil: a bloom holds within an epoch and re-rolls its front at the next;
-// - sunset: one painting in two palettes lays the same coverage deposit by deposit;
+// - sunset: two palettes lay the same coverage;
 // - effects-sunset: a bloom and rim change coverage alike at every hour;
-// - recolour: keyed day to dusk, it's the halfway paint halfway, in any frame order;
+// - recolour: keyed paint is the halfway paint halfway, in any order;
 // - cut-out, warp: a group moved or bent carries its paper;
+// - half-pixel (stamp-gate-half-pixel.ts): crayon moved half a pixel keeps its light;
 // - knockout: what a group takes from behind moves with it.
 
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
@@ -393,7 +394,7 @@ export function stampGateKnockoutPainting({ sky = true, knockout = true, painted
 }
 
 export const STAMP_GATE_ANIMATION_IDS = [
-  'animation/drift', 'animation/boil', 'animation/boil-wash', 'animation/bloom-boil', 'animation/sunset', 'animation/effects-sunset', 'animation/recolour', 'animation/cut-out', 'animation/warp', 'animation/repaint', 'animation/lent', 'animation/knockout',
+  'animation/drift', 'animation/boil', 'animation/boil-wash', 'animation/bloom-boil', 'animation/sunset', 'animation/effects-sunset', 'animation/recolour', 'animation/cut-out', 'animation/warp', 'animation/half-pixel', 'animation/repaint', 'animation/lent', 'animation/knockout',
 ];
 
 type Rgba = ArrayLike<number>;
