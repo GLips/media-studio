@@ -583,12 +583,23 @@ fn groupPaperAt(pixel: vec2u) -> vec2f {
 }`;
 
 // A moved or warped group's lattice (stamp-group-warp.ts) rasterised into \`rest\`: each scene pixel it covers learns the
-// rest point it shows, which inverts the field for free. Pixels it doesn't cover keep STAMP_NO_REST, outside any layer.
+// rest point it shows, inverting the field for free; the rest keep STAMP_NO_REST, outside any layer. Where the field
+// folds, a later triangle covers an earlier one unless its rest point holds nothing: bare lattice mustn't hide paint.
 const STAMP_NO_REST = -65536;
-const GROUP_LATTICE_WGSL = /* wgsl */ `
+const groupLatticeWgsl = (layer: StampPaintTarget) => /* wgsl */ `
+${stampPaintTargetWgsl('source', 0, layer, null)}
+@group(0) @binding(1) var linearClamp: sampler;
 struct LatticePoint { @builtin(position) at: vec4f, @location(0) rest: vec2f };
 @vertex fn latticeVertex(@location(0) clip: vec2f, @location(1) rest: vec2f) -> LatticePoint { return LatticePoint(vec4f(clip, 0.0, 1.0), rest); }
-@fragment fn latticeRest(point: LatticePoint) -> @location(0) vec4f { return vec4f(point.rest, 0.0, 1.0); }`;
+@fragment fn latticeRest(point: LatticePoint) -> @location(0) vec4f {
+  let uv = point.rest / vec2f(textureDimensions(source));
+  var held = vec4f(0.0);
+  ${layer.kind === 'array'
+    ? `for (var l = 0u; l < ${layer.layers}u; l++) { held += abs(textureSampleLevel(source, linearClamp, uv, l, 0.0)); }`
+    : 'held = abs(textureSampleLevel(source, linearClamp, uv, 0.0));'}
+  if (all(held == vec4f(0.0))) { discard; }
+  return vec4f(point.rest, 0.0, 1.0);
+}`;
 
 // A moved or warped group's layer resampled to where it lies: each scene pixel reads the layer at its rest point,
 // bilinearly. Beyond the layer there's no paint, rather than its clamped edge.
@@ -1197,7 +1208,7 @@ function rendererOnSurface(
   };
   const pipelines = { blur: computePipeline(BLUR_WGSL), group: computePipeline(groupWgsl(compositor)), paper: computePipeline(paperWgsl(compositor)) };
   const movePipeline = latticed.length ? computePipeline(groupMoveWgsl(compositor.targets.layer)) : null;
-  const latticeModule = latticed.length ? device.createShaderModule({ code: GROUP_LATTICE_WGSL }) : null;
+  const latticeModule = latticed.length ? device.createShaderModule({ code: groupLatticeWgsl(compositor.targets.layer) }) : null;
   const latticePipeline = latticeModule && device.createRenderPipeline({
     layout: 'auto',
     vertex: { module: latticeModule, buffers: [{ arrayStride: 16, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x2' }, { shaderLocation: 1, offset: 8, format: 'float32x2' }] }] },
@@ -1839,6 +1850,7 @@ function rendererOnSurface(
       latticeUsed += triangles.length;
       const pass = encoder.beginRenderPass({ colorAttachments: [{ view: targets.rest!.view, loadOp: 'clear', clearValue: [STAMP_NO_REST, STAMP_NO_REST, 0, 0], storeOp: 'store' }] });
       pass.setPipeline(latticePipeline!);
+      pass.setBindGroup(0, bindGroup(latticePipeline!, [targets.layer.view, linearClamp]));
       pass.setVertexBuffer(0, latticeVertices, first * 4, triangles.length * 4);
       pass.draw(triangles.length / 4);
       pass.end();
