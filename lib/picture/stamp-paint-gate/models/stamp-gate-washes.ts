@@ -1,14 +1,15 @@
-// stamp-gate-washes.ts: the washes the GPU gate paints, held to what paint must do, not a baseline:
+// stamp-gate-washes.ts: the GPU gate's washes, held to what paint must do, not a baseline:
 //
 // - any frame order: a frame drawn fresh or after another matches;
 // - conserved: water, softening, blooms and wet paper only move pigment;
-// - lifted: a lift is bounded, and takes less of a stain;
+// - lifted: a lift is bounded and spares a stain;
 // - spread: flow leaves overlapping strokes no less even;
 // - set: dried paint wetted again lifts only by its rewetting;
 // - fenced: no paint moves under masking fluid or out of a `within`;
-// - rimmed: a drying puddle's edge gathers pigment, a seam of patches wet together doesn't;
+// - rimmed: a drying puddle's edge gathers pigment, a seam wet together doesn't;
 // - bloomed: a drop blooms though paint landed elsewhere first;
-// - unlined: a backrun lays no line along its wash's edge.
+// - unlined: a backrun lays no line along its wash's edge;
+// - paler: lifted tints read paler (stamp-gate-lift-colour.ts).
 //
 // Each case paints into its last group, read back.
 
@@ -19,6 +20,7 @@ import type { PaintPigmentAppearance } from '#lib/picture/paint/models/paint-pig
 import { compileStampPaintRecipe, stampPaintRecipe, type PaintMaterial, type StampPaintPaper, type StampWashScope } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import { compileStampPigmentPaint } from '#lib/picture/stamp-paint/models/stamp-pigment-paint.ts';
 import type { StampRegion } from '#lib/picture/stamp-paint/models/stamp-region.ts';
+import { stampGateLiftColourCase } from './stamp-gate-lift-colour.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
 
 /** A layer as the renderer reads one back (StampLayerReadback), restated so models needn't import the studio. */
@@ -44,11 +46,13 @@ export type StampGateWashCase = {
   | { property: 'rimmed'; without: StampGatePainting }
   | { property: 'bloomed'; without: StampGatePainting }
   | { property: 'unlined' }
+  // Reads the frame, not its last group.
+  | { property: 'paler'; read: (rgba: ArrayLike<number>) => StampGateWashCheck }
 );
 
 /** How far a pigment's total may drift from the same wash's without the ops under test: its layer's half-float rounding summed over a few thousand pixels. */
 export const STAMP_GATE_CONSERVED_TOLERANCE = 0.005;
-/** How far past a bound a pixel's amount may read: a half-float's step at amounts up to 2. */
+/** How far past a bound a pixel's amount may read: a half-float's step near the small amounts these bounds sit at. */
 export const STAMP_GATE_LAYER_TOLERANCE = 2e-3;
 
 const SIZE = { width: 160, height: 120 };
@@ -228,6 +232,10 @@ function washCases(): StampGateWashCase[] {
     },
     // Against the same paint that doesn't flow, so neither moves nor rims.
     { id: 'wash/rim', mid: MID, property: 'rimmed', subject: washPainting('watercolour', false, puddles), without: washPainting('watercolour', false, puddles, true) },
+    // Crayon sets as it lands, so its lifts are only ever of set wax.
+    stampGateLiftColourCase('wash/lift-paler-gouache-wet', MID, 'gouache', false),
+    stampGateLiftColourCase('wash/lift-paler-gouache-dry', MID, 'gouache', true),
+    stampGateLiftColourCase('wash/lift-paler-crayon', MID, 'crayon', false),
     {
       id: 'wash/wait', mid: MID, property: 'order',
       subject: washPainting('watercolour', false, (wash) => {

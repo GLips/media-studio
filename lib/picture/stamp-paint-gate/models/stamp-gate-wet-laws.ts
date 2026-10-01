@@ -2,7 +2,8 @@
 // The laws are still being tuned, so their grids are held to properties a painter would swear to, not to a baseline:
 // landing paint lies between the paint there and the stroke, or on workable paper adds to it; a brush's water hardens
 // its edge only on paper drier than it; a lift never adds pigment nor leaves less than none, takes at most its cover
-// times strength, and takes less of a staining pigment.
+// times strength, takes less of a staining pigment, and keeps pigments staining alike in proportion, so a tint keeps
+// its hue.
 //
 // A row is one lane of a law's four amounts, so a property can compare lanes the law worked out together.
 
@@ -43,27 +44,31 @@ const TOL = STAMP_GATE_WET_LAW_TOLERANCE;
 const vec = (v: Vec4) => `(${v.join(', ')})`;
 
 /**
- * wetLift over layers whose four amounts are equal and stain more lane by lane, and over uneven amounts some of them
- * none: each lane at every cover, strength and workability, open, half set and set, set paint loosening by none,
- * some and all.
+ * wetLift over layers whose four amounts are equal and stain more lane by lane, and over uneven amounts, some of them
+ * none, staining alike, thicker than the fibres hold and thinner: each lane at every cover, strength and workability,
+ * open, half set and set, set paint loosening by none, some and all.
  */
 function wetLiftGrid(): StampGateFormulaGrid {
-  const layers: readonly { was: Vec4; stain: Vec4 }[] = [
-    { was: [0.8, 0.8, 0.8, 0.8], stain: [0, 0.3, 0.6, 0.9] },
-    { was: [0.5, 1.5, 0.125, 0], stain: [0.25, 0.25, 0.25, 0.25] },
+  const layers: readonly { was: Vec4; stain: Vec4; rising: boolean }[] = [
+    { was: [0.8, 0.8, 0.8, 0.8], stain: [0, 0.3, 0.6, 0.9], rising: true },
+    { was: [0.5, 1.5, 0.125, 0], stain: [0.25, 0.25, 0.25, 0.25], rising: false },
+    { was: [0.1, 0.2, 0.05, 0], stain: [0.5, 0.5, 0.5, 0.5], rising: false },
   ];
-  const entries = layers.flatMap(({ was, stain }, k) => COARSE.flatMap((cover) => COARSE.flatMap((strength) => COARSE.flatMap((workable) => [0, 0.5, 1].flatMap((open) => [0, 0.375, 1].flatMap((rewetting) => LANES.map((lane): LawRow => ({
+  const entries = layers.flatMap(({ was, stain, rising }) => COARSE.flatMap((cover) => COARSE.flatMap((strength) => COARSE.flatMap((workable) => [0, 0.5, 1].flatMap((open) => [0, 0.375, 1].flatMap((rewetting) => LANES.map((lane): LawRow => ({
     label: `was ${vec(was)} stain ${vec(stain)} cover ${cover} strength ${strength} workable ${workable} open ${open} rewetting ${rewetting} lane ${lane}`,
-    inputs: [...was, cover, strength, workable, open, rewetting, ...stain, lane], lane, was, cover, bound: k === 0 ? 1 : 0,
+    inputs: [...was, was.reduce((a, b) => a + b, 0), cover, strength, workable, open, rewetting, ...stain, lane], lane, was, cover, bound: rising ? 1 : 0,
   }))))))));
-  // Rows come four lanes at a time, so a lane's neighbour below is the one staining less, in the evenly laid layer.
-  return propertyGrid('wetLift', 'wetLift(vec4f(x(0), x(1), x(2), x(3)), x(4), x(5), x(6), x(7), x(8), vec4f(x(9), x(10), x(11), x(12)))[u32(x(13))]', 14, entries, (row, out, gpu, i) => {
-    const was = row.was[row.lane], strength = row.inputs[5];
+  // Rows come four lanes at a time, so a lane's neighbour below is the one staining less in the evenly laid layer,
+  // and lane 0 the one every layer lays some of.
+  return propertyGrid('wetLift', 'wetLift(vec4f(x(0), x(1), x(2), x(3)), x(4), x(5), x(6), x(7), x(8), x(9), vec4f(x(10), x(11), x(12), x(13)))[u32(x(14))]', 15, entries, (row, out, gpu, i) => {
+    const was = row.was[row.lane], strength = row.inputs[6];
     if (out > was + TOL) return `lifting added pigment (was ${was})`;
     if (out < -TOL) return 'lifting left less than none';
     if (was - out > Math.min(1, row.cover * strength) * was + TOL) return `lifting took more than its cover times strength (was ${was})`;
     if ((row.cover === 0 || strength === 0) && Math.abs(out - was) > TOL) return `a lift that reaches nothing moved paint (was ${was})`;
     if (row.bound && row.lane > 0 && out < gpu[i - 1] - TOL) return `a pigment staining more lost more than its neighbour staining less (${gpu[i - 1]})`;
+    const first = gpu[i - row.lane] / row.was[0];
+    if (!row.bound && was > 0 && !(Math.abs(out / was - first) <= TOL / was)) return `pigments staining alike kept different shares (${out / was} against ${first})`;
     return null;
   });
 }

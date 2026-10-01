@@ -242,6 +242,7 @@ async function checkStampGateWash(id: string): Promise<StampGateWashCheck[]> {
     detail: `its end drawn again after ${mid} s: max ${ends.max}, mean ${ends.mean.toFixed(4)}; ${mid} s drawn fresh against after its end: max ${mids.max}, mean ${mids.mean.toFixed(4)}`,
   }];
   if (washCase.property === 'order') return checks;
+  if (washCase.property === 'paler') return [...checks, washCase.read(painted.end)];
   const pigments = stampGateLastGroupPigments(subject);
   if (washCase.property === 'fenced') return [...checks, checkStampGateFenced(id, pigments, painted.layer, washCase.fenced)];
   if (washCase.property === 'unlined') {

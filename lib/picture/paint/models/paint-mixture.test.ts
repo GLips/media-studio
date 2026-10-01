@@ -56,6 +56,14 @@ test('a thin glaze of white over black lightens it toward a neutral grey', () =>
   assert.ok(Math.max(r, g, b) - Math.min(r, g, b) < 0.03, `stays neutral: ${[r, g, b].join(', ')}`);
 });
 
+test('a full load of white in a masstone medium hides black as its cover says', () => {
+  for (const medium of [PAINT_MEDIA.gouache, PAINT_MEDIA.crayon]) {
+    const white = paintFilm([{ pigment: paintPigmentFromColor('#ffffff', medium, PAINT_BANDS), amount: medium.body }], medium);
+    const [r, g, b] = paintBandsToLinearRgb(PAINT_BANDS, paintLayered(flat(PAINT_BANDS, 0), [white]));
+    for (const v of [r, g, b]) assert.ok(Math.abs(v - medium.color.cover) < 0.02, `${medium.name}: ${[r, g, b].join(', ')} against cover ${medium.color.cover}`);
+  }
+});
+
 test('a pigment fitted from its appearance reproduces it over white and over black, and a thin film its tint', () => {
   for (const appearance of [...Object.values(W), TITANIUM_WHITE] as PaintPigmentAppearance[]) {
     const pigment = paintPigmentFromAppearance(appearance, PAINT_BANDS);
@@ -75,7 +83,8 @@ test('a mixture is its proportions at a strength: scaling the amounts changes no
   assert.deepEqual(one.map(({ pigment, amount }) => [pigment.id, amount]), scaled.map(({ pigment, amount }) => [pigment.id, amount]));
   assert.deepEqual(one.map(({ amount }) => amount), [0.375, 0.125]);
   const tinted = paintMixtureComponents({ parts: [{ pigment: W.ultramarine, amount: 1 }], strength: 0.25 }, PAINT_MEDIA.gouache, PAINT_BANDS);
-  assert.deepEqual(tinted.map(({ pigment, amount }) => [pigment.id, amount]), [['titaniumWhite', 1.5], ['ultramarine', 0.5]]);
+  const fullLoad = PAINT_MEDIA.gouache.body;
+  assert.deepEqual(tinted.map(({ pigment, amount }) => [pigment.id, amount]), [['titaniumWhite', 0.75 * fullLoad], ['ultramarine', 0.25 * fullLoad]]);
   assert.match(paintMixtureProblem({ parts: [{ pigment: W.ultramarine, amount: 1 }, { pigment: W.ultramarine, amount: 2 }], strength: 1 }) ?? '', /twice/);
   assert.match(paintMixtureProblem({ parts: [{ pigment: W.ultramarine, amount: 0 }], strength: 1 }) ?? '', /above 0/);
   assert.equal(paintMixtureProblem({ parts: [{ pigment: W.ultramarine, amount: 0 }, { pigment: W.cerulean, amount: 1 }], strength: 0 }), null);

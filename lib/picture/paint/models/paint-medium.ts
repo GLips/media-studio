@@ -14,8 +14,8 @@ export type PaintLightening = { kind: 'water' } | { kind: 'white'; white: PaintP
 
 /**
  * How a medium's layers combine. `mixes`: each stroke moves the paint toward its own, carrying `pickup` of what's
- * under it. `stacks`: each layer adds its pigment to what the tooth holds, trading for it only past `holds` unit films;
- * wax held round a pixel fills its valleys `fill` (0..1) of the way per film, so paper shows through several layers.
+ * under it. `stacks`: each layer adds its pigment to what the tooth holds, trading for it only past `holds` full loads;
+ * wax held round a pixel fills its valleys `fill` (0..1) of the way at `holds`, so paper shows through several layers.
  */
 export type PaintLayering = { kind: 'mixes' } | PaintStackedLayering;
 export type PaintStackedLayering = { kind: 'stacks'; holds: number; fill: number };
@@ -25,13 +25,20 @@ export type PaintMedium = {
   /**
    * What a colour written for this medium means, and so how a pigment is fitted in it (paintPigmentInMedium).
    * `glaze`: the colour a full load shows over white paper, as transparent as `hiding` says (watercolour, ink).
-   * `masstone`: the colour of the paint itself, thick (gouache, crayon), its strength never below `scatter`.
+   * `masstone`: the colour of the paint itself, thick (gouache, crayon), its tinting strength never below
+   * `leastStrength`, a full load covering as `cover` says (paintMasstoneScatter).
    */
-  color: { kind: 'glaze'; hiding: number } | { kind: 'masstone'; scatter: number };
-  /** How thick a full load lays, in unit films: a medium with more body lays more pigment per stroke. */
+  color: { kind: 'glaze'; hiding: number } | PaintMasstone;
+  /**
+   * How thick a full load lays, in unit films. A unit film is one full watercolour wash, the depth a lift's stain is
+   * measured in (stamp-wet-lift.ts): gouache and crayon lay many, so their stain is a sliver of a stroke.
+   */
   body: number;
   lightening: PaintLightening;
-  /** How far a pigment's granulation shows: free water lets it settle; a thick binder holds it. */
+  /**
+   * How far a pigment's granulation shows, at a full load: free water lets it settle; a thick binder holds it. A
+   * lighter load settles less, by its share of a full one.
+   */
   granulation: number;
   /**
    * Where the paint meets the paper's tooth: a wet medium pools into the valleys (`valleys`, as deep as the paper is,
@@ -50,6 +57,13 @@ export type PaintMedium = {
   pickup: number;
   wetting: PaintWetting;
 };
+
+/**
+ * A masstone medium's colours: each the paint's own, thick. `cover` is what a full load of a perfect white reflects
+ * dry over black, below 1: how far one stroke hides what's under it, and so how far a lift has to thin it before the
+ * paper shows. Tinting strength is a colour's luminance, at least `leastStrength`.
+ */
+type PaintMasstone = { kind: 'masstone'; leastStrength: number; cover: number };
 
 /**
  * How the paint behaves wet over painting time, as a wash (stamp-wetness.ts) reads it. Nothing asks which medium it
@@ -88,26 +102,33 @@ export const PAINT_MEDIA = {
     wetting: { spread: 0.5, drying: 240, openTime: 0, rewetting: 0.35, brushWater: 0.7, damp: 0.35 },
   },
   // Tuned by eye (vid-109), not measured: a stroke mostly lays its own paint over wet paint, darks dry lighter and
-  // matte, and a dark colour holds its hue into tints with white.
+  // matte, and a dark colour holds its hue into tints with white. A stroke is about twenty washes thick and one coat
+  // of white nearly hides black, so a lift thins it toward the paper, paler as it goes (vid-122).
   gouache: {
-    name: 'gouache', color: { kind: 'masstone', scatter: 0.05 }, body: 2, lightening: { kind: 'white', white: TITANIUM_WHITE }, granulation: 0.1,
+    name: 'gouache', color: { kind: 'masstone', leastStrength: 0.05, cover: 0.9 }, body: 20, lightening: { kind: 'white', white: TITANIUM_WHITE }, granulation: 0.2,
     paperContact: { kind: 'valleys' }, layering: { kind: 'mixes' }, dryingScatter: 0.4, pickup: 0.2,
     // A first guess (vid-117): it barely travels, dries fast and re-dissolves once dry.
     wetting: { spread: 0.1, drying: 120, openTime: 0, rewetting: 0.9, brushWater: 0.4, damp: 0.35 },
   },
   // Tuned by eye (vid-109, vid-124), not measured: a firm hand skips the paper below 85% of its mean height; about
-  // five layers fill the tooth.
+  // five layers fill the tooth. Wax lays about fifteen washes thick and one coat of white nearly hides black, so a
+  // lift thins it toward the paper, paler as it goes (vid-122).
   crayon: {
-    name: 'crayon', color: { kind: 'masstone', scatter: 0.05 }, body: 1.5, lightening: { kind: 'white', white: { id: 'waxWhite', name: 'wax white', overWhite: '#f7f6f1', overBlack: '#9d9c97' } },
-    granulation: 0, paperContact: { kind: 'peaks', tooth: 0.85 }, layering: { kind: 'stacks', holds: 2, fill: 0.6 }, dryingScatter: 0,
+    name: 'crayon', color: { kind: 'masstone', leastStrength: 0.05, cover: 0.92 }, body: 15, lightening: { kind: 'white', white: { id: 'waxWhite', name: 'wax white', overWhite: '#f7f6f1', overBlack: '#9d9c97' } },
+    granulation: 0, paperContact: { kind: 'peaks', tooth: 0.85 }, layering: { kind: 'stacks', holds: 4 / 3, fill: 0.6 }, dryingScatter: 0,
     pickup: 0,
     // No water and no spread. A lift is an eraser, taking the wax off the tooth's peaks but not what's pressed in (vid-117).
     wetting: { spread: 0, drying: 1, openTime: 0, rewetting: 0.85, brushWater: 0, damp: 0.35 },
   },
 } as const satisfies Record<string, PaintMedium>;
 
-/** Scattering per unit amount of a masstone pigment of strength 1: enough that a unit film of white hides black (about 0.8). */
-const MASSTONE_SCATTER = 8;
+/**
+ * Scattering per unit film, wet, of a masstone pigment of tinting strength 1: what a full load of it lays so that, dry,
+ * it covers as `cover` says. A film scattering x in all and absorbing nothing reflects x / (1 + x) over black.
+ */
+function paintMasstoneScatter({ cover }: PaintMasstone, { body, dryingScatter }: Pick<PaintMedium, 'body' | 'dryingScatter'>): number {
+  return cover / (1 - cover) / (body * (1 + dryingScatter));
+}
 
 /** K/S of a film whose masstone reflects `R`. */
 const kubelkaMunkRatio = (R: number) => (1 - paintHeldReflectance(R)) ** 2 / (2 * paintHeldReflectance(R));
@@ -118,7 +139,7 @@ export const paintColorPigmentId = (color: PaintHex) => `color:${color.toLowerCa
 /**
  * The pigment a colour written for `medium` names (PaintMedium's `color`): each colour is fitted once as a pigment of
  * its own, so only pigments are ever mixed. In a masstone medium its tinting strength is its luminance, held at the
- * medium's floor, so light colours scatter more, as real paints do on average.
+ * medium's least, so light colours scatter more, as real paints do on average.
  */
 export function paintPigmentFromColor(color: PaintHex, medium: PaintMedium, bands: PaintBands, identity: Partial<PaintPigmentHabits> & { id?: string; name?: string } = {}): PaintPigment {
   const { id = paintColorPigmentId(color), name = color, ...habits } = identity;
@@ -126,9 +147,10 @@ export function paintPigmentFromColor(color: PaintHex, medium: PaintMedium, band
   const R = bands.reflectanceOf(linear);
   const K = new Float64Array(bands.count), S = new Float64Array(bands.count);
   if (medium.color.kind === 'masstone') {
-    const strength = Math.max(medium.color.scatter, 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]);
+    const strength = Math.max(medium.color.leastStrength, 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]);
+    const scatter = paintMasstoneScatter(medium.color, medium);
     for (let b = 0; b < bands.count; b++) {
-      S[b] = strength * MASSTONE_SCATTER;
+      S[b] = strength * scatter;
       K[b] = S[b] * kubelkaMunkRatio(R[b]);
     }
   } else {

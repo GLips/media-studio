@@ -155,20 +155,20 @@
     },
     "painting/pigment-crayon": {
       "file": "painting/pigment-crayon.png",
-      "output": "d675dbafcc644b0c4a3aded283a7ff8f7be4c91973f272933b776e8c111a53ff",
-      "inputs": "6a21f5f6bf87642ba08c9b40dea2decc2756adcf58ad9a9e36daf959b077224c",
-      "reason": "vid-127: a flood's body lays its brush's expected tint (flat), and outside a wash a flood carrying water lands as wet paint on dry paper (wetLandCover), hard at its water's edge",
+      "output": "000cd132ad1f2796df151ad7b6f0d2461fbade190da9b3caf3bcb6f5a8961fbe",
+      "inputs": "ece1924a19e14a3154a84f3afd9fb4a987936418cde5c69143a5d475f37ac58c",
+      "reason": "vid-122: a full load lays 20 (gouache) and 15 (crayon) unit films, a unit one watercolour wash, so a lift's stain is a sliver of a stroke; a full load covers as cover says, gouache 0.9 (thinner than before, so a lift reads paler; pure full-strength darks now show the paper's grain a little) and crayon 0.92 (as before); granulation load and crayon holds per full load",
       "accepted": "2026-10-01",
-      "acceptedOver": "a43272d",
+      "acceptedOver": "2209c28",
       "adapter": "apple metal-3"
     },
     "painting/pigment-gouache": {
       "file": "painting/pigment-gouache.png",
-      "output": "a5b0118fbd60ec3865dd96433e97406dda135b65bf1874e4bb6790b5f2a9f574",
-      "inputs": "f0b86af2bdecb404eaa9bc6c8041f69c7b9b5f7ca7f4554b56523cf3ff8b5f35",
-      "reason": "vid-127: a flood's body lays its brush's expected tint (flat), and outside a wash a flood carrying water lands as wet paint on dry paper (wetLandCover), hard at its water's edge",
+      "output": "edbe3666bfc5c42fb109ec6be4abb9a209c4118f2c33e69b5b7338dd673bfedc",
+      "inputs": "d1de9b0d139a8baffb17dd0db48e6948d84db0de55f4640d08d818438b4a2791",
+      "reason": "vid-122: a full load lays 20 (gouache) and 15 (crayon) unit films, a unit one watercolour wash, so a lift's stain is a sliver of a stroke; a full load covers as cover says, gouache 0.9 (thinner than before, so a lift reads paler; pure full-strength darks now show the paper's grain a little) and crayon 0.92 (as before); granulation load and crayon holds per full load",
       "accepted": "2026-10-01",
-      "acceptedOver": "a43272d",
+      "acceptedOver": "2209c28",
       "adapter": "apple metal-3"
     },
     "painting/pigment-watercolour": {

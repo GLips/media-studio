@@ -25,9 +25,9 @@ export function paintPigmentSeed(id: string): number {
 }
 
 /**
- * The paper in WGSL. `paintWetSettle` is linear in the valley's relative depth, steeper by granulation × load.
- * `paintDryContact`: see its own note. `paintClumps` is value noise in clumps of about 2.5 and 1.2 pixels, its lattice
- * wrapping at 2²⁴ so it stays exact in f32.
+ * The paper in WGSL. `paintWetSettle` is linear in the valley's relative depth, steeper by granulation × load, the load
+ * a share of a full one. `paintDryContact`: see its own note. `paintClumps` is value noise in clumps of about 2.5 and
+ * 1.2 pixels, its lattice wrapping at 2²⁴ so it stays exact in f32.
  */
 export const PAINT_PAPER_WGSL = /* wgsl */ `
 fn paintValley(h: f32, meanHeight: f32) -> f32 { return (1.0 - h) / max(1.0 - meanHeight, 0.01); }

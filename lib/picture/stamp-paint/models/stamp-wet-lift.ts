@@ -5,8 +5,8 @@
 // lifts erode a stain about 1–2% a lift. Holding it exactly needs a stored stain per pigment, doubling the layer.
 
 /**
- * How deep, in unit films, the fibres take a stain: a pigment stains its `staining` share of its first this-many
- * films, so a thin tint keeps its hue when lifted while thick gouache's stain is no deeper than a full wash's.
+ * How deep, in unit films, the fibres take a stain: this many films of the paint as mixed, each pigment its `staining`
+ * share, so a tint stains as itself and thick gouache no deeper than a wash; a thinner film stains whole.
  */
 export const STAMP_LIFT_STAIN_FIBRES = 0.6;
 
@@ -22,13 +22,16 @@ export const STAMP_WET_LIFT_WGSL = /* wgsl */ `
 fn liftFree(workable: f32, open: f32) -> f32 { return clamp(workable, 0.0, 1.0) * clamp(open, 0.0, 1.0); }
 // How much of the paint a lift can work up: all that's free, and of the rest what the medium's rewetting loosens.
 fn liftLoose(free: f32, rewetting: f32) -> f32 { return mix(clamp(rewetting, 0.0, 1.0), 1.0, free); }
+// The share of a pixel's paint in the fibres, where it holds \`paint\` in all (STAMP_LIFT_STAIN_FIBRES).
+fn liftFibreShare(paint: f32) -> f32 { return ${STAMP_LIFT_STAIN_FIBRES.toFixed(3)} / max(paint, ${STAMP_LIFT_STAIN_FIBRES.toFixed(3)}); }
 // Four pigment amounts after a lift at \`cover\` and \`strength\`: paint that never set is as loose as it's
-// \`workable\`, set paint only by the medium's \`rewetting\`, however wet again; each keeps its \`stain\` share.
-fn wetLift(was: vec4f, cover: f32, strength: f32, workable: f32, open: f32, rewetting: f32, stain: vec4f) -> vec4f {
+// \`workable\`, set paint only by the medium's \`rewetting\`, however wet again; each keeps its \`stain\` share of what
+// the fibres hold of a pixel holding \`paint\` in all.
+fn wetLift(was: vec4f, paint: f32, cover: f32, strength: f32, workable: f32, open: f32, rewetting: f32, stain: vec4f) -> vec4f {
   let free = liftFree(workable, open);
   let loose = liftLoose(free, rewetting);
   let hold = mix(1.0, ${STAMP_LIFT_WET_STAIN_HOLD.toFixed(3)}, free);
-  let held = clamp(stain, vec4f(0.0), vec4f(1.0)) * min(was, vec4f(${STAMP_LIFT_STAIN_FIBRES.toFixed(3)})) * hold;
+  let held = clamp(stain, vec4f(0.0), vec4f(1.0)) * was * liftFibreShare(paint) * hold;
   let take = clamp(cover * strength, 0.0, 1.0) * loose;
   return was - take * (was - held);
 }

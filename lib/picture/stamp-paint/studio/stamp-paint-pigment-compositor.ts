@@ -93,10 +93,10 @@ const STACKED_FILL_REACH = 6;
 
 /**
  * A stacking medium's lay (PaintStackedLayering): each layer adds its pigment to what the tooth holds, as crossing
- * crayon layers mix. Past `holds` unit films a stroke trades its wax for what's there, its own on top. Wax held fills
+ * crayon layers mix. Past `holds` full loads a stroke trades its wax for what's there, its own on top. Wax held fills
  * the valleys `fill` of the way, so each later layer reaches further into them.
  */
-const stackedLay = ({ holds, fill }: PaintStackedLayering) => /* wgsl */ `
+const stackedLay = ({ holds, fill }: PaintStackedLayering, body: number) => /* wgsl */ `
 // The wax held round \`pixel\` before this deposit, a ring u.beforeReach pixels out and the pixel: a valley fills with
 // wax pressed in from the peaks round it, never having caught any itself.
 fn heldAround(pixel: vec2u) -> f32 {
@@ -119,11 +119,11 @@ fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f,
     was[l] = textureLoad(layer, pixel, l);
     if (!isSheet(l)) { held += dot(was[l], pigmentMask(l)); }
   }
-  let incoming = incomingAt(tooth, at, press, heldAround(pixel) / ${f32(holds)} * ${f32(fill)});
+  let incoming = incomingAt(tooth, at, press, heldAround(pixel) / ${f32(holds * body)} * ${f32(fill)});
   var added = 0.0;
   for (var l = 0u; l < LAYERS; l++) { if (!isSheet(l)) { added += cover * dot(incoming[l], pigmentMask(l)); } }
   // What's there gives way only as far as the stroke's own wax overfills the tooth.
-  let keep = select(1.0, clamp((${f32(holds)} - added) / max(held, 1e-6), 0.0, 1.0), held + added > ${f32(holds)});
+  let keep = select(1.0, clamp((${f32(holds * body)} - added) / max(held, 1e-6), 0.0, 1.0), held + added > ${f32(holds * body)});
   let under = was[0].x;
   for (var l = 0u; l < LAYERS; l++) {
     if (isSheet(l)) { continue; }
@@ -212,9 +212,8 @@ fn paperReflectance(i: u32, color: vec3f) -> vec4f {
 
   /**
    * The underpaint's pigments as constants (StampPigmentUnderpaint), and how a knockout's lifts thin them: each
-   * pigment's first STAMP_LIFT_STAIN_FIBRES films keep what its staining holds, read between the sheet's three
-   * stainings; past them it goes as paint that holds nothing does. The paint there changes by as much as a film of
-   * the pigments behind does over the painting's paper.
+   * pigment's share in the fibres (wetLift's) keeps what its staining holds, between the sheet's three stainings; the
+   * rest goes as unstained paint. The paint changes as much as a film of the pigments behind does over the paper.
    */
   const underpaintWgsl = ({ pigments, slots, writes }: StampPigmentUnderpaint) => {
     const count = Math.max(1, pigments.length), bandsOf = (key: 'K' | 'S') => pigments.length
@@ -243,11 +242,15 @@ fn underpaintOver(i: u32, films: array<vec4f, UNDER_LAYERS>, paper: vec4f) -> ve
 // parabola through the three.
 fn liftedUnderpaint(behind: array<vec4f, UNDER_LAYERS>, left: vec3f) -> array<vec4f, UNDER_LAYERS> {
   var after = behind;
+  // Every group behind counts as one film in the fibres, not only the lowest.
+  var total = 0.0;
+  for (var p = 0u; p < UNDERPAINT; p++) { total += behind[p / 4u][p % 4u]; }
+  let fibres = ${f32(STAMP_LIFT_STAIN_FIBRES)} / max(total, ${f32(STAMP_LIFT_STAIN_FIBRES)});
   for (var p = 0u; p < UNDERPAINT; p++) {
     let s = UNDER_STAINS[p];
     let kept = max(0.0, left.x * (2.0 * s - 1.0) * (s - 1.0) + left.y * 4.0 * s * (1.0 - s) + left.z * s * (2.0 * s - 1.0));
     let w = behind[p / 4u][p % 4u];
-    let thin = min(w, ${f32(STAMP_LIFT_STAIN_FIBRES)});
+    let thin = w * fibres;
     after[p / 4u][p % 4u] = thin * kept + (w - thin) * left.x;
   }
   return after;
@@ -258,12 +261,12 @@ fn liftedUnder(i: u32, covered: vec4f, behind: array<vec4f, UNDER_LAYERS>, left:
   };
 
   // Where the medium meets the paper, from the paper's height `h`, its mean and valley, by a pigment's granulation and
-  // load; a dry medium's by how hard it's pressed and how far wax already fills the tooth.
+  // its share of a full load; a dry medium's by how hard it's pressed and how far wax already fills the tooth.
   const { paperContact, layering } = medium;
   const contactOf = (depth: string, granulation: string, load: string, press: string, filled: string) => (paperContact.kind === 'peaks'
     ? `paintDryContact(h, meanHeight, ${f32(paperContact.tooth)}, ${depth}, ${press}, ${filled})`
     : `paintWetSettle(valley, ${depth}, ${granulation}, ${load})`);
-  const contact = contactOf('u.paperDepth', 'c.granulation', 'amount', 'press', 'filled');
+  const contact = contactOf('u.paperDepth', 'c.granulation', `amount / ${f32(medium.body)}`, 'press', 'filled');
   const groupOf = (deposit: CompiledStampDeposit) => {
     const group = paint.deposits.get(deposit)?.group;
     if (group === undefined) throw new Error(`stamp paint: ${deposit.id} isn't in the painting its pigment compositor was made for`);
@@ -310,7 +313,7 @@ fn incomingAt(tooth: vec2f, at: vec2f, press: f32, filled: f32) -> array<vec4f, 
 }
 // The layer holding a group's sheet, which only a knockout writes: a group without one has none.
 fn isSheet(l: u32) -> bool { return paint.sheetLayer != 0u && l == paint.sheetLayer; }
-${layering.kind === 'stacks' ? stackedLay(layering) : mixedLay(medium.pickup)}`,
+${layering.kind === 'stacks' ? stackedLay(layering, medium.body) : mixedLay(medium.pickup)}`,
       wet: /* wgsl */ `
 ${STAMP_WET_LIFT_WGSL}
 @group(0) @binding(25) var<storage, read> stains: array<vec4f>;
@@ -358,10 +361,10 @@ fn landDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f
   // A lift thins the film where it is rather than shrinking it, so coverage stays: the group dries what's left over
   // that coverage, and a later stroke there meets paint, however little.
   if (wet.action == WET_LIFT) {
+    for (var l = 0u; l < LAYERS; l++) { if (!isSheet(l)) { had += dot(was[l], pigmentMask(l)); } }
     for (var l = 0u; l < LAYERS; l++) {
       if (isSheet(l)) { continue; }
-      now[l] = wetLift(was[l], cover, wet.strength, wet.workable, open, ${f32(medium.wetting.rewetting)}, stains[paint.group * LAYERS + l]);
-      had += dot(was[l], pigmentMask(l));
+      now[l] = wetLift(was[l], had, cover, wet.strength, wet.workable, open, ${f32(medium.wetting.rewetting)}, stains[paint.group * LAYERS + l]);
       has += dot(now[l], pigmentMask(l));
     }
     now[0].x = under;
@@ -414,7 +417,7 @@ fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f) -> vec4f {
   var hold = vec4f(1.0);
   for (var i = 0u; i < 4u; i++) {
     let habit = WASH_HABITS[4u * l + i];
-    hold[i] = max(0.0, ${contactOf('depth', 'habit.x', 'held[i]', '1.0', '0.0')} * paintClumps(habit.y, at.x, at.y, u32(habit.z)));
+    hold[i] = max(0.0, ${contactOf('depth', 'habit.x', `held[i] / ${f32(medium.body)}`, '1.0', '0.0')} * paintClumps(habit.y, at.x, at.y, u32(habit.z)));
   }
   return hold;
 }`;
