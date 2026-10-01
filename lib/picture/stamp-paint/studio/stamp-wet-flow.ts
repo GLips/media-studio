@@ -118,13 +118,16 @@ fn holdAt(p: vec2i) -> vec4f { return textureLoad(hold, boxLocal(p), 0); }
   textureStore(pigmentOut, id.xy, vec4f(total));
 }
 
-// Each pixel's hold of the layer's paint: as the compositor lays it, by the paper's tooth and the paint's habits.
+// Each pixel's hold of the layer's paint: as the compositor lays it, by the paper's tooth and the paint's habits, and
+// only as far as paint may land there (footprint g). A fringe pixel half cut by \`within\` or fluid evened to the
+// interior's full amount loses its anti-aliasing, and two washes sharing that outline would both fill it, a dark line.
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn holds(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= f.extent)) { return; }
   let p = vec2i(f.origin + id.xy);
   let held = textureLoad(paint, p, f.chunk, 0);
-  let hold = washHold(f.chunk, vec2f(p) + 0.5, textureLoad(footprint, p, 0).ba, f.depth, held);
-  textureStore(holdOut, id.xy, max(hold, vec4f(${LEAST_HOLD.toFixed(3)})));
+  let landed = textureLoad(footprint, p, 0);
+  let hold = washHold(f.chunk, vec2f(p) + 0.5, landed.ba, f.depth, held);
+  textureStore(holdOut, id.xy, max(hold, vec4f(${LEAST_HOLD.toFixed(3)})) * max(landed.g, 0.001));
 }
 
 // Each pixel's exchange with the pixels a stride either side along the pass's axis, through the way between. Paint
