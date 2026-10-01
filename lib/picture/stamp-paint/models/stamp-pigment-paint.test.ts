@@ -5,7 +5,7 @@ import { PAINT_BANDS } from '#lib/picture/paint/models/paint-spectrum.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/picture/paint/models/paint-watercolour-pigments.ts';
 import { stampLinearDynamics, type StampBrush } from './stamp-brush.ts';
 import { compileStampPaintRecipe, stampPaintRecipe, type PaintMaterial, type StampPaintMaterial } from './stamp-paint-recipe.ts';
-import { compileStampPigmentPaint, STAMP_PIGMENT_GROUP_SLOTS, type StampPigmentMixing } from './stamp-pigment-paint.ts';
+import { compileStampPigmentPaint, STAMP_PIGMENT_GROUP_SLOTS, stampPigmentAmountsAt, type StampPigmentMixing } from './stamp-pigment-paint.ts';
 
 const brush: StampBrush = {
   name: 'Round', blend: 'normal', accumulation: { kind: 'buildToOpacity' },
@@ -49,8 +49,30 @@ test("a graded wash puts both ends' pigments in its palette and lays each at its
   const [deposit] = paint.deposits.values();
   assert.deepEqual(deposit.grade, { kind: 1, geometry: [0, 0, 0, 100] });
   const of = (id: string) => deposit.components.find(({ slot }) => slot === palette.indexOf(id))!;
-  const [sienna, blue] = [of('burntSienna'), of('ultramarine')];
-  assert.equal(sienna.amounts[0], 0);
-  assert.equal(blue.amounts[1], 0);
-  assert.ok(sienna.amounts[1] > 0 && blue.amounts[0] > sienna.amounts[1], 'each end lays its own pigment, the weaker at its strength');
+  const [sienna, blue] = [of('burntSienna'), of('ultramarine')].map((component) => stampPigmentAmountsAt(component, 0));
+  assert.equal(sienna[0], 0);
+  assert.equal(blue[1], 0);
+  assert.ok(sienna[1] > 0 && blue[0] > sienna[1], 'each end lays its own pigment, the weaker at its strength');
+});
+
+const mixture = (ultramarine: number, sienna: number): PaintMaterial => ({
+  kind: 'mixture', parts: [{ pigment: W.ultramarine, amount: ultramarine }, { pigment: W.burntSienna, amount: sienna }].filter(({ amount }) => amount > 0), strength: 0.8,
+});
+
+test('a keyed material lays, between its keys, what a mixture of the eased amounts would, and its group says when it recolours', () => {
+  const painting = washOf([{ kind: 'keys', keys: [{ at: 1, material: mixture(1, 0) }, { at: 3, material: mixture(0, 1) }] }]);
+  assert.deepEqual(painting.groups[0].recolours, { from: 1, to: 3 });
+  const paint = compileStampPigmentPaint(painting, watercolour, PAINT_BANDS);
+  const [deposit] = paint.deposits.values();
+  const laidAt = (t: number) => Object.fromEntries(deposit.components.map((c) => [paint.groups[0].palette[c.slot].id, stampPigmentAmountsAt(c, t)[0]]));
+  const still = (material: PaintMaterial) => {
+    const fixed = compileStampPigmentPaint(washOf([material]), watercolour, PAINT_BANDS);
+    const [only] = fixed.deposits.values();
+    return Object.fromEntries(only.components.map((c) => [fixed.groups[0].palette[c.slot].id, stampPigmentAmountsAt(c, 0)[0]]));
+  };
+  assert.deepEqual(laidAt(0), { ...still(mixture(1, 0)), burntSienna: 0 }, 'held before its first key');
+  const between = laidAt(2), half = still(mixture(1, 1));
+  for (const id of ['ultramarine', 'burntSienna']) assert.ok(Math.abs(between[id] - half[id]) < 1e-12, `${id} halfway is the even mixture's`);
+  assert.deepEqual(laidAt(9), { ...still(mixture(0, 1)), ultramarine: 0 }, 'held after its last');
+  assert.equal(washOf([mixture(1, 0)]).groups[0].recolours, undefined);
 });

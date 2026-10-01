@@ -29,8 +29,9 @@ import { stampWashMovedWgsl } from '#lib/picture/stamp-paint/studio/stamp-paint-
 import type { StampBrush } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/picture/stamp-paint/studio/stamp-paint-renderer.ts';
 import {
-  checkStampGateBloomBoil, checkStampGateBoil, checkStampGateBoilWash, checkStampGateDrift, checkStampGateSunset, STAMP_GATE_ANIMATION_FPS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_DRIFT_FRAMES,
-  stampGateBloomBoilPainting, stampGateBoilPainting, stampGateBoilWashPainting, stampGateDriftPainting, stampGateSunsetPainting,
+  checkStampGateBloomBoil, checkStampGateBoil, checkStampGateBoilWash, checkStampGateDrift, checkStampGateRecolour, checkStampGateSunset, STAMP_GATE_ANIMATION_FPS, STAMP_GATE_ANIMATION_IDS,
+  STAMP_GATE_DRIFT_FRAMES, STAMP_GATE_RECOLOUR_KEYS, stampGateBloomBoilPainting, stampGateBoilPainting, stampGateBoilWashPainting, stampGateDriftPainting, stampGateRecolourPainting,
+  stampGateSunsetPainting,
 } from '../models/stamp-gate-animation.ts';
 import {
   checkStampGateFlow, STAMP_GATE_FLOW_SIZE, stampGateFlowCase, stampGateFlowLayer, stampGateFlowPainting, stampGateHalfBits, stampGateHalfValue,
@@ -266,6 +267,18 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
       return traces.map((trace) => trace.coverage);
     });
     return checkStampGateSunset(await traced(stampGateSunsetPainting('day')), await traced(stampGateSunsetPainting('dusk')));
+  }
+  if (id === 'animation/recolour') {
+    const [from, to] = STAMP_GATE_RECOLOUR_KEYS, middle = (from + to) / 2;
+    const still = stampGateRecolourPainting('halfway'), keyed = stampGateRecolourPainting('keyed');
+    const stillFrame = await withGateRenderer(still, drawnImages(still), (renderer, frame) => drawn(renderer, frame, from));
+    const freshEnd = await withGateRenderer(keyed, drawnImages(keyed), (renderer, frame) => drawn(renderer, frame, to));
+    return withGateRenderer(keyed, drawnImages(keyed), async (renderer, frame) => {
+      const halfway = await drawn(renderer, frame, middle), end = await drawn(renderer, frame, to);
+      return checkStampGateRecolour({
+        still: stillFrame, halfway, freshEnd, end, halfwayAgain: await drawn(renderer, frame, middle), past: await drawn(renderer, frame, to + 2),
+      });
+    });
   }
   throw new Error(`stamp gate: no animation case ${JSON.stringify(id)}; the gate animates ${STAMP_GATE_ANIMATION_IDS.join(', ')}`);
 }

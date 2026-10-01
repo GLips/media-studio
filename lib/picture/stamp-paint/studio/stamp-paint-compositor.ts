@@ -9,6 +9,7 @@
 // decodes to linear light.
 
 import type { StampBlend } from '../models/stamp-brush.ts';
+import { stampKeySpanAt } from '../models/stamp-material-keys.ts';
 import { STAMP_OPAQUE_COVER, type CompiledStampDeposit, type CompiledStampPaint } from '../models/stamp-paint-recipe.ts';
 import { stampUniformLayout, stampUniformWriter, type StampUniformField, type StampUniformLayout, type StampUniformViews } from './stamp-uniform-layout.ts';
 
@@ -39,8 +40,8 @@ export type StampPaintCompositor = {
      * laws (stamp-wet-landing.ts), and WET_PAINT, WET_WATER and WET_LIFT. Absent, a painting with a wash is refused.
      */
     wet?: string;
-    /** The writer of `deposit`'s PaintDeposit, made once as the renderer loads it. */
-    writerFor: (deposit: CompiledStampDeposit) => (views: StampUniformViews) => void;
+    /** The writer of `deposit`'s PaintDeposit at scene time `t` (its paint may be keyed), made once as the renderer loads it. */
+    writerFor: (deposit: CompiledStampDeposit) => (views: StampUniformViews, t: number) => void;
     /**
      * What it binds from 24, given the renderer's tint targets (blank where a pass has none), for a dry resolve or a
      * wash's (`wet`): a binding only `wet` reads must be left out of a dry one's, whose layout doesn't hold it.
@@ -147,7 +148,7 @@ const hexRgb = (color: string): [number, number, number] => [byteAt(color, 1), b
  * pigments, a graded material or a wash: flat colour has no pigment to grade or water to carry it.
  */
 export function flatStampPaintCompositor(painting: CompiledStampPaint): StampPaintCompositor {
-  const writers = new Map<CompiledStampDeposit, (views: StampUniformViews) => void>();
+  const writers = new Map<CompiledStampDeposit, (views: StampUniformViews, t: number) => void>();
   const passes = painting.groups.flatMap((group) => group.passes);
   const deposits = passes.flatMap((pass) => {
     if (pass.kind === 'wash') throw new Error(`stamp paint: ${pass.id} is a wash, and wet paint needs a style that paints in pigment`);
@@ -157,15 +158,22 @@ export function flatStampPaintCompositor(painting: CompiledStampPaint): StampPai
     const { action, brush } = deposit;
     if (action.material.kind !== 'constant') throw new Error(`stamp paint: ${deposit.id} grades its material, which only a style that paints in pigment can lay`);
     const material = action.material.value;
-    if (material.kind === 'mixture') throw new Error(`stamp paint: ${deposit.id} lays a mixture of pigments, which only a style that paints in pigment can lay`);
-    const color = hexRgb(material.color), secondary = hexRgb(action.secondaryColor ?? '#000000');
+    const keys = material.kind === 'keys' ? material.keys : [{ at: 0, material }];
+    const colors = keys.map(({ material: m }) => {
+      if (m.kind === 'mixture') throw new Error(`stamp paint: ${deposit.id} lays a mixture of pigments, which only a style that paints in pigment can lay`);
+      return hexRgb(m.color);
+    });
     const burntBlend = (brush.burntEdge ?? brush.dual?.burntEdge)?.blend ?? 'colorBurn';
     const dualBurntBlend = brush.dual?.burntEdge?.blend ?? burntBlend;
-    writers.set(deposit, (views) => {
+    writers.set(deposit, (views, t) => {
       const put = stampUniformWriter(FLAT_PAINT_DEPOSIT, views);
+      // Keyed colour eases gamma-encoded, as flat colour mixes; a secondary colour left out follows it.
+      const { from, to, share } = stampKeySpanAt(keys, t);
+      const eased = (i: 0 | 1 | 2) => colors[from][i] + (colors[to][i] - colors[from][i]) * share;
+      const color: [number, number, number] = [eased(0), eased(1), eased(2)];
       put('color', color);
       put('blend', blendIndex(deposit.blend));
-      put('secondary', secondary);
+      put('secondary', action.secondaryColor ? hexRgb(action.secondaryColor) : color);
       put('tinted', brush.color ? 1 : 0);
       put('burntBlend', blendIndex(burntBlend));
       put('dualBurntBlend', blendIndex(dualBurntBlend));

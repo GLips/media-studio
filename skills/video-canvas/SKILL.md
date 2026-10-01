@@ -73,7 +73,12 @@ Everything is from `#studio`.
 - `stampSmoothRegion(points)` turns a few control points into a smooth silhouette; `stampRegionOutline(region)` traces
   its edge.
 - `compileStampPaintRecipe(recipe)` once, at scene definition, never in render: a new painting each frame reloads it.
-- Render `<StampPainting painting={painting} paper={style.paper} t={s.t} />` in a scene. It draws with WebGPU, which
+- **Colour that changes over the scene** (a sunset's sky): key the material rather than recompiling, as `motion` keys
+  a group: `material: { kind: 'keys', keys: [{ at: 0.3, material: afternoon }, { at: 3.7, material: dusk }] }`, in
+  scene seconds. Between keys each pigment's amount eases (flat colour, its channels); a graded field's ends are each
+  keyed. Marks, water and texture stay put. A recolouring group is repainted each frame, so a wash group costs its
+  whole draw.
+- Render `<StampPainting painting={painting} style={style} t={s.t} />` in a scene. It draws with WebGPU, which
   the render browser and `studio preview`'s Chrome have; a browser without it fails loudly rather than drawing blank. `t` is the scene's time, which
   `appliedAt` counts on, so the painting paints itself in; hold a deposit's `appliedAt` to a cue from `timeline.ts`
   (`sceneCueSeconds(clock)`) to paint an element in on a word.

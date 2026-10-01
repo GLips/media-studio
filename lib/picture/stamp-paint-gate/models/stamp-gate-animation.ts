@@ -4,14 +4,16 @@
 // - boil: a group boiling on twos holds within an epoch, changes across them, leaves a still group alone;
 // - boil-wash: a boiling wash with nothing random in its marks flows as far each epoch, only its rim's line re-rolling;
 // - bloom-boil: a bloom in it holds within an epoch and re-rolls its front at the next (the epoch's seed);
-// - sunset: one painting in two palettes lays the same coverage deposit by deposit; only its colour changes.
+// - sunset: one painting in two palettes lays the same coverage deposit by deposit;
+// - recolour: keyed day to dusk, it's the halfway paint halfway, in any frame order.
 
 import { PAINT_MEDIA } from '#lib/picture/paint/models/paint-medium.ts';
+import { paintMixtureAmounts } from '#lib/picture/paint/models/paint-mixture.ts';
 import type { PaintPigmentAppearance } from '#lib/picture/paint/models/paint-pigment.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/picture/paint/models/paint-watercolour-pigments.ts';
 import { stampLinearDynamics } from '#lib/picture/stamp-paint/models/stamp-brush.ts';
 import type { StampGroupBoil, StampGroupMotion } from '#lib/picture/stamp-paint/models/stamp-group-motion.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type PaintMaterial, type StampPaintPaper } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, stampPaintRecipe, type PaintMaterial, type StampPaintMaterial, type StampPaintPaper } from '#lib/picture/stamp-paint/models/stamp-paint-recipe.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
 import type { StampGateWashCheck } from './stamp-gate-washes.ts';
 
@@ -139,7 +141,37 @@ export function checkStampGateBoilWash(frames: readonly Rgba[]): StampGateWashCh
 /** A sky and hill at `hour`: every deposit the same, only its paint changed. */
 export function stampGateSunsetPainting(hour: 'day' | 'dusk'): StampGatePainting {
   const sky: PaintMaterial = hour === 'day' ? { kind: 'color', color: '#6fa8dc' } : { kind: 'color', color: '#e0703a' };
-  const ground = hour === 'day' ? mixture({ pigment: W.ultramarine, amount: 1 }) : mixture({ pigment: W.ultramarine, amount: 0.4 }, { pigment: W.burntSienna, amount: 1 });
+  return sunsetPainting(sky, hour === 'day' ? DAY_GROUND : DUSK_GROUND, 1);
+}
+
+const DAY_GROUND = mixture({ pigment: W.ultramarine, amount: 1 }), DUSK_GROUND = mixture({ pigment: W.ultramarine, amount: 0.4 }, { pigment: W.burntSienna, amount: 1 });
+const DAY_SKY = mixture({ pigment: W.ultramarine, amount: 0.3 }), DUSK_SKY = mixture({ pigment: W.quinacridoneRose, amount: 0.5 }, { pigment: W.burntSienna, amount: 0.3 });
+/** When the recolouring sunset's keys fall, s: day at the first, dusk at the second. */
+export const STAMP_GATE_RECOLOUR_KEYS = [0.2, 1.2] as const;
+
+/** The mixture halfway from `a` to `b`: each pigment's absolute amount eased, as a keyed material eases between keys. */
+function halfwayMixture(a: PaintMaterial, b: PaintMaterial): PaintMaterial {
+  if (a.kind !== 'mixture' || b.kind !== 'mixture') throw new Error('stamp gate: the recolour eases mixtures');
+  const amounts = new Map<PaintPigmentAppearance, number>();
+  for (const { pigment, amount } of [...paintMixtureAmounts(a), ...paintMixtureAmounts(b)]) amounts.set(pigment, (amounts.get(pigment) ?? 0) + amount / 2);
+  const parts = [...amounts].map(([pigment, amount]) => ({ pigment, amount }));
+  return { kind: 'mixture', parts, strength: parts.reduce((sum, { amount }) => sum + amount, 0) };
+}
+
+/**
+ * The sunset recoloured over its scene, its sky and ground keyed from day to dusk (`keyed`), or painted still in the
+ * paint the keys have halfway (`halfway`), which the keyed painting halfway must match.
+ */
+export function stampGateRecolourPainting(paint: 'keyed' | 'halfway'): StampGatePainting {
+  const [from, to] = STAMP_GATE_RECOLOUR_KEYS;
+  const keyed = (day: PaintMaterial, dusk: PaintMaterial): StampPaintMaterial => ({ kind: 'keys', keys: [{ at: from, material: day }, { at: to, material: dusk }] });
+  return paint === 'keyed'
+    ? sunsetPainting(keyed(DAY_SKY, DUSK_SKY), keyed(DAY_GROUND, DUSK_GROUND), from)
+    : sunsetPainting(halfwayMixture(DAY_SKY, DUSK_SKY), halfwayMixture(DAY_GROUND, DUSK_GROUND), from);
+}
+
+/** The sunset's sky wash, with drops of the ground's paint, over an opaque hill, drawn at `t`. */
+function sunsetPainting(sky: StampPaintMaterial, ground: StampPaintMaterial, t: number): StampGatePainting {
   const painting = compileStampPaintRecipe(stampPaintRecipe((p) => {
     p.group('sky', { composite: 'glaze', opacity: 1 }, (g) => g.wash('wash', { preparation: { region: stampGatePolygon(0, 0, 240, 0, 240, 100, 0, 100) } }, (w) => {
       w.fill('body', { brush: RANDOM, diameter: 30, material: sky, region: stampGatePolygon(6, 6, 234, 6, 234, 96, 6, 96) });
@@ -149,10 +181,10 @@ export function stampGateSunsetPainting(hour: 'day' | 'dusk'): StampGatePainting
       brush: RANDOM, diameter: 20, material: ground, region: stampGatePolygon(0, 160, 0, 115, 120, 95, 240, 110, 240, 160),
     })));
   }));
-  return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t: 1, images: STAMP_GATE_IMAGES };
+  return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W }, ...SIZE, t, images: STAMP_GATE_IMAGES };
 }
 
-export const STAMP_GATE_ANIMATION_IDS = ['animation/drift', 'animation/boil', 'animation/boil-wash', 'animation/bloom-boil', 'animation/sunset'];
+export const STAMP_GATE_ANIMATION_IDS = ['animation/drift', 'animation/boil', 'animation/boil-wash', 'animation/bloom-boil', 'animation/sunset', 'animation/recolour'];
 
 type Rgba = ArrayLike<number>;
 
@@ -221,5 +253,26 @@ export function checkStampGateSunset(day: readonly ArrayLike<number>[], dusk: re
   return {
     id: 'animation/sunset: only the colour changes', passed: worst.every((max) => max === 0),
     detail: `${worst.length} deposits, the most any coverage differs ${Math.max(...worst)}`,
+  };
+}
+
+/** The most any colour channel of two frames differs. */
+function mostApart(a: Rgba, b: Rgba) {
+  let max = 0;
+  for (let i = 0; i < a.length; i++) if (i % 4 !== 3) max = Math.max(max, Math.abs(a[i] - b[i]));
+  return max;
+}
+
+/**
+ * Whether the keyed sunset halfway matches the still one in the halfway paint within the dither (its palette sums in
+ * another order); and whether its end after halfway, halfway after its end, and past its last key (held) are each
+ * the same time drawn first.
+ */
+export function checkStampGateRecolour(frames: Record<'still' | 'halfway' | 'freshEnd' | 'end' | 'halfwayAgain' | 'past', Rgba>): StampGateWashCheck {
+  const { still, halfway, freshEnd, end, halfwayAgain, past } = frames;
+  const painted = mostApart(still, halfway), orders = [mostApart(freshEnd, end), mostApart(halfway, halfwayAgain), mostApart(freshEnd, past)];
+  return {
+    id: 'animation/recolour: keyed paint is the eased paint, in any frame order', passed: painted <= STAMP_GATE_DRIFT_TOLERANCE && orders.every((max) => max === 0),
+    detail: `halfway against painted still in the halfway paint: max ${painted} (past ${STAMP_GATE_DRIFT_TOLERANCE} fails); against drawn first, its end after halfway, halfway after its end and past its last key: max ${orders.join(', ')} (past 0 fails)`,
   };
 }

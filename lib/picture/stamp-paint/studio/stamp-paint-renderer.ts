@@ -744,8 +744,8 @@ type LoadedDeposit = {
   brush: StampBrush<StampPaintImage>;
   active: ReturnType<typeof stampActiveLayers<StampPaintImage>>;
   main: number; dual: number; tint: number | null;
-  /** Writes its compositor's PaintDeposit into a uniform slot. */
-  writePaint: (views: StampUniformViews) => void;
+  /** Writes its compositor's PaintDeposit at scene time `t` into a uniform slot. */
+  writePaint: (views: StampUniformViews, t: number) => void;
   mainReach: Float64Array; dualReach: Float64Array;
   mainHull: StampTipHull; dualHull: StampTipHull | null;
   /** How each layer's stamps are laid, and an `ordered` layer's bins' table in the bin buffer (binOrderedStamps). */
@@ -1590,7 +1590,7 @@ async function rendererOnDevice(
         put('frontShape', [front.soft, stampFloodProgressAt(deposit, t)]);
       }),
       within?.view ?? targets.blank.view,
-      slot(loadedDeposit.writePaint),
+      slot((views) => loadedDeposit.writePaint(views, t)),
       landing && { buffer: writtenBank.grids.buffer },
       landing && slot((views) => {
         const put = stampUniformWriter(WET_OP, views);
@@ -1697,8 +1697,8 @@ async function rendererOnDevice(
       return { first, end: at };
     });
   })();
-  // Where frames may differ though their events are settled: at the first group that moves or boils.
-  const varyingFrom = groupEvents.find((_, index) => painting.groups[index].motion || painting.groups[index].boil)?.first ?? events.length;
+  // Where frames may differ though their events are settled: at the first group that moves, boils or recolours.
+  const varyingFrom = groupEvents.find((_, index) => painting.groups[index].motion || painting.groups[index].boil || painting.groups[index].recolours)?.first ?? events.length;
 
   // A boiling group's epochs other than 0 (the painting as written), each group's recently drawn ones kept on the GPU.
   const epochs = new Map<CompiledStampGroup, Map<number, { marks: CompiledStampGroup; bank: DepositBank; used: number }>>();
@@ -1726,8 +1726,8 @@ async function rendererOnDevice(
 
   /**
    * What the frame at `t` draws: each group at its boil epoch and placement (null where it's painted), how many
-   * events are settled, and the key a checkpoint after `event` events is saved under: each laid group's epoch and
-   * placement, and a group partway through's epoch.
+   * events are settled, and the key a checkpoint after `event` events is saved under: each laid group's epoch, paint
+   * and placement, and a group partway through's epoch and paint.
    */
   function framePlan(t: number) {
     const frame = Math.round(t * fps);
@@ -1737,10 +1737,12 @@ async function rendererOnDevice(
       const epoch = group.boil ? stampBoilEpoch(frame, group.boil) : 0;
       return { group, epoch, moved: still ? null : placement, ...epochOf(group, epoch) };
     });
-    const laid = drawn.map(({ epoch, moved }) => `${epoch}${moved ? `@${moved.x},${moved.y},${moved.rotation},${moved.scale}` : ''}`);
+    // A recolouring group's paint is as it stands at `t` held to its keys' span, so frames past its last key share it.
+    const paintKeys = painting.groups.map(({ recolours }) => (recolours ? `~${Math.min(recolours.to, Math.max(recolours.from, t))}` : ''));
+    const laid = drawn.map(({ epoch, moved }, index) => `${epoch}${paintKeys[index]}${moved ? `@${moved.x},${moved.y},${moved.rotation},${moved.scale}` : ''}`);
     const keyAt = (event: number) => groupEvents.flatMap(({ first, end }, index) => {
       if (end <= event && end > first) return [laid[index]];
-      return first < event && event < end ? [`${drawn[index].epoch}`] : [];
+      return first < event && event < end ? [`${drawn[index].epoch}${paintKeys[index]}`] : [];
     }).join('|');
     return { drawn, keyAt, settled: stampSettledEventCount(events, t) };
   }
@@ -1782,7 +1784,7 @@ async function rendererOnDevice(
     const { drawn, keyAt, settled } = framePlan(t);
     const start = whole ? null : checkpoints.latest(settled, keyAt);
     const from = start?.event ?? 0;
-    // Saved: the settled prefix, and the state before the first group that moves or boils, which later frames share.
+    // Saved: the settled prefix, and the state before the first group that moves, boils or recolours, which later frames share.
     const saves = new Set(whole ? [] : [settled, Math.min(settled, varyingFrom)].filter((event) => event > from));
     const save = (event: number, inGroup: boolean, painted: Box | null) => {
       if (saves.has(event)) checkpoints.save(encoder, { event, key: keyAt(event), inGroup, painted });

@@ -11,20 +11,23 @@
 import { PAINT_KUBELKA_MUNK_WGSL } from '#lib/picture/paint/models/paint-kubelka-munk.ts';
 import { PAINT_PAPER_WGSL, paintPigmentSeed } from '#lib/picture/paint/models/paint-paper.ts';
 import { paintHexToLinear } from '#lib/picture/paint/models/paint-spectrum.ts';
-import { STAMP_PIGMENT_GROUP_SLOTS, type StampPigmentPaint } from '../models/stamp-pigment-paint.ts';
+import { STAMP_PIGMENT_GROUP_SLOTS, stampPigmentAmountsAt, type StampPigmentPaint } from '../models/stamp-pigment-paint.ts';
 import { STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
 import { STAMP_OPAQUE_COVER, type CompiledStampDeposit, type StampPaintColor } from '../models/stamp-paint-recipe.ts';
 import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
 import { stampUniformLayout, stampUniformWriter, type StampUniformViews } from './stamp-uniform-layout.ts';
 
-/** Words per component in the component buffer: slot, seed, amount at the material's first end and its second, granulation, flocculation. */
-const COMPONENT_WORDS = 6;
+/** Words per component in the component buffer: slot, seed, granulation, flocculation. */
+const COMPONENT_WORDS = 4;
 
 /**
- * A deposit's components (the first and how many), its group, where its material grades (StampPigmentGrade), and the
- * channel holding its group's open share (0, coverage's, in a group without a wash).
+ * A deposit's components (the first and how many), its group, where its material grades (StampPigmentGrade), the
+ * channel holding its group's open share (0, coverage's, in a group without a wash), and each component's amounts at
+ * its material's two ends, two components a vec4f: written each frame, at its time, so a recolour uploads nothing more.
  */
-const PIGMENT_PAINT_DEPOSIT = stampUniformLayout('PaintDeposit', [['first', 'u32'], ['count', 'u32'], ['group', 'u32'], ['gradeKind', 'i32'], ['grade', 'vec4f'], ['open', 'u32']]);
+const PIGMENT_PAINT_DEPOSIT = stampUniformLayout('PaintDeposit', [
+  ['first', 'u32'], ['count', 'u32'], ['group', 'u32'], ['gradeKind', 'i32'], ['grade', 'vec4f'], ['open', 'u32'], ['amounts', { vec4fArray: STAMP_PIGMENT_GROUP_SLOTS / 2 }],
+]);
 
 /** A number as a WGSL f32 literal, to the precision an f32 holds. */
 const f32 = (value: number) => value.toPrecision(9);
@@ -67,11 +70,12 @@ export function stampPigmentCompositor(device: GPUDevice, paint: StampPigmentPai
   const V = Math.ceil(bands.count / 4);
   const layers = Math.max(1, ...paint.groups.map((group) => group.layers));
 
-  const writers = new Map<CompiledStampDeposit, (views: StampUniformViews) => void>();
+  const writers = new Map<CompiledStampDeposit, (views: StampUniformViews, t: number) => void>();
   const componentWords: number[] = [];
   for (const [deposit, { group, components, grade }] of paint.deposits) {
     const first = componentWords.length / COMPONENT_WORDS;
-    writers.set(deposit, (views) => {
+    const amounts = new Float32Array(STAMP_PIGMENT_GROUP_SLOTS * 2);
+    writers.set(deposit, (views, t) => {
       const put = stampUniformWriter(PIGMENT_PAINT_DEPOSIT, views);
       put('first', first);
       put('count', components.length);
@@ -79,8 +83,10 @@ export function stampPigmentCompositor(device: GPUDevice, paint: StampPigmentPai
       put('gradeKind', grade.kind);
       put('grade', [...grade.geometry]);
       put('open', paint.groups[group].open ?? 0);
+      components.forEach((component, i) => amounts.set(stampPigmentAmountsAt(component, t), i * 2));
+      put('amounts', amounts);
     });
-    for (const { slot, seed, amounts, granulation, flocculation } of components) componentWords.push(slot, seed, ...amounts, granulation, flocculation);
+    for (const { slot, seed, granulation, flocculation } of components) componentWords.push(slot, seed, granulation, flocculation);
   }
   const componentData = new ArrayBuffer(Math.max(COMPONENT_WORDS, componentWords.length) * 4);
   const asWords = new Uint32Array(componentData), asFloats = new Float32Array(componentData);
@@ -145,7 +151,7 @@ fn paperReflectance(i: u32, color: vec3f) -> vec4f {
       layout: PIGMENT_PAINT_DEPOSIT,
       wgsl: /* wgsl */ `
 ${PAINT_PAPER_WGSL}
-struct PigmentComponent { slot: u32, seed: u32, first: f32, second: f32, granulation: f32, flocculation: f32 }
+struct PigmentComponent { slot: u32, seed: u32, granulation: f32, flocculation: f32 }
 @group(0) @binding(24) var<storage, read> components: array<PigmentComponent>;
 const LAYERS = ${layers}u;
 // The tooth moves each pigment about in layDeposit, rather than cutting the deposit's coverage.
@@ -159,9 +165,11 @@ fn incomingAt(tooth: vec2f, at: vec2f) -> array<vec4f, LAYERS> {
   let valley = paintValley(h, meanHeight);
   let graded = paintFieldShare(at, paint.gradeKind, paint.grade);
   var incoming: array<vec4f, LAYERS>;
-  for (var k = paint.first; k < paint.first + paint.count; k++) {
-    let c = components[k];
-    let amount = c.first + (c.second - c.first) * graded;
+  for (var i = 0u; i < paint.count; i++) {
+    let c = components[paint.first + i];
+    let pair = paint.amounts[i / 2u];
+    let ends = select(pair.xy, pair.zw, (i & 1u) == 1u);
+    let amount = ends.x + (ends.y - ends.x) * graded;
     let share = max(0.0, ${contact} * paintClumps(c.flocculation, at.x, at.y, c.seed));
     let channel = c.slot + 1u;
     incoming[channel / 4u][channel % 4u] += amount * share;
