@@ -13,6 +13,7 @@ import { STAMP_BLOOM_BAND_WIDTH, STAMP_BLOOM_CARRY_SPREAD, STAMP_WET_BLOOM_WGSL,
 import { STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
 import { STAMP_GRID_AT_WGSL } from '../models/stamp-region.ts';
 import type { StampWetWindow } from '../models/stamp-wetness.ts';
+import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampLoadedWetStage, StampWetDepositMoment, StampWetStage, StampWetStageContext } from './stamp-wet-stages.ts';
@@ -47,14 +48,15 @@ fn localOf(id: vec3u) -> vec2i { return select(vec2i(-1), vec2i(id.xy), all(id.x
 `;
 
 // The paper before the deposit is the painting's grid buffer (\`grid\`); its wetness after, which the painting doesn't
-// keep, is the stage's own (\`after\`), laid out alike.
-const GRID_WGSL = /* wgsl */ `
+// keep, is the stage's own (\`after\`), laid out alike. A pixel \`p\` is a stage texel, read at its painting point.
+const gridWgsl = (stage: StampStage) => /* wgsl */ `
+${stampStageWgsl(stage)}
 @group(0) @binding(1) var<storage, read> grid: array<f32>;
 @group(0) @binding(2) var<storage, read> after: array<f32>;
 ${STAMP_GRID_AT_WGSL}
-fn workableAt(p: vec2i) -> f32 { return gridAt(vec2f(p) + 0.5, u.lattice.xyz, u.size, u.first + u.size.x * u.size.y); }
+fn workableAt(p: vec2i) -> f32 { return gridAt(stagePoint(p), u.lattice.xyz, u.size, u.first + u.size.x * u.size.y); }
 fn wetnessAfterAt(p: vec2i) -> f32 {
-  let uv = clamp((vec2f(p) + 0.5 - u.lattice.xy) / u.lattice.z, vec2f(0.0), vec2f(u.size) - 1.0);
+  let uv = clamp((stagePoint(p) - u.lattice.xy) / u.lattice.z, vec2f(0.0), vec2f(u.size) - 1.0);
   let cell = min(vec2u(floor(uv)), u.size - 2u);
   let f = uv - vec2f(cell);
   let at = u.afterFirst + cell.y * u.size.x + cell.x;
@@ -64,7 +66,7 @@ fn wetnessAfterAt(p: vec2i) -> f32 {
 // lattice points a cell round p's own cell, and the least workable of p's cell's corners). A cell half under a wet
 // brush and half dry averages to "damp", and a bloom read from it would ring every stroke's edge.
 fn paperThroughout(p: vec2i) -> vec2f {
-  let uv = clamp((vec2f(p) + 0.5 - u.lattice.xy) / u.lattice.z, vec2f(0.0), vec2f(u.size) - 1.0);
+  let uv = clamp((stagePoint(p) - u.lattice.xy) / u.lattice.z, vec2f(0.0), vec2f(u.size) - 1.0);
   let cell = vec2i(min(vec2u(floor(uv)), u.size - 2u));
   let workableFirst = u.first + u.size.x * u.size.y;
   var wettest = 0.0;
@@ -92,7 +94,7 @@ fn wettestRound(at: vec2u) -> f32 {
   return wettest;
 }
 fn wetnessBeforeAt(p: vec2i) -> f32 {
-  let uv = clamp((vec2f(p) + 0.5 - u.lattice.xy) / u.lattice.z, vec2f(0.0), vec2f(u.size) - 1.0);
+  let uv = clamp((stagePoint(p) - u.lattice.xy) / u.lattice.z, vec2f(0.0), vec2f(u.size) - 1.0);
   let cell = min(vec2u(floor(uv)), u.size - 2u);
   let f = uv - vec2f(cell);
   return mix(mix(wettestRound(cell), wettestRound(cell + vec2u(1u, 0u)), f.x), mix(wettestRound(cell + vec2u(0u, 1u)), wettestRound(cell + vec2u(1u, 1u)), f.x), f.y);
@@ -115,7 +117,7 @@ fn contactAt(p: vec2i) -> f32 { return bloomContact(wetnessBeforeAt(p), coverage
 // readily the water runs there (bloomEase, by the paper before the deposit, only where it reaches: bloomContact), and
 // open where paint may land (footprint g: never under fluid, outside \`within\` or the clip); and (z) the contact
 // alone, for the front.
-const SURPLUS_WGSL = /* wgsl */ `${PRELUDE}${GRID_WGSL}
+const surplusWgsl = (stage: StampStage) => /* wgsl */ `${PRELUDE}${gridWgsl(stage)}
 ${STAMP_WET_BLOOM_WGSL}
 @group(0) @binding(3) var footprint: texture_2d<f32>;
 @group(0) @binding(4) var surplus: texture_storage_2d_array<rgba32float, write>;
@@ -137,7 +139,7 @@ ${CONTACT_WGSL}
 
 // Where each pixel stands to the front: its band weight (x) and the share of its paint loosened (y), as free as it is
 // (workable, and open), only where paint may land. The band goes to the transport too, to be spread back (Gᵀ).
-const frontWgsl = (layers: number, movedWgsl: string) => /* wgsl */ `${PRELUDE}${GRID_WGSL}
+const frontWgsl = (layers: number, movedWgsl: string, stage: StampStage) => /* wgsl */ `${PRELUDE}${gridWgsl(stage)}
 ${STAMP_WET_BLOOM_WGSL}
 ${STAMP_WET_LIFT_WGSL}
 ${movedWgsl}
@@ -200,12 +202,12 @@ fn waterRound(local: vec2i) -> BloomWater {
   let p = local + vec2i(u.origin);
   let water = waterRound(local);
   let before = wetnessBeforeAt(p);
-  let at = bloomFront(vec2f(p) + 0.5, water, bloomGrip(before, u.damp, u.shine), u.seed, u.sigma);
+  let at = bloomFront(stagePoint(p), water, bloomGrip(before, u.damp, u.shine), u.seed, u.sigma);
   let streak = bloomStreak(at.foot, at.d, u.seed, u.sigma);
   let allowed = clamp(textureLoad(footprint, p, 0).g, 0.0, 1.0);
   var paint: array<vec4f, ${layers}>;
   for (var l = 0; l < ${layers}; l++) { paint[l] = textureLoad(layer, p, l, 0); }
-  let open = bloomPastFront(waterAt(vec2i(floor(at.past)) - vec2i(u.origin)));
+  let open = bloomPastFront(waterAt(vec2i(floor(at.past)) + STAGE_MARGIN - vec2i(u.origin)));
   let line = bloomFrontLine(at.held, bloomMerging(before, u.damp, u.shine));
   let weight = bloomBand(at.d, line, streak) * allowed * contactAt(p) * bloomLipPaint(coverageRound(p)) * open * bloomInside(water.inWash);
   let free = liftFree(workableAt(p), washOpen(paint));
@@ -286,7 +288,7 @@ type BloomScratch = {
   paper: GPUTextureView; paths: [GPUTextureView, GPUTextureView]; values: [GPUTextureView, GPUTextureView]; front: GPUTextureView; send: GPUTextureView;
 };
 
-function loadBloom({ device, wetness, layer, footprint, grids, wash }: StampWetStageContext): StampLoadedWetStage<StampWetDepositMoment> {
+function loadBloom({ device, wetness, layer, footprint, grids, wash, stage }: StampWetStageContext): StampLoadedWetStage<StampWetDepositMoment> {
   // A medium that doesn't spread blooms nowhere.
   const sized = [...wetness.landings].flatMap(([deposit, landing]) => {
     const bloom = deposit.action.kind === 'lift' || landing.medium.wetting.spread <= 0 ? null : stampBloomSizing(landing, landing.medium.wetting, deposit.diameter);
@@ -302,7 +304,7 @@ function loadBloom({ device, wetness, layer, footprint, grids, wash }: StampWetS
     if (!found) {
       const pipeline = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }), entryPoint: 'run' } });
       found = {
-        surplus: pipeline(SURPLUS_WGSL), front: pipeline(frontWgsl(layers, moved)), send: pipeline(SEND_WGSL),
+        surplus: pipeline(surplusWgsl(stage)), front: pipeline(frontWgsl(layers, moved, stage)), send: pipeline(SEND_WGSL),
         sent: pipeline(sentWgsl(layers, moved)), land: pipeline(landWgsl(layers, moved)),
       };
       pipelinesFor.set(moved, found);

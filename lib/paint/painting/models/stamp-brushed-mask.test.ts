@@ -9,6 +9,7 @@ import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment } from './stamp-paint-recipe-types.ts';
 import { stampPaintingBrushedMasks } from './stamp-brushed-mask.ts';
 import { compileStampWetness, stampCoverageSampleGrid } from './stamp-wetness.ts';
+import { stampStage } from './stamp-stage.ts';
 
 const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 const brush: StampBrush = {
@@ -78,12 +79,12 @@ test('water over brushed fluid wets each lattice point by what the measured cove
   // Measured as the renderer would: wholly covered left of x = 64, half covered right of it, over rows 24 to 72.
   const box = { x: 0, y: 24, w: 128, h: 48 }, grid = stampCoverageSampleGrid(box);
   const values = Float32Array.from({ length: grid.columns * grid.rows }, (_, s) => ((grid.a0 + (s % grid.columns) - 1) * 4 < 64 ? 1 : 0.5));
-  const size = { width: 160, height: 96 };
-  const wetness = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, size, () => 0, new Map([[masked, { ...grid, values }]]));
+  const stage = stampStage({ width: 160, height: 96 });
+  const wetness = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, stage, () => 0, new Map([[masked, { ...grid, values }]]));
   const [landing] = wetness.landings.values(), { window, wetness: after } = landing.after;
   const at = (x: number, y: number) => after[((y - window.y0) / window.cell) * window.columns + (x - window.x0) / window.cell] / landing.water;
   assert.equal(at(32, 48), 0);
   assert.ok(Math.abs(at(96, 48) - 0.5) < 1e-6);
   assert.equal(at(96, 88), 1);
-  assert.throws(() => compileStampWetness(painting, () => PAINT_MEDIA.watercolour, size), /g\/wash\/fluid is brushed on, and its coverage wasn't measured/);
+  assert.throws(() => compileStampWetness(painting, () => PAINT_MEDIA.watercolour, stage), /g\/wash\/fluid is brushed on, and its coverage wasn't measured/);
 });

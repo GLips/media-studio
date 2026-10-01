@@ -104,13 +104,14 @@ export function stampMarksReachOfFirst(marks: StampMarks, span: number, count: n
 
 const orderedBins = new WeakMap<StampMarks, Map<string, Uint32Array>>();
 /**
- * An `ordered` layer's bins, as if at the bin buffer's start: per tile (STAMP_ORDERED_TILE pixels, row by row) the
- * entry its stamps start at, one past the last tile's, then each tile's stamps reaching into it, by index in order.
- * Laid further in, the table moves with it (stampBinsAppended).
+ * An `ordered` layer's bins, as if at the bin buffer's start: per tile (STAMP_ORDERED_TILE texels, row by row, a
+ * stamp's texel being its point plus the stage's `margin`) the entry its stamps start at, one past the last tile's,
+ * then each tile's stamps reaching into it, by index in order. Laid further in, the table moves with it
+ * (stampBinsAppended).
  */
-export const stampMarksOrderedBins = (marks: StampMarks, span: number, tilesX: number, tilesY: number) => rememberedFor(orderedBins, marks, `${span} ${tilesX} ${tilesY}`, () => {
+export const stampMarksOrderedBins = (marks: StampMarks, span: number, tilesX: number, tilesY: number, margin: number) => rememberedFor(orderedBins, marks, `${span} ${tilesX} ${tilesY} ${margin}`, () => {
   const tiles = Array.from({ length: tilesX * tilesY }, (): number[] => []);
-  const tileOf = (v: number, count: number) => Math.min(count - 1, Math.max(0, Math.floor(v / STAMP_ORDERED_TILE)));
+  const tileOf = (v: number, count: number) => Math.min(count - 1, Math.max(0, Math.floor((v + margin) / STAMP_ORDERED_TILE)));
   marks.forEach((s, i) => {
     const r = s.diameter * span * 0.75;
     for (let ty = tileOf(s.y - r, tilesY); ty <= tileOf(s.y + r, tilesY); ty++) {

@@ -16,6 +16,7 @@ import type { PaintMedium, PaintStackedLayering } from '#lib/paint/materials/mod
 import { STAMP_PIGMENT_GROUP_SLOTS, stampPigmentAmountsAt, stampPigmentGroupLayers, type StampPigmentPaint, type StampPigmentUnderpaint } from '../models/stamp-pigment-paint.ts';
 import { STAMP_LIFT_STAIN_FIBRES, STAMP_LIFT_WET_STAIN_HOLD, STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
 import { STAMP_OPAQUE_COVER, type CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
+import { stampLightLiftBasis } from '../models/stamp-light-lift.ts';
 import type { StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
@@ -212,6 +213,7 @@ ${media.map((_, m) => `    case ${m === 0 ? '0u, default' : `${m}u`}: { ${name}$
   const components = upload(componentData), palettes = upload(paletteData), stains = upload(stainData);
 
   const paperRgb = paintHexToLinear(paperColor);
+  const lift = stampLightLiftBasis(bands);
   const bandWgsl = /* wgsl */ `
 ${PAINT_KUBELKA_MUNK_WGSL}
 const BAND_VEC4S = ${V}u;
@@ -224,10 +226,9 @@ const MOVE_G = array<vec4f, ${V}>(${vec4s(bands.correctionBasis[1], V)});
 const MOVE_B = array<vec4f, ${V}>(${vec4s(bands.correctionBasis[2], V)});
 const PAPER = array<vec4f, ${V}>(${vec4s(bands.reflectanceOf(paperRgb), V)});
 const PAPER_RGB = vec3f(${paperRgb.map(f32).join(', ')});
-fn paperLinear(c: vec3f) -> vec3f { return select(pow((c + 0.055) / 1.055, vec3f(2.4)), c / 12.92, c <= vec3f(0.04045)); }
 // The paper's reflectance in band vec4 \`i\`: its written colour's, moved as far as a photograph's pixel \`color\` differs (stampPigmentPaper).
 fn paperReflectance(i: u32, color: vec3f) -> vec4f {
-  let d = paperLinear(color) - PAPER_RGB;
+  let d = srgbDecoded(color) - PAPER_RGB;
   return clamp(PAPER[i] + MOVE_R[i] * d.r + MOVE_G[i] * d.g + MOVE_B[i] * d.b, vec4f(0.001), vec4f(0.999));
 }`;
 
@@ -463,6 +464,7 @@ fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f) -> vec4f {
       },
     },
     group: {
+      cover: `fn groupCover(layer0: vec4f, glaze: bool) -> f32 { return min(1.0, max(layer0.x, 0.0) * select(${STAMP_OPAQUE_COVER.toFixed(1)}, 1.0, glaze)); }`,
       wgsl: /* wgsl */ `
 ${bandWgsl}
 @group(0) @binding(3) var photograph: texture_2d<f32>;
@@ -489,14 +491,14 @@ fn layGroup(pixel: vec2u, glaze: bool, opacity: f32) {
   let thickness = select(1.0 / max(coverage, 0.001), opacity, glaze);
   let cover = min(1.0, coverage * ${STAMP_OPAQUE_COVER.toFixed(1)}) * opacity;
   var bare = vec3f(0.0);
-  if (!glaze || taken.x > 0.0) { bare = paperColor(photograph, photographSampler, u.paper, groupPaperAt(pixel), textureDimensions(painting)); }
+  if (!glaze || taken.x > 0.0) { bare = paperColor(photograph, photographSampler, u.paper, groupPaperAt(pixel)); }
 ${underpaint ? `  var behind: array<vec4f, UNDER_LAYERS>;
   for (var r = 0u; r < UNDER_LAYERS; r++) { behind[r] = groupUnderAt(pixel, BAND_VEC4S + r); }
   var left = behind;
   // The paint behind was laid over the painting's paper, wherever this group's own lies.
   var ground = vec3f(0.0);
   if (lifts) {
-    ground = paperColor(photograph, photographSampler, u.paper, vec2f(pixel) + 0.5, textureDimensions(painting));
+    ground = paperColor(photograph, photographSampler, u.paper, groupGroundAt(pixel));
     left = liftedUnderpaint(behind, vec3f(1.0) - taken.yzw);
   }
 ` : ''}  let base = u.group * PALETTE;
@@ -540,6 +542,20 @@ fn layPaper(pixel: vec2u, color: vec3f) {
   for (var i = 0u; i < BAND_VEC4S; i++) { textureStore(painting, pixel, i, paperReflectance(i, color)); }
   for (var r = 0u; r < ${underLayers}u; r++) { textureStore(painting, pixel, BAND_VEC4S + r, vec4f(0.0)); }
 }`,
+    outside: /* wgsl */ `
+${bandWgsl}
+const LIFT_R = array<vec4f, ${V}>(${vec4s(lift[0], V)});
+const LIFT_G = array<vec4f, ${V}>(${vec4s(lift[1], V)});
+const LIFT_B = array<vec4f, ${V}>(${vec4s(lift[2], V)});
+// The light lifted into the bands (stampLightLiftBasis) laid over the painting's reflectance by its alpha, as screenColor
+// shows it: linear, so it shows as the colour rendered. It covers the pigment kept behind for a knockout as much.
+fn layOutside(pixel: vec2u, over: vec4f) {
+  for (var i = 0u; i < BAND_VEC4S; i++) {
+    let lifted = LIFT_R[i] * over.r + LIFT_G[i] * over.g + LIFT_B[i] * over.b;
+    textureStore(painting, pixel, i, lifted + textureLoad(painting, pixel, i) * (1.0 - over.a));
+  }
+  for (var r = 0u; r < ${underLayers}u; r++) { textureStore(painting, pixel, BAND_VEC4S + r, textureLoad(painting, pixel, BAND_VEC4S + r) * (1.0 - over.a)); }
+}`,
     output: /* wgsl */ `
 ${bandWgsl}
 fn screenColor(pixel: vec2u) -> vec3f {
@@ -548,8 +564,7 @@ fn screenColor(pixel: vec2u) -> vec3f {
     let R = textureLoad(painting, pixel, i, 0);
     rgb += vec3f(dot(TO_R[i], R), dot(TO_G[i], R), dot(TO_B[i], R));
   }
-  let c = clamp(rgb, vec3f(0.0), vec3f(1.0));
-  return select(1.055 * pow(c, vec3f(1.0 / 2.4)) - 0.055, c * 12.92, c <= vec3f(0.0031308));
+  return srgbEncoded(clamp(rgb, vec3f(0.0), vec3f(1.0)));
 }`,
   };
 }

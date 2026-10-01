@@ -120,6 +120,18 @@ export function paintPlayInterval(clock: CompiledPaintPlayClock, length: ClipSec
   return { start: clock.start, end: sceneSeconds(clock.start + clipEnd / rate) };
 }
 
+/**
+ * The scene seconds `clock` first hands its clip each of `clipTimes` (within one loop's cycle, which every other
+ * repeats), within the interval it writes; a frozen clock hands one time throughout, so its start stands for all.
+ * A hold shows the drawing at the grid frame before, which the grid's own samples cover.
+ */
+export function paintPlayClipSceneTimes(clock: CompiledPaintPlayClock, clipTimes: readonly number[]): SceneSeconds[] {
+  if (clock.clip.some((step) => step.kind === 'freeze')) return [clock.start];
+  const rate = clock.clip.reduce((r, step) => (step.kind === 'rate' ? step.rate : r), 1);
+  const period = clock.clip.reduce((p, step) => (step.kind === 'loop' ? step.period : p), Infinity);
+  return clipTimes.filter((k) => k >= 0 && k <= period).map((k) => sceneSeconds(clock.start + k / rate)).filter((t) => t <= clock.until);
+}
+
 /** The time a scene step hands on. */
 function sceneStepTime(step: PaintSceneStep, time: SceneSeconds, animationFps: number): SceneSeconds {
   if (step.kind === 'freeze') return step.time;
@@ -166,3 +178,17 @@ export function paintBoilEpochAt(time: SceneSeconds, revealEnd: SceneSeconds, ev
   if (time < revealEnd) return 0;
   return Math.floor(paintAnimationFrameOf(time, animationFps) / every) - Math.floor(paintAnimationFrameOf(revealEnd, animationFps) / every);
 }
+
+/** A play compiled: its clip, its clock under its node's, and the interval it writes over. */
+export type CompiledPaintPlay<C> = { readonly clip: C; readonly clock: CompiledPaintPlayClock; readonly interval: PaintPlayInterval; readonly origin: string };
+
+/** Plays writing one thing on one target, sorted by start. */
+export type PaintLane<C> = readonly CompiledPaintPlay<C>[];
+
+/** The play writing `lane` at its target's time `time`: the latest to have started, or before any has, the first. */
+export function paintLanePlayAt<C>(lane: PaintLane<C>, time: SceneSeconds): CompiledPaintPlay<C> | undefined {
+  return lane.findLast((play) => play.interval.start <= time) ?? lane[0];
+}
+
+/** `lane` sorted by start, as a lane is kept. */
+export const paintLaneByStart = <C>(lane: PaintLane<C>) => lane.toSorted((a, b) => a.interval.start - b.interval.start);

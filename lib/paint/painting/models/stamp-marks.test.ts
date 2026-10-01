@@ -12,6 +12,7 @@ import { stampPolygonDistance, stampRegionPolygon, type StampRegion } from './st
 import { compileStampWetness, stampDrying } from './stamp-wetness.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { stampCharge } from './stamp-wet-techniques.ts';
+import { stampStage } from './stamp-stage.ts';
 
 const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 
@@ -102,7 +103,7 @@ test("a charge when damp waits for the paper under its touches, not for wetter p
   });
   const [pass] = painting.groups[0].passes;
   const { wetting } = PAINT_MEDIA.watercolour, paper = { color: '#ffffff' } as const;
-  const { waits: [local] } = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, { width: 800, height: 400 }).washes.get(pass)!;
+  const { waits: [local] } = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, stampStage({ width: 800, height: 400 })).washes.get(pass)!;
   assert.deepEqual(local.step, { kind: 'wait', until: 'damp', under: { deposits: ['g/w/cool-0', 'g/w/cool-1', 'g/w/cool-2', 'g/w/cool-3'] }, effect: { kind: 'charge', id: 'g/w/cool' } });
   // Until the sky's water under the touches is damp, not the puddle's, which is wetter.
   const { rate } = stampDrying(wetting, paper);

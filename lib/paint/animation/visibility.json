@@ -1,0 +1,3 @@
+{
+  "lib/paint/three-layers": "A three.js layer is seen through the multiplane camera: its perspective camera, pose and focus at t, in the world the planes share."
+}

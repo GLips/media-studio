@@ -155,7 +155,9 @@ wet as it was, or as the brush's water where it touched, so paint on dry paper k
 brush drags paint along where it touches, however damp, so there paint moves as on flooded paper: a soften reaches
 its sigma rather than its water's share of it.
 - After a lift there's no fresh paint: the paint round it runs back in, as loose as the lift would find it, a pair
-  trading only as far as the lift reached either of it, at sigma = spread × diameter / 3, at most 16 px.
+  trading only as far as the lift reached either of it, at sigma = spread × diameter / 3, at most 16 px. Paint runs
+  into a pixel only as far as the wash covers it (`flowRefill`), so a lift's water never carries paint onto paper the
+  wash left bare, such as a flood's specks where its tip broke: filled, they even the wash darker than it was.
 - It works one array layer of the group at a time, so its scratch is the same for any palette: 100 bytes a pixel of
   the largest wash deposit's box (about 207 MB for a whole 1080p frame), reserved as the painting (or a boil's epoch)
   loads.
@@ -200,7 +202,7 @@ where the paper lets it: a stage supplies the paper (wet, open), the bloom the d
 and where paint may land, the rim open wherever it isn't bare paper at the grain's scale.
 
 **Frame state.** Everything about a group that varies with time reaches the renderer as data, per frame:
-`renderer.draw(t, frame)`, and `StampPainting`'s `frame` prop, take a `StampPaintFrameState`
+`renderer.draw({ t, state })`, and `StampPainting`'s `frame` prop, take a `StampPaintFrameState`
 (`stamp-paint-frame-state.ts`). It holds each group's:
 - `lay`: a placement about its pivot;
 - `warp`: a rest-to-scene map with a key naming it, sampled on a lattice over the group's painted layer;
@@ -237,6 +239,16 @@ painting; a group laid apart is also saved painted but not laid, which frames la
 - **Checks:** the build checks the tree, the groups, the clocks, the boil's wobble, one writer per lane
   (`paint-channels.ts`), and every frame's emitted warp for folds on the renderer's own lattice.
   `paintMotionFrameAt(motion, t)` is pure in `t`, and writes each group's `StampGroupFrameState`.
+- **Planes and the camera** (`paint-camera.ts`, `paint-camera-build.ts`): a root node's `anchor` puts its tree on
+  the canvas (the default, never moved by the camera) or on a plane at a depth (`{ plane: 2 }`, from the camera's
+  rest; pan is measured at 1). A plane is painted the size it looks at rest, so a flat painting goes multiplane by
+  giving groups depths. The camera's plays key `move` (pan, dolly, zoom, roll) and `focus` (focus depth and
+  aperture) on its own clock, on ones unless held. Its step comes after every bend and placement: it folds a
+  plane's view into the group's lay, keeps its warp, and writes its defocus `blur` (a thin lens's circle of
+  confusion, as gaussian sigma) and scales its `glow`. `buildPaintCamera` and `paintCameraFrameStateAt` put the same
+  step over frame state another motion wrote. The build names a plane at or behind the camera, a zoom not above 0, an
+  anchor on a child, and a `backdrop` the camera shows past the stage's margin or its paint.
+  `paint-camera-world.ts` gives three.js the perspective camera that lands a 3D point where the plane step lays it.
 
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants
 of `procreate-reading.ts`), and the stroke Procreate draws its previews along. Its `engine/` reads binary plists and

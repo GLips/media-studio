@@ -8,8 +8,11 @@ import { symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 
-/** The most the gate may take in pre-commit, from reading the index to its last comparison. */
-export const STAMP_GATE_STAGED_TIMEOUT_MS = 60_000;
+/**
+ * The most the gate may take in pre-commit, from reading the index to its last comparison. It catches a hung gate,
+ * not a slow one: another session rendering slows the GPU gate well past a minute.
+ */
+export const STAMP_GATE_STAGED_TIMEOUT_MS = 300_000;
 
 /**
  * Writes out the index of the repository at `root` and runs the staged tree's `staged-tree` verb on it, handing it the

@@ -10,6 +10,7 @@ import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { StampWashDrying, StampWetLanding, StampWetness } from '../models/stamp-wetness.ts';
 import type { CompiledStampDeposit, CompiledStampPaint, CompiledStampPass } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
+import type { StampStage } from '../models/stamp-stage.ts';
 import type { StampWashLayer } from './stamp-paint-compositor.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
 import { STAMP_BLOOM_STAGE } from './stamp-wet-bloom.ts';
@@ -17,16 +18,15 @@ import { STAMP_WET_FLOW_STAGE } from './stamp-wet-flow.ts';
 import { STAMP_DRYING_RIM_STAGE } from './stamp-wet-rim.ts';
 
 /**
- * What a stage is given as a painting loads. `layer` is the group layer it works on, whole and by layer, kept as
- * `wash` says; `footprint` is each wash deposit's resolve over its box (StampWetDepositMoment); `fresh`, shaped as the
- * layer, is what a paint deposit laid where footprint r > 0.
+ * What a stage is given as a painting loads. `layer` is the group layer it works on, kept as `wash` says; `footprint`
+ * is each wash deposit's resolve over its box (StampWetDepositMoment); `fresh`, shaped as the layer, is what a paint
+ * deposit laid where footprint r > 0. Targets and boxes are `stage` texels, grids painting points (stagePoint).
  */
 export type StampWetStageContext = {
   device: StampPaintDevice;
   painting: CompiledStampPaint;
   wetness: StampWetness;
-  width: number;
-  height: number;
+  stage: StampStage;
   layer: { texture: GPUTexture; view: GPUTextureView; layers: readonly GPUTextureView[] };
   wash: StampWashLayer;
   footprint: { texture: GPUTexture; view: GPUTextureView };

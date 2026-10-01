@@ -11,6 +11,7 @@ import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.t
 import { stampGridAt, type StampRegion } from './stamp-region.ts';
 import { compileStampWetness, stampWetGrid } from './stamp-wetness.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
+import { stampStage } from './stamp-stage.ts';
 
 const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 
@@ -64,7 +65,7 @@ test("a group standing before earlier groups reserves its shape from them, inset
   assert.ok(sky.mask?.kind === 'mask' && sky.mask.area.inset === 3);
   assert.deepEqual(ids(hill.mask), []);
 
-  const wetness = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, { width: 200, height: 120 });
+  const wetness = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, stampStage({ width: 200, height: 120 }));
   const wet = stampWetGrid(wetness.landings.get(sky)!.after, 'wetness');
   assert.equal(stampGridAt(wet, 100, 88), 0);
   assert.equal(stampGridAt(wet, 24, 88), 1);

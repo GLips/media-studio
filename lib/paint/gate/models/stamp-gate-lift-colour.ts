@@ -5,7 +5,7 @@
 // Tints are rows, lifts columns of rising strength over them, the first column left alone; a strip of bare paper below
 // is the white each is measured against, so "paler" is nearer the paper.
 
-import { PAINT_MEDIA, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
+import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-pigment.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
@@ -56,13 +56,9 @@ const INSET = 5;
 
 const tint = ({ pigment, strength }: (typeof TINTS)[number]): PaintMaterial => ({ kind: 'mixture', parts: [{ pigment, amount: strength }], strength });
 
-/**
- * The tints in `medium`, lifted while wet or, `dried`, once the wash has dried. Its paint doesn't flow: flow running
- * back into a lift evens the paper a wash left showing, which is the flow's to answer for, not the lift's.
- */
+/** The tints in `medium`, lifted while wet or, `dried`, once the wash has dried. */
 function stampGateLiftColourPainting(medium: StampGateLiftColourMedium, dried: boolean): StampGatePainting {
-  const still: PaintMedium = { ...PAINT_MEDIA[medium], wetting: { ...PAINT_MEDIA[medium].wetting, spread: 0 } };
-  const painting = compileStampPaintRecipe(stampPaintRecipe({ paper: PAPER, mixing: { kind: 'pigment', medium: still, pigments: W } }, (p) => p.group('tints', { composite: 'glaze', opacity: 1 }, (g) => g.passage('wash', {}, (wash) => {
+  const painting = compileStampPaintRecipe(stampPaintRecipe({ paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA[medium], pigments: W } }, (p) => p.group('tints', { composite: 'glaze', opacity: 1 }, (g) => g.passage('wash', {}, (wash) => {
     TINTS.forEach((t, r) => {
       const { y0, y1 } = ROW(r);
       wash.fill(`tint-${r}`, { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(4, y0, 196, y0, 196, y1, 4, y1), well: { paint: tint(t) }, reveal: { at: 0, over: 1 } });

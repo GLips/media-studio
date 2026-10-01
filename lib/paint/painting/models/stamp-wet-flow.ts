@@ -51,6 +51,11 @@ fn flowLiftStirred(workable: f32, open: f32, rewetting: f32) -> f32 {
 fn flowLiftPair(lifted: f32, partnerLifted: f32) -> f32 {
   return clamp(max(lifted, partnerLifted), 0.0, 1.0);
 }
+// A pair's trade after a lift (\`into\`, flowInto's), as far as the wash covers the pixel taking paint (\`coveredHere\`,
+// \`coveredThere\`): paint runs back into the film the lift thinned, never onto paper the wash left bare.
+fn flowRefill(into: vec4f, coveredHere: f32, coveredThere: f32) -> vec4f {
+  return into * select(vec4f(clamp(coveredThere, 0.0, 1.0)), vec4f(clamp(coveredHere, 0.0, 1.0)), into > vec4f(0.0));
+}
 // How freely a population's paint moves: as stirred, and as much of the pixel's paint as it holds, so the populations
 // together never give more than the pixel has.
 fn flowFree(stirred: f32, held: vec4f, whole: vec4f) -> vec4f {
