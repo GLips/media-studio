@@ -341,3 +341,115 @@ the outer scope used inside an `apply` (a lint rule), a pin reach that swallows 
 - **Plan 1:** place, deform, boil and marks, colour, the clocks on plays, looks and scoped style, and shape sources.
   It adds only node options (`look`, `anchor`, `pins`, `marks`) to vid-114's tree, and handles returned from its
   builders.
+
+## Plan 1, phase 1.0: deforming painted strokes (vid-130)
+
+**Short answer: both, by part, and no stamp carrying.**
+- **Near-rigid motion bends the group's painted layer:** limbs, sway, small squash, and the boil.
+- **Parts that change shape are re-painted every frame (live):** the throat's puff, big squash and stretch, growth.
+- **Carrying placed stamps through the warp (the old "stuck") isn't built.** It costs as much as live, and it frays
+  under stretch. Paper, grain and bloom noise stay on the screen, so its texture swims anyway.
+
+Each candidate was rendered side by side through one shared warp, in watercolour and crayon, at 1080p and 24 fps. A
+frog of about 210k stamps had a throat puffing 1.9× every 3 s, an arm raising 70° and six grass blades swaying.
+- **The renders:** `~/research/2026-10-01-vid-130/deform/index.html` (all candidates) and
+  `~/research/2026-10-01-vid-130/layer-warp/index.html` (the layer warp alone, and its stretch measurements).
+- **The code:**
+  - spike branches `vid130-layerwarp` (studio da5f1c9, 77edfc6, d4bb438, 0d088b0) and `vid130-deform` (fast-forwarded
+    to it);
+  - the projects `2026-10-layer-warp-spike` and `2026-10-deform-spike` in the workspace.
+
+### Warp the layer or the stamps?
+
+- **The layer warp.** The group is painted once in its rest space. Each frame a lattice (16 px cells, at most 64 a
+  side), sampled from a rest-to-scene map, is rasterised at its scene positions. Each pixel learns its rest point, so
+  the field is inverted for free.
+  - Rigid placement became its one-cell case. Cells are drawn least moved first, and a fold's bare margin is discarded
+    so it can't punch holes in the paint.
+  - Paint, wetness, rims, blooms, masks, clips and reserves all ride along exactly as laid.
+  - It costs 2.3–4.1 ms a frame in the layer-warp spike's scenes, and 12.5–28 ms for the whole 210k-stamp frog.
+  - **It breaks under magnification.** Grain, tooth and line width all scale with the stretch. At the 1.9× puff the
+    outline is twice as wide and soft, it is soft past about 1.5×, and by 3× texture is streaks.
+- **Stamps carried** (each stamp's centre through the map, its footprint through the local Jacobian, one frame per
+  stamp). Lines run across the stretch fatten to 3× wide, and a wash's edge goes woolly from about 1.5×.
+  - Worse, it isn't stuck. Grain is sampled in screen pixels, `grainOffset` is per deposit, and bloom lobes, rim noise
+    and ragged mask edges are hashed on screen pixels. So consecutive frames of the stabilised sac differ about as
+    much as live's do: 5.3 against 5.5 grey levels in watercolour, against the layer's 4.1.
+  - A carried painting is a new painting, so its wet state is re-derived, never carried.
+- **Live** re-places the bent pose every frame. It keeps lines at their painted width, edges crisp and paper as paper,
+  at every stretch up to 3×. At frog scale it reads as a hand redrawing, not as noise. This is the look Graham
+  preferred in vid-121.
+
+### Filtering, and crayon's tooth
+
+- **Crayon's tooth filled in under any sub-pixel resample.** Films were interpolated before the nonlinear lay, so
+  vid-117's rigid motion already had this bug. Now a moved group is laid at each of the four texels around its rest
+  point, and the laid results are blended (0d088b0).
+  - Crayon at a 0.5 px shift keeps 13.2% bare-paper specks, against 15.1% still (it was 4.7%), with its mean light
+    within 0.4.
+  - A new gate check, `animation/half-pixel`, fails the old renderer and passes now. No golden moved (stamp gate
+    102/102).
+- **Watercolour bilinear** keeps within 0.1 of a CPU bilinear. Lanczos would win back 20–25% of the gradient, but most
+  of the loss is the magnification itself.
+
+### Weights follow parts
+
+A falloff across one group's painted paint tears it: a watercolour sleeve's bleed was pulled into streaks. A limb is a
+group of its own, and its weight runs only along the limb. So a figure's parts (phase 1.1's shape sources) are groups.
+
+### Live, and a crawl dial
+
+- **A bounded crawl rate is not a useful dial.** Re-placing on twos with the warp carrying between them looks the same
+  as live, and it costs the most.
+- **The useful dial is the pose's step.** Live on twos reads as stepped Grease Pencil animation.
+
+### Boil as displacement
+
+- **A stepped noise displacement of the rest path** (2.2 px at a 45 px scale, epochs as `paintStrokeBoilEpoch`, on
+  twos) reads like Grease Pencil's noise boil. Across a step, lines and edges change by 1.95–2.55 grey levels, and the
+  texture stays: 0.11 between steps.
+- **Today's group boil re-rolls every mark** instead.
+- **It should run as a layer warp** (the part's map composed with the displacement) rather than a repaint.
+
+### Cost per frame at 1080p (M1 Max, under load from other sessions; medians, ms)
+
+| Watercolour frog, 210k stamps (43k moving) | CPU | Load | Draw |
+|---|---|---|---|
+| still | 0 | 0 | 1.4 |
+| layer warp | 0 | 0 | 27.6 |
+| today's group boil | 0 | 0 | 65 |
+| stamps carried | 36 | 72 | 236 |
+| live | 56 | 77 | 238 |
+
+**The draw dominates, and it is a full repaint.** Every candidate that hands the renderer a new painting loses its
+checkpoints and redraws everything. Live is affordable only through a seam:
+- place, upload and draw only the groups that change;
+- restore everything painted before them from a checkpoint.
+
+The layer warp already restores its moving group painted but not laid (`#painted`). Draw cost then scales with the
+moving share: a fifth of the stamps in watercolour, a twentieth in crayon.
+
+### Frame order
+
+- **Node:** every candidate's evaluated painting printed identically forwards, reversed and shuffled across every boil
+  and hold step, in both media.
+- **GPU:** `studio repeatable` passed at 12 times, covering a boil step, the layer warp, odd frames on twos and group
+  boil. The worst was 110 dB, and several were identical.
+
+### What plan 1 takes from this
+
+- **The deform channel yields, per part per frame, either a warp of its layer or a new pose of its geometry.** The
+  warp is a lattice sampled from a rest-to-scene map. The new pose is re-placed and re-painted (live).
+- **The scene chooses per part, never globally.** By eye the line falls near 1.3–1.5× local stretch; a stretch sweep
+  could set it.
+- **How marks live becomes:**
+  - `stuck`: the layer carried;
+  - `boil`: a stepped displacement carried as a layer warp, or today's re-seed;
+  - `live`: re-placed every evaluated frame.
+- **Warps reach the renderer as each frame's data,** with a key for checkpoints, not as a time function inside the
+  compiled painting.
+- **Follow-ons:**
+  - the live seam (re-draw only the groups that change);
+  - a stretch sweep to place the line between layer and live;
+  - whether a puffing part reads better on its own paper or the ground's;
+  - a bloom isn't re-simulated into paper a layer warp newly uncovers.

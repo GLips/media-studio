@@ -1,7 +1,7 @@
 ---
 title: "feat: Painted animation, part 1: strokes that deform, and the timing layer"
 type: feat
-status: draft
+status: active (phases 1.0 and 1.1 done, 2026-10-01; phase 2 building engine-side)
 date: 2026-09-30
 revised: 2026-09-30 (after vid-112, vid-116, vid-117 and vid-125; folds in vid-126)
 dependsOn: [the paint-engine tickets in flight (vid-118, vid-123, vid-124, vid-127) landing first; the spikes don't wait]
@@ -69,9 +69,19 @@ What plans 2 and 3 need from this plan:
 ## New concepts
 
 - **`lib/paint/animation/`**, a new feature above `paint/style` and `paint/painting`. It holds the painting tree a scene writes, timing channels, scoped style resolution, deformation, and the component that draws it. The name is still a working one; "shot" collides with capture's shots. `paint/painting` stays unaware of scenes, poses and channels: it takes a painting as it stands at a moment, plus group placements, warps, boil epochs and visibility. Brush fidelity and the gate keep using it directly.
-- **A deformation** is a coarse warp field per group, in rest space: a lattice or pins with falloff, chosen by spike 1.1. It replaces the rigid placement as the general case, rigid being the warp with one affine cell. It is keyed into the checkpoint key, as vid-117's note proposes.
+- **A deformation** comes in two kinds per part, chosen by the scene (spike 1.0's verdict):
+  - a **layer warp**: a coarse lattice in rest space, sampled from a rest-to-scene map, which carries the group's painted layer, rigid placement being its one-cell case;
+  - **live**: the part's geometry posed anew and re-painted.
+
+  A warp reaches the renderer as each frame's data, keyed into the checkpoint key.
 
 ## Phase 1.0: Deforming painted strokes (spike: toy experiment)
+
+**Done, 2026-10-01.** Findings: the spike findings doc, "Plan 1, phase 1.0".
+- **Verdict:** near-rigid parts (limbs, sway, small squash, boil) bend the group's layer. Parts that change shape (the
+  puff) are live. Stamps aren't carried.
+- **Kept from the spike:** the layer warp in the renderer, and the four-texel lay that fixes crayon under sub-pixel
+  motion. They land in phase 2, with the warp as each frame's data.
 
 ### Goal
 We know how a deformation should carry paint (stamps, wet state, masks) under stuck, boil and live, what it costs per frame, and where it breaks.
@@ -98,6 +108,12 @@ We know how a deformation should carry paint (stamps, wet state, masks) under st
 - The warp choice (layer, stamps or both) is recommended with evidence.
 
 ## Phase 1.1: Authoring the frog (spike: toy experiment)
+
+**Done, 2026-10-01.** Findings: the spike findings doc, "Plan 1, phase 1.1".
+- **Chosen form:** anatomy as vid-114's groups and passages; motion as plays on typed handles; pins, radial or owned
+  by a part; how marks live as a node option.
+- **Shapes:** from sources naming parts and anchors, built in `paint/animation/models/figure/`.
+- **Graham's sign-off is pending.** Engine work that doesn't hang on the form goes ahead.
 
 ### Goal
 We know what the scene-level API should look like for an AI agent writing painted animation, and where a frog's shapes come from, well enough to reshape phases 2–4.
@@ -129,6 +145,35 @@ We know what the scene-level API should look like for an AI agent writing painte
 
 ### Goal
 Scenes paint through the new model only. The recipe's authoring API is gone, the watercolor-paintings and vid-121 scenes are ported, and still paintings look as they did.
+
+### Reshaped after the spikes (2026-10-01)
+
+Phase 2 splits in two, because vid-114 builds the passage layer that the authoring half stands on.
+
+**2a, the engine's frame seam.** Engine-side, building now; independent of vid-114's cut-over. `paint/painting`'s
+renderer draws a frame from the compiled painting plus each group's state for that frame, given as data:
+- its placement;
+- its warp: a lattice sampled from a rest-to-scene map, with a key naming it;
+- its boil epoch;
+- its visibility;
+- for a **live** group, its marks compiled for this frame.
+
+The compiled painting holds no functions of time.
+- The layer warp and the four-texel lay come from spike 1.0.
+- **The live seam:** a live group's marks are placed, uploaded and drawn alone each frame. What is painted before it
+  is restored from a checkpoint, so a frame costs its moving share and not a full repaint.
+- Group `motion` and `boil` stay as recipe fields until 2b replaces them. Internally they become frame state, so the
+  renderer reads one shape whichever writes it.
+
+**2b, the authoring model.** Waits for vid-114's step 5. Plan 1's additions go on vid-114's tree, per spike 1.1:
+- plays on typed handles;
+- pins;
+- `marks: stuck | boil | live`;
+- looks (scoped style);
+- `anchor`;
+- figure shapes.
+
+Ported scenes, and the deletions below, follow.
 
 ### Approach
 - **`paint/painting` keeps one contract:** a painting as it stands at one moment (groups, passes and deposits with their placed stamps, washes and masks), plus per-group placement, warp, boil epoch and visibility. `paint/animation` and brush fidelity feed it. Scenes never write it, and `#studio` exports only the new model for painting.
