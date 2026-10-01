@@ -17,8 +17,8 @@ import { stampUniformLayout, stampUniformWriter, type StampUniformField, type St
 export type StampPaintTarget = { kind: 'plain' } | { kind: 'array'; layers: number };
 
 /**
- * sRGB's transfer, both ways, the one copy in WGSL: a compositor's paper, group, outside and output pieces call
- * srgbDecoded and srgbEncoded, and every module assembling them (or adding light, as glow does) declares this once.
+ * sRGB's transfer, both ways, the one copy in WGSL: a compositor's paper, group and output pieces call srgbDecoded and
+ * srgbEncoded, and every module assembling them (or adding light, as the lens does) declares this once.
  */
 export const STAMP_SRGB_WGSL = /* wgsl */ `
 fn srgbDecoded(c: vec3f) -> vec3f { return select(pow((c + 0.055) / 1.055, vec3f(2.4)), c / 12.92, c <= vec3f(0.04045)); }
@@ -83,11 +83,9 @@ export type StampPaintCompositor = {
   /** `layPaper(pixel, color)`, `color` gamma-encoded. */
   paper: string;
   /**
-   * `layOutside(pixel, over)`: an outside layer's pixel (stamp-outside-layer.ts) laid over the painting, `over` linear
-   * light, premultiplied, its colour within its alpha. Reads and writes `painting` alone.
+   * What the painting shows at a pixel, read from `painting` alone: `screenColor(pixel)` gamma-encoded, as a still is
+   * output, and `linearLight(pixel)` within 0..1, as a plane's picture holds it (stamp-paint-plane-passes.ts).
    */
-  outside: string;
-  /** `screenColor(pixel)`, gamma-encoded. */
   output: string;
 };
 
@@ -269,14 +267,8 @@ fn layGroup(pixel: vec2u, glaze: bool, opacity: f32) {
       resources: () => [],
     },
     paper: /* wgsl */ `fn layPaper(pixel: vec2u, color: vec3f) { textureStore(painting, pixel, vec4f(color, 1.0)); }`,
-    // Laid in linear light, as three composites it, though flat paint mixes gamma-encoded: an outside layer's
-    // antialiased edge is coverage of light, and an opaque pixel comes out the colour rendered either way.
-    outside: /* wgsl */ `
-fn layOutside(pixel: vec2u, over: vec4f) {
-  let under = textureLoad(painting, pixel);
-  let light = over.rgb + srgbDecoded(under.rgb) * (1.0 - over.a);
-  textureStore(painting, pixel, vec4f(srgbEncoded(clamp(light, vec3f(0.0), vec3f(1.0))), over.a + under.a * (1.0 - over.a)));
-}`,
-    output: /* wgsl */ `fn screenColor(pixel: vec2u) -> vec3f { return textureLoad(painting, pixel, 0).rgb; }`,
+    output: /* wgsl */ `
+fn screenColor(pixel: vec2u) -> vec3f { return textureLoad(painting, pixel, 0).rgb; }
+fn linearLight(pixel: vec2u) -> vec3f { return srgbDecoded(clamp(screenColor(pixel), vec3f(0.0), vec3f(1.0))); }`,
   };
 }

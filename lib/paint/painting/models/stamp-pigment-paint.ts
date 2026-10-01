@@ -82,11 +82,11 @@ export type StampPigmentGroup = {
    * In a group with a knockout, the layer after its paint holding what the knockout took out of the paint behind it
    * (stamp-paint-pigment-compositor.ts), which no wet stage moves. Null in a group without.
    */
-  sheetLayer: number | null;
+  knockoutLayer: number | null;
 };
 
-/** Layers of four channels a group's pixels need: its paint's, and its sheet's if it has one. */
-export const stampPigmentGroupLayers = ({ paintLayers, sheetLayer }: StampPigmentGroup) => paintLayers + (sheetLayer === null ? 0 : 1);
+/** Layers of four channels a group's pixels need: its paint's, and its knockout layer if it has one. */
+export const stampPigmentGroupLayers = ({ paintLayers, knockoutLayer }: StampPigmentGroup) => paintLayers + (knockoutLayer === null ? 0 : 1);
 
 export type StampPigmentPaint = {
   /** Every medium a group paints in, each once, in the order groups first name them. */
@@ -208,7 +208,7 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
       throw new Error(`stamp paint: ${group.id} mixes ${palette.length} pigments, over the ${STAMP_PIGMENT_GROUP_SLOTS} a wash holds, counting every key and end of its materials; split it into two groups, or key fewer pigments (${palette.map(({ id }) => id).join(', ')})`);
     }
     const washes = group.passes.some((pass) => pass.kind === 'wash'), paintLayers = stampPigmentLayers(palette.length, washes);
-    return { medium: index, palette, paintLayers, open: washes ? 4 * paintLayers - 1 : null, sheetLayer: stampGroupKnocksOut(group) ? paintLayers : null };
+    return { medium: index, palette, paintLayers, open: washes ? 4 * paintLayers - 1 : null, knockoutLayer: stampGroupKnocksOut(group) ? paintLayers : null };
   });
   // A painting of no groups still has a medium to compile its passes in.
   if (!media.length) fitsOf(mixing);

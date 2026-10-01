@@ -241,30 +241,31 @@ elements, which is what keeps objects from showing through each other.
 5. **Each frame,** `paintMotionFrameAt(motion, s.t)` gives the frame state, live marks included:
    `<StampPainting painting={painting} t={s.t} frame={paintMotionFrameAt(motion, s.t)} />`.
 
-**Planes and the camera (multiplane).** Give a root node `anchor: { plane: depth }` to stand its tree on a plane
-that far from the camera (1 is where a pan's pixels are measured; nearer is under 1). Paint each plane the size it
-should look before the camera moves: at rest nothing changes. Pass `camera: { stage: stampStage({ width, height },
-margin), plays }` to `buildPaintMotion`, and its stage to the painting, `<StampPainting stage={motion.camera.stage}>`
-(it refuses a stage whose frame isn't its own size): the renderer paints that far past the frame, so a camera move
-brings in paint, not paper's edge. Plays are
-`paintCameraPlay({ kind: 'move', keys: [{ at, pan?: { x, y }, dolly?, zoom?, roll?, ease? }] }, { clock, origin })`,
-and `{ kind: 'focus', keys: [{ at, focus, aperture }] }` for depth of field: `focus` is the depth held sharp,
-`aperture` the defocus (px of gaussian sigma) a plane at infinity gets. A pan of 100 moves a plane at depth 2 by 50
-and one at 0.5 by 200; a dolly grows near planes more than far ones. Keep the camera on ones: held on twos it judders.
-Mark the background `backdrop: true` and the build fails if the camera would show past it; give the frog
-`glow: { amount, sigma, threshold }` for a soft light. A frame state's own `defocus` and a glow's `sigma` are px of
-gaussian sigma, grown with the plane. Untouched groups and `anchor: 'canvas'` (titles) never move with the camera.
+**Planes and the camera (multiplane).** A scene is planes `{ id, depth, source }`, 1 being where a pan's pixels are
+measured and nearer under 1. Every group is on exactly one painted plane (`{ kind: 'painted', groups }`). The
+farthest is paper to the stage's edge. Every nearer painted plane is clear film: an `opaque` group's paint hides
+what's behind as far as it's laid, moving, bending and fading with the group (a swaying tuft, a drifting butterfly, a
+puffing sac), and a `glaze` group's paint (an ink line, a shadow) filters what's behind. Paint each plane the size it should look before the camera moves: at rest nothing changes. Build the
+camera with `buildPaintCamera(painting, { stage: stampStage({ width, height }, margin), fov, planes, lens: { bloom },
+plays })`. Plays are `paintCameraPlay({ kind: 'move', keys: [{ at, pan?: { x, y }, dolly?, zoom?, roll?, ease? }] },
+{ clock, origin })`, and `{ kind: 'focus', keys: [{ at, focus, aperture }] }` for depth of field: `focus` is the depth
+held sharp, `aperture` the defocus (px of gaussian sigma) a plane at infinity gets. A pan of 100 moves a plane at
+depth 2 by 50 and one at 0.5 by 200; a dolly grows near planes more than far ones. The build proves each plane's
+picture holds what the camera shows of it over the whole shot (widen the margin when it says so) and reports each
+plane's greatest magnification (past about 1.3, its paint looks soft). Keep the camera on ones: held on twos it
+judders. Give a group `glow: { amount, threshold }` in its frame state for a soft light; the lens blooms all glow
+once, at `lens.bloom` px of sigma, and a nearer plane covering glowing paint stops its glow. Show it with
+`<StampPainting painting t frame camera />`; a glowing frame without a camera is refused.
 
-**3D layers in a painting.** `<PaintedThreeScene painting t frame camera three={{ fov, layers, paintedTextures }}>`
-lays a three.js scene into the painting's group order, `beneath` a group, on the painting's own GPU device. It applies
-the camera itself, to the planes and to three's camera alike, so give it `frame` as it stands before the camera step
-(not `paintCameraFrameStateAt`'s). A layer has a `depth`, and the camera is built with it
-(`buildPaintCamera(painting, { ..., outsideLayers: three.layers })`), which holds it in front of the camera; it moves
-and defocuses as a plane there. A layer's `build` gets the world, its own `plane` (`plane.point(px)` places a mesh,
-`plane.length(px)` sizes it, both at the layer's depth) and the painted textures, each a painting drawn every frame
-for a material (`paintedThreeColorNode`). `poseAt` returns a key of what it shows: it must change whenever the render
-does, or a frame restores a stale one. Memoise `three`: a new array reloads the device. The frog project's
-`frogDepth` and the round-trip project are worked examples.
+**3D in a painting.** A three.js scene is a plane of its own, `{ id, depth, source: { kind: 'three' } }`, rendered on
+the painting's own GPU device. Hand its source to the painting:
+`<StampPainting painting t frame camera three={{ sources, paintedTextures }} />`. A source is
+`{ id, build }`, its id its plane's. `build` gets the world, its own `plane` (`plane.point(px)` places a mesh,
+`plane.length(px)` sizes it, both at the plane's depth) and the painted textures, each a painting drawn every frame
+for a material (`paintedThreeColorNode`). It returns `{ scene, poseAt(t), dispose }`. Its render is laid between the
+planes nearer and farther than its depth, and defocused as a plane there. Keep materials opaque, or transparent with
+normal blending, so the render stays premultiplied. Memoise `three`: new sources reload the device. The frog
+project's `frogDepth` and the round-trip project are worked examples.
 
 Hold motion on twos (`clock: { hold: 2 }` on the node, at `PAINT_ANIMATION_FPS`); fades can run on ones. Run
 `studio repeatable` inside a hold and across one.

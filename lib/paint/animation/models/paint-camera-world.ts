@@ -1,6 +1,6 @@
-// paint-camera-world.ts: the multiplane camera as a perspective camera, for three.js layers. A point placed by
-// paintPlaneWorldPoint and rendered through a PerspectiveCamera set from paintCameraPerspectiveAt lands on the stage
-// pixel paintPlaneSimilarity puts it on, to float precision, so a 3D layer at depth d moves as a plane there does.
+// paint-camera-world.ts: the multiplane camera as a perspective camera, for three.js sources. A point placed by
+// paintPlaneWorldPoint and rendered through a PerspectiveCamera set from paintCameraPerspectiveAt lands on the frame
+// pixel paintPlaneSimilarity puts it on, to float precision, so a three.js source at depth d moves as a plane there does.
 //
 // The world is three's: x right, y up, the camera at rest at the origin looking down −z. Its unit is a px at depth 1;
 // depth d lies d·depthUnit away, depthUnit being the rest lens's focal length in px, from the fov the scene picks.
@@ -18,8 +18,9 @@ const worldUnits = (length: number) => length as PaintWorldUnits;
 export type PaintWorldPoint = { readonly x: PaintWorldUnits; readonly y: PaintWorldUnits; readonly z: PaintWorldUnits };
 
 /**
- * The world a scene's 3D layers share with its planes: its `stage`, the vertical field of view over the frame at rest
- * (`fov`, degrees), and `depthUnit`, how far depth 1 lies from the camera's rest: (frame height / 2) / tan(fov / 2).
+ * The world a scene's three.js sources share with its planes: its `stage`, the vertical field of view over the frame
+ * at rest (`fov`, degrees, the camera's projection), and `depthUnit`, how far depth 1 lies from the camera's rest:
+ * (frame height / 2) / tan(fov / 2).
  */
 export type PaintCameraWorld = { readonly stage: StampStage; readonly fov: number; readonly depthUnit: PaintWorldUnits };
 
@@ -42,14 +43,14 @@ export const paintWorldPlane = (world: PaintCameraWorld, depth: number): PaintWo
   ({ depth, point: (point) => paintPlaneWorldPoint(world, point, depth), length: (px) => worldUnits(px * depth) });
 
 /**
- * A three.js PerspectiveCamera's settings for `pose`, rendering a stage-sized target (frame and margin; a margin of 0
- * for the frame alone): `position`; `rotationZ`, its rotation.z (x and y 0); `fov`, vertical degrees over the
- * target, zoom included, so three's zoom stays 1; `aspect`. Its near plane must be under (depth − dolly)·depthUnit.
+ * A three.js PerspectiveCamera's settings for `pose`, rendering a frame-sized target: `position`; `rotationZ`, its
+ * rotation.z (x and y 0); `fov`, vertical degrees over the frame, zoom included, so three's zoom stays 1; `aspect`.
+ * Its near plane must be under (depth − dolly)·depthUnit.
  */
 export function paintCameraPerspectiveAt({ stage, depthUnit }: PaintCameraWorld, { pan, dolly, zoom, roll }: PaintCameraPose): {
   readonly position: PaintWorldPoint; readonly rotationZ: number; readonly fov: number; readonly aspect: number;
 } {
-  const { width, height } = stage;
+  const { width, height } = stage.frame;
   return {
     position: { x: worldUnits(pan.x), y: worldUnits(-pan.y), z: worldUnits(-dolly * depthUnit) },
     // A rotation.z of −roll in three's y-up world turns the picture by −roll in the painting's y-down angles.

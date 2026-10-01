@@ -155,8 +155,7 @@
       "const still = composition.defaultProps as StillProps;": 1
     },
     "lib/output/render/engine/studio-bundle.ts": {
-      "const kept = JSON.parse(readFileSync(current, 'utf8')) as KeptBundle;": 1,
-      "? !existsSync((JSON.parse(readFileSync(current, 'utf8')) as KeptBundle).project)": 1
+      "const kept = JSON.parse(readFileSync(current, 'utf8')) as KeptBundle;": 1
     },
     "lib/output/review/engine/review-artifact.ts": {
       "const readJson = <T,>(file: string): T | undefined => (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) as T : undefined);": 1

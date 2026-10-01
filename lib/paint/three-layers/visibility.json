@@ -1,0 +1,3 @@
+{
+  "lib/paint/style": "StampPainting loads a scene's three.js sources on its device's owner and renders them each frame."
+}

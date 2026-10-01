@@ -5,6 +5,7 @@
 
 import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { createStampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
+import { createStampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { createStampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import { stampPaintPackAssetUrl } from '#lib/paint/brush-packs/models/stamp-paint-pack-urls.ts';
 import { WET_ANIMATION_FPS, WET_ANIMATIONS, type WetAnimation, type WetAnimationPainted } from '../models/wet-animations.ts';
@@ -20,14 +21,19 @@ async function drawWetPassage(passage: WetPassage, { brushes, paper, mixing, pac
   const copy = Object.assign(document.createElement('canvas'), { width, height });
   try {
     const painting = compileStampPaintRecipe(passage.recipe({ brushes, paper, mixing }));
-    const surface = await createStampPaintSurface({ canvas, width, height }, (asset) => stampPaintPackAssetUrl(packUrls, asset));
-    // Copied before the surface is disposed, which unconfigures its canvas and clears it.
+    const owner = await createStampPaintGpuOwner((asset) => stampPaintPackAssetUrl(packUrls, asset));
     try {
-      const renderer = await createStampPaintRenderer(surface, painting);
-      await renderer.draw({ t: SHOWN });
-      copy.getContext('2d')!.drawImage(canvas, 0, 0);
+      const surface = await createStampPaintSurface(owner, { canvas, width, height });
+      // Copied before the surface is disposed, which unconfigures its canvas and clears it.
+      try {
+        const renderer = await createStampPaintRenderer(surface, painting);
+        await renderer.draw({ t: SHOWN });
+        copy.getContext('2d')!.drawImage(canvas, 0, 0);
+      } finally {
+        surface.dispose();
+      }
     } finally {
-      surface.dispose();
+      owner.dispose();
     }
     return { passage: passage.id, png: copy.toDataURL('image/png') };
   } catch (error) {
@@ -46,31 +52,36 @@ const drawWetPassages = (medium: WetPassageSheetMedium) => WET_PASSAGES.reduce<P
 async function drawWetAnimation(animation: WetAnimation, { brushes, paper, mixing, packUrls }: WetPassageSheetMedium): Promise<WetAnimationPainted> {
   const { width, height } = WET_PASSAGE_CELL;
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
-  const surface = await createStampPaintSurface({ canvas, width, height }, (asset) => stampPaintPackAssetUrl(packUrls, asset));
+  const owner = await createStampPaintGpuOwner((asset) => stampPaintPackAssetUrl(packUrls, asset));
   try {
-    const takes = animation.takes({ brushes, paper, mixing });
-    const frames = await takes.reduce<Promise<{ caption: string; png: string }[]>>(async (done, { recipe, frames: shown }) => {
-      const before = await done;
-      const renderer = await createStampPaintRenderer(surface, compileStampPaintRecipe(recipe));
-      try {
-        return [...before, ...await shown.reduce<Promise<{ caption: string; png: string }[]>>(async (drawn, { frame, caption }) => {
-          const earlier = await drawn;
-          await renderer.draw({ t: frame / WET_ANIMATION_FPS });
-          await renderer.finish();
-          const copy = Object.assign(document.createElement('canvas'), { width, height });
-          copy.getContext('2d')!.drawImage(canvas, 0, 0);
-          return [...earlier, { caption, png: copy.toDataURL('image/png') }];
-        }, Promise.resolve([]))];
-      } finally {
-        renderer.dispose();
-      }
-    }, Promise.resolve([]));
-    return { animation: animation.id, frames };
-  } catch (error) {
-    // As a passage's: a refusal is the sheet's to show.
-    return { animation: animation.id, refused: error instanceof Error ? error.message : String(error) };
+    const surface = await createStampPaintSurface(owner, { canvas, width, height });
+    try {
+      const takes = animation.takes({ brushes, paper, mixing });
+      const frames = await takes.reduce<Promise<{ caption: string; png: string }[]>>(async (done, { recipe, frames: shown }) => {
+        const before = await done;
+        const renderer = await createStampPaintRenderer(surface, compileStampPaintRecipe(recipe));
+        try {
+          return [...before, ...await shown.reduce<Promise<{ caption: string; png: string }[]>>(async (drawn, { frame, caption }) => {
+            const earlier = await drawn;
+            await renderer.draw({ t: frame / WET_ANIMATION_FPS });
+            await renderer.finish();
+            const copy = Object.assign(document.createElement('canvas'), { width, height });
+            copy.getContext('2d')!.drawImage(canvas, 0, 0);
+            return [...earlier, { caption, png: copy.toDataURL('image/png') }];
+          }, Promise.resolve([]))];
+        } finally {
+          renderer.dispose();
+        }
+      }, Promise.resolve([]));
+      return { animation: animation.id, frames };
+    } catch (error) {
+      // As a passage's: a refusal is the sheet's to show.
+      return { animation: animation.id, refused: error instanceof Error ? error.message : String(error) };
+    } finally {
+      surface.dispose();
+    }
   } finally {
-    surface.dispose();
+    owner.dispose();
   }
 }
 

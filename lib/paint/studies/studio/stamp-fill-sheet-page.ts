@@ -7,6 +7,7 @@ import { stampSmoothRegion, type StampFillApplication } from '#lib/paint/paintin
 import { compileStampPaintRecipe, stampPassDeposits } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import { createStampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
+import { createStampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { createStampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import { stampPaintPackAssetUrl, type StampPaintPackUrls } from '#lib/paint/brush-packs/models/stamp-paint-pack-urls.ts';
 
@@ -38,14 +39,19 @@ async function drawStampFillSheet(brush: StampBrush, diameter: number, packUrls:
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
   const context = canvas.getContext('2d')!;
   const paintCanvas = Object.assign(document.createElement('canvas'), { width, height });
-  const surface = await createStampPaintSurface({ canvas: paintCanvas, width, height }, (asset) => stampPaintPackAssetUrl(packUrls, asset));
-  // Copied before the surface is disposed, which unconfigures its canvas and clears it.
+  const owner = await createStampPaintGpuOwner((asset) => stampPaintPackAssetUrl(packUrls, asset));
   try {
-    const renderer = await createStampPaintRenderer(surface, painting);
-    await renderer.draw({ t: 0 });
-    context.drawImage(paintCanvas, 0, 0);
+    const surface = await createStampPaintSurface(owner, { canvas: paintCanvas, width, height });
+    // Copied before the surface is disposed, which unconfigures its canvas and clears it.
+    try {
+      const renderer = await createStampPaintRenderer(surface, painting);
+      await renderer.draw({ t: 0 });
+      context.drawImage(paintCanvas, 0, 0);
+    } finally {
+      surface.dispose();
+    }
   } finally {
-    surface.dispose();
+    owner.dispose();
   }
   APPLICATIONS.forEach(({ label: applied }, column) => {
     const x = column * CELL.width;

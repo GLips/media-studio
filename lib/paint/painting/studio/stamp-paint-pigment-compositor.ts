@@ -2,7 +2,7 @@
 //
 // A group's layer holds coverage, each palette pigment's amount (stamp-pigment-paint.ts) and, with a wash, last, its
 // open share: how much of the paint hasn't set. A wash's deposit lands, wets or lifts as its landing is
-// (stamp-wet-landing.ts, stamp-wet-lift.ts), a knockout's into its sheet (knockOut). A group dries as a Kubelka–Munk
+// (stamp-wet-landing.ts, stamp-wet-lift.ts), a knockout's into its knockout layer (knockOut). A group dries as a Kubelka–Munk
 // film, glazed or opaque.
 //
 // Negative space: a deposit's blend and a stamp's tint are colour operations with no pigment meaning, so neither
@@ -16,7 +16,6 @@ import type { PaintMedium, PaintStackedLayering } from '#lib/paint/materials/mod
 import { STAMP_PIGMENT_GROUP_SLOTS, stampPigmentAmountsAt, stampPigmentGroupLayers, type StampPigmentPaint, type StampPigmentUnderpaint } from '../models/stamp-pigment-paint.ts';
 import { STAMP_LIFT_STAIN_FIBRES, STAMP_LIFT_WET_STAIN_HOLD, STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
 import { STAMP_OPAQUE_COVER, type CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
-import { stampLightLiftBasis } from '../models/stamp-light-lift.ts';
 import type { StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
@@ -27,11 +26,11 @@ const COMPONENT_WORDS = 4;
 
 /**
  * A deposit's components (first and count), its group, its grade (StampPigmentGrade), its group's open-share
- * channel and sheet layer (0 for none), 1 if in its group's knockout, 1 if a dry brush (`dryBrush`), and each
+ * channel and knockout layer (0 for none), 1 if in its group's knockout, 1 if a dry brush (`dryBrush`), and each
  * component's amounts at its material's ends, two to a vec4f: written each frame, so a recolour uploads no more.
  */
 const PIGMENT_PAINT_DEPOSIT = stampUniformLayout('PaintDeposit', [
-  ['first', 'u32'], ['count', 'u32'], ['group', 'u32'], ['gradeKind', 'i32'], ['grade', 'vec4f'], ['open', 'u32'], ['sheetLayer', 'u32'], ['knockout', 'u32'], ['dryBrush', 'u32'],
+  ['first', 'u32'], ['count', 'u32'], ['group', 'u32'], ['gradeKind', 'i32'], ['grade', 'vec4f'], ['open', 'u32'], ['knockoutLayer', 'u32'], ['knockout', 'u32'], ['dryBrush', 'u32'],
   ['amounts', { vec4fArray: STAMP_PIGMENT_GROUP_SLOTS / 2 }],
 ]);
 
@@ -82,7 +81,7 @@ fn layDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: ve
   let under = textureLoad(layer, pixel, 0u).x;
   let rate = cover * (1.0 - ${f32(pickup)} * under);
   for (var l = 0u; l < LAYERS; l++) {
-    if (isSheet(l)) { continue; }
+    if (isKnockoutLayer(l)) { continue; }
     let was = textureLoad(layer, pixel, l);
     var now = was + rate * (incoming[l] - was);
     if (l == 0u) { now.x = cover + under * (1.0 - cover); }
@@ -108,7 +107,7 @@ fn heldAround${s}(pixel: vec2u) -> f32 {
     let angle = f32(k) * 0.7854;
     let offset = select(vec2i(round(u.beforeReach * vec2f(cos(angle), sin(angle)))), vec2i(0), k == 8);
     let q = vec2u(clamp(vec2i(pixel) + offset, vec2i(0), last));
-    for (var l = 0u; l < LAYERS; l++) { if (!isSheet(l)) { held += dot(textureLoad(before, q, l, 0), pigmentMask(l)); } }
+    for (var l = 0u; l < LAYERS; l++) { if (!isKnockoutLayer(l)) { held += dot(textureLoad(before, q, l, 0), pigmentMask(l)); } }
   }
   return held / 9.0;
 }
@@ -119,16 +118,16 @@ fn layDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: ve
   var held = 0.0;
   for (var l = 0u; l < LAYERS; l++) {
     was[l] = textureLoad(layer, pixel, l);
-    if (!isSheet(l)) { held += dot(was[l], pigmentMask(l)); }
+    if (!isKnockoutLayer(l)) { held += dot(was[l], pigmentMask(l)); }
   }
   let incoming = incomingAt${s}(tooth, at, press, heldAround${s}(pixel) / ${f32(holds * body)} * ${f32(fill)});
   var added = 0.0;
-  for (var l = 0u; l < LAYERS; l++) { if (!isSheet(l)) { added += cover * dot(incoming[l], pigmentMask(l)); } }
+  for (var l = 0u; l < LAYERS; l++) { if (!isKnockoutLayer(l)) { added += cover * dot(incoming[l], pigmentMask(l)); } }
   // What's there gives way only as far as the stroke's own wax overfills the tooth.
   let keep = select(1.0, clamp((${f32(holds * body)} - added) / max(held, 1e-6), 0.0, 1.0), held + added > ${f32(holds * body)});
   let under = was[0].x;
   for (var l = 0u; l < LAYERS; l++) {
-    if (isSheet(l)) { continue; }
+    if (isKnockoutLayer(l)) { continue; }
     // The open share isn't wax: a dry stroke sets it, as any paint laid over it does.
     var now = mix(was[l] * (1.0 - cover), was[l] * keep + cover * incoming[l], pigmentMask(l));
     if (l == 0u) { now.x = cover + under * (1.0 - cover); }
@@ -147,7 +146,7 @@ export function stampPigmentCompositor(device: StampPaintDevice, paint: StampPig
   // The paint on each pixel by pigment, in layers past the bands, kept only for a painting where a group knocks out.
   const { underpaint } = paint;
   const underLayers = underpaint ? Math.max(1, Math.ceil(underpaint.pigments.length / 4)) : 0;
-  const groupsOrNone = paint.groups.length ? paint.groups : [{ sheetLayer: null, palette: [], medium: 0 }];
+  const groupsOrNone = paint.groups.length ? paint.groups : [{ knockoutLayer: null, palette: [], medium: 0 }];
   const groupCount = groupsOrNone.length;
   // What a group's medium decides is WGSL with its numbers written in, once per medium (`M<m>` its functions'
   // suffix), each pass reaching its group's by a switch on GROUP_MEDIA, a painting in one medium as much as in many.
@@ -179,7 +178,7 @@ ${media.map((_, m) => `    case ${m === 0 ? '0u, default' : `${m}u`}: { ${name}$
       put('gradeKind', grade.kind);
       put('grade', [...grade.geometry]);
       put('open', paint.groups[group].open ?? 0);
-      put('sheetLayer', paint.groups[group].sheetLayer ?? 0);
+      put('knockoutLayer', paint.groups[group].knockoutLayer ?? 0);
       put('knockout', knockout ? 1 : 0);
       put('dryBrush', dryBrush ? 1 : 0);
       components.forEach((component, i) => amounts.set(stampPigmentAmountsAt(component, t), i * 2));
@@ -213,7 +212,6 @@ ${media.map((_, m) => `    case ${m === 0 ? '0u, default' : `${m}u`}: { ${name}$
   const components = upload(componentData), palettes = upload(paletteData), stains = upload(stainData);
 
   const paperRgb = paintHexToLinear(paperColor);
-  const lift = stampLightLiftBasis(bands);
   const bandWgsl = /* wgsl */ `
 ${PAINT_KUBELKA_MUNK_WGSL}
 const BAND_VEC4S = ${V}u;
@@ -234,7 +232,7 @@ fn paperReflectance(i: u32, color: vec3f) -> vec4f {
 
   /**
    * The underpaint's pigments as constants (StampPigmentUnderpaint), and how a knockout's lifts thin them: each
-   * pigment's share in the fibres (wetLift's) keeps what its staining holds, between the sheet's three stainings; the
+   * pigment's share in the fibres (wetLift's) keeps what its staining holds, between the knockout layer's three stainings; the
    * rest goes as unstained paint. The paint changes as much as a film of the pigments behind does over the paper.
    */
   const underpaintWgsl = ({ pigments, media: pigmentMedia, slots, writes }: StampPigmentUnderpaint) => {
@@ -324,8 +322,8 @@ fn pigmentMask(l: u32) -> vec4f {
   let channel = vec4u(4u * l) + vec4u(0u, 1u, 2u, 3u);
   return select(vec4f(1.0), vec4f(0.0), (channel == vec4u(0u)) | (channel == vec4u(paint.open)));
 }
-// The layer holding a group's sheet, which only a knockout writes: a group without one has none.
-fn isSheet(l: u32) -> bool { return paint.sheetLayer != 0u && l == paint.sheetLayer; }
+// The layer holding a group's knockout, which only a knockout writes: a group without one has none.
+fn isKnockoutLayer(l: u32) -> bool { return paint.knockoutLayer != 0u && l == paint.knockoutLayer; }
 ${groupMediaWgsl}
 ${eachMedium((medium, s) => /* wgsl */ `
 // A full stroke's pigment amounts here, graded between its material's ends by amount, where the paper's tooth and
@@ -352,7 +350,7 @@ ${dispatched('layDeposit', 'pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec
       wet: /* wgsl */ `
 ${STAMP_WET_LIFT_WGSL}
 @group(0) @binding(25) var<storage, read> stains: array<vec4f>;
-// A knockout's sheet: x, where its fluid held its brushes off, the paint behind never reaching (a cover: another
+// A knockout layer: x, where its fluid held its brushes off, the paint behind never reaching (a cover: another
 // brush over the same fluid reserves no more); yzw, how much of a thin film behind of staining 0, ½ and 1 its lifts
 // took, each blot by wetLift as wet as it lands, taking its share of what the last left and holding its own share of
 // the stain. The group reads the pigments behind as it's laid (layGroup).
@@ -361,10 +359,10 @@ fn knockOut${s}(pixel: vec2u, cover: f32, reserved: f32, wet: WetLanding) {
   let free = liftFree(wet.workable, 1.0);
   let take = select(0.0, clamp(cover * wet.strength, 0.0, 1.0) * liftLoose(free, ${f32(medium.wetting.rewetting)}), wet.action == WET_LIFT);
   if (max(reserved, take) <= 0.0) { return; }
-  let was = textureLoad(layer, pixel, paint.sheetLayer);
+  let was = textureLoad(layer, pixel, paint.knockoutLayer);
   // wetLift's \`was - take * (was - held)\` over \`was\`, its held share of a thin film being its stain's, as held as it's free.
   let keeps = vec3f(1.0) - take * (vec3f(1.0) - mix(1.0, ${f32(STAMP_LIFT_WET_STAIN_HOLD)}, free) * vec3f(0.0, 0.5, 1.0));
-  textureStore(layer, pixel, paint.sheetLayer, vec4f(max(was.x, clamp(reserved, 0.0, 1.0)), vec3f(1.0) - (vec3f(1.0) - was.yzw) * keeps));
+  textureStore(layer, pixel, paint.knockoutLayer, vec4f(max(was.x, clamp(reserved, 0.0, 1.0)), vec3f(1.0) - (vec3f(1.0) - was.yzw) * keeps));
 }
 // Water leaves the pigment where it is: moving it is the neighbourhood's (stamp-wet-stages.ts). Every landing first
 // sets the open share to none wherever the paper has settled since it last took water, so whatever reads it after
@@ -397,15 +395,15 @@ fn landDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: v
   // A lift thins the film where it is rather than shrinking it, so coverage stays: the group dries what's left over
   // that coverage, and a later stroke there meets paint, however little.
   if (wet.action == WET_LIFT) {
-    for (var l = 0u; l < LAYERS; l++) { if (!isSheet(l)) { had += dot(was[l], pigmentMask(l)); } }
+    for (var l = 0u; l < LAYERS; l++) { if (!isKnockoutLayer(l)) { had += dot(was[l], pigmentMask(l)); } }
     for (var l = 0u; l < LAYERS; l++) {
-      if (isSheet(l)) { continue; }
+      if (isKnockoutLayer(l)) { continue; }
       now[l] = wetLift(was[l], had, cover, wet.strength, wet.workable, open, ${f32(medium.wetting.rewetting)}, stains[paint.group * LAYERS + l]);
       has += dot(now[l], pigmentMask(l));
     }
     now[0].x = under;
     now[o.x][o.y] = liftOpen(open, wet.workable, ${f32(medium.wetting.rewetting)}, had, has);
-    for (var l = 0u; l < LAYERS; l++) { if (!isSheet(l)) { textureStore(layer, pixel, l, now[l]); } }
+    for (var l = 0u; l < LAYERS; l++) { if (!isKnockoutLayer(l)) { textureStore(layer, pixel, l, now[l]); } }
     return;
   }
   // A wash's paint is drawn at a firm hand's pressure, the tooth as the paper's own.
@@ -413,7 +411,7 @@ fn landDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: v
   var kept = 0.0;
   var gained = 0.0;
   for (var l = 0u; l < LAYERS; l++) {
-    if (isSheet(l)) { continue; }
+    if (isKnockoutLayer(l)) { continue; }
     now[l] = wetLand(was[l], incoming[l], cover, under, ${f32(medium.pickup)}, wet.workable);
     let mask = pigmentMask(l);
     let laid = max(now[l] - was[l], vec4f(0.0)) * mask;
@@ -424,7 +422,7 @@ fn landDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: v
   }
   now[0].x = cover + under * (1.0 - cover);
   now[o.x][o.y] = wetLandOpen(open, kept, gained);
-  for (var l = 0u; l < LAYERS; l++) { if (!isSheet(l)) { textureStore(layer, pixel, l, now[l]); } }
+  for (var l = 0u; l < LAYERS; l++) { if (!isKnockoutLayer(l)) { textureStore(layer, pixel, l, now[l]); } }
 }`)}
 ${dispatched('landDeposit', 'pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32, wet: WetLanding', 'pixel, coverage, rims, tooth, at, reserved, wet')}`,
       writerFor: (deposit) => {
@@ -471,21 +469,21 @@ ${bandWgsl}
 @group(0) @binding(4) var photographSampler: sampler;
 @group(0) @binding(5) var<storage, read> palettes: array<vec4f>;
 const PALETTE = ${STAMP_PIGMENT_GROUP_SLOTS * 2 * V}u;
-// Each group's sheet layer, 0 for a group without a knockout, and how many palette slots it fills.
-const SHEETS = array<u32, ${groupCount}>(${groupsOrNone.map(({ sheetLayer }) => `${sheetLayer ?? 0}u`).join(', ')});
+// Each group's knockout layer, 0 for a group without a knockout, and how many palette slots it fills.
+const KNOCKOUT_LAYERS = array<u32, ${groupCount}>(${groupsOrNone.map(({ knockoutLayer }) => `${knockoutLayer ?? 0}u`).join(', ')});
 const PALETTE_SIZES = array<u32, ${groupCount}>(${groupsOrNone.map(({ palette }) => `${palette.length}u`).join(', ')});
 // How much more each group's film scatters dry than wet, by its medium.
 const GROUP_DRYING = array<f32, ${groupCount}>(${groupsOrNone.map(({ medium }) => f32(1 + media[medium].dryingScatter)).join(', ')});
 ${underpaint ? underpaintWgsl(underpaint) : ''}
-// A group's film glazed over what's there or, opaque, laid over bare paper. A group that knocks out first takes its
-// sheet out of what's there: its reserve covers it with its paper, its lifts thin each pigment behind (liftedUnder).
+// A group's film glazed over what's there or, opaque, laid over bare paper. A group that knocks out first cuts what
+// its knockout layer records out of what's there: its reserve covers it with its paper, its lifts thin each pigment behind (liftedUnder).
 fn layGroup(pixel: vec2u, glaze: bool, opacity: f32) {
   var amounts: array<vec4f, LAYERS>;
   for (var l = 0u; l < LAYERS; l++) { amounts[l] = groupLayerAt(pixel, l); }
   let coverage = amounts[0].x;
-  let sheet = SHEETS[u.group];
+  let knockoutLayer = KNOCKOUT_LAYERS[u.group];
   // Reserved (x) and taken at stainings 0, ½ and 1 (yzw), at the group's opacity as its paint is: a group half there takes half.
-  let taken = select(vec4f(0.0), clamp(amounts[sheet], vec4f(0.0), vec4f(1.0)), sheet != 0u) * opacity;
+  let taken = select(vec4f(0.0), clamp(amounts[knockoutLayer], vec4f(0.0), vec4f(1.0)), knockoutLayer != 0u) * opacity;
   let lifts = max(taken.y, max(taken.z, taken.w)) > 0.0;
   if (coverage <= 0.0 && taken.x <= 0.0 && !lifts) { return; }
   let thickness = select(1.0 / max(coverage, 0.001), opacity, glaze);
@@ -542,29 +540,16 @@ fn layPaper(pixel: vec2u, color: vec3f) {
   for (var i = 0u; i < BAND_VEC4S; i++) { textureStore(painting, pixel, i, paperReflectance(i, color)); }
   for (var r = 0u; r < ${underLayers}u; r++) { textureStore(painting, pixel, BAND_VEC4S + r, vec4f(0.0)); }
 }`,
-    outside: /* wgsl */ `
-${bandWgsl}
-const LIFT_R = array<vec4f, ${V}>(${vec4s(lift[0], V)});
-const LIFT_G = array<vec4f, ${V}>(${vec4s(lift[1], V)});
-const LIFT_B = array<vec4f, ${V}>(${vec4s(lift[2], V)});
-// The light lifted into the bands (stampLightLiftBasis) laid over the painting's reflectance by its alpha, as screenColor
-// shows it: linear, so it shows as the colour rendered. It covers the pigment kept behind for a knockout as much.
-fn layOutside(pixel: vec2u, over: vec4f) {
-  for (var i = 0u; i < BAND_VEC4S; i++) {
-    let lifted = LIFT_R[i] * over.r + LIFT_G[i] * over.g + LIFT_B[i] * over.b;
-    textureStore(painting, pixel, i, lifted + textureLoad(painting, pixel, i) * (1.0 - over.a));
-  }
-  for (var r = 0u; r < ${underLayers}u; r++) { textureStore(painting, pixel, BAND_VEC4S + r, textureLoad(painting, pixel, BAND_VEC4S + r) * (1.0 - over.a)); }
-}`,
     output: /* wgsl */ `
 ${bandWgsl}
-fn screenColor(pixel: vec2u) -> vec3f {
+fn linearLight(pixel: vec2u) -> vec3f {
   var rgb = vec3f(0.0);
   for (var i = 0u; i < BAND_VEC4S; i++) {
     let R = textureLoad(painting, pixel, i, 0);
     rgb += vec3f(dot(TO_R[i], R), dot(TO_G[i], R), dot(TO_B[i], R));
   }
-  return srgbEncoded(clamp(rgb, vec3f(0.0), vec3f(1.0)));
-}`,
+  return clamp(rgb, vec3f(0.0), vec3f(1.0));
+}
+fn screenColor(pixel: vec2u) -> vec3f { return srgbEncoded(linearLight(pixel)); }`,
   };
 }

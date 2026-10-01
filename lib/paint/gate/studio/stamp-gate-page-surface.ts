@@ -1,8 +1,10 @@
-// stamp-gate-page-surface.ts: how the gate page draws a gate painting: its images as data URLs, a surface and
-// renderer of its own each, disposed after, and a frame read back once the GPU has drawn it.
+// stamp-gate-page-surface.ts: how the gate page draws a gate painting: its images as data URLs, a surface, its
+// device owner and a renderer of its own each, disposed after, and a frame read back once the GPU has drawn it.
 
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import type { StampLensFrame } from '#lib/paint/painting/models/stamp-plane.ts';
 import { createStampPaintRenderer, type StampPaintRenderer, type StampPaintRendererOptions } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
+import { createStampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import type { StampGateImage, StampGatePainting } from '../models/stamp-gate-paintings.ts';
 
@@ -15,19 +17,24 @@ export function imageUrl({ size, pixels }: StampGateImage): string {
   return canvas.toDataURL('image/png');
 }
 
-/** A surface of its own `width` × `height`, its images at `url`, handed to `use` with what reads its frame; disposed after. */
+/** A surface (and the device owner under it) of its own `width` × `height`, its images at `url`, handed to `use` with what reads its frame; disposed after. */
 export async function withGateSurface<T>({ width, height }: { width: number; height: number }, url: (file: string) => string, use: (surface: StampPaintSurface, frame: () => Uint8ClampedArray) => Promise<T>): Promise<T> {
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
-  const surface = await createStampPaintSurface({ canvas, width, height }, ({ file }) => url(file));
-  const frame = () => {
-    const context = Object.assign(document.createElement('canvas'), { width, height }).getContext('2d')!;
-    context.drawImage(canvas, 0, 0);
-    return context.getImageData(0, 0, width, height).data;
-  };
+  const owner = await createStampPaintGpuOwner(({ file }) => url(file));
   try {
-    return await use(surface, frame);
+    const surface = await createStampPaintSurface(owner, { canvas, width, height });
+    const frame = () => {
+      const context = Object.assign(document.createElement('canvas'), { width, height }).getContext('2d')!;
+      context.drawImage(canvas, 0, 0);
+      return context.getImageData(0, 0, width, height).data;
+    };
+    try {
+      return await use(surface, frame);
+    } finally {
+      surface.dispose();
+    }
   } finally {
-    surface.dispose();
+    owner.dispose();
   }
 }
 
@@ -45,9 +52,9 @@ export const drawnImages = (gate: StampGatePainting) => {
   return (file: string) => urls[file];
 };
 
-/** `renderer`'s frame at `t` in frame state `state`, once the GPU has drawn it. */
-export async function drawn(renderer: StampPaintRenderer, frame: () => Uint8ClampedArray, t: number, state?: StampPaintFrameState) {
-  await renderer.draw({ t, state });
+/** `renderer`'s frame at `t` in frame state `state`, through `lens` if given, once the GPU has drawn it. */
+export async function drawn(renderer: StampPaintRenderer, frame: () => Uint8ClampedArray, t: number, state?: StampPaintFrameState, lens?: StampLensFrame) {
+  await renderer.draw({ t, state, lens });
   await renderer.finish();
   return frame();
 }

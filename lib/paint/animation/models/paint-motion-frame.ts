@@ -2,17 +2,16 @@
 //
 // Composition, per level as a rigger builds it: a rest point goes through its node's boil wobble, its node's own bend
 // (pins, then flutter, then sway), its node's placement, then its parent's bend, its parent's placement, and so up.
-// The steps up to the outermost bend become the group's warp; the placements after it, rigid, its lay, then a
-// plane's camera step (paint-camera.ts).
+// The steps up to the outermost bend become the group's warp; the placements after it, rigid, its lay. The camera
+// never reaches a lay: it places the plane the group is on (paint-camera.ts).
 //
-// A live node's own pins are its pose, handed to its poser, never a warp; what comes after them (its sway or flutter,
-// its ancestors' bends and placements) reaches its re-placed marks as their warp and lay.
+// A live node's own pins are its pose, handed to its poser, never a warp; what follows them reaches its marks as
+// warp and lay.
 
 import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import { stampLiveGroupProblem, type StampGroupFrameState, type StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { CompiledStampGroup } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import { paintCameraFrameStateAt, paintGlowScaled } from './paint-camera.ts';
 import { paintBoilEpochAt, paintLanePlayAt, paintNodeTimeAt, paintPlayClipTimeAt, sceneSeconds, type SceneSeconds } from './paint-clock.ts';
 import {
   paintPlacementIsRest, paintPlacementRounded, paintRatioSteps, paintWarpChainKey, paintWarpChainMap,
@@ -116,16 +115,15 @@ function nodeFrameAt(motion: PaintMotion, node: CompiledPaintNode, t: SceneSecon
   const laid = lay && !paintPlacementIsRest(lay) ? lay : null;
   return {
     ...(laid && { lay: { placement: laid, pivot: node.pivot } }),
-    // A glow's sigma is in rest px: it grows with the group's lay, and the camera step grows it on.
-    ...(node.glow && { glow: paintGlowScaled(node.glow, laid?.scale ?? 1) }),
+    ...(node.glow && { glow: node.glow }),
     ...(warp.length && { warp: { map: paintWarpChainMap(warp), key: paintWarpChainKey(warp) } }),
     ...(live ? { marks: { kind: 'live', ...live } } : node.group.boil && { marks: { kind: 'written', epoch } }),
   };
 }
 
 /**
- * Every group's frame state at scene time `t` that differs from as painted (moved, bent, re-placed, glowing, or laid
- * or blurred by the camera): a pure function of the motion and `t`.
+ * Every group's frame state at scene time `t` that differs from as painted (moved, bent, re-placed or glowing): a
+ * pure function of the motion and `t`.
  */
 export function paintMotionFrameAt(motion: PaintMotion, t: number): StampPaintFrameState {
   const { last } = motion.remembered;
@@ -135,7 +133,6 @@ export function paintMotionFrameAt(motion: PaintMotion, t: number): StampPaintFr
     const groupState = nodeFrameAt(motion, node, sceneSeconds(t));
     if (groupState.lay || groupState.warp || groupState.marks || groupState.glow) own.set(node.id, groupState);
   }
-  const state = motion.camera ? paintCameraFrameStateAt(motion.camera, own, t) : own;
-  motion.remembered.last = { t, state };
-  return state;
+  motion.remembered.last = { t, state: own };
+  return own;
 }

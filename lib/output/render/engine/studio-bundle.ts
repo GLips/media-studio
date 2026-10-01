@@ -122,10 +122,20 @@ export async function bundleStudioProject(project: string): Promise<string> {
 function forgetGoneProjects() {
   for (const name of readdirSync(KEPT_BUNDLES_DIR)) {
     const home = join(KEPT_BUNDLES_DIR, name), current = join(home, 'current.json');
+    // Another process forgetting at once (tests bundle in parallel) may drop this home after it's listed.
+    const made = statSync(home, { throwIfNoEntry: false });
+    let kept: string | null;
+    try {
+      kept = readFileSync(current, 'utf8');
+    } catch (error) {
+      // SAFETY: node:fs throws ErrnoExceptions.
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      kept = null;
+    }
+    if (!made) continue;
     // A home with no kept bundle (each one failed or went stale while bundling, or one is starting) is judged by age.
-    const gone = existsSync(current)
-      ? !existsSync((JSON.parse(readFileSync(current, 'utf8')) as KeptBundle).project)
-      : Date.now() - statSync(home).mtimeMs > KEPT_BUNDLE_MS;
+    // SAFETY: current.json is only ever written by bundleStudioProject, as a KeptBundle.
+    const gone = kept === null ? Date.now() - made.mtimeMs > KEPT_BUNDLE_MS : !existsSync((JSON.parse(kept) as KeptBundle).project);
     if (gone) rmSync(home, { recursive: true, force: true });
   }
 }

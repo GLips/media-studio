@@ -1,33 +1,44 @@
-// stamp-gate-lens.ts: the gate's lens cases, what a frame state's defocus and glow do to a laid group or outside layer
-// (stamp-paint-defocus-glow.ts). A defocus is held to a gaussian worked out here on the CPU; a glow to adding light
-// only past its threshold, nothing at amount 0, and the same frame when a checkpoint holding its light is restored.
+// stamp-gate-lens.ts: the gate's lens cases, what a frame's lens does to a plane (stamp-plane.ts,
+// stamp-paint-plane-passes.ts). A plane's defocus is held to a gaussian worked out here on the CPU in linear light; a
+// glow to adding light only past its threshold, nothing at amount 0, nothing under a nearer plane's opaque paint, and the
+// same frame when the picture holding its light is restored.
 
 import { stampDefocusSigmaStepped, stampGaussianReach } from '#lib/paint/painting/models/stamp-defocus.ts';
-import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { linearToSrgb, srgbToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
+import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { StampPaintEnvironment } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { StampGroupGlow, StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import { compileStampPlanes, STAMP_SINGLE_PLANE_ID, type CompiledStampPlanes, type StampLensFrame, type StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
 import { STAMP_GATE_IMAGES, STAMP_GATE_WHITE, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
 import { stampGateFrameDifference, type StampGateFrameDifference } from './stamp-gate-frames.ts';
 import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 
-export const STAMP_GATE_LENS_IDS = ['lens/defocus', 'lens/glow', 'lens/outside'];
+export const STAMP_GATE_LENS_IDS = ['lens/defocus', 'lens/glow'];
 
 const LENS_SIZE = { width: 160, height: 100 };
 const LENS_FLAT: StampPaintEnvironment = { paper: STAMP_GATE_WHITE, mixing: { kind: 'flat' } };
-/** The defocus case's sigma, stage px, and the scale it's also laid at: its layer then blurs by the sigma over it. */
+/** A plane where it's painted, sharp. */
+export const STAMP_GATE_REST_LOOK: StampPlaneLook = { view: { ma: 1, mb: 0, kx: 0, ky: 0 }, defocus: 0 };
+
+/** The defocus case's sigma, frame px, and the scale it's also seen at: its picture then blurs by the sigma over it. */
 export const STAMP_GATE_DEFOCUS_SIGMA = 4;
 export const STAMP_GATE_DEFOCUS_SCALE = 1.5;
 /**
+ * The defocus case's stage margin, px. A gaussian counts what lies past the stage as clear, and the CPU's counts white
+ * paper there, so the margin paints paper past the reach of the stepped sigma: 12 px at rest, 9 plane px scaled.
+ */
+export const STAMP_GATE_DEFOCUS_MARGIN = 16;
+/**
  * How far a defocused frame may sit from the CPU's gaussian of the sharp one, levels: each frame's dither and
- * rounding. Laid scaled, the layer's gaussian then the lay's bilinear upscale stand for the stage's gaussian of the
+ * rounding. Scaled, the picture's gaussian then the view's bilinear upscale stand for the frame's gaussian of the
  * upscaled frame, close but not exact.
  */
 export const STAMP_GATE_DEFOCUS_TOLERANCE = 2;
 
 /**
  * Strokes of flat colour glazed in the middle of plain white paper, well clear of the frame's edges: laid by glaze,
- * a frame is linear in the layer, so the layer's gaussian is the frame's, round the paper's white.
+ * a frame is linear in the painting, so the picture's gaussian is the frame's, round the paper's white.
  */
 export function stampGateDefocusPainting(): StampGatePainting {
   const brush = stampGateBrush('Defocus', { flow: 0.8 });
@@ -40,10 +51,11 @@ export function stampGateDefocusPainting(): StampGatePainting {
   return { painting, ...LENS_SIZE, t: Number.MAX_VALUE, images: STAMP_GATE_IMAGES };
 }
 
-/** The defocus case's frame state: `defocus` (none left out) and the lay's `scale` about the frame's centre. */
-export function stampGateDefocusState(defocus: number | undefined, scale = 1): StampPaintFrameState {
-  const lay = scale === 1 ? {} : { lay: { placement: { x: 0, y: 0, rotation: 0, scale }, pivot: { x: LENS_SIZE.width / 2, y: LENS_SIZE.height / 2 } } };
-  return new Map([['patch', { ...lay, ...(defocus !== undefined && { defocus }) }]]);
+/** The defocus case's lens: its one plane `defocus` frame px out of focus, seen at `scale` about the frame's centre. */
+export function stampGateDefocusLens(defocus: number, scale = 1): StampLensFrame {
+  // p ↦ s·p + (1 − s)·c keeps the centre c where it is.
+  const view = { ma: scale, mb: 0, kx: (1 - scale) * LENS_SIZE.width / 2, ky: (1 - scale) * LENS_SIZE.height / 2 };
+  return { planes: new Map([[STAMP_SINGLE_PLANE_ID, { view, defocus }]]), bloom: 0 };
 }
 
 /**
@@ -69,40 +81,54 @@ export function stampGateGaussian(values: ArrayLike<number>, width: number, heig
   return pass(pass(off, 1, 0), 0, 1).map((v) => v + ground);
 }
 
-/** The most an RGBA frame's RGB sits from `expected` (RGBA, levels) anywhere, and how much it differs from `sharp` at most. */
+/**
+ * The CPU's defocus of an RGBA frame of the lens case's size: its bytes decoded to linear light, a gaussian of `sigma`
+ * round white paper, encoded again; RGB levels, unrounded.
+ */
+function linearGaussian(frame: ArrayLike<number>, sigma: number): Float64Array {
+  const { width, height } = LENS_SIZE;
+  const linear = Float64Array.from({ length: width * height * 3 }, (_, i) => srgbToLinear(frame[Math.floor(i / 3) * 4 + (i % 3)] / 255));
+  return stampGateGaussian(linear, width, height, 3, sigma, 1).map((v) => 255 * linearToSrgb(v));
+}
+
+/** The most an RGBA frame's RGB sits from `expected` (RGB levels) anywhere. */
 function fromGaussian(frame: ArrayLike<number>, expected: ArrayLike<number>) {
   let most = 0;
-  for (let i = 0; i < frame.length; i++) if (i % 4 !== 3) most = Math.max(most, Math.abs(frame[i] - expected[i]));
+  for (let i = 0; i < expected.length; i++) most = Math.max(most, Math.abs(frame[Math.floor(i / 3) * 4 + (i % 3)] - expected[i]));
   return most;
 }
 
 /**
- * Whether a blur of 0 draws the sharp frame exactly, and a blurred frame, still and laid scaled, is the CPU's gaussian
- * of its sharp frame within tolerance (and not the sharp frame: the blur must show).
+ * Whether a lens of defocus 0 draws the frame drawn without one exactly, and a defocused frame, at rest and scaled, is
+ * the CPU's gaussian of its sharp frame in linear light within tolerance (and not the sharp frame: the blur must show).
  */
 export function checkStampGateDefocus({ sharp, zero, blurred, scaledSharp, scaledBlurred }: Record<'sharp' | 'zero' | 'blurred' | 'scaledSharp' | 'scaledBlurred', ArrayLike<number>>): StampGateWashCheck {
-  const { width, height } = LENS_SIZE;
   const none = stampGateFrameDifference(sharp, zero);
-  // The renderer holds a layer's sigma to its steps, so the stage's is the step nearest the sigma over the scale, rescaled.
-  const stageSigma = (scale: number) => scale * stampDefocusSigmaStepped(STAMP_GATE_DEFOCUS_SIGMA / scale);
-  const still = fromGaussian(blurred, stampGateGaussian(sharp, width, height, 4, stageSigma(1), 255));
-  const scaled = fromGaussian(scaledBlurred, stampGateGaussian(scaledSharp, width, height, 4, stageSigma(STAMP_GATE_DEFOCUS_SCALE), 255));
+  // The renderer holds a picture's sigma to its steps, so the frame's is the step nearest the sigma over the scale, rescaled.
+  const frameSigma = (scale: number) => scale * stampDefocusSigmaStepped(STAMP_GATE_DEFOCUS_SIGMA / scale);
+  const still = fromGaussian(blurred, linearGaussian(sharp, frameSigma(1)));
+  const scaled = fromGaussian(scaledBlurred, linearGaussian(scaledSharp, frameSigma(STAMP_GATE_DEFOCUS_SCALE)));
   const shown = stampGateFrameDifference(sharp, blurred).max;
   return {
-    id: `lens/defocus: a defocus is a ${STAMP_GATE_DEFOCUS_SIGMA} px gaussian on the stage, laid still or scaled, and none at 0`,
+    id: `lens/defocus: a defocus is a ${STAMP_GATE_DEFOCUS_SIGMA} px gaussian in linear light, at rest or scaled, and none at 0`,
     passed: none.max === 0 && still <= STAMP_GATE_DEFOCUS_TOLERANCE && scaled <= STAMP_GATE_DEFOCUS_TOLERANCE && shown > 40,
-    detail: `blur 0 against none: max ${none.max} (past 0 fails); still against the CPU's gaussian: max ${still.toFixed(2)} (past ${STAMP_GATE_DEFOCUS_TOLERANCE} fails); `
-      + `laid ×${STAMP_GATE_DEFOCUS_SCALE}: max ${scaled.toFixed(2)} (past ${STAMP_GATE_DEFOCUS_TOLERANCE} fails); blurred against sharp: max ${shown} (40 or under fails)`,
+    detail: `defocus 0 against no lens: max ${none.max} (past 0 fails); at rest against the CPU's gaussian: max ${still.toFixed(2)} (past ${STAMP_GATE_DEFOCUS_TOLERANCE} fails); `
+      + `seen ×${STAMP_GATE_DEFOCUS_SCALE}: max ${scaled.toFixed(2)} (past ${STAMP_GATE_DEFOCUS_TOLERANCE} fails); blurred against sharp: max ${shown} (40 or under fails)`,
   };
 }
 
-/** The glow case's glow, and the threshold its pale patch's light is past and its grey patch's isn't. */
-export const STAMP_GATE_GLOW: StampGroupGlow = { amount: 1, sigma: 5, threshold: 0.5 };
+/** The glow case's glow: the threshold its pale patch's light is past and its grey patch's isn't. */
+export const STAMP_GATE_GLOW: StampGroupGlow = { amount: 1, threshold: 0.5 };
+/** The glow case's bloom, frame px. */
+export const STAMP_GATE_BLOOM = 5;
 const GLOW_PALE = { x0: 20, x1: 60, y0: 30, y1: 70 }, GLOW_GREY = { x0: 100, x1: 140, y0: 30, y1: 70 };
 /** How far past the pale patch the spill is read, px. */
 const GLOW_SPILL = 4;
+/** Where the cover's grey, moved onto the pale patch, hides it: the pale patch and past its flood's soft edge. */
+const GLOW_COVER = { x0: GLOW_PALE.x0 - 4, x1: GLOW_PALE.x1 + 4, y0: GLOW_PALE.y0 - 4, y1: GLOW_PALE.y1 + 4 };
 
-const block = ({ x0, x1, y0, y1 }: typeof GLOW_PALE) => stampGatePolygon(x0, y0, x1, y0, x1, y1, x0, y1);
+type Box = typeof GLOW_PALE;
+const block = ({ x0, x1, y0, y1 }: Box) => stampGatePolygon(x0, y0, x1, y0, x1, y1, x0, y1);
 
 /** A dark ground, a pale patch and a grey one over it (each a group), and a mark the frame state moves. */
 export function stampGateGlowPainting(): StampGatePainting {
@@ -117,18 +143,42 @@ export function stampGateGlowPainting(): StampGatePainting {
   return { painting, ...LENS_SIZE, t: Number.MAX_VALUE, images: STAMP_GATE_IMAGES };
 }
 
-/** The glow case's frame state: `glowing` groups at `glow`, the mark moved `markX` px. */
-export function stampGateGlowState(glowing: readonly ('pale' | 'grey')[], markX: number, glow: StampGroupGlow = STAMP_GATE_GLOW): StampPaintFrameState {
-  return new Map<string, object>([
-    ...glowing.map((id) => [id, { glow }] as const),
-    ['mark', { lay: { placement: { x: markX, y: 0, rotation: 0, scale: 1 }, pivot: { x: 0, y: 0 } } }],
-  ]);
+/** The glow case's lens: every plane at rest and sharp, blooming by STAMP_GATE_BLOOM. */
+export const STAMP_GATE_GLOW_LENS: StampLensFrame = { planes: new Map([[STAMP_SINGLE_PLANE_ID, STAMP_GATE_REST_LOOK]]), bloom: STAMP_GATE_BLOOM };
+
+const moved = (x: number) => ({ lay: { placement: { x, y: 0, rotation: 0, scale: 1 }, pivot: { x: 0, y: 0 } } });
+
+/** The glow case's frame state: `glowing` groups at `glow`, the mark moved `markX` px, the grey moved `greyX` px. */
+export function stampGateGlowState(glowing: readonly ('pale' | 'grey')[], markX: number, { glow = STAMP_GATE_GLOW, greyX = 0 }: { glow?: StampGroupGlow; greyX?: number } = {}): StampPaintFrameState {
+  const states = new Map<string, object>(glowing.map((id) => [id, { glow }]));
+  states.set('mark', moved(markX));
+  if (greyX) states.set('grey', { ...states.get('grey'), ...moved(greyX) });
+  return states;
 }
 
-/** The least and most a frame's RGB rises over `base`'s anywhere, and the most it rises within `box` grown by `by`, not inside it. */
-function rise(frame: ArrayLike<number>, base: ArrayLike<number>, box?: typeof GLOW_PALE, by = 0) {
+/** How far the covered frames move the grey patch: onto the pale one. */
+export const STAMP_GATE_GLOW_COVER_X = GLOW_PALE.x0 - GLOW_GREY.x0;
+
+/**
+ * The glow painting as two planes: the back holds the ground, pale patch and mark; a nearer one, the grey patch, whose
+ * opaque paint, moved onto the pale by STAMP_GATE_GLOW_COVER_X, covers it.
+ */
+export function stampGateGlowCoverPlanes(painting: CompiledStampPaint): CompiledStampPlanes {
+  const problems: string[] = [];
+  const planes = compileStampPlanes(painting, [
+    { id: 'back', depth: 1, source: { kind: 'painted', groups: ['ground', 'pale', 'mark'] } },
+    { id: 'cover', depth: 0.8, source: { kind: 'painted', groups: ['grey'] } },
+  ], problems);
+  if (problems.length) throw new Error(`stamp gate: the glow's planes: ${problems.join('; ')}`);
+  return planes;
+}
+
+const WHOLE_FRAME: Box = { x0: 0, x1: LENS_SIZE.width, y0: 0, y1: LENS_SIZE.height };
+
+/** The least and most a frame's RGB rises over `base`'s within `within`, and the most it rises within `box` grown by `by`, not inside it. */
+function rise(frame: ArrayLike<number>, base: ArrayLike<number>, { box, by = 0, within = WHOLE_FRAME }: { box?: Box; by?: number; within?: Box } = {}) {
   let least = 0, most = 0, around = 0;
-  for (let y = 0; y < LENS_SIZE.height; y++) for (let x = 0; x < LENS_SIZE.width; x++) for (let c = 0; c < 3; c++) {
+  for (let y = within.y0; y < within.y1; y++) for (let x = within.x0; x < within.x1; x++) for (let c = 0; c < 3; c++) {
     const i = (y * LENS_SIZE.width + x) * 4 + c, d = frame[i] - base[i];
     least = Math.min(least, d);
     most = Math.max(most, d);
@@ -141,40 +191,27 @@ function rise(frame: ArrayLike<number>, base: ArrayLike<number>, box?: typeof GL
 
 /**
  * Whether a glow adds light only past its threshold (the grey patch glowing changes nothing; the pale one brightens
- * itself and spills past its edge, darkening nothing), changes nothing at amount 0, and draws the same frame again
- * from the checkpoint that holds its light, and after a frame moving the mark.
+ * itself and spills past its edge, darkening nothing), changes nothing at amount 0, gives off none nearer opaque
+ * paint covers, and draws the same frame again from the picture that holds its light, and after a frame moving the mark.
  */
-export function checkStampGateGlow({ plain, grey, zero, pale, paleAgain, paleAfterMove, paleFresh }: Record<'plain' | 'grey' | 'zero' | 'pale' | 'paleAgain' | 'paleAfterMove' | 'paleFresh', ArrayLike<number>>): StampGateWashCheck {
+export function checkStampGateGlow({ plain, grey, zero, pale, paleAgain, paleAfterMove, paleFresh, covered, coveredPlain }: Record<
+  'plain' | 'grey' | 'zero' | 'pale' | 'paleAgain' | 'paleAfterMove' | 'paleFresh' | 'covered' | 'coveredPlain', ArrayLike<number>
+>): StampGateWashCheck {
+  // With nothing glowing, one plane at rest is output as painted; anything glowing goes round linear light and the
+  // planes' composite, which rounds a level differently here and there. So grey glowing may sit a level off plain,
+  // and the pale patch's rise is read over the grey frame, drawn the same way.
   const dim = stampGateFrameDifference(plain, grey), none = stampGateFrameDifference(plain, zero);
-  const lit = rise(pale, plain, GLOW_PALE, GLOW_SPILL);
-  const again: StampGateFrameDifference = stampGateFrameDifference(pale, paleAgain), moved = stampGateFrameDifference(paleFresh, paleAfterMove);
+  const lit = rise(pale, grey, { box: GLOW_PALE, by: GLOW_SPILL });
+  const again: StampGateFrameDifference = stampGateFrameDifference(pale, paleAgain), shifted = stampGateFrameDifference(paleFresh, paleAfterMove);
+  // The bloom spreads what glows past the cover's edge into it, so the cover is read only past the bloom's reach.
+  const reach = stampGaussianReach(STAMP_GATE_BLOOM);
+  const under = rise(covered, coveredPlain, { within: { x0: GLOW_COVER.x0 + reach, x1: GLOW_COVER.x1 - reach, y0: GLOW_COVER.y0 + reach, y1: GLOW_COVER.y1 - reach } });
   return {
-    id: `lens/glow: a glow adds light past its threshold alone, none at amount 0, and keeps through a checkpoint`,
-    passed: dim.max === 0 && none.max === 0 && lit.least >= 0 && lit.most >= 20 && lit.around >= 8 && again.max === 0 && moved.max === 0,
-    detail: `grey patch (under the threshold) glowing: max ${dim.max}; amount 0: max ${none.max} (past 0 fails); pale patch glowing: rises ${lit.most} at most `
-      + `(under 20 fails), ${lit.around} within ${GLOW_SPILL} px past it (under 8 fails), least ${lit.least} (under 0 fails); `
-      + `drawn again from its checkpoint: max ${again.max}; after a frame moving the mark against fresh: max ${moved.max} (past 0 fails)`,
-  };
-}
-
-/** The outside layer's defocus in the lens case, px. */
-export const STAMP_GATE_OUTSIDE_DEFOCUS = 3;
-
-/**
- * Whether an outside layer blurred on the GPU lays as its content blurred on the CPU and laid sharp, within a defocus's
- * tolerance, and its glow adds light without darkening anything.
- */
-export function checkStampGateOutsideLens({ blurred, cpuBlurred, sharp, glowing }: Record<'blurred' | 'cpuBlurred' | 'sharp' | 'glowing', ArrayLike<number>>): StampGateWashCheck {
-  const twin = stampGateFrameDifference(blurred, cpuBlurred), shown = stampGateFrameDifference(sharp, blurred);
-  let least = 0, most = 0;
-  for (let i = 0; i < sharp.length; i++) if (i % 4 !== 3) {
-    least = Math.min(least, glowing[i] - sharp[i]);
-    most = Math.max(most, glowing[i] - sharp[i]);
-  }
-  return {
-    id: 'lens/outside: an outside layer defocuses and glows as a group does',
-    passed: twin.max <= STAMP_GATE_DEFOCUS_TOLERANCE && shown.max > 40 && least >= 0 && most >= 8,
-    detail: `blurred ${STAMP_GATE_OUTSIDE_DEFOCUS} px against its content blurred on the CPU: max ${twin.max} (past ${STAMP_GATE_DEFOCUS_TOLERANCE} fails), against sharp ${shown.max} (40 or under fails); `
-      + `glowing rises ${most} at most (under 8 fails), least ${least} (under 0 fails)`,
+    id: 'lens/glow: a glow adds light past its threshold alone, none at amount 0 or under nearer opaque paint, and keeps through the picture cache',
+    passed: dim.max <= 1 && none.max === 0 && lit.least >= 0 && lit.most >= 20 && lit.around >= 8 && under.most <= 1 && again.max === 0 && shifted.max === 0,
+    detail: `grey patch (under the threshold) glowing, through the planes' composite, against none, as painted: max ${dim.max} (past 1 fails); amount 0: max ${none.max} (past 0 fails); `
+      + `pale patch glowing: rises ${lit.most} at most (under 20 fails), ${lit.around} within ${GLOW_SPILL} px past it (under 8 fails), least ${lit.least} (under 0 fails); `
+      + `pale glowing under a nearer plane's paint, ${reach} px in from its edge: rises ${under.most} at most (past 1 fails); `
+      + `drawn again from its picture: max ${again.max}; after a frame moving the mark against fresh: max ${shifted.max} (past 0 fails)`,
   };
 }

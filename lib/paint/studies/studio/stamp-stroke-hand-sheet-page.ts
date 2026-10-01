@@ -10,6 +10,7 @@ import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.
 import type { StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
 import { handStampStroke, type StampStrokeHand } from '#lib/paint/brush/models/stamp-stroke-hand.ts';
 import { createStampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
+import { createStampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { createStampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import { stampPaintPackAssetUrl, type StampPaintPackUrls } from '#lib/paint/brush-packs/models/stamp-paint-pack-urls.ts';
 
@@ -40,18 +41,23 @@ async function drawStampStrokeHandSheet(brush: StampBrush, diameter: number, pac
     pass.stroke('stroke', { brush, well: { paint: material }, size: diameter, path: sheetPath(row * ROW), hand });
   })))));
   const paintCanvas = Object.assign(document.createElement('canvas'), { width: PAINT, height });
-  const surface = await createStampPaintSurface({ canvas: paintCanvas, width: PAINT, height }, (asset) => stampPaintPackAssetUrl(packUrls, asset));
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
   const context = canvas.getContext('2d')!;
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, width, height);
-  // Copied before the surface is disposed, which unconfigures its canvas and clears it.
+  const owner = await createStampPaintGpuOwner((asset) => stampPaintPackAssetUrl(packUrls, asset));
   try {
-    const renderer = await createStampPaintRenderer(surface, painting);
-    await renderer.draw({ t: 0 });
-    context.drawImage(paintCanvas, LABEL, 0);
+    const surface = await createStampPaintSurface(owner, { canvas: paintCanvas, width: PAINT, height });
+    // Copied before the surface is disposed, which unconfigures its canvas and clears it.
+    try {
+      const renderer = await createStampPaintRenderer(surface, painting);
+      await renderer.draw({ t: 0 });
+      context.drawImage(paintCanvas, LABEL, 0);
+    } finally {
+      surface.dispose();
+    }
   } finally {
-    surface.dispose();
+    owner.dispose();
   }
   VARIANTS.forEach(({ label, hand }, row) => {
     const top = row * ROW;

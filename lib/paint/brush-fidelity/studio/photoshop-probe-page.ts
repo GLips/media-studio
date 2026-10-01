@@ -10,10 +10,11 @@ import type { PhotoshopCaptureSheet } from '#lib/paint/photoshop-brushes/models/
 import type { StampResolveStage } from '#lib/paint/painting/models/stamp-deposit-stages.ts';
 import type { CompiledStampDeposit } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
+import { createStampPaintGpuOwner, type StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import { photoshopProbeSheetPainting, type PhotoshopProbeCellRequest, type PhotoshopProbeCellTrace, type PhotoshopProbeGrayImage, type PhotoshopProbeOpacity, type PhotoshopProbePlane } from '../models/photoshop-probe-painting.ts';
 
-let open: { sheet: PhotoshopCaptureSheet; cells: CompiledStampDeposit[][]; surface: StampPaintSurface; renderer: StampPaintRenderer; order?: readonly StampResolveStage[] } | null = null;
+let open: { sheet: PhotoshopCaptureSheet; cells: CompiledStampDeposit[][]; owner: StampPaintGpuOwner; surface: StampPaintSurface; renderer: StampPaintRenderer; order?: readonly StampResolveStage[] } | null = null;
 
 /** A grey image as a PNG data URL, lossless, so the GPU samples the bytes the importer would have written. */
 function grayImageUrl({ width, height, pixels }: PhotoshopProbeGrayImage): string {
@@ -37,8 +38,9 @@ async function openPhotoshopProbeSheet({ sheet, opacity, order, tipMax }: { shee
   const { painting, images, cells } = photoshopProbeSheetPainting({ sheet, probes: photoshopProbes(), opacity, tipMax });
   const urls = new Map([...images].map(([file, image]) => [file, grayImageUrl(image)]));
   const canvas = Object.assign(document.createElement('canvas'), { width: sheet.width, height: sheet.height });
-  const surface = await createStampPaintSurface({ canvas, width: sheet.width, height: sheet.height }, ({ file }) => urls.get(file)!);
-  open = { sheet, cells, surface, renderer: await createStampPaintRenderer(surface, painting), order };
+  const owner = await createStampPaintGpuOwner(({ file }) => urls.get(file)!);
+  const surface = await createStampPaintSurface(owner, { canvas, width: sheet.width, height: sheet.height });
+  open = { sheet, cells, owner, surface, renderer: await createStampPaintRenderer(surface, painting), order };
 }
 
 /** `plane` (`crop.w` wide) over `box`, both in sheet pixels. */
@@ -73,6 +75,7 @@ async function tracePhotoshopProbeCells(requests: readonly PhotoshopProbeCellReq
 
 function closePhotoshopProbeSheet() {
   open?.surface.dispose();
+  open?.owner.dispose();
   open = null;
 }
 

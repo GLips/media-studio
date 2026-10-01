@@ -27,8 +27,8 @@ import { STAMP_WET_STAGES, type StampWetStageContext } from '#lib/paint/painting
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampWashMovedWgsl } from '#lib/paint/painting/studio/stamp-paint-pigment-compositor.ts';
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import { createStampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
+import { createStampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { checkStampGateHalfPixel, stampGateHalfPixelPainting } from '#lib/paint/gate/models/stamp-gate-half-pixel.ts';
 import { STAMP_GATE_BEND, stampGateBendPainting } from '#lib/paint/gate/models/stamp-gate-bend.ts';
 import { checkStampGateLive, STAMP_GATE_LIVE_POSE, stampGateLivePainting, stampGateLiveState } from '#lib/paint/gate/models/stamp-gate-live.ts';
@@ -45,10 +45,7 @@ import {
 } from '../models/stamp-gate-flow.ts';
 import { stampGatePrivatePainting, type StampGatePrivateCase } from '../models/stamp-gate-private-cases.ts';
 import { drawn, drawnImages, gateRenderer, withGateRenderer, withGateSurface } from './stamp-gate-page-surface.ts';
-import { checkStampGateStageCase } from './stamp-gate-stage-page.ts';
-import {
-  checkStampGateOutsideLayer, STAMP_GATE_OUTSIDE_IDS, STAMP_GATE_OUTSIDE_SLOT, stampGateOutsideContent, stampGateOutsideKind, stampGateOutsidePainting,
-} from '../models/stamp-gate-outside-layer.ts';
+import { checkStampGateStageCase, checkStampGateThreeCase } from './stamp-gate-stage-page.ts';
 import { checkStampGateRegion, stampGateRegionPaintings, type StampGateRegionId } from '../models/stamp-gate-regions.ts';
 import { checkStampGateMask, stampGateMaskPaintings, type StampGateMaskId } from '../models/stamp-gate-masks.ts';
 import {
@@ -364,23 +361,23 @@ async function checkStampGateAnimation(id: string): Promise<StampGateWashCheck> 
   if (id === 'animation/lent') {
     const gate = stampGateDriftPainting(), url = drawnImages(gate), { width, height } = gate;
     const onCanvas = await withGateRenderer(gate, url, (renderer, frame) => drawn(renderer, frame, frameAt(2)));
-    const device = await createStampPaintDevice();
+    const owner = await createStampPaintGpuOwner(({ file }) => url(file)), { webgpu } = owner;
     try {
-      const texture = (format: GPUTextureFormat) => device.createTexture({ size: [width, height], format, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
-      const refusesSrgb = await createStampPaintSurface({ device, frame: texture('rgba8unorm-srgb') }, ({ file }) => url(file)).then(() => false, () => true);
+      const texture = (format: GPUTextureFormat) => webgpu.createTexture({ size: [width, height], format, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
+      const refusesSrgb = await createStampPaintSurface(owner, { frame: texture('rgba8unorm-srgb') }).then(() => false, () => true);
       const frame = texture('rgba8unorm');
-      const surface = await createStampPaintSurface({ device, frame }, ({ file }) => url(file));
+      const surface = await createStampPaintSurface(owner, { frame });
       const renderer = await gateRenderer(gate, surface);
       await renderer.draw({ t: frameAt(2) });
-      const lent = await readGateTexture(device, frame);
+      const lent = await readGateTexture(webgpu, frame);
       surface.dispose();
       // An error scope the surface left open would catch this one's error, and the pop below would report none.
-      device.pushErrorScope('validation');
-      device.createTexture({ size: [1, 1], format: 'rgba8unorm', usage: 0 });
-      const caught = await device.popErrorScope();
+      webgpu.pushErrorScope('validation');
+      webgpu.createTexture({ size: [1, 1], format: 'rgba8unorm', usage: 0 });
+      const caught = await webgpu.popErrorScope();
       return checkStampGateLent({ onCanvas, lent, refusesSrgb, scopesBalanced: caught !== null });
     } finally {
-      device.destroy();
+      owner.dispose();
     }
   }
   throw new Error(`stamp gate: no animation case ${JSON.stringify(id)}; the gate animates ${STAMP_GATE_ANIMATION_IDS.join(', ')}`);
@@ -529,37 +526,6 @@ async function checkStampGateMediaCase(id: string): Promise<StampGateWashCheck[]
   });
 }
 
-/**
- * Outside layer case `id` (stamp-gate-outside-layer.ts), on one surface: the painting with no outside layer; content
- * a, b, a and a hidden on one renderer, its texture written before each frame; and b on a renderer of its own.
- */
-async function checkStampGateOutsideCase(id: string): Promise<StampGateWashCheck[]> {
-  const kind = stampGateOutsideKind(id);
-  if (!kind) throw new Error(`stamp gate: no outside layer case ${JSON.stringify(id)}; the gate has ${STAMP_GATE_OUTSIDE_IDS.join(', ')}`);
-  const gate = stampGateOutsidePainting(kind), { width, height } = gate;
-  const halves = { a: Uint16Array.from(stampGateOutsideContent('a'), stampGateHalfBits), b: Uint16Array.from(stampGateOutsideContent('b'), stampGateHalfBits) };
-  return withGateSurface(gate, drawnImages(gate), async (surface, frame) => {
-    const plainRenderer = await gateRenderer(gate, surface), plain = await drawn(plainRenderer, frame, gate.t);
-    plainRenderer.dispose();
-    const texture = surface.device.createTexture({ size: [width, height], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
-    const framesOf = async (order: readonly { content: 'a' | 'b'; visibility: number }[]) => {
-      const renderer = await createStampPaintRenderer(surface, gate.painting, { outsideLayers: [{ ...STAMP_GATE_OUTSIDE_SLOT, texture }] });
-      const frames = await order.reduce<Promise<Uint8ClampedArray[]>>(async (done, { content, visibility }) => {
-        const before = await done;
-        surface.device.queue.writeTexture({ texture }, halves[content], { bytesPerRow: width * 8 }, [width, height]);
-        await renderer.draw({ t: gate.t, outside: new Map([[STAMP_GATE_OUTSIDE_SLOT.id, { content, visibility }]]) });
-        await renderer.finish();
-        return [...before, frame()];
-      }, Promise.resolve([]));
-      renderer.dispose();
-      return frames;
-    };
-    const [a, b, aAgain, hidden] = await framesOf([{ content: 'a', visibility: 1 }, { content: 'b', visibility: 1 }, { content: 'a', visibility: 1 }, { content: 'a', visibility: 0 }]);
-    const [bFresh] = await framesOf([{ content: 'b', visibility: 1 }]);
-    return checkStampGateOutsideLayer(kind, { plain, a, b, aAgain, hidden, bFresh });
-  });
-}
-
 /** The GPU the gate draws on, as a baseline records it. */
 async function stampGateAdapter(): Promise<string> {
   const adapter = await navigator.gpu.requestAdapter();
@@ -570,5 +536,5 @@ async function stampGateAdapter(): Promise<string> {
 
 Object.assign(globalThis, {
   runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, checkStampGateAnimation, checkStampGateFlowCase, checkStampGateStripeCase, checkStampGateRegionCase,
-  checkStampGateMaskCase, checkStampGateMediaCase, checkStampGateOutsideCase, checkStampGateStageCase, stampGateAdapter,
+  checkStampGateMaskCase, checkStampGateMediaCase, checkStampGateThreeCase, checkStampGateStageCase, stampGateAdapter,
 });

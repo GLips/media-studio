@@ -7,7 +7,6 @@ import { STAMP_WARP_CELL, stampWarpCells, stampWarpTriangles } from '#lib/paint/
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
-import { compilePaintCamera, type PaintCameraOptions } from './paint-camera-build.ts';
 import { paintAnimationFrameStart, type AnimationFrame } from './paint-clock.ts';
 import { paintDeformMap, paintDeformShifts, paintWarpChainKey, paintWarpChainMap, type PaintWarpChain } from './paint-deform.ts';
 import { compilePaintMotion, type PaintMotion, type PaintMotionNode, type PaintMotionPlay } from './paint-motion-compile.ts';
@@ -72,27 +71,15 @@ export function paintMotionFolds(motion: PaintMotion, { from, to }: { from: numb
 
 /**
  * `nodes` and `plays` built over `painting` (paint-motion-compile.ts names what's checked), and over `foldCheck`'s
- * scene seconds, any frame whose warp folds, naming what moves paint most there. With `camera`, its plays move a
- * camera over the `stage`, showing each node on a plane (paint-camera-build.ts names what's checked, over
- * `foldCheck`'s span too); a node on a plane, or a backdrop, needs one.
+ * scene seconds, any frame whose warp folds, naming what moves paint most there. A camera is built apart
+ * (paint-camera-build.ts): it shows planes, never a node's lay.
  */
 export function buildPaintMotion(
   painting: CompiledStampPaint,
-  o: {
-    nodes: readonly PaintMotionNode[]; plays: readonly PaintMotionPlay[]; animationFps?: number; foldCheck?: { from: number; to: number };
-    camera?: Pick<PaintCameraOptions, 'stage' | 'plays' | 'outsideLayers'>;
-  },
+  o: { nodes: readonly PaintMotionNode[]; plays: readonly PaintMotionPlay[]; animationFps?: number; foldCheck?: { from: number; to: number } },
 ): PaintMotionBuild {
   const problems: string[] = [], animationFps = o.animationFps ?? PAINT_ANIMATION_FPS;
-  const compiled = compilePaintMotion(painting, { nodes: o.nodes, plays: o.plays, animationFps }, problems);
-  const staged = [...compiled.nodes.values()].filter((node) => node.anchor !== 'canvas' || node.backdrop);
-  if (staged.length && !o.camera) problems.push(`${staged.map(({ id }) => id).join(', ')} ${staged.length > 1 ? 'are' : 'is'} on a plane or a backdrop, but the motion has no camera; give it one with the stage`);
-  const camera = o.camera && compilePaintCamera(painting, {
-    ...o.camera, animationFps, ...(o.foldCheck && { check: o.foldCheck }),
-    anchors: new Map([...compiled.nodes.values()].map((node) => [node.id, node.anchor])),
-    backdrops: staged.filter((node) => node.backdrop).map(({ id }) => id),
-  }, problems);
-  const motion = { ...compiled, camera: camera ?? null };
+  const motion = compilePaintMotion(painting, { nodes: o.nodes, plays: o.plays, animationFps }, problems);
   if (!problems.length && o.foldCheck) problems.push(...paintMotionFolds(motion, o.foldCheck));
   return problems.length ? { ok: false, problems } : { ok: true, motion };
 }

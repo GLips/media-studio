@@ -9,7 +9,6 @@ import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group
 import type { StampGroupGlow, StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampPassDeposits, type CompiledStampGroup, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import type { PaintAnchor, PaintCamera } from './paint-camera.ts';
 import { PAINT_BOIL_WOBBLE, paintBoilWobbleProblem, type PaintBoilWobble } from './paint-boil-displacement.ts';
 import { paintChannelConflicts, type PaintChannelWriter } from './paint-channels.ts';
 import {
@@ -55,13 +54,9 @@ export type PaintMotionNode<P extends string = string> = {
   readonly pins?: PaintPinRig<P>;
   readonly marks?: PaintMarks<P>;
   readonly clock?: PaintNodeClock;
-  /** Its whole tree's, so set on a root only; canvas when left out. */
-  readonly anchor?: PaintAnchor;
-  /** Its paint must fill the frame wherever the camera goes. */
-  readonly backdrop?: true;
   /**
-   * The light it gives off, its radius in rest px. Its descendants share it unless they say otherwise (`'none'`): a
-   * character glows as one, and the threshold already picks which of its paint is bright enough.
+   * The light it gives off. Its descendants share it unless they say otherwise (`'none'`): a character glows as one,
+   * and the threshold already picks which of its paint is bright enough.
    */
   readonly glow?: StampGroupGlow | 'none';
 };
@@ -85,13 +80,11 @@ export type CompiledPaintMarks =
 
 /**
  * A node checked and compiled. `levels`: its id, then each ancestor's, nearest first. `clock`: its ancestors' steps
- * and its own, outermost first. `box`: its group's painted extent, rest px (null when it paints nothing). `anchor`:
- * its root's. `glow`: its own or its nearest ancestor's, null for none.
+ * and its own, outermost first. `box`: its group's painted extent, rest px (null when it paints nothing). `glow`:
+ * its own or its nearest ancestor's, null for none.
  */
 export type CompiledPaintNode = {
   readonly id: string;
-  readonly anchor: PaintAnchor;
-  readonly backdrop: boolean;
   readonly glow: StampGroupGlow | null;
   readonly group: CompiledStampGroup;
   readonly levels: readonly string[];
@@ -110,8 +103,6 @@ export type CompiledPaintNode = {
 export type PaintMotion = {
   readonly nodes: ReadonlyMap<string, CompiledPaintNode>;
   readonly animationFps: number;
-  /** The camera its plane-anchored nodes are shown through (paint-camera-build.ts); null for a flat scene. */
-  readonly camera: PaintCamera | null;
   /** The last frame asked for: a scene may render one frame's tree twice, and the same t hands back the same state. */
   readonly remembered: { last?: { readonly t: number; readonly state: StampPaintFrameState } };
 };
@@ -150,9 +141,8 @@ function compileMarks(node: PaintMotionNode, group: CompiledStampGroup, problems
   return { kind: 'wobble', every, wobble };
 }
 
-const glowProblem = ({ amount, sigma, threshold }: StampGroupGlow) =>
-  amount >= 0 && Number.isFinite(amount) && sigma > 0 && Number.isFinite(sigma) && threshold >= 0 && threshold <= 1
-    ? null : `its glow needs an amount of 0 or more, a positive sigma and a threshold in 0..1, not ${amount}, ${sigma} and ${threshold}`;
+const glowProblem = ({ amount, threshold }: StampGroupGlow) =>
+  amount >= 0 && Number.isFinite(amount) && threshold >= 0 && threshold <= 1 ? null : `its glow needs an amount of 0 or more and a threshold in 0..1, not ${amount} and ${threshold}`;
 
 /** The glow `levels` give their first: the nearest that says, `'none'` none. */
 function inheritedGlow(levels: readonly string[], byId: ReadonlyMap<string, PaintMotionNode>): StampGroupGlow | null {
@@ -191,7 +181,6 @@ function compileNodes(painting: CompiledStampPaint, nodes: readonly PaintMotionN
     const levels = nodeLevels(node, byId, problems);
     const clockProblem = node.clock && paintNodeClockProblem(node.clock);
     if (clockProblem) problems.push(`${node.id}: ${clockProblem}`);
-    if (node.anchor !== undefined && node.parent !== undefined) problems.push(`${node.id} sets its anchor, but it hangs from ${node.parent}, whose tree's anchor it takes; anchor its root`);
     const glow = node.glow && node.glow !== 'none' && glowProblem(node.glow);
     if (glow) problems.push(`${node.id}: ${glow}`);
     const pins = new Map<string, { pin: CompiledPaintPin; lane: CompiledPaintPlay<PaintPinClip<string>>[] }>();
@@ -201,7 +190,7 @@ function compileNodes(painting: CompiledStampPaint, nodes: readonly PaintMotionN
       else pins.set(name, { pin: compilePaintPin(pin), lane: [] });
     }
     compiled.set(node.id, {
-      id: node.id, anchor: byId.get(levels.at(-1)!)?.anchor ?? 'canvas', backdrop: node.backdrop === true, glow: inheritedGlow(levels, byId), group, levels, pivot: node.pivot ?? { x: 0, y: 0 }, phase: paintIdPhase(node.id),
+      id: node.id, glow: inheritedGlow(levels, byId), group, levels, pivot: node.pivot ?? { x: 0, y: 0 }, phase: paintIdPhase(node.id),
       box: paintGroupPaintedBox(group),
       clock: levels.toReversed().flatMap((id) => { const clock = byId.get(id)?.clock; return clock && !paintNodeClockProblem(clock) ? [paintNodeClockStep(clock)] : []; }),
       marks: compileMarks(node, group, problems),
@@ -261,5 +250,5 @@ export function compilePaintMotion(painting: CompiledStampPaint, o: { nodes: rea
     pins: new Map([...node.pins].map(([name, { pin, lane }]) => [name, { pin, lane: paintLaneByStart(lane) }])),
     sway: paintLaneByStart(node.sway), flutter: paintLaneByStart(node.flutter), place: paintLaneByStart(node.place),
   }]));
-  return { nodes: sorted, animationFps: o.animationFps, camera: null, remembered: {} };
+  return { nodes: sorted, animationFps: o.animationFps, remembered: {} };
 }

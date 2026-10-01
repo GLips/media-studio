@@ -1,11 +1,8 @@
-// stamp-defocus.ts: how far a group's defocus and glow reach, and the sigma a defocus takes in its painted layer. A
-// defocus is asked for in stage px, as a lens blurs what it sees; it blurs the group's layer before the lay, so where
-// the lay scales the layer up, the layer's own sigma is that much smaller.
+// stamp-defocus.ts: how far a plane's defocus and the frame's bloom reach, and the sigma a defocus takes in a plane's
+// picture. A defocus is asked for in frame px, as a lens blurs what it sees; it blurs the picture before the camera
+// lays it, so where the camera magnifies the plane, the picture's own sigma is that much smaller.
 
 import type { StampPixelBox } from './stamp-blur-region.ts';
-import type { StampPoint } from './stamp-region.ts';
-import type { StampWarpMap } from './stamp-group-warp.ts';
-import type { StampGroupLay } from './stamp-paint-frame-state.ts';
 
 /** How many sigmas a gaussian's taps reach each side: past them a weight is under 1.2% of the centre's. */
 export const STAMP_GAUSSIAN_SIGMAS = 3;
@@ -14,8 +11,8 @@ export const STAMP_GAUSSIAN_SIGMAS = 3;
 export const stampGaussianReach = (sigma: number) => (sigma > 0 ? Math.ceil(STAMP_GAUSSIAN_SIGMAS * sigma) : 0);
 
 /**
- * A layer's defocus sigma held to steps 2% apart, finer than an eye tells a blur's width by. A camera moving in
- * rescales a plane every frame, so its exact sigma is new each frame; held to a step, frames share one defocused layer.
+ * A picture's defocus sigma held to steps 2% apart, finer than an eye tells a blur's width by. A camera moving in
+ * rescales a plane every frame, so its exact sigma is new each frame; held to a step, frames share one blurred picture.
  */
 export const STAMP_DEFOCUS_SIGMA_STEP = 1.02;
 export const stampDefocusSigmaStepped = (sigma: number) => (sigma > 0 ? STAMP_DEFOCUS_SIGMA_STEP ** Math.round(Math.log(sigma) / Math.log(STAMP_DEFOCUS_SIGMA_STEP)) : 0);
@@ -24,18 +21,4 @@ export const stampDefocusSigmaStepped = (sigma: number) => (sigma > 0 ? STAMP_DE
 export function stampGrownBox(box: StampPixelBox, by: number, width: number, height: number): StampPixelBox {
   const x = Math.max(0, box.x - by), y = Math.max(0, box.y - by);
   return { x, y, w: Math.min(width, box.x + box.w + by) - x, h: Math.min(height, box.y + box.h + by) - y };
-}
-
-/**
- * The stage px one painted px spans where a group is laid by `lay` after `warp`, near rest point `at`: the placement's
- * scale, times the warp's there (the square root of its area change, a px either side). A warp folding there, or
- * none, scales by 1. Only roughly the warp's: a defocus is one sigma over the whole layer.
- */
-export function stampLayScale(lay: StampGroupLay | null, warp: { map: StampWarpMap } | null, at: StampPoint): number {
-  const placed = lay?.placement.scale ?? 1;
-  if (!warp) return placed;
-  const right = warp.map({ x: at.x + 1, y: at.y }), left = warp.map({ x: at.x - 1, y: at.y });
-  const down = warp.map({ x: at.x, y: at.y + 1 }), up = warp.map({ x: at.x, y: at.y - 1 });
-  const area = Math.abs((right.x - left.x) * (down.y - up.y) - (right.y - left.y) * (down.x - up.x)) / 4;
-  return placed * (Number.isFinite(area) && area > 0 ? Math.sqrt(area) : 1);
 }

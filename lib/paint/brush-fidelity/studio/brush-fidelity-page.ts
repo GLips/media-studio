@@ -8,6 +8,7 @@ import { PROCREATE_PREVIEW_SIZE } from '#lib/paint/procreate-brushes/models/proc
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { createStampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
+import { createStampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { createStampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import { stampPaintPackAssetUrl, type StampPaintPackUrls } from '#lib/paint/brush-packs/models/stamp-paint-pack-urls.ts';
 import { brushFidelityForeignPaint, brushFidelityPainting, type BrushFidelityTarget } from '../models/brush-fidelity-target.ts';
@@ -48,13 +49,18 @@ async function measureStrokeTarget(src: string, target: BrushFidelityTarget): Pr
 
 async function paintAndMeasure(painting: CompiledStampPaint, foreign: PhotoshopForeignPaint, withPng: boolean, packUrls: StampPaintPackUrls): Promise<{ png?: string; profile: StrokeCoverageProfile | null }> {
   const canvas = Object.assign(document.createElement('canvas'), { width: W, height: H });
-  const surface = await createStampPaintSurface({ canvas, width: W, height: H }, (asset) => stampPaintPackAssetUrl(packUrls, asset));
+  const owner = await createStampPaintGpuOwner((asset) => stampPaintPackAssetUrl(packUrls, asset));
   try {
-    const renderer = await createStampPaintRenderer(surface, painting);
-    await renderer.draw({ t: 0 });
-    return { ...(withPng && { png: canvas.toDataURL('image/png') }), profile: measureStrokeCoverage(clearPhotoshopForeignPaint(paintedCoverage(canvas), W, H, foreign), W, H) };
+    const surface = await createStampPaintSurface(owner, { canvas, width: W, height: H });
+    try {
+      const renderer = await createStampPaintRenderer(surface, painting);
+      await renderer.draw({ t: 0 });
+      return { ...(withPng && { png: canvas.toDataURL('image/png') }), profile: measureStrokeCoverage(clearPhotoshopForeignPaint(paintedCoverage(canvas), W, H, foreign), W, H) };
+    } finally {
+      surface.dispose();
+    }
   } finally {
-    surface.dispose();
+    owner.dispose();
   }
 }
 

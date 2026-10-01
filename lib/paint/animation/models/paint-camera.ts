@@ -1,32 +1,21 @@
-// paint-camera.ts: the multiplane camera (plan 2's "The camera") as data on plays' clocks, and the camera step,
-// which comes after a group's own and its ancestors' bends and placements (plan 1's step 5): its similarity folds
-// into the group's lay, its warp kept a warp, and its focus gives the group a defocus blur.
+// paint-camera.ts: the multiplane camera, one description that painted planes and three.js sources both read: its
+// pose and focus as plays on clocks, its projection (a vertical field of view) and its lens (a bloom), each in the
+// units its type names. It places each plane's picture by a similarity and blurs it by its depth; it never edits a
+// group's lay, which stays inside its plane's picture.
 //
-// A plane is painted the size it looks through the camera at rest, so at rest the step is the identity. A canvas
-// group, or one with no anchor, never sees the camera.
-//
-// Unless a play holds it, the camera is on ones: each render frame gets a new pose and each plane a new lay, which
-// the renderer's group films make cheap.
+// Planes stay parallel to the image: the camera pans, dollies, zooms and rolls. A plane is painted the size it looks
+// at rest, so at rest every plane's similarity is the identity. Unless a play holds it, the camera is on ones.
 
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import type { StampGroupFrameState, StampGroupGlow, StampGroupLay, StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import type { CompiledStampPlanes, StampLensFrame, StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { paintLanePlayAt, paintPlayClipTimeAt, sceneSeconds, type PaintLane, type PaintPlayClock } from './paint-clock.ts';
-import { paintPxRounded, paintRatioRounded, paintSigmaRounded } from './paint-deform.ts';
+import { paintPxRounded, paintRatioRounded } from './paint-deform.ts';
 import { paintKeySpanAt, type PaintEase } from './paint-motion-clips.ts';
-import {
-  paintPlacementOfSimilarity, paintSimilarityAfter, paintSimilarityOf, paintSimilarityScale, type PaintSimilarity,
-} from './paint-similarity.ts';
+import type { PaintSimilarity } from './paint-similarity.ts';
 
 /** The frame's centre on `stage` (the renderer's: the frame and the margin it paints past it), what planes scale about. */
 export const paintStageCentre = ({ frame }: StampStage): StampPoint => ({ x: frame.width / 2, y: frame.height / 2 });
-
-/**
- * What a group's rest coordinates are relative to. `canvas`: the stage itself, untouched by the camera (a title card).
- * `{ plane }`: a plane that many depth units from the camera's rest position (above 0; pan is measured at 1), its
- * space as it looks through the camera at rest. Plan 3 adds a surface.
- */
-export type PaintAnchor = 'canvas' | { readonly plane: number };
 
 /**
  * Where the camera is. `pan`: px, as a plane at depth 1 sees it move; `dolly`: depth units toward the planes; `zoom`:
@@ -38,7 +27,7 @@ export const PAINT_CAMERA_REST: PaintCameraPose = { pan: { x: 0, y: 0 }, dolly: 
 
 /**
  * The lens's focus: `focus` is the depth held sharp (a depth like a plane's, so a dolly keeps the same plane sharp);
- * `aperture` is the defocus, stage px of gaussian sigma, a plane at infinity gets (paintPlaneDefocus).
+ * `aperture` is the defocus, frame px of gaussian sigma, a plane at infinity gets (paintPlaneDefocus).
  */
 export type PaintCameraFocus = { readonly focus: number; readonly aperture: number };
 
@@ -61,15 +50,20 @@ export const paintCameraPlay = (clip: PaintCameraClip, timing: { readonly clock:
 /** How near the camera a plane or its focus may come, depth units: nearer, its scale runs off toward infinity. */
 export const PAINT_CAMERA_NEAREST = 1e-3;
 
+/** The lens past its focus: `bloom`, the sigma in frame px of the gaussian spreading the frame's emission. */
+export type PaintCameraLens = { readonly bloom: number };
+
 /**
- * A camera checked (paint-camera-build.ts): its stage, each plane-anchored group's depth by id, each outside layer's
- * (a 3D layer's) depth by its id, and its plays in a lane per thing they write.
+ * A camera checked (paint-camera-build.ts): the `stage` its planes' pictures are painted on, its projection (`fov`,
+ * vertical degrees over the frame at rest, which sets how deep a three.js source's world looks, never where a plane
+ * lands), the planes it shows, its lens, and its plays in a lane per thing they write.
  */
 export type PaintCamera = {
   readonly stage: StampStage;
+  readonly fov: number;
+  readonly planes: CompiledStampPlanes;
+  readonly lens: PaintCameraLens;
   readonly animationFps: number;
-  readonly planes: ReadonlyMap<string, number>;
-  readonly outsidePlanes: ReadonlyMap<string, number>;
   readonly move: PaintLane<PaintCameraMoveClip>;
   readonly focus: PaintLane<PaintCameraFocusClip>;
 };
@@ -128,10 +122,8 @@ export function paintCameraFocusAt(camera: PaintCamera, t: number): PaintCameraF
   return play ? paintCameraFocusClipAt(play.clip, paintPlayClipTimeAt(play.clock, sceneSeconds(t), camera.animationFps)) : null;
 }
 
-export const paintCameraPoseIsRest = ({ pan, dolly, zoom, roll }: PaintCameraPose) => pan.x === 0 && pan.y === 0 && dolly === 0 && zoom === 1 && roll === 0;
-
 /**
- * How the camera shows a plane at `depth`, anchor px to stage px: scaled zoom·d/(d − dolly) about the frame's
+ * How the camera shows a plane at `depth`, plane px to frame px: scaled zoom·d/(d − dolly) about the frame's
  * `centre`, shifted by −pan·zoom/(d − dolly), then turned by −roll about the centre. A pinhole camera at the pan,
  * dollied and rolled, projects exactly so (paint-camera-world.ts builds that camera for three.js).
  */
@@ -143,11 +135,11 @@ export function paintPlaneSimilarity({ pan, dolly, zoom, roll }: PaintCameraPose
   return { ma, mb, kx: centre.x - (ma * centre.x - mb * centre.y) + (ca * shiftX - sa * shiftY), ky: centre.y - (mb * centre.x + ma * centre.y) + (sa * shiftX + ca * shiftY) };
 }
 
-/** A defocus below this sigma, stage px, is drawn sharp: no blur pass for a change nobody sees. */
+/** A defocus below this sigma, frame px, is drawn sharp: no blur pass for a change nobody sees. */
 export const PAINT_DEFOCUS_LEAST = 0.1;
 
 /**
- * A plane's defocus, stage px of gaussian sigma: a thin lens's circle of confusion, aperture·|1 − f/s|, f the focus's
+ * A plane's defocus, frame px of gaussian sigma: a thin lens's circle of confusion, aperture·|1 − f/s|, f the focus's
  * distance (focus − dolly), s the plane's (depth − dolly). The lens's own factor f/(f − focal length), near 1, is
  * left in the aperture. A gaussian of sigma σ spreads as a disc 4σ across, so a/4 stands for an a px disc.
  */
@@ -156,56 +148,18 @@ export function paintPlaneDefocus({ focus, aperture }: PaintCameraFocus, dolly: 
   return sigma < PAINT_DEFOCUS_LEAST ? 0 : sigma;
 }
 
-/** `glow` (its sigma in anchor px) as laid at `scale`: its sigma grown, never rounded to 0. */
-export const paintGlowScaled = (glow: StampGroupGlow, scale: number): StampGroupGlow => ({ ...glow, sigma: paintSigmaRounded(glow.sigma * scale) });
-
-/** The camera at one scene time `t`: its pose, its focus (null for none), and the frame's centre planes scale about. */
-export type PaintCameraView = { readonly t: number; readonly pose: PaintCameraPose; readonly lens: PaintCameraFocus | null; readonly centre: StampPoint };
-
-export const paintCameraViewAt = (camera: PaintCamera, t: number): PaintCameraView =>
-  ({ t, pose: paintCameraPoseAt(camera, t), lens: paintCameraFocusAt(camera, t), centre: paintStageCentre(camera.stage) });
-
-/** How the camera shows a thing at a depth: the similarity laying it, and its defocus and glow as the frame draws them. */
-export type PaintCameraDepthLook = { readonly view: PaintSimilarity; readonly defocus: number; readonly glow: StampGroupGlow | undefined };
-
 /**
- * What `view` does to `name` at `depth` (a plane, or a 3D layer there), its own defocus and glow in anchor px: its
- * similarity, its defocus scaled with the lens's added (by variance), its glow's sigma scaled. Throws on it or the
- * focus at or behind the camera: a build can't hold every curve between its checked times.
+ * What the camera does at scene time `t`: each plane's look (its similarity, and its defocus with a focus play) and
+ * the lens's bloom. Throws on a plane or the focus at or behind the camera: a build can't hold every curve between its
+ * checked times.
  */
-export function paintCameraDepthLook({ t, pose, lens, centre }: PaintCameraView, name: string, depth: number, own: Pick<StampGroupFrameState, 'defocus' | 'glow'>): PaintCameraDepthLook {
-  if (depth - pose.dolly <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${t}s the camera, dollied ${pose.dolly}, is at or past ${name}'s plane at depth ${depth}`);
+export function paintCameraLensAt(camera: PaintCamera, t: number): StampLensFrame {
+  const pose = paintCameraPoseAt(camera, t), lens = paintCameraFocusAt(camera, t), centre = paintStageCentre(camera.stage);
   if (lens && lens.focus - pose.dolly <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${t}s the camera focuses at depth ${lens.focus}, at or behind itself (dollied ${pose.dolly})`);
-  const view = paintPlaneSimilarity(pose, depth, centre), scale = paintSimilarityScale(view);
-  const defocus = paintPxRounded(Math.hypot((own.defocus ?? 0) * scale, lens ? paintPlaneDefocus(lens, pose.dolly, depth) : 0));
-  return { view, defocus, glow: own.glow && paintGlowScaled(own.glow, scale) };
-}
-
-/** `lay` (about its pivot) with `view` after it; a group without one is laid by `view` alone, about `centre`. */
-function viewedLay(view: PaintSimilarity, lay: StampGroupLay | undefined, centre: StampPoint): StampGroupLay {
-  if (!lay) return { placement: paintPlacementOfSimilarity(view, centre), pivot: centre };
-  return { placement: paintPlacementOfSimilarity(paintSimilarityAfter(view, paintSimilarityOf(lay.placement, lay.pivot)), lay.pivot), pivot: lay.pivot };
-}
-
-/**
- * `state` as the camera shows it at scene time `t`: each group on a plane laid by the camera after its own lay (its
- * warp kept), its defocus and glow as paintCameraDepthLook gives them. A plane with no state gains one; every other
- * group is handed on as it was.
- */
-export function paintCameraFrameStateAt(camera: PaintCamera, state: StampPaintFrameState, t: number): StampPaintFrameState {
-  const seen = paintCameraViewAt(camera, t), moved = !paintCameraPoseIsRest(seen.pose);
-  if (!moved && !seen.lens) return state;
-  const viewed = new Map(state);
-  for (const [id, depth] of camera.planes) {
-    const { lay, defocus: own, glow: ownGlow, ...rest } = state.get(id) ?? {};
-    const { view, defocus, glow } = paintCameraDepthLook(seen, id, depth, { defocus: own, glow: ownGlow });
-    const laid: StampGroupFrameState = {
-      ...rest,
-      ...(moved ? { lay: viewedLay(view, lay, seen.centre) } : lay && { lay }),
-      ...(defocus > 0 && { defocus }),
-      ...(glow && { glow }),
-    };
-    viewed.set(id, laid);
+  const planes = new Map<string, StampPlaneLook>();
+  for (const { id, depth } of camera.planes) {
+    if (depth - pose.dolly <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${t}s the camera, dollied ${pose.dolly}, is at or past plane ${id} at depth ${depth}`);
+    planes.set(id, { view: paintPlaneSimilarity(pose, depth, centre), defocus: lens ? paintPlaneDefocus(lens, pose.dolly, depth) : 0 });
   }
-  return viewed;
+  return { planes, bloom: camera.lens.bloom };
 }

@@ -1,3 +1,4 @@
 {
-  "lib/paint/three-layers": "A three.js layer is seen through the multiplane camera: its perspective camera, pose and focus at t, in the world the planes share."
+  "lib/paint/three-layers": "A three.js source is rendered through the paint camera: its perspective camera, pose and planes, in the world the planes share.",
+  "lib/paint/style": "StampPainting shows a painting's planes as its camera looks at each frame."
 }

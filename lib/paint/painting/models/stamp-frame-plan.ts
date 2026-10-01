@@ -8,7 +8,6 @@ import { STAMP_WARP_CELL, type StampWarpMap } from './stamp-group-warp.ts';
 import {
   stampLiveGroupProblem, stampPaintFrameStateAt, type StampGroupFrameState, type StampGroupGlow, type StampGroupLay, type StampGroupMarks, type StampPaintFrameState,
 } from './stamp-paint-frame-state.ts';
-import type { StampOutsideFrameState, StampOutsideLayerPlace } from './stamp-outside-layer.ts';
 import type { CompiledStampGroup, CompiledStampPaint } from './stamp-paint-recipe-compile.ts';
 
 /**
@@ -24,40 +23,19 @@ export type StampGroupFrame = {
   warp: { map: StampWarpMap; key: string; cell: number } | null;
   visibility: number;
   paintAt: number | null;
-  /** Its defocus, gaussian sigma in stage px; 0 sharp. */
-  defocus: number;
   /** The light it gives off; null for none, as a glow of amount 0 is. */
   glow: StampGroupGlow | null;
 };
 
-/** An outside layer as a frame lays it (stamp-outside-layer.ts), under `key` (its content and how it's laid). */
-export type StampOutsideLayerFrame = StampOutsideLayerPlace & { key: string; visibility: number; defocus: number; glow: StampGroupGlow | null };
-
-/** The outside layers a painting is drawn with: where each lies, and each one's state this frame. */
-export type StampOutsideLayersAt = { places: readonly StampOutsideLayerPlace[]; state: StampOutsideFrameState };
-
-export type StampFramePlan = {
-  groups: readonly StampGroupFrame[];
-  /** Its outside layers, in the order they're laid. */
-  outside: readonly StampOutsideLayerFrame[];
-};
-
 const isStill = ({ x, y, rotation, scale }: StampGroupPlacement) => x === 0 && y === 0 && rotation === 0 && scale === 1;
 
-/** `id`'s defocus and glow as drawn, checked: no defocus is 0, and no glow (or one of amount 0) null, so equal looks key equal. */
-function stampLayLight(id: string, { defocus = 0, glow }: Pick<StampGroupFrameState, 'defocus' | 'glow'>): { defocus: number; glow: StampGroupGlow | null } {
-  if (!(Number.isFinite(defocus) && defocus >= 0)) throw new Error(`stamp paint: ${id}'s defocus is ${defocus}; a defocus is a sigma of 0 px or more`);
-  if (glow) {
-    const { amount, sigma, threshold } = glow;
-    if (!(Number.isFinite(amount) && amount >= 0 && Number.isFinite(sigma) && sigma > 0 && threshold >= 0 && threshold <= 1)) {
-      throw new Error(`stamp paint: ${id}'s glow ${JSON.stringify(glow)} needs an amount from 0, a sigma past 0 px and a threshold within 0..1`);
-    }
-  }
-  return { defocus, glow: glow && glow.amount > 0 ? { amount: glow.amount, sigma: glow.sigma, threshold: glow.threshold } : null };
+/** `id`'s glow as drawn, checked: none, or one of amount 0, is null, so equal looks key equal. */
+function stampGroupGlowChecked(id: string, glow: StampGroupGlow | undefined): StampGroupGlow | null {
+  if (!glow) return null;
+  const { amount, threshold } = glow;
+  if (!(Number.isFinite(amount) && amount >= 0 && threshold >= 0 && threshold <= 1)) throw new Error(`stamp paint: ${id}'s glow ${JSON.stringify(glow)} needs an amount from 0 and a threshold within 0..1`);
+  return amount > 0 ? { amount, threshold } : null;
 }
-
-/** The part of a laid key its defocus and glow write: empty for neither. */
-const layLightKey = ({ defocus, glow }: { defocus: number; glow: StampGroupGlow | null }) => `${defocus ? `~defocus${defocus}` : ''}${glow ? `~glow${glow.amount},${glow.sigma},${glow.threshold}` : ''}`;
 
 /** `group`'s frame from its frame state, checked: throws on state it can't draw. */
 function stampGroupFrame(group: CompiledStampGroup, state: StampGroupFrameState): StampGroupFrame {
@@ -75,39 +53,20 @@ function stampGroupFrame(group: CompiledStampGroup, state: StampGroupFrameState)
     if (![x, y, rotation, scale, pivot.x, pivot.y].every(Number.isFinite) || !(scale > 0)) throw new Error(`stamp paint: ${group.id}'s lay needs finite values and a positive scale`);
   }
   const moved = lay && !isStill(lay.placement) ? lay : null;
-  const { defocus, glow } = stampLayLight(group.id, state);
   // A hidden group draws nothing, whatever its marks or lay.
   const paintKey = visibility === 0 ? 'hidden' : `${marks.kind === 'live' ? `*${JSON.stringify(marks.key)}` : marks.epoch}${paintAt === undefined ? '' : `~${paintAt}`}`;
   return {
     paintKey, group, marks, lay: moved, warp: warp ? { map: warp.map, key: warp.key, cell: warp.cell ?? STAMP_WARP_CELL } : null, visibility,
-    paintAt: paintAt ?? null, defocus, glow,
+    paintAt: paintAt ?? null, glow: stampGroupGlowChecked(group.id, state.glow),
   };
-}
-
-/** Each outside layer's frame, checked: every declared layer given a state, and no state for one that isn't. */
-function stampOutsideLayerFrames({ places, state }: StampOutsideLayersAt): StampOutsideLayerFrame[] {
-  const unknown = [...state.keys()].filter((id) => !places.some((place) => place.id === id));
-  if (unknown.length) throw new Error(`stamp paint: outside layer state for ${unknown.join(', ')}, which the painting has no outside layer of`);
-  return places.map((place) => {
-    const given = state.get(place.id);
-    if (!given) throw new Error(`stamp paint: outside layer ${place.id} has no state this frame; its content's key names its pixels, each frame`);
-    const { content, visibility = 1 } = given;
-    if (!(visibility >= 0 && visibility <= 1)) throw new Error(`stamp paint: outside layer ${place.id}'s visibility is ${visibility}, outside 0..1`);
-    // Built here, not left to the caller: whatever changes what's laid is in it.
-    const light = stampLayLight(place.id, given);
-    const key = visibility === 0 ? 'hidden' : `${JSON.stringify(content)}${visibility < 1 ? `%${visibility}` : ''}${layLightKey(light)}`;
-    return { ...place, key, visibility, ...light };
-  });
 }
 
 /**
  * The frame of `painting` at `t` seconds into its scene, each group in its recipe's own state with `given` over it
- * (stampPaintFrameStateAt), and each of `outside`'s layers in its state. Throws on state for a group or outside layer
- * the painting doesn't have, state it can't draw, or an outside layer given none.
+ * (stampPaintFrameStateAt), in the painting's order. Throws on state for a group the painting doesn't have, or state
+ * it can't draw.
  */
-export function stampFramePlan(
-  painting: CompiledStampPaint, t: number, given?: StampPaintFrameState, outside: StampOutsideLayersAt = { places: [], state: new Map() },
-): StampFramePlan {
+export function stampFramePlan(painting: CompiledStampPaint, t: number, given?: StampPaintFrameState): readonly StampGroupFrame[] {
   const state = stampPaintFrameStateAt(painting, t, given);
-  return { groups: painting.groups.map((group) => stampGroupFrame(group, state.get(group.id) ?? {})), outside: stampOutsideLayerFrames(outside) };
+  return painting.groups.map((group) => stampGroupFrame(group, state.get(group.id) ?? {}));
 }

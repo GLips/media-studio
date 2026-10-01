@@ -223,7 +223,7 @@ and where paint may land, the rim open wherever it isn't bare paper at the grain
 - `visibility`: 0 draws none of it.
 
 The compiled painting holds no functions of time. A group's painted layer, its film, depends only on its marks and
-the time its keyed paint reads, so the renderer keeps each film on the surface's GPU cache
+the time its keyed paint reads, so the renderer keeps each film on the device's GPU cache
 (`stamp-paint-gpu-cache.ts`, one budget per device) under a key built from those, and equal keys must mean equal
 marks. A group's paint lives one of three ways:
 - **Stuck:** its film is carried, rigidly or bent by the warp. It's cheap, and blooms and edges ride along, but a
@@ -252,16 +252,30 @@ an error. A frame held on twos gives every group the keys it had, so it repaints
 - **Checks:** the build checks the tree, the groups, the clocks, the boil's wobble, one writer per lane
   (`paint-channels.ts`), and every frame's emitted warp for folds on the renderer's own lattice.
   `paintMotionFrameAt(motion, t)` is pure in `t`, and writes each group's `StampGroupFrameState`.
-- **Planes and the camera** (`paint-camera.ts`, `paint-camera-build.ts`): a root node's `anchor` puts its tree on
-  the canvas (the default, never moved by the camera) or on a plane at a depth (`{ plane: 2 }`, from the camera's
-  rest; pan is measured at 1). A plane is painted the size it looks at rest, so a flat painting goes multiplane by
-  giving groups depths. The camera's plays key `move` (pan, dolly, zoom, roll) and `focus` (focus depth and
-  aperture) on its own clock, on ones unless held. Its step comes after every bend and placement: it folds a
-  plane's view into the group's lay, keeps its warp, and writes its defocus `blur` (a thin lens's circle of
-  confusion, as gaussian sigma) and scales its `glow`. `buildPaintCamera` and `paintCameraFrameStateAt` put the same
-  step over frame state another motion wrote. The build names a plane at or behind the camera, a zoom not above 0, an
-  anchor on a child, and a `backdrop` the camera shows past the stage's margin or its paint.
-  `paint-camera-world.ts` gives three.js the perspective camera that lands a 3D point where the plane step lays it.
+- **Planes and the camera** (`painting/models/stamp-plane.ts`, `paint-camera.ts`, `paint-camera-build.ts`): a scene
+  is planes, each `{ id, depth, source }`, laid far to near. The back, the farthest, is paper to the stage's edge.
+  Every nearer painted plane is clear film: its opaque groups' paint covers what's behind as far as it's laid, so
+  coverage moves, warps and fades with the group, and its glaze groups' paint filters what's behind. A three
+  plane is a three.js render. A painted plane's picture doesn't depend on the camera and is kept on the device while
+  its groups hold. The camera is one description: its plays key `move` (pan, dolly, zoom, roll) and `focus` (focus
+  depth, aperture), plus `fov` and a lens with one `bloom`. `paintCameraLensAt` gives each plane's view (a
+  similarity) and defocus (a thin lens's circle of confusion, as gaussian sigma) at a time. The build proves every
+  plane's extent over the whole shot (not sampled times; a nearer plane only as far as its groups are painted), reports each plane's greatest magnification, and names
+  bad planes. `paint-camera-world.ts` gives three.js the perspective camera that lands a 3D point where the plane
+  step lays its depth.
+
+**Planes on the GPU** (`stamp-paint-renderer.ts`, `stamp-paint-plane-passes.ts`). One owner holds a device
+(`stamp-paint-gpu-owner.ts`): its images, pipelines' targets and one cache budget, shared by films, pictures and
+blurred pictures. A surface is one output on it. One painted plane at rest, sharp and not glowing is drawn straight
+to the output, as a still always was. Otherwise each plane's picture is painted (paper, its groups, on a clear plane
+each opaque group's cover as laid, max-joined into its coverage, and each glowing group's light past its threshold
+into the plane's emission), defocused, and composited into a frame-sized target, its emission beside it, so paint a
+nearer plane covers doesn't glow. A clear plane's picture also holds its glaze, what its paint takes from the light
+behind, so laying it filters what's behind and then adds its colour (`over` where nothing glazes).
+The output blooms the emission once (`lens.bloom`), adds it in linear light, and encodes. Texture contracts:
+pictures, three sources and the composite are rgba16float, premultiplied linear; a painted texture three samples is
+rgba16float, gamma-encoded and opaque, decoded by `paintedThreeColorNode`. A glowing frame drawn without a lens is
+refused.
 
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants
 of `procreate-reading.ts`), and the stroke Procreate draws its previews along. Its `engine/` reads binary plists and

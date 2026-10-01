@@ -1,10 +1,13 @@
 // stamp-gate-stage.ts: the gate's stage cases, what the renderer holds past and over a group's paint: the stage's
-// margin (stamp-stage.ts). A margin must leave every frame as it was and show what a lay brings in from off the frame.
+// margin (stamp-stage.ts), and the films and planes' pictures it keeps between frames. A margin must leave every frame
+// as it was and show what a lay brings in from off the frame; a kept film or picture must draw the frame drawn fresh.
 
 import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import { stampBloom } from '#lib/paint/painting/models/stamp-wet-techniques.ts';
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import { compileStampPlanes, type CompiledStampPlanes, type StampLensFrame } from '#lib/paint/painting/models/stamp-plane.ts';
+import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { STAMP_GATE_IMAGES, STAMP_GATE_PAINTING_IDS, STAMP_GATE_WHITE, stampGateBrush, stampGatePainting, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
@@ -15,6 +18,7 @@ import { STAMP_GATE_WASH_IDS, stampGateWashCase } from './stamp-gate-washes.ts';
 import { stampGateFrameDifference, stampGateFramePasses, type StampGateFrameDifference } from './stamp-gate-frames.ts';
 
 export const STAMP_GATE_STAGE_IDS = ['stage/margin', 'stage/pan', 'stage/film-cache'];
+export const STAMP_GATE_PLANES_IDS = ['planes/cache'];
 
 /** The margin the stage cases draw with: past any gate painting's reach over its frame's edge, and even. */
 export const STAMP_GATE_STAGE_MARGIN = 48;
@@ -170,5 +174,66 @@ export function checkStampGateFilmCache(frames: readonly { frame: number; differ
     id: 'stage/film-cache: a frame laying cached films is the frame drawn fresh, in any order', passed: worst.difference.max === 0 && restores > 0,
     detail: `${frames.length} frames in order ${STAMP_GATE_PARALLAX_ORDER.join(',')}: worst frame ${worst.frame}, max ${worst.difference.max}, mean ${worst.difference.mean.toFixed(4)} (past 0 fails); `
       + `${restores} films copied back from the cache (none fails)`,
+  };
+}
+
+/** The planes case's near flood. */
+const PLANES_LEAF = { kind: 'ellipse' as const, x: 170, y: 110, radiusX: 44, radiusY: 26 };
+
+/**
+ * A wash at the back boiling on twos, as the parallax's far one does, and a still flood on a nearer plane, covering
+ * as far as it's painted: the back's picture is painted again as its epoch changes, the near one's restored from the cache.
+ */
+export function stampGatePlanesPainting(): StampGatePainting {
+  const steady = stampGateBrush('Steady', { flow: 0.6 });
+  const painting = compileStampPaintRecipe(stampPaintRecipe({ paper: STAMP_GATE_WHITE, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W } }, (p) => {
+    p.group('far', { composite: 'glaze', opacity: 1, boil: { every: 2 } }, (g) => g.passage('sky', {}, (w) => {
+      w.fill('sky', { brush: steady, size: 40, application: { kind: 'flood' }, region: stampGatePolygon(-40, -20, 280, -20, 280, 110, -40, 110), well: { paint: mixture(W.ultramarine) } });
+      stampBloom(w, 'drop', { brush: steady, size: 30, at: [{ x: 120, y: 60 }] });
+    }));
+    p.group('near', { composite: 'opaque' }, (g) => g.passage('leaf', { wetHistory: false }, (pass) => pass.fill('leaf', {
+      brush: steady, size: 20, application: { kind: 'flood' }, well: { paint: mixture(W.phthaloBlue) }, region: PLANES_LEAF,
+    })));
+  }));
+  return { painting, width: 240, height: 160, t: 0, images: STAMP_GATE_IMAGES };
+}
+
+
+/** The planes case's planes: the far wash at the back, the near flood on a clear plane of its own. */
+export function stampGatePlanesOf(painting: CompiledStampPaint): CompiledStampPlanes {
+  const problems: string[] = [];
+  const planes = compileStampPlanes(painting, [
+    { id: 'back', depth: 2, source: { kind: 'painted', groups: ['far'] } },
+    { id: 'near', depth: 1, source: { kind: 'painted', groups: ['near'] } },
+  ], problems);
+  if (problems.length) throw new Error(`stamp gate: the planes case's planes: ${problems.join('; ')}`);
+  return planes;
+}
+
+/**
+ * Frame `k`'s lens, as a camera panning left would give it: the back pans with k, slightly out of focus; the near
+ * plane pans faster and grows about the frame's centre, as a nearer plane does.
+ */
+export function stampGatePlanesLens(k: number): StampLensFrame {
+  const grown = 1 + 0.01 * k;
+  return {
+    planes: new Map([
+      ['back', { view: { ma: 1, mb: 0, kx: -2 * k, ky: 0.5 * k }, defocus: 1.5 }],
+      ['near', { view: { ma: grown, mb: 0, kx: -5 * k + (1 - grown) * 120, ky: (1 - grown) * 80 }, defocus: 0 }],
+    ]),
+    bloom: 0,
+  };
+}
+
+/**
+ * Whether every frame one renderer drew through a moving camera in scrambled order, some pictures from its cache, is
+ * the frame a fresh renderer draws, and the cache stood for some pictures (`restores`).
+ */
+export function checkStampGatePictureCache(frames: readonly { frame: number; difference: StampGateFrameDifference }[], restores: number): StampGateWashCheck {
+  const worst = frames.reduce((most, f) => (f.difference.max > most.difference.max ? f : most));
+  return {
+    id: `planes/cache: a camera's frame laying cached pictures is the frame drawn fresh, in any order`, passed: frames.every(({ difference }) => stampGateFramePasses(difference)) && restores > 0,
+    detail: `${frames.length} frames in order ${STAMP_GATE_PARALLAX_ORDER.join(',')}: worst frame ${worst.frame}, max ${worst.difference.max}, mean ${worst.difference.mean.toFixed(4)}; `
+      + `${restores} pictures restored from the cache (none fails)`,
   };
 }
