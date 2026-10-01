@@ -59,7 +59,7 @@ export function stampPigmentAmountsAt({ ends }: StampPigmentComponent, t: number
 }
 
 /** Where a deposit's material grades between its ends, as paintFieldShare reads it (STAMP_PAINT_FIELD_SHARE): kind 0 for none. */
-export type StampPigmentGrade = { kind: 0 | 1 | 2; geometry: readonly [number, number, number, number] };
+export type StampPigmentGrade = { kind: 0 | 1 | 2 | 3; geometry: readonly [number, number, number, number] };
 
 export type StampPigmentGroup = {
   /** Its palette, a slot each. */

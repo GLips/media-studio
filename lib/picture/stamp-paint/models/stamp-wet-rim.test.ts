@@ -59,3 +59,22 @@ test('a wash dries at each wait for dry that follows paint, and at its end', () 
   const dryings = stampWashDryings(painting.groups[0].passes[0]);
   assert.deepEqual(dryings.map(({ id, deposits }) => [id, deposits.map((deposit) => deposit.id)]), [['g/w', ['g/w/a']], ['g/w|dry1', ['g/w/b', 'g/w/c']]]);
 });
+
+/** One wash at rim strength `rim` (the medium's when undefined) painted by `body`, compiled. */
+const rimmed = (rim: number | undefined, body: (wash: StampWashScope) => void) =>
+  compileStampPaintRecipe(stampPaintRecipe((paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => group.wash('w', { ...(rim !== undefined && { rim }) }, body))));
+
+test("a wash's rim strength is every drying's, its end's too, unless a wait for dry gives its own; out of range or on another wait it's refused", () => {
+  const stroke = (wash: StampWashScope, id: string) => wash.stroke(id, { brush, diameter: 40, material: { kind: 'color', color: '#336699' }, path: [{ x: 100, y: 100 }, { x: 300, y: 100 }] });
+  const dryings = (rim: number | undefined) => stampWashDryings(rimmed(rim, (wash) => {
+    stroke(wash, 'a');
+    wash.wait('dry', { rim: 0 });
+    stroke(wash, 'b');
+    wash.wait('dry');
+    stroke(wash, 'c');
+  }).groups[0].passes[0]).map((drying) => drying.rim);
+  assert.deepEqual(dryings(undefined), [0, 1, 1]);
+  assert.deepEqual(dryings(2), [0, 2, 2]);
+  assert.throws(() => rimmed(2.5, (wash) => stroke(wash, 'a')), /rims at 2.5/);
+  assert.throws(() => rimmed(undefined, (wash) => wash.wait('damp', { rim: 1 })), /only a wait for dry rims/);
+});

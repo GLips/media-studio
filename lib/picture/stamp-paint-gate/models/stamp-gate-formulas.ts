@@ -123,12 +123,20 @@ const TWIN_POLYGONS: readonly (readonly StampPoint[])[] = [
   stampRegionPolygon({ kind: 'ellipse', x: 150, y: 120, radiusX: 90, radiusY: 40 }),
 ];
 
+/** A paint field's share at (x, y), held to its CPU side. */
+const fieldRow = ([kind, geometry]: readonly [number, readonly [number, number, number, number]], x: number, y: number) => ({
+  label: `kind ${kind} [${geometry.join(',')}] at ${x},${y}`, inputs: [x, y, kind, ...geometry], expected: STAMP_PAINT_FIELD_SHARE.cpu(x, y, kind, geometry),
+});
+
 /** The runtime twins, each over its grid, held to their CPU sides; and each dual mode's needsDual, held to its WGSL. */
 function twinGrids(): StampGateFormulaGrid[] {
   const fieldGeometry: [number, readonly [number, number, number, number]][] = [[0, [0, 0, 0, 0]], [1, [100, 50, 300, 250]], [1, [0, 0, 0, 400]], [2, [200, 150, 120, 0]]];
-  const paintFieldShare = fieldGeometry.flatMap(([kind, geometry]) => [0, 50, 125.5, 200, 400].flatMap((x) => [0, 100, 150.25, 500].map((y) => ({
-    label: `kind ${kind} [${geometry.join(',')}] at ${x},${y}`, inputs: [x, y, kind, ...geometry], expected: STAMP_PAINT_FIELD_SHARE.cpu(x, y, kind, geometry),
-  }))));
+  // Noise at feature sizes from a few pixels to a sky's, 24-bit seeds, read on and between its lattice and across a 1080p frame.
+  const noiseGeometry: [number, readonly [number, number, number, number]][] = [[3, [7.5, 0, 0, 0]], [3, [20, 12345, 0, 0]], [3, [160, 0xabcdef, 0, 0]]];
+  const paintFieldShare = [
+    ...[...fieldGeometry, ...noiseGeometry].flatMap((field) => [0, 50, 125.5, 200, 400].flatMap((x) => [0, 100, 150.25, 500].map((y) => fieldRow(field, x, y)))),
+    ...noiseGeometry.flatMap((field) => [-30.25, 3.5, 77.75, 1023.5, 1919.25].flatMap((x) => [-12.5, 9.25, 540.75, 1079.5].map((y) => fieldRow(field, x, y)))),
+  ];
   // Films from clear to thick, pure scatterers and pure absorbers among them, over black to near white.
   const FILM = [0, 1e-3, 0.03125, 0.25, 1, 4, 32];
   const film = FILM.flatMap((absorb) => FILM.flatMap((scatter) => [0, 0.25, 0.96875].map((under) => ({

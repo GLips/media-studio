@@ -39,9 +39,10 @@ export const stampDryingRimWetShare = (wettest: number, damp: number) => Math.mi
 
 /**
  * One drying of a wash: the deposits laid since its last wait('dry'), which dry, and rim, as one. `id` names it in
- * its wash, seeding its rim: the wash's own ID for its first.
+ * its wash, seeding its rim: the wash's own ID for its first. `rim`: how strongly it gathers pigment, 0..2, its
+ * wait's, else its wash's, else 1.
  */
-export type StampWashDrying = { pass: CompiledStampPass; id: string; deposits: readonly CompiledStampDeposit[] };
+export type StampWashDrying = { pass: CompiledStampPass; id: string; deposits: readonly CompiledStampDeposit[]; rim: number };
 
 const washDryings = new WeakMap<CompiledStampPass, readonly StampWashDrying[]>();
 
@@ -55,15 +56,16 @@ export function stampWashDryings(pass: CompiledStampPass): readonly StampWashDry
   if (known) return known;
   const dryings: StampWashDrying[] = [];
   let deposits: CompiledStampDeposit[] = [];
-  const dry = () => {
-    if (deposits.length) dryings.push({ pass, id: dryings.length ? `${pass.id}|dry${dryings.length}` : pass.id, deposits });
+  const washRim = pass.wash.rim ?? 1;
+  const dry = (rim: number) => {
+    if (deposits.length) dryings.push({ pass, id: dryings.length ? `${pass.id}|dry${dryings.length}` : pass.id, deposits, rim });
     deposits = [];
   };
   for (const step of pass.wash.schedule) {
     if (step.kind === 'deposit') deposits.push(step.deposit);
-    else if (step.until === 'dry') dry();
+    else if (step.until === 'dry') dry(step.rim ?? washRim);
   }
-  dry();
+  dry(washRim);
   washDryings.set(pass, dryings);
   return dryings;
 }

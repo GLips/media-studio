@@ -223,6 +223,15 @@ function washCases(): StampGateWashCase[] {
         load: { kind: 'linear', from: { x: 0, y: 10, value: 1 }, to: { x: 0, y: 110, value: 0.2 } }, appliedAt: 0, drawnOver: 3,
       })),
     },
+    // Noise on the GPU's field readers: a flood's load, and a material two deposits share as one passage.
+    {
+      id: 'wash/mottled', mid: MID, property: 'order',
+      subject: washPainting('watercolour', false, (wash) => {
+        const mottled = { kind: 'noise' as const, scale: 18, seed: 'passage', a: pure(W.ultramarine), b: pure(W.burntSienna) };
+        wash.fill('left', { brush: ROUND, diameter: 30, application: { kind: 'flood' }, region: stampGatePolygon(10, 10, 80, 10, 80, 110, 10, 110), material: mottled, load: { kind: 'noise', scale: 30, a: 1, b: 0.3 }, ...shown(0) });
+        wash.fill('right', { brush: ROUND, diameter: 30, application: { kind: 'flood' }, region: stampGatePolygon(80, 10, 150, 10, 150, 110, 80, 110), material: mottled, ...shown(1) });
+      }),
+    },
   ];
 }
 

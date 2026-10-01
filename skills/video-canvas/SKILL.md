@@ -51,9 +51,16 @@ Everything is from `#studio`.
     - Left out, the brush's media decides: a wet brush washes, a dry one (pencil, crayon) shades. Override it for a
       hatched shadow in watercolour, or a wash of a brush whose media no style declares.
     - `direction` (radians) is the way its rows run, and it reveals across them as `drawnOver` runs; `load` grades how
-      much paint it lays (`{ kind: 'linear', from, to }`).
+      much paint it lays (`{ kind: 'linear', from, to }`), or mottles it (`{ kind: 'noise', scale, a, b }`).
   - A **stroke** is a brush along a path; **stamps** are single placements (blooms, flowers). Each has `material`
     (`{ kind: 'color', color }`), `diameter` px, `opacity`, `appliedAt` and `drawnOver` seconds.
+  - **Mottled colour** (a sky, water, a distant mass): `material: { kind: 'noise', scale: 60, seed: 'sky', a, b }`
+    lays a broad, uneven passage between two mixtures, `scale` px its patches' size. Deposits sharing a `seed` share
+    one continuous passage; left out, each deposit mottles on its own. The same field mottles a fill's `load` and a
+    wash preparation's `wetness`. Mottle by purpose (a warm lit plane against a cool one), not over everything.
+  - **A wash's dried edge**: `group.wash(id, { rim })` sets how strongly its edges gather pigment as it dries (0..2,
+    1 the medium's), and `wash.wait('dry', { rim })` sets it for that one drying. `rim: 0` dries soft-edged; 2 rims
+    harder, though only where the paint was wet enough to rim at all.
   - Give every stroke a **`hand`**, or it paints at constant pressure, the way a mouse does, and the brush's taper,
     swell and pressure-driven size and opacity never show. `hand: { profile, curvature, wobble }`:
     - `profile` is pressure along the stroke: `'taper'` (light, firm, light) for most marks, `'pressFlick'` (heavy,

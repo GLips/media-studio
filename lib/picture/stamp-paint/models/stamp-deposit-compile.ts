@@ -7,7 +7,7 @@ import { placeAuthoredStamps, placeStrokeStamps, type StampPlacementBrush, type 
 import { handStampStroke } from './stamp-stroke-hand.ts';
 import { STAMP_ACCUMULATIONS } from './stamp-deposit-stages.ts';
 import { placeStampFlood, stampFillStrokePath, stampFloodBodyLevels, stampFloodFront, stampFloodProbe, type StampFillApplication } from './stamp-fill.ts';
-import { stampPaintFieldAt, stampPaintFieldProblem } from './stamp-paint-field.ts';
+import { stampPaintFieldAt, stampPaintFieldProblem, stampSeededPaintField } from './stamp-paint-field.ts';
 import type { CompiledStampAction } from './stamp-paint-action.ts';
 import { stampRegionPolygon, type StampPoint, type StampRegion } from './stamp-region.ts';
 import type { CompiledStampDeposit, CompiledStampMask, StampPaintRecipeDeposit } from './stamp-paint-recipe.ts';
@@ -66,7 +66,7 @@ export function compileDeposit<A extends CompiledStampAction>(
   };
   if (geometry.kind === 'fill') {
     const direction = geometry.direction ?? 0;
-    const load = geometry.load ?? { kind: 'constant' as const, value: 1 };
+    const load = stampSeededPaintField(geometry.load ?? { kind: 'constant' as const, value: 1 }, full);
     const problem = stampPaintFieldProblem(load, (value) => (value >= 0 && value <= 1 ? null : `a load of ${value}, outside 0..1`));
     if (problem) throw new Error(`stamp paint: ${full}'s load can't be painted: ${problem}`);
     const application = geometry.application ?? (brush.media && STAMP_MEDIA_FILLS[brush.media]);

@@ -38,6 +38,18 @@ the neighbourhood: the flow stage (`stamp-wet-flow.ts`), where a deposit's fresh
 paper and the workable paint its water stirs evens out, or paint runs back into a lift, and the drying rim
 (`stamp-wet-rim.ts`) at each of a wash's dryings, a `wait('dry')` and its end. A graded material lays each pigment
 of either end, its amount graded on the GPU. A plain pass lands as it always has. Flat colour has no washes.
+
+**Fields.** A material, a fill's load and a preparation's wetness are each a `StampPaintField`
+(`stamp-paint-field.ts`): constant, linear, radial, or noise, two octaves of seeded value noise at a feature size in
+painting pixels, their lattices turned off the painting's axes. Every reader reads one share (`paintFieldShare` on the
+GPU, its CPU twin for a strokes fill's stamp opacity and the wetness lattice). A noise field's seed is settled as the
+recipe compiles (`stampSeededPaintField`): its own `seed`, a passage several deposits share, else the deposit's ID (a
+preparation's, its pass's), never a boil's epoch's.
+
+**Rim strength.** Each drying carries a `rim`, 0..2: its `wait('dry', { rim })`'s, else its wash's `rim`, else 1. It
+scales what each band pixel gives before the transport normalises it, so pigment stays conserved and the band and its
+eligibility are the medium's. At 0 the stage loads nothing for the drying but still owns its deposits' wet edges
+(`ownsWetEdges`), so their brushes' own rims stay off: a drying with no rim is a soft-edged wash, not a brush's ring.
 `stamp-paint-events.ts` is the painting in painting order, each deposit with the time it's settled by.
 
 **Wet state.** The lattice holds the paper: per landing, its `wetness`, `workable` and `settled` (1 where the paper

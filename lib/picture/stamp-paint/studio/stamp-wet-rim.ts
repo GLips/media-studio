@@ -11,6 +11,7 @@ import { PAINT_PAPER_WGSL } from '#lib/picture/paint/models/paint-paper.ts';
 import { STAMP_DRYING_RIM_MOST_BAND, STAMP_DRYING_RIM_WGSL, stampDryingRimBand, stampDryingRimWetShare, stampDryingWettest, stampWashDryings, type StampWashDrying } from '../models/stamp-wet-rim.ts';
 import { STAMP_GRID_AT_WGSL, type StampGrid } from '../models/stamp-region.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
+import type { CompiledStampDeposit } from '../models/stamp-paint-recipe.ts';
 import type { StampLoadedWetStage, StampWetDryingMoment, StampWetStage, StampWetStageContext } from './stamp-wet-stages.ts';
 import { stampUniformLayout, stampUniformWriter } from './stamp-uniform-layout.ts';
 import { encodeStampWetTransportSteps, stampWetSpreads } from './stamp-wet-transport.ts';
@@ -50,12 +51,12 @@ const FLOOD_FIRST_STEP = 2 ** Math.ceil(Math.log2(STAMP_DRYING_RIM_MOST_BAND));
 
 /**
  * A wash's rim: its wettest grid's lattice, size and first value in the grid buffer; the pixels it works over; its
- * medium's spread and damp, its brushes' mean diameter; its line's width; and the seed its line's unevenness is drawn
- * from.
+ * medium's spread and damp, its brushes' mean diameter; its line's width; the seed its line's unevenness is drawn
+ * from; and its strength, the drying's `rim`.
  */
 const RIM = stampUniformLayout('Rim', [
   ['lattice', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['seed', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'],
-  ['spread', 'f32'], ['damp', 'f32'], ['diameter', 'f32'], ['width', 'f32'],
+  ['spread', 'f32'], ['damp', 'f32'], ['diameter', 'f32'], ['width', 'f32'], ['rim', 'f32'],
 ]);
 
 const PRELUDE = /* wgsl */ `
@@ -315,7 +316,9 @@ fn reaches(field: texture_2d<f32>, origin: vec2f, toward: vec2f, level: f32, mos
   let line = paint * covered * present * nearby * dryingRimSteep(level, levels.y) * dryingRimLine(near - inset, width);
   var held: array<vec4f, ${layers}>;
   for (var l = 0; l < ${layers}; l++) { held[l] = textureLoad(layer, p, l, 0); }
-  let take = paint * hardness * dryingRimDraw(mix(far, near, nearby) - inset, far - inset, band, u.width) * dryingRimTake(u.spread, wetShare, strength) * clamp(washOpen(held), 0.0, 1.0);
+  // The drying's strength scales what each giver gives, before the scatter normalises it, so what's given is all
+  // delivered: band and line are the medium's whatever the strength.
+  let take = u.rim * paint * hardness * dryingRimDraw(mix(far, near, nearby) - inset, far - inset, band, u.width) * dryingRimTake(u.spread, wetShare, strength) * clamp(washOpen(held), 0.0, 1.0);
   textureStore(weights, local(p), vec4f(line, take, 0.0, 0.0));
   textureStore(lineOut, local(p), 0, vec4f(line, 0.0, 0.0, 0.0));
 }`;
@@ -394,6 +397,10 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
   if (spread <= 0 || !dryings.length) return { encode: () => null };
 
   const rims = new Map<StampWashDrying, LoadedRim>();
+  // Every deposit of a drying the medium would rim, whose brushes' own wet edges would rim it again: a drying at
+  // strength 0 owns its edges too, so its brushes' rims don't come back when its own is turned off.
+  const rimmed = new Set<CompiledStampDeposit>();
+  const ownsWetEdges = (deposit: CompiledStampDeposit) => rimmed.has(deposit);
   let points = 0;
   for (const drying of dryings) {
     const grid = stampDryingWettest(drying, wetness);
@@ -406,6 +413,9 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     if (band < 1.5) continue;
     const box = gridBox(grid, width, height);
     if (box.w <= 0 || box.h <= 0) continue;
+    for (const deposit of drying.deposits) rimmed.add(deposit);
+    // Nothing to gather: the drying keeps its edges, and pays nothing for a rim.
+    if (drying.rim === 0) continue;
     const sigma = band / 2, layers = wash.layersOf(painted[0]);
     // The line, laid in values[1], spreads back there; what's sent spreads in values[0].
     const spreads = stampWetSpreads(device, [{ sigma, order: 'transposed', layers: 1, from: 1 }, { sigma, order: 'forward', layers, from: 0 }]);
@@ -421,6 +431,7 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     put('damp', damp);
     put('diameter', diameter);
     put('width', Math.min(1.1, 0.5 + band / 50));
+    put('rim', drying.rim);
     const uniform = device.createBuffer({ size: RIM.words * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const writeSeed = (seed: number) => {
       put('seed', seed);
@@ -429,7 +440,7 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     rims.set(drying, { grid, first: points, box, uniform, writeSeed, layers, spreads });
     points += grid.values.length;
   }
-  if (!rims.size) return { encode: () => null };
+  if (!rims.size) return { encode: () => null, ownsWetEdges };
 
   const values = new Float32Array(points);
   for (const rim of rims.values()) values.set(rim.grid.values, rim.first);
@@ -488,8 +499,6 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
     ]];
   }));
 
-  // Rimmed: every deposit of a drying that rims, whose brushes' own wet edges would rim it again.
-  const rimmed = new Set([...rims.keys()].flatMap((drying) => drying.deposits));
   return {
     encode: (encoder, { drying, seed }) => {
       const rim = rims.get(drying);
@@ -499,7 +508,7 @@ function loadDryingRim({ device, painting, medium, wetness, width, height, layer
       encodeStampWetTransportSteps(encoder, rimSteps.get(drying)!, rim.box);
       return rim.box;
     },
-    ownsWetEdges: (deposit) => rimmed.has(deposit),
+    ownsWetEdges,
   };
 }
 

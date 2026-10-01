@@ -40,7 +40,9 @@ import {
   checkStampGateFlow, STAMP_GATE_FLOW_SIZE, stampGateFlowCase, stampGateFlowLayer, stampGateFlowPainting, stampGateHalfBits, stampGateHalfValue,
 } from '../models/stamp-gate-flow.ts';
 import { stampGatePrivatePainting, type StampGatePrivateCase } from '../models/stamp-gate-private-cases.ts';
-import { checkStampGateStripe, STAMP_GATE_STRIPE_SIZE, stampGateStripeCase, stampGateStripeLayer, stampGateStripePainting } from '../models/stamp-gate-stripe.ts';
+import {
+  checkStampGateRimStrength, checkStampGateStripe, STAMP_GATE_RIM_STRENGTHS, STAMP_GATE_STRIPE_SIZE, stampGateStripeCase, stampGateStripeLayer, stampGateStripePainting,
+} from '../models/stamp-gate-stripe.ts';
 import { stampGateFrameDifference, stampGateFramePasses, type StampGateFrameDifference } from '../models/stamp-gate-frames.ts';
 import {
   checkStampGateBloomed, checkStampGateConserved, checkStampGateFenced, checkStampGateRimmed, checkStampGateLifted, checkStampGateSet, checkStampGateSpread, stampGateLastGroupPigments, stampGateWashCase, type StampGateWashCheck,
@@ -452,10 +454,23 @@ async function checkStampGateFlowCase(id: string): Promise<StampGateWashCheck> {
 
 /**
  * Stripe case `id` (stamp-gate-stripe.ts): the bloom after the drop, or the rim at the wash's one drying, run once
- * over the layer written.
+ * over the layer written; or that rim at each strength.
  */
 async function checkStampGateStripeCase(id: string): Promise<StampGateWashCheck> {
   const { stage, medium: name } = stampGateStripeCase(id), medium = PAINT_MEDIA[name];
+  if (stage === 'rim-strength') {
+    const runs = await Promise.all(STAMP_GATE_RIM_STRENGTHS.map(async (rim) => {
+      const painting = stampGateStripePainting(rim), pass = painting.groups[0].passes[0], [drying] = stampWashDryings(pass);
+      let ownsEdges = false;
+      const { before, after } = await runStampGateStage(id, painting, medium, drying.deposits.at(-1)!, { ...STAMP_GATE_STRIPE_SIZE, ...stampGateStripeLayer() }, (context, encoder) => {
+        const loaded = STAMP_DRYING_RIM_STAGE.load(context);
+        ownsEdges = drying.deposits.every((deposit) => loaded.ownsWetEdges?.(deposit) ?? false);
+        loaded.encode(encoder, { drying, seed: 0 });
+      });
+      return { rim, before, after, ownsEdges };
+    }));
+    return checkStampGateRimStrength(id, runs);
+  }
   const painting = stampGateStripePainting(), pass = painting.groups[0].passes[0], drop = stampPassDeposits(pass).at(-1)!;
   const box = { x: 0, y: 0, w: STAMP_GATE_STRIPE_SIZE.width, h: STAMP_GATE_STRIPE_SIZE.height };
   const { before, after } = await runStampGateStage(id, painting, medium, drop, { ...STAMP_GATE_STRIPE_SIZE, ...stampGateStripeLayer() }, (context, encoder) => {
