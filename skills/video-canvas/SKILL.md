@@ -38,25 +38,45 @@ Everything is from `#studio`.
   - A **group** is one element. `opaque` covers what's under it; `glaze` tints it, like a transparent wash (a sky, a
     ground, a shadow).
   - A **pass** is one layer of paint inside it. `clipped: true` keeps it inside the last unclipped pass: texture and
-    shading that can't leave the silhouette. `within: region` keeps it inside a region (a reflection in its water).
+    shading that can't leave the silhouette. `within: { region, edge?, inset? }` keeps it inside an area (a
+    reflection in its water): `edge` as masking fluid's, a ragged one breaking the cut line of a padded wash
+    (seeded by the pass's ID; keep its amount under the brush's radius); `inset` px moves the edge inward.
   - A **fill** covers a `region`, reaching its outline, laid by its `application`:
     - `{ kind: 'flood' }`: solid inside, the brush's own edge at the outline, however small a spike. Outside a wash its
       paper is dry, so wet paint stops there hard, keeping the tip's broken outline (a dry-media brush keeps its tip's
       edge); for a soft edge, flood it in a wash into wetted paper (`preparation`), or in flat colour, which has no
       washes, fill with strokes. It costs what its edge does, not its area.
-    - `{ kind: 'strokes', pattern, spacing?, variation?, hand?, turns?, reach? }`: real strokes of the brush, the marks and the
-      paper between them showing. `pattern` is `'shading'`, `'zigzag'`, `'backAndForth'`, `'hatch'`, `'crossHatch'` or
-      `'scribble'`; `spacing` is diameters between rows (over 1 leaves paper); `variation` (0..1, 0.3) is how unevenly
-      a hand lays them. A pattern that turns back (shading, zigzag, back and forth) eases nearly to lifting at each
-      turn (`turns: 'eased'`, the default, as a crayon shades); `turns: 'pressed'` keeps the brush down, for body
-      colour covering a shape to its outline. Its marks stay inside the outline; `reach: 'over'` runs them out over it,
-      for a texture in a `clipped` pass over its silhouette, which trims them there. It costs what its strokes do.
+    - `{ kind: 'strokes', pattern, spacing?, variation?, hand?, reach? }`: real strokes of the brush, the marks
+      and the paper between them showing. `pattern` is an object by `kind`: `'shading'`, `'zigzag'`, `'backAndForth'`,
+      `'hatch'`, `'crossHatch'`, `'scribble'`, `'contour'` or `'guided'`; `spacing` is diameters between rows (over 1
+      leaves paper); `variation` (0..1, 0.3) is how unevenly a hand lays them. A pattern that turns back (shading,
+      zigzag, back and forth) eases nearly to lifting at each turn (`{ kind: 'shading', turns: 'eased' }`, the
+      default, as a crayon shades); `turns: 'pressed'` keeps the brush down, for body colour covering a shape to its
+      outline. It costs what its strokes do.
+    - `{ kind: 'contour' }` rings the shape in closed loops, outline first, each `spacing` inside the last.
+      `{ kind: 'guided', guides }` lays marks that wrap round a form, as cross-contour hatching does: `guides` are a
+      few curves across the shape, in order, all running the same way, each starting and ending outside it; marks
+      are blended between each guide and the next. Crossing or branching guides aren't matched: split the passage.
+    - Its marks stay inside the outline. `reach: { past }` runs them past it: their centres may lie up to `past`
+      diameters outside (rows run out across and along the shape, guided marks' ends run on, a contour's first ring
+      lies out there). `{ past: 0 }` takes their middles to the outline, a texture in a `clipped` pass over its
+      silhouette; `{ past: 1 }` or so puts each mark's taper and lift outside, so the edge stays crisp and full. The
+      marks then cross the outline: clip them, the pass `clipped` or it or its wash `within` the same region.
+    - `stampFillMarks(region, diameter, direction, strokes, seed)` gives the marks themselves (each keyed), for when
+      you need them outside a fill.
     - Left out, the brush's media decides: a wet brush washes, a dry one (pencil, crayon) shades. Override it for a
       hatched shadow in watercolour, or a wash of a brush whose media no style declares.
     - `direction` (radians) is the way its rows run, and it reveals across them as `drawnOver` runs; `load` grades how
-      much paint it lays (`{ kind: 'linear', from, to }`).
+      much paint it lays (`{ kind: 'linear', from, to }`), or mottles it (`{ kind: 'noise', scale, a, b }`).
   - A **stroke** is a brush along a path; **stamps** are single placements (blooms, flowers). Each has `material`
     (`{ kind: 'color', color }`), `diameter` px, `opacity`, `appliedAt` and `drawnOver` seconds.
+  - **Mottled colour** (a sky, water, a distant mass): `material: { kind: 'noise', scale: 60, seed: 'sky', a, b }`
+    lays a broad, uneven passage between two mixtures, `scale` px its patches' size. Deposits sharing a `seed` share
+    one continuous passage; left out, each deposit mottles on its own. The same field mottles a fill's `load` and a
+    wash preparation's `wetness`. Mottle by purpose (a warm lit plane against a cool one), not over everything.
+  - **A wash's dried edge**: `group.wash(id, { rim })` sets how strongly its edges gather pigment as it dries (0..2,
+    1 the medium's), and `wash.wait('dry', { rim })` sets it for that one drying. `rim: 0` dries soft-edged; 2 rims
+    harder, though only where the paint was wet enough to rim at all.
   - Give every stroke a **`hand`**, or it paints at constant pressure, the way a mouse does, and the brush's taper,
     swell and pressure-driven size and opacity never show. `hand: { profile, curvature, wobble }`:
     - `profile` is pressure along the stroke: `'taper'` (light, firm, light) for most marks, `'pressFlick'` (heavy,
@@ -71,10 +91,15 @@ Everything is from `#studio`.
       pace rather than an even one. A point's own `pressure` (and `speed`) still counts, multiplied in.
     - `npm run brushes:hand -- --style <style> --pack <pack> --brush <name> --out <dir>` paints one path under each profile, with and without curvature and wobble, beside constant pressure: see how a
       brush answers before choosing.
-  - **Masking fluid**: `mask(id, { region, edge })` on the painting, a group or a pass keeps paper bare there for
-    everything declared after it in that scope, until the scope ends; `unmask(id, { region, amount })` lifts all or
-    part of it. `edge`: `{ soft: px }` or `{ ragged: { amount, scale } }`, else a clean antialiased line. Paint
-    already there stays: a mask is for highlights, glints and reserves, not erasing.
+  - **Masking fluid**: `mask(id, { region, edge, inset })` on the painting, a group or a pass keeps paper bare there
+    for everything declared after it in that scope, until the scope ends; `unmask(id, { region, edge, inset, amount })`
+    lifts all or part of it. `edge`: `{ soft: px }` or `{ ragged: { amount, scale } }`, else a clean antialiased
+    line; `inset` (px) moves it inward. Paint already there stays: a mask is for highlights, glints and reserves, not
+    erasing.
+  - **A near shape in front of far paint** (hills before a range): give the near group `standsBefore: { groups:
+    ['far-range'], shape: hills, overlap: 3 }`. The named groups, which must paint before it, land as if under fluid
+    over `shape` inset by `overlap` px, past any unmask of theirs and their water too; the near group paints its own
+    shape over the seam, so no paper line opens. Say the shape: it isn't read from the near group's paint.
   - **A moving light out of a still sky** (a cloud drifting over a wash): make the cloud its own group with
     `motion`, and declare first `group.knockout(id, { preparation? }, (k) => …)`. It takes out of everything painted
     before the group, and travels with it. Then paint the cloud's own passes over it.
@@ -87,12 +112,45 @@ Everything is from `#studio`.
   - **`paper: 'own'`** on a moving group is a collage's piece of paper. Its grain moves with it rather than sliding
     through it. Leave it out for paint on the painting's paper; a moving granulating shape's slight shimmer is usually
     fine.
+  - **A wash** (`group.wash`) is a pass painted wet: its paint carries water, and it can `water`, `lift`, `soften`,
+    `bloom`, `charge`, `backrun` and `wait`. Wait for a state of the paper's sheen: `wait('shiny')` (the standing
+    shine has gone, water dropped in starts to push), `wait('damp')` (the shine has gone), judged under the next thing
+    you paint after it by default (`{ under: 'wash' }` for the whole wash's wettest paper, `{ under: { region } }`
+    for a region); `wait('dry')` lets the whole wash dry and rims its edges. `wait({ seconds })` is for drying a set
+    time further, no state in mind; if the whole wash has set by then, it rims just as `wait('dry')` would.
+  - **Colour charged into a wet wash**: `wash.charge(id, { placement, touches, mixtures, brush, diameter: [min, max],
+    length: [min, max], angle?, water?, when?, appliedAt, drawnOver })` lays `touches` short swelling strokes, each
+    loaded from `mixtures`, a weighted set (`{ kind: 'set', entries: [{ id, material, weight }] }`), so neighbours
+    differ. `placement` is `{ kind: 'along', path, spread }` (down a slope, a shadow side, a colour passage) or
+    `{ kind: 'area', region, weight? }`; prefer a path or a weighted area to an even scatter, which reads as
+    ornament. `when: 'damp'` waits once, until the paper under the touches has lost its shine. In the watercolor
+    style, `brush` is `brushes.charge`.
+  - **A backrun on purpose**: `wash.backrun(id, { along, brush, diameter, appliedAt })` lays clean water along a
+    junction you choose once the paper under it is damp. Both passages must be in the same wash: washes share no water.
+  - **Marks**: a `StampMark` (`{ key, brush, diameter, geometry }`) paints with `pass.mark` / `wash.mark`, placed from
+    its key, so every use lands the same stamps. `stampScatterMarks(placement, { count, length, diameter, key })`
+    lays out candidates; asking for more keeps the first ones where they were.
+  - **Will the bloom bloom?** `stampWetReport(painting, compileStampWetness(painting, mediumOf, paper, size))`
+    (`mediumOf(group)`: the style's `mixing.medium`, or a group's own `mixing`'s) gives each wait's paper before and
+    after, and each bloom, backrun and damp charge's verdict, with why one won't act (the paint had set, the paper
+    still shone).
+    `assertStampWetEffects(report)` in the project's test throws on any that certainly won't. Eligible isn't visible:
+    look at the render.
   - **`mixing: otherStyle.mixing`** paints a group in another style's medium and pigments, gouache butterflies in a
     watercolour, with that style's brushes. The painting keeps its own paper. Its paint meets the groups under it
     set and lies over them as that medium does: gouache covers a dark, a watercolour glazes it.
 - `stampSmoothRegion(points)` turns a few control points into a smooth silhouette; `stampRegionOutline(region)` traces
   its edge.
-- `compileStampPaintRecipe(recipe)` once, at scene definition, never in render: a new painting each frame reloads it.
+- **A rounded form** (an apple, a stone, a cheek): `stampRoundedForm({ outline, light: { direction, elevation },
+  ellipse?, terminator? })` assumes an ellipsoid over the outline (fitted to it unless you give one) and returns
+  `shade` (regions, to glaze), `core` (paths along the shade's inner edge, for the darkest, firmest marks), `lit`
+  (outline stretches facing the light, to soften or lose) and `light(x, y)`, 0..1. `direction` points toward the
+  light in the picture (y down); `elevation` is how far it comes from the viewer (π/2 is frontal and leaves no
+  shade). The ellipsoid is an assumption: check the shade reads right on a form that isn't egg-shaped.
+- `compileStampPaintRecipe(recipe)` at scene definition when the painting doesn't change. Where its shapes do (a
+  cloud drifting through a wash, a shape morphing), compile it in render: deposits whose shape, brush, size and seed
+  are unchanged reuse their marks, so a rebuilt frame pays for what changed plus a reload of a few ms. It also loses
+  the checkpoints a still painting draws from, so prefer `motion` or keyed materials where they can express the change.
 - **Colour that changes over the scene** (a sunset's sky): key the material rather than recompiling, as `motion` keys
   a group: `material: { kind: 'keys', keys: [{ at: 0.3, material: afternoon }, { at: 3.7, material: dusk }] }`, in
   scene seconds. Between keys each pigment's amount eases (flat colour, its channels); a graded field's ends are each

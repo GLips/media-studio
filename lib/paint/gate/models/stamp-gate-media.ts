@@ -7,10 +7,12 @@ import { PAINT_MEDIA, type PaintMedium } from '#lib/paint/materials/models/paint
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-pigment.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import type { StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { StampPigmentMixing } from '#lib/paint/painting/models/stamp-pigment-paint.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
-import type { StampGateWashCheck } from './stamp-gate-washes.ts';
+import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 
 export const STAMP_GATE_MEDIA_IDS = ['media/mixed'] as const;
 

@@ -156,37 +156,37 @@
     "painting/pigment-crayon": {
       "file": "painting/pigment-crayon.png",
       "output": "000cd132ad1f2796df151ad7b6f0d2461fbade190da9b3caf3bcb6f5a8961fbe",
-      "inputs": "ece1924a19e14a3154a84f3afd9fb4a987936418cde5c69143a5d475f37ac58c",
-      "reason": "vid-122: a full load lays 20 (gouache) and 15 (crayon) unit films, a unit one watercolour wash, so a lift's stain is a sliver of a stroke; a full load covers as cover says, gouache 0.9 (thinner than before, so a lift reads paler; pure full-strength darks now show the paper's grain a little) and crayon 0.92 (as before); granulation load and crayon holds per full load",
+      "inputs": "91aea84a85283d76d053fbee77aeb41be71bc3cd026b695455886069b0a4bbf4",
+      "reason": "vid-114 passage layer step 4: inputs only, each PaintMedium now declares its capabilities (watercolour and gouache wet-history, wet-conditions, lift; crayon lift, burnish), which the inputs print holds; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "2209c28",
+      "acceptedOver": "5eb1a3f",
       "adapter": "apple metal-3"
     },
     "painting/pigment-gouache": {
       "file": "painting/pigment-gouache.png",
       "output": "edbe3666bfc5c42fb109ec6be4abb9a209c4118f2c33e69b5b7338dd673bfedc",
-      "inputs": "d1de9b0d139a8baffb17dd0db48e6948d84db0de55f4640d08d818438b4a2791",
-      "reason": "vid-122: a full load lays 20 (gouache) and 15 (crayon) unit films, a unit one watercolour wash, so a lift's stain is a sliver of a stroke; a full load covers as cover says, gouache 0.9 (thinner than before, so a lift reads paler; pure full-strength darks now show the paper's grain a little) and crayon 0.92 (as before); granulation load and crayon holds per full load",
+      "inputs": "d165644d38c214142191f824dc040b454706f17bf71a09de0511a36bef44ad93",
+      "reason": "vid-114 passage layer step 4: inputs only, each PaintMedium now declares its capabilities (watercolour and gouache wet-history, wet-conditions, lift; crayon lift, burnish), which the inputs print holds; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "2209c28",
+      "acceptedOver": "5eb1a3f",
       "adapter": "apple metal-3"
     },
     "painting/pigment-watercolour": {
       "file": "painting/pigment-watercolour.png",
       "output": "804c638367f7b971fff0937af5e80288568473edeb2bfe057e0072c66f9199cf",
-      "inputs": "2da5000b3ded38ad7ec730a7b36e0406f632d08653c421ecce0b22fbf6c741b6",
-      "reason": "vid-127: a flood's body lays its brush's expected tint (flat), and outside a wash a flood carrying water lands as wet paint on dry paper (wetLandCover), hard at its water's edge",
+      "inputs": "fe72924d650d0d62d8366afbda37dff6953a0c178996a2dbe22fc3aa43df8006",
+      "reason": "vid-114 step 4b: inputs only, watercolour declares a dry-brush contact (paperContact valleys, dryBrush tooth 0.85) for its dry-media brushes, which the inputs print holds; this painting lays no dry-media brush",
       "accepted": "2026-10-01",
-      "acceptedOver": "a43272d",
+      "acceptedOver": "afc9694",
       "adapter": "apple metal-3"
     },
     "painting/regions": {
       "file": "painting/regions.png",
       "output": "0490a54814080c5f7b948972e0e942dad928342c0f6c0b541135207d5ced0cb3",
-      "inputs": "7138de13b1858e6a716874b640da1033713fc1c973d61d7d94d969a71e2e7999",
-      "reason": "vid-127: a flood's body lays its brush's expected tint (flat), and outside a wash a flood carrying water lands as wet paint on dry paper (wetLandCover), hard at its water's edge",
+      "inputs": "1be4454ee5177ccf809da1b86c79b4f1baa1bd9a5d42120418e9cfdf2b774249",
+      "reason": "vid-114 merged with main (vid-127, vid-118): inputs only, the compiled within (StampArea), fill patterns as objects and noise-seeded load fields change the serialised inputs; pixels identical",
       "accepted": "2026-10-01",
-      "acceptedOver": "a43272d",
+      "acceptedOver": "e659e6e",
       "adapter": "apple metal-3"
     },
     "painting/strokes-accumulations": {

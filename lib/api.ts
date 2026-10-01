@@ -73,12 +73,22 @@ export { ThreeStage, softboxEnvironment, type ThreeBloom, type ThreeEnvironment,
 export { addVec3, crossVec3, dotVec3, lengthVec3, lerpVec3, scaleVec3, subVec3, unitVec3, type Vec3 } from '#lib/picture/frame/models/vec3.ts';
 // Stamp painting: a recipe of opaque and glaze groups of passes of deposits, painted on the GPU with a private style's
 // brushes (docs/private-styles.md, skills/video-canvas/SKILL.md).
-export { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint, type StampBloomSettings, type StampFillSettings, type StampGroupOptions, type StampGroupScope, type StampLiftSettings, type StampMaskSettings, type StampKeyedMaterial, type StampPaintMaterial, type StampPaintPaper, type StampPaintRecipe, type StampPaintScope, type StampPassOptions, type StampPassScope, type StampSoftenSettings, type StampUnmaskSettings, type StampWashOptions, type StampWashScope, type StampWashWait, type StampWaterSettings } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+export { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+export { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+export type { StampBloomSettings, StampFillSettings, StampGroupOptions, StampGroupScope, StampLiftSettings, StampMarkPaintSettings, StampMaskSettings, StampKeyedMaterial, StampPaintMaterial, StampPaintPaper, StampPaintRecipe, StampPaintScope, StampPassOptions, StampPassScope, StampSoftenSettings, StampUnmaskSettings, StampWashOptions, StampWashScope, StampWaterSettings } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 export type { PaintMaterial, StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
+export type { StampBackrunSettings, StampChargeSettings, StampWaitEffect, StampWaitOptions, StampWaitTarget, StampWashWait, StampWetEffectKind } from '#lib/paint/painting/models/stamp-wash-effects.ts';
+export { stampMarkStamps, stampScatteredStrokePath, stampScatterMarks, type StampMark, type StampMarkGeometry, type StampScatterAngle, type StampScatteredMark, type StampScatterOptions, type StampScatterPlacement } from '#lib/paint/painting/models/stamp-marks.ts';
+export { pickStampMaterial, stampMaterialSetProblem, type StampMaterialSet, type StampMaterialSetEntry } from '#lib/paint/painting/models/stamp-material-set.ts';
+export { compileStampWetness, type StampWetRange } from '#lib/paint/painting/models/stamp-wetness.ts';
+export { assertStampWetEffects, stampWetReport, stampWetReportWarnings, type StampWetReport, type StampWetReportDrying, type StampWetReportEffect, type StampWetReportTouch, type StampWetReportWait, type StampWetReportWash } from '#lib/paint/painting/models/stamp-wet-report.ts';
 export { visibleStampCountAt } from '#lib/paint/painting/models/stamp-deposit-reveal.ts';
-export { STAMP_FILL_PATTERNS, stampRegionOutline, stampSmoothRegion, type StampFillApplication, type StampFillPattern, type StampFillReach, type StampFillStrokes, type StampFillTurns } from '#lib/paint/painting/models/stamp-fill.ts';
+export { stampRegionOutline, stampSmoothRegion, type StampFillApplication } from '#lib/paint/painting/models/stamp-fill.ts';
+export { STAMP_FILL_PATTERNS, stampFillMarks, stampFillStrokePath, type StampFillGuides, type StampFillMark, type StampFillPattern, type StampFillReach, type StampFillStrokes, type StampFillTurns } from '#lib/paint/painting/models/stamp-fill-strokes.ts';
+export { stampFittedEllipse, stampRoundedForm, type StampFormEllipse, type StampFormLight, type StampRoundedForm, type StampRoundedFormSettings } from '#lib/paint/painting/models/stamp-form.ts';
 export type { StampEdge, StampPoint, StampRegion } from '#lib/paint/painting/models/stamp-region.ts';
-export type { StampPaintField } from '#lib/paint/painting/models/stamp-paint-field.ts';
+export type { StampArea, StampStandsBefore } from '#lib/paint/painting/models/stamp-area.ts';
+export type { StampNoiseField, StampPaintField } from '#lib/paint/painting/models/stamp-paint-field.ts';
 export type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from '#lib/paint/painting/models/stamp-group-motion.ts';
 export type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
 export type { StampGroupFrameState, StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
@@ -103,7 +113,7 @@ export type { PaintPartPin, PaintPin, PaintPinMove, PaintPinRig, PaintRadialPin 
 export { type PaintNodeClock, type PaintPlayClock, type PaintPlayLoop } from '#lib/paint/animation/models/paint-clock.ts';
 export { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 // Pigment paint: a style that paints in pigment names its medium and pigments; a deposit lays a colour or a mixture.
-export { PAINT_MEDIA, TITANIUM_WHITE, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
+export { PAINT_MEDIA, TITANIUM_WHITE, type PaintMedium, type PaintSheen } from '#lib/paint/materials/models/paint-medium.ts';
 export type { PaintMixture, PaintMixturePart } from '#lib/paint/materials/models/paint-mixture.ts';
 export type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-pigment.ts';
 export { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';

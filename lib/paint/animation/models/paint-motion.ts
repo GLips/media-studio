@@ -4,7 +4,7 @@
 // that will actually be drawn.
 
 import { STAMP_WARP_CELL, stampWarpCells, stampWarpTriangles } from '#lib/paint/painting/models/stamp-group-warp.ts';
-import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';

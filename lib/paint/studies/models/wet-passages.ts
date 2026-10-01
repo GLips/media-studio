@@ -7,7 +7,8 @@
 // into a wet sky; what the engine makes of them is what's judged.
 
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import { stampPaintRecipe, type StampPaintPaper, type StampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import type { StampPaintPaper, StampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampRegion } from '#lib/paint/painting/models/stamp-region.ts';
 import type { StampPigmentMixing } from '#lib/paint/painting/models/stamp-pigment-paint.ts';

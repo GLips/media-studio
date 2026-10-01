@@ -6,7 +6,7 @@
 // pixel, so a pigment stays itself to the pixel, where a lift needs it. A graded material lays each pigment of either
 // end at an amount the GPU grades between the two, never by rendered colour; a keyed one over the scene too.
 
-import { paintPigmentFromColor, paintPigmentInMedium, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
+import { checkPaintCapability, paintPigmentFromColor, paintPigmentInMedium, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { paintMixtureComponents } from '#lib/paint/materials/models/paint-mixture.ts';
 import { paintPigmentSeed } from '#lib/paint/materials/models/paint-paper.ts';
 import type { PaintPigment, PaintPigmentAppearance } from '#lib/paint/materials/models/paint-pigment.ts';
@@ -14,7 +14,8 @@ import type { PaintBands } from '#lib/paint/materials/models/paint-spectrum.ts';
 import type { PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
 import { stampPaintFieldEnds } from './stamp-paint-field.ts';
 import { mapStampKeyList, stampKeySpanAt, type StampKeyList } from './stamp-scene-keys.ts';
-import { stampGroupKnocksOut, stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampKeyedMaterial, type CompiledStampPaint } from './stamp-paint-recipe.ts';
+import { stampGroupKnocksOut, stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampPaint } from './stamp-paint-recipe-compile.ts';
+import type { CompiledStampKeyedMaterial } from './stamp-paint-recipe-types.ts';
 import type { PaintMaterial, StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 
 /**
@@ -60,7 +61,7 @@ export function stampPigmentAmountsAt({ ends }: StampPigmentComponent, t: number
 }
 
 /** Where a deposit's material grades between its ends, as paintFieldShare reads it (STAMP_PAINT_FIELD_SHARE): kind 0 for none. */
-export type StampPigmentGrade = { kind: 0 | 1 | 2; geometry: readonly [number, number, number, number] };
+export type StampPigmentGrade = { kind: 0 | 1 | 2 | 3; geometry: readonly [number, number, number, number] };
 
 export type StampPigmentGroup = {
   /** Its medium's index in the painting's media (StampPigmentPaint's `media`): its palette is fitted in it. */
@@ -108,8 +109,12 @@ export type StampPigmentUnderpaint = { pigments: readonly PaintPigment[]; media:
 /** The most pigments a painting's underpaint keeps: four layers of the painting's. */
 export const STAMP_PIGMENT_UNDERPAINT_SLOTS = 16;
 
-/** `knockout`: whether it's in its group's knockout, taking from the paint behind the group rather than laying its own. */
-export type StampPigmentDeposit = { group: number; components: readonly StampPigmentComponent[]; grade: StampPigmentGrade; knockout: boolean };
+/**
+ * `knockout`: whether it's in its group's knockout, taking from the paint behind the group rather than laying its own.
+ * `dryBrush`: whether its paint catches the paper's peaks as a dry brush does in its medium (PaintMedium's
+ * `paperContact.dryBrush`): a dry-media brush in a medium that says how.
+ */
+export type StampPigmentDeposit = { group: number; components: readonly StampPigmentComponent[]; grade: StampPigmentGrade; knockout: boolean; dryBrush: boolean };
 
 const UNGRADED: StampPigmentGrade = { kind: 0, geometry: [0, 0, 0, 0] };
 
@@ -161,10 +166,11 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
       const { action } = deposit;
       // Water and a lift lay no pigment of their own.
       if (action.kind !== 'paint') {
-        deposits.set(deposit, { group: g, components: [], grade: UNGRADED, knockout: pass.kind === 'wash' && pass.knockout });
+        if (action.kind === 'lift') checkPaintCapability(medium, 'lift', `${deposit.id}'s lift`);
+        deposits.set(deposit, { group: g, components: [], grade: UNGRADED, knockout: pass.kind === 'wash' && pass.knockout, dryBrush: false });
         continue;
       }
-      if (action.burnish && medium.paperContact.kind !== 'peaks') throw new Error(`stamp paint: ${deposit.id} burnishes, and ${medium.name} isn't a dry medium`);
+      if (action.burnish) checkPaintCapability(medium, 'burnish', `${deposit.id}'s burnish`);
       const { first, second, kind, geometry } = stampPaintFieldEnds(action.material);
       /** What a full stroke of `material` lays, each pigment its medium's one of its id. */
       const laidOf = (material: PaintMaterial) => {
@@ -187,6 +193,7 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
       deposits.set(deposit, {
         group: g,
         knockout: false,
+        dryBrush: deposit.brush.media === 'dry' && medium.paperContact.kind === 'valleys' && !!medium.paperContact.dryBrush,
         grade: kind === 0 ? UNGRADED : { kind, geometry },
         components: pigments.map((pigment) => {
           let slot = palette.findIndex(({ id }) => id === pigment.id);
@@ -222,8 +229,15 @@ export function stampPigmentGroupMedium(paint: StampPigmentPaint, painting: Comp
  * pressure against the tooth itself (paintDryContact), so the brush's grain depth by pressure, Photoshop's model of
  * the same, is set aside: kept, Kyle's Nupastel laid nothing at half pressure in crayon. A lift's stamps go alike.
  */
-export const stampGrainDepthIn = (stamp: PlacedStamp, medium: PaintMedium | null): number =>
-  stamp.grainDepth * (medium?.paperContact.kind === 'peaks' ? 1 : stamp.grainDepthByPressure);
+export const stampGrainDepthIn = (stamp: PlacedStamp, medium: PaintMedium | null): number => stampGrainDepthBy(stamp, stampGrainDepthSourceIn(medium));
+
+/** Where a stamp's grain depth by pressure comes from: the paper's tooth, or the brush (stampGrainDepthIn). */
+export type StampGrainDepthSource = 'tooth' | 'brush';
+/** Where `medium` (null: flat paint) takes a stamp's grain depth by pressure from: the tooth where it catches the peaks. */
+export const stampGrainDepthSourceIn = (medium: PaintMedium | null): StampGrainDepthSource => (medium?.paperContact.kind === 'peaks' ? 'tooth' : 'brush');
+/** `stamp`'s share of its grain's depth, its pressure's share taken from `source`. */
+export const stampGrainDepthBy = (stamp: PlacedStamp, source: StampGrainDepthSource): number =>
+  stamp.grainDepth * (source === 'tooth' ? 1 : stamp.grainDepthByPressure);
 
 /** Whether two pigments are one: the same absorption, scattering and habits. A name is only for people. */
 const samePigment = (a: PaintPigment, b: PaintPigment) =>

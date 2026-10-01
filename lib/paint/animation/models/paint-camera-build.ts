@@ -9,7 +9,7 @@
 // backdrops hold still; one that moves is checked as if it didn't.
 
 import { stampStageExtent, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import {

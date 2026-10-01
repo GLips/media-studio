@@ -8,11 +8,12 @@ import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { linearToSrgb, srgbToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
-import { compileStampPaintRecipe, stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { StampOutsideLayerSlot } from '#lib/paint/painting/models/stamp-outside-layer.ts';
 import { stampGateFrameDifference, stampGateFramePasses } from './stamp-gate-frames.ts';
 import { STAMP_GATE_IMAGES, STAMP_GATE_WHITE, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
-import type { StampGateWashCheck } from './stamp-gate-washes.ts';
+import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 
 export const STAMP_GATE_OUTSIDE_IDS = ['outside/flat', 'outside/pigment'] as const;
 export type StampGateOutsideKind = 'flat' | 'pigment';

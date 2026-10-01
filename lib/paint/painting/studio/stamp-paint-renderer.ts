@@ -14,20 +14,24 @@ import { bindStampBrushImages, stampBrushImages, type StampBrush, type StampBrus
 import { COVERAGE_FORMULAS_WGSL, stampDualModeIndex, stampGrainModeIndex } from '#lib/paint/brush/models/coverage-formulas.ts';
 import {
   STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL, STAMP_ACCUMULATIONS, STAMP_BLUR_LEVELS, STAMP_RESOLVE_ORDERS, STAMP_RESOLVE_PLANS, stampAccumulationBuild, stampAccumulationIndex,
-  stampAccumulationPlan, stampActiveLayers, stampResolveOrderIndex, stampResolveOrdersWgsl, stampResolvePlan, type StampAccumulationPlan, type StampActiveLayer, type StampResolveStage,
+  stampActiveLayers, stampResolveOrderIndex, stampResolveOrdersWgsl, stampResolvePlan, type StampAccumulationPlan, type StampActiveLayer, type StampResolveStage,
 } from '../models/stamp-deposit-stages.ts';
 import { STAMP_FLOOD_FRONT_SHARE_WGSL } from '../models/stamp-fill.ts';
 import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
 import { stampDepositShowsAt, stampFloodProgressAt, visibleStampCountAt } from '../models/stamp-deposit-reveal.ts';
-import { stampBoilSeed, stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampMask, type CompiledStampMaskArea, type CompiledStampPaint, type CompiledStampPass, type StampPaintPaper } from '../models/stamp-paint-recipe.ts';
-import { compileStampPigmentPaint, stampGrainDepthIn, stampPigmentGroupMedium, type StampPaintMixing } from '../models/stamp-pigment-paint.ts';
-import { compileStampWetness, STAMP_WET_CELL, type StampWetLanding, type StampWetness } from '../models/stamp-wetness.ts';
-import { STAMP_WET_LAND_WGSL, stampFloodCarriesWater } from '../models/stamp-wet-landing.ts';
+import { stampBoilSeed, stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampMask, type CompiledStampPaint, type CompiledStampPass } from '../models/stamp-paint-recipe-compile.ts';
+import type { StampPaintPaper } from '../models/stamp-paint-recipe-types.ts';
+import { compileStampPigmentPaint, stampGrainDepthSourceIn, stampPigmentGroupMedium, type StampPaintMixing } from '../models/stamp-pigment-paint.ts';
+import { compileStampWetness, STAMP_WET_CELL, type StampWashDrying, type StampWetLanding, type StampWetness } from '../models/stamp-wetness.ts';
+import { stampWetReport, stampWetReportWarnings } from '../models/stamp-wet-report.ts';
+import { STAMP_WET_LAND_WGSL, stampDepositionLaw, stampFloodCarriesWater } from '../models/stamp-wet-landing.ts';
 import { PAINT_DRY_BURNISHED_PRESS, paintPigmentSeed } from '#lib/paint/materials/models/paint-paper.ts';
 import { PAINT_BANDS } from '#lib/paint/materials/models/paint-spectrum.ts';
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
-import { STAMP_GRID_AT_WGSL, STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL, stampEdgeReach, stampEdgeWidth, stampPolygonBox, type StampBox, type StampPoint } from '../models/stamp-region.ts';
-import type { PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
+import { STAMP_GRID_AT_WGSL, STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL, stampEdgeWidth, type StampBox, type StampPoint } from '../models/stamp-region.ts';
+import { STAMP_AREA_COVERAGE_WGSL, stampAreaBox, type CompiledStampArea } from '../models/stamp-area.ts';
+import type { FrozenStampMarks } from '#lib/paint/brush/models/stamp-placement.ts';
+import { STAMP_FLOATS, STAMP_ORDERED_TILE, stampBinsAppended, stampInstanceFloats, stampMarksExtremes, stampMarksOrderedBins, stampMarksPlan, stampMarksReachOfFirst, stampTintFloats, TINT_FLOATS } from '../models/stamp-mark-load.ts';
 import { stampBlurRegion, type StampPixelBox } from '../models/stamp-blur-region.ts';
 import { coarsestStampTipLevel, STAMP_TIP_HULL_SIDES, type StampTipHull, type StampTipLevel } from '../models/stamp-tip-hull.ts';
 import { flatStampPaintCompositor, type StampPaintCompositor, type StampPaintTarget, type StampWashLayer } from './stamp-paint-compositor.ts';
@@ -36,7 +40,6 @@ import { FULL_FRAME_WGSL, type StampPaintDevice, type StampPaintImage } from './
 import type { StampPaintGpuScope, StampPaintSurface } from './stamp-paint-surface.ts';
 import { stampUniformLayout, stampUniformStruct, stampUniformWriter, type StampUniformViews } from './stamp-uniform-layout.ts';
 import { STAMP_WET_STAGES, stampWetStageReach, type StampLoadedWetStage, type StampWetStage, type StampWetDepositMoment, type StampWetDryingMoment, type StampWetStageContext } from './stamp-wet-stages.ts';
-import { stampWashDryings, type StampWashDrying } from '../models/stamp-wet-rim.ts';
 import { stampPaintCheckpoints } from './stamp-paint-checkpoints.ts';
 import { STAMP_LAYER_CACHE_READ_REACH, stampPaintLayerCache } from './stamp-paint-layer-cache.ts';
 import { STAMP_GAUSSIAN_PASS, STAMP_GLOW_SOURCE, STAMP_SRGB_WGSL, stampGaussianPassWgsl, stampGlowSourceWgsl, type StampGlowCover } from './stamp-paint-defocus-glow.ts';
@@ -49,14 +52,6 @@ import type { StampGroupGlow, StampGroupMarks, StampPaintFrameState } from '../m
 import { stampOutsideLayerPlaces, type StampOutsideFrameState } from '../models/stamp-outside-layer.ts';
 import { checkStampOutsideLayerTexture, STAMP_OUTSIDE_LAY, stampOutsideLayWgsl, type StampOutsideLayer } from './stamp-outside-layer-lay.ts';
 import { stampStage, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
-
-/**
- * Floats per stamp in the instance buffer: x, y, diameter, rotation, then alpha, blur, grain turn and flips (x 1, y 2),
- * then opacity, roundness, grain depth and pressure.
- */
-const STAMP_FLOATS = 12;
-/** Floats per stamp in the tint buffer, for a brush with colour dynamics: hue, saturation, lightness, secondary. */
-const TINT_FLOATS = 4;
 
 /** Bytes per uniform slot: every draw's uniforms sit at an offset WebGPU allows binding at (256). */
 const SLOT = 256;
@@ -171,9 +166,6 @@ fn covered(corner: Corner) -> vec2f {
 // pressure 0 still shows (StampPaintCompositor's reads.press).
 @fragment fn pressOf(corner: Corner) -> @location(0) vec4f { return vec4f(select(0.0, 1.0 + corner.pressure, covered(corner).x > 0.0)); }`;
 
-/** Pixels a side of the tiles an `ordered` layer's stamps are binned by (binOrderedStamps). */
-const ORDERED_TILE = 32;
-
 // An `ordered` layer is one triangle over the deposit's box: each texel walks its tile's stamps in order, laying each
 // by its accumulation's lay. A stamp's tip place inverts the fixed path's vertex transform; tip and rolling grain are
 // sampled at that path's interpolated gradients, the tip's grown by its blur as the fixed path's bias grows it.
@@ -202,7 +194,7 @@ ${STAMP_ACCUMULATION_LAY_WGSL}
 struct Laid { built: f32, tintA: vec4f, tintB: vec4f }
 // \`p\`: a texel's centre on the stage, binned as stamps are (binOrderedStamps).
 fn laidInOrder(p: vec2f, tinted: bool) -> Laid {
-  let cell = u.bins + (u32(p.y) / ${ORDERED_TILE}u) * u.tilesX + u32(p.x) / ${ORDERED_TILE}u;
+  let cell = u.bins + (u32(p.y) / ${STAMP_ORDERED_TILE}u) * u.tilesX + u32(p.x) / ${STAMP_ORDERED_TILE}u;
   var laid = Laid(0.0, vec4f(0.0), vec4f(0.0));
   var mean = 0.0;
   if (u.rolling == 1u) { mean = grainMean(grain, tile); }
@@ -689,21 +681,23 @@ ${glowing ? `${STAMP_SRGB_WGSL}
 }`;
 
 // A state of the masking fluid over its box: the state it's built on (`parent`, width 0 for none), then `opCount` ops
-// from `firstOp`, a mask joining its region by max, an unmask lifting its amount, everywhere without a region
-// (`count` 0). An op's region is worked out only within its `reach`, beyond which it's 0.
+// from `firstOp`, a mask joining its area by max, an unmask lifting its amount, everywhere without a region
+// (`count` 0). An op's area is worked out only within its `reach`, beyond which it's 0.
 const MASK_STEP = stampUniformLayout('MaskStep', [['box', 'vec4f'], ['parent', 'vec4f'], ['firstOp', 'u32'], ['opCount', 'u32']]);
-const MASK_OP_WORDS = 12;
+/** A MaskOp's words: its thirteen, padded to its vec4f's alignment. */
+const MASK_OP_WORDS = 16;
 const MASK_STEP_WGSL = /* wgsl */ `
 ${COVERAGE_FORMULAS_WGSL}
 ${STAMP_REGION_WGSL}
 ${FULL_FRAME_WGSL}
 ${MASK_STEP.wgsl}
-struct MaskOp { reach: vec4f, ragged: vec2f, width: f32, amount: f32, first: u32, count: u32, kind: u32, seed: u32 }
+struct MaskOp { reach: vec4f, ragged: vec2f, width: f32, amount: f32, first: u32, count: u32, kind: u32, seed: u32, inset: f32 }
 @group(0) @binding(0) var<uniform> u: MaskStep;
 @group(0) @binding(1) var<storage, read> points: array<vec2f>;
 @group(0) @binding(2) var parent: texture_2d<f32>;
 @group(0) @binding(3) var<storage, read> ops: array<MaskOp>;
 ${STAMP_POLYGON_DISTANCE_WGSL}
+${STAMP_AREA_COVERAGE_WGSL}
 @fragment fn maskStep(@builtin(position) at: vec4f) -> @location(0) vec4f {
   let p = at.xy + u.box.xy;
   var fluid = 0.0;
@@ -714,11 +708,7 @@ ${STAMP_POLYGON_DISTANCE_WGSL}
     var r = 1.0;
     if (op.count > 0u) {
       r = 0.0;
-      if (all(p >= op.reach.xy) && all(p <= op.reach.zw)) {
-        var moved = 0.0;
-        if (op.ragged.y > 0.0) { moved = op.ragged.x * edgeNoise(p.x / op.ragged.y, p.y / op.ragged.y, op.seed); }
-        r = edgeCoverage(polygonDistance(p, op.first, op.count) + moved, op.width);
-      }
+      if (all(p >= op.reach.xy) && all(p <= op.reach.zw)) { r = areaCoverage(p, op.first, op.count, op.inset, op.ragged, op.width, op.seed); }
     }
     fluid = select(fluid * (1.0 - op.amount * r), max(fluid, r), op.kind == 0u);
   }
@@ -801,64 +791,7 @@ const aspectOf = (layer: BoundLayer) => layer.tip.image.height / layer.tip.image
 /** How many diameters a layer's stamp spans along its image's longer side, which bounds how far it reaches. */
 const reachSpanOf = (layer: BoundLayer) => spanOf(layer) * Math.max(1, aspectOf(layer));
 
-/** Stamps whose bounds are kept together: a box is found from the chunks before it and the stamps within its own. */
-const REACH_CHUNK = 256;
-
-/**
- * How far `stamps` reach, for each whole chunk of them from the first: x0, y0, x1, y1 of stamps 0 to the chunk's end.
- * A stamp's corners reach 0.75 of its tip image's longer side (`span` diameters) from its centre, however it's turned.
- */
-function stampReach(stamps: readonly PlacedStamp[], span: number): Float64Array {
-  const chunks = new Float64Array(Math.floor(stamps.length / REACH_CHUNK) * 4);
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (let i = 0; i < chunks.length / 4 * REACH_CHUNK; i++) {
-    const s = stamps[i], r = s.diameter * span * 0.75;
-    x0 = Math.min(x0, s.x - r); y0 = Math.min(y0, s.y - r); x1 = Math.max(x1, s.x + r); y1 = Math.max(y1, s.y + r);
-    if ((i + 1) % REACH_CHUNK === 0) chunks.set([x0, y0, x1, y1], ((i + 1) / REACH_CHUNK - 1) * 4);
-  }
-  return chunks;
-}
-
-/** Grows `into` (x0, y0, x1, y1) by where the first `count` of `stamps` reach, from their chunks and the rest. */
-function reachOfFirst(stamps: readonly PlacedStamp[], chunks: Float64Array, count: number, span: number, into: number[]) {
-  const whole = Math.floor(count / REACH_CHUNK);
-  if (whole) {
-    const at = (whole - 1) * 4;
-    into[0] = Math.min(into[0], chunks[at]); into[1] = Math.min(into[1], chunks[at + 1]);
-    into[2] = Math.max(into[2], chunks[at + 2]); into[3] = Math.max(into[3], chunks[at + 3]);
-  }
-  for (let i = whole * REACH_CHUNK; i < count; i++) {
-    const s = stamps[i], r = s.diameter * span * 0.75;
-    into[0] = Math.min(into[0], s.x - r); into[1] = Math.min(into[1], s.y - r); into[2] = Math.max(into[2], s.x + r); into[3] = Math.max(into[3], s.y + r);
-  }
-}
-
 type LoadedPlan = Exclude<StampAccumulationPlan, { kind: 'ordered' }> | { kind: 'ordered'; bins: number };
-
-/**
- * Appends an `ordered` layer's bins to `into` and returns where they start: for each tile ORDERED_TILE texels a side
- * (a stamp's texel being its point plus `margin`), `tilesX` across the stage, row by row, the entry its stamps start
- * at (and one past the last tile's), then each tile's stamps by index in order that reach into it (as stampReach).
- */
-function binOrderedStamps(stamps: readonly PlacedStamp[], span: number, tilesX: number, tilesY: number, margin: number, into: number[]): number {
-  const tiles = Array.from({ length: tilesX * tilesY }, (): number[] => []);
-  const tileOf = (v: number, count: number) => Math.min(count - 1, Math.max(0, Math.floor((v + margin) / ORDERED_TILE)));
-  stamps.forEach((s, i) => {
-    const r = s.diameter * span * 0.75;
-    for (let ty = tileOf(s.y - r, tilesY); ty <= tileOf(s.y + r, tilesY); ty++) {
-      for (let tx = tileOf(s.x - r, tilesX); tx <= tileOf(s.x + r, tilesX); tx++) tiles[ty * tilesX + tx].push(i);
-    }
-  });
-  const table = into.length;
-  let entry = table + tiles.length + 1;
-  for (const tile of tiles) {
-    into.push(entry);
-    entry += tile.length;
-  }
-  into.push(entry);
-  for (const tile of tiles) for (const i of tile) into.push(i);
-  return table;
-}
 
 /**
  * A deposit as the GPU holds it: where its stamps and dual stamps start in its bank's instance buffer, where its tints
@@ -877,7 +810,10 @@ type LoadedDeposit = {
   staged: CompiledStampDeposit;
   home: BankHome;
   stampBuffer: GPUBuffer; tintBuffer: GPUBuffer; binBuffer: GPUBuffer;
-  /** A wash deposit's landing and where its grids start in the painting's wet grid buffer; null outside a wash. */
+  /**
+   * A deposit laid by the wash law (stampDepositionLaw): its landing, and where its grids start in the painting's wet
+   * grid buffer; null for one its medium's dry law lays, outside a wash or in it.
+   */
   landing: StampWetLanding | null; wetFirst: number | null;
   /** Its brush with each image bound to its texture, and which of its layers' stages are active. */
   brush: StampBrush<StampPaintImage>;
@@ -885,9 +821,8 @@ type LoadedDeposit = {
   main: number; dual: number; tint: number | null;
   /** Writes its compositor's PaintDeposit at scene time `t` into a uniform slot. */
   writePaint: (views: StampUniformViews, t: number) => void;
-  mainReach: Float64Array; dualReach: Float64Array;
   mainHull: StampTipHull; dualHull: StampTipHull | null;
-  /** How each layer's stamps are laid, and an `ordered` layer's bins' table in the bin buffer (binOrderedStamps). */
+  /** How each layer's stamps are laid, and an `ordered` layer's bins' table in the bin buffer (stampMarksOrderedBins). */
   mainPlan: LoadedPlan; dualPlan: LoadedPlan | null;
   /** Its plan's order's case in the resolve (stampResolveOrderIndex). */
   resolveOrder: number;
@@ -963,6 +898,11 @@ export type StampPaintRenderer = {
   readLayer: (t: number, frame?: StampPaintFrameState) => Promise<StampLayerReadback>;
   /** Frees what the painting loaded; its surface stays for the next. */
   dispose: () => void;
+  /**
+   * The wet effects (a bloom, a backrun, a damp charge) that certainly won't act, a line each, worked out as it loaded
+   * (stampWetReportWarnings): none for a painting without washes.
+   */
+  wetWarnings: readonly string[];
 };
 
 /**
@@ -1085,12 +1025,13 @@ function rendererOnSurface(
   done();
 
   /** The hull `layer`'s tip is drawn in, for the coarsest level its smallest or most blurred stamp reads. */
-  function tipHull(layer: BoundLayer, stamps: readonly PlacedStamp[]): StampTipHull {
+  function tipHull(layer: BoundLayer, stamps: FrozenStampMarks): StampTipHull {
+    const marks = stampMarksExtremes(stamps);
     // The tip's texels spread over its span, so its pixels per texel go by the image's width, not the diameter.
-    const smallest = stamps.reduce((least, s) => Math.min(least, s.diameter), Infinity) * spanOf(layer);
-    const blurred = Math.ceil(stamps.reduce((most, s) => Math.max(most, s.blur), 0) * STAMP_BLUR_LEVELS);
+    const smallest = marks.smallest * spanOf(layer);
+    const blurred = Math.ceil(marks.blurred * STAMP_BLUR_LEVELS);
     const levels = tipLevels.get(layer.tip.image)!;
-    const squashed = layer.tip.roundness * (levels[0].height / levels[0].width) * stamps.reduce((least, s) => Math.min(least, s.roundness), 1);
+    const squashed = layer.tip.roundness * (levels[0].height / levels[0].width) * marks.roundest;
     const coarsest = Math.min(levels.length - 1, coarsestStampTipLevel(levels[0], smallest, squashed, levels.length) + blurred);
     return surface.tipHull(layer.tip.image, coarsest);
   }
@@ -1120,7 +1061,7 @@ function rendererOnSurface(
   const depositSlots = (wash: boolean) => 9 + (wash || compositor.reads.press ? 1 : 0);
   // Each group and outside layer's defocus (two) and glow (three) slots besides its lay's.
   const slotsPerFrame = 1 + outsideLayers.length * (1 + LENS_SLOTS) + painting.groups.reduce((sum, group) => sum + 2 + LENS_SLOTS + group.passes.reduce((n, pass) => n + stampPassDeposits(pass).length * depositSlots(pass.kind === 'wash'), 0), 0);
-  const tilesX = Math.ceil(width / ORDERED_TILE), tilesY = Math.ceil(height / ORDERED_TILE);
+  const tilesX = Math.ceil(width / STAMP_ORDERED_TILE), tilesY = Math.ceil(height / STAMP_ORDERED_TILE);
   const asWritten = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).map((deposit) => [deposit.id, deposit] as const))));
   // Each deposit's medium by its ID, its group's as written (an epoch's and live marks' alike); none in flat colour.
   const depositMedia = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).map((deposit) => [deposit.id, mediumOf?.(group) ?? null] as const))));
@@ -1134,9 +1075,9 @@ function rendererOnSurface(
   function loadBank(groups: readonly CompiledStampGroup[], source: BankSource): DepositBank {
     const bankScope = source.kind === 'written' ? null : surface.scope(), on = bankScope?.device ?? device;
     const binData: number[] = [];
-    const loadPlan = (layer: BoundLayer, stamps: readonly PlacedStamp[]): LoadedPlan => {
-      const plan = stampAccumulationPlan(layer.accumulation, stamps);
-      return plan.kind === 'ordered' ? { kind: 'ordered', bins: binOrderedStamps(stamps, reachSpanOf(layer), tilesX, tilesY, margin, binData) } : plan;
+    const loadPlan = (layer: BoundLayer, stamps: FrozenStampMarks): LoadedPlan => {
+      const plan = stampMarksPlan(stamps, layer.accumulation);
+      return plan.kind === 'ordered' ? { kind: 'ordered', bins: stampBinsAppended(stampMarksOrderedBins(stamps, reachSpanOf(layer), tilesX, tilesY, margin), binData) } : plan;
     };
     let total = 0, tints = 0;
     const placed = groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass))).map((deposit) => {
@@ -1154,13 +1095,11 @@ function rendererOnSurface(
       throw new Error(`stamp paint: the painting's ${total.toLocaleString()} stamps need ${Math.round((total * STAMP_FLOATS * 4) / 2 ** 20)} MB, over this GPU's ${Math.round(device.limits.maxBufferSize / 2 ** 20)} MB buffer`);
     }
     const stampData = new Float32Array(Math.max(1, total) * STAMP_FLOATS), tintData = new Float32Array(Math.max(1, tints) * TINT_FLOATS);
-    const write = (stamps: readonly PlacedStamp[], at: number, medium: PaintMedium | null) => stamps.forEach((s, i) => stampData.set(
-      [s.x, s.y, s.diameter, s.rotation, s.alpha, s.blur, s.grainTurn, (s.flipX ? 1 : 0) + (s.flipY ? 2 : 0), s.opacity, s.roundness, stampGrainDepthIn(s, medium), s.pressure], (at + i) * STAMP_FLOATS,
-    ));
     for (const { deposit, main, dual, tint } of placed) {
-      write(deposit.stamps, main, mediumOfDeposit(deposit));
-      write(deposit.dualStamps, dual, mediumOfDeposit(deposit));
-      if (tint !== null) deposit.stamps.forEach(({ tint: t }, i) => tintData.set([t.hue, t.saturation, t.lightness, t.secondary], (tint + i) * TINT_FLOATS));
+      const grainDepthSource = stampGrainDepthSourceIn(mediumOfDeposit(deposit));
+      stampData.set(stampInstanceFloats(deposit.stamps, grainDepthSource), main * STAMP_FLOATS);
+      stampData.set(stampInstanceFloats(deposit.dualStamps, grainDepthSource), dual * STAMP_FLOATS);
+      if (tint !== null) tintData.set(stampTintFloats(deposit.stamps), tint * TINT_FLOATS);
     }
     // A layer laid in order reads its stamps and tints as storage.
     const stampBuffer = buffer(stampData, GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE, on), tintBuffer = buffer(tintData, GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE, on);
@@ -1173,10 +1112,9 @@ function rendererOnSurface(
       return [deposit, {
         identity, staged, home, brush, active: stampActiveLayers(brush, deposit.diameter), main, dual, tint,
         writePaint: compositor.deposit.writerFor(identity),
-        mainReach: stampReach(deposit.stamps, reachSpanOf(brush)), dualReach: stampReach(deposit.dualStamps, brush.dual ? reachSpanOf(brush.dual) : 1),
         mainHull: tipHull(brush, deposit.stamps), dualHull: brush.dual ? tipHull(brush.dual, deposit.dualStamps) : null,
         mainPlan, dualPlan, resolveOrder: stampResolveOrderIndex(STAMP_RESOLVE_PLANS[stampResolvePlan(brush.dual)]),
-        stampBuffer, tintBuffer, binBuffer, landing: wetness?.landings.get(staged) ?? null, wetFirst: home.grids.firsts.get(staged) ?? null,
+        stampBuffer, tintBuffer, binBuffer, landing: washLanding(identity, staged, wetness), wetFirst: home.grids.firsts.get(staged) ?? null,
       }];
     }));
     const bank: DepositBank = { deposits, wetness, home, own, destroy: () => bankScope?.destroy() };
@@ -1207,7 +1145,7 @@ function rendererOnSurface(
       }
     }
     loaded();
-    const dryingsByLast = new Map(groups.flatMap((group) => group.passes).flatMap(stampWashDryings).map((drying) => [drying.deposits.at(-1)!, drying]));
+    const dryingsByLast = new Map([...wetness?.washes.values() ?? []].flatMap((record) => record.dryings).map((drying) => [drying.deposits.at(-1)!, drying]));
     return { grids, regions, stages, dryingsByLast };
   }
   /**
@@ -1233,6 +1171,7 @@ function rendererOnSurface(
   }
   done = span('stamp paint wetness load');
   const wetness = wetnessOf?.(painting) ?? null;
+  const wetWarnings = wetness ? stampWetReportWarnings(stampWetReport(painting, wetness)) : [];
   done();
   done = span('stamp paint pipelines load');
   // The fan's triangles, by corner: indexed, so each corner is shaded once a stamp, not once for each triangle it's in.
@@ -1453,8 +1392,8 @@ function rendererOnSurface(
   };
 
   /**
-   * How far past its stamps' reach a deposit resolves: its edges' blur, and for a wash deposit its stages' reach and
-   * two lattice cells more, so the box holds every pixel whose settled paint its landing would leave unzeroed.
+   * How far past its stamps' reach a deposit resolves: its edges' blur, and for one the wash law lays its stages'
+   * reach and two lattice cells more, so the box holds every pixel whose settled paint its landing would leave unzeroed.
    */
   const depositPad = (loadedDeposit: LoadedDeposit) => {
     const sigma = loadedDeposit.active.edgeSigma;
@@ -1465,9 +1404,9 @@ function rendererOnSurface(
   /** Readies every stage `bank` draws with for each of `groups`' wash deposits' whole boxes (StampLoadedWetStage.reserve). */
   const reserveWashBoxes = (groups: readonly CompiledStampGroup[], bank: DepositBank) => {
     for (const pass of groups.flatMap((group) => group.passes)) {
-      if (pass.kind !== 'wash') continue;
       for (const deposit of stampPassDeposits(pass)) {
         const loadedDeposit = bank.deposits.get(deposit)!;
+        if (!loadedDeposit.landing) continue;
         const box = depositBox(deposit, loadedDeposit, deposit.stamps.length, deposit.dualStamps.length, depositPad(loadedDeposit));
         if (box) for (const { running } of bank.home.stages) running.reserve?.(box);
       }
@@ -1503,7 +1442,7 @@ function rendererOnSurface(
       return placed.get(polygon)!;
     };
     const grids: number[] = [];
-    const opWords: { floats: number[]; words: number[] }[] = [];
+    const opWords: { floats: number[]; words: number[]; inset: number }[] = [];
     type Step = { box: Box; draw: (views: StampUniformViews) => GPURenderPipeline; parent?: Step | null; grid?: boolean };
     const steps: Step[] = [];
     // A region's box is in painting points, held to the stage.
@@ -1512,12 +1451,13 @@ function rendererOnSurface(
       const w = Math.min(frame.width + margin, Math.ceil(box.x1)) - x, h = Math.min(frame.height + margin, Math.ceil(box.y1)) - y;
       return w > 0 && h > 0 ? { x, y, w, h } : null;
     };
-    /** An op of the fluid, its region's area or everywhere, as a MaskOp; its index. */
-    const opOf = (kind: 'mask' | 'unmask', amount: number, area: CompiledStampMaskArea | null) => {
-      const [first, count] = area ? pointsOf(area.polygon) : [0, 0], reach = area ? areaBox(area) : null, ragged = area?.edge?.ragged;
+    /** An op of the fluid, over its area or everywhere, as a MaskOp; its index. */
+    const opOf = (kind: 'mask' | 'unmask', amount: number, area: CompiledStampArea | null) => {
+      const [first, count] = area ? pointsOf(area.polygon) : [0, 0], reach = area ? stampAreaBox(area) : null, ragged = area?.edge?.ragged;
       opWords.push({
         floats: [reach?.x0 ?? 0, reach?.y0 ?? 0, reach?.x1 ?? 0, reach?.y1 ?? 0, ragged?.amount ?? 0, ragged?.scale ?? 0, stampEdgeWidth(area?.edge), amount],
         words: [first, count, kind === 'mask' ? 0 : 1, area?.seed ?? 0],
+        inset: area?.inset ?? 0,
       });
       return opWords.length - 1;
     };
@@ -1571,7 +1511,7 @@ function rendererOnSurface(
       const parent = base ? fluidOf(base) : null;
       let box = parent?.box ?? null;
       for (const op of between) {
-        const own = op.kind === 'mask' ? inPainting(areaBox(op.area)) : null;
+        const own = op.kind === 'mask' ? inPainting(stampAreaBox(op.area)) : null;
         if (own) box = box ? union(box, own) : own;
       }
       const step = box && maskStep(box, parent, opWords.length, between.length);
@@ -1584,14 +1524,14 @@ function rendererOnSurface(
     };
     for (const mask of read) fluidOf(mask);
 
-    // A pass's `within` is a state of its own: one mask of its region on no fluid.
+    // A pass's `within` is a state of its own: one mask of its area on no fluid.
     const withins = new Map<CompiledStampPass, Step | null>();
     for (const pass of passes) {
       if (!pass.within) continue;
-      const area = { polygon: pass.within, seed: 0 }, box = inPainting(areaBox(area));
+      const box = inPainting(stampAreaBox(pass.within));
       const step = box && maskStep(box, null, opWords.length, 1);
       if (step) {
-        opOf('mask', 1, area);
+        opOf('mask', 1, pass.within);
         steps.push(step);
       }
       withins.set(pass, step);
@@ -1607,9 +1547,10 @@ function rendererOnSurface(
     }));
     if (steps.length) {
       const opBytes = new ArrayBuffer(Math.max(1, opWords.length) * MASK_OP_WORDS * 4), opFloats = new Float32Array(opBytes), opInts = new Uint32Array(opBytes);
-      opWords.forEach(({ floats, words }, i) => {
+      opWords.forEach(({ floats, words, inset }, i) => {
         opFloats.set(floats, i * MASK_OP_WORDS);
         opInts.set(words, i * MASK_OP_WORDS + floats.length);
+        opFloats[i * MASK_OP_WORDS + floats.length + words.length] = inset;
       });
       const pointBuffer = buffer(new Float32Array(points.length ? points : [0, 0]), GPUBufferUsage.STORAGE, on), gridBuffer = buffer(new Float32Array(grids.length ? grids : [0]), GPUBufferUsage.STORAGE, on);
       const opBuffer = buffer(opFloats, GPUBufferUsage.STORAGE, on);
@@ -1942,8 +1883,8 @@ function rendererOnSurface(
   function depositBox(deposit: CompiledStampDeposit, loadedDeposit: LoadedDeposit, count: number, dualCount: number, pad: number): Box | null {
     const reach = [Infinity, Infinity, -Infinity, -Infinity];
     const { brush } = loadedDeposit;
-    reachOfFirst(deposit.stamps, loadedDeposit.mainReach, count, reachSpanOf(brush), reach);
-    if (brush.dual) reachOfFirst(deposit.dualStamps, loadedDeposit.dualReach, dualCount, reachSpanOf(brush.dual), reach);
+    stampMarksReachOfFirst(deposit.stamps, reachSpanOf(brush), count, reach);
+    if (brush.dual) stampMarksReachOfFirst(deposit.dualStamps, reachSpanOf(brush.dual), dualCount, reach);
     if (deposit.kind === 'flood') {
       const { x0, y0, x1, y1 } = deposit.flood.box;
       reach.splice(0, 4, Math.min(reach[0], x0), Math.min(reach[1], y0), Math.max(reach[2], x1), Math.max(reach[3], y1));
@@ -2362,6 +2303,7 @@ function rendererOnSurface(
   const { queue } = surface.device;
   return {
     stage,
+    wetWarnings,
     draw: async (t, state, outside) => {
       if (disposed) return;
       await surface.checked(`drawing the painting at ${t} s`, () => queue.submit([draw(t, { state, outside }).finish()]));
@@ -2456,8 +2398,14 @@ function writeGrain(views: StampUniformViews, at: number, grain: StampBrushGrain
   put('mirror', grain.tiling === 'mirror' ? 1 : 0);
 }
 
-/** Where a mask's region can cover anything: its box grown by how far its edge reaches. */
-const areaBox = (area: CompiledStampMaskArea) => stampPolygonBox(area.polygon, stampEdgeReach(area.edge) + 1);
+/**
+ * `staged`'s landing in `wetness` where the wash law of its group's medium lays `identity`, the deposit as written,
+ * else null (LoadedDeposit's `landing`): a wash keeps a history, landing each deposit.
+ */
+function washLanding(identity: CompiledStampDeposit, staged: CompiledStampDeposit, wetness: StampWetness | null): StampWetLanding | null {
+  const landing = wetness?.landings.get(staged) ?? null;
+  return landing && stampDepositionLaw(identity, landing.medium, true) === 'wash' ? landing : null;
+}
 
 /** A box as a uniform's four words; an empty box for none, whose region reads 0 everywhere. */
 const boxWords = (box: Box | undefined): [number, number, number, number] => (box ? [box.x, box.y, box.w, box.h] : [0, 0, 0, 0]);

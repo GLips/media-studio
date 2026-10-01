@@ -1,7 +1,7 @@
 // stamp-deposit-reveal.ts: how much of a compiled deposit shows at scene time `t`. Every stamp is placed once; a
 // frame only chooses how many of each deposit's show, and how far a flood's front has crossed it.
 
-import type { CompiledStampDeposit } from './stamp-paint-recipe.ts';
+import type { CompiledStampDeposit } from './stamp-paint-recipe-compile.ts';
 
 /**
  * How many of `deposit`'s stamps (or its dual stamps) show at `t` seconds: none before `appliedAt`, then a growing

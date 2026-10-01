@@ -1,13 +1,16 @@
 // stamp-gate-stage.ts: the gate's stage cases, what the renderer holds past and over a group's paint: the stage's
 // margin (stamp-stage.ts). A margin must leave every frame as it was and show what a lay brings in from off the frame.
 
-import { compileStampPaintRecipe, stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { STAMP_GATE_IMAGES, STAMP_GATE_PAINTING_IDS, STAMP_GATE_WHITE, stampGateBrush, stampGatePainting, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
 import { STAMP_GATE_ANIMATION_FPS, STAMP_GATE_KNOCKOUT_FAR, stampGateBloomBoilPainting, stampGateCutOutPainting, stampGateKnockoutPainting } from './stamp-gate-animation.ts';
-import { STAMP_GATE_WASH_IDS, stampGateWashCase, type StampGateWashCheck } from './stamp-gate-washes.ts';
+import type { StampGateWashCheck } from './stamp-gate-layer.ts';
+import { STAMP_GATE_REGION_IDS, stampGateRegionPaintings } from './stamp-gate-regions.ts';
+import { STAMP_GATE_WASH_IDS, stampGateWashCase } from './stamp-gate-washes.ts';
 import { stampGateFrameDifference, stampGateFramePasses, type StampGateFrameDifference } from './stamp-gate-frames.ts';
 
 export const STAMP_GATE_STAGE_IDS = ['stage/margin', 'stage/pan', 'stage/layer-cache'];
@@ -32,6 +35,7 @@ export function stampGateMarginSubjects(): StampGateStageSubject[] {
   return [
     ...STAMP_GATE_PAINTING_IDS.map((id) => { const gate = stampGatePainting(id); return { name: `painting/${id}`, gate, t: gate.t }; }),
     ...STAMP_GATE_WASH_IDS.map((id) => { const { subject } = stampGateWashCase(id); return { name: id, gate: subject, t: subject.t }; }),
+    ...STAMP_GATE_REGION_IDS.flatMap((id) => stampGateRegionPaintings(id).map((gate, i) => ({ name: `${id} ${i}`, gate, t: gate.t }))),
     { name: 'animation/cut-out own', gate: stampGateCutOutPainting('own'), t: at(2) },
     { name: 'animation/cut-out ground', gate: stampGateCutOutPainting('ground'), t: at(2) },
     { name: 'animation/warp', gate: stampGateCutOutPainting('own', 'warp'), t: at(2) },

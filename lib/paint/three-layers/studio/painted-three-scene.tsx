@@ -8,7 +8,7 @@ import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { PAINT_CAMERA_REST, paintCameraFocusAt, paintCameraPoseAt, type PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { useStampStyleContent } from '#lib/paint/style/studio/stamp-painting.tsx';
 import type { PaintedThreeLayer, PaintedThreeStyle, PaintedThreeTexture } from './painted-three-gpu.ts';
 import { usePaintedThreeScene } from './use-painted-three-scene.ts';

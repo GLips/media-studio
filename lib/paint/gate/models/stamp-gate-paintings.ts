@@ -11,7 +11,9 @@ import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { PHOTOSHOP_POOLING } from '#lib/paint/brush/models/coverage-formulas.ts';
 import { stampLinearDynamics, type StampBrush, type StampBrushAsset, type StampBrushGrain, type StampBrushLayer, type StampGrainLook } from '#lib/paint/brush/models/stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint, type StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import type { StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { PaintMaterial, StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampPaintMixing } from '#lib/paint/painting/models/stamp-pigment-paint.ts';
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
@@ -32,7 +34,7 @@ export type StampGatePainting = {
   frameAt?: (t: number) => StampPaintFrameState;
 };
 
-const asset = (file: string): StampBrushAsset => ({ style: 'gate', pack: 'gate', file });
+export const stampGateAsset = (file: string): StampBrushAsset => ({ style: 'gate', pack: 'gate', file });
 const color = (value: StampPaintColor): PaintMaterial => ({ kind: 'color', color: value });
 export const stampGatePolygon = (...xy: number[]): StampRegion => ({ kind: 'polygon', points: xy.flatMap((v, i) => (i % 2 ? [] : [{ x: v, y: xy[i + 1] }])) });
 
@@ -41,6 +43,9 @@ const hashed = (x: number, y: number) => {
   const v = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
   return v - Math.floor(v);
 };
+
+/** The height of grain.png's paper at texel (x, y), 0..1, as a paper reads it: its brightness, so the ink drawn is its depth. */
+export const stampGateGrainHeight = (x: number, y: number) => 0.25 + 0.5 * hashed(x >> 2, y >> 2);
 
 const drawn = (size: number, paint: (u: number, v: number, x: number, y: number) => number): StampGateImage => ({
   size, pixels: Uint8Array.from({ length: size * size }, (_, i) => {
@@ -56,7 +61,7 @@ export const STAMP_GATE_IMAGES = {
   'round.png': drawn(64, (u, v) => smoothstep(Math.min(1, Math.max(0, (1 - Math.hypot(u - 0.5, v - 0.5) * 2) / 0.35)))),
   'chisel.png': drawn(64, (u, v) => (Math.abs(u - 0.5) < 0.42 && Math.abs(v - 0.5) < 0.2 + 0.2 * u ? 0.6 + 0.4 * u : 0)),
   // Blocky value noise, a few texels a cell, so a mip or two still holds tooth; and a smooth ridged relief.
-  'grain.png': drawn(64, (_u, _v, x, y) => 0.75 - 0.5 * hashed(x >> 2, y >> 2)),
+  'grain.png': drawn(64, (_u, _v, x, y) => 1 - stampGateGrainHeight(x, y)),
   'relief.png': drawn(64, (u, v) => 0.5 + 0.5 * Math.sin(u * Math.PI * 6) * Math.cos(v * Math.PI * 4)),
   // A tip's contacts: its middle touches first, its edge last.
   'contact.png': drawn(64, (u, v) => 1 - Math.min(1, Math.hypot(u - 0.5, v - 0.5) * 2)),
@@ -66,7 +71,7 @@ export const STAMP_GATE_IMAGES = {
 
 const ROUND: StampBrushLayer = {
   accumulation: { kind: 'buildToOpacity' },
-  tip: { image: asset('round.png'), roundness: 1, sampling: 'isotropic' },
+  tip: { image: stampGateAsset('round.png'), roundness: 1, sampling: 'isotropic' },
   spacing: 0.1, stepping: 'eachStamp', dynamics: stampLinearDynamics({}), scatter: { count: 1, radius: 0, lateral: 0 },
   rotation: { angle: 0, randomStart: false }, flip: { x: false, y: false }, blur: { amount: 0, jitter: 0 },
   taper: { start: 0, end: 0, size: 1, opacity: 1, shape: 0, pressure: 0 }, falloff: 0, flow: 0.5,
@@ -75,7 +80,7 @@ export const stampGateBrush = (name: string, layer: Partial<StampBrush> = {}): S
 
 /** A canvas grain of `image`; spread with a rolling grain's settings, a rolling one. */
 const grain = (image: string, look: Partial<StampGrainLook> & Pick<StampGrainLook, 'blend'>): StampBrushGrain => ({
-  kind: 'canvas', image: asset(image), scale: 1.5, depth: 0.8, brightness: 0, contrast: 0, contrastPivot: 'midGrey', tiling: 'repeat', offsetJitter: 0, ...look,
+  kind: 'canvas', image: stampGateAsset(image), scale: 1.5, depth: 0.8, brightness: 0, contrast: 0, contrastPivot: 'midGrey', tiling: 'repeat', offsetJitter: 0, ...look,
 });
 
 /** A wavering line across the painting from `x0, y` to `x1, y`, its pressure rising then falling. */
@@ -93,7 +98,7 @@ function strokesGrains(): StampGatePainting {
     dynamics: stampLinearDynamics({ size: { pressure: 0.6 }, grainDepth: { pressure: 0.5 } }),
   });
   const relief = stampGateBrush('Relief', {
-    tip: { image: asset('chisel.png'), roundness: 0.5, sampling: 'anisotropic', noise: 0.4 },
+    tip: { image: stampGateAsset('chisel.png'), roundness: 0.5, sampling: 'anisotropic', noise: 0.4 },
     grain: grain('relief.png', { blend: { family: 'texture', mode: 'height' }, depth: 0.4 }),
     dynamics: stampLinearDynamics({ rotation: { direction: 1 } }), flip: { x: true, y: false }, spacing: 0.15,
   });
@@ -102,7 +107,7 @@ function strokesGrains(): StampGatePainting {
     grain: grain('grain.png', { blend: { family: 'layer', mode: 'linearHeight' }, contrastPivot: 'mean', contrast: 0.4, brightness: -0.1, tiling: 'mirror', scale: 0.8 }),
   });
   const pressed = stampGateBrush('Pressed', {
-    tip: { image: asset('round.png'), roundness: 1, sampling: 'isotropic', pressed: { contact: asset('contact.png'), range: [0, 1], softness: 0.16 } },
+    tip: { image: stampGateAsset('round.png'), roundness: 1, sampling: 'isotropic', pressed: { contact: stampGateAsset('contact.png'), range: [0, 1], softness: 0.16 } },
     flow: 0.8,
   });
   const bristles = stampGateBrush('Bristles', {
@@ -126,7 +131,7 @@ function strokesGrains(): StampGatePainting {
 const DUAL_TEXTURE = stampGateBrush('Dual texture', {
   wetEdges: PHOTOSHOP_POOLING,
   dual: {
-    ...ROUND, tip: { image: asset('chisel.png'), roundness: 1, sampling: 'isotropic' }, spacing: 0.3,
+    ...ROUND, tip: { image: stampGateAsset('chisel.png'), roundness: 1, sampling: 'isotropic' }, spacing: 0.3,
     scatter: { count: 2, radius: 0.4, lateral: 0 }, grain: { ...grain('grain.png', { blend: { family: 'texture', mode: 'multiply' } }), kind: 'rolling', zoom: 0, movement: 1, rotation: 0 },
     wetEdges: { kind: 'pooling', peak: 1, body: 0.5 }, blend: { family: 'texture', mode: 'colorBurn' }, scale: 0.5,
   },
@@ -159,7 +164,7 @@ function strokesAccumulations(): StampGatePainting {
     dynamics: stampLinearDynamics({ opacity: { pressure: 0.8 } }), flow: 0.6,
     color: { stamp: { hue: 0.1, saturation: 0.3, lightness: 0.2, darkness: 0.2 }, stroke: { hue: 0.05, saturation: 0, lightness: 0, darkness: 0 }, pressure: { hue: 0, saturation: 0, lightness: 0, secondary: 0.8 } },
   });
-  const blurred = stampGateBrush('Blurred', { accumulation: { kind: 'glaze', build: 0.7 }, blur: { amount: 0.8, jitter: 0.5 }, tip: { image: asset('chisel.png'), roundness: 0.7, sampling: 'anisotropic' } });
+  const blurred = stampGateBrush('Blurred', { accumulation: { kind: 'glaze', build: 0.7 }, blur: { amount: 0.8, jitter: 0.5 }, tip: { image: stampGateAsset('chisel.png'), roundness: 0.7, sampling: 'anisotropic' } });
   const scattered = stampGateBrush('Scattered', {
     accumulation: { kind: 'build' }, spacing: 0.4, flow: 0.3,
     scatter: { count: 3, radius: 0.6, lateral: 0.3 }, dynamics: stampLinearDynamics({ size: { random: 0.5 }, count: { random: 0.5 } }),
@@ -191,7 +196,7 @@ function colourGroups(): StampGatePainting {
       g.pass('texture', { clipped: true }, (pass) => pass.stroke('stripes', { brush: stampGateBrush('Clipped', { grain: grain('grain.png', { blend: { family: 'texture', mode: 'multiply' } }) }), diameter: 30, material: color('#f0e0a0'), path: [{ x: 60, y: 180 }, { x: 260, y: 235 }] }));
     });
   }));
-  const paper: StampPaintPaper = { color: '#f4efe4', grain: { image: asset('grain.png'), scale: 0.2, depth: 0.6 } };
+  const paper: StampPaintPaper = { color: '#f4efe4', grain: { image: stampGateAsset('grain.png'), scale: 0.2, depth: 0.6 } };
   return { painting, paper, mixing: FLAT, width: 320, height: 240, t: Number.MAX_VALUE, images: STAMP_GATE_IMAGES };
 }
 
@@ -218,16 +223,16 @@ function regions(): StampGatePainting {
         direction: 0.5, load: { kind: 'linear', from: { x: 210, y: 0, value: 1 }, to: { x: 310, y: 0, value: 0.4 } }, appliedAt: 0, drawnOver: 2,
       }));
       g.pass('neck', {}, (pass) => pass.fill('neck', { brush: wet, diameter: 40, application: { kind: 'flood' }, material: color('#305030'), region: stampGatePolygon(10, 230, 50, 230, 55, 130, 60, 230, 110, 230, 110, 238, 10, 238) }));
-      g.pass('within', { within: { kind: 'ellipse', x: 160, y: 185, radiusX: 40, radiusY: 25 } }, (pass) => {
+      g.pass('within', { within: { region: { kind: 'ellipse', x: 160, y: 185, radiusX: 40, radiusY: 25 } } }, (pass) => {
         pass.stroke('across', { brush: wet, diameter: 30, material: color('#806020'), path: [{ x: 110, y: 170 }, { x: 210, y: 200 }] });
       });
       g.pass('hatch', {}, (pass) => {
-        pass.fill('hatch', { brush: dry, diameter: 8, application: { kind: 'strokes', pattern: 'hatch', spacing: 1.8 }, material: color('#202020'), region: stampGatePolygon(220, 130, 310, 130, 310, 180, 220, 180) });
-        pass.fill('cross', { brush: dry, diameter: 8, material: color('#402060'), application: { kind: 'strokes', pattern: 'crossHatch', spacing: 2 }, direction: 0.3, region: { kind: 'ellipse', x: 265, y: 210, radiusX: 45, radiusY: 22 } });
+        pass.fill('hatch', { brush: dry, diameter: 8, application: { kind: 'strokes', pattern: { kind: 'hatch' }, spacing: 1.8 }, material: color('#202020'), region: stampGatePolygon(220, 130, 310, 130, 310, 180, 220, 180) });
+        pass.fill('cross', { brush: dry, diameter: 8, material: color('#402060'), application: { kind: 'strokes', pattern: { kind: 'crossHatch' }, spacing: 2 }, direction: 0.3, region: { kind: 'ellipse', x: 265, y: 210, radiusX: 45, radiusY: 22 } });
       });
     });
   }));
-  const paper: StampPaintPaper = { color: '#faf6ee', image: asset('photograph.png') };
+  const paper: StampPaintPaper = { color: '#faf6ee', image: stampGateAsset('photograph.png') };
   return { painting, paper, mixing: FLAT, width: 320, height: 240, t: 1, images: STAMP_GATE_IMAGES };
 }
 
@@ -270,7 +275,7 @@ function pigment(mediumName: (typeof STAMP_GATE_PIGMENT_MEDIA)[number]): StampGa
       pass.stroke('green', { brush: round, diameter: 60, material: { kind: 'mixture', parts: [{ pigment: W.phthaloBlue, amount: 1 }, { pigment: W.hansaYellow, amount: 2 }], strength: 1 }, path: [{ x: 20, y: 140 }, { x: 300, y: 120 }] });
       pass.stroke('rose', { brush: round, diameter: 40, material: color('#c8305f'), path: [{ x: 60, y: 190 }, { x: 250, y: 30 }] });
     }));
-    p.group('patch', { composite: 'opaque' }, (g) => g.pass('cover', { within: { kind: 'ellipse', x: 260, y: 162, radiusX: 34, radiusY: 16 } }, (pass) => {
+    p.group('patch', { composite: 'opaque' }, (g) => g.pass('cover', { within: { region: { kind: 'ellipse', x: 260, y: 162, radiusX: 34, radiusY: 16 } } }, (pass) => {
       pass.stroke('cerulean', { brush: round, diameter: 50, material: { kind: 'mixture', parts: [{ pigment: W.cerulean, amount: 1 }], strength: 0.7 }, path: [{ x: 230, y: 150 }, { x: 290, y: 175 }] });
     }));
     // Each pigment at full strength, so no white joins them, and two colours: overlapping swatches, mixing wet.
@@ -279,7 +284,7 @@ function pigment(mediumName: (typeof STAMP_GATE_PIGMENT_MEDIA)[number]): StampGa
       pass.stroke(`swatch-${k}`, { brush: round, diameter: 30, material, path: [{ x: 20 + k * 25, y: 212 }, { x: 34 + k * 25, y: 250 }] });
     })));
   }));
-  const paper: StampPaintPaper = { color: '#f6f1e6', grain: { image: asset('grain.png'), scale: 0.15, depth: 0.5 } };
+  const paper: StampPaintPaper = { color: '#f6f1e6', grain: { image: stampGateAsset('grain.png'), scale: 0.15, depth: 0.5 } };
   return { painting, paper, mixing: { kind: 'pigment', medium: PAINT_MEDIA[mediumName], pigments: W }, width: 320, height: 260, t: Number.MAX_VALUE, images: STAMP_GATE_IMAGES };
 }
 

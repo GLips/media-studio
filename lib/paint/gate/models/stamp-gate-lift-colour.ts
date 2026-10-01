@@ -8,10 +8,13 @@
 import { PAINT_MEDIA, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-pigment.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { type StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
-import type { StampGateWashCase, StampGateWashCheck, StampGateWashMedium } from './stamp-gate-washes.ts';
+import type { StampGateWashCase, StampGateWashMedium } from './stamp-gate-washes.ts';
+import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 
 /** The media lightened with white, whose tints a lift should thin toward the paper. */
 export type StampGateLiftColourMedium = Exclude<StampGateWashMedium, 'watercolour'>;
@@ -86,7 +89,7 @@ function meanLinear(rgba: ArrayLike<number>, width: number, { x0, x1, y0, y1 }: 
 
 /** The gate case painting the lifted tints and reading its frame, so the painting and its reading share one layout. */
 export function stampGateLiftColourCase(id: string, mid: number, medium: StampGateLiftColourMedium, dried: boolean): StampGateWashCase {
-  return { id, mid, property: 'paler', subject: stampGateLiftColourPainting(medium, dried), read: (rgba) => checkStampGateLiftColour(id, rgba) };
+  return { id, mid, property: 'frame', subject: stampGateLiftColourPainting(medium, dried), read: (rgba) => checkStampGateLiftColour(id, rgba) };
 }
 
 /** Whether every tint in `rgba` holds STAMP_GATE_LIFT_PALER lift by lift. */

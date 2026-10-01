@@ -11,7 +11,7 @@ const grid = (at: (i: number, j: number) => number) => {
   for (let j = 0; j < SIZE; j++) for (let i = 0; i < SIZE; i++) values[j * SIZE + i] = at(i, j);
   return values;
 };
-const WETTING = PAINT_MEDIA.watercolour.wetting, DAMP = WETTING.damp;
+const WETTING = PAINT_MEDIA.watercolour.wetting, DAMP = WETTING.sheen.damp;
 /** A brush laying `brushWater` where `lays`, on paper as wet as `paper` says, workable as wet over damp. */
 function landing(paper: (i: number, j: number) => number, lays: (i: number, j: number) => boolean, brushWater = 0.7): StampWetLanding {
   const workable = (i: number, j: number) => Math.min(1, paper(i, j) / DAMP);

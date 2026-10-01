@@ -2,7 +2,8 @@
 // stroke (procreate-preview-stroke.ts), so the fidelity sheet measures the two alike.
 
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { PROCREATE_PREVIEW_SIZE, procreatePreviewStrokePath } from '#lib/paint/procreate-brushes/models/procreate-preview-stroke.ts';
 
 /**

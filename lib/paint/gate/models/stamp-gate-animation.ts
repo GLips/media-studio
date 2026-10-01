@@ -19,11 +19,13 @@ import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-wat
 import { stampLinearDynamics } from '#lib/paint/brush/models/stamp-brush.ts';
 import { PAINT_ANIMATION_FPS, type StampGroupBoil, type StampGroupMotion, type StampGroupPaper } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type StampPaintMaterial, type StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import type { StampPaintMaterial, StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import { stampGateBendCarried } from './stamp-gate-bend.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
-import type { StampGateWashCheck } from './stamp-gate-washes.ts';
+import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 
 /** The frame rate the animations are drawn at: the animation clock's, so a boil on twos repaints every second frame drawn. */
 export const STAMP_GATE_ANIMATION_FPS = PAINT_ANIMATION_FPS;

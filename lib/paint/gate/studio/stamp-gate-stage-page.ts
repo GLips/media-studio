@@ -15,7 +15,7 @@ import {
   checkStampGateLayerCache, checkStampGateMargin, checkStampGatePan, STAMP_GATE_PARALLAX_ORDER, STAMP_GATE_STAGE_IDS, STAMP_GATE_STAGE_MARGIN, stampGateInsetDifference, stampGateMarginSubjects,
   stampGatePanPainting, stampGateParallaxPainting, stampGateParallaxTime,
 } from '../models/stamp-gate-stage.ts';
-import type { StampGateWashCheck } from '../models/stamp-gate-washes.ts';
+import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { stampGateHalfBits } from '../models/stamp-gate-flow.ts';
 import { drawn, drawnImages, withGateRenderer, withGateSurface } from './stamp-gate-page-surface.ts';
 

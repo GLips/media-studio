@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, stampPassDeposits } from './stamp-paint-recipe.ts';
+import { stampPaintRecipe } from './stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, stampPassDeposits } from './stamp-paint-recipe-compile.ts';
 
 const D = 20;
 /** Right along the top, then a sharp turn down: a corner at (400, 0). */

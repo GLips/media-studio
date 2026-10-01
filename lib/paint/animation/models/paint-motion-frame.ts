@@ -10,7 +10,7 @@
 
 import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import { stampLiveGroupProblem, type StampGroupFrameState, type StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import type { CompiledStampGroup } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import type { CompiledStampGroup } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { paintCameraFrameStateAt } from './paint-camera.ts';
 import { paintBoilEpochAt, paintLanePlayAt, paintNodeTimeAt, paintPlayClipTimeAt, sceneSeconds, type SceneSeconds } from './paint-clock.ts';

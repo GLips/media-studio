@@ -3,7 +3,7 @@
 // own on the style's paper, so a passage the renderer refuses leaves the others drawn. Images are served at /files/
 // (stamp-paint-pack-urls.ts).
 
-import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { createStampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import { stampPaintPackAssetUrl } from '#lib/paint/brush-packs/models/stamp-paint-pack-urls.ts';

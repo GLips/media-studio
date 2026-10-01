@@ -4,10 +4,10 @@
 import { paintMixtureProblem } from '#lib/paint/materials/models/paint-mixture.ts';
 import type { StampBlend, StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { jitterStampStrokeColor } from './stamp-paint-color.ts';
-import { stampPaintFieldEnds, stampPaintFieldProblem, type StampPaintField } from './stamp-paint-field.ts';
+import { stampPaintFieldEnds, stampPaintFieldProblem, stampSeededPaintField, type StampPaintField, type StampSeededPaintField } from './stamp-paint-field.ts';
 import { compileStampMaterialKeys, stampMaterialKeysProblem, type CompiledStampMaterialKeys, type StampMaterialKey } from './stamp-material-keys.ts';
 import { everyStampKey, mapStampKeyList } from './stamp-scene-keys.ts';
-import type { CompiledStampKeyedMaterial, StampKeyedMaterial, StampPaintMaterial } from './stamp-paint-recipe.ts';
+import type { CompiledStampKeyedMaterial, StampKeyedMaterial, StampPaintMaterial } from './stamp-paint-recipe-types.ts';
 import type { PaintMaterial, StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 
 /** Paint as written: what a dry pass's deposits all do. */
@@ -21,7 +21,7 @@ export type StampRecipeWashAction = (Omit<StampRecipePaint, 'burnish'> & { water
  * colour material's own unjittered colour, keyed with it; none for a mixture (colour dynamics move a colour).
  */
 export type CompiledStampPaintAction = {
-  kind: 'paint'; material: StampPaintField<CompiledStampKeyedMaterial>; secondaryColor?: StampPaintColor | CompiledStampMaterialKeys<StampPaintColor>; burnish: boolean;
+  kind: 'paint'; material: StampSeededPaintField<CompiledStampKeyedMaterial>; secondaryColor?: StampPaintColor | CompiledStampMaterialKeys<StampPaintColor>; burnish: boolean;
 };
 
 /**
@@ -33,7 +33,7 @@ export type CompiledStampAction =
   | { kind: 'water'; water: number }
   | { kind: 'lift'; strength: number };
 
-const isMaterialField = (material: StampPaintMaterial): material is StampPaintField<StampKeyedMaterial> => material.kind === 'constant' || material.kind === 'linear' || material.kind === 'radial';
+const isMaterialField = (material: StampPaintMaterial): material is StampPaintField<StampKeyedMaterial> => material.kind === 'constant' || material.kind === 'linear' || material.kind === 'radial' || material.kind === 'noise';
 
 const materialProblem = (material: PaintMaterial) => (material.kind === 'mixture' ? paintMixtureProblem(material) : null);
 
@@ -52,9 +52,10 @@ function ownColor(material: CompiledStampKeyedMaterial): StampPaintColor | Compi
 }
 
 /** A field's values mapped, its geometry kept. */
-function mapStampPaintField<T, U>(field: StampPaintField<T>, map: (value: T) => U): StampPaintField<U> {
+function mapStampPaintField<T, U>(field: StampSeededPaintField<T>, map: (value: T) => U): StampSeededPaintField<U> {
   if (field.kind === 'constant') return { kind: 'constant', value: map(field.value) };
   if (field.kind === 'linear') return { kind: 'linear', from: { ...field.from, value: map(field.from.value) }, to: { ...field.to, value: map(field.to.value) } };
+  if (field.kind === 'noise') return { ...field, a: map(field.a), b: map(field.b) };
   return { ...field, inner: map(field.inner), outer: map(field.outer) };
 }
 
@@ -71,9 +72,12 @@ export function compileWashAction(full: string, action: StampRecipeWashAction, b
   return { ...compilePaintAction(full, action, brush, draws), ...(water !== undefined && { water }) };
 }
 
-/** Paint as written checked, its colours moved by the brush's stroke colour jitter from `draws`. */
+/**
+ * Paint as written checked, its colours moved by the brush's stroke colour jitter from `draws`, a noise material seeded
+ * by deposit `full` unless it names its passage.
+ */
 export function compilePaintAction(full: string, action: StampRecipePaint, brush: StampBrush, draws: readonly number[]): CompiledStampPaintAction {
-  const field = isMaterialField(action.material) ? action.material : { kind: 'constant' as const, value: action.material };
+  const field = stampSeededPaintField(isMaterialField(action.material) ? action.material : { kind: 'constant' as const, value: action.material }, full);
   const problem = stampPaintFieldProblem(field, (end) => (end.kind === 'keys' ? stampMaterialKeysProblem(end, materialProblem) : materialProblem(end)));
   if (problem) throw new Error(`stamp paint: ${full}'s material can't be painted: ${problem}`);
   const material = mapStampPaintField(field, (end) => compileKeyedMaterial(end, (m) => (m.kind === 'color' && brush.color ? { kind: 'color', color: jitterStampStrokeColor(m.color, brush.color.stroke, draws) } : m)));

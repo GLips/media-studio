@@ -8,7 +8,7 @@
 
 import { stampBoilEpoch, stampGroupPlacementAt, type StampGroupPlacement } from './stamp-group-motion.ts';
 import type { StampWarpMap } from './stamp-group-warp.ts';
-import { stampPassDeposits, type CompiledStampGroup, type CompiledStampPaint } from './stamp-paint-recipe.ts';
+import { stampPassDeposits, type CompiledStampGroup, type CompiledStampPaint } from './stamp-paint-recipe-compile.ts';
 import type { StampPoint } from './stamp-region.ts';
 
 /** A rigid placement about `pivot` (in the painting's pixels, where it's painted), applied after any warp. */

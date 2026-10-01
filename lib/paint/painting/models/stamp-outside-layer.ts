@@ -7,7 +7,7 @@
 // names the painted group it lies beneath.
 
 import type { StampGroupFrameState } from './stamp-paint-frame-state.ts';
-import type { CompiledStampPaint } from './stamp-paint-recipe.ts';
+import type { CompiledStampPaint } from './stamp-paint-recipe-compile.ts';
 
 /** Where an outside layer lies: beneath painted group `beneath` (its id), or over every group when `beneath` is null. */
 export type StampOutsideLayerSlot = { id: string; beneath: string | null };

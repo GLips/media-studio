@@ -5,7 +5,8 @@
 
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampSmoothRegion, type StampFillApplication } from '#lib/paint/painting/models/stamp-fill.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, stampPassDeposits } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, stampPassDeposits } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import { createStampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import { stampPaintPackAssetUrl, type StampPaintPackUrls } from '#lib/paint/brush-packs/models/stamp-paint-pack-urls.ts';
@@ -14,12 +15,12 @@ const CELL = { width: 330, height: 300 }, LABEL = 56, DRAWN_OVER = 2;
 
 const APPLICATIONS: readonly { label: string; application: StampFillApplication }[] = [
   { label: 'flood', application: { kind: 'flood' } },
-  { label: 'zigzag', application: { kind: 'strokes', pattern: 'zigzag' } },
-  { label: 'back and forth', application: { kind: 'strokes', pattern: 'backAndForth' } },
-  { label: 'hatch', application: { kind: 'strokes', pattern: 'hatch' } },
-  { label: 'cross-hatch', application: { kind: 'strokes', pattern: 'crossHatch' } },
-  { label: 'scribble', application: { kind: 'strokes', pattern: 'scribble' } },
-  { label: 'shading', application: { kind: 'strokes', pattern: 'shading' } },
+  { label: 'zigzag', application: { kind: 'strokes', pattern: { kind: 'zigzag' } } },
+  { label: 'back and forth', application: { kind: 'strokes', pattern: { kind: 'backAndForth' } } },
+  { label: 'hatch', application: { kind: 'strokes', pattern: { kind: 'hatch' } } },
+  { label: 'cross-hatch', application: { kind: 'strokes', pattern: { kind: 'crossHatch' } } },
+  { label: 'scribble', application: { kind: 'strokes', pattern: { kind: 'scribble' } } },
+  { label: 'shading', application: { kind: 'strokes', pattern: { kind: 'shading' } } },
 ];
 
 /** Each row's fills start drawing at `appliedAt`; the sheet is drawn at DRAWN_OVER, when the first row's are laid. */

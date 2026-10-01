@@ -7,7 +7,7 @@
 // WGSL only, apart from planning the passes: the renderer is the one place it runs.
 
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
-import type { CompiledStampDeposit } from './stamp-paint-recipe.ts';
+import type { CompiledStampDeposit } from './stamp-paint-recipe-compile.ts';
 import { STAMP_WET_LIFT_WGSL } from './stamp-wet-lift.ts';
 import { STAMP_WET_TRANSPORT_WGSL } from './stamp-wet-transport.ts';
 

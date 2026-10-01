@@ -6,7 +6,7 @@
 
 import { PROCREATE_PREVIEW_SIZE } from '#lib/paint/procreate-brushes/models/procreate-preview-stroke.ts';
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { createStampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import { stampPaintPackAssetUrl, type StampPaintPackUrls } from '#lib/paint/brush-packs/models/stamp-paint-pack-urls.ts';

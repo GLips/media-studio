@@ -4,7 +4,8 @@ import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/st
 import { stampFramePlan, stampGroupEvents } from './stamp-frame-plan.ts';
 import { stampPaintEvents } from './stamp-paint-events.ts';
 import { stampOutsideLayerPlaces } from './stamp-outside-layer.ts';
-import { compileStampPaintRecipe, stampPaintRecipe } from './stamp-paint-recipe.ts';
+import { stampPaintRecipe } from './stamp-paint-recipe.ts';
+import { compileStampPaintRecipe } from './stamp-paint-recipe-compile.ts';
 import type { StampPaintFrameState } from './stamp-paint-frame-state.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 

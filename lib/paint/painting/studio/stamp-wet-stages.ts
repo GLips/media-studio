@@ -7,9 +7,8 @@
 // start partway through a group from a checkpoint (stamp-paint-checkpoints.ts), which restores the layer alone.
 
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
-import type { StampWetLanding, StampWetness } from '../models/stamp-wetness.ts';
-import type { StampWashDrying } from '../models/stamp-wet-rim.ts';
-import type { CompiledStampDeposit, CompiledStampPaint, CompiledStampPass } from '../models/stamp-paint-recipe.ts';
+import type { StampWashDrying, StampWetLanding, StampWetness } from '../models/stamp-wetness.ts';
+import type { CompiledStampDeposit, CompiledStampPaint, CompiledStampPass } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { StampStage } from '../models/stamp-stage.ts';
 import type { StampWashLayer } from './stamp-paint-compositor.ts';
@@ -45,7 +44,7 @@ export type StampWetStageContext = {
  */
 export type StampWetDepositMoment = { deposit: CompiledStampDeposit; pass: CompiledStampPass; landing: StampWetLanding; box: StampPixelBox; seed: number };
 
-/** One of a wash's dryings done (stampWashDryings), as written; `seed` as a deposit moment's, of the drying's ID. */
+/** One of a wash's dryings done (its StampWashRecord's), as written; `seed` as a deposit moment's, of the drying's ID. */
 export type StampWetDryingMoment = { drying: StampWashDrying; seed: number };
 
 /** A stage as a painting holds it once loaded, encoding at its moments. */

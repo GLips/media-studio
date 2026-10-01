@@ -14,7 +14,7 @@ import { PAINT_CAMERA_REST, paintPlaneDefocus, type PaintCameraFocus, type Paint
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { StampOutsideLayerSlot, StampOutsideLayerState } from '#lib/paint/painting/models/stamp-outside-layer.ts';
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { ResolvedStampPaintStyle } from '#lib/paint/style/models/style.ts';
 import { createStampPaintDevice } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import { createStampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';

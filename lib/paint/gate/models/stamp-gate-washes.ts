@@ -1,31 +1,34 @@
 // stamp-gate-washes.ts: the GPU gate's washes, held to what paint must do, not a baseline:
 //
-// - any frame order: a frame drawn fresh or after another matches;
-// - conserved: water, softening, blooms and wet paper only move pigment;
+// - any frame order: fresh or after another, a frame matches;
+// - conserved: wet effects only move pigment;
 // - lifted: a lift is bounded and spares a stain;
-// - spread: flow leaves overlapping strokes no less even;
-// - set: dried paint wetted again lifts only by its rewetting;
-// - fenced: no paint moves under masking fluid or out of a `within`;
-// - rimmed: a drying puddle's edge gathers pigment, a seam wet together doesn't;
-// - bloomed: a drop blooms though paint landed elsewhere first;
-// - unlined: a backrun lays no line along its wash's edge;
-// - paler: lifted tints read paler (stamp-gate-lift-colour.ts).
+// - spread: flow leaves overlaps no less even;
+// - set: rewetted dry paint lifts only by its rewetting;
+// - fenced: nothing crosses masking fluid or a `within`;
+// - rimmed: a puddle's edge gathers pigment, a seam doesn't;
+// - bloomed: paint elsewhere first doesn't stop a bloom;
+// - unlined: a backrun leaves its wash's edge unlined;
+// - unrimmed: a feathered edge dries with no line;
+// - lipped, unlipped: damp paint lips a bloom all round, wet doesn't;
+// - frame: read whole (stamp-gate-lift-colour.ts, stamp-gate-dry-brush.ts).
 //
-// Each case paints into its last group, read back.
+// Each case's last group is read back.
 
 import { PAINT_BANDS } from '#lib/paint/materials/models/paint-spectrum.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-pigment.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type StampPaintPaper, type StampWashScope } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import type { StampPaintPaper, StampWashScope } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import { compileStampPigmentPaint } from '#lib/paint/painting/models/stamp-pigment-paint.ts';
 import type { StampRegion } from '#lib/paint/painting/models/stamp-region.ts';
-import { stampGateLiftColourCase } from './stamp-gate-lift-colour.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
-
-/** A layer as the renderer reads one back (StampLayerReadback), restated so models needn't import the studio. */
-export type StampGateLayer = { width: number; height: number; layers: number; values: Float32Array };
+import { stampGateDryBrushCase } from './stamp-gate-dry-brush.ts';
+import { stampGateLiftColourCase } from './stamp-gate-lift-colour.ts';
+import { checkStampGateConserved, STAMP_GATE_CONSERVED_TOLERANCE, stampGateSlotAmounts, stampGateTotal, type StampGateLayer, type StampGateWashCheck } from './stamp-gate-layer.ts';
 
 export type StampGateWashMedium = 'watercolour' | 'gouache' | 'crayon';
 
@@ -48,11 +51,12 @@ export type StampGateWashCase = {
   | { property: 'bloomed'; without: StampGatePainting }
   | { property: 'unlined' }
   // Reads the frame, not its last group.
-  | { property: 'paler'; read: (rgba: ArrayLike<number>) => StampGateWashCheck }
+  | { property: 'frame'; read: (rgba: ArrayLike<number>) => StampGateWashCheck }
+  | { property: 'unrimmed' }
+  | { property: 'unlipped'; without: StampGatePainting }
+  | { property: 'lipped'; without: StampGatePainting }
 );
 
-/** How far a pigment's total may drift from the same wash's without the ops under test: its layer's half-float rounding summed over a few thousand pixels. */
-export const STAMP_GATE_CONSERVED_TOLERANCE = 0.005;
 /** How far past a bound a pixel's amount may read: a half-float's step near the small amounts these bounds sit at. */
 export const STAMP_GATE_LAYER_TOLERANCE = 2e-3;
 
@@ -61,6 +65,8 @@ const END = Number.MAX_VALUE, MID = 1.5;
 const PAPER: StampPaintPaper = { color: '#f6f1e6' };
 const ROUND = stampGateBrush('Round', { flow: 0.5 });
 const SOFT = stampGateBrush('Soft', { flow: 0.3 });
+/** A tip fading from its middle to its edge, which on wet paper lays a feathered edge as wide as a rim's band. */
+const FEATHER = stampGateBrush('Feather', { flow: 0.3, tip: { image: { style: 'gate', pack: 'gate', file: 'contact.png' }, roundness: 1, sampling: 'isotropic' } });
 
 /** One pigment at full strength, so no white joins it in a medium that lightens with white. */
 const pure = (pigment: PaintPigmentAppearance): PaintMaterial => ({ kind: 'mixture', parts: [{ pigment, amount: 1 }], strength: 1 });
@@ -78,7 +84,7 @@ function washPainting(medium: StampGateWashMedium, wetPaper: boolean, body: (was
     p.group('under', { composite: 'glaze', opacity: 1 }, (g) => g.pass('dry', {}, (pass) => {
       pass.stroke('band', { brush: ROUND, diameter: 30, material: pure(W.yellowOchre), path: [{ x: 0, y: 100 }, { x: 160, y: 96 }] });
     }));
-    p.group('subject', { composite: 'glaze', opacity: 1 }, (g) => g.wash('wash', { ...(wetPaper && { preparation: { region: SKY } }), ...(within && { within }) }, body));
+    p.group('subject', { composite: 'glaze', opacity: 1 }, (g) => g.wash('wash', { ...(wetPaper && { preparation: { region: SKY } }), ...(within && { within: { region: within } }) }, body));
   }));
   const flowing = PAINT_MEDIA[medium];
   const paint = still ? { ...flowing, wetting: { ...flowing.wetting, spread: 0 } } : flowing;
@@ -112,6 +118,32 @@ const BACKRUN_EDGE = { x: 100, rows: [20, 100] as const };
  * share of without's, on average. A backrun pushes a little paint toward the edge; a lip there would be a dark line.
  */
 export const STAMP_GATE_UNLINED_MOST = 0.15;
+
+/** The unrimmed case's wash's left edge, feathered on wet paper, by column; the columns of its interior; its rows. */
+const SOFT_EDGE = { from: 2, to: 30, interior: [60, 100] as const, rows: [20, 100] as const };
+/**
+ * The most the drying rim may darken the unrimmed case's feathered edge, at its darkest row by row, on average, as a
+ * share of the wash's interior: a puddle's edge gains about 0.7.
+ */
+export const STAMP_GATE_UNRIMMED_MOST = 0.03;
+
+/**
+ * The unlipped and lipped cases' drop, and the seconds the unlipped case's sky waits for it: about halfway from its
+ * shine to damp (a bloom op would wait for damp). A lip is read against the bloom within LIP_REACH px round it.
+ */
+const WET_DROP = { x: 80, y: 60, radius: 34, seconds: 50 };
+const LIP_REACH = 4;
+/**
+ * How far the unlipped case's lip may stand above the bloom round it: its 2% most-raised pixels, on average, as a
+ * share of the paint round the drop. The same drop at damp stands about 0.48 above.
+ */
+export const STAMP_GATE_UNLIPPED_MOST = 0.15;
+/**
+ * The lipped case's sectors round its drop, and how high its weakest's lip must stand, as a share of its strongest's
+ * (each its most-raised pixel above the bloom round it): a front left open over a third of it reads about 0.32.
+ */
+const LIP_SECTORS = 12;
+export const STAMP_GATE_LIPPED_LEAST = 0.42;
 
 /** Every wash case, by ID. */
 function washCases(): StampGateWashCase[] {
@@ -227,8 +259,32 @@ function washCases(): StampGateWashCase[] {
       id: 'wash/backrun-edge', mid: MID, property: 'unlined',
       subject: washPainting('watercolour', false, (wash) => {
         wash.fill('wash', { brush: ROUND, diameter: 30, application: { kind: 'flood' }, region: stampGatePolygon(10, 10, BACKRUN_EDGE.x, 10, BACKRUN_EDGE.x, 110, 10, 110), material: pure(W.cerulean), ...shown(0) });
-        wash.wait('damp');
+        wash.wait('damp', { under: 'wash' });
         wash.stroke('side', { brush: ROUND, diameter: 22, water: 1, material: pure(W.cerulean), path: [{ x: BACKRUN_EDGE.x - 10, y: 14 }, { x: BACKRUN_EDGE.x - 12, y: 106 }], ...shown(1) });
+      }),
+    },
+    // A wash flooded to the edge of the paper wetted for it: on wet paper its edge feathers out, and dries with no line.
+    // Against the same painting without the drying rim.
+    {
+      id: 'wash/soft-edge', mid: MID, property: 'unrimmed',
+      subject: washPainting('watercolour', true, (wash) => wash.fill('sky', { brush: FEATHER, diameter: 80, application: { kind: 'flood' }, region: SKY, material: pure(W.ultramarine), ...shown(0) })),
+    },
+    // A sky not yet damp, water dropped in it: on paper this wet the water runs on, its edge soft and open. Against
+    // the same sky without it.
+    {
+      id: 'wash/bloom-wet', mid: MID, property: 'unlipped', without: washPainting('watercolour', false, sky),
+      subject: washPainting('watercolour', false, (wash) => {
+        sky(wash);
+        wash.wait({ seconds: WET_DROP.seconds });
+        wash.water('drop', { kind: 'stamps', brush: SOFT, diameter: 30, at: [{ x: WET_DROP.x, y: WET_DROP.y }], ...shown(1) });
+      }),
+    },
+    // The same drop into the sky at damp, all the sky's paper as wet: it stalls all round, and lips all round.
+    {
+      id: 'wash/bloom-damp', mid: MID, property: 'lipped', without: washPainting('watercolour', false, sky),
+      subject: washPainting('watercolour', false, (wash) => {
+        sky(wash);
+        wash.bloom('drop', { brush: SOFT, diameter: 30, at: [{ x: WET_DROP.x, y: WET_DROP.y }], ...shown(1) });
       }),
     },
     // Against the same paint that doesn't flow, so neither moves nor rims.
@@ -237,6 +293,8 @@ function washCases(): StampGateWashCase[] {
     stampGateLiftColourCase('wash/lift-paler-gouache-wet', MID, 'gouache', false),
     stampGateLiftColourCase('wash/lift-paler-gouache-dry', MID, 'gouache', true),
     stampGateLiftColourCase('wash/lift-paler-crayon', MID, 'crayon', false),
+    // A dry brush and a wet one in watercolour, read against the paper's grain.
+    stampGateDryBrushCase('wash/dry-brush', MID),
     {
       id: 'wash/wait', mid: MID, property: 'order',
       subject: washPainting('watercolour', false, (wash) => {
@@ -251,6 +309,15 @@ function washCases(): StampGateWashCase[] {
         brush: ROUND, diameter: 40, application: { kind: 'flood' }, region: SKY, material: pure(W.ultramarine),
         load: { kind: 'linear', from: { x: 0, y: 10, value: 1 }, to: { x: 0, y: 110, value: 0.2 } }, appliedAt: 0, drawnOver: 3,
       })),
+    },
+    // Noise on the GPU's field readers: a flood's load, and a material two deposits share as one passage.
+    {
+      id: 'wash/mottled', mid: MID, property: 'order',
+      subject: washPainting('watercolour', false, (wash) => {
+        const mottled = { kind: 'noise' as const, scale: 18, seed: 'passage', a: pure(W.ultramarine), b: pure(W.burntSienna) };
+        wash.fill('left', { brush: ROUND, diameter: 30, application: { kind: 'flood' }, region: stampGatePolygon(10, 10, 80, 10, 80, 110, 10, 110), material: mottled, load: { kind: 'noise', scale: 30, a: 1, b: 0.3 }, ...shown(0) });
+        wash.fill('right', { brush: ROUND, diameter: 30, application: { kind: 'flood' }, region: stampGatePolygon(80, 10, 150, 10, 150, 110, 80, 110), material: mottled, ...shown(1) });
+      }),
     },
   ];
 }
@@ -270,30 +337,6 @@ export function stampGateLastGroupPigments({ painting, mixing }: StampGatePainti
   return compileStampPigmentPaint(painting, mixing, PAINT_BANDS).groups.at(-1)!.palette.map(({ id }) => id);
 }
 
-/** `slot`'s amount at each pixel of `layer`. */
-function slotAmounts(layer: StampGateLayer, slot: number): Float32Array {
-  const channel = slot + 1, l = channel >> 2, c = channel & 3, pixels = layer.width * layer.height;
-  return Float32Array.from({ length: pixels }, (_, i) => layer.values[(l * pixels + i) * 4 + c]);
-}
-
-const total = (amounts: Float32Array) => amounts.reduce((sum, v) => sum + v, 0);
-
-/** One of a case's checks as the gate reports it. */
-export type StampGateWashCheck = { id: string; passed: boolean; detail: string };
-
-/** Whether each pigment's total in `subject`'s layer is `without`'s, within STAMP_GATE_CONSERVED_TOLERANCE of it. */
-export function checkStampGateConserved(id: string, pigments: readonly string[], subject: StampGateLayer, without: StampGateLayer): StampGateWashCheck {
-  const drifts = pigments.map((pigment, slot) => {
-    const had = total(slotAmounts(without, slot)), has = total(slotAmounts(subject, slot));
-    return { pigment, had, has, drift: had > 0 ? Math.abs(has - had) / had : has };
-  });
-  const worst = drifts.reduce((a, b) => (b.drift > a.drift ? b : a));
-  return {
-    id: `${id}: conserved`, passed: drifts.every(({ drift }) => drift <= STAMP_GATE_CONSERVED_TOLERANCE),
-    detail: drifts.map(({ pigment, had, has }) => `${pigment} ${had.toFixed(1)} → ${has.toFixed(1)}`).join(', ') + `; worst drift ${(worst.drift * 100).toFixed(3)}% (${worst.pigment}), past ${STAMP_GATE_CONSERVED_TOLERANCE * 100}% fails`,
-  };
-}
-
 /**
  * Whether a lift, `subject` against `without`, took from no pigment's total more than it had and left none below
  * nothing, took a smaller share of the more staining of `staining` (least staining first), and took some of the least
@@ -302,16 +345,16 @@ export function checkStampGateConserved(id: string, pigments: readonly string[],
 export function checkStampGateLifted(id: string, pigments: readonly string[], staining: readonly [string, string], subject: StampGateLayer, without: StampGateLayer): StampGateWashCheck {
   const problems: string[] = [];
   pigments.forEach((pigment, slot) => {
-    const before = slotAmounts(without, slot), after = slotAmounts(subject, slot);
-    if (total(after) > total(before) * (1 + STAMP_GATE_CONSERVED_TOLERANCE)) problems.push(`${pigment}'s total rose`);
+    const before = stampGateSlotAmounts(without, slot), after = stampGateSlotAmounts(subject, slot);
+    if (stampGateTotal(after) > stampGateTotal(before) * (1 + STAMP_GATE_CONSERVED_TOLERANCE)) problems.push(`${pigment}'s total rose`);
     const below = after.filter((v) => v < -STAMP_GATE_LAYER_TOLERANCE).length;
     if (below) problems.push(`${pigment} went below none at ${below} pixels`);
   });
   const share = (pigment: string) => {
     const slot = pigments.indexOf(pigment);
     if (slot < 0) throw new Error(`stamp gate: ${id} lays no ${pigment}`);
-    const had = total(slotAmounts(without, slot));
-    return had > 0 ? (had - total(slotAmounts(subject, slot))) / had : 0;
+    const had = stampGateTotal(stampGateSlotAmounts(without, slot));
+    return had > 0 ? (had - stampGateTotal(stampGateSlotAmounts(subject, slot))) / had : 0;
   };
   const [loose, stained] = staining.map(share);
   if (stained > loose + STAMP_GATE_CONSERVED_TOLERANCE) problems.push(`${staining[1]}, staining more, lost more than ${staining[0]}`);
@@ -322,16 +365,18 @@ export function checkStampGateLifted(id: string, pigments: readonly string[], st
   };
 }
 
+/** The share of what `without` held of `slot` that `subject` lifted. */
+function liftedShare({ subject, without }: { subject: StampGateLayer; without: StampGateLayer }, slot: number): number {
+  const had = stampGateTotal(stampGateSlotAmounts(without, slot));
+  return had > 0 ? (had - stampGateTotal(stampGateSlotAmounts(subject, slot))) / had : 0;
+}
+
 /**
  * Whether dried paint wetted again lifted, as a share of what it held, no more than the medium's `rewetting` of what
  * the same lift took while the paint was wet, and the wet lift took some.
  */
 export function checkStampGateSet(id: string, pigments: readonly string[], rewetting: number, dried: { subject: StampGateLayer; without: StampGateLayer }, wet: { subject: StampGateLayer; without: StampGateLayer }): StampGateWashCheck {
-  const share = ({ subject, without }: typeof dried, slot: number) => {
-    const had = total(slotAmounts(without, slot));
-    return had > 0 ? (had - total(slotAmounts(subject, slot))) / had : 0;
-  };
-  const shares = pigments.map((pigment, slot) => ({ pigment, dried: share(dried, slot), wet: share(wet, slot) }));
+  const shares = pigments.map((pigment, slot) => ({ pigment, dried: liftedShare(dried, slot), wet: liftedShare(wet, slot) }));
   const passed = shares.every((s) => s.wet > STAMP_GATE_CONSERVED_TOLERANCE && s.dried <= rewetting * s.wet + STAMP_GATE_CONSERVED_TOLERANCE);
   return {
     id: `${id}: set paint lifts by rewetting`, passed,
@@ -342,7 +387,7 @@ export function checkStampGateSet(id: string, pigments: readonly string[], rewet
 /** Whether `layer` holds no pigment, past a half-float's step, wherever `fenced` says paint may not go. */
 export function checkStampGateFenced(id: string, pigments: readonly string[], layer: StampGateLayer, fencedAt: (x: number, y: number) => boolean): StampGateWashCheck {
   let most = 0, over = 0, inFence = 0;
-  pigments.forEach((_, slot) => slotAmounts(layer, slot).forEach((v, i) => {
+  pigments.forEach((_, slot) => stampGateSlotAmounts(layer, slot).forEach((v, i) => {
     if (!fencedAt(i % layer.width, Math.floor(i / layer.width))) return;
     inFence++;
     most = Math.max(most, v);
@@ -362,7 +407,7 @@ function variance(amounts: Float32Array, union: readonly number[]): number {
 
 /** Whether, over the strokes' union, each pigment's amounts in `subject` vary no more than in `without`, its paint still. */
 export function checkStampGateSpread(id: string, pigments: readonly string[], subject: StampGateLayer, without: StampGateLayer): StampGateWashCheck {
-  const slots = pigments.map((_, slot) => ({ subject: slotAmounts(subject, slot), without: slotAmounts(without, slot) }));
+  const slots = pigments.map((_, slot) => ({ subject: stampGateSlotAmounts(subject, slot), without: stampGateSlotAmounts(without, slot) }));
   const union = Array.from({ length: subject.width * subject.height }, (_, i) => i)
     .filter((i) => slots.some((s) => s.subject[i] > STAMP_GATE_LAYER_TOLERANCE || s.without[i] > STAMP_GATE_LAYER_TOLERANCE));
   const spreads = pigments.map((pigment, slot) => ({ pigment, flowing: variance(slots[slot].subject, union), still: variance(slots[slot].without, union) }));
@@ -377,7 +422,7 @@ export function checkStampGateSpread(id: string, pigments: readonly string[], su
  * each over its interior's mean amount of `slot`.
  */
 function rimShares(layer: StampGateLayer, slot: number) {
-  const amounts = slotAmounts(layer, slot), rows = Array.from({ length: 60 }, (_, k) => 30 + k);
+  const amounts = stampGateSlotAmounts(layer, slot), rows = Array.from({ length: 60 }, (_, k) => 30 + k);
   const at = (x: number, y: number) => amounts[y * layer.width + x];
   const most = (x0: number, x1: number) => rows.reduce((sum, y) => sum + Math.max(...Array.from({ length: x1 - x0 }, (_, k) => at(x0 + k, y))), 0) / rows.length;
   const mean = (...spans: [number, number][]) => {
@@ -397,7 +442,7 @@ function rimShares(layer: StampGateLayer, slot: number) {
 export function checkStampGateBloomed(id: string, pigments: readonly string[], subject: StampGateLayer, without: StampGateLayer): StampGateWashCheck {
   let moved = 0, there = 0;
   pigments.forEach((_, slot) => {
-    const after = slotAmounts(subject, slot), before = slotAmounts(without, slot);
+    const after = stampGateSlotAmounts(subject, slot), before = stampGateSlotAmounts(without, slot);
     for (let i = 0; i < after.length; i++) {
       if (Math.hypot((i % subject.width) + 0.5 - BLOOM_DROP.x, Math.floor(i / subject.width) + 0.5 - BLOOM_DROP.y) >= BLOOM_DROP.radius) continue;
       moved += Math.abs(after[i] - before[i]);
@@ -431,9 +476,93 @@ export function checkStampGateRimmed(id: string, pigments: readonly string[], su
   };
 }
 
+/**
+ * Whether the drying rim darkens `subject`'s feathered edge by at most STAMP_GATE_UNRIMMED_MOST of its interior, at
+ * its darkest row by row, against `withoutRim`, and each pigment's total holds.
+ */
+export function checkStampGateUnrimmed(id: string, pigments: readonly string[], subject: StampGateLayer, withoutRim: StampGateLayer): StampGateWashCheck {
+  const sum = (layer: StampGateLayer) => {
+    const slots = Array.from({ length: pigments.length }, (_, slot) => stampGateSlotAmounts(layer, slot));
+    return (i: number) => slots.reduce((t, amounts) => t + amounts[i], 0);
+  };
+  const rimmed = sum(subject), plain = sum(withoutRim);
+  const [y0, y1] = SOFT_EDGE.rows, [x0, x1] = SOFT_EDGE.interior;
+  let gained = 0;
+  for (let y = y0; y < y1; y++) {
+    let interior = 0, most = 0;
+    for (let x = x0; x < x1; x++) interior += plain(y * subject.width + x) / (x1 - x0);
+    for (let x = SOFT_EDGE.from; x < SOFT_EDGE.to; x++) most = Math.max(most, rimmed(y * subject.width + x) - plain(y * subject.width + x));
+    gained += most / interior / (y1 - y0);
+  }
+  const conserved = checkStampGateConserved(id, pigments, subject, withoutRim);
+  return {
+    id: `${id}: unrimmed`, passed: gained <= STAMP_GATE_UNRIMMED_MOST && conserved.passed,
+    detail: `its feathered edge's darkest gains ${(gained * 100).toFixed(1)}% of its interior from the rim (past ${STAMP_GATE_UNRIMMED_MOST * 100}% fails); ${conserved.detail}`,
+  };
+}
+
+/**
+ * Round the drop, each pixel's gain in pigment against `without` less the mean gain within LIP_REACH of it (how far
+ * it stands above the bloom round it, as a lip does), with its angle about the drop; and how much moved and lay there.
+ */
+function dropRidges(pigments: readonly string[], subject: StampGateLayer, without: StampGateLayer) {
+  const sum = (layer: StampGateLayer) => {
+    const slots = pigments.map((_, slot) => stampGateSlotAmounts(layer, slot));
+    return (x: number, y: number) => slots.reduce((t, amounts) => t + amounts[y * layer.width + x], 0);
+  };
+  const after = sum(subject), before = sum(without), gain = (x: number, y: number) => after(x, y) - before(x, y);
+  const ridges: { ridge: number; angle: number }[] = [];
+  let moved = 0, there = 0;
+  for (let y = 0; y < subject.height; y++) {
+    for (let x = 0; x < subject.width; x++) {
+      const dx0 = x + 0.5 - WET_DROP.x, dy0 = y + 0.5 - WET_DROP.y;
+      if (Math.hypot(dx0, dy0) >= WET_DROP.radius) continue;
+      moved += Math.abs(gain(x, y));
+      there += before(x, y);
+      let round = 0;
+      for (let dy = -LIP_REACH; dy <= LIP_REACH; dy++) for (let dx = -LIP_REACH; dx <= LIP_REACH; dx++) round += gain(x + dx, y + dy);
+      ridges.push({ ridge: gain(x, y) - round / (2 * LIP_REACH + 1) ** 2, angle: Math.atan2(dy0, dx0) });
+    }
+  }
+  return { ridges, moved, there };
+}
+
+/**
+ * Whether `subject`'s drop moved at least STAMP_GATE_BLOOMED_LEAST of the paint round it, raising none of it more
+ * than STAMP_GATE_UNLIPPED_MOST above the bloom round it, against `without`, and each pigment's total holds.
+ */
+export function checkStampGateUnlipped(id: string, pigments: readonly string[], subject: StampGateLayer, without: StampGateLayer): StampGateWashCheck {
+  const { ridges, moved, there } = dropRidges(pigments, subject, without);
+  const darkest = ridges.map(({ ridge }) => ridge).toSorted((a, b) => b - a).slice(0, Math.ceil(ridges.length * 0.02));
+  const lip = darkest.reduce((t, g) => t + g, 0) / darkest.length / (there / ridges.length), share = moved / there;
+  const conserved = checkStampGateConserved(id, pigments, subject, without);
+  return {
+    id: `${id}: unlipped`, passed: share >= STAMP_GATE_BLOOMED_LEAST && lip <= STAMP_GATE_UNLIPPED_MOST && conserved.passed,
+    detail: `${(share * 100).toFixed(2)}% of the paint round the drop moved (under ${STAMP_GATE_BLOOMED_LEAST * 100}% fails); its lip stands ${(lip * 100).toFixed(1)}% above the bloom round it (past ${STAMP_GATE_UNLIPPED_MOST * 100}% fails); ${conserved.detail}`,
+  };
+}
+
+/**
+ * Whether `subject`'s drop lips all round: in each of LIP_SECTORS sectors round it, its most-raised pixel stands at
+ * least STAMP_GATE_LIPPED_LEAST as high as in the strongest; and each pigment's total holds.
+ */
+export function checkStampGateLipped(id: string, pigments: readonly string[], subject: StampGateLayer, without: StampGateLayer): StampGateWashCheck {
+  const { ridges } = dropRidges(pigments, subject, without);
+  const sectors = Array.from({ length: LIP_SECTORS }, () => 0);
+  for (const { ridge, angle } of ridges) {
+    const k = Math.min(LIP_SECTORS - 1, Math.floor(((angle + Math.PI) / (2 * Math.PI)) * LIP_SECTORS));
+    sectors[k] = Math.max(sectors[k], ridge);
+  }
+  const weakest = Math.min(...sectors) / Math.max(...sectors), conserved = checkStampGateConserved(id, pigments, subject, without);
+  return {
+    id: `${id}: lipped`, passed: weakest >= STAMP_GATE_LIPPED_LEAST && conserved.passed,
+    detail: `its weakest sector's lip ${(weakest * 100).toFixed(1)}% of its strongest's (under ${STAMP_GATE_LIPPED_LEAST * 100}% fails); ${conserved.detail}`,
+  };
+}
+
 /** Each of the unlined case's rows' most pigment, every pigment summed, within a few pixels of its wash's edge, on average. */
 function edgeMost(layer: StampGateLayer, pigments: number): number {
-  const slots = Array.from({ length: pigments }, (_, slot) => slotAmounts(layer, slot));
+  const slots = Array.from({ length: pigments }, (_, slot) => stampGateSlotAmounts(layer, slot));
   const [y0, y1] = BACKRUN_EDGE.rows;
   let sum = 0;
   for (let y = y0; y < y1; y++) {

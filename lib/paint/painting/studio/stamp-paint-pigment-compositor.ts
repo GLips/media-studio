@@ -15,7 +15,7 @@ import { paintHexToLinear } from '#lib/paint/materials/models/paint-spectrum.ts'
 import type { PaintMedium, PaintStackedLayering } from '#lib/paint/materials/models/paint-medium.ts';
 import { STAMP_PIGMENT_GROUP_SLOTS, stampPigmentAmountsAt, stampPigmentGroupLayers, type StampPigmentPaint, type StampPigmentUnderpaint } from '../models/stamp-pigment-paint.ts';
 import { STAMP_LIFT_STAIN_FIBRES, STAMP_LIFT_WET_STAIN_HOLD, STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
-import { STAMP_OPAQUE_COVER, type CompiledStampDeposit } from '../models/stamp-paint-recipe.ts';
+import { STAMP_OPAQUE_COVER, type CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import { stampLightLiftBasis } from '../models/stamp-light-lift.ts';
 import type { StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
@@ -26,12 +26,12 @@ import { stampUniformLayout, stampUniformWriter, type StampUniformViews } from '
 const COMPONENT_WORDS = 4;
 
 /**
- * A deposit's components (first and count), its group, where its material grades (StampPigmentGrade), its group's
- * open-share channel and sheet layer (0 for none), 1 if it's in its group's knockout, and each component's amounts at
- * its material's ends, two to a vec4f: written each frame, at its time, so a recolour uploads no more.
+ * A deposit's components (first and count), its group, its grade (StampPigmentGrade), its group's open-share
+ * channel and sheet layer (0 for none), 1 if in its group's knockout, 1 if a dry brush (`dryBrush`), and each
+ * component's amounts at its material's ends, two to a vec4f: written each frame, so a recolour uploads no more.
  */
 const PIGMENT_PAINT_DEPOSIT = stampUniformLayout('PaintDeposit', [
-  ['first', 'u32'], ['count', 'u32'], ['group', 'u32'], ['gradeKind', 'i32'], ['grade', 'vec4f'], ['open', 'u32'], ['sheetLayer', 'u32'], ['knockout', 'u32'],
+  ['first', 'u32'], ['count', 'u32'], ['group', 'u32'], ['gradeKind', 'i32'], ['grade', 'vec4f'], ['open', 'u32'], ['sheetLayer', 'u32'], ['knockout', 'u32'], ['dryBrush', 'u32'],
   ['amounts', { vec4fArray: STAMP_PIGMENT_GROUP_SLOTS / 2 }],
 ]);
 
@@ -168,7 +168,7 @@ ${media.map((_, m) => `    case ${m === 0 ? '0u, default' : `${m}u`}: { ${name}$
 
   const writers = new Map<CompiledStampDeposit, (views: StampUniformViews, t: number) => void>();
   const componentWords: number[] = [];
-  for (const [deposit, { group, components, grade, knockout }] of paint.deposits) {
+  for (const [deposit, { group, components, grade, knockout, dryBrush }] of paint.deposits) {
     const first = componentWords.length / COMPONENT_WORDS;
     const amounts = new Float32Array(STAMP_PIGMENT_GROUP_SLOTS * 2);
     writers.set(deposit, (views, t) => {
@@ -181,6 +181,7 @@ ${media.map((_, m) => `    case ${m === 0 ? '0u, default' : `${m}u`}: { ${name}$
       put('open', paint.groups[group].open ?? 0);
       put('sheetLayer', paint.groups[group].sheetLayer ?? 0);
       put('knockout', knockout ? 1 : 0);
+      put('dryBrush', dryBrush ? 1 : 0);
       components.forEach((component, i) => amounts.set(stampPigmentAmountsAt(component, t), i * 2));
       put('amounts', amounts);
     });
@@ -289,6 +290,15 @@ fn liftedUnder(i: u32, covered: vec4f, behind: array<vec4f, UNDER_LAYERS>, left:
   const contactOf = ({ paperContact }: PaintMedium, depth: string, granulation: string, load: string, press: string, filled: string) => (paperContact.kind === 'peaks'
     ? `paintDryContact(h, meanHeight, ${f32(paperContact.tooth)}, ${depth}, ${press}, ${filled})`
     : `paintWetSettle(valley, ${depth}, ${granulation}, ${load})`);
+  // A deposit's own contact in `medium`. A dry brush in a wet medium catches the peaks as a dry medium does, at the
+  // hand's press, its paint the medium's: its valleys go as bare as its wet paint would settle into them deep.
+  const layContactOf = (medium: PaintMedium) => {
+    const own = contactOf(medium, 'u.paperDepth', 'c.granulation', `amount / ${f32(medium.body)}`, 'press', 'filled');
+    const { paperContact } = medium, dryBrush = paperContact.kind === 'valleys' ? paperContact.dryBrush : undefined;
+    if (!dryBrush) return own;
+    const depth = `paintSettleDepth(u.paperDepth, c.granulation, amount / ${f32(medium.body)})`;
+    return `select(${own}, paintDryContact(h, meanHeight, ${f32(dryBrush.tooth)}, ${depth}, press, filled), paint.dryBrush != 0u)`;
+  };
   const groupOf = (deposit: CompiledStampDeposit) => {
     const group = paint.deposits.get(deposit)?.group;
     if (group === undefined) throw new Error(`stamp paint: ${deposit.id} isn't in the painting its pigment compositor was made for`);
@@ -332,7 +342,7 @@ fn incomingAt${s}(tooth: vec2f, at: vec2f, press: f32, filled: f32) -> array<vec
     let pair = paint.amounts[i / 2u];
     let ends = select(pair.xy, pair.zw, (i & 1u) == 1u);
     let amount = ends.x + (ends.y - ends.x) * graded;
-    let share = max(0.0, ${contactOf(medium, 'u.paperDepth', 'c.granulation', `amount / ${f32(medium.body)}`, 'press', 'filled')} * paintClumps(c.flocculation, at.x, at.y, c.seed));
+    let share = max(0.0, ${layContactOf(medium)} * paintClumps(c.flocculation, at.x, at.y, c.seed));
     let channel = c.slot + 1u;
     incoming[channel / 4u][channel % 4u] += amount * share;
   }

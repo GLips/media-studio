@@ -3,8 +3,8 @@
 // (stamp-gate-paintings.ts) with the studio's renderer, holds a traced resolve to the frame it draws, and paints each
 // wash case, reading its layer back for the properties it's held to (stamp-gate-washes.ts), animates the animation
 // cases (stamp-gate-animation.ts) and runs the flow, bloom and rim stages alone over layers it writes
-// (stamp-gate-flow.ts, stamp-gate-stripe.ts). Paintings are built here, as a compiled painting's typed arrays don't
-// survive the trip from Node.
+// (stamp-gate-flow.ts, stamp-gate-stripe.ts), and draws the region cases (stamp-gate-regions.ts). Paintings are built
+// here, as a compiled painting's typed arrays don't survive the trip from Node.
 
 import { PAINT_KUBELKA_MUNK_WGSL } from '#lib/paint/materials/models/paint-kubelka-munk.ts';
 import { PAINT_PAPER_WGSL } from '#lib/paint/materials/models/paint-paper.ts';
@@ -12,10 +12,11 @@ import { COVERAGE_FORMULAS_WGSL } from '#lib/paint/brush/models/coverage-formula
 import { STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL } from '#lib/paint/painting/models/stamp-deposit-stages.ts';
 import { STAMP_FLOOD_FRONT_SHARE_WGSL } from '#lib/paint/painting/models/stamp-fill.ts';
 import { STAMP_PAINT_FIELD_SHARE } from '#lib/paint/painting/models/stamp-paint-field.ts';
-import { stampPassDeposits, type CompiledStampDeposit, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import { stampPassDeposits, type CompiledStampDeposit, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { STAMP_WET_LAND_WGSL } from '#lib/paint/painting/models/stamp-wet-landing.ts';
 import { STAMP_WET_LIFT_WGSL } from '#lib/paint/painting/models/stamp-wet-lift.ts';
 import { STAMP_GRID_AT_WGSL, STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL } from '#lib/paint/painting/models/stamp-region.ts';
+import { STAMP_AREA_COVERAGE_WGSL } from '#lib/paint/painting/models/stamp-area.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { compileStampWetness } from '#lib/paint/painting/models/stamp-wetness.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
@@ -24,7 +25,6 @@ import { STAMP_WET_FLOW_STAGE } from '#lib/paint/painting/studio/stamp-wet-flow.
 import { STAMP_BLOOM_STAGE } from '#lib/paint/painting/studio/stamp-wet-bloom.ts';
 import { STAMP_DRYING_RIM_STAGE } from '#lib/paint/painting/studio/stamp-wet-rim.ts';
 import { STAMP_WET_STAGES, type StampWetStageContext } from '#lib/paint/painting/studio/stamp-wet-stages.ts';
-import { stampWashDryings } from '#lib/paint/painting/models/stamp-wet-rim.ts';
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampWashMovedWgsl } from '#lib/paint/painting/studio/stamp-paint-pigment-compositor.ts';
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
@@ -50,11 +50,15 @@ import { checkStampGateStageCase } from './stamp-gate-stage-page.ts';
 import {
   checkStampGateOutsideLayer, STAMP_GATE_OUTSIDE_IDS, STAMP_GATE_OUTSIDE_SLOT, stampGateOutsideContent, stampGateOutsideKind, stampGateOutsidePainting,
 } from '../models/stamp-gate-outside-layer.ts';
-import { checkStampGateStripe, STAMP_GATE_STRIPE_SIZE, stampGateStripeCase, stampGateStripeLayer, stampGateStripePainting } from '../models/stamp-gate-stripe.ts';
+import { checkStampGateRegion, stampGateRegionPaintings, type StampGateRegionId } from '../models/stamp-gate-regions.ts';
+import {
+  checkStampGateRimStrength, checkStampGateStripe, STAMP_GATE_RIM_STRENGTHS, STAMP_GATE_STRIPE_SIZE, stampGateStripeCase, stampGateStripeLayer, stampGateStripePainting,
+} from '../models/stamp-gate-stripe.ts';
 import { stampGateFrameDifference, stampGateFramePasses, type StampGateFrameDifference } from '../models/stamp-gate-frames.ts';
 import {
-  checkStampGateBloomed, checkStampGateConserved, checkStampGateFenced, checkStampGateRimmed, checkStampGateUnlined, checkStampGateLifted, checkStampGateSet, checkStampGateSpread, stampGateLastGroupPigments, stampGateWashCase, type StampGateWashCheck,
+  checkStampGateBloomed, checkStampGateFenced, checkStampGateRimmed, checkStampGateUnlined, checkStampGateUnrimmed, checkStampGateUnlipped, checkStampGateLipped, checkStampGateLifted, checkStampGateSet, checkStampGateSpread, stampGateLastGroupPigments, stampGateWashCase,
 } from '../models/stamp-gate-washes.ts';
+import { checkStampGateConserved, type StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { stampGatePainting, stampGateTracePainting, type StampGatePainting } from '../models/stamp-gate-paintings.ts';
 
 const WORKGROUP = 64;
@@ -75,7 +79,7 @@ ${STAMP_WET_LAND_WGSL}
 ${STAMP_WET_LIFT_WGSL}
 @group(0) @binding(0) var<storage, read> inputs: array<f32>;
 @group(0) @binding(1) var<storage, read_write> outputs: array<f32>;
-${points ? `@group(0) @binding(2) var<storage, read> points: array<vec2f>;\n${STAMP_POLYGON_DISTANCE_WGSL}` : ''}
+${points ? `@group(0) @binding(2) var<storage, read> points: array<vec2f>;\n${STAMP_POLYGON_DISTANCE_WGSL}\n${STAMP_AREA_COVERAGE_WGSL}` : ''}
 ${grid ? `@group(0) @binding(3) var<storage, read> grid: array<f32>;\n${STAMP_GRID_AT_WGSL}` : ''}
 var<private> row: u32;
 fn x(i: u32) -> f32 { return inputs[row * ${width}u + i]; }
@@ -206,18 +210,24 @@ async function checkStampGateWash(id: string): Promise<StampGateWashCheck[]> {
     detail: `its end drawn again after ${mid} s: max ${ends.max}, mean ${ends.mean.toFixed(4)}; ${mid} s drawn fresh against after its end: max ${mids.max}, mean ${mids.mean.toFixed(4)}`,
   }];
   if (washCase.property === 'order') return checks;
-  if (washCase.property === 'paler') return [...checks, washCase.read(painted.end)];
+  if (washCase.property === 'frame') return [...checks, washCase.read(painted.end)];
   const pigments = stampGateLastGroupPigments(subject);
   if (washCase.property === 'fenced') return [...checks, checkStampGateFenced(id, pigments, painted.layer, washCase.fenced)];
   if (washCase.property === 'unlined') {
     const withoutBlooms = await withGateRenderer(subject, url, (renderer) => renderer.readLayer(end), { wetStages: STAMP_WET_STAGES.filter((stage) => stage.id !== 'bloom') });
     return [...checks, checkStampGateUnlined(id, pigments, painted.layer, withoutBlooms)];
   }
+  if (washCase.property === 'unrimmed') {
+    const withoutRim = await withGateRenderer(subject, url, (renderer) => renderer.readLayer(end), { wetStages: STAMP_WET_STAGES.filter((stage) => stage.id !== 'drying-rim') });
+    return [...checks, checkStampGateUnrimmed(id, pigments, painted.layer, withoutRim)];
+  }
   if (stampGateLastGroupPigments(washCase.without).join() !== pigments.join()) throw new Error(`stamp gate: ${id} and its painting without the ops under test lay different pigments`);
   const without = await withGateRenderer(washCase.without, url, (renderer) => renderer.readLayer(end));
   if (washCase.property === 'conserved') return [...checks, checkStampGateConserved(id, pigments, painted.layer, without)];
   if (washCase.property === 'rimmed') return [...checks, checkStampGateRimmed(id, pigments, painted.layer, without)];
   if (washCase.property === 'bloomed') return [...checks, checkStampGateBloomed(id, pigments, painted.layer, without)];
+  if (washCase.property === 'unlipped') return [...checks, checkStampGateUnlipped(id, pigments, painted.layer, without)];
+  if (washCase.property === 'lipped') return [...checks, checkStampGateLipped(id, pigments, painted.layer, without)];
   if (washCase.property === 'spread') return [...checks, checkStampGateSpread(id, pigments, painted.layer, without)];
   if (washCase.property === 'set') {
     const layerOf = (gate: StampGatePainting) => withGateRenderer(gate, drawnImages(gate), (renderer) => renderer.readLayer(end));
@@ -454,15 +464,28 @@ async function checkStampGateFlowCase(id: string): Promise<StampGateWashCheck> {
 
 /**
  * Stripe case `id` (stamp-gate-stripe.ts): the bloom after the drop, or the rim at the wash's one drying, run once
- * over the layer written.
+ * over the layer written; or that rim at each strength.
  */
 async function checkStampGateStripeCase(id: string): Promise<StampGateWashCheck> {
   const { stage, medium: name } = stampGateStripeCase(id), medium = PAINT_MEDIA[name];
+  if (stage === 'rim-strength') {
+    const runs = await Promise.all(STAMP_GATE_RIM_STRENGTHS.map(async (rim) => {
+      const painting = stampGateStripePainting(rim), pass = painting.groups[0].passes[0];
+      let ownsEdges = false;
+      const { before, after } = await runStampGateStage(id, painting, medium, stampPassDeposits(pass).at(-1)!, { ...STAMP_GATE_STRIPE_SIZE, ...stampGateStripeLayer() }, (context, encoder) => {
+        const loaded = STAMP_DRYING_RIM_STAGE.load(context), [drying] = context.wetness.washes.get(pass)!.dryings;
+        ownsEdges = drying.deposits.every((deposit) => loaded.ownsWetEdges?.(deposit) ?? false);
+        loaded.encode(encoder, { drying, seed: 0 });
+      });
+      return { rim, before, after, ownsEdges };
+    }));
+    return checkStampGateRimStrength(id, runs);
+  }
   const painting = stampGateStripePainting(), pass = painting.groups[0].passes[0], drop = stampPassDeposits(pass).at(-1)!;
   const box = { x: 0, y: 0, w: STAMP_GATE_STRIPE_SIZE.width, h: STAMP_GATE_STRIPE_SIZE.height };
   const { before, after } = await runStampGateStage(id, painting, medium, drop, { ...STAMP_GATE_STRIPE_SIZE, ...stampGateStripeLayer() }, (context, encoder) => {
     if (stage === 'rim') {
-      STAMP_DRYING_RIM_STAGE.load(context).encode(encoder, { drying: stampWashDryings(pass)[0], seed: 0 });
+      STAMP_DRYING_RIM_STAGE.load(context).encode(encoder, { drying: context.wetness.washes.get(pass)!.dryings[0], seed: 0 });
       return;
     }
     const bloom = STAMP_BLOOM_STAGE.load(context);
@@ -470,6 +493,14 @@ async function checkStampGateStripeCase(id: string): Promise<StampGateWashCheck>
     bloom.encode(encoder, { deposit: drop, pass, landing: context.wetness.landings.get(drop)!, box, seed: 0 });
   });
   return checkStampGateStripe(id, before, after);
+}
+
+/** Region case `id` (stamp-gate-regions.ts): each of its paintings drawn at its time, held to its property. */
+async function checkStampGateRegionCase(id: StampGateRegionId): Promise<StampGateWashCheck> {
+  const frames = await stampGateRegionPaintings(id).reduce<Promise<Uint8ClampedArray[]>>(async (done, gate) => [
+    ...await done, await withGateRenderer(gate, drawnImages(gate), (renderer, frame) => drawn(renderer, frame, gate.t)),
+  ], Promise.resolve([]));
+  return checkStampGateRegion(id, frames);
 }
 
 /** Media case `id` (stamp-gate-media.ts): the painting of three media against each group painted alone in its own. */
@@ -523,6 +554,6 @@ async function stampGateAdapter(): Promise<string> {
 }
 
 Object.assign(globalThis, {
-  runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, checkStampGateAnimation, checkStampGateFlowCase, checkStampGateStripeCase, checkStampGateMediaCase,
-  checkStampGateOutsideCase, checkStampGateStageCase, stampGateAdapter,
+  runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, checkStampGateAnimation, checkStampGateFlowCase, checkStampGateStripeCase, checkStampGateRegionCase,
+  checkStampGateMediaCase, checkStampGateOutsideCase, checkStampGateStageCase, stampGateAdapter,
 });

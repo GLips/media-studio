@@ -5,7 +5,8 @@
 // styles folder, served at /files/, at the URLs Node resolved (stamp-paint-pack-urls.ts).
 
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
 import { handStampStroke, type StampStrokeHand } from '#lib/paint/brush/models/stamp-stroke-hand.ts';
 import { createStampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';

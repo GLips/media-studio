@@ -7,10 +7,12 @@ import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.t
 import type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-pigment.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import type { StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import { stampGateFrameDifference, stampGateFramePasses } from './stamp-gate-frames.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
-import type { StampGateWashCheck } from './stamp-gate-washes.ts';
+import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 
 type Rgba = ArrayLike<number>;
 const SIZE = { width: 240, height: 160 };
@@ -39,7 +41,7 @@ export function stampGateLivePainting(pose = { x: 0, y: 0 }): StampGatePainting 
         });
         w.bloom('drop', { brush: steady, diameter: 22, at: [{ x: x + 16, y: y + 8 }] });
       });
-      g.pass('shade', { within: { kind: 'ellipse', x, y, radiusX: 52, radiusY: 34 } }, (pass) => pass.stroke('shade', {
+      g.pass('shade', { within: { region: { kind: 'ellipse', x, y, radiusX: 52, radiusY: 34 } } }, (pass) => pass.stroke('shade', {
         brush: steady, diameter: 14, material: mixture({ pigment: W.burntSienna, amount: 1 }), path: [{ x: x - 60, y: y + 22 }, { x: x + 60, y: y + 28 }],
       }));
     });

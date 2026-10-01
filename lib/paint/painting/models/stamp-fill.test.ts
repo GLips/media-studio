@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { stampLinearDynamics, type StampBrush, type StampBrushMedia } from '#lib/paint/brush/models/stamp-brush.ts';
-import { stampFillStrokePath, type StampFillApplication } from './stamp-fill.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, stampPassDeposits } from './stamp-paint-recipe.ts';
+import type { StampFillApplication } from './stamp-fill.ts';
+import { stampFillStrokePath } from './stamp-fill-strokes.ts';
+import { compileStampPaintRecipe, stampPassDeposits } from './stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampRegion } from './stamp-region.ts';
 
 const brush: StampBrush = {
@@ -53,19 +55,19 @@ test("a flood's edge stroke puts its stamps' edges on the outline, round a disc 
 test("a fill in strokes lays marks whose edges reach the outline, past it only when it reaches over, and a wide hatch leaves paper between", () => {
   const disc = { kind: 'ellipse', x: 200, y: 200, radiusX: 120, radiusY: 120 } as const;
   for (const pattern of ['zigzag', 'backAndForth', 'hatch', 'crossHatch', 'scribble', 'shading'] as const) {
-    const fill = compiledFill(disc, 30, { application: { kind: 'strokes', pattern, variation: 0, hand: {} } });
+    const fill = compiledFill(disc, 30, { application: { kind: 'strokes', pattern: { kind: pattern }, variation: 0, hand: {} } });
     assert.equal(fill.kind, 'stroke');
     const reach = Math.max(...fill.stamps.map(({ x, y }) => Math.hypot(x - 200, y - 200) + 15));
     assert.ok(reach > 115 && reach < 122, `${pattern} reaches ${reach}`);
   }
   // Reaching over, its marks' middles run out to the outline, round the disc's shape, not its box.
-  const over = compiledFill(disc, 30, { application: { kind: 'strokes', pattern: 'backAndForth', variation: 0, reach: 'over' } });
+  const over = compiledFill(disc, 30, { application: { kind: 'strokes', pattern: { kind: 'backAndForth' }, variation: 0, reach: { past: 0 } } });
   const centres = over.stamps.map(({ x, y }) => Math.hypot(x - 200, y - 200));
   assert.ok(Math.max(...centres) > 114 && Math.max(...centres) < 122, `centres reach ${Math.max(...centres)}`);
   // A region shorter than a shading stroke is still shaded, not left to a neighbouring patch it hasn't got.
-  assert.ok(stampFillStrokePath(polygon(0, 0, 40, 0, 40, 40, 0, 40), 20, 0, { pattern: 'shading', variation: 0, hand: {} }, 'small').length > 0);
+  assert.ok(stampFillStrokePath(polygon(0, 0, 40, 0, 40, 40, 0, 40), 20, 0, { pattern: { kind: 'shading' }, variation: 0, hand: {} }, 'small').length > 0);
   // Rows about two diameters apart: every stamp's centre lies within a few px of a row, and between rows lies paper.
-  const hatch = compiledFill(disc, 30, { application: { kind: 'strokes', pattern: 'hatch', spacing: 2, variation: 0 } });
+  const hatch = compiledFill(disc, 30, { application: { kind: 'strokes', pattern: { kind: 'hatch' }, spacing: 2, variation: 0 } });
   const rows = hatch.stamps.map(({ y }) => y).toSorted((a, b) => a - b).filter((y, i, ys) => i === 0 || y - ys[i - 1] > 10);
   assert.ok(rows.length >= 3 && rows.every((y, i) => i === 0 || y - rows[i - 1] > 55), `rows at ${rows.map(Math.round).join(', ')}`);
 });
@@ -74,14 +76,14 @@ test("a fill is laid as its brush's media lays it unless it says, and refused wh
   const square = polygon(0, 0, 200, 0, 200, 200, 0, 200);
   assert.equal(compiledFill(square, 30, {}, 'wet').kind, 'flood');
   assert.equal(compiledFill(square, 30, {}, 'dry').kind, 'stroke');
-  assert.equal(compiledFill(square, 30, { application: { kind: 'strokes', pattern: 'hatch' } }, 'wet').kind, 'stroke');
+  assert.equal(compiledFill(square, 30, { application: { kind: 'strokes', pattern: { kind: 'hatch' } } }, 'wet').kind, 'stroke');
   assert.throws(() => compiledFill(square, 30, {}), /states its application/);
 });
 
 test('every fill that doubles back eases off there unless pressed, its own hand too, and is firm through its runs', () => {
   const square: StampRegion = { kind: 'polygon', points: [{ x: 0, y: 0 }, { x: 300, y: 0 }, { x: 300, y: 200 }, { x: 0, y: 200 }] };
   for (const pattern of ['backAndForth', 'zigzag', 'shading'] as const) for (const turns of ['eased', 'pressed'] as const) {
-    const path = stampFillStrokePath(square, 16, 0, { pattern, variation: 0, turns }, 'turns');
+    const path = stampFillStrokePath(square, 16, 0, { pattern: { kind: pattern, turns }, variation: 0 }, 'turns');
     const pressures = path.map((p) => p.pressure ?? 1), firm = Math.max(...pressures);
     // A corner of a reversal: the way in and the way out more than 60° apart (a shading's U-turn is two of them).
     const corners = path.flatMap((p, i) => {

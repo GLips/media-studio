@@ -14,7 +14,7 @@ import {
 } from './stamp-paint-frame-state.ts';
 import { stampSettledEventCount, type StampPaintEvent } from './stamp-paint-events.ts';
 import type { StampOutsideFrameState, StampOutsideLayerPlace } from './stamp-outside-layer.ts';
-import { stampPassDeposits, type CompiledStampGroup, type CompiledStampPaint } from './stamp-paint-recipe.ts';
+import { stampPassDeposits, type CompiledStampGroup, type CompiledStampPaint } from './stamp-paint-recipe-compile.ts';
 
 /** A group's events, as indices into the painting's (stampPaintEvents): from `first`, up to `end`. */
 export type StampGroupEvents = { first: number; end: number };

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, stampPassDeposits, type CompiledStampMask } from './stamp-paint-recipe.ts';
+import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampMask } from './stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import { visibleStampCountAt } from './stamp-deposit-reveal.ts';
 import type { StampRegion } from './stamp-region.ts';
@@ -36,7 +37,7 @@ test('a clipped pass clips to the nearest unclipped pass before it; a deposit la
     paint.group('sky', { composite: 'opaque' }, (group) => {
       group.mask('sun', { region: sun, edge: { ragged: { amount: 3, scale: 12 } } });
       group.pass('base', {}, (pass) => pass.stroke('fill', { brush, material: ochre, diameter: 60, path }));
-      group.pass('texture', { clipped: true, within: sun }, (pass) => {
+      group.pass('texture', { clipped: true, within: { region: sun } }, (pass) => {
         pass.stroke('before', { brush, material: ochre, diameter: 30, path });
         pass.unmask('lift', { amount: 0.5 });
         pass.stroke('after', { brush, material: ochre, diameter: 30, path });

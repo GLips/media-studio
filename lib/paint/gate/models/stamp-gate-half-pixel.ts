@@ -4,10 +4,12 @@
 import { stampLinearDynamics } from '#lib/paint/brush/models/stamp-brush.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import type { StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
-import type { StampGateWashCheck } from './stamp-gate-washes.ts';
+import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 
 type Rgba = ArrayLike<number>;
 const SIZE = { width: 240, height: 160 };
@@ -38,7 +40,7 @@ const halfPixelShift = (): StampPaintFrameState => new Map([['patch', { warp: { 
 export function stampGateHalfPixelPainting(shifted: boolean): StampGatePainting {
   const { x0, x1, y0, y1 } = HALF_PIXEL_PATCH;
   const painting = compileStampPaintRecipe(stampPaintRecipe((p) => p.group('patch', { composite: 'opaque' }, (g) => g.pass('p', {}, (pass) => pass.fill('patch', {
-    brush: GRAINED, diameter: 6, application: { kind: 'strokes', pattern: 'hatch', spacing: 1.5, variation: 0.6 }, direction: 0.6,
+    brush: GRAINED, diameter: 6, application: { kind: 'strokes', pattern: { kind: 'hatch' }, spacing: 1.5, variation: 0.6 }, direction: 0.6,
     material: { kind: 'mixture', parts: [{ pigment: W.ultramarine, amount: 1 }, { pigment: W.burntSienna, amount: 1 }], strength: 0.6 }, region: stampGatePolygon(x0, y0, x1, y0, x1, y1, x0, y1),
   })))));
   return { painting, paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA.crayon, pigments: W }, ...SIZE, t: 0, images: STAMP_GATE_IMAGES, ...(shifted && { frameAt: halfPixelShift }) };

@@ -3,7 +3,9 @@
 // with a stroke under a state of the fluid built on the flood's. Its baselines sit in ignored work/validation/.
 
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import { compileStampPaintRecipe, stampPaintRecipe, type StampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import type { StampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { StampGatePainting } from './stamp-gate-paintings.ts';
 
 export const STAMP_GATE_PRIVATE_CASES = ['stroke', 'flood', 'within', 'load', 'front'] as const;
@@ -29,7 +31,7 @@ export function stampGatePrivateRecipe(brush: StampBrush, privateCase: StampGate
     group.mask('reserve', { region: { kind: 'ellipse', x: 240, y: 200, radiusX: 90, radiusY: 70 }, edge: { soft: 2, ragged: { amount: 6, scale: 14 } } });
     group.unmask('lift', { region: { kind: 'polygon', points: [{ x: 240, y: 120 }, { x: 350, y: 120 }, { x: 350, y: 300 }, { x: 240, y: 300 }] }, amount: 0.5 });
     const within = privateCase === 'within' ? { kind: 'polygon' as const, points: [{ x: 40, y: 30 }, { x: 460, y: 60 }, { x: 440, y: 390 }, { x: 60, y: 370 }] } : undefined;
-    group.pass('p', { ...(within && { within }) }, (pass) => {
+    group.pass('p', { ...(within && { within: { region: within } }) }, (pass) => {
       const fill = {
         brush, material: black, diameter: 60, direction: 0.3, application: { kind: 'flood' as const },
         region: { kind: 'polygon' as const, points: [{ x: 30, y: 60 }, { x: 290, y: 20 }, { x: 470, y: 110 }, { x: 450, y: 400 }, { x: 240, y: 330 }, { x: 60, y: 400 }] },

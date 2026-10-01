@@ -8,7 +8,7 @@
 
 import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { StampGroupGlow, StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import { stampPassDeposits, type CompiledStampGroup, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
+import { stampPassDeposits, type CompiledStampGroup, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { PaintAnchor, PaintCamera } from './paint-camera.ts';
 import { PAINT_BOIL_WOBBLE, paintBoilWobbleProblem, type PaintBoilWobble } from './paint-boil-displacement.ts';

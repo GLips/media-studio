@@ -1,14 +1,12 @@
 // stamp-wet-rim.ts: the drying rim. As a wash dries, water evaporates fastest at its edge and capillary flow carries
 // loose pigment out to replace it, so a dried wash keeps a thin, darker line along its edge and a paler band inside
-// it. A wash rims at each drying (a wait('dry'), and its end), the paint wetted since the last as one domain
-// (studio/stamp-wet-rim.ts): along its paint's edge, closed over the paper's grain, where that edge is abrupt. The
-// law is WGSL; the band's size is worked out on the CPU too, to size the stage's kernels.
+// it. A wash rims at each drying (StampWashDrying, from its resolved wetness), the paint wetted since the last as
+// one domain (studio/stamp-wet-rim.ts): along its paint's edge, closed over the paper's grain, where that edge is
+// abrupt. The law is WGSL; the band's size is worked out on the CPU too, to size the stage's kernels.
 //
-// Negative space: a wait for 'damp' or for seconds doesn't rim, though paper left long enough dries; a drying is
-// what the author names.
+// Negative space: a drying is the whole wash's, never a region's that has set while the rest is wet.
 
-import { STAMP_WET_CELL, stampWetGrid, type StampWetness } from './stamp-wetness.ts';
-import type { CompiledStampDeposit, CompiledStampPass } from './stamp-paint-recipe.ts';
+import { STAMP_WET_CELL, stampWetGrid, type StampWashDrying, type StampWetness } from './stamp-wetness.ts';
 import { stampGridLocalMax, type StampGrid } from './stamp-region.ts';
 
 /** The widest band a rim draws pigment from, px: past it the kernels' taps grow and a real rim's band is no wider. */
@@ -38,42 +36,11 @@ export function stampDryingRimBand(spread: number, diameter: number, wetShare: n
 export const stampDryingRimWetShare = (wettest: number, damp: number) => Math.min(1, Math.max(0, (wettest - damp) / Math.max(1e-3, 1 - damp)));
 
 /**
- * One drying of a wash: the deposits laid since its last wait('dry'), which dry, and rim, as one. `id` names it in
- * its wash, seeding its rim: the wash's own ID for its first.
- */
-export type StampWashDrying = { pass: CompiledStampPass; id: string; deposits: readonly CompiledStampDeposit[] };
-
-const washDryings = new WeakMap<CompiledStampPass, readonly StampWashDrying[]>();
-
-/**
- * `pass`'s dryings in painting order, the same objects every call: one per wait('dry') with deposits laid before it
- * and one at the wash's end with any after the last. None for a dry pass.
- */
-export function stampWashDryings(pass: CompiledStampPass): readonly StampWashDrying[] {
-  if (pass.kind !== 'wash') return [];
-  const known = washDryings.get(pass);
-  if (known) return known;
-  const dryings: StampWashDrying[] = [];
-  let deposits: CompiledStampDeposit[] = [];
-  const dry = () => {
-    if (deposits.length) dryings.push({ pass, id: dryings.length ? `${pass.id}|dry${dryings.length}` : pass.id, deposits });
-    deposits = [];
-  };
-  for (const step of pass.wash.schedule) {
-    if (step.kind === 'deposit') deposits.push(step.deposit);
-    else if (step.until === 'dry') dry();
-  }
-  dry();
-  washDryings.set(pass, dryings);
-  return dryings;
-}
-
-/**
  * The wettest each point of the lattice got over `drying`, over the windows its deposits' landings cover, or null for
  * a drying that landed nothing. Each point reads the wettest within a cell and a half, as a footprint averaged onto
  * the lattice dilutes the points along a wash's edge, where its rim is.
  */
-export function stampDryingWettest(drying: StampWashDrying, wetness: StampWetness): StampGrid | null {
+export function stampDryingWettest(drying: Pick<StampWashDrying, 'deposits'>, wetness: StampWetness): StampGrid | null {
   const landings = drying.deposits.flatMap((deposit) => wetness.landings.get(deposit) ?? []);
   if (!landings.length) return null;
   const grids = landings.flatMap(({ before, after }) => [stampWetGrid(before, 'wetness'), stampWetGrid(after, 'wetness')]);
@@ -95,6 +62,22 @@ export function stampDryingWettest(drying: StampWashDrying, wetness: StampWetnes
     }
   }
   return stampGridLocalMax({ x0: i0 * STAMP_WET_CELL, y0: j0 * STAMP_WET_CELL, cell: STAMP_WET_CELL, columns, rows, values }, STAMP_WET_CELL * 1.5);
+}
+
+/**
+ * How the rim stage sizes `drying`'s rim in the medium its paint landed in: its wettest grid, its paint deposits, the
+ * medium's spread, how far above damp it got, their mean diameter and the band, px; null for no paint. The wet report
+ * reads the same, so it estimates what the stage would do.
+ */
+export function stampDryingRimSizing(drying: Pick<StampWashDrying, 'deposits'>, wetness: StampWetness) {
+  const grid = stampDryingWettest(drying, wetness);
+  const painted = drying.deposits.filter((deposit) => deposit.action.kind === 'paint');
+  if (!grid || !painted.length) return null;
+  // A wash is one group's, so its paint is in one medium.
+  const { spread, sheen: { damp } } = wetness.landings.get(painted[0])!.medium.wetting;
+  const wetShare = stampDryingRimWetShare(grid.values.reduce((most, value) => Math.max(most, value), 0), damp);
+  const diameter = painted.reduce((sum, deposit) => sum + deposit.diameter, 0) / painted.length;
+  return { grid, painted, spread, damp, wetShare, diameter, band: stampDryingRimBand(spread, diameter, wetShare) };
 }
 
 /**
