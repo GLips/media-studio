@@ -19,7 +19,7 @@ export const STAMP_GATE_LENS_IDS = ['lens/defocus', 'lens/glow'];
 const LENS_SIZE = { width: 160, height: 100 };
 const LENS_FLAT: StampPaintEnvironment = { paper: STAMP_GATE_WHITE, mixing: { kind: 'flat' } };
 /** A plane where it's painted, sharp. */
-export const STAMP_GATE_REST_LOOK: StampPlaneLook = { view: { ma: 1, mb: 0, kx: 0, ky: 0 }, defocus: 0 };
+export const STAMP_GATE_REST_LOOK: StampPlaneLook = { view: { ma: 1, mb: 0, kx: 0, ky: 0 }, defocus: 0, distance: 1, shutter: null };
 
 /** The defocus case's sigma, frame px, and the scale it's also seen at: its picture then blurs by the sigma over it. */
 export const STAMP_GATE_DEFOCUS_SIGMA = 4;
@@ -55,7 +55,7 @@ export function stampGateDefocusPainting(): StampGatePainting {
 export function stampGateDefocusLens(defocus: number, scale = 1): StampLensFrame {
   // p ↦ s·p + (1 − s)·c keeps the centre c where it is.
   const view = { ma: scale, mb: 0, kx: (1 - scale) * LENS_SIZE.width / 2, ky: (1 - scale) * LENS_SIZE.height / 2 };
-  return { planes: new Map([[STAMP_SINGLE_PLANE_ID, { view, defocus }]]), bloom: 0 };
+  return { planes: new Map([[STAMP_SINGLE_PLANE_ID, { ...STAMP_GATE_REST_LOOK, view, defocus }]]), bloom: 0, focus: null, moving: false };
 }
 
 /**
@@ -144,7 +144,7 @@ export function stampGateGlowPainting(): StampGatePainting {
 }
 
 /** The glow case's lens: every plane at rest and sharp, blooming by STAMP_GATE_BLOOM. */
-export const STAMP_GATE_GLOW_LENS: StampLensFrame = { planes: new Map([[STAMP_SINGLE_PLANE_ID, STAMP_GATE_REST_LOOK]]), bloom: STAMP_GATE_BLOOM };
+export const STAMP_GATE_GLOW_LENS: StampLensFrame = { planes: new Map([[STAMP_SINGLE_PLANE_ID, STAMP_GATE_REST_LOOK]]), bloom: STAMP_GATE_BLOOM, focus: null, moving: false };
 
 const moved = (x: number) => ({ lay: { placement: { x, y: 0, rotation: 0, scale: 1 }, pivot: { x: 0, y: 0 } } });
 

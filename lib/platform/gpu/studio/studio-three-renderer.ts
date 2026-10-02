@@ -6,7 +6,7 @@
 // (render-browser.ts), and a second backend would be a second look to keep equal.
 
 import {
-  FloatType, HalfFloatType, Line, Mesh, Points, RenderTarget, UnsignedByteType, WebGPUBackend, WebGPURenderer, type BufferGeometry, type Material, type Object3D,
+  FloatType, HalfFloatType, Line, Mesh, Points, RenderTarget, UnsignedByteType, WebGPUBackend, WebGPURenderer, type BufferGeometry, type Material, type Object3D, type Texture,
 } from 'three/webgpu';
 
 export type StudioThreeRenderer = {
@@ -14,8 +14,9 @@ export type StudioThreeRenderer = {
   /**
    * A target three renders into `texture` through: its colour is our texture (three's own would be reachable only
    * through its backend's private map, and remade on a resize), multisampled `samples` times, with a depth buffer.
+   * Several textures, of one size and format, are its attachments in order, each named by `names` for setMRT.
    */
-  targetInto: (texture: GPUTexture, options?: { samples?: number }) => RenderTarget;
+  targetInto: (texture: GPUTexture | readonly { name: string; texture: GPUTexture }[], options?: { samples?: number }) => RenderTarget;
   dispose: () => void;
 };
 
@@ -25,8 +26,11 @@ export type ThreeGeometryDrawable = Object3D & { geometry: BufferGeometry; mater
 /** Whether `object` is a mesh, points or a line: three's generic classes narrow to `any` geometry under instanceof. */
 export const isThreeGeometryDrawable = (object: Object3D): object is ThreeGeometryDrawable => object instanceof Mesh || object instanceof Points || object instanceof Line;
 
-/** three's WebGPU backend with r186's setXRRenderTargetTextures, which registers a GPUTexture as a target's colour. */
-type OwnColourBackend = WebGPUBackend & { setXRRenderTargetTextures: (target: RenderTarget, color: GPUTexture) => void };
+/**
+ * three's WebGPU backend with r186's setXRRenderTargetTextures, which registers a GPUTexture as a target's colour. It
+ * reads only the target's `texture`.
+ */
+type OwnColourBackend = WebGPUBackend & { setXRRenderTargetTextures: (target: { texture: Texture }, color: GPUTexture) => void };
 
 /**
  * Whether `backend` can render into a texture it's given. setXRRenderTargetTextures was built for WebXR and
@@ -53,11 +57,17 @@ export async function createStudioThreeRenderer(device: GPUDevice): Promise<Stud
   }
   return {
     renderer,
-    targetInto: (texture, { samples = 1 } = {}) => {
+    targetInto: (given, { samples = 1 } = {}) => {
+      const named = given instanceof GPUTexture ? [{ name: 'output', texture: given }] : given;
+      const [{ texture }] = named;
       const type = TARGET_TYPES[texture.format];
       if (!type) throw new Error(`gpu: three renders into ${Object.keys(TARGET_TYPES).join(', ')}, not ${texture.format}`);
-      const target = new RenderTarget(texture.width, texture.height, { type, depthBuffer: true, samples: samples > 1 ? samples : 0 });
-      backend.setXRRenderTargetTextures(target, texture);
+      const target = new RenderTarget(texture.width, texture.height, { type, depthBuffer: true, samples: samples > 1 ? samples : 0, count: named.length });
+      // setXRRenderTargetTextures registers a target's first texture; handed another attachment's, it registers that.
+      named.forEach(({ name, texture: own }, i) => {
+        target.textures[i].name = name;
+        backend.setXRRenderTargetTextures({ texture: target.textures[i] }, own);
+      });
       return target;
     },
     // Not awaited: three frees its targets, textures and pipelines before its first await, and the owner destroys

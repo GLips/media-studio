@@ -9,9 +9,9 @@
 import { GPU_GAUSSIAN_PASS, gpuGaussianPassWgsl } from '#lib/platform/gpu/models/gpu-gaussian.ts';
 import { gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { createGpuUniformRing } from '#lib/platform/gpu/studio/gpu-uniform-ring.ts';
-import { lensGaussianReach } from '../models/lens-focus.ts';
+import { LENS_GAUSSIAN_SIGMAS, lensGaussianReach, type LensFocus } from '../models/lens-focus.ts';
 import {
-  LENS_COMPOSITE, LENS_GLOW, LENS_LAYING_BLEND, LENS_MOTION_BLEND, LENS_MOTION_GATHER, LENS_MOTION_TILES, LENS_OUTPUT, LENS_SUM, lensCompositeWgsl, lensGlowWgsl,
+  LENS_COMPOSITE, LENS_DEFOCUS, LENS_GLOW, LENS_LAYING_BLEND, LENS_MOTION_BLEND, LENS_MOTION_GATHER, LENS_MOTION_TILES, LENS_OUTPUT, LENS_SUM, lensCompositeWgsl, lensDefocusWgsl, lensGlowWgsl,
   lensMotionGatherWgsl, lensMotionNeighboursWgsl, lensMotionTilesWgsl, lensOutputWgsl, lensPictureLayersKey, lensSumWgsl,
   type LensImageEncoding, type LensLaying, type LensPictureLayers,
 } from './lens-passes.ts';
@@ -57,6 +57,15 @@ export type LensGaussianDraw = {
   readonly read: LensBox; readonly sourceAt: { readonly x: number; readonly y: number }; readonly box: LensBox;
 };
 
+/**
+ * A per-pixel defocus of `source`, a picture of colour and motion layers (lens-passes.ts) `size` texels, into `into`
+ * (two layers, as big): each texel blurred by `focus` at its own distance, at most `most` px of sigma.
+ */
+export type LensDefocusDraw = {
+  readonly source: GPUTextureView; readonly into: GPUTextureView; readonly size: { readonly w: number; readonly h: number };
+  readonly focus: LensFocus; readonly most: number;
+};
+
 export type LensCompositor = {
   readonly width: number;
   readonly height: number;
@@ -71,6 +80,7 @@ export type LensCompositor = {
   develop: (encoder: GPUCommandEncoder, frame: { bloom: LensBloom | null; into: GPUTextureView; format: GPUTextureFormat; encoding: LensImageEncoding }) => void;
   /** A gaussian of `sigma` px (lens-focus.ts's reach) over boxes in one space, past `read` clear. */
   gaussian: (encoder: GPUCommandEncoder, draw: LensGaussianDraw) => void;
+  defocus: (encoder: GPUCommandEncoder, draw: LensDefocusDraw) => void;
   /** Uploads the uniforms encoded since the last flush: before every submit of an encoder the lens encoded into. */
   flush: () => void;
   dispose: () => void;
@@ -238,6 +248,22 @@ export function createLensCompositor(device: GPUDevice, { width, height }: { wid
     pass(across.array, into, 1, box, { x: 0, y: 0 }, box);
   }
 
+  function defocus(encoder: GPUCommandEncoder, { source, into, size, focus, most }: LensDefocusDraw) {
+    const pipeline = compute('defocus', () => lensDefocusWgsl(LENS_WORKGROUP));
+    const across = acrossFor(size.w, size.h, 2);
+    const pass = (from: GPUTextureView, to: GPUTextureView, axis: 0 | 1) => dispatch(encoder, pipeline, [ring.slot((views) => {
+      const put = gpuUniformWriter(LENS_DEFOCUS, views);
+      put('size', [size.w, size.h]);
+      put('focus', focus.focus);
+      put('aperture', focus.aperture);
+      put('most', most);
+      put('axis', axis);
+      put('reach', Math.ceil(LENS_GAUSSIAN_SIGMAS * most));
+    }), from, to], size.w, size.h);
+    pass(source, across.array, 0);
+    pass(across.array, into, 1);
+  }
+
   /** The frame's colour and emission gathered along its motion. */
   function gatherMotion(encoder: GPUCommandEncoder, colour: { view: GPUTextureView }, emission: LensTarget | null) {
     const columns = Math.ceil(width / LENS_MOTION_TILE), rows = Math.ceil(height / LENS_MOTION_TILE);
@@ -291,7 +317,7 @@ export function createLensCompositor(device: GPUDevice, { width, height }: { wid
   }
 
   return {
-    width, height, exposure, exposureImage, develop, gaussian,
+    width, height, exposure, exposureImage, develop, gaussian, defocus,
     flush: ring.flush,
     dispose: () => {
       for (const texture of made.splice(0)) texture.destroy();

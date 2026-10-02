@@ -46,9 +46,10 @@ import {
   stampPlaneLightWgsl, stampPlanePictureLayerCount, stampPlanePictureLayers, stampPlanePictureLayersKey, stampPlanePictureWgsl,
   type StampPlanePictureLayers,
 } from './stamp-paint-plane-passes.ts';
-import { lensGaussianReach, lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
+import { LENS_DEFOCUS_LEAST, lensGaussianReach, lensSigmaStepped, type LensFocus } from '#lib/picture/lens/models/lens-focus.ts';
 import { GPU_GAUSSIAN_PASS, gpuGaussianPassWgsl } from '#lib/platform/gpu/models/gpu-gaussian.ts';
 import { createLensCompositor, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
+import type { LensPictureLayers } from '#lib/picture/lens/studio/lens-passes.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { stampPlacementWarpMap, stampWarpCells, stampWarpTriangles, STAMP_WARP_MOST_CELLS } from '../models/stamp-group-warp.ts';
 import { stampFramePlan, stampFramePlanExposed, type StampGroupFrame } from '../models/stamp-frame-plan.ts';
@@ -1040,11 +1041,11 @@ export type StampPaintRendererOptions = {
 };
 
 /**
- * A three plane's picture: `texture`, on the surface's device, rgba16float premultiplied linear colour, one layer, with
- * TEXTURE_BINDING usage; `at`, the frame px its first texel lies on. It may reach past the frame (a negative `at`),
- * so a defocus blurs in what lies beyond the frame's edge.
+ * A three plane's picture: `texture`, rgba16float premultiplied linear colour, and `motion`, the lens's motion layer
+ * (lens-passes.ts), both with TEXTURE_BINDING and COPY_SRC; `at`, the frame px their first texel lies on. A negative
+ * `at` reaches past the frame, so a defocus blurs in what lies beyond its edge.
  */
-export type StampThreePicture = { readonly texture: GPUTexture; readonly at: { readonly x: number; readonly y: number } };
+export type StampThreePicture = { readonly texture: GPUTexture; readonly motion: GPUTexture; readonly at: { readonly x: number; readonly y: number } };
 
 /** The most lattice cells a frame lays `group` through: a warp's most, a move's one, none still. */
 const latticeCellsMost = ({ lay, warp }: StampGroupFrame) => (warp ? STAMP_WARP_MOST_CELLS ** 2 : Number(!!lay));
@@ -2208,7 +2209,7 @@ function rendererOnSurface(
   const planeTarget = (name: string, w: number, h: number, layers: number) => {
     const key = `${name}|${w}|${h}|${layers}`;
     if (!planeTargets.has(key)) {
-      const texture = owner.target(name, { size: [w, h, layers], format: 'rgba16float', usage: STORAGE | RENDER | GPUTextureUsage.TEXTURE_BINDING });
+      const texture = owner.target(name, { size: [w, h, layers], format: 'rgba16float', usage: STORAGE | RENDER | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
       planeTargets.set(key, { texture, view: texture.createView({ dimension: layers > 1 ? '2d-array' : '2d' }), array: arrayView(texture) });
     }
     return planeTargets.get(key)!;
@@ -2372,16 +2373,23 @@ function rendererOnSurface(
     return look.defocus ? blurredPicture(encoder, picture, key, look.defocus / Math.hypot(look.view.ma, look.view.mb)) : picture;
   }
   /**
-   * Three plane `id`'s picture, defocused by `sigma` frame px into a scratch target of its own, and its box in frame
-   * px. The whole picture is blurred, so what it holds past the frame blurs in across the frame's edge.
+   * Three plane `id`'s picture for the lens and its box in frame px: its colour alone when sharp and still, else with
+   * its motion layer, each texel defocused by `focus` at its own distance, at most twice the aperture: else a point by
+   * the lens would blur the whole picture.
    */
-  function threePicture(encoder: GPUCommandEncoder, id: string, sigma: number): { view: GPUTextureView; box: Box } {
-    const { texture, at } = three.get(id)!, view = arrayView(texture);
-    const box: Box = { x: at.x, y: at.y, w: texture.width, h: texture.height }, own: Box = { x: 0, y: 0, w: texture.width, h: texture.height };
-    if (!sigma) return { view, box };
-    const defocused = planeTarget(`three ${id}`, texture.width, texture.height, 1), stepped = lensSigmaStepped(sigma);
-    lensGpu.gaussian(encoder, { source: view, into: defocused.array, layers: 1, sigma: stepped, read: own, sourceAt: own, box: own });
-    return { view: defocused.array, box };
+  function threePicture(encoder: GPUCommandEncoder, id: string, focus: LensFocus | null, moving: boolean): { view: GPUTextureView; box: Box; layers: LensPictureLayers } {
+    const { texture, motion, at } = three.get(id)!, { width: w, height: h } = texture;
+    const box: Box = { x: at.x, y: at.y, w, h };
+    const defocusing = focus !== null && focus.aperture >= LENS_DEFOCUS_LEAST;
+    if (!defocusing && !moving) return { view: arrayView(texture), box, layers: THREE_LAYERS };
+    const both = planeTarget(`three ${id}`, w, h, 2);
+    encoder.copyTextureToTexture({ texture }, { texture: both.texture, origin: { x: 0, y: 0, z: 0 } }, [w, h, 1]);
+    encoder.copyTextureToTexture({ texture: motion }, { texture: both.texture, origin: { x: 0, y: 0, z: 1 } }, [w, h, 1]);
+    const layers = moving ? THREE_MOVING_LAYERS : THREE_LAYERS;
+    if (!defocusing) return { view: both.array, box, layers };
+    const defocused = planeTarget(`three ${id} defocused`, w, h, 2);
+    lensGpu.defocus(encoder, { source: both.array, into: defocused.array, size: { w, h }, focus, most: 2 * focus.aperture });
+    return { view: defocused.array, box, layers };
   }
   /** The stage's whole texels within painting points x0..x1, y0..y1, or null for none. */
   function onStage(x0: number, y0: number, x1: number, y1: number): Box | null {
@@ -2548,10 +2556,11 @@ function rendererOnSurface(
       output(outputPipeline, [targets.painting.view]);
     } else {
       // Every picture first, as each plane is painted on the one painting target; then laid far to near.
+      const moving = count === 1 && !!lensFrame?.moving;
       const layerOf = (picture: StampPlanePicture | null, look: StampPlaneLook, clipped: boolean): LensLayer[] => (picture
         ? [{
-          picture: arrayView(picture.texture), layers: picture, view: look.view, shutter: null,
-          origin: { x: picture.box.x - margin, y: picture.box.y - margin }, size: picture.box, clipped, distance: 1, distances: 'layer',
+          picture: arrayView(picture.texture), layers: picture, view: look.view, shutter: look.shutter,
+          origin: { x: picture.box.x - margin, y: picture.box.y - margin }, size: picture.box, clipped, distance: look.distance, distances: 'layer',
         }]
         : []);
       const layers: LensLayer[] = [
@@ -2559,12 +2568,15 @@ function rendererOnSurface(
         ...nearer.flatMap((plane): LensLayer[] => {
           const look = lookOf(plane.id);
           if (plane.kind === 'picture') return layerOf(planePicture(encoder, plane, 'film', look, groups, whole, frameTrace), look, true);
-          // A three.js render is drawn through the camera already: only the lens's defocus is left to do.
-          const { view, box } = threePicture(encoder, plane.id, look.defocus);
-          return [{ picture: view, layers: THREE_LAYERS, view: REST_LOOK.view, shutter: null, origin: { x: box.x, y: box.y }, size: box, clipped: true, distance: 1, distances: 'layer' }];
+          // A three.js render is drawn through the camera, its motion with it: only the lens's defocus is left to do.
+          const { view, box, layers: pictureLayers } = threePicture(encoder, plane.id, lensFrame?.focus ?? null, moving);
+          return [{
+            picture: view, layers: pictureLayers, view: REST_LOOK.view, shutter: null, origin: { x: box.x, y: box.y }, size: box, clipped: true,
+            distance: look.distance, distances: moving ? 'texels' : 'layer',
+          }];
         }),
       ];
-      lensGpu.exposure(encoder, layers, { index, count, glowing: glows, moving: false });
+      lensGpu.exposure(encoder, layers, { index, count, glowing: glows, moving });
       // One bloom, of all that glows as the frame shows it, once its exposures are in.
       if (index === count - 1) {
         lensGpu.develop(encoder, {
@@ -2805,10 +2817,11 @@ const pictureKey = (plane: { id: string; groups: readonly number[] }, groups: re
   return visibility ? [paintKey, lay, warp && [warp.key, warp.cell], visibility, glow] : null;
 })]);
 /** A three render's layers: laid over by its alpha, as a paper picture is, with no emission. */
-const THREE_LAYERS = stampPlanePictureLayers('paper', false);
+const THREE_LAYERS: LensPictureLayers = { taken: null, emission: null, motion: null };
+const THREE_MOVING_LAYERS: LensPictureLayers = { ...THREE_LAYERS, motion: 1 };
 /** Rest: a plane where it's painted, sharp. */
-const REST_LOOK: StampPlaneLook = { view: { ma: 1, mb: 0, kx: 0, ky: 0 }, defocus: 0 };
-const isRest = ({ view, defocus }: StampPlaneLook) => view.ma === 1 && view.mb === 0 && view.kx === 0 && view.ky === 0 && !defocus;
+const REST_LOOK: StampPlaneLook = { view: { ma: 1, mb: 0, kx: 0, ky: 0 }, defocus: 0, distance: 1, shutter: null };
+const isRest = ({ view, defocus, shutter }: StampPlaneLook) => view.ma === 1 && view.mb === 0 && view.kx === 0 && view.ky === 0 && !defocus && !shutter;
 const clear = (encoder: GPUCommandEncoder, view: GPUTextureView) => encoder.beginRenderPass({ colorAttachments: [{ view, loadOp: 'clear', storeOp: 'store' }] }).end();
 const channel = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16) / 255;
 const rgb = (hex: string): [number, number, number] => [channel(hex, 1), channel(hex, 3), channel(hex, 5)];

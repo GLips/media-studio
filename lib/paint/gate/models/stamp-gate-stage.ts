@@ -11,6 +11,7 @@ import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { STAMP_GATE_IMAGES, STAMP_GATE_PAINTING_IDS, STAMP_GATE_WHITE, stampGateBrush, stampGatePainting, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
+import { STAMP_GATE_REST_LOOK } from './stamp-gate-lens.ts';
 import { STAMP_GATE_ANIMATION_FPS, STAMP_GATE_KNOCKOUT_FAR, stampGateBloomBoilPainting, stampGateCutOutPainting, stampGateKnockoutPainting } from './stamp-gate-animation.ts';
 import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 import { STAMP_GATE_REGION_IDS, stampGateRegionPaintings } from './stamp-gate-regions.ts';
@@ -218,10 +219,12 @@ export function stampGatePlanesLens(k: number): StampLensFrame {
   const grown = 1 + 0.01 * k;
   return {
     planes: new Map([
-      ['back', { view: { ma: 1, mb: 0, kx: -2 * k, ky: 0.5 * k }, defocus: 1.5 }],
-      ['near', { view: { ma: grown, mb: 0, kx: -5 * k + (1 - grown) * 120, ky: (1 - grown) * 80 }, defocus: 0 }],
+      ['back', { ...STAMP_GATE_REST_LOOK, view: { ma: 1, mb: 0, kx: -2 * k, ky: 0.5 * k }, defocus: 1.5 }],
+      ['near', { ...STAMP_GATE_REST_LOOK, view: { ma: grown, mb: 0, kx: -5 * k + (1 - grown) * 120, ky: (1 - grown) * 80 } }],
     ]),
     bloom: 0,
+    focus: null,
+    moving: false,
   };
 }
 

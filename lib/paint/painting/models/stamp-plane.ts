@@ -7,6 +7,7 @@
 // linearisation (stamp-paint-plane-passes.ts says where that's close). A group's knockout, lift or glaze reads only
 // its own plane's paint.
 
+import type { LensFocus } from '#lib/picture/lens/models/lens-focus.ts';
 import type { CompiledStampPaint } from './stamp-paint-recipe-compile.ts';
 
 /**
@@ -79,11 +80,24 @@ export function stampScenePlanes(painting: CompiledStampPaint, planes: readonly 
   return { back, nearer };
 }
 
-/**
- * How a frame shows one plane: `view`, plane points to frame px (p ↦ (ma + i·mb)·p + (kx + i·ky)), and `defocus`,
- * a gaussian's sigma in frame px over its picture (0 sharp).
- */
-export type StampPlaneLook = { readonly view: { readonly ma: number; readonly mb: number; readonly kx: number; readonly ky: number }; readonly defocus: number };
+/** A similarity, plane points to frame px: p ↦ (ma + i·mb)·p + (kx + i·ky). */
+export type StampPlaneView = { readonly ma: number; readonly mb: number; readonly kx: number; readonly ky: number };
 
-/** What a frame's lens does: each plane's look by id (a plane left out is at rest and sharp), and its bloom's sigma, frame px. */
-export type StampLensFrame = { readonly planes: ReadonlyMap<string, StampPlaneLook>; readonly bloom: number };
+/**
+ * How a frame shows one plane: `view`; `defocus`, a gaussian's sigma in frame px over its picture (0 sharp);
+ * `distance`, from the camera, depth units; `shutter`, its views as the shutter opens and closes in a frame gathered
+ * along its motion, else null.
+ */
+export type StampPlaneLook = {
+  readonly view: StampPlaneView;
+  readonly defocus: number;
+  readonly distance: number;
+  readonly shutter: { readonly open: StampPlaneView; readonly close: StampPlaneView } | null;
+};
+
+/**
+ * What a frame's lens does: each plane's look by id (a plane left out is at rest and sharp), and its bloom's sigma,
+ * frame px. `focus`: what defocuses a three plane per pixel, its focus measured from the camera (null: sharp).
+ * `moving`: the frame is gathered along its motion, a fast frame with its shutter open.
+ */
+export type StampLensFrame = { readonly planes: ReadonlyMap<string, StampPlaneLook>; readonly bloom: number; readonly focus: LensFocus | null; readonly moving: boolean };

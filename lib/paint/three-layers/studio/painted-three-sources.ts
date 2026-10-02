@@ -4,15 +4,17 @@
 // plane's defocus margin, which the stamp renderer lays among the painted planes. Painted textures, paintings a
 // material reads, are drawn first, each frame.
 //
-// Texture contracts: a source's texture is rgba16float, premultiplied linear colour (three renders a target in linear
-// light, and its normal blending over a clear target leaves colour premultiplied); a painted texture is rgba16float,
-// gamma-encoded and opaque, as a screen shows it, decoded by paintedThreeColorNode.
+// Texture contracts: a source's texture is rgba16float premultiplied linear colour (normal blending over a clear
+// target premultiplies), its motion texture the lens's motion layer (lens-three-motion.ts); a painted texture is
+// rgba16float, gamma-encoded and opaque, decoded by paintedThreeColorNode.
 
 import { ExternalTexture, PerspectiveCamera, type Scene } from 'three/webgpu';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { shotCameraGrown, type ShotCamera } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import type { LensExposure } from '#lib/picture/lens/models/lens-exposures.ts';
 import { shotCameraExposed, shotLensOfFocus } from '#lib/picture/lens/models/lens-focus.ts';
+import { shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
+import { createLensThreeMotion, LENS_THREE_MOTION_NAME } from '#lib/picture/lens/studio/lens-three-motion.ts';
 import { setThreeShotCamera } from '#lib/picture/shot-camera/studio/three-shot-camera.ts';
 import { paintCameraShotAt, paintCameraWorld, paintWorldPlane, type PaintCameraWorld, type PaintWorldPlane } from '#lib/paint/animation/models/paint-camera-world.ts';
 import { PAINT_CAMERA_REST, paintCameraFocusAt, paintCameraPoseAt, type PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
@@ -102,7 +104,7 @@ export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintC
     for (const texture of owned.splice(0)) texture.destroy();
   };
   const ownTexture = (width: number, height: number) => {
-    const texture = webgpu.createTexture({ size: [width, height], format: 'rgba16float', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+    const texture = webgpu.createTexture({ size: [width, height], format: 'rgba16float', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC });
     owned.push(texture);
     return texture;
   };
@@ -132,14 +134,18 @@ export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintC
         // The frame grown on every side by the plane's margin, so its defocus has what lies past the frame's edge.
         const shotAt = (pose: Parameters<typeof paintCameraShotAt>[1]) => shotCameraGrown(paintCameraShotAt(world, pose), margin);
         const threeCamera = setThreeShotCamera(new PerspectiveCamera(), shotAt(PAINT_CAMERA_REST));
-        const texture = ownTexture(frame.width + 2 * margin, frame.height + 2 * margin);
-        // three renders into our texture, where the stamp renderer reads it.
-        const target = targetInto(texture, { samples: PAINTED_THREE_SAMPLES });
+        const w = frame.width + 2 * margin, h = frame.height + 2 * margin;
+        const texture = ownTexture(w, h), motionTexture = ownTexture(w, h);
+        // three renders into our textures, where the stamp renderer reads them.
+        const target = targetInto([{ name: 'output', texture }, { name: LENS_THREE_MOTION_NAME, texture: motionTexture }], { samples: PAINTED_THREE_SAMPLES });
         made.push(target);
+        const motion = createLensThreeMotion({ width: w, height: h, distanceUnit: world.depthUnit });
         renderer.setRenderTarget(target);
+        renderer.setMRT(motion.mrt);
         await renderer.compileAsync(built.scene, threeCamera);
+        renderer.setMRT(null);
         renderer.setRenderTarget(null);
-        return { id: source.id, built, shotAt, camera: threeCamera, target, picture: { texture, at: { x: -margin, y: -margin } } };
+        return { id: source.id, built, shotAt, camera: threeCamera, target, motion, picture: { texture, motion: motionTexture, at: { x: -margin, y: -margin } } };
       });
     });
 
@@ -155,13 +161,25 @@ export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintC
           const lens = focus && distance ? shotLensOfFocus(shot, { focus: distance, aperture: focus.aperture }, distance * world.depthUnit) : null;
           return shotCameraExposed(shot, lens, { aperture: exposure.aperture, pixel: [0, 0] });
         };
+        // A fast frame's motion over the camera's shutter, centred on t; a reference exposure's is its own exposure.
+        const shutter = exposure ? 0 : camera.lens.shutter, opens = shutterOpensAt(t, shutter);
         await owner.checked(`three.js rendering its sources at ${at} s`, () => {
-          for (const { built, shotAt, camera: threeCamera, target } of loaded) {
+          for (const { built, shotAt, camera: threeCamera, target, motion } of loaded) {
+            motion.still();
+            if (shutter > 0) {
+              for (const [moment, when] of [['open', opens], ['close', opens + shutter]] as const) {
+                built.poseAt(when);
+                setThreeShotCamera(threeCamera, shotAt(paintCameraPoseAt(camera, when)));
+                motion.record(moment, built.scene, threeCamera);
+              }
+            }
             built.poseAt(at);
             setThreeShotCamera(threeCamera, seen(shotAt(pose)));
+            renderer.setMRT(motion.mrt);
             renderer.setRenderTarget(target);
             renderer.render(built.scene, threeCamera);
           }
+          renderer.setMRT(null);
           renderer.setRenderTarget(null);
         });
       },

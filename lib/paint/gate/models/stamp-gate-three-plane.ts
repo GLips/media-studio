@@ -2,14 +2,13 @@
 // ground at the back, a three.js plane of known colours before it (stamp-plane.ts), its texture written by the gate,
 // and a painted plane in front, an opaque box on clear film, in each compositor. Held to: each opaque colour showing as itself
 // within a level; a half-transparent patch laid over the ground in linear light; the front plane covering it; an
-// all-clear texture drawing as the planes without it; any frame order drawing the same frames; and the lens's defocus
-// as the content blurred on the CPU.
+// all-clear texture drawing as the planes without it; any frame order drawing the same frames; and the lens's per-pixel
+// defocus, the card all at one distance, as the content blurred on the CPU.
 
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { linearToSrgb, srgbToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
-import { lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
 import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import { stampScenePlanes, type StampLaidPlanes, type StampLensFrame, type StampPlane } from '#lib/paint/painting/models/stamp-plane.ts';
@@ -30,8 +29,9 @@ export const STAMP_GATE_CARD = 'card';
 export const STAMP_GATE_THREE_ROUND_TRIP = 1;
 /** How far the half-transparent patch may sit from linear light's over, worked out from the all-clear frame's bytes. */
 export const STAMP_GATE_THREE_OVER = 2;
-/** The card's defocus in the defocus case, frame px. */
+/** The card's defocus in the defocus case, frame px, and its distance from the camera, depth units. */
 export const STAMP_GATE_THREE_DEFOCUS = 3;
+const STAMP_GATE_THREE_DISTANCE = 1;
 
 type Box = { x0: number; x1: number; y0: number; y1: number };
 /** A patch of the card: linear light, `alpha` its coverage (its colour premultiplied by it as laid). */
@@ -61,17 +61,23 @@ export function stampGateThreeContent(which: 'a' | 'b'): Float32Array {
   return rgba;
 }
 
-/**
- * Content a as the lens defocuses it, worked out on the CPU: premultiplied, so a patch fades into clear, at the sigma
- * the renderer steps the defocus to.
- */
-export function stampGateThreeContentBlurred(): Float64Array {
-  const { width, height } = STAMP_GATE_THREE_SIZE;
-  return stampGateGaussian(stampGateThreeContent('a'), width, height, 4, lensSigmaStepped(STAMP_GATE_THREE_DEFOCUS), 0);
+/** `content`'s motion layer (lens-passes.ts): still, every texel STAMP_GATE_THREE_DISTANCE away, times its cover. */
+export function stampGateThreeMotion(content: Float32Array): Float32Array {
+  const motion = new Float32Array(content.length);
+  for (let i = 3; i < content.length; i += 4) motion.set([0, 0, STAMP_GATE_THREE_DISTANCE * content[i], content[i]], i - 3);
+  return motion;
 }
 
-/** The defocus case's lens: the card STAMP_GATE_THREE_DEFOCUS px out of focus. */
-export const STAMP_GATE_THREE_DEFOCUS_LENS: StampLensFrame = { planes: new Map([[STAMP_GATE_CARD, { ...STAMP_GATE_REST_LOOK, defocus: STAMP_GATE_THREE_DEFOCUS }]]), bloom: 0 };
+/** Content a as the lens defocuses it, worked out on the CPU: premultiplied, so a patch fades into clear. */
+export function stampGateThreeContentBlurred(): Float64Array {
+  const { width, height } = STAMP_GATE_THREE_SIZE;
+  return stampGateGaussian(stampGateThreeContent('a'), width, height, 4, STAMP_GATE_THREE_DEFOCUS, 0);
+}
+
+/** The defocus case's lens: focused at half the card's distance, so its texels blur by STAMP_GATE_THREE_DEFOCUS px. */
+export const STAMP_GATE_THREE_DEFOCUS_LENS: StampLensFrame = {
+  planes: new Map([[STAMP_GATE_CARD, STAMP_GATE_REST_LOOK]]), bloom: 0, focus: { focus: STAMP_GATE_THREE_DISTANCE / 2, aperture: 2 * STAMP_GATE_THREE_DEFOCUS }, moving: false,
+};
 
 const flood = (box: Box) => stampGatePolygon(box.x0, box.y0, box.x1, box.y0, box.x1, box.y1, box.x0, box.y1);
 

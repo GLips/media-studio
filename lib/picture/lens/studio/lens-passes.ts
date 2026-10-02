@@ -6,6 +6,9 @@
 
 import { gpuUniformLayout } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
+import { LENS_DEFOCUS_LEAST, LENS_GAUSSIAN_SIGMAS } from '../models/lens-focus.ts';
+
+const LENS_DEFOCUS_LEAST_WGSL = LENS_DEFOCUS_LEAST.toFixed(3);
 
 /**
  * A picture's array layers past its colour (0, premultiplied): `taken`, a clear film's share of what's behind it
@@ -235,6 +238,64 @@ fn before(a: f32, b: f32) -> f32 { return clamp(1.0 - (a - b) / max(u.soft * b, 
   }
   textureStore(gathered, x, sum / weight);${each(`
   textureStore(gatheredEmission, x, sumEmission / weight);`)}
+}`;
+}
+
+/**
+ * One direction of a per-pixel defocus over `size` texels: `axis` 0 across, 1 down, `reach` taps each side. A texel's sigma is
+ * `aperture`·|1 − `focus`/d| at its distance d, held to `most`: within half the focus, nearer still blurs no wider.
+ */
+export const LENS_DEFOCUS = gpuUniformLayout('LensDefocus', [['size', 'vec2f'], ['focus', 'f32'], ['aperture', 'f32'], ['most', 'f32'], ['axis', 'u32'], ['reach', 'u32']]);
+
+/**
+ * A per-pixel defocus over a two-layer picture, colour (0) and motion (1, its distance setting the sigma): binds the
+ * uniform (0), source (1) and storage result (2). Each texel's own gaussian is scattered by gathering: a tap weighs
+ * its kernel's value over that kernel's sum, so light is spread, never gained or lost.
+ */
+export function lensDefocusWgsl(workgroup: number) {
+  return /* wgsl */ `
+${LENS_DEFOCUS.wgsl}
+@group(0) @binding(0) var<uniform> u: LensDefocus;
+@group(0) @binding(1) var source: texture_2d_array<f32>;
+@group(0) @binding(2) var defocused: texture_storage_2d_array<rgba16float, write>;
+fn sigmaOf(motion: vec4f) -> f32 {
+  if (motion.w < 1e-4) { return 0.0; }
+  return min(u.most, abs(u.aperture * (1.0 - u.focus / max(motion.z / motion.w, 1e-4))));
+}
+// Abramowitz and Stegun 7.1.26, within 1.5e-7.
+fn erf(x: f32) -> f32 {
+  let t = 1.0 / (1.0 + 0.3275911 * x);
+  return 1.0 - t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * exp(-x * x);
+}
+fn kernelSum(sigma: f32, reach: i32) -> f32 {
+  if (sigma >= 2.0) { return sigma * 2.5066283 * erf((f32(reach) + 0.5) / (sigma * 1.4142135)); }
+  var sum = 0.0;
+  for (var k = -reach; k <= reach; k++) { sum += exp(-0.5 * f32(k * k) / (sigma * sigma)); }
+  return sum;
+}
+@compute @workgroup_size(${workgroup}, ${workgroup}) fn lensDefocus(@builtin(global_invocation_id) id: vec3u) {
+  let size = vec2i(u.size);
+  let pixel = vec2i(id.xy);
+  if (any(pixel >= size)) { return; }
+  let step = select(vec2i(1, 0), vec2i(0, 1), u.axis == 1u);
+  var colour = vec4f(0.0);
+  var motion = vec4f(0.0);
+  for (var i = -i32(u.reach); i <= i32(u.reach); i++) {
+    let at = pixel + step * i;
+    if (any(at < vec2i(0)) || any(at >= size)) { continue; }
+    let tapMotion = textureLoad(source, at, 1, 0);
+    let sigma = sigmaOf(tapMotion);
+    var w = select(0.0, 1.0, i == 0);
+    if (sigma >= ${LENS_DEFOCUS_LEAST_WGSL}) {
+      let reach = i32(ceil(${LENS_GAUSSIAN_SIGMAS} * sigma));
+      if (abs(i) > reach) { continue; }
+      w = exp(-0.5 * f32(i * i) / (sigma * sigma)) / kernelSum(sigma, reach);
+    }
+    colour += textureLoad(source, at, 0, 0) * w;
+    motion += tapMotion * w;
+  }
+  textureStore(defocused, pixel, 0, colour);
+  textureStore(defocused, pixel, 1, motion);
 }`;
 }
 

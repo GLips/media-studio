@@ -8,6 +8,7 @@
 
 import { LENS_DEFOCUS_LEAST, lensApertureSlide, lensDefocusSigned } from '#lib/picture/lens/models/lens-focus.ts';
 import type { LensExposure } from '#lib/picture/lens/models/lens-exposures.ts';
+import { shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { StampLensFrame, StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
@@ -183,16 +184,22 @@ export function paintPlaneDefocus({ focus, aperture }: PaintCameraFocus, dolly: 
 export function paintCameraLensAt(camera: PaintCamera, t: number, aperture: LensExposure['aperture'] | null = null): StampLensFrame {
   const pose = paintCameraPoseAt(camera, t), lens = paintCameraFocusAt(camera, t), centre = paintStageCentre(camera.stage);
   if (lens && lens.focus - pose.dolly <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${t}s the camera focuses at depth ${lens.focus}, at or behind itself (dollied ${pose.dolly})`);
+  // A fast frame is gathered along its motion over the shutter; an exposure is its own moment.
+  const { shutter } = camera.lens, moving = !aperture && shutter > 0;
+  const opens = shutterOpensAt(t, shutter), openPose = moving ? paintCameraPoseAt(camera, opens) : pose, closePose = moving ? paintCameraPoseAt(camera, opens + shutter) : pose;
   const planes = new Map<string, StampPlaneLook>();
   for (const { id, depth } of camera.planes) {
-    if (depth - pose.dolly <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${t}s the camera, dollied ${pose.dolly}, is at or past plane ${id} at depth ${depth}`);
-    const view = paintPlaneSimilarity(pose, depth, centre);
+    const nearest = Math.max(pose.dolly, openPose.dolly, closePose.dolly);
+    if (depth - nearest <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${t}s the camera, dollied ${nearest}, is at or past plane ${id} at depth ${depth}`);
+    const view = paintPlaneSimilarity(pose, depth, centre), distance = depth - pose.dolly;
+    const seen = moving ? { open: paintPlaneSimilarity(openPose, depth, centre), close: paintPlaneSimilarity(closePose, depth, centre) } : null;
     if (!aperture) {
-      planes.set(id, { view, defocus: lens ? paintPlaneDefocus(lens, pose.dolly, depth) : 0 });
+      planes.set(id, { view, defocus: lens ? paintPlaneDefocus(lens, pose.dolly, depth) : 0, distance, shutter: seen });
       continue;
     }
-    const slide = lens ? lensApertureSlide({ focus: lens.focus - pose.dolly, aperture: lens.aperture }, depth - pose.dolly, aperture) : { x: 0, y: 0 };
-    planes.set(id, { view: { ...view, kx: view.kx + slide.x, ky: view.ky + slide.y }, defocus: 0 });
+    const slide = lens ? lensApertureSlide({ focus: lens.focus - pose.dolly, aperture: lens.aperture }, distance, aperture) : { x: 0, y: 0 };
+    planes.set(id, { view: { ...view, kx: view.kx + slide.x, ky: view.ky + slide.y }, defocus: 0, distance, shutter: null });
   }
-  return { planes, bloom: camera.lens.bloom };
+  const focus = lens && !aperture ? { focus: lens.focus - pose.dolly, aperture: lens.aperture } : null;
+  return { planes, bloom: camera.lens.bloom, focus, moving };
 }
