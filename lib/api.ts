@@ -36,7 +36,7 @@ export { CapturePlane, type CapturePlaneProps } from '#lib/picture/reel/studio/c
 export { PLANE_REST_POSE, capturePlaneProjection, capturePlaneView, lerpPlanePose, planeLiftStart, type CapturePlaneProjection, type PlaneLift, type PlanePose } from '#lib/picture/reel/models/capture-plane.ts';
 export { ColumnField, type ColumnFieldProps } from '#lib/picture/reel/studio/column-field.tsx';
 export { columnDiscCells, columnFieldHeight, columnFieldPoint, columnNoise, type ColumnBall, type ColumnBallState, type ColumnCameraMove, type ColumnCameraPose, type ColumnCameraState, type ColumnCell, type ColumnFieldLights, type ColumnFieldSpec, type ColumnLabel, type ColumnLight, type ColumnRise } from '#lib/picture/reel/models/column-field.ts';
-export { columnBallAt, columnCameraAt, columnFieldCameraAt, topDownPose } from '#lib/picture/reel/models/column-field-motion.ts';
+export { columnBallAt, columnCameraAt, columnFieldCameraAt, columnFieldFrame, topDownPose } from '#lib/picture/reel/models/column-field-motion.ts';
 export { columnTitaniumMaterial } from '#lib/picture/reel/studio/column-field-materials.ts';
 export { FieldFlash, GlyphField, ShockRing } from '#lib/picture/reel/studio/glyph-field.tsx';
 export { GLYPH_FIELD_COLORS, GLYPH_SHAPES, glyphFieldLayout, glyphPunchScale, glyphRegroupPlan, glyphWaveArrivals, type GlyphCell, type GlyphClip, type GlyphFieldSlot, type GlyphFilterStep, type GlyphFilterTiming, type GlyphFront, type GlyphHit, type GlyphImplode, type GlyphKey, type GlyphLayout, type GlyphPunch, type GlyphRegroup, type GlyphShape, type GlyphShapeKey, type GlyphWave } from '#lib/picture/reel/models/glyph-field.ts';

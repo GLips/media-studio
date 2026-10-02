@@ -46,6 +46,14 @@ function rawPass(fragment: Node, blend?: 'add'): QuadMesh & { material: NodeMate
   return Object.assign(new QuadMesh(material), { material });
 }
 
+/** The output pass for one structure of look (tone mapping, bloom or not, transparency), and its bloom if any. */
+type ThreeStageOutputPass = { key: string; pass: ReturnType<typeof rawPass>; bloom: ReturnType<typeof bloomNode> | null };
+
+function disposeOutputPass(retired: ThreeStageOutputPass) {
+  retired.pass.material.dispose();
+  retired.bloom?.dispose();
+}
+
 export type ThreeStageGpu = Awaited<ReturnType<typeof createThreeStageGpu>>;
 
 /**
@@ -88,22 +96,28 @@ export async function createThreeStageGpu(canvas: HTMLCanvasElement, { width, he
    * light, encoded, and the backdrop's share taken out: composited over that colour, the page shows the linear blend.
    */
   const backdrop = uniform(new Vector3()), exposure = uniform(1);
-  const outputs = new Map<string, ReturnType<typeof rawPass>>();
+  // The pass for the look's structure, its bloom's numbers uniforms; a pass of another structure is let go of.
+  let looked: ThreeStageOutputPass | null = null;
   const outputPass = ({ toneMapping: mapping, bloom, transparent: clear }: ThreeStageLook) => {
-    const key = `${mapping}|${bloom ? `${bloom.strength} ${bloom.radius} ${bloom.threshold}` : '-'}|${clear}`;
-    let pass = outputs.get(key);
-    if (!pass) {
+    const key = `${mapping}|${bloom ? 'bloom' : '-'}|${clear}`;
+    if (looked?.key !== key) {
+      if (looked) disposeOutputPass(looked);
       const average = texture(image.texture);
-      const lit = bloom ? average.add(bloomNode(average, bloom.strength, bloom.radius, bloom.threshold)) : average;
+      const glow = bloom ? bloomNode(average) : null;
+      const lit = glow ? average.add(glow) : average;
       // toneMapping gives a vec4 (its colour's alpha kept), whatever its types say.
       const light: Node<'vec3'> = mapping === NoToneMapping ? lit.rgb : toneMapping(mapping, exposure, lit).rgb;
       const cover: Node<'float'> = clear ? clamp(lit.a, 0, 1) : float(1);
       const uncovered = cover.oneMinus();
       const seen = encodeSrgb(light.add(backdrop.mul(uncovered)));
-      pass = rawPass(vec4(max(seen.sub(encodeSrgb(backdrop).mul(uncovered)), vec3(0)), cover));
-      outputs.set(key, pass);
+      looked = { key, bloom: glow, pass: rawPass(vec4(max(seen.sub(encodeSrgb(backdrop).mul(uncovered)), vec3(0)), cover)) };
     }
-    return pass;
+    if (looked.bloom && bloom) {
+      looked.bloom.strength.value = bloom.strength;
+      looked.bloom.radius.value = bloom.radius;
+      looked.bloom.threshold.value = bloom.threshold;
+    }
+    return looked.pass;
   };
 
   const rooms = new Map<string, Texture>();
@@ -150,7 +164,8 @@ export async function createThreeStageGpu(canvas: HTMLCanvasElement, { width, he
     },
     dispose() {
       for (const t of [sample, msaa, sum, image, shown]) t?.dispose();
-      for (const pass of [add, resolve, ...outputs.values()]) pass.material.dispose();
+      for (const pass of [add, resolve]) pass.material.dispose();
+      if (looked) disposeOutputPass(looked);
       for (const t of rooms.values()) t.dispose();
       output.dispose();
       owner.dispose();

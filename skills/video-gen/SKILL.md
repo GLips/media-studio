@@ -50,7 +50,7 @@ blockout's.
 - **Subjects** are grey primitives (`BlockoutSubject`: box, sphere, cylinder, cone, `figure` for a person, `card` for a
   phone, screen or sign), sized in metres, standing on the ground at y = 0. Give each one its own muted tint. The
   prompt names subjects by tint, and a saturated block comes back as a saturated object.
-- **The camera really moves.** `orbitMove`, `pushInMove` and `dollyMove` return a look-at (where the camera stands, what it looks at, its `fov`) for 0..1 progress; drive them
+- **The camera really moves.** `orbitMove`, `pushInMove` and `dollyMove` return a `BlockoutLookAt` (where the camera stands, what it looks at, its `fov`) for 0..1 progress, which `<Blockout lookAt>` takes; drive them
   with `seg(s.t, a, b)`. Move the camera and keep `fov` fixed. A 3D blockout gives the model real perspective and
   parallax to copy, which is why its moves don't come back as zooms. A change of `fov` does come back as a zoom.
 - **Block the set, not just the subjects.** The model follows the camera path, the easing and where each subject

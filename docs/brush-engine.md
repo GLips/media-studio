@@ -265,11 +265,11 @@ an error. A frame held on twos gives every group the keys it had, so it repaints
   its groups' paint can be laid (`paint-motion-reach.ts`: the painted box grown by the most each step of the
   `motion` it's given and the recipe's own motion can move it), or everywhere the frame looks once a group's marks
   are live or re-seeded. A frame state from anything but that `motion` isn't covered. It reports each plane's
-  greatest magnification and names bad planes. The camera's `planes` are the renderer's one plane list; the painting
-  side adds only which groups each picture plane shows (`StampPaintingCamera.groups`). `paint-camera-world.ts` gives
-  a pose as the studio's one camera description (`ShotCamera`), landing a 3D point where the plane step lays its
-  depth. A three plane renders past the frame by its widest defocus's reach (`threeMargin`), so it blurs in what
-  lies beyond the frame's edge.
+  greatest magnification and names bad planes. `buildPaintingCamera` lays the scene's planes once
+  (`StampPaintingCamera.planes`, a `StampLaidPlanes`: the back a picture by type, each nearer picture with the
+  groups it shows), and the renderer takes that whole. `paint-camera-world.ts` gives a pose as the studio's one camera
+  description (`ShotCamera`), landing a 3D point where the plane step lays its depth. A three plane renders past the
+  frame by its widest defocus's reach (its built `margin`), so it blurs in what lies beyond the frame's edge.
 
 **Planes on the GPU** (`stamp-paint-renderer.ts`, `stamp-paint-plane-passes.ts`). One owner holds a device
 (`stamp-paint-gpu-owner.ts`, built on the studio's `gpu-device-owner.ts`, whose one three.js renderer the three

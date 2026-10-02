@@ -14,7 +14,7 @@ import {
   Scene, SpotLight, Vector3, type Object3D, type Texture, type ToneMapping,
 } from 'three/webgpu';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
+import { fullFrameRect, type FrameSize } from '#lib/picture/frame/models/frame.ts';
 import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import type { ShotCamera } from '#lib/picture/shot-camera/models/shot-camera.ts';
@@ -28,6 +28,8 @@ export type ThreeFrame = { scene: Scene; camera: ShotCamera };
 
 /** One exposure of a frame, as `draw` receives it. */
 export type ThreeSample = {
+  /** The frame the stage draws, its box's size: the camera a draw returns makes this frame. */
+  frame: FrameSize;
   /** Seconds from the frame's time to this exposure: 0 for the last, back to −shutter/fps. Build the scene at t + dt. */
   dt: number;
   /** This exposure's place among the frame's `count`. */
@@ -90,7 +92,8 @@ export function ThreeStage({
       if (open) continueRender(handle);
       open = false;
     };
-    const making = createThreeStageGpu(canvas.current!, { width: w, height: h, transparent });
+    const drawnOn = canvas.current!;
+    const making = threeStageCanvasFreed(drawnOn).then(() => createThreeStageGpu(drawnOn, { width: w, height: h, transparent }));
     making.then((made) => {
       if (!live) return undefined;
       // Set within the hold, so the frame's own hold starts before this one lets go.
@@ -101,7 +104,7 @@ export function ThreeStage({
     });
     return () => {
       live = false;
-      void making.then((made) => made.dispose(), () => {});
+      threeStageCanvasesInUse.set(drawnOn, making.then((made) => made.dispose(), () => {}));
       setGpu(null);
       release();
     };
@@ -130,6 +133,13 @@ export function ThreeStage({
   return <canvas ref={canvas} {...unmeasuredAttrs('three.js scene')} width={w} height={h} style={{ position: 'absolute', left: box.x, top: box.y, width: w, height: h }} />;
 }
 
+/**
+ * Each canvas's last stage, settling once it has let go of the canvas. A stage made for a new size waits for it: one
+ * still being made would otherwise configure the canvas after its successor, and its dispose unconfigure the successor's.
+ */
+const threeStageCanvasesInUse = new WeakMap<HTMLCanvasElement, Promise<void>>();
+const threeStageCanvasFreed = (canvas: HTMLCanvasElement) => threeStageCanvasesInUse.get(canvas) ?? Promise.resolve();
+
 type ThreeStageFrame = {
   draw: (sample: ThreeSample) => ThreeFrame; samples: number; shutter: number; lens: ThreeLens | undefined; softShadows: number; shadows: boolean;
   environment: boolean | ThreeEnvironment; fps: number; w: number; h: number; look: Parameters<ThreeStageGpu['show']>[1];
@@ -152,13 +162,9 @@ function drawThreeStageFrame(stage: ThreeStageGpu, { draw, samples, shutter, len
   renderer.clear(true, false, false);
 
   for (const [index, e] of exposures.entries()) {
-    const frame = draw({ dt: -(1 - e.time) * (shutter / fps), index, count, environment: room });
-    if (frame.camera.frame.width !== w || frame.camera.frame.height !== h) {
-      throw new Error(`three stage: its camera makes a ${frame.camera.frame.width} × ${frame.camera.frame.height} frame, and its box is ${w} × ${h}`);
-    }
-    const { scene } = frame;
+    const { scene, camera: shot } = draw({ frame: { width: w, height: h }, dt: -(1 - e.time) * (shutter / fps), index, count, environment: room });
     if (room && !scene.environment) scene.environment = room;
-    setThreeShotCamera(camera, frame.camera);
+    setThreeShotCamera(camera, shot);
     const restore = count > 1 ? jitterExposure(scene, camera, e, { lens, softShadows, w, h }) : () => {};
 
     renderer.setRenderTarget(target);

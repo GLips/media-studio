@@ -12,7 +12,7 @@ import { linearToSrgb, srgbToLinear } from '#lib/paint/materials/models/paint-sp
 import { stampDefocusSigmaStepped } from '#lib/paint/painting/models/stamp-defocus.ts';
 import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
-import { stampScenePlanes, type StampScenePlanes, type StampLensFrame, type StampPlane } from '#lib/paint/painting/models/stamp-plane.ts';
+import { stampScenePlanes, type StampLaidPlanes, type StampLensFrame, type StampPlane } from '#lib/paint/painting/models/stamp-plane.ts';
 import { stampGateFrameDifference, stampGateFramePasses } from './stamp-gate-frames.ts';
 import { STAMP_GATE_IMAGES, STAMP_GATE_WHITE, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
 import { STAMP_GATE_DEFOCUS_TOLERANCE, STAMP_GATE_REST_LOOK, stampGateGaussian } from './stamp-gate-lens.ts';
@@ -99,7 +99,7 @@ export function stampGateThreePainting(kind: StampGateThreeKind): StampGatePaint
  * The painting's planes: the ground at the back, the card before it when `card`, and the front's box on clear film.
  * Without the card they're what an all-clear card should draw as.
  */
-export function stampGateThreePlanes(painting: CompiledStampPaint, { card }: { card: boolean }): StampScenePlanes {
+export function stampGateThreePlanes(painting: CompiledStampPaint, { card }: { card: boolean }): StampLaidPlanes {
   const problems: string[] = [];
   const planes: StampPlane[] = [
     { id: 'ground', depth: 2, source: { kind: 'painted', groups: ['ground'] } },

@@ -64,25 +64,30 @@ export type PaintCameraExtent =
   | { readonly kind: 'empty' }
   | { readonly kind: 'unchecked'; readonly why: string };
 
+/** A picture plane, `depth` units from the camera at rest: a picture on the stage, held as far as its `extent`. */
+export type PaintCameraPicturePlane = { readonly id: string; readonly depth: number; readonly kind: 'picture'; readonly extent: PaintCameraExtent };
+
 /**
- * A plane the camera shows, `depth` units from it at rest. `three`: a three.js render, drawn each frame through the
- * camera's perspective. `picture`: a picture on the stage, held as far as its `extent`.
+ * A three plane, `depth` units from the camera at rest: a three.js render, drawn each frame through the camera's
+ * perspective. `margin`: the px its render reaches past the frame on every side, so its defocus blurs in what lies
+ * beyond the edge; the build sets it.
  */
-export type PaintCameraPlane =
-  | { readonly id: string; readonly depth: number; readonly kind: 'picture'; readonly extent: PaintCameraExtent }
-  | { readonly id: string; readonly depth: number; readonly kind: 'three' };
+export type PaintCameraThreePlane = { readonly id: string; readonly depth: number; readonly kind: 'three'; readonly margin: number };
+
+/** A plane the camera shows, as built. */
+export type PaintCameraPlane = PaintCameraPicturePlane | PaintCameraThreePlane;
+
+/** A plane as written to the build. */
+export type PaintCameraPlaneOptions = PaintCameraPicturePlane | Omit<PaintCameraThreePlane, 'margin'>;
 
 /**
  * A camera checked (paint-camera-build.ts): its `stage`, its projection (`fov`, vertical degrees at rest: how deep a
- * three.js world looks, never where a plane lands), its planes farthest first (the renderer's one list), its lens and
- * its plays. `threeMargin`: by three plane, the px its render reaches past the frame, so its defocus blurs in what
- * lies beyond the edge.
+ * three.js world looks, never where a plane lands), its planes farthest first, its lens and its plays.
  */
 export type PaintCamera = {
   readonly stage: StampStage;
   readonly fov: number;
   readonly planes: readonly PaintCameraPlane[];
-  readonly threeMargin: ReadonlyMap<string, number>;
   readonly lens: PaintCameraLens;
   readonly animationFps: number;
   readonly move: PaintLane<PaintCameraMoveClip>;

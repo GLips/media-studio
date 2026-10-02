@@ -6,7 +6,7 @@ import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import { stampBloom } from '#lib/paint/painting/models/stamp-wet-techniques.ts';
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import { stampScenePlanes, type StampScenePlanes, type StampLensFrame } from '#lib/paint/painting/models/stamp-plane.ts';
+import { stampScenePlanes, type StampLaidPlanes, type StampLensFrame } from '#lib/paint/painting/models/stamp-plane.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
@@ -200,7 +200,7 @@ export function stampGatePlanesPainting(): StampGatePainting {
 
 
 /** The planes case's planes: the far wash at the back, the near flood on a clear plane of its own. */
-export function stampGatePlanesOf(painting: CompiledStampPaint): StampScenePlanes {
+export function stampGatePlanesOf(painting: CompiledStampPaint): StampLaidPlanes {
   const problems: string[] = [];
   const planes = stampScenePlanes(painting, [
     { id: 'back', depth: 2, source: { kind: 'painted', groups: ['far'] } },
@@ -271,7 +271,7 @@ export function stampGateOneSheetPainting(): StampGatePainting {
 }
 
 /** The one-sheet case's planes: the backs at depth 2, the films on a clear plane at 1. */
-export function stampGateOneSheetPlanes(painting: CompiledStampPaint): StampScenePlanes {
+export function stampGateOneSheetPlanes(painting: CompiledStampPaint): StampLaidPlanes {
   const problems: string[] = [];
   const planes = stampScenePlanes(painting, [
     { id: 'back', depth: 2, source: { kind: 'painted', groups: ['grey', 'red'] } },

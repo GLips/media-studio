@@ -87,10 +87,15 @@ function followPan(position: Vector3, forward: Vector3, ballAt: (t: number) => V
  * The field's camera at t, for a video `format` big: its frame is the field's `box` (px from the box's top left), the
  * whole frame without one. `punchAt` as columnCameraAt's.
  */
-export function columnFieldCameraAt<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: number, format: FrameSize, punchAt = t): ColumnCameraState {
-  const box = spec.box ?? fullFrameRect(format);
+export function columnFieldCameraAt<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: number, frame: FrameSize, punchAt = t): ColumnCameraState {
   const ballAt = spec.ball && spec.camera.follow ? (at: number) => columnBallAt(spec, at)?.position ?? null : undefined;
-  return columnCameraAt(spec.camera, t, { frame: { width: box.w, height: box.h }, punchAt, ballAt });
+  return columnCameraAt(spec.camera, t, { frame, punchAt, ballAt });
+}
+
+/** The frame a field draws in a video of `format`: its box's size, the whole frame's unless it has one. */
+export function columnFieldFrame(spec: Pick<ColumnFieldSpec, 'box'>, format: FrameSize): FrameSize {
+  const box = spec.box ?? fullFrameRect(format);
+  return { width: box.w, height: box.h };
 }
 
 // ---------- the ball ----------

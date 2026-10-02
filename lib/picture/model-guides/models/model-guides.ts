@@ -3,10 +3,13 @@
 // measurement) read these channels; they never rasterise the mesh again.
 //
 // Fixed channels (MODEL_GUIDE_FIXED_SLOTS), then region fields four to a target. `rest` is the mesh's position before
-// skinning or morphs; `depth` is along the camera's view; `object` is three's Object3D.id of the mesh seen. Texel
+// skinning or morphs; `depth` is along the camera's view; `object` is the id the request gave the mesh seen, from 1. Texel
 // (i, j) is the frame point (i + 0.5, j + 0.5), rows from the top. Where no mesh is, every channel is 0.
 
 import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
+
+/** The largest id a guide's `object` channel holds: a float32 holds every whole number up to 2^24 exactly. */
+export const MODEL_GUIDE_MAX_MESH_ID = 2 ** 24;
 
 /** Floats in a texel of every target: rgba32float. */
 export const MODEL_GUIDE_TEXEL_FLOATS = 4;

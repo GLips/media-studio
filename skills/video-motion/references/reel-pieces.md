@@ -73,10 +73,17 @@ Look here first: a second copy of one of these drifts from the first.
   (`motion.ts`).
 - **Smear:** `ShutterBlur`, `REEL_SHUTTER`, `shutterOpensAt`, `shutterTravel`, `smearSigma` (`motion-blur.tsx`).
 - **The beat:** `steadyBeatGrid`, `wordOnBeat` (`beats.ts`).
-- **Geometry:** `Vec3` and its maths (`vec3.ts`); `AffineMatrix`, `multiplyAffine`, `applyAffine` (`camera.ts`); a
-  capture plane's projection, `capturePlaneProjection` (`lib/picture/reel/models/capture-plane.ts`); where the needle is and what it
-  touches, `needleRig`, `needlePoseAt`, `needleContactAt`, `needleScreenPoint` (`lib/picture/reel/models/needle.ts`), to land a mark on its
-  strike, and `needleCoversAt`, for a HUD part judging whether the sharp needle is its ground.
+- **Geometry:** 3D points are three's `Vector3`; `AffineMatrix`, `multiplyAffine`, `applyAffine` (`geometry.ts`).
+- **Cameras:** the studio's one camera is `ShotCamera` (`lib/picture/shot-camera/models/shot-camera.ts`), made by
+  `shotCameraLookingAt`, `shotCameraFromAxes` or `shotCameraRolled`; land a 3D point in the frame with
+  `shotCameraProject(camera, point)` and cast a ray back with `shotCameraRay`. Never project by hand. A piece's camera
+  comes from its own helper: `columnFieldCameraAt(spec, t, columnFieldFrame(spec, format))` and
+  `topDownPose({ pitch, frame })` for the column field, `needleShotCamera(rig)` for the needle,
+  `capturePlaneCamera` and `capturePlaneProjection` for a capture plane (`lib/picture/reel/models/capture-plane.ts`).
+  On `ThreeStage`, a `draw` builds its camera from `sample.frame`.
+- **The needle:** where it is and what it touches, `needleRig`, `needlePoseAt`, `needleContactAt`
+  (`lib/picture/reel/models/needle.ts`); land a mark on its strike with `shotCameraProject(needleShotCamera(rig), pose.tip)`,
+  and use `needleCoversAt` for a HUD part judging whether the sharp needle is its ground.
 - **The HUD's ground:** `reelHudBoxPoints`, `reelHudGrounds` and `reelHudReadGrounds` read what's drawn under each
   part's box into its ink and plate (`lib/picture/reel/models/hud.ts`), from a `groundAt(point)` a bar builds out of its pieces'
   geometry.

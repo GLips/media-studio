@@ -76,10 +76,14 @@ async function oneAfterAnother<T, R>(items: readonly T[], step: (item: T) => Pro
  * with no three plane in the camera, and a three plane with no source.
  */
 export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintCamera, three: PaintedThree, profile: FrameProfileStart | null): Promise<PaintedThreeLoaded> {
-  const depths = new Map(camera.planes.flatMap((plane) => (plane.kind === 'three' ? [[plane.id, plane.depth] as const] : [])));
+  const threePlanes = new Map(camera.planes.flatMap((plane) => (plane.kind === 'three' ? [[plane.id, plane] as const] : [])));
+  const sourced = three.sources.map((source) => {
+    const plane = threePlanes.get(source.id);
+    if (!plane) throw new Error(`painted three: source ${source.id} isn't a three plane of the camera`);
+    return { source, plane };
+  });
   const ids = new Set(three.sources.map(({ id }) => id));
-  for (const id of ids) if (!depths.has(id)) throw new Error(`painted three: source ${id} isn't a three plane of the camera`);
-  for (const id of depths.keys()) if (!ids.has(id)) throw new Error(`painted three: the camera's three plane ${id} has no source`);
+  for (const id of threePlanes.keys()) if (!ids.has(id)) throw new Error(`painted three: the camera's three plane ${id} has no source`);
 
   const { webgpu } = owner, { frame } = camera.stage;
   // Everything made, let go of last made first; our textures after all that may still hold them.
@@ -113,11 +117,10 @@ export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintC
         made.push(external);
         return [texture.id, external] as const;
       }));
-      return oneAfterAnother(three.sources, async (source) => {
-        const built = source.build({ world, plane: paintWorldPlane(world, depths.get(source.id)!), textures });
+      return oneAfterAnother(sourced, async ({ source, plane: { depth, margin } }) => {
+        const built = source.build({ world, plane: paintWorldPlane(world, depth), textures });
         made.push(built);
         // The frame grown on every side by the plane's margin, so its defocus has what lies past the frame's edge.
-        const margin = camera.threeMargin.get(source.id)!;
         const shotAt = (pose: Parameters<typeof paintCameraShotAt>[1]) => shotCameraGrown(paintCameraShotAt(world, pose), margin);
         const threeCamera = setThreeShotCamera(new PerspectiveCamera(), shotAt(PAINT_CAMERA_REST));
         const texture = ownTexture(frame.width + 2 * margin, frame.height + 2 * margin);

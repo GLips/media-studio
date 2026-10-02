@@ -84,13 +84,13 @@ export type NeedlePose = {
 };
 
 /** The lens's height above the surface, in frame px: the distance at which one surface unit is one frame pixel. */
-export const needleLensHeight = ({ fov, format }: Pick<NeedleRig, 'fov' | 'format'>) => format.height / 2 / Math.tan((fov * DEG) / 2);
+export const needleLensHeight = ({ fov, format }: Pick<NeedleRig, 'fov'> & { readonly format: FrameSize }) => format.height / 2 / Math.tan((fov * DEG) / 2);
 
 /**
  * The rig's camera: straight down from the lens height, the frame's centre over the origin, slid by `shift` px as a
  * lens shift (the layers under the needle's shake).
  */
-export function needleShotCamera(r: Pick<NeedleRig, 'fov' | 'format'>, shift = { x: 0, y: 0 }): ShotCamera {
+export function needleShotCamera(r: Pick<NeedleRig, 'fov'> & { readonly format: FrameSize }, shift = { x: 0, y: 0 }): ShotCamera {
   const lens = needleLensHeight(r), { width, height } = r.format;
   return shotCameraRolled({ frame: { width, height }, fov: r.fov, near: lens * 0.02, far: lens * 1.5, shift }, { position: [0, 0, lens], rollZ: 0 });
 }

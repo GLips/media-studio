@@ -201,8 +201,7 @@ function loadStampPaintingScene(owner: StampPaintGpuOwner, surface: StampPaintSu
   const ready = (async () => {
     madeThree = three ? await loadPaintedThree(owner, camera!.camera, three, profile) : null;
     const stage = camera?.camera.stage ?? stampStage({ width: surface.width, height: surface.height });
-    const planes = camera && { planes: camera.camera.planes, groups: camera.groups };
-    made = await createStampPaintRenderer(surface, painting, { profile, stage, planes, three: madeThree?.pictures });
+    made = await createStampPaintRenderer(surface, painting, { profile, stage, planes: camera?.planes, three: madeThree?.pictures });
   })();
   // The tasks queued so far, settled either way: one's failure is its caller's, not the next task's.
   let queue: Promise<unknown> = ready.catch(() => {});

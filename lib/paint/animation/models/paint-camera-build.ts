@@ -9,14 +9,14 @@
 // scene's to keep on the stage.
 
 import { stampDefocusSigmaStepped, stampGaussianReach } from '#lib/paint/painting/models/stamp-defocus.ts';
-import { stampPlaneDepthProblems, stampScenePlanes, type StampPlane, type StampPlaneGroups } from '#lib/paint/painting/models/stamp-plane.ts';
+import { stampPlaneDepthProblems, stampScenePlanes, type StampLaidPlanes, type StampPlane } from '#lib/paint/painting/models/stamp-plane.ts';
 import { stampStageExtent, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import {
   PAINT_CAMERA_NEAREST, PAINT_CAMERA_REST, paintCameraClipProblem, paintStageCentre,
-  type PaintCamera, type PaintCameraExtent, type PaintCameraFocusClip, type PaintCameraLens, type PaintCameraMoveClip, type PaintCameraPlane, type PaintCameraPlay,
+  type PaintCamera, type PaintCameraExtent, type PaintCameraFocusClip, type PaintCameraLens, type PaintCameraMoveClip, type PaintCameraPlane, type PaintCameraPlaneOptions, type PaintCameraPlay,
   type PaintCameraPose,
 } from './paint-camera.ts';
 import { paintChannelConflicts, type PaintChannelWriter } from './paint-channels.ts';
@@ -32,7 +32,7 @@ import { paintGroupLaidReach } from './paint-motion-reach.ts';
 export type PaintCameraOptions = {
   readonly stage: StampStage;
   readonly fov: number;
-  readonly planes: readonly PaintCameraPlane[];
+  readonly planes: readonly PaintCameraPlaneOptions[];
   readonly lens: PaintCameraLens;
   readonly plays: readonly PaintCameraPlay[];
   readonly animationFps?: number;
@@ -50,10 +50,10 @@ export type PaintCameraBuild =
 export type PaintingCameraOptions = Omit<PaintCameraOptions, 'planes'> & { readonly planes: readonly StampPlane[]; readonly motion: PaintMotion | null };
 
 /**
- * What a StampPainting shows through, as buildPaintingCamera made it: the camera, its planes the renderer's, and which
- * of the painting's groups each picture plane shows. Pass it whole: the two are one build's.
+ * What a StampPainting shows through, as buildPaintingCamera made it: the camera, and its planes laid for the renderer
+ * (the same planes in the same order, each picture plane with the painting's groups it shows).
  */
-export type StampPaintingCamera = { readonly camera: PaintCamera; readonly groups: StampPlaneGroups };
+export type StampPaintingCamera = { readonly camera: PaintCamera; readonly planes: StampLaidPlanes };
 
 export type PaintingCameraBuild =
   | { readonly ok: true; readonly camera: StampPaintingCamera; readonly magnification: ReadonlyMap<string, number> }
@@ -191,9 +191,9 @@ export function buildPaintCamera(o: PaintCameraOptions): PaintCameraBuild {
   problems.push(...paintChannelConflicts(writers));
   if (problems.length) return { ok: false, problems };
   // Ties keep their written order, as stampScenePlanes keeps them.
-  const planes = o.planes.toSorted((a, b) => b.depth - a.depth);
+  const written = o.planes.toSorted((a, b) => b.depth - a.depth);
   const spans = poseSpans(move), dolly = range(spans.flatMap(({ a, b }) => [a.dolly, b.dolly]));
-  for (const { id, depth } of planes) {
+  for (const { id, depth } of written) {
     if (depth - dolly.high <= PAINT_CAMERA_NEAREST) problems.push(`the camera dollies ${dolly.high}, at or past plane ${id} at depth ${depth}; a plane stays in front of the camera`);
   }
   const focused = focus.flatMap(({ clip }) => clip.keys.map((key) => key.focus));
@@ -201,17 +201,18 @@ export function buildPaintCamera(o: PaintCameraOptions): PaintCameraBuild {
     problems.push(`the camera may focus at depth ${Math.min(...focused)} while dollied ${dolly.high}, at or behind itself`);
   }
   if (problems.length) return { ok: false, problems };
-  for (const plane of planes) {
+  for (const plane of written) {
     const problem = plane.kind === 'picture' && extentProblem(o.stage, plane, plane.extent, spans, widestDefocus(focus, dolly, plane.depth));
     if (problem) problems.push(problem);
   }
   if (problems.length) return { ok: false, problems };
   // A three plane is rendered through the camera, a frame px a px, so its margin is its defocus's growth alone.
-  const threeMargin = new Map(planes.flatMap(({ id, kind, depth }) => {
-    const sigma = widestDefocus(focus, dolly, depth);
-    return kind === 'three' ? [[id, sigma > 0 ? Math.ceil(defocusGrowth(sigma)) : 0] as const] : [];
-  }));
-  const camera: PaintCamera = { stage: o.stage, fov: o.fov, planes, threeMargin, lens: o.lens, animationFps: fps, move: paintLaneByStart(move), focus: paintLaneByStart(focus) };
+  const planes = written.map((plane): PaintCameraPlane => {
+    if (plane.kind === 'picture') return plane;
+    const sigma = widestDefocus(focus, dolly, plane.depth);
+    return { id: plane.id, depth: plane.depth, kind: 'three', margin: sigma > 0 ? Math.ceil(defocusGrowth(sigma)) : 0 };
+  });
+  const camera: PaintCamera = { stage: o.stage, fov: o.fov, planes, lens: o.lens, animationFps: fps, move: paintLaneByStart(move), focus: paintLaneByStart(focus) };
   const zoom = range(spans.flatMap(({ a, b }) => [a.zoom, b.zoom]));
   // zoom·d/(d − dolly) at its largest zoom and dolly: at least what any pose in the shot shows.
   const magnification = new Map(planes.map(({ id, depth }) => [id, (zoom.high * depth) / (depth - dolly.high)]));
@@ -226,12 +227,16 @@ export function buildPaintingCamera(painting: CompiledStampPaint, { planes: writ
   const problems: string[] = [];
   const scene = stampScenePlanes(painting, written, problems);
   if (problems.length || !scene) return { ok: false, problems };
+  const { back, nearer } = scene;
   const built = buildPaintCamera({
     ...o,
-    planes: scene.planes.map(({ id, depth, kind }, i): PaintCameraPlane => {
-      if (kind === 'three') return { id, depth, kind };
-      return { id, depth, kind, extent: i === 0 ? { kind: 'everywhere' } : nearerPaintReach(painting, scene.groups.get(id)!, motion) };
-    }),
+    planes: [
+      { id: back.id, depth: back.depth, kind: 'picture', extent: { kind: 'everywhere' } },
+      ...nearer.map((plane): PaintCameraPlaneOptions => {
+        const { id, depth } = plane;
+        return plane.kind === 'three' ? { id, depth, kind: 'three' } : { id, depth, kind: 'picture', extent: nearerPaintReach(painting, plane.groups, motion) };
+      }),
+    ],
   });
-  return built.ok ? { ok: true, camera: { camera: built.camera, groups: scene.groups }, magnification: built.magnification } : built;
+  return built.ok ? { ok: true, camera: { camera: built.camera, planes: scene }, magnification: built.magnification } : built;
 }

@@ -51,7 +51,7 @@ import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-prof
 import { stampPlacementWarpMap, stampWarpCells, stampWarpTriangles, STAMP_WARP_MOST_CELLS } from '../models/stamp-group-warp.ts';
 import { stampFramePlan, type StampGroupFrame } from '../models/stamp-frame-plan.ts';
 import type { StampGroupMarks, StampPaintFrameState } from '../models/stamp-paint-frame-state.ts';
-import { stampSinglePlane, type StampLensFrame, type StampPlaneLook, type StampScenePlanes } from '../models/stamp-plane.ts';
+import { stampSinglePlane, type StampLaidPlanes, type StampLensFrame, type StampPlaneLook } from '../models/stamp-plane.ts';
 import { stampStage, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 
 /** Bytes per uniform slot: every draw's uniforms sit at an offset WebGPU allows binding at (256). */
@@ -1046,10 +1046,10 @@ export type StampPaintRendererOptions = {
    */
   stage?: StampStage;
   /**
-   * The scene's planes, farthest first: a camera's own list, with the groups each picture plane shows
-   * (buildPaintingCamera, stampScenePlanes); one plane of every group when left out (stampSinglePlane).
+   * The scene's planes as laid, farthest first: a painting camera's (buildPaintingCamera) or a check's
+   * (stampScenePlanes); one plane of every group when left out (stampSinglePlane).
    */
-  planes?: StampScenePlanes;
+  planes?: StampLaidPlanes;
   /** Each three plane's picture by its id, filled before each draw (paint/three-layers). */
   three?: ReadonlyMap<string, StampThreePicture>;
 };
@@ -1061,22 +1061,6 @@ export type StampPaintRendererOptions = {
  */
 export type StampThreePicture = { readonly texture: GPUTexture; readonly at: { readonly x: number; readonly y: number } };
 
-/** The back, paper to the stage's edge, and the nearer planes, as the renderer lays them. */
-type StampLaidPlanes = {
-  readonly back: { readonly id: string; readonly groups: readonly number[] };
-  readonly nearer: readonly ({ readonly id: string; readonly kind: 'clear'; readonly groups: readonly number[] } | { readonly id: string; readonly kind: 'three' })[];
-};
-
-/** `scene`'s planes as laid: the farthest the back, which must be a picture to be paper. */
-function stampLaidPlanes({ planes: [back, ...nearer], groups }: StampScenePlanes): StampLaidPlanes {
-  if (back?.kind !== 'picture') throw new Error('stamp paint: the farthest plane must be a picture, on paper to the stage\'s edge');
-  const groupsOf = (id: string) => groups.get(id) ?? [];
-  return {
-    back: { id: back.id, groups: groupsOf(back.id) },
-    nearer: nearer.map(({ id, kind }) => (kind === 'three' ? { id, kind } : { id, kind: 'clear' as const, groups: groupsOf(id) })),
-  };
-}
-
 /** The most lattice cells a frame lays `group` through: a warp's most, a move's one, none still. */
 const latticeCellsMost = ({ lay, warp }: StampGroupFrame) => (warp ? STAMP_WARP_MOST_CELLS ** 2 : Number(!!lay));
 
@@ -1087,7 +1071,7 @@ const latticeCellsMost = ({ lay, warp }: StampGroupFrame) => (warp ? STAMP_WARP_
  */
 export async function createStampPaintRenderer(
   surface: StampPaintSurface, painting: CompiledStampPaint,
-  { profile, wetStages = STAMP_WET_STAGES, stage: given, planes: scene = stampSinglePlane(painting), three = new Map() }: StampPaintRendererOptions = {},
+  { profile, wetStages = STAMP_WET_STAGES, stage: given, planes = stampSinglePlane(painting), three = new Map() }: StampPaintRendererOptions = {},
 ): Promise<StampPaintRenderer> {
   const { paper, mixing } = painting;
   const { owner } = surface;
@@ -1096,7 +1080,6 @@ export async function createStampPaintRenderer(
   if (stage.frame.width !== surface.width || stage.frame.height !== surface.height) {
     throw new Error(`stamp paint: the stage's frame is ${stage.frame.width} × ${stage.frame.height}, and its surface ${surface.width} × ${surface.height}`);
   }
-  const planes = stampLaidPlanes(scene);
   checkStampThreePictures(planes, three, stage);
   let done = span('stamp paint compositor load');
   const { compositorOn, wetnessOf, mediumOf } = compositorFor(painting, paper, mixing, stage, wetStages);
@@ -1476,7 +1459,7 @@ function rendererOnSurface(
     return latticeLay;
   };
   /** How many times a frame may lay each group: twice on a clear plane, on its paper and on black. */
-  const laysOf = painting.groups.map((_, index) => (planes.nearer.some((plane) => plane.kind === 'clear' && plane.groups.includes(index)) ? 2 : 1));
+  const laysOf = painting.groups.map((_, index) => (planes.nearer.some((plane) => plane.kind === 'picture' && plane.groups.includes(index)) ? 2 : 1));
   /** Room for a frame laying `groups` through lattices: a moved group's one cell, a warped group's most, each lay. */
   const latticeRoom = (groups: readonly StampGroupFrame[]) => {
     const floats = groups.reduce((sum, group, index) => sum + 24 * latticeCellsMost(group) * laysOf[index], 0);
@@ -2299,7 +2282,7 @@ function rendererOnSurface(
    * The measuring backings' own light, white at layer 0 and black at 1: this renderer's, measured once as it's made
    * (measureBackings), since they never change. A plain backing lays alike at every texel, so one texel holds it.
    */
-  const backingLight = planes.nearer.some((plane) => plane.kind === 'clear')
+  const backingLight = planes.nearer.some((plane) => plane.kind === 'picture')
     ? device.createTexture({ size: [1, 1, 2], format: 'rgba16float', usage: STORAGE | GPUTextureUsage.TEXTURE_BINDING })
     : null;
   /** Measures backingLight, submitted on its own so no frame can be drawn before it. */
@@ -2618,7 +2601,7 @@ function rendererOnSurface(
         ...shownOf(planePicture(encoder, back, 'paper', lookOf(back.id), groups, whole, frameTrace), lookOf(back.id), false),
         ...nearer.flatMap((plane) => {
           const look = lookOf(plane.id);
-          if (plane.kind === 'clear') return shownOf(planePicture(encoder, plane, 'film', look, groups, whole, frameTrace), look, true);
+          if (plane.kind === 'picture') return shownOf(planePicture(encoder, plane, 'film', look, groups, whole, frameTrace), look, true);
           // A three.js render is drawn through the camera already: only the lens's defocus is left to do.
           const { view, box } = threePicture(encoder, plane.id, look.defocus);
           return [{ view, layers: THREE_LAYERS, look: REST_LOOK, origin: { x: box.x, y: box.y }, size: box, clipped: true }];

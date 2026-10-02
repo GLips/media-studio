@@ -10,6 +10,7 @@
 import * as THREE from 'three/webgpu';
 import { mix, normalView, positionViewDirection, vec3 } from 'three/tsl';
 import { motionCurves } from '#lib/picture/motion/models/motion.ts';
+import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
 import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { hashRandom } from '#lib/picture/motion/models/random.ts';
@@ -150,10 +151,10 @@ class NeedleClearPlasticMaterial extends THREE.MeshPhysicalNodeMaterial {
  * The frame's scene, built once and re-posed for each exposure: the needle over a surface that takes its shadow and
  * hides what's driven into it. What changes within a frame's shutter is only where the needle is and its ink.
  */
-function needleStage(r: NeedleRig, color: string, shadow: number, shift: { x: number; y: number }) {
-  const { width, height } = r.format, lens = needleLensHeight(r);
+function needleStage(r: NeedleRig, shotFrame: FrameSize, color: string, shadow: number, shift: { x: number; y: number }) {
+  const { width, height } = shotFrame, lens = needleLensHeight(r);
   // A lens shift, not a move: the picture slides whole, as the layers under it do, and draws what slides in.
-  const camera = needleShotCamera(r, shift);
+  const camera = needleShotCamera({ fov: r.fov, format: shotFrame }, shift);
   const scene = new THREE.Scene();
 
   // The surface: depth only, drawn first, so what's driven past it is hidden; and a layer that is only shadow.
@@ -283,7 +284,7 @@ export function Needle({
   const takes = [shot.streak, shot].filter((take) => take !== null).map((take) => {
     // Built on the take's first exposure and shared by the rest; its stage frees it after the frame.
     let stage: ReturnType<typeof needleStage> | null = null;
-    const draw = ({ dt }: ThreeSample) => (stage ??= needleStage(r, color, shadow, shift))(needlePoseAt(strikes, take.exposureAt(dt), r));
+    const draw = ({ frame, dt }: ThreeSample) => (stage ??= needleStage(r, frame, color, shadow, shift))(needlePoseAt(strikes, take.exposureAt(dt), r));
     return { take, draw, exposures: needleTakeExposures(strikes, take, shot.focusDistance, r, { samples, maxSamples, aperture }) };
   });
   // No bloom: the grouping's wires lie side by side, and their glints would glow together into a white smear that

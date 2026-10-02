@@ -17,8 +17,7 @@ import { clamp } from '#lib/picture/motion/models/motion.ts';
 import { ThreeStage, softboxEnvironment, type ThreeBloom, type ThreeEnvironment, type ThreeFrame, type ThreeLens, type ThreeSample } from '#lib/picture/film/studio/three-stage.tsx';
 import { columnFieldHeight, columnFieldPoint, type ColumnCameraState, type ColumnCell, type ColumnFieldLights, type ColumnFieldSpec, type ColumnLabel, type ColumnLight } from '../models/column-field.ts';
 import { shotCameraAxes, shotCameraProject } from '#lib/picture/shot-camera/models/shot-camera.ts';
-import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
-import { columnBallAt, columnFieldCameraAt } from '../models/column-field-motion.ts';
+import { columnBallAt, columnFieldCameraAt, columnFieldFrame } from '../models/column-field-motion.ts';
 import { ballMaterial, columnBallShadow, columnGeometry, columnMaterial, columnTopology, floorMaterial, type ColumnBallShadow } from './column-field-materials.ts';
 
 export type ColumnFieldProps<C extends ColumnCell = ColumnCell> = ColumnFieldSpec<C> & {
@@ -54,7 +53,7 @@ const rad = (d: number) => (d * Math.PI) / 180;
 export function ColumnField<C extends ColumnCell>({ t, samples = 12, shutter = 0.5, bloom, environment = softboxEnvironment, toneMapping = THREE.NeutralToneMapping, exposure, motion, ...spec }: ColumnFieldProps<C>) {
   const format = useVideoFormat(), box = spec.box ?? fullFrameRect(format);
   const fontsReady = useStudioFontsReady(Boolean(spec.labels));
-  const cam = columnFieldCameraAt(spec, t, format);
+  const cam = columnFieldCameraAt(spec, t, columnFieldFrame(spec, format));
   const ball = columnBallAt(spec, t);
   const mark = ball && shotCameraProject(cam.camera, ball.position);
   const whip = spec.camera.whip;
@@ -66,7 +65,7 @@ export function ColumnField<C extends ColumnCell>({ t, samples = 12, shutter = 0
       <ThreeStage
         samples={whip && t > whip.at ? Math.max(samples, whip.samples ?? 32) : samples} shutter={shutter} lens={spec.lens && lensAt(spec, t, cam)}
         shadows softShadows={key ? key.softness ?? 3 : 0} bloom={bloom} environment={environment} toneMapping={toneMapping} exposure={exposure}
-        box={{ x: 0, y: 0, w: box.w, h: box.h }} draw={(sample) => drawColumnField(spec, t, format, sample, frame, fontsReady)}
+        box={{ x: 0, y: 0, w: box.w, h: box.h }} draw={(sample) => drawColumnField(spec, t, sample, frame, fontsReady)}
       />
       {mark && ball && motion !== false && (
         <div
@@ -109,7 +108,7 @@ type FieldBuild = {
 };
 
 /** One exposure: the frame's scene (built on its first) moved to this exposure's moment. */
-function drawColumnField<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: number, format: FrameSize, sample: ThreeSample, frame: { build?: FieldBuild }, fontsReady: boolean): ThreeFrame {
+function drawColumnField<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: number, sample: ThreeSample, frame: { build?: FieldBuild }, fontsReady: boolean): ThreeFrame {
   const at = t + sample.dt;
   const build = (frame.build ??= buildColumnField(spec, t, sample.environment, fontsReady));
   const { heights, neighbourHeights, neighbours } = build;
@@ -117,7 +116,7 @@ function drawColumnField<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: numb
   for (let k = 0; k < neighbours.length; k++) neighbourHeights[k] = neighbours[k] < 0 ? 0 : heights[neighbours[k]];
   build.heightAttr.needsUpdate = build.neighbourAttr.needsUpdate = true;
 
-  const cam = columnFieldCameraAt(spec, at, format, t);
+  const cam = columnFieldCameraAt(spec, at, sample.frame, t);
   const position = new THREE.Vector3(...cam.camera.position), target = new THREE.Vector3(...cam.target);
   const reach = position.distanceTo(target);
   const fog = spec.fog === undefined ? REFERENCE_FOG : spec.fog;

@@ -10,7 +10,6 @@ import { BoxGeometry, CapsuleGeometry, Color, ConeGeometry, CylinderGeometry, Di
 import { blockoutShotCamera, type BlockoutLookAt } from '#lib/footage/previs/models/blockout-camera.ts';
 import { ThreeStage, type ThreeFrame } from '#lib/picture/film/studio/three-stage.tsx';
 import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
-import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import type { ShotPoint } from '#lib/picture/shot-camera/models/shot-camera.ts';
 
 /**
@@ -108,6 +107,5 @@ export function Blockout({ lookAt, subjects, ground = '#e4e5e8', sky = '#f4f5f7'
   ground?: string;
   sky?: string;
 }) {
-  const { width, height } = useVideoFormat();
-  return <ThreeStage shadows toneMapping={NoToneMapping} draw={() => blockoutFrame({ lookAt, subjects, ground, sky }, { width, height })} />;
+  return <ThreeStage shadows toneMapping={NoToneMapping} draw={({ frame }) => blockoutFrame({ lookAt, subjects, ground, sky }, frame)} />;
 }

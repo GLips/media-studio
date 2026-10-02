@@ -7,7 +7,7 @@ import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.
 import type { StampPlane } from '#lib/paint/painting/models/stamp-plane.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import {
-  paintCameraLensAt, paintCameraPlay, paintPlaneSimilarity, paintStageCentre, type PaintCameraExtent, type PaintCameraMoveKey, type PaintCameraPlay, type PaintCameraPose,
+  paintCameraLensAt, paintCameraPlay, paintPlaneSimilarity, paintStageCentre, type PaintCamera, type PaintCameraExtent, type PaintCameraMoveKey, type PaintCameraPlay, type PaintCameraPose,
 } from './paint-camera.ts';
 import { buildPaintCamera, buildPaintingCamera, type PaintCameraBuild, type PaintingCameraBuild } from './paint-camera-build.ts';
 import { paintMotionPlay, type PaintMotion, type PaintMotionNode } from './paint-motion-compile.ts';
@@ -59,9 +59,9 @@ test('the build names a group on no plane or two, and orders the planes farthest
   ]);
   const built = build([painted('near', 0.5, ['leaf']), painted('back', 4, ['sky']), painted('mid', 1, ['frog', 'toad'])]);
   if (!built.ok) assert.fail(built.problems.join('\n'));
-  const { camera, groups } = built.camera;
+  const { camera, planes } = built.camera;
   assert.deepEqual(camera.planes.map(({ id, kind }) => `${id} ${kind}`), ['back picture', 'mid picture', 'near picture']);
-  assert.deepEqual([...groups], [['near', [3]], ['back', [0]], ['mid', [1, 2]]]);
+  assert.deepEqual([planes.back, ...planes.nearer].map((plane) => plane.kind === 'picture' && [plane.id, plane.groups]), [['back', [0]], ['mid', [1, 2]], ['near', [3]]]);
 });
 
 test('the build refuses a pan that shows the back past the stage, holds a nearer plane only where it\'s painted, and a wider margin takes it', () => {
@@ -79,6 +79,9 @@ test('the build refuses a pan that shows the back past the stage, holds a nearer
   assert.match(problemsOf(whip(300, { ...across, x1: 1200 })).join('\n'), /^plane frog's picture must hold what the camera shows of it/);
 });
 
+/** Each three plane's built margin, farthest first. */
+const marginOf = ({ planes }: PaintCamera) => planes.flatMap((plane) => (plane.kind === 'three' ? [plane.margin] : []));
+
 test('a camera builds from plane depths and extents alone, holding each picture as far as its extent, and refuses a box that isn\'t one', () => {
   const whip = (extent: PaintCameraExtent) => buildPaintCamera({
     stage, fov: 35, lens: { bloom: 0 },
@@ -89,13 +92,14 @@ test('a camera builds from plane depths and extents alone, holding each picture 
   if (!built.ok) assert.fail(built.problems.join('\n'));
   assert.deepEqual(built.camera.planes.map(({ id }) => id), ['far', 'model', 'near']);
   // Never defocused, the three plane renders the frame alone; defocused, past it by the blur's reach.
-  assert.deepEqual([...built.camera.threeMargin], [['model', 0]]);
+  assert.deepEqual(marginOf(built.camera), [0]);
   const focused = buildPaintCamera({
     stage, fov: 35, lens: { bloom: 0 }, planes: [{ id: 'far', depth: 4, kind: 'picture', extent: { kind: 'unchecked', why: 'not this test' } }, { id: 'model', depth: 2, kind: 'three' }],
     plays: [paintCameraPlay({ kind: 'focus', keys: [{ at: 0, focus: 1, aperture: 4 }] }, { clock: { at: 0 }, origin: 'focus' })],
   });
   if (!focused.ok) assert.fail(focused.problems.join('\n'));
-  assert.ok(focused.camera.threeMargin.get('model')! >= 3 * 2, `a sigma of 2 px reaches ${focused.camera.threeMargin.get('model')} px`);
+  const [margin] = marginOf(focused.camera);
+  assert.ok(margin >= 3 * 2, `a sigma of 2 px reaches ${margin} px`);
   assert.deepEqual(problemsOf(whip({ kind: 'empty' })), []);
   assert.deepEqual(problemsOf(whip({ kind: 'unchecked', why: 'its caller holds it' })), []);
   assert.match(problemsOf(whip({ kind: 'everywhere' })).join('\n'), /^plane near's picture must hold what the camera shows of it/);
