@@ -139,12 +139,13 @@ export async function createModelGuideRenderer(owner: GpuDeviceOwner): Promise<M
   };
 
   const draw = (scene: Scene, drawn: Map<ThreeGeometryDrawable, number>, { outputs, passes }: Setup) => {
-    const saved = { target: renderer.getRenderTarget(), mrt: renderer.getMRT(), autoClear: renderer.autoClear, background: scene.background };
+    const saved = { target: renderer.getRenderTarget(), mrt: renderer.getMRT(), autoClear: renderer.autoClear, background: scene.background, override: scene.overrideMaterial };
     const ownMaterials = new Map([...drawn.keys()].map((mesh) => [mesh, mesh.material]));
     try {
       renderer.setMRT(outputs);
       renderer.autoClear = true;
-      scene.background = null;
+      // A scene's own override would draw in place of every guide material.
+      Object.assign(scene, { background: null, overrideMaterial: null });
       drawnIds = drawn;
       for (const [mesh, own] of ownMaterials) {
         mesh.material = Array.isArray(own) ? own.map((m) => guideMaterialFor(m, guideMaterials)) : guideMaterialFor(own, guideMaterials);
@@ -157,7 +158,7 @@ export async function createModelGuideRenderer(owner: GpuDeviceOwner): Promise<M
       renderer.setRenderTarget(saved.target);
       renderer.setMRT(saved.mrt);
       renderer.autoClear = saved.autoClear;
-      scene.background = saved.background;
+      Object.assign(scene, { background: saved.background, overrideMaterial: saved.override });
       for (const [mesh, own] of ownMaterials) mesh.material = own;
       drawnIds = new Map();
     }
