@@ -3,7 +3,7 @@ title: "feat: Painted models and characters: one skin in code, surface regions, 
 type: feat
 status: draft
 date: 2026-10-01
-dependsOn: [vid-140 (planes and caches, painting-in removed) for phases 2 onward; vid-142 (one three/webgpu renderer, one camera description) for phases 2 onward's guide renders]
+dependsOn: [vid-140 (landed: planes, live banks, buildPaintCamera); vid-142 (one three/webgpu renderer) for phases 2 onward's guide renders on the GPU]
 relatesTo: [docs/brainstorms/2026-10-01-painted-characters-brainstorm.md, docs/plans/2026-09-30-plan-feat-painted-animation-strokes-and-timing.md (plan 1), docs/plans/2026-09-30-plan-feat-painted-animation-painterly-3d.md (plan 3)]
 ---
 
@@ -47,15 +47,17 @@ Prior art (scout, 2026-10-01; see the brainstorm):
 - Bénard & Hertzmann's 2019 tutorial is the reference for lines from 3D.
 
 Verified against the code:
-- three is pinned at 0.186.0. `manifold-3d` and SDF libraries aren't dependencies.
+- three is pinned at 0.186.0. `manifold-3d` (3.5.3) is a dependency since vid-144's spike.
 - The figure sources live in `lib/paint/animation/models/figure/`.
 - vid-114's form helper is built. `stampRoundedForm` (`lib/paint/painting/models/stamp-form.ts`) takes an outline and
   a `StampFormLight { direction, elevation }`, and returns shade regions, core paths, lit edges and a Lambert term.
 
+- vid-140 has landed. Painting-in and checkpoints are gone, a live group reloads only its own bank, keyed by its marks
+  key, and a scene is planes (`{back, nearer}`). There is one camera description, `buildPaintCamera`
+  (`lib/paint/animation/models/paint-camera-build.ts`). A three plane is only for 3D content shown as 3D.
+
 Relied on from tickets, not yet in the code:
-- vid-140 (in progress) deletes painting-in and checkpoints, and caches each group's painted result by its marks
-  key, so a live model group is a group whose marks key changes.
-- vid-142 (open) brings one `three/webgpu` renderer, one camera description, and three.js maths allowed in `models/`.
+- vid-142 (open) brings one `three/webgpu` renderer on the shared GPU owner, and three.js maths allowed in `models/`.
 
 ### Out of scope
 
@@ -76,7 +78,7 @@ directly, provided it lists every gap it hand-crafted in its findings.
   guide the painting, and the model enters a scene inside a painted plane, not as one of vid-140's three.js planes.
   *Why:* the look is painted. A model wired in as a 3D plane would bypass the brushes.
 - **One light description and one camera description.** Painters read light zones from the scene's light list,
-  whether a shape comes from a model or from `stampRoundedForm`. A model's view uses vid-142's camera description.
+  whether a shape comes from a model or from `stampRoundedForm`. A model's view uses `buildPaintCamera`'s camera description.
   *Why:* two ways to say "lit from the upper left" or a fifth camera model would split every later tool.
 
 ## Phase 2.0: One skin and its regions, to the painter (spike: toy experiment)
@@ -211,7 +213,7 @@ project: steady the folds or drop them, and pick the turn rate. Stamps keyed to 
 **Gaps hand-crafted in the toy** (each is phase 2's to build or name):
 1. The skins are baked into base64 modules (`models/*-glb.ts`, 3.7 MB), since a scene can't wait for WASM or load a
    .glb synchronously. The .glb writer and reader are written by hand, for the subset the toy writes.
-2. three.js's `PerspectiveCamera` and `setViewOffset` are used directly (vid-142's camera description replaces them).
+2. three.js's `PerspectiveCamera` and `setViewOffset` are used directly (`buildPaintCamera`'s camera description replaces them).
 3. The lights are a list in camera terms (`model-stage.ts`), hand-converted to a `StampFormLight` for the
    ellipsoid. There is no scene light list yet.
 4. The CPU rasteriser, the field tracing, the zone thresholds and route A are all in the project
