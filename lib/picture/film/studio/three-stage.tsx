@@ -1,7 +1,7 @@
 // three-stage.tsx: a three.js scene drawn onto the frame through a real camera's lens, on the studio's one three.js
 // renderer (gpu-device-owner.ts). A frame averages `samples` exposures, each at its own moment of the shutter, point
 // on the aperture and sub-pixel and light offset: depth of field, motion blur, soft shadows and antialiasing from one
-// loop. Bloom and tone mapping apply once, to the average. The lens and bloom are the stage's own until vid-141.
+// loop. The lens (lens-compositor.ts) averages them and blooms the average once; tone mapping follows.
 //
 // Every offset comes from a fixed pattern of the exposure's index, and only the device, its targets and its
 // prefiltered rooms outlive a frame, so a frame's bytes depend only on its props, as Remotion's parallel tabs need.
@@ -147,7 +147,7 @@ const threeStageCanvasFreed = (canvas: HTMLCanvasElement) => threeStageCanvasesI
 
 type ThreeStageFrame = {
   draw: (sample: ThreeSample) => ThreeFrame; samples: number; shutter: number; lens: ThreeLens | undefined; softShadows: number; shadows: boolean;
-  environment: boolean | ThreeEnvironment; fps: number; w: number; h: number; look: Parameters<ThreeStageGpu['show']>[1];
+  environment: boolean | ThreeEnvironment; fps: number; w: number; h: number; look: Parameters<ThreeStageGpu['show']>[0];
 };
 
 /** One frame: every exposure drawn and added, then the average shown. */
@@ -159,12 +159,9 @@ function drawThreeStageFrame(stage: ThreeStageGpu, { draw, samples, shutter, len
 
   const count = Math.max(1, Math.round(samples));
   const exposures = lensExposures(count), threeLens = lens && threeShotLens(lens);
-  const target = count < 4 ? stage.sampleMsaa() : stage.sample;
+  const target = stage.exposureTarget(count);
   const camera = new PerspectiveCamera();
   let previous = new Set<{ dispose(): void }>();
-  renderer.setRenderTarget(stage.sum);
-  renderer.setClearColor(0x000000, 0);
-  renderer.clear(true, false, false);
 
   for (const exposure of exposures) {
     const { index, shutter: share } = exposure;
@@ -178,7 +175,7 @@ function drawThreeStageFrame(stage: ThreeStageGpu, { draw, samples, shutter, len
     renderer.clear();
     renderer.render(scene, camera);
     restore();
-    stage.addExposure(target);
+    stage.addExposure(index, count);
 
     // Freed as soon as the next exposure stops using them: a draw that shares its scene across exposures keeps its
     // shadow maps and buffers, and one that builds afresh holds no more than two exposures' worth.
@@ -186,7 +183,7 @@ function drawThreeStageFrame(stage: ThreeStageGpu, { draw, samples, shutter, len
     for (const r of previous) if (!current.has(r)) r.dispose();
     previous = current;
   }
-  stage.show(count, look);
+  stage.show(look);
   for (const r of previous) r.dispose();
 }
 

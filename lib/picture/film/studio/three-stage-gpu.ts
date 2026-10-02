@@ -1,18 +1,22 @@
 // three-stage-gpu.ts: what a ThreeStage keeps on its device between frames: its owner and the owner's one three.js
-// renderer, the canvas it shows, the exposure and sum targets, the passes that add, average, bloom and encode, and
-// its prefiltered rooms.
+// renderer, the canvas it shows, the texture each exposure renders into, the lens (lens-compositor.ts) that averages
+// and blooms the exposures, the pass that tone maps and encodes the lens's image, and its prefiltered rooms.
 
 import {
-  AddEquation, Color, CustomBlending, DirectionalLight, FloatType, HalfFloatType, InstancedMesh, NearestFilter, NodeMaterial, NoToneMapping, OneFactor, PMREMGenerator, PointLight, QuadMesh, RenderTarget, SpotLight, Texture, Vector3, type Material, type Node, type Scene, type ToneMapping,
+  Color, DirectionalLight, ExternalTexture, InstancedMesh, NodeMaterial, NoToneMapping, PMREMGenerator, PointLight, QuadMesh, SpotLight, Texture, Vector3,
+  type Material, type Node, type RenderTarget, type Scene, type ToneMapping,
 } from 'three/webgpu';
-import { clamp, float, max, mix, pow, step, texture, toneMapping, uniform, vec3, vec4 } from 'three/tsl';
-import { bloom as bloomNode } from 'three/examples/jsm/tsl/display/BloomNode.js';
+import { clamp, float, max, mix, pow, screenUV, step, texture, toneMapping, uniform, vec3, vec4 } from 'three/tsl';
 import { createGpuDeviceOwner, type GpuDeviceOwner } from '#lib/platform/gpu/studio/gpu-device-owner.ts';
 import { createGpuCanvasOutput, type GpuCanvasOutput } from '#lib/platform/gpu/studio/gpu-canvas-output.ts';
 import { isThreeGeometryDrawable, type StudioThreeRenderer } from '#lib/platform/gpu/studio/studio-three-renderer.ts';
+import { createLensCompositor } from '#lib/picture/lens/studio/lens-compositor.ts';
 
-/** Bloom: linear light above `threshold` glows (1 is white before tone mapping), `strength` 0.3–1.5, `radius` 0..1. */
-export type ThreeBloom = { strength: number; radius: number; threshold: number };
+/**
+ * Bloom, the lens's: linear light past `threshold` (1 is white before tone mapping) spread by a gaussian `sigma`
+ * frame px, times `strength`, added before tone mapping.
+ */
+export type ThreeBloom = { strength: number; sigma: number; threshold: number };
 
 /**
  * A room for reflections and fill, prefiltered once per device and kept under `key`. `scene` builds it (the stage
@@ -33,32 +37,24 @@ function encodeSrgb(linear: Node<'vec3'>): Node<'vec3'> {
   return mix(pow(linear, vec3(1 / 2.4)).mul(1.055).sub(0.055), linear.mul(12.92), step(linear, vec3(0.0031308)));
 }
 
-/** A raw full-frame pass: its fragment is `fragment` alone, with no lighting, colour space or tone mapping of three's. */
-function rawPass(fragment: Node, blend?: 'add'): QuadMesh & { material: NodeMaterial } {
+/** A full-frame pass: its fragment is `fragment` alone, with no lighting, colour space or tone mapping of three's. */
+function rawPass(fragment: Node): QuadMesh & { material: NodeMaterial } {
   const material = new NodeMaterial();
   material.fragmentNode = fragment;
   Object.assign(material, { depthTest: false, depthWrite: false });
-  if (blend) {
-    Object.assign(material, {
-      blending: CustomBlending, blendEquation: AddEquation, blendSrc: OneFactor, blendDst: OneFactor, blendEquationAlpha: AddEquation, blendSrcAlpha: OneFactor, blendDstAlpha: OneFactor,
-    });
-  }
   return Object.assign(new QuadMesh(material), { material });
 }
 
-/** The output pass for one structure of look (tone mapping, bloom or not, transparency), and its bloom if any. */
-type ThreeStageOutputPass = { key: string; pass: ReturnType<typeof rawPass>; bloom: ReturnType<typeof bloomNode> | null };
-
-function disposeOutputPass(retired: ThreeStageOutputPass) {
-  retired.pass.material.dispose();
-  retired.bloom?.dispose();
-}
+/** The output pass for one structure of look (tone mapping, transparency). */
+type ThreeStageOutputPass = { key: string; pass: ReturnType<typeof rawPass> };
 
 export type ThreeStageGpu = Awaited<ReturnType<typeof createThreeStageGpu>>;
 
+const LINEAR_IMAGE = 'rgba16float';
+
 /**
- * A stage's device, renderer and canvas, `width` × `height`. Its passes are built once: what changes between frames
- * (the sample read, the average's weight, the look) goes through uniforms and textures, never a recompile.
+ * A stage's device, renderer and canvas, `width` × `height`. What changes between frames (the exposure's share, the
+ * look's numbers) goes through uniforms, never a recompile.
  */
 export async function createThreeStageGpu(canvas: HTMLCanvasElement, { width, height, transparent }: { width: number; height: number; transparent: boolean }) {
   const owner: GpuDeviceOwner = await createGpuDeviceOwner();
@@ -70,52 +66,41 @@ export async function createThreeStageGpu(canvas: HTMLCanvasElement, { width, he
     owner.dispose();
     throw error;
   }
-  const { renderer } = three;
+  const { renderer } = three, device = owner.webgpu;
   renderer.setPixelRatio(1);
-  // Sizes what follows the drawing buffer (the bloom's targets); nothing renders to the renderer's own canvas.
   renderer.setSize(width, height, false);
-  // Every pass clears by hand, if at all: the sum adds up the exposures.
   renderer.autoClear = false;
 
-  const exact = { minFilter: NearestFilter, magFilter: NearestFilter, generateMipmaps: false };
-  const sample = new RenderTarget(width, height, { type: HalfFloatType, depthBuffer: true, ...exact });
+  const ownTexture = (label: string) => device.createTexture({
+    label, size: [width, height], format: LINEAR_IMAGE, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  const exposed = ownTexture('three stage exposure'), developed = ownTexture('three stage image');
+  const exposedView = exposed.createView(), developedView = developed.createView();
+  const lens = createLensCompositor(device, { width, height });
+  const single = three.targetInto(exposed);
   let msaa: RenderTarget | null = null;
-  // A 32-bit sum: sixteen half-float adds can drift by a count in the final 8 bits. Studio devices blend float32.
-  const sum = new RenderTarget(width, height, { type: FloatType, depthBuffer: false, ...exact });
-  const image = new RenderTarget(width, height, { type: HalfFloatType, depthBuffer: false });
   const shown = three.targetInto(output.texture);
-
-  const added = texture(sample.texture);
-  const add = rawPass(added, 'add');
-  const weight = uniform(1);
-  const resolve = rawPass(texture(sum.texture).mul(weight));
+  const image = new ExternalTexture(developed);
 
   /**
-   * Tone maps the average and encodes it for the canvas. Encoded alone, a transparent (premultiplied) average would
+   * Tone maps the lens's image and encodes it for the canvas. Encoded alone, a transparent (premultiplied) image would
    * brighten partial cover and clip added light white over a light page. So it's laid over the backdrop in linear
    * light, encoded, and the backdrop's share taken out: composited over that colour, the page shows the linear blend.
    */
   const backdrop = uniform(new Vector3()), exposure = uniform(1);
-  // The pass for the look's structure, its bloom's numbers uniforms; a pass of another structure is let go of.
   let looked: ThreeStageOutputPass | null = null;
-  const outputPass = ({ toneMapping: mapping, bloom, transparent: clear }: ThreeStageLook) => {
-    const key = `${mapping}|${bloom ? 'bloom' : '-'}|${clear}`;
+  const outputPass = ({ toneMapping: mapping, transparent: clear }: ThreeStageLook) => {
+    const key = `${mapping}|${clear}`;
     if (looked?.key !== key) {
-      if (looked) disposeOutputPass(looked);
-      const average = texture(image.texture);
-      const glow = bloom ? bloomNode(average) : null;
-      const lit = glow ? average.add(glow) : average;
+      looked?.pass.material.dispose();
+      // Read at the pixel drawn: the lens's rows run down, as the target's do.
+      const lit = texture(image, screenUV);
       // toneMapping gives a vec4 (its colour's alpha kept), whatever its types say.
       const light: Node<'vec3'> = mapping === NoToneMapping ? lit.rgb : toneMapping(mapping, exposure, lit).rgb;
       const cover: Node<'float'> = clear ? clamp(lit.a, 0, 1) : float(1);
       const uncovered = cover.oneMinus();
       const seen = encodeSrgb(light.add(backdrop.mul(uncovered)));
-      looked = { key, bloom: glow, pass: rawPass(vec4(max(seen.sub(encodeSrgb(backdrop).mul(uncovered)), vec3(0)), cover)) };
-    }
-    if (looked.bloom && bloom) {
-      looked.bloom.strength.value = bloom.strength;
-      looked.bloom.radius.value = bloom.radius;
-      looked.bloom.threshold.value = bloom.threshold;
+      looked = { key, pass: rawPass(vec4(max(seen.sub(encodeSrgb(backdrop).mul(uncovered)), vec3(0)), cover)) };
     }
     return looked.pass;
   };
@@ -124,23 +109,30 @@ export async function createThreeStageGpu(canvas: HTMLCanvasElement, { width, he
   const keep = new Set<Texture>();
 
   return {
-    owner, renderer, sample, sum, keep,
-    /** A multisampled target, for the frames whose few exposures can't antialias themselves. */
-    sampleMsaa() {
-      msaa ??= new RenderTarget(width, height, { type: HalfFloatType, samples: 4, depthBuffer: true, ...exact });
+    owner, renderer, keep,
+    /** The target exposure `index` of `count` renders into: multisampled for the frames too few to antialias themselves. */
+    exposureTarget(count: number) {
+      if (count >= 4) return single;
+      msaa ??= three.targetInto(exposed, { samples: 4 });
       return msaa;
     },
-    /** Adds `target`, an exposure, into the sum. */
-    addExposure(target: RenderTarget) {
-      added.value = target.texture;
-      renderer.setRenderTarget(sum);
-      add.render(renderer);
+    /** Hands the exposure just rendered to the lens, its share of `count`. */
+    addExposure(index: number, count: number) {
+      const encoder = device.createCommandEncoder({ label: 'three stage exposure' });
+      lens.exposureImage(encoder, exposedView, { index, count });
+      lens.flush();
+      device.queue.submit([encoder.finish()]);
     },
-    /** The sum over `count` exposures, looked at as `look` says, onto the canvas. */
-    show(count: number, look: ThreeStageLook) {
-      weight.value = 1 / count;
-      renderer.setRenderTarget(image);
-      resolve.render(renderer);
+    /** The exposures developed through the lens, looked at as `look` says, onto the canvas. */
+    show(look: ThreeStageLook) {
+      const encoder = device.createCommandEncoder({ label: 'three stage develop' });
+      const { bloom } = look;
+      lens.develop(encoder, {
+        bloom: bloom ? { sigma: bloom.sigma, strength: bloom.strength, glow: { threshold: bloom.threshold } } : null,
+        into: developedView, format: LINEAR_IMAGE, encoding: { kind: 'linear' },
+      });
+      lens.flush();
+      device.queue.submit([encoder.finish()]);
       backdrop.value.setFromColor(new Color(look.transparent ? look.backdrop : '#000000'));
       exposure.value = look.exposure;
       renderer.setRenderTarget(shown);
@@ -163,10 +155,13 @@ export async function createThreeStageGpu(canvas: HTMLCanvasElement, { width, he
       return made;
     },
     dispose() {
-      for (const t of [sample, msaa, sum, image, shown]) t?.dispose();
-      for (const pass of [add, resolve]) pass.material.dispose();
-      if (looked) disposeOutputPass(looked);
+      for (const t of [single, msaa, shown]) t?.dispose();
+      looked?.pass.material.dispose();
+      image.dispose();
       for (const t of rooms.values()) t.dispose();
+      lens.dispose();
+      exposed.destroy();
+      developed.destroy();
       output.dispose();
       owner.dispose();
     },
